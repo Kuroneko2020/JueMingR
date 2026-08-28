@@ -12,13 +12,15 @@
 
 可写项目：
 
-- 本地：`C:\Users\kongd\Desktop\JueMingR`
+- 本地：当前 Git 仓库根目录（必须通过 `git rev-parse --show-toplevel` 确认，不得依赖硬编码的个人目录）
 - GitHub：`Kuroneko2020/JueMingR`
 
 永久只读 Legacy：
 
-- 本地：`C:\Users\kongd\Desktop\JueMingZ`
+- 本地：当前仓库根目录的同级目录 `../JueMingZ`
 - GitHub：`Kuroneko2020/JueMingZ`
+
+若 `../JueMingZ` 不存在，Agent 必须停止并报告；不得自行猜测路径、创建目录、克隆副本或改用其他本地项目。
 
 禁止修改、提交、格式化或自动修复 Legacy。禁止让 JueMingR 在编译期或运行时引用 JueMingZ。
 
