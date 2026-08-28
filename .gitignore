@@ -1,0 +1,22 @@
+# Visual Studio
+.vs/
+*.user
+*.suo
+
+# .NET build outputs
+**/bin/
+**/obj/
+*.pdb
+
+# Local logs and temporary files
+*.log
+*.tmp
+logs/
+
+# Local dependencies
+.local/
+external/TerrariaRefs/
+
+# Test packages and generated build outputs
+outputs/
+artifacts/
