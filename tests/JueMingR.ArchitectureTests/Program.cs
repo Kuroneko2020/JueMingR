@@ -10,11 +10,29 @@ namespace JueMingR.ArchitectureTests
         {
             try
             {
-                string repositoryRoot = args.Length > 0
-                    ? Path.GetFullPath(args[0])
-                    : FindRepositoryRoot();
+                if (args.Length != 5)
+                {
+                    throw new ArgumentException(
+                        "Architecture tests must be invoked by the formal build entry with repository, configuration, both locked build roots, and the owned tool-state root.");
+                }
 
-                ProjectGraphFacts facts = ProjectGraphFacts.Load(repositoryRoot);
+                string repositoryRoot = Path.GetFullPath(args[0]);
+                string configuration = args[1];
+                if (!string.Equals(configuration, "Debug", StringComparison.Ordinal) &&
+                    !string.Equals(configuration, "Release", StringComparison.Ordinal))
+                {
+                    throw new ArgumentException("Architecture configuration must be Debug or Release.");
+                }
+
+                string lockedSdkRoot = args[2];
+                string targetingPackRoot = args[3];
+                string ownedToolStateRoot = args[4];
+                ProjectGraphFacts facts = ProjectGraphFacts.Load(
+                    repositoryRoot,
+                    configuration,
+                    lockedSdkRoot,
+                    targetingPackRoot,
+                    ownedToolStateRoot);
                 var failures = new List<string>();
                 ArchitectureAssertions.Check(facts, failures);
                 OperationContractChecks.Check(failures);
@@ -40,32 +58,5 @@ namespace JueMingR.ArchitectureTests
             }
         }
 
-        private static string FindRepositoryRoot()
-        {
-            string[] startingPoints =
-            {
-                Environment.CurrentDirectory,
-                AppDomain.CurrentDomain.BaseDirectory
-            };
-
-            foreach (string startingPoint in startingPoints)
-            {
-                DirectoryInfo current = new DirectoryInfo(Path.GetFullPath(startingPoint));
-                while (current != null)
-                {
-                    if (File.Exists(Path.Combine(current.FullName, "JueMingR.sln")) &&
-                        (Directory.Exists(Path.Combine(current.FullName, ".git")) ||
-                         File.Exists(Path.Combine(current.FullName, ".git"))))
-                    {
-                        return current.FullName;
-                    }
-
-                    current = current.Parent;
-                }
-            }
-
-            throw new InvalidOperationException(
-                "Repository root was not found. Pass the repository root as the first argument.");
-        }
     }
 }

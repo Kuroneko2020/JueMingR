@@ -13,7 +13,9 @@ namespace JueMingR.ArchitectureTests
             "Terraria",
             "ReLogic",
             "Microsoft.Xna.Framework",
-            "0Harmony"
+            "0Harmony",
+            "TerrariaHelper",
+            "JueMingZ"
         };
 
         internal static void Check(IList<string> failures)
@@ -22,38 +24,67 @@ namespace JueMingR.ArchitectureTests
             Type outcomeType = typeof(GameOperationOutcome);
             Type resultType = typeof(GameOperationResult);
 
-            if (!requestType.IsPublic || !requestType.IsInterface || requestType.GetMembers().Length != 0)
+            if (!requestType.IsPublic ||
+                !requestType.IsInterface ||
+                requestType.IsGenericType ||
+                requestType.GetInterfaces().Length != 0 ||
+                requestType.GetMembers().Length != 0)
             {
                 failures.Add("IGameOperationRequest must be a public empty marker interface.");
             }
 
-            string[] expectedOutcomes =
+            var expectedOutcomes = new Dictionary<string, int>(StringComparer.Ordinal)
             {
-                "Rejected",
-                "Succeeded",
-                "PartiallySucceeded",
-                "Failed",
-                "Cancelled",
-                "TimedOut",
-                "Unconfirmed"
+                { "Rejected", 0 },
+                { "Succeeded", 1 },
+                { "PartiallySucceeded", 2 },
+                { "Failed", 3 },
+                { "Cancelled", 4 },
+                { "TimedOut", 5 },
+                { "Unconfirmed", 6 }
             };
+            string[] actualOutcomeNames = Enum.GetNames(outcomeType);
             if (!outcomeType.IsPublic || !outcomeType.IsEnum ||
-                !new HashSet<string>(Enum.GetNames(outcomeType), StringComparer.Ordinal).SetEquals(expectedOutcomes))
+                Enum.GetUnderlyingType(outcomeType) != typeof(int) ||
+                !new HashSet<string>(actualOutcomeNames, StringComparer.Ordinal).SetEquals(expectedOutcomes.Keys) ||
+                expectedOutcomes.Any(expected =>
+                    !Enum.IsDefined(outcomeType, expected.Key) ||
+                    Convert.ToInt32(Enum.Parse(outcomeType, expected.Key, false)) != expected.Value))
             {
                 failures.Add("GameOperationOutcome must expose exactly the approved terminal classifications.");
             }
 
             ConstructorInfo[] constructors = resultType.GetConstructors(BindingFlags.Instance | BindingFlags.Public);
+            ParameterInfo constructorParameter = constructors.Length == 1 && constructors[0].GetParameters().Length == 1
+                ? constructors[0].GetParameters()[0]
+                : null;
             PropertyInfo[] properties = resultType.GetProperties(BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly);
+            MethodInfo[] methods = resultType.GetMethods(
+                BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.DeclaredOnly);
+            FieldInfo[] fields = resultType.GetFields(
+                BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.DeclaredOnly);
+            EventInfo[] events = resultType.GetEvents(
+                BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.DeclaredOnly);
+            Type[] nestedTypes = resultType.GetNestedTypes(BindingFlags.Public);
             if (!resultType.IsPublic || !resultType.IsSealed ||
+                resultType.IsGenericType ||
+                resultType.BaseType != typeof(object) ||
+                resultType.GetInterfaces().Length != 0 ||
                 constructors.Length != 1 ||
-                constructors[0].GetParameters().Length != 1 ||
-                constructors[0].GetParameters()[0].ParameterType != outcomeType ||
+                constructorParameter == null ||
+                constructorParameter.ParameterType != outcomeType ||
+                constructorParameter.IsOptional ||
+                constructorParameter.HasDefaultValue ||
                 properties.Length != 1 ||
                 properties[0].Name != "Outcome" ||
                 properties[0].PropertyType != outcomeType ||
                 !properties[0].CanRead ||
-                properties[0].CanWrite)
+                properties[0].CanWrite ||
+                methods.Length != 1 ||
+                methods[0] != properties[0].GetGetMethod() ||
+                fields.Length != 0 ||
+                events.Length != 0 ||
+                nestedTypes.Length != 0)
             {
                 failures.Add("GameOperationResult must be sealed and expose only an immutable Outcome set by its constructor.");
             }
@@ -65,8 +96,12 @@ namespace JueMingR.ArchitectureTests
                 failures.Add("Platform public API must contain only the minimal typed operation contract.");
             }
 
-            CheckOutcomeRoundTrip(GameOperationOutcome.Failed, failures);
-            CheckOutcomeRoundTrip(GameOperationOutcome.Unconfirmed, failures);
+            foreach (GameOperationOutcome outcome in Enum.GetValues(outcomeType))
+            {
+                CheckOutcomeRoundTrip(outcome, failures);
+            }
+            CheckUndefinedOutcomeRejected((GameOperationOutcome)(-1), failures);
+            CheckUndefinedOutcomeRejected((GameOperationOutcome)7, failures);
 
             foreach (AssemblyName reference in resultType.Assembly.GetReferencedAssemblies())
             {
@@ -90,6 +125,25 @@ namespace JueMingR.ArchitectureTests
             catch (Exception exception)
             {
                 failures.Add("GameOperationResult rejected an approved outcome " + outcome + ": " + exception.GetType().Name);
+            }
+        }
+
+        private static void CheckUndefinedOutcomeRejected(GameOperationOutcome outcome, IList<string> failures)
+        {
+            try
+            {
+                new GameOperationResult(outcome);
+                failures.Add("GameOperationResult accepted an undefined outcome value: " + (int)outcome);
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                // The minimal result contract accepts only one of the seven defined terminal outcomes.
+            }
+            catch (Exception exception)
+            {
+                failures.Add(
+                    "GameOperationResult rejected an undefined outcome with the wrong exception: " +
+                    exception.GetType().Name);
             }
         }
     }

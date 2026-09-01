@@ -3,6 +3,8 @@ param(
     [string] $TerrariaInstallDirectory,
     [string] $XnaReferenceDirectory,
     [string] $DestinationDirectory,
+    [string] $ReadOnlyLegacyDirectory,
+    [string] $ReproducibilityRoot,
     [switch] $Force,
     [switch] $InspectOnly,
     [switch] $VerifyOnly
@@ -17,11 +19,406 @@ $script:MarkerName = '.juemingr-reference-set.json'
 $script:GeneratorIdentity = 'scripts/prepare-terraria-references.ps1'
 $script:Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 
+if ($null -eq ('JueMingR.PhysicalPathNativeMethods' -as [type])) {
+    $assemblyName = New-Object System.Reflection.AssemblyName('JueMingR.PhysicalPath.Dynamic')
+    if ($PSVersionTable.PSEdition -eq 'Core') {
+        $assemblyBuilder = [System.Reflection.Emit.AssemblyBuilder]::DefineDynamicAssembly(
+            $assemblyName,
+            [System.Reflection.Emit.AssemblyBuilderAccess]::Run)
+    }
+    else {
+        $assemblyBuilder = [AppDomain]::CurrentDomain.DefineDynamicAssembly(
+            $assemblyName,
+            [System.Reflection.Emit.AssemblyBuilderAccess]::Run)
+    }
+    $moduleBuilder = $assemblyBuilder.DefineDynamicModule('JueMingR.PhysicalPath.Dynamic')
+    $typeBuilder = $moduleBuilder.DefineType(
+        'JueMingR.PhysicalPathNativeMethods',
+        [System.Reflection.TypeAttributes] 'Public, Abstract, Sealed')
+    $methodAttributes = [System.Reflection.MethodAttributes] 'Public, Static, PinvokeImpl'
+    $createFileMethod = $typeBuilder.DefinePInvokeMethod(
+        'CreateFile',
+        'kernel32.dll',
+        'CreateFileW',
+        $methodAttributes,
+        [System.Reflection.CallingConventions]::Standard,
+        [Microsoft.Win32.SafeHandles.SafeFileHandle],
+        [Type[]] @([string], [uint32], [uint32], [IntPtr], [uint32], [uint32], [IntPtr]),
+        [System.Runtime.InteropServices.CallingConvention]::Winapi,
+        [System.Runtime.InteropServices.CharSet]::Unicode)
+    $createFileMethod.SetImplementationFlags(
+        $createFileMethod.GetMethodImplementationFlags() -bor [System.Reflection.MethodImplAttributes]::PreserveSig)
+    $getFinalPathMethod = $typeBuilder.DefinePInvokeMethod(
+        'GetFinalPathNameByHandle',
+        'kernel32.dll',
+        'GetFinalPathNameByHandleW',
+        $methodAttributes,
+        [System.Reflection.CallingConventions]::Standard,
+        [uint32],
+        [Type[]] @([Microsoft.Win32.SafeHandles.SafeFileHandle], [System.Text.StringBuilder], [uint32], [uint32]),
+        [System.Runtime.InteropServices.CallingConvention]::Winapi,
+        [System.Runtime.InteropServices.CharSet]::Unicode)
+    $getFinalPathMethod.SetImplementationFlags(
+        $getFinalPathMethod.GetMethodImplementationFlags() -bor [System.Reflection.MethodImplAttributes]::PreserveSig)
+    $setEnvironmentVariableMethod = $typeBuilder.DefinePInvokeMethod(
+        'SetEnvironmentVariable',
+        'kernel32.dll',
+        'SetEnvironmentVariableW',
+        $methodAttributes,
+        [System.Reflection.CallingConventions]::Standard,
+        [bool],
+        [Type[]] @([string], [string]),
+        [System.Runtime.InteropServices.CallingConvention]::Winapi,
+        [System.Runtime.InteropServices.CharSet]::Unicode)
+    $setEnvironmentVariableMethod.SetImplementationFlags(
+        $setEnvironmentVariableMethod.GetMethodImplementationFlags() -bor [System.Reflection.MethodImplAttributes]::PreserveSig)
+    $null = $typeBuilder.CreateType()
+}
+
+function Get-FinalDirectoryPath {
+    param([string] $Path)
+
+    $handle = [JueMingR.PhysicalPathNativeMethods]::CreateFile(
+        $Path,
+        0,
+        0x00000007,
+        [IntPtr]::Zero,
+        3,
+        0x02000000,
+        [IntPtr]::Zero)
+    if ($null -eq $handle -or $handle.IsInvalid) {
+        if ($null -ne $handle) { $handle.Dispose() }
+        throw 'Could not open a directory handle for physical path resolution.'
+    }
+
+    try {
+        $buffer = New-Object System.Text.StringBuilder(512)
+        $length = [JueMingR.PhysicalPathNativeMethods]::GetFinalPathNameByHandle(
+            $handle,
+            $buffer,
+            [uint32] $buffer.Capacity,
+            0)
+        if ($length -eq 0) {
+            throw 'Could not resolve a directory handle to its physical path.'
+        }
+        if ($length -ge $buffer.Capacity) {
+            $buffer = New-Object System.Text.StringBuilder([int] $length + 1)
+            $length = [JueMingR.PhysicalPathNativeMethods]::GetFinalPathNameByHandle(
+                $handle,
+                $buffer,
+                [uint32] $buffer.Capacity,
+                0)
+            if ($length -eq 0 -or $length -ge $buffer.Capacity) {
+                throw 'Could not resolve a directory handle to its complete physical path.'
+            }
+        }
+        return $buffer.ToString()
+    }
+    finally {
+        $handle.Dispose()
+    }
+}
+
 function Resolve-UnresolvedPath {
     param([string] $Path)
 
     return [System.IO.Path]::GetFullPath(
         $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path))
+}
+
+function Get-CanonicalDirectoryPath {
+    param(
+        [string] $Path,
+        [string] $Label,
+        [switch] $RequireAbsolute
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        throw "$Label must be a non-empty directory path."
+    }
+    if ($Path.StartsWith('\\?\', [StringComparison]::Ordinal) -or
+        $Path.StartsWith('\\.\', [StringComparison]::Ordinal)) {
+        throw "$Label may not use an extended or device path prefix."
+    }
+    if ($RequireAbsolute) {
+        $isDriveAbsolute = $Path -match '^[A-Za-z]:[\\/]'
+        $isUncAbsolute = $Path -match '^[\\/]{2}[^\\/]+[\\/]+[^\\/]+'
+        if (-not $isDriveAbsolute -and -not $isUncAbsolute) {
+            throw "$Label must be a fully qualified absolute directory path."
+        }
+    }
+
+    try {
+        $fullPath = if ($RequireAbsolute) {
+            [System.IO.Path]::GetFullPath($Path)
+        }
+        else {
+            Resolve-UnresolvedPath -Path $Path
+        }
+    }
+    catch {
+        throw "$Label could not be canonicalized as a directory path."
+    }
+
+    $current = $fullPath
+    $missingSegments = New-Object System.Collections.Generic.List[string]
+    while (-not [System.IO.Directory]::Exists($current)) {
+        if ([System.IO.File]::Exists($current)) {
+            throw "$Label resolves to a file, not a directory."
+        }
+
+        $trimmedCurrent = $current.TrimEnd([char[]] @(
+            [System.IO.Path]::DirectorySeparatorChar,
+            [System.IO.Path]::AltDirectorySeparatorChar))
+        $leaf = [System.IO.Path]::GetFileName($trimmedCurrent)
+        $parent = [System.IO.Path]::GetDirectoryName($trimmedCurrent)
+        if ([string]::IsNullOrWhiteSpace($leaf) -or
+            [string]::IsNullOrWhiteSpace($parent) -or
+            [string]::Equals($parent, $current, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "$Label has no resolvable existing directory ancestor."
+        }
+
+        $missingSegments.Insert(0, $leaf)
+        $current = $parent
+    }
+
+    try {
+        $physicalPath = Get-FinalDirectoryPath -Path $current
+    }
+    catch {
+        throw "$Label could not be resolved to a physical directory path."
+    }
+
+    if ($physicalPath.StartsWith('\\?\UNC\', [StringComparison]::OrdinalIgnoreCase)) {
+        $physicalPath = '\\' + $physicalPath.Substring(8)
+    }
+    elseif ($physicalPath.StartsWith('\\?\', [StringComparison]::OrdinalIgnoreCase)) {
+        $physicalPath = $physicalPath.Substring(4)
+    }
+    else {
+        throw "$Label resolved to an unsupported physical path form."
+    }
+
+    foreach ($segment in $missingSegments) {
+        $physicalPath = [System.IO.Path]::Combine($physicalPath, $segment)
+    }
+    $physicalPath = [System.IO.Path]::GetFullPath($physicalPath)
+    $root = [System.IO.Path]::GetPathRoot($physicalPath)
+    if ([string]::Equals($physicalPath, $root, [StringComparison]::OrdinalIgnoreCase)) {
+        return $physicalPath
+    }
+
+    return $physicalPath.TrimEnd([char[]] @(
+        [System.IO.Path]::DirectorySeparatorChar,
+        [System.IO.Path]::AltDirectorySeparatorChar))
+}
+
+$script:RepositoryRoot = Get-CanonicalDirectoryPath -Path $script:RepositoryRoot -Label 'repository root' -RequireAbsolute
+$script:BaselinePath = Join-Path $script:RepositoryRoot 'eng\TerrariaReferences.baseline.json'
+
+function Test-PathWithinOrEqual {
+    param(
+        [string] $Candidate,
+        [string] $Parent
+    )
+
+    if ([string]::Equals($Candidate, $Parent, [StringComparison]::OrdinalIgnoreCase)) {
+        return $true
+    }
+
+    $parentPrefix = $Parent.TrimEnd([char[]] @(
+        [System.IO.Path]::DirectorySeparatorChar,
+        [System.IO.Path]::AltDirectorySeparatorChar)) + [System.IO.Path]::DirectorySeparatorChar
+    return $Candidate.StartsWith($parentPrefix, [StringComparison]::OrdinalIgnoreCase)
+}
+
+function Assert-PathTreesDisjoint {
+    param(
+        [string] $Candidate,
+        [string] $CandidateLabel,
+        [string] $Protected,
+        [string] $ProtectedLabel
+    )
+
+    if ((Test-PathWithinOrEqual -Candidate $Candidate -Parent $Protected) -or
+        (Test-PathWithinOrEqual -Candidate $Protected -Parent $Candidate)) {
+        throw "$CandidateLabel and $ProtectedLabel must be disjoint directory trees."
+    }
+}
+
+function Assert-LegalSourceCandidateBoundaries {
+    param(
+        [string] $CandidateDirectory,
+        [string] $CandidateLabel,
+        [string] $DestinationDirectory
+    )
+
+    Assert-PathTreesDisjoint -Candidate $CandidateDirectory -CandidateLabel $CandidateLabel -Protected $script:RepositoryRoot -ProtectedLabel 'repository root'
+    Assert-PathTreesDisjoint -Candidate $CandidateDirectory -CandidateLabel $CandidateLabel -Protected $script:LegacyRoot -ProtectedLabel 'read-only Legacy root'
+    Assert-PathTreesDisjoint -Candidate $CandidateDirectory -CandidateLabel $CandidateLabel -Protected $DestinationDirectory -ProtectedLabel 'DestinationDirectory'
+}
+
+function Test-RegularSourceFileExists {
+    param(
+        [string] $Path,
+        [string] $Label
+    )
+
+    if (-not [System.IO.File]::Exists($Path)) {
+        return $false
+    }
+
+    $item = Get-Item -LiteralPath $Path -Force
+    if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "$Label may not be a reparse point."
+    }
+
+    return $true
+}
+
+function Get-ReadOnlyLegacyRoot {
+    param(
+        [string] $ExplicitDirectory,
+        [string] $ExplicitReproducibilityRoot
+    )
+
+    $siblingCandidate = Join-Path ([System.IO.Path]::GetDirectoryName($script:RepositoryRoot)) 'JueMingZ'
+    if ([System.IO.Directory]::Exists($siblingCandidate)) {
+        $siblingRoot = Get-CanonicalDirectoryPath -Path $siblingCandidate -Label 'read-only sibling Legacy root' -RequireAbsolute
+        if (-not [string]::IsNullOrWhiteSpace($ExplicitDirectory)) {
+            $explicitRoot = Get-CanonicalDirectoryPath -Path $ExplicitDirectory -Label 'ReadOnlyLegacyDirectory' -RequireAbsolute
+            if (-not [string]::Equals($explicitRoot, $siblingRoot, [StringComparison]::OrdinalIgnoreCase)) {
+                throw 'ReadOnlyLegacyDirectory may not replace the required sibling ../JueMingZ repository.'
+            }
+        }
+        return $siblingRoot
+    }
+
+    if ([string]::IsNullOrWhiteSpace($ExplicitDirectory) -or
+        -not [System.IO.Directory]::Exists($ExplicitDirectory)) {
+        throw 'The required sibling Legacy repository ../JueMingZ is missing; an existing explicit read-only Legacy root is required for an isolated clean clone.'
+    }
+    if ([string]::IsNullOrWhiteSpace($ExplicitReproducibilityRoot) -or
+        -not [System.IO.Directory]::Exists($ExplicitReproducibilityRoot)) {
+        throw 'An explicit read-only Legacy root is accepted only for a verifier-owned reproducibility clone.'
+    }
+    $reproducibilityRoot = Get-CanonicalDirectoryPath -Path $ExplicitReproducibilityRoot -Label 'ReproducibilityRoot' -RequireAbsolute
+    $repositoryParent = Get-CanonicalDirectoryPath `
+        -Path ([System.IO.Path]::GetDirectoryName($script:RepositoryRoot)) `
+        -Label 'repository parent' `
+        -RequireAbsolute
+    $systemTempRoot = Get-CanonicalDirectoryPath -Path ([System.IO.Path]::GetTempPath()) -Label 'system TEMP root' -RequireAbsolute
+    $reproducibilityParent = Get-CanonicalDirectoryPath `
+        -Path ([System.IO.Path]::GetDirectoryName($reproducibilityRoot)) `
+        -Label 'reproducibility root parent' `
+        -RequireAbsolute
+    $repositoryLeaf = [System.IO.Path]::GetFileName($script:RepositoryRoot)
+    if (-not [string]::Equals($repositoryParent, $reproducibilityRoot, [StringComparison]::OrdinalIgnoreCase) -or
+        -not [string]::Equals($reproducibilityParent, $systemTempRoot, [StringComparison]::OrdinalIgnoreCase) -or
+        [System.IO.Path]::GetFileName($reproducibilityRoot) -notmatch '^JueMingR-Repro-[0-9a-f]{32}$' -or
+        ($repositoryLeaf -cne 'clone-a' -and $repositoryLeaf -cne 'clone-b-with-a-different-path')) {
+        throw 'The explicit Legacy exception is limited to the two verifier-owned clones under a system TEMP reproducibility root.'
+    }
+    $explicitRoot = Get-CanonicalDirectoryPath -Path $ExplicitDirectory -Label 'ReadOnlyLegacyDirectory' -RequireAbsolute
+    if (-not [string]::Equals([System.IO.Path]::GetFileName($explicitRoot), 'JueMingZ', [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'An explicit read-only Legacy root must identify the JueMingZ directory.'
+    }
+    return $explicitRoot
+}
+
+$script:LegacyRoot = Get-ReadOnlyLegacyRoot `
+    -ExplicitDirectory $ReadOnlyLegacyDirectory `
+    -ExplicitReproducibilityRoot $ReproducibilityRoot
+Assert-PathTreesDisjoint -Candidate $script:RepositoryRoot -CandidateLabel 'repository root' -Protected $script:LegacyRoot -ProtectedLabel 'read-only Legacy root'
+
+function Get-RequiredMarkerDirectory {
+    param(
+        [object] $Source,
+        [string] $PropertyName
+    )
+
+    $property = $Source.PSObject.Properties[$PropertyName]
+    if ($null -eq $property -or -not ($property.Value -is [string]) -or
+        [string]::IsNullOrWhiteSpace([string] $property.Value)) {
+        throw "Prepared Terraria reference marker source.$PropertyName must be a non-empty absolute path."
+    }
+
+    return Get-CanonicalDirectoryPath -Path ([string] $property.Value) -Label ("marker source." + $PropertyName) -RequireAbsolute
+}
+
+function Get-ValidatedMarkerSourceDirectories {
+    param(
+        [object] $Marker,
+        [object] $Baseline
+    )
+
+    $sourceProperty = $Marker.PSObject.Properties['source']
+    if ($null -eq $sourceProperty -or $null -eq $sourceProperty.Value) {
+        throw 'Prepared Terraria reference marker source metadata is missing.'
+    }
+
+    $unchangedProperty = $Marker.PSObject.Properties['sourceHashesUnchanged']
+    if ($null -eq $unchangedProperty -or
+        -not ($unchangedProperty.Value -is [bool]) -or
+        $unchangedProperty.Value -ne $true) {
+        throw 'Prepared Terraria reference marker must record sourceHashesUnchanged as boolean true.'
+    }
+
+    $source = $sourceProperty.Value
+    $terrariaDirectory = Get-RequiredMarkerDirectory -Source $source -PropertyName 'terrariaInstallDirectory'
+    $xnaDirectory = Get-RequiredMarkerDirectory -Source $source -PropertyName 'xnaReferenceDirectory'
+    $channelProperty = $source.PSObject.Properties['terrariaChannel']
+    $channel = if ($null -eq $channelProperty) { '' } else { [string] $channelProperty.Value }
+    if ($channel -ne 'Steam' -and $channel -ne 'Explicit legal local installation') {
+        throw 'Prepared Terraria reference marker has an unsupported source channel.'
+    }
+
+    if ($channel -eq 'Steam') {
+        $expected = $Baseline.terrariaChannelEvidence
+        foreach ($item in @(
+            @{ Name = 'steamAppId'; Expected = [string] $expected.appId },
+            @{ Name = 'steamStateFlags'; Expected = [string] $expected.stateFlags },
+            @{ Name = 'steamBuildId'; Expected = [string] $expected.buildId })) {
+            $property = $source.PSObject.Properties[$item.Name]
+            if ($null -eq $property -or
+                -not [string]::Equals([string] $property.Value, $item.Expected, [StringComparison]::Ordinal)) {
+                throw "Prepared Terraria reference marker Steam evidence does not match the approved baseline: $($item.Name)."
+            }
+        }
+    }
+
+    return [ordered]@{
+        terraria = $terrariaDirectory
+        xna = $xnaDirectory
+    }
+}
+
+function Assert-RecordedSourceFilesMatchBaseline {
+    param(
+        [object] $MarkerSources,
+        [object] $Baseline
+    )
+
+    if (-not [System.IO.Directory]::Exists($MarkerSources.terraria) -or
+        -not [System.IO.Directory]::Exists($MarkerSources.xna)) {
+        throw 'Prepared Terraria reference marker source directories must still exist.'
+    }
+
+    $terrariaExpected = Get-BaselineEntry -Baseline $Baseline -LogicalName 'Terraria.exe'
+    $xnaExpected = Get-BaselineEntry -Baseline $Baseline -LogicalName 'Microsoft.Xna.Framework.Game.dll'
+    $sourceChecks = @(
+        @{ Path = (Join-Path $MarkerSources.terraria 'Terraria.exe'); Expected = $terrariaExpected.sha256; Label = 'Terraria.exe' },
+        @{ Path = (Join-Path $MarkerSources.xna 'Microsoft.Xna.Framework.Game.dll'); Expected = $xnaExpected.sha256; Label = 'Microsoft.Xna.Framework.Game.dll' }
+    )
+    foreach ($check in $sourceChecks) {
+        if (-not [System.IO.File]::Exists($check.Path)) {
+            throw "Prepared reference marker source file is missing: $($check.Label)"
+        }
+        $actualHash = (Get-FileHash -LiteralPath $check.Path -Algorithm SHA256).Hash.ToUpperInvariant()
+        if (-not [string]::Equals($actualHash, [string] $check.Expected, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Prepared reference marker source file no longer matches the baseline: $($check.Label)"
+        }
+    }
 }
 
 function Get-NormalizedTextFileSha256 {
@@ -186,7 +583,13 @@ function Assert-MetadataMatchesBaseline {
         'sourceCategory'
     )
     foreach ($property in $properties) {
-        $actualValue = [string] $Actual[$property]
+        $actualValue = if ($Actual -is [System.Collections.IDictionary]) {
+            [string] $Actual[$property]
+        }
+        else {
+            $actualProperty = $Actual.PSObject.Properties[$property]
+            if ($null -eq $actualProperty) { '' } else { [string] $actualProperty.Value }
+        }
         $expectedValue = [string] $Expected.$property
         if (-not [string]::Equals($actualValue, $expectedValue, [StringComparison]::Ordinal)) {
             throw "Reference identity mismatch for $($Expected.logicalName): $property expected '$expectedValue', actual '$actualValue'."
@@ -246,12 +649,19 @@ function Get-VdfValue {
 }
 
 function Resolve-TerrariaSource {
-    param([string] $ExplicitDirectory)
+    param(
+        [string] $ExplicitDirectory,
+        [string] $DestinationDirectory
+    )
 
     if (-not [string]::IsNullOrWhiteSpace($ExplicitDirectory)) {
-        $directory = Resolve-UnresolvedPath -Path $ExplicitDirectory
+        $directory = Get-CanonicalDirectoryPath -Path $ExplicitDirectory -Label 'Terraria source candidate'
+        Assert-LegalSourceCandidateBoundaries `
+            -CandidateDirectory $directory `
+            -CandidateLabel 'Terraria source candidate' `
+            -DestinationDirectory $DestinationDirectory
         $exe = Join-Path $directory 'Terraria.exe'
-        if (-not [System.IO.File]::Exists($exe)) {
+        if (-not (Test-RegularSourceFileExists -Path $exe -Label 'Terraria.exe source candidate')) {
             throw 'The specified Terraria installation directory does not contain Terraria.exe.'
         }
 
@@ -271,23 +681,40 @@ function Resolve-TerrariaSource {
         throw 'Terraria installation was not specified and the current-user Steam root was not found.'
     }
 
-    $steamRoot = [System.IO.Path]::GetFullPath(([string] $steamKey.SteamPath).Replace('/', '\'))
+    $steamRoot = Get-CanonicalDirectoryPath `
+        -Path ([string] $steamKey.SteamPath).Replace('/', '\') `
+        -Label 'Steam source candidate' `
+        -RequireAbsolute
+    Assert-LegalSourceCandidateBoundaries `
+        -CandidateDirectory $steamRoot `
+        -CandidateLabel 'Steam source candidate' `
+        -DestinationDirectory $DestinationDirectory
     $libraries = New-Object System.Collections.Generic.List[string]
     $libraries.Add($steamRoot)
     $libraryFile = Join-Path $steamRoot 'steamapps\libraryfolders.vdf'
-    if ([System.IO.File]::Exists($libraryFile)) {
+    if (Test-RegularSourceFileExists -Path $libraryFile -Label 'Steam libraryfolders.vdf source candidate') {
         $libraryText = [System.IO.File]::ReadAllText($libraryFile)
         foreach ($match in [regex]::Matches($libraryText, '(?im)^\s*"path"\s+"([^"]+)"')) {
             $path = $match.Groups[1].Value.Replace('\\', '\')
             if (-not [string]::IsNullOrWhiteSpace($path)) {
-                $libraries.Add([System.IO.Path]::GetFullPath($path))
+                $library = Get-CanonicalDirectoryPath -Path $path -Label 'Steam library source candidate' -RequireAbsolute
+                Assert-LegalSourceCandidateBoundaries `
+                    -CandidateDirectory $library `
+                    -CandidateLabel 'Steam library source candidate' `
+                    -DestinationDirectory $DestinationDirectory
+                $libraries.Add($library)
             }
         }
     }
 
     foreach ($library in $libraries | Select-Object -Unique) {
+        $library = Get-CanonicalDirectoryPath -Path $library -Label 'Steam library source candidate' -RequireAbsolute
+        Assert-LegalSourceCandidateBoundaries `
+            -CandidateDirectory $library `
+            -CandidateLabel 'Steam library source candidate' `
+            -DestinationDirectory $DestinationDirectory
         $manifestPath = Join-Path $library 'steamapps\appmanifest_105600.acf'
-        if (-not [System.IO.File]::Exists($manifestPath)) {
+        if (-not (Test-RegularSourceFileExists -Path $manifestPath -Label 'Steam app manifest source candidate')) {
             continue
         }
 
@@ -302,12 +729,19 @@ function Resolve-TerrariaSource {
             continue
         }
 
-        $directory = Join-Path $library ('steamapps\common\' + $installDir)
+        $directory = Get-CanonicalDirectoryPath `
+            -Path (Join-Path $library ('steamapps\common\' + $installDir)) `
+            -Label 'Terraria Steam installation source candidate' `
+            -RequireAbsolute
+        Assert-LegalSourceCandidateBoundaries `
+            -CandidateDirectory $directory `
+            -CandidateLabel 'Terraria Steam installation source candidate' `
+            -DestinationDirectory $DestinationDirectory
         $exe = Join-Path $directory 'Terraria.exe'
-        if ([System.IO.File]::Exists($exe)) {
+        if (Test-RegularSourceFileExists -Path $exe -Label 'Terraria.exe source candidate') {
             return [ordered]@{
-                directory = [System.IO.Path]::GetFullPath($directory)
-                exe = [System.IO.Path]::GetFullPath($exe)
+                directory = $directory
+                exe = $exe
                 channel = 'Steam'
                 appId = '105600'
                 stateFlags = $stateFlags
@@ -323,13 +757,18 @@ function Resolve-TerrariaSource {
 function Resolve-XnaSource {
     param(
         [string] $ExplicitDirectory,
-        [object] $Expected
+        [object] $Expected,
+        [string] $DestinationDirectory
     )
 
     if (-not [string]::IsNullOrWhiteSpace($ExplicitDirectory)) {
-        $directory = Resolve-UnresolvedPath -Path $ExplicitDirectory
+        $directory = Get-CanonicalDirectoryPath -Path $ExplicitDirectory -Label 'XNA source candidate'
+        Assert-LegalSourceCandidateBoundaries `
+            -CandidateDirectory $directory `
+            -CandidateLabel 'XNA source candidate' `
+            -DestinationDirectory $DestinationDirectory
         $path = Join-Path $directory $Expected.logicalName
-        if (-not [System.IO.File]::Exists($path)) {
+        if (-not (Test-RegularSourceFileExists -Path $path -Label 'XNA source candidate')) {
             throw "The specified XNA reference directory is missing $($Expected.logicalName)."
         }
 
@@ -341,19 +780,58 @@ function Resolve-XnaSource {
         throw 'Microsoft XNA Framework 4.0 Refresh installation evidence was not found.'
     }
 
-    $assemblyRoot = Join-Path $env:WINDIR 'Microsoft.NET\assembly\GAC_32\Microsoft.Xna.Framework.Game'
+    $windowsRoot = [Environment]::GetFolderPath([Environment+SpecialFolder]::Windows)
+    if ([string]::IsNullOrWhiteSpace($windowsRoot)) {
+        throw 'The Windows system directory could not be resolved.'
+    }
+    $assemblyRoot = Get-CanonicalDirectoryPath `
+        -Path (Join-Path $windowsRoot 'Microsoft.NET\assembly\GAC_32\Microsoft.Xna.Framework.Game') `
+        -Label 'XNA GAC source candidate' `
+        -RequireAbsolute
+    Assert-LegalSourceCandidateBoundaries `
+        -CandidateDirectory $assemblyRoot `
+        -CandidateLabel 'XNA GAC source candidate' `
+        -DestinationDirectory $DestinationDirectory
     if (-not [System.IO.Directory]::Exists($assemblyRoot)) {
         throw 'Microsoft XNA Framework Game GAC_32 directory was not found.'
     }
 
-    foreach ($candidate in Get-ChildItem -LiteralPath $assemblyRoot -Filter $Expected.logicalName -File -Recurse) {
-        try {
-            $metadata = Get-AssemblyMetadata -Path $candidate.FullName -LogicalName $Expected.logicalName -SourceCategory $Expected.sourceCategory
-            Assert-MetadataMatchesBaseline -Actual $metadata -Expected $Expected
-            return [ordered]@{ directory = $candidate.DirectoryName; path = $candidate.FullName }
+    $pendingDirectories = New-Object 'System.Collections.Generic.Stack[string]'
+    $pendingDirectories.Push($assemblyRoot)
+    while ($pendingDirectories.Count -gt 0) {
+        $currentDirectory = Get-CanonicalDirectoryPath `
+            -Path $pendingDirectories.Pop() `
+            -Label 'XNA GAC candidate directory' `
+            -RequireAbsolute
+        Assert-LegalSourceCandidateBoundaries `
+            -CandidateDirectory $currentDirectory `
+            -CandidateLabel 'XNA GAC candidate directory' `
+            -DestinationDirectory $DestinationDirectory
+        $currentItem = Get-Item -LiteralPath $currentDirectory -Force
+        if (($currentItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw 'An XNA GAC candidate directory may not be a reparse point.'
         }
-        catch {
-            continue
+
+        foreach ($entry in @($currentItem.EnumerateFileSystemInfos() | Sort-Object -Property Name)) {
+            if (($entry.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw 'The XNA GAC candidate tree may not contain reparse points.'
+            }
+            if (($entry.Attributes -band [System.IO.FileAttributes]::Directory) -ne 0) {
+                $pendingDirectories.Push($entry.FullName)
+                continue
+            }
+            if (-not [string]::Equals($entry.Name, [string] $Expected.logicalName, [StringComparison]::OrdinalIgnoreCase)) {
+                continue
+            }
+
+            try {
+                $metadata = Get-AssemblyMetadata -Path $entry.FullName -LogicalName $Expected.logicalName -SourceCategory $Expected.sourceCategory
+                Assert-MetadataMatchesBaseline -Actual $metadata -Expected $Expected
+                return [ordered]@{ directory = $currentDirectory; path = $entry.FullName }
+            }
+            catch {
+                continue
+            }
         }
     }
 
@@ -420,6 +898,19 @@ function Test-PreparedReferenceDirectory {
         throw 'Prepared Terraria reference marker does not match the approved baseline.'
     }
 
+    $preparedDirectory = Get-CanonicalDirectoryPath -Path $Directory -Label 'prepared reference directory'
+    if (Test-PathWithinOrEqual -Candidate $script:RepositoryRoot -Parent $preparedDirectory) {
+        throw 'Prepared reference directory may not equal or contain the repository root.'
+    }
+    $markerSources = Get-ValidatedMarkerSourceDirectories -Marker $marker -Baseline $Baseline
+    Assert-PathTreesDisjoint -Candidate $markerSources.terraria -CandidateLabel 'Terraria source directory' -Protected $script:RepositoryRoot -ProtectedLabel 'repository root'
+    Assert-PathTreesDisjoint -Candidate $markerSources.xna -CandidateLabel 'XNA source directory' -Protected $script:RepositoryRoot -ProtectedLabel 'repository root'
+    Assert-PathTreesDisjoint -Candidate $markerSources.terraria -CandidateLabel 'Terraria source directory' -Protected $script:LegacyRoot -ProtectedLabel 'read-only Legacy root'
+    Assert-PathTreesDisjoint -Candidate $markerSources.xna -CandidateLabel 'XNA source directory' -Protected $script:LegacyRoot -ProtectedLabel 'read-only Legacy root'
+    Assert-PathTreesDisjoint -Candidate $preparedDirectory -CandidateLabel 'prepared reference directory' -Protected $markerSources.terraria -ProtectedLabel 'Terraria source directory'
+    Assert-PathTreesDisjoint -Candidate $preparedDirectory -CandidateLabel 'prepared reference directory' -Protected $markerSources.xna -ProtectedLabel 'XNA source directory'
+    Assert-RecordedSourceFilesMatchBaseline -MarkerSources $markerSources -Baseline $Baseline
+
     $metadata = New-Object System.Collections.Generic.List[object]
     foreach ($expected in $Baseline.files) {
         $path = Join-Path $Directory $expected.logicalName
@@ -438,6 +929,64 @@ function Test-PreparedReferenceDirectory {
     return $metadata
 }
 
+function Assert-ForceReplaceablePreparedDirectory {
+    param(
+        [string] $Directory,
+        [object] $Baseline,
+        [string] $BaselineHash,
+        [string] $CurrentTerrariaSource,
+        [string] $CurrentXnaSource
+    )
+
+    $allowedNames = @($script:MarkerName) + @($Baseline.files | ForEach-Object { [string] $_.logicalName })
+    $directoryInfo = New-Object System.IO.DirectoryInfo -ArgumentList $Directory
+    foreach ($entry in $directoryInfo.EnumerateFileSystemInfos()) {
+        if (($entry.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0 -or
+            ($entry.Attributes -band [System.IO.FileAttributes]::Directory) -ne 0 -or
+            $allowedNames -notcontains $entry.Name) {
+            throw "-Force refused: existing destination contains an unapproved or non-file entry: $($entry.Name)"
+        }
+    }
+
+    $markerPath = Join-Path $Directory $script:MarkerName
+    if (-not [System.IO.File]::Exists($markerPath)) {
+        throw '-Force refused: the existing destination has no generator marker.'
+    }
+    $marker = Get-Content -LiteralPath $markerPath -Raw | ConvertFrom-Json
+    if ($marker.schemaVersion -ne 1 -or
+        $marker.generator -ne $script:GeneratorIdentity -or
+        $marker.profileId -ne $Baseline.profileId -or
+        $marker.baselineSha256 -ne $BaselineHash) {
+        throw '-Force refused: the existing destination marker identity is not approved.'
+    }
+
+    $markerSources = Get-ValidatedMarkerSourceDirectories -Marker $marker -Baseline $Baseline
+    if (-not [string]::Equals($markerSources.terraria, $CurrentTerrariaSource, [StringComparison]::OrdinalIgnoreCase) -or
+        -not [string]::Equals($markerSources.xna, $CurrentXnaSource, [StringComparison]::OrdinalIgnoreCase)) {
+        throw '-Force refused: the existing destination marker does not identify the current legal sources.'
+    }
+    Assert-PathTreesDisjoint -Candidate $markerSources.terraria -CandidateLabel 'marker Terraria source directory' -Protected $script:RepositoryRoot -ProtectedLabel 'repository root'
+    Assert-PathTreesDisjoint -Candidate $markerSources.xna -CandidateLabel 'marker XNA source directory' -Protected $script:RepositoryRoot -ProtectedLabel 'repository root'
+    Assert-PathTreesDisjoint -Candidate $markerSources.terraria -CandidateLabel 'marker Terraria source directory' -Protected $script:LegacyRoot -ProtectedLabel 'read-only Legacy root'
+    Assert-PathTreesDisjoint -Candidate $markerSources.xna -CandidateLabel 'marker XNA source directory' -Protected $script:LegacyRoot -ProtectedLabel 'read-only Legacy root'
+    Assert-PathTreesDisjoint -Candidate $Directory -CandidateLabel 'existing DestinationDirectory' -Protected $markerSources.terraria -ProtectedLabel 'marker Terraria source directory'
+    Assert-PathTreesDisjoint -Candidate $Directory -CandidateLabel 'existing DestinationDirectory' -Protected $markerSources.xna -ProtectedLabel 'marker XNA source directory'
+    Assert-RecordedSourceFilesMatchBaseline -MarkerSources $markerSources -Baseline $Baseline
+
+    $markerFiles = @($marker.files)
+    if ($markerFiles.Count -ne $Baseline.files.Count) {
+        throw '-Force refused: the existing destination marker does not contain the complete baseline identity set.'
+    }
+    foreach ($expected in $Baseline.files) {
+        $matchingFiles = @($markerFiles | Where-Object { $_.logicalName -eq $expected.logicalName })
+        if ($matchingFiles.Count -ne 1) {
+            throw "-Force refused: the existing destination marker has an invalid identity count for $($expected.logicalName)."
+        }
+        $matchingFile = $matchingFiles | Select-Object -First 1
+        Assert-MetadataMatchesBaseline -Actual $matchingFile -Expected $expected
+    }
+}
+
 if ($InspectOnly -and $VerifyOnly) {
     throw 'InspectOnly and VerifyOnly cannot be used together.'
 }
@@ -448,19 +997,38 @@ if ([string]::IsNullOrWhiteSpace($DestinationDirectory)) {
     $DestinationDirectory = Join-Path $script:RepositoryRoot 'external\TerrariaRefs'
 }
 
-$destination = Resolve-UnresolvedPath -Path $DestinationDirectory
+$destination = Get-CanonicalDirectoryPath -Path $DestinationDirectory -Label 'DestinationDirectory'
+Assert-PathTreesDisjoint -Candidate $destination -CandidateLabel 'DestinationDirectory' -Protected $script:LegacyRoot -ProtectedLabel 'read-only Legacy root'
+if (Test-PathWithinOrEqual -Candidate $script:RepositoryRoot -Parent $destination) {
+    throw 'DestinationDirectory may not equal or contain the repository root.'
+}
 if ($VerifyOnly) {
     $verified = Test-PreparedReferenceDirectory -Directory $destination -Baseline $baseline -BaselineHash $baselineHash
     Write-Output ("PASS: verified {0} local compile references against profile {1}." -f $verified.Count, $baseline.profileId)
     return
 }
 
-$terraria = Resolve-TerrariaSource -ExplicitDirectory $TerrariaInstallDirectory
+$terraria = Resolve-TerrariaSource -ExplicitDirectory $TerrariaInstallDirectory -DestinationDirectory $destination
 $xnaExpected = Get-BaselineEntry -Baseline $baseline -LogicalName 'Microsoft.Xna.Framework.Game.dll'
-$xna = Resolve-XnaSource -ExplicitDirectory $XnaReferenceDirectory -Expected $xnaExpected
+$xna = Resolve-XnaSource -ExplicitDirectory $XnaReferenceDirectory -Expected $xnaExpected -DestinationDirectory $destination
+$terrariaSourceDirectory = Get-CanonicalDirectoryPath -Path $terraria.directory -Label 'Terraria source directory' -RequireAbsolute
+$xnaSourceDirectory = Get-CanonicalDirectoryPath -Path $xna.directory -Label 'XNA source directory' -RequireAbsolute
+Assert-PathTreesDisjoint -Candidate $destination -CandidateLabel 'DestinationDirectory' -Protected $terrariaSourceDirectory -ProtectedLabel 'Terraria source directory'
+Assert-PathTreesDisjoint -Candidate $destination -CandidateLabel 'DestinationDirectory' -Protected $xnaSourceDirectory -ProtectedLabel 'XNA source directory'
+Assert-PathTreesDisjoint -Candidate $terrariaSourceDirectory -CandidateLabel 'Terraria source directory' -Protected $script:RepositoryRoot -ProtectedLabel 'repository root'
+Assert-PathTreesDisjoint -Candidate $xnaSourceDirectory -CandidateLabel 'XNA source directory' -Protected $script:RepositoryRoot -ProtectedLabel 'repository root'
+Assert-PathTreesDisjoint -Candidate $terrariaSourceDirectory -CandidateLabel 'Terraria source directory' -Protected $script:LegacyRoot -ProtectedLabel 'read-only Legacy root'
+Assert-PathTreesDisjoint -Candidate $xnaSourceDirectory -CandidateLabel 'XNA source directory' -Protected $script:LegacyRoot -ProtectedLabel 'read-only Legacy root'
 $terrariaHashBefore = (Get-FileHash -LiteralPath $terraria.exe -Algorithm SHA256).Hash.ToUpperInvariant()
 $xnaHashBefore = (Get-FileHash -LiteralPath $xna.path -Algorithm SHA256).Hash.ToUpperInvariant()
-$temporaryDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ('JueMingR-TerrariaRefs-' + [Guid]::NewGuid().ToString('N'))
+$temporaryDirectory = Get-CanonicalDirectoryPath `
+    -Path (Join-Path ([System.IO.Path]::GetTempPath()) ('JueMingR-TerrariaRefs-' + [Guid]::NewGuid().ToString('N'))) `
+    -Label 'temporary preparation directory'
+Assert-PathTreesDisjoint -Candidate $temporaryDirectory -CandidateLabel 'temporary preparation directory' -Protected $terrariaSourceDirectory -ProtectedLabel 'Terraria source directory'
+Assert-PathTreesDisjoint -Candidate $temporaryDirectory -CandidateLabel 'temporary preparation directory' -Protected $xnaSourceDirectory -ProtectedLabel 'XNA source directory'
+Assert-PathTreesDisjoint -Candidate $temporaryDirectory -CandidateLabel 'temporary preparation directory' -Protected $destination -ProtectedLabel 'DestinationDirectory'
+Assert-PathTreesDisjoint -Candidate $temporaryDirectory -CandidateLabel 'temporary preparation directory' -Protected $script:RepositoryRoot -ProtectedLabel 'repository root'
+Assert-PathTreesDisjoint -Candidate $temporaryDirectory -CandidateLabel 'temporary preparation directory' -Protected $script:LegacyRoot -ProtectedLabel 'read-only Legacy root'
 [System.IO.Directory]::CreateDirectory($temporaryDirectory) | Out-Null
 $stagingDirectory = $null
 $backupDirectory = $null
@@ -504,15 +1072,12 @@ try {
                 throw "Destination exists but is not a complete verified reference set. Remove it manually or use -Force only if it was generated by this script. Detail: $($_.Exception.Message)"
             }
 
-            $existingMarkerPath = Join-Path $destination $script:MarkerName
-            if (-not [System.IO.File]::Exists($existingMarkerPath)) {
-                throw '-Force refused: the existing destination has no generator marker.'
-            }
-
-            $existingMarker = Get-Content -LiteralPath $existingMarkerPath -Raw | ConvertFrom-Json
-            if ($existingMarker.generator -ne $script:GeneratorIdentity) {
-                throw '-Force refused: the existing destination was not generated by this script.'
-            }
+            Assert-ForceReplaceablePreparedDirectory `
+                -Directory $destination `
+                -Baseline $baseline `
+                -BaselineHash $baselineHash `
+                -CurrentTerrariaSource $terrariaSourceDirectory `
+                -CurrentXnaSource $xnaSourceDirectory
         }
     }
 
@@ -521,8 +1086,10 @@ try {
         throw 'DestinationDirectory must be a dedicated child directory, not the repository root.'
     }
 
-    [System.IO.Directory]::CreateDirectory($destinationParent) | Out-Null
     $stagingDirectory = Join-Path $destinationParent ('.JueMingR-TerrariaRefs-staging-' + [Guid]::NewGuid().ToString('N'))
+    $stagingDirectory = Get-CanonicalDirectoryPath -Path $stagingDirectory -Label 'reference staging directory'
+    Assert-PathTreesDisjoint -Candidate $stagingDirectory -CandidateLabel 'reference staging directory' -Protected $script:LegacyRoot -ProtectedLabel 'read-only Legacy root'
+    [System.IO.Directory]::CreateDirectory($destinationParent) | Out-Null
     [System.IO.Directory]::CreateDirectory($stagingDirectory) | Out-Null
     foreach ($expected in $baseline.files) {
         [System.IO.File]::Copy(
@@ -538,12 +1105,12 @@ try {
         baselineSha256 = $baselineHash
         preparedAtUtc = [DateTime]::UtcNow.ToString('o')
         source = [ordered]@{
-            terrariaInstallDirectory = $terraria.directory
+            terrariaInstallDirectory = $terrariaSourceDirectory
             terrariaChannel = $terraria.channel
             steamAppId = $terraria.appId
             steamStateFlags = $terraria.stateFlags
             steamBuildId = $terraria.buildId
-            xnaReferenceDirectory = $xna.directory
+            xnaReferenceDirectory = $xnaSourceDirectory
         }
         sourceHashesUnchanged = $true
         files = @($preparedMetadata.ToArray())
@@ -556,6 +1123,8 @@ try {
     $null = Test-PreparedReferenceDirectory -Directory $stagingDirectory -Baseline $baseline -BaselineHash $baselineHash
     if ([System.IO.Directory]::Exists($destination)) {
         $backupDirectory = Join-Path $destinationParent ('.JueMingR-TerrariaRefs-backup-' + [Guid]::NewGuid().ToString('N'))
+        $backupDirectory = Get-CanonicalDirectoryPath -Path $backupDirectory -Label 'reference backup directory'
+        Assert-PathTreesDisjoint -Candidate $backupDirectory -CandidateLabel 'reference backup directory' -Protected $script:LegacyRoot -ProtectedLabel 'read-only Legacy root'
         [System.IO.Directory]::Move($destination, $backupDirectory)
     }
 
