@@ -18,6 +18,7 @@ $script:BaselinePath = Join-Path $script:RepositoryRoot 'eng\TerrariaReferences.
 $script:MarkerName = '.juemingr-reference-set.json'
 $script:GeneratorIdentity = 'scripts/prepare-terraria-references.ps1'
 $script:Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+$script:StrictUtf8 = New-Object System.Text.UTF8Encoding($false, $true)
 
 if ($null -eq ('JueMingR.PhysicalPathNativeMethods' -as [type])) {
     $assemblyName = New-Object System.Reflection.AssemblyName('JueMingR.PhysicalPath.Dynamic')
@@ -421,6 +422,16 @@ function Assert-RecordedSourceFilesMatchBaseline {
     }
 }
 
+function Read-StrictUtf8Json {
+    param([string] $Path)
+
+    $bytes = [System.IO.File]::ReadAllBytes($Path)
+    $offset = if ($bytes.Length -ge 3 -and
+        $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) { 3 } else { 0 }
+    $text = $script:StrictUtf8.GetString($bytes, $offset, $bytes.Length - $offset)
+    return ConvertFrom-Json -InputObject $text
+}
+
 function Get-NormalizedTextFileSha256 {
     param([string] $Path)
 
@@ -612,7 +623,7 @@ function Get-Baseline {
         throw "Reference baseline is missing: eng/TerrariaReferences.baseline.json"
     }
 
-    $baseline = Get-Content -LiteralPath $script:BaselinePath -Raw | ConvertFrom-Json
+    $baseline = Read-StrictUtf8Json -Path $script:BaselinePath
     if ($baseline.schemaVersion -ne 1 -or $baseline.files.Count -ne 3) {
         throw 'Reference baseline has an unsupported schema or file count.'
     }
@@ -890,7 +901,7 @@ function Test-PreparedReferenceDirectory {
         throw "Prepared Terraria reference marker is missing: $script:MarkerName"
     }
 
-    $marker = Get-Content -LiteralPath $markerPath -Raw | ConvertFrom-Json
+    $marker = Read-StrictUtf8Json -Path $markerPath
     if ($marker.schemaVersion -ne 1 -or
         $marker.generator -ne $script:GeneratorIdentity -or
         $marker.profileId -ne $Baseline.profileId -or
@@ -952,7 +963,7 @@ function Assert-ForceReplaceablePreparedDirectory {
     if (-not [System.IO.File]::Exists($markerPath)) {
         throw '-Force refused: the existing destination has no generator marker.'
     }
-    $marker = Get-Content -LiteralPath $markerPath -Raw | ConvertFrom-Json
+    $marker = Read-StrictUtf8Json -Path $markerPath
     if ($marker.schemaVersion -ne 1 -or
         $marker.generator -ne $script:GeneratorIdentity -or
         $marker.profileId -ne $Baseline.profileId -or

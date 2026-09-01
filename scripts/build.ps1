@@ -18,6 +18,7 @@ $script:RepositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot 
 $script:BuildMarkerName = '.juemingr-phase0r-build-output'
 $script:BuildMarkerValue = 'scripts/build.ps1 schema 1'
 $script:Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+$script:StrictUtf8 = New-Object System.Text.UTF8Encoding($false, $true)
 $script:DotnetPath = $null
 $script:GitPath = $null
 $script:GitMetadataRoot = $null
@@ -351,7 +352,7 @@ function Get-ValidatedMarkerSourceDirectories {
     )
 
     $markerPath = Join-Path $ReferencesRoot '.juemingr-reference-set.json'
-    $marker = Get-Content -LiteralPath $markerPath -Raw | ConvertFrom-Json
+    $marker = Read-StrictUtf8Json -Path $markerPath
     $sourceProperty = $marker.PSObject.Properties['source']
     $unchangedProperty = $marker.PSObject.Properties['sourceHashesUnchanged']
     if ($null -eq $sourceProperty -or $null -eq $sourceProperty.Value -or
@@ -429,6 +430,16 @@ function Invoke-External {
     }
 }
 
+function Read-StrictUtf8Json {
+    param([string] $Path)
+
+    $bytes = [System.IO.File]::ReadAllBytes($Path)
+    $offset = if ($bytes.Length -ge 3 -and
+        $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) { 3 } else { 0 }
+    $text = $script:StrictUtf8.GetString($bytes, $offset, $bytes.Length - $offset)
+    return ConvertFrom-Json -InputObject $text
+}
+
 function Get-TextSha256 {
     param([string] $Text)
 
@@ -463,6 +474,7 @@ function Get-GitOutput {
         --no-pager `
         --no-optional-locks `
         --no-replace-objects `
+        --literal-pathspecs `
         -C $script:RepositoryRoot `
         "--git-dir=$script:GitMetadataRoot" `
         "--work-tree=$script:RepositoryRoot" `
@@ -558,10 +570,12 @@ function Assert-PhysicalGitBindingUnchanged {
 function Get-DirtyIdentity {
     param(
         [string] $Root,
-        [string[]] $StatusLines
+        [string[]] $StatusLines,
+        [string] $RecordedSourceContentSha256
     )
 
     $parts = New-Object System.Collections.Generic.List[string]
+    $parts.Add("recorded-source-content|$RecordedSourceContentSha256")
     $parts.Add('status')
     foreach ($line in $StatusLines) { $parts.Add($line) }
     $parts.Add('working-diff')
@@ -580,12 +594,28 @@ function Get-DirtyIdentity {
 }
 
 function Get-GitSourceIdentity {
-    param([string] $Root)
+    param(
+        [string] $Root,
+        [object] $ContentInventory
+    )
 
     $commitLines = @(Get-GitOutput -Arguments @('rev-parse', 'HEAD'))
     $statusLines = @(Get-GitOutput -Arguments @('status', '--porcelain=v1', '--untracked-files=all'))
-    $isClean = $statusLines.Count -eq 0
-    $dirtyIdentity = if ($isClean) { '' } else { Get-DirtyIdentity -Root $Root -StatusLines $statusLines }
+    if ($commitLines.Count -ne 1 -or [string] $commitLines[0] -cne [string] $ContentInventory.commit) {
+        throw 'The recorded source content inventory is not bound to the current HEAD commit.'
+    }
+    $isClean = $statusLines.Count -eq 0 -and
+        [bool] $ContentInventory.trackedBytesMatchIndexAndCommit -and
+        -not [bool] $ContentInventory.hasUntrackedFiles
+    $dirtyIdentity = if ($isClean) {
+        ''
+    }
+    else {
+        Get-DirtyIdentity `
+            -Root $Root `
+            -StatusLines $statusLines `
+            -RecordedSourceContentSha256 ([string] $ContentInventory.contentSetSha256)
+    }
     return [pscustomobject]@{
         commit = $commitLines[0].Trim()
         statusLines = @($statusLines)
@@ -611,6 +641,263 @@ function Get-GitRecordedSourcePaths {
         $paths.Add($normalized)
     }
     return @($paths.ToArray())
+}
+
+function Assert-FormalRepositoryEntriesAreRegular {
+    foreach ($fileName in @(
+        '.editorconfig', '.gitattributes', '.globalconfig', 'Directory.Build.props', 'Directory.Build.targets',
+        'Directory.Packages.props', 'global.json', 'JueMingR.sln', 'NuGet.config', 'MSBuild.rsp', 'Directory.Build.rsp')) {
+        $candidate = Join-Path $script:RepositoryRoot $fileName
+        $item = Get-Item -LiteralPath $candidate -Force -ErrorAction SilentlyContinue
+        if ($null -ne $item -and
+            (-not ($item -is [System.IO.FileInfo]) -or
+             ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)) {
+            throw "Formal root input must be a regular non-reparse file: $fileName"
+        }
+    }
+    foreach ($relativeRoot in @('eng', 'scripts', 'src', 'tests')) {
+        $absoluteRoot = Join-Path $script:RepositoryRoot $relativeRoot
+        $rootItem = Get-Item -LiteralPath $absoluteRoot -Force -ErrorAction Stop
+        if (-not ($rootItem -is [System.IO.DirectoryInfo]) -or
+            ($rootItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Formal repository root must be a regular non-reparse directory: $relativeRoot"
+        }
+        $directories = New-Object System.Collections.Generic.Stack[string]
+        $directories.Push($absoluteRoot)
+        while ($directories.Count -ne 0) {
+            $current = $directories.Pop()
+            foreach ($entry in (New-Object System.IO.DirectoryInfo -ArgumentList $current).EnumerateFileSystemInfos()) {
+                if (($entry.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+                    throw "Formal repository input may not be a reparse point: $($entry.FullName)"
+                }
+                if ($entry -is [System.IO.DirectoryInfo] -and
+                    $entry.Name -ine 'bin' -and $entry.Name -ine 'obj') {
+                    $directories.Push($entry.FullName)
+                }
+            }
+        }
+    }
+}
+
+function Get-RawRepositoryContentInventory {
+    param(
+        [string] $Root,
+        [string[]] $RecordedSourcePaths,
+        [string[]] $TrackedSourcePaths,
+        [string] $Commit
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Commit) -or $Commit -notmatch '^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$') {
+        throw 'A fixed Git commit is required for the raw source content inventory.'
+    }
+
+    $formalRootFiles = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    foreach ($fileName in @(
+        '.editorconfig', '.gitattributes', '.globalconfig', 'Directory.Build.props', 'Directory.Build.targets',
+        'Directory.Packages.props', 'global.json', 'JueMingR.sln', 'NuGet.config', 'MSBuild.rsp', 'Directory.Build.rsp')) {
+        $null = $formalRootFiles.Add($fileName)
+    }
+    $isRawBuildInputPath = {
+        param([string] $RelativePath)
+        $normalized = $RelativePath.Replace('\', '/')
+        return $formalRootFiles.Contains($normalized) -or
+            $normalized.StartsWith('eng/', [StringComparison]::OrdinalIgnoreCase) -or
+            $normalized.StartsWith('src/', [StringComparison]::OrdinalIgnoreCase) -or
+            $normalized.StartsWith('tests/', [StringComparison]::OrdinalIgnoreCase)
+    }
+
+    $tracked = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
+    foreach ($relativePath in $TrackedSourcePaths) {
+        if (-not $tracked.Add(([string] $relativePath).Replace('\', '/'))) {
+            throw "The tracked source inventory contains a duplicate path: $relativePath"
+        }
+    }
+
+    $orderedPaths = [string[]] @($RecordedSourcePaths | ForEach-Object { ([string] $_).Replace('\', '/') })
+    [Array]::Sort($orderedPaths, [StringComparer]::Ordinal)
+    $entries = New-Object System.Collections.Generic.List[object]
+    $identityParts = New-Object System.Collections.Generic.List[string]
+    $trackedMismatchPaths = New-Object System.Collections.Generic.List[string]
+    $trackedBytesMatch = $true
+    $hasUntracked = $false
+    foreach ($relativePath in $orderedPaths) {
+        if ([string]::IsNullOrWhiteSpace($relativePath) -or
+            [System.IO.Path]::IsPathRooted($relativePath) -or
+            $relativePath -eq '..' -or
+            $relativePath.StartsWith('../', [StringComparison]::Ordinal) -or
+            $relativePath.Contains('/../')) {
+            throw "The raw source content inventory contains an unsafe path: $relativePath"
+        }
+
+        $absolutePath = Join-Path $Root $relativePath.Replace('/', '\')
+        $isTracked = $tracked.Contains($relativePath)
+        $contentMode = if (& $isRawBuildInputPath $relativePath) {
+            'raw'
+        }
+        elseif ($relativePath.EndsWith('.md', [StringComparison]::OrdinalIgnoreCase) -or
+            $relativePath.EndsWith('.ps1', [StringComparison]::OrdinalIgnoreCase) -or
+            $relativePath -ieq '.gitignore') {
+            'normalizedTextLf'
+        }
+        else {
+            'raw'
+        }
+        $present = [System.IO.File]::Exists($absolutePath)
+        if ($present -and
+            ([System.IO.File]::GetAttributes($absolutePath) -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "The raw source content inventory may not read a reparse file: $relativePath"
+        }
+
+        $mode = if ($isTracked) { '' } else { 'untracked' }
+        $rawObjectId = ''
+        if ($isTracked) {
+            $indexLines = @(Get-GitOutput -Arguments @('-c', 'core.quotePath=false', 'ls-files', '--stage', '--', $relativePath))
+            if ($indexLines.Count -ne 1 -or
+                [string] $indexLines[0] -notmatch '^([0-9]{6}) ((?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})) 0\t') {
+                throw "Tracked source must have exactly one ordinary stage-0 index entry: $relativePath"
+            }
+            $mode = $Matches[1]
+            $indexObjectId = $Matches[2].ToLowerInvariant()
+            if ($mode -cne '100644' -and $mode -cne '100755') {
+                throw "Tracked source has a forbidden Git mode: $relativePath ($mode)"
+            }
+
+            $commitLines = @(Get-GitOutput -Arguments @('-c', 'core.quotePath=false', 'ls-tree', $Commit, '--', $relativePath))
+            $commitObjectId = ''
+            $commitMode = ''
+            if ($commitLines.Count -eq 1 -and
+                [string] $commitLines[0] -match '^([0-9]{6}) blob ((?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64}))\t') {
+                $commitMode = $Matches[1]
+                $commitObjectId = $Matches[2].ToLowerInvariant()
+            }
+            elseif ($commitLines.Count -gt 1) {
+                throw "The fixed commit returned an ambiguous source entry: $relativePath"
+            }
+
+            if ($present) {
+                $rawObjectArguments = if ($contentMode -ceq 'raw') {
+                    @('hash-object', '--no-filters', '--', $relativePath)
+                }
+                else {
+                    @('-c', 'core.autocrlf=true', '-c', 'core.eol=lf', 'hash-object', '--', $relativePath)
+                }
+                $rawObjectLines = @(Get-GitOutput -Arguments $rawObjectArguments)
+                if ($rawObjectLines.Count -ne 1 -or [string] $rawObjectLines[0] -notmatch '^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$') {
+                    throw "Could not hash the raw working-tree bytes for: $relativePath"
+                }
+                $rawObjectId = ([string] $rawObjectLines[0]).ToLowerInvariant()
+            }
+            if (-not $present -or
+                [string]::IsNullOrEmpty($commitObjectId) -or
+                $mode -cne $commitMode -or
+                $rawObjectId -cne $indexObjectId -or
+                $rawObjectId -cne $commitObjectId) {
+                $trackedBytesMatch = $false
+                $trackedMismatchPaths.Add(("{0}[{1};raw={2};index={3};commit={4};mode={5}/{6}]" -f `
+                    $relativePath, $contentMode, $rawObjectId, $indexObjectId, $commitObjectId, $mode, $commitMode))
+            }
+        }
+        else {
+            $hasUntracked = $true
+        }
+
+        $length = 0
+        $sha256 = ''
+        if ($present) {
+            if ($contentMode -ceq 'normalizedTextLf') {
+                $normalizedText = [System.IO.File]::ReadAllText($absolutePath).Replace("`r`n", "`n").Replace("`r", "`n")
+                $length = $script:Utf8NoBom.GetByteCount($normalizedText)
+                $sha256 = Get-TextSha256 -Text $normalizedText
+            }
+            else {
+                $length = (Get-Item -LiteralPath $absolutePath -Force).Length
+                $sha256 = (Get-FileHash -LiteralPath $absolutePath -Algorithm SHA256).Hash.ToUpperInvariant()
+            }
+        }
+        $entry = [ordered]@{
+            path = $relativePath
+            tracked = $isTracked
+            mode = $mode
+            contentMode = $contentMode
+            present = $present
+            length = [int64] $length
+            sha256 = $sha256
+        }
+        $entries.Add($entry)
+        $identityParts.Add(('{0}|{1}|{2}|{3}|{4}|{5}|{6}' -f `
+            $relativePath,
+            $(if ($isTracked) { 'tracked' } else { 'untracked' }),
+            $mode,
+            $contentMode,
+            $(if ($present) { 'present' } else { 'missing' }),
+            [int64] $length,
+            $sha256))
+    }
+
+    if ($tracked.Count -ne @($orderedPaths | Where-Object { $tracked.Contains($_) }).Count) {
+        throw 'The recorded source inventory does not contain every tracked source path.'
+    }
+    $identityText = $identityParts -join "`n"
+    return [pscustomobject]@{
+        commit = $Commit.ToLowerInvariant()
+        entries = @($entries.ToArray())
+        identityText = $identityText
+        contentSetSha256 = Get-TextSha256 -Text $identityText
+        trackedBytesMatchIndexAndCommit = $trackedBytesMatch
+        trackedMismatchPaths = @($trackedMismatchPaths.ToArray())
+        hasUntrackedFiles = $hasUntracked
+    }
+}
+
+function Assert-PhysicalContentInventoryMatches {
+    param(
+        [object[]] $Entries,
+        [string] $ExpectedDigest
+    )
+
+    $identityParts = New-Object System.Collections.Generic.List[string]
+    foreach ($entry in $Entries) {
+        $relativePath = [string] $entry.path
+        $absolutePath = Join-Path $script:RepositoryRoot $relativePath.Replace('/', '\')
+        $present = [System.IO.File]::Exists($absolutePath)
+        if ($present -and
+            ([System.IO.File]::GetAttributes($absolutePath) -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "A recorded source became a reparse file after build cleanup: $relativePath"
+        }
+        $length = 0
+        $sha256 = ''
+        if ($present) {
+            if ([string] $entry.contentMode -ceq 'normalizedTextLf') {
+                $normalizedText = [System.IO.File]::ReadAllText($absolutePath).Replace("`r`n", "`n").Replace("`r", "`n")
+                $length = $script:Utf8NoBom.GetByteCount($normalizedText)
+                $sha256 = Get-TextSha256 -Text $normalizedText
+            }
+            elseif ([string] $entry.contentMode -ceq 'raw') {
+                $length = (Get-Item -LiteralPath $absolutePath -Force).Length
+                $sha256 = (Get-FileHash -LiteralPath $absolutePath -Algorithm SHA256).Hash.ToUpperInvariant()
+            }
+            else {
+                throw "A recorded source has an unknown content mode after build cleanup: $relativePath"
+            }
+        }
+        if ([bool] $entry.present -ne $present -or
+            [int64] $entry.length -ne [int64] $length -or
+            [string] $entry.sha256 -cne $sha256) {
+            throw "A recorded source changed after build cleanup; no build record will be written: $relativePath"
+        }
+        $identityParts.Add(('{0}|{1}|{2}|{3}|{4}|{5}|{6}' -f `
+            $relativePath,
+            $(if ([bool] $entry.tracked) { 'tracked' } else { 'untracked' }),
+            [string] $entry.mode,
+            [string] $entry.contentMode,
+            $(if ($present) { 'present' } else { 'missing' }),
+            [int64] $length,
+            $sha256))
+    }
+    $actualDigest = Get-TextSha256 -Text ($identityParts -join "`n")
+    if ($actualDigest -cne $ExpectedDigest) {
+        throw 'The recorded source content digest changed after build cleanup; no build record will be written.'
+    }
 }
 
 function Assert-NoIgnoredFormalInputFiles {
@@ -727,6 +1014,7 @@ function Get-ApprovedEffectiveInputPaths {
 
         $origin = ''
         $recordedPath = ''
+        $contentSha256 = ''
         $isGenerated = $false
         foreach ($intermediateRoot in $IntermediateRoots) {
             if (Test-PathWithinOrEqual -Candidate $fullPath -Parent $intermediateRoot) {
@@ -751,6 +1039,7 @@ function Get-ApprovedEffectiveInputPaths {
             }
             $origin = 'repositoryInput'
             $recordedPath = $relativePath
+            $contentSha256 = (Get-FileHash -LiteralPath $fullPath -Algorithm SHA256).Hash.ToUpperInvariant()
         }
         elseif (Test-PathWithinOrEqual -Candidate $fullPath -Parent $SdkRoot) {
             if (-not $definedBySdk -or
@@ -770,7 +1059,7 @@ function Get-ApprovedEffectiveInputPaths {
         if (-not $identities.Add($identity)) {
             throw "Effective $ItemName contains a duplicate approved input in ${ProjectPath}: $recordedPath"
         }
-        $approved.Add([ordered]@{ path = $recordedPath; origin = $origin })
+        $approved.Add([ordered]@{ path = $recordedPath; origin = $origin; sha256 = $contentSha256 })
     }
     return @($approved.ToArray() | Sort-Object @{ Expression = { $_.origin } }, @{ Expression = { $_.path } })
 }
@@ -933,6 +1222,8 @@ function Assert-RawBuildDefinitionsSafe {
         'DeterministicSourcePaths', 'DebugType', 'DebugSymbols', 'CodePage', 'PathMap',
         'SourceRevisionId', 'Version', 'AssemblyVersion', 'FileVersion', 'InformationalVersion',
         'IncludeSourceRevisionInInformationalVersion', 'TreatWarningsAsErrors',
+        'EnableSourceControlManagerQueries', 'EnableSourceLink',
+        'EmbedUntrackedSources', 'PublishRepositoryUrl', 'GenerateRepositoryUrlAttribute',
         'CopyLocalLockFileAssemblies', 'DefaultItemExcludes', 'BaseOutputPath', 'BaseIntermediateOutputPath')
     if ($null -eq $props.DocumentElement -or $props.DocumentElement.LocalName -cne 'Project' -or
         -not [string]::IsNullOrEmpty($props.DocumentElement.NamespaceURI) -or
@@ -968,7 +1259,7 @@ function Assert-RawBuildDefinitionsSafe {
         LangVersion = '7.3'
         Deterministic = 'true'
         ContinuousIntegrationBuild = 'true'
-        DeterministicSourcePaths = 'true'
+        DeterministicSourcePaths = 'false'
         DebugType = 'portable'
         DebugSymbols = 'true'
         CodePage = '65001'
@@ -979,6 +1270,11 @@ function Assert-RawBuildDefinitionsSafe {
         FileVersion = '0.0.0.0'
         InformationalVersion = '0.0.0-dev+$(SourceRevisionId)'
         IncludeSourceRevisionInInformationalVersion = 'false'
+        EnableSourceControlManagerQueries = 'false'
+        EnableSourceLink = 'false'
+        EmbedUntrackedSources = 'false'
+        PublishRepositoryUrl = 'false'
+        GenerateRepositoryUrlAttribute = 'false'
         TreatWarningsAsErrors = 'true'
         CopyLocalLockFileAssemblies = 'false'
         DefaultItemExcludes = '$(DefaultItemExcludes);$(MSBuildProjectDirectory)\bin\**;$(MSBuildProjectDirectory)\obj\**'
@@ -1095,7 +1391,8 @@ function Assert-OwnedBuildOutput {
     $allowedRootEntries = @($script:BuildMarkerName, 'build-record.json', 'work')
     $configurationDirectory = New-Object System.IO.DirectoryInfo -ArgumentList $ConfigurationRoot
     foreach ($entry in $configurationDirectory.EnumerateFileSystemInfos()) {
-        if ($allowedRootEntries -notcontains $entry.Name) {
+        $isOwnedRecordTemporaryFile = $entry.Name -cmatch '^\.build-record\.[0-9a-f]{32}\.tmp$'
+        if ($allowedRootEntries -notcontains $entry.Name -and -not $isOwnedRecordTemporaryFile) {
             throw "Refusing to replace a build output directory with an unexpected root entry: $($entry.Name)"
         }
         if (($entry.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
@@ -1104,7 +1401,8 @@ function Assert-OwnedBuildOutput {
         if ($entry.Name -eq 'work' -and ($entry.Attributes -band [System.IO.FileAttributes]::Directory) -eq 0) {
             throw 'Build output work entry must be a directory.'
         }
-        if ($entry.Name -ne 'work' -and ($entry.Attributes -band [System.IO.FileAttributes]::Directory) -ne 0) {
+        if (($entry.Name -ne 'work' -or $isOwnedRecordTemporaryFile) -and
+            ($entry.Attributes -band [System.IO.FileAttributes]::Directory) -ne 0) {
             throw "Build output file entry unexpectedly became a directory: $($entry.Name)"
         }
     }
@@ -1550,6 +1848,137 @@ function Restore-CompleteEnvironment {
     }
 }
 
+function Set-LockedGitEnvironment {
+    $fixedNames = @(
+        'GIT_CONFIG_NOSYSTEM',
+        'GIT_CONFIG_GLOBAL',
+        'GIT_OPTIONAL_LOCKS',
+        'GIT_TERMINAL_PROMPT',
+        'GIT_CONFIG_COUNT',
+        'GIT_CONFIG_KEY_0',
+        'GIT_CONFIG_VALUE_0',
+        'GIT_CONFIG_KEY_1',
+        'GIT_CONFIG_VALUE_1')
+    $inheritedNames = @(Get-ChildItem Env: | Where-Object {
+        $_.Name.StartsWith('GIT_', [StringComparison]::OrdinalIgnoreCase)
+    } | ForEach-Object { $_.Name })
+    $names = @($fixedNames + $inheritedNames | Sort-Object -Unique)
+    $snapshot = [ordered]@{}
+    foreach ($name in $names) {
+        $item = Get-Item -LiteralPath ("Env:$name") -ErrorAction SilentlyContinue
+        $snapshot[$name] = [ordered]@{
+            exists = $null -ne $item
+            value = $(if ($null -eq $item) { '' } else { [string] $item.Value })
+        }
+    }
+
+    try {
+        foreach ($name in $names) {
+            Remove-Item -LiteralPath ("Env:$name") -ErrorAction SilentlyContinue
+        }
+        Set-Item -LiteralPath 'Env:GIT_CONFIG_NOSYSTEM' -Value '1'
+        Set-Item -LiteralPath 'Env:GIT_CONFIG_GLOBAL' -Value 'NUL'
+        Set-Item -LiteralPath 'Env:GIT_OPTIONAL_LOCKS' -Value '0'
+        Set-Item -LiteralPath 'Env:GIT_TERMINAL_PROMPT' -Value '0'
+        Set-Item -LiteralPath 'Env:GIT_CONFIG_COUNT' -Value '2'
+        Set-Item -LiteralPath 'Env:GIT_CONFIG_KEY_0' -Value 'core.hooksPath'
+        Set-Item -LiteralPath 'Env:GIT_CONFIG_VALUE_0' -Value 'NUL'
+        Set-Item -LiteralPath 'Env:GIT_CONFIG_KEY_1' -Value 'core.fsmonitor'
+        Set-Item -LiteralPath 'Env:GIT_CONFIG_VALUE_1' -Value 'false'
+        $expectedValues = [ordered]@{
+            GIT_CONFIG_NOSYSTEM = '1'
+            GIT_CONFIG_GLOBAL = 'NUL'
+            GIT_OPTIONAL_LOCKS = '0'
+            GIT_TERMINAL_PROMPT = '0'
+            GIT_CONFIG_COUNT = '2'
+            GIT_CONFIG_KEY_0 = 'core.hooksPath'
+            GIT_CONFIG_VALUE_0 = 'NUL'
+            GIT_CONFIG_KEY_1 = 'core.fsmonitor'
+            GIT_CONFIG_VALUE_1 = 'false'
+        }
+        $actualNames = [string[]] @(Get-ChildItem Env: | Where-Object {
+            $_.Name.StartsWith('GIT_', [StringComparison]::OrdinalIgnoreCase)
+        } | ForEach-Object { $_.Name })
+        $expectedNames = [string[]] @($expectedValues.Keys)
+        [Array]::Sort($actualNames, [StringComparer]::OrdinalIgnoreCase)
+        [Array]::Sort($expectedNames, [StringComparer]::OrdinalIgnoreCase)
+        if (($actualNames -join "`n") -ine ($expectedNames -join "`n")) {
+            throw 'The locked Git environment contains an unapproved or missing variable.'
+        }
+        foreach ($name in $expectedValues.Keys) {
+            $actual = Get-Item -LiteralPath ("Env:$name") -ErrorAction Stop
+            if ([string] $actual.Value -cne [string] $expectedValues[$name]) {
+                throw "The locked Git environment value is incorrect: $name."
+            }
+        }
+    }
+    catch {
+        $lockError = $_
+        try {
+            Restore-EnvironmentSnapshot -Snapshot $snapshot
+        }
+        catch {
+            throw ('Could not establish or roll back the locked Git environment. lock: ' +
+                $lockError.Exception.Message + '; rollback: ' + $_.Exception.Message)
+        }
+        throw $lockError
+    }
+    return $snapshot
+}
+
+function Restore-EnvironmentSnapshot {
+    param([object] $Snapshot)
+
+    if ($null -eq $Snapshot) {
+        return
+    }
+    $snapshotNames = [string[]] @($Snapshot.Keys)
+    $currentGitNames = [string[]] @(Get-ChildItem Env: | Where-Object {
+        $_.Name.StartsWith('GIT_', [StringComparison]::OrdinalIgnoreCase)
+    } | ForEach-Object { $_.Name })
+    foreach ($name in $currentGitNames) {
+        if (-not ($snapshotNames -icontains $name)) {
+            Remove-Item -LiteralPath ("Env:$name") -ErrorAction SilentlyContinue
+        }
+    }
+    foreach ($name in $Snapshot.Keys) {
+        if ($Snapshot[$name].exists) {
+            $originalValue = [string] $Snapshot[$name].value
+            if ($originalValue.Length -eq 0) {
+                if (-not [JueMingR.PhysicalPathNativeMethods]::SetEnvironmentVariable($name, '')) {
+                    throw "Could not restore an originally empty Git environment value: $name."
+                }
+            }
+            else {
+                Set-Item -LiteralPath ("Env:$name") -Value $originalValue
+            }
+        }
+        else {
+            Remove-Item -LiteralPath ("Env:$name") -ErrorAction SilentlyContinue
+        }
+    }
+    $expectedRestoredNames = [string[]] @($Snapshot.Keys | Where-Object { $Snapshot[$_].exists })
+    $actualRestoredNames = [string[]] @(Get-ChildItem Env: | Where-Object {
+        $_.Name.StartsWith('GIT_', [StringComparison]::OrdinalIgnoreCase)
+    } | ForEach-Object { $_.Name })
+    [Array]::Sort($expectedRestoredNames, [StringComparer]::OrdinalIgnoreCase)
+    [Array]::Sort($actualRestoredNames, [StringComparer]::OrdinalIgnoreCase)
+    if (($actualRestoredNames -join "`n") -ine ($expectedRestoredNames -join "`n")) {
+        throw 'The original Git environment name set was not restored exactly.'
+    }
+    foreach ($name in $Snapshot.Keys) {
+        $restored = Get-Item -LiteralPath ("Env:$name") -ErrorAction SilentlyContinue
+        if ($Snapshot[$name].exists) {
+            if ($null -eq $restored -or [string] $restored.Value -cne [string] $Snapshot[$name].value) {
+                throw "The original Git environment value was not restored exactly: $name."
+            }
+        }
+        elseif ($null -ne $restored) {
+            throw "An originally absent Git environment value remained after restore: $name."
+        }
+    }
+}
+
 function Get-MsBuildIsolationProperties {
     param(
         [string] $SdkRoot,
@@ -1597,6 +2026,11 @@ function Get-MsBuildIsolationProperties {
         '-p:CscToolPath=',
         '-p:CscToolExe=',
         '-p:UseSharedCompilation=false',
+        '-p:EnableSourceControlManagerQueries=false',
+        '-p:EnableSourceLink=false',
+        '-p:EmbedUntrackedSources=false',
+        '-p:PublishRepositoryUrl=false',
+        '-p:GenerateRepositoryUrlAttribute=false',
         '-p:ErrorLog=',
         '-p:DocumentationFile=',
         '-p:GenerateDocumentationFile=false',
@@ -1681,6 +2115,15 @@ function Get-EvaluatedProjectBuildFacts {
         'FileVersion',
         'InformationalVersion',
         'IncludeSourceRevisionInInformationalVersion',
+        'EnableSourceControlManagerQueries',
+        'EnableSourceLink',
+        'EmbedUntrackedSources',
+        'PublishRepositoryUrl',
+        'GenerateRepositoryUrlAttribute',
+        'RepositoryUrl',
+        'PrivateRepositoryUrl',
+        'ScmRepositoryUrl',
+        'SourceLink',
         'CopyLocalLockFileAssemblies',
         'UseSharedCompilation',
         'ErrorLog',
@@ -1799,7 +2242,7 @@ function Get-EvaluatedProjectBuildFacts {
             [string] $properties.UsingMicrosoftNETSdk -ine 'true' -or
             [string] $properties.Deterministic -ine 'true' -or
             [string] $properties.ContinuousIntegrationBuild -ine 'true' -or
-            [string] $properties.DeterministicSourcePaths -ine 'true' -or
+            [string] $properties.DeterministicSourcePaths -ine 'false' -or
             [string] $properties.DebugType -cne 'portable' -or
             [string] $properties.DebugSymbols -ine 'true' -or
             [string] $properties.CodePage -cne '65001' -or
@@ -1810,6 +2253,15 @@ function Get-EvaluatedProjectBuildFacts {
             [string] $properties.FileVersion -cne '0.0.0.0' -or
             [string] $properties.InformationalVersion -cne ('0.0.0-dev+' + $SourceRevisionId) -or
             [string] $properties.IncludeSourceRevisionInInformationalVersion -ine 'false' -or
+            [string] $properties.EnableSourceControlManagerQueries -ine 'false' -or
+            [string] $properties.EnableSourceLink -ine 'false' -or
+            [string] $properties.EmbedUntrackedSources -ine 'false' -or
+            [string] $properties.PublishRepositoryUrl -ine 'false' -or
+            [string] $properties.GenerateRepositoryUrlAttribute -ine 'false' -or
+            -not [string]::IsNullOrEmpty([string] $properties.RepositoryUrl) -or
+            -not [string]::IsNullOrEmpty([string] $properties.PrivateRepositoryUrl) -or
+            -not [string]::IsNullOrEmpty([string] $properties.ScmRepositoryUrl) -or
+            -not [string]::IsNullOrEmpty([string] $properties.SourceLink) -or
             [string] $properties.CopyLocalLockFileAssemblies -ine 'false' -or
             [string] $properties.UseSharedCompilation -ine 'false' -or
             -not [string]::IsNullOrEmpty([string] $properties.ErrorLog) -or
@@ -1921,7 +2373,7 @@ function Get-EvaluatedProjectBuildFacts {
                 -SdkRoot $SdkRoot)
             $effectiveInputs[$itemDefinition.RecordName] = $approvedInputs
             foreach ($input in $approvedInputs) {
-                $effectiveInputIdentityParts.Add(("{0}|{1}|{2}|{3}" -f $relativePath, $itemDefinition.ItemName, $input.origin, $input.path))
+                $effectiveInputIdentityParts.Add(("{0}|{1}|{2}|{3}|{4}" -f $relativePath, $itemDefinition.ItemName, $input.origin, $input.path, $input.sha256))
             }
         }
         $effectiveInputSetSha256 = Get-TextSha256 -Text ((@($effectiveInputIdentityParts.ToArray()) | Sort-Object) -join "`n")
@@ -2040,6 +2492,15 @@ function Get-EvaluatedProjectBuildFacts {
             fileVersion = [string] $properties.FileVersion
             informationalVersion = [string] $properties.InformationalVersion
             includeSourceRevisionInInformationalVersion = [string] $properties.IncludeSourceRevisionInInformationalVersion
+            enableSourceControlManagerQueries = [string] $properties.EnableSourceControlManagerQueries
+            enableSourceLink = [string] $properties.EnableSourceLink
+            embedUntrackedSources = [string] $properties.EmbedUntrackedSources
+            publishRepositoryUrl = [string] $properties.PublishRepositoryUrl
+            generateRepositoryUrlAttribute = [string] $properties.GenerateRepositoryUrlAttribute
+            repositoryUrl = [string] $properties.RepositoryUrl
+            privateRepositoryUrl = [string] $properties.PrivateRepositoryUrl
+            scmRepositoryUrl = [string] $properties.ScmRepositoryUrl
+            sourceLink = [string] $properties.SourceLink
             copyLocalLockFileAssemblies = [string] $properties.CopyLocalLockFileAssemblies
             useSharedCompilation = [string] $properties.UseSharedCompilation
             compilerSideOutputs = [ordered]@{
@@ -2126,6 +2587,7 @@ try {
     if ($NoRestore) {
         throw 'NoRestore is not a trusted Phase 0-R build mode because cached restore graphs are not accepted as formal inputs. Run the normal build entry.'
     }
+    Assert-FormalRepositoryEntriesAreRegular
 
     $referencesRoot = Get-CanonicalDirectoryPath -Path $TerrariaReferencesDirectory -Label 'TerrariaReferencesDirectory'
     $outputRoot = Get-CanonicalDirectoryPath -Path $OutputDirectory -Label 'OutputDirectory'
@@ -2136,7 +2598,8 @@ try {
     Assert-PathTreesDisjoint -Candidate $configurationRoot -CandidateLabel 'configuration output directory' -Protected $script:LegacyRoot -ProtectedLabel 'read-only Legacy root'
 
     $baselinePath = Join-Path $script:RepositoryRoot 'eng\TerrariaReferences.baseline.json'
-    $baseline = Get-Content -LiteralPath $baselinePath -Raw | ConvertFrom-Json
+    $baseline = Read-StrictUtf8Json -Path $baselinePath
+    $baselineHash = Get-NormalizedTextFileSha256 -Path $baselinePath
     $forbiddenReferenceHashes = @(Get-ForbiddenReferenceHashes -Baseline $baseline)
     & (Join-Path $PSScriptRoot 'prepare-terraria-references.ps1') `
         -DestinationDirectory $referencesRoot `
@@ -2169,7 +2632,7 @@ try {
         -RequireAbsolute
     $powerShellHome = Get-CanonicalDirectoryPath -Path $PSHOME -Label 'PowerShell home' -RequireAbsolute
     $globalJsonPath = Join-Path $script:RepositoryRoot 'global.json'
-    $globalJson = Get-Content -LiteralPath $globalJsonPath -Raw | ConvertFrom-Json
+    $globalJson = Read-StrictUtf8Json -Path $globalJsonPath
     $expectedSdk = [string] $globalJson.sdk.version
     $sdkRoot = Get-CanonicalDirectoryPath `
         -Path (Join-Path $dotnetRoot ("sdk\$expectedSdk")) `
@@ -2251,7 +2714,6 @@ try {
     }
 
     Assert-SafeBuildOutput -Root $script:RepositoryRoot -OutputRoot $outputRoot -ConfigurationRoot $configurationRoot -ReferencesRoot $referencesRoot -TerrariaSourceRoot $markerSources.terraria -XnaSourceRoot $markerSources.xna
-    Assert-RawBuildDefinitionsSafe
 
     $actualSdk = (& $script:DotnetPath --version).Trim()
     if ($LASTEXITCODE -ne 0 -or $actualSdk -ne $expectedSdk) {
@@ -2262,19 +2724,28 @@ try {
     $recordedSourcePaths = @(Get-GitRecordedSourcePaths)
     Assert-NoIgnoredFormalInputFiles -RecordedSourcePaths $recordedSourcePaths
     Assert-GitIndexAndAttributesSafe -RecordedSourcePaths $recordedSourcePaths
+
+    $sourceContentInventory = Get-RawRepositoryContentInventory `
+        -Root $script:RepositoryRoot `
+        -RecordedSourcePaths $recordedSourcePaths `
+        -TrackedSourcePaths $trackedFiles `
+        -Commit ([string] $verifiedHead[0])
+    $sourceIdentity = Get-GitSourceIdentity -Root $script:RepositoryRoot -ContentInventory $sourceContentInventory
+    $commit = $sourceIdentity.commit
+    $statusLines = @($sourceIdentity.statusLines)
+    $isClean = $sourceIdentity.clean
+    if ($RequireClean -and -not $isClean) {
+        throw ("RequireClean was specified, but source identity is not clean (status={0}, tracked-byte-mismatches=[{1}], untracked-inventory={2})." -f `
+            $statusLines.Count,
+            (@($sourceContentInventory.trackedMismatchPaths) -join ', '),
+            [bool] $sourceContentInventory.hasUntrackedFiles)
+    }
+    Assert-RawBuildDefinitionsSafe
     foreach ($trackedFile in $trackedFiles) {
         $trackedPath = Join-Path $script:RepositoryRoot ([string] $trackedFile)
         if ([System.IO.File]::Exists($trackedPath)) {
             Assert-FileIsNotForbiddenBinary -Path $trackedPath -ForbiddenHashes $forbiddenReferenceHashes -Context 'Git tracked files'
         }
-    }
-
-    $sourceIdentity = Get-GitSourceIdentity -Root $script:RepositoryRoot
-    $commit = $sourceIdentity.commit
-    $statusLines = @($sourceIdentity.statusLines)
-    $isClean = $sourceIdentity.clean
-    if ($RequireClean -and -not $isClean) {
-        throw 'RequireClean was specified, but the Git working tree has tracked or non-ignored untracked changes.'
     }
 
     $dirtyIdentity = $sourceIdentity.dirtyIdentity
@@ -2335,6 +2806,13 @@ try {
         $architectureResult = 'PASS'
     }
 
+    $sourceLinkJsonFiles = @(Get-ChildItem -LiteralPath $workRoot -Filter '*.sourcelink.json' -File -Recurse)
+    $repositoryUrlMetadataMatches = @(Get-ChildItem -LiteralPath $workRoot -Filter '*.AssemblyInfo.cs' -File -Recurse |
+        Select-String -SimpleMatch 'RepositoryUrl')
+    if ($sourceLinkJsonFiles.Count -ne 0 -or $repositoryUrlMetadataMatches.Count -ne 0) {
+        throw 'The formal build produced a forbidden SourceLink file or RepositoryUrl assembly metadata input.'
+    }
+
     Assert-NoForbiddenOutput -ConfigurationRoot $configurationRoot -ForbiddenHashes $forbiddenReferenceHashes
     $declaredOutputs = New-Object System.Collections.Generic.List[object]
     foreach ($file in Get-ChildItem -LiteralPath (Join-Path $workRoot 'bin') -File -Recurse |
@@ -2355,20 +2833,6 @@ try {
         -Expected @(Get-ExpectedDeclaredOutputPaths -Configuration $Configuration) `
         -Label 'formal declared output set'
 
-    Assert-RecordedSourceFilesMatchBaseline -MarkerSources $markerSources -Baseline $baseline
-    Assert-PhysicalGitBindingUnchanged -Expected $gitBinding
-    $finalRecordedSourcePaths = @(Get-GitRecordedSourcePaths)
-    Assert-ExactStringSet -Actual $finalRecordedSourcePaths -Expected $recordedSourcePaths -Label 'recorded Git source inventory after build'
-    Assert-NoIgnoredFormalInputFiles -RecordedSourcePaths $finalRecordedSourcePaths
-    Assert-GitIndexAndAttributesSafe -RecordedSourcePaths $finalRecordedSourcePaths
-    $finalSourceIdentity = Get-GitSourceIdentity -Root $script:RepositoryRoot
-    if ($finalSourceIdentity.commit -cne $sourceIdentity.commit -or
-        [bool] $finalSourceIdentity.clean -ne [bool] $sourceIdentity.clean -or
-        $finalSourceIdentity.dirtyIdentity -cne $sourceIdentity.dirtyIdentity -or
-        (@($finalSourceIdentity.statusLines) -join "`n") -cne (@($sourceIdentity.statusLines) -join "`n")) {
-        throw 'Repository source identity changed during the formal build; no build record will be written.'
-    }
-
     $msbuildVersion = ((& $script:DotnetPath msbuild -noAutoResponse -nologo -nodeReuse:false -version) | Select-Object -Last 1).Trim()
     if ($LASTEXITCODE -ne 0) { throw 'Could not read the locked MSBuild version.' }
     $compilerPath = Join-Path $sdkRoot 'Roslyn\bincore\csc.dll'
@@ -2376,17 +2840,45 @@ try {
     $referenceHashes = @($baseline.files | ForEach-Object {
         [ordered]@{ logicalName = $_.logicalName; sha256 = $_.sha256 }
     })
+
+    Assert-RecordedSourceFilesMatchBaseline -MarkerSources $markerSources -Baseline $baseline
+    Assert-PhysicalGitBindingUnchanged -Expected $gitBinding
+    $finalRecordedSourcePaths = @(Get-GitRecordedSourcePaths)
+    Assert-ExactStringSet -Actual $finalRecordedSourcePaths -Expected $recordedSourcePaths -Label 'recorded Git source inventory after build'
+    Assert-NoIgnoredFormalInputFiles -RecordedSourcePaths $finalRecordedSourcePaths
+    Assert-GitIndexAndAttributesSafe -RecordedSourcePaths $finalRecordedSourcePaths
+    $finalTrackedFiles = @(Get-GitOutput -Arguments @('-c', 'core.quotePath=false', 'ls-files'))
+    $finalSourceContentInventory = Get-RawRepositoryContentInventory `
+        -Root $script:RepositoryRoot `
+        -RecordedSourcePaths $finalRecordedSourcePaths `
+        -TrackedSourcePaths $finalTrackedFiles `
+        -Commit $commit
+    if ($finalSourceContentInventory.identityText -cne $sourceContentInventory.identityText -or
+        $finalSourceContentInventory.contentSetSha256 -cne $sourceContentInventory.contentSetSha256) {
+        throw 'Raw repository source bytes changed during the formal build; no build record will be written.'
+    }
+    $finalSourceIdentity = Get-GitSourceIdentity -Root $script:RepositoryRoot -ContentInventory $finalSourceContentInventory
+    if ($finalSourceIdentity.commit -cne $sourceIdentity.commit -or
+        [bool] $finalSourceIdentity.clean -ne [bool] $sourceIdentity.clean -or
+        $finalSourceIdentity.dirtyIdentity -cne $sourceIdentity.dirtyIdentity -or
+        (@($finalSourceIdentity.statusLines) -join "`n") -cne (@($sourceIdentity.statusLines) -join "`n")) {
+        throw 'Repository source identity changed during the formal build; no build record will be written.'
+    }
+
     $stopwatch.Stop()
     $buildEnded = [DateTime]::UtcNow
     $record = [ordered]@{
-        schemaVersion = 1
+        schemaVersion = 2
         source = [ordered]@{
             commit = $commit
             clean = $isClean
             dirtyDiffIdentitySha256 = $dirtyIdentity
             sourceRevisionId = $sourceRevisionId
             gitBinding = 'physical work tree plus per-worktree and common Git metadata directories; paths omitted'
-            formalInputInventoryPolicy = 'recorded-git-physical-and-effective-msbuild-v1'
+            recordedSourceContentSha256 = $sourceContentInventory.contentSetSha256
+            formalInputContentInventory = @($sourceContentInventory.entries)
+            trackedBytesMatchIndexAndCommit = [bool] $sourceContentInventory.trackedBytesMatchIndexAndCommit
+            formalInputInventoryPolicy = 'recorded-git-content-modes-and-effective-msbuild-v2'
         }
         build = [ordered]@{
             configuration = $Configuration
@@ -2401,6 +2893,10 @@ try {
             developerPack = ".NET Framework 4.7.2 reference assemblies $targetingPackVersion"
             entry = 'scripts/build.ps1'
             environmentPolicy = 'closed-allowlist-v1'
+            sourceControlSideEffects = [ordered]@{
+                sourceLinkJsonCount = 0
+                repositoryUrlAssemblyMetadataCount = 0
+            }
             effectiveParameters = [ordered]@{
                 configuration = $Configuration
                 references = 'local directory verified against the tracked baseline; path omitted'
@@ -2417,7 +2913,7 @@ try {
         }
         references = [ordered]@{
             profileId = $baseline.profileId
-            baselineSha256 = Get-NormalizedTextFileSha256 -Path $baselinePath
+            baselineSha256 = $baselineHash
             files = $referenceHashes
         }
         architectureChecks = $architectureResult
@@ -2471,9 +2967,109 @@ finally {
 if ($null -eq $completedRecord -or [string]::IsNullOrWhiteSpace($completedRecordPath)) {
     throw 'The formal build did not produce a completed record after tool-state cleanup.'
 }
-[System.IO.File]::WriteAllText(
-    $completedRecordPath,
-    (($completedRecord | ConvertTo-Json -Depth 10) + [Environment]::NewLine),
-    $script:Utf8NoBom)
+$completedRecordBytes = $script:Utf8NoBom.GetBytes(
+    (($completedRecord | ConvertTo-Json -Depth 10) + [Environment]::NewLine))
+$recordTemporaryPath = Join-Path `
+    ([System.IO.Path]::GetDirectoryName($completedRecordPath)) `
+    ('.build-record.' + [Guid]::NewGuid().ToString('N') + '.tmp')
+$closingGitEnvironment = Set-LockedGitEnvironment
+$recordTemporaryCreated = $false
+$recordStaged = $false
+try {
+    Assert-FormalRepositoryEntriesAreRegular
+    Assert-PhysicalGitBindingUnchanged -Expected $gitBinding
+    $closingRecordedSourcePaths = @(Get-GitRecordedSourcePaths)
+    $closingRecordedSourcePaths = [string[]] @($closingRecordedSourcePaths)
+    [Array]::Sort($closingRecordedSourcePaths, [StringComparer]::Ordinal)
+    $recordedSourcePathsFromRecord = @($completedRecord.source.formalInputContentInventory | ForEach-Object { [string] $_.path })
+    if (($closingRecordedSourcePaths -join "`n") -cne ($recordedSourcePathsFromRecord -join "`n")) {
+        throw 'The recorded Git source inventory changed after build cleanup; no build record will be written.'
+    }
+    Assert-NoIgnoredFormalInputFiles -RecordedSourcePaths $closingRecordedSourcePaths
+    Assert-GitIndexAndAttributesSafe -RecordedSourcePaths $closingRecordedSourcePaths
+    $closingTrackedSourcePaths = @(Get-GitOutput -Arguments @('-c', 'core.quotePath=false', 'ls-files'))
+    $closingSourceContent = Get-RawRepositoryContentInventory `
+        -Root $script:RepositoryRoot `
+        -RecordedSourcePaths $closingRecordedSourcePaths `
+        -TrackedSourcePaths $closingTrackedSourcePaths `
+        -Commit ([string] $completedRecord.source.commit)
+    $recordedHasUntrackedFiles = @($completedRecord.source.formalInputContentInventory | Where-Object {
+        $_.tracked -ne $true
+    }).Count -ne 0
+    if ([bool] $closingSourceContent.trackedBytesMatchIndexAndCommit -ne
+            [bool] $completedRecord.source.trackedBytesMatchIndexAndCommit -or
+        [bool] $closingSourceContent.hasUntrackedFiles -ne $recordedHasUntrackedFiles -or
+        $closingSourceContent.contentSetSha256 -cne [string] $completedRecord.source.recordedSourceContentSha256) {
+        throw 'The raw repository source identity changed after build cleanup; no build record will be written.'
+    }
+    Assert-PhysicalContentInventoryMatches `
+        -Entries @($completedRecord.source.formalInputContentInventory) `
+        -ExpectedDigest ([string] $completedRecord.source.recordedSourceContentSha256)
+    $closingSourceIdentity = Get-GitSourceIdentity -Root $script:RepositoryRoot -ContentInventory $closingSourceContent
+    if ($closingSourceIdentity.commit -cne [string] $completedRecord.source.commit -or
+        [bool] $closingSourceIdentity.clean -ne [bool] $completedRecord.source.clean -or
+        $closingSourceIdentity.dirtyIdentity -cne [string] $completedRecord.source.dirtyDiffIdentitySha256) {
+        throw 'The repository source identity changed after build cleanup; no build record will be written.'
+    }
+
+    if ([System.IO.File]::Exists($completedRecordPath)) {
+        throw 'The formal build-record path unexpectedly exists before staging.'
+    }
+    $recordStream = [System.IO.File]::Open(
+        $recordTemporaryPath,
+        [System.IO.FileMode]::CreateNew,
+        [System.IO.FileAccess]::Write,
+        [System.IO.FileShare]::None)
+    $recordTemporaryCreated = $true
+    try {
+        $recordStream.Write($completedRecordBytes, 0, $completedRecordBytes.Length)
+        $recordStream.Flush($true)
+    }
+    finally {
+        $recordStream.Dispose()
+    }
+    $recordStaged = $true
+}
+finally {
+    $closingEnvironmentRestoreError = $null
+    try {
+        Restore-EnvironmentSnapshot -Snapshot $closingGitEnvironment
+    }
+    catch {
+        $closingEnvironmentRestoreError = $_
+    }
+    if (($recordTemporaryCreated -and -not $recordStaged) -or
+        $null -ne $closingEnvironmentRestoreError) {
+        if ([System.IO.File]::Exists($recordTemporaryPath)) {
+            Remove-Item -LiteralPath $recordTemporaryPath -Force -ErrorAction SilentlyContinue
+            if ([System.IO.File]::Exists($recordTemporaryPath)) {
+                throw 'The non-final staged build record could not be removed; the next owned-output cleanup will retry.'
+            }
+        }
+    }
+    if ($null -ne $closingEnvironmentRestoreError) {
+        throw ('The closing Git environment was not restored; the staged non-final record was not published. ' +
+            $closingEnvironmentRestoreError.Exception.Message)
+    }
+}
+try {
+    if (-not $recordStaged -or -not [System.IO.File]::Exists($recordTemporaryPath)) {
+        throw 'The staged build record is missing before atomic publication.'
+    }
+    if ([System.IO.File]::Exists($completedRecordPath)) {
+        throw 'The formal build-record path unexpectedly exists before atomic publication.'
+    }
+    [System.IO.File]::Move($recordTemporaryPath, $completedRecordPath)
+    $recordTemporaryCreated = $false
+}
+catch {
+    if ($recordTemporaryCreated -and [System.IO.File]::Exists($recordTemporaryPath)) {
+        Remove-Item -LiteralPath $recordTemporaryPath -Force -ErrorAction SilentlyContinue
+        if ([System.IO.File]::Exists($recordTemporaryPath)) {
+            throw 'Atomic build-record publication failed and its non-final staged file could not be removed; the next owned-output cleanup will retry.'
+        }
+    }
+    throw
+}
 Write-Output ("PASS: {0} build, architecture checks={1}, declared outputs={2}." -f $Configuration, $completedArchitectureResult, $completedDeclaredOutputCount)
 Write-Output ("Build record: {0}" -f $completedRecordPath)

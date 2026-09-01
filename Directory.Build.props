@@ -3,7 +3,7 @@
     <LangVersion>7.3</LangVersion>
     <Deterministic>true</Deterministic>
     <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
-    <DeterministicSourcePaths>true</DeterministicSourcePaths>
+    <DeterministicSourcePaths>false</DeterministicSourcePaths>
     <DebugType>portable</DebugType>
     <DebugSymbols>true</DebugSymbols>
     <CodePage>65001</CodePage>
@@ -14,6 +14,11 @@
     <FileVersion>0.0.0.0</FileVersion>
     <InformationalVersion>0.0.0-dev+$(SourceRevisionId)</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <EnableSourceControlManagerQueries>false</EnableSourceControlManagerQueries>
+    <EnableSourceLink>false</EnableSourceLink>
+    <EmbedUntrackedSources>false</EmbedUntrackedSources>
+    <PublishRepositoryUrl>false</PublishRepositoryUrl>
+    <GenerateRepositoryUrlAttribute>false</GenerateRepositoryUrlAttribute>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
     <DefaultItemExcludes>$(DefaultItemExcludes);$(MSBuildProjectDirectory)\bin\**;$(MSBuildProjectDirectory)\obj\**</DefaultItemExcludes>
