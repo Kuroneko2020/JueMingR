@@ -68,6 +68,11 @@ function Remove-ValidatedTemporaryRoot {
         throw "Refusing to delete an unexpected temporary path: $resolved"
     }
 
+    foreach ($item in Get-ChildItem -LiteralPath $resolved -Force -File -Recurse) {
+        if ($item.IsReadOnly) {
+            $item.IsReadOnly = $false
+        }
+    }
     [System.IO.Directory]::Delete($resolved, $true)
 }
 
@@ -106,14 +111,14 @@ function Invoke-CleanCloneBuild {
         $prepareParameters.XnaReferenceDirectory = $XnaSource
     }
 
-    & (Join-Path $CloneRoot 'scripts\prepare-terraria-references.ps1') @prepareParameters
+    & (Join-Path $CloneRoot 'scripts\prepare-terraria-references.ps1') @prepareParameters | Out-Host
 
     $buildOutput = Join-Path $CloneRoot 'artifacts\build'
     & (Join-Path $CloneRoot 'scripts\build.ps1') `
         -Configuration $ConfigurationName `
         -TerrariaReferencesDirectory $references `
         -OutputDirectory $buildOutput `
-        -RequireClean
+        -RequireClean | Out-Host
 
     $recordPath = Join-Path $buildOutput ("$ConfigurationName\build-record.json")
     if (-not [System.IO.File]::Exists($recordPath)) {

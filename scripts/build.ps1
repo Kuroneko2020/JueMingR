@@ -50,10 +50,18 @@ function Get-TextSha256 {
     }
 }
 
+function Get-NormalizedTextFileSha256 {
+    param([string] $Path)
+
+    $text = [System.IO.File]::ReadAllText($Path)
+    $normalized = $text.Replace("`r`n", "`n").Replace("`r", "`n")
+    return Get-TextSha256 -Text $normalized
+}
+
 function Get-GitOutput {
     param([string[]] $Arguments)
 
-    $output = & git @Arguments 2>&1
+    $output = & git -c core.safecrlf=false @Arguments 2>&1
     if ($LASTEXITCODE -ne 0) {
         throw "git command failed: git $($Arguments -join ' ')"
     }
@@ -302,7 +310,7 @@ try {
         }
         references = [ordered]@{
             profileId = $baseline.profileId
-            baselineSha256 = (Get-FileHash -LiteralPath $baselinePath -Algorithm SHA256).Hash.ToUpperInvariant()
+            baselineSha256 = Get-NormalizedTextFileSha256 -Path $baselinePath
             files = $referenceHashes
         }
         architectureChecks = $architectureResult

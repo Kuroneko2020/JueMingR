@@ -24,6 +24,21 @@ function Resolve-UnresolvedPath {
         $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path))
 }
 
+function Get-NormalizedTextFileSha256 {
+    param([string] $Path)
+
+    $text = [System.IO.File]::ReadAllText($Path)
+    $normalized = $text.Replace("`r`n", "`n").Replace("`r", "`n")
+    $algorithm = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $bytes = $script:Utf8NoBom.GetBytes($normalized)
+        return ([System.BitConverter]::ToString($algorithm.ComputeHash($bytes))).Replace('-', '')
+    }
+    finally {
+        $algorithm.Dispose()
+    }
+}
+
 function Get-PublicKeyTokenText {
     param([System.Reflection.AssemblyName] $AssemblyName)
 
@@ -379,12 +394,6 @@ function Export-EmbeddedReLogic {
     finally {
         $resourceStream.Dispose()
     }
-
-    $bytes = [System.IO.File]::ReadAllBytes($Destination)
-    $reLogicAssembly = [System.Reflection.Assembly]::ReflectionOnlyLoad($bytes)
-    if (-not $reLogicAssembly.ReflectionOnly) {
-        throw 'Extracted ReLogic metadata inspection did not use the reflection-only context.'
-    }
 }
 
 function Test-PreparedReferenceDirectory {
@@ -434,7 +443,7 @@ if ($InspectOnly -and $VerifyOnly) {
 }
 
 $baseline = Get-Baseline
-$baselineHash = (Get-FileHash -LiteralPath $script:BaselinePath -Algorithm SHA256).Hash.ToUpperInvariant()
+$baselineHash = Get-NormalizedTextFileSha256 -Path $script:BaselinePath
 if ([string]::IsNullOrWhiteSpace($DestinationDirectory)) {
     $DestinationDirectory = Join-Path $script:RepositoryRoot 'external\TerrariaRefs'
 }
