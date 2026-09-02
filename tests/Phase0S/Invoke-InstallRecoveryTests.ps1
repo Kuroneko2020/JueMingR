@@ -160,6 +160,32 @@ function Assert-Phase0SCompactJsonResult {
     $expectedProperties = @('code', 'exitCode', 'object', 'operation', 'packageId', 'schemaVersion', 'sha256', 'status')
     Assert-Phase0SCondition -Condition ((@($actualProperties) -join '|') -ceq ($expectedProperties -join '|')) -Message "${Operation}/${ExpectedCode}: result JSON properties differ from the fixed contract."
     Assert-Phase0SCondition -Condition ($resultObject.schemaVersion -eq 1 -and [string] $resultObject.operation -ceq $Operation -and [string] $resultObject.status -ceq $ExpectedStatus -and [int] $resultObject.exitCode -eq $ExpectedExitCode -and [string] $resultObject.code -ceq $ExpectedCode) -Message "${Operation}/${ExpectedCode}: fixed result values do not match."
+    $expectedObjects = @{
+        CONFIG_EXISTS = 'Terraria.exe.config'
+        BOOTSTRAP_CONFLICT = 'bootstrap'
+        WORK_PATH_CONFLICT = 'work-paths'
+        TERRARIA_IDENTITY_MISMATCH = 'Terraria.exe'
+        INSTALL_COMPLETE = 'installation'
+        RESTORE_COMPLETE = 'owned-files'
+        RESTORE_NOOP = 'owned-files'
+        OWNERSHIP_UNPROVEN = 'owned-files'
+    }
+    $expectedObject = $expectedObjects[$ExpectedCode]
+    Assert-Phase0SCondition -Condition (-not [string]::IsNullOrEmpty($expectedObject) -and [string] $resultObject.object -ceq $expectedObject) -Message "${Operation}/${ExpectedCode}: result object is not the fixed logical name."
+    switch ($ExpectedCode) {
+        'CONFIG_EXISTS' {
+            Assert-Phase0SCondition -Condition ($null -eq $resultObject.packageId -and [string] $resultObject.sha256 -match '^[0-9A-F]{64}$') -Message "${Operation}/${ExpectedCode}: packageId must be JSON null and sha256 must be uppercase SHA-256."
+        }
+        { $_ -in @('BOOTSTRAP_CONFLICT', 'WORK_PATH_CONFLICT', 'TERRARIA_IDENTITY_MISMATCH') } {
+            Assert-Phase0SCondition -Condition ($null -eq $resultObject.packageId -and $null -eq $resultObject.sha256) -Message "${Operation}/${ExpectedCode}: packageId and sha256 must be JSON null."
+        }
+        { $_ -in @('INSTALL_COMPLETE', 'RESTORE_COMPLETE', 'RESTORE_NOOP', 'OWNERSHIP_UNPROVEN') } {
+            Assert-Phase0SCondition -Condition ([string] $resultObject.packageId -match '^phase0s-[0-9a-f]{40}$' -and $null -eq $resultObject.sha256) -Message "${Operation}/${ExpectedCode}: packageId or sha256 null semantics differ from the result contract."
+        }
+        default {
+            throw "No null-semantics contract is defined for $ExpectedCode."
+        }
+    }
     Assert-Phase0SCondition -Condition ($line.IndexOf([System.IO.Path]::GetFullPath($TargetDirectory), [System.StringComparison]::OrdinalIgnoreCase) -lt 0 -and $line.IndexOf([Environment]::UserName, [System.StringComparison]::OrdinalIgnoreCase) -lt 0 -and $actualProperties -notcontains 'message' -and $actualProperties -notcontains 'stack') -Message "${Operation}/${ExpectedCode}: result JSON leaked a path, username, message, or stack."
 }
 
