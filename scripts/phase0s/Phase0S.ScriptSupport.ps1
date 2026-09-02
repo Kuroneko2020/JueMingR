@@ -80,9 +80,9 @@ function Write-Phase0SResultAndExit {
         [Parameter(Mandatory = $true)][ValidateSet('success', 'noop', 'conflict', 'failure')][string] $Status,
         [Parameter(Mandatory = $true)][string] $Code,
         [Parameter(Mandatory = $true)][int] $ExitCode,
-        [AllowNull()][string] $PackageId,
+        [AllowNull()][object] $PackageId,
         [AllowNull()][string] $Object,
-        [AllowNull()][string] $Sha256
+        [AllowNull()][object] $Sha256
     )
 
     $result = [ordered]@{
