@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "profileId": "terraria-steam-1.4.5.8-xna-4.0.20823.0-compile-refs",
+  "purpose": "Compile-time references for the Phase 0-R project skeleton only; this profile is not a runtime, loading, compatibility, or support claim.",
+  "terrariaChannelEvidence": {
+    "channel": "Steam",
+    "appId": "105600",
+    "stateFlags": "4",
+    "buildId": "24893155",
+    "terrariaVersion": "1.4.5.8",
+    "evidenceScope": "A legally installed local Steam copy inspected on 2026-09-01; no private installation path is recorded."
+  },
+  "files": [
+    {
+      "logicalName": "Terraria.exe",
+      "assemblySimpleName": "Terraria",
+      "assemblyVersion": "1.4.5.8",
+      "fileVersion": "1.4.5.8",
+      "publicKeyToken": "",
+      "peMachine": "I386",
+      "peFormat": "PE32",
+      "clrFlags": [
+        "ILOnly",
+        "Requires32Bit"
+      ],
+      "requires32Bit": true,
+      "sha256": "960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3",
+      "sourceCategory": "Terraria installation",
+      "redistributableByJueMingR": false,
+      "copyLocal": false
+    },
+    {
+      "logicalName": "ReLogic.dll",
+      "assemblySimpleName": "ReLogic",
+      "assemblyVersion": "1.0.0.0",
+      "fileVersion": "1.0.0.0",
+      "publicKeyToken": "",
+      "peMachine": "I386",
+      "peFormat": "PE32",
+      "clrFlags": [
+        "ILOnly",
+        "Requires32Bit"
+      ],
+      "requires32Bit": true,
+      "sha256": "E1C5DCCEFFF5FD1C789FF712BABFA1A305FCED0D03C96EF30F2C14D99AA0AF29",
+      "sourceCategory": "Terraria.exe embedded assembly",
+      "embeddedResourceName": "Terraria.Libraries.ReLogic.ReLogic.dll",
+      "redistributableByJueMingR": false,
+      "copyLocal": false
+    },
+    {
+      "logicalName": "Microsoft.Xna.Framework.Game.dll",
+      "assemblySimpleName": "Microsoft.Xna.Framework.Game",
+      "assemblyVersion": "4.0.0.0",
+      "fileVersion": "4.0.20823.0",
+      "publicKeyToken": "842cf8be1de50553",
+      "peMachine": "I386",
+      "peFormat": "PE32",
+      "clrFlags": [
+        "ILOnly",
+        "Requires32Bit",
+        "StrongNameSigned"
+      ],
+      "requires32Bit": true,
+      "sha256": "A0347E9D9A646779A9BB1BD512AF333AE07A3DB65B3259FAE3220ED87A80E756",
+      "sourceCategory": "Microsoft XNA installation/GAC_32",
+      "redistributableByJueMingR": false,
+      "copyLocal": false
+    }
+  ]
+}

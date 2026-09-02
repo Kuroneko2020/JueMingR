@@ -57,6 +57,7 @@ Agent 必须明确区分：已确认事实、推断、建议、待决定事项�
 - 涉及 Legacy 功能考古、行为恢复、平替、兼容差异或用户验收的任务，必须阅读 [`docs/规范/Legacy平替与行为契约规则.md`](docs/规范/Legacy平替与行为契约规则.md)。
 - 涉及运行平台、Terraria 版本、Windows/渠道兼容、加载链、依赖分发、安装恢复或多人拓扑的任务，必须阅读 `docs/规范/技术平台与兼容规则.md`。
 - 涉及总体架构、模块职责、项目依赖方向、状态所有权、Runtime/Session 生命周期、Composition Root、游戏 Observation/Operation、Feature 接入、UI、持久化、Diagnostics 或项目骨架映射的任务，必须阅读 [`docs/设计/总体架构与状态所有权.md`](docs/设计/总体架构与状态所有权.md)。
+- 涉及解决方案、项目文件、构建工具链、TFM、LangVersion、PlatformTarget、Terraria/ReLogic/XNA 编译引用、ProjectReference、构建脚本、构建身份、可重复构建或架构边界检查的任务，必须阅读 [`docs/设计/可重复构建与项目骨架.md`](docs/设计/可重复构建与项目骨架.md)。
 - 涉及性能风险、性能声明、基线或测量、功能关闭成本、缓存/快照/队列、日志与 I/O，或一次性测量工具的任务，必须阅读 [`docs/规范/性能治理规则.md`](docs/规范/性能治理规则.md)。
 - 涉及编译、测试、审计、证据结论、测试期待修改、mock/stub/fake、Terraria 游戏内实机、多人验证、测试数据隔离、flaky、覆盖率或慢检查的任务，必须阅读 [`docs/规范/测试与审计规则.md`](docs/规范/测试与审计规则.md)。
 - 涉及产品版本、构建身份、开发包或测试包、配置 schema 与迁移、Terraria 兼容发布记录、Tag、GitHub Release、发布资产、SHA-256、发布说明、撤回或替代发布的任务，必须阅读 [`docs/规范/版本配置与发布规则.md`](docs/规范/版本配置与发布规则.md)。
