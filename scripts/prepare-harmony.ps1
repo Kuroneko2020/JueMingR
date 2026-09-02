@@ -70,7 +70,8 @@ function Get-AssemblyMvid {
         }
     }
 
-    return [Reflection.Assembly]::ReflectionOnlyLoadFrom($Path).ManifestModule.ModuleVersionId.ToString('D')
+    return [Reflection.Assembly]::ReflectionOnlyLoad(
+        [System.IO.File]::ReadAllBytes($Path)).ManifestModule.ModuleVersionId.ToString('D')
 }
 
 function Test-HarmonyAssembly {
