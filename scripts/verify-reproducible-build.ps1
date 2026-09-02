@@ -21,8 +21,16 @@ $createdWorktrees = New-Object System.Collections.Generic.List[string]
 function Invoke-Git {
     param([string[]] $Arguments)
 
-    $output = @(& git -C $repositoryRoot @Arguments 2>&1)
-    if ($LASTEXITCODE -ne 0) {
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $output = @(& git -C $repositoryRoot @Arguments 2>&1)
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+    if ($exitCode -ne 0) {
         throw ('Git command failed: ' + ($output -join [Environment]::NewLine))
     }
     return $output
@@ -31,20 +39,20 @@ function Invoke-Git {
 function Invoke-WorktreeBuild {
     param([string] $Worktree)
 
-    & $powershellPath -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
+    $prepareOutput = @(& $powershellPath -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
         -File (Join-Path $Worktree 'scripts\prepare-terraria-references.ps1') `
         -TerrariaExePath $terrariaSource `
-        -XnaGameAssemblyPath $xnaSource
+        -XnaGameAssemblyPath $xnaSource)
     if ($LASTEXITCODE -ne 0) {
-        throw "Reference preparation failed in worktree: $Worktree."
+        throw ('Reference preparation failed: ' + ($prepareOutput -join [Environment]::NewLine))
     }
 
-    & $powershellPath -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
+    $buildOutput = @(& $powershellPath -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
         -File (Join-Path $Worktree 'scripts\build.ps1') `
         -Configuration Release `
-        -RequireClean
+        -RequireClean)
     if ($LASTEXITCODE -ne 0) {
-        throw "Release build failed in worktree: $Worktree."
+        throw ('Release build failed: ' + ($buildOutput -join [Environment]::NewLine))
     }
 
     $recordPath = Join-Path $Worktree 'artifacts\build\Release\build-record.json'
