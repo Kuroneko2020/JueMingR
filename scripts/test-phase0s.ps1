@@ -25,12 +25,13 @@ if ($missing.Count -ne 0) {
     exit 3
 }
 
-. (Join-Path $repositoryRoot 'tests\Phase0S\Invoke-LoadChainFixture.ps1')
-. (Join-Path $repositoryRoot 'tests\Phase0S\Invoke-InstallRecoveryTests.ps1')
-
 try {
-    Invoke-Phase0SLoadChainFixtureTests -RepositoryRoot $repositoryRoot
-    Invoke-Phase0SInstallRecoveryTests -RepositoryRoot $repositoryRoot
+    foreach ($suiteScript in @('Invoke-LoadChainFixture.ps1', 'Invoke-InstallRecoveryTests.ps1')) {
+        & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $repositoryRoot ('tests\Phase0S\' + $suiteScript)) -Run -RepositoryRoot $repositoryRoot
+        if ($LASTEXITCODE -ne 0) {
+            throw "Phase 0-S suite $suiteScript failed with exit $LASTEXITCODE."
+        }
+    }
     Write-Output 'PASS: Phase 0-S behavior tests passed.'
 }
 catch {

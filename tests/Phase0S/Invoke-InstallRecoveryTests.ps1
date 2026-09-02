@@ -1,5 +1,8 @@
 [CmdletBinding()]
-param()
+param(
+    [switch] $Run,
+    [string] $RepositoryRoot
+)
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
@@ -365,4 +368,11 @@ function Invoke-Phase0SInstallRecoveryTests {
     finally {
         Remove-Phase0STestRoot -Root $root
     }
+}
+
+if ($Run) {
+    if ([string]::IsNullOrWhiteSpace($RepositoryRoot)) {
+        throw 'The -Run entry point requires -RepositoryRoot.'
+    }
+    Invoke-Phase0SInstallRecoveryTests -RepositoryRoot $RepositoryRoot
 }
