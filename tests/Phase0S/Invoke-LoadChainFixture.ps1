@@ -22,7 +22,10 @@ function Get-Phase0SFixtureExecutable {
     param([Parameter(Mandatory = $true)][string] $RepositoryRoot)
 
     $projectPath = Join-Path $RepositoryRoot 'tests\Phase0SFixtureTerraria\Phase0SFixtureTerraria.csproj'
-    & dotnet.exe build $projectPath --configuration Debug --nologo -p:Platform=x86
+    $buildOutput = @(& dotnet.exe build $projectPath --configuration Debug --nologo -p:Platform=x86 2>&1)
+    foreach ($line in $buildOutput) {
+        Write-Host $line
+    }
     if ($LASTEXITCODE -ne 0) {
         throw 'The Phase 0-S fake Terraria fixture did not build.'
     }
@@ -59,7 +62,7 @@ function New-Phase0SFixtureRuntimeManifest {
     )
 
     $target = Get-Phase0SReflectionIdentity -AssemblyPath $FixtureExe
-    $host = Get-Phase0SReflectionIdentity -AssemblyPath $HostAssembly
+    $hostIdentity = Get-Phase0SReflectionIdentity -AssemblyPath $HostAssembly
     $targetAssembly = [System.Reflection.Assembly]::ReflectionOnlyLoadFrom($FixtureExe)
     $initializeMethod = $targetAssembly.GetType('Terraria.Main', $true).GetMethod(
         'Initialize',
@@ -87,10 +90,10 @@ function New-Phase0SFixtureRuntimeManifest {
         'targetMethodIsStatic=false',
         'targetMethodReturnType=System.Void',
         'targetMethodParameterCount=0',
-        'hostAssemblySimpleName=' + $host.simpleName,
-        'hostAssemblyVersion=' + $host.version,
-        'hostAssemblyMvid=' + $host.mvid,
-        'hostAssemblySha256=' + $host.sha256,
+        'hostAssemblySimpleName=' + $hostIdentity.simpleName,
+        'hostAssemblyVersion=' + $hostIdentity.version,
+        'hostAssemblyMvid=' + $hostIdentity.mvid,
+        'hostAssemblySha256=' + $hostIdentity.sha256,
         'harmonyAssemblySimpleName=0Harmony',
         'harmonyAssemblyVersion=2.4.2.0',
         'harmonyAssemblyMvid=024a0e6e-c8c2-437e-ad04-7b6279389c23',
@@ -141,7 +144,7 @@ function New-Phase0SFixtureRunDirectory {
         Copy-Item -LiteralPath $ProductionOutputs[$name] -Destination (Join-Path $sidecar (Split-Path -Leaf $ProductionOutputs[$name]))
     }
     Copy-Item -LiteralPath $HarmonyPath -Destination (Join-Path $sidecar '0Harmony.dll')
-    New-Phase0SFixtureRuntimeManifest -FixtureExe $runFixtureExe -HostAssembly (Join-Path $sidecar 'JueMingR.TerrariaHost.dll') -ManifestPath (Join-Path $sidecar 'phase-0-s-runtime.manifest') -PackageId $PackageId -SourceCommit $SourceCommit -UseWrongTargetHash:$UseWrongTargetHash
+    New-Phase0SFixtureRuntimeManifest -FixtureExe $FixtureExe -HostAssembly $ProductionOutputs['Host'] -ManifestPath (Join-Path $sidecar 'phase-0-s-runtime.manifest') -PackageId $PackageId -SourceCommit $SourceCommit -UseWrongTargetHash:$UseWrongTargetHash
     New-Phase0SFixtureConfig -ConfigPath (Join-Path $runRoot 'Terraria.exe.config')
     return [pscustomobject]@{
         exePath = $runFixtureExe
@@ -159,12 +162,15 @@ function Invoke-Phase0SFixtureExe {
     )
 
     $previousLocation = Get-Location
+    $previousErrorActionPreference = $ErrorActionPreference
     try {
         Set-Location -LiteralPath (Split-Path -Parent $FixtureExe)
+        $ErrorActionPreference = 'Continue'
         $output = @(& $FixtureExe $Mode $EvidencePath $PackageId 2>&1)
         $exitCode = $LASTEXITCODE
     }
     finally {
+        $ErrorActionPreference = $previousErrorActionPreference
         Set-Location -LiteralPath $previousLocation.Path
     }
     return [pscustomobject]@{ exitCode = $exitCode; output = @($output) }
@@ -186,9 +192,12 @@ function Assert-Phase0SNoSuccessEvents {
 function Invoke-Phase0SLoadChainFixtureTests {
     param([Parameter(Mandatory = $true)][string] $RepositoryRoot)
 
-    & (Join-Path $RepositoryRoot 'scripts\build.ps1') -Configuration Debug
-    if ($LASTEXITCODE -ne 0) {
-        throw 'The Phase 0-S production Debug build failed.'
+    $buildResult = Invoke-Phase0SWindowsPowerShell -ScriptPath (Join-Path $RepositoryRoot 'scripts\build.ps1') -Arguments @('-Configuration', 'Debug')
+    foreach ($line in $buildResult.output) {
+        Write-Host $line
+    }
+    if ($buildResult.exitCode -ne 0) {
+        throw "The Phase 0-S production Debug build failed with exit $($buildResult.exitCode)."
     }
     $sourceCommit = (& git -C $RepositoryRoot rev-parse HEAD).Trim()
     if ($LASTEXITCODE -ne 0 -or $sourceCommit -notmatch '^[0-9a-f]{40}$') {

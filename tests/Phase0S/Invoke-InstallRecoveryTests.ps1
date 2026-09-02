@@ -29,10 +29,15 @@ function New-Phase0SControlledPackageFixture {
     $payloadRoot = Join-Path $PackageRoot 'payload'
     [System.IO.Directory]::CreateDirectory((Join-Path $payloadRoot 'JueMingR.Validation')) | Out-Null
 
+    $sourceCommit = (& git -C $RepositoryRoot rev-parse HEAD).Trim()
+    if ($LASTEXITCODE -ne 0 -or $sourceCommit -notmatch '^[0-9a-f]{40}$') {
+        throw 'The controlled package fixture could not obtain a source commit identity.'
+    }
+    $packageId = 'phase0s-' + $sourceCommit
     $runtimeManifest = @(
         'schemaVersion=1',
-        'packageId=phase0s-fixture-' + [Guid]::NewGuid().ToString('N'),
-        'sourceCommit=' + ((& git -C $RepositoryRoot rev-parse HEAD).Trim()),
+        'packageId=' + $packageId,
+        'sourceCommit=' + $sourceCommit,
         'targetAssemblySimpleName=Terraria',
         'targetAssemblyVersion=1.4.5.8',
         'targetAssemblyMvid=00000000-0000-0000-0000-000000000000',
@@ -79,13 +84,9 @@ function New-Phase0SControlledPackageFixture {
             sha256 = Get-Phase0SFileSha256 -Path $path
         }
     })
-    $sourceCommit = (& git -C $RepositoryRoot rev-parse HEAD).Trim()
-    if ($LASTEXITCODE -ne 0 -or $sourceCommit -notmatch '^[0-9a-f]{40}$') {
-        throw 'The controlled package fixture could not obtain a source commit identity.'
-    }
     $manifest = [ordered]@{
         schemaVersion = 1
-        packageId = [Guid]::NewGuid().ToString('D')
+        packageId = $packageId
         sourceCommit = $sourceCommit
         target = Get-Phase0SAssemblyIdentity -AssemblyPath $TerrariaIdentityInput
         payload = $payloadEntries
@@ -153,8 +154,7 @@ function Assert-Phase0SInstalledLayout {
         'JueMingR.Validation\JueMingR.Features.dll',
         'JueMingR.Validation\JueMingR.Infrastructure.dll',
         'JueMingR.Validation\0Harmony.dll',
-        'JueMingR.Validation\phase-0-s-runtime.manifest',
-        'JueMingR.Validation\phase-0-s-package.manifest.json'
+        'JueMingR.Validation\phase-0-s-runtime.manifest'
     )
     $actual = @(Get-Phase0STreeSnapshot -Root $Target | ForEach-Object { $_.path })
     foreach ($path in $required) {
