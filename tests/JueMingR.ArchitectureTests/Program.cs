@@ -28,12 +28,12 @@ namespace JueMingR.ArchitectureTests
 
                 if (failures.Count == 0)
                 {
-                    Console.WriteLine("PASS: all Phase 0-R architecture checks passed.");
+                    Console.WriteLine("PASS: all architecture checks passed.");
                     return 0;
                 }
 
                 Console.Error.WriteLine(
-                    "FAIL: Phase 0-R architecture checks found {0} violation(s):",
+                    "FAIL: architecture checks found {0} violation(s):",
                     failures.Count);
                 foreach (string failure in failures)
                 {

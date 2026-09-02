@@ -3,7 +3,9 @@ param(
     [Parameter(Mandatory = $true)]
     [string] $TerrariaExePath,
     [Parameter(Mandatory = $true)]
-    [string] $XnaGameAssemblyPath
+    [string] $XnaGameAssemblyPath,
+    [Parameter(Mandatory = $true)]
+    [string] $HarmonyPackagePath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -12,6 +14,7 @@ Set-StrictMode -Version 2.0
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $terrariaSource = [System.IO.Path]::GetFullPath($TerrariaExePath)
 $xnaSource = [System.IO.Path]::GetFullPath($XnaGameAssemblyPath)
+$harmonyPackageSource = [System.IO.Path]::GetFullPath($HarmonyPackagePath)
 $powershellPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
 $identifier = [Guid]::NewGuid().ToString('N')
 $worktreeA = Join-Path ([System.IO.Path]::GetTempPath()) ("JueMingR-Repro-$identifier-a")
@@ -47,6 +50,13 @@ function Invoke-WorktreeBuild {
         throw ('Reference preparation failed: ' + ($prepareOutput -join [Environment]::NewLine))
     }
 
+    $harmonyPrepareOutput = @(& $powershellPath -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
+        -File (Join-Path $Worktree 'scripts\prepare-harmony.ps1') `
+        -HarmonyPackagePath $harmonyPackageSource)
+    if ($LASTEXITCODE -ne 0) {
+        throw ('Harmony preparation failed: ' + ($harmonyPrepareOutput -join [Environment]::NewLine))
+    }
+
     $buildOutput = @(& $powershellPath -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
         -File (Join-Path $Worktree 'scripts\build.ps1') `
         -Configuration Release `
@@ -64,8 +74,9 @@ function Invoke-WorktreeBuild {
 }
 
 if (-not [System.IO.File]::Exists($terrariaSource) -or
-    -not [System.IO.File]::Exists($xnaSource)) {
-    throw 'Both explicit legal reference source files must exist.'
+    -not [System.IO.File]::Exists($xnaSource) -or
+    -not [System.IO.File]::Exists($harmonyPackageSource)) {
+    throw 'All explicit Terraria, XNA, and Harmony package source files must exist.'
 }
 if (-not [System.IO.File]::Exists($powershellPath)) {
     throw 'Windows PowerShell 5.1 is unavailable.'
@@ -86,6 +97,26 @@ try {
 
     $recordA = Invoke-WorktreeBuild -Worktree $worktreeA
     $recordB = Invoke-WorktreeBuild -Worktree $worktreeB
+    $referencesA = @($recordA.references)
+    $referencesB = @($recordB.references)
+    if ($referencesA.Count -ne 4 -or $referencesB.Count -ne 4) {
+        throw 'Each worktree build record must contain exactly four compile inputs.'
+    }
+    $referencesByNameB = @{}
+    foreach ($reference in $referencesB) {
+        $referencesByNameB[[string] $reference.logicalName] = $reference
+    }
+    foreach ($reference in $referencesA) {
+        $logicalName = [string] $reference.logicalName
+        if (-not $referencesByNameB.ContainsKey($logicalName) -or
+            [string] $referencesByNameB[$logicalName].sha256 -cne [string] $reference.sha256 -or
+            [string] $referencesByNameB[$logicalName].assemblySimpleName -cne [string] $reference.assemblySimpleName -or
+            [string] $referencesByNameB[$logicalName].assemblyVersion -cne [string] $reference.assemblyVersion -or
+            [string] $referencesByNameB[$logicalName].mvid -cne [string] $reference.mvid) {
+            throw ('Compile input differences: ' + $logicalName)
+        }
+    }
+
     $outputsA = @($recordA.outputs)
     $outputsB = @($recordB.outputs)
     if ($outputsA.Count -ne $outputsB.Count) {
