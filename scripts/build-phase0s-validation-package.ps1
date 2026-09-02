@@ -238,6 +238,7 @@ function Assert-Phase0SZipMatchesPackage {
     )
 
     $records = @(Get-Phase0SPackageTreeRecords -PackageRoot $PackageRoot)
+    Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction Stop
     $archive = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
     try {
         $entries = @($archive.Entries)
