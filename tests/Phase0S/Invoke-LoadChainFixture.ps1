@@ -78,22 +78,22 @@ function New-Phase0SFixtureRuntimeManifest {
     $targetHash = if ($UseWrongTargetHash) { ('0' * 64) } else { $target.sha256 }
     $lines = @(
         'schemaVersion=1',
-        'packageId=' + $PackageId,
-        'sourceCommit=' + $SourceCommit,
-        'targetAssemblySimpleName=' + $target.simpleName,
-        'targetAssemblyVersion=' + $target.version,
-        'targetAssemblyMvid=' + $target.mvid,
-        'targetAssemblySha256=' + $targetHash,
+        ('packageId=' + $PackageId),
+        ('sourceCommit=' + $SourceCommit),
+        ('targetAssemblySimpleName=' + $target.simpleName),
+        ('targetAssemblyVersion=' + $target.version),
+        ('targetAssemblyMvid=' + $target.mvid),
+        ('targetAssemblySha256=' + $targetHash),
         'targetTypeName=Terraria.Main',
         'targetMethodName=Initialize',
         ('targetMethodMetadataToken=0x{0:X8}' -f $initializeMethod.MetadataToken),
         'targetMethodIsStatic=false',
         'targetMethodReturnType=System.Void',
         'targetMethodParameterCount=0',
-        'hostAssemblySimpleName=' + $hostIdentity.simpleName,
-        'hostAssemblyVersion=' + $hostIdentity.version,
-        'hostAssemblyMvid=' + $hostIdentity.mvid,
-        'hostAssemblySha256=' + $hostIdentity.sha256,
+        ('hostAssemblySimpleName=' + $hostIdentity.simpleName),
+        ('hostAssemblyVersion=' + $hostIdentity.version),
+        ('hostAssemblyMvid=' + $hostIdentity.mvid),
+        ('hostAssemblySha256=' + $hostIdentity.sha256),
         'harmonyAssemblySimpleName=0Harmony',
         'harmonyAssemblyVersion=2.4.2.0',
         'harmonyAssemblyMvid=024a0e6e-c8c2-437e-ad04-7b6279389c23',
@@ -102,6 +102,7 @@ function New-Phase0SFixtureRuntimeManifest {
         'evidenceFileName=phase-0-s-evidence.log'
     )
     [System.IO.File]::WriteAllLines($ManifestPath, $lines, (New-Object System.Text.UTF8Encoding($false)))
+    Assert-Phase0SCondition -Condition (([System.IO.File]::ReadAllLines($ManifestPath)).Count -eq 23) -Message 'The fixture runtime manifest must contain exactly 23 lines.'
 }
 
 function New-Phase0SFixtureConfig {

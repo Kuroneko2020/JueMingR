@@ -28,20 +28,28 @@ function New-Phase0SControlledPackageFixture {
     [System.IO.Directory]::CreateDirectory($PackageRoot) | Out-Null
     $payloadRoot = Join-Path $PackageRoot 'payload'
     [System.IO.Directory]::CreateDirectory((Join-Path $payloadRoot 'JueMingR.Validation')) | Out-Null
+    $supportSource = Join-Path $RepositoryRoot 'scripts\phase0s\Phase0S.ScriptSupport.ps1'
+    if (-not [System.IO.File]::Exists($supportSource)) {
+        throw 'The Phase 0-S package fixture requires Phase0S.ScriptSupport.ps1.'
+    }
+    $supportDestination = Join-Path $PackageRoot 'Phase0S.ScriptSupport.ps1'
+    Copy-Item -LiteralPath $supportSource -Destination $supportDestination
+    . $supportDestination
 
     $sourceCommit = (& git -C $RepositoryRoot rev-parse HEAD).Trim()
     if ($LASTEXITCODE -ne 0 -or $sourceCommit -notmatch '^[0-9a-f]{40}$') {
         throw 'The controlled package fixture could not obtain a source commit identity.'
     }
     $packageId = 'phase0s-' + $sourceCommit
+    $targetIdentity = Get-Phase0SAssemblyIdentity -AssemblyPath $TerrariaIdentityInput
     $runtimeManifest = @(
         'schemaVersion=1',
-        'packageId=' + $packageId,
-        'sourceCommit=' + $sourceCommit,
+        ('packageId=' + $packageId),
+        ('sourceCommit=' + $sourceCommit),
         'targetAssemblySimpleName=Terraria',
         'targetAssemblyVersion=1.4.5.8',
-        'targetAssemblyMvid=00000000-0000-0000-0000-000000000000',
-        'targetAssemblySha256=' + (Get-Phase0SFileSha256 -Path $TerrariaIdentityInput),
+        ('targetAssemblyMvid=' + $targetIdentity.mvid),
+        ('targetAssemblySha256=' + $targetIdentity.sha256),
         'targetTypeName=Terraria.Main',
         'targetMethodName=Initialize',
         'targetMethodMetadataToken=0x06000001',
@@ -51,7 +59,7 @@ function New-Phase0SControlledPackageFixture {
         'hostAssemblySimpleName=JueMingR.TerrariaHost',
         'hostAssemblyVersion=0.0.0.0',
         'hostAssemblyMvid=00000000-0000-0000-0000-000000000000',
-        'hostAssemblySha256=' + ('0' * 64),
+        ('hostAssemblySha256=' + ('0' * 64)),
         'harmonyAssemblySimpleName=0Harmony',
         'harmonyAssemblyVersion=2.4.2.0',
         'harmonyAssemblyMvid=024a0e6e-c8c2-437e-ad04-7b6279389c23',
@@ -59,6 +67,7 @@ function New-Phase0SControlledPackageFixture {
         'patchOwner=JueMingR.Phase0S.MainInitialize',
         'evidenceFileName=phase-0-s-evidence.log'
     ) -join [Environment]::NewLine
+    Assert-Phase0SCondition -Condition ((@($runtimeManifest -split [Environment]::NewLine)).Count -eq 23) -Message 'The controlled package runtime manifest must contain exactly 23 lines.'
     $payloadContents = [ordered]@{
         'Terraria.exe.config' = '<configuration><runtime /></configuration>' + [Environment]::NewLine
         'JueMingR.Bootstrap.dll' = 'phase0s-controlled-bootstrap-fixture'
@@ -88,14 +97,17 @@ function New-Phase0SControlledPackageFixture {
         schemaVersion = 1
         packageId = $packageId
         sourceCommit = $sourceCommit
-        target = Get-Phase0SAssemblyIdentity -AssemblyPath $TerrariaIdentityInput
+        target = $targetIdentity
         payload = $payloadEntries
     }
     $manifestPath = Join-Path $PackageRoot 'phase-0-s-package.manifest.json'
     [System.IO.File]::WriteAllText(
         $manifestPath,
-        (($manifest | ConvertTo-Json -Depth 6) + [Environment]::NewLine),
+        (ConvertTo-Phase0SCanonicalPackageManifestText -Manifest $manifest),
         (New-Object System.Text.UTF8Encoding($false)))
+    $writtenPackageManifest = [System.IO.File]::ReadAllText($manifestPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+    $runtimePackageId = @($runtimeManifest -split [Environment]::NewLine | Where-Object { $_.StartsWith('packageId=', [System.StringComparison]::Ordinal) })[0].Substring('packageId='.Length)
+    Assert-Phase0SCondition -Condition ([string] $writtenPackageManifest.packageId -ceq $packageId -and $runtimePackageId -ceq $packageId -and [System.IO.File]::Exists($supportDestination) -and -not [System.IO.File]::Exists((Join-Path $payloadRoot 'Phase0S.ScriptSupport.ps1'))) -Message 'The controlled package must share one package id and keep its support script outside payload.'
 
     foreach ($scriptName in @('Install-Phase0S.ps1', 'Restore-Phase0S.ps1')) {
         $sourceScript = Join-Path $RepositoryRoot ('scripts\phase0s\' + $scriptName)
@@ -127,16 +139,76 @@ function Invoke-Phase0SPackageScript {
     return Invoke-Phase0SWindowsPowerShell -ScriptPath (Join-Path $PackageRoot $ScriptName) -Arguments @('-TerrariaDirectory', $TerrariaDirectory)
 }
 
+function Assert-Phase0SCompactJsonResult {
+    param(
+        [Parameter(Mandatory = $true)][pscustomobject] $Result,
+        [Parameter(Mandatory = $true)][string] $Operation,
+        [Parameter(Mandatory = $true)][int] $ExpectedExitCode,
+        [Parameter(Mandatory = $true)][string] $ExpectedCode,
+        [Parameter(Mandatory = $true)][string] $ExpectedStatus,
+        [Parameter(Mandatory = $true)][string] $TargetDirectory
+    )
+
+    Assert-Phase0SCondition -Condition ($Result.exitCode -eq $ExpectedExitCode) -Message "${Operation}/${ExpectedCode}: expected exit $ExpectedExitCode, actual $($Result.exitCode)."
+    Assert-Phase0SCondition -Condition ($Result.output.Count -eq 1) -Message "${Operation}/${ExpectedCode}: expected exactly one JSON output line."
+    $line = [string] $Result.output[0]
+    $resultObject = $line | ConvertFrom-Json
+    $actualProperties = @($resultObject.PSObject.Properties.Name | Sort-Object)
+    $expectedProperties = @('code', 'exitCode', 'object', 'operation', 'packageId', 'schemaVersion', 'sha256', 'status')
+    Assert-Phase0SCondition -Condition ((@($actualProperties) -join '|') -ceq ($expectedProperties -join '|')) -Message "${Operation}/${ExpectedCode}: result JSON properties differ from the fixed contract."
+    Assert-Phase0SCondition -Condition ($resultObject.schemaVersion -eq 1 -and [string] $resultObject.operation -ceq $Operation -and [string] $resultObject.status -ceq $ExpectedStatus -and [int] $resultObject.exitCode -eq $ExpectedExitCode -and [string] $resultObject.code -ceq $ExpectedCode) -Message "${Operation}/${ExpectedCode}: fixed result values do not match."
+    Assert-Phase0SCondition -Condition ($line.IndexOf([System.IO.Path]::GetFullPath($TargetDirectory), [System.StringComparison]::OrdinalIgnoreCase) -lt 0 -and $line.IndexOf([Environment]::UserName, [System.StringComparison]::OrdinalIgnoreCase) -lt 0 -and $actualProperties -notcontains 'message' -and $actualProperties -notcontains 'stack') -Message "${Operation}/${ExpectedCode}: result JSON leaked a path, username, message, or stack."
+}
+
+function Assert-Phase0SReceiptMatchesPackageManifest {
+    param(
+        [Parameter(Mandatory = $true)][string] $PackageRoot,
+        [Parameter(Mandatory = $true)][string] $TargetDirectory
+    )
+
+    $packageManifest = [System.IO.File]::ReadAllBytes((Join-Path $PackageRoot 'phase-0-s-package.manifest.json'))
+    $receipt = [System.IO.File]::ReadAllBytes((Join-Path $TargetDirectory 'JueMingR.Validation\phase-0-s-install-manifest.json'))
+    $identical = $packageManifest.Length -eq $receipt.Length
+    for ($index = 0; $identical -and $index -lt $packageManifest.Length; $index++) {
+        $identical = $packageManifest[$index] -eq $receipt[$index]
+    }
+    Assert-Phase0SCondition -Condition $identical -Message 'The install receipt is not a byte-for-byte copy of the package manifest.'
+}
+
+function Write-Phase0SEvidence {
+    param(
+        [Parameter(Mandatory = $true)][string] $TargetDirectory,
+        [Parameter(Mandatory = $true)][string] $PackageId,
+        [ValidateSet('prefix', 'complete', 'wrong-package', 'out-of-order', 'unknown')]
+        [string] $Kind
+    )
+
+    $events = @('TERRARIA_ASSEMBLY_READY', 'HARMONY_READY', 'HOOK_INSTALLED', 'MAIN_INITIALIZE_POSTFIX_FIRED', 'RUNTIME_HANDOFF_COMPLETE')
+    $eventCount = if ($Kind -eq 'prefix') { 3 } else { 5 }
+    $lines = New-Object System.Collections.Generic.List[string]
+    for ($index = 0; $index -lt $eventCount; $index++) {
+        $number = $index + 1
+        $eventPackageId = if ($Kind -eq 'wrong-package') { 'phase0s-0000000000000000000000000000000000000000' } else { $PackageId }
+        $eventName = if ($Kind -eq 'unknown' -and $index -eq 0) { 'UNKNOWN_EVENT' } else { $events[$index] }
+        $eventNumber = if ($Kind -eq 'out-of-order' -and $index -eq 1) { '03' } else { $number.ToString('D2') }
+        $lines.Add(('PHASE0S|1|{0}|{1}|{2}|{3}|1' -f $eventPackageId, $eventNumber, $eventName, [DateTime]::UtcNow.AddSeconds($index).ToString('o')))
+    }
+    [System.IO.File]::WriteAllLines((Join-Path $TargetDirectory 'JueMingR.Validation\phase-0-s-evidence.log'), $lines, (New-Object System.Text.UTF8Encoding($false)))
+}
+
 function Assert-Phase0SExitAndNoWrite {
     param(
         [Parameter(Mandatory = $true)][pscustomobject] $Result,
         [Parameter(Mandatory = $true)][int] $ExpectedExitCode,
         [Parameter(Mandatory = $true)][object[]] $Before,
         [Parameter(Mandatory = $true)][string] $Target,
-        [Parameter(Mandatory = $true)][string] $Scenario
+        [Parameter(Mandatory = $true)][string] $Scenario,
+        [Parameter(Mandatory = $true)][string] $Operation,
+        [Parameter(Mandatory = $true)][string] $ExpectedCode,
+        [Parameter(Mandatory = $true)][string] $ExpectedStatus
     )
 
-    Assert-Phase0SCondition -Condition ($Result.exitCode -eq $ExpectedExitCode) -Message "${Scenario}: expected exit $ExpectedExitCode, actual $($Result.exitCode)."
+    Assert-Phase0SCompactJsonResult -Result $Result -Operation $Operation -ExpectedExitCode $ExpectedExitCode -ExpectedCode $ExpectedCode -ExpectedStatus $ExpectedStatus -TargetDirectory $Target
     Assert-Phase0STreeSnapshotEqual -Expected $Before -Actual (Get-Phase0STreeSnapshot -Root $Target) -Context $Scenario
 }
 
@@ -175,24 +247,56 @@ function Invoke-Phase0SInstallRecoveryTests {
 
     $installScript = Join-Path $RepositoryRoot 'scripts\phase0s\Install-Phase0S.ps1'
     $restoreScript = Join-Path $RepositoryRoot 'scripts\phase0s\Restore-Phase0S.ps1'
-    if (-not [System.IO.File]::Exists($installScript) -or -not [System.IO.File]::Exists($restoreScript)) {
-        throw 'Phase 0-S install/recovery production scripts are required before behavior tests can run.'
+    $supportScript = Join-Path $RepositoryRoot 'scripts\phase0s\Phase0S.ScriptSupport.ps1'
+    if (-not [System.IO.File]::Exists($installScript) -or -not [System.IO.File]::Exists($restoreScript) -or -not [System.IO.File]::Exists($supportScript)) {
+        throw 'Phase 0-S install, restore, and support production scripts are required before behavior tests can run.'
     }
 
     $root = New-Phase0STestRoot
     try {
         $packageRoot = Join-Path $root 'controlled-package'
-        New-Phase0SControlledPackageFixture -RepositoryRoot $RepositoryRoot -PackageRoot $packageRoot -TerrariaIdentityInput $terrariaIdentityInput | Out-Null
+        $packageManifest = New-Phase0SControlledPackageFixture -RepositoryRoot $RepositoryRoot -PackageRoot $packageRoot -TerrariaIdentityInput $terrariaIdentityInput
 
         $existingConfig = New-Phase0STargetDirectory -Root $root -TerrariaIdentityInput $terrariaIdentityInput -Name 'existing-config'
         [System.IO.File]::WriteAllText((Join-Path $existingConfig 'Terraria.exe.config'), 'external-config', (New-Object System.Text.UTF8Encoding($false)))
         $before = Get-Phase0STreeSnapshot -Root $existingConfig
-        Assert-Phase0SExitAndNoWrite -Result (Invoke-Phase0SPackageScript -PackageRoot $packageRoot -ScriptName 'Install-Phase0S.ps1' -TerrariaDirectory $existingConfig) -ExpectedExitCode 10 -Before $before -Target $existingConfig -Scenario 'existing config'
+        Assert-Phase0SExitAndNoWrite -Result (Invoke-Phase0SPackageScript -PackageRoot $packageRoot -ScriptName 'Install-Phase0S.ps1' -TerrariaDirectory $existingConfig) -ExpectedExitCode 10 -Before $before -Target $existingConfig -Scenario 'existing config' -Operation 'install' -ExpectedCode 'CONFIG_EXISTS' -ExpectedStatus 'conflict'
+
+        $missingExeConfig = Join-Path $root 'config-short-circuit-missing-exe'
+        [System.IO.Directory]::CreateDirectory($missingExeConfig) | Out-Null
+        [System.IO.File]::WriteAllText((Join-Path $missingExeConfig 'Terraria.exe.config'), 'external-config', (New-Object System.Text.UTF8Encoding($false)))
+        $before = Get-Phase0STreeSnapshot -Root $missingExeConfig
+        Assert-Phase0SExitAndNoWrite -Result (Invoke-Phase0SPackageScript -PackageRoot $packageRoot -ScriptName 'Install-Phase0S.ps1' -TerrariaDirectory $missingExeConfig) -ExpectedExitCode 10 -Before $before -Target $missingExeConfig -Scenario 'config short-circuit missing Terraria.exe' -Operation 'install' -ExpectedCode 'CONFIG_EXISTS' -ExpectedStatus 'conflict'
+
+        $invalidExeConfig = New-Phase0STargetDirectory -Root $root -TerrariaIdentityInput $terrariaIdentityInput -Name 'config-short-circuit-invalid-exe'
+        [System.IO.File]::WriteAllText((Join-Path $invalidExeConfig 'Terraria.exe'), 'not-a-terraria-assembly', (New-Object System.Text.UTF8Encoding($false)))
+        [System.IO.File]::WriteAllText((Join-Path $invalidExeConfig 'Terraria.exe.config'), 'external-config', (New-Object System.Text.UTF8Encoding($false)))
+        $before = Get-Phase0STreeSnapshot -Root $invalidExeConfig
+        Assert-Phase0SExitAndNoWrite -Result (Invoke-Phase0SPackageScript -PackageRoot $packageRoot -ScriptName 'Install-Phase0S.ps1' -TerrariaDirectory $invalidExeConfig) -ExpectedExitCode 10 -Before $before -Target $invalidExeConfig -Scenario 'config short-circuit invalid Terraria.exe' -Operation 'install' -ExpectedCode 'CONFIG_EXISTS' -ExpectedStatus 'conflict'
+
+        $invalidPackageRoot = Join-Path $root 'invalid-package'
+        Copy-Item -LiteralPath $packageRoot -Destination $invalidPackageRoot -Recurse
+        [System.IO.File]::WriteAllText((Join-Path $invalidPackageRoot 'phase-0-s-package.manifest.json'), '{', (New-Object System.Text.UTF8Encoding($false)))
+        $invalidPackageConfig = New-Phase0STargetDirectory -Root $root -TerrariaIdentityInput $terrariaIdentityInput -Name 'config-short-circuit-invalid-package'
+        [System.IO.File]::WriteAllText((Join-Path $invalidPackageConfig 'Terraria.exe.config'), 'external-config', (New-Object System.Text.UTF8Encoding($false)))
+        $before = Get-Phase0STreeSnapshot -Root $invalidPackageConfig
+        Assert-Phase0SExitAndNoWrite -Result (Invoke-Phase0SPackageScript -PackageRoot $invalidPackageRoot -ScriptName 'Install-Phase0S.ps1' -TerrariaDirectory $invalidPackageConfig) -ExpectedExitCode 10 -Before $before -Target $invalidPackageConfig -Scenario 'config short-circuit invalid package' -Operation 'install' -ExpectedCode 'CONFIG_EXISTS' -ExpectedStatus 'conflict'
+
+        $allConflictConfig = New-Phase0STargetDirectory -Root $root -TerrariaIdentityInput $terrariaIdentityInput -Name 'config-short-circuit-all-conflicts'
+        [System.IO.File]::WriteAllText((Join-Path $allConflictConfig 'Terraria.exe'), 'not-a-terraria-assembly', (New-Object System.Text.UTF8Encoding($false)))
+        [System.IO.File]::WriteAllText((Join-Path $allConflictConfig 'Terraria.exe.config'), 'external-config', (New-Object System.Text.UTF8Encoding($false)))
+        [System.IO.File]::WriteAllText((Join-Path $allConflictConfig 'JueMingR.Bootstrap.dll'), 'external-bootstrap', (New-Object System.Text.UTF8Encoding($false)))
+        [System.IO.Directory]::CreateDirectory((Join-Path $allConflictConfig 'JueMingR.Validation')) | Out-Null
+        [System.IO.File]::WriteAllText((Join-Path $allConflictConfig 'Terraria.exe.config.phase0s-temp'), 'temp', (New-Object System.Text.UTF8Encoding($false)))
+        [System.IO.File]::WriteAllText((Join-Path $allConflictConfig 'JueMingR.Bootstrap.dll.phase0s-temp'), 'temp', (New-Object System.Text.UTF8Encoding($false)))
+        [System.IO.Directory]::CreateDirectory((Join-Path $allConflictConfig 'JueMingR.Validation.phase0s-stage')) | Out-Null
+        $before = Get-Phase0STreeSnapshot -Root $allConflictConfig
+        Assert-Phase0SExitAndNoWrite -Result (Invoke-Phase0SPackageScript -PackageRoot $invalidPackageRoot -ScriptName 'Install-Phase0S.ps1' -TerrariaDirectory $allConflictConfig) -ExpectedExitCode 10 -Before $before -Target $allConflictConfig -Scenario 'config short-circuit invalid Terraria, package, and later conflicts' -Operation 'install' -ExpectedCode 'CONFIG_EXISTS' -ExpectedStatus 'conflict'
 
         $bootstrapConflict = New-Phase0STargetDirectory -Root $root -TerrariaIdentityInput $terrariaIdentityInput -Name 'bootstrap-conflict'
         [System.IO.File]::WriteAllText((Join-Path $bootstrapConflict 'JueMingR.Bootstrap.dll'), 'external-bootstrap', (New-Object System.Text.UTF8Encoding($false)))
         $before = Get-Phase0STreeSnapshot -Root $bootstrapConflict
-        Assert-Phase0SExitAndNoWrite -Result (Invoke-Phase0SPackageScript -PackageRoot $packageRoot -ScriptName 'Install-Phase0S.ps1' -TerrariaDirectory $bootstrapConflict) -ExpectedExitCode 11 -Before $before -Target $bootstrapConflict -Scenario 'Bootstrap conflict'
+        Assert-Phase0SExitAndNoWrite -Result (Invoke-Phase0SPackageScript -PackageRoot $packageRoot -ScriptName 'Install-Phase0S.ps1' -TerrariaDirectory $bootstrapConflict) -ExpectedExitCode 11 -Before $before -Target $bootstrapConflict -Scenario 'Bootstrap conflict' -Operation 'install' -ExpectedCode 'BOOTSTRAP_CONFLICT' -ExpectedStatus 'conflict'
 
         foreach ($conflictName in @('sidecar-conflict', 'stage-conflict', 'config-temp-conflict', 'bootstrap-temp-conflict')) {
             $conflictTarget = New-Phase0STargetDirectory -Root $root -TerrariaIdentityInput $terrariaIdentityInput -Name $conflictName
@@ -204,32 +308,50 @@ function Invoke-Phase0SInstallRecoveryTests {
                 [System.IO.File]::WriteAllText($conflictPath, 'conflict', (New-Object System.Text.UTF8Encoding($false)))
             }
             $before = Get-Phase0STreeSnapshot -Root $conflictTarget
-            Assert-Phase0SExitAndNoWrite -Result (Invoke-Phase0SPackageScript -PackageRoot $packageRoot -ScriptName 'Install-Phase0S.ps1' -TerrariaDirectory $conflictTarget) -ExpectedExitCode 12 -Before $before -Target $conflictTarget -Scenario $conflictName
+            Assert-Phase0SExitAndNoWrite -Result (Invoke-Phase0SPackageScript -PackageRoot $packageRoot -ScriptName 'Install-Phase0S.ps1' -TerrariaDirectory $conflictTarget) -ExpectedExitCode 12 -Before $before -Target $conflictTarget -Scenario $conflictName -Operation 'install' -ExpectedCode 'WORK_PATH_CONFLICT' -ExpectedStatus 'conflict'
         }
 
         $identityMismatch = Join-Path $root 'identity-mismatch'
         [System.IO.Directory]::CreateDirectory($identityMismatch) | Out-Null
         [System.IO.File]::WriteAllText((Join-Path $identityMismatch 'Terraria.exe'), 'not-a-terraria-assembly', (New-Object System.Text.UTF8Encoding($false)))
         $before = Get-Phase0STreeSnapshot -Root $identityMismatch
-        Assert-Phase0SExitAndNoWrite -Result (Invoke-Phase0SPackageScript -PackageRoot $packageRoot -ScriptName 'Install-Phase0S.ps1' -TerrariaDirectory $identityMismatch) -ExpectedExitCode 4 -Before $before -Target $identityMismatch -Scenario 'Terraria identity mismatch'
+        Assert-Phase0SExitAndNoWrite -Result (Invoke-Phase0SPackageScript -PackageRoot $packageRoot -ScriptName 'Install-Phase0S.ps1' -TerrariaDirectory $identityMismatch) -ExpectedExitCode 4 -Before $before -Target $identityMismatch -Scenario 'Terraria identity mismatch' -Operation 'install' -ExpectedCode 'TERRARIA_IDENTITY_MISMATCH' -ExpectedStatus 'failure'
 
         $successTarget = New-Phase0STargetDirectory -Root $root -TerrariaIdentityInput $terrariaIdentityInput -Name 'success'
         $installResult = Invoke-Phase0SPackageScript -PackageRoot $packageRoot -ScriptName 'Install-Phase0S.ps1' -TerrariaDirectory $successTarget
-        Assert-Phase0SCondition -Condition ($installResult.exitCode -eq 0) -Message "successful install: expected exit 0, actual $($installResult.exitCode)."
+        Assert-Phase0SCompactJsonResult -Result $installResult -Operation 'install' -ExpectedExitCode 0 -ExpectedCode 'INSTALL_COMPLETE' -ExpectedStatus 'success' -TargetDirectory $successTarget
         Assert-Phase0SInstalledLayout -Target $successTarget
+        Assert-Phase0SReceiptMatchesPackageManifest -PackageRoot $packageRoot -TargetDirectory $successTarget
+        Write-Phase0SEvidence -TargetDirectory $successTarget -PackageId ([string] $packageManifest.packageId) -Kind 'complete'
 
         $restoreResult = Invoke-Phase0SPackageScript -PackageRoot $packageRoot -ScriptName 'Restore-Phase0S.ps1' -TerrariaDirectory $successTarget
-        Assert-Phase0SCondition -Condition ($restoreResult.exitCode -eq 0) -Message "exact restore: expected exit 0, actual $($restoreResult.exitCode)."
+        Assert-Phase0SCompactJsonResult -Result $restoreResult -Operation 'restore' -ExpectedExitCode 0 -ExpectedCode 'RESTORE_COMPLETE' -ExpectedStatus 'success' -TargetDirectory $successTarget
         $afterRestore = Get-Phase0STreeSnapshot -Root $successTarget
         Assert-Phase0STreeSnapshotEqual -Expected (Get-Phase0STreeSnapshot -Root (New-Phase0STargetDirectory -Root $root -TerrariaIdentityInput $terrariaIdentityInput -Name 'restore-baseline')) -Actual $afterRestore -Context 'exact restore'
 
+        $prefixTarget = New-Phase0STargetDirectory -Root $root -TerrariaIdentityInput $terrariaIdentityInput -Name 'evidence-prefix'
+        $installResult = Invoke-Phase0SPackageScript -PackageRoot $packageRoot -ScriptName 'Install-Phase0S.ps1' -TerrariaDirectory $prefixTarget
+        Assert-Phase0SCompactJsonResult -Result $installResult -Operation 'install' -ExpectedExitCode 0 -ExpectedCode 'INSTALL_COMPLETE' -ExpectedStatus 'success' -TargetDirectory $prefixTarget
+        Write-Phase0SEvidence -TargetDirectory $prefixTarget -PackageId ([string] $packageManifest.packageId) -Kind 'prefix'
+        $restoreResult = Invoke-Phase0SPackageScript -PackageRoot $packageRoot -ScriptName 'Restore-Phase0S.ps1' -TerrariaDirectory $prefixTarget
+        Assert-Phase0SCompactJsonResult -Result $restoreResult -Operation 'restore' -ExpectedExitCode 0 -ExpectedCode 'RESTORE_COMPLETE' -ExpectedStatus 'success' -TargetDirectory $prefixTarget
+
+        foreach ($invalidEvidence in @('wrong-package', 'out-of-order', 'unknown')) {
+            $invalidEvidenceTarget = New-Phase0STargetDirectory -Root $root -TerrariaIdentityInput $terrariaIdentityInput -Name ('evidence-' + $invalidEvidence)
+            $installResult = Invoke-Phase0SPackageScript -PackageRoot $packageRoot -ScriptName 'Install-Phase0S.ps1' -TerrariaDirectory $invalidEvidenceTarget
+            Assert-Phase0SCompactJsonResult -Result $installResult -Operation 'install' -ExpectedExitCode 0 -ExpectedCode 'INSTALL_COMPLETE' -ExpectedStatus 'success' -TargetDirectory $invalidEvidenceTarget
+            Write-Phase0SEvidence -TargetDirectory $invalidEvidenceTarget -PackageId ([string] $packageManifest.packageId) -Kind $invalidEvidence
+            $before = Get-Phase0STreeSnapshot -Root $invalidEvidenceTarget
+            Assert-Phase0SExitAndNoWrite -Result (Invoke-Phase0SPackageScript -PackageRoot $packageRoot -ScriptName 'Restore-Phase0S.ps1' -TerrariaDirectory $invalidEvidenceTarget) -ExpectedExitCode 30 -Before $before -Target $invalidEvidenceTarget -Scenario ('invalid evidence ' + $invalidEvidence) -Operation 'restore' -ExpectedCode 'OWNERSHIP_UNPROVEN' -ExpectedStatus 'failure'
+        }
+
         $noopBefore = Get-Phase0STreeSnapshot -Root $successTarget
-        Assert-Phase0SExitAndNoWrite -Result (Invoke-Phase0SPackageScript -PackageRoot $packageRoot -ScriptName 'Restore-Phase0S.ps1' -TerrariaDirectory $successTarget) -ExpectedExitCode 0 -Before $noopBefore -Target $successTarget -Scenario 'second restore noop'
+        Assert-Phase0SExitAndNoWrite -Result (Invoke-Phase0SPackageScript -PackageRoot $packageRoot -ScriptName 'Restore-Phase0S.ps1' -TerrariaDirectory $successTarget) -ExpectedExitCode 0 -Before $noopBefore -Target $successTarget -Scenario 'second restore noop' -Operation 'restore' -ExpectedCode 'RESTORE_NOOP' -ExpectedStatus 'noop'
 
         foreach ($modification in @('modified-static', 'unknown-sidecar')) {
             $modifiedTarget = New-Phase0STargetDirectory -Root $root -TerrariaIdentityInput $terrariaIdentityInput -Name $modification
             $installResult = Invoke-Phase0SPackageScript -PackageRoot $packageRoot -ScriptName 'Install-Phase0S.ps1' -TerrariaDirectory $modifiedTarget
-            Assert-Phase0SCondition -Condition ($installResult.exitCode -eq 0) -Message "$modification setup install failed with exit $($installResult.exitCode)."
+            Assert-Phase0SCompactJsonResult -Result $installResult -Operation 'install' -ExpectedExitCode 0 -ExpectedCode 'INSTALL_COMPLETE' -ExpectedStatus 'success' -TargetDirectory $modifiedTarget
             if ($modification -eq 'modified-static') {
                 [System.IO.File]::AppendAllText((Join-Path $modifiedTarget 'JueMingR.Bootstrap.dll'), 'external-change')
             }
@@ -237,7 +359,7 @@ function Invoke-Phase0SInstallRecoveryTests {
                 [System.IO.File]::WriteAllText((Join-Path $modifiedTarget 'JueMingR.Validation\unknown.txt'), 'external-file', (New-Object System.Text.UTF8Encoding($false)))
             }
             $before = Get-Phase0STreeSnapshot -Root $modifiedTarget
-            Assert-Phase0SExitAndNoWrite -Result (Invoke-Phase0SPackageScript -PackageRoot $packageRoot -ScriptName 'Restore-Phase0S.ps1' -TerrariaDirectory $modifiedTarget) -ExpectedExitCode 30 -Before $before -Target $modifiedTarget -Scenario $modification
+            Assert-Phase0SExitAndNoWrite -Result (Invoke-Phase0SPackageScript -PackageRoot $packageRoot -ScriptName 'Restore-Phase0S.ps1' -TerrariaDirectory $modifiedTarget) -ExpectedExitCode 30 -Before $before -Target $modifiedTarget -Scenario $modification -Operation 'restore' -ExpectedCode 'OWNERSHIP_UNPROVEN' -ExpectedStatus 'failure'
         }
     }
     finally {
