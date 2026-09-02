@@ -70,8 +70,38 @@ function Get-AssemblyMvid {
         }
     }
 
-    return [Reflection.Assembly]::ReflectionOnlyLoad(
-        [System.IO.File]::ReadAllBytes($Path)).ManifestModule.ModuleVersionId.ToString('D')
+    $powershellPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    if (-not [System.IO.File]::Exists($powershellPath)) {
+        throw 'Windows PowerShell 5.1 is unavailable for isolated MVID inspection.'
+    }
+
+    $environmentName = 'JUEMINGR_PHASE0S_MVID_PATH'
+    $previousEnvironmentValue = [Environment]::GetEnvironmentVariable($environmentName, 'Process')
+    $previousErrorActionPreference = $ErrorActionPreference
+    $inspectionCommand = '[Console]::Out.WriteLine([Reflection.Assembly]::ReflectionOnlyLoadFrom($env:JUEMINGR_PHASE0S_MVID_PATH).ManifestModule.ModuleVersionId.ToString("D"))'
+    $encodedInspectionCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($inspectionCommand))
+    $output = @()
+    $exitCode = -1
+    try {
+        [Environment]::SetEnvironmentVariable($environmentName, $Path, 'Process')
+        $ErrorActionPreference = 'Continue'
+        $output = @(& $powershellPath -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
+            -EncodedCommand $encodedInspectionCommand 2>&1)
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+        [Environment]::SetEnvironmentVariable($environmentName, $previousEnvironmentValue, 'Process')
+    }
+
+    $mvid = if ($output.Count -eq 1) { ([string] $output[0]).Trim() } else { '' }
+    $parsedMvid = [Guid]::Empty
+    if ($exitCode -ne 0 -or
+        -not [Guid]::TryParseExact($mvid, 'D', [ref] $parsedMvid) -or
+        $parsedMvid.ToString('D') -cne $mvid) {
+        throw 'Isolated Harmony MVID inspection failed.'
+    }
+    return $mvid
 }
 
 function Test-HarmonyAssembly {
