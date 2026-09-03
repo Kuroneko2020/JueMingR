@@ -24,6 +24,8 @@ namespace JueMingR.Bootstrap
         private Assembly reLogicAssembly;
         private RuntimeManifest manifest;
         private string evidencePath;
+        private string diagnosticSentinelPath;
+        private bool reLogicAssemblyLoadObserved;
         private bool evidenceCreated;
         private int errorRecorded;
 
@@ -100,6 +102,16 @@ namespace JueMingR.Bootstrap
                     }
                     else
                     {
+                        if (!reLogicAssemblyLoadObserved)
+                        {
+                            reLogicAssemblyLoadObserved = true;
+                            Phase0SDiagnosticSentinel.TryWrite(
+                                diagnosticSentinelPath,
+                                manifest.PackageId,
+                                "RELOGIC_ASSEMBLY_LOAD_OBSERVED",
+                                "OBSERVED");
+                        }
+
                         ObserveReLogicLocked(assembly);
                     }
 
@@ -129,6 +141,9 @@ namespace JueMingR.Bootstrap
             string sidecarDirectory = Path.Combine(baseDirectory, "JueMingR.Validation");
             manifest = RuntimeManifest.Read(Path.Combine(sidecarDirectory, "phase-0-s-runtime.manifest"));
             evidencePath = Path.Combine(sidecarDirectory, manifest.EvidenceFileName);
+            diagnosticSentinelPath = Path.Combine(
+                sidecarDirectory,
+                Phase0SDiagnosticSentinel.FileName);
         }
 
         private void ObserveTargetLocked(Assembly candidate)

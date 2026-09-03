@@ -1,53 +1,50 @@
-# Phase 0-S 项目所有者实机测试卡
+# Phase 0-S 一次性最小实机诊断卡
 
-这不是正式发布，只验证 Terraria 1.4.5.8 的一次最小加载交接。请由你亲自运行脚本、启动 Terraria、观察和恢复；Agent 不会操作你的 Terraria。
+这不是 V3 修复版，也不是正式发布、Phase 0-S 成功或未来加载设计。它只诊断当前唯一目标 `Terraria.Main.Initialize()` 上为何已有 `HOOK_INSTALLED` 却没有正式 postfix evidence。
 
-## 测试前
+Agent 只负责核验诊断包、安装、复制并分析 evidence、以及用同一精确匹配包恢复。Agent 不会启动、关闭或操作 Terraria；游戏内动作仍由项目所有者亲自完成。
 
-1. 确认 Terraria 已关闭。
-2. 保留完整验证包，不要手工复制、拆分或重排包内文件。
-3. 从 `phase-0-s-build-record.json` 核对你收到的 ZIP 文件名和 SHA-256；把验证包解压到 Terraria 目录以外。
-4. 准备自己的 Terraria 安装目录路径。若目录中已有 `Terraria.exe.config`，安装脚本会立即停止且不留下任何新文件；不要为了继续测试而让脚本覆盖、合并、改名或备份它。
+## Agent 安装停止门
 
-## 由你亲自执行
+Agent 只会在以下条件全部成立后安装：
 
-在解压后的验证包目录打开 PowerShell，运行：
+- Terraria 进程为 0；
+- `Terraria.exe` 精确身份与 SHA-256 匹配；
+- 包来自当前 clean commit，manifest、payload 与 ZIP 身份匹配；
+- `Terraria.exe.config`、根目录 Bootstrap、sidecar、staging/temp 均无冲突；
+- 隔离 fixture、安装/恢复、Debug、Release、架构和可重复构建门禁通过；
+- 唯一一次定向只读复核通过。
 
-```powershell
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\Install-Phase0S.ps1 -TerrariaDirectory "<你的 Terraria 目录>"
-```
+安装脚本只应输出一行 JSON。只有 `exitCode` 为 `0` 且 `code` 为 `INSTALL_COMPLETE` 时，Agent 才会明确通知项目所有者进入启动步骤；其它结果立即停止，不覆盖、不合并、不改名、不删除现有文件，也不反复重试。
 
-脚本只应输出一行 JSON。只有 `exitCode` 为 `0` 且 `code` 为 `INSTALL_COMPLETE` 时才继续。其它结果都立即停止：不要手工复制、覆盖、改名、删除文件，也不要反复重试；保存这一行 JSON 并交给 Agent。
+## 项目所有者只做一次
 
-安装成功后：
+收到 Agent 明确的“诊断包已安装，可以启动 Terraria”后：
 
 1. 通过平常方式亲自启动 Terraria。
-2. 只观察能否进入主菜单；本次不测试功能、多人或 FPS。
-3. 无论能否进入主菜单，都关闭 Terraria，确认进程已经退出。
-4. 在恢复前，把 Terraria 目录中的 `JueMingR.Validation\phase-0-s-evidence.log` 复制到 Terraria 目录外的自选位置。若文件不存在，也不要重试或更换 Hook；记录“evidence 缺失”并继续恢复。
-5. 不需要自行解释 evidence；把复制出的文件、安装 JSON、验证包 manifest 和 ZIP SHA-256 一并交给 Agent。
+2. 进入主菜单；若可正常操作，再进入一个普通存档。
+3. 正常退出 Terraria，并确认游戏进程已经结束。
+4. 回传：“诊断测试完成，Terraria 已退出”。若无法启动或无法正常退出，只说明实际现象，不要修改、复制或删除诊断文件，也不要重复启动。
 
-仍在同一个验证包目录运行恢复：
+不需要自行查看或解释日志，不需要手工运行安装/恢复脚本，也不要改用 `LoadContent`、`Update`、`Draw`、`DoUpdate` 或其它 Hook。
 
-```powershell
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\Restore-Phase0S.ps1 -TerrariaDirectory "<同一 Terraria 目录>"
-```
+## Agent 在退出后处理
 
-只有 `exitCode` 为 `0`，且 `code` 为 `RESTORE_COMPLETE` 或 `RESTORE_NOOP`，才表示脚本恢复步骤完成。其它结果请保留现场并把唯一一行 JSON 交给 Agent；不要强制删除或递归清理。
+确认 Terraria 进程为 0 后，Agent 才会：
 
-恢复完成后，由你亲自再次按平常方式启动原版 Terraria，确认能否进入主菜单，然后正常退出。
+1. 复制 `JueMingR.Validation\phase-0-s-diagnostic.sentinel` 与 `phase-0-s-evidence.log`（若存在）到真实 Terraria 目录之外；
+2. 核对同一 package id，分析 Patch 开始/返回、metadata、prefix、postfix、gate/context 与正式 evidence 写入；
+3. 使用同一精确匹配包运行 `Restore-Phase0S.ps1`；
+4. 核验 `Terraria.exe.config`、`JueMingR.Bootstrap.dll`、`JueMingR.Validation` 已精确移除，且 `Terraria.exe` 未改变；
+5. 只给出 A/B/C/D/E 中的一项诊断结论并停止。
 
-## 需要回传和裁决
+恢复正常且文件身份无异常时，不要求项目所有者额外启动纯原版 Terraria。若恢复脚本失败或文件身份异常，Agent 会保留现场并停止，不会强制删除或递归清理。
 
-请分开记录：
+## 两类本地证据
 
-- 安装脚本的唯一 JSON 行；
-- 首次启动是否进入主菜单；
-- 复制出的 evidence 文件，或“evidence 缺失”；
-- 恢复脚本的唯一 JSON 行；
-- 恢复后原版 Terraria 是否进入主菜单；
-- 你对本次实机结果是否接受：接受 / 不接受 / 需要继续判断。
+- 正式 evidence 仍是原有 `01` 至 `05` 五事件合同；本次诊断不降低或替代该成功判据。
+- 独立 sentinel 只允许五类诊断事件：`RELOGIC_ASSEMBLY_LOAD_OBSERVED`、`PATCH_BEGIN`、`PATCH_RETURNED`、`MAIN_INITIALIZE_ENTRY_OBSERVED`、`POSTFIX_ENTRY`。状态字段只用于区分 metadata、gate/context 与正式 evidence 写入结果。
 
-自动测试、构建成功、安装脚本成功、游戏窗口出现或进入主菜单，都不等于最小交接成功。只有 Agent 核对同一 package id 的 `01` 至 `05` 五项事件完整且顺序正确，才算 Phase 0-S 最小加载交接成功。若第 `04` 或第 `05` 项缺失，保留证据并停止；不要重试，也不要改用 `LoadContent`、`Update`、`Draw`、`DoUpdate` 或其它 Hook。
+sentinel 是有界、无 BOM、无绝对路径、无用户数据的一次性文件。package manifest schema 2 只因增加了该文件的固定相对路径声明；这不是产品版本、修复版本或配置迁移。恢复脚本只在 package id、格式与 manifest 声明都匹配时删除它。
 
-本卡不能证明 Steam/GOG 的广泛兼容、Windows 10/11 全覆盖、多人、性能、任何玩家功能、未来长期 Hook 或正式发行布局。
+即使本次得到完整正式 `01` 至 `05`，也不能把结果直接算作 Phase 0-S 成功，因为临时 prefix 和额外观测改变了 Patch 形态。本次不验证多人、性能、玩家功能、广泛平台兼容或未来长期 Hook。

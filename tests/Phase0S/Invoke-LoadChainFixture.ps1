@@ -303,6 +303,13 @@ function Invoke-Phase0SLoadChainFixtureTests {
         }
         Assert-Phase0SCondition -Condition ($successResult.exitCode -eq 0) -Message "load-chain success fixture: expected exit 0, actual $($successResult.exitCode)."
 
+        $writerFailure = New-Phase0SFixtureRunDirectory -Root $root -Name 'formal-writer-failure' -FixtureExe $fixtureExe -ProductionOutputs $productionOutputs -HarmonyPath $harmonyPath -PackageId ('phase0s-fixture-' + [Guid]::NewGuid().ToString('N')) -SourceCommit $sourceCommit
+        $writerFailureResult = Invoke-Phase0SFixtureExe -FixtureExe $writerFailure.exePath -Mode 'expect-writer-failure' -EvidencePath $writerFailure.evidencePath -PackageId $writerFailure.packageId
+        foreach ($line in $writerFailureResult.output) {
+            Write-Host $line
+        }
+        Assert-Phase0SCondition -Condition ($writerFailureResult.exitCode -eq 0) -Message "formal writer failure fixture: expected independent prefix/postfix observations; actual exit $($writerFailureResult.exitCode)."
+
         $legacy = New-Phase0SFixtureRunDirectory -Root $root -Name 'legacy-primary' -FixtureExe $fixtureExe -ProductionOutputs $productionOutputs -HarmonyPath $harmonyPath -PackageId ('phase0s-fixture-' + [Guid]::NewGuid().ToString('N')) -SourceCommit $sourceCommit
         $legacyResult = Invoke-Phase0SFixtureExe -FixtureExe $legacy.exePath -Mode 'expect-legacy-primary' -EvidencePath $legacy.evidencePath -PackageId $legacy.packageId
         foreach ($line in $legacyResult.output) {

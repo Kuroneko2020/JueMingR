@@ -59,12 +59,13 @@ namespace Terraria
             {
                 if (args.Length != 3 ||
                     (args[0] != "expect-handoff" &&
+                     args[0] != "expect-writer-failure" &&
                      args[0] != "expect-no-handoff" &&
                      args[0] != "expect-legacy-primary" &&
                      !args[0].StartsWith("driver-", StringComparison.Ordinal)))
                 {
                     throw new ArgumentException(
-                        "Usage: Terraria expect-handoff|expect-no-handoff|expect-legacy-primary <evidence-path> <package-id>");
+                        "Usage: Terraria expect-handoff|expect-writer-failure|expect-no-handoff|expect-legacy-primary <evidence-path> <package-id>");
                 }
 
                 string mode = args[0];
@@ -102,7 +103,21 @@ namespace Terraria
 
                 // The fixture's first lifecycle action is its first, parameterless Main.Initialize call.
                 var main = new Main();
-                main.RunFirstInitialize();
+                if (mode == "expect-writer-failure")
+                {
+                    using (FileStream evidenceLock = new FileStream(
+                        evidencePath,
+                        FileMode.Open,
+                        FileAccess.Read,
+                        FileShare.Read))
+                    {
+                        main.RunFirstInitialize();
+                    }
+                }
+                else
+                {
+                    main.RunFirstInitialize();
+                }
 
                 if (mode == "expect-handoff")
                 {
@@ -120,6 +135,12 @@ namespace Terraria
                 if (mode == "expect-handoff")
                 {
                     AssertCompleteHandoff(evidenceLines, packageId);
+                    AssertDiagnosticObservations(evidencePath, packageId, false);
+                }
+                else if (mode == "expect-writer-failure")
+                {
+                    AssertFormalWriterFailure(evidenceLines, packageId);
+                    AssertDiagnosticObservations(evidencePath, packageId, true);
                 }
                 else if (mode == "expect-legacy-primary")
                 {
@@ -315,6 +336,7 @@ namespace Terraria
                     instance,
                     null);
                 AssertCompleteHandoff(File.ReadAllLines(evidencePath), packageId);
+                AssertDiagnosticEntryPair(evidencePath, packageId);
             }
             else
             {
@@ -512,6 +534,139 @@ namespace Terraria
                     throw new InvalidOperationException(
                         "Evidence line " + (index + 1) + " is not the required strict Phase 0-S event.");
                 }
+            }
+        }
+
+        private static void AssertFormalWriterFailure(IList<string> evidenceLines, string packageId)
+        {
+            if (evidenceLines.Count != 3)
+            {
+                throw new InvalidOperationException(
+                    "The forced formal-writer failure must retain exactly events 01-03.");
+            }
+
+            AssertEvent(evidenceLines[0], packageId, "01", "TERRARIA_ASSEMBLY_READY");
+            AssertEvent(evidenceLines[1], packageId, "02", "HARMONY_READY");
+            AssertEvent(evidenceLines[2], packageId, "03", "HOOK_INSTALLED");
+        }
+
+        private static void AssertDiagnosticObservations(
+            string evidencePath,
+            string packageId,
+            bool expectFormalWriterFailure)
+        {
+            string sentinelPath = Path.Combine(
+                Path.GetDirectoryName(evidencePath),
+                "phase-0-s-diagnostic.sentinel");
+            if (!File.Exists(sentinelPath))
+            {
+                throw new InvalidOperationException("The independent diagnostic sentinel is missing.");
+            }
+
+            string[] lines = File.ReadAllLines(sentinelPath);
+            string[] expectedEvents =
+            {
+                "RELOGIC_ASSEMBLY_LOAD_OBSERVED",
+                "PATCH_BEGIN",
+                "PATCH_RETURNED",
+                "PATCH_RETURNED",
+                "MAIN_INITIALIZE_ENTRY_OBSERVED",
+                "POSTFIX_ENTRY",
+                "POSTFIX_ENTRY",
+                "POSTFIX_ENTRY"
+            };
+            string[] expectedStates =
+            {
+                "OBSERVED",
+                "BEGIN",
+                "RETURNED",
+                "METADATA_CONFIRMED",
+                "ENTERED",
+                "ENTERED",
+                "GATE_PASSED",
+                expectFormalWriterFailure
+                    ? "FORMAL_EVIDENCE_WRITE_FAILED"
+                    : "FORMAL_EVIDENCE_WRITE_SUCCEEDED"
+            };
+            if (lines.Length != expectedEvents.Length)
+            {
+                throw new InvalidOperationException(
+                    "The diagnostic sentinel must contain exactly the bounded expected observations. Actual: " +
+                    String.Join(" || ", lines));
+            }
+
+            for (int index = 0; index < lines.Length; index++)
+            {
+                AssertDiagnosticLine(
+                    lines[index],
+                    packageId,
+                    expectedEvents[index],
+                    expectedStates[index]);
+            }
+        }
+
+        private static void AssertDiagnosticEntryPair(string evidencePath, string packageId)
+        {
+            string sentinelPath = Path.Combine(
+                Path.GetDirectoryName(evidencePath),
+                "phase-0-s-diagnostic.sentinel");
+            string[] lines = File.Exists(sentinelPath)
+                ? File.ReadAllLines(sentinelPath)
+                : new string[0];
+            bool prefixObserved = false;
+            bool postfixObserved = false;
+            foreach (string line in lines)
+            {
+                string[] fields = line.Split('|');
+                if (fields.Length != 7 || fields[0] != "PHASE0S-DIAGNOSTIC" ||
+                    fields[1] != "1" || fields[2] != packageId)
+                {
+                    throw new InvalidOperationException("A diagnostic sentinel line is invalid.");
+                }
+
+                prefixObserved |= fields[3] == "MAIN_INITIALIZE_ENTRY_OBSERVED" &&
+                    fields[4] == "ENTERED";
+                postfixObserved |= fields[3] == "POSTFIX_ENTRY" && fields[4] == "ENTERED";
+            }
+
+            if (!prefixObserved || !postfixObserved)
+            {
+                throw new InvalidOperationException(
+                    "The fixture must observe the temporary prefix and postfix independently.");
+            }
+        }
+
+        private static void AssertDiagnosticLine(
+            string line,
+            string packageId,
+            string eventName,
+            string state)
+        {
+            string[] fields = line.Split('|');
+            int threadId;
+            DateTimeOffset timestamp;
+            if (fields.Length != 7 ||
+                fields[0] != "PHASE0S-DIAGNOSTIC" ||
+                fields[1] != "1" ||
+                fields[2] != packageId ||
+                fields[3] != eventName ||
+                fields[4] != state ||
+                !DateTimeOffset.TryParseExact(
+                    fields[5],
+                    "O",
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.None,
+                    out timestamp) ||
+                timestamp.Offset != TimeSpan.Zero ||
+                !Int32.TryParse(
+                    fields[6],
+                    NumberStyles.None,
+                    CultureInfo.InvariantCulture,
+                    out threadId) ||
+                threadId <= 0)
+            {
+                throw new InvalidOperationException(
+                    "A diagnostic sentinel observation is invalid: " + line);
             }
         }
 

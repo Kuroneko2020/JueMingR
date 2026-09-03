@@ -447,7 +447,7 @@ try {
         })
     }
     $manifest = [pscustomobject][ordered]@{
-        schemaVersion = 1
+        schemaVersion = 2
         packageId = $packageId
         sourceCommit = $sourceCommit
         target = [pscustomobject][ordered]@{
@@ -455,6 +455,9 @@ try {
             version = '1.4.5.8'
             mvid = '2c29f6c3-4bd9-4add-9c58-da159804e083'
             sha256 = '960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3'
+        }
+        diagnosticSentinel = [pscustomobject][ordered]@{
+            installRelativePath = 'JueMingR.Validation/phase-0-s-diagnostic.sentinel'
         }
         payload = $payloadEntries.ToArray()
     }

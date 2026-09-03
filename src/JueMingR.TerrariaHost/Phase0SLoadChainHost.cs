@@ -201,6 +201,8 @@ namespace JueMingR.TerrariaHost
         private static int postfixGate;
         private static int handoffGate;
         private static PostfixContext postfixContext;
+        private static string diagnosticPackageId;
+        private static string diagnosticSentinelPath;
 
         internal static void Install(
             RuntimeManifest manifest,
@@ -214,34 +216,67 @@ namespace JueMingR.TerrariaHost
             }
 
             MethodInfo targetMethod = ResolveTargetMethod(manifest, targetAssembly);
+            MethodInfo prefixMethod = typeof(Phase0SHarmonyWorker).GetMethod(
+                "OneTimeDiagnosticPrefix",
+                BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.DeclaredOnly,
+                null,
+                Type.EmptyTypes,
+                null);
             MethodInfo postfixMethod = typeof(Phase0SHarmonyWorker).GetMethod(
                 "Postfix",
                 BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.DeclaredOnly,
                 null,
                 Type.EmptyTypes,
                 null);
-            if (postfixMethod == null || postfixMethod.ReturnType != typeof(void))
+            if (prefixMethod == null || prefixMethod.ReturnType != typeof(void) ||
+                postfixMethod == null || postfixMethod.ReturnType != typeof(void))
             {
-                throw new InvalidOperationException("The fixed Phase 0-S postfix is invalid.");
+                throw new InvalidOperationException("The fixed Phase 0-S diagnostic patch methods are invalid.");
             }
 
+            string sidecarDirectory = Path.Combine(
+                Path.GetFullPath(AppDomain.CurrentDomain.BaseDirectory),
+                "JueMingR.Validation");
             string evidencePath = Path.Combine(
-                Path.Combine(Path.GetFullPath(AppDomain.CurrentDomain.BaseDirectory), "JueMingR.Validation"),
+                sidecarDirectory,
                 manifest.EvidenceFileName);
             postfixContext = new PostfixContext(manifest.PackageId, evidencePath);
+            diagnosticPackageId = manifest.PackageId;
+            diagnosticSentinelPath = Path.Combine(
+                sidecarDirectory,
+                Phase0SDiagnosticSentinel.FileName);
 
             Harmony harmony = new Harmony(manifest.PatchOwner);
             bool patchAttempted = false;
             try
             {
                 patchAttempted = true;
+                Phase0SDiagnosticSentinel.TryWrite(
+                    diagnosticSentinelPath,
+                    diagnosticPackageId,
+                    "PATCH_BEGIN",
+                    "BEGIN");
                 harmony.Patch(
                     targetMethod,
-                    null,
+                    new HarmonyMethod(prefixMethod),
                     new HarmonyMethod(postfixMethod),
                     null,
                     null);
-                VerifyExactPatchInfo(targetMethod, postfixMethod, manifest.PatchOwner);
+                Phase0SDiagnosticSentinel.TryWrite(
+                    diagnosticSentinelPath,
+                    diagnosticPackageId,
+                    "PATCH_RETURNED",
+                    "RETURNED");
+                VerifyExactPatchInfo(
+                    targetMethod,
+                    prefixMethod,
+                    postfixMethod,
+                    manifest.PatchOwner);
+                Phase0SDiagnosticSentinel.TryWrite(
+                    diagnosticSentinelPath,
+                    diagnosticPackageId,
+                    "PATCH_RETURNED",
+                    "METADATA_CONFIRMED");
                 EvidenceWriter.AppendEvent(evidencePath, manifest.PackageId, 3, "HOOK_INSTALLED");
                 Volatile.Write(ref hookCommitted, 1);
             }
@@ -304,6 +339,7 @@ namespace JueMingR.TerrariaHost
 
         private static void VerifyExactPatchInfo(
             MethodInfo targetMethod,
+            MethodInfo prefixMethod,
             MethodInfo postfixMethod,
             string expectedOwner)
         {
@@ -311,7 +347,7 @@ namespace JueMingR.TerrariaHost
             if (patches == null ||
                 patches.Owners.Count != 1 ||
                 !String.Equals(patches.Owners[0], expectedOwner, StringComparison.Ordinal) ||
-                patches.Prefixes.Count != 0 ||
+                patches.Prefixes.Count != 1 ||
                 patches.Postfixes.Count != 1 ||
                 patches.Transpilers.Count != 0 ||
                 patches.Finalizers.Count != 0 ||
@@ -321,11 +357,14 @@ namespace JueMingR.TerrariaHost
                 throw new InvalidOperationException("The Phase 0-S patch set is not exact.");
             }
 
+            Patch prefix = patches.Prefixes[0];
             Patch postfix = patches.Postfixes[0];
-            if (!String.Equals(postfix.owner, expectedOwner, StringComparison.Ordinal) ||
+            if (!String.Equals(prefix.owner, expectedOwner, StringComparison.Ordinal) ||
+                !SameMethod(prefix.PatchMethod, prefixMethod) ||
+                !String.Equals(postfix.owner, expectedOwner, StringComparison.Ordinal) ||
                 !SameMethod(postfix.PatchMethod, postfixMethod))
             {
-                throw new InvalidOperationException("The Phase 0-S postfix owner or method does not match.");
+                throw new InvalidOperationException("The Phase 0-S diagnostic patch owner or method does not match.");
             }
         }
 
@@ -337,30 +376,92 @@ namespace JueMingR.TerrariaHost
                 left.MetadataToken == right.MetadataToken;
         }
 
+        // One-time Phase 0-S diagnostic only: no parameters, no game-state access, and no flow control.
+        // It is not approved as part of a future production load chain.
+        private static void OneTimeDiagnosticPrefix()
+        {
+            Phase0SDiagnosticSentinel.TryWrite(
+                diagnosticSentinelPath,
+                diagnosticPackageId,
+                "MAIN_INITIALIZE_ENTRY_OBSERVED",
+                "ENTERED");
+        }
+
         private static void Postfix()
         {
-            if (Volatile.Read(ref hookCommitted) != 1 ||
-                Interlocked.CompareExchange(ref postfixGate, 1, 0) != 0)
+            Phase0SDiagnosticSentinel.TryWrite(
+                diagnosticSentinelPath,
+                diagnosticPackageId,
+                "POSTFIX_ENTRY",
+                "ENTERED");
+
+            if (Volatile.Read(ref hookCommitted) != 1)
             {
+                Phase0SDiagnosticSentinel.TryWrite(
+                    diagnosticSentinelPath,
+                    diagnosticPackageId,
+                    "POSTFIX_ENTRY",
+                    "HOOK_COMMIT_NOT_OBSERVED");
                 return;
             }
 
+            if (Interlocked.CompareExchange(ref postfixGate, 1, 0) != 0)
+            {
+                Phase0SDiagnosticSentinel.TryWrite(
+                    diagnosticSentinelPath,
+                    diagnosticPackageId,
+                    "POSTFIX_ENTRY",
+                    "GATE_ALREADY_CONSUMED");
+                return;
+            }
+
+            Phase0SDiagnosticSentinel.TryWrite(
+                diagnosticSentinelPath,
+                diagnosticPackageId,
+                "POSTFIX_ENTRY",
+                "GATE_PASSED");
             PostfixContext context = postfixContext;
-            string stage = "POSTFIX";
+            if (context == null)
+            {
+                Phase0SDiagnosticSentinel.TryWrite(
+                    diagnosticSentinelPath,
+                    diagnosticPackageId,
+                    "POSTFIX_ENTRY",
+                    "CONTEXT_UNAVAILABLE");
+                return;
+            }
+
             try
             {
-                if (context == null)
-                {
-                    throw new InvalidOperationException("The Phase 0-S postfix context is unavailable.");
-                }
-
                 EvidenceWriter.AppendEvent(
                     context.EvidencePath,
                     context.PackageId,
                     4,
                     "MAIN_INITIALIZE_POSTFIX_FIRED");
+                Phase0SDiagnosticSentinel.TryWrite(
+                    diagnosticSentinelPath,
+                    diagnosticPackageId,
+                    "POSTFIX_ENTRY",
+                    "FORMAL_EVIDENCE_WRITE_SUCCEEDED");
+            }
+            catch (Exception exception)
+            {
+                Phase0SDiagnosticSentinel.TryWrite(
+                    diagnosticSentinelPath,
+                    diagnosticPackageId,
+                    "POSTFIX_ENTRY",
+                    "FORMAL_EVIDENCE_WRITE_FAILED");
+                Phase0SLoadChainHost.TryRecordPrimaryError(
+                    context.EvidencePath,
+                    context.PackageId,
+                    "POSTFIX",
+                    "APPEND_FAILED",
+                    exception);
+                return;
+            }
 
-                stage = "HANDOFF";
+            try
+            {
                 CompleteEmptyHandoffOnce();
                 EvidenceWriter.AppendEvent(
                     context.EvidencePath,
@@ -375,7 +476,7 @@ namespace JueMingR.TerrariaHost
                     Phase0SLoadChainHost.TryRecordPrimaryError(
                         context.EvidencePath,
                         context.PackageId,
-                        stage,
+                        "HANDOFF",
                         "APPEND_FAILED",
                         exception);
                 }

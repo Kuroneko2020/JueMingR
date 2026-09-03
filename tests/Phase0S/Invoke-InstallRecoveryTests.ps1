@@ -103,10 +103,13 @@ function New-Phase0SControlledPackageFixture {
         }
     })
     $manifest = [ordered]@{
-        schemaVersion = 1
+        schemaVersion = 2
         packageId = $packageId
         sourceCommit = $sourceCommit
         target = $targetIdentity
+        diagnosticSentinel = [ordered]@{
+            installRelativePath = 'JueMingR.Validation/phase-0-s-diagnostic.sentinel'
+        }
         payload = $payloadEntries
     }
     $manifestPath = Join-Path $PackageRoot 'phase-0-s-package.manifest.json'
@@ -116,7 +119,7 @@ function New-Phase0SControlledPackageFixture {
         (New-Object System.Text.UTF8Encoding($false)))
     $writtenPackageManifest = [System.IO.File]::ReadAllText($manifestPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
     $runtimePackageId = @($runtimeManifest -split [Environment]::NewLine | Where-Object { $_.StartsWith('packageId=', [System.StringComparison]::Ordinal) })[0].Substring('packageId='.Length)
-    Assert-Phase0SCondition -Condition ([string] $writtenPackageManifest.packageId -ceq $packageId -and $runtimePackageId -ceq $packageId -and [System.IO.File]::Exists($supportDestination) -and -not [System.IO.File]::Exists((Join-Path $payloadRoot 'Phase0S.ScriptSupport.ps1'))) -Message 'The controlled package must share one package id and keep its support script outside payload.'
+    Assert-Phase0SCondition -Condition ([int] $writtenPackageManifest.schemaVersion -eq 2 -and [string] $writtenPackageManifest.packageId -ceq $packageId -and [string] $writtenPackageManifest.diagnosticSentinel.installRelativePath -ceq 'JueMingR.Validation/phase-0-s-diagnostic.sentinel' -and $runtimePackageId -ceq $packageId -and [System.IO.File]::Exists($supportDestination) -and -not [System.IO.File]::Exists((Join-Path $payloadRoot 'Phase0S.ScriptSupport.ps1'))) -Message 'The controlled diagnostic package must use package manifest schema 2, declare its sentinel, share one package id, and keep its support script outside payload.'
 
     foreach ($scriptName in @('Install-Phase0S.ps1', 'Restore-Phase0S.ps1')) {
         $sourceScript = Join-Path $RepositoryRoot ('scripts\phase0s\' + $scriptName)
@@ -235,6 +238,40 @@ function Write-Phase0SEvidence {
         $lines.Add(('PHASE0S|1|{0}|ERROR|PATCH_CLEANUP|CLEANUP_FAILED|FileNotFoundException' -f $PackageId))
     }
     [System.IO.File]::WriteAllLines((Join-Path $TargetDirectory 'JueMingR.Validation\phase-0-s-evidence.log'), $lines, (New-Object System.Text.UTF8Encoding($false)))
+}
+
+function Write-Phase0SDiagnosticSentinel {
+    param(
+        [Parameter(Mandatory = $true)][string] $TargetDirectory,
+        [Parameter(Mandatory = $true)][string] $PackageId,
+        [ValidateSet('complete', 'wrong-package', 'unknown-event', 'unknown-state')]
+        [string] $Kind
+    )
+
+    $eventPackageId = if ($Kind -eq 'wrong-package') { 'phase0s-0000000000000000000000000000000000000000' } else { $PackageId }
+    $events = @(
+        @('RELOGIC_ASSEMBLY_LOAD_OBSERVED', 'OBSERVED'),
+        @('PATCH_BEGIN', 'BEGIN'),
+        @('PATCH_RETURNED', 'RETURNED'),
+        @('PATCH_RETURNED', 'METADATA_CONFIRMED'),
+        @('MAIN_INITIALIZE_ENTRY_OBSERVED', 'ENTERED'),
+        @('POSTFIX_ENTRY', 'ENTERED'),
+        @('POSTFIX_ENTRY', 'GATE_PASSED'),
+        @('POSTFIX_ENTRY', 'FORMAL_EVIDENCE_WRITE_SUCCEEDED')
+    )
+    if ($Kind -eq 'unknown-event') {
+        $events[0][0] = 'UNKNOWN_EVENT'
+    }
+    if ($Kind -eq 'unknown-state') {
+        $events[0][1] = 'UNKNOWN_STATE'
+    }
+    $lines = @($events | ForEach-Object {
+        'PHASE0S-DIAGNOSTIC|1|{0}|{1}|{2}|{3}|1' -f $eventPackageId, $_[0], $_[1], [DateTime]::UtcNow.ToString('o')
+    })
+    [System.IO.File]::WriteAllLines(
+        (Join-Path $TargetDirectory 'JueMingR.Validation\phase-0-s-diagnostic.sentinel'),
+        $lines,
+        (New-Object System.Text.UTF8Encoding($false)))
 }
 
 function Assert-Phase0SExitAndNoWrite {
@@ -364,6 +401,7 @@ function Invoke-Phase0SInstallRecoveryTests {
         Assert-Phase0SInstalledLayout -Target $successTarget
         Assert-Phase0SReceiptMatchesPackageManifest -PackageRoot $packageRoot -TargetDirectory $successTarget
         Write-Phase0SEvidence -TargetDirectory $successTarget -PackageId ([string] $packageManifest.packageId) -Kind 'complete'
+        Write-Phase0SDiagnosticSentinel -TargetDirectory $successTarget -PackageId ([string] $packageManifest.packageId) -Kind 'complete'
 
         $restoreResult = Invoke-Phase0SPackageScript -PackageRoot $packageRoot -ScriptName 'Restore-Phase0S.ps1' -TerrariaDirectory $successTarget
         Assert-Phase0SCompactJsonResult -Result $restoreResult -Operation 'restore' -ExpectedExitCode 0 -ExpectedCode 'RESTORE_COMPLETE' -ExpectedStatus 'success' -TargetDirectory $successTarget
@@ -393,6 +431,15 @@ function Invoke-Phase0SInstallRecoveryTests {
             Write-Phase0SEvidence -TargetDirectory $invalidEvidenceTarget -PackageId ([string] $packageManifest.packageId) -Kind $invalidEvidence
             $before = Get-Phase0STreeSnapshot -Root $invalidEvidenceTarget
             Assert-Phase0SExitAndNoWrite -Result (Invoke-Phase0SPackageScript -PackageRoot $packageRoot -ScriptName 'Restore-Phase0S.ps1' -TerrariaDirectory $invalidEvidenceTarget) -ExpectedExitCode 30 -Before $before -Target $invalidEvidenceTarget -Scenario ('invalid evidence ' + $invalidEvidence) -Operation 'restore' -ExpectedCode 'OWNERSHIP_UNPROVEN' -ExpectedStatus 'failure'
+        }
+
+        foreach ($invalidSentinel in @('wrong-package', 'unknown-event', 'unknown-state')) {
+            $invalidSentinelTarget = New-Phase0STargetDirectory -Root $root -TerrariaIdentityInput $terrariaIdentityInput -Name ('sentinel-' + $invalidSentinel)
+            $installResult = Invoke-Phase0SPackageScript -PackageRoot $packageRoot -ScriptName 'Install-Phase0S.ps1' -TerrariaDirectory $invalidSentinelTarget
+            Assert-Phase0SCompactJsonResult -Result $installResult -Operation 'install' -ExpectedExitCode 0 -ExpectedCode 'INSTALL_COMPLETE' -ExpectedStatus 'success' -TargetDirectory $invalidSentinelTarget
+            Write-Phase0SDiagnosticSentinel -TargetDirectory $invalidSentinelTarget -PackageId ([string] $packageManifest.packageId) -Kind $invalidSentinel
+            $before = Get-Phase0STreeSnapshot -Root $invalidSentinelTarget
+            Assert-Phase0SExitAndNoWrite -Result (Invoke-Phase0SPackageScript -PackageRoot $packageRoot -ScriptName 'Restore-Phase0S.ps1' -TerrariaDirectory $invalidSentinelTarget) -ExpectedExitCode 30 -Before $before -Target $invalidSentinelTarget -Scenario ('invalid sentinel ' + $invalidSentinel) -Operation 'restore' -ExpectedCode 'OWNERSHIP_UNPROVEN' -ExpectedStatus 'failure'
         }
 
         $noopBefore = Get-Phase0STreeSnapshot -Root $successTarget
