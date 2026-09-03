@@ -371,6 +371,12 @@ function Read-Phase0SRuntimeManifest {
         'targetAssemblyVersion',
         'targetAssemblyMvid',
         'targetAssemblySha256',
+        'reLogicAssemblySimpleName',
+        'reLogicAssemblyVersion',
+        'reLogicAssemblyPublicKeyToken',
+        'reLogicAssemblyMvid',
+        'reLogicResourceName',
+        'reLogicResourceSha256',
         'targetTypeName',
         'targetMethodName',
         'targetMethodMetadataToken',
@@ -389,7 +395,7 @@ function Read-Phase0SRuntimeManifest {
         'evidenceFileName'
     )
     if ($lines.Count -ne $expectedKeys.Count) {
-        throw 'Runtime manifest must contain exactly 23 lines.'
+        throw 'Runtime manifest must contain exactly 29 lines.'
     }
 
     $values = [ordered]@{}
@@ -412,6 +418,12 @@ function Read-Phase0SRuntimeManifest {
         $values.targetAssemblySimpleName -cne 'Terraria' -or
         $values.targetAssemblyVersion -cne '1.4.5.8' -or
         $values.targetAssemblySha256 -notmatch '^[0-9A-F]{64}$' -or
+        $values.reLogicAssemblySimpleName -cne 'ReLogic' -or
+        $values.reLogicAssemblyVersion -cne '1.0.0.0' -or
+        $values.reLogicAssemblyPublicKeyToken -cne 'null' -or
+        $values.reLogicAssemblyMvid -cne 'ee258be9-88a4-423d-b3ce-84b6c35b141a' -or
+        $values.reLogicResourceName -cne 'Terraria.Libraries.ReLogic.ReLogic.dll' -or
+        $values.reLogicResourceSha256 -cne 'E1C5DCCEFFF5FD1C789FF712BABFA1A305FCED0D03C96EF30F2C14D99AA0AF29' -or
         $values.targetTypeName -cne 'Terraria.Main' -or
         $values.targetMethodName -cne 'Initialize' -or
         $values.targetMethodMetadataToken -notmatch '^0x[0-9A-F]{8}$' -or
@@ -429,7 +441,7 @@ function Read-Phase0SRuntimeManifest {
         $values.evidenceFileName -cne 'phase-0-s-evidence.log') {
         throw 'Runtime manifest fixed values are invalid.'
     }
-    foreach ($guidValue in @([string] $values.targetAssemblyMvid, [string] $values.hostAssemblyMvid)) {
+    foreach ($guidValue in @([string] $values.targetAssemblyMvid, [string] $values.reLogicAssemblyMvid, [string] $values.hostAssemblyMvid)) {
         $guid = [Guid]::Empty
         if (-not [Guid]::TryParseExact($guidValue, 'D', [ref] $guid) -or $guid.ToString('D') -cne $guidValue) {
             throw 'Runtime manifest GUID is not canonical.'
@@ -724,7 +736,7 @@ function Test-Phase0SEvidenceFile {
             'RUNTIME_HANDOFF_COMPLETE'
         )
         $allowedStages = @(
-            'BOOTSTRAP_MANIFEST', 'TARGET_IDENTITY', 'EVIDENCE_CREATE', 'HOST_LOAD', 'HOST_ENTRY',
+            'BOOTSTRAP_MANIFEST', 'TARGET_IDENTITY', 'READINESS_IDENTITY', 'EVIDENCE_CREATE', 'HOST_LOAD', 'HOST_ENTRY',
             'HOST_VALIDATE', 'HARMONY_LOAD', 'TARGET_METHOD', 'PATCH', 'PATCH_INFO', 'PATCH_CLEANUP',
             'POSTFIX', 'HANDOFF'
         )
@@ -733,27 +745,47 @@ function Test-Phase0SEvidenceFile {
             'PATCH_FAILED', 'VERIFY_FAILED', 'CLEANUP_FAILED'
         )
         $eventCount = 0
-        $errorSeen = $false
+        $primaryErrorSeen = $false
+        $primaryPatchSeen = $false
+        $cleanupErrorSeen = $false
         foreach ($line in $lines) {
             if ($line.Length -eq 0 -or $line.Trim() -cne $line) {
                 return $false
             }
             $fields = @($line.Split('|'))
-            if ($fields.Count -ne 7 -or $fields[0] -cne 'PHASE0S' -or
+            if (($fields.Count -ne 7 -and $fields.Count -ne 8) -or $fields[0] -cne 'PHASE0S' -or
                 $fields[1] -cne '1' -or $fields[2] -cne $PackageId) {
                 return $false
             }
             if ($fields[3] -ceq 'ERROR') {
-                if ($errorSeen -or $eventCount -eq 0 -or
+                $isCleanup = $fields[4] -ceq 'PATCH_CLEANUP' -and $fields[5] -ceq 'CLEANUP_FAILED'
+                if ($cleanupErrorSeen -or $eventCount -eq 0 -or
                     $allowedStages -cnotcontains $fields[4] -or
                     $allowedCodes -cnotcontains $fields[5] -or
                     $fields[6] -notmatch '^[A-Za-z][A-Za-z0-9]*$') {
                     return $false
                 }
-                $errorSeen = $true
+                if ($fields.Count -eq 8 -and
+                    ($fields[6] -cne 'FileNotFoundException' -or
+                     $fields[7] -cne 'ReLogic, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null')) {
+                    return $false
+                }
+                if ($isCleanup) {
+                    if (-not $primaryPatchSeen) {
+                        return $false
+                    }
+                    $cleanupErrorSeen = $true
+                }
+                elseif ($primaryErrorSeen) {
+                    return $false
+                }
+                else {
+                    $primaryErrorSeen = $true
+                    $primaryPatchSeen = $fields[4] -ceq 'PATCH' -and $fields[5] -ceq 'PATCH_FAILED'
+                }
                 continue
             }
-            if ($errorSeen -or $eventCount -ge 5) {
+            if ($primaryErrorSeen -or $eventCount -ge 5 -or $fields.Count -ne 7) {
                 return $false
             }
             $expectedSequence = ($eventCount + 1).ToString('D2', [System.Globalization.CultureInfo]::InvariantCulture)

@@ -14,11 +14,14 @@ namespace JueMingR.TerrariaHost
         private const string HarmonyAssemblyFullName =
             "0Harmony, Version=2.4.2.0, Culture=neutral, PublicKeyToken=null";
         private const string WorkerTypeName = "JueMingR.TerrariaHost.Phase0SHarmonyWorker";
+        private const string ReLogicAssemblyFullName =
+            "ReLogic, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null";
 
         private static int installAttempted;
-        private static int errorRecorded;
+        private static int primaryErrorRecorded;
+        private static int cleanupErrorRecorded;
 
-        public static void Install(Assembly targetAssembly)
+        public static void Install(Assembly targetAssembly, Assembly reLogicAssembly)
         {
             if (Interlocked.CompareExchange(ref installAttempted, 1, 0) != 0)
             {
@@ -55,6 +58,11 @@ namespace JueMingR.TerrariaHost
                     manifest.TargetAssemblyVersion,
                     manifest.TargetAssemblyMvid,
                     manifest.TargetAssemblySha256);
+
+                AssemblyIdentity.VerifyReLogicBinding(
+                    targetAssembly,
+                    reLogicAssembly,
+                    manifest);
 
                 stage = "HARMONY_LOAD";
                 code = "PRELOADED";
@@ -106,16 +114,44 @@ namespace JueMingR.TerrariaHost
             }
             catch (Exception exception)
             {
-                TryRecordError(
+                TryRecordPrimaryError(
                     evidencePath,
                     manifest == null ? null : manifest.PackageId,
                     stage,
                     code,
                     exception);
+                throw;
             }
         }
 
-        internal static void TryRecordError(
+        internal static void TryRecordPatchFailure(
+            string evidencePath,
+            string packageId,
+            Exception primaryException,
+            Exception cleanupException)
+        {
+            TryRecordPrimaryError(
+                evidencePath,
+                packageId,
+                "PATCH",
+                "PATCH_FAILED",
+                primaryException);
+            if (cleanupException != null &&
+                Interlocked.CompareExchange(ref cleanupErrorRecorded, 1, 0) == 0)
+            {
+                Exception effective = EffectiveException(cleanupException);
+                EvidenceWriter.TryAppendError(
+                    evidencePath,
+                    packageId,
+                    "PATCH_CLEANUP",
+                    "CLEANUP_FAILED",
+                    effective.GetType().Name,
+                    GetSafeMissingAssemblyIdentity(effective),
+                    true);
+            }
+        }
+
+        internal static void TryRecordPrimaryError(
             string evidencePath,
             string packageId,
             string stage,
@@ -123,17 +159,39 @@ namespace JueMingR.TerrariaHost
             Exception exception)
         {
             if (evidencePath == null || packageId == null ||
-                Interlocked.CompareExchange(ref errorRecorded, 1, 0) != 0)
+                Interlocked.CompareExchange(ref primaryErrorRecorded, 1, 0) != 0)
             {
                 return;
             }
 
+            Exception effective = EffectiveException(exception);
             EvidenceWriter.TryAppendError(
                 evidencePath,
                 packageId,
                 stage,
                 code,
-                exception.GetType().Name);
+                effective.GetType().Name,
+                GetSafeMissingAssemblyIdentity(effective),
+                false);
+        }
+
+        private static Exception EffectiveException(Exception exception)
+        {
+            while (exception is TargetInvocationException && exception.InnerException != null)
+            {
+                exception = exception.InnerException;
+            }
+
+            return exception;
+        }
+
+        private static string GetSafeMissingAssemblyIdentity(Exception exception)
+        {
+            FileNotFoundException missing = exception as FileNotFoundException;
+            return missing != null &&
+                String.Equals(missing.FileName, ReLogicAssemblyFullName, StringComparison.Ordinal)
+                ? missing.FileName
+                : null;
         }
     }
 
@@ -187,25 +245,26 @@ namespace JueMingR.TerrariaHost
                 EvidenceWriter.AppendEvent(evidencePath, manifest.PackageId, 3, "HOOK_INSTALLED");
                 Volatile.Write(ref hookCommitted, 1);
             }
-            catch (Exception)
+            catch (Exception primaryException)
             {
+                Exception cleanupException = null;
                 if (patchAttempted)
                 {
                     try
                     {
                         harmony.Unpatch(targetMethod, HarmonyPatchType.All, manifest.PatchOwner);
                     }
-                    catch (Exception cleanupException)
+                    catch (Exception exception)
                     {
-                        Phase0SLoadChainHost.TryRecordError(
-                            evidencePath,
-                            manifest.PackageId,
-                            "PATCH_CLEANUP",
-                            "CLEANUP_FAILED",
-                            cleanupException);
+                        cleanupException = exception;
                     }
                 }
 
+                Phase0SLoadChainHost.TryRecordPatchFailure(
+                    evidencePath,
+                    manifest.PackageId,
+                    primaryException,
+                    cleanupException);
                 throw;
             }
         }
@@ -313,7 +372,7 @@ namespace JueMingR.TerrariaHost
             {
                 if (context != null)
                 {
-                    Phase0SLoadChainHost.TryRecordError(
+                    Phase0SLoadChainHost.TryRecordPrimaryError(
                         context.EvidencePath,
                         context.PackageId,
                         stage,
@@ -356,6 +415,12 @@ namespace JueMingR.TerrariaHost
             "targetAssemblyVersion",
             "targetAssemblyMvid",
             "targetAssemblySha256",
+            "reLogicAssemblySimpleName",
+            "reLogicAssemblyVersion",
+            "reLogicAssemblyPublicKeyToken",
+            "reLogicAssemblyMvid",
+            "reLogicResourceName",
+            "reLogicResourceSha256",
             "targetTypeName",
             "targetMethodName",
             "targetMethodMetadataToken",
@@ -380,6 +445,12 @@ namespace JueMingR.TerrariaHost
             Version targetAssemblyVersion,
             Guid targetAssemblyMvid,
             string targetAssemblySha256,
+            string reLogicAssemblySimpleName,
+            Version reLogicAssemblyVersion,
+            string reLogicAssemblyPublicKeyToken,
+            Guid reLogicAssemblyMvid,
+            string reLogicResourceName,
+            string reLogicResourceSha256,
             string targetTypeName,
             string targetMethodName,
             int targetMethodMetadataToken,
@@ -402,6 +473,12 @@ namespace JueMingR.TerrariaHost
             TargetAssemblyVersion = targetAssemblyVersion;
             TargetAssemblyMvid = targetAssemblyMvid;
             TargetAssemblySha256 = targetAssemblySha256;
+            ReLogicAssemblySimpleName = reLogicAssemblySimpleName;
+            ReLogicAssemblyVersion = reLogicAssemblyVersion;
+            ReLogicAssemblyPublicKeyToken = reLogicAssemblyPublicKeyToken;
+            ReLogicAssemblyMvid = reLogicAssemblyMvid;
+            ReLogicResourceName = reLogicResourceName;
+            ReLogicResourceSha256 = reLogicResourceSha256;
             TargetTypeName = targetTypeName;
             TargetMethodName = targetMethodName;
             TargetMethodMetadataToken = targetMethodMetadataToken;
@@ -429,6 +506,18 @@ namespace JueMingR.TerrariaHost
         internal Guid TargetAssemblyMvid { get; private set; }
 
         internal string TargetAssemblySha256 { get; private set; }
+
+        internal string ReLogicAssemblySimpleName { get; private set; }
+
+        internal Version ReLogicAssemblyVersion { get; private set; }
+
+        internal string ReLogicAssemblyPublicKeyToken { get; private set; }
+
+        internal Guid ReLogicAssemblyMvid { get; private set; }
+
+        internal string ReLogicResourceName { get; private set; }
+
+        internal string ReLogicResourceSha256 { get; private set; }
 
         internal string TargetTypeName { get; private set; }
 
@@ -473,25 +562,32 @@ namespace JueMingR.TerrariaHost
             RequireExact(values[4], "1.4.5.8");
             Guid targetMvid = ParseGuid(values[5]);
             RequireCharacters(values[6], 64, IsUpperHex);
-            RequireExact(values[7], "Terraria.Main");
-            RequireExact(values[8], "Initialize");
-            int targetToken = ParseToken(values[9]);
-            RequireExact(values[10], "false");
-            RequireExact(values[11], "System.Void");
-            RequireExact(values[12], "0");
-            RequireExact(values[13], "JueMingR.TerrariaHost");
-            RequireExact(values[14], "0.0.0.0");
-            Guid hostMvid = ParseGuid(values[15]);
-            RequireCharacters(values[16], 64, IsUpperHex);
-            RequireExact(values[17], "0Harmony");
-            RequireExact(values[18], "2.4.2.0");
-            Guid harmonyMvid = ParseGuid(values[19]);
-            RequireExact(values[19], "024a0e6e-c8c2-437e-ad04-7b6279389c23");
+            RequireExact(values[7], "ReLogic");
+            RequireExact(values[8], "1.0.0.0");
+            RequireExact(values[9], "null");
+            Guid reLogicMvid = ParseGuid(values[10]);
+            RequireExact(values[10], "ee258be9-88a4-423d-b3ce-84b6c35b141a");
+            RequireExact(values[11], "Terraria.Libraries.ReLogic.ReLogic.dll");
+            RequireExact(values[12], "E1C5DCCEFFF5FD1C789FF712BABFA1A305FCED0D03C96EF30F2C14D99AA0AF29");
+            RequireExact(values[13], "Terraria.Main");
+            RequireExact(values[14], "Initialize");
+            int targetToken = ParseToken(values[15]);
+            RequireExact(values[16], "false");
+            RequireExact(values[17], "System.Void");
+            RequireExact(values[18], "0");
+            RequireExact(values[19], "JueMingR.TerrariaHost");
+            RequireExact(values[20], "0.0.0.0");
+            Guid hostMvid = ParseGuid(values[21]);
+            RequireCharacters(values[22], 64, IsUpperHex);
+            RequireExact(values[23], "0Harmony");
+            RequireExact(values[24], "2.4.2.0");
+            Guid harmonyMvid = ParseGuid(values[25]);
+            RequireExact(values[25], "024a0e6e-c8c2-437e-ad04-7b6279389c23");
             RequireExact(
-                values[20],
+                values[26],
                 "7B9E756306FA3D7620E02A857C8927A6AB04973F9BD8A77D3866700A6DEAC55C");
-            RequireExact(values[21], "JueMingR.Phase0S.MainInitialize");
-            RequireExact(values[22], "phase-0-s-evidence.log");
+            RequireExact(values[27], "JueMingR.Phase0S.MainInitialize");
+            RequireExact(values[28], "phase-0-s-evidence.log");
 
             return new RuntimeManifest(
                 values[1],
@@ -500,21 +596,27 @@ namespace JueMingR.TerrariaHost
                 targetMvid,
                 values[6],
                 values[7],
-                values[8],
+                new Version(values[8]),
+                values[9],
+                reLogicMvid,
+                values[11],
+                values[12],
+                values[13],
+                values[14],
                 targetToken,
                 false,
-                values[11],
-                0,
-                values[13],
-                new Version(values[14]),
-                hostMvid,
-                values[16],
                 values[17],
-                new Version(values[18]),
+                0,
+                values[19],
+                new Version(values[20]),
+                hostMvid,
+                values[22],
+                values[23],
+                new Version(values[24]),
                 harmonyMvid,
-                values[20],
-                values[21],
-                values[22]);
+                values[26],
+                values[27],
+                values[28]);
         }
 
         private static void RequireExact(string actual, string expected)
@@ -666,6 +768,8 @@ namespace JueMingR.TerrariaHost
 
     internal static class AssemblyIdentity
     {
+        private const int ReLogicResourceLength = 176128;
+
         internal static int CountLoaded(string simpleName)
         {
             int count = 0;
@@ -756,10 +860,74 @@ namespace JueMingR.TerrariaHost
                 expectedSha256);
         }
 
+        internal static void VerifyReLogicBinding(
+            Assembly targetAssembly,
+            Assembly reLogicAssembly,
+            RuntimeManifest manifest)
+        {
+            AssemblyName name = reLogicAssembly.GetName();
+            byte[] token = name.GetPublicKeyToken();
+            string expectedFullName = manifest.ReLogicAssemblySimpleName + ", Version=" +
+                manifest.ReLogicAssemblyVersion + ", Culture=neutral, PublicKeyToken=" +
+                manifest.ReLogicAssemblyPublicKeyToken;
+            if (!String.Equals(name.FullName, expectedFullName, StringComparison.Ordinal) ||
+                !String.Equals(name.Name, manifest.ReLogicAssemblySimpleName, StringComparison.Ordinal) ||
+                !Equals(name.Version, manifest.ReLogicAssemblyVersion) ||
+                !String.Equals(manifest.ReLogicAssemblyPublicKeyToken, "null", StringComparison.Ordinal) ||
+                (token != null && token.Length != 0) ||
+                reLogicAssembly.ManifestModule.ModuleVersionId != manifest.ReLogicAssemblyMvid)
+            {
+                throw new InvalidDataException("The loaded ReLogic identity does not match.");
+            }
+
+            int count = 0;
+            Assembly match = null;
+            foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                if (String.Equals(
+                        assembly.GetName().Name,
+                        manifest.ReLogicAssemblySimpleName,
+                        StringComparison.Ordinal))
+                {
+                    count++;
+                    match = assembly;
+                }
+            }
+
+            if (count != 1 || !ReferenceEquals(match, reLogicAssembly))
+            {
+                throw new InvalidDataException("The loaded ReLogic assembly is not unique.");
+            }
+
+            using (Stream stream = targetAssembly.GetManifestResourceStream(manifest.ReLogicResourceName))
+            {
+                if (stream == null || stream.Length != ReLogicResourceLength ||
+                    !String.Equals(ComputeSha256(stream), manifest.ReLogicResourceSha256, StringComparison.Ordinal))
+                {
+                    throw new InvalidDataException("The Terraria ReLogic resource does not match.");
+                }
+            }
+        }
+
         private static string ComputeSha256(string path)
         {
             using (SHA256 algorithm = SHA256.Create())
             using (FileStream stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                byte[] hash = algorithm.ComputeHash(stream);
+                StringBuilder builder = new StringBuilder(hash.Length * 2);
+                for (int index = 0; index < hash.Length; index++)
+                {
+                    builder.Append(hash[index].ToString("X2", CultureInfo.InvariantCulture));
+                }
+
+                return builder.ToString();
+            }
+        }
+
+        private static string ComputeSha256(Stream stream)
+        {
+            using (SHA256 algorithm = SHA256.Create())
             {
                 byte[] hash = algorithm.ComputeHash(stream);
                 StringBuilder builder = new StringBuilder(hash.Length * 2);
@@ -811,37 +979,66 @@ namespace JueMingR.TerrariaHost
             string packageId,
             string stage,
             string code,
-            string exceptionType)
+            string exceptionType,
+            string missingAssemblyIdentity,
+            bool cleanupSecondary)
         {
             try
             {
                 using (FileStream stream = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.Read))
                 {
                     string[] lines = ReadAllLines(stream);
-                    if (lines.Length < 1 || lines.Length > 4)
+                    int successCount = cleanupSecondary ? lines.Length - 1 : lines.Length;
+                    if (successCount < 1 || successCount > 4)
                     {
                         return;
                     }
 
-                    VerifySuccessPrefix(lines, packageId);
+                    string[] successLines = new string[successCount];
+                    Array.Copy(lines, successLines, successCount);
+                    VerifySuccessPrefix(successLines, packageId);
+                    if (cleanupSecondary &&
+                        !IsPrimaryPatchError(lines[lines.Length - 1], packageId))
+                    {
+                        return;
+                    }
+
                     stream.Position = stream.Length;
+                    string line = String.Join(
+                        "|",
+                        "PHASE0S",
+                        "1",
+                        packageId,
+                        "ERROR",
+                        stage,
+                        code,
+                        exceptionType);
+                    if (missingAssemblyIdentity != null)
+                    {
+                        line += "|" + missingAssemblyIdentity;
+                    }
+
                     WriteAndFlush(
                         stream,
-                        String.Join(
-                            "|",
-                            "PHASE0S",
-                            "1",
-                            packageId,
-                            "ERROR",
-                            stage,
-                            code,
-                            exceptionType));
+                        line);
                 }
             }
             catch (Exception)
             {
                 // Error evidence is best-effort and must never escape into the game.
             }
+        }
+
+        private static bool IsPrimaryPatchError(string line, string packageId)
+        {
+            string[] fields = line.Split('|');
+            return (fields.Length == 7 || fields.Length == 8) &&
+                String.Equals(fields[0], "PHASE0S", StringComparison.Ordinal) &&
+                String.Equals(fields[1], "1", StringComparison.Ordinal) &&
+                String.Equals(fields[2], packageId, StringComparison.Ordinal) &&
+                String.Equals(fields[3], "ERROR", StringComparison.Ordinal) &&
+                String.Equals(fields[4], "PATCH", StringComparison.Ordinal) &&
+                String.Equals(fields[5], "PATCH_FAILED", StringComparison.Ordinal);
         }
 
         private static string FormatEvent(string packageId, int sequence, string eventName)

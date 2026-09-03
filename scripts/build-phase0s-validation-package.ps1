@@ -399,6 +399,12 @@ try {
         'targetAssemblyVersion=1.4.5.8',
         'targetAssemblyMvid=2c29f6c3-4bd9-4add-9c58-da159804e083',
         'targetAssemblySha256=960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3',
+        'reLogicAssemblySimpleName=ReLogic',
+        'reLogicAssemblyVersion=1.0.0.0',
+        'reLogicAssemblyPublicKeyToken=null',
+        'reLogicAssemblyMvid=ee258be9-88a4-423d-b3ce-84b6c35b141a',
+        'reLogicResourceName=Terraria.Libraries.ReLogic.ReLogic.dll',
+        'reLogicResourceSha256=E1C5DCCEFFF5FD1C789FF712BABFA1A305FCED0D03C96EF30F2C14D99AA0AF29',
         'targetTypeName=Terraria.Main',
         'targetMethodName=Initialize',
         'targetMethodMetadataToken=0x06000CDE',
@@ -416,8 +422,8 @@ try {
         'patchOwner=JueMingR.Phase0S.MainInitialize',
         'evidenceFileName=phase-0-s-evidence.log'
     )
-    if ($runtimeLines.Count -ne 23) {
-        throw 'Runtime manifest construction did not produce 23 lines.'
+    if ($runtimeLines.Count -ne 29) {
+        throw 'Runtime manifest construction did not produce 29 lines.'
     }
     $runtimeText = ($runtimeLines -join [Environment]::NewLine) + [Environment]::NewLine
     $runtimePath = Join-Path $sidecarPayloadRoot 'phase-0-s-runtime.manifest'

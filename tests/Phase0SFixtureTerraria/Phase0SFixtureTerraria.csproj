@@ -11,5 +11,19 @@
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EmbedReLogicResource Condition="'$(EmbedReLogicResource)' == ''">true</EmbedReLogicResource>
   </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="ReLogic">
+      <HintPath>..\..\external\TerrariaRefs\ReLogic.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>..\..\external\Harmony\0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <EmbeddedResource Include="..\..\external\TerrariaRefs\ReLogic.dll" Condition="'$(EmbedReLogicResource)' == 'true'">
+      <LogicalName>Terraria.Libraries.ReLogic.ReLogic.dll</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
 </Project>

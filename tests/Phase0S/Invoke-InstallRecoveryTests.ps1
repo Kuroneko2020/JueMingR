@@ -53,6 +53,12 @@ function New-Phase0SControlledPackageFixture {
         'targetAssemblyVersion=1.4.5.8',
         ('targetAssemblyMvid=' + $targetIdentity.mvid),
         ('targetAssemblySha256=' + $targetIdentity.sha256),
+        'reLogicAssemblySimpleName=ReLogic',
+        'reLogicAssemblyVersion=1.0.0.0',
+        'reLogicAssemblyPublicKeyToken=null',
+        'reLogicAssemblyMvid=ee258be9-88a4-423d-b3ce-84b6c35b141a',
+        'reLogicResourceName=Terraria.Libraries.ReLogic.ReLogic.dll',
+        'reLogicResourceSha256=E1C5DCCEFFF5FD1C789FF712BABFA1A305FCED0D03C96EF30F2C14D99AA0AF29',
         'targetTypeName=Terraria.Main',
         'targetMethodName=Initialize',
         'targetMethodMetadataToken=0x06000001',
@@ -70,7 +76,7 @@ function New-Phase0SControlledPackageFixture {
         'patchOwner=JueMingR.Phase0S.MainInitialize',
         'evidenceFileName=phase-0-s-evidence.log'
     ) -join [Environment]::NewLine
-    Assert-Phase0SCondition -Condition ((@($runtimeManifest -split [Environment]::NewLine)).Count -eq 23) -Message 'The controlled package runtime manifest must contain exactly 23 lines.'
+    Assert-Phase0SCondition -Condition ((@($runtimeManifest -split [Environment]::NewLine)).Count -eq 29) -Message 'The controlled package runtime manifest must contain exactly 29 lines.'
     $payloadContents = [ordered]@{
         'Terraria.exe.config' = '<configuration><runtime /></configuration>' + [Environment]::NewLine
         'JueMingR.Bootstrap.dll' = 'phase0s-controlled-bootstrap-fixture'
@@ -208,12 +214,12 @@ function Write-Phase0SEvidence {
     param(
         [Parameter(Mandatory = $true)][string] $TargetDirectory,
         [Parameter(Mandatory = $true)][string] $PackageId,
-        [ValidateSet('prefix', 'complete', 'wrong-package', 'out-of-order', 'unknown')]
+        [ValidateSet('prefix', 'complete', 'primary', 'primary-cleanup', 'wrong-package', 'out-of-order', 'unknown')]
         [string] $Kind
     )
 
     $events = @('TERRARIA_ASSEMBLY_READY', 'HARMONY_READY', 'HOOK_INSTALLED', 'MAIN_INITIALIZE_POSTFIX_FIRED', 'RUNTIME_HANDOFF_COMPLETE')
-    $eventCount = if ($Kind -eq 'prefix') { 3 } else { 5 }
+    $eventCount = if ($Kind -eq 'prefix') { 3 } elseif ($Kind -eq 'primary' -or $Kind -eq 'primary-cleanup') { 2 } else { 5 }
     $lines = New-Object System.Collections.Generic.List[string]
     for ($index = 0; $index -lt $eventCount; $index++) {
         $number = $index + 1
@@ -221,6 +227,12 @@ function Write-Phase0SEvidence {
         $eventName = if ($Kind -eq 'unknown' -and $index -eq 0) { 'UNKNOWN_EVENT' } else { $events[$index] }
         $eventNumber = if ($Kind -eq 'out-of-order' -and $index -eq 1) { '03' } else { $number.ToString('D2') }
         $lines.Add(('PHASE0S|1|{0}|{1}|{2}|{3}|1' -f $eventPackageId, $eventNumber, $eventName, [DateTime]::UtcNow.AddSeconds($index).ToString('o')))
+    }
+    if ($Kind -eq 'primary' -or $Kind -eq 'primary-cleanup') {
+        $lines.Add(('PHASE0S|1|{0}|ERROR|PATCH|PATCH_FAILED|FileNotFoundException|ReLogic, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null' -f $PackageId))
+    }
+    if ($Kind -eq 'primary-cleanup') {
+        $lines.Add(('PHASE0S|1|{0}|ERROR|PATCH_CLEANUP|CLEANUP_FAILED|FileNotFoundException' -f $PackageId))
     }
     [System.IO.File]::WriteAllLines((Join-Path $TargetDirectory 'JueMingR.Validation\phase-0-s-evidence.log'), $lines, (New-Object System.Text.UTF8Encoding($false)))
 }
@@ -364,6 +376,15 @@ function Invoke-Phase0SInstallRecoveryTests {
         Write-Phase0SEvidence -TargetDirectory $prefixTarget -PackageId ([string] $packageManifest.packageId) -Kind 'prefix'
         $restoreResult = Invoke-Phase0SPackageScript -PackageRoot $packageRoot -ScriptName 'Restore-Phase0S.ps1' -TerrariaDirectory $prefixTarget
         Assert-Phase0SCompactJsonResult -Result $restoreResult -Operation 'restore' -ExpectedExitCode 0 -ExpectedCode 'RESTORE_COMPLETE' -ExpectedStatus 'success' -TargetDirectory $prefixTarget
+
+        foreach ($validFailureEvidence in @('primary', 'primary-cleanup')) {
+            $failureTarget = New-Phase0STargetDirectory -Root $root -TerrariaIdentityInput $terrariaIdentityInput -Name ('valid-evidence-' + $validFailureEvidence)
+            $installResult = Invoke-Phase0SPackageScript -PackageRoot $packageRoot -ScriptName 'Install-Phase0S.ps1' -TerrariaDirectory $failureTarget
+            Assert-Phase0SCompactJsonResult -Result $installResult -Operation 'install' -ExpectedExitCode 0 -ExpectedCode 'INSTALL_COMPLETE' -ExpectedStatus 'success' -TargetDirectory $failureTarget
+            Write-Phase0SEvidence -TargetDirectory $failureTarget -PackageId ([string] $packageManifest.packageId) -Kind $validFailureEvidence
+            $restoreResult = Invoke-Phase0SPackageScript -PackageRoot $packageRoot -ScriptName 'Restore-Phase0S.ps1' -TerrariaDirectory $failureTarget
+            Assert-Phase0SCompactJsonResult -Result $restoreResult -Operation 'restore' -ExpectedExitCode 0 -ExpectedCode 'RESTORE_COMPLETE' -ExpectedStatus 'success' -TargetDirectory $failureTarget
+        }
 
         foreach ($invalidEvidence in @('wrong-package', 'out-of-order', 'unknown')) {
             $invalidEvidenceTarget = New-Phase0STargetDirectory -Root $root -TerrariaIdentityInput $terrariaIdentityInput -Name ('evidence-' + $invalidEvidence)

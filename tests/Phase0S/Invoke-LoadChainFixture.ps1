@@ -40,6 +40,27 @@ function Get-Phase0SFixtureExecutable {
     return $fixtureExe
 }
 
+function Get-Phase0SFixtureDriverExecutable {
+    param([Parameter(Mandatory = $true)][string] $RepositoryRoot)
+
+    $projectPath = Join-Path $RepositoryRoot 'tests\Phase0SFixtureTerraria\Phase0SFixtureTerraria.csproj'
+    $outputRoot = Join-Path $RepositoryRoot 'artifacts\phase0s-fixture-driver\bin\'
+    $objectRoot = Join-Path $RepositoryRoot 'artifacts\phase0s-fixture-driver\obj\'
+    $buildOutput = @(& dotnet.exe build $projectPath --configuration Debug --nologo -p:Platform=x86 -p:AssemblyName=Phase0SFixtureDriver -p:EmbedReLogicResource=false -p:BaseOutputPath=$outputRoot -p:BaseIntermediateOutputPath=$objectRoot 2>&1)
+    foreach ($line in $buildOutput) {
+        Write-Host $line
+    }
+    if ($LASTEXITCODE -ne 0) {
+        throw 'The Phase 0-S fixture driver did not build.'
+    }
+
+    $driverExe = Join-Path $outputRoot 'x86\Debug\net472\Phase0SFixtureDriver.exe'
+    if (-not [System.IO.File]::Exists($driverExe)) {
+        throw "The Phase 0-S fixture driver is missing: $driverExe"
+    }
+    return $driverExe
+}
+
 function Get-Phase0SProductionOutput {
     param(
         [Parameter(Mandatory = $true)][string] $RepositoryRoot,
@@ -87,6 +108,12 @@ function New-Phase0SFixtureRuntimeManifest {
         ('targetAssemblyVersion=' + $target.version),
         ('targetAssemblyMvid=' + $target.mvid),
         ('targetAssemblySha256=' + $targetHash),
+        'reLogicAssemblySimpleName=ReLogic',
+        'reLogicAssemblyVersion=1.0.0.0',
+        'reLogicAssemblyPublicKeyToken=null',
+        'reLogicAssemblyMvid=ee258be9-88a4-423d-b3ce-84b6c35b141a',
+        'reLogicResourceName=Terraria.Libraries.ReLogic.ReLogic.dll',
+        'reLogicResourceSha256=E1C5DCCEFFF5FD1C789FF712BABFA1A305FCED0D03C96EF30F2C14D99AA0AF29',
         'targetTypeName=Terraria.Main',
         'targetMethodName=Initialize',
         ('targetMethodMetadataToken=0x{0:X8}' -f $initializeMethod.MetadataToken),
@@ -105,25 +132,67 @@ function New-Phase0SFixtureRuntimeManifest {
         'evidenceFileName=phase-0-s-evidence.log'
     )
     [System.IO.File]::WriteAllLines($ManifestPath, $lines, (New-Object System.Text.UTF8Encoding($false)))
-    Assert-Phase0SCondition -Condition (([System.IO.File]::ReadAllLines($ManifestPath)).Count -eq 23) -Message 'The fixture runtime manifest must contain exactly 23 lines.'
+    Assert-Phase0SCondition -Condition (([System.IO.File]::ReadAllLines($ManifestPath)).Count -eq 29) -Message 'The fixture runtime manifest must contain exactly 29 lines.'
 }
 
 function New-Phase0SFixtureConfig {
-    param([Parameter(Mandatory = $true)][string] $ConfigPath)
+    param(
+        [Parameter(Mandatory = $true)][string] $ConfigPath,
+        [switch] $WithoutManager
+    )
 
-    $config = @'
+    $managerLines = if ($WithoutManager) { '' } else {
+@'
+    <appDomainManagerAssembly value="JueMingR.Bootstrap, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null" />
+    <appDomainManagerType value="JueMingR.Bootstrap.Phase0SAppDomainManager" />
+'@
+    }
+    $config = @"
 <?xml version="1.0" encoding="utf-8"?>
 <configuration>
   <runtime>
-    <appDomainManagerAssembly value="JueMingR.Bootstrap, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null" />
-    <appDomainManagerType value="JueMingR.Bootstrap.Phase0SAppDomainManager" />
+$managerLines
     <assemblyBinding xmlns="urn:schemas-microsoft-com:asm.v1">
       <probing privatePath="JueMingR.Validation" />
     </assemblyBinding>
   </runtime>
 </configuration>
-'@
+"@
     [System.IO.File]::WriteAllText($ConfigPath, $config, (New-Object System.Text.UTF8Encoding($false)))
+}
+
+function New-Phase0SDriverRunDirectory {
+    param(
+        [Parameter(Mandatory = $true)][string] $Root,
+        [Parameter(Mandatory = $true)][string] $Name,
+        [Parameter(Mandatory = $true)][string] $FixtureExe,
+        [Parameter(Mandatory = $true)][string] $DriverExe,
+        [Parameter(Mandatory = $true)][string] $ReLogicPath,
+        [Parameter(Mandatory = $true)][hashtable] $ProductionOutputs,
+        [Parameter(Mandatory = $true)][string] $HarmonyPath,
+        [Parameter(Mandatory = $true)][string] $PackageId,
+        [Parameter(Mandatory = $true)][string] $SourceCommit
+    )
+
+    $runRoot = Join-Path $Root $Name
+    $sidecar = Join-Path $runRoot 'JueMingR.Validation'
+    [System.IO.Directory]::CreateDirectory($sidecar) | Out-Null
+    Copy-Item -LiteralPath $FixtureExe -Destination (Join-Path $runRoot 'Terraria.exe')
+    $runDriverExe = Join-Path $runRoot 'Phase0SFixtureDriver.exe'
+    Copy-Item -LiteralPath $DriverExe -Destination $runDriverExe
+    Copy-Item -LiteralPath $ReLogicPath -Destination (Join-Path $runRoot 'fixture-relogic.bin')
+    Copy-Item -LiteralPath $ProductionOutputs['Bootstrap'] -Destination (Join-Path $runRoot 'JueMingR.Bootstrap.dll')
+    foreach ($namePart in @('Host', 'Platform', 'Features', 'Infrastructure')) {
+        Copy-Item -LiteralPath $ProductionOutputs[$namePart] -Destination (Join-Path $sidecar (Split-Path -Leaf $ProductionOutputs[$namePart]))
+    }
+    Copy-Item -LiteralPath $HarmonyPath -Destination (Join-Path $sidecar '0Harmony.dll')
+    New-Phase0SFixtureRuntimeManifest -FixtureExe $FixtureExe -HostAssembly $ProductionOutputs['Host'] -ManifestPath (Join-Path $sidecar 'phase-0-s-runtime.manifest') -PackageId $PackageId -SourceCommit $SourceCommit
+    New-Phase0SFixtureConfig -ConfigPath ($runDriverExe + '.config') -WithoutManager
+    return [pscustomobject]@{
+        exePath = $runDriverExe
+        evidencePath = Join-Path $sidecar 'phase-0-s-evidence.log'
+        packageId = $PackageId
+    }
 }
 
 function New-Phase0SFixtureRunDirectory {
@@ -208,6 +277,7 @@ function Invoke-Phase0SLoadChainFixtureTests {
         throw 'The fixture harness requires a source commit identity.'
     }
     $fixtureExe = Get-Phase0SFixtureExecutable -RepositoryRoot $RepositoryRoot
+    $driverExe = Get-Phase0SFixtureDriverExecutable -RepositoryRoot $RepositoryRoot
     $productionOutputs = @{
         Bootstrap = Get-Phase0SProductionOutput -RepositoryRoot $RepositoryRoot -ProjectName 'JueMingR.Bootstrap' -FileName 'JueMingR.Bootstrap.dll'
         Host = Get-Phase0SProductionOutput -RepositoryRoot $RepositoryRoot -ProjectName 'JueMingR.TerrariaHost' -FileName 'JueMingR.TerrariaHost.dll'
@@ -219,15 +289,47 @@ function Invoke-Phase0SLoadChainFixtureTests {
     if (-not [System.IO.File]::Exists($harmonyPath)) {
         throw 'The prepared official Harmony 2.4.2 asset is unavailable.'
     }
+    $reLogicPath = Join-Path $RepositoryRoot 'external\TerrariaRefs\ReLogic.dll'
+    if (-not [System.IO.File]::Exists($reLogicPath)) {
+        throw 'The fixed ReLogic test input is unavailable.'
+    }
 
     $root = New-Phase0STestRoot
     try {
         $success = New-Phase0SFixtureRunDirectory -Root $root -Name 'success' -FixtureExe $fixtureExe -ProductionOutputs $productionOutputs -HarmonyPath $harmonyPath -PackageId ('phase0s-fixture-' + [Guid]::NewGuid().ToString('N')) -SourceCommit $sourceCommit
         $successResult = Invoke-Phase0SFixtureExe -FixtureExe $success.exePath -Mode 'expect-handoff' -EvidencePath $success.evidencePath -PackageId $success.packageId
+        foreach ($line in $successResult.output) {
+            Write-Host $line
+        }
         Assert-Phase0SCondition -Condition ($successResult.exitCode -eq 0) -Message "load-chain success fixture: expected exit 0, actual $($successResult.exitCode)."
+
+        $legacy = New-Phase0SFixtureRunDirectory -Root $root -Name 'legacy-primary' -FixtureExe $fixtureExe -ProductionOutputs $productionOutputs -HarmonyPath $harmonyPath -PackageId ('phase0s-fixture-' + [Guid]::NewGuid().ToString('N')) -SourceCommit $sourceCommit
+        $legacyResult = Invoke-Phase0SFixtureExe -FixtureExe $legacy.exePath -Mode 'expect-legacy-primary' -EvidencePath $legacy.evidencePath -PackageId $legacy.packageId
+        foreach ($line in $legacyResult.output) {
+            Write-Host $line
+        }
+        Assert-Phase0SCondition -Condition ($legacyResult.exitCode -eq 0) -Message "legacy early-Patch fixture: expected primary before cleanup; actual exit $($legacyResult.exitCode)."
+
+        foreach ($driverMode in @(
+            'driver-relogic-then-terraria',
+            'driver-both-before-subscription',
+            'driver-duplicate-scan',
+            'driver-wrong-relogic',
+            'driver-two-relogic',
+            'driver-relogic-never')) {
+            $driverRun = New-Phase0SDriverRunDirectory -Root $root -Name $driverMode -FixtureExe $fixtureExe -DriverExe $driverExe -ReLogicPath $reLogicPath -ProductionOutputs $productionOutputs -HarmonyPath $harmonyPath -PackageId ('phase0s-fixture-' + [Guid]::NewGuid().ToString('N')) -SourceCommit $sourceCommit
+            $driverResult = Invoke-Phase0SFixtureExe -FixtureExe $driverRun.exePath -Mode $driverMode -EvidencePath $driverRun.evidencePath -PackageId $driverRun.packageId
+            foreach ($line in $driverResult.output) {
+                Write-Host $line
+            }
+            Assert-Phase0SCondition -Condition ($driverResult.exitCode -eq 0) -Message "$driverMode fixture: expected exit 0, actual $($driverResult.exitCode)."
+        }
 
         $wrongHash = New-Phase0SFixtureRunDirectory -Root $root -Name 'wrong-target-hash' -FixtureExe $fixtureExe -ProductionOutputs $productionOutputs -HarmonyPath $harmonyPath -PackageId ('phase0s-fixture-' + [Guid]::NewGuid().ToString('N')) -SourceCommit $sourceCommit -UseWrongTargetHash
         $wrongHashResult = Invoke-Phase0SFixtureExe -FixtureExe $wrongHash.exePath -Mode 'expect-no-handoff' -EvidencePath $wrongHash.evidencePath -PackageId $wrongHash.packageId
+        foreach ($line in $wrongHashResult.output) {
+            Write-Host $line
+        }
         Assert-Phase0SCondition -Condition ($wrongHashResult.exitCode -eq 0) -Message "wrong target hash fixture: expected exit 0, actual $($wrongHashResult.exitCode)."
         Assert-Phase0SNoSuccessEvents -EvidencePath $wrongHash.evidencePath
     }

@@ -11,69 +11,196 @@ namespace JueMingR.Bootstrap
     public sealed class Phase0SAppDomainManager : AppDomainManager
     {
         private const string TargetAssemblySimpleName = "Terraria";
+        private const string ReLogicAssemblySimpleName = "ReLogic";
         private const string HostAssemblyFullName =
             "JueMingR.TerrariaHost, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null";
         private const string HostTypeName = "JueMingR.TerrariaHost.Phase0SLoadChainHost";
 
-        private int targetAttempted;
+        private readonly object gate = new object();
+        private InstallState state = InstallState.Waiting;
+        private bool initialized;
+        private bool scanning;
+        private Assembly targetAssembly;
+        private Assembly reLogicAssembly;
+        private RuntimeManifest manifest;
+        private string evidencePath;
+        private bool evidenceCreated;
         private int errorRecorded;
 
         public override void InitializeNewDomain(AppDomainSetup appDomainInfo)
         {
-            AppDomain.CurrentDomain.AssemblyLoad += OnAssemblyLoad;
+            lock (gate)
+            {
+                if (initialized || state != InstallState.Waiting)
+                {
+                    return;
+                }
+
+                initialized = true;
+                scanning = true;
+                AppDomain.CurrentDomain.AssemblyLoad += OnAssemblyLoad;
+            }
+
+            foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                ObserveAssembly(assembly);
+            }
+
+            Assembly targetToInstall = null;
+            Assembly reLogicToInstall = null;
+            try
+            {
+                lock (gate)
+                {
+                    scanning = false;
+                    SelectInstallLocked(out targetToInstall, out reLogicToInstall);
+                }
+            }
+            catch (Exception exception)
+            {
+                Fail(exception, "READINESS_IDENTITY", "IDENTITY_MISMATCH");
+                return;
+            }
+
+            if (targetToInstall != null)
+            {
+                Install(targetToInstall, reLogicToInstall);
+            }
         }
 
         private void OnAssemblyLoad(object sender, AssemblyLoadEventArgs eventArgs)
         {
-            Assembly targetAssembly = eventArgs.LoadedAssembly;
-            string simpleName;
+            ObserveAssembly(eventArgs.LoadedAssembly);
+        }
+
+        private void ObserveAssembly(Assembly assembly)
+        {
+            Assembly targetToInstall = null;
+            Assembly reLogicToInstall = null;
             try
             {
-                simpleName = targetAssembly.GetName().Name;
+                string simpleName = assembly.GetName().Name;
+                if (!String.Equals(simpleName, TargetAssemblySimpleName, StringComparison.Ordinal) &&
+                    !String.Equals(simpleName, ReLogicAssemblySimpleName, StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                lock (gate)
+                {
+                    if (state != InstallState.Waiting)
+                    {
+                        return;
+                    }
+
+                    EnsureContextLocked();
+                    if (String.Equals(simpleName, TargetAssemblySimpleName, StringComparison.Ordinal))
+                    {
+                        ObserveTargetLocked(assembly);
+                    }
+                    else
+                    {
+                        ObserveReLogicLocked(assembly);
+                    }
+
+                    SelectInstallLocked(out targetToInstall, out reLogicToInstall);
+                }
             }
-            catch (Exception)
+            catch (Exception exception)
+            {
+                Fail(exception, "READINESS_IDENTITY", "IDENTITY_MISMATCH");
+                return;
+            }
+
+            if (targetToInstall != null)
+            {
+                Install(targetToInstall, reLogicToInstall);
+            }
+        }
+
+        private void EnsureContextLocked()
+        {
+            if (manifest != null)
             {
                 return;
             }
 
-            if (!String.Equals(simpleName, TargetAssemblySimpleName, StringComparison.Ordinal) ||
-                Interlocked.CompareExchange(ref targetAttempted, 1, 0) != 0)
+            string baseDirectory = Path.GetFullPath(AppDomain.CurrentDomain.BaseDirectory);
+            string sidecarDirectory = Path.Combine(baseDirectory, "JueMingR.Validation");
+            manifest = RuntimeManifest.Read(Path.Combine(sidecarDirectory, "phase-0-s-runtime.manifest"));
+            evidencePath = Path.Combine(sidecarDirectory, manifest.EvidenceFileName);
+        }
+
+        private void ObserveTargetLocked(Assembly candidate)
+        {
+            if (targetAssembly != null)
+            {
+                if (!ReferenceEquals(targetAssembly, candidate))
+                {
+                    throw new InvalidDataException("A second Terraria assembly was observed.");
+                }
+
+                return;
+            }
+
+            string targetPath = Path.Combine(
+                Path.GetFullPath(AppDomain.CurrentDomain.BaseDirectory),
+                "Terraria.exe");
+            AssemblyIdentity.VerifyLoaded(
+                candidate,
+                targetPath,
+                manifest.TargetAssemblySimpleName,
+                manifest.TargetAssemblyVersion,
+                manifest.TargetAssemblyMvid,
+                manifest.TargetAssemblySha256);
+            targetAssembly = candidate;
+            EvidenceWriter.CreateFirstEvent(
+                evidencePath,
+                manifest.PackageId,
+                "TERRARIA_ASSEMBLY_READY");
+            evidenceCreated = true;
+        }
+
+        private void ObserveReLogicLocked(Assembly candidate)
+        {
+            AssemblyIdentity.VerifyLoadedReLogic(
+                candidate,
+                manifest.ReLogicAssemblySimpleName,
+                manifest.ReLogicAssemblyVersion,
+                manifest.ReLogicAssemblyPublicKeyToken,
+                manifest.ReLogicAssemblyMvid);
+            if (reLogicAssembly != null && !ReferenceEquals(reLogicAssembly, candidate))
+            {
+                throw new InvalidDataException("A second ReLogic assembly was observed.");
+            }
+
+            reLogicAssembly = candidate;
+        }
+
+        private void SelectInstallLocked(out Assembly target, out Assembly reLogic)
+        {
+            target = null;
+            reLogic = null;
+            if (state != InstallState.Waiting || scanning ||
+                targetAssembly == null || reLogicAssembly == null)
             {
                 return;
             }
 
+            AssemblyIdentity.VerifyReLogicBinding(targetAssembly, reLogicAssembly, manifest);
+            state = InstallState.Installing;
             AppDomain.CurrentDomain.AssemblyLoad -= OnAssemblyLoad;
+            target = targetAssembly;
+            reLogic = reLogicAssembly;
+        }
 
-            RuntimeManifest manifest = null;
-            string evidencePath = null;
-            bool evidenceCreated = false;
-            string stage = "BOOTSTRAP_MANIFEST";
+        private void Install(Assembly target, Assembly reLogic)
+        {
+            string stage = "HOST_LOAD";
             try
             {
                 string baseDirectory = Path.GetFullPath(AppDomain.CurrentDomain.BaseDirectory);
                 string sidecarDirectory = Path.Combine(baseDirectory, "JueMingR.Validation");
-                string manifestPath = Path.Combine(sidecarDirectory, "phase-0-s-runtime.manifest");
-                manifest = RuntimeManifest.Read(manifestPath);
-                evidencePath = Path.Combine(sidecarDirectory, manifest.EvidenceFileName);
-
-                stage = "TARGET_IDENTITY";
-                string targetPath = Path.Combine(baseDirectory, "Terraria.exe");
-                AssemblyIdentity.VerifyLoaded(
-                    targetAssembly,
-                    targetPath,
-                    manifest.TargetAssemblySimpleName,
-                    manifest.TargetAssemblyVersion,
-                    manifest.TargetAssemblyMvid,
-                    manifest.TargetAssemblySha256);
-
-                stage = "EVIDENCE_CREATE";
-                EvidenceWriter.CreateFirstEvent(
-                    evidencePath,
-                    manifest.PackageId,
-                    "TERRARIA_ASSEMBLY_READY");
-                evidenceCreated = true;
-
-                stage = "HOST_LOAD";
                 string hostPath = Path.Combine(sidecarDirectory, "JueMingR.TerrariaHost.dll");
                 AssemblyIdentity.VerifyFileNameAndVersion(
                     hostPath,
@@ -96,7 +223,7 @@ namespace JueMingR.Bootstrap
                     "Install",
                     BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly,
                     null,
-                    new[] { typeof(Assembly) },
+                    new[] { typeof(Assembly), typeof(Assembly) },
                     null);
                 if (install == null ||
                     install.ReturnType != typeof(void) ||
@@ -106,21 +233,51 @@ namespace JueMingR.Bootstrap
                     throw new InvalidOperationException("The fixed Phase 0-S host entry is invalid.");
                 }
 
-                install.Invoke(null, new object[] { targetAssembly });
+                install.Invoke(null, new object[] { target, reLogic });
+                lock (gate)
+                {
+                    state = InstallState.Installed;
+                }
             }
             catch (Exception exception)
             {
-                if (evidenceCreated && manifest != null && evidencePath != null &&
-                    Interlocked.CompareExchange(ref errorRecorded, 1, 0) == 0)
-                {
-                    EvidenceWriter.TryAppendError(
-                        evidencePath,
-                        manifest.PackageId,
-                        stage,
-                        GetErrorCode(stage),
-                        exception.GetType().Name);
-                }
+                Fail(exception, stage, GetErrorCode(stage));
             }
+        }
+
+        private void Fail(Exception exception, string stage, string code)
+        {
+            lock (gate)
+            {
+                if (state == InstallState.Installed || state == InstallState.Failed)
+                {
+                    return;
+                }
+
+                state = InstallState.Failed;
+                AppDomain.CurrentDomain.AssemblyLoad -= OnAssemblyLoad;
+            }
+
+            if (evidenceCreated && manifest != null && evidencePath != null &&
+                Interlocked.CompareExchange(ref errorRecorded, 1, 0) == 0)
+            {
+                EvidenceWriter.TryAppendError(
+                    evidencePath,
+                    manifest.PackageId,
+                    stage,
+                    code,
+                    EffectiveException(exception).GetType().Name);
+            }
+        }
+
+        private static Exception EffectiveException(Exception exception)
+        {
+            while (exception is TargetInvocationException && exception.InnerException != null)
+            {
+                exception = exception.InnerException;
+            }
+
+            return exception;
         }
 
         private static string GetErrorCode(string stage)
@@ -137,6 +294,14 @@ namespace JueMingR.Bootstrap
 
             return "IDENTITY_MISMATCH";
         }
+
+        private enum InstallState
+        {
+            Waiting,
+            Installing,
+            Installed,
+            Failed
+        }
     }
 
     internal sealed class RuntimeManifest
@@ -150,6 +315,12 @@ namespace JueMingR.Bootstrap
             "targetAssemblyVersion",
             "targetAssemblyMvid",
             "targetAssemblySha256",
+            "reLogicAssemblySimpleName",
+            "reLogicAssemblyVersion",
+            "reLogicAssemblyPublicKeyToken",
+            "reLogicAssemblyMvid",
+            "reLogicResourceName",
+            "reLogicResourceSha256",
             "targetTypeName",
             "targetMethodName",
             "targetMethodMetadataToken",
@@ -174,6 +345,12 @@ namespace JueMingR.Bootstrap
             Version targetAssemblyVersion,
             Guid targetAssemblyMvid,
             string targetAssemblySha256,
+            string reLogicAssemblySimpleName,
+            Version reLogicAssemblyVersion,
+            string reLogicAssemblyPublicKeyToken,
+            Guid reLogicAssemblyMvid,
+            string reLogicResourceName,
+            string reLogicResourceSha256,
             string hostAssemblySimpleName,
             Version hostAssemblyVersion,
             Guid hostAssemblyMvid,
@@ -185,6 +362,12 @@ namespace JueMingR.Bootstrap
             TargetAssemblyVersion = targetAssemblyVersion;
             TargetAssemblyMvid = targetAssemblyMvid;
             TargetAssemblySha256 = targetAssemblySha256;
+            ReLogicAssemblySimpleName = reLogicAssemblySimpleName;
+            ReLogicAssemblyVersion = reLogicAssemblyVersion;
+            ReLogicAssemblyPublicKeyToken = reLogicAssemblyPublicKeyToken;
+            ReLogicAssemblyMvid = reLogicAssemblyMvid;
+            ReLogicResourceName = reLogicResourceName;
+            ReLogicResourceSha256 = reLogicResourceSha256;
             HostAssemblySimpleName = hostAssemblySimpleName;
             HostAssemblyVersion = hostAssemblyVersion;
             HostAssemblyMvid = hostAssemblyMvid;
@@ -201,6 +384,18 @@ namespace JueMingR.Bootstrap
         internal Guid TargetAssemblyMvid { get; private set; }
 
         internal string TargetAssemblySha256 { get; private set; }
+
+        internal string ReLogicAssemblySimpleName { get; private set; }
+
+        internal Version ReLogicAssemblyVersion { get; private set; }
+
+        internal string ReLogicAssemblyPublicKeyToken { get; private set; }
+
+        internal Guid ReLogicAssemblyMvid { get; private set; }
+
+        internal string ReLogicResourceName { get; private set; }
+
+        internal string ReLogicResourceSha256 { get; private set; }
 
         internal string HostAssemblySimpleName { get; private set; }
 
@@ -223,24 +418,31 @@ namespace JueMingR.Bootstrap
             RequireExact(values[4], "1.4.5.8");
             Guid targetMvid = ParseGuid(values[5]);
             RequireCharacters(values[6], 64, IsUpperHex);
-            RequireExact(values[7], "Terraria.Main");
-            RequireExact(values[8], "Initialize");
-            RequireToken(values[9]);
-            RequireExact(values[10], "false");
-            RequireExact(values[11], "System.Void");
-            RequireExact(values[12], "0");
-            RequireExact(values[13], "JueMingR.TerrariaHost");
-            RequireExact(values[14], "0.0.0.0");
-            Guid hostMvid = ParseGuid(values[15]);
-            RequireCharacters(values[16], 64, IsUpperHex);
-            RequireExact(values[17], "0Harmony");
-            RequireExact(values[18], "2.4.2.0");
-            RequireExact(values[19], "024a0e6e-c8c2-437e-ad04-7b6279389c23");
+            RequireExact(values[7], "ReLogic");
+            RequireExact(values[8], "1.0.0.0");
+            RequireExact(values[9], "null");
+            Guid reLogicMvid = ParseGuid(values[10]);
+            RequireExact(values[10], "ee258be9-88a4-423d-b3ce-84b6c35b141a");
+            RequireExact(values[11], "Terraria.Libraries.ReLogic.ReLogic.dll");
+            RequireExact(values[12], "E1C5DCCEFFF5FD1C789FF712BABFA1A305FCED0D03C96EF30F2C14D99AA0AF29");
+            RequireExact(values[13], "Terraria.Main");
+            RequireExact(values[14], "Initialize");
+            RequireToken(values[15]);
+            RequireExact(values[16], "false");
+            RequireExact(values[17], "System.Void");
+            RequireExact(values[18], "0");
+            RequireExact(values[19], "JueMingR.TerrariaHost");
+            RequireExact(values[20], "0.0.0.0");
+            Guid hostMvid = ParseGuid(values[21]);
+            RequireCharacters(values[22], 64, IsUpperHex);
+            RequireExact(values[23], "0Harmony");
+            RequireExact(values[24], "2.4.2.0");
+            RequireExact(values[25], "024a0e6e-c8c2-437e-ad04-7b6279389c23");
             RequireExact(
-                values[20],
+                values[26],
                 "7B9E756306FA3D7620E02A857C8927A6AB04973F9BD8A77D3866700A6DEAC55C");
-            RequireExact(values[21], "JueMingR.Phase0S.MainInitialize");
-            RequireExact(values[22], "phase-0-s-evidence.log");
+            RequireExact(values[27], "JueMingR.Phase0S.MainInitialize");
+            RequireExact(values[28], "phase-0-s-evidence.log");
 
             return new RuntimeManifest(
                 values[1],
@@ -248,11 +450,17 @@ namespace JueMingR.Bootstrap
                 new Version(values[4]),
                 targetMvid,
                 values[6],
-                values[13],
-                new Version(values[14]),
+                values[7],
+                new Version(values[8]),
+                values[9],
+                reLogicMvid,
+                values[11],
+                values[12],
+                values[19],
+                new Version(values[20]),
                 hostMvid,
-                values[16],
-                values[22]);
+                values[22],
+                values[28]);
         }
 
         private static void RequireExact(string actual, string expected)
@@ -391,6 +599,8 @@ namespace JueMingR.Bootstrap
 
     internal static class AssemblyIdentity
     {
+        private const int ReLogicResourceLength = 176128;
+
         internal static void VerifyFileNameAndVersion(
             string path,
             string expectedSimpleName,
@@ -467,10 +677,88 @@ namespace JueMingR.Bootstrap
                 expectedSha256);
         }
 
+        internal static void VerifyLoadedReLogic(
+            Assembly assembly,
+            string expectedSimpleName,
+            Version expectedVersion,
+            string expectedPublicKeyToken,
+            Guid expectedMvid)
+        {
+            AssemblyName name = assembly.GetName();
+            byte[] token = name.GetPublicKeyToken();
+            string expectedFullName = expectedSimpleName + ", Version=" + expectedVersion +
+                ", Culture=neutral, PublicKeyToken=" + expectedPublicKeyToken;
+            if (!String.Equals(name.FullName, expectedFullName, StringComparison.Ordinal) ||
+                !String.Equals(name.Name, expectedSimpleName, StringComparison.Ordinal) ||
+                !Equals(name.Version, expectedVersion) ||
+                !String.Equals(expectedPublicKeyToken, "null", StringComparison.Ordinal) ||
+                (token != null && token.Length != 0) ||
+                assembly.ManifestModule.ModuleVersionId != expectedMvid)
+            {
+                throw new InvalidDataException("The loaded ReLogic identity does not match.");
+            }
+        }
+
+        internal static void VerifyReLogicBinding(
+            Assembly targetAssembly,
+            Assembly reLogicAssembly,
+            RuntimeManifest manifest)
+        {
+            VerifyLoadedReLogic(
+                reLogicAssembly,
+                manifest.ReLogicAssemblySimpleName,
+                manifest.ReLogicAssemblyVersion,
+                manifest.ReLogicAssemblyPublicKeyToken,
+                manifest.ReLogicAssemblyMvid);
+
+            int count = 0;
+            Assembly match = null;
+            foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                if (String.Equals(
+                        assembly.GetName().Name,
+                        manifest.ReLogicAssemblySimpleName,
+                        StringComparison.Ordinal))
+                {
+                    count++;
+                    match = assembly;
+                }
+            }
+
+            if (count != 1 || !ReferenceEquals(match, reLogicAssembly))
+            {
+                throw new InvalidDataException("The loaded ReLogic assembly is not unique.");
+            }
+
+            using (Stream stream = targetAssembly.GetManifestResourceStream(manifest.ReLogicResourceName))
+            {
+                if (stream == null || stream.Length != ReLogicResourceLength ||
+                    !String.Equals(ComputeSha256(stream), manifest.ReLogicResourceSha256, StringComparison.Ordinal))
+                {
+                    throw new InvalidDataException("The Terraria ReLogic resource does not match.");
+                }
+            }
+        }
+
         private static string ComputeSha256(string path)
         {
             using (SHA256 algorithm = SHA256.Create())
             using (FileStream stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                byte[] hash = algorithm.ComputeHash(stream);
+                StringBuilder builder = new StringBuilder(hash.Length * 2);
+                for (int index = 0; index < hash.Length; index++)
+                {
+                    builder.Append(hash[index].ToString("X2", CultureInfo.InvariantCulture));
+                }
+
+                return builder.ToString();
+            }
+        }
+
+        private static string ComputeSha256(Stream stream)
+        {
+            using (SHA256 algorithm = SHA256.Create())
             {
                 byte[] hash = algorithm.ComputeHash(stream);
                 StringBuilder builder = new StringBuilder(hash.Length * 2);
