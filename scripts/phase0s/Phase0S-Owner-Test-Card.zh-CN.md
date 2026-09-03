@@ -1,8 +1,8 @@
-# Phase 0-S 一次性最小实机诊断卡
+# Phase 0-S V3 项目所有者实机测试卡
 
-这不是 V3 修复版，也不是正式发布、Phase 0-S 成功或未来加载设计。它只诊断当前唯一目标 `Terraria.Main.Initialize()` 上为何已有 `HOOK_INSTALLED` 却没有正式 postfix evidence。
+这不是正式发布，也不决定未来完整 Runtime 的最终 Tick Hook。V3 只验证 Terraria 1.4.5.8 中唯一 `Terraria.Main.Update(Microsoft.Xna.Framework.GameTime)` postfix 的第一次命中能否完成一次空 Runtime 交接。
 
-Agent 只负责核验诊断包、安装、复制并分析 evidence、以及用同一精确匹配包恢复。Agent 不会启动、关闭或操作 Terraria；游戏内动作仍由项目所有者亲自完成。
+Agent 负责核验包、安装、复制并分析 evidence，以及使用同一精确匹配包恢复。Agent 不会启动、关闭或自动操作 Terraria。
 
 ## Agent 安装停止门
 
@@ -10,41 +10,47 @@ Agent 只会在以下条件全部成立后安装：
 
 - Terraria 进程为 0；
 - `Terraria.exe` 精确身份与 SHA-256 匹配；
-- 包来自当前 clean commit，manifest、payload 与 ZIP 身份匹配；
+- 包来自已审查的 clean commit，manifest、payload 与 ZIP 身份匹配；
 - `Terraria.exe.config`、根目录 Bootstrap、sidecar、staging/temp 均无冲突；
-- 隔离 fixture、安装/恢复、Debug、Release、架构和可重复构建门禁通过；
-- 唯一一次定向只读复核通过。
+- Debug、Release、架构、fixture、安装/恢复、双 worktree 和双 ZIP 门禁通过；
+- 唯一一次定向独立审查结论为 A。
 
-安装脚本只应输出一行 JSON。只有 `exitCode` 为 `0` 且 `code` 为 `INSTALL_COMPLETE` 时，Agent 才会明确通知项目所有者进入启动步骤；其它结果立即停止，不覆盖、不合并、不改名、不删除现有文件，也不反复重试。
+安装脚本只应输出一行 JSON。只有 `exitCode` 为 `0` 且 `code` 为 `INSTALL_COMPLETE` 时才进入实机步骤；其它结果立即停止，不覆盖、不手工补文件、不重试。
 
 ## 项目所有者只做一次
 
-收到 Agent 明确的“诊断包已安装，可以启动 Terraria”后：
+收到 Agent 明确的“V3 已安装”通知后：
 
 1. 通过平常方式亲自启动 Terraria。
-2. 进入主菜单；若可正常操作，再进入一个普通存档。
-3. 正常退出 Terraria，并确认游戏进程已经结束。
-4. 回传：“诊断测试完成，Terraria 已退出”。若无法启动或无法正常退出，只说明实际现象，不要修改、复制或删除诊断文件，也不要重复启动。
+2. 进入主菜单。
+3. 进入一个普通存档。
+4. 正常退出 Terraria，并确认游戏进程已经结束。
+5. 回复：“V3 测试完成，Terraria 已退出”。
 
-不需要自行查看或解释日志，不需要手工运行安装/恢复脚本，也不要改用 `LoadContent`、`Update`、`Draw`、`DoUpdate` 或其它 Hook。
+若无法启动、无法进入主菜单或存档、或无法正常退出，只说明实际现象；不要修改、复制或删除验证文件，也不要重复启动。项目所有者不需要查看日志，也不需要手工运行安装或恢复脚本。
 
-## Agent 在退出后处理
+## Agent 在收到回复后处理
 
 确认 Terraria 进程为 0 后，Agent 才会：
 
-1. 复制 `JueMingR.Validation\phase-0-s-diagnostic.sentinel` 与 `phase-0-s-evidence.log`（若存在）到真实 Terraria 目录之外；
-2. 核对同一 package id，分析 Patch 开始/返回、metadata、prefix、postfix、gate/context 与正式 evidence 写入；
-3. 使用同一精确匹配包运行 `Restore-Phase0S.ps1`；
-4. 核验 `Terraria.exe.config`、`JueMingR.Bootstrap.dll`、`JueMingR.Validation` 已精确移除，且 `Terraria.exe` 未改变；
-5. 只给出 A/B/C/D/E 中的一项诊断结论并停止。
+1. 将 `JueMingR.Validation\phase-0-s-evidence.log`（若存在）复制到真实游戏目录之外；
+2. 核对 V3 package id 和严格的 `01` 至 `05`；
+3. 使用同一 V3 包运行 `Restore-Phase0S.ps1`；
+4. 核验 `Terraria.exe.config`、`JueMingR.Bootstrap.dll` 和 `JueMingR.Validation` 已精确移除；
+5. 核验 `Terraria.exe` SHA-256 未变化。
 
-恢复正常且文件身份无异常时，不要求项目所有者额外启动纯原版 Terraria。若恢复脚本失败或文件身份异常，Agent 会保留现场并停止，不会强制删除或递归清理。
+项目所有者已明确豁免恢复后的纯原版再次启动。若恢复失败或文件身份异常，Agent 会保留现场并停止，不强制删除或递归清理。
 
-## 两类本地证据
+## 成功判据与边界
 
-- 正式 evidence 仍是原有 `01` 至 `05` 五事件合同；本次诊断不降低或替代该成功判据。
-- 独立 sentinel 只允许五类诊断事件：`RELOGIC_ASSEMBLY_LOAD_OBSERVED`、`PATCH_BEGIN`、`PATCH_RETURNED`、`MAIN_INITIALIZE_ENTRY_OBSERVED`、`POSTFIX_ENTRY`。状态字段只用于区分 metadata、gate/context 与正式 evidence 写入结果。
+同一 package id 必须严格、有序、各一次地出现：
 
-sentinel 是有界、无 BOM、无绝对路径、无用户数据的一次性文件。package manifest schema 2 只因增加了该文件的固定相对路径声明；这不是产品版本、修复版本或配置迁移。恢复脚本只在 package id、格式与 manifest 声明都匹配时删除它。
+1. `TERRARIA_ASSEMBLY_READY`
+2. `HARMONY_READY`
+3. `HOOK_INSTALLED`
+4. `MAIN_UPDATE_POSTFIX_FIRED`
+5. `RUNTIME_HANDOFF_COMPLETE`
 
-即使本次得到完整正式 `01` 至 `05`，也不能把结果直接算作 Phase 0-S 成功，因为临时 prefix 和额外观测改变了 Patch 形态。本次不验证多人、性能、玩家功能、广泛平台兼容或未来长期 Hook。
+还必须同时满足安装 `INSTALL_COMPLETE`、主菜单和普通存档可进入、`ERROR` 为 0、恢复为 `RESTORE_COMPLETE` 或 `RESTORE_NOOP`、`Terraria.exe` 未变化，以及项目所有者明确接受。
+
+自动测试、Patch metadata、前三项事件、游戏窗口出现或只进入主菜单都不能单独算成功。V3 包不包含一次性 diagnostic sentinel，也不包含 Terraria、ReLogic 或 XNA 文件；本卡不证明多人、FPS、广泛平台兼容、玩家功能或未来长期 Hook。

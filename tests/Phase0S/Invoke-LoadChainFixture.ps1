@@ -88,20 +88,27 @@ function New-Phase0SFixtureRuntimeManifest {
     $target = Get-Phase0SReflectionIdentity -AssemblyPath $FixtureExe
     $hostIdentity = Get-Phase0SReflectionIdentity -AssemblyPath $HostAssembly
     $targetAssembly = [System.Reflection.Assembly]::ReflectionOnlyLoadFrom($FixtureExe)
-    $initializeMethod = $targetAssembly.GetType('Terraria.Main', $true).GetMethod(
-        'Initialize',
-        [System.Reflection.BindingFlags]'Instance, NonPublic, DeclaredOnly')
-    if ($null -eq $initializeMethod -or $initializeMethod.IsStatic -or
-        $initializeMethod.ReturnType.FullName -cne 'System.Void' -or
-        $initializeMethod.GetParameters().Count -ne 0) {
-        throw 'The fake Terraria fixture does not expose the required parameterless protected Main.Initialize target.'
+    $targetType = $targetAssembly.GetType('Terraria.Main', $true)
+    $updateMethods = @($targetType.GetMethods(
+        [System.Reflection.BindingFlags]'Instance, Public, NonPublic, DeclaredOnly') | Where-Object {
+            $parameters = @($_.GetParameters())
+            $_.Name -ceq 'Update' -and
+            -not $_.IsStatic -and
+            -not $_.IsGenericMethod -and
+            $_.ReturnType.FullName -ceq 'System.Void' -and
+            $parameters.Count -eq 1 -and
+            $parameters[0].ParameterType.FullName -ceq 'Microsoft.Xna.Framework.GameTime'
+        })
+    if ($updateMethods.Count -ne 1) {
+        throw 'The fake Terraria fixture does not expose exactly one Main.Update(GameTime) target.'
     }
+    $updateMethod = $updateMethods[0]
     if ($SourceCommit -notmatch '^[0-9a-f]{40}$') {
         throw 'The fixture runtime manifest requires a lowercase 40-character source commit.'
     }
     $targetHash = if ($UseWrongTargetHash) { ('0' * 64) } else { $target.sha256 }
     $lines = @(
-        'schemaVersion=1',
+        'schemaVersion=2',
         ('packageId=' + $PackageId),
         ('sourceCommit=' + $SourceCommit),
         ('targetAssemblySimpleName=' + $target.simpleName),
@@ -115,11 +122,12 @@ function New-Phase0SFixtureRuntimeManifest {
         'reLogicResourceName=Terraria.Libraries.ReLogic.ReLogic.dll',
         'reLogicResourceSha256=E1C5DCCEFFF5FD1C789FF712BABFA1A305FCED0D03C96EF30F2C14D99AA0AF29',
         'targetTypeName=Terraria.Main',
-        'targetMethodName=Initialize',
-        ('targetMethodMetadataToken=0x{0:X8}' -f $initializeMethod.MetadataToken),
+        'targetMethodName=Update',
+        ('targetMethodMetadataToken=0x{0:X8}' -f $updateMethod.MetadataToken),
         'targetMethodIsStatic=false',
         'targetMethodReturnType=System.Void',
-        'targetMethodParameterCount=0',
+        'targetMethodParameterCount=1',
+        'targetMethodParameterType=Microsoft.Xna.Framework.GameTime',
         ('hostAssemblySimpleName=' + $hostIdentity.simpleName),
         ('hostAssemblyVersion=' + $hostIdentity.version),
         ('hostAssemblyMvid=' + $hostIdentity.mvid),
@@ -128,11 +136,11 @@ function New-Phase0SFixtureRuntimeManifest {
         'harmonyAssemblyVersion=2.4.2.0',
         'harmonyAssemblyMvid=024a0e6e-c8c2-437e-ad04-7b6279389c23',
         'harmonyAssemblySha256=7B9E756306FA3D7620E02A857C8927A6AB04973F9BD8A77D3866700A6DEAC55C',
-        'patchOwner=JueMingR.Phase0S.MainInitialize',
+        'patchOwner=JueMingR.Phase0S.MainUpdate',
         'evidenceFileName=phase-0-s-evidence.log'
     )
     [System.IO.File]::WriteAllLines($ManifestPath, $lines, (New-Object System.Text.UTF8Encoding($false)))
-    Assert-Phase0SCondition -Condition (([System.IO.File]::ReadAllLines($ManifestPath)).Count -eq 29) -Message 'The fixture runtime manifest must contain exactly 29 lines.'
+    Assert-Phase0SCondition -Condition (([System.IO.File]::ReadAllLines($ManifestPath)).Count -eq 30) -Message 'The fixture runtime manifest must contain exactly 30 lines.'
 }
 
 function New-Phase0SFixtureConfig {
@@ -262,9 +270,33 @@ function Assert-Phase0SNoSuccessEvents {
     }
 }
 
+function Assert-Phase0SSourceContract {
+    param([Parameter(Mandatory = $true)][string] $RepositoryRoot)
+
+    $hostPath = Join-Path $RepositoryRoot 'src\JueMingR.TerrariaHost\Phase0SLoadChainHost.cs'
+    $hostText = [System.IO.File]::ReadAllText($hostPath)
+    $patchCalls = [regex]::Matches($hostText, 'harmony\.Patch\(')
+    if ($patchCalls.Count -ne 1 -or
+        [regex]::Matches($hostText, 'new HarmonyMethod\(postfixMethod\)').Count -ne 1 -or
+        $hostText -notmatch '(?s)private static void Postfix\(\)\s*\{\s*if \(Interlocked\.CompareExchange\(ref postfixGate, 1, 0\) != 0\)' -or
+        $hostText -match 'OneTimeDiagnosticPrefix|Phase0SDiagnosticSentinel|MAIN_INITIALIZE_POSTFIX_FIRED' -or
+        $hostText -match 'Task\.Run|new\s+Thread\s*\(|new\s+(?:System\.Threading\.)?Timer\s*\(|ConcurrentQueue|Queue<') {
+        throw 'The production Host source does not match the single-postfix, first-gate, no-diagnostic/no-background contract.'
+    }
+
+    foreach ($removedPath in @(
+        'src\JueMingR.Bootstrap\Phase0SDiagnosticSentinel.cs',
+        'src\JueMingR.TerrariaHost\Phase0SDiagnosticSentinel.cs')) {
+        if ([System.IO.File]::Exists((Join-Path $RepositoryRoot $removedPath))) {
+            throw "Removed diagnostic source still exists: $removedPath"
+        }
+    }
+}
+
 function Invoke-Phase0SLoadChainFixtureTests {
     param([Parameter(Mandatory = $true)][string] $RepositoryRoot)
 
+    Assert-Phase0SSourceContract -RepositoryRoot $RepositoryRoot
     $buildResult = Invoke-Phase0SWindowsPowerShell -ScriptPath (Join-Path $RepositoryRoot 'scripts\build.ps1') -Arguments @('-Configuration', 'Debug')
     foreach ($line in $buildResult.output) {
         Write-Host $line
@@ -302,20 +334,6 @@ function Invoke-Phase0SLoadChainFixtureTests {
             Write-Host $line
         }
         Assert-Phase0SCondition -Condition ($successResult.exitCode -eq 0) -Message "load-chain success fixture: expected exit 0, actual $($successResult.exitCode)."
-
-        $writerFailure = New-Phase0SFixtureRunDirectory -Root $root -Name 'formal-writer-failure' -FixtureExe $fixtureExe -ProductionOutputs $productionOutputs -HarmonyPath $harmonyPath -PackageId ('phase0s-fixture-' + [Guid]::NewGuid().ToString('N')) -SourceCommit $sourceCommit
-        $writerFailureResult = Invoke-Phase0SFixtureExe -FixtureExe $writerFailure.exePath -Mode 'expect-writer-failure' -EvidencePath $writerFailure.evidencePath -PackageId $writerFailure.packageId
-        foreach ($line in $writerFailureResult.output) {
-            Write-Host $line
-        }
-        Assert-Phase0SCondition -Condition ($writerFailureResult.exitCode -eq 0) -Message "formal writer failure fixture: expected independent prefix/postfix observations; actual exit $($writerFailureResult.exitCode)."
-
-        $legacy = New-Phase0SFixtureRunDirectory -Root $root -Name 'legacy-primary' -FixtureExe $fixtureExe -ProductionOutputs $productionOutputs -HarmonyPath $harmonyPath -PackageId ('phase0s-fixture-' + [Guid]::NewGuid().ToString('N')) -SourceCommit $sourceCommit
-        $legacyResult = Invoke-Phase0SFixtureExe -FixtureExe $legacy.exePath -Mode 'expect-legacy-primary' -EvidencePath $legacy.evidencePath -PackageId $legacy.packageId
-        foreach ($line in $legacyResult.output) {
-            Write-Host $line
-        }
-        Assert-Phase0SCondition -Condition ($legacyResult.exitCode -eq 0) -Message "legacy early-Patch fixture: expected primary before cleanup; actual exit $($legacyResult.exitCode)."
 
         foreach ($driverMode in @(
             'driver-relogic-then-terraria',

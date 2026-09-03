@@ -44,7 +44,7 @@ function ConvertTo-Phase0SCanonicalPackageManifestText {
 
     $payload = @($Manifest.payload)
     $builder = New-Object System.Text.StringBuilder
-    [void] $builder.Append('{"schemaVersion":2,"packageId":')
+    [void] $builder.Append('{"schemaVersion":1,"packageId":')
     [void] $builder.Append((ConvertTo-Phase0SJsonString -Value ([string] $Manifest.packageId)))
     [void] $builder.Append(',"sourceCommit":')
     [void] $builder.Append((ConvertTo-Phase0SJsonString -Value ([string] $Manifest.sourceCommit)))
@@ -56,8 +56,6 @@ function ConvertTo-Phase0SCanonicalPackageManifestText {
     [void] $builder.Append((ConvertTo-Phase0SJsonString -Value ([string] $Manifest.target.mvid)))
     [void] $builder.Append(',"sha256":')
     [void] $builder.Append((ConvertTo-Phase0SJsonString -Value ([string] $Manifest.target.sha256)))
-    [void] $builder.Append('},"diagnosticSentinel":{"installRelativePath":')
-    [void] $builder.Append((ConvertTo-Phase0SJsonString -Value ([string] $Manifest.diagnosticSentinel.installRelativePath)))
     [void] $builder.Append('},"payload":[')
     for ($index = 0; $index -lt $payload.Count; $index++) {
         if ($index -ne 0) {
@@ -385,6 +383,7 @@ function Read-Phase0SRuntimeManifest {
         'targetMethodIsStatic',
         'targetMethodReturnType',
         'targetMethodParameterCount',
+        'targetMethodParameterType',
         'hostAssemblySimpleName',
         'hostAssemblyVersion',
         'hostAssemblyMvid',
@@ -397,7 +396,7 @@ function Read-Phase0SRuntimeManifest {
         'evidenceFileName'
     )
     if ($lines.Count -ne $expectedKeys.Count) {
-        throw 'Runtime manifest must contain exactly 29 lines.'
+        throw 'Runtime manifest must contain exactly 30 lines.'
     }
 
     $values = [ordered]@{}
@@ -414,7 +413,7 @@ function Read-Phase0SRuntimeManifest {
         $values[$key] = $value
     }
 
-    if ($values.schemaVersion -cne '1' -or
+    if ($values.schemaVersion -cne '2' -or
         $values.packageId -notmatch '^[A-Za-z0-9.-]{1,64}$' -or
         $values.sourceCommit -notmatch '^[0-9a-f]{40}$' -or
         $values.targetAssemblySimpleName -cne 'Terraria' -or
@@ -427,11 +426,12 @@ function Read-Phase0SRuntimeManifest {
         $values.reLogicResourceName -cne 'Terraria.Libraries.ReLogic.ReLogic.dll' -or
         $values.reLogicResourceSha256 -cne 'E1C5DCCEFFF5FD1C789FF712BABFA1A305FCED0D03C96EF30F2C14D99AA0AF29' -or
         $values.targetTypeName -cne 'Terraria.Main' -or
-        $values.targetMethodName -cne 'Initialize' -or
+        $values.targetMethodName -cne 'Update' -or
         $values.targetMethodMetadataToken -notmatch '^0x[0-9A-F]{8}$' -or
         $values.targetMethodIsStatic -cne 'false' -or
         $values.targetMethodReturnType -cne 'System.Void' -or
-        $values.targetMethodParameterCount -cne '0' -or
+        $values.targetMethodParameterCount -cne '1' -or
+        $values.targetMethodParameterType -cne 'Microsoft.Xna.Framework.GameTime' -or
         $values.hostAssemblySimpleName -cne 'JueMingR.TerrariaHost' -or
         $values.hostAssemblyVersion -cne '0.0.0.0' -or
         $values.hostAssemblySha256 -notmatch '^[0-9A-F]{64}$' -or
@@ -439,7 +439,7 @@ function Read-Phase0SRuntimeManifest {
         $values.harmonyAssemblyVersion -cne '2.4.2.0' -or
         $values.harmonyAssemblyMvid -cne '024a0e6e-c8c2-437e-ad04-7b6279389c23' -or
         $values.harmonyAssemblySha256 -cne '7B9E756306FA3D7620E02A857C8927A6AB04973F9BD8A77D3866700A6DEAC55C' -or
-        $values.patchOwner -cne 'JueMingR.Phase0S.MainInitialize' -or
+        $values.patchOwner -cne 'JueMingR.Phase0S.MainUpdate' -or
         $values.evidenceFileName -cne 'phase-0-s-evidence.log') {
         throw 'Runtime manifest fixed values are invalid.'
     }
@@ -513,10 +513,9 @@ function Read-Phase0SPackage {
         throw 'Package manifest JSON is invalid.'
     }
 
-    Assert-Phase0SExactProperties -Object $manifest -ExpectedNames @('schemaVersion', 'packageId', 'sourceCommit', 'target', 'diagnosticSentinel', 'payload')
+    Assert-Phase0SExactProperties -Object $manifest -ExpectedNames @('schemaVersion', 'packageId', 'sourceCommit', 'target', 'payload')
     Assert-Phase0SExactProperties -Object $manifest.target -ExpectedNames @('simpleName', 'version', 'mvid', 'sha256')
-    Assert-Phase0SExactProperties -Object $manifest.diagnosticSentinel -ExpectedNames @('installRelativePath')
-    if (-not (Test-Phase0SIntegralJsonNumber -Value $manifest.schemaVersion) -or [int64] $manifest.schemaVersion -ne 2) {
+    if (-not (Test-Phase0SIntegralJsonNumber -Value $manifest.schemaVersion) -or [int64] $manifest.schemaVersion -ne 1) {
         throw 'Package manifest schemaVersion is invalid.'
     }
     if ([string] $manifest.sourceCommit -notmatch '^[0-9a-f]{40}$' -or
@@ -529,11 +528,6 @@ function Read-Phase0SPackage {
         [string] $manifest.target.sha256 -cne '960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3') {
         throw 'Package manifest target identity is invalid.'
     }
-    if ([string] $manifest.diagnosticSentinel.installRelativePath -cne
-        'JueMingR.Validation/phase-0-s-diagnostic.sentinel') {
-        throw 'Package manifest diagnostic sentinel path is invalid.'
-    }
-
     $payload = @($manifest.payload)
     if ($payload.Count -ne $script:Phase0SExpectedPayloadPaths.Count) {
         throw 'Package manifest payload count is invalid.'
@@ -584,7 +578,6 @@ function Read-Phase0SPackage {
         packageId = [string] $manifest.packageId
         sourceCommit = [string] $manifest.sourceCommit
         target = $manifest.target
-        diagnosticSentinel = $manifest.diagnosticSentinel
         payload = $payload
         payloadRoot = $payloadRoot
         runtime = $runtime
@@ -740,7 +733,7 @@ function Test-Phase0SEvidenceFile {
             'TERRARIA_ASSEMBLY_READY',
             'HARMONY_READY',
             'HOOK_INSTALLED',
-            'MAIN_INITIALIZE_POSTFIX_FIRED',
+            'MAIN_UPDATE_POSTFIX_FIRED',
             'RUNTIME_HANDOFF_COMPLETE'
         )
         $allowedStages = @(
@@ -823,85 +816,6 @@ function Test-Phase0SEvidenceFile {
     }
 }
 
-function Test-Phase0SDiagnosticSentinelFile {
-    param(
-        [Parameter(Mandatory = $true)][string] $Path,
-        [Parameter(Mandatory = $true)][string] $PackageId
-    )
-
-    try {
-        $text = Get-Phase0SStrictUtf8Text -Path $Path -MaximumLength 32768
-        if ($text.EndsWith("`r`n", [System.StringComparison]::Ordinal)) {
-            $body = $text.Substring(0, $text.Length - 2)
-        }
-        elseif ($text.EndsWith("`n", [System.StringComparison]::Ordinal)) {
-            $body = $text.Substring(0, $text.Length - 1)
-        }
-        else {
-            $body = $text
-        }
-        $normalizedBody = $body.Replace("`r`n", "`n")
-        if ($normalizedBody.Length -eq 0 -or $normalizedBody.IndexOf("`r", [System.StringComparison]::Ordinal) -ge 0) {
-            return $false
-        }
-        $lines = @($normalizedBody.Split([char] "`n"))
-        if ($lines.Count -lt 1 -or $lines.Count -gt 16) {
-            return $false
-        }
-        $allowedPairs = @(
-            'RELOGIC_ASSEMBLY_LOAD_OBSERVED|OBSERVED',
-            'PATCH_BEGIN|BEGIN',
-            'PATCH_RETURNED|RETURNED',
-            'PATCH_RETURNED|METADATA_CONFIRMED',
-            'MAIN_INITIALIZE_ENTRY_OBSERVED|ENTERED',
-            'POSTFIX_ENTRY|ENTERED',
-            'POSTFIX_ENTRY|HOOK_COMMIT_NOT_OBSERVED',
-            'POSTFIX_ENTRY|GATE_ALREADY_CONSUMED',
-            'POSTFIX_ENTRY|GATE_PASSED',
-            'POSTFIX_ENTRY|CONTEXT_UNAVAILABLE',
-            'POSTFIX_ENTRY|FORMAL_EVIDENCE_WRITE_SUCCEEDED',
-            'POSTFIX_ENTRY|FORMAL_EVIDENCE_WRITE_FAILED'
-        )
-        foreach ($line in $lines) {
-            if ($line.Length -eq 0 -or $line.Trim() -cne $line) {
-                return $false
-            }
-            $fields = @($line.Split('|'))
-            if ($fields.Count -ne 7 -or
-                $fields[0] -cne 'PHASE0S-DIAGNOSTIC' -or
-                $fields[1] -cne '1' -or
-                $fields[2] -cne $PackageId -or
-                $allowedPairs -cnotcontains ($fields[3] + '|' + $fields[4]) -or
-                $fields[5] -notmatch '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}Z$') {
-                return $false
-            }
-            $timestamp = [DateTimeOffset]::MinValue
-            if (-not [DateTimeOffset]::TryParseExact(
-                $fields[5],
-                'O',
-                [System.Globalization.CultureInfo]::InvariantCulture,
-                [System.Globalization.DateTimeStyles]::RoundtripKind,
-                [ref] $timestamp) -or $timestamp.Offset -ne [TimeSpan]::Zero) {
-                return $false
-            }
-            $threadId = 0
-            if (-not [int]::TryParse(
-                $fields[6],
-                [System.Globalization.NumberStyles]::None,
-                [System.Globalization.CultureInfo]::InvariantCulture,
-                [ref] $threadId) -or
-                $threadId -le 0 -or
-                $fields[6] -cne $threadId.ToString([System.Globalization.CultureInfo]::InvariantCulture)) {
-                return $false
-            }
-        }
-        return $true
-    }
-    catch {
-        return $false
-    }
-}
-
 function Assert-Phase0SSidecarDirectory {
     param(
         [Parameter(Mandatory = $true)][string] $Directory,
@@ -927,10 +841,9 @@ function Assert-Phase0SSidecarDirectory {
         'JueMingR.TerrariaHost.dll',
         'phase-0-s-runtime.manifest'
     )
-    $diagnosticSentinelName = Split-Path -Leaf ([string] $Package.diagnosticSentinel.installRelativePath)
     $allowedNames = @($receiptName) + $staticNames
     if ($AllowEvidence) {
-        $allowedNames += @('phase-0-s-evidence.log', $diagnosticSentinelName)
+        $allowedNames += 'phase-0-s-evidence.log'
     }
     $items = @(Get-ChildItem -LiteralPath $Directory -Force -ErrorAction Stop)
     foreach ($item in $items) {
@@ -957,13 +870,6 @@ function Assert-Phase0SSidecarDirectory {
     if ((Get-Phase0SPathState -Path $evidencePath).exists) {
         if (-not $AllowEvidence -or -not (Test-Phase0SEvidenceFile -Path $evidencePath -PackageId $Package.packageId)) {
             throw 'Controlled sidecar evidence is not attributable to this package.'
-        }
-    }
-    $diagnosticSentinelPath = Join-Path $Directory $diagnosticSentinelName
-    if ((Get-Phase0SPathState -Path $diagnosticSentinelPath).exists) {
-        if (-not $AllowEvidence -or
-            -not (Test-Phase0SDiagnosticSentinelFile -Path $diagnosticSentinelPath -PackageId $Package.packageId)) {
-            throw 'Controlled sidecar diagnostic sentinel is not attributable to this package.'
         }
     }
 }
@@ -1068,15 +974,6 @@ function Remove-Phase0SControlledDirectory {
         'JueMingR.TerrariaHost.dll',
         'phase-0-s-runtime.manifest'
     )
-    $diagnosticSentinelName = Split-Path -Leaf ([string] $Package.diagnosticSentinel.installRelativePath)
-    $diagnosticSentinelPath = Join-Path $Directory $diagnosticSentinelName
-    if ((Get-Phase0SPathState -Path $diagnosticSentinelPath).exists) {
-        if (-not $AllowEvidence -or
-            -not (Test-Phase0SDiagnosticSentinelFile -Path $diagnosticSentinelPath -PackageId $Package.packageId)) {
-            throw 'Diagnostic sentinel identity changed before deletion.'
-        }
-        [System.IO.File]::Delete($diagnosticSentinelPath)
-    }
     $evidencePath = Join-Path $Directory 'phase-0-s-evidence.log'
     if ((Get-Phase0SPathState -Path $evidencePath).exists) {
         if (-not $AllowEvidence -or -not (Test-Phase0SEvidenceFile -Path $evidencePath -PackageId $Package.packageId)) {

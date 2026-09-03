@@ -201,8 +201,6 @@ namespace JueMingR.TerrariaHost
         private static int postfixGate;
         private static int handoffGate;
         private static PostfixContext postfixContext;
-        private static string diagnosticPackageId;
-        private static string diagnosticSentinelPath;
 
         internal static void Install(
             RuntimeManifest manifest,
@@ -216,67 +214,34 @@ namespace JueMingR.TerrariaHost
             }
 
             MethodInfo targetMethod = ResolveTargetMethod(manifest, targetAssembly);
-            MethodInfo prefixMethod = typeof(Phase0SHarmonyWorker).GetMethod(
-                "OneTimeDiagnosticPrefix",
-                BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.DeclaredOnly,
-                null,
-                Type.EmptyTypes,
-                null);
             MethodInfo postfixMethod = typeof(Phase0SHarmonyWorker).GetMethod(
                 "Postfix",
                 BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.DeclaredOnly,
                 null,
                 Type.EmptyTypes,
                 null);
-            if (prefixMethod == null || prefixMethod.ReturnType != typeof(void) ||
-                postfixMethod == null || postfixMethod.ReturnType != typeof(void))
+            if (postfixMethod == null || postfixMethod.ReturnType != typeof(void))
             {
-                throw new InvalidOperationException("The fixed Phase 0-S diagnostic patch methods are invalid.");
+                throw new InvalidOperationException("The fixed Phase 0-S postfix is invalid.");
             }
 
-            string sidecarDirectory = Path.Combine(
-                Path.GetFullPath(AppDomain.CurrentDomain.BaseDirectory),
-                "JueMingR.Validation");
             string evidencePath = Path.Combine(
-                sidecarDirectory,
+                Path.Combine(Path.GetFullPath(AppDomain.CurrentDomain.BaseDirectory), "JueMingR.Validation"),
                 manifest.EvidenceFileName);
             postfixContext = new PostfixContext(manifest.PackageId, evidencePath);
-            diagnosticPackageId = manifest.PackageId;
-            diagnosticSentinelPath = Path.Combine(
-                sidecarDirectory,
-                Phase0SDiagnosticSentinel.FileName);
 
             Harmony harmony = new Harmony(manifest.PatchOwner);
             bool patchAttempted = false;
             try
             {
                 patchAttempted = true;
-                Phase0SDiagnosticSentinel.TryWrite(
-                    diagnosticSentinelPath,
-                    diagnosticPackageId,
-                    "PATCH_BEGIN",
-                    "BEGIN");
                 harmony.Patch(
                     targetMethod,
-                    new HarmonyMethod(prefixMethod),
+                    null,
                     new HarmonyMethod(postfixMethod),
                     null,
                     null);
-                Phase0SDiagnosticSentinel.TryWrite(
-                    diagnosticSentinelPath,
-                    diagnosticPackageId,
-                    "PATCH_RETURNED",
-                    "RETURNED");
-                VerifyExactPatchInfo(
-                    targetMethod,
-                    prefixMethod,
-                    postfixMethod,
-                    manifest.PatchOwner);
-                Phase0SDiagnosticSentinel.TryWrite(
-                    diagnosticSentinelPath,
-                    diagnosticPackageId,
-                    "PATCH_RETURNED",
-                    "METADATA_CONFIRMED");
+                VerifyExactPatchInfo(targetMethod, postfixMethod, manifest.PatchOwner);
                 EvidenceWriter.AppendEvent(evidencePath, manifest.PackageId, 3, "HOOK_INSTALLED");
                 Volatile.Write(ref hookCommitted, 1);
             }
@@ -307,12 +272,11 @@ namespace JueMingR.TerrariaHost
         private static MethodInfo ResolveTargetMethod(RuntimeManifest manifest, Assembly targetAssembly)
         {
             Type targetType = targetAssembly.GetType(manifest.TargetTypeName, true, false);
-            MethodInfo targetMethod = targetType.GetMethod(
-                manifest.TargetMethodName,
-                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly,
-                null,
-                Type.EmptyTypes,
-                null);
+            MethodInfo targetMethod = targetAssembly.ManifestModule.ResolveMethod(
+                manifest.TargetMethodMetadataToken) as MethodInfo;
+            ParameterInfo[] parameters = targetMethod == null
+                ? null
+                : targetMethod.GetParameters();
             if (targetMethod == null ||
                 !ReferenceEquals(targetMethod.DeclaringType, targetType) ||
                 !ReferenceEquals(targetMethod.DeclaringType.Assembly, targetAssembly) ||
@@ -321,17 +285,24 @@ namespace JueMingR.TerrariaHost
                 targetMethod.IsStatic != manifest.TargetMethodIsStatic ||
                 targetMethod.ReturnType != typeof(void) ||
                 !String.Equals(targetMethod.ReturnType.FullName, manifest.TargetMethodReturnType, StringComparison.Ordinal) ||
-                targetMethod.GetParameters().Length != manifest.TargetMethodParameterCount ||
+                parameters.Length != manifest.TargetMethodParameterCount ||
+                parameters.Length != 1 ||
+                !String.Equals(
+                    parameters[0].ParameterType.FullName,
+                    manifest.TargetMethodParameterType,
+                    StringComparison.Ordinal) ||
                 targetMethod.IsGenericMethod ||
-                targetMethod.ContainsGenericParameters)
+                targetMethod.ContainsGenericParameters ||
+                targetMethod.IsAbstract ||
+                targetMethod.GetMethodBody() == null)
             {
                 throw new InvalidOperationException("The Phase 0-S target method does not match the manifest.");
             }
 
-            MethodBase resolvedMethod = targetAssembly.ManifestModule.ResolveMethod(manifest.TargetMethodMetadataToken);
-            if (!SameMethod(resolvedMethod, targetMethod))
+            byte[] il = targetMethod.GetMethodBody().GetILAsByteArray();
+            if (il == null || il.Length == 0)
             {
-                throw new InvalidOperationException("The Phase 0-S target token resolves to a different method.");
+                throw new InvalidOperationException("The Phase 0-S target method has no managed IL.");
             }
 
             return targetMethod;
@@ -339,7 +310,6 @@ namespace JueMingR.TerrariaHost
 
         private static void VerifyExactPatchInfo(
             MethodInfo targetMethod,
-            MethodInfo prefixMethod,
             MethodInfo postfixMethod,
             string expectedOwner)
         {
@@ -347,7 +317,7 @@ namespace JueMingR.TerrariaHost
             if (patches == null ||
                 patches.Owners.Count != 1 ||
                 !String.Equals(patches.Owners[0], expectedOwner, StringComparison.Ordinal) ||
-                patches.Prefixes.Count != 1 ||
+                patches.Prefixes.Count != 0 ||
                 patches.Postfixes.Count != 1 ||
                 patches.Transpilers.Count != 0 ||
                 patches.Finalizers.Count != 0 ||
@@ -357,14 +327,11 @@ namespace JueMingR.TerrariaHost
                 throw new InvalidOperationException("The Phase 0-S patch set is not exact.");
             }
 
-            Patch prefix = patches.Prefixes[0];
             Patch postfix = patches.Postfixes[0];
-            if (!String.Equals(prefix.owner, expectedOwner, StringComparison.Ordinal) ||
-                !SameMethod(prefix.PatchMethod, prefixMethod) ||
-                !String.Equals(postfix.owner, expectedOwner, StringComparison.Ordinal) ||
+            if (!String.Equals(postfix.owner, expectedOwner, StringComparison.Ordinal) ||
                 !SameMethod(postfix.PatchMethod, postfixMethod))
             {
-                throw new InvalidOperationException("The Phase 0-S diagnostic patch owner or method does not match.");
+                throw new InvalidOperationException("The Phase 0-S postfix owner or method does not match.");
             }
         }
 
@@ -376,92 +343,29 @@ namespace JueMingR.TerrariaHost
                 left.MetadataToken == right.MetadataToken;
         }
 
-        // One-time Phase 0-S diagnostic only: no parameters, no game-state access, and no flow control.
-        // It is not approved as part of a future production load chain.
-        private static void OneTimeDiagnosticPrefix()
-        {
-            Phase0SDiagnosticSentinel.TryWrite(
-                diagnosticSentinelPath,
-                diagnosticPackageId,
-                "MAIN_INITIALIZE_ENTRY_OBSERVED",
-                "ENTERED");
-        }
-
         private static void Postfix()
         {
-            Phase0SDiagnosticSentinel.TryWrite(
-                diagnosticSentinelPath,
-                diagnosticPackageId,
-                "POSTFIX_ENTRY",
-                "ENTERED");
-
-            if (Volatile.Read(ref hookCommitted) != 1)
-            {
-                Phase0SDiagnosticSentinel.TryWrite(
-                    diagnosticSentinelPath,
-                    diagnosticPackageId,
-                    "POSTFIX_ENTRY",
-                    "HOOK_COMMIT_NOT_OBSERVED");
-                return;
-            }
-
             if (Interlocked.CompareExchange(ref postfixGate, 1, 0) != 0)
             {
-                Phase0SDiagnosticSentinel.TryWrite(
-                    diagnosticSentinelPath,
-                    diagnosticPackageId,
-                    "POSTFIX_ENTRY",
-                    "GATE_ALREADY_CONSUMED");
                 return;
             }
 
-            Phase0SDiagnosticSentinel.TryWrite(
-                diagnosticSentinelPath,
-                diagnosticPackageId,
-                "POSTFIX_ENTRY",
-                "GATE_PASSED");
             PostfixContext context = postfixContext;
-            if (context == null)
-            {
-                Phase0SDiagnosticSentinel.TryWrite(
-                    diagnosticSentinelPath,
-                    diagnosticPackageId,
-                    "POSTFIX_ENTRY",
-                    "CONTEXT_UNAVAILABLE");
-                return;
-            }
-
+            string stage = "POSTFIX";
             try
             {
+                if (Volatile.Read(ref hookCommitted) != 1 || context == null)
+                {
+                    throw new InvalidOperationException("The Phase 0-S postfix context is unavailable.");
+                }
+
                 EvidenceWriter.AppendEvent(
                     context.EvidencePath,
                     context.PackageId,
                     4,
-                    "MAIN_INITIALIZE_POSTFIX_FIRED");
-                Phase0SDiagnosticSentinel.TryWrite(
-                    diagnosticSentinelPath,
-                    diagnosticPackageId,
-                    "POSTFIX_ENTRY",
-                    "FORMAL_EVIDENCE_WRITE_SUCCEEDED");
-            }
-            catch (Exception exception)
-            {
-                Phase0SDiagnosticSentinel.TryWrite(
-                    diagnosticSentinelPath,
-                    diagnosticPackageId,
-                    "POSTFIX_ENTRY",
-                    "FORMAL_EVIDENCE_WRITE_FAILED");
-                Phase0SLoadChainHost.TryRecordPrimaryError(
-                    context.EvidencePath,
-                    context.PackageId,
-                    "POSTFIX",
-                    "APPEND_FAILED",
-                    exception);
-                return;
-            }
+                    "MAIN_UPDATE_POSTFIX_FIRED");
 
-            try
-            {
+                stage = "HANDOFF";
                 CompleteEmptyHandoffOnce();
                 EvidenceWriter.AppendEvent(
                     context.EvidencePath,
@@ -476,7 +380,7 @@ namespace JueMingR.TerrariaHost
                     Phase0SLoadChainHost.TryRecordPrimaryError(
                         context.EvidencePath,
                         context.PackageId,
-                        "HANDOFF",
+                        stage,
                         "APPEND_FAILED",
                         exception);
                 }
@@ -528,6 +432,7 @@ namespace JueMingR.TerrariaHost
             "targetMethodIsStatic",
             "targetMethodReturnType",
             "targetMethodParameterCount",
+            "targetMethodParameterType",
             "hostAssemblySimpleName",
             "hostAssemblyVersion",
             "hostAssemblyMvid",
@@ -558,6 +463,7 @@ namespace JueMingR.TerrariaHost
             bool targetMethodIsStatic,
             string targetMethodReturnType,
             int targetMethodParameterCount,
+            string targetMethodParameterType,
             string hostAssemblySimpleName,
             Version hostAssemblyVersion,
             Guid hostAssemblyMvid,
@@ -586,6 +492,7 @@ namespace JueMingR.TerrariaHost
             TargetMethodIsStatic = targetMethodIsStatic;
             TargetMethodReturnType = targetMethodReturnType;
             TargetMethodParameterCount = targetMethodParameterCount;
+            TargetMethodParameterType = targetMethodParameterType;
             HostAssemblySimpleName = hostAssemblySimpleName;
             HostAssemblyVersion = hostAssemblyVersion;
             HostAssemblyMvid = hostAssemblyMvid;
@@ -632,6 +539,8 @@ namespace JueMingR.TerrariaHost
 
         internal int TargetMethodParameterCount { get; private set; }
 
+        internal string TargetMethodParameterType { get; private set; }
+
         internal string HostAssemblySimpleName { get; private set; }
 
         internal Version HostAssemblyVersion { get; private set; }
@@ -656,7 +565,7 @@ namespace JueMingR.TerrariaHost
         {
             string[] values = StrictManifestReader.ReadValues(path, Keys);
 
-            RequireExact(values[0], "1");
+            RequireExact(values[0], "2");
             RequirePackageId(values[1]);
             RequireCharacters(values[2], 40, IsLowerHex);
             RequireExact(values[3], "Terraria");
@@ -671,24 +580,25 @@ namespace JueMingR.TerrariaHost
             RequireExact(values[11], "Terraria.Libraries.ReLogic.ReLogic.dll");
             RequireExact(values[12], "E1C5DCCEFFF5FD1C789FF712BABFA1A305FCED0D03C96EF30F2C14D99AA0AF29");
             RequireExact(values[13], "Terraria.Main");
-            RequireExact(values[14], "Initialize");
+            RequireExact(values[14], "Update");
             int targetToken = ParseToken(values[15]);
             RequireExact(values[16], "false");
             RequireExact(values[17], "System.Void");
-            RequireExact(values[18], "0");
-            RequireExact(values[19], "JueMingR.TerrariaHost");
-            RequireExact(values[20], "0.0.0.0");
-            Guid hostMvid = ParseGuid(values[21]);
-            RequireCharacters(values[22], 64, IsUpperHex);
-            RequireExact(values[23], "0Harmony");
-            RequireExact(values[24], "2.4.2.0");
-            Guid harmonyMvid = ParseGuid(values[25]);
-            RequireExact(values[25], "024a0e6e-c8c2-437e-ad04-7b6279389c23");
+            RequireExact(values[18], "1");
+            RequireExact(values[19], "Microsoft.Xna.Framework.GameTime");
+            RequireExact(values[20], "JueMingR.TerrariaHost");
+            RequireExact(values[21], "0.0.0.0");
+            Guid hostMvid = ParseGuid(values[22]);
+            RequireCharacters(values[23], 64, IsUpperHex);
+            RequireExact(values[24], "0Harmony");
+            RequireExact(values[25], "2.4.2.0");
+            Guid harmonyMvid = ParseGuid(values[26]);
+            RequireExact(values[26], "024a0e6e-c8c2-437e-ad04-7b6279389c23");
             RequireExact(
-                values[26],
+                values[27],
                 "7B9E756306FA3D7620E02A857C8927A6AB04973F9BD8A77D3866700A6DEAC55C");
-            RequireExact(values[27], "JueMingR.Phase0S.MainInitialize");
-            RequireExact(values[28], "phase-0-s-evidence.log");
+            RequireExact(values[28], "JueMingR.Phase0S.MainUpdate");
+            RequireExact(values[29], "phase-0-s-evidence.log");
 
             return new RuntimeManifest(
                 values[1],
@@ -707,17 +617,18 @@ namespace JueMingR.TerrariaHost
                 targetToken,
                 false,
                 values[17],
-                0,
+                1,
                 values[19],
-                new Version(values[20]),
+                values[20],
+                new Version(values[21]),
                 hostMvid,
-                values[22],
                 values[23],
-                new Version(values[24]),
+                values[24],
+                new Version(values[25]),
                 harmonyMvid,
-                values[26],
                 values[27],
-                values[28]);
+                values[28],
+                values[29]);
         }
 
         private static void RequireExact(string actual, string expected)
@@ -1049,7 +960,7 @@ namespace JueMingR.TerrariaHost
             "TERRARIA_ASSEMBLY_READY",
             "HARMONY_READY",
             "HOOK_INSTALLED",
-            "MAIN_INITIALIZE_POSTFIX_FIRED",
+            "MAIN_UPDATE_POSTFIX_FIRED",
             "RUNTIME_HANDOFF_COMPLETE"
         };
 

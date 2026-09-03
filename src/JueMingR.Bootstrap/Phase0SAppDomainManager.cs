@@ -24,8 +24,6 @@ namespace JueMingR.Bootstrap
         private Assembly reLogicAssembly;
         private RuntimeManifest manifest;
         private string evidencePath;
-        private string diagnosticSentinelPath;
-        private bool reLogicAssemblyLoadObserved;
         private bool evidenceCreated;
         private int errorRecorded;
 
@@ -102,16 +100,6 @@ namespace JueMingR.Bootstrap
                     }
                     else
                     {
-                        if (!reLogicAssemblyLoadObserved)
-                        {
-                            reLogicAssemblyLoadObserved = true;
-                            Phase0SDiagnosticSentinel.TryWrite(
-                                diagnosticSentinelPath,
-                                manifest.PackageId,
-                                "RELOGIC_ASSEMBLY_LOAD_OBSERVED",
-                                "OBSERVED");
-                        }
-
                         ObserveReLogicLocked(assembly);
                     }
 
@@ -141,9 +129,6 @@ namespace JueMingR.Bootstrap
             string sidecarDirectory = Path.Combine(baseDirectory, "JueMingR.Validation");
             manifest = RuntimeManifest.Read(Path.Combine(sidecarDirectory, "phase-0-s-runtime.manifest"));
             evidencePath = Path.Combine(sidecarDirectory, manifest.EvidenceFileName);
-            diagnosticSentinelPath = Path.Combine(
-                sidecarDirectory,
-                Phase0SDiagnosticSentinel.FileName);
         }
 
         private void ObserveTargetLocked(Assembly candidate)
@@ -342,6 +327,7 @@ namespace JueMingR.Bootstrap
             "targetMethodIsStatic",
             "targetMethodReturnType",
             "targetMethodParameterCount",
+            "targetMethodParameterType",
             "hostAssemblySimpleName",
             "hostAssemblyVersion",
             "hostAssemblyMvid",
@@ -426,7 +412,7 @@ namespace JueMingR.Bootstrap
         {
             string[] values = StrictManifestReader.ReadValues(path, Keys);
 
-            RequireExact(values[0], "1");
+            RequireExact(values[0], "2");
             RequirePackageId(values[1]);
             RequireCharacters(values[2], 40, IsLowerHex);
             RequireExact(values[3], "Terraria");
@@ -441,23 +427,24 @@ namespace JueMingR.Bootstrap
             RequireExact(values[11], "Terraria.Libraries.ReLogic.ReLogic.dll");
             RequireExact(values[12], "E1C5DCCEFFF5FD1C789FF712BABFA1A305FCED0D03C96EF30F2C14D99AA0AF29");
             RequireExact(values[13], "Terraria.Main");
-            RequireExact(values[14], "Initialize");
+            RequireExact(values[14], "Update");
             RequireToken(values[15]);
             RequireExact(values[16], "false");
             RequireExact(values[17], "System.Void");
-            RequireExact(values[18], "0");
-            RequireExact(values[19], "JueMingR.TerrariaHost");
-            RequireExact(values[20], "0.0.0.0");
-            Guid hostMvid = ParseGuid(values[21]);
-            RequireCharacters(values[22], 64, IsUpperHex);
-            RequireExact(values[23], "0Harmony");
-            RequireExact(values[24], "2.4.2.0");
-            RequireExact(values[25], "024a0e6e-c8c2-437e-ad04-7b6279389c23");
+            RequireExact(values[18], "1");
+            RequireExact(values[19], "Microsoft.Xna.Framework.GameTime");
+            RequireExact(values[20], "JueMingR.TerrariaHost");
+            RequireExact(values[21], "0.0.0.0");
+            Guid hostMvid = ParseGuid(values[22]);
+            RequireCharacters(values[23], 64, IsUpperHex);
+            RequireExact(values[24], "0Harmony");
+            RequireExact(values[25], "2.4.2.0");
+            RequireExact(values[26], "024a0e6e-c8c2-437e-ad04-7b6279389c23");
             RequireExact(
-                values[26],
+                values[27],
                 "7B9E756306FA3D7620E02A857C8927A6AB04973F9BD8A77D3866700A6DEAC55C");
-            RequireExact(values[27], "JueMingR.Phase0S.MainInitialize");
-            RequireExact(values[28], "phase-0-s-evidence.log");
+            RequireExact(values[28], "JueMingR.Phase0S.MainUpdate");
+            RequireExact(values[29], "phase-0-s-evidence.log");
 
             return new RuntimeManifest(
                 values[1],
@@ -471,11 +458,11 @@ namespace JueMingR.Bootstrap
                 reLogicMvid,
                 values[11],
                 values[12],
-                values[19],
-                new Version(values[20]),
+                values[20],
+                new Version(values[21]),
                 hostMvid,
-                values[22],
-                values[28]);
+                values[23],
+                values[29]);
         }
 
         private static void RequireExact(string actual, string expected)
@@ -794,7 +781,7 @@ namespace JueMingR.Bootstrap
             "TERRARIA_ASSEMBLY_READY",
             "HARMONY_READY",
             "HOOK_INSTALLED",
-            "MAIN_INITIALIZE_POSTFIX_FIRED",
+            "MAIN_UPDATE_POSTFIX_FIRED",
             "RUNTIME_HANDOFF_COMPLETE"
         };
 

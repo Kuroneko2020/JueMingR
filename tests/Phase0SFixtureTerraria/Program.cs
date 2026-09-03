@@ -1,37 +1,47 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
-using System.Text;
-using System.Threading;
 using HarmonyLib;
+
+namespace Microsoft.Xna.Framework
+{
+    public sealed class GameTime
+    {
+    }
+}
 
 namespace Terraria
 {
     public class Main
     {
-        public static bool FixtureInitializeMarker { get; private set; }
-
-        public void RunFirstInitialize()
-        {
-            Initialize();
-        }
+        public static int FixtureUpdateCount { get; private set; }
 
         protected virtual void Initialize()
         {
-            // Keep the real failure shape: Harmony must JIT a method whose body directly
-            // references ReLogic before Terraria's entry point has installed its resolver.
-            Type platformType = typeof(ReLogic.OS.Platform);
-            if (platformType == null)
+            Console.WriteLine("FIXTURE_MAIN_INITIALIZE_ORIGINAL");
+        }
+
+        public void RunUpdateLoop(int count)
+        {
+            var gameTime = new Microsoft.Xna.Framework.GameTime();
+            for (int index = 0; index < count; index++)
             {
-                throw new InvalidOperationException("The fixture ReLogic dependency was not resolved.");
+                Update(gameTime);
+            }
+        }
+
+        protected virtual void Update(Microsoft.Xna.Framework.GameTime gameTime)
+        {
+            if (gameTime == null)
+            {
+                throw new ArgumentNullException("gameTime");
             }
 
-            FixtureInitializeMarker = true;
-            Console.WriteLine("FIXTURE_MAIN_INITIALIZE_ORIGINAL");
+            FixtureUpdateCount++;
+            Console.WriteLine("FIXTURE_MAIN_UPDATE_ORIGINAL");
         }
     }
 
@@ -49,7 +59,7 @@ namespace Terraria
             "TERRARIA_ASSEMBLY_READY",
             "HARMONY_READY",
             "HOOK_INSTALLED",
-            "MAIN_INITIALIZE_POSTFIX_FIRED",
+            "MAIN_UPDATE_POSTFIX_FIRED",
             "RUNTIME_HANDOFF_COMPLETE"
         };
 
@@ -59,13 +69,11 @@ namespace Terraria
             {
                 if (args.Length != 3 ||
                     (args[0] != "expect-handoff" &&
-                     args[0] != "expect-writer-failure" &&
                      args[0] != "expect-no-handoff" &&
-                     args[0] != "expect-legacy-primary" &&
                      !args[0].StartsWith("driver-", StringComparison.Ordinal)))
                 {
                     throw new ArgumentException(
-                        "Usage: Terraria expect-handoff|expect-writer-failure|expect-no-handoff|expect-legacy-primary <evidence-path> <package-id>");
+                        "Usage: Terraria expect-handoff|expect-no-handoff <evidence-path> <package-id>");
                 }
 
                 string mode = args[0];
@@ -83,50 +91,30 @@ namespace Terraria
                     return 0;
                 }
 
-                if (mode == "expect-legacy-primary")
-                {
-                    RunLegacyEarlyPatchProbe(evidencePath, packageId);
-                    AssertLegacyPrimaryBeforeCleanup(File.ReadAllLines(evidencePath), packageId);
-                    Console.WriteLine("PASS: fixture mode {0} validated.", mode);
-                    return 0;
-                }
-
                 // Match WindowsLaunch.Main: install the embedded dependency resolver only
                 // after the executable entry point starts, then enter code that needs ReLogic.
                 activeEvidencePath = evidencePath;
                 AppDomain.CurrentDomain.AssemblyLoad += ObserveEmbeddedReLogicLoad;
                 AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly;
 
-                // Match LaunchGame's earlier Platform reference. Main.Initialize still has
-                // its own direct ReLogic reference, but it is not the load-triggering JIT.
+                // Match LaunchGame's earlier Platform reference before the normal Update loop.
                 TriggerLaunchGameReLogicReference();
 
-                // The fixture's first lifecycle action is its first, parameterless Main.Initialize call.
                 var main = new Main();
-                if (mode == "expect-writer-failure")
-                {
-                    using (FileStream evidenceLock = new FileStream(
-                        evidencePath,
-                        FileMode.Open,
-                        FileAccess.Read,
-                        FileShare.Read))
-                    {
-                        main.RunFirstInitialize();
-                    }
-                }
-                else
-                {
-                    main.RunFirstInitialize();
-                }
+                main.RunUpdateLoop(1);
+                byte[] evidenceAfterFirstUpdate = File.Exists(evidencePath)
+                    ? File.ReadAllBytes(evidencePath)
+                    : new byte[0];
+                main.RunUpdateLoop(4);
 
                 if (mode == "expect-handoff")
                 {
                     AssertEmbeddedLoadContract();
                 }
 
-                if (!global::Terraria.Main.FixtureInitializeMarker)
+                if (global::Terraria.Main.FixtureUpdateCount != 5)
                 {
-                    throw new InvalidOperationException("The fixture Main.Initialize marker was not reached.");
+                    throw new InvalidOperationException("The fixture Main.Update loop did not run exactly five times.");
                 }
 
                 string[] evidenceLines = File.Exists(evidencePath)
@@ -135,16 +123,13 @@ namespace Terraria
                 if (mode == "expect-handoff")
                 {
                     AssertCompleteHandoff(evidenceLines, packageId);
-                    AssertDiagnosticObservations(evidencePath, packageId, false);
-                }
-                else if (mode == "expect-writer-failure")
-                {
-                    AssertFormalWriterFailure(evidenceLines, packageId);
-                    AssertDiagnosticObservations(evidencePath, packageId, true);
-                }
-                else if (mode == "expect-legacy-primary")
-                {
-                    AssertLegacyPrimaryBeforeCleanup(evidenceLines, packageId);
+                    AssertBytesEqual(
+                        evidenceAfterFirstUpdate,
+                        File.ReadAllBytes(evidencePath),
+                        "Second and later Update calls changed formal evidence.");
+                    AssertPatchContract(typeof(global::Terraria.Main));
+                    AssertOneShotState();
+                    AssertNoDiagnosticArtifact(evidencePath);
                 }
                 else
                 {
@@ -168,97 +153,6 @@ namespace Terraria
             {
                 throw new InvalidOperationException("The fixture LaunchGame dependency was not resolved.");
             }
-        }
-
-        private static void RunLegacyEarlyPatchProbe(string evidencePath, string packageId)
-        {
-            string[] initial = File.Exists(evidencePath) ? File.ReadAllLines(evidencePath) : new string[0];
-            if (initial.Length != 1)
-            {
-                throw new InvalidOperationException(
-                    "The repaired readiness gate must wait at event 01 before the legacy probe.");
-            }
-
-            File.AppendAllText(
-                evidencePath,
-                String.Join(
-                    "|",
-                    "PHASE0S",
-                    "1",
-                    packageId,
-                    "02",
-                    "HARMONY_READY",
-                    DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
-                    Thread.CurrentThread.ManagedThreadId.ToString(CultureInfo.InvariantCulture)) + Environment.NewLine,
-                new UTF8Encoding(false, true));
-
-            MethodInfo target = typeof(Main).GetMethod(
-                "Initialize",
-                BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
-            MethodInfo postfix = typeof(Program).GetMethod(
-                "LegacyProbePostfix",
-                BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
-            var harmony = new Harmony("JueMingR.Phase0S.LegacyProbe");
-            Exception primary = null;
-            Exception cleanup = null;
-            try
-            {
-                harmony.Patch(target, null, new HarmonyMethod(postfix), null, null);
-            }
-            catch (Exception exception)
-            {
-                primary = exception;
-            }
-
-            if (primary == null)
-            {
-                throw new InvalidOperationException(
-                    "The legacy early-Patch probe unexpectedly succeeded before ReLogic loaded.");
-            }
-
-            try
-            {
-                harmony.Unpatch(target, HarmonyPatchType.All, "JueMingR.Phase0S.LegacyProbe");
-            }
-            catch (Exception exception)
-            {
-                cleanup = exception;
-            }
-
-            if (cleanup == null)
-            {
-                cleanup = new FileNotFoundException(
-                    "Fixture cleanup secondary.",
-                    "ReLogic, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null");
-            }
-
-            Assembly host = Assembly.Load(
-                "JueMingR.TerrariaHost, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null");
-            Type hostType = host.GetType(
-                "JueMingR.TerrariaHost.Phase0SLoadChainHost",
-                true,
-                false);
-            MethodInfo recorder = hostType.GetMethod(
-                "TryRecordPatchFailure",
-                BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
-            if (recorder == null)
-            {
-                throw new InvalidOperationException("The primary/cleanup recorder is unavailable.");
-            }
-
-            recorder.Invoke(
-                null,
-                new object[]
-                {
-                    evidencePath,
-                    packageId,
-                    new TargetInvocationException(primary),
-                    cleanup
-                });
-        }
-
-        private static void LegacyProbePostfix()
-        {
         }
 
         private static void RunDriverMode(string mode, string evidencePath, string packageId)
@@ -322,21 +216,31 @@ namespace Terraria
                 mode == "driver-duplicate-scan";
             if (expectSuccess)
             {
-                string[] beforeInitialize = File.ReadAllLines(evidencePath);
-                if (beforeInitialize.Length != 3 ||
-                    beforeInitialize[2].Split('|')[4] != "HOOK_INSTALLED")
+                string[] beforeUpdate = File.ReadAllLines(evidencePath);
+                if (beforeUpdate.Length != 3 ||
+                    beforeUpdate[2].Split('|')[4] != "HOOK_INSTALLED")
                 {
                     throw new InvalidOperationException(
-                        "HOOK_INSTALLED must be synchronously present before the first Initialize. Evidence: " +
-                        String.Join(" || ", beforeInitialize));
+                        "HOOK_INSTALLED must be synchronously present before the first Update. Evidence: " +
+                        String.Join(" || ", beforeUpdate));
                 }
 
-                object instance = Activator.CreateInstance(target.GetType("Terraria.Main", true, false));
-                target.GetType("Terraria.Main", true, false).GetMethod("RunFirstInitialize").Invoke(
+                Type mainType = target.GetType("Terraria.Main", true, false);
+                object instance = Activator.CreateInstance(mainType);
+                MethodInfo runUpdateLoop = mainType.GetMethod("RunUpdateLoop");
+                runUpdateLoop.Invoke(
                     instance,
-                    null);
+                    new object[] { 1 });
                 AssertCompleteHandoff(File.ReadAllLines(evidencePath), packageId);
-                AssertDiagnosticEntryPair(evidencePath, packageId);
+                byte[] evidenceAfterFirstUpdate = File.ReadAllBytes(evidencePath);
+                runUpdateLoop.Invoke(instance, new object[] { 4 });
+                AssertBytesEqual(
+                    evidenceAfterFirstUpdate,
+                    File.ReadAllBytes(evidencePath),
+                    "Driver mode observed repeated evidence after the first Update.");
+                AssertPatchContract(mainType);
+                AssertOneShotState();
+                AssertNoDiagnosticArtifact(evidencePath);
             }
             else
             {
@@ -537,136 +441,152 @@ namespace Terraria
             }
         }
 
-        private static void AssertFormalWriterFailure(IList<string> evidenceLines, string packageId)
+        private static void AssertBytesEqual(byte[] expected, byte[] actual, string message)
         {
-            if (evidenceLines.Count != 3)
+            if (expected.Length != actual.Length)
             {
-                throw new InvalidOperationException(
-                    "The forced formal-writer failure must retain exactly events 01-03.");
+                throw new InvalidOperationException(message);
             }
 
-            AssertEvent(evidenceLines[0], packageId, "01", "TERRARIA_ASSEMBLY_READY");
-            AssertEvent(evidenceLines[1], packageId, "02", "HARMONY_READY");
-            AssertEvent(evidenceLines[2], packageId, "03", "HOOK_INSTALLED");
-        }
-
-        private static void AssertDiagnosticObservations(
-            string evidencePath,
-            string packageId,
-            bool expectFormalWriterFailure)
-        {
-            string sentinelPath = Path.Combine(
-                Path.GetDirectoryName(evidencePath),
-                "phase-0-s-diagnostic.sentinel");
-            if (!File.Exists(sentinelPath))
+            for (int index = 0; index < expected.Length; index++)
             {
-                throw new InvalidOperationException("The independent diagnostic sentinel is missing.");
-            }
-
-            string[] lines = File.ReadAllLines(sentinelPath);
-            string[] expectedEvents =
-            {
-                "RELOGIC_ASSEMBLY_LOAD_OBSERVED",
-                "PATCH_BEGIN",
-                "PATCH_RETURNED",
-                "PATCH_RETURNED",
-                "MAIN_INITIALIZE_ENTRY_OBSERVED",
-                "POSTFIX_ENTRY",
-                "POSTFIX_ENTRY",
-                "POSTFIX_ENTRY"
-            };
-            string[] expectedStates =
-            {
-                "OBSERVED",
-                "BEGIN",
-                "RETURNED",
-                "METADATA_CONFIRMED",
-                "ENTERED",
-                "ENTERED",
-                "GATE_PASSED",
-                expectFormalWriterFailure
-                    ? "FORMAL_EVIDENCE_WRITE_FAILED"
-                    : "FORMAL_EVIDENCE_WRITE_SUCCEEDED"
-            };
-            if (lines.Length != expectedEvents.Length)
-            {
-                throw new InvalidOperationException(
-                    "The diagnostic sentinel must contain exactly the bounded expected observations. Actual: " +
-                    String.Join(" || ", lines));
-            }
-
-            for (int index = 0; index < lines.Length; index++)
-            {
-                AssertDiagnosticLine(
-                    lines[index],
-                    packageId,
-                    expectedEvents[index],
-                    expectedStates[index]);
-            }
-        }
-
-        private static void AssertDiagnosticEntryPair(string evidencePath, string packageId)
-        {
-            string sentinelPath = Path.Combine(
-                Path.GetDirectoryName(evidencePath),
-                "phase-0-s-diagnostic.sentinel");
-            string[] lines = File.Exists(sentinelPath)
-                ? File.ReadAllLines(sentinelPath)
-                : new string[0];
-            bool prefixObserved = false;
-            bool postfixObserved = false;
-            foreach (string line in lines)
-            {
-                string[] fields = line.Split('|');
-                if (fields.Length != 7 || fields[0] != "PHASE0S-DIAGNOSTIC" ||
-                    fields[1] != "1" || fields[2] != packageId)
+                if (expected[index] != actual[index])
                 {
-                    throw new InvalidOperationException("A diagnostic sentinel line is invalid.");
+                    throw new InvalidOperationException(message);
                 }
-
-                prefixObserved |= fields[3] == "MAIN_INITIALIZE_ENTRY_OBSERVED" &&
-                    fields[4] == "ENTERED";
-                postfixObserved |= fields[3] == "POSTFIX_ENTRY" && fields[4] == "ENTERED";
-            }
-
-            if (!prefixObserved || !postfixObserved)
-            {
-                throw new InvalidOperationException(
-                    "The fixture must observe the temporary prefix and postfix independently.");
             }
         }
 
-        private static void AssertDiagnosticLine(
-            string line,
-            string packageId,
-            string eventName,
-            string state)
+        private static void AssertPatchContract(Type mainType)
         {
-            string[] fields = line.Split('|');
-            int threadId;
-            DateTimeOffset timestamp;
-            if (fields.Length != 7 ||
-                fields[0] != "PHASE0S-DIAGNOSTIC" ||
-                fields[1] != "1" ||
-                fields[2] != packageId ||
-                fields[3] != eventName ||
-                fields[4] != state ||
-                !DateTimeOffset.TryParseExact(
-                    fields[5],
-                    "O",
-                    CultureInfo.InvariantCulture,
-                    DateTimeStyles.None,
-                    out timestamp) ||
-                timestamp.Offset != TimeSpan.Zero ||
-                !Int32.TryParse(
-                    fields[6],
-                    NumberStyles.None,
-                    CultureInfo.InvariantCulture,
-                    out threadId) ||
-                threadId <= 0)
+            const string owner = "JueMingR.Phase0S.MainUpdate";
+            BindingFlags flags = BindingFlags.Instance |
+                BindingFlags.Public |
+                BindingFlags.NonPublic |
+                BindingFlags.DeclaredOnly;
+            MethodInfo initialize = mainType.GetMethod(
+                "Initialize",
+                flags,
+                null,
+                Type.EmptyTypes,
+                null);
+            if (initialize == null || HasOwner(Harmony.GetPatchInfo(initialize), owner))
             {
-                throw new InvalidOperationException(
-                    "A diagnostic sentinel observation is invalid: " + line);
+                throw new InvalidOperationException("Main.Initialize still has the Phase 0-S patch owner.");
+            }
+
+            MethodInfo update = null;
+            foreach (MethodInfo candidate in mainType.GetMethods(flags))
+            {
+                ParameterInfo[] parameters = candidate.GetParameters();
+                if (candidate.Name == "Update" &&
+                    candidate.ReturnType == typeof(void) &&
+                    !candidate.IsStatic &&
+                    !candidate.IsGenericMethod &&
+                    parameters.Length == 1 &&
+                    parameters[0].ParameterType.FullName == "Microsoft.Xna.Framework.GameTime")
+                {
+                    if (update != null)
+                    {
+                        throw new InvalidOperationException("The fixture exposes more than one exact Update target.");
+                    }
+
+                    update = candidate;
+                }
+            }
+
+            Patches patches = update == null ? null : Harmony.GetPatchInfo(update);
+            if (patches == null ||
+                patches.Owners.Count != 1 ||
+                patches.Owners[0] != owner ||
+                patches.Prefixes.Count != 0 ||
+                patches.Postfixes.Count != 1 ||
+                patches.Transpilers.Count != 0 ||
+                patches.Finalizers.Count != 0 ||
+                patches.InnerPrefixes.Count != 0 ||
+                patches.InnerPostfixes.Count != 0 ||
+                patches.Postfixes[0].owner != owner ||
+                patches.Postfixes[0].PatchMethod.Name != "Postfix" ||
+                patches.Postfixes[0].PatchMethod.DeclaringType.FullName !=
+                    "JueMingR.TerrariaHost.Phase0SHarmonyWorker")
+            {
+                throw new InvalidOperationException("Main.Update does not have the exact one-postfix Phase 0-S patch set.");
+            }
+
+            foreach (MethodInfo candidate in mainType.GetMethods(flags))
+            {
+                if (!ReferenceEquals(candidate, update) && HasOwner(Harmony.GetPatchInfo(candidate), owner))
+                {
+                    throw new InvalidOperationException("The Phase 0-S owner patched a second Main method.");
+                }
+            }
+        }
+
+        private static bool HasOwner(Patches patches, string owner)
+        {
+            if (patches == null)
+            {
+                return false;
+            }
+
+            foreach (string actualOwner in patches.Owners)
+            {
+                if (actualOwner == owner)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static void AssertOneShotState()
+        {
+            Assembly host = null;
+            foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                if (assembly.GetName().Name == "JueMingR.TerrariaHost")
+                {
+                    host = assembly;
+                    break;
+                }
+            }
+
+            Type worker = host == null
+                ? null
+                : host.GetType("JueMingR.TerrariaHost.Phase0SHarmonyWorker", false, false);
+            FieldInfo postfixGate = worker == null
+                ? null
+                : worker.GetField("postfixGate", BindingFlags.Static | BindingFlags.NonPublic);
+            FieldInfo handoffGate = worker == null
+                ? null
+                : worker.GetField("handoffGate", BindingFlags.Static | BindingFlags.NonPublic);
+            if (postfixGate == null || handoffGate == null ||
+                (int)postfixGate.GetValue(null) != 1 ||
+                (int)handoffGate.GetValue(null) != 1)
+            {
+                throw new InvalidOperationException("The Update postfix or empty handoff gate was not consumed exactly once.");
+            }
+        }
+
+        private static void AssertNoDiagnosticArtifact(string evidencePath)
+        {
+            string sentinelPath = Path.Combine(
+                Path.GetDirectoryName(evidencePath),
+                "phase-0-s-diagnostic.sentinel");
+            if (File.Exists(sentinelPath))
+            {
+                throw new InvalidOperationException("The removed diagnostic sentinel was recreated.");
+            }
+
+            foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                string name = assembly.GetName().Name;
+                if ((name == "JueMingR.Bootstrap" || name == "JueMingR.TerrariaHost") &&
+                    assembly.GetType(name + ".Phase0SDiagnosticSentinel", false, false) != null)
+                {
+                    throw new InvalidOperationException("A removed diagnostic sentinel type remains in production output.");
+                }
             }
         }
 
@@ -687,81 +607,5 @@ namespace Terraria
             }
         }
 
-        private static void AssertLegacyPrimaryBeforeCleanup(
-            IList<string> evidenceLines,
-            string packageId)
-        {
-            if (evidenceLines.Count < 3)
-            {
-                throw new InvalidOperationException(
-                    "Legacy early-Patch evidence must contain 01/02 and a primary failure.");
-            }
-
-            AssertEvent(evidenceLines[0], packageId, "01", "TERRARIA_ASSEMBLY_READY");
-            AssertEvent(evidenceLines[1], packageId, "02", "HARMONY_READY");
-            for (int index = 0; index < evidenceLines.Count; index++)
-            {
-                string[] fields = evidenceLines[index].Split('|');
-                if (fields.Length >= 5 &&
-                    fields[0] == "PHASE0S" &&
-                    fields[1] == "1" &&
-                    fields[2] == packageId &&
-                    (fields[3] == "03" || fields[3] == "04" || fields[3] == "05"))
-                {
-                    throw new InvalidOperationException(
-                        "Legacy early-Patch must not claim 03/04/05 success.");
-                }
-            }
-
-            string[] primary = evidenceLines[2].Split('|');
-            if ((primary.Length != 7 && primary.Length != 8) ||
-                primary[0] != "PHASE0S" ||
-                primary[1] != "1" ||
-                primary[2] != packageId ||
-                primary[3] != "ERROR" ||
-                primary[4] != "PATCH" ||
-                primary[5] != "PATCH_FAILED" ||
-                primary[6] != "FileNotFoundException" ||
-                (primary.Length == 8 &&
-                 primary[7] != "ReLogic, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null"))
-            {
-                throw new InvalidOperationException(
-                    "Legacy early-Patch must preserve the missing-ReLogic primary before optional cleanup. Evidence: " +
-                    String.Join(" || ", evidenceLines));
-            }
-
-            if (evidenceLines.Count > 4)
-            {
-                throw new InvalidOperationException(
-                    "Legacy failure may retain only one primary and one cleanup secondary.");
-            }
-
-            if (evidenceLines.Count == 4)
-            {
-                string[] cleanup = evidenceLines[3].Split('|');
-                if ((cleanup.Length != 7 && cleanup.Length != 8) || cleanup[3] != "ERROR" ||
-                    cleanup[4] != "PATCH_CLEANUP" || cleanup[5] != "CLEANUP_FAILED" ||
-                    (cleanup.Length == 8 &&
-                     cleanup[7] != "ReLogic, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null"))
-                {
-                    throw new InvalidOperationException(
-                        "Cleanup evidence must be optional and follow the primary.");
-                }
-            }
-        }
-
-        private static void AssertEvent(
-            string line,
-            string packageId,
-            string sequence,
-            string eventName)
-        {
-            string[] fields = line.Split('|');
-            if (fields.Length != 7 || fields[0] != "PHASE0S" || fields[1] != "1" ||
-                fields[2] != packageId || fields[3] != sequence || fields[4] != eventName)
-            {
-                throw new InvalidOperationException("Legacy evidence is missing required event " + sequence + ".");
-            }
-        }
     }
 }

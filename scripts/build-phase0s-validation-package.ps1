@@ -392,7 +392,7 @@ try {
     Copy-Phase0SBuilderFileCreateNew -SourcePath $harmonyPath -DestinationPath (Join-Path $sidecarPayloadRoot '0Harmony.dll')
 
     $runtimeLines = @(
-        'schemaVersion=1',
+        'schemaVersion=2',
         ('packageId=' + $packageId),
         ('sourceCommit=' + $sourceCommit),
         'targetAssemblySimpleName=Terraria',
@@ -406,11 +406,12 @@ try {
         'reLogicResourceName=Terraria.Libraries.ReLogic.ReLogic.dll',
         'reLogicResourceSha256=E1C5DCCEFFF5FD1C789FF712BABFA1A305FCED0D03C96EF30F2C14D99AA0AF29',
         'targetTypeName=Terraria.Main',
-        'targetMethodName=Initialize',
-        'targetMethodMetadataToken=0x06000CDE',
+        'targetMethodName=Update',
+        'targetMethodMetadataToken=0x06000D16',
         'targetMethodIsStatic=false',
         'targetMethodReturnType=System.Void',
-        'targetMethodParameterCount=0',
+        'targetMethodParameterCount=1',
+        'targetMethodParameterType=Microsoft.Xna.Framework.GameTime',
         'hostAssemblySimpleName=JueMingR.TerrariaHost',
         'hostAssemblyVersion=0.0.0.0',
         ('hostAssemblyMvid=' + $hostIdentity.mvid),
@@ -419,18 +420,18 @@ try {
         'harmonyAssemblyVersion=2.4.2.0',
         'harmonyAssemblyMvid=024a0e6e-c8c2-437e-ad04-7b6279389c23',
         'harmonyAssemblySha256=7B9E756306FA3D7620E02A857C8927A6AB04973F9BD8A77D3866700A6DEAC55C',
-        'patchOwner=JueMingR.Phase0S.MainInitialize',
+        'patchOwner=JueMingR.Phase0S.MainUpdate',
         'evidenceFileName=phase-0-s-evidence.log'
     )
-    if ($runtimeLines.Count -ne 29) {
-        throw 'Runtime manifest construction did not produce 29 lines.'
+    if ($runtimeLines.Count -ne 30) {
+        throw 'Runtime manifest construction did not produce 30 lines.'
     }
     $runtimeText = ($runtimeLines -join [Environment]::NewLine) + [Environment]::NewLine
     $runtimePath = Join-Path $sidecarPayloadRoot 'phase-0-s-runtime.manifest'
     Write-Phase0SBuilderTextCreateNew -Path $runtimePath -Text $runtimeText
     $runtimeCheck = Read-Phase0SRuntimeManifest -Path $runtimePath
     if ($runtimeCheck.packageId -cne $packageId -or $runtimeCheck.sourceCommit -cne $sourceCommit -or
-        $runtimeCheck.targetMethodMetadataToken -cne '0x06000CDE' -or
+        $runtimeCheck.targetMethodMetadataToken -cne '0x06000D16' -or
         $runtimeCheck.hostAssemblyMvid -cne $hostIdentity.mvid -or
         $runtimeCheck.hostAssemblySha256 -cne $hostIdentity.sha256) {
         throw 'Runtime manifest round-trip verification failed.'
@@ -447,7 +448,7 @@ try {
         })
     }
     $manifest = [pscustomobject][ordered]@{
-        schemaVersion = 2
+        schemaVersion = 1
         packageId = $packageId
         sourceCommit = $sourceCommit
         target = [pscustomobject][ordered]@{
@@ -455,9 +456,6 @@ try {
             version = '1.4.5.8'
             mvid = '2c29f6c3-4bd9-4add-9c58-da159804e083'
             sha256 = '960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3'
-        }
-        diagnosticSentinel = [pscustomobject][ordered]@{
-            installRelativePath = 'JueMingR.Validation/phase-0-s-diagnostic.sentinel'
         }
         payload = $payloadEntries.ToArray()
     }
