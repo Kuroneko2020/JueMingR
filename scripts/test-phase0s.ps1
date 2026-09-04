@@ -9,6 +9,8 @@ $requiredProductionPaths = @(
     'scripts\phase0s\Install-Phase0S.ps1',
     'scripts\phase0s\Restore-Phase0S.ps1',
     'scripts\build-phase0s-validation-package.ps1',
+    'scripts\build-phase0t-biome-validation-package.ps1',
+    'scripts\phase0s\Phase0T-Biome-Owner-Test-Card.zh-CN.md',
     'src\JueMingR.Bootstrap\Phase0SAppDomainManager.cs',
     'src\JueMingR.TerrariaHost\Phase0SLoadChainHost.cs',
     'eng\Harmony.baseline.json'

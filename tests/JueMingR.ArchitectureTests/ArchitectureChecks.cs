@@ -48,6 +48,8 @@ namespace JueMingR.ArchitectureTests
             "scripts/prepare-harmony.ps1",
             "scripts/build.ps1",
             "scripts/verify-reproducible-build.ps1",
+            "scripts/build-phase0t-biome-validation-package.ps1",
+            "scripts/phase0s/Phase0T-Biome-Owner-Test-Card.zh-CN.md",
             "eng/TerrariaReferences.baseline.json",
             "eng/Harmony.baseline.json",
             "JueMingR.sln"

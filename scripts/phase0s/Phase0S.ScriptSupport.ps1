@@ -518,8 +518,12 @@ function Read-Phase0SPackage {
     if (-not (Test-Phase0SIntegralJsonNumber -Value $manifest.schemaVersion) -or [int64] $manifest.schemaVersion -ne 1) {
         throw 'Package manifest schemaVersion is invalid.'
     }
+    $allowedPackageIds = @(
+        ('phase0s-' + [string] $manifest.sourceCommit),
+        ('phase0t-biome-' + [string] $manifest.sourceCommit)
+    )
     if ([string] $manifest.sourceCommit -notmatch '^[0-9a-f]{40}$' -or
-        [string] $manifest.packageId -cne ('phase0s-' + [string] $manifest.sourceCommit)) {
+        $allowedPackageIds -cnotcontains [string] $manifest.packageId) {
         throw 'Package manifest source identity is invalid.'
     }
     if ([string] $manifest.target.simpleName -cne 'Terraria' -or

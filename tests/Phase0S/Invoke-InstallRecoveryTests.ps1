@@ -25,7 +25,9 @@ function New-Phase0SControlledPackageFixture {
     param(
         [Parameter(Mandatory = $true)][string] $RepositoryRoot,
         [Parameter(Mandatory = $true)][string] $PackageRoot,
-        [Parameter(Mandatory = $true)][string] $TerrariaIdentityInput
+        [Parameter(Mandatory = $true)][string] $TerrariaIdentityInput,
+        [ValidateSet('phase0s', 'phase0t-biome')]
+        [string] $PackagePrefix = 'phase0s'
     )
 
     [System.IO.Directory]::CreateDirectory($PackageRoot) | Out-Null
@@ -43,7 +45,7 @@ function New-Phase0SControlledPackageFixture {
     if ($LASTEXITCODE -ne 0 -or $sourceCommit -notmatch '^[0-9a-f]{40}$') {
         throw 'The controlled package fixture could not obtain a source commit identity.'
     }
-    $packageId = 'phase0s-' + $sourceCommit
+    $packageId = $PackagePrefix + '-' + $sourceCommit
     $targetIdentity = Get-Phase0SAssemblyIdentity -AssemblyPath $TerrariaIdentityInput
     $runtimeManifest = @(
         'schemaVersion=2',
@@ -187,7 +189,7 @@ function Assert-Phase0SCompactJsonResult {
             Assert-Phase0SCondition -Condition ($null -eq $resultObject.packageId -and $null -eq $resultObject.sha256) -Message "${Operation}/${ExpectedCode}: packageId and sha256 must be JSON null."
         }
         { $_ -in @('INSTALL_COMPLETE', 'RESTORE_COMPLETE', 'RESTORE_NOOP', 'OWNERSHIP_UNPROVEN') } {
-            Assert-Phase0SCondition -Condition ([string] $resultObject.packageId -match '^phase0s-[0-9a-f]{40}$' -and $null -eq $resultObject.sha256) -Message "${Operation}/${ExpectedCode}: packageId or sha256 null semantics differ from the result contract."
+            Assert-Phase0SCondition -Condition ([string] $resultObject.packageId -match '^phase0(?:s|t-biome)-[0-9a-f]{40}$' -and $null -eq $resultObject.sha256) -Message "${Operation}/${ExpectedCode}: packageId or sha256 null semantics differ from the result contract."
         }
         default {
             throw "No null-semantics contract is defined for $ExpectedCode."
@@ -369,6 +371,14 @@ function Invoke-Phase0SInstallRecoveryTests {
         Assert-Phase0SCompactJsonResult -Result $restoreResult -Operation 'restore' -ExpectedExitCode 0 -ExpectedCode 'RESTORE_COMPLETE' -ExpectedStatus 'success' -TargetDirectory $successTarget
         $afterRestore = Get-Phase0STreeSnapshot -Root $successTarget
         Assert-Phase0STreeSnapshotEqual -Expected (Get-Phase0STreeSnapshot -Root (New-Phase0STargetDirectory -Root $root -TerrariaIdentityInput $terrariaIdentityInput -Name 'restore-baseline')) -Actual $afterRestore -Context 'exact restore'
+
+        $phase0TPackageRoot = Join-Path $root 'controlled-package-phase0t'
+        New-Phase0SControlledPackageFixture -RepositoryRoot $RepositoryRoot -PackageRoot $phase0TPackageRoot -TerrariaIdentityInput $terrariaIdentityInput -PackagePrefix 'phase0t-biome' | Out-Null
+        $phase0TTarget = New-Phase0STargetDirectory -Root $root -TerrariaIdentityInput $terrariaIdentityInput -Name 'phase0t-install-restore'
+        Assert-Phase0SCompactJsonResult -Result (Invoke-Phase0SPackageScript -PackageRoot $phase0TPackageRoot -ScriptName 'Install-Phase0S.ps1' -TerrariaDirectory $phase0TTarget) -Operation 'install' -ExpectedExitCode 0 -ExpectedCode 'INSTALL_COMPLETE' -ExpectedStatus 'success' -TargetDirectory $phase0TTarget
+        Assert-Phase0SInstalledLayout -Target $phase0TTarget
+        Assert-Phase0SReceiptMatchesPackageManifest -PackageRoot $phase0TPackageRoot -TargetDirectory $phase0TTarget
+        Assert-Phase0SCompactJsonResult -Result (Invoke-Phase0SPackageScript -PackageRoot $phase0TPackageRoot -ScriptName 'Restore-Phase0S.ps1' -TerrariaDirectory $phase0TTarget) -Operation 'restore' -ExpectedExitCode 0 -ExpectedCode 'RESTORE_COMPLETE' -ExpectedStatus 'success' -TargetDirectory $phase0TTarget
 
         $prefixTarget = New-Phase0STargetDirectory -Root $root -TerrariaIdentityInput $terrariaIdentityInput -Name 'evidence-prefix'
         $installResult = Invoke-Phase0SPackageScript -PackageRoot $packageRoot -ScriptName 'Install-Phase0S.ps1' -TerrariaDirectory $prefixTarget
