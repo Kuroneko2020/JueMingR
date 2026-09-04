@@ -274,7 +274,9 @@ function Assert-Phase0SSourceContract {
     param([Parameter(Mandatory = $true)][string] $RepositoryRoot)
 
     $hostPath = Join-Path $RepositoryRoot 'src\JueMingR.TerrariaHost\Phase0SLoadChainHost.cs'
+    $bootstrapPath = Join-Path $RepositoryRoot 'src\JueMingR.Bootstrap\Phase0SAppDomainManager.cs'
     $hostText = [System.IO.File]::ReadAllText($hostPath)
+    $bootstrapText = [System.IO.File]::ReadAllText($bootstrapPath)
     $patchCalls = [regex]::Matches($hostText, 'harmony\.Patch\(')
     if ($patchCalls.Count -ne 1 -or
         [regex]::Matches($hostText, 'new HarmonyMethod\(postfixMethod\)').Count -ne 1 -or
@@ -282,6 +284,16 @@ function Assert-Phase0SSourceContract {
         $hostText -match 'OneTimeDiagnosticPrefix|Phase0SDiagnosticSentinel|MAIN_INITIALIZE_POSTFIX_FIRED' -or
         $hostText -match 'Task\.Run|new\s+Thread\s*\(|new\s+(?:System\.Threading\.)?Timer\s*\(|ConcurrentQueue|Queue<') {
         throw 'The production Host source does not match the single-postfix, first-gate, no-diagnostic/no-background contract.'
+    }
+
+    if ([regex]::Matches($bootstrapText, 'ThreadPool\.QueueUserWorkItem\(').Count -ne 1 -or
+        $bootstrapText -match 'Task\.Run|new\s+Thread\s*\(|new\s+(?:System\.Threading\.)?Timer\s*\(|Thread\.Sleep|SpinWait|ConcurrentQueue|Queue<' -or
+        $bootstrapText -notmatch '(?s)Waiting\s*,\s*Queued\s*,\s*Installing\s*,\s*Installed\s*,\s*Failed' -or
+        $bootstrapText -notmatch '(?s)state = InstallState\.Installing;\s*if \(assemblyLoadHandlerDepth != 0\).*?Install\(request\.TargetAssembly, request\.ReLogicAssembly\)' -or
+        $bootstrapText -notmatch 'ReferenceEquals\(AppDomain\.CurrentDomain, request\.AppDomain\)' -or
+        $bootstrapText -notmatch 'ReferenceEquals\(targetAssembly, request\.TargetAssembly\)' -or
+        $bootstrapText -notmatch 'ReferenceEquals\(reLogicAssembly, request\.ReLogicAssembly\)') {
+        throw 'The Bootstrap source does not match the one-work-item, callback-outside, exact-object lifecycle contract.'
     }
 
     foreach ($removedPath in @(
@@ -337,8 +349,11 @@ function Invoke-Phase0SLoadChainFixtureTests {
 
         foreach ($driverMode in @(
             'driver-relogic-then-terraria',
+            'driver-terraria-then-relogic',
             'driver-both-before-subscription',
             'driver-duplicate-scan',
+            'driver-update-before-install',
+            'driver-worker-failure',
             'driver-wrong-relogic',
             'driver-two-relogic',
             'driver-relogic-never')) {

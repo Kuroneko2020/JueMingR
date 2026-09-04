@@ -20,6 +20,7 @@ namespace JueMingR.Bootstrap
         private InstallState state = InstallState.Waiting;
         private bool initialized;
         private bool scanning;
+        private int assemblyLoadHandlerDepth;
         private Assembly targetAssembly;
         private Assembly reLogicAssembly;
         private RuntimeManifest manifest;
@@ -46,14 +47,13 @@ namespace JueMingR.Bootstrap
                 ObserveAssembly(assembly);
             }
 
-            Assembly targetToInstall = null;
-            Assembly reLogicToInstall = null;
+            InstallRequest request = null;
             try
             {
                 lock (gate)
                 {
                     scanning = false;
-                    SelectInstallLocked(out targetToInstall, out reLogicToInstall);
+                    request = SelectInstallLocked();
                 }
             }
             catch (Exception exception)
@@ -62,21 +62,28 @@ namespace JueMingR.Bootstrap
                 return;
             }
 
-            if (targetToInstall != null)
-            {
-                Install(targetToInstall, reLogicToInstall);
-            }
+            QueueInstall(request);
         }
 
         private void OnAssemblyLoad(object sender, AssemblyLoadEventArgs eventArgs)
         {
-            ObserveAssembly(eventArgs.LoadedAssembly);
+            lock (gate)
+            {
+                assemblyLoadHandlerDepth++;
+                try
+                {
+                    ObserveAssembly(eventArgs.LoadedAssembly);
+                }
+                finally
+                {
+                    assemblyLoadHandlerDepth--;
+                }
+            }
         }
 
         private void ObserveAssembly(Assembly assembly)
         {
-            Assembly targetToInstall = null;
-            Assembly reLogicToInstall = null;
+            InstallRequest request = null;
             try
             {
                 string simpleName = assembly.GetName().Name;
@@ -103,7 +110,7 @@ namespace JueMingR.Bootstrap
                         ObserveReLogicLocked(assembly);
                     }
 
-                    SelectInstallLocked(out targetToInstall, out reLogicToInstall);
+                    request = SelectInstallLocked();
                 }
             }
             catch (Exception exception)
@@ -112,10 +119,103 @@ namespace JueMingR.Bootstrap
                 return;
             }
 
-            if (targetToInstall != null)
+            QueueInstall(request);
+        }
+
+        private void QueueInstall(InstallRequest request)
+        {
+            if (request == null)
             {
-                Install(targetToInstall, reLogicToInstall);
+                return;
             }
+
+            try
+            {
+                if (!ThreadPool.QueueUserWorkItem(ExecuteInstallWorkItem, request))
+                {
+                    throw new InvalidOperationException("The Phase 0-S install work item was not queued.");
+                }
+            }
+            catch (Exception exception)
+            {
+                Fail(exception, "HOST_LOAD", "VERIFY_FAILED");
+            }
+        }
+
+        private static void ExecuteInstallWorkItem(object stateObject)
+        {
+            InstallRequest request = stateObject as InstallRequest;
+            if (request == null)
+            {
+                return;
+            }
+
+            request.Manager.ExecuteInstallWorkItem(request);
+        }
+
+        private void ExecuteInstallWorkItem(InstallRequest request)
+        {
+            try
+            {
+                lock (gate)
+                {
+                    if (state != InstallState.Queued)
+                    {
+                        throw new InvalidOperationException("The Phase 0-S install work item state is invalid.");
+                    }
+
+                    state = InstallState.Installing;
+                    if (assemblyLoadHandlerDepth != 0)
+                    {
+                        throw new InvalidOperationException(
+                            "The Phase 0-S install work item overlapped an AssemblyLoad handler.");
+                    }
+
+                    if (!ReferenceEquals(AppDomain.CurrentDomain, request.AppDomain) ||
+                        !ReferenceEquals(targetAssembly, request.TargetAssembly) ||
+                        !ReferenceEquals(reLogicAssembly, request.ReLogicAssembly) ||
+                        !ContainsAssemblyReference(request.AppDomain, request.TargetAssembly) ||
+                        !ContainsAssemblyReference(request.AppDomain, request.ReLogicAssembly))
+                    {
+                        throw new InvalidDataException(
+                            "The Phase 0-S install work item lost its exact AppDomain or Assembly objects.");
+                    }
+
+                    string targetPath = Path.Combine(
+                        Path.GetFullPath(request.AppDomain.BaseDirectory),
+                        "Terraria.exe");
+                    AssemblyIdentity.VerifyLoaded(
+                        request.TargetAssembly,
+                        targetPath,
+                        manifest.TargetAssemblySimpleName,
+                        manifest.TargetAssemblyVersion,
+                        manifest.TargetAssemblyMvid,
+                        manifest.TargetAssemblySha256);
+                    AssemblyIdentity.VerifyCapturedReLogicBinding(
+                        request.TargetAssembly,
+                        request.ReLogicAssembly,
+                        manifest);
+                }
+
+                Install(request.TargetAssembly, request.ReLogicAssembly);
+            }
+            catch (Exception exception)
+            {
+                Fail(exception, "READINESS_IDENTITY", "IDENTITY_MISMATCH");
+            }
+        }
+
+        private static bool ContainsAssemblyReference(AppDomain appDomain, Assembly expectedAssembly)
+        {
+            foreach (Assembly assembly in appDomain.GetAssemblies())
+            {
+                if (ReferenceEquals(assembly, expectedAssembly))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private void EnsureContextLocked()
@@ -177,21 +277,22 @@ namespace JueMingR.Bootstrap
             reLogicAssembly = candidate;
         }
 
-        private void SelectInstallLocked(out Assembly target, out Assembly reLogic)
+        private InstallRequest SelectInstallLocked()
         {
-            target = null;
-            reLogic = null;
             if (state != InstallState.Waiting || scanning ||
                 targetAssembly == null || reLogicAssembly == null)
             {
-                return;
+                return null;
             }
 
             AssemblyIdentity.VerifyReLogicBinding(targetAssembly, reLogicAssembly, manifest);
-            state = InstallState.Installing;
+            state = InstallState.Queued;
             AppDomain.CurrentDomain.AssemblyLoad -= OnAssemblyLoad;
-            target = targetAssembly;
-            reLogic = reLogicAssembly;
+            return new InstallRequest(
+                this,
+                AppDomain.CurrentDomain,
+                targetAssembly,
+                reLogicAssembly);
         }
 
         private void Install(Assembly target, Assembly reLogic)
@@ -298,9 +399,33 @@ namespace JueMingR.Bootstrap
         private enum InstallState
         {
             Waiting,
+            Queued,
             Installing,
             Installed,
             Failed
+        }
+
+        private sealed class InstallRequest
+        {
+            internal InstallRequest(
+                Phase0SAppDomainManager manager,
+                AppDomain appDomain,
+                Assembly targetAssembly,
+                Assembly reLogicAssembly)
+            {
+                Manager = manager;
+                AppDomain = appDomain;
+                TargetAssembly = targetAssembly;
+                ReLogicAssembly = reLogicAssembly;
+            }
+
+            internal Phase0SAppDomainManager Manager { get; private set; }
+
+            internal AppDomain AppDomain { get; private set; }
+
+            internal Assembly TargetAssembly { get; private set; }
+
+            internal Assembly ReLogicAssembly { get; private set; }
         }
     }
 
@@ -706,12 +831,7 @@ namespace JueMingR.Bootstrap
             Assembly reLogicAssembly,
             RuntimeManifest manifest)
         {
-            VerifyLoadedReLogic(
-                reLogicAssembly,
-                manifest.ReLogicAssemblySimpleName,
-                manifest.ReLogicAssemblyVersion,
-                manifest.ReLogicAssemblyPublicKeyToken,
-                manifest.ReLogicAssemblyMvid);
+            VerifyCapturedReLogicBinding(targetAssembly, reLogicAssembly, manifest);
 
             int count = 0;
             Assembly match = null;
@@ -731,6 +851,19 @@ namespace JueMingR.Bootstrap
             {
                 throw new InvalidDataException("The loaded ReLogic assembly is not unique.");
             }
+        }
+
+        internal static void VerifyCapturedReLogicBinding(
+            Assembly targetAssembly,
+            Assembly reLogicAssembly,
+            RuntimeManifest manifest)
+        {
+            VerifyLoadedReLogic(
+                reLogicAssembly,
+                manifest.ReLogicAssemblySimpleName,
+                manifest.ReLogicAssemblyVersion,
+                manifest.ReLogicAssemblyPublicKeyToken,
+                manifest.ReLogicAssemblyMvid);
 
             using (Stream stream = targetAssembly.GetManifestResourceStream(manifest.ReLogicResourceName))
             {

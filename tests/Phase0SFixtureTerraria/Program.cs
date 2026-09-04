@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using HarmonyLib;
 
 namespace Microsoft.Xna.Framework
@@ -51,8 +53,7 @@ namespace Terraria
         private static bool embeddedResolverActive;
         private static Assembly embeddedLoadEventAssembly;
         private static Assembly embeddedLoadReturnedAssembly;
-        private static bool hookPresentWhenEmbeddedLoadReturned;
-        private static string activeEvidencePath;
+        private static int embeddedAssemblyLoadThreadId;
 
         private static readonly string[] ExpectedEvents =
         {
@@ -93,7 +94,6 @@ namespace Terraria
 
                 // Match WindowsLaunch.Main: install the embedded dependency resolver only
                 // after the executable entry point starts, then enter code that needs ReLogic.
-                activeEvidencePath = evidencePath;
                 AppDomain.CurrentDomain.AssemblyLoad += ObserveEmbeddedReLogicLoad;
                 AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly;
 
@@ -101,20 +101,26 @@ namespace Terraria
                 TriggerLaunchGameReLogicReference();
 
                 var main = new Main();
-                main.RunUpdateLoop(1);
-                byte[] evidenceAfterFirstUpdate = File.Exists(evidencePath)
-                    ? File.ReadAllBytes(evidencePath)
-                    : new byte[0];
-                main.RunUpdateLoop(4);
-
+                byte[] evidenceAfterFirstUpdate = null;
                 if (mode == "expect-handoff")
                 {
+                    WaitForEvidenceEvent(evidencePath, "HOOK_INSTALLED");
+                    main.RunUpdateLoop(1);
+                    WaitForEvidenceEvent(evidencePath, "RUNTIME_HANDOFF_COMPLETE");
+                    evidenceAfterFirstUpdate = File.ReadAllBytes(evidencePath);
+                    int updateCountAfterHandoff = global::Terraria.Main.FixtureUpdateCount;
+                    main.RunUpdateLoop(4);
+                    if (global::Terraria.Main.FixtureUpdateCount != updateCountAfterHandoff + 4)
+                    {
+                        throw new InvalidOperationException(
+                            "The fixture trailing Main.Update loop did not run exactly four times.");
+                    }
+
                     AssertEmbeddedLoadContract();
                 }
-
-                if (global::Terraria.Main.FixtureUpdateCount != 5)
+                else
                 {
-                    throw new InvalidOperationException("The fixture Main.Update loop did not run exactly five times.");
+                    main.RunUpdateLoop(5);
                 }
 
                 string[] evidenceLines = File.Exists(evidencePath)
@@ -122,18 +128,24 @@ namespace Terraria
                     : new string[0];
                 if (mode == "expect-handoff")
                 {
-                    AssertCompleteHandoff(evidenceLines, packageId);
+                    AssertCompleteHandoff(
+                        evidenceLines,
+                        packageId,
+                        embeddedAssemblyLoadThreadId,
+                        Thread.CurrentThread.ManagedThreadId);
                     AssertBytesEqual(
                         evidenceAfterFirstUpdate,
                         File.ReadAllBytes(evidencePath),
                         "Second and later Update calls changed formal evidence.");
                     AssertPatchContract(typeof(global::Terraria.Main));
                     AssertOneShotState();
+                    AssertBootstrapSchedulingState(AppDomain.CurrentDomain.DomainManager, "Installed");
                     AssertNoDiagnosticArtifact(evidencePath);
                 }
                 else
                 {
                     AssertNoHandoffSuccess(evidenceLines, packageId);
+                    AssertBootstrapSchedulingState(AppDomain.CurrentDomain.DomainManager, "Failed");
                 }
 
                 Console.WriteLine("PASS: fixture mode {0} validated.", mode);
@@ -163,12 +175,19 @@ namespace Terraria
             byte[] reLogicBytes = File.ReadAllBytes(reLogicPath);
             object manager = null;
             Assembly target = null;
+            int updatesBeforeInstall = 0;
 
             if (mode == "driver-relogic-then-terraria")
             {
                 manager = CreateManager();
                 LoadDriverReLogic(reLogicBytes);
                 target = Assembly.LoadFrom(targetPath);
+            }
+            else if (mode == "driver-terraria-then-relogic")
+            {
+                manager = CreateManager();
+                target = Assembly.LoadFrom(targetPath);
+                LoadDriverReLogic(reLogicBytes);
             }
             else if (mode == "driver-both-before-subscription" ||
                      mode == "driver-duplicate-scan")
@@ -206,32 +225,50 @@ namespace Terraria
                 manager = CreateManager();
                 target = Assembly.LoadFrom(targetPath);
             }
+            else if (mode == "driver-update-before-install")
+            {
+                manager = CreateManager();
+                target = Assembly.LoadFrom(targetPath);
+                Type mainType = target.GetType("Terraria.Main", true, false);
+                object instance = Activator.CreateInstance(mainType);
+                mainType.GetMethod("RunUpdateLoop").Invoke(instance, new object[] { 1 });
+                updatesBeforeInstall = 1;
+                LoadDriverReLogic(reLogicBytes);
+            }
+            else if (mode == "driver-worker-failure")
+            {
+                File.Delete(Path.Combine(
+                    Path.GetDirectoryName(evidencePath),
+                    "JueMingR.TerrariaHost.dll"));
+                manager = CreateManager();
+                target = Assembly.LoadFrom(targetPath);
+                LoadDriverReLogic(reLogicBytes);
+            }
             else
             {
                 throw new ArgumentException("Unknown driver mode: " + mode);
             }
 
             bool expectSuccess = mode == "driver-relogic-then-terraria" ||
+                mode == "driver-terraria-then-relogic" ||
                 mode == "driver-both-before-subscription" ||
-                mode == "driver-duplicate-scan";
+                mode == "driver-duplicate-scan" ||
+                mode == "driver-update-before-install";
             if (expectSuccess)
             {
-                string[] beforeUpdate = File.ReadAllLines(evidencePath);
-                if (beforeUpdate.Length != 3 ||
-                    beforeUpdate[2].Split('|')[4] != "HOOK_INSTALLED")
-                {
-                    throw new InvalidOperationException(
-                        "HOOK_INSTALLED must be synchronously present before the first Update. Evidence: " +
-                        String.Join(" || ", beforeUpdate));
-                }
+                WaitForEvidenceEvent(evidencePath, "HOOK_INSTALLED");
+                AssertBootstrapSchedulingState(manager, "Installed");
 
                 Type mainType = target.GetType("Terraria.Main", true, false);
                 object instance = Activator.CreateInstance(mainType);
                 MethodInfo runUpdateLoop = mainType.GetMethod("RunUpdateLoop");
-                runUpdateLoop.Invoke(
-                    instance,
-                    new object[] { 1 });
-                AssertCompleteHandoff(File.ReadAllLines(evidencePath), packageId);
+                runUpdateLoop.Invoke(instance, new object[] { 1 });
+                WaitForEvidenceEvent(evidencePath, "RUNTIME_HANDOFF_COMPLETE");
+                AssertCompleteHandoff(
+                    File.ReadAllLines(evidencePath),
+                    packageId,
+                    Thread.CurrentThread.ManagedThreadId,
+                    Thread.CurrentThread.ManagedThreadId);
                 byte[] evidenceAfterFirstUpdate = File.ReadAllBytes(evidencePath);
                 runUpdateLoop.Invoke(instance, new object[] { 4 });
                 AssertBytesEqual(
@@ -241,11 +278,47 @@ namespace Terraria
                 AssertPatchContract(mainType);
                 AssertOneShotState();
                 AssertNoDiagnosticArtifact(evidencePath);
+                int expectedUpdateCount = updatesBeforeInstall + 5;
+                int actualUpdateCount = (int)mainType.GetProperty(
+                    "FixtureUpdateCount",
+                    BindingFlags.Public | BindingFlags.Static).GetValue(null, null);
+                if (actualUpdateCount != expectedUpdateCount)
+                {
+                    throw new InvalidOperationException(
+                        "The driver Update count did not preserve the pre-install call and four trailing calls.");
+                }
+            }
+            else if (mode == "driver-worker-failure")
+            {
+                WaitForBootstrapState(manager, "Failed");
+                WaitForEvidenceError(evidencePath);
+                AssertBootstrapSchedulingState(manager, "Failed");
+                string[] lines = File.Exists(evidencePath)
+                    ? File.ReadAllLines(evidencePath)
+                    : new string[0];
+                AssertSingleWorkerFailure(lines, packageId);
+                byte[] failedEvidence = File.ReadAllBytes(evidencePath);
+                InvokeObservedAssembly(manager, target);
+                InvokeObservedAssembly(manager, driverReLogic);
+                Thread.Sleep(250);
+                AssertBytesEqual(
+                    failedEvidence,
+                    File.ReadAllBytes(evidencePath),
+                    "A permanently failed install retried or changed evidence.");
             }
             else
             {
                 AssertNoHookSuccess(File.Exists(evidencePath) ? File.ReadAllLines(evidencePath) : new string[0]);
+                AssertBootstrapSchedulingState(manager, "Failed", mode == "driver-relogic-never");
             }
+        }
+
+        private static void InvokeObservedAssembly(object manager, Assembly assembly)
+        {
+            MethodInfo observe = manager.GetType().GetMethod(
+                "ObserveAssembly",
+                BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
+            observe.Invoke(manager, new object[] { assembly });
         }
 
         private static Assembly LoadDriverReLogic(byte[] bytes)
@@ -365,11 +438,6 @@ namespace Terraria
                 }
 
                 embeddedLoadReturnedAssembly = loaded;
-                string[] evidence = File.Exists(activeEvidencePath)
-                    ? File.ReadAllLines(activeEvidencePath)
-                    : new string[0];
-                hookPresentWhenEmbeddedLoadReturned = evidence.Length == 3 &&
-                    evidence[2].Split('|')[4] == "HOOK_INSTALLED";
 
                 return loaded;
             }
@@ -381,7 +449,7 @@ namespace Terraria
                 embeddedLoadReturnedAssembly == null ||
                 embeddedLoadReturnedAssembly.Location.Length != 0 ||
                 CountLoaded("ReLogic") != 1 ||
-                !hookPresentWhenEmbeddedLoadReturned)
+                embeddedAssemblyLoadThreadId <= 0)
             {
                 throw new InvalidOperationException(
                     "The embedded ReLogic load contract failed: callbackSame=" +
@@ -389,7 +457,7 @@ namespace Terraria
                     ", returned=" + (embeddedLoadReturnedAssembly != null) +
                     ", locationEmpty=" + (embeddedLoadReturnedAssembly != null && embeddedLoadReturnedAssembly.Location.Length == 0) +
                     ", count=" + CountLoaded("ReLogic") +
-                    ", hookAtReturn=" + hookPresentWhenEmbeddedLoadReturned + ".");
+                    ", handlerThread=" + embeddedAssemblyLoadThreadId + ".");
             }
         }
 
@@ -399,6 +467,7 @@ namespace Terraria
                 String.Equals(eventArgs.LoadedAssembly.GetName().Name, "ReLogic", StringComparison.Ordinal))
             {
                 embeddedLoadEventAssembly = eventArgs.LoadedAssembly;
+                embeddedAssemblyLoadThreadId = Thread.CurrentThread.ManagedThreadId;
             }
         }
 
@@ -416,13 +485,19 @@ namespace Terraria
             return count;
         }
 
-        private static void AssertCompleteHandoff(IList<string> evidenceLines, string packageId)
+        private static void AssertCompleteHandoff(
+            IList<string> evidenceLines,
+            string packageId,
+            int assemblyLoadThreadId,
+            int updateThreadId)
         {
             if (evidenceLines.Count != ExpectedEvents.Length)
             {
                 throw new InvalidOperationException("A complete handoff requires exactly five evidence lines.");
             }
 
+            var threadIds = new int[ExpectedEvents.Length];
+            DateTimeOffset previousTimestamp = DateTimeOffset.MinValue;
             for (int index = 0; index < ExpectedEvents.Length; index++)
             {
                 string[] fields = evidenceLines[index].Split('|');
@@ -438,6 +513,206 @@ namespace Terraria
                     throw new InvalidOperationException(
                         "Evidence line " + (index + 1) + " is not the required strict Phase 0-S event.");
                 }
+
+                DateTimeOffset timestamp;
+                int threadId;
+                if (!DateTimeOffset.TryParse(fields[5], out timestamp) ||
+                    timestamp < previousTimestamp ||
+                    !Int32.TryParse(fields[6], out threadId) ||
+                    threadId <= 0)
+                {
+                    throw new InvalidOperationException("Evidence timestamp or managed thread id is invalid.");
+                }
+
+                previousTimestamp = timestamp;
+                threadIds[index] = threadId;
+            }
+
+            if (assemblyLoadThreadId <= 0 || updateThreadId <= 0 ||
+                threadIds[1] != threadIds[2] ||
+                threadIds[1] == assemblyLoadThreadId)
+            {
+                throw new InvalidOperationException(
+                    "HARMONY_READY and HOOK_INSTALLED must come from one worker outside the AssemblyLoad thread.");
+            }
+
+            if (threadIds[3] != updateThreadId || threadIds[4] != updateThreadId)
+            {
+                throw new InvalidOperationException(
+                    "Postfix and handoff evidence must come from the actual Update caller thread.");
+            }
+        }
+
+        private static void WaitForEvidenceEvent(string evidencePath, string eventName)
+        {
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            while (stopwatch.Elapsed < TimeSpan.FromSeconds(10))
+            {
+                if (HasEvidenceEvent(evidencePath, eventName))
+                {
+                    return;
+                }
+
+                Thread.Sleep(10);
+            }
+
+            throw new InvalidOperationException("Timed out waiting for evidence event " + eventName + ".");
+        }
+
+        private static bool HasEvidenceEvent(string evidencePath, string eventName)
+        {
+            if (!File.Exists(evidencePath))
+            {
+                return false;
+            }
+
+            string[] lines;
+            try
+            {
+                lines = File.ReadAllLines(evidencePath);
+            }
+            catch (IOException)
+            {
+                return false;
+            }
+
+            foreach (string line in lines)
+            {
+                string[] fields = line.Split('|');
+                if (fields.Length >= 5 && fields[4] == eventName)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static void WaitForEvidenceError(string evidencePath)
+        {
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            while (stopwatch.Elapsed < TimeSpan.FromSeconds(10))
+            {
+                try
+                {
+                    if (File.Exists(evidencePath))
+                    {
+                        foreach (string line in File.ReadAllLines(evidencePath))
+                        {
+                            string[] fields = line.Split('|');
+                            if (fields.Length >= 4 && fields[3] == "ERROR")
+                            {
+                                return;
+                            }
+                        }
+                    }
+                }
+                catch (IOException)
+                {
+                    // The single worker can still be flushing its terminal error.
+                }
+
+                Thread.Sleep(10);
+            }
+
+            throw new InvalidOperationException("Timed out waiting for the worker failure evidence.");
+        }
+
+        private static void WaitForBootstrapState(object manager, string expectedState)
+        {
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            while (stopwatch.Elapsed < TimeSpan.FromSeconds(10))
+            {
+                if (GetBootstrapState(manager) == expectedState)
+                {
+                    return;
+                }
+
+                Thread.Sleep(10);
+            }
+
+            throw new InvalidOperationException("Timed out waiting for Bootstrap state " + expectedState + ".");
+        }
+
+        private static string GetBootstrapState(object manager)
+        {
+            FieldInfo state = manager == null
+                ? null
+                : manager.GetType().GetField("state", BindingFlags.Instance | BindingFlags.NonPublic);
+            return state == null ? null : state.GetValue(manager).ToString();
+        }
+
+        private static void AssertBootstrapSchedulingState(
+            object manager,
+            string expectedState,
+            bool allowWaiting)
+        {
+            if (manager == null)
+            {
+                throw new InvalidOperationException("The fixture could not observe the Phase 0-S AppDomainManager.");
+            }
+
+            string[] states = Enum.GetNames(manager.GetType().GetField(
+                "state",
+                BindingFlags.Instance | BindingFlags.NonPublic).FieldType);
+            if (states.Length != 5 ||
+                states[0] != "Waiting" ||
+                states[1] != "Queued" ||
+                states[2] != "Installing" ||
+                states[3] != "Installed" ||
+                states[4] != "Failed")
+            {
+                throw new InvalidOperationException(
+                    "Bootstrap must expose the monotonic Waiting/Queued/Installing/Installed/Failed lifecycle.");
+            }
+
+            string actualState = GetBootstrapState(manager);
+            if ((!allowWaiting && actualState != expectedState) ||
+                (allowWaiting && actualState != "Waiting"))
+            {
+                throw new InvalidOperationException(
+                    "Unexpected Bootstrap scheduling state: " + actualState + ".");
+            }
+
+            FieldInfo handlerDepth = manager.GetType().GetField(
+                "assemblyLoadHandlerDepth",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            if (handlerDepth == null || (int)handlerDepth.GetValue(manager) != 0)
+            {
+                throw new InvalidOperationException(
+                    "Bootstrap install overlapped an active AssemblyLoad handler.");
+            }
+        }
+
+        private static void AssertBootstrapSchedulingState(object manager, string expectedState)
+        {
+            AssertBootstrapSchedulingState(manager, expectedState, false);
+        }
+
+        private static void AssertSingleWorkerFailure(IList<string> lines, string packageId)
+        {
+            int errorCount = 0;
+            foreach (string line in lines)
+            {
+                string[] fields = line.Split('|');
+                if (fields.Length >= 4 && fields[0] == "PHASE0S" && fields[2] == packageId)
+                {
+                    if (fields[3] == "ERROR")
+                    {
+                        errorCount++;
+                    }
+                    else if (fields[3] != "01")
+                    {
+                        throw new InvalidOperationException(
+                            "A worker failure emitted a later success event.");
+                    }
+                }
+            }
+
+            if (errorCount != 1)
+            {
+                throw new InvalidOperationException(
+                    "A worker failure must record exactly one error and never retry.");
             }
         }
 
