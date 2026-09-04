@@ -56,6 +56,7 @@ Agent 必须明确区分：已确认事实、推断、建议、待决定事项�
 - 涉及写入任务、风险分级、任务契约、Issue、分支、commit、PR、独立审查、合并授权、停止条件或长期工具/角色依赖的工作，必须阅读 [`docs/规范/工程治理规则.md`](docs/规范/工程治理规则.md)。
 - 涉及 Legacy 功能考古、行为恢复、平替、兼容差异或用户验收的任务，必须阅读 [`docs/规范/Legacy平替与行为契约规则.md`](docs/规范/Legacy平替与行为契约规则.md)。
 - 涉及运行平台、Terraria 版本、Windows/渠道兼容、加载链、依赖分发、安装恢复或多人拓扑的任务，必须阅读 `docs/规范/技术平台与兼容规则.md`。
+- 涉及 AppDomainManager、程序集就绪、Harmony 安装时序、首个宿主 Hook、一次性 Runtime 交接或 Phase 0-S 安装恢复验证时，必须阅读 [`docs/设计/最小原版加载链验证.md`](docs/设计/最小原版加载链验证.md)。
 - 涉及总体架构、模块职责、项目依赖方向、状态所有权、Runtime/Session 生命周期、Composition Root、游戏 Observation/Operation、Feature 接入、UI、持久化、Diagnostics 或项目骨架映射的任务，必须阅读 [`docs/设计/总体架构与状态所有权.md`](docs/设计/总体架构与状态所有权.md)。
 - 涉及解决方案、项目文件、构建工具链、TFM、LangVersion、PlatformTarget、Terraria/ReLogic/XNA 编译引用、ProjectReference、构建脚本、构建身份、可重复构建或架构边界检查的任务，必须阅读 [`docs/设计/可重复构建与项目骨架.md`](docs/设计/可重复构建与项目骨架.md)。
 - 涉及性能风险、性能声明、基线或测量、功能关闭成本、缓存/快照/队列、日志与 I/O，或一次性测量工具的任务，必须阅读 [`docs/规范/性能治理规则.md`](docs/规范/性能治理规则.md)。

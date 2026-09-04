@@ -20,6 +20,10 @@ namespace JueMingR.ArchitectureTests
             "\\\"sha256\\\"\\s*:\\s*\\\"(?<hash>[0-9a-fA-F]{64})\\\"",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+        private static readonly Regex HarmonyBinaryHashPattern = new Regex(
+            "\\{(?:(?![{}]).)*?\\\"sha256\\\"\\s*:\\s*\\\"(?<hash>[0-9a-fA-F]{64})\\\"(?:(?![{}]).)*?\\\"binaryContent\\\"\\s*:\\s*true(?:(?![{}]).)*?\\}",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Singleline);
+
         private RepositoryModel(string repositoryRoot)
         {
             RepositoryRoot = repositoryRoot;
@@ -27,6 +31,8 @@ namespace JueMingR.ArchitectureTests
             Projects = new Dictionary<string, XDocument>(StringComparer.OrdinalIgnoreCase);
             TrackedFiles = new List<string>();
             BaselineHashes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            HarmonyBaselineHashes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            HarmonyBinaryHashes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         }
 
         internal string RepositoryRoot { get; private set; }
@@ -41,6 +47,10 @@ namespace JueMingR.ArchitectureTests
 
         internal ISet<string> BaselineHashes { get; private set; }
 
+        internal ISet<string> HarmonyBaselineHashes { get; private set; }
+
+        internal ISet<string> HarmonyBinaryHashes { get; private set; }
+
         internal static RepositoryModel Load(string repositoryRoot)
         {
             var model = new RepositoryModel(repositoryRoot);
@@ -48,6 +58,7 @@ namespace JueMingR.ArchitectureTests
             model.LoadProjects();
             model.LoadSharedBuildProperties();
             model.LoadBaselineHashes();
+            model.LoadHarmonyBaselineHashes();
             model.TrackedFiles = ReadTrackedFiles(repositoryRoot);
             return model;
         }
@@ -126,6 +137,26 @@ namespace JueMingR.ArchitectureTests
             foreach (Match match in BaselineHashPattern.Matches(File.ReadAllText(path)))
             {
                 BaselineHashes.Add(match.Groups["hash"].Value);
+            }
+        }
+
+        private void LoadHarmonyBaselineHashes()
+        {
+            string path = GetFullPath("eng/Harmony.baseline.json");
+            if (!File.Exists(path))
+            {
+                return;
+            }
+
+            string contents = File.ReadAllText(path);
+            foreach (Match match in BaselineHashPattern.Matches(contents))
+            {
+                HarmonyBaselineHashes.Add(match.Groups["hash"].Value);
+            }
+
+            foreach (Match match in HarmonyBinaryHashPattern.Matches(contents))
+            {
+                HarmonyBinaryHashes.Add(match.Groups["hash"].Value);
             }
         }
 

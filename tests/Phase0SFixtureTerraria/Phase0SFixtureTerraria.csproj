@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <LangVersion>7.3</LangVersion>
+    <PlatformTarget>x86</PlatformTarget>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>Terraria</AssemblyName>
+    <RootNamespace>Terraria</RootNamespace>
+    <AssemblyVersion>1.4.5.8</AssemblyVersion>
+    <FileVersion>1.4.5.8</FileVersion>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EmbedReLogicResource Condition="'$(EmbedReLogicResource)' == ''">true</EmbedReLogicResource>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="ReLogic">
+      <HintPath>..\..\external\TerrariaRefs\ReLogic.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>..\..\external\Harmony\0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <EmbeddedResource Include="..\..\external\TerrariaRefs\ReLogic.dll" Condition="'$(EmbedReLogicResource)' == 'true'">
+      <LogicalName>Terraria.Libraries.ReLogic.ReLogic.dll</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+</Project>

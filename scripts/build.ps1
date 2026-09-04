@@ -11,7 +11,9 @@ Set-StrictMode -Version 2.0
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $solutionPath = Join-Path $repositoryRoot 'JueMingR.sln'
 $baselinePath = Join-Path $repositoryRoot 'eng\TerrariaReferences.baseline.json'
+$harmonyBaselinePath = Join-Path $repositoryRoot 'eng\Harmony.baseline.json'
 $referencesDirectory = Join-Path $repositoryRoot 'external\TerrariaRefs'
+$harmonyReferencesDirectory = Join-Path $repositoryRoot 'external\Harmony'
 $buildRoot = Join-Path $repositoryRoot ("artifacts\build\$Configuration")
 $workRoot = Join-Path $buildRoot 'work'
 $recordPath = Join-Path $buildRoot 'build-record.json'
@@ -34,19 +36,62 @@ function Get-RelativePath {
     return [System.Uri]::UnescapeDataString($baseUri.MakeRelativeUri($pathUri).ToString()).Replace('/', '\')
 }
 
+function Get-AssemblyMvid {
+    param([string] $Path)
+
+    if ($null -ne ('System.Reflection.PortableExecutable.PEReader' -as [type])) {
+        $stream = [System.IO.File]::OpenRead($Path)
+        try {
+            $reader = [System.Reflection.PortableExecutable.PEReader]::new($stream)
+            try {
+                $metadata = [System.Reflection.Metadata.PEReaderExtensions]::GetMetadataReader($reader)
+                return $metadata.GetGuid($metadata.GetModuleDefinition().Mvid).ToString('D')
+            }
+            finally {
+                $reader.Dispose()
+            }
+        }
+        finally {
+            $stream.Dispose()
+        }
+    }
+
+    return [Reflection.Assembly]::ReflectionOnlyLoadFrom($Path).ManifestModule.ModuleVersionId.ToString('D')
+}
+
+function Get-CompileInputRecord {
+    param([string] $LogicalName, [string] $Path)
+
+    $assemblyName = [System.Reflection.AssemblyName]::GetAssemblyName($Path)
+    return [ordered]@{
+        logicalName = $LogicalName
+        assemblySimpleName = $assemblyName.Name
+        assemblyVersion = $assemblyName.Version.ToString()
+        assemblyFullName = $assemblyName.FullName
+        mvid = Get-AssemblyMvid -Path $Path
+        sha256 = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToUpperInvariant()
+    }
+}
+
 if (-not [System.IO.File]::Exists($solutionPath)) {
     throw 'JueMingR.sln is missing.'
 }
 
 $dotnetCommand = Get-Command dotnet.exe -ErrorAction Stop
-$sdkVersion = [string] (& $dotnetCommand.Source --version | Select-Object -First 1)
-if ($LASTEXITCODE -ne 0 -or $sdkVersion.Trim() -cne '10.0.203') {
+$sdkVersionOutput = @(& $dotnetCommand.Source --version)
+$sdkCommandSucceeded = $?
+$sdkVersion = [string] ($sdkVersionOutput | Select-Object -First 1)
+if (-not $sdkCommandSucceeded -or $sdkVersion.Trim() -cne '10.0.203') {
     throw "The locked .NET SDK 10.0.203 is unavailable; actual: $sdkVersion."
 }
 
 & (Join-Path $PSScriptRoot 'prepare-terraria-references.ps1') -VerifyOnly
-if ($LASTEXITCODE -ne 0) {
+if (-not $?) {
     throw 'The fixed local Terraria reference set is not valid.'
+}
+& (Join-Path $PSScriptRoot 'prepare-harmony.ps1') -VerifyOnly
+if (-not $?) {
+    throw 'The fixed local Harmony input is not valid.'
 }
 
 $statusLines = @(Invoke-Git -Arguments @('status', '--porcelain=v1', '--untracked-files=all'))
@@ -72,6 +117,7 @@ $buildArguments = @(
     '-p:Platform=x86',
     "-p:JueMingRBuildRoot=$workRoot",
     "-p:TerrariaReferencesDirectory=$referencesDirectory",
+    "-p:HarmonyReferencesDirectory=$harmonyReferencesDirectory",
     "-p:SourceRevisionId=$commit"
 )
 & $dotnetCommand.Source @buildArguments
@@ -111,13 +157,17 @@ foreach ($file in $declaredFiles) {
 }
 
 $baseline = Get-Content -LiteralPath $baselinePath -Raw | ConvertFrom-Json
+$harmonyBaseline = Get-Content -LiteralPath $harmonyBaselinePath -Raw | ConvertFrom-Json
+$harmonyAssembly = @($harmonyBaseline.entries | Where-Object { [string] $_.role -ceq 'assembly' })
+if ($harmonyAssembly.Count -ne 1) {
+    throw 'Harmony baseline must contain exactly one assembly entry.'
+}
 $referenceRecords = @($baseline.files | ForEach-Object {
     $referencePath = Join-Path $referencesDirectory ([string] $_.logicalName)
-    [ordered]@{
-        logicalName = [string] $_.logicalName
-        sha256 = (Get-FileHash -LiteralPath $referencePath -Algorithm SHA256).Hash.ToUpperInvariant()
-    }
+    Get-CompileInputRecord -LogicalName ([string] $_.logicalName) -Path $referencePath
 })
+$harmonyReferencePath = Join-Path $harmonyReferencesDirectory ([string] $harmonyAssembly[0].preparedFileName)
+$referenceRecords += Get-CompileInputRecord -LogicalName ([string] $harmonyAssembly[0].preparedFileName) -Path $harmonyReferencePath
 $outputRecords = @($declaredFiles | ForEach-Object {
     [ordered]@{
         path = Get-RelativePath -BasePath $workRoot -Path $_.FullName
@@ -126,12 +176,13 @@ $outputRecords = @($declaredFiles | ForEach-Object {
     }
 })
 $record = [ordered]@{
-    schemaVersion = 1
+    schemaVersion = 2
     commit = $commit
     clean = $isClean
     sdk = $sdkVersion.Trim()
     configuration = $Configuration
     baselineSha256 = (Get-FileHash -LiteralPath $baselinePath -Algorithm SHA256).Hash.ToUpperInvariant()
+    harmonyBaselineSha256 = (Get-FileHash -LiteralPath $harmonyBaselinePath -Algorithm SHA256).Hash.ToUpperInvariant()
     references = $referenceRecords
     outputs = $outputRecords
 }

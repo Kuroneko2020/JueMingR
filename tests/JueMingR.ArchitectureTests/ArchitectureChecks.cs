@@ -36,15 +36,18 @@ namespace JueMingR.ArchitectureTests
             {
                 { "Terraria", "Terraria.exe" },
                 { "ReLogic", "ReLogic.dll" },
-                { "Microsoft.Xna.Framework.Game", "Microsoft.Xna.Framework.Game.dll" }
+                { "Microsoft.Xna.Framework.Game", "Microsoft.Xna.Framework.Game.dll" },
+                { "0Harmony", "0Harmony.dll" }
             };
 
         private static readonly string[] RequiredFiles =
         {
             "scripts/prepare-terraria-references.ps1",
+            "scripts/prepare-harmony.ps1",
             "scripts/build.ps1",
             "scripts/verify-reproducible-build.ps1",
             "eng/TerrariaReferences.baseline.json",
+            "eng/Harmony.baseline.json",
             "JueMingR.sln"
         };
 
@@ -165,7 +168,7 @@ namespace JueMingR.ArchitectureTests
                 {
                     if (references.Any(IsGameReference))
                     {
-                        failures.Add("TerrariaHost must be the only project with game assembly references: " + project.Key);
+                        failures.Add("TerrariaHost must be the only project with game or Harmony assembly references: " + project.Key);
                     }
 
                     continue;
@@ -176,7 +179,7 @@ namespace JueMingR.ArchitectureTests
                     !new HashSet<string>(simpleNames, StringComparer.OrdinalIgnoreCase)
                         .SetEquals(ExpectedGameReferences.Keys))
                 {
-                    failures.Add("TerrariaHost must reference exactly Terraria, ReLogic, and Microsoft.Xna.Framework.Game.");
+                    failures.Add("TerrariaHost must reference exactly Terraria, ReLogic, Microsoft.Xna.Framework.Game, and 0Harmony.");
                     continue;
                 }
 
@@ -189,12 +192,12 @@ namespace JueMingR.ArchitectureTests
                     if (!ExpectedGameReferences.TryGetValue(simpleName, out expectedFile) ||
                         !string.Equals(GetFileName(hintPath), expectedFile, StringComparison.OrdinalIgnoreCase))
                     {
-                        failures.Add("TerrariaHost game reference has an unexpected HintPath: " + simpleName);
+                        failures.Add("TerrariaHost assembly reference has an unexpected HintPath: " + simpleName);
                     }
 
                     if (!string.Equals(privateValue, "false", StringComparison.OrdinalIgnoreCase))
                     {
-                        failures.Add("TerrariaHost game reference must set Private=false: " + simpleName);
+                        failures.Add("TerrariaHost assembly reference must set Private=false: " + simpleName);
                     }
                 }
             }
@@ -225,17 +228,33 @@ namespace JueMingR.ArchitectureTests
                 }
             }
 
-            if (model.BaselineHashes.Count != ExpectedGameReferences.Count)
+            if (model.BaselineHashes.Count != 3)
             {
                 failures.Add("reference baseline must contain exactly three unique SHA-256 values.");
-                return;
+            }
+
+            if (model.HarmonyBaselineHashes.Count != 3 || model.HarmonyBinaryHashes.Count != 2)
+            {
+                failures.Add("Harmony baseline must contain exactly three unique SHA-256 values including two binary inputs.");
             }
 
             foreach (string relativePath in model.TrackedFiles)
             {
-                if (model.BaselineHashes.Contains(model.GetTrackedFileHash(relativePath)))
+                string fileName = GetFileName(relativePath);
+                if (string.Equals(fileName, "lib.harmony.2.4.2.nupkg", StringComparison.OrdinalIgnoreCase))
+                {
+                    failures.Add("Git tracks the fixed Harmony NuGet package: " + relativePath);
+                }
+
+                string trackedHash = model.GetTrackedFileHash(relativePath);
+                if (model.BaselineHashes.Contains(trackedHash))
                 {
                     failures.Add("Git tracks a file whose content matches a game reference: " + relativePath);
+                }
+
+                if (model.HarmonyBinaryHashes.Contains(trackedHash))
+                {
+                    failures.Add("Git tracks a file whose content matches a Harmony binary input: " + relativePath);
                 }
             }
         }
@@ -246,7 +265,7 @@ namespace JueMingR.ArchitectureTests
             {
                 if (!File.Exists(model.GetFullPath(relativePath)))
                 {
-                    failures.Add("required Phase 0-R file is missing: " + relativePath);
+                    failures.Add("required architecture file is missing: " + relativePath);
                 }
             }
         }

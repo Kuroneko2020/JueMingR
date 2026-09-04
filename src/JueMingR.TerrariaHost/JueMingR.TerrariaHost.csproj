@@ -9,6 +9,7 @@
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <TerrariaReferencesDirectory Condition="'$(TerrariaReferencesDirectory)' == ''">$(MSBuildThisFileDirectory)..\..\external\TerrariaRefs</TerrariaReferencesDirectory>
+    <HarmonyReferencesDirectory Condition="'$(HarmonyReferencesDirectory)' == ''">$(MSBuildThisFileDirectory)..\..\external\Harmony</HarmonyReferencesDirectory>
   </PropertyGroup>
 
   <ItemGroup>
@@ -28,6 +29,10 @@
     </Reference>
     <Reference Include="Microsoft.Xna.Framework.Game">
       <HintPath>$(TerrariaReferencesDirectory)\Microsoft.Xna.Framework.Game.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>$(HarmonyReferencesDirectory)\0Harmony.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>

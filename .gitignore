@@ -16,6 +16,8 @@ logs/
 # Local dependencies
 .local/
 external/TerrariaRefs/
+external/Harmony/
+external/Harmony.phase0s-stage-*/
 
 # Test packages and generated build outputs
 outputs/

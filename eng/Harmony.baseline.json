@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "packageId": "Lib.Harmony",
+  "packageVersion": "2.4.2",
+  "upstreamRepository": "https://github.com/pardeike/Harmony",
+  "upstreamCommit": "a264a1bf1ce689e4589e8dcc54b1e2818602a90a",
+  "entries": [
+    {
+      "role": "package",
+      "packagePath": "lib.harmony.2.4.2.nupkg",
+      "url": "https://api.nuget.org/v3-flatcontainer/lib.harmony/2.4.2/lib.harmony.2.4.2.nupkg",
+      "length": 14346195,
+      "sha256": "D64592E53090464559FCE48612C9CA7C8DC73113841376B7AA3455F46FC5D579",
+      "binaryContent": true
+    },
+    {
+      "role": "assembly",
+      "packagePath": "lib/net472/0Harmony.dll",
+      "preparedFileName": "0Harmony.dll",
+      "length": 2461696,
+      "sha256": "7B9E756306FA3D7620E02A857C8927A6AB04973F9BD8A77D3866700A6DEAC55C",
+      "assemblySimpleName": "0Harmony",
+      "assemblyVersion": "2.4.2.0",
+      "fileVersion": "2.4.2.0",
+      "publicKeyToken": "",
+      "assemblyFullName": "0Harmony, Version=2.4.2.0, Culture=neutral, PublicKeyToken=null",
+      "mvid": "024a0e6e-c8c2-437e-ad04-7b6279389c23",
+      "binaryContent": true
+    },
+    {
+      "role": "license",
+      "packagePath": "LICENSE",
+      "preparedFileName": "LICENSE",
+      "length": 1094,
+      "sha256": "407DDD98200C9F17F49942B5A7791E288A2BD553B59BF2F462DB87DBB21C50BC",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2017 Andreas Pardeike",
+      "binaryContent": false
+    }
+  ]
+}
