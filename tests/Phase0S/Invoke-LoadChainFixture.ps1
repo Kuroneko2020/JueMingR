@@ -8,6 +8,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 
 . (Join-Path $PSScriptRoot 'TestSupport.ps1')
+. (Join-Path $PSScriptRoot '..\..\scripts\phase0s\Phase0S.ScriptSupport.ps1')
 
 function Get-Phase0SReflectionIdentity {
     param([Parameter(Mandatory = $true)][string] $AssemblyPath)
@@ -275,6 +276,146 @@ function Assert-Phase0SNoSuccessEvents {
     }
 }
 
+function Write-Phase0SStaleFixtureEvidence {
+    param(
+        [Parameter(Mandatory = $true)][string] $EvidencePath,
+        [Parameter(Mandatory = $true)][string] $PackageId,
+        [ValidateSet('partial', 'zero')][string] $Kind
+    )
+
+    if ($Kind -eq 'zero') {
+        [System.IO.File]::WriteAllBytes($EvidencePath, (New-Object byte[] 0))
+        return
+    }
+
+    $events = @('TERRARIA_ASSEMBLY_READY', 'HARMONY_READY', 'HOOK_INSTALLED')
+    $lines = for ($index = 0; $index -lt $events.Count; $index++) {
+        'PHASE0S|1|{0}|{1}|{2}|{3}|1' -f @(
+            $PackageId,
+            ($index + 1).ToString('D2', [System.Globalization.CultureInfo]::InvariantCulture),
+            $events[$index],
+            [DateTime]::UtcNow.AddMinutes(-5).AddSeconds($index).ToString('O', [System.Globalization.CultureInfo]::InvariantCulture))
+    }
+    [System.IO.File]::WriteAllLines($EvidencePath, $lines, (New-Object System.Text.UTF8Encoding($false)))
+}
+
+function Set-Phase0SFixtureManifestValue {
+    param(
+        [Parameter(Mandatory = $true)][string] $EvidencePath,
+        [Parameter(Mandatory = $true)][string] $Key,
+        [Parameter(Mandatory = $true)][string] $Value
+    )
+
+    $manifestPath = Join-Path (Split-Path -Parent $EvidencePath) 'phase-0-s-runtime.manifest'
+    $lines = [System.IO.File]::ReadAllLines($manifestPath)
+    $matches = @($lines | Where-Object { $_.StartsWith($Key + '=', [System.StringComparison]::Ordinal) })
+    Assert-Phase0SCondition -Condition ($matches.Count -eq 1) -Message "Fixture manifest key must occur exactly once: $Key"
+    for ($index = 0; $index -lt $lines.Count; $index++) {
+        if ($lines[$index].StartsWith($Key + '=', [System.StringComparison]::Ordinal)) {
+            $lines[$index] = $Key + '=' + $Value
+        }
+    }
+    [System.IO.File]::WriteAllLines($manifestPath, $lines, (New-Object System.Text.UTF8Encoding($false)))
+}
+
+function New-Phase0STempInstallLaunchPackage {
+    param(
+        [Parameter(Mandatory = $true)][string] $RepositoryRoot,
+        [Parameter(Mandatory = $true)][string] $Root,
+        [Parameter(Mandatory = $true)][string] $FixtureExe,
+        [Parameter(Mandatory = $true)][hashtable] $ProductionOutputs,
+        [Parameter(Mandatory = $true)][string] $HarmonyPath,
+        [Parameter(Mandatory = $true)][string] $SourceCommit
+    )
+
+    $packageRoot = Join-Path $Root 'installed-launch-package'
+    $payloadRoot = Join-Path $packageRoot 'payload'
+    $sidecarRoot = Join-Path $payloadRoot 'JueMingR.Validation'
+    [System.IO.Directory]::CreateDirectory($sidecarRoot) | Out-Null
+    $packageId = 'phase0t-biome-' + $SourceCommit
+
+    New-Phase0SFixtureConfig -ConfigPath (Join-Path $payloadRoot 'Terraria.exe.config')
+    Copy-Item -LiteralPath $ProductionOutputs['Bootstrap'] -Destination (Join-Path $payloadRoot 'JueMingR.Bootstrap.dll')
+    foreach ($name in @('Host', 'Platform', 'Features', 'Infrastructure')) {
+        Copy-Item -LiteralPath $ProductionOutputs[$name] -Destination (Join-Path $sidecarRoot (Split-Path -Leaf $ProductionOutputs[$name]))
+    }
+    Copy-Item -LiteralPath $HarmonyPath -Destination (Join-Path $sidecarRoot '0Harmony.dll')
+    New-Phase0SFixtureRuntimeManifest -FixtureExe $FixtureExe -HostAssembly $ProductionOutputs['Host'] -ManifestPath (Join-Path $sidecarRoot 'phase-0-s-runtime.manifest') -PackageId $packageId -SourceCommit $SourceCommit
+
+    foreach ($scriptName in @('Install-Phase0S.ps1', 'Restore-Phase0S.ps1', 'Phase0S.ScriptSupport.ps1')) {
+        Copy-Item -LiteralPath (Join-Path $RepositoryRoot ('scripts\phase0s\' + $scriptName)) -Destination (Join-Path $packageRoot $scriptName)
+    }
+
+    $payloadPaths = @(
+        'JueMingR.Bootstrap.dll',
+        'JueMingR.Validation/0Harmony.dll',
+        'JueMingR.Validation/JueMingR.Features.dll',
+        'JueMingR.Validation/JueMingR.Infrastructure.dll',
+        'JueMingR.Validation/JueMingR.Platform.dll',
+        'JueMingR.Validation/JueMingR.TerrariaHost.dll',
+        'JueMingR.Validation/phase-0-s-runtime.manifest',
+        'Terraria.exe.config'
+    )
+    $payloadEntries = @($payloadPaths | ForEach-Object {
+        $path = Join-Path $payloadRoot $_
+        [ordered]@{
+            installRelativePath = $_
+            length = [int64](Get-Item -LiteralPath $path).Length
+            sha256 = Get-Phase0SFileSha256 -Path $path
+        }
+    })
+    $manifest = [ordered]@{
+        schemaVersion = 1
+        packageId = $packageId
+        sourceCommit = $SourceCommit
+        target = [ordered]@{
+            simpleName = 'Terraria'
+            version = '1.4.5.8'
+            mvid = '2c29f6c3-4bd9-4add-9c58-da159804e083'
+            sha256 = '960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3'
+        }
+        payload = $payloadEntries
+    }
+    [System.IO.File]::WriteAllText(
+        (Join-Path $packageRoot 'phase-0-s-package.manifest.json'),
+        (ConvertTo-Phase0SCanonicalPackageManifestText -Manifest $manifest),
+        (New-Object System.Text.UTF8Encoding($false)))
+
+    return [pscustomobject]@{
+        root = $packageRoot
+        packageId = $packageId
+    }
+}
+
+function Invoke-Phase0STempPackageScript {
+    param(
+        [Parameter(Mandatory = $true)][string] $PackageRoot,
+        [Parameter(Mandatory = $true)][string] $ScriptName,
+        [Parameter(Mandatory = $true)][string] $TerrariaDirectory
+    )
+
+    return Invoke-Phase0SWindowsPowerShell -ScriptPath (Join-Path $PackageRoot $ScriptName) -Arguments @('-TerrariaDirectory', $TerrariaDirectory)
+}
+
+function Assert-Phase0STempPackageSuccess {
+    param(
+        [Parameter(Mandatory = $true)][pscustomobject] $Result,
+        [Parameter(Mandatory = $true)][string] $Operation,
+        [Parameter(Mandatory = $true)][string] $Code,
+        [Parameter(Mandatory = $true)][string] $PackageId
+    )
+
+    Assert-Phase0SCondition -Condition ($Result.exitCode -eq 0 -and $Result.output.Count -eq 1) -Message "TEMP $Operation did not return one successful JSON result."
+    $json = [string] $Result.output[0] | ConvertFrom-Json
+    Assert-Phase0SCondition -Condition (
+        [int]$json.schemaVersion -eq 1 -and
+        [string]$json.operation -ceq $Operation -and
+        [string]$json.status -ceq 'success' -and
+        [string]$json.code -ceq $Code -and
+        [int]$json.exitCode -eq 0 -and
+        [string]$json.packageId -ceq $PackageId) -Message "TEMP $Operation result differs from the fixed success contract."
+}
+
 function Assert-Phase0SSourceContract {
     param([Parameter(Mandatory = $true)][string] $RepositoryRoot)
 
@@ -354,6 +495,85 @@ function Invoke-Phase0SLoadChainFixtureTests {
             Write-Host $line
         }
         Assert-Phase0SCondition -Condition ($successResult.exitCode -eq 0) -Message "load-chain success fixture: expected exit 0, actual $($successResult.exitCode)."
+
+        $firstEvidenceHash = Get-Phase0SFileSha256 -Path $success.evidencePath
+        $secondLaunchResult = Invoke-Phase0SFixtureExe -FixtureExe $success.exePath -Mode 'expect-handoff' -EvidencePath $success.evidencePath -PackageId $success.packageId
+        foreach ($line in $secondLaunchResult.output) {
+            Write-Host $line
+        }
+        Assert-Phase0SCondition -Condition ($secondLaunchResult.exitCode -eq 0) -Message "second process in the same installed fixture: expected exit 0, actual $($secondLaunchResult.exitCode)."
+        $secondEvidenceHash = Get-Phase0SFileSha256 -Path $success.evidencePath
+        Assert-Phase0SCondition -Condition ($secondEvidenceHash -cne $firstEvidenceHash) -Message 'The second process reused stale first-process evidence instead of starting a fresh current run.'
+        Write-Host 'PASS: one installed fixture completed two independent process launches with fresh evidence.'
+
+        foreach ($staleKind in @('partial', 'zero')) {
+            $staleRun = New-Phase0SFixtureRunDirectory -Root $root -Name ('stale-' + $staleKind) -FixtureExe $fixtureExe -ProductionOutputs $productionOutputs -HarmonyPath $harmonyPath -PackageId ('phase0s-fixture-' + [Guid]::NewGuid().ToString('N')) -SourceCommit $sourceCommit
+            Write-Phase0SStaleFixtureEvidence -EvidencePath $staleRun.evidencePath -PackageId $staleRun.packageId -Kind $staleKind
+            $staleHash = Get-Phase0SFileSha256 -Path $staleRun.evidencePath
+            $staleResult = Invoke-Phase0SFixtureExe -FixtureExe $staleRun.exePath -Mode 'expect-handoff' -EvidencePath $staleRun.evidencePath -PackageId $staleRun.packageId
+            foreach ($line in $staleResult.output) {
+                Write-Host $line
+            }
+            Assert-Phase0SCondition -Condition ($staleResult.exitCode -eq 0) -Message "pre-existing $staleKind evidence fixture: expected exit 0, actual $($staleResult.exitCode)."
+            Assert-Phase0SCondition -Condition ((Get-Phase0SFileSha256 -Path $staleRun.evidencePath) -cne $staleHash) -Message "Pre-existing $staleKind evidence was not replaced by the current process run."
+        }
+
+        $evidenceInitFailure = New-Phase0SFixtureRunDirectory -Root $root -Name 'evidence-init-failure' -FixtureExe $fixtureExe -ProductionOutputs $productionOutputs -HarmonyPath $harmonyPath -PackageId ('phase0s-fixture-' + [Guid]::NewGuid().ToString('N')) -SourceCommit $sourceCommit
+        [System.IO.Directory]::CreateDirectory($evidenceInitFailure.evidencePath) | Out-Null
+        $evidenceInitFailureResult = Invoke-Phase0SFixtureExe -FixtureExe $evidenceInitFailure.exePath -Mode 'expect-evidence-init-failure' -EvidencePath $evidenceInitFailure.evidencePath -PackageId $evidenceInitFailure.packageId
+        foreach ($line in $evidenceInitFailureResult.output) {
+            Write-Host $line
+        }
+        Assert-Phase0SCondition -Condition ($evidenceInitFailureResult.exitCode -eq 0) -Message "evidence initialization failure fixture: expected exit 0, actual $($evidenceInitFailureResult.exitCode)."
+
+        $wrongPackageId = New-Phase0SFixtureRunDirectory -Root $root -Name 'wrong-package-id' -FixtureExe $fixtureExe -ProductionOutputs $productionOutputs -HarmonyPath $harmonyPath -PackageId ('phase0s-fixture-' + [Guid]::NewGuid().ToString('N')) -SourceCommit $sourceCommit
+        Set-Phase0SFixtureManifestValue -EvidencePath $wrongPackageId.evidencePath -Key 'packageId' -Value 'phase0s|invalid'
+        $wrongPackageIdResult = Invoke-Phase0SFixtureExe -FixtureExe $wrongPackageId.exePath -Mode 'expect-no-handoff' -EvidencePath $wrongPackageId.evidencePath -PackageId $wrongPackageId.packageId
+        foreach ($line in $wrongPackageIdResult.output) {
+            Write-Host $line
+        }
+        Assert-Phase0SCondition -Condition ($wrongPackageIdResult.exitCode -eq 0) -Message "wrong package id fixture: expected fail-closed exit 0, actual $($wrongPackageIdResult.exitCode)."
+        Assert-Phase0SNoSuccessEvents -EvidencePath $wrongPackageId.evidencePath
+
+        $uncontrolledEvidencePath = New-Phase0SFixtureRunDirectory -Root $root -Name 'uncontrolled-evidence-path' -FixtureExe $fixtureExe -ProductionOutputs $productionOutputs -HarmonyPath $harmonyPath -PackageId ('phase0s-fixture-' + [Guid]::NewGuid().ToString('N')) -SourceCommit $sourceCommit
+        Set-Phase0SFixtureManifestValue -EvidencePath $uncontrolledEvidencePath.evidencePath -Key 'evidenceFileName' -Value '..\uncontrolled.log'
+        $uncontrolledCandidate = Join-Path (Split-Path -Parent (Split-Path -Parent $uncontrolledEvidencePath.evidencePath)) 'uncontrolled.log'
+        $uncontrolledResult = Invoke-Phase0SFixtureExe -FixtureExe $uncontrolledEvidencePath.exePath -Mode 'expect-no-handoff' -EvidencePath $uncontrolledEvidencePath.evidencePath -PackageId $uncontrolledEvidencePath.packageId
+        foreach ($line in $uncontrolledResult.output) {
+            Write-Host $line
+        }
+        Assert-Phase0SCondition -Condition ($uncontrolledResult.exitCode -eq 0) -Message "uncontrolled evidence path fixture: expected fail-closed exit 0, actual $($uncontrolledResult.exitCode)."
+        Assert-Phase0SCondition -Condition (-not [System.IO.File]::Exists($uncontrolledCandidate) -and -not [System.IO.Directory]::Exists($uncontrolledCandidate)) -Message 'The invalid runtime manifest wrote evidence outside the fixed controlled path.'
+
+        $fixedTerrariaInput = Join-Path $RepositoryRoot 'external\TerrariaRefs\Terraria.exe'
+        Assert-Phase0SCondition -Condition ((Get-Phase0SFileSha256 -Path $fixedTerrariaInput) -ceq '960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3') -Message 'The TEMP install fixture requires the fixed Terraria baseline.'
+        $tempPackage = New-Phase0STempInstallLaunchPackage -RepositoryRoot $RepositoryRoot -Root $root -FixtureExe $fixtureExe -ProductionOutputs $productionOutputs -HarmonyPath $harmonyPath -SourceCommit $sourceCommit
+        $tempTarget = Join-Path $root 'installed-launch-target'
+        [System.IO.Directory]::CreateDirectory($tempTarget) | Out-Null
+        Copy-Item -LiteralPath $fixedTerrariaInput -Destination (Join-Path $tempTarget 'Terraria.exe')
+        $tempBaseline = @(Get-Phase0STreeSnapshot -Root $tempTarget)
+        $tempInstall = Invoke-Phase0STempPackageScript -PackageRoot $tempPackage.root -ScriptName 'Install-Phase0S.ps1' -TerrariaDirectory $tempTarget
+        Assert-Phase0STempPackageSuccess -Result $tempInstall -Operation 'install' -Code 'INSTALL_COMPLETE' -PackageId $tempPackage.packageId
+
+        # The production installer validates the fixed real Terraria identity. The executable is
+        # substituted only inside this marked TEMP target so the two process launches remain a fixture.
+        $tempTerrariaPath = Join-Path $tempTarget 'Terraria.exe'
+        Copy-Item -LiteralPath $fixtureExe -Destination $tempTerrariaPath -Force
+        Assert-Phase0SCondition -Condition ((Get-Phase0SFileSha256 -Path $tempTerrariaPath) -ceq (Get-Phase0SFileSha256 -Path $fixtureExe)) -Message 'The TEMP installed-launch target did not receive the fixture executable.'
+        $tempEvidencePath = Join-Path $tempTarget 'JueMingR.Validation\phase-0-s-evidence.log'
+        $tempFirstLaunch = Invoke-Phase0SFixtureExe -FixtureExe $tempTerrariaPath -Mode 'expect-handoff' -EvidencePath $tempEvidencePath -PackageId $tempPackage.packageId
+        Assert-Phase0SCondition -Condition ($tempFirstLaunch.exitCode -eq 0) -Message "TEMP installed first process: expected exit 0, actual $($tempFirstLaunch.exitCode)."
+        $tempFirstEvidenceHash = Get-Phase0SFileSha256 -Path $tempEvidencePath
+        $tempSecondLaunch = Invoke-Phase0SFixtureExe -FixtureExe $tempTerrariaPath -Mode 'expect-handoff' -EvidencePath $tempEvidencePath -PackageId $tempPackage.packageId
+        Assert-Phase0SCondition -Condition ($tempSecondLaunch.exitCode -eq 0) -Message "TEMP installed second process: expected exit 0, actual $($tempSecondLaunch.exitCode)."
+        Assert-Phase0SCondition -Condition ((Get-Phase0SFileSha256 -Path $tempEvidencePath) -cne $tempFirstEvidenceHash) -Message 'The TEMP installed second process retained stale first-process evidence.'
+
+        Copy-Item -LiteralPath $fixedTerrariaInput -Destination $tempTerrariaPath -Force
+        Assert-Phase0SCondition -Condition ((Get-Phase0SFileSha256 -Path $tempTerrariaPath) -ceq '960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3') -Message 'The TEMP Terraria baseline was not restored before the package restore test.'
+        $tempRestore = Invoke-Phase0STempPackageScript -PackageRoot $tempPackage.root -ScriptName 'Restore-Phase0S.ps1' -TerrariaDirectory $tempTarget
+        Assert-Phase0STempPackageSuccess -Result $tempRestore -Operation 'restore' -Code 'RESTORE_COMPLETE' -PackageId $tempPackage.packageId
+        Assert-Phase0STreeSnapshotEqual -Expected $tempBaseline -Actual (Get-Phase0STreeSnapshot -Root $tempTarget) -Context 'TEMP install, two launches, restore'
+        Write-Host 'PASS: formal TEMP install, two independent launches, and exact restore completed.'
 
         foreach ($driverMode in @(
             'driver-relogic-then-terraria',

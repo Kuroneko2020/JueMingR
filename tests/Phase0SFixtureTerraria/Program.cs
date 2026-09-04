@@ -220,10 +220,11 @@ namespace Terraria
                 if (args.Length != 3 ||
                     (args[0] != "expect-handoff" &&
                      args[0] != "expect-no-handoff" &&
+                     args[0] != "expect-evidence-init-failure" &&
                      !args[0].StartsWith("driver-", StringComparison.Ordinal)))
                 {
                     throw new ArgumentException(
-                        "Usage: Terraria expect-handoff|expect-no-handoff <evidence-path> <package-id>");
+                        "Usage: Terraria expect-handoff|expect-no-handoff|expect-evidence-init-failure <evidence-path> <package-id>");
                 }
 
                 string mode = args[0];
@@ -323,6 +324,14 @@ namespace Terraria
                     AssertOneShotState();
                     AssertBootstrapSchedulingState(AppDomain.CurrentDomain.DomainManager, "Installed");
                     AssertNoDiagnosticArtifact(evidencePath);
+                }
+                else if (mode == "expect-evidence-init-failure")
+                {
+                    AssertNoHandoffSuccess(evidenceLines, packageId);
+                    AssertBootstrapSchedulingState(AppDomain.CurrentDomain.DomainManager, "Failed");
+                    AssertEvidenceInitializationFailureState(
+                        AppDomain.CurrentDomain.DomainManager,
+                        evidencePath);
                 }
                 else
                 {
@@ -1022,6 +1031,38 @@ namespace Terraria
         private static void AssertBootstrapSchedulingState(object manager, string expectedState)
         {
             AssertBootstrapSchedulingState(manager, expectedState, false);
+        }
+
+        private static void AssertEvidenceInitializationFailureState(
+            object manager,
+            string expectedEvidencePath)
+        {
+            Type managerType = manager == null ? null : manager.GetType();
+            FieldInfo manifest = managerType == null
+                ? null
+                : managerType.GetField("manifest", BindingFlags.Instance | BindingFlags.NonPublic);
+            FieldInfo targetAssembly = managerType == null
+                ? null
+                : managerType.GetField("targetAssembly", BindingFlags.Instance | BindingFlags.NonPublic);
+            FieldInfo evidencePath = managerType == null
+                ? null
+                : managerType.GetField("evidencePath", BindingFlags.Instance | BindingFlags.NonPublic);
+            FieldInfo evidenceCreated = managerType == null
+                ? null
+                : managerType.GetField("evidenceCreated", BindingFlags.Instance | BindingFlags.NonPublic);
+            if (manifest == null || manifest.GetValue(manager) == null ||
+                targetAssembly == null || targetAssembly.GetValue(manager) == null ||
+                evidencePath == null ||
+                !String.Equals(
+                    (string)evidencePath.GetValue(manager),
+                    expectedEvidencePath,
+                    StringComparison.OrdinalIgnoreCase) ||
+                evidenceCreated == null || (bool)evidenceCreated.GetValue(manager) ||
+                !Directory.Exists(expectedEvidencePath) || File.Exists(expectedEvidencePath))
+            {
+                throw new InvalidOperationException(
+                    "The fixture did not observe a fail-closed evidence initialization failure at the fixed controlled path.");
+            }
         }
 
         private static void AssertSingleWorkerFailure(IList<string> lines, string packageId)
