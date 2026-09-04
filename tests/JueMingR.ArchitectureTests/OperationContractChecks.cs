@@ -25,23 +25,29 @@ namespace JueMingR.ArchitectureTests
             Type outcomeType = typeof(GameOperationOutcome);
             Type resultType = typeof(GameOperationResult);
 
-            CheckExportedTypes(resultType.Assembly, requestType, outcomeType, resultType, failures);
+            CheckExportedTypes(resultType.Assembly, failures);
             CheckRequestType(requestType, failures);
             CheckOutcomeType(outcomeType, failures);
             CheckResultType(resultType, outcomeType, failures);
         }
 
-        private static void CheckExportedTypes(
-            Assembly assembly,
-            Type requestType,
-            Type outcomeType,
-            Type resultType,
-            IList<string> failures)
+        private static void CheckExportedTypes(Assembly assembly, IList<string> failures)
         {
-            var expected = new HashSet<Type> { requestType, outcomeType, resultType };
-            if (!expected.SetEquals(assembly.GetExportedTypes()))
+            var expected = new HashSet<string>(StringComparer.Ordinal)
             {
-                failures.Add("Platform must export only the minimal typed operation contract.");
+                "JueMingR.Platform.Biomes.BiomeFlags",
+                "JueMingR.Platform.Biomes.BiomeObservation",
+                "JueMingR.Platform.Biomes.IBiomeObservationSource",
+                "JueMingR.Platform.Operations.GameOperationOutcome",
+                "JueMingR.Platform.Operations.GameOperationResult",
+                "JueMingR.Platform.Operations.IGameOperationRequest",
+                "JueMingR.Platform.Runtime.IGameSessionProbe",
+                "JueMingR.Platform.Runtime.IRuntimeFeature",
+                "JueMingR.Platform.Runtime.SingleFeatureRuntime"
+            };
+            if (!expected.SetEquals(assembly.GetExportedTypes().Select(type => type.FullName)))
+            {
+                failures.Add("Platform must export exactly the approved operation and Phase 0-T biome/runtime contracts.");
             }
         }
 

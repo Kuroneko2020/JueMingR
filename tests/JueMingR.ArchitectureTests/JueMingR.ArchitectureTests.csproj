@@ -8,9 +8,11 @@
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <DefineConstants>PHASE0T_ALL_TESTS</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\JueMingR.Platform\JueMingR.Platform.csproj" />
+    <ProjectReference Include="..\..\src\JueMingR.Features\JueMingR.Features.csproj" />
   </ItemGroup>
 </Project>

@@ -2,6 +2,8 @@
 param(
     [string] $TerrariaExePath,
     [string] $XnaGameAssemblyPath,
+    [string] $XnaFrameworkAssemblyPath,
+    [string] $XnaGraphicsAssemblyPath,
     [switch] $VerifyOnly
 )
 
@@ -18,7 +20,7 @@ function Read-Baseline {
     }
 
     $baseline = Get-Content -LiteralPath $baselinePath -Raw | ConvertFrom-Json
-    if ([int] $baseline.schemaVersion -ne 1 -or @($baseline.files).Count -ne 3) {
+    if ([int] $baseline.schemaVersion -ne 1 -or @($baseline.files).Count -ne 5) {
         throw 'The Terraria reference baseline has an unsupported shape.'
     }
 
@@ -122,18 +124,26 @@ if ($VerifyOnly) {
 }
 
 if ([string]::IsNullOrWhiteSpace($TerrariaExePath) -or
-    [string]::IsNullOrWhiteSpace($XnaGameAssemblyPath)) {
-    throw 'TerrariaExePath and XnaGameAssemblyPath are required unless VerifyOnly is used.'
+    [string]::IsNullOrWhiteSpace($XnaGameAssemblyPath) -or
+    [string]::IsNullOrWhiteSpace($XnaFrameworkAssemblyPath) -or
+    [string]::IsNullOrWhiteSpace($XnaGraphicsAssemblyPath)) {
+    throw 'TerrariaExePath and all three XNA assembly paths are required unless VerifyOnly is used.'
 }
 
 $terrariaSource = [System.IO.Path]::GetFullPath($TerrariaExePath)
-$xnaSource = [System.IO.Path]::GetFullPath($XnaGameAssemblyPath)
+$xnaGameSource = [System.IO.Path]::GetFullPath($XnaGameAssemblyPath)
+$xnaFrameworkSource = [System.IO.Path]::GetFullPath($XnaFrameworkAssemblyPath)
+$xnaGraphicsSource = [System.IO.Path]::GetFullPath($XnaGraphicsAssemblyPath)
 $terrariaExpected = Get-BaselineEntry -Baseline $baseline -LogicalName 'Terraria.exe'
 $reLogicExpected = Get-BaselineEntry -Baseline $baseline -LogicalName 'ReLogic.dll'
-$xnaExpected = Get-BaselineEntry -Baseline $baseline -LogicalName 'Microsoft.Xna.Framework.Game.dll'
+$xnaGameExpected = Get-BaselineEntry -Baseline $baseline -LogicalName 'Microsoft.Xna.Framework.Game.dll'
+$xnaFrameworkExpected = Get-BaselineEntry -Baseline $baseline -LogicalName 'Microsoft.Xna.Framework.dll'
+$xnaGraphicsExpected = Get-BaselineEntry -Baseline $baseline -LogicalName 'Microsoft.Xna.Framework.Graphics.dll'
 
 Assert-ReferenceMatchesBaseline -Path $terrariaSource -Expected $terrariaExpected
-Assert-ReferenceMatchesBaseline -Path $xnaSource -Expected $xnaExpected
+Assert-ReferenceMatchesBaseline -Path $xnaGameSource -Expected $xnaGameExpected
+Assert-ReferenceMatchesBaseline -Path $xnaFrameworkSource -Expected $xnaFrameworkExpected
+Assert-ReferenceMatchesBaseline -Path $xnaGraphicsSource -Expected $xnaGraphicsExpected
 
 $existingSetIsValid = $false
 try {
@@ -156,7 +166,9 @@ $stagingDirectory = Join-Path $externalDirectory ('.TerrariaRefs.stage.' + [Guid
 
 try {
     [System.IO.File]::Copy($terrariaSource, (Join-Path $stagingDirectory 'Terraria.exe'), $false)
-    [System.IO.File]::Copy($xnaSource, (Join-Path $stagingDirectory 'Microsoft.Xna.Framework.Game.dll'), $false)
+    [System.IO.File]::Copy($xnaGameSource, (Join-Path $stagingDirectory 'Microsoft.Xna.Framework.Game.dll'), $false)
+    [System.IO.File]::Copy($xnaFrameworkSource, (Join-Path $stagingDirectory 'Microsoft.Xna.Framework.dll'), $false)
+    [System.IO.File]::Copy($xnaGraphicsSource, (Join-Path $stagingDirectory 'Microsoft.Xna.Framework.Graphics.dll'), $false)
     Export-EmbeddedReLogic `
         -TerrariaExe $terrariaSource `
         -Destination (Join-Path $stagingDirectory 'ReLogic.dll') `
@@ -176,4 +188,4 @@ finally {
 }
 
 Assert-ReferenceSet -Baseline $baseline -Directory $referencesDirectory
-Write-Output 'PASS: prepared three verified local compile references in external/TerrariaRefs.'
+Write-Output 'PASS: prepared five verified local compile references in external/TerrariaRefs.'

@@ -28,7 +28,7 @@ namespace JueMingR.ArchitectureTests
                 { ExpectedProjects[3].Value, new[] { ExpectedProjects[1].Value, ExpectedProjects[2].Value, ExpectedProjects[4].Value } },
                 { ExpectedProjects[4].Value, new[] { ExpectedProjects[1].Value } },
                 { ExpectedProjects[5].Value, new string[0] },
-                { ExpectedProjects[6].Value, new[] { ExpectedProjects[1].Value } }
+                { ExpectedProjects[6].Value, new[] { ExpectedProjects[1].Value, ExpectedProjects[2].Value } }
             };
 
         private static readonly IDictionary<string, string> ExpectedGameReferences =
@@ -37,6 +37,8 @@ namespace JueMingR.ArchitectureTests
                 { "Terraria", "Terraria.exe" },
                 { "ReLogic", "ReLogic.dll" },
                 { "Microsoft.Xna.Framework.Game", "Microsoft.Xna.Framework.Game.dll" },
+                { "Microsoft.Xna.Framework", "Microsoft.Xna.Framework.dll" },
+                { "Microsoft.Xna.Framework.Graphics", "Microsoft.Xna.Framework.Graphics.dll" },
                 { "0Harmony", "0Harmony.dll" }
             };
 
@@ -46,6 +48,8 @@ namespace JueMingR.ArchitectureTests
             "scripts/prepare-harmony.ps1",
             "scripts/build.ps1",
             "scripts/verify-reproducible-build.ps1",
+            "scripts/build-phase0t-biome-validation-package.ps1",
+            "scripts/phase0s/Phase0T-Biome-Owner-Test-Card.zh-CN.md",
             "eng/TerrariaReferences.baseline.json",
             "eng/Harmony.baseline.json",
             "JueMingR.sln"
@@ -179,7 +183,7 @@ namespace JueMingR.ArchitectureTests
                     !new HashSet<string>(simpleNames, StringComparer.OrdinalIgnoreCase)
                         .SetEquals(ExpectedGameReferences.Keys))
                 {
-                    failures.Add("TerrariaHost must reference exactly Terraria, ReLogic, Microsoft.Xna.Framework.Game, and 0Harmony.");
+                    failures.Add("TerrariaHost must reference exactly Terraria, ReLogic, the three approved XNA assemblies, and 0Harmony.");
                     continue;
                 }
 
@@ -228,9 +232,9 @@ namespace JueMingR.ArchitectureTests
                 }
             }
 
-            if (model.BaselineHashes.Count != 3)
+            if (model.BaselineHashes.Count != 5)
             {
-                failures.Add("reference baseline must contain exactly three unique SHA-256 values.");
+                failures.Add("reference baseline must contain exactly five unique SHA-256 values.");
             }
 
             if (model.HarmonyBaselineHashes.Count != 3 || model.HarmonyBinaryHashes.Count != 2)

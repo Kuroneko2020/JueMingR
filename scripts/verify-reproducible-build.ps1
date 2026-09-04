@@ -5,7 +5,12 @@ param(
     [Parameter(Mandatory = $true)]
     [string] $XnaGameAssemblyPath,
     [Parameter(Mandatory = $true)]
-    [string] $HarmonyPackagePath
+    [string] $XnaFrameworkAssemblyPath,
+    [Parameter(Mandatory = $true)]
+    [string] $XnaGraphicsAssemblyPath,
+    [Parameter(Mandatory = $true)]
+    [string] $HarmonyPackagePath,
+    [switch] $VerifyPhase0TBiomePackage
 )
 
 $ErrorActionPreference = 'Stop'
@@ -14,12 +19,17 @@ Set-StrictMode -Version 2.0
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $terrariaSource = [System.IO.Path]::GetFullPath($TerrariaExePath)
 $xnaSource = [System.IO.Path]::GetFullPath($XnaGameAssemblyPath)
+$xnaFrameworkSource = [System.IO.Path]::GetFullPath($XnaFrameworkAssemblyPath)
+$xnaGraphicsSource = [System.IO.Path]::GetFullPath($XnaGraphicsAssemblyPath)
 $harmonyPackageSource = [System.IO.Path]::GetFullPath($HarmonyPackagePath)
 $powershellPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
 $identifier = [Guid]::NewGuid().ToString('N')
 $worktreeA = Join-Path ([System.IO.Path]::GetTempPath()) ("JueMingR-Repro-$identifier-a")
 $worktreeB = Join-Path ([System.IO.Path]::GetTempPath()) ("JueMingR-Repro-$identifier-b-with-a-different-path")
+$packageOutputA = Join-Path ([System.IO.Path]::GetTempPath()) ("JueMingR-Repro-$identifier-package-a")
+$packageOutputB = Join-Path ([System.IO.Path]::GetTempPath()) ("JueMingR-Repro-$identifier-package-b")
 $createdWorktrees = New-Object System.Collections.Generic.List[string]
+$packageOutputRoots = New-Object System.Collections.Generic.List[string]
 
 function Invoke-Git {
     param([string[]] $Arguments)
@@ -45,7 +55,9 @@ function Invoke-WorktreeBuild {
     $prepareOutput = @(& $powershellPath -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
         -File (Join-Path $Worktree 'scripts\prepare-terraria-references.ps1') `
         -TerrariaExePath $terrariaSource `
-        -XnaGameAssemblyPath $xnaSource)
+        -XnaGameAssemblyPath $xnaSource `
+        -XnaFrameworkAssemblyPath $xnaFrameworkSource `
+        -XnaGraphicsAssemblyPath $xnaGraphicsSource)
     if ($LASTEXITCODE -ne 0) {
         throw ('Reference preparation failed: ' + ($prepareOutput -join [Environment]::NewLine))
     }
@@ -73,8 +85,38 @@ function Invoke-WorktreeBuild {
     return Get-Content -LiteralPath $recordPath -Raw | ConvertFrom-Json
 }
 
+function Invoke-WorktreePhase0TPackage {
+    param(
+        [Parameter(Mandatory = $true)][string] $Worktree,
+        [Parameter(Mandatory = $true)][string] $OutputDirectory,
+        [Parameter(Mandatory = $true)][string] $Commit
+    )
+
+    $packageOutput = @(& $powershellPath -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
+        -File (Join-Path $Worktree 'scripts\build-phase0t-biome-validation-package.ps1') `
+        -OutputDirectory $OutputDirectory)
+    if ($LASTEXITCODE -ne 0) {
+        throw ('Phase 0-T package build failed: ' + ($packageOutput -join [Environment]::NewLine))
+    }
+
+    $zipName = 'JueMingR-Phase0T-Biome-' + $Commit + '.zip'
+    $zipPath = Join-Path $OutputDirectory $zipName
+    if (-not [System.IO.File]::Exists($zipPath)) {
+        throw 'The Phase 0-T candidate ZIP is missing.'
+    }
+
+    $zip = Get-Item -LiteralPath $zipPath -Force -ErrorAction Stop
+    return [pscustomobject][ordered]@{
+        fileName = $zipName
+        length = [int64] $zip.Length
+        sha256 = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToUpperInvariant()
+    }
+}
+
 if (-not [System.IO.File]::Exists($terrariaSource) -or
     -not [System.IO.File]::Exists($xnaSource) -or
+    -not [System.IO.File]::Exists($xnaFrameworkSource) -or
+    -not [System.IO.File]::Exists($xnaGraphicsSource) -or
     -not [System.IO.File]::Exists($harmonyPackageSource)) {
     throw 'All explicit Terraria, XNA, and Harmony package source files must exist.'
 }
@@ -99,8 +141,8 @@ try {
     $recordB = Invoke-WorktreeBuild -Worktree $worktreeB
     $referencesA = @($recordA.references)
     $referencesB = @($recordB.references)
-    if ($referencesA.Count -ne 4 -or $referencesB.Count -ne 4) {
-        throw 'Each worktree build record must contain exactly four compile inputs.'
+    if ($referencesA.Count -ne 6 -or $referencesB.Count -ne 6) {
+        throw 'Each worktree build record must contain exactly six compile inputs.'
     }
     $referencesByNameB = @{}
     foreach ($reference in $referencesB) {
@@ -140,11 +182,30 @@ try {
         throw ('Declared output differences: ' + ($differences -join ', '))
     }
 
+    $packageSummary = $null
+    if ($VerifyPhase0TBiomePackage) {
+        $packageOutputRoots.Add($packageOutputA)
+        $packageOutputRoots.Add($packageOutputB)
+        $packageA = Invoke-WorktreePhase0TPackage -Worktree $worktreeA -OutputDirectory $packageOutputA -Commit $commit
+        $packageB = Invoke-WorktreePhase0TPackage -Worktree $worktreeB -OutputDirectory $packageOutputB -Commit $commit
+        if ($packageA.fileName -cne $packageB.fileName -or
+            $packageA.length -ne $packageB.length -or
+            $packageA.sha256 -cne $packageB.sha256) {
+            throw 'The two worktrees produced different Phase 0-T candidate ZIP bytes.'
+        }
+        $packageSummary = [ordered]@{
+            fileName = $packageA.fileName
+            length = $packageA.length
+            sha256 = $packageA.sha256
+            differenceCount = 0
+        }
+    }
+
     $summaryDirectory = Join-Path $repositoryRoot 'artifacts\reproducibility'
     [System.IO.Directory]::CreateDirectory($summaryDirectory) | Out-Null
     $summaryPath = Join-Path $summaryDirectory 'reproducibility-summary.json'
     $summary = [ordered]@{
-        schemaVersion = 1
+        schemaVersion = 2
         commit = $commit
         declaredOutputCount = $outputsA.Count
         differenceCount = 0
@@ -152,13 +213,36 @@ try {
             [ordered]@{ path = [string] $_.path; sha256 = [string] $_.sha256 }
         })
     }
+    if ($null -ne $packageSummary) {
+        $summary.phase0TBiomePackage = $packageSummary
+    }
     $summaryJson = ($summary | ConvertTo-Json -Depth 5) + [Environment]::NewLine
     [System.IO.File]::WriteAllText($summaryPath, $summaryJson, (New-Object System.Text.UTF8Encoding($false)))
     Write-Output ("PASS: two TEMP worktrees produced {0} byte-identical declared outputs; differences=0." -f $outputsA.Count)
+    if ($null -ne $packageSummary) {
+        Write-Output ("PASS: two TEMP worktrees produced byte-identical Phase 0-T candidate ZIPs; SHA-256={0}." -f $packageSummary.sha256)
+    }
     Write-Output ("Reproducibility summary: {0}" -f $summaryPath)
 }
 finally {
     $cleanupFailures = New-Object System.Collections.Generic.List[string]
+    $tempPrefix = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath()).TrimEnd('\') + '\'
+    foreach ($outputRoot in @($packageOutputRoots)) {
+        try {
+            $fullOutputRoot = [System.IO.Path]::GetFullPath($outputRoot)
+            $expectedLeafPrefix = 'JueMingR-Repro-' + $identifier + '-package-'
+            if (-not $fullOutputRoot.StartsWith($tempPrefix, [System.StringComparison]::OrdinalIgnoreCase) -or
+                -not (Split-Path -Leaf $fullOutputRoot).StartsWith($expectedLeafPrefix, [System.StringComparison]::Ordinal)) {
+                throw 'Package output cleanup target is outside the fixed TEMP scope.'
+            }
+            if ([System.IO.Directory]::Exists($fullOutputRoot)) {
+                Remove-Item -LiteralPath $fullOutputRoot -Recurse -Force
+            }
+        }
+        catch {
+            $cleanupFailures.Add($outputRoot)
+        }
+    }
     foreach ($worktree in @($createdWorktrees)) {
         & git -C $repositoryRoot worktree remove --force $worktree 2>&1 | Out-Null
         if ($LASTEXITCODE -ne 0) {

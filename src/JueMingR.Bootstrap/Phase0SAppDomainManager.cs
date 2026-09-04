@@ -925,7 +925,7 @@ namespace JueMingR.Bootstrap
                 throw new InvalidOperationException("The first Phase 0-S evidence event is invalid.");
             }
 
-            using (FileStream stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read))
+            using (FileStream stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read))
             {
                 WriteAndFlush(stream, FormatEvent(packageId, 1, eventName));
             }

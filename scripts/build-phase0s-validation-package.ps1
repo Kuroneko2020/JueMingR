@@ -1,7 +1,9 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [string] $OutputDirectory
+    [string] $OutputDirectory,
+    [ValidateSet('Phase0S', 'Phase0TBiome')]
+    [string] $Profile = 'Phase0S'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -9,6 +11,11 @@ Set-StrictMode -Version 2.0
 
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..')).TrimEnd('\')
 . (Join-Path $PSScriptRoot 'phase0s\Phase0S.ScriptSupport.ps1')
+$ownerTestCardName = if ($Profile -ceq 'Phase0TBiome') {
+    'Phase0T-Biome-Owner-Test-Card.zh-CN.md'
+} else {
+    'Phase0S-Owner-Test-Card.zh-CN.md'
+}
 
 function Invoke-Phase0SGit {
     param([Parameter(Mandatory = $true)][string[]] $Arguments)
@@ -126,7 +133,7 @@ function Assert-Phase0SFixedPackageTree {
     $expectedFiles = @(
         'Harmony-2.4.2-LICENSE.txt',
         'Install-Phase0S.ps1',
-        'Phase0S-Owner-Test-Card.zh-CN.md',
+        $ownerTestCardName,
         'Phase0S.ScriptSupport.ps1',
         'Restore-Phase0S.ps1',
         'THIRD-PARTY-NOTICES.md',
@@ -140,13 +147,14 @@ function Assert-Phase0SFixedPackageTree {
         'payload/Terraria.exe.config',
         'phase-0-s-package.manifest.json'
     )
+    [Array]::Sort($expectedFiles, [System.StringComparer]::Ordinal)
     $records = @(Get-Phase0SPackageTreeRecords -PackageRoot $PackageRoot)
     $actualFiles = @($records | ForEach-Object { $_.path })
     if (($actualFiles -join '|') -cne ($expectedFiles -join '|')) {
         throw 'The final package tree has missing or unexpected files.'
     }
     $expectedRootNames = @(
-        'Harmony-2.4.2-LICENSE.txt', 'Install-Phase0S.ps1', 'Phase0S-Owner-Test-Card.zh-CN.md',
+        'Harmony-2.4.2-LICENSE.txt', 'Install-Phase0S.ps1', $ownerTestCardName,
         'Phase0S.ScriptSupport.ps1', 'Restore-Phase0S.ps1', 'THIRD-PARTY-NOTICES.md',
         'payload', 'phase-0-s-package.manifest.json'
     ) | Sort-Object
@@ -288,7 +296,7 @@ $sourceCommit = ([string] (Invoke-Phase0SGit -Arguments @('rev-parse', 'HEAD') |
 if ($sourceCommit -notmatch '^[0-9a-f]{40}$') {
     throw 'The source commit identity is invalid.'
 }
-$packageId = 'phase0s-' + $sourceCommit
+$packageId = $(if ($Profile -ceq 'Phase0TBiome') { 'phase0t-biome-' } else { 'phase0s-' }) + $sourceCommit
 
 $outputRoot = [System.IO.Path]::GetFullPath($OutputDirectory).TrimEnd('\')
 if ([string]::IsNullOrWhiteSpace($outputRoot) -or (Get-Phase0SPathState -Path $outputRoot).exists) {
@@ -349,7 +357,7 @@ if ($harmonyIdentity.fullName -cne '0Harmony, Version=2.4.2.0, Culture=neutral, 
     throw 'Prepared Harmony identity or license is invalid.'
 }
 
-$packageDirectoryName = 'JueMingR-Phase0S-' + $sourceCommit
+$packageDirectoryName = $(if ($Profile -ceq 'Phase0TBiome') { 'JueMingR-Phase0T-Biome-' } else { 'JueMingR-Phase0S-' }) + $sourceCommit
 $zipFileName = $packageDirectoryName + '.zip'
 $stagingToken = [Guid]::NewGuid().ToString('N')
 $stagingRoot = Join-Path $outputParent ((Split-Path -Leaf $outputRoot) + '.phase0s-stage-' + $stagingToken)
@@ -466,7 +474,7 @@ try {
         @((Join-Path $repositoryRoot 'scripts\phase0s\Install-Phase0S.ps1'), 'Install-Phase0S.ps1'),
         @((Join-Path $repositoryRoot 'scripts\phase0s\Restore-Phase0S.ps1'), 'Restore-Phase0S.ps1'),
         @((Join-Path $repositoryRoot 'scripts\phase0s\Phase0S.ScriptSupport.ps1'), 'Phase0S.ScriptSupport.ps1'),
-        @((Join-Path $repositoryRoot 'scripts\phase0s\Phase0S-Owner-Test-Card.zh-CN.md'), 'Phase0S-Owner-Test-Card.zh-CN.md'),
+        @((Join-Path $repositoryRoot ('scripts\phase0s\' + $ownerTestCardName)), $ownerTestCardName),
         @((Join-Path $repositoryRoot 'THIRD-PARTY-NOTICES.md'), 'THIRD-PARTY-NOTICES.md'),
         @($harmonyLicensePath, 'Harmony-2.4.2-LICENSE.txt')
     )) {

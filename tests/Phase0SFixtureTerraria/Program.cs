@@ -17,9 +17,63 @@ namespace Microsoft.Xna.Framework
 
 namespace Terraria
 {
+    public sealed class Player
+    {
+        private bool zoneDesert;
+
+        public bool active;
+
+        public bool ZoneDesert
+        {
+            get
+            {
+                Main.FixtureZoneReadCount++;
+                return zoneDesert;
+            }
+            set { zoneDesert = value; }
+        }
+        public bool ZoneUndergroundDesert { get; set; }
+        public bool ZoneSnow { get; set; }
+        public bool ZoneJungle { get; set; }
+        public bool ZoneDungeon { get; set; }
+        public bool ZoneBeach { get; set; }
+        public bool ZoneCorrupt { get; set; }
+        public bool ZoneCrimson { get; set; }
+        public bool ZoneHallow { get; set; }
+        public bool ZoneGlowshroom { get; set; }
+        public bool ZoneMeteor { get; set; }
+        public bool ZoneGranite { get; set; }
+        public bool ZoneMarble { get; set; }
+        public bool ZoneHive { get; set; }
+        public bool ZoneLihzhardTemple { get; set; }
+        public bool ZoneGraveyard { get; set; }
+        public bool ZoneSkyHeight { get; set; }
+        public bool ZoneUnderworldHeight { get; set; }
+        public bool ZoneRockLayerHeight { get; set; }
+        public bool ZoneDirtLayerHeight { get; set; }
+        public bool ShoppingZone_BelowSurface { get; set; }
+        public bool ZoneOverworldHeight { get; set; }
+    }
+
     public class Main
     {
+        private List<UI.GameInterfaceLayer> _gameInterfaceLayers;
+        private UI.GameInterfaceLayer fixtureBiomeLayer;
+
+        public static bool gameMenu = true;
+        public static int screenHeight = 600;
+        public static Microsoft.Xna.Framework.Graphics.SpriteBatch spriteBatch;
+        public static Player LocalPlayer { get; set; }
+
         public static int FixtureUpdateCount { get; private set; }
+
+        public static int FixtureZoneReadCount { get; internal set; }
+        public static int FixtureDrawCount { get; internal set; }
+        public static string FixtureDrawText { get; internal set; }
+        public static Microsoft.Xna.Framework.Vector2 FixtureDrawPosition { get; internal set; }
+        public static Microsoft.Xna.Framework.Color FixtureDrawColor { get; internal set; }
+        public static float FixtureDrawScale { get; internal set; }
+        public static bool FixtureThrowOnDraw { get; set; }
 
         protected virtual void Initialize()
         {
@@ -44,6 +98,101 @@ namespace Terraria
 
             FixtureUpdateCount++;
             Console.WriteLine("FIXTURE_MAIN_UPDATE_ORIGINAL");
+        }
+
+        private void SetupDrawInterfaceLayers()
+        {
+            _gameInterfaceLayers = new List<UI.GameInterfaceLayer>
+            {
+                new UI.LegacyGameInterfaceLayer("Vanilla: Background", AlwaysContinue),
+                new UI.LegacyGameInterfaceLayer("Vanilla: Map / Minimap", AlwaysContinue, UI.InterfaceScaleType.UI),
+                new UI.LegacyGameInterfaceLayer("Vanilla: Mouse Text", AlwaysContinue, UI.InterfaceScaleType.UI)
+            };
+        }
+
+        public static void ConfigureDesertWorld()
+        {
+            gameMenu = false;
+            LocalPlayer = new Player
+            {
+                active = true,
+                ZoneDesert = true,
+                ZoneOverworldHeight = true
+            };
+        }
+
+        public void SetupInterfaceLayersBeforeHook()
+        {
+            SetupDrawInterfaceLayers();
+            if (_gameInterfaceLayers == null ||
+                _gameInterfaceLayers.Count != 3 ||
+                _gameInterfaceLayers.Exists(layer =>
+                    layer != null && layer.Name == "JueMingR: Biome Display"))
+            {
+                throw new InvalidOperationException(
+                    "The controlled pre-hook draw setup did not preserve the vanilla-only fixture list.");
+            }
+        }
+
+        public void SetupAndDrawBiomeLayer()
+        {
+            SetupDrawInterfaceLayers();
+            DrawExistingBiomeLayer();
+        }
+
+        public void DrawExistingBiomeLayer()
+        {
+            if (_gameInterfaceLayers == null ||
+                _gameInterfaceLayers.Count != 4 ||
+                _gameInterfaceLayers[1] == null ||
+                _gameInterfaceLayers[1].Name != "JueMingR: Biome Display" ||
+                _gameInterfaceLayers[1].ScaleType != UI.InterfaceScaleType.UI ||
+                _gameInterfaceLayers[2] == null ||
+                _gameInterfaceLayers[2].Name != "Vanilla: Map / Minimap")
+            {
+                throw new InvalidOperationException(
+                    "The fixture did not receive exactly one biome UI layer before the fixed anchor.");
+            }
+
+            fixtureBiomeLayer = _gameInterfaceLayers[1];
+            DrawBiomeLayer();
+        }
+
+        public void DrawBiomeLayer()
+        {
+            if (fixtureBiomeLayer == null || !fixtureBiomeLayer.Draw())
+            {
+                throw new InvalidOperationException("The biome layer blocked the remaining interface layers.");
+            }
+        }
+
+        private static bool AlwaysContinue()
+        {
+            return true;
+        }
+    }
+
+    public static class Utils
+    {
+        public static void DrawBorderString(
+            Microsoft.Xna.Framework.Graphics.SpriteBatch spriteBatch,
+            string text,
+            Microsoft.Xna.Framework.Vector2 position,
+            Microsoft.Xna.Framework.Color color,
+            float scale = 1f,
+            float anchorx = 0f,
+            float anchory = 0f,
+            int maxCharactersDisplayed = -1)
+        {
+            Main.FixtureDrawCount++;
+            Main.FixtureDrawText = text;
+            Main.FixtureDrawPosition = position;
+            Main.FixtureDrawColor = color;
+            Main.FixtureDrawScale = scale;
+            if (Main.FixtureThrowOnDraw)
+            {
+                throw new InvalidOperationException("controlled fixture draw failure");
+            }
         }
     }
 
@@ -71,10 +220,11 @@ namespace Terraria
                 if (args.Length != 3 ||
                     (args[0] != "expect-handoff" &&
                      args[0] != "expect-no-handoff" &&
+                     args[0] != "expect-evidence-init-failure" &&
                      !args[0].StartsWith("driver-", StringComparison.Ordinal)))
                 {
                     throw new ArgumentException(
-                        "Usage: Terraria expect-handoff|expect-no-handoff <evidence-path> <package-id>");
+                        "Usage: Terraria expect-handoff|expect-no-handoff|expect-evidence-init-failure <evidence-path> <package-id>");
                 }
 
                 string mode = args[0];
@@ -101,6 +251,7 @@ namespace Terraria
                 TriggerLaunchGameReLogicReference();
 
                 var main = new Main();
+                global::Terraria.Main.ConfigureDesertWorld();
                 byte[] evidenceAfterFirstUpdate = null;
                 if (mode == "expect-handoff")
                 {
@@ -108,12 +259,44 @@ namespace Terraria
                     main.RunUpdateLoop(1);
                     WaitForEvidenceEvent(evidencePath, "RUNTIME_HANDOFF_COMPLETE");
                     evidenceAfterFirstUpdate = File.ReadAllBytes(evidencePath);
+                    main.SetupAndDrawBiomeLayer();
+                    AssertBiomeDraw("群系: 沙漠", 1);
                     int updateCountAfterHandoff = global::Terraria.Main.FixtureUpdateCount;
                     main.RunUpdateLoop(4);
                     if (global::Terraria.Main.FixtureUpdateCount != updateCountAfterHandoff + 4)
                     {
                         throw new InvalidOperationException(
                             "The fixture trailing Main.Update loop did not run exactly four times.");
+                    }
+
+                    global::Terraria.Main.LocalPlayer.ZoneDesert = false;
+                    global::Terraria.Main.LocalPlayer.ZoneSnow = true;
+                    main.RunUpdateLoop(25);
+                    main.DrawBiomeLayer();
+                    AssertBiomeDraw("群系: 沙漠", 2);
+                    main.RunUpdateLoop(1);
+                    main.DrawBiomeLayer();
+                    AssertBiomeDraw("群系: 雪原", 3);
+
+                    global::Terraria.Main.gameMenu = true;
+                    main.RunUpdateLoop(1);
+                    main.DrawBiomeLayer();
+                    AssertBiomeDraw("群系: 雪原", 3);
+
+                    global::Terraria.Main.gameMenu = false;
+                    main.RunUpdateLoop(1);
+                    main.DrawBiomeLayer();
+                    AssertBiomeDraw("群系: 雪原", 4);
+
+                    global::Terraria.Main.FixtureThrowOnDraw = true;
+                    main.DrawBiomeLayer();
+                    int drawCountAfterFailure = global::Terraria.Main.FixtureDrawCount;
+                    global::Terraria.Main.FixtureThrowOnDraw = false;
+                    main.DrawBiomeLayer();
+                    if (global::Terraria.Main.FixtureDrawCount != drawCountAfterFailure)
+                    {
+                        throw new InvalidOperationException(
+                            "A draw failure did not leave the biome feature disabled and hidden.");
                     }
 
                     AssertEmbeddedLoadContract();
@@ -141,6 +324,14 @@ namespace Terraria
                     AssertOneShotState();
                     AssertBootstrapSchedulingState(AppDomain.CurrentDomain.DomainManager, "Installed");
                     AssertNoDiagnosticArtifact(evidencePath);
+                }
+                else if (mode == "expect-evidence-init-failure")
+                {
+                    AssertNoHandoffSuccess(evidenceLines, packageId);
+                    AssertBootstrapSchedulingState(AppDomain.CurrentDomain.DomainManager, "Failed");
+                    AssertEvidenceInitializationFailureState(
+                        AppDomain.CurrentDomain.DomainManager,
+                        evidencePath);
                 }
                 else
                 {
@@ -175,6 +366,7 @@ namespace Terraria
             byte[] reLogicBytes = File.ReadAllBytes(reLogicPath);
             object manager = null;
             Assembly target = null;
+            object mainInstance = null;
             int updatesBeforeInstall = 0;
 
             if (mode == "driver-relogic-then-terraria")
@@ -230,9 +422,24 @@ namespace Terraria
                 manager = CreateManager();
                 target = Assembly.LoadFrom(targetPath);
                 Type mainType = target.GetType("Terraria.Main", true, false);
-                object instance = Activator.CreateInstance(mainType);
-                mainType.GetMethod("RunUpdateLoop").Invoke(instance, new object[] { 1 });
+                mainInstance = Activator.CreateInstance(mainType);
+                mainType.GetMethod("RunUpdateLoop").Invoke(mainInstance, new object[] { 1 });
                 updatesBeforeInstall = 1;
+                LoadDriverReLogic(reLogicBytes);
+            }
+            else if (mode == "driver-draw-before-install")
+            {
+                manager = CreateManager();
+                target = Assembly.LoadFrom(targetPath);
+                Type mainType = target.GetType("Terraria.Main", true, false);
+                mainInstance = Activator.CreateInstance(mainType);
+                mainType.GetMethod("SetupInterfaceLayersBeforeHook").Invoke(mainInstance, null);
+                LoadDriverReLogic(reLogicBytes);
+            }
+            else if (mode == "driver-handoff-error-fail-closed")
+            {
+                manager = CreateManager();
+                target = Assembly.LoadFrom(targetPath);
                 LoadDriverReLogic(reLogicBytes);
             }
             else if (mode == "driver-worker-failure")
@@ -253,15 +460,22 @@ namespace Terraria
                 mode == "driver-terraria-then-relogic" ||
                 mode == "driver-both-before-subscription" ||
                 mode == "driver-duplicate-scan" ||
-                mode == "driver-update-before-install";
+                mode == "driver-update-before-install" ||
+                mode == "driver-draw-before-install" ||
+                mode == "driver-handoff-error-fail-closed";
             if (expectSuccess)
             {
                 WaitForEvidenceEvent(evidencePath, "HOOK_INSTALLED");
                 AssertBootstrapSchedulingState(manager, "Installed");
 
                 Type mainType = target.GetType("Terraria.Main", true, false);
-                object instance = Activator.CreateInstance(mainType);
+                object instance = mainInstance ?? Activator.CreateInstance(mainType);
                 MethodInfo runUpdateLoop = mainType.GetMethod("RunUpdateLoop");
+                if (mode == "driver-draw-before-install" ||
+                    mode == "driver-handoff-error-fail-closed")
+                {
+                    mainType.GetMethod("ConfigureDesertWorld").Invoke(null, null);
+                }
                 runUpdateLoop.Invoke(instance, new object[] { 1 });
                 WaitForEvidenceEvent(evidencePath, "RUNTIME_HANDOFF_COMPLETE");
                 AssertCompleteHandoff(
@@ -269,12 +483,43 @@ namespace Terraria
                     packageId,
                     Thread.CurrentThread.ManagedThreadId,
                     Thread.CurrentThread.ManagedThreadId);
-                byte[] evidenceAfterFirstUpdate = File.ReadAllBytes(evidencePath);
-                runUpdateLoop.Invoke(instance, new object[] { 4 });
-                AssertBytesEqual(
-                    evidenceAfterFirstUpdate,
-                    File.ReadAllBytes(evidencePath),
-                    "Driver mode observed repeated evidence after the first Update.");
+                if (mode == "driver-draw-before-install")
+                {
+                    mainType.GetMethod("DrawExistingBiomeLayer").Invoke(instance, null);
+                    AssertDriverBiomeDraw(mainType, "群系: 沙漠", 1);
+                }
+
+                if (mode == "driver-handoff-error-fail-closed")
+                {
+                    mainType.GetMethod("SetupAndDrawBiomeLayer").Invoke(instance, null);
+                    AssertDriverBiomeDraw(mainType, "群系: 沙漠", 1);
+                    int zoneReadsBeforeFailure = GetStaticInt(mainType, "FixtureZoneReadCount");
+                    int drawsBeforeFailure = GetStaticInt(mainType, "FixtureDrawCount");
+                    SimulateEvent5AppendFailure(evidencePath, packageId);
+                    byte[] evidenceAfterFailure = File.ReadAllBytes(evidencePath);
+                    runUpdateLoop.Invoke(instance, new object[] { 4 });
+                    mainType.GetMethod("DrawExistingBiomeLayer").Invoke(instance, null);
+                    if (GetStaticInt(mainType, "FixtureZoneReadCount") != zoneReadsBeforeFailure ||
+                        GetStaticInt(mainType, "FixtureDrawCount") != drawsBeforeFailure)
+                    {
+                        throw new InvalidOperationException(
+                            "A handoff append failure left biome observation or drawing enabled.");
+                    }
+                    AssertBytesEqual(
+                        evidenceAfterFailure,
+                        File.ReadAllBytes(evidencePath),
+                        "A handoff append failure retried or changed evidence.");
+                    AssertHandoffFailureEvidence(File.ReadAllLines(evidencePath), packageId);
+                }
+                else
+                {
+                    byte[] evidenceAfterFirstUpdate = File.ReadAllBytes(evidencePath);
+                    runUpdateLoop.Invoke(instance, new object[] { 4 });
+                    AssertBytesEqual(
+                        evidenceAfterFirstUpdate,
+                        File.ReadAllBytes(evidencePath),
+                        "Driver mode observed repeated evidence after the first Update.");
+                }
                 AssertPatchContract(mainType);
                 AssertOneShotState();
                 AssertNoDiagnosticArtifact(evidencePath);
@@ -310,6 +555,105 @@ namespace Terraria
             {
                 AssertNoHookSuccess(File.Exists(evidencePath) ? File.ReadAllLines(evidencePath) : new string[0]);
                 AssertBootstrapSchedulingState(manager, "Failed", mode == "driver-relogic-never");
+            }
+        }
+
+        private static void AssertDriverBiomeDraw(Type mainType, string expectedText, int expectedCount)
+        {
+            string actualText = (string)mainType.GetProperty(
+                "FixtureDrawText",
+                BindingFlags.Public | BindingFlags.Static).GetValue(null, null);
+            if (GetStaticInt(mainType, "FixtureDrawCount") != expectedCount ||
+                !String.Equals(actualText, expectedText, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    "The driver did not draw the expected cached biome ViewModel.");
+            }
+        }
+
+        private static int GetStaticInt(Type type, string propertyName)
+        {
+            return (int)type.GetProperty(
+                propertyName,
+                BindingFlags.Public | BindingFlags.Static).GetValue(null, null);
+        }
+
+        private static void SimulateEvent5AppendFailure(string evidencePath, string packageId)
+        {
+            string[] complete = File.ReadAllLines(evidencePath);
+            AssertCompleteHandoff(
+                complete,
+                packageId,
+                Thread.CurrentThread.ManagedThreadId,
+                Thread.CurrentThread.ManagedThreadId);
+            var prefix = new string[4];
+            Array.Copy(complete, prefix, prefix.Length);
+            File.WriteAllLines(
+                evidencePath,
+                prefix,
+                new System.Text.UTF8Encoding(false));
+
+            Assembly host = null;
+            foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                if (String.Equals(
+                    assembly.GetName().Name,
+                    "JueMingR.TerrariaHost",
+                    StringComparison.Ordinal))
+                {
+                    host = assembly;
+                    break;
+                }
+            }
+            Type worker = host == null
+                ? null
+                : host.GetType("JueMingR.TerrariaHost.Phase0SHarmonyWorker", false, false);
+            FieldInfo contextField = worker == null
+                ? null
+                : worker.GetField(
+                    "postfixContext",
+                    BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.DeclaredOnly);
+            MethodInfo handler = worker == null
+                ? null
+                : worker.GetMethod(
+                    "HandlePostfixFailure",
+                    BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.DeclaredOnly);
+            object context = contextField == null ? null : contextField.GetValue(null);
+            if (handler == null || context == null)
+            {
+                throw new InvalidOperationException(
+                    "The controlled event-5 failure handler is unavailable.");
+            }
+
+            handler.Invoke(
+                null,
+                new object[]
+                {
+                    context,
+                    "HANDOFF",
+                    new IOException("controlled event-5 append failure")
+                });
+        }
+
+        private static void AssertHandoffFailureEvidence(IList<string> lines, string packageId)
+        {
+            if (lines.Count != 5)
+            {
+                throw new InvalidOperationException(
+                    "The controlled handoff append failure did not preserve a four-event prefix and one error.");
+            }
+            string[] fields = lines[4].Split('|');
+            if (fields.Length != 7 ||
+                fields[0] != "PHASE0S" ||
+                fields[1] != "1" ||
+                fields[2] != packageId ||
+                fields[3] != "ERROR" ||
+                fields[4] != "HANDOFF" ||
+                fields[5] != "APPEND_FAILED" ||
+                fields[6] != "IOException")
+            {
+                throw new InvalidOperationException(
+                    "The controlled event-5 failure evidence is invalid.");
             }
         }
 
@@ -689,6 +1033,38 @@ namespace Terraria
             AssertBootstrapSchedulingState(manager, expectedState, false);
         }
 
+        private static void AssertEvidenceInitializationFailureState(
+            object manager,
+            string expectedEvidencePath)
+        {
+            Type managerType = manager == null ? null : manager.GetType();
+            FieldInfo manifest = managerType == null
+                ? null
+                : managerType.GetField("manifest", BindingFlags.Instance | BindingFlags.NonPublic);
+            FieldInfo targetAssembly = managerType == null
+                ? null
+                : managerType.GetField("targetAssembly", BindingFlags.Instance | BindingFlags.NonPublic);
+            FieldInfo evidencePath = managerType == null
+                ? null
+                : managerType.GetField("evidencePath", BindingFlags.Instance | BindingFlags.NonPublic);
+            FieldInfo evidenceCreated = managerType == null
+                ? null
+                : managerType.GetField("evidenceCreated", BindingFlags.Instance | BindingFlags.NonPublic);
+            if (manifest == null || manifest.GetValue(manager) == null ||
+                targetAssembly == null || targetAssembly.GetValue(manager) == null ||
+                evidencePath == null ||
+                !String.Equals(
+                    (string)evidencePath.GetValue(manager),
+                    expectedEvidencePath,
+                    StringComparison.OrdinalIgnoreCase) ||
+                evidenceCreated == null || (bool)evidenceCreated.GetValue(manager) ||
+                !Directory.Exists(expectedEvidencePath) || File.Exists(expectedEvidencePath))
+            {
+                throw new InvalidOperationException(
+                    "The fixture did not observe a fail-closed evidence initialization failure at the fixed controlled path.");
+            }
+        }
+
         private static void AssertSingleWorkerFailure(IList<string> lines, string packageId)
         {
             int errorCount = 0;
@@ -751,6 +1127,7 @@ namespace Terraria
             }
 
             MethodInfo update = null;
+            MethodInfo drawSetup = null;
             foreach (MethodInfo candidate in mainType.GetMethods(flags))
             {
                 ParameterInfo[] parameters = candidate.GetParameters();
@@ -768,9 +1145,44 @@ namespace Terraria
 
                     update = candidate;
                 }
+                else if (candidate.Name == "SetupDrawInterfaceLayers" &&
+                    candidate.ReturnType == typeof(void) &&
+                    !candidate.IsStatic &&
+                    !candidate.IsGenericMethod &&
+                    parameters.Length == 0)
+                {
+                    if (drawSetup != null)
+                    {
+                        throw new InvalidOperationException(
+                            "The fixture exposes more than one exact draw setup target.");
+                    }
+
+                    drawSetup = candidate;
+                }
             }
 
-            Patches patches = update == null ? null : Harmony.GetPatchInfo(update);
+            AssertExactPostfix(update, owner, "Postfix", "Main.Update");
+            AssertExactPostfix(drawSetup, owner, "DrawSetupPostfix", "Main.SetupDrawInterfaceLayers");
+
+            foreach (MethodInfo candidate in mainType.GetMethods(flags))
+            {
+                if (!ReferenceEquals(candidate, update) &&
+                    !ReferenceEquals(candidate, drawSetup) &&
+                    HasOwner(Harmony.GetPatchInfo(candidate), owner))
+                {
+                    throw new InvalidOperationException(
+                        "The Phase 0-S owner patched a Main method outside the approved Update and draw setup entries.");
+                }
+            }
+        }
+
+        private static void AssertExactPostfix(
+            MethodInfo target,
+            string owner,
+            string postfixName,
+            string targetLabel)
+        {
+            Patches patches = target == null ? null : Harmony.GetPatchInfo(target);
             if (patches == null ||
                 patches.Owners.Count != 1 ||
                 patches.Owners[0] != owner ||
@@ -781,19 +1193,12 @@ namespace Terraria
                 patches.InnerPrefixes.Count != 0 ||
                 patches.InnerPostfixes.Count != 0 ||
                 patches.Postfixes[0].owner != owner ||
-                patches.Postfixes[0].PatchMethod.Name != "Postfix" ||
+                patches.Postfixes[0].PatchMethod.Name != postfixName ||
                 patches.Postfixes[0].PatchMethod.DeclaringType.FullName !=
                     "JueMingR.TerrariaHost.Phase0SHarmonyWorker")
             {
-                throw new InvalidOperationException("Main.Update does not have the exact one-postfix Phase 0-S patch set.");
-            }
-
-            foreach (MethodInfo candidate in mainType.GetMethods(flags))
-            {
-                if (!ReferenceEquals(candidate, update) && HasOwner(Harmony.GetPatchInfo(candidate), owner))
-                {
-                    throw new InvalidOperationException("The Phase 0-S owner patched a second Main method.");
-                }
+                throw new InvalidOperationException(
+                    targetLabel + " does not have the exact approved one-postfix patch set.");
             }
         }
 
@@ -840,7 +1245,7 @@ namespace Terraria
                 (int)postfixGate.GetValue(null) != 1 ||
                 (int)handoffGate.GetValue(null) != 1)
             {
-                throw new InvalidOperationException("The Update postfix or empty handoff gate was not consumed exactly once.");
+                throw new InvalidOperationException("The Update postfix evidence gate or Runtime handoff gate was not consumed exactly once.");
             }
         }
 
@@ -865,6 +1270,25 @@ namespace Terraria
             }
         }
 
+        private static void AssertBiomeDraw(string expectedText, int expectedDrawCount)
+        {
+            Microsoft.Xna.Framework.Color color = global::Terraria.Main.FixtureDrawColor;
+            Microsoft.Xna.Framework.Vector2 position = global::Terraria.Main.FixtureDrawPosition;
+            if (global::Terraria.Main.FixtureDrawCount != expectedDrawCount ||
+                global::Terraria.Main.FixtureDrawText != expectedText ||
+                Math.Abs(position.X - 20f) > 0.001f ||
+                Math.Abs(position.Y - 270f) > 0.001f ||
+                color.R != 144 ||
+                color.G != 238 ||
+                color.B != 144 ||
+                color.A != 255 ||
+                Math.Abs(global::Terraria.Main.FixtureDrawScale - 0.72f) > 0.001f)
+            {
+                throw new InvalidOperationException(
+                    "The biome UI layer did not preserve the approved text, position, color, scale, or draw count.");
+            }
+        }
+
         private static void AssertNoHandoffSuccess(IList<string> evidenceLines, string packageId)
         {
             foreach (string line in evidenceLines)
@@ -882,5 +1306,54 @@ namespace Terraria
             }
         }
 
+    }
+}
+
+namespace Terraria.UI
+{
+    public enum InterfaceScaleType
+    {
+        Game = 0,
+        UI = 1,
+        None = 2
+    }
+
+    public delegate bool GameInterfaceDrawMethod();
+
+    public class GameInterfaceLayer
+    {
+        public readonly string Name;
+
+        public InterfaceScaleType ScaleType;
+
+        public GameInterfaceLayer(string name, InterfaceScaleType scaleType)
+        {
+            Name = name;
+            ScaleType = scaleType;
+        }
+
+        public virtual bool Draw()
+        {
+            return true;
+        }
+    }
+
+    public sealed class LegacyGameInterfaceLayer : GameInterfaceLayer
+    {
+        private readonly GameInterfaceDrawMethod drawMethod;
+
+        public LegacyGameInterfaceLayer(
+            string name,
+            GameInterfaceDrawMethod drawMethod,
+            InterfaceScaleType scaleType = InterfaceScaleType.Game)
+            : base(name, scaleType)
+        {
+            this.drawMethod = drawMethod ?? throw new ArgumentNullException(nameof(drawMethod));
+        }
+
+        public override bool Draw()
+        {
+            return drawMethod();
+        }
     }
 }
