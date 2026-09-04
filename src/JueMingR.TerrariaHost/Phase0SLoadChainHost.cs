@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Reflection;
@@ -6,6 +7,9 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using HarmonyLib;
+using JueMingR.Features.Biomes;
+using Microsoft.Xna.Framework;
+using Terraria.UI;
 
 namespace JueMingR.TerrariaHost
 {
@@ -200,7 +204,11 @@ namespace JueMingR.TerrariaHost
         private static int hookCommitted;
         private static int postfixGate;
         private static int handoffGate;
+        private static int biomeFeatureFailed;
         private static PostfixContext postfixContext;
+
+        private const string BiomeLayerName = "JueMingR: Biome Display";
+        private const string BiomeLayerAnchorName = "Vanilla: Map / Minimap";
 
         internal static void Install(
             RuntimeManifest manifest,
@@ -214,6 +222,7 @@ namespace JueMingR.TerrariaHost
             }
 
             MethodInfo targetMethod = ResolveTargetMethod(manifest, targetAssembly);
+            MethodInfo drawSetupMethod = ResolveDrawSetupMethod(targetAssembly);
             MethodInfo postfixMethod = typeof(Phase0SHarmonyWorker).GetMethod(
                 "Postfix",
                 BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.DeclaredOnly,
@@ -223,6 +232,16 @@ namespace JueMingR.TerrariaHost
             if (postfixMethod == null || postfixMethod.ReturnType != typeof(void))
             {
                 throw new InvalidOperationException("The fixed Phase 0-S postfix is invalid.");
+            }
+            MethodInfo drawSetupPostfixMethod = typeof(Phase0SHarmonyWorker).GetMethod(
+                "DrawSetupPostfix",
+                BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.DeclaredOnly,
+                null,
+                new[] { typeof(List<GameInterfaceLayer>) },
+                null);
+            if (drawSetupPostfixMethod == null || drawSetupPostfixMethod.ReturnType != typeof(void))
+            {
+                throw new InvalidOperationException("The fixed Phase 0-T draw setup postfix is invalid.");
             }
 
             string evidencePath = Path.Combine(
@@ -242,6 +261,13 @@ namespace JueMingR.TerrariaHost
                     null,
                     null);
                 VerifyExactPatchInfo(targetMethod, postfixMethod, manifest.PatchOwner);
+                harmony.Patch(
+                    drawSetupMethod,
+                    null,
+                    new HarmonyMethod(drawSetupPostfixMethod),
+                    null,
+                    null);
+                VerifyExactPatchInfo(drawSetupMethod, drawSetupPostfixMethod, manifest.PatchOwner);
                 EvidenceWriter.AppendEvent(evidencePath, manifest.PackageId, 3, "HOOK_INSTALLED");
                 Volatile.Write(ref hookCommitted, 1);
             }
@@ -250,14 +276,11 @@ namespace JueMingR.TerrariaHost
                 Exception cleanupException = null;
                 if (patchAttempted)
                 {
-                    try
-                    {
-                        harmony.Unpatch(targetMethod, HarmonyPatchType.All, manifest.PatchOwner);
-                    }
-                    catch (Exception exception)
-                    {
-                        cleanupException = exception;
-                    }
+                    cleanupException = UnpatchTargets(
+                        harmony,
+                        manifest.PatchOwner,
+                        targetMethod,
+                        drawSetupMethod);
                 }
 
                 Phase0SLoadChainHost.TryRecordPatchFailure(
@@ -267,6 +290,31 @@ namespace JueMingR.TerrariaHost
                     cleanupException);
                 throw;
             }
+        }
+
+        private static Exception UnpatchTargets(
+            Harmony harmony,
+            string owner,
+            MethodInfo updateMethod,
+            MethodInfo drawSetupMethod)
+        {
+            Exception firstFailure = null;
+            foreach (MethodInfo method in new[] { updateMethod, drawSetupMethod })
+            {
+                try
+                {
+                    harmony.Unpatch(method, HarmonyPatchType.All, owner);
+                }
+                catch (Exception exception)
+                {
+                    if (firstFailure == null)
+                    {
+                        firstFailure = exception;
+                    }
+                }
+            }
+
+            return firstFailure;
         }
 
         private static MethodInfo ResolveTargetMethod(RuntimeManifest manifest, Assembly targetAssembly)
@@ -308,6 +356,36 @@ namespace JueMingR.TerrariaHost
             return targetMethod;
         }
 
+        private static MethodInfo ResolveDrawSetupMethod(Assembly targetAssembly)
+        {
+            Type mainType = targetAssembly.GetType("Terraria.Main", true, false);
+            MethodInfo method = mainType.GetMethod(
+                "SetupDrawInterfaceLayers",
+                BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly,
+                null,
+                Type.EmptyTypes,
+                null);
+            if (method == null ||
+                method.IsStatic ||
+                method.ReturnType != typeof(void) ||
+                method.IsGenericMethod ||
+                method.ContainsGenericParameters ||
+                method.IsAbstract ||
+                method.GetMethodBody() == null)
+            {
+                throw new InvalidOperationException(
+                    "Terraria 1.4.5.8 SetupDrawInterfaceLayers does not match the fixed Phase 0-T shape.");
+            }
+
+            byte[] il = method.GetMethodBody().GetILAsByteArray();
+            if (il == null || il.Length == 0)
+            {
+                throw new InvalidOperationException("The Phase 0-T draw setup target has no managed IL.");
+            }
+
+            return method;
+        }
+
         private static void VerifyExactPatchInfo(
             MethodInfo targetMethod,
             MethodInfo postfixMethod,
@@ -345,11 +423,6 @@ namespace JueMingR.TerrariaHost
 
         private static void Postfix()
         {
-            if (Interlocked.CompareExchange(ref postfixGate, 1, 0) != 0)
-            {
-                return;
-            }
-
             PostfixContext context = postfixContext;
             string stage = "POSTFIX";
             try
@@ -359,19 +432,25 @@ namespace JueMingR.TerrariaHost
                     throw new InvalidOperationException("The Phase 0-S postfix context is unavailable.");
                 }
 
-                EvidenceWriter.AppendEvent(
-                    context.EvidencePath,
-                    context.PackageId,
-                    4,
-                    "MAIN_UPDATE_POSTFIX_FIRED");
+                if (Interlocked.CompareExchange(ref postfixGate, 1, 0) == 0)
+                {
+                    EvidenceWriter.AppendEvent(
+                        context.EvidencePath,
+                        context.PackageId,
+                        4,
+                        "MAIN_UPDATE_POSTFIX_FIRED");
 
-                stage = "HANDOFF";
-                CompleteEmptyHandoffOnce();
-                EvidenceWriter.AppendEvent(
-                    context.EvidencePath,
-                    context.PackageId,
-                    5,
-                    "RUNTIME_HANDOFF_COMPLETE");
+                    stage = "HANDOFF";
+                    CompleteEmptyHandoffOnce();
+                    context.InitializeRuntime(Volatile.Read(ref biomeFeatureFailed) == 0);
+                    EvidenceWriter.AppendEvent(
+                        context.EvidencePath,
+                        context.PackageId,
+                        5,
+                        "RUNTIME_HANDOFF_COMPLETE");
+                }
+
+                context.UpdateRuntime();
             }
             catch (Exception exception)
             {
@@ -387,6 +466,111 @@ namespace JueMingR.TerrariaHost
             }
         }
 
+        private static void DrawSetupPostfix(List<GameInterfaceLayer> ____gameInterfaceLayers)
+        {
+            try
+            {
+                InsertBiomeLayer(____gameInterfaceLayers);
+            }
+            catch
+            {
+                DisableBiomeFeature();
+            }
+        }
+
+        private static void InsertBiomeLayer(List<GameInterfaceLayer> layers)
+        {
+            if (layers == null)
+            {
+                throw new InvalidOperationException("The Terraria interface layer list is unavailable.");
+            }
+
+            int anchorIndex = -1;
+            int anchorCount = 0;
+            int ownLayerCount = 0;
+            for (int index = 0; index < layers.Count; index++)
+            {
+                GameInterfaceLayer layer = layers[index];
+                string name = layer == null ? string.Empty : layer.Name;
+                if (String.Equals(name, BiomeLayerAnchorName, StringComparison.Ordinal))
+                {
+                    anchorIndex = index;
+                    anchorCount++;
+                }
+                if (String.Equals(name, BiomeLayerName, StringComparison.Ordinal))
+                {
+                    ownLayerCount++;
+                }
+            }
+
+            if (anchorCount != 1 || ownLayerCount != 0)
+            {
+                throw new InvalidOperationException("The fixed Phase 0-T interface layer anchor is missing or ambiguous.");
+            }
+
+            layers.Insert(
+                anchorIndex,
+                new LegacyGameInterfaceLayer(
+                    BiomeLayerName,
+                    DrawBiomeDisplayLayer,
+                    InterfaceScaleType.UI));
+        }
+
+        private static bool DrawBiomeDisplayLayer()
+        {
+            try
+            {
+                PostfixContext context = postfixContext;
+                Phase0TBiomeRuntime runtime = context == null ? null : context.Runtime;
+                BiomeDisplayViewModel viewModel = runtime == null ? null : runtime.CurrentViewModel;
+                if (runtime == null ||
+                    !runtime.FeatureEnabled ||
+                    viewModel == null ||
+                    !viewModel.Visible ||
+                    String.IsNullOrEmpty(viewModel.Text))
+                {
+                    return true;
+                }
+
+                const float scale = 0.72f;
+                const float lineBoxHeight = 40f * scale;
+                int clientHeight = Terraria.Main.screenHeight;
+                if (clientHeight <= 0)
+                {
+                    throw new InvalidOperationException("The Terraria client height is unavailable.");
+                }
+
+                float y = clientHeight * 0.45f;
+                if (y + lineBoxHeight > clientHeight)
+                {
+                    y = Math.Max(0f, clientHeight - lineBoxHeight);
+                }
+
+                Terraria.Utils.DrawBorderString(
+                    Terraria.Main.spriteBatch,
+                    viewModel.Text,
+                    new Vector2(20f, y),
+                    new Color(144, 238, 144, 255),
+                    scale);
+            }
+            catch
+            {
+                DisableBiomeFeature();
+            }
+
+            return true;
+        }
+
+        private static void DisableBiomeFeature()
+        {
+            Interlocked.Exchange(ref biomeFeatureFailed, 1);
+            PostfixContext context = postfixContext;
+            if (context != null)
+            {
+                context.FailRuntimeClosed();
+            }
+        }
+
         private static void CompleteEmptyHandoffOnce()
         {
             if (Interlocked.CompareExchange(ref handoffGate, 1, 0) != 0)
@@ -397,6 +581,9 @@ namespace JueMingR.TerrariaHost
 
         private sealed class PostfixContext
         {
+            private Phase0TBiomeRuntime runtime;
+            private ulong updateTick;
+
             internal PostfixContext(string packageId, string evidencePath)
             {
                 PackageId = packageId;
@@ -406,6 +593,42 @@ namespace JueMingR.TerrariaHost
             internal string PackageId { get; private set; }
 
             internal string EvidencePath { get; private set; }
+
+            internal Phase0TBiomeRuntime Runtime
+            {
+                get { return runtime; }
+            }
+
+            internal void InitializeRuntime(bool enabled)
+            {
+                if (runtime != null)
+                {
+                    throw new InvalidOperationException("The Phase 0-T runtime was already initialized.");
+                }
+
+                runtime = Phase0TBiomeRuntime.Create(enabled);
+            }
+
+            internal void UpdateRuntime()
+            {
+                Phase0TBiomeRuntime current = runtime;
+                if (current == null)
+                {
+                    return;
+                }
+
+                current.Update(updateTick);
+                updateTick = unchecked(updateTick + 1);
+            }
+
+            internal void FailRuntimeClosed()
+            {
+                Phase0TBiomeRuntime current = runtime;
+                if (current != null)
+                {
+                    current.FailClosed();
+                }
+            }
         }
     }
 

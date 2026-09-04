@@ -25,6 +25,13 @@ namespace JueMingR.ArchitectureTests
                 var failures = new List<string>();
                 ArchitectureChecks.Check(model, failures);
                 OperationContractChecks.Check(failures);
+                Phase0TArchitectureChecks.Check(failures);
+#if PHASE0T_MAPPING_TEST || PHASE0T_ALL_TESTS
+                BiomeFeatureChecks.CheckMapping(failures);
+#endif
+#if PHASE0T_LIFECYCLE_TEST || PHASE0T_ALL_TESTS
+                BiomeFeatureChecks.CheckLifecycle(failures);
+#endif
 
                 if (failures.Count == 0)
                 {

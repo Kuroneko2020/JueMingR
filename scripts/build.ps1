@@ -146,6 +146,8 @@ $forbiddenNames = @(
     'Terraria.exe',
     'ReLogic.dll',
     'Microsoft.Xna.Framework.Game.dll',
+    'Microsoft.Xna.Framework.dll',
+    'Microsoft.Xna.Framework.Graphics.dll',
     '0Harmony.dll'
 )
 foreach ($file in $declaredFiles) {

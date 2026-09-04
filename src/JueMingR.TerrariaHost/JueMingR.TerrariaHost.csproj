@@ -31,6 +31,14 @@
       <HintPath>$(TerrariaReferencesDirectory)\Microsoft.Xna.Framework.Game.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="Microsoft.Xna.Framework">
+      <HintPath>$(TerrariaReferencesDirectory)\Microsoft.Xna.Framework.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Microsoft.Xna.Framework.Graphics">
+      <HintPath>$(TerrariaReferencesDirectory)\Microsoft.Xna.Framework.Graphics.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="0Harmony">
       <HintPath>$(HarmonyReferencesDirectory)\0Harmony.dll</HintPath>
       <Private>false</Private>

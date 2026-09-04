@@ -85,6 +85,11 @@ function New-Phase0SFixtureRuntimeManifest {
         [switch] $UseWrongTargetHash
     )
 
+    foreach ($xnaFileName in @('Microsoft.Xna.Framework.dll', 'Microsoft.Xna.Framework.Graphics.dll')) {
+        $xnaPath = Join-Path $RepositoryRoot ('external\TerrariaRefs\' + $xnaFileName)
+        [System.Reflection.Assembly]::ReflectionOnlyLoadFrom($xnaPath) | Out-Null
+    }
+
     $target = Get-Phase0SReflectionIdentity -AssemblyPath $FixtureExe
     $hostIdentity = Get-Phase0SReflectionIdentity -AssemblyPath $HostAssembly
     $targetAssembly = [System.Reflection.Assembly]::ReflectionOnlyLoadFrom($FixtureExe)
@@ -278,12 +283,14 @@ function Assert-Phase0SSourceContract {
     $hostText = [System.IO.File]::ReadAllText($hostPath)
     $bootstrapText = [System.IO.File]::ReadAllText($bootstrapPath)
     $patchCalls = [regex]::Matches($hostText, 'harmony\.Patch\(')
-    if ($patchCalls.Count -ne 1 -or
+    if ($patchCalls.Count -ne 2 -or
         [regex]::Matches($hostText, 'new HarmonyMethod\(postfixMethod\)').Count -ne 1 -or
-        $hostText -notmatch '(?s)private static void Postfix\(\)\s*\{\s*if \(Interlocked\.CompareExchange\(ref postfixGate, 1, 0\) != 0\)' -or
+        [regex]::Matches($hostText, 'new HarmonyMethod\(drawSetupPostfixMethod\)').Count -ne 1 -or
+        $hostText -notmatch '(?s)private static void Postfix\(\).*?Interlocked\.CompareExchange\(ref postfixGate, 1, 0\) == 0.*?context\.UpdateRuntime\(\);' -or
+        $hostText -notmatch '(?s)private static void DrawSetupPostfix\(List<GameInterfaceLayer> ____gameInterfaceLayers\).*?InsertBiomeLayer\(____gameInterfaceLayers\);' -or
         $hostText -match 'OneTimeDiagnosticPrefix|Phase0SDiagnosticSentinel|MAIN_INITIALIZE_POSTFIX_FIRED' -or
         $hostText -match 'Task\.Run|new\s+Thread\s*\(|new\s+(?:System\.Threading\.)?Timer\s*\(|ConcurrentQueue|Queue<') {
-        throw 'The production Host source does not match the single-postfix, first-gate, no-diagnostic/no-background contract.'
+        throw 'The production Host source does not match the single Update postfix, single draw setup postfix, one-shot evidence, no-diagnostic/no-background contract.'
     }
 
     if ([regex]::Matches($bootstrapText, 'ThreadPool\.QueueUserWorkItem\(').Count -ne 1 -or
