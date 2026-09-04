@@ -19,9 +19,19 @@ namespace Terraria
 {
     public sealed class Player
     {
+        private bool zoneDesert;
+
         public bool active;
 
-        public bool ZoneDesert { get; set; }
+        public bool ZoneDesert
+        {
+            get
+            {
+                Main.FixtureZoneReadCount++;
+                return zoneDesert;
+            }
+            set { zoneDesert = value; }
+        }
         public bool ZoneUndergroundDesert { get; set; }
         public bool ZoneSnow { get; set; }
         public bool ZoneJungle { get; set; }
@@ -57,6 +67,7 @@ namespace Terraria
 
         public static int FixtureUpdateCount { get; private set; }
 
+        public static int FixtureZoneReadCount { get; internal set; }
         public static int FixtureDrawCount { get; internal set; }
         public static string FixtureDrawText { get; internal set; }
         public static Microsoft.Xna.Framework.Vector2 FixtureDrawPosition { get; internal set; }
@@ -99,9 +110,38 @@ namespace Terraria
             };
         }
 
+        public static void ConfigureDesertWorld()
+        {
+            gameMenu = false;
+            LocalPlayer = new Player
+            {
+                active = true,
+                ZoneDesert = true,
+                ZoneOverworldHeight = true
+            };
+        }
+
+        public void SetupInterfaceLayersBeforeHook()
+        {
+            SetupDrawInterfaceLayers();
+            if (_gameInterfaceLayers == null ||
+                _gameInterfaceLayers.Count != 3 ||
+                _gameInterfaceLayers.Exists(layer =>
+                    layer != null && layer.Name == "JueMingR: Biome Display"))
+            {
+                throw new InvalidOperationException(
+                    "The controlled pre-hook draw setup did not preserve the vanilla-only fixture list.");
+            }
+        }
+
         public void SetupAndDrawBiomeLayer()
         {
             SetupDrawInterfaceLayers();
+            DrawExistingBiomeLayer();
+        }
+
+        public void DrawExistingBiomeLayer()
+        {
             if (_gameInterfaceLayers == null ||
                 _gameInterfaceLayers.Count != 4 ||
                 _gameInterfaceLayers[1] == null ||
@@ -210,13 +250,7 @@ namespace Terraria
                 TriggerLaunchGameReLogicReference();
 
                 var main = new Main();
-                global::Terraria.Main.gameMenu = false;
-                global::Terraria.Main.LocalPlayer = new Player
-                {
-                    active = true,
-                    ZoneDesert = true,
-                    ZoneOverworldHeight = true
-                };
+                global::Terraria.Main.ConfigureDesertWorld();
                 byte[] evidenceAfterFirstUpdate = null;
                 if (mode == "expect-handoff")
                 {
@@ -323,6 +357,7 @@ namespace Terraria
             byte[] reLogicBytes = File.ReadAllBytes(reLogicPath);
             object manager = null;
             Assembly target = null;
+            object mainInstance = null;
             int updatesBeforeInstall = 0;
 
             if (mode == "driver-relogic-then-terraria")
@@ -378,9 +413,24 @@ namespace Terraria
                 manager = CreateManager();
                 target = Assembly.LoadFrom(targetPath);
                 Type mainType = target.GetType("Terraria.Main", true, false);
-                object instance = Activator.CreateInstance(mainType);
-                mainType.GetMethod("RunUpdateLoop").Invoke(instance, new object[] { 1 });
+                mainInstance = Activator.CreateInstance(mainType);
+                mainType.GetMethod("RunUpdateLoop").Invoke(mainInstance, new object[] { 1 });
                 updatesBeforeInstall = 1;
+                LoadDriverReLogic(reLogicBytes);
+            }
+            else if (mode == "driver-draw-before-install")
+            {
+                manager = CreateManager();
+                target = Assembly.LoadFrom(targetPath);
+                Type mainType = target.GetType("Terraria.Main", true, false);
+                mainInstance = Activator.CreateInstance(mainType);
+                mainType.GetMethod("SetupInterfaceLayersBeforeHook").Invoke(mainInstance, null);
+                LoadDriverReLogic(reLogicBytes);
+            }
+            else if (mode == "driver-handoff-error-fail-closed")
+            {
+                manager = CreateManager();
+                target = Assembly.LoadFrom(targetPath);
                 LoadDriverReLogic(reLogicBytes);
             }
             else if (mode == "driver-worker-failure")
@@ -401,15 +451,22 @@ namespace Terraria
                 mode == "driver-terraria-then-relogic" ||
                 mode == "driver-both-before-subscription" ||
                 mode == "driver-duplicate-scan" ||
-                mode == "driver-update-before-install";
+                mode == "driver-update-before-install" ||
+                mode == "driver-draw-before-install" ||
+                mode == "driver-handoff-error-fail-closed";
             if (expectSuccess)
             {
                 WaitForEvidenceEvent(evidencePath, "HOOK_INSTALLED");
                 AssertBootstrapSchedulingState(manager, "Installed");
 
                 Type mainType = target.GetType("Terraria.Main", true, false);
-                object instance = Activator.CreateInstance(mainType);
+                object instance = mainInstance ?? Activator.CreateInstance(mainType);
                 MethodInfo runUpdateLoop = mainType.GetMethod("RunUpdateLoop");
+                if (mode == "driver-draw-before-install" ||
+                    mode == "driver-handoff-error-fail-closed")
+                {
+                    mainType.GetMethod("ConfigureDesertWorld").Invoke(null, null);
+                }
                 runUpdateLoop.Invoke(instance, new object[] { 1 });
                 WaitForEvidenceEvent(evidencePath, "RUNTIME_HANDOFF_COMPLETE");
                 AssertCompleteHandoff(
@@ -417,12 +474,43 @@ namespace Terraria
                     packageId,
                     Thread.CurrentThread.ManagedThreadId,
                     Thread.CurrentThread.ManagedThreadId);
-                byte[] evidenceAfterFirstUpdate = File.ReadAllBytes(evidencePath);
-                runUpdateLoop.Invoke(instance, new object[] { 4 });
-                AssertBytesEqual(
-                    evidenceAfterFirstUpdate,
-                    File.ReadAllBytes(evidencePath),
-                    "Driver mode observed repeated evidence after the first Update.");
+                if (mode == "driver-draw-before-install")
+                {
+                    mainType.GetMethod("DrawExistingBiomeLayer").Invoke(instance, null);
+                    AssertDriverBiomeDraw(mainType, "群系: 沙漠", 1);
+                }
+
+                if (mode == "driver-handoff-error-fail-closed")
+                {
+                    mainType.GetMethod("SetupAndDrawBiomeLayer").Invoke(instance, null);
+                    AssertDriverBiomeDraw(mainType, "群系: 沙漠", 1);
+                    int zoneReadsBeforeFailure = GetStaticInt(mainType, "FixtureZoneReadCount");
+                    int drawsBeforeFailure = GetStaticInt(mainType, "FixtureDrawCount");
+                    SimulateEvent5AppendFailure(evidencePath, packageId);
+                    byte[] evidenceAfterFailure = File.ReadAllBytes(evidencePath);
+                    runUpdateLoop.Invoke(instance, new object[] { 4 });
+                    mainType.GetMethod("DrawExistingBiomeLayer").Invoke(instance, null);
+                    if (GetStaticInt(mainType, "FixtureZoneReadCount") != zoneReadsBeforeFailure ||
+                        GetStaticInt(mainType, "FixtureDrawCount") != drawsBeforeFailure)
+                    {
+                        throw new InvalidOperationException(
+                            "A handoff append failure left biome observation or drawing enabled.");
+                    }
+                    AssertBytesEqual(
+                        evidenceAfterFailure,
+                        File.ReadAllBytes(evidencePath),
+                        "A handoff append failure retried or changed evidence.");
+                    AssertHandoffFailureEvidence(File.ReadAllLines(evidencePath), packageId);
+                }
+                else
+                {
+                    byte[] evidenceAfterFirstUpdate = File.ReadAllBytes(evidencePath);
+                    runUpdateLoop.Invoke(instance, new object[] { 4 });
+                    AssertBytesEqual(
+                        evidenceAfterFirstUpdate,
+                        File.ReadAllBytes(evidencePath),
+                        "Driver mode observed repeated evidence after the first Update.");
+                }
                 AssertPatchContract(mainType);
                 AssertOneShotState();
                 AssertNoDiagnosticArtifact(evidencePath);
@@ -458,6 +546,105 @@ namespace Terraria
             {
                 AssertNoHookSuccess(File.Exists(evidencePath) ? File.ReadAllLines(evidencePath) : new string[0]);
                 AssertBootstrapSchedulingState(manager, "Failed", mode == "driver-relogic-never");
+            }
+        }
+
+        private static void AssertDriverBiomeDraw(Type mainType, string expectedText, int expectedCount)
+        {
+            string actualText = (string)mainType.GetProperty(
+                "FixtureDrawText",
+                BindingFlags.Public | BindingFlags.Static).GetValue(null, null);
+            if (GetStaticInt(mainType, "FixtureDrawCount") != expectedCount ||
+                !String.Equals(actualText, expectedText, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    "The driver did not draw the expected cached biome ViewModel.");
+            }
+        }
+
+        private static int GetStaticInt(Type type, string propertyName)
+        {
+            return (int)type.GetProperty(
+                propertyName,
+                BindingFlags.Public | BindingFlags.Static).GetValue(null, null);
+        }
+
+        private static void SimulateEvent5AppendFailure(string evidencePath, string packageId)
+        {
+            string[] complete = File.ReadAllLines(evidencePath);
+            AssertCompleteHandoff(
+                complete,
+                packageId,
+                Thread.CurrentThread.ManagedThreadId,
+                Thread.CurrentThread.ManagedThreadId);
+            var prefix = new string[4];
+            Array.Copy(complete, prefix, prefix.Length);
+            File.WriteAllLines(
+                evidencePath,
+                prefix,
+                new System.Text.UTF8Encoding(false));
+
+            Assembly host = null;
+            foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                if (String.Equals(
+                    assembly.GetName().Name,
+                    "JueMingR.TerrariaHost",
+                    StringComparison.Ordinal))
+                {
+                    host = assembly;
+                    break;
+                }
+            }
+            Type worker = host == null
+                ? null
+                : host.GetType("JueMingR.TerrariaHost.Phase0SHarmonyWorker", false, false);
+            FieldInfo contextField = worker == null
+                ? null
+                : worker.GetField(
+                    "postfixContext",
+                    BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.DeclaredOnly);
+            MethodInfo handler = worker == null
+                ? null
+                : worker.GetMethod(
+                    "HandlePostfixFailure",
+                    BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.DeclaredOnly);
+            object context = contextField == null ? null : contextField.GetValue(null);
+            if (handler == null || context == null)
+            {
+                throw new InvalidOperationException(
+                    "The controlled event-5 failure handler is unavailable.");
+            }
+
+            handler.Invoke(
+                null,
+                new object[]
+                {
+                    context,
+                    "HANDOFF",
+                    new IOException("controlled event-5 append failure")
+                });
+        }
+
+        private static void AssertHandoffFailureEvidence(IList<string> lines, string packageId)
+        {
+            if (lines.Count != 5)
+            {
+                throw new InvalidOperationException(
+                    "The controlled handoff append failure did not preserve a four-event prefix and one error.");
+            }
+            string[] fields = lines[4].Split('|');
+            if (fields.Length != 7 ||
+                fields[0] != "PHASE0S" ||
+                fields[1] != "1" ||
+                fields[2] != packageId ||
+                fields[3] != "ERROR" ||
+                fields[4] != "HANDOFF" ||
+                fields[5] != "APPEND_FAILED" ||
+                fields[6] != "IOException")
+            {
+                throw new InvalidOperationException(
+                    "The controlled event-5 failure evidence is invalid.");
             }
         }
 

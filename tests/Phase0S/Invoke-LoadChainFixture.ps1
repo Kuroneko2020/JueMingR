@@ -286,8 +286,9 @@ function Assert-Phase0SSourceContract {
     if ($patchCalls.Count -ne 2 -or
         [regex]::Matches($hostText, 'new HarmonyMethod\(postfixMethod\)').Count -ne 1 -or
         [regex]::Matches($hostText, 'new HarmonyMethod\(drawSetupPostfixMethod\)').Count -ne 1 -or
-        $hostText -notmatch '(?s)private static void Postfix\(\).*?Interlocked\.CompareExchange\(ref postfixGate, 1, 0\) == 0.*?context\.UpdateRuntime\(\);' -or
+        $hostText -notmatch '(?s)private static void Postfix\(List<GameInterfaceLayer> ____gameInterfaceLayers\).*?Interlocked\.CompareExchange\(ref postfixGate, 1, 0\) == 0.*?EnsureBiomeLayerForHandoff\(____gameInterfaceLayers\);.*?context\.UpdateRuntime\(\);' -or
         $hostText -notmatch '(?s)private static void DrawSetupPostfix\(List<GameInterfaceLayer> ____gameInterfaceLayers\).*?InsertBiomeLayer\(____gameInterfaceLayers\);' -or
+        $hostText -notmatch '(?s)catch \(Exception exception\).*?HandlePostfixFailure\(context, stage, exception\);.*?private static void HandlePostfixFailure.*?DisableBiomeFeature\(\);' -or
         $hostText -match 'OneTimeDiagnosticPrefix|Phase0SDiagnosticSentinel|MAIN_INITIALIZE_POSTFIX_FIRED' -or
         $hostText -match 'Task\.Run|new\s+Thread\s*\(|new\s+(?:System\.Threading\.)?Timer\s*\(|ConcurrentQueue|Queue<') {
         throw 'The production Host source does not match the single Update postfix, single draw setup postfix, one-shot evidence, no-diagnostic/no-background contract.'
@@ -360,6 +361,8 @@ function Invoke-Phase0SLoadChainFixtureTests {
             'driver-both-before-subscription',
             'driver-duplicate-scan',
             'driver-update-before-install',
+            'driver-draw-before-install',
+            'driver-handoff-error-fail-closed',
             'driver-worker-failure',
             'driver-wrong-relogic',
             'driver-two-relogic',

@@ -227,7 +227,7 @@ namespace JueMingR.TerrariaHost
                 "Postfix",
                 BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.DeclaredOnly,
                 null,
-                Type.EmptyTypes,
+                new[] { typeof(List<GameInterfaceLayer>) },
                 null);
             if (postfixMethod == null || postfixMethod.ReturnType != typeof(void))
             {
@@ -421,7 +421,7 @@ namespace JueMingR.TerrariaHost
                 left.MetadataToken == right.MetadataToken;
         }
 
-        private static void Postfix()
+        private static void Postfix(List<GameInterfaceLayer> ____gameInterfaceLayers)
         {
             PostfixContext context = postfixContext;
             string stage = "POSTFIX";
@@ -442,6 +442,7 @@ namespace JueMingR.TerrariaHost
 
                     stage = "HANDOFF";
                     CompleteEmptyHandoffOnce();
+                    EnsureBiomeLayerForHandoff(____gameInterfaceLayers);
                     context.InitializeRuntime(Volatile.Read(ref biomeFeatureFailed) == 0);
                     EvidenceWriter.AppendEvent(
                         context.EvidencePath,
@@ -454,15 +455,24 @@ namespace JueMingR.TerrariaHost
             }
             catch (Exception exception)
             {
-                if (context != null)
-                {
-                    Phase0SLoadChainHost.TryRecordPrimaryError(
-                        context.EvidencePath,
-                        context.PackageId,
-                        stage,
-                        "APPEND_FAILED",
-                        exception);
-                }
+                HandlePostfixFailure(context, stage, exception);
+            }
+        }
+
+        private static void HandlePostfixFailure(
+            PostfixContext context,
+            string stage,
+            Exception exception)
+        {
+            DisableBiomeFeature();
+            if (context != null)
+            {
+                Phase0SLoadChainHost.TryRecordPrimaryError(
+                    context.EvidencePath,
+                    context.PackageId,
+                    stage,
+                    "APPEND_FAILED",
+                    exception);
             }
         }
 
@@ -514,6 +524,50 @@ namespace JueMingR.TerrariaHost
                     BiomeLayerName,
                     DrawBiomeDisplayLayer,
                     InterfaceScaleType.UI));
+        }
+
+        private static void EnsureBiomeLayerForHandoff(List<GameInterfaceLayer> layers)
+        {
+            if (layers == null)
+            {
+                // SetupDrawInterfaceLayers has not run yet; its exact postfix
+                // remains the sole insertion path when setup happens later.
+                return;
+            }
+
+            int anchorIndex = -1;
+            int anchorCount = 0;
+            int ownLayerIndex = -1;
+            int ownLayerCount = 0;
+            for (int index = 0; index < layers.Count; index++)
+            {
+                GameInterfaceLayer layer = layers[index];
+                string name = layer == null ? string.Empty : layer.Name;
+                if (String.Equals(name, BiomeLayerAnchorName, StringComparison.Ordinal))
+                {
+                    anchorIndex = index;
+                    anchorCount++;
+                }
+                if (String.Equals(name, BiomeLayerName, StringComparison.Ordinal))
+                {
+                    ownLayerIndex = index;
+                    ownLayerCount++;
+                }
+            }
+
+            if (ownLayerCount == 1 &&
+                anchorCount == 1 &&
+                ownLayerIndex + 1 == anchorIndex)
+            {
+                return;
+            }
+            if (ownLayerCount != 0)
+            {
+                throw new InvalidOperationException(
+                    "The Phase 0-T interface layer is duplicated or misplaced.");
+            }
+
+            InsertBiomeLayer(layers);
         }
 
         private static bool DrawBiomeDisplayLayer()
