@@ -147,6 +147,7 @@ function Assert-Phase0SFixedPackageTree {
         'payload/Terraria.exe.config',
         'phase-0-s-package.manifest.json'
     )
+    [Array]::Sort($expectedFiles, [System.StringComparer]::Ordinal)
     $records = @(Get-Phase0SPackageTreeRecords -PackageRoot $PackageRoot)
     $actualFiles = @($records | ForEach-Object { $_.path })
     if (($actualFiles -join '|') -cne ($expectedFiles -join '|')) {
