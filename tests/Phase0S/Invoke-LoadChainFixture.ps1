@@ -38,6 +38,9 @@ function Get-Phase0SFixtureExecutable {
     if (-not [System.IO.File]::Exists($fixtureExe)) {
         throw "The fake Terraria fixture executable is missing: $fixtureExe"
     }
+    $layoutOutput = @(& $fixtureExe phase0u-layout)
+    if ($LASTEXITCODE -ne 0) { throw 'The production Phase 0-U layout/input checks failed.' }
+    foreach ($line in $layoutOutput) { Write-Host $line }
     return $fixtureExe
 }
 
@@ -86,7 +89,7 @@ function New-Phase0SFixtureRuntimeManifest {
         [switch] $UseWrongTargetHash
     )
 
-    foreach ($xnaFileName in @('Microsoft.Xna.Framework.dll', 'Microsoft.Xna.Framework.Graphics.dll')) {
+    foreach ($xnaFileName in @('Microsoft.Xna.Framework.dll', 'Microsoft.Xna.Framework.Graphics.dll', 'Microsoft.Xna.Framework.Game.dll')) {
         $xnaPath = Join-Path $RepositoryRoot ('external\TerrariaRefs\' + $xnaFileName)
         [System.Reflection.Assembly]::ReflectionOnlyLoadFrom($xnaPath) | Out-Null
     }
@@ -424,15 +427,17 @@ function Assert-Phase0SSourceContract {
     $hostText = [System.IO.File]::ReadAllText($hostPath)
     $bootstrapText = [System.IO.File]::ReadAllText($bootstrapPath)
     $patchCalls = [regex]::Matches($hostText, 'harmony\.Patch\(')
-    if ($patchCalls.Count -ne 2 -or
+    if ($patchCalls.Count -ne 4 -or
         [regex]::Matches($hostText, 'new HarmonyMethod\(postfixMethod\)').Count -ne 1 -or
         [regex]::Matches($hostText, 'new HarmonyMethod\(drawSetupPostfixMethod\)').Count -ne 1 -or
+        [regex]::Matches($hostText, 'new HarmonyMethod\(inputPostfixMethod\)').Count -ne 1 -or
+        [regex]::Matches($hostText, 'new HarmonyMethod\(npcHoverPrefixMethod\)').Count -ne 1 -or
         $hostText -notmatch '(?s)private static void Postfix\(List<GameInterfaceLayer> ____gameInterfaceLayers\).*?Interlocked\.CompareExchange\(ref postfixGate, 1, 0\) == 0.*?EnsureBiomeLayerForHandoff\(____gameInterfaceLayers\);.*?context\.UpdateRuntime\(\);' -or
         $hostText -notmatch '(?s)private static void DrawSetupPostfix\(List<GameInterfaceLayer> ____gameInterfaceLayers\).*?InsertBiomeLayer\(____gameInterfaceLayers\);' -or
         $hostText -notmatch '(?s)catch \(Exception exception\).*?HandlePostfixFailure\(context, stage, exception\);.*?private static void HandlePostfixFailure.*?DisableBiomeFeature\(\);' -or
         $hostText -match 'OneTimeDiagnosticPrefix|Phase0SDiagnosticSentinel|MAIN_INITIALIZE_POSTFIX_FIRED' -or
         $hostText -match 'Task\.Run|new\s+Thread\s*\(|new\s+(?:System\.Threading\.)?Timer\s*\(|ConcurrentQueue|Queue<') {
-        throw 'The production Host source does not match the single Update postfix, single draw setup postfix, one-shot evidence, no-diagnostic/no-background contract.'
+        throw 'The production Host source does not match the three postfixes plus one conditional NPC prefix, one-shot evidence, no-diagnostic/no-background contract.'
     }
 
     if ([regex]::Matches($bootstrapText, 'ThreadPool\.QueueUserWorkItem\(').Count -ne 1 -or
@@ -494,6 +499,9 @@ function Invoke-Phase0SLoadChainFixtureTests {
         foreach ($line in $successResult.output) {
             Write-Host $line
         }
+        if ($successResult.exitCode -ne 0 -and [System.IO.File]::Exists($success.evidencePath)) {
+            foreach ($line in [System.IO.File]::ReadAllLines($success.evidencePath)) { Write-Host $line }
+        }
         Assert-Phase0SCondition -Condition ($successResult.exitCode -eq 0) -Message "load-chain success fixture: expected exit 0, actual $($successResult.exitCode)."
 
         $firstEvidenceHash = Get-Phase0SFileSha256 -Path $success.evidencePath
@@ -501,10 +509,16 @@ function Invoke-Phase0SLoadChainFixtureTests {
         foreach ($line in $secondLaunchResult.output) {
             Write-Host $line
         }
+        if ($secondLaunchResult.exitCode -ne 0 -and [System.IO.File]::Exists($success.evidencePath)) {
+            Get-Content -LiteralPath $success.evidencePath | ForEach-Object { Write-Host ('FAILED_SECOND_LAUNCH_EVIDENCE: ' + $_) }
+        }
         Assert-Phase0SCondition -Condition ($secondLaunchResult.exitCode -eq 0) -Message "second process in the same installed fixture: expected exit 0, actual $($secondLaunchResult.exitCode)."
         $secondEvidenceHash = Get-Phase0SFileSha256 -Path $success.evidencePath
         Assert-Phase0SCondition -Condition ($secondEvidenceHash -cne $firstEvidenceHash) -Message 'The second process reused stale first-process evidence instead of starting a fresh current run.'
         Write-Host 'PASS: one installed fixture completed two independent process launches with fresh evidence.'
+        $biomeFailureResult = Invoke-Phase0SFixtureExe -FixtureExe $success.exePath -Mode 'expect-handoff-biome-failure' -EvidencePath $success.evidencePath -PackageId $success.packageId
+        foreach ($line in $biomeFailureResult.output) { Write-Host $line }
+        Assert-Phase0SCondition -Condition ($biomeFailureResult.exitCode -eq 0) -Message 'Dedicated biome-failure process must preserve unavailable state after F5 enable.'
 
         foreach ($staleKind in @('partial', 'zero')) {
             $staleRun = New-Phase0SFixtureRunDirectory -Root $root -Name ('stale-' + $staleKind) -FixtureExe $fixtureExe -ProductionOutputs $productionOutputs -HarmonyPath $harmonyPath -PackageId ('phase0s-fixture-' + [Guid]::NewGuid().ToString('N')) -SourceCommit $sourceCommit

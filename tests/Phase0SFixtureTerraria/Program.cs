@@ -8,13 +8,6 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using HarmonyLib;
 
-namespace Microsoft.Xna.Framework
-{
-    public sealed class GameTime
-    {
-    }
-}
-
 namespace Terraria
 {
     public sealed class Player
@@ -22,6 +15,7 @@ namespace Terraria
         private bool zoneDesert;
 
         public bool active;
+        public bool mouseInterface, controlUseItem, controlUseTile;
 
         public bool ZoneDesert
         {
@@ -55,7 +49,7 @@ namespace Terraria
         public bool ZoneOverworldHeight { get; set; }
     }
 
-    public class Main
+    public partial class Main
     {
         private List<UI.GameInterfaceLayer> _gameInterfaceLayers;
         private UI.GameInterfaceLayer fixtureBiomeLayer;
@@ -96,18 +90,14 @@ namespace Terraria
                 throw new ArgumentNullException("gameTime");
             }
 
+            FixtureInputUpdate();
             FixtureUpdateCount++;
             Console.WriteLine("FIXTURE_MAIN_UPDATE_ORIGINAL");
         }
 
         private void SetupDrawInterfaceLayers()
         {
-            _gameInterfaceLayers = new List<UI.GameInterfaceLayer>
-            {
-                new UI.LegacyGameInterfaceLayer("Vanilla: Background", AlwaysContinue),
-                new UI.LegacyGameInterfaceLayer("Vanilla: Map / Minimap", AlwaysContinue, UI.InterfaceScaleType.UI),
-                new UI.LegacyGameInterfaceLayer("Vanilla: Mouse Text", AlwaysContinue, UI.InterfaceScaleType.UI)
-            };
+            _gameInterfaceLayers = CreateFixtureLayers();
         }
 
         public static void ConfigureDesertWorld()
@@ -125,7 +115,7 @@ namespace Terraria
         {
             SetupDrawInterfaceLayers();
             if (_gameInterfaceLayers == null ||
-                _gameInterfaceLayers.Count != 3 ||
+                _gameInterfaceLayers.Count != VanillaLayerCount ||
                 _gameInterfaceLayers.Exists(layer =>
                     layer != null && layer.Name == "JueMingR: Biome Display"))
             {
@@ -143,18 +133,15 @@ namespace Terraria
         public void DrawExistingBiomeLayer()
         {
             if (_gameInterfaceLayers == null ||
-                _gameInterfaceLayers.Count != 4 ||
-                _gameInterfaceLayers[1] == null ||
-                _gameInterfaceLayers[1].Name != "JueMingR: Biome Display" ||
-                _gameInterfaceLayers[1].ScaleType != UI.InterfaceScaleType.UI ||
-                _gameInterfaceLayers[2] == null ||
-                _gameInterfaceLayers[2].Name != "Vanilla: Map / Minimap")
+                _gameInterfaceLayers.FindAll(layer => layer.Name == "JueMingR: Biome Display").Count != 1 ||
+                _gameInterfaceLayers.FindIndex(layer => layer.Name == "JueMingR: Biome Display") + 1 !=
+                    _gameInterfaceLayers.FindIndex(layer => layer.Name == "Vanilla: Map / Minimap"))
             {
                 throw new InvalidOperationException(
                     "The fixture did not receive exactly one biome UI layer before the fixed anchor.");
             }
 
-            fixtureBiomeLayer = _gameInterfaceLayers[1];
+            fixtureBiomeLayer = _gameInterfaceLayers.Find(layer => layer.Name == "JueMingR: Biome Display");
             DrawBiomeLayer();
         }
 
@@ -172,7 +159,7 @@ namespace Terraria
         }
     }
 
-    public static class Utils
+    public static partial class Utils
     {
         public static void DrawBorderString(
             Microsoft.Xna.Framework.Graphics.SpriteBatch spriteBatch,
@@ -217,8 +204,21 @@ namespace Terraria
         {
             try
             {
+                if (args.Length == 1 && args[0] == "phase0u-layout")
+                {
+                    F5LayoutChecks.Run();
+                    F5InputChecks.Run();
+                    return 0;
+                }
+                if (args.Length == 3 && args[0] == "phase0u-visual")
+                {
+                    AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly;
+                    F5VisualChecks.Run(args[1], args[2]);
+                    return 0;
+                }
                 if (args.Length != 3 ||
                     (args[0] != "expect-handoff" &&
+                     args[0] != "expect-handoff-biome-failure" &&
                      args[0] != "expect-no-handoff" &&
                      args[0] != "expect-evidence-init-failure" &&
                      !args[0].StartsWith("driver-", StringComparison.Ordinal)))
@@ -228,6 +228,7 @@ namespace Terraria
                 }
 
                 string mode = args[0];
+                bool expectHandoff = mode == "expect-handoff" || mode == "expect-handoff-biome-failure";
                 string evidencePath = Path.GetFullPath(args[1]);
                 string packageId = args[2];
                 if (String.IsNullOrWhiteSpace(packageId))
@@ -253,9 +254,11 @@ namespace Terraria
                 var main = new Main();
                 global::Terraria.Main.ConfigureDesertWorld();
                 byte[] evidenceAfterFirstUpdate = null;
-                if (mode == "expect-handoff")
+                if (expectHandoff)
                 {
                     WaitForEvidenceEvent(evidencePath, "HOOK_INSTALLED");
+                    // Event 3 precedes hookCommitted and the worker's return.
+                    WaitForBootstrapState(AppDomain.CurrentDomain.DomainManager, "Installed");
                     main.RunUpdateLoop(1);
                     WaitForEvidenceEvent(evidencePath, "RUNTIME_HANDOFF_COMPLETE");
                     evidenceAfterFirstUpdate = File.ReadAllBytes(evidencePath);
@@ -288,6 +291,9 @@ namespace Terraria
                     main.DrawBiomeLayer();
                     AssertBiomeDraw("群系: 雪原", 4);
 
+                    F5ConsumerChecks.Run(main, mode == "expect-handoff-biome-failure");
+                    AssertEvidenceReaderAllowsAppend(evidencePath, packageId);
+
                     global::Terraria.Main.FixtureThrowOnDraw = true;
                     main.DrawBiomeLayer();
                     int drawCountAfterFailure = global::Terraria.Main.FixtureDrawCount;
@@ -307,9 +313,9 @@ namespace Terraria
                 }
 
                 string[] evidenceLines = File.Exists(evidencePath)
-                    ? File.ReadAllLines(evidencePath)
+                    ? ReadEvidenceLines(evidencePath)
                     : new string[0];
-                if (mode == "expect-handoff")
+                if (expectHandoff)
                 {
                     AssertCompleteHandoff(
                         evidenceLines,
@@ -479,7 +485,7 @@ namespace Terraria
                 runUpdateLoop.Invoke(instance, new object[] { 1 });
                 WaitForEvidenceEvent(evidencePath, "RUNTIME_HANDOFF_COMPLETE");
                 AssertCompleteHandoff(
-                    File.ReadAllLines(evidencePath),
+                    ReadEvidenceLines(evidencePath),
                     packageId,
                     Thread.CurrentThread.ManagedThreadId,
                     Thread.CurrentThread.ManagedThreadId);
@@ -509,7 +515,7 @@ namespace Terraria
                         evidenceAfterFailure,
                         File.ReadAllBytes(evidencePath),
                         "A handoff append failure retried or changed evidence.");
-                    AssertHandoffFailureEvidence(File.ReadAllLines(evidencePath), packageId);
+                    AssertHandoffFailureEvidence(ReadEvidenceLines(evidencePath), packageId);
                 }
                 else
                 {
@@ -539,21 +545,21 @@ namespace Terraria
                 WaitForEvidenceError(evidencePath);
                 AssertBootstrapSchedulingState(manager, "Failed");
                 string[] lines = File.Exists(evidencePath)
-                    ? File.ReadAllLines(evidencePath)
+                    ? ReadEvidenceLines(evidencePath)
                     : new string[0];
                 AssertSingleWorkerFailure(lines, packageId);
-                byte[] failedEvidence = File.ReadAllBytes(evidencePath);
+                byte[] failedEvidence = ReadEvidenceBytes(evidencePath);
                 InvokeObservedAssembly(manager, target);
                 InvokeObservedAssembly(manager, driverReLogic);
                 Thread.Sleep(250);
                 AssertBytesEqual(
                     failedEvidence,
-                    File.ReadAllBytes(evidencePath),
+                    ReadEvidenceBytes(evidencePath),
                     "A permanently failed install retried or changed evidence.");
             }
             else
             {
-                AssertNoHookSuccess(File.Exists(evidencePath) ? File.ReadAllLines(evidencePath) : new string[0]);
+                AssertNoHookSuccess(File.Exists(evidencePath) ? ReadEvidenceLines(evidencePath) : new string[0]);
                 AssertBootstrapSchedulingState(manager, "Failed", mode == "driver-relogic-never");
             }
         }
@@ -580,7 +586,7 @@ namespace Terraria
 
         private static void SimulateEvent5AppendFailure(string evidencePath, string packageId)
         {
-            string[] complete = File.ReadAllLines(evidencePath);
+            string[] complete = ReadEvidenceLines(evidencePath);
             AssertCompleteHandoff(
                 complete,
                 packageId,
@@ -913,7 +919,7 @@ namespace Terraria
             string[] lines;
             try
             {
-                lines = File.ReadAllLines(evidencePath);
+                lines = ReadEvidenceLines(evidencePath);
             }
             catch (IOException)
             {
@@ -932,6 +938,42 @@ namespace Terraria
             return false;
         }
 
+        private static FileStream OpenEvidenceReader(string path)
+        { return new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite); }
+
+        private static string[] ReadEvidenceLines(string path)
+        {
+            using (var reader = new StreamReader(OpenEvidenceReader(path)))
+                return reader.ReadToEnd().Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        }
+
+        private static byte[] ReadEvidenceBytes(string path)
+        {
+            using (FileStream reader = OpenEvidenceReader(path))
+            using (var bytes = new MemoryStream())
+            { reader.CopyTo(bytes); return bytes.ToArray(); }
+        }
+
+        private static void AssertEvidenceReaderAllowsAppend(string evidencePath, string packageId)
+        {
+            string path = Path.GetTempFileName();
+            try
+            {
+                File.WriteAllText(path, ReadEvidenceLines(evidencePath)[0] + Environment.NewLine, new System.Text.UTF8Encoding(false));
+                Type writer = null;
+                foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+                    if (assembly.GetName().Name == "JueMingR.TerrariaHost")
+                        writer = assembly.GetType("JueMingR.TerrariaHost.EvidenceWriter", true);
+                using (FileStream reader = OpenEvidenceReader(path))
+                    writer.GetMethod("AppendEvent", BindingFlags.Static | BindingFlags.NonPublic)
+                        .Invoke(null, new object[] { path, packageId, 2, "HARMONY_READY" });
+                if (!HasEvidenceEvent(path, "HARMONY_READY"))
+                    throw new InvalidOperationException("Concurrent evidence append was not visible to the poll reader.");
+                Console.WriteLine("PASS: production evidence writer appended while the poll reader remained open.");
+            }
+            finally { File.Delete(path); }
+        }
+
         private static void WaitForEvidenceError(string evidencePath)
         {
             Stopwatch stopwatch = Stopwatch.StartNew();
@@ -941,7 +983,7 @@ namespace Terraria
                 {
                     if (File.Exists(evidencePath))
                     {
-                        foreach (string line in File.ReadAllLines(evidencePath))
+                        foreach (string line in ReadEvidenceLines(evidencePath))
                         {
                             string[] fields = line.Split('|');
                             if (fields.Length >= 4 && fields[3] == "ERROR")
@@ -1030,6 +1072,9 @@ namespace Terraria
 
         private static void AssertBootstrapSchedulingState(object manager, string expectedState)
         {
+            // Host evidence is flushed before the worker returns to Bootstrap.
+            // Observe that separate completion through the existing bounded wait.
+            WaitForBootstrapState(manager, expectedState);
             AssertBootstrapSchedulingState(manager, expectedState, false);
         }
 
@@ -1163,15 +1208,20 @@ namespace Terraria
 
             AssertExactPostfix(update, owner, "Postfix", "Main.Update");
             AssertExactPostfix(drawSetup, owner, "DrawSetupPostfix", "Main.SetupDrawInterfaceLayers");
+            MethodInfo input = mainType.GetMethod("DoUpdate_HandleInput", flags, null, Type.EmptyTypes, null);
+            MethodInfo npc = mainType.GetMethod("HoverOverNPCs", flags, null, new[] { typeof(Microsoft.Xna.Framework.Rectangle) }, null);
+            AssertExactPostfix(input, owner, "InputPostfix", "Main.DoUpdate_HandleInput");
+            AssertExactPostfix(npc, owner, "NpcHoverPrefix", "Main.HoverOverNPCs(Rectangle)", true);
 
             foreach (MethodInfo candidate in mainType.GetMethods(flags))
             {
                 if (!ReferenceEquals(candidate, update) &&
                     !ReferenceEquals(candidate, drawSetup) &&
+                    !ReferenceEquals(candidate, input) && !ReferenceEquals(candidate, npc) &&
                     HasOwner(Harmony.GetPatchInfo(candidate), owner))
                 {
                     throw new InvalidOperationException(
-                        "The Phase 0-S owner patched a Main method outside the approved Update and draw setup entries.");
+                        "The owner patched a Main method outside the four approved exact targets.");
                 }
             }
         }
@@ -1180,25 +1230,25 @@ namespace Terraria
             MethodInfo target,
             string owner,
             string postfixName,
-            string targetLabel)
+            string targetLabel, bool prefix = false)
         {
             Patches patches = target == null ? null : Harmony.GetPatchInfo(target);
             if (patches == null ||
                 patches.Owners.Count != 1 ||
                 patches.Owners[0] != owner ||
-                patches.Prefixes.Count != 0 ||
-                patches.Postfixes.Count != 1 ||
+                patches.Prefixes.Count != (prefix ? 1 : 0) ||
+                patches.Postfixes.Count != (prefix ? 0 : 1) ||
                 patches.Transpilers.Count != 0 ||
                 patches.Finalizers.Count != 0 ||
                 patches.InnerPrefixes.Count != 0 ||
                 patches.InnerPostfixes.Count != 0 ||
-                patches.Postfixes[0].owner != owner ||
-                patches.Postfixes[0].PatchMethod.Name != postfixName ||
-                patches.Postfixes[0].PatchMethod.DeclaringType.FullName !=
+                (prefix ? patches.Prefixes[0] : patches.Postfixes[0]).owner != owner ||
+                (prefix ? patches.Prefixes[0] : patches.Postfixes[0]).PatchMethod.Name != postfixName ||
+                (prefix ? patches.Prefixes[0] : patches.Postfixes[0]).PatchMethod.DeclaringType.FullName !=
                     "JueMingR.TerrariaHost.Phase0SHarmonyWorker")
             {
                 throw new InvalidOperationException(
-                    targetLabel + " does not have the exact approved one-postfix patch set.");
+                    targetLabel + " does not have the exact approved patch type and owner.");
             }
         }
 

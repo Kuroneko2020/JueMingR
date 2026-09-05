@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading;
 using HarmonyLib;
 using JueMingR.Features.Biomes;
+using JueMingR.TerrariaHost.F5;
 using Microsoft.Xna.Framework;
 using Terraria.UI;
 
@@ -205,6 +206,7 @@ namespace JueMingR.TerrariaHost
         private static int postfixGate;
         private static int handoffGate;
         private static int biomeFeatureFailed;
+        private static bool f5LayersReady;
         private static PostfixContext postfixContext;
 
         private const string BiomeLayerName = "JueMingR: Biome Display";
@@ -223,6 +225,10 @@ namespace JueMingR.TerrariaHost
 
             MethodInfo targetMethod = ResolveTargetMethod(manifest, targetAssembly);
             MethodInfo drawSetupMethod = ResolveDrawSetupMethod(targetAssembly);
+            MethodInfo inputMethod = ResolveF5Target(targetAssembly, "DoUpdate_HandleInput", Type.EmptyTypes);
+            MethodInfo npcHoverMethod = ResolveF5Target(targetAssembly, "HoverOverNPCs", new[] { typeof(Rectangle) });
+            MethodInfo inputPostfixMethod = typeof(Phase0SHarmonyWorker).GetMethod("InputPostfix", BindingFlags.NonPublic | BindingFlags.Static);
+            MethodInfo npcHoverPrefixMethod = typeof(Phase0SHarmonyWorker).GetMethod("NpcHoverPrefix", BindingFlags.NonPublic | BindingFlags.Static);
             MethodInfo postfixMethod = typeof(Phase0SHarmonyWorker).GetMethod(
                 "Postfix",
                 BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.DeclaredOnly,
@@ -268,6 +274,10 @@ namespace JueMingR.TerrariaHost
                     null,
                     null);
                 VerifyExactPatchInfo(drawSetupMethod, drawSetupPostfixMethod, manifest.PatchOwner);
+                harmony.Patch(inputMethod, null, new HarmonyMethod(inputPostfixMethod), null, null);
+                VerifyExactPatchInfo(inputMethod, inputPostfixMethod, manifest.PatchOwner);
+                harmony.Patch(npcHoverMethod, new HarmonyMethod(npcHoverPrefixMethod), null, null, null);
+                VerifyExactPatchInfo(npcHoverMethod, npcHoverPrefixMethod, manifest.PatchOwner, true);
                 EvidenceWriter.AppendEvent(evidencePath, manifest.PackageId, 3, "HOOK_INSTALLED");
                 Volatile.Write(ref hookCommitted, 1);
             }
@@ -280,7 +290,7 @@ namespace JueMingR.TerrariaHost
                         harmony,
                         manifest.PatchOwner,
                         targetMethod,
-                        drawSetupMethod);
+                        drawSetupMethod, inputMethod, npcHoverMethod);
                 }
 
                 Phase0SLoadChainHost.TryRecordPatchFailure(
@@ -296,10 +306,10 @@ namespace JueMingR.TerrariaHost
             Harmony harmony,
             string owner,
             MethodInfo updateMethod,
-            MethodInfo drawSetupMethod)
+            MethodInfo drawSetupMethod, MethodInfo inputMethod, MethodInfo npcHoverMethod)
         {
             Exception firstFailure = null;
-            foreach (MethodInfo method in new[] { updateMethod, drawSetupMethod })
+            foreach (MethodInfo method in new[] { updateMethod, drawSetupMethod, inputMethod, npcHoverMethod })
             {
                 try
                 {
@@ -389,14 +399,14 @@ namespace JueMingR.TerrariaHost
         private static void VerifyExactPatchInfo(
             MethodInfo targetMethod,
             MethodInfo postfixMethod,
-            string expectedOwner)
+            string expectedOwner, bool prefix = false)
         {
             Patches patches = Harmony.GetPatchInfo(targetMethod);
             if (patches == null ||
                 patches.Owners.Count != 1 ||
                 !String.Equals(patches.Owners[0], expectedOwner, StringComparison.Ordinal) ||
-                patches.Prefixes.Count != 0 ||
-                patches.Postfixes.Count != 1 ||
+                patches.Prefixes.Count != (prefix ? 1 : 0) ||
+                patches.Postfixes.Count != (prefix ? 0 : 1) ||
                 patches.Transpilers.Count != 0 ||
                 patches.Finalizers.Count != 0 ||
                 patches.InnerPrefixes.Count != 0 ||
@@ -405,7 +415,7 @@ namespace JueMingR.TerrariaHost
                 throw new InvalidOperationException("The Phase 0-S patch set is not exact.");
             }
 
-            Patch postfix = patches.Postfixes[0];
+            Patch postfix = prefix ? patches.Prefixes[0] : patches.Postfixes[0];
             if (!String.Equals(postfix.owner, expectedOwner, StringComparison.Ordinal) ||
                 !SameMethod(postfix.PatchMethod, postfixMethod))
             {
@@ -419,6 +429,37 @@ namespace JueMingR.TerrariaHost
                 right != null &&
                 ReferenceEquals(left.Module, right.Module) &&
                 left.MetadataToken == right.MetadataToken;
+        }
+
+        private static MethodInfo ResolveF5Target(Assembly targetAssembly, string name, Type[] parameters)
+        {
+            Type main = targetAssembly.GetType("Terraria.Main", true, false);
+            MethodInfo method = main.GetMethod(name, BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly,
+                null, parameters, null);
+            if (method == null || method.DeclaringType != main || !method.IsPrivate || method.IsStatic ||
+                method.ReturnType != typeof(void) || method.IsGenericMethod || method.ContainsGenericParameters ||
+                method.IsAbstract || method.GetMethodBody() == null || method.GetMethodBody().GetILAsByteArray().Length == 0)
+                throw new InvalidOperationException("The exact Phase 0-U target shape is unavailable: " + name);
+            ParameterInfo[] actual = method.GetParameters();
+            if (actual.Length != parameters.Length) throw new InvalidOperationException("F5 target parameter count differs.");
+            for (int i = 0; i < actual.Length; i++)
+                if (actual[i].ParameterType != parameters[i]) throw new InvalidOperationException("F5 target parameter type differs.");
+            return method;
+        }
+
+        private static void InputPostfix()
+        {
+            PostfixContext context = postfixContext;
+            if (Volatile.Read(ref hookCommitted) == 1 && context != null && context.Shell != null)
+                context.Shell.ProcessInput();
+        }
+
+        private static bool NpcHoverPrefix()
+        {
+            PostfixContext context = postfixContext;
+            F5Shell shell = context == null ? null : context.Shell;
+            try { return Volatile.Read(ref hookCommitted) != 1 || shell == null || shell.AllowNpcHover(); }
+            catch { if (shell != null) shell.FailClosed(); return true; }
         }
 
         private static void Postfix(List<GameInterfaceLayer> ____gameInterfaceLayers)
@@ -443,6 +484,7 @@ namespace JueMingR.TerrariaHost
                     stage = "HANDOFF";
                     CompleteEmptyHandoffOnce();
                     EnsureBiomeLayerForHandoff(____gameInterfaceLayers);
+                    EnsureF5Layers(____gameInterfaceLayers);
                     context.InitializeRuntime(Volatile.Read(ref biomeFeatureFailed) == 0);
                     EvidenceWriter.AppendEvent(
                         context.EvidencePath,
@@ -452,6 +494,7 @@ namespace JueMingR.TerrariaHost
                 }
 
                 context.UpdateRuntime();
+                context.UpdateShell();
             }
             catch (Exception exception)
             {
@@ -486,7 +529,46 @@ namespace JueMingR.TerrariaHost
             {
                 DisableBiomeFeature();
             }
+            EnsureF5Layers(____gameInterfaceLayers);
         }
+
+        private static void EnsureF5Layers(List<GameInterfaceLayer> layers)
+        {
+            if (layers == null) return;
+            try
+            {
+                InsertF5Layer(layers, "JueMingR: F5 Pointer Begin", "Vanilla: Achievement Complete Popups", F5PointerBegin);
+                InsertF5Layer(layers, "JueMingR: F5 Window", "Vanilla: Cursor", F5Window);
+                InsertF5Layer(layers, "JueMingR: F5 Hover Gate", "Vanilla: Mouse Over", F5HoverGate);
+                InsertF5Layer(layers, "JueMingR: F5 Pointer End", "Vanilla: Interface Logic 4", F5PointerEnd);
+                f5LayersReady = true;
+                if (postfixContext != null && postfixContext.Shell != null) postfixContext.Shell.LayersReady = true;
+            }
+            catch
+            {
+                f5LayersReady = false;
+                if (postfixContext != null && postfixContext.Shell != null) postfixContext.Shell.FailClosed();
+            }
+        }
+
+        private static void InsertF5Layer(List<GameInterfaceLayer> layers, string name, string anchor, GameInterfaceDrawMethod draw)
+        {
+            int anchorIndex = -1, ownIndex = -1, anchors = 0, own = 0;
+            for (int i = 0; i < layers.Count; i++)
+            {
+                if (layers[i] == null) continue;
+                if (layers[i].Name == anchor) { anchorIndex = i; anchors++; }
+                if (layers[i].Name == name) { ownIndex = i; own++; }
+            }
+            if (anchors != 1 || own > 1 || (own == 1 && ownIndex + 1 != anchorIndex))
+                throw new InvalidOperationException("F5 interface layer anchor is unavailable or ambiguous.");
+            if (own == 0) layers.Insert(anchorIndex, new LegacyGameInterfaceLayer(name, draw, InterfaceScaleType.UI));
+        }
+
+        private static bool F5PointerBegin() { return postfixContext == null || postfixContext.Shell == null || postfixContext.Shell.BeginPointerLayer(); }
+        private static bool F5Window() { return postfixContext == null || postfixContext.Shell == null || postfixContext.Shell.DrawLayer(); }
+        private static bool F5HoverGate() { return postfixContext == null || postfixContext.Shell == null || postfixContext.Shell.HoverGateLayer(); }
+        private static bool F5PointerEnd() { return postfixContext == null || postfixContext.Shell == null || postfixContext.Shell.EndPointerLayer(); }
 
         private static void InsertBiomeLayer(List<GameInterfaceLayer> layers)
         {
@@ -653,6 +735,8 @@ namespace JueMingR.TerrariaHost
                 get { return runtime; }
             }
 
+            internal F5Shell Shell { get; private set; }
+
             internal void InitializeRuntime(bool enabled)
             {
                 if (runtime != null)
@@ -661,6 +745,7 @@ namespace JueMingR.TerrariaHost
                 }
 
                 runtime = Phase0TBiomeRuntime.Create(enabled);
+                Shell = new F5Shell(runtime) { LayersReady = f5LayersReady };
             }
 
             internal void UpdateRuntime()
@@ -683,6 +768,8 @@ namespace JueMingR.TerrariaHost
                     current.FailClosed();
                 }
             }
+
+            internal void UpdateShell() { if (Shell != null) Shell.AfterUpdate(); }
         }
     }
 

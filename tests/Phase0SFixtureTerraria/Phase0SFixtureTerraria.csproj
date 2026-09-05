@@ -14,6 +14,12 @@
     <EmbedReLogicResource Condition="'$(EmbedReLogicResource)' == ''">true</EmbedReLogicResource>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="..\Phase0U\*.cs" />
+    <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\F5Layout.cs" Link="Production\F5Layout.cs" />
+    <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\F5Interaction.cs" Link="Production\F5Interaction.cs" />
+    <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\F5Renderer.cs" Link="Production\F5Renderer.cs" />
+    <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\F5IconAtlas.cs" Link="Production\F5IconAtlas.cs" />
+    <EmbeddedResource Include="..\..\src\JueMingR.TerrariaHost\F5\Icons\tab-icons.alpha" LogicalName="JueMingR.F5.TabIcons.alpha" />
     <Reference Include="ReLogic">
       <HintPath>..\..\external\TerrariaRefs\ReLogic.dll</HintPath>
       <Private>false</Private>
@@ -24,6 +30,10 @@
     </Reference>
     <Reference Include="Microsoft.Xna.Framework.Graphics">
       <HintPath>..\..\external\TerrariaRefs\Microsoft.Xna.Framework.Graphics.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Microsoft.Xna.Framework.Game">
+      <HintPath>..\..\external\TerrariaRefs\Microsoft.Xna.Framework.Game.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="0Harmony">

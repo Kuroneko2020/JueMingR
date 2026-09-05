@@ -124,6 +124,14 @@ namespace JueMingR.ArchitectureTests
             runtime.Update(95);
             AssertLifecycle(!feature.Enabled && !feature.CurrentViewModel.Visible,
                 "observation error must disable only the feature and clear the model", failures);
+            source.ThrowOnRead = false;
+            int readsAfterFailure = source.ReadCount;
+            feature.SetEnabled(true);
+            runtime.Update(96);
+            session.Active = false; runtime.Update(97);
+            session.Active = true; runtime.Update(98);
+            AssertLifecycle(!feature.Enabled && !feature.CurrentViewModel.Visible && source.ReadCount == readsAfterFailure,
+                "failed feature must not falsely enable or automatically retry after session re-entry", failures);
         }
 
         private static void AssertLifecycle(bool condition, string label, IList<string> failures)

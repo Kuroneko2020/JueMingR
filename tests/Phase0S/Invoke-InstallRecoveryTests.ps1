@@ -26,7 +26,7 @@ function New-Phase0SControlledPackageFixture {
         [Parameter(Mandatory = $true)][string] $RepositoryRoot,
         [Parameter(Mandatory = $true)][string] $PackageRoot,
         [Parameter(Mandatory = $true)][string] $TerrariaIdentityInput,
-        [ValidateSet('phase0s', 'phase0t-biome')]
+        [ValidateSet('phase0s', 'phase0t-biome', 'phase0u-f5-ui')]
         [string] $PackagePrefix = 'phase0s'
     )
 
@@ -189,7 +189,7 @@ function Assert-Phase0SCompactJsonResult {
             Assert-Phase0SCondition -Condition ($null -eq $resultObject.packageId -and $null -eq $resultObject.sha256) -Message "${Operation}/${ExpectedCode}: packageId and sha256 must be JSON null."
         }
         { $_ -in @('INSTALL_COMPLETE', 'RESTORE_COMPLETE', 'RESTORE_NOOP', 'OWNERSHIP_UNPROVEN') } {
-            Assert-Phase0SCondition -Condition ([string] $resultObject.packageId -match '^phase0(?:s|t-biome)-[0-9a-f]{40}$' -and $null -eq $resultObject.sha256) -Message "${Operation}/${ExpectedCode}: packageId or sha256 null semantics differ from the result contract."
+            Assert-Phase0SCondition -Condition ([string] $resultObject.packageId -match '^phase0(?:s|t-biome|u-f5-ui)-[0-9a-f]{40}$' -and $null -eq $resultObject.sha256) -Message "${Operation}/${ExpectedCode}: packageId or sha256 null semantics differ from the result contract."
         }
         default {
             throw "No null-semantics contract is defined for $ExpectedCode."
@@ -379,6 +379,16 @@ function Invoke-Phase0SInstallRecoveryTests {
         Assert-Phase0SInstalledLayout -Target $phase0TTarget
         Assert-Phase0SReceiptMatchesPackageManifest -PackageRoot $phase0TPackageRoot -TargetDirectory $phase0TTarget
         Assert-Phase0SCompactJsonResult -Result (Invoke-Phase0SPackageScript -PackageRoot $phase0TPackageRoot -ScriptName 'Restore-Phase0S.ps1' -TerrariaDirectory $phase0TTarget) -Operation 'restore' -ExpectedExitCode 0 -ExpectedCode 'RESTORE_COMPLETE' -ExpectedStatus 'success' -TargetDirectory $phase0TTarget
+
+        $phase0UPackageRoot = Join-Path $root 'controlled-package-phase0u'
+        New-Phase0SControlledPackageFixture -RepositoryRoot $RepositoryRoot -PackageRoot $phase0UPackageRoot -TerrariaIdentityInput $terrariaIdentityInput -PackagePrefix 'phase0u-f5-ui' | Out-Null
+        $phase0UTarget = New-Phase0STargetDirectory -Root $root -TerrariaIdentityInput $terrariaIdentityInput -Name 'phase0u-install-restore'
+        $phase0UBefore = Get-Phase0STreeSnapshot -Root $phase0UTarget
+        Assert-Phase0SCompactJsonResult -Result (Invoke-Phase0SPackageScript -PackageRoot $phase0UPackageRoot -ScriptName 'Install-Phase0S.ps1' -TerrariaDirectory $phase0UTarget) -Operation 'install' -ExpectedExitCode 0 -ExpectedCode 'INSTALL_COMPLETE' -ExpectedStatus 'success' -TargetDirectory $phase0UTarget
+        Assert-Phase0SInstalledLayout -Target $phase0UTarget
+        Assert-Phase0SReceiptMatchesPackageManifest -PackageRoot $phase0UPackageRoot -TargetDirectory $phase0UTarget
+        Assert-Phase0SCompactJsonResult -Result (Invoke-Phase0SPackageScript -PackageRoot $phase0UPackageRoot -ScriptName 'Restore-Phase0S.ps1' -TerrariaDirectory $phase0UTarget) -Operation 'restore' -ExpectedExitCode 0 -ExpectedCode 'RESTORE_COMPLETE' -ExpectedStatus 'success' -TargetDirectory $phase0UTarget
+        Assert-Phase0STreeSnapshotEqual -Expected $phase0UBefore -Actual (Get-Phase0STreeSnapshot -Root $phase0UTarget) -Context 'Phase 0-U exact restore'
 
         $prefixTarget = New-Phase0STargetDirectory -Root $root -TerrariaIdentityInput $terrariaIdentityInput -Name 'evidence-prefix'
         $installResult = Invoke-Phase0SPackageScript -PackageRoot $packageRoot -ScriptName 'Install-Phase0S.ps1' -TerrariaDirectory $prefixTarget
