@@ -42,6 +42,8 @@ namespace JueMingR.TerrariaHost
             feature.FailClosed();
         }
 
+        internal void SetFeatureEnabled(bool enabled) { feature.SetEnabled(enabled); }
+
         private sealed class TerrariaBiomeWorldReader : IGameSessionProbe, IBiomeObservationSource
         {
             public bool IsSessionActive

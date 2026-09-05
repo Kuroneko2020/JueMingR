@@ -8,13 +8,6 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using HarmonyLib;
 
-namespace Microsoft.Xna.Framework
-{
-    public sealed class GameTime
-    {
-    }
-}
-
 namespace Terraria
 {
     public sealed class Player
@@ -22,6 +15,7 @@ namespace Terraria
         private bool zoneDesert;
 
         public bool active;
+        public bool mouseInterface, controlUseItem, controlUseTile;
 
         public bool ZoneDesert
         {
@@ -55,7 +49,7 @@ namespace Terraria
         public bool ZoneOverworldHeight { get; set; }
     }
 
-    public class Main
+    public partial class Main
     {
         private List<UI.GameInterfaceLayer> _gameInterfaceLayers;
         private UI.GameInterfaceLayer fixtureBiomeLayer;
@@ -96,18 +90,14 @@ namespace Terraria
                 throw new ArgumentNullException("gameTime");
             }
 
+            FixtureInputUpdate();
             FixtureUpdateCount++;
             Console.WriteLine("FIXTURE_MAIN_UPDATE_ORIGINAL");
         }
 
         private void SetupDrawInterfaceLayers()
         {
-            _gameInterfaceLayers = new List<UI.GameInterfaceLayer>
-            {
-                new UI.LegacyGameInterfaceLayer("Vanilla: Background", AlwaysContinue),
-                new UI.LegacyGameInterfaceLayer("Vanilla: Map / Minimap", AlwaysContinue, UI.InterfaceScaleType.UI),
-                new UI.LegacyGameInterfaceLayer("Vanilla: Mouse Text", AlwaysContinue, UI.InterfaceScaleType.UI)
-            };
+            _gameInterfaceLayers = CreateFixtureLayers();
         }
 
         public static void ConfigureDesertWorld()
@@ -125,7 +115,7 @@ namespace Terraria
         {
             SetupDrawInterfaceLayers();
             if (_gameInterfaceLayers == null ||
-                _gameInterfaceLayers.Count != 3 ||
+                _gameInterfaceLayers.Count != VanillaLayerCount ||
                 _gameInterfaceLayers.Exists(layer =>
                     layer != null && layer.Name == "JueMingR: Biome Display"))
             {
@@ -143,18 +133,15 @@ namespace Terraria
         public void DrawExistingBiomeLayer()
         {
             if (_gameInterfaceLayers == null ||
-                _gameInterfaceLayers.Count != 4 ||
-                _gameInterfaceLayers[1] == null ||
-                _gameInterfaceLayers[1].Name != "JueMingR: Biome Display" ||
-                _gameInterfaceLayers[1].ScaleType != UI.InterfaceScaleType.UI ||
-                _gameInterfaceLayers[2] == null ||
-                _gameInterfaceLayers[2].Name != "Vanilla: Map / Minimap")
+                _gameInterfaceLayers.FindAll(layer => layer.Name == "JueMingR: Biome Display").Count != 1 ||
+                _gameInterfaceLayers.FindIndex(layer => layer.Name == "JueMingR: Biome Display") + 1 !=
+                    _gameInterfaceLayers.FindIndex(layer => layer.Name == "Vanilla: Map / Minimap"))
             {
                 throw new InvalidOperationException(
                     "The fixture did not receive exactly one biome UI layer before the fixed anchor.");
             }
 
-            fixtureBiomeLayer = _gameInterfaceLayers[1];
+            fixtureBiomeLayer = _gameInterfaceLayers.Find(layer => layer.Name == "JueMingR: Biome Display");
             DrawBiomeLayer();
         }
 
@@ -172,7 +159,7 @@ namespace Terraria
         }
     }
 
-    public static class Utils
+    public static partial class Utils
     {
         public static void DrawBorderString(
             Microsoft.Xna.Framework.Graphics.SpriteBatch spriteBatch,
@@ -217,6 +204,12 @@ namespace Terraria
         {
             try
             {
+                if (args.Length == 1 && args[0] == "phase0u-layout")
+                {
+                    F5LayoutChecks.Run();
+                    F5InputChecks.Run();
+                    return 0;
+                }
                 if (args.Length != 3 ||
                     (args[0] != "expect-handoff" &&
                      args[0] != "expect-no-handoff" &&
@@ -287,6 +280,8 @@ namespace Terraria
                     main.RunUpdateLoop(1);
                     main.DrawBiomeLayer();
                     AssertBiomeDraw("群系: 雪原", 4);
+
+                    F5ConsumerChecks.Run(main);
 
                     global::Terraria.Main.FixtureThrowOnDraw = true;
                     main.DrawBiomeLayer();
@@ -1163,15 +1158,20 @@ namespace Terraria
 
             AssertExactPostfix(update, owner, "Postfix", "Main.Update");
             AssertExactPostfix(drawSetup, owner, "DrawSetupPostfix", "Main.SetupDrawInterfaceLayers");
+            MethodInfo input = mainType.GetMethod("DoUpdate_HandleInput", flags, null, Type.EmptyTypes, null);
+            MethodInfo npc = mainType.GetMethod("HoverOverNPCs", flags, null, new[] { typeof(Microsoft.Xna.Framework.Rectangle) }, null);
+            AssertExactPostfix(input, owner, "InputPostfix", "Main.DoUpdate_HandleInput");
+            AssertExactPostfix(npc, owner, "NpcHoverPrefix", "Main.HoverOverNPCs(Rectangle)", true);
 
             foreach (MethodInfo candidate in mainType.GetMethods(flags))
             {
                 if (!ReferenceEquals(candidate, update) &&
                     !ReferenceEquals(candidate, drawSetup) &&
+                    !ReferenceEquals(candidate, input) && !ReferenceEquals(candidate, npc) &&
                     HasOwner(Harmony.GetPatchInfo(candidate), owner))
                 {
                     throw new InvalidOperationException(
-                        "The Phase 0-S owner patched a Main method outside the approved Update and draw setup entries.");
+                        "The owner patched a Main method outside the four approved exact targets.");
                 }
             }
         }
@@ -1180,25 +1180,25 @@ namespace Terraria
             MethodInfo target,
             string owner,
             string postfixName,
-            string targetLabel)
+            string targetLabel, bool prefix = false)
         {
             Patches patches = target == null ? null : Harmony.GetPatchInfo(target);
             if (patches == null ||
                 patches.Owners.Count != 1 ||
                 patches.Owners[0] != owner ||
-                patches.Prefixes.Count != 0 ||
-                patches.Postfixes.Count != 1 ||
+                patches.Prefixes.Count != (prefix ? 1 : 0) ||
+                patches.Postfixes.Count != (prefix ? 0 : 1) ||
                 patches.Transpilers.Count != 0 ||
                 patches.Finalizers.Count != 0 ||
                 patches.InnerPrefixes.Count != 0 ||
                 patches.InnerPostfixes.Count != 0 ||
-                patches.Postfixes[0].owner != owner ||
-                patches.Postfixes[0].PatchMethod.Name != postfixName ||
-                patches.Postfixes[0].PatchMethod.DeclaringType.FullName !=
+                (prefix ? patches.Prefixes[0] : patches.Postfixes[0]).owner != owner ||
+                (prefix ? patches.Prefixes[0] : patches.Postfixes[0]).PatchMethod.Name != postfixName ||
+                (prefix ? patches.Prefixes[0] : patches.Postfixes[0]).PatchMethod.DeclaringType.FullName !=
                     "JueMingR.TerrariaHost.Phase0SHarmonyWorker")
             {
                 throw new InvalidOperationException(
-                    targetLabel + " does not have the exact approved one-postfix patch set.");
+                    targetLabel + " does not have the exact approved patch type and owner.");
             }
         }
 
