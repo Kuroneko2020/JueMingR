@@ -169,6 +169,7 @@ try {
     [System.IO.File]::Copy($xnaGameSource, (Join-Path $stagingDirectory 'Microsoft.Xna.Framework.Game.dll'), $false)
     [System.IO.File]::Copy($xnaFrameworkSource, (Join-Path $stagingDirectory 'Microsoft.Xna.Framework.dll'), $false)
     [System.IO.File]::Copy($xnaGraphicsSource, (Join-Path $stagingDirectory 'Microsoft.Xna.Framework.Graphics.dll'), $false)
+    # Extract the exact embedded dependency for compilation; never execute the game to resolve it.
     Export-EmbeddedReLogic `
         -TerrariaExe $terrariaSource `
         -Destination (Join-Path $stagingDirectory 'ReLogic.dll') `

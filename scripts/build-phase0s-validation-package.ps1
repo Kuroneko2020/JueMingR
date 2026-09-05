@@ -323,6 +323,7 @@ if (-not $?) {
     throw 'The locked Release build failed.'
 }
 $statusAfterBuild = @(Invoke-Phase0SGit -Arguments @('status', '--porcelain=v1', '--untracked-files=all'))
+# Bind packaging to the same clean commit across the build, not merely its earlier HEAD label.
 $headAfterBuild = ([string] (Invoke-Phase0SGit -Arguments @('rev-parse', 'HEAD') | Select-Object -First 1)).Trim()
 if ($statusAfterBuild.Count -ne 0 -or $headAfterBuild -cne $sourceCommit) {
     throw 'The source tree changed during the Release build.'

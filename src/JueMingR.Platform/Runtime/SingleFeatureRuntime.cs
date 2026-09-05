@@ -33,6 +33,7 @@ namespace JueMingR.Platform.Runtime
                 return;
             }
 
+            // Session callbacks occur on edges, before any update in the new state.
             if (!active)
             {
                 if (sessionActive)
@@ -78,12 +79,14 @@ namespace JueMingR.Platform.Runtime
 
         private void FailFeatureClosed()
         {
+            // The feature owns terminal failure and cleanup; this runtime has no failure latch.
             try
             {
                 feature.FailClosed();
             }
             catch
             {
+                // Contain the callback exception only; this does not prove cleanup succeeded.
             }
         }
     }

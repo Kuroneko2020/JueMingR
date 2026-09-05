@@ -41,12 +41,14 @@ namespace JueMingR.Features.Biomes
 
         public void SetEnabled(bool value)
         {
+            // Failure is terminal for this instance; a user toggle cannot retry it.
             if (HasFailed || enabled == value)
             {
                 return;
             }
 
             enabled = value;
+            // Never retain a previous activation's text or cadence across a toggle.
             ClearObservationState();
             observeImmediately = value && sessionActive;
         }
@@ -72,6 +74,7 @@ namespace JueMingR.Features.Biomes
                 return;
             }
 
+            // Session entry and re-enable bypass cadence once; ordinary reads stay bounded.
             if (!observeImmediately &&
                 hasObservationTick &&
                 unchecked(updateTick - lastObservationTick) < ObservationIntervalTicks)
@@ -91,6 +94,7 @@ namespace JueMingR.Features.Biomes
                 return;
             }
 
+            // Skip text construction and publication when the observed flags are unchanged.
             if (hasObservation && observation == lastObservation)
             {
                 return;
@@ -138,6 +142,7 @@ namespace JueMingR.Features.Biomes
             Add(names, flags, BiomeFlags.LihzhardTemple, "神庙");
             Add(names, flags, BiomeFlags.Graveyard, "墓地");
 
+            // Height is one prioritized suffix; forest is only the otherwise-empty surface.
             if (Has(flags, BiomeFlags.Sky))
             {
                 AddUnique(names, "天空");

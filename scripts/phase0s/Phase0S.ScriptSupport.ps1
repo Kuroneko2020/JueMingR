@@ -927,6 +927,7 @@ function Test-Phase0SRestoreOwnership {
             ($states.bootstrapFinal.exists -and $states.bootstrapTemp.exists)) {
             return [pscustomobject][ordered]@{ valid = $false; noop = $false; paths = $paths }
         }
+        # Partial static payload is recoverable only in staging with its exact receipt.
         if ($states.sidecarStage.exists) {
             if ($states.sidecarFinal.exists -or $states.configFinal.exists -or $states.configTemp.exists -or
                 $states.bootstrapFinal.exists -or $states.bootstrapTemp.exists) {
@@ -1001,6 +1002,7 @@ function Remove-Phase0SControlledDirectory {
         throw 'Receipt identity changed before deletion.'
     }
     [System.IO.File]::Delete($receiptPath)
+    # Never recurse: an unexpected late arrival must make cleanup fail, not become ours to delete.
     [System.IO.Directory]::Delete($Directory, $false)
 }
 
@@ -1020,6 +1022,7 @@ function Remove-Phase0SOwnedObjects {
     $paths = $state.paths
     $configEntry = Get-Phase0SPayloadEntry -Package $Package -RelativePath 'Terraria.exe.config'
     $bootstrapEntry = Get-Phase0SPayloadEntry -Package $Package -RelativePath 'JueMingR.Bootstrap.dll'
+    # Remove the activation point before its dependencies, checking each file again at removal.
     foreach ($path in @($paths.configFinal, $paths.configTemp)) {
         if ((Get-Phase0SPathState -Path $path).exists) {
             if (-not (Test-Phase0SFileMatchesPayloadEntry -Path $path -Entry $configEntry)) {
