@@ -2,7 +2,7 @@
 param(
     [Parameter(Mandatory = $true)]
     [string] $OutputDirectory,
-    [ValidateSet('Phase0S', 'Phase0TBiome')]
+    [ValidateSet('Phase0S', 'Phase0TBiome', 'Phase0UF5UI')]
     [string] $Profile = 'Phase0S'
 )
 
@@ -11,7 +11,9 @@ Set-StrictMode -Version 2.0
 
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..')).TrimEnd('\')
 . (Join-Path $PSScriptRoot 'phase0s\Phase0S.ScriptSupport.ps1')
-$ownerTestCardName = if ($Profile -ceq 'Phase0TBiome') {
+$ownerTestCardName = if ($Profile -ceq 'Phase0UF5UI') {
+    'Phase0U-F5UI-Owner-Test-Card.zh-CN.md'
+} elseif ($Profile -ceq 'Phase0TBiome') {
     'Phase0T-Biome-Owner-Test-Card.zh-CN.md'
 } else {
     'Phase0S-Owner-Test-Card.zh-CN.md'
@@ -296,7 +298,7 @@ $sourceCommit = ([string] (Invoke-Phase0SGit -Arguments @('rev-parse', 'HEAD') |
 if ($sourceCommit -notmatch '^[0-9a-f]{40}$') {
     throw 'The source commit identity is invalid.'
 }
-$packageId = $(if ($Profile -ceq 'Phase0TBiome') { 'phase0t-biome-' } else { 'phase0s-' }) + $sourceCommit
+$packageId = $(if ($Profile -ceq 'Phase0UF5UI') { 'phase0u-f5-ui-' } elseif ($Profile -ceq 'Phase0TBiome') { 'phase0t-biome-' } else { 'phase0s-' }) + $sourceCommit
 
 $outputRoot = [System.IO.Path]::GetFullPath($OutputDirectory).TrimEnd('\')
 if ([string]::IsNullOrWhiteSpace($outputRoot) -or (Get-Phase0SPathState -Path $outputRoot).exists) {
@@ -357,7 +359,7 @@ if ($harmonyIdentity.fullName -cne '0Harmony, Version=2.4.2.0, Culture=neutral, 
     throw 'Prepared Harmony identity or license is invalid.'
 }
 
-$packageDirectoryName = $(if ($Profile -ceq 'Phase0TBiome') { 'JueMingR-Phase0T-Biome-' } else { 'JueMingR-Phase0S-' }) + $sourceCommit
+$packageDirectoryName = $(if ($Profile -ceq 'Phase0UF5UI') { 'JueMingR-Phase0U-F5UI-' } elseif ($Profile -ceq 'Phase0TBiome') { 'JueMingR-Phase0T-Biome-' } else { 'JueMingR-Phase0S-' }) + $sourceCommit
 $zipFileName = $packageDirectoryName + '.zip'
 $stagingToken = [Guid]::NewGuid().ToString('N')
 $stagingRoot = Join-Path $outputParent ((Split-Path -Leaf $outputRoot) + '.phase0s-stage-' + $stagingToken)

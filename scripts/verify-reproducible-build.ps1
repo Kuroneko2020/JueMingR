@@ -10,11 +10,13 @@ param(
     [string] $XnaGraphicsAssemblyPath,
     [Parameter(Mandatory = $true)]
     [string] $HarmonyPackagePath,
-    [switch] $VerifyPhase0TBiomePackage
+    [switch] $VerifyPhase0TBiomePackage,
+    [switch] $VerifyPhase0UF5UIPackage
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
+if ($VerifyPhase0TBiomePackage -and $VerifyPhase0UF5UIPackage) { throw 'Select one validation package profile.' }
 
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $terrariaSource = [System.IO.Path]::GetFullPath($TerrariaExePath)
@@ -85,7 +87,7 @@ function Invoke-WorktreeBuild {
     return Get-Content -LiteralPath $recordPath -Raw | ConvertFrom-Json
 }
 
-function Invoke-WorktreePhase0TPackage {
+function Invoke-WorktreeValidationPackage {
     param(
         [Parameter(Mandatory = $true)][string] $Worktree,
         [Parameter(Mandatory = $true)][string] $OutputDirectory,
@@ -93,16 +95,16 @@ function Invoke-WorktreePhase0TPackage {
     )
 
     $packageOutput = @(& $powershellPath -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
-        -File (Join-Path $Worktree 'scripts\build-phase0t-biome-validation-package.ps1') `
-        -OutputDirectory $OutputDirectory)
+        -File (Join-Path $Worktree 'scripts\build-phase0s-validation-package.ps1') `
+        -OutputDirectory $OutputDirectory -Profile $(if ($VerifyPhase0UF5UIPackage) { 'Phase0UF5UI' } else { 'Phase0TBiome' }))
     if ($LASTEXITCODE -ne 0) {
-        throw ('Phase 0-T package build failed: ' + ($packageOutput -join [Environment]::NewLine))
+        throw ('Validation package build failed: ' + ($packageOutput -join [Environment]::NewLine))
     }
 
-    $zipName = 'JueMingR-Phase0T-Biome-' + $Commit + '.zip'
+    $zipName = $(if ($VerifyPhase0UF5UIPackage) { 'JueMingR-Phase0U-F5UI-' } else { 'JueMingR-Phase0T-Biome-' }) + $Commit + '.zip'
     $zipPath = Join-Path $OutputDirectory $zipName
     if (-not [System.IO.File]::Exists($zipPath)) {
-        throw 'The Phase 0-T candidate ZIP is missing.'
+        throw 'The selected candidate ZIP is missing.'
     }
 
     $zip = Get-Item -LiteralPath $zipPath -Force -ErrorAction Stop
@@ -183,15 +185,15 @@ try {
     }
 
     $packageSummary = $null
-    if ($VerifyPhase0TBiomePackage) {
+    if ($VerifyPhase0TBiomePackage -or $VerifyPhase0UF5UIPackage) {
         $packageOutputRoots.Add($packageOutputA)
         $packageOutputRoots.Add($packageOutputB)
-        $packageA = Invoke-WorktreePhase0TPackage -Worktree $worktreeA -OutputDirectory $packageOutputA -Commit $commit
-        $packageB = Invoke-WorktreePhase0TPackage -Worktree $worktreeB -OutputDirectory $packageOutputB -Commit $commit
+        $packageA = Invoke-WorktreeValidationPackage -Worktree $worktreeA -OutputDirectory $packageOutputA -Commit $commit
+        $packageB = Invoke-WorktreeValidationPackage -Worktree $worktreeB -OutputDirectory $packageOutputB -Commit $commit
         if ($packageA.fileName -cne $packageB.fileName -or
             $packageA.length -ne $packageB.length -or
             $packageA.sha256 -cne $packageB.sha256) {
-            throw 'The two worktrees produced different Phase 0-T candidate ZIP bytes.'
+            throw 'The two worktrees produced different candidate ZIP bytes.'
         }
         $packageSummary = [ordered]@{
             fileName = $packageA.fileName
@@ -214,7 +216,8 @@ try {
         })
     }
     if ($null -ne $packageSummary) {
-        $summary.phase0TBiomePackage = $packageSummary
+        if ($VerifyPhase0UF5UIPackage) { $summary.phase0UF5UIPackage = $packageSummary }
+        else { $summary.phase0TBiomePackage = $packageSummary }
     }
     $summaryJson = ($summary | ConvertTo-Json -Depth 5) + [Environment]::NewLine
     [System.IO.File]::WriteAllText($summaryPath, $summaryJson, (New-Object System.Text.UTF8Encoding($false)))
