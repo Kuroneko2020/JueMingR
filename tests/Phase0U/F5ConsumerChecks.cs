@@ -11,6 +11,7 @@ namespace Terraria
         {
             using (var graphics = new F5FixtureGraphics())
             {
+                CheckGlyphMetrics(graphics);
                 Utils.ThrowF5Text = false;
                 Main.SampleLeft = Main.SampleRight = Main.SampleF5 = Main.SpecialNpc = false;
                 Main.SampleWheel = 0;
@@ -167,6 +168,28 @@ namespace Terraria
                 Check(Main.NpcHits > npc && Main.DropHits > drop, "F5 failure must not permanently intercept hover");
                 Console.WriteLine("PASS: Phase 0-U real Host consumers, biome controls, lifecycle, cache and XNA state restoration.");
             }
+        }
+        private static void CheckGlyphMetrics(F5FixtureGraphics graphics)
+        {
+            Assembly host = null;
+            foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+                if (assembly.GetName().Name == "JueMingR.TerrariaHost") host = assembly;
+            Type type = host.GetType("JueMingR.TerrariaHost.F5.F5Renderer", true);
+            var renderer = (IDisposable)Activator.CreateInstance(type, true);
+            var original = GameContent.FontAssets.MouseText;
+            try
+            {
+                GameContent.FontAssets.MouseText = graphics.Asset("offset-font", graphics.CreateFont(10, 16, 3, 7, 36));
+                type.GetMethod("RefreshResources", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(renderer, null);
+                object size = type.GetMethod("Measure", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(renderer, new object[] { "AA" });
+                Check((float)Get(size, "Width") == 20 && (float)Get(size, "Height") == 16 &&
+                    (float)Get(size, "OffsetX") == 3 && (float)Get(size, "OffsetY") == 7,
+                    "Host text metrics must use actual glyph quads and offsets instead of font line spacing");
+                using (var icons = host.GetManifestResourceStream("JueMingR.F5.TabIcons.alpha"))
+                    Check(icons != null && icons.Length == 12 * 72 * 72,
+                        "the actual Host assembly must carry the twelve authorized fixed icon masks");
+            }
+            finally { GameContent.FontAssets.MouseText = original; renderer.Dispose(); }
         }
         private static void CheckNativeModes(Main main, object state)
         {

@@ -210,6 +210,12 @@ namespace Terraria
                     F5InputChecks.Run();
                     return 0;
                 }
+                if (args.Length == 3 && args[0] == "phase0u-visual")
+                {
+                    AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly;
+                    F5VisualChecks.Run(args[1], args[2]);
+                    return 0;
+                }
                 if (args.Length != 3 ||
                     (args[0] != "expect-handoff" &&
                      args[0] != "expect-handoff-biome-failure" &&

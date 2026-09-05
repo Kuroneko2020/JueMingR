@@ -7,7 +7,9 @@ namespace JueMingR.TerrariaHost.F5
     {
         internal readonly float Width;
         internal readonly float Height;
-        internal F5Size(float width, float height) { Width = width; Height = height; }
+        internal readonly float OffsetX, OffsetY;
+        internal F5Size(float width, float height, float offsetX = 0, float offsetY = 0)
+        { Width = width; Height = height; OffsetX = offsetX; OffsetY = offsetY; }
     }
 
     internal struct F5Rect
@@ -23,7 +25,7 @@ namespace JueMingR.TerrariaHost.F5
         { return new F5Rect(X + x, Y + y, Width, Height); }
     }
 
-    internal enum F5ElementKind { Panel, Text, Button, BiomeStatus }
+    internal enum F5ElementKind { Panel, Text, Button, BiomeStatus, Field }
     internal enum F5Command { None, EnableBiome, DisableBiome }
 
     internal sealed class F5Element
@@ -46,12 +48,12 @@ namespace JueMingR.TerrariaHost.F5
     {
         internal static readonly string[] Pages =
         { "物品", "杂项", "地图", "查询", "笔记", "关于", "蓝图", "钓鱼", "战斗", "信息", "增益", "移动" };
-        internal const string Placeholder = "结构占位 · 未接入";
-        private static readonly string[] Hints = { Placeholder, "开启群系显示", "关闭群系显示", "群系显示暂不可用" };
+        private static readonly string[] Hints = { "开启群系显示", "关闭群系显示", "群系显示暂不可用" };
         private readonly F5Size[] hintSizes = new F5Size[Hints.Length];
         private readonly Dictionary<string, F5Size> textSizes = new Dictionary<string, F5Size>(StringComparer.Ordinal);
         private readonly List<F5Element> elements = new List<F5Element>(160);
         private readonly F5Size[] navSizes = new F5Size[12];
+        private readonly F5Size[] biomeStatusSizes = new F5Size[3];
         private Func<string, F5Size> measure;
         private object fontIdentity;
         private float screenWidth, screenHeight, uiScale;
@@ -94,7 +96,8 @@ namespace JueMingR.TerrariaHost.F5
                     F5Size old = textSizes[key];
                     F5Size value = MeasureChecked(key);
                     textSizes[key] = value;
-                    metricsChanged |= old.Width != value.Width || old.Height != value.Height;
+                    metricsChanged |= old.Width != value.Width || old.Height != value.Height ||
+                        old.OffsetX != value.OffsetX || old.OffsetY != value.OffsetY;
                 }
                 fontIdentity = font;
                 if (metricsChanged || Generation == 0) FontMetricsGeneration++;
@@ -111,18 +114,17 @@ namespace JueMingR.TerrariaHost.F5
                 if (hintSizes[i].Width > Window.Width - 32 || hintSizes[i].Height > Window.Height - 32)
                     throw new InvalidOperationException("F5 hover text cannot fit its window.");
             }
-            if (TitleSize.Height > 26) throw new InvalidOperationException("F5 title font exceeds the approved title bar.");
+            if (TitleSize.Height > Title.Height - 2) throw new InvalidOperationException("F5 title font exceeds the approved title bar.");
             for (int i = 0; i < Pages.Length; i++)
             {
                 navSizes[i] = TextSize(Pages[i], 0.75f);
-                if (navSizes[i].Width > Navigation(i).Width - 8 || navSizes[i].Height > 28)
+                if (navSizes[i].Width + 23 > Navigation(i).Width - 8 || navSizes[i].Height > 28)
                     throw new InvalidOperationException("F5 navigation font exceeds readable bounds.");
             }
             elements.Clear();
             float y = 0;
             if (currentPage == 9) BuildInformation(ref y);
             else if (currentPage == 7) BuildFishing(ref y);
-            else Row(ref y, 0, 522, Pages[currentPage], new[] { "未接入" }, false);
             ContentHeight = Math.Max(0, y - 6);
             screenWidth = width; screenHeight = height; uiScale = scale; page = currentPage;
             Generation++;
@@ -131,11 +133,26 @@ namespace JueMingR.TerrariaHost.F5
         internal F5Rect Navigation(int index)
         { return new F5Rect(12 + index % 6 * (560f / 6), 46 + index / 6 * 40, 560f / 6 - 4, 32); }
         internal F5Size NavigationSize(int index) { return navSizes[index]; }
+        internal F5Rect NavigationIcon(int index)
+        {
+            F5Rect nav = Navigation(index);
+            return new F5Rect(nav.X + (nav.Width - navSizes[index].Width - 23) / 2, nav.Y + (nav.Height - 18) / 2, 18, 18);
+        }
+        internal F5Rect NavigationLabel(int index)
+        {
+            F5Rect icon = NavigationIcon(index), nav = Navigation(index);
+            return new F5Rect(icon.Right + 5, nav.Y + (nav.Height - navSizes[index].Height) / 2,
+                navSizes[index].Width, navSizes[index].Height);
+        }
         internal static int HintIndex(F5Element element, bool biomeFailed)
-        { return element.Command == F5Command.None ? 0 : biomeFailed ? 3 : element.Command == F5Command.EnableBiome ? 1 : 2; }
+        { return element.Command == F5Command.None ? -1 : biomeFailed ? 2 : element.Command == F5Command.EnableBiome ? 0 : 1; }
         internal static string HintText(int index) { return Hints[index]; }
         internal F5Size HintSize(int index) { return hintSizes[index]; }
+        internal F5Size BiomeStatusSize(bool failed, bool enabled) { return biomeStatusSizes[failed ? 2 : enabled ? 0 : 1]; }
         internal F5Rect ScrollTrack { get { return new F5Rect(550, 139, 10, Viewport.Height); } }
+        internal F5Rect ScrollTrackVisual { get { return new F5Rect(553, 139, 4, Viewport.Height); } }
+        internal F5Rect ScrollThumbVisual(float scroll)
+        { F5Rect thumb = ScrollThumb(scroll); return new F5Rect(552, thumb.Y, 6, thumb.Height); }
         internal F5Rect ScrollThumb(float scroll)
         {
             float height = MaxScroll <= 0 ? Viewport.Height : Math.Max(24, Viewport.Height * Viewport.Height / ContentHeight);
@@ -163,24 +180,23 @@ namespace JueMingR.TerrariaHost.F5
         {
             string[] names = { "自动钓鱼", "自动换装", "自动配装", "自动存放鱼", "切杆跳过", "快捷改名" };
             foreach (string name in names)
-                Row(ref y, 0, 522, name, name == "快捷改名" ? new[] { "2025.2.3-2", "快捷改名" } :
+                Row(ref y, 0, 522, name, name == "快捷改名" ? new[] { null, "快捷改名" } :
                     name == "自动存放鱼" ? new[] { "所有", "任务鱼", "关闭", "键" } : new[] { "开启", "关闭", "键" }, false);
             float top = y, left = y + 8, right = y + 8;
             int leftPanel = elements.Count;
-            Panel(new F5Rect(0, top, 364, 296));
-            Row(ref left, 8, 348, "不启用", new string[0], false);
+            Panel(new F5Rect(0, top, 364, 0));
+            Row(ref left, 8, 348, "过滤名单", new string[0], false);
             Buttons(ref left, 8, 348, new[] { "精确匹配", "关键词" }, false);
             Buttons(ref left, 8, 348, new[] { "添加当前", "+", "清空", "保存预设", "预设列表" }, false);
-            TextLines("过滤未启用，请选择白名单或黑名单后编辑名单。", 12, ref left, 340, 0.60f, false);
             int rightPanel = elements.Count;
-            Panel(new F5Rect(380, top, 142, 296));
+            Panel(new F5Rect(380, top, 142, 0));
             Row(ref right, 388, 126, "过滤模式", new string[0], false);
             Buttons(ref right, 388, 126, new[] { "关闭过滤" }, false);
             right += 12;
             Row(ref right, 388, 126, "特殊过滤", new string[0], false);
             foreach (string name in new[] { "匣子", "怪物", "任务鱼" })
-                Row(ref right, 388, 126, name, new[] { "未接入" }, false);
-            float blockHeight = Math.Max(296, Math.Max(left, right) - top + 8);
+                Row(ref right, 388, 126, name, new string[0], false);
+            float blockHeight = Math.Max(left, right) - top + 8;
             elements[leftPanel] = new F5Element(F5ElementKind.Panel, new F5Rect(0, top, 364, blockHeight), null, default(F5Size), 0, F5Command.None, false);
             elements[rightPanel] = new F5Element(F5ElementKind.Panel, new F5Rect(380, top, 142, blockHeight), null, default(F5Size), 0, F5Command.None, false);
             y = top + blockHeight + 6;
@@ -191,6 +207,7 @@ namespace JueMingR.TerrariaHost.F5
             float actionWidth = 0;
             foreach (string action in actions)
             {
+                if (action == null) { actionWidth += 124; continue; }
                 F5Size size = TextSize(action, 0.70f);
                 actionWidth += Math.Max(30, size.Width + 16) + 4;
             }
@@ -199,7 +216,8 @@ namespace JueMingR.TerrariaHost.F5
             float textWidth = below || actions.Length == 0 ? width - 16 : width - actionWidth - 28;
             int panel = elements.Count;
             Panel(new F5Rect(x, y, width, 34));
-            float labelY = y + 3;
+            int firstText = elements.Count;
+            float labelY = y + 4;
             TextLines(label, x + 8, ref labelY, textWidth, 0.75f, biome);
             if (width >= 300)
             {
@@ -207,6 +225,7 @@ namespace JueMingR.TerrariaHost.F5
                 {
                     F5Size on = TextSize("当前：已开启", 0.46f), off = TextSize("当前：已关闭", 0.46f);
                     F5Size unavailable = TextSize("当前：不可用", 0.46f);
+                    biomeStatusSizes[0] = on; biomeStatusSizes[1] = off; biomeStatusSizes[2] = unavailable;
                     F5Size statusSize = new F5Size(Math.Max(Math.Max(on.Width, off.Width), unavailable.Width),
                         Math.Max(Math.Max(on.Height, off.Height), unavailable.Height));
                     if (statusSize.Width > textWidth) throw new InvalidOperationException("F5 biome status cannot fit its row.");
@@ -214,15 +233,26 @@ namespace JueMingR.TerrariaHost.F5
                         null, statusSize, 0.46f, F5Command.None, false));
                     labelY += statusSize.Height + 1;
                 }
-                else TextLines(Placeholder, x + 8, ref labelY, textWidth, 0.46f, false);
             }
-            float end = Math.Max(y + 34, labelY + 3);
+            float textHeight = labelY - 1 - (y + 4);
+            float buttonHeight = 30;
+            foreach (string action in actions)
+                if (action != null) buttonHeight = Math.Max(buttonHeight, TextSize(action, 0.70f).Height + 6);
+            float rowHeight = Math.Max(38, Math.Max(textHeight, below ? 0 : buttonHeight) + 8);
+            float shift = (rowHeight - textHeight) / 2 - 4;
+            for (int i = firstText; i < elements.Count; i++)
+            {
+                F5Element text = elements[i];
+                elements[i] = new F5Element(text.Kind, text.Rect.Offset(0, shift), text.Text,
+                    text.TextSize, text.TextScale, text.Command, text.Accent);
+            }
+            float end = y + rowHeight;
             if (actions.Length > 0)
             {
-                float buttonY = below ? end + 2 : y + 2;
+                float buttonY = below ? end + 2 : y + (rowHeight - buttonHeight) / 2;
                 Buttons(ref buttonY, below ? x + 8 : x + width - 8 - actionWidth,
                     below ? width - 16 : actionWidth, actions, biome);
-                end = Math.Max(end, buttonY - 4);
+                if (below) end = buttonY;
             }
             elements[panel] = new F5Element(F5ElementKind.Panel, new F5Rect(x, y, width, end - y), null, default(F5Size), 0, F5Command.None, false);
             y = end + 6;
@@ -232,14 +262,16 @@ namespace JueMingR.TerrariaHost.F5
         {
             float cursor = x, rowHeight = 30;
             foreach (string label in labels)
+                if (label != null) rowHeight = Math.Max(rowHeight, TextSize(label, 0.70f).Height + 6);
+            foreach (string label in labels)
             {
-                F5Size size = TextSize(label, 0.70f);
-                float w = Math.Max(30, size.Width + 16), h = Math.Max(30, size.Height + 6);
+                F5Size size = label == null ? default(F5Size) : TextSize(label, 0.70f);
+                float w = label == null ? 120 : Math.Max(30, size.Width + 16), h = rowHeight;
                 if (w > width) throw new InvalidOperationException("F5 button text exceeds its available column.");
-                if (cursor > x && cursor + w > x + width + 0.01f) { y += rowHeight + 4; cursor = x; rowHeight = 30; }
-                rowHeight = Math.Max(rowHeight, h);
+                if (cursor > x && cursor + w > x + width + 0.01f) { y += rowHeight + 4; cursor = x; }
                 F5Command command = !biome ? F5Command.None : label == "开启" ? F5Command.EnableBiome : F5Command.DisableBiome;
-                elements.Add(new F5Element(F5ElementKind.Button, new F5Rect(cursor, y, w, h), label, size, 0.70f, command, false));
+                elements.Add(new F5Element(label == null ? F5ElementKind.Field : F5ElementKind.Button,
+                    new F5Rect(cursor, y, w, h), label, size, 0.70f, command, false));
                 cursor += w + 4;
             }
             y += rowHeight + 4;
@@ -273,14 +305,18 @@ namespace JueMingR.TerrariaHost.F5
                 size = MeasureChecked(text);
                 textSizes.Add(text, size);
             }
-            return new F5Size(size.Width * scale, size.Height * scale);
+            // Terraria's four-way border is +/- 2 logical units at every font scale.
+            return new F5Size(size.Width * scale + 4, size.Height * scale + 4,
+                size.OffsetX * scale - 2, size.OffsetY * scale - 2);
         }
 
         private F5Size MeasureChecked(string text)
         {
             F5Size size = measure(text);
             MeasurementCount++;
-            if (size.Width < 0 || size.Height <= 0 || float.IsNaN(size.Width) || float.IsInfinity(size.Width) || float.IsNaN(size.Height) || float.IsInfinity(size.Height))
+            if (size.Width < 0 || size.Height <= 0 || float.IsNaN(size.Width) || float.IsInfinity(size.Width) ||
+                float.IsNaN(size.Height) || float.IsInfinity(size.Height) || float.IsNaN(size.OffsetX) ||
+                float.IsInfinity(size.OffsetX) || float.IsNaN(size.OffsetY) || float.IsInfinity(size.OffsetY))
                 throw new InvalidOperationException("F5 font returned invalid metrics.");
             return size;
         }

@@ -13,6 +13,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="F5\Icons\tab-icons.alpha" LogicalName="JueMingR.F5.TabIcons.alpha" />
+    <EmbeddedResource Include="F5\Icons\NOTICE.md" LogicalName="JueMingR.F5.TabIcons.NOTICE" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\JueMingR.Platform\JueMingR.Platform.csproj" />
     <ProjectReference Include="..\JueMingR.Features\JueMingR.Features.csproj" />
     <ProjectReference Include="..\JueMingR.Infrastructure\JueMingR.Infrastructure.csproj" />

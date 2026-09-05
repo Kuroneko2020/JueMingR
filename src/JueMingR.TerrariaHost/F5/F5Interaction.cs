@@ -29,6 +29,7 @@ namespace JueMingR.TerrariaHost.F5
         internal F5Command Command { get; private set; }
         internal float PointerX { get; private set; }
         internal float PointerY { get; private set; }
+        internal bool DraggingScroll { get { return capture == 2; } }
         internal bool OwnsPointer
         {
             get { return Ready && Visible && active &&

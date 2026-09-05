@@ -45,7 +45,32 @@ namespace Terraria
             state.Update(input);
             Check(!state.Visible && state.ConsumeLeft && state.ConsumeRight && state.ConsumeWheel,
                 "closing and first owned input in one sample cannot fall through");
+            CheckScrollChannel();
             Console.WriteLine("PASS: Phase 0-U input ownership and release tail.");
+        }
+        private static void CheckScrollChannel()
+        {
+            var state = new F5Interaction { Ready = true };
+            var input = new F5Input { Width = 1280, Height = 720, Scale = 1.5f,
+                Active = true, Focused = true, F5 = true, X = 1900, Y = 1000 };
+            state.Update(input);
+            var font = new object();
+            Func<string, F5Size> measure = text => new F5Size(text.Length * 18, 24);
+            state.Layout.Ensure(input.Width, input.Height, input.Scale, state.Page, font, measure);
+            F5Rect track = state.Layout.ScrollTrack;
+            input.F5 = false; input.Left = true;
+            // The invisible outer part of the original 10-unit channel remains grabbable.
+            input.X = state.X + track.X + 0.5f; input.Y = state.Y + track.Bottom - 1;
+            state.Update(input);
+            Check(state.DraggingScroll && state.Scroll > 0, "thin visual keeps the full original grab width");
+            input.Y = state.Y + track.Y - 100; state.Update(input);
+            Check(state.Scroll == 0, "scroll drag clamps above the track");
+            input.Y = state.Y + track.Bottom + 100; state.Update(input);
+            F5LayoutChecks.Equal(state.Layout.MaxScroll, state.Scroll, "scroll drag clamps below the track");
+            input.Left = false; state.Update(input);
+            state.Layout.Ensure(input.Width, input.Height, input.Scale, 0, font, measure);
+            state.ClampScroll();
+            Check(state.Scroll == 0, "shortened content immediately clamps an old offset");
         }
         internal static void Check(bool value, string message)
         { if (!value) throw new InvalidOperationException(message); }

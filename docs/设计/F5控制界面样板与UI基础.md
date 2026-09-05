@@ -9,11 +9,15 @@
 - 物品、杂项、地图、查询、笔记、关于；
 - 蓝图、钓鱼、战斗、信息、增益、移动。
 
-初次进入默认“信息”。唯一真实业务为“群系显示”；其它页面和控制组均明确标记“结构占位 · 未接入”，不可执行。信息页保留密集的名称/操作组排列；钓鱼页仅承载获批压力布局，包括多个普通行、长中文提示、多按钮组、364 宽主过滤区、16 间隙及 142 宽右侧特殊区，无钓鱼、保存、改名或过滤业务。
+初次进入默认“信息”。唯一真实业务为“群系显示”；其它控制组仅保留外形、不可执行，不显示占位或开发说明，也没有此类 hover 提示。没有内容的分类保留空内容区。信息页按实际名称、控件和必要状态计算紧凑行高；钓鱼页仅承载获批压力布局，包括普通行、多按钮组、空的非编辑输入框外形、364 宽主过滤区、16 间隙及 142 宽右侧特殊区，无钓鱼、保存、改名或过滤业务，不显示虚构的角色名或运行状态。
 
 正常内容面板为 `(12,131,556,597)`，实际内容 viewport 为 `(20,139,522,581)`。1280×720、150% UI scale 时窗口仍为 580 宽，高度为 456，内容 viewport 高 297。标题和两行导航固定，只有内容滚动。内容尺寸由实际字体度量作有界局部排版，不按屏幕比例整体缩字。逻辑宽度不足 604 或高度不足 220 时关闭不可读窗口，保留原版游戏。
 
 窗口原点、选页、滚动及捕获属于本进程的 UI presentation state，不持久化。窗口或 session 关闭取消控制组 armed 状态与拖动；已归属按钮的释放尾部独立完成，不重放世界操作。
+
+标题直接绘制在主窗口顶部，不绘制独立底框，原标题拖动区域保留。主窗口的纹理填充与边框一起裁成轻微圆角，固定逻辑轮廓不会被方角皮肤改成直角；指针遮挡仍使用整个窗口矩形。滚动通道保持 10 logical，轨道视觉 4、滑块视觉 6，中心一致且均不进入内容 viewport。圆头和 hover/拖动反馈不改变实际滚动几何；短页不绘制虚假滑块，内容缩短立即夹紧旧 offset。
+
+导航恢复对应十二个几何图标，统一 18 logical 图标盒，与 5 logical 间距和文字作为整体居中。图形按自身非零 alpha 的边界等比例放入图标盒；切页和 hover 只改变颜色。功能名称左对齐；按钮组在功能行内垂直居中，组内按钮等高、等间距；需要换行时由同一个布局缓存计算内容与操作区。
 
 ## 实现职责
 
@@ -24,6 +28,7 @@
 | `TerrariaHost/F5/F5Layout.cs` | 窗口/页面本地矩形、当前页固定文本度量、受限布局与有界缓存 |
 | `TerrariaHost/F5/F5Interaction.cs` | 同一布局的命中、F5 边沿、捕获、滚动、控件按下/释放及窄群系命令 |
 | `TerrariaHost/F5/F5Renderer.cs` | 读取 Terraria 当前字体/材质，绘制缓存内容，维护自身裁切状态 |
+| `TerrariaHost/F5/F5IconAtlas.cs`、`F5/Icons/` | 十二个有来源的离线图形数据及 renderer 独占的单一图集 |
 | `TerrariaHost/F5/F5Shell.cs` | 采样后的原版输入适配、统一归属、短期状态恢复、UI 生命周期 |
 | `TerrariaHost/Phase0SLoadChainHost.cs` | 既有 handoff、精确四目标安装与有界 layer 注册 |
 | `TerrariaHost/Phase0TBiomeRuntime.cs` | 将 UI 窄启停命令交给原有唯一 Feature |
@@ -65,9 +70,15 @@ mouseInterface/mouseText lease 保存进入时值，在有限消费区间后恢�
 
 ## 字体、材质与成本边界
 
-字体使用 `FontAssets.MouseText.Value`；面板/按钮读取当前 `SettingsPanel`、`InventoryBack13`、`InventoryBack` 及 `MagicPixel`。不复制游戏资产，不按纹理尺寸改变几何，不新建通用主题树。绘制跟随当前纹理表面；不可用面板局部降级为有限中性色块。游戏资产不由 F5 Dispose。
+字体使用 `FontAssets.MouseText.Value`；窗口、内容和按钮使用当前 `InventoryBack` 的自带颜色及 alpha，辅以中性明暗区分层次，普通与未接入控件文字均保持可读。`MagicPixel` 用于少量几何。原版将 `InventoryBack` 用于物品格；在固定九宫格中复用为 F5 大表面是本任务的受控重用，不声称原版菜单本来如此。原版 `SettingsPanel` 是左右 2 像素的横向条，`InventoryBack13` 是需要原版蓝 tint 的底板，均不再以白 tint 错用为大面板。不固定暗色主题、不按材质包名分支、不复制游戏资源或以纹理尺寸改变几何。资源不可用时局部降级为有限中性色块；游戏资产不由 F5 Dispose。
 
-皮肤身份与字体度量分别失效。字体值被替换时有界重测已缓存固定文本，只有实际宽高变化才重排；相同度量保持 layout generation。当前页固定文字及四种 hover 提示最多 1024 个缓存项，无隐藏页更新。F5 提示尺寸在布局阶段缓存，由自身 renderer 绘制；不把非空提示交给会逐帧 MeasureString 的原版 pending-text 消费者。稳态无文字测量、布局重建、文件 I/O、反射扫描或逐帧日志。关闭窗口不布局、度量或绘制；释放 F5 自有 RasterizerState 不影响游戏资源。
+皮肤身份与字体度量分别失效。字体变化时，用公开 `DynamicSpriteFont.DrawCustomFast` 零绘制回调收集与 DrawString 同源的字形矩形，包含 fallback、kerning、字间距和 cropping 偏移。缓存保留宽高与 Left/Top；相同宽高但偏移变化也刷新定位，相同度量保持 layout generation。测量不以 LineSpacing 代替字形高度，不做 GPU readback。当前四方向描边的 ±2 logical 与字体 scale 无关，因此布局另留四个 logical 单位，绘制按相同偏移回到字形原点。
+
+上述 API 提供真实绘制四边形，不能判断矩形内部特殊透明留白；本轮不扫描字体纹理或建设通用文字排版引擎，不能承诺任意字体包均精确到非透明像素居中。正常字号不会为越界整体缩小，真正无法容纳的资源继续走已有可见失败反馈。
+
+固定文本和三个真实群系 hover 提示最多 1024 个缓存项，无隐藏页更新。F5 提示尺寸在布局阶段缓存，由自身 renderer 绘制；不交给会逐帧 MeasureString 的原版 pending-text 消费者。稳态、hover、拖动和普通滚动不重测；纯皮肤变化不重排，UI scale 改变只重建逻辑布局。关闭窗口不布局、度量或绘制。renderer 拥有一个 72×864 图标 atlas、一个 8×8 圆头纹理和 RasterizerState；只在首次需要或图形设备变更时创建，退出 Session/原版模态或局部失败时释放，不释放共享字体或材质。外缘带状裁切使用固定有界几何，不创建 RenderTarget。
+
+图标来自项目所有者明确授权的十二项 Legacy 自制几何，来源、固定 commit、数值图形、离线导出方式和哈希见 [图标来源说明](../../src/JueMingR.TerrariaHost/F5/Icons/NOTICE.md)。构建直接嵌入已提交 alpha 资产和说明，不依赖 Legacy、Python 或 SVG 库；离线导出脚本只供人工维护资产时使用。未引入第三方图标集或字体，也不扩张 Legacy 的整仓许可。
 
 绘制在自身批次中使用冻结 matrix，内容裁切只施加于 viewport。finally 恢复实际 ScissorRectangle、RasterizerState、BlendState、DepthStencilState、SamplerState 及原版 layer 的 SpriteBatch Begin 契约。F5 局部异常关闭窗口、收回自身状态，在后续更新给出一次普通文字提示，不卸载整个 Harmony owner，不拆核心 handoff 或群系功能。
 
@@ -79,7 +90,7 @@ fixture 消费者严格保留关键顺序：采样 → 生产 input postfix → 
 
 模态回归分别模拟完全跳过 DrawInterface、前置层返回 false，以及 Capture 层内当帧开启；验证新输入到达原版消费者、隐藏的已按下按钮不在松开时执行、原版相机提示仍绘制、结束后 F5 可重新打开。独立进程验证真实群系故障后点击开启仍显示不可用；既有 F5 局部故障保留健康群系的场景继续独立运行。测试 evidence 轮询及并发失败快照以 FileShare.ReadWrite 读取，受控检查在读句柄仍打开时执行生产 writer；使用原有有界状态等待，区分事件 3 写入与 Bootstrap 真正完成，再执行唯一首个受控 Update，事件断言不变。此前一次缺失底层 evidence 的启动超时仍原因未知，不能由共享读取修正倒推其原因。
 
-图形 fixture 创建隐藏测试窗口及真实 XNA GraphicsDevice，使用生成的测试字体/纹理执行生产 renderer；验证普通/异常裁切收尾。它不启动 Terraria，不证明实际中文资源包视觉。Debug/Release、架构、fixture 和包字节复现均为本地证据；FPS、慢帧和实际输入隔离必须分别记录，未实机时不能报告“彻底修复”。
+图形 fixture 创建隐藏测试窗口及真实 XNA GraphicsDevice，使用生成的字体/纹理执行实际 Host renderer，验证偏移与行距差异、普通/异常裁切收尾、输入消费者和状态。独立的 `phase0u-visual <本地 Content 目录> <本地输出目录>` 模式读取合法 XNB 字体和表面，以链接的生产 renderer 生成可人工查看的离线预览；Terraria 的薄 panel/text helper 由保留切片和四方向描边语义的 fixture 提供。它另验证方角暗色资源替换、无重排与 GPU 所有权，但不等于某个真实第三方包实机。该模式不启动 Terraria、不读角色世界、不把原资源或预览纳入包。Debug/Release、架构、fixture 和包字节复现均为本地证据；FPS、慢帧和实际输入隔离仍须分别记录。
 
 沿用现有包 builder 的 `Phase0UF5UI` profile，ID 为 `phase0u-f5-ui-<FULL_SHA>`，ZIP 为 `JueMingR-Phase0U-F5UI-<FULL_SHA>.zip`。只从被审查 clean commit 构建；包内不带游戏、ReLogic/XNA、Legacy、字体材质、私人路径、原始调查或旧 evidence。安装恢复脚本的所有权合同和 Bootstrap evidence 语义保持不变。
 

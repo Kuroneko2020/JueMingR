@@ -38,13 +38,13 @@ namespace Terraria
             GameContent.TextureAssets.InventoryBack13 = Asset("fixture-row", texture);
         }
 
-        internal DynamicSpriteFont CreateFont(int width, int height)
+        internal DynamicSpriteFont CreateFont(int width, int height, int offsetX = 0, int offsetY = 0, int lineSpacing = 0)
         {
-            var font = new DynamicSpriteFont(0, height, '?');
+            var font = new DynamicSpriteFont(0, lineSpacing == 0 ? height : lineSpacing, '?');
             Type pageType = typeof(DynamicSpriteFont).Assembly.GetType("ReLogic.Graphics.FontPage", true);
             object page = Activator.CreateInstance(pageType, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
                 null, new object[] { texture, new List<Rectangle> { new Rectangle(0, 0, width, height) },
-                    new List<Rectangle> { new Rectangle(0, 0, width, height) }, new List<char> { '?' },
+                    new List<Rectangle> { new Rectangle(offsetX, offsetY, width, height) }, new List<char> { '?' },
                     new List<Vector3> { new Vector3(0, width, 0) } }, null);
             Array pages = Array.CreateInstance(pageType, 1); pages.SetValue(page, 0);
             typeof(DynamicSpriteFont).GetMethod("SetPages", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(font, new object[] { pages });
@@ -91,16 +91,29 @@ namespace Terraria
         internal static int F5HintDraws, UnavailableDraws;
         public static void DrawSplicedPanel(SpriteBatch batch, Texture2D texture, int x, int y, int width, int height,
             int left, int right, int top, int bottom, Color color)
-        { batch.Draw(texture, new Rectangle(x, y, width, height), color); }
+        {
+            // Exercise actual nine-slice geometry instead of stretching the fake.
+            int[] sx = { 0, left, texture.Width - right, texture.Width };
+            int[] sy = { 0, top, texture.Height - bottom, texture.Height };
+            int[] dx = { x, x + left, x + width - right, x + width };
+            int[] dy = { y, y + top, y + height - bottom, y + height };
+            for (int iy = 0; iy < 3; iy++) for (int ix = 0; ix < 3; ix++)
+                batch.Draw(texture, new Rectangle(dx[ix], dy[iy], dx[ix + 1] - dx[ix], dy[iy + 1] - dy[iy]),
+                    new Rectangle(sx[ix], sy[iy], sx[ix + 1] - sx[ix], sy[iy + 1] - sy[iy]), color);
+        }
         public static void DrawBorderStringFourWay(SpriteBatch batch, DynamicSpriteFont font, string text,
             float x, float y, Color textColor, Color borderColor, Vector2 origin, float scale = 1)
         {
             // Fault after headers, inside the clipped content batch.
             if (ThrowF5Text && text == "敌怪显名") throw new InvalidOperationException("Controlled F5 content draw failure.");
             F5TextDraws++;
-            if (text == "开启群系显示" || text == "关闭群系显示" || text == "结构占位 · 未接入" ||
+            if (text == "开启群系显示" || text == "关闭群系显示" ||
                 text == "群系显示暂不可用") F5HintDraws++;
             if (text == "当前：不可用") UnavailableDraws++;
+            batch.DrawString(font, text, new Vector2(x - 2, y), borderColor, 0, origin, scale, SpriteEffects.None, 0);
+            batch.DrawString(font, text, new Vector2(x + 2, y), borderColor, 0, origin, scale, SpriteEffects.None, 0);
+            batch.DrawString(font, text, new Vector2(x, y - 2), borderColor, 0, origin, scale, SpriteEffects.None, 0);
+            batch.DrawString(font, text, new Vector2(x, y + 2), borderColor, 0, origin, scale, SpriteEffects.None, 0);
             batch.DrawString(font, text, new Vector2(x, y), textColor, 0, origin, scale, SpriteEffects.None, 0);
         }
     }
