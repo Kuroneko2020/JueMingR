@@ -48,6 +48,7 @@ namespace JueMingR.TerrariaHost.F5
         internal static readonly string[] Pages =
         { "物品", "杂项", "地图", "查询", "笔记", "关于", "蓝图", "钓鱼", "战斗", "信息", "增益", "移动" };
         internal const string DisplayTitle = "决明R";
+        private const float HotkeySlotWidth = 22;
         private static readonly string[] Hints = { "开启群系显示", "关闭群系显示", "群系显示暂不可用" };
         private readonly F5Size[] hintSizes = new F5Size[Hints.Length];
         private readonly Dictionary<string, F5Size> textSizes = new Dictionary<string, F5Size>(StringComparer.Ordinal);
@@ -246,7 +247,7 @@ namespace JueMingR.TerrariaHost.F5
             foreach (string action in actions)
             {
                 if (action == null) { actionWidth += 124; continue; }
-                if (action == "键") { actionWidth += 34; continue; }
+                if (action == "键") { actionWidth += HotkeySlotWidth + 4; continue; }
                 F5Size size = TextSize(action, 0.70f);
                 actionWidth += Math.Max(30, size.Width + 16) + 4;
             }
@@ -291,7 +292,7 @@ namespace JueMingR.TerrariaHost.F5
             {
                 bool hotkey = label == "键";
                 F5Size size = label == null || hotkey ? default(F5Size) : TextSize(label, 0.70f);
-                float w = label == null ? 120 : hotkey ? 30 : Math.Max(30, size.Width + 16), h = rowHeight;
+                float w = label == null ? 120 : hotkey ? HotkeySlotWidth : Math.Max(30, size.Width + 16), h = rowHeight;
                 if (w > width) throw new InvalidOperationException("F5 button text exceeds its available column.");
                 if (cursor > x && cursor + w > x + width + 0.01f) { y += rowHeight + 4; cursor = x; }
                 F5Command command = !biome ? F5Command.None : label == "开启" ? F5Command.EnableBiome : F5Command.DisableBiome;

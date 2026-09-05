@@ -42,12 +42,14 @@ namespace Terraria
             var layout = new F5Layout();
             layout.Ensure(1920, 1080, 1, 9, new object(), Measure);
             F5Element row = null;
+            F5Element previousButton = null;
             float ordinaryHeight = layout.Elements[0].Rect.Height;
             int keyboardSlots = 0, dividers = 0;
             bool afterDragon = false, beforePosition = true;
             foreach (F5Element element in layout.Elements)
             {
-                if (element.Kind == F5ElementKind.Panel) row = element;
+                if (element.Kind == F5ElementKind.Panel) { row = element; previousButton = null; }
+                if (element.Kind == F5ElementKind.Button) previousButton = element;
                 if (element.Kind.ToString() == "BiomeStatus")
                     throw new InvalidOperationException("Normal biome status must not retain a second-line layout element.");
                 if (element.Text == "键") throw new InvalidOperationException("Hotkey entry must be artwork, not a text button.");
@@ -65,6 +67,10 @@ namespace Terraria
                         element.Rect.Y < row.Rect.Y || element.Rect.Bottom > row.Rect.Bottom)
                         throw new InvalidOperationException("Artwork slot must stay in its row and have no hotkey business.");
                     keyboardSlots++;
+                    Equal(22, element.Rect.Width, "compact keyboard hit slot");
+                    Equal(row.Rect.Right - 8, element.Rect.Right, "keyboard group retains its right inset");
+                    if (previousButton == null) throw new InvalidOperationException("Keyboard slot must follow its action buttons.");
+                    Equal(4, element.Rect.X - previousButton.Rect.Right, "keyboard and preceding button keep separate hit areas");
                 }
                 if (element.Text == "群系显示")
                     Equal(ordinaryHeight, row.Rect.Height, "biome row has no special normal-status space");
