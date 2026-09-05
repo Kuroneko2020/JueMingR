@@ -125,6 +125,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "The $Configuration solution build failed."
 }
 
+# The formal build includes architecture checks; compilation alone is not this entry's success gate.
 $architectureTests = Join-Path $workRoot "bin\JueMingR.ArchitectureTests\x86\$Configuration\net472\JueMingR.ArchitectureTests.exe"
 if (-not [System.IO.File]::Exists($architectureTests)) {
     throw 'The ArchitectureTests executable was not produced.'

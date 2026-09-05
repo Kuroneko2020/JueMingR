@@ -15,6 +15,7 @@ namespace JueMingR.TerrariaHost.F5
 
         internal void Ensure(GraphicsDevice device)
         {
+            // Reuse only on the owning device; publish a new atlas after its upload succeeds.
             if (texture != null && !texture.IsDisposed && ReferenceEquals(texture.GraphicsDevice, device)) return;
             Dispose();
             var data = new Color[Size * Size * Count];

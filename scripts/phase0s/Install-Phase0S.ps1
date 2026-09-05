@@ -24,6 +24,7 @@ catch {
 
 $paths = Get-Phase0SControlledPaths -TerrariaDirectory $targetRoot
 $configState = Get-Phase0SPathState -Path $paths.configFinal
+# Existing config is a conflict, not a backup-and-overwrite input for this validation installer.
 if ($configState.exists) {
     $configHash = $null
     if ($configState.readable -and -not $configState.isDirectory -and -not $configState.isReparsePoint) {
@@ -108,6 +109,7 @@ try {
         throw 'Bootstrap final verification failed.'
     }
 
+    # Config activates the chain and is committed last; the preceding moves are not one transaction.
     $configEntry = Get-Phase0SPayloadEntry -Package $package -RelativePath 'Terraria.exe.config'
     $configSource = Resolve-Phase0SContainedPath -Root $package.payloadRoot -RelativePath 'Terraria.exe.config'
     Copy-Phase0SFileCreateNew -SourcePath $configSource -DestinationPath $paths.configTemp -ExpectedEntry $configEntry
@@ -121,6 +123,7 @@ catch {
         Write-Phase0SResultAndExit -Operation 'install' -Status 'failure' -Code 'INSTALL_FAILED_ROLLED_BACK' -ExitCode 20 -PackageId $package.packageId -Object 'installation' -Sha256 $null
     }
     try {
+        # Even rollback needs exact ownership; unknown partial content must remain for recovery.
         $ownership = Test-Phase0SRestoreOwnership -TerrariaDirectory $targetRoot -Package $package
         if (-not $ownership.valid) {
             throw 'Rollback ownership is incomplete.'

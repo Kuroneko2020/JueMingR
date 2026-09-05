@@ -274,6 +274,7 @@ try {
         $archive.Dispose()
     }
 
+    # Verify the fixed assembly and license before publishing a receipt for the prepared set.
     Assert-PreparedSet -Directory $stagingDirectory -PackageEntry $packageEntry -AssemblyEntry $assemblyEntry -LicenseEntry $licenseEntry -Baseline $baseline -RequireReceipt $false
     $receipt = [ordered]@{
         schemaVersion = 1

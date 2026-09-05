@@ -59,6 +59,7 @@ namespace JueMingR.TerrariaHost.F5
                 });
                 if (OwnsPointer) LeaseMouseInterface();
                 ConsumeSample();
+                // The feature remains the only biome state owner; the shell forwards intent only.
                 if (State.Command != F5Command.None)
                     biome.SetFeatureEnabled(State.Command == F5Command.EnableBiome);
             }
@@ -189,6 +190,7 @@ namespace JueMingR.TerrariaHost.F5
 
         private void RestoreLeases()
         {
+            // Restore the captured player, not a possibly different current LocalPlayer.
             if (leasedPlayer != null)
             {
                 if (leasedPlayer.mouseInterface) leasedPlayer.mouseInterface = priorMouseInterface;

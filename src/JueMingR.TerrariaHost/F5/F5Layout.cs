@@ -88,6 +88,7 @@ namespace JueMingR.TerrariaHost.F5
             if (font == null || measureText == null || currentPage < 0 || currentPage >= Pages.Length)
                 throw new ArgumentException("F5 layout inputs are unavailable.");
             bool metricsChanged = false;
+            // A replaced font is remeasured; equal metrics preserve the existing hit geometry.
             if (!ReferenceEquals(fontIdentity, font))
             {
                 measure = measureText;
@@ -295,6 +296,7 @@ namespace JueMingR.TerrariaHost.F5
                 float w = label == null ? 120 : hotkey ? HotkeySlotWidth : Math.Max(30, size.Width + 16), h = rowHeight;
                 if (w > width) throw new InvalidOperationException("F5 button text exceeds its available column.");
                 if (cursor > x && cursor + w > x + width + 0.01f) { y += rowHeight + 4; cursor = x; }
+                // Only the biome row has a backend; other displayed controls remain inert.
                 F5Command command = !biome ? F5Command.None : label == "开启" ? F5Command.EnableBiome : F5Command.DisableBiome;
                 elements.Add(new F5Element(label == null ? F5ElementKind.Field : hotkey ? F5ElementKind.Hotkey : F5ElementKind.Button,
                     new F5Rect(cursor, y, w, h), hotkey ? null : label, size, 0.70f, command));

@@ -120,11 +120,13 @@ namespace JueMingR.TerrariaHost.F5
                     }
                     if (input.Wheel != 0 && capture == 0 && layoutReady)
                     { Scroll = Clamp(Scroll - input.Wheel / 120f * 40, 0, Layout.MaxScroll); armed = null; }
+                    // A click must release on the same element in the same layout generation.
                     if (released && capture == 0 && layoutReady && armed != null &&
                         armedGeneration == Layout.Generation && ReferenceEquals(armed, HitButton(localX, localY)))
                         Command = armed.Command;
                 }
             }
+            // Consume the release sample before retiring its tail, including after window closure.
             ConsumeLeft = leftTail; ConsumeRight = rightTail;
             if (!input.Left) { leftTail = false; capture = 0; armed = null; }
             if (!input.Right) rightTail = false;
@@ -135,6 +137,7 @@ namespace JueMingR.TerrariaHost.F5
 
         internal F5Element HitButton(float localX, float localY)
         {
+            // Clip in window coordinates first, then invert the renderer's page scroll offset.
             if (!Layout.Viewport.Contains(localX, localY)) return null;
             float x = localX - Layout.Viewport.X, y = localY - Layout.Viewport.Y + Scroll;
             for (int i = 0; i < Layout.Elements.Count; i++)

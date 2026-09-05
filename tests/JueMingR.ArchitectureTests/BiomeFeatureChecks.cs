@@ -125,6 +125,7 @@ namespace JueMingR.ArchitectureTests
             AssertLifecycle(!feature.Enabled && !feature.CurrentViewModel.Visible,
                 "observation error must disable only the feature and clear the model", failures);
             source.ThrowOnRead = false;
+            // Recovery of the fake source must not reset the feature's terminal failure contract.
             int readsAfterFailure = source.ReadCount;
             feature.SetEnabled(true);
             runtime.Update(96);

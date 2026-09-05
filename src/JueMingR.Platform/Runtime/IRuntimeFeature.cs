@@ -10,6 +10,7 @@ namespace JueMingR.Platform.Runtime
 
         void Update(ulong updateTick);
 
+        // The feature owns terminal disable and stale-state cleanup, including across session re-entry.
         void FailClosed();
     }
 }

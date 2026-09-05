@@ -298,6 +298,7 @@ namespace JueMingR.TerrariaHost.F5
 
         public void Dispose()
         {
+            // Dispose only our GPU objects; font and skin textures belong to Terraria assets.
             if (clipped != null) { clipped.Dispose(); clipped = null; }
             if (roundCap != null) { roundCap.Dispose(); roundCap = null; }
             icons.Dispose();

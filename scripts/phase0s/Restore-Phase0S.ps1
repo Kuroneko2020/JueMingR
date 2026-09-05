@@ -29,6 +29,7 @@ catch {
     Write-Phase0SResultAndExit -Operation 'restore' -Status 'failure' -Code 'PACKAGE_INVALID' -ExitCode 3 -PackageId $null -Object 'package' -Sha256 $null
 }
 
+# Restore removes only this package's proven objects; it does not restore a pre-existing config.
 $ownership = Test-Phase0SRestoreOwnership -TerrariaDirectory $targetRoot -Package $package
 if (-not $ownership.valid) {
     Write-Phase0SResultAndExit -Operation 'restore' -Status 'failure' -Code 'OWNERSHIP_UNPROVEN' -ExitCode 30 -PackageId $package.packageId -Object 'owned-files' -Sha256 $null
@@ -38,6 +39,7 @@ if ($ownership.noop) {
 }
 
 try {
+    # Recheck both inputs before deletion; these preflights are not an exclusive filesystem lock.
     $secondPackage = Read-Phase0SPackage -PackageRoot $PSScriptRoot
     if ($secondPackage.manifestText -cne $package.manifestText -or $secondPackage.packageId -cne $package.packageId) {
         throw 'Package identity changed during restore preflight.'

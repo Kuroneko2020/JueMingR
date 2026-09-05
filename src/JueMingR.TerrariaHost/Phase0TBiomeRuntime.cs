@@ -61,6 +61,7 @@ namespace JueMingR.TerrariaHost
 
             public bool TryObserve(out BiomeObservation observation)
             {
+                // Recheck the player at read time; the earlier session probe is not a snapshot.
                 Player player;
                 if (!TryGetActivePlayer(out player))
                 {

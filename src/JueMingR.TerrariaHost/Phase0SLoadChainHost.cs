@@ -278,6 +278,7 @@ namespace JueMingR.TerrariaHost
                 VerifyExactPatchInfo(inputMethod, inputPostfixMethod, manifest.PatchOwner);
                 harmony.Patch(npcHoverMethod, new HarmonyMethod(npcHoverPrefixMethod), null, null, null);
                 VerifyExactPatchInfo(npcHoverMethod, npcHoverPrefixMethod, manifest.PatchOwner, true);
+                // Publish readiness only after every exact patch and its evidence have succeeded.
                 EvidenceWriter.AppendEvent(evidencePath, manifest.PackageId, 3, "HOOK_INSTALLED");
                 Volatile.Write(ref hookCommitted, 1);
             }
@@ -313,6 +314,7 @@ namespace JueMingR.TerrariaHost
             {
                 try
                 {
+                    // Roll back this owner only; unrelated patches are never cleanup targets.
                     harmony.Unpatch(method, HarmonyPatchType.All, owner);
                 }
                 catch (Exception exception)
@@ -473,6 +475,7 @@ namespace JueMingR.TerrariaHost
                     throw new InvalidOperationException("The Phase 0-S postfix context is unavailable.");
                 }
 
+                // Claim before handoff so a partial failure cannot trigger another initialization.
                 if (Interlocked.CompareExchange(ref postfixGate, 1, 0) == 0)
                 {
                     EvidenceWriter.AppendEvent(
@@ -483,6 +486,7 @@ namespace JueMingR.TerrariaHost
 
                     stage = "HANDOFF";
                     CompleteEmptyHandoffOnce();
+                    // Setup may have run before asynchronous patch installation; catch up once here.
                     EnsureBiomeLayerForHandoff(____gameInterfaceLayers);
                     EnsureF5Layers(____gameInterfaceLayers);
                     context.InitializeRuntime(Volatile.Read(ref biomeFeatureFailed) == 0);
@@ -560,6 +564,7 @@ namespace JueMingR.TerrariaHost
                 if (layers[i].Name == anchor) { anchorIndex = i; anchors++; }
                 if (layers[i].Name == name) { ownIndex = i; own++; }
             }
+            // Names alone are insufficient: pointer gates depend on these exact neighboring layers.
             if (anchors != 1 || own > 1 || (own == 1 && ownIndex + 1 != anchorIndex))
                 throw new InvalidOperationException("F5 interface layer anchor is unavailable or ambiguous.");
             if (own == 0) layers.Insert(anchorIndex, new LegacyGameInterfaceLayer(name, draw, InterfaceScaleType.UI));
@@ -654,6 +659,7 @@ namespace JueMingR.TerrariaHost
 
         private static bool DrawBiomeDisplayLayer()
         {
+            // Drawing consumes the published model only; observation stays on the Update cadence.
             try
             {
                 PostfixContext context = postfixContext;

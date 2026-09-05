@@ -38,6 +38,7 @@ namespace JueMingR.Bootstrap
                 }
 
                 initialized = true;
+                // Subscribe before scanning, but do not select an install until the scan ends.
                 scanning = true;
                 AppDomain.CurrentDomain.AssemblyLoad += OnAssemblyLoad;
             }
@@ -124,6 +125,7 @@ namespace JueMingR.Bootstrap
 
         private void QueueInstall(InstallRequest request)
         {
+            // Readiness captures exact objects; Harmony installation runs outside AssemblyLoad.
             if (request == null)
             {
                 return;
@@ -286,6 +288,7 @@ namespace JueMingR.Bootstrap
             }
 
             AssemblyIdentity.VerifyReLogicBinding(targetAssembly, reLogicAssembly, manifest);
+            // Commit the one work item under the gate; duplicate notifications cannot retry it.
             state = InstallState.Queued;
             AppDomain.CurrentDomain.AssemblyLoad -= OnAssemblyLoad;
             return new InstallRequest(
@@ -309,6 +312,7 @@ namespace JueMingR.Bootstrap
                     manifest.HostAssemblyVersion);
                 AssemblyIdentity.VerifyFileHash(hostPath, manifest.HostAssemblySha256);
 
+                // Use the default binding context, then verify the loaded object and file identity.
                 Assembly hostAssembly = Assembly.Load(new AssemblyName(HostAssemblyFullName));
                 AssemblyIdentity.VerifyUniqueLoaded(
                     hostAssembly,
@@ -355,6 +359,7 @@ namespace JueMingR.Bootstrap
                     return;
                 }
 
+                // Failed is terminal: stop observing instead of adding another load route.
                 state = InstallState.Failed;
                 AppDomain.CurrentDomain.AssemblyLoad -= OnAssemblyLoad;
             }
@@ -925,6 +930,7 @@ namespace JueMingR.Bootstrap
                 throw new InvalidOperationException("The first Phase 0-S evidence event is invalid.");
             }
 
+            // This fixed file describes the current process, not an installation lock or history.
             using (FileStream stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read))
             {
                 WriteAndFlush(stream, FormatEvent(packageId, 1, eventName));
