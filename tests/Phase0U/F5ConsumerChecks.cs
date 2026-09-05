@@ -186,8 +186,15 @@ namespace Terraria
                     (float)Get(size, "OffsetX") == 3 && (float)Get(size, "OffsetY") == 7,
                     "Host text metrics must use actual glyph quads and offsets instead of font line spacing");
                 using (var icons = host.GetManifestResourceStream("JueMingR.F5.TabIcons.alpha"))
-                    Check(icons != null && icons.Length == 12 * 72 * 72,
-                        "the actual Host assembly must carry the twelve authorized fixed icon masks");
+                {
+                    Check(icons != null && icons.Length == 13 * 72 * 72,
+                        "the actual Host assembly must carry twelve tabs and one rounded keyboard mask");
+                    using (var reader = new System.IO.BinaryReader(icons))
+                    using (var sha = System.Security.Cryptography.SHA256.Create())
+                        Check(BitConverter.ToString(sha.ComputeHash(reader.ReadBytes(12 * 72 * 72))).Replace("-", "") ==
+                            "C367D0E155A22010CEDAC61CA62033AF9C33C6753D090D3043FF09A8774BBC4D",
+                            "the original twelve tab masks remain byte-identical in the actual Host");
+                }
             }
             finally { GameContent.FontAssets.MouseText = original; renderer.Dispose(); }
         }
