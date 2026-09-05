@@ -95,9 +95,11 @@ function Invoke-WorktreeValidationPackage {
         [Parameter(Mandatory = $true)][string] $Commit
     )
 
+    # Exercise ValidateSet's accepted lowercase spelling, then verify the canonical
+    # package identity below so a profile cannot silently fall back to Phase0S.
     $packageOutput = @(& $powershellPath -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
         -File (Join-Path $Worktree 'scripts\build-phase0s-validation-package.ps1') `
-        -OutputDirectory $OutputDirectory -Profile $(if ($VerifyPhase0VSettingsPackage) { 'Phase0VSettings' } elseif ($VerifyPhase0UF5UIPackage) { 'Phase0UF5UI' } else { 'Phase0TBiome' }))
+        -OutputDirectory $OutputDirectory -Profile $(if ($VerifyPhase0VSettingsPackage) { 'phase0vsettings' } elseif ($VerifyPhase0UF5UIPackage) { 'Phase0UF5UI' } else { 'Phase0TBiome' }))
     if ($LASTEXITCODE -ne 0) {
         throw ('Validation package build failed: ' + ($packageOutput -join [Environment]::NewLine))
     }
