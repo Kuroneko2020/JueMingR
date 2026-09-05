@@ -223,7 +223,7 @@ try {
     [System.IO.File]::WriteAllText($summaryPath, $summaryJson, (New-Object System.Text.UTF8Encoding($false)))
     Write-Output ("PASS: two TEMP worktrees produced {0} byte-identical declared outputs; differences=0." -f $outputsA.Count)
     if ($null -ne $packageSummary) {
-        Write-Output ("PASS: two TEMP worktrees produced byte-identical Phase 0-T candidate ZIPs; SHA-256={0}." -f $packageSummary.sha256)
+        Write-Output ("PASS: two TEMP worktrees produced byte-identical selected candidate ZIPs; SHA-256={0}." -f $packageSummary.sha256)
     }
     Write-Output ("Reproducibility summary: {0}" -f $summaryPath)
 }

@@ -21,7 +21,20 @@ namespace JueMingR.TerrariaHost.F5
         internal bool Failed { get { return failed; } }
 
         internal F5Shell(Phase0TBiomeRuntime biome) { this.biome = biome; }
-        internal bool OwnsPointer { get { return !failed && State.OwnsPointer; } }
+        internal bool OwnsPointer { get { return !failed && CanPresentNow && State.OwnsPointer; } }
+
+        private static bool CanPresentNow
+        {
+            get
+            {
+                Player player = Main.LocalPlayer;
+                var capture = Terraria.Graphics.Capture.CaptureManager.Instance;
+                return !Main.gameMenu && !Main.dedServ && Main.netMode == 0 && player != null && player.active &&
+                    FocusHelper.AllowInputProcessing && !PlayerInput.UsingGamepad && !PlayerInput.ShouldFastUseItem &&
+                    !Main.mapFullscreen && !Main.hideUI && !Main.onlyDrawFancyUI && !Main.ingameOptionsWindow &&
+                    !Main.inFancyUI && capture != null && !capture.Active;
+            }
+        }
 
         internal void ProcessInput()
         {
@@ -34,12 +47,10 @@ namespace JueMingR.TerrariaHost.F5
                     PlayerInput.MouseInfo.Y * PlayerInput.RawMouseScale.Y);
                 bool f5 = Main.keyState.IsKeyDown(Keys.F5);
                 Vector2 pointer = State.Visible || f5 ? Vector2.Transform(raw, Matrix.Invert(matrix)) : raw;
-                Player player = Main.LocalPlayer;
                 State.Update(new F5Input
                 {
                     Width = screen.X, Height = screen.Y, Scale = matrix.M11, X = pointer.X, Y = pointer.Y,
-                    Active = !Main.gameMenu && !Main.dedServ && Main.netMode == 0 && player != null && player.active &&
-                        !PlayerInput.UsingGamepad && !PlayerInput.ShouldFastUseItem,
+                    Active = CanPresentNow && !PlayerInput.Triggers.Current.MapFull && !PlayerInput.Triggers.Current.ToggleCameraMode,
                     Focused = Terraria.FocusHelper.AllowInputProcessing,
                     F5 = f5,
                     Left = PlayerInput.MouseInfo.LeftButton == ButtonState.Pressed,
@@ -90,8 +101,7 @@ namespace JueMingR.TerrariaHost.F5
                     }
                     return;
                 }
-                if (Main.gameMenu || Main.LocalPlayer == null || !Main.LocalPlayer.active ||
-                    !FocusHelper.AllowInputProcessing || PlayerInput.UsingGamepad || PlayerInput.ShouldFastUseItem)
+                if (!CanPresentNow)
                 { State.Close(); renderer.Dispose(); return; }
                 if (!State.Visible && State.Ready) return;
                 State.Ready = LayersReady && renderer.RefreshResources();
@@ -100,6 +110,9 @@ namespace JueMingR.TerrariaHost.F5
                 {
                     Vector2 screen = PlayerInput.OriginalScreenSize;
                     renderer.Prepare(State, screen.X, screen.Y, matrix.M11);
+                    // Emote Bubbles runs before the modal early-return layers.
+                    // Clear only the old pointer-triggered NPC bubble at update end.
+                    if (OwnsPointer) Main.instance.currentNPCShowingChatBubble = -1;
                 }
             }
             catch { FailClosed(); }
@@ -110,19 +123,17 @@ namespace JueMingR.TerrariaHost.F5
             try
             {
                 RestoreLeases();
+                if (!CanPresentNow) { State.Close(); return true; }
                 if (OwnsPointer)
                 {
-                    // Emote Bubbles consumes the previous frame's NPC index
-                    // before Mouse Over. Clear that specific pending hover now.
+                    // AfterUpdate already cleared the old bubble before Emote.
+                    // Keep this pointer's later NPC hover state clear as well.
                     Main.instance.currentNPCShowingChatBubble = -1;
-                    F5Element hover = State.HitButton(State.PointerX - State.X, State.PointerY - State.Y);
-                    string hint = hover == null ? null : hover.Command == F5Command.None ? F5Layout.Placeholder :
-                        hover.Command == F5Command.EnableBiome ? "开启群系显示" : "关闭群系显示";
                     // Claim this pointer's pending text before lower mouse UI can
                     // generate it. null is Terraria's supported no-text value;
                     // DrawPendingMouseText still draws its normal cursor.
                     Main.ClearHoverItem();
-                    Main.instance.MouseTextNoOverride(hint);
+                    Main.instance.MouseTextNoOverride(null);
                 }
             }
             catch { FailClosed(); }
@@ -157,7 +168,11 @@ namespace JueMingR.TerrariaHost.F5
 
         internal bool DrawLayer()
         {
-            try { if (State.Visible && State.Ready && !failed) renderer.Draw(State, matrix, biome.FeatureEnabled); }
+            try
+            {
+                if (!CanPresentNow) { State.Close(); RestoreLeases(); }
+                else if (State.Visible && State.Ready && !failed) renderer.Draw(State, matrix, biome.FeatureEnabled, biome.FeatureFailed);
+            }
             catch { FailClosed(); }
             return true;
         }

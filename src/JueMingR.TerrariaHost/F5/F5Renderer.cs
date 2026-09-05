@@ -36,7 +36,7 @@ namespace JueMingR.TerrariaHost.F5
         private F5Size Measure(string text)
         { Vector2 size = font.MeasureString(text); return new F5Size(size.X, size.Y); }
 
-        internal void Draw(F5Interaction state, Matrix matrix, bool biomeEnabled)
+        internal void Draw(F5Interaction state, Matrix matrix, bool biomeEnabled, bool biomeFailed)
         {
             SpriteBatch batch = Main.spriteBatch;
             if (batch == null) throw new InvalidOperationException("F5 SpriteBatch is unavailable.");
@@ -80,10 +80,11 @@ namespace JueMingR.TerrariaHost.F5
                         Text(batch, element.Text, new Vector2(rect.X, rect.Y), element.TextScale,
                             element.Accent ? Color.LightGreen : Color.White);
                     else if (element.Kind == F5ElementKind.BiomeStatus)
-                        Text(batch, biomeEnabled ? "当前：已开启" : "当前：已关闭", new Vector2(rect.X, rect.Y), element.TextScale, Color.White);
+                        Text(batch, biomeFailed ? "当前：不可用" : biomeEnabled ? "当前：已开启" : "当前：已关闭",
+                            new Vector2(rect.X, rect.Y), element.TextScale, Color.White);
                     else
                     {
-                        bool enabled = element.Command != F5Command.None;
+                        bool enabled = element.Command != F5Command.None && !biomeFailed;
                         bool selected = enabled && (element.Command == F5Command.EnableBiome) == biomeEnabled;
                         bool hovered = rect.Contains(state.PointerX, state.PointerY) && view.Contains(state.PointerX, state.PointerY);
                         Panel(batch, rect, button, enabled ? Color.White : new Color(140, 140, 140));
@@ -93,6 +94,12 @@ namespace JueMingR.TerrariaHost.F5
                         if (selected) Fill(batch, new F5Rect(rect.X + 4, rect.Bottom - 3, rect.Width - 8, 2), Color.LightGreen);
                     }
                 }
+                batch.End();
+                contentBatch = false;
+                device.ScissorRectangle = oldScissor;
+                batch.Begin(SpriteSortMode.Deferred, null, null, null, null, null, matrix);
+                contentBatch = true;
+                DrawHint(batch, state, biomeFailed);
             }
             finally
             {
@@ -107,6 +114,19 @@ namespace JueMingR.TerrariaHost.F5
                     batch.Begin(SpriteSortMode.Deferred, null, null, null, null, null, layerMatrix);
                 }
             }
+        }
+
+        private void DrawHint(SpriteBatch batch, F5Interaction state, bool biomeFailed)
+        {
+            if (!state.OwnsPointer) return;
+            F5Element hover = state.HitButton(state.PointerX - state.X, state.PointerY - state.Y);
+            if (hover == null) return;
+            int index = F5Layout.HintIndex(hover, biomeFailed);
+            F5Size size = state.Layout.HintSize(index);
+            float x = Math.Max(state.X + 8, Math.Min(state.X + state.Layout.Window.Width - size.Width - 24, state.PointerX + 14));
+            float y = Math.Max(state.Y + 8, Math.Min(state.Y + state.Layout.Window.Height - size.Height - 24, state.PointerY + 18));
+            Panel(batch, new F5Rect(x, y, size.Width + 16, size.Height + 16), background, Color.White);
+            Text(batch, F5Layout.HintText(index), new Vector2(x + 8, y + 8), 0.65f, Color.White);
         }
 
         private void DrawChrome(SpriteBatch batch, F5Interaction state)

@@ -28,7 +28,7 @@
 | `TerrariaHost/Phase0SLoadChainHost.cs` | 既有 handoff、精确四目标安装与有界 layer 注册 |
 | `TerrariaHost/Phase0TBiomeRuntime.cs` | 将 UI 窄启停命令交给原有唯一 Feature |
 
-群系 Feature/Runtime 仍是唯一开启状态来源。关闭立即清理 ViewModel，停止 Zone observation、文本更新和 Overlay 绘制；重新开启在合适的下一次 Runtime Update 立即观察。UI 不保存第二个群系布尔值。当前状态同时用“当前：已开启/已关闭”文字表示。
+群系 Feature/Runtime 仍是唯一开启及故障状态来源。正常关闭立即清理 ViewModel，停止 Zone observation、文本更新和 Overlay 绘制；重新开启在合适的下一次 Runtime Update 立即观察。Feature 故障保持不可用，拒绝后续开启命令，不自动重试。UI 不保存第二个群系布尔值；状态用“当前：已开启/已关闭/不可用”表示，故障时两个按钮均禁用。
 
 ## 固定 Hook 与已确认时序
 
@@ -47,7 +47,7 @@
 
 ## 指针消费者与恢复
 
-`F5Interaction.OwnsPointer` 是唯一归属判断，来自当前可用/可见状态、实际窗口命中及拖动捕获。NPC prefix 不存第二份遮挡标志，不做反射、日志、文字度量、I/O 或实体扫描。
+`F5Interaction.OwnsPointer` 保存唯一窗口/捕获归属事实；Host 再统一核验当前能否实际呈现 F5。全屏地图、隐藏 UI、Fancy UI、游戏选项、相机、失焦和非单人键鼠模式均关闭 F5；当前地图/相机切换请求也先取消控件与捕获，继续处理已归属按钮的真实释放。NPC prefix 不存第二份遮挡标志，不做反射、日志、文字度量、I/O 或实体扫描。
 
 输入采样使用原版 `MouseInfo`、绝对滚轮派生的 delta、当前 keyState 和冻结 UI matrix；不再次读取真实鼠标或移动鼠标。该 matrix 的逆变换用于指针，正变换用于整个窗口和内容裁切。改变窗口位置只改 origin，滚动只改 offset，页面绘制和控件命中共享同一当前布局。
 
@@ -57,9 +57,9 @@
 | 纯滚轮/快捷栏 | 保存本轮 UI 滚动后清两种 scroll delta，包含短页和顶底边界 | 保留绝对值，不积压或补发；验证实际快捷栏选中格 |
 | NPC/特殊交互 | 第四 prefix 阻止整个 NPC 悬停原体 | 关闭/窗外/无捕获即执行；不改 NPC 或玩家位置、不清其它 noThrow 状态；验证原体命中/交互计数 |
 | 掉落物 | `Mouse Item / NPC Head` 之后、`Mouse Over` 紧前设当前 mouseText 门 | 直到 `Interact Item Icon` 之后收回自身 lease；验证只读 !mouseText 的实际 dropped-item consumer |
-| 上帧气泡/名称 | 首个原版 layer 之前清特定 `currentNPCShowingChatBubble`，认领当前指针 pending text；仍分别阻止 NPC/drop 消费者 | 保留 F5 自己的 hover 文本和正常光标；原版本轮 cache 生命周期负责清理；验证旧气泡是否实际绘制及最终名称 |
+| 上帧气泡/名称 | Update 结束、Emote Bubbles 之前清特定 `currentNPCShowingChatBubble`；经过原版模态早退层后才认领 null pending text；仍分别阻止 NPC/drop 消费者 | F5 自己绘制缓存 hover 文本，正常光标保留；原版本轮 cache 生命周期负责清理；验证旧气泡和最终名称，以及中途开启相机的原版提示 |
 
-四个 F5 layer 分别紧邻 `Interface Logic 1` 前、`Cursor` 前、`Mouse Over` 前和 `Interface Logic 4` 前。世界绘制会重置 mouseInterface，中间层还会重置 mouseText，因此更新期门和晚绘制期门不能互相替代。后者覆盖窗口下方同一鼠标位置的玩家、标牌、资源条等提示；保留常驻 Overlay、群系、伤害数字、正常光标与世界更新。不干预掉落物生成、拾取或背包。
+四个 F5 layer 分别紧邻 `Achievement Complete Popups` 前、`Cursor` 前、`Mouse Over` 前和 `Interface Logic 4` 前。第一个位于 Capture/Ingame Options/Fancy UI 之后，避免原版中途停止 layer 枚举时留下 F5 的 pending-text 锁。世界绘制会重置 mouseInterface，中间层还会重置 mouseText，因此更新期门和晚绘制期门不能互相替代。后者覆盖窗口下方同一鼠标位置的玩家、标牌、资源条等提示；保留常驻 Overlay、群系、伤害数字、正常光标与世界更新。不干预掉落物生成、拾取或背包。
 
 mouseInterface/mouseText lease 保存进入时值，在有限消费区间后恢复；绘制前置门不横跨其它原版 UI 的合法 mouseInterface 写入。下一次采样及故障路径兜底收回自身 lease。手柄/fast-use 模式不开放 F5 键鼠窗口，不交换库存以处理该模式。
 
@@ -67,7 +67,7 @@ mouseInterface/mouseText lease 保存进入时值，在有限消费区间后恢�
 
 字体使用 `FontAssets.MouseText.Value`；面板/按钮读取当前 `SettingsPanel`、`InventoryBack13`、`InventoryBack` 及 `MagicPixel`。不复制游戏资产，不按纹理尺寸改变几何，不新建通用主题树。绘制跟随当前纹理表面；不可用面板局部降级为有限中性色块。游戏资产不由 F5 Dispose。
 
-皮肤身份与字体度量分别失效。字体值被替换时有界重测已缓存固定文本，只有实际宽高变化才重排；相同度量保持 layout generation。当前页固定文字最多 1024 个缓存项，无隐藏页更新。稳态无 MeasureString、布局重建、文件 I/O、反射扫描或逐帧日志。关闭窗口不布局、度量或绘制；释放 F5 自有 RasterizerState 不影响游戏资源。
+皮肤身份与字体度量分别失效。字体值被替换时有界重测已缓存固定文本，只有实际宽高变化才重排；相同度量保持 layout generation。当前页固定文字及四种 hover 提示最多 1024 个缓存项，无隐藏页更新。F5 提示尺寸在布局阶段缓存，由自身 renderer 绘制；不把非空提示交给会逐帧 MeasureString 的原版 pending-text 消费者。稳态无文字测量、布局重建、文件 I/O、反射扫描或逐帧日志。关闭窗口不布局、度量或绘制；释放 F5 自有 RasterizerState 不影响游戏资源。
 
 绘制在自身批次中使用冻结 matrix，内容裁切只施加于 viewport。finally 恢复实际 ScissorRectangle、RasterizerState、BlendState、DepthStencilState、SamplerState 及原版 layer 的 SpriteBatch Begin 契约。F5 局部异常关闭窗口、收回自身状态，在后续更新给出一次普通文字提示，不卸载整个 Harmony owner，不拆核心 handoff 或群系功能。
 
@@ -76,6 +76,8 @@ mouseInterface/mouseText lease 保存进入时值，在有限消费区间后恢�
 既有 `scripts/test-phase0s.ps1` 纳入 Phase 0-U 生产布局/输入检查及实际加载 Host 的 fixture 集成：同一次安装的两个独立进程、原有五事件 evidence、群系 cadence/生命周期、准确四目标集合和 TEMP 安装/恢复继续保留。
 
 fixture 消费者严格保留关键顺序：采样 → 生产 input postfix → 实际使用/热栏；Draw 重置 → 旧气泡先绘后清 → 中间 mouseText 重置 → production hover gate → 掉落物 loop → production NPC prefix/原体。断言动作与最终输出，不以 flag 或 prefix 返回值代替行为。
+
+模态回归分别模拟完全跳过 DrawInterface、前置层返回 false，以及 Capture 层内当帧开启；验证新输入到达原版消费者、隐藏的已按下按钮不在松开时执行、原版相机提示仍绘制、结束后 F5 可重新打开。独立进程验证真实群系故障后点击开启仍显示不可用；既有 F5 局部故障保留健康群系的场景继续独立运行。测试 evidence 轮询及并发失败快照以 FileShare.ReadWrite 读取，受控检查在读句柄仍打开时执行生产 writer；使用原有有界状态等待，区分事件 3 写入与 Bootstrap 真正完成，再执行唯一首个受控 Update，事件断言不变。此前一次缺失底层 evidence 的启动超时仍原因未知，不能由共享读取修正倒推其原因。
 
 图形 fixture 创建隐藏测试窗口及真实 XNA GraphicsDevice，使用生成的测试字体/纹理执行生产 renderer；验证普通/异常裁切收尾。它不启动 Terraria，不证明实际中文资源包视觉。Debug/Release、架构、fixture 和包字节复现均为本地证据；FPS、慢帧和实际输入隔离必须分别记录，未实机时不能报告“彻底修复”。
 

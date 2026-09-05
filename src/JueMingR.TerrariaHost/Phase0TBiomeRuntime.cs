@@ -14,6 +14,8 @@ namespace JueMingR.TerrariaHost
         {
             var worldReader = new TerrariaBiomeWorldReader();
             feature = new BiomeDisplayFeature(worldReader, enabled);
+            // false here means an earlier Host failure, not a user's off choice.
+            if (!enabled) feature.FailClosed();
             runtime = new SingleFeatureRuntime(worldReader, feature);
         }
 
@@ -41,6 +43,8 @@ namespace JueMingR.TerrariaHost
         {
             feature.FailClosed();
         }
+
+        internal bool FeatureFailed { get { return feature.HasFailed; } }
 
         internal void SetFeatureEnabled(bool enabled) { feature.SetEnabled(enabled); }
 

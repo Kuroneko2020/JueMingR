@@ -537,7 +537,7 @@ namespace JueMingR.TerrariaHost
             if (layers == null) return;
             try
             {
-                InsertF5Layer(layers, "JueMingR: F5 Pointer Begin", "Vanilla: Interface Logic 1", F5PointerBegin);
+                InsertF5Layer(layers, "JueMingR: F5 Pointer Begin", "Vanilla: Achievement Complete Popups", F5PointerBegin);
                 InsertF5Layer(layers, "JueMingR: F5 Window", "Vanilla: Cursor", F5Window);
                 InsertF5Layer(layers, "JueMingR: F5 Hover Gate", "Vanilla: Mouse Over", F5HoverGate);
                 InsertF5Layer(layers, "JueMingR: F5 Pointer End", "Vanilla: Interface Logic 4", F5PointerEnd);

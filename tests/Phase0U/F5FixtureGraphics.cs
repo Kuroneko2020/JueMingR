@@ -88,6 +88,7 @@ namespace Terraria
     {
         internal static bool ThrowF5Text;
         internal static int F5TextDraws;
+        internal static int F5HintDraws, UnavailableDraws;
         public static void DrawSplicedPanel(SpriteBatch batch, Texture2D texture, int x, int y, int width, int height,
             int left, int right, int top, int bottom, Color color)
         { batch.Draw(texture, new Rectangle(x, y, width, height), color); }
@@ -97,6 +98,9 @@ namespace Terraria
             // Fault after headers, inside the clipped content batch.
             if (ThrowF5Text && text == "敌怪显名") throw new InvalidOperationException("Controlled F5 content draw failure.");
             F5TextDraws++;
+            if (text == "开启群系显示" || text == "关闭群系显示" || text == "结构占位 · 未接入" ||
+                text == "群系显示暂不可用") F5HintDraws++;
+            if (text == "当前：不可用") UnavailableDraws++;
             batch.DrawString(font, text, new Vector2(x, y), textColor, 0, origin, scale, SpriteEffects.None, 0);
         }
     }

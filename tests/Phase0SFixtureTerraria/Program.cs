@@ -212,6 +212,7 @@ namespace Terraria
                 }
                 if (args.Length != 3 ||
                     (args[0] != "expect-handoff" &&
+                     args[0] != "expect-handoff-biome-failure" &&
                      args[0] != "expect-no-handoff" &&
                      args[0] != "expect-evidence-init-failure" &&
                      !args[0].StartsWith("driver-", StringComparison.Ordinal)))
@@ -221,6 +222,7 @@ namespace Terraria
                 }
 
                 string mode = args[0];
+                bool expectHandoff = mode == "expect-handoff" || mode == "expect-handoff-biome-failure";
                 string evidencePath = Path.GetFullPath(args[1]);
                 string packageId = args[2];
                 if (String.IsNullOrWhiteSpace(packageId))
@@ -246,9 +248,11 @@ namespace Terraria
                 var main = new Main();
                 global::Terraria.Main.ConfigureDesertWorld();
                 byte[] evidenceAfterFirstUpdate = null;
-                if (mode == "expect-handoff")
+                if (expectHandoff)
                 {
                     WaitForEvidenceEvent(evidencePath, "HOOK_INSTALLED");
+                    // Event 3 precedes hookCommitted and the worker's return.
+                    WaitForBootstrapState(AppDomain.CurrentDomain.DomainManager, "Installed");
                     main.RunUpdateLoop(1);
                     WaitForEvidenceEvent(evidencePath, "RUNTIME_HANDOFF_COMPLETE");
                     evidenceAfterFirstUpdate = File.ReadAllBytes(evidencePath);
@@ -281,7 +285,8 @@ namespace Terraria
                     main.DrawBiomeLayer();
                     AssertBiomeDraw("群系: 雪原", 4);
 
-                    F5ConsumerChecks.Run(main);
+                    F5ConsumerChecks.Run(main, mode == "expect-handoff-biome-failure");
+                    AssertEvidenceReaderAllowsAppend(evidencePath, packageId);
 
                     global::Terraria.Main.FixtureThrowOnDraw = true;
                     main.DrawBiomeLayer();
@@ -302,9 +307,9 @@ namespace Terraria
                 }
 
                 string[] evidenceLines = File.Exists(evidencePath)
-                    ? File.ReadAllLines(evidencePath)
+                    ? ReadEvidenceLines(evidencePath)
                     : new string[0];
-                if (mode == "expect-handoff")
+                if (expectHandoff)
                 {
                     AssertCompleteHandoff(
                         evidenceLines,
@@ -474,7 +479,7 @@ namespace Terraria
                 runUpdateLoop.Invoke(instance, new object[] { 1 });
                 WaitForEvidenceEvent(evidencePath, "RUNTIME_HANDOFF_COMPLETE");
                 AssertCompleteHandoff(
-                    File.ReadAllLines(evidencePath),
+                    ReadEvidenceLines(evidencePath),
                     packageId,
                     Thread.CurrentThread.ManagedThreadId,
                     Thread.CurrentThread.ManagedThreadId);
@@ -504,7 +509,7 @@ namespace Terraria
                         evidenceAfterFailure,
                         File.ReadAllBytes(evidencePath),
                         "A handoff append failure retried or changed evidence.");
-                    AssertHandoffFailureEvidence(File.ReadAllLines(evidencePath), packageId);
+                    AssertHandoffFailureEvidence(ReadEvidenceLines(evidencePath), packageId);
                 }
                 else
                 {
@@ -534,21 +539,21 @@ namespace Terraria
                 WaitForEvidenceError(evidencePath);
                 AssertBootstrapSchedulingState(manager, "Failed");
                 string[] lines = File.Exists(evidencePath)
-                    ? File.ReadAllLines(evidencePath)
+                    ? ReadEvidenceLines(evidencePath)
                     : new string[0];
                 AssertSingleWorkerFailure(lines, packageId);
-                byte[] failedEvidence = File.ReadAllBytes(evidencePath);
+                byte[] failedEvidence = ReadEvidenceBytes(evidencePath);
                 InvokeObservedAssembly(manager, target);
                 InvokeObservedAssembly(manager, driverReLogic);
                 Thread.Sleep(250);
                 AssertBytesEqual(
                     failedEvidence,
-                    File.ReadAllBytes(evidencePath),
+                    ReadEvidenceBytes(evidencePath),
                     "A permanently failed install retried or changed evidence.");
             }
             else
             {
-                AssertNoHookSuccess(File.Exists(evidencePath) ? File.ReadAllLines(evidencePath) : new string[0]);
+                AssertNoHookSuccess(File.Exists(evidencePath) ? ReadEvidenceLines(evidencePath) : new string[0]);
                 AssertBootstrapSchedulingState(manager, "Failed", mode == "driver-relogic-never");
             }
         }
@@ -575,7 +580,7 @@ namespace Terraria
 
         private static void SimulateEvent5AppendFailure(string evidencePath, string packageId)
         {
-            string[] complete = File.ReadAllLines(evidencePath);
+            string[] complete = ReadEvidenceLines(evidencePath);
             AssertCompleteHandoff(
                 complete,
                 packageId,
@@ -908,7 +913,7 @@ namespace Terraria
             string[] lines;
             try
             {
-                lines = File.ReadAllLines(evidencePath);
+                lines = ReadEvidenceLines(evidencePath);
             }
             catch (IOException)
             {
@@ -927,6 +932,42 @@ namespace Terraria
             return false;
         }
 
+        private static FileStream OpenEvidenceReader(string path)
+        { return new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite); }
+
+        private static string[] ReadEvidenceLines(string path)
+        {
+            using (var reader = new StreamReader(OpenEvidenceReader(path)))
+                return reader.ReadToEnd().Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        }
+
+        private static byte[] ReadEvidenceBytes(string path)
+        {
+            using (FileStream reader = OpenEvidenceReader(path))
+            using (var bytes = new MemoryStream())
+            { reader.CopyTo(bytes); return bytes.ToArray(); }
+        }
+
+        private static void AssertEvidenceReaderAllowsAppend(string evidencePath, string packageId)
+        {
+            string path = Path.GetTempFileName();
+            try
+            {
+                File.WriteAllText(path, ReadEvidenceLines(evidencePath)[0] + Environment.NewLine, new System.Text.UTF8Encoding(false));
+                Type writer = null;
+                foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+                    if (assembly.GetName().Name == "JueMingR.TerrariaHost")
+                        writer = assembly.GetType("JueMingR.TerrariaHost.EvidenceWriter", true);
+                using (FileStream reader = OpenEvidenceReader(path))
+                    writer.GetMethod("AppendEvent", BindingFlags.Static | BindingFlags.NonPublic)
+                        .Invoke(null, new object[] { path, packageId, 2, "HARMONY_READY" });
+                if (!HasEvidenceEvent(path, "HARMONY_READY"))
+                    throw new InvalidOperationException("Concurrent evidence append was not visible to the poll reader.");
+                Console.WriteLine("PASS: production evidence writer appended while the poll reader remained open.");
+            }
+            finally { File.Delete(path); }
+        }
+
         private static void WaitForEvidenceError(string evidencePath)
         {
             Stopwatch stopwatch = Stopwatch.StartNew();
@@ -936,7 +977,7 @@ namespace Terraria
                 {
                     if (File.Exists(evidencePath))
                     {
-                        foreach (string line in File.ReadAllLines(evidencePath))
+                        foreach (string line in ReadEvidenceLines(evidencePath))
                         {
                             string[] fields = line.Split('|');
                             if (fields.Length >= 4 && fields[3] == "ERROR")
@@ -1025,6 +1066,9 @@ namespace Terraria
 
         private static void AssertBootstrapSchedulingState(object manager, string expectedState)
         {
+            // Host evidence is flushed before the worker returns to Bootstrap.
+            // Observe that separate completion through the existing bounded wait.
+            WaitForBootstrapState(manager, expectedState);
             AssertBootstrapSchedulingState(manager, expectedState, false);
         }
 

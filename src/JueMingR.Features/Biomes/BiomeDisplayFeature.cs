@@ -32,6 +32,8 @@ namespace JueMingR.Features.Biomes
             get { return enabled; }
         }
 
+        public bool HasFailed { get; private set; }
+
         public BiomeDisplayViewModel CurrentViewModel
         {
             get { return currentViewModel; }
@@ -39,7 +41,7 @@ namespace JueMingR.Features.Biomes
 
         public void SetEnabled(bool value)
         {
-            if (enabled == value)
+            if (HasFailed || enabled == value)
             {
                 return;
             }
@@ -108,6 +110,7 @@ namespace JueMingR.Features.Biomes
 
         public void FailClosed()
         {
+            HasFailed = true;
             enabled = false;
             sessionActive = false;
             observeImmediately = false;

@@ -7,7 +7,7 @@ namespace Terraria
 {
     internal static class F5ConsumerChecks
     {
-        internal static void Run(Main main)
+        internal static void Run(Main main, bool biomeFailure = false)
         {
             using (var graphics = new F5FixtureGraphics())
             {
@@ -48,6 +48,7 @@ namespace Terraria
                 Main.SampleRight = false; Main.SpecialNpc = false;
                 object state = State();
                 object layout = Get(state, "Layout");
+                CheckNativeModes(main, state);
                 int generation = (int)Get(layout, "Generation"), measurements = (int)Get(layout, "MeasurementCount");
                 for (int i = 0; i < 12; i++) Frame(main, 1850, 900);
                 Check((int)Get(layout, "Generation") == generation && (int)Get(layout, "MeasurementCount") == measurements,
@@ -72,6 +73,13 @@ namespace Terraria
                     "real biome feature must stop both observation and drawing after the off button");
                 ClickBiome(main, state, "EnableBiome");
                 Check(Main.FixtureDrawCount > biomeDraws, "real biome feature must resume after the on button");
+                measurements = Main.PendingMeasurements;
+                int hints = Utils.F5HintDraws;
+                int layoutMeasurements = (int)Get(layout, "MeasurementCount");
+                for (int i = 0; i < 12; i++) Frame(main, Main.SampleX, Main.SampleY);
+                Check(Main.PendingMeasurements == measurements && Utils.F5HintDraws > hints &&
+                    (int)Get(layout, "MeasurementCount") == layoutMeasurements,
+                    "steady F5 hover must draw its own hint without layout or native pending-text measurement");
 
                 // Dragging uses the same geometry and must not rebuild layout.
                 generation = (int)Get(layout, "Generation");
@@ -135,6 +143,19 @@ namespace Terraria
                 Check((int)Get(layout, "Generation") == generation + 1, "actual font replacement invalidates layout once");
                 // Reset scroll to top so the controlled failure is inside content.
                 FrameLocal(main, state, 100, 200, false, 12000);
+                if (biomeFailure)
+                {
+                    Main.FixtureThrowOnDraw = true; main.DrawBiomeLayer(); Main.FixtureThrowOnDraw = false;
+                    observations = Main.FixtureZoneReadCount; biomeDraws = Main.FixtureDrawCount;
+                    int unavailable = Utils.UnavailableDraws;
+                    ClickBiome(main, state, "EnableBiome");
+                    for (int i = 0; i < 35; i++) Frame(main, Main.SampleX, Main.SampleY);
+                    Check(Main.FixtureZoneReadCount == observations && Main.FixtureDrawCount == biomeDraws &&
+                        Utils.UnavailableDraws > unavailable && (bool)Get(state, "Visible"),
+                        "failed biome cannot be falsely enabled; F5 must remain usable and draw unavailable status");
+                    Console.WriteLine("PASS: failed biome remains unavailable after the real F5 enable action.");
+                    return;
+                }
                 int cursor = Main.CursorDraws, damage = Main.DamageDraws;
                 biomeDraws = Main.FixtureDrawCount;
                 Utils.ThrowF5Text = true; FrameLocal(main, state, 100, 200);
@@ -146,6 +167,40 @@ namespace Terraria
                 Check(Main.NpcHits > npc && Main.DropHits > drop, "F5 failure must not permanently intercept hover");
                 Console.WriteLine("PASS: Phase 0-U real Host consumers, biome controls, lifecycle, cache and XNA state restoration.");
             }
+        }
+        private static void CheckNativeModes(Main main, object state)
+        {
+            Action<bool>[] modes = { value => Main.mapFullscreen = value, value => Main.hideUI = value,
+                value => Main.onlyDrawFancyUI = value, value => Main.ingameOptionsWindow = value,
+                value => Main.inFancyUI = value, value => Graphics.Capture.CaptureManager.Instance.Active = value };
+            foreach (Action<bool> setMode in modes)
+            {
+                // Arm a real biome command, then hide the window before release.
+                ClickBiome(main, state, "EnableBiome");
+                ClickBiome(main, state, "DisableBiome", false);
+                int draws = Utils.F5TextDraws;
+                setMode(true);
+                Frame(main, Main.SampleX, Main.SampleY); // the owned release is drained
+                int clicks = Main.NativeClicks, wheel = Main.NativeWheel;
+                Frame(main, Main.SampleX, Main.SampleY, true, 120);
+                Check(!(bool)Get(state, "Visible") && Utils.F5TextDraws == draws &&
+                    Main.NativeClicks == clicks + 1 && Main.NativeWheel == wheel + 1,
+                    "a native mode that skips F5 drawing must receive new input and close the hidden window");
+                setMode(false); Frame(main, 1850, 900);
+                Main.SampleF5 = true; Frame(main, 1850, 900); Main.SampleF5 = false;
+                Check((bool)Get(state, "Visible"), "F5 must reopen normally after the native mode ends");
+                int biomeDraws = Main.FixtureDrawCount; Frame(main, 1850, 900);
+                Check(Main.FixtureDrawCount > biomeDraws, "a hidden armed disable button must not execute on release");
+            }
+            FrameLocal(main, state, 100, 200);
+            Main.SampleCapture = true;
+            int nativeClicks = Main.NativeClicks;
+            FrameLocal(main, state, 100, 200, true, 120);
+            Check(!(bool)Get(state, "Visible") && Main.DrawnText == "CAPTURE" && Main.NativeClicks == nativeClicks + 1,
+                "same-frame capture activation must retain native input and its actual pending tooltip");
+            Main.SampleCapture = false; Graphics.Capture.CaptureManager.Instance.Active = false;
+            Frame(main, 1850, 900);
+            Main.SampleF5 = true; Frame(main, 1850, 900); Main.SampleF5 = false;
         }
         private static object State()
         {
@@ -172,7 +227,7 @@ namespace Terraria
             (int)(((float)Get(state, "Y") + y) * Main.UIScaleMatrix.M22), left, wheel); }
         private static void ClickLocal(Main main, object state, float x, float y)
         { FrameLocal(main, state, x, y, true); FrameLocal(main, state, x, y); }
-        private static void ClickBiome(Main main, object state, string command)
+        private static void ClickBiome(Main main, object state, string command, bool release = true)
         {
             object layout = Get(state, "Layout"), element = null;
             foreach (object candidate in (IEnumerable)Get(layout, "Elements"))
@@ -182,8 +237,10 @@ namespace Terraria
             float y = (float)Get(rect, "Y") + (float)Get(rect, "Height") / 2;
             for (int i = 0; i < 25 && y - (float)Get(state, "Scroll") > (float)Get(view, "Height") - 10; i++)
                 FrameLocal(main, state, 100, 200, false, -120);
-            ClickLocal(main, state, (float)Get(view, "X") + (float)Get(rect, "X") + (float)Get(rect, "Width") / 2,
-                (float)Get(view, "Y") + y - (float)Get(state, "Scroll"));
+            float x = (float)Get(view, "X") + (float)Get(rect, "X") + (float)Get(rect, "Width") / 2;
+            float localY = (float)Get(view, "Y") + y - (float)Get(state, "Scroll");
+            FrameLocal(main, state, x, localY, true);
+            if (release) FrameLocal(main, state, x, localY);
         }
         private static void Check(bool value, string message) { if (!value) throw new InvalidOperationException(message); }
     }

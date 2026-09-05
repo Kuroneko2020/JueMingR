@@ -509,10 +509,16 @@ function Invoke-Phase0SLoadChainFixtureTests {
         foreach ($line in $secondLaunchResult.output) {
             Write-Host $line
         }
+        if ($secondLaunchResult.exitCode -ne 0 -and [System.IO.File]::Exists($success.evidencePath)) {
+            Get-Content -LiteralPath $success.evidencePath | ForEach-Object { Write-Host ('FAILED_SECOND_LAUNCH_EVIDENCE: ' + $_) }
+        }
         Assert-Phase0SCondition -Condition ($secondLaunchResult.exitCode -eq 0) -Message "second process in the same installed fixture: expected exit 0, actual $($secondLaunchResult.exitCode)."
         $secondEvidenceHash = Get-Phase0SFileSha256 -Path $success.evidencePath
         Assert-Phase0SCondition -Condition ($secondEvidenceHash -cne $firstEvidenceHash) -Message 'The second process reused stale first-process evidence instead of starting a fresh current run.'
         Write-Host 'PASS: one installed fixture completed two independent process launches with fresh evidence.'
+        $biomeFailureResult = Invoke-Phase0SFixtureExe -FixtureExe $success.exePath -Mode 'expect-handoff-biome-failure' -EvidencePath $success.evidencePath -PackageId $success.packageId
+        foreach ($line in $biomeFailureResult.output) { Write-Host $line }
+        Assert-Phase0SCondition -Condition ($biomeFailureResult.exitCode -eq 0) -Message 'Dedicated biome-failure process must preserve unavailable state after F5 enable.'
 
         foreach ($staleKind in @('partial', 'zero')) {
             $staleRun = New-Phase0SFixtureRunDirectory -Root $root -Name ('stale-' + $staleKind) -FixtureExe $fixtureExe -ProductionOutputs $productionOutputs -HarmonyPath $harmonyPath -PackageId ('phase0s-fixture-' + [Guid]::NewGuid().ToString('N')) -SourceCommit $sourceCommit

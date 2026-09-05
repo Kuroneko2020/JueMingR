@@ -47,6 +47,8 @@ namespace JueMingR.TerrariaHost.F5
         internal static readonly string[] Pages =
         { "物品", "杂项", "地图", "查询", "笔记", "关于", "蓝图", "钓鱼", "战斗", "信息", "增益", "移动" };
         internal const string Placeholder = "结构占位 · 未接入";
+        private static readonly string[] Hints = { Placeholder, "开启群系显示", "关闭群系显示", "群系显示暂不可用" };
+        private readonly F5Size[] hintSizes = new F5Size[Hints.Length];
         private readonly Dictionary<string, F5Size> textSizes = new Dictionary<string, F5Size>(StringComparer.Ordinal);
         private readonly List<F5Element> elements = new List<F5Element>(160);
         private readonly F5Size[] navSizes = new F5Size[12];
@@ -103,6 +105,12 @@ namespace JueMingR.TerrariaHost.F5
             ContentPanel = new F5Rect(12, 131, 556, size.Height - 143);
             Viewport = new F5Rect(20, 139, 522, size.Height - 159);
             TitleSize = TextSize("JueMingR", 0.75f);
+            for (int i = 0; i < Hints.Length; i++)
+            {
+                hintSizes[i] = TextSize(Hints[i], 0.65f);
+                if (hintSizes[i].Width > Window.Width - 32 || hintSizes[i].Height > Window.Height - 32)
+                    throw new InvalidOperationException("F5 hover text cannot fit its window.");
+            }
             if (TitleSize.Height > 26) throw new InvalidOperationException("F5 title font exceeds the approved title bar.");
             for (int i = 0; i < Pages.Length; i++)
             {
@@ -123,6 +131,10 @@ namespace JueMingR.TerrariaHost.F5
         internal F5Rect Navigation(int index)
         { return new F5Rect(12 + index % 6 * (560f / 6), 46 + index / 6 * 40, 560f / 6 - 4, 32); }
         internal F5Size NavigationSize(int index) { return navSizes[index]; }
+        internal static int HintIndex(F5Element element, bool biomeFailed)
+        { return element.Command == F5Command.None ? 0 : biomeFailed ? 3 : element.Command == F5Command.EnableBiome ? 1 : 2; }
+        internal static string HintText(int index) { return Hints[index]; }
+        internal F5Size HintSize(int index) { return hintSizes[index]; }
         internal F5Rect ScrollTrack { get { return new F5Rect(550, 139, 10, Viewport.Height); } }
         internal F5Rect ScrollThumb(float scroll)
         {
@@ -194,7 +206,9 @@ namespace JueMingR.TerrariaHost.F5
                 if (biome)
                 {
                     F5Size on = TextSize("当前：已开启", 0.46f), off = TextSize("当前：已关闭", 0.46f);
-                    F5Size statusSize = new F5Size(Math.Max(on.Width, off.Width), Math.Max(on.Height, off.Height));
+                    F5Size unavailable = TextSize("当前：不可用", 0.46f);
+                    F5Size statusSize = new F5Size(Math.Max(Math.Max(on.Width, off.Width), unavailable.Width),
+                        Math.Max(Math.Max(on.Height, off.Height), unavailable.Height));
                     if (statusSize.Width > textWidth) throw new InvalidOperationException("F5 biome status cannot fit its row.");
                     elements.Add(new F5Element(F5ElementKind.BiomeStatus, new F5Rect(x + 8, labelY, statusSize.Width, statusSize.Height),
                         null, statusSize, 0.46f, F5Command.None, false));

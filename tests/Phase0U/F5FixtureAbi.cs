@@ -15,18 +15,20 @@ namespace Terraria
     {
         public static Main instance;
         public static bool dedServ, mouseLeft, mouseRight, mouseText, blockMouse, HoveringOverAnNPC;
+        public static bool mapFullscreen, hideUI, onlyDrawFancyUI, ingameOptionsWindow, inFancyUI;
         public static int netMode;
         public static KeyboardState keyState;
         public static Matrix UIScaleMatrix { get; set; } = Matrix.Identity;
         public int currentNPCShowingChatBubble = -1;
         public static int UseCount, TileUseCount, SelectedSlot, NpcHits, DropHits, SpecialInteractions, BubbleDraws, CursorDraws, DamageDraws;
-        internal static bool SampleLeft, SampleRight, SampleF5;
+        internal static bool SampleLeft, SampleRight, SampleF5, SampleCapture;
         internal static int SampleX = 1850, SampleY = 900, SampleWheel;
         internal static bool SpecialNpc;
         internal static string PendingText, DrawnText;
         internal static bool PendingLocked;
         internal static bool OtherUiHover;
-        internal const int VanillaLayerCount = 11;
+        internal static int NativeClicks, NativeWheel, PendingMeasurements;
+        internal const int VanillaLayerCount = 15;
 
         public Main() { instance = this; }
 
@@ -34,6 +36,11 @@ namespace Terraria
         {
             PendingText = null; PendingLocked = false; // MouseOversClear before input.
             DoUpdate_HandleInput();
+            if (NativeMode || SampleCapture)
+            {
+                if (GameInput.PlayerInput.Triggers.Current.MouseLeft) NativeClicks++;
+                NativeWheel += GameInput.PlayerInput.ScrollWheelDeltaForUI / 120;
+            }
             if (LocalPlayer == null) return;
             LocalPlayer.controlUseItem = GameInput.PlayerInput.Triggers.Current.MouseLeft && !blockMouse && !LocalPlayer.mouseInterface;
             LocalPlayer.controlUseTile = GameInput.PlayerInput.Triggers.Current.MouseRight && !blockMouse && !LocalPlayer.mouseInterface;
@@ -52,6 +59,7 @@ namespace Terraria
             input.JustReleased.MouseRight = !SampleRight && input.Current.MouseRight;
             input.Current.MouseLeft = FocusHelper.AllowInputProcessing && SampleLeft;
             input.Current.MouseRight = FocusHelper.AllowInputProcessing && SampleRight;
+            input.Current.ToggleCameraMode = SampleCapture;
             mouseLeft = input.Current.MouseLeft; mouseRight = input.Current.MouseRight;
             GameInput.PlayerInput.ScrollWheelValueOld = GameInput.PlayerInput.ScrollWheelValue;
             GameInput.PlayerInput.ScrollWheelValue += SampleWheel;
@@ -90,6 +98,15 @@ namespace Terraria
                 new UI.LegacyGameInterfaceLayer("Vanilla: Interface Logic 1", AlwaysContinue),
                 new UI.LegacyGameInterfaceLayer("Vanilla: Emote Bubbles", () =>
                 { if (currentNPCShowingChatBubble >= 0) BubbleDraws++; currentNPCShowingChatBubble = -1; DamageDraws++; return true; }),
+                new UI.LegacyGameInterfaceLayer("Vanilla: Capture Manager Check", () =>
+                {
+                    if (SampleCapture) Graphics.Capture.CaptureManager.Instance.Active = true;
+                    if (Graphics.Capture.CaptureManager.Instance.Active) MouseTextNoLock("CAPTURE");
+                    return !Graphics.Capture.CaptureManager.Instance.Active;
+                }),
+                new UI.LegacyGameInterfaceLayer("Vanilla: Ingame Options", () => !ingameOptionsWindow),
+                new UI.LegacyGameInterfaceLayer("Vanilla: Fancy UI", () => !inFancyUI),
+                new UI.LegacyGameInterfaceLayer("Vanilla: Achievement Complete Popups", AlwaysContinue),
                 new UI.LegacyGameInterfaceLayer("Vanilla: Map / Minimap", AlwaysContinue, UI.InterfaceScaleType.UI),
                 new UI.LegacyGameInterfaceLayer("Vanilla: Interface Logic 2", () => { mouseText = false; return true; }),
                 new UI.LegacyGameInterfaceLayer("Vanilla: Mouse Text", () =>
@@ -113,6 +130,7 @@ namespace Terraria
         {
             LocalPlayer.mouseInterface = false; // DoDraw reset, after the update hook.
             DrawnText = null;
+            if (mapFullscreen || hideUI || onlyDrawFancyUI) return; // DoDraw skips DrawInterface altogether.
             foreach (UI.GameInterfaceLayer layer in _gameInterfaceLayers)
             {
                 spriteBatch.Begin(Microsoft.Xna.Framework.Graphics.SpriteSortMode.Deferred, null, null, null, null, null, UIScaleMatrix);
@@ -131,14 +149,36 @@ namespace Terraria
                 if (!next) break;
             }
             DrawnText = PendingText;
+            if (PendingText != null)
+            {
+                // DrawPendingMouseText -> MouseTextInner measures non-null text.
+                GameContent.FontAssets.MouseText.Value.MeasureString(PendingText);
+                PendingMeasurements++;
+            }
             PendingLocked = false;
         }
+
+        internal static bool NativeMode { get { return mapFullscreen || hideUI || onlyDrawFancyUI ||
+            ingameOptionsWindow || inFancyUI || Graphics.Capture.CaptureManager.Instance.Active; } }
+    }
+}
+
+namespace Terraria.Graphics.Capture
+{
+    public class CaptureManager
+    {
+        public static CaptureManager Instance = new CaptureManager();
+        public bool Active { get; set; }
     }
 }
 
 namespace Terraria.GameInput
 {
-    public class TriggersSet { public bool MouseLeft { get; set; } public bool MouseRight { get; set; } }
+    public class TriggersSet
+    {
+        public bool MouseLeft { get; set; } public bool MouseRight { get; set; }
+        public bool MapFull { get; set; } public bool ToggleCameraMode { get; set; }
+    }
     public class TriggersPack
     {
         public TriggersSet Current = new TriggersSet(), JustPressed = new TriggersSet(), JustReleased = new TriggersSet();
