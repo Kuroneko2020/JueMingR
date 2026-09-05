@@ -45,12 +45,17 @@ namespace Terraria
                         Render(graphics, renderer, outputDirectory, "default-information-off", 9, 1, 0, false);
                         Render(graphics, renderer, outputDirectory, "default-information-unavailable", 9, 1, 0, false, true);
                         Render(graphics, renderer, outputDirectory, "default-fishing", 7, 1, 0);
+                        // Synthetic 24-high glyphs exercise a 0.6-unit surface inset;
+                        // this is a geometric stress case, not a real font-pack claim.
+                        GameContent.FontAssets.MouseText = graphics.Asset("synthetic-fractional-font", graphics.CreateFont(10, 24));
+                        Render(graphics, renderer, outputDirectory, "synthetic-fractional-font-information", 9, 1, 0);
+                        GameContent.FontAssets.MouseText = graphics.Asset("actual-mouse-font", font);
                         Render(graphics, renderer, outputDirectory, "default-scale150", 9, 1.5f, 240);
                         CheckSkinAndLifetime(graphics, renderer, inventory, outputDirectory);
                         Console.WriteLine("PASS: production F5 offline previews with local XNB font and surface; owner visual acceptance remains pending.");
                     }
                 }
-                }
+            }
             catch (Exception error) { Console.Error.WriteLine(error.ToString()); throw; }
         }
 
@@ -156,7 +161,7 @@ namespace Terraria
                 if (isGreen) green++; else red++;
                 F5InputChecks.Check(!failed && surface.Contains(x + 0.5f, y + 0.5f),
                     "state-colored pixels belong only to the button named for the real state, never the function label or other button");
-                CheckSkinInterior(source, skin, surface, x, y);
+                CheckSkinInterior(source, skin, surface, x, y, true);
                 minX = Math.Min(minX, x); maxX = Math.Max(maxX, x);
             }
             F5InputChecks.Check(failed ? green == 0 && red == 0 : enabled ? green > 0 && red == 0 : red > 0 && green == 0,
@@ -182,16 +187,21 @@ namespace Terraria
             }
         }
 
-        private static void CheckSkinInterior(Color[] pixels, Texture2D skin, F5Rect surface, int x, int y)
+        private static void CheckSkinInterior(Color[] pixels, Texture2D skin, F5Rect surface, int x, int y,
+            bool fractionalSurface = false)
         {
-            int sx = SourceCoordinate(x + 0.5f - (int)surface.X, (int)surface.Width, skin.Width);
-            int sy = SourceCoordinate(y + 0.5f - (int)surface.Y, (int)surface.Height, skin.Height);
+            float left = fractionalSurface ? surface.X : (int)surface.X;
+            float top = fractionalSurface ? surface.Y : (int)surface.Y;
+            float width = fractionalSurface ? surface.Width : (int)surface.Width;
+            float height = fractionalSurface ? surface.Height : (int)surface.Height;
+            int sx = SourceCoordinate(x + 0.5f - left, width, skin.Width);
+            int sy = SourceCoordinate(y + 0.5f - top, height, skin.Height);
             Color original = pixels[sy * skin.Width + sx];
             F5InputChecks.Check(original.A > 200 && original.R + original.G + original.B > 30,
                 "underline pixels must cover the actual opaque skin interior, not transparent corners or its black rim");
         }
 
-        private static int SourceCoordinate(float point, int destinationSize, int sourceSize)
+        private static int SourceCoordinate(float point, float destinationSize, int sourceSize)
         {
             float value = point < 10 ? point : point >= destinationSize - 10 ? sourceSize - destinationSize + point :
                 10 + (point - 10) * (sourceSize - 20) / (destinationSize - 20);

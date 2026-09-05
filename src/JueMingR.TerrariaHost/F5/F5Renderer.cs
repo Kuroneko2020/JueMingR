@@ -112,7 +112,8 @@ namespace JueMingR.TerrariaHost.F5
                         bool hovered = rect.Contains(state.PointerX, state.PointerY) && view.Contains(state.PointerX, state.PointerY);
                         F5Rect surface = F5Layout.ButtonSurface(element).Offset(view.X, view.Y - state.Scroll);
                         F5Rect label = F5Layout.ButtonLabel(element).Offset(view.X, view.Y - state.Scroll);
-                        Panel(batch, surface, button, enabled && hovered ? Color.White : new Color(220, 220, 220));
+                        Panel(batch, surface, button, enabled && hovered ? Color.White : new Color(220, 220, 220),
+                            fractionalSurface: true);
                         Text(batch, element.Text, new Vector2(label.X, label.Y), element.TextScale, Color.White, element.TextSize);
                         if (F5Layout.IsSelected(element, biomeEnabled, biomeFailed))
                             Decoration(batch, F5Layout.ButtonUnderline(element).Offset(view.X, view.Y - state.Scroll),
@@ -239,12 +240,14 @@ namespace JueMingR.TerrariaHost.F5
                 0, Vector2.Zero, rect.Width / 8, SpriteEffects.None, 0);
         }
 
-        private void Panel(SpriteBatch batch, F5Rect rect, Texture2D texture, Color tint, bool roundedOuter = false)
+        private void Panel(SpriteBatch batch, F5Rect rect, Texture2D texture, Color tint,
+            bool roundedOuter = false, bool fractionalSurface = false)
         {
             if (texture == null || texture.IsDisposed || texture.Width <= 20 || texture.Height <= 20 || rect.Width < 20 || rect.Height < 20)
             {
                 Color fallback = new Color(46, 50, 76);
-                if (!roundedOuter) Fill(batch, rect, fallback);
+                if (fractionalSurface) Decoration(batch, rect, fallback);
+                else if (!roundedOuter) Fill(batch, rect, fallback);
                 else
                 {
                     Fill(batch, new F5Rect(rect.X, rect.Y + 4, rect.Width, rect.Height - 8), fallback);
@@ -257,7 +260,7 @@ namespace JueMingR.TerrariaHost.F5
                 }
                 return;
             }
-            if (roundedOuter)
+            if (roundedOuter || fractionalSurface)
             {
                 // Clip both texture fill and frame to the same six-unit outer
                 // silhouette, including a skin whose source corners are square.
@@ -268,6 +271,18 @@ namespace JueMingR.TerrariaHost.F5
                     int sy = rowIndex == 0 ? 0 : rowIndex == 1 ? 10 : texture.Height - 10;
                     int sw = column == 1 ? texture.Width - 20 : 10;
                     int sh = rowIndex == 1 ? texture.Height - 20 : 10;
+                    if (fractionalSurface)
+                    {
+                        // Function surfaces share the exact glyph-derived center
+                        // and bottom edge used by their labels and state marks.
+                        float x = rect.X + (column == 0 ? 0 : column == 1 ? 10 : rect.Width - 10);
+                        float y = rect.Y + (rowIndex == 0 ? 0 : rowIndex == 1 ? 10 : rect.Height - 10);
+                        float width = column == 1 ? rect.Width - 20 : 10;
+                        float height = rowIndex == 1 ? rect.Height - 20 : 10;
+                        batch.Draw(texture, new Vector2(x, y), new Rectangle(sx, sy, sw, sh), tint,
+                            0, Vector2.Zero, new Vector2(width / sw, height / sh), SpriteEffects.None, 0);
+                        continue;
+                    }
                     int dx = (int)rect.X + (column == 0 ? 0 : column == 1 ? 10 : (int)rect.Width - 10);
                     int dy = (int)rect.Y + (rowIndex == 0 ? 0 : rowIndex == 1 ? 10 : (int)rect.Height - 10);
                     int dw = column == 1 ? (int)rect.Width - 20 : 10;
