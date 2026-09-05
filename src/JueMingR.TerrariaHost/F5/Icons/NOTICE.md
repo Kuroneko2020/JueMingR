@@ -1,13 +1,13 @@
 # F5 顶部图标来源 / F5 tab icon provenance
 
-本资源仅包含十二个固定图标的 alpha 遮罩。依据项目所有者在
+本资源仅包含十二个导航图标和一枚键盘图标的固定 alpha 遮罩。依据项目所有者在
 [JueMingR Issue #30](https://github.com/Kuroneko2020/JueMingR/issues/30)
 的七项视觉修正授权，从其 JueMingZ 项目自制基础几何图案离线派生。
 没有复制 Legacy 运行时代码、纹理加载器或 UI 框架；无 Terraria、
 TerrariaHelper、字体或第三方材质包资源。不对 Legacy 整仓授予新许可证，
 也不将这些图标标称为第三方 MIT 图标集。
 
-These twelve fixed alpha masks are derived offline from the project owner's
+These thirteen fixed alpha masks are derived offline from the project owner's
 geometric JueMingZ artwork, with the owner's explicit authorization for this
 JueMingR task. No Legacy runtime, game assets, fonts, or third-party skin assets
 are included. This statement does not license the whole Legacy repository or
@@ -47,17 +47,22 @@ claim a third-party icon-set license.
 `b253d5fe98e0e2dbeec32fc7e12abd1a213dacdd`。制作记录支持项目自制几何；
 最初参考截图出处未记载，不声称已取得该截图或其其它内容的许可。
 
-`tab-icons.geometry.json` 只记录这十二图案的数值几何，18×18 源坐标域。
+`tab-icons.geometry.json` 记录十二导航图案和末尾键盘的数值几何，18×18 源坐标域。
 `export-icons.py` 是独立离线导出工具，只用 Python 标准库；每个图元 5×5
 子采样，图元覆盖率取 max，输出提高到 72×72 以支持较高 UI scale。
 圆弧八段、椭圆四十段保持源图形轮廓。正常构建直接嵌入已提交的资产，
 不运行 Python、不读取 Legacy，也不引入运行时解析依赖。
 
-Asset format: twelve consecutive 72×72, row-major, 8-bit alpha masks in the
-table order; 62,208 bytes. Runtime uploads premultiplied white pixels and fits
-each visible source rectangle proportionally in the fixed logical icon box.
+Asset format: thirteen consecutive 72×72, row-major, 8-bit alpha masks: the
+twelve tabs in table order, then keyboard; 67,392 bytes. Runtime uploads
+premultiplied white pixels. The full source domain determines scale; visible
+bounds only center the artwork, preserving the original transparent padding.
+Tab domains remain 18 logical; the keyboard domain is 14 logical.
 
-`tab-icons.alpha` SHA-256: `C367D0E155A22010CEDAC61CA62033AF9C33C6753D090D3043FF09A8774BBC4D`
+`tab-icons.alpha` SHA-256: `938EBE5AFFC6E069605300F01A20A001BDFB06A02A92A5458322F4E7DFC597E7`
+
+前十二项的 62,208 字节保持原样，其 SHA-256 仍为
+`C367D0E155A22010CEDAC61CA62033AF9C33C6753D090D3043FF09A8774BBC4D`。
 
 本说明随 Host 程序集嵌入，图标及说明共同进入程序集和验证包身份。
 This notice is embedded alongside the artwork in the Host assembly.
@@ -65,11 +70,12 @@ This notice is embedded alongside the artwork in the Host assembly.
 ## 功能行键盘图案 / Function-row keyboard artwork
 
 同一固定 Legacy 来源的 `LegacyVectorIconRenderer.cs:423–430` 中 `keyboard`
-几何，依本任务 D4 明确授权由 `F5Renderer` 的固定 MagicPixel 线段独立重建。
-保留 18 单位坐标域、小型键盘轮廓和四条键线；小圆角以固定斜线近似，
-不宣称与旧采样纹理逐像素相同。`LegacyMainWindow.FeatureToggleHotkeys.cs`
-的底框和快捷键系统不迁入；本图案无底框、无业务，也不改变上述十二图集。
+几何，依项目所有者对小型、细线、圆润图标的明确授权，追加为现有图集
+第十三项。使用同一离线圆端线段、每角八段圆弧及覆盖率采样，替代平端
+直线和斜切转角；不新建资源管线或 GPU 纹理。源域保持 18 单位，绘制到
+14 logical 域，实际可见约 10.5×7 logical。`LegacyMainWindow.FeatureToggleHotkeys.cs`
+的底框和快捷键系统不迁入；本图案无底框、无业务，前十二项原遮罩不改。
 
-The additional keyboard artwork is independently drawn with a fixed set of
-pixel strokes from the same owner-authorized geometric reference. It adds no
-asset parser, dependency, background button, or shortcut implementation.
+The keyboard is exported from the same owner-authorized geometric reference
+using the existing sampled rounded primitives and one shared atlas. It adds
+no runtime parser, dependency, background button, or shortcut implementation.

@@ -1,4 +1,4 @@
-"""Offline export of the twelve fixed geometric assets; Python standard library only.
+"""Offline export of twelve tabs and one keyboard; Python standard library only.
 
 Normal builds embed tab-icons.alpha and do not run this tool or need Python.
 Coordinates are the authorized source artwork, not a runtime drawing implementation.
@@ -69,7 +69,7 @@ def primitives(kind, a):
 
 def export():
     icons = json.loads((ROOT / 'tab-icons.geometry.json').read_text(encoding='utf-8'))
-    assert len(icons) == 12
+    assert len(icons) == 13
     output = bytearray()
     for icon in icons:
         mask = [0] * (SIZE * SIZE)
@@ -84,7 +84,7 @@ def export():
                         mask[index] = max(mask[index], count)
         output.extend(round(value * 255 / (SAMPLES * SAMPLES)) for value in mask)
     (ROOT / 'tab-icons.alpha').write_bytes(output)
-    print('Exported twelve 72x72 alpha masks:', len(output), 'bytes')
+    print('Exported thirteen 72x72 alpha masks:', len(output), 'bytes')
 
 
 if __name__ == '__main__':

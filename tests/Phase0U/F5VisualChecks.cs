@@ -29,6 +29,7 @@ namespace Terraria
                         var font = Read<DynamicSpriteFont>(reader, Path.Combine(contentDirectory, "Fonts/Mouse_Text.xnb"));
                         GameContent.FontAssets.MouseText = graphics.Asset("actual-mouse-font", font);
                         GameContent.TextureAssets.InventoryBack = graphics.Asset("actual-inventory-back", inventory);
+                        CheckIconScale(graphics, outputDirectory);
                         using (var probe = new RenderTarget2D(graphics.Device, 700, 140))
                         {
                             graphics.Device.SetRenderTarget(probe); graphics.Device.Clear(new Color(63, 65, 151));
@@ -61,6 +62,47 @@ namespace Terraria
 
         private static T Read<T>(XnbReader reader, string path) where T : class
         { using (var stream = File.OpenRead(path)) return reader.FromStream<T>(stream); }
+
+        private static void CheckIconScale(F5FixtureGraphics graphics, string output)
+        {
+            using (var atlas = new F5IconAtlas())
+            using (var target = new RenderTarget2D(graphics.Device, 520, 100))
+            {
+                atlas.Ensure(graphics.Device);
+                graphics.Device.SetRenderTarget(target); graphics.Device.Clear(Color.Transparent);
+                Main.spriteBatch.Begin();
+                for (int scale = 1; scale <= 2; scale++) for (int index = 0; index < 13; index++)
+                {
+                    float side = (index == 12 ? 14 : 18) * scale;
+                    atlas.Draw(Main.spriteBatch, index, new F5Rect(12 + index * 38 + (36 - side) / 2,
+                        (scale == 1 ? 4 : 50) + (36 - side) / 2, side, side), Color.White);
+                }
+                Main.spriteBatch.End(); graphics.Device.SetRenderTarget(null);
+                var pixels = new Color[target.Width * target.Height]; target.GetData(pixels);
+                for (int scale = 1; scale <= 2; scale++) for (int index = 0; index < 13; index++)
+                {
+                    int left = 12 + index * 38, top = scale == 1 ? 4 : 50;
+                    int minX = int.MaxValue, minY = int.MaxValue, maxX = -1, maxY = -1, soft = 0;
+                    for (int y = top; y < top + 36; y++) for (int x = left; x < left + 36; x++)
+                    {
+                        byte alpha = pixels[y * target.Width + x].A;
+                        if (alpha <= 16) continue;
+                        minX = Math.Min(minX, x); minY = Math.Min(minY, y);
+                        maxX = Math.Max(maxX, x); maxY = Math.Max(maxY, y);
+                        if (alpha < 240) soft++;
+                    }
+                    F5InputChecks.Check(maxX >= 0 && soft > 0, "each icon remains visible with sampled soft edges");
+                    F5InputChecks.Check(maxX - minX + 1 <= (index == 12 ? 11 : 15) * scale &&
+                        maxY - minY + 1 <= (index == 12 ? 8 : 15) * scale,
+                        "icons retain source padding instead of enlarging cropped artwork to fill the slot");
+                    F5InputChecks.Check(Math.Abs((minX + maxX + 1) / 2f - left - 18) <= 0.5f &&
+                        Math.Abs((minY + maxY + 1) / 2f - top - 18) <= 0.5f,
+                        "small artwork is centered inside its unchanged slot");
+                }
+                SaveTexture(target, Path.Combine(output, "icons-scale100-and200.png"));
+            }
+            Console.WriteLine("PASS: small source-proportional tab and keyboard artwork at 100/200 percent.");
+        }
 
         private static void CheckSkinAndLifetime(F5FixtureGraphics graphics, F5Renderer renderer, Texture2D shared, string output)
         {

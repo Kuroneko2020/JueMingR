@@ -189,26 +189,11 @@ namespace JueMingR.TerrariaHost.F5
 
         private void Keyboard(SpriteBatch batch, F5Rect slot)
         {
-            // Legacy keyboard artwork's 18-unit coordinate domain, rebuilt with
-            // fixed strokes only. No button surface or shortcut action.
-            Vector2 origin = new Vector2(slot.X + slot.Width / 2 - 9, slot.Y + slot.Height / 2 - 9.05f);
-            Stroke(batch, origin, 4.1f, 5.2f, 9.8f, 0, 1.2f);
-            Stroke(batch, origin, 4.1f, 12.9f, 9.8f, 0, 1.2f);
-            Stroke(batch, origin, 2.9f, 6.4f, 5.3f, MathHelper.PiOver2, 1.2f);
-            Stroke(batch, origin, 15.1f, 6.4f, 5.3f, MathHelper.PiOver2, 1.2f);
-            Stroke(batch, origin, 2.9f, 6.4f, 1.697056f, -MathHelper.PiOver4, 1.2f);
-            Stroke(batch, origin, 13.9f, 5.2f, 1.697056f, MathHelper.PiOver4, 1.2f);
-            Stroke(batch, origin, 2.9f, 11.7f, 1.697056f, MathHelper.PiOver4, 1.2f);
-            Stroke(batch, origin, 13.9f, 12.9f, 1.697056f, -MathHelper.PiOver4, 1.2f);
-            Stroke(batch, origin, 5, 7.5f, 0.9f, 0, 1.1f);
-            Stroke(batch, origin, 8, 7.5f, 0.9f, 0, 1.1f);
-            Stroke(batch, origin, 11, 7.5f, 0.9f, 0, 1.1f);
-            Stroke(batch, origin, 5, 10.2f, 8, 0, 1.05f);
+            // Same sampled round-ended artwork as the tabs, in a smaller visual
+            // domain. The invisible input slot and its inert command stay intact.
+            icons.Draw(batch, F5IconAtlas.KeyboardIndex, new F5Rect(slot.X + (slot.Width - 14) / 2,
+                slot.Y + (slot.Height - 14) / 2, 14, 14), Color.White);
         }
-
-        private void Stroke(SpriteBatch batch, Vector2 origin, float x, float y, float length, float angle, float width)
-        { batch.Draw(pixel, origin + new Vector2(x, y), new Rectangle(0, 0, 1, 1), Color.White,
-            angle, new Vector2(0, 0.5f), new Vector2(length, width), SpriteEffects.None, 0); }
 
         private void Decoration(SpriteBatch batch, F5Rect rect, Color color)
         { batch.Draw(pixel, new Vector2(rect.X, rect.Y), new Rectangle(0, 0, 1, 1), color,

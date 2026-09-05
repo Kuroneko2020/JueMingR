@@ -4,11 +4,12 @@ using Microsoft.Xna.Framework.Graphics;
 
 namespace JueMingR.TerrariaHost.F5
 {
-    // Twelve fixed, offline-exported alpha masks. The renderer owns the one GPU
+    // Twelve tabs and one keyboard, fixed offline-exported alpha masks. Owns one GPU
     // atlas; no Legacy assembly, filesystem asset lookup, SVG parser or font icon.
     internal sealed class F5IconAtlas : IDisposable
     {
-        private const int Size = 72, Count = 12;
+        internal const int KeyboardIndex = 12;
+        private const int Size = 72, Count = 13;
         private Texture2D texture;
         private readonly Rectangle[] bounds = new Rectangle[Count];
 
@@ -45,7 +46,9 @@ namespace JueMingR.TerrariaHost.F5
         internal void Draw(SpriteBatch batch, int index, F5Rect box, Color color)
         {
             Rectangle source = bounds[index];
-            float scale = Math.Min(box.Width / source.Width, box.Height / source.Height);
+            // Bounds center the ink; the full source domain sets its size. Fitting
+            // cropped ink to the slot would enlarge both artwork and stroke width.
+            float scale = Math.Min(box.Width, box.Height) / Size;
             var position = new Vector2(box.X + (box.Width - source.Width * scale) / 2,
                 box.Y + (box.Height - source.Height * scale) / 2);
             batch.Draw(texture, position, source, color, 0, Vector2.Zero, scale, SpriteEffects.None, 0);
