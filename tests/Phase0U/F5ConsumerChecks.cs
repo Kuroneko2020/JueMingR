@@ -153,7 +153,7 @@ namespace Terraria
                     for (int i = 0; i < 35; i++) Frame(main, Main.SampleX, Main.SampleY);
                     Check(Main.FixtureZoneReadCount == observations && Main.FixtureDrawCount == biomeDraws &&
                         Utils.UnavailableDraws > unavailable && (bool)Get(state, "Visible"),
-                        "failed biome cannot be falsely enabled; F5 must remain usable and draw unavailable status");
+                        "failed biome cannot be falsely enabled; F5 must remain usable and draw the existing unavailable hover feedback");
                     Console.WriteLine("PASS: failed biome remains unavailable after the real F5 enable action.");
                     return;
                 }

@@ -16,42 +16,48 @@ namespace Terraria
         {
             if (!Directory.Exists(contentDirectory)) throw new DirectoryNotFoundException(contentDirectory);
             Directory.CreateDirectory(outputDirectory);
-            using (var graphics = new F5FixtureGraphics())
-            using (var renderer = new F5Renderer())
+            try
             {
-                var services = new GameServiceContainer();
-                services.AddService(typeof(IGraphicsDeviceService), new GraphicsService(graphics.Device));
-                using (var reader = new XnbReader(services))
-                using (var inventory = Read<Texture2D>(reader, Path.Combine(contentDirectory, "Images/Inventory_Back.xnb")))
+                using (var graphics = new F5FixtureGraphics())
+                using (var renderer = new F5Renderer())
                 {
-                    var font = Read<DynamicSpriteFont>(reader, Path.Combine(contentDirectory, "Fonts/Mouse_Text.xnb"));
-                    GameContent.FontAssets.MouseText = graphics.Asset("actual-mouse-font", font);
-                    GameContent.TextureAssets.InventoryBack = graphics.Asset("actual-inventory-back", inventory);
-                    using (var probe = new RenderTarget2D(graphics.Device, 700, 140))
+                    var services = new GameServiceContainer();
+                    services.AddService(typeof(IGraphicsDeviceService), new GraphicsService(graphics.Device));
+                    using (var reader = new XnbReader(services))
+                    using (var inventory = Read<Texture2D>(reader, Path.Combine(contentDirectory, "Images/Inventory_Back.xnb")))
                     {
-                        graphics.Device.SetRenderTarget(probe); graphics.Device.Clear(new Color(63, 65, 151));
-                        Main.spriteBatch.Begin();
-                        Main.spriteBatch.DrawString(font, "JueMingR 敌怪显名 配置 开启 关闭", new Vector2(20, 10), Color.White,
-                            0, Vector2.Zero, 0.75f, SpriteEffects.None, 0);
-                        Utils.DrawBorderStringFourWay(Main.spriteBatch, font, "JueMingR 敌怪显名 配置 开启 关闭", 20, 70,
-                            Color.White, Color.Black, Vector2.Zero, 0.75f);
-                        Main.spriteBatch.End(); graphics.Device.SetRenderTarget(null);
-                        SaveTexture(probe, Path.Combine(outputDirectory, "font-single-vs-fourway.png"));
+                        var font = Read<DynamicSpriteFont>(reader, Path.Combine(contentDirectory, "Fonts/Mouse_Text.xnb"));
+                        GameContent.FontAssets.MouseText = graphics.Asset("actual-mouse-font", font);
+                        GameContent.TextureAssets.InventoryBack = graphics.Asset("actual-inventory-back", inventory);
+                        using (var probe = new RenderTarget2D(graphics.Device, 700, 140))
+                        {
+                            graphics.Device.SetRenderTarget(probe); graphics.Device.Clear(new Color(63, 65, 151));
+                            Main.spriteBatch.Begin();
+                            Main.spriteBatch.DrawString(font, "JueMingR 敌怪显名 配置 开启 关闭", new Vector2(20, 10), Color.White,
+                                0, Vector2.Zero, 0.75f, SpriteEffects.None, 0);
+                            Utils.DrawBorderStringFourWay(Main.spriteBatch, font, "JueMingR 敌怪显名 配置 开启 关闭", 20, 70,
+                                Color.White, Color.Black, Vector2.Zero, 0.75f);
+                            Main.spriteBatch.End(); graphics.Device.SetRenderTarget(null);
+                            SaveTexture(probe, Path.Combine(outputDirectory, "font-single-vs-fourway.png"));
+                        }
+                        SaveTexture(inventory, Path.Combine(outputDirectory, "actual-inventory-back.png"));
+                        Render(graphics, renderer, outputDirectory, "default-information", 9, 1, 0);
+                        Render(graphics, renderer, outputDirectory, "default-information-off", 9, 1, 0, false);
+                        Render(graphics, renderer, outputDirectory, "default-information-unavailable", 9, 1, 0, false, true);
+                        Render(graphics, renderer, outputDirectory, "default-fishing", 7, 1, 0);
+                        Render(graphics, renderer, outputDirectory, "default-scale150", 9, 1.5f, 240);
+                        CheckSkinAndLifetime(graphics, renderer, inventory, outputDirectory);
+                        Console.WriteLine("PASS: production F5 offline previews with local XNB font and surface; owner visual acceptance remains pending.");
                     }
-                    SaveTexture(inventory, Path.Combine(outputDirectory, "actual-inventory-back.png"));
-                    Render(graphics, renderer, outputDirectory, "default-information", 9, 1, 0);
-                    Render(graphics, renderer, outputDirectory, "default-fishing", 7, 1, 0);
-                    Render(graphics, renderer, outputDirectory, "default-scale150", 9, 1.5f, 240);
-                    CheckSkinAndLifetime(graphics, renderer, inventory);
-                    Console.WriteLine("PASS: production F5 offline previews with local XNB font and surface; owner visual acceptance remains pending.");
                 }
-            }
+                }
+            catch (Exception error) { Console.Error.WriteLine(error.ToString()); throw; }
         }
 
         private static T Read<T>(XnbReader reader, string path) where T : class
         { using (var stream = File.OpenRead(path)) return reader.FromStream<T>(stream); }
 
-        private static void CheckSkinAndLifetime(F5FixtureGraphics graphics, F5Renderer renderer, Texture2D shared)
+        private static void CheckSkinAndLifetime(F5FixtureGraphics graphics, F5Renderer renderer, Texture2D shared, string output)
         {
             var state = new F5Interaction { Ready = true };
             state.Update(new F5Input { Width = 1280, Height = 1080, Scale = 1, Active = true, Focused = true, F5 = true });
@@ -93,12 +99,14 @@ namespace Terraria
                 renderer.Dispose();
                 F5InputChecks.Check(first.IsDisposed && cap.IsDisposed && !shared.IsDisposed && !replacement.IsDisposed,
                     "renderer disposal releases only its own atlas/caps, preserving host resources");
+                Render(graphics, renderer, output, "synthetic-dark-information", 9, 1, 0);
+                Render(graphics, renderer, output, "synthetic-dark-information-off", 9, 1, 0, false);
             }
             Console.WriteLine("PASS: skin replacement, rounded fill and GPU ownership.");
         }
 
         private static void Render(F5FixtureGraphics graphics, F5Renderer renderer, string output,
-            string name, int page, float scale, int wheel)
+            string name, int page, float scale, int wheel, bool enabled = true, bool failed = false)
         {
             Main.UIScaleMatrix = Matrix.CreateScale(scale, scale, 1);
             var state = new F5Interaction { Ready = true };
@@ -116,10 +124,78 @@ namespace Terraria
                 graphics.Device.SetRenderTarget(target);
                 graphics.Device.Clear(new Color(80, 100, 110));
                 Main.spriteBatch.Begin(SpriteSortMode.Deferred, null, null, null, null, null, Main.UIScaleMatrix);
-                renderer.Draw(state, Main.UIScaleMatrix, true, false);
+                int titles = Utils.RefinedTitleDraws, errors = Utils.FunctionColorErrors;
+                int status = Utils.NormalStatusDraws, keys = Utils.KeyboardTextDraws;
+                renderer.Draw(state, Main.UIScaleMatrix, enabled, failed);
                 Main.spriteBatch.End(); graphics.Device.SetRenderTarget(null);
+                F5InputChecks.Check(Utils.RefinedTitleDraws == titles + 1 && Utils.FunctionColorErrors == errors &&
+                    Utils.NormalStatusDraws == status && Utils.KeyboardTextDraws == keys,
+                    "actual renderer uses the Chinese display title, neutral function text and no normal-status/key text");
+                if (page == 9 && scale == 1) CheckRefinedPixels(target, state, enabled, failed);
                 SaveTexture(target, Path.Combine(output, name + ".png"));
             }
+        }
+
+        private static void CheckRefinedPixels(RenderTarget2D target, F5Interaction state, bool enabled, bool failed)
+        {
+            var pixels = new Color[target.Width * target.Height]; target.GetData(pixels);
+            Texture2D skin = GameContent.TextureAssets.InventoryBack.Value;
+            var source = new Color[skin.Width * skin.Height]; skin.GetData(source);
+            F5Element selected = null;
+            foreach (F5Element element in state.Layout.Elements)
+                if (element.Command == (enabled ? F5Command.EnableBiome : F5Command.DisableBiome)) selected = element;
+            F5InputChecks.Check(selected != null, "information page retains both named real controls");
+            F5Rect view = state.Layout.Viewport.Offset(state.X, state.Y);
+            F5Rect surface = F5Layout.ButtonSurface(selected).Offset(view.X, view.Y - state.Scroll);
+            int green = 0, red = 0, minX = int.MaxValue, maxX = 0;
+            for (int y = 0; y < target.Height; y++) for (int x = 0; x < target.Width; x++)
+            {
+                Color value = pixels[y * target.Width + x];
+                bool isGreen = value == Color.LightGreen, isRed = value == Color.IndianRed;
+                if (!isGreen && !isRed) continue;
+                if (isGreen) green++; else red++;
+                F5InputChecks.Check(!failed && surface.Contains(x + 0.5f, y + 0.5f),
+                    "state-colored pixels belong only to the button named for the real state, never the function label or other button");
+                CheckSkinInterior(source, skin, surface, x, y);
+                minX = Math.Min(minX, x); maxX = Math.Max(maxX, x);
+            }
+            F5InputChecks.Check(failed ? green == 0 && red == 0 : enabled ? green > 0 && red == 0 : red > 0 && green == 0,
+                "actual framebuffer has only enable green, only disable red, or no false failed state");
+            if (!failed) F5InputChecks.Check(maxX - minX + 1 < surface.Width - 12,
+                "state line is visibly shorter than its button");
+            F5Rect nav = state.Layout.Navigation(state.Page).Offset(state.X, state.Y);
+            F5Rect underline = state.Layout.NavigationUnderline(state.Page).Offset(state.X, state.Y);
+            int underlinePixels = 0;
+            for (int y = (int)Math.Floor(underline.Y); y < Math.Ceiling(underline.Bottom); y++)
+                for (int x = (int)Math.Floor(underline.X); x < Math.Ceiling(underline.Right); x++)
+                    if (pixels[y * target.Width + x] == Color.Gold)
+                    { CheckSkinInterior(source, skin, nav, x, y); underlinePixels++; }
+            F5InputChecks.Check(underlinePixels > 0, "selected navigation underline is actually rendered inside the skin");
+            foreach (F5Element element in state.Layout.Elements)
+            {
+                if (element.Kind != F5ElementKind.Hotkey) continue;
+                F5Rect slot = element.Rect.Offset(view.X, view.Y - state.Scroll);
+                if (slot.Y < view.Y || slot.Bottom > view.Bottom) continue;
+                int y = (int)slot.Y + 2, x = (int)(slot.X + slot.Width / 2);
+                F5InputChecks.Check(pixels[y * target.Width + x] == pixels[y * target.Width + (int)slot.X - 2],
+                    "empty space around the small keyboard has the row surface, not an extra button background/frame");
+            }
+        }
+
+        private static void CheckSkinInterior(Color[] pixels, Texture2D skin, F5Rect surface, int x, int y)
+        {
+            int sx = SourceCoordinate(x + 0.5f - (int)surface.X, (int)surface.Width, skin.Width);
+            int sy = SourceCoordinate(y + 0.5f - (int)surface.Y, (int)surface.Height, skin.Height);
+            Color original = pixels[sy * skin.Width + sx];
+            F5InputChecks.Check(original.A > 200 && original.R + original.G + original.B > 30,
+                "underline pixels must cover the actual opaque skin interior, not transparent corners or its black rim");
+        }
+
+        private static int SourceCoordinate(float point, int destinationSize, int sourceSize)
+        {
+            float value = point < 10 ? point : point >= destinationSize - 10 ? sourceSize - destinationSize + point :
+                10 + (point - 10) * (sourceSize - 20) / (destinationSize - 20);
+            return Math.Max(0, Math.Min(sourceSize - 1, (int)value));
         }
 
         private static void SaveTexture(Texture2D texture, string path)

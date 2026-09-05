@@ -103,21 +103,20 @@ namespace JueMingR.TerrariaHost.F5
                     else if (element.Kind == F5ElementKind.Field) Panel(batch, rect, row, new Color(180, 180, 180));
                     else if (element.Kind == F5ElementKind.Text)
                         Text(batch, element.Text, new Vector2(rect.X, rect.Y), element.TextScale,
-                            element.Accent ? Color.LightGreen : Color.White, element.TextSize);
-                    else if (element.Kind == F5ElementKind.BiomeStatus)
-                        Text(batch, biomeFailed ? "当前：不可用" : biomeEnabled ? "当前：已开启" : "当前：已关闭",
-                            new Vector2(rect.X, rect.Y), element.TextScale, Color.White,
-                            layout.BiomeStatusSize(biomeFailed, biomeEnabled));
+                            Color.White, element.TextSize);
+                    else if (element.Kind == F5ElementKind.Divider) Decoration(batch, rect, Color.White * 0.35f);
+                    else if (element.Kind == F5ElementKind.Hotkey) Keyboard(batch, rect);
                     else
                     {
                         bool enabled = element.Command != F5Command.None && !biomeFailed;
-                        bool selected = enabled && (element.Command == F5Command.EnableBiome) == biomeEnabled;
                         bool hovered = rect.Contains(state.PointerX, state.PointerY) && view.Contains(state.PointerX, state.PointerY);
-                        Panel(batch, rect, button, enabled && hovered ? Color.White : new Color(220, 220, 220));
-                        Text(batch, element.Text, new Vector2(rect.X + (rect.Width - element.TextSize.Width) / 2,
-                            rect.Y + (rect.Height - element.TextSize.Height) / 2), element.TextScale,
-                            selected ? Color.LightGreen : enabled && hovered ? Color.Gold : Color.White, element.TextSize);
-                        if (selected) Fill(batch, new F5Rect(rect.X + 4, rect.Bottom - 3, rect.Width - 8, 2), Color.LightGreen);
+                        F5Rect surface = F5Layout.ButtonSurface(element).Offset(view.X, view.Y - state.Scroll);
+                        F5Rect label = F5Layout.ButtonLabel(element).Offset(view.X, view.Y - state.Scroll);
+                        Panel(batch, surface, button, enabled && hovered ? Color.White : new Color(220, 220, 220));
+                        Text(batch, element.Text, new Vector2(label.X, label.Y), element.TextScale, Color.White, element.TextSize);
+                        if (F5Layout.IsSelected(element, biomeEnabled, biomeFailed))
+                            Decoration(batch, F5Layout.ButtonUnderline(element).Offset(view.X, view.Y - state.Scroll),
+                                biomeEnabled ? Color.LightGreen : Color.IndianRed);
                     }
                 }
                 batch.End();
@@ -160,9 +159,10 @@ namespace JueMingR.TerrariaHost.F5
         {
             F5Layout layout = state.Layout;
             Panel(batch, layout.Window.Offset(state.X, state.Y), background, new Color(235, 235, 235), true);
-            Text(batch, "JueMingR", new Vector2(state.X + 14,
+            Text(batch, F5Layout.DisplayTitle, new Vector2(state.X + 14,
                 state.Y + layout.Title.Y + (layout.Title.Height - layout.TitleSize.Height) / 2),
                 0.75f, Color.White, layout.TitleSize);
+            Decoration(batch, layout.TitleDivider.Offset(state.X, state.Y), Color.White * 0.35f);
             for (int i = 0; i < F5Layout.Pages.Length; i++)
             {
                 F5Rect nav = layout.Navigation(i).Offset(state.X, state.Y);
@@ -174,7 +174,7 @@ namespace JueMingR.TerrariaHost.F5
                 icons.Draw(batch, i, layout.NavigationIcon(i).Offset(state.X, state.Y), foreground);
                 F5Rect label = layout.NavigationLabel(i).Offset(state.X, state.Y);
                 Text(batch, F5Layout.Pages[i], new Vector2(label.X, label.Y), 0.75f, foreground, size);
-                if (selected) Fill(batch, new F5Rect(nav.X + 4, nav.Bottom - 3, nav.Width - 8, 2), Color.Gold);
+                if (selected) Decoration(batch, layout.NavigationUnderline(i).Offset(state.X, state.Y), Color.Gold);
             }
             Panel(batch, layout.ContentPanel.Offset(state.X, state.Y), row, new Color(205, 205, 205));
             if (layout.MaxScroll > 0)
@@ -185,6 +185,33 @@ namespace JueMingR.TerrariaHost.F5
                     Color.White * (hover || state.DraggingScroll ? 0.85f : 0.6f));
             }
         }
+
+        private void Keyboard(SpriteBatch batch, F5Rect slot)
+        {
+            // Legacy keyboard artwork's 18-unit coordinate domain, rebuilt with
+            // fixed strokes only. No button surface or shortcut action.
+            Vector2 origin = new Vector2(slot.X + slot.Width / 2 - 9, slot.Y + slot.Height / 2 - 9.05f);
+            Stroke(batch, origin, 4.1f, 5.2f, 9.8f, 0, 1.2f);
+            Stroke(batch, origin, 4.1f, 12.9f, 9.8f, 0, 1.2f);
+            Stroke(batch, origin, 2.9f, 6.4f, 5.3f, MathHelper.PiOver2, 1.2f);
+            Stroke(batch, origin, 15.1f, 6.4f, 5.3f, MathHelper.PiOver2, 1.2f);
+            Stroke(batch, origin, 2.9f, 6.4f, 1.697056f, -MathHelper.PiOver4, 1.2f);
+            Stroke(batch, origin, 13.9f, 5.2f, 1.697056f, MathHelper.PiOver4, 1.2f);
+            Stroke(batch, origin, 2.9f, 11.7f, 1.697056f, MathHelper.PiOver4, 1.2f);
+            Stroke(batch, origin, 13.9f, 12.9f, 1.697056f, -MathHelper.PiOver4, 1.2f);
+            Stroke(batch, origin, 5, 7.5f, 0.9f, 0, 1.1f);
+            Stroke(batch, origin, 8, 7.5f, 0.9f, 0, 1.1f);
+            Stroke(batch, origin, 11, 7.5f, 0.9f, 0, 1.1f);
+            Stroke(batch, origin, 5, 10.2f, 8, 0, 1.05f);
+        }
+
+        private void Stroke(SpriteBatch batch, Vector2 origin, float x, float y, float length, float angle, float width)
+        { batch.Draw(pixel, origin + new Vector2(x, y), new Rectangle(0, 0, 1, 1), Color.White,
+            angle, new Vector2(0, 0.5f), new Vector2(length, width), SpriteEffects.None, 0); }
+
+        private void Decoration(SpriteBatch batch, F5Rect rect, Color color)
+        { batch.Draw(pixel, new Vector2(rect.X, rect.Y), new Rectangle(0, 0, 1, 1), color,
+            0, Vector2.Zero, new Vector2(rect.Width, rect.Height), SpriteEffects.None, 0); }
 
         private void EnsureRoundCap(GraphicsDevice device)
         {

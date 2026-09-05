@@ -61,3 +61,15 @@ each visible source rectangle proportionally in the fixed logical icon box.
 
 本说明随 Host 程序集嵌入，图标及说明共同进入程序集和验证包身份。
 This notice is embedded alongside the artwork in the Host assembly.
+
+## 功能行键盘图案 / Function-row keyboard artwork
+
+同一固定 Legacy 来源的 `LegacyVectorIconRenderer.cs:423–430` 中 `keyboard`
+几何，依本任务 D4 明确授权由 `F5Renderer` 的固定 MagicPixel 线段独立重建。
+保留 18 单位坐标域、小型键盘轮廓和四条键线；小圆角以固定斜线近似，
+不宣称与旧采样纹理逐像素相同。`LegacyMainWindow.FeatureToggleHotkeys.cs`
+的底框和快捷键系统不迁入；本图案无底框、无业务，也不改变上述十二图集。
+
+The additional keyboard artwork is independently drawn with a fixed set of
+pixel strokes from the same owner-authorized geometric reference. It adds no
+asset parser, dependency, background button, or shortcut implementation.

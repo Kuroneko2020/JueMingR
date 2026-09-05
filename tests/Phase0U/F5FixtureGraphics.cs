@@ -89,6 +89,7 @@ namespace Terraria
         internal static bool ThrowF5Text;
         internal static int F5TextDraws;
         internal static int F5HintDraws, UnavailableDraws;
+        internal static int FunctionColorErrors, NormalStatusDraws, KeyboardTextDraws, RefinedTitleDraws;
         public static void DrawSplicedPanel(SpriteBatch batch, Texture2D texture, int x, int y, int width, int height,
             int left, int right, int top, int bottom, Color color)
         {
@@ -109,7 +110,12 @@ namespace Terraria
             F5TextDraws++;
             if (text == "开启群系显示" || text == "关闭群系显示" ||
                 text == "群系显示暂不可用") F5HintDraws++;
-            if (text == "当前：不可用") UnavailableDraws++;
+            if (text == "群系显示暂不可用") UnavailableDraws++;
+            if ((text == "群系显示" || text == "开启" || text == "关闭" || text == "配置" || text == "开始") && textColor != Color.White)
+                FunctionColorErrors++;
+            if (text == "当前：已开启" || text == "当前：已关闭") NormalStatusDraws++;
+            if (text == "键") KeyboardTextDraws++;
+            if (text == "决明R") RefinedTitleDraws++;
             batch.DrawString(font, text, new Vector2(x - 2, y), borderColor, 0, origin, scale, SpriteEffects.None, 0);
             batch.DrawString(font, text, new Vector2(x + 2, y), borderColor, 0, origin, scale, SpriteEffects.None, 0);
             batch.DrawString(font, text, new Vector2(x, y - 2), borderColor, 0, origin, scale, SpriteEffects.None, 0);
