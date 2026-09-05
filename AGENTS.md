@@ -69,6 +69,7 @@ Agent 必须明确区分：已确认事实、推断、建议、待决定事项�
 - 涉及 AppDomainManager、程序集就绪、Harmony 安装时序、首个宿主 Hook、一次性 Runtime 交接或 Phase 0-S 安装恢复验证时，必须阅读 [`docs/设计/最小原版加载链验证.md`](docs/设计/最小原版加载链验证.md)。
 - 涉及总体架构、模块职责、项目依赖方向、状态所有权、Runtime/Session 生命周期、Composition Root、游戏 Observation/Operation、Feature 接入、UI、持久化、Diagnostics 或项目骨架映射的任务，必须阅读 [`docs/设计/总体架构与状态所有权.md`](docs/设计/总体架构与状态所有权.md)。
 - 涉及 F5/UI 的实施或审查，必须阅读 [F5 控制界面样板与 UI 基础](docs/设计/F5控制界面样板与UI基础.md)，按当前接受边界理解真实控制、输入、布局和资源生命周期。
+- 涉及用户数据落盘、配置、目录选择或后续功能存储，必须阅读 [配置持久化与用户数据布局](docs/设计/配置持久化与用户数据布局.md)，区分具体合同及其实施/接受边界与尚未实施的未来建议；目录树不构成后续功能授权。
 - 涉及解决方案、项目文件、构建工具链、TFM、LangVersion、PlatformTarget、Terraria/ReLogic/XNA 编译引用、ProjectReference、构建脚本、构建身份、可重复构建或架构边界检查的任务，必须阅读 [`docs/设计/可重复构建与项目骨架.md`](docs/设计/可重复构建与项目骨架.md)。
 - 涉及性能风险、性能声明、基线或测量、功能关闭成本、缓存/快照/队列、日志与 I/O，或一次性测量工具的任务，必须阅读 [`docs/规范/性能治理规则.md`](docs/规范/性能治理规则.md)。
 - 涉及编译、测试、审计、证据结论、测试期待修改、mock/stub/fake、Terraria 游戏内实机、多人验证、测试数据隔离、flaky、覆盖率或慢检查的任务，必须阅读 [`docs/规范/测试与审计规则.md`](docs/规范/测试与审计规则.md)。

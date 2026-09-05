@@ -266,6 +266,34 @@ function Invoke-Phase0SFixtureExe {
     return [pscustomobject]@{ exitCode = $exitCode; output = @($output) }
 }
 
+function Invoke-Phase0SSettingsHostFixtures {
+    param(
+        [string] $Root, [string] $FixtureExe, [hashtable] $ProductionOutputs,
+        [string] $HarmonyPath, [string] $SourceCommit
+    )
+    $settings = New-Phase0SFixtureRunDirectory -Root $Root -Name 'settings-host' -FixtureExe $FixtureExe -ProductionOutputs $ProductionOutputs -HarmonyPath $HarmonyPath -PackageId ('phase0s-fixture-' + [Guid]::NewGuid().ToString('N')) -SourceCommit $SourceCommit
+    $gameRoot = Split-Path -Parent $settings.exePath
+    $uiPath = Join-Path $gameRoot 'JueMingRData\config\ui.json'
+    $biomePath = Join-Path $gameRoot 'JueMingRData\config\features\biome-display.json'
+    $savedUi = $null
+    foreach ($mode in @('expect-settings-save', 'expect-settings-restore', 'expect-settings-corrupt-ui', 'expect-settings-corrupt-biome')) {
+        # Only mutate this marked, newly-created fixture installation after the
+        # previous process exited. Protected source bytes remain the test oracle.
+        if ($mode -eq 'expect-settings-corrupt-ui') {
+            [System.IO.File]::WriteAllText($uiPath, '{broken-ui', (New-Object System.Text.UTF8Encoding($false)))
+        }
+        if ($mode -eq 'expect-settings-corrupt-biome') {
+            [System.IO.File]::WriteAllBytes($uiPath, $savedUi)
+            [System.IO.File]::WriteAllText($biomePath, '{broken-biome', (New-Object System.Text.UTF8Encoding($false)))
+        }
+        $result = Invoke-Phase0SFixtureExe -FixtureExe $settings.exePath -Mode $mode -EvidencePath $settings.evidencePath -PackageId $settings.packageId
+        foreach ($line in $result.output) { Write-Host $line }
+        Assert-Phase0SCondition -Condition ($result.exitCode -eq 0) -Message "Real Host settings scenario $mode failed with exit $($result.exitCode)."
+        if ($mode -eq 'expect-settings-save') { $savedUi = [System.IO.File]::ReadAllBytes($uiPath) }
+    }
+    Write-Host 'PASS: real Host settings cross-process restore, isolated document failures and verified-executable data root.'
+}
+
 function Assert-Phase0SNoSuccessEvents {
     param([Parameter(Mandatory = $true)][string] $EvidencePath)
 
@@ -494,6 +522,7 @@ function Invoke-Phase0SLoadChainFixtureTests {
 
     $root = New-Phase0STestRoot
     try {
+        Invoke-Phase0SSettingsHostFixtures -Root $root -FixtureExe $fixtureExe -ProductionOutputs $productionOutputs -HarmonyPath $harmonyPath -SourceCommit $sourceCommit
         $success = New-Phase0SFixtureRunDirectory -Root $root -Name 'success' -FixtureExe $fixtureExe -ProductionOutputs $productionOutputs -HarmonyPath $harmonyPath -PackageId ('phase0s-fixture-' + [Guid]::NewGuid().ToString('N')) -SourceCommit $sourceCommit
         $successResult = Invoke-Phase0SFixtureExe -FixtureExe $success.exePath -Mode 'expect-handoff' -EvidencePath $success.evidencePath -PackageId $success.packageId
         foreach ($line in $successResult.output) {

@@ -9,6 +9,7 @@ using System.Threading;
 using HarmonyLib;
 using JueMingR.Features.Biomes;
 using JueMingR.TerrariaHost.F5;
+using JueMingR.TerrariaHost.Settings;
 using Microsoft.Xna.Framework;
 using Terraria.UI;
 
@@ -253,7 +254,9 @@ namespace JueMingR.TerrariaHost
             string evidencePath = Path.Combine(
                 Path.Combine(Path.GetFullPath(AppDomain.CurrentDomain.BaseDirectory), "JueMingR.Validation"),
                 manifest.EvidenceFileName);
-            postfixContext = new PostfixContext(manifest.PackageId, evidencePath);
+            // Install has already verified the exact target assembly and path.
+            postfixContext = new PostfixContext(manifest.PackageId, evidencePath,
+                Path.GetDirectoryName(Path.GetFullPath(targetAssembly.Location)));
 
             Harmony harmony = new Harmony(manifest.PatchOwner);
             bool patchAttempted = false;
@@ -725,11 +728,14 @@ namespace JueMingR.TerrariaHost
         {
             private Phase0TBiomeRuntime runtime;
             private ulong updateTick;
+            private readonly string gameDirectory;
+            private HostPreferences preferences;
 
-            internal PostfixContext(string packageId, string evidencePath)
+            internal PostfixContext(string packageId, string evidencePath, string gameDirectory)
             {
                 PackageId = packageId;
                 EvidencePath = evidencePath;
+                this.gameDirectory = gameDirectory;
             }
 
             internal string PackageId { get; private set; }
@@ -750,8 +756,9 @@ namespace JueMingR.TerrariaHost
                     throw new InvalidOperationException("The Phase 0-T runtime was already initialized.");
                 }
 
-                runtime = Phase0TBiomeRuntime.Create(enabled);
-                Shell = new F5Shell(runtime) { LayersReady = f5LayersReady };
+                preferences = new HostPreferences(gameDirectory);
+                runtime = Phase0TBiomeRuntime.Create(enabled, preferences.BiomeLoaded && preferences.BiomeEnabled);
+                Shell = new F5Shell(runtime, preferences) { LayersReady = f5LayersReady };
             }
 
             internal void UpdateRuntime()
@@ -762,6 +769,8 @@ namespace JueMingR.TerrariaHost
                     return;
                 }
 
+                preferences.Update();
+                current.SetFeatureEnabled(preferences.BiomeLoaded && preferences.BiomeEnabled);
                 current.Update(updateTick);
                 updateTick = unchecked(updateTick + 1);
             }

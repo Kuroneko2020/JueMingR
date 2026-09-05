@@ -13,7 +13,8 @@ namespace JueMingR.ArchitectureTests
             var expected = new HashSet<string>(StringComparer.Ordinal)
             {
                 "JueMingR.Features.Biomes.BiomeDisplayFeature",
-                "JueMingR.Features.Biomes.BiomeDisplayViewModel"
+                "JueMingR.Features.Biomes.BiomeDisplayViewModel",
+                "JueMingR.Features.Biomes.BiomePreferenceCodec"
             };
             if (!expected.SetEquals(features.GetExportedTypes().Select(type => type.FullName)))
             {

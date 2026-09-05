@@ -28,7 +28,7 @@ namespace JueMingR.ArchitectureTests
                 { ExpectedProjects[3].Value, new[] { ExpectedProjects[1].Value, ExpectedProjects[2].Value, ExpectedProjects[4].Value } },
                 { ExpectedProjects[4].Value, new[] { ExpectedProjects[1].Value } },
                 { ExpectedProjects[5].Value, new string[0] },
-                { ExpectedProjects[6].Value, new[] { ExpectedProjects[1].Value, ExpectedProjects[2].Value } }
+                { ExpectedProjects[6].Value, new[] { ExpectedProjects[1].Value, ExpectedProjects[2].Value, ExpectedProjects[4].Value } }
             };
 
         private static readonly IDictionary<string, string> ExpectedGameReferences =
@@ -155,7 +155,8 @@ namespace JueMingR.ArchitectureTests
             {
                 XDocument project;
                 if (model.Projects.TryGetValue(path, out project) &&
-                    (Elements(project, "ProjectReference").Any() || Elements(project, "Reference").Any()))
+                    (Elements(project, "ProjectReference").Any() || Elements(project, "Reference").Any(reference =>
+                        path != ExpectedProjects[1].Value || (string)reference.Attribute("Include") != "System.Runtime.Serialization" || reference.Elements().Any())))
                 {
                     failures.Add(path + " must not have project or explicit assembly references.");
                 }

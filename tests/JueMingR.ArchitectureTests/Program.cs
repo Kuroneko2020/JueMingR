@@ -10,6 +10,8 @@ namespace JueMingR.ArchitectureTests
         {
             try
             {
+                if (args.Length == 2 && args[0] == "--preference-storage-probe")
+                    return PreferenceStorageChecks.RunWriterProbe(args[1]);
                 if (args.Length != 1)
                 {
                     throw new ArgumentException("Usage: JueMingR.ArchitectureTests <repository-root>");
@@ -26,6 +28,9 @@ namespace JueMingR.ArchitectureTests
                 ArchitectureChecks.Check(model, failures);
                 OperationContractChecks.Check(failures);
                 Phase0TArchitectureChecks.Check(failures);
+                PreferenceChecks.Check(failures);
+                PreferenceConcurrencyChecks.Check(failures);
+                PreferenceStorageChecks.Check(failures);
 #if PHASE0T_MAPPING_TEST || PHASE0T_ALL_TESTS
                 BiomeFeatureChecks.CheckMapping(failures);
 #endif
