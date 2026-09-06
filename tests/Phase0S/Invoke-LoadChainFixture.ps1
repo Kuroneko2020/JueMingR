@@ -266,6 +266,34 @@ function Invoke-Phase0SFixtureExe {
     return [pscustomobject]@{ exitCode = $exitCode; output = @($output) }
 }
 
+function Invoke-Phase0SSettingsHostFixtures {
+    param(
+        [string] $Root, [string] $FixtureExe, [hashtable] $ProductionOutputs,
+        [string] $HarmonyPath, [string] $SourceCommit
+    )
+    $settings = New-Phase0SFixtureRunDirectory -Root $Root -Name 'settings-host' -FixtureExe $FixtureExe -ProductionOutputs $ProductionOutputs -HarmonyPath $HarmonyPath -PackageId ('phase0s-fixture-' + [Guid]::NewGuid().ToString('N')) -SourceCommit $SourceCommit
+    $gameRoot = Split-Path -Parent $settings.exePath
+    $uiPath = Join-Path $gameRoot 'JueMingRData\config\ui.json'
+    $biomePath = Join-Path $gameRoot 'JueMingRData\config\features\biome-display.json'
+    $savedUi = $null
+    foreach ($mode in @('expect-settings-save', 'expect-settings-restore', 'expect-settings-corrupt-ui', 'expect-settings-corrupt-biome')) {
+        # Only mutate this marked, newly-created fixture installation after the
+        # previous process exited. Protected source bytes remain the test oracle.
+        if ($mode -eq 'expect-settings-corrupt-ui') {
+            [System.IO.File]::WriteAllText($uiPath, '{broken-ui', (New-Object System.Text.UTF8Encoding($false)))
+        }
+        if ($mode -eq 'expect-settings-corrupt-biome') {
+            [System.IO.File]::WriteAllBytes($uiPath, $savedUi)
+            [System.IO.File]::WriteAllText($biomePath, '{broken-biome', (New-Object System.Text.UTF8Encoding($false)))
+        }
+        $result = Invoke-Phase0SFixtureExe -FixtureExe $settings.exePath -Mode $mode -EvidencePath $settings.evidencePath -PackageId $settings.packageId
+        foreach ($line in $result.output) { Write-Host $line }
+        Assert-Phase0SCondition -Condition ($result.exitCode -eq 0) -Message "Real Host settings scenario $mode failed with exit $($result.exitCode)."
+        if ($mode -eq 'expect-settings-save') { $savedUi = [System.IO.File]::ReadAllBytes($uiPath) }
+    }
+    Write-Host 'PASS: real Host settings cross-process restore, isolated document failures and verified-executable data root.'
+}
+
 function Assert-Phase0SNoSuccessEvents {
     param([Parameter(Mandatory = $true)][string] $EvidencePath)
 
@@ -494,6 +522,7 @@ function Invoke-Phase0SLoadChainFixtureTests {
 
     $root = New-Phase0STestRoot
     try {
+        Invoke-Phase0SSettingsHostFixtures -Root $root -FixtureExe $fixtureExe -ProductionOutputs $productionOutputs -HarmonyPath $harmonyPath -SourceCommit $sourceCommit
         $success = New-Phase0SFixtureRunDirectory -Root $root -Name 'success' -FixtureExe $fixtureExe -ProductionOutputs $productionOutputs -HarmonyPath $harmonyPath -PackageId ('phase0s-fixture-' + [Guid]::NewGuid().ToString('N')) -SourceCommit $sourceCommit
         $successResult = Invoke-Phase0SFixtureExe -FixtureExe $success.exePath -Mode 'expect-handoff' -EvidencePath $success.evidencePath -PackageId $success.packageId
         foreach ($line in $successResult.output) {
@@ -582,12 +611,20 @@ function Invoke-Phase0SLoadChainFixtureTests {
         Assert-Phase0SCondition -Condition ($tempSecondLaunch.exitCode -eq 0) -Message "TEMP installed second process: expected exit 0, actual $($tempSecondLaunch.exitCode)."
         Assert-Phase0SCondition -Condition ((Get-Phase0SFileSha256 -Path $tempEvidencePath) -cne $tempFirstEvidenceHash) -Message 'The TEMP installed second process retained stale first-process evidence.'
 
+        # Runtime preferences are user-owned, not install payload. Keep their exact post-launch
+        # tree in the restore expectation; every other path must still match the initial baseline.
+        $retainedUserData = @(Get-Phase0STreeSnapshot -Root $tempTarget | Where-Object {
+            $_.path -ceq 'JueMingRData' -or $_.path.StartsWith('JueMingRData\', [System.StringComparison]::Ordinal)
+        })
+        Assert-Phase0SCondition -Condition (@($retainedUserData | Where-Object { $_.type -ceq 'file' }).Count -gt 0) -Message 'The TEMP launches did not exercise persistent user data.'
+        $tempRestoreExpected = @((@($tempBaseline) + @($retainedUserData)) | Sort-Object path)
+
         Copy-Item -LiteralPath $fixedTerrariaInput -Destination $tempTerrariaPath -Force
         Assert-Phase0SCondition -Condition ((Get-Phase0SFileSha256 -Path $tempTerrariaPath) -ceq '960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3') -Message 'The TEMP Terraria baseline was not restored before the package restore test.'
         $tempRestore = Invoke-Phase0STempPackageScript -PackageRoot $tempPackage.root -ScriptName 'Restore-Phase0S.ps1' -TerrariaDirectory $tempTarget
         Assert-Phase0STempPackageSuccess -Result $tempRestore -Operation 'restore' -Code 'RESTORE_COMPLETE' -PackageId $tempPackage.packageId
-        Assert-Phase0STreeSnapshotEqual -Expected $tempBaseline -Actual (Get-Phase0STreeSnapshot -Root $tempTarget) -Context 'TEMP install, two launches, restore'
-        Write-Host 'PASS: formal TEMP install, two independent launches, and exact restore completed.'
+        Assert-Phase0STreeSnapshotEqual -Expected $tempRestoreExpected -Actual (Get-Phase0STreeSnapshot -Root $tempTarget) -Context 'TEMP install, two launches, restore with exact user data preservation'
+        Write-Host 'PASS: formal TEMP install, two independent launches, exact payload restore and unchanged runtime user data completed.'
 
         foreach ($driverMode in @(
             'driver-relogic-then-terraria',

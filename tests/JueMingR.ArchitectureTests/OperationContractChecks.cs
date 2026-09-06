@@ -43,7 +43,20 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Platform.Operations.IGameOperationRequest",
                 "JueMingR.Platform.Runtime.IGameSessionProbe",
                 "JueMingR.Platform.Runtime.IRuntimeFeature",
-                "JueMingR.Platform.Runtime.SingleFeatureRuntime"
+                "JueMingR.Platform.Runtime.SingleFeatureRuntime",
+                "JueMingR.Platform.Settings.IPreferenceCodec`1",
+                "JueMingR.Platform.Settings.IPreferenceStorage",
+                "JueMingR.Platform.Settings.PreferenceReadStatus",
+                "JueMingR.Platform.Settings.PreferenceWriteStatus",
+                "JueMingR.Platform.Settings.PreferenceReadResult",
+                "JueMingR.Platform.Settings.PreferenceWriteResult",
+                "JueMingR.Platform.Settings.PreferenceStatus",
+                "JueMingR.Platform.Settings.PreferenceFormatException",
+                "JueMingR.Platform.Settings.PreferenceSnapshot`1",
+                "JueMingR.Platform.Settings.PreferenceDocument`1",
+                "JueMingR.Platform.Settings.PreferenceJson",
+                "JueMingR.Platform.Settings.UiPreferenceCodec",
+                "JueMingR.Platform.Settings.WindowPosition"
             };
             if (!expected.SetEquals(assembly.GetExportedTypes().Select(type => type.FullName)))
             {

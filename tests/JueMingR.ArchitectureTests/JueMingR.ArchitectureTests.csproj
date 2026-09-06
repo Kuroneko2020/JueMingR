@@ -14,5 +14,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\JueMingR.Platform\JueMingR.Platform.csproj" />
     <ProjectReference Include="..\..\src\JueMingR.Features\JueMingR.Features.csproj" />
+    <ProjectReference Include="..\..\src\JueMingR.Infrastructure\JueMingR.Infrastructure.csproj" />
   </ItemGroup>
 </Project>

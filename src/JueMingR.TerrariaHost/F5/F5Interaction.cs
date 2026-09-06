@@ -1,4 +1,5 @@
 using System;
+using JueMingR.Platform.Settings;
 
 namespace JueMingR.TerrariaHost.F5
 {
@@ -11,9 +12,14 @@ namespace JueMingR.TerrariaHost.F5
 
     internal sealed class F5Interaction
     {
-        private bool previousF5, previousLeft, leftTail, rightTail, active, positioned;
+        private bool previousF5, previousLeft, leftTail, rightTail, active;
         private int capture; // 1: title, 2: scrollbar; never a second hover-ownership flag.
         private float grabX, grabY, windowWidth, windowHeight;
+        private float dragWidth, dragHeight, dragScale;
+        private int dragStartX, dragStartY;
+        // These are a display projection and one pending UI command. Settings
+        // owns the preference; viewport clamping must never become a command.
+        private WindowPosition positionProjection, positionToSave;
         private F5Element armed;
         private int armedGeneration;
         internal readonly F5Layout Layout = new F5Layout();
@@ -39,7 +45,9 @@ namespace JueMingR.TerrariaHost.F5
         internal void Update(F5Input input)
         {
             Command = F5Command.None;
-            ConsumeLeft = ConsumeRight = ConsumeWheel = false;
+            // If validation throws, the shell must still consume buttons owned
+            // by an earlier sample while it closes the failed local UI.
+            ConsumeLeft = leftTail; ConsumeRight = rightTail; ConsumeWheel = false;
             PointerX = input.X; PointerY = input.Y;
             active = input.Active && input.Focused;
             if (!active || !Ready)
@@ -53,13 +61,21 @@ namespace JueMingR.TerrariaHost.F5
                 previousF5 = input.Focused ? input.F5 : true;
                 return;
             }
+            if (!Finite(input.Width) || !Finite(input.Height) || !Finite(input.X) || !Finite(input.Y))
+                throw new InvalidOperationException("F5 input coordinates are unavailable.");
             F5Size size = F5Layout.WindowSize(input.Width, input.Height, input.Scale);
             windowWidth = size.Width; windowHeight = size.Height;
-            if (!positioned)
+            if (capture == 1 && (dragWidth != input.Width || dragHeight != input.Height || dragScale != input.Scale))
             {
-                X = (input.Width / input.Scale - size.Width) / 2;
-                Y = (input.Height / input.Scale - size.Height) / 2;
-                positioned = true;
+                // The grab offset belongs to the old coordinate domain. Finish
+                // from its last valid sample before using the new viewport.
+                FinishTitleDrag();
+                capture = 0;
+            }
+            if (capture != 1)
+            {
+                X = positionProjection == null ? (input.Width / input.Scale - size.Width) / 2 : positionProjection.X;
+                Y = positionProjection == null ? (input.Height / input.Scale - size.Height) / 2 : positionProjection.Y;
             }
             bool pressed = input.Left && !previousLeft;
             bool released = !input.Left && previousLeft;
@@ -79,7 +95,7 @@ namespace JueMingR.TerrariaHost.F5
             }
             previousF5 = input.F5;
             bool layoutReady = Layout.Matches(input.Width, input.Height, input.Scale, Page);
-            if (Visible && capture == 1 && input.Left)
+            if (Visible && capture == 1)
             { X = input.X - grabX; Y = input.Y - grabY; }
             // Terraria's panel helper accepts integer logical origins. Quantize
             // here so the outer painted rectangle and pointer gate agree.
@@ -97,7 +113,11 @@ namespace JueMingR.TerrariaHost.F5
                     {
                         armed = null;
                         if (Layout.Title.Contains(localX, localY))
-                        { capture = 1; grabX = localX; grabY = localY; }
+                        {
+                            capture = 1; grabX = localX; grabY = localY;
+                            dragStartX = (int)X; dragStartY = (int)Y;
+                            dragWidth = input.Width; dragHeight = input.Height; dragScale = input.Scale;
+                        }
                         else if (Layout.ScrollTrack.Contains(localX, localY) && Layout.MaxScroll > 0)
                         {
                             capture = 2;
@@ -128,7 +148,7 @@ namespace JueMingR.TerrariaHost.F5
             }
             // Consume the release sample before retiring its tail, including after window closure.
             ConsumeLeft = leftTail; ConsumeRight = rightTail;
-            if (!input.Left) { leftTail = false; capture = 0; armed = null; }
+            if (!input.Left) { FinishTitleDrag(); leftTail = false; capture = 0; armed = null; }
             if (!input.Right) rightTail = false;
             previousLeft = input.Left;
         }
@@ -148,8 +168,26 @@ namespace JueMingR.TerrariaHost.F5
             return null;
         }
 
-        internal void Close() { Visible = false; capture = 0; armed = null; Command = F5Command.None; }
+        internal void RestorePosition(WindowPosition position) { positionProjection = position; }
+        internal WindowPosition TakePositionToSave()
+        { WindowPosition result = positionToSave; positionToSave = null; return result; }
+
+        private void FinishTitleDrag()
+        {
+            if (capture != 1 || ((int)X == dragStartX && (int)Y == dragStartY)) return;
+            positionToSave = new WindowPosition((int)X, (int)Y);
+            positionProjection = positionToSave;
+        }
+
+        internal void Close()
+        {
+            // Close/focus loss/session exit may carry synthesized input. Submit
+            // the last accepted position before cancelling, never that sample.
+            FinishTitleDrag();
+            Visible = false; capture = 0; armed = null; Command = F5Command.None;
+        }
         private static float Clamp(float value, float minimum, float maximum)
         { return Math.Max(minimum, Math.Min(maximum, value)); }
+        private static bool Finite(float value) { return !float.IsNaN(value) && !float.IsInfinity(value); }
     }
 }

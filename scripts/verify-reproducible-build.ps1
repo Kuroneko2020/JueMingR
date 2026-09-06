@@ -11,12 +11,13 @@ param(
     [Parameter(Mandatory = $true)]
     [string] $HarmonyPackagePath,
     [switch] $VerifyPhase0TBiomePackage,
-    [switch] $VerifyPhase0UF5UIPackage
+    [switch] $VerifyPhase0UF5UIPackage,
+    [switch] $VerifyPhase0VSettingsPackage
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
-if ($VerifyPhase0TBiomePackage -and $VerifyPhase0UF5UIPackage) { throw 'Select one validation package profile.' }
+if (@($VerifyPhase0TBiomePackage, $VerifyPhase0UF5UIPackage, $VerifyPhase0VSettingsPackage | Where-Object { $_ }).Count -gt 1) { throw 'Select one validation package profile.' }
 
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $terrariaSource = [System.IO.Path]::GetFullPath($TerrariaExePath)
@@ -94,14 +95,16 @@ function Invoke-WorktreeValidationPackage {
         [Parameter(Mandatory = $true)][string] $Commit
     )
 
+    # Exercise ValidateSet's accepted lowercase spelling, then verify the canonical
+    # package identity below so a profile cannot silently fall back to Phase0S.
     $packageOutput = @(& $powershellPath -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
         -File (Join-Path $Worktree 'scripts\build-phase0s-validation-package.ps1') `
-        -OutputDirectory $OutputDirectory -Profile $(if ($VerifyPhase0UF5UIPackage) { 'Phase0UF5UI' } else { 'Phase0TBiome' }))
+        -OutputDirectory $OutputDirectory -Profile $(if ($VerifyPhase0VSettingsPackage) { 'phase0vsettings' } elseif ($VerifyPhase0UF5UIPackage) { 'Phase0UF5UI' } else { 'Phase0TBiome' }))
     if ($LASTEXITCODE -ne 0) {
         throw ('Validation package build failed: ' + ($packageOutput -join [Environment]::NewLine))
     }
 
-    $zipName = $(if ($VerifyPhase0UF5UIPackage) { 'JueMingR-Phase0U-F5UI-' } else { 'JueMingR-Phase0T-Biome-' }) + $Commit + '.zip'
+    $zipName = $(if ($VerifyPhase0VSettingsPackage) { 'JueMingR-Phase0V-Settings-' } elseif ($VerifyPhase0UF5UIPackage) { 'JueMingR-Phase0U-F5UI-' } else { 'JueMingR-Phase0T-Biome-' }) + $Commit + '.zip'
     $zipPath = Join-Path $OutputDirectory $zipName
     if (-not [System.IO.File]::Exists($zipPath)) {
         throw 'The selected candidate ZIP is missing.'
@@ -185,7 +188,7 @@ try {
     }
 
     $packageSummary = $null
-    if ($VerifyPhase0TBiomePackage -or $VerifyPhase0UF5UIPackage) {
+    if ($VerifyPhase0TBiomePackage -or $VerifyPhase0UF5UIPackage -or $VerifyPhase0VSettingsPackage) {
         $packageOutputRoots.Add($packageOutputA)
         $packageOutputRoots.Add($packageOutputB)
         $packageA = Invoke-WorktreeValidationPackage -Worktree $worktreeA -OutputDirectory $packageOutputA -Commit $commit
@@ -216,7 +219,8 @@ try {
         })
     }
     if ($null -ne $packageSummary) {
-        if ($VerifyPhase0UF5UIPackage) { $summary.phase0UF5UIPackage = $packageSummary }
+        if ($VerifyPhase0VSettingsPackage) { $summary.phase0VSettingsPackage = $packageSummary }
+        elseif ($VerifyPhase0UF5UIPackage) { $summary.phase0UF5UIPackage = $packageSummary }
         else { $summary.phase0TBiomePackage = $packageSummary }
     }
     $summaryJson = ($summary | ConvertTo-Json -Depth 5) + [Environment]::NewLine

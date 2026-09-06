@@ -26,7 +26,7 @@ function New-Phase0SControlledPackageFixture {
         [Parameter(Mandatory = $true)][string] $RepositoryRoot,
         [Parameter(Mandatory = $true)][string] $PackageRoot,
         [Parameter(Mandatory = $true)][string] $TerrariaIdentityInput,
-        [ValidateSet('phase0s', 'phase0t-biome', 'phase0u-f5-ui')]
+        [ValidateSet('phase0s', 'phase0t-biome', 'phase0u-f5-ui', 'phase0v-settings')]
         [string] $PackagePrefix = 'phase0s'
     )
 
@@ -189,7 +189,7 @@ function Assert-Phase0SCompactJsonResult {
             Assert-Phase0SCondition -Condition ($null -eq $resultObject.packageId -and $null -eq $resultObject.sha256) -Message "${Operation}/${ExpectedCode}: packageId and sha256 must be JSON null."
         }
         { $_ -in @('INSTALL_COMPLETE', 'RESTORE_COMPLETE', 'RESTORE_NOOP', 'OWNERSHIP_UNPROVEN') } {
-            Assert-Phase0SCondition -Condition ([string] $resultObject.packageId -match '^phase0(?:s|t-biome|u-f5-ui)-[0-9a-f]{40}$' -and $null -eq $resultObject.sha256) -Message "${Operation}/${ExpectedCode}: packageId or sha256 null semantics differ from the result contract."
+            Assert-Phase0SCondition -Condition ([string] $resultObject.packageId -match '^phase0(?:s|t-biome|u-f5-ui|v-settings)-[0-9a-f]{40}$' -and $null -eq $resultObject.sha256) -Message "${Operation}/${ExpectedCode}: packageId or sha256 null semantics differ from the result contract."
         }
         default {
             throw "No null-semantics contract is defined for $ExpectedCode."
@@ -389,6 +389,42 @@ function Invoke-Phase0SInstallRecoveryTests {
         Assert-Phase0SReceiptMatchesPackageManifest -PackageRoot $phase0UPackageRoot -TargetDirectory $phase0UTarget
         Assert-Phase0SCompactJsonResult -Result (Invoke-Phase0SPackageScript -PackageRoot $phase0UPackageRoot -ScriptName 'Restore-Phase0S.ps1' -TerrariaDirectory $phase0UTarget) -Operation 'restore' -ExpectedExitCode 0 -ExpectedCode 'RESTORE_COMPLETE' -ExpectedStatus 'success' -TargetDirectory $phase0UTarget
         Assert-Phase0STreeSnapshotEqual -Expected $phase0UBefore -Actual (Get-Phase0STreeSnapshot -Root $phase0UTarget) -Context 'Phase 0-U exact restore'
+
+        $phase0VPackageRoot = Join-Path $root 'controlled-package-phase0v'
+        $phase0VManifest = New-Phase0SControlledPackageFixture -RepositoryRoot $RepositoryRoot -PackageRoot $phase0VPackageRoot -TerrariaIdentityInput $terrariaIdentityInput -PackagePrefix 'phase0v-settings'
+        foreach ($dataTiming in @('before-install', 'after-install')) {
+            $dataTarget = New-Phase0STargetDirectory -Root $root -TerrariaIdentityInput $terrariaIdentityInput -Name ('phase0v-data-' + $dataTiming)
+            $gameBefore = Get-Phase0STreeSnapshot -Root $dataTarget
+            $dataRoot = Join-Path $dataTarget 'JueMingRData'
+            foreach ($step in @('before-install', 'install', 'after-install')) {
+                if ($step -eq 'install') {
+                    Assert-Phase0SCompactJsonResult -Result (Invoke-Phase0SPackageScript -PackageRoot $phase0VPackageRoot -ScriptName 'Install-Phase0S.ps1' -TerrariaDirectory $dataTarget) -Operation 'install' -ExpectedExitCode 0 -ExpectedCode 'INSTALL_COMPLETE' -ExpectedStatus 'success' -TargetDirectory $dataTarget
+                    Assert-Phase0SReceiptMatchesPackageManifest -PackageRoot $phase0VPackageRoot -TargetDirectory $dataTarget
+                    if ($dataTiming -eq 'after-install') {
+                        Assert-Phase0SInstalledLayout -Target $dataTarget
+                        Assert-Phase0SCondition -Condition (-not [System.IO.Directory]::Exists($dataRoot)) -Message 'Installation must not create user data.'
+                    }
+                }
+                elseif ($step -eq $dataTiming) {
+                    [System.IO.Directory]::CreateDirectory((Join-Path $dataRoot 'config\features')) | Out-Null
+                    [System.IO.Directory]::CreateDirectory((Join-Path $dataRoot 'notes\nested')) | Out-Null
+                    # User bytes are opaque to installation, including damaged/future settings and unrelated content.
+                    [System.IO.File]::WriteAllText((Join-Path $dataRoot 'config\ui.json'), '{damaged-user-config', (New-Object System.Text.UTF8Encoding($false)))
+                    [System.IO.File]::WriteAllText((Join-Path $dataRoot 'config\features\biome-display.json'), '{"schemaVersion":999,"keep":"user-value"}', (New-Object System.Text.UTF8Encoding($false)))
+                    [System.IO.File]::WriteAllBytes((Join-Path $dataRoot 'notes\nested\keep.bin'), [byte[]] @(0, 255, 17, 128))
+                    $dataBefore = Get-Phase0STreeSnapshot -Root $dataRoot
+                    $expectedDataEntries = @(Get-Phase0STreeSnapshot -Root $dataTarget | Where-Object { $_.path -eq 'JueMingRData' -or $_.path.StartsWith('JueMingRData\', [System.StringComparison]::Ordinal) })
+                }
+            }
+            Assert-Phase0STreeSnapshotEqual -Expected $dataBefore -Actual (Get-Phase0STreeSnapshot -Root $dataRoot) -Context ('install preserves user data: ' + $dataTiming)
+            Write-Phase0SEvidence -TargetDirectory $dataTarget -PackageId ([string] $phase0VManifest.packageId) -Kind 'complete'
+            Assert-Phase0SCompactJsonResult -Result (Invoke-Phase0SPackageScript -PackageRoot $phase0VPackageRoot -ScriptName 'Restore-Phase0S.ps1' -TerrariaDirectory $dataTarget) -Operation 'restore' -ExpectedExitCode 0 -ExpectedCode 'RESTORE_COMPLETE' -ExpectedStatus 'success' -TargetDirectory $dataTarget
+            $expectedRestored = @($gameBefore) + @($expectedDataEntries) | Sort-Object path
+            $restored = @(Get-Phase0STreeSnapshot -Root $dataTarget | Sort-Object path)
+            Assert-Phase0STreeSnapshotEqual -Expected $expectedRestored -Actual $restored -Context ('restore preserves all user data: ' + $dataTiming)
+            $repeatBefore = Get-Phase0STreeSnapshot -Root $dataTarget
+            Assert-Phase0SExitAndNoWrite -Result (Invoke-Phase0SPackageScript -PackageRoot $phase0VPackageRoot -ScriptName 'Restore-Phase0S.ps1' -TerrariaDirectory $dataTarget) -ExpectedExitCode 0 -Before $repeatBefore -Target $dataTarget -Scenario ('user data repeat restore: ' + $dataTiming) -Operation 'restore' -ExpectedCode 'RESTORE_NOOP' -ExpectedStatus 'noop'
+        }
 
         $prefixTarget = New-Phase0STargetDirectory -Root $root -TerrariaIdentityInput $terrariaIdentityInput -Name 'evidence-prefix'
         $installResult = Invoke-Phase0SPackageScript -PackageRoot $packageRoot -ScriptName 'Install-Phase0S.ps1' -TerrariaDirectory $prefixTarget

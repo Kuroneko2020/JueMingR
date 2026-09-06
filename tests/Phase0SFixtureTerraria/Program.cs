@@ -219,6 +219,7 @@ namespace Terraria
                 if (args.Length != 3 ||
                     (args[0] != "expect-handoff" &&
                      args[0] != "expect-handoff-biome-failure" &&
+                     !args[0].StartsWith("expect-settings-", StringComparison.Ordinal) &&
                      args[0] != "expect-no-handoff" &&
                      args[0] != "expect-evidence-init-failure" &&
                      !args[0].StartsWith("driver-", StringComparison.Ordinal)))
@@ -228,7 +229,8 @@ namespace Terraria
                 }
 
                 string mode = args[0];
-                bool expectHandoff = mode == "expect-handoff" || mode == "expect-handoff-biome-failure";
+                bool settingsMode = mode.StartsWith("expect-settings-", StringComparison.Ordinal);
+                bool expectHandoff = mode == "expect-handoff" || mode == "expect-handoff-biome-failure" || settingsMode;
                 string evidencePath = Path.GetFullPath(args[1]);
                 string packageId = args[2];
                 if (String.IsNullOrWhiteSpace(packageId))
@@ -242,6 +244,8 @@ namespace Terraria
                     Console.WriteLine("PASS: fixture mode {0} validated.", mode);
                     return 0;
                 }
+
+                if (settingsMode) SettingsHostChecks.PrepareUnrelatedWorkingDirectory();
 
                 // Match WindowsLaunch.Main: install the embedded dependency resolver only
                 // after the executable entry point starts, then enter code that needs ReLogic.
@@ -262,47 +266,52 @@ namespace Terraria
                     main.RunUpdateLoop(1);
                     WaitForEvidenceEvent(evidencePath, "RUNTIME_HANDOFF_COMPLETE");
                     evidenceAfterFirstUpdate = File.ReadAllBytes(evidencePath);
-                    main.SetupAndDrawBiomeLayer();
-                    AssertBiomeDraw("群系: 沙漠", 1);
-                    int updateCountAfterHandoff = global::Terraria.Main.FixtureUpdateCount;
-                    main.RunUpdateLoop(4);
-                    if (global::Terraria.Main.FixtureUpdateCount != updateCountAfterHandoff + 4)
+                    if (settingsMode) SettingsHostChecks.Run(main, mode);
+                    else
                     {
-                        throw new InvalidOperationException(
-                            "The fixture trailing Main.Update loop did not run exactly four times.");
-                    }
+                        SettingsHostChecks.PrepareLegacyScene(() => main.RunUpdateLoop(1));
+                        main.SetupAndDrawBiomeLayer();
+                        AssertBiomeDraw("群系: 沙漠", 1);
+                        int updateCountAfterHandoff = global::Terraria.Main.FixtureUpdateCount;
+                        main.RunUpdateLoop(4);
+                        if (global::Terraria.Main.FixtureUpdateCount != updateCountAfterHandoff + 4)
+                        {
+                            throw new InvalidOperationException(
+                                "The fixture trailing Main.Update loop did not run exactly four times.");
+                        }
 
-                    global::Terraria.Main.LocalPlayer.ZoneDesert = false;
-                    global::Terraria.Main.LocalPlayer.ZoneSnow = true;
-                    main.RunUpdateLoop(25);
-                    main.DrawBiomeLayer();
-                    AssertBiomeDraw("群系: 沙漠", 2);
-                    main.RunUpdateLoop(1);
-                    main.DrawBiomeLayer();
-                    AssertBiomeDraw("群系: 雪原", 3);
+                        global::Terraria.Main.LocalPlayer.ZoneDesert = false;
+                        global::Terraria.Main.LocalPlayer.ZoneSnow = true;
+                        main.RunUpdateLoop(25);
+                        main.DrawBiomeLayer();
+                        AssertBiomeDraw("群系: 沙漠", 2);
+                        main.RunUpdateLoop(1);
+                        main.DrawBiomeLayer();
+                        AssertBiomeDraw("群系: 雪原", 3);
 
-                    global::Terraria.Main.gameMenu = true;
-                    main.RunUpdateLoop(1);
-                    main.DrawBiomeLayer();
-                    AssertBiomeDraw("群系: 雪原", 3);
+                        global::Terraria.Main.gameMenu = true;
+                        main.RunUpdateLoop(1);
+                        main.DrawBiomeLayer();
+                        AssertBiomeDraw("群系: 雪原", 3);
 
-                    global::Terraria.Main.gameMenu = false;
-                    main.RunUpdateLoop(1);
-                    main.DrawBiomeLayer();
-                    AssertBiomeDraw("群系: 雪原", 4);
+                        global::Terraria.Main.gameMenu = false;
+                        main.RunUpdateLoop(1);
+                        main.DrawBiomeLayer();
+                        AssertBiomeDraw("群系: 雪原", 4);
 
-                    F5ConsumerChecks.Run(main, mode == "expect-handoff-biome-failure");
-                    AssertEvidenceReaderAllowsAppend(evidencePath, packageId);
+                        F5ConsumerChecks.Run(main, mode == "expect-handoff-biome-failure");
+                        AssertEvidenceReaderAllowsAppend(evidencePath, packageId);
 
-                    global::Terraria.Main.FixtureThrowOnDraw = true;
-                    main.DrawBiomeLayer();
-                    int drawCountAfterFailure = global::Terraria.Main.FixtureDrawCount;
-                    global::Terraria.Main.FixtureThrowOnDraw = false;
-                    main.DrawBiomeLayer();
-                    if (global::Terraria.Main.FixtureDrawCount != drawCountAfterFailure)
-                    {
-                        throw new InvalidOperationException(
-                            "A draw failure did not leave the biome feature disabled and hidden.");
+                        global::Terraria.Main.FixtureThrowOnDraw = true;
+                        main.DrawBiomeLayer();
+                        int drawCountAfterFailure = global::Terraria.Main.FixtureDrawCount;
+                        global::Terraria.Main.FixtureThrowOnDraw = false;
+                        main.DrawBiomeLayer();
+                        if (global::Terraria.Main.FixtureDrawCount != drawCountAfterFailure)
+                        {
+                            throw new InvalidOperationException(
+                                "A draw failure did not leave the biome feature disabled and hidden.");
+                        }
                     }
 
                     AssertEmbeddedLoadContract();
@@ -350,7 +359,7 @@ namespace Terraria
             }
             catch (Exception exception)
             {
-                Console.Error.WriteLine("FAIL: fixture validation failed: {0}", exception.Message);
+                Console.Error.WriteLine("FAIL: fixture validation failed: {0}", exception);
                 return 1;
             }
         }
@@ -489,6 +498,9 @@ namespace Terraria
                     packageId,
                     Thread.CurrentThread.ManagedThreadId,
                     Thread.CurrentThread.ManagedThreadId);
+                bool needsLoadedScene = mode == "driver-draw-before-install" || mode == "driver-handoff-error-fail-closed";
+                if (needsLoadedScene)
+                    SettingsHostChecks.PrepareLegacyScene(() => runUpdateLoop.Invoke(instance, new object[] { 1 }));
                 if (mode == "driver-draw-before-install")
                 {
                     mainType.GetMethod("DrawExistingBiomeLayer").Invoke(instance, null);
@@ -529,7 +541,7 @@ namespace Terraria
                 AssertPatchContract(mainType);
                 AssertOneShotState();
                 AssertNoDiagnosticArtifact(evidencePath);
-                int expectedUpdateCount = updatesBeforeInstall + 5;
+                int expectedUpdateCount = updatesBeforeInstall + 5 + (needsLoadedScene ? 1 : 0);
                 int actualUpdateCount = (int)mainType.GetProperty(
                     "FixtureUpdateCount",
                     BindingFlags.Public | BindingFlags.Static).GetValue(null, null);

@@ -1,4 +1,6 @@
 using System;
+using JueMingR.Platform.Settings;
+using JueMingR.TerrariaHost.Settings;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 using Terraria;
@@ -13,14 +15,17 @@ namespace JueMingR.TerrariaHost.F5
         internal readonly F5Interaction State = new F5Interaction();
         private readonly F5Renderer renderer = new F5Renderer();
         private readonly Phase0TBiomeRuntime biome;
+        private readonly HostPreferences preferences;
+        private static readonly Action<string> displayPreferenceFeedback = message => Main.NewText(message, 255, 180, 90);
         private Player leasedPlayer;
         private bool priorMouseInterface, hoverLease, priorMouseText;
-        private bool failed, failureNotified;
+        private bool failed, failureNotified, positionRestored;
         private Matrix matrix;
         internal bool LayersReady { get; set; }
         internal bool Failed { get { return failed; } }
 
-        internal F5Shell(Phase0TBiomeRuntime biome) { this.biome = biome; }
+        internal F5Shell(Phase0TBiomeRuntime biome, HostPreferences preferences)
+        { this.biome = biome; this.preferences = preferences; }
         internal bool OwnsPointer { get { return !failed && CanPresentNow && State.OwnsPointer; } }
 
         private static bool CanPresentNow
@@ -41,6 +46,7 @@ namespace JueMingR.TerrariaHost.F5
             try
             {
                 RestoreLeases();
+                RestorePositionWhenLoaded();
                 matrix = Main.UIScaleMatrix;
                 Vector2 screen = PlayerInput.OriginalScreenSize;
                 Vector2 raw = new Vector2(PlayerInput.MouseInfo.X * PlayerInput.RawMouseScale.X,
@@ -59,9 +65,11 @@ namespace JueMingR.TerrariaHost.F5
                 });
                 if (OwnsPointer) LeaseMouseInterface();
                 ConsumeSample();
-                // The feature remains the only biome state owner; the shell forwards intent only.
-                if (State.Command != F5Command.None)
-                    biome.SetFeatureEnabled(State.Command == F5Command.EnableBiome);
+                SubmitPosition();
+                // Settings owns intent; the Feature still owns actual state and
+                // its failure latch. Loading or a failure cannot become a click.
+                if (State.Command != F5Command.None && preferences.BiomeLoaded && !biome.FeatureFailed)
+                    preferences.SetBiomeEnabled(State.Command == F5Command.EnableBiome);
             }
             catch { FailClosed(); ConsumeSample(); }
         }
@@ -93,6 +101,10 @@ namespace JueMingR.TerrariaHost.F5
             try
             {
                 RestoreLeases();
+                RestorePositionWhenLoaded();
+                SubmitPosition();
+                // Do not consume a required alert while normal game text is hidden.
+                if (!Main.gameMenu && !Main.hideUI) preferences.TakeFeedback(displayPreferenceFeedback);
                 if (failed)
                 {
                     if (!failureNotified && !Main.gameMenu)
@@ -103,10 +115,13 @@ namespace JueMingR.TerrariaHost.F5
                     return;
                 }
                 if (!CanPresentNow)
-                { State.Close(); renderer.Dispose(); return; }
+                { CloseAndSubmitPosition(); renderer.Dispose(); return; }
+                // Documents finish independently; a protected/failed read still
+                // finishes loading and permits in-memory use of that document.
+                if (!preferences.UiLoaded) { State.Ready = false; return; }
                 if (!State.Visible && State.Ready) return;
                 State.Ready = LayersReady && renderer.RefreshResources();
-                if (!State.Ready) { State.Close(); return; }
+                if (!State.Ready) { CloseAndSubmitPosition(); return; }
                 if (State.Visible)
                 {
                     Vector2 screen = PlayerInput.OriginalScreenSize;
@@ -124,7 +139,7 @@ namespace JueMingR.TerrariaHost.F5
             try
             {
                 RestoreLeases();
-                if (!CanPresentNow) { State.Close(); return true; }
+                if (!CanPresentNow) { CloseAndSubmitPosition(); return true; }
                 if (OwnsPointer)
                 {
                     // AfterUpdate already cleared the old bubble before Emote.
@@ -171,8 +186,9 @@ namespace JueMingR.TerrariaHost.F5
         {
             try
             {
-                if (!CanPresentNow) { State.Close(); RestoreLeases(); }
-                else if (State.Visible && State.Ready && !failed) renderer.Draw(State, matrix, biome.FeatureEnabled, biome.FeatureFailed);
+                if (!CanPresentNow) { CloseAndSubmitPosition(); RestoreLeases(); }
+                else if (State.Visible && State.Ready && !failed)
+                    renderer.Draw(State, matrix, biome.FeatureEnabled, biome.FeatureFailed || !preferences.BiomeLoaded);
             }
             catch { FailClosed(); }
             return true;
@@ -203,7 +219,22 @@ namespace JueMingR.TerrariaHost.F5
             }
         }
 
+        private void RestorePositionWhenLoaded()
+        {
+            if (positionRestored || !preferences.UiLoaded) return;
+            State.RestorePosition(preferences.Position);
+            positionRestored = true;
+        }
+
+        private void SubmitPosition()
+        {
+            WindowPosition position = State.TakePositionToSave();
+            if (position != null) preferences.SetPosition(position);
+        }
+
+        internal void CloseAndSubmitPosition() { State.Close(); SubmitPosition(); }
+
         internal void FailClosed()
-        { failed = true; State.Ready = false; State.Close(); RestoreLeases(); renderer.Dispose(); }
+        { failed = true; State.Ready = false; CloseAndSubmitPosition(); RestoreLeases(); renderer.Dispose(); }
     }
 }
