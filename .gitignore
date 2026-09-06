@@ -19,6 +19,9 @@ external/TerrariaRefs/
 external/Harmony/
 external/Harmony.phase0s-stage-*/
 
+# Persistent local research snapshots (not build inputs or disposable cache)
+/references/
+
 # Test packages and generated build outputs
 outputs/
 artifacts/
