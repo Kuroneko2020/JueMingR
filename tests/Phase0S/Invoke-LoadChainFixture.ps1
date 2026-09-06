@@ -611,12 +611,20 @@ function Invoke-Phase0SLoadChainFixtureTests {
         Assert-Phase0SCondition -Condition ($tempSecondLaunch.exitCode -eq 0) -Message "TEMP installed second process: expected exit 0, actual $($tempSecondLaunch.exitCode)."
         Assert-Phase0SCondition -Condition ((Get-Phase0SFileSha256 -Path $tempEvidencePath) -cne $tempFirstEvidenceHash) -Message 'The TEMP installed second process retained stale first-process evidence.'
 
+        # Runtime preferences are user-owned, not install payload. Keep their exact post-launch
+        # tree in the restore expectation; every other path must still match the initial baseline.
+        $retainedUserData = @(Get-Phase0STreeSnapshot -Root $tempTarget | Where-Object {
+            $_.path -ceq 'JueMingRData' -or $_.path.StartsWith('JueMingRData\', [System.StringComparison]::Ordinal)
+        })
+        Assert-Phase0SCondition -Condition (@($retainedUserData | Where-Object { $_.type -ceq 'file' }).Count -gt 0) -Message 'The TEMP launches did not exercise persistent user data.'
+        $tempRestoreExpected = @((@($tempBaseline) + @($retainedUserData)) | Sort-Object path)
+
         Copy-Item -LiteralPath $fixedTerrariaInput -Destination $tempTerrariaPath -Force
         Assert-Phase0SCondition -Condition ((Get-Phase0SFileSha256 -Path $tempTerrariaPath) -ceq '960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3') -Message 'The TEMP Terraria baseline was not restored before the package restore test.'
         $tempRestore = Invoke-Phase0STempPackageScript -PackageRoot $tempPackage.root -ScriptName 'Restore-Phase0S.ps1' -TerrariaDirectory $tempTarget
         Assert-Phase0STempPackageSuccess -Result $tempRestore -Operation 'restore' -Code 'RESTORE_COMPLETE' -PackageId $tempPackage.packageId
-        Assert-Phase0STreeSnapshotEqual -Expected $tempBaseline -Actual (Get-Phase0STreeSnapshot -Root $tempTarget) -Context 'TEMP install, two launches, restore'
-        Write-Host 'PASS: formal TEMP install, two independent launches, and exact restore completed.'
+        Assert-Phase0STreeSnapshotEqual -Expected $tempRestoreExpected -Actual (Get-Phase0STreeSnapshot -Root $tempTarget) -Context 'TEMP install, two launches, restore with exact user data preservation'
+        Write-Host 'PASS: formal TEMP install, two independent launches, exact payload restore and unchanged runtime user data completed.'
 
         foreach ($driverMode in @(
             'driver-relogic-then-terraria',

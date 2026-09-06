@@ -83,12 +83,13 @@ namespace JueMingR.ArchitectureTests
                 {
                     string path = Path.Combine(root, "biome.json");
                     File.WriteAllText(path, json, new UTF8Encoding(false));
-                    using (var setting = new PreferenceDocument<bool>(new FilePreferenceStorage(path), codec, true))
+                    var storage = new CountingStorage(path);
+                    using (var setting = new PreferenceDocument<bool>(storage, codec, true))
                     {
                         Loaded(setting);
                         Require(setting.Set(false), "protected file still permits memory selection");
                         Require(setting.Stop(3000), "protected document stopped");
-                        Require(File.ReadAllText(path) == json && setting.CompletedWriteCount == 0,
+                        Require(File.ReadAllText(path) == json && storage.Writes == 0,
                             "missing field/future/unknown original cannot be rewritten");
                         Require(!File.Exists(path + ".bak"), "bad original never rotates a recovery backup");
                     }
@@ -112,20 +113,39 @@ namespace JueMingR.ArchitectureTests
             WithRoot(root =>
             {
                 string path = Path.Combine(root, "biome.json");
-                using (var setting = new PreferenceDocument<bool>(new FilePreferenceStorage(path), new BiomePreferenceCodec(), true, 200))
+                var storage = new CountingStorage(path);
+                using (var setting = new PreferenceDocument<bool>(storage, new BiomePreferenceCodec(), true, 200))
                 {
                     Loaded(setting);
                     Require(!setting.Set(true), "same selection no request");
                     setting.Set(false); setting.Set(true); setting.Set(false);
                     Require(setting.Stop(3000), "stop drains last value");
-                    Require(setting.CompletedWriteCount == 1, "coalesced one physical commit");
+                    Require(storage.Writes == 1, "coalesced one physical commit");
                     Require(new BiomePreferenceCodec().Decode(File.ReadAllBytes(path)) == false, "latest value on disk");
                     Require(!setting.Set(true), "stopped owner rejects commands");
-                    long writes = setting.CompletedWriteCount;
+                    int writes = storage.Writes;
                     Thread.Sleep(250);
-                    Require(setting.CompletedWriteCount == writes, "no writes after stop");
+                    Require(storage.Writes == writes, "no writes after stop");
                 }
             });
+        }
+
+        // Count actual commits only in the tests that ask about coalescing/idle
+        // work. No production counter or probe is required by the save contract.
+        internal sealed class CountingStorage : IPreferenceStorage
+        {
+            private readonly FilePreferenceStorage inner;
+            private int writes;
+            internal CountingStorage(string path) { inner = new FilePreferenceStorage(path); }
+            internal int Writes { get { return Volatile.Read(ref writes); } }
+            public PreferenceReadResult Read() { return inner.Read(); }
+            public PreferenceWriteResult Write(string identity, byte[] contents)
+            {
+                PreferenceWriteResult result = inner.Write(identity, contents);
+                if (result.Status == PreferenceWriteStatus.Saved) Interlocked.Increment(ref writes);
+                return result;
+            }
+            public void Dispose() { inner.Dispose(); }
         }
 
         private static void ExpectFormat(BiomePreferenceCodec codec, string json, PreferenceStatus status)

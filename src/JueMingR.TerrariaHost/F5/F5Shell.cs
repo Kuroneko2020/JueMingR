@@ -16,6 +16,7 @@ namespace JueMingR.TerrariaHost.F5
         private readonly F5Renderer renderer = new F5Renderer();
         private readonly Phase0TBiomeRuntime biome;
         private readonly HostPreferences preferences;
+        private static readonly Action<string> displayPreferenceFeedback = message => Main.NewText(message, 255, 180, 90);
         private Player leasedPlayer;
         private bool priorMouseInterface, hoverLease, priorMouseText;
         private bool failed, failureNotified, positionRestored;
@@ -102,11 +103,8 @@ namespace JueMingR.TerrariaHost.F5
                 RestoreLeases();
                 RestorePositionWhenLoaded();
                 SubmitPosition();
-                if (!Main.gameMenu)
-                {
-                    string feedback = preferences.TakeFeedback();
-                    if (feedback != null) Main.NewText(feedback, 255, 180, 90);
-                }
+                // Do not consume a required alert while normal game text is hidden.
+                if (!Main.gameMenu && !Main.hideUI) preferences.TakeFeedback(displayPreferenceFeedback);
                 if (failed)
                 {
                     if (!failureNotified && !Main.gameMenu)

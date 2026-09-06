@@ -59,13 +59,13 @@ namespace JueMingR.ArchitectureTests
                     Require(storage.WriteCalls == 1, "one in-flight operation despite many commands");
                     storage.WriteRelease.Set();
                     Require(SpinWait.SpinUntil(() => setting.Snapshot.Status == PreferenceStatus.Saved, 3000), "latest write completes");
-                    Require(setting.Snapshot.Value && setting.CompletedWriteCount == 2 && storage.WriteCalls == 2,
+                    Require(setting.Snapshot.Value && storage.CompletedWrites == 2 && storage.WriteCalls == 2,
                         "old completion drains one latest slot");
                     Require(new BiomePreferenceCodec().Decode(File.ReadAllBytes(path)), "new true wins on disk");
-                    long completed = setting.CompletedWriteCount;
+                    int completed = storage.CompletedWrites;
                     for (int i = 0; i < 100; i++) Require(!setting.Set(true), "same values are inert");
                     Thread.Sleep(200);
-                    Require(setting.CompletedWriteCount == completed, "idle does not save");
+                    Require(storage.CompletedWrites == completed, "idle does not save");
                 }
                 finally { storage.ReleaseAll(); Require(setting.Stop(3000), "write worker joined"); storage.DisposeEvents(); }
             });
@@ -100,7 +100,8 @@ namespace JueMingR.ArchitectureTests
             WithRoot(root =>
             {
                 string path = Path.Combine(root, "biome.json");
-                using (var setting = new PreferenceDocument<bool>(new FilePreferenceStorage(path), new BiomePreferenceCodec(), true))
+                var storage = new PreferenceChecks.CountingStorage(path);
+                using (var setting = new PreferenceDocument<bool>(storage, new BiomePreferenceCodec(), true))
                 {
                     PreferenceChecks.Loaded(setting);
                     var feature = new BiomeDisplayFeature(new EmptyObservation(), false);
@@ -108,7 +109,7 @@ namespace JueMingR.ArchitectureTests
                     feature.SetEnabled(true); Require(feature.Enabled, "off can become on");
                     feature.FailClosed(); feature.SetEnabled(setting.Snapshot.Value);
                     Require(feature.HasFailed && !feature.Enabled && setting.Snapshot.Value, "fault latch does not mutate intent or auto-retry");
-                    Require(!File.Exists(path) && setting.CompletedWriteCount == 0, "fault does not save an off preference");
+                    Require(!File.Exists(path) && storage.Writes == 0, "fault does not save an off preference");
                 }
             });
         }
@@ -121,7 +122,7 @@ namespace JueMingR.ArchitectureTests
 
         private sealed class GatedStorage : IPreferenceStorage
         {
-            private readonly FilePreferenceStorage inner;
+            private readonly PreferenceChecks.CountingStorage inner;
             private readonly bool gateRead, gateWrite;
             internal readonly ManualResetEventSlim ReadEntered = new ManualResetEventSlim();
             internal readonly ManualResetEventSlim ReadRelease = new ManualResetEventSlim();
@@ -129,8 +130,9 @@ namespace JueMingR.ArchitectureTests
             internal readonly ManualResetEventSlim WriteRelease = new ManualResetEventSlim();
             internal readonly ManualResetEventSlim Disposed = new ManualResetEventSlim();
             internal int WriteCalls;
+            internal int CompletedWrites { get { return inner.Writes; } }
             internal GatedStorage(string path, bool gateRead, bool gateWrite)
-            { inner = new FilePreferenceStorage(path); this.gateRead = gateRead; this.gateWrite = gateWrite; }
+            { inner = new PreferenceChecks.CountingStorage(path); this.gateRead = gateRead; this.gateWrite = gateWrite; }
             public PreferenceReadResult Read()
             {
                 ReadEntered.Set();

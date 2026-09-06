@@ -17,6 +17,7 @@
     <Compile Include="..\..\src\JueMingR.Platform\Settings\WindowPosition.cs" Link="Production\WindowPosition.cs" />
     <Compile Include="..\Phase0U\*.cs" />
     <Compile Include="..\Phase0V\SettingsHostChecks.cs" />
+    <Compile Include="..\Phase0V\PreferenceFeedbackChecks.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\F5Layout.cs" Link="Production\F5Layout.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\F5Interaction.cs" Link="Production\F5Interaction.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\F5Renderer.cs" Link="Production\F5Renderer.cs" />

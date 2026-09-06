@@ -16,7 +16,6 @@ namespace JueMingR.Platform.Settings
         private PreferenceSnapshot<T> snapshot;
         private bool writable, pending, stopping, cancelled, loadAbandoned;
         private DateTime due;
-        private long completedWrites;
 
         public PreferenceDocument(IPreferenceStorage storage, IPreferenceCodec<T> codec, T defaultValue, int quietMilliseconds = 150)
         {
@@ -30,7 +29,6 @@ namespace JueMingR.Platform.Settings
         }
 
         public PreferenceSnapshot<T> Snapshot { get { return Volatile.Read(ref snapshot); } }
-        public long CompletedWriteCount { get { return Interlocked.Read(ref completedWrites); } }
 
         public bool Set(T value)
         {
@@ -128,7 +126,6 @@ namespace JueMingR.Platform.Settings
                         if (result.Status == PreferenceWriteStatus.Saved)
                         {
                             identity = result.Identity;
-                            Interlocked.Increment(ref completedWrites);
                             // An old completion may update its mechanical identity,
                             // but may not mark a newer, pending choice as saved.
                             if (snapshot.Revision == revision)

@@ -43,6 +43,7 @@ namespace Terraria
         {
             object context = Context(), preferences = Get(context, "preferences"), runtime = Get(context, "Runtime");
             WaitForLoaded(preferences);
+            if (mode == "expect-settings-save") PreferenceFeedbackChecks.Run(context);
             main.RunUpdateLoop(1);
             main.SetupAndDrawBiomeLayer();
             bool corruptUi = mode == "expect-settings-corrupt-ui";
