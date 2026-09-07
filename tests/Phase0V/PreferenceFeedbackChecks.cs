@@ -163,6 +163,7 @@ namespace Terraria
         private sealed class Session : IDisposable
         {
             internal readonly object Preferences, Shell;
+            private readonly object notes;
             internal readonly string BiomePath, UiPath;
             internal Session(string path)
             {
@@ -170,8 +171,12 @@ namespace Terraria
                 Preferences = Activator.CreateInstance(host.GetType("JueMingR.TerrariaHost.Settings.HostPreferences", true), Instance,
                     null, new object[] { path }, null);
                 Wait(() => (bool)Get(Preferences, "IsLoaded"), "real Host load completes");
+                // The shell now composes Notes as well as Settings. Keep its worker
+                // on this same isolated installation and join it before cleanup.
+                notes = Activator.CreateInstance(host.GetType("JueMingR.TerrariaHost.Notes.HostNotes", true), Instance,
+                    null, new object[] { path }, null);
                 Shell = Activator.CreateInstance(host.GetType("JueMingR.TerrariaHost.F5.F5Shell", true), Instance,
-                    null, new[] { runtime, Preferences }, null);
+                    null, new[] { runtime, Preferences, notes }, null);
                 BiomePath = Path.Combine(path, "JueMingRData", "config", "features", "biome-display.json");
                 UiPath = Path.Combine(path, "JueMingRData", "config", "ui.json");
             }
@@ -198,6 +203,8 @@ namespace Terraria
                 foreach (string document in new[] { "biome", "ui" })
                     Check((bool)Call(Get(Preferences, document), "Stop", 3000), "worker joined before fixture directory cleanup");
                 Call(Preferences, "OnProcessExit", null, EventArgs.Empty);
+                Check((bool)Call(Get(notes, "worker"), "Stop", 3000), "notes worker joined before fixture directory cleanup");
+                Call(notes, "OnExit", null, EventArgs.Empty);
             }
         }
 
