@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 using JueMingR.Features.Notes;
 using JueMingR.TerrariaHost.F5;
 using Microsoft.Xna.Framework;
@@ -17,15 +19,45 @@ namespace JueMingR.TerrariaHost.Notes
         private SpriteBatch batch;
         private Matrix matrix;
         private Rectangle outerClip;
+        private int layoutUnits;
+        private long layoutDeadline;
+        private readonly Dictionary<char, float> characterWidths = new Dictionary<char, float>();
         internal object FontIdentity { get { return font; } }
         internal bool Refresh()
         {
-            font = FontAssets.MouseText == null ? null : FontAssets.MouseText.Value;
+            var nextFont = FontAssets.MouseText == null ? null : FontAssets.MouseText.Value;
+            if (!ReferenceEquals(font, nextFont)) characterWidths.Clear();
+            font = nextFont;
             pixel = TextureAssets.MagicPixel == null ? null : TextureAssets.MagicPixel.Value;
             return font != null && pixel != null && !pixel.IsDisposed;
         }
         internal NotesTextLayout Layout(string text, float width, float scale)
         { return new NotesTextLayout(text, width, element => font.MeasureString(element).X * scale); }
+        internal NotesTextLayout Layout(string text, float width, float scale, IReadOnlyList<int> boundaries,
+            NotesTextLayout previous = null, int changedStart = 0)
+        { return new NotesTextLayout(text, width, element => Measure(element) * scale, boundaries, previous, changedStart); }
+        private float Measure(string element)
+        {
+            if (element.Length != 1) return font.MeasureString(element).X;
+            float width;
+            if (!characterWidths.TryGetValue(element[0], out width)) { width = font.MeasureString(element).X; characterWidths.Add(element[0], width); }
+            return width;
+        }
+        internal void BeginLayoutFrame()
+        {
+            // One shared allowance, not one allowance per note. The wall-clock
+            // ceiling is checked between <=1024-unit steps; it is not an FPS claim.
+            layoutUnits = 8192; layoutDeadline = Stopwatch.GetTimestamp() + Stopwatch.Frequency / 500;
+        }
+        internal void Advance(NotesTextLayout layout, int maximum = 8192)
+        {
+            int units = Math.Min(layoutUnits, maximum);
+            while (units > 0 && !layout.Complete && Stopwatch.GetTimestamp() < layoutDeadline)
+            {
+                int used = layout.Continue(Math.Min(units, 1024)); if (used == 0) break;
+                units -= used; layoutUnits -= used;
+            }
+        }
         internal void Pass(Matrix transform, F5Rect? clip, Action draw)
         {
             SpriteBatch target = Main.spriteBatch; if (target == null) throw new InvalidOperationException("Notes batch unavailable.");
@@ -86,7 +118,8 @@ namespace JueMingR.TerrariaHost.Notes
                     for (int i = line.First; i < line.Last; i++)
                     { Label(layout.Element(i), x, y, scale, color); x += layout.Advance(i); }
                 }
-                if (editor != null && layout.Text == editor.Text)
+                if (!layout.Complete) Label("正在排版…", rect.X + 2, rect.Bottom - 18, 0.6f, Color.Gold);
+                if (editor != null && ReferenceEquals(layout.Text, editor.Text) && layout.CanLocate(editor.Caret))
                 {
                     float x = rect.X + layout.CaretX(editor.Caret), y = rect.Y + layout.LineOf(editor.Caret) * lineHeight - scroll;
                     if ((Environment.TickCount & 1023) < 512) Fill(new F5Rect(x, y, 1, lineHeight - 2), Color.White);
@@ -96,8 +129,9 @@ namespace JueMingR.TerrariaHost.Notes
                         float cx = Math.Max(rect.X, Math.Min(rect.Right - width, x));
                         Fill(new F5Rect(cx, y, width, lineHeight), new Color(20, 28, 40, 255)); Label(composition, cx + 2, y, scale, Color.Gold);
                     }
-                    // Native candidate layer uses current UI coordinates after all
-                    // interface layers. Convert through screen from our frozen matrix.
+                    // .8 DrawIMEPanel subtracts 32 logical units from its anchor.
+                    // Convert our frozen matrix through screen into its current UI
+                    // coordinates, then compensate exactly that verified ABI offset.
                     if (y + lineHeight > rect.Y && y < rect.Bottom)
                     {
                         Vector2 screen = Vector2.Transform(new Vector2(x, Math.Min(rect.Bottom, y + lineHeight)), matrix);

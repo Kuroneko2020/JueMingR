@@ -27,6 +27,10 @@ namespace JueMingR.TerrariaHost.Notes
         private NoteEditor prepared;
         private bool leased, priorBlock, previousComposition, enterTail, escapeTail, keyboardTail;
         private int repeatTicks;
+        private Keys pendingNavigation;
+        private long navigationRevision;
+        private int navigationCaret;
+        private char pendingHighSurrogate;
         internal NotesInput(NotesWorkspace workspace, INotesClipboard clipboard, INotesIme ime = null)
         { this.workspace = workspace; this.clipboard = clipboard; this.ime = ime ?? new NativeIme(); }
         internal string Composition { get; private set; } = "";
@@ -41,6 +45,12 @@ namespace JueMingR.TerrariaHost.Notes
         {
             if (active && workspace.Editor != null && !OtherTextOwner)
             {
+                if (leased && !ReferenceEquals(bound, workspace.Editor))
+                {
+                    // Normal field switching can retain the outer input lease, but
+                    // pending code units/navigation belong to the old editor identity.
+                    pendingHighSurrogate = (char)0; pendingNavigation = Keys.None;
+                }
                 // Activation happens here, before this frame's mapping/zoom/UI keys.
                 // A double click merely arms the editor in the preceding postfix.
                 if (!leased) { priorBlock = Main.blockInput; leased = true; if (prepared != workspace.Editor) Main.clrInput(); }
@@ -100,7 +110,7 @@ namespace JueMingR.TerrariaHost.Notes
             }
             Main.clrInput();
             if (bound == null) return;
-            if (committed.Length != 0) bound.Insert(committed.ToString());
+            InsertCommitted();
             if (escape && !suppressEscape) { Release(true); workspace.CancelEdit(); return; }
             if (enter && !suppressEnter)
             {
@@ -133,11 +143,15 @@ namespace JueMingR.TerrariaHost.Notes
             if (Pressed(Keys.Right) || repeat && sample.IsKeyDown(Keys.Right)) editor.Move(1);
             if (Pressed(Keys.Back) || repeat && sample.IsKeyDown(Keys.Back)) editor.Backspace();
             if (Pressed(Keys.Delete) || repeat && sample.IsKeyDown(Keys.Delete)) editor.Delete();
-            if (layout == null || layout.Text != editor.Text) return;
-            if (Pressed(Keys.Up) || repeat && sample.IsKeyDown(Keys.Up)) editor.MoveTo(layout.Vertical(editor.Caret, -1));
-            if (Pressed(Keys.Down) || repeat && sample.IsKeyDown(Keys.Down)) editor.MoveTo(layout.Vertical(editor.Caret, 1));
-            if (Pressed(Keys.Home)) editor.MoveTo(layout.LineHome(editor.Caret));
-            if (Pressed(Keys.End)) editor.MoveTo(layout.LineEnd(editor.Caret));
+            Keys navigation = Pressed(Keys.Up) || repeat && sample.IsKeyDown(Keys.Up) ? Keys.Up :
+                Pressed(Keys.Down) || repeat && sample.IsKeyDown(Keys.Down) ? Keys.Down : Pressed(Keys.Home) ? Keys.Home : Pressed(Keys.End) ? Keys.End : Keys.None;
+            if (navigation != Keys.None) { pendingNavigation = navigation; navigationRevision = editor.Revision; navigationCaret = editor.Caret; }
+            if (pendingNavigation == Keys.None) return;
+            if (editor.Revision != navigationRevision || editor.Caret != navigationCaret) { pendingNavigation = Keys.None; return; }
+            if (layout == null || !ReferenceEquals(layout.Text, editor.Text) || !layout.CanLocate(editor.Caret)) return;
+            int target = pendingNavigation == Keys.Up ? layout.Vertical(editor.Caret, -1) : pendingNavigation == Keys.Down ? layout.Vertical(editor.Caret, 1) :
+                pendingNavigation == Keys.Home ? layout.LineHome(editor.Caret) : layout.LineEnd(editor.Caret);
+            if (target >= 0) { editor.MoveTo(target); pendingNavigation = Keys.None; }
         }
         private bool Pressed(Keys key) { return sample.IsKeyDown(key) && previous.IsKeyUp(key); }
         internal void FinishComposition(bool cancel)
@@ -154,7 +168,17 @@ namespace JueMingR.TerrariaHost.Notes
             committed.Clear();
             for (int i = 0; i < Math.Min(Main.keyCount, Main.keyInt.Length); i++)
                 if (Main.keyInt[i] >= 32 && Main.keyInt[i] != 127) committed.Append(Main.keyString[i]);
-            if (bound != null && committed.Length != 0) bound.Insert(committed.ToString());
+            InsertCommitted();
+        }
+        private void InsertCommitted()
+        {
+            if (bound == null || committed.Length == 0) return;
+            if (pendingHighSurrogate != 0) { committed.Insert(0, pendingHighSurrogate); pendingHighSurrogate = (char)0; }
+            // WM_CHAR can split a surrogate pair across adjacent samples. Retain
+            // its first code unit for this editor only; never persist a half pair.
+            if (Char.IsHighSurrogate(committed[committed.Length - 1]))
+            { pendingHighSurrogate = committed[committed.Length - 1]; committed.Length--; }
+            if (committed.Length != 0) bound.Insert(committed.ToString());
         }
         internal void Release(bool cancel)
         {
@@ -168,6 +192,7 @@ namespace JueMingR.TerrariaHost.Notes
             if (Main.blockInput) Main.blockInput = priorBlock;
             if (!other) PlayerInput.WritingText = false;
             bound = null; leased = false; Composition = ""; previousComposition = false;
+            pendingHighSurrogate = (char)0; pendingNavigation = Keys.None;
         }
         private sealed class NativeIme : INotesIme
         {

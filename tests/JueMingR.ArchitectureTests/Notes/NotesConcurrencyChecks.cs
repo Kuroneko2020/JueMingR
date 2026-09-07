@@ -82,6 +82,11 @@ namespace JueMingR.ArchitectureTests
                     Until(() => { workspace.Poll(); return !workspace.Feature.Busy; });
                     NotesDomainChecks.Require(workspace.Feature.Saved.Find(original.Id) != null && workspace.DeleteConfirmation == original.Id, "failed deletion keeps note and confirmation");
                     workspace.Suspend(); NotesDomainChecks.Require(workspace.DeleteConfirmation == null, "hidden confirmation expires");
+                    storage.Fail = false;
+                    workspace.Request(new NotesAction(NotesActionKind.BeginEdit, original.Id, true, 0)); workspace.Editor.ClearAfterCopy();
+                    workspace.Request(new NotesAction(NotesActionKind.Save)); Until(() => { workspace.Poll(); return !workspace.Feature.Busy; });
+                    NotesDomainChecks.Require(workspace.Editor.Text == workspace.Feature.Saved.Find(original.Id).Title && workspace.Editor.Text == "新笔记" && !workspace.Editor.Dirty,
+                        "explicit save shows canonical blank-title fallback in retained editor");
                 }
                 NotesDomainChecks.Require(storage.Disposed, "worker actually releases ownership");
                 storage.Entered.Dispose(); storage.Release.Dispose();

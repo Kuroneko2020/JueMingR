@@ -38,7 +38,7 @@ namespace JueMingR.Features.Notes
                     // silently rewritten without fields unknown to this schema.
                     foreach (XElement node in root.DescendantsAndSelf())
                         foreach (XAttribute attribute in node.Attributes())
-                            if (attribute.Name != "type") throw PreferenceJson.Invalid();
+                            if (attribute.Name != "type") throw new PreferenceFormatException(PreferenceStatus.UnknownFields, "unknown-notes-attribute");
                     if ((string)root.Attribute("type") != "object") throw PreferenceJson.Invalid();
                     if (PreferenceJson.Integer(PreferenceJson.Required(root, "schema", "number")) != 1)
                         throw new PreferenceFormatException(PreferenceStatus.UnsupportedVersion, "unsupported-notes-schema");

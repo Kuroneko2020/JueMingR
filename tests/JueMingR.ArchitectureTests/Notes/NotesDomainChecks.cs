@@ -34,6 +34,7 @@ namespace JueMingR.ArchitectureTests
                 foreach (string invalid in new[] { "", "{}", "{\"schema\":2,\"notes\":[]}", "{\"schema\":1,\"notes\":[],\"future\":1}",
                     "{\"__type\":\"FutureNotebook\",\"schema\":1,\"notes\":[]}",
                     "{\"schema\":1,\"notes\":[" + note.Replace("{", "{\"__type\":\"FutureNote\",") + "]}",
+                    "{\"schema\":1,\"notes\":[" + note.Replace("\"title\":\"a\"", "\"title\":\"a\\u0080b\"") + "]}",
                     "{\"schema\":1,\"schema\":1,\"notes\":[]}", "{\"schema\":1,\"notes\":[" + note.Replace("\"body\":\"keep\",", "") + "]}",
                     "{\"schema\":1,\"notes\":[" + note + "," + note + "]}" })
                 {

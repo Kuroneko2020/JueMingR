@@ -14,6 +14,9 @@ namespace JueMingR.TerrariaHost.Notes
         internal float TitleScroll, BodyScroll;
         internal object Font;
         internal float Width;
+        internal NoteEditor Editor;
+        internal long EditRevision;
+        internal bool PendingCaret;
     }
     internal sealed class NotesCards
     {
@@ -34,6 +37,10 @@ namespace JueMingR.TerrariaHost.Notes
         internal NotesCards(NotesWorkspace workspace, NotesInput input, NotesRenderer renderer, Action<NotesAction> request)
         { this.workspace = workspace; this.input = input; this.renderer = renderer; this.request = request; }
         internal IReadOnlyList<NotesCard> Cards { get { return cards; } }
+        internal bool PendingLayout
+        {
+            get { foreach (NotesCard card in cards) if (card.TitleLayout != null && !card.TitleLayout.Complete || card.BodyLayout != null && !card.BodyLayout.Complete) return true; return false; }
+        }
         internal NotesTextLayout EditingLayout
         {
             get
@@ -45,6 +52,12 @@ namespace JueMingR.TerrariaHost.Notes
         }
         internal void Prepare(F5Interaction shell, string feedback)
         {
+            // Previously visible long text gets an early share before geometry-only
+            // short previews. Completed offscreen previews stay cached below, so
+            // they cannot consume this allowance again on every pending frame.
+            foreach (NotesCard card in cards)
+                if (card.BodyLayout != null && card.Rect.Bottom > shell.Scroll && card.Rect.Y < shell.Scroll + shell.Layout.Viewport.Height)
+                    renderer.Advance(card.BodyLayout, 2048);
             float width = shell.Layout.Viewport.Width;
             if (feedback != status || statusFont != renderer.FontIdentity)
             { status = feedback; statusFont = renderer.FontIdentity; statusLayout = renderer.Layout(feedback, width - 8, 0.62f); }
@@ -63,7 +76,10 @@ namespace JueMingR.TerrariaHost.Notes
                 card.Note = note;
                 bool editing = workspace.EditingId == note.Id && workspace.Editor != null;
                 string title = editing && workspace.Editor.IsTitle ? workspace.Editor.Text : note.Title;
-                if (card.TitleLayout == null || card.TitleLayout.Text != title) card.TitleLayout = renderer.Layout(title, cardWidth - 132, 0.8f);
+                int changedStart = editing && ReferenceEquals(card.Editor, workspace.Editor) && workspace.Editor.Revision == card.EditRevision + 1 ? workspace.Editor.LastChangeStart : 0;
+                if (card.TitleLayout == null || !ReferenceEquals(card.TitleLayout.Text, title))
+                    card.TitleLayout = renderer.Layout(title, cardWidth - 132, 0.8f, editing && workspace.Editor.IsTitle ? workspace.Editor.Boundaries : note.TitleBoundaries, card.TitleLayout, changedStart);
+                renderer.Advance(card.TitleLayout, 1024);
                 float titleHeight = editing && workspace.Editor.IsTitle ? Math.Min(96, Math.Max(48, card.TitleLayout.Lines.Count * 24)) : 48;
                 string body = editing && !workspace.Editor.IsTitle ? workspace.Editor.Text : note.Body;
                 float maximum = Math.Max(48, Math.Min(240, shell.Layout.Viewport.Height / 2 - titleHeight - 24));
@@ -72,7 +88,9 @@ namespace JueMingR.TerrariaHost.Notes
                 // reach the viewport cap. Full text layout is limited to visible cards.
                 if (body.Length < 256)
                 {
-                    if (card.BodyLayout == null || card.BodyLayout.Text != body) card.BodyLayout = renderer.Layout(body, cardWidth - 16, 0.76f);
+                    if (card.BodyLayout == null || !ReferenceEquals(card.BodyLayout.Text, body))
+                        card.BodyLayout = renderer.Layout(body, cardWidth - 16, 0.76f, editing && !workspace.Editor.IsTitle ? workspace.Editor.Boundaries : note.BodyBoundaries);
+                    renderer.Advance(card.BodyLayout, 1024);
                     bodyHeight = Math.Max(48, Math.Min(maximum, card.BodyLayout.Lines.Count * 24));
                 }
                 int column = columns == 1 || bottoms[0] <= bottoms[1] ? 0 : 1;
@@ -102,16 +120,23 @@ namespace JueMingR.TerrariaHost.Notes
                 string body = editing && !workspace.Editor.IsTitle ? workspace.Editor.Text : card.Note.Body;
                 if (visible || editing)
                 {
-                    if (card.BodyLayout == null || card.BodyLayout.Text != body) card.BodyLayout = renderer.Layout(body, card.Body.Width, 0.76f);
+                    int changedStart = editing && ReferenceEquals(card.Editor, workspace.Editor) && workspace.Editor.Revision == card.EditRevision + 1 ? workspace.Editor.LastChangeStart : 0;
+                    if (card.BodyLayout == null || !ReferenceEquals(card.BodyLayout.Text, body))
+                        card.BodyLayout = renderer.Layout(body, card.Body.Width, 0.76f, editing && !workspace.Editor.IsTitle ? workspace.Editor.Boundaries : card.Note.BodyBoundaries, card.BodyLayout, changedStart);
+                    renderer.Advance(card.BodyLayout);
                     card.BodyScroll = ClampScroll(card.BodyScroll, card.BodyLayout, card.Body.Height, 24);
                     card.TitleScroll = ClampScroll(card.TitleScroll, card.TitleLayout, card.Title.Height, 24);
-                    if (caretChanged && editing)
+                    card.PendingCaret |= caretChanged && editing;
+                    NotesTextLayout editingLayout = editing && workspace.Editor.IsTitle ? card.TitleLayout : card.BodyLayout;
+                    if (card.PendingCaret && editing && editingLayout.CanLocate(workspace.Editor.Caret))
                     {
                         if (workspace.Editor.IsTitle) card.TitleScroll = CaretScroll(card.TitleScroll, card.Title.Height, card.TitleLayout, workspace.Editor.Caret);
                         else card.BodyScroll = CaretScroll(card.BodyScroll, card.Body.Height, card.BodyLayout, workspace.Editor.Caret);
+                        card.PendingCaret = false;
                     }
                 }
-                else card.BodyLayout = null;
+                else if (body.Length >= 256) card.BodyLayout = null;
+                card.Editor = editing ? workspace.Editor : null; card.EditRevision = editing ? workspace.Editor.Revision : -1;
             }
             seenEditor = workspace.Editor; seenCaret = seenEditor == null ? -1 : seenEditor.CaretRevision;
         }
@@ -123,7 +148,7 @@ namespace JueMingR.TerrariaHost.Notes
             foreach (NotesCard card in cards) if (card.Body.Contains(x, y) && card.BodyLayout != null)
             {
                 float next = ClampScroll(card.BodyScroll - wheel / 3f, card.BodyLayout, card.Body.Height, 24);
-                bool changed = next != card.BodyScroll; card.BodyScroll = next; return changed;
+                bool changed = next != card.BodyScroll; card.BodyScroll = next; card.PendingCaret = false; return changed || !card.BodyLayout.Complete;
             }
             return false;
         }
@@ -140,7 +165,8 @@ namespace JueMingR.TerrariaHost.Notes
                     bool title = hit.EndsWith(":title", StringComparison.Ordinal); string id = hit.Substring(0, 32); NotesCard card = states[id];
                     NotesTextLayout layout = title ? card.TitleLayout : card.BodyLayout; F5Rect rect = title ? card.Title : card.Body;
                     float scroll = title ? card.TitleScroll : card.BodyScroll;
-                    int caret = layout == null ? 0 : layout.Hit(x - rect.X, (int)((y - rect.Y + scroll) / 24));
+                    int caret = layout == null ? -1 : layout.Hit(x - rect.X, (int)((y - rect.Y + scroll) / 24));
+                    if (caret < 0) { lastField = null; return; }
                     if (workspace.Editor != null && workspace.EditingId == id && workspace.Editor.IsTitle == title) workspace.Editor.MoveTo(caret);
                     else if (lastField == hit && unchecked((uint)Environment.TickCount - clickTime) <= 500 && Math.Abs(x - clickX) <= 6 && Math.Abs(y - clickY) <= 6)
                     { request(new NotesAction(NotesActionKind.BeginEdit, id, title, caret)); lastField = null; return; }
@@ -207,13 +233,13 @@ namespace JueMingR.TerrariaHost.Notes
                 renderer.TextView(card.TitleLayout, card.Title.Offset(ox, oy), card.TitleScroll, 0.8f, 24, Color.Wheat, title, title == null ? "" : input.Composition);
                 renderer.Button(card.Pin.Offset(ox, oy), card.Note.Pinned ? "已悬挂" : "悬挂", false);
                 renderer.Button(card.Delete.Offset(ox, oy), workspace.DeleteConfirmation == card.Note.Id ? "确认" : "删除", false, Color.Salmon);
-                if (body == null && String.IsNullOrWhiteSpace(card.Note.Body)) renderer.Label("双击进入编辑", ox + card.Body.X, oy + card.Body.Y, 0.7f, Color.Gray);
+                if (body == null && card.Note.EmptyBody) renderer.Label("双击进入编辑", ox + card.Body.X, oy + card.Body.Y, 0.7f, Color.Gray);
                 renderer.TextView(card.BodyLayout, card.Body.Offset(ox, oy), card.BodyScroll, 0.76f, 24, body == null ? Color.LightBlue : Color.LightYellow, body, body == null ? "" : input.Composition);
             }
         }
         internal void Suspend() { lastField = armed = null; }
         private static float ClampScroll(float value, NotesTextLayout layout, float height, float lineHeight)
-        { return Math.Max(0, Math.Min(Math.Max(0, layout.Lines.Count * lineHeight - height), value)); }
+        { return Math.Max(0, layout.Complete ? Math.Min(Math.Max(0, layout.Lines.Count * lineHeight - height), value) : Math.Min(layout.Text.Length * lineHeight, value)); }
         private static float CaretScroll(float scroll, float height, NotesTextLayout layout, int caret)
         {
             float y = layout.LineOf(caret) * 24;

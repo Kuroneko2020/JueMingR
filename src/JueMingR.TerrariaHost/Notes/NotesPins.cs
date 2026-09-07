@@ -26,11 +26,13 @@ namespace JueMingR.TerrariaHost.Notes
         private string armed;
         private bool previousLeft, leftTail, rightTail;
         private float grabX, grabY, dragWidth, dragHeight;
+        private int layoutCursor;
         internal bool OwnsPointer { get; private set; }
         internal bool ConsumeLeft { get; private set; }
         internal bool ConsumeRight { get; private set; }
         internal bool ConsumeWheel { get; private set; }
         internal bool HasPins { get { return pins.Count != 0; } }
+        internal bool PendingLayout { get { foreach (NotesPin pin in pins) if (!pin.Layout.Complete) return true; return false; } }
         internal IReadOnlyList<NotesPin> Pins { get { return pins; } }
         internal NotesPins(NotesWorkspace workspace, NotesRenderer renderer, Func<NotesAction, bool> request)
         { this.workspace = workspace; this.renderer = renderer; this.request = request; }
@@ -46,11 +48,19 @@ namespace JueMingR.TerrariaHost.Notes
                 pin.Note = note;
                 if (!ReferenceEquals(drag, pin) && !ReferenceEquals(pendingDrop, pin))
                     pin.Rect = Place(note.X, note.Y, width, height);
-                if (pin.Layout == null || pin.Layout.Text != note.Body || pin.Font != renderer.FontIdentity)
-                { pin.Layout = renderer.Layout(note.Body, Width - 16, 1.2f); pin.Font = renderer.FontIdentity; }
-                pin.Scroll = Math.Max(0, Math.Min(pin.Scroll, Math.Max(0, pin.Layout.Lines.Count * 36 - Height + 16)));
+                if (pin.Layout == null || !ReferenceEquals(pin.Layout.Text, note.Body) || pin.Font != renderer.FontIdentity)
+                { pin.Layout = renderer.Layout(note.Body, Width - 16, 1.2f, note.BodyBoundaries); pin.Font = renderer.FontIdentity; }
+                if (pin.Layout.Complete) pin.Scroll = Math.Max(0, Math.Min(pin.Scroll, Math.Max(0, pin.Layout.Lines.Count * 36 - Height + 16)));
                 pins.Add(pin);
             }
+            // Rotate the starting note, so a long lower pin cannot starve the
+            // remaining transparent layers under the shared frame allowance.
+            for (int i = 0; i < pins.Count; i++)
+            {
+                NotesPin pin = pins[(layoutCursor + i) % pins.Count]; renderer.Advance(pin.Layout, 1024);
+                if (pin.Layout.Complete) pin.Scroll = Math.Max(0, Math.Min(pin.Scroll, Math.Max(0, pin.Layout.Lines.Count * 36 - Height + 16)));
+            }
+            if (pins.Count != 0) layoutCursor = (layoutCursor + 8) % pins.Count;
             foreach (string id in new List<string>(states.Keys)) if (!retained.Contains(id)) states.Remove(id);
         }
         internal void Pointer(float x, float y, bool left, bool right, int wheel, bool active, bool focused, bool windowOwns, float width, float height)
@@ -70,7 +80,7 @@ namespace JueMingR.TerrariaHost.Notes
                 {
                     if (left) leftTail = true; if (right) rightTail = true; ConsumeWheel = true;
                     if (wheel != 0 && hover != null && drag == null)
-                        hover.Scroll = Math.Max(0, Math.Min(Math.Max(0, hover.Layout.Lines.Count * 36 - Height + 16), hover.Scroll - wheel / 120f * 108));
+                        hover.Scroll = Math.Max(0, Math.Min(Math.Max(0, hover.Layout.Complete ? hover.Layout.Lines.Count * 36 - Height + 16 : hover.Note.Body.Length * 36), hover.Scroll - wheel / 120f * 108));
                     if (pressed && hover != null)
                     {
                         armed = Tool(hover, x, y);

@@ -44,7 +44,13 @@ namespace JueMingR.Features.Notes
             Error = null;
             NotesAction action = afterSave;
             bool current = pendingEpoch == epoch && (submittedEditor == null || ReferenceEquals(Editor, submittedEditor) && Editor.Revision == pendingRevision);
-            if (ReferenceEquals(Editor, submittedEditor) && Editor != null) Editor.AcceptBaseline(submittedText);
+            if (ReferenceEquals(Editor, submittedEditor) && Editor != null)
+            {
+                Editor.AcceptBaseline(submittedText);
+                // Title normalization belongs to the acknowledged revision only;
+                // a newer draft must not be replaced by the saved fallback/trim.
+                if (Editor.Revision == pendingRevision) Editor.AcceptCanonicalTitle(Feature.Saved.Find(EditingId));
+            }
             ClearPending();
             if (current && action != null)
             {
@@ -61,7 +67,7 @@ namespace JueMingR.Features.Notes
             {
                 Note note = Feature.Saved.Find(EditingId);
                 if (note == null) { Error = "编辑对象已不存在，草稿保留。"; return false; }
-                if (!Submit(Feature.Saved.Replace(note.WithText(Editor.IsTitle, Editor.Text)))) return false;
+                if (!Submit(Feature.Saved.Replace(note.WithEditor(Editor)))) return false;
                 submittedEditor = Editor; submittedText = Editor.Text; pendingRevision = Editor.Revision; afterSave = action;
                 return true;
             }
@@ -86,7 +92,7 @@ namespace JueMingR.Features.Notes
                 case NotesActionKind.FinishEdit: return true;
                 case NotesActionKind.BeginEdit:
                     if (note == null) return false;
-                    EditingId = note.Id; Editor = new NoteEditor(action.Title, action.Title ? note.Title : note.Body); Editor.MoveTo(action.X); return true;
+                    EditingId = note.Id; Editor = new NoteEditor(action.Title, note); Editor.MoveTo(action.X); return true;
                 case NotesActionKind.Leave:
                     DeleteConfirmation = null; epoch++; navigation = action; return true;
                 case NotesActionKind.ConfirmDelete:

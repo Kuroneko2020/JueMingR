@@ -51,9 +51,20 @@ namespace JueMingR.ArchitectureTests
                 NotesDomainChecks.Require(rejected, "many tiny nodes rejected before tree materialization");
                 var many = new List<Note>(); for (int i = 0; i < Notebook.MaximumNotes; i++) many.Add(Note.Create());
                 NotesDomainChecks.Require(codec.Decode(codec.Encode(new Notebook(many))).Notes.Count == 1024, "maximum note count roundtrip");
-                var layoutClock = Stopwatch.StartNew(); var layout = new NotesTextLayout(new string('中', Note.MaximumBodyUnits), 40, value => 1); layoutClock.Stop();
+                Note large = Note.Create().WithText(false, new string('中', Note.MaximumBodyUnits));
+                var layoutClock = Stopwatch.StartNew(); var layout = new NotesTextLayout(large.Body, 40, value => 1, large.BodyBoundaries); layoutClock.Stop();
+                long construction = layoutClock.ElapsedTicks, maxStep = 0;
+                while (!layout.Complete)
+                {
+                    layoutClock.Restart(); int used = layout.Continue(8192); layoutClock.Stop(); maxStep = Math.Max(maxStep, layoutClock.ElapsedTicks);
+                    NotesDomainChecks.Require(used <= 8192, "layout never exceeds unit work allowance");
+                }
                 NotesDomainChecks.Require(layout.Lines.Count == 26215, "maximum body linear visual layout");
-                Console.WriteLine("Notes scale evidence: 15 MiB real file roundtrip + 1024 notes + malformed-node guard in {0} ms; 1 Mi UTF16 neutral-metric layout {1} ms; process peak working set {2} MiB (not FPS or real font).", watch.ElapsedMilliseconds, layoutClock.ElapsedMilliseconds, Process.GetCurrentProcess().PeakWorkingSet64 / (1024 * 1024));
+                var edit = new NoteEditor(false, large.Body); layoutClock.Restart();
+                for (int i = 0; i < 20; i++) { edit.Backspace(); edit.Insert("中"); }
+                layoutClock.Stop();
+                NotesDomainChecks.Require(edit.Text == large.Body && !edit.Dirty, "maximum-body repeated tail edits preserve content");
+                Console.WriteLine("Notes scale evidence: 15 MiB real file roundtrip + 1024 notes + malformed-node guard in {0} ms; 1 Mi UTF16 neutral layout constructor {1:F3} ms, max 8192-unit step {2:F3} ms, 40 tail mutations {3} ms; process peak {4} MiB (not FPS or real font).", watch.ElapsedMilliseconds, construction * 1000.0 / Stopwatch.Frequency, maxStep * 1000.0 / Stopwatch.Frequency, layoutClock.ElapsedMilliseconds, Process.GetCurrentProcess().PeakWorkingSet64 / (1024 * 1024));
             }));
             NotesDomainChecks.Run(failures, "notes real files commit, backup and reload", () => WithRoot(root =>
             {

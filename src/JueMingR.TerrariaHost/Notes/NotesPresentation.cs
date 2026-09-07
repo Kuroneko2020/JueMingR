@@ -75,12 +75,13 @@ namespace JueMingR.TerrariaHost.Notes
             { Suspend(); ready = false; renderer.Dispose(); return; }
             bool wasReady = ready; ready = renderer.Refresh();
             if (!ready) { Suspend(); return; }
+            renderer.BeginLayoutFrame();
             bool contentChanged = !wasReady || seenRevision != workspace.Feature.Revision || preparedScreen != screen || preparedFont != renderer.FontIdentity;
-            if (contentChanged || seenBusy != workspace.Feature.Busy) pins.Prepare(screen.X, screen.Y);
             NoteEditor editor = workspace.Editor; string feedback = Feedback();
             if (shell.Visible && shell.Page == 4 && (contentChanged || preparedEditor != editor || seenEditRevision != (editor == null ? -1 : editor.Revision) ||
-                seenCaretRevision != (editor == null ? -1 : editor.CaretRevision) || seenLayout != shell.Layout.Generation || seenScroll != shell.Scroll || preparedFeedback != feedback))
+                seenCaretRevision != (editor == null ? -1 : editor.CaretRevision) || seenLayout != shell.Layout.Generation || seenScroll != shell.Scroll || preparedFeedback != feedback || cards.PendingLayout))
                 cards.Prepare(shell, feedback);
+            if (contentChanged || seenBusy != workspace.Feature.Busy || pins.PendingLayout) pins.Prepare(screen.X, screen.Y);
             preparedEditor = editor; seenEditRevision = editor == null ? -1 : editor.Revision; seenCaretRevision = editor == null ? -1 : editor.CaretRevision;
             seenRevision = workspace.Feature.Revision; preparedScreen = screen; preparedFont = renderer.FontIdentity; seenBusy = workspace.Feature.Busy;
             seenLayout = shell.Visible && shell.Page == 4 ? shell.Layout.Generation : -1; seenScroll = shell.Scroll; preparedFeedback = feedback;

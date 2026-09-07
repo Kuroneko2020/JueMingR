@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.IO;
 using System.Threading;
 using JueMingR.Features.Notes;
@@ -56,6 +57,21 @@ namespace Terraria
                 Check(!Main.blockInput, "chat handoff restores our blockInput lease for later vanilla input");
                 input.Release(true); workspace.CancelEdit();
                 Main.CurrentInputTextTakerOverride = null; GameInput.PlayerInput.WritingText = false;
+                workspace.Request(new NotesAction(NotesActionKind.BeginEdit, id, false, 0)); input.PrepareEditor();
+                Frame(input, workspace, "\ud83d"); Frame(input, workspace, "\ude00");
+                Check(workspace.Editor.Text.StartsWith("😀", StringComparison.Ordinal), "split WM_CHAR pair joins in same draft");
+                input.Release(true); workspace.CancelEdit();
+                workspace.Request(new NotesAction(NotesActionKind.BeginEdit, id, false, 0)); input.PrepareEditor();
+                Frame(input, workspace, "\ud83d");
+                workspace.Request(new NotesAction(NotesActionKind.BeginEdit, workspace.Feature.Saved.Notes[1].Id, false, 0)); input.PrepareEditor();
+                Frame(input, workspace, "A");
+                Check(workspace.Editor.Text.StartsWith("A", StringComparison.Ordinal), "old half pair cannot poison another draft");
+                input.Release(true); workspace.CancelEdit();
+                workspace.Request(new NotesAction(NotesActionKind.BeginEdit, id, false, 0)); input.PrepareEditor();
+                input.BeforeSample(true); Main.keyState = new KeyboardState(Keys.End); Main.NotesText(""); input.AfterSample(true, null);
+                workspace.Request(new NotesAction(NotesActionKind.BeginEdit, workspace.Feature.Saved.Notes[1].Id, false, 0)); input.PrepareEditor();
+                Frame(input, workspace, ""); Check(workspace.Editor.Caret == 0, "deferred navigation never transfers to same-numbered revision in another draft");
+                input.Release(true); workspace.CancelEdit();
             });
             Console.WriteLine("PASS: Notes native-queue arbitration with synthetic IME and clipboard failure; actual Windows IME remains pending.");
             WithWorkspace(workspace =>
@@ -70,6 +86,7 @@ namespace Terraria
                 pins.Pointer(150, 125, false, false, 0, true, true, false, 1920, 1080);
                 Check(pin.Rect.X == 100 && pin.Rect.Y == 100, "rejected drop immediately returns to trusted position without another Prepare");
             });
+            CheckLayoutScheduling();
             if (!includeGraphics) return;
             using (var graphics = new F5FixtureGraphics())
             using (var renderer = new NotesRenderer())
@@ -78,6 +95,42 @@ namespace Terraria
                 WithWorkspace(workspace => CheckCardsAndPins(workspace, renderer, graphics));
             }
             Console.WriteLine("PASS: Notes text/IME arbitration, clipboard failure, cards, pin targeting and real XNA state/pixels (synthetic IME/font, no real clipboard).");
+        }
+        private static void CheckLayoutScheduling()
+        {
+            // Texture-free metric fixture: real DynamicSpriteFont's CPU metric path,
+            // with one synthetic glyph. This checks scheduling, not rendered pixels.
+            var font = new ReLogic.Graphics.DynamicSpriteFont(0, 20, '?');
+            Type pageType = typeof(ReLogic.Graphics.DynamicSpriteFont).Assembly.GetType("ReLogic.Graphics.FontPage", true);
+            object page = Activator.CreateInstance(pageType, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null,
+                new object[] { null, new List<Rectangle> { new Rectangle(0, 0, 10, 20) }, new List<Rectangle> { new Rectangle(0, 0, 10, 20) },
+                    new List<char> { '?' }, new List<Vector3> { new Vector3(0, 10, 0) } }, null);
+            Array pages = Array.CreateInstance(pageType, 1); pages.SetValue(page, 0);
+            typeof(ReLogic.Graphics.DynamicSpriteFont).GetMethod("SetPages", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(font, new object[] { pages });
+            var asset = (ReLogic.Content.Asset<ReLogic.Graphics.DynamicSpriteFont>)Activator.CreateInstance(typeof(ReLogic.Content.Asset<ReLogic.Graphics.DynamicSpriteFont>), BindingFlags.Instance | BindingFlags.NonPublic, null, new object[] { "notes-cpu-metric" }, null);
+            asset.GetType().GetMethod("SubmitLoadedContent", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(asset, new object[] { font, new MetricSource() });
+            GameContent.FontAssets.MouseText = asset;
+            var seed = new List<Note> { Note.Create().WithText(false, new string('中', Note.MaximumBodyUnits)) };
+            for (int i = 0; i < 50; i++) seed.Add(Note.Create().WithText(false, new string('x', 240)));
+            WithWorkspace(workspace =>
+            {
+                using (var renderer = new NotesRenderer())
+                {
+                    renderer.Refresh();
+                    var input = new NotesInput(workspace, new Clipboard(), new Ime());
+                    var cards = new NotesCards(workspace, input, renderer, action => workspace.Request(action));
+                    var state = new F5Interaction { Ready = true };
+                    state.Update(new F5Input { Active = true, Focused = true, Width = 1920, Height = 1080, Scale = 1, F5 = true }); state.Navigate(4);
+                    state.Layout.Ensure(1920, 1080, 1, 4, font, value => new F5Size(value.Length * 10, 20));
+                    for (int i = 0; i < 600; i++) { renderer.BeginLayoutFrame(); cards.Prepare(state, "双击编辑"); }
+                    Check(cards.Cards[0].BodyLayout.Complete, "visible long body completes despite many offscreen short cards");
+                    var unchanged = cards.Cards[0].BodyLayout;
+                    for (int i = 0; i < 10; i++) { renderer.BeginLayoutFrame(); cards.Prepare(state, "双击编辑"); }
+                    Check(ReferenceEquals(unchanged, cards.Cards[0].BodyLayout) && !cards.PendingLayout, "unchanged layout stabilizes without offscreen rebuilding");
+                }
+            }, new Notebook(seed));
+            GameContent.FontAssets.MouseText = null;
+            Console.WriteLine("PASS: Notes shared layout budget reaches visible long text and stabilizes (texture-free synthetic font metrics).");
         }
         private static void Frame(NotesInput input, NotesWorkspace workspace, string text, params Keys[] keys)
         {
@@ -94,7 +147,7 @@ namespace Terraria
             state.Update(new F5Input { Active = true, Focused = true, Width = 1920, Height = 1080, Scale = 1, F5 = true, PageWheelHandled = false }); state.Navigate(4);
             using (var chrome = new F5Renderer())
             { chrome.RefreshResources(); chrome.Prepare(state, 1920, 1080, 1); }
-            cards.Prepare(state, "双击编辑");
+            for (int i = 0; i < 10; i++) { renderer.BeginLayoutFrame(); cards.Prepare(state, "双击编辑"); }
             NotesCard first = cards.Cards[0], second = cards.Cards[1];
             Click(cards, state, first.Body, true); Click(cards, state, first.Body, false);
             Check(workspace.Editor == null, "single click doesn't edit");
@@ -106,7 +159,8 @@ namespace Terraria
             workspace.CancelEdit();
             workspace.Request(new NotesAction(NotesActionKind.Pin, first.Note.Id, x: 100, y: 100)); Drain(workspace);
             workspace.Request(new NotesAction(NotesActionKind.Pin, second.Note.Id, x: 100, y: 100)); Drain(workspace);
-            var pins = new NotesPins(workspace, renderer, action => workspace.Request(action)); pins.Prepare(1920, 1080);
+            var pins = new NotesPins(workspace, renderer, action => workspace.Request(action));
+            for (int i = 0; i < 10; i++) { renderer.BeginLayoutFrame(); pins.Prepare(1920, 1080); }
             pins.Pointer(120, 120, false, false, -120, true, true, false, 1920, 1080);
             Check(pins.ConsumeWheel && pins.Pins[0].Scroll == 0 && pins.Pins[1].Scroll > 0, "overlap wheel affects exactly top pin");
             pins.Pointer(120, 120, true, false, 0, true, true, false, 1920, 1080);
@@ -140,11 +194,11 @@ namespace Terraria
                 X = state.X + state.Layout.Viewport.X + rect.X + 5, Y = state.Y + state.Layout.Viewport.Y + rect.Y + 5 - state.Scroll, Left = down });
             cards.Pointer(state, down, !down);
         }
-        private static void WithWorkspace(Action<NotesWorkspace> action)
+        private static void WithWorkspace(Action<NotesWorkspace> action, Notebook seed = null)
         {
             string root = Path.Combine(Path.GetTempPath(), "JueMingR-notes-host-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
             string path = Path.Combine(root, "notes.json"); var codec = new NotebookCodec();
-            File.WriteAllBytes(path, codec.Encode(Notebook.Empty.Add(Note.Create().WithText(true, "one")).Add(Note.Create().WithText(false, new string('长', 500)))));
+            File.WriteAllBytes(path, codec.Encode(seed ?? Notebook.Empty.Add(Note.Create().WithText(true, "one")).Add(Note.Create().WithText(false, new string('长', 500)))));
             using (var worker = new DocumentWorker<Notebook>(new AtomicFileDocument(path, Notebook.MaximumBytes, true), codec.Decode, codec.Encode, Notebook.Empty))
             {
                 var workspace = new NotesWorkspace(new NotesFeature(worker));
@@ -160,6 +214,19 @@ namespace Terraria
             internal bool Available; internal string Text;
             public bool TryCopy(string text) { if (!Available) return false; Text = text; return true; }
             public bool TryPaste(out string text) { text = Text; return Available; }
+        }
+        private sealed class MetricSource : ReLogic.Content.Sources.IContentSource
+        {
+            public ReLogic.Content.IContentValidator ContentValidator { get; set; }
+            public string FileWatcherPath { get { return null; } }
+            public bool HasAsset(string name) { return false; }
+            public List<string> GetAllAssetsStartingWith(string name) { return new List<string>(); }
+            public string GetExtension(string name) { return null; }
+            public Stream OpenStream(string name) { throw new NotSupportedException(); }
+            public void RejectAsset(string name, ReLogic.Content.IRejectionReason reason) { }
+            public void ClearRejections() { }
+            public bool TryGetRejections(List<string> reasons) { return false; }
+            public void Refresh() { }
         }
         private sealed class Ime : INotesIme
         {
