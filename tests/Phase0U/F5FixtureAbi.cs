@@ -183,7 +183,7 @@ namespace Terraria.GameInput
     {
         public TriggersSet Current = new TriggersSet(), JustPressed = new TriggersSet(), JustReleased = new TriggersSet();
     }
-    public static class PlayerInput
+    public static partial class PlayerInput
     {
         public static TriggersPack Triggers = new TriggersPack();
         public static MouseState MouseInfo;

@@ -229,6 +229,7 @@ namespace JueMingR.TerrariaHost
             MethodInfo inputMethod = ResolveF5Target(targetAssembly, "DoUpdate_HandleInput", Type.EmptyTypes);
             MethodInfo npcHoverMethod = ResolveF5Target(targetAssembly, "HoverOverNPCs", new[] { typeof(Rectangle) });
             MethodInfo inputPostfixMethod = typeof(Phase0SHarmonyWorker).GetMethod("InputPostfix", BindingFlags.NonPublic | BindingFlags.Static);
+            MethodInfo inputPrefixMethod = typeof(Phase0SHarmonyWorker).GetMethod("InputPrefix", BindingFlags.NonPublic | BindingFlags.Static);
             MethodInfo npcHoverPrefixMethod = typeof(Phase0SHarmonyWorker).GetMethod("NpcHoverPrefix", BindingFlags.NonPublic | BindingFlags.Static);
             MethodInfo postfixMethod = typeof(Phase0SHarmonyWorker).GetMethod(
                 "Postfix",
@@ -277,8 +278,8 @@ namespace JueMingR.TerrariaHost
                     null,
                     null);
                 VerifyExactPatchInfo(drawSetupMethod, drawSetupPostfixMethod, manifest.PatchOwner);
-                harmony.Patch(inputMethod, null, new HarmonyMethod(inputPostfixMethod), null, null);
-                VerifyExactPatchInfo(inputMethod, inputPostfixMethod, manifest.PatchOwner);
+                harmony.Patch(inputMethod, new HarmonyMethod(inputPrefixMethod), new HarmonyMethod(inputPostfixMethod), null, null);
+                VerifyExactPatchInfo(inputMethod, inputPostfixMethod, manifest.PatchOwner, additionalPrefix: inputPrefixMethod);
                 harmony.Patch(npcHoverMethod, new HarmonyMethod(npcHoverPrefixMethod), null, null, null);
                 VerifyExactPatchInfo(npcHoverMethod, npcHoverPrefixMethod, manifest.PatchOwner, true);
                 // Publish readiness only after every exact patch and its evidence have succeeded.
@@ -404,13 +405,13 @@ namespace JueMingR.TerrariaHost
         private static void VerifyExactPatchInfo(
             MethodInfo targetMethod,
             MethodInfo postfixMethod,
-            string expectedOwner, bool prefix = false)
+            string expectedOwner, bool prefix = false, MethodInfo additionalPrefix = null)
         {
             Patches patches = Harmony.GetPatchInfo(targetMethod);
             if (patches == null ||
                 patches.Owners.Count != 1 ||
                 !String.Equals(patches.Owners[0], expectedOwner, StringComparison.Ordinal) ||
-                patches.Prefixes.Count != (prefix ? 1 : 0) ||
+                patches.Prefixes.Count != (prefix || additionalPrefix != null ? 1 : 0) ||
                 patches.Postfixes.Count != (prefix ? 0 : 1) ||
                 patches.Transpilers.Count != 0 ||
                 patches.Finalizers.Count != 0 ||
@@ -421,6 +422,9 @@ namespace JueMingR.TerrariaHost
             }
 
             Patch postfix = prefix ? patches.Prefixes[0] : patches.Postfixes[0];
+            if (additionalPrefix != null && (!String.Equals(patches.Prefixes[0].owner, expectedOwner, StringComparison.Ordinal) ||
+                !SameMethod(patches.Prefixes[0].PatchMethod, additionalPrefix)))
+                throw new InvalidOperationException("The input prefix owner or method does not match.");
             if (!String.Equals(postfix.owner, expectedOwner, StringComparison.Ordinal) ||
                 !SameMethod(postfix.PatchMethod, postfixMethod))
             {
@@ -450,6 +454,13 @@ namespace JueMingR.TerrariaHost
             for (int i = 0; i < actual.Length; i++)
                 if (actual[i].ParameterType != parameters[i]) throw new InvalidOperationException("F5 target parameter type differs.");
             return method;
+        }
+
+        private static void InputPrefix()
+        {
+            PostfixContext context = postfixContext;
+            if (Volatile.Read(ref hookCommitted) == 1 && context != null && context.Shell != null)
+                context.Shell.BeforeInput();
         }
 
         private static void InputPostfix()
@@ -730,6 +741,7 @@ namespace JueMingR.TerrariaHost
             private ulong updateTick;
             private readonly string gameDirectory;
             private HostPreferences preferences;
+            private Notes.HostNotes notes;
 
             internal PostfixContext(string packageId, string evidencePath, string gameDirectory)
             {
@@ -758,7 +770,8 @@ namespace JueMingR.TerrariaHost
 
                 preferences = new HostPreferences(gameDirectory);
                 runtime = Phase0TBiomeRuntime.Create(enabled, preferences.BiomeLoaded && preferences.BiomeEnabled);
-                Shell = new F5Shell(runtime, preferences) { LayersReady = f5LayersReady };
+                notes = new Notes.HostNotes(gameDirectory);
+                Shell = new F5Shell(runtime, preferences, notes) { LayersReady = f5LayersReady };
             }
 
             internal void UpdateRuntime()
@@ -770,6 +783,7 @@ namespace JueMingR.TerrariaHost
                 }
 
                 preferences.Update();
+                notes.Update();
                 current.SetFeatureEnabled(preferences.BiomeLoaded && preferences.BiomeEnabled);
                 current.Update(updateTick);
                 updateTick = unchecked(updateTick + 1);

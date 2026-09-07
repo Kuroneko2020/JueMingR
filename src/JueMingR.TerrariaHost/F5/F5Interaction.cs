@@ -8,6 +8,7 @@ namespace JueMingR.TerrariaHost.F5
         internal float Width, Height, Scale, X, Y;
         internal bool Active, Focused, F5, Left, Right;
         internal int Wheel;
+        internal bool PageWheelHandled;
     }
 
     internal sealed class F5Interaction
@@ -25,6 +26,7 @@ namespace JueMingR.TerrariaHost.F5
         internal readonly F5Layout Layout = new F5Layout();
         internal bool Visible { get; private set; }
         internal bool Ready { get; set; }
+        internal Func<int, bool> BeforeLeave { get; set; }
         internal int Page { get; private set; } = 9;
         internal float X { get; private set; }
         internal float Y { get; private set; }
@@ -89,7 +91,7 @@ namespace JueMingR.TerrariaHost.F5
                         if (input.Right) rightTail = true;
                         ConsumeWheel = true;
                     }
-                    Close();
+                    if (BeforeLeave == null || BeforeLeave(-1)) Close();
                 }
                 else Visible = true;
             }
@@ -128,7 +130,10 @@ namespace JueMingR.TerrariaHost.F5
                         {
                             for (int i = 0; i < F5Layout.Pages.Length; i++)
                                 if (Layout.Navigation(i).Contains(localX, localY))
-                                { Page = i; Scroll = 0; layoutReady = false; break; }
+                                {
+                                    if (i != Page && (BeforeLeave == null || BeforeLeave(i))) Navigate(i);
+                                    layoutReady = false; break;
+                                }
                             if (layoutReady) { armed = HitButton(localX, localY); armedGeneration = Layout.Generation; }
                         }
                     }
@@ -138,7 +143,7 @@ namespace JueMingR.TerrariaHost.F5
                         float travel = Layout.ScrollTrack.Height - thumb.Height;
                         Scroll = travel <= 0 ? 0 : Clamp((localY - Layout.ScrollTrack.Y - grabY) / travel, 0, 1) * Layout.MaxScroll;
                     }
-                    if (input.Wheel != 0 && capture == 0 && layoutReady)
+                    if (input.Wheel != 0 && !input.PageWheelHandled && capture == 0 && layoutReady)
                     { Scroll = Clamp(Scroll - input.Wheel / 120f * 40, 0, Layout.MaxScroll); armed = null; }
                     // A click must release on the same element in the same layout generation.
                     if (released && capture == 0 && layoutReady && armed != null &&
@@ -154,6 +159,8 @@ namespace JueMingR.TerrariaHost.F5
         }
 
         internal void ClampScroll() { Scroll = Clamp(Scroll, 0, Layout.MaxScroll); }
+        internal void ScrollTo(float value) { Scroll = Clamp(value, 0, Layout.MaxScroll); }
+        internal void Navigate(int page) { if (page >= 0 && page < F5Layout.Pages.Length) { Page = page; Scroll = 0; } }
 
         internal F5Element HitButton(float localX, float localY)
         {

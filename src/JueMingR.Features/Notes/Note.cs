@@ -26,7 +26,10 @@ namespace JueMingR.Features.Notes
         public int Opacity { get; }
         public static Note Create() { return new Note(Guid.NewGuid().ToString("N"), "新笔记", "", false, 0, 0, 0); }
         public Note WithText(bool title, string value)
-        { return new Note(Id, title ? value : Title, title ? Body : value, Pinned, X, Y, Opacity); }
+        {
+            if (title) { value = value.Trim(); if (value.Length == 0) value = "新笔记"; }
+            return new Note(Id, title ? value : Title, title ? Body : value, Pinned, X, Y, Opacity);
+        }
         public Note Pin(int x, int y) { return new Note(Id, Title, Body, true, x, y, 0); }
         public Note Unpin() { return new Note(Id, Title, Body, false, X, Y, Opacity); }
         public Note WithPosition(int x, int y) { return new Note(Id, Title, Body, Pinned, x, y, Opacity); }

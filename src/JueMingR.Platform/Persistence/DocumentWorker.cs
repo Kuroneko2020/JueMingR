@@ -6,12 +6,13 @@ namespace JueMingR.Platform.Persistence
 {
     public sealed class DocumentResult<T>
     {
-        internal DocumentResult(long id, bool success, T value, string error)
-        { CommandId = id; Success = success; Value = value; Error = error; }
+        internal DocumentResult(long id, bool success, T value, string error, bool commitUnconfirmed = false)
+        { CommandId = id; Success = success; Value = value; Error = error; CommitUnconfirmed = commitUnconfirmed; }
         public long CommandId { get; }
         public bool Success { get; }
         public T Value { get; }
         public string Error { get; }
+        public bool CommitUnconfirmed { get; }
     }
 
     // One consistency unit, one worker, one accepted immutable command. The slot
@@ -26,6 +27,7 @@ namespace JueMingR.Platform.Persistence
         private readonly T empty;
         private readonly Thread thread;
         private bool stopping, occupied = true, pending, writable;
+        private volatile bool cancelled;
         private long command;
         private T candidate;
         private DocumentResult<T> result;
@@ -55,7 +57,11 @@ namespace JueMingR.Platform.Persistence
             }
         }
         public bool Stop(int milliseconds)
-        { lock (gate) { stopping = true; Monitor.Pulse(gate); } return thread.Join(Math.Max(0, milliseconds)); }
+        {
+            lock (gate) { stopping = true; Monitor.Pulse(gate); }
+            if (thread.Join(Math.Max(0, milliseconds))) return true;
+            cancelled = true; return false;
+        }
         public void Dispose()
         { if (!Stop(3000)) throw new TimeoutException("Document worker still owns storage; do not clean its data root."); }
 
@@ -83,7 +89,7 @@ namespace JueMingR.Platform.Persistence
                     lock (gate)
                     {
                         while (!pending && !stopping) Monitor.Wait(gate);
-                        if (!pending) break;
+                        if (!pending || cancelled) break;
                         id = command; value = candidate; candidate = default(T); pending = false;
                     }
                     DocumentResult<T> completion;
@@ -93,10 +99,12 @@ namespace JueMingR.Platform.Persistence
                         // Validate encoded semantics before the mechanical commit. No UI
                         // callback or mutable game object reaches this background owner.
                         decode(bytes);
+                        if (cancelled) break; // Native I/O already entered cannot be aborted; before it can.
                         PreferenceWriteResult written = storage.Write(identity, bytes);
                         bool success = written.Status == PreferenceWriteStatus.Saved;
                         if (success) identity = written.Identity;
-                        completion = new DocumentResult<T>(id, success, success ? value : default(T), written.Error);
+                        if (written.IsProtected) { lock (gate) writable = false; }
+                        completion = new DocumentResult<T>(id, success, success ? value : default(T), written.Error, written.CommitUnconfirmed);
                     }
                     catch (Exception e) when (e is InvalidOperationException || e is ArgumentException || e is PreferenceFormatException)
                     { completion = new DocumentResult<T>(id, false, default(T), "document-encoding-or-size-failed"); }

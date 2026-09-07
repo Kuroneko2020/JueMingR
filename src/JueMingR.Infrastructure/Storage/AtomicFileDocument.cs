@@ -17,6 +17,7 @@ namespace JueMingR.Infrastructure.Storage
         private string acceptedIdentity;
         private PreferenceWriteStatus? protection;
         private string protectionError;
+        private bool unconfirmed;
         private bool disposed;
 
         public AtomicFileDocument(string fullDocumentPath, int maximumBytes, bool protectRecovery = false)
@@ -82,7 +83,7 @@ namespace JueMingR.Infrastructure.Storage
         public PreferenceWriteResult Write(string expectedIdentity, byte[] contents)
         {
             if (disposed) return Failure(PreferenceWriteStatus.IoFailure, "storage-disposed");
-            if (protection.HasValue) return Failure(protection.Value, protectionError);
+            if (protection.HasValue) return new PreferenceWriteResult(protection.Value, null, protectionError, unconfirmed, true);
             if (initialRead == null || !String.Equals(expectedIdentity, acceptedIdentity, StringComparison.Ordinal))
                 return Protect(PreferenceWriteStatus.Conflict, "unexpected-source-identity");
             if (contents == null || contents.Length > MaximumBytes)
@@ -141,7 +142,7 @@ namespace JueMingR.Infrastructure.Storage
                     {
                         byte[] previous = ReadBounded(backup);
                         if (previous == null || !String.Equals(Identity(previous), expectedIdentity, StringComparison.Ordinal))
-                            return Protect(PreferenceWriteStatus.Conflict, "replace-race-backup-preserved");
+                            return Protect(PreferenceWriteStatus.Conflict, "replace-race-backup-preserved", true);
                     }
                 }
 
@@ -149,14 +150,14 @@ namespace JueMingR.Infrastructure.Storage
                 {
                     byte[] actual = ReadBounded(committed);
                     if (actual == null || !String.Equals(Identity(actual), candidateIdentity, StringComparison.Ordinal))
-                        return Protect(PreferenceWriteStatus.Conflict, "committed-document-changed");
+                        return Protect(PreferenceWriteStatus.Conflict, "committed-document-changed", true);
                 }
                 acceptedIdentity = candidateIdentity;
                 return new PreferenceWriteResult(PreferenceWriteStatus.Saved, candidateIdentity, null);
             }
             catch (FileNotFoundException)
             {
-                return Protect(PreferenceWriteStatus.Conflict, "document-disappeared");
+                return Protect(PreferenceWriteStatus.Conflict, "document-disappeared", commitAttempted);
             }
             catch (IOException) { return WriteIoFailure(commitAttempted, ownsTemporary, "document-write-io-failure"); }
             catch (UnauthorizedAccessException) { return WriteIoFailure(commitAttempted, ownsTemporary, "document-write-access-denied"); }
@@ -189,7 +190,7 @@ namespace JueMingR.Infrastructure.Storage
             // original terminal-failure behavior. Failed temp cleanup will make the
             // next CreateNew fail safely, never overwrite that surviving candidate.
             return protectRecovery && ownsTemporary && !commitAttempted
-                ? Failure(PreferenceWriteStatus.IoFailure, error) : Protect(PreferenceWriteStatus.IoFailure, error);
+                ? Failure(PreferenceWriteStatus.IoFailure, error) : Protect(PreferenceWriteStatus.IoFailure, error, commitAttempted);
         }
 
         private PreferenceReadResult RememberIoFailure(string error)
@@ -205,13 +206,14 @@ namespace JueMingR.Infrastructure.Storage
             return initialRead;
         }
 
-        private PreferenceWriteResult Protect(PreferenceWriteStatus status, string error)
+        private PreferenceWriteResult Protect(PreferenceWriteStatus status, string error, bool commitUnconfirmed = false)
         {
             // A conflict or ambiguous I/O failure is terminal for this instance. In
             // particular, another save must not rotate away a conflict recovery backup.
             protection = status;
             protectionError = error;
-            return Failure(status, error);
+            unconfirmed = commitUnconfirmed;
+            return new PreferenceWriteResult(status, null, error, commitUnconfirmed, true);
         }
 
         private static PreferenceReadResult ReadFailure(PreferenceReadStatus status, string error)

@@ -12,6 +12,7 @@ namespace JueMingR.Features.Notes
         public bool Readable { get; private set; }
         public bool Busy { get; private set; }
         public string Error { get; private set; }
+        public bool NeedsRecovery { get; private set; }
         public long Revision { get; private set; }
         public DocumentResult<Notebook> Poll()
         {
@@ -20,13 +21,13 @@ namespace JueMingR.Features.Notes
             if (result.CommandId == 0) { Loaded = true; Readable = result.Success; }
             else Busy = false;
             if (result.Success) { Saved = result.Value; Revision++; Error = null; }
-            else Error = result.Error ?? "notes-operation-failed";
+            else { Error = result.Error ?? "notes-operation-failed"; NeedsRecovery |= result.CommitUnconfirmed; }
             return result;
         }
         public bool TrySubmit(Notebook next, out long commandId)
         {
             commandId = 0;
-            if (!Readable || Busy) return false;
+            if (!Readable || Busy || NeedsRecovery) return false;
             long id = ++sequence;
             if (!worker.TrySubmit(id, next)) return false;
             Busy = true; commandId = id; return true;

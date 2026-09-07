@@ -33,14 +33,18 @@ namespace JueMingR.Platform.Settings
 
     public sealed class PreferenceWriteResult
     {
-        public PreferenceWriteResult(PreferenceWriteStatus status, string identity, string error)
+        public PreferenceWriteResult(PreferenceWriteStatus status, string identity, string error, bool commitUnconfirmed = false, bool isProtected = false)
         {
             Status = status;
             Identity = identity;
             Error = error;
+            CommitUnconfirmed = commitUnconfirmed;
+            IsProtected = isProtected;
         }
 
         public PreferenceWriteStatus Status { get; }
+        public bool CommitUnconfirmed { get; }
+        public bool IsProtected { get; }
         public string Identity { get; }
         public string Error { get; }
     }

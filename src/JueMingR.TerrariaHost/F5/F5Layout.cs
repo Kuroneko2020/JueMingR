@@ -70,6 +70,7 @@ namespace JueMingR.TerrariaHost.F5
         internal float ContentHeight { get; private set; }
         internal IList<F5Element> Elements { get { return elements; } }
         internal float MaxScroll { get { return Math.Max(0, ContentHeight - Viewport.Height); } }
+        internal void SetNotesContentHeight(float height) { if (page == 4) ContentHeight = Math.Max(0, height); }
 
         internal static F5Size WindowSize(float width, float height, float scale)
         {

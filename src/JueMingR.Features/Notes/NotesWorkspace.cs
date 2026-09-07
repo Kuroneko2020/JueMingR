@@ -35,7 +35,12 @@ namespace JueMingR.Features.Notes
             var result = Feature.Poll();
             if (result == null || result.CommandId == 0) return;
             if (result.CommandId != pendingId) throw new InvalidOperationException("Unexpected notes completion identity.");
-            if (!result.Success) { Error = "保存失败，草稿和原件保留；后续动作未执行。"; ClearPending(); return; }
+            if (!result.Success)
+            {
+                Error = result.CommitUnconfirmed ? "磁盘提交结果未确认，已停止写入。当前显示最后可信内容；请退出并保留 notes.json、.bak、.tmp 检查恢复。"
+                    : "保存失败，草稿保留；后续动作未执行。";
+                ClearPending(); return;
+            }
             Error = null;
             NotesAction action = afterSave;
             bool current = pendingEpoch == epoch && (submittedEditor == null || ReferenceEquals(Editor, submittedEditor) && Editor.Revision == pendingRevision);
@@ -98,7 +103,7 @@ namespace JueMingR.Features.Notes
             Note next;
             switch (action.Kind)
             {
-                case NotesActionKind.Pin: next = note.Pin(action.X, action.Y); break;
+                case NotesActionKind.Pin: if (note.Pinned) return true; next = note.Pin(action.X, action.Y); break;
                 case NotesActionKind.Unpin: if (!note.Pinned) return true; next = note.Unpin(); break;
                 case NotesActionKind.Opacity:
                     int opacity = Math.Max(0, Math.Min(100, action.X)); if (note.Opacity == opacity) return true;

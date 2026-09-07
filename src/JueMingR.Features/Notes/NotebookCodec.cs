@@ -17,12 +17,28 @@ namespace JueMingR.Features.Notes
             try
             {
                 if (bytes == null || bytes.Length == 0 || bytes.Length > Notebook.MaximumBytes) throw PreferenceJson.Invalid();
-                new UTF8Encoding(false, true).GetString(bytes);
+                new UTF8Encoding(false, true).GetCharCount(bytes);
                 var quotas = new XmlDictionaryReaderQuotas { MaxDepth = 8, MaxArrayLength = Notebook.MaximumNotes,
                     MaxStringContentLength = Notebook.MaximumBytes, MaxBytesPerRead = 4096, MaxNameTableCharCount = 4096 };
+                // Bound nodes before materializing XElement. MaxArrayLength alone
+                // does not bound a tree built via Read(), so hostile tiny elements
+                // cannot amplify a 16 MiB file into millions of managed objects.
+                using (XmlDictionaryReader scan = JsonReaderWriterFactory.CreateJsonReader(bytes, quotas))
+                {
+                    int elements = 0;
+                    while (scan.Read()) if (scan.NodeType == XmlNodeType.Element && (++elements > Notebook.MaximumNotes * 9 + 4 || scan.Depth > 4))
+                        throw PreferenceJson.Invalid();
+                }
                 using (XmlDictionaryReader reader = JsonReaderWriterFactory.CreateJsonReader(bytes, quotas))
                 {
                     XElement root = XElement.Load(reader);
+                    // The JSON bridge maps a leading __type member to an XML
+                    // attribute, not a child. Reject it (and every other extra
+                    // attribute) so a future document cannot be accepted then
+                    // silently rewritten without fields unknown to this schema.
+                    foreach (XElement node in root.DescendantsAndSelf())
+                        foreach (XAttribute attribute in node.Attributes())
+                            if (attribute.Name != "type") throw PreferenceJson.Invalid();
                     if ((string)root.Attribute("type") != "object") throw PreferenceJson.Invalid();
                     if (PreferenceJson.Integer(PreferenceJson.Required(root, "schema", "number")) != 1)
                         throw new PreferenceFormatException(PreferenceStatus.UnsupportedVersion, "unsupported-notes-schema");
@@ -53,7 +69,7 @@ namespace JueMingR.Features.Notes
                     Field("title", "string", note.Title), Field("body", "string", note.Body), Field("pinned", "boolean", note.Pinned ? "true" : "false"),
                     Field("x", "number", note.X), Field("y", "number", note.Y), Field("opacity", "number", note.Opacity)));
             var root = new XElement("root", new XAttribute("type", "object"), Field("schema", "number", 1), array);
-            using (var stream = new MemoryStream())
+            using (var stream = new BoundedOutput())
             {
                 using (XmlDictionaryWriter writer = JsonReaderWriterFactory.CreateJsonWriter(stream, new UTF8Encoding(false, true), false)) root.WriteTo(writer);
                 if (stream.Length > Notebook.MaximumBytes) throw new InvalidOperationException("notes-document-exceeds-16-MiB");
@@ -65,5 +81,12 @@ namespace JueMingR.Features.Notes
         private static string Value(XElement parent, string name, string type)
         { XElement value = PreferenceJson.Required(parent, name, type); if (value.HasElements) throw PreferenceJson.Invalid(); return value.Value; }
         private static int Number(XElement parent, string name) { return PreferenceJson.Integer(PreferenceJson.Required(parent, name, "number")); }
+        private sealed class BoundedOutput : MemoryStream
+        {
+            public override void Write(byte[] buffer, int offset, int count)
+            { if (Position + count > Notebook.MaximumBytes) throw new InvalidOperationException("notes-document-exceeds-16-MiB"); base.Write(buffer, offset, count); }
+            public override void WriteByte(byte value)
+            { if (Position == Notebook.MaximumBytes) throw new InvalidOperationException("notes-document-exceeds-16-MiB"); base.WriteByte(value); }
+        }
     }
 }

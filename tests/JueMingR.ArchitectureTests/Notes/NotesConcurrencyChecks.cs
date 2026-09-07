@@ -11,6 +11,47 @@ namespace JueMingR.ArchitectureTests
     {
         internal static void Check(IList<string> failures)
         {
+            NotesDomainChecks.Run(failures, "already pinned action keeps position and opacity without writing", () =>
+            {
+                Note original = Note.Create().Pin(80, 90).WithOpacity(35);
+                var storage = new GateStorage(Notebook.Empty.Add(original)); storage.Release.Set(); var codec = new NotebookCodec();
+                using (var worker = new DocumentWorker<Notebook>(storage, codec.Decode, codec.Encode, Notebook.Empty))
+                {
+                    var workspace = new NotesWorkspace(new NotesFeature(worker));
+                    Until(() => { workspace.Poll(); return workspace.Feature.Loaded; });
+                    NotesDomainChecks.Require(workspace.Request(new NotesAction(NotesActionKind.Pin, original.Id, x: 200, y: 300)), "repeated pin accepted");
+                    NotesDomainChecks.Require(!workspace.Feature.Busy && !storage.Entered.IsSet, "already pinned does not write");
+                    Note saved = workspace.Feature.Saved.Find(original.Id);
+                    NotesDomainChecks.Require(saved.X == 80 && saved.Y == 90 && saved.Opacity == 35, "position and opacity unchanged");
+                }
+                storage.Entered.Dispose(); storage.Release.Dispose();
+            });
+            NotesDomainChecks.Run(failures, "notes unconfirmed commit is terminal, never ordinary failure", () =>
+            {
+                var storage = new GateStorage(Notebook.Empty) { Unconfirmed = true }; storage.Release.Set(); var codec = new NotebookCodec();
+                using (var worker = new DocumentWorker<Notebook>(storage, codec.Decode, codec.Encode, Notebook.Empty))
+                {
+                    NotesStorageChecks.Take(worker); worker.TrySubmit(1, Notebook.Empty.Add(Note.Create()));
+                    var result = NotesStorageChecks.Take(worker);
+                    NotesDomainChecks.Require(result.CommitUnconfirmed && !worker.TrySubmit(2, Notebook.Empty), "ambiguous commit locks writing");
+                }
+                storage.Entered.Dispose(); storage.Release.Dispose();
+            });
+            NotesDomainChecks.Run(failures, "notes stop timeout cancels before entering file commit", () =>
+            {
+                var storage = new GateStorage(Notebook.Empty); storage.Release.Set(); var codec = new NotebookCodec();
+                using (var encodeEntered = new ManualResetEventSlim())
+                using (var encodeRelease = new ManualResetEventSlim())
+                using (var worker = new DocumentWorker<Notebook>(storage, codec.Decode, book =>
+                { encodeEntered.Set(); if (!encodeRelease.Wait(5000)) throw new TimeoutException(); return codec.Encode(book); }, Notebook.Empty))
+                {
+                    NotesStorageChecks.Take(worker); worker.TrySubmit(1, Notebook.Empty.Add(Note.Create()));
+                    Until(() => encodeEntered.IsSet); NotesDomainChecks.Require(!worker.Stop(0), "encoder still owns worker");
+                    encodeRelease.Set(); NotesDomainChecks.Require(worker.Stop(5000), "worker actually stopped");
+                    NotesDomainChecks.Require(!storage.Entered.IsSet && storage.Disposed, "no write starts after timed out stop");
+                }
+                storage.Entered.Dispose(); storage.Release.Dispose();
+            });
             NotesDomainChecks.Run(failures, "notes late save, failure and interrupted UI actions", () =>
             {
                 Note original = Note.Create().WithText(false, "original");
@@ -53,12 +94,13 @@ namespace JueMingR.ArchitectureTests
             private readonly byte[] source;
             internal readonly ManualResetEventSlim Entered = new ManualResetEventSlim();
             internal readonly ManualResetEventSlim Release = new ManualResetEventSlim();
-            internal bool Fail, Disposed;
+            internal bool Fail, Disposed, Unconfirmed;
             internal GateStorage(Notebook book) { source = new NotebookCodec().Encode(book); }
             public PreferenceReadResult Read() { return new PreferenceReadResult(PreferenceReadStatus.Loaded, source, "initial", null); }
             public PreferenceWriteResult Write(string identity, byte[] contents)
             {
                 Entered.Set(); if (!Release.Wait(5000)) throw new TimeoutException("test release not signalled");
+                if (Unconfirmed) return new PreferenceWriteResult(PreferenceWriteStatus.Conflict, null, "post-replace-failed", true, true);
                 return new PreferenceWriteResult(Fail ? PreferenceWriteStatus.IoFailure : PreferenceWriteStatus.Saved, "next", Fail ? "injected" : null);
             }
             public void Dispose() { Disposed = true; }
