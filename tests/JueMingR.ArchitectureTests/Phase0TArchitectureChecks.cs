@@ -14,11 +14,17 @@ namespace JueMingR.ArchitectureTests
             {
                 "JueMingR.Features.Biomes.BiomeDisplayFeature",
                 "JueMingR.Features.Biomes.BiomeDisplayViewModel",
-                "JueMingR.Features.Biomes.BiomePreferenceCodec"
+                "JueMingR.Features.Biomes.BiomePreferenceCodec",
+                "JueMingR.Features.Notes.Note", "JueMingR.Features.Notes.Notebook",
+                "JueMingR.Features.Notes.NotebookCodec", "JueMingR.Features.Notes.TextElements",
+                "JueMingR.Features.Notes.NoteEditor", "JueMingR.Features.Notes.NotesTextLayout",
+                "JueMingR.Features.Notes.NotesTextLine", "JueMingR.Features.Notes.NotesFeature",
+                "JueMingR.Features.Notes.NotesWorkspace", "JueMingR.Features.Notes.NotesAction",
+                "JueMingR.Features.Notes.NotesActionKind"
             };
             if (!expected.SetEquals(features.GetExportedTypes().Select(type => type.FullName)))
             {
-                failures.Add("Features must export exactly the approved Phase 0-T biome feature and ViewModel.");
+                failures.Add("Features must export exactly the approved biome and notes contracts.");
             }
 
             string[] forbiddenAssemblyPrefixes =
