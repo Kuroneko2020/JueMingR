@@ -54,9 +54,6 @@ namespace Terraria
             {
                 Console.WriteLine("Loaded storage diagnostic: source={0}, target={1}, failed={2}, result={3}", Main.LocalPlayer.inventory[10].stack, chest.item[0].stack,
                     Get(Get(items, "Feature"), "HasFailed"), Get(Get(items, "Ownership"), "StoreResult") == null ? "none" : Get(Get(Get(items, "Ownership"), "StoreResult"), "Reason"));
-                var observer = (JueMingR.Platform.Items.IItemObservationSource)Get(items, "World");
-                JueMingR.Platform.Items.ItemInventoryObservation observation; observer.TryObserve(out observation);
-                ((JueMingR.Platform.Items.IItemOperationPort)Get(items, "Operations")).Execute(new JueMingR.Platform.Items.StoreItemsRequest(observation.Session, new[] { observation.Slots[10] }));
             }
             Check(Main.LocalPlayer.inventory[10].IsAir && chest.item[0].stack == 24,
                 "production pickup hook/whole-stack/native selective storage chain");

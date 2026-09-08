@@ -3,6 +3,8 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Text;
+using System.Collections.Generic;
+using System.Reflection;
 using JueMingR.Infrastructure.Settings;
 using JueMingR.Platform.Settings;
 using JueMingR.Features.Items;
@@ -23,13 +25,39 @@ namespace Terraria
         private static SingleFeatureRuntime runtime;
         private static ulong tick;
         private static string root;
+        private static readonly List<PreferenceDocument<ItemAutomationSettings>> documents = new List<PreferenceDocument<ItemAutomationSettings>>();
         internal static void Run(string content = null, string output = null, bool graphics = true)
         {
             root = Path.Combine(Path.GetTempPath(), "JueMingR-Items-Fixture-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(root);
+            bool passed = false;
+            try { RunChecks(content, output, graphics); passed = true; }
+            finally
+            {
+                // Stop every worker before releasing its exact isolated root,
+                // including documents whose assertion failed before normal Stop.
+                if (host != null) typeof(HostItems).GetMethod("OnExit", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(host, new object[] { null, EventArgs.Empty });
+                bool stopped = true;
+                foreach (var document in documents) stopped &= document.Stop(750);
+                if (passed && stopped)
+                {
+                    string fullRoot = Path.GetFullPath(root);
+                    Check(string.Equals(Path.GetDirectoryName(fullRoot), Path.GetFullPath(Path.GetTempPath()).TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase)
+                        && Path.GetFileName(fullRoot).StartsWith("JueMingR-Items-Fixture-", StringComparison.Ordinal), "cleanup stays within this fixture TEMP root");
+                    Directory.Delete(fullRoot, true);
+                    Check(!Directory.Exists(fullRoot), "fixture root removed after all workers stopped");
+                    Console.WriteLine("PASS: item fixture workers stopped and exact TEMP root removed.");
+                }
+                else Console.WriteLine("Item fixture evidence retained at {0}; all workers stopped={1}.", root, stopped);
+                Check(stopped, "item fixture worker still owns retained TEMP root: " + root);
+            }
+        }
+        private static void RunChecks(string content, string output, bool graphics)
+        {
             new Main(); Main.gameMenu = false; Main.LocalPlayer = new Player { active = true };
             runtime = new SingleFeatureRuntime(new ItemSessionProbe(), new Idle());
             host = new HostItems(root, runtime);
+            documents.Add((PreferenceDocument<ItemAutomationSettings>)typeof(HostItems).GetField("preferences", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(host));
             Check(host.Available, "all native hooks admitted: " + host.SetupError);
             runtime.AddFeature(host); runtime.Update(tick++);
             for (int i = 0; i < 200 && !host.Preferences.IsLoaded; i++) { Thread.Sleep(5); host.PollPreferences(); }
@@ -62,17 +90,20 @@ namespace Terraria
             var codec = new ItemAutomationCodec(ID.ItemID.Count);
             string path = Path.Combine(root, "isolated-preferences", "items.json"); Directory.CreateDirectory(Path.GetDirectoryName(path));
             var document = new PreferenceDocument<ItemAutomationSettings>(new FilePreferenceStorage(path), codec, ItemAutomationSettings.Default);
+            documents.Add(document);
             Wait(() => document.Snapshot.IsLoaded, "missing item config load");
             Check(!File.Exists(path), "missing item config is not auto-created");
             ItemAutomationSettings changed = ItemAutomationSettings.Default.WithEnabled(ItemActionKind.Stack, true).WithTypes(ItemListKind.Discard, new[] { 101, 102 });
             document.Set(changed); Wait(() => document.Snapshot.Status == PreferenceStatus.Saved, "item config saved"); document.Stop(750);
             var restored = new PreferenceDocument<ItemAutomationSettings>(new FilePreferenceStorage(path), codec, ItemAutomationSettings.Default);
+            documents.Add(restored);
             Wait(() => restored.Snapshot.IsLoaded, "saved item config reload");
             Check(restored.Snapshot.Value.Equals(changed), "three controls/lists survive isolated restart"); restored.Stop(750);
             foreach (string invalid in new[] { "{", Encoding.UTF8.GetString(codec.Encode(changed)).Replace("\"version\":1", "\"version\":2") })
             {
                 File.WriteAllText(path, invalid, new UTF8Encoding(false)); byte[] original = File.ReadAllBytes(path);
                 var protectedDocument = new PreferenceDocument<ItemAutomationSettings>(new FilePreferenceStorage(path), codec, ItemAutomationSettings.Default);
+                documents.Add(protectedDocument);
                 Wait(() => protectedDocument.Snapshot.IsLoaded, "protected item config load");
                 Check(!protectedDocument.Snapshot.Value.StackEnabled && protectedDocument.Snapshot.Status != PreferenceStatus.Saved, "invalid/future document defaults all actions off");
                 protectedDocument.Set(changed); protectedDocument.Stop(750);
