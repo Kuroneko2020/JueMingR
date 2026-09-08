@@ -11,6 +11,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Reference Include="System.Runtime.Serialization" />
     <ProjectReference Include="..\JueMingR.Platform\JueMingR.Platform.csproj" />
   </ItemGroup>
 </Project>

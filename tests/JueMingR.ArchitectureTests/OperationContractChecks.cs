@@ -56,7 +56,9 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Platform.Settings.PreferenceDocument`1",
                 "JueMingR.Platform.Settings.PreferenceJson",
                 "JueMingR.Platform.Settings.UiPreferenceCodec",
-                "JueMingR.Platform.Settings.WindowPosition"
+                "JueMingR.Platform.Settings.WindowPosition",
+                "JueMingR.Platform.Persistence.DocumentWorker`1",
+                "JueMingR.Platform.Persistence.DocumentResult`1"
             };
             if (!expected.SetEquals(assembly.GetExportedTypes().Select(type => type.FullName)))
             {

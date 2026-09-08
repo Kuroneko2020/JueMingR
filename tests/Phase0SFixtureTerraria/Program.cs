@@ -204,10 +204,22 @@ namespace Terraria
         {
             try
             {
+                // Explicit fixture-only selection; never infer a pass from a
+                // device exception. The caller records authorization and reason.
+                bool deferGraphics = args.Length > 0 && args[args.Length - 1] == "--defer-graphics";
+                if (deferGraphics) Array.Resize(ref args, args.Length - 1);
+                if (args.Length == 1 && args[0] == "notes-input")
+                {
+                    AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly;
+                    NotesHostChecks.Run(false); return 0;
+                }
                 if (args.Length == 1 && args[0] == "phase0u-layout")
                 {
+                    AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly;
                     F5LayoutChecks.Run();
                     F5InputChecks.Run();
+                    NotesHostChecks.Run(!deferGraphics);
+                    if (deferGraphics) Console.WriteLine("DEFERRED: Notes XNA pixels, clipping and graphics-state checks were not run.");
                     return 0;
                 }
                 if (args.Length == 3 && args[0] == "phase0u-visual")
@@ -299,7 +311,8 @@ namespace Terraria
                         main.DrawBiomeLayer();
                         AssertBiomeDraw("群系: 雪原", 4);
 
-                        F5ConsumerChecks.Run(main, mode == "expect-handoff-biome-failure");
+                        if (deferGraphics) Console.WriteLine("DEFERRED: F5 actual input/render consumers, including Notes map/camera wheel requests, were not run.");
+                        else F5ConsumerChecks.Run(main, mode == "expect-handoff-biome-failure");
                         AssertEvidenceReaderAllowsAppend(evidencePath, packageId);
 
                         global::Terraria.Main.FixtureThrowOnDraw = true;
@@ -354,7 +367,7 @@ namespace Terraria
                     AssertBootstrapSchedulingState(AppDomain.CurrentDomain.DomainManager, "Failed");
                 }
 
-                Console.WriteLine("PASS: fixture mode {0} validated.", mode);
+                Console.WriteLine(deferGraphics ? "PASS: non-graphical fixture mode {0} validated; graphical checks deferred." : "PASS: fixture mode {0} validated.", mode);
                 return 0;
             }
             catch (Exception exception)
@@ -1222,7 +1235,7 @@ namespace Terraria
             AssertExactPostfix(drawSetup, owner, "DrawSetupPostfix", "Main.SetupDrawInterfaceLayers");
             MethodInfo input = mainType.GetMethod("DoUpdate_HandleInput", flags, null, Type.EmptyTypes, null);
             MethodInfo npc = mainType.GetMethod("HoverOverNPCs", flags, null, new[] { typeof(Microsoft.Xna.Framework.Rectangle) }, null);
-            AssertExactPostfix(input, owner, "InputPostfix", "Main.DoUpdate_HandleInput");
+            AssertExactPostfix(input, owner, "InputPostfix", "Main.DoUpdate_HandleInput", additionalPrefix: "InputPrefix");
             AssertExactPostfix(npc, owner, "NpcHoverPrefix", "Main.HoverOverNPCs(Rectangle)", true);
 
             foreach (MethodInfo candidate in mainType.GetMethods(flags))
@@ -1242,13 +1255,13 @@ namespace Terraria
             MethodInfo target,
             string owner,
             string postfixName,
-            string targetLabel, bool prefix = false)
+            string targetLabel, bool prefix = false, string additionalPrefix = null)
         {
             Patches patches = target == null ? null : Harmony.GetPatchInfo(target);
             if (patches == null ||
                 patches.Owners.Count != 1 ||
                 patches.Owners[0] != owner ||
-                patches.Prefixes.Count != (prefix ? 1 : 0) ||
+                patches.Prefixes.Count != (prefix || additionalPrefix != null ? 1 : 0) ||
                 patches.Postfixes.Count != (prefix ? 0 : 1) ||
                 patches.Transpilers.Count != 0 ||
                 patches.Finalizers.Count != 0 ||
@@ -1262,6 +1275,9 @@ namespace Terraria
                 throw new InvalidOperationException(
                     targetLabel + " does not have the exact approved patch type and owner.");
             }
+            if (additionalPrefix != null && (patches.Prefixes[0].owner != owner || patches.Prefixes[0].PatchMethod.Name != additionalPrefix ||
+                patches.Prefixes[0].PatchMethod.DeclaringType.FullName != "JueMingR.TerrariaHost.Phase0SHarmonyWorker"))
+                throw new InvalidOperationException("The input prefix is not the exact approved method.");
         }
 
         private static bool HasOwner(Patches patches, string owner)

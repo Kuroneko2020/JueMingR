@@ -104,7 +104,9 @@ namespace JueMingR.TerrariaHost
             private static bool TryGetActivePlayer(out Player player)
             {
                 player = null;
-                if (Main.gameMenu)
+                // Notes expands local-client presentation availability, not the
+                // accepted single-player biome observation/control boundary.
+                if (Main.gameMenu || Main.dedServ || Main.netMode != 0)
                 {
                     return false;
                 }

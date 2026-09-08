@@ -12,15 +12,13 @@ namespace JueMingR.TerrariaHost.F5
         private DynamicSpriteFont font;
         private Texture2D background, row, button, pixel;
         private readonly Func<string, F5Size> measure;
-        private readonly DynamicSpriteFont.DrawCharacter collectGlyph;
-        private float glyphLeft, glyphTop, glyphRight, glyphBottom;
+        private readonly UiTextMetrics textMetrics = new UiTextMetrics();
         private RasterizerState clipped;
         private Texture2D roundCap;
         private readonly F5IconAtlas icons = new F5IconAtlas();
-        private static readonly int[] OuterCornerInsets = { 4, 2, 1, 1, 0, 0, 0, 0, 0, 0 };
         internal int SkinGeneration { get; private set; }
 
-        internal F5Renderer() { measure = Measure; collectGlyph = CollectGlyph; }
+        internal F5Renderer() { measure = Measure; }
 
         internal bool RefreshResources()
         {
@@ -40,23 +38,7 @@ namespace JueMingR.TerrariaHost.F5
         { state.Layout.Ensure(width, height, scale, state.Page, font, measure); state.ClampScroll(); }
 
         private F5Size Measure(string text)
-        {
-            glyphLeft = glyphTop = float.PositiveInfinity;
-            glyphRight = glyphBottom = float.NegativeInfinity;
-            // Public ReLogic traversal applies the same fallback, kerning, spacing
-            // and glyph cropping offsets as DrawString. No texture readback.
-            font.DrawCustomFast(collectGlyph, text, Vector2.Zero, Vector2.One);
-            if (float.IsPositiveInfinity(glyphLeft)) return new F5Size(0, font.LineSpacing);
-            return new F5Size(glyphRight - glyphLeft, glyphBottom - glyphTop, glyphLeft, glyphTop);
-        }
-
-        private void CollectGlyph(Texture2D texture, Vector2 position, Rectangle source, Vector2 scale)
-        {
-            if (source.Width <= 0 || source.Height <= 0) return;
-            glyphLeft = Math.Min(glyphLeft, position.X); glyphTop = Math.Min(glyphTop, position.Y);
-            glyphRight = Math.Max(glyphRight, position.X + source.Width * scale.X);
-            glyphBottom = Math.Max(glyphBottom, position.Y + source.Height * scale.Y);
-        }
+        { return textMetrics.Measure(font, text); }
 
         internal void Draw(F5Interaction state, Matrix matrix, bool biomeEnabled, bool biomeFailed)
         {
@@ -227,71 +209,10 @@ namespace JueMingR.TerrariaHost.F5
 
         private void Panel(SpriteBatch batch, F5Rect rect, Texture2D texture, Color tint,
             bool roundedOuter = false, bool fractionalSurface = false)
-        {
-            if (texture == null || texture.IsDisposed || texture.Width <= 20 || texture.Height <= 20 || rect.Width < 20 || rect.Height < 20)
-            {
-                Color fallback = new Color(46, 50, 76);
-                if (fractionalSurface) Decoration(batch, rect, fallback);
-                else if (!roundedOuter) Fill(batch, rect, fallback);
-                else
-                {
-                    Fill(batch, new F5Rect(rect.X, rect.Y + 4, rect.Width, rect.Height - 8), fallback);
-                    for (int band = 0; band < 4; band++)
-                    {
-                        int inset = OuterCornerInsets[band];
-                        Fill(batch, new F5Rect(rect.X + inset, rect.Y + band, rect.Width - 2 * inset, 1), fallback);
-                        Fill(batch, new F5Rect(rect.X + inset, rect.Bottom - band - 1, rect.Width - 2 * inset, 1), fallback);
-                    }
-                }
-                return;
-            }
-            if (roundedOuter || fractionalSurface)
-            {
-                // Clip both texture fill and frame to the same six-unit outer
-                // silhouette, including a skin whose source corners are square.
-                // Only four 10x10 corner slices need bounded one-unit bands.
-                for (int rowIndex = 0; rowIndex < 3; rowIndex++) for (int column = 0; column < 3; column++)
-                {
-                    int sx = column == 0 ? 0 : column == 1 ? 10 : texture.Width - 10;
-                    int sy = rowIndex == 0 ? 0 : rowIndex == 1 ? 10 : texture.Height - 10;
-                    int sw = column == 1 ? texture.Width - 20 : 10;
-                    int sh = rowIndex == 1 ? texture.Height - 20 : 10;
-                    if (fractionalSurface)
-                    {
-                        // Function surfaces share the exact glyph-derived center
-                        // and bottom edge used by their labels and state marks.
-                        float x = rect.X + (column == 0 ? 0 : column == 1 ? 10 : rect.Width - 10);
-                        float y = rect.Y + (rowIndex == 0 ? 0 : rowIndex == 1 ? 10 : rect.Height - 10);
-                        float width = column == 1 ? rect.Width - 20 : 10;
-                        float height = rowIndex == 1 ? rect.Height - 20 : 10;
-                        batch.Draw(texture, new Vector2(x, y), new Rectangle(sx, sy, sw, sh), tint,
-                            0, Vector2.Zero, new Vector2(width / sw, height / sh), SpriteEffects.None, 0);
-                        continue;
-                    }
-                    int dx = (int)rect.X + (column == 0 ? 0 : column == 1 ? 10 : (int)rect.Width - 10);
-                    int dy = (int)rect.Y + (rowIndex == 0 ? 0 : rowIndex == 1 ? 10 : (int)rect.Height - 10);
-                    int dw = column == 1 ? (int)rect.Width - 20 : 10;
-                    int dh = rowIndex == 1 ? (int)rect.Height - 20 : 10;
-                    if (column == 1 || rowIndex == 1)
-                        batch.Draw(texture, new Rectangle(dx, dy, dw, dh), new Rectangle(sx, sy, sw, sh), tint);
-                    else for (int band = 0; band < 10; band++)
-                    {
-                        int edgeDistance = rowIndex == 0 ? band : 9 - band;
-                        int inset = OuterCornerInsets[edgeDistance];
-                        int left = column == 0 ? inset : 0;
-                        batch.Draw(texture, new Rectangle(dx + left, dy + band, 10 - inset, 1),
-                            new Rectangle(sx + left, sy + band, 10 - inset, 1), tint);
-                    }
-                }
-                return;
-            }
-            Utils.DrawSplicedPanel(batch, texture, (int)rect.X, (int)rect.Y, (int)rect.Width, (int)rect.Height,
-                10, 10, 10, 10, tint);
-        }
+        { UiSurface.Panel(batch, pixel, rect, texture, tint, roundedOuter, fractionalSurface); }
 
         private void Fill(SpriteBatch batch, F5Rect rect, Color color)
         { batch.Draw(pixel, new Rectangle((int)rect.X, (int)rect.Y, (int)rect.Width, (int)rect.Height), color); }
-
         private void Text(SpriteBatch batch, string text, Vector2 position, float scale, Color color, F5Size size)
         { Utils.DrawBorderStringFourWay(batch, font, text, position.X - size.OffsetX, position.Y - size.OffsetY,
             color, Color.Black, Vector2.Zero, scale); }

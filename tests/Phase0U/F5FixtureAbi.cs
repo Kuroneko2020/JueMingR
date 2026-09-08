@@ -21,7 +21,7 @@ namespace Terraria
         public static Matrix UIScaleMatrix { get; set; } = Matrix.Identity;
         public int currentNPCShowingChatBubble = -1;
         public static int UseCount, TileUseCount, SelectedSlot, NpcHits, DropHits, SpecialInteractions, BubbleDraws, CursorDraws, DamageDraws;
-        internal static bool SampleLeft, SampleRight, SampleF5, SampleCapture;
+        internal static bool SampleLeft, SampleRight, SampleF5, SampleCapture, SampleMap, SampleShift, SampleControl;
         internal static int SampleX = 1850, SampleY = 900, SampleWheel;
         internal static bool SpecialNpc;
         internal static string PendingText, DrawnText;
@@ -36,7 +36,7 @@ namespace Terraria
         {
             PendingText = null; PendingLocked = false; // MouseOversClear before input.
             DoUpdate_HandleInput();
-            if (NativeMode || SampleCapture)
+            if (NativeMode || SampleCapture || SampleMap)
             {
                 if (GameInput.PlayerInput.Triggers.Current.MouseLeft) NativeClicks++;
                 NativeWheel += GameInput.PlayerInput.ScrollWheelDeltaForUI / 120;
@@ -60,6 +60,7 @@ namespace Terraria
             input.Current.MouseLeft = FocusHelper.AllowInputProcessing && SampleLeft;
             input.Current.MouseRight = FocusHelper.AllowInputProcessing && SampleRight;
             input.Current.ToggleCameraMode = SampleCapture;
+            input.Current.MapFull = SampleMap;
             mouseLeft = input.Current.MouseLeft; mouseRight = input.Current.MouseRight;
             GameInput.PlayerInput.ScrollWheelValueOld = GameInput.PlayerInput.ScrollWheelValue;
             GameInput.PlayerInput.ScrollWheelValue += SampleWheel;
@@ -68,7 +69,11 @@ namespace Terraria
             GameInput.PlayerInput.MouseInfo = new MouseState(SampleX, SampleY, GameInput.PlayerInput.ScrollWheelValue,
                 mouseLeft ? ButtonState.Pressed : ButtonState.Released, ButtonState.Released,
                 mouseRight ? ButtonState.Pressed : ButtonState.Released, ButtonState.Released, ButtonState.Released);
-            keyState = SampleF5 ? new KeyboardState(Keys.F5) : new KeyboardState();
+            var keys = new List<Keys>();
+            if (SampleF5) keys.Add(Keys.F5);
+            if (SampleShift) keys.Add(Keys.LeftShift);
+            if (SampleControl) keys.Add(Keys.LeftControl);
+            keyState = new KeyboardState(keys.ToArray());
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -183,7 +188,7 @@ namespace Terraria.GameInput
     {
         public TriggersSet Current = new TriggersSet(), JustPressed = new TriggersSet(), JustReleased = new TriggersSet();
     }
-    public static class PlayerInput
+    public static partial class PlayerInput
     {
         public static TriggersPack Triggers = new TriggersPack();
         public static MouseState MouseInfo;
