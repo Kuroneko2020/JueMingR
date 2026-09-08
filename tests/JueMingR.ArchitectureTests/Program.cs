@@ -31,6 +31,8 @@ namespace JueMingR.ArchitectureTests
                 PreferenceChecks.Check(failures);
                 PreferenceConcurrencyChecks.Check(failures);
                 PreferenceStorageChecks.Check(failures);
+                ItemAutomationSettingsChecks.Check(failures);
+                ItemAutomationChecks.Check(failures);
                 NotesDomainChecks.Check(failures);
                 NotesEditingChecks.Check(failures);
                 NotesStorageChecks.Check(failures);
