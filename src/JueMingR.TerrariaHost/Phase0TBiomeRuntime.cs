@@ -10,14 +10,14 @@ namespace JueMingR.TerrariaHost
         private readonly BiomeDisplayFeature feature;
         private readonly SingleFeatureRuntime runtime;
 
-        private Phase0TBiomeRuntime(bool hostAvailable, bool userEnabled)
+        private Phase0TBiomeRuntime(bool hostAvailable, bool userEnabled, IGameSessionProbe sharedProbe = null)
         {
             var worldReader = new TerrariaBiomeWorldReader();
             feature = new BiomeDisplayFeature(worldReader, userEnabled);
             // Saved false is an ordinary off choice. Only Host failure enters the
             // terminal fault lock; neither failure nor actual state writes settings.
             if (!hostAvailable) feature.FailClosed();
-            runtime = new SingleFeatureRuntime(worldReader, feature);
+            runtime = new SingleFeatureRuntime(sharedProbe ?? worldReader, feature);
         }
 
         internal BiomeDisplayViewModel CurrentViewModel
@@ -34,6 +34,10 @@ namespace JueMingR.TerrariaHost
         {
             return new Phase0TBiomeRuntime(hostAvailable, userEnabled);
         }
+
+        internal static Phase0TBiomeRuntime Create(bool hostAvailable, bool userEnabled, IGameSessionProbe sharedProbe)
+        { return new Phase0TBiomeRuntime(hostAvailable, userEnabled, sharedProbe); }
+        internal SingleFeatureRuntime SharedRuntime { get { return runtime; } }
 
         internal void Update(ulong updateTick)
         {

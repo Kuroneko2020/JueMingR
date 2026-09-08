@@ -53,6 +53,14 @@ function Get-Phase0SFixtureExecutable {
     $layoutOutput = @(& $fixtureExe @layoutArguments)
     if ($LASTEXITCODE -ne 0) { throw 'The production Phase 0-U layout/input checks failed.' }
     foreach ($line in $layoutOutput) { Write-Host $line }
+    $itemsMode = if ($script:DeferGraphics) { 'items-safety' } else { 'items-host' }
+    $itemsOutput = @(& $fixtureExe $itemsMode)
+    if ($LASTEXITCODE -ne 0) { throw 'The production item host/UI fixture checks failed.' }
+    foreach ($line in $itemsOutput) { Write-Host $line }
+    if ($script:DeferGraphics) { Write-Host 'DEFERRED: Items real XNA drawing/input geometry; item transaction/source/receipt/config checks above ran.' }
+    $abiOutput = @(& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $RepositoryRoot 'tests\Items\Verify-ItemHostAbi.ps1') -RepositoryRoot $RepositoryRoot)
+    if ($LASTEXITCODE -ne 0) { throw 'The fixed item host metadata/IL check failed.' }
+    foreach ($line in $abiOutput) { Write-Host $line }
     return $fixtureExe
 }
 
@@ -536,6 +544,11 @@ function Invoke-Phase0SLoadChainFixtureTests {
 
     $root = New-Phase0STestRoot
     try {
+        $items = New-Phase0SFixtureRunDirectory -Root $root -Name 'items-host-loaded' -FixtureExe $fixtureExe -ProductionOutputs $productionOutputs -HarmonyPath $harmonyPath -PackageId ('item-automation-' + $sourceCommit) -SourceCommit $sourceCommit
+        $itemsResult = Invoke-Phase0SFixtureExe -FixtureExe $items.exePath -Mode 'expect-items' -EvidencePath $items.evidencePath -PackageId $items.packageId
+        foreach ($line in $itemsResult.output) { Write-Host $line }
+        if ($itemsResult.exitCode -ne 0 -and [IO.File]::Exists($items.evidencePath)) { Get-Content -LiteralPath $items.evidencePath | ForEach-Object { Write-Host $_ } }
+        Assert-Phase0SCondition -Condition ($itemsResult.exitCode -eq 0) -Message 'Separately compiled item Host must load its actual profile and remain healthy.'
         Invoke-Phase0SSettingsHostFixtures -Root $root -FixtureExe $fixtureExe -ProductionOutputs $productionOutputs -HarmonyPath $harmonyPath -SourceCommit $sourceCommit
         $success = New-Phase0SFixtureRunDirectory -Root $root -Name 'success' -FixtureExe $fixtureExe -ProductionOutputs $productionOutputs -HarmonyPath $harmonyPath -PackageId ('phase0s-fixture-' + [Guid]::NewGuid().ToString('N')) -SourceCommit $sourceCommit
         $successResult = Invoke-Phase0SFixtureExe -FixtureExe $success.exePath -Mode 'expect-handoff' -EvidencePath $success.evidencePath -PackageId $success.packageId

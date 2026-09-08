@@ -204,6 +204,6 @@ namespace Terraria.GameInput
 namespace Terraria.GameContent
 {
     public static class FontAssets { public static Asset<DynamicSpriteFont> MouseText; }
-    public static class TextureAssets
+    public static partial class TextureAssets
     { public static Asset<Microsoft.Xna.Framework.Graphics.Texture2D> SettingsPanel, InventoryBack13, InventoryBack, MagicPixel; }
 }

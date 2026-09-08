@@ -742,6 +742,7 @@ namespace JueMingR.TerrariaHost
             private readonly string gameDirectory;
             private HostPreferences preferences;
             private Notes.HostNotes notes;
+            private Items.HostItems items;
 
             internal PostfixContext(string packageId, string evidencePath, string gameDirectory)
             {
@@ -769,9 +770,12 @@ namespace JueMingR.TerrariaHost
                 }
 
                 preferences = new HostPreferences(gameDirectory);
-                runtime = Phase0TBiomeRuntime.Create(enabled, preferences.BiomeLoaded && preferences.BiomeEnabled);
+                bool itemPackage = PackageId.StartsWith("item-automation-", StringComparison.Ordinal);
+                runtime = itemPackage ? Phase0TBiomeRuntime.Create(enabled, preferences.BiomeLoaded && preferences.BiomeEnabled, new Items.ItemSessionProbe()) :
+                    Phase0TBiomeRuntime.Create(enabled, preferences.BiomeLoaded && preferences.BiomeEnabled);
+                if (itemPackage) { items = new Items.HostItems(gameDirectory, runtime.SharedRuntime); runtime.SharedRuntime.AddFeature(items); }
                 notes = new Notes.HostNotes(gameDirectory);
-                Shell = new F5Shell(runtime, preferences, notes) { LayersReady = f5LayersReady };
+                Shell = new F5Shell(runtime, preferences, notes, items) { LayersReady = f5LayersReady };
             }
 
             internal void UpdateRuntime()
@@ -784,6 +788,7 @@ namespace JueMingR.TerrariaHost
 
                 preferences.Update();
                 notes.Update();
+                items?.PollPreferences();
                 current.SetFeatureEnabled(preferences.BiomeLoaded && preferences.BiomeEnabled);
                 current.Update(updateTick);
                 updateTick = unchecked(updateTick + 1);
@@ -791,6 +796,7 @@ namespace JueMingR.TerrariaHost
 
             internal void FailRuntimeClosed()
             {
+                items?.FailClosed();
                 Phase0TBiomeRuntime current = runtime;
                 if (current != null)
                 {

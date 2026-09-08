@@ -71,6 +71,7 @@ namespace JueMingR.TerrariaHost.F5
         internal IList<F5Element> Elements { get { return elements; } }
         internal float MaxScroll { get { return Math.Max(0, ContentHeight - Viewport.Height); } }
         internal void SetNotesContentHeight(float height) { if (page == 4) ContentHeight = Math.Max(0, height); }
+        internal void SetItemsContentHeight(float height) { if (page == 0) ContentHeight = Math.Max(0, height); }
 
         internal static F5Size WindowSize(float width, float height, float scale)
         {
@@ -173,10 +174,14 @@ namespace JueMingR.TerrariaHost.F5
             // Ten-unit side clearance stays away from the visible rounded
             // corners of the existing ten-unit slices, not merely the hitbox.
             float width = Math.Min(contentWidth + 4, Math.Max(0, surface.Width - 20));
-            float y = Math.Max(surface.Bottom - 3, textBottom + 0.5f);
-            if (y + 1 > surface.Bottom - 2)
+            // Use one rounded boundary with double intermediates. Optimized x86
+            // can otherwise compare a stored float with an extended-precision
+            // equivalent and falsely report overflow at the exact bottom margin.
+            double bottom = surface.Bottom;
+            double y = Math.Max(bottom - 3, (double)textBottom + 0.5);
+            if (y + 1 > bottom - 2)
                 throw new InvalidOperationException("F5 text leaves no safe space for its state underline.");
-            return new F5Rect(surface.X + (surface.Width - width) / 2, y, width, 1);
+            return new F5Rect(surface.X + (surface.Width - width) / 2, (float)y, width, 1);
         }
         internal static bool IsSelected(F5Element element, bool biomeEnabled, bool biomeFailed)
         { return !biomeFailed && (biomeEnabled ? element.Command == F5Command.EnableBiome : element.Command == F5Command.DisableBiome); }

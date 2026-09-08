@@ -9,6 +9,7 @@ namespace JueMingR.TerrariaHost.F5
         internal bool Active, Focused, F5, Left, Right;
         internal int Wheel;
         internal bool PageWheelHandled;
+        internal bool ModalPointerOwner;
     }
 
     internal sealed class F5Interaction
@@ -108,7 +109,7 @@ namespace JueMingR.TerrariaHost.F5
                 if (input.Left) leftTail = true;
                 if (input.Right) rightTail = true;
                 ConsumeWheel = true;
-                if (layoutReady)
+                if (layoutReady && !input.ModalPointerOwner)
                 {
                     float localX = input.X - X, localY = input.Y - Y;
                     if (pressed)

@@ -523,7 +523,8 @@ function Read-Phase0SPackage {
         ('phase0t-biome-' + [string] $manifest.sourceCommit),
         ('phase0u-f5-ui-' + [string] $manifest.sourceCommit),
         ('phase0v-settings-' + [string] $manifest.sourceCommit),
-        ('phase0w-notes-' + [string] $manifest.sourceCommit)
+        ('phase0w-notes-' + [string] $manifest.sourceCommit),
+        ('item-automation-' + [string] $manifest.sourceCommit)
     )
     if ([string] $manifest.sourceCommit -notmatch '^[0-9a-f]{40}$' -or
         $allowedPackageIds -cnotcontains [string] $manifest.packageId) {

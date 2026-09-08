@@ -7,12 +7,12 @@ namespace JueMingR.Platform.Items
     public sealed class ItemOperationOwnership
     {
         private const ulong AllInventorySlots = (1UL << 58) - 1;
-        private ulong saleSlots, discardSlots, storeSlots;
+        private ulong saleSlots, discardSlots, storeSlots, interruptedSourceSlots;
         public long Session { get; private set; }
         public ItemOperationResult SaleResult { get; private set; }
         public ItemOperationResult DiscardResult { get; private set; }
         public ItemOperationResult StoreResult { get; private set; }
-        public ulong ProtectedSlots { get { return saleSlots | discardSlots | storeSlots; } }
+        public ulong ProtectedSlots { get { return saleSlots | discardSlots | storeSlots | interruptedSourceSlots; } }
         public bool SaleBlocked { get { return ProtectedSlots != 0; } }
         public bool DiscardBlocked { get { return discardSlots != 0; } }
         public bool StoreBlocked { get { return storeSlots != 0; } }
@@ -25,11 +25,19 @@ namespace JueMingR.Platform.Items
             if (saleSlots != 0) SaleResult = Unknown();
             if (discardSlots != 0) DiscardResult = Unknown();
             if (storeSlots != 0) StoreResult = Unknown();
-            saleSlots = discardSlots = storeSlots = 0;
+            saleSlots = discardSlots = storeSlots = interruptedSourceSlots = 0;
             Session = generation;
+            // Old unknown results describe the ended session. A fresh session
+            // has no current protected range and must not display them as live.
+            if (generation > 0) SaleResult = DiscardResult = StoreResult = null;
         }
         public bool IsProtected(int slot)
         { return slot >= 0 && slot < 58 && (ProtectedSlots & (1UL << slot)) != 0; }
+        public void HoldInterruptedSource(long generation, ulong slots)
+        {
+            if ((slots & ~AllInventorySlots) != 0) throw new ArgumentOutOfRangeException(nameof(slots));
+            if (generation == Session && generation > 0) interruptedSourceSlots |= slots;
+        }
         public bool TryBeginSale(long generation)
         {
             if (generation != Session || generation <= 0 || SaleBlocked) return false;

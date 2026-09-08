@@ -10,7 +10,7 @@ using HarmonyLib;
 
 namespace Terraria
 {
-    public sealed class Player
+    public sealed partial class Player
     {
         private bool zoneDesert;
 
@@ -95,6 +95,7 @@ namespace Terraria
             Console.WriteLine("FIXTURE_MAIN_UPDATE_ORIGINAL");
         }
 
+        [MethodImpl(MethodImplOptions.NoInlining)]
         private void SetupDrawInterfaceLayers()
         {
             _gameInterfaceLayers = CreateFixtureLayers();
@@ -208,6 +209,9 @@ namespace Terraria
                 // device exception. The caller records authorization and reason.
                 bool deferGraphics = args.Length > 0 && args[args.Length - 1] == "--defer-graphics";
                 if (deferGraphics) Array.Resize(ref args, args.Length - 1);
+                if (args.Length == 1 && args[0] == "items-host") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; ItemHostChecks.Run(); return 0; }
+                if (args.Length == 1 && args[0] == "items-safety") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; ItemHostChecks.Run(graphics: false); return 0; }
+                if (args.Length == 3 && args[0] == "items-visual") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; ItemHostChecks.Run(args[1], args[2]); return 0; }
                 if (args.Length == 1 && args[0] == "notes-input")
                 {
                     AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly;
@@ -231,6 +235,7 @@ namespace Terraria
                 if (args.Length != 3 ||
                     (args[0] != "expect-handoff" &&
                      args[0] != "expect-handoff-biome-failure" &&
+                     args[0] != "expect-items" &&
                      !args[0].StartsWith("expect-settings-", StringComparison.Ordinal) &&
                      args[0] != "expect-no-handoff" &&
                      args[0] != "expect-evidence-init-failure" &&
@@ -242,7 +247,7 @@ namespace Terraria
 
                 string mode = args[0];
                 bool settingsMode = mode.StartsWith("expect-settings-", StringComparison.Ordinal);
-                bool expectHandoff = mode == "expect-handoff" || mode == "expect-handoff-biome-failure" || settingsMode;
+                bool expectHandoff = mode == "expect-handoff" || mode == "expect-handoff-biome-failure" || mode == "expect-items" || settingsMode;
                 string evidencePath = Path.GetFullPath(args[1]);
                 string packageId = args[2];
                 if (String.IsNullOrWhiteSpace(packageId))
@@ -278,6 +283,7 @@ namespace Terraria
                     main.RunUpdateLoop(1);
                     WaitForEvidenceEvent(evidencePath, "RUNTIME_HANDOFF_COMPLETE");
                     evidenceAfterFirstUpdate = File.ReadAllBytes(evidencePath);
+                    if (mode == "expect-items") { ItemLoadedHostChecks.Run(main); return 0; }
                     if (settingsMode) SettingsHostChecks.Run(main, mode);
                     else
                     {

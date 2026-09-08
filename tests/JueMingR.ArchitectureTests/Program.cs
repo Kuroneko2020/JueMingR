@@ -33,6 +33,7 @@ namespace JueMingR.ArchitectureTests
                 PreferenceStorageChecks.Check(failures);
                 ItemAutomationSettingsChecks.Check(failures);
                 ItemAutomationChecks.Check(failures);
+                ItemRuntimeChecks.Check(failures);
                 NotesDomainChecks.Check(failures);
                 NotesEditingChecks.Check(failures);
                 NotesStorageChecks.Check(failures);

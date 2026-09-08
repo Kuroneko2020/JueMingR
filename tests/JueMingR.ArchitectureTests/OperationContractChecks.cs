@@ -48,6 +48,7 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Platform.Items.StoreItemsRequest", "JueMingR.Platform.Items.IItemOperationPort",
                 "JueMingR.Platform.Items.ItemOperationOwnership",
                 "JueMingR.Platform.Runtime.IGameSessionProbe",
+                "JueMingR.Platform.Runtime.IGameSessionIdentityProbe",
                 "JueMingR.Platform.Runtime.IRuntimeFeature",
                 "JueMingR.Platform.Runtime.SingleFeatureRuntime",
                 "JueMingR.Platform.Settings.IPreferenceCodec`1",
