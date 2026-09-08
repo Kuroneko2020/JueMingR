@@ -203,7 +203,11 @@ namespace Terraria
                 foreach (string document in new[] { "biome", "ui" })
                     Check((bool)Call(Get(Preferences, document), "Stop", 3000), "worker joined before fixture directory cleanup");
                 Call(Preferences, "OnProcessExit", null, EventArgs.Empty);
-                Check((bool)Call(Get(notes, "worker"), "Stop", 3000), "notes worker joined before fixture directory cleanup");
+                // Notes also supports a final-update overload. Bind the existing
+                // bounded stop contract, not an ambiguous method-name lookup.
+                object notesWorker = Get(notes, "worker");
+                MethodInfo stop = notesWorker.GetType().GetMethod("Stop", Instance, null, new[] { typeof(int) }, null);
+                Check((bool)stop.Invoke(notesWorker, new object[] { 3000 }), "notes worker joined before fixture directory cleanup");
                 Call(notes, "OnExit", null, EventArgs.Empty);
             }
         }

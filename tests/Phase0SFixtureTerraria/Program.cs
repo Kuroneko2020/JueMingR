@@ -204,6 +204,10 @@ namespace Terraria
         {
             try
             {
+                // Explicit fixture-only selection; never infer a pass from a
+                // device exception. The caller records authorization and reason.
+                bool deferGraphics = args.Length > 0 && args[args.Length - 1] == "--defer-graphics";
+                if (deferGraphics) Array.Resize(ref args, args.Length - 1);
                 if (args.Length == 1 && args[0] == "notes-input")
                 {
                     AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly;
@@ -214,7 +218,8 @@ namespace Terraria
                     AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly;
                     F5LayoutChecks.Run();
                     F5InputChecks.Run();
-                    NotesHostChecks.Run();
+                    NotesHostChecks.Run(!deferGraphics);
+                    if (deferGraphics) Console.WriteLine("DEFERRED: Notes XNA pixels, clipping and graphics-state checks were not run.");
                     return 0;
                 }
                 if (args.Length == 3 && args[0] == "phase0u-visual")
@@ -306,7 +311,8 @@ namespace Terraria
                         main.DrawBiomeLayer();
                         AssertBiomeDraw("群系: 雪原", 4);
 
-                        F5ConsumerChecks.Run(main, mode == "expect-handoff-biome-failure");
+                        if (deferGraphics) Console.WriteLine("DEFERRED: F5 actual input/render consumers, including Notes map/camera wheel requests, were not run.");
+                        else F5ConsumerChecks.Run(main, mode == "expect-handoff-biome-failure");
                         AssertEvidenceReaderAllowsAppend(evidencePath, packageId);
 
                         global::Terraria.Main.FixtureThrowOnDraw = true;
@@ -361,7 +367,7 @@ namespace Terraria
                     AssertBootstrapSchedulingState(AppDomain.CurrentDomain.DomainManager, "Failed");
                 }
 
-                Console.WriteLine("PASS: fixture mode {0} validated.", mode);
+                Console.WriteLine(deferGraphics ? "PASS: non-graphical fixture mode {0} validated; graphical checks deferred." : "PASS: fixture mode {0} validated.", mode);
                 return 0;
             }
             catch (Exception exception)

@@ -1,11 +1,21 @@
 [CmdletBinding()]
 param(
     [switch] $Run,
-    [string] $RepositoryRoot
+    [string] $RepositoryRoot,
+    [switch] $DeferGraphics,
+    [string] $GraphicsDeferralReason
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
+
+if ($DeferGraphics -and [string]::IsNullOrWhiteSpace($GraphicsDeferralReason)) {
+    throw '-DeferGraphics requires an explicitly classified environment reason and task authorization.'
+}
+if (-not $DeferGraphics -and -not [string]::IsNullOrWhiteSpace($GraphicsDeferralReason)) {
+    throw '-GraphicsDeferralReason requires -DeferGraphics.'
+}
+if ($DeferGraphics) { Write-Host ('DEFERRED graphics by explicit task authorization: ' + $GraphicsDeferralReason) }
 
 . (Join-Path $PSScriptRoot 'TestSupport.ps1')
 . (Join-Path $PSScriptRoot '..\..\scripts\phase0s\Phase0S.ScriptSupport.ps1')
@@ -38,7 +48,9 @@ function Get-Phase0SFixtureExecutable {
     if (-not [System.IO.File]::Exists($fixtureExe)) {
         throw "The fake Terraria fixture executable is missing: $fixtureExe"
     }
-    $layoutOutput = @(& $fixtureExe phase0u-layout)
+    $layoutArguments = @('phase0u-layout')
+    if ($script:DeferGraphics) { $layoutArguments += '--defer-graphics' }
+    $layoutOutput = @(& $fixtureExe @layoutArguments)
     if ($LASTEXITCODE -ne 0) { throw 'The production Phase 0-U layout/input checks failed.' }
     foreach ($line in $layoutOutput) { Write-Host $line }
     return $fixtureExe
@@ -256,7 +268,9 @@ function Invoke-Phase0SFixtureExe {
     try {
         Set-Location -LiteralPath (Split-Path -Parent $FixtureExe)
         $ErrorActionPreference = 'Continue'
-        $output = @(& $FixtureExe $Mode $EvidencePath $PackageId 2>&1)
+        $fixtureArguments = @($Mode, $EvidencePath, $PackageId)
+        if ($script:DeferGraphics) { $fixtureArguments += '--defer-graphics' }
+        $output = @(& $FixtureExe @fixtureArguments 2>&1)
         $exitCode = $LASTEXITCODE
     }
     finally {
@@ -547,7 +561,8 @@ function Invoke-Phase0SLoadChainFixtureTests {
         Write-Host 'PASS: one installed fixture completed two independent process launches with fresh evidence.'
         $biomeFailureResult = Invoke-Phase0SFixtureExe -FixtureExe $success.exePath -Mode 'expect-handoff-biome-failure' -EvidencePath $success.evidencePath -PackageId $success.packageId
         foreach ($line in $biomeFailureResult.output) { Write-Host $line }
-        Assert-Phase0SCondition -Condition ($biomeFailureResult.exitCode -eq 0) -Message 'Dedicated biome-failure process must preserve unavailable state after F5 enable.'
+        $biomeFailureMessage = if ($DeferGraphics) { 'Dedicated biome-failure process must pass its non-graphical checks; F5 enable scenario is deferred.' } else { 'Dedicated biome-failure process must preserve unavailable state after F5 enable.' }
+        Assert-Phase0SCondition -Condition ($biomeFailureResult.exitCode -eq 0) -Message $biomeFailureMessage
 
         foreach ($staleKind in @('partial', 'zero')) {
             $staleRun = New-Phase0SFixtureRunDirectory -Root $root -Name ('stale-' + $staleKind) -FixtureExe $fixtureExe -ProductionOutputs $productionOutputs -HarmonyPath $harmonyPath -PackageId ('phase0s-fixture-' + [Guid]::NewGuid().ToString('N')) -SourceCommit $sourceCommit
