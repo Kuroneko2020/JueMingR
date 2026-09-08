@@ -35,6 +35,7 @@ namespace JueMingR.ArchitectureTests
                 NotesEditingChecks.Check(failures);
                 NotesStorageChecks.Check(failures);
                 NotesConcurrencyChecks.Check(failures);
+                NotesRevisionChecks.Check(failures);
 #if PHASE0T_MAPPING_TEST || PHASE0T_ALL_TESTS
                 BiomeFeatureChecks.CheckMapping(failures);
 #endif

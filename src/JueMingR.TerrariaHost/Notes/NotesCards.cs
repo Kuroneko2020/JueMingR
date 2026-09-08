@@ -18,6 +18,13 @@ namespace JueMingR.TerrariaHost.Notes
         internal long EditRevision;
         internal bool PendingCaret;
     }
+    internal sealed class NotesControl
+    {
+        internal string Key, Text;
+        internal F5Rect Rect;
+        internal bool Enabled;
+        internal Color? Color;
+    }
     internal sealed class NotesCards
     {
         private readonly NotesWorkspace workspace;
@@ -26,8 +33,17 @@ namespace JueMingR.TerrariaHost.Notes
         private readonly Dictionary<string, NotesCard> states = new Dictionary<string, NotesCard>();
         private readonly List<NotesCard> cards = new List<NotesCard>();
         private readonly Action<NotesAction> request;
-        private F5Rect add, save, cancel, cancelDelete;
+        private readonly List<NotesControl> controls = new List<NotesControl>();
+        private NotesControl armedControl;
+        private NoteEditor actionEditor, selectionEditor;
+        private NotesCard selectionCard;
+        private bool actionBusy, actionDirty, actionComposition, actionReadable;
+        private string actionDelete;
+        private long actionRevision;
+        private int actionGeneration, armedGeneration;
+        private float statusY, titleLineHeight, bodyLineHeight, statusLineHeight;
         private string lastField, armed, status;
+        private Color statusColor = Color.LightGray;
         private float clickX, clickY;
         private uint clickTime;
         private NoteEditor seenEditor;
@@ -37,6 +53,9 @@ namespace JueMingR.TerrariaHost.Notes
         internal NotesCards(NotesWorkspace workspace, NotesInput input, NotesRenderer renderer, Action<NotesAction> request)
         { this.workspace = workspace; this.input = input; this.renderer = renderer; this.request = request; }
         internal IReadOnlyList<NotesCard> Cards { get { return cards; } }
+        internal IReadOnlyList<NotesControl> Controls { get { return controls; } }
+        internal bool Selecting { get { return selectionEditor != null; } }
+        internal bool ActionStateChanged { get { return !ActionsCurrent(); } }
         internal bool PendingLayout
         {
             get { foreach (NotesCard card in cards) if (card.TitleLayout != null && !card.TitleLayout.Complete || card.BodyLayout != null && !card.BodyLayout.Complete) return true; return false; }
@@ -50,8 +69,9 @@ namespace JueMingR.TerrariaHost.Notes
                 return workspace.Editor.IsTitle ? card.TitleLayout : card.BodyLayout;
             }
         }
-        internal void Prepare(F5Interaction shell, string feedback)
+        internal void Prepare(F5Interaction shell, string feedback, Color? feedbackColor = null)
         {
+            statusColor = feedbackColor ?? Color.LightGray;
             // Previously visible long text gets an early share before geometry-only
             // short previews. Completed offscreen previews stay cached below, so
             // they cannot consume this allowance again on every pending frame.
@@ -59,12 +79,26 @@ namespace JueMingR.TerrariaHost.Notes
                 if (card.BodyLayout != null && card.Rect.Bottom > shell.Scroll && card.Rect.Y < shell.Scroll + shell.Layout.Viewport.Height)
                     renderer.Advance(card.BodyLayout, 2048);
             float width = shell.Layout.Viewport.Width;
+            titleLineHeight = renderer.LineHeight(0.8f); bodyLineHeight = renderer.LineHeight(0.76f); statusLineHeight = renderer.LineHeight(0.62f);
             if (feedback != status || statusFont != renderer.FontIdentity)
             { status = feedback; statusFont = renderer.FontIdentity; statusLayout = renderer.Layout(feedback, width - 8, 0.62f); }
-            float header = 40 + Math.Min(4, statusLayout.Lines.Count) * 20;
-            add = new F5Rect(0, 0, 38, 30); save = new F5Rect(46, 0, 56, 30);
-            cancel = new F5Rect(110, 0, 56, 30); cancelDelete = new F5Rect(width - 94, 0, 94, 30);
-            int columns = width < 360 ? 1 : 2; float cardWidth = (width - (columns - 1) * 10) / columns;
+            if (!ActionsCurrent()) actionGeneration++;
+            actionEditor = workspace.Editor; actionBusy = workspace.Feature.Busy; actionDirty = actionEditor != null && actionEditor.Dirty;
+            actionComposition = input.HasComposition; actionReadable = workspace.Feature.Readable && !workspace.Feature.NeedsRecovery;
+            actionDelete = workspace.DeleteConfirmation; actionRevision = workspace.Feature.Revision;
+            controls.Clear(); float controlX = 0, controlY = 0;
+            AddTop("add", "+", actionReadable && !actionBusy, width, ref controlX, ref controlY);
+            if (actionEditor != null)
+            {
+                if (actionDirty || actionComposition || actionBusy) AddTop("save", actionBusy ? "提交中" : "保存", actionReadable && !actionBusy, width, ref controlX, ref controlY);
+                AddTop("cancel", "取消编辑", true, width, ref controlX, ref controlY);
+            }
+            if (actionDelete != null) AddTop("cancel-delete", "取消删除", true, width, ref controlX, ref controlY);
+            statusY = controlY + renderer.ControlHeight + 8;
+            float header = statusY + Math.Min(4, statusLayout.Lines.Count) * statusLineHeight + 12;
+            float minimumCard = renderer.ButtonWidth("已悬挂") + renderer.ButtonWidth("确认") + 100;
+            int columns = width < Math.Max(360, minimumCard * 2 + 10) ? 1 : 2; float cardWidth = (width - (columns - 1) * 10) / columns;
+            if (cardWidth < minimumCard - 60) throw new InvalidOperationException("Notes font controls do not fit the available viewport.");
             float[] bottoms = new float[columns]; for (int i = 0; i < columns; i++) bottoms[i] = header;
             cards.Clear(); var retained = new HashSet<string>();
             foreach (Note note in workspace.Feature.Saved.Notes)
@@ -77,10 +111,12 @@ namespace JueMingR.TerrariaHost.Notes
                 bool editing = workspace.EditingId == note.Id && workspace.Editor != null;
                 string title = editing && workspace.Editor.IsTitle ? workspace.Editor.Text : note.Title;
                 int changedStart = editing && ReferenceEquals(card.Editor, workspace.Editor) && workspace.Editor.Revision == card.EditRevision + 1 ? workspace.Editor.LastChangeStart : 0;
+                float pinWidth = renderer.ButtonWidth("已悬挂"), deleteWidth = renderer.ButtonWidth("确认");
+                float titleWidth = Math.Max(24, cardWidth - pinWidth - deleteWidth - 28);
                 if (card.TitleLayout == null || !ReferenceEquals(card.TitleLayout.Text, title))
-                    card.TitleLayout = renderer.Layout(title, cardWidth - 132, 0.8f, editing && workspace.Editor.IsTitle ? workspace.Editor.Boundaries : note.TitleBoundaries, card.TitleLayout, changedStart);
+                    card.TitleLayout = renderer.Layout(title, titleWidth, 0.8f, editing && workspace.Editor.IsTitle ? workspace.Editor.Boundaries : note.TitleBoundaries, card.TitleLayout, changedStart);
                 renderer.Advance(card.TitleLayout, 1024);
-                float titleHeight = editing && workspace.Editor.IsTitle ? Math.Min(96, Math.Max(48, card.TitleLayout.Lines.Count * 24)) : 48;
+                float titleHeight = Math.Max(renderer.ControlHeight, editing && workspace.Editor.IsTitle ? Math.Min(4 * titleLineHeight, Math.Max(48, card.TitleLayout.Lines.Count * titleLineHeight)) : 48);
                 string body = editing && !workspace.Editor.IsTitle ? workspace.Editor.Text : note.Body;
                 float maximum = Math.Max(48, Math.Min(240, shell.Layout.Viewport.Height / 2 - titleHeight - 24));
                 float bodyHeight = maximum;
@@ -91,14 +127,16 @@ namespace JueMingR.TerrariaHost.Notes
                     if (card.BodyLayout == null || !ReferenceEquals(card.BodyLayout.Text, body))
                         card.BodyLayout = renderer.Layout(body, cardWidth - 16, 0.76f, editing && !workspace.Editor.IsTitle ? workspace.Editor.Boundaries : note.BodyBoundaries);
                     renderer.Advance(card.BodyLayout, 1024);
-                    bodyHeight = Math.Max(48, Math.Min(maximum, card.BodyLayout.Lines.Count * 24));
+                    bodyHeight = Math.Max(48, Math.Min(maximum, card.BodyLayout.Lines.Count * bodyLineHeight));
                 }
                 int column = columns == 1 || bottoms[0] <= bottoms[1] ? 0 : 1;
                 float x = column * (cardWidth + 10), y = bottoms[column];
                 card.Rect = new F5Rect(x, y, cardWidth, titleHeight + bodyHeight + 24);
-                card.Title = new F5Rect(x + 8, y + 7, cardWidth - 132, titleHeight);
-                card.Pin = new F5Rect(x + cardWidth - 118, y + 8, 60, 28);
-                card.Delete = new F5Rect(x + cardWidth - 54, y + 8, 48, 28);
+                card.Title = new F5Rect(x + 8, y + 8, titleWidth, titleHeight);
+                card.Pin = new F5Rect(x + cardWidth - pinWidth - deleteWidth - 12, y + 8, pinWidth, renderer.ControlHeight);
+                card.Delete = new F5Rect(x + cardWidth - deleteWidth - 8, y + 8, deleteWidth, renderer.ControlHeight);
+                controls.Add(new NotesControl { Key = note.Id + ":pin", Text = note.Pinned ? "已悬挂" : "悬挂", Rect = card.Pin, Enabled = actionReadable && !actionBusy && !note.Pinned });
+                controls.Add(new NotesControl { Key = note.Id + ":delete", Text = actionDelete == note.Id ? "确认" : "删除", Rect = card.Delete, Enabled = actionReadable && !actionBusy, Color = Color.Salmon });
                 card.Body = new F5Rect(x + 8, y + titleHeight + 16, cardWidth - 16, bodyHeight);
                 bottoms[column] = card.Rect.Bottom + 10; cards.Add(card);
             }
@@ -124,14 +162,14 @@ namespace JueMingR.TerrariaHost.Notes
                     if (card.BodyLayout == null || !ReferenceEquals(card.BodyLayout.Text, body))
                         card.BodyLayout = renderer.Layout(body, card.Body.Width, 0.76f, editing && !workspace.Editor.IsTitle ? workspace.Editor.Boundaries : card.Note.BodyBoundaries, card.BodyLayout, changedStart);
                     renderer.Advance(card.BodyLayout);
-                    card.BodyScroll = ClampScroll(card.BodyScroll, card.BodyLayout, card.Body.Height, 24);
-                    card.TitleScroll = ClampScroll(card.TitleScroll, card.TitleLayout, card.Title.Height, 24);
+                    card.BodyScroll = ClampScroll(card.BodyScroll, card.BodyLayout, card.Body.Height, bodyLineHeight);
+                    card.TitleScroll = ClampScroll(card.TitleScroll, card.TitleLayout, card.Title.Height, titleLineHeight);
                     card.PendingCaret |= caretChanged && editing;
                     NotesTextLayout editingLayout = editing && workspace.Editor.IsTitle ? card.TitleLayout : card.BodyLayout;
                     if (card.PendingCaret && editing && editingLayout.CanLocate(workspace.Editor.Caret))
                     {
-                        if (workspace.Editor.IsTitle) card.TitleScroll = CaretScroll(card.TitleScroll, card.Title.Height, card.TitleLayout, workspace.Editor.Caret);
-                        else card.BodyScroll = CaretScroll(card.BodyScroll, card.Body.Height, card.BodyLayout, workspace.Editor.Caret);
+                        if (workspace.Editor.IsTitle) card.TitleScroll = CaretScroll(card.TitleScroll, card.Title.Height, card.TitleLayout, workspace.Editor.Caret, titleLineHeight);
+                        else card.BodyScroll = CaretScroll(card.BodyScroll, card.Body.Height, card.BodyLayout, workspace.Editor.Caret, bodyLineHeight);
                         card.PendingCaret = false;
                     }
                 }
@@ -147,27 +185,60 @@ namespace JueMingR.TerrariaHost.Notes
             x -= view.X; y += shell.Scroll - view.Y;
             foreach (NotesCard card in cards) if (card.Body.Contains(x, y) && card.BodyLayout != null)
             {
-                float next = ClampScroll(card.BodyScroll - wheel / 3f, card.BodyLayout, card.Body.Height, 24);
+                float next = ClampScroll(card.BodyScroll - wheel / 3f, card.BodyLayout, card.Body.Height, bodyLineHeight);
                 bool changed = next != card.BodyScroll; card.BodyScroll = next; card.PendingCaret = false; return changed || !card.BodyLayout.Complete;
             }
             return false;
         }
-        internal void Pointer(F5Interaction shell, bool pressed, bool released)
+        private bool ActionsCurrent()
+        {
+            return ReferenceEquals(actionEditor, workspace.Editor) && actionBusy == workspace.Feature.Busy &&
+                actionDirty == (workspace.Editor != null && workspace.Editor.Dirty) && actionComposition == input.HasComposition &&
+                actionReadable == (workspace.Feature.Readable && !workspace.Feature.NeedsRecovery) &&
+                actionDelete == workspace.DeleteConfirmation && actionRevision == workspace.Feature.Revision;
+        }
+        private void AddTop(string key, string text, bool enabled, float width, ref float x, ref float y)
+        {
+            float size = renderer.ButtonWidth(text);
+            if (x > 0 && x + size > width) { x = 0; y += renderer.ControlHeight + 6; }
+            controls.Add(new NotesControl { Key = key, Text = text, Enabled = enabled, Rect = new F5Rect(x, y, size, renderer.ControlHeight) });
+            x += size + 8;
+        }
+        internal void Pointer(F5Interaction shell, bool pressed, bool released, bool left = false, bool shift = false)
         {
             F5Rect view = shell.Layout.Viewport.Offset(shell.X, shell.Y);
             float x = shell.PointerX - view.X, y = shell.PointerY - view.Y + shell.Scroll;
             string hit = view.Contains(shell.PointerX, shell.PointerY) ? Hit(x, y) : null;
+            if (selectionEditor != null)
+            {
+                if (!ReferenceEquals(selectionEditor, workspace.Editor) || input.HasComposition) ClearSelectionCapture();
+                else
+                {
+                    if (left || released) DragSelection(x, y);
+                    if (released || !left && !pressed) ClearSelectionCapture();
+                    return; // A selection release can never activate a card or save blank space.
+                }
+            }
             if (pressed)
             {
                 armed = hit;
+                armedControl = null; armedGeneration = actionGeneration;
+                if (ActionsCurrent()) foreach (NotesControl control in controls) if (control.Key == hit && control.Enabled) { armedControl = control; break; }
                 if (hit != null && (hit.EndsWith(":title", StringComparison.Ordinal) || hit.EndsWith(":body", StringComparison.Ordinal)))
                 {
                     bool title = hit.EndsWith(":title", StringComparison.Ordinal); string id = hit.Substring(0, 32); NotesCard card = states[id];
                     NotesTextLayout layout = title ? card.TitleLayout : card.BodyLayout; F5Rect rect = title ? card.Title : card.Body;
                     float scroll = title ? card.TitleScroll : card.BodyScroll;
-                    int caret = layout == null ? -1 : layout.Hit(x - rect.X, (int)((y - rect.Y + scroll) / 24));
+                    float lineHeight = title ? titleLineHeight : bodyLineHeight;
+                    int caret = layout == null ? -1 : layout.Hit(x - rect.X, (int)((y - rect.Y + scroll) / lineHeight));
                     if (caret < 0) { lastField = null; return; }
-                    if (workspace.Editor != null && workspace.EditingId == id && workspace.Editor.IsTitle == title) workspace.Editor.MoveTo(caret);
+                    if (workspace.Editor != null && workspace.EditingId == id && workspace.Editor.IsTitle == title)
+                    {
+                        // Composition owns its replacement target until commit/cancel.
+                        // Never move that target using an obsolete visual layout.
+                        if (input.HasComposition || !ReferenceEquals(layout.Text, workspace.Editor.Text)) return;
+                        workspace.Editor.MoveTo(caret, shift); selectionEditor = workspace.Editor; selectionCard = card; armed = null;
+                    }
                     else if (lastField == hit && unchecked((uint)Environment.TickCount - clickTime) <= 500 && Math.Abs(x - clickX) <= 6 && Math.Abs(y - clickY) <= 6)
                     { request(new NotesAction(NotesActionKind.BeginEdit, id, title, caret)); lastField = null; return; }
                     lastField = hit; clickTime = unchecked((uint)Environment.TickCount); clickX = x; clickY = y;
@@ -175,25 +246,39 @@ namespace JueMingR.TerrariaHost.Notes
                 else
                 {
                     lastField = null;
-                    if (hit == "blank") request(new NotesAction(NotesActionKind.FinishEdit));
+                    if (hit == "blank" && workspace.Editor != null && !workspace.Feature.Busy) request(new NotesAction(NotesActionKind.FinishEdit));
                 }
             }
             if (released)
             {
-                if (armed == hit && hit != null) Activate(hit, shell);
-                armed = null;
+                if (armed == hit && hit != null && armedControl != null && armedGeneration == actionGeneration && ActionsCurrent())
+                    foreach (NotesControl control in controls)
+                        if (control.Key == hit && control.Enabled && control.Rect.Equals(armedControl.Rect) && control.Text == armedControl.Text) { Activate(hit, shell); break; }
+                armed = null; armedControl = null;
             }
         }
+        private void DragSelection(float x, float y)
+        {
+            bool title = selectionEditor.IsTitle;
+            F5Rect rect = title ? selectionCard.Title : selectionCard.Body;
+            NotesTextLayout layout = title ? selectionCard.TitleLayout : selectionCard.BodyLayout;
+            if (layout == null || !ReferenceEquals(layout.Text, selectionEditor.Text)) return;
+            const float band = 36;
+            if (x < rect.X - band || x > rect.Right + band || y < rect.Y - band || y > rect.Bottom + band) return;
+            float height = title ? titleLineHeight : bodyLineHeight, scroll = title ? selectionCard.TitleScroll : selectionCard.BodyScroll;
+            float delta = y < rect.Y + 8 ? -Math.Min(12, (rect.Y + 8 - y) / 3) : y > rect.Bottom - 8 ? Math.Min(12, (y - rect.Bottom + 8) / 3) : 0;
+            scroll = ClampScroll(scroll + delta, layout, rect.Height, height);
+            int caret = layout.Hit(Math.Max(0, Math.Min(rect.Width, x - rect.X)), (int)((Math.Max(0, Math.Min(rect.Height - 1, y - rect.Y)) + scroll) / height));
+            if (caret >= 0) selectionEditor.MoveTo(caret, true);
+            if (title) selectionCard.TitleScroll = scroll; else selectionCard.BodyScroll = scroll;
+            selectionCard.PendingCaret = false;
+        }
+        private void ClearSelectionCapture() { selectionEditor = null; selectionCard = null; armed = null; armedControl = null; }
         private string Hit(float x, float y)
         {
-            if (add.Contains(x, y)) return "add";
-            if (save.Contains(x, y)) return "save";
-            if (cancel.Contains(x, y)) return "cancel";
-            if (workspace.DeleteConfirmation != null && cancelDelete.Contains(x, y)) return "cancel-delete";
+            foreach (NotesControl control in controls) if (control.Rect.Contains(x, y)) return control.Enabled ? control.Key : "disabled";
             foreach (NotesCard card in cards)
             {
-                if (card.Pin.Contains(x, y)) return card.Note.Id + ":pin";
-                if (card.Delete.Contains(x, y)) return card.Note.Id + ":delete";
                 if (card.Title.Contains(x, y)) return card.Note.Id + ":title";
                 if (card.Body.Contains(x, y)) return card.Note.Id + ":body";
                 if (card.Rect.Contains(x, y)) return "card";
@@ -218,33 +303,33 @@ namespace JueMingR.TerrariaHost.Notes
         internal void Draw(F5Interaction shell)
         {
             F5Rect view = shell.Layout.Viewport.Offset(shell.X, shell.Y); float ox = view.X, oy = view.Y - shell.Scroll;
-            renderer.Button(add.Offset(ox, oy), "+", add.Offset(ox, oy).Contains(shell.PointerX, shell.PointerY));
-            renderer.Button(save.Offset(ox, oy), "保存", false); renderer.Button(cancel.Offset(ox, oy), "取消", false);
-            if (workspace.Editor != null && workspace.Editor.Dirty) renderer.Label("未保存", ox + 176, oy + 5, 0.65f, Color.Gold);
-            if (workspace.DeleteConfirmation != null) renderer.Button(cancelDelete.Offset(ox, oy), "取消删除", false);
-            renderer.TextView(statusLayout, new F5Rect(ox, oy + 36, view.Width - 8, 80), 0, 0.62f, 20, Color.Orange);
+            renderer.TextView(statusLayout, new F5Rect(ox, oy + statusY, view.Width - 8, 4 * statusLineHeight), 0, 0.62f, statusLineHeight, statusColor);
             foreach (NotesCard card in cards)
             {
                 if (card.Rect.Bottom <= shell.Scroll || card.Rect.Y >= shell.Scroll + view.Height) continue;
-                renderer.Fill(card.Rect.Offset(ox, oy), new Color(28, 39, 59, 230));
+                renderer.Panel(card.Rect.Offset(ox, oy));
                 bool editing = workspace.Editor != null && workspace.EditingId == card.Note.Id;
                 NoteEditor title = editing && workspace.Editor.IsTitle ? workspace.Editor : null;
                 NoteEditor body = editing && !workspace.Editor.IsTitle ? workspace.Editor : null;
-                renderer.TextView(card.TitleLayout, card.Title.Offset(ox, oy), card.TitleScroll, 0.8f, 24, Color.Wheat, title, title == null ? "" : input.Composition);
-                renderer.Button(card.Pin.Offset(ox, oy), card.Note.Pinned ? "已悬挂" : "悬挂", false);
-                renderer.Button(card.Delete.Offset(ox, oy), workspace.DeleteConfirmation == card.Note.Id ? "确认" : "删除", false, Color.Salmon);
+                renderer.TextView(card.TitleLayout, card.Title.Offset(ox, oy), card.TitleScroll, 0.8f, titleLineHeight, Color.Wheat, title, title == null ? "" : input.Composition);
                 if (body == null && card.Note.EmptyBody) renderer.Label("双击进入编辑", ox + card.Body.X, oy + card.Body.Y, 0.7f, Color.Gray);
-                renderer.TextView(card.BodyLayout, card.Body.Offset(ox, oy), card.BodyScroll, 0.76f, 24, body == null ? Color.LightBlue : Color.LightYellow, body, body == null ? "" : input.Composition);
+                renderer.TextView(card.BodyLayout, card.Body.Offset(ox, oy), card.BodyScroll, 0.76f, bodyLineHeight, body == null ? Color.LightBlue : Color.LightYellow, body, body == null ? "" : input.Composition);
+            }
+            foreach (NotesControl control in controls)
+            {
+                F5Rect rect = control.Rect.Offset(ox, oy);
+                if (rect.Bottom <= view.Y || rect.Y >= view.Bottom) continue;
+                renderer.Button(rect, control.Text, view.Contains(shell.PointerX, shell.PointerY) && rect.Contains(shell.PointerX, shell.PointerY), control.Color, control.Enabled);
             }
         }
-        internal void Suspend() { lastField = armed = null; }
+        internal void Suspend() { lastField = armed = null; ClearSelectionCapture(); }
         private static float ClampScroll(float value, NotesTextLayout layout, float height, float lineHeight)
         { return Math.Max(0, layout.Complete ? Math.Min(Math.Max(0, layout.Lines.Count * lineHeight - height), value) : Math.Min(layout.Text.Length * lineHeight, value)); }
-        private static float CaretScroll(float scroll, float height, NotesTextLayout layout, int caret)
+        private static float CaretScroll(float scroll, float height, NotesTextLayout layout, int caret, float lineHeight)
         {
-            float y = layout.LineOf(caret) * 24;
+            float y = layout.LineOf(caret) * lineHeight;
             if (y < scroll) return y;
-            return y + 24 > scroll + height ? y + 24 - height : scroll;
+            return y + lineHeight > scroll + height ? y + lineHeight - height : scroll;
         }
     }
 }

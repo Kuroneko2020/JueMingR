@@ -23,6 +23,8 @@ namespace Terraria
             window = CreateWindowEx(0, "STATIC", "Phase 0-U fixture", 0, 0, 0, 1920, 1080,
                 IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
             if (window == IntPtr.Zero) throw new InvalidOperationException("Hidden fixture window creation failed.");
+            Console.WriteLine("XNA fixture adapters available: " + GraphicsAdapter.Adapters.Count);
+            if (GraphicsAdapter.Adapters.Count == 0) throw new InvalidOperationException("XNA fixture has no available display adapter; graphical checks did not run.");
             Device = new GraphicsDevice(GraphicsAdapter.DefaultAdapter, GraphicsProfile.Reach,
                 new PresentationParameters { DeviceWindowHandle = window, BackBufferWidth = 1920, BackBufferHeight = 1080,
                     BackBufferFormat = SurfaceFormat.Color, DepthStencilFormat = DepthFormat.None, IsFullScreen = false });

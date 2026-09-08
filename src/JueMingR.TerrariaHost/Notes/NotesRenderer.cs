@@ -14,7 +14,10 @@ namespace JueMingR.TerrariaHost.Notes
     internal sealed class NotesRenderer : IDisposable
     {
         private DynamicSpriteFont font;
-        private Texture2D pixel;
+        private Texture2D pixel, surface;
+        private readonly UiTextMetrics metrics = new UiTextMetrics();
+        private readonly Dictionary<string, F5Size> controls = new Dictionary<string, F5Size>();
+        private float textTop, textHeight;
         private RasterizerState clipped;
         private SpriteBatch batch;
         private Matrix matrix;
@@ -26,9 +29,15 @@ namespace JueMingR.TerrariaHost.Notes
         internal bool Refresh()
         {
             var nextFont = FontAssets.MouseText == null ? null : FontAssets.MouseText.Value;
-            if (!ReferenceEquals(font, nextFont)) characterWidths.Clear();
+            if (!ReferenceEquals(font, nextFont))
+            {
+                characterWidths.Clear(); controls.Clear();
+                F5Size glyph = nextFont == null ? new F5Size(0, 0) : metrics.Measure(nextFont, "测试Ag");
+                textTop = glyph.OffsetY; textHeight = glyph.Height;
+            }
             font = nextFont;
             pixel = TextureAssets.MagicPixel == null ? null : TextureAssets.MagicPixel.Value;
+            surface = TextureAssets.InventoryBack == null ? null : TextureAssets.InventoryBack.Value;
             return font != null && pixel != null && !pixel.IsDisposed;
         }
         internal NotesTextLayout Layout(string text, float width, float scale)
@@ -96,13 +105,30 @@ namespace JueMingR.TerrariaHost.Notes
         internal void Label(string text, float x, float y, float scale, Color color)
         {
             // Literal font path: neither this nor TextView enters ChatManager.
-            batch.DrawString(font, text, new Vector2(x + 1, y + 1), Color.Black * 0.9f, 0, Vector2.Zero, scale, SpriteEffects.None, 0);
-            batch.DrawString(font, text, new Vector2(x, y), color, 0, Vector2.Zero, scale, SpriteEffects.None, 0);
+            Utils.DrawBorderStringFourWay(batch, font, text, x, y - textTop * scale, color, Color.Black, Vector2.Zero, scale);
         }
-        internal void Button(F5Rect rect, string text, bool hover, Color? color = null)
+        internal float LineHeight(float scale)
+        { return Math.Max(Math.Max(24 * scale / 0.76f, font.LineSpacing * scale), textHeight * scale + 4); }
+        internal float ControlHeight { get { return Math.Max(36, ControlSize("取消编辑").Height * 0.75f + 12); } }
+        internal float ButtonWidth(string text) { return Math.Max(36, ControlSize(text).Width * 0.75f + 16); }
+        private F5Size ControlSize(string text)
         {
-            Fill(rect, hover ? new Color(84, 102, 134, 240) : new Color(47, 63, 91, 235));
-            Label(text, rect.X + 5, rect.Y + 3, 0.65f, color ?? Color.White);
+            F5Size size;
+            // Only fixed control labels enter this cache; user text uses the bounded
+            // character metric cache and the incremental visible layout path.
+            if (!controls.TryGetValue(text, out size)) { size = metrics.Measure(font, text); controls.Add(text, size); }
+            return size;
+        }
+        internal void Panel(F5Rect rect, float opacity = 1)
+        { UiSurface.Panel(batch, pixel, rect, surface, new Color(232, 232, 232) * opacity); }
+        internal void Button(F5Rect rect, string text, bool hover, Color? color = null, bool enabled = true)
+        {
+            UiSurface.Panel(batch, pixel, rect, surface, enabled && hover ? Color.White : new Color(220, 220, 220), fractionalSurface: true);
+            F5Size size = ControlSize(text); const float scale = 0.75f;
+            Utils.DrawBorderStringFourWay(batch, font, text,
+                rect.X + (rect.Width - size.Width * scale) / 2 - size.OffsetX * scale,
+                rect.Y + (rect.Height - size.Height * scale) / 2 - size.OffsetY * scale,
+                enabled ? color ?? Color.White : Color.Gray, Color.Black, Vector2.Zero, scale);
         }
         internal void TextView(NotesTextLayout layout, F5Rect rect, float scroll, float scale, float lineHeight, Color color,
             NoteEditor editor = null, string composition = "")
@@ -115,8 +141,18 @@ namespace JueMingR.TerrariaHost.Notes
                 for (int lineIndex = first; lineIndex <= last; lineIndex++)
                 {
                     NotesTextLine line = layout.Lines[lineIndex]; float x = rect.X, y = rect.Y + lineIndex * lineHeight - scroll;
+                    int offset = line.Start;
                     for (int i = line.First; i < line.Last; i++)
-                    { Label(layout.Element(i), x, y, scale, color); x += layout.Advance(i); }
+                    {
+                        string element = layout.Element(i); float advance = layout.Advance(i);
+                        if (editor != null && ReferenceEquals(layout.Text, editor.Text) && editor.HasSelection &&
+                            offset < editor.SelectionEnd && offset + element.Length > editor.SelectionStart)
+                            Fill(new F5Rect(x, y, Math.Max(2, advance), lineHeight), new Color(40, 85, 135, 235));
+                        Label(element, x, y, scale, color); x += advance; offset += element.Length;
+                    }
+                    if (editor != null && editor.HasSelection && editor.SelectionStart <= line.End && editor.SelectionEnd > line.End &&
+                        line.End < layout.Text.Length && (layout.Text[line.End] == '\r' || layout.Text[line.End] == '\n'))
+                        Fill(new F5Rect(x, y, 5, lineHeight), new Color(40, 85, 135, 235));
                 }
                 if (!layout.Complete) Label("正在排版…", rect.X + 2, rect.Bottom - 18, 0.6f, Color.Gold);
                 if (editor != null && ReferenceEquals(layout.Text, editor.Text) && layout.CanLocate(editor.Caret))
@@ -146,7 +182,7 @@ namespace JueMingR.TerrariaHost.Notes
         {
             if (clipped != null) { clipped.Dispose(); clipped = null; }
             // Shared vanilla fonts/textures are borrowed, never disposed here.
-            font = null; pixel = null;
+            font = null; pixel = surface = null; controls.Clear(); characterWidths.Clear();
         }
     }
 }

@@ -57,19 +57,22 @@ namespace JueMingR.TerrariaHost.F5
                 Vector2 raw = new Vector2(PlayerInput.MouseInfo.X * PlayerInput.RawMouseScale.X,
                     PlayerInput.MouseInfo.Y * PlayerInput.RawMouseScale.Y);
                 bool f5 = Main.keyState.IsKeyDown(Keys.F5);
+                // Map/camera requests precede their modal flags and draw layers.
+                // The shell and Notes must yield the same newly sampled input.
+                bool inputActive = !failed && CanPresentNow && !PlayerInput.Triggers.Current.MapFull && !PlayerInput.Triggers.Current.ToggleCameraMode;
                 Vector2 pointer = State.Visible || f5 ? Vector2.Transform(raw, Matrix.Invert(matrix)) : raw;
                 State.Update(new F5Input
                 {
                     Width = screen.X, Height = screen.Y, Scale = matrix.M11, X = pointer.X, Y = pointer.Y,
-                    Active = CanPresentNow && !PlayerInput.Triggers.Current.MapFull && !PlayerInput.Triggers.Current.ToggleCameraMode,
+                    Active = inputActive,
                     Focused = Terraria.FocusHelper.AllowInputProcessing,
                     F5 = f5,
                     Left = PlayerInput.MouseInfo.LeftButton == ButtonState.Pressed,
                     Right = PlayerInput.MouseInfo.RightButton == ButtonState.Pressed,
                     Wheel = PlayerInput.ScrollWheelDeltaForUI,
-                    PageWheelHandled = CanPresentNow && notes.Wheel(pointer.X, pointer.Y, PlayerInput.ScrollWheelDeltaForUI)
+                    PageWheelHandled = inputActive && notes.Wheel(pointer.X, pointer.Y, PlayerInput.ScrollWheelDeltaForUI)
                 });
-                notes.ProcessInput(!failed && CanPresentNow, matrix, screen, raw);
+                notes.ProcessInput(inputActive, matrix, screen, raw);
                 if (OwnsPointer) LeaseMouseInterface();
                 ConsumeSample();
                 SubmitPosition();

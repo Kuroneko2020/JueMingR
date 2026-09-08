@@ -15,8 +15,14 @@ namespace JueMingR.TerrariaHost.Notes
         internal HostNotes(string verifiedGameDirectory)
         {
             var codec = new NotebookCodec();
-            worker = new DocumentWorker<Notebook>(new AtomicFileDocument(Path.Combine(verifiedGameDirectory,
-                "JueMingRData", "notes", "notes.json"), Notebook.MaximumBytes, true), codec.Decode, codec.Encode, Notebook.Empty);
+            var storage = new AtomicFileDocument(Path.Combine(verifiedGameDirectory,
+                "JueMingRData", "notes", "notes.json"), Notebook.MaximumBytes, true, ".schema1-original");
+            worker = new DocumentWorker<Notebook>(storage, bytes =>
+            {
+                Notebook book = codec.Decode(bytes);
+                if (book.SourceSchema == 1) storage.RetainLoadedSource();
+                return book;
+            }, codec.Encode, Notebook.Empty);
             Workspace = new NotesWorkspace(new NotesFeature(worker));
             AppDomain.CurrentDomain.ProcessExit += OnExit;
         }
@@ -26,7 +32,7 @@ namespace JueMingR.TerrariaHost.Notes
             AppDomain.CurrentDomain.ProcessExit -= OnExit;
             // Stop drains within the budget; timeout cancels before file commit,
             // while any native I/O already entered retains ownership until it ends.
-            worker.Stop(750);
+            Workspace.Feature.Stop(750);
         }
     }
 }

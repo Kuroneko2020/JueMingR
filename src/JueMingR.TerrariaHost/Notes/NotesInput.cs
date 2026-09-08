@@ -30,12 +30,15 @@ namespace JueMingR.TerrariaHost.Notes
         private Keys pendingNavigation;
         private long navigationRevision;
         private int navigationCaret;
+        private long navigationSelection;
+        private bool navigationExtend;
         private char pendingHighSurrogate;
         internal NotesInput(NotesWorkspace workspace, INotesClipboard clipboard, INotesIme ime = null)
         { this.workspace = workspace; this.clipboard = clipboard; this.ime = ime ?? new NativeIme(); }
         internal string Composition { get; private set; } = "";
         internal string Error { get; private set; }
         internal bool Owned { get { return leased; } }
+        internal bool HasComposition { get { return leased && (Composition.Length != 0 || ime.Candidates || pendingHighSurrogate != 0); } }
         internal bool OtherTextOwner
         {
             get { return Main.drawingPlayerChat || Main.editSign || Main.editChest ||
@@ -126,7 +129,8 @@ namespace JueMingR.TerrariaHost.Notes
             bool cut = control && Pressed(Keys.X) || shift && Pressed(Keys.Delete);
             if (cut || control && Pressed(Keys.C) || control && Pressed(Keys.Insert))
             {
-                if (clipboard.TryCopy(editor.Text)) { if (cut) editor.ClearAfterCopy(); Error = null; }
+                if (!editor.HasSelection) return;
+                if (clipboard.TryCopy(editor.SelectedText)) { if (cut) editor.DeleteSelection(); Error = null; }
                 else Error = "剪贴板不可用，草稿没有删改。";
                 return;
             }
@@ -136,22 +140,24 @@ namespace JueMingR.TerrariaHost.Notes
                 else Error = "未能读取剪贴板（不可用或超过正文上限），草稿保留。";
                 return;
             }
-            if (control) return; // No undo/selection contract: Ctrl+Z must never clear.
+            if (control && Pressed(Keys.A)) { editor.SelectAll(); return; }
+            if (control) return; // No undo contract: Ctrl+Z must never clear.
             if (sample == previous) repeatTicks++; else repeatTicks = 0;
             bool repeat = repeatTicks >= 24 && repeatTicks % 3 == 0;
-            if (Pressed(Keys.Left) || repeat && sample.IsKeyDown(Keys.Left)) editor.Move(-1);
-            if (Pressed(Keys.Right) || repeat && sample.IsKeyDown(Keys.Right)) editor.Move(1);
+            if (Pressed(Keys.Left) || repeat && sample.IsKeyDown(Keys.Left)) editor.Move(-1, shift);
+            if (Pressed(Keys.Right) || repeat && sample.IsKeyDown(Keys.Right)) editor.Move(1, shift);
             if (Pressed(Keys.Back) || repeat && sample.IsKeyDown(Keys.Back)) editor.Backspace();
             if (Pressed(Keys.Delete) || repeat && sample.IsKeyDown(Keys.Delete)) editor.Delete();
             Keys navigation = Pressed(Keys.Up) || repeat && sample.IsKeyDown(Keys.Up) ? Keys.Up :
                 Pressed(Keys.Down) || repeat && sample.IsKeyDown(Keys.Down) ? Keys.Down : Pressed(Keys.Home) ? Keys.Home : Pressed(Keys.End) ? Keys.End : Keys.None;
-            if (navigation != Keys.None) { pendingNavigation = navigation; navigationRevision = editor.Revision; navigationCaret = editor.Caret; }
+            if (navigation != Keys.None)
+            { pendingNavigation = navigation; navigationRevision = editor.Revision; navigationCaret = editor.Caret; navigationSelection = editor.CaretRevision; navigationExtend = shift; }
             if (pendingNavigation == Keys.None) return;
-            if (editor.Revision != navigationRevision || editor.Caret != navigationCaret) { pendingNavigation = Keys.None; return; }
+            if (editor.Revision != navigationRevision || editor.Caret != navigationCaret || editor.CaretRevision != navigationSelection) { pendingNavigation = Keys.None; return; }
             if (layout == null || !ReferenceEquals(layout.Text, editor.Text) || !layout.CanLocate(editor.Caret)) return;
             int target = pendingNavigation == Keys.Up ? layout.Vertical(editor.Caret, -1) : pendingNavigation == Keys.Down ? layout.Vertical(editor.Caret, 1) :
                 pendingNavigation == Keys.Home ? layout.LineHome(editor.Caret) : layout.LineEnd(editor.Caret);
-            if (target >= 0) { editor.MoveTo(target); pendingNavigation = Keys.None; }
+            if (target >= 0) { editor.MoveTo(target, navigationExtend); pendingNavigation = Keys.None; }
         }
         private bool Pressed(Keys key) { return sample.IsKeyDown(key) && previous.IsKeyUp(key); }
         internal void FinishComposition(bool cancel)

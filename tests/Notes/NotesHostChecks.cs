@@ -39,18 +39,33 @@ namespace Terraria
                 Frame(input, workspace, "[i:123]中文"); Frame(input, workspace, "\r", Keys.Enter);
                 Check(workspace.Editor.Text.Contains("\n"), "body Enter is newline"); Frame(input, workspace, "");
                 string before = workspace.Editor.Text;
+                clipboard.Text = "untouched";
+                Frame(input, workspace, "", Keys.LeftControl, Keys.C);
+                Check(clipboard.Text == "untouched" && input.Error == null, "no selection does not copy the whole field");
+                Frame(input, workspace, ""); Frame(input, workspace, "", Keys.LeftControl, Keys.A);
+                Check(workspace.Editor.SelectedText == before, "Ctrl A selects only active field");
+                Frame(input, workspace, "");
                 Frame(input, workspace, "", Keys.LeftControl, Keys.X);
                 Check(workspace.Editor.Text == before && input.Error != null, "failed cut keeps entire draft");
                 Frame(input, workspace, ""); Frame(input, workspace, "", Keys.LeftControl, Keys.Z);
                 Check(workspace.Editor.Text == before, "no destructive Ctrl Z");
                 clipboard.Available = true; Frame(input, workspace, ""); Frame(input, workspace, "", Keys.LeftControl, Keys.X);
-                Check(workspace.Editor.Text == "" && clipboard.Text == before, "successful cut copies entire draft before clearing");
+                Check(workspace.Editor.Text == "" && clipboard.Text == before, "successful cut copies selected field before deleting");
                 clipboard.Text = "👩🏽‍💻中"; Frame(input, workspace, ""); Frame(input, workspace, "", Keys.LeftControl, Keys.V);
                 Check(workspace.Editor.Text == "👩🏽‍💻中", "paste into caret preserves complete clusters");
+                Frame(input, workspace, ""); Frame(input, workspace, "", Keys.LeftShift, Keys.Left);
+                Check(workspace.Editor.SelectedText == "中", "Shift Left selects a whole character");
+                ime.Preview = "ni"; Frame(input, workspace, "", Keys.N);
+                Check(workspace.Editor.SelectedText == "中" && workspace.Editor.Text == "👩🏽‍💻中", "composition preview retains original selection");
+                Frame(input, workspace, "\x1b", Keys.Escape); ime.Preview = ""; Frame(input, workspace, ""); Frame(input, workspace, "");
+                Check(workspace.Editor != null && workspace.Editor.SelectedText == "中", "IME cancellation preserves selected original");
+                ime.Preview = "hao"; Frame(input, workspace, ""); ime.Preview = ""; Frame(input, workspace, "好\r", Keys.Enter);
+                Check(workspace.Editor.Text == "👩🏽‍💻好", "IME commit replaces selection once without body newline");
+                workspace.Editor.MoveTo(workspace.Editor.Text.Length);
                 ime.Final = "尾"; input.FinishComposition(false);
                 Check(workspace.Editor.Text.EndsWith("尾", StringComparison.Ordinal), "IME finalize chars precede save snapshot");
                 workspace.Request(new NotesAction(NotesActionKind.Save)); Drain(workspace);
-                Check(workspace.Feature.Saved.Find(id).Body == "👩🏽‍💻中尾", "finalized text persisted");
+                Check(workspace.Feature.Saved.Find(id).Body == "👩🏽‍💻好尾", "finalized text persisted");
                 Frame(input, workspace, "new"); Main.drawingPlayerChat = true;
                 input.BeforeSample(true); Check(!input.Owned && Main.drawingPlayerChat, "existing chat wins without being closed");
                 Main.drawingPlayerChat = false;
@@ -80,10 +95,11 @@ namespace Terraria
                 var pins = new NotesPins(workspace, null, action => { return false; });
                 var pin = new NotesPin { Note = note, Rect = new F5Rect(100, 100, NotesPins.Width, NotesPins.Height),
                     Layout = new NotesTextLayout(note.Body, 200, s => 1) };
+                NotesPins.SetRect(pin, pin.Rect);
                 ((List<NotesPin>)pins.Pins).Add(pin);
-                pins.Pointer(110, 85, true, false, 0, true, true, false, 1920, 1080);
-                pins.Pointer(150, 125, true, false, 0, true, true, false, 1920, 1080);
-                pins.Pointer(150, 125, false, false, 0, true, true, false, 1920, 1080);
+                pins.Pointer(110, 110, true, false, 0, true, true, false, 1920, 1080);
+                pins.Pointer(150, 150, true, false, 0, true, true, false, 1920, 1080);
+                pins.Pointer(150, 150, false, false, 0, true, true, false, 1920, 1080);
                 Check(pin.Rect.X == 100 && pin.Rect.Y == 100, "rejected drop immediately returns to trusted position without another Prepare");
             });
             CheckLayoutScheduling();
@@ -129,6 +145,22 @@ namespace Terraria
                     Check(ReferenceEquals(unchanged, cards.Cards[0].BodyLayout) && !cards.PendingLayout, "unchanged layout stabilizes without offscreen rebuilding");
                 }
             }, new Notebook(seed));
+            using (var renderer = new NotesRenderer())
+            {
+                renderer.Refresh(); NotesRevisionHostChecks.Run(renderer);
+                // A separate Notes-only metric boundary; this deliberately tall
+                // resource is not claimed to pass the F5 navigation font gate.
+                var tall = new ReLogic.Graphics.DynamicSpriteFont(0, 20, '?');
+                object tallPage = Activator.CreateInstance(pageType, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null,
+                    new object[] { null, new List<Rectangle> { new Rectangle(0, 0, 10, 32) }, new List<Rectangle> { new Rectangle(0, 0, 10, 32) },
+                        new List<char> { '?' }, new List<Vector3> { new Vector3(0, 10, 0) } }, null);
+                pages.SetValue(tallPage, 0);
+                typeof(ReLogic.Graphics.DynamicSpriteFont).GetMethod("SetPages", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(tall, new object[] { pages });
+                var tallAsset = (ReLogic.Content.Asset<ReLogic.Graphics.DynamicSpriteFont>)Activator.CreateInstance(typeof(ReLogic.Content.Asset<ReLogic.Graphics.DynamicSpriteFont>), BindingFlags.Instance | BindingFlags.NonPublic, null, new object[] { "notes-tall-metric" }, null);
+                tallAsset.GetType().GetMethod("SubmitLoadedContent", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(tallAsset, new object[] { tall, new MetricSource() });
+                GameContent.FontAssets.MouseText = tallAsset; renderer.Refresh();
+                Check(renderer.LineHeight(1.2f) >= 32 * 1.2f + 4, "body rows contain actual tall glyphs and four-way border even when LineSpacing is smaller");
+            }
             GameContent.FontAssets.MouseText = null;
             Console.WriteLine("PASS: Notes shared layout budget reaches visible long text and stabilizes (texture-free synthetic font metrics).");
         }
@@ -149,11 +181,17 @@ namespace Terraria
             { chrome.RefreshResources(); chrome.Prepare(state, 1920, 1080, 1); }
             for (int i = 0; i < 10; i++) { renderer.BeginLayoutFrame(); cards.Prepare(state, "双击编辑"); }
             NotesCard first = cards.Cards[0], second = cards.Cards[1];
+            var hitMethod = typeof(NotesCards).GetMethod("Hit", BindingFlags.Instance | BindingFlags.NonPublic);
+            Check((string)hitMethod.Invoke(cards, new object[] { 50f, 10f }) != "save", "browsing has no invisible save hit area");
             Click(cards, state, first.Body, true); Click(cards, state, first.Body, false);
             Check(workspace.Editor == null, "single click doesn't edit");
             Click(cards, state, first.Body, true); Click(cards, state, first.Body, false);
             Check(workspace.Editor != null && workspace.EditingId == first.Note.Id, "double click selects body");
+            for (int i = 0; i < 3; i++) { renderer.BeginLayoutFrame(); cards.Prepare(state, "编辑正文"); }
+            Check(!HasControl(cards, "save") && HasControl(cards, "cancel"), "clean edit exposes cancel editing only");
             workspace.Editor.Insert(" draft");
+            renderer.BeginLayoutFrame(); cards.Prepare(state, "编辑正文");
+            Check(HasControl(cards, "save"), "dirty edit exposes save");
             Click(cards, state, second.Title, true); Click(cards, state, second.Title, false);
             Check(workspace.EditingId == first.Note.Id && workspace.Editor.Dirty && !workspace.Feature.Busy, "single different field neither switches nor saves");
             workspace.CancelEdit();
@@ -163,12 +201,12 @@ namespace Terraria
             for (int i = 0; i < 10; i++) { renderer.BeginLayoutFrame(); pins.Prepare(1920, 1080); }
             pins.Pointer(120, 120, false, false, -120, true, true, false, 1920, 1080);
             Check(pins.ConsumeWheel && pins.Pins[0].Scroll == 0 && pins.Pins[1].Scroll > 0, "overlap wheel affects exactly top pin");
-            pins.Pointer(120, 120, true, false, 0, true, true, false, 1920, 1080);
+            pins.Pointer(120, 180, true, false, 0, true, true, false, 1920, 1080);
             pins.Pointer(200, 200, true, false, 0, true, true, false, 1920, 1080);
             Check(pins.Pins[1].Rect.X == 100, "body does not start drag");
             pins.Pointer(200, 200, false, false, 0, true, true, false, 1920, 1080);
-            pins.Pointer(110, 85, true, false, 0, true, true, false, 1920, 1080);
-            pins.Pointer(150, 125, true, false, 0, true, true, false, 1920, 1080);
+            pins.Pointer(110, 110, true, false, 0, true, true, false, 1920, 1080);
+            pins.Pointer(150, 150, true, false, 0, true, true, false, 1920, 1080);
             pins.Suspend(); Drain(workspace); pins.Prepare(1920, 1080);
             Check(workspace.Feature.Saved.Find(second.Note.Id).X == 140, "interrupt persists last valid drag sample");
             pins.Pointer(120, 120, false, false, -120, false, true, false, 1920, 1080);
@@ -184,7 +222,7 @@ namespace Terraria
                 var pixels = new Color[700 * 500]; target.GetData(pixels);
                 Check(pixels[460 * 700 + 380].A == 0, "transparent pin background remains transparent");
                 Check(pixels[455 * 700 + 655].R == 255, "original SpriteBatch remains usable after notes");
-                bool ink = false; for (int y = 148; y < 175; y++) for (int x = 148; x < 210; x++) ink |= pixels[y * 700 + x].A != 0;
+                bool ink = false; for (int y = 188; y < 215; y++) for (int x = 148; x < 210; x++) ink |= pixels[y * 700 + x].A != 0;
                 Check(ink, "transparent background does not hide text");
             }
         }
@@ -194,7 +232,9 @@ namespace Terraria
                 X = state.X + state.Layout.Viewport.X + rect.X + 5, Y = state.Y + state.Layout.Viewport.Y + rect.Y + 5 - state.Scroll, Left = down });
             cards.Pointer(state, down, !down);
         }
-        private static void WithWorkspace(Action<NotesWorkspace> action, Notebook seed = null)
+        private static bool HasControl(NotesCards cards, string key)
+        { foreach (NotesControl control in cards.Controls) if (control.Key == key) return true; return false; }
+        internal static void WithWorkspace(Action<NotesWorkspace> action, Notebook seed = null)
         {
             string root = Path.Combine(Path.GetTempPath(), "JueMingR-notes-host-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
             string path = Path.Combine(root, "notes.json"); var codec = new NotebookCodec();

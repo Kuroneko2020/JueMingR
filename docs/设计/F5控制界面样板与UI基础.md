@@ -95,6 +95,9 @@ mouseInterface/mouseText lease 保存进入时值，在有限消费区间后恢�
 
 绘制在自身批次中使用冻结 matrix，内容裁切只施加于 viewport。finally 恢复实际 ScissorRectangle、RasterizerState、BlendState、DepthStencilState、SamplerState 及原版 layer 的 SpriteBatch Begin 契约。F5 局部异常关闭窗口、收回自身状态，在后续更新给出一次普通文字提示，不卸载整个 Harmony owner，不拆核心 handoff 或群系功能。
 
+
+新增 UI 从首次接入就复用既有样式与控件，不能默认把临时绘制作为最终候选，等待用户再次发现。#42/#43 的 Notes 修订将表面九宫格/降级和字形度量窄提取到 `UiSurface`/`UiTextMetrics`，F5 与 Notes 共用；业务、排版、输入状态与提交仍归各自功能。检查新增 UI 的实际入口、状态、字形几何及资源变化，沿用现有验证方式，不要求每页单建主题系统或逐控件视觉审批。这项长期维护补充已由所有者在本 PR 范围明确接受，随本 PR 合并生效；本轮具体 Notes 修订已单独授权，不以未来合并边界阻塞实施。
+
 ## 验证与交付边界
 
 既有 `scripts/test-phase0s.ps1` 纳入 Phase 0-U 生产布局/输入检查及实际加载 Host 的 fixture 集成：同一次安装的两个独立进程、原有五事件 evidence、群系 cadence/生命周期、准确四目标集合和 TEMP 安装/恢复继续保留。

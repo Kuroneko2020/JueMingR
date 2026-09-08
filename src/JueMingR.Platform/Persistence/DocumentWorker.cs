@@ -32,6 +32,9 @@ namespace JueMingR.Platform.Persistence
         private T candidate;
         private DocumentResult<T> result;
         private string identity;
+        private T current;
+        private Func<T, T> finalUpdate;
+        private bool lastWriteSucceeded = true;
 
         public DocumentWorker(IPreferenceStorage storage, Func<byte[], T> decode, Func<T, byte[]> encode, T empty)
         {
@@ -56,9 +59,14 @@ namespace JueMingR.Platform.Persistence
                 result = null; occupied = false; return true;
             }
         }
-        public bool Stop(int milliseconds)
+        public bool Stop(int milliseconds) { return Stop(milliseconds, null); }
+        public bool Stop(int milliseconds, Func<T, T> finishAccepted)
         {
-            lock (gate) { stopping = true; Monitor.Pulse(gate); }
+            lock (gate)
+            {
+                if (!stopping) finalUpdate = finishAccepted;
+                stopping = true; Monitor.Pulse(gate);
+            }
             if (thread.Join(Math.Max(0, milliseconds))) return true;
             cancelled = true; return false;
         }
@@ -76,7 +84,7 @@ namespace JueMingR.Platform.Persistence
                     if (read.Status == PreferenceReadStatus.Missing || read.Status == PreferenceReadStatus.Loaded)
                     {
                         T value = read.Status == PreferenceReadStatus.Missing ? empty : decode(read.Contents);
-                        identity = read.Identity; writable = true; loaded = new DocumentResult<T>(0, true, value, null);
+                        identity = read.Identity; current = value; writable = true; loaded = new DocumentResult<T>(0, true, value, null);
                     }
                     else loaded = new DocumentResult<T>(0, false, default(T), read.Error ?? read.Status.ToString());
                 }
@@ -85,16 +93,24 @@ namespace JueMingR.Platform.Persistence
                 lock (gate) result = loaded;
                 while (true)
                 {
-                    long id; T value;
+                    long id; T value; Func<T, T> finish = null;
                     lock (gate)
                     {
                         while (!pending && !stopping) Monitor.Wait(gate);
-                        if (!pending || cancelled) break;
-                        id = command; value = candidate; candidate = default(T); pending = false;
+                        if (cancelled) break;
+                        if (pending) { id = command; value = candidate; candidate = default(T); pending = false; }
+                        else if (stopping && finalUpdate != null && writable && lastWriteSucceeded)
+                        { id = -1; value = current; finish = finalUpdate; finalUpdate = null; }
+                        else break;
                     }
                     DocumentResult<T> completion;
                     try
                     {
+                        if (finish != null)
+                        {
+                            value = finish(current);
+                            if (ReferenceEquals(value, current)) break;
+                        }
                         byte[] bytes = encode(value);
                         // Validate encoded semantics before the mechanical commit. No UI
                         // callback or mutable game object reaches this background owner.
@@ -102,14 +118,14 @@ namespace JueMingR.Platform.Persistence
                         if (cancelled) break; // Native I/O already entered cannot be aborted; before it can.
                         PreferenceWriteResult written = storage.Write(identity, bytes);
                         bool success = written.Status == PreferenceWriteStatus.Saved;
-                        if (success) identity = written.Identity;
+                        if (success) { identity = written.Identity; current = value; }
                         if (written.IsProtected) { lock (gate) writable = false; }
                         completion = new DocumentResult<T>(id, success, success ? value : default(T), written.Error, written.CommitUnconfirmed);
                     }
                     catch (Exception e) when (e is InvalidOperationException || e is ArgumentException || e is PreferenceFormatException)
                     { completion = new DocumentResult<T>(id, false, default(T), "document-encoding-or-size-failed"); }
                     catch (Exception) { completion = new DocumentResult<T>(id, false, default(T), "document-write-failed"); }
-                    lock (gate) result = completion;
+                    lock (gate) { result = completion; lastWriteSucceeded = completion.Success; }
                 }
             }
             finally { storage.Dispose(); }

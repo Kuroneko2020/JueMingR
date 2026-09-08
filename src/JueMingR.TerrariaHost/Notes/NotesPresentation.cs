@@ -20,7 +20,7 @@ namespace JueMingR.TerrariaHost.Notes
         private Vector2 screen;
         private bool ready, wasActive, previousLeft;
         private bool textLeftTail, textRightTail, seenBusy;
-        private long seenRevision = -1, seenEditRevision = -1, seenCaretRevision = -1;
+        private long seenRevision = -1, seenReadingRevision = -1, seenEditRevision = -1, seenCaretRevision = -1;
         private int seenLayout = -1;
         private float seenScroll = -1;
         private Vector2 preparedScreen;
@@ -34,10 +34,10 @@ namespace JueMingR.TerrariaHost.Notes
             cards = new NotesCards(workspace, input, renderer, action => Request(action));
             pins = new NotesPins(workspace, renderer, Request);
         }
-        internal bool OwnsPointer { get { return ready && (pins.OwnsPointer || input.Owned); } }
+        internal bool OwnsPointer { get { return ready && (pins.OwnsPointer || input.Owned || cards.Selecting); } }
         internal bool ConsumeLeft { get; private set; }
         internal bool ConsumeRight { get; private set; }
-        internal bool ConsumeWheel { get { return pins.ConsumeWheel || input.Owned; } }
+        internal bool ConsumeWheel { get { return pins.ConsumeWheel || input.Owned || cards.Selecting; } }
         internal bool OtherTextOwner { get { return input.OtherTextOwner; } }
         internal void Attach(F5Interaction state)
         {
@@ -56,12 +56,18 @@ namespace JueMingR.TerrariaHost.Notes
         {
             matrix = transform; screen = dimensions;
             bool left = PlayerInput.MouseInfo.LeftButton == ButtonState.Pressed, right = PlayerInput.MouseInfo.RightButton == ButtonState.Pressed;
+            // NotesInput consumes the sampled keyboard. Freeze modifiers first,
+            // then honor the editor/F5 capture before considering any screen pin.
+            bool shift = Main.keyState.IsKeyDown(Keys.LeftShift) || Main.keyState.IsKeyDown(Keys.RightShift);
+            bool control = Main.keyState.IsKeyDown(Keys.LeftControl) || Main.keyState.IsKeyDown(Keys.RightControl);
             bool enabled = ready && active && !input.OtherTextOwner;
             if (input.Owned) { textLeftTail |= left; textRightTail |= right; }
             input.AfterSample(enabled && shell.Visible && shell.Page == 4, cards.EditingLayout);
-            if (enabled && shell.Visible && shell.Page == 4) cards.Pointer(shell, left && !previousLeft, !left && previousLeft);
+            if (enabled && FocusHelper.AllowInputProcessing && shell.Visible && shell.Page == 4)
+                cards.Pointer(shell, left && !previousLeft, !left && previousLeft, left, shift);
+            if (input.Owned || cards.Selecting) { textLeftTail |= left; textRightTail |= right; }
             pins.Pointer(raw.X, raw.Y, left, right, PlayerInput.ScrollWheelDeltaForUI, enabled, FocusHelper.AllowInputProcessing,
-                shell.OwnsPointer, screen.X, screen.Y);
+                shell.OwnsPointer || input.Owned || cards.Selecting || textLeftTail || textRightTail, screen.X, screen.Y, shift, control);
             ConsumeLeft = textLeftTail || pins.ConsumeLeft; ConsumeRight = textRightTail || pins.ConsumeRight;
             if (FocusHelper.AllowInputProcessing && !left) textLeftTail = false;
             if (FocusHelper.AllowInputProcessing && !right) textRightTail = false;
@@ -77,19 +83,20 @@ namespace JueMingR.TerrariaHost.Notes
             if (!ready) { Suspend(); return; }
             renderer.BeginLayoutFrame();
             bool contentChanged = !wasReady || seenRevision != workspace.Feature.Revision || preparedScreen != screen || preparedFont != renderer.FontIdentity;
-            NoteEditor editor = workspace.Editor; string feedback = Feedback();
+            NoteEditor editor = workspace.Editor; string feedback = Feedback(out Color feedbackColor);
             if (shell.Visible && shell.Page == 4 && (contentChanged || preparedEditor != editor || seenEditRevision != (editor == null ? -1 : editor.Revision) ||
-                seenCaretRevision != (editor == null ? -1 : editor.CaretRevision) || seenLayout != shell.Layout.Generation || seenScroll != shell.Scroll || preparedFeedback != feedback || cards.PendingLayout))
-                cards.Prepare(shell, feedback);
-            if (contentChanged || seenBusy != workspace.Feature.Busy || pins.PendingLayout) pins.Prepare(screen.X, screen.Y);
+                seenCaretRevision != (editor == null ? -1 : editor.CaretRevision) || seenBusy != workspace.Feature.Busy || seenLayout != shell.Layout.Generation || seenScroll != shell.Scroll || preparedFeedback != feedback || cards.PendingLayout || cards.ActionStateChanged))
+                cards.Prepare(shell, feedback, feedbackColor);
+            if (contentChanged || seenBusy != workspace.Feature.Busy || seenReadingRevision != workspace.Feature.ReadingRevision || pins.PendingLayout) pins.Prepare(screen.X, screen.Y);
             preparedEditor = editor; seenEditRevision = editor == null ? -1 : editor.Revision; seenCaretRevision = editor == null ? -1 : editor.CaretRevision;
             seenRevision = workspace.Feature.Revision; preparedScreen = screen; preparedFont = renderer.FontIdentity; seenBusy = workspace.Feature.Busy;
+            seenReadingRevision = workspace.Feature.ReadingRevision;
             seenLayout = shell.Visible && shell.Page == 4 ? shell.Layout.Generation : -1; seenScroll = shell.Scroll; preparedFeedback = feedback;
             input.PrepareEditor();
         }
-        private string Feedback()
+        private string Feedback(out Color color)
         {
-            var feature = workspace.Feature;
+            var feature = workspace.Feature; color = Color.Salmon;
             if (!feature.Loaded) return "正在首次读取笔记，尚未取得可编辑内容。";
             if (feature.NeedsRecovery) return "磁盘提交结果未确认，已停写。显示为最后可信内容；退出后保留 notes.json / .bak / .tmp 检查恢复。";
             if (!feature.Readable)
@@ -101,7 +108,18 @@ namespace JueMingR.TerrariaHost.Notes
             if (workspace.Error != null) return workspace.Error + (feature.Error == null ? "" : " 请检查 notes 目录权限和恢复材料；冲突需退出后处理。");
             if (input.Error != null) return input.Error;
             if (workspace.Editor != null && workspace.Editor.Error != null) return workspace.Editor.Error;
-            return "双击标题或正文编辑；标题 Enter 保存，正文 Enter 换行，Esc 取消。";
+            if (feature.ReadingError != null) return feature.ReadingError;
+            color = Color.LightGray;
+            if (feature.Busy) return workspace.Editor == null ? "正在提交笔记变更。" : "正在提交；取消编辑不会撤回正在进行的磁盘提交。";
+            if (input.HasComposition) { color = Color.Gold; return "正在输入法组字；Enter 确认候选，Esc 取消组字。"; }
+            string editState = workspace.Editor != null && workspace.Editor.Dirty ? "未保存 · " : "";
+            if (editState.Length != 0) color = Color.Gold;
+            if (workspace.Editor != null) return workspace.Editor.IsTitle
+                ? editState + "编辑标题：拖选或 Shift 方向键选字，Ctrl+A 全选；Enter 保存，Esc 取消编辑。"
+                : editState + "编辑正文：拖选文字，Ctrl+C/X/V 复制/剪切/粘贴；Enter 换行，Esc 取消编辑。";
+            if (feature.Saved.Notes.Count == 0) return "点击 + 新建笔记，然后双击标题或正文编辑。";
+            if (workspace.DeleteConfirmation != null) return "点击该篇的确认删除，或取消删除。";
+            return "双击标题或正文编辑；悬挂后可独立阅读，鼠标移到便签查看操作提示。";
         }
         private bool Request(NotesAction action)
         {
@@ -111,7 +129,7 @@ namespace JueMingR.TerrariaHost.Notes
                 int count = 0; foreach (Note note in workspace.Feature.Saved.Notes) if (note.Pinned) count++;
                 Vector2 origin = Vector2.Transform(new Vector2(shell.X + shell.Layout.Window.Width + 12, shell.Y + 32), matrix);
                 int x = (int)Math.Max(0, Math.Min(Math.Max(0, screen.X - NotesPins.Width), origin.X + count % 8 * 20));
-                int y = (int)Math.Max(24, Math.Min(Math.Max(24, screen.Y - NotesPins.Height), origin.Y + count % 8 * 20));
+                int y = (int)Math.Max(0, Math.Min(Math.Max(0, screen.Y - NotesPins.Height), origin.Y + count % 8 * 20));
                 action = new NotesAction(action.Kind, action.Id, x: x, y: y);
             }
             return workspace.Request(action);

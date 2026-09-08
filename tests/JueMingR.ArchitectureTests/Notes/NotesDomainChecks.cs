@@ -31,7 +31,7 @@ namespace JueMingR.ArchitectureTests
                 var codec = new NotebookCodec();
                 Require(codec.Decode(Encoding.UTF8.GetBytes("{\"schema\":1,\"notes\":[]}")).Notes.Count == 0, "valid empty");
                 string note = "{\"id\":\"e6cf277c1fd24aa381a6803d13c579bd\",\"title\":\"a\",\"body\":\"keep\",\"pinned\":false,\"x\":0,\"y\":0,\"opacity\":0}";
-                foreach (string invalid in new[] { "", "{}", "{\"schema\":2,\"notes\":[]}", "{\"schema\":1,\"notes\":[],\"future\":1}",
+                foreach (string invalid in new[] { "", "{}", "{\"schema\":3,\"notes\":[]}", "{\"schema\":1,\"notes\":[],\"future\":1}",
                     "{\"__type\":\"FutureNotebook\",\"schema\":1,\"notes\":[]}",
                     "{\"schema\":1,\"notes\":[" + note.Replace("{", "{\"__type\":\"FutureNote\",") + "]}",
                     "{\"schema\":1,\"notes\":[" + note.Replace("\"title\":\"a\"", "\"title\":\"a\\u0080b\"") + "]}",

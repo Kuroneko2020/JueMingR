@@ -7,12 +7,12 @@ namespace JueMingR.Features.Notes
     {
         private int[] boundaries;
         public NoteEditor(bool title, string text)
-        { IsTitle = title; Text = Baseline = text; boundaries = TextElements.Boundaries(text); Boundaries = Array.AsReadOnly(boundaries); Caret = text.Length; }
+        { IsTitle = title; Text = Baseline = text; boundaries = TextElements.Boundaries(text); Boundaries = Array.AsReadOnly(boundaries); Anchor = Caret = text.Length; }
         internal NoteEditor(bool title, Note note)
         {
             IsTitle = title; Text = Baseline = title ? note.Title : note.Body;
             var index = note.Index(title); boundaries = new int[index.Count]; for (int i = 0; i < index.Count; i++) boundaries[i] = index[i];
-            Boundaries = Array.AsReadOnly(boundaries); Caret = Text.Length;
+            Boundaries = Array.AsReadOnly(boundaries); Anchor = Caret = Text.Length;
         }
         internal int[] RawBoundaries { get { return boundaries; } }
         public IReadOnlyList<int> Boundaries { get; private set; }
@@ -21,6 +21,11 @@ namespace JueMingR.Features.Notes
         public string Text { get; private set; }
         public string Baseline { get; private set; }
         public int Caret { get; private set; }
+        public int Anchor { get; private set; }
+        public int SelectionStart { get { return Math.Min(Anchor, Caret); } }
+        public int SelectionEnd { get { return Math.Max(Anchor, Caret); } }
+        public bool HasSelection { get { return Anchor != Caret; } }
+        public string SelectedText { get { return Text.Substring(SelectionStart, SelectionEnd - SelectionStart); } }
         public long Revision { get; private set; }
         public long CaretRevision { get; private set; }
         public bool Dirty { get; private set; }
@@ -31,34 +36,47 @@ namespace JueMingR.Features.Notes
             text = text.Replace("\r\n", "\n").Replace('\r', '\n').Replace("\t", "    ");
             if (!TextElements.IsValid(text)) { Error = "输入含不完整字符，未更改草稿。"; return false; }
             if (IsTitle && text.IndexOf('\n') >= 0) { Error = "标题不能包含换行，未更改草稿。"; return false; }
-            if ((long)Text.Length + text.Length > Note.MaximumBodyUnits) { Error = "正文达到 1,048,576 UTF-16 单位上限；本次输入未加入。"; return false; }
-            string next = Text.Insert(Caret, text);
+            int from = SelectionStart, to = SelectionEnd;
+            if ((long)Text.Length - (to - from) + text.Length > Note.MaximumBodyUnits) { Error = "正文达到 1,048,576 UTF-16 单位上限；本次输入未加入。"; return false; }
+            // The original selection remains intact until the entire candidate is
+            // validated. IME previews never call this committed-text transaction.
+            string next = Text.Remove(from, to - from).Insert(from, text);
             int[] nextBoundaries;
-            try { nextBoundaries = Rebuild(next, Caret, Caret, text.Length); }
+            try { nextBoundaries = Rebuild(next, from, to, text.Length - (to - from)); }
             catch (ArgumentException) { Error = "一个组合字符超过 1,024 UTF-16 单位；本次输入未加入，原文保留。"; return false; }
             if (IsTitle && nextBoundaries.Length - 1 > Note.MaximumTitleElements)
             { Error = "标题最多 80 个完整字符；本次输入未加入，原文保留。"; return false; }
-            Change(next, nextBoundaries, Caret + text.Length, Caret); return true;
+            Change(next, nextBoundaries, from + text.Length, from); return true;
         }
-        public void MoveTo(int offset)
+        public void MoveTo(int offset) { MoveTo(offset, false); }
+        public void MoveTo(int offset, bool extend)
         {
             int index = Array.BinarySearch(boundaries, Math.Max(0, Math.Min(Text.Length, offset)));
             int next = boundaries[index < 0 ? Math.Max(0, ~index - 1) : index];
-            if (next != Caret) { Caret = next; CaretRevision++; }
+            int anchor = extend ? Anchor : next;
+            if (next != Caret || anchor != Anchor) { Anchor = anchor; Caret = next; CaretRevision++; }
         }
-        public void Move(int direction)
-        { int index = Array.BinarySearch(boundaries, Caret); MoveTo(boundaries[Math.Max(0, Math.Min(boundaries.Length - 1, index + direction))]); }
+        public void Move(int direction) { Move(direction, false); }
+        public void Move(int direction, bool extend)
+        {
+            if (!extend && HasSelection) { MoveTo(direction < 0 ? SelectionStart : SelectionEnd); return; }
+            int index = Array.BinarySearch(boundaries, Caret);
+            MoveTo(boundaries[Math.Max(0, Math.Min(boundaries.Length - 1, index + direction))], extend);
+        }
+        public void SelectAll() { MoveTo(0); MoveTo(Text.Length, true); }
+        public void DeleteSelection() { if (HasSelection) Remove(SelectionStart, SelectionEnd); }
         public void Backspace()
         {
+            if (HasSelection) { DeleteSelection(); return; }
             int index = Array.BinarySearch(boundaries, Caret); if (index <= 0) return;
             Remove(boundaries[index - 1], Caret);
         }
         public void Delete()
         {
+            if (HasSelection) { DeleteSelection(); return; }
             int index = Array.BinarySearch(boundaries, Caret); if (index == boundaries.Length - 1) return;
             Remove(Caret, boundaries[index + 1]);
         }
-        public void ClearAfterCopy() { if (Text.Length != 0) Change("", new[] { 0 }, 0, 0); }
         public void AcceptBaseline(string submittedText) { Baseline = submittedText; Dirty = Text != Baseline; }
         internal void AcceptCanonicalTitle(Note note)
         {
@@ -99,7 +117,7 @@ namespace JueMingR.Features.Notes
             Text = text; boundaries = next; Boundaries = Array.AsReadOnly(next); Revision++; Error = null; Dirty = Text != Baseline; LastChangeStart = changedStart;
             // Inserting a mark/ZWJ can merge across the insertion boundary. Place
             // the caret at the next complete boundary, never inside that cluster.
-            int index = Array.BinarySearch(next, caret); Caret = next[index < 0 ? ~index : index]; CaretRevision++;
+            int index = Array.BinarySearch(next, caret); Anchor = Caret = next[index < 0 ? ~index : index]; CaretRevision++;
         }
     }
 }

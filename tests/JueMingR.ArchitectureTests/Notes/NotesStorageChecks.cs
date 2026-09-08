@@ -41,7 +41,10 @@ namespace JueMingR.ArchitectureTests
                     var read = Take(worker); NotesDomainChecks.Require(read.Success && read.Value.Notes.Count == 15 && read.Value.Notes[14].Body == notes[14].Body, "large real readback retains every body");
                 }
                 bool rejected = false;
-                try { codec.Encode(book.Add(Note.Create().WithText(false, new string('z', Note.MaximumBodyUnits)))); }
+                // Schema 2 reserves 64 KiB for the metadata added to legal schema 1
+                // documents; exceed that explicit new limit as well as the bodies.
+                try { codec.Encode(book.Add(Note.Create().WithText(false, new string('z', Note.MaximumBodyUnits)))
+                    .Add(Note.Create().WithText(false, new string('q', 64 * 1024)))); }
                 catch (InvalidOperationException) { rejected = true; }
                 NotesDomainChecks.Require(rejected, "aggregate limit rejects entire candidate without truncation");
                 var hostile = new StringBuilder("{\"schema\":1,\"notes\":[");

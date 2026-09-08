@@ -9,10 +9,14 @@ namespace JueMingR.Features.Notes
     public sealed class Notebook
     {
         public const int MaximumNotes = 1024;
-        public const int MaximumBytes = 16 * 1024 * 1024;
+        public const int LegacyMaximumBytes = 16 * 1024 * 1024;
+        // Enough explicit metadata headroom to upgrade every legal schema 1
+        // notebook without trimming content at its previous byte limit.
+        public const int MaximumBytes = LegacyMaximumBytes + 64 * 1024;
         public static readonly Notebook Empty = new Notebook(new Note[0]);
         private readonly ReadOnlyCollection<Note> notes;
-        public Notebook(IEnumerable<Note> source)
+        public Notebook(IEnumerable<Note> source) : this(source, 2) { }
+        internal Notebook(IEnumerable<Note> source, int sourceSchema)
         {
             var values = new List<Note>(); var ids = new HashSet<string>(StringComparer.Ordinal);
             foreach (Note note in source)
@@ -20,8 +24,9 @@ namespace JueMingR.Features.Notes
                 if (note == null || !ids.Add(note.Id) || values.Count == MaximumNotes) throw new ArgumentException("invalid-note-list");
                 values.Add(note);
             }
-            notes = values.AsReadOnly();
+            notes = values.AsReadOnly(); SourceSchema = sourceSchema;
         }
+        public int SourceSchema { get; }
         public IReadOnlyList<Note> Notes { get { return notes; } }
         public Note Find(string id) { foreach (Note note in notes) if (note.Id == id) return note; return null; }
         public Notebook Add(Note note)

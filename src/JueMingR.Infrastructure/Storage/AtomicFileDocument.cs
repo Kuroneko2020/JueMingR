@@ -19,14 +19,28 @@ namespace JueMingR.Infrastructure.Storage
         private string protectionError;
         private bool unconfirmed;
         private bool disposed;
+        private readonly string retainedSourcePath;
+        private bool retainSource;
 
         public AtomicFileDocument(string fullDocumentPath, int maximumBytes, bool protectRecovery = false)
+            : this(fullDocumentPath, maximumBytes, protectRecovery, null) { }
+        public AtomicFileDocument(string fullDocumentPath, int maximumBytes, bool protectRecovery, string retainedSourceSuffix)
         {
             if (String.IsNullOrWhiteSpace(fullDocumentPath) || !Path.IsPathRooted(fullDocumentPath))
                 throw new ArgumentException("An explicit absolute document path is required.", nameof(fullDocumentPath));
             if (maximumBytes <= 0) throw new ArgumentOutOfRangeException(nameof(maximumBytes));
             MaximumBytes = maximumBytes; this.protectRecovery = protectRecovery;
             path = Path.GetFullPath(fullDocumentPath);
+            if (retainedSourceSuffix != null)
+            {
+                if (!protectRecovery || retainedSourceSuffix.Length < 2 || retainedSourceSuffix[0] != '.' ||
+                    retainedSourceSuffix.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 ||
+                    String.Equals(retainedSourceSuffix, ".bak", StringComparison.OrdinalIgnoreCase) ||
+                    String.Equals(retainedSourceSuffix, ".tmp", StringComparison.OrdinalIgnoreCase) ||
+                    String.Equals(retainedSourceSuffix, ".lock", StringComparison.OrdinalIgnoreCase))
+                    throw new ArgumentException("invalid-retained-source-suffix");
+                retainedSourcePath = path + retainedSourceSuffix;
+            }
             // IsPathRooted also accepts C:file and \file on Windows; those silently
             // depend on a working directory/drive and are not host-resolved data roots.
             if (!String.Equals(Path.GetPathRoot(fullDocumentPath), Path.GetPathRoot(path), StringComparison.OrdinalIgnoreCase))
@@ -69,7 +83,8 @@ namespace JueMingR.Infrastructure.Storage
             }
             catch (FileNotFoundException)
             {
-                if (protectRecovery && (File.Exists(path + ".bak") || File.Exists(path + ".tmp") || Directory.Exists(path + ".bak") || Directory.Exists(path + ".tmp")))
+                if (protectRecovery && (File.Exists(path + ".bak") || File.Exists(path + ".tmp") || Directory.Exists(path + ".bak") || Directory.Exists(path + ".tmp") ||
+                    retainedSourcePath != null && (File.Exists(retainedSourcePath) || Directory.Exists(retainedSourcePath))))
                     return RememberIoFailure("missing-document-with-recovery-material");
                 acceptedIdentity = MissingIdentity;
                 initialRead = new PreferenceReadResult(PreferenceReadStatus.Missing, null, acceptedIdentity, null);
@@ -78,6 +93,15 @@ namespace JueMingR.Infrastructure.Storage
             catch (UnauthorizedAccessException) { return RememberIoFailure("document-read-access-denied"); }
             catch (SecurityException) { return RememberIoFailure("document-read-access-denied"); }
             return initialRead;
+        }
+
+        // Called on the document worker only after the semantic decoder has
+        // validated the entire known older format. The adapter never parses JSON.
+        public void RetainLoadedSource()
+        {
+            if (retainedSourcePath == null || initialRead == null || initialRead.Status != PreferenceReadStatus.Loaded)
+                throw new InvalidOperationException("retained-source-requires-validated-load");
+            retainSource = true;
         }
 
         public PreferenceWriteResult Write(string expectedIdentity, byte[] contents)
@@ -130,6 +154,8 @@ namespace JueMingR.Infrastructure.Storage
                         byte[] current = ReadBounded(source);
                         if (current == null || !String.Equals(Identity(current), expectedIdentity, StringComparison.Ordinal))
                             return Protect(PreferenceWriteStatus.Conflict, "external-document-change");
+                        if (retainSource && !RetainOriginal(current, expectedIdentity))
+                            return Protect(PreferenceWriteStatus.Conflict, "retained-source-conflict");
 
                         // This handle forbids ordinary in-place writers through Replace.
                         // Delete sharing is required for our replacement; it also means an
@@ -153,6 +179,7 @@ namespace JueMingR.Infrastructure.Storage
                         return Protect(PreferenceWriteStatus.Conflict, "committed-document-changed", true);
                 }
                 acceptedIdentity = candidateIdentity;
+                retainSource = false;
                 return new PreferenceWriteResult(PreferenceWriteStatus.Saved, candidateIdentity, null);
             }
             catch (FileNotFoundException)
@@ -181,6 +208,33 @@ namespace JueMingR.Infrastructure.Storage
             if (disposed) return;
             disposed = true;
             if (writerLease != null) writerLease.Dispose();
+        }
+
+        private bool RetainOriginal(byte[] current, string expectedIdentity)
+        {
+            // This exact archive is never rotated, overwritten or automatically
+            // restored. A failed partial archive remains recovery material.
+            bool exists;
+            try
+            {
+                FileAttributes attributes = File.GetAttributes(retainedSourcePath);
+                // Matching bytes through a link to the primary would cease to be
+                // the old format as soon as Replace changes the primary's target.
+                // Only an ordinary file at this exact archive path is acceptable.
+                if ((attributes & (FileAttributes.Directory | FileAttributes.ReparsePoint | FileAttributes.Device)) != 0) return false;
+                exists = true;
+            }
+            catch (FileNotFoundException) { exists = false; }
+            if (!exists)
+            {
+                using (var archive = new FileStream(retainedSourcePath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
+                {
+                    archive.Write(current, 0, current.Length); archive.Flush(true); archive.Position = 0;
+                    return String.Equals(Identity(ReadBounded(archive)), expectedIdentity, StringComparison.Ordinal);
+                }
+            }
+            using (var archive = new FileStream(retainedSourcePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+                return String.Equals(Identity(ReadBounded(archive)), expectedIdentity, StringComparison.Ordinal);
         }
 
         private PreferenceWriteResult WriteIoFailure(bool commitAttempted, bool ownsTemporary, string error)

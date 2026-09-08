@@ -22,6 +22,7 @@ namespace JueMingR.Features.Notes
         private long epoch, pendingEpoch, pendingRevision, pendingId;
         private NoteEditor submittedEditor;
         private string submittedText;
+        private string pendingDeleteId;
         private NotesAction afterSave;
         private NotesAction navigation;
         public NotesWorkspace(NotesFeature feature) { Feature = feature; }
@@ -33,7 +34,7 @@ namespace JueMingR.Features.Notes
         public void Poll()
         {
             var result = Feature.Poll();
-            if (result == null || result.CommandId == 0) return;
+            if (result == null || result.CommandId == 0) { Feature.FlushReading(); return; }
             if (result.CommandId != pendingId) throw new InvalidOperationException("Unexpected notes completion identity.");
             if (!result.Success)
             {
@@ -42,6 +43,11 @@ namespace JueMingR.Features.Notes
                 ClearPending(); return;
             }
             Error = null;
+            // The completion belongs to this command and target, not to whichever
+            // confirmation happens to be visible now. A deleted target cannot
+            // retain a legal confirmation; a different target remains untouched.
+            if (pendingDeleteId != null && DeleteConfirmation == pendingDeleteId && Feature.Saved.Find(pendingDeleteId) == null)
+                DeleteConfirmation = null;
             NotesAction action = afterSave;
             bool current = pendingEpoch == epoch && (submittedEditor == null || ReferenceEquals(Editor, submittedEditor) && Editor.Revision == pendingRevision);
             if (ReferenceEquals(Editor, submittedEditor) && Editor != null)
@@ -57,6 +63,8 @@ namespace JueMingR.Features.Notes
                 if (action.Kind != NotesActionKind.Save) EndEdit();
                 Execute(action);
             }
+            // Dependent user actions retain first refusal on the single worker.
+            Feature.FlushReading();
         }
         public bool Request(NotesAction action)
         {
@@ -77,7 +85,7 @@ namespace JueMingR.Features.Notes
         public void RequestDelete(string id)
         { Request(new NotesAction(DeleteConfirmation == id ? NotesActionKind.Delete : NotesActionKind.ConfirmDelete, id)); }
         public void CancelDelete() { DeleteConfirmation = null; }
-        public void CancelEdit() { epoch++; EndEdit(); Error = null; }
+        public void CancelEdit() { epoch++; EndEdit(); }
         public void Suspend()
         { epoch++; DeleteConfirmation = null; navigation = null; }
         public NotesAction TakeNavigation()
@@ -103,7 +111,8 @@ namespace JueMingR.Features.Notes
                     DeleteConfirmation = null; return Submit(Feature.Saved.Add(Note.Create()));
                 case NotesActionKind.Delete:
                     if (note == null || DeleteConfirmation != note.Id) return false;
-                    return Submit(Feature.Saved.Remove(note.Id));
+                    if (!Submit(Feature.Saved.Remove(note.Id))) return false;
+                    pendingDeleteId = note.Id; return true;
             }
             if (note == null) return false;
             Note next;
@@ -124,6 +133,6 @@ namespace JueMingR.Features.Notes
             if (!Feature.TrySubmit(next, out pendingId)) { Error = "笔记暂不能写入，草稿保留。"; return false; }
             pendingEpoch = epoch; return true;
         }
-        private void ClearPending() { pendingId = 0; submittedEditor = null; submittedText = null; afterSave = null; }
+        private void ClearPending() { pendingId = 0; submittedEditor = null; submittedText = null; afterSave = null; pendingDeleteId = null; }
     }
 }

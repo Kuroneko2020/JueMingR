@@ -29,6 +29,7 @@ namespace Terraria
                         var font = Read<DynamicSpriteFont>(reader, Path.Combine(contentDirectory, "Fonts/Mouse_Text.xnb"));
                         GameContent.FontAssets.MouseText = graphics.Asset("actual-mouse-font", font);
                         GameContent.TextureAssets.InventoryBack = graphics.Asset("actual-inventory-back", inventory);
+                        NotesVisualChecks.Run(graphics, outputDirectory);
                         CheckIconScale(graphics, outputDirectory);
                         using (var probe = new RenderTarget2D(graphics.Device, 700, 140))
                         {

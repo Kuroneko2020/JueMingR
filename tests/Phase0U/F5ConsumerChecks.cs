@@ -1,6 +1,7 @@
 using System;
 using System.Reflection;
 using System.Collections;
+using JueMingR.Features.Notes;
 using Microsoft.Xna.Framework;
 
 namespace Terraria
@@ -50,6 +51,7 @@ namespace Terraria
                 object state = State();
                 object layout = Get(state, "Layout");
                 CheckNativeModes(main, state);
+                CheckNotesModalSample(main, state);
                 int generation = (int)Get(layout, "Generation"), measurements = (int)Get(layout, "MeasurementCount");
                 for (int i = 0; i < 12; i++) Frame(main, 1850, 900);
                 Check((int)Get(layout, "Generation") == generation && (int)Get(layout, "MeasurementCount") == measurements,
@@ -232,14 +234,54 @@ namespace Terraria
             Frame(main, 1850, 900);
             Main.SampleF5 = true; Frame(main, 1850, 900); Main.SampleF5 = false;
         }
-        private static object State()
+        private static void CheckNotesModalSample(Main main, object state)
+        {
+            // This is the isolated load-chain fixture's notebook. All commands go
+            // through the actual Host workspace; no private installation data is read.
+            object shell = Shell();
+            var workspace = (NotesWorkspace)Get(Get(shell, "notes"), "workspace");
+            WaitNotes(main, workspace);
+            Check(workspace.Request(new NotesAction(NotesActionKind.Create)), "fixture note creation accepted"); WaitNotes(main, workspace);
+            Note note = workspace.Feature.Saved.Notes[workspace.Feature.Saved.Notes.Count - 1];
+            Check(workspace.Request(new NotesAction(NotesActionKind.Pin, note.Id, false, 1600, 200)), "fixture pin accepted"); WaitNotes(main, workspace);
+            shell.GetType().GetMethod("CloseAndSubmitPosition", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(shell, null);
+            Frame(main, 1620, 280);
+            foreach (bool camera in new[] { false, true })
+                foreach (bool font in new[] { false, true })
+                {
+                    Main.SampleCapture = camera; Main.SampleMap = !camera;
+                    Main.SampleShift = !font; Main.SampleControl = font;
+                    NoteReading before = workspace.Feature.ReadingFor(note.Id); int nativeWheel = Main.NativeWheel;
+                    Frame(main, 1620, 280, false, 120);
+                    Check(workspace.Feature.ReadingFor(note.Id).Same(before) && Main.NativeWheel == nativeWheel + 1 &&
+                        GameInput.PlayerInput.ScrollWheelDeltaForUI == 120,
+                        "same-frame map/camera request owns wheel before modal drawing and cannot resize a pin");
+                    Main.SampleCapture = Main.SampleMap = Main.SampleShift = Main.SampleControl = false;
+                    Graphics.Capture.CaptureManager.Instance.Active = false; Frame(main, 1620, 280);
+                }
+            Main.SampleShift = true; Frame(main, 1620, 280, false, 120); Main.SampleShift = false;
+            Check(workspace.Feature.ReadingFor(note.Id).Width == NoteReading.Default.Width + 40 &&
+                GameInput.PlayerInput.ScrollWheelDeltaForUI == 0, "the same visible pin adjusts normally outside modal requests");
+            WaitNotes(main, workspace);
+            Check(workspace.Request(new NotesAction(NotesActionKind.Unpin, note.Id)), "fixture pin cleanup accepted"); WaitNotes(main, workspace);
+            Frame(main, 1850, 900); Main.SampleF5 = true; Frame(main, 1850, 900); Main.SampleF5 = false;
+            Check((bool)Get(state, "Visible"), "F5 reopens after Notes modal checks");
+        }
+        private static void WaitNotes(Main main, NotesWorkspace workspace)
+        {
+            bool ready = System.Threading.SpinWait.SpinUntil(() =>
+            { Frame(main, 1850, 900); return workspace.Feature.Loaded && !workspace.Feature.Busy; }, 5000);
+            Check(ready && workspace.Feature.Readable && workspace.Error == null, "isolated Notes command completes successfully");
+        }
+        private static object State() { return Get(Shell(), "State"); }
+        private static object Shell()
         {
             Assembly host = null;
             foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
                 if (assembly.GetName().Name == "JueMingR.TerrariaHost") host = assembly;
             object context = host.GetType("JueMingR.TerrariaHost.Phase0SHarmonyWorker")
                 .GetField("postfixContext", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
-            return Get(Get(context, "Shell"), "State");
+            return Get(context, "Shell");
         }
         private static object Get(object value, string name)
         {
