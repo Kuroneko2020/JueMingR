@@ -94,8 +94,8 @@ namespace JueMingR.TerrariaHost.Notes
                 AddTop("cancel", "取消编辑", true, width, ref controlX, ref controlY);
             }
             if (actionDelete != null) AddTop("cancel-delete", "取消删除", true, width, ref controlX, ref controlY);
-            statusY = controlY + renderer.ControlHeight + 8;
-            float header = statusY + Math.Min(4, statusLayout.Lines.Count) * statusLineHeight + 12;
+            statusY = controlY + renderer.ControlHeight + 6;
+            float header = statusY + Math.Min(4, statusLayout.Lines.Count) * statusLineHeight + 8;
             float minimumCard = renderer.ButtonWidth("已悬挂") + renderer.ButtonWidth("确认") + 100;
             int columns = width < Math.Max(360, minimumCard * 2 + 10) ? 1 : 2; float cardWidth = (width - (columns - 1) * 10) / columns;
             if (cardWidth < minimumCard - 60) throw new InvalidOperationException("Notes font controls do not fit the available viewport.");
@@ -116,7 +116,10 @@ namespace JueMingR.TerrariaHost.Notes
                 if (card.TitleLayout == null || !ReferenceEquals(card.TitleLayout.Text, title))
                     card.TitleLayout = renderer.Layout(title, titleWidth, 0.8f, editing && workspace.Editor.IsTitle ? workspace.Editor.Boundaries : note.TitleBoundaries, card.TitleLayout, changedStart);
                 renderer.Advance(card.TitleLayout, 1024);
-                float titleHeight = Math.Max(renderer.ControlHeight, editing && workspace.Editor.IsTitle ? Math.Min(4 * titleLineHeight, Math.Max(48, card.TitleLayout.Lines.Count * titleLineHeight)) : 48);
+                // Short titles no longer reserve an empty second row. Wrapped
+                // previews keep two rows, and the active title can show four.
+                float titleRows = editing && workspace.Editor.IsTitle ? 4 : 2;
+                float titleHeight = Math.Max(renderer.ControlHeight, Math.Min(titleRows * titleLineHeight, card.TitleLayout.Lines.Count * titleLineHeight));
                 string body = editing && !workspace.Editor.IsTitle ? workspace.Editor.Text : note.Body;
                 float maximum = Math.Max(48, Math.Min(240, shell.Layout.Viewport.Height / 2 - titleHeight - 24));
                 float bodyHeight = maximum;
@@ -200,9 +203,9 @@ namespace JueMingR.TerrariaHost.Notes
         private void AddTop(string key, string text, bool enabled, float width, ref float x, ref float y)
         {
             float size = renderer.ButtonWidth(text);
-            if (x > 0 && x + size > width) { x = 0; y += renderer.ControlHeight + 6; }
+            if (x > 0 && x + size > width) { x = 0; y += renderer.ControlHeight + 4; }
             controls.Add(new NotesControl { Key = key, Text = text, Enabled = enabled, Rect = new F5Rect(x, y, size, renderer.ControlHeight) });
-            x += size + 8;
+            x += size + 6;
         }
         internal void Pointer(F5Interaction shell, bool pressed, bool released, bool left = false, bool shift = false)
         {

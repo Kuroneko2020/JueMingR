@@ -13,6 +13,7 @@ namespace JueMingR.TerrariaHost.Notes
 {
     internal sealed class NotesRenderer : IDisposable
     {
+        internal const int MinimumControlSize = 28;
         private DynamicSpriteFont font;
         private Texture2D pixel, surface;
         private readonly UiTextMetrics metrics = new UiTextMetrics();
@@ -109,8 +110,10 @@ namespace JueMingR.TerrariaHost.Notes
         }
         internal float LineHeight(float scale)
         { return Math.Max(Math.Max(24 * scale / 0.76f, font.LineSpacing * scale), textHeight * scale + 4); }
-        internal float ControlHeight { get { return Math.Max(36, ControlSize("取消编辑").Height * 0.75f + 12); } }
-        internal float ButtonWidth(string text) { return Math.Max(36, ControlSize(text).Width * 0.75f + 16); }
+        // Compact desktop controls keep the established text scale. Glyph-derived
+        // clearance still grows for resource fonts; sizing and hits share this box.
+        internal float ControlHeight { get { return Math.Max(MinimumControlSize, ControlSize("取消编辑").Height * 0.75f + 8); } }
+        internal float ButtonWidth(string text) { return Math.Max(MinimumControlSize, ControlSize(text).Width * 0.75f + 10); }
         private F5Size ControlSize(string text)
         {
             F5Size size;

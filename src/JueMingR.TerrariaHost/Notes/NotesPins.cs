@@ -12,11 +12,11 @@ namespace JueMingR.TerrariaHost.Notes
         internal F5Rect Rect, Body, Footer, Drag, Less, More, Close;
         internal NotesTextLayout Layout;
         internal object Font;
-        internal float Scroll, Scale = 1.2f, LineHeight = 36, ToolbarHeight = 36, ToolWidth = 36;
+        internal float Scroll, Scale = 1.2f, LineHeight = 36, ToolbarHeight = NotesRenderer.MinimumControlSize, ToolWidth = NotesRenderer.MinimumControlSize, DragWidth = 64;
         internal int Anchor = -1, Geometry;
         internal float AnchorFraction;
         internal object FooterFont;
-        internal float FooterWidth, FooterHeight = 36;
+        internal float FooterWidth, FooterHeight = NotesRenderer.MinimumControlSize;
     }
     internal sealed class NotesPins
     {
@@ -59,7 +59,7 @@ namespace JueMingR.TerrariaHost.Notes
                 retained.Add(note.Id); NotesPin pin;
                 if (!states.TryGetValue(note.Id, out pin)) { pin = new NotesPin(); states.Add(note.Id, pin); }
                 NoteReading reading = workspace.Feature.ReadingFor(note);
-                float toolbar = renderer.ControlHeight, tool = Math.Max(36, Math.Max(renderer.ButtonWidth("×"), renderer.ButtonWidth(">")));
+                float toolbar = renderer.ControlHeight, tool = Math.Max(toolbar, Math.Max(renderer.ButtonWidth("×"), Math.Max(renderer.ButtonWidth("<"), renderer.ButtonWidth(">"))));
                 float minimum = Math.Max(renderer.ButtonWidth("按住拖动") + 3 * tool + 20, renderer.ButtonWidth(ErrorHint) + 16);
                 // Stored preference is independent of viewport and current font.
                 // Temporary projection never rewrites it, including a tiny screen.
@@ -76,7 +76,7 @@ namespace JueMingR.TerrariaHost.Notes
                     int line = Math.Min(pin.Layout.Lines.Count - 1, (int)(pin.Scroll / pin.LineHeight));
                     pin.Anchor = pin.Layout.Lines[line].Start; pin.AnchorFraction = pin.Scroll / pin.LineHeight - line;
                 }
-                pin.Note = note; pin.ToolbarHeight = toolbar; pin.ToolWidth = tool;
+                pin.Note = note; pin.ToolbarHeight = toolbar; pin.ToolWidth = tool; pin.DragWidth = renderer.ButtonWidth("按住拖动");
                 if (!ReferenceEquals(drag, pin) && !ReferenceEquals(pendingDrop, pin)) SetRect(pin, Place(note.X, note.Y, w, h, width, height));
                 else SetRect(pin, pin.Rect);
                 if (reflow)
@@ -207,8 +207,10 @@ namespace JueMingR.TerrariaHost.Notes
         {
             if (!pin.Rect.Equals(rect)) pin.Geometry++;
             pin.Rect = rect; float x = rect.X + 4, y = rect.Y + 4, h = pin.ToolbarHeight, tool = pin.ToolWidth;
-            pin.Drag = new F5Rect(x, y, rect.Width - 3 * tool - 20, h);
-            pin.Less = new F5Rect(pin.Drag.Right + 4, y, tool, h);
+            // Only the compact, visible handle owns dragging. The flexible gap
+            // before the right-aligned tool group is ordinary window background.
+            pin.Drag = new F5Rect(x, y, pin.DragWidth, h);
+            pin.Less = new F5Rect(rect.Right - 3 * tool - 12, y, tool, h);
             pin.More = new F5Rect(pin.Less.Right + 4, y, tool, h);
             pin.Close = new F5Rect(pin.More.Right + 4, y, tool, h);
             pin.Footer = new F5Rect(rect.X + 8, rect.Bottom - 8 - pin.FooterHeight, rect.Width - 16, pin.FooterHeight);

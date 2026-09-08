@@ -213,6 +213,7 @@ namespace Terraria
                 GameContent.FontAssets.MouseText = tallAsset; renderer.Refresh();
                 Check(renderer.LineHeight(1.2f) >= 32 * 1.2f + 4, "body rows contain actual tall glyphs and four-way border even when LineSpacing is smaller");
                 NotesRevisionHostChecks.CheckFooterReading(renderer);
+                NotesRevisionHostChecks.CheckCompactControls(renderer);
             }
             GameContent.FontAssets.MouseText = null;
             Console.WriteLine("PASS: Notes shared layout budget reaches visible long text and stabilizes (texture-free synthetic font metrics).");
@@ -275,7 +276,10 @@ namespace Terraria
                 var pixels = new Color[700 * 500]; target.GetData(pixels);
                 Check(pixels[460 * 700 + 380].A == 0, "transparent pin background remains transparent");
                 Check(pixels[455 * 700 + 655].R == 255, "original SpriteBatch remains usable after notes");
-                bool ink = false; for (int y = 188; y < 215; y++) for (int x = 148; x < 210; x++) ink |= pixels[y * 700 + x].A != 0;
+                F5Rect visibleBody = pins.Pins[1].Body;
+                bool ink = false;
+                for (int y = (int)Math.Ceiling(visibleBody.Y); y < Math.Min(visibleBody.Bottom, visibleBody.Y + pins.Pins[1].LineHeight); y++)
+                    for (int x = (int)Math.Ceiling(visibleBody.X); x < Math.Min(visibleBody.Right, visibleBody.X + 62); x++) ink |= pixels[y * 700 + x].A != 0;
                 Check(ink, "transparent background does not hide text");
             }
         }

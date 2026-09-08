@@ -11,6 +11,7 @@ namespace Terraria
     {
         internal static void Run(NotesRenderer renderer)
         {
+            CheckCompactControls(renderer);
             CheckFooterReading(renderer);
             CheckSaveButton(renderer);
             Note a = Note.Create().WithText(false, "甲乙丙丁\n戊己庚辛\n" + new string('长', 400)).Pin(100, 100);
@@ -68,11 +69,52 @@ namespace Terraria
                 Check(!pins.OwnsPointer && !pins.ConsumeWheel && workspace.Feature.ReadingFor(b.Id).Width == 320, "higher owner prevents pin input");
                 pins.Pointer(top.Rect.X + 8, top.Rect.Y - 1, false, false, 120, true, true, false, 1920, 1080, true, false);
                 Check(!pins.OwnsPointer && !pins.ConsumeWheel, "no enlarged invisible toolbar strip");
-                Check(top.Drag.Height >= 36 && top.Close.Right <= top.Rect.Right && top.Close.Bottom < top.Body.Y, "toolbar pixels and hits fit actual geometry");
+                Check(top.Drag.Height >= 28 && top.Drag.Height == top.Close.Height && top.Close.Right <= top.Rect.Right && top.Close.Bottom < top.Body.Y, "compact toolbar pixels and hits fit actual geometry");
                 var before = workspace.Feature.ReadingFor(b.Id);
                 pins.Prepare(100, 80); Check(!pins.HasPins && workspace.Feature.ReadingFor(b.Id).Same(before), "tiny screen hides unusable geometry without changing preference");
             }, new Notebook(new[] { a, b }));
             Console.WriteLine("PASS: Notes action states, drag selection, reading modifiers, priority and bounded geometry.");
+        }
+        internal static void CheckCompactControls(NotesRenderer renderer)
+        {
+            Note note = Note.Create().WithText(false, "正文").Pin(100, 100);
+            NotesHostChecks.WithWorkspace(workspace =>
+            {
+                var input = new NotesInput(workspace, new Clipboard(), new Ime());
+                var cards = new NotesCards(workspace, input, renderer, action => workspace.Request(action));
+                var shell = new F5Interaction { Ready = true };
+                shell.Update(new F5Input { Active = true, Focused = true, Width = 1920, Height = 1080, Scale = 1, F5 = true }); shell.Navigate(4);
+                // Supply a normal outer viewport while Notes itself uses the real
+                // current font metrics. Tall Notes glyphs do not bypass F5's
+                // separately tested fixed-navigation font rejection boundary.
+                shell.Layout.Ensure(1920, 1080, 1, 4, renderer.FontIdentity, text => new F5Size(text.Length * 10, 20));
+                workspace.RequestDelete(note.Id);
+                workspace.Request(new NotesAction(NotesActionKind.BeginEdit, note.Id, false, 0)); workspace.Editor.Insert("草稿");
+                Prepare(cards, shell, renderer);
+                foreach (NotesControl control in cards.Controls) CheckCompactButton(renderer, control.Rect, control.Text);
+                Check(cards.Cards[0].Title.Height < 48 && cards.Cards[0].Body.Y > cards.Cards[0].Title.Bottom,
+                    "short title uses a compact header while preserving separation from body");
+                workspace.CancelEdit(); workspace.CancelDelete();
+                var pins = new NotesPins(workspace, renderer, action => workspace.Request(action)); Prepare(pins, renderer);
+                NotesPin pin = pins.Pins[0];
+                CheckCompactButton(renderer, pin.Drag, "按住拖动"); CheckCompactButton(renderer, pin.Less, "<");
+                CheckCompactButton(renderer, pin.More, ">"); CheckCompactButton(renderer, pin.Close, "×");
+                Check(pin.Less.X > pin.Drag.Right + 8 && pin.Close.Right == pin.Rect.Right - 4,
+                    "drag handle fits its label while icon group remains at the right edge");
+                float gap = (pin.Drag.Right + pin.Less.X) / 2, y = pin.Drag.Y + 4; F5Rect before = pin.Rect;
+                pins.Pointer(gap, y, true, false, 0, true, true, false, 1920, 1080);
+                pins.Pointer(gap + 8, y + 8, true, false, 0, true, true, false, 1920, 1080);
+                pins.Pointer(gap + 8, y + 8, false, false, 0, true, true, false, 1920, 1080);
+                Check(pin.Rect.Equals(before) && !workspace.Feature.Busy, "empty toolbar gap is not an invisible drag handle");
+            }, new Notebook(new[] { note }));
+        }
+        private static void CheckCompactButton(NotesRenderer renderer, F5Rect rect, string label)
+        {
+            F5Size glyph = new UiTextMetrics().Measure((ReLogic.Graphics.DynamicSpriteFont)renderer.FontIdentity, label);
+            Check(rect.Height >= 28 && rect.Height >= glyph.Height * 0.75f + 6 && rect.Height <= Math.Max(32, glyph.Height * 0.75f + 8),
+                "compact control keeps glyph and border clearance without the old 36-pixel floor");
+            Check(rect.Width >= glyph.Width * 0.75f + 8 && rect.Width <= Math.Max(rect.Height, glyph.Width * 0.75f + 12),
+                "compact control width follows text instead of a stretched background");
         }
         internal static void CheckFooterReading(NotesRenderer renderer)
         {
