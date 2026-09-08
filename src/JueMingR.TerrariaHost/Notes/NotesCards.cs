@@ -288,7 +288,9 @@ namespace JueMingR.TerrariaHost.Notes
         private void Activate(string hit, F5Interaction shell)
         {
             if (hit == "add") request(new NotesAction(NotesActionKind.Create));
-            else if (hit == "save") request(new NotesAction(NotesActionKind.Save));
+            // The visible Save action returns to preview only after this draft is
+            // acknowledged; FinishEdit already preserves failures and newer input.
+            else if (hit == "save") request(new NotesAction(NotesActionKind.FinishEdit));
             else if (hit == "cancel") { input.Release(true); workspace.CancelEdit(); }
             else if (hit == "cancel-delete") workspace.CancelDelete();
             else if (hit.EndsWith(":pin", StringComparison.Ordinal))

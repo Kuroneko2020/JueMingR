@@ -19,6 +19,7 @@
     <Reference Include="JueMingR.Infrastructure"><HintPath>..\..\artifacts\build\Debug\work\bin\JueMingR.Infrastructure\x86\Debug\net472\JueMingR.Infrastructure.dll</HintPath></Reference>
     <Compile Include="..\Notes\*.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\Notes\NotesInput.cs" Link="Production\NotesInput.cs" />
+    <Compile Include="..\..\src\JueMingR.TerrariaHost\Notes\NotesPresentation.cs" Link="Production\NotesPresentation.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\Notes\NotesClipboard.cs" Link="Production\NotesClipboard.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\Notes\NotesRenderer.cs" Link="Production\NotesRenderer.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\Notes\NotesCards.cs" Link="Production\NotesCards.cs" />

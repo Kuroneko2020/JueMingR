@@ -110,20 +110,23 @@ namespace JueMingR.TerrariaHost.Notes
             if (workspace.Editor != null && workspace.Editor.Error != null) return workspace.Editor.Error;
             if (feature.ReadingError != null) return feature.ReadingError;
             color = Color.LightGray;
-            if (feature.Busy) return workspace.Editor == null ? "正在提交笔记变更。" : "正在提交；取消编辑不会撤回正在进行的磁盘提交。";
-            if (input.HasComposition) { color = Color.Gold; return "正在输入法组字；Enter 确认候选，Esc 取消组字。"; }
+            if (feature.Busy) return workspace.Editor == null ? "正在提交变更。" : "正在提交；取消编辑不会撤回正在进行的磁盘提交。";
+            if (input.HasComposition) { color = Color.Gold; return "Enter 确认候选，Esc 取消输入。"; }
             string editState = workspace.Editor != null && workspace.Editor.Dirty ? "未保存 · " : "";
             if (editState.Length != 0) color = Color.Gold;
             if (workspace.Editor != null) return workspace.Editor.IsTitle
-                ? editState + "编辑标题：拖选或 Shift 方向键选字，Ctrl+A 全选；Enter 保存，Esc 取消编辑。"
-                : editState + "编辑正文：拖选文字，Ctrl+C/X/V 复制/剪切/粘贴；Enter 换行，Esc 取消编辑。";
-            if (feature.Saved.Notes.Count == 0) return "点击 + 新建笔记，然后双击标题或正文编辑。";
-            if (workspace.DeleteConfirmation != null) return "点击该篇的确认删除，或取消删除。";
+                ? editState + "Enter 保存，Esc 取消编辑。"
+                : editState + "Enter 换行，Esc 取消编辑。";
+            if (feature.Saved.Notes.Count == 0) return "点击 + 新建笔记，双击标题或正文编辑。";
+            if (workspace.DeleteConfirmation != null) return "点击确认删除，或取消删除。";
             return "双击标题或正文编辑；悬挂后可独立阅读，鼠标移到便签查看操作提示。";
         }
         private bool Request(NotesAction action)
         {
             input.FinishComposition(false);
+            // Finalization can still leave a candidate or half of a WM_CHAR pair.
+            // Keep its editor alive until a later complete input can be saved.
+            if (action.Kind == NotesActionKind.FinishEdit && input.HasComposition) return false;
             if (action.Kind == NotesActionKind.Pin)
             {
                 int count = 0; foreach (Note note in workspace.Feature.Saved.Notes) if (note.Pinned) count++;

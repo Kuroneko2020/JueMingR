@@ -89,6 +89,57 @@ namespace Terraria
                 input.Release(true); workspace.CancelEdit();
             });
             Console.WriteLine("PASS: Notes native-queue arbitration with synthetic IME and clipboard failure; actual Windows IME remains pending.");
+            foreach (string pending in new[] { "composition", "surrogate" })
+                WithWorkspace(workspace =>
+                {
+                    string id = workspace.Feature.Saved.Notes[0].Id;
+                    var ime = new Ime(); var input = new NotesInput(workspace, new Clipboard(), ime);
+                    workspace.Request(new NotesAction(NotesActionKind.BeginEdit, id, false, 0)); input.PrepareEditor(); Frame(input, workspace, "saved");
+                    input.FinishComposition(false); workspace.Request(new NotesAction(NotesActionKind.FinishEdit));
+                    NoteEditor editor = workspace.Editor; long revision = editor.Revision;
+                    if (pending == "composition") { ime.Preview = "ni"; Frame(input, workspace, ""); }
+                    else Frame(input, workspace, "\ud83d");
+                    Check(editor.Revision == revision && input.HasComposition, "uncommitted input does not fabricate a text revision");
+                    Drain(workspace);
+                    Check(ReferenceEquals(workspace.Editor, editor) && workspace.Feature.Saved.Find(id).Body == "saved", "save completion retains the active uncommitted input owner");
+                    if (pending == "composition") { ime.Preview = ""; Frame(input, workspace, "你"); }
+                    else Frame(input, workspace, "\ude00");
+                    Check(editor.Text == "saved" + (pending == "composition" ? "你" : "😀") && editor.Dirty, "late confirmed input remains visible and unsaved exactly once");
+                    input.Release(true); workspace.CancelEdit();
+                });
+            WithWorkspace(workspace =>
+            {
+                string id = workspace.Feature.Saved.Notes[0].Id;
+                var ime = new Ime(); var input = new NotesInput(workspace, new Clipboard(), ime);
+                workspace.Request(new NotesAction(NotesActionKind.BeginEdit, id, true, 0)); input.PrepareEditor();
+                workspace.Editor.SelectAll(); Frame(input, workspace, " "); workspace.Editor.SelectAll();
+                input.FinishComposition(false); workspace.Request(new NotesAction(NotesActionKind.FinishEdit));
+                ime.Preview = "ni"; Frame(input, workspace, ""); Drain(workspace);
+                Check(workspace.Feature.Saved.Find(id).Title == "新笔记" && workspace.Editor != null && workspace.Editor.Text == " " && workspace.Editor.SelectedText == " ",
+                    "acknowledged title fallback cannot change the active IME replacement range");
+                ime.Preview = ""; Frame(input, workspace, "你");
+                Check(workspace.Editor.Text == "你" && workspace.Editor.Dirty, "new title composition replaces its original range exactly once");
+                input.Release(true); workspace.CancelEdit();
+            });
+            WithWorkspace(workspace =>
+            {
+                string id = workspace.Feature.Saved.Notes[0].Id;
+                var input = new NotesInput(workspace, new Clipboard(), new Ime());
+                var presentation = new NotesPresentation(workspace);
+                // Replace only external clipboard/IME adapters; exercise the actual
+                // presentation save entry before any completion or next input sample.
+                typeof(NotesPresentation).GetField("input", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(presentation, input);
+                var request = typeof(NotesPresentation).GetMethod("Request", BindingFlags.Instance | BindingFlags.NonPublic);
+                workspace.Request(new NotesAction(NotesActionKind.BeginEdit, id, true, 3)); input.PrepareEditor(); Frame(input, workspace, "\ud83d");
+                Check(!workspace.Editor.Dirty && input.HasComposition, "one pending high surrogate is not a saved text edit");
+                Check(!(bool)request.Invoke(presentation, new object[] { new NotesAction(NotesActionKind.FinishEdit) }) && workspace.Editor != null && !workspace.Feature.Busy,
+                    "save cannot synchronously discard an incomplete character");
+                Frame(input, workspace, "\r", Keys.Enter);
+                Check(workspace.Editor != null && !workspace.Feature.Busy, "title Enter also preserves an incomplete character");
+                Frame(input, workspace, "\ude00");
+                Check(workspace.Editor.Text == "one😀", "pending pair completes once after a deferred finish");
+                input.Release(true); workspace.CancelEdit();
+            });
             WithWorkspace(workspace =>
             {
                 Note note = workspace.Feature.Saved.Notes[0].Pin(100, 100);
@@ -109,6 +160,7 @@ namespace Terraria
             {
                 Check(renderer.Refresh(), "real hidden XNA resources ready");
                 WithWorkspace(workspace => CheckCardsAndPins(workspace, renderer, graphics));
+                CheckFooterPixels(renderer, graphics);
             }
             Console.WriteLine("PASS: Notes text/IME arbitration, clipboard failure, cards, pin targeting and real XNA state/pixels (synthetic IME/font, no real clipboard).");
         }
@@ -160,6 +212,7 @@ namespace Terraria
                 tallAsset.GetType().GetMethod("SubmitLoadedContent", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(tallAsset, new object[] { tall, new MetricSource() });
                 GameContent.FontAssets.MouseText = tallAsset; renderer.Refresh();
                 Check(renderer.LineHeight(1.2f) >= 32 * 1.2f + 4, "body rows contain actual tall glyphs and four-way border even when LineSpacing is smaller");
+                NotesRevisionHostChecks.CheckFooterReading(renderer);
             }
             GameContent.FontAssets.MouseText = null;
             Console.WriteLine("PASS: Notes shared layout budget reaches visible long text and stabilizes (texture-free synthetic font metrics).");
@@ -224,6 +277,52 @@ namespace Terraria
                 Check(pixels[455 * 700 + 655].R == 255, "original SpriteBatch remains usable after notes");
                 bool ink = false; for (int y = 188; y < 215; y++) for (int x = 148; x < 210; x++) ink |= pixels[y * 700 + x].A != 0;
                 Check(ink, "transparent background does not hide text");
+            }
+        }
+        private static void CheckFooterPixels(NotesRenderer renderer, F5FixtureGraphics graphics)
+        {
+            Note note = Note.Create().WithText(false, new string('文', 400) + "\n末行").Pin(20, 20);
+            WithWorkspace(workspace =>
+            {
+                var pins = new NotesPins(workspace, renderer, action => workspace.Request(action));
+                for (int i = 0; i < 10; i++) { renderer.BeginLayoutFrame(); pins.Prepare(700, 500); }
+                NotesPin pin = pins.Pins[0];
+                pins.Pointer(pin.Body.X + 2, pin.Body.Y + 2, false, false, -12000, true, true, false, 700, 500);
+                pins.Pointer(0, 0, false, false, 0, true, true, false, 700, 500);
+                Color[] baseline = DrawPins(pins, renderer, graphics);
+                foreach (bool error in new[] { false, true })
+                {
+                    if (error)
+                    {
+                        workspace.Request(new NotesAction(NotesActionKind.BeginEdit, note.Id, false, 0)); workspace.Editor.Insert("draft");
+                        workspace.Request(new NotesAction(NotesActionKind.FinishEdit));
+                        Check(!workspace.Request(new NotesAction(NotesActionKind.Create)) && workspace.Error != null, "pending action exposes real error feedback");
+                    }
+                    pins.Pointer(pin.Body.X + 2, pin.Body.Y + 2, false, false, 0, true, true, false, 700, 500);
+                    Color[] shown = DrawPins(pins, renderer, graphics); bool lastLineInk = false, footerInk = false;
+                    for (int y = (int)Math.Ceiling(pin.Body.Y); y < (int)Math.Floor(pin.Body.Bottom); y++)
+                        for (int x = (int)Math.Ceiling(pin.Body.X); x < (int)Math.Floor(pin.Body.Right); x++)
+                        {
+                            Check(shown[y * 700 + x] == baseline[y * 700 + x], "normal/error footer cannot cover any body pixel");
+                            if (y >= pin.Body.Bottom - pin.LineHeight) lastLineInk |= shown[y * 700 + x].A != 0;
+                        }
+                    for (int y = (int)Math.Ceiling(pin.Body.Bottom); y < (int)Math.Floor(pin.Footer.Y); y++)
+                        for (int x = (int)pin.Body.X; x < (int)pin.Body.Right; x++)
+                            Check(shown[y * 700 + x].A == 0, "transparent gap separates actual body and footer drawing");
+                    for (int y = (int)Math.Ceiling(pin.Footer.Y); y < (int)Math.Floor(pin.Footer.Bottom); y++)
+                        for (int x = (int)pin.Footer.X; x < (int)pin.Footer.Right; x++) footerInk |= shown[y * 700 + x].A != 0;
+                    Check(lastLineInk && footerInk, "last line and normal/error footer are both actually drawn");
+                }
+                Drain(workspace);
+            }, new Notebook(new[] { note }));
+        }
+        private static Color[] DrawPins(NotesPins pins, NotesRenderer renderer, F5FixtureGraphics graphics)
+        {
+            using (var target = new RenderTarget2D(graphics.Device, 700, 500))
+            {
+                graphics.Device.SetRenderTarget(target); graphics.Device.Clear(Color.Transparent); Main.spriteBatch.Begin();
+                renderer.Pass(Matrix.Identity, null, pins.Draw); Main.spriteBatch.End(); graphics.Device.SetRenderTarget(null);
+                var pixels = new Color[700 * 500]; target.GetData(pixels); return pixels;
             }
         }
         private static void Click(NotesCards cards, F5Interaction state, F5Rect rect, bool down)

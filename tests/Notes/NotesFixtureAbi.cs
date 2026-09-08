@@ -4,6 +4,9 @@ namespace Terraria
 {
     public partial class Main
     {
+        // NotesPresentation captures a lazy clipboard-window accessor. Tests use
+        // isolated clipboard adapters and must fail if that native path is entered.
+        public Microsoft.Xna.Framework.GameWindow Window { get { throw new System.NotSupportedException("No native clipboard window in Notes fixture."); } }
         public static bool drawingPlayerChat, editSign, editChest, blockInput;
         public static object CurrentInputTextTakerOverride;
         public static int keyCount;

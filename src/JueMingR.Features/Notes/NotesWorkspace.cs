@@ -25,6 +25,7 @@ namespace JueMingR.Features.Notes
         private string pendingDeleteId;
         private NotesAction afterSave;
         private NotesAction navigation;
+        private bool pendingUncommittedInput;
         public NotesWorkspace(NotesFeature feature) { Feature = feature; }
         public NotesFeature Feature { get; }
         public NoteEditor Editor { get; private set; }
@@ -54,8 +55,9 @@ namespace JueMingR.Features.Notes
             {
                 Editor.AcceptBaseline(submittedText);
                 // Title normalization belongs to the acknowledged revision only;
-                // a newer draft must not be replaced by the saved fallback/trim.
-                if (Editor.Revision == pendingRevision) Editor.AcceptCanonicalTitle(Feature.Saved.Find(EditingId));
+                // a newer draft or live IME replacement range must not be replaced
+                // by the saved fallback/trim, even before its text revision changes.
+                if (Editor.Revision == pendingRevision && !pendingUncommittedInput) Editor.AcceptCanonicalTitle(Feature.Saved.Find(EditingId));
             }
             ClearPending();
             if (current && action != null)
@@ -85,6 +87,14 @@ namespace JueMingR.Features.Notes
         public void RequestDelete(string id)
         { Request(new NotesAction(DeleteConfirmation == id ? NotesActionKind.Delete : NotesActionKind.ConfirmDelete, id)); }
         public void CancelDelete() { DeleteConfirmation = null; }
+        public void PreserveUncommittedInput(NoteEditor editor)
+        {
+            // IME previews and split surrogate pairs are not text revisions, but
+            // still belong to this editor. Invalidate only the dependent UI action;
+            // the accepted write and its acknowledged baseline must complete normally.
+            if (editor != null && ReferenceEquals(Editor, editor) && ReferenceEquals(submittedEditor, editor))
+            { afterSave = null; pendingUncommittedInput = true; }
+        }
         public void CancelEdit() { epoch++; EndEdit(); }
         public void Suspend()
         { epoch++; DeleteConfirmation = null; navigation = null; }
@@ -133,6 +143,6 @@ namespace JueMingR.Features.Notes
             if (!Feature.TrySubmit(next, out pendingId)) { Error = "笔记暂不能写入，草稿保留。"; return false; }
             pendingEpoch = epoch; return true;
         }
-        private void ClearPending() { pendingId = 0; submittedEditor = null; submittedText = null; afterSave = null; pendingDeleteId = null; }
+        private void ClearPending() { pendingId = 0; submittedEditor = null; submittedText = null; afterSave = null; pendingDeleteId = null; pendingUncommittedInput = false; }
     }
 }

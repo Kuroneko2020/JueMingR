@@ -9,16 +9,22 @@ namespace JueMingR.TerrariaHost.Notes
     internal sealed class NotesPin
     {
         internal Note Note;
-        internal F5Rect Rect, Body, Drag, Less, More, Close;
+        internal F5Rect Rect, Body, Footer, Drag, Less, More, Close;
         internal NotesTextLayout Layout;
         internal object Font;
         internal float Scroll, Scale = 1.2f, LineHeight = 36, ToolbarHeight = 36, ToolWidth = 36;
         internal int Anchor = -1, Geometry;
         internal float AnchorFraction;
+        internal object FooterFont;
+        internal float FooterWidth, FooterHeight = 36;
     }
     internal sealed class NotesPins
     {
         internal const int Width = 280, Height = 304;
+        private const string LessHint = "+5透明度", MoreHint = "-5透明度", CloseHint = "取消悬挂";
+        private const string ReadingHint = "滚轮翻页；按住Shift或Ctrl+滚轮调大小。";
+        private const string ErrorHint = "未保存；F5 查看原因";
+        private static readonly string[] FooterHints = { LessHint, MoreHint, CloseHint, ReadingHint };
         private readonly NotesWorkspace workspace;
         private readonly NotesRenderer renderer;
         private readonly Func<NotesAction, bool> request;
@@ -54,12 +60,16 @@ namespace JueMingR.TerrariaHost.Notes
                 if (!states.TryGetValue(note.Id, out pin)) { pin = new NotesPin(); states.Add(note.Id, pin); }
                 NoteReading reading = workspace.Feature.ReadingFor(note);
                 float toolbar = renderer.ControlHeight, tool = Math.Max(36, Math.Max(renderer.ButtonWidth("×"), renderer.ButtonWidth(">")));
-                float minimum = renderer.ButtonWidth("按住拖动") + 3 * tool + 20;
+                float minimum = Math.Max(renderer.ButtonWidth("按住拖动") + 3 * tool + 20, renderer.ButtonWidth(ErrorHint) + 16);
                 // Stored preference is independent of viewport and current font.
                 // Temporary projection never rewrites it, including a tiny screen.
-                float w = Math.Min(width, Math.Max(minimum, reading.Width)), h = Math.Min(height, Math.Max(toolbar + 48, reading.Height));
-                if (w < minimum || h < toolbar + 40) continue;
+                float w = Math.Min(width, Math.Max(minimum, reading.Width));
+                if (w < minimum) continue;
                 float scale = reading.FontPercent / 100f;
+                PrepareFooter(pin, w - 16);
+                float minimumHeight = toolbar + 24 + pin.FooterHeight + renderer.LineHeight(scale);
+                float h = Math.Min(height, Math.Max(minimumHeight, reading.Height));
+                if (h < minimumHeight) continue;
                 bool reflow = pin.Layout == null || !ReferenceEquals(pin.Layout.Text, note.Body) || pin.Font != renderer.FontIdentity || pin.Body.Width != w - 16 || pin.Scale != scale;
                 if (reflow && pin.Layout != null && pin.Anchor < 0 && ReferenceEquals(pin.Layout.Text, note.Body))
                 {
@@ -68,6 +78,7 @@ namespace JueMingR.TerrariaHost.Notes
                 }
                 pin.Note = note; pin.ToolbarHeight = toolbar; pin.ToolWidth = tool;
                 if (!ReferenceEquals(drag, pin) && !ReferenceEquals(pendingDrop, pin)) SetRect(pin, Place(note.X, note.Y, w, h, width, height));
+                else SetRect(pin, pin.Rect);
                 if (reflow)
                 {
                     pin.Scale = scale; pin.LineHeight = renderer.LineHeight(scale); pin.Font = renderer.FontIdentity;
@@ -85,6 +96,19 @@ namespace JueMingR.TerrariaHost.Notes
             if (pins.Count != 0) layoutCursor = (layoutCursor + 8) % pins.Count;
             foreach (string id in new List<string>(states.Keys)) if (!retained.Contains(id)) states.Remove(id);
             if (hover != null && !pins.Contains(hover)) hover = null;
+        }
+        private void PrepareFooter(NotesPin pin, float width)
+        {
+            if (pin.FooterFont == renderer.FontIdentity && pin.FooterWidth == width) return;
+            pin.FooterFont = renderer.FontIdentity; pin.FooterWidth = width;
+            // Reserve the tallest fixed hint even when hidden. Hover must not
+            // resize the body, change its last scroll position or reflow its text.
+            pin.FooterHeight = renderer.ControlHeight;
+            foreach (string text in FooterHints)
+            {
+                NotesTextLayout layout = renderer.Layout(text, width - 8, 0.6f);
+                pin.FooterHeight = Math.Max(pin.FooterHeight, layout.Lines.Count * renderer.LineHeight(0.6f) + 8);
+            }
         }
         internal void Pointer(float x, float y, bool left, bool right, int wheel, bool active, bool focused, bool windowOwns,
             float width, float height, bool shift = false, bool control = false)
@@ -133,10 +157,10 @@ namespace JueMingR.TerrariaHost.Notes
         {
             if (hover == null || renderer == null) return;
             string tool = Tool(hover, x, y);
-            string text = tool == "drag" ? "按住左键拖动位置" : tool == "less" ? "背景更透明（每次 5%）" :
-                tool == "more" ? "背景更不透明（每次 5%）" : tool == "close" ? "取消悬挂，保留正文" :
-                "滚轮阅读；Shift 调区域，Ctrl 调字号。两键同时按下不调整。";
-            float width = hover.Body.Width - 8;
+            string text = tool == "drag" ? "" : tool == "less" ? LessHint :
+                tool == "more" ? MoreHint : tool == "close" ? CloseHint : ReadingHint;
+            if (text.Length == 0) { hintText = text; hintLayout = null; return; }
+            float width = hover.Footer.Width - 8;
             if (hintText == text && hintWidth == width && hintFont == renderer.FontIdentity) return;
             hintText = text; hintWidth = width; hintFont = renderer.FontIdentity;
             hintLayout = renderer.Layout(text, width, 0.6f);
@@ -156,6 +180,7 @@ namespace JueMingR.TerrariaHost.Notes
         {
             foreach (NotesPin pin in pins)
             {
+                bool error = workspace.Error != null || workspace.Feature.NeedsRecovery || workspace.Feature.ReadingError != null;
                 if (pin.Note.Opacity != 0) renderer.Panel(pin.Rect, pin.Note.Opacity / 100f);
                 renderer.TextView(pin.Layout, pin.Body, pin.Scroll, pin.Scale, pin.LineHeight, Color.White);
                 if (ReferenceEquals(pin, hover) || ReferenceEquals(pin, drag))
@@ -164,15 +189,14 @@ namespace JueMingR.TerrariaHost.Notes
                     // zoom never shrinks it and no hidden outside strip owns input.
                     renderer.Button(pin.Drag, "按住拖动", true);
                     renderer.Button(pin.Less, "<", true); renderer.Button(pin.More, ">", true); renderer.Button(pin.Close, "×", true);
-                    if (hintLayout != null && drag == null)
+                    if (hintLayout != null && drag == null && !error)
                     {
-                        float line = renderer.LineHeight(0.6f), height = Math.Min(pin.Body.Height, hintLayout.Lines.Count * line + 8);
-                        var hint = new F5Rect(pin.Body.X, pin.Body.Bottom - height, pin.Body.Width, height);
+                        float line = renderer.LineHeight(0.6f);
+                        F5Rect hint = pin.Footer;
                         renderer.Panel(hint); renderer.TextView(hintLayout, new F5Rect(hint.X + 4, hint.Y + 4, hint.Width - 8, hint.Height - 8), 0, 0.6f, line, Color.LightGray);
                     }
                 }
-                if (workspace.Error != null || workspace.Feature.NeedsRecovery || workspace.Feature.ReadingError != null)
-                    renderer.Button(new F5Rect(pin.Rect.X, pin.Rect.Bottom - renderer.ControlHeight, pin.Rect.Width, renderer.ControlHeight), "未保存；F5 查看原因", false);
+                if (error) renderer.Button(pin.Footer, ErrorHint, false);
             }
         }
         private static float ClampScroll(NotesPin pin, float value)
@@ -187,7 +211,8 @@ namespace JueMingR.TerrariaHost.Notes
             pin.Less = new F5Rect(pin.Drag.Right + 4, y, tool, h);
             pin.More = new F5Rect(pin.Less.Right + 4, y, tool, h);
             pin.Close = new F5Rect(pin.More.Right + 4, y, tool, h);
-            pin.Body = new F5Rect(rect.X + 8, y + h + 8, rect.Width - 16, Math.Max(1, rect.Height - h - 20));
+            pin.Footer = new F5Rect(rect.X + 8, rect.Bottom - 8 - pin.FooterHeight, rect.Width - 16, pin.FooterHeight);
+            pin.Body = new F5Rect(rect.X + 8, y + h + 8, rect.Width - 16, Math.Max(1, pin.Footer.Y - 4 - (y + h + 8)));
         }
         private static string Tool(NotesPin pin, float x, float y)
         { return pin.Drag.Contains(x, y) ? "drag" : pin.Less.Contains(x, y) ? "less" : pin.More.Contains(x, y) ? "more" : pin.Close.Contains(x, y) ? "close" : null; }

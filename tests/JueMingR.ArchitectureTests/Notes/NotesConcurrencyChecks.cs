@@ -11,6 +11,37 @@ namespace JueMingR.ArchitectureTests
     {
         internal static void Check(IList<string> failures)
         {
+            foreach (string outcome in new[] { "success", "failure", "unconfirmed", "newer-draft", "cancel", "suspend" })
+                NotesDomainChecks.Run(failures, "finish editing waits for the current reliable save: " + outcome, () =>
+                {
+                    Note original = Note.Create().WithText(false, "before"); var codec = new NotebookCodec();
+                    var storage = new GateStorage(Notebook.Empty.Add(original)) { Fail = outcome == "failure", Unconfirmed = outcome == "unconfirmed" };
+                    using (var worker = new DocumentWorker<Notebook>(storage, codec.Decode, codec.Encode, Notebook.Empty))
+                    {
+                        var workspace = new NotesWorkspace(new NotesFeature(worker));
+                        Until(() => { workspace.Poll(); return workspace.Feature.Loaded; });
+                        workspace.Request(new NotesAction(NotesActionKind.BeginEdit, original.Id, false, 6)); workspace.Editor.Insert(" saved");
+                        NoteEditor editor = workspace.Editor;
+                        NotesDomainChecks.Require(workspace.Request(new NotesAction(NotesActionKind.FinishEdit)), "finish action accepted");
+                        Until(() => storage.Entered.IsSet);
+                        NotesDomainChecks.Require(ReferenceEquals(editor, workspace.Editor) && workspace.Feature.Saved.Find(original.Id).Body == "before",
+                            "queued save cannot announce preview or change acknowledged content");
+                        if (outcome == "newer-draft") editor.Insert(" newer");
+                        if (outcome == "cancel") workspace.CancelEdit();
+                        if (outcome == "suspend") workspace.Suspend();
+                        storage.Release.Set(); Until(() => { workspace.Poll(); return !workspace.Feature.Busy; });
+                        bool failed = outcome == "failure" || outcome == "unconfirmed";
+                        NotesDomainChecks.Require(workspace.Feature.Saved.Find(original.Id).Body == (failed ? "before" : "before saved"), "only reliable content is acknowledged");
+                        if (outcome == "success" || outcome == "cancel")
+                            NotesDomainChecks.Require(workspace.Editor == null && workspace.EditingId == null, "successful finish closes once; cancelled editor never revives");
+                        else
+                            NotesDomainChecks.Require(ReferenceEquals(editor, workspace.Editor) && editor.Text == (outcome == "newer-draft" ? "before saved newer" : "before saved") &&
+                                editor.Dirty == (failed || outcome == "newer-draft"), "failure, newer input and interrupted UI retain the correct draft");
+                        NotesDomainChecks.Require((workspace.Error != null) == failed && workspace.Feature.NeedsRecovery == (outcome == "unconfirmed"), "failure and recovery state remain visible");
+                        NotesDomainChecks.Require(workspace.TakeNavigation() == null && storage.Writes == 1, "finish does not navigate or submit a second write");
+                    }
+                    storage.Entered.Dispose(); storage.Release.Dispose();
+                });
             NotesDomainChecks.Run(failures, "reading batch restarts its quiet window and keeps late intent", () =>
             {
                 Note note = Note.Create().Pin(0, 0); var codec = new NotebookCodec();

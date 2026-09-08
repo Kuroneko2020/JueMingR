@@ -37,15 +37,15 @@ namespace JueMingR.Features.Notes
             if (!TextElements.IsValid(text)) { Error = "输入含不完整字符，未更改草稿。"; return false; }
             if (IsTitle && text.IndexOf('\n') >= 0) { Error = "标题不能包含换行，未更改草稿。"; return false; }
             int from = SelectionStart, to = SelectionEnd;
-            if ((long)Text.Length - (to - from) + text.Length > Note.MaximumBodyUnits) { Error = "正文达到 1,048,576 UTF-16 单位上限；本次输入未加入。"; return false; }
+            if ((long)Text.Length - (to - from) + text.Length > Note.MaximumBodyUnits) { Error = "正文达到 1,048,576 UTF-16 单位上限。"; return false; }
             // The original selection remains intact until the entire candidate is
             // validated. IME previews never call this committed-text transaction.
             string next = Text.Remove(from, to - from).Insert(from, text);
             int[] nextBoundaries;
             try { nextBoundaries = Rebuild(next, from, to, text.Length - (to - from)); }
-            catch (ArgumentException) { Error = "一个组合字符超过 1,024 UTF-16 单位；本次输入未加入，原文保留。"; return false; }
+            catch (ArgumentException) { Error = "一个组合字符超过 1,024 UTF-16 单位。"; return false; }
             if (IsTitle && nextBoundaries.Length - 1 > Note.MaximumTitleElements)
-            { Error = "标题最多 80 个完整字符；本次输入未加入，原文保留。"; return false; }
+            { Error = "标题最多 80 字。"; return false; }
             Change(next, nextBoundaries, from + text.Length, from); return true;
         }
         public void MoveTo(int offset) { MoveTo(offset, false); }

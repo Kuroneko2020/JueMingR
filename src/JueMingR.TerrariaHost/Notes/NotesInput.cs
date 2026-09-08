@@ -86,6 +86,7 @@ namespace JueMingR.TerrariaHost.Notes
                 if (sample.IsKeyUp(Keys.Enter)) enterTail = false;
                 if (sample.IsKeyUp(Keys.Escape)) escapeTail = false;
                 ProcessText(imePriority || enterTail, imePriority || escapeTail);
+                if (HasComposition) workspace.PreserveUncommittedInput(bound);
                 if (workspace.Editor != null && !imePriority) ProcessKeys(layout);
                 if (leased && workspace.Editor != null) PlayerInput.WritingText = true;
                 previousComposition = composing;
@@ -117,7 +118,7 @@ namespace JueMingR.TerrariaHost.Notes
             if (escape && !suppressEscape) { Release(true); workspace.CancelEdit(); return; }
             if (enter && !suppressEnter)
             {
-                if (bound.IsTitle) { FinishComposition(false); workspace.Request(new NotesAction(NotesActionKind.FinishEdit)); }
+                if (bound.IsTitle) { FinishComposition(false); if (!HasComposition) workspace.Request(new NotesAction(NotesActionKind.FinishEdit)); }
                 else bound.Insert("\n");
             }
         }

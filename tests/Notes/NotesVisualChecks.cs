@@ -25,7 +25,7 @@ namespace Terraria
                     var cards = new NotesCards(workspace, input, renderer, action => workspace.Request(action));
                     var pins = new NotesPins(workspace, renderer, action => workspace.Request(action));
                     var shell = NewShell();
-                    Render(graphics, renderer, chrome, cards, pins, shell, output, "notes-actual-empty", "点击 + 新建笔记；双击标题或正文编辑。");
+                    Render(graphics, renderer, chrome, cards, pins, shell, output, "notes-actual-empty", "点击 + 新建笔记，双击标题或正文编辑。");
                 }
             }, Notebook.Empty);
             Note note = Note.Create().WithText(true, "旅途笔记").WithText(false,
@@ -43,15 +43,16 @@ namespace Terraria
                     var shell = NewShell();
                     Render(graphics, renderer, chrome, cards, pins, shell, output, "notes-actual-browse", "双击标题或正文编辑。Shift 滚轮调区域，Ctrl 滚轮调字号；< > 调背景，× 取消悬挂。");
                     workspace.RequestDelete(other.Id);
-                    Render(graphics, renderer, chrome, cards, pins, shell, output, "notes-actual-delete-confirmation", "再次点击该笔记的确认按钮将删除；取消删除可返回浏览。");
+                    Render(graphics, renderer, chrome, cards, pins, shell, output, "notes-actual-delete-confirmation", "点击确认删除，或取消删除。");
                     workspace.CancelDelete();
                     workspace.Request(new NotesAction(NotesActionKind.BeginEdit, note.Id, false, 0)); workspace.Editor.MoveTo(8, true); workspace.Editor.Insert("已准备火把和绳索");
                     workspace.Editor.MoveTo(10); workspace.Editor.MoveTo(22, true);
-                    Render(graphics, renderer, chrome, cards, pins, shell, output, "notes-actual-selection", "编辑正文：拖选文字，Ctrl+C/X/V 复制/剪切/粘贴；Enter 换行，Esc 取消编辑。");
+                    Render(graphics, renderer, chrome, cards, pins, shell, output, "notes-actual-selection", "Enter 换行，Esc 取消编辑。");
                     workspace.CancelEdit(); workspace.Feature.AdjustReading(note.Id, true, 7); workspace.Feature.AdjustReading(note.Id, false, 6);
                     Render(graphics, renderer, chrome, cards, pins, shell, output, "notes-actual-large-reading", "阅读区域与字号只作用于该张悬挂笔记，工具栏保持可读。");
                     workspace.Feature.AdjustReading(note.Id, true, -8); workspace.Feature.AdjustReading(note.Id, false, -10);
                     Render(graphics, renderer, chrome, cards, pins, shell, output, "notes-actual-small-reading", "区域与正文字号下限；工具栏仍为同一字体与高度。");
+                    Render(graphics, renderer, chrome, cards, pins, shell, output, "notes-actual-footer-last-line", "悬挂正文滚动到底：末行与下方提示区分离。", footer: true);
                     Render(graphics, renderer, chrome, cards, pins, shell, output, "notes-actual-scale150", "F5 缩放 150%；两张便签按屏幕坐标保持各自阅读偏好。", 1920, 1080, 1.5f);
                     Render(graphics, renderer, chrome, cards, pins, shell, output, "notes-actual-narrow-scale150", "窄视口下检查导航、操作按钮、正文与滚动条。", 1000, 900, 1.5f);
                 }
@@ -66,7 +67,7 @@ namespace Terraria
             shell.Navigate(4); return shell;
         }
         private static void Render(F5FixtureGraphics graphics, NotesRenderer renderer, F5Renderer chrome, NotesCards cards, NotesPins pins,
-            F5Interaction shell, string output, string name, string status, int width = 1440, int height = 960, float scale = 1)
+            F5Interaction shell, string output, string name, string status, int width = 1440, int height = 960, float scale = 1, bool footer = false)
         {
             Main.UIScaleMatrix = Matrix.CreateScale(scale, scale, 1);
             shell.Update(new F5Input { Width = width, Height = height, Scale = scale, Active = true, Focused = true });
@@ -75,7 +76,8 @@ namespace Terraria
             if (pins.Pins.Count != 0)
             {
                 NotesPin pin = pins.Pins[0];
-                pins.Pointer(pin.Drag.X + 10, pin.Drag.Y + 10, false, false, 0, true, true, false, width, height);
+                F5Rect region = footer ? pin.Body : pin.Drag;
+                pins.Pointer(region.X + 10, region.Y + 10, false, false, footer ? -12000 : 0, true, true, false, width, height);
             }
             using (var target = new RenderTarget2D(graphics.Device, width, height))
             {
