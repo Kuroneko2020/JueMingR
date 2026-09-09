@@ -1249,9 +1249,12 @@ namespace Terraria
             AssertExactPostfix(input, owner, "InputPostfix", "Main.DoUpdate_HandleInput", additionalPrefix: "InputPrefix");
             AssertExactPostfix(npc, owner, "NpcHoverPrefix", "Main.HoverOverNPCs(Rectangle)", true);
             const string inputHooks = "JueMingR.TerrariaHost.Input.HostInputHooks";
-            AssertExactPostfix(typeof(FocusHelper).GetProperty("AllowInputProcessing").GetGetMethod(), owner,
+            // Driver modes compile these same fixture types into a separate
+            // assembly. Inspect the loaded target, never the driver's copies.
+            Assembly inputTarget = mainType.Assembly;
+            AssertExactPostfix(inputTarget.GetType("Terraria.FocusHelper", true).GetProperty("AllowInputProcessing").GetGetMethod(), owner,
                 "PermissionPostfix", "FocusHelper.AllowInputProcessing", declaringType: inputHooks);
-            AssertExactPostfix(typeof(GameInput.PlayerInput).GetMethod("UpdateInput"), owner,
+            AssertExactPostfix(inputTarget.GetType("Terraria.GameInput.PlayerInput", true).GetMethod("UpdateInput"), owner,
                 "MappingPostfix", "PlayerInput.UpdateInput", declaringType: inputHooks);
             AssertExactPostfix(mainType.GetMethod("GetInputText", new[] { typeof(string), typeof(bool) }), owner,
                 "TextPrefix", "Main.GetInputText(string,bool)", true, declaringType: inputHooks);
