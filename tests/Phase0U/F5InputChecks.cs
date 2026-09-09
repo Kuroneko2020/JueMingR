@@ -141,8 +141,11 @@ namespace Terraria
                     if (reason == 4) { input.Width = 1280; input.Height = 720; input.Scale = 1.5f; }
                     state.Update(input);
                 }
-                CheckPosition(state.TakePositionToSave(), 1000, 240,
-                    "interrupted drag keeps the last valid focused sample: " + reason);
+                if (reason == 2)
+                    Check(state.TakePositionToSave() == null, "focus loss cancels an uncommitted title drag without saving");
+                else
+                    CheckPosition(state.TakePositionToSave(), 1000, 240,
+                        "interrupted drag keeps the last valid focused sample: " + reason);
                 state.Close();
                 Check(state.TakePositionToSave() == null, "repeated cancellation cannot duplicate a position submission");
             }

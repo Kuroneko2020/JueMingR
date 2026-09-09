@@ -228,6 +228,8 @@ namespace JueMingR.TerrariaHost
             MethodInfo drawSetupMethod = ResolveDrawSetupMethod(targetAssembly);
             MethodInfo inputMethod = ResolveF5Target(targetAssembly, "DoUpdate_HandleInput", Type.EmptyTypes);
             MethodInfo npcHoverMethod = ResolveF5Target(targetAssembly, "HoverOverNPCs", new[] { typeof(Rectangle) });
+            MethodInfo[] inputTargets = Input.HostInputHooks.Resolve(targetAssembly);
+            MethodInfo updatePrefixMethod = typeof(Phase0SHarmonyWorker).GetMethod("UpdatePrefix", BindingFlags.NonPublic | BindingFlags.Static);
             MethodInfo inputPostfixMethod = typeof(Phase0SHarmonyWorker).GetMethod("InputPostfix", BindingFlags.NonPublic | BindingFlags.Static);
             MethodInfo inputPrefixMethod = typeof(Phase0SHarmonyWorker).GetMethod("InputPrefix", BindingFlags.NonPublic | BindingFlags.Static);
             MethodInfo npcHoverPrefixMethod = typeof(Phase0SHarmonyWorker).GetMethod("NpcHoverPrefix", BindingFlags.NonPublic | BindingFlags.Static);
@@ -266,11 +268,11 @@ namespace JueMingR.TerrariaHost
                 patchAttempted = true;
                 harmony.Patch(
                     targetMethod,
-                    null,
+                    new HarmonyMethod(updatePrefixMethod),
                     new HarmonyMethod(postfixMethod),
                     null,
                     null);
-                VerifyExactPatchInfo(targetMethod, postfixMethod, manifest.PatchOwner);
+                VerifyExactPatchInfo(targetMethod, postfixMethod, manifest.PatchOwner, additionalPrefix: updatePrefixMethod);
                 harmony.Patch(
                     drawSetupMethod,
                     null,
@@ -282,6 +284,7 @@ namespace JueMingR.TerrariaHost
                 VerifyExactPatchInfo(inputMethod, inputPostfixMethod, manifest.PatchOwner, additionalPrefix: inputPrefixMethod);
                 harmony.Patch(npcHoverMethod, new HarmonyMethod(npcHoverPrefixMethod), null, null, null);
                 VerifyExactPatchInfo(npcHoverMethod, npcHoverPrefixMethod, manifest.PatchOwner, true);
+                Input.HostInputHooks.Install(harmony, inputTargets, postfixContext.Input);
                 // Publish readiness only after every exact patch and its evidence have succeeded.
                 EvidenceWriter.AppendEvent(evidencePath, manifest.PackageId, 3, "HOOK_INSTALLED");
                 Volatile.Write(ref hookCommitted, 1);
@@ -296,6 +299,8 @@ namespace JueMingR.TerrariaHost
                         manifest.PatchOwner,
                         targetMethod,
                         drawSetupMethod, inputMethod, npcHoverMethod);
+                    foreach (MethodInfo method in inputTargets)
+                    { try { harmony.Unpatch(method, HarmonyPatchType.All, manifest.PatchOwner); } catch (Exception e) { if (cleanupException == null) cleanupException = e; } }
                 }
 
                 Phase0SLoadChainHost.TryRecordPatchFailure(
@@ -456,6 +461,14 @@ namespace JueMingR.TerrariaHost
             return method;
         }
 
+        private static void UpdatePrefix()
+        {
+            PostfixContext context = postfixContext;
+            if (Volatile.Read(ref hookCommitted) != 1 || context == null) return;
+            context.Input.BeginUpdate();
+            if (!context.Input.IsFocused && context.Shell != null) context.Shell.CancelForFocusLoss();
+        }
+
         private static void InputPrefix()
         {
             PostfixContext context = postfixContext;
@@ -466,8 +479,8 @@ namespace JueMingR.TerrariaHost
         private static void InputPostfix()
         {
             PostfixContext context = postfixContext;
-            if (Volatile.Read(ref hookCommitted) == 1 && context != null && context.Shell != null)
-                context.Shell.ProcessInput();
+            if (Volatile.Read(ref hookCommitted) == 1 && context != null)
+            { context.Input.AfterKeyboardRefresh(); if (context.Shell != null) context.Shell.ProcessInput(); }
         }
 
         private static bool NpcHoverPrefix()
@@ -737,6 +750,7 @@ namespace JueMingR.TerrariaHost
 
         private sealed class PostfixContext
         {
+            internal readonly Input.HostInputState Input = new Input.HostInputState();
             private Phase0TBiomeRuntime runtime;
             private ulong updateTick;
             private readonly string gameDirectory;
@@ -775,7 +789,7 @@ namespace JueMingR.TerrariaHost
                     Phase0TBiomeRuntime.Create(enabled, preferences.BiomeLoaded && preferences.BiomeEnabled);
                 if (itemPackage) { items = new Items.HostItems(gameDirectory, runtime.SharedRuntime); runtime.SharedRuntime.AddFeature(items); }
                 notes = new Notes.HostNotes(gameDirectory);
-                Shell = new F5Shell(runtime, preferences, notes, items) { LayersReady = f5LayersReady };
+                Shell = new F5Shell(runtime, preferences, notes, items, Input) { LayersReady = f5LayersReady };
             }
 
             internal void UpdateRuntime()

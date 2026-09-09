@@ -9,7 +9,7 @@ using ReLogic.Graphics;
 namespace Terraria
 {
     public static class FocusHelper
-    { public static bool IsSelectedApplication = true; public static bool AllowInputProcessing { get { return IsSelectedApplication; } } }
+    { public static bool IsSelectedApplication = true; public static bool AllowInputProcessing { [MethodImpl(MethodImplOptions.NoInlining)] get { return IsSelectedApplication; } } }
 
     public partial class Main
     {
@@ -18,6 +18,7 @@ namespace Terraria
         public static bool mapFullscreen, hideUI, onlyDrawFancyUI, ingameOptionsWindow, inFancyUI;
         public static int netMode;
         public static KeyboardState keyState;
+        public static KeyboardState oldKeyState;
         public static Matrix UIScaleMatrix { get; set; } = Matrix.Identity;
         public int currentNPCShowingChatBubble = -1;
         public static int UseCount, TileUseCount, SelectedSlot, NpcHits, DropHits, SpecialInteractions, BubbleDraws, CursorDraws, DamageDraws;
@@ -35,6 +36,7 @@ namespace Terraria
         private void FixtureInputUpdate()
         {
             PendingText = null; PendingLocked = false; // MouseOversClear before input.
+            if (keyState.IsKeyDown(Keys.F11)) NativeEarlyKeyActions++;
             DoUpdate_HandleInput();
             if (NativeMode || SampleCapture || SampleMap)
             {
@@ -52,28 +54,33 @@ namespace Terraria
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void DoUpdate_HandleInput()
         {
-            var input = GameInput.PlayerInput.Triggers;
-            input.JustPressed.MouseLeft = SampleLeft && !input.Current.MouseLeft;
-            input.JustPressed.MouseRight = SampleRight && !input.Current.MouseRight;
-            input.JustReleased.MouseLeft = !SampleLeft && input.Current.MouseLeft;
-            input.JustReleased.MouseRight = !SampleRight && input.Current.MouseRight;
-            input.Current.MouseLeft = FocusHelper.AllowInputProcessing && SampleLeft;
-            input.Current.MouseRight = FocusHelper.AllowInputProcessing && SampleRight;
-            input.Current.ToggleCameraMode = SampleCapture;
-            input.Current.MapFull = SampleMap;
-            mouseLeft = input.Current.MouseLeft; mouseRight = input.Current.MouseRight;
-            GameInput.PlayerInput.ScrollWheelValueOld = GameInput.PlayerInput.ScrollWheelValue;
-            GameInput.PlayerInput.ScrollWheelValue += SampleWheel;
-            GameInput.PlayerInput.ScrollWheelDelta = SampleWheel;
-            GameInput.PlayerInput.ScrollWheelDeltaForUI = SampleWheel;
-            GameInput.PlayerInput.MouseInfo = new MouseState(SampleX, SampleY, GameInput.PlayerInput.ScrollWheelValue,
-                mouseLeft ? ButtonState.Pressed : ButtonState.Released, ButtonState.Released,
-                mouseRight ? ButtonState.Pressed : ButtonState.Released, ButtonState.Released, ButtonState.Released);
+            GameInput.PlayerInput.UpdateInput();
+            // Real .8 consumes mapped zoom/navigation before the outer input
+            // postfix, then refreshes keyState after those consumers.
+            if (GameInput.PlayerInput.Triggers.Current.KeyStatus["ViewZoomIn"]) NativeZoom++;
             var keys = new List<Keys>();
             if (SampleF5) keys.Add(Keys.F5);
             if (SampleShift) keys.Add(Keys.LeftShift);
             if (SampleControl) keys.Add(Keys.LeftControl);
-            keyState = new KeyboardState(keys.ToArray());
+            oldKeyState = keyState;
+            keyState = FocusHelper.AllowInputProcessing ? new KeyboardState(keys.ToArray()) : default(KeyboardState);
+        }
+        internal static int NativeZoom, NativeEarlyKeyActions;
+        public static bool inputTextEnter, inputTextEscape;
+        internal static int NativeTextReads;
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static string GetInputText(string oldString, bool allowMultiLine = false)
+        {
+            if (!FocusHelper.AllowInputProcessing) return oldString;
+            inputTextEnter = inputTextEscape = false; NativeTextReads++;
+            for (int i = 0; i < keyCount; i++)
+            {
+                if (keyInt[i] == 13) inputTextEnter = true;
+                else if (keyInt[i] == 27) inputTextEscape = true;
+                else oldString += keyString[i];
+            }
+            keyCount = 0;
+            return oldString;
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -181,12 +188,16 @@ namespace Terraria.GameInput
 {
     public class TriggersSet
     {
-        public bool MouseLeft { get; set; } public bool MouseRight { get; set; }
-        public bool MapFull { get; set; } public bool ToggleCameraMode { get; set; }
+        public Dictionary<string, bool> KeyStatus = new Dictionary<string, bool> { { "MouseLeft", false }, { "MouseRight", false },
+            { "MapFull", false }, { "ToggleCameraMode", false }, { "ViewZoomIn", false } };
+        public bool MouseLeft { get { return KeyStatus["MouseLeft"]; } set { KeyStatus["MouseLeft"] = value; } }
+        public bool MouseRight { get { return KeyStatus["MouseRight"]; } set { KeyStatus["MouseRight"] = value; } }
+        public bool MapFull { get { return KeyStatus["MapFull"]; } set { KeyStatus["MapFull"] = value; } }
+        public bool ToggleCameraMode { get { return KeyStatus["ToggleCameraMode"]; } set { KeyStatus["ToggleCameraMode"] = value; } }
     }
     public class TriggersPack
     {
-        public TriggersSet Current = new TriggersSet(), JustPressed = new TriggersSet(), JustReleased = new TriggersSet();
+        public TriggersSet Current = new TriggersSet(), Old = new TriggersSet(), JustPressed = new TriggersSet(), JustReleased = new TriggersSet();
     }
     public static partial class PlayerInput
     {
@@ -198,6 +209,28 @@ namespace Terraria.GameInput
         public static Vector2 OriginalScreenSize { get { return FixtureScreen; } }
         public static bool UsingGamepad { get; set; }
         public static bool ShouldFastUseItem { get; set; }
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void UpdateInput()
+        {
+            foreach (string key in new List<string>(Triggers.Current.KeyStatus.Keys))
+            { Triggers.Old.KeyStatus[key] = Triggers.Current.KeyStatus[key]; Triggers.Current.KeyStatus[key] = false; }
+            bool permitted = FocusHelper.AllowInputProcessing;
+            Triggers.Current.MouseLeft = permitted && Main.SampleLeft;
+            Triggers.Current.MouseRight = permitted && Main.SampleRight;
+            Triggers.Current.MapFull = permitted && Main.SampleMap;
+            Triggers.Current.ToggleCameraMode = permitted && Main.SampleCapture;
+            Triggers.Current.KeyStatus["ViewZoomIn"] = !WritingText && Main.keyState.IsKeyDown(Keys.Z);
+            foreach (string key in Triggers.Current.KeyStatus.Keys)
+            { Triggers.JustPressed.KeyStatus[key] = Triggers.Current.KeyStatus[key] && !Triggers.Old.KeyStatus[key];
+                Triggers.JustReleased.KeyStatus[key] = !Triggers.Current.KeyStatus[key] && Triggers.Old.KeyStatus[key]; }
+            ScrollWheelValueOld = ScrollWheelValue; ScrollWheelValue += Main.SampleWheel;
+            ScrollWheelDelta = ScrollWheelDeltaForUI = permitted ? Main.SampleWheel : 0;
+            Main.mouseLeft = Triggers.Current.MouseLeft; Main.mouseRight = Triggers.Current.MouseRight;
+            MouseInfo = new MouseState(Main.SampleX, Main.SampleY, ScrollWheelValue,
+                Main.mouseLeft ? ButtonState.Pressed : ButtonState.Released, ButtonState.Released,
+                Main.mouseRight ? ButtonState.Pressed : ButtonState.Released, ButtonState.Released, ButtonState.Released);
+            WritingText = false;
+        }
     }
 }
 

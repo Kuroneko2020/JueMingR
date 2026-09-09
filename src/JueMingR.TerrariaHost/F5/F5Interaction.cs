@@ -56,7 +56,7 @@ namespace JueMingR.TerrariaHost.F5
             active = input.Active && input.Focused;
             if (!active || !Ready)
             {
-                Close();
+                if (!input.Focused) CancelForFocusLoss(); else Close();
                 // A focus-loss release is synthesized by Terraria. Only a focused
                 // physical release can retire a press that started in this window.
                 ConsumeLeft = leftTail; ConsumeRight = rightTail;
@@ -200,10 +200,18 @@ namespace JueMingR.TerrariaHost.F5
 
         internal void Close()
         {
-            // Close/focus loss/session exit may carry synthesized input. Submit
+            // Close/session exit may carry synthesized input. Submit
             // the last accepted position before cancelling, never that sample.
             FinishTitleDrag();
             Visible = false; capture = 0; armed = null; Command = F5Command.None;
+        }
+        internal void CancelForFocusLoss()
+        {
+            // An interrupted gesture has no release command. Keep the last
+            // accepted preference, not the uncommitted drag projection.
+            if (capture == 1) { X = dragStartX; Y = dragStartY; }
+            Visible = false; capture = 0; armed = null; Command = F5Command.None;
+            previousLeft = previousF5 = true;
         }
         private static float Clamp(float value, float minimum, float maximum)
         { return Math.Max(minimum, Math.Min(maximum, value)); }

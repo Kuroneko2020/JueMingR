@@ -153,6 +153,25 @@ namespace Terraria
                 pins.Pointer(150, 150, false, false, 0, true, true, false, 1920, 1080);
                 Check(pin.Rect.X == 100 && pin.Rect.Y == 100, "rejected drop immediately returns to trusted position without another Prepare");
             });
+            WithWorkspace(workspace =>
+            {
+                Note note = workspace.Feature.Saved.Notes[0].Pin(100, 100); int positions = 0, unpins = 0;
+                var pins = new NotesPins(workspace, null, action => { if (action.Kind == NotesActionKind.Position) positions++; if (action.Kind == NotesActionKind.Unpin) unpins++; return true; });
+                var pin = new NotesPin { Note = note, Rect = new F5Rect(100, 100, NotesPins.Width, NotesPins.Height), Layout = new NotesTextLayout(note.Body, 200, s => 1) };
+                NotesPins.SetRect(pin, pin.Rect); ((List<NotesPin>)pins.Pins).Add(pin);
+                pins.Pointer(110, 110, true, false, 0, true, true, false, 1920, 1080);
+                pins.Pointer(150, 150, true, false, 0, true, true, false, 1920, 1080);
+                pins.Pointer(0, 0, false, false, 0, false, false, false, 1920, 1080);
+                pins.Suspend(true);
+                Check(positions == 0 && pin.Rect.X == 100 && pin.Rect.Y == 100, "focus loss cancels pin projection without a position command");
+                float x = pin.Close.X + 2, y = pin.Close.Y + 2;
+                pins.Pointer(x, y, true, false, 0, true, true, false, 1920, 1080);
+                pins.Pointer(x, y, false, false, 0, true, true, false, 1920, 1080);
+                Check(unpins == 0, "reactivating held pointer cannot unpin the old target");
+                pins.Pointer(x, y, true, false, 0, true, true, false, 1920, 1080);
+                pins.Pointer(x, y, false, false, 0, true, true, false, 1920, 1080);
+                Check(unpins == 1, "new independent pin click still executes exactly once");
+            });
             CheckLayoutScheduling();
             if (!includeGraphics) return;
             using (var graphics = new F5FixtureGraphics())

@@ -21,6 +21,7 @@ namespace JueMingR.TerrariaHost.F5
         private readonly NotesPresentation notes;
         private readonly ItemsPresentation items;
         private readonly HostItems hostItems;
+        private readonly Input.HostInputState inputState;
         private static readonly Action<string> displayPreferenceFeedback = message => Main.NewText(message, 255, 180, 90);
         private Player leasedPlayer;
         private bool priorMouseInterface, hoverLease, priorMouseText;
@@ -31,8 +32,9 @@ namespace JueMingR.TerrariaHost.F5
 
         internal F5Shell(Phase0TBiomeRuntime biome, HostPreferences preferences, HostNotes hostNotes)
             : this(biome, preferences, hostNotes, null) { }
-        internal F5Shell(Phase0TBiomeRuntime biome, HostPreferences preferences, HostNotes hostNotes, HostItems hostItems)
+        internal F5Shell(Phase0TBiomeRuntime biome, HostPreferences preferences, HostNotes hostNotes, HostItems hostItems, Input.HostInputState inputState = null)
         { this.biome = biome; this.preferences = preferences; this.hostItems = hostItems; notes = new NotesPresentation(hostNotes.Workspace); notes.Attach(State);
+            this.inputState = inputState ?? new Input.HostInputState();
             if (hostItems != null) items = new ItemsPresentation(hostItems, State); }
         internal bool OwnsPointer { get { return !failed && CanPresentNow && (State.OwnsPointer || notes.OwnsPointer || items != null && items.OwnsPointer); } }
 
@@ -43,7 +45,7 @@ namespace JueMingR.TerrariaHost.F5
                 Player player = Main.LocalPlayer;
                 var capture = Terraria.Graphics.Capture.CaptureManager.Instance;
                 return !Main.gameMenu && !Main.dedServ && (Main.netMode == 0 || Main.netMode == 1) && player != null && player.active &&
-                    FocusHelper.AllowInputProcessing && !PlayerInput.UsingGamepad && !PlayerInput.ShouldFastUseItem &&
+                    inputState.IsFocused && !PlayerInput.UsingGamepad && !PlayerInput.ShouldFastUseItem &&
                     !Main.mapFullscreen && !Main.hideUI && !Main.onlyDrawFancyUI && !Main.ingameOptionsWindow &&
                     !Main.inFancyUI && capture != null && !capture.Active &&
                     (!notes.OtherTextOwner || items != null && items.OwnsTextToken && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest);
@@ -51,7 +53,7 @@ namespace JueMingR.TerrariaHost.F5
         }
 
         internal void BeforeInput()
-        { try { notes.BeforeInput(!failed && CanPresentNow); items?.BeforeInput(!failed && CanPresentNow); } catch { FailClosed(); } }
+        { try { notes.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); items?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); } catch { FailClosed(); } }
 
         internal void ProcessInput()
         {
@@ -67,21 +69,21 @@ namespace JueMingR.TerrariaHost.F5
                 bool f5 = keySample.IsKeyDown(Keys.F5);
                 // Map/camera requests precede their modal flags and draw layers.
                 // The shell and Notes must yield the same newly sampled input.
-                bool inputActive = !failed && CanPresentNow && !PlayerInput.Triggers.Current.MapFull && !PlayerInput.Triggers.Current.ToggleCameraMode;
+                bool inputActive = !failed && CanPresentNow && inputState.CanUseInput && !PlayerInput.Triggers.Current.MapFull && !PlayerInput.Triggers.Current.ToggleCameraMode;
                 Vector2 pointer = State.Visible || f5 ? Vector2.Transform(raw, Matrix.Invert(matrix)) : raw;
                 State.Update(new F5Input
                 {
                     Width = screen.X, Height = screen.Y, Scale = matrix.M11, X = pointer.X, Y = pointer.Y,
                     Active = inputActive,
-                    Focused = Terraria.FocusHelper.AllowInputProcessing,
+                    Focused = inputState.SampleFocused,
                     F5 = f5,
                     Left = PlayerInput.MouseInfo.LeftButton == ButtonState.Pressed,
                     Right = PlayerInput.MouseInfo.RightButton == ButtonState.Pressed,
                     Wheel = PlayerInput.ScrollWheelDeltaForUI,
                     PageWheelHandled = inputActive && notes.Wheel(pointer.X, pointer.Y, PlayerInput.ScrollWheelDeltaForUI)
                 });
-                notes.ProcessInput(inputActive, matrix, screen, raw);
-                items?.ProcessInput(inputActive, keySample, pointer, State.Layout.Matches(screen.X, screen.Y, matrix.M11, State.Page));
+                notes.ProcessInput(inputActive, matrix, screen, raw, inputState.SampleFocused);
+                items?.ProcessInput(inputActive, keySample, pointer, State.Layout.Matches(screen.X, screen.Y, matrix.M11, State.Page), inputState.SampleFocused);
                 if (OwnsPointer) LeaseMouseInterface();
                 ConsumeSample();
                 SubmitPosition();
@@ -261,6 +263,9 @@ namespace JueMingR.TerrariaHost.F5
         }
 
         internal void CloseAndSubmitPosition() { State.Close(); notes.Suspend(); items?.Suspend(); SubmitPosition(); }
+
+        internal void CancelForFocusLoss()
+        { State.CancelForFocusLoss(); notes.Suspend(true); items?.Suspend(); RestoreLeases(); }
 
         internal void FailClosed()
         { failed = true; State.Ready = false; CloseAndSubmitPosition(); RestoreLeases(); notes.FailClosed(); renderer.Dispose(); }

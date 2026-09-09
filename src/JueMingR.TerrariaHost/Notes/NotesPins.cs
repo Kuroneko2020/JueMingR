@@ -34,7 +34,7 @@ namespace JueMingR.TerrariaHost.Notes
         private string armed;
         private int armedGeometry;
         private bool previousLeft, leftTail, rightTail;
-        private float grabX, grabY, dragWidth, dragHeight;
+        private float grabX, grabY, dragWidth, dragHeight, dragStartX, dragStartY;
         private int layoutCursor;
         private NotesTextLayout hintLayout;
         private string hintText;
@@ -115,7 +115,8 @@ namespace JueMingR.TerrariaHost.Notes
         {
             ConsumeLeft = leftTail; ConsumeRight = rightTail; ConsumeWheel = false; OwnsPointer = false;
             bool pressed = left && !previousLeft, released = !left && previousLeft;
-            if (drag != null && (!active || !focused || windowOwns || width != dragWidth || height != dragHeight)) EndDrag();
+            if (!focused) CancelDrag();
+            else if (drag != null && (!active || windowOwns || width != dragWidth || height != dragHeight)) EndDrag();
             hover = null;
             if (active && focused && !windowOwns)
             {
@@ -135,7 +136,8 @@ namespace JueMingR.TerrariaHost.Notes
                     {
                         armed = Tool(hover, x, y); armedPin = hover; armedGeometry = hover.Geometry;
                         if (armed == "drag" && !workspace.Feature.Busy && workspace.Editor == null)
-                        { drag = hover; grabX = x - drag.Rect.X; grabY = y - drag.Rect.Y; dragWidth = width; dragHeight = height; }
+                        { drag = hover; grabX = x - drag.Rect.X; grabY = y - drag.Rect.Y; dragWidth = width; dragHeight = height;
+                            dragStartX = drag.Rect.X; dragStartY = drag.Rect.Y; }
                     }
                     if (drag != null && left) SetRect(drag, Place((int)(x - grabX), (int)(y - grabY), drag.Rect.Width, drag.Rect.Height, width, height));
                     if (released && drag == null && hover != null && ReferenceEquals(armedPin, hover) && armedGeometry == hover.Geometry && armed == Tool(hover, x, y) && !workspace.Feature.Busy)
@@ -150,7 +152,7 @@ namespace JueMingR.TerrariaHost.Notes
             ConsumeLeft = leftTail; ConsumeRight = rightTail;
             if (focused && !left) { leftTail = false; armed = null; armedPin = null; }
             if (focused && !right) rightTail = false;
-            previousLeft = left;
+            previousLeft = focused ? left : true;
             UpdateHint(x, y);
         }
         private void UpdateHint(float x, float y)
@@ -165,7 +167,13 @@ namespace JueMingR.TerrariaHost.Notes
             hintText = text; hintWidth = width; hintFont = renderer.FontIdentity;
             hintLayout = renderer.Layout(text, width, 0.6f);
         }
-        internal void Suspend() { EndDrag(); OwnsPointer = false; hover = null; armed = null; armedPin = null; }
+        internal void Suspend(bool focusLost = false)
+        { if (focusLost) { CancelDrag(); previousLeft = true; } else EndDrag(); OwnsPointer = false; hover = null; armed = null; armedPin = null; }
+        private void CancelDrag()
+        {
+            if (drag != null) { SetRect(drag, new F5Rect(dragStartX, dragStartY, drag.Rect.Width, drag.Rect.Height)); drag = null; }
+            armed = null; armedPin = null;
+        }
         private void EndDrag()
         {
             if (drag == null) return;

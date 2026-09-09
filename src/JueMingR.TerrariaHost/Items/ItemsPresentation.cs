@@ -52,10 +52,9 @@ namespace JueMingR.TerrariaHost.Items
         { if (!selection.ValidateSession()) { armed = null; dirty = true; input.Release(); revealRow = -1; } }
         internal void BeforeInput(bool active)
         { ValidateSession(); input.BeforeInput(active && shell.Visible && shell.Page == 0 && Selecting); }
-        internal void ProcessInput(bool active, KeyboardState sample, Vector2 pointer, bool geometryCurrent = true)
+        internal void ProcessInput(bool active, KeyboardState sample, Vector2 pointer, bool geometryCurrent = true, bool focused = true)
         {
             ValidateSession(); pointerPosition = pointer;
-            bool focused = FocusHelper.AllowInputProcessing;
             bool left = PlayerInput.MouseInfo.LeftButton == ButtonState.Pressed, right = PlayerInput.MouseInfo.RightButton == ButtonState.Pressed;
             bool pageActive = active && focused && shell.Visible && shell.Page == 0;
             input.Sample(sample, focused);

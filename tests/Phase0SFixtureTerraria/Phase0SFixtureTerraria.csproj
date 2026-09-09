@@ -30,6 +30,7 @@
     <Compile Include="..\..\src\JueMingR.TerrariaHost\Notes\NotesCards.cs" Link="Production\NotesCards.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\Notes\NotesPins.cs" Link="Production\NotesPins.cs" />
     <Compile Include="..\Phase0U\*.cs" />
+    <Compile Include="..\..\src\JueMingR.TerrariaHost\Input\*.cs" Link="Production\Input\%(Filename)%(Extension)" />
     <Compile Include="..\Phase0V\SettingsHostChecks.cs" />
     <Compile Include="..\Phase0V\PreferenceFeedbackChecks.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\F5RowLayout.cs" Link="Production\F5RowLayout.cs" />

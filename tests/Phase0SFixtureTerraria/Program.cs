@@ -209,6 +209,7 @@ namespace Terraria
                 // device exception. The caller records authorization and reason.
                 bool deferGraphics = args.Length > 0 && args[args.Length - 1] == "--defer-graphics";
                 if (deferGraphics) Array.Resize(ref args, args.Length - 1);
+                if (args.Length == 1 && args[0] == "focus-input") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; HostInputChecks.Run(); return 0; }
                 if (args.Length == 1 && args[0] == "items-host") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; ItemHostChecks.Run(); return 0; }
                 if (args.Length == 1 && args[0] == "items-safety") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; ItemHostChecks.Run(graphics: false); return 0; }
                 if (args.Length == 3 && args[0] == "items-visual") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; ItemHostChecks.Run(args[1], args[2]); return 0; }
@@ -222,6 +223,7 @@ namespace Terraria
                     AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly;
                     F5LayoutChecks.Run();
                     F5InputChecks.Run();
+                    HostInputChecks.Run();
                     NotesHostChecks.Run(!deferGraphics);
                     if (deferGraphics) Console.WriteLine("DEFERRED: Notes XNA pixels, clipping and graphics-state checks were not run.");
                     return 0;
@@ -233,7 +235,7 @@ namespace Terraria
                     return 0;
                 }
                 if (args.Length != 3 ||
-                    (args[0] != "expect-handoff" &&
+                    (args[0] != "expect-handoff" && args[0] != "expect-input" &&
                      args[0] != "expect-handoff-biome-failure" &&
                      args[0] != "expect-items" &&
                      !args[0].StartsWith("expect-settings-", StringComparison.Ordinal) &&
@@ -247,7 +249,7 @@ namespace Terraria
 
                 string mode = args[0];
                 bool settingsMode = mode.StartsWith("expect-settings-", StringComparison.Ordinal);
-                bool expectHandoff = mode == "expect-handoff" || mode == "expect-handoff-biome-failure" || mode == "expect-items" || settingsMode;
+                bool expectHandoff = mode == "expect-handoff" || mode == "expect-handoff-biome-failure" || mode == "expect-items" || mode == "expect-input" || settingsMode;
                 string evidencePath = Path.GetFullPath(args[1]);
                 string packageId = args[2];
                 if (String.IsNullOrWhiteSpace(packageId))
@@ -283,6 +285,7 @@ namespace Terraria
                     main.RunUpdateLoop(1);
                     WaitForEvidenceEvent(evidencePath, "RUNTIME_HANDOFF_COMPLETE");
                     evidenceAfterFirstUpdate = File.ReadAllBytes(evidencePath);
+                    if (mode == "expect-input") { F5ConsumerChecks.RunInputOnly(main); AssertPatchContract(typeof(global::Terraria.Main)); return 0; }
                     if (mode == "expect-items") { ItemLoadedHostChecks.Run(main); return 0; }
                     if (settingsMode) SettingsHostChecks.Run(main, mode);
                     else
@@ -1237,12 +1240,19 @@ namespace Terraria
                 }
             }
 
-            AssertExactPostfix(update, owner, "Postfix", "Main.Update");
+            AssertExactPostfix(update, owner, "Postfix", "Main.Update", additionalPrefix: "UpdatePrefix");
             AssertExactPostfix(drawSetup, owner, "DrawSetupPostfix", "Main.SetupDrawInterfaceLayers");
             MethodInfo input = mainType.GetMethod("DoUpdate_HandleInput", flags, null, Type.EmptyTypes, null);
             MethodInfo npc = mainType.GetMethod("HoverOverNPCs", flags, null, new[] { typeof(Microsoft.Xna.Framework.Rectangle) }, null);
             AssertExactPostfix(input, owner, "InputPostfix", "Main.DoUpdate_HandleInput", additionalPrefix: "InputPrefix");
             AssertExactPostfix(npc, owner, "NpcHoverPrefix", "Main.HoverOverNPCs(Rectangle)", true);
+            const string inputHooks = "JueMingR.TerrariaHost.Input.HostInputHooks";
+            AssertExactPostfix(typeof(FocusHelper).GetProperty("AllowInputProcessing").GetGetMethod(), owner,
+                "PermissionPostfix", "FocusHelper.AllowInputProcessing", declaringType: inputHooks);
+            AssertExactPostfix(typeof(GameInput.PlayerInput).GetMethod("UpdateInput"), owner,
+                "MappingPostfix", "PlayerInput.UpdateInput", declaringType: inputHooks);
+            AssertExactPostfix(mainType.GetMethod("GetInputText", new[] { typeof(string), typeof(bool) }), owner,
+                "TextPrefix", "Main.GetInputText(string,bool)", true, declaringType: inputHooks);
 
             foreach (MethodInfo candidate in mainType.GetMethods(flags))
             {
@@ -1261,7 +1271,8 @@ namespace Terraria
             MethodInfo target,
             string owner,
             string postfixName,
-            string targetLabel, bool prefix = false, string additionalPrefix = null)
+            string targetLabel, bool prefix = false, string additionalPrefix = null,
+            string declaringType = "JueMingR.TerrariaHost.Phase0SHarmonyWorker")
         {
             Patches patches = target == null ? null : Harmony.GetPatchInfo(target);
             if (patches == null ||
@@ -1276,7 +1287,7 @@ namespace Terraria
                 (prefix ? patches.Prefixes[0] : patches.Postfixes[0]).owner != owner ||
                 (prefix ? patches.Prefixes[0] : patches.Postfixes[0]).PatchMethod.Name != postfixName ||
                 (prefix ? patches.Prefixes[0] : patches.Postfixes[0]).PatchMethod.DeclaringType.FullName !=
-                    "JueMingR.TerrariaHost.Phase0SHarmonyWorker")
+                    declaringType)
             {
                 throw new InvalidOperationException(
                     targetLabel + " does not have the exact approved patch type and owner.");
