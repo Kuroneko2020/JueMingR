@@ -212,7 +212,7 @@ namespace JueMingR.TerrariaHost.Items
                     bool hover = c.Rect.Contains(pointerPosition.X, pointerPosition.Y) && view.Contains(pointerPosition.X, pointerPosition.Y);
                     if (c.Command == ItemUiCommand.Replace || c.Command == ItemUiCommand.Select)
                     {
-                        renderer.Button(c.Element, false, c.Enabled, false, hover);
+                        renderer.ItemButton(c.Rect, c.Enabled, hover);
                         renderer.Item(c.Type, ItemsLayout.IconBounds(c.Rect, c.Command == ItemUiCommand.Select));
                         if (c.Selected) renderer.Selection(c.Rect);
                         if (c.Command == ItemUiCommand.Replace && hover)

@@ -69,6 +69,14 @@ namespace JueMingR.TerrariaHost.Items
         internal void Label(F5Element element) { F5ControlRenderer.Text(batch, font, element, Color.White); }
         internal void Button(F5Element element, bool selected, bool enabled, bool off, bool hovered)
         { F5ControlRenderer.Button(batch, pixel, surface, font, element, hovered, enabled, selected ? (Color?)(off ? Color.IndianRed : Color.LightGreen) : null, subduedWhenDisabled: true); }
+        internal void ItemButton(F5Rect rect, bool enabled, bool hovered)
+        {
+            // Inset only the borrowed skin. Icon fitting and input still use
+            // the full card, so tighter frames never shrink or clip the item.
+            var frame = new F5Rect(rect.X + 2, rect.Y + 2, rect.Width - 4, rect.Height - 4);
+            UiSurface.Panel(batch, pixel, frame, surface,
+                enabled && hovered ? Color.White : !enabled ? new Color(165, 165, 165) : new Color(220, 220, 220), fractionalSurface: true);
+        }
         internal void Text(string text, F5Rect rect, Color color, float scale = .7f)
         {
             if (string.IsNullOrEmpty(text)) return;
@@ -98,28 +106,27 @@ namespace JueMingR.TerrariaHost.Items
         internal void Selection(F5Rect r)
         {
             var color = Color.LightGreen;
-            // One 6x6 rounded dot carries selection without tinting the item.
-            Fill(new F5Rect(r.Right - 8, r.Y + 3, 2, 1), color);
-            Fill(new F5Rect(r.Right - 9, r.Y + 4, 4, 1), color);
-            Fill(new F5Rect(r.Right - 10, r.Y + 5, 6, 2), color);
-            Fill(new F5Rect(r.Right - 9, r.Y + 7, 4, 1), color);
-            Fill(new F5Rect(r.Right - 8, r.Y + 8, 2, 1), color);
+            // A short downstroke and tapering upsweep read as one light check;
+            // selection remains a corner mark, without a second border or fill.
+            Stroke(new Vector2(r.Right - 13, r.Y + 6), new Vector2(r.Right - 10, r.Y + 10), color, 2);
+            Stroke(new Vector2(r.Right - 10, r.Y + 10), new Vector2(r.Right - 6, r.Y + 6), color, 2.3f);
+            Stroke(new Vector2(r.Right - 6, r.Y + 6), new Vector2(r.Right - 3, r.Y + 2), color, 1.5f);
         }
         internal void Cross(F5Rect r, bool enabled)
         {
             // Only the drawing is inset; the layout retains its 18x18 hit area.
             Fill(new F5Rect(r.X + 3, r.Y + 3, r.Width - 6, r.Height - 6), Color.Black * .5f);
-            var color = enabled ? Color.LightGray : Color.Gray;
-            Stroke(new Vector2(r.X + 6, r.Y + 6), new Vector2(r.Right - 6, r.Bottom - 6), color);
-            Stroke(new Vector2(r.Right - 6, r.Y + 6), new Vector2(r.X + 6, r.Bottom - 6), color);
+            var color = enabled ? new Color(255, 92, 92) : new Color(146, 68, 68);
+            Stroke(new Vector2(r.X + 6, r.Y + 5.5f), new Vector2(r.Right - 6.5f, r.Bottom - 6), color, 1.6f);
+            Stroke(new Vector2(r.Right - 5.5f, r.Y + 6), new Vector2(r.X + 5.5f, r.Bottom - 6), color, 1.5f);
         }
         // Scale is relative to the sampled source, not a destination size.
         // MagicPixel can be a tall texture (and can be replaced by a pack), so
         // both primitives must sample one texel before applying logical lengths.
         private void Fill(F5Rect r, Color color)
         { batch.Draw(pixel, new Vector2(r.X, r.Y), new Rectangle(0, 0, 1, 1), color, 0, Vector2.Zero, new Vector2(r.Width, r.Height), SpriteEffects.None, 0); }
-        private void Stroke(Vector2 a, Vector2 b, Color color)
-        { Vector2 d = b - a; batch.Draw(pixel, a, new Rectangle(0, 0, 1, 1), color, (float)Math.Atan2(d.Y, d.X), new Vector2(0, .5f), new Vector2(d.Length(), 1.5f), SpriteEffects.None, 0); }
+        private void Stroke(Vector2 a, Vector2 b, Color color, float thickness)
+        { Vector2 d = b - a; batch.Draw(pixel, a, new Rectangle(0, 0, 1, 1), color, (float)Math.Atan2(d.Y, d.X), new Vector2(0, .5f), new Vector2(d.Length(), thickness), SpriteEffects.None, 0); }
         public void Dispose() { if (clipped != null) { clipped.Dispose(); clipped = null; } }
     }
 }
