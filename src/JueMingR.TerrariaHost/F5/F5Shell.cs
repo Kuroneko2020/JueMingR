@@ -82,7 +82,7 @@ namespace JueMingR.TerrariaHost.F5
                     ModalPointerOwner = items != null && items.Modal
                 });
                 notes.ProcessInput(inputActive, matrix, screen, raw);
-                items?.ProcessInput(inputActive, keySample, pointer);
+                items?.ProcessInput(inputActive, keySample, pointer, State.Layout.Matches(screen.X, screen.Y, matrix.M11, State.Page));
                 if (OwnsPointer) LeaseMouseInterface();
                 ConsumeSample();
                 SubmitPosition();

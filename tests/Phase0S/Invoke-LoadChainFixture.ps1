@@ -57,7 +57,7 @@ function Get-Phase0SFixtureExecutable {
     $itemsOutput = @(& $fixtureExe $itemsMode)
     if ($LASTEXITCODE -ne 0) { throw 'The production item host/UI fixture checks failed.' }
     foreach ($line in $itemsOutput) { Write-Host $line }
-    if ($script:DeferGraphics) { Write-Host 'DEFERRED: Items real XNA drawing/input geometry; item transaction/source/receipt/config checks above ran.' }
+    if ($script:DeferGraphics) { Write-Host 'DEFERRED: Items real XNA drawing only; production geometry/input and item transaction/source/receipt/config checks above ran.' }
     $abiOutput = @(& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $RepositoryRoot 'tests\Items\Verify-ItemHostAbi.ps1') -RepositoryRoot $RepositoryRoot)
     if ($LASTEXITCODE -ne 0) { throw 'The fixed item host metadata/IL check failed.' }
     foreach ($line in $abiOutput) { Write-Host $line }

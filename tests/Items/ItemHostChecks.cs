@@ -63,6 +63,7 @@ namespace Terraria
             for (int i = 0; i < 200 && !host.Preferences.IsLoaded; i++) { Thread.Sleep(5); host.PollPreferences(); }
             Check(host.Preferences.IsLoaded, "isolated preferences load");
             PreferenceIsolation(); Transactions(); SelectionAndSources(); SourceEdges(); CapacityBackoff(); StorageBoundaries(); NetworkOwnership(); Guards(); UiKeys();
+            ItemUiChecks.RunLayout(host);
             if (graphics) ItemUiChecks.Run(host, content, output);
             // Partial original side effects protect their finite affected range.
             NewSession(0); Configure(true, false, false); Main.LocalPlayer.inventory[10] = Make(1000, 2);

@@ -17,13 +17,24 @@ namespace JueMingR.TerrariaHost.Items
         private Texture2D pixel, surface;
         private RasterizerState clipped;
         private SpriteBatch batch;
-        internal float RowHeight { get; private set; }
+        internal float RowHeight { get; set; }
+        internal int Generation { get; private set; }
+        private readonly System.Collections.Generic.Dictionary<string, F5Size> sizes = new System.Collections.Generic.Dictionary<string, F5Size>();
+        private F5Size Measure(string text)
+        {
+            F5Size size;
+            if (!sizes.TryGetValue(text, out size))
+            { if (sizes.Count >= 512) sizes.Clear(); sizes[text] = size = metrics.Measure(font, text); }
+            return size;
+        }
         internal bool Refresh()
         {
-            font = FontAssets.MouseText?.Value; pixel = TextureAssets.MagicPixel?.Value; surface = TextureAssets.InventoryBack?.Value;
+            var nextFont = FontAssets.MouseText?.Value; var nextPixel = TextureAssets.MagicPixel?.Value; var nextSurface = TextureAssets.InventoryBack?.Value;
+            if (!ReferenceEquals(font, nextFont) || !ReferenceEquals(pixel, nextPixel) || !ReferenceEquals(surface, nextSurface))
+            { Generation++; sizes.Clear(); }
+            font = nextFont; pixel = nextPixel; surface = nextSurface;
             if (font == null || pixel == null || pixel.IsDisposed) return false;
-            F5Size size = metrics.Measure(font, "自动出售 Ag");
-            RowHeight = Math.Max(34, size.Height * .75f + 12); return true;
+            return true;
         }
         internal void Pass(Matrix matrix, F5Rect clip, Action draw)
         {
@@ -54,26 +65,24 @@ namespace JueMingR.TerrariaHost.Items
                 }
             }
         }
-        internal void Panel(F5Rect rect) { UiSurface.Panel(batch, pixel, rect, surface, new Color(232, 232, 232)); }
+        internal void Panel(F5Rect rect) { F5ControlRenderer.Panel(batch, pixel, surface, rect); }
+        internal void Label(F5Element element) { F5ControlRenderer.Text(batch, font, element, Color.White); }
+        internal void Button(F5Element element, bool selected, bool enabled, bool off, bool hovered)
+        { F5ControlRenderer.Button(batch, pixel, surface, font, element, hovered, enabled, selected ? (Color?)(off ? Color.IndianRed : Color.LightGreen) : null); }
         internal void Text(string text, F5Rect rect, Color color, float scale = .7f)
         {
             if (string.IsNullOrEmpty(text)) return;
-            F5Size size = metrics.Measure(font, text);
+            F5Size size = Measure(text);
             // Clip labels by measured glyphs, retaining the established readable
             // scale. Never shrink a resource-pack font to hide a geometry bug.
             if (size.Width * scale > rect.Width - 4)
             {
                 int low = 0, high = text.Length;
-                while (low < high) { int mid = (low + high + 1) / 2; if (metrics.Measure(font, text.Substring(0, mid) + "…").Width * scale <= rect.Width - 4) low = mid; else high = mid - 1; }
-                text = text.Substring(0, low) + "…"; size = metrics.Measure(font, text);
+                while (low < high) { int mid = (low + high + 1) / 2; if (Measure(text.Substring(0, mid) + "…").Width * scale <= rect.Width - 4) low = mid; else high = mid - 1; }
+                text = text.Substring(0, low) + "…"; size = Measure(text);
             }
             Utils.DrawBorderStringFourWay(batch, font, text, rect.X + 2 - size.OffsetX * scale,
                 rect.Y + (rect.Height - size.Height * scale) / 2 - size.OffsetY * scale, color, Color.Black, Vector2.Zero, scale);
-        }
-        internal void Button(F5Rect rect, string text, bool selected, bool enabled = true)
-        {
-            UiSurface.Panel(batch, pixel, rect, surface, selected ? Color.White : new Color(205, 205, 215), fractionalSurface: true);
-            Text(text, rect, enabled ? selected ? Color.LightGreen : Color.White : Color.Gray);
         }
         internal void Item(int type, F5Rect rect)
         {

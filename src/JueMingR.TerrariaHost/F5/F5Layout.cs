@@ -48,7 +48,6 @@ namespace JueMingR.TerrariaHost.F5
         internal static readonly string[] Pages =
         { "物品", "杂项", "地图", "查询", "笔记", "关于", "蓝图", "钓鱼", "战斗", "信息", "增益", "移动" };
         internal const string DisplayTitle = "决明R";
-        private const float HotkeySlotWidth = 22;
         private static readonly string[] Hints = { "开启群系显示", "关闭群系显示", "群系显示暂不可用" };
         private readonly F5Size[] hintSizes = new F5Size[Hints.Length];
         private readonly Dictionary<string, F5Size> textSizes = new Dictionary<string, F5Size>(StringComparer.Ordinal);
@@ -249,88 +248,17 @@ namespace JueMingR.TerrariaHost.F5
         }
 
         private void Row(ref float y, float x, float width, string label, string[] actions, bool biome)
-        {
-            float actionWidth = 0;
-            foreach (string action in actions)
-            {
-                if (action == null) { actionWidth += 124; continue; }
-                if (action == "键") { actionWidth += HotkeySlotWidth + 4; continue; }
-                F5Size size = TextSize(action, 0.70f);
-                actionWidth += Math.Max(30, size.Width + 16) + 4;
-            }
-            if (actions.Length > 0) actionWidth -= 4;
-            bool below = actionWidth > width - 120;
-            float textWidth = below || actions.Length == 0 ? width - 16 : width - actionWidth - 28;
-            int panel = elements.Count;
-            Panel(new F5Rect(x, y, width, 34));
-            int firstText = elements.Count;
-            float labelY = y + 4;
-            TextLines(label, x + 8, ref labelY, textWidth, 0.75f);
-            float textHeight = labelY - 1 - (y + 4);
-            float buttonHeight = 30;
-            foreach (string action in actions)
-                if (action != null && action != "键") buttonHeight = Math.Max(buttonHeight, TextSize(action, 0.70f).Height + 8);
-            float rowHeight = Math.Max(38, Math.Max(textHeight, below ? 0 : buttonHeight) + 8);
-            float shift = (rowHeight - textHeight) / 2 - 4;
-            for (int i = firstText; i < elements.Count; i++)
-            {
-                F5Element text = elements[i];
-                elements[i] = new F5Element(text.Kind, text.Rect.Offset(0, shift), text.Text,
-                    text.TextSize, text.TextScale, text.Command);
-            }
-            float end = y + rowHeight;
-            if (actions.Length > 0)
-            {
-                float buttonY = below ? end + 2 : y + (rowHeight - buttonHeight) / 2;
-                Buttons(ref buttonY, below ? x + 8 : x + width - 8 - actionWidth,
-                    below ? width - 16 : actionWidth, actions, biome);
-                if (below) end = buttonY;
-            }
-            elements[panel] = new F5Element(F5ElementKind.Panel, new F5Rect(x, y, width, end - y), null, default(F5Size), 0, F5Command.None);
-            y = end + 6;
-        }
-
+        { new F5RowLayout(elements, TextSize).Row(ref y, x, width, label, actions, biome ? (Func<string, F5Command>)BiomeCommand : null); }
         private void Buttons(ref float y, float x, float width, string[] labels, bool biome)
-        {
-            float cursor = x, rowHeight = 30;
-            foreach (string label in labels)
-                if (label != null && label != "键") rowHeight = Math.Max(rowHeight, TextSize(label, 0.70f).Height + 8);
-            foreach (string label in labels)
-            {
-                bool hotkey = label == "键";
-                F5Size size = label == null || hotkey ? default(F5Size) : TextSize(label, 0.70f);
-                float w = label == null ? 120 : hotkey ? HotkeySlotWidth : Math.Max(30, size.Width + 16), h = rowHeight;
-                if (w > width) throw new InvalidOperationException("F5 button text exceeds its available column.");
-                if (cursor > x && cursor + w > x + width + 0.01f) { y += rowHeight + 4; cursor = x; }
-                // Only the biome row has a backend; other displayed controls remain inert.
-                F5Command command = !biome ? F5Command.None : label == "开启" ? F5Command.EnableBiome : F5Command.DisableBiome;
-                elements.Add(new F5Element(label == null ? F5ElementKind.Field : hotkey ? F5ElementKind.Hotkey : F5ElementKind.Button,
-                    new F5Rect(cursor, y, w, h), hotkey ? null : label, size, 0.70f, command));
-                cursor += w + 4;
-            }
-            y += rowHeight + 4;
-        }
-
+        { new F5RowLayout(elements, TextSize).Buttons(ref y, x, width, labels, biome ? (Func<string, F5Command>)BiomeCommand : null); }
+        private static F5Command BiomeCommand(string label)
+        { return label == "\u5f00\u542f" ? F5Command.EnableBiome : F5Command.DisableBiome; }
         private void Panel(F5Rect rect)
         { elements.Add(new F5Element(F5ElementKind.Panel, rect, null, default(F5Size), 0, F5Command.None)); }
-
         private void TextLines(string text, float x, ref float y, float width, float scale)
-        {
-            string remaining = text;
-            while (remaining.Length > 0)
-            {
-                int count = remaining.Length;
-                while (count > 0 && TextSize(remaining.Substring(0, count), scale).Width > width) count--;
-                if (count == 0) throw new InvalidOperationException("F5 font cannot fit a readable character.");
-                string line = remaining.Substring(0, count);
-                F5Size size = TextSize(line, scale);
-                elements.Add(new F5Element(F5ElementKind.Text, new F5Rect(x, y, size.Width, size.Height), line, size, scale, F5Command.None));
-                y += size.Height + 1;
-                remaining = remaining.Substring(count);
-            }
-        }
+        { new F5RowLayout(elements, TextSize).TextLines(text, x, ref y, width, scale); }
 
-        private F5Size TextSize(string text, float scale)
+        internal F5Size TextSize(string text, float scale)
         {
             F5Size size;
             if (!textSizes.TryGetValue(text, out size))

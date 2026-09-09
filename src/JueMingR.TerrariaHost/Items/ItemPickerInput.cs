@@ -27,6 +27,7 @@ namespace JueMingR.TerrariaHost.Items
         }
         internal void Sample(KeyboardState sample, bool focused)
         {
+            if (leased && OtherTextOwner) Release();
             if (!leased && !tail) return;
             // Focus-loss samples may synthesize releases. Only a real focused
             // empty sample retires this picker-owned tail, even after hiding.
