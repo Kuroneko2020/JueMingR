@@ -46,7 +46,10 @@ namespace Terraria
         }
         internal static Color[] Draw(F5FixtureGraphics graphics, ItemsRenderer renderer, float scale, string path)
         {
-            var boxes = new[] { new F5Rect(24, 24, 48, 48), new F5Rect(84, 24, 48, 48), new F5Rect(150, 24, 18, 18), new F5Rect(180, 24, 18, 18) };
+            var boxes = new[] { new F5Rect(24, 24, 47, 48), new F5Rect(84, 24, 47, 48), new F5Rect(150, 24, 18, 18), new F5Rect(180, 24, 18, 18) };
+            var regions = new[] {
+                new F5Rect(boxes[0].Right - 11, boxes[0].Y + 2, 8, 8), new F5Rect(boxes[1].Right - 11, boxes[1].Y + 2, 8, 8),
+                new F5Rect(boxes[2].X + 3, boxes[2].Y + 3, 12, 12), new F5Rect(boxes[3].X + 3, boxes[3].Y + 3, 12, 12) };
             var transform = Matrix.CreateScale(scale) * Matrix.CreateTranslation(9, 7, 0);
             using (var target = new RenderTarget2D(graphics.Device, 384, 256))
             {
@@ -61,10 +64,18 @@ namespace Terraria
                 {
                     if (pixels[y * 384 + x].A == 0) continue;
                     ink++;
-                    Check(boxes.Any(b => x >= b.X * scale + 8 && x < b.Right * scale + 10 && y >= b.Y * scale + 6 && y < b.Bottom * scale + 8),
-                        "decoration leaked outside its card/cross at " + x + "," + y);
+                    Check(regions.Any(b => x >= b.X * scale + 8 && x < b.Right * scale + 10 && y >= b.Y * scale + 6 && y < b.Bottom * scale + 8),
+                        "decoration escaped the small dot/reduced cross region at " + x + "," + y);
                 }
                 Check(ink > 150, "selection and cross actually produce pixels");
+                for (int j = 0; j < 2; j++)
+                {
+                    Color center = pixels[(int)((boxes[j].Y + 6) * scale + 7) * 384 + (int)((boxes[j].Right - 7) * scale + 9)];
+                    Check(center.A > 0 && center.G > center.R, "each selected card has a visible green dot");
+                }
+                for (int j = 2; j < 4; j++)
+                    Check(pixels[(int)((boxes[j].Y + 9) * scale + 7) * 384 + (int)((boxes[j].X + 9) * scale + 9)].R > 80,
+                        "each reduced cross remains visible above its backing");
                 Check(pixels[(int)(48 * scale + 7) * 384 + (int)(48 * scale + 9)].A == 0, "selection leaves the item center untinted");
                 return pixels;
             }

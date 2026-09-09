@@ -98,19 +98,20 @@ namespace JueMingR.TerrariaHost.Items
         internal void Selection(F5Rect r)
         {
             var color = Color.LightGreen;
-            Fill(new F5Rect(r.X + 2, r.Y + 2, r.Width - 4, 2), color);
-            Fill(new F5Rect(r.X + 2, r.Bottom - 4, r.Width - 4, 2), color);
-            Fill(new F5Rect(r.X + 2, r.Y + 2, 2, r.Height - 4), color);
-            Fill(new F5Rect(r.Right - 4, r.Y + 2, 2, r.Height - 4), color);
-            Stroke(new Vector2(r.Right - 16, r.Y + 10), new Vector2(r.Right - 12, r.Y + 14), color);
-            Stroke(new Vector2(r.Right - 12, r.Y + 14), new Vector2(r.Right - 6, r.Y + 6), color);
+            // One 6x6 rounded dot carries selection without tinting the item.
+            Fill(new F5Rect(r.Right - 8, r.Y + 3, 2, 1), color);
+            Fill(new F5Rect(r.Right - 9, r.Y + 4, 4, 1), color);
+            Fill(new F5Rect(r.Right - 10, r.Y + 5, 6, 2), color);
+            Fill(new F5Rect(r.Right - 9, r.Y + 7, 4, 1), color);
+            Fill(new F5Rect(r.Right - 8, r.Y + 8, 2, 1), color);
         }
         internal void Cross(F5Rect r, bool enabled)
         {
-            Fill(new F5Rect(r.X + 1, r.Y + 1, r.Width - 2, r.Height - 2), Color.Black * .7f);
-            var color = enabled ? Color.White : Color.Gray;
-            Stroke(new Vector2(r.X + 5, r.Y + 5), new Vector2(r.Right - 5, r.Bottom - 5), color);
-            Stroke(new Vector2(r.Right - 5, r.Y + 5), new Vector2(r.X + 5, r.Bottom - 5), color);
+            // Only the drawing is inset; the layout retains its 18x18 hit area.
+            Fill(new F5Rect(r.X + 3, r.Y + 3, r.Width - 6, r.Height - 6), Color.Black * .5f);
+            var color = enabled ? Color.LightGray : Color.Gray;
+            Stroke(new Vector2(r.X + 6, r.Y + 6), new Vector2(r.Right - 6, r.Bottom - 6), color);
+            Stroke(new Vector2(r.Right - 6, r.Y + 6), new Vector2(r.X + 6, r.Bottom - 6), color);
         }
         // Scale is relative to the sampled source, not a destination size.
         // MagicPixel can be a tall texture (and can be replaced by a pack), so
@@ -118,7 +119,7 @@ namespace JueMingR.TerrariaHost.Items
         private void Fill(F5Rect r, Color color)
         { batch.Draw(pixel, new Vector2(r.X, r.Y), new Rectangle(0, 0, 1, 1), color, 0, Vector2.Zero, new Vector2(r.Width, r.Height), SpriteEffects.None, 0); }
         private void Stroke(Vector2 a, Vector2 b, Color color)
-        { Vector2 d = b - a; batch.Draw(pixel, a, new Rectangle(0, 0, 1, 1), color, (float)Math.Atan2(d.Y, d.X), new Vector2(0, .5f), new Vector2(d.Length(), 2), SpriteEffects.None, 0); }
+        { Vector2 d = b - a; batch.Draw(pixel, a, new Rectangle(0, 0, 1, 1), color, (float)Math.Atan2(d.Y, d.X), new Vector2(0, .5f), new Vector2(d.Length(), 1.5f), SpriteEffects.None, 0); }
         public void Dispose() { if (clipped != null) { clipped.Dispose(); clipped = null; } }
     }
 }
