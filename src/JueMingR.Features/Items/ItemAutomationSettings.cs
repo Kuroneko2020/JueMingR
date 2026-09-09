@@ -17,12 +17,14 @@ namespace JueMingR.Features.Items
         public bool StackEnabled { get; }
         public bool SellEnabled { get; }
         public bool DiscardEnabled { get; }
+        public bool DiscardFeedbackEnabled { get; }
         public ReadOnlyCollection<int> SellTypes { get; }
         public ReadOnlyCollection<int> DiscardTypes { get; }
         public ItemAutomationSettings(bool stack, bool sell, bool discard, IEnumerable<int> sellTypes,
-            IEnumerable<int> discardTypes)
+            IEnumerable<int> discardTypes, bool discardFeedbackEnabled = true)
         {
             StackEnabled = stack; SellEnabled = sell; DiscardEnabled = discard;
+            DiscardFeedbackEnabled = discardFeedbackEnabled;
             SellTypes = Normalize(sellTypes); DiscardTypes = Normalize(discardTypes);
         }
         public bool Enabled(ItemActionKind action)
@@ -32,14 +34,16 @@ namespace JueMingR.Features.Items
             ValidateAction(action);
             return new ItemAutomationSettings(action == ItemActionKind.Stack ? enabled : StackEnabled,
                 action == ItemActionKind.Sell ? enabled : SellEnabled, action == ItemActionKind.Discard ? enabled : DiscardEnabled,
-                SellTypes, DiscardTypes);
+                SellTypes, DiscardTypes, DiscardFeedbackEnabled);
         }
         public ItemAutomationSettings WithTypes(ItemListKind list, IEnumerable<int> types)
         {
             if (list != ItemListKind.Sell && list != ItemListKind.Discard) throw new ArgumentOutOfRangeException(nameof(list));
             return new ItemAutomationSettings(StackEnabled, SellEnabled, DiscardEnabled,
-                list == ItemListKind.Sell ? types : SellTypes, list == ItemListKind.Discard ? types : DiscardTypes);
+                list == ItemListKind.Sell ? types : SellTypes, list == ItemListKind.Discard ? types : DiscardTypes, DiscardFeedbackEnabled);
         }
+        public ItemAutomationSettings WithDiscardFeedbackEnabled(bool enabled)
+        { return new ItemAutomationSettings(StackEnabled, SellEnabled, DiscardEnabled, SellTypes, DiscardTypes, enabled); }
         public static bool IsCoin(int type) { return type >= 71 && type <= 74; }
         private static ReadOnlyCollection<int> Normalize(IEnumerable<int> types)
         {
@@ -59,13 +63,14 @@ namespace JueMingR.Features.Items
             return other != null && StackEnabled == other.StackEnabled && SellEnabled == other.SellEnabled &&
                 DiscardEnabled == other.DiscardEnabled && SellTypes.SequenceEqual(other.SellTypes) && DiscardTypes.SequenceEqual(other.DiscardTypes);
         }
-        public bool Equals(ItemAutomationSettings other) { return HasSameAutomationRules(other); }
+        public bool Equals(ItemAutomationSettings other)
+        { return HasSameAutomationRules(other) && DiscardFeedbackEnabled == other.DiscardFeedbackEnabled; }
         public override bool Equals(object obj) { return Equals(obj as ItemAutomationSettings); }
         public override int GetHashCode()
         {
             unchecked
             {
-                int hash = (StackEnabled ? 1 : 0) | (SellEnabled ? 2 : 0) | (DiscardEnabled ? 4 : 0);
+                int hash = (StackEnabled ? 1 : 0) | (SellEnabled ? 2 : 0) | (DiscardEnabled ? 4 : 0) | (DiscardFeedbackEnabled ? 8 : 0);
                 foreach (int value in SellTypes) hash = hash * 31 + value;
                 hash = hash * 31 + SellTypes.Count;
                 foreach (int value in DiscardTypes) hash = hash * 31 + value;

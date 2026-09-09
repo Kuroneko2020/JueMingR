@@ -17,6 +17,12 @@ namespace Terraria
         public byte prefix;
         public bool favorited, buyOnce;
         public bool PaintOrCoating { get; set; }
+        public string DisplayName;
+        public static int AffixReads;
+        public static Action OnAffixName;
+        public string Name { get { return DisplayName ?? "fixture-item-" + type; } }
+        public string AffixName()
+        { AffixReads++; if (OnAffixName != null) OnAffixName(); return prefix > 0 ? "锋利的" + Name : Name; }
         public GameContent.FlexibleTileWand Flexible;
         public bool IsAir { get { return type == 0 || stack <= 0; } }
         public Item Clone() { return (Item)MemberwiseClone(); }
@@ -181,7 +187,7 @@ namespace Terraria.UI
 {
     public static class ItemSlot
     {
-        public static int TrashResearch, ManualClicks;
+        public static int TrashResearch, ManualClicks, TrashFailure;
         [MethodImpl(MethodImplOptions.NoInlining)] private static bool OverrideLeftClick(Item[] inv, int context, int slot)
         {
             Item item = inv[slot]; Player player = Main.LocalPlayer;
@@ -190,7 +196,15 @@ namespace Terraria.UI
                 if (player.SellItem(item) || item.value == 0) { Main.instance.shop[Main.npcShop].AddItemToShop(item); item.TurnToAir(); }
                 return true;
             }
-            if (Main.cursorOverride == 6) { TrashResearch++; player.trashItem = item.Clone(); item.TurnToAir(); return true; }
+            if (Main.cursorOverride == 6)
+            {
+                TrashResearch++;
+                if (TrashFailure == 2) return true;
+                player.trashItem = item.Clone(); item.TurnToAir();
+                if (TrashFailure == 1) throw new InvalidOperationException("fixture-trash-interrupted");
+                if (TrashFailure == 3) player.trashItem.stack++;
+                return true;
+            }
             return false;
         }
         [MethodImpl(MethodImplOptions.NoInlining)] public static void LeftClick(Item[] inv, int context, int slot)

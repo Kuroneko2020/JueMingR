@@ -50,6 +50,7 @@ namespace JueMingR.TerrariaHost.Items
             var file = new AtomicFileDocument(Path.Combine(verifiedGameDirectory,
                 "JueMingRData", "config", "features", "item-automation.json"), 65536, true, ".schema1-original");
             preferences = new PreferenceDocument<ItemAutomationSettings>(file, new RetiringItemCodec(file), ItemAutomationSettings.Default);
+            Operations.DiscardFeedback = new ItemDiscardFeedback(() => Preferences.Value.DiscardFeedbackEnabled);
             var harmony = new Harmony("JueMingR.Items");
             try
             {

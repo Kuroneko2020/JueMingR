@@ -12,6 +12,7 @@ namespace JueMingR.TerrariaHost.Items
         private readonly ItemHostObservation world;
         private SlotOverride slotOverride;
         internal Func<StoreItemsRequest, ItemOperationResult> Store { get; set; }
+        internal ItemDiscardFeedback DiscardFeedback { get; set; }
         public ItemOperationOwnership Ownership { get; }
         internal ItemVanillaOperations(ItemHostObservation world, ItemOperationOwnership ownership)
         {
@@ -68,6 +69,9 @@ namespace JueMingR.TerrariaHost.Items
                 return Result(ItemOperationState.Rejected, "discard-source-busy");
             Item original = player.inventory[request.Source.Slot].Clone();
             if (!Ownership.TryBeginDiscard(request.Session, request.Source.Slot)) return Result(ItemOperationState.Rejected, "trash-or-source-busy");
+            // Keep the actual localized name before the native source becomes
+            // Air. The opt-out path does not look up or format item names.
+            string displayName = DiscardFeedback == null ? null : DiscardFeedback.CaptureName(original);
             ItemOperationResult result;
             try
             {
@@ -78,7 +82,12 @@ namespace JueMingR.TerrariaHost.Items
                     new ItemOperationResult(ItemOperationState.Completed, original.stack) : Result(ItemOperationState.Unconfirmed, "trash-replacement-not-confirmed");
             }
             catch { result = Result(ItemOperationState.Unconfirmed, "trash-interrupted-after-admission"); }
-            Ownership.FinishDiscard(request.Session, result); return result;
+            Ownership.FinishDiscard(request.Session, result);
+            // Commit the business result first. Presentation failure must never
+            // turn a completed deletion into an unknown operation or a retry.
+            if (result.State == ItemOperationState.Completed && DiscardFeedback != null)
+                DiscardFeedback.Complete(player, displayName, result.ConfirmedQuantity);
+            return result;
         }
         public ItemOperationResult Execute(StoreItemsRequest request)
         { return Store == null ? Result(ItemOperationState.Rejected, "storage-capability-unavailable") : Store(request); }

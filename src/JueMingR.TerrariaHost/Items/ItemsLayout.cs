@@ -6,7 +6,7 @@ using JueMingR.TerrariaHost.F5;
 
 namespace JueMingR.TerrariaHost.Items
 {
-    internal enum ItemUiCommand { Enable, Disable, Add, Replace, Remove, Select, Confirm, Cancel }
+    internal enum ItemUiCommand { Enable, Disable, Add, Replace, Remove, Select, Confirm, Cancel, ToggleDiscardFeedback }
     internal sealed class ItemUiControl
     {
         internal ItemUiCommand Command;
@@ -60,13 +60,20 @@ namespace JueMingR.TerrariaHost.Items
                 RowY[i] = y; int start = rows.Count;
                 var action = (ItemActionKind)i; var list = action == ItemActionKind.Sell ? ItemListKind.Sell : ItemListKind.Discard;
                 // An open selector owns adding/replacing; omit its redundant entry from both paint and hit controls.
-                rowLayout.Row(ref y, 0, width, ItemsPresentation.Name(action), i == 0 || selection.List == list ? basic : listed);
+                string[] actions = i == 0 || selection.List == list ? basic : listed;
+                if (action == ItemActionKind.Discard)
+                {
+                    var withFeedback = new string[actions.Length + 1];
+                    withFeedback[0] = value.DiscardFeedbackEnabled ? "提示 开" : "提示 关";
+                    Array.Copy(actions, 0, withFeedback, 1, actions.Length); actions = withFeedback;
+                }
+                rowLayout.Row(ref y, 0, width, ItemsPresentation.Name(action), actions);
                 foreach (F5Element e in rows.GetRange(start, rows.Count - start))
                     if (e.Kind == F5ElementKind.Button)
                     {
-                        bool add = e.Text == "添加", on = e.Text == "开启";
-                        buttons.Add(Make(add ? ItemUiCommand.Add : on ? ItemUiCommand.Enable : ItemUiCommand.Disable,
-                            add ? (int)list : i, 0, e.Rect, e.Text, !add && value.Enabled(action) == on, enabled));
+                        bool add = e.Text == "添加", on = e.Text == "开启", feedback = e.Text == "提示 开" || e.Text == "提示 关";
+                        buttons.Add(Make(feedback ? ItemUiCommand.ToggleDiscardFeedback : add ? ItemUiCommand.Add : on ? ItemUiCommand.Enable : ItemUiCommand.Disable,
+                            add ? (int)list : i, 0, e.Rect, e.Text, !add && !feedback && value.Enabled(action) == on, enabled));
                     }
                 if (i == 0) continue;
                 listY[(int)list] = y;

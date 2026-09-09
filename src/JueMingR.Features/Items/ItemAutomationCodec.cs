@@ -41,7 +41,7 @@ namespace JueMingR.Features.Items
                             if (attribute.Name != "type") throw new PreferenceFormatException(PreferenceStatus.UnknownFields, "unknown-item-preference-attribute");
                     if ((string)root.Attribute("type") != "object" || Scalar(root, "format", "string") != "JueMingR.ItemAutomation") throw PreferenceJson.Invalid();
                     int version = Number(root, "version");
-                    if (version != 1 && version != 2) throw new PreferenceFormatException(PreferenceStatus.UnsupportedVersion, "unsupported-item-preference-version");
+                    if (version != 1 && version != 2 && version != 3) throw new PreferenceFormatException(PreferenceStatus.UnsupportedVersion, "unsupported-item-preference-version");
                     if (version == 1)
                     {
                         PreferenceJson.ExactFields(root, "format", "version", "stackEnabled", "sellEnabled", "discardEnabled", "sellTypes", "discardTypes", "stackBinding", "sellBinding", "discardBinding");
@@ -49,10 +49,13 @@ namespace JueMingR.Features.Items
                         // No key/chord/conflict semantics survive into preferences.
                         Number(root, "stackBinding"); Number(root, "sellBinding"); Number(root, "discardBinding");
                     }
-                    else PreferenceJson.ExactFields(root, "format", "version", "stackEnabled", "sellEnabled", "discardEnabled", "sellTypes", "discardTypes");
+                    else if (version == 2) PreferenceJson.ExactFields(root, "format", "version", "stackEnabled", "sellEnabled", "discardEnabled", "sellTypes", "discardTypes");
+                    else PreferenceJson.ExactFields(root, "format", "version", "stackEnabled", "sellEnabled", "discardEnabled", "sellTypes", "discardTypes", "discardFeedbackEnabled");
                     sourceVersion = version;
+                    // Only these two known formats predate the preference. A v3
+                    // missing field is corrupt, never an implicit default.
                     return new ItemAutomationSettings(Boolean(root, "stackEnabled"), Boolean(root, "sellEnabled"), Boolean(root, "discardEnabled"),
-                        Types(root, "sellTypes"), Types(root, "discardTypes"));
+                        Types(root, "sellTypes"), Types(root, "discardTypes"), version < 3 || Boolean(root, "discardFeedbackEnabled"));
                 }
             }
             catch (PreferenceFormatException) { throw; }
@@ -62,9 +65,10 @@ namespace JueMingR.Features.Items
         {
             if (value == null) throw new ArgumentNullException(nameof(value));
             var root = new XElement("root", new XAttribute("type", "object"), Field("format", "string", "JueMingR.ItemAutomation"),
-                Field("version", "number", 2), Field("stackEnabled", "boolean", value.StackEnabled ? "true" : "false"),
+                Field("version", "number", 3), Field("stackEnabled", "boolean", value.StackEnabled ? "true" : "false"),
                 Field("sellEnabled", "boolean", value.SellEnabled ? "true" : "false"), Field("discardEnabled", "boolean", value.DiscardEnabled ? "true" : "false"),
-                TypeArray("sellTypes", value.SellTypes), TypeArray("discardTypes", value.DiscardTypes));
+                TypeArray("sellTypes", value.SellTypes), TypeArray("discardTypes", value.DiscardTypes),
+                Field("discardFeedbackEnabled", "boolean", value.DiscardFeedbackEnabled ? "true" : "false"));
             using (var output = new MemoryStream())
             {
                 using (XmlDictionaryWriter writer = JsonReaderWriterFactory.CreateJsonWriter(output, new UTF8Encoding(false, true), false)) root.WriteTo(writer);

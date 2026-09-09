@@ -106,6 +106,7 @@ namespace JueMingR.TerrariaHost.Items
             {
                 case ItemUiCommand.Enable: host.Change(value.WithEnabled((ItemActionKind)c.Argument, true)); break;
                 case ItemUiCommand.Disable: host.Change(value.WithEnabled((ItemActionKind)c.Argument, false)); break;
+                case ItemUiCommand.ToggleDiscardFeedback: host.Change(value.WithDiscardFeedbackEnabled(!value.DiscardFeedbackEnabled)); break;
                 case ItemUiCommand.Add: OpenPicker(list, 0); break;
                 case ItemUiCommand.Replace: OpenPicker(list, c.Type); break;
                 case ItemUiCommand.Remove:
@@ -202,7 +203,7 @@ namespace JueMingR.TerrariaHost.Items
                     string list = selection.List == ItemListKind.Sell ? "出售" : "丢弃";
                     renderer.Text(selection.Target == 0 ? "添加" + list + "物品" : "替换「" + Lang.GetItemNameValue(selection.Target) + "」", OnScreen(layout.Title), Color.White);
                     if (selection.Target == 0) renderer.Text("已选 " + selection.Count + " 项", OnScreen(layout.Count), Color.LightGray, .63f);
-                    if (layout.Risk.Height > 0) renderer.Text(selection.Target == 0 ? "功能已开启，确认后会影响已有库存。" : "功能已开启，点选候选即替换并影响已有库存。", OnScreen(layout.Risk), Color.Gold, .63f);
+                    if (layout.Risk.Height > 0) renderer.Text("名单只影响拾取或开出物品后的处理去向。", OnScreen(layout.Risk), Color.Gold, .63f);
                     if (layout.Empty.Height > 0) renderer.Text(selection.HasInventoryTypes ? "背包中的有效物品类型均已在此名单中。" : "背包中没有有效的非钱币物品。", OnScreen(layout.Empty), Color.Gray, .63f);
                 }
                 foreach (var c in controls)

@@ -28,6 +28,19 @@ namespace Terraria
             shell.Update(new F5Input { Active = true, Focused = true, Width = 1920, Height = 1080, Scale = 1, F5 = true }); shell.Navigate(0);
             Action prepare = () => { shell.Layout.Ensure(1920, 1080, 1, shell.Page, font, measure); p.PrepareLayout(Matrix.Identity, new Vector2(1920, 1080)); };
             host.Change(ItemAutomationSettings.Default); host.PollPreferences(); prepare();
+            Check(HasControl(p, "ToggleDiscardFeedback"), "discard row provides its real feedback preference command");
+            var feedback = Control(p, "ToggleDiscardFeedback");
+            var feedbackRect = Rect(feedback); var discardAdd = Rect(Control(p, "Add", (int)ItemListKind.Discard));
+            Check(Math.Abs(discardAdd.X - feedbackRect.Right - 4) < .01f && feedbackRect.Y == discardAdd.Y && feedbackRect.Height == discardAdd.Height,
+                "feedback precedes add in the same shared row group");
+            Click(p, feedback); prepare();
+            Check(!host.Preferences.Value.DiscardFeedbackEnabled && !host.Preferences.Value.StackEnabled && !host.Preferences.Value.SellEnabled && !host.Preferences.Value.DiscardEnabled &&
+                host.Preferences.Value.SellTypes.SequenceEqual(new[] { 2337, 2338, 2339 }) && host.Preferences.Value.DiscardTypes.Count == 0,
+                "feedback command toggles only its preference");
+            Check(((F5Element)Control(p, "ToggleDiscardFeedback").GetType().GetField("Element", Fields).GetValue(Control(p, "ToggleDiscardFeedback"))).Text == "提示 关",
+                "feedback label reflects the latest preference");
+            Click(p, Control(p, "ToggleDiscardFeedback")); prepare();
+            Check(host.Preferences.Value.DiscardFeedbackEnabled, "same button restores feedback on");
             foreach (int action in new[] { 0, 1, 2 })
             {
                 var on = Rect(Control(p, "Enable", action)); var off = Rect(Control(p, "Disable", action));
@@ -150,6 +163,18 @@ namespace Terraria
             Click(p, Control(p, "Add", (int)ItemListKind.Discard)); prepare();
             Check(state.List == ItemListKind.Discard && state.Count == 0 && HasControl(p, "Replace", 2337), "one inline region; switching restores previous configured icons");
             Check(HasControl(p, "Add", argument: (int)ItemListKind.Sell) && !HasControl(p, "Add", argument: (int)ItemListKind.Discard), "switching restores previous add and hides current add");
+            var stableCandidates = state.Candidates; int stableGeneration = state.Generation;
+            var discardOn = Rect(Control(p, "Enable", (int)ItemActionKind.Discard));
+            Click(p, Control(p, "Select", type: 8)); prepare();
+            Click(p, Control(p, "ToggleDiscardFeedback")); prepare();
+            Check(!host.Preferences.Value.DiscardFeedbackEnabled && state.List == ItemListKind.Discard && state.Count == 1 && state.IsSelected(8) &&
+                ReferenceEquals(stableCandidates, state.Candidates) && state.Generation == stableGeneration,
+                "feedback toggle retains the open picker, stable candidates and selected draft");
+            Check(!HasControl(p, "Add", argument: (int)ItemListKind.Discard) && Math.Abs(Rect(Control(p, "Enable", (int)ItemActionKind.Discard)).X - discardOn.X) < .01f,
+                "feedback toggle leaves hidden add and explicit action positions intact");
+            Click(p, Control(p, "Confirm")); prepare();
+            Check(host.Preferences.Value.DiscardTypes.Contains(8) && !host.Preferences.Value.DiscardFeedbackEnabled && HasControl(p, "Add", argument: (int)ItemListKind.Discard),
+                "confirm merges its types into the latest feedback preference and restores add");
             Click(p, Control(p, "Replace", (int)ItemListKind.Sell, 2337)); prepare();
             Check(state.List == ItemListKind.Sell && state.Target == 2337 && !HasControl(p, "Confirm", 0), "configured body directly switches to replacement with no confirm");
             Check(!HasControl(p, "Add", argument: (int)ItemListKind.Sell), "replacement selector also hides redundant add");
@@ -167,6 +192,10 @@ namespace Terraria
             float oldScroll = shell.Scroll; font = new object(); measure = t => new F5Size(t.Length * 20, 26, -3, 8); prepare();
             Check(shell.Scroll == oldScroll, "font reflow does not reset valid dynamic page offset");
             host.Change(ItemAutomationSettings.Default); prepare(); Check(shell.Scroll == 0 && shell.Layout.MaxScroll == 0, "collapse clamps without invented empty scroll content");
+            var fontFeedback = (ItemUiControl)Control(p, "ToggleDiscardFeedback");
+            var fontLabel = F5Layout.ButtonLabel(fontFeedback.Element);
+            Check(fontLabel.Width <= fontFeedback.Rect.Width && fontLabel.Height <= fontFeedback.Rect.Height && fontLabel.X >= fontFeedback.Rect.X && fontLabel.Right <= fontFeedback.Rect.Right,
+                "replacement font keeps the complete feedback label within the shared button");
             shell.Update(new F5Input { Active = true, Focused = true, Width = 800, Height = 220, Scale = 1 });
             Action small = () => { shell.Layout.Ensure(800, 220, 1, 0, font, measure); p.PrepareLayout(Matrix.Identity, new Vector2(800, 220)); };
             small(); shell.ScrollTo(geometry.RowY[1]); small();

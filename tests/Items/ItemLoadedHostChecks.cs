@@ -28,6 +28,8 @@ namespace Terraria
             Check(!(bool)Get(Get(context, "Shell"), "Failed"), "production F5 input remains healthy with item profile");
             object settings = Get(Get(items, "Preferences"), "Value");
             Check(!(bool)Get(settings, "StackEnabled") && !(bool)Get(settings, "SellEnabled") && !(bool)Get(settings, "DiscardEnabled"), "new profile defaults are safe");
+            Check((bool)Get(settings, "DiscardFeedbackEnabled"), "loaded production preferences default discard feedback on");
+            PopupText.Reset(); Item.AffixReads = 0;
             Type action = settings.GetType().Assembly.GetType("JueMingR.Features.Items.ItemActionKind", true);
             Type list = settings.GetType().Assembly.GetType("JueMingR.Features.Items.ItemListKind", true);
             object discard = settings.GetType().GetMethod("WithTypes").Invoke(settings, new[] { Enum.ToObject(list, 1), new[] { 100 } });
@@ -50,6 +52,16 @@ namespace Terraria
             }
             Check(Main.LocalPlayer.inventory[10].IsAir && Main.LocalPlayer.trashItem.type == 100 && Main.LocalPlayer.trashItem.stack == 3,
                 "production configuration/selection/native trash/result chain");
+            Check(PopupText.Calls == 1 && PopupText.Last.Text == "自动丢弃了3个fixture-item-100" && Item.AffixReads == 1,
+                "loaded production discard adapter resolves the independent native popup/name ABI once");
+            discard = settings.GetType().GetMethod("WithDiscardFeedbackEnabled").Invoke(discard, new[] { (object)false });
+            items.GetType().GetMethod("Change", Flags).Invoke(items, new[] { discard });
+            // Keep this feedback case off the currently selected slot 0, which
+            // is deliberately protected by the production inventory boundary.
+            Main.LocalPlayer.inventory[10] = new Item { type = 100, stack = 1 };
+            Main.LocalPlayer.Pickup(new WorldItem { inner = new Item { type = 100, stack = 2 } }); main.RunUpdateLoop(7);
+            Check(Main.LocalPlayer.inventory[10].IsAir && Main.LocalPlayer.trashItem.stack == 3 && PopupText.Calls == 1 && Item.AffixReads == 1,
+                "loaded Host preference wiring disables only feedback while the next real pickup is still discarded");
             object sale = settings.GetType().GetMethod("WithTypes").Invoke(settings, new[] { Enum.ToObject(list, 0), new[] { 100 } });
             sale = settings.GetType().GetMethod("WithEnabled").Invoke(sale, new[] { Enum.ToObject(action, 1), (object)true });
             items.GetType().GetMethod("Change", Flags).Invoke(items, new[] { sale });

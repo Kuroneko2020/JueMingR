@@ -212,6 +212,8 @@ namespace Terraria
                 if (args.Length == 1 && args[0] == "focus-input") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; HostInputChecks.Run(); return 0; }
                 if (args.Length == 1 && args[0] == "items-host") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; ItemHostChecks.Run(); return 0; }
                 if (args.Length == 1 && args[0] == "items-safety") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; ItemHostChecks.Run(graphics: false); return 0; }
+                if (args.Length == 1 && args[0] == "items-feedback") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; ItemHostChecks.Run(graphics: false, only: "feedback"); return 0; }
+                if (args.Length == 1 && args[0] == "items-layout") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; ItemHostChecks.Run(graphics: false, only: "layout"); return 0; }
                 if (args.Length == 3 && args[0] == "items-visual") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; ItemHostChecks.Run(args[1], args[2]); return 0; }
                 if (args.Length == 1 && args[0] == "notes-input")
                 {

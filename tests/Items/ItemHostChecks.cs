@@ -27,12 +27,12 @@ namespace Terraria
         private static bool canStartActions = true;
         private static string root;
         private static readonly List<PreferenceDocument<ItemAutomationSettings>> documents = new List<PreferenceDocument<ItemAutomationSettings>>();
-        internal static void Run(string content = null, string output = null, bool graphics = true)
+        internal static void Run(string content = null, string output = null, bool graphics = true, string only = null)
         {
             root = Path.Combine(Path.GetTempPath(), "JueMingR-Items-Fixture-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(root);
             bool passed = false;
-            try { RunChecks(content, output, graphics); passed = true; }
+            try { RunChecks(content, output, graphics, only); passed = true; }
             finally
             {
                 // Stop every worker before releasing its exact isolated root,
@@ -53,7 +53,7 @@ namespace Terraria
                 Check(stopped, "item fixture worker still owns retained TEMP root: " + root);
             }
         }
-        private static void RunChecks(string content, string output, bool graphics)
+        private static void RunChecks(string content, string output, bool graphics, string only)
         {
             new Main(); Main.gameMenu = false; Main.LocalPlayer = new Player { active = true };
             runtime = new SingleFeatureRuntime(new ItemSessionProbe(), new Idle());
@@ -63,6 +63,9 @@ namespace Terraria
             runtime.AddFeature(host); runtime.Update(tick++);
             for (int i = 0; i < 200 && !host.Preferences.IsLoaded; i++) { Thread.Sleep(5); host.PollPreferences(); }
             Check(host.Preferences.IsLoaded, "isolated preferences load");
+            if (only == "feedback") { ItemDiscardFeedbackChecks.Run(host, () => NewSession(0)); return; }
+            if (only == "layout") { ItemUiChecks.RunLayout(host); return; }
+            ItemDiscardFeedbackChecks.Run(host, () => NewSession(0));
             PreferenceIsolation(); Transactions(); SelectionAndSources(); SourceEdges(); UnifiedSourceAndFocus(); RejectedSaleMembers(); CapacityBackoff(); StorageBoundaries(); NetworkOwnership(); Guards(); UiKeys();
             ItemUiChecks.RunLayout(host);
             if (graphics) ItemUiChecks.Run(host, content, output);
@@ -86,19 +89,20 @@ namespace Terraria
         private static void PreferenceIsolation()
         {
             RetiredConfiguration();
+            Version2Configuration();
             var codec = new ItemAutomationCodec(ID.ItemID.Count);
             string path = Path.Combine(root, "isolated-preferences", "items.json"); Directory.CreateDirectory(Path.GetDirectoryName(path));
             var document = new PreferenceDocument<ItemAutomationSettings>(new FilePreferenceStorage(path), codec, ItemAutomationSettings.Default);
             documents.Add(document);
             Wait(() => document.Snapshot.IsLoaded, "missing item config load");
             Check(!File.Exists(path), "missing item config is not auto-created");
-            ItemAutomationSettings changed = ItemAutomationSettings.Default.WithEnabled(ItemActionKind.Stack, true).WithTypes(ItemListKind.Discard, new[] { 101, 102 });
+            ItemAutomationSettings changed = ItemAutomationSettings.Default.WithEnabled(ItemActionKind.Stack, true).WithTypes(ItemListKind.Discard, new[] { 101, 102 }).WithDiscardFeedbackEnabled(false);
             document.Set(changed); Wait(() => document.Snapshot.Status == PreferenceStatus.Saved, "item config saved"); document.Stop(750);
             var restored = new PreferenceDocument<ItemAutomationSettings>(new FilePreferenceStorage(path), codec, ItemAutomationSettings.Default);
             documents.Add(restored);
             Wait(() => restored.Snapshot.IsLoaded, "saved item config reload");
-            Check(restored.Snapshot.Value.Equals(changed), "three controls/lists survive isolated restart"); restored.Stop(750);
-            foreach (string invalid in new[] { "{", Encoding.UTF8.GetString(codec.Encode(changed)).Replace("\"version\":2", "\"version\":99") })
+            Check(restored.Snapshot.Value.Equals(changed) && !restored.Snapshot.Value.DiscardFeedbackEnabled, "controls/lists and feedback-off survive isolated restart"); restored.Stop(750);
+            foreach (string invalid in new[] { "{", Encoding.UTF8.GetString(codec.Encode(changed)).Replace("\"version\":3", "\"version\":99") })
             {
                 File.WriteAllText(path, invalid, new UTF8Encoding(false)); byte[] original = File.ReadAllBytes(path);
                 var protectedDocument = new PreferenceDocument<ItemAutomationSettings>(new FilePreferenceStorage(path), codec, ItemAutomationSettings.Default);
@@ -108,6 +112,39 @@ namespace Terraria
                 protectedDocument.Set(changed); protectedDocument.Stop(750);
                 Check(original.SequenceEqual(File.ReadAllBytes(path)), "explicit temporary setting preserves invalid/future original bytes");
             }
+        }
+        private static void Version2Configuration()
+        {
+            string directory = Path.Combine(root, "feedback-migration"); Directory.CreateDirectory(directory);
+            string path = Path.Combine(directory, "items.json");
+            const string version2 = "{\"format\":\"JueMingR.ItemAutomation\",\"version\":2,\"stackEnabled\":true,\"sellEnabled\":false,\"discardEnabled\":true,\"sellTypes\":[8,100],\"discardTypes\":[101]}";
+            File.WriteAllText(path, version2, new UTF8Encoding(false));
+            var document = OpenRetiring(path); var original = document.Snapshot.Value;
+            Check(original.DiscardFeedbackEnabled && original.StackEnabled && !original.SellEnabled && original.DiscardEnabled &&
+                original.SellTypes.SequenceEqual(new[] { 8, 100 }) && original.DiscardTypes.SequenceEqual(new[] { 101 }), "v2 gains only default feedback");
+            Check(File.ReadAllText(path) == version2 && !File.Exists(path + ".bak") && !File.Exists(path + ".schema1-original"), "v2 load writes no migration or archive");
+            document.Set(original.WithDiscardFeedbackEnabled(false)); Wait(() => document.Snapshot.Status == PreferenceStatus.Saved, "first explicit v3 feedback save");
+            string current = File.ReadAllText(path);
+            Check(current.Contains("\"version\":3") && current.Contains("\"discardFeedbackEnabled\":false") && File.ReadAllText(path + ".bak") == version2,
+                "v2 to v3 first atomic save retains exact v2 bytes in normal backup");
+            document.Stop(750);
+            var reopened = OpenRetiring(path);
+            Check(reopened.Snapshot.Value.Equals(original.WithDiscardFeedbackEnabled(false)), "production v3 codec restores feedback and original rules"); reopened.Stop(750);
+            foreach (string mode in new[] { "missing-field", "unknown-field", "future", "wrong-type", "duplicate" })
+            {
+                string guarded = Path.Combine(directory, mode + ".json");
+                string bytes = mode == "missing-field" ? current.Replace(",\"discardFeedbackEnabled\":false", "") :
+                    mode == "unknown-field" ? current.Replace("\"version\":3", "\"version\":3,\"futureField\":0") :
+                    mode == "future" ? current.Replace("\"version\":3", "\"version\":4") :
+                    mode == "wrong-type" ? current.Replace("\"discardFeedbackEnabled\":false", "\"discardFeedbackEnabled\":0") :
+                    current.Replace("\"discardFeedbackEnabled\":false", "\"discardFeedbackEnabled\":false,\"discardFeedbackEnabled\":true");
+                File.WriteAllText(guarded, bytes, new UTF8Encoding(false));
+                var protectedDocument = OpenRetiring(guarded);
+                Check(protectedDocument.Snapshot.Status != PreferenceStatus.Saved, "unsafe feedback schema not accepted: " + mode);
+                protectedDocument.Set(original); protectedDocument.Stop(750);
+                Check(File.ReadAllText(guarded) == bytes && !File.Exists(guarded + ".bak"), "unsafe feedback schema preserves exact original: " + mode);
+            }
+            Console.WriteLine("PASS: item v1/v2 to v3 defaults, feedback restart, exact original/backup retention and corrupt/unknown protection in isolated files.");
         }
         private static PreferenceDocument<ItemAutomationSettings> OpenRetiring(string path)
         {
@@ -129,10 +166,10 @@ namespace Terraria
             Check(original.StackEnabled && !original.SellEnabled && original.DiscardEnabled && original.SellTypes.SequenceEqual(new[] { 8, 100 }) && original.DiscardTypes.SequenceEqual(new[] { 101 }), "legacy booleans and lists preserved");
             Check(File.ReadAllText(path) == legacy && !File.Exists(path + ".schema1-original"), "load does not migrate or archive user file");
             Check(!document.Set(original), "repeated explicit set is a no-op");
-            document.Set(original.WithEnabled(ItemActionKind.Sell, true)); Wait(() => document.Snapshot.Status == PreferenceStatus.Saved, "first v2 save");
+            document.Set(original.WithEnabled(ItemActionKind.Sell, true)); Wait(() => document.Snapshot.Status == PreferenceStatus.Saved, "first v3 save");
             string first = File.ReadAllText(path);
-            Check(first.Contains("\"version\":2") && !first.Contains("Binding") && File.ReadAllText(path + ".schema1-original") == legacy, "first real write retires fields and retains exact original");
-            document.Set(original.WithEnabled(ItemActionKind.Stack, false)); Wait(() => document.Snapshot.Status == PreferenceStatus.Saved, "second v2 save");
+            Check(first.Contains("\"version\":3") && first.Contains("\"discardFeedbackEnabled\":true") && !first.Contains("Binding") && File.ReadAllText(path + ".schema1-original") == legacy, "first real write retires fields and retains exact original");
+            document.Set(original.WithEnabled(ItemActionKind.Stack, false)); Wait(() => document.Snapshot.Status == PreferenceStatus.Saved, "second v3 save");
             Check(File.ReadAllText(path + ".schema1-original") == legacy && File.ReadAllText(path + ".bak") == first, "original archive never rotates, backup does");
             document.Stop(750);
             var reopened = OpenRetiring(path); Check(!reopened.Snapshot.Value.StackEnabled && reopened.Snapshot.Value.DiscardEnabled, "new version reload"); reopened.Stop(750);

@@ -15,6 +15,7 @@ namespace JueMingR.ArchitectureTests
                 FiniteMembersDoNotAdoptWithdrawals();
                 InputLifetimeAndRetirement();
                 FallbackAndRemainingGroup();
+                FeedbackDoesNotChangeOpportunity();
                 var port = new Boundary();
                 var feature = new ItemAutomationFeature(port, port);
                 feature.OnSessionStarted();
@@ -126,9 +127,9 @@ namespace JueMingR.ArchitectureTests
             feature.Configure(settings); feature.OnSessionStarted();
             port.Set(false, Slot(1, 9, 23)); Acquire(feature, port, 0); feature.Update(1);
             Require(port.Calls.Count == 0, "source capture does not bypass current input permission");
-            feature.Configure(new ItemAutomationSettings(false, false, true, settings.SellTypes, settings.DiscardTypes));
+            feature.Configure(settings.WithDiscardFeedbackEnabled(false));
             ready = true; feature.Update(2);
-            Require(port.Calls.Count == 1, "same business rules preserve pending source while input is temporarily closed");
+            Require(port.Calls.Count == 1, "actual feedback change preserves pending source while input is temporarily closed");
             ready = false; port.Set(false, Slot(1, 9, 10)); Acquire(feature, port, 10);
             port.Set(false, Slot(1, 9, 11)); Acquire(feature, port, 500);
             ready = true; feature.Update(610);
@@ -153,6 +154,25 @@ namespace JueMingR.ArchitectureTests
                 Require(boundary.Calls.Count == 1, "submitted member retired independently of resource/result lifetime: " + state);
             }
         }
+        private static void FeedbackDoesNotChangeOpportunity()
+        {
+            var port = new Boundary { Next = new ItemOperationResult(ItemOperationState.Rejected) };
+            var feature = new ItemAutomationFeature(port, port);
+            var settings = ItemAutomationSettings.Default.WithEnabled(ItemActionKind.Discard, true).WithTypes(ItemListKind.Discard, new[] { 9 });
+            feature.Configure(settings); feature.OnSessionStarted(); port.Set(false, Slot(1, 9, 23));
+            Acquire(feature, port, 0); feature.Update(0);
+            Require(port.Calls.Count == 1, "initial rejected attempt is visible to this boundary");
+            int reads = port.ObservationReads;
+            feature.Configure(settings.WithDiscardFeedbackEnabled(false)); feature.Update(1);
+            Require(port.ObservationReads == reads, "feedback change cannot wake an otherwise idle observation cadence");
+            feature.Update(6);
+            Require(port.Calls.Count == 1, "feedback change cannot reset attempted revision into repeated rejection");
+            port.Next = new ItemOperationResult(ItemOperationState.Completed);
+            port.Set(false, Slot(1, 9, 23), Slot(2, 10, 1)); feature.Update(12);
+            Require(port.Calls.Count == 2, "feedback change preserves actual pending member until legitimate observation changes");
+            port.Set(false, Slot(1, 9, 23)); feature.Configure(settings); feature.Update(18);
+            Require(port.Calls.Count == 2, "feedback re-enable cannot resurrect the completed opportunity");
+        }
         private static void Acquire(ItemAutomationFeature feature, Boundary port, ulong tick)
         { feature.RegisterAcquisitions(new[] { new ItemIdentity(9, 0) }, port.Observation, tick); }
         private static ItemSlotObservation Slot(int slot, int type, int count, bool protect = false, int max = 9999)
@@ -168,10 +188,11 @@ namespace JueMingR.ArchitectureTests
             private ItemInventoryObservation snapshot;
             internal ItemInventoryObservation Observation { get { return snapshot; } }
             private long revision;
+            internal int ObservationReads;
             public long SessionGeneration { get; set; } = 1;
             internal void Set(bool shop, params ItemSlotObservation[] slots)
             { Ownership.SetSession(SessionGeneration); snapshot = new ItemInventoryObservation(SessionGeneration, ++revision, shop, shop ? 1 : 0, slots); }
-            public bool TryObserve(out ItemInventoryObservation observation) { observation = snapshot; return snapshot != null; }
+            public bool TryObserve(out ItemInventoryObservation observation) { ObservationReads++; observation = snapshot; return snapshot != null; }
             public ItemOperationResult Execute(SellItemRequest r)
             {
                 if (!Ownership.TryBeginSale(r.Session)) throw new InvalidOperationException("selector retried conflicting sale");
