@@ -78,8 +78,7 @@ namespace JueMingR.TerrariaHost.F5
                     Left = PlayerInput.MouseInfo.LeftButton == ButtonState.Pressed,
                     Right = PlayerInput.MouseInfo.RightButton == ButtonState.Pressed,
                     Wheel = PlayerInput.ScrollWheelDeltaForUI,
-                    PageWheelHandled = inputActive && (items != null && items.Wheel(pointer.X, pointer.Y, PlayerInput.ScrollWheelDeltaForUI) || notes.Wheel(pointer.X, pointer.Y, PlayerInput.ScrollWheelDeltaForUI)),
-                    ModalPointerOwner = items != null && items.Modal
+                    PageWheelHandled = inputActive && notes.Wheel(pointer.X, pointer.Y, PlayerInput.ScrollWheelDeltaForUI)
                 });
                 notes.ProcessInput(inputActive, matrix, screen, raw);
                 items?.ProcessInput(inputActive, keySample, pointer, State.Layout.Matches(screen.X, screen.Y, matrix.M11, State.Page));

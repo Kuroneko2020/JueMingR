@@ -68,7 +68,7 @@ namespace JueMingR.TerrariaHost.Items
         internal void Panel(F5Rect rect) { F5ControlRenderer.Panel(batch, pixel, surface, rect); }
         internal void Label(F5Element element) { F5ControlRenderer.Text(batch, font, element, Color.White); }
         internal void Button(F5Element element, bool selected, bool enabled, bool off, bool hovered)
-        { F5ControlRenderer.Button(batch, pixel, surface, font, element, hovered, enabled, selected ? (Color?)(off ? Color.IndianRed : Color.LightGreen) : null); }
+        { F5ControlRenderer.Button(batch, pixel, surface, font, element, hovered, enabled, selected ? (Color?)(off ? Color.IndianRed : Color.LightGreen) : null, subduedWhenDisabled: true); }
         internal void Text(string text, F5Rect rect, Color color, float scale = .7f)
         {
             if (string.IsNullOrEmpty(text)) return;
@@ -95,6 +95,27 @@ namespace JueMingR.TerrariaHost.Items
             batch.Draw(texture, new Vector2(rect.X + rect.Width / 2, rect.Y + rect.Height / 2), frame, Color.White, 0,
                 new Vector2(frame.Width / 2f, frame.Height / 2f), scale, SpriteEffects.None, 0);
         }
+        internal void Selection(F5Rect r)
+        {
+            var color = Color.LightGreen;
+            Fill(new F5Rect(r.X + 2, r.Y + 2, r.Width - 4, 2), color);
+            Fill(new F5Rect(r.X + 2, r.Bottom - 4, r.Width - 4, 2), color);
+            Fill(new F5Rect(r.X + 2, r.Y + 2, 2, r.Height - 4), color);
+            Fill(new F5Rect(r.Right - 4, r.Y + 2, 2, r.Height - 4), color);
+            Stroke(new Vector2(r.Right - 16, r.Y + 10), new Vector2(r.Right - 12, r.Y + 14), color);
+            Stroke(new Vector2(r.Right - 12, r.Y + 14), new Vector2(r.Right - 6, r.Y + 6), color);
+        }
+        internal void Cross(F5Rect r, bool enabled)
+        {
+            Fill(new F5Rect(r.X + 1, r.Y + 1, r.Width - 2, r.Height - 2), Color.Black * .7f);
+            var color = enabled ? Color.White : Color.Gray;
+            Stroke(new Vector2(r.X + 5, r.Y + 5), new Vector2(r.Right - 5, r.Bottom - 5), color);
+            Stroke(new Vector2(r.Right - 5, r.Y + 5), new Vector2(r.X + 5, r.Bottom - 5), color);
+        }
+        private void Fill(F5Rect r, Color color)
+        { batch.Draw(pixel, new Vector2(r.X, r.Y), null, color, 0, Vector2.Zero, new Vector2(r.Width, r.Height), SpriteEffects.None, 0); }
+        private void Stroke(Vector2 a, Vector2 b, Color color)
+        { Vector2 d = b - a; batch.Draw(pixel, a, null, color, (float)Math.Atan2(d.Y, d.X), new Vector2(0, .5f), new Vector2(d.Length(), 2), SpriteEffects.None, 0); }
         public void Dispose() { if (clipped != null) { clipped.Dispose(); clipped = null; } }
     }
 }

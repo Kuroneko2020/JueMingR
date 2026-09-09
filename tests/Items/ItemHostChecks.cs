@@ -332,8 +332,8 @@ namespace Terraria
             shell.Layout.Ensure(1920, 1080, 1, 9, new object(), t => new JueMingR.TerrariaHost.F5.F5Size(t.Length * 18, 24));
             var nav = shell.Layout.Navigation(0).Offset(shell.X, shell.Y);
             shell.Update(new JueMingR.TerrariaHost.F5.F5Input { Active = true, Focused = true, Width = 1920, Height = 1080, Scale = 1,
-                X = nav.X + 2, Y = nav.Y + 2, Left = true, ModalPointerOwner = true });
-            Check(shell.Page == 9 && shell.ConsumeLeft, "picker pointer ownership blocks navigation and consumes press");
+                X = nav.X + 2, Y = nav.Y + 2, Left = true });
+            Check(shell.Page == 0 && shell.ConsumeLeft, "inline page allows navigation and consumes its press");
             NewSession(0); Configure(false, false, false);
             var input = new ItemPickerInput();
             var before = host.Preferences.Value;

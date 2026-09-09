@@ -13,69 +13,48 @@ namespace JueMingR.TerrariaHost.Items
 {
     internal sealed class ItemsPresentation
     {
-        private enum Command { Enable, Disable, Add, Edit, Replace, Remove, Select, Confirm, Cancel, Refresh }
-        private sealed class Control
-        {
-            internal Command Command;
-            internal int Argument, Type;
-            internal F5Rect Rect;
-            internal string Text;
-            internal F5Element Element;
-            internal bool Selected, Enabled = true;
-        }
         private readonly HostItems host;
         private readonly F5Interaction shell;
         private readonly ItemsRenderer renderer = new ItemsRenderer();
-        private readonly List<Control> controls = new List<Control>();
+        private readonly ItemsLayout layout = new ItemsLayout();
+        private readonly ItemSelection selection;
+        private readonly ItemPickerInput input = new ItemPickerInput();
+        private readonly List<ItemUiControl> controls = new List<ItemUiControl>();
         private readonly List<F5Element> elements = new List<F5Element>();
         private ItemAutomationSettings laidOutValue;
-        private int layoutGeneration = -1, skinGeneration = -1, editing;
-        private ItemListKind? editList;
-        private float laidOutScroll, laidOutPickerScroll;
-        private bool dirty = true, laidOutEnabled;
-        private string laidOutMessage;
+        private int layoutGeneration = -1, skinGeneration = -1;
+        private float laidOutScroll;
+        private bool dirty = true, laidOutEnabled, ready, previousLeft, previousEscape, leftTail, rightTail, ownPointer;
+        private string laidOutMessage, commandMessage;
+        private F5Rect view;
         private Vector2 pointerPosition;
-        internal int LayoutBuildCount { get; private set; }
-        private readonly HashSet<int> selected = new HashSet<int>();
-        private readonly ItemPickerInput input = new ItemPickerInput();
-        private ItemListKind? picker;
-        private int replacing;
-        private int[] candidates = new int[0];
-        private float pickerScroll;
-        private string layoutMessage;
-        private F5Rect view, popup, pickerView;
         private Matrix matrix;
-        private Control armed;
-        private bool ready, previousLeft, previousEscape, leftTail, rightTail;
+        private ItemUiControl armed;
         private int armedGeneration;
-        private bool ownPointer;
-        internal bool Modal { get { return picker.HasValue || editing != 0; } }
-        internal bool OwnsPointer { get { return ready && (ownPointer || Modal); } }
+        private int revealRow = -1;
+        private float anchorY;
+        internal int LayoutBuildCount { get; private set; }
+        internal bool Selecting { get { return selection.Active; } }
+        internal bool OwnsPointer { get { return ready && ownPointer; } }
         internal bool OwnsTextToken { get { return input.OwnsTextToken; } }
         internal bool ConsumeLeft { get; private set; }
         internal bool ConsumeRight { get; private set; }
         internal bool ConsumeWheel { get; private set; }
         internal ItemsPresentation(HostItems host, F5Interaction shell)
         {
-            this.host = host; this.shell = shell;
+            this.host = host; this.shell = shell; selection = new ItemSelection(host);
             Func<int, bool> prior = shell.BeforeLeave;
             shell.BeforeLeave = page => { if (prior != null && !prior(page)) return false; Suspend(); return true; };
         }
         internal static string Name(ItemActionKind action)
         { return action == ItemActionKind.Stack ? "自动堆叠" : action == ItemActionKind.Sell ? "自动出售" : "自动丢弃"; }
-        internal void BeforeInput(bool active) { input.BeforeInput(active && shell.Visible && shell.Page == 0 && Modal); }
-        internal bool Wheel(float x, float y, int wheel)
-        {
-            if (!ready || !shell.Visible || !Modal) return false;
-            if (!picker.HasValue) return true;
-            if (pickerView.Contains(x, y) && wheel != 0)
-            { pickerScroll = Math.Max(0, Math.Min(MaxPickerScroll, pickerScroll - wheel / 120f * renderer.RowHeight * 2)); armed = null; dirty = true; }
-            return true; // Even at either end, the background does not scroll.
-        }
-        private float MaxPickerScroll { get { return Math.Max(0, candidates.Length * renderer.RowHeight - pickerView.Height); } }
+        private void ValidateSession()
+        { if (!selection.ValidateSession()) { armed = null; dirty = true; input.Release(); revealRow = -1; } }
+        internal void BeforeInput(bool active)
+        { ValidateSession(); input.BeforeInput(active && shell.Visible && shell.Page == 0 && Selecting); }
         internal void ProcessInput(bool active, KeyboardState sample, Vector2 pointer, bool geometryCurrent = true)
         {
-            pointerPosition = pointer;
+            ValidateSession(); pointerPosition = pointer;
             bool focused = FocusHelper.AllowInputProcessing;
             bool left = PlayerInput.MouseInfo.LeftButton == ButtonState.Pressed, right = PlayerInput.MouseInfo.RightButton == ButtonState.Pressed;
             bool pageActive = active && focused && shell.Visible && shell.Page == 0;
@@ -87,19 +66,19 @@ namespace JueMingR.TerrariaHost.Items
                 if (focused) { if (!left) leftTail = false; if (!right) rightTail = false; }
                 previousLeft = focused ? left : true; previousEscape = focused ? sample.IsKeyDown(Keys.Escape) : true; return;
             }
-            // Input precedes AfterUpdate reflow: the shell must also compare this
-            // sample's screen/scale with the cache, before Generation can change.
-            // Stale rectangles cannot submit; existing mouse tails still consume.
-            if (!geometryCurrent || layoutGeneration != shell.Layout.Generation || laidOutEnabled != ControlsEnabled || laidOutScroll != shell.Scroll ||
+            // Input precedes reflow. Never submit rectangles from a previous
+            // screen/font/scroll/settings generation; physical tails still live.
+            if (!geometryCurrent || layoutGeneration != shell.Layout.Generation || laidOutEnabled != ControlsEnabled ||
+                !ReferenceEquals(laidOutValue, host.Preferences.Value) || laidOutScroll != shell.Scroll ||
                 view.X != shell.Layout.Viewport.X + shell.X || view.Y != shell.Layout.Viewport.Y + shell.Y)
             { armed = null; dirty = true; }
-            if (sample.IsKeyDown(Keys.Escape) && !previousEscape && Modal) CancelPicker();
+            if (sample.IsKeyDown(Keys.Escape) && !previousEscape && Selecting) CancelPicker();
             previousEscape = sample.IsKeyDown(Keys.Escape);
-            ownPointer = Modal || view.Contains(pointer.X, pointer.Y);
+            ownPointer = view.Contains(pointer.X, pointer.Y);
             if (ownPointer)
             {
-                if (left) leftTail = true; if (right) rightTail = true; ConsumeWheel = Modal;
-                Control hit = dirty ? null : Hit(pointer);
+                if (left) leftTail = true; if (right) rightTail = true;
+                ItemUiControl hit = dirty ? null : Hit(pointer);
                 if (left && !previousLeft) { armed = hit; armedGeneration = shell.Layout.Generation; }
                 if (!left && previousLeft && armed != null && hit != null && armedGeneration == shell.Layout.Generation && Same(armed, hit)) Execute(hit);
             }
@@ -107,248 +86,176 @@ namespace JueMingR.TerrariaHost.Items
             if (!left) { leftTail = false; armed = null; } if (!right) rightTail = false;
             previousLeft = left;
         }
-        private Control Hit(Vector2 pointer)
+        private ItemUiControl Hit(Vector2 pointer)
         {
-            foreach (Control control in controls)
-                if (control.Enabled && control.Rect.Contains(pointer.X, pointer.Y) &&
-                    (Modal ? popup.Contains(pointer.X, pointer.Y) && (control.Command != Command.Select || pickerView.Contains(pointer.X, pointer.Y)) : view.Contains(pointer.X, pointer.Y))) return control;
+            if (!view.Contains(pointer.X, pointer.Y)) return null;
+            // Remove is inserted before its body: one gesture has one target,
+            // including when the removal shifts another card into this location.
+            foreach (var c in controls) if (c.Enabled && c.Rect.Contains(pointer.X, pointer.Y)) return c;
             return null;
         }
         private static bool SameRect(F5Rect a, F5Rect b)
         { return a.X == b.X && a.Y == b.Y && a.Width == b.Width && a.Height == b.Height; }
-        private static bool Same(Control a, Control b)
-        { return a.Command == b.Command && a.Argument == b.Argument && a.Type == b.Type && a.Rect.X == b.Rect.X && a.Rect.Y == b.Rect.Y && a.Rect.Width == b.Rect.Width && a.Rect.Height == b.Rect.Height; }
-        private void Execute(Control control)
+        private static bool Same(ItemUiControl a, ItemUiControl b)
+        { return a.Command == b.Command && a.Argument == b.Argument && a.Type == b.Type && a.Generation == b.Generation && SameRect(a.Rect, b.Rect); }
+        private void Execute(ItemUiControl c)
         {
-            dirty = true;
-            ItemAutomationSettings value = host.Preferences.Value;
-            var action = (ItemActionKind)control.Argument;
-            var list = (ItemListKind)control.Argument;
-            switch (control.Command)
+            dirty = true; commandMessage = null;
+            var value = host.Preferences.Value; var list = (ItemListKind)c.Argument;
+            bool wasSelecting = Selecting;
+            switch (c.Command)
             {
-                case Command.Enable: host.Change(value.WithEnabled(action, true)); break;
-                case Command.Disable: host.Change(value.WithEnabled(action, false)); break;
-                case Command.Add: OpenPicker(list, 0); break;
-                case Command.Edit: editList = list; editing = control.Type; armed = null; break;
-                case Command.Replace: OpenPicker(list, control.Type); break;
-                case Command.Remove: host.Change(value.WithTypes(list, Types(value, list).Where(t => t != control.Type))); CancelPicker(); break;
-                case Command.Select:
-                    if (replacing != 0)
-                    {
-                        var current = Types(value, picker.Value);
-                        if (current.Contains(replacing) && !current.Contains(control.Type)) host.Change(value.WithTypes(picker.Value, current.Where(t => t != replacing).Concat(new[] { control.Type })));
-                        CancelPicker();
-                    }
-                    else if (!selected.Add(control.Type)) selected.Remove(control.Type);
+                case ItemUiCommand.Enable: host.Change(value.WithEnabled((ItemActionKind)c.Argument, true)); break;
+                case ItemUiCommand.Disable: host.Change(value.WithEnabled((ItemActionKind)c.Argument, false)); break;
+                case ItemUiCommand.Add: OpenPicker(list, 0); break;
+                case ItemUiCommand.Replace: OpenPicker(list, c.Type); break;
+                case ItemUiCommand.Remove:
+                    if (!ItemSelection.Types(value, list).Contains(c.Type)) commandMessage = "名单已变化，请重新选择图标。";
+                    else if (!host.Change(value.WithTypes(list, ItemSelection.Types(value, list).Where(t => t != c.Type)))) commandMessage = "本次移除未被接受，请重试。";
                     break;
-                case Command.Confirm:
-                    host.Change(value.WithTypes(picker.Value, Types(value, picker.Value).Concat(selected))); CancelPicker(); break;
-                case Command.Cancel: CancelPicker(); break;
-                case Command.Refresh: candidates = host.PickerTypes(picker.Value); selected.IntersectWith(candidates); pickerScroll = Math.Min(pickerScroll, MaxPickerScroll); break;
+                case ItemUiCommand.Select: selection.Select(c.Type); break;
+                case ItemUiCommand.Confirm: selection.Confirm(); break;
+                case ItemUiCommand.Cancel: CancelPicker(); break;
             }
+            if (wasSelecting && !Selecting) { input.Release(); revealRow = -1; }
         }
-        private static IReadOnlyList<int> Types(ItemAutomationSettings value, ItemListKind list)
-        { return list == ItemListKind.Sell ? value.SellTypes : value.DiscardTypes; }
         private void OpenPicker(ItemListKind list, int target)
-        { input.Release(); editing = 0; editList = null; picker = list; replacing = target; candidates = host.PickerTypes(list); selected.Clear(); pickerScroll = 0; armed = null; dirty = true; }
-        private void CancelPicker() { picker = null; editing = 0; editList = null; selected.Clear(); candidates = new int[0]; replacing = 0; armed = null; dirty = true; input.Release(); }
-        internal void Suspend() { ready = false; ownPointer = false; CancelPicker(); controls.Clear(); elements.Clear(); editing = 0; editList = null; armed = null; renderer.Dispose(); }
+        {
+            int row = list == ItemListKind.Sell ? 1 : 2;
+            float oldY = layout.RowY[row] - shell.Scroll;
+            if (selection.Open(list, target)) { revealRow = row; anchorY = oldY; armed = null; }
+        }
+        private void CancelPicker() { selection.Cancel(); revealRow = -1; armed = null; dirty = true; input.Release(); }
+        internal void Suspend()
+        { ready = false; ownPointer = false; CancelPicker(); commandMessage = null; controls.Clear(); elements.Clear(); renderer.Dispose(); }
         internal void Prepare(bool active, Matrix transform, Vector2 screen)
         {
-            matrix = transform; ready = active && shell.Visible && shell.Page == 0 && renderer.Refresh();
-            if (!ready) { controls.Clear(); if (!active) { Suspend(); renderer.Dispose(); } return; }
+            ValidateSession();
+            ready = active && shell.Visible && shell.Page == 0 && renderer.Refresh();
+            if (!ready) { if (!active || !shell.Visible || shell.Page != 0) Suspend(); else controls.Clear(); return; }
             PrepareLayout(transform, screen);
         }
-        // Production geometry has no graphics-device dependency: draw and input
-        // consume this exact cache, including in the non-graphical fixture.
         internal void PrepareLayout(Matrix transform, Vector2 screen)
         {
-            matrix = transform; ready = shell.Visible && shell.Page == 0;
+            ValidateSession(); matrix = transform; ready = shell.Visible && shell.Page == 0;
             if (!ready) return;
             renderer.RowHeight = Math.Max(30, shell.Layout.TextSize("开启", .7f).Height + 8);
-            F5Rect nextView = shell.Layout.Viewport.Offset(shell.X, shell.Y);
-            if (!SameRect(view, nextView)) dirty = true;
-            view = shell.Layout.Viewport.Offset(shell.X, shell.Y);
-            float popupHeight = Math.Min(540, screen.Y / matrix.M11 - 32);
-            float popupWidth = Math.Min(520, screen.X / matrix.M11 - 32);
-            F5Rect nextPopup = new F5Rect((screen.X / matrix.M11 - popupWidth) / 2, (screen.Y / matrix.M11 - popupHeight) / 2, popupWidth, popupHeight);
-            if (!SameRect(popup, nextPopup)) dirty = true;
-            popup = nextPopup;
-            pickerView = new F5Rect(popup.X + 12, popup.Y + renderer.RowHeight * 2 + 12, popup.Width - 24, popup.Height - renderer.RowHeight * 3 - 28);
-            // A valid small F5 viewport can be too short for this picker. Close
-            // only its draft and keep the rest of F5/Notes usable and recoverable.
-            bool tooSmall = pickerView.Height < renderer.RowHeight;
-            layoutMessage = tooSmall ? "当前视口不足以显示物品弹层；请调小 UI 缩放或增大窗口" : null;
-            if (Modal && layoutMessage != null) CancelPicker();
-            pickerScroll = Math.Min(pickerScroll, MaxPickerScroll);
-            BuildIfNeeded();
+            F5Rect next = shell.Layout.Viewport.Offset(shell.X, shell.Y);
+            if (!SameRect(view, next)) dirty = true;
+            view = next;
+            string message = ErrorMessage;
+            bool rebuild = dirty || !ReferenceEquals(laidOutValue, host.Preferences.Value) || layoutGeneration != shell.Layout.Generation ||
+                skinGeneration != renderer.Generation || laidOutEnabled != ControlsEnabled || laidOutMessage != message;
+            if (!rebuild && laidOutScroll == shell.Scroll) return;
+            armed = null;
+            if (rebuild)
+            {
+                layout.Build(view.Width, renderer.RowHeight, host.Preferences.Value, selection, ControlsEnabled, message != null, shell.Layout.TextSize);
+                shell.Layout.SetItemsContentHeight(layout.Height);
+                if (revealRow >= 0)
+                {
+                    // Preserve the row across a switch, then reveal only once.
+                    // Subsequent user scrolls must never snap back to this anchor.
+                    shell.ScrollTo(layout.RowY[revealRow] - anchorY);
+                    float bottom = Math.Min(layout.RevealBottom, layout.Header.Y + view.Height);
+                    if (layout.Header.Y < shell.Scroll) shell.ScrollTo(layout.Header.Y);
+                    else if (bottom > shell.Scroll + view.Height) shell.ScrollTo(bottom - view.Height);
+                    revealRow = -1;
+                }
+                shell.ClampScroll();
+            }
+            layout.Project(view, shell.Scroll, elements, controls); LayoutBuildCount++;
+            dirty = false; laidOutValue = host.Preferences.Value; laidOutScroll = shell.Scroll;
+            layoutGeneration = shell.Layout.Generation; skinGeneration = renderer.Generation;
+            laidOutEnabled = ControlsEnabled; laidOutMessage = message;
         }
-        private void Add(Command command, int argument, int type, F5Rect rect, string text, bool selected = false, bool enabled = true)
-        {
-            var control = new Control { Command = command, Argument = argument, Type = type, Rect = rect, Text = text, Selected = selected, Enabled = enabled };
-            string label = command == Command.Select ? "" : text;
-            control.Element = new F5Element(F5ElementKind.Button, rect, label, shell.Layout.TextSize(label, .7f), .7f, F5Command.None);
-            controls.Add(control);
-        }
-        private bool ControlsEnabled { get { return host.Available && !host.Feature.HasFailed && host.Preferences.IsLoaded; } }
+        private bool ControlsEnabled { get { return host.Available && !host.Feature.HasFailed && host.Preferences.IsLoaded && host.Runtime.IsSessionActive && host.World.Player != null; } }
         private string ErrorMessage
         {
             get
             {
-                string message = host.CapabilityError ?? host.SourceMessage ?? host.PreferenceMessage ?? layoutMessage;
-                if (message != null) return message;
+                if (host.CapabilityError != null) return host.CapabilityError;
+                if (host.SourceMessage != null) return host.SourceMessage;
+                if (host.PreferenceMessage != null) return host.PreferenceMessage;
+                if (selection.Message != null) return selection.Message;
+                if (commandMessage != null) return commandMessage;
                 for (int i = 0; i < 3; i++)
                 {
-                    ItemOperationResult result = host.Feature.LastResult((ItemActionKind)i);
-                    if (result != null && (result.State == ItemOperationState.TimedOut || result.State == ItemOperationState.Unconfirmed || result.State == ItemOperationState.Failed)) return Status(result);
+                    var result = host.Feature.LastResult((ItemActionKind)i);
+                    if (result == null) continue;
+                    if (result.State == ItemOperationState.TimedOut) return "等待超时；相关槽仍受保护，不会重发";
+                    if (result.State == ItemOperationState.Unconfirmed) return "结果未确认；相关槽仍受保护，不会重试";
+                    if (result.State == ItemOperationState.Failed) return "处理失败；相关槽仍受保护";
                 }
                 return null;
             }
         }
-        private void BuildIfNeeded()
-        {
-            string message = ErrorMessage;
-            if (!dirty && ReferenceEquals(laidOutValue, host.Preferences.Value) && layoutGeneration == shell.Layout.Generation &&
-                skinGeneration == renderer.Generation && laidOutScroll == shell.Scroll && laidOutPickerScroll == pickerScroll &&
-                laidOutEnabled == ControlsEnabled && laidOutMessage == message) return;
-            armed = null; dirty = false; controls.Clear(); elements.Clear(); LayoutBuildCount++;
-            laidOutValue = host.Preferences.Value; layoutGeneration = shell.Layout.Generation; skinGeneration = renderer.Generation;
-            laidOutScroll = shell.Scroll; laidOutPickerScroll = pickerScroll; laidOutEnabled = ControlsEnabled; laidOutMessage = message;
-            if (Modal) { BuildPopup(); return; }
-            float y = view.Y - shell.Scroll;
-            for (int i = 0; i < 3; i++)
-            {
-                var action = (ItemActionKind)i;
-                ItemListKind list = action == ItemActionKind.Sell ? ItemListKind.Sell : ItemListKind.Discard;
-                string[] actions = i == 0 ? new[] { "开启", "关闭" } : new[] { "添加", "开启", "关闭" };
-                int start = elements.Count;
-                new F5RowLayout(elements, shell.Layout.TextSize).Row(ref y, view.X, view.Width, Name(action), actions);
-                for (int j = start; j < elements.Count; j++)
-                {
-                    F5Element e = elements[j]; if (e.Kind != F5ElementKind.Button) continue;
-                    bool add = e.Text == "添加", on = e.Text == "开启";
-                    Add(add ? Command.Add : on ? Command.Enable : Command.Disable, add ? (int)list : i, 0, e.Rect, e.Text,
-                        !add && laidOutValue.Enabled(action) == on, laidOutEnabled);
-                }
-                if (i != 0) BuildCards(list, ref y);
-            }
-            var rows = new F5RowLayout(elements, shell.Layout.TextSize);
-            rows.TextLines("启用后，名单提交会影响已有库存。", view.X + 8, ref y, view.Width - 16, .63f);
-            rows.TextLines("点选图标可替换或移除；悬停查看名称。", view.X + 8, ref y, view.Width - 16, .63f);
-            // Variable error text does not enter the fixed-label metric cache.
-            if (message != null) y += renderer.RowHeight * 2;
-            shell.Layout.SetItemsContentHeight(y - view.Y + shell.Scroll); shell.ClampScroll();
-            if (laidOutScroll != shell.Scroll) { dirty = true; BuildIfNeeded(); }
-        }
-        private void BuildCards(ItemListKind list, ref float y)
-        {
-            IReadOnlyList<int> types = Types(laidOutValue, list);
-            if (types.Count == 0) { if (editList == list) { editList = null; editing = 0; } return; }
-            const float card = 40, gap = 4;
-            int columns = Math.Max(1, (int)((view.Width - 16 + gap) / (card + gap)));
-            int firstRow = Math.Max(0, (int)Math.Floor((view.Y - y) / (card + gap)));
-            int lastRow = Math.Min((types.Count - 1) / columns, (int)Math.Floor((view.Bottom - y) / (card + gap)));
-            for (int row = firstRow; row <= lastRow; row++)
-                for (int column = 0; column < columns; column++)
-                {
-                    int index = row * columns + column; if (index >= types.Count) break;
-                    Add(Command.Edit, (int)list, types[index], new F5Rect(view.X + 8 + column * (card + gap), y + row * (card + gap), card, card), "",
-                        editList == list && editing == types[index], laidOutEnabled);
-                }
-            y += ((types.Count + columns - 1) / columns) * (card + gap) + 2;
-
-        }
-
-        private void BuildPopup()
-        {
-            float row = renderer.RowHeight;
-            Add(Command.Cancel, 0, 0, new F5Rect(popup.Right - 108, popup.Bottom - row - 10, 96, row), "取消");
-            if (editing != 0)
-            {
-                Add(Command.Replace, (int)editList.Value, editing, new F5Rect(popup.X + 12, popup.Y + row * 2, 70, row), "\u66ff\u6362", enabled: ControlsEnabled);
-                Add(Command.Remove, (int)editList.Value, editing, new F5Rect(popup.X + 86, popup.Y + row * 2, 70, row), "\u79fb\u9664", enabled: ControlsEnabled);
-                return;
-            }
-            if (!picker.HasValue) return;
-            Add(Command.Refresh, 0, 0, new F5Rect(popup.Right - 136, popup.Y + row + 4, 124, row), "刷新背包");
-            if (replacing == 0) Add(Command.Confirm, 0, 0, new F5Rect(popup.X + 12, popup.Bottom - row - 10, 132, row), "确定添加", enabled: selected.Count != 0);
-            int first = Math.Max(0, (int)(pickerScroll / row));
-            int last = Math.Min(candidates.Length - 1, (int)((pickerScroll + pickerView.Height) / row));
-            for (int i = first; i <= last; i++)
-                Add(Command.Select, 0, candidates[i], new F5Rect(pickerView.X, pickerView.Y + i * row - pickerScroll, pickerView.Width, row - 2),
-                    Lang.GetItemNameValue(candidates[i]), selected.Contains(candidates[i]));
-        }
+        private F5Rect OnScreen(F5Rect rect) { return rect.Offset(view.X, view.Y - shell.Scroll); }
         internal void Draw()
         {
             if (!ready || !shell.Visible || shell.Page != 0) return;
-            if (Modal)
+            renderer.Pass(matrix, view, () =>
             {
-                renderer.Pass(matrix, popup, () =>
+                foreach (var e in elements)
+                { if (e.Kind == F5ElementKind.Panel) renderer.Panel(e.Rect); else if (e.Kind == F5ElementKind.Text) renderer.Label(e); }
+                if (Selecting)
                 {
-                    renderer.Panel(popup);
-                    string title = editing != 0 ? Lang.GetItemNameValue(editing) : replacing == 0 ? "批量添加：选好后点确定" : "替换：点选一项立即提交";
-                    renderer.Text(title, new F5Rect(popup.X + 12, popup.Y + 4, popup.Width - 24, renderer.RowHeight), Color.White);
-                    renderer.Text("只保存类型；收藏物也可提供名单类型",
-                        new F5Rect(popup.X + 12, popup.Y + renderer.RowHeight + 4, popup.Width - 160, renderer.RowHeight), Color.LightGray, .63f);
-                    foreach (Control c in controls) if (c.Command != Command.Select) DrawButton(c);
-                });
-                if (picker.HasValue) renderer.Pass(matrix, pickerView, () =>
+                    string list = selection.List == ItemListKind.Sell ? "出售" : "丢弃";
+                    renderer.Text(selection.Target == 0 ? "添加" + list + "物品" : "替换「" + Lang.GetItemNameValue(selection.Target) + "」", OnScreen(layout.Title), Color.White);
+                    if (selection.Target == 0) renderer.Text("已选 " + selection.Count + " 项", OnScreen(layout.Count), Color.LightGray, .63f);
+                    if (layout.Risk.Height > 0) renderer.Text(selection.Target == 0 ? "功能已开启，确认后会影响已有库存。" : "功能已开启，点选候选即替换并影响已有库存。", OnScreen(layout.Risk), Color.Gold, .63f);
+                    if (layout.Empty.Height > 0) renderer.Text(selection.HasInventoryTypes ? "背包中的有效物品类型均已在此名单中。" : "背包中没有有效的非钱币物品。", OnScreen(layout.Empty), Color.Gray, .63f);
+                }
+                foreach (var c in controls)
                 {
-                    if (candidates.Length == 0) renderer.Text("背包中没有可添加的新类型", pickerView, Color.Gray);
-                    foreach (Control c in controls)
+                    if (c.Command == ItemUiCommand.Remove) continue;
+                    bool hover = c.Rect.Contains(pointerPosition.X, pointerPosition.Y) && view.Contains(pointerPosition.X, pointerPosition.Y);
+                    if (c.Command == ItemUiCommand.Replace || c.Command == ItemUiCommand.Select)
                     {
-                        if (c.Command != Command.Select) continue;
-                        DrawButton(c); renderer.Item(c.Type, new F5Rect(c.Rect.X, c.Rect.Y, renderer.RowHeight, renderer.RowHeight));
-                        renderer.Text((c.Selected ? "✓ " : "") + c.Text, new F5Rect(c.Rect.X + renderer.RowHeight + 2, c.Rect.Y, c.Rect.Width - renderer.RowHeight - 8, c.Rect.Height), c.Selected ? Color.LightGreen : Color.White);
+                        renderer.Button(c.Element, false, c.Enabled, false, hover);
+                        renderer.Item(c.Type, c.Rect);
+                        if (c.Selected) renderer.Selection(c.Rect);
+                        if (c.Command == ItemUiCommand.Replace && hover)
+                            renderer.Cross(new F5Rect(c.Rect.Right - ItemsLayout.CrossSize, c.Rect.Y, ItemsLayout.CrossSize, ItemsLayout.CrossSize), c.Enabled);
                     }
-                });
-            }
-            else
+                    else renderer.Button(c.Element, c.Selected, c.Enabled, c.Command == ItemUiCommand.Disable, hover);
+                }
+                if (laidOutMessage != null) renderer.Text(laidOutMessage, OnScreen(layout.Error), Color.Gold, .63f);
+            });
+            var hovered = Hit(pointerPosition);
+            if (hovered != null && hovered.Type != 0)
             {
+                var target = hovered.Command == ItemUiCommand.Remove ? new F5Rect(hovered.Rect.Right - ItemsLayout.CardWidth,
+                    hovered.Rect.Y, ItemsLayout.CardWidth, ItemsLayout.CardHeight) : hovered.Rect;
+                F5Rect hint = Tooltip(target, view, Math.Min(300, view.Width), renderer.RowHeight * 2);
+                if (CoversAction(hint))
+                {
+                    var below = new F5Rect(hint.X, target.Bottom + 8, hint.Width, hint.Height);
+                    hint = below.Bottom <= view.Bottom && !CoversAction(below) ? below : default(F5Rect);
+                }
+                if (hint.Height <= 0) return;
+                string action = hovered.Command == ItemUiCommand.Remove ? "从" + (hovered.Argument == (int)ItemListKind.Sell ? "出售" : "丢弃") + "名单移除" :
+                    hovered.Command == ItemUiCommand.Replace ? "点击替换" : selection.Target == 0 ? "点击选择或取消，确定后添加" : "点击立即替换";
                 renderer.Pass(matrix, view, () =>
                 {
-                    foreach (F5Element e in elements)
-                    {
-                        if (e.Rect.Bottom <= view.Y || e.Rect.Y >= view.Bottom) continue;
-                        if (e.Kind == F5ElementKind.Panel) renderer.Panel(e.Rect);
-                        else if (e.Kind == F5ElementKind.Text) renderer.Label(e);
-                    }
-                    foreach (Control c in controls)
-                    {
-                        if (c.Rect.Bottom <= view.Y || c.Rect.Y >= view.Bottom) continue;
-                        DrawButton(c);
-                        if (c.Command == Command.Edit) renderer.Item(c.Type, c.Rect);
-                    }
-                    if (laidOutMessage != null) renderer.Text(laidOutMessage,
-                        new F5Rect(view.X + 8, view.Y - shell.Scroll + shell.Layout.ContentHeight - renderer.RowHeight * 2, view.Width - 16, renderer.RowHeight * 2), Color.Gold, .63f);
+                    renderer.Panel(hint);
+                    renderer.Text(Lang.GetItemNameValue(hovered.Type), new F5Rect(hint.X + 4, hint.Y, hint.Width - 8, hint.Height / 2), Color.White);
+                    renderer.Text(action, new F5Rect(hint.X + 4, hint.Y + hint.Height / 2, hint.Width - 8, hint.Height / 2), Color.LightGray, .63f);
                 });
-                Control hover = Hit(pointerPosition);
-                if (hover != null && hover.Command == Command.Edit)
-                {
-                    float width = Math.Min(view.Width, 300), height = renderer.RowHeight;
-                    var hint = new F5Rect(Math.Min(view.Right - width, Math.Max(view.X, pointerPosition.X + 12)),
-                        Math.Min(view.Bottom - height, pointerPosition.Y + 18), width, height);
-                    renderer.Pass(matrix, view, () => { renderer.Panel(hint); renderer.Text(Lang.GetItemNameValue(hover.Type), hint, Color.White); });
-                }
             }
         }
-        private void DrawButton(Control c)
-        { renderer.Button(c.Element, c.Selected, c.Enabled, c.Command == Command.Disable, c.Rect.Contains(pointerPosition.X, pointerPosition.Y)); }
-        private static string Status(ItemOperationResult result)
+        private bool CoversAction(F5Rect hint)
         {
-            if (result == null) return "尚无处理结果";
-            switch (result.State)
-            {
-                case ItemOperationState.Completed: return "已处理 " + result.ConfirmedQuantity + " 个" + (result.ConfirmedCopper > 0 ? "；收入 " + result.ConfirmedCopper + " 铜币" : "");
-                case ItemOperationState.PartiallyCompleted: return "已存放 " + result.ConfirmedQuantity + " 个，其余保留";
-                case ItemOperationState.Executing: return "正在等待来源槽回复";
-                case ItemOperationState.NotApplicable: return "本次不适用或没有可接收的附近箱子";
-                case ItemOperationState.Rejected: return "本次未开始，等待条件变化";
-                case ItemOperationState.TimedOut: return "等待超时；相关槽仍受保护，不会重发";
-                case ItemOperationState.Unconfirmed: return "结果未确认；相关槽仍受保护，不会重试";
-                case ItemOperationState.Cancelled: return "已取消";
-                default: return "处理失败；相关槽仍受保护";
-            }
+            foreach (var c in controls)
+                if (c.Type == 0 && hint.X < c.Rect.Right && hint.Right > c.Rect.X && hint.Y < c.Rect.Bottom && hint.Bottom > c.Rect.Y) return true;
+            return false;
+        }
+        internal static F5Rect Tooltip(F5Rect target, F5Rect bounds, float width, float height)
+        {
+            float x = Math.Max(bounds.X, Math.Min(bounds.Right - width, target.X));
+            if (target.Y - height - 8 >= bounds.Y) return new F5Rect(x, target.Y - height - 8, width, height);
+            if (target.Bottom + height + 8 <= bounds.Bottom) return new F5Rect(x, target.Bottom + 8, width, height);
+            return default(F5Rect); // Very short views cannot show a hint without hiding its target.
         }
     }
 }

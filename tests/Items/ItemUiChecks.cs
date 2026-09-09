@@ -39,8 +39,8 @@ namespace Terraria
             }
             var panels = ((System.Collections.Generic.List<F5Element>)typeof(ItemsPresentation).GetField("elements", Fields).GetValue(p)).Where(e => e.Kind == F5ElementKind.Panel).ToArray();
             Check(panels.Length == 3 && panels.All(e => e.Rect.Width == shell.Layout.Viewport.Width), "three complete common row panels");
-            var a = Rect(Control(p, "Edit", (int)ItemListKind.Sell, 2337)); var b = Rect(Control(p, "Edit", (int)ItemListKind.Sell, 2338));
-            Check(a.Y == b.Y && b.X > a.Right && a.Width == 40 && a.Y > panels[1].Rect.Bottom && a.Bottom < panels[2].Rect.Y, "compact sale icons belong between sale and discard rows");
+            var a = Rect(Control(p, "Replace", (int)ItemListKind.Sell, 2337)); var b = Rect(Control(p, "Replace", (int)ItemListKind.Sell, 2338));
+            Check(a.Y == b.Y && b.X > a.Right && a.Width > a.Height && a.Y > panels[1].Rect.Bottom && a.Bottom < panels[2].Rect.Y, "compact sale icons belong between sale and discard rows");
             int builds = p.LayoutBuildCount; for (int i = 0; i < 100; i++) prepare(); Check(p.LayoutBuildCount == builds, "stable frames do not rebuild controls");
             Click(p, Control(p, "Enable", 1)); prepare(); long revision = host.Preferences.Revision;
             Click(p, Control(p, "Enable", 1)); prepare();
@@ -56,34 +56,92 @@ namespace Terraria
             Main.LocalPlayer.inventory[10] = new Item { type = 8, stack = 4, favorited = true };
             Main.LocalPlayer.inventory[11] = new Item { type = 101, stack = 2 };
             Main.LocalPlayer.inventory[12] = new Item { type = 102, stack = 1 };
-            var add = Control(p, "Add", (int)ItemListKind.Sell); Pointer(p, add, true); prepare(); Check(!p.Modal, "press alone cannot open picker"); Pointer(p, add, false); prepare();
-            Check(p.Modal && !shell.BeforeLeave(9), "Notes denied leave preserves picker");
+            var add = Control(p, "Add", (int)ItemListKind.Sell); Pointer(p, add, true); prepare(); Check(!p.Selecting, "press alone cannot open picker"); Pointer(p, add, false); prepare();
+            Check(p.Selecting && !shell.BeforeLeave(9), "Notes denied leave preserves picker");
+            var inlineCandidate = Rect(Control(p, "Select", type: 8));
+            Check(inlineCandidate.Width == inlineCandidate.Height && HasControl(p, "Enable", 0), "inline candidate grid retains legal feature controls");
             Click(p, Control(p, "Select", type: 8)); prepare(); Click(p, Control(p, "Select", type: 101)); prepare();
             Check(!host.Preferences.Value.SellTypes.Contains(8), "batch selection remains draft"); Click(p, Control(p, "Confirm")); prepare();
             Check(host.Preferences.Value.SellTypes.Contains(8) && Main.LocalPlayer.inventory[10].stack == 4, "commit only changes type list");
-            Click(p, Control(p, "Edit", (int)ItemListKind.Sell, 8)); prepare(); Click(p, Control(p, "Replace", (int)ItemListKind.Sell, 8)); prepare();
-            Click(p, Control(p, "Select", type: 102)); prepare(); Check(!host.Preferences.Value.SellTypes.Contains(8) && host.Preferences.Value.SellTypes.Contains(102), "explicit edit and replacement");
-            Click(p, Control(p, "Edit", (int)ItemListKind.Sell, 101)); prepare(); Click(p, Control(p, "Remove", (int)ItemListKind.Sell, 101)); prepare();
+            Click(p, Control(p, "Replace", (int)ItemListKind.Sell, 8)); prepare();
+            Click(p, Control(p, "Select", type: 102)); prepare(); Check(!host.Preferences.Value.SellTypes.Contains(8) && host.Preferences.Value.SellTypes.Contains(102), "direct body replacement");
+            Click(p, Control(p, "Remove", (int)ItemListKind.Sell, 101)); prepare();
             Check(!host.Preferences.Value.SellTypes.Contains(101) && host.Preferences.Value.DiscardTypes.Count == 0, "remove only corresponding list entry");
             Click(p, Control(p, "Add", (int)ItemListKind.Discard)); prepare(); Click(p, Control(p, "Select", type: 8)); prepare(); Click(p, Control(p, "Cancel")); prepare();
             Check(host.Preferences.Value.DiscardTypes.Count == 0, "cancel does not submit");
             Click(p, Control(p, "Add", (int)ItemListKind.Discard)); prepare(); Main.CurrentInputTextTakerOverride = null; p.BeforeInput(true);
             Main.keyState = new KeyboardState(Keys.Escape); p.ProcessInput(true, Main.keyState, Vector2.Zero); prepare();
-            Check(!p.Modal && Main.keyState.GetPressedKeys().Length == 0, "Esc closes picker and consumes sample");
+            Check(!p.Selecting && Main.keyState.GetPressedKeys().Length == 0, "Esc closes picker and consumes sample");
             PlayerInput.WritingText = false; p.BeforeInput(true); Check(PlayerInput.WritingText, "Esc tail blocks next mapping");
             p.ProcessInput(true, new KeyboardState(), Vector2.Zero); PlayerInput.WritingText = false;
             host.Change(ItemAutomationSettings.Default.WithTypes(ItemListKind.Sell, Enumerable.Range(1000, 5000))); prepare();
-            Check(((ICollection)typeof(ItemsPresentation).GetField("controls", Fields).GetValue(p)).Count < 180, "only visible cards are constructed");
+            Check(((ICollection)typeof(ItemsPresentation).GetField("controls", Fields).GetValue(p)).Count < 360, "only visible cards are constructed");
             var oldEnable = Control(p, "Enable", 0); Pointer(p, oldEnable, true); shell.ScrollTo(shell.Layout.MaxScroll); Pointer(p, oldEnable, false); prepare();
-            Check(!host.Preferences.Value.StackEnabled && !HasControl(p, "Edit", 1000) && HasControl(p, "Edit", 5999), "scroll cancels pressed command and retires hidden card hits");
+            Check(!host.Preferences.Value.StackEnabled && !HasControl(p, "Replace", 1000) && HasControl(p, "Replace", 5999), "scroll cancels pressed command and retires hidden card hits");
             shell.ScrollTo(0); font = new object(); measure = t => new F5Size(t.Length * 20, 26, -3, 8); prepare();
             Check(Rect(Control(p, "Enable", 0)).Height > 30.1f, "high offset font drives common row height");
             host.Change(ItemAutomationSettings.Default); prepare(); Click(p, Control(p, "Add", (int)ItemListKind.Discard)); prepare(); notesMayLeave = true;
-            Check(shell.BeforeLeave(9) && !p.Modal, "accepted Notes leave cancels draft"); p.Suspend();
+            Check(shell.BeforeLeave(9) && !p.Selecting, "accepted Notes leave cancels draft"); p.Suspend();
             Main.CurrentInputTextTakerOverride = null; PlayerInput.WritingText = false; Main.keyState = new KeyboardState();
-            Console.WriteLine("PASS: Items production geometry, explicit commands, legacy keys inert, picker/edit/cancel, input tails, visible cards and stable-frame cache. No graphics device used.");
+            RunInlineGeometry(host);
+            ItemSelectionChecks.Run(host);
+            Console.WriteLine("PASS: Items production geometry, explicit commands, legacy keys inert, inline selection/cancel, input tails, visible cards and stable-frame cache. No graphics device used.");
         }
         private static F5Rect Rect(object control) { return (F5Rect)control.GetType().GetField("Rect", Fields).GetValue(control); }
+        private static void RunInlineGeometry(HostItems host)
+        {
+            var shell = new F5Interaction { Ready = true }; var p = new ItemsPresentation(host, shell);
+            shell.Update(new F5Input { Active = true, Focused = true, Width = 1280, Height = 720, Scale = 1, F5 = true }); shell.Navigate(0);
+            object font = new object(); Func<string, F5Size> measure = t => new F5Size(t.Length * 18, 24);
+            Action prepare = () => { shell.Layout.Ensure(1280, 720, 1, 0, font, measure); p.PrepareLayout(Matrix.Identity, new Vector2(1280, 720)); };
+            host.Change(ItemAutomationSettings.Default); prepare();
+            var state = (ItemSelection)typeof(ItemsPresentation).GetField("selection", Fields).GetValue(p);
+            var geometry = (ItemsLayout)typeof(ItemsPresentation).GetField("layout", Fields).GetValue(p);
+            float originalDiscardY = Rect(Control(p, "Add", (int)ItemListKind.Discard)).Y;
+            Click(p, Control(p, "Add", (int)ItemListKind.Sell)); prepare();
+            var confirm = Rect(Control(p, "Confirm"));
+            Check(!(bool)Control(p, "Confirm").GetType().GetField("Enabled", Fields).GetValue(Control(p, "Confirm")), "zero selection retains weak inactive confirm");
+            Check(Rect(Control(p, "Add", (int)ItemListKind.Discard)).Y > originalDiscardY && geometry.Header.Y > geometry.RowY[1], "inline content expands under owner and shifts following row");
+            Click(p, Control(p, "Select", type: 8)); prepare();
+            var selectedConfirm = Rect(Control(p, "Confirm"));
+            Check(confirm.X == selectedConfirm.X && confirm.Width == selectedConfirm.Width && state.Count == 1, "count changes do not move confirm");
+            Click(p, Control(p, "Add", (int)ItemListKind.Sell)); prepare(); Check(state.Count == 1, "repeated add keeps pending selection");
+            Click(p, Control(p, "Enable", (int)ItemActionKind.Discard)); prepare();
+            Check(state.Count == 1 && host.Preferences.Value.DiscardEnabled && !host.Preferences.Value.SellTypes.Contains(8), "other row controls remain legal without committing draft");
+            Click(p, Control(p, "Add", (int)ItemListKind.Discard)); prepare();
+            Check(state.List == ItemListKind.Discard && state.Count == 0 && HasControl(p, "Replace", 2337), "one inline region; switching restores previous configured icons");
+            Click(p, Control(p, "Replace", (int)ItemListKind.Sell, 2337)); prepare();
+            Check(state.List == ItemListKind.Sell && state.Target == 2337 && !HasControl(p, "Confirm", 0), "configured body directly switches to replacement with no confirm");
+            Click(p, Control(p, "Cancel")); prepare();
+            var remove = Control(p, "Remove", (int)ItemListKind.Sell, 2337); var body = Rect(Control(p, "Replace", (int)ItemListKind.Sell, 2337));
+            Check(Rect(remove).Width == 18 && Rect(remove).Right == body.Right && Rect(remove).Y == body.Y, "visible cross has bounded top-right hit region");
+            Click(p, remove); prepare(); Check(!p.Selecting && !host.Preferences.Value.SellTypes.Contains(2337) && p.ConsumeLeft, "cross wins over body and consumes release after card shift");
+            Pointer(p, remove, false); prepare(); Check(host.Preferences.Value.SellTypes.Contains(2338) && !p.Selecting, "same gesture cannot activate shifted neighbor");
+            var bounds = shell.Layout.Viewport.Offset(shell.X, shell.Y);
+            var target = new F5Rect(bounds.X + 100, bounds.Y + 4, 50, 34);
+            var hint = ItemsPresentation.Tooltip(target, bounds, 300, 60);
+            Check(hint.Y > target.Bottom && hint.Right <= bounds.Right && hint.Bottom <= bounds.Bottom, "tooltip flips below and stays away from target within bounds");
+            host.Change(ItemAutomationSettings.Default.WithTypes(ItemListKind.Sell, Enumerable.Range(1000, 5000))); prepare(); shell.ScrollTo(700); prepare();
+            float oldScroll = shell.Scroll; font = new object(); measure = t => new F5Size(t.Length * 20, 26, -3, 8); prepare();
+            Check(shell.Scroll == oldScroll, "font reflow does not reset valid dynamic page offset");
+            host.Change(ItemAutomationSettings.Default); prepare(); Check(shell.Scroll == 0 && shell.Layout.MaxScroll == 0, "collapse clamps without invented empty scroll content");
+            shell.Update(new F5Input { Active = true, Focused = true, Width = 800, Height = 220, Scale = 1 });
+            Action small = () => { shell.Layout.Ensure(800, 220, 1, 0, font, measure); p.PrepareLayout(Matrix.Identity, new Vector2(800, 220)); };
+            small(); shell.ScrollTo(geometry.RowY[1]); small();
+            Check(shell.Layout.Viewport.Height == 37, "small viewport uses real common geometry");
+            Click(p, Control(p, "Add", (int)ItemListKind.Sell)); small();
+            Check(p.Selecting && shell.Layout.MaxScroll > 0, "small view opens inline selector using main scroll");
+            shell.ScrollTo(geometry.Header.Bottom + 4); small();
+            Click(p, Control(p, "Select", type: 8)); small(); Check(state.Count == 1, "small view candidate click updates draft");
+            var clippedCandidate = Control(p, "Select", type: 8); float kept = shell.Scroll;
+            shell.ScrollTo(geometry.Header.Y); small();
+            Pointer(p, clippedCandidate, true); Pointer(p, clippedCandidate, false); small();
+            Check(state.Count == 1, "old geometry outside small viewport cannot toggle selection");
+            shell.ScrollTo(kept); small(); Check(state.Count == 1 && p.Selecting, "ordinary small-view scroll preserves valid selection");
+            p.BeforeInput(true); p.ProcessInput(true, new KeyboardState(Keys.Escape), Vector2.Zero); small();
+            Check(!p.Selecting, "Esc cancels from actual small viewport");
+            p.Suspend(); Main.CurrentInputTextTakerOverride = null; PlayerInput.WritingText = false;
+        }
         internal static void Run(HostItems host, string content = null, string output = null)
         {
             using (var graphics = new F5FixtureGraphics())
@@ -103,14 +161,14 @@ namespace Terraria
                 Control(presentation, "Enable", (int)ItemActionKind.Stack);
                 Control(presentation, "Disable", (int)ItemActionKind.Stack);
                 object add = Control(presentation, "Add", (int)ItemListKind.Sell);
-                Pointer(presentation, add, true); Check(!presentation.Modal, "picker opens on release only");
+                Pointer(presentation, add, true); Check(!presentation.Selecting, "picker opens on release only");
                 Pointer(presentation, add, false); prepare();
-                Check(presentation.Modal && !host.Preferences.Value.SellTypes.Contains(8), "picker draft does not change running list");
+                Check(presentation.Selecting && !host.Preferences.Value.SellTypes.Contains(8), "picker draft does not change running list");
                 Check(HasControl(presentation, "Select", 8) && !HasControl(presentation, "Select", 71) && !HasControl(presentation, "Select", 100), "favorite supplies type; coins and duplicates excluded");
                 Click(presentation, Control(presentation, "Select", type: 8)); prepare();
                 Click(presentation, Control(presentation, "Select", type: 101)); prepare();
                 Check(!host.Preferences.Value.SellTypes.Contains(8), "multi-select stays draft");
-                Check(!shell.BeforeLeave(9) && presentation.Modal, "existing denied navigation callback preserves draft");
+                Check(!shell.BeforeLeave(9) && presentation.Selecting, "existing denied navigation callback preserves draft");
                 Click(presentation, Control(presentation, "Confirm")); prepare();
                 Check(host.Preferences.Value.SellTypes.SequenceEqual(new[] { 8, 100, 101 }) && Main.LocalPlayer.inventory[10].stack == 4, "confirm commits types without acting on representative items");
                 Click(presentation, Control(presentation, "Add", (int)ItemListKind.Discard)); prepare();
@@ -118,38 +176,32 @@ namespace Terraria
                 Click(presentation, Control(presentation, "Cancel")); prepare();
                 Check(host.Preferences.Value.DiscardTypes.Count == 0, "cancel drops draft");
                 Main.LocalPlayer.inventory[12] = new Item { type = 102, stack = 1 };
-                Click(presentation, Control(presentation, "Edit", (int)ItemListKind.Sell, 100)); prepare();
                 Click(presentation, Control(presentation, "Replace", (int)ItemListKind.Sell, 100)); prepare();
                 Click(presentation, Control(presentation, "Select", type: 102)); prepare();
                 Check(host.Preferences.Value.SellTypes.SequenceEqual(new[] { 8, 101, 102 }), "replace commits exactly one type");
-                Click(presentation, Control(presentation, "Edit", (int)ItemListKind.Sell, 101)); prepare();
                 Click(presentation, Control(presentation, "Remove", (int)ItemListKind.Sell, 101)); prepare();
                 Check(host.Preferences.Value.SellTypes.SequenceEqual(new[] { 8, 102 }), "remove changes only selected list member");
                 Click(presentation, Control(presentation, "Add", (int)ItemListKind.Discard)); prepare();
                 Main.CurrentInputTextTakerOverride = null; presentation.BeforeInput(true);
                 bool inventoryTriggered = !PlayerInput.WritingText; PlayerInput.WritingText = false;
                 Main.keyState = new KeyboardState(Keys.Escape); presentation.ProcessInput(true, Main.keyState, Vector2.Zero); prepare();
-                Check(!inventoryTriggered && !presentation.Modal && Main.keyState.GetPressedKeys().Length == 0, "Esc cancels picker without native inventory action");
+                Check(!inventoryTriggered && !presentation.Selecting && Main.keyState.GetPressedKeys().Length == 0, "Esc cancels picker without native inventory action");
                 Main.CurrentInputTextTakerOverride = null; presentation.BeforeInput(true);
                 Check(PlayerInput.WritingText, "held Esc tail blocks next original input mapping");
                 PlayerInput.WritingText = false; Main.keyState = new KeyboardState(); presentation.ProcessInput(true, Main.keyState, Vector2.Zero); prepare();
                 Main.CurrentInputTextTakerOverride = null; presentation.BeforeInput(true);
                 notesMayLeave = true;
                 Click(presentation, Control(presentation, "Add", (int)ItemListKind.Discard)); prepare();
-                Check(shell.BeforeLeave(9) && !presentation.Modal, "accepted leave cancels picker without replacing Notes gate");
+                Check(shell.BeforeLeave(9) && !presentation.Selecting, "accepted leave cancels picker without replacing Notes gate");
                 prepare();
                 Draw(graphics, shellRenderer, shell, presentation, null);
                 // A taller offset font and skin replacement use the same real
                 // draw pass, clipping, texture ownership and input rectangles.
                 FontAssets.MouseText = graphics.Asset("item-offset-font", graphics.CreateFont(12, 26, -3, 8, 39)); prepare();
                 Draw(graphics, shellRenderer, shell, presentation, null);
-                // The main page remains usable even when the picker would be
-                // too short at a legal small logical viewport and tall font.
-                presentation.Prepare(true, Matrix.Identity, new Vector2(800, 220));
-                Check(!presentation.Modal, "small viewport preserves ordinary page"); prepare();
                 ItemAutomationSettings beforeLongList = host.Preferences.Value;
                 host.Change(beforeLongList.WithTypes(ItemListKind.Sell, Enumerable.Range(1000, 5000))); prepare();
-                Check(((ICollection)typeof(ItemsPresentation).GetField("controls", Fields).GetValue(presentation)).Count < 180, "large valid list builds only visible controls");
+                Check(((ICollection)typeof(ItemsPresentation).GetField("controls", Fields).GetValue(presentation)).Count < 360, "large valid list builds only visible controls");
                 shell.ScrollTo(shell.Layout.MaxScroll); prepare(); Draw(graphics, shellRenderer, shell, presentation, null);
                 host.Change(beforeLongList); shell.ScrollTo(0); prepare();
                 if (content != null)
@@ -161,21 +213,30 @@ namespace Terraria
                         FontAssets.MouseText = graphics.Asset("actual-item-font", Read<DynamicSpriteFont>(reader, Path.Combine(content, "Fonts/Mouse_Text.xnb")));
                         TextureAssets.InventoryBack = graphics.Asset("actual-item-skin", skin);
                         var icons = new System.Collections.Generic.List<Texture2D>();
-                        foreach (int type in new[] { 8, 100, 101, 102, 2337, 2338, 2339 }.Concat(Enumerable.Range(1000, 16)))
+                        foreach (int type in new[] { 8, 100, 101, 102, 2337, 2338, 2339 }.Concat(Enumerable.Range(1000, 180)))
                         {
                             var texture = Read<Texture2D>(reader, Path.Combine(content, "Images/Item_" + type + ".xnb"));
                             icons.Add(texture); TextureAssets.Item[type] = graphics.Asset("actual-item-" + type, texture);
                         }
                         host.Change(ItemAutomationSettings.Default); shell.Navigate(9); prepare();
                         Draw(graphics, shellRenderer, shell, presentation, Path.Combine(output, "information-original.png"));
-                        shell.Navigate(0); prepare(); Draw(graphics, shellRenderer, shell, presentation, Path.Combine(output, "items-original.png"));
-                        Click(presentation, Control(presentation, "Edit", (int)ItemListKind.Sell, 2337)); prepare();
-                        Draw(graphics, shellRenderer, shell, presentation, Path.Combine(output, "items-edit.png"));
+                        shell.Navigate(0); prepare(); presentation.ProcessInput(true, new KeyboardState(), Vector2.Zero);
+                        Draw(graphics, shellRenderer, shell, presentation, Path.Combine(output, "items-original-short-scrollbar.png"));
+                        Pointer(presentation, Control(presentation, "Replace", (int)ItemListKind.Sell, 2337), false); prepare();
+                        Draw(graphics, shellRenderer, shell, presentation, Path.Combine(output, "items-body-hover.png"));
+                        Pointer(presentation, Control(presentation, "Remove", (int)ItemListKind.Sell, 2337), false); prepare();
+                        Draw(graphics, shellRenderer, shell, presentation, Path.Combine(output, "items-remove-hover.png"));
+                        Click(presentation, Control(presentation, "Replace", (int)ItemListKind.Sell, 2337)); prepare();
+                        Draw(graphics, shellRenderer, shell, presentation, Path.Combine(output, "items-inline-replace.png"));
                         Click(presentation, Control(presentation, "Cancel")); prepare();
-                        host.Change(ItemAutomationSettings.Default.WithTypes(ItemListKind.Sell, Enumerable.Range(1000, 16).Concat(new[] { 2337, 2338, 2339 }))); prepare();
+                        host.Change(ItemAutomationSettings.Default.WithTypes(ItemListKind.Sell, Enumerable.Range(1000, 180).Concat(new[] { 2337, 2338, 2339 }))); prepare();
+                        shell.ScrollTo(180); prepare();
                         Draw(graphics, shellRenderer, shell, presentation, Path.Combine(output, "items-long-list.png"));
+                        host.Change(ItemAutomationSettings.Default); shell.ScrollTo(0); prepare();
                         Click(presentation, Control(presentation, "Add", (int)ItemListKind.Discard)); prepare();
-                        Draw(graphics, shellRenderer, shell, presentation, Path.Combine(output, "items-picker.png"));
+                        Click(presentation, Control(presentation, "Select", type: 8)); prepare();
+                        Click(presentation, Control(presentation, "Select", type: 101)); prepare();
+                        Draw(graphics, shellRenderer, shell, presentation, Path.Combine(output, "items-inline-multiselect.png"));
                         Click(presentation, Control(presentation, "Cancel")); prepare();
                         host.Change(ItemAutomationSettings.Default); shell.ScrollTo(0); prepare();
                         using (var replacement = new Texture2D(graphics.Device, 32, 32))

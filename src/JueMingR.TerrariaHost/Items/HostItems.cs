@@ -78,16 +78,21 @@ namespace JueMingR.TerrariaHost.Items
             { appliedRevision = snapshot.Revision; Feature.Configure(snapshot.Value); }
         }
         internal bool Change(ItemAutomationSettings value) { return !stopping && preferences.Set(value); }
-        internal int[] PickerTypes(ItemListKind list)
+        internal int[] PickerTypes(ItemListKind list, out bool hasInventoryTypes)
         {
-            var result = new SortedSet<int>(); Player player = World.Player;
+            // Membership and presentation order are separate. One opening reads
+            // legal slots once; no live Item or slot identity escapes to the UI.
+            var result = new List<int>(); var seen = new HashSet<int>(); Player player = World.Player;
+            hasInventoryTypes = false;
             if (player == null) return result.ToArray();
-            var existing = list == ItemListKind.Sell ? Preferences.Value.SellTypes : Preferences.Value.DiscardTypes;
+            var existing = new HashSet<int>(list == ItemListKind.Sell ? Preferences.Value.SellTypes : Preferences.Value.DiscardTypes);
             for (int i = 0; i < 58; i++)
             {
                 if (i >= 50 && i < 54) continue;
                 Item item = player.inventory[i];
-                if (item != null && item.stack > 0 && item.type > 0 && item.type < ItemID.Count && !ItemAutomationSettings.IsCoin(item.type) && !existing.Contains(item.type)) result.Add(item.type);
+                if (item == null || item.stack <= 0 || item.type <= 0 || item.type >= ItemID.Count || ItemAutomationSettings.IsCoin(item.type)) continue;
+                hasInventoryTypes = true;
+                if (seen.Add(item.type) && !existing.Contains(item.type)) result.Add(item.type);
             }
             return result.ToArray();
         }
