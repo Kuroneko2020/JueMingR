@@ -112,10 +112,13 @@ namespace JueMingR.TerrariaHost.Items
             Stroke(new Vector2(r.X + 5, r.Y + 5), new Vector2(r.Right - 5, r.Bottom - 5), color);
             Stroke(new Vector2(r.Right - 5, r.Y + 5), new Vector2(r.X + 5, r.Bottom - 5), color);
         }
+        // Scale is relative to the sampled source, not a destination size.
+        // MagicPixel can be a tall texture (and can be replaced by a pack), so
+        // both primitives must sample one texel before applying logical lengths.
         private void Fill(F5Rect r, Color color)
-        { batch.Draw(pixel, new Vector2(r.X, r.Y), null, color, 0, Vector2.Zero, new Vector2(r.Width, r.Height), SpriteEffects.None, 0); }
+        { batch.Draw(pixel, new Vector2(r.X, r.Y), new Rectangle(0, 0, 1, 1), color, 0, Vector2.Zero, new Vector2(r.Width, r.Height), SpriteEffects.None, 0); }
         private void Stroke(Vector2 a, Vector2 b, Color color)
-        { Vector2 d = b - a; batch.Draw(pixel, a, null, color, (float)Math.Atan2(d.Y, d.X), new Vector2(0, .5f), new Vector2(d.Length(), 2), SpriteEffects.None, 0); }
+        { Vector2 d = b - a; batch.Draw(pixel, a, new Rectangle(0, 0, 1, 1), color, (float)Math.Atan2(d.Y, d.X), new Vector2(0, .5f), new Vector2(d.Length(), 2), SpriteEffects.None, 0); }
         public void Dispose() { if (clipped != null) { clipped.Dispose(); clipped = null; } }
     }
 }

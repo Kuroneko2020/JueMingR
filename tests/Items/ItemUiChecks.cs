@@ -59,7 +59,7 @@ namespace Terraria
             var add = Control(p, "Add", (int)ItemListKind.Sell); Pointer(p, add, true); prepare(); Check(!p.Selecting, "press alone cannot open picker"); Pointer(p, add, false); prepare();
             Check(p.Selecting && !shell.BeforeLeave(9), "Notes denied leave preserves picker");
             var inlineCandidate = Rect(Control(p, "Select", type: 8));
-            Check(inlineCandidate.Width == inlineCandidate.Height && HasControl(p, "Enable", 0), "inline candidate grid retains legal feature controls");
+            Check(inlineCandidate.Width < inlineCandidate.Height && inlineCandidate.Height == 48 && HasControl(p, "Enable", 0), "inline candidate grid retains legal feature controls");
             Click(p, Control(p, "Select", type: 8)); prepare(); Click(p, Control(p, "Select", type: 101)); prepare();
             Check(!host.Preferences.Value.SellTypes.Contains(8), "batch selection remains draft"); Click(p, Control(p, "Confirm")); prepare();
             Check(host.Preferences.Value.SellTypes.Contains(8) && Main.LocalPlayer.inventory[10].stack == 4, "commit only changes type list");
@@ -83,9 +83,44 @@ namespace Terraria
             host.Change(ItemAutomationSettings.Default); prepare(); Click(p, Control(p, "Add", (int)ItemListKind.Discard)); prepare(); notesMayLeave = true;
             Check(shell.BeforeLeave(9) && !p.Selecting, "accepted Notes leave cancels draft"); p.Suspend();
             Main.CurrentInputTextTakerOverride = null; PlayerInput.WritingText = false; Main.keyState = new KeyboardState();
+            RunGridGeometry(host);
             RunInlineGeometry(host);
             ItemSelectionChecks.Run(host);
             Console.WriteLine("PASS: Items production geometry, explicit commands, legacy keys inert, inline selection/cancel, input tails, visible cards and stable-frame cache. No graphics device used.");
+        }
+        private static void RunGridGeometry(HostItems host)
+        {
+            var shell = new F5Interaction { Ready = true };
+            var p = new ItemsPresentation(host, shell); object font = new object();
+            var previous = host.Preferences.Value; var inventory = (Item[])Main.LocalPlayer.inventory.Clone();
+            shell.Update(new F5Input { Active = true, Focused = true, Width = 1920, Height = 1080, Scale = 1, F5 = true }); shell.Navigate(0);
+            Action prepare = () => { shell.Layout.Ensure(1920, 1080, 1, 0, font, t => new F5Size(t.Length * 18, 24)); p.PrepareLayout(Matrix.Identity, new Vector2(1920, 1080)); };
+            try
+            {
+                host.Change(ItemAutomationSettings.Default.WithTypes(ItemListKind.Sell, Enumerable.Range(1000, 20))); prepare();
+                AssertGridRow(p, shell, ItemUiCommand.Replace);
+                Click(p, Control(p, "Replace", (int)ItemListKind.Sell, 1009)); prepare();
+                var selection = (ItemSelection)typeof(ItemsPresentation).GetField("selection", Fields).GetValue(p);
+                Check(p.Selecting && selection.Target == 1009, "new last column opens its own replacement target");
+                Click(p, Control(p, "Cancel")); prepare();
+                for (int i = 0; i < 20; i++) Main.LocalPlayer.inventory[i] = new Item { type = 2000 + i, stack = 1 };
+                Click(p, Control(p, "Add", (int)ItemListKind.Sell)); prepare();
+                AssertGridRow(p, shell, ItemUiCommand.Select);
+                Click(p, Control(p, "Select", type: 2009)); prepare();
+                Check(selection.Count == 1 && selection.IsSelected(2009), "new last candidate column selects its own type");
+            }
+            finally { p.Suspend(); Array.Copy(inventory, Main.LocalPlayer.inventory, inventory.Length); host.Change(previous); }
+        }
+        private static void AssertGridRow(ItemsPresentation p, F5Interaction shell, ItemUiCommand command)
+        {
+            var cards = ((System.Collections.Generic.List<ItemUiControl>)typeof(ItemsPresentation).GetField("controls", Fields).GetValue(p))
+                .Where(c => c.Command == command && c.Argument == (int)ItemListKind.Sell).OrderBy(c => c.Rect.Y).ThenBy(c => c.Rect.X).ToArray();
+            var first = cards.Where(c => c.Rect.Y == cards[0].Rect.Y).ToArray();
+            Check(first.Length == 10, "item grid fills ten columns in the current F5 viewport");
+            var view = shell.Layout.Viewport.Offset(shell.X, shell.Y);
+            Check(first[0].Rect.X == view.X + 8 && first[9].Rect.Right == view.Right - 8, "full row has equal eight-pixel side padding");
+            Check(cards[10].Rect.Y == cards[0].Rect.Bottom + 4, "next row follows the current card height and gap");
+            Check(first.All(c => c.Rect.Width < (command == ItemUiCommand.Select ? 48 : 50)), "only button width is reduced");
         }
         private static F5Rect Rect(object control) { return (F5Rect)control.GetType().GetField("Rect", Fields).GetValue(control); }
         private static void RunInlineGeometry(HostItems host)
@@ -147,6 +182,7 @@ namespace Terraria
             using (var graphics = new F5FixtureGraphics())
             using (var shellRenderer = new F5Renderer())
             {
+                ItemDecorationChecks.Run(graphics, output);
                 var shell = new F5Interaction { Ready = true }; bool notesMayLeave = false;
                 shell.BeforeLeave = page => notesMayLeave;
                 var presentation = new ItemsPresentation(host, shell);
@@ -209,44 +245,58 @@ namespace Terraria
                     var services = new GameServiceContainer(); services.AddService(typeof(IGraphicsDeviceService), new GraphicsService(graphics.Device));
                     using (var reader = new XnbReader(services))
                     using (Texture2D skin = Read<Texture2D>(reader, Path.Combine(content, "Images/Inventory_Back.xnb")))
+                    using (Texture2D pixel = Read<Texture2D>(reader, Path.Combine(content, "Images/MagicPixel.xnb")))
                     {
-                        FontAssets.MouseText = graphics.Asset("actual-item-font", Read<DynamicSpriteFont>(reader, Path.Combine(content, "Fonts/Mouse_Text.xnb")));
-                        TextureAssets.InventoryBack = graphics.Asset("actual-item-skin", skin);
-                        var icons = new System.Collections.Generic.List<Texture2D>();
-                        foreach (int type in new[] { 8, 100, 101, 102, 2337, 2338, 2339 }.Concat(Enumerable.Range(1000, 180)))
+                        var previousPixel = TextureAssets.MagicPixel;
+                        try
                         {
-                            var texture = Read<Texture2D>(reader, Path.Combine(content, "Images/Item_" + type + ".xnb"));
-                            icons.Add(texture); TextureAssets.Item[type] = graphics.Asset("actual-item-" + type, texture);
+                            TextureAssets.MagicPixel = graphics.Asset("actual-item-pixel", pixel);
+                            using (var markers = new ItemsRenderer())
+                            {
+                                markers.Refresh();
+                                ItemDecorationChecks.Draw(graphics, markers, 1, Path.Combine(output, "markers-original-scale1.png"));
+                                ItemDecorationChecks.Draw(graphics, markers, 1.5f, Path.Combine(output, "markers-original-scale1_5.png"));
+                            }
+                            Console.WriteLine("PASS: original MagicPixel " + pixel.Width + "x" + pixel.Height + " marker bounds at 1/1.5 UI scale; page previews use this asset.");
+                            FontAssets.MouseText = graphics.Asset("actual-item-font", Read<DynamicSpriteFont>(reader, Path.Combine(content, "Fonts/Mouse_Text.xnb")));
+                            TextureAssets.InventoryBack = graphics.Asset("actual-item-skin", skin);
+                            var icons = new System.Collections.Generic.List<Texture2D>();
+                            foreach (int type in new[] { 8, 100, 101, 102, 2337, 2338, 2339 }.Concat(Enumerable.Range(1000, 180)))
+                            {
+                                var texture = Read<Texture2D>(reader, Path.Combine(content, "Images/Item_" + type + ".xnb"));
+                                icons.Add(texture); TextureAssets.Item[type] = graphics.Asset("actual-item-" + type, texture);
+                            }
+                            host.Change(ItemAutomationSettings.Default); shell.Navigate(9); prepare();
+                            Draw(graphics, shellRenderer, shell, presentation, Path.Combine(output, "information-original.png"));
+                            shell.Navigate(0); prepare(); presentation.ProcessInput(true, new KeyboardState(), Vector2.Zero);
+                            Draw(graphics, shellRenderer, shell, presentation, Path.Combine(output, "items-original-short-scrollbar.png"));
+                            Pointer(presentation, Control(presentation, "Replace", (int)ItemListKind.Sell, 2337), false); prepare();
+                            Draw(graphics, shellRenderer, shell, presentation, Path.Combine(output, "items-body-hover.png"));
+                            Pointer(presentation, Control(presentation, "Remove", (int)ItemListKind.Sell, 2337), false); prepare();
+                            Draw(graphics, shellRenderer, shell, presentation, Path.Combine(output, "items-remove-hover.png"));
+                            Click(presentation, Control(presentation, "Replace", (int)ItemListKind.Sell, 2337)); prepare();
+                            Draw(graphics, shellRenderer, shell, presentation, Path.Combine(output, "items-inline-replace.png"));
+                            Click(presentation, Control(presentation, "Cancel")); prepare();
+                            host.Change(ItemAutomationSettings.Default.WithTypes(ItemListKind.Sell, Enumerable.Range(1000, 180).Concat(new[] { 2337, 2338, 2339 }))); prepare();
+                            shell.ScrollTo(180); prepare();
+                            Draw(graphics, shellRenderer, shell, presentation, Path.Combine(output, "items-long-list.png"));
+                            host.Change(ItemAutomationSettings.Default); shell.ScrollTo(0); prepare();
+                            Click(presentation, Control(presentation, "Add", (int)ItemListKind.Discard)); prepare();
+                            Click(presentation, Control(presentation, "Select", type: 8)); prepare();
+                            Click(presentation, Control(presentation, "Select", type: 101)); prepare();
+                            Draw(graphics, shellRenderer, shell, presentation, Path.Combine(output, "items-inline-multiselect.png"));
+                            Click(presentation, Control(presentation, "Cancel")); prepare();
+                            host.Change(ItemAutomationSettings.Default); shell.ScrollTo(0); prepare();
+                            using (var replacement = new Texture2D(graphics.Device, 32, 32))
+                            {
+                                replacement.SetData(Enumerable.Repeat(new Color(40, 88, 64), 1024).ToArray());
+                                TextureAssets.InventoryBack = graphics.Asset("synthetic-item-reskin", replacement); prepare();
+                                Draw(graphics, shellRenderer, shell, presentation, Path.Combine(output, "items-reskin.png"));
+                                presentation.Suspend(); Check(!replacement.IsDisposed && !skin.IsDisposed, "borrowed current and old skins survive suspension");
+                            }
+                            foreach (Texture2D icon in icons) icon.Dispose();
                         }
-                        host.Change(ItemAutomationSettings.Default); shell.Navigate(9); prepare();
-                        Draw(graphics, shellRenderer, shell, presentation, Path.Combine(output, "information-original.png"));
-                        shell.Navigate(0); prepare(); presentation.ProcessInput(true, new KeyboardState(), Vector2.Zero);
-                        Draw(graphics, shellRenderer, shell, presentation, Path.Combine(output, "items-original-short-scrollbar.png"));
-                        Pointer(presentation, Control(presentation, "Replace", (int)ItemListKind.Sell, 2337), false); prepare();
-                        Draw(graphics, shellRenderer, shell, presentation, Path.Combine(output, "items-body-hover.png"));
-                        Pointer(presentation, Control(presentation, "Remove", (int)ItemListKind.Sell, 2337), false); prepare();
-                        Draw(graphics, shellRenderer, shell, presentation, Path.Combine(output, "items-remove-hover.png"));
-                        Click(presentation, Control(presentation, "Replace", (int)ItemListKind.Sell, 2337)); prepare();
-                        Draw(graphics, shellRenderer, shell, presentation, Path.Combine(output, "items-inline-replace.png"));
-                        Click(presentation, Control(presentation, "Cancel")); prepare();
-                        host.Change(ItemAutomationSettings.Default.WithTypes(ItemListKind.Sell, Enumerable.Range(1000, 180).Concat(new[] { 2337, 2338, 2339 }))); prepare();
-                        shell.ScrollTo(180); prepare();
-                        Draw(graphics, shellRenderer, shell, presentation, Path.Combine(output, "items-long-list.png"));
-                        host.Change(ItemAutomationSettings.Default); shell.ScrollTo(0); prepare();
-                        Click(presentation, Control(presentation, "Add", (int)ItemListKind.Discard)); prepare();
-                        Click(presentation, Control(presentation, "Select", type: 8)); prepare();
-                        Click(presentation, Control(presentation, "Select", type: 101)); prepare();
-                        Draw(graphics, shellRenderer, shell, presentation, Path.Combine(output, "items-inline-multiselect.png"));
-                        Click(presentation, Control(presentation, "Cancel")); prepare();
-                        host.Change(ItemAutomationSettings.Default); shell.ScrollTo(0); prepare();
-                        using (var replacement = new Texture2D(graphics.Device, 32, 32))
-                        {
-                            replacement.SetData(Enumerable.Repeat(new Color(40, 88, 64), 1024).ToArray());
-                            TextureAssets.InventoryBack = graphics.Asset("synthetic-item-reskin", replacement); prepare();
-                            Draw(graphics, shellRenderer, shell, presentation, Path.Combine(output, "items-reskin.png"));
-                            presentation.Suspend(); Check(!replacement.IsDisposed && !skin.IsDisposed, "borrowed current and old skins survive suspension");
-                        }
-                        foreach (Texture2D icon in icons) icon.Dispose();
+                        finally { TextureAssets.MagicPixel = previousPixel; }
                     }
                 }
                 presentation.Suspend();

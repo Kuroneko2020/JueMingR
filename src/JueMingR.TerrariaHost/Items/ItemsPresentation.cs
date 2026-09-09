@@ -213,7 +213,7 @@ namespace JueMingR.TerrariaHost.Items
                     if (c.Command == ItemUiCommand.Replace || c.Command == ItemUiCommand.Select)
                     {
                         renderer.Button(c.Element, false, c.Enabled, false, hover);
-                        renderer.Item(c.Type, c.Rect);
+                        renderer.Item(c.Type, ItemsLayout.IconBounds(c.Rect, c.Command == ItemUiCommand.Select));
                         if (c.Selected) renderer.Selection(c.Rect);
                         if (c.Command == ItemUiCommand.Replace && hover)
                             renderer.Cross(new F5Rect(c.Rect.Right - ItemsLayout.CrossSize, c.Rect.Y, ItemsLayout.CrossSize, ItemsLayout.CrossSize), c.Enabled);

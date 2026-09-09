@@ -21,7 +21,7 @@ namespace JueMingR.TerrariaHost.Items
     // by both paint and hit testing. No recursive clamp/reflow is needed.
     internal sealed class ItemsLayout
     {
-        internal const float CardWidth = 50, CardHeight = 34, CandidateSize = 48, Gap = 4, CrossSize = 18;
+        internal const float CardWidth = 47, CardHeight = 34, CandidateWidth = 47, CandidateSize = 48, Gap = 4, CrossSize = 18;
         private readonly List<F5Element> rows = new List<F5Element>();
         private readonly List<ItemUiControl> buttons = new List<ItemUiControl>();
         private readonly float[] listY = new float[2];
@@ -41,6 +41,14 @@ namespace JueMingR.TerrariaHost.Items
         private Func<string, float, F5Size> measure;
         private static string[] basic = { "开启", "关闭" }, listed = { "添加", "开启", "关闭" };
         internal static int Columns(float width, float card) { return Math.Max(1, (int)((width - 16 + Gap) / (card + Gap))); }
+        // Button width fits ten columns in the 506px inner grid. Keep the old
+        // icon fitting box centered independently so wide items never shrink
+        // with the surrounding button; their drawn width still fits the card.
+        internal static F5Rect IconBounds(F5Rect card, bool candidate)
+        {
+            float width = candidate ? 48 : 50;
+            return new F5Rect(card.X + (card.Width - width) / 2, card.Y, width, card.Height);
+        }
         internal void Build(float width, float rowHeight, ItemAutomationSettings value, ItemSelection selection,
             bool enabled, bool error, Func<string, float, F5Size> measure)
         {
@@ -94,7 +102,7 @@ namespace JueMingR.TerrariaHost.Items
             { Risk = new F5Rect(8, y, width - 16, row); y += row + Gap; }
             listY[(int)list] = y;
             if (selection.Candidates.Count == 0) { Empty = new F5Rect(8, y, width - 16, row); y += row; }
-            else y += (float)Math.Ceiling(selection.Candidates.Count / (double)Columns(width, CandidateSize)) * (CandidateSize + Gap);
+            else y += (float)Math.Ceiling(selection.Candidates.Count / (double)Columns(width, CandidateWidth)) * (CandidateSize + Gap);
             RevealBottom = Math.Min(y, listY[(int)list] + CandidateSize);
             y += 6;
         }
@@ -112,7 +120,7 @@ namespace JueMingR.TerrariaHost.Items
             {
                 var list = (ItemListKind)i; bool choosing = selection.List == list;
                 var types = choosing ? selection.Candidates : ItemSelection.Types(value, list);
-                float w = choosing ? CandidateSize : CardWidth, h = choosing ? CandidateSize : CardHeight;
+                float w = choosing ? CandidateWidth : CardWidth, h = choosing ? CandidateSize : CardHeight;
                 int columns = Columns(width, w);
                 int first = Math.Max(0, (int)Math.Floor((scroll - listY[i]) / (h + Gap)));
                 int last = Math.Min((types.Count - 1) / columns, (int)Math.Floor((scroll + view.Height - listY[i]) / (h + Gap)));
