@@ -13,7 +13,7 @@ namespace JueMingR.TerrariaHost.Items
 {
     internal sealed class ItemsPresentation
     {
-        private enum Command { Toggle, Bind, ClearBinding, Add, Replace, Remove, Select, Confirm, Cancel, Refresh }
+        private enum Command { Enable, Disable, Add, Replace, Remove, Select, Confirm, Cancel, Refresh }
         private sealed class Control
         {
             internal Command Command;
@@ -27,7 +27,7 @@ namespace JueMingR.TerrariaHost.Items
         private readonly ItemsRenderer renderer = new ItemsRenderer();
         private readonly List<Control> controls = new List<Control>();
         private readonly HashSet<int> selected = new HashSet<int>();
-        private readonly ItemHotkeys keys;
+        private readonly ItemPickerInput input = new ItemPickerInput();
         private ItemListKind? picker;
         private int replacing;
         private int[] candidates = new int[0];
@@ -39,24 +39,24 @@ namespace JueMingR.TerrariaHost.Items
         private bool ready, previousLeft, previousEscape, leftTail, rightTail;
         private int armedGeneration;
         private bool ownPointer;
-        internal bool Modal { get { return picker.HasValue || keys.Capturing.HasValue; } }
+        internal bool Modal { get { return picker.HasValue; } }
         internal bool OwnsPointer { get { return ready && (ownPointer || Modal); } }
-        internal bool OwnsTextToken { get { return keys.OwnsTextToken; } }
+        internal bool OwnsTextToken { get { return input.OwnsTextToken; } }
         internal bool ConsumeLeft { get; private set; }
         internal bool ConsumeRight { get; private set; }
         internal bool ConsumeWheel { get; private set; }
         internal ItemsPresentation(HostItems host, F5Interaction shell)
         {
-            this.host = host; this.shell = shell; keys = new ItemHotkeys(host);
+            this.host = host; this.shell = shell;
             Func<int, bool> prior = shell.BeforeLeave;
             shell.BeforeLeave = page => { if (prior != null && !prior(page)) return false; Suspend(); return true; };
         }
         internal static string Name(ItemActionKind action)
         { return action == ItemActionKind.Stack ? "自动堆叠" : action == ItemActionKind.Sell ? "自动出售" : "自动丢弃"; }
-        internal void BeforeInput(bool active) { keys.BeforeInput(active && shell.Visible && shell.Page == 0, picker.HasValue); }
+        internal void BeforeInput(bool active) { input.BeforeInput(active && shell.Visible && shell.Page == 0 && Modal); }
         internal bool Wheel(float x, float y, int wheel)
         {
-            if (!ready || !shell.Visible || !picker.HasValue) return keys.Capturing.HasValue;
+            if (!ready || !shell.Visible || !picker.HasValue) return false;
             if (pickerView.Contains(x, y) && wheel != 0)
             { pickerScroll = Math.Max(0, Math.Min(MaxPickerScroll, pickerScroll - wheel / 120f * renderer.RowHeight * 2)); armed = null; }
             return true; // Even at either end, the background does not scroll.
@@ -66,9 +66,8 @@ namespace JueMingR.TerrariaHost.Items
         {
             bool focused = FocusHelper.AllowInputProcessing;
             bool left = PlayerInput.MouseInfo.LeftButton == ButtonState.Pressed, right = PlayerInput.MouseInfo.RightButton == ButtonState.Pressed;
-            bool wasCapturing = keys.Capturing.HasValue;
-            bool pageActive = active && shell.Visible && shell.Page == 0;
-            keys.Sample(sample, active, active && !shell.Visible && !Main.blockInput && !PlayerInput.WritingText, focused);
+            bool pageActive = active && focused && shell.Visible && shell.Page == 0;
+            input.Sample(sample, focused);
             ConsumeLeft = leftTail; ConsumeRight = rightTail; ConsumeWheel = false; ownPointer = false;
             if (!pageActive || !ready)
             {
@@ -76,7 +75,7 @@ namespace JueMingR.TerrariaHost.Items
                 if (focused) { if (!left) leftTail = false; if (!right) rightTail = false; }
                 previousLeft = focused ? left : true; previousEscape = focused ? sample.IsKeyDown(Keys.Escape) : true; return;
             }
-            if (!wasCapturing && sample.IsKeyDown(Keys.Escape) && !previousEscape && picker.HasValue) CancelPicker();
+            if (sample.IsKeyDown(Keys.Escape) && !previousEscape && picker.HasValue) CancelPicker();
             previousEscape = sample.IsKeyDown(Keys.Escape);
             ownPointer = Modal || view.Contains(pointer.X, pointer.Y);
             if (ownPointer)
@@ -106,9 +105,8 @@ namespace JueMingR.TerrariaHost.Items
             var list = (ItemListKind)control.Argument;
             switch (control.Command)
             {
-                case Command.Toggle: host.Change(value.WithEnabled(action, !value.Enabled(action))); break;
-                case Command.Bind: keys.Capture(action); armed = null; break;
-                case Command.ClearBinding: host.Change(value.WithBinding(action, 0)); break;
+                case Command.Enable: host.Change(value.WithEnabled(action, true)); break;
+                case Command.Disable: host.Change(value.WithEnabled(action, false)); break;
                 case Command.Add: OpenPicker(list, 0); break;
                 case Command.Replace: OpenPicker(list, control.Type); break;
                 case Command.Remove: host.Change(value.WithTypes(list, Types(value, list).Where(t => t != control.Type))); break;
@@ -123,30 +121,30 @@ namespace JueMingR.TerrariaHost.Items
                     break;
                 case Command.Confirm:
                     host.Change(value.WithTypes(picker.Value, Types(value, picker.Value).Concat(selected))); CancelPicker(); break;
-                case Command.Cancel: CancelPicker(); keys.Cancel(keys.Capturing.HasValue ? "已取消按键录入" : null); break;
+                case Command.Cancel: CancelPicker(); break;
                 case Command.Refresh: candidates = host.PickerTypes(picker.Value); selected.IntersectWith(candidates); pickerScroll = Math.Min(pickerScroll, MaxPickerScroll); break;
             }
         }
         private static IReadOnlyList<int> Types(ItemAutomationSettings value, ItemListKind list)
         { return list == ItemListKind.Sell ? value.SellTypes : value.DiscardTypes; }
         private void OpenPicker(ItemListKind list, int target)
-        { keys.Cancel(); picker = list; replacing = target; candidates = host.PickerTypes(list); selected.Clear(); pickerScroll = 0; armed = null; }
-        private void CancelPicker() { picker = null; selected.Clear(); candidates = new int[0]; replacing = 0; armed = null; }
-        internal void Suspend() { ready = false; ownPointer = false; CancelPicker(); keys.Cancel(); controls.Clear(); armed = null; renderer.Dispose(); }
+        { input.Release(); picker = list; replacing = target; candidates = host.PickerTypes(list); selected.Clear(); pickerScroll = 0; armed = null; }
+        private void CancelPicker() { picker = null; selected.Clear(); candidates = new int[0]; replacing = 0; armed = null; input.Release(); }
+        internal void Suspend() { ready = false; ownPointer = false; CancelPicker(); controls.Clear(); armed = null; renderer.Dispose(); }
         internal void Prepare(bool active, Matrix transform, Vector2 screen)
         {
             matrix = transform; ready = active && shell.Visible && shell.Page == 0 && renderer.Refresh();
             if (!ready) { controls.Clear(); if (!active) { Suspend(); renderer.Dispose(); } return; }
             view = shell.Layout.Viewport.Offset(shell.X, shell.Y);
-            float popupHeight = Math.Min(keys.Capturing.HasValue ? renderer.RowHeight * 3 + 32 : 540, screen.Y / matrix.M11 - 32);
+            float popupHeight = Math.Min(540, screen.Y / matrix.M11 - 32);
             float popupWidth = Math.Min(520, screen.X / matrix.M11 - 32);
             popup = new F5Rect((screen.X / matrix.M11 - popupWidth) / 2, (screen.Y / matrix.M11 - popupHeight) / 2, popupWidth, popupHeight);
             pickerView = new F5Rect(popup.X + 12, popup.Y + renderer.RowHeight * 2 + 12, popup.Width - 24, popup.Height - renderer.RowHeight * 3 - 28);
             // A valid small F5 viewport can be too short for this picker. Close
             // only its draft and keep the rest of F5/Notes usable and recoverable.
-            bool tooSmall = keys.Capturing.HasValue ? popupHeight < renderer.RowHeight * 3 + 24 : pickerView.Height < renderer.RowHeight;
+            bool tooSmall = pickerView.Height < renderer.RowHeight;
             layoutMessage = tooSmall ? "当前视口不足以显示物品弹层；请调小 UI 缩放或增大窗口" : null;
-            if (Modal && layoutMessage != null) { CancelPicker(); keys.Cancel(); }
+            if (Modal && layoutMessage != null) CancelPicker();
             pickerScroll = Math.Min(pickerScroll, MaxPickerScroll);
             Build(false);
         }
@@ -158,7 +156,7 @@ namespace JueMingR.TerrariaHost.Items
         private void Build(bool draw)
         {
             if (!draw) controls.Clear();
-            if (picker.HasValue || keys.Capturing.HasValue) { if (!draw) BuildPopup(); return; }
+            if (picker.HasValue) { if (!draw) BuildPopup(); return; }
             float row = renderer.RowHeight, y = view.Y - shell.Scroll;
             ItemAutomationSettings value = host.Preferences.Value;
             bool enabled = host.Available && !host.Feature.HasFailed && host.Preferences.IsLoaded;
@@ -168,9 +166,8 @@ namespace JueMingR.TerrariaHost.Items
                 if (draw) renderer.Text(Name(action), new F5Rect(view.X, y, 148, row), Color.White);
                 else
                 {
-                    Add(Command.Toggle, i, 0, new F5Rect(view.X + 150, y, 76, row - 3), value.Enabled(action) ? "已开启" : "已关闭", value.Enabled(action), enabled);
-                    Add(Command.Bind, i, 0, new F5Rect(view.X + 234, y, 204, row - 3), ItemHotkeys.Label(value.Binding(action)), enabled: enabled);
-                    Add(Command.ClearBinding, i, 0, new F5Rect(view.X + 446, y, 72, row - 3), "清除", enabled: enabled);
+                    Add(Command.Enable, i, 0, new F5Rect(view.Right - 150, y, 70, row - 3), "开启", value.Enabled(action), enabled);
+                    Add(Command.Disable, i, 0, new F5Rect(view.Right - 76, y, 70, row - 3), "关闭", !value.Enabled(action), enabled);
                 }
                 y += row;
                 ItemOperationResult result = host.Feature.LastResult(action);
@@ -214,7 +211,7 @@ namespace JueMingR.TerrariaHost.Items
             if (draw)
             {
                 renderer.Text(host.CapabilityError ?? host.SourceMessage ?? host.PreferenceMessage ?? SaveStatus(), new F5Rect(view.X, y, view.Width, row), Color.Gold, .63f);
-                renderer.Text(layoutMessage ?? keys.Feedback ?? "三项独立保存；同类型可以同时加入两份名单", new F5Rect(view.X, y + row, view.Width, row), Color.LightGray, .63f);
+                renderer.Text(layoutMessage ?? "三项独立保存；同类型可以同时加入两份名单", new F5Rect(view.X, y + row, view.Width, row), Color.LightGray, .63f);
             }
             shell.Layout.SetItemsContentHeight(y + row * 2 - view.Y + shell.Scroll); shell.ClampScroll();
         }
@@ -241,10 +238,10 @@ namespace JueMingR.TerrariaHost.Items
                 renderer.Pass(matrix, popup, () =>
                 {
                     renderer.Panel(popup);
-                    string title = picker.HasValue ? (replacing == 0 ? "批量添加：选好后点确定" : "替换：点选一项立即提交") : "设置" + Name(keys.Capturing.Value) + "主开关键";
+                    string title = replacing == 0 ? "批量添加：选好后点确定" : "替换：点选一项立即提交";
                     renderer.Text(title, new F5Rect(popup.X + 12, popup.Y + 4, popup.Width - 24, renderer.RowHeight), Color.White);
-                    renderer.Text(picker.HasValue ? "只保存类型；收藏物也可提供名单类型" : keys.Feedback,
-                        new F5Rect(popup.X + 12, popup.Y + renderer.RowHeight + 4, popup.Width - (picker.HasValue ? 160 : 24), renderer.RowHeight), Color.LightGray, .63f);
+                    renderer.Text("只保存类型；收藏物也可提供名单类型",
+                        new F5Rect(popup.X + 12, popup.Y + renderer.RowHeight + 4, popup.Width - 160, renderer.RowHeight), Color.LightGray, .63f);
                     foreach (Control c in controls) if (c.Command != Command.Select) renderer.Button(c.Rect, c.Text, c.Selected, c.Enabled);
                 });
                 if (picker.HasValue) renderer.Pass(matrix, pickerView, () =>

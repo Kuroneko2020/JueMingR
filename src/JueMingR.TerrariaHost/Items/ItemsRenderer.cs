@@ -22,7 +22,7 @@ namespace JueMingR.TerrariaHost.Items
         {
             font = FontAssets.MouseText?.Value; pixel = TextureAssets.MagicPixel?.Value; surface = TextureAssets.InventoryBack?.Value;
             if (font == null || pixel == null || pixel.IsDisposed) return false;
-            F5Size size = metrics.Measure(font, "自动出售 未绑定 Ag");
+            F5Size size = metrics.Measure(font, "自动出售 Ag");
             RowHeight = Math.Max(34, size.Height * .75f + 12); return true;
         }
         internal void Pass(Matrix matrix, F5Rect clip, Action draw)

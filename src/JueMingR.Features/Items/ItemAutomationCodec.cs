@@ -17,7 +17,11 @@ namespace JueMingR.Features.Items
         { if (itemCount < 2340 || itemCount > 65536) throw new ArgumentOutOfRangeException(nameof(itemCount)); this.itemCount = itemCount; }
 
         public ItemAutomationSettings Decode(byte[] contents)
+        { int ignored; return Decode(contents, out ignored); }
+
+        public ItemAutomationSettings Decode(byte[] contents, out int sourceVersion)
         {
+            sourceVersion = 0;
             try
             {
                 if (contents == null || contents.Length == 0 || contents.Length > PreferenceJson.MaximumBytes) throw PreferenceJson.Invalid();
@@ -36,10 +40,19 @@ namespace JueMingR.Features.Items
                         foreach (XAttribute attribute in node.Attributes())
                             if (attribute.Name != "type") throw new PreferenceFormatException(PreferenceStatus.UnknownFields, "unknown-item-preference-attribute");
                     if ((string)root.Attribute("type") != "object" || Scalar(root, "format", "string") != "JueMingR.ItemAutomation") throw PreferenceJson.Invalid();
-                    if (Number(root, "version") != 1) throw new PreferenceFormatException(PreferenceStatus.UnsupportedVersion, "unsupported-item-preference-version");
-                    PreferenceJson.ExactFields(root, "format", "version", "stackEnabled", "sellEnabled", "discardEnabled", "sellTypes", "discardTypes", "stackBinding", "sellBinding", "discardBinding");
+                    int version = Number(root, "version");
+                    if (version != 1 && version != 2) throw new PreferenceFormatException(PreferenceStatus.UnsupportedVersion, "unsupported-item-preference-version");
+                    if (version == 1)
+                    {
+                        PreferenceJson.ExactFields(root, "format", "version", "stackEnabled", "sellEnabled", "discardEnabled", "sellTypes", "discardTypes", "stackBinding", "sellBinding", "discardBinding");
+                        // Retired v1 fields have only an Int32 storage shape here.
+                        // No key/chord/conflict semantics survive into preferences.
+                        Number(root, "stackBinding"); Number(root, "sellBinding"); Number(root, "discardBinding");
+                    }
+                    else PreferenceJson.ExactFields(root, "format", "version", "stackEnabled", "sellEnabled", "discardEnabled", "sellTypes", "discardTypes");
+                    sourceVersion = version;
                     return new ItemAutomationSettings(Boolean(root, "stackEnabled"), Boolean(root, "sellEnabled"), Boolean(root, "discardEnabled"),
-                        Types(root, "sellTypes"), Types(root, "discardTypes"), Number(root, "stackBinding"), Number(root, "sellBinding"), Number(root, "discardBinding"));
+                        Types(root, "sellTypes"), Types(root, "discardTypes"));
                 }
             }
             catch (PreferenceFormatException) { throw; }
@@ -49,10 +62,9 @@ namespace JueMingR.Features.Items
         {
             if (value == null) throw new ArgumentNullException(nameof(value));
             var root = new XElement("root", new XAttribute("type", "object"), Field("format", "string", "JueMingR.ItemAutomation"),
-                Field("version", "number", 1), Field("stackEnabled", "boolean", value.StackEnabled ? "true" : "false"),
+                Field("version", "number", 2), Field("stackEnabled", "boolean", value.StackEnabled ? "true" : "false"),
                 Field("sellEnabled", "boolean", value.SellEnabled ? "true" : "false"), Field("discardEnabled", "boolean", value.DiscardEnabled ? "true" : "false"),
-                TypeArray("sellTypes", value.SellTypes), TypeArray("discardTypes", value.DiscardTypes),
-                Field("stackBinding", "number", value.StackBinding), Field("sellBinding", "number", value.SellBinding), Field("discardBinding", "number", value.DiscardBinding));
+                TypeArray("sellTypes", value.SellTypes), TypeArray("discardTypes", value.DiscardTypes));
             using (var output = new MemoryStream())
             {
                 using (XmlDictionaryWriter writer = JsonReaderWriterFactory.CreateJsonWriter(output, new UTF8Encoding(false, true), false)) root.WriteTo(writer);

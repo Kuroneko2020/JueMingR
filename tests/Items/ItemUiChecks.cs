@@ -35,6 +35,8 @@ namespace Terraria
                 shell.Update(new F5Input { Width = 1920, Height = 1080, Scale = 1, Active = true, Focused = true, F5 = true }); shell.Navigate(0);
                 Action prepare = () => { shellRenderer.RefreshResources(); shellRenderer.Prepare(shell, 1920, 1080, 1); presentation.Prepare(true, Matrix.Identity, new Vector2(1920, 1080)); };
                 prepare();
+                Control(presentation, "Enable", (int)ItemActionKind.Stack);
+                Control(presentation, "Disable", (int)ItemActionKind.Stack);
                 object add = Control(presentation, "Add", (int)ItemListKind.Sell);
                 Pointer(presentation, add, true); Check(!presentation.Modal, "picker opens on release only");
                 Pointer(presentation, add, false); prepare();
@@ -56,15 +58,6 @@ namespace Terraria
                 Check(host.Preferences.Value.SellTypes.SequenceEqual(new[] { 8, 101, 102 }), "replace commits exactly one type");
                 Click(presentation, Control(presentation, "Remove", (int)ItemListKind.Sell, 101)); prepare();
                 Check(host.Preferences.Value.SellTypes.SequenceEqual(new[] { 8, 102 }), "remove changes only selected list member");
-                Click(presentation, Control(presentation, "Bind", (int)ItemActionKind.Stack)); prepare(); presentation.BeforeInput(true);
-                Main.keyState = new KeyboardState(Keys.F9); presentation.ProcessInput(true, Main.keyState, Vector2.Zero); prepare();
-                Check(host.Preferences.Value.Binding(ItemActionKind.Stack) == (int)Keys.F9 && Main.keyState.GetPressedKeys().Length == 0, "capture saves real key and consumes native sample");
-                Main.keyState = new KeyboardState(); presentation.ProcessInput(true, Main.keyState, Vector2.Zero); prepare();
-                Click(presentation, Control(presentation, "ClearBinding", (int)ItemActionKind.Stack)); prepare();
-                Check(host.Preferences.Value.Binding(ItemActionKind.Stack) == 0, "clear binding is a real command");
-                Click(presentation, Control(presentation, "Bind", (int)ItemActionKind.Stack)); prepare();
-                Click(presentation, Control(presentation, "Cancel")); prepare();
-                Check(!presentation.Modal, "capture popup cancel can be hit in popup coordinates");
                 Click(presentation, Control(presentation, "Add", (int)ItemListKind.Discard)); prepare();
                 Main.CurrentInputTextTakerOverride = null; presentation.BeforeInput(true);
                 bool inventoryTriggered = !PlayerInput.WritingText; PlayerInput.WritingText = false;
@@ -112,9 +105,6 @@ namespace Terraria
                         Draw(graphics, shellRenderer, shell, presentation, Path.Combine(output, "items-picker.png"));
                         Click(presentation, Control(presentation, "Cancel")); prepare();
                         shell.ScrollTo(0); prepare();
-                        Click(presentation, Control(presentation, "Bind", (int)ItemActionKind.Stack)); prepare();
-                        Draw(graphics, shellRenderer, shell, presentation, Path.Combine(output, "items-keybinding.png"));
-                        Click(presentation, Control(presentation, "Cancel")); prepare();
                         using (var replacement = new Texture2D(graphics.Device, 32, 32))
                         {
                             replacement.SetData(Enumerable.Repeat(new Color(40, 88, 64), 1024).ToArray());

@@ -6,7 +6,7 @@ using System.Linq;
 using System.Threading;
 using HarmonyLib;
 using JueMingR.Features.Items;
-using JueMingR.Infrastructure.Settings;
+using JueMingR.Infrastructure.Storage;
 using JueMingR.Platform.Items;
 using JueMingR.Platform.Runtime;
 using JueMingR.Platform.Settings;
@@ -47,8 +47,9 @@ namespace JueMingR.TerrariaHost.Items
             Storage = new ItemNearbyStorage(World, Ownership);
             Operations.Store = Storage.Execute;
             Feature = new ItemAutomationFeature(World, Operations);
-            preferences = new PreferenceDocument<ItemAutomationSettings>(new FilePreferenceStorage(Path.Combine(verifiedGameDirectory,
-                "JueMingRData", "config", "features", "item-automation.json")), new ItemAutomationCodec(ItemID.Count), ItemAutomationSettings.Default);
+            var file = new AtomicFileDocument(Path.Combine(verifiedGameDirectory,
+                "JueMingRData", "config", "features", "item-automation.json"), 65536, true, ".schema1-original");
+            preferences = new PreferenceDocument<ItemAutomationSettings>(file, new RetiringItemCodec(file), ItemAutomationSettings.Default);
             var harmony = new Harmony("JueMingR.Items");
             try
             {
@@ -132,5 +133,22 @@ namespace JueMingR.TerrariaHost.Items
         }
         private void OnExit(object sender, EventArgs args)
         { AppDomain.CurrentDomain.ProcessExit -= OnExit; stopping = true; preferences.Stop(750); }
+
+        private sealed class RetiringItemCodec : IPreferenceCodec<ItemAutomationSettings>
+        {
+            private readonly AtomicFileDocument file;
+            private readonly ItemAutomationCodec codec = new ItemAutomationCodec(ItemID.Count);
+            internal RetiringItemCodec(AtomicFileDocument file) { this.file = file; }
+            public ItemAutomationSettings Decode(byte[] contents)
+            {
+                int version;
+                ItemAutomationSettings value = codec.Decode(contents, out version);
+                // Validation precedes retention; loading only marks the source.
+                // First real save archives exact v1 bytes before atomic replacement.
+                if (version == 1) file.RetainLoadedSource();
+                return value;
+            }
+            public byte[] Encode(ItemAutomationSettings value) { return codec.Encode(value); }
+        }
     }
 }

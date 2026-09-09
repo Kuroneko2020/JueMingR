@@ -70,10 +70,6 @@ namespace Terraria
             bool threw = false;
             try { ItemSlot.RightClick(Main.LocalPlayer.inventory, 0, 10); } catch (InvalidOperationException) { threw = true; }
             Check(threw && !host.Feature.HasFailed && host.World.CausalDepth == 0 && Main.LocalPlayer.inventory.Any(i => i.type == 8) && host.Ownership.IsProtected(10) && !host.Ownership.IsProtected(20), "partial native grant preserved with only affected source range protected");
-            host.Change(host.Preferences.Value.WithBinding(ItemActionKind.Discard, (int)Keys.F6));
-            ItemAutomationSettings beforeFailureKey = host.Preferences.Value; host.FailClosed(); var stoppedKey = new ItemHotkeys(host);
-            stoppedKey.Sample(new KeyboardState(), true, true, true); stoppedKey.Sample(new KeyboardState(Keys.F6), true, true, true);
-            Check(host.Preferences.Value.Equals(beforeFailureKey), "terminal feature failure cannot report an enabled toggle or change its preference");
             Console.WriteLine("PASS: item host fixture transactions, causal sources, selective requests, receipts, conflict guards and key focus. Not real-game/server acceptance.");
         }
         private static void NewSession(int mode)
@@ -87,6 +83,7 @@ namespace Terraria
         }
         private static void PreferenceIsolation()
         {
+            RetiredConfiguration();
             var codec = new ItemAutomationCodec(ID.ItemID.Count);
             string path = Path.Combine(root, "isolated-preferences", "items.json"); Directory.CreateDirectory(Path.GetDirectoryName(path));
             var document = new PreferenceDocument<ItemAutomationSettings>(new FilePreferenceStorage(path), codec, ItemAutomationSettings.Default);
@@ -99,7 +96,7 @@ namespace Terraria
             documents.Add(restored);
             Wait(() => restored.Snapshot.IsLoaded, "saved item config reload");
             Check(restored.Snapshot.Value.Equals(changed), "three controls/lists survive isolated restart"); restored.Stop(750);
-            foreach (string invalid in new[] { "{", Encoding.UTF8.GetString(codec.Encode(changed)).Replace("\"version\":1", "\"version\":2") })
+            foreach (string invalid in new[] { "{", Encoding.UTF8.GetString(codec.Encode(changed)).Replace("\"version\":2", "\"version\":99") })
             {
                 File.WriteAllText(path, invalid, new UTF8Encoding(false)); byte[] original = File.ReadAllBytes(path);
                 var protectedDocument = new PreferenceDocument<ItemAutomationSettings>(new FilePreferenceStorage(path), codec, ItemAutomationSettings.Default);
@@ -110,11 +107,58 @@ namespace Terraria
                 Check(original.SequenceEqual(File.ReadAllBytes(path)), "explicit temporary setting preserves invalid/future original bytes");
             }
         }
+        private static PreferenceDocument<ItemAutomationSettings> OpenRetiring(string path)
+        {
+            var file = new JueMingR.Infrastructure.Storage.AtomicFileDocument(path, 65536, true, ".schema1-original");
+            var codec = (IPreferenceCodec<ItemAutomationSettings>)Activator.CreateInstance(
+                typeof(HostItems).GetNestedType("RetiringItemCodec", BindingFlags.NonPublic),
+                BindingFlags.Instance | BindingFlags.NonPublic, null, new object[] { file }, null);
+            var document = new PreferenceDocument<ItemAutomationSettings>(file, codec, ItemAutomationSettings.Default);
+            documents.Add(document); Wait(() => document.Snapshot.IsLoaded, "production retiring codec load"); return document;
+        }
+        private static void RetiredConfiguration()
+        {
+            string directory = Path.Combine(root, "retirement"); Directory.CreateDirectory(directory);
+            string path = Path.Combine(directory, "items.json");
+            const string legacy = "{\"format\":\"JueMingR.ItemAutomation\",\"version\":1,\"stackEnabled\":true,\"sellEnabled\":false,\"discardEnabled\":true,\"sellTypes\":[8,100],\"discardTypes\":[101],\"stackBinding\":112,\"sellBinding\":113,\"discardBinding\":114}";
+            File.WriteAllText(path, legacy, new UTF8Encoding(false));
+            var document = OpenRetiring(path);
+            var original = document.Snapshot.Value;
+            Check(original.StackEnabled && !original.SellEnabled && original.DiscardEnabled && original.SellTypes.SequenceEqual(new[] { 8, 100 }) && original.DiscardTypes.SequenceEqual(new[] { 101 }), "legacy booleans and lists preserved");
+            Check(File.ReadAllText(path) == legacy && !File.Exists(path + ".schema1-original"), "load does not migrate or archive user file");
+            Check(!document.Set(original), "repeated explicit set is a no-op");
+            document.Set(original.WithEnabled(ItemActionKind.Sell, true)); Wait(() => document.Snapshot.Status == PreferenceStatus.Saved, "first v2 save");
+            string first = File.ReadAllText(path);
+            Check(first.Contains("\"version\":2") && !first.Contains("Binding") && File.ReadAllText(path + ".schema1-original") == legacy, "first real write retires fields and retains exact original");
+            document.Set(original.WithEnabled(ItemActionKind.Stack, false)); Wait(() => document.Snapshot.Status == PreferenceStatus.Saved, "second v2 save");
+            Check(File.ReadAllText(path + ".schema1-original") == legacy && File.ReadAllText(path + ".bak") == first, "original archive never rotates, backup does");
+            document.Stop(750);
+            var reopened = OpenRetiring(path); Check(!reopened.Snapshot.Value.StackEnabled && reopened.Snapshot.Value.DiscardEnabled, "new version reload"); reopened.Stop(750);
+            foreach (string suffix in new[] { ".bak", ".tmp", ".schema1-original" })
+            {
+                string missing = Path.Combine(directory, "missing" + suffix + ".json"); File.WriteAllText(missing + suffix, legacy);
+                var protectedFile = OpenRetiring(missing); protectedFile.Set(original); protectedFile.Stop(750);
+                Check(!File.Exists(missing) && File.ReadAllText(missing + suffix) == legacy, "recovery materials prevent default replacement: " + suffix);
+            }
+            foreach (string mode in new[] { "conflict", "archive", "temporary", "invalid", "future" })
+            {
+                string guarded = Path.Combine(directory, mode + ".json");
+                string bytes = mode == "invalid" ? legacy.Replace("\"stackBinding\":112", "\"stackBinding\":\"F1\"") : mode == "future" ? legacy.Replace("\"version\":1", "\"version\":99") : legacy;
+                File.WriteAllText(guarded, bytes, new UTF8Encoding(false));
+                if (mode == "archive") File.WriteAllText(guarded + ".schema1-original", "different original");
+                if (mode == "temporary") File.WriteAllText(guarded + ".tmp", "interrupted");
+                var guardedFile = OpenRetiring(guarded);
+                if (mode == "conflict") { bytes = "external change"; File.WriteAllText(guarded, bytes); }
+                guardedFile.Set(original.WithEnabled(ItemActionKind.Sell, true)); guardedFile.Stop(750);
+                Check(File.ReadAllText(guarded) == bytes, "unsafe retirement preserves source: " + mode);
+                Check(!File.Exists(guarded + ".schema1-original") || mode == "archive", "invalid/conflicted file not archived: " + mode);
+            }
+        }
         private static void Wait(Func<bool> ready, string message)
         { for (int i = 0; i < 500 && !ready(); i++) Thread.Sleep(5); Check(ready(), message); }
         private static void Configure(bool stack, bool sell, bool discard, int[] sale = null, int[] trash = null)
         {
-            host.Change(new ItemAutomationSettings(stack, sell, discard, sale ?? new[] { 100 }, trash ?? new[] { 101 }, 0, 0, 0)); host.PollPreferences();
+            host.Change(new ItemAutomationSettings(stack, sell, discard, sale ?? new[] { 100 }, trash ?? new[] { 101 })); host.PollPreferences();
         }
         private static Item Make(int type, int amount, int maximum = 9999) { return new Item { type = type, stack = amount, maxStack = maximum }; }
         private static ItemSlotObservation Observe(int slot)
@@ -282,37 +326,36 @@ namespace Terraria
         }
         private static void UiKeys()
         {
-            NewSession(0); Configure(false, false, false); var key = new ItemHotkeys(host);
-            host.Change(host.Preferences.Value.WithBinding(ItemActionKind.Discard, (int)Keys.F6)); host.PollPreferences();
-            key.Sample(new KeyboardState(), true, true, true); key.Sample(new KeyboardState(Keys.F6), true, true, true);
-            Check(host.Preferences.Value.DiscardEnabled, "main key toggles enabled state");
-            key.Sample(new KeyboardState(Keys.F6), true, true, true); Check(host.Preferences.Value.DiscardEnabled, "held key does not repeat");
-            key.Sample(new KeyboardState(), false, false, false); key.Sample(new KeyboardState(Keys.F6), true, true, true);
-            Check(host.Preferences.Value.DiscardEnabled, "focus return with held key does not toggle");
-            key.Sample(new KeyboardState(), true, true, true); key.Sample(new KeyboardState(Keys.F6), true, true, true);
-            Check(!host.Preferences.Value.DiscardEnabled, "real release rearms key");
-            PlayerInput.CurrentProfile.InputModes[InputMode.Keyboard].KeyStatus.Add("QuickHeal", new System.Collections.Generic.List<string> { "F6" });
-            key.Sample(new KeyboardState(), true, true, true); key.Sample(new KeyboardState(Keys.F6), true, true, true);
-            Check(!host.Preferences.Value.DiscardEnabled, "in-place vanilla binding change suppresses conflicting runtime toggle");
-            PlayerInput.CurrentProfile.InputModes[InputMode.Keyboard].KeyStatus.Clear();
-            foreach (int reserved in new[] { (int)Keys.F7, (int)Keys.F8, (int)Keys.F10, (int)Keys.F11, (int)Keys.F9 | 512 })
-            {
-                host.Change(host.Preferences.Value.WithBinding(ItemActionKind.Discard, reserved));
-                key.Sample(new KeyboardState(), true, true, true);
-                var sample = (reserved & 512) == 0 ? new KeyboardState((Keys)reserved) : new KeyboardState(Keys.F9, Keys.LeftShift);
-                key.Sample(sample, true, true, true); key.Sample(sample, true, true, true);
-                Check(!host.Preferences.Value.DiscardEnabled, "hardcoded native chord must not toggle automatic discard");
-            }
-            host.Change(host.Preferences.Value.WithBinding(ItemActionKind.Stack, (int)Keys.F1).WithBinding(ItemActionKind.Sell, (int)Keys.F2));
-            key.Sample(new KeyboardState(), true, true, true); key.Sample(new KeyboardState(Keys.F1, Keys.F2), true, true, true);
-            Check(host.Preferences.Value.StackEnabled && host.Preferences.Value.SellEnabled, "two independent same-frame keys retain both updates");
-            Main.blockInput = false; key.Capture(ItemActionKind.Stack); key.BeforeInput(true);
-            Check(Main.blockInput, "capture acquires block lease");
-            Main.CurrentInputTextTakerOverride = new object(); key.Sample(new KeyboardState(), false, false, false);
-            Check(!Main.blockInput && Main.CurrentInputTextTakerOverride != null, "focus interruption returns own block lease while preserving foreign token");
-            Main.CurrentInputTextTakerOverride = null; PlayerInput.WritingText = false;
-            var input = new JueMingR.TerrariaHost.F5.F5Input { ModalPointerOwner = true };
-            Check(input.ModalPointerOwner, "fixture exercises modal pointer input contract");
+            var shell = new JueMingR.TerrariaHost.F5.F5Interaction { Ready = true };
+            shell.Update(new JueMingR.TerrariaHost.F5.F5Input { Active = true, Focused = true, Width = 1920, Height = 1080, Scale = 1, F5 = true });
+            shell.Layout.Ensure(1920, 1080, 1, 9, new object(), t => new JueMingR.TerrariaHost.F5.F5Size(t.Length * 18, 24));
+            var nav = shell.Layout.Navigation(0).Offset(shell.X, shell.Y);
+            shell.Update(new JueMingR.TerrariaHost.F5.F5Input { Active = true, Focused = true, Width = 1920, Height = 1080, Scale = 1,
+                X = nav.X + 2, Y = nav.Y + 2, Left = true, ModalPointerOwner = true });
+            Check(shell.Page == 9 && shell.ConsumeLeft, "picker pointer ownership blocks navigation and consumes press");
+            NewSession(0); Configure(false, false, false);
+            var input = new ItemPickerInput();
+            var before = host.Preferences.Value;
+            Main.keyState = new KeyboardState(Keys.F1, Keys.F2, Keys.F6);
+            input.Sample(Main.keyState, true);
+            Check(host.Preferences.Value.Equals(before) && Main.keyState.IsKeyDown(Keys.F6), "no picker means no item key commands or native key consumption");
+            Main.blockInput = false; input.BeforeInput(true);
+            Check(Main.blockInput && input.OwnsTextToken && PlayerInput.WritingText, "picker acquires minimal text/block lease");
+            input.Sample(new KeyboardState(Keys.Escape), true); input.Release();
+            PlayerInput.WritingText = false; input.BeforeInput(false);
+            Check(PlayerInput.WritingText && !Main.blockInput, "released picker retains held key tail, restores block lease");
+            input.Sample(new KeyboardState(), true); PlayerInput.WritingText = false; input.BeforeInput(false);
+            Check(!PlayerInput.WritingText, "real release ends keyboard tail");
+            input.BeforeInput(true); var foreign = new object(); Main.CurrentInputTextTakerOverride = foreign;
+            input.Sample(new KeyboardState(Keys.Escape), false);
+            Check(!Main.blockInput && ReferenceEquals(Main.CurrentInputTextTakerOverride, foreign), "focus interruption preserves foreign token and restores block lease");
+            Main.keyState = new KeyboardState(Keys.A); input.Sample(Main.keyState, true);
+            Check(Main.keyState.IsKeyDown(Keys.A), "picker tail never consumes a foreign text owner sample");
+            Main.CurrentInputTextTakerOverride = null; input.Sample(new KeyboardState(), true);
+            input.BeforeInput(true); input.Sample(new KeyboardState(), true); input.BeforeInput(false);
+            input.Sample(new KeyboardState(), false); PlayerInput.WritingText = false; input.BeforeInput(false);
+            Check(PlayerInput.WritingText, "prefix-before-sample focus loss retains release tail");
+            Main.CurrentInputTextTakerOverride = null; input.Sample(new KeyboardState(), true); PlayerInput.WritingText = false;
         }
         private static void Reply(int slot, int type, int amount)
         {
