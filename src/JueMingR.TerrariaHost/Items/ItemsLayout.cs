@@ -54,7 +54,13 @@ namespace JueMingR.TerrariaHost.Items
         {
             this.width = width; this.value = value; this.selection = selection; this.enabled = enabled; this.measure = measure;
             rows.Clear(); buttons.Clear(); Header = Title = Count = Risk = Empty = Error = default(F5Rect); RevealBottom = 0;
-            var rowLayout = new F5RowLayout(rows, measure); float y = 0;
+            var feedbackOn = measure("提示 开", .7f); var feedbackOff = measure("提示 关", .7f);
+            var feedbackSpace = new F5Size(Math.Max(feedbackOn.Width, feedbackOff.Width), Math.Max(feedbackOn.Height, feedbackOff.Height));
+            // Reserve both toggle states before row sizing/wrapping. These row
+            // button labels are not drawn: Make below keeps the current text's
+            // real metrics/offsets for the shared renderer and centered label.
+            var rowLayout = new F5RowLayout(rows, (text, scale) => text == "提示 开" || text == "提示 关" ? feedbackSpace : measure(text, scale));
+            float y = 0;
             for (int i = 0; i < 3; i++)
             {
                 RowY[i] = y; int start = rows.Count;

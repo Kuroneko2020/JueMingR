@@ -98,8 +98,44 @@ namespace Terraria
             Main.CurrentInputTextTakerOverride = null; PlayerInput.WritingText = false; Main.keyState = new KeyboardState();
             RunGridGeometry(host);
             RunInlineGeometry(host);
+            RunFeedbackGeometry(host);
             ItemSelectionChecks.Run(host);
             Console.WriteLine("PASS: Items production geometry, explicit commands, legacy keys inert, inline selection/cancel, input tails, visible cards and stable-frame cache. No graphics device used.");
+        }
+        private static void RunFeedbackGeometry(HostItems host)
+        {
+            Func<string, float, F5Size> measure = (text, scale) => text == "提示 开" ? new F5Size(45, 20, -2, 3) :
+                text == "提示 关" ? new F5Size(70, 28, -4, 5) : new F5Size(text.Length * 12 * scale, 20 * scale);
+            // At 300px only the wider wording would move the action group
+            // below its title without reserving both states before layout.
+            foreach (float width in new[] { 300f, 522f })
+            {
+                var on = new ItemsLayout(); var off = new ItemsLayout(); var selection = new ItemSelection(host);
+                on.Build(width, 30, ItemAutomationSettings.Default, selection, true, false, measure);
+                off.Build(width, 30, ItemAutomationSettings.Default.WithDiscardFeedbackEnabled(false), selection, true, false, measure);
+                var elements = new System.Collections.Generic.List<F5Element>();
+                var onControls = new System.Collections.Generic.List<ItemUiControl>();
+                var offControls = new System.Collections.Generic.List<ItemUiControl>();
+                var view = new F5Rect(0, 0, width, 3000);
+                on.Project(view, 0, elements, onControls); off.Project(view, 0, elements, offControls);
+                Check(Math.Abs(on.Height - off.Height) < .01f && onControls.Count == offControls.Count,
+                    "unequal feedback wording reserves stable row height and wrap decisions");
+                for (int i = 0; i < onControls.Count; i++)
+                {
+                    var a = onControls[i].Rect; var b = offControls[i].Rect;
+                    Check(Math.Abs(a.X - b.X) < .01f && Math.Abs(a.Y - b.Y) < .01f &&
+                        Math.Abs(a.Width - b.Width) < .01f && Math.Abs(a.Height - b.Height) < .01f,
+                        "unequal feedback wording preserves all action and card hit geometry");
+                }
+                foreach (var control in new[] { onControls.Single(c => c.Command == ItemUiCommand.ToggleDiscardFeedback),
+                    offControls.Single(c => c.Command == ItemUiCommand.ToggleDiscardFeedback) })
+                {
+                    var actual = measure(control.Element.Text, .7f); var label = F5Layout.ButtonLabel(control.Element);
+                    Check(control.Element.TextSize.Width == actual.Width && control.Element.TextSize.OffsetX == actual.OffsetX &&
+                        Math.Abs(label.X + label.Width / 2 - control.Rect.X - control.Rect.Width / 2) < .01f,
+                        "reserved feedback geometry retains actual wording metrics and centered drawing");
+                }
+            }
         }
         private static void RunGridGeometry(HostItems host)
         {
