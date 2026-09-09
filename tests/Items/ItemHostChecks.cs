@@ -24,6 +24,7 @@ namespace Terraria
         private static HostItems host;
         private static SingleFeatureRuntime runtime;
         private static ulong tick;
+        private static bool canStartActions = true;
         private static string root;
         private static readonly List<PreferenceDocument<ItemAutomationSettings>> documents = new List<PreferenceDocument<ItemAutomationSettings>>();
         internal static void Run(string content = null, string output = null, bool graphics = true)
@@ -56,13 +57,13 @@ namespace Terraria
         {
             new Main(); Main.gameMenu = false; Main.LocalPlayer = new Player { active = true };
             runtime = new SingleFeatureRuntime(new ItemSessionProbe(), new Idle());
-            host = new HostItems(root, runtime);
+            host = new HostItems(root, runtime, () => canStartActions);
             documents.Add((PreferenceDocument<ItemAutomationSettings>)typeof(HostItems).GetField("preferences", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(host));
             Check(host.Available, "all native hooks admitted: " + host.SetupError);
             runtime.AddFeature(host); runtime.Update(tick++);
             for (int i = 0; i < 200 && !host.Preferences.IsLoaded; i++) { Thread.Sleep(5); host.PollPreferences(); }
             Check(host.Preferences.IsLoaded, "isolated preferences load");
-            PreferenceIsolation(); Transactions(); SelectionAndSources(); SourceEdges(); CapacityBackoff(); StorageBoundaries(); NetworkOwnership(); Guards(); UiKeys();
+            PreferenceIsolation(); Transactions(); SelectionAndSources(); SourceEdges(); UnifiedSourceAndFocus(); RejectedSaleMembers(); CapacityBackoff(); StorageBoundaries(); NetworkOwnership(); Guards(); UiKeys();
             ItemUiChecks.RunLayout(host);
             if (graphics) ItemUiChecks.Run(host, content, output);
             // Partial original side effects protect their finite affected range.
@@ -80,7 +81,7 @@ namespace Terraria
             Main.instance.shop[1] = new Chest(); Main.PendingInventory = false; Main.NativeVoidPending = false; Main.ServerSideCharacter = false;
             Main.shopSellbackHelper.Count = 0; Main.projectile = new Projectile[1000]; NearbyChests.Targets.Clear();
             PlayerInput.MouseInfo = new MouseState(); Main.mouseLeft = Main.mouseRight = false; Main.cursorOverride = 0;
-            FocusHelper.IsSelectedApplication = true; runtime.Update(tick++);
+            canStartActions = true; FocusHelper.IsSelectedApplication = true; runtime.Update(tick++);
         }
         private static void PreferenceIsolation()
         {
@@ -181,7 +182,7 @@ namespace Terraria
             player.inventory[10] = Make(100, 5); player.RejectSale = true;
             ItemInventoryObservation before; host.World.TryObserve(out before);
             sold = host.Operations.Execute(Sale(10)); ItemInventoryObservation after; host.World.TryObserve(out after);
-            Check(sold.State == ItemOperationState.Rejected && after.Revision == before.Revision && after.Slots[10].Instance != before.Slots[10].Instance, "equivalent 58-slot cloning refreshes identities without retry revision");
+            Check(sold.State == ItemOperationState.Rejected && after.Revision == before.Revision && after.Slots[10].Instance == before.Slots[10].Instance, "verified synchronous native rejection preserves equivalent 58-slot member identities without retry revision");
             host.World.ManualSlot = 11; host.World.ManualItem = player.inventory[11];
             int calls = player.SellCalls; sold = host.Operations.Execute(new SellItemRequest(runtime.Generation, after.ShopIdentity, after.Slots[10]));
             Check(sold.State == ItemOperationState.Rejected && player.SellCalls == calls, "sale honors entire manual inventory range");
@@ -197,7 +198,79 @@ namespace Terraria
             Main.playerInventory = true; Main.npcShop = 1; player.inventory[10] = Make(100, 1); player.itemAnimation = 10;
             Step(); Check(player.SellCalls == 0, "temporary item-use range prevents sale");
             player.itemAnimation = 0; Step();
-            Check(player.SellCalls == 1 && player.inventory[10].IsAir, "ending temporary use re-evaluates unchanged sale candidate");
+            Check(player.SellCalls == 0, "ending use does not invent a source for old inventory");
+            player.itemAnimation = 10; player.Pickup(new WorldItem { inner = Make(100, 1) }); Step();
+            Check(player.SellCalls == 0, "actual source waits for temporary sale admission gate");
+            player.itemAnimation = 0; Step();
+            Check(player.SellCalls == 1 && player.inventory[10].IsAir, "ending temporary use re-evaluates source-qualified unchanged candidate");
+        }
+        private static void UnifiedSourceAndFocus()
+        {
+            foreach (ItemActionKind action in new[] { ItemActionKind.Sell, ItemActionKind.Discard, ItemActionKind.Stack })
+            {
+                NewSession(0); Configure(action == ItemActionKind.Stack, action == ItemActionKind.Sell, action == ItemActionKind.Discard, new[] { 8 }, new[] { 8 });
+                Player p = Main.LocalPlayer; Main.playerInventory = true; Main.npcShop = 1;
+                p.inventory[10] = Make(8, 20); p.inventory[11] = Make(8, 9); p.inventory[11].favorited = true;
+                var chest = new Chest(); chest.item[0] = Make(8, 1); NearbyChests.Targets.Add(new PositionedChest { chest = chest });
+                Step(); Check(p.inventory[10].stack == 20, "only-enabled action cannot process old inventory: " + action);
+                canStartActions = false; p.Pickup(new WorldItem { inner = Make(8, 3) }); Step();
+                Check(p.inventory[10].stack == 23, "unfocused actual gain observed without automatic action: " + action);
+                canStartActions = true; Step();
+                Check(p.inventory[10].IsAir && p.inventory[11].stack == 9, "only-enabled action receives whole eligible source group: " + action);
+                p.inventory[10] = Make(8, 20); Step(); Check(p.inventory[10].stack == 20, "immediate withdrawal cannot borrow completed opportunity: " + action);
+                Configure(false, false, false, new[] { 8 }, new[] { 8 });
+                p.Pickup(new WorldItem { inner = Make(8, 1) }); Step();
+                Configure(action == ItemActionKind.Stack, action == ItemActionKind.Sell, action == ItemActionKind.Discard, new[] { 8 }, new[] { 8 }); Step();
+                Check(p.inventory[10].stack == 21, "all-off source never replays after reopening: " + action);
+                // Both common container branches exercise the final single bag;
+                // the fixture now models vanilla SetDefaults(0)'s stack == 0.
+                foreach (int bag in new[] { 1000, 1001 })
+                {
+                    p.inventory[12] = Make(bag, 1); p.inventory[13] = Make(327, 2); ID.ItemID.Sets.OpenableBag[bag] = true;
+                    ItemSlot.RightClick(p.inventory, 0, 12); Step();
+                    Check(p.inventory[12].IsAir && p.inventory[12].type == 0 && p.inventory[12].stack == 0 && p.inventory[10].IsAir,
+                        "normal last bag direct gain qualifies for only-enabled action: " + action);
+                    p.inventory[10] = Make(8, 20);
+                }
+            }
+            NewSession(0); Configure(false, false, true, null, new[] { 8 }); Player player = Main.LocalPlayer;
+            player.inventory[10] = Make(8, 20); player.inventory[12] = Make(1000, 2); player.inventory[13] = Make(327, 2);
+            PlayerInput.MouseInfo = new MouseState(0, 0, 0, ButtonState.Released, ButtonState.Released, ButtonState.Pressed, ButtonState.Released, ButtonState.Released);
+            ItemSlot.RightClick(player.inventory, 0, 12);
+            canStartActions = false; PlayerInput.MouseInfo = new MouseState();
+            Observe(10); Step();
+            Check(host.World.ManualSlot == 12 && host.World.ManualMaterials.Contains(player.inventory[13]) && player.inventory[10].stack == 23,
+                "unfocused released-looking sample cannot clear manual source/key or start actions");
+            canStartActions = true;
+            PlayerInput.MouseInfo = new MouseState(0, 0, 0, ButtonState.Released, ButtonState.Released, ButtonState.Pressed, ButtonState.Released, ButtonState.Released);
+            Main.mouseLeft = Main.mouseRight = false; Observe(10);
+            Check(host.World.ManualSlot == 12 && host.World.ManualMaterials.Count > 0, "UI-consumed Main flags cannot release raw held manual input");
+            PlayerInput.MouseInfo = new MouseState(); Observe(10);
+            Check(!host.World.HasManualOperation, "only valid shared permission plus real raw release clears manual protection");
+            Step(); Check(player.inventory[10].IsAir, "pending direct source continues after valid release");
+            NewSession(1); Configure(true, false, false); player = Main.LocalPlayer;
+            player.inventory[10] = Make(8, 20); player.Pickup(new WorldItem { inner = Make(8, 3) }); Step();
+            Check(host.Ownership.StoreBlocked, "source starts client pending operation");
+            canStartActions = false; Reply(10, 0, 0); Step();
+            Check(!host.Ownership.StoreBlocked && host.Ownership.StoreResult.State == ItemOperationState.Completed,
+                "focus loss does not stop real receipt settlement or result ownership");
+        }
+        private static void RejectedSaleMembers()
+        {
+            foreach (bool arbitraryReplacement in new[] { false, true })
+            {
+                NewSession(0); Configure(false, true, true, new[] { 100 }, new[] { 100 });
+                Player p = Main.LocalPlayer; Main.playerInventory = true; Main.npcShop = 1;
+                p.inventory[10] = Make(100, 20); p.RejectSale = true;
+                p.Pickup(new WorldItem { inner = Make(100, 3) }); Item original = p.inventory[10]; Step();
+                Check(p.SellCalls == 1 && !ReferenceEquals(original, p.inventory[10]) && p.inventory[10].stack == 23,
+                    "actual rejected vanilla sale restores cloned source once without fallback/retry");
+                Step(20); Check(p.SellCalls == 1, "unchanged rejection does not churn retries");
+                if (arbitraryReplacement) p.inventory[10] = p.inventory[10].Clone();
+                Main.npcShop = 0; Step();
+                Check(arbitraryReplacement ? p.inventory[10].stack == 23 : p.inventory[10].IsAir,
+                    "only synchronous proved rejection retains association across later shop close; arbitrary equal replacement cancels it");
+            }
         }
         private static void SelectionAndSources()
         {

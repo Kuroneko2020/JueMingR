@@ -49,7 +49,7 @@ namespace JueMingR.TerrariaHost.Items
         internal ItemOperationResult Execute(StoreItemsRequest request)
         {
             Player player = world.Player;
-            if (!GuardsReady || player == null || request.Session != world.SessionGeneration || world.Busy ||
+            if (!GuardsReady || player == null || !world.CanStartActions || request.Session != world.SessionGeneration || world.Busy ||
                 player.HasLockedInventory() || Main.ServerSideCharacter) return Result(ItemOperationState.Rejected, "storage-capability-or-native-operation-busy");
             int count = request.Sources.Count;
             ItemIdentity identity = request.Sources[0].Identity;

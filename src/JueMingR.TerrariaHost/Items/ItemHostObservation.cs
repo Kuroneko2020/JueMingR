@@ -13,6 +13,7 @@ namespace JueMingR.TerrariaHost.Items
     {
         private readonly Func<long> generation;
         private readonly ItemOperationOwnership ownership;
+        private readonly Func<bool> canStartActions;
         private readonly Item[] references = new Item[58];
         private readonly long[] instances = new long[58];
         private ItemSlotObservation[] previous;
@@ -28,8 +29,9 @@ namespace JueMingR.TerrariaHost.Items
         internal int CausalDepth { get; set; }
         internal bool AutomaticOperation { get; set; }
         internal Func<Item, bool> AdditionalProtection { get; set; }
-        internal ItemHostObservation(Func<long> generation, ItemOperationOwnership ownership)
-        { this.generation = generation; this.ownership = ownership; }
+        internal ItemHostObservation(Func<long> generation, ItemOperationOwnership ownership, Func<bool> canStartActions)
+        { this.generation = generation; this.ownership = ownership; this.canStartActions = canStartActions ?? throw new ArgumentNullException(nameof(canStartActions)); }
+        internal bool CanStartActions { get { return canStartActions(); } }
         public long SessionGeneration { get { return generation(); } }
         internal Player Player
         {
@@ -50,11 +52,18 @@ namespace JueMingR.TerrariaHost.Items
         { get { return CausalDepth != 0 || AutomaticOperation || Main.LocalPlayerHasPendingInventoryActions(); } }
 
         public bool TryObserve(out ItemInventoryObservation observation)
+        { return ReadObservation(out observation, false); }
+        // A completed causal scope records facts even while a native operation's
+        // admission gate or focus is closed. Its protected slots stay protected;
+        // this path never admits an action or postpones capture to a later tick.
+        internal bool TryObserveAcquisition(out ItemInventoryObservation observation)
+        { return ReadObservation(out observation, true); }
+        private bool ReadObservation(out ItemInventoryObservation observation, bool acquisition)
         {
             observation = null;
             Player player = Player;
-            if (player == null || Busy) return false;
-            if (FocusHelper.AllowInputProcessing && PlayerInput.MouseInfo.LeftButton == ButtonState.Released && PlayerInput.MouseInfo.RightButton == ButtonState.Released) ClearManual();
+            if (player == null || CausalDepth != 0 || AutomaticOperation || !acquisition && Main.LocalPlayerHasPendingInventoryActions()) return false;
+            if (CanStartActions && PlayerInput.MouseInfo.LeftButton == ButtonState.Released && PlayerInput.MouseInfo.RightButton == ButtonState.Released) ClearManual();
             Chest shop; NPC npc;
             bool available = TryShop(out shop, out npc);
             // These temporary native gates can change without changing a single
@@ -75,9 +84,9 @@ namespace JueMingR.TerrariaHost.Items
                     new ItemSlotObservation(i, new ItemIdentity(item.type, item.prefix), item.stack, item.maxStack, instances[i], IsProtected(player, item, i));
                 if (!changed && !Equal(previous[i], current[i])) changed = true;
             }
-            // Native rejected sales can clone all 58 slots without changing a
-            // value. Refresh live identities, but do not turn clone churn into a
-            // new business revision that repeatedly attempts an unchanged sale.
+            // Ordinary equal-value replacements still get new member identities,
+            // without inventing a business revision from reference churn alone.
+            // The proved synchronous rejection restoration is accepted separately.
             if (changed || referencesChanged)
             { if (changed) revision++; previous = current; cached = new ItemInventoryObservation(SessionGeneration, revision, available, shopIdentity, current); }
             previousAdmissionGates = admissionGates; observation = cached; return true;
@@ -85,11 +94,27 @@ namespace JueMingR.TerrariaHost.Items
         internal bool Matches(ItemSlotObservation observed)
         {
             Player player = Player;
-            if (player == null || Busy || !observed.IsCandidate || observed.Slot >= player.inventory.Length) return false;
+            if (player == null || !CanStartActions || Busy || !observed.IsCandidate || observed.Slot >= player.inventory.Length) return false;
             Item item = player.inventory[observed.Slot];
             return item != null && ReferenceEquals(item, references[observed.Slot]) && observed.Instance == instances[observed.Slot] &&
                 item.type == observed.Identity.Type && item.prefix == observed.Identity.Prefix && item.stack == observed.Stack &&
                 item.maxStack == observed.MaximumStack && !IsProtected(player, item, observed.Slot);
+        }
+        internal void AcceptRejectedSaleRestoration()
+        {
+            Player player = Player;
+            if (player == null || previous == null || Busy) return;
+            // Only the synchronously verified no-effect native sale calls this.
+            // Vanilla restores its 58 cloned slots on rejection. Keep member
+            // identities through that exact restoration, never through a later
+            // arbitrary equal replacement observed by the ordinary reader.
+            for (int i = 0; i < 58; i++)
+            {
+                Item item = player.inventory[i]; ItemSlotObservation before = previous[i];
+                if (item == null || item.type != before.Identity.Type || item.prefix != before.Identity.Prefix ||
+                    item.stack != before.Stack || item.maxStack != before.MaximumStack || IsProtected(player, item, i) != before.Protected) return;
+            }
+            for (int i = 0; i < 58; i++) references[i] = player.inventory[i];
         }
         internal bool MatchesShop(long identity)
         {

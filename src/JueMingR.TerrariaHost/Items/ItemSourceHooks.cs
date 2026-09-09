@@ -86,8 +86,12 @@ namespace JueMingR.TerrariaHost.Items
             {
             bool completed = returned && (origin.WorldItem != null ? origin.WorldItem.stack < origin.Before :
                 origin.Opened && origin.Item.stack == origin.Before - 1);
-            if (!completed || !host.CanCapture) return;
-            foreach (ItemIdentity identity in origin.Gained) host.Feature.RegisterAcquisition(identity, host.Runtime.Generation, host.Tick);
+            if (!completed || !host.CanCapture || origin.Gained.Count == 0) return;
+            ItemInventoryObservation inventory;
+            if (!host.World.TryObserveAcquisition(out inventory)) return;
+            // All products share one completed-scope sample. Later inventory
+            // growth cannot fill a missing capture or add replacement members.
+            host.Feature.RegisterAcquisitions(origin.Gained, inventory, host.Tick);
             }
             catch { host.FailClosed(); }
         }

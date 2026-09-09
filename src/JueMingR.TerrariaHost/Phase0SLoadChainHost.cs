@@ -787,7 +787,7 @@ namespace JueMingR.TerrariaHost
                 bool itemPackage = PackageId.StartsWith("item-automation-", StringComparison.Ordinal);
                 runtime = itemPackage ? Phase0TBiomeRuntime.Create(enabled, preferences.BiomeLoaded && preferences.BiomeEnabled, new Items.ItemSessionProbe()) :
                     Phase0TBiomeRuntime.Create(enabled, preferences.BiomeLoaded && preferences.BiomeEnabled);
-                if (itemPackage) { items = new Items.HostItems(gameDirectory, runtime.SharedRuntime); runtime.SharedRuntime.AddFeature(items); }
+                if (itemPackage) { items = new Items.HostItems(gameDirectory, runtime.SharedRuntime, () => Input.CanStartActions); runtime.SharedRuntime.AddFeature(items); }
                 notes = new Notes.HostNotes(gameDirectory);
                 Shell = new F5Shell(runtime, preferences, notes, items, Input) { LayersReady = f5LayersReady };
             }

@@ -54,11 +54,12 @@ namespace JueMingR.Features.Items
         }
         private static void ValidateAction(ItemActionKind action)
         { if (action < ItemActionKind.Stack || action > ItemActionKind.Discard) throw new ArgumentOutOfRangeException(nameof(action)); }
-        public bool Equals(ItemAutomationSettings other)
+        public bool HasSameAutomationRules(ItemAutomationSettings other)
         {
             return other != null && StackEnabled == other.StackEnabled && SellEnabled == other.SellEnabled &&
                 DiscardEnabled == other.DiscardEnabled && SellTypes.SequenceEqual(other.SellTypes) && DiscardTypes.SequenceEqual(other.DiscardTypes);
         }
+        public bool Equals(ItemAutomationSettings other) { return HasSameAutomationRules(other); }
         public override bool Equals(object obj) { return Equals(obj as ItemAutomationSettings); }
         public override int GetHashCode()
         {

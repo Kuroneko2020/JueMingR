@@ -12,6 +12,11 @@ namespace Terraria
         private const BindingFlags Flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
         internal static void Run(Main main)
         {
+            // This executable has no native game window. Reuse the input
+            // fixture's OS boundary; the loaded production input logic runs.
+            HostInputChecks.ConfigureLoadedHost(); FocusHelper.IsSelectedApplication = true;
+            Main.SampleLeft = Main.SampleRight = Main.SampleF5 = false; Main.SampleWheel = 0;
+            main.RunUpdateLoop(2);
             Assembly assembly = AppDomain.CurrentDomain.GetAssemblies().Single(a => a.GetName().Name == "JueMingR.TerrariaHost");
             object context = assembly.GetType("JueMingR.TerrariaHost.Phase0SHarmonyWorker", true)
                 .GetField("postfixContext", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
@@ -29,20 +34,30 @@ namespace Terraria
             discard = settings.GetType().GetMethod("WithEnabled").Invoke(discard, new[] { Enum.ToObject(action, 2), (object)true });
             items.GetType().GetMethod("Change", Flags).Invoke(items, new[] { discard });
             Main.LocalPlayer.inventory[10] = new Item { type = 100, stack = 2 }; main.RunUpdateLoop(7);
+            Check(Main.LocalPlayer.inventory[10].stack == 2, "loaded discard list does not invent source for old inventory");
+            HostInputChecks.Foreground = false; main.RunUpdateLoop(1);
+            Main.LocalPlayer.Pickup(new WorldItem { inner = new Item { type = 100, stack = 1 } }); main.RunUpdateLoop(7);
+            Check(Main.LocalPlayer.inventory[10].stack == 3, "loaded input gate blocks new actions but keeps genuine source capture");
+            HostInputChecks.Foreground = true; Main.SampleLeft = true; main.RunUpdateLoop(1);
+            Main.SampleLeft = false; main.RunUpdateLoop(1);
+            Check(Main.LocalPlayer.inventory[10].stack == 3, "loaded activation press and release cannot start an item action");
+            main.RunUpdateLoop(7);
             if (!Main.LocalPlayer.inventory[10].IsAir)
             {
                 object world = Get(items, "World"); var observed = new object[] { null };
                 world.GetType().GetMethod("TryObserve", Flags).Invoke(world, observed);
                 Console.WriteLine("Loaded item diagnostic: failed={0}, enabled={1}, capability={2}, result={3}", Get(Get(items, "Feature"), "HasFailed"), Get(Get(items, "Feature"), "Enabled"), Get(items, "CapabilityError"), Get(Get(items, "Ownership"), "DiscardResult"));
             }
-            Check(Main.LocalPlayer.inventory[10].IsAir && Main.LocalPlayer.trashItem.type == 100 && Main.LocalPlayer.trashItem.stack == 2,
+            Check(Main.LocalPlayer.inventory[10].IsAir && Main.LocalPlayer.trashItem.type == 100 && Main.LocalPlayer.trashItem.stack == 3,
                 "production configuration/selection/native trash/result chain");
             object sale = settings.GetType().GetMethod("WithTypes").Invoke(settings, new[] { Enum.ToObject(list, 0), new[] { 100 } });
             sale = settings.GetType().GetMethod("WithEnabled").Invoke(sale, new[] { Enum.ToObject(action, 1), (object)true });
             items.GetType().GetMethod("Change", Flags).Invoke(items, new[] { sale });
             Main.playerInventory = true; Main.npcShop = 1;
             Main.LocalPlayer.inventory[10] = new Item { type = 100, stack = 2 }; main.RunUpdateLoop(7);
-            Check(Main.LocalPlayer.inventory[10].IsAir && Main.LocalPlayer.inventory[50].stack == 10 && Main.instance.shop[1].item[0].buyOnce,
+            Check(Main.LocalPlayer.inventory[10].stack == 2, "loaded sale list/shop does not invent source for old inventory");
+            Main.LocalPlayer.Pickup(new WorldItem { inner = new Item { type = 100, stack = 1 } }); main.RunUpdateLoop(7);
+            Check(Main.LocalPlayer.inventory[10].IsAir && Main.LocalPlayer.inventory[50].stack == 15 && Main.instance.shop[1].item[0].buyOnce,
                 "production configuration/native sale verifies source, coin value and buyback");
             object stack = settings.GetType().GetMethod("WithEnabled").Invoke(settings, new[] { Enum.ToObject(action, 0), (object)true });
             items.GetType().GetMethod("Change", Flags).Invoke(items, new[] { stack });

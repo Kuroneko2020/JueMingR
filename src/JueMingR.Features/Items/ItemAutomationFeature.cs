@@ -11,7 +11,8 @@ namespace JueMingR.Features.Items
     {
         private readonly IItemObservationSource source;
         private readonly IItemOperationPort operations;
-        private readonly Dictionary<ItemIdentity, ulong> acquisitions = new Dictionary<ItemIdentity, ulong>();
+        private readonly Dictionary<ItemIdentity, ItemAcquisitionOpportunity> acquisitions = new Dictionary<ItemIdentity, ItemAcquisitionOpportunity>();
+        private readonly Func<bool> canStartActions;
         private readonly HashSet<int> sellTypes = new HashSet<int>(), discardTypes = new HashSet<int>();
         private readonly long[] attemptedRevision = new long[58];
         private ItemAutomationSettings settings = ItemAutomationSettings.Default;
@@ -20,8 +21,12 @@ namespace JueMingR.Features.Items
         private long session;
         public bool HasFailed { get; private set; }
         public bool Enabled { get { return !HasFailed && (settings.StackEnabled || settings.SellEnabled || settings.DiscardEnabled); } }
-        public ItemAutomationFeature(IItemObservationSource source, IItemOperationPort operations)
-        { this.source = source ?? throw new ArgumentNullException(nameof(source)); this.operations = operations ?? throw new ArgumentNullException(nameof(operations)); }
+        public ItemAutomationFeature(IItemObservationSource source, IItemOperationPort operations, Func<bool> canStartActions = null)
+        {
+            this.source = source ?? throw new ArgumentNullException(nameof(source));
+            this.operations = operations ?? throw new ArgumentNullException(nameof(operations));
+            this.canStartActions = canStartActions ?? (() => true);
+        }
         public ItemOperationResult LastResult(ItemActionKind action)
         {
             ItemAutomationSettings.Default.Enabled(action);
@@ -31,12 +36,15 @@ namespace JueMingR.Features.Items
         public void Configure(ItemAutomationSettings value)
         {
             if (value == null) throw new ArgumentNullException(nameof(value));
-            if (settings.Equals(value)) return;
+            bool changed = !settings.HasSameAutomationRules(value);
             settings = value;
+            // Presentation-only preferences share the document, not the business
+            // retry epoch. They must not revive attempts or cancel acquisitions.
+            if (!changed) return;
             sellTypes.Clear(); discardTypes.Clear();
             foreach (int type in value.SellTypes) sellTypes.Add(type);
             foreach (int type in value.DiscardTypes) discardTypes.Add(type);
-            if (!value.StackEnabled) acquisitions.Clear();
+            acquisitions.Clear();
             ResetAttempts(); immediate = true;
         }
         public void OnSessionStarted()
@@ -47,23 +55,40 @@ namespace JueMingR.Features.Items
 
         // Only the Host's completed causal scope calls this. Positive inventory
         // polling, settings changes and ordinary GetItem calls never call it.
-        public void RegisterAcquisition(ItemIdentity identity, long generation, ulong tick)
+        public void RegisterAcquisitions(IEnumerable<ItemIdentity> identities, ItemInventoryObservation inventory, ulong tick)
         {
-            if (!active || HasFailed || !settings.StackEnabled || generation != session || identity.Type <= 0 || ItemAutomationSettings.IsCoin(identity.Type)) return;
-            if (!acquisitions.ContainsKey(identity))
+            if (identities == null) throw new ArgumentNullException(nameof(identities));
+            if (!active || !Enabled || inventory == null || inventory.Session != session) return;
+            PruneAcquisitions(null, tick);
+            // Capture the whole causal batch before reconciling old members: two
+            // products changing together must not reset each other's first age.
+            foreach (ItemIdentity identity in identities)
             {
-                // A stalled UI cannot turn high-rate acquisition into an unbounded
-                // journal. Overflow is a visible failure, not a fabricated origin.
-                if (acquisitions.Count == 128) { FailClosed(); return; }
-                acquisitions.Add(identity, tick);
+                if (identity.Type <= 0 || ItemAutomationSettings.IsCoin(identity.Type)) continue;
+                ItemAcquisitionOpportunity opportunity;
+                if (!acquisitions.TryGetValue(identity, out opportunity))
+                {
+                    // A stalled UI cannot turn high-rate acquisition into an unbounded
+                    // journal. Overflow is a visible failure, not a fabricated origin.
+                    if (acquisitions.Count == 128) { FailClosed(); return; }
+                    opportunity = new ItemAcquisitionOpportunity(tick);
+                    acquisitions.Add(identity, opportunity);
+                }
+                // Repeated acquisition coalesces evaluation, never extends the first
+                // unresolved intention's lifetime into a permanent type permission.
+                opportunity.Capture(identity, inventory);
+                if (opportunity.Count == 0) acquisitions.Remove(identity);
+                foreach (ItemSlotObservation slot in inventory.Slots)
+                    if (slot.Identity.Equals(identity) && slot.Slot >= 0 && slot.Slot < 58) attemptedRevision[slot.Slot] = Int64.MinValue;
             }
-            // Repeated acquisition coalesces evaluation, never extends the first
-            // unresolved intention's lifetime into a permanent type permission.
+            PruneAcquisitions(inventory, tick);
             immediate = true;
         }
         public void Update(ulong tick)
         {
             if (!active || !Enabled || source.SessionGeneration != session) return;
+            PruneAcquisitions(null, tick);
+            if (acquisitions.Count == 0 || !canStartActions()) return;
             if (!immediate && hasTick && unchecked(tick - lastTick) < 6) return;
             immediate = false; hasTick = true; lastTick = tick;
             ItemInventoryObservation inventory;
@@ -71,7 +96,13 @@ namespace JueMingR.Features.Items
             PruneAcquisitions(inventory, tick);
             foreach (ItemSlotObservation slot in inventory.Slots)
             {
+                ItemAcquisitionOpportunity opportunity;
+                if (!acquisitions.TryGetValue(slot.Identity, out opportunity) || !opportunity.Contains(slot)) continue;
                 if (!slot.IsCandidate || operations.Ownership.IsProtected(slot.Slot) || attemptedRevision[slot.Slot] == inventory.Revision) continue;
+                // Requests execute synchronously on the game thread. Recheck this
+                // owner's current source/rules here; the Host then rechecks the
+                // same input permission and live resource identity at admission.
+                if (!canStartActions()) return;
                 ItemOperationResult result = null;
                 // Re-evaluate current shop and flags at the same decision point.
                 // A disabled/closed sale never creates a reservation against trash.
@@ -89,24 +120,28 @@ namespace JueMingR.Features.Items
                     result = operations.Execute(new DiscardItemRequest(session, slot));
                 }
                 if ((result == null || result.State == ItemOperationState.NotApplicable) &&
-                    settings.StackEnabled && slot.MaximumStack > 1 && acquisitions.ContainsKey(slot.Identity))
+                    settings.StackEnabled && slot.MaximumStack > 1)
                 {
                     if (operations.Ownership.StoreBlocked) continue;
                     var group = new List<ItemSlotObservation>();
                     foreach (ItemSlotObservation candidate in inventory.Slots)
                         if (candidate.IsCandidate && !operations.Ownership.IsProtected(candidate.Slot) &&
-                            candidate.MaximumStack > 1 && candidate.Identity.Equals(slot.Identity)) group.Add(candidate);
+                            candidate.MaximumStack > 1 && opportunity.Contains(candidate)) group.Add(candidate);
                     result = operations.Execute(new StoreItemsRequest(session, group));
                     // Rejected admission has not consumed a source opportunity.
                     // Executing or a terminal/no-target result does; actual late
                     // receipts remain the operation owner's responsibility.
-                    if (result.State != ItemOperationState.Rejected) acquisitions.Remove(slot.Identity);
+                    if (result.State != ItemOperationState.Rejected)
+                        foreach (ItemSlotObservation submitted in group) opportunity.Retire(submitted);
                 }
+                // A submitted/finished stack cannot be replaced by a subsequent
+                // withdrawal before the next six-tick observation. Unknown native
+                // results retain their separate resource ownership, not permission
+                // to submit that member again. A favorite-only group ends too.
+                if (result == null || result.State != ItemOperationState.Rejected) opportunity.Retire(slot);
+                if (opportunity.Count == 0) acquisitions.Remove(slot.Identity);
                 if (result == null) continue;
                 attemptedRevision[slot.Slot] = inventory.Revision;
-                // A single sale/trash only handles that slot. Other compatible
-                // stacks retain the finite source until the group is absent,
-                // stored, cancelled or expired; PruneAcquisitions checks absence.
                 return; // One admitted attempt per observation; no stale batch walks.
             }
         }
@@ -114,12 +149,10 @@ namespace JueMingR.Features.Items
         {
             if (acquisitions.Count == 0) return;
             var expired = new List<ItemIdentity>();
-            foreach (KeyValuePair<ItemIdentity, ulong> entry in acquisitions)
+            foreach (KeyValuePair<ItemIdentity, ItemAcquisitionOpportunity> entry in acquisitions)
             {
-                bool present = false;
-                foreach (ItemSlotObservation slot in inventory.Slots)
-                    if (slot.Stack > 0 && slot.Identity.Equals(entry.Key)) { present = true; break; }
-                if (!present || unchecked(tick - entry.Value) >= 600) expired.Add(entry.Key);
+                if (inventory != null) entry.Value.Reconcile(inventory);
+                if (entry.Value.Count == 0 || unchecked(tick - entry.Value.Started) >= 600) expired.Add(entry.Key);
             }
             foreach (ItemIdentity key in expired) acquisitions.Remove(key);
         }

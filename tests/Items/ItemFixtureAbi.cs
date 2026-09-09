@@ -200,7 +200,7 @@ namespace Terraria.UI
         { if (allow && Main.mouseLeft) LeftClick(inv, context, slot); }
         [MethodImpl(MethodImplOptions.NoInlining)] public static string GetGamepadInstructions(Item[] inv, int context, int slot) { ManualClicks++; return "fixture"; }
         [MethodImpl(MethodImplOptions.NoInlining)] private static void TryOpenContainer(Item[] inv, int context, int slot, Player player)
-        { Item item = inv[slot]; if (TryOpenContainer_GrantItems(item, player)) item.stack--; }
+        { Item item = inv[slot]; if (TryOpenContainer_GrantItems(item, player) && --item.stack == 0) item.TurnToAir(); }
         [MethodImpl(MethodImplOptions.NoInlining)] private static bool TryOpenContainer_GrantItems(Item item, Player player)
         {
             if (item.type <= 0 || !ItemID.Sets.OpenableBag[item.type]) return false;

@@ -26,6 +26,7 @@ namespace JueMingR.TerrariaHost.Items
         }
         public ItemOperationResult Execute(SellItemRequest request)
         {
+            if (!world.CanStartActions) return Result(ItemOperationState.Rejected, "input-not-ready");
             if (request.Session != world.SessionGeneration || !world.MatchesShop(request.ShopIdentity)) return Result(ItemOperationState.NotApplicable, "shop-closed-or-changed");
             Player player = world.Player;
             if (player == null || player.HasLockedInventory() || world.HasManualOperation || player.itemAnimation > 0 || player.itemTime > 0 ||
@@ -56,7 +57,9 @@ namespace JueMingR.TerrariaHost.Items
                 else result = Result(ItemOperationState.Unconfirmed, "sale-side-effects-not-confirmed");
             }
             catch { result = Result(ItemOperationState.Unconfirmed, "sale-interrupted-after-admission"); }
-            Ownership.FinishSale(request.Session, result); return result;
+            Ownership.FinishSale(request.Session, result);
+            if (result.State == ItemOperationState.Rejected) world.AcceptRejectedSaleRestoration();
+            return result;
         }
         public ItemOperationResult Execute(DiscardItemRequest request)
         {

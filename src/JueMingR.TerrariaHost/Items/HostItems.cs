@@ -39,14 +39,14 @@ namespace JueMingR.TerrariaHost.Items
         internal ulong Tick { get; private set; }
         internal PreferenceSnapshot<ItemAutomationSettings> Preferences { get { return preferences.Snapshot; } }
         public bool Enabled { get { return Feature.Enabled; } }
-        internal HostItems(string verifiedGameDirectory, SingleFeatureRuntime runtime)
+        internal HostItems(string verifiedGameDirectory, SingleFeatureRuntime runtime, Func<bool> canStartActions)
         {
             Runtime = runtime;
-            World = new ItemHostObservation(() => Runtime.Generation, Ownership);
+            World = new ItemHostObservation(() => Runtime.Generation, Ownership, canStartActions);
             Operations = new ItemVanillaOperations(World, Ownership);
             Storage = new ItemNearbyStorage(World, Ownership);
             Operations.Store = Storage.Execute;
-            Feature = new ItemAutomationFeature(World, Operations);
+            Feature = new ItemAutomationFeature(World, Operations, canStartActions);
             var file = new AtomicFileDocument(Path.Combine(verifiedGameDirectory,
                 "JueMingRData", "config", "features", "item-automation.json"), 65536, true, ".schema1-original");
             preferences = new PreferenceDocument<ItemAutomationSettings>(file, new RetiringItemCodec(file), ItemAutomationSettings.Default);
@@ -97,7 +97,7 @@ namespace JueMingR.TerrariaHost.Items
             return result.ToArray();
         }
         internal bool CanCapture
-        { get { return CanObserve && Preferences.Value.StackEnabled; } }
+        { get { return CanObserve; } }
         internal bool CanObserve
         { get { return !stopping && Available && Feature.Enabled && Preferences.IsLoaded &&
                     Runtime.IsSessionActive && Thread.CurrentThread.ManagedThreadId == ThreadId && World.Player != null && !World.AutomaticOperation; } }
