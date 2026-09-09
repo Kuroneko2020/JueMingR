@@ -59,7 +59,8 @@ namespace JueMingR.TerrariaHost.Items
             {
                 RowY[i] = y; int start = rows.Count;
                 var action = (ItemActionKind)i; var list = action == ItemActionKind.Sell ? ItemListKind.Sell : ItemListKind.Discard;
-                rowLayout.Row(ref y, 0, width, ItemsPresentation.Name(action), i == 0 ? basic : listed);
+                // An open selector owns adding/replacing; omit its redundant entry from both paint and hit controls.
+                rowLayout.Row(ref y, 0, width, ItemsPresentation.Name(action), i == 0 || selection.List == list ? basic : listed);
                 foreach (F5Element e in rows.GetRange(start, rows.Count - start))
                     if (e.Kind == F5ElementKind.Button)
                     {

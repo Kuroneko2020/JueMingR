@@ -62,7 +62,7 @@ namespace Terraria
             Check(inlineCandidate.Width < inlineCandidate.Height && inlineCandidate.Height == 48 && HasControl(p, "Enable", 0), "inline candidate grid retains legal feature controls");
             Click(p, Control(p, "Select", type: 8)); prepare(); Click(p, Control(p, "Select", type: 101)); prepare();
             Check(!host.Preferences.Value.SellTypes.Contains(8), "batch selection remains draft"); Click(p, Control(p, "Confirm")); prepare();
-            Check(host.Preferences.Value.SellTypes.Contains(8) && Main.LocalPlayer.inventory[10].stack == 4, "commit only changes type list");
+            Check(host.Preferences.Value.SellTypes.Contains(8) && Main.LocalPlayer.inventory[10].stack == 4 && HasControl(p, "Add", argument: (int)ItemListKind.Sell), "commit only changes type list and restores add");
             Click(p, Control(p, "Replace", (int)ItemListKind.Sell, 8)); prepare();
             Click(p, Control(p, "Select", type: 102)); prepare(); Check(!host.Preferences.Value.SellTypes.Contains(8) && host.Preferences.Value.SellTypes.Contains(102), "direct body replacement");
             Click(p, Control(p, "Remove", (int)ItemListKind.Sell, 101)); prepare();
@@ -71,7 +71,7 @@ namespace Terraria
             Check(host.Preferences.Value.DiscardTypes.Count == 0, "cancel does not submit");
             Click(p, Control(p, "Add", (int)ItemListKind.Discard)); prepare(); Main.CurrentInputTextTakerOverride = null; p.BeforeInput(true);
             Main.keyState = new KeyboardState(Keys.Escape); p.ProcessInput(true, Main.keyState, Vector2.Zero); prepare();
-            Check(!p.Selecting && Main.keyState.GetPressedKeys().Length == 0, "Esc closes picker and consumes sample");
+            Check(!p.Selecting && Main.keyState.GetPressedKeys().Length == 0 && HasControl(p, "Add", argument: (int)ItemListKind.Discard), "Esc closes picker, restores add and consumes sample");
             PlayerInput.WritingText = false; p.BeforeInput(true); Check(PlayerInput.WritingText, "Esc tail blocks next mapping");
             p.ProcessInput(true, new KeyboardState(), Vector2.Zero); PlayerInput.WritingText = false;
             host.Change(ItemAutomationSettings.Default.WithTypes(ItemListKind.Sell, Enumerable.Range(1000, 5000))); prepare();
@@ -133,21 +133,28 @@ namespace Terraria
             var state = (ItemSelection)typeof(ItemsPresentation).GetField("selection", Fields).GetValue(p);
             var geometry = (ItemsLayout)typeof(ItemsPresentation).GetField("layout", Fields).GetValue(p);
             float originalDiscardY = Rect(Control(p, "Add", (int)ItemListKind.Discard)).Y;
-            Click(p, Control(p, "Add", (int)ItemListKind.Sell)); prepare();
+            var originalAdd = Control(p, "Add", (int)ItemListKind.Sell);
+            var originalOn = Rect(Control(p, "Enable", (int)ItemActionKind.Sell));
+            Click(p, originalAdd); prepare();
+            Check(!HasControl(p, "Add", argument: (int)ItemListKind.Sell) && HasControl(p, "Add", argument: (int)ItemListKind.Discard), "active row hides add while other row retains its entry");
+            Check(Math.Abs(Rect(Control(p, "Enable", (int)ItemActionKind.Sell)).X - originalOn.X) < .01f, "hiding add keeps on/off positions stable");
             var confirm = Rect(Control(p, "Confirm"));
             Check(!(bool)Control(p, "Confirm").GetType().GetField("Enabled", Fields).GetValue(Control(p, "Confirm")), "zero selection retains weak inactive confirm");
             Check(Rect(Control(p, "Add", (int)ItemListKind.Discard)).Y > originalDiscardY && geometry.Header.Y > geometry.RowY[1], "inline content expands under owner and shifts following row");
             Click(p, Control(p, "Select", type: 8)); prepare();
             var selectedConfirm = Rect(Control(p, "Confirm"));
             Check(confirm.X == selectedConfirm.X && confirm.Width == selectedConfirm.Width && state.Count == 1, "count changes do not move confirm");
-            Click(p, Control(p, "Add", (int)ItemListKind.Sell)); prepare(); Check(state.Count == 1, "repeated add keeps pending selection");
+            Click(p, originalAdd); prepare(); Check(state.Count == 1 && state.List == ItemListKind.Sell, "hidden add has no stale hit target or draft effect");
             Click(p, Control(p, "Enable", (int)ItemActionKind.Discard)); prepare();
             Check(state.Count == 1 && host.Preferences.Value.DiscardEnabled && !host.Preferences.Value.SellTypes.Contains(8), "other row controls remain legal without committing draft");
             Click(p, Control(p, "Add", (int)ItemListKind.Discard)); prepare();
             Check(state.List == ItemListKind.Discard && state.Count == 0 && HasControl(p, "Replace", 2337), "one inline region; switching restores previous configured icons");
+            Check(HasControl(p, "Add", argument: (int)ItemListKind.Sell) && !HasControl(p, "Add", argument: (int)ItemListKind.Discard), "switching restores previous add and hides current add");
             Click(p, Control(p, "Replace", (int)ItemListKind.Sell, 2337)); prepare();
             Check(state.List == ItemListKind.Sell && state.Target == 2337 && !HasControl(p, "Confirm", 0), "configured body directly switches to replacement with no confirm");
+            Check(!HasControl(p, "Add", argument: (int)ItemListKind.Sell), "replacement selector also hides redundant add");
             Click(p, Control(p, "Cancel")); prepare();
+            Check(HasControl(p, "Add", argument: (int)ItemListKind.Sell) && HasControl(p, "Add", argument: (int)ItemListKind.Discard), "cancel restores both add entries");
             var remove = Control(p, "Remove", (int)ItemListKind.Sell, 2337); var body = Rect(Control(p, "Replace", (int)ItemListKind.Sell, 2337));
             Check(Rect(remove).Width == 18 && Rect(remove).Right == body.Right && Rect(remove).Y == body.Y, "visible cross has bounded top-right hit region");
             Click(p, remove); prepare(); Check(!p.Selecting && !host.Preferences.Value.SellTypes.Contains(2337) && p.ConsumeLeft, "cross wins over body and consumes release after card shift");
@@ -334,7 +341,7 @@ namespace Terraria
             }
             throw new InvalidOperationException("Expected visible control missing: " + command + "/" + argument + "/" + type);
         }
-        private static bool HasControl(ItemsPresentation p, string command, int type) { try { Control(p, command, type: type); return true; } catch (InvalidOperationException) { return false; } }
+        private static bool HasControl(ItemsPresentation p, string command, int type = -1, int argument = -1) { try { Control(p, command, argument, type); return true; } catch (InvalidOperationException) { return false; } }
         private static void Pointer(ItemsPresentation presentation, object control, bool pressed, bool geometryCurrent = true)
         {
             F5Rect rect = (F5Rect)control.GetType().GetField("Rect", Fields).GetValue(control);
