@@ -17,3 +17,5 @@ Legacy 项目 JueMingZ 永久冻结，仅作为只读参考。JueMingR 与 JueMi
 笔记支持多篇卡片、标题/正文编辑、文本选区与局部剪贴板、安全保存和删除确认、多张悬挂正文，以及滚轮阅读、区域/字号调整和正常重启恢复。当前实现已获所有者在实际使用场景中的接受，随 [PR #43](https://github.com/Kuroneko2020/JueMingR/pull/43) 合并进入 `main`；详见[笔记使用与接受边界](docs/功能介绍/笔记功能行为合同.md#已接受实现与验证边界)。图形自动检查的环境延期及多人、性能等未覆盖范围仍保留，不代表全部场景通过或正式发行。
 
 正式文档入口见 [`docs/README.md`](docs/README.md)。
+
+当前未合并开发候选另包含自动出售、丢弃与堆叠：三项由可靠取得触发，使用 F5 内联名单与明确开关，丢弃头顶提示可单独保存。来源、失焦输入及阶段复盘修正集中在 [Issue #46](https://github.com/Kuroneko2020/JueMingR/issues/46) / [Draft PR #47](https://github.com/Kuroneko2020/JueMingR/pull/47)，不属于上列已合并主线或正式发行。当前安装、所有者实际反馈和剩余验证以任务记录为准；其余 Legacy 功能仍是后续范围。
