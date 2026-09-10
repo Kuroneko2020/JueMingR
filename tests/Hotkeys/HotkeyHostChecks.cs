@@ -166,6 +166,10 @@ namespace Terraria
             object help = Get(Get(popup, "Layout"), "HelpPanel");
             Main.SampleX = (int)(float)Get(help, "X") + 18; Main.SampleY = (int)(float)Get(help, "Y") + 18; Frame();
             Check((bool)Get(popup, "HelpVisible"), "production help surface keeps its hover ownership");
+            float oldScroll = (float)Get(state, "Scroll");
+            Main.SampleWheel = -120; Frame(); Main.SampleWheel = 0;
+            Check((float)Get(state, "Scroll") == oldScroll && GameInput.PlayerInput.ScrollWheelDeltaForUI == 0 && GameInput.PlayerInput.ScrollWheelDelta == 0,
+                "production help wheel does not scroll the background page or reach vanilla");
             int helpZoom = Main.NativeZoom;
             Main.SampleX2 = true; Frame();
             Check(Main.NativeZoom == helpZoom, "help surface blocks the early native mouse mapping");

@@ -71,6 +71,8 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Platform.Hotkeys.HotkeyDocument",
                 "JueMingR.Platform.Hotkeys.HotkeyBindings",
                 "JueMingR.Platform.Hotkeys.HotkeyFeedback",
+                "JueMingR.Platform.Hotkeys.HotkeyAdvisory",
+                "JueMingR.Platform.Hotkeys.HotkeyOverlap",
                 "JueMingR.Platform.Hotkeys.HotkeyFeedbackKind",
                 "JueMingR.Platform.Settings.UiPreferenceCodec",
                 "JueMingR.Platform.Settings.WindowPosition",

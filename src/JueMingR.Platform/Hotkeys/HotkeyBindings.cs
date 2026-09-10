@@ -18,7 +18,7 @@ namespace JueMingR.Platform.Hotkeys
         private HotkeyDocument document = HotkeyDocument.Empty;
         private long nextCommand;
         private string pendingAction;
-        private string pendingWarning;
+        private HotkeyAdvisory pendingWarning;
         private bool pendingClear, pendingHadBinding;
         public bool Loaded { get; private set; }
         public bool Busy { get; private set; }
@@ -48,7 +48,7 @@ namespace JueMingR.Platform.Hotkeys
                 return;
             }
             Busy = false; CompletionId = result.CommandId; CompletionAction = pendingAction; pendingAction = null;
-            string warning = pendingWarning; pendingWarning = null;
+            HotkeyAdvisory warning = pendingWarning; pendingWarning = null;
             CompletionSucceeded = result.Success; CommitUnconfirmed = result.CommitUnconfirmed;
             if (result.Success) { document = result.Value; Compile(); if (!Protected) Feedback = new HotkeyFeedback(pendingClear ? HotkeyFeedbackKind.Cleared : HotkeyFeedbackKind.Saved, pendingClear ? "已清除" : "已保存", advisory: warning); }
             else
@@ -75,7 +75,7 @@ namespace JueMingR.Platform.Hotkeys
                     return "此组合已用于「" + registry.Find(other.Key).Name + "」。";
             return null;
         }
-        public bool TrySet(string id, HotkeyChord chord, Func<HotkeyAction, HotkeyChord, string> vanillaWarning, out long command, out string reason)
+        public bool TrySet(string id, HotkeyChord chord, Func<HotkeyAction, HotkeyChord, HotkeyAdvisory> vanillaWarning, out long command, out string reason)
         {
             command = 0; reason = Validate(id, chord); if (reason != null) return false;
             if (Busy) { reason = "上一项仍在保存，请稍候。"; return false; }
@@ -84,10 +84,10 @@ namespace JueMingR.Platform.Hotkeys
             // Native overlaps are advisory, including an unavailable profile.
             // Read only for an eligible edit; never during load or dispatch.
             // The warning belongs to this command, not the file or popup lifetime.
-            string warning = null;
+            HotkeyAdvisory warning = null;
             if (chord != null)
             {
-                const string unavailable = "无法核对当前原版按键，请自行确认是否重合。";
+                var unavailable = HotkeyAdvisory.Unavailable("无法读取当前原版键盘配置。");
                 try { warning = vanillaWarning == null ? unavailable : vanillaWarning(registry.Find(id), chord); }
                 catch { warning = unavailable; }
             }
@@ -95,7 +95,7 @@ namespace JueMingR.Platform.Hotkeys
             long next = ++nextCommand;
             if (!worker.TrySubmit(next, candidate)) { reason = "保存入口暂不可用，旧绑定保留。"; return false; }
             command = next; pendingAction = id; pendingWarning = warning; pendingClear = chord == null; pendingHadBinding = Get(id) != null; Busy = true;
-            Feedback = new HotkeyFeedback(HotkeyFeedbackKind.Saving, pendingHadBinding ? "正在保存，原绑定仍有效" : "正在保存，尚未生效", advisory: warning); return true;
+            Feedback = new HotkeyFeedback(HotkeyFeedbackKind.Saving, "正在保存", pendingHadBinding ? "当前绑定保持不变" : "当前仍未绑定", warning); return true;
         }
         public void Dispatch(HotkeyInput input, HotkeyContext context, bool permitted)
         {

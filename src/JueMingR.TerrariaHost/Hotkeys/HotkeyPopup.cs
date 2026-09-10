@@ -21,6 +21,9 @@ namespace JueMingR.TerrariaHost.Hotkeys
         internal bool OwnsPointer { get; private set; }
         internal bool BlockPointer { get; private set; }
         internal bool HelpVisible { get; private set; }
+        internal bool DetailsExpanded { get; private set; }
+        internal int DetailOffset { get; private set; }
+        internal bool ConsumeWheel { get; private set; }
         internal HotkeyPopupCommand Hovered { get; private set; } = HotkeyPopupCommand.None;
         internal HotkeyPopupCommand Pressed { get { return armed; } }
         private string lastClick;
@@ -57,12 +60,12 @@ namespace JueMingR.TerrariaHost.Hotkeys
             lastClick = target; lastGeneration = generation; this.page = page; lastAnchor = bounds; lastClickTime = milliseconds;
             if (!twice) return;
             EndCapture(); Target = target; anchor = bounds; epoch++; armed = HotkeyPopupCommand.None; lastClick = null;
-            HelpVisible = false; candidate = null; view = null; Layout.ResetAnchor();
+            HelpVisible = DetailsExpanded = false; DetailOffset = 0; candidate = null; view = null; Layout.ResetAnchor();
             awaitingSaveSlot = bindings.Busy; Feedback = InitialFeedback();
         }
         internal bool ContainsPointer(float x, float y)
         { return Visible && (Layout.Panel.Contains(x, y) || HelpVisible && Layout.HelpPanel.Contains(x, y)); }
-        internal void Process(bool active, int currentPage, float x, float y, bool geometryCurrent)
+        internal void Process(bool active, int currentPage, float x, float y, bool geometryCurrent, int wheel = 0)
         {
             bindings.Poll();
             if (Visible && (awaitingSaveSlot && !bindings.Busy || Feedback.Kind == HotkeyFeedbackKind.Loading && bindings.Loaded))
@@ -72,13 +75,13 @@ namespace JueMingR.TerrariaHost.Hotkeys
                 if (Visible && epoch == pendingEpoch && Target == bindings.CompletionAction) { Feedback = bindings.Feedback; candidate = null; }
                 pendingCommand = 0;
             }
-            OwnsPointer = BlockPointer = false;
+            OwnsPointer = BlockPointer = ConsumeWheel = false;
             bool left = input.Hotkeys.IsDown(256);
             if (!active || !input.SampleFocused || currentPage != page && Visible) { Close(); previousLeft = input.SampleFocused ? left : true; return; }
             if (!Visible) { previousLeft = left; return; }
             bool pressed = input.Hotkeys.IsNew(256), released = !left && previousLeft;
             bool wasHelp = HelpVisible && Layout.HelpPanel.Contains(x, y);
-            Hovered = geometryCurrent ? Layout.Hit(x, y) : HotkeyPopupCommand.None;
+            Hovered = geometryCurrent && !wasHelp ? Layout.Hit(x, y, DetailOffset) : HotkeyPopupCommand.None;
             HelpVisible = geometryCurrent && (Hovered == HotkeyPopupCommand.Help || wasHelp);
             bool helpPointer = Hovered == HotkeyPopupCommand.Help || wasHelp;
             OwnsPointer = Capturing || ContainsPointer(x, y) || armed != HotkeyPopupCommand.None || input.HotkeyPointerOwned;
@@ -103,21 +106,33 @@ namespace JueMingR.TerrariaHost.Hotkeys
                 if (valid)
                 {
                     if (command == HotkeyPopupCommand.Close) Close();
+                    else if (command == HotkeyPopupCommand.Details) { DetailsExpanded = !DetailsExpanded; DetailOffset = 0; }
+                    else if (command == HotkeyPopupCommand.DetailUp) ScrollDetails(-1);
+                    else if (command == HotkeyPopupCommand.DetailDown) ScrollDetails(1);
                     else if (command == HotkeyPopupCommand.Clear && !Capturing && !bindings.Busy && !bindings.Protected) Submit(null);
                     else if (command == HotkeyPopupCommand.Record)
                     {
                         if (Capturing) Cancel("录入已取消");
                         else if (bindings.Loaded && !bindings.Busy && !bindings.Protected)
-                        { Capturing = input.HotkeyCapture = true; epoch++; candidate = null; shownModifiers = HotkeyModifiers.None; input.Hotkeys.SuppressHeld(); Feedback = new HotkeyFeedback(HotkeyFeedbackKind.Capturing, "等待主键"); }
+                        { Capturing = input.HotkeyCapture = true; epoch++; candidate = null; DetailsExpanded = false; DetailOffset = 0; shownModifiers = HotkeyModifiers.None; input.Hotkeys.SuppressHeld(); Feedback = new HotkeyFeedback(HotkeyFeedbackKind.Capturing); }
                     }
                 }
             }
             if (Capturing && !controlGesture) Capture();
+            // The same wheel delta belongs to the popup even over its help or
+            // controls; only an uncovered detail viewport changes its row offset.
+            if (geometryCurrent && ContainsPointer(x, y) && wheel != 0)
+            {
+                ConsumeWheel = true;
+                if (!helpPointer && DetailsExpanded && Layout.DetailViewport.Offset(Layout.Panel.X, Layout.Panel.Y).Contains(x, y))
+                    ScrollDetails(wheel > 0 ? -3 : 3);
+            }
             if (Capturing || OwnsPointer && input.Hotkeys.HasSuppressedKeys) input.ConsumeHotkeyActions();
             previousLeft = left;
         }
         private void Cancel(string message)
-        { EndCapture(); candidate = null; Feedback = new HotkeyFeedback(HotkeyFeedbackKind.Cancelled, message); }
+        { EndCapture(); candidate = null; DetailsExpanded = false; DetailOffset = 0; Feedback = new HotkeyFeedback(HotkeyFeedbackKind.Cancelled, message); }
+        private void ScrollDetails(int lines) { DetailOffset = Math.Max(0, Math.Min(Layout.DetailMaxOffset, DetailOffset + lines)); }
         private void Capture()
         {
             if (input.Hotkeys.IsNew(27)) { Cancel("录入已取消"); return; }
@@ -129,7 +144,7 @@ namespace JueMingR.TerrariaHost.Hotkeys
                 int modifiers = 0; for (int i = 0; i < 6; i++) if (((int)input.Hotkeys.Modifiers & (1 << i)) != 0) modifiers++;
                 var kind = modifiers > 3 ? HotkeyFeedbackKind.Rejected : HotkeyFeedbackKind.Capturing;
                 if (shownModifiers != input.Hotkeys.Modifiers || Feedback.Kind != kind)
-                { shownModifiers = input.Hotkeys.Modifiers; Feedback = new HotkeyFeedback(kind, modifiers > 3 ? "请松开多余修饰键" : "等待主键"); }
+                { shownModifiers = input.Hotkeys.Modifiers; Feedback = new HotkeyFeedback(kind, modifiers > 3 ? "请松开多余修饰键" : null); }
                 return;
             }
             HotkeyChord chord; string reason;
@@ -140,6 +155,7 @@ namespace JueMingR.TerrariaHost.Hotkeys
         }
         private void Submit(HotkeyChord chord)
         {
+            DetailsExpanded = false; DetailOffset = 0;
             string reason; long command;
             if (!bindings.TrySet(Target, chord, VanillaHotkeyConflicts.Check, out command, out reason))
             { candidate = null; Feedback = new HotkeyFeedback(HotkeyFeedbackKind.Rejected, reason); return; }
@@ -151,12 +167,14 @@ namespace JueMingR.TerrariaHost.Hotkeys
             var chord = bindings.Get(Target); bool editable = bindings.Loaded && !bindings.Busy && !bindings.Protected;
             bool known = bindings.Loaded && (chord != null || !bindings.Protected);
             if (view == null || !Equals(view.Effective, chord) || !Equals(view.Candidate, candidate) || view.Modifiers != shownModifiers ||
-                !ReferenceEquals(view.Feedback, Feedback) || view.Editable != editable || view.Capturing != Capturing || view.Known != known)
-                view = new HotkeyPopupView(registry.Find(Target).Name, chord, candidate, shownModifiers, Feedback, editable, Capturing, known);
+                !ReferenceEquals(view.Feedback, Feedback) || view.Editable != editable || view.Capturing != Capturing || view.Known != known || view.DetailsExpanded != DetailsExpanded)
+                view = new HotkeyPopupView(registry.Find(Target).Name, chord, candidate, shownModifiers, Feedback, editable, Capturing, known, DetailsExpanded);
             Layout.Build(width, height, font, anchor, view, measure, skin);
+            ScrollDetails(0);
+            if (HelpVisible) Layout.PrepareHelp(measure);
         }
         private void EndCapture() { if (Capturing) input.Hotkeys.SuppressHeld(); Capturing = input.HotkeyCapture = false; }
         internal void Close()
-        { EndCapture(); Target = null; epoch++; armed = Hovered = HotkeyPopupCommand.None; lastClick = null; awaitingSaveSlot = HelpVisible = false; candidate = null; OwnsPointer = BlockPointer = false; }
+        { EndCapture(); Target = null; epoch++; armed = Hovered = HotkeyPopupCommand.None; lastClick = null; awaitingSaveSlot = HelpVisible = DetailsExpanded = false; DetailOffset = 0; candidate = null; OwnsPointer = BlockPointer = false; }
     }
 }

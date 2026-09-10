@@ -40,13 +40,22 @@ namespace JueMingR.TerrariaHost.F5
                 var label = F5Layout.ButtonLabel(cap).Offset(layout.Panel.X, layout.Panel.Y);
                 Text(batch, cap.Text, new Vector2(label.X, label.Y), cap.TextScale, Color.White, cap.TextSize);
             }
+            // Only complete measured lines enter this bounded viewport. Scrolling
+            // selects cached lines without touching the caller's SpriteBatch or scissor.
+            for (int rowIndex = 0; rowIndex < layout.DetailVisibleLines; rowIndex++)
+            {
+                var line = layout.DetailText[popup.DetailOffset + rowIndex];
+                Text(batch, line.Text, new Vector2(layout.Panel.X + layout.DetailViewport.X,
+                    layout.Panel.Y + layout.DetailViewport.Y + rowIndex * layout.DetailLineHeight), line.TextScale, Color.LightGoldenrodYellow, line.TextSize);
+            }
             PopupRule(batch, layout.Panel.X + 12, layout.Panel.Y + layout.HeaderBottom, layout.Panel.Width - 24);
             PopupRule(batch, layout.Panel.X + 12, layout.Panel.Y + layout.FooterTop, layout.Panel.Width - 24);
             for (int i = 0; i < layout.Buttons.Count; i++)
             {
                 var command = layout.Commands[i];
-                F5ControlRenderer.Button(batch, pixel, button, font, layout.Buttons[i], popup.Hovered == command, layout.Enabled[i],
-                    command == Hotkeys.HotkeyPopupCommand.Record && layout.Enabled[i] ? (Color?)Color.LightGray : null,
+                bool enabled = layout.IsEnabled(i, popup.DetailOffset);
+                F5ControlRenderer.Button(batch, pixel, button, font, layout.Buttons[i], popup.Hovered == command, enabled,
+                    command == Hotkeys.HotkeyPopupCommand.Record && enabled ? (Color?)Color.LightGray : null,
                     layout.Panel.X, layout.Panel.Y, true, popup.Pressed == command && popup.Hovered == command);
             }
             if (popup.HelpVisible)

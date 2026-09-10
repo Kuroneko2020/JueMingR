@@ -36,7 +36,7 @@ namespace JueMingR.ArchitectureTests
             using (var owner = new HotkeyBindings(registry, new MemoryStorage()))
             {
                 Wait(owner, () => owner.Loaded);
-                Func<HotkeyAction, HotkeyChord, string> check = (a, c) => { vanillaReads++; return null; };
+                Func<HotkeyAction, HotkeyChord, HotkeyAdvisory> check = (a, c) => { vanillaReads++; return null; };
                 Set(owner, "test.bare", "K", check); Set(owner, "test.ctrl", "RightControl+K", check);
                 Set(owner, "test.three", "RightControl+RightShift+RightAlt+K", check); Set(owner, "test.command", "J", check);
                 int reads = vanillaReads;
@@ -60,7 +60,7 @@ namespace JueMingR.ArchitectureTests
                 if (bare != 2) failures.Add("Hotkeys: Win chord dispatched gameplay.");
                 if (vanillaReads != reads) failures.Add("Hotkeys: runtime monitored vanilla bindings.");
                 if (owner.Validate("test.command", Parse("K")) == null) failures.Add("Hotkeys: internal duplicate did not reserve a toggle action.");
-                Set(owner, "test.bare", "K", (a, c) => "changed vanilla");
+                Set(owner, "test.bare", "K", (a, c) => Notice("changed vanilla"));
                 if (!owner.Message.Contains("changed vanilla")) failures.Add("Hotkeys: idempotent edit lost current vanilla warning.");
             }
         }
@@ -76,12 +76,12 @@ namespace JueMingR.ArchitectureTests
                 storage.Block.Reset(); long command, ignored; string reason;
                 try
                 {
-                    if (!owner.TrySet("a", Parse("LeftControl+J"), (a, c) => { reads++; return "native overlap A"; }, out command, out reason))
+                    if (!owner.TrySet("a", Parse("LeftControl+J"), (a, c) => { reads++; return Notice("native overlap A"); }, out command, out reason))
                     { failures.Add("Hotkeys: native warning refused candidate."); return; }
                     if (!owner.Busy || owner.Get("a").Text != "K" || !owner.Message.Contains("native overlap A") || owner.Message.Contains("已保存"))
                         failures.Add("Hotkeys: warning hid pending state or activated early.");
-                    if (owner.Feedback.Kind != HotkeyFeedbackKind.Saving || owner.Feedback.Advisory != "native overlap A") failures.Add("Hotkeys: pending feedback lost typed status/advisory.");
-                    if (owner.TrySet("b", Parse("L"), (a, c) => { reads++; return "native overlap B"; }, out ignored, out reason) || reads != 1 || !owner.Message.Contains("native overlap A"))
+                    if (owner.Feedback.Kind != HotkeyFeedbackKind.Saving || owner.Feedback.Advisory.Items[0].Name != "native overlap A") failures.Add("Hotkeys: pending feedback lost typed status/advisory.");
+                    if (owner.TrySet("b", Parse("L"), (a, c) => { reads++; return Notice("native overlap B"); }, out ignored, out reason) || reads != 1 || !owner.Message.Contains("native overlap A"))
                         failures.Add("Hotkeys: busy rejection overwrote accepted warning or read native profile.");
                 }
                 finally { storage.Block.Set(); }
@@ -90,11 +90,11 @@ namespace JueMingR.ArchitectureTests
                 if (!owner.CompletionSucceeded || owner.CompletionId != command || owner.Get("a").Text != "LeftControl+J" || !owner.Message.Contains("native overlap A"))
                     failures.Add("Hotkeys: successful save lost candidate or warning identity.");
                 byte[] saved = storage.Bytes;
-                if (owner.TrySet("b", Parse("LeftControl+J"), (a, c) => { reads++; return "native overlap B"; }, out ignored, out reason) || reads != 1 || !reason.Contains("First action") || storage.Bytes != saved)
+                if (owner.TrySet("b", Parse("LeftControl+J"), (a, c) => { reads++; return Notice("native overlap B"); }, out ignored, out reason) || reads != 1 || !reason.Contains("First action") || storage.Bytes != saved)
                     failures.Add("Hotkeys: internal duplicate no longer blocks before warning/read/write.");
-                Set(owner, "a", "LeftControl+J", (a, c) => "new native mapping");
+                Set(owner, "a", "LeftControl+J", (a, c) => Notice("new native mapping"));
                 if (!owner.Message.Contains("new native mapping") || owner.Message.Contains("native overlap A")) failures.Add("Hotkeys: idempotent submit retained stale warning.");
-                Set(owner, "a", null, (a, c) => { reads++; return "clear must not check"; });
+                Set(owner, "a", null, (a, c) => { reads++; return Notice("clear must not check"); });
                 if (owner.Feedback.Kind != HotkeyFeedbackKind.Cleared) failures.Add("Hotkeys: reliable clear did not publish Cleared.");
                 if (reads != 1 || owner.Get("a") != null || owner.Message.Contains("native")) failures.Add("Hotkeys: clearing consulted native profile or retained warning.");
                 Set(owner, "a", "J", (a, c) => { throw new InvalidOperationException("unavailable profile"); });
@@ -113,7 +113,7 @@ namespace JueMingR.ArchitectureTests
             {
                 Wait(owner, () => owner.Loaded); Set(owner, "test.one", "K", (a, c) => null);
                 storage.Block.Reset(); storage.Fail = true; long command; string reason;
-                if (!owner.TrySet("test.one", Parse("J"), (a, c) => "native warning", out command, out reason)) throw new Exception(reason);
+                if (!owner.TrySet("test.one", Parse("J"), (a, c) => Notice("native warning"), out command, out reason)) throw new Exception(reason);
                 if (owner.Get("test.one").Text != "K" || !owner.Busy) failures.Add("Hotkeys: pending write activated candidate early.");
                 long ignored;
                 if (owner.TrySet("test.one", Parse("L"), (a, c) => null, out ignored, out reason)) failures.Add("Hotkeys: busy worker overwrote accepted command.");
@@ -129,7 +129,7 @@ namespace JueMingR.ArchitectureTests
             using (var owner = new HotkeyBindings(registry, storage))
             {
                 Wait(owner, () => owner.Loaded); long command; string reason;
-                owner.TrySet("test.one", Parse("J"), (a, c) => "native warning", out command, out reason); Wait(owner, () => !owner.Busy);
+                owner.TrySet("test.one", Parse("J"), (a, c) => Notice("native warning"), out command, out reason); Wait(owner, () => !owner.Busy);
                 if (owner.Feedback.Kind != HotkeyFeedbackKind.Unconfirmed || owner.Feedback.Advisory != null) failures.Add("Hotkeys: unknown commit lost protected result category.");
                 if (!owner.CommitUnconfirmed || !owner.Protected || owner.Get("test.one") != null || owner.Message.Contains("native warning")) failures.Add("Hotkeys: unknown commit pretended success/rollback or hid failure with warning.");
             }
@@ -169,7 +169,8 @@ namespace JueMingR.ArchitectureTests
                 catch { failures.Add("Hotkeys: legal full document threw through UI instead of rejecting candidate."); }
             }
         }
-        internal static void Set(HotkeyBindings owner, string id, string text, Func<HotkeyAction, HotkeyChord, string> check)
+        private static HotkeyAdvisory Notice(string name) { return new HotkeyAdvisory(new[] { new HotkeyOverlap("test:" + name, name, new[] { "K" }) }, new string[0]); }
+        internal static void Set(HotkeyBindings owner, string id, string text, Func<HotkeyAction, HotkeyChord, HotkeyAdvisory> check)
         { long command; string reason; if (!owner.TrySet(id, text == null ? null : Parse(text), check, out command, out reason)) throw new Exception(reason); Wait(owner, () => !owner.Busy); if (!owner.CompletionSucceeded) throw new Exception(owner.Message); }
         internal sealed class MemoryStorage : IPreferenceStorage
         {

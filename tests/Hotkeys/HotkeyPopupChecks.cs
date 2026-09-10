@@ -25,22 +25,26 @@ namespace Terraria
             var profile = new PlayerInputProfile(); PlayerInput.CurrentProfile = profile;
             var map = profile.InputModes[InputMode.Keyboard].KeyStatus;
             map["SmartCursor"] = new List<string> { "LeftControl" };
-            Check(VanillaHotkeyConflicts.Check(target, Parse("LeftControl+K")) != null, "modifier itself conflicts with native SmartCursor");
-            Check(VanillaHotkeyConflicts.Check(target, Parse("RightControl+K")) == null, "side identity leaves free RightControl");
-            Check(VanillaHotkeyConflicts.Check(target, Parse("F9")) == null && VanillaHotkeyConflicts.Check(target, Parse("RightShift+F9")) != null, "F9 fixed rule requires Shift");
-            foreach (string key in new[] { "F7", "F8", "F10", "F11", "Enter", "RightAlt+Enter" }) Check(VanillaHotkeyConflicts.Check(target, Parse(key)) != null, "actual fixed handler " + key);
+            map["SmartSelect"] = new List<string> { "LeftShift" };
+            var both = VanillaHotkeyConflicts.Check(target, Parse("LeftControl+LeftShift+K"));
+            Check(both.Message.Contains("SmartCursor") && both.Message.Contains("SmartSelect"), "one submission reports both modifier overlaps");
+            map.Remove("SmartSelect");
+            Check(VanillaHotkeyConflicts.Check(target, Parse("LeftControl+K")).HasNotice, "modifier itself conflicts with native SmartCursor");
+            Check(!VanillaHotkeyConflicts.Check(target, Parse("RightControl+K")).HasNotice, "side identity leaves free RightControl");
+            Check(!VanillaHotkeyConflicts.Check(target, Parse("F9")).HasNotice && VanillaHotkeyConflicts.Check(target, Parse("RightShift+F9")).HasNotice, "F9 fixed rule requires Shift");
+            foreach (string key in new[] { "F7", "F8", "F10", "F11", "Enter", "RightAlt+Enter" }) Check(VanillaHotkeyConflicts.Check(target, Parse(key)).HasNotice, "actual fixed handler " + key);
             map["MapStyle"] = new List<string> { "Tab" };
-            Check(VanillaHotkeyConflicts.Check(target, Parse("Tab")) != null && VanillaHotkeyConflicts.Check(target, Parse("RightAlt+Tab")) == null, "Alt Tab excluded by actual native mapping condition");
+            Check(VanillaHotkeyConflicts.Check(target, Parse("Tab")).HasNotice && !VanillaHotkeyConflicts.Check(target, Parse("RightAlt+Tab")).HasNotice, "Alt Tab excluded by actual native mapping condition");
             Social.SocialAPI.Mode = Social.SocialMode.Steam;
-            Check(VanillaHotkeyConflicts.Check(target, Parse("RightShift+Tab")) == null, "Steam Shift Tab mapping exception");
+            Check(!VanillaHotkeyConflicts.Check(target, Parse("RightShift+Tab")).HasNotice, "Steam Shift Tab mapping exception");
             Social.SocialAPI.Mode = Social.SocialMode.None;
-            Check(VanillaHotkeyConflicts.Check(target, Parse("RightShift+Tab")) != null, "non Steam Shift Tab still maps");
-            map["DpadRadial1"] = new List<string> { "K" }; Check(VanillaHotkeyConflicts.Check(target, Parse("K")) != null, "Dpad keyboard trigger can change held item");
-            map.Clear(); map["MenuUp"] = new List<string> { "K" }; Check(VanillaHotkeyConflicts.Check(target, Parse("K")) == null, "menu-only key is not globally reserved");
+            Check(VanillaHotkeyConflicts.Check(target, Parse("RightShift+Tab")).HasNotice, "non Steam Shift Tab still maps");
+            map["DpadRadial1"] = new List<string> { "K" }; Check(VanillaHotkeyConflicts.Check(target, Parse("K")).HasNotice, "Dpad keyboard trigger can change held item");
+            map.Clear(); map["MenuUp"] = new List<string> { "K" }; Check(!VanillaHotkeyConflicts.Check(target, Parse("K")).HasNotice, "menu-only key is not globally reserved");
             map["LockOn"] = new List<string> { "K" }; LockOnHelper.ForceUsability = true;
-            Check(VanillaHotkeyConflicts.Check(target, Parse("K")) != null, "forced native lock-on context"); LockOnHelper.ForceUsability = false;
+            Check(VanillaHotkeyConflicts.Check(target, Parse("K")).HasNotice, "forced native lock-on context"); LockOnHelper.ForceUsability = false;
             map.Clear(); PlayerInput.CurrentProfile = null;
-            Check(VanillaHotkeyConflicts.Check(target, Parse("K")) != null, "unavailable active configuration reports incomplete check");
+            Check(VanillaHotkeyConflicts.Check(target, Parse("K")).HasNotice, "unavailable active configuration reports incomplete check");
             PlayerInput.CurrentProfile = profile;
 
             string root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "JueMingR.Hotkeys.Popup-" + Guid.NewGuid().ToString("N")));
@@ -74,6 +78,7 @@ namespace Terraria
                     Check(popup.Visible && popup.Layout.Panel.Right <= 788 && popup.Layout.Panel.Bottom <= 588, "double click opens viewport-clamped window");
                     Check(popup.Layout.Index(HotkeyPopupCommand.Help) >= 0 && popup.Layout.Index(HotkeyPopupCommand.Close) >= 0, "popup header owns help and close");
                     Check(!popup.Layout.Text.Exists(t => t.Text.Contains("最多三个") || t.Text.Contains("请选择")), "initial popup has no permanent rule wall or false result");
+                    Check(popup.Layout.Panel.Width < 400 && popup.Layout.Panel.Height < 180, "empty popup sizes to visible content, without hidden help/result reserve");
                     Action<int> click = index => { F5Rect r = popup.Layout.Buttons[popup.Layout.Index((HotkeyPopupCommand)index)].Rect.Offset(popup.Layout.Panel.X, popup.Layout.Panel.Y); step(new int[0], true, r.X + 3, r.Y + 3); step(new int[0], false, r.X + 3, r.Y + 3); };
                     int languageReads = Localization.Language.Reads;
                     click(3); Check(popup.HelpVisible && !popup.Capturing && owner.Get(target.Id) == null, "help is a hover surface, never a candidate");
@@ -184,7 +189,7 @@ namespace Terraria
                 Directory.Delete(root, true);
             }
             CheckCompletionOwnership(false); CheckCompletionOwnership(true); CheckCompletionOwnership(true, true);
-            CheckDisplayStates();
+            CheckDisplayStates(); CheckCompactDetails(); CheckDetailInput(); HotkeyAdvisoryChecks.Run();
             Console.WriteLine("PASS: hotkey actual-profile conflicts and production popup/input/file checks.");
         }
         private static void CheckCompletionOwnership(bool fail, bool unconfirmed = false)
@@ -240,11 +245,13 @@ namespace Terraria
         private sealed class GatedStorage : IPreferenceStorage
         {
             internal bool Fail, Unconfirmed;
+            internal int Writes;
             internal byte[] Initial;
             internal readonly ManualResetEvent Entered = new ManualResetEvent(false), Release = new ManualResetEvent(false);
             public PreferenceReadResult Read() { return new PreferenceReadResult(Initial == null ? PreferenceReadStatus.Missing : PreferenceReadStatus.Loaded, Initial, Initial == null ? null : "initial", null); }
             public PreferenceWriteResult Write(string identity, byte[] bytes)
             {
+                Writes++;
                 Entered.Set();
                 if (!Release.WaitOne(5000)) throw new TimeoutException("Controlled save was not released.");
                 return Fail ? new PreferenceWriteResult(PreferenceWriteStatus.IoFailure, null, "controlled failure", commitUnconfirmed: Unconfirmed) : new PreferenceWriteResult(PreferenceWriteStatus.Saved, "saved", null);
@@ -265,7 +272,7 @@ namespace Terraria
             foreach (var kind in new[] { HotkeyFeedbackKind.Ready, HotkeyFeedbackKind.Saved, HotkeyFeedbackKind.Rejected, HotkeyFeedbackKind.Failed })
             {
                 var view = new HotkeyPopupView("自动堆叠", effective, null, HotkeyModifiers.None,
-                    new HotkeyFeedback(kind, kind == HotkeyFeedbackKind.Ready ? null : "本次结果", advisory: kind == HotkeyFeedbackKind.Saved ? "LShift 与原版动作重合，可能同时触发。" : null), true, false, true);
+                    new HotkeyFeedback(kind, kind == HotkeyFeedbackKind.Ready ? null : "本次结果", advisory: kind == HotkeyFeedbackKind.Saved ? HotkeyAdvisoryChecks.Notice(1) : null), true, false, true);
                 layout.Build(640, 480, font, anchor, view, measure);
                 Check(layout.Keycaps.Count == 4 && layout.Keycaps[3].Text == "Num+", "plus inside one main key is never split into modifiers");
                 foreach (var cap in layout.Keycaps)
@@ -274,7 +281,7 @@ namespace Terraria
                     Check(layout.Hit(layout.Panel.X + cap.Rect.X + 3, layout.Panel.Y + cap.Rect.Y + 3) == HotkeyPopupCommand.None, "keycaps have no action");
                 }
                 var next = layout.Buttons[layout.Index(HotkeyPopupCommand.Record)].Rect.Offset(layout.Panel.X, layout.Panel.Y);
-                if (kind != HotkeyFeedbackKind.Ready) Check(next.X == primary.X && next.Y == primary.Y, "ordinary result leaves primary position unchanged");
+                if (kind == HotkeyFeedbackKind.Saved) Check(next.Y != primary.Y, "visible feedback contributes height instead of reserving an empty footer area");
                 primary = next;
                 int before = reads, generation = layout.Generation;
                 for (int i = 0; i < 1000; i++) layout.Build(640, 480, font, anchor, view, measure);
@@ -290,11 +297,110 @@ namespace Terraria
                 if (!known) Check(!layout.Enabled[layout.Index(HotkeyPopupCommand.Record)], "unknown/protected cannot edit");
             }
             var longest = new HotkeyPopupView("自动丢弃", Parse("RightControl+RightShift+RightAlt+MediaPreviousTrack"), null, HotkeyModifiers.None,
-                new HotkeyFeedback(HotkeyFeedbackKind.Saved, "已保存", advisory: new string('长', 240)), true, false, true);
+                new HotkeyFeedback(HotkeyFeedbackKind.Saved, "已保存", advisory: HotkeyAdvisoryChecks.Notice(24)), true, false, true);
             layout.Build(604, 340, font, anchor, longest, Measure);
             Check(layout.Panel.Bottom <= 328 && layout.Keycaps.Count == 4, "long names and feedback fit the supported viewport");
         }
         private static F5Size Measure(string text, float scale) { return new F5Size(text.Length * 10 * scale, 24 * scale); }
+        private static void CheckDetailInput()
+        {
+            var previous = PlayerInput.CurrentProfile; var registry = new HotkeyRegistry();
+            registry.Register(new HotkeyAction("test.details", "完整提醒", HotkeyContext.Gameplay, () => true, () => { }));
+            var storage = new GatedStorage(); storage.Release.Set();
+            PlayerInput.CurrentProfile = new PlayerInputProfile();
+            var map = PlayerInput.CurrentProfile.InputModes[InputMode.Keyboard].KeyStatus; map.Clear();
+            foreach (string id in new[] { "Up", "Down", "Left", "Right", "Jump", "Grapple", "SmartCursor", "SmartSelect", "QuickHeal", "QuickMana", "QuickBuff", "Inventory" }) map[id] = new List<string> { "K" };
+            try
+            {
+                using (var owner = new HotkeyBindings(registry, storage))
+                {
+                    Wait(owner, () => owner.Loaded);
+                    var input = new HostInputState(() => new IntPtr(1), () => new IntPtr(1)); var popup = new HotkeyPopup(owner, registry, input);
+                    Action<Keys[], bool, float, float, int> step = (keys, left, x, y, wheel) =>
+                    {
+                        input.BeginUpdate(); PlayerInput.MouseInfo = new MouseState((int)x, (int)y, 0, left ? ButtonState.Pressed : ButtonState.Released, ButtonState.Released, ButtonState.Released, ButtonState.Released, ButtonState.Released);
+                        input.AfterMapping(); Main.keyState = new KeyboardState(keys); input.AfterKeyboardRefresh();
+                        popup.Process(true, 0, x, y, popup.Layout.Matches(800, 400, font), wheel); popup.Prepare(800, 400, font, Measure);
+                    };
+                    Action<HotkeyPopupCommand> click = command =>
+                    {
+                        var r = popup.Layout.Buttons[popup.Layout.Index(command)].Rect.Offset(popup.Layout.Panel.X, popup.Layout.Panel.Y);
+                        step(new Keys[0], true, r.X + 4, r.Y + 4, 0); step(new Keys[0], false, r.X + 4, r.Y + 4, 0);
+                    };
+                    var anchor = new F5Rect(750, 280, 22, 30);
+                    popup.Click("test.details", anchor, 1, 0, 100); popup.Click("test.details", anchor, 1, 0, 200); popup.Prepare(800, 400, font, Measure);
+                    step(new Keys[0], false, 0, 0, 0); click(HotkeyPopupCommand.Record);
+                    step(new[] { Keys.K }, false, 0, 0, 0); Wait(owner, () => !owner.Busy); step(new Keys[0], false, 0, 0, 0);
+                    var result = popup.Feedback.Advisory;
+                    Check(result.Items.Count == 12 && storage.Writes == 1 && popup.Layout.DetailVisibleLines <= 3, "one accepted submission owns a full report and bounded summary");
+                    PlayerInput.CurrentProfile = null;
+                    click(HotkeyPopupCommand.Details);
+                    Check(popup.DetailsExpanded && popup.Layout.DetailMaxOffset > 0, "full result expands into a bounded scroll viewport");
+                    while (popup.DetailOffset < popup.Layout.DetailMaxOffset) click(HotkeyPopupCommand.DetailDown);
+                    Check(popup.DetailOffset + popup.Layout.DetailVisibleLines == popup.Layout.DetailText.Count, "actual control gestures reach the final cached line");
+                    int offset = popup.DetailOffset;
+                    click(HotkeyPopupCommand.Help);
+                    var help = popup.Layout.HelpPanel;
+                    step(new Keys[0], false, help.X + 4, help.Y + 4, -120);
+                    Check(popup.HelpVisible && popup.ConsumeWheel && popup.DetailOffset == offset, "help wheel is consumed without scrolling details behind it");
+                    step(new Keys[0], false, 0, 0, 0);
+                    var body = popup.Layout.DetailViewport.Offset(popup.Layout.Panel.X, popup.Layout.Panel.Y);
+                    step(new Keys[0], false, body.X + 3, body.Y + 3, 120);
+                    Check(popup.ConsumeWheel && popup.DetailOffset < offset, "wheel uses the shared popup input to scroll cached lines");
+                    click(HotkeyPopupCommand.Details);
+                    Check(!popup.DetailsExpanded && ReferenceEquals(result, popup.Feedback.Advisory) && storage.Writes == 1 && owner.Get("test.details").Text == "K", "details/help do not replace submission snapshot or rewrite binding after profile changes");
+                    click(HotkeyPopupCommand.Close);
+                    popup.Click("test.details", anchor, 1, 0, 300); popup.Click("test.details", anchor, 1, 0, 400); popup.Prepare(800, 400, font, Measure);
+                    Check(popup.Feedback.Kind == HotkeyFeedbackKind.Ready && popup.Feedback.Advisory == null && popup.Layout.Panel.Height < 180 && storage.Writes == 1, "reopen neither restores old advice nor checks unavailable profile");
+                }
+            }
+            finally { PlayerInput.CurrentProfile = previous; }
+        }
+        private static void CheckCompactDetails()
+        {
+            var layout = new HotkeyPopupLayout(); var report = HotkeyAdvisoryChecks.Notice(24);
+            var chord = Parse("LeftControl+LeftShift+K");
+            foreach (var viewport in new[] { new F5Size(604, 340), new F5Size(640, 480), new F5Size(800, 600) })
+            foreach (bool expanded in new[] { false, true })
+            {
+                var view = new HotkeyPopupView("群系显示", chord, null, HotkeyModifiers.None, new HotkeyFeedback(HotkeyFeedbackKind.Saved, "已保存", advisory: report), true, false, true, expanded);
+                layout.ResetAnchor(); layout.Build(viewport.Width, viewport.Height, font, new F5Rect(viewport.Width - 32, viewport.Height - 90, 22, 30), view, Measure);
+                Check(layout.Panel.Bottom <= viewport.Height - 12 && layout.Panel.Right <= viewport.Width - 12, "summary/details stay in the edge viewport");
+                Check(layout.DetailText.Count == 24 && layout.DetailVisibleLines > 0 && (expanded || layout.DetailVisibleLines <= 3), "summary is bounded while all source lines remain reachable");
+                if (expanded) Check(layout.DetailMaxOffset + layout.DetailVisibleLines == 24, "last detail row is reachable through the bounded range");
+                foreach (var b in layout.Buttons) Check(b.Rect.Bottom <= layout.Panel.Height && b.Rect.X >= 0 && b.Rect.Right <= layout.Panel.Width, "all detail and exit controls remain in the window");
+                float originalHeight = layout.Panel.Height; int generation = layout.Generation;
+                layout.PrepareHelp(Measure);
+                Check(layout.Panel.Height == originalHeight && layout.Generation == generation, "visible help does not resize the main popup");
+                Check(layout.HelpText.Count >= 6 && layout.HelpPanel.Bottom <= viewport.Height - 12, "all help rules remain available in edge viewport");
+                foreach (var b in layout.Buttons)
+                {
+                    var r = b.Rect.Offset(layout.Panel.X, layout.Panel.Y); var h = layout.HelpPanel;
+                    Check(!(r.X < h.Right && r.Right > h.X && r.Y < h.Bottom && r.Bottom > h.Y), "help never covers an actionable or disabled control");
+                }
+            }
+            var ready = new HotkeyPopupView("群系显示", chord, null, HotkeyModifiers.None, new HotkeyFeedback(HotkeyFeedbackKind.Ready), true, false, true);
+            layout.Build(800, 600, font, new F5Rect(650, 450, 22, 30), ready, Measure);
+            Check(layout.Panel.Width < 400 && layout.Panel.Height < 180 && layout.DetailVisibleLines == 0 && layout.Index(HotkeyPopupCommand.Details) < 0, "reopened binding has only caps and actions, without result/details reserves");
+            foreach (var mods in new[] { HotkeyModifiers.None, HotkeyModifiers.LeftControl, HotkeyModifiers.LeftControl | HotkeyModifiers.LeftShift, HotkeyModifiers.RightControl | HotkeyModifiers.RightShift | HotkeyModifiers.RightAlt })
+            {
+                var view = new HotkeyPopupView("群系显示", chord, null, mods, new HotkeyFeedback(HotkeyFeedbackKind.Capturing), true, true, true);
+                layout.Build(800, 600, font, new F5Rect(650, 450, 22, 30), view, Measure);
+                if (layout.Keycaps.Count > 0)
+                {
+                    var first = layout.Keycaps[0].Rect; var last = layout.Keycaps[layout.Keycaps.Count - 1].Rect;
+                    Check(Math.Abs(first.X + last.Right - layout.Panel.Width) < .01f, "modifier cap row is centered by actual measured width");
+                }
+                foreach (var text in layout.Text)
+                    if (text.Text.Contains("请按") || text.Text.Contains("请再按") || text.Text.Contains("单键直接"))
+                        Check(Math.Abs(text.Rect.X + text.Rect.Right - layout.Panel.Width) < .01f, "capture progress and each instruction line use the same center");
+            }
+            layout.Build(604, 220, font, new F5Rect(570, 150, 22, 30), ready, Measure);
+            Check(layout.Index(HotkeyPopupCommand.Close) >= 0 && layout.Index(HotkeyPopupCommand.Record) < 0 && layout.Panel.Bottom < 220, "existing too-small viewport guard keeps a reachable close control");
+            var wide = new HotkeyPopupView("群系显示", Parse("MediaPreviousTrack"), null, HotkeyModifiers.None, new HotkeyFeedback(HotkeyFeedbackKind.Ready), true, false, true);
+            layout.Build(604, 400, new object(), new F5Rect(570, 200, 22, 30), wide, (text, scale) => text == "MediaPreviousTrack" ? new F5Size(600, 24) : Measure(text, scale));
+            Check(layout.Keycaps.Count == 0 && layout.Index(HotkeyPopupCommand.Close) >= 0 && layout.Text.Exists(t => t.Text.Contains("缩放")), "unfittable single key label uses the existing safe viewport response");
+        }
         private static HotkeyChord Parse(string text) { HotkeyChord c; string r; if (!HotkeyChord.TryParse(text, out c, out r)) throw new Exception(r); return c; }
         private static void Wait(HotkeyBindings owner, Func<bool> condition) { var watch = Stopwatch.StartNew(); while (!condition() && watch.ElapsedMilliseconds < 5000) { owner.Poll(); Thread.Sleep(1); } Check(condition(), "worker completed"); }
         private static void Check(bool value, string reason) { if (!value) throw new InvalidOperationException("Hotkey: " + reason); }

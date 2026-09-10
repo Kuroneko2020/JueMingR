@@ -103,7 +103,7 @@ namespace JueMingR.TerrariaHost.F5
                 bool inputActive = !failed && CanPresentNow && inputState.CanUseInput && !PlayerInput.Triggers.Current.MapFull && !PlayerInput.Triggers.Current.ToggleCameraMode;
                 Vector2 pointer = State.Visible || f5 ? Vector2.Transform(raw, Matrix.Invert(matrix)) : raw;
                 HotkeyPopup?.Process(inputActive && State.Visible, State.Page, pointer.X, pointer.Y,
-                    HotkeyPopup.Layout.Matches(screen.X / matrix.M11, screen.Y / matrix.M11, renderer.FontIdentity, renderer.SkinGeneration));
+                    HotkeyPopup.Layout.Matches(screen.X / matrix.M11, screen.Y / matrix.M11, renderer.FontIdentity, renderer.SkinGeneration), PlayerInput.ScrollWheelDeltaForUI);
                 bool popupPointer = HotkeyPopup != null && HotkeyPopup.BlockPointer || inputState.HotkeyPointerOwned;
                 State.Update(new F5Input
                 {
@@ -115,7 +115,7 @@ namespace JueMingR.TerrariaHost.F5
                     Right = PlayerInput.MouseInfo.RightButton == ButtonState.Pressed,
                     BlockPointer = popupPointer,
                     Wheel = PlayerInput.ScrollWheelDeltaForUI,
-                    PageWheelHandled = inputActive && notes.Wheel(pointer.X, pointer.Y, PlayerInput.ScrollWheelDeltaForUI)
+                    PageWheelHandled = HotkeyPopup != null && HotkeyPopup.ConsumeWheel || inputActive && notes.Wheel(pointer.X, pointer.Y, PlayerInput.ScrollWheelDeltaForUI)
                 });
                 notes.ProcessInput(inputActive, matrix, screen, raw, inputState.SampleFocused, popupPointer, keySample);
                 items?.ProcessInput(inputActive, keySample, pointer, State.Layout.Matches(screen.X, screen.Y, matrix.M11, State.Page), inputState.SampleFocused, popupPointer);
@@ -153,7 +153,7 @@ namespace JueMingR.TerrariaHost.F5
                 PlayerInput.Triggers.JustReleased.MouseRight = false;
                 Main.mouseRight = false;
             }
-            if (State.ConsumeWheel || notes.ConsumeWheel || items != null && items.ConsumeWheel)
+            if (State.ConsumeWheel || notes.ConsumeWheel || items != null && items.ConsumeWheel || HotkeyPopup != null && HotkeyPopup.ConsumeWheel)
             { PlayerInput.ScrollWheelDelta = 0; PlayerInput.ScrollWheelDeltaForUI = 0; }
             // Absolute wheel and physical MouseInfo are never changed. Consumed
             // button transitions/deltas are never restored or replayed later.

@@ -30,17 +30,20 @@ namespace Terraria
                     var registry = new HotkeyRegistry(); registry.Register(new HotkeyAction("test.visual", "自动丢弃", HotkeyContext.Gameplay, () => true, () => { }));
                     using (var owner = new HotkeyBindings(registry, new FilePreferenceStorage(Path.Combine(output, "visual-probe.json"))))
                     {
-                        var popup = new HotkeyPopup(owner, registry, new HostInputState(() => new IntPtr(1), () => new IntPtr(1)));
+                        var visualInput = new HostInputState(() => new IntPtr(1), () => new IntPtr(1));
+                        var popup = new HotkeyPopup(owner, registry, visualInput);
                         popup.Click("test.visual", new F5Rect(650, 10, 22, 30), 1, 0, 100);
                         popup.Click("test.visual", new F5Rect(650, 10, 22, 30), 1, 0, 200);
                         var views = new[] {
                             View(null, HotkeyFeedbackKind.Ready),
                             View("LeftShift+LeftAlt+X", HotkeyFeedbackKind.Ready),
-                            View("LeftShift+LeftAlt+X", HotkeyFeedbackKind.Saved, "已保存", "LShift 与原版「快捷火把」重合，可能同时触发。"),
+                            View("LeftControl+LeftShift+K", HotkeyFeedbackKind.Saved, "已保存", HotkeyAdvisoryChecks.Notice(2)),
                             new HotkeyPopupView("自动丢弃", Parse("K"), null, HotkeyModifiers.RightControl | HotkeyModifiers.RightShift, new HotkeyFeedback(HotkeyFeedbackKind.Capturing, "等待主键"), true, true, true),
                             View("K", HotkeyFeedbackKind.Rejected, "此组合已用于「自动堆叠」。"),
                             View("K", HotkeyFeedbackKind.Failed, "保存失败，原绑定仍有效"),
-                            View("RightControl+RightShift+RightAlt+MediaPreviousTrack", HotkeyFeedbackKind.Ready)
+                            View("RightControl+RightShift+RightAlt+MediaPreviousTrack", HotkeyFeedbackKind.Ready),
+                            View("LeftControl+LeftShift+K", HotkeyFeedbackKind.Saved, "已保存", HotkeyAdvisoryChecks.Notice(24)),
+                            new HotkeyPopupView("自动丢弃", Parse("LeftControl+LeftShift+K"), null, HotkeyModifiers.None, new HotkeyFeedback(HotkeyFeedbackKind.Saved, "已保存", advisory: HotkeyAdvisoryChecks.Notice(24)), true, false, true, true)
                         };
                         for (int i = 0; i < views.Length; i++)
                         {
@@ -51,8 +54,12 @@ namespace Terraria
                             var context = new F5Interaction(); context.Ready = true;
                             context.Update(new F5Input { Width = 1280, Height = 720, Scale = scale, Active = true, Focused = true, F5 = true });
                             renderer.Prepare(context, 1280, 720, scale);
+                            visualInput.BeginUpdate(); GameInput.PlayerInput.MouseInfo = new Microsoft.Xna.Framework.Input.MouseState();
+                            visualInput.AfterMapping(); Main.keyState = new Microsoft.Xna.Framework.Input.KeyboardState(); visualInput.AfterKeyboardRefresh();
+                            popup.Process(true, 0, 0, 0, true); // A previous help scene must not leak into this isolated projection.
                             popup.Layout.ResetAnchor();
-                            popup.Layout.Build(1280 / scale, 720 / scale, renderer.FontIdentity, new F5Rect(560, 220, 22, 30), views[i], renderer.PopupMeasure);
+                            popup.Layout.Build(1280 / scale, i == 8 ? 480 : 720 / scale, renderer.FontIdentity, new F5Rect(560, 220, 22, 30), views[i], renderer.PopupMeasure);
+                            File.AppendAllText(Path.Combine(output, "geometry.txt"), i + ": " + popup.Layout.Panel.Width + " x " + popup.Layout.Panel.Height + "; detail lines=" + popup.Layout.DetailVisibleLines + "/" + popup.Layout.DetailText.Count + Environment.NewLine);
                             CheckGeometry(popup.Layout);
                             if (i == 6)
                             {
@@ -65,6 +72,7 @@ namespace Terraria
                                 var help = popup.Layout.Buttons[popup.Layout.Index(HotkeyPopupCommand.Help)].Rect.Offset(popup.Layout.Panel.X, popup.Layout.Panel.Y);
                                 popup.Process(true, 0, help.X + 4, help.Y + 4, true);
                                 if (!popup.HelpVisible) throw new Exception("Help hover was not presented.");
+                                popup.Layout.PrepareHelp(renderer.PopupMeasure);
                             }
                             using (var target = new RenderTarget2D(graphics.Device, 1280, 720))
                             {
@@ -82,7 +90,7 @@ namespace Terraria
                             }
                         }
                         GameContent.FontAssets.MouseText = graphics.Asset("synthetic-offset-hotkey-font", graphics.CreateFont(12, 24, -3, 5)); renderer.RefreshResources();
-                        var longView = View("LeftControl+RightControl+RightShift+OemPlus", HotkeyFeedbackKind.Saved, "已保存", "原版动作的长名称用于验证完整换行和边界，可能同时触发。");
+                        var longView = View("LeftControl+RightControl+RightShift+OemPlus", HotkeyFeedbackKind.Saved, "已保存", HotkeyAdvisoryChecks.Notice(12));
                         popup.Layout.ResetAnchor();
                         popup.Layout.Build(640, 480, renderer.FontIdentity, new F5Rect(630, 450, 22, 30), longView, renderer.PopupMeasure);
                         CheckGeometry(popup.Layout);
@@ -93,10 +101,10 @@ namespace Terraria
                 }
                 Main.UIScaleMatrix = Matrix.Identity;
             }
-            Console.WriteLine("PASS: seven actual-XNB popup previews in current R context, two vanilla surfaces, 100/150% scale and synthetic offset geometry. Third-party skin/hardware not implied.");
+            Console.WriteLine("PASS: nine actual-XNB popup previews in current R context, two vanilla surfaces, 100/150% scale and synthetic offset geometry. Third-party skin/hardware not implied.");
         }
         private static HotkeyChord Parse(string text) { HotkeyChord chord; string reason; if (!HotkeyChord.TryParse(text, out chord, out reason)) throw new Exception(reason); return chord; }
-        private static HotkeyPopupView View(string text, HotkeyFeedbackKind kind, string summary = null, string warning = null)
+        private static HotkeyPopupView View(string text, HotkeyFeedbackKind kind, string summary = null, HotkeyAdvisory warning = null)
         { return new HotkeyPopupView("自动丢弃", text == null ? null : Parse(text), null, HotkeyModifiers.None, new HotkeyFeedback(kind, summary, advisory: warning), kind != HotkeyFeedbackKind.Saving, false, true); }
         private static void CheckGeometry(HotkeyPopupLayout layout)
         {
@@ -106,7 +114,7 @@ namespace Terraria
             for (int i = 0; i < layout.Buttons.Count; i++)
             {
                 var r = layout.Buttons[i].Rect.Offset(layout.Panel.X, layout.Panel.Y);
-                if (layout.Hit(r.X + r.Width / 2, r.Y + r.Height / 2) != (layout.Enabled[i] ? layout.Commands[i] : HotkeyPopupCommand.None)) throw new Exception("Popup paint and hit geometry disagree.");
+                if (layout.Hit(r.X + r.Width / 2, r.Y + r.Height / 2) != (layout.IsEnabled(i, 0) ? layout.Commands[i] : HotkeyPopupCommand.None)) throw new Exception("Popup paint and hit geometry disagree.");
             }
         }
         private static T Read<T>(XnbReader reader, string path) where T : class { using (var stream = File.OpenRead(path)) return reader.FromStream<T>(stream); }
