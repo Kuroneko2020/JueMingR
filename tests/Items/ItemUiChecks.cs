@@ -331,6 +331,16 @@ namespace Terraria
                             }
                             Console.WriteLine("PASS: original MagicPixel " + pixel.Width + "x" + pixel.Height + " marker bounds at 1/1.5 UI scale; page previews use this asset.");
                             FontAssets.MouseText = graphics.Asset("actual-item-font", Read<DynamicSpriteFont>(reader, Path.Combine(content, "Fonts/Mouse_Text.xnb")));
+                            var hintMetrics = new UiTextMetrics();
+                            foreach (string hint in new[] { "提示 开", "提示 关" })
+                            {
+                                var spaced = hintMetrics.Measure(FontAssets.MouseText.Value, hint);
+                                var compact = hintMetrics.Measure(FontAssets.MouseText.Value, hint.Replace(" ", ""));
+                                Console.WriteLine("Hint metric evidence " + hint + ": " + spaced.Width + "x" + spaced.Height + " @" + spaced.OffsetX + "," + spaced.OffsetY +
+                                    "; compact=" + compact.Width + "x" + compact.Height + " @" + compact.OffsetX + "," + compact.OffsetY);
+                                Check(spaced.Width > compact.Width && Math.Abs(spaced.Height - compact.Height) < .01f && Math.Abs(spaced.OffsetY - compact.OffsetY) < .01f,
+                                    "original-font space preserves horizontal advance without adding a phantom line to the hint");
+                            }
                             TextureAssets.InventoryBack = graphics.Asset("actual-item-skin", skin);
                             var icons = new System.Collections.Generic.List<Texture2D>();
                             foreach (int type in new[] { 8, 100, 101, 102, 2337, 2338, 2339 }.Concat(Enumerable.Range(1000, 180)))
@@ -341,6 +351,8 @@ namespace Terraria
                             host.Change(ItemAutomationSettings.Default); shell.Navigate(9); prepare();
                             Draw(graphics, shellRenderer, shell, presentation, Path.Combine(output, "information-original.png"));
                             shell.Navigate(0); prepare(); presentation.ProcessInput(true, new KeyboardState(), Vector2.Zero);
+                            CheckOriginalHintRows(graphics, shellRenderer, shell, presentation, host, output);
+                            prepare();
                             Draw(graphics, shellRenderer, shell, presentation, Path.Combine(output, "items-original-short-scrollbar.png"));
                             Pointer(presentation, Control(presentation, "Replace", (int)ItemListKind.Sell, 2337), false); prepare();
                             Draw(graphics, shellRenderer, shell, presentation, Path.Combine(output, "items-body-hover.png"));
@@ -377,19 +389,52 @@ namespace Terraria
                 Console.WriteLine("PASS: Items production picker, release commit, draft/cancel/navigation, real XNA clipping/state and font replacement. Preview uses fixture item labels.");
             }
         }
+        private static void CheckOriginalHintRows(F5FixtureGraphics graphics, F5Renderer renderer, F5Interaction shell, ItemsPresentation items, HostItems host, string output)
+        {
+            foreach (float scale in new[] { 1f, 1.5f })
+            {
+                Main.UIScaleMatrix = Matrix.CreateScale(scale, scale, 1);
+                shell.Update(new F5Input { Width = 1920, Height = 1080, Scale = scale, Active = true, Focused = true });
+                F5Rect onRect = default(F5Rect);
+                foreach (bool enabled in new[] { true, false })
+                {
+                    host.Change(ItemAutomationSettings.Default.WithDiscardFeedbackEnabled(enabled));
+                    renderer.Prepare(shell, 1920, 1080, scale);
+                    items.Prepare(true, Main.UIScaleMatrix, new Vector2(1920 / scale, 1080 / scale));
+                    var hint = (ItemUiControl)Control(items, "ToggleDiscardFeedback");
+                    var add = (ItemUiControl)Control(items, "Add", (int)ItemListKind.Discard);
+                    var sale = (ItemUiControl)Control(items, "Enable", (int)ItemActionKind.Sell);
+                    Check(hint.Element.Text == (enabled ? "提示 开" : "提示 关") && hint.Element.TextSize.Height < 20 &&
+                        hint.Rect.Height == sale.Rect.Height && hint.Rect.Height == add.Rect.Height && hint.Rect.Y == add.Rect.Y,
+                        "original-font feedback retains the common single-line row height at both UI scales");
+                    if (enabled) onRect = hint.Rect;
+                    else Check(onRect.X == hint.Rect.X && onRect.Y == hint.Rect.Y && onRect.Width == hint.Rect.Width && onRect.Height == hint.Rect.Height,
+                        "original-font feedback states preserve the same hit rectangle");
+                    Draw(graphics, renderer, shell, items, Path.Combine(output, "items-hint-" + (enabled ? "on" : "off") + "-scale" + (scale == 1 ? "1" : "1_5") + ".png"));
+                }
+            }
+            Main.UIScaleMatrix = Matrix.Identity;
+            shell.Update(new F5Input { Width = 1920, Height = 1080, Scale = 1, Active = true, Focused = true });
+            host.Change(ItemAutomationSettings.Default);
+            Console.WriteLine("PASS: original-font hint on/off keeps neighboring row heights and stable geometry at 100%/150% UI scale; four real XNA previews saved.");
+        }
         private static void Draw(F5FixtureGraphics graphics, F5Renderer renderer, F5Interaction shell, ItemsPresentation items, string path)
         {
             using (var target = new RenderTarget2D(graphics.Device, 1920, 1080))
             {
-                graphics.Device.SetRenderTarget(target); graphics.Device.Clear(Color.Transparent); Main.spriteBatch.Begin();
+                graphics.Device.SetRenderTarget(target); graphics.Device.Clear(Color.Transparent);
+                Main.spriteBatch.Begin(SpriteSortMode.Deferred, null, null, null, null, null, Main.UIScaleMatrix);
                 Rectangle clip = graphics.Device.ScissorRectangle;
-                renderer.Draw(shell, Matrix.Identity, false, false); items.Draw();
+                renderer.Draw(shell, Main.UIScaleMatrix, false, false); items.Draw();
                 Check(graphics.Device.ScissorRectangle == clip, "item pass restores caller scissor");
                 Main.spriteBatch.Draw(TextureAssets.MagicPixel.Value, new Rectangle(0, 0, 8, 8), Color.Red);
                 Main.spriteBatch.End(); graphics.Device.SetRenderTarget(null);
                 var pixels = new Color[1920 * 1080]; target.GetData(pixels);
                 Check(pixels[3 * 1920 + 3].R == 255 && pixels[100 * 1920 + 100].A == 0, "restored batch still draws; distant pixels stay clipped");
                 F5Rect view = shell.Layout.Viewport.Offset(shell.X, shell.Y); bool ink = false;
+                Vector2 screenTop = Vector2.Transform(new Vector2(view.X, view.Y), Main.UIScaleMatrix);
+                Vector2 screenBottom = Vector2.Transform(new Vector2(view.Right, view.Bottom), Main.UIScaleMatrix);
+                view = new F5Rect(screenTop.X, screenTop.Y, screenBottom.X - screenTop.X, screenBottom.Y - screenTop.Y);
                 for (int y = (int)view.Y; y < view.Bottom; y++) for (int x = (int)view.X; x < view.Right; x++) ink |= pixels[y * 1920 + x].A != 0;
                 Check(ink, "item content produces real pixels");
                 if (path != null) { Directory.CreateDirectory(Path.GetDirectoryName(path)); using (var stream = File.Create(path)) target.SaveAsPng(stream, 1920, 1080); }

@@ -15,6 +15,8 @@ namespace Terraria
     {
         internal static void Run(F5FixtureGraphics graphics, string output)
         {
+            // Standalone previews need the same fixture IME-anchor host as NotesHostChecks.
+            new Main();
             NotesHostChecks.WithWorkspace(workspace =>
             {
                 using (var renderer = new NotesRenderer())
