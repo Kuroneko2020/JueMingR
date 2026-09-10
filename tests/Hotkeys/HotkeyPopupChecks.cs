@@ -40,7 +40,7 @@ namespace Terraria
             map["LockOn"] = new List<string> { "K" }; LockOnHelper.ForceUsability = true;
             Check(VanillaHotkeyConflicts.Check(target, Parse("K")) != null, "forced native lock-on context"); LockOnHelper.ForceUsability = false;
             map.Clear(); PlayerInput.CurrentProfile = null;
-            Check(VanillaHotkeyConflicts.Check(target, Parse("K")) != null, "unavailable active configuration fails candidate closed");
+            Check(VanillaHotkeyConflicts.Check(target, Parse("K")) != null, "unavailable active configuration reports incomplete check");
             PlayerInput.CurrentProfile = profile;
 
             string root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "JueMingR.Hotkeys.Popup-" + Guid.NewGuid().ToString("N")));
@@ -78,6 +78,34 @@ namespace Terraria
                     step(new[] { 163, 161, 165, 75 }, false, 0, 0); Wait(owner, () => !owner.Busy);
                     Check(owner.Get(target.Id)?.Text == "RightControl+RightShift+RightAlt+K" && popup.Visible && !popup.Capturing, "three modifiers auto-save through real file and keep popup");
                     Check(input.Hotkeys.IsSuppressed(75), "captured primary retained as physical tail"); step(new int[0], false, 0, 0);
+                    // Owner decision: native overlaps warn but still complete the
+                    // real capture/file/dispatch path, including modifier tokens.
+                    map["SmartCursor"] = new List<string> { "LeftControl" };
+                    map["SmartSelect"] = new List<string> { "LeftShift" };
+                    map["QuickHeal"] = new List<string> { "J" };
+                    map["MouseLeft"] = new List<string> { "Mouse1" };
+                    foreach (string text in new[] { "LeftControl+K", "LeftShift+K", "LeftControl+LeftShift+K", "J", "F7", "Mouse1" })
+                    {
+                        click(0);
+                        var chord = Parse(text); var keys = new List<int>();
+                        for (int i = 0; i < 6; i++) if (((int)chord.Modifiers & (1 << i)) != 0) keys.Add(HotkeyChord.ModifierCode(i));
+                        if (chord.MainKey < 256) keys.Add(chord.MainKey);
+                        step(keys.ToArray(), chord.MainKey == 256, 2, 2);
+                        Wait(owner, () => !owner.Busy);
+                        step(new int[0], false, 2, 2);
+                        Check(owner.Get(target.Id)?.Text == text && owner.CompletionSucceeded && popup.Status.Contains("已保存") && popup.Status.Contains("原版"), "native overlap warns and saves through popup: " + text);
+                        var saved = HotkeyDocument.Decode(File.ReadAllBytes(Path.Combine(root, "hotkeys.json")));
+                        Check(saved.Entries[0].Value == text, "native overlap persisted exact candidate: " + text);
+                        int before = requests;
+                        step(keys.ToArray(), chord.MainKey == 256, 2, 2);
+                        owner.Dispatch(input.Hotkeys, HotkeyContext.SinglePlayer, true);
+                        Check(requests == before + 1, "warned binding dispatches after release: " + text);
+                        step(new int[0], false, 2, 2);
+                    }
+                    PlayerInput.CurrentProfile = null;
+                    click(0); step(new[] { 75 }, false, 2, 2); Wait(owner, () => !owner.Busy); step(new int[0], false, 2, 2);
+                    Check(owner.Get(target.Id)?.Text == "K" && popup.Status.Contains("已保存") && popup.Status.Contains("无法"), "unavailable native profile warns without refusing save");
+                    PlayerInput.CurrentProfile = profile; map.Clear();
                     click(0); step(new int[0], false, 0, 0); step(new[] { 74, 75 }, false, 0, 0);
                     Check(!popup.Capturing && popup.Status.Contains("多个") && owner.Get(target.Id).MainKey == 75, "multiple new primaries rejected without enum winner");
                     step(new int[0], false, 0, 0); click(0); step(new int[0], false, 0, 0); step(new[] { 116 }, false, 0, 0);
@@ -134,15 +162,17 @@ namespace Terraria
                 if (!root.StartsWith(parent, StringComparison.OrdinalIgnoreCase) || !Path.GetFileName(root).StartsWith("JueMingR.Hotkeys.Popup-", StringComparison.Ordinal)) throw new Exception("Unsafe isolated test cleanup path.");
                 Directory.Delete(root, true);
             }
-            CheckCompletionOwnership();
+            CheckCompletionOwnership(false); CheckCompletionOwnership(true);
             Console.WriteLine("PASS: hotkey actual-profile conflicts and production popup/input/file checks.");
         }
-        private static void CheckCompletionOwnership()
+        private static void CheckCompletionOwnership(bool fail)
         {
             var registry = new HotkeyRegistry();
             registry.Register(new HotkeyAction("test.a", "前目标", HotkeyContext.Gameplay, () => true, () => { }));
             registry.Register(new HotkeyAction("test.b", "后目标", HotkeyContext.Gameplay, () => true, () => { }));
-            var storage = new GatedStorage();
+            var storage = new GatedStorage { Fail = fail };
+            PlayerInput.CurrentProfile = new PlayerInputProfile();
+            PlayerInput.CurrentProfile.InputModes[InputMode.Keyboard].KeyStatus["SmartCursor"] = new List<string> { "LeftControl" };
             using (var owner = new HotkeyBindings(registry, storage))
             {
                 try
@@ -165,29 +195,30 @@ namespace Terraria
                     var button = popup.Layout.Buttons[0].Rect.Offset(popup.Layout.Panel.X, popup.Layout.Panel.Y);
                     frame(new Keys[0], true, button.X + 3, button.Y + 3);
                     frame(new Keys[0], false, button.X + 3, button.Y + 3);
-                    frame(new[] { Keys.K }, false, 0, 0);
-                    Check(storage.Entered.WaitOne(5000) && owner.Busy, "real worker accepted A before window switch");
+                    frame(new[] { Keys.LeftControl, Keys.K }, false, 0, 0);
+                    Check(storage.Entered.WaitOne(5000) && owner.Busy && popup.Status.Contains("SmartCursor"), "real worker accepted warned A before window switch");
                     popup.Close();
                     popup.Click("test.b", anchor, 1, 0, 300); popup.Click("test.b", anchor, 1, 0, 400);
                     popup.Prepare(800, 600, font, Measure);
                     Check(!popup.Status.Contains("已保存"), "B never displays A result");
                     storage.Release.Set(); Wait(owner, () => !owner.Busy);
                     frame(new Keys[0], false, 0, 0);
-                    Check(owner.Get("test.a")?.MainKey == 75 && owner.Get("test.b") == null, "submitted A completes after close without editing B");
-                    Check(popup.Target == "test.b" && popup.Status.Contains("请选择开始录入") && !popup.Status.Contains("已保存"), "B becomes ready after A finishes without inheriting A result or stuck saving");
+                    Check((fail ? owner.Get("test.a") == null : owner.Get("test.a")?.Text == "LeftControl+K") && owner.Get("test.b") == null, "submitted A completes after close without editing B");
+                    Check(popup.Target == "test.b" && popup.Status.Contains("请选择开始录入") && !popup.Status.Contains("已保存") && !popup.Status.Contains("SmartCursor"), "B becomes ready after A finishes without inheriting A warning/result or stuck saving");
                 }
                 finally { storage.Release.Set(); }
             }
         }
         private sealed class GatedStorage : IPreferenceStorage
         {
+            internal bool Fail;
             internal readonly ManualResetEvent Entered = new ManualResetEvent(false), Release = new ManualResetEvent(false);
             public PreferenceReadResult Read() { return new PreferenceReadResult(PreferenceReadStatus.Missing, null, null, null); }
             public PreferenceWriteResult Write(string identity, byte[] bytes)
             {
                 Entered.Set();
                 if (!Release.WaitOne(5000)) throw new TimeoutException("Controlled save was not released.");
-                return new PreferenceWriteResult(PreferenceWriteStatus.Saved, "saved", null);
+                return Fail ? new PreferenceWriteResult(PreferenceWriteStatus.IoFailure, null, "controlled failure") : new PreferenceWriteResult(PreferenceWriteStatus.Saved, "saved", null);
             }
             public void Dispose() { Entered.Dispose(); Release.Dispose(); }
         }

@@ -8,6 +8,7 @@ namespace JueMingR.TerrariaHost.Hotkeys
 {
     // Verified against Terraria 1.4.5.8. This adapter is called only while
     // setting a candidate, never by load, update, dispatch or a profile monitor.
+    // Every result is advisory: overlaps and unreadable mappings do not veto saves.
     internal static class VanillaHotkeyConflicts
     {
         private static readonly HashSet<string> gameplay = new HashSet<string>(new[] {
@@ -24,7 +25,7 @@ namespace JueMingR.TerrariaHost.Hotkeys
                 var profile = PlayerInput.CurrentProfile;
                 KeyConfiguration keyboard;
                 if (profile == null || profile.InputModes == null || !profile.InputModes.TryGetValue(InputMode.Keyboard, out keyboard) || keyboard == null || keyboard.KeyStatus == null)
-                    return "无法读取当前原版键盘配置，旧绑定保留。";
+                    return "无法读取当前原版键盘配置，未能核对按键重合。";
                 int key = chord.MainKey;
                 bool shift = (chord.Modifiers & (HotkeyModifiers.LeftShift | HotkeyModifiers.RightShift)) != 0;
                 bool alt = (chord.Modifiers & (HotkeyModifiers.LeftAlt | HotkeyModifiers.RightAlt)) != 0;
@@ -35,7 +36,7 @@ namespace JueMingR.TerrariaHost.Hotkeys
                 foreach (var mapping in keyboard.KeyStatus)
                 {
                     if (!gameplay.Contains(mapping.Key) && !(mapping.Key == "LockOn" && LockOnHelper.ForceUsability)) continue;
-                    if (mapping.Value == null) return "原版键位数据不完整，旧绑定保留。";
+                    if (mapping.Value == null) return "原版键位数据不完整，未能核对全部按键重合。";
                     // Processkey ignores modifiers. Each held modifier can itself
                     // trigger a mapped action (default LeftControl/LeftShift).
                     if (ReportsToken(key, shift, alt) && mapping.Value.Contains(HotkeyChord.KeyName(key))) return Conflict(mapping.Key, HotkeyChord.KeyName(key));
@@ -45,11 +46,11 @@ namespace JueMingR.TerrariaHost.Hotkeys
                 }
                 return null;
             }
-            catch { return "无法可靠读取当前原版键位，旧绑定保留。"; }
+            catch { return "无法可靠读取当前原版键位，未能核对按键重合。"; }
         }
         private static bool ReportsToken(int key, bool shift, bool alt)
         { return key != 9 || !alt && (Terraria.Social.SocialAPI.Mode != Terraria.Social.SocialMode.Steam || !shift); }
         private static string Conflict(string action, string token)
-        { return "「" + token + "」同时触发原版「" + action + "」，请更换主键或修饰键。"; }
+        { return "「" + token + "」也用于原版「" + action + "」，触发时可能同时执行。"; }
     }
 }

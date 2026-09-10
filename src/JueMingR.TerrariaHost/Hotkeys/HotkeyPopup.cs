@@ -110,14 +110,13 @@ namespace JueMingR.TerrariaHost.Hotkeys
             bool valid = HotkeyChord.TryCreate(key, input.Hotkeys.Modifiers, out chord, out reason);
             EndCapture();
             if (!valid) { Status = reason; return; }
-            reason = bindings.Validate(Target, chord, VanillaHotkeyConflicts.Check);
-            if (reason != null) { Status = reason; return; }
             Submit(chord);
         }
         private void Submit(HotkeyChord chord)
         {
             string reason; long command;
-            // Final submit independently re-reads current vanilla configuration.
+            // One submit rejects internal conflicts and reads the current native
+            // profile for an advisory only; no second confirmation is needed.
             if (!bindings.TrySet(Target, chord, VanillaHotkeyConflicts.Check, out command, out reason)) { Status = reason; return; }
             pendingCommand = command; pendingEpoch = epoch; Status = bindings.Message;
         }

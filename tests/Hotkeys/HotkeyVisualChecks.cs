@@ -33,7 +33,7 @@ namespace Terraria
                         var popup = new HotkeyPopup(owner, registry, new HostInputState(() => new IntPtr(1), () => new IntPtr(1)));
                         popup.Click("test.visual", new F5Rect(650, 10, 22, 30), 1, 0, 100);
                         popup.Click("test.visual", new F5Rect(650, 10, 22, 30), 1, 0, 200);
-                        string[] statuses = { "请选择开始录入。保存后若再改原版键位，不会自动检查或禁用。", "等待主键：RCtrl+RShift+RAlt+", "「LeftControl」同时触发原版「SmartCursor」，请更换主键或修饰键。", "正在保存；成功前仍使用旧绑定。", "此次保存失败，旧绑定继续有效。可以重新录入后再试。", "已保存并生效。" };
+                        string[] statuses = { "请选择开始录入。保存后若再改原版键位，不会自动检查或禁用。", "等待主键：RCtrl+RShift+RAlt+", "已保存并生效。 提醒：「LeftControl」也用于原版「SmartCursor」，触发时可能同时执行。", "正在保存；成功前仍使用旧绑定。 提醒：无法读取当前原版键盘配置，未能核对按键重合。", "此次保存失败，旧绑定继续有效。可以重新录入后再试。", "已保存并生效。" };
                         for (int skin = 0; skin < 2; skin++)
                         {
                             GameContent.TextureAssets.InventoryBack = graphics.Asset("actual-hotkey-surface", skin == 0 ? surface : replacement);

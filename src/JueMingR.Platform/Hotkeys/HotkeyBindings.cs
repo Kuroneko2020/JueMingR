@@ -18,6 +18,7 @@ namespace JueMingR.Platform.Hotkeys
         private HotkeyDocument document = HotkeyDocument.Empty;
         private long nextCommand;
         private string pendingAction;
+        private string pendingWarning;
         public bool Loaded { get; private set; }
         public bool Busy { get; private set; }
         public bool Protected { get; private set; }
@@ -45,8 +46,9 @@ namespace JueMingR.Platform.Hotkeys
                 return;
             }
             Busy = false; CompletionId = result.CommandId; CompletionAction = pendingAction; pendingAction = null;
+            string warning = pendingWarning; pendingWarning = null;
             CompletionSucceeded = result.Success; CommitUnconfirmed = result.CommitUnconfirmed;
-            if (result.Success) { document = result.Value; Compile(); Message = "已保存并生效。"; }
+            if (result.Success) { document = result.Value; Compile(); Message = WithWarning("已保存并生效。", warning); }
             else
             {
                 // A protected/unknown storage result is deliberately not retried.
@@ -57,7 +59,7 @@ namespace JueMingR.Platform.Hotkeys
                     "此次保存失败，旧绑定继续有效。可以重新录入后再试。";
             }
         }
-        public string Validate(string id, HotkeyChord chord, Func<HotkeyAction, HotkeyChord, string> vanilla)
+        public string Validate(string id, HotkeyChord chord)
         {
             HotkeyAction action = registry.Find(id);
             if (action == null) return "该功能尚未注册快捷键。";
@@ -67,22 +69,31 @@ namespace JueMingR.Platform.Hotkeys
             foreach (var other in effective)
                 if (other.Key != id && chord.Equals(other.Value) && (registry.Find(other.Key).Context & action.Context) != 0)
                     return "与「" + registry.Find(other.Key).Name + "」的绑定冲突；功能关闭时仍保留其切换绑定。";
-            // This callback is edit-only. Poll/Compile/Dispatch never consult it,
-            // including the initial file load and later vanilla profile changes.
-            try { return vanilla == null ? "当前原版键位无法核对，旧绑定保留。" : vanilla(action, chord); }
-            catch { return "当前原版键位无法核对，旧绑定保留。"; }
+            return null;
         }
-        public bool TrySet(string id, HotkeyChord chord, Func<HotkeyAction, HotkeyChord, string> vanilla, out long command, out string reason)
+        public bool TrySet(string id, HotkeyChord chord, Func<HotkeyAction, HotkeyChord, string> vanillaWarning, out long command, out string reason)
         {
-            command = 0; reason = Validate(id, chord, vanilla); if (reason != null) return false;
+            command = 0; reason = Validate(id, chord); if (reason != null) return false;
             if (Busy) { reason = "上一项仍在保存，请稍候。"; return false; }
             bool existing = false; foreach (var entry in document.Entries) if (entry.Key == id) { existing = true; break; }
             if (!existing && document.Entries.Count >= 256) { reason = "快捷键文件已达条目上限；保留已有和未知动作，未新增绑定。"; return false; }
+            // Native overlaps are advisory, including an unavailable profile.
+            // Read only for an eligible edit; never during load or dispatch.
+            // The warning belongs to this command, not the file or popup lifetime.
+            string warning = null;
+            if (chord != null)
+            {
+                const string unavailable = "无法核对当前原版按键，请自行确认是否重合。";
+                try { warning = vanillaWarning == null ? unavailable : vanillaWarning(registry.Find(id), chord); }
+                catch { warning = unavailable; }
+            }
             HotkeyDocument candidate = document.With(id, chord);
             long next = ++nextCommand;
             if (!worker.TrySubmit(next, candidate)) { reason = "保存入口暂不可用，旧绑定保留。"; return false; }
-            command = next; pendingAction = id; Busy = true; Message = "正在保存；成功前仍使用旧绑定。"; return true;
+            command = next; pendingAction = id; pendingWarning = warning; Busy = true; Message = WithWarning("正在保存；成功前仍使用旧绑定。", warning); return true;
         }
+        private static string WithWarning(string message, string warning)
+        { return String.IsNullOrEmpty(warning) ? message : message + " 提醒：" + warning; }
         public void Dispatch(HotkeyInput input, HotkeyContext context, bool permitted)
         {
             if (!permitted || !Loaded || effective.Count == 0 || input.SystemModifier || !input.Reliable) return;

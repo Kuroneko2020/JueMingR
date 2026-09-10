@@ -17,7 +17,7 @@ namespace JueMingR.ArchitectureTests
             foreach (string text in valid) if (!HotkeyChord.TryParse(text, out chord, out reason)) failures.Add("Hotkeys valid chord rejected: " + text);
             foreach (string text in invalid) if (HotkeyChord.TryParse(text, out chord, out reason)) failures.Add("Hotkeys invalid/unreportable chord accepted: " + text);
             if (Parse("RightAlt+LeftControl+K").Text != "LeftControl+RightAlt+K") failures.Add("Hotkeys: canonical order lost side identity.");
-            ExerciseDispatch(failures); ExerciseSaving(failures); ExerciseProtectedEntries(failures);
+            ExerciseDispatch(failures); ExerciseWarnings(failures); ExerciseSaving(failures); ExerciseProtectedEntries(failures);
         }
         internal static HotkeyChord Parse(string value)
         { HotkeyChord chord; string reason; if (!HotkeyChord.TryParse(value, out chord, out reason)) throw new Exception(value + ": " + reason); return chord; }
@@ -59,8 +59,47 @@ namespace JueMingR.ArchitectureTests
                 step(true, new int[0]); step(true, new[] { 91, 75 });
                 if (bare != 2) failures.Add("Hotkeys: Win chord dispatched gameplay.");
                 if (vanillaReads != reads) failures.Add("Hotkeys: runtime monitored vanilla bindings.");
-                if (owner.Validate("test.command", Parse("K"), check) == null) failures.Add("Hotkeys: internal duplicate did not reserve a toggle action.");
-                if (owner.Validate("test.bare", Parse("K"), (a, c) => "changed vanilla") != "changed vanilla") failures.Add("Hotkeys: idempotent edit skipped current vanilla recheck.");
+                if (owner.Validate("test.command", Parse("K")) == null) failures.Add("Hotkeys: internal duplicate did not reserve a toggle action.");
+                Set(owner, "test.bare", "K", (a, c) => "changed vanilla");
+                if (!owner.Message.Contains("changed vanilla")) failures.Add("Hotkeys: idempotent edit lost current vanilla warning.");
+            }
+        }
+        private static void ExerciseWarnings(IList<string> failures)
+        {
+            var registry = new HotkeyRegistry();
+            registry.Register(new HotkeyAction("a", "First action", HotkeyContext.Gameplay, () => true, () => { }));
+            registry.Register(new HotkeyAction("b", "Second action", HotkeyContext.Gameplay, () => true, () => { }));
+            var storage = new MemoryStorage(); int reads = 0;
+            using (var owner = new HotkeyBindings(registry, storage))
+            {
+                Wait(owner, () => owner.Loaded); Set(owner, "a", "K", (a, c) => null);
+                storage.Block.Reset(); long command, ignored; string reason;
+                try
+                {
+                    if (!owner.TrySet("a", Parse("LeftControl+J"), (a, c) => { reads++; return "native overlap A"; }, out command, out reason))
+                    { failures.Add("Hotkeys: native warning refused candidate."); return; }
+                    if (!owner.Busy || owner.Get("a").Text != "K" || !owner.Message.Contains("native overlap A") || owner.Message.Contains("已保存"))
+                        failures.Add("Hotkeys: warning hid pending state or activated early.");
+                    if (owner.TrySet("b", Parse("L"), (a, c) => { reads++; return "native overlap B"; }, out ignored, out reason) || reads != 1 || !owner.Message.Contains("native overlap A"))
+                        failures.Add("Hotkeys: busy rejection overwrote accepted warning or read native profile.");
+                }
+                finally { storage.Block.Set(); }
+                Wait(owner, () => !owner.Busy);
+                if (!owner.CompletionSucceeded || owner.CompletionId != command || owner.Get("a").Text != "LeftControl+J" || !owner.Message.Contains("native overlap A"))
+                    failures.Add("Hotkeys: successful save lost candidate or warning identity.");
+                byte[] saved = storage.Bytes;
+                if (owner.TrySet("b", Parse("LeftControl+J"), (a, c) => { reads++; return "native overlap B"; }, out ignored, out reason) || reads != 1 || !reason.Contains("First action") || storage.Bytes != saved)
+                    failures.Add("Hotkeys: internal duplicate no longer blocks before warning/read/write.");
+                Set(owner, "a", "LeftControl+J", (a, c) => "new native mapping");
+                if (!owner.Message.Contains("new native mapping") || owner.Message.Contains("native overlap A")) failures.Add("Hotkeys: idempotent submit retained stale warning.");
+                Set(owner, "a", null, (a, c) => { reads++; return "clear must not check"; });
+                if (reads != 1 || owner.Get("a") != null || owner.Message.Contains("native")) failures.Add("Hotkeys: clearing consulted native profile or retained warning.");
+                Set(owner, "a", "J", (a, c) => { throw new InvalidOperationException("unavailable profile"); });
+                if (!owner.Message.Contains("无法") || owner.Get("a").Text != "J") failures.Add("Hotkeys: unavailable native profile did not warn and save.");
+                Set(owner, "a", "K", null);
+                if (!owner.Message.Contains("无法") || owner.Get("a").Text != "K") failures.Add("Hotkeys: absent warning provider blocked or implied complete check.");
+                Set(owner, "a", "L", (a, c) => null);
+                if (owner.Message.Contains("无法")) failures.Add("Hotkeys: a clean submission inherited previous warning.");
             }
         }
         private static void ExerciseSaving(IList<string> failures)
@@ -71,12 +110,12 @@ namespace JueMingR.ArchitectureTests
             {
                 Wait(owner, () => owner.Loaded); Set(owner, "test.one", "K", (a, c) => null);
                 storage.Block.Reset(); storage.Fail = true; long command; string reason;
-                if (!owner.TrySet("test.one", Parse("J"), (a, c) => null, out command, out reason)) throw new Exception(reason);
+                if (!owner.TrySet("test.one", Parse("J"), (a, c) => "native warning", out command, out reason)) throw new Exception(reason);
                 if (owner.Get("test.one").Text != "K" || !owner.Busy) failures.Add("Hotkeys: pending write activated candidate early.");
                 long ignored;
                 if (owner.TrySet("test.one", Parse("L"), (a, c) => null, out ignored, out reason)) failures.Add("Hotkeys: busy worker overwrote accepted command.");
                 storage.Block.Set(); Wait(owner, () => !owner.Busy);
-                if (owner.Get("test.one").Text != "K" || owner.CompletionSucceeded || owner.CompletionId != command || owner.CompletionAction != "test.one") failures.Add("Hotkeys: failed save lost old binding or command identity.");
+                if (owner.Get("test.one").Text != "K" || owner.CompletionSucceeded || owner.CompletionId != command || owner.CompletionAction != "test.one" || owner.Message.Contains("native warning")) failures.Add("Hotkeys: failed save lost old binding/command identity or kept advisory instead of failure.");
                 storage.Fail = false;
                 if (owner.Protected || !owner.TrySet("test.one", Parse("L"), (a, c) => null, out command, out reason))
                     failures.Add("Hotkeys: ordinary known precommit failure prevented a new recording/save.");
@@ -86,8 +125,8 @@ namespace JueMingR.ArchitectureTests
             using (var owner = new HotkeyBindings(registry, storage))
             {
                 Wait(owner, () => owner.Loaded); long command; string reason;
-                owner.TrySet("test.one", Parse("J"), (a, c) => null, out command, out reason); Wait(owner, () => !owner.Busy);
-                if (!owner.CommitUnconfirmed || !owner.Protected || owner.Get("test.one") != null) failures.Add("Hotkeys: unknown commit pretended success/rollback.");
+                owner.TrySet("test.one", Parse("J"), (a, c) => "native warning", out command, out reason); Wait(owner, () => !owner.Busy);
+                if (!owner.CommitUnconfirmed || !owner.Protected || owner.Get("test.one") != null || owner.Message.Contains("native warning")) failures.Add("Hotkeys: unknown commit pretended success/rollback or hid failure with warning.");
             }
         }
         private static void ExerciseProtectedEntries(IList<string> failures)
