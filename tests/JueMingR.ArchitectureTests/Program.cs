@@ -27,6 +27,8 @@ namespace JueMingR.ArchitectureTests
                 var failures = new List<string>();
                 ArchitectureChecks.Check(model, failures);
                 OperationContractChecks.Check(failures);
+                HotkeyCoreChecks.Check(failures);
+                HotkeyStorageChecks.Check(repositoryRoot, failures);
                 Phase0TArchitectureChecks.Check(failures);
                 PreferenceChecks.Check(failures);
                 PreferenceConcurrencyChecks.Check(failures);

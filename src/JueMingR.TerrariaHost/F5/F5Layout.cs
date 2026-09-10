@@ -36,9 +36,10 @@ namespace JueMingR.TerrariaHost.F5
         internal readonly F5Size TextSize;
         internal readonly float TextScale;
         internal readonly F5Command Command;
+        internal readonly string HotkeyTarget;
         internal F5Element(F5ElementKind kind, F5Rect rect, string text,
-            F5Size size, float scale, F5Command command)
-        { Kind = kind; Rect = rect; Text = text; TextSize = size; TextScale = scale; Command = command; }
+            F5Size size, float scale, F5Command command, string hotkeyTarget = null)
+        { Kind = kind; Rect = rect; Text = text; TextSize = size; TextScale = scale; Command = command; HotkeyTarget = hotkeyTarget; }
     }
 
     // All rectangles are window-local or page-local. Origin and scrolling never
@@ -212,12 +213,17 @@ namespace JueMingR.TerrariaHost.F5
                         null, default(F5Size), 0, F5Command.None));
                     y += 12;
                 }
-                string[] actions = i == 12 ? new[] { "开启", "关闭" } : i == 11 ? new[] { "开始" } :
+                string[] actions = i == 12 ? new[] { "开启", "关闭", "键" } : i == 11 ? new[] { "开始" } :
                     i == 2 ? new[] { "配置", "名字", "类型", "关闭", "键" } :
                     i == 3 ? new[] { "配置", "始终", "开过", "关闭", "键" } :
                     i == 4 || i == 5 ? new[] { "全部", "前几行", "前几字", "关闭" } :
                     new[] { "配置", "开启", "关闭", "键" };
                 Row(ref y, 0, 522, names[i], actions, i == 12);
+                if (i == 12)
+                {
+                    int last = elements.Count - 1; F5Element key = elements[last];
+                    elements[last] = new F5Element(key.Kind, key.Rect, key.Text, key.TextSize, key.TextScale, F5Command.None, Hotkeys.HotkeyActionIds.Biome);
+                }
             }
         }
 
@@ -252,7 +258,7 @@ namespace JueMingR.TerrariaHost.F5
         private void Buttons(ref float y, float x, float width, string[] labels, bool biome)
         { new F5RowLayout(elements, TextSize).Buttons(ref y, x, width, labels, biome ? (Func<string, F5Command>)BiomeCommand : null); }
         private static F5Command BiomeCommand(string label)
-        { return label == "\u5f00\u542f" ? F5Command.EnableBiome : F5Command.DisableBiome; }
+        { return label == "\u5f00\u542f" ? F5Command.EnableBiome : label == "关闭" ? F5Command.DisableBiome : F5Command.None; }
         private void Panel(F5Rect rect)
         { elements.Add(new F5Element(F5ElementKind.Panel, rect, null, default(F5Size), 0, F5Command.None)); }
         private void TextLines(string text, float x, ref float y, float width, float scale)

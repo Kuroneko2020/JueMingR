@@ -9,6 +9,7 @@ namespace JueMingR.TerrariaHost.F5
         internal bool Active, Focused, F5, Left, Right;
         internal int Wheel;
         internal bool PageWheelHandled;
+        internal bool BlockPointer;
     }
 
     internal sealed class F5Interaction
@@ -37,6 +38,7 @@ namespace JueMingR.TerrariaHost.F5
         internal bool ConsumeRight { get; private set; }
         internal bool ConsumeWheel { get; private set; }
         internal F5Command Command { get; private set; }
+        internal F5Element ClickedHotkey { get; private set; }
         internal float PointerX { get; private set; }
         internal float PointerY { get; private set; }
         internal bool DraggingScroll { get { return capture == 2; } }
@@ -49,6 +51,7 @@ namespace JueMingR.TerrariaHost.F5
         internal void Update(F5Input input)
         {
             Command = F5Command.None;
+            ClickedHotkey = null;
             // If validation throws, the shell must still consume buttons owned
             // by an earlier sample while it closes the failed local UI.
             ConsumeLeft = leftTail; ConsumeRight = rightTail; ConsumeWheel = false;
@@ -83,6 +86,7 @@ namespace JueMingR.TerrariaHost.F5
             }
             bool pressed = input.Left && !previousLeft;
             bool released = !input.Left && previousLeft;
+            if (input.BlockPointer) { pressed = released = false; armed = null; capture = 0; }
             if (input.F5 && !previousF5)
             {
                 if (Visible)
@@ -153,7 +157,7 @@ namespace JueMingR.TerrariaHost.F5
                     // A click must release on the same element in the same layout generation.
                     if (released && capture == 0 && layoutReady && armed != null &&
                         armedGeneration == Layout.Generation && ReferenceEquals(armed, HitButton(localX, localY)))
-                        Command = armed.Command;
+                    { Command = armed.Command; if (armed.HotkeyTarget != null) ClickedHotkey = armed; }
                 }
             }
             // Consume the release sample before retiring its tail, including after window closure.
@@ -182,7 +186,7 @@ namespace JueMingR.TerrariaHost.F5
             for (int i = 0; i < Layout.Elements.Count; i++)
             {
                 F5Element element = Layout.Elements[i];
-                if (element.Kind == F5ElementKind.Button && element.Rect.Contains(x, y)) return element;
+                if ((element.Kind == F5ElementKind.Button || element.HotkeyTarget != null) && element.Rect.Contains(x, y)) return element;
             }
             return null;
         }

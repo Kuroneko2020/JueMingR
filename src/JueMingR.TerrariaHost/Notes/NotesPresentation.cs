@@ -52,22 +52,23 @@ namespace JueMingR.TerrariaHost.Notes
         { input.BeforeSample(ready && active && shell.Visible && shell.Page == 4); }
         internal bool Wheel(float x, float y, int wheel)
         { return ready && cards.Wheel(shell, x, y, wheel); }
-        internal void ProcessInput(bool active, Matrix transform, Vector2 dimensions, Vector2 raw, bool focused = true)
+        internal void ProcessInput(bool active, Matrix transform, Vector2 dimensions, Vector2 raw, bool focused = true, bool blockButtons = false, KeyboardState? physicalSample = null)
         {
             matrix = transform; screen = dimensions;
             bool left = PlayerInput.MouseInfo.LeftButton == ButtonState.Pressed, right = PlayerInput.MouseInfo.RightButton == ButtonState.Pressed;
             // NotesInput consumes the sampled keyboard. Freeze modifiers first,
             // then honor the editor/F5 capture before considering any screen pin.
-            bool shift = Main.keyState.IsKeyDown(Keys.LeftShift) || Main.keyState.IsKeyDown(Keys.RightShift);
-            bool control = Main.keyState.IsKeyDown(Keys.LeftControl) || Main.keyState.IsKeyDown(Keys.RightControl);
+            KeyboardState modifiers = physicalSample ?? Main.keyState;
+            bool shift = modifiers.IsKeyDown(Keys.LeftShift) || modifiers.IsKeyDown(Keys.RightShift);
+            bool control = modifiers.IsKeyDown(Keys.LeftControl) || modifiers.IsKeyDown(Keys.RightControl);
             bool enabled = ready && active && !input.OtherTextOwner;
             if (input.Owned) { textLeftTail |= left; textRightTail |= right; }
             input.AfterSample(enabled && shell.Visible && shell.Page == 4, cards.EditingLayout);
-            if (enabled && focused && shell.Visible && shell.Page == 4)
+            if (enabled && focused && !blockButtons && shell.Visible && shell.Page == 4)
                 cards.Pointer(shell, left && !previousLeft, !left && previousLeft, left, shift);
             if (input.Owned || cards.Selecting) { textLeftTail |= left; textRightTail |= right; }
             pins.Pointer(raw.X, raw.Y, left, right, PlayerInput.ScrollWheelDeltaForUI, enabled, focused,
-                shell.OwnsPointer || input.Owned || cards.Selecting || textLeftTail || textRightTail, screen.X, screen.Y, shift, control);
+                shell.OwnsPointer || input.Owned || cards.Selecting || textLeftTail || textRightTail, screen.X, screen.Y, shift, control, blockButtons);
             ConsumeLeft = textLeftTail || pins.ConsumeLeft; ConsumeRight = textRightTail || pins.ConsumeRight;
             if (focused && !left) textLeftTail = false;
             if (focused && !right) textRightTail = false;

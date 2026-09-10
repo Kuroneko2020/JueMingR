@@ -111,10 +111,13 @@ namespace JueMingR.TerrariaHost.Notes
             }
         }
         internal void Pointer(float x, float y, bool left, bool right, int wheel, bool active, bool focused, bool windowOwns,
-            float width, float height, bool shift = false, bool control = false)
+            float width, float height, bool shift = false, bool control = false, bool blockButtons = false)
         {
             ConsumeLeft = leftTail; ConsumeRight = rightTail; ConsumeWheel = false; OwnsPointer = false;
             bool pressed = left && !previousLeft, released = !left && previousLeft;
+            // Another UI can own buttons while Notes keeps its existing wheel
+            // behavior. Advance physical history, but never arm/release a tool.
+            if (blockButtons) { pressed = released = false; armed = null; armedPin = null; CancelDrag(); }
             if (!focused) CancelDrag();
             else if (drag != null && (!active || windowOwns || width != dragWidth || height != dragHeight)) EndDrag();
             hover = null;

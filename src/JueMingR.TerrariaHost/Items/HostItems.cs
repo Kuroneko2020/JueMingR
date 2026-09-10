@@ -79,6 +79,7 @@ namespace JueMingR.TerrariaHost.Items
             { appliedRevision = snapshot.Revision; Feature.Configure(snapshot.Value); }
         }
         internal bool Change(ItemAutomationSettings value) { return !stopping && preferences.Set(value); }
+        internal bool ControlsEnabled { get { return !stopping && Available && !Feature.HasFailed && Preferences.IsLoaded && Runtime.IsSessionActive && World.Player != null; } }
         internal int[] PickerTypes(ItemListKind list, out bool hasInventoryTypes)
         {
             // Membership and presentation order are separate. One opening reads

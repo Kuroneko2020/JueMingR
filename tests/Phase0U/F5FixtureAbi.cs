@@ -23,6 +23,8 @@ namespace Terraria
         public int currentNPCShowingChatBubble = -1;
         public static int UseCount, TileUseCount, SelectedSlot, NpcHits, DropHits, SpecialInteractions, BubbleDraws, CursorDraws, DamageDraws;
         internal static bool SampleLeft, SampleRight, SampleF5, SampleCapture, SampleMap, SampleShift, SampleControl;
+        internal static bool SampleMiddle, SampleX1, SampleX2;
+        internal static Keys[] SampleKeys = new Keys[0];
         internal static int SampleX = 1850, SampleY = 900, SampleWheel;
         internal static bool SpecialNpc;
         internal static string PendingText, DrawnText;
@@ -59,6 +61,7 @@ namespace Terraria
             // postfix, then refreshes keyState after those consumers.
             if (GameInput.PlayerInput.Triggers.Current.KeyStatus["ViewZoomIn"]) NativeZoom++;
             var keys = new List<Keys>();
+            keys.AddRange(SampleKeys);
             if (SampleF5) keys.Add(Keys.F5);
             if (SampleShift) keys.Add(Keys.LeftShift);
             if (SampleControl) keys.Add(Keys.LeftControl);
@@ -220,6 +223,19 @@ namespace Terraria.GameInput
             Triggers.Current.MapFull = permitted && Main.SampleMap;
             Triggers.Current.ToggleCameraMode = permitted && Main.SampleCapture;
             Triggers.Current.KeyStatus["ViewZoomIn"] = !WritingText && Main.keyState.IsKeyDown(Keys.Z);
+            // The configurable subset uses the same active profile read by the
+            // production conflict adapter. Keep the vanilla delayed-key seam.
+            foreach (var entry in CurrentProfile.InputModes[InputMode.Keyboard].KeyStatus)
+            {
+                if (!Triggers.Current.KeyStatus.ContainsKey(entry.Key))
+                { Triggers.Current.KeyStatus[entry.Key] = false; Triggers.Old.KeyStatus[entry.Key] = false; }
+                foreach (string token in entry.Value)
+                {
+                    Keys key;
+                    bool physical = token == "Mouse1" ? Main.SampleLeft : token == "Mouse2" ? Main.SampleRight : token == "Mouse3" ? Main.SampleMiddle : token == "Mouse4" ? Main.SampleX1 : token == "Mouse5" ? Main.SampleX2 : !WritingText && Enum.TryParse(token, out key) && Main.keyState.IsKeyDown(key);
+                    if (permitted && physical) Triggers.Current.KeyStatus[entry.Key] = true;
+                }
+            }
             foreach (string key in Triggers.Current.KeyStatus.Keys)
             { Triggers.JustPressed.KeyStatus[key] = Triggers.Current.KeyStatus[key] && !Triggers.Old.KeyStatus[key];
                 Triggers.JustReleased.KeyStatus[key] = !Triggers.Current.KeyStatus[key] && Triggers.Old.KeyStatus[key]; }
@@ -227,8 +243,8 @@ namespace Terraria.GameInput
             ScrollWheelDelta = ScrollWheelDeltaForUI = permitted ? Main.SampleWheel : 0;
             Main.mouseLeft = Triggers.Current.MouseLeft; Main.mouseRight = Triggers.Current.MouseRight;
             MouseInfo = new MouseState(Main.SampleX, Main.SampleY, ScrollWheelValue,
-                Main.mouseLeft ? ButtonState.Pressed : ButtonState.Released, ButtonState.Released,
-                Main.mouseRight ? ButtonState.Pressed : ButtonState.Released, ButtonState.Released, ButtonState.Released);
+                permitted && Main.SampleLeft ? ButtonState.Pressed : ButtonState.Released, permitted && Main.SampleMiddle ? ButtonState.Pressed : ButtonState.Released,
+                permitted && Main.SampleRight ? ButtonState.Pressed : ButtonState.Released, permitted && Main.SampleX1 ? ButtonState.Pressed : ButtonState.Released, permitted && Main.SampleX2 ? ButtonState.Pressed : ButtonState.Released);
             WritingText = false;
         }
     }

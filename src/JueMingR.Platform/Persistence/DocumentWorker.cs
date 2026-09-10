@@ -6,13 +6,14 @@ namespace JueMingR.Platform.Persistence
 {
     public sealed class DocumentResult<T>
     {
-        internal DocumentResult(long id, bool success, T value, string error, bool commitUnconfirmed = false)
-        { CommandId = id; Success = success; Value = value; Error = error; CommitUnconfirmed = commitUnconfirmed; }
+        internal DocumentResult(long id, bool success, T value, string error, bool commitUnconfirmed = false, bool isProtected = false)
+        { CommandId = id; Success = success; Value = value; Error = error; CommitUnconfirmed = commitUnconfirmed; IsProtected = isProtected; }
         public long CommandId { get; }
         public bool Success { get; }
         public T Value { get; }
         public string Error { get; }
         public bool CommitUnconfirmed { get; }
+        public bool IsProtected { get; }
     }
 
     // One consistency unit, one worker, one accepted immutable command. The slot
@@ -104,6 +105,7 @@ namespace JueMingR.Platform.Persistence
                         else break;
                     }
                     DocumentResult<T> completion;
+                    bool writeEntered = false;
                     try
                     {
                         if (finish != null)
@@ -116,16 +118,19 @@ namespace JueMingR.Platform.Persistence
                         // callback or mutable game object reaches this background owner.
                         decode(bytes);
                         if (cancelled) break; // Native I/O already entered cannot be aborted; before it can.
+                        writeEntered = true;
                         PreferenceWriteResult written = storage.Write(identity, bytes);
                         bool success = written.Status == PreferenceWriteStatus.Saved;
                         if (success) { identity = written.Identity; current = value; }
                         if (written.IsProtected) { lock (gate) writable = false; }
-                        completion = new DocumentResult<T>(id, success, success ? value : default(T), written.Error, written.CommitUnconfirmed);
+                        completion = new DocumentResult<T>(id, success, success ? value : default(T), written.Error, written.CommitUnconfirmed, written.IsProtected);
                     }
                     catch (Exception e) when (e is InvalidOperationException || e is ArgumentException || e is PreferenceFormatException)
-                    { completion = new DocumentResult<T>(id, false, default(T), "document-encoding-or-size-failed"); }
-                    catch (Exception) { completion = new DocumentResult<T>(id, false, default(T), "document-write-failed"); }
-                    lock (gate) { result = completion; lastWriteSucceeded = completion.Success; }
+                    { completion = new DocumentResult<T>(id, false, default(T), "document-encoding-or-size-failed", writeEntered, writeEntered); }
+                    catch (Exception) { completion = new DocumentResult<T>(id, false, default(T), "document-write-failed", writeEntered, writeEntered); }
+                    // A throwing storage boundary may have committed before it
+                    // threw. Never turn that unknown outcome into a retry.
+                    lock (gate) { if (completion.IsProtected) writable = false; result = completion; lastWriteSucceeded = completion.Success; }
                 }
             }
             finally { storage.Dispose(); }

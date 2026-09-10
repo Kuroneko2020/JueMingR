@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using Microsoft.Xna.Framework.Input;
 using Terraria;
 using Terraria.GameInput;
+using JueMingR.Platform.Hotkeys;
 
 namespace JueMingR.TerrariaHost.Input
 {
@@ -15,6 +16,12 @@ namespace JueMingR.TerrariaHost.Input
         private bool observed, rearming, quarantine, mapped, finalized, nativePermission;
         private Dictionary<string, bool> mappedKeys;
         private string[] keys = new string[0];
+        private readonly bool[] physical = new bool[HotkeyChord.KeyCount];
+        internal readonly HotkeyInput Hotkeys = new HotkeyInput();
+        internal KeyboardState KeyboardSample { get; private set; }
+        internal bool HotkeyCapture { get; set; }
+        private bool hotkeyTailSample;
+        internal bool HotkeyPointerOwned { get { return HotkeyCapture || Hotkeys.HasSuppressedKeys || hotkeyTailSample; } }
         internal bool IsFocused { get; private set; }
         internal bool SampleFocused { get { return mapped && IsFocused && nativePermission; } }
         internal bool CanUseInput { get { return SampleFocused && finalized && !quarantine; } }
@@ -31,7 +38,7 @@ namespace JueMingR.TerrariaHost.Input
             quarantine = !IsFocused || rearming;
             // .8's F7-F11/Alt+Enter precede its current keyboard refresh. A stale
             // cached sample must not operate the game on loss or reactivation.
-            if (quarantine)
+            if (quarantine || HotkeyCapture || Hotkeys.HasSuppressedKeys)
             {
                 Main.keyState = default(KeyboardState);
                 ClearTextActions();
@@ -61,12 +68,23 @@ namespace JueMingR.TerrariaHost.Input
             nativePermission = FocusHelper.IsSelectedApplication;
             quarantine |= !IsFocused || rearming;
             if (quarantine) { ConsumeMappedInput(); ClearTextActions(); }
+            else if (HotkeyCapture || Hotkeys.HasSuppressedKeys) ConsumeHotkeyActions();
         }
         internal void AfterKeyboardRefresh()
         {
             finalized = mapped;
+            KeyboardSample = Main.keyState;
+            for (int key = 0; key < 256; key++) physical[key] = KeyboardSample.IsKeyDown((Keys)key);
+            MouseState physicalMouse = PlayerInput.MouseInfo;
+            physical[256] = physicalMouse.LeftButton == ButtonState.Pressed; physical[257] = physicalMouse.RightButton == ButtonState.Pressed;
+            physical[258] = physicalMouse.MiddleButton == ButtonState.Pressed; physical[259] = physicalMouse.XButton1 == ButtonState.Pressed; physical[260] = physicalMouse.XButton2 == ButtonState.Pressed;
+            // Keep the final release frame owned even though Update retires its
+            // held bit. Independent UI consumers also read physical MouseInfo.
+            hotkeyTailSample = Hotkeys.HasSuppressedKeys;
+            Hotkeys.Update(physical, SampleFocused);
+            if (HotkeyCapture || Hotkeys.HasSuppressedKeys) ConsumeHotkeyActions();
             if (!quarantine) return;
-            KeyboardState sample = Main.keyState;
+            KeyboardState sample = KeyboardSample;
             Main.keyState = default(KeyboardState);
             // A native synthesized release is never neutral proof. The complete
             // activating chord must genuinely end; this is not a timed cooldown.
@@ -79,13 +97,19 @@ namespace JueMingR.TerrariaHost.Input
         }
         private void ConsumeMappedInput()
         {
+            ConsumeHotkeyActions();
+            PlayerInput.ScrollWheelDelta = PlayerInput.ScrollWheelDeltaForUI = 0;
+        }
+        internal void ConsumeHotkeyActions()
+        {
             var pack = PlayerInput.Triggers;
             var currentKeys = pack.Current.KeyStatus;
             if (!ReferenceEquals(mappedKeys, currentKeys) || keys.Length != currentKeys.Count)
             { mappedKeys = currentKeys; keys = new string[currentKeys.Count]; currentKeys.Keys.CopyTo(keys, 0); }
             Clear(pack.Current); Clear(pack.Old); Clear(pack.JustPressed); Clear(pack.JustReleased);
             Main.mouseLeft = Main.mouseRight = false;
-            PlayerInput.ScrollWheelDelta = PlayerInput.ScrollWheelDeltaForUI = 0;
+            Main.keyState = default(KeyboardState);
+            ClearTextActions();
         }
         private void Clear(TriggersSet set)
         { foreach (string key in keys) if (set.KeyStatus.ContainsKey(key)) set.KeyStatus[key] = false; }

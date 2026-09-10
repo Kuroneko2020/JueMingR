@@ -17,6 +17,19 @@ namespace JueMingR.TerrariaHost.F5
         private Texture2D roundCap;
         private readonly F5IconAtlas icons = new F5IconAtlas();
         internal int SkinGeneration { get; private set; }
+        internal object FontIdentity { get { return font; } }
+        internal F5Size PopupMeasure(string text, float scale)
+        { F5Size size = textMetrics.Measure(font, text); return new F5Size(size.Width * scale, size.Height * scale, size.OffsetX * scale, size.OffsetY * scale); }
+        internal void DrawPopup(Hotkeys.HotkeyPopup popup)
+        {
+            if (!popup.Visible) return;
+            var layout = popup.Layout; SpriteBatch batch = Main.spriteBatch;
+            Panel(batch, layout.Panel, background, Color.White, true);
+            foreach (var line in layout.Text)
+                Text(batch, line.Text, new Vector2(layout.Panel.X + line.Rect.X, layout.Panel.Y + line.Rect.Y), line.TextScale, Color.White, line.TextSize);
+            foreach (var control in layout.Buttons)
+                F5ControlRenderer.Button(batch, pixel, button, font, control, false, true, null, layout.Panel.X, layout.Panel.Y);
+        }
 
         internal F5Renderer() { measure = Measure; }
 
@@ -166,10 +179,9 @@ namespace JueMingR.TerrariaHost.F5
                 Color.White * (layout.MaxScroll <= 0 ? 0.25f : hover || state.DraggingScroll ? 0.85f : 0.6f));
         }
 
-        private void Keyboard(SpriteBatch batch, F5Rect slot)
+        internal void Keyboard(SpriteBatch batch, F5Rect slot)
         {
-            // Same sampled round-ended artwork as the tabs, in a smaller visual
-            // domain. The invisible input slot and its inert command stay intact.
+            // One shell-owned atlas serves real entries and inert placeholders.
             icons.Draw(batch, F5IconAtlas.KeyboardIndex, new F5Rect(slot.X + (slot.Width - 14) / 2,
                 slot.Y + (slot.Height - 14) / 2, 14, 14), Color.White);
         }

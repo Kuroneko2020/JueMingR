@@ -211,6 +211,8 @@ namespace Terraria
                 bool deferGraphics = args.Length > 0 && args[args.Length - 1] == "--defer-graphics";
                 if (deferGraphics) Array.Resize(ref args, args.Length - 1);
                 if (args.Length == 1 && args[0] == "focus-input") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; HostInputChecks.Run(); return 0; }
+                if (args.Length == 1 && args[0] == "hotkeys-popup") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; HotkeyPopupChecks.Run(); return 0; }
+                if (args.Length == 3 && args[0] == "hotkeys-visual") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; HotkeyVisualChecks.Run(args[1], args[2]); return 0; }
                 if (args.Length == 1 && args[0] == "items-host") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; ItemHostChecks.Run(); return 0; }
                 if (args.Length == 1 && args[0] == "items-safety") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; ItemHostChecks.Run(graphics: false); return 0; }
                 if (args.Length == 1 && args[0] == "items-feedback") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; ItemHostChecks.Run(graphics: false, only: "feedback"); return 0; }
@@ -226,6 +228,7 @@ namespace Terraria
                     AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly;
                     F5LayoutChecks.Run();
                     F5InputChecks.Run();
+                    HotkeyPopupChecks.Run();
                     HostInputChecks.Run();
                     NotesHostChecks.Run(!deferGraphics);
                     if (deferGraphics) Console.WriteLine("DEFERRED: Notes XNA pixels, clipping and graphics-state checks were not run.");
@@ -241,6 +244,7 @@ namespace Terraria
                     (args[0] != "expect-handoff" && args[0] != "expect-input" &&
                      args[0] != "expect-handoff-biome-failure" &&
                      args[0] != "expect-items" && args[0] != "expect-items-layer-failure" &&
+                     !args[0].StartsWith("expect-hotkeys-", StringComparison.Ordinal) &&
                      !args[0].StartsWith("expect-settings-", StringComparison.Ordinal) &&
                      args[0] != "expect-no-handoff" &&
                      args[0] != "expect-evidence-init-failure" &&
@@ -252,7 +256,8 @@ namespace Terraria
 
                 string mode = args[0];
                 bool settingsMode = mode.StartsWith("expect-settings-", StringComparison.Ordinal);
-                bool expectHandoff = mode == "expect-handoff" || mode == "expect-handoff-biome-failure" || mode == "expect-items" || mode == "expect-items-layer-failure" || mode == "expect-input" || settingsMode;
+                bool hotkeyMode = mode.StartsWith("expect-hotkeys-", StringComparison.Ordinal);
+                bool expectHandoff = mode == "expect-handoff" || mode == "expect-handoff-biome-failure" || mode == "expect-items" || mode == "expect-items-layer-failure" || mode == "expect-input" || settingsMode || hotkeyMode;
                 string evidencePath = Path.GetFullPath(args[1]);
                 string packageId = args[2];
                 if (String.IsNullOrWhiteSpace(packageId))
@@ -268,6 +273,7 @@ namespace Terraria
                 }
 
                 if (settingsMode) SettingsHostChecks.PrepareUnrelatedWorkingDirectory();
+                if (hotkeyMode) HotkeyHostChecks.Prepare(mode);
 
                 // Match WindowsLaunch.Main: install the embedded dependency resolver only
                 // after the executable entry point starts, then enter code that needs ReLogic.
@@ -291,6 +297,7 @@ namespace Terraria
                     WaitForEvidenceEvent(evidencePath, "RUNTIME_HANDOFF_COMPLETE");
                     evidenceAfterFirstUpdate = File.ReadAllBytes(evidencePath);
                     if (mode == "expect-input") { F5ConsumerChecks.RunInputOnly(main); AssertPatchContract(typeof(global::Terraria.Main)); return 0; }
+                    if (hotkeyMode) { HotkeyHostChecks.Run(main, mode); return 0; }
                     if (mode == "expect-items" || mode == "expect-items-layer-failure") { ItemLoadedHostChecks.Run(main, mode == "expect-items-layer-failure"); return 0; }
                     if (settingsMode) SettingsHostChecks.Run(main, mode);
                     else

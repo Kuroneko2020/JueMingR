@@ -77,11 +77,11 @@ namespace Terraria
                     Equal(ordinaryHeight, row.Rect.Height, "biome row has no special normal-status space");
             }
             Equal(1, dividers, "exactly one semantic content divider");
-            Equal(14, keyboardSlots, "existing fourteen information hotkey entries are restored");
+            Equal(15, keyboardSlots, "fourteen placeholders plus one real biome keyboard entry");
             if (F5Layout.DisplayTitle != "决明R" || layout.TitleDivider.Y <= layout.Title.Bottom ||
                 layout.TitleDivider.Bottom >= layout.Navigation(0).Y)
                 throw new InvalidOperationException("Display-only Chinese title has its own fixed separator before navigation.");
-            var input = new F5Input { Width = 1920, Height = 1080, Scale = 1, Active = true, Focused = true, F5 = true };
+            var input = new F5Input { Width = 1920, Height = 1080, Scale = 1, Active = true, Focused = true, F5 = true, BlockPointer = false };
             var state = new F5Interaction { Ready = true };
             state.Update(input); state.Layout.Ensure(1920, 1080, 1, 9, new object(), Measure);
             foreach (F5Element element in state.Layout.Elements)
@@ -94,6 +94,8 @@ namespace Terraria
                 if (!state.ConsumeLeft) throw new InvalidOperationException("Inert keyboard slot must still shield the world.");
                 input.Left = false; state.Update(input);
                 if (state.Command != F5Command.None) throw new InvalidOperationException("Keyboard appearance cannot execute shortcut business.");
+                if (element.HotkeyTarget == null && state.ClickedHotkey != null) throw new InvalidOperationException("Placeholder cannot open a hotkey target.");
+                if (element.HotkeyTarget != null && !ReferenceEquals(state.ClickedHotkey, element)) throw new InvalidOperationException("Real biome keyboard entry must deliver its stable target without toggling.");
             }
             bool rejected = false;
             try { new F5Layout().Ensure(1920, 1080, 1, 9, new object(), text => new F5Size(text.Length * 18, 32)); }
