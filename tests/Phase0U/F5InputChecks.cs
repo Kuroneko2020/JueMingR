@@ -47,6 +47,7 @@ namespace Terraria
             Check(!state.Visible && state.ConsumeLeft && state.ConsumeRight && state.ConsumeWheel,
                 "closing and first owned input in one sample cannot fall through");
             CheckScrollChannel();
+            CheckDynamicScroll();
             CheckViewportDoesNotReplacePosition();
             CheckRestoredPosition();
             CheckDragSubmission();
@@ -140,8 +141,11 @@ namespace Terraria
                     if (reason == 4) { input.Width = 1280; input.Height = 720; input.Scale = 1.5f; }
                     state.Update(input);
                 }
-                CheckPosition(state.TakePositionToSave(), 1000, 240,
-                    "interrupted drag keeps the last valid focused sample: " + reason);
+                if (reason == 2)
+                    Check(state.TakePositionToSave() == null, "focus loss cancels an uncommitted title drag without saving");
+                else
+                    CheckPosition(state.TakePositionToSave(), 1000, 240,
+                        "interrupted drag keeps the last valid focused sample: " + reason);
                 state.Close();
                 Check(state.TakePositionToSave() == null, "repeated cancellation cannot duplicate a position submission");
             }
@@ -209,6 +213,33 @@ namespace Terraria
             state.Layout.Ensure(input.Width, input.Height, input.Scale, 0, font, measure);
             state.ClampScroll();
             Check(state.Scroll == 0, "shortened content immediately clamps an old offset");
+        }
+        private static void CheckDynamicScroll()
+        {
+            var state = new F5Interaction { Ready = true };
+            var input = new F5Input { Width = 1280, Height = 720, Scale = 1, Active = true, Focused = true, F5 = true };
+            state.Update(input); input.F5 = false; state.Navigate(0);
+            object font = new object(); Func<string, F5Size> measure = t => new F5Size(t.Length * 18, 24);
+            state.Layout.Ensure(1280, 720, 1, 0, font, measure);
+            state.Layout.SetItemsContentHeight(0); state.ClampScroll();
+            var track = state.Layout.ScrollTrack; var thumb = state.Layout.ScrollThumb(999);
+            Check(thumb.Y == track.Y && thumb.Height == track.Height && state.Layout.MaxScroll == 0, "empty main page has a full stationary thumb");
+            input.X = state.X + track.X + 2; input.Y = state.Y + track.Bottom - 2; input.Left = true; state.Update(input);
+            Check(!state.DraggingScroll && state.Scroll == 0 && state.ConsumeLeft, "short track inert while F5 consumes its press");
+            input.Left = false; state.Update(input); Check(state.ConsumeLeft, "inert track consumes release");
+            state.Layout.SetItemsContentHeight(2000); state.ClampScroll();
+            input.Left = true; state.Update(input); Check(state.DraggingScroll && state.Scroll > 0, "long content drags proportionally");
+            state.Layout.SetItemsContentHeight(2500); state.ClampScroll(); float offset = state.Scroll;
+            Check(!state.DraggingScroll, "height change cancels old grab even when still overflowing");
+            input.Y -= 100; state.Update(input); Check(state.Scroll == offset, "held old grab cannot restart after reflow");
+            input.X = 1900; input.Left = false; state.Update(input); Check(state.ConsumeLeft, "invalidated drag retains outside release tail");
+            input.X = state.X + track.X + 2; input.Left = true; state.Update(input); Check(state.DraggingScroll, "next physical press may grab");
+            state.Layout.SetItemsContentHeight(20); state.ClampScroll();
+            Check(!state.DraggingScroll && state.Scroll == 0, "long to short cancels and clamps without phantom travel");
+            input.Left = false; state.Update(input);
+            state.Layout.SetItemsContentHeight(2000); state.ClampScroll(); input.Left = true; state.Update(input);
+            input.Width = 1400; input.Y += 30; state.Update(input);
+            Check(!state.DraggingScroll && state.ConsumeLeft, "screen change before reflow invalidates thumb grab");
         }
         internal static void Check(bool value, string message)
         { if (!value) throw new InvalidOperationException(message); }

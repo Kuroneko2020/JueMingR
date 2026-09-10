@@ -8,8 +8,51 @@ namespace Terraria
 {
     internal static class F5ConsumerChecks
     {
+        internal static void RunInputOnly(Main main)
+        {
+            HostInputChecks.ConfigureLoadedHost(); FocusHelper.IsSelectedApplication = true;
+            Main.SampleX = 20; Main.SampleY = 20; Main.SampleLeft = Main.SampleRight = Main.SampleF5 = false; Main.SampleWheel = 0;
+            main.RunUpdateLoop(2);
+            int use = Main.UseCount, slot = Main.SelectedSlot, zoom = Main.NativeZoom, early = Main.NativeEarlyKeyActions;
+            // Simulate an already-inlined tiny getter: remove only its fixture
+            // patch, then prove the loaded production update/mapping gates work.
+            var permission = typeof(FocusHelper).GetProperty("AllowInputProcessing").GetGetMethod();
+            var patch = HarmonyLib.Harmony.GetPatchInfo(permission).Postfixes[0];
+            var harmony = new HarmonyLib.Harmony(patch.owner);
+            harmony.Unpatch(permission, HarmonyLib.HarmonyPatchType.Postfix, patch.owner);
+            try
+            {
+                HostInputChecks.Foreground = false;
+                Main.inputTextEnter = Main.inputTextEscape = true;
+                Main.keyState = new Microsoft.Xna.Framework.Input.KeyboardState(Microsoft.Xna.Framework.Input.Keys.F11, Microsoft.Xna.Framework.Input.Keys.Z);
+                Main.SampleLeft = true; Main.SampleWheel = 240; main.RunUpdateLoop(1);
+                Check(FocusHelper.AllowInputProcessing, "fixture native getter stays permissive during independent guard check");
+                Check(Main.UseCount == use && Main.SelectedSlot == slot && Main.NativeZoom == zoom && Main.NativeEarlyKeyActions == early,
+                    "loaded production hooks stop background click/wheel/early key and internal zoom consumers without getter interception");
+                Check(!Main.inputTextEnter && !Main.inputTextEscape, "loss clears stale text action outputs before chat's pre-call escape consumer");
+                int textReads = Main.NativeTextReads;
+                Main.keyCount = 1; Main.keyInt[0] = 'x'; Main.keyString[0] = "x";
+                Main.inputTextEnter = Main.inputTextEscape = true;
+                Check(Main.GetInputText("draft", false) == "draft" && Main.NativeTextReads == textReads && Main.keyCount == 1 &&
+                    !Main.inputTextEnter && !Main.inputTextEscape, "background text gate preserves draft and another owner's queue without replaying transient text actions");
+                HostInputChecks.Foreground = true; Main.SampleWheel = 0; Main.SampleF5 = true; main.RunUpdateLoop(1);
+                Check(Main.UseCount == use && Main.keyState.GetPressedKeys().Length == 0, "activating held click/F5 cannot reach old targets");
+                Main.SampleF5 = false; main.RunUpdateLoop(1); Main.SampleLeft = false; main.RunUpdateLoop(1);
+                Check(Main.UseCount == use, "real activation release remains consumed");
+                Main.SampleLeft = true; main.RunUpdateLoop(1);
+                Check(Main.UseCount == use + 1, "normal new world click works after the complete activation gesture ends");
+                Main.SampleLeft = false; Main.SampleWheel = 120; main.RunUpdateLoop(1);
+                Check(Main.SelectedSlot == (slot + 1) % 10, "normal new wheel changes actual hotbar selection");
+                Main.SampleWheel = 0;
+                Check(Main.GetInputText("draft", false) == "draftx" && Main.NativeTextReads == textReads + 1 && Main.keyCount == 0,
+                    "normal foreground text call still reaches the original method and its queue");
+            }
+            finally { harmony.Patch(permission, postfix: new HarmonyLib.HarmonyMethod(patch.PatchMethod)); HostInputChecks.Foreground = true; }
+            Console.WriteLine("PASS: loaded production foreground/activation hooks and actual non-graphical input consumers (getter bypass included).");
+        }
         internal static void Run(Main main, bool biomeFailure = false)
         {
+            HostInputChecks.ConfigureLoadedHost();
             using (var graphics = new F5FixtureGraphics())
             {
                 CheckGlyphMetrics(graphics);
@@ -20,6 +63,18 @@ namespace Terraria
                 main.DrawAllFixtureLayers();
                 int npc = Main.NpcHits, drop = Main.DropHits;
                 Check(npc > 0 && drop > 0 && Main.DrawnText == "NPC", "closed window consumers must work");
+                int backgroundUse = Main.UseCount, backgroundSlot = Main.SelectedSlot, backgroundZoom = Main.NativeZoom;
+                HostInputChecks.Foreground = false; Main.keyState = new Microsoft.Xna.Framework.Input.KeyboardState(Microsoft.Xna.Framework.Input.Keys.Z);
+                Frame(main, 20, 20, true, 120);
+                Check(Main.UseCount == backgroundUse && Main.SelectedSlot == backgroundSlot && Main.NativeZoom == backgroundZoom,
+                    "different foreground blocks consumers even when native selected-application remains true");
+                HostInputChecks.Foreground = true; Frame(main, 20, 20, true);
+                Frame(main, 20, 20);
+                Check(Main.UseCount == backgroundUse, "activating hold and release are not world clicks");
+                Frame(main, 20, 20, true); Frame(main, 20, 20);
+                Check(Main.UseCount == backgroundUse + 1, "first fresh click after activation release remains usable");
+                Main.SampleX = 1850; Main.SampleY = 900; main.RunUpdateLoop(1); main.DrawAllFixtureLayers();
+                npc = Main.NpcHits; drop = Main.DropHits;
                 Main.SampleF5 = true;
                 main.RunUpdateLoop(1); main.DrawAllFixtureLayers();
                 Check(Main.NpcHits == npc + 1 && Main.DropHits == drop + 1, "open window outside must preserve hover");

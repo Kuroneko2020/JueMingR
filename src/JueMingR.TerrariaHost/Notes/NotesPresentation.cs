@@ -52,7 +52,7 @@ namespace JueMingR.TerrariaHost.Notes
         { input.BeforeSample(ready && active && shell.Visible && shell.Page == 4); }
         internal bool Wheel(float x, float y, int wheel)
         { return ready && cards.Wheel(shell, x, y, wheel); }
-        internal void ProcessInput(bool active, Matrix transform, Vector2 dimensions, Vector2 raw)
+        internal void ProcessInput(bool active, Matrix transform, Vector2 dimensions, Vector2 raw, bool focused = true)
         {
             matrix = transform; screen = dimensions;
             bool left = PlayerInput.MouseInfo.LeftButton == ButtonState.Pressed, right = PlayerInput.MouseInfo.RightButton == ButtonState.Pressed;
@@ -63,16 +63,16 @@ namespace JueMingR.TerrariaHost.Notes
             bool enabled = ready && active && !input.OtherTextOwner;
             if (input.Owned) { textLeftTail |= left; textRightTail |= right; }
             input.AfterSample(enabled && shell.Visible && shell.Page == 4, cards.EditingLayout);
-            if (enabled && FocusHelper.AllowInputProcessing && shell.Visible && shell.Page == 4)
+            if (enabled && focused && shell.Visible && shell.Page == 4)
                 cards.Pointer(shell, left && !previousLeft, !left && previousLeft, left, shift);
             if (input.Owned || cards.Selecting) { textLeftTail |= left; textRightTail |= right; }
-            pins.Pointer(raw.X, raw.Y, left, right, PlayerInput.ScrollWheelDeltaForUI, enabled, FocusHelper.AllowInputProcessing,
+            pins.Pointer(raw.X, raw.Y, left, right, PlayerInput.ScrollWheelDeltaForUI, enabled, focused,
                 shell.OwnsPointer || input.Owned || cards.Selecting || textLeftTail || textRightTail, screen.X, screen.Y, shift, control);
             ConsumeLeft = textLeftTail || pins.ConsumeLeft; ConsumeRight = textRightTail || pins.ConsumeRight;
-            if (FocusHelper.AllowInputProcessing && !left) textLeftTail = false;
-            if (FocusHelper.AllowInputProcessing && !right) textRightTail = false;
-            if (!enabled && wasActive) Suspend();
-            wasActive = enabled; previousLeft = left; ApplyNavigation();
+            if (focused && !left) textLeftTail = false;
+            if (focused && !right) textRightTail = false;
+            if (!enabled && wasActive) Suspend(!focused);
+            wasActive = enabled; previousLeft = focused ? left : true; ApplyNavigation();
         }
         internal void Prepare(bool active, Matrix transform, Vector2 dimensions)
         {
@@ -126,7 +126,10 @@ namespace JueMingR.TerrariaHost.Notes
             input.FinishComposition(false);
             // Finalization can still leave a candidate or half of a WM_CHAR pair.
             // Keep its editor alive until a later complete input can be saved.
-            if (action.Kind == NotesActionKind.FinishEdit && input.HasComposition) return false;
+            // Navigation/create/pin also depend on committing this editor.
+            // Ordinary field switching retains its explicit discard-old-tail
+            // boundary; it must not transfer a half character to another field.
+            if (action.Kind != NotesActionKind.BeginEdit && input.HasComposition) return false;
             if (action.Kind == NotesActionKind.Pin)
             {
                 int count = 0; foreach (Note note in workspace.Feature.Saved.Notes) if (note.Pinned) count++;
@@ -150,8 +153,9 @@ namespace JueMingR.TerrariaHost.Notes
             if (!ready || !shell.Visible || shell.Page != 4) return;
             renderer.Pass(matrix, shell.Layout.Viewport.Offset(shell.X, shell.Y), () => cards.Draw(shell));
         }
-        internal void Suspend()
-        { input.Release(false); pins.Suspend(); cards.Suspend(); if (wasActive) workspace.Suspend(); wasActive = false; }
+        internal void Suspend(bool focusLost = false)
+        { input.Release(false); pins.Suspend(focusLost); cards.Suspend(); if (wasActive) workspace.Suspend(); wasActive = false;
+            if (focusLost) previousLeft = true; }
         internal void FailClosed() { Suspend(); ready = false; renderer.Dispose(); }
     }
 }

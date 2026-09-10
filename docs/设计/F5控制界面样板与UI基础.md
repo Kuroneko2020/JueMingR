@@ -17,9 +17,9 @@
 
 正常内容面板为 `(12,131,556,597)`，实际内容 viewport 为 `(20,139,522,581)`。1280×720、150% UI scale 时窗口仍为 580 宽，高度为 456，内容 viewport 高 297。标题和两行导航固定，只有内容滚动。内容尺寸由实际字体度量作有界局部排版，不按屏幕比例整体缩字。逻辑宽度不足 604 或高度不足 220 时关闭不可读窗口，保留原版游戏。
 
-窗口当前位置属于 UI presentation state；经配置持久化合同批准的用户最终位置由 Settings 唯一拥有，UI 只按当前视口投影。视口自动夹紧不覆盖偏好，恢复视口时重新投影原坐标；主动拖动结束才提交新位置。真实松手、窗口关闭、失焦或 Session 退出时，提交最后一个有效聚焦拖动样本，随后取消 armed 状态与拖动，不保存合成输入；最终回到起点不请求保存。已归属按钮的释放尾部独立完成，不重放世界操作。F5 是否打开、选页、滚动、捕获、按下及 armed 状态仍不跨启动保存；具体格式、等待和失败保护见[配置持久化设计](配置持久化与用户数据布局.md)。
+窗口当前位置属于 UI presentation state；经配置持久化合同批准的用户最终位置由 Settings 唯一拥有，UI 只按当前视口投影。视口自动夹紧不覆盖偏好，恢复视口时重新投影原坐标；主动拖动结束才提交新位置。真实松手、正常窗口关闭或 Session 退出时，提交最后一个有效聚焦拖动样本，随后取消 armed 状态与拖动，不保存合成输入；最终回到起点不请求保存。按 #46 本次明确决定，失焦单独走取消路径：恢复拖动前的显示位置，不提交尚未完成的拖动，也不执行已按下控件。该修订的实现与验证状态以 #46 为准，不追溯改变既有验收记录。已归属按钮的释放尾部独立完成，不重放世界操作。F5 是否打开、选页、滚动、捕获、按下及 armed 状态仍不跨启动保存；具体格式、等待和失败保护见[配置持久化设计](配置持久化与用户数据布局.md)。
 
-显示标题为“决明R”，沿用实际字形度量和字号，直接绘制在主窗口顶部，不绘制独立底框；标题下方、导航之前有一条浅色固定分隔，原标题拖动区域保留。这不改变程序集、仓库或包身份。主窗口的纹理填充与边框一起裁成轻微圆角，固定逻辑轮廓不会被方角皮肤改成直角；指针遮挡仍使用整个窗口矩形。滚动通道保持 10 logical，轨道视觉 4、滑块视觉 6，中心一致且均不进入内容 viewport。圆头和 hover/拖动反馈不改变实际滚动几何；短页不绘制虚假滑块，内容缩短立即夹紧旧 offset。
+显示标题为“决明R”，沿用实际字形度量和字号，直接绘制在主窗口顶部，不绘制独立底框；标题下方、导航之前有一条浅色固定分隔，原标题拖动区域保留。这不改变程序集、仓库或包身份。主窗口的纹理填充与边框一起裁成轻微圆角，固定逻辑轮廓不会被方角皮肤改成直角；指针遮挡仍使用整个窗口矩形。滚动通道保持 10 logical，轨道视觉 4、滑块视觉 6，中心一致且均不进入内容 viewport。圆头和 hover/拖动反馈不改变实际滚动几何；按 #46 所有者本次明确决定，全部 F5 主内容页的短页也显示原轨道和占满有效轨道的弱态滑块；MaxScroll=0 时 offset=0、不可拖动，不人为增高内容。长页仍按真实比例拖动，内容宽度和预留通道不变。内容高度、字体或尺寸变化使旧滑块捕获失效时结束拖动并保留真实释放尾部；动态页在自身完整高度提交后夹紧，避免临时空高度导致跳顶。本条不改变 Notes 独立悬挂窗口的滚动显示。
 
 导航恢复对应十二个几何图标，统一 18 logical 图标盒，与 5 logical 间距和文字作为整体居中。完整 18×18 源域决定绘制比例，非零 alpha 边界仅用于居中，保留原图留白；不把裁紧图案放大至占满图标盒。可见图形约 8–13.5 logical，圆端和细描边按源比例呈现；切页和 hover 只改变颜色。功能名称左对齐；按钮组在功能行内垂直居中，组内按钮等高、等间距；需要换行时由同一个布局缓存计算内容与操作区。
 
@@ -38,7 +38,8 @@
 | `TerrariaHost/F5/F5Renderer.cs` | 读取 Terraria 当前字体/材质，绘制缓存内容，维护自身裁切状态 |
 | `TerrariaHost/F5/F5IconAtlas.cs`、`F5/Icons/` | 十二导航与一枚键盘的有来源离线图形及 renderer 独占的单一图集 |
 | `TerrariaHost/F5/F5Shell.cs` | 采样后的原版输入适配、统一归属、短期状态恢复、UI 生命周期 |
-| `TerrariaHost/Phase0SLoadChainHost.cs` | 既有 handoff、精确四目标安装与有界 layer 注册 |
+| `TerrariaHost/Phase0SLoadChainHost.cs` | 既有 handoff、精确宿主目标安装与有界 layer 注册；输入附加目标委托 `Input/HostInputHooks` |
+| `TerrariaHost/Input/HostInputState.cs` | 唯一本帧输入许可、真实前台与激活尾部；不拥有 Session 或在途业务回执 |
 | `TerrariaHost/Phase0TBiomeRuntime.cs` | 将 UI 窄启停命令交给原有唯一 Feature |
 | `TerrariaHost/Settings/HostPreferences.cs` | 装配进程级偏好、接收窄保存命令、收取完成与错误快照；文件操作留在后台存储 |
 
@@ -48,14 +49,17 @@ Settings 保存用户期望，Feature 保持上述实际状态与故障边界。
 
 ## 固定 Hook 与已确认时序
 
-固定 Terraria 1.4.5.8 的程序集身份仍由原有 SHA-256/MVID/版本加载门核验；没有扩大游戏或依赖版本。三个 postfix 和一个 prefix 共用既有 owner `JueMingR.Phase0S.MainUpdate`：
+固定 Terraria 1.4.5.8 的程序集身份仍由原有 SHA-256/MVID/版本加载门核验；没有扩大游戏或依赖版本。下表包括基础入口、#42 文本租约及 #46 本次授权的失焦入口，共用既有 owner `JueMingR.Phase0S.MainUpdate`；新增入口不表示已经实机验收：
 
 | 精确目标 | Patch | 职责 |
 | --- | --- | --- |
-| `Main.Update(GameTime)` | postfix | 既有一次 handoff、唯一 Runtime 更新与 UI 准备/收尾 |
+| `Main.Update(GameTime)` | prefix + postfix | 早期刷新真实前台与本帧输入有效性、取消失焦捕获；既有一次 handoff、唯一 Runtime 更新与 UI 准备/收尾 |
 | `Main.SetupDrawInterfaceLayers()` | postfix | 既有群系层及四个窄 F5 layer 的固定锚点注册 |
-| `Main.DoUpdate_HandleInput()` | postfix | 原版完成本帧采样之后、玩家使用/快捷栏消费之前处理 F5 和消费已归属输入 |
+| `Main.DoUpdate_HandleInput()` | prefix + postfix | 采样前准备自有文本租约；最终键盘采样后完成本帧输入许可、处理 F5 和已归属输入 |
 | `Main.HoverOverNPCs(Microsoft.Xna.Framework.Rectangle)` | bool prefix | Ready、Visible、当前命中或捕获可靠成立时跳过 NPC 悬停原体，其余执行原版 |
+| `FocusHelper.AllowInputProcessing` getter | postfix | 仅进一步收紧原版许可；不作为唯一防线，避免小 getter 内联绕过 |
+| `PlayerInput.UpdateInput()` | postfix | 在原版缩放/导航消费者之前消费后台或激活中的映射输入 |
+| `Main.GetInputText(string,bool)` | bool prefix | 不许可时返回原文本，不读取直接键盘输入、不清文本队列/IME；清瞬时 Enter/Escape 输出 |
 
 后两目标逐个核验 private、instance、void、参数精确类型/数量、非泛型和实际 managed body，不模糊按名称选重载。固定文件静态证据确认 `HoverOverNPCs` 唯一调用位于 `DrawMouseOver`，紧前由调用方清 `HoveringOverAnNPC`。原体包括绕过普通 `mouseInterface` 检查的 NPC type 685 分支，所以单靠点击消费或 tooltip 标志不能证明纯悬停正确。
 
@@ -65,7 +69,9 @@ Settings 保存用户期望，Feature 保持上述实际状态与故障边界。
 
 `F5Interaction.OwnsPointer` 保存唯一窗口/捕获归属事实；Host 再统一核验当前能否实际呈现 F5。全屏地图、隐藏 UI、Fancy UI、游戏选项、相机、失焦和非键鼠模式均关闭 F5；当前地图/相机切换请求也先取消控件与捕获，继续处理已归属按钮的真实释放。原基础范围为单人；#42 笔记实现将共享壳层窄开放给 netMode 0/1 的本地客户端，群系控制与运行仍有各自 netMode 0 门，不据此宣称其它入口多人安全。NPC prefix 不存第二份遮挡标志，不做反射、日志、文字度量、I/O 或实体扫描。
 
-笔记实现沿用一个 F5 layer，依次以屏幕矩阵绘制便签、以冻结 UI 矩阵绘制窗口和卡片。独立文本状态、共享布局预算、正文与页滚动、主动离开保存门及强制隐藏留稿按[笔记设计](笔记功能实现设计.md)；F5 关闭后便签仍借用可用原版资源，不 dispose 共享字体/纹理。文本租约在原输入目标增加最小 prefix，与既有 postfix 共用同一 Harmony owner；原首四个宿主目标集合不扩大。真实 IME、像素及多人证据以该任务实际验证为准。
+笔记实现沿用一个 F5 layer，依次以屏幕矩阵绘制便签、以冻结 UI 矩阵绘制窗口和卡片。独立文本状态、共享布局预算、正文与页滚动、主动离开保存门及强制隐藏留稿按[笔记设计](笔记功能实现设计.md)；F5 关闭后便签仍借用可用原版资源，不 dispose 共享字体/纹理。#42 文本租约只在原输入目标增加最小 prefix；#46 本次额外目标以本节表为准。真实 IME、像素及多人证据以对应任务实际验证为准。
+
+#46 的 `HostInputState` 在游戏线程唯一拥有输入许可。非零游戏 HWND 必须等于 `GetForegroundWindow()`；原版 `IsSelectedApplication` 不能单独证明前台。每次 Update 先作废旧采样，映射与最终键盘阶段均完成后才能启动新动作；暂停/相机等跳过采样不能沿用上帧许可。失焦早期清旧键盘与瞬时 Enter/Escape，覆盖聊天在文字方法前读取 Escape 的顺序；不清聊天内容或他人的文本租约。重新激活时，整组激活按键/鼠标必须在真聚焦的原版采样中结束，中性帧本身也消费，随后新动作可用；没有固定延迟或输入重放。不改 `releaseUseItem`，不以失焦结束 Session，也不取消已发出的原版存放回执。供自动操作使用的 `CanStartActions` 同时要求本帧有效、真聚焦及激活尾部结束；手动保护的归还还须核验原始 `MouseInfo` 双键真实 Released，不从已消费的 `Main.mouseLeft/right` 推导。
 
 输入采样使用原版 `MouseInfo`、绝对滚轮派生的 delta、当前 keyState 和冻结 UI matrix；不再次读取真实鼠标或移动鼠标。该 matrix 的逆变换用于指针，正变换用于整个窗口和内容裁切。改变窗口位置只改 origin，滚动只改 offset，页面绘制和控件命中共享同一当前布局。
 
@@ -87,7 +93,9 @@ mouseInterface/mouseText lease 保存进入时值，在有限消费区间后恢�
 
 皮肤身份与字体度量分别失效。字体变化时，用公开 `DynamicSpriteFont.DrawCustomFast` 零绘制回调收集与 DrawString 同源的字形矩形，包含 fallback、kerning、字间距和 cropping 偏移。缓存保留宽高与 Left/Top；相同宽高但偏移变化也刷新定位，相同度量保持 layout generation。测量不以 LineSpacing 代替字形高度，不做 GPU readback。当前四方向描边的 ±2 logical 与字体 scale 无关，因此布局另留四个 logical 单位，绘制按相同偏移回到字形原点。
 
-上述 API 提供真实绘制四边形，不能判断矩形内部特殊透明留白；本轮不扫描字体纹理或建设通用文字排版引擎，不能承诺任意字体包均精确到非透明像素居中。正常字号不会为越界整体缩小，真正无法容纳的资源继续走已有可见失败反馈。
+原版 `Mouse_Text` 的受支持空格（U+0020）具有位于 Y=40 的透明 1×1 占位矩形。共用度量保留其水平边界与原生推进，但不把它计入可见垂直边界，防止“提示 开/关”被算成多一行。回调按原 API 跳过 CR/LF，保留真实换行；不泛化忽略 1×1、tab、NBSP 或不受支持空格的 fallback。全空格/空文本使用有限的 `LineSpacing` 回退，测量结束清除暂存原文，不新增逐帧度量或资源扫描。
+
+上述 API 提供真实绘制四边形，不能判断其他矩形内部特殊透明留白；本轮不扫描字体纹理或建设通用文字排版引擎，不能承诺任意字体包均精确到非透明像素居中。正常字号不会为越界整体缩小，真正无法容纳的资源继续走已有可见失败反馈。
 
 固定文本和三个真实群系 hover 提示最多 1024 个缓存项，无隐藏页更新。F5 提示尺寸在布局阶段缓存，由自身 renderer 绘制；不交给会逐帧 MeasureString 的原版 pending-text 消费者。稳态、hover、拖动和普通滚动不重测；纯皮肤变化不重排，UI scale 改变只重建逻辑布局。关闭窗口不布局、度量或绘制。renderer 拥有一个 72×936 图标 atlas、一个 8×8 圆头纹理和 RasterizerState；只在首次需要或图形设备变更时创建，退出 Session/原版模态或局部失败时释放，不释放共享字体或材质。外缘带状裁切使用固定有界几何，不创建 RenderTarget。
 
@@ -98,9 +106,11 @@ mouseInterface/mouseText lease 保存进入时值，在有限消费区间后恢�
 
 新增 UI 从首次接入就复用既有样式与控件，不能默认把临时绘制作为最终候选，等待用户再次发现。#42/#43 的 Notes 修订将表面九宫格/降级和字形度量窄提取到 `UiSurface`/`UiTextMetrics`，F5 与 Notes 共用；业务、排版、输入状态与提交仍归各自功能。检查新增 UI 的实际入口、状态、字形几何及资源变化，沿用现有验证方式，不要求每页单建主题系统或逐控件视觉审批。这项长期维护补充已由所有者在 #42 本次收口中明确接受，随 PR #43 合并生效。检查新页面不能用旧壳层预览替代；Notes 未执行图形自动检查与所有者实际使用接受的区分，以及仅限固定候选的本次合并延期决定，见[测试分层](../规范/测试与审计规则.md#显示环境受限时的验证分层)。
 
+#46 本次物品页修正将现有信息页功能行窄提取为 `F5RowLayout`、`F5ControlRenderer`，由两页实际消费。共用范围包含完整行面板、内边距/密度、名称居中、字形驱动按钮宽度、操作组等高等距与右对齐、普通字色和绿/红短线，不只是一张材质。群系命令留在信息页，物品页独立提供开启/关闭的幂等设值命令；不把未满足执行条件显示成用户关闭。信息页导航、行参数和惰性键盘不因提取改变，物品三行按所有者决定没有绑定入口。几何同供绘制与命中，变化取消旧捕获；稳定帧复用缓存。新页动态视觉对照受本次已证实的设备创建前环境失败影响而待补，不生成视觉接受结论。
+
 ## 验证与交付边界
 
-既有 `scripts/test-phase0s.ps1` 纳入 Phase 0-U 生产布局/输入检查及实际加载 Host 的 fixture 集成：同一次安装的两个独立进程、原有五事件 evidence、群系 cadence/生命周期、准确四目标集合和 TEMP 安装/恢复继续保留。
+既有 `scripts/test-phase0s.ps1` 纳入 Phase 0-U 生产布局/输入检查及实际加载 Host 的 fixture 集成：同一次安装的两个独立进程、原有五事件 evidence、群系 cadence/生命周期和 TEMP 安装/恢复继续保留；精确目标与 patch 类型按本节当前表核验。#46 增加窄 `focus-input` 和非图形 `expect-input` 反例：直接加载生产 Host，故意绕过小 getter 补丁仍检查实际点击、热栏、早期快捷键、内部缩放及文字消费者；合成输入与 HWND 替身不证明真实切窗、IME、多人或 FPS。
 
 fixture 消费者严格保留关键顺序：采样 → 生产 input postfix → 实际使用/热栏；Draw 重置 → 旧气泡先绘后清 → 中间 mouseText 重置 → production hover gate → 掉落物 loop → production NPC prefix/原体。断言动作与最终输出，不以 flag 或 prefix 返回值代替行为。
 

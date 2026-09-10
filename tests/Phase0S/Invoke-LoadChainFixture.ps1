@@ -53,6 +53,14 @@ function Get-Phase0SFixtureExecutable {
     $layoutOutput = @(& $fixtureExe @layoutArguments)
     if ($LASTEXITCODE -ne 0) { throw 'The production Phase 0-U layout/input checks failed.' }
     foreach ($line in $layoutOutput) { Write-Host $line }
+    $itemsMode = if ($script:DeferGraphics) { 'items-safety' } else { 'items-host' }
+    $itemsOutput = @(& $fixtureExe $itemsMode)
+    if ($LASTEXITCODE -ne 0) { throw 'The production item host/UI fixture checks failed.' }
+    foreach ($line in $itemsOutput) { Write-Host $line }
+    if ($script:DeferGraphics) { Write-Host 'DEFERRED: Items real XNA drawing only; production geometry/input and item transaction/source/receipt/config checks above ran.' }
+    $abiOutput = @(& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $RepositoryRoot 'tests\Items\Verify-ItemHostAbi.ps1') -RepositoryRoot $RepositoryRoot)
+    if ($LASTEXITCODE -ne 0) { throw 'The fixed item host metadata/IL check failed.' }
+    foreach ($line in $abiOutput) { Write-Host $line }
     return $fixtureExe
 }
 
@@ -476,7 +484,7 @@ function Assert-Phase0SSourceContract {
         [regex]::Matches($hostText, 'new HarmonyMethod\(npcHoverPrefixMethod\)').Count -ne 1 -or
         $hostText -notmatch '(?s)private static void Postfix\(List<GameInterfaceLayer> ____gameInterfaceLayers\).*?Interlocked\.CompareExchange\(ref postfixGate, 1, 0\) == 0.*?EnsureBiomeLayerForHandoff\(____gameInterfaceLayers\);.*?context\.UpdateRuntime\(\);' -or
         $hostText -notmatch '(?s)private static void DrawSetupPostfix\(List<GameInterfaceLayer> ____gameInterfaceLayers\).*?InsertBiomeLayer\(____gameInterfaceLayers\);' -or
-        $hostText -notmatch '(?s)catch \(Exception exception\).*?HandlePostfixFailure\(context, stage, exception\);.*?private static void HandlePostfixFailure.*?DisableBiomeFeature\(\);' -or
+        $hostText -notmatch '(?s)catch \(Exception exception\).*?HandlePostfixFailure\(context, stage, exception\);.*?private static void HandlePostfixFailure.*?context\.FailRuntimeClosed\(\);' -or
         $hostText -match 'OneTimeDiagnosticPrefix|Phase0SDiagnosticSentinel|MAIN_INITIALIZE_POSTFIX_FIRED' -or
         $hostText -match 'Task\.Run|new\s+Thread\s*\(|new\s+(?:System\.Threading\.)?Timer\s*\(|ConcurrentQueue|Queue<') {
         throw 'The production Host source does not match the three postfixes plus one conditional NPC prefix, one-shot evidence, no-diagnostic/no-background contract.'
@@ -536,6 +544,15 @@ function Invoke-Phase0SLoadChainFixtureTests {
 
     $root = New-Phase0STestRoot
     try {
+        $items = New-Phase0SFixtureRunDirectory -Root $root -Name 'items-host-loaded' -FixtureExe $fixtureExe -ProductionOutputs $productionOutputs -HarmonyPath $harmonyPath -PackageId ('item-automation-' + $sourceCommit) -SourceCommit $sourceCommit
+        $itemsResult = Invoke-Phase0SFixtureExe -FixtureExe $items.exePath -Mode 'expect-items' -EvidencePath $items.evidencePath -PackageId $items.packageId
+        foreach ($line in $itemsResult.output) { Write-Host $line }
+        if ($itemsResult.exitCode -ne 0 -and [IO.File]::Exists($items.evidencePath)) { Get-Content -LiteralPath $items.evidencePath | ForEach-Object { Write-Host $_ } }
+        Assert-Phase0SCondition -Condition ($itemsResult.exitCode -eq 0) -Message 'Separately compiled item Host must load its actual profile and remain healthy.'
+        $earlyLayer = New-Phase0SFixtureRunDirectory -Root $root -Name 'items-layer-before-handoff' -FixtureExe $fixtureExe -ProductionOutputs $productionOutputs -HarmonyPath $harmonyPath -PackageId ('item-automation-' + $sourceCommit) -SourceCommit $sourceCommit
+        $earlyLayerResult = Invoke-Phase0SFixtureExe -FixtureExe $earlyLayer.exePath -Mode 'expect-items-layer-failure' -EvidencePath $earlyLayer.evidencePath -PackageId $earlyLayer.packageId
+        foreach ($line in $earlyLayerResult.output) { Write-Host $line }
+        Assert-Phase0SCondition -Condition ($earlyLayerResult.exitCode -eq 0) -Message 'A local layer failure before handoff must preserve startup and item composition.'
         Invoke-Phase0SSettingsHostFixtures -Root $root -FixtureExe $fixtureExe -ProductionOutputs $productionOutputs -HarmonyPath $harmonyPath -SourceCommit $sourceCommit
         $success = New-Phase0SFixtureRunDirectory -Root $root -Name 'success' -FixtureExe $fixtureExe -ProductionOutputs $productionOutputs -HarmonyPath $harmonyPath -PackageId ('phase0s-fixture-' + [Guid]::NewGuid().ToString('N')) -SourceCommit $sourceCommit
         $successResult = Invoke-Phase0SFixtureExe -FixtureExe $success.exePath -Mode 'expect-handoff' -EvidencePath $success.evidencePath -PackageId $success.packageId

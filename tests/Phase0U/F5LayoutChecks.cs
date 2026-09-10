@@ -7,6 +7,7 @@ namespace Terraria
     {
         internal static void Run()
         {
+            UiTextMetricsChecks.Run();
             CheckRefinementContract();
             CheckVisualRows();
             var layout = new F5Layout();

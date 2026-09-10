@@ -523,7 +523,8 @@ function Read-Phase0SPackage {
         ('phase0t-biome-' + [string] $manifest.sourceCommit),
         ('phase0u-f5-ui-' + [string] $manifest.sourceCommit),
         ('phase0v-settings-' + [string] $manifest.sourceCommit),
-        ('phase0w-notes-' + [string] $manifest.sourceCommit)
+        ('phase0w-notes-' + [string] $manifest.sourceCommit),
+        ('item-automation-' + [string] $manifest.sourceCommit)
     )
     if ([string] $manifest.sourceCommit -notmatch '^[0-9a-f]{40}$' -or
         $allowedPackageIds -cnotcontains [string] $manifest.packageId) {
@@ -746,11 +747,11 @@ function Test-Phase0SEvidenceFile {
         $allowedStages = @(
             'BOOTSTRAP_MANIFEST', 'TARGET_IDENTITY', 'READINESS_IDENTITY', 'EVIDENCE_CREATE', 'HOST_LOAD', 'HOST_ENTRY',
             'HOST_VALIDATE', 'HARMONY_LOAD', 'TARGET_METHOD', 'PATCH', 'PATCH_INFO', 'PATCH_CLEANUP',
-            'POSTFIX', 'HANDOFF'
+            'POSTFIX', 'HANDOFF', 'RUNTIME', 'BIOME_LAYER', 'BIOME_DRAW'
         )
         $allowedCodes = @(
             'INVALID_MANIFEST', 'IDENTITY_MISMATCH', 'PRELOADED', 'NOT_UNIQUE', 'APPEND_FAILED',
-            'PATCH_FAILED', 'VERIFY_FAILED', 'CLEANUP_FAILED'
+            'PATCH_FAILED', 'VERIFY_FAILED', 'CLEANUP_FAILED', 'RUNTIME_FAILED', 'FEATURE_FAILED'
         )
         $eventCount = 0
         $primaryErrorSeen = $false

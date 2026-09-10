@@ -228,6 +228,8 @@ namespace JueMingR.TerrariaHost
             MethodInfo drawSetupMethod = ResolveDrawSetupMethod(targetAssembly);
             MethodInfo inputMethod = ResolveF5Target(targetAssembly, "DoUpdate_HandleInput", Type.EmptyTypes);
             MethodInfo npcHoverMethod = ResolveF5Target(targetAssembly, "HoverOverNPCs", new[] { typeof(Rectangle) });
+            MethodInfo[] inputTargets = Input.HostInputHooks.Resolve(targetAssembly);
+            MethodInfo updatePrefixMethod = typeof(Phase0SHarmonyWorker).GetMethod("UpdatePrefix", BindingFlags.NonPublic | BindingFlags.Static);
             MethodInfo inputPostfixMethod = typeof(Phase0SHarmonyWorker).GetMethod("InputPostfix", BindingFlags.NonPublic | BindingFlags.Static);
             MethodInfo inputPrefixMethod = typeof(Phase0SHarmonyWorker).GetMethod("InputPrefix", BindingFlags.NonPublic | BindingFlags.Static);
             MethodInfo npcHoverPrefixMethod = typeof(Phase0SHarmonyWorker).GetMethod("NpcHoverPrefix", BindingFlags.NonPublic | BindingFlags.Static);
@@ -266,11 +268,11 @@ namespace JueMingR.TerrariaHost
                 patchAttempted = true;
                 harmony.Patch(
                     targetMethod,
-                    null,
+                    new HarmonyMethod(updatePrefixMethod),
                     new HarmonyMethod(postfixMethod),
                     null,
                     null);
-                VerifyExactPatchInfo(targetMethod, postfixMethod, manifest.PatchOwner);
+                VerifyExactPatchInfo(targetMethod, postfixMethod, manifest.PatchOwner, additionalPrefix: updatePrefixMethod);
                 harmony.Patch(
                     drawSetupMethod,
                     null,
@@ -282,6 +284,7 @@ namespace JueMingR.TerrariaHost
                 VerifyExactPatchInfo(inputMethod, inputPostfixMethod, manifest.PatchOwner, additionalPrefix: inputPrefixMethod);
                 harmony.Patch(npcHoverMethod, new HarmonyMethod(npcHoverPrefixMethod), null, null, null);
                 VerifyExactPatchInfo(npcHoverMethod, npcHoverPrefixMethod, manifest.PatchOwner, true);
+                Input.HostInputHooks.Install(harmony, inputTargets, postfixContext.Input);
                 // Publish readiness only after every exact patch and its evidence have succeeded.
                 EvidenceWriter.AppendEvent(evidencePath, manifest.PackageId, 3, "HOOK_INSTALLED");
                 Volatile.Write(ref hookCommitted, 1);
@@ -296,6 +299,8 @@ namespace JueMingR.TerrariaHost
                         manifest.PatchOwner,
                         targetMethod,
                         drawSetupMethod, inputMethod, npcHoverMethod);
+                    foreach (MethodInfo method in inputTargets)
+                    { try { harmony.Unpatch(method, HarmonyPatchType.All, manifest.PatchOwner); } catch (Exception e) { if (cleanupException == null) cleanupException = e; } }
                 }
 
                 Phase0SLoadChainHost.TryRecordPatchFailure(
@@ -456,6 +461,14 @@ namespace JueMingR.TerrariaHost
             return method;
         }
 
+        private static void UpdatePrefix()
+        {
+            PostfixContext context = postfixContext;
+            if (Volatile.Read(ref hookCommitted) != 1 || context == null) return;
+            context.Input.BeginUpdate();
+            if (!context.Input.IsFocused && context.Shell != null) context.Shell.CancelForFocusLoss();
+        }
+
         private static void InputPrefix()
         {
             PostfixContext context = postfixContext;
@@ -466,8 +479,8 @@ namespace JueMingR.TerrariaHost
         private static void InputPostfix()
         {
             PostfixContext context = postfixContext;
-            if (Volatile.Read(ref hookCommitted) == 1 && context != null && context.Shell != null)
-                context.Shell.ProcessInput();
+            if (Volatile.Read(ref hookCommitted) == 1 && context != null)
+            { context.Input.AfterKeyboardRefresh(); if (context.Shell != null) context.Shell.ProcessInput(); }
         }
 
         private static bool NpcHoverPrefix()
@@ -480,11 +493,14 @@ namespace JueMingR.TerrariaHost
 
         private static void Postfix(List<GameInterfaceLayer> ____gameInterfaceLayers)
         {
+            // Main.Update may run after its patch is installed but before the
+            // complete hook set commits. That normal window owns no handoff.
+            if (Volatile.Read(ref hookCommitted) != 1) return;
             PostfixContext context = postfixContext;
             string stage = "POSTFIX";
             try
             {
-                if (Volatile.Read(ref hookCommitted) != 1 || context == null)
+                if (context == null)
                 {
                     throw new InvalidOperationException("The Phase 0-S postfix context is unavailable.");
                 }
@@ -501,7 +517,11 @@ namespace JueMingR.TerrariaHost
                     stage = "HANDOFF";
                     CompleteEmptyHandoffOnce();
                     // Setup may have run before asynchronous patch installation; catch up once here.
-                    EnsureBiomeLayerForHandoff(____gameInterfaceLayers);
+                    // Catch-up insertion belongs to the same optional display
+                    // boundary as DrawSetup; a missing biome anchor cannot stop
+                    // the rest of the shared composition from initializing.
+                    try { EnsureBiomeLayerForHandoff(____gameInterfaceLayers); }
+                    catch (Exception exception) { DisableBiomeFeature("BIOME_LAYER", exception); }
                     EnsureF5Layers(____gameInterfaceLayers);
                     context.InitializeRuntime(Volatile.Read(ref biomeFeatureFailed) == 0);
                     EvidenceWriter.AppendEvent(
@@ -509,8 +529,10 @@ namespace JueMingR.TerrariaHost
                         context.PackageId,
                         5,
                         "RUNTIME_HANDOFF_COMPLETE");
+                    context.CompleteStartupEvidence();
                 }
 
+                stage = "RUNTIME";
                 context.UpdateRuntime();
                 context.UpdateShell();
             }
@@ -525,14 +547,16 @@ namespace JueMingR.TerrariaHost
             string stage,
             Exception exception)
         {
-            DisableBiomeFeature();
+            Interlocked.Exchange(ref biomeFeatureFailed, 1);
             if (context != null)
             {
+                // Handoff/shared update failure is wider than one renderer.
+                context.FailRuntimeClosed();
                 Phase0SLoadChainHost.TryRecordPrimaryError(
                     context.EvidencePath,
                     context.PackageId,
                     stage,
-                    "APPEND_FAILED",
+                    stage == "RUNTIME" ? "RUNTIME_FAILED" : "APPEND_FAILED",
                     exception);
             }
         }
@@ -543,9 +567,9 @@ namespace JueMingR.TerrariaHost
             {
                 InsertBiomeLayer(____gameInterfaceLayers);
             }
-            catch
+            catch (Exception exception)
             {
-                DisableBiomeFeature();
+                DisableBiomeFeature("BIOME_LAYER", exception);
             }
             EnsureF5Layers(____gameInterfaceLayers);
         }
@@ -709,21 +733,24 @@ namespace JueMingR.TerrariaHost
                     new Color(144, 238, 144, 255),
                     scale);
             }
-            catch
+            catch (Exception exception)
             {
-                DisableBiomeFeature();
+                DisableBiomeFeature("BIOME_DRAW", exception);
             }
 
             return true;
         }
 
-        private static void DisableBiomeFeature()
+        private static void DisableBiomeFeature(string stage, Exception exception)
         {
             Interlocked.Exchange(ref biomeFeatureFailed, 1);
             PostfixContext context = postfixContext;
             if (context != null)
             {
-                context.FailRuntimeClosed();
+                // A display-only failure cannot invalidate the shared Session
+                // or another feature's operations and in-flight ownership.
+                context.Runtime?.FailClosed();
+                context.RecordBiomeFailure(stage, exception);
             }
         }
 
@@ -737,11 +764,16 @@ namespace JueMingR.TerrariaHost
 
         private sealed class PostfixContext
         {
+            internal readonly Input.HostInputState Input = new Input.HostInputState();
             private Phase0TBiomeRuntime runtime;
             private ulong updateTick;
             private readonly string gameDirectory;
             private HostPreferences preferences;
             private Notes.HostNotes notes;
+            private Items.HostItems items;
+            private bool startupEvidenceComplete;
+            private string pendingBiomeErrorStage;
+            private Exception pendingBiomeError;
 
             internal PostfixContext(string packageId, string evidencePath, string gameDirectory)
             {
@@ -761,6 +793,28 @@ namespace JueMingR.TerrariaHost
 
             internal F5Shell Shell { get; private set; }
 
+            internal void RecordBiomeFailure(string stage, Exception exception)
+            {
+                // A local layer can fail before the first Update handoff. Keep
+                // only its first cause until events 01..05 commit; inserting an
+                // ERROR into that prefix would prevent healthy features starting.
+                if (!startupEvidenceComplete)
+                {
+                    if (pendingBiomeError == null) { pendingBiomeErrorStage = stage; pendingBiomeError = exception; }
+                    return;
+                }
+                Phase0SLoadChainHost.TryRecordPrimaryError(EvidencePath, PackageId, stage, "FEATURE_FAILED", exception);
+            }
+
+            internal void CompleteStartupEvidence()
+            {
+                startupEvidenceComplete = true;
+                Exception error = pendingBiomeError;
+                string stage = pendingBiomeErrorStage;
+                pendingBiomeError = null; pendingBiomeErrorStage = null;
+                if (error != null) RecordBiomeFailure(stage, error);
+            }
+
             internal void InitializeRuntime(bool enabled)
             {
                 if (runtime != null)
@@ -769,9 +823,12 @@ namespace JueMingR.TerrariaHost
                 }
 
                 preferences = new HostPreferences(gameDirectory);
-                runtime = Phase0TBiomeRuntime.Create(enabled, preferences.BiomeLoaded && preferences.BiomeEnabled);
+                bool itemPackage = PackageId.StartsWith("item-automation-", StringComparison.Ordinal);
+                runtime = itemPackage ? Phase0TBiomeRuntime.Create(enabled, preferences.BiomeLoaded && preferences.BiomeEnabled, new Items.ItemSessionProbe()) :
+                    Phase0TBiomeRuntime.Create(enabled, preferences.BiomeLoaded && preferences.BiomeEnabled);
+                if (itemPackage) { items = new Items.HostItems(gameDirectory, runtime.SharedRuntime, () => Input.CanStartActions); runtime.SharedRuntime.AddFeature(items); }
                 notes = new Notes.HostNotes(gameDirectory);
-                Shell = new F5Shell(runtime, preferences, notes) { LayersReady = f5LayersReady };
+                Shell = new F5Shell(runtime, preferences, notes, items, Input) { LayersReady = f5LayersReady };
             }
 
             internal void UpdateRuntime()
@@ -784,6 +841,7 @@ namespace JueMingR.TerrariaHost
 
                 preferences.Update();
                 notes.Update();
+                items?.PollPreferences();
                 current.SetFeatureEnabled(preferences.BiomeLoaded && preferences.BiomeEnabled);
                 current.Update(updateTick);
                 updateTick = unchecked(updateTick + 1);
@@ -791,6 +849,7 @@ namespace JueMingR.TerrariaHost
 
             internal void FailRuntimeClosed()
             {
+                items?.FailClosed();
                 Phase0TBiomeRuntime current = runtime;
                 if (current != null)
                 {
@@ -1394,7 +1453,9 @@ namespace JueMingR.TerrariaHost
                 {
                     string[] lines = ReadAllLines(stream);
                     int successCount = cleanupSecondary ? lines.Length - 1 : lines.Length;
-                    if (successCount < 1 || successCount > 4)
+                    // The first runtime failure may follow all five successful
+                    // startup events. Keep the same single bounded error record.
+                    if (successCount < 1 || successCount > EventNames.Length)
                     {
                         return;
                     }

@@ -35,7 +35,12 @@ namespace JueMingR.TerrariaHost.F5
         }
 
         internal void Prepare(F5Interaction state, float width, float height, float scale)
-        { state.Layout.Ensure(width, height, scale, state.Page, font, measure); state.ClampScroll(); }
+        {
+            state.Layout.Ensure(width, height, scale, state.Page, font, measure);
+            // Dynamic pages clamp after committing their real content height.
+            // Ensure's temporary empty height must not reset their offset.
+            if (state.Page != 0 && state.Page != 4) state.ClampScroll();
+        }
 
         private F5Size Measure(string text)
         { return textMetrics.Measure(font, text); }
@@ -81,7 +86,7 @@ namespace JueMingR.TerrariaHost.F5
                     F5Element element = layout.Elements[i];
                     F5Rect rect = element.Rect.Offset(view.X, view.Y - state.Scroll);
                     if (rect.Bottom <= view.Y || rect.Y >= view.Bottom) continue;
-                    if (element.Kind == F5ElementKind.Panel) Panel(batch, rect, row, new Color(232, 232, 232));
+                    if (element.Kind == F5ElementKind.Panel) F5ControlRenderer.Panel(batch, pixel, row, rect);
                     else if (element.Kind == F5ElementKind.Field) Panel(batch, rect, row, new Color(180, 180, 180));
                     else if (element.Kind == F5ElementKind.Text)
                         Text(batch, element.Text, new Vector2(rect.X, rect.Y), element.TextScale,
@@ -92,14 +97,9 @@ namespace JueMingR.TerrariaHost.F5
                     {
                         bool enabled = element.Command != F5Command.None && !biomeFailed;
                         bool hovered = rect.Contains(state.PointerX, state.PointerY) && view.Contains(state.PointerX, state.PointerY);
-                        F5Rect surface = F5Layout.ButtonSurface(element).Offset(view.X, view.Y - state.Scroll);
-                        F5Rect label = F5Layout.ButtonLabel(element).Offset(view.X, view.Y - state.Scroll);
-                        Panel(batch, surface, button, enabled && hovered ? Color.White : new Color(220, 220, 220),
-                            fractionalSurface: true);
-                        Text(batch, element.Text, new Vector2(label.X, label.Y), element.TextScale, Color.White, element.TextSize);
-                        if (F5Layout.IsSelected(element, biomeEnabled, biomeFailed))
-                            Decoration(batch, F5Layout.ButtonUnderline(element).Offset(view.X, view.Y - state.Scroll),
-                                biomeEnabled ? Color.LightGreen : Color.IndianRed);
+                        F5ControlRenderer.Button(batch, pixel, button, font, element, hovered, enabled,
+                            F5Layout.IsSelected(element, biomeEnabled, biomeFailed) ? (Color?)(biomeEnabled ? Color.LightGreen : Color.IndianRed) : null,
+                            view.X, view.Y - state.Scroll);
                     }
                 }
                 batch.End();
@@ -160,13 +160,10 @@ namespace JueMingR.TerrariaHost.F5
                 if (selected) Decoration(batch, layout.NavigationUnderline(i).Offset(state.X, state.Y), Color.Gold);
             }
             Panel(batch, layout.ContentPanel.Offset(state.X, state.Y), row, new Color(205, 205, 205));
-            if (layout.MaxScroll > 0)
-            {
-                RoundBar(batch, layout.ScrollTrackVisual.Offset(state.X, state.Y), Color.Black * 0.4f);
-                bool hover = layout.ScrollTrack.Offset(state.X, state.Y).Contains(state.PointerX, state.PointerY);
-                RoundBar(batch, layout.ScrollThumbVisual(state.Scroll).Offset(state.X, state.Y),
-                    Color.White * (hover || state.DraggingScroll ? 0.85f : 0.6f));
-            }
+            RoundBar(batch, layout.ScrollTrackVisual.Offset(state.X, state.Y), Color.Black * 0.4f);
+            bool hover = layout.ScrollTrack.Offset(state.X, state.Y).Contains(state.PointerX, state.PointerY);
+            RoundBar(batch, layout.ScrollThumbVisual(state.Scroll).Offset(state.X, state.Y),
+                Color.White * (layout.MaxScroll <= 0 ? 0.25f : hover || state.DraggingScroll ? 0.85f : 0.6f));
         }
 
         private void Keyboard(SpriteBatch batch, F5Rect slot)

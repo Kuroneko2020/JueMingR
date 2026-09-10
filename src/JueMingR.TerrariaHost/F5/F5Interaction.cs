@@ -23,6 +23,8 @@ namespace JueMingR.TerrariaHost.F5
         private WindowPosition positionProjection, positionToSave;
         private F5Element armed;
         private int armedGeneration;
+        private int scrollGeneration;
+        private float scrollContentHeight;
         internal readonly F5Layout Layout = new F5Layout();
         internal bool Visible { get; private set; }
         internal bool Ready { get; set; }
@@ -54,7 +56,7 @@ namespace JueMingR.TerrariaHost.F5
             active = input.Active && input.Focused;
             if (!active || !Ready)
             {
-                Close();
+                if (!input.Focused) CancelForFocusLoss(); else Close();
                 // A focus-loss release is synthesized by Terraria. Only a focused
                 // physical release can retire a press that started in this window.
                 ConsumeLeft = leftTail; ConsumeRight = rightTail;
@@ -97,6 +99,8 @@ namespace JueMingR.TerrariaHost.F5
             }
             previousF5 = input.F5;
             bool layoutReady = Layout.Matches(input.Width, input.Height, input.Scale, Page);
+            if (capture == 2 && !layoutReady) capture = 0;
+            CancelInvalidScrollCapture();
             if (Visible && capture == 1)
             { X = input.X - grabX; Y = input.Y - grabY; }
             // Terraria's panel helper accepts integer logical origins. Quantize
@@ -123,6 +127,7 @@ namespace JueMingR.TerrariaHost.F5
                         else if (Layout.ScrollTrack.Contains(localX, localY) && Layout.MaxScroll > 0)
                         {
                             capture = 2;
+                            scrollGeneration = Layout.Generation; scrollContentHeight = Layout.ContentHeight;
                             F5Rect thumb = Layout.ScrollThumb(Scroll);
                             grabY = thumb.Contains(localX, localY) ? localY - thumb.Y : thumb.Height / 2;
                         }
@@ -158,7 +163,14 @@ namespace JueMingR.TerrariaHost.F5
             previousLeft = input.Left;
         }
 
-        internal void ClampScroll() { Scroll = Clamp(Scroll, 0, Layout.MaxScroll); }
+        private void CancelInvalidScrollCapture()
+        {
+            // A grab belongs to one thumb geometry. Retire that capture after
+            // content/font/page changes, retaining the physical release tail.
+            if (capture == 2 && (scrollGeneration != Layout.Generation || scrollContentHeight != Layout.ContentHeight || Layout.MaxScroll <= 0))
+            { capture = 0; armed = null; }
+        }
+        internal void ClampScroll() { CancelInvalidScrollCapture(); Scroll = Clamp(Scroll, 0, Layout.MaxScroll); }
         internal void ScrollTo(float value) { Scroll = Clamp(value, 0, Layout.MaxScroll); }
         internal void Navigate(int page) { if (page >= 0 && page < F5Layout.Pages.Length) { Page = page; Scroll = 0; } }
 
@@ -188,10 +200,18 @@ namespace JueMingR.TerrariaHost.F5
 
         internal void Close()
         {
-            // Close/focus loss/session exit may carry synthesized input. Submit
+            // Close/session exit may carry synthesized input. Submit
             // the last accepted position before cancelling, never that sample.
             FinishTitleDrag();
             Visible = false; capture = 0; armed = null; Command = F5Command.None;
+        }
+        internal void CancelForFocusLoss()
+        {
+            // An interrupted gesture has no release command. Keep the last
+            // accepted preference, not the uncommitted drag projection.
+            if (capture == 1) { X = dragStartX; Y = dragStartY; }
+            Visible = false; capture = 0; armed = null; Command = F5Command.None;
+            previousLeft = previousF5 = true;
         }
         private static float Clamp(float value, float minimum, float maximum)
         { return Math.Max(minimum, Math.Min(maximum, value)); }

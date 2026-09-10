@@ -26,7 +26,7 @@ function New-Phase0SControlledPackageFixture {
         [Parameter(Mandatory = $true)][string] $RepositoryRoot,
         [Parameter(Mandatory = $true)][string] $PackageRoot,
         [Parameter(Mandatory = $true)][string] $TerrariaIdentityInput,
-        [ValidateSet('phase0s', 'phase0t-biome', 'phase0u-f5-ui', 'phase0v-settings', 'phase0w-notes')]
+        [ValidateSet('phase0s', 'phase0t-biome', 'phase0u-f5-ui', 'phase0v-settings', 'phase0w-notes', 'item-automation')]
         [string] $PackagePrefix = 'phase0s'
     )
 
@@ -178,6 +178,7 @@ function Assert-Phase0SCompactJsonResult {
         RESTORE_COMPLETE = 'owned-files'
         RESTORE_NOOP = 'owned-files'
         OWNERSHIP_UNPROVEN = 'owned-files'
+        TERRARIA_RUNNING = 'process'
     }
     $expectedObject = $expectedObjects[$ExpectedCode]
     Assert-Phase0SCondition -Condition (-not [string]::IsNullOrEmpty($expectedObject) -and [string] $resultObject.object -ceq $expectedObject) -Message "${Operation}/${ExpectedCode}: result object is not the fixed logical name."
@@ -185,11 +186,11 @@ function Assert-Phase0SCompactJsonResult {
         'CONFIG_EXISTS' {
             Assert-Phase0SCondition -Condition ($null -eq $resultObject.packageId -and [string] $resultObject.sha256 -match '^[0-9A-F]{64}$') -Message "${Operation}/${ExpectedCode}: packageId must be JSON null and sha256 must be uppercase SHA-256."
         }
-        { $_ -in @('BOOTSTRAP_CONFLICT', 'WORK_PATH_CONFLICT', 'TERRARIA_IDENTITY_MISMATCH') } {
+        { $_ -in @('BOOTSTRAP_CONFLICT', 'WORK_PATH_CONFLICT', 'TERRARIA_IDENTITY_MISMATCH', 'TERRARIA_RUNNING') } {
             Assert-Phase0SCondition -Condition ($null -eq $resultObject.packageId -and $null -eq $resultObject.sha256) -Message "${Operation}/${ExpectedCode}: packageId and sha256 must be JSON null."
         }
         { $_ -in @('INSTALL_COMPLETE', 'RESTORE_COMPLETE', 'RESTORE_NOOP', 'OWNERSHIP_UNPROVEN') } {
-            Assert-Phase0SCondition -Condition ([string] $resultObject.packageId -match '^phase0(?:s|t-biome|u-f5-ui|v-settings|w-notes)-[0-9a-f]{40}$' -and $null -eq $resultObject.sha256) -Message "${Operation}/${ExpectedCode}: packageId or sha256 null semantics differ from the result contract."
+            Assert-Phase0SCondition -Condition ([string] $resultObject.packageId -match '^(?:phase0(?:s|t-biome|u-f5-ui|v-settings|w-notes)|item-automation)-[0-9a-f]{40}$' -and $null -eq $resultObject.sha256) -Message "${Operation}/${ExpectedCode}: packageId or sha256 null semantics differ from the result contract."
         }
         default {
             throw "No null-semantics contract is defined for $ExpectedCode."
@@ -217,7 +218,7 @@ function Write-Phase0SEvidence {
     param(
         [Parameter(Mandatory = $true)][string] $TargetDirectory,
         [Parameter(Mandatory = $true)][string] $PackageId,
-        [ValidateSet('prefix', 'complete', 'primary', 'primary-cleanup', 'wrong-package', 'out-of-order', 'unknown')]
+        [ValidateSet('prefix', 'complete', 'runtime', 'biome', 'primary', 'primary-cleanup', 'wrong-package', 'out-of-order', 'unknown')]
         [string] $Kind
     )
 
@@ -237,6 +238,8 @@ function Write-Phase0SEvidence {
     if ($Kind -eq 'primary-cleanup') {
         $lines.Add(('PHASE0S|1|{0}|ERROR|PATCH_CLEANUP|CLEANUP_FAILED|FileNotFoundException' -f $PackageId))
     }
+    if ($Kind -eq 'runtime') { $lines.Add(('PHASE0S|1|{0}|ERROR|RUNTIME|RUNTIME_FAILED|InvalidOperationException' -f $PackageId)) }
+    if ($Kind -eq 'biome') { $lines.Add(('PHASE0S|1|{0}|ERROR|BIOME_DRAW|FEATURE_FAILED|InvalidOperationException' -f $PackageId)) }
     [System.IO.File]::WriteAllLines((Join-Path $TargetDirectory 'JueMingR.Validation\phase-0-s-evidence.log'), $lines, (New-Object System.Text.UTF8Encoding($false)))
 }
 
@@ -367,6 +370,25 @@ function Invoke-Phase0SInstallRecoveryTests {
         Assert-Phase0SInstalledLayout -Target $successTarget
         Assert-Phase0SReceiptMatchesPackageManifest -PackageRoot $packageRoot -TargetDirectory $successTarget
         Write-Phase0SEvidence -TargetDirectory $successTarget -PackageId ([string] $packageManifest.packageId) -Kind 'complete'
+        # Run only the real script in a child shell with a bounded process-query
+        # substitute. No game/server process or private data is used by this test.
+        $processWrapper = Join-Path $root 'running-process-fixture.ps1'
+        [IO.File]::WriteAllText($processWrapper, @'
+param([string] $PackageRoot, [string] $Target, [string] $ProcessName)
+$global:Phase0SFixtureRunningProcess = $ProcessName
+function global:Get-Process {
+    [CmdletBinding()] param([string[]] $Name)
+    if ($Name -contains $global:Phase0SFixtureRunningProcess) { [pscustomobject]@{ ProcessName = $global:Phase0SFixtureRunningProcess; Id = 1234 } }
+}
+if (@(Get-Process -Name 'Terraria', 'TerrariaServer').Count -ne 1) { throw 'Controlled process-query boundary was not installed.' }
+& (Join-Path $PackageRoot 'Restore-Phase0S.ps1') -TerrariaDirectory $Target
+exit $LASTEXITCODE
+'@, (New-Object Text.UTF8Encoding($false)))
+        foreach ($processName in @('Terraria', 'TerrariaServer')) {
+            $beforeRunning = Get-Phase0STreeSnapshot -Root $successTarget
+            $runningResult = Invoke-Phase0SWindowsPowerShell -ScriptPath $processWrapper -Arguments @('-PackageRoot', $packageRoot, '-Target', $successTarget, '-ProcessName', $processName)
+            Assert-Phase0SExitAndNoWrite -Result $runningResult -ExpectedExitCode 5 -Before $beforeRunning -Target $successTarget -Scenario ('running restore: ' + $processName) -Operation 'restore' -ExpectedCode 'TERRARIA_RUNNING' -ExpectedStatus 'conflict'
+        }
         $restoreResult = Invoke-Phase0SPackageScript -PackageRoot $packageRoot -ScriptName 'Restore-Phase0S.ps1' -TerrariaDirectory $successTarget
         Assert-Phase0SCompactJsonResult -Result $restoreResult -Operation 'restore' -ExpectedExitCode 0 -ExpectedCode 'RESTORE_COMPLETE' -ExpectedStatus 'success' -TargetDirectory $successTarget
         $afterRestore = Get-Phase0STreeSnapshot -Root $successTarget
@@ -390,7 +412,7 @@ function Invoke-Phase0SInstallRecoveryTests {
         Assert-Phase0SCompactJsonResult -Result (Invoke-Phase0SPackageScript -PackageRoot $phase0UPackageRoot -ScriptName 'Restore-Phase0S.ps1' -TerrariaDirectory $phase0UTarget) -Operation 'restore' -ExpectedExitCode 0 -ExpectedCode 'RESTORE_COMPLETE' -ExpectedStatus 'success' -TargetDirectory $phase0UTarget
         Assert-Phase0STreeSnapshotEqual -Expected $phase0UBefore -Actual (Get-Phase0STreeSnapshot -Root $phase0UTarget) -Context 'Phase 0-U exact restore'
 
-        foreach ($dataProfile in @('phase0v-settings', 'phase0w-notes')) {
+        foreach ($dataProfile in @('phase0v-settings', 'phase0w-notes', 'item-automation')) {
         $dataPackageRoot = Join-Path $root ('controlled-package-' + $dataProfile)
         $dataManifest = New-Phase0SControlledPackageFixture -RepositoryRoot $RepositoryRoot -PackageRoot $dataPackageRoot -TerrariaIdentityInput $terrariaIdentityInput -PackagePrefix $dataProfile
         foreach ($dataTiming in @('before-install', 'after-install')) {
@@ -436,7 +458,7 @@ function Invoke-Phase0SInstallRecoveryTests {
         $restoreResult = Invoke-Phase0SPackageScript -PackageRoot $packageRoot -ScriptName 'Restore-Phase0S.ps1' -TerrariaDirectory $prefixTarget
         Assert-Phase0SCompactJsonResult -Result $restoreResult -Operation 'restore' -ExpectedExitCode 0 -ExpectedCode 'RESTORE_COMPLETE' -ExpectedStatus 'success' -TargetDirectory $prefixTarget
 
-        foreach ($validFailureEvidence in @('primary', 'primary-cleanup')) {
+        foreach ($validFailureEvidence in @('primary', 'primary-cleanup', 'runtime', 'biome')) {
             $failureTarget = New-Phase0STargetDirectory -Root $root -TerrariaIdentityInput $terrariaIdentityInput -Name ('valid-evidence-' + $validFailureEvidence)
             $installResult = Invoke-Phase0SPackageScript -PackageRoot $packageRoot -ScriptName 'Install-Phase0S.ps1' -TerrariaDirectory $failureTarget
             Assert-Phase0SCompactJsonResult -Result $installResult -Operation 'install' -ExpectedExitCode 0 -ExpectedCode 'INSTALL_COMPLETE' -ExpectedStatus 'success' -TargetDirectory $failureTarget

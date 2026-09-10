@@ -1,17 +1,29 @@
 using System;
+using System.Collections.Generic;
 
 namespace JueMingR.Platform.Runtime
 {
     public sealed class SingleFeatureRuntime
     {
         private readonly IGameSessionProbe sessionProbe;
-        private readonly IRuntimeFeature feature;
+        private readonly List<IRuntimeFeature> features = new List<IRuntimeFeature>();
         private bool sessionActive;
+        private bool observed;
+        private object sessionIdentity;
 
         public SingleFeatureRuntime(IGameSessionProbe sessionProbe, IRuntimeFeature feature)
         {
             this.sessionProbe = sessionProbe ?? throw new ArgumentNullException(nameof(sessionProbe));
-            this.feature = feature ?? throw new ArgumentNullException(nameof(feature));
+            features.Add(feature ?? throw new ArgumentNullException(nameof(feature)));
+        }
+
+        public long Generation { get; private set; }
+        public void AddFeature(IRuntimeFeature feature)
+        {
+            if (observed) throw new InvalidOperationException("Runtime composition is frozen before its first observation.");
+            if (feature == null) throw new ArgumentNullException(nameof(feature));
+            if (features.Contains(feature)) throw new ArgumentException("Feature already attached.");
+            features.Add(feature);
         }
 
         public bool IsSessionActive
@@ -21,63 +33,63 @@ namespace JueMingR.Platform.Runtime
 
         public void Update(ulong updateTick)
         {
+            observed = true;
             bool active;
+            object identity;
             try
             {
                 active = sessionProbe.IsSessionActive;
+                var identified = sessionProbe as IGameSessionIdentityProbe;
+                identity = !active ? null : identified == null ? sessionProbe : identified.SessionIdentity;
+                if (active && identity == null) throw new InvalidOperationException("Active session has no identity.");
             }
             catch
             {
-                sessionActive = false;
-                FailFeatureClosed();
+                InvalidateSession();
+                foreach (IRuntimeFeature feature in features) FailFeatureClosed(feature);
                 return;
             }
 
             // Session callbacks occur on edges, before any update in the new state.
             if (!active)
             {
-                if (sessionActive)
-                {
-                    sessionActive = false;
-                    try
-                    {
-                        feature.OnSessionEnded();
-                    }
-                    catch
-                    {
-                        FailFeatureClosed();
-                    }
-                }
-
+                InvalidateSession();
                 return;
             }
+
+            if (sessionActive && !ReferenceEquals(identity, sessionIdentity)) InvalidateSession();
 
             if (!sessionActive)
             {
                 sessionActive = true;
-                try
+                sessionIdentity = identity;
+                Generation = checked(Generation + 1);
+                foreach (IRuntimeFeature feature in features)
                 {
-                    feature.OnSessionStarted();
-                }
-                catch
-                {
-                    sessionActive = false;
-                    FailFeatureClosed();
-                    return;
+                    try { feature.OnSessionStarted(); }
+                    catch { FailFeatureClosed(feature); }
                 }
             }
 
-            try
+            foreach (IRuntimeFeature feature in features)
             {
-                feature.Update(updateTick);
-            }
-            catch
-            {
-                FailFeatureClosed();
+                try { feature.Update(updateTick); }
+                catch { FailFeatureClosed(feature); }
             }
         }
 
-        private void FailFeatureClosed()
+        public void InvalidateSession()
+        {
+            if (!sessionActive) return;
+            sessionActive = false; sessionIdentity = null;
+            foreach (IRuntimeFeature feature in features)
+            {
+                try { feature.OnSessionEnded(); }
+                catch { FailFeatureClosed(feature); }
+            }
+        }
+
+        private static void FailFeatureClosed(IRuntimeFeature feature)
         {
             // The feature owns terminal failure and cleanup; this runtime has no failure latch.
             try

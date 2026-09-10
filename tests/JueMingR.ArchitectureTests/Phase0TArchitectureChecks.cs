@@ -15,6 +15,9 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Features.Biomes.BiomeDisplayFeature",
                 "JueMingR.Features.Biomes.BiomeDisplayViewModel",
                 "JueMingR.Features.Biomes.BiomePreferenceCodec",
+                "JueMingR.Features.Items.ItemAutomationSettings", "JueMingR.Features.Items.ItemAutomationCodec",
+                "JueMingR.Features.Items.ItemActionKind", "JueMingR.Features.Items.ItemListKind",
+                "JueMingR.Features.Items.ItemAutomationFeature",
                 "JueMingR.Features.Notes.Note", "JueMingR.Features.Notes.NoteReading", "JueMingR.Features.Notes.Notebook",
                 "JueMingR.Features.Notes.NotebookCodec", "JueMingR.Features.Notes.TextElements",
                 "JueMingR.Features.Notes.NoteEditor", "JueMingR.Features.Notes.NotesTextLayout",
@@ -24,7 +27,7 @@ namespace JueMingR.ArchitectureTests
             };
             if (!expected.SetEquals(features.GetExportedTypes().Select(type => type.FullName)))
             {
-                failures.Add("Features must export exactly the approved biome and notes contracts.");
+                failures.Add("Features must export exactly the registered biome, notes and item contracts.");
             }
 
             string[] forbiddenAssemblyPrefixes =
