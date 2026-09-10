@@ -126,7 +126,10 @@ namespace JueMingR.TerrariaHost.Notes
             input.FinishComposition(false);
             // Finalization can still leave a candidate or half of a WM_CHAR pair.
             // Keep its editor alive until a later complete input can be saved.
-            if (action.Kind == NotesActionKind.FinishEdit && input.HasComposition) return false;
+            // Navigation/create/pin also depend on committing this editor.
+            // Ordinary field switching retains its explicit discard-old-tail
+            // boundary; it must not transfer a half character to another field.
+            if (action.Kind != NotesActionKind.BeginEdit && input.HasComposition) return false;
             if (action.Kind == NotesActionKind.Pin)
             {
                 int count = 0; foreach (Note note in workspace.Feature.Saved.Notes) if (note.Pinned) count++;

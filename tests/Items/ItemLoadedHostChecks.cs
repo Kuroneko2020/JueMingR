@@ -10,7 +10,41 @@ namespace Terraria
     internal static class ItemLoadedHostChecks
     {
         private const BindingFlags Flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
-        internal static void Run(Main main)
+        internal static void CheckUncommittedUpdate(Main main, string evidencePath)
+        {
+            Type worker = AppDomain.CurrentDomain.GetAssemblies().Single(a => a.GetName().Name == "JueMingR.TerrariaHost")
+                .GetType("JueMingR.TerrariaHost.Phase0SHarmonyWorker", true);
+            const BindingFlags flags = BindingFlags.Static | BindingFlags.NonPublic;
+            FieldInfo committed = worker.GetField("hookCommitted", flags);
+            byte[] evidence = System.IO.File.ReadAllBytes(evidencePath);
+            // Deterministically expose the real callback while the patch set is
+            // not committed. No sleeps or production test hooks are necessary.
+            committed.SetValue(null, 0);
+            try { main.RunUpdateLoop(1); }
+            finally { committed.SetValue(null, 1); }
+            Check(System.IO.File.ReadAllBytes(evidencePath).SequenceEqual(evidence) &&
+                (int)worker.GetField("postfixGate", flags).GetValue(null) == 0 &&
+                (int)worker.GetField("handoffGate", flags).GetValue(null) == 0 &&
+                (int)worker.GetField("biomeFeatureFailed", flags).GetValue(null) == 0,
+                "uncommitted callback must not record errors, consume handoff or fail a feature");
+        }
+        internal static void FailLayerBeforeHandoff(Main main, string evidencePath)
+        {
+            Type worker = AppDomain.CurrentDomain.GetAssemblies().Single(a => a.GetName().Name == "JueMingR.TerrariaHost")
+                .GetType("JueMingR.TerrariaHost.Phase0SHarmonyWorker", true);
+            byte[] startupPrefix = System.IO.File.ReadAllBytes(evidencePath);
+            worker.GetMethod("DrawSetupPostfix", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, new object[] { null });
+            Check(System.IO.File.ReadAllBytes(evidencePath).SequenceEqual(startupPrefix),
+                "local layer failure before handoff must not interrupt the startup evidence prefix");
+            // A real, non-null layer list can lack only the optional biome
+            // anchor. Exercise the handoff catch-up insertion as well as setup.
+            var layers = (System.Collections.Generic.List<UI.GameInterfaceLayer>)
+                typeof(Main).GetMethod("CreateFixtureLayers", Flags).Invoke(main, null);
+            Check(layers.RemoveAll(layer => layer.Name == "Vanilla: Map / Minimap") == 1 && layers.Count > 0,
+                "fixture isolates the missing biome anchor in an otherwise populated layer list");
+            typeof(Main).GetField("_gameInterfaceLayers", Flags).SetValue(main, layers);
+        }
+        internal static void Run(Main main, bool earlyLayerFailure = false)
         {
             // This executable has no native game window. Reuse the input
             // fixture's OS boundary; the loaded production input logic runs.
@@ -85,6 +119,28 @@ namespace Terraria
             Check(Main.LocalPlayer.inventory[10].IsAir && chest.item[0].stack == 24,
                 "production pickup hook/whole-stack/native selective storage chain");
             main.SetupAndDrawBiomeLayer();
+            // Inject a display-only fault after the real shared composition has
+            // already processed all three actions. It must not stop that owner.
+            if (!earlyLayerFailure)
+            {
+                int draws = Main.FixtureDrawCount;
+                Main.FixtureThrowOnDraw = true;
+                try { main.DrawBiomeLayer(); }
+                finally { Main.FixtureThrowOnDraw = false; }
+                Check(Main.FixtureDrawCount == draws + 1, "controlled biome draw failure reached the production callback");
+            }
+            Check((bool)Get(Get(context, "Runtime"), "FeatureFailed"), "biome failure remains local and terminal");
+            Check(!(bool)Get(Get(items, "Feature"), "HasFailed"), "biome display failure must not disable item automation");
+            Main.LocalPlayer.inventory[10] = new Item { type = 8, stack = 2 };
+            Main.LocalPlayer.Pickup(new WorldItem { inner = new Item { type = 8, stack = 1 } }); main.RunUpdateLoop(7);
+            Check(Main.LocalPlayer.inventory[10].IsAir && chest.item[0].stack == 27,
+                "new reliable pickup still reaches native storage after a biome display failure");
+            string[] evidence = System.IO.File.ReadAllLines((string)Get(context, "EvidencePath"));
+            Check(evidence.Length == 6 && evidence[5].Contains("|ERROR|" + (earlyLayerFailure ? "BIOME_LAYER" : "BIOME_DRAW") + "|FEATURE_FAILED|InvalidOperationException"),
+                "first runtime failure remains diagnosable after all five successful startup events");
+            main.DrawBiomeLayer(); main.RunUpdateLoop(2);
+            Check(System.IO.File.ReadAllLines((string)Get(context, "EvidencePath")).SequenceEqual(evidence),
+                "failed display does not repeat error writes");
             Check(Get(context, "notes") != null && Get(context, "Shell") != null, "existing Notes and F5 remain composed");
             Console.WriteLine("PASS: separately compiled item Host loaded through bootstrap; all three config/native/result chains, shared session, defaults and existing composition.");
         }

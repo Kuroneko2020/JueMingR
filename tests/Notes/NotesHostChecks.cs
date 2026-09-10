@@ -121,6 +121,10 @@ namespace Terraria
                 Check(workspace.Editor.Text == "你" && workspace.Editor.Dirty, "new title composition replaces its original range exactly once");
                 input.Release(true); workspace.CancelEdit();
             });
+            foreach (NotesAction action in new[] {
+                new NotesAction(NotesActionKind.FinishEdit), new NotesAction(NotesActionKind.Leave, x: -1),
+                new NotesAction(NotesActionKind.Leave, x: 9), new NotesAction(NotesActionKind.Create),
+                new NotesAction(NotesActionKind.Pin) })
             WithWorkspace(workspace =>
             {
                 string id = workspace.Feature.Saved.Notes[0].Id;
@@ -132,8 +136,10 @@ namespace Terraria
                 var request = typeof(NotesPresentation).GetMethod("Request", BindingFlags.Instance | BindingFlags.NonPublic);
                 workspace.Request(new NotesAction(NotesActionKind.BeginEdit, id, true, 3)); input.PrepareEditor(); Frame(input, workspace, "\ud83d");
                 Check(!workspace.Editor.Dirty && input.HasComposition, "one pending high surrogate is not a saved text edit");
-                Check(!(bool)request.Invoke(presentation, new object[] { new NotesAction(NotesActionKind.FinishEdit) }) && workspace.Editor != null && !workspace.Feature.Busy,
-                    "save cannot synchronously discard an incomplete character");
+                var editor = workspace.Editor;
+                Check(!(bool)request.Invoke(presentation, new object[] { action }) && ReferenceEquals(workspace.Editor, editor) &&
+                    !workspace.Feature.Busy && workspace.TakeNavigation() == null,
+                    "dependent action cannot synchronously discard an incomplete character: " + action.Kind);
                 Frame(input, workspace, "\r", Keys.Enter);
                 Check(workspace.Editor != null && !workspace.Feature.Busy, "title Enter also preserves an incomplete character");
                 Frame(input, workspace, "\ude00");

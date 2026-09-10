@@ -267,6 +267,7 @@ namespace Terraria.GameContent
         public static int Calls;
         public static int[] LastSlots;
         [MethodImpl(MethodImplOptions.NoInlining)] public static void QuickStackToNearbyChests(Player player, bool coins) { Calls++; }
+        [MethodImpl(MethodImplOptions.NoInlining)] public static void QuickStackToNearbyInventories(Player player, bool smartStack = false) { Calls++; }
         [MethodImpl(MethodImplOptions.NoInlining)] private static void QuickStackToNearbyChests(Player player, SourceInventory source, bool coins)
         {
             Calls++; LastSlots = source.slots.Select(s => s.Slot).ToArray();

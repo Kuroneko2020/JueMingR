@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
@@ -239,7 +240,7 @@ namespace Terraria
                 if (args.Length != 3 ||
                     (args[0] != "expect-handoff" && args[0] != "expect-input" &&
                      args[0] != "expect-handoff-biome-failure" &&
-                     args[0] != "expect-items" &&
+                     args[0] != "expect-items" && args[0] != "expect-items-layer-failure" &&
                      !args[0].StartsWith("expect-settings-", StringComparison.Ordinal) &&
                      args[0] != "expect-no-handoff" &&
                      args[0] != "expect-evidence-init-failure" &&
@@ -251,7 +252,7 @@ namespace Terraria
 
                 string mode = args[0];
                 bool settingsMode = mode.StartsWith("expect-settings-", StringComparison.Ordinal);
-                bool expectHandoff = mode == "expect-handoff" || mode == "expect-handoff-biome-failure" || mode == "expect-items" || mode == "expect-input" || settingsMode;
+                bool expectHandoff = mode == "expect-handoff" || mode == "expect-handoff-biome-failure" || mode == "expect-items" || mode == "expect-items-layer-failure" || mode == "expect-input" || settingsMode;
                 string evidencePath = Path.GetFullPath(args[1]);
                 string packageId = args[2];
                 if (String.IsNullOrWhiteSpace(packageId))
@@ -284,11 +285,13 @@ namespace Terraria
                     WaitForEvidenceEvent(evidencePath, "HOOK_INSTALLED");
                     // Event 3 precedes hookCommitted and the worker's return.
                     WaitForBootstrapState(AppDomain.CurrentDomain.DomainManager, "Installed");
+                    if (mode == "expect-items") ItemLoadedHostChecks.CheckUncommittedUpdate(main, evidencePath);
+                    if (mode == "expect-items-layer-failure") ItemLoadedHostChecks.FailLayerBeforeHandoff(main, evidencePath);
                     main.RunUpdateLoop(1);
                     WaitForEvidenceEvent(evidencePath, "RUNTIME_HANDOFF_COMPLETE");
                     evidenceAfterFirstUpdate = File.ReadAllBytes(evidencePath);
                     if (mode == "expect-input") { F5ConsumerChecks.RunInputOnly(main); AssertPatchContract(typeof(global::Terraria.Main)); return 0; }
-                    if (mode == "expect-items") { ItemLoadedHostChecks.Run(main); return 0; }
+                    if (mode == "expect-items" || mode == "expect-items-layer-failure") { ItemLoadedHostChecks.Run(main, mode == "expect-items-layer-failure"); return 0; }
                     if (settingsMode) SettingsHostChecks.Run(main, mode);
                     else
                     {
@@ -350,6 +353,17 @@ namespace Terraria
                     : new string[0];
                 if (expectHandoff)
                 {
+                    bool injectedBiomeFailure = !settingsMode || mode == "expect-settings-restore";
+                    if (injectedBiomeFailure)
+                    {
+                        string expectedError = "PHASE0S|1|" + packageId + "|ERROR|BIOME_DRAW|FEATURE_FAILED|InvalidOperationException";
+                        if (evidenceLines.Length != 6 || evidenceLines[5] != expectedError)
+                            throw new InvalidOperationException("The injected display failure must add exactly one specific error after the five startup events.");
+                        byte[] afterFailure = File.ReadAllBytes(evidencePath);
+                        main.RunUpdateLoop(2); main.DrawBiomeLayer();
+                        AssertBytesEqual(afterFailure, File.ReadAllBytes(evidencePath), "A failed display repeated its error evidence.");
+                        evidenceLines = evidenceLines.Take(5).ToArray();
+                    }
                     AssertCompleteHandoff(
                         evidenceLines,
                         packageId,
@@ -357,8 +371,8 @@ namespace Terraria
                         Thread.CurrentThread.ManagedThreadId);
                     AssertBytesEqual(
                         evidenceAfterFirstUpdate,
-                        File.ReadAllBytes(evidencePath),
-                        "Second and later Update calls changed formal evidence.");
+                        injectedBiomeFailure ? File.ReadAllBytes(evidencePath).Take(evidenceAfterFirstUpdate.Length).ToArray() : File.ReadAllBytes(evidencePath),
+                        "Second and later Update calls changed the successful startup evidence.");
                     AssertPatchContract(typeof(global::Terraria.Main));
                     AssertOneShotState();
                     AssertBootstrapSchedulingState(AppDomain.CurrentDomain.DomainManager, "Installed");

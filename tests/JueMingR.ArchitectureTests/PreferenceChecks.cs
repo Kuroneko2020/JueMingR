@@ -15,6 +15,7 @@ namespace JueMingR.ArchitectureTests
         {
             Run(failures, "settings restart and independent documents", Restart);
             Run(failures, "settings strict JSON and original protection", InvalidDocuments);
+            Run(failures, "settings JSON bridge attributes stay protected", BridgeAttributes);
             Run(failures, "settings bounded coalescing and stop", Coalescing);
         }
 
@@ -106,6 +107,37 @@ namespace JueMingR.ArchitectureTests
                 catch (PreferenceFormatException) { rejected = true; }
                 Require(rejected, "invalid/unknown position fields rejected");
             }
+        }
+
+        private static void BridgeAttributes()
+        {
+            string biome = "{\"__type\":\"FuturePrefs\",\"format\":\"JueMingR.BiomeDisplay\",\"version\":1,\"enabled\":true}";
+            AssertBridgeProtected(new BiomePreferenceCodec(), biome, true, false);
+            string prefix = "{\"format\":\"JueMingR.Ui\",\"version\":1,\"windowPosition\":";
+            AssertBridgeProtected(new UiPreferenceCodec(),
+                "{\"__type\":\"FutureUi\"," + prefix.Substring(1) + "null}", null, new WindowPosition(10, 20));
+            AssertBridgeProtected(new UiPreferenceCodec(),
+                prefix + "{\"__type\":\"FuturePosition\",\"x\":1,\"y\":2}}", null, new WindowPosition(10, 20));
+        }
+
+        private static void AssertBridgeProtected<T>(IPreferenceCodec<T> codec, string json, T fallback, T changed)
+        {
+            WithRoot(root =>
+            {
+                string path = Path.Combine(root, "protected.json");
+                File.WriteAllText(path, json, new UTF8Encoding(false));
+                File.WriteAllText(path + ".bak", "existing recovery material");
+                var storage = new CountingStorage(path);
+                using (var setting = new PreferenceDocument<T>(storage, codec, fallback))
+                {
+                    Loaded(setting);
+                    Require(setting.Snapshot.Status == PreferenceStatus.UnknownFields, "bridge attribute is an unknown JSON member");
+                    Require(setting.Set(changed), "protected selection may change in memory");
+                    Require(setting.Stop(3000), "protected owner stops");
+                    Require(storage.Writes == 0 && File.ReadAllText(path) == json &&
+                        File.ReadAllText(path + ".bak") == "existing recovery material", "unknown member preserves original and backup without writes");
+                }
+            });
         }
 
         private static void Coalescing()

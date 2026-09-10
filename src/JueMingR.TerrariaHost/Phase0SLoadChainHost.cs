@@ -493,11 +493,14 @@ namespace JueMingR.TerrariaHost
 
         private static void Postfix(List<GameInterfaceLayer> ____gameInterfaceLayers)
         {
+            // Main.Update may run after its patch is installed but before the
+            // complete hook set commits. That normal window owns no handoff.
+            if (Volatile.Read(ref hookCommitted) != 1) return;
             PostfixContext context = postfixContext;
             string stage = "POSTFIX";
             try
             {
-                if (Volatile.Read(ref hookCommitted) != 1 || context == null)
+                if (context == null)
                 {
                     throw new InvalidOperationException("The Phase 0-S postfix context is unavailable.");
                 }
@@ -514,7 +517,11 @@ namespace JueMingR.TerrariaHost
                     stage = "HANDOFF";
                     CompleteEmptyHandoffOnce();
                     // Setup may have run before asynchronous patch installation; catch up once here.
-                    EnsureBiomeLayerForHandoff(____gameInterfaceLayers);
+                    // Catch-up insertion belongs to the same optional display
+                    // boundary as DrawSetup; a missing biome anchor cannot stop
+                    // the rest of the shared composition from initializing.
+                    try { EnsureBiomeLayerForHandoff(____gameInterfaceLayers); }
+                    catch (Exception exception) { DisableBiomeFeature("BIOME_LAYER", exception); }
                     EnsureF5Layers(____gameInterfaceLayers);
                     context.InitializeRuntime(Volatile.Read(ref biomeFeatureFailed) == 0);
                     EvidenceWriter.AppendEvent(
@@ -522,8 +529,10 @@ namespace JueMingR.TerrariaHost
                         context.PackageId,
                         5,
                         "RUNTIME_HANDOFF_COMPLETE");
+                    context.CompleteStartupEvidence();
                 }
 
+                stage = "RUNTIME";
                 context.UpdateRuntime();
                 context.UpdateShell();
             }
@@ -538,14 +547,16 @@ namespace JueMingR.TerrariaHost
             string stage,
             Exception exception)
         {
-            DisableBiomeFeature();
+            Interlocked.Exchange(ref biomeFeatureFailed, 1);
             if (context != null)
             {
+                // Handoff/shared update failure is wider than one renderer.
+                context.FailRuntimeClosed();
                 Phase0SLoadChainHost.TryRecordPrimaryError(
                     context.EvidencePath,
                     context.PackageId,
                     stage,
-                    "APPEND_FAILED",
+                    stage == "RUNTIME" ? "RUNTIME_FAILED" : "APPEND_FAILED",
                     exception);
             }
         }
@@ -556,9 +567,9 @@ namespace JueMingR.TerrariaHost
             {
                 InsertBiomeLayer(____gameInterfaceLayers);
             }
-            catch
+            catch (Exception exception)
             {
-                DisableBiomeFeature();
+                DisableBiomeFeature("BIOME_LAYER", exception);
             }
             EnsureF5Layers(____gameInterfaceLayers);
         }
@@ -722,21 +733,24 @@ namespace JueMingR.TerrariaHost
                     new Color(144, 238, 144, 255),
                     scale);
             }
-            catch
+            catch (Exception exception)
             {
-                DisableBiomeFeature();
+                DisableBiomeFeature("BIOME_DRAW", exception);
             }
 
             return true;
         }
 
-        private static void DisableBiomeFeature()
+        private static void DisableBiomeFeature(string stage, Exception exception)
         {
             Interlocked.Exchange(ref biomeFeatureFailed, 1);
             PostfixContext context = postfixContext;
             if (context != null)
             {
-                context.FailRuntimeClosed();
+                // A display-only failure cannot invalidate the shared Session
+                // or another feature's operations and in-flight ownership.
+                context.Runtime?.FailClosed();
+                context.RecordBiomeFailure(stage, exception);
             }
         }
 
@@ -757,6 +771,9 @@ namespace JueMingR.TerrariaHost
             private HostPreferences preferences;
             private Notes.HostNotes notes;
             private Items.HostItems items;
+            private bool startupEvidenceComplete;
+            private string pendingBiomeErrorStage;
+            private Exception pendingBiomeError;
 
             internal PostfixContext(string packageId, string evidencePath, string gameDirectory)
             {
@@ -775,6 +792,28 @@ namespace JueMingR.TerrariaHost
             }
 
             internal F5Shell Shell { get; private set; }
+
+            internal void RecordBiomeFailure(string stage, Exception exception)
+            {
+                // A local layer can fail before the first Update handoff. Keep
+                // only its first cause until events 01..05 commit; inserting an
+                // ERROR into that prefix would prevent healthy features starting.
+                if (!startupEvidenceComplete)
+                {
+                    if (pendingBiomeError == null) { pendingBiomeErrorStage = stage; pendingBiomeError = exception; }
+                    return;
+                }
+                Phase0SLoadChainHost.TryRecordPrimaryError(EvidencePath, PackageId, stage, "FEATURE_FAILED", exception);
+            }
+
+            internal void CompleteStartupEvidence()
+            {
+                startupEvidenceComplete = true;
+                Exception error = pendingBiomeError;
+                string stage = pendingBiomeErrorStage;
+                pendingBiomeError = null; pendingBiomeErrorStage = null;
+                if (error != null) RecordBiomeFailure(stage, error);
+            }
 
             internal void InitializeRuntime(bool enabled)
             {
@@ -1414,7 +1453,9 @@ namespace JueMingR.TerrariaHost
                 {
                     string[] lines = ReadAllLines(stream);
                     int successCount = cleanupSecondary ? lines.Length - 1 : lines.Length;
-                    if (successCount < 1 || successCount > 4)
+                    // The first runtime failure may follow all five successful
+                    // startup events. Keep the same single bounded error record.
+                    if (successCount < 1 || successCount > EventNames.Length)
                     {
                         return;
                     }

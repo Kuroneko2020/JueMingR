@@ -21,6 +21,7 @@ namespace JueMingR.TerrariaHost.Items
         private Pending pending;
         private readonly Dictionary<ItemIdentity, CapacityWait> capacityWaits = new Dictionary<ItemIdentity, CapacityWait>();
         private ulong nextCapacityExpiry;
+        private Vector2 capacityPosition;
         private int capacityChanged;
         internal bool GuardsReady { get; set; }
         internal ulong Tick { get; set; }
@@ -156,6 +157,10 @@ namespace JueMingR.TerrariaHost.Items
             lock (receiptGate)
             {
                 if (Interlocked.Exchange(ref capacityChanged, 0) != 0) InvalidateCapacity();
+                // Movement must publish a revision before Feature's unchanged-
+                // observation early return; checking only Execute cannot wake it.
+                if (capacityWaits.Count != 0 && world.Player != null && world.Player.position != capacityPosition)
+                    InvalidateCapacity();
                 if (capacityWaits.Count != 0 && Tick >= nextCapacityExpiry)
                 {
                     var expired = new List<ItemIdentity>(); nextCapacityExpiry = ulong.MaxValue;
@@ -204,6 +209,8 @@ namespace JueMingR.TerrariaHost.Items
             // complete authoritative client replies. Unknown local chest content
             // never creates it. New pickups coalesce while waiting; this stores
             // neither a permanent permission nor a quantity to replay.
+            if (capacityWaits.Count != 0 && capacityPosition != position) InvalidateCapacity();
+            capacityPosition = position;
             if (capacityWaits.Count == 64) capacityWaits.Clear();
             ulong until = Tick + 120;
             capacityWaits[identity] = new CapacityWait(position, until);

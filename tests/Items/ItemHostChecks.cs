@@ -228,9 +228,12 @@ namespace Terraria
             Check(discarded.State == ItemOperationState.Completed && player.trashItem.type == 100 && player.inventory[10].IsAir && ItemSlot.TrashResearch > 0, "trash replaces arbitrary old content through native effect");
             player.inventory[11] = Make(101, 1, 1); host.Operations.Execute(new DiscardItemRequest(runtime.Generation, Observe(11)));
             Check(player.trashItem.type == 101 && player.trashItem.stack == 1, "only final replacement recoverable");
-            player.inventory[10] = Make(100, 1); player.ThrowSaleAfterCredit = true;
+            player.inventory[10] = Make(100, 1); player.inventory[11] = Make(8, 2); player.ThrowSaleAfterCredit = true;
             sold = host.Operations.Execute(Sale(10));
             Check(sold.State == ItemOperationState.Unconfirmed && host.Ownership.ProtectedSlots == (1UL << 58) - 1, "interrupted credited sale owns all 58 slots without rollback");
+            int quickStacks = QuickStacking.Calls;
+            QuickStacking.QuickStackToNearbyChests(player, false);
+            Check(QuickStacking.Calls == quickStacks, "manual quick stack cannot bypass uncertain sale ownership");
             NewSession(0); Configure(false, true, false); player = Main.LocalPlayer;
             Main.playerInventory = true; Main.npcShop = 1; player.inventory[10] = Make(100, 1); player.itemAnimation = 10;
             Step(); Check(player.SellCalls == 0, "temporary item-use range prevents sale");
@@ -377,13 +380,13 @@ namespace Terraria
             Check(QuickStacking.Calls == calls + 1, "one actual no-capacity result");
             for (int i = 0; i < 10; i++) { p.Pickup(new WorldItem { inner = Make(8, 1) }); Step(); }
             Check(QuickStacking.Calls == calls + 1, "repeated pickup within same position backoff does not repeat native chest scans");
-            p.position = new Vector2(10, 0); p.Pickup(new WorldItem { inner = Make(8, 1) }); Step();
-            Check(QuickStacking.Calls == calls + 2, "movement permits a fresh actual capacity attempt");
+            p.position = new Vector2(10, 0); Step();
+            Check(QuickStacking.Calls == calls + 2, "movement alone wakes existing capacity wait without a new pickup");
             var chest = new Chest(); chest.item[0] = Make(8, 1); NearbyChests.Targets.Add(new PositionedChest { chest = chest });
             p.Pickup(new WorldItem { inner = Make(8, 1) }); Step();
             Check(!p.inventory[10].IsAir, "no blind immediate retry while short capacity wait remains");
             host.Storage.InvalidateCapacity(); Step();
-            Check(p.inventory[10].IsAir && chest.item[0].stack == 34, "real capacity invalidation re-evaluates current full stack");
+            Check(p.inventory[10].IsAir && chest.item[0].stack == 33, "real capacity invalidation re-evaluates current full stack");
             NewSession(0); Configure(true, false, false); p = Main.LocalPlayer; p.inventory[10] = Make(8, 20);
             chest = new Chest(); chest.item[0] = Make(8, 1); NearbyChests.Targets.Add(new PositionedChest { chest = chest });
             Main.NativeVoidPending = true; p.itemAnimation = 10;
@@ -416,6 +419,35 @@ namespace Terraria
         }
         private static void Guards()
         {
+            foreach (bool interrupted in new[] { false, true })
+            {
+                NewSession(0); Player guarded = Main.LocalPlayer; guarded.inventory[10] = Make(8, 2);
+                if (interrupted) host.Ownership.HoldInterruptedSource(runtime.Generation, 1UL << 10);
+                else { Check(host.Ownership.TryBeginDiscard(runtime.Generation, 10), "start uncertain discard");
+                    host.Ownership.FinishDiscard(runtime.Generation, new ItemOperationResult(ItemOperationState.Unconfirmed)); }
+                int calls = QuickStacking.Calls;
+                QuickStacking.QuickStackToNearbyChests(guarded, false);
+                QuickStacking.QuickStackToNearbyInventories(guarded);
+                Check(QuickStacking.Calls == calls, "both manual entrypoints protect uncertain ordinary stack");
+                guarded.inventory[10].favorited = true;
+                QuickStacking.QuickStackToNearbyChests(guarded, false);
+                Check(QuickStacking.Calls == ++calls, "native excluded favorite is not a conflicting write");
+                guarded.inventory[10].favorited = false; host.World.AutomaticOperation = true;
+                try { QuickStacking.QuickStackToNearbyChests(guarded, false); }
+                finally { host.World.AutomaticOperation = false; }
+                Check(QuickStacking.Calls == ++calls, "controlled automatic operation keeps its own admission boundary");
+                QuickStacking.QuickStackToNearbyChests(new Player(), false);
+                Check(QuickStacking.Calls == ++calls, "another player does not share local slot ownership");
+            }
+            NewSession(0); Player outside = Main.LocalPlayer;
+            outside.inventory[0] = Make(8, 2); outside.inventory[54] = Make(9, 2);
+            host.Ownership.HoldInterruptedSource(runtime.Generation, (1UL << 0) | (1UL << 54) | (1UL << 50));
+            int outsideCalls = QuickStacking.Calls;
+            QuickStacking.QuickStackToNearbyChests(outside, false); QuickStacking.QuickStackToNearbyInventories(outside);
+            Check(QuickStacking.Calls == outsideCalls + 2, "protected hotbar/ammo ordinary stacks and Air do not block quick stack");
+            outside.inventory[50] = Make(71, 2);
+            QuickStacking.QuickStackToNearbyChests(outside, false); QuickStacking.QuickStackToNearbyInventories(outside);
+            Check(QuickStacking.Calls == outsideCalls + 3, "only bank coin transfer intersects protected coin slot");
             NewSession(1); Player p = Main.LocalPlayer;
             p.inventory[54] = Make(10, 5); p.inventory[54].ammo = 1; p.inventory[55] = Make(10, 2); p.inventory[55].ammo = 1;
             host.Operations.Execute(new StoreItemsRequest(runtime.Generation, new[] { Observe(54) }));

@@ -23,6 +23,13 @@ namespace JueMingR.Platform.Settings
                 using (XmlDictionaryReader reader = JsonReaderWriterFactory.CreateJsonReader(contents, quotas))
                 {
                     XElement root = XElement.Load(reader);
+                    // A leading JSON __type becomes an XML attribute. Inspect
+                    // the whole tree, including nested UI position objects, so
+                    // unknown members cannot disappear during a later rewrite.
+                    foreach (XElement node in root.DescendantsAndSelf())
+                        foreach (XAttribute attribute in node.Attributes())
+                            if (attribute.Name != "type")
+                                throw new PreferenceFormatException(PreferenceStatus.UnknownFields, "Unknown fields are protected from rewriting.");
                     if ((string)root.Attribute("type") != "object") throw Invalid();
                     XElement format = Required(root, "format", "string");
                     if (format.Value != identity) throw Invalid();

@@ -43,7 +43,7 @@ if (-not (Test-Phase0STerrariaIdentity -Path $terrariaExe)) {
     Write-Phase0SResultAndExit -Operation 'install' -Status 'failure' -Code 'TERRARIA_IDENTITY_MISMATCH' -ExitCode 4 -PackageId $null -Object 'Terraria.exe' -Sha256 $null
 }
 
-$runningProcesses = @(Get-Process -Name 'Terraria' -ErrorAction SilentlyContinue)
+$runningProcesses = @(Get-Process -Name 'Terraria', 'TerrariaServer' -ErrorAction SilentlyContinue)
 if ($runningProcesses.Count -ne 0) {
     Write-Phase0SResultAndExit -Operation 'install' -Status 'conflict' -Code 'TERRARIA_RUNNING' -ExitCode 5 -PackageId $null -Object 'process' -Sha256 $null
 }

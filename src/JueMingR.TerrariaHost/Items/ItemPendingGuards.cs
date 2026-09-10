@@ -102,7 +102,26 @@ namespace JueMingR.TerrariaHost.Items
         { if (!ReferenceEquals(__instance, host?.World.Player) || !Protected(__0) && !PendingDependency(__instance, __0)) return true; __result = false; return false; }
         private static bool Drop(Player __instance, int __0)
         { return !Protected(__instance.inventory, __0); }
-        private static bool QuickStack() { return !Active || !host.Ownership.StoreBlocked; }
+        private static bool QuickStack(Player __0, MethodBase __originalMethod)
+        {
+            if (!Active || !ReferenceEquals(__0, host.World.Player)) return true;
+            // Native storage shares scratch/network state even for disjoint
+            // slots. Other uncertain actions protect only intersecting writes.
+            if (host.Ownership.StoreBlocked) return false;
+            if (host.Ownership.ProtectedSlots == 0) return true;
+            bool movesCoins = __originalMethod.Name == "QuickStackToNearbyInventories";
+            for (int slot = 0; slot < 58; slot++)
+            {
+                if (!host.Ownership.IsProtected(slot)) continue;
+                Item item = __0.inventory[slot];
+                if (item == null || item.IsAir || item.favorited) continue;
+                bool coin = item.type >= 71 && item.type <= 74;
+                // .8 Pack selects ordinary slots 10..49. MoveCoins only
+                // removes/restores existing non-favorite coin slots, not Air.
+                if (coin ? movesCoins : slot >= 10 && slot < 50) return false;
+            }
+            return true;
+        }
         private static bool Sort() { return !Active || host.Ownership.ProtectedSlots == 0; }
         private static bool Buy(Player __instance, int __1, ref bool __result)
         {

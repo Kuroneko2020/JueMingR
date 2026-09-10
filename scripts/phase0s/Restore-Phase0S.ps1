@@ -38,6 +38,13 @@ if ($ownership.noop) {
     Write-Phase0SResultAndExit -Operation 'restore' -Status 'noop' -Code 'RESTORE_NOOP' -ExitCode 0 -PackageId $package.packageId -Object 'owned-files' -Sha256 $null
 }
 
+# A running host can lock only some payload files. Refuse before the first
+# deletion rather than leave a partially restored installation behind.
+$runningProcesses = @(Get-Process -Name 'Terraria', 'TerrariaServer' -ErrorAction SilentlyContinue)
+if ($runningProcesses.Count -ne 0) {
+    Write-Phase0SResultAndExit -Operation 'restore' -Status 'conflict' -Code 'TERRARIA_RUNNING' -ExitCode 5 -PackageId $null -Object 'process' -Sha256 $null
+}
+
 try {
     # Recheck both inputs before deletion; these preflights are not an exclusive filesystem lock.
     $secondPackage = Read-Phase0SPackage -PackageRoot $PSScriptRoot
