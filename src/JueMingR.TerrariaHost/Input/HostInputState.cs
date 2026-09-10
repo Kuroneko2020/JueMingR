@@ -20,6 +20,7 @@ namespace JueMingR.TerrariaHost.Input
         internal readonly HotkeyInput Hotkeys = new HotkeyInput();
         internal KeyboardState KeyboardSample { get; private set; }
         internal bool HotkeyCapture { get; set; }
+        internal Func<bool> ClaimsHotkeyPointer { get; set; }
         private bool hotkeyTailSample;
         internal bool HotkeyPointerOwned { get { return HotkeyCapture || Hotkeys.HasSuppressedKeys || hotkeyTailSample; } }
         internal bool IsFocused { get; private set; }
@@ -68,7 +69,7 @@ namespace JueMingR.TerrariaHost.Input
             nativePermission = FocusHelper.IsSelectedApplication;
             quarantine |= !IsFocused || rearming;
             if (quarantine) { ConsumeMappedInput(); ClearTextActions(); }
-            else if (HotkeyCapture || Hotkeys.HasSuppressedKeys) ConsumeHotkeyActions();
+            else if (HotkeyCapture || Hotkeys.HasSuppressedKeys || ClaimsHotkeyPointer != null && ClaimsHotkeyPointer()) ConsumeHotkeyActions();
         }
         internal void AfterKeyboardRefresh()
         {

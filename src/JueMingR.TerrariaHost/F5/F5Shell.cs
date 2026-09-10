@@ -12,8 +12,8 @@ using JueMingR.TerrariaHost.Hotkeys;
 
 namespace JueMingR.TerrariaHost.F5
 {
-    // The only pointer-ownership source is State. Leases below remember values
-    // changed by this shell, not independent decisions about who owns the mouse.
+    // The shell combines its current UI owners. Leases remember values changed
+    // by that decision; they are not a separate source of pointer ownership.
     internal sealed class F5Shell
     {
         internal readonly F5Interaction State = new F5Interaction();
@@ -42,13 +42,31 @@ namespace JueMingR.TerrariaHost.F5
         { this.biome = biome; this.preferences = preferences; this.hostItems = hostItems; notes = new NotesPresentation(hostNotes.Workspace); notes.Attach(State);
             this.inputState = inputState ?? new Input.HostInputState();
             this.hotkeys = hotkeys;
-            if (hotkeys != null) HotkeyPopup = new HotkeyPopup(hotkeys.Bindings, hotkeys.Registry, this.inputState);
+            if (hotkeys != null)
+            {
+                HotkeyPopup = new HotkeyPopup(hotkeys.Bindings, hotkeys.Registry, this.inputState);
+                this.inputState.ClaimsHotkeyPointer = ClaimsPopupPointer;
+            }
             drawKeyboard = rect => renderer.Keyboard(Main.spriteBatch, rect);
             if (hostItems != null) { items = new ItemsPresentation(hostItems, State); items.HotkeyClicked = OpenHotkey; }
             Func<int, bool> prior = State.BeforeLeave;
             State.BeforeLeave = page => { if (prior != null && !prior(page)) return false; HotkeyPopup?.Close(); return true; };
         }
         private void OpenHotkey(string id, F5Rect rect) { HotkeyPopup?.Click(id, rect, State.Layout.Generation, State.Page, clickClock.ElapsedMilliseconds); }
+        private bool ClaimsPopupPointer()
+        {
+            // MouseInfo is already this tick's native sample at AfterMapping.
+            // Claim visible popup buttons/body before native zoom/navigation;
+            // do not sample or advance physical edges here. The later popup
+            // handles the same geometry and retains the complete gesture tail.
+            if (failed || HotkeyPopup == null || !HotkeyPopup.Visible || !State.Visible || !CanPresentNow) return false;
+            MouseState mouse = PlayerInput.MouseInfo;
+            if (mouse.LeftButton == ButtonState.Released && mouse.RightButton == ButtonState.Released &&
+                mouse.MiddleButton == ButtonState.Released && mouse.XButton1 == ButtonState.Released && mouse.XButton2 == ButtonState.Released) return false;
+            Vector2 raw = new Vector2(mouse.X * PlayerInput.RawMouseScale.X, mouse.Y * PlayerInput.RawMouseScale.Y);
+            Vector2 point = Vector2.Transform(raw, Matrix.Invert(Main.UIScaleMatrix));
+            return HotkeyPopup.Layout.Panel.Contains(point.X, point.Y);
+        }
         internal bool OwnsPointer { get { return !failed && CanPresentNow && (inputState.HotkeyPointerOwned || State.OwnsPointer || notes.OwnsPointer || items != null && items.OwnsPointer || HotkeyPopup != null && HotkeyPopup.OwnsPointer); } }
 
         private bool CanPresentNow

@@ -66,6 +66,7 @@ namespace Terraria
                         else r = Rect(Get(icon, "Rect"));
                         Click(r); Click(r); Frame();
                         Check((bool)Get(popup, "Visible") && (string)Get(popup, "Target") == ids[i], "double click targets correct real row " + ids[i]);
+                        if (i == 1) CheckEarlyPopupMapping();
                         PopupClick(0); Frame(); Frame(keys[i]); Frame();
                         Until(() => !(bool)Get(owner, "Busy")); Frame();
                         var binding = (HotkeyChord)owner.GetType().GetMethod("Get").Invoke(owner, new object[] { ids[i] });
@@ -136,6 +137,35 @@ namespace Terraria
             PopupClick(0); Frame(Keys.J); Frame(); Until(() => !(bool)Get(owner, "Busy")); Frame(); PopupClick(2); Frame();
             Check(workspace.Request(new JueMingR.Features.Notes.NotesAction(JueMingR.Features.Notes.NotesActionKind.Unpin, id)), "isolated pin cleanup");
             Until(() => !workspace.Feature.Busy);
+        }
+        private static void CheckEarlyPopupMapping()
+        {
+            var map = GameInput.PlayerInput.CurrentProfile.InputModes[GameInput.InputMode.Keyboard].KeyStatus;
+            object panel = Get(Get(popup, "Layout"), "Panel");
+            Main.SampleX = (int)(float)Get(panel, "X") + 18;
+            Main.SampleY = (int)(float)Get(panel, "Y") + 18;
+            Frame();
+            for (int button = 1; button <= 5; button++)
+            {
+                map["ViewZoomIn"] = new List<string> { "Mouse" + button };
+                int zoom = Main.NativeZoom;
+                Main.SampleLeft = button == 1;
+                Main.SampleRight = button == 2;
+                Main.SampleMiddle = button == 3;
+                Main.SampleX1 = button == 4;
+                Main.SampleX2 = button == 5;
+                Frame();
+                Check(Main.NativeZoom == zoom, "visible popup blocks actual early native zoom on first mouse press " + button);
+                Frame();
+                Main.SampleLeft = Main.SampleRight = Main.SampleMiddle = Main.SampleX1 = Main.SampleX2 = false;
+                Frame(); Frame();
+                Check(Main.NativeZoom == zoom, "popup mouse tail cannot reach early native zoom " + button);
+            }
+            // Outside the visible popup, normal native mappings keep working.
+            int outsideZoom = Main.NativeZoom;
+            Main.SampleX = 1850; Main.SampleY = 900; Main.SampleX2 = true; Frame();
+            Check(Main.NativeZoom > outsideZoom, "popup does not globally disable native mouse mappings");
+            Main.SampleX2 = false; Frame(); map.Remove("ViewZoomIn"); Frame();
         }
         private static bool[] Values()
         { object value = Get(Get(items, "Preferences"), "Value"); return new[] { (bool)Get(preferences, "BiomeEnabled"), (bool)Get(value, "StackEnabled"), (bool)Get(value, "SellEnabled"), (bool)Get(value, "DiscardEnabled") }; }
