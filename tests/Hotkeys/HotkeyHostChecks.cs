@@ -162,6 +162,16 @@ namespace Terraria
                 Check(Main.NativeZoom == zoom, "popup mouse tail cannot reach early native zoom " + button);
             }
             // Outside the visible popup, normal native mappings keep working.
+            PopupClick(3);
+            object help = Get(Get(popup, "Layout"), "HelpPanel");
+            Main.SampleX = (int)(float)Get(help, "X") + 18; Main.SampleY = (int)(float)Get(help, "Y") + 18; Frame();
+            Check((bool)Get(popup, "HelpVisible"), "production help surface keeps its hover ownership");
+            int helpZoom = Main.NativeZoom;
+            Main.SampleX2 = true; Frame();
+            Check(Main.NativeZoom == helpZoom, "help surface blocks the early native mouse mapping");
+            Main.SampleX = 1850; Main.SampleY = 900; Frame();
+            Check(Main.NativeZoom == helpZoom, "help surface retains the physical tail after leaving it");
+            Main.SampleX2 = false; Frame();
             int outsideZoom = Main.NativeZoom;
             Main.SampleX = 1850; Main.SampleY = 900; Main.SampleX2 = true; Frame();
             Check(Main.NativeZoom > outsideZoom, "popup does not globally disable native mouse mappings");
@@ -170,7 +180,7 @@ namespace Terraria
         private static bool[] Values()
         { object value = Get(Get(items, "Preferences"), "Value"); return new[] { (bool)Get(preferences, "BiomeEnabled"), (bool)Get(value, "StackEnabled"), (bool)Get(value, "SellEnabled"), (bool)Get(value, "DiscardEnabled") }; }
         private static void PopupClick(int index)
-        { object layout = Get(popup, "Layout"); object element = ((IList)Get(layout, "Buttons"))[index]; float[] r = Rect(Get(element, "Rect")); object panel = Get(layout, "Panel"); r[0] += (float)Get(panel, "X"); r[1] += (float)Get(panel, "Y"); Click(r); }
+        { object layout = Get(popup, "Layout"); IList commands = (IList)Get(layout, "Commands"); int position = -1; for (int i = 0; i < commands.Count; i++) if (Convert.ToInt32(commands[i]) == index) position = i; Check(position >= 0, "popup action is present"); object element = ((IList)Get(layout, "Buttons"))[position]; float[] r = Rect(Get(element, "Rect")); object panel = Get(layout, "Panel"); r[0] += (float)Get(panel, "X"); r[1] += (float)Get(panel, "Y"); Click(r); }
         private static float[] Rect(object rect, object origin = null, bool page = false)
         {
             float x = (float)Get(rect, "X") + (float)Get(rect, "Width") / 2, y = (float)Get(rect, "Y") + (float)Get(rect, "Height") / 2;

@@ -70,6 +70,8 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Platform.Hotkeys.HotkeyRegistry",
                 "JueMingR.Platform.Hotkeys.HotkeyDocument",
                 "JueMingR.Platform.Hotkeys.HotkeyBindings",
+                "JueMingR.Platform.Hotkeys.HotkeyFeedback",
+                "JueMingR.Platform.Hotkeys.HotkeyFeedbackKind",
                 "JueMingR.Platform.Settings.UiPreferenceCodec",
                 "JueMingR.Platform.Settings.WindowPosition",
                 "JueMingR.Platform.Persistence.DocumentWorker`1",

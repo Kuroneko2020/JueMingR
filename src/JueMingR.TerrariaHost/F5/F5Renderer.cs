@@ -25,11 +25,39 @@ namespace JueMingR.TerrariaHost.F5
             if (!popup.Visible) return;
             var layout = popup.Layout; SpriteBatch batch = Main.spriteBatch;
             Panel(batch, layout.Panel, background, Color.White, true);
-            foreach (var line in layout.Text)
-                Text(batch, line.Text, new Vector2(layout.Panel.X + line.Rect.X, layout.Panel.Y + line.Rect.Y), line.TextScale, Color.White, line.TextSize);
-            foreach (var control in layout.Buttons)
-                F5ControlRenderer.Button(batch, pixel, button, font, control, false, true, null, layout.Panel.X, layout.Panel.Y);
+            for (int i = 0; i < layout.Text.Count; i++)
+            {
+                var line = layout.Text[i]; var role = layout.Roles[i];
+                Color color = role == Hotkeys.HotkeyTextRole.Success ? Color.LightGreen : role == Hotkeys.HotkeyTextRole.Warning ? Color.LightGoldenrodYellow :
+                    role == Hotkeys.HotkeyTextRole.Error ? Color.LightCoral : role == Hotkeys.HotkeyTextRole.Muted ? Color.LightGray : Color.White;
+                Text(batch, line.Text, new Vector2(layout.Panel.X + line.Rect.X, layout.Panel.Y + line.Rect.Y), line.TextScale, color, line.TextSize);
+            }
+            foreach (var cap in layout.Keycaps)
+            {
+                var rect = cap.Rect.Offset(layout.Panel.X, layout.Panel.Y);
+                // Flat labels reuse R's surface; no button bevel, hover or action.
+                Panel(batch, rect, row, new Color(210, 210, 210), true);
+                var label = F5Layout.ButtonLabel(cap).Offset(layout.Panel.X, layout.Panel.Y);
+                Text(batch, cap.Text, new Vector2(label.X, label.Y), cap.TextScale, Color.White, cap.TextSize);
+            }
+            PopupRule(batch, layout.Panel.X + 12, layout.Panel.Y + layout.HeaderBottom, layout.Panel.Width - 24);
+            PopupRule(batch, layout.Panel.X + 12, layout.Panel.Y + layout.FooterTop, layout.Panel.Width - 24);
+            for (int i = 0; i < layout.Buttons.Count; i++)
+            {
+                var command = layout.Commands[i];
+                F5ControlRenderer.Button(batch, pixel, button, font, layout.Buttons[i], popup.Hovered == command, layout.Enabled[i],
+                    command == Hotkeys.HotkeyPopupCommand.Record && layout.Enabled[i] ? (Color?)Color.LightGray : null,
+                    layout.Panel.X, layout.Panel.Y, true, popup.Pressed == command && popup.Hovered == command);
+            }
+            if (popup.HelpVisible)
+            {
+                Panel(batch, layout.HelpPanel, background, Color.White, true);
+                foreach (var line in layout.HelpText)
+                    Text(batch, line.Text, new Vector2(layout.HelpPanel.X + line.Rect.X, layout.HelpPanel.Y + line.Rect.Y), line.TextScale, Color.White, line.TextSize);
+            }
         }
+        private void PopupRule(SpriteBatch batch, float x, float y, float width)
+        { batch.Draw(pixel, new Vector2(x, y), new Rectangle(0, 0, 1, 1), Color.White * .25f, 0, Vector2.Zero, new Vector2(width, 1), SpriteEffects.None, 0); }
 
         internal F5Renderer() { measure = Measure; }
 

@@ -22,11 +22,13 @@ namespace JueMingR.Platform.Hotkeys
         { MainKey = key; Modifiers = modifiers; Text = ModifierText(modifiers) + names[key]; DisplayText = ModifierDisplay(modifiers) + DisplayName(key); }
         public static string KeyName(int code) { return code >= 0 && code < names.Length ? names[code] : null; }
         public static string DisplayName(int code)
-        { return code == 8 ? "Backspace" : code >= 256 && code <= 260 ? new[] { "鼠标左键", "鼠标右键", "鼠标中键", "鼠标侧键1", "鼠标侧键2" }[code - 256] : KeyName(code); }
+        { return code == 8 ? "Backspace" : code == 107 ? "Num+" : code >= 256 && code <= 260 ? new[] { "鼠标左键", "鼠标右键", "鼠标中键", "鼠标侧键1", "鼠标侧键2" }[code - 256] : KeyName(code); }
+        private static readonly string[] modifierLabels = { "LCtrl", "RCtrl", "LShift", "RShift", "LAlt", "RAlt" };
+        public static string ModifierLabel(int index) { return modifierLabels[index]; }
         public static string ModifierDisplay(HotkeyModifiers modifiers)
         {
-            string[] labels = { "LCtrl", "RCtrl", "LShift", "RShift", "LAlt", "RAlt" }; string result = "";
-            for (int i = 0; i < labels.Length; i++) if (((int)modifiers & (1 << i)) != 0) result += labels[i] + "+";
+            string result = "";
+            for (int i = 0; i < modifierLabels.Length; i++) if (((int)modifiers & (1 << i)) != 0) result += modifierLabels[i] + "+";
             return result;
         }
         public static HotkeyModifiers Modifier(int code)

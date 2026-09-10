@@ -72,8 +72,20 @@ namespace Terraria
                     popup.Click("test.command", anchor, 1, 9, 100); Check(!popup.Visible, "single click cannot open binding window");
                     popup.Click("test.command", anchor, 1, 9, 200); popup.Prepare(800, 600, font, Measure);
                     Check(popup.Visible && popup.Layout.Panel.Right <= 788 && popup.Layout.Panel.Bottom <= 588, "double click opens viewport-clamped window");
-                    Action<int> click = index => { F5Rect r = popup.Layout.Buttons[index].Rect.Offset(popup.Layout.Panel.X, popup.Layout.Panel.Y); step(new int[0], true, r.X + 3, r.Y + 3); step(new int[0], false, r.X + 3, r.Y + 3); };
+                    Check(popup.Layout.Index(HotkeyPopupCommand.Help) >= 0 && popup.Layout.Index(HotkeyPopupCommand.Close) >= 0, "popup header owns help and close");
+                    Check(!popup.Layout.Text.Exists(t => t.Text.Contains("最多三个") || t.Text.Contains("请选择")), "initial popup has no permanent rule wall or false result");
+                    Action<int> click = index => { F5Rect r = popup.Layout.Buttons[popup.Layout.Index((HotkeyPopupCommand)index)].Rect.Offset(popup.Layout.Panel.X, popup.Layout.Panel.Y); step(new int[0], true, r.X + 3, r.Y + 3); step(new int[0], false, r.X + 3, r.Y + 3); };
+                    int languageReads = Localization.Language.Reads;
+                    click(3); Check(popup.HelpVisible && !popup.Capturing && owner.Get(target.Id) == null, "help is a hover surface, never a candidate");
+                    Check(Localization.Language.Reads == languageReads, "help/open do not query native action labels");
                     click(0); step(new int[0], false, 0, 0); Check(popup.Capturing && owner.Get(target.Id) == null, "start activation click never binds Mouse1");
+                    click(3); Check(popup.Capturing && !owner.Busy, "help activation while recording cannot bind Mouse1");
+                    var helpRect = popup.Layout.Buttons[popup.Layout.Index(HotkeyPopupCommand.Help)].Rect.Offset(popup.Layout.Panel.X, popup.Layout.Panel.Y);
+                    step(new[] { 27 }, false, helpRect.X + 3, helpRect.Y + 3);
+                    Check(!popup.Capturing && !owner.Busy, "hovering help must not block keyboard Escape");
+                    step(new int[0], false, 0, 0); click(0);
+                    step(new[] { 162, 163, 160, 161 }, false, 0, 0);
+                    Check(popup.Capturing && popup.Layout.Keycaps.Count == 0 && popup.Status.Contains("多余修饰键"), "invalid modifier progress never creates more than four keycaps");
                     step(new[] { 163, 161, 165 }, false, 0, 0); Check(popup.Capturing, "pure modifiers wait for main key");
                     step(new[] { 163, 161, 165, 75 }, false, 0, 0); Wait(owner, () => !owner.Busy);
                     Check(owner.Get(target.Id)?.Text == "RightControl+RightShift+RightAlt+K" && popup.Visible && !popup.Capturing, "three modifiers auto-save through real file and keep popup");
@@ -106,14 +118,23 @@ namespace Terraria
                     click(0); step(new[] { 75 }, false, 2, 2); Wait(owner, () => !owner.Busy); step(new int[0], false, 2, 2);
                     Check(owner.Get(target.Id)?.Text == "K" && popup.Status.Contains("已保存") && popup.Status.Contains("无法"), "unavailable native profile warns without refusing save");
                     PlayerInput.CurrentProfile = profile; map.Clear();
+                    long otherCommand; string otherReason;
+                    Check(owner.TrySet("test.other", Parse("J"), (a, c) => null, out otherCommand, out otherReason), "prepare internal conflict"); Wait(owner, () => !owner.Busy);
+                    click(0); step(new[] { 74 }, false, 2, 2); step(new int[0], false, 2, 2);
+                    Check(popup.Feedback.Kind == HotkeyFeedbackKind.Rejected && popup.Status.Contains("另一动作") && owner.Get(target.Id).Text == "K" && popup.Layout.Keycaps[0].Text == "K", "internal rejection shows the actual old binding");
+                    var record = popup.Layout.Buttons[popup.Layout.Index(HotkeyPopupCommand.Record)].Rect.Offset(popup.Layout.Panel.X, popup.Layout.Panel.Y);
+                    step(new int[0], true, record.X + 3, record.Y + 3);
+                    popup.Prepare(800, 600, new object(), Measure);
+                    step(new int[0], false, record.X + 3, record.Y + 3);
+                    Check(!popup.Capturing && owner.Get(target.Id).Text == "K", "font change cancels an armed record action");
                     click(0); step(new int[0], false, 0, 0); step(new[] { 74, 75 }, false, 0, 0);
                     Check(!popup.Capturing && popup.Status.Contains("多个") && owner.Get(target.Id).MainKey == 75, "multiple new primaries rejected without enum winner");
                     step(new int[0], false, 0, 0); click(0); step(new int[0], false, 0, 0); step(new[] { 116 }, false, 0, 0);
                     Check(popup.Status.Contains("F5") && popup.Visible && !popup.Capturing, "F5 has explicit reserved feedback");
                     step(new int[0], false, 0, 0); click(0); step(new int[0], false, 0, 0); step(new[] { 27 }, false, 0, 0);
                     Check(popup.Visible && !popup.Capturing && owner.Get(target.Id) != null, "Esc cancels without clearing or closing");
-                    step(new int[0], false, 0, 0); click(0); step(new int[0], false, 0, 0); click(1); Wait(owner, () => !owner.Busy);
-                    Check(owner.Get(target.Id) == null && popup.Visible && !popup.Capturing, "clear control takes precedence over mouse capture");
+                    step(new int[0], false, 0, 0); click(0); step(new int[0], false, 0, 0); Check(popup.Layout.Index(HotkeyPopupCommand.Clear) < 0, "clear is absent while capturing"); click(0); click(1); Wait(owner, () => !owner.Busy);
+                    Check(owner.Get(target.Id) == null && popup.Visible && !popup.Capturing, "cancel before clear reliably removes the binding");
                     step(new int[0], false, 0, 0); // Deliver save feedback and reflow before a new gesture.
                     click(0); step(new[] { 8 }, false, 0, 0); Wait(owner, () => !owner.Busy);
                     Check(!popup.Capturing && owner.Get(target.Id)?.MainKey == 8, "first new primary immediately after start-button release is captured");
@@ -162,15 +183,16 @@ namespace Terraria
                 if (!root.StartsWith(parent, StringComparison.OrdinalIgnoreCase) || !Path.GetFileName(root).StartsWith("JueMingR.Hotkeys.Popup-", StringComparison.Ordinal)) throw new Exception("Unsafe isolated test cleanup path.");
                 Directory.Delete(root, true);
             }
-            CheckCompletionOwnership(false); CheckCompletionOwnership(true);
+            CheckCompletionOwnership(false); CheckCompletionOwnership(true); CheckCompletionOwnership(true, true);
+            CheckDisplayStates();
             Console.WriteLine("PASS: hotkey actual-profile conflicts and production popup/input/file checks.");
         }
-        private static void CheckCompletionOwnership(bool fail)
+        private static void CheckCompletionOwnership(bool fail, bool unconfirmed = false)
         {
             var registry = new HotkeyRegistry();
             registry.Register(new HotkeyAction("test.a", "前目标", HotkeyContext.Gameplay, () => true, () => { }));
             registry.Register(new HotkeyAction("test.b", "后目标", HotkeyContext.Gameplay, () => true, () => { }));
-            var storage = new GatedStorage { Fail = fail };
+            var storage = new GatedStorage { Fail = fail, Unconfirmed = unconfirmed, Initial = unconfirmed ? HotkeyDocument.Encode(new HotkeyDocument(new[] { new KeyValuePair<string, string>("test.a", "K") })) : null };
             PlayerInput.CurrentProfile = new PlayerInputProfile();
             PlayerInput.CurrentProfile.InputModes[InputMode.Keyboard].KeyStatus["SmartCursor"] = new List<string> { "LeftControl" };
             using (var owner = new HotkeyBindings(registry, storage))
@@ -192,35 +214,85 @@ namespace Terraria
                     var anchor = new F5Rect(100, 100, 22, 30);
                     popup.Click("test.a", anchor, 1, 0, 100); popup.Click("test.a", anchor, 1, 0, 200);
                     popup.Prepare(800, 600, font, Measure);
-                    var button = popup.Layout.Buttons[0].Rect.Offset(popup.Layout.Panel.X, popup.Layout.Panel.Y);
+                    var button = popup.Layout.Buttons[popup.Layout.Index(HotkeyPopupCommand.Record)].Rect.Offset(popup.Layout.Panel.X, popup.Layout.Panel.Y);
                     frame(new Keys[0], true, button.X + 3, button.Y + 3);
                     frame(new Keys[0], false, button.X + 3, button.Y + 3);
                     frame(new[] { Keys.LeftControl, Keys.K }, false, 0, 0);
                     Check(storage.Entered.WaitOne(5000) && owner.Busy && popup.Status.Contains("SmartCursor"), "real worker accepted warned A before window switch");
+                    Check(popup.Feedback.Kind == HotkeyFeedbackKind.Saving && (unconfirmed ? owner.Get("test.a").Text == "K" : owner.Get("test.a") == null) && popup.Layout.Keycaps.Count == 2, "pending candidate is visible but not effective");
+                    var disabled = popup.Layout.Buttons[popup.Layout.Index(HotkeyPopupCommand.Record)].Rect.Offset(popup.Layout.Panel.X, popup.Layout.Panel.Y);
+                    Check(popup.Layout.Hit(disabled.X + 3, disabled.Y + 3) == HotkeyPopupCommand.None && popup.Layout.Index(HotkeyPopupCommand.Clear) < 0, "busy modifications are not hit targets");
+                    frame(new Keys[0], true, disabled.X + 3, disabled.Y + 3); frame(new Keys[0], false, disabled.X + 3, disabled.Y + 3);
+                    Check(owner.Busy && !popup.Capturing && input.Hotkeys.IsSuppressed(256) == false, "disabled click completes without another command");
                     popup.Close();
                     popup.Click("test.b", anchor, 1, 0, 300); popup.Click("test.b", anchor, 1, 0, 400);
                     popup.Prepare(800, 600, font, Measure);
                     Check(!popup.Status.Contains("已保存"), "B never displays A result");
                     storage.Release.Set(); Wait(owner, () => !owner.Busy);
                     frame(new Keys[0], false, 0, 0);
-                    Check((fail ? owner.Get("test.a") == null : owner.Get("test.a")?.Text == "LeftControl+K") && owner.Get("test.b") == null, "submitted A completes after close without editing B");
-                    Check(popup.Target == "test.b" && popup.Status.Contains("请选择开始录入") && !popup.Status.Contains("已保存") && !popup.Status.Contains("SmartCursor"), "B becomes ready after A finishes without inheriting A warning/result or stuck saving");
+                    Check((fail ? (unconfirmed ? owner.Get("test.a").Text == "K" : owner.Get("test.a") == null) : owner.Get("test.a")?.Text == "LeftControl+K") && owner.Get("test.b") == null, "submitted A completes after close without editing B");
+                    Check(popup.Target == "test.b" && popup.Feedback.Kind == (unconfirmed ? HotkeyFeedbackKind.Unconfirmed : HotkeyFeedbackKind.Ready) && !popup.Status.Contains("已保存") && !popup.Status.Contains("SmartCursor") && !popup.Status.Contains("原绑定仍有效"), "B reflects global availability without inheriting A result or retained binding claim");
+                    if (unconfirmed) Check(popup.Status.Contains("当前没有有效绑定") && !popup.Layout.Enabled[popup.Layout.Index(HotkeyPopupCommand.Record)], "B shows its own effective state while disk result remains unknown");
                 }
                 finally { storage.Release.Set(); }
             }
         }
         private sealed class GatedStorage : IPreferenceStorage
         {
-            internal bool Fail;
+            internal bool Fail, Unconfirmed;
+            internal byte[] Initial;
             internal readonly ManualResetEvent Entered = new ManualResetEvent(false), Release = new ManualResetEvent(false);
-            public PreferenceReadResult Read() { return new PreferenceReadResult(PreferenceReadStatus.Missing, null, null, null); }
+            public PreferenceReadResult Read() { return new PreferenceReadResult(Initial == null ? PreferenceReadStatus.Missing : PreferenceReadStatus.Loaded, Initial, Initial == null ? null : "initial", null); }
             public PreferenceWriteResult Write(string identity, byte[] bytes)
             {
                 Entered.Set();
                 if (!Release.WaitOne(5000)) throw new TimeoutException("Controlled save was not released.");
-                return Fail ? new PreferenceWriteResult(PreferenceWriteStatus.IoFailure, null, "controlled failure") : new PreferenceWriteResult(PreferenceWriteStatus.Saved, "saved", null);
+                return Fail ? new PreferenceWriteResult(PreferenceWriteStatus.IoFailure, null, "controlled failure", commitUnconfirmed: Unconfirmed) : new PreferenceWriteResult(PreferenceWriteStatus.Saved, "saved", null);
             }
             public void Dispose() { Entered.Dispose(); Release.Dispose(); }
+        }
+        private static void CheckDisplayStates()
+        {
+            Localization.Language.Values["LegacyMenu.160"] = "快捷火把";
+            Localization.Language.Values["LegacyMenu.161"] = "智能光标";
+            Check(VanillaHotkeyConflicts.DisplayAction("SmartSelect") == "快捷火把" && VanillaHotkeyConflicts.DisplayAction("SmartCursor") == "智能光标", "verified native keys use the active language");
+            Check(VanillaHotkeyConflicts.DisplayAction("unknown-source").Contains("unknown-source"), "unavailable label keeps identifiable native token");
+            Localization.Language.Values.Clear();
+            var layout = new HotkeyPopupLayout(); var anchor = new F5Rect(580, 270, 22, 30);
+            var effective = Parse("LeftControl+RightShift+LeftAlt+Add");
+            F5Rect primary = default(F5Rect); int reads = 0;
+            Func<string, float, F5Size> measure = (s, scale) => { reads++; return Measure(s, scale); };
+            foreach (var kind in new[] { HotkeyFeedbackKind.Ready, HotkeyFeedbackKind.Saved, HotkeyFeedbackKind.Rejected, HotkeyFeedbackKind.Failed })
+            {
+                var view = new HotkeyPopupView("自动堆叠", effective, null, HotkeyModifiers.None,
+                    new HotkeyFeedback(kind, kind == HotkeyFeedbackKind.Ready ? null : "本次结果", advisory: kind == HotkeyFeedbackKind.Saved ? "LShift 与原版动作重合，可能同时触发。" : null), true, false, true);
+                layout.Build(640, 480, font, anchor, view, measure);
+                Check(layout.Keycaps.Count == 4 && layout.Keycaps[3].Text == "Num+", "plus inside one main key is never split into modifiers");
+                foreach (var cap in layout.Keycaps)
+                {
+                    Check(cap.Rect.Right <= layout.Panel.Width - 12 && cap.Rect.Bottom < layout.FooterTop, "whole keycap remains readable");
+                    Check(layout.Hit(layout.Panel.X + cap.Rect.X + 3, layout.Panel.Y + cap.Rect.Y + 3) == HotkeyPopupCommand.None, "keycaps have no action");
+                }
+                var next = layout.Buttons[layout.Index(HotkeyPopupCommand.Record)].Rect.Offset(layout.Panel.X, layout.Panel.Y);
+                if (kind != HotkeyFeedbackKind.Ready) Check(next.X == primary.X && next.Y == primary.Y, "ordinary result leaves primary position unchanged");
+                primary = next;
+                int before = reads, generation = layout.Generation;
+                for (int i = 0; i < 1000; i++) layout.Build(640, 480, font, anchor, view, measure);
+                Check(reads == before && generation == layout.Generation, "stable projection performs no measurement or layout rebuild");
+            }
+            foreach (var kind in new[] { HotkeyFeedbackKind.Loading, HotkeyFeedbackKind.Protected, HotkeyFeedbackKind.Unconfirmed, HotkeyFeedbackKind.Cleared })
+            {
+                bool known = kind == HotkeyFeedbackKind.Cleared;
+                var view = new HotkeyPopupView("群系显示", null, null, HotkeyModifiers.None, new HotkeyFeedback(kind, "真实状态"), known, false, known);
+                layout.Build(604, 400, font, anchor, view, Measure);
+                Check(layout.Keycaps.Count == 0 && layout.Text.Exists(t => t.Text == (known ? "未设置快捷键" : "快捷键状态待核对")), "unknown/protected state cannot masquerade as unbound");
+                Check(layout.Panel.Bottom <= 388 && layout.HelpPanel.Bottom <= 388, "minimum supported test viewport contains popup and help");
+                if (!known) Check(!layout.Enabled[layout.Index(HotkeyPopupCommand.Record)], "unknown/protected cannot edit");
+            }
+            var longest = new HotkeyPopupView("自动丢弃", Parse("RightControl+RightShift+RightAlt+MediaPreviousTrack"), null, HotkeyModifiers.None,
+                new HotkeyFeedback(HotkeyFeedbackKind.Saved, "已保存", advisory: new string('长', 240)), true, false, true);
+            layout.Build(604, 340, font, anchor, longest, Measure);
+            Check(layout.Panel.Bottom <= 328 && layout.Keycaps.Count == 4, "long names and feedback fit the supported viewport");
         }
         private static F5Size Measure(string text, float scale) { return new F5Size(text.Length * 10 * scale, 24 * scale); }
         private static HotkeyChord Parse(string text) { HotkeyChord c; string r; if (!HotkeyChord.TryParse(text, out c, out r)) throw new Exception(r); return c; }

@@ -65,7 +65,7 @@ namespace JueMingR.TerrariaHost.F5
                 mouse.MiddleButton == ButtonState.Released && mouse.XButton1 == ButtonState.Released && mouse.XButton2 == ButtonState.Released) return false;
             Vector2 raw = new Vector2(mouse.X * PlayerInput.RawMouseScale.X, mouse.Y * PlayerInput.RawMouseScale.Y);
             Vector2 point = Vector2.Transform(raw, Matrix.Invert(Main.UIScaleMatrix));
-            return HotkeyPopup.Layout.Panel.Contains(point.X, point.Y);
+            return HotkeyPopup.ContainsPointer(point.X, point.Y);
         }
         internal bool OwnsPointer { get { return !failed && CanPresentNow && (inputState.HotkeyPointerOwned || State.OwnsPointer || notes.OwnsPointer || items != null && items.OwnsPointer || HotkeyPopup != null && HotkeyPopup.OwnsPointer); } }
 
@@ -103,7 +103,7 @@ namespace JueMingR.TerrariaHost.F5
                 bool inputActive = !failed && CanPresentNow && inputState.CanUseInput && !PlayerInput.Triggers.Current.MapFull && !PlayerInput.Triggers.Current.ToggleCameraMode;
                 Vector2 pointer = State.Visible || f5 ? Vector2.Transform(raw, Matrix.Invert(matrix)) : raw;
                 HotkeyPopup?.Process(inputActive && State.Visible, State.Page, pointer.X, pointer.Y,
-                    HotkeyPopup.Layout.Matches(screen.X / matrix.M11, screen.Y / matrix.M11, renderer.FontIdentity));
+                    HotkeyPopup.Layout.Matches(screen.X / matrix.M11, screen.Y / matrix.M11, renderer.FontIdentity, renderer.SkinGeneration));
                 bool popupPointer = HotkeyPopup != null && HotkeyPopup.BlockPointer || inputState.HotkeyPointerOwned;
                 State.Update(new F5Input
                 {
@@ -189,7 +189,7 @@ namespace JueMingR.TerrariaHost.F5
                 {
                     Vector2 screen = PlayerInput.OriginalScreenSize;
                     renderer.Prepare(State, screen.X, screen.Y, matrix.M11);
-                    HotkeyPopup?.Prepare(screen.X / matrix.M11, screen.Y / matrix.M11, renderer.FontIdentity, renderer.PopupMeasure);
+                    HotkeyPopup?.Prepare(screen.X / matrix.M11, screen.Y / matrix.M11, renderer.FontIdentity, renderer.PopupMeasure, renderer.SkinGeneration);
                     // Emote Bubbles runs before the modal early-return layers.
                     // Clear only the old pointer-triggered NPC bubble at update end.
                     if (OwnsPointer) Main.instance.currentNPCShowingChatBubble = -1;

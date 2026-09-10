@@ -19,10 +19,12 @@ namespace JueMingR.Platform.Hotkeys
         private long nextCommand;
         private string pendingAction;
         private string pendingWarning;
+        private bool pendingClear, pendingHadBinding;
         public bool Loaded { get; private set; }
         public bool Busy { get; private set; }
         public bool Protected { get; private set; }
-        public string Message { get; private set; }
+        public HotkeyFeedback Feedback { get; private set; } = new HotkeyFeedback(HotkeyFeedbackKind.Loading, "正在读取快捷键");
+        public string Message { get { return Feedback.Message; } }
         public long CompletionId { get; private set; }
         public string CompletionAction { get; private set; }
         public bool CompletionSucceeded { get; private set; }
@@ -41,22 +43,24 @@ namespace JueMingR.Platform.Hotkeys
             if (result.CommandId == 0)
             {
                 Loaded = true;
-                if (result.Success) { document = result.Value; Compile(); }
-                else { Protected = true; Message = "快捷键文件未能可靠加载（" + result.Error + "），原文件已保护。"; }
+                if (result.Success) { document = result.Value; Feedback = new HotkeyFeedback(HotkeyFeedbackKind.Ready); Compile(); }
+                else { Protected = true; Feedback = new HotkeyFeedback(HotkeyFeedbackKind.Protected, "快捷键未能可靠加载，文件已保护", "请退出后检查原文件（" + result.Error + "）。"); }
                 return;
             }
             Busy = false; CompletionId = result.CommandId; CompletionAction = pendingAction; pendingAction = null;
             string warning = pendingWarning; pendingWarning = null;
             CompletionSucceeded = result.Success; CommitUnconfirmed = result.CommitUnconfirmed;
-            if (result.Success) { document = result.Value; Compile(); Message = WithWarning("已保存并生效。", warning); }
+            if (result.Success) { document = result.Value; Compile(); if (!Protected) Feedback = new HotkeyFeedback(pendingClear ? HotkeyFeedbackKind.Cleared : HotkeyFeedbackKind.Saved, pendingClear ? "已清除" : "已保存", advisory: warning); }
             else
             {
                 // A protected/unknown storage result is deliberately not retried.
                 // The previous effective table survives; disk rollback is unknown.
                 Protected = result.IsProtected || result.CommitUnconfirmed;
-                Message = result.CommitUnconfirmed ? "磁盘提交结果未确认；旧绑定继续有效，文件已保护。请退出后保留文件及恢复材料检查。" :
-                    Protected ? "未能可靠保存；旧绑定继续有效，原文件已保护。请退出后检查权限或外部文件变化。" :
-                    "此次保存失败，旧绑定继续有效。可以重新录入后再试。";
+                string retained = pendingHadBinding ? "原绑定仍有效" : "当前仍未绑定";
+                Feedback = new HotkeyFeedback(result.CommitUnconfirmed ? HotkeyFeedbackKind.Unconfirmed : Protected ? HotkeyFeedbackKind.Protected : HotkeyFeedbackKind.Failed,
+                    result.CommitUnconfirmed ? "磁盘结果未确认，文件已保护" : Protected ? "保存受阻，文件已保护" : "保存失败，" + retained,
+                    result.CommitUnconfirmed ? retained + "；磁盘状态待核对。请退出后保留文件及恢复材料检查。" :
+                    Protected ? retained + "。请退出后检查权限或外部文件变化。" : "可重新录入后再试。");
             }
         }
         public string Validate(string id, HotkeyChord chord)
@@ -68,7 +72,7 @@ namespace JueMingR.Platform.Hotkeys
             if (chord == null) return null;
             foreach (var other in effective)
                 if (other.Key != id && chord.Equals(other.Value) && (registry.Find(other.Key).Context & action.Context) != 0)
-                    return "与「" + registry.Find(other.Key).Name + "」的绑定冲突；功能关闭时仍保留其切换绑定。";
+                    return "此组合已用于「" + registry.Find(other.Key).Name + "」。";
             return null;
         }
         public bool TrySet(string id, HotkeyChord chord, Func<HotkeyAction, HotkeyChord, string> vanillaWarning, out long command, out string reason)
@@ -90,10 +94,9 @@ namespace JueMingR.Platform.Hotkeys
             HotkeyDocument candidate = document.With(id, chord);
             long next = ++nextCommand;
             if (!worker.TrySubmit(next, candidate)) { reason = "保存入口暂不可用，旧绑定保留。"; return false; }
-            command = next; pendingAction = id; pendingWarning = warning; Busy = true; Message = WithWarning("正在保存；成功前仍使用旧绑定。", warning); return true;
+            command = next; pendingAction = id; pendingWarning = warning; pendingClear = chord == null; pendingHadBinding = Get(id) != null; Busy = true;
+            Feedback = new HotkeyFeedback(HotkeyFeedbackKind.Saving, pendingHadBinding ? "正在保存，原绑定仍有效" : "正在保存，尚未生效", advisory: warning); return true;
         }
-        private static string WithWarning(string message, string warning)
-        { return String.IsNullOrEmpty(warning) ? message : message + " 提醒：" + warning; }
         public void Dispatch(HotkeyInput input, HotkeyContext context, bool permitted)
         {
             if (!permitted || !Loaded || effective.Count == 0 || input.SystemModifier || !input.Reliable) return;
@@ -124,7 +127,7 @@ namespace JueMingR.Platform.Hotkeys
                 foreach (var b in effective)
                     if (a.Key != b.Key && a.Value.Equals(b.Value) && (registry.Find(a.Key).Context & registry.Find(b.Key).Context) != 0)
                     { errors[a.Key] = "多个功能使用相同组合，相关条目均已停用，原文件已保护。"; errors[b.Key] = errors[a.Key]; }
-            if (errors.Count != 0) { Protected = true; Message = "快捷键文件含非法或重复绑定；相关条目停用，原件已保护。"; }
+            if (errors.Count != 0) { Protected = true; Feedback = new HotkeyFeedback(HotkeyFeedbackKind.Protected, "快捷键文件已保护", "非法或重复绑定已停用，请退出后检查原文件。"); }
             foreach (var error in errors) effective.Remove(error.Key);
             foreach (var entry in effective)
             {

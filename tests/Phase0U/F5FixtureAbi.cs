@@ -256,3 +256,14 @@ namespace Terraria.GameContent
     public static partial class TextureAssets
     { public static Asset<Microsoft.Xna.Framework.Graphics.Texture2D> SettingsPanel, InventoryBack13, InventoryBack, MagicPixel; }
 }
+
+namespace Terraria.Localization
+{
+    // Fixture language table; production calls Terraria's current language API.
+    public static class Language
+    {
+        public static readonly System.Collections.Generic.Dictionary<string, string> Values = new System.Collections.Generic.Dictionary<string, string>();
+        public static int Reads;
+        public static string GetTextValue(string key) { Reads++; string value; return Values.TryGetValue(key, out value) ? value : key; }
+    }
+}

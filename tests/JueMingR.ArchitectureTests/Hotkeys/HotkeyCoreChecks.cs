@@ -80,11 +80,13 @@ namespace JueMingR.ArchitectureTests
                     { failures.Add("Hotkeys: native warning refused candidate."); return; }
                     if (!owner.Busy || owner.Get("a").Text != "K" || !owner.Message.Contains("native overlap A") || owner.Message.Contains("已保存"))
                         failures.Add("Hotkeys: warning hid pending state or activated early.");
+                    if (owner.Feedback.Kind != HotkeyFeedbackKind.Saving || owner.Feedback.Advisory != "native overlap A") failures.Add("Hotkeys: pending feedback lost typed status/advisory.");
                     if (owner.TrySet("b", Parse("L"), (a, c) => { reads++; return "native overlap B"; }, out ignored, out reason) || reads != 1 || !owner.Message.Contains("native overlap A"))
                         failures.Add("Hotkeys: busy rejection overwrote accepted warning or read native profile.");
                 }
                 finally { storage.Block.Set(); }
                 Wait(owner, () => !owner.Busy);
+                if (owner.Feedback.Kind != HotkeyFeedbackKind.Saved) failures.Add("Hotkeys: reliable completion did not publish Saved.");
                 if (!owner.CompletionSucceeded || owner.CompletionId != command || owner.Get("a").Text != "LeftControl+J" || !owner.Message.Contains("native overlap A"))
                     failures.Add("Hotkeys: successful save lost candidate or warning identity.");
                 byte[] saved = storage.Bytes;
@@ -93,6 +95,7 @@ namespace JueMingR.ArchitectureTests
                 Set(owner, "a", "LeftControl+J", (a, c) => "new native mapping");
                 if (!owner.Message.Contains("new native mapping") || owner.Message.Contains("native overlap A")) failures.Add("Hotkeys: idempotent submit retained stale warning.");
                 Set(owner, "a", null, (a, c) => { reads++; return "clear must not check"; });
+                if (owner.Feedback.Kind != HotkeyFeedbackKind.Cleared) failures.Add("Hotkeys: reliable clear did not publish Cleared.");
                 if (reads != 1 || owner.Get("a") != null || owner.Message.Contains("native")) failures.Add("Hotkeys: clearing consulted native profile or retained warning.");
                 Set(owner, "a", "J", (a, c) => { throw new InvalidOperationException("unavailable profile"); });
                 if (!owner.Message.Contains("无法") || owner.Get("a").Text != "J") failures.Add("Hotkeys: unavailable native profile did not warn and save.");
@@ -115,6 +118,7 @@ namespace JueMingR.ArchitectureTests
                 long ignored;
                 if (owner.TrySet("test.one", Parse("L"), (a, c) => null, out ignored, out reason)) failures.Add("Hotkeys: busy worker overwrote accepted command.");
                 storage.Block.Set(); Wait(owner, () => !owner.Busy);
+                if (owner.Feedback.Kind != HotkeyFeedbackKind.Failed || owner.Feedback.Advisory != null) failures.Add("Hotkeys: failed feedback kept advisory or wrong severity.");
                 if (owner.Get("test.one").Text != "K" || owner.CompletionSucceeded || owner.CompletionId != command || owner.CompletionAction != "test.one" || owner.Message.Contains("native warning")) failures.Add("Hotkeys: failed save lost old binding/command identity or kept advisory instead of failure.");
                 storage.Fail = false;
                 if (owner.Protected || !owner.TrySet("test.one", Parse("L"), (a, c) => null, out command, out reason))
@@ -126,6 +130,7 @@ namespace JueMingR.ArchitectureTests
             {
                 Wait(owner, () => owner.Loaded); long command; string reason;
                 owner.TrySet("test.one", Parse("J"), (a, c) => "native warning", out command, out reason); Wait(owner, () => !owner.Busy);
+                if (owner.Feedback.Kind != HotkeyFeedbackKind.Unconfirmed || owner.Feedback.Advisory != null) failures.Add("Hotkeys: unknown commit lost protected result category.");
                 if (!owner.CommitUnconfirmed || !owner.Protected || owner.Get("test.one") != null || owner.Message.Contains("native warning")) failures.Add("Hotkeys: unknown commit pretended success/rollback or hid failure with warning.");
             }
         }
