@@ -44,9 +44,7 @@ namespace JueMingR.TerrariaHost.EntityLabels
             try
             {
                 if (labels.Count == 0) { if (CachedEntries != 0) Clear(); return true; }
-                if (Failure != null || !sessionActive() || Main.gameMenu || Main.dedServ || Main.netMode != 0 && Main.netMode != 1 ||
-                    Main.LocalPlayer == null || !Main.LocalPlayer.active || Main.mapFullscreen || Main.hideUI || Main.onlyDrawFancyUI || Main.inFancyUI ||
-                    Main.ingameOptionsWindow || Terraria.Graphics.Capture.CaptureManager.Instance == null || Terraria.Graphics.Capture.CaptureManager.Instance.Active) return true;
+                if (Failure != null || !sessionActive() || !Rendering.WorldPresentation.CanDraw) return true;
                 DynamicSpriteFont current = FontAssets.MouseText == null ? null : FontAssets.MouseText.Value;
                 FontUnavailable = current == null || Main.spriteBatch == null;
                 if (FontUnavailable) return true;
