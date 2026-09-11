@@ -20,7 +20,7 @@ namespace JueMingR.TerrariaHost.Input
         private readonly INotesIme ime;
         private readonly StringBuilder committed = new StringBuilder(8);
         private StyleEditor editor;
-        private bool leased, priorBlock, previousComposition;
+        private bool leased, priorBlock, previousComposition, enterTail, escapeTail;
         internal HexTextInput(HostInputState input, INotesClipboard clipboard = null, INotesIme ime = null)
         { this.input = input; this.clipboard = clipboard ?? new NotesClipboard(() => Main.instance.Window.Handle); this.ime = ime ?? new NativeIme(); }
         internal bool Editing { get { return editor != null; } }
@@ -49,6 +49,13 @@ namespace JueMingR.TerrariaHost.Input
             bool composing = !String.IsNullOrEmpty(ime.Composition) || ime.Candidates;
             bool compositionPriority = composing || previousComposition;
             KeyboardState keys = input.KeyboardSample;
+            // WM_CHAR can repeat a control character after IME composition has
+            // ended. Its physical key still belongs to that confirmation until
+            // a genuine sampled release, like the existing Notes text adapter.
+            if (compositionPriority && keys.IsKeyDown(Keys.Enter)) enterTail = true;
+            if (compositionPriority && keys.IsKeyDown(Keys.Escape)) escapeTail = true;
+            if (keys.IsKeyUp(Keys.Enter)) enterTail = false;
+            if (keys.IsKeyUp(Keys.Escape)) escapeTail = false;
             bool control = keys.IsKeyDown(Keys.LeftControl) || keys.IsKeyDown(Keys.RightControl);
             bool shift = keys.IsKeyDown(Keys.LeftShift) || keys.IsKeyDown(Keys.RightShift);
             bool enter = Pressed(Keys.Enter), escape = Pressed(Keys.Escape), tooLong = false;
@@ -94,8 +101,8 @@ namespace JueMingR.TerrariaHost.Input
                     if (Pressed(Keys.Left)) editor.Move(-1, shift); else if (Pressed(Keys.Right)) editor.Move(1, shift);
                     else if (Pressed(Keys.Home)) editor.Move(-6, shift); else if (Pressed(Keys.End)) editor.Move(6, shift);
                 }
-                if (escape) End(true);
-                else if (enter)
+                if (escape && !escapeTail) End(true);
+                else if (enter && !enterTail)
                 { editor.CommitHex(); if (editor.Error == null) End(false); }
             }
             previousComposition = composing;
@@ -111,7 +118,7 @@ namespace JueMingR.TerrariaHost.Input
             if (!foreign) { ime.Toggle(false); Main.clrInput(); PlayerInput.WritingText = false; }
             if (OwnsTextToken) Main.CurrentInputTextTakerOverride = null;
             if (Main.blockInput) Main.blockInput = priorBlock;
-            leased = false; previousComposition = false;
+            leased = false; previousComposition = enterTail = escapeTail = false;
             SuppressKeyboard();
         }
         private void SuppressKeyboard()

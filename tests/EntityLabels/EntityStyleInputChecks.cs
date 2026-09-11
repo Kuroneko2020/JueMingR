@@ -65,6 +65,8 @@ namespace Terraria
             frame("", new Keys[0]); editor.SelectAll(); ime.Current = "a"; frame("", new[] { Keys.Enter });
             ime.Current = ""; frame("123456", new[] { Keys.Enter });
             Check(saved == 2 && editor.Rgb == 0x123456 && text.Editing, "IME committed queue survives confirmation while Enter remains owned by composition");
+            frame("\r", new[] { Keys.Enter });
+            Check(text.Editing, "IME confirmation Enter repeat remains owned through its full physical tail");
             frame("", new Keys[0]); editor.SelectAll(); frame("12", new[] { Keys.D2 }); focused = false; frame("", new Keys[0]);
             Check(!text.Editing && editor.Rgb == 0x123456 && Main.CurrentInputTextTakerOverride == null, "focus loss discards only unfinished input and releases own token");
             focused = true; frame("", new Keys[0]); frame("", new Keys[0]); text.Begin(editor); frame("", new Keys[0]);
