@@ -65,8 +65,11 @@ namespace Terraria
             Check(host.Preferences.IsLoaded, "isolated preferences load");
             if (only == "feedback") { ItemDiscardFeedbackChecks.Run(host, () => NewSession(0)); return; }
             if (only == "layout") { ItemUiChecks.RunLayout(host); return; }
+            if (only == "death") { new ItemDeathBoundaryChecks(host, runtime, NewSession, Step, value => canStartActions = value).Run(); return; }
             ItemDiscardFeedbackChecks.Run(host, () => NewSession(0));
-            PreferenceIsolation(); Transactions(); SelectionAndSources(); SourceEdges(); UnifiedSourceAndFocus(); RejectedSaleMembers(); CapacityBackoff(); StorageBoundaries(); NetworkOwnership(); Guards(); UiKeys();
+            PreferenceIsolation(); Transactions(); SelectionAndSources(); SourceEdges(); UnifiedSourceAndFocus(); RejectedSaleMembers(); CapacityBackoff(); StorageBoundaries(); NetworkOwnership();
+            new ItemDeathBoundaryChecks(host, runtime, NewSession, Step, value => canStartActions = value).Run();
+            Guards(); UiKeys();
             ItemUiChecks.RunLayout(host);
             if (graphics) ItemUiChecks.Run(host, content, output);
             // Partial original side effects protect their finite affected range.

@@ -16,8 +16,12 @@ namespace JueMingR.TerrariaHost.F5
         private RasterizerState clipped;
         private Texture2D roundCap;
         private readonly F5IconAtlas icons = new F5IconAtlas();
+        private readonly EntityLabels.StylePopupRenderer styleRenderer = new EntityLabels.StylePopupRenderer();
+        internal void DrawStylePopup(EntityLabels.StylePopup popup)
+        { styleRenderer.Draw(popup, Main.spriteBatch, font, background, pixel); }
         internal int SkinGeneration { get; private set; }
         internal object FontIdentity { get { return font; } }
+        internal EntityLabelControls EntityControls { get; set; }
         internal F5Size PopupMeasure(string text, float scale)
         { F5Size size = textMetrics.Measure(font, text); return new F5Size(size.Width * scale, size.Height * scale, size.OffsetX * scale, size.OffsetY * scale); }
         internal void DrawPopup(Hotkeys.HotkeyPopup popup)
@@ -145,10 +149,11 @@ namespace JueMingR.TerrariaHost.F5
                     else if (element.Kind == F5ElementKind.Hotkey) Keyboard(batch, rect);
                     else
                     {
-                        bool enabled = element.Command != F5Command.None && !biomeFailed;
-                        bool hovered = rect.Contains(state.PointerX, state.PointerY) && view.Contains(state.PointerX, state.PointerY);
+                        bool entity = EntityLabelControls.Target(element.Command).HasValue;
+                        bool enabled = entity ? EntityControls != null && EntityControls.Available(element.Command) : element.Command != F5Command.None && !biomeFailed;
+                        bool hovered = !state.PointerBlocked && rect.Contains(state.PointerX, state.PointerY) && view.Contains(state.PointerX, state.PointerY);
                         F5ControlRenderer.Button(batch, pixel, button, font, element, hovered, enabled,
-                            F5Layout.IsSelected(element, biomeEnabled, biomeFailed) ? (Color?)(biomeEnabled ? Color.LightGreen : Color.IndianRed) : null,
+                            entity ? EntityControls?.Selected(element.Command) : F5Layout.IsSelected(element, biomeEnabled, biomeFailed) ? (Color?)(biomeEnabled ? Color.LightGreen : Color.IndianRed) : null,
                             view.X, view.Y - state.Scroll);
                     }
                 }
@@ -176,16 +181,17 @@ namespace JueMingR.TerrariaHost.F5
 
         private void DrawHint(SpriteBatch batch, F5Interaction state, bool biomeFailed)
         {
-            if (!state.OwnsPointer) return;
+            if (!state.OwnsPointer || state.PointerBlocked) return;
             F5Element hover = state.HitButton(state.PointerX - state.X, state.PointerY - state.Y);
             if (hover == null) return;
             int index = F5Layout.HintIndex(hover, biomeFailed);
-            if (index < 0) return;
-            F5Size size = state.Layout.HintSize(index);
+            string hint = EntityControls?.Hint(hover.Command);
+            if (index < 0 && hint == null) return;
+            F5Size size = hint == null ? state.Layout.HintSize(index) : state.Layout.TextSize(hint, 0.65f);
             float x = Math.Max(state.X + 8, Math.Min(state.X + state.Layout.Window.Width - size.Width - 24, state.PointerX + 14));
             float y = Math.Max(state.Y + 8, Math.Min(state.Y + state.Layout.Window.Height - size.Height - 24, state.PointerY + 18));
             Panel(batch, new F5Rect(x, y, size.Width + 16, size.Height + 16), background, Color.White);
-            Text(batch, F5Layout.HintText(index), new Vector2(x + 8, y + 8), 0.65f, Color.White, size);
+            Text(batch, hint ?? F5Layout.HintText(index), new Vector2(x + 8, y + 8), 0.65f, Color.White, size);
         }
 
         private void DrawChrome(SpriteBatch batch, F5Interaction state)
@@ -200,7 +206,7 @@ namespace JueMingR.TerrariaHost.F5
             {
                 F5Rect nav = layout.Navigation(i).Offset(state.X, state.Y);
                 bool selected = state.Page == i;
-                bool hovered = nav.Contains(state.PointerX, state.PointerY);
+                bool hovered = !state.PointerBlocked && nav.Contains(state.PointerX, state.PointerY);
                 Panel(batch, nav, button, selected || hovered ? Color.White : new Color(220, 220, 220));
                 F5Size size = layout.NavigationSize(i);
                 Color foreground = selected ? Color.Gold : Color.White;

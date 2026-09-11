@@ -82,6 +82,7 @@ namespace JueMingR.TerrariaHost.Items
             // Preserve those items and stop automation; do not reinterpret the
             // partially completed scope as ordinary sell/trash candidates.
             if (!returned) { HoldInterrupted(origin); return; }
+            if (origin.Cancelled) return;
             try
             {
             bool completed = returned && (origin.WorldItem != null ? origin.WorldItem.stack < origin.Before :
@@ -99,7 +100,7 @@ namespace JueMingR.TerrariaHost.Items
         {
             try
             {
-                Player player = host.World.Player; if (!ReferenceEquals(player, origin.Player)) return;
+                Player player = host.World.SessionPlayer; if (!ReferenceEquals(player, origin.Player)) return;
                 ulong affected = 0;
                 for (int i = 0; i < 58; i++)
                 {
@@ -127,9 +128,12 @@ namespace JueMingR.TerrariaHost.Items
         { __state = default(ItemNearbyStorage.Receipt); try { __state = host.Storage.BeforeMessage(__instance, __0, __1); } catch { host.FailClosed(); } }
         private static void MessageAfter(ItemNearbyStorage.Receipt __state) { try { host.Storage.AfterMessage(__state); } catch { host.FailClosed(); } }
         private static void PlayerBoundary(Player __instance)
-        { if (ReferenceEquals(__instance, host.World.Player)) host.Runtime.InvalidateSession(); }
+        { if (ReferenceEquals(__instance, host.World.SessionPlayer)) host.DiscardUnsubmittedAcquisitions(); }
         private static void WorldBoundary() { host.Runtime.InvalidateSession(); }
         internal static void EndSession() { current = null; }
+        // Keep the causal scope until its normal finally/postfix balances depth;
+        // cancelling a source must not orphan a nested native operation.
+        internal static void CancelPendingAcquisition() { if (current != null) current.Cancelled = true; }
         internal sealed class Origin
         {
             internal readonly Player Player;
@@ -138,7 +142,7 @@ namespace JueMingR.TerrariaHost.Items
             internal readonly int Before;
             internal readonly HashSet<ItemIdentity> Gained = new HashSet<ItemIdentity>();
             internal readonly HashSet<ItemIdentity> Touched = new HashSet<ItemIdentity>();
-            internal bool Opened;
+            internal bool Opened, Cancelled;
             internal Origin(Player player, Item item, WorldItem worldItem) { Player = player; Item = item; WorldItem = worldItem; Before = item.stack; }
         }
         private readonly struct Gain

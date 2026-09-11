@@ -16,6 +16,7 @@ namespace Terraria
         private bool zoneDesert;
 
         public bool active;
+
         public bool mouseInterface, controlUseItem, controlUseTile;
 
         public bool ZoneDesert
@@ -211,10 +212,18 @@ namespace Terraria
                 bool deferGraphics = args.Length > 0 && args[args.Length - 1] == "--defer-graphics";
                 if (deferGraphics) Array.Resize(ref args, args.Length - 1);
                 if (args.Length == 1 && args[0] == "focus-input") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; HostInputChecks.Run(); return 0; }
+                if (args.Length == 1 && args[0] == "entity-observation") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; EntityObservationChecks.Run(); return 0; }
+                if (args.Length == 1 && args[0] == "entity-world") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; EntityWorldChecks.Run(); return 0; }
+                if (args.Length == 1 && args[0] == "entity-projection") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; EntityWorldChecks.Logical(); return 0; }
+                if (args.Length == 1 && args[0] == "entity-preferences") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; EntityPreferenceChecks.Run(); return 0; }
+                if (args.Length == 1 && args[0] == "entity-controls") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; EntityControlsChecks.Run(); return 0; }
+                if (args.Length == 1 && args[0] == "entity-style") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; EntityStyleInputChecks.Run(); return 0; }
+                if (args.Length == 3 && args[0] == "entity-visual") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; EntityVisualChecks.Run(args[1], args[2]); return 0; }
                 if (args.Length == 1 && args[0] == "hotkeys-popup") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; HotkeyPopupChecks.Run(); return 0; }
                 if (args.Length == 3 && args[0] == "hotkeys-visual") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; HotkeyVisualChecks.Run(args[1], args[2]); return 0; }
                 if (args.Length == 1 && args[0] == "items-host") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; ItemHostChecks.Run(); return 0; }
                 if (args.Length == 1 && args[0] == "items-safety") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; ItemHostChecks.Run(graphics: false); return 0; }
+                if (args.Length == 1 && args[0] == "items-death") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; ItemHostChecks.Run(graphics: false, only: "death"); return 0; }
                 if (args.Length == 1 && args[0] == "items-feedback") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; ItemHostChecks.Run(graphics: false, only: "feedback"); return 0; }
                 if (args.Length == 1 && args[0] == "items-layout") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; ItemHostChecks.Run(graphics: false, only: "layout"); return 0; }
                 if (args.Length == 3 && args[0] == "items-visual") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; ItemHostChecks.Run(args[1], args[2]); return 0; }
@@ -245,6 +254,7 @@ namespace Terraria
                      args[0] != "expect-handoff-biome-failure" &&
                      args[0] != "expect-items" && args[0] != "expect-items-layer-failure" &&
                      !args[0].StartsWith("expect-hotkeys-", StringComparison.Ordinal) &&
+                     !args[0].StartsWith("expect-entities-", StringComparison.Ordinal) &&
                      !args[0].StartsWith("expect-settings-", StringComparison.Ordinal) &&
                      args[0] != "expect-no-handoff" &&
                      args[0] != "expect-evidence-init-failure" &&
@@ -257,7 +267,8 @@ namespace Terraria
                 string mode = args[0];
                 bool settingsMode = mode.StartsWith("expect-settings-", StringComparison.Ordinal);
                 bool hotkeyMode = mode.StartsWith("expect-hotkeys-", StringComparison.Ordinal);
-                bool expectHandoff = mode == "expect-handoff" || mode == "expect-handoff-biome-failure" || mode == "expect-items" || mode == "expect-items-layer-failure" || mode == "expect-input" || settingsMode || hotkeyMode;
+                bool entityMode = mode.StartsWith("expect-entities-", StringComparison.Ordinal);
+                bool expectHandoff = mode == "expect-handoff" || mode == "expect-handoff-biome-failure" || mode == "expect-items" || mode == "expect-items-layer-failure" || mode == "expect-input" || settingsMode || hotkeyMode || entityMode;
                 string evidencePath = Path.GetFullPath(args[1]);
                 string packageId = args[2];
                 if (String.IsNullOrWhiteSpace(packageId))
@@ -274,6 +285,7 @@ namespace Terraria
 
                 if (settingsMode) SettingsHostChecks.PrepareUnrelatedWorkingDirectory();
                 if (hotkeyMode) HotkeyHostChecks.Prepare(mode);
+                if (entityMode) EntityHostChecks.Prepare(mode);
 
                 // Match WindowsLaunch.Main: install the embedded dependency resolver only
                 // after the executable entry point starts, then enter code that needs ReLogic.
@@ -298,6 +310,7 @@ namespace Terraria
                     evidenceAfterFirstUpdate = File.ReadAllBytes(evidencePath);
                     if (mode == "expect-input") { F5ConsumerChecks.RunInputOnly(main); AssertPatchContract(typeof(global::Terraria.Main)); return 0; }
                     if (hotkeyMode) { HotkeyHostChecks.Run(main, mode); return 0; }
+                    if (entityMode) { EntityHostChecks.Run(main, mode); return 0; }
                     if (mode == "expect-items" || mode == "expect-items-layer-failure") { ItemLoadedHostChecks.Run(main, mode == "expect-items-layer-failure"); return 0; }
                     if (settingsMode) SettingsHostChecks.Run(main, mode);
                     else

@@ -35,6 +35,9 @@ namespace JueMingR.ArchitectureTests
         {
             var expected = new HashSet<string>(StringComparer.Ordinal)
             {
+                "JueMingR.Platform.Entities.EntityObservationDemand", "JueMingR.Platform.Entities.EntitySegmentRole",
+                "JueMingR.Platform.Entities.EntityFact", "JueMingR.Platform.Entities.EntityObservation",
+                "JueMingR.Platform.Entities.IEntityObservationSource",
                 "JueMingR.Platform.Biomes.BiomeFlags",
                 "JueMingR.Platform.Biomes.BiomeObservation",
                 "JueMingR.Platform.Biomes.IBiomeObservationSource",

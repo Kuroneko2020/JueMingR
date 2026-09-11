@@ -194,7 +194,8 @@ namespace Terraria
                 Check((bool)Call(owner, "Stop", 3000), "worker stopped before policy-only projection");
                 object snapshot = Get(owner, "Snapshot");
                 object projected = Activator.CreateInstance(snapshot.GetType(), Instance, null, new[] {
-                    Get(snapshot, "Value"), true, Get(snapshot, "Revision"), Enum.Parse(Get(snapshot, "Status").GetType(), status) }, null);
+                    Get(snapshot, "Value"), true, Get(snapshot, "Revision"), Enum.Parse(Get(snapshot, "Status").GetType(), status),
+                    Get(snapshot, "CommitUnconfirmed"), Get(snapshot, "IsProtected"), Get(snapshot, "Error") }, null);
                 owner.GetType().GetField("snapshot", Instance).SetValue(owner, projected);
             }
             public void Dispose()

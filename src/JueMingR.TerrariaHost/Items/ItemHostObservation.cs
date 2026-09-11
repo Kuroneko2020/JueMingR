@@ -34,12 +34,16 @@ namespace JueMingR.TerrariaHost.Items
         internal bool CanStartActions { get { return canStartActions(); } }
         public long SessionGeneration { get { return generation(); } }
         internal Player Player
+        { get { Player current = SessionPlayer; return current != null && !current.dead ? current : null; } }
+        // Receipt/resource identity survives death. New operations must continue
+        // to use Player above; this projection grants no action permission.
+        internal Player SessionPlayer
         {
             get
             {
                 Player current = Main.LocalPlayer;
                 return !Main.gameMenu && !Main.dedServ && (Main.netMode == 0 || Main.netMode == 1) && current != null &&
-                    current.active && !current.dead && ReferenceEquals(current, sessionPlayer) && current.inventory != null && current.inventory.Length >= 58 ? current : null;
+                    current.active && ReferenceEquals(current, sessionPlayer) && current.inventory != null && current.inventory.Length >= 58 ? current : null;
             }
         }
         internal void BeginSession()
@@ -48,6 +52,7 @@ namespace JueMingR.TerrariaHost.Items
         private void ClearManual() { ManualSlot = -1; ManualItem = null; ManualMaterials.Clear(); }
         internal bool HasManualOperation { get { return ManualSlot >= 0 || ManualMaterials.Count != 0; } }
         internal void InvalidateObservation() { cached = null; }
+        internal void DiscardUnsubmittedObservation() { cached = null; previous = null; ClearManual(); }
         internal bool Busy
         { get { return CausalDepth != 0 || AutomaticOperation || Main.LocalPlayerHasPendingInventoryActions(); } }
 
@@ -150,7 +155,7 @@ namespace JueMingR.TerrariaHost.Items
         private int mode;
         public bool IsSessionActive
         { get { Player current = Main.LocalPlayer; return !Main.gameMenu && !Main.dedServ && (Main.netMode == 0 || Main.netMode == 1) &&
-                    current != null && current.active && !current.dead; } }
+                    current != null && current.active && Main.ActiveWorldFileData != null; } }
         public object SessionIdentity
         {
             get

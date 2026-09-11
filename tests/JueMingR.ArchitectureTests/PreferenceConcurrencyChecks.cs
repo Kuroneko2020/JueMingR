@@ -16,6 +16,28 @@ namespace JueMingR.ArchitectureTests
             Run(failures, "old save completion cannot erase new choice", LateWrite);
             Run(failures, "bounded stop retains native operation ownership", StopDuringWrite);
             Run(failures, "fault never changes desired setting", FeatureFault);
+            Run(failures, "unconfirmed commit remains visible across later memory choices", UnconfirmedWrite);
+        }
+
+        private static void UnconfirmedWrite()
+        {
+            using (var setting = new PreferenceDocument<bool>(new UnconfirmedStorage(), new BiomePreferenceCodec(), true, 0))
+            {
+                PreferenceChecks.Loaded(setting); setting.Set(false);
+                Require(SpinWait.SpinUntil(() => setting.Snapshot.Status == PreferenceStatus.IoFailure, 3000), "write failure published");
+                Require(setting.Snapshot.CommitUnconfirmed && setting.Snapshot.IsProtected && setting.Snapshot.Error == "post-replace-read",
+                    "failure metadata must reach the UI; original file cannot be promised unchanged");
+                setting.Set(true);
+                Require(setting.Snapshot.Value && setting.Snapshot.CommitUnconfirmed && setting.Snapshot.IsProtected && setting.Snapshot.Error == "post-replace-read",
+                    "new in-memory choice cannot erase unresolved storage outcome");
+            }
+        }
+        private sealed class UnconfirmedStorage : IPreferenceStorage
+        {
+            public PreferenceReadResult Read() { return new PreferenceReadResult(PreferenceReadStatus.Missing, null, null, null); }
+            public PreferenceWriteResult Write(string identity, byte[] bytes)
+            { return new PreferenceWriteResult(PreferenceWriteStatus.IoFailure, null, "post-replace-read", true, true); }
+            public void Dispose() { }
         }
 
         private static void LateRead()

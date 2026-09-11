@@ -18,6 +18,10 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Features.Items.ItemAutomationSettings", "JueMingR.Features.Items.ItemAutomationCodec",
                 "JueMingR.Features.Items.ItemActionKind", "JueMingR.Features.Items.ItemListKind",
                 "JueMingR.Features.Items.ItemAutomationFeature",
+                "JueMingR.Features.EntityLabels.EntityLabelKind", "JueMingR.Features.EntityLabels.NpcLabelMode",
+                "JueMingR.Features.EntityLabels.EntityLabelStyle", "JueMingR.Features.EntityLabels.EntityLabelSettings",
+                "JueMingR.Features.EntityLabels.EntityLabelCodec",
+                "JueMingR.Features.EntityLabels.EntityLabelFeature", "JueMingR.Features.EntityLabels.EntityLabel",
                 "JueMingR.Features.Notes.Note", "JueMingR.Features.Notes.NoteReading", "JueMingR.Features.Notes.Notebook",
                 "JueMingR.Features.Notes.NotebookCodec", "JueMingR.Features.Notes.TextElements",
                 "JueMingR.Features.Notes.NoteEditor", "JueMingR.Features.Notes.NotesTextLayout",
@@ -27,7 +31,7 @@ namespace JueMingR.ArchitectureTests
             };
             if (!expected.SetEquals(features.GetExportedTypes().Select(type => type.FullName)))
             {
-                failures.Add("Features must export exactly the registered biome, notes and item contracts.");
+                failures.Add("Features must export exactly the registered feature contracts.");
             }
 
             string[] forbiddenAssemblyPrefixes =

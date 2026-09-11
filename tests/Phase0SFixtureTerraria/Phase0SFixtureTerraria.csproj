@@ -23,6 +23,8 @@
     <Compile Include="..\Notes\*.cs" />
     <Compile Include="..\Items\*.cs" />
     <Compile Include="..\Hotkeys\*.cs" />
+    <Compile Include="..\EntityLabels\*.cs" />
+    <Compile Include="..\..\src\JueMingR.TerrariaHost\EntityLabels\*.cs" Link="Production\EntityLabels\%(Filename)%(Extension)" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\Hotkeys\HotkeyActionIds.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\Hotkeys\HotkeyPopup.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\Hotkeys\HotkeyPopupLayout.cs" />
@@ -40,6 +42,7 @@
     <Compile Include="..\Phase0V\SettingsHostChecks.cs" />
     <Compile Include="..\Phase0V\PreferenceFeedbackChecks.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\F5RowLayout.cs" Link="Production\F5RowLayout.cs" />
+    <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\EntityLabelControls.cs" Link="Production\EntityLabelControls.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\F5ControlRenderer.cs" Link="Production\F5ControlRenderer.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\F5Layout.cs" Link="Production\F5Layout.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\F5Interaction.cs" Link="Production\F5Interaction.cs" />

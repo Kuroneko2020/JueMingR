@@ -55,13 +55,13 @@ namespace JueMingR.TerrariaHost.Items
             harmony.Patch(original, prefix == null ? null : new HarmonyMethod(typeof(ItemPendingGuards).GetMethod(prefix, BindingFlags.Static | BindingFlags.NonPublic)),
                 null, transpiler == null ? null : new HarmonyMethod(typeof(ItemGuardTranspilers).GetMethod(transpiler, BindingFlags.Static | BindingFlags.NonPublic)));
         }
-        private static bool Active { get { return host != null && host.World.Player != null && !host.World.AutomaticOperation; } }
+        private static bool Active { get { return host != null && host.World.SessionPlayer != null && !host.World.AutomaticOperation; } }
         private static bool Protected(Item[] array, int slot)
-        { return host != null && host.Ownership.IsProtected(slot) && Active && ReferenceEquals(array, host.World.Player.inventory); }
+        { return host != null && host.Ownership.IsProtected(slot) && Active && ReferenceEquals(array, host.World.SessionPlayer.inventory); }
         private static bool Protected(Item item)
         {
             if (host == null || host.Ownership.ProtectedSlots == 0 || item == null || !Active) return false;
-            Item[] inv = host.World.Player.inventory;
+            Item[] inv = host.World.SessionPlayer.inventory;
             for (int i = 0; i < 58; i++) if (ReferenceEquals(item, inv[i]) && host.Ownership.IsProtected(i)) return true;
             return false;
         }
@@ -76,7 +76,7 @@ namespace JueMingR.TerrariaHost.Items
         private static bool Gamepad(Item[] __0, int __1, int __2, ref string __result)
         { if (ManualSlot(__0, __1, __2)) return true; __result = string.Empty; return false; }
         private static bool TrashRange(Item[] array, int slot)
-        { return Active && host.Ownership.DiscardBlocked && slot >= 0 && slot < array.Length && ReferenceEquals(array[slot], host.World.Player.trashItem); }
+        { return Active && host.Ownership.DiscardBlocked && slot >= 0 && slot < array.Length && ReferenceEquals(array[slot], host.World.SessionPlayer.trashItem); }
         private static bool OverrideClick(Item[] __0, int __1, int __2, ref bool __result)
         {
             bool blocked = !ManualSlot(__0, __1, __2) || Active &&
@@ -86,8 +86,8 @@ namespace JueMingR.TerrariaHost.Items
         }
         private static void Remember(Item[] array, int slot)
         {
-            if (host == null || !host.Feature.Enabled || !Active) return;
-            if (!ReferenceEquals(array, host.World.Player.inventory))
+            if (host == null || host.World.Player == null || !host.Feature.Enabled || !Active) return;
+            if (!ReferenceEquals(array, host.World.SessionPlayer.inventory))
             { if (Main.mouseLeft || Main.mouseRight) host.Storage.InvalidateCapacity(); return; }
             if (slot < 0 || slot >= 58) return;
             // Physical release clears this in observation; vanilla consumes its
@@ -97,14 +97,14 @@ namespace JueMingR.TerrariaHost.Items
         private static bool Fill(Player __instance, int __3, ref bool __result)
         { if (!Protected(__instance.inventory, __3)) return true; __result = false; return false; }
         private static void Ammo(Item[] __1, ref int[] __2)
-        { if (Active && host.Ownership.ProtectedSlots != 0 && ReferenceEquals(__1, host.World.Player.inventory)) __2 = __2.Where(i => !host.Ownership.IsProtected(i)).ToArray(); }
+        { if (Active && host.Ownership.ProtectedSlots != 0 && ReferenceEquals(__1, host.World.SessionPlayer.inventory)) __2 = __2.Where(i => !host.Ownership.IsProtected(i)).ToArray(); }
         private static bool StartUse(Player __instance, Item __0, ref bool __result)
-        { if (!ReferenceEquals(__instance, host?.World.Player) || !Protected(__0) && !PendingDependency(__instance, __0)) return true; __result = false; return false; }
+        { if (!ReferenceEquals(__instance, host?.World.SessionPlayer) || !Protected(__0) && !PendingDependency(__instance, __0)) return true; __result = false; return false; }
         private static bool Drop(Player __instance, int __0)
         { return !Protected(__instance.inventory, __0); }
         private static bool QuickStack(Player __0, MethodBase __originalMethod)
         {
-            if (!Active || !ReferenceEquals(__0, host.World.Player)) return true;
+            if (!Active || !ReferenceEquals(__0, host.World.SessionPlayer)) return true;
             // Native storage shares scratch/network state even for disjoint
             // slots. Other uncertain actions protect only intersecting writes.
             if (host.Ownership.StoreBlocked) return false;
@@ -125,7 +125,7 @@ namespace JueMingR.TerrariaHost.Items
         private static bool Sort() { return !Active || host.Ownership.ProtectedSlots == 0; }
         private static bool Buy(Player __instance, int __1, ref bool __result)
         {
-            if (!Active || !ReferenceEquals(__instance, host.World.Player) || host.Ownership.ProtectedSlots == 0) return true;
+            if (!Active || !ReferenceEquals(__instance, host.World.SessionPlayer) || host.Ownership.ProtectedSlots == 0) return true;
             // Custom currency backs up every source inventory. Normal currency
             // also writes change into empty slots, including an early Air reply
             // whose sibling source slots have not completed the batch yet.
@@ -140,12 +140,12 @@ namespace JueMingR.TerrariaHost.Items
         {
             // Mouse-held shop sales bypass the inventory's cursor override.
             // Every native sale owns the same 58-slot backup/coin footprint.
-            if (!Active || !ReferenceEquals(__instance, host.World.Player) || !host.Ownership.SaleBlocked) return true;
+            if (!Active || !ReferenceEquals(__instance, host.World.SessionPlayer) || !host.Ownership.SaleBlocked) return true;
             __result = false; return false;
         }
         private static bool PlaceTiles(Player __instance)
         {
-            if (!Active || !ReferenceEquals(__instance, host.World.Player) || host.Ownership.ProtectedSlots == 0) return true;
+            if (!Active || !ReferenceEquals(__instance, host.World.SessionPlayer) || host.Ownership.ProtectedSlots == 0) return true;
             Item held = __instance.inventory[__instance.selectedItem];
             if (Protected(held) || PendingType(held.tileWand)) return false;
             FlexibleTileWand flexible = held.GetFlexibleTileWand();
@@ -162,17 +162,17 @@ namespace JueMingR.TerrariaHost.Items
             }
         }
         private static bool Wand(Player __instance, ref bool __result)
-        { if (!Active || !ReferenceEquals(__instance, host.World.Player) || !PendingType(__instance.inventory[__instance.selectedItem].tileWand)) return true; __result = false; return false; }
+        { if (!Active || !ReferenceEquals(__instance, host.World.SessionPlayer) || !PendingType(__instance.inventory[__instance.selectedItem].tileWand)) return true; __result = false; return false; }
         internal static int FindAvailableItem(Player player, int type)
         { int slot = player.FindItem(type); return slot >= 0 && Protected(player.inventory, slot) ? -1 : slot; }
         private static bool Wiring(Player __instance, Item __0)
-        { return !ReferenceEquals(__instance, host?.World.Player) || !PendingDependency(__instance, __0); }
+        { return !ReferenceEquals(__instance, host?.World.SessionPlayer) || !PendingDependency(__instance, __0); }
         private static bool PendingType(int type)
         {
             if (!Active || type <= 0 || host.Ownership.ProtectedSlots == 0) return false;
             // Match the first original main-inventory consumer, not every stack
             // of this type. A protected later stack does not block an earlier one.
-            Item[] inv = host.World.Player.inventory;
+            Item[] inv = host.World.SessionPlayer.inventory;
             for (int i = 0; i < 58; i++) if (inv[i].type == type && inv[i].stack > 0) return host.Ownership.IsProtected(i);
             return false;
         }

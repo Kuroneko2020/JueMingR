@@ -51,6 +51,10 @@ namespace JueMingR.Features.Items
         { session = source.SessionGeneration; active = true; acquisitions.Clear(); ResetAttempts(); hasTick = false; immediate = true; }
         public void OnSessionEnded()
         { active = false; acquisitions.Clear(); ResetAttempts(); }
+        // Death retires opportunities that have not been submitted. The shared
+        // world Session and operation-port receipt ownership remain untouched.
+        public void DiscardPendingAcquisitions()
+        { acquisitions.Clear(); ResetAttempts(); hasTick = false; immediate = true; }
         public void FailClosed() { HasFailed = true; active = false; acquisitions.Clear(); }
 
         // Only the Host's completed causal scope calls this. Positive inventory

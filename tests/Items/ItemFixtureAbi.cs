@@ -34,7 +34,7 @@ namespace Terraria
     public sealed class WorldItem
     { public Item inner { get; set; } public int stack { get { return inner.stack; } } }
     public struct GetItemSettings { }
-    public sealed class NPC { public bool active = true, friendly = true; }
+    public sealed partial class NPC : Entity { public bool active = true, friendly = true; }
     public sealed class Anchor { public bool Busy; public bool IsInValidUseTileEntity() { return Busy; } }
     public class Projectile
     { public int type, owner; public bool active, bobber; public readonly float[] localAI = new float[3]; }
@@ -73,7 +73,7 @@ namespace Terraria
     public static class Lang { public static string GetItemNameValue(int type) { return "测试物品 " + type; } }
     public static class Netplay { public static RemoteServer Connection = new RemoteServer(); }
     public sealed class RemoteServer { public Net.Sockets.ISocket Socket = new Net.Sockets.FixtureSocket(); }
-    public class Entity { public int whoAmI; public Vector2 position; public Vector2 Center { get; set; } }
+    public partial class Entity { public int whoAmI; public Vector2 position; public Vector2 Center { get; set; } }
     public static class WorldGen
     { [MethodImpl(MethodImplOptions.NoInlining)] public static void SaveAndQuit(Action callback) { callback?.Invoke(); } }
     public sealed partial class Player : Entity

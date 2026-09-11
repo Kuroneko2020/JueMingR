@@ -32,6 +32,8 @@ namespace JueMingR.ArchitectureTests
                 Phase0TArchitectureChecks.Check(failures);
                 PreferenceChecks.Check(failures);
                 PreferenceConcurrencyChecks.Check(failures);
+                EntityLabelSettingsChecks.Check(failures);
+                EntityLabelRulesChecks.Check(failures);
                 PreferenceStorageChecks.Check(failures);
                 ItemAutomationSettingsChecks.Check(failures);
                 ItemAutomationChecks.Check(failures);

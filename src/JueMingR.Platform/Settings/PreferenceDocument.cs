@@ -38,7 +38,8 @@ namespace JueMingR.Platform.Settings
                 // means a delayed read can never undo a first user selection.
                 if (stopping || !snapshot.IsLoaded || EqualityComparer<T>.Default.Equals(snapshot.Value, value)) return false;
                 snapshot = new PreferenceSnapshot<T>(value, true, snapshot.Revision + 1,
-                    writable ? PreferenceStatus.Pending : snapshot.Status);
+                    writable ? PreferenceStatus.Pending : snapshot.Status,
+                    snapshot.CommitUnconfirmed, snapshot.IsProtected, snapshot.Error);
                 if (writable)
                 {
                     pending = true;
@@ -57,7 +58,7 @@ namespace JueMingR.Platform.Settings
                 // The Host may stop waiting after its startup bound. The worker
                 // still owns its handles until it exits; its late bytes are inert.
                 loadAbandoned = true;
-                snapshot = new PreferenceSnapshot<T>(snapshot.Value, true, 0, PreferenceStatus.IoFailure);
+                snapshot = new PreferenceSnapshot<T>(snapshot.Value, true, 0, PreferenceStatus.IoFailure, false, true, "load-timeout");
             }
         }
 
@@ -98,7 +99,7 @@ namespace JueMingR.Platform.Settings
                 {
                     if (loadAbandoned || cancelled) return;
                     writable = status == PreferenceStatus.Missing || status == PreferenceStatus.Saved;
-                    snapshot = new PreferenceSnapshot<T>(initial, true, 0, status);
+                    snapshot = new PreferenceSnapshot<T>(initial, true, 0, status, false, !writable, read.Error);
                 }
                 string identity = read.Identity;
                 while (true)
@@ -134,7 +135,8 @@ namespace JueMingR.Platform.Settings
                         else
                         {
                             writable = false; pending = false;
-                            snapshot = new PreferenceSnapshot<T>(snapshot.Value, true, snapshot.Revision, WriteStatus(result.Status));
+                            snapshot = new PreferenceSnapshot<T>(snapshot.Value, true, snapshot.Revision, WriteStatus(result.Status),
+                                result.CommitUnconfirmed, result.IsProtected, result.Error);
                         }
                     }
                 }
@@ -145,7 +147,8 @@ namespace JueMingR.Platform.Settings
                 {
                     writable = false; pending = false;
                     if (!loadAbandoned)
-                        snapshot = new PreferenceSnapshot<T>(snapshot.Value, true, snapshot.Revision, PreferenceStatus.IoFailure);
+                        snapshot = new PreferenceSnapshot<T>(snapshot.Value, true, snapshot.Revision, PreferenceStatus.IoFailure,
+                            snapshot.CommitUnconfirmed, true, snapshot.Error ?? "preference-worker-failed");
                 }
             }
             finally { storage.Dispose(); }

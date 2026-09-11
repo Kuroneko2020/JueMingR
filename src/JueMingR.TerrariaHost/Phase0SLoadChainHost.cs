@@ -208,6 +208,7 @@ namespace JueMingR.TerrariaHost
         private static int handoffGate;
         private static int biomeFeatureFailed;
         private static bool f5LayersReady;
+        private static bool entityLayerReady;
         private static PostfixContext postfixContext;
 
         private const string BiomeLayerName = "JueMingR: Biome Display";
@@ -523,6 +524,7 @@ namespace JueMingR.TerrariaHost
                     try { EnsureBiomeLayerForHandoff(____gameInterfaceLayers); }
                     catch (Exception exception) { DisableBiomeFeature("BIOME_LAYER", exception); }
                     EnsureF5Layers(____gameInterfaceLayers);
+                    EnsureEntityLayer(____gameInterfaceLayers);
                     context.InitializeRuntime(Volatile.Read(ref biomeFeatureFailed) == 0);
                     EvidenceWriter.AppendEvent(
                         context.EvidencePath,
@@ -572,6 +574,31 @@ namespace JueMingR.TerrariaHost
                 DisableBiomeFeature("BIOME_LAYER", exception);
             }
             EnsureF5Layers(____gameInterfaceLayers);
+            EnsureEntityLayer(____gameInterfaceLayers);
+        }
+
+        private static void EnsureEntityLayer(List<GameInterfaceLayer> layers)
+        {
+            var context = postfixContext;
+            if (context == null || !context.PackageId.StartsWith("entity-labels-", StringComparison.Ordinal)) return;
+            try
+            {
+                // Capture's early return precedes this Game-scale layer. Normal
+                // menus and F5 follow it; neither UI scale nor drawToScreen is a
+                // world-label visibility predicate. A missing anchor stays local.
+                if (layers == null) throw new InvalidOperationException("Missing interface layers.");
+                InsertF5Layer(layers, "JueMingR: Entity Labels", "Vanilla: Ingame Options", DrawEntityLabels, InterfaceScaleType.Game);
+                entityLayerReady = true;
+            }
+            catch { entityLayerReady = false; }
+            if (context.Labels != null) context.Labels.LayersReady = entityLayerReady;
+        }
+
+        private static bool DrawEntityLabels()
+        {
+            // Returning false would stop all later native interface layers.
+            try { postfixContext?.Labels?.World.Draw(); } catch { postfixContext?.Labels?.FailClosed(); }
+            return true;
         }
 
         private static void EnsureF5Layers(List<GameInterfaceLayer> layers)
@@ -593,7 +620,7 @@ namespace JueMingR.TerrariaHost
             }
         }
 
-        private static void InsertF5Layer(List<GameInterfaceLayer> layers, string name, string anchor, GameInterfaceDrawMethod draw)
+        private static void InsertF5Layer(List<GameInterfaceLayer> layers, string name, string anchor, GameInterfaceDrawMethod draw, InterfaceScaleType scale = InterfaceScaleType.UI)
         {
             int anchorIndex = -1, ownIndex = -1, anchors = 0, own = 0;
             for (int i = 0; i < layers.Count; i++)
@@ -605,7 +632,7 @@ namespace JueMingR.TerrariaHost
             // Names alone are insufficient: pointer gates depend on these exact neighboring layers.
             if (anchors != 1 || own > 1 || (own == 1 && ownIndex + 1 != anchorIndex))
                 throw new InvalidOperationException("F5 interface layer anchor is unavailable or ambiguous.");
-            if (own == 0) layers.Insert(anchorIndex, new LegacyGameInterfaceLayer(name, draw, InterfaceScaleType.UI));
+            if (own == 0) layers.Insert(anchorIndex, new LegacyGameInterfaceLayer(name, draw, scale));
         }
 
         private static bool F5PointerBegin() { return postfixContext == null || postfixContext.Shell == null || postfixContext.Shell.BeginPointerLayer(); }
@@ -792,6 +819,7 @@ namespace JueMingR.TerrariaHost
             }
 
             internal F5Shell Shell { get; private set; }
+            internal EntityLabels.HostEntityLabels Labels { get; private set; }
 
             internal void RecordBiomeFailure(string stage, Exception exception)
             {
@@ -823,14 +851,16 @@ namespace JueMingR.TerrariaHost
                 }
 
                 preferences = new HostPreferences(gameDirectory);
-                bool hotkeyPackage = PackageId.StartsWith("unified-hotkeys-", StringComparison.Ordinal);
+                bool entityPackage = PackageId.StartsWith("entity-labels-", StringComparison.Ordinal);
+                bool hotkeyPackage = entityPackage || PackageId.StartsWith("unified-hotkeys-", StringComparison.Ordinal);
                 bool itemPackage = hotkeyPackage || PackageId.StartsWith("item-automation-", StringComparison.Ordinal);
                 runtime = itemPackage ? Phase0TBiomeRuntime.Create(enabled, preferences.BiomeLoaded && preferences.BiomeEnabled, new Items.ItemSessionProbe()) :
                     Phase0TBiomeRuntime.Create(enabled, preferences.BiomeLoaded && preferences.BiomeEnabled);
                 if (itemPackage) { items = new Items.HostItems(gameDirectory, runtime.SharedRuntime, () => Input.CanStartActions); runtime.SharedRuntime.AddFeature(items); }
+                if (entityPackage) { Labels = new EntityLabels.HostEntityLabels(gameDirectory, runtime.SharedRuntime) { LayersReady = entityLayerReady }; runtime.SharedRuntime.AddFeature(Labels); }
                 notes = new Notes.HostNotes(gameDirectory);
-                var hotkeys = hotkeyPackage ? new Hotkeys.HostHotkeys(gameDirectory, runtime, preferences, items) : null;
-                Shell = new F5Shell(runtime, preferences, notes, items, Input, hotkeys) { LayersReady = f5LayersReady };
+                var hotkeys = hotkeyPackage ? new Hotkeys.HostHotkeys(gameDirectory, runtime, preferences, items, Labels) : null;
+                Shell = new F5Shell(runtime, preferences, notes, items, Input, hotkeys, Labels) { LayersReady = f5LayersReady };
             }
 
             internal void UpdateRuntime()
@@ -844,6 +874,7 @@ namespace JueMingR.TerrariaHost
                 preferences.Update();
                 notes.Update();
                 items?.PollPreferences();
+                Labels?.PollPreferences();
                 current.SetFeatureEnabled(preferences.BiomeLoaded && preferences.BiomeEnabled);
                 current.Update(updateTick);
                 updateTick = unchecked(updateTick + 1);
@@ -852,6 +883,7 @@ namespace JueMingR.TerrariaHost
             internal void FailRuntimeClosed()
             {
                 items?.FailClosed();
+                Labels?.FailClosed();
                 Phase0TBiomeRuntime current = runtime;
                 if (current != null)
                 {

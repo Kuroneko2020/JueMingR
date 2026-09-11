@@ -58,6 +58,14 @@ function Get-Phase0SFixtureExecutable {
     if ($LASTEXITCODE -ne 0) { throw 'The production item host/UI fixture checks failed.' }
     foreach ($line in $itemsOutput) { Write-Host $line }
     if ($script:DeferGraphics) { Write-Host 'DEFERRED: Items real XNA drawing only; production geometry/input and item transaction/source/receipt/config checks above ran.' }
+    $entityModes = @('entity-observation', 'entity-projection', 'entity-preferences', 'entity-controls', 'entity-style')
+    if (-not $script:DeferGraphics) { $entityModes += 'entity-world' }
+    foreach ($mode in $entityModes) {
+        $entityOutput = @(& $fixtureExe $mode)
+        foreach ($line in $entityOutput) { Write-Host $line }
+        if ($LASTEXITCODE -ne 0) { throw ('Production entity check failed: ' + $mode) }
+    }
+    if ($script:DeferGraphics) { Write-Host 'DEFERRED: entity actual XNA world/style drawing and previews; adapter, commands, input, projection and persistence ran.' }
     $abiOutput = @(& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $RepositoryRoot 'tests\Items\Verify-ItemHostAbi.ps1') -RepositoryRoot $RepositoryRoot)
     if ($LASTEXITCODE -ne 0) { throw 'The fixed item host metadata/IL check failed.' }
     foreach ($line in $abiOutput) { Write-Host $line }
@@ -544,6 +552,13 @@ function Invoke-Phase0SLoadChainFixtureTests {
 
     $root = New-Phase0STestRoot
     try {
+        $entities = New-Phase0SFixtureRunDirectory -Root $root -Name 'entity-runtime' -FixtureExe $fixtureExe -ProductionOutputs $productionOutputs -HarmonyPath $harmonyPath -PackageId ('entity-labels-' + $sourceCommit) -SourceCommit $sourceCommit
+        foreach ($mode in @('expect-entities-runtime', 'expect-entities-reload')) {
+            $result = Invoke-Phase0SFixtureExe -FixtureExe $entities.exePath -Mode $mode -EvidencePath $entities.evidencePath -PackageId $entities.packageId
+            foreach ($line in $result.output) { Write-Host $line }
+            if ($result.exitCode -ne 0 -and [IO.File]::Exists($entities.evidencePath)) { Get-Content -LiteralPath $entities.evidencePath | ForEach-Object { Write-Host $_ } }
+            Assert-Phase0SCondition -Condition ($result.exitCode -eq 0) -Message ('Production entity Host, seven actions and lifecycle: ' + $mode)
+        }
         $hotkeys = New-Phase0SFixtureRunDirectory -Root $root -Name 'hotkeys-runtime' -FixtureExe $fixtureExe -ProductionOutputs $productionOutputs -HarmonyPath $harmonyPath -PackageId ('unified-hotkeys-' + $sourceCommit) -SourceCommit $sourceCommit
         foreach ($mode in @('expect-hotkeys-runtime', 'expect-hotkeys-reload')) {
             $result = Invoke-Phase0SFixtureExe -FixtureExe $hotkeys.exePath -Mode $mode -EvidencePath $hotkeys.evidencePath -PackageId $hotkeys.packageId
