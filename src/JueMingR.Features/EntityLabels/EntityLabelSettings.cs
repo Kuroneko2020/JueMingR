@@ -27,7 +27,7 @@ namespace JueMingR.Features.EntityLabels
     public sealed class EntityLabelSettings : IEquatable<EntityLabelSettings>
     {
         public static readonly EntityLabelSettings Default = new EntityLabelSettings(false, false, NpcLabelMode.Off, NpcLabelMode.Name,
-            new EntityLabelStyle(0xCD5C5C, 70), new EntityLabelStyle(0x5DADEC, 70), new EntityLabelStyle(0x90EE90, 70));
+            new EntityLabelStyle(0xCD5C5C, 90), new EntityLabelStyle(0x5DADEC, 90), new EntityLabelStyle(0x90EE90, 90));
         public EntityLabelSettings(bool enemyEnabled, bool critterEnabled, NpcLabelMode npcMode, NpcLabelMode lastNpcMode,
             EntityLabelStyle enemy, EntityLabelStyle critter, EntityLabelStyle npc)
         {

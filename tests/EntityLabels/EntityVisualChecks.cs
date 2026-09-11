@@ -62,8 +62,8 @@ namespace Terraria
                             if (!popup.Visible || popup.Layout.Panel.Right > width / scale || popup.Layout.Panel.Bottom > height / scale) throw new Exception("style panel out of viewport");
                             foreach (var text in popup.Layout.Text) if (text.Rect.Right > popup.Layout.Panel.Width - 4 || text.Rect.Bottom > popup.Layout.Panel.Height) throw new Exception("style text clipped");
                             var labels = new List<EntityLabel> {
-                                new EntityLabel { SourceSlot = 0, Name = "长名称 · 史莱姆", Health = "125/150", X = 180, Y = 90, Height = 32, Rgb = 0xCD5C5C, NameSize = scene == 3 ? 180 : 70, HealthSize = scene == 3 ? 167 : 57 },
-                                new EntityLabel { SourceSlot = 1, Name = "金色动物", X = width - 170, Y = height - 70, Rgb = 0xFFD700, NameSize = scene == 3 ? 50 : 70, HealthSize = 50 }
+                                new EntityLabel { SourceSlot = 0, Name = "长名称 · 史莱姆", Health = "125/150", X = 180, Y = 90, Height = 32, Rgb = 0xCD5C5C, NameSize = scene == 3 ? 180 : 90, HealthSize = scene == 3 ? 167 : 77 },
+                                new EntityLabel { SourceSlot = 1, Name = "金色动物", X = width - 170, Y = height - 70, Rgb = 0xFFD700, NameSize = scene == 3 ? 50 : 90, HealthSize = 50 }
                             };
                             var world = new EntityWorldLayer(labels, () => true);
                             using (var target = new RenderTarget2D(graphics.Device, width, height))

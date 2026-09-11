@@ -20,7 +20,7 @@ namespace JueMingR.ArchitectureTests
                 Require(defaults.Toggle(EntityLabelKind.Npc).NpcMode == NpcLabelMode.Name, "first toggle has meaningful name mode");
                 var changed = typed.WithStyle(EntityLabelKind.Enemy, new EntityLabelStyle(0x123456, 180));
                 Require(changed.Style(EntityLabelKind.Enemy).HealthSize == 167, "large name must not accidentally make health 1.80");
-                Require(defaults.Style(EntityLabelKind.Enemy).HealthSize == 57, "default health spacing uses 0.57");
+                Require(defaults.Style(EntityLabelKind.Enemy).HealthSize == 77, "default health size uses 0.77");
                 Require(new EntityLabelStyle(0, 50).HealthSize == 50, "health lower bound");
                 var size = defaults.Style(EntityLabelKind.Critter);
                 for (int i = 0; i < 30; i++) size = size.StepSize(1);
