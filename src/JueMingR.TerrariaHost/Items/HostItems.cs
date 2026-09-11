@@ -23,6 +23,7 @@ namespace JueMingR.TerrariaHost.Items
         private readonly Stopwatch startup = Stopwatch.StartNew();
         private long appliedRevision = -1;
         private bool stopping;
+        private bool actionPlayerAvailable;
         private PreferenceStatus? reported;
         private string reportedCapability, reportedSource;
         internal readonly SingleFeatureRuntime Runtime;
@@ -104,12 +105,18 @@ namespace JueMingR.TerrariaHost.Items
         { get { return !stopping && Available && Feature.Enabled && Preferences.IsLoaded &&
                     Runtime.IsSessionActive && Thread.CurrentThread.ManagedThreadId == ThreadId && World.Player != null && !World.AutomaticOperation; } }
         public void OnSessionStarted()
-        { SourceMessage = null; Ownership.SetSession(Runtime.Generation); World.BeginSession(); Feature.OnSessionStarted(); }
+        { SourceMessage = null; Ownership.SetSession(Runtime.Generation); World.BeginSession(); actionPlayerAvailable = World.Player != null; Feature.OnSessionStarted(); }
         public void OnSessionEnded()
         { Feature.OnSessionEnded(); Ownership.SetSession(0); Storage.EndSession(); World.EndSession(); ItemSourceHooks.EndSession(); }
         public void Update(ulong tick)
-        { Tick = tick; Storage.Tick = tick; Storage.Update(); Feature.Update(tick);
+        { Tick = tick;
+            bool available = World.Player != null;
+            if (actionPlayerAvailable && !available) DiscardUnsubmittedAcquisitions();
+            actionPlayerAvailable = available;
+            Storage.Tick = tick; Storage.Update(); Feature.Update(tick);
             if (Feature.HasFailed && CapabilityError == null) CapabilityError = "物品处理已停止：本次会话观察未能可靠完成；未确认操作不会重试。"; }
+        internal void DiscardUnsubmittedAcquisitions()
+        { Feature.DiscardPendingAcquisitions(); World.DiscardUnsubmittedObservation(); ItemSourceHooks.CancelPendingAcquisition(); }
         public void FailClosed()
         {
             Feature.FailClosed();

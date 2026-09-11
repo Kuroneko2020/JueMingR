@@ -39,6 +39,8 @@ namespace JueMingR.TerrariaHost.F5
         internal bool ConsumeWheel { get; private set; }
         internal F5Command Command { get; private set; }
         internal F5Element ClickedHotkey { get; private set; }
+        internal F5Element ClickedControl { get; private set; }
+        internal bool PointerBlocked { get; private set; }
         internal float PointerX { get; private set; }
         internal float PointerY { get; private set; }
         internal bool DraggingScroll { get { return capture == 2; } }
@@ -52,6 +54,7 @@ namespace JueMingR.TerrariaHost.F5
         {
             Command = F5Command.None;
             ClickedHotkey = null;
+            ClickedControl = null; PointerBlocked = input.BlockPointer;
             // If validation throws, the shell must still consume buttons owned
             // by an earlier sample while it closes the failed local UI.
             ConsumeLeft = leftTail; ConsumeRight = rightTail; ConsumeWheel = false;
@@ -157,7 +160,7 @@ namespace JueMingR.TerrariaHost.F5
                     // A click must release on the same element in the same layout generation.
                     if (released && capture == 0 && layoutReady && armed != null &&
                         armedGeneration == Layout.Generation && ReferenceEquals(armed, HitButton(localX, localY)))
-                    { Command = armed.Command; if (armed.HotkeyTarget != null) ClickedHotkey = armed; }
+                    { Command = armed.Command; ClickedControl = armed; if (armed.HotkeyTarget != null) ClickedHotkey = armed; }
                 }
             }
             // Consume the release sample before retiring its tail, including after window closure.

@@ -123,7 +123,7 @@ namespace JueMingR.TerrariaHost.Items
                 if (Main.netMode == 1 && start >= 0 && length > 0 && start < buffer.readBuffer.Length && buffer.readBuffer[start] == 32) Interlocked.Exchange(ref capacityChanged, 1);
                 Pending current = pending;
                 if (current == null || Main.netMode != 1 || Main.ServerSideCharacter || current.Request.Session != world.SessionGeneration ||
-                    !ReferenceEquals(world.Player, current.Player) || start < 0 || length < 10 || start > buffer.readBuffer.Length - 10) return default(Receipt);
+                    !ReferenceEquals(world.SessionPlayer, current.Player) || start < 0 || length < 10 || start > buffer.readBuffer.Length - 10) return default(Receipt);
                 byte[] data = buffer.readBuffer;
                 if (data[start] != 5 || data[start + 1] != current.Player.whoAmI) return default(Receipt);
                 int slot = Signed(data, start + 2) - PlayerItemSlotID.Inventory0;
@@ -142,7 +142,7 @@ namespace JueMingR.TerrariaHost.Items
             {
                 Pending current = pending;
                 if (!ReferenceEquals(current, receipt.Batch) || current.Request.Session != world.SessionGeneration ||
-                    !ReferenceEquals(world.Player, current.Player) || Main.netMode != 1) return;
+                    !ReferenceEquals(world.SessionPlayer, current.Player) || Main.netMode != 1) return;
                 int slot = current.Request.Sources[receipt.Index].Slot;
                 Item actual = current.Player.inventory[slot];
                 if (current.Player.inventoryChestStack[slot] || actual == null || actual.type != receipt.Type || actual.stack != receipt.Quantity || actual.prefix != receipt.Prefix) return;
@@ -171,7 +171,7 @@ namespace JueMingR.TerrariaHost.Items
                 }
                 Pending current = pending;
                 if (current == null) return;
-                if (current.Request.Session != world.SessionGeneration || !ReferenceEquals(world.Player, current.Player)) { pending = null; return; }
+                if (current.Request.Session != world.SessionGeneration || !ReferenceEquals(world.SessionPlayer, current.Player)) { pending = null; return; }
                 if (current.Changed)
                 {
                     current.Changed = false;

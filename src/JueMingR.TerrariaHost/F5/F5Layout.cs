@@ -26,7 +26,9 @@ namespace JueMingR.TerrariaHost.F5
     }
 
     internal enum F5ElementKind { Panel, Text, Button, Field, Hotkey, Divider }
-    internal enum F5Command { None, EnableBiome, DisableBiome }
+    internal enum F5Command { None, EnableBiome, DisableBiome,
+        ConfigureEnemy, EnableEnemy, DisableEnemy, ConfigureCritter, EnableCritter, DisableCritter,
+        ConfigureNpc, NpcName, NpcType, DisableNpc }
 
     internal sealed class F5Element
     {
@@ -186,7 +188,7 @@ namespace JueMingR.TerrariaHost.F5
         internal static bool IsSelected(F5Element element, bool biomeEnabled, bool biomeFailed)
         { return !biomeFailed && (biomeEnabled ? element.Command == F5Command.EnableBiome : element.Command == F5Command.DisableBiome); }
         internal static int HintIndex(F5Element element, bool biomeFailed)
-        { return element.Command == F5Command.None ? -1 : biomeFailed ? 2 : element.Command == F5Command.EnableBiome ? 0 : 1; }
+        { return element.Command != F5Command.EnableBiome && element.Command != F5Command.DisableBiome ? -1 : biomeFailed ? 2 : element.Command == F5Command.EnableBiome ? 0 : 1; }
         internal static string HintText(int index) { return Hints[index]; }
         internal F5Size HintSize(int index) { return hintSizes[index]; }
         internal F5Rect ScrollTrack { get { return new F5Rect(550, 139, 10, Viewport.Height); } }
@@ -202,10 +204,11 @@ namespace JueMingR.TerrariaHost.F5
 
         private void BuildInformation(ref float y)
         {
+            EntityLabelControls.AddRows(elements, TextSize, ref y);
             string[] names = { "敌怪显名", "动物显名", "NPC显名", "宝箱显名", "牌子显示", "墓碑显示",
                 "显示生命水晶", "显示魔力水晶", "显示碎岩龟", "显示生命果", "显示龙蛋", "调整信息窗位置",
                 "群系显示", "世界感染", "幸运值", "完整鱼获", "过滤鱼获", "渔夫任务" };
-            for (int i = 0; i < names.Length; i++)
+            for (int i = 3; i < names.Length; i++)
             {
                 if (names[i] == "调整信息窗位置")
                 {

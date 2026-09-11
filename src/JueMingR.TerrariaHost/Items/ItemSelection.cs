@@ -30,12 +30,12 @@ namespace JueMingR.TerrariaHost.Items
         {
             if (Active && List == list && Target == target && IsCurrent) return false;
             Cancel();
-            if (!host.Runtime.IsSessionActive || target != 0 && !Types(host.Preferences.Value, list).Contains(target)) return false;
+            if (!host.Runtime.IsSessionActive || host.World.Player == null || target != 0 && !Types(host.Preferences.Value, list).Contains(target)) return false;
             bool available; candidates = host.PickerTypes(list, out available); HasInventoryTypes = available;
             List = list; Target = target; Session = host.Runtime.Generation; Generation++;
             return true;
         }
-        internal bool IsCurrent { get { return host.Runtime.IsSessionActive && Session == host.Runtime.Generation; } }
+        internal bool IsCurrent { get { return host.Runtime.IsSessionActive && Session == host.Runtime.Generation && host.World.Player != null; } }
         internal bool ValidateSession()
         { if (!Active || IsCurrent) return true; Cancel(); return false; }
         internal void Cancel()
