@@ -23,13 +23,24 @@ namespace JueMingR.TerrariaHost.EntityLabels
         { this.labels = labels; this.sessionActive = sessionActive; }
         internal string Failure { get; private set; }
         internal bool FontUnavailable { get; private set; }
+#if DEBUG
+        // Verification only. Release retains no draw/measurement probe.
         internal int LastDrawn { get; private set; }
         internal int MeasurementCount { get; private set; }
+#endif
         internal int CachedEntries { get; private set; }
-        internal void Clear() { Array.Clear(cache, 0, cache.Length); font = null; CachedEntries = 0; LastDrawn = 0; }
+        internal void Clear()
+        {
+            Array.Clear(cache, 0, cache.Length); font = null; CachedEntries = 0;
+#if DEBUG
+            LastDrawn = 0;
+#endif
+        }
         internal bool Draw()
         {
+#if DEBUG
             LastDrawn = 0;
+#endif
             try
             {
                 if (labels.Count == 0) { if (CachedEntries != 0) Clear(); return true; }
@@ -62,7 +73,9 @@ namespace JueMingR.TerrariaHost.EntityLabels
                     Color color = new Color((byte)(label.Rgb >> 16), (byte)(label.Rgb >> 8), (byte)label.Rgb);
                     Text(label.Name, x, top, label.NameSize, entry.NameBounds, color);
                     if (label.Health != null) Text(label.Health, x, top + entry.NameBounds.Height + 2, label.HealthSize, entry.HealthBounds, color);
+#if DEBUG
                     LastDrawn++;
+#endif
                 }
                 // Retire vanished/disabled labels without accumulating old names
                 // across slot reuse, while retaining unchanged visible metrics.
@@ -78,7 +91,10 @@ namespace JueMingR.TerrariaHost.EntityLabels
         }
         private F5Size Measure(string text, int hundredths)
         {
-            F5Size size = metrics.Measure(font, text); float scale = hundredths / 100f; MeasurementCount++;
+            F5Size size = metrics.Measure(font, text); float scale = hundredths / 100f;
+#if DEBUG
+            MeasurementCount++;
+#endif
             return new F5Size(size.Width * scale + 4, size.Height * scale + 4, size.OffsetX * scale - 2, size.OffsetY * scale - 2);
         }
         internal static float ScreenTop(EntityLabel label, float textHeight)

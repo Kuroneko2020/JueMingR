@@ -22,7 +22,12 @@ namespace JueMingR.ArchitectureTests
                 feature.Configure(EntityLabelSettings.Default.WithEnabled(EntityLabelKind.Critter, true).WithNpcMode(NpcLabelMode.Name));
                 feature.Update(2);
                 Require(source.LastDemand == (EntityObservationDemand.Critter | EntityObservationDemand.Npc), "no enemy relationship work for name-only consumers");
-                Require(feature.GroupingPasses == 0 && feature.Labels.Count == 2, "category overlap produces one label and excludes arbitrary friendly NPC");
+                Require(feature.Labels.Count == 2, "category overlap produces one label and excludes arbitrary friendly NPC");
+#if DEBUG
+                Require(feature.GroupingPasses == 0, "critter/NPC demand performs no enemy grouping");
+#else
+                Require(typeof(EntityLabelFeature).GetProperty("GroupingPasses") == null, "Release has no temporary grouping probe");
+#endif
                 Require(feature.Labels[0].Rgb == 0xFFD700 && feature.Labels[1].Name == "小红", "gold and personal names use different rules");
                 feature.Configure(EntityLabelSettings.Default.WithEnabled(EntityLabelKind.Enemy, true)); feature.Update(3);
                 Require(feature.Labels.Count == 1 && feature.Labels[0].Health == "23/30", "enemy output uses actual current/max health");

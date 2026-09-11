@@ -30,7 +30,10 @@ namespace JueMingR.Features.EntityLabels
         public bool Enabled { get { return settings.AnyEnabled && !HasFailed; } }
         public bool HasFailed { get; private set; }
         public string UnavailableReason { get; private set; }
+#if DEBUG
+        // Test-only observation; never part of the Release payload.
         public int GroupingPasses { get; private set; }
+#endif
         public int UnresolvedGroups { get; private set; }
         public void Configure(EntityLabelSettings value)
         { settings = value ?? throw new ArgumentNullException(nameof(value)); if (!Enabled) Clear(); }
@@ -52,7 +55,14 @@ namespace JueMingR.Features.EntityLabels
             if (observation.Count > 4096) { FailClosed(); return; }
             if (healthText.Length != observation.Count)
             { healthText = new string[observation.Count]; lastLife = new int[observation.Count]; lastMax = new int[observation.Count]; }
-            if (settings.EnemyEnabled) { groups.Build(observation); GroupingPasses++; UnresolvedGroups = groups.Unresolved; }
+            if (settings.EnemyEnabled)
+            {
+                groups.Build(observation);
+#if DEBUG
+                GroupingPasses++;
+#endif
+                UnresolvedGroups = groups.Unresolved;
+            }
             for (int i = 0; i < observation.Count; i++)
             {
                 EntityFact fact = observation[i];

@@ -22,16 +22,15 @@ namespace JueMingR.TerrariaHost.EntityLabels
         };
         internal EntityHostObservation(Func<bool> sessionActive) { this.sessionActive = sessionActive ?? throw new ArgumentNullException(nameof(sessionActive)); }
         internal int FailedObjects { get; private set; }
-        internal int UnsupportedHidden { get; private set; }
         internal void EndSession()
-        { Array.Clear(facts, 0, facts.Length); Array.Clear(relations, 0, relations.Length); FailedObjects = UnsupportedHidden = 0; }
+        { Array.Clear(facts, 0, facts.Length); Array.Clear(relations, 0, relations.Length); FailedObjects = 0; }
         public bool TryObserve(EntityObservationDemand demand, out EntityObservation observation)
         {
             observation = default(EntityObservation);
             if (!sessionActive() || Main.gameMenu || Main.dedServ || Main.netMode != 0 && Main.netMode != 1 || Main.npc == null || Main.GameViewMatrix == null) return false;
             int count = Math.Min(Main.maxNPCs, Main.npc.Length);
             if (facts.Length != count) { facts = new EntityFact[count]; relations = new Relation[count]; moonParts = new int[count]; }
-            Array.Clear(facts, 0, count); Array.Clear(moonParts, 0, count); FailedObjects = UnsupportedHidden = 0;
+            Array.Clear(facts, 0, count); Array.Clear(moonParts, 0, count); FailedObjects = 0;
             if (demand == EntityObservationDemand.None) { observation = new EntityObservation(facts, 0, 0); return true; }
             bool enemies = (demand & EntityObservationDemand.Enemy) != 0;
             bool critters = (demand & EntityObservationDemand.Critter) != 0;
@@ -104,7 +103,6 @@ namespace JueMingR.TerrariaHost.EntityLabels
                             (Main.npc[root].ai[0] == 0 || Main.npc[root].ai[0] == 1) && npc.ai[0] >= 0;
                         if (fact.DrawEligible && i != root && !SameObservedRoot(i, root)) { fact.DrawEligible = false; FailedObjects++; }
                     }
-                    else if (npc.hide && !fact.Excluded && !fact.Friendly) UnsupportedHidden++;
                     if (fact.Role == EntitySegmentRole.SharedMember || fact.Role == EntitySegmentRole.Body || fact.Role == EntitySegmentRole.Tail)
                     {
                         int root = fact.HealthOwnerSlot;
