@@ -179,6 +179,29 @@ namespace Terraria
                 Check(unpins == 1, "new independent pin click still executes exactly once");
             });
             CheckLayoutScheduling();
+            Note hotkeyPin = Note.Create().WithText(false, new string('文', 400)).Pin(100, 100);
+            WithWorkspace(workspace =>
+            {
+                int commands = 0;
+                var pins = new NotesPins(workspace, null, action => { commands++; return workspace.Request(action); });
+                var pin = new NotesPin { Note = workspace.Feature.Saved.Find(hotkeyPin.Id),
+                    Rect = new F5Rect(100, 100, NotesPins.Width, NotesPins.Height),
+                    Layout = new NotesTextLayout(hotkeyPin.Body, 200, text => 1) };
+                NotesPins.SetRect(pin, pin.Rect); ((List<NotesPin>)pins.Pins).Add(pin);
+                void Pointer(F5Rect r, bool left, bool blocked, int wheel = 0, bool shift = false, bool control = false)
+                { pins.Pointer(r.X + 2, r.Y + 2, left, false, wheel, true, true, false, 1920, 1080, shift, control, blocked); }
+                F5Rect original = pin.Rect;
+                Pointer(pin.Close, true, true); Pointer(pin.Close, false, true);
+                Pointer(pin.Drag, true, true); Pointer(pin.Drag.Offset(40, 40), true, true); Pointer(pin.Drag, false, true);
+                Pointer(pin.Close, true, false); Pointer(pin.Close, false, true);
+                Pointer(pin.Drag, true, false); Pointer(pin.Drag.Offset(40, 40), true, false); Pointer(pin.Drag, false, true);
+                Check(commands == 0 && pin.Rect.Equals(original) && workspace.Feature.Saved.Find(hotkeyPin.Id).Pinned,
+                    "hotkey button owner cancels old and new pin close/drag gestures without commands");
+                Pointer(pin.Body, false, true, 120, shift: true);
+                Check(pins.ConsumeWheel && workspace.Feature.ReadingFor(hotkeyPin.Id).Width == 320, "hotkey button owner preserves Shift wheel");
+                Pointer(pin.Body, false, true, 120, control: true);
+                Check(pins.ConsumeWheel && workspace.Feature.ReadingFor(hotkeyPin.Id).FontPercent == 130, "hotkey button owner preserves Ctrl wheel");
+            }, new Notebook(new[] { hotkeyPin }));
             if (!includeGraphics) return;
             using (var graphics = new F5FixtureGraphics())
             using (var renderer = new NotesRenderer())

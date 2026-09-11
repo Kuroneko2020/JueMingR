@@ -297,7 +297,7 @@ namespace Terraria.GameInput
 {
     public enum InputMode { Keyboard, KeyboardUI, Mouse, XBoxGamepad, XBoxGamepadUI }
     public sealed class KeyConfiguration { public Dictionary<string, List<string>> KeyStatus = new Dictionary<string, List<string>>(); }
-    public sealed class PlayerInputProfile { public Dictionary<InputMode, KeyConfiguration> InputModes = new Dictionary<InputMode, KeyConfiguration> { { InputMode.Keyboard, new KeyConfiguration() } }; }
+    public sealed class PlayerInputProfile { public Dictionary<InputMode, KeyConfiguration> InputModes = new Dictionary<InputMode, KeyConfiguration> { { InputMode.Keyboard, new KeyConfiguration() }, { InputMode.KeyboardUI, new KeyConfiguration() }, { InputMode.Mouse, new KeyConfiguration() } }; }
     public static partial class PlayerInput { public static PlayerInputProfile CurrentProfile { get; set; } = new PlayerInputProfile(); public static bool CurrentlyRebinding { get; set; } }
 }
 namespace Terraria.IO { public sealed class WorldFileData { } }

@@ -17,6 +17,56 @@ namespace JueMingR.TerrariaHost.F5
         private Texture2D roundCap;
         private readonly F5IconAtlas icons = new F5IconAtlas();
         internal int SkinGeneration { get; private set; }
+        internal object FontIdentity { get { return font; } }
+        internal F5Size PopupMeasure(string text, float scale)
+        { F5Size size = textMetrics.Measure(font, text); return new F5Size(size.Width * scale, size.Height * scale, size.OffsetX * scale, size.OffsetY * scale); }
+        internal void DrawPopup(Hotkeys.HotkeyPopup popup)
+        {
+            if (!popup.Visible) return;
+            var layout = popup.Layout; SpriteBatch batch = Main.spriteBatch;
+            Panel(batch, layout.Panel, background, Color.White, true);
+            for (int i = 0; i < layout.Text.Count; i++)
+            {
+                var line = layout.Text[i]; var role = layout.Roles[i];
+                Color color = role == Hotkeys.HotkeyTextRole.Success ? Color.LightGreen : role == Hotkeys.HotkeyTextRole.Warning ? Color.LightGoldenrodYellow :
+                    role == Hotkeys.HotkeyTextRole.Error ? Color.LightCoral : role == Hotkeys.HotkeyTextRole.Muted ? Color.LightGray : Color.White;
+                Text(batch, line.Text, new Vector2(layout.Panel.X + line.Rect.X, layout.Panel.Y + line.Rect.Y), line.TextScale, color, line.TextSize);
+            }
+            foreach (var cap in layout.Keycaps)
+            {
+                var rect = cap.Rect.Offset(layout.Panel.X, layout.Panel.Y);
+                // Flat labels reuse R's surface; no button bevel, hover or action.
+                Panel(batch, rect, row, new Color(210, 210, 210), true);
+                var label = F5Layout.ButtonLabel(cap).Offset(layout.Panel.X, layout.Panel.Y);
+                Text(batch, cap.Text, new Vector2(label.X, label.Y), cap.TextScale, Color.White, cap.TextSize);
+            }
+            // Only complete measured lines enter this bounded viewport. Scrolling
+            // selects cached lines without touching the caller's SpriteBatch or scissor.
+            for (int rowIndex = 0; rowIndex < layout.DetailVisibleLines; rowIndex++)
+            {
+                var line = layout.DetailText[popup.DetailOffset + rowIndex];
+                Text(batch, line.Text, new Vector2(layout.Panel.X + layout.DetailViewport.X,
+                    layout.Panel.Y + layout.DetailViewport.Y + rowIndex * layout.DetailLineHeight), line.TextScale, Color.LightGoldenrodYellow, line.TextSize);
+            }
+            PopupRule(batch, layout.Panel.X + 12, layout.Panel.Y + layout.HeaderBottom, layout.Panel.Width - 24);
+            PopupRule(batch, layout.Panel.X + 12, layout.Panel.Y + layout.FooterTop, layout.Panel.Width - 24);
+            for (int i = 0; i < layout.Buttons.Count; i++)
+            {
+                var command = layout.Commands[i];
+                bool enabled = layout.IsEnabled(i, popup.DetailOffset);
+                F5ControlRenderer.Button(batch, pixel, button, font, layout.Buttons[i], popup.Hovered == command, enabled,
+                    command == Hotkeys.HotkeyPopupCommand.Record && enabled ? (Color?)Color.LightGray : null,
+                    layout.Panel.X, layout.Panel.Y, true, popup.Pressed == command && popup.Hovered == command);
+            }
+            if (popup.HelpVisible)
+            {
+                Panel(batch, layout.HelpPanel, background, Color.White, true);
+                foreach (var line in layout.HelpText)
+                    Text(batch, line.Text, new Vector2(layout.HelpPanel.X + line.Rect.X, layout.HelpPanel.Y + line.Rect.Y), line.TextScale, Color.White, line.TextSize);
+            }
+        }
+        private void PopupRule(SpriteBatch batch, float x, float y, float width)
+        { batch.Draw(pixel, new Vector2(x, y), new Rectangle(0, 0, 1, 1), Color.White * .25f, 0, Vector2.Zero, new Vector2(width, 1), SpriteEffects.None, 0); }
 
         internal F5Renderer() { measure = Measure; }
 
@@ -166,10 +216,9 @@ namespace JueMingR.TerrariaHost.F5
                 Color.White * (layout.MaxScroll <= 0 ? 0.25f : hover || state.DraggingScroll ? 0.85f : 0.6f));
         }
 
-        private void Keyboard(SpriteBatch batch, F5Rect slot)
+        internal void Keyboard(SpriteBatch batch, F5Rect slot)
         {
-            // Same sampled round-ended artwork as the tabs, in a smaller visual
-            // domain. The invisible input slot and its inert command stay intact.
+            // One shell-owned atlas serves real entries and inert placeholders.
             icons.Draw(batch, F5IconAtlas.KeyboardIndex, new F5Rect(slot.X + (slot.Width - 14) / 2,
                 slot.Y + (slot.Height - 14) / 2, 14, 14), Color.White);
         }

@@ -40,6 +40,7 @@ namespace JueMingR.TerrariaHost.Items
         internal bool ConsumeLeft { get; private set; }
         internal bool ConsumeRight { get; private set; }
         internal bool ConsumeWheel { get; private set; }
+        internal Action<string, F5Rect> HotkeyClicked { get; set; }
         internal ItemsPresentation(HostItems host, F5Interaction shell)
         {
             this.host = host; this.shell = shell; selection = new ItemSelection(host);
@@ -52,7 +53,7 @@ namespace JueMingR.TerrariaHost.Items
         { if (!selection.ValidateSession()) { armed = null; dirty = true; input.Release(); revealRow = -1; } }
         internal void BeforeInput(bool active)
         { ValidateSession(); input.BeforeInput(active && shell.Visible && shell.Page == 0 && Selecting); }
-        internal void ProcessInput(bool active, KeyboardState sample, Vector2 pointer, bool geometryCurrent = true, bool focused = true)
+        internal void ProcessInput(bool active, KeyboardState sample, Vector2 pointer, bool geometryCurrent = true, bool focused = true, bool blockPointer = false)
         {
             ValidateSession(); pointerPosition = pointer;
             bool left = PlayerInput.MouseInfo.LeftButton == ButtonState.Pressed, right = PlayerInput.MouseInfo.RightButton == ButtonState.Pressed;
@@ -77,7 +78,8 @@ namespace JueMingR.TerrariaHost.Items
             if (ownPointer)
             {
                 if (left) leftTail = true; if (right) rightTail = true;
-                ItemUiControl hit = dirty ? null : Hit(pointer);
+                if (blockPointer) armed = null;
+                ItemUiControl hit = dirty || blockPointer ? null : Hit(pointer);
                 if (left && !previousLeft) { armed = hit; armedGeneration = shell.Layout.Generation; }
                 if (!left && previousLeft && armed != null && hit != null && armedGeneration == shell.Layout.Generation && Same(armed, hit)) Execute(hit);
             }
@@ -99,6 +101,7 @@ namespace JueMingR.TerrariaHost.Items
         { return a.Command == b.Command && a.Argument == b.Argument && a.Type == b.Type && a.Generation == b.Generation && SameRect(a.Rect, b.Rect); }
         private void Execute(ItemUiControl c)
         {
+            if (c.Command == ItemUiCommand.Hotkey) { HotkeyClicked?.Invoke(c.Element.HotkeyTarget, c.Rect); return; }
             dirty = true; commandMessage = null;
             var value = host.Preferences.Value; var list = (ItemListKind)c.Argument;
             bool wasSelecting = Selecting;
@@ -169,7 +172,7 @@ namespace JueMingR.TerrariaHost.Items
             layoutGeneration = shell.Layout.Generation; skinGeneration = renderer.Generation;
             laidOutEnabled = ControlsEnabled; laidOutMessage = message;
         }
-        private bool ControlsEnabled { get { return host.Available && !host.Feature.HasFailed && host.Preferences.IsLoaded && host.Runtime.IsSessionActive && host.World.Player != null; } }
+        private bool ControlsEnabled { get { return host.ControlsEnabled; } }
         private string ErrorMessage
         {
             get
@@ -191,7 +194,7 @@ namespace JueMingR.TerrariaHost.Items
             }
         }
         private F5Rect OnScreen(F5Rect rect) { return rect.Offset(view.X, view.Y - shell.Scroll); }
-        internal void Draw()
+        internal void Draw(Action<F5Rect> keyboard = null)
         {
             if (!ready || !shell.Visible || shell.Page != 0) return;
             renderer.Pass(matrix, view, () =>
@@ -208,6 +211,7 @@ namespace JueMingR.TerrariaHost.Items
                 }
                 foreach (var c in controls)
                 {
+                    if (c.Command == ItemUiCommand.Hotkey) { keyboard?.Invoke(c.Rect); continue; }
                     if (c.Command == ItemUiCommand.Remove) continue;
                     bool hover = c.Rect.Contains(pointerPosition.X, pointerPosition.Y) && view.Contains(pointerPosition.X, pointerPosition.Y);
                     if (c.Command == ItemUiCommand.Replace || c.Command == ItemUiCommand.Select)

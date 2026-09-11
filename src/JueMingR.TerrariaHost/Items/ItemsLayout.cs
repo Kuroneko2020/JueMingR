@@ -6,7 +6,7 @@ using JueMingR.TerrariaHost.F5;
 
 namespace JueMingR.TerrariaHost.Items
 {
-    internal enum ItemUiCommand { Enable, Disable, Add, Replace, Remove, Select, Confirm, Cancel, ToggleDiscardFeedback }
+    internal enum ItemUiCommand { Enable, Disable, Add, Replace, Remove, Select, Confirm, Cancel, ToggleDiscardFeedback, Hotkey }
     internal sealed class ItemUiControl
     {
         internal ItemUiCommand Command;
@@ -39,7 +39,7 @@ namespace JueMingR.TerrariaHost.Items
         private ItemSelection selection;
         private bool enabled;
         private Func<string, float, F5Size> measure;
-        private static string[] basic = { "开启", "关闭" }, listed = { "添加", "开启", "关闭" };
+        private static string[] basic = { "开启", "关闭", "键" }, listed = { "添加", "开启", "关闭", "键" };
         internal static int Columns(float width, float card) { return Math.Max(1, (int)((width - 16 + Gap) / (card + Gap))); }
         // Button width fits ten columns in the 506px inner grid. Keep the old
         // icon fitting box centered independently so wide items never shrink
@@ -75,12 +75,17 @@ namespace JueMingR.TerrariaHost.Items
                 }
                 rowLayout.Row(ref y, 0, width, ItemsPresentation.Name(action), actions);
                 foreach (F5Element e in rows.GetRange(start, rows.Count - start))
+                {
+                    if (e.Kind == F5ElementKind.Hotkey)
+                        buttons.Add(new ItemUiControl { Command = ItemUiCommand.Hotkey, Argument = i, Rect = e.Rect, Generation = selection.Generation,
+                            Enabled = enabled, Element = new F5Element(e.Kind, e.Rect, null, e.TextSize, e.TextScale, F5Command.None, Hotkeys.HotkeyActionIds.Items[i]) });
                     if (e.Kind == F5ElementKind.Button)
                     {
                         bool add = e.Text == "添加", on = e.Text == "开启", feedback = e.Text == "提示 开" || e.Text == "提示 关";
                         buttons.Add(Make(feedback ? ItemUiCommand.ToggleDiscardFeedback : add ? ItemUiCommand.Add : on ? ItemUiCommand.Enable : ItemUiCommand.Disable,
                             add ? (int)list : i, 0, e.Rect, e.Text, !add && !feedback && value.Enabled(action) == on, enabled));
                     }
+                }
                 if (i == 0) continue;
                 listY[(int)list] = y;
                 if (selection.List == list) BuildSelector(ref y, rowHeight, list);
@@ -151,6 +156,6 @@ namespace JueMingR.TerrariaHost.Items
         private static bool Visible(F5Rect r, float scroll, float height) { return r.Bottom > scroll && r.Y < scroll + height; }
         private static ItemUiControl Offset(ItemUiControl c, float x, float y)
         { var r = c.Rect.Offset(x, y); return new ItemUiControl { Command = c.Command, Argument = c.Argument, Type = c.Type, Generation = c.Generation,
-            Rect = r, Selected = c.Selected, Enabled = c.Enabled, Element = new F5Element(c.Element.Kind, r, c.Element.Text, c.Element.TextSize, c.Element.TextScale, c.Element.Command) }; }
+            Rect = r, Selected = c.Selected, Enabled = c.Enabled, Element = new F5Element(c.Element.Kind, r, c.Element.Text, c.Element.TextSize, c.Element.TextScale, c.Element.Command, c.Element.HotkeyTarget) }; }
     }
 }

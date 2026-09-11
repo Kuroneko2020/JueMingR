@@ -45,7 +45,8 @@ namespace Terraria
             {
                 var on = Rect(Control(p, "Enable", action)); var off = Rect(Control(p, "Disable", action));
                 Check(on.Width < 80 && Math.Abs(off.X - on.Right - 4) < .01f && on.Height == off.Height, "glyph widths and equal button group gaps/heights");
-                Check(Math.Abs(off.Right - (shell.X + shell.Layout.Viewport.Right - 8)) < .01f, "operation group right aligned inside panel");
+                var keyboard = Rect(Control(p, "Hotkey", action));
+                Check(Math.Abs(keyboard.X - off.Right - 4) < .01f && Math.Abs(keyboard.Right - (shell.X + shell.Layout.Viewport.Right - 8)) < .01f, "keyboard follows off and completes right aligned operation group");
                 var e = (F5Element)Control(p, "Enable", action).GetType().GetField("Element", Fields).GetValue(Control(p, "Enable", action));
                 var label = F5Layout.ButtonLabel(e); var line = F5Layout.ButtonUnderline(e);
                 Check(Math.Abs(label.X + label.Width / 2 - (on.X + on.Width / 2)) < .01f && line.Width < on.Width && line.Bottom <= on.Bottom, "centered label and bounded short underline");
@@ -425,7 +426,7 @@ namespace Terraria
                 graphics.Device.SetRenderTarget(target); graphics.Device.Clear(Color.Transparent);
                 Main.spriteBatch.Begin(SpriteSortMode.Deferred, null, null, null, null, null, Main.UIScaleMatrix);
                 Rectangle clip = graphics.Device.ScissorRectangle;
-                renderer.Draw(shell, Main.UIScaleMatrix, false, false); items.Draw();
+                renderer.Draw(shell, Main.UIScaleMatrix, false, false); items.Draw(rect => renderer.Keyboard(Main.spriteBatch, rect));
                 Check(graphics.Device.ScissorRectangle == clip, "item pass restores caller scissor");
                 Main.spriteBatch.Draw(TextureAssets.MagicPixel.Value, new Rectangle(0, 0, 8, 8), Color.Red);
                 Main.spriteBatch.End(); graphics.Device.SetRenderTarget(null);

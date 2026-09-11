@@ -823,12 +823,14 @@ namespace JueMingR.TerrariaHost
                 }
 
                 preferences = new HostPreferences(gameDirectory);
-                bool itemPackage = PackageId.StartsWith("item-automation-", StringComparison.Ordinal);
+                bool hotkeyPackage = PackageId.StartsWith("unified-hotkeys-", StringComparison.Ordinal);
+                bool itemPackage = hotkeyPackage || PackageId.StartsWith("item-automation-", StringComparison.Ordinal);
                 runtime = itemPackage ? Phase0TBiomeRuntime.Create(enabled, preferences.BiomeLoaded && preferences.BiomeEnabled, new Items.ItemSessionProbe()) :
                     Phase0TBiomeRuntime.Create(enabled, preferences.BiomeLoaded && preferences.BiomeEnabled);
                 if (itemPackage) { items = new Items.HostItems(gameDirectory, runtime.SharedRuntime, () => Input.CanStartActions); runtime.SharedRuntime.AddFeature(items); }
                 notes = new Notes.HostNotes(gameDirectory);
-                Shell = new F5Shell(runtime, preferences, notes, items, Input) { LayersReady = f5LayersReady };
+                var hotkeys = hotkeyPackage ? new Hotkeys.HostHotkeys(gameDirectory, runtime, preferences, items) : null;
+                Shell = new F5Shell(runtime, preferences, notes, items, Input, hotkeys) { LayersReady = f5LayersReady };
             }
 
             internal void UpdateRuntime()

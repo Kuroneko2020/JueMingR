@@ -544,6 +544,18 @@ function Invoke-Phase0SLoadChainFixtureTests {
 
     $root = New-Phase0STestRoot
     try {
+        $hotkeys = New-Phase0SFixtureRunDirectory -Root $root -Name 'hotkeys-runtime' -FixtureExe $fixtureExe -ProductionOutputs $productionOutputs -HarmonyPath $harmonyPath -PackageId ('unified-hotkeys-' + $sourceCommit) -SourceCommit $sourceCommit
+        foreach ($mode in @('expect-hotkeys-runtime', 'expect-hotkeys-reload')) {
+            $result = Invoke-Phase0SFixtureExe -FixtureExe $hotkeys.exePath -Mode $mode -EvidencePath $hotkeys.evidencePath -PackageId $hotkeys.packageId
+            foreach ($line in $result.output) { Write-Host $line }
+            Assert-Phase0SCondition -Condition ($result.exitCode -eq 0) -Message ('Production hotkey input/four commands/file: ' + $mode)
+        }
+        if (-not $DeferGraphics) {
+            $edit = New-Phase0SFixtureRunDirectory -Root $root -Name 'hotkeys-ui' -FixtureExe $fixtureExe -ProductionOutputs $productionOutputs -HarmonyPath $harmonyPath -PackageId ('unified-hotkeys-' + $sourceCommit) -SourceCommit $sourceCommit
+            $result = Invoke-Phase0SFixtureExe -FixtureExe $edit.exePath -Mode 'expect-hotkeys-edit' -EvidencePath $edit.evidencePath -PackageId $edit.packageId
+            foreach ($line in $result.output) { Write-Host $line }
+            Assert-Phase0SCondition -Condition ($result.exitCode -eq 0) -Message 'Production hotkey double click/popup/file/four commands'
+        } else { Write-Host 'DEFERRED: production hotkey F5 graphical popup and font/skin previews; non-graphical actual four commands and reload still ran.' }
         $items = New-Phase0SFixtureRunDirectory -Root $root -Name 'items-host-loaded' -FixtureExe $fixtureExe -ProductionOutputs $productionOutputs -HarmonyPath $harmonyPath -PackageId ('item-automation-' + $sourceCommit) -SourceCommit $sourceCommit
         $itemsResult = Invoke-Phase0SFixtureExe -FixtureExe $items.exePath -Mode 'expect-items' -EvidencePath $items.evidencePath -PackageId $items.packageId
         foreach ($line in $itemsResult.output) { Write-Host $line }

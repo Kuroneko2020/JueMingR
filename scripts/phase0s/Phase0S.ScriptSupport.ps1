@@ -524,7 +524,8 @@ function Read-Phase0SPackage {
         ('phase0u-f5-ui-' + [string] $manifest.sourceCommit),
         ('phase0v-settings-' + [string] $manifest.sourceCommit),
         ('phase0w-notes-' + [string] $manifest.sourceCommit),
-        ('item-automation-' + [string] $manifest.sourceCommit)
+        ('item-automation-' + [string] $manifest.sourceCommit),
+        ('unified-hotkeys-' + [string] $manifest.sourceCommit)
     )
     if ([string] $manifest.sourceCommit -notmatch '^[0-9a-f]{40}$' -or
         $allowedPackageIds -cnotcontains [string] $manifest.packageId) {

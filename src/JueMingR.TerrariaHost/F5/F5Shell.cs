@@ -7,11 +7,13 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 using Terraria;
 using Terraria.GameInput;
+using JueMingR.Platform.Hotkeys;
+using JueMingR.TerrariaHost.Hotkeys;
 
 namespace JueMingR.TerrariaHost.F5
 {
-    // The only pointer-ownership source is State. Leases below remember values
-    // changed by this shell, not independent decisions about who owns the mouse.
+    // The shell combines its current UI owners. Leases remember values changed
+    // by that decision; they are not a separate source of pointer ownership.
     internal sealed class F5Shell
     {
         internal readonly F5Interaction State = new F5Interaction();
@@ -22,6 +24,10 @@ namespace JueMingR.TerrariaHost.F5
         private readonly ItemsPresentation items;
         private readonly HostItems hostItems;
         private readonly Input.HostInputState inputState;
+        private readonly HostHotkeys hotkeys;
+        internal readonly HotkeyPopup HotkeyPopup;
+        private readonly System.Diagnostics.Stopwatch clickClock = System.Diagnostics.Stopwatch.StartNew();
+        private readonly Action<F5Rect> drawKeyboard;
         private static readonly Action<string> displayPreferenceFeedback = message => Main.NewText(message, 255, 180, 90);
         private Player leasedPlayer;
         private bool priorMouseInterface, hoverLease, priorMouseText;
@@ -32,11 +38,36 @@ namespace JueMingR.TerrariaHost.F5
 
         internal F5Shell(Phase0TBiomeRuntime biome, HostPreferences preferences, HostNotes hostNotes)
             : this(biome, preferences, hostNotes, null) { }
-        internal F5Shell(Phase0TBiomeRuntime biome, HostPreferences preferences, HostNotes hostNotes, HostItems hostItems, Input.HostInputState inputState = null)
+        internal F5Shell(Phase0TBiomeRuntime biome, HostPreferences preferences, HostNotes hostNotes, HostItems hostItems, Input.HostInputState inputState = null, HostHotkeys hotkeys = null)
         { this.biome = biome; this.preferences = preferences; this.hostItems = hostItems; notes = new NotesPresentation(hostNotes.Workspace); notes.Attach(State);
             this.inputState = inputState ?? new Input.HostInputState();
-            if (hostItems != null) items = new ItemsPresentation(hostItems, State); }
-        internal bool OwnsPointer { get { return !failed && CanPresentNow && (State.OwnsPointer || notes.OwnsPointer || items != null && items.OwnsPointer); } }
+            this.hotkeys = hotkeys;
+            if (hotkeys != null)
+            {
+                HotkeyPopup = new HotkeyPopup(hotkeys.Bindings, hotkeys.Registry, this.inputState);
+                this.inputState.ClaimsHotkeyPointer = ClaimsPopupPointer;
+            }
+            drawKeyboard = rect => renderer.Keyboard(Main.spriteBatch, rect);
+            if (hostItems != null) { items = new ItemsPresentation(hostItems, State); items.HotkeyClicked = OpenHotkey; }
+            Func<int, bool> prior = State.BeforeLeave;
+            State.BeforeLeave = page => { if (prior != null && !prior(page)) return false; HotkeyPopup?.Close(); return true; };
+        }
+        private void OpenHotkey(string id, F5Rect rect) { HotkeyPopup?.Click(id, rect, State.Layout.Generation, State.Page, clickClock.ElapsedMilliseconds); }
+        private bool ClaimsPopupPointer()
+        {
+            // MouseInfo is already this tick's native sample at AfterMapping.
+            // Claim visible popup buttons/body before native zoom/navigation;
+            // do not sample or advance physical edges here. The later popup
+            // handles the same geometry and retains the complete gesture tail.
+            if (failed || HotkeyPopup == null || !HotkeyPopup.Visible || !State.Visible || !CanPresentNow) return false;
+            MouseState mouse = PlayerInput.MouseInfo;
+            if (mouse.LeftButton == ButtonState.Released && mouse.RightButton == ButtonState.Released &&
+                mouse.MiddleButton == ButtonState.Released && mouse.XButton1 == ButtonState.Released && mouse.XButton2 == ButtonState.Released) return false;
+            Vector2 raw = new Vector2(mouse.X * PlayerInput.RawMouseScale.X, mouse.Y * PlayerInput.RawMouseScale.Y);
+            Vector2 point = Vector2.Transform(raw, Matrix.Invert(Main.UIScaleMatrix));
+            return HotkeyPopup.ContainsPointer(point.X, point.Y);
+        }
+        internal bool OwnsPointer { get { return !failed && CanPresentNow && (inputState.HotkeyPointerOwned || State.OwnsPointer || notes.OwnsPointer || items != null && items.OwnsPointer || HotkeyPopup != null && HotkeyPopup.OwnsPointer); } }
 
         private bool CanPresentNow
         {
@@ -65,12 +96,15 @@ namespace JueMingR.TerrariaHost.F5
                 Vector2 screen = PlayerInput.OriginalScreenSize;
                 Vector2 raw = new Vector2(PlayerInput.MouseInfo.X * PlayerInput.RawMouseScale.X,
                     PlayerInput.MouseInfo.Y * PlayerInput.RawMouseScale.Y);
-                KeyboardState keySample = Main.keyState;
-                bool f5 = keySample.IsKeyDown(Keys.F5);
+                KeyboardState keySample = inputState.KeyboardSample;
+                bool f5 = keySample.IsKeyDown(Keys.F5) && !inputState.Hotkeys.IsSuppressed((int)Keys.F5) && !(HotkeyPopup != null && HotkeyPopup.Capturing);
                 // Map/camera requests precede their modal flags and draw layers.
                 // The shell and Notes must yield the same newly sampled input.
                 bool inputActive = !failed && CanPresentNow && inputState.CanUseInput && !PlayerInput.Triggers.Current.MapFull && !PlayerInput.Triggers.Current.ToggleCameraMode;
                 Vector2 pointer = State.Visible || f5 ? Vector2.Transform(raw, Matrix.Invert(matrix)) : raw;
+                HotkeyPopup?.Process(inputActive && State.Visible, State.Page, pointer.X, pointer.Y,
+                    HotkeyPopup.Layout.Matches(screen.X / matrix.M11, screen.Y / matrix.M11, renderer.FontIdentity, renderer.SkinGeneration), PlayerInput.ScrollWheelDeltaForUI);
+                bool popupPointer = HotkeyPopup != null && HotkeyPopup.BlockPointer || inputState.HotkeyPointerOwned;
                 State.Update(new F5Input
                 {
                     Width = screen.X, Height = screen.Y, Scale = matrix.M11, X = pointer.X, Y = pointer.Y,
@@ -79,11 +113,14 @@ namespace JueMingR.TerrariaHost.F5
                     F5 = f5,
                     Left = PlayerInput.MouseInfo.LeftButton == ButtonState.Pressed,
                     Right = PlayerInput.MouseInfo.RightButton == ButtonState.Pressed,
+                    BlockPointer = popupPointer,
                     Wheel = PlayerInput.ScrollWheelDeltaForUI,
-                    PageWheelHandled = inputActive && notes.Wheel(pointer.X, pointer.Y, PlayerInput.ScrollWheelDeltaForUI)
+                    PageWheelHandled = HotkeyPopup != null && HotkeyPopup.ConsumeWheel || inputActive && notes.Wheel(pointer.X, pointer.Y, PlayerInput.ScrollWheelDeltaForUI)
                 });
-                notes.ProcessInput(inputActive, matrix, screen, raw, inputState.SampleFocused);
-                items?.ProcessInput(inputActive, keySample, pointer, State.Layout.Matches(screen.X, screen.Y, matrix.M11, State.Page), inputState.SampleFocused);
+                notes.ProcessInput(inputActive, matrix, screen, raw, inputState.SampleFocused, popupPointer, keySample);
+                items?.ProcessInput(inputActive, keySample, pointer, State.Layout.Matches(screen.X, screen.Y, matrix.M11, State.Page), inputState.SampleFocused, popupPointer);
+                if (State.ClickedHotkey != null)
+                    OpenHotkey(State.ClickedHotkey.HotkeyTarget, State.ClickedHotkey.Rect.Offset(State.X + State.Layout.Viewport.X, State.Y + State.Layout.Viewport.Y - State.Scroll));
                 if (OwnsPointer) LeaseMouseInterface();
                 ConsumeSample();
                 SubmitPosition();
@@ -91,6 +128,11 @@ namespace JueMingR.TerrariaHost.F5
                 // its failure latch. Loading or a failure cannot become a click.
                 if (State.Command != F5Command.None && Main.netMode == 0 && preferences.BiomeLoaded && !biome.FeatureFailed)
                     preferences.SetBiomeEnabled(State.Command == F5Command.EnableBiome);
+                bool gameplay = inputActive && !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest &&
+                    Main.CurrentInputTextTakerOverride == null && !PlayerInput.WritingText && !OwnsPointer &&
+                    !(HotkeyPopup != null && HotkeyPopup.Visible) && !(items != null && items.Selecting) &&
+                    !(Main.LocalPlayer != null && Main.LocalPlayer.mouseInterface);
+                hotkeys?.Bindings.Dispatch(inputState.Hotkeys, Main.netMode == 0 ? HotkeyContext.SinglePlayer : HotkeyContext.Multiplayer, gameplay);
             }
             catch { FailClosed(); ConsumeSample(); }
         }
@@ -111,7 +153,7 @@ namespace JueMingR.TerrariaHost.F5
                 PlayerInput.Triggers.JustReleased.MouseRight = false;
                 Main.mouseRight = false;
             }
-            if (State.ConsumeWheel || notes.ConsumeWheel || items != null && items.ConsumeWheel)
+            if (State.ConsumeWheel || notes.ConsumeWheel || items != null && items.ConsumeWheel || HotkeyPopup != null && HotkeyPopup.ConsumeWheel)
             { PlayerInput.ScrollWheelDelta = 0; PlayerInput.ScrollWheelDeltaForUI = 0; }
             // Absolute wheel and physical MouseInfo are never changed. Consumed
             // button transitions/deltas are never restored or replayed later.
@@ -123,6 +165,7 @@ namespace JueMingR.TerrariaHost.F5
             {
                 RestoreLeases();
                 RestorePositionWhenLoaded();
+                hotkeys?.Bindings.Poll();
                 SubmitPosition();
                 // Do not consume a required alert while normal game text is hidden.
                 if (!Main.gameMenu && !Main.hideUI) { preferences.TakeFeedback(displayPreferenceFeedback); hostItems?.TakeFeedback(displayPreferenceFeedback); }
@@ -146,6 +189,7 @@ namespace JueMingR.TerrariaHost.F5
                 {
                     Vector2 screen = PlayerInput.OriginalScreenSize;
                     renderer.Prepare(State, screen.X, screen.Y, matrix.M11);
+                    HotkeyPopup?.Prepare(screen.X / matrix.M11, screen.Y / matrix.M11, renderer.FontIdentity, renderer.PopupMeasure, renderer.SkinGeneration);
                     // Emote Bubbles runs before the modal early-return layers.
                     // Clear only the old pointer-triggered NPC bubble at update end.
                     if (OwnsPointer) Main.instance.currentNPCShowingChatBubble = -1;
@@ -216,7 +260,8 @@ namespace JueMingR.TerrariaHost.F5
                     {
                         renderer.Draw(State, matrix, biome.FeatureEnabled, Main.netMode != 0 || biome.FeatureFailed || !preferences.BiomeLoaded);
                         notes.DrawCards();
-                        items?.Draw();
+                        items?.Draw(drawKeyboard);
+                        if (HotkeyPopup != null) renderer.DrawPopup(HotkeyPopup);
                     }
                 }
             }
@@ -262,10 +307,10 @@ namespace JueMingR.TerrariaHost.F5
             if (position != null) preferences.SetPosition(position);
         }
 
-        internal void CloseAndSubmitPosition() { State.Close(); notes.Suspend(); items?.Suspend(); SubmitPosition(); }
+        internal void CloseAndSubmitPosition() { HotkeyPopup?.Close(); State.Close(); notes.Suspend(); items?.Suspend(); SubmitPosition(); }
 
         internal void CancelForFocusLoss()
-        { State.CancelForFocusLoss(); notes.Suspend(true); items?.Suspend(); RestoreLeases(); }
+        { HotkeyPopup?.Close(); State.CancelForFocusLoss(); notes.Suspend(true); items?.Suspend(); RestoreLeases(); }
 
         internal void FailClosed()
         { failed = true; State.Ready = false; CloseAndSubmitPosition(); RestoreLeases(); notes.FailClosed(); renderer.Dispose(); }
