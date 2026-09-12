@@ -83,8 +83,9 @@ namespace JueMingR.TerrariaHost.WorldObjectText
                     jobs[i] = null;
                     if (!entry.Layout.HasInk) { discovery.Reject(entry.Candidate); Remove(entry); }
                 }
-                foreach (var candidate in discovery.Candidates)
+                for (int i = 0; i < discovery.SelectedCount; i++)
                 {
+                    var candidate = discovery.Candidates[i];
                     Entry entry; if (!cache.TryGetValue(candidate.Value.Key, out entry) || !entry.Layout.Ready || !entry.Layout.HasInk) continue;
                     entry.Layout.ApplyColor(settings.Style(candidate.Value.Kind).Rgb);
                     packets[packetCount++] = new Packet { Value = candidate.Value, Layout = entry.Layout };
@@ -111,9 +112,7 @@ namespace JueMingR.TerrariaHost.WorldObjectText
                     float anchor = value.TileY * 16 - Main.screenPosition.Y;
                     if (Main.LocalPlayer != null && Main.LocalPlayer.gravDir == -1) anchor = Main.screenHeight - anchor - 32;
                     var position = new Vector2(value.CenterX - Main.screenPosition.X - packet.Layout.Width / 2, anchor - 6 - packet.Layout.Height);
-                    var first = Vector2.Transform(position - new Vector2(2), zoom);
-                    var last = Vector2.Transform(position + new Vector2(packet.Layout.Width + 2, packet.Layout.Height + 2), zoom);
-                    if (last.X < 0 || last.Y < 0 || first.X > Main.screenWidth || first.Y > Main.screenHeight) continue;
+                    if (!packet.Layout.HasVisibleInk(position, zoom, Main.screenWidth, Main.screenHeight)) continue;
                     packet.Layout.Draw(Main.spriteBatch, position);
                     if (value.Kind == WorldObjectKind.Chest) chests++; else if (value.Kind == WorldObjectKind.Sign) signs++; else tombstones++;
 #if DEBUG
@@ -137,9 +136,13 @@ namespace JueMingR.TerrariaHost.WorldObjectText
             Entry entry; float width = Math.Min(460 * style.Size / 100f, Math.Max(32, Main.screenWidth / zoom.M11 - 24));
             if (!cache.TryGetValue(value.Key, out entry) || !entry.Layout.Ready || !entry.Matches(new WorldObjectTextCandidate { Value = value, Text = text }, style, width)) return true;
             entry.Seen = epoch + 1; age.Remove(entry.Node); age.AddLast(entry.Node);
-            var first = Vector2.Transform(new Vector2(value.CenterX - Main.screenPosition.X - entry.Layout.Width / 2 - 2, anchor - 8 - entry.Layout.Height), zoom);
-            var last = Vector2.Transform(new Vector2(value.CenterX - Main.screenPosition.X + entry.Layout.Width / 2 + 2, anchor - 4), zoom);
-            return last.X >= 0 && last.Y >= 0 && first.X <= Main.screenWidth && first.Y <= Main.screenHeight;
+            var position = new Vector2(value.CenterX - Main.screenPosition.X - entry.Layout.Width / 2, anchor - 6 - entry.Layout.Height);
+            return entry.Layout.HasVisibleInk(position, zoom, Main.screenWidth, Main.screenHeight);
+        }
+        internal bool IsPrepared(WorldObject value, string text, WorldObjectStyle style)
+        {
+            Entry entry; float width = Math.Min(460 * style.Size / 100f, Math.Max(32, Main.screenWidth / Main.GameViewMatrix.ZoomMatrix.M11 - 24));
+            return cache.TryGetValue(value.Key, out entry) && entry.Layout.Ready && entry.Layout.HasInk && entry.Matches(new WorldObjectTextCandidate { Value = value, Text = text }, style, width);
         }
         private sealed class Entry
         {

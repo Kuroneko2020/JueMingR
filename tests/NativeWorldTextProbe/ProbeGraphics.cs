@@ -19,10 +19,14 @@ namespace NativeWorldTextProbe
         private IntPtr window;
         private readonly SpriteBatch batch;
         private readonly XnbReader reader;
+        private RenderTarget2D costCanvas;
+        private readonly string contentDirectory;
+        private readonly Dictionary<int, Texture2D> tiles = new Dictionary<int, Texture2D>();
         public GraphicsDevice GraphicsDevice { get; private set; }
         internal DynamicSpriteFont Font { get; }
         internal ProbeGraphics(string content)
         {
+            contentDirectory = content;
             window = CreateWindowEx(0, "STATIC", "Native text probe", 0, 0, 0, 960, 640, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
             if (window == IntPtr.Zero) throw new InvalidOperationException("hidden-test-window-unavailable");
             GraphicsDevice = new GraphicsDevice(GraphicsAdapter.DefaultAdapter, GraphicsProfile.Reach, new PresentationParameters {
@@ -40,6 +44,7 @@ namespace NativeWorldTextProbe
             Terraria.GameContent.FontAssets.ItemStack = Loaded("probe-native-stack", Font);
             using (var stream = File.OpenRead(Path.Combine(content, "Images", "Item_8.xnb"))) Terraria.GameContent.TextureAssets.Item[8] = Loaded("Images/Item_8", reader.FromStream<Texture2D>(stream));
             using (var stream = File.OpenRead(Path.Combine(content, "Images", "Inventory_Back.xnb"))) Terraria.GameContent.TextureAssets.InventoryBack = Loaded("Images/Inventory_Back", reader.FromStream<Texture2D>(stream));
+            using (var stream = File.OpenRead(Path.Combine(content, "Images", "MagicPixel.xnb"))) Terraria.GameContent.TextureAssets.MagicPixel = Loaded("Images/MagicPixel", reader.FromStream<Texture2D>(stream));
         }
         internal void Preview(string output, params NativeWorldTextLayout[] layouts)
         {
@@ -62,7 +67,40 @@ namespace NativeWorldTextProbe
                 using (var stream = new FileStream(output, FileMode.CreateNew)) canvas.SaveAsPng(stream, 960, 640);
             }
         }
-        public void Dispose() { reader?.Dispose(); batch?.Dispose(); GraphicsDevice?.Dispose(); if (window != IntPtr.Zero) { DestroyWindow(window); window = IntPtr.Zero; } }
+        internal void DrawFrame(WorldObjectTextWorldLayer layer)
+        {
+            if (costCanvas == null) costCanvas = new RenderTarget2D(GraphicsDevice, 960, 640);
+            GraphicsDevice.SetRenderTarget(costCanvas); GraphicsDevice.Clear(new Color(30, 43, 47));
+            batch.Begin(); layer.Draw(); batch.End(); GraphicsDevice.SetRenderTarget(null);
+        }
+        internal void Image(string output, Action draw, Matrix matrix)
+        {
+            using (var canvas = new RenderTarget2D(GraphicsDevice, 960, 640))
+            {
+                GraphicsDevice.SetRenderTarget(canvas); GraphicsDevice.Clear(new Color(30, 43, 47));
+                batch.Begin(SpriteSortMode.Deferred, null, null, null, null, null, matrix); draw(); batch.End(); GraphicsDevice.SetRenderTarget(null);
+                using (var stream = new FileStream(output, FileMode.CreateNew)) canvas.SaveAsPng(stream, 960, 640);
+            }
+        }
+        internal void Scene(WorldObjectTextWorldLayer layer, string output)
+        {
+            Image(output, () =>
+            {
+                for (int y = 0; y < 50; y++) for (int x = 0; x < 75; x++)
+                {
+                    var tile = Terraria.Main.tile[x, y]; if (tile == null || !tile.active()) continue;
+                    Texture2D texture;
+                    if (!tiles.TryGetValue(tile.type, out texture))
+                    { using (var stream = File.OpenRead(Path.Combine(contentDirectory, "Images", "Tiles_" + tile.type + ".xnb"))) texture = reader.FromStream<Texture2D>(stream); tiles.Add(tile.type, texture); }
+                    var position = new Vector2(x * 16, y * 16) - Terraria.Main.screenPosition;
+                    if (Terraria.Main.LocalPlayer.gravDir == -1) position.Y = Terraria.Main.screenHeight - position.Y - 16;
+                    batch.Draw(texture, position, new Rectangle(tile.frameX, tile.frameY, 16, 16), Color.White, 0, Vector2.Zero, 1,
+                        Terraria.Main.LocalPlayer.gravDir == -1 ? SpriteEffects.FlipVertically : SpriteEffects.None, 0);
+                }
+                layer.Draw();
+            }, Terraria.Main.GameViewMatrix.ZoomMatrix);
+        }
+        public void Dispose() { foreach (var texture in tiles.Values) texture.Dispose(); costCanvas?.Dispose(); reader?.Dispose(); batch?.Dispose(); GraphicsDevice?.Dispose(); if (window != IntPtr.Zero) { DestroyWindow(window); window = IntPtr.Zero; } }
         private Asset<T> Loaded<T>(string name, T value) where T : class
         {
             var asset = (Asset<T>)Activator.CreateInstance(typeof(Asset<T>), BindingFlags.Instance | BindingFlags.NonPublic, null, new object[] { name }, null);

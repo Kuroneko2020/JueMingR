@@ -30,12 +30,15 @@ namespace JueMingR.ArchitectureTests
                 int count = 0; foreach (long position in nearby) { count++; Require(position == WorldObject.PositionKey(10, 20), "far bucket never enters nearby query"); }
                 Require(count == 1, "nearby query returns only applicable position");
                 foreach (string invalid in new[] { json.Replace("\"version\":1", "\"version\":2"), json.Replace("\"y\":20", "\"y\":-1"), json.Replace("\"x\":10", "\"name\":\"old\",\"x\":10"), json.Replace(pair, new string('b', 64)), json.Replace("\"x\":9000,\"y\":1000", "\"x\":10,\"y\":20") })
-                { bool rejected = false; try { decode.Invoke(codec, new object[] { Encoding.UTF8.GetBytes(invalid), pair }); } catch (TargetInvocationException) { rejected = true; } Require(rejected, "corrupt/future/mismatched/duplicate file is protected"); }
+                { bool rejected = false; try { decode.Invoke(codec, new object[] { Encoding.UTF8.GetBytes(invalid), pair }); } catch (TargetInvocationException e) when (e.InnerException is PreferenceFormatException) { rejected = true; } Require(rejected, "corrupt/future/mismatched/duplicate file is protected"); }
                 byte[] encoded = (byte[])codecType.GetMethod("Encode").Invoke(codec, new[] { (object)pair, index });
                 Require(Encoding.UTF8.GetString(encoded).IndexOf("name", StringComparison.Ordinal) < 0, "position history never persists a name truth");
                 DelayedRealFile();
                 StopDuringWrite();
                 DeferredReentry();
+                DeferredRetryRetiresOverlay();
+                CapacityNoticeOnce();
+                OpenedFailureChecks.Run();
                 BoundedQuery();
             }
             catch (Exception e) { failures.Add("Opened positions: " + (e.InnerException ?? e).Message); }
@@ -166,6 +169,55 @@ namespace JueMingR.ArchitectureTests
                 if (stopped && resolved.StartsWith(temp, StringComparison.OrdinalIgnoreCase) && Path.GetFileName(resolved).StartsWith("JueMingR-opened-", StringComparison.Ordinal))
                 { entered.Dispose(); release.Dispose(); Directory.Delete(resolved, true); }
             }
+        }
+        private static void DeferredRetryRetiresOverlay()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "JueMingR-opened-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+            string pair = new string('e', 64), path = Path.Combine(root, pair + ".json");
+            var entered = new ManualResetEventSlim(); var release = new ManualResetEventSlim(); RetryWrite storage = null;
+            var owner = new OpenedPositionHistory(key => storage = new RetryWrite(new SlowRead(new AtomicFileDocument(path, OpenedPositionCodec.MaximumBytes, true), entered, release), pair));
+            try
+            {
+                owner.BeginSession(1); for (int i = 0; i < 65; i++) owner.Opened(i, 11);
+                owner.UsePair(pair); Require(entered.Wait(3000), "deferred retry read gate"); owner.EndSession(); owner.BeginSession(2); owner.UsePair(pair);
+                release.Set(); Until(() => { owner.Poll(); return owner.Status == PreferenceStatus.Saved; });
+                Until(() => { owner.Poll(); return storage.Failed && owner.Status == PreferenceStatus.Saved; });
+                Require(storage.Writes >= 2 && owner.Error == null && owner.TakeBackgroundFailure() == null, "known precommit failure retries and clears only its recoverable notice");
+                var session = typeof(OpenedPositionHistory).GetField("current", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(owner);
+                var lease = session.GetType().GetField("Lease", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(session);
+                Require(((Array)lease.GetType().GetField("Overlays", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(lease)).Length == 0, "successful retry retires the frozen overlay, not only its pending keys");
+                Require(new OpenedPositionCodec().Decode(File.ReadAllBytes(path), pair).Count == 65, "retry commits every deferred coordinate to a real file");
+            }
+            finally { release.Set(); owner.Stop(5000); entered.Dispose(); release.Dispose(); }
+        }
+        private sealed class RetryWrite : IPreferenceStorage
+        {
+            private readonly IPreferenceStorage inner; private readonly string pair; internal int Writes; internal volatile bool Failed;
+            internal RetryWrite(IPreferenceStorage inner, string pair) { this.inner = inner; this.pair = pair; }
+            public PreferenceReadResult Read() { return inner.Read(); }
+            public PreferenceWriteResult Write(string identity, byte[] bytes)
+            { Interlocked.Increment(ref Writes); if (!Failed && new OpenedPositionCodec().Decode(bytes, pair).Count == 65) { Failed = true; return new PreferenceWriteResult(PreferenceWriteStatus.IoFailure, identity, "test-known-precommit"); } return inner.Write(identity, bytes); }
+            public void Dispose() { inner.Dispose(); }
+        }
+        private static void CapacityNoticeOnce()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "JueMingR-opened-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+            string pair = new string('f', 64); var entered = new ManualResetEventSlim(); var release = new ManualResetEventSlim();
+            var owner = new OpenedPositionHistory(key => new SlowRead(new AtomicFileDocument(Path.Combine(root, pair + ".json"), OpenedPositionCodec.MaximumBytes, true), entered, release));
+            var store = typeof(OpenedPositionHistory).GetField("store", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(owner);
+            var count = store.GetType().GetField("queuedUnits", BindingFlags.Instance | BindingFlags.NonPublic);
+            try
+            {
+                owner.BeginSession(1); owner.UsePair(pair); Require(entered.Wait(3000), "capacity test holds worker");
+                // Reach the exact admission boundary without allocating a million
+                // unrelated fixture coordinates; only the game thread can Add.
+                count.SetValue(store, 1048576); owner.Opened(1, 1);
+                int notices = 0; for (int i = 0; i < 20; i++) { owner.Poll(); if (owner.TakeBackgroundFailure() != null) notices++; }
+                Require(notices == 1, "one blocked fact cannot republish a capacity notice every Poll");
+                count.SetValue(store, 0); owner.Poll(); release.Set(); Until(() => { owner.Poll(); return owner.Status == PreferenceStatus.Saved; });
+                Require(owner.Contains(WorldObject.PositionKey(1, 1)), "capacity recovery accepts the waiting fact");
+            }
+            finally { count.SetValue(store, 0); release.Set(); owner.Stop(5000); entered.Dispose(); release.Dispose(); }
         }
         private sealed class SlowWrite : IPreferenceStorage
         {

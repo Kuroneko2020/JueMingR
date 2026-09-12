@@ -9,12 +9,14 @@ namespace NativeWorldTextProbe
     {
         private static string references;
         private static Assembly game;
+        internal static string Repository { get; private set; }
         private static int Main(string[] args)
         {
             try
             {
                 if (args.Length != 3) throw new ArgumentException("repository Content output required");
-                references = Path.Combine(Path.GetFullPath(args[0]), "external", "TerrariaRefs");
+                Repository = Path.GetFullPath(args[0]);
+                references = Path.Combine(Repository, "external", "TerrariaRefs");
                 AppDomain.CurrentDomain.AssemblyResolve += Resolve;
                 return Run(args[1], args[2]);
             }
@@ -24,6 +26,7 @@ namespace NativeWorldTextProbe
         {
             var name = new AssemblyName(args.Name).Name;
             string path = Path.Combine(references, name == "Terraria" ? "Terraria.exe" : name + ".dll");
+            if (name == "0Harmony") path = Path.Combine(Repository, "external", "Harmony", "0Harmony.dll");
             if (File.Exists(path)) { var value = Assembly.LoadFrom(path); if (name == "Terraria") game = value; return value; }
             if (game != null)
                 foreach (string resource in game.GetManifestResourceNames())

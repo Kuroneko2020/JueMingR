@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -38,6 +39,8 @@ namespace NativeWorldTextProbe
             Require(discovery.Candidates.Count == 4 && discovery.Candidates.Count(c => c.Text == "Dresser") == 2, "adjacent same-name dressers remain two single labels");
             ObserveOpened(world);
             SelectionAndRecovery(graphics, world, source, output);
+            BlankPrefixProgress(world, source);
+            RepresentativeScene(graphics, output, world, source);
             Console.WriteLine("PASS: actual Host native names/dictionary, full dresser geometry, lazy all-off observer, real history file, >K selection and cold-job recovery.");
         }
         private static void ObserveOpened(WorldTileObservation world)
@@ -77,7 +80,7 @@ namespace NativeWorldTextProbe
         {
             Main.tile = new Tile[256, 128]; Main.chest = new Chest[8000]; Main.sign = new Sign[32000]; source.EndSession();
             for (int y = 0; y < 12; y++) for (int x = 0; x < 25; x++) Put(4 + x * 2, 10 + y * 2, 21, 0, 2);
-            var discovery = new WorldObjectDiscovery(source); var layer = new WorldObjectTextWorldLayer(discovery, () => true); discovery.SetPresentationGate(layer.MayPresent);
+            var discovery = new WorldObjectDiscovery(source); var layer = new WorldObjectTextWorldLayer(discovery, () => true); discovery.SetPresentationGate(layer.MayPresent, layer.IsPrepared);
             var settings = WorldObjectSettings.Default.WithMode(WorldObjectKind.Chest, WorldObjectMode.Always);
             for (int i = 0; i < 80; i++) { world.BeginTick(); discovery.Update(settings, null); layer.Prepare(settings); }
             Require(discovery.Candidates.Count == 272, "real source retains bounded nearest reserve from 300 complete containers");
@@ -86,6 +89,26 @@ namespace NativeWorldTextProbe
             { double dx = candidate.Value.CenterX - Main.LocalPlayer.Center.X, dy = candidate.Value.CenterY - Main.LocalPlayer.Center.Y; double distance = dx * dx + dy * dy; Require(distance >= previous, "actual native candidates use player-center distance"); previous = distance; }
             graphics.DrawWorld(layer, Path.Combine(output, "native-world-k.png"));
             Require(layer.Failure == null && layer.LastDrawn == 240, "production world consumer draws K=240 after nearby selection");
+            var all = new List<Point>();
+            for (int y = 0; y < 12; y++) for (int x = 0; x < 25; x++) all.Add(new Point(4 + x * 2, 10 + y * 2));
+            AssertNearest(discovery, layer, all, "far-first/near-last");
+            long[] initial = discovery.Candidates.Take(240).Select(c => c.Value.Key).ToArray();
+            Main.LocalPlayer.position = new Vector2(100, 180);
+            for (int i = 0; i < 120; i++) { world.BeginTick(); discovery.Update(settings, null); layer.Prepare(settings); }
+            AssertNearest(discovery, layer, all, "player moved without resetting discovery");
+            Require(!initial.SequenceEqual(discovery.Candidates.Take(240).Select(c => c.Value.Key)), "movement replaces the actual visible list");
+            for (int i = 0; i < 10; i++) { var point = new Point(4 + i * 2, 7); all.Add(point); Put(point.X, point.Y, 21, 0, 2); }
+            for (int i = 0; i < 120; i++) { world.BeginTick(); discovery.Update(settings, null); layer.Prepare(settings); }
+            AssertNearest(discovery, layer, all, "new nearer objects replace already displayed farther objects");
+            var removed = discovery.Candidates[0].Value;
+            all.Remove(new Point(removed.TileX, removed.TileY));
+            for (int dy = 0; dy < 2; dy++) for (int dx = 0; dx < 2; dx++) Main.tile[removed.TileX + dx, removed.TileY + dy].active(false);
+            world.BeginTick(); discovery.Update(settings, null); layer.Prepare(settings);
+            Require(!discovery.Candidates.Any(c => c.Value.Key == removed.Key), "confirmed removed object leaves the actual list immediately");
+            for (int i = 0; i < 120; i++) { world.BeginTick(); discovery.Update(settings, null); layer.Prepare(settings); }
+            AssertNearest(discovery, layer, all, "removed nearest object is backfilled");
+            graphics.DrawFrame(layer);
+            Require(layer.Failure == null && layer.LastDrawn == 240, "updated exact list still draws the full K");
             // More than the reserve can be geometrically visible at the top edge
             // while their text is above it. They cannot lock out farther text.
             Main.tile = new Tile[256, 128]; Main.sign = new Sign[32000]; source.EndSession(); discovery.Clear(); layer.Clear();
@@ -96,6 +119,10 @@ namespace NativeWorldTextProbe
             for (int i = 0; i < 70; i++) { world.BeginTick(); discovery.Update(settings, null); layer.Prepare(settings); }
             graphics.DrawWorld(layer, Path.Combine(output, "native-world-backfill.png"));
             Require(layer.Failure == null && layer.LastDrawn == 40, "fully cropped nearest objects cannot consume the sign reserve forever");
+            for (int i = 0; i < 60; i++) { Put(i * 2, 2, 55, 0, 2); Main.sign[i] = new Sign { x = i * 2, y = 2, text = "A\n\n\n\n\n\n\n\n\n" }; }
+            settings = settings.WithMode(WorldObjectKind.Sign, WorldObjectMode.All);
+            for (int i = 0; i < 90; i++) { world.BeginTick(); discovery.Update(settings, null); layer.Prepare(settings); }
+            Require(discovery.Candidates.Count(c => c.Value.Kind == WorldObjectKind.Sign && c.Value.TileY >= 15) == 40, "offscreen ink with onscreen blank lines cannot hold nearest slots");
             // Keep a chest consumer alive so a sign-only disable does not use the
             // easy all-off Clear path. Long tags make preparation genuinely cold.
             Put(50, 20, 21, 0, 2);
@@ -113,6 +140,72 @@ namespace NativeWorldTextProbe
         {
             var chest = Chest.CreateOutOfArray(index, x, y, 40);
             typeof(Chest).GetMethod("Assign", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic).Invoke(null, new object[] { chest }); return chest;
+        }
+        private static void AssertNearest(WorldObjectDiscovery discovery, WorldObjectTextWorldLayer layer, List<Point> all, string context)
+        {
+            // All fixtures and their short text lie in the viewport. This oracle
+            // sorts the COMPLETE input, independently of the production reserve.
+            var center = Main.LocalPlayer.Center;
+            long[] expected = all.OrderBy(p => Math.Pow(p.X * 16 + 16 - center.X, 2) + Math.Pow(p.Y * 16 + 16 - center.Y, 2))
+                .ThenBy(p => p.X).ThenBy(p => p.Y).Take(272).Select(p => WorldObject.PositionKey(p.X, p.Y)).ToArray();
+            Require(discovery.SelectedCount == expected.Length && discovery.Candidates.Take(discovery.SelectedCount).Select(c => c.Value.Key).SequenceEqual(expected), "complete-input nearest oracle: " + context);
+            var packets = (Array)typeof(WorldObjectTextWorldLayer).GetField("packets", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(layer);
+            long[] rendered = Enumerable.Range(0, 240).Select(i => { var packet = packets.GetValue(i); return ((WorldObject)packet.GetType().GetField("Value", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(packet)).Key; }).ToArray();
+            Require(rendered.SequenceEqual(expected.Take(240)), "prepared Draw list matches exact nearest 240: " + context);
+        }
+        private static void BlankPrefixProgress(WorldTileObservation world, WorldObjectHostObservation source)
+        {
+            Main.screenWidth = 1280; Main.screenHeight = 960; Main.screenPosition = Vector2.Zero; Main.LocalPlayer.position = Vector2.Zero;
+            Main.tile = new Tile[256, 128]; Main.sign = new Sign[32000]; source.EndSession();
+            string blank = "[c/ff0000:" + new string(' ', 16384) + "]";
+            for (int i = 0; i < 600; i++) { int x = 2 + i % 24 * 2, y = 2 + i / 24 * 2; Put(x, y, 55, 0, 2); Main.sign[i] = new Sign { x = x, y = y, text = blank }; }
+            Put(70, 54, 55, 0, 2); Main.sign[600] = new Sign { x = 70, y = 54, text = "A" };
+            var discovery = new WorldObjectDiscovery(source); var layer = new WorldObjectTextWorldLayer(discovery, () => true); discovery.SetPresentationGate(layer.MayPresent, layer.IsPrepared);
+            var settings = WorldObjectSettings.Default.WithMode(WorldObjectKind.Sign, WorldObjectMode.Characters).With(WorldObjectSettings.Default.Style(WorldObjectKind.Sign).WithMode(WorldObjectMode.Characters).WithLimits(3, 1));
+            for (int i = 0; i < 3200; i++) { world.BeginTick(); discovery.Update(settings, null); layer.Prepare(settings); }
+            Require(discovery.Candidates.Any(c => c.Value.TileX == 70 && c.Value.TileY == 54), "more than rejection capacity of cold blank text cannot permanently starve a farther valid sign");
+            Require(layer.Failure == null, "blank-prefix progress has no layout failure");
+            layer.Clear(); discovery.Clear(); Main.screenWidth = 960; Main.screenHeight = 640;
+        }
+        private static void RepresentativeScene(ProbeGraphics graphics, string output, WorldTileObservation world, WorldObjectHostObservation source)
+        {
+            Main.tile = new Tile[256, 128]; Main.sign = new Sign[32000]; Main.chest = new Chest[8000]; source.EndSession();
+            Main.screenPosition = Vector2.Zero; Main.LocalPlayer.position = new Vector2(450, 400);
+            Put(8, 12, 21, 10, 2); Put(24, 12, 88, 0, 3); Put(27, 12, 88, 0, 3); Put(44, 12, 467, 4, 2);
+            Put(18, 28, 55, 0, 2); Put(46, 28, 85, 0, 2);
+            Main.sign[0] = new Sign { x = 18, y = 28, text = "中文牌子\n[c/66ff99:color] [i/s20:8]\n\nÁ emoji 😀\n" + new string('W', 1000) };
+            Main.sign[1] = new Sign { x = 46, y = 28, text = "墓碑 Tombstone\nRemember this place." };
+            var discovery = new WorldObjectDiscovery(source); var layer = new WorldObjectTextWorldLayer(discovery, () => true); discovery.SetPresentationGate(layer.MayPresent, layer.IsPrepared);
+            var settings = WorldObjectSettings.Default.WithMode(WorldObjectKind.Chest, WorldObjectMode.Always).WithMode(WorldObjectKind.Sign, WorldObjectMode.All).WithMode(WorldObjectKind.Tombstone, WorldObjectMode.Characters);
+            for (int i = 0; i < 80; i++) { world.BeginTick(); discovery.Update(settings, null); layer.Prepare(settings); }
+            graphics.Scene(layer, Path.Combine(output, "native-objects-and-text.png")); Require(layer.LastDrawn == 6, "representative native scene contains two separate dresser labels and two texts");
+            AssertLanguage(discovery, layer, new[] { "Ivy Chest", "Dresser", "Dresser", "Dead Man's Chest" });
+            Terraria.Localization.LanguageManager.Instance.SetLanguage("de-DE");
+            for (int i = 0; i < 80; i++) { world.BeginTick(); discovery.Update(settings, null); layer.Prepare(settings); }
+            AssertLanguage(discovery, layer, new[] { "Efeutruhe", "Kommode", "Kommode", "Truhe des toten Mannes" });
+            Terraria.Localization.LanguageManager.Instance.SetLanguage("en-US");
+            for (int i = 0; i < 80; i++) { world.BeginTick(); discovery.Update(settings, null); layer.Prepare(settings); }
+            AssertLanguage(discovery, layer, new[] { "Ivy Chest", "Dresser", "Dresser", "Dead Man's Chest" });
+            Main.LocalPlayer.gravDir = -1; Main.screenPosition = new Vector2(20, 0); Main.GameViewMatrix.Zoom = new Vector2(1.25f);
+            for (int i = 0; i < 80; i++) { world.BeginTick(); discovery.Update(settings, null); layer.Prepare(settings); }
+            graphics.Scene(layer, Path.Combine(output, "native-objects-gravity-zoom.png")); Require(layer.Failure == null && layer.LastDrawn > 0, "native zoom/gravity projection draws without stale world results");
+            Main.GameViewMatrix.Zoom = Vector2.One; Main.LocalPlayer.gravDir = 1; Main.screenPosition = Vector2.Zero; layer.Clear(); discovery.Clear();
+        }
+        private static void AssertLanguage(WorldObjectDiscovery discovery, WorldObjectTextWorldLayer layer, string[] names)
+        {
+            Require(discovery.Candidates.Where(c => c.Value.Kind == WorldObjectKind.Chest).OrderBy(c => c.Value.TileX).Select(c => c.Text).SequenceEqual(names), "language changes actual current names without manual cache clearing");
+            var packets = (Array)typeof(WorldObjectTextWorldLayer).GetField("packets", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(layer);
+            int count = (int)typeof(WorldObjectTextWorldLayer).GetField("packetCount", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(layer);
+            var actual = new SortedDictionary<int, string>();
+            for (int i = 0; i < count; i++)
+            {
+                var packet = packets.GetValue(i); var type = packet.GetType();
+                var value = (WorldObject)type.GetField("Value", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(packet);
+                if (value.Kind != WorldObjectKind.Chest) continue;
+                var layout = (NativeWorldTextLayout)type.GetField("Layout", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(packet);
+                actual.Add(value.TileX, String.Concat(layout.Snippets.Select(s => s.Snippet.Text)));
+            }
+            Require(actual.Values.SequenceEqual(names), "language reaches actual cached Draw snippets without stale outer layout");
         }
         private static void Put(int x, int y, int type, int style, int width)
         { for (int dy = 0; dy < 2; dy++) for (int dx = 0; dx < width; dx++) { var tile = new Tile { type = (ushort)type, frameX = (short)(style * width * 18 + dx * 18), frameY = (short)(dy * 18) }; tile.active(true); Main.tile[x + dx, y + dy] = tile; } }

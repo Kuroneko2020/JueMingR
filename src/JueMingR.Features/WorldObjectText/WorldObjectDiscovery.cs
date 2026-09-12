@@ -15,7 +15,8 @@ namespace JueMingR.Features.WorldObjectText
         private readonly Func<int, int, WorldTargetTile> read;
         private readonly WorldObjectSelection[] selections = { new WorldObjectSelection(272), new WorldObjectSelection(56), new WorldObjectSelection(56) };
         private readonly WorldObject[] scratch = new WorldObject[384];
-        private readonly List<WorldObjectTextCandidate> candidates = new List<WorldObjectTextCandidate>(384);
+        private readonly List<WorldObjectTextCandidate> candidates = new List<WorldObjectTextCandidate>(392);
+        private readonly List<WorldObjectTextCandidate> pending = new List<WorldObjectTextCandidate>(8);
         private readonly Rejected[] rejected = new Rejected[512];
         private readonly Dictionary<long, string> rejectedByPosition = new Dictionary<long, string>();
         private int rejectionCursor, cursor;
@@ -24,13 +25,16 @@ namespace JueMingR.Features.WorldObjectText
         private WorldObjectSettings settings = WorldObjectSettings.Default;
         private OpenedPositionHistory history;
         private bool chests, signs, tombstones, opened;
+        private bool historyFirst;
         private Func<WorldObject, string, WorldObjectStyle, bool> presentation;
+        private Func<WorldObject, string, WorldObjectStyle, bool> prepared;
         public WorldObjectDiscovery(IWorldObjectSource source) { this.source = source ?? throw new ArgumentNullException(nameof(source)); read = source.Read; }
         public IReadOnlyList<WorldObjectTextCandidate> Candidates { get { return candidates; } }
         public WorldObjectView View { get; private set; }
-        public void SetPresentationGate(Func<WorldObject, string, WorldObjectStyle, bool> gate) { presentation = gate; }
+        public int SelectedCount { get; private set; }
+        public void SetPresentationGate(Func<WorldObject, string, WorldObjectStyle, bool> gate, Func<WorldObject, string, WorldObjectStyle, bool> isPrepared = null) { presentation = gate; prepared = isPrepared; }
         public void Clear()
-        { foreach (var selection in selections) selection.Clear(); candidates.Clear(); InvalidateTextLayout(); pass = default(WorldTargetView); cursor = 0; historyCursor = null; }
+        { foreach (var selection in selections) selection.Clear(); candidates.Clear(); pending.Clear(); SelectedCount = 0; InvalidateTextLayout(); pass = default(WorldTargetView); cursor = 0; historyCursor = null; }
         public void InvalidateTextLayout() { Array.Clear(rejected, 0, rejected.Length); rejectedByPosition.Clear(); rejectionCursor = 0; }
         public void Reject(WorldObjectTextCandidate candidate)
         {
@@ -62,6 +66,18 @@ namespace JueMingR.Features.WorldObjectText
             bool restart = pass.Width == 0 || pass.ReadRevision != area.ReadRevision || pass.GeometryRevision != area.GeometryRevision || !pass.Intersects(area);
             if (restart) { Clear(); pass = area; }
             foreach (var selection in selections) selection.SetView(view.Visible, view.PlayerX, view.PlayerY);
+            // Cold qualification has its own eight slots. A full queue pauses
+            // the resumable scan, never restarts it or promotes unverified text
+            // into TopK. The 512 rejection cache is only an optimization: even
+            // an arbitrarily long blank prefix eventually advances past itself.
+            for (int i = pending.Count - 1; i >= 0; i--)
+            {
+                var old = pending[i].Value; WorldObject current; string text;
+                if (!Near(old, area) || !WorldObjectResolver.TryResolve(old.TileX, old.TileY, read(old.TileX, old.TileY), read, out current) ||
+                    current.Key != old.Key || current.Kind != old.Kind || !Wanted(current) || !source.TryText(current, out text) || text == null || text.Length == 0 || IsRejected(current.Key, text) || !MayPresent(current, text)) pending.RemoveAt(i);
+                else if (IsPrepared(current, text)) { selections[(int)current.Kind].Offer(current); pending.RemoveAt(i); }
+                else pending[i] = new WorldObjectTextCandidate { Value = current, Text = text };
+            }
             int existing = CopyObjects();
             for (int i = 0; i < existing; i++)
             {
@@ -69,20 +85,29 @@ namespace JueMingR.Features.WorldObjectText
                 if (!Near(old, area) || !WorldObjectResolver.TryResolve(old.TileX, old.TileY, read(old.TileX, old.TileY), read, out current) ||
                     current.Key != old.Key || current.Kind != old.Kind || !Wanted(current) || !source.TryText(current, out text) || text == null || text.Length == 0 || IsRejected(current.Key, text) || !MayPresent(current, text))
                     selections[(int)old.Kind].Remove(old.Key);
-                else selections[(int)old.Kind].Offer(current);
+                else if (IsPrepared(current, text)) selections[(int)old.Kind].Offer(current);
+                else { selections[(int)old.Kind].Remove(old.Key); Queue(current, text); }
             }
-            if (signs || tombstones || chests && !opened) ScanTiles(area);
-            if (chests && opened) ScanHistory(area);
+            bool tileDemand = signs || tombstones || chests && !opened;
+            bool historyDemand = chests && opened;
+            if (pending.Count < 8)
+            {
+                if (historyDemand && historyFirst) ScanHistory(area);
+                if (tileDemand) ScanTiles(area);
+                if (historyDemand && !historyFirst) ScanHistory(area);
+                if (tileDemand && historyDemand) historyFirst = !historyFirst;
+            }
             candidates.Clear(); int count = CopyObjects();
             for (int i = 0; i < count; i++)
             { string text; if (source.TryText(scratch[i], out text) && text != null && text.Length != 0) candidates.Add(new WorldObjectTextCandidate { Value = scratch[i], Text = text }); }
+            SelectedCount = candidates.Count; candidates.AddRange(pending);
         }
         private int CopyObjects() { int count = 0; foreach (var selection in selections) count += selection.CopyTo(scratch, count); return count; }
         private void ScanTiles(WorldTargetView latest)
         {
             if (cursor >= pass.Width * pass.Height) { pass = latest; cursor = 0; }
             int tiles = 0, objects = 0, total = pass.Width * pass.Height;
-            while (cursor < total && tiles < 4096 && objects < 256)
+            while (cursor < total && tiles < 4096 && objects < 256 && pending.Count < 8)
             {
                 int x = pass.X + cursor % pass.Width, y = pass.Y + cursor / pass.Width; cursor++; tiles++;
                 if (x < latest.X - 2 || x >= latest.Right || y < latest.Y - 1 || y >= latest.Bottom) continue;
@@ -96,7 +121,7 @@ namespace JueMingR.Features.WorldObjectText
             if (historyCursor == null || !historyPass.Intersects(latest) || historyPass.ReadRevision != latest.ReadRevision)
             { historyPass = latest; historyCursor = history.Query(latest); }
             int remaining = 256;
-            while (remaining > 0)
+            while (remaining > 0 && pending.Count < 8)
             {
                 var step = historyCursor.MoveNext(remaining); remaining -= historyCursor.WorkUsed;
                 if (step == OpenedQueryStep.End) { historyCursor = null; break; }
@@ -109,8 +134,12 @@ namespace JueMingR.Features.WorldObjectText
         {
             var selection = selections[(int)value.Kind]; if (!selection.WouldAdmit(value)) return;
             string text;
-            if (source.TryText(value, out text) && text != null && text.Length != 0 && !IsRejected(value.Key, text) && MayPresent(value, text)) selection.Offer(value);
+            if (source.TryText(value, out text) && text != null && text.Length != 0 && !IsRejected(value.Key, text) && MayPresent(value, text))
+            { if (IsPrepared(value, text)) selection.Offer(value); else Queue(value, text); }
         }
+        private bool IsPrepared(WorldObject value, string text) { return prepared == null || prepared(value, text, settings.Style(value.Kind)); }
+        private void Queue(WorldObject value, string text)
+        { foreach (var item in pending) if (item.Value.Key == value.Key) return; if (pending.Count < 8) pending.Add(new WorldObjectTextCandidate { Value = value, Text = text }); }
         private bool MayPresent(WorldObject value, string text) { return presentation == null || presentation(value, text, settings.Style(value.Kind)); }
         private bool Wanted(WorldObject value)
         { return value.Kind == WorldObjectKind.Chest ? chests && (!opened || history.Contains(value.Key)) : value.Kind == WorldObjectKind.Sign ? signs : tombstones; }

@@ -62,6 +62,8 @@ namespace NativeWorldTextProbe
                 graphics.Preview(output, layout, lines, wrapped, slash, icon);
                 Require(Terraria.Main.inventoryScale == inventoryScale, "native item drawing restores inventory scale");
                 NativeWorldChecks.Run(graphics, output);
+                FiniteCostChecks.Run(graphics, output);
+                NativeCompositionChecks.Run(graphics, output);
                 Console.WriteLine("PASS: real-font bounded wrapping, Unicode, native colors and production positioned-snippet drawing.");
             }
             return 0;

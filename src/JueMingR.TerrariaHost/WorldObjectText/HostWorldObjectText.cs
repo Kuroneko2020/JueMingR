@@ -30,7 +30,7 @@ namespace JueMingR.TerrariaHost.WorldObjectText
             History = new OpenedPositionHistory(pair => new AtomicFileDocument(Path.Combine(data, "records", "opened-containers", pair + ".json"), OpenedPositionCodec.MaximumBytes, true));
             observer = new OpenedContainerObserver(runtime, History, world, automatic);
             World = new WorldObjectTextWorldLayer(Discovery, () => runtime.IsSessionActive && LayersReady);
-            Discovery.SetPresentationGate(World.MayPresent);
+            Discovery.SetPresentationGate(World.MayPresent, World.IsPrepared);
             AppDomain.CurrentDomain.ProcessExit += OnExit;
         }
         internal bool LayersReady { get; set; }

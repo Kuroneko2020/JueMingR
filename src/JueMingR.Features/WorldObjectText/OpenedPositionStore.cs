@@ -25,11 +25,12 @@ namespace JueMingR.Features.WorldObjectText
             internal State Current = new State(new OpenedPositionIndex(), false, PreferenceStatus.Loading);
             internal HashSet<long> Pending = new HashSet<long>();
             internal List<Deferred> Deferred = new List<Deferred>();
+            internal List<OpenedPositionIndex> RetryingOverlays = new List<OpenedPositionIndex>();
             // Game-thread accepted facts remain queryable on same-pair reentry
             // while the separately published disk snapshot is still pending.
             internal readonly OpenedPositionIndex Accepted = new OpenedPositionIndex();
             internal OpenedPositionIndex[] Overlays = new OpenedPositionIndex[0];
-            internal bool InUse = true, Writable, Read;
+            internal bool InUse = true, Writable, Read, AdmissionBlocked;
             internal int Failures, Reservation, InFlight;
             internal DateTime Due, FirstPending;
         }
@@ -43,11 +44,22 @@ namespace JueMingR.Features.WorldObjectText
         private const int MaximumQueuedUnits = 1048576;
         private int queuedUnits, overlayUnits;
         private bool running, stopping, cancelled, completed;
-        private string lastFailure, lastFailurePair, admissionFailure;
+        private string lastFailure, admissionFailure;
+        private readonly Dictionary<string, string> pairFailures = new Dictionary<string, string>(StringComparer.Ordinal);
         internal OpenedPositionStore(Func<string, IPreferenceStorage> factory)
         { this.factory = factory ?? throw new ArgumentNullException(nameof(factory)); timer = new Timer(Drain, null, Timeout.Infinite, Timeout.Infinite); }
         internal bool Terminated { get { lock (gate) return cancelled; } }
-        internal string TakeFailure() { lock (gate) { if (admissionFailure != null) { string value = admissionFailure; admissionFailure = null; return value; } string failure = lastFailure; lastFailure = lastFailurePair = null; return failure; } }
+        internal string TakeFailure()
+        {
+            lock (gate)
+            {
+                if (admissionFailure != null) { string value = admissionFailure; admissionFailure = null; return value; }
+                string key = null, valueForPair = null;
+                foreach (var entry in pairFailures) { key = entry.Key; valueForPair = entry.Value; break; }
+                if (key != null) { pairFailures.Remove(key); return valueForPair; }
+                string failure = lastFailure; lastFailure = null; return failure;
+            }
+        }
         internal bool HasPending(Lease lease) { lock (gate) return lease.Reservation != 0 || lease.InFlight != 0; }
         internal void ReadView(Lease lease, out State state, out OpenedPositionIndex[] overlays)
         { lock (gate) { state = lease.Current; overlays = lease.Overlays; } }
@@ -73,8 +85,9 @@ namespace JueMingR.Features.WorldObjectText
                 if (stopping || cancelled || completed || lease.Current.Protected) return false;
                 if (lease.Accepted.Contains(key) || lease.Current.Index.Contains(key)) return true;
                 if (queuedUnits == MaximumQueuedUnits || lease.Accepted.Count == OpenedPositionIndex.MaximumPositions)
-                { admissionFailure = "opened-queue-capacity-session-only"; return false; }
+                { if (!lease.AdmissionBlocked) admissionFailure = "opened-queue-capacity-session-only"; lease.AdmissionBlocked = true; return false; }
                 if (!lease.Pending.Add(key)) return true;
+                lease.AdmissionBlocked = false;
                 queuedUnits++; lease.Reservation++; lease.Accepted.Add(key);
                 DateTime now = DateTime.UtcNow;
                 if (lease.Pending.Count == 1) lease.FirstPending = now.AddMilliseconds(1000);
@@ -135,7 +148,7 @@ namespace JueMingR.Features.WorldObjectText
             {
                 while (true)
                 {
-                    Lease lease = null; HashSet<long> batch = null; List<Deferred> deferred = null; int reservation = 0;
+                    Lease lease = null; HashSet<long> batch = null; List<Deferred> deferred = null; List<OpenedPositionIndex> overlays = null; int reservation = 0;
                     lock (gate)
                     {
                         if (cancelled) break;
@@ -147,19 +160,25 @@ namespace JueMingR.Features.WorldObjectText
                         if (lease == null) break;
                         batch = lease.Pending; lease.Pending = new HashSet<long>();
                         deferred = lease.Deferred; lease.Deferred = new List<Deferred>();
+                        overlays = lease.RetryingOverlays; lease.RetryingOverlays = new List<OpenedPositionIndex>();
                         reservation = lease.Reservation; lease.Reservation = 0; lease.InFlight = reservation;
                     }
-                    foreach (var tail in deferred) for (int i = tail.Start; i < tail.Values.Count; i++) batch.Add(tail.Values[i]);
-                    int retained = Process(lease, batch);
+                    foreach (var tail in deferred) { overlays.Add(tail.Index); for (int i = tail.Start; i < tail.Values.Count; i++) batch.Add(tail.Values[i]); }
+                    bool retry;
+                    int retained = Process(lease, batch, out retry);
                     bool close;
                     lock (gate)
                     {
                         queuedUnits -= reservation - retained;
                         lease.InFlight = 0;
-                        if (lease.Current.Status == PreferenceStatus.Saved && deferred.Count != 0)
+                        // Retry carries the frozen-index ownership, not its old
+                        // source List. Success releases the exact segments it
+                        // covered even when the retry consisted only of keys.
+                        if (retry) lease.RetryingOverlays.AddRange(overlays);
+                        else if (lease.Current.Status == PreferenceStatus.Saved && overlays.Count != 0)
                         {
                             var remaining = new List<OpenedPositionIndex>(lease.Overlays);
-                            foreach (var tail in deferred) if (remaining.Remove(tail.Index)) overlayUnits -= tail.Index.Count;
+                            foreach (var overlay in overlays) if (remaining.Remove(overlay)) overlayUnits -= overlay.Count;
                             lease.Overlays = remaining.ToArray();
                         }
                         // Stop accelerates due times, but cannot erase B that was
@@ -172,7 +191,7 @@ namespace JueMingR.Features.WorldObjectText
                 }
             }
             catch (Exception)
-            { lock (gate) { lastFailure = "opened-store-worker-failed"; lastFailurePair = null; cancelled = true; } }
+            { lock (gate) { lastFailure = "opened-store-worker-failed"; cancelled = true; } }
             finally
             {
                 // File-handle cleanup remains here, never in game callbacks.
@@ -197,8 +216,9 @@ namespace JueMingR.Features.WorldObjectText
                 }
             }
         }
-        private int Process(Lease lease, HashSet<long> batch)
+        private int Process(Lease lease, HashSet<long> batch, out bool retry)
         {
+            retry = false;
             bool writeEntered = false;
             try
             {
@@ -237,6 +257,10 @@ namespace JueMingR.Features.WorldObjectText
                     if (lease.Writable)
                         lock (gate)
                         {
+                            // A concurrent same-pair replay may already have
+                            // enqueued every key. Zero new reservation still
+                            // means the failed batch's overlays need that retry.
+                            retry = true;
                             int kept = 0; foreach (long key in batch) if (lease.Pending.Add(key)) kept++;
                             lease.Reservation += kept;
                             lease.Failures++; lease.Due = lease.Failures < 3 ? DateTime.UtcNow.AddMilliseconds(250 * lease.Failures) : DateTime.MaxValue;
@@ -252,11 +276,17 @@ namespace JueMingR.Features.WorldObjectText
         }
         private void Publish(Lease lease, State state)
         {
-            Volatile.Write(ref lease.Current, state);
             lock (gate)
             {
-                if (state.Error != null) { lastFailure = state.Error; lastFailurePair = lease.Key; }
-                else if (lastFailurePair == lease.Key) lastFailure = lastFailurePair = null;
+                if (state.Error != null && state.Error != lease.Current.Error)
+                {
+                    // At most eight pending pair notices. Recovery of B cannot
+                    // erase A; repeated polls/failures of A do not chat-spam.
+                    if (pairFailures.ContainsKey(lease.Key) || pairFailures.Count < 8) pairFailures[lease.Key] = state.Error;
+                    else lastFailure = "opened-additional-pair-save-failures";
+                }
+                else if (state.Error == null) pairFailures.Remove(lease.Key);
+                Volatile.Write(ref lease.Current, state);
             }
         }
         private static DateTime Earlier(DateTime a, DateTime b) { return a < b ? a : b; }

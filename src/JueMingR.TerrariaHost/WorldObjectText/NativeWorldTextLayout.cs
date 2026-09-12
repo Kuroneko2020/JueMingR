@@ -22,6 +22,7 @@ namespace JueMingR.TerrariaHost.WorldObjectText
         private readonly List<PositionedSnippet> snippets = new List<PositionedSnippet>();
         private readonly List<bool> inheritedColor = new List<bool>();
         private readonly List<Unit> units = new List<Unit>();
+        private readonly float[] inkLeft = new float[10], inkRight = new float[10];
         private int line, color = -1, visible;
         private float x;
         internal NativeWorldTextLayout(DynamicSpriteFont font, string text, WorldObjectStyle style, float width)
@@ -31,6 +32,7 @@ namespace JueMingR.TerrariaHost.WorldObjectText
             lineLimit = style.Mode == WorldObjectMode.Lines ? style.Lines : 10;
             characterLimit = style.Mode == WorldObjectMode.Characters ? style.Characters : 8192;
             cursor = new WorldTextCursor(text, ValidItem);
+            for (int i = 0; i < inkLeft.Length; i++) inkLeft[i] = Single.PositiveInfinity;
         }
         internal bool Ready { get; private set; }
         internal bool Truncated { get; private set; }
@@ -60,7 +62,8 @@ namespace JueMingR.TerrariaHost.WorldObjectText
                 if (x > 0 && x + unitWidth > width) { line++; x = 0; }
                 if (line >= lineLimit) { line = lineLimit - 1; RestoreLineEnd(); FinishTruncated(); break; }
                 if (unitWidth > width) { FinishTruncated(); break; }
-                var unit = new Unit { First = snippets.Count, X = x, Width = unitWidth, Line = line };
+                bool ink = element.ItemTag != null || !String.IsNullOrWhiteSpace(element.Text);
+                var unit = new Unit { First = snippets.Count, X = x, Width = unitWidth, Line = line, PriorInkLeft = inkLeft[line], PriorInkRight = inkRight[line] };
                 foreach (var part in parts)
                 {
                     part.Snippet.CheckForHover = false; part.Snippet.UseRawColor = true;
@@ -70,7 +73,7 @@ namespace JueMingR.TerrariaHost.WorldObjectText
                 units.Add(unit); visible++; Width = Math.Max(Width, x);
                 // No H/L-sized whitespace pre-pass. Ink is accumulated from the
                 // already bounded visible unit, never the untouched source tail.
-                HasInk |= element.ItemTag != null || !String.IsNullOrWhiteSpace(element.Text);
+                if (ink) { inkLeft[line] = Math.Min(inkLeft[line], unit.X); inkRight[line] = x; HasInk = true; }
                 if (cursor.ResourceLimited) { Truncated = true; Ready = true; }
             }
             return consumed;
@@ -120,12 +123,14 @@ namespace JueMingR.TerrariaHost.WorldObjectText
             {
                 var last = units[units.Count - 1]; x = last.X;
                 snippets.RemoveRange(last.First, snippets.Count - last.First); inheritedColor.RemoveRange(last.First, inheritedColor.Count - last.First); units.RemoveAt(units.Count - 1);
+                inkLeft[line] = last.PriorInkLeft; inkRight[line] = last.PriorInkRight; visible--;
             }
             if (ellipsis <= width)
             {
                 var snippet = new TextSnippet("…", Color.White) { CheckForHover = false, UseRawColor = true };
                 snippets.Add(new PositionedSnippet(snippet, snippets.Count, line, new Vector2(x, line * lineHeight), new Vector2(ellipsis, lineHeight)));
                 inheritedColor.Add(true); Width = Math.Max(Width, x + ellipsis); HasInk = true;
+                inkLeft[line] = Math.Min(inkLeft[line], x); inkRight[line] = x + ellipsis;
             }
             Truncated = true; Ready = true;
         }
@@ -144,8 +149,21 @@ namespace JueMingR.TerrariaHost.WorldObjectText
             }
             finally { Main.inventoryScale = previous; }
         }
+        internal bool HasVisibleInk(Vector2 position, Matrix zoom, int screenWidth, int screenHeight)
+        {
+            // Blank lines affect anchoring/wrapping but cannot spend a display
+            // slot. At most ten prepared line bounds, with the native shadow.
+            for (int i = 0; i <= line; i++)
+            {
+                if (Single.IsPositiveInfinity(inkLeft[i])) continue;
+                var first = Vector2.Transform(position + new Vector2(inkLeft[i] - 2, i * lineHeight - 2), zoom);
+                var last = Vector2.Transform(position + new Vector2(inkRight[i] + 2, (i + 1) * lineHeight + 2), zoom);
+                if (last.X >= 0 && last.Y >= 0 && first.X <= screenWidth && first.Y <= screenHeight) return true;
+            }
+            return false;
+        }
         private static bool ValidItem(int id) { return id > 0 && id < Terraria.ID.ItemID.Count || id < 0 && id >= -48; }
         private struct Part { internal TextSnippet Snippet; internal float Width; internal bool Inherit; }
-        private struct Unit { internal int First, Line; internal float X, Width; }
+        private struct Unit { internal int First, Line; internal float X, Width, PriorInkLeft, PriorInkRight; }
     }
 }
