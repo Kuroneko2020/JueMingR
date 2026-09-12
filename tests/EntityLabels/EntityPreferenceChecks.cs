@@ -30,7 +30,7 @@ namespace Terraria
                     host.SetColor(EntityLabelKind.Critter, 0x112233);
                     Wait(() => host.Preferences.Status == PreferenceStatus.Saved);
                     Check(host.Preferences.Value.NpcMode == NpcLabelMode.Off && host.Preferences.Value.LastNpcMode == NpcLabelMode.Type &&
-                        host.Preferences.Value.EnemyStyle.Rgb == 0x123456 && host.Preferences.Value.EnemyStyle.NameSize == 80 && host.Preferences.Value.CritterStyle.Rgb == 0x112233,
+                        host.Preferences.Value.EnemyStyle.Rgb == 0x123456 && host.Preferences.Value.EnemyStyle.NameSize == 100 && host.Preferences.Value.CritterStyle.Rgb == 0x112233,
                         "real command consumer coalesces independent revisions");
                     var decoded = new EntityLabelCodec().Decode(File.ReadAllBytes(path));
                     Check(decoded.Equals(host.Preferences.Value), "actual disk has newest submitted document");

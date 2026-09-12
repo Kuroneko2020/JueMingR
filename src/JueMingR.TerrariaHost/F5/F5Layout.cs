@@ -28,7 +28,10 @@ namespace JueMingR.TerrariaHost.F5
     internal enum F5ElementKind { Panel, Text, Button, Field, Hotkey, Divider }
     internal enum F5Command { None, EnableBiome, DisableBiome,
         ConfigureEnemy, EnableEnemy, DisableEnemy, ConfigureCritter, EnableCritter, DisableCritter,
-        ConfigureNpc, NpcName, NpcType, DisableNpc }
+        ConfigureNpc, NpcName, NpcType, DisableNpc,
+        ConfigureLifeCrystal, EnableLifeCrystal, DisableLifeCrystal, ConfigureLifeFruit, EnableLifeFruit, DisableLifeFruit,
+        ConfigureManaCrystal, EnableManaCrystal, DisableManaCrystal, ConfigureDigtoise, EnableDigtoise, DisableDigtoise,
+        ConfigureChilletEgg, EnableChilletEgg, DisableChilletEgg }
 
     internal sealed class F5Element
     {
@@ -210,6 +213,12 @@ namespace JueMingR.TerrariaHost.F5
                 "群系显示", "世界感染", "幸运值", "完整鱼获", "过滤鱼获", "渔夫任务" };
             for (int i = 3; i < names.Length; i++)
             {
+                if (i >= 6 && i <= 10)
+                {
+                    var kind = i == 6 ? Platform.WorldTargets.WorldTargetKind.LifeCrystal : i == 7 ? Platform.WorldTargets.WorldTargetKind.ManaCrystal :
+                        i == 8 ? Platform.WorldTargets.WorldTargetKind.SleepingDigtoise : i == 9 ? Platform.WorldTargets.WorldTargetKind.LifeFruit : Platform.WorldTargets.WorldTargetKind.ChilletEgg;
+                    WorldTargetControls.AddRow(elements, TextSize, ref y, kind); continue;
+                }
                 if (names[i] == "调整信息窗位置")
                 {
                     elements.Add(new F5Element(F5ElementKind.Divider, new F5Rect(12, y + 3, 498, 1),

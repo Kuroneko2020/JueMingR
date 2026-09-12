@@ -12,6 +12,9 @@ namespace JueMingR.ArchitectureTests
             Assembly features = Assembly.Load("JueMingR.Features");
             var expected = new HashSet<string>(StringComparer.Ordinal)
             {
+                "JueMingR.Features.WorldTargets.WorldTargetSettings", "JueMingR.Features.WorldTargets.WorldTargetCodec",
+                "JueMingR.Features.WorldTargets.WorldTargetFeature", "JueMingR.Features.WorldTargets.WorldTarget",
+                "JueMingR.Features.WorldTargets.WorldTargetArrows", "JueMingR.Features.WorldTargets.WorldTargetAnimation", "JueMingR.Features.WorldTargets.ArrowPose",
                 "JueMingR.Features.Biomes.BiomeDisplayFeature",
                 "JueMingR.Features.Biomes.BiomeDisplayViewModel",
                 "JueMingR.Features.Biomes.BiomePreferenceCodec",

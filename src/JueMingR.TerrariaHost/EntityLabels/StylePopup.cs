@@ -12,12 +12,15 @@ namespace JueMingR.TerrariaHost.EntityLabels
     internal sealed class StylePopup
     {
         private readonly HostEntityLabels host;
+        private readonly WorldTargets.HostWorldTargets worldTargets;
+        private StyleTarget selection;
         private readonly HostInputState input;
         internal readonly StylePopupLayout Layout = new StylePopupLayout();
         internal readonly HexTextInput TextInput;
-        internal EntityLabelKind? Target { get; private set; }
+        internal EntityLabelKind? Target { get { return selection?.Entity; } }
+        internal Platform.WorldTargets.WorldTargetKind? WorldTarget { get { return selection?.World; } }
         internal StyleEditor Editor { get; private set; }
-        internal bool Visible { get { return Target.HasValue; } }
+        internal bool Visible { get { return selection != null; } }
         internal bool OwnsPointer { get; private set; }
         internal bool BlockPointer { get; private set; }
         internal bool ConsumeWheel { get; private set; }
@@ -29,24 +32,29 @@ namespace JueMingR.TerrariaHost.EntityLabels
         private int page, armedGeneration;
         private bool previousLeft;
         private StylePopupCommand armed;
-        internal StylePopup(HostEntityLabels host, HostInputState input, INotesClipboard clipboard = null, INotesIme ime = null)
-        { this.host = host; this.input = input; TextInput = new HexTextInput(input, clipboard, ime); }
+        internal StylePopup(HostEntityLabels host, HostInputState input, INotesClipboard clipboard = null, INotesIme ime = null, WorldTargets.HostWorldTargets worldTargets = null)
+        { this.host = host; this.worldTargets = worldTargets; this.input = input; TextInput = new HexTextInput(input, clipboard, ime); }
         internal void Click(EntityLabelKind target, F5Rect anchor, int currentPage)
+        { if (host != null) Open(StyleTarget.For(host, target), currentPage); }
+        internal void Click(Platform.WorldTargets.WorldTargetKind target, F5Rect anchor, int currentPage)
+        { if (worldTargets != null) Open(StyleTarget.For(worldTargets, target), currentPage); }
+        private void Open(StyleTarget target, int currentPage)
         {
-            bool same = Target == target; Close();
-            if (same || !host.CanConfigure) return;
-            Target = target; page = currentPage; Failure = null;
-            Editor = new StyleEditor(host.Preferences.Value.Style(target).Rgb, color => host.SetColor(target, color)); Layout.Reset();
+            bool same = target.Same(selection); Close();
+            if (same || !target.CanConfigure()) return;
+            selection = target; page = currentPage; Failure = null;
+            // The editor captures this target, never the next popup selection.
+            Editor = new StyleEditor(target.Color(), target.SetColor); Layout.Reset();
         }
-        internal int NameSize { get { return Visible ? host.Preferences.Value.Style(Target.Value).NameSize : 70; } }
-        internal string Message { get { return Editor?.Error ?? host.PreferenceMessage; } }
+        internal int NameSize { get { return selection?.Size == null ? 0 : selection.Size(); } }
+        internal string Message { get { return Editor?.Error ?? selection?.Message(); } }
         internal bool ContainsPointer(float x, float y) { return Visible && Layout.Panel.Contains(x, y); }
         internal void BeforeInput(bool active) { TextInput.BeforeInput(active && Visible); }
         internal void YieldTextToEntry() { if (ActiveSlider < 0 && armed == StylePopupCommand.None) TextInput.End(true); }
         internal void Close()
         {
             if (HasCapture) input.Hotkeys.SuppressHeld();
-            TextInput.End(true); Editor?.CancelDraft(); Target = null; ActiveSlider = -1; armed = StylePopupCommand.None;
+            TextInput.End(true); Editor?.CancelDraft(); selection = null; ActiveSlider = -1; armed = StylePopupCommand.None;
             Hovered = StylePopupCommand.None; OwnsPointer = BlockPointer = ConsumeWheel = false;
         }
         private void CancelGesture()
@@ -58,13 +66,13 @@ namespace JueMingR.TerrariaHost.EntityLabels
             {
                 int before = Layout.Generation;
                 bool externalChange = before > 0 && !Layout.Matches(width, height, scale, font, skin, anchor);
-                Layout.Build(width, height, scale, font, measure, skin, anchor, Target.Value, Editor, NameSize, Message);
+                Layout.Build(width, height, scale, font, measure, skin, anchor, selection.Title, selection.Entity == EntityLabelKind.Critter, Editor, NameSize, Message);
                 // Error text may legitimately grow the panel while HEX owns its
                 // draft. Only external geometry invalidates that text lease.
                 if (before != Layout.Generation && (externalChange && HasCapture || ActiveSlider >= 0 || armed != StylePopupCommand.None))
                 {
                     CancelGesture();
-                    Layout.Build(width, height, scale, font, measure, skin, anchor, Target.Value, Editor, NameSize, Message);
+                    Layout.Build(width, height, scale, font, measure, skin, anchor, selection.Title, selection.Entity == EntityLabelKind.Critter, Editor, NameSize, Message);
                 }
             }
             catch (Exception e) { Failure = "显示设置窗口暂不可用：" + e.GetType().Name; Close(); }
@@ -116,9 +124,9 @@ namespace JueMingR.TerrariaHost.EntityLabels
                 if (geometryCurrent && armedGeneration == Layout.Generation && command == Hovered)
                 {
                     if (command == StylePopupCommand.Close) Close();
-                    else if (command == StylePopupCommand.Smaller) host.StepSize(Target.Value, -1);
-                    else if (command == StylePopupCommand.Larger) host.StepSize(Target.Value, 1);
-                    else if (command == StylePopupCommand.Reset) { host.ResetStyle(Target.Value); Editor.Load(host.Preferences.Value.Style(Target.Value).Rgb); }
+                    else if (command == StylePopupCommand.Smaller) selection.StepSize?.Invoke(-1);
+                    else if (command == StylePopupCommand.Larger) selection.StepSize?.Invoke(1);
+                    else if (command == StylePopupCommand.Reset) { selection.Reset(); Editor.Load(selection.Color()); }
                 }
             }
             if (Visible && ContainsPointer(x, y))

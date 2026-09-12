@@ -23,7 +23,7 @@ namespace JueMingR.TerrariaHost.EntityLabels
         internal int ErrorStartIndex { get; private set; }
         private float width, height, scale;
         private int skin, editorRevision = -1, nameSize;
-        private EntityLabelKind target;
+        private string target;
         private string error;
         private object font;
         private F5Rect anchor;
@@ -34,22 +34,25 @@ namespace JueMingR.TerrariaHost.EntityLabels
         { return Generation > 0 && width == w && height == h && scale == uiScale && ReferenceEquals(font, currentFont) && skin == currentSkin && Same(anchor, currentAnchor); }
         internal void Build(float w, float h, float uiScale, object currentFont, Func<string, float, F5Size> measure,
             int currentSkin, F5Rect currentAnchor, EntityLabelKind kind, StyleEditor editor, int size, string message)
+        { Build(w, h, uiScale, currentFont, measure, currentSkin, currentAnchor, Name(kind), kind == EntityLabelKind.Critter, editor, size, message); }
+        internal void Build(float w, float h, float uiScale, object currentFont, Func<string, float, F5Size> measure,
+            int currentSkin, F5Rect currentAnchor, string titleText, bool goldNote, StyleEditor editor, int size, string message)
         {
             bool sameGeometryInputs = Matches(w, h, uiScale, currentFont, currentSkin, currentAnchor);
-            if (sameGeometryInputs && target == kind && editorRevision == editor.Revision && nameSize == size && error == message) return;
+            if (sameGeometryInputs && target == titleText && editorRevision == editor.Revision && nameSize == size && error == message) return;
             this.measure = measure ?? throw new ArgumentNullException(nameof(measure));
             F5Rect oldPanel = Panel; string oldError = error;
             Text.Clear(); Buttons.Clear(); Commands.Clear();
-            F5Size title = Size(Name(kind) + " · 显示设置", .75f), close = Size("X", .7f);
+            F5Size title = Size(titleText + " · 显示设置", .75f), close = Size("X", .7f);
             float buttonHeight = Math.Max(32, close.Height + 10), closeWidth = Math.Max(32, close.Width + 18);
             float labelWidth = Math.Max(Size("饱和度 S", .7f).Width, Size("亮度 L", .7f).Width);
             float numberWidth = Math.Max(Size("360", .7f).Width, Size("100%", .7f).Width);
             float resetWidth = Size("恢复默认", .7f).Width + 20, valueWidth = Size("1.80", .7f).Width;
             float needed = Math.Max(title.Width + closeWidth + 38, Math.Max(labelWidth + 140 + numberWidth + 48,
-                Size("字号", .7f).Width + 64 + valueWidth + resetWidth + 78));
+                size > 0 ? Size("字号", .7f).Width + 64 + valueWidth + resetWidth + 78 : resetWidth + 24));
             float panelWidth = Math.Max(352, needed);
             if (panelWidth > w - 24) throw new InvalidOperationException("style-popup-readable-width-unavailable");
-            AddText(Name(kind) + " · 显示设置", 12, 12 + (buttonHeight - title.Height) / 2, .75f);
+            AddText(titleText + " · 显示设置", 12, 12 + (buttonHeight - title.Height) / 2, .75f);
             AddButton(StylePopupCommand.Close, "X", new F5Rect(panelWidth - 12 - closeWidth, 12, closeWidth, buttonHeight));
             float y = 12 + buttonHeight + 8, rowHeight = Math.Max(34, Size("FFFFFF", .7f).Height + 12);
             AddText("颜色", 12, y + (rowHeight - Size("颜色", .7f).Height) / 2, .7f);
@@ -78,14 +81,17 @@ namespace JueMingR.TerrariaHost.EntityLabels
             y += 6;
             string value = (size / 100d).ToString("0.00", CultureInfo.InvariantCulture);
             float sizeRowHeight = Math.Max(32, Size("恢复默认", .7f).Height + 10);
+            if (size > 0)
+            {
             AddText("字号", 12, y + (sizeRowHeight - Size("字号", .7f).Height) / 2, .7f);
             float start = 12 + Size("字号", .7f).Width + 12;
             AddButton(StylePopupCommand.Smaller, "-", new F5Rect(start, y, 32, sizeRowHeight));
             AddText(value, start + 40 + (valueWidth - Size(value, .7f).Width) / 2, y + (sizeRowHeight - Size(value, .7f).Height) / 2, .7f);
             AddButton(StylePopupCommand.Larger, "+", new F5Rect(start + 48 + valueWidth, y, 32, sizeRowHeight));
+            }
             AddButton(StylePopupCommand.Reset, "恢复默认", new F5Rect(panelWidth - 12 - resetWidth, y, resetWidth, sizeRowHeight));
             y += sizeRowHeight + 12;
-            if (kind == EntityLabelKind.Critter) AddWrapped("金色动物保持金色", panelWidth - 24, ref y, .65f);
+            if (goldNote) AddWrapped("金色动物保持金色", panelWidth - 24, ref y, .65f);
             ErrorStartIndex = Text.Count;
             if (!String.IsNullOrEmpty(message)) { y += 4; AddWrapped(message, panelWidth - 24, ref y, .65f); }
             if (y > h - 24) throw new InvalidOperationException("style-popup-readable-height-unavailable");
@@ -96,12 +102,12 @@ namespace JueMingR.TerrariaHost.EntityLabels
             Panel = new F5Rect((float)Math.Floor(px), (float)Math.Floor(py), panelWidth, y);
             if (!sameGeometryInputs || !Same(oldPanel, Panel) || oldError != message && oldPanel.Height != Panel.Height) Generation++;
             width = w; height = h; scale = uiScale; font = currentFont; skin = currentSkin; anchor = currentAnchor;
-            target = kind; editorRevision = editor.Revision; nameSize = size; error = message;
+            target = titleText; editorRevision = editor.Revision; nameSize = size; error = message;
         }
         internal StylePopupCommand Hit(float x, float y)
         { for (int i = 0; i < Buttons.Count; i++) if (Buttons[i].Rect.Offset(Panel.X, Panel.Y).Contains(x, y)) return Commands[i]; return StylePopupCommand.None; }
         internal static bool Enabled(StylePopupCommand command, int size)
-        { return (command != StylePopupCommand.Smaller || size > 50) && (command != StylePopupCommand.Larger || size < 180); }
+        { return (command != StylePopupCommand.Smaller || size > 50) && (command != StylePopupCommand.Larger || size > 0 && size < 180); }
         private F5Size Size(string text, float textScale)
         { F5Size s = measure(text, textScale); return new F5Size(s.Width + 4, s.Height + 4, s.OffsetX - 2, s.OffsetY - 2); }
         private float PrefixWidth(string text, int count) { return count == 0 ? 0 : measure(text.Substring(0, count), .7f).Width; }

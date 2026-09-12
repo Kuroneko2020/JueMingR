@@ -66,6 +66,14 @@ function Get-Phase0SFixtureExecutable {
         if ($LASTEXITCODE -ne 0) { throw ('Production entity check failed: ' + $mode) }
     }
     if ($script:DeferGraphics) { Write-Host 'DEFERRED: entity actual XNA world/style drawing and previews; adapter, commands, input, projection and persistence ran.' }
+    $worldModes = @('world-targets-observation', 'world-targets-style', 'world-targets-projection')
+    if (-not $script:DeferGraphics) { $worldModes += 'world-targets-world' }
+    foreach ($mode in $worldModes) {
+        $worldOutput = @(& $fixtureExe $mode)
+        foreach ($line in $worldOutput) { Write-Host $line }
+        if ($LASTEXITCODE -ne 0) { throw ('Production world-target check failed: ' + $mode) }
+    }
+    if ($script:DeferGraphics) { Write-Host 'DEFERRED: world-target XNA arrows/style and multi-time native-resource visual preview; no visual acceptance.' }
     $abiOutput = @(& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $RepositoryRoot 'tests\Items\Verify-ItemHostAbi.ps1') -RepositoryRoot $RepositoryRoot)
     if ($LASTEXITCODE -ne 0) { throw 'The fixed item host metadata/IL check failed.' }
     foreach ($line in $abiOutput) { Write-Host $line }
@@ -552,6 +560,13 @@ function Invoke-Phase0SLoadChainFixtureTests {
 
     $root = New-Phase0STestRoot
     try {
+        $worldTargets = New-Phase0SFixtureRunDirectory -Root $root -Name 'world-targets-runtime' -FixtureExe $fixtureExe -ProductionOutputs $productionOutputs -HarmonyPath $harmonyPath -PackageId ('world-targets-' + $sourceCommit) -SourceCommit $sourceCommit
+        foreach ($mode in @('expect-world-targets-runtime', 'expect-world-targets-reload')) {
+            $result = Invoke-Phase0SFixtureExe -FixtureExe $worldTargets.exePath -Mode $mode -EvidencePath $worldTargets.evidencePath -PackageId $worldTargets.packageId
+            foreach ($line in $result.output) { Write-Host $line }
+            if ($result.exitCode -ne 0 -and [IO.File]::Exists($worldTargets.evidencePath)) { Get-Content -LiteralPath $worldTargets.evidencePath | ForEach-Object { Write-Host $_ } }
+            Assert-Phase0SCondition -Condition ($result.exitCode -eq 0) -Message ('Production world-target Host, twelve actions and lifecycle: ' + $mode)
+        }
         $entities = New-Phase0SFixtureRunDirectory -Root $root -Name 'entity-runtime' -FixtureExe $fixtureExe -ProductionOutputs $productionOutputs -HarmonyPath $harmonyPath -PackageId ('entity-labels-' + $sourceCommit) -SourceCommit $sourceCommit
         foreach ($mode in @('expect-entities-runtime', 'expect-entities-reload')) {
             $result = Invoke-Phase0SFixtureExe -FixtureExe $entities.exePath -Mode $mode -EvidencePath $entities.evidencePath -PackageId $entities.packageId

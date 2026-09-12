@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [switch] $Run,
     [string] $RepositoryRoot
@@ -26,7 +26,7 @@ function New-Phase0SControlledPackageFixture {
         [Parameter(Mandatory = $true)][string] $RepositoryRoot,
         [Parameter(Mandatory = $true)][string] $PackageRoot,
         [Parameter(Mandatory = $true)][string] $TerrariaIdentityInput,
-        [ValidateSet('phase0s', 'phase0t-biome', 'phase0u-f5-ui', 'phase0v-settings', 'phase0w-notes', 'item-automation', 'unified-hotkeys', 'entity-labels')]
+        [ValidateSet('phase0s', 'phase0t-biome', 'phase0u-f5-ui', 'phase0v-settings', 'phase0w-notes', 'item-automation', 'unified-hotkeys', 'entity-labels', 'world-targets')]
         [string] $PackagePrefix = 'phase0s'
     )
 
@@ -190,7 +190,7 @@ function Assert-Phase0SCompactJsonResult {
             Assert-Phase0SCondition -Condition ($null -eq $resultObject.packageId -and $null -eq $resultObject.sha256) -Message "${Operation}/${ExpectedCode}: packageId and sha256 must be JSON null."
         }
         { $_ -in @('INSTALL_COMPLETE', 'RESTORE_COMPLETE', 'RESTORE_NOOP', 'OWNERSHIP_UNPROVEN') } {
-            Assert-Phase0SCondition -Condition ([string] $resultObject.packageId -match '^(?:phase0(?:s|t-biome|u-f5-ui|v-settings|w-notes)|item-automation|unified-hotkeys|entity-labels)-[0-9a-f]{40}$' -and $null -eq $resultObject.sha256) -Message "${Operation}/${ExpectedCode}: packageId or sha256 null semantics differ from the result contract."
+            Assert-Phase0SCondition -Condition ([string] $resultObject.packageId -match '^(?:phase0(?:s|t-biome|u-f5-ui|v-settings|w-notes)|item-automation|unified-hotkeys|entity-labels|world-targets)-[0-9a-f]{40}$' -and $null -eq $resultObject.sha256) -Message "${Operation}/${ExpectedCode}: packageId or sha256 null semantics differ from the result contract."
         }
         default {
             throw "No null-semantics contract is defined for $ExpectedCode."
@@ -412,7 +412,7 @@ exit $LASTEXITCODE
         Assert-Phase0SCompactJsonResult -Result (Invoke-Phase0SPackageScript -PackageRoot $phase0UPackageRoot -ScriptName 'Restore-Phase0S.ps1' -TerrariaDirectory $phase0UTarget) -Operation 'restore' -ExpectedExitCode 0 -ExpectedCode 'RESTORE_COMPLETE' -ExpectedStatus 'success' -TargetDirectory $phase0UTarget
         Assert-Phase0STreeSnapshotEqual -Expected $phase0UBefore -Actual (Get-Phase0STreeSnapshot -Root $phase0UTarget) -Context 'Phase 0-U exact restore'
 
-        foreach ($dataProfile in @('phase0v-settings', 'phase0w-notes', 'item-automation', 'unified-hotkeys', 'entity-labels')) {
+        foreach ($dataProfile in @('phase0v-settings', 'phase0w-notes', 'item-automation', 'unified-hotkeys', 'entity-labels', 'world-targets')) {
         $dataPackageRoot = Join-Path $root ('controlled-package-' + $dataProfile)
         $dataManifest = New-Phase0SControlledPackageFixture -RepositoryRoot $RepositoryRoot -PackageRoot $dataPackageRoot -TerrariaIdentityInput $terrariaIdentityInput -PackagePrefix $dataProfile
         foreach ($dataTiming in @('before-install', 'after-install')) {

@@ -213,6 +213,11 @@ namespace Terraria
                 if (deferGraphics) Array.Resize(ref args, args.Length - 1);
                 if (args.Length == 1 && args[0] == "focus-input") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; HostInputChecks.Run(); return 0; }
                 if (args.Length == 1 && args[0] == "entity-observation") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; EntityObservationChecks.Run(); return 0; }
+                if (args.Length == 1 && args[0] == "world-targets-observation") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; WorldTargetObservationChecks.Run(); return 0; }
+                if (args.Length == 1 && args[0] == "world-targets-style") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; WorldTargetStyleChecks.Run(); return 0; }
+                if (args.Length == 1 && args[0] == "world-targets-projection") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; WorldTargetGraphicsChecks.Logical(); return 0; }
+                if (args.Length == 1 && args[0] == "world-targets-world") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; WorldTargetGraphicsChecks.Run(); return 0; }
+                if (args.Length == 3 && args[0] == "world-targets-visual") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; WorldTargetVisualChecks.Run(args[1], args[2]); return 0; }
                 if (args.Length == 1 && args[0] == "entity-world") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; EntityWorldChecks.Run(); return 0; }
                 if (args.Length == 1 && args[0] == "entity-projection") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; EntityWorldChecks.Logical(); return 0; }
                 if (args.Length == 1 && args[0] == "entity-preferences") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; EntityPreferenceChecks.Run(); return 0; }
@@ -255,6 +260,7 @@ namespace Terraria
                      args[0] != "expect-items" && args[0] != "expect-items-layer-failure" &&
                      !args[0].StartsWith("expect-hotkeys-", StringComparison.Ordinal) &&
                      !args[0].StartsWith("expect-entities-", StringComparison.Ordinal) &&
+                     !args[0].StartsWith("expect-world-targets-", StringComparison.Ordinal) &&
                      !args[0].StartsWith("expect-settings-", StringComparison.Ordinal) &&
                      args[0] != "expect-no-handoff" &&
                      args[0] != "expect-evidence-init-failure" &&
@@ -268,7 +274,8 @@ namespace Terraria
                 bool settingsMode = mode.StartsWith("expect-settings-", StringComparison.Ordinal);
                 bool hotkeyMode = mode.StartsWith("expect-hotkeys-", StringComparison.Ordinal);
                 bool entityMode = mode.StartsWith("expect-entities-", StringComparison.Ordinal);
-                bool expectHandoff = mode == "expect-handoff" || mode == "expect-handoff-biome-failure" || mode == "expect-items" || mode == "expect-items-layer-failure" || mode == "expect-input" || settingsMode || hotkeyMode || entityMode;
+                bool worldMode = mode.StartsWith("expect-world-targets-", StringComparison.Ordinal);
+                bool expectHandoff = mode == "expect-handoff" || mode == "expect-handoff-biome-failure" || mode == "expect-items" || mode == "expect-items-layer-failure" || mode == "expect-input" || settingsMode || hotkeyMode || entityMode || worldMode;
                 string evidencePath = Path.GetFullPath(args[1]);
                 string packageId = args[2];
                 if (String.IsNullOrWhiteSpace(packageId))
@@ -286,6 +293,7 @@ namespace Terraria
                 if (settingsMode) SettingsHostChecks.PrepareUnrelatedWorkingDirectory();
                 if (hotkeyMode) HotkeyHostChecks.Prepare(mode);
                 if (entityMode) EntityHostChecks.Prepare(mode);
+                if (worldMode) WorldTargetHostChecks.Prepare(mode);
 
                 // Match WindowsLaunch.Main: install the embedded dependency resolver only
                 // after the executable entry point starts, then enter code that needs ReLogic.
@@ -311,6 +319,7 @@ namespace Terraria
                     if (mode == "expect-input") { F5ConsumerChecks.RunInputOnly(main); AssertPatchContract(typeof(global::Terraria.Main)); return 0; }
                     if (hotkeyMode) { HotkeyHostChecks.Run(main, mode); return 0; }
                     if (entityMode) { EntityHostChecks.Run(main, mode); return 0; }
+                    if (worldMode) { WorldTargetHostChecks.Run(main, mode); return 0; }
                     if (mode == "expect-items" || mode == "expect-items-layer-failure") { ItemLoadedHostChecks.Run(main, mode == "expect-items-layer-failure"); return 0; }
                     if (settingsMode) SettingsHostChecks.Run(main, mode);
                     else
