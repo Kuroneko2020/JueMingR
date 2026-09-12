@@ -9,7 +9,7 @@ namespace JueMingR.ArchitectureTests
     {
         internal static void Check(IList<string> failures)
         {
-            try { Objects(); LifetimeAndBudget(); Geometry(); }
+            try { Objects(); LifetimeAndBudget(); Tuning(); Geometry(); }
             catch (Exception e) { failures.Add("World targets: " + e.Message); }
         }
         private static void Objects()
@@ -80,6 +80,55 @@ namespace JueMingR.ArchitectureTests
             for (int i = 0; i < 24; i++) { source.View = new WorldTargetView(i / 2, 0, 64 + i % 2, 64, 1); feature.Update((ulong)i); }
             Require(feature.Targets.Count == 1, "floor/ceiling width alternation during sub-tile camera motion cannot starve the last rows");
         }
+        private static void Tuning()
+        {
+            var target = new WorldTarget { TileX = 20, TileY = 30, X = 320, Y = 480, Width = 32, Height = 32 };
+            var adjacent = target; adjacent.TileX += 2; adjacent.X += 32;
+            var first = WorldTargetArrows.At(target, new WorldTargetAnimation(0, 1), 0);
+            Require(first.Length >= 24, "owner tuning: small arrows are visibly larger than the original 18px");
+            bool staggered = false, afterOrbitDiffers = false;
+            for (int step = 0; step < 60; step++)
+            {
+                long ticks = step * 1000000L;
+                var a = WorldTargetArrows.At(target, new WorldTargetAnimation(ticks, 1), 0);
+                var b = WorldTargetArrows.At(adjacent, new WorldTargetAnimation(ticks, 1), 0);
+                staggered |= Math.Abs((a.X - target.CenterX) - (b.X - adjacent.CenterX)) > 3;
+                var later = WorldTargetArrows.At(target, new WorldTargetAnimation(ticks + 70000000L, 1), 0);
+                Require(Math.Abs(a.X - later.X) < .001, "one full orbit restores horizontal phase");
+                afterOrbitDiffers |= Math.Abs(a.Y - later.Y) > 6;
+            }
+            Require(staggered, "neighboring objects must not march in the same orbital phase");
+            Require(afterOrbitDiffers, "one orbit must not restart the enlarged independent vertical wave");
+            float low = float.MaxValue, high = float.MinValue;
+            for (int step = 0; step <= 135; step++)
+            {
+                var animation = new WorldTargetAnimation(step * 200000L, 1);
+                float centerY = 0;
+                for (int i = 0; i < 3; i++) centerY += WorldTargetArrows.At(target, animation, i).Y / 3;
+                low = Math.Min(low, centerY - target.CenterY); high = Math.Max(high, centerY - target.CenterY);
+                var pose = WorldTargetArrows.At(target, animation, 0);
+                double dx = pose.X - target.CenterX, dy = pose.Y - centerY;
+                Require(Math.Sqrt(dx * dx + dy * dy) < 35, "larger small arrows orbit closer than the old 38.63px");
+            }
+            Require(low < -5.9 && high > 5.9 && low >= -6.001 && high <= 6.001, "group centroid proves 12px peak-to-peak pure vertical motion");
+            foreach (var offset in new[] { new[] { 2, 0 }, new[] { 0, 2 }, new[] { 2, 2 } })
+            {
+                adjacent = target; adjacent.TileX += offset[0]; adjacent.TileY += offset[1];
+                double distance = 0;
+                var animation = new WorldTargetAnimation(9000000L, 1);
+                for (int i = 0; i < 3; i++)
+                {
+                    var a = WorldTargetArrows.At(target, animation, i); double best = double.MaxValue;
+                    for (int j = 0; j < 3; j++)
+                    {
+                        var b = WorldTargetArrows.At(adjacent, animation, j);
+                        best = Math.Min(best, Math.Abs(a.X - b.X) + Math.Abs(a.Y - b.Y));
+                    }
+                    distance += best;
+                }
+                Require(distance > 6, "horizontal, vertical and diagonal neighbors have distinct position sets, not merely relabeled arrows");
+            }
+        }
         private static void Geometry()
         {
             foreach (var target in new[] {
@@ -87,7 +136,7 @@ namespace JueMingR.ArchitectureTests
                 new WorldTarget { X = 100, Y = 200, Width = 56, Height = 46 },
                 new WorldTarget { X = 100, Y = 200, Width = 36, Height = 38 } })
             foreach (float gravity in new[] { 1f, -1f })
-            foreach (long ticks in new[] { 0L, 6250000L, 17500000L, 35000000L, 70000000L, TimeSpan.MaxValue.Ticks - 1 })
+            foreach (long ticks in GeometryTimes())
             {
                 var animation = new WorldTargetAnimation(ticks, gravity);
                 for (int i = 0; i < 3; i++)
@@ -96,12 +145,16 @@ namespace JueMingR.ArchitectureTests
                     double dx = target.CenterX - pose.X, dy = target.CenterY - pose.Y;
                     Require(Math.Abs(dx * pose.DirectionY - dy * pose.DirectionX) < .001, "floated arrow still points at fixed true center");
                     Require(dx * pose.DirectionX + dy * pose.DirectionY > 0, "arrow points inward, never tangent/outward");
-                    Require(Math.Sqrt(dx * dx + dy * dy) - pose.Length / 2 > Math.Sqrt(target.Width * target.Width + target.Height * target.Height) / 2,
-                        "innermost arrow tip stays outside target bounds even after bob");
+                    // The owner's closer/larger tuning intentionally retires the
+                    // old external-circle gap. Protect the central body; actual
+                    // transparent corners/edge overlap require native previews.
+                    Require(Math.Sqrt(dx * dx + dy * dy) - pose.Length / 2 > Math.Min(target.Width, target.Height) / 2 - 1,
+                        "innermost arrow tip stays outside the target central body");
                     ArrowPose next = WorldTargetArrows.At(target, animation, (i + 1) % 3);
-                    double ax = pose.X - target.CenterX, ay = pose.Y - target.CenterY - animation.Bob;
-                    double bx = next.X - target.CenterX, by = next.Y - target.CenterY - animation.Bob;
+                    double ax = pose.X - target.CenterX, ay = pose.Y - target.CenterY - WorldTargetArrows.Bob(target, animation);
+                    double bx = next.X - target.CenterX, by = next.Y - target.CenterY - WorldTargetArrows.Bob(target, animation);
                     Require(Math.Abs((ax * bx + ay * by) / (ax * ax + ay * ay) + .5) < .00001, "three baseline positions remain 120 degrees apart");
+                    Require(Math.Sqrt(dx * dx + dy * dy) + pose.Length * .61 <= WorldTargetArrows.Extent(target), "larger complete arrow plus bob fits the culling extent");
                 }
             }
             var t = new WorldTarget { Width = 32, Height = 32 };
@@ -110,6 +163,8 @@ namespace JueMingR.ArchitectureTests
             Require(a.X == b.X && a.Y == b.Y, "same elapsed time is independent of frame count");
             Require(a.Y > t.CenterY, "quarter orbit is clockwise in ordinary screen coordinates");
         }
+        private static IEnumerable<long> GeometryTimes()
+        { for (long ticks = 0; ticks <= 1890000000L; ticks += 1000000L) yield return ticks; yield return TimeSpan.MaxValue.Ticks - 1; }
         private static WorldTargetSettings All()
         { var value = WorldTargetSettings.Default; foreach (WorldTargetKind kind in Enum.GetValues(typeof(WorldTargetKind))) value = value.WithEnabled(kind, true); return value; }
         private static void Discover(WorldTargetFeature f) { for (ulong i = 0; i < 16; i++) f.Update(i); }

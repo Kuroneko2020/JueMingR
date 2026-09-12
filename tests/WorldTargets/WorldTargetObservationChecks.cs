@@ -45,11 +45,13 @@ namespace Terraria
             feature.Configure(WorldTargetSettings.Default.WithEnabled(WorldTargetKind.SleepingDigtoise, true));
             Put(52, 10, 751); Discover(feature);
             Check(feature.Targets.Count == 1 && feature.Targets[0].TileX == 52, "offscreen turtle whose arrows still intersect screen must survive observation culling");
-            var edge = feature.Targets[0]; var arrow = WorldTargetArrows.At(edge, new WorldTargetAnimation(35000000, 1), 0);
-            Check(arrow.X - arrow.Length / 2 < 800, "counterexample has actual visible arrow pixels before target enters screen");
+            var edge = feature.Targets[0]; bool visibleArrow = false;
+            for (long ticks = 0; ticks < 70000000L; ticks += 1000000L) for (int i = 0; i < 3; i++)
+            { var arrow = WorldTargetArrows.At(edge, new WorldTargetAnimation(ticks, 1), i); visibleArrow |= arrow.X - arrow.Length / 2 < 800; }
+            Check(visibleArrow, "counterexample has visible arrow pixels during its stable local phase before target enters screen");
             feature.Configure(settings);
             Main.GameViewMatrix.ZoomMatrix = Matrix.CreateTranslation(-400, -300, 0) * Matrix.CreateScale(2) * Matrix.CreateTranslation(400, 300, 0);
-            WorldTargetView view; Check(source.TryBegin(out view) && view.X == 7 && view.Width == 36, "inverse centered zoom and complete arrow margin change actual tile region");
+            WorldTargetView view; Check(source.TryBegin(out view) && view.X == 6 && view.Width == 38, "inverse centered zoom and enlarged complete arrow margin change actual tile region");
             long geometry = view.GeometryRevision; Main.screenPosition.X = 8; source.TryBegin(out view);
             Check(view.GeometryRevision == geometry, "sub-tile motion never reports resize");
             Main.screenWidth = 900; source.TryBegin(out view); Check(view.GeometryRevision != geometry, "actual screen resize changes geometry identity");

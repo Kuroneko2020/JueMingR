@@ -217,6 +217,7 @@ namespace Terraria
                 if (args.Length == 1 && args[0] == "world-targets-style") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; WorldTargetStyleChecks.Run(); return 0; }
                 if (args.Length == 1 && args[0] == "world-targets-projection") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; WorldTargetGraphicsChecks.Logical(); return 0; }
                 if (args.Length == 1 && args[0] == "world-targets-world") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; WorldTargetGraphicsChecks.Run(); return 0; }
+                if (args.Length == 3 && args[0] == "world-targets-visual") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; WorldTargetVisualChecks.Run(args[1], args[2]); return 0; }
                 if (args.Length == 1 && args[0] == "entity-world") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; EntityWorldChecks.Run(); return 0; }
                 if (args.Length == 1 && args[0] == "entity-projection") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; EntityWorldChecks.Logical(); return 0; }
                 if (args.Length == 1 && args[0] == "entity-preferences") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; EntityPreferenceChecks.Run(); return 0; }
