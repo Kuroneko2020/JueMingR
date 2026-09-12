@@ -12,6 +12,14 @@ namespace JueMingR.ArchitectureTests
             Assembly features = Assembly.Load("JueMingR.Features");
             var expected = new HashSet<string>(StringComparer.Ordinal)
             {
+                "JueMingR.Features.WorldObjectText.WorldObjectResolver", "JueMingR.Features.WorldObjectText.WorldObjectSelection",
+                "JueMingR.Features.WorldObjectText.WorldObjectSettings", "JueMingR.Features.WorldObjectText.WorldObjectStyle", "JueMingR.Features.WorldObjectText.WorldObjectCodec",
+                "JueMingR.Features.Text.VisibleTextBoundary", "JueMingR.Features.WorldObjectText.WorldTextCursor",
+                "JueMingR.Features.WorldObjectText.WorldTextPart", "JueMingR.Features.WorldObjectText.WorldTextElement", "JueMingR.Features.WorldObjectText.WorldTextStep",
+                "JueMingR.Features.WorldObjectText.OpenedPositionIndex", "JueMingR.Features.WorldObjectText.OpenedPositionCodec",
+                "JueMingR.Features.WorldObjectText.OpenedPositionHistory",
+                "JueMingR.Features.WorldObjectText.OpenedPositionQuery", "JueMingR.Features.WorldObjectText.OpenedQueryStep",
+                "JueMingR.Features.WorldObjectText.WorldObjectDiscovery", "JueMingR.Features.WorldObjectText.WorldObjectTextCandidate",
                 "JueMingR.Features.WorldTargets.WorldTargetSettings", "JueMingR.Features.WorldTargets.WorldTargetCodec",
                 "JueMingR.Features.WorldTargets.WorldTargetFeature", "JueMingR.Features.WorldTargets.WorldTarget",
                 "JueMingR.Features.WorldTargets.WorldTargetArrows", "JueMingR.Features.WorldTargets.WorldTargetAnimation", "JueMingR.Features.WorldTargets.ArrowPose",

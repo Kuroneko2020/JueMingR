@@ -25,6 +25,10 @@
     <Compile Include="..\Hotkeys\*.cs" />
     <Compile Include="..\EntityLabels\*.cs" />
     <Compile Include="..\WorldTargets\*.cs" />
+    <Compile Include="..\WorldObjectText\*.cs" />
+    <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\IWorldObjectControls.cs" />
+    <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\WorldObjectControls.cs" />
+    <Compile Include="..\..\src\JueMingR.TerrariaHost\World\WorldTileObservation.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\WorldTargets\*.cs" Link="Production\WorldTargets\%(Filename)%(Extension)" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\Rendering\WorldPresentation.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\WorldTargetControls.cs" />

@@ -22,9 +22,9 @@ namespace JueMingR.TerrariaHost.WorldTargets
         internal readonly WorldTargetWorldLayer World;
         internal bool LayersReady { get; set; }
         internal long SessionGeneration { get { return runtime.IsSessionActive ? runtime.Generation : -1; } }
-        internal HostWorldTargets(string gameDirectory, SingleFeatureRuntime runtime)
+        internal HostWorldTargets(string gameDirectory, SingleFeatureRuntime runtime, World.WorldTileObservation world = null)
         {
-            this.runtime = runtime; source = new WorldTargetHostObservation(() => runtime.IsSessionActive);
+            this.runtime = runtime; source = new WorldTargetHostObservation(() => runtime.IsSessionActive, world);
             Feature = new WorldTargetFeature(source);
             preferences = new PreferenceDocument<WorldTargetSettings>(new AtomicFileDocument(Path.Combine(gameDirectory,
                 "JueMingRData", "config", "features", "world-targets.json"), 65536, true), new WorldTargetCodec(), WorldTargetSettings.Default);
