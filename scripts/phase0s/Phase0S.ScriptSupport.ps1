@@ -527,7 +527,8 @@ function Read-Phase0SPackage {
         ('item-automation-' + [string] $manifest.sourceCommit),
         ('unified-hotkeys-' + [string] $manifest.sourceCommit),
         ('entity-labels-' + [string] $manifest.sourceCommit),
-        ('world-targets-' + [string] $manifest.sourceCommit)
+        ('world-targets-' + [string] $manifest.sourceCommit),
+        ('world-object-text-' + [string] $manifest.sourceCommit)
     )
     if ([string] $manifest.sourceCommit -notmatch '^[0-9a-f]{40}$' -or
         $allowedPackageIds -cnotcontains [string] $manifest.packageId) {
