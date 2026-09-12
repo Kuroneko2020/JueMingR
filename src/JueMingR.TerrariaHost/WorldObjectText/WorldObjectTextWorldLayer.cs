@@ -34,7 +34,8 @@ namespace JueMingR.TerrariaHost.WorldObjectText
 #if DEBUG
             PreparationWork = 0;
 #endif
-            if (Failure != null || discovery.Candidates.Count == 0) { if (!settings.AnyEnabled && cache.Count != 0) Clear(); return; }
+            if (Failure != null) return;
+            if (!settings.AnyEnabled) { if (cache.Count != 0) Clear(); return; }
             try
             {
                 var currentFont = FontAssets.MouseText == null ? null : FontAssets.MouseText.Value;
@@ -42,6 +43,9 @@ namespace JueMingR.TerrariaHost.WorldObjectText
                 if (FontUnavailable) return;
                 var currentLanguage = Terraria.Localization.LanguageManager.Instance.ActiveCulture;
                 if (!ReferenceEquals(font, currentFont) || !ReferenceEquals(language, currentLanguage)) { Clear(); font = currentFont; language = currentLanguage; discovery.InvalidateTextLayout(); }
+                // Font-dependent rejection can leave no candidates at all. Check
+                // resource identity first so a new font can make them eligible.
+                if (discovery.Candidates.Count == 0) return;
                 epoch++;
                 // Tile floor/ceil widths fluctuate during ordinary motion. Use
                 // actual screen/zoom width so moving never invalidates layout.

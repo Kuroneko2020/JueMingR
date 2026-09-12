@@ -24,6 +24,7 @@ namespace NativeWorldTextProbe
         private readonly Dictionary<int, Texture2D> tiles = new Dictionary<int, Texture2D>();
         public GraphicsDevice GraphicsDevice { get; private set; }
         internal DynamicSpriteFont Font { get; }
+        internal void SetMouseFont(DynamicSpriteFont value) { Terraria.GameContent.FontAssets.MouseText = Loaded("probe-replaced-font", value); }
         internal ProbeGraphics(string content)
         {
             contentDirectory = content;

@@ -41,6 +41,7 @@ namespace NativeWorldTextProbe
             SelectionAndRecovery(graphics, world, source, output);
             BlankPrefixProgress(world, source);
             RepresentativeScene(graphics, output, world, source);
+            EmptyCandidateFontRecovery(graphics, world, source);
             Console.WriteLine("PASS: actual Host native names/dictionary, full dresser geometry, lazy all-off observer, real history file, >K selection and cold-job recovery.");
         }
         private static void ObserveOpened(WorldTileObservation world)
@@ -206,6 +207,36 @@ namespace NativeWorldTextProbe
                 actual.Add(value.TileX, String.Concat(layout.Snippets.Select(s => s.Snippet.Text)));
             }
             Require(actual.Values.SequenceEqual(names), "language reaches actual cached Draw snippets without stale outer layout");
+        }
+        private static void EmptyCandidateFontRecovery(ProbeGraphics graphics, WorldTileObservation world, WorldObjectHostObservation source)
+        {
+            Main.tile = new Tile[256, 128]; Main.sign = new Sign[32000]; source.EndSession();
+            Put(20, 20, 55, 0, 2); Main.sign[0] = new Sign { x = 20, y = 20, text = "A" };
+            // A deliberately wide CPU metric font makes one indivisible unit
+            // fail the layout bound. It is never drawn; recovery uses real XNB.
+            var wide = new ReLogic.Graphics.DynamicSpriteFont(0, 20, '?');
+            Type pageType = typeof(ReLogic.Graphics.DynamicSpriteFont).Assembly.GetType("ReLogic.Graphics.FontPage", true);
+            var glyphs = new List<Rectangle> { new Rectangle(0, 0, 1000, 20), new Rectangle(0, 0, 1000, 20) };
+            var padding = new List<Rectangle>(glyphs); var characters = new List<char> { '?', 'A' };
+            var kerning = new List<Vector3> { new Vector3(0, 1000, 0), new Vector3(0, 1000, 0) };
+            object page = Activator.CreateInstance(pageType, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, new object[] { null, glyphs, padding, characters, kerning }, null);
+            Array pages = Array.CreateInstance(pageType, 1); pages.SetValue(page, 0);
+            typeof(ReLogic.Graphics.DynamicSpriteFont).GetMethod("SetPages", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(wide, new object[] { pages });
+            var original = Terraria.GameContent.FontAssets.MouseText;
+            var discovery = new WorldObjectDiscovery(source); var layer = new WorldObjectTextWorldLayer(discovery, () => true); discovery.SetPresentationGate(layer.MayPresent, layer.IsPrepared);
+            var settings = WorldObjectSettings.Default.WithMode(WorldObjectKind.Sign, WorldObjectMode.Lines);
+            try
+            {
+                graphics.SetMouseFont(wide);
+                for (int i = 0; i < 100; i++) { world.BeginTick(); discovery.Update(settings, null); layer.Prepare(settings); }
+                Require(discovery.Candidates.Count == 0 && layer.Failure == null, "overwide complete unit leaves no candidates and no drawing failure");
+                Terraria.GameContent.FontAssets.MouseText = original;
+                // No mode, geometry, text or manual cache invalidation changes.
+                for (int i = 0; i < 100; i++) { world.BeginTick(); discovery.Update(settings, null); layer.Prepare(settings); }
+                Require(discovery.SelectedCount == 1, "font replacement revives a previously rejected zero-candidate world");
+                graphics.DrawFrame(layer); Require(layer.LastDrawn == 1 && layer.Failure == null, "recovered candidate actually draws with the original font");
+            }
+            finally { Terraria.GameContent.FontAssets.MouseText = original; layer.Clear(); discovery.Clear(); }
         }
         private static void Put(int x, int y, int type, int style, int width)
         { for (int dy = 0; dy < 2; dy++) for (int dx = 0; dx < width; dx++) { var tile = new Tile { type = (ushort)type, frameX = (short)(style * width * 18 + dx * 18), frameY = (short)(dy * 18) }; tile.active(true); Main.tile[x + dx, y + dy] = tile; } }
