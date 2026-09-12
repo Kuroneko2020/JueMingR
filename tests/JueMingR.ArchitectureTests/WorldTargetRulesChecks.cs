@@ -85,7 +85,10 @@ namespace JueMingR.ArchitectureTests
             var target = new WorldTarget { TileX = 20, TileY = 30, X = 320, Y = 480, Width = 32, Height = 32 };
             var adjacent = target; adjacent.TileX += 2; adjacent.X += 32;
             var first = WorldTargetArrows.At(target, new WorldTargetAnimation(0, 1), 0);
-            Require(first.Length >= 24, "owner tuning: small arrows are visibly larger than the original 18px");
+            Require(first.Length == 20, "owner short/wide tuning: small arrows shorten from 24 to 20px");
+            var large = target; large.Width = 56; large.Height = 46;
+            Require(WorldTargetArrows.At(large, new WorldTargetAnimation(0, 1), 0).Length == 23,
+                "owner short/wide tuning: turtle and egg arrows shorten from 28 to 23px");
             bool staggered = false, afterOrbitDiffers = false;
             for (int step = 0; step < 60; step++)
             {
@@ -154,7 +157,7 @@ namespace JueMingR.ArchitectureTests
                     double ax = pose.X - target.CenterX, ay = pose.Y - target.CenterY - WorldTargetArrows.Bob(target, animation);
                     double bx = next.X - target.CenterX, by = next.Y - target.CenterY - WorldTargetArrows.Bob(target, animation);
                     Require(Math.Abs((ax * bx + ay * by) / (ax * ax + ay * ay) + .5) < .00001, "three baseline positions remain 120 degrees apart");
-                    Require(Math.Sqrt(dx * dx + dy * dy) + pose.Length * .61 <= WorldTargetArrows.Extent(target), "larger complete arrow plus bob fits the culling extent");
+                    Require(Math.Sqrt(dx * dx + dy * dy) + pose.Length / Math.Sqrt(2) <= WorldTargetArrows.Extent(target), "complete square arrow plus bob fits the culling extent");
                 }
             }
             var t = new WorldTarget { Width = 32, Height = 32 };

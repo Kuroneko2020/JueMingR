@@ -24,7 +24,7 @@ namespace Terraria
                     var pose = WorldTargetArrows.At(target, animation, i); Vector2 p = WorldTargetWorldLayer.Screen(pose.X, pose.Y, gravity);
                     Vector2 direction = new Vector2(pose.DirectionX, pose.DirectionY * gravity), difference = center - p;
                     Check(Math.Abs(difference.X * direction.Y - difference.Y * direction.X) < .001 && Vector2.Dot(difference, direction) > 0, "production mirrored position and direction agree");
-                    Check(Vector2.Distance(center, p) + pose.Length * .6f <= WorldTargetArrows.Extent(target) + 1, "complete raster arrow and bob are inside clip extent");
+                    Check(Vector2.Distance(center, p) + pose.Length / Math.Sqrt(2) <= WorldTargetArrows.Extent(target), "complete square raster arrow and bob are inside clip extent");
                 }
             }
             var world = new WorldTargetWorldLayer(new List<WorldTarget>(), () => true, () => WorldTargetSettings.Default);
@@ -53,6 +53,7 @@ namespace Terraria
                     Main.LocalPlayer.gravDir = -1; world.Draw(); Check(world.LastDrawn == 9, "actual inverted draw remains available");
                     Check(graphics.Device.ScissorRectangle == clip, "caller scissor preserved");
                     Main.spriteBatch.End();
+                    CheckShortWideRaster(world, targets[0]);
                     // Deliberately invalid caller batch tests the local exception
                     // boundary, not an environment deferral or silent PASS.
                     Check(world.Draw() && world.Failure != null, "draw exception cannot abort later native UI");
@@ -63,6 +64,19 @@ namespace Terraria
                 world.Clear(); Check(typeof(WorldTargetWorldLayer).GetField("arrow", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(world) == null, "owned texture retired on clear");
             }
             Console.WriteLine("PASS: actual arrow XNA draws, multi-time/adjacent objects, resource reuse/exit, gates and preserved following UI.");
+        }
+        private static void CheckShortWideRaster(WorldTargetWorldLayer world, WorldTarget target)
+        {
+            var texture = (Texture2D)typeof(WorldTargetWorldLayer).GetField("arrow", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(world);
+            var pixels = new Color[texture.Width * texture.Height]; texture.GetData(pixels);
+            int left = texture.Width, right = -1, top = texture.Height, bottom = -1;
+            for (int y = 0; y < texture.Height; y++) for (int x = 0; x < texture.Width; x++)
+                if (pixels[y * texture.Width + x].A != 0)
+                { left = Math.Min(left, x); right = Math.Max(right, x); top = Math.Min(top, y); bottom = Math.Max(bottom, y); }
+            int width = right - left + 1, height = bottom - top + 1;
+            Check(width > 0 && height > width * .9f, "actual opaque arrow is short and wide, not the old slender glyph");
+            var pose = WorldTargetArrows.At(target, new WorldTargetAnimation(0, 1), 0);
+            Check(height * pose.Length / texture.Width >= 18, "actual small-arrow transverse pixels are wider than the previous 14px");
         }
         private static void Check(bool value, string message) { WorldTargetObservationChecks.Check(value, message); }
     }

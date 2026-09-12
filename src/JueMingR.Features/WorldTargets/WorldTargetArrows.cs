@@ -42,10 +42,10 @@ namespace JueMingR.Features.WorldTargets
         public static ArrowPose At(WorldTarget target, WorldTargetAnimation animation, int index)
         {
             if (index < 0 || index > 2) throw new ArgumentOutOfRangeException(nameof(index));
-            float length = target.Width > 40 || target.Height > 36 ? 28 : 24;
-            // Owner tuning brings the larger arrows closer. The display bounds
-            // include transparent corners: keep a fixed orbit, not per-frame
-            // radial collision correction that would replace the vertical bob.
+            float length = target.Width > 40 || target.Height > 36 ? 23 : 20;
+            // Keep the chosen orbit independent of glyph proportions. Display
+            // bounds include transparent corners; radial collision correction
+            // would change the owner's vertical bob and established spacing.
             float radius = (float)Math.Sqrt(target.Width * target.Width + target.Height * target.Height) / 2 + 12;
             int phase = unchecked(target.TileX + target.TileY * 3 + (int)target.Kind * 5) & 15;
             double pc = PhaseCos[phase], ps = PhaseCos[(phase + 12) & 15] * animation.Gravity;

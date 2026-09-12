@@ -61,7 +61,7 @@ namespace JueMingR.TerrariaHost.WorldTargets
                         float rotation = (float)Math.Atan2(pose.DirectionY * gravity, pose.DirectionX);
                         // The caller's Game layer owns ZoomMatrix/batch state.
                         // Mirror both position and direction, never UI-scale twice.
-                        Main.spriteBatch.Draw(arrow, point, null, color, rotation, new Vector2(12, 8), pose.Length / 24,
+                        Main.spriteBatch.Draw(arrow, point, null, color, rotation, new Vector2(10, 10), pose.Length / 20,
                             SpriteEffects.None, 0);
 #if DEBUG
                         LastDrawn++;
@@ -78,16 +78,18 @@ namespace JueMingR.TerrariaHost.WorldTargets
         {
             if (arrow != null && !arrow.IsDisposed && ReferenceEquals(arrow.GraphicsDevice, device)) return;
             Clear();
-            // One owned solid arrow, white fill plus a one-pixel black border.
+            // One owned short, wide arrow on a square 20x20 canvas. The draw
+            // origin/scale above use this same canvas, preserving world position.
+            // White fill plus a one-pixel black border.
             // Black remains a contrasting outline under any user RGB tint.
-            var pixels = new Color[24 * 16];
-            for (int y = 0; y < 16; y++) for (int x = 0; x < 24; x++)
+            var pixels = new Color[20 * 20];
+            for (int y = 0; y < 20; y++) for (int x = 0; x < 20; x++)
             {
                 bool fill = Inside(x, y);
                 bool inner = fill && Inside(x - 1, y) && Inside(x + 1, y) && Inside(x, y - 1) && Inside(x, y + 1);
-                pixels[y * 24 + x] = !fill ? Color.Transparent : inner ? Color.White : Color.Black;
+                pixels[y * 20 + x] = !fill ? Color.Transparent : inner ? Color.White : Color.Black;
             }
-            var created = new Texture2D(device, 24, 16);
+            var created = new Texture2D(device, 20, 20);
             try { created.SetData(pixels); arrow = created; }
             catch { created.Dispose(); throw; }
 #if DEBUG
@@ -96,8 +98,8 @@ namespace JueMingR.TerrariaHost.WorldTargets
         }
         private static bool Inside(int x, int y)
         {
-            if (x < 0 || x > 23 || y < 0 || y > 15) return false;
-            return x < 12 ? y >= 5 && y <= 10 : Math.Abs(y - 7.5) <= (23.5 - x) * (7.5 / 12);
+            if (x < 0 || x > 19 || y < 0 || y > 19) return false;
+            return x < 10 ? y >= 6 && y <= 13 : Math.Abs(y - 9.5) <= (19.5 - x) * (9.5 / 10);
         }
     }
 }
