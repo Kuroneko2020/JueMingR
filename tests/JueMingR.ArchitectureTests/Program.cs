@@ -36,6 +36,9 @@ namespace JueMingR.ArchitectureTests
                 EntityLabelRulesChecks.Check(failures);
                 WorldTargetRulesChecks.Check(failures);
                 WorldTargetSettingsChecks.Check(failures);
+                ObjectRulesChecks.Check(failures);
+                ObjectSettingsChecks.Check(failures);
+                ObjectTextChecks.Check(failures);
                 PreferenceStorageChecks.Check(failures);
                 ItemAutomationSettingsChecks.Check(failures);
                 ItemAutomationChecks.Check(failures);

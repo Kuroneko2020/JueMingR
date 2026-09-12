@@ -35,6 +35,8 @@ namespace JueMingR.ArchitectureTests
         {
             var expected = new HashSet<string>(StringComparer.Ordinal)
             {
+                "JueMingR.Platform.WorldObjectText.WorldObjectKind", "JueMingR.Platform.WorldObjectText.WorldObjectMode",
+                "JueMingR.Platform.WorldObjectText.WorldObject", "JueMingR.Platform.WorldObjectText.ContainerNameFamily",
                 "JueMingR.Platform.WorldTargets.WorldTargetKind", "JueMingR.Platform.WorldTargets.WorldTargetTile",
                 "JueMingR.Platform.WorldTargets.WorldTargetView", "JueMingR.Platform.WorldTargets.IWorldTargetSource",
                 "JueMingR.Platform.Entities.EntityObservationDemand", "JueMingR.Platform.Entities.EntitySegmentRole",
