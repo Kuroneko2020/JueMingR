@@ -13,7 +13,7 @@ namespace JueMingR.TerrariaHost.Hotkeys
     {
         internal readonly HotkeyRegistry Registry = new HotkeyRegistry();
         internal readonly HotkeyBindings Bindings;
-        internal HostHotkeys(string gameDirectory, Phase0TBiomeRuntime biome, HostPreferences preferences, HostItems items, EntityLabels.HostEntityLabels labels = null, WorldTargets.HostWorldTargets targets = null)
+        internal HostHotkeys(string gameDirectory, Phase0TBiomeRuntime biome, HostPreferences preferences, HostItems items, EntityLabels.HostEntityLabels labels = null, WorldTargets.HostWorldTargets targets = null, WorldObjectText.HostWorldObjectText worldObjects = null)
         {
             Registry.Register(new HotkeyAction(HotkeyActionIds.Biome, "群系显示", HotkeyContext.SinglePlayer,
                 () => preferences.BiomeLoaded && !biome.FeatureFailed && Main.netMode == 0,
@@ -39,6 +39,13 @@ namespace JueMingR.TerrariaHost.Hotkeys
                     var kind = target;
                     Registry.Register(new HotkeyAction(HotkeyActionIds.WorldTarget(kind), F5.WorldTargetControls.Name(kind), HotkeyContext.Gameplay,
                         () => targets.ControlsEnabled, () => targets.Toggle(kind)));
+                }
+            if (worldObjects != null)
+                for (int i = 0; i < 3; i++)
+                {
+                    var kind = (Platform.WorldObjectText.WorldObjectKind)i;
+                    Registry.Register(new HotkeyAction(HotkeyActionIds.WorldObject(kind), F5.WorldObjectControls.Name(kind), HotkeyContext.Gameplay,
+                        () => worldObjects.ControlsEnabled, () => worldObjects.Toggle(kind)));
                 }
             Bindings = new HotkeyBindings(Registry, new AtomicFileDocument(Path.Combine(gameDirectory, "JueMingRData", "config", "hotkeys.json"), 65536, true));
             AppDomain.CurrentDomain.ProcessExit += OnExit;

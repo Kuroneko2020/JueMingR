@@ -2,6 +2,7 @@ using System;
 using JueMingR.Features.WorldTargets;
 using JueMingR.Platform.WorldTargets;
 using JueMingR.TerrariaHost.WorldTargets;
+using JueMingR.TerrariaHost.World;
 using Microsoft.Xna.Framework;
 
 namespace Terraria
@@ -21,6 +22,7 @@ namespace Terraria
         { for (int dy = 0; dy < 2; dy++) for (int dx = 0; dx < 2; dx++) Main.tile[x + dx, y + dy] = new Tile { Active = true, type = (ushort)type, frameX = (short)(style * 36 + dx * 18), frameY = (short)(dy * 18) }; }
         internal static void Run()
         {
+            SharedRead();
             Prepare(); bool session = true; var source = new WorldTargetHostObservation(() => session);
             var feature = new WorldTargetFeature(source); var settings = WorldTargetSettings.Default;
             feature.Configure(settings.WithEnabled(WorldTargetKind.LifeCrystal, true)); feature.OnSessionStarted();
@@ -60,6 +62,22 @@ namespace Terraria
             Console.WriteLine("PASS: production world tile adapter, complete objects, native ability gate, client unknown, death, removal and centered zoom.");
         }
         internal static void Discover(WorldTargetFeature feature) { for (ulong i = 0; i < 16; i++) feature.Update(i); }
+        private static void SharedRead()
+        {
+            Prepare(); Main.netMode = 1; Main.LocalPlayer.accOreFinder = false;
+            var shared = new WorldTileObservation(() => true); var gated = new WorldTargetHostObservation(() => true, shared);
+            shared.BeginTick(); WorldTargetView view;
+            Check(shared.TryView(0, out view) && !gated.TryBegin(out view), "shared facts do not inherit the target detector gate");
+            int reads = Main.sectionManager.Reads;
+            shared.Read(4, 4); gated.Read(4, 4);
+            Check(Main.sectionManager.Reads - reads == 1, "consumers share one physical cell read in one tick");
+            Main.sectionManager.Unknown.Add(((long)5 << 32) | 5);
+            Check(!shared.Read(5, 5).Readable && !gated.Read(5, 5).Readable && Main.sectionManager.Reads - reads == 2, "unknown facts share the same tick cache");
+            shared.BeginTick(); Main.sectionManager.Unknown.Clear();
+            Check(shared.Read(5, 5).Readable && Main.sectionManager.Reads - reads == 3, "next tick refreshes unknown without world mutation");
+            Put(4, 4, 12); shared.Read(4, 4); Main.tile = new Tile[200, 100];
+            Check(!shared.Read(4, 4).Readable, "source replacement invalidates even within a tick");
+        }
         internal static void Check(bool value, string message) { if (!value) throw new InvalidOperationException(message); }
     }
 }

@@ -6,6 +6,16 @@ namespace JueMingR.TerrariaHost.Hotkeys
         internal const string EnemyLabels = "entity-labels.enemy.toggle", CritterLabels = "entity-labels.critter.toggle", NpcLabels = "entity-labels.npc.toggle";
         internal static readonly string[] EntityLabels = { EnemyLabels, CritterLabels, NpcLabels };
         internal static readonly string[] Items = { "items.auto-stack.toggle", "items.auto-sell.toggle", "items.auto-discard.toggle" };
+        internal static string WorldObject(Platform.WorldObjectText.WorldObjectKind kind)
+        {
+            switch (kind)
+            {
+                case Platform.WorldObjectText.WorldObjectKind.Chest: return "world-object-text.chest.toggle";
+                case Platform.WorldObjectText.WorldObjectKind.Sign: return "world-object-text.sign.toggle";
+                case Platform.WorldObjectText.WorldObjectKind.Tombstone: return "world-object-text.tombstone.toggle";
+                default: throw new System.ArgumentOutOfRangeException(nameof(kind));
+            }
+        }
         internal static string WorldTarget(Platform.WorldTargets.WorldTargetKind kind)
         {
             switch (kind)

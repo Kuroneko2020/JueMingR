@@ -39,6 +39,8 @@ namespace JueMingR.ArchitectureTests
                 ObjectRulesChecks.Check(failures);
                 ObjectSettingsChecks.Check(failures);
                 ObjectTextChecks.Check(failures);
+                ObjectDiscoveryChecks.Check(failures);
+                OpenedPositionChecks.Check(failures);
                 PreferenceStorageChecks.Check(failures);
                 ItemAutomationSettingsChecks.Check(failures);
                 ItemAutomationChecks.Check(failures);

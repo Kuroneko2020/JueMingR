@@ -3,6 +3,18 @@ namespace JueMingR.Platform.WorldObjectText
     public enum WorldObjectKind { Chest, Sign, Tombstone }
     public enum WorldObjectMode { Off, Always, Opened, All, Lines, Characters }
     public enum ContainerNameFamily { Chest, Chest2, Dresser, Item }
+    public struct WorldObjectView
+    {
+        public WorldTargets.WorldTargetView Visible, Discovery;
+        public float PlayerX, PlayerY;
+    }
+    public interface IWorldObjectSource
+    {
+        bool HasDetector { get; }
+        bool TryBegin(bool chestNames, bool signText, out WorldObjectView view);
+        WorldTargets.WorldTargetTile Read(int x, int y);
+        bool TryText(WorldObject value, out string text);
+    }
 
     // Values belong to one Runtime session. A position becomes durable only via
     // the opened-position owner; geometry/name observations never become history.

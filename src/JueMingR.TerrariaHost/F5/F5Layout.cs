@@ -31,7 +31,10 @@ namespace JueMingR.TerrariaHost.F5
         ConfigureNpc, NpcName, NpcType, DisableNpc,
         ConfigureLifeCrystal, EnableLifeCrystal, DisableLifeCrystal, ConfigureLifeFruit, EnableLifeFruit, DisableLifeFruit,
         ConfigureManaCrystal, EnableManaCrystal, DisableManaCrystal, ConfigureDigtoise, EnableDigtoise, DisableDigtoise,
-        ConfigureChilletEgg, EnableChilletEgg, DisableChilletEgg }
+        ConfigureChilletEgg, EnableChilletEgg, DisableChilletEgg,
+        ConfigureChest, ChestAlways, ChestOpened, ChestOff,
+        ConfigureSign, SignAll, SignLines, SignCharacters, SignOff, SignLess, SignMore,
+        ConfigureTombstone, TombstoneAll, TombstoneLines, TombstoneCharacters, TombstoneOff, TombstoneLess, TombstoneMore }
 
     internal sealed class F5Element
     {
@@ -63,6 +66,19 @@ namespace JueMingR.TerrariaHost.F5
         private object fontIdentity;
         private float screenWidth, screenHeight, uiScale;
         private int page = -1;
+        private Features.WorldObjectText.WorldObjectSettings objectSettings = Features.WorldObjectText.WorldObjectSettings.Default;
+        private long informationRevision, builtInformationRevision;
+        internal void SetWorldObjectSettings(Features.WorldObjectText.WorldObjectSettings value)
+        {
+            bool changed = false;
+            for (int i = 1; i < 3; i++)
+            {
+                var before = objectSettings.Style((Platform.WorldObjectText.WorldObjectKind)i); var after = value.Style((Platform.WorldObjectText.WorldObjectKind)i);
+                changed |= before.Mode != after.Mode || after.Mode == Platform.WorldObjectText.WorldObjectMode.Lines && before.Lines != after.Lines ||
+                    after.Mode == Platform.WorldObjectText.WorldObjectMode.Characters && before.Characters != after.Characters;
+            }
+            objectSettings = value; if (changed) informationRevision++;
+        }
         internal int Generation { get; private set; }
         internal int MeasurementCount { get; private set; }
         internal int FontMetricsGeneration { get; private set; }
@@ -87,7 +103,7 @@ namespace JueMingR.TerrariaHost.F5
         }
 
         internal bool Matches(float width, float height, float scale, int currentPage)
-        { return Generation > 0 && width == screenWidth && height == screenHeight && scale == uiScale && page == currentPage; }
+        { return Generation > 0 && width == screenWidth && height == screenHeight && scale == uiScale && page == currentPage && (currentPage != 9 || builtInformationRevision == informationRevision); }
 
         internal void Ensure(float width, float height, float scale, int currentPage,
             object font, Func<string, F5Size> measureText)
@@ -109,6 +125,10 @@ namespace JueMingR.TerrariaHost.F5
                         old.OffsetX != value.OffsetX || old.OffsetY != value.OffsetY;
                 }
                 fontIdentity = font;
+                if (currentPage == 9)
+                    for (int i = 1; i < 3; i++)
+                    { var mode = objectSettings.Style((Platform.WorldObjectText.WorldObjectKind)i).Mode;
+                        if (mode == Platform.WorldObjectText.WorldObjectMode.Lines || mode == Platform.WorldObjectText.WorldObjectMode.Characters) metricsChanged = true; }
                 if (metricsChanged || Generation == 0) FontMetricsGeneration++;
             }
             if (Matches(width, height, scale, currentPage) && !metricsChanged) return;
@@ -137,6 +157,7 @@ namespace JueMingR.TerrariaHost.F5
             else if (currentPage == 7) BuildFishing(ref y);
             ContentHeight = Math.Max(0, y - 6);
             screenWidth = width; screenHeight = height; uiScale = scale; page = currentPage;
+            builtInformationRevision = informationRevision;
             Generation++;
         }
 
@@ -213,6 +234,7 @@ namespace JueMingR.TerrariaHost.F5
                 "群系显示", "世界感染", "幸运值", "完整鱼获", "过滤鱼获", "渔夫任务" };
             for (int i = 3; i < names.Length; i++)
             {
+                if (i <= 5) { WorldObjectControls.AddRow(elements, TextSize, DynamicTextSize, ref y, objectSettings.Style((Platform.WorldObjectText.WorldObjectKind)(i - 3))); continue; }
                 if (i >= 6 && i <= 10)
                 {
                     var kind = i == 6 ? Platform.WorldTargets.WorldTargetKind.LifeCrystal : i == 7 ? Platform.WorldTargets.WorldTargetKind.ManaCrystal :
@@ -289,6 +311,9 @@ namespace JueMingR.TerrariaHost.F5
             return new F5Size(size.Width * scale + 4, size.Height * scale + 4,
                 size.OffsetX * scale - 2, size.OffsetY * scale - 2);
         }
+
+        private F5Size DynamicTextSize(string text, float scale)
+        { var size = MeasureChecked(text); return new F5Size(size.Width * scale + 4, size.Height * scale + 4, size.OffsetX * scale - 2, size.OffsetY * scale - 2); }
 
         private F5Size MeasureChecked(string text)
         {
