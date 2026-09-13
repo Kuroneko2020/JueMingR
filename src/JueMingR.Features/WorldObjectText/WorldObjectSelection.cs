@@ -18,6 +18,11 @@ namespace JueMingR.Features.WorldObjectText
         public WorldObjectSelection(int capacity)
         { if (capacity < 1 || capacity > 4096) throw new ArgumentOutOfRangeException(nameof(capacity)); heap = new Ranked[capacity]; ordered = new Ranked[capacity]; }
         public int Count { get { return count; } }
+#if DEBUG
+        // Finite executable regression evidence only; absent from Release.
+        public int DebugSortCount { get; private set; }
+        public int DebugRepairCount { get; private set; }
+#endif
         public IEnumerable<WorldObject> Ordered { get { Sort(); for (int i = 0; i < count; i++) yield return ordered[i].Value; } }
         public int CopyTo(WorldObject[] destination, int start)
         { Sort(); for (int i = 0; i < count; i++) destination[start + i] = ordered[i].Value; return count; }
@@ -34,8 +39,17 @@ namespace JueMingR.Features.WorldObjectText
         { return positions.ContainsKey(value.Key) || count < heap.Length || Order.Instance.Compare(Rank(value), heap[0]) < 0; }
         public void Offer(WorldObject value)
         {
-            int index; Ranked rank = Rank(value);
-            if (positions.TryGetValue(value.Key, out index)) { heap[index] = rank; Repair(index); dirty = true; return; }
+            int index;
+            if (positions.TryGetValue(value.Key, out index))
+            {
+                // SetView already owns re-ranking. Identical payload adds no
+                // work, but must preserve dirty from any unconsumed change.
+                // Equal rank alone is insufficient: type/style can change at
+                // the same position, and ordered must receive the new payload.
+                if (SameValue(heap[index].Value, value)) return;
+                heap[index] = Rank(value); Repair(index); dirty = true; return;
+            }
+            Ranked rank = Rank(value);
             if (count == heap.Length)
             {
                 if (Order.Instance.Compare(rank, heap[0]) >= 0) return;
@@ -51,7 +65,15 @@ namespace JueMingR.Features.WorldObjectText
             if (index != count) { heap[index] = heap[count]; positions[heap[index].Value.Key] = index; Repair(index); }
             dirty = true;
         }
-        private void Repair(int index) { if (index > 0 && Order.Instance.Compare(heap[index], heap[(index - 1) / 2]) > 0) Up(index); else Down(index); }
+        private static bool SameValue(WorldObject a, WorldObject b)
+        { return a.Kind == b.Kind && a.TileX == b.TileX && a.TileY == b.TileY && a.Type == b.Type && a.Style == b.Style && a.Width == b.Width; }
+        private void Repair(int index)
+        {
+#if DEBUG
+            DebugRepairCount++;
+#endif
+            if (index > 0 && Order.Instance.Compare(heap[index], heap[(index - 1) / 2]) > 0) Up(index); else Down(index);
+        }
         private void Up(int index)
         { while (index > 0) { int parent = (index - 1) / 2; if (Order.Instance.Compare(heap[index], heap[parent]) <= 0) break; Swap(index, parent); index = parent; } }
         private void Down(int index)
@@ -65,7 +87,14 @@ namespace JueMingR.Features.WorldObjectText
         private Ranked Rank(WorldObject value)
         { double dx = value.CenterX - playerX, dy = value.CenterY - playerY; return new Ranked { Value = value,
             Visible = value.TileX < visible.Right && value.TileX + value.Width > visible.X && value.TileY < visible.Bottom && value.TileY + 2 > visible.Y, Distance = dx * dx + dy * dy }; }
-        private void Sort() { if (!dirty) return; Array.Copy(heap, ordered, count); Array.Sort(ordered, 0, count, Order.Instance); dirty = false; }
+        private void Sort()
+        {
+            if (!dirty) return;
+#if DEBUG
+            DebugSortCount++;
+#endif
+            Array.Copy(heap, ordered, count); Array.Sort(ordered, 0, count, Order.Instance); dirty = false;
+        }
         private struct Ranked { internal WorldObject Value; internal bool Visible; internal double Distance; }
         private sealed class Order : IComparer<Ranked>
         {

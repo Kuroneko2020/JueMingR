@@ -11,7 +11,7 @@ namespace JueMingR.ArchitectureTests
     {
         internal static void Check(IList<string> failures)
         {
-            try { CompleteObjects(); Names(); Selection(); }
+            try { CompleteObjects(); Names(); Selection(); UnchangedOffers(); }
             catch (Exception e) { failures.Add("World object rules: " + e.Message); }
         }
         private static readonly Dictionary<long, WorldTargetTile> Tiles = new Dictionary<long, WorldTargetTile>();
@@ -81,5 +81,26 @@ namespace JueMingR.ArchitectureTests
             selection.Offer(new WorldObject { TileX = 9, Width = 3 }); Require(selection.Count == 2, "same origin deduplicates style/type updates");
         }
         private static void Require(bool value, string message) { if (!value) throw new InvalidOperationException(message); }
+        private static void UnchangedOffers()
+        {
+            var selection = new WorldObjectSelection(3); var copy = new WorldObject[3];
+            var a = new WorldObject { Kind = WorldObjectKind.Chest, TileX = 9, TileY = 10, Type = 21, Width = 2 };
+            var b = a; b.TileX = 11;
+            selection.SetView(new WorldTargetView(0, 0, 40, 40, 1), 176, 176); selection.Offer(b); selection.Offer(a); selection.CopyTo(copy, 0);
+            Require(copy[0].TileX == 9, "stable equal-distance coordinates");
+#if DEBUG
+            int sorts = selection.DebugSortCount, repairs = selection.DebugRepairCount;
+#endif
+            for (int i = 0; i < 10; i++) { selection.Offer(a); selection.Offer(b); selection.CopyTo(copy, 0); Require(selection.Ordered.SequenceEqual(copy.Take(2)), "repeated read order"); }
+#if DEBUG
+            Require(selection.DebugSortCount == sorts && selection.DebugRepairCount == repairs, "unchanged Offer/CopyTo/Ordered reuse sorted result");
+#endif
+            selection.SetView(new WorldTargetView(0, 0, 40, 40, 1), 192, 176); selection.Offer(a); selection.CopyTo(copy, 0);
+            Require(copy[0].TileX == 11, "unchanged offer cannot clear pending view dirty");
+            a.Type = 467; selection.Offer(a); selection.Offer(a); selection.CopyTo(copy, 0);
+            Require(copy.Single(v => v.TileX == 9).Type == 467, "equal rank payload updates ordered copy and repeated offer preserves dirty");
+            a.Style = 10; selection.Offer(a); selection.CopyTo(copy, 0); Require(copy.Single(v => v.TileX == 9).Style == 10, "second real payload change after first output remains publishable");
+            a.Type = 88; a.Width = 3; selection.Offer(a); selection.CopyTo(copy, 0); Require(copy.Single(v => v.TileX == 9).Width == 3, "same origin changed center geometry");
+        }
     }
 }

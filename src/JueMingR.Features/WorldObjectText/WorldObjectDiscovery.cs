@@ -32,6 +32,10 @@ namespace JueMingR.Features.WorldObjectText
         public IReadOnlyList<WorldObjectTextCandidate> Candidates { get { return candidates; } }
         public WorldObjectView View { get; private set; }
         public int SelectedCount { get; private set; }
+#if DEBUG
+        public int DebugSortCount { get { return selections[0].DebugSortCount + selections[1].DebugSortCount + selections[2].DebugSortCount; } }
+        public int DebugRepairCount { get { return selections[0].DebugRepairCount + selections[1].DebugRepairCount + selections[2].DebugRepairCount; } }
+#endif
         public void SetPresentationGate(Func<WorldObject, string, WorldObjectStyle, bool> gate, Func<WorldObject, string, WorldObjectStyle, bool> isPrepared = null) { presentation = gate; prepared = isPrepared; }
         public void Clear()
         { foreach (var selection in selections) selection.Clear(); candidates.Clear(); pending.Clear(); SelectedCount = 0; InvalidateTextLayout(); pass = default(WorldTargetView); cursor = 0; historyCursor = null; }

@@ -18,6 +18,63 @@ namespace NativeWorldTextProbe
 {
     internal static class NativeWorldChecks
     {
+        internal static void RunSelectionCpu()
+        {
+            // Preparation and actual packet consumption use production source
+            // plus the real Features DLL. GPU output remains a separate check.
+            Main.screenPosition = Vector2.Zero; Main.LocalPlayer.position = new Vector2(450, 450);
+            Main.maxTilesX = 256; Main.maxTilesY = 128; Main.tile = new Tile[256, 128]; Main.chest = new Chest[8000]; Main.sign = new Sign[32000];
+            var world = new WorldTileObservation(() => true); var source = new WorldObjectHostObservation(world);
+            var discovery = new WorldObjectDiscovery(source); var layer = new WorldObjectTextWorldLayer(discovery, () => true); discovery.SetPresentationGate(layer.MayPresent, layer.IsPrepared);
+            var settings = WorldObjectSettings.Default.WithMode(WorldObjectKind.Chest, WorldObjectMode.Always);
+            Action<int> update = ticks => { for (int i = 0; i < ticks; i++) { world.BeginTick(); discovery.Update(settings, null); layer.Prepare(settings); Require(layer.Failure == null, "CPU production preparation healthy"); } };
+            var positions = new List<Point>();
+            for (int y = 0; y < 10; y++) for (int x = 0; x < 30; x++) { Put(x * 2, 18 + y * 2, 21, 0, 2); positions.Add(new Point(x * 2, 18 + y * 2)); }
+            update(150); AssertNearest(discovery, layer, positions, "CPU 300 complete input, late nearer row");
+            Main.LocalPlayer.position = new Vector2(820, 520); update(100); AssertNearest(discovery, layer, positions, "CPU moved player");
+            Put(50, 16, 21, 0, 2); positions.Add(new Point(50, 16)); update(100); AssertNearest(discovery, layer, positions, "CPU nearer new object");
+            var removed = positions[299]; Main.tile[removed.X, removed.Y] = null; positions.Remove(removed); update(100); AssertNearest(discovery, layer, positions, "CPU unreadable object withdraws and reserve fills");
+
+            Main.tile = new Tile[256, 128]; Main.chest = new Chest[8000]; Main.sign = new Sign[32000]; source.EndSession(); Main.LocalPlayer.position = new Vector2(180, 180);
+            Put(10, 10, 21, 0, 2); Put(20, 10, 55, 0, 2); Put(24, 10, 85, 0, 2);
+            var chest = Register(0, 10, 10); chest.name = "Fixed"; Main.sign[0] = new Sign { x = 20, y = 10, text = "Sign" }; Main.sign[1] = new Sign { x = 24, y = 10, text = "Tomb" };
+            settings = settings.WithMode(WorldObjectKind.Sign, WorldObjectMode.All).WithMode(WorldObjectKind.Tombstone, WorldObjectMode.All); update(80);
+            foreach (var fields in new[] { new[] {467,0,2}, new[] {467,10,2}, new[] {88,10,3} })
+            {
+                Put(10, 10, fields[0], fields[1], fields[2]); update(1);
+                var value = discovery.Candidates.Single(c => c.Value.TileX == 10).Value;
+                Require(value.Type == fields[0] && value.Style == fields[1] && value.Width == fields[2], "same key actual native geometry refreshes");
+                Packet(layer, value, "Fixed");
+            }
+            Put(13, 10, 88, 0, 3); update(12); Require(discovery.Candidates.Count(c => c.Value.Type == 88) == 2, "two adjacent dressers each keep one prepared label");
+            chest.name = "Renamed"; update(12); Packet(layer, discovery.Candidates.Single(c => c.Value.TileX == 10).Value, "Renamed");
+            Main.sign[0].text = "Changed"; update(12); var sign = discovery.Candidates.Single(c => c.Value.TileX == 20).Value;
+            var old = Packet(layer, sign, "Changed"); settings = settings.With(settings.Style(WorldObjectKind.Sign).WithSize(80)); update(12);
+            var sized = Packet(layer, sign, "Changed"); Require(!ReferenceEquals(old, sized) && sized.Width > old.Width, "size-only change rebuilds current native snippets");
+            FiniteCostChecks.SetCpuFont(12); update(12); var fontChanged = Packet(layer, sign, "Changed");
+            Require(!ReferenceEquals(sized, fontChanged) && fontChanged.Width > sized.Width, "font-only change rebuilds unchanged geometry/text");
+            Main.sign[0].text = String.Empty; update(1); Require(discovery.Candidates.All(c => c.Value.Key != sign.Key), "empty text removes prepared sign");
+            Main.sign[0].text = new string('W', 2000); update(1); Require(discovery.Candidates.Take(discovery.SelectedCount).All(c => c.Value.Key != sign.Key), "changed cold text is not prematurely qualified");
+            settings = settings.WithMode(WorldObjectKind.Sign, WorldObjectMode.Off); update(1); Require(discovery.Candidates.All(c => c.Value.Kind != WorldObjectKind.Sign), "mode off cancels pending text");
+            Main.sign[0].text = "Restored"; settings = settings.WithMode(WorldObjectKind.Sign, WorldObjectMode.All); update(12); Packet(layer, sign, "Restored");
+            Main.screenPosition = new Vector2(0, 1000); update(3); Require(discovery.Candidates.Count == 0, "offscreen candidates withdraw");
+            Main.screenPosition = Vector2.Zero; Main.LocalPlayer.accOreFinder = false; update(20); Require(discovery.Candidates.All(c => c.Value.Kind != WorldObjectKind.Chest), "actual detector gate withdraws chests");
+            Main.LocalPlayer.accOreFinder = true; update(80);
+            Console.WriteLine("PASS: CPU actual native >K/nearest/packet payload, movement/new/removal, dresser adjacency, name/body/size/font changes, cold/off/crop/detector boundaries; Draw not run.");
+        }
+        private static NativeWorldTextLayout Packet(WorldObjectTextWorldLayer layer, WorldObject expected, string text)
+        {
+            var packets = (Array)typeof(WorldObjectTextWorldLayer).GetField("packets", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(layer);
+            for (int i = 0; i < FiniteCostChecks.PacketCount(layer); i++)
+            {
+                object packet = packets.GetValue(i); var type = packet.GetType(); var value = (WorldObject)type.GetField("Value", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(packet);
+                if (value.Key != expected.Key) continue;
+                Require(value.Kind == expected.Kind && value.TileX == expected.TileX && value.TileY == expected.TileY && value.Type == expected.Type && value.Style == expected.Style && value.Width == expected.Width, "ordered candidate payload reaches actual packet");
+                var layout = (NativeWorldTextLayout)type.GetField("Layout", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(packet);
+                Require(String.Concat(layout.Snippets.Select(s => s.Snippet.Text)) == text, "current text reaches actual cached snippets"); return layout;
+            }
+            throw new InvalidOperationException("Missing prepared packet for " + expected.Key);
+        }
         internal static void Run(ProbeGraphics graphics, string output)
         {
             Main.gameMenu = Main.dedServ = Main.hideUI = Main.mapFullscreen = Main.inFancyUI = Main.onlyDrawFancyUI = Main.ingameOptionsWindow = false;

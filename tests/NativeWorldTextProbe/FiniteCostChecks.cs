@@ -23,6 +23,71 @@ namespace NativeWorldTextProbe
     {
         private static readonly List<string> rows = new List<string>();
         private static readonly Func<long> allocated = AllocationReader();
+        internal static void RunSelection(string output)
+        {
+            // Same fixed fixture, warmup and counter sites before/after the fix.
+            // This entry excludes storage costs and does not time GPU drawing.
+            Main.gameMenu = Main.dedServ = Main.hideUI = Main.mapFullscreen = Main.inFancyUI = Main.onlyDrawFancyUI = Main.ingameOptionsWindow = false;
+            Main.netMode = Main.myPlayer = 0; Main.screenWidth = 960; Main.screenHeight = 640;
+            Main.GameViewMatrix = new Terraria.Graphics.SpriteViewMatrix(null);
+            Main.GameViewMatrix.SetViewportOverride(new Microsoft.Xna.Framework.Graphics.Viewport(0, 0, 960, 640));
+            SetCpuFont(10);
+            Main.player[0] = new Player { active = true, accOreFinder = true, position = new Vector2(450, 450), gravDir = 1 };
+            Main.maxTilesX = 512; Main.maxTilesY = 256; Main.tile = new Tile[512, 256]; Main.chest = new Chest[8000]; Main.sign = new Sign[32000]; Main.screenPosition = Vector2.Zero;
+            for (int y = 0; y < 10; y++) for (int x = 0; x < 30; x++) Put(x * 2, 18 + y * 2, 21);
+            for (int i = 0; i < 60; i++) { int x = i % 20 * 2, y = 2 + i / 20 * 4; Put(x, y, 55); Main.sign[i] = new Sign { x = x, y = y, text = "[c/55ffaa:sign] A" }; }
+            for (int i = 0; i < 60; i++) { int x = 40 + i % 10 * 2, y = 2 + i / 10 * 2; Put(x, y, 85); Main.sign[60 + i] = new Sign { x = x, y = y, text = "tomb\nsecond" }; }
+            var world = new WorldTileObservation(() => true); var source = new CountedSource(new WorldObjectHostObservation(world));
+            var discovery = new WorldObjectDiscovery(source); var layer = new WorldObjectTextWorldLayer(discovery, () => true); discovery.SetPresentationGate(layer.MayPresent, layer.IsPrepared);
+            var all = WorldObjectSettings.Default.WithMode(WorldObjectKind.Chest, WorldObjectMode.Always).WithMode(WorldObjectKind.Sign, WorldObjectMode.All).WithMode(WorldObjectKind.Tombstone, WorldObjectMode.Lines);
+            Action update = () => { world.BeginTick(); discovery.Update(all, null); layer.Prepare(all); };
+            for (int i = 0; i < 240; i++) update();
+            var expected = new List<WorldObjectTextCandidate>(discovery.Candidates);
+            Require(expected.Count == 384 && discovery.SelectedCount == 384 && layer.PreparationWork == 0, "all 272/56/56 reserves discovered and cold preparation complete");
+            // An additional full warm window must neither discover nor prepare.
+            for (int i = 0; i < 60; i++) { update(); SameCandidates(expected, discovery); Require(layer.PreparationWork == 0, "stable warm window"); }
+            Require(PacketCount(layer) == 384, "prepared output before measurement; actual drawing deferred");
+            rows.Clear(); rows.Add("scenario\tsamples\tp50_us\tp95_us\tp99_us\tmax_us\tthread_bytes_per_sample\tGC_0_1_2\tdetail");
+            int sorts = discovery.DebugSortCount, repairs = discovery.DebugRepairCount; source.Reset();
+            Sample("selection-stable-update-prepare", 600, i => update(), () => source.Detail(discovery, layer) + "; sorts=" + (discovery.DebugSortCount - sorts) + "; repairs=" + (discovery.DebugRepairCount - repairs) + "; objects=420; warm=240+60; prepared=384; draw=not-run; K caps=240/40/40");
+            SameCandidates(expected, discovery); Require(PacketCount(layer) == 384 && layer.PreparationWork == 0, "stable final prepared output and no cold work");
+            sorts = discovery.DebugSortCount; repairs = discovery.DebugRepairCount; source.Reset();
+            Sample("selection-moving-and-new-update-prepare", 600, i => {
+                Main.screenPosition = new Vector2(i % 80 * 1.25f, i % 40 * 0.5f); Main.LocalPlayer.position = new Vector2(150 + i % 80 * 7, 400);
+                if (i == 300) Put(30, 14, 21);
+                update();
+            }, () => source.Detail(discovery, layer) + "; sorts=" + (discovery.DebugSortCount - sorts) + "; repairs=" + (discovery.DebugRepairCount - repairs) + "; objects=420->421 at sample300; draw=not-run");
+            Require(new List<WorldObjectTextCandidate>(discovery.Candidates).Exists(c => c.Value.Key == WorldObject.PositionKey(30, 14)), "new nearby chest admitted during moving samples");
+            Require(PacketCount(layer) == 384 && layer.Failure == null, "moving prepared output retains reserve and healthy preparation");
+            Directory.CreateDirectory(output); File.WriteAllLines(Path.Combine(output, "selection-costs.tsv"), rows); foreach (var row in rows) Console.WriteLine(row);
+            Console.WriteLine("PASS: selection-only finite actual Discovery/Prepare; actual ReLogic with fixed CPU metric font, no texture/device/Draw; CPU/allocation is supplemental, not gameplay FPS.");
+        }
+        internal static int PacketCount(WorldObjectTextWorldLayer layer) { return (int)typeof(WorldObjectTextWorldLayer).GetField("packetCount", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(layer); }
+        internal static void SetCpuFont(int width)
+        {
+            // Same real ReLogic CPU seam as NativeTextAnchorChecks; fixed ASCII
+            // metrics exercise preparation/invalidations, not XNB appearance.
+            var glyphs = new List<Rectangle>(); var characters = new List<char>(); var kerning = new List<Vector3>();
+            for (char c = ' '; c <= '~'; c++) { glyphs.Add(new Rectangle(0, 0, width, 16)); characters.Add(c); kerning.Add(new Vector3(0, width, 0)); }
+            glyphs.Add(new Rectangle(0, 0, width, 16)); characters.Add('…'); kerning.Add(new Vector3(0, width, 0));
+            var font = new ReLogic.Graphics.DynamicSpriteFont(0, 20, '?');
+            Type pageType = typeof(ReLogic.Graphics.DynamicSpriteFont).Assembly.GetType("ReLogic.Graphics.FontPage", true);
+            object page = Activator.CreateInstance(pageType, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, new object[] { null, glyphs, new List<Rectangle>(glyphs), characters, kerning }, null);
+            Array pages = Array.CreateInstance(pageType, 1); pages.SetValue(page, 0);
+            typeof(ReLogic.Graphics.DynamicSpriteFont).GetMethod("SetPages", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(font, new object[] { pages });
+            var asset = (ReLogic.Content.Asset<ReLogic.Graphics.DynamicSpriteFont>)Activator.CreateInstance(typeof(ReLogic.Content.Asset<ReLogic.Graphics.DynamicSpriteFont>), BindingFlags.Instance | BindingFlags.NonPublic, null, new object[] { "selection-cpu-font" }, null);
+            asset.GetType().GetMethod("SubmitLoadedContent", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(asset, new object[] { font, new ReLogic.Content.Sources.FileSystemContentSource(Terraria.Program.SavePath) });
+            Terraria.GameContent.FontAssets.MouseText = asset;
+        }
+        private static void SameCandidates(List<WorldObjectTextCandidate> expected, WorldObjectDiscovery discovery)
+        {
+            Require(expected.Count == discovery.Candidates.Count && discovery.SelectedCount == expected.Count, "stable membership count");
+            for (int i = 0; i < expected.Count; i++)
+            {
+                var a = expected[i]; var b = discovery.Candidates[i];
+                Require(a.Value.Kind == b.Value.Kind && a.Value.TileX == b.Value.TileX && a.Value.TileY == b.Value.TileY && a.Value.Type == b.Value.Type && a.Value.Style == b.Value.Style && a.Value.Width == b.Value.Width && a.Text == b.Text, "stable ordered values and text");
+            }
+        }
         internal static void Run(ProbeGraphics graphics, string output)
         {
             rows.Clear(); rows.Add("scenario\tsamples\tp50_us\tp95_us\tp99_us\tmax_us\tthread_bytes_per_sample\tGC_0_1_2\tdetail");

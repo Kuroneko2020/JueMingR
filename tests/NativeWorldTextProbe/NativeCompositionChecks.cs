@@ -22,6 +22,37 @@ namespace NativeWorldTextProbe
             "entity-labels.enemy.toggle", "entity-labels.critter.toggle", "entity-labels.npc.toggle", "world-targets.life-crystal.toggle", "world-targets.life-fruit.toggle",
             "world-targets.mana-crystal.toggle", "world-targets.sleeping-digtoise.toggle", "world-targets.chillet-egg.toggle" };
         private static readonly string[] ids = { "world-object-text.chest.toggle", "world-object-text.sign.toggle", "world-object-text.tombstone.toggle" };
+        internal static void RunSelectionCpu()
+        {
+            string root = Path.Combine(Terraria.Program.SavePath, "selection-composition"); string config = Path.Combine(root, "JueMingRData", "config", "features"); Directory.CreateDirectory(config);
+            var all = WorldObjectSettings.Default.WithMode(WorldObjectKind.Chest, WorldObjectMode.Always).WithMode(WorldObjectKind.Sign, WorldObjectMode.All).WithMode(WorldObjectKind.Tombstone, WorldObjectMode.All);
+            File.WriteAllBytes(Path.Combine(config, "world-object-text.json"), new WorldObjectCodec().Encode(all));
+            Main.ActiveWorldFileData = new Terraria.IO.WorldFileData(Path.Combine(root, "fixture.wld"), false) { UniqueId = new Guid("00000000-0000-0000-0000-000000000063") };
+            var assembly = Assembly.LoadFrom(Path.Combine(Program.Repository, "artifacts", "build", "Debug", "work", "bin", "JueMingR.TerrariaHost", "x86", "Debug", "net472", "JueMingR.TerrariaHost.dll"));
+            var worker = assembly.GetType("JueMingR.TerrariaHost.Phase0SHarmonyWorker", true);
+            object context = Activator.CreateInstance(worker.GetNestedType("PostfixContext", Flags), Flags, null, new object[] { "world-object-text-" + new string('6', 40), Path.Combine(root, "evidence.txt"), root }, null);
+            Call(context, "InitializeRuntime", true); worker.GetField("postfixContext", Flags).SetValue(null, context);
+            var host = Get(context, "WorldObjects"); var discovery = (WorldObjectDiscovery)Get(host, "Discovery"); var layer = Get(host, "World");
+            try
+            {
+                Until(() => { Call(context, "UpdateRuntime"); return (bool)Get(Get(host, "Preferences"), "IsLoaded"); });
+                var layers = new List<GameInterfaceLayer> { new LegacyGameInterfaceLayer("Vanilla: Ingame Options", () => true, InterfaceScaleType.UI) };
+                worker.GetMethod("EnsureEntityLayer", Flags).Invoke(null, new object[] { layers, true });
+                for (int i = 0; i < 180; i++) Call(context, "UpdateRuntime");
+                var expected = discovery.Candidates.ToArray(); Require(expected.Length == 4 && discovery.SelectedCount == 4 && (int)Get(layer, "packetCount") == 4, "built Host entered actual preparation with four qualified labels");
+                int sorts = discovery.DebugSortCount, repairs = discovery.DebugRepairCount;
+                for (int i = 0; i < 100; i++) { Call(context, "UpdateRuntime"); Require(discovery.Candidates.SequenceEqual(expected), "built Host stable values/text/order"); }
+                Console.WriteLine("Built Host stable 100 UpdateRuntime calls: sorts=" + (discovery.DebugSortCount - sorts) + "; repairs=" + (discovery.DebugRepairCount - repairs));
+                Require(discovery.DebugSortCount == sorts && discovery.DebugRepairCount == repairs && Get(layer, "Failure") == null && (int)Get(layer, "packetCount") == 4, "actual production composition reuses unchanged ordered payload");
+                Main.gameMenu = true; Call(context, "UpdateRuntime"); Require(discovery.Candidates.Count == 0 && (int)Get(layer, "packetCount") == 0, "built Host session exit clears candidate and prepared ownership");
+                Console.WriteLine("PASS: separately built Host -> UpdateRuntime -> shared observation -> Discovery -> actual World.Prepare; no graphics device or game loop.");
+            }
+            finally
+            {
+                foreach (string name in new[] { "Labels", "WorldTargets", "WorldObjects", "items", "notes", "preferences" }) { var owner = Get(context, name); owner?.GetType().GetMethod("OnExit", Flags)?.Invoke(owner, new object[] { null, EventArgs.Empty }); }
+                Call(Get(Get(context, "Shell"), "hotkeys"), "OnExit", null, EventArgs.Empty); worker.GetField("postfixContext", Flags).SetValue(null, null); Main.gameMenu = false;
+            }
+        }
         internal static void Run(ProbeGraphics graphics, string output)
         {
             string root = Path.Combine(Terraria.Program.SavePath, "composition");

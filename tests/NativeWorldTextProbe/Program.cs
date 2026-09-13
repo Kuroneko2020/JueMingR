@@ -14,11 +14,11 @@ namespace NativeWorldTextProbe
         {
             try
             {
-                if (args.Length != 3) throw new ArgumentException("repository Content output required");
+                if (args.Length < 3 || args.Length > 4) throw new ArgumentException("repository Content output [Full|SelectionCpuCosts|SelectionCpuChecks] required");
                 Repository = Path.GetFullPath(args[0]);
                 references = Path.Combine(Repository, "external", "TerrariaRefs");
                 AppDomain.CurrentDomain.AssemblyResolve += Resolve;
-                return Run(args[1], args[2]);
+                return Run(args[1], args[2], args.Length == 4 ? args[3] : "Full");
             }
             catch (Exception e) { Console.Error.WriteLine(e); return 1; }
         }
@@ -36,6 +36,6 @@ namespace NativeWorldTextProbe
             return null;
         }
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private static int Run(string content, string output) { return NativeChecks.Run(content, output); }
+        private static int Run(string content, string output, string scope) { return NativeChecks.Run(content, output, scope); }
     }
 }

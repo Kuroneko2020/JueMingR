@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string] $ContentDirectory,
-    [Parameter(Mandatory = $true)][string] $OutputDirectory
+    [Parameter(Mandatory = $true)][string] $OutputDirectory,
+    [ValidateSet('Full', 'SelectionCpuCosts', 'SelectionCpuChecks')][string] $Scope = 'Full'
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
@@ -14,7 +15,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $ContentDirectory 'Fonts\Mouse_Text.
 if ($LASTEXITCODE -ne 0) { throw 'Debug build failed.' }
 & dotnet.exe build (Join-Path $repositoryRoot 'tests\NativeWorldTextProbe\NativeWorldTextProbe.csproj') --configuration Debug --nologo -p:Platform=x86
 if ($LASTEXITCODE -ne 0) { throw 'Native probe build failed.' }
-& (Join-Path $repositoryRoot 'tests\NativeWorldTextProbe\bin\x86\Debug\net472\NativeWorldTextProbe.exe') $repositoryRoot $ContentDirectory $OutputDirectory
+& (Join-Path $repositoryRoot 'tests\NativeWorldTextProbe\bin\x86\Debug\net472\NativeWorldTextProbe.exe') $repositoryRoot $ContentDirectory $OutputDirectory $Scope
 if ($LASTEXITCODE -ne 0) { throw 'Native world text check failed. A draw/layout failure is not an environment deferral.' }
 $inputs = @(& git -C $repositoryRoot ls-files -- src tests/NativeWorldTextProbe | ForEach-Object {
     $file = Join-Path $repositoryRoot $_

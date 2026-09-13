@@ -12,16 +12,17 @@ namespace NativeWorldTextProbe
 {
     internal static class NativeChecks
     {
-        internal static int Run(string content, string output)
+        internal static int Run(string content, string output, string scope)
         {
+            if (scope != "Full" && scope != "SelectionCpuCosts" && scope != "SelectionCpuChecks") throw new ArgumentException("Unknown probe scope");
             string isolated = Path.Combine(Path.GetTempPath(), "JueMingR-native-text-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(isolated);
             // Main's beforefieldinit constructor reads Program.SavePath. This is
             // set before a separate no-inline method touches any Main field.
             Terraria.Program.SavePath = isolated;
-            return Check(content, output);
+            return Check(content, output, scope);
         }
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private static int Check(string content, string output)
+        private static int Check(string content, string output, string scope)
         {
             var actual = typeof(ChatManager).Assembly;
             string hash; using (var stream = File.OpenRead(actual.Location)) using (var sha = SHA256.Create()) hash = BitConverter.ToString(sha.ComputeHash(stream)).Replace("-", "");
@@ -36,6 +37,14 @@ namespace NativeWorldTextProbe
             NativeTextAnchorChecks.Metrics();
             NativeLayerReadinessChecks.Run();
             if (content == "--metrics") return 0;
+            if (scope == "SelectionCpuCosts") { FiniteCostChecks.RunSelection(output); return 0; }
+            if (scope == "SelectionCpuChecks")
+            {
+                FiniteCostChecks.RunSelection(output);
+                NativeWorldChecks.RunSelectionCpu();
+                NativeCompositionChecks.RunSelectionCpu();
+                return 0;
+            }
             using (var graphics = new ProbeGraphics(content))
             {
                 var style = WorldObjectSettings.Default.Style(WorldObjectKind.Sign).WithMode(WorldObjectMode.Characters).WithLimits(3, 3);
