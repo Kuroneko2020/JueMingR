@@ -19,7 +19,7 @@ namespace JueMingR.ArchitectureTests
                 for (int i = 0; i < 3; i++)
                 {
                     var kind = (WorldObjectKind)i; var style = value.Style(kind);
-                    Require(style.Rgb == colors[i] && style.Size == 70 && style.Lines == 3 && style.Characters == 80, "independent style defaults");
+                    Require(style.Rgb == colors[i] && style.Size == 70 && style.Lines == 2 && style.Characters == 10, "owner revised independent style defaults");
                     var first = value.Toggle(kind);
                     Require(first.Style(kind).Mode == (i == 0 ? WorldObjectMode.Opened : WorldObjectMode.Lines), "first shortcut uses agreed initial mode");
                     var mode = i == 0 ? WorldObjectMode.Always : WorldObjectMode.Characters;
@@ -28,6 +28,9 @@ namespace JueMingR.ArchitectureTests
                     value = value.With(value.Style(kind).WithColor(i).WithSize(180).WithLimits(10, 1200));
                 }
                 Require(codec.Decode(codec.Encode(value)).Equals(value), "all fields survive strict codec roundtrip");
+                var saved = WorldObjectSettings.Default.With(WorldObjectSettings.Default.Style(WorldObjectKind.Sign).WithLimits(3, 80));
+                var loaded = codec.Decode(codec.Encode(saved)).Style(WorldObjectKind.Sign);
+                Require(loaded.Lines == 3 && loaded.Characters == 80, "new defaults preserve previously saved limits without migration");
                 string json = Encoding.UTF8.GetString(codec.Encode(value));
                 foreach (string invalid in new[] { json.Replace("\"version\":1", "\"version\":2"), json.Replace("\"size\":180", "\"size\":181"), json.Replace("\"lines\":10", "\"lines\":0"), json.Replace("\"characters\":1200", "\"characters\":1201"), json.Replace("\"rgb\":0", "\"extra\":0,\"rgb\":0"), json.Replace("\"lastMode\":2", "\"lastMode\":0") })
                 { bool rejected = false; try { codec.Decode(Encoding.UTF8.GetBytes(invalid)); } catch (PreferenceFormatException) { rejected = true; } Require(rejected, "invalid/future/unknown document must protect original"); }

@@ -18,7 +18,7 @@ namespace JueMingR.TerrariaHost.WorldObjectText
         private readonly Entry[] jobs = new Entry[8];
         private readonly Packet[] packets = new Packet[384];
         private int packetCount, epoch;
-        private DynamicSpriteFont font;
+        private DynamicSpriteFont font, stackFont;
         private object language;
         internal WorldObjectTextWorldLayer(WorldObjectDiscovery discovery, Func<bool> available) { this.discovery = discovery; this.available = available; }
         internal string Failure { get; private set; }
@@ -27,7 +27,7 @@ namespace JueMingR.TerrariaHost.WorldObjectText
         internal int LastDrawn { get; private set; }
         internal int PreparationWork { get; private set; }
 #endif
-        internal void Clear() { cache.Clear(); age.Clear(); Array.Clear(jobs, 0, jobs.Length); Array.Clear(packets, 0, packets.Length); packetCount = 0; font = null; language = null; }
+        internal void Clear() { cache.Clear(); age.Clear(); Array.Clear(jobs, 0, jobs.Length); Array.Clear(packets, 0, packets.Length); packetCount = 0; font = stackFont = null; language = null; }
         internal void Prepare(WorldObjectSettings settings)
         {
             Array.Clear(packets, 0, packetCount); packetCount = 0;
@@ -39,10 +39,11 @@ namespace JueMingR.TerrariaHost.WorldObjectText
             try
             {
                 var currentFont = FontAssets.MouseText == null ? null : FontAssets.MouseText.Value;
+                var currentStackFont = FontAssets.ItemStack == null ? null : FontAssets.ItemStack.Value;
                 FontUnavailable = currentFont == null;
                 if (FontUnavailable) return;
                 var currentLanguage = Terraria.Localization.LanguageManager.Instance.ActiveCulture;
-                if (!ReferenceEquals(font, currentFont) || !ReferenceEquals(language, currentLanguage)) { Clear(); font = currentFont; language = currentLanguage; discovery.InvalidateTextLayout(); }
+                if (!ReferenceEquals(font, currentFont) || !ReferenceEquals(stackFont, currentStackFont) || !ReferenceEquals(language, currentLanguage)) { Clear(); font = currentFont; stackFont = currentStackFont; language = currentLanguage; discovery.InvalidateTextLayout(); }
                 // Font-dependent rejection can leave no candidates at all. Check
                 // resource identity first so a new font can make them eligible.
                 if (discovery.Candidates.Count == 0) return;
@@ -115,7 +116,7 @@ namespace JueMingR.TerrariaHost.WorldObjectText
                     if (value.Kind == WorldObjectKind.Chest ? chests == 240 : value.Kind == WorldObjectKind.Sign ? signs == 40 : tombstones == 40) continue;
                     float anchor = value.TileY * 16 - Main.screenPosition.Y;
                     if (Main.LocalPlayer != null && Main.LocalPlayer.gravDir == -1) anchor = Main.screenHeight - anchor - 32;
-                    var position = new Vector2(value.CenterX - Main.screenPosition.X - packet.Layout.Width / 2, anchor - 6 - packet.Layout.Height);
+                    var position = Position(value, packet.Layout, anchor);
                     if (!packet.Layout.HasVisibleInk(position, zoom, Main.screenWidth, Main.screenHeight)) continue;
                     packet.Layout.Draw(Main.spriteBatch, position);
                     if (value.Kind == WorldObjectKind.Chest) chests++; else if (value.Kind == WorldObjectKind.Sign) signs++; else tombstones++;
@@ -136,12 +137,19 @@ namespace JueMingR.TerrariaHost.WorldObjectText
             if (Main.LocalPlayer != null && Main.LocalPlayer.gravDir == -1) anchor = Main.screenHeight - anchor - 32;
             // Every label lies above this bottom edge. This cheap exact rejection
             // prevents any number of top-edge objects from consuming the reserve.
-            if (Vector2.Transform(new Vector2(0, anchor - 4), zoom).Y < 0) return false;
+            if (Vector2.Transform(new Vector2(0, anchor), zoom).Y <= 0) return false;
             Entry entry; float width = Math.Min(460 * style.Size / 100f, Math.Max(32, Main.screenWidth / zoom.M11 - 24));
             if (!cache.TryGetValue(value.Key, out entry) || !entry.Layout.Ready || !entry.Matches(new WorldObjectTextCandidate { Value = value, Text = text }, style, width)) return true;
             entry.Seen = epoch + 1; age.Remove(entry.Node); age.AddLast(entry.Node);
-            var position = new Vector2(value.CenterX - Main.screenPosition.X - entry.Layout.Width / 2, anchor - 6 - entry.Layout.Height);
+            var position = Position(value, entry.Layout, anchor);
             return entry.Layout.HasVisibleInk(position, zoom, Main.screenWidth, Main.screenHeight);
+        }
+        private static Vector2 Position(WorldObject value, NativeWorldTextLayout layout, float anchor)
+        {
+            // Complete-object center: a dresser is 3x2 (+24 X), a chest 2x2
+            // (+16 X). Both are 32 high under gravity inversion. The native
+            // glyph/shadow bottom, rather than the line box, touches this top.
+            return new Vector2(value.CenterX - Main.screenPosition.X - layout.Width / 2, anchor - layout.VisualBottom);
         }
         internal bool IsPrepared(WorldObject value, string text, WorldObjectStyle style)
         {

@@ -34,9 +34,9 @@ namespace JueMingR.Features.WorldObjectText
     {
         private readonly WorldObjectStyle[] values;
         public static readonly WorldObjectSettings Default = new WorldObjectSettings(new[] {
-            new WorldObjectStyle(WorldObjectKind.Chest, WorldObjectMode.Off, WorldObjectMode.Opened, 0xFFA500, 70, 3, 80),
-            new WorldObjectStyle(WorldObjectKind.Sign, WorldObjectMode.Off, WorldObjectMode.Lines, 0xE6C16A, 70, 3, 80),
-            new WorldObjectStyle(WorldObjectKind.Tombstone, WorldObjectMode.Off, WorldObjectMode.Lines, 0xFF5555, 70, 3, 80) });
+            new WorldObjectStyle(WorldObjectKind.Chest, WorldObjectMode.Off, WorldObjectMode.Opened, 0xFFA500, 70, 2, 10),
+            new WorldObjectStyle(WorldObjectKind.Sign, WorldObjectMode.Off, WorldObjectMode.Lines, 0xE6C16A, 70, 2, 10),
+            new WorldObjectStyle(WorldObjectKind.Tombstone, WorldObjectMode.Off, WorldObjectMode.Lines, 0xFF5555, 70, 2, 10) });
         private WorldObjectSettings(WorldObjectStyle[] values) { this.values = values; }
         public WorldObjectStyle Style(WorldObjectKind kind) { return values[(int)kind]; }
         public bool AnyEnabled { get { return values[0].Mode != WorldObjectMode.Off || values[1].Mode != WorldObjectMode.Off || values[2].Mode != WorldObjectMode.Off; } }

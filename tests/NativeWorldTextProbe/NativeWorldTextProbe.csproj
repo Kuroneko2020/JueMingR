@@ -13,6 +13,7 @@
     <Reference Include="Microsoft.Xna.Framework.Graphics"><HintPath>..\..\external\TerrariaRefs\Microsoft.Xna.Framework.Graphics.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Microsoft.Xna.Framework.Game"><HintPath>..\..\external\TerrariaRefs\Microsoft.Xna.Framework.Game.dll</HintPath><Private>false</Private></Reference>
     <Compile Include="..\..\src\JueMingR.TerrariaHost\WorldObjectText\NativeWorldTextLayout.cs" Link="Production\NativeWorldTextLayout.cs" />
+    <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\UiTextMetrics.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\WorldObjectText\WorldObjectHostObservation.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\WorldObjectText\OpenedContainerObserver.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\WorldObjectText\WorldObjectTextWorldLayer.cs" />

@@ -3,15 +3,6 @@ using System.Collections.Generic;
 
 namespace JueMingR.TerrariaHost.F5
 {
-    internal struct F5Size
-    {
-        internal readonly float Width;
-        internal readonly float Height;
-        internal readonly float OffsetX, OffsetY;
-        internal F5Size(float width, float height, float offsetX = 0, float offsetY = 0)
-        { Width = width; Height = height; OffsetX = offsetX; OffsetY = offsetY; }
-    }
-
     internal struct F5Rect
     {
         internal readonly float X, Y, Width, Height;

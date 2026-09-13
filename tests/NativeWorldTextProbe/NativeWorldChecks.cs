@@ -42,6 +42,7 @@ namespace NativeWorldTextProbe
             BlankPrefixProgress(world, source);
             RepresentativeScene(graphics, output, world, source);
             EmptyCandidateFontRecovery(graphics, world, source);
+            NativeTextAnchorChecks.Run(graphics, world, source, output);
             Console.WriteLine("PASS: actual Host native names/dictionary, full dresser geometry, lazy all-off observer, real history file, >K selection and cold-job recovery.");
         }
         private static void ObserveOpened(WorldTileObservation world)
@@ -120,10 +121,12 @@ namespace NativeWorldTextProbe
             for (int i = 0; i < 70; i++) { world.BeginTick(); discovery.Update(settings, null); layer.Prepare(settings); }
             graphics.DrawWorld(layer, Path.Combine(output, "native-world-backfill.png"));
             Require(layer.Failure == null && layer.LastDrawn == 40, "fully cropped nearest objects cannot consume the sign reserve forever");
-            for (int i = 0; i < 60; i++) { Put(i * 2, 2, 55, 0, 2); Main.sign[i] = new Sign { x = i * 2, y = 2, text = "A\n\n\n\n\n\n\n\n\n" }; }
+            // With ink-bottom anchoring, trailing empty lines no longer push A
+            // offscreen at Y=2. Put the actual object top at the viewport edge.
+            for (int i = 0; i < 60; i++) { Put(i * 2, 0, 55, 0, 2); Main.sign[i] = new Sign { x = i * 2, y = 0, text = "A\n\n\n\n\n\n\n\n\n" }; }
             settings = settings.WithMode(WorldObjectKind.Sign, WorldObjectMode.All);
             for (int i = 0; i < 90; i++) { world.BeginTick(); discovery.Update(settings, null); layer.Prepare(settings); }
-            Require(discovery.Candidates.Count(c => c.Value.Kind == WorldObjectKind.Sign && c.Value.TileY >= 15) == 40, "offscreen ink with onscreen blank lines cannot hold nearest slots");
+            Require(discovery.Candidates.Count(c => c.Value.Kind == WorldObjectKind.Sign && c.Value.TileY >= 15) == 40, "fully offscreen text with trailing blank lines cannot hold nearest slots");
             // Keep a chest consumer alive so a sign-only disable does not use the
             // easy all-off Clear path. Long tags make preparation genuinely cold.
             Put(50, 20, 21, 0, 2);
@@ -137,7 +140,7 @@ namespace NativeWorldTextProbe
             Require(layer.Failure == null && layer.LastDrawn == 41, "cancelled cold sign jobs recover while another kind stays enabled");
             layer.Clear(); discovery.Clear();
         }
-        private static Chest Register(int index, int x, int y)
+        internal static Chest Register(int index, int x, int y)
         {
             var chest = Chest.CreateOutOfArray(index, x, y, 40);
             typeof(Chest).GetMethod("Assign", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic).Invoke(null, new object[] { chest }); return chest;
@@ -238,7 +241,7 @@ namespace NativeWorldTextProbe
             }
             finally { Terraria.GameContent.FontAssets.MouseText = original; layer.Clear(); discovery.Clear(); }
         }
-        private static void Put(int x, int y, int type, int style, int width)
+        internal static void Put(int x, int y, int type, int style, int width)
         { for (int dy = 0; dy < 2; dy++) for (int dx = 0; dx < width; dx++) { var tile = new Tile { type = (ushort)type, frameX = (short)(style * width * 18 + dx * 18), frameY = (short)(dy * 18) }; tile.active(true); Main.tile[x + dx, y + dy] = tile; } }
         private static void Resolve(WorldObjectHostObservation source, int x, int y, out WorldObject value)
         { Require(WorldObjectResolver.TryResolve(x, y, source.Read(x, y), source.Read, out value), "real complete object resolves"); }

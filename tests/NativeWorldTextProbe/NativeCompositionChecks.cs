@@ -53,7 +53,7 @@ namespace NativeWorldTextProbe
                 Command(controls, "ChestAlways"); registry.Find(ids[0]).Invoke(HotkeyContext.SinglePlayer); registry.Find(ids[0]).Invoke(HotkeyContext.SinglePlayer);
                 Require(Value(host).Style(WorldObjectKind.Chest).Mode == WorldObjectMode.Always, "button and hotkey share last non-off mode");
                 Command(controls, "SignCharacters"); Command(controls, "SignMore");
-                Require(Value(host).Style(WorldObjectKind.Sign).Characters == 81 && Value(host).Style(WorldObjectKind.Tombstone).Characters == 80, "actual parameter consumer changes only active target");
+                Require(Value(host).Style(WorldObjectKind.Sign).Characters == 11 && Value(host).Style(WorldObjectKind.Tombstone).Characters == 10, "actual parameter consumer changes only active target");
                 Call(host, "SetLimits", WorldObjectKind.Sign, 3, 1200); Command(controls, "SignMore");
                 Require(Value(host).Style(WorldObjectKind.Sign).Characters == 1200 && !Available(controls, "SignMore"), "bound and hit availability agree");
                 // Select through the same popup entry, then use its captured

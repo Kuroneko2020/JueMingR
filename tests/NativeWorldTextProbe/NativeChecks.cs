@@ -33,6 +33,8 @@ namespace NativeWorldTextProbe
             var parsed = ChatManager.ParseMessage("[c/ff0000:literal]", Color.White);
             Require(parsed.Count == 1 && parsed[0].Text == "literal" && parsed[0].Color == Color.Red, "actual native color parser");
             Console.WriteLine("PASS: real ChatManager assembly, MVID, hash and parser; no fixture Terraria assembly.");
+            NativeTextAnchorChecks.Metrics();
+            if (content == "--metrics") return 0;
             using (var graphics = new ProbeGraphics(content))
             {
                 var style = WorldObjectSettings.Default.Style(WorldObjectKind.Sign).WithMode(WorldObjectMode.Characters).WithLimits(3, 3);

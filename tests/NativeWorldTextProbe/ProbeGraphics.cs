@@ -42,7 +42,7 @@ namespace NativeWorldTextProbe
             GC.SuppressFinalize(Terraria.Main.instance);
             Terraria.Main.netMode = 0; Terraria.Main.dedServ = false;
             Terraria.GameContent.FontAssets.MouseText = Loaded("probe-native-font", Font);
-            Terraria.GameContent.FontAssets.ItemStack = Loaded("probe-native-stack", Font);
+            using (var stream = File.OpenRead(Path.Combine(content, "Fonts", "Item_Stack.xnb"))) Terraria.GameContent.FontAssets.ItemStack = Loaded("probe-native-stack", reader.FromStream<DynamicSpriteFont>(stream));
             using (var stream = File.OpenRead(Path.Combine(content, "Images", "Item_8.xnb"))) Terraria.GameContent.TextureAssets.Item[8] = Loaded("Images/Item_8", reader.FromStream<Texture2D>(stream));
             using (var stream = File.OpenRead(Path.Combine(content, "Images", "Inventory_Back.xnb"))) Terraria.GameContent.TextureAssets.InventoryBack = Loaded("Images/Inventory_Back", reader.FromStream<Texture2D>(stream));
             using (var stream = File.OpenRead(Path.Combine(content, "Images", "MagicPixel.xnb"))) Terraria.GameContent.TextureAssets.MagicPixel = Loaded("Images/MagicPixel", reader.FromStream<Texture2D>(stream));
@@ -66,6 +66,16 @@ namespace NativeWorldTextProbe
                 GraphicsDevice.SetRenderTarget(canvas); GraphicsDevice.Clear(new Color(30, 43, 47));
                 batch.Begin(); layer.Draw(); batch.End(); GraphicsDevice.SetRenderTarget(null);
                 using (var stream = new FileStream(output, FileMode.CreateNew)) canvas.SaveAsPng(stream, 960, 640);
+            }
+        }
+        internal Color[] WorldPixels(WorldObjectTextWorldLayer layer)
+        {
+            using (var canvas = new RenderTarget2D(GraphicsDevice, 960, 640))
+            {
+                GraphicsDevice.SetRenderTarget(canvas); GraphicsDevice.Clear(Color.Transparent);
+                batch.Begin(SpriteSortMode.Deferred, null, null, null, null, null, Terraria.Main.GameViewMatrix.ZoomMatrix);
+                layer.Draw(); batch.End(); GraphicsDevice.SetRenderTarget(null);
+                var pixels = new Color[960 * 640]; canvas.GetData(pixels); return pixels;
             }
         }
         internal void DrawFrame(WorldObjectTextWorldLayer layer)
