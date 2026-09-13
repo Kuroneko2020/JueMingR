@@ -24,6 +24,9 @@ namespace JueMingR.Features.WorldObjectText
             internal IPreferenceStorage Storage; // Worker only, including Dispose.
             internal State Current = new State(new OpenedPositionIndex(), false, PreferenceStatus.Loading);
             internal HashSet<long> Pending = new HashSet<long>();
+            // One worker-owned failed batch. Ownership, not coordinates, crosses
+            // the gate; a retry never mutates the game thread's new Pending set.
+            internal HashSet<long> RetryBatch;
             internal List<Deferred> Deferred = new List<Deferred>();
             internal List<OpenedPositionIndex> RetryingOverlays = new List<OpenedPositionIndex>();
             // Game-thread accepted facts remain queryable on same-pair reentry
@@ -44,6 +47,10 @@ namespace JueMingR.Features.WorldObjectText
         private const int MaximumQueuedUnits = 1048576;
         private int queuedUnits, overlayUnits;
         private bool running, stopping, cancelled, completed;
+#if DEBUG
+        // Deterministic regression coordination at real retry work, never installed in Release.
+        internal Action<bool> DebugRetryCoordinateVisit { get; set; }
+#endif
         private string lastFailure, admissionFailure;
         private readonly Dictionary<string, string> pairFailures = new Dictionary<string, string>(StringComparer.Ordinal);
         internal OpenedPositionStore(Func<string, IPreferenceStorage> factory)
@@ -84,6 +91,9 @@ namespace JueMingR.Features.WorldObjectText
             {
                 if (stopping || cancelled || completed || lease.Current.Protected) return false;
                 if (lease.Accepted.Contains(key) || lease.Current.Index.Contains(key)) return true;
+                // Deferred tails already own these facts and their reservation.
+                // At most eight immutable overlays; never inspect mutable retry work.
+                foreach (var overlay in lease.Overlays) if (overlay.Contains(key)) return true;
                 if (queuedUnits == MaximumQueuedUnits || lease.Accepted.Count == OpenedPositionIndex.MaximumPositions)
                 { if (!lease.AdmissionBlocked) admissionFailure = "opened-queue-capacity-session-only"; lease.AdmissionBlocked = true; return false; }
                 if (!lease.Pending.Add(key)) return true;
@@ -148,20 +158,28 @@ namespace JueMingR.Features.WorldObjectText
             {
                 while (true)
                 {
-                    Lease lease = null; HashSet<long> batch = null; List<Deferred> deferred = null; List<OpenedPositionIndex> overlays = null; int reservation = 0;
+                    Lease lease = null; HashSet<long> batch = null, pending = null; List<Deferred> deferred = null; List<OpenedPositionIndex> overlays = null; int reservation = 0;
                     lock (gate)
                     {
                         if (cancelled) break;
                         DateTime now = DateTime.UtcNow;
                         foreach (var candidate in leases.Values)
-                            if (!candidate.Read || (!candidate.InUse && candidate.Pending.Count == 0 && candidate.Deferred.Count == 0) ||
-                                (candidate.Pending.Count != 0 || candidate.Deferred.Count != 0) && (stopping || candidate.Due <= now))
+                            if (!candidate.Read || !candidate.InUse && !HasWork(candidate) ||
+                                HasWork(candidate) && (stopping || candidate.Due <= now))
                             { lease = candidate; break; }
                         if (lease == null) break;
-                        batch = lease.Pending; lease.Pending = new HashSet<long>();
+                        pending = lease.Pending; lease.Pending = new HashSet<long>();
+                        batch = lease.RetryBatch ?? pending; lease.RetryBatch = null;
                         deferred = lease.Deferred; lease.Deferred = new List<Deferred>();
                         overlays = lease.RetryingOverlays; lease.RetryingOverlays = new List<OpenedPositionIndex>();
                         reservation = lease.Reservation; lease.Reservation = 0; lease.InFlight = reservation;
+                    }
+                    if (!ReferenceEquals(batch, pending)) foreach (long key in pending)
+                    {
+#if DEBUG
+                        DebugRetryCoordinateVisit?.Invoke(Monitor.IsEntered(gate));
+#endif
+                        batch.Add(key);
                     }
                     foreach (var tail in deferred) { overlays.Add(tail.Index); for (int i = tail.Start; i < tail.Values.Count; i++) batch.Add(tail.Values[i]); }
                     bool retry;
@@ -174,7 +192,12 @@ namespace JueMingR.Features.WorldObjectText
                         // Retry carries the frozen-index ownership, not its old
                         // source List. Success releases the exact segments it
                         // covered even when the retry consisted only of keys.
-                        if (retry) lease.RetryingOverlays.AddRange(overlays);
+                        if (retry)
+                        {
+                            // In-flight reservation becomes one retained set plus
+                            // any newly accepted Pending. No second admission charge.
+                            lease.RetryBatch = batch; lease.Reservation += retained; lease.RetryingOverlays = overlays;
+                        }
                         else if (lease.Current.Status == PreferenceStatus.Saved && overlays.Count != 0)
                         {
                             var remaining = new List<OpenedPositionIndex>(lease.Overlays);
@@ -184,7 +207,7 @@ namespace JueMingR.Features.WorldObjectText
                         // Stop accelerates due times, but cannot erase B that was
                         // accepted while A was in flight. Known write failures get
                         // their finite retries before unresolved exit is reported.
-                        close = !lease.InUse && (lease.Current.Protected || lease.Pending.Count == 0 && lease.Deferred.Count == 0 || stopping && lease.Failures >= 3);
+                        close = !lease.InUse && (lease.Current.Protected || !HasWork(lease) || stopping && lease.Failures >= 3);
                         if (close) { queuedUnits -= lease.Reservation; lease.Reservation = 0; foreach (var overlay in lease.Overlays) overlayUnits -= overlay.Count; leases.Remove(lease.Key); }
                     }
                     if (close) lease.Storage?.Dispose();
@@ -209,8 +232,8 @@ namespace JueMingR.Features.WorldObjectText
                     {
                         DateTime earliest = DateTime.MaxValue;
                         foreach (var lease in leases.Values)
-                            if (!lease.Read || !lease.InUse && lease.Pending.Count == 0 && lease.Deferred.Count == 0) { earliest = DateTime.UtcNow; break; }
-                            else if (lease.Pending.Count != 0 || lease.Deferred.Count != 0) earliest = Earlier(earliest, lease.Due);
+                            if (!lease.Read || !lease.InUse && !HasWork(lease)) { earliest = DateTime.UtcNow; break; }
+                            else if (HasWork(lease)) earliest = Earlier(earliest, lease.Due);
                         if (earliest != DateTime.MaxValue) ScheduleLocked((int)Math.Max(0, Math.Min(1000, (earliest - DateTime.UtcNow).TotalMilliseconds)));
                     }
                 }
@@ -257,14 +280,9 @@ namespace JueMingR.Features.WorldObjectText
                     if (lease.Writable)
                         lock (gate)
                         {
-                            // A concurrent same-pair replay may already have
-                            // enqueued every key. Zero new reservation still
-                            // means the failed batch's overlays need that retry.
                             retry = true;
-                            int kept = 0; foreach (long key in batch) if (lease.Pending.Add(key)) kept++;
-                            lease.Reservation += kept;
                             lease.Failures++; lease.Due = lease.Failures < 3 ? DateTime.UtcNow.AddMilliseconds(250 * lease.Failures) : DateTime.MaxValue;
-                            return kept;
+                            return batch.Count;
                         }
                 }
             }
@@ -290,5 +308,6 @@ namespace JueMingR.Features.WorldObjectText
             }
         }
         private static DateTime Earlier(DateTime a, DateTime b) { return a < b ? a : b; }
+        private static bool HasWork(Lease lease) { return lease.Pending.Count != 0 || lease.Deferred.Count != 0 || lease.RetryBatch != null; }
     }
 }
