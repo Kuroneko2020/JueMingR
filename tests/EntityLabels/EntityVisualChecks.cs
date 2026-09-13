@@ -25,7 +25,7 @@ namespace Terraria
             string root = Path.Combine(Path.GetTempPath(), "JueMingR-EntityVisual-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(root); Directory.CreateDirectory(output);
             var runtime = new SingleFeatureRuntime(new Probe(), new Idle());
-            var host = new HostEntityLabels(root, runtime) { LayersReady = true }; runtime.AddFeature(host); runtime.Update(0);
+            var host = new HostEntityLabels(root, runtime) { LayerStatus = JueMingR.TerrariaHost.Rendering.WorldLayerStatus.Ready }; runtime.AddFeature(host); runtime.Update(0);
             var document = (PreferenceDocument<EntityLabelSettings>)typeof(HostEntityLabels).GetField("preferences", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(host);
             try
             {

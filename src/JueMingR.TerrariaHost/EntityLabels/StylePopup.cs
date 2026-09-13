@@ -13,12 +13,14 @@ namespace JueMingR.TerrariaHost.EntityLabels
     {
         private readonly HostEntityLabels host;
         private readonly WorldTargets.HostWorldTargets worldTargets;
+        private readonly IWorldObjectControls worldObjects;
         private StyleTarget selection;
         private readonly HostInputState input;
         internal readonly StylePopupLayout Layout = new StylePopupLayout();
         internal readonly HexTextInput TextInput;
         internal EntityLabelKind? Target { get { return selection?.Entity; } }
         internal Platform.WorldTargets.WorldTargetKind? WorldTarget { get { return selection?.World; } }
+        internal Platform.WorldObjectText.WorldObjectKind? WorldObject { get { return selection?.WorldObject; } }
         internal StyleEditor Editor { get; private set; }
         internal bool Visible { get { return selection != null; } }
         internal bool OwnsPointer { get; private set; }
@@ -32,12 +34,14 @@ namespace JueMingR.TerrariaHost.EntityLabels
         private int page, armedGeneration;
         private bool previousLeft;
         private StylePopupCommand armed;
-        internal StylePopup(HostEntityLabels host, HostInputState input, INotesClipboard clipboard = null, INotesIme ime = null, WorldTargets.HostWorldTargets worldTargets = null)
-        { this.host = host; this.worldTargets = worldTargets; this.input = input; TextInput = new HexTextInput(input, clipboard, ime); }
+        internal StylePopup(HostEntityLabels host, HostInputState input, INotesClipboard clipboard = null, INotesIme ime = null, WorldTargets.HostWorldTargets worldTargets = null, IWorldObjectControls worldObjects = null)
+        { this.host = host; this.worldTargets = worldTargets; this.worldObjects = worldObjects; this.input = input; TextInput = new HexTextInput(input, clipboard, ime); }
         internal void Click(EntityLabelKind target, F5Rect anchor, int currentPage)
         { if (host != null) Open(StyleTarget.For(host, target), currentPage); }
         internal void Click(Platform.WorldTargets.WorldTargetKind target, F5Rect anchor, int currentPage)
         { if (worldTargets != null) Open(StyleTarget.For(worldTargets, target), currentPage); }
+        internal void Click(Platform.WorldObjectText.WorldObjectKind target, F5Rect anchor, int currentPage)
+        { if (worldObjects != null) Open(StyleTarget.For(worldObjects, target), currentPage); }
         private void Open(StyleTarget target, int currentPage)
         {
             bool same = target.Same(selection); Close();

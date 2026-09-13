@@ -2,6 +2,10 @@ using Terraria;
 
 namespace JueMingR.TerrariaHost.Rendering
 {
+    // Owned by native interface setup. Update may precede the first completed
+    // setup, so Pending must neither draw nor announce a confirmed failure.
+    internal enum WorldLayerStatus { Pending, Ready, Unavailable }
+
     internal static class WorldPresentation
     {
         internal static bool CanDraw

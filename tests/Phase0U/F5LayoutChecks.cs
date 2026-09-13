@@ -77,7 +77,9 @@ namespace Terraria
                     Equal(ordinaryHeight, row.Rect.Height, "biome row has no special normal-status space");
             }
             Equal(1, dividers, "exactly one semantic content divider");
-            Equal(15, keyboardSlots, "fourteen placeholders plus one real biome keyboard entry");
+            // The accepted object-text contract adds the two previously absent
+            // sign/tombstone entries. This counts artwork slots, not registry IDs.
+            Equal(17, keyboardSlots, "fifteen prior information slots plus sign and tombstone entries");
             if (F5Layout.DisplayTitle != "决明R" || layout.TitleDivider.Y <= layout.Title.Bottom ||
                 layout.TitleDivider.Bottom >= layout.Navigation(0).Y)
                 throw new InvalidOperationException("Display-only Chinese title has its own fixed separator before navigation.");

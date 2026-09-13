@@ -6,12 +6,13 @@ using JueMingR.TerrariaHost.WorldTargets;
 
 namespace JueMingR.TerrariaHost.EntityLabels
 {
-    // The two real style families share color editing. Optional size is an
+    // The real style families share color editing. Optional size is an
     // explicit capability, not a fake world-target size preference.
     internal sealed class StyleTarget
     {
         internal EntityLabelKind? Entity;
         internal WorldTargetKind? World;
+        internal Platform.WorldObjectText.WorldObjectKind? WorldObject;
         internal string Title;
         internal Func<bool> CanConfigure;
         internal Func<int> Color;
@@ -20,7 +21,7 @@ namespace JueMingR.TerrariaHost.EntityLabels
         internal Func<int> Size;
         internal Func<int, bool> StepSize;
         internal Action Reset;
-        internal bool Same(StyleTarget other) { return other != null && Entity == other.Entity && World == other.World; }
+        internal bool Same(StyleTarget other) { return other != null && Entity == other.Entity && World == other.World && WorldObject == other.WorldObject; }
         internal static StyleTarget For(HostEntityLabels host, EntityLabelKind kind)
         { return new StyleTarget { Entity = kind, Title = StylePopupLayout.Name(kind), CanConfigure = () => host.CanConfigure,
             Color = () => host.Preferences.Value.Style(kind).Rgb, Message = () => host.PreferenceMessage, SetColor = rgb => host.SetColor(kind, rgb),
@@ -28,5 +29,11 @@ namespace JueMingR.TerrariaHost.EntityLabels
         internal static StyleTarget For(HostWorldTargets host, WorldTargetKind kind)
         { return new StyleTarget { World = kind, Title = WorldTargetControls.Name(kind), CanConfigure = () => host.CanConfigure,
             Color = () => host.Preferences.Value.Color(kind), Message = () => host.PreferenceMessage, SetColor = rgb => host.SetColor(kind, rgb), Reset = () => host.ResetColor(kind) }; }
+        internal static StyleTarget For(IWorldObjectControls host, Platform.WorldObjectText.WorldObjectKind kind)
+        { return new StyleTarget { WorldObject = kind, Title = WorldObjectControls.Name(kind), CanConfigure = () => host.CanConfigure,
+            Color = () => host.Settings.Style(kind).Rgb, Message = () => host.PreferenceMessage, SetColor = rgb => host.SetColor(kind, rgb),
+            Size = () => host.Settings.Style(kind).Size,
+            StepSize = direction => host.SetSize(kind, Math.Max(50, Math.Min(180, host.Settings.Style(kind).Size + direction * 10))),
+            Reset = () => { host.ResetColor(kind); host.SetSize(kind, Features.WorldObjectText.WorldObjectSettings.Default.Style(kind).Size); } }; }
     }
 }

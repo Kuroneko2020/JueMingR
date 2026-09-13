@@ -20,11 +20,24 @@ namespace JueMingR.TerrariaHost.WorldTargets
         private string reportedPreference, reportedFailure;
         internal readonly WorldTargetFeature Feature;
         internal readonly WorldTargetWorldLayer World;
-        internal bool LayersReady { get; set; }
-        internal long SessionGeneration { get { return runtime.IsSessionActive ? runtime.Generation : -1; } }
-        internal HostWorldTargets(string gameDirectory, SingleFeatureRuntime runtime)
+        private const string LayerUnavailableMessage = "附近目标绘制层不可用，选择已保留。";
+        private Rendering.WorldLayerStatus layerStatus;
+        internal Rendering.WorldLayerStatus LayerStatus
         {
-            this.runtime = runtime; source = new WorldTargetHostObservation(() => runtime.IsSessionActive);
+            get { return layerStatus; }
+            set
+            {
+                // Native setup can recover while UI feedback is suppressed.
+                // Reset only a previous layer alert, once at that transition.
+                if (layerStatus == Rendering.WorldLayerStatus.Unavailable && value == Rendering.WorldLayerStatus.Ready && reportedFailure == LayerUnavailableMessage) reportedFailure = null;
+                layerStatus = value;
+            }
+        }
+        internal bool LayersReady { get { return LayerStatus == Rendering.WorldLayerStatus.Ready; } }
+        internal long SessionGeneration { get { return runtime.IsSessionActive ? runtime.Generation : -1; } }
+        internal HostWorldTargets(string gameDirectory, SingleFeatureRuntime runtime, World.WorldTileObservation world = null)
+        {
+            this.runtime = runtime; source = new WorldTargetHostObservation(() => runtime.IsSessionActive, world);
             Feature = new WorldTargetFeature(source);
             preferences = new PreferenceDocument<WorldTargetSettings>(new AtomicFileDocument(Path.Combine(gameDirectory,
                 "JueMingRData", "config", "features", "world-targets.json"), 65536, true), new WorldTargetCodec(), WorldTargetSettings.Default);
@@ -76,8 +89,9 @@ namespace JueMingR.TerrariaHost.WorldTargets
             string message = PreferenceMessage;
             if (Preferences.IsLoaded && message != null && message != reportedPreference) { display(message); reportedPreference = message; }
             string failure = Feature.HasFailed || World.Failure != null ? "附近目标本次已停止：" + (World.Failure ?? "观察不可用") :
-                Enabled && !LayersReady ? "附近目标绘制层不可用，选择已保留。" : null;
+                Enabled && LayerStatus == Rendering.WorldLayerStatus.Unavailable ? LayerUnavailableMessage : null;
             if (failure != null && failure != reportedFailure) { display(failure); reportedFailure = failure; }
+            if (failure == null) reportedFailure = null;
         }
         private void OnExit(object sender, EventArgs args)
         { AppDomain.CurrentDomain.ProcessExit -= OnExit; stopping = true; preferences.Stop(750); }
