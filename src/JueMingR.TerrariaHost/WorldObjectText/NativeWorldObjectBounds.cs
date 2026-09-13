@@ -2,7 +2,7 @@ using JueMingR.Platform.WorldObjectText;
 
 namespace JueMingR.TerrariaHost.WorldObjectText
 {
-    // Terraria 1.4.5.8 closed-frame visible bounds, measured from shipped XNB
+    // Terraria 1.4.5.8 closed-frame label-contact bounds, measured from shipped XNB
     // alpha and TileDrawing.GetTileDrawData (see the implementation design).
     // These are art bounds, not placement/hit boxes. 441/468 have separate
     // textures but the same bounds within the styles our resolver accepts.
@@ -11,8 +11,11 @@ namespace JueMingR.TerrariaHost.WorldObjectText
     {
         private static readonly byte[] chestTop = { 6,6,6,6,6,4,2,6,6,6,6,6,6,8,6,6,6,6,2,2,2,2,2,2,2,2,2,2,10,6,6,8,6,2,6,6,6,6,6,6,6,6,6,6,6,6,6,8,6,4,4,2 };
         private static readonly byte[] chest2Top = { 4,4,6,4,6,6,6,6,6,4,4,6,2,2,6,6,6,6,6,4,4,2,4,0,4,6,2,6,6,6,0,2,4,8,6,12,0,2 };
-        private static readonly byte[] signTop = { 0,0,6,6,6 }, signBottom = { 32,32,28,28,28 };
-        private static readonly byte[] announcementTop = { 0,0,6,6,8 }, announcementBottom = { 32,32,30,30,26 };
+        // Sign labels touch the board, not its chains or post. Native styles
+        // are standing/hanging/left/right/wall; keep broken board fragments.
+        // The bottom matters under gravity inversion just as the top does normally.
+        private static readonly byte[] signTop = { 0,10,6,6,6 }, signBottom = { 22,32,28,28,28 };
+        private static readonly byte[] announcementTop = { 4,14,6,6,8 }, announcementBottom = { 22,32,30,30,26 };
         private static readonly byte[] tombstoneTop = { 4,2,2,2,2,2,2,4,2,2,2 };
 
         internal static float AnchorY(WorldObject value, float screenY, int screenHeight, bool inverted)

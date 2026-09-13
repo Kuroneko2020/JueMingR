@@ -121,7 +121,7 @@ namespace NativeWorldTextProbe
             return texture;
         }
         private static bool IsChest(int type) { return type == 21 || type == 441 || type == 467 || type == 468; }
-        internal Rectangle ObjectArtBounds(int type, int style, int width)
+        internal Rectangle ObjectArtBounds(int type, int style, int width, bool boardOnly = false)
         {
             // Test-only texture readback. Reproduce .8 closed source slices,
             // including 18-high chest bottom tiles and dresser style wrapping.
@@ -129,6 +129,14 @@ namespace NativeWorldTextProbe
             int left = width * 16, right = -1, top = 34, bottom = -1;
             for (int y = 0; y < (IsChest(type) ? 34 : 32); y++) for (int x = 0; x < width * 16; x++)
             {
+                // Original XNB board regions, independently inspected against
+                // chains/posts. Read actual alpha within them, retaining jagged
+                // edges; a generic row-width threshold would erase fragments.
+                if (boardOnly && (type == 55 || type == 425 || type == 573))
+                {
+                    if (style == 0 && (y >= 22 || type == 573 && y < 4)) continue;
+                    if (style == 1 && y < (type == 573 ? 14 : 10)) continue;
+                }
                 int sourceX = (type == 88 ? style % 37 : style) * width * 18 + x / 16 * 18 + x % 16;
                 int sourceY = y + (y >= 16 ? 2 : 0) + (type == 88 ? style / 37 * 36 : 0);
                 if (pixels[sourceY * texture.Width + sourceX].A == 0) continue;

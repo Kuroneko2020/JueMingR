@@ -43,6 +43,7 @@ namespace NativeWorldTextProbe
             RepresentativeScene(graphics, output, world, source);
             EmptyCandidateFontRecovery(graphics, world, source);
             NativeTextAnchorChecks.Run(graphics, world, source, output);
+            NativeSignAnchorChecks.Run(graphics, world, source, output);
             Console.WriteLine("PASS: actual Host native names/dictionary, full dresser geometry, lazy all-off observer, real history file, >K selection and cold-job recovery.");
         }
         private static void ObserveOpened(WorldTileObservation world)

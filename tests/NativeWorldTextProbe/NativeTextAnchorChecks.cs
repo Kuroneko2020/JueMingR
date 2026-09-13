@@ -58,7 +58,7 @@ namespace NativeWorldTextProbe
             // Independent samples from the actual .8 closed XNB alpha and
             // native tile draw offsets; not the implementation's table values.
             int[,] bounds = { {21,0,6,34}, {441,28,10,34}, {467,35,12,34}, {468,31,2,28},
-                {88,0,0,32}, {88,57,0,28}, {55,2,6,28}, {425,3,6,28}, {573,4,8,26}, {85,0,4,34}, {85,1,2,34} };
+                {88,0,0,32}, {88,57,0,28}, {55,1,10,32}, {55,2,6,28}, {425,0,0,22}, {425,3,6,28}, {573,0,4,22}, {573,1,14,32}, {573,4,8,26}, {85,0,4,34}, {85,1,2,34} };
             for (int i = 0; i < bounds.GetLength(0); i++)
             {
                 var value = new WorldObject { Type = bounds[i,0], Style = bounds[i,1], TileY = 20 };
@@ -82,11 +82,11 @@ namespace NativeWorldTextProbe
         internal static void Run(ProbeGraphics graphics, WorldTileObservation world, WorldObjectHostObservation source, string output)
         {
             int[] columns = { 8, 20, 34, 48 }, widths = { 2, 3, 2, 2 };
-            string[] texts = { "H", "gyp", "中文", "A\n\n", "A\n\n中", "[i/s20:8]", "ABCDEFGHIJKLMN" };
+            string[] texts = { "H", "gyp", "中文", "药水/食物/材料", "A\n\n", "A\n\n中", "[i/s20:8]", "ABCDEFGHIJKLMN" };
             foreach (int group in new[] { 0, 1 }) foreach (int size in new[] { 70, 50, 180 }) foreach (string text in texts)
             {
                 int[] types = group == 0 ? new[] {21,88,55,85} : new[] {467,88,573,425};
-                int[] styles = group == 0 ? new[] {0,0,2,0} : new[] {35,57,4,2};
+                int[] styles = group == 0 ? new[] {0,0,1,0} : new[] {35,57,4,2};
                 Main.tile = new Tile[256, 128]; Main.sign = new Sign[32000]; Main.chest = new Chest[8000]; source.EndSession();
                 Main.screenPosition = Vector2.Zero; Main.LocalPlayer.position = new Vector2(450, 400);
                 Main.LocalPlayer.gravDir = size == 50 ? -1 : 1;
@@ -106,6 +106,7 @@ namespace NativeWorldTextProbe
                 Color[] pixels = graphics.WorldPixels(layer);
                 Require(layer.Failure == null && layer.LastDrawn == 4, "all four native objects draw in anchor fixture");
                 if (size == 70 && text == "H") graphics.Scene(layer, Path.Combine(output, "native-anchor-art-" + group + ".png"));
+                if (size == 70 && text == "药水/食物/材料") graphics.Scene(layer, Path.Combine(output, "native-anchor-sign-text-" + group + ".png"));
                 layer.Clear(); discovery.Clear();
                 for (int i = 0; i < 4; i++)
                 {
@@ -120,7 +121,7 @@ namespace NativeWorldTextProbe
                     Require(layer.Failure == null && layer.LastDrawn == 1, "isolated object draws through normal production selection and layout");
                     // Oracle reads real texture alpha using the native closed
                     // tile slices, never production layout or its bounds table.
-                    var art = graphics.ObjectArtBounds(types[i], styles[i], widths[i]);
+                    var art = graphics.ObjectArtBounds(types[i], styles[i], widths[i], true);
                     float top = Main.LocalPlayer.gravDir == -1 ? 640 - 20 * 16 - art.Bottom : 20 * 16 + art.Top;
                     var expected = Vector2.Transform(new Vector2(columns[i] * 16 + widths[i] * 8, top), Main.GameViewMatrix.ZoomMatrix);
                     int left = 960, right = -1, bottom = -1;
