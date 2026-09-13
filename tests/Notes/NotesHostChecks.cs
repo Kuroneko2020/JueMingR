@@ -248,6 +248,18 @@ namespace Terraria
             using (var renderer = new NotesRenderer())
             {
                 renderer.Refresh(); NotesRevisionHostChecks.Run(renderer); NotesWorkloadChecks.Run(renderer);
+                // Notes-only metric replacement; the separate F5 navigation gate
+                // still rejects resources whose navigation labels cannot fit.
+                var wide = new ReLogic.Graphics.DynamicSpriteFont(0, 20, '?');
+                object widePage = Activator.CreateInstance(pageType, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null,
+                    new object[] { null, new List<Rectangle> { new Rectangle(0, 0, 48, 32) }, new List<Rectangle> { new Rectangle(0, 0, 48, 32) },
+                        new List<char> { '?' }, new List<Vector3> { new Vector3(0, 48, 0) } }, null);
+                pages.SetValue(widePage, 0);
+                typeof(ReLogic.Graphics.DynamicSpriteFont).GetMethod("SetPages", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(wide, new object[] { pages });
+                var wideAsset = (ReLogic.Content.Asset<ReLogic.Graphics.DynamicSpriteFont>)Activator.CreateInstance(typeof(ReLogic.Content.Asset<ReLogic.Graphics.DynamicSpriteFont>), BindingFlags.Instance | BindingFlags.NonPublic, null, new object[] { "notes-wide-metric" }, null);
+                wideAsset.GetType().GetMethod("SubmitLoadedContent", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(wideAsset, new object[] { wide, new MetricSource() });
+                NotesWorkloadChecks.CheckResourceChange(renderer, () => { GameContent.FontAssets.MouseText = wideAsset; renderer.Refresh(); });
+                GameContent.FontAssets.MouseText = asset; renderer.Refresh();
                 // A separate Notes-only metric boundary; this deliberately tall
                 // resource is not claimed to pass the F5 navigation font gate.
                 var tall = new ReLogic.Graphics.DynamicSpriteFont(0, 20, '?');
