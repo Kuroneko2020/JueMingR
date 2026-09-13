@@ -207,10 +207,13 @@ namespace Terraria
         {
             try
             {
+                if (IntPtr.Size != 4 || typeof(object).Assembly.GetName().Name != "mscorlib") throw new InvalidOperationException("Host checks require .NET Framework x86.");
                 // Explicit fixture-only selection; never infer a pass from a
                 // device exception. The caller records authorization and reason.
                 bool deferGraphics = args.Length > 0 && args[args.Length - 1] == "--defer-graphics";
                 if (deferGraphics) Array.Resize(ref args, args.Length - 1);
+                if (args.Length == 1 && args[0] == "f5-cpu")
+                { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; F5LayoutChecks.Run(); F5InputChecks.Run(); return 0; }
                 if (args.Length == 1 && args[0] == "focus-input") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; HostInputChecks.Run(); return 0; }
                 if (args.Length == 1 && args[0] == "entity-observation") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; EntityObservationChecks.Run(); return 0; }
                 if (args.Length == 1 && args[0] == "world-targets-observation") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; WorldTargetObservationChecks.Run(); return 0; }

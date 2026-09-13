@@ -14,7 +14,8 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
-            if (scope != "Full" && scope != "SelectionCpuCosts" && scope != "SelectionCpuChecks") throw new ArgumentException("Unknown probe scope");
+            if (scope != "Full" && scope != "SelectionCpuCosts" && scope != "SelectionCpuChecks" && scope != "WorkloadCpu") throw new ArgumentException("Unknown probe scope");
+            if (IntPtr.Size != 4 || typeof(object).Assembly.GetName().Name != "mscorlib") throw new InvalidOperationException("Native workload requires .NET Framework x86.");
             string isolated = Path.Combine(Path.GetTempPath(), "JueMingR-native-text-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(isolated);
             // Main's beforefieldinit constructor reads Program.SavePath. This is
             // set before a separate no-inline method touches any Main field.
@@ -38,9 +39,25 @@ namespace NativeWorldTextProbe
             NativeLayerReadinessChecks.Run();
             if (content == "--metrics") return 0;
             if (scope == "SelectionCpuCosts") { FiniteCostChecks.RunSelection(output); return 0; }
-            if (scope == "SelectionCpuChecks")
+            if (scope == "SelectionCpuChecks" || scope == "WorkloadCpu")
             {
-                FiniteCostChecks.RunSelection(output);
+                if (scope == "SelectionCpuChecks") FiniteCostChecks.RunSelection(output);
+                else
+                {
+                    // Explicit CPU fixture setup; no timed sampling is a hidden prerequisite.
+                    Terraria.Main.gameMenu = Terraria.Main.dedServ = Terraria.Main.hideUI = Terraria.Main.mapFullscreen = Terraria.Main.inFancyUI = Terraria.Main.onlyDrawFancyUI = Terraria.Main.ingameOptionsWindow = false;
+                    Terraria.Main.netMode = Terraria.Main.myPlayer = 0; Terraria.Main.screenWidth = 960; Terraria.Main.screenHeight = 640;
+                    Terraria.Main.GameViewMatrix = new Terraria.Graphics.SpriteViewMatrix(null);
+                    Terraria.Main.GameViewMatrix.SetViewportOverride(new Microsoft.Xna.Framework.Graphics.Viewport(0, 0, 960, 640));
+                    FiniteCostChecks.SetCpuFont(10);
+                    Terraria.Main.player[0] = new Terraria.Player { active = true, accOreFinder = true, position = new Vector2(450, 450), gravDir = 1 };
+                }
+                // The native capture controller supports headless construction.
+                // Initialize its real inactive interface without a GPU camera;
+                // restore ordinary client flags before exercising the shell.
+                Terraria.Main.dedServ = true;
+                try { RuntimeHelpers.RunClassConstructor(typeof(Terraria.Graphics.Capture.CaptureManager).TypeHandle); }
+                finally { Terraria.Main.dedServ = false; }
                 NativeWorldChecks.RunSelectionCpu();
                 NativeCompositionChecks.RunSelectionCpu();
                 return 0;
