@@ -57,8 +57,11 @@ namespace JueMingR.TerrariaHost.EntityLabels
         internal void YieldTextToEntry() { if (ActiveSlider < 0 && armed == StylePopupCommand.None) TextInput.End(true); }
         internal void Close()
         {
+            if (!Visible && Editor == null && !HasCapture) return;
             if (HasCapture) input.Hotkeys.SuppressHeld();
-            TextInput.End(true); Editor?.CancelDraft(); selection = null; ActiveSlider = -1; armed = StylePopupCommand.None;
+            // Submitted settings belong to the captured target. Retire this draft
+            // after releasing input so closed-shell samples cannot reload it.
+            TextInput.End(true); Editor = null; selection = null; ActiveSlider = -1; armed = StylePopupCommand.None;
             Hovered = StylePopupCommand.None; OwnsPointer = BlockPointer = ConsumeWheel = false;
         }
         private void CancelGesture()

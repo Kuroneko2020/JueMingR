@@ -44,6 +44,17 @@ namespace NativeWorldTextProbe
                 for (int i = 0; i < 100; i++) { Call(context, "UpdateRuntime"); Require(discovery.Candidates.SequenceEqual(expected), "built Host stable values/text/order"); }
                 Console.WriteLine("Built Host stable 100 UpdateRuntime calls: sorts=" + (discovery.DebugSortCount - sorts) + "; repairs=" + (discovery.DebugRepairCount - repairs));
                 Require(discovery.DebugSortCount == sorts && discovery.DebugRepairCount == repairs && Get(layer, "Failure") == null && (int)Get(layer, "packetCount") == 4, "actual production composition reuses unchanged ordered payload");
+                var shell = Get(context, "Shell"); var popup = Get(shell, "StylePopup");
+                var rect = Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.F5.F5Rect"), Flags, null, new object[] { 0f, 0f, 80f, 30f }, null);
+                var click = popup.GetType().GetMethods(Flags).Single(m => m.Name == "Click" && m.GetParameters()[0].ParameterType == typeof(WorldObjectKind));
+                click.Invoke(popup, new[] { (object)WorldObjectKind.Sign, rect, 9 });
+                var retired = Get(popup, "Editor"); Require(retired != null && (bool)Get(popup, "Visible"), "actual shell popup opens a configurable target");
+                long preferenceRevision = (long)Get(Get(host, "Preferences"), "Revision");
+                Call(shell, "ProcessInput"); int retiredRevision = (int)Get(retired, "Revision");
+                for (int i = 0; i < 100; i++) Call(shell, "ProcessInput");
+                Console.WriteLine("Built closed shell: failed=" + Get(shell, "failed") + "; visible=" + Get(popup, "Visible") + "; editor=" + (Get(popup, "Editor") != null) + "; retired revision=" + retiredRevision + "->" + Get(retired, "Revision") + "; preference revision=" + preferenceRevision + "->" + Get(Get(host, "Preferences"), "Revision"));
+                Require(!(bool)Get(shell, "failed") && Get(popup, "Editor") == null && !(bool)Get(popup, "Visible") && (int)Get(retired, "Revision") == retiredRevision &&
+                    (long)Get(Get(host, "Preferences"), "Revision") == preferenceRevision, "real closed F5Shell input path retires the editor without repeated rollback or settings writes");
                 Main.gameMenu = true; Call(context, "UpdateRuntime"); Require(discovery.Candidates.Count == 0 && (int)Get(layer, "packetCount") == 0, "built Host session exit clears candidate and prepared ownership");
                 Console.WriteLine("PASS: separately built Host -> UpdateRuntime -> shared observation -> Discovery -> actual World.Prepare; no graphics device or game loop.");
             }

@@ -9,6 +9,7 @@ namespace JueMingR.TerrariaHost.EntityLabels
     {
         private readonly Func<int, bool> submit;
         private int committed, caret, selection;
+        private bool hslPreviewCurrent;
         internal StyleEditor(int rgb, Func<int, bool> submit) { this.submit = submit; Load(rgb); }
         internal int Rgb { get; private set; }
         internal int Committed { get { return committed; } }
@@ -22,12 +23,12 @@ namespace JueMingR.TerrariaHost.EntityLabels
         internal int SelectionStart { get { return Math.Min(caret, selection); } }
         internal int SelectionLength { get { return Math.Abs(caret - selection); } }
         internal void Load(int rgb)
-        { committed = rgb; SetRgb(rgb); Hex = Format(rgb); caret = selection = Hex.Length; Error = null; Revision++; }
+        { hslPreviewCurrent = false; committed = rgb; SetRgb(rgb); Hex = Format(rgb); caret = selection = Hex.Length; Error = null; Revision++; }
         internal void CancelDraft() { Load(committed); }
         internal void BeginHex() { Hex = Format(Rgb); SelectAll(); Error = null; Revision++; }
-        internal void SelectAll() { selection = 0; caret = Hex.Length; Revision++; }
+        internal void SelectAll() { hslPreviewCurrent = false; selection = 0; caret = Hex.Length; Revision++; }
         internal void Move(int delta, bool extend)
-        { caret = Math.Max(0, Math.Min(Hex.Length, caret + delta)); if (!extend) selection = caret; Revision++; }
+        { hslPreviewCurrent = false; caret = Math.Max(0, Math.Min(Hex.Length, caret + delta)); if (!extend) selection = caret; Revision++; }
         internal void Delete(bool backwards)
         {
             int start = SelectionStart, length = SelectionLength;
@@ -37,7 +38,7 @@ namespace JueMingR.TerrariaHost.EntityLabels
                 else if (!backwards && caret < Hex.Length) { start = caret; length = 1; }
             }
             if (length == 0) return;
-            Hex = Hex.Remove(start, length); caret = selection = start; Error = null; Revision++;
+            hslPreviewCurrent = false; Hex = Hex.Remove(start, length); caret = selection = start; Error = null; Revision++;
         }
         internal void Insert(string text)
         {
@@ -45,7 +46,7 @@ namespace JueMingR.TerrariaHost.EntityLabels
             int start = SelectionStart;
             string candidate = Hex.Remove(start, SelectionLength).Insert(start, text);
             if (candidate.Length > 6 || !AllHex(candidate)) { SetError("请输入六位 RGB 色码"); return; }
-            Hex = candidate.ToUpperInvariant(); caret = selection = start + text.Length; Error = null; Revision++;
+            hslPreviewCurrent = false; Hex = candidate.ToUpperInvariant(); caret = selection = start + text.Length; Error = null; Revision++;
             if (Hex.Length == 6) CommitHex();
         }
         internal void CommitHex()
@@ -53,14 +54,19 @@ namespace JueMingR.TerrariaHost.EntityLabels
             int rgb;
             if (Hex.Length != 6 || !Int32.TryParse(Hex, NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out rgb))
             { SetError("色码尚未满六位"); return; }
-            SetRgb(rgb); Commit();
+            hslPreviewCurrent = false; SetRgb(rgb); Commit();
         }
         internal void PreviewHsl(int axis, double value)
         {
             if (Double.IsNaN(value) || Double.IsInfinity(value) || axis < 0 || axis > 2) throw new ArgumentOutOfRangeException();
             value = Math.Max(0, Math.Min(axis == 0 ? 360 : 100, value));
+            // The first HSL action still normalizes an exact RGB/HEX draft, even
+            // at the same axis value. Only a subsequent fully normalized sample
+            // can be skipped; gray hue changes remain meaningful transient state.
+            if (hslPreviewCurrent && value == (axis == 0 ? Hue : axis == 1 ? Saturation : Lightness)) return;
             if (axis == 0) Hue = value; else if (axis == 1) Saturation = value; else Lightness = value;
             Rgb = HslToRgb(Hue, Saturation, Lightness); Hex = Format(Rgb); caret = selection = Hex.Length; Error = null; Revision++;
+            hslPreviewCurrent = true;
         }
         internal bool Commit()
         {
@@ -68,7 +74,7 @@ namespace JueMingR.TerrariaHost.EntityLabels
             if (!submit(Rgb)) { SetError("本次修改未被接受，请重试"); return false; }
             committed = Rgb; Error = null; Revision++; return true;
         }
-        internal void SetError(string value) { if (Error != value) { Error = value; Revision++; } }
+        internal void SetError(string value) { if (Error != value) { hslPreviewCurrent = false; Error = value; Revision++; } }
         private void SetRgb(int rgb)
         {
             if (rgb < 0 || rgb > 0xFFFFFF) throw new ArgumentOutOfRangeException(nameof(rgb));
