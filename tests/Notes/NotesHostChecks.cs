@@ -247,7 +247,7 @@ namespace Terraria
             }, new Notebook(seed));
             using (var renderer = new NotesRenderer())
             {
-                renderer.Refresh(); NotesRevisionHostChecks.Run(renderer);
+                renderer.Refresh(); NotesRevisionHostChecks.Run(renderer); NotesWorkloadChecks.Run(renderer);
                 // A separate Notes-only metric boundary; this deliberately tall
                 // resource is not claimed to pass the F5 navigation font gate.
                 var tall = new ReLogic.Graphics.DynamicSpriteFont(0, 20, '?');

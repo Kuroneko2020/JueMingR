@@ -17,6 +17,7 @@ namespace JueMingR.TerrariaHost.Notes
         internal NoteEditor Editor;
         internal long EditRevision;
         internal bool PendingCaret;
+        internal NotesControl PinControl, DeleteControl;
     }
     internal sealed class NotesControl
     {
@@ -34,7 +35,12 @@ namespace JueMingR.TerrariaHost.Notes
         private readonly List<NotesCard> cards = new List<NotesCard>();
         private readonly Action<NotesAction> request;
         private readonly List<NotesControl> controls = new List<NotesControl>();
+        private readonly Dictionary<string, NotesControl> topControls = new Dictionary<string, NotesControl>();
         private NotesControl armedControl;
+        private F5Rect armedRect, projection;
+        private string armedText;
+        private float projectedScroll;
+        private int projectedLayout = -1;
         private NoteEditor actionEditor, selectionEditor;
         private NotesCard selectionCard;
         private bool actionBusy, actionDirty, actionComposition, actionReadable;
@@ -50,6 +56,16 @@ namespace JueMingR.TerrariaHost.Notes
         private long seenCaret = -1;
         private NotesTextLayout statusLayout;
         private object statusFont;
+        private Notebook geometryBook;
+        private NoteEditor geometryEditor;
+        private long geometryEditRevision = -1;
+        private object geometryFont;
+        private float geometryWidth, geometryHeight, contentHeight;
+        private bool pendingGeometry;
+#if DEBUG
+        // Counts actual whole-book geometry passes; CPU regression only, no runtime logging.
+        internal int DebugGeometryPasses { get; private set; }
+#endif
         internal NotesCards(NotesWorkspace workspace, NotesInput input, NotesRenderer renderer, Action<NotesAction> request)
         { this.workspace = workspace; this.input = input; this.renderer = renderer; this.request = request; }
         internal IReadOnlyList<NotesCard> Cards { get { return cards; } }
@@ -80,9 +96,26 @@ namespace JueMingR.TerrariaHost.Notes
                     renderer.Advance(card.BodyLayout, 2048);
             float width = shell.Layout.Viewport.Width;
             titleLineHeight = renderer.LineHeight(0.8f); bodyLineHeight = renderer.LineHeight(0.76f); statusLineHeight = renderer.LineHeight(0.62f);
-            if (feedback != status || statusFont != renderer.FontIdentity)
+            bool statusChanged = feedback != status || statusFont != renderer.FontIdentity || geometryWidth != width;
+            if (statusChanged)
             { status = feedback; statusFont = renderer.FontIdentity; statusLayout = renderer.Layout(feedback, width - 8, 0.62f); }
-            if (!ActionsCurrent()) actionGeneration++;
+            bool rebuild = statusChanged || !ActionsCurrent() || pendingGeometry || geometryBook != workspace.Feature.Saved ||
+                geometryEditor != workspace.Editor || geometryFont != renderer.FontIdentity || geometryWidth != width || geometryHeight != shell.Layout.Viewport.Height;
+            // A text edit can update one retained card without repacking the book.
+            // Only a real height change requires the masonry pass below. Caret,
+            // selection, main scrolling and long-body progress never require it.
+            if (!rebuild && workspace.Editor != null && geometryEditRevision != workspace.Editor.Revision)
+            {
+                NotesCard edited = states[workspace.EditingId];
+                F5Size size = PrepareText(edited, shell.Layout.Viewport.Height);
+                rebuild = size.Width != edited.Title.Height || size.Height != edited.Body.Height;
+            }
+            if (rebuild)
+            {
+#if DEBUG
+            DebugGeometryPasses++;
+#endif
+            actionGeneration++; pendingGeometry = false;
             actionEditor = workspace.Editor; actionBusy = workspace.Feature.Busy; actionDirty = actionEditor != null && actionEditor.Dirty;
             actionComposition = input.HasComposition; actionReadable = workspace.Feature.Readable && !workspace.Feature.NeedsRecovery;
             actionDelete = workspace.DeleteConfirmation; actionRevision = workspace.Feature.Revision;
@@ -104,47 +137,42 @@ namespace JueMingR.TerrariaHost.Notes
             foreach (Note note in workspace.Feature.Saved.Notes)
             {
                 retained.Add(note.Id); NotesCard card;
-                if (!states.TryGetValue(note.Id, out card)) { card = new NotesCard(); states.Add(note.Id, card); }
+                if (!states.TryGetValue(note.Id, out card))
+                {
+                    card = new NotesCard { PinControl = new NotesControl { Key = note.Id + ":pin" },
+                        DeleteControl = new NotesControl { Key = note.Id + ":delete", Color = Color.Salmon } };
+                    states.Add(note.Id, card);
+                }
                 if (card.Font != renderer.FontIdentity || card.Width != cardWidth)
                 { card.TitleLayout = card.BodyLayout = null; card.Font = renderer.FontIdentity; card.Width = cardWidth; }
                 card.Note = note;
-                bool editing = workspace.EditingId == note.Id && workspace.Editor != null;
-                string title = editing && workspace.Editor.IsTitle ? workspace.Editor.Text : note.Title;
-                int changedStart = editing && ReferenceEquals(card.Editor, workspace.Editor) && workspace.Editor.Revision == card.EditRevision + 1 ? workspace.Editor.LastChangeStart : 0;
                 float pinWidth = renderer.ButtonWidth("已悬挂"), deleteWidth = renderer.ButtonWidth("确认");
                 float titleWidth = Math.Max(24, cardWidth - pinWidth - deleteWidth - 28);
-                if (card.TitleLayout == null || !ReferenceEquals(card.TitleLayout.Text, title))
-                    card.TitleLayout = renderer.Layout(title, titleWidth, 0.8f, editing && workspace.Editor.IsTitle ? workspace.Editor.Boundaries : note.TitleBoundaries, card.TitleLayout, changedStart);
-                renderer.Advance(card.TitleLayout, 1024);
-                // Short titles no longer reserve an empty second row. Wrapped
-                // previews keep two rows, and the active title can show four.
-                float titleRows = editing && workspace.Editor.IsTitle ? 4 : 2;
-                float titleHeight = Math.Max(renderer.ControlHeight, Math.Min(titleRows * titleLineHeight, card.TitleLayout.Lines.Count * titleLineHeight));
-                string body = editing && !workspace.Editor.IsTitle ? workspace.Editor.Text : note.Body;
-                float maximum = Math.Max(48, Math.Min(240, shell.Layout.Viewport.Height / 2 - titleHeight - 24));
-                float bodyHeight = maximum;
-                // Only short previews influence masonry height; long bodies already
-                // reach the viewport cap. Full text layout is limited to visible cards.
-                if (body.Length < 256)
-                {
-                    if (card.BodyLayout == null || !ReferenceEquals(card.BodyLayout.Text, body))
-                        card.BodyLayout = renderer.Layout(body, cardWidth - 16, 0.76f, editing && !workspace.Editor.IsTitle ? workspace.Editor.Boundaries : note.BodyBoundaries);
-                    renderer.Advance(card.BodyLayout, 1024);
-                    bodyHeight = Math.Max(48, Math.Min(maximum, card.BodyLayout.Lines.Count * bodyLineHeight));
-                }
+                F5Size textSize = PrepareText(card, shell.Layout.Viewport.Height);
+                float titleHeight = textSize.Width, bodyHeight = textSize.Height;
                 int column = columns == 1 || bottoms[0] <= bottoms[1] ? 0 : 1;
                 float x = column * (cardWidth + 10), y = bottoms[column];
                 card.Rect = new F5Rect(x, y, cardWidth, titleHeight + bodyHeight + 24);
                 card.Title = new F5Rect(x + 8, y + 8, titleWidth, titleHeight);
                 card.Pin = new F5Rect(x + cardWidth - pinWidth - deleteWidth - 12, y + 8, pinWidth, renderer.ControlHeight);
                 card.Delete = new F5Rect(x + cardWidth - deleteWidth - 8, y + 8, deleteWidth, renderer.ControlHeight);
-                controls.Add(new NotesControl { Key = note.Id + ":pin", Text = note.Pinned ? "已悬挂" : "悬挂", Rect = card.Pin, Enabled = actionReadable && !actionBusy && !note.Pinned });
-                controls.Add(new NotesControl { Key = note.Id + ":delete", Text = actionDelete == note.Id ? "确认" : "删除", Rect = card.Delete, Enabled = actionReadable && !actionBusy, Color = Color.Salmon });
+                card.PinControl.Text = note.Pinned ? "已悬挂" : "悬挂"; card.PinControl.Rect = card.Pin;
+                card.PinControl.Enabled = actionReadable && !actionBusy && !note.Pinned;
+                card.DeleteControl.Text = actionDelete == note.Id ? "确认" : "删除"; card.DeleteControl.Rect = card.Delete;
+                card.DeleteControl.Enabled = actionReadable && !actionBusy;
+                controls.Add(card.PinControl); controls.Add(card.DeleteControl);
                 card.Body = new F5Rect(x + 8, y + titleHeight + 16, cardWidth - 16, bodyHeight);
                 bottoms[column] = card.Rect.Bottom + 10; cards.Add(card);
             }
             foreach (string id in new List<string>(states.Keys)) if (!retained.Contains(id)) states.Remove(id);
-            shell.Layout.SetNotesContentHeight(Math.Max(bottoms[0], columns == 2 ? bottoms[1] : 0)); shell.ClampScroll();
+            contentHeight = Math.Max(bottoms[0], columns == 2 ? bottoms[1] : 0);
+            geometryBook = workspace.Feature.Saved; geometryEditor = workspace.Editor; geometryFont = renderer.FontIdentity;
+            geometryWidth = width; geometryHeight = shell.Layout.Viewport.Height;
+            }
+            // F5 may rebuild its outer layout on page reentry without changing
+            // this book's local geometry. Republish the retained height then too.
+            shell.Layout.SetNotesContentHeight(contentHeight); shell.ClampScroll();
+            geometryEditRevision = workspace.Editor == null ? -1 : workspace.Editor.Revision;
             bool caretChanged = workspace.Editor != null && (!ReferenceEquals(seenEditor, workspace.Editor) || seenCaret != workspace.Editor.CaretRevision);
             if (caretChanged)
             {
@@ -180,6 +208,44 @@ namespace JueMingR.TerrariaHost.Notes
                 card.Editor = editing ? workspace.Editor : null; card.EditRevision = editing ? workspace.Editor.Revision : -1;
             }
             seenEditor = workspace.Editor; seenCaret = seenEditor == null ? -1 : seenEditor.CaretRevision;
+            ObserveProjection(shell);
+        }
+        private F5Size PrepareText(NotesCard card, float viewportHeight)
+        {
+            Note note = card.Note;
+            bool editing = workspace.EditingId == note.Id && workspace.Editor != null;
+            string title = editing && workspace.Editor.IsTitle ? workspace.Editor.Text : note.Title;
+            int changedStart = editing && ReferenceEquals(card.Editor, workspace.Editor) && workspace.Editor.Revision == card.EditRevision + 1 ? workspace.Editor.LastChangeStart : 0;
+            float titleWidth = Math.Max(24, card.Width - renderer.ButtonWidth("已悬挂") - renderer.ButtonWidth("确认") - 28);
+            if (card.TitleLayout == null || !ReferenceEquals(card.TitleLayout.Text, title))
+                card.TitleLayout = renderer.Layout(title, titleWidth, 0.8f, editing && workspace.Editor.IsTitle ? workspace.Editor.Boundaries : note.TitleBoundaries, card.TitleLayout, changedStart);
+            renderer.Advance(card.TitleLayout, 1024);
+            float titleRows = editing && workspace.Editor.IsTitle ? 4 : 2;
+            float titleHeight = Math.Max(renderer.ControlHeight, Math.Min(titleRows * titleLineHeight, card.TitleLayout.Lines.Count * titleLineHeight));
+            string body = editing && !workspace.Editor.IsTitle ? workspace.Editor.Text : note.Body;
+            float maximum = Math.Max(48, Math.Min(240, viewportHeight / 2 - titleHeight - 24)), bodyHeight = maximum;
+            // Only short previews affect masonry height. A pending title/short body
+            // must still repack when its budgeted line table grows on a later frame.
+            pendingGeometry |= !card.TitleLayout.Complete;
+            if (body.Length < 256)
+            {
+                if (card.BodyLayout == null || !ReferenceEquals(card.BodyLayout.Text, body))
+                    card.BodyLayout = renderer.Layout(body, card.Width - 16, 0.76f, editing && !workspace.Editor.IsTitle ? workspace.Editor.Boundaries : note.BodyBoundaries);
+                renderer.Advance(card.BodyLayout, 1024); pendingGeometry |= !card.BodyLayout.Complete;
+                bodyHeight = Math.Max(48, Math.Min(maximum, card.BodyLayout.Lines.Count * bodyLineHeight));
+            }
+            return new F5Size(titleHeight, bodyHeight);
+        }
+        private void ObserveProjection(F5Interaction shell)
+        {
+            F5Rect next = shell.Layout.Viewport.Offset(shell.X, shell.Y);
+            if (!next.Equals(projection) || projectedScroll != shell.Scroll || projectedLayout != shell.Layout.Generation)
+            {
+                // Retained controls are mutable. A press belongs to its original
+                // screen projection, even if the window later returns there.
+                armed = lastField = null; armedControl = null;
+                projection = next; projectedScroll = shell.Scroll; projectedLayout = shell.Layout.Generation;
+            }
         }
         internal bool Wheel(F5Interaction shell, float x, float y, int wheel)
         {
@@ -204,11 +270,14 @@ namespace JueMingR.TerrariaHost.Notes
         {
             float size = renderer.ButtonWidth(text);
             if (x > 0 && x + size > width) { x = 0; y += renderer.ControlHeight + 4; }
-            controls.Add(new NotesControl { Key = key, Text = text, Enabled = enabled, Rect = new F5Rect(x, y, size, renderer.ControlHeight) });
+            NotesControl control;
+            if (!topControls.TryGetValue(key, out control)) { control = new NotesControl { Key = key }; topControls.Add(key, control); }
+            control.Text = text; control.Enabled = enabled; control.Rect = new F5Rect(x, y, size, renderer.ControlHeight); controls.Add(control);
             x += size + 6;
         }
         internal void Pointer(F5Interaction shell, bool pressed, bool released, bool left = false, bool shift = false)
         {
+            ObserveProjection(shell);
             F5Rect view = shell.Layout.Viewport.Offset(shell.X, shell.Y);
             float x = shell.PointerX - view.X, y = shell.PointerY - view.Y + shell.Scroll;
             string hit = view.Contains(shell.PointerX, shell.PointerY) ? Hit(x, y) : null;
@@ -226,7 +295,8 @@ namespace JueMingR.TerrariaHost.Notes
             {
                 armed = hit;
                 armedControl = null; armedGeneration = actionGeneration;
-                if (ActionsCurrent()) foreach (NotesControl control in controls) if (control.Key == hit && control.Enabled) { armedControl = control; break; }
+                if (ActionsCurrent()) foreach (NotesControl control in controls) if (control.Key == hit && control.Enabled)
+                { armedControl = control; armedRect = control.Rect; armedText = control.Text; break; }
                 if (hit != null && (hit.EndsWith(":title", StringComparison.Ordinal) || hit.EndsWith(":body", StringComparison.Ordinal)))
                 {
                     bool title = hit.EndsWith(":title", StringComparison.Ordinal); string id = hit.Substring(0, 32); NotesCard card = states[id];
@@ -256,7 +326,7 @@ namespace JueMingR.TerrariaHost.Notes
             {
                 if (armed == hit && hit != null && armedControl != null && armedGeneration == actionGeneration && ActionsCurrent())
                     foreach (NotesControl control in controls)
-                        if (control.Key == hit && control.Enabled && control.Rect.Equals(armedControl.Rect) && control.Text == armedControl.Text) { Activate(hit, shell); break; }
+                        if (control.Key == hit && control.Enabled && control.Rect.Equals(armedRect) && control.Text == armedText) { Activate(hit, shell); break; }
                 armed = null; armedControl = null;
             }
         }
