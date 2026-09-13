@@ -16,7 +16,8 @@ function Invoke-WorkloadGit {
         [void]$process.Start(); $stdout = $process.StandardOutput.ReadToEndAsync(); $stderr = $process.StandardError.ReadToEndAsync()
         $process.WaitForExit(); $result = $stdout.GetAwaiter().GetResult(); $errorText = $stderr.GetAwaiter().GetResult()
         if ($process.ExitCode -ne 0) { throw ('Git input query failed: ' + $errorText) }
-        return $result.Split(@("`r`n", "`n"), [StringSplitOptions]::RemoveEmptyEntries)
+        # Explicit string[] keeps Framework and modern .NET Split overload binding identical.
+        return $result.Split([string[]]@("`r`n", "`n"), [StringSplitOptions]::RemoveEmptyEntries)
     } finally { $process.Dispose() }
 }
 function Get-WorkloadIdentity {
