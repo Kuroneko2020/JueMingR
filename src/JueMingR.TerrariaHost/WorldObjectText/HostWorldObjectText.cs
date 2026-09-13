@@ -33,7 +33,8 @@ namespace JueMingR.TerrariaHost.WorldObjectText
             Discovery.SetPresentationGate(World.MayPresent, World.IsPrepared);
             AppDomain.CurrentDomain.ProcessExit += OnExit;
         }
-        internal bool LayersReady { get; set; }
+        internal Rendering.WorldLayerStatus LayerStatus { get; set; }
+        internal bool LayersReady { get { return LayerStatus == Rendering.WorldLayerStatus.Ready; } }
         internal long SessionGeneration { get { return runtime.IsSessionActive ? runtime.Generation : -1; } }
         internal PreferenceSnapshot<WorldObjectSettings> Preferences { get { return preferences.Snapshot; } }
         internal bool CanConfigure { get { return !stopping && Preferences.IsLoaded; } }

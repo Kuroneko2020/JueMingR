@@ -53,7 +53,17 @@ namespace NativeWorldTextProbe
             {
                 var value = new WorldObject { Kind = WorldObjectKind.Chest, TileX = 10, TileY = 20, Width = width };
                 var actual = (Vector2)projectPosition.Invoke(null, new object[] { value, shortLayout, 320f });
-                Require(Math.Abs(actual.X - (width == 2 ? 172.5f : 180.5f)) < .001f && Math.Abs(actual.Y - 304.5f) < .001f, "production projection uses distinct chest/dresser center and shared top");
+                Require(Math.Abs(actual.X - (width == 2 ? 172.5f : 180.5f)) < .001f && Math.Abs(actual.Y - 306f) < .001f, "production projection aligns the body bottom, allowing its 1.5-pixel shadow below the art edge");
+            }
+            // Independent samples from the actual .8 closed XNB alpha and
+            // native tile draw offsets; not the implementation's table values.
+            int[,] bounds = { {21,0,6,34}, {441,28,10,34}, {467,35,12,34}, {468,31,2,28},
+                {88,0,0,32}, {88,57,0,28}, {55,2,6,28}, {425,3,6,28}, {573,4,8,26}, {85,0,4,34}, {85,1,2,34} };
+            for (int i = 0; i < bounds.GetLength(0); i++)
+            {
+                var value = new WorldObject { Type = bounds[i,0], Style = bounds[i,1], TileY = 20 };
+                Require(NativeWorldObjectBounds.AnchorY(value, 7, 640, false) == 313 + bounds[i,2], "normal anchor follows visible art, not tile top");
+                Require(NativeWorldObjectBounds.AnchorY(value, 7, 640, true) == 327 - bounds[i,3], "inverted anchor follows visible bottom, including native draw overhang");
             }
             var oldStackFont = Terraria.GameContent.FontAssets.ItemStack;
             try
@@ -71,17 +81,19 @@ namespace NativeWorldTextProbe
         }
         internal static void Run(ProbeGraphics graphics, WorldTileObservation world, WorldObjectHostObservation source, string output)
         {
-            int[] columns = { 8, 20, 34, 48 }, types = { 21, 88, 55, 85 }, widths = { 2, 3, 2, 2 };
+            int[] columns = { 8, 20, 34, 48 }, widths = { 2, 3, 2, 2 };
             string[] texts = { "H", "gyp", "中文", "A\n\n", "A\n\n中", "[i/s20:8]", "ABCDEFGHIJKLMN" };
-            foreach (int size in new[] { 70, 50, 180 }) foreach (string text in texts)
+            foreach (int group in new[] { 0, 1 }) foreach (int size in new[] { 70, 50, 180 }) foreach (string text in texts)
             {
+                int[] types = group == 0 ? new[] {21,88,55,85} : new[] {467,88,573,425};
+                int[] styles = group == 0 ? new[] {0,0,2,0} : new[] {35,57,4,2};
                 Main.tile = new Tile[256, 128]; Main.sign = new Sign[32000]; Main.chest = new Chest[8000]; source.EndSession();
                 Main.screenPosition = Vector2.Zero; Main.LocalPlayer.position = new Vector2(450, 400);
                 Main.LocalPlayer.gravDir = size == 50 ? -1 : 1;
                 Main.GameViewMatrix.Zoom = new Vector2(size == 50 ? 1.25f : 1);
                 for (int i = 0; i < 4; i++)
                 {
-                    NativeWorldChecks.Put(columns[i], 20, types[i], 0, widths[i]);
+                    NativeWorldChecks.Put(columns[i], 20, types[i], styles[i], widths[i]);
                     if (i < 2) NativeWorldChecks.Register(i, columns[i], 20).name = text;
                     else Main.sign[i - 2] = new Sign { x = columns[i], y = 20, text = text };
                 }
@@ -93,21 +105,32 @@ namespace NativeWorldTextProbe
                 for (int tick = 0; tick < 80; tick++) { world.BeginTick(); discovery.Update(settings, null); layer.Prepare(settings); }
                 Color[] pixels = graphics.WorldPixels(layer);
                 Require(layer.Failure == null && layer.LastDrawn == 4, "all four native objects draw in anchor fixture");
+                if (size == 70 && text == "H") graphics.Scene(layer, Path.Combine(output, "native-anchor-art-" + group + ".png"));
+                layer.Clear(); discovery.Clear();
                 for (int i = 0; i < 4; i++)
                 {
-                    // Oracle uses independent complete tile rectangles and GPU
-                    // pixels, never the production layout's height/ink fields.
-                    float top = Main.LocalPlayer.gravDir == -1 ? 640 - (20 + 2) * 16 : 20 * 16;
+                    // Long chest names may overlap a neighbor's sample area.
+                    // Isolate the actual world object, not private draw packets,
+                    // so the pixel oracle measures only this label's geometry.
+                    Main.tile = new Tile[256, 128]; source.EndSession();
+                    NativeWorldChecks.Put(columns[i], 20, types[i], styles[i], widths[i]);
+                    discovery = new WorldObjectDiscovery(source); layer = new WorldObjectTextWorldLayer(discovery, () => true); discovery.SetPresentationGate(layer.MayPresent, layer.IsPrepared);
+                    for (int tick = 0; tick < 80; tick++) { world.BeginTick(); discovery.Update(settings, null); layer.Prepare(settings); }
+                    pixels = graphics.WorldPixels(layer);
+                    Require(layer.Failure == null && layer.LastDrawn == 1, "isolated object draws through normal production selection and layout");
+                    // Oracle reads real texture alpha using the native closed
+                    // tile slices, never production layout or its bounds table.
+                    var art = graphics.ObjectArtBounds(types[i], styles[i], widths[i]);
+                    float top = Main.LocalPlayer.gravDir == -1 ? 640 - 20 * 16 - art.Bottom : 20 * 16 + art.Top;
                     var expected = Vector2.Transform(new Vector2(columns[i] * 16 + widths[i] * 8, top), Main.GameViewMatrix.ZoomMatrix);
                     int left = 960, right = -1, bottom = -1;
                     for (int y = 0; y < 640; y++) for (int x = Math.Max(0, (int)expected.X - 88); x < Math.Min(960, (int)expected.X + 88); x++)
                         if (pixels[y * 960 + x].A != 0) { left = Math.Min(left, x); right = Math.Max(right, x); bottom = Math.Max(bottom, y); }
                     float gap = expected.Y - (bottom + 1);
-                    Require(bottom >= 0 && gap >= -1 && gap <= 3, "ink bottom touches object top: type=" + types[i] + ", size=" + size + ", text=" + text.Replace("\n", "\\n") + ", gap=" + gap);
+                    Require(bottom >= 0 && gap >= -3 && gap <= 2, "body touches visible art, with at most its shadow below: type=" + types[i] + ", size=" + size + ", text=" + text.Replace("\n", "\\n") + ", gap=" + gap);
                     if (text == "H") Require(Math.Abs((left + right + 1) / 2f - expected.X) <= 3, "label centers on independent 2x2 chest / 3x2 dresser rectangle");
+                    layer.Clear(); discovery.Clear();
                 }
-                if (size == 70 && text == "H") graphics.Scene(layer, Path.Combine(output, "native-anchor-four-sizes.png"));
-                layer.Clear(); discovery.Clear();
             }
             Main.GameViewMatrix.Zoom = Vector2.One; Main.LocalPlayer.gravDir = 1;
             Console.WriteLine("PASS: actual GPU ink bounds touch chest/dresser/sign/tombstone tops; 2x2/3x2 centers, glyph padding, trailing/internal blanks, truncation, font scale, zoom and gravity.");

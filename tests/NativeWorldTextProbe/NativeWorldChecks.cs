@@ -114,6 +114,9 @@ namespace NativeWorldTextProbe
             // More than the reserve can be geometrically visible at the top edge
             // while their text is above it. They cannot lock out farther text.
             Main.tile = new Tile[256, 128]; Main.sign = new Sign[32000]; source.EndSession(); discovery.Clear(); layer.Clear();
+            // The body now touches the art and its shadow extends below it.
+            // Move the viewport 4 pixels down so even that shadow is offscreen.
+            Main.screenPosition = new Vector2(0, 4);
             for (int i = 0; i < 60; i++) { Put(i * 2, 0, 55, 0, 2); Main.sign[i] = new Sign { x = i * 2, y = 0, text = "top" }; }
             for (int i = 0; i < 40; i++) { int x = 2 + i % 20 * 2, y = 15 + i / 20 * 4; Put(x, y, 55, 0, 2); Main.sign[60 + i] = new Sign { x = x, y = y, text = "visible" }; }
             Main.LocalPlayer.position = Vector2.Zero;
@@ -121,8 +124,7 @@ namespace NativeWorldTextProbe
             for (int i = 0; i < 70; i++) { world.BeginTick(); discovery.Update(settings, null); layer.Prepare(settings); }
             graphics.DrawWorld(layer, Path.Combine(output, "native-world-backfill.png"));
             Require(layer.Failure == null && layer.LastDrawn == 40, "fully cropped nearest objects cannot consume the sign reserve forever");
-            // With ink-bottom anchoring, trailing empty lines no longer push A
-            // offscreen at Y=2. Put the actual object top at the viewport edge.
+            // Trailing empty lines must not change the same offscreen result.
             for (int i = 0; i < 60; i++) { Put(i * 2, 0, 55, 0, 2); Main.sign[i] = new Sign { x = i * 2, y = 0, text = "A\n\n\n\n\n\n\n\n\n" }; }
             settings = settings.WithMode(WorldObjectKind.Sign, WorldObjectMode.All);
             for (int i = 0; i < 90; i++) { world.BeginTick(); discovery.Update(settings, null); layer.Prepare(settings); }

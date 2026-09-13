@@ -21,7 +21,20 @@ namespace JueMingR.TerrariaHost.EntityLabels
         private string reportedPreference, reportedCapability;
         internal readonly EntityLabelFeature Feature;
         internal readonly EntityWorldLayer World;
-        internal bool LayersReady { get; set; }
+        private const string LayerUnavailableMessage = "显名绘制层不可用，选择已保留。";
+        private Rendering.WorldLayerStatus layerStatus;
+        internal Rendering.WorldLayerStatus LayerStatus
+        {
+            get { return layerStatus; }
+            set
+            {
+                // Feedback may be hidden through recovery. End only the layer
+                // failure's deduplication here, not an unrelated feature error.
+                if (layerStatus == Rendering.WorldLayerStatus.Unavailable && value == Rendering.WorldLayerStatus.Ready && reportedCapability == LayerUnavailableMessage) reportedCapability = null;
+                layerStatus = value;
+            }
+        }
+        internal bool LayersReady { get { return LayerStatus == Rendering.WorldLayerStatus.Ready; } }
         internal long SessionGeneration { get { return runtime.IsSessionActive ? runtime.Generation : -1; } }
         internal HostEntityLabels(string gameDirectory, SingleFeatureRuntime runtime)
         {
@@ -78,12 +91,13 @@ namespace JueMingR.TerrariaHost.EntityLabels
         {
             string message = PreferenceMessage;
             if (Preferences.IsLoaded && message != null && message != reportedPreference) { display(message); reportedPreference = message; }
-            string capability = !Enabled && !Feature.HasFailed ? null : !LayersReady ? "显名绘制层不可用，选择已保留。" :
+            string capability = !Enabled && !Feature.HasFailed ? null : LayerStatus == Rendering.WorldLayerStatus.Unavailable ? LayerUnavailableMessage :
                 World.Failure != null || Feature.HasFailed ? "显名本次已停止：" + (World.Failure ?? Feature.UnavailableReason) :
                 Feature.UnavailableReason != null ? "显名观察暂不可用，选择已保留。" :
                 source.FailedObjects > 0 || Feature.UnresolvedGroups > 0 ? "部分显名对象或生命关系尚未可靠取得，已跳过；其它对象继续显示。" :
                 World.FontUnavailable ? "显名字体暂不可用，选择已保留。" : null;
             if (capability != null && capability != reportedCapability) { display(capability); reportedCapability = capability; }
+            if (capability == null) reportedCapability = null;
         }
         private void OnExit(object sender, EventArgs args)
         { AppDomain.CurrentDomain.ProcessExit -= OnExit; stopping = true; preferences.Stop(750); }

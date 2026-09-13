@@ -40,7 +40,7 @@ namespace NativeWorldTextProbe
             {
                 Until(() => { Call(context, "UpdateRuntime"); bindings.Poll(); return bindings.Loaded && (bool)Get(Get(host, "Preferences"), "IsLoaded"); });
                 var layers = new List<GameInterfaceLayer> { new LegacyGameInterfaceLayer("Vanilla: Ingame Options", () => true, InterfaceScaleType.UI) };
-                worker.GetMethod("EnsureEntityLayer", Flags).Invoke(null, new object[] { layers });
+                worker.GetMethod("EnsureEntityLayer", Flags).Invoke(null, new object[] { layers, true });
                 Require(layers.Count == 2 && layers[0].Name == "JueMingR: Entity Labels" && layers[0].ScaleType == InterfaceScaleType.Game && (bool)Get(host, "LayersReady"), "one composed Game layer enables actual controls");
                 Require(registry.Actions.Count == oldIds.Length + ids.Length && oldIds.All(id => bindings.Get(id) != null) && ids.All(id => bindings.Get(id) == null), "all twelve old bindings preserved and three new actions unbound");
                 Require(!Value(host).AnyEnabled && (bool)Get(host, "ControlsEnabled"), "actual production default off with usable controls");

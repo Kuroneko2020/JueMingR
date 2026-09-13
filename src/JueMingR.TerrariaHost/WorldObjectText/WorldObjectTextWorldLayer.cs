@@ -114,8 +114,7 @@ namespace JueMingR.TerrariaHost.WorldObjectText
                 {
                     var packet = packets[i]; var value = packet.Value;
                     if (value.Kind == WorldObjectKind.Chest ? chests == 240 : value.Kind == WorldObjectKind.Sign ? signs == 40 : tombstones == 40) continue;
-                    float anchor = value.TileY * 16 - Main.screenPosition.Y;
-                    if (Main.LocalPlayer != null && Main.LocalPlayer.gravDir == -1) anchor = Main.screenHeight - anchor - 32;
+                    float anchor = Anchor(value);
                     var position = Position(value, packet.Layout, anchor);
                     if (!packet.Layout.HasVisibleInk(position, zoom, Main.screenWidth, Main.screenHeight)) continue;
                     packet.Layout.Draw(Main.spriteBatch, position);
@@ -133,11 +132,10 @@ namespace JueMingR.TerrariaHost.WorldObjectText
         internal bool MayPresent(WorldObject value, string text, WorldObjectStyle style)
         {
             Matrix zoom = Main.GameViewMatrix.ZoomMatrix;
-            float anchor = value.TileY * 16 - Main.screenPosition.Y;
-            if (Main.LocalPlayer != null && Main.LocalPlayer.gravDir == -1) anchor = Main.screenHeight - anchor - 32;
-            // Every label lies above this bottom edge. This cheap exact rejection
-            // prevents any number of top-edge objects from consuming the reserve.
-            if (Vector2.Transform(new Vector2(0, anchor), zoom).Y <= 0) return false;
+            float anchor = Anchor(value);
+            // Include the shadow below the body/art contact in this early bound;
+            // a thin visible shadow is eligible just like HasVisibleInk in Draw.
+            if (Vector2.Transform(new Vector2(0, anchor + 1.5f), zoom).Y <= 0) return false;
             Entry entry; float width = Math.Min(460 * style.Size / 100f, Math.Max(32, Main.screenWidth / zoom.M11 - 24));
             if (!cache.TryGetValue(value.Key, out entry) || !entry.Layout.Ready || !entry.Matches(new WorldObjectTextCandidate { Value = value, Text = text }, style, width)) return true;
             entry.Seen = epoch + 1; age.Remove(entry.Node); age.AddLast(entry.Node);
@@ -146,11 +144,13 @@ namespace JueMingR.TerrariaHost.WorldObjectText
         }
         private static Vector2 Position(WorldObject value, NativeWorldTextLayout layout, float anchor)
         {
-            // Complete-object center: a dresser is 3x2 (+24 X), a chest 2x2
-            // (+16 X). Both are 32 high under gravity inversion. The native
-            // glyph/shadow bottom, rather than the line box, touches this top.
-            return new Vector2(value.CenterX - Main.screenPosition.X - layout.Width / 2, anchor - layout.VisualBottom);
+            // Complete-object center: dresser +24 X, chest +16 X. Align the
+            // body bottom to visible art, allowing its 1.5-world-pixel shadow
+            // to overlap the edge. Keep full shadow bounds for viewport checks.
+            return new Vector2(value.CenterX - Main.screenPosition.X - layout.Width / 2, anchor - layout.VisualBottom + 1.5f);
         }
+        private static float Anchor(WorldObject value)
+        { return NativeWorldObjectBounds.AnchorY(value, Main.screenPosition.Y, Main.screenHeight, Main.LocalPlayer != null && Main.LocalPlayer.gravDir == -1); }
         internal bool IsPrepared(WorldObject value, string text, WorldObjectStyle style)
         {
             Entry entry; float width = Math.Min(460 * style.Size / 100f, Math.Max(32, Main.screenWidth / Main.GameViewMatrix.ZoomMatrix.M11 - 24));

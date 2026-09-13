@@ -17,6 +17,7 @@
     <Compile Include="..\..\src\JueMingR.TerrariaHost\WorldObjectText\WorldObjectHostObservation.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\WorldObjectText\OpenedContainerObserver.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\WorldObjectText\WorldObjectTextWorldLayer.cs" />
+    <Compile Include="..\..\src\JueMingR.TerrariaHost\WorldObjectText\NativeWorldObjectBounds.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\World\WorldTileObservation.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\Rendering\WorldPresentation.cs" />
   </ItemGroup>

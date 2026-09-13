@@ -34,6 +34,7 @@ namespace NativeWorldTextProbe
             Require(parsed.Count == 1 && parsed[0].Text == "literal" && parsed[0].Color == Color.Red, "actual native color parser");
             Console.WriteLine("PASS: real ChatManager assembly, MVID, hash and parser; no fixture Terraria assembly.");
             NativeTextAnchorChecks.Metrics();
+            NativeLayerReadinessChecks.Run();
             if (content == "--metrics") return 0;
             using (var graphics = new ProbeGraphics(content))
             {

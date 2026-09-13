@@ -100,16 +100,42 @@ namespace NativeWorldTextProbe
                 for (int y = 0; y < 50; y++) for (int x = 0; x < 75; x++)
                 {
                     var tile = Terraria.Main.tile[x, y]; if (tile == null || !tile.active()) continue;
-                    Texture2D texture;
-                    if (!tiles.TryGetValue(tile.type, out texture))
-                    { using (var stream = File.OpenRead(Path.Combine(contentDirectory, "Images", "Tiles_" + tile.type + ".xnb"))) texture = reader.FromStream<Texture2D>(stream); tiles.Add(tile.type, texture); }
+                    var texture = TileTexture(tile.type);
+                    int frameX = tile.frameX, frameY = tile.frameY;
+                    if (tile.type == 88) { frameY += 36 * (frameX / 1998); frameX %= 1998; }
+                    int height = IsChest(tile.type) && tile.frameY == 18 ? 18 : 16;
                     var position = new Vector2(x * 16, y * 16) - Terraria.Main.screenPosition;
-                    if (Terraria.Main.LocalPlayer.gravDir == -1) position.Y = Terraria.Main.screenHeight - position.Y - 16;
-                    batch.Draw(texture, position, new Rectangle(tile.frameX, tile.frameY, 16, 16), Color.White, 0, Vector2.Zero, 1,
+                    if (tile.type == 85) position.Y += 2;
+                    if (Terraria.Main.LocalPlayer.gravDir == -1) position.Y = Terraria.Main.screenHeight - position.Y - height;
+                    batch.Draw(texture, position, new Rectangle(frameX, frameY, 16, height), Color.White, 0, Vector2.Zero, 1,
                         Terraria.Main.LocalPlayer.gravDir == -1 ? SpriteEffects.FlipVertically : SpriteEffects.None, 0);
                 }
                 layer.Draw();
             }, Terraria.Main.GameViewMatrix.ZoomMatrix);
+        }
+        private Texture2D TileTexture(int type)
+        {
+            Texture2D texture;
+            if (!tiles.TryGetValue(type, out texture))
+            { using (var stream = File.OpenRead(Path.Combine(contentDirectory, "Images", "Tiles_" + type + ".xnb"))) texture = reader.FromStream<Texture2D>(stream); tiles.Add(type, texture); }
+            return texture;
+        }
+        private static bool IsChest(int type) { return type == 21 || type == 441 || type == 467 || type == 468; }
+        internal Rectangle ObjectArtBounds(int type, int style, int width)
+        {
+            // Test-only texture readback. Reproduce .8 closed source slices,
+            // including 18-high chest bottom tiles and dresser style wrapping.
+            var texture = TileTexture(type); var pixels = new Color[texture.Width * texture.Height]; texture.GetData(pixels);
+            int left = width * 16, right = -1, top = 34, bottom = -1;
+            for (int y = 0; y < (IsChest(type) ? 34 : 32); y++) for (int x = 0; x < width * 16; x++)
+            {
+                int sourceX = (type == 88 ? style % 37 : style) * width * 18 + x / 16 * 18 + x % 16;
+                int sourceY = y + (y >= 16 ? 2 : 0) + (type == 88 ? style / 37 * 36 : 0);
+                if (pixels[sourceY * texture.Width + sourceX].A == 0) continue;
+                left = Math.Min(left, x); right = Math.Max(right, x); top = Math.Min(top, y); bottom = Math.Max(bottom, y);
+            }
+            if (bottom < 0) throw new InvalidOperationException("Empty native art fixture");
+            return new Rectangle(left, top + (type == 85 ? 2 : 0), right - left + 1, bottom - top + 1);
         }
         public void Dispose() { foreach (var texture in tiles.Values) texture.Dispose(); costCanvas?.Dispose(); reader?.Dispose(); batch?.Dispose(); GraphicsDevice?.Dispose(); if (window != IntPtr.Zero) { DestroyWindow(window); window = IntPtr.Zero; } }
         private Asset<T> Loaded<T>(string name, T value) where T : class

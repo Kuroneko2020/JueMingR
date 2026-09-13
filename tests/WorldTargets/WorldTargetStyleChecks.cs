@@ -24,7 +24,7 @@ namespace Terraria
         {
             string root = Path.Combine(Path.GetTempPath(), "JueMingR-WorldStyles-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
             var runtime = new SingleFeatureRuntime(new Probe(), new Idle());
-            var targets = new HostWorldTargets(root, runtime) { LayersReady = true }; var labels = new HostEntityLabels(root, runtime);
+            var targets = new HostWorldTargets(root, runtime) { LayerStatus = JueMingR.TerrariaHost.Rendering.WorldLayerStatus.Ready }; var labels = new HostEntityLabels(root, runtime);
             runtime.AddFeature(targets); runtime.Update(0);
             var document = Document<WorldTargetSettings>(targets); var entityDocument = Document<EntityLabelSettings>(labels);
             bool stopped = false, focused = true;
