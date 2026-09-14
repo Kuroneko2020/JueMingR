@@ -10,6 +10,12 @@ namespace JueMingR.ArchitectureTests
         {
             try
             {
+                if (args.Length == 1 && args[0] == "--guidance")
+                {
+                    var checks = new List<string>(); GuidanceTests.Check(checks);
+                    foreach (string failure in checks) Console.Error.WriteLine(failure);
+                    return checks.Count == 0 ? 0 : 1;
+                }
                 if (args.Length == 2 && args[0] == "--preference-storage-probe")
                     return PreferenceStorageChecks.RunWriterProbe(args[1]);
                 if (args.Length == 2 && (args[0] == "--workload-core" || args[0] == "--workload-storage"))
@@ -42,6 +48,7 @@ namespace JueMingR.ArchitectureTests
                 Phase0TArchitectureChecks.Check(failures);
                 PreferenceChecks.Check(failures);
                 InformationTests.Check(failures);
+                GuidanceTests.Check(failures);
                 PreferenceConcurrencyChecks.Check(failures);
                 EntityLabelSettingsChecks.Check(failures);
                 EntityLabelRulesChecks.Check(failures);

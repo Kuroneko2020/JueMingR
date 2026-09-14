@@ -35,6 +35,9 @@ namespace JueMingR.ArchitectureTests
         {
             var expected = new HashSet<string>(StringComparer.Ordinal)
             {
+                "JueMingR.Platform.Guidance.NpcDemand", "JueMingR.Platform.Guidance.GuidanceNpc", "JueMingR.Platform.Guidance.IGuidanceNpcSource",
+                "JueMingR.Platform.Guidance.GuidancePylon", "JueMingR.Platform.Guidance.IGuidanceLocationSource",
+                "JueMingR.Platform.Guidance.MerchantTestRequest", "JueMingR.Platform.Guidance.MerchantTestReceipt", "JueMingR.Platform.Guidance.IMerchantTestPort",
                 "JueMingR.Platform.Information.InformationKind", "JueMingR.Platform.Information.InformationAvailability",
                 "JueMingR.Platform.Information.InfectionObservation", "JueMingR.Platform.Information.LuckObservation", "JueMingR.Platform.Information.AnglerObservation",
                 "JueMingR.Platform.WorldObjectText.WorldObjectKind", "JueMingR.Platform.WorldObjectText.WorldObjectMode",
