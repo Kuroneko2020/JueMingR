@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using JueMingR.Platform.Information;
 using Terraria;
 using Terraria.ID;
@@ -6,22 +7,39 @@ using Terraria.Localization;
 
 namespace JueMingR.TerrariaHost.Information
 {
+    internal enum QuestTextStatus { NotReady, Ready, MissingKey, UnsupportedFormat, ReadFailed }
     internal sealed class InformationObservationReader
     {
         private readonly InformationReadiness readiness;
         private int localizedItem = -1;
         private object culture;
         private string questName, questLocation;
+        private string parsedText, parsedName, parsedLocation;
+        private bool hasParsedText, retryRead, attached;
+        private int resourceGeneration, attemptedGeneration = -1, readFailures;
+        internal QuestTextStatus NameStatus { get; private set; }
+        internal QuestTextStatus LocationStatus { get; private set; }
         private long epoch = -1;
 #if DEBUG
         internal int NpcQueries { get; private set; }
         internal int NpcVisits { get; private set; }
         internal int ScalarSamples { get; private set; }
         internal int LocalizationReads { get; private set; }
+        internal int LocationParses { get; private set; }
 #endif
         internal InformationObservationReader(InformationReadiness readiness) { this.readiness = readiness; }
         internal long NativeEpoch { get { return readiness.Snapshot().Epoch; } }
-        internal void Clear() { localizedItem = -1; culture = null; questName = questLocation = null; epoch = -1; }
+        internal void Attach() { if (!attached) { LanguageManager.Instance.OnLanguageChanged += ResourcesChanged; attached = true; } }
+        internal void Detach() { if (attached) { LanguageManager.Instance.OnLanguageChanged -= ResourcesChanged; attached = false; } Clear(); }
+        // T8 raises this after native, pack and copied texts finish reloading,
+        // including same-culture UseSources/HotReload. No resource reads here.
+        private void ResourcesChanged(LanguageManager manager) { Interlocked.Increment(ref resourceGeneration); }
+        internal void Clear()
+        {
+            localizedItem = -1; culture = null; questName = questLocation = null; epoch = -1;
+            parsedText = parsedName = parsedLocation = null; hasParsedText = retryRead = false;
+            attemptedGeneration = -1; readFailures = 0; NameStatus = LocationStatus = QuestTextStatus.NotReady;
+        }
         internal void Update(HostInformation host)
         {
             var settings = host.Preferences.Value;
@@ -107,34 +125,82 @@ namespace JueMingR.TerrariaHost.Information
         private void Localize(int item)
         {
             object currentCulture = Language.ActiveCulture;
-            if (localizedItem == item && ReferenceEquals(culture, currentCulture)) return;
-            localizedItem = item; culture = currentCulture; questName = questLocation = null;
+            int generation = Volatile.Read(ref resourceGeneration);
+            bool identityChanged = localizedItem != item || !ReferenceEquals(culture, currentCulture);
+            bool newInput = identityChanged || attemptedGeneration != generation;
+            if (!newInput && !retryRead) return;
+            if (identityChanged) hasParsedText = false;
+            if (newInput) readFailures = 0;
+            localizedItem = item; culture = currentCulture; attemptedGeneration = generation; retryRead = false;
+            questName = questLocation = null; NameStatus = LocationStatus = QuestTextStatus.NotReady;
 #if DEBUG
             LocalizationReads++;
 #endif
             try
             {
-                questName = Lang.GetItemNameValue(item);
                 string internalName = ItemID.Search.GetName(item);
                 if (String.IsNullOrEmpty(internalName)) return;
+                string nameKey = "ItemName." + internalName;
+                string name = Language.GetText(nameKey).UnformattedValue;
+                NameStatus = TextStatus(name, nameKey);
+                if (NameStatus == QuestTextStatus.Ready) questName = name;
                 string key = "AnglerQuestText.Quest_" + internalName;
                 // Only the final location line is needed. Value would expand
                 // narrative NPC-name variables and perform unrelated searches.
                 string value = Language.GetText(key).UnformattedValue;
-                if (value == key) return;
-                questLocation = ParseLocation(value);
+                LocationStatus = TextStatus(value, key);
+                if (LocationStatus != QuestTextStatus.Ready) return;
+                // LocalizedText may be reused and SetValue may change its raw
+                // string. Compare content only after the real completion event.
+                if (!hasParsedText || !String.Equals(parsedText, value, StringComparison.Ordinal) || !String.Equals(parsedName, questName, StringComparison.Ordinal))
+                {
+#if DEBUG
+                    LocationParses++;
+#endif
+                    parsedLocation = ParseLocation(value, questName);
+                    parsedText = value; parsedName = questName; hasParsedText = true;
+                }
+                questLocation = parsedLocation;
+                if (questLocation == null) LocationStatus = QuestTextStatus.UnsupportedFormat;
             }
-            catch { questLocation = null; }
+            catch
+            {
+                if (questName == null) NameStatus = QuestTextStatus.ReadFailed;
+                LocationStatus = QuestTextStatus.ReadFailed; questLocation = null;
+                // One isolated read failure gets one subsequent demand attempt.
+                // Persistent failure waits for a real resource/key change, with
+                // no timer, repeated exceptions or per-frame localization.
+                retryRead = ++readFailures == 1;
+            }
         }
-        internal static string ParseLocation(string value)
+        private static QuestTextStatus TextStatus(string value, string key)
+        { return value == key ? QuestTextStatus.MissingKey : String.IsNullOrWhiteSpace(value) ? QuestTextStatus.NotReady : QuestTextStatus.Ready; }
+        internal static string ParseLocation(string value, string name)
         {
-            if (String.IsNullOrEmpty(value)) return null;
-            string last = value.TrimEnd(); int newline = last.LastIndexOf('\n'); if (newline >= 0) last = last.Substring(newline + 1).Trim();
-            string prefix = last.StartsWith("(Caught in ", StringComparison.Ordinal) ? "(Caught in " :
-                last.StartsWith("（抓捕位置：", StringComparison.Ordinal) ? "（抓捕位置：" : null;
-            char closing = prefix == "(Caught in " ? ')' : '）';
-            if (prefix == null || last.Length <= prefix.Length + 1 || last[last.Length - 1] != closing) return null;
-            string location = last.Substring(prefix.Length, last.Length - prefix.Length - 1).Trim();
+            if (String.IsNullOrEmpty(value) || value.Length > 16384) return null;
+            string last = value.TrimEnd(); int newline = Math.Max(last.LastIndexOf('\n'), last.LastIndexOf('\r'));
+            last = last.Substring(newline + 1).Trim();
+            if (last.Length < 3 || last.Length > 768 || !(last[0] == '(' && last[last.Length - 1] == ')' || last[0] == '（' && last[last.Length - 1] == '）')) return null;
+            string annotation = last.Substring(1, last.Length - 2).Trim();
+            // The enabled translation pack labels its terminal annotation with
+            // the current fish name. Require that exact name, never story text
+            // or a different fish's parenthesis, before accepting its location.
+            if (!String.IsNullOrEmpty(name) && annotation.StartsWith(name, StringComparison.Ordinal))
+            {
+                string tail = annotation.Substring(name.Length).TrimStart();
+                if (tail.Length == 0 || tail[0] != ',' && tail[0] != '，') return null;
+                annotation = tail.Substring(1).TrimStart();
+            }
+            string location;
+            if (annotation.StartsWith("Caught in", StringComparison.Ordinal) && annotation.Length > 9 && Char.IsWhiteSpace(annotation[9])) location = annotation.Substring(10).Trim();
+            else
+            {
+                string label = annotation.StartsWith("抓捕位置", StringComparison.Ordinal) ? "抓捕位置" : annotation.StartsWith("捕获位置", StringComparison.Ordinal) ? "捕获位置" : null;
+                if (label == null) return null;
+                string tail = annotation.Substring(label.Length).TrimStart();
+                if (tail.Length == 0 || tail[0] != ':' && tail[0] != '：') return null;
+                location = tail.Substring(1).Trim();
+            }
             return location.Length > 0 && location.Length <= 512 && location.IndexOfAny(new[] { '(', ')', '（', '）' }) < 0 ? location : null;
         }
     }

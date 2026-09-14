@@ -38,6 +38,7 @@ namespace JueMingR.ArchitectureTests
             infection.Update(clean); long version = infection.Content.Version;
             for (int i = 0; i < 100; i++) infection.Update(clean);
             Require(infection.Content.Text.Contains("神圣 0%") && infection.Content.Version == version, "published zero remains valid and stable");
+            Require(infection.Content.Text.StartsWith("世界感染：", StringComparison.Ordinal) && !infection.Content.Text.Contains("最近统计"), "normal infection text leaves publication explanation to existing help");
 #if DEBUG
             Require(infection.TextBuilds == 2, "stable infection must not regenerate equal strings");
 #endif
@@ -45,7 +46,9 @@ namespace JueMingR.ArchitectureTests
             Require(infection.Content.Text.Contains("猩红 未知") && infection.Content.Text.Contains("腐化 0%"), "partial infection retains known zero");
             var angler = new AnglerSummary();
             var quest = new AnglerObservation { Availability = InformationAvailability.Ready, ItemType = 2450, Name = "蝙蝠鱼", Location = "地下和洞穴", Completed = 12, SubmittedToday = true };
-            angler.Update(quest); version = angler.Content.Version; quest.SubmittedToday = false; angler.Update(quest);
+            angler.Update(quest);
+            Require(angler.Content.Text == "渔夫任务：蝙蝠鱼；地点：地下和洞穴\n累计完成：12；今日：已提交", "name/location share the first logical line and personal facts the second");
+            version = angler.Content.Version; quest.SubmittedToday = false; angler.Update(quest);
             Require(angler.Content.Version > version && angler.Content.Text.Contains("未提交"), "same fish in a new cycle must refresh today");
             quest.Completed = 13; angler.Update(quest); Require(angler.Content.Text.Contains("13"), "personal count changes independently");
             quest = new AnglerObservation { Availability = InformationAvailability.Unavailable, Completed = 12 };

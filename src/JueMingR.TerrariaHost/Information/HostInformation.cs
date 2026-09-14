@@ -43,6 +43,7 @@ namespace JueMingR.TerrariaHost.Information
                 new InformationPreferenceCodec(), InformationPreferences.Default);
             position = new PreferenceDocument<WindowPosition>(new AtomicFileDocument(Path.Combine(config, "information-window.json"), 65536, true), new UiPreferenceCodec(), null);
             Hud = new InformationHud(this);
+            source.Attach();
             AppDomain.CurrentDomain.ProcessExit += OnExit;
         }
         internal PreferenceSnapshot<InformationPreferences> Preferences { get { return preferences.Snapshot; } }
@@ -176,6 +177,7 @@ namespace JueMingR.TerrariaHost.Information
         private void OnExit(object sender, EventArgs args)
         {
             AppDomain.CurrentDomain.ProcessExit -= OnExit;
+            source.Detach();
             FinishNormalAdjustment();
             stopping = true;
             var budget = Stopwatch.StartNew(); preferences.Stop(750); position.Stop(Math.Max(0, 750 - (int)budget.ElapsedMilliseconds));

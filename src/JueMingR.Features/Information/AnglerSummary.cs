@@ -27,7 +27,7 @@ namespace JueMingR.Features.Information
             { Content.Publish(InformationText.Status("渔夫任务", value.Availability, "需要已解救渔夫")); return; }
             string missing = value.Availability == InformationAvailability.Unavailable ? "暂不可用" : value.Availability == InformationAvailability.Waiting ? "等待同步" : "未知";
             Content.Publish("渔夫任务：" + (value.ItemType.HasValue && !String.IsNullOrEmpty(value.Name) ? value.Name : missing) +
-                "\n地点：" + (String.IsNullOrEmpty(value.Location) ? "未知" : value.Location) +
+                "；地点：" + (String.IsNullOrEmpty(value.Location) ? "未知" : value.Location) +
                 "\n累计完成：" + (value.Completed.HasValue && value.Completed >= 0 ? value.Completed.Value.ToString(CultureInfo.InvariantCulture) : "未知") +
                 "；今日：" + (!value.SubmittedToday.HasValue ? missing : value.SubmittedToday.Value ? "已提交" : "未提交"));
         }

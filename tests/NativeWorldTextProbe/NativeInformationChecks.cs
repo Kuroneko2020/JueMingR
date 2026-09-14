@@ -40,6 +40,7 @@ namespace NativeWorldTextProbe
                 Require(Get(renderer, "InformationControls") != null, "real shell must route information commands");
                 var controls = Get(renderer, "InformationControls");
                 var command = assembly.GetType("JueMingR.TerrariaHost.F5.F5Command", true);
+                Require(((string)Call(controls, "Hint", Enum.Parse(command, "ConfigureInfection"))).Contains("显示原版最近公布的统计，感染变化后不会立即刷新。"), "actual infection help explains publication cadence");
                 Call(controls, "Execute", Enum.Parse(command, "EnableLuck"));
                 Require((bool)Call(information, "Enabled", InformationKind.Luck), "actual F5 command must update the owning document");
                 NativeInformationConfigurationChecks.Run(context, information, root, oldActions);
@@ -127,18 +128,7 @@ namespace NativeWorldTextProbe
             string angler = ((JueMingR.Features.Information.AnglerSummary)Get(host, "Angler")).Content.Text;
             Require(angler.Contains("累计完成：12") && angler.Contains("不可用"), "real reader keeps local count when source observer unavailable");
             Set(readiness, "Installed", true);
-            foreach (string language in new[] { "en-US", "zh-Hans" })
-            {
-                Terraria.Localization.LanguageManager.Instance.SetLanguage(language);
-                Terraria.Lang.InitializeLegacyLocalization();
-                for (int i = 0; i < Main.anglerQuestItemNetIDs.Length; i++)
-                {
-                    Main.anglerQuest = i; Call(reader, "Localize", Main.anglerQuestItemNetIDs[i]);
-                    Require(GetOptional(reader, "questName") != null && GetOptional(reader, "questLocation") != null, "actual native quest name/location " + language + " #" + i + ": " +
-                        Terraria.Localization.Language.GetText("AnglerQuestText.Quest_" + Terraria.ID.ItemID.Search.GetName(Main.anglerQuestItemNetIDs[i])).UnformattedValue);
-                }
-            }
-            Terraria.Localization.LanguageManager.Instance.SetLanguage("en-US"); Terraria.Lang.InitializeLegacyLocalization();
+            NativeInformationLocalizationChecks.Run(context, host);
             foreach (InformationKind kind in new[] { InformationKind.Biome, InformationKind.Infection, InformationKind.Luck, InformationKind.Angler }) Call(host, "SetEnabled", kind, false);
             Call(context, "UpdateRuntime"); Call(host, "PrepareHud");
             reads = (int)Get(reader, "LocalizationReads"); queries = (int)Get(reader, "NpcQueries"); int scalars = (int)Get(reader, "ScalarSamples"); measures = (int)Get(hud, "Measurements");

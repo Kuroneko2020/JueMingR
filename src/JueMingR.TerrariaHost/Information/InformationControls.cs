@@ -69,6 +69,11 @@ namespace JueMingR.TerrariaHost.Information
                 (Color?)(IsEnable(command) ? Color.LightGreen : Color.IndianRed) : null;
         }
         internal void Execute(F5Command command) { var kind = Target(command); if (kind.HasValue && !IsStyle(command) && Available(command)) host.SetEnabled(kind.Value, IsEnable(command)); }
-        internal string Hint(F5Command command) { return !Available(command) ? (command == F5Command.AdjustInformation ? host.PositionMessage : host.PreferenceMessage) ?? "信息设置暂不可用" : IsStyle(command) ? "调整本项文字颜色与字号" : command == F5Command.AdjustInformation ? "拖动后松手完成；Esc、右键或 F5 取消" : "保留显示选择；条件和数据不足时显示简短说明"; }
+        internal string Hint(F5Command command)
+        {
+            if (!Available(command)) return (command == F5Command.AdjustInformation ? host.PositionMessage : host.PreferenceMessage) ?? "信息设置暂不可用";
+            if (Target(command) == InformationKind.Infection) return "显示原版最近公布的统计，感染变化后不会立即刷新。";
+            return IsStyle(command) ? "调整本项文字颜色与字号" : command == F5Command.AdjustInformation ? "拖动后松手完成；Esc、右键或 F5 取消" : "保留显示选择；条件和数据不足时显示简短说明";
+        }
     }
 }
