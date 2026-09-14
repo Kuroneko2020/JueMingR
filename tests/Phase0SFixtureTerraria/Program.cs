@@ -364,6 +364,10 @@ namespace Terraria
                         else F5ConsumerChecks.Run(main, mode == "expect-handoff-biome-failure");
                         AssertEvidenceReaderAllowsAppend(evidencePath, packageId);
 
+                        // The graphical consumer owns and disposes its batch.
+                        // Re-establish a coherent CPU font/batch and run the
+                        // actual preparation seam before injecting draw failure.
+                        PrepareAfterGraphicalConsumer(main);
                         global::Terraria.Main.FixtureThrowOnDraw = true;
                         main.DrawBiomeLayer();
                         int drawCountAfterFailure = global::Terraria.Main.FixtureDrawCount;
@@ -435,6 +439,15 @@ namespace Terraria
                 Console.Error.WriteLine("FAIL: fixture validation failed: {0}", exception);
                 return 1;
             }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void PrepareAfterGraphicalConsumer(Main main)
+        {
+            // Keep the ReLogic-owning helper out of entrypoint JIT: bootstrap
+            // must resolve that embedded assembly through the normal launch seam.
+            F5FixtureGraphics.PrepareHeadlessInformation();
+            main.RunUpdateLoop(1);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]

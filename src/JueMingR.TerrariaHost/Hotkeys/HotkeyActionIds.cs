@@ -2,6 +2,8 @@ namespace JueMingR.TerrariaHost.Hotkeys
 {
     internal static class HotkeyActionIds
     {
+        internal const string RareDirection = "rare-direction.toggle", MerchantDirection = "merchant-direction.toggle", EquipmentWarning = "equipment-warning.toggle";
+        internal static readonly string[] Guidance = { RareDirection, MerchantDirection, EquipmentWarning };
         internal const string Biome = "biome-display.toggle";
         internal const string AdjustInformation = "information-window.adjust";
         internal static string Information(Platform.Information.InformationKind kind)

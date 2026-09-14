@@ -43,6 +43,8 @@ namespace NativeWorldTextProbe
             Terraria.Main.netMode = 0; Terraria.Main.dedServ = false;
             Terraria.GameContent.FontAssets.MouseText = Loaded("probe-native-font", Font);
             using (var stream = File.OpenRead(Path.Combine(content, "Fonts", "Item_Stack.xnb"))) Terraria.GameContent.FontAssets.ItemStack = Loaded("probe-native-stack", reader.FromStream<DynamicSpriteFont>(stream));
+            using (var stream = File.OpenRead(Path.Combine(content, "Fonts", "Combat_Text.xnb"))) Terraria.GameContent.FontAssets.CombatText[0] = Loaded("probe-native-combat", reader.FromStream<DynamicSpriteFont>(stream));
+            using (var stream = File.OpenRead(Path.Combine(content, "Fonts", "Combat_Crit.xnb"))) Terraria.GameContent.FontAssets.CombatText[1] = Loaded("probe-native-combat-crit", reader.FromStream<DynamicSpriteFont>(stream));
             using (var stream = File.OpenRead(Path.Combine(content, "Images", "Item_8.xnb"))) Terraria.GameContent.TextureAssets.Item[8] = Loaded("Images/Item_8", reader.FromStream<Texture2D>(stream));
             using (var stream = File.OpenRead(Path.Combine(content, "Images", "Inventory_Back.xnb"))) Terraria.GameContent.TextureAssets.InventoryBack = Loaded("Images/Inventory_Back", reader.FromStream<Texture2D>(stream));
             using (var stream = File.OpenRead(Path.Combine(content, "Images", "MagicPixel.xnb"))) Terraria.GameContent.TextureAssets.MagicPixel = Loaded("Images/MagicPixel", reader.FromStream<Texture2D>(stream));

@@ -32,6 +32,7 @@ namespace JueMingR.TerrariaHost.F5
         private readonly WorldTargets.HostWorldTargets worldTargets;
         private readonly WorldObjectText.HostWorldObjectText worldObjects;
         private readonly Information.HostInformation information;
+        private readonly Guidance.HostGuidance guidance;
         private long labelSession = -1;
         private string reportedStyleFailure;
         private readonly System.Diagnostics.Stopwatch clickClock = System.Diagnostics.Stopwatch.StartNew();
@@ -48,7 +49,7 @@ namespace JueMingR.TerrariaHost.F5
 
         internal F5Shell(Phase0TBiomeRuntime biome, HostPreferences preferences, HostNotes hostNotes)
             : this(biome, preferences, hostNotes, null) { }
-        internal F5Shell(Phase0TBiomeRuntime biome, HostPreferences preferences, HostNotes hostNotes, HostItems hostItems, Input.HostInputState inputState = null, HostHotkeys hotkeys = null, HostEntityLabels labels = null, WorldTargets.HostWorldTargets worldTargets = null, WorldObjectText.HostWorldObjectText worldObjects = null, Information.HostInformation information = null)
+        internal F5Shell(Phase0TBiomeRuntime biome, HostPreferences preferences, HostNotes hostNotes, HostItems hostItems, Input.HostInputState inputState = null, HostHotkeys hotkeys = null, HostEntityLabels labels = null, WorldTargets.HostWorldTargets worldTargets = null, WorldObjectText.HostWorldObjectText worldObjects = null, Information.HostInformation information = null, Guidance.HostGuidance guidance = null)
         { this.biome = biome; this.preferences = preferences; this.hostItems = hostItems; notes = new NotesPresentation(hostNotes.Workspace); notes.Attach(State);
             this.inputState = inputState ?? new Input.HostInputState();
             this.hotkeys = hotkeys;
@@ -56,6 +57,8 @@ namespace JueMingR.TerrariaHost.F5
             this.worldTargets = worldTargets;
             this.worldObjects = worldObjects;
             this.information = information;
+            this.guidance = guidance;
+            if (guidance != null) renderer.GuidanceControls = new GuidanceControls(guidance);
             if (labels != null || worldTargets != null || worldObjects != null || information != null) StylePopup = new StylePopup(labels, this.inputState, worldTargets: worldTargets, worldObjects: worldObjects, information: information);
             if (information != null) renderer.InformationControls = new Information.InformationControls(information);
             if (labels != null) renderer.EntityControls = new EntityLabelControls(labels);
@@ -141,6 +144,18 @@ namespace JueMingR.TerrariaHost.F5
                     !Main.inFancyUI && capture != null && !capture.Active &&
                     (!notes.OtherTextOwner || (items != null && items.OwnsTextToken || StylePopup != null && StylePopup.TextInput.OwnsTextToken) && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest);
             }
+        }
+
+        // Input may be taken over by vanilla after this frame's button release.
+        // Recheck at the operation outlet, while retaining our own mouse lease.
+        internal bool CanExecuteMerchantInput
+        {
+            get { return !failed && State.Ready && State.Visible && CanPresentNow && inputState.CanStartActions &&
+                !PlayerInput.Triggers.Current.MapFull && !PlayerInput.Triggers.Current.ToggleCameraMode &&
+                !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest &&
+                Main.CurrentInputTextTakerOverride == null && !PlayerInput.WritingText &&
+                !(HotkeyPopup != null && HotkeyPopup.Visible) && !(StylePopup != null && StylePopup.Visible) &&
+                !(items != null && items.Selecting) && !(information != null && information.Adjustment.Active) && !adjustmentPending; }
         }
 
         internal void BeforeInput()
@@ -256,6 +271,7 @@ namespace JueMingR.TerrariaHost.F5
                 }
                 else if (State.Command == F5Command.AdjustInformation) RequestInformationAdjustment();
                 else { renderer.EntityControls?.Execute(State.Command); renderer.WorldControls?.Execute(State.Command); renderer.ObjectControls?.Execute(State.Command);
+                    renderer.GuidanceControls?.Execute(State.Command);
                     if (State.Command != F5Command.EnableBiome && State.Command != F5Command.DisableBiome) renderer.InformationControls?.Execute(State.Command); }
                 bool gameplay = inputActive && !(information != null && information.Adjustment.Active) && !adjustmentPending && !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest &&
                     Main.CurrentInputTextTakerOverride == null && !PlayerInput.WritingText && !OwnsPointer &&
@@ -302,6 +318,7 @@ namespace JueMingR.TerrariaHost.F5
                 if (!Main.gameMenu && !Main.hideUI)
                 {
                     preferences.TakeFeedback(displayPreferenceFeedback); hostItems?.TakeFeedback(displayPreferenceFeedback); labels?.TakeFeedback(displayPreferenceFeedback); worldTargets?.TakeFeedback(displayPreferenceFeedback); worldObjects?.TakeFeedback(displayPreferenceFeedback); information?.TakeFeedback(displayPreferenceFeedback);
+                    guidance?.TakeFeedback(displayPreferenceFeedback);
                     if (StylePopup?.Failure != null && StylePopup.Failure != reportedStyleFailure)
                     { reportedStyleFailure = StylePopup.Failure; displayPreferenceFeedback(reportedStyleFailure); }
                 }

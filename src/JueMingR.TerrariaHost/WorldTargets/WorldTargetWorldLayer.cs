@@ -78,6 +78,13 @@ namespace JueMingR.TerrariaHost.WorldTargets
         {
             if (arrow != null && !arrow.IsDisposed && ReferenceEquals(arrow.GraphicsDevice, device)) return;
             Clear();
+            arrow = CreateArrow(device);
+#if DEBUG
+            ResourceCreations++;
+#endif
+        }
+        internal static Texture2D CreateArrow(GraphicsDevice device)
+        {
             // One owned short, wide arrow on a square 20x20 canvas. The draw
             // origin/scale above use this same canvas, preserving world position.
             // White fill plus a one-pixel black border.
@@ -90,11 +97,8 @@ namespace JueMingR.TerrariaHost.WorldTargets
                 pixels[y * 20 + x] = !fill ? Color.Transparent : inner ? Color.White : Color.Black;
             }
             var created = new Texture2D(device, 20, 20);
-            try { created.SetData(pixels); arrow = created; }
+            try { created.SetData(pixels); return created; }
             catch { created.Dispose(); throw; }
-#if DEBUG
-            ResourceCreations++;
-#endif
         }
         private static bool Inside(int x, int y)
         {

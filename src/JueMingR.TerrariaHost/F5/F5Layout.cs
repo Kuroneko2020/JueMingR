@@ -27,7 +27,8 @@ namespace JueMingR.TerrariaHost.F5
         ConfigureChilletEgg, EnableChilletEgg, DisableChilletEgg,
         ConfigureChest, ChestAlways, ChestOpened, ChestOff,
         ConfigureSign, SignAll, SignLines, SignCharacters, SignOff, SignLess, SignMore,
-        ConfigureTombstone, TombstoneAll, TombstoneLines, TombstoneCharacters, TombstoneOff, TombstoneLess, TombstoneMore }
+        ConfigureTombstone, TombstoneAll, TombstoneLines, TombstoneCharacters, TombstoneOff, TombstoneLess, TombstoneMore,
+        EnableRare, DisableRare, EnableMerchant, DisableMerchant, EnableEquipment, DisableEquipment, SummonMerchant }
 
     internal sealed class F5Element
     {
@@ -144,6 +145,7 @@ namespace JueMingR.TerrariaHost.F5
             float y = 0;
             if (currentPage == 9) BuildInformation(ref y);
             else if (currentPage == 7) BuildFishing(ref y);
+            else if (currentPage == 1 || currentPage == 2 || currentPage == 8) GuidanceControls.AddRows(elements, TextSize, ref y, currentPage);
             ContentHeight = Math.Max(0, y - 6);
             screenWidth = width; screenHeight = height; uiScale = scale; page = currentPage;
             builtInformationRevision = informationRevision;

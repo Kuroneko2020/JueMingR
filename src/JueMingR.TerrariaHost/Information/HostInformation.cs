@@ -34,10 +34,10 @@ namespace JueMingR.TerrariaHost.Information
         internal long Tick { get; private set; }
         internal long Session { get { return biome.SharedRuntime.Generation; } }
         internal long NativeEpoch { get { return source.NativeEpoch; } }
-        internal HostInformation(string gameDirectory, Phase0TBiomeRuntime biome, HostPreferences biomePreferences, InformationReadiness readiness, Action<Exception> biomeFailure = null)
+        internal HostInformation(string gameDirectory, Phase0TBiomeRuntime biome, HostPreferences biomePreferences, InformationReadiness readiness, Action<Exception> biomeFailure = null, Npcs.NativeNpcObservation nativeNpcs = null)
         {
             this.biome = biome; this.biomePreferences = biomePreferences; this.biomeFailure = biomeFailure;
-            source = new InformationObservationReader(readiness);
+            source = new InformationObservationReader(readiness, nativeNpcs);
             string config = Path.Combine(gameDirectory, "JueMingRData", "config");
             preferences = new PreferenceDocument<InformationPreferences>(new AtomicFileDocument(Path.Combine(config, "features", "information-display.json"), 65536, true),
                 new InformationPreferenceCodec(), InformationPreferences.Default);

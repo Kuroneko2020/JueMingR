@@ -36,10 +36,10 @@ namespace JueMingR.TerrariaHost.EntityLabels
         }
         internal bool LayersReady { get { return LayerStatus == Rendering.WorldLayerStatus.Ready; } }
         internal long SessionGeneration { get { return runtime.IsSessionActive ? runtime.Generation : -1; } }
-        internal HostEntityLabels(string gameDirectory, SingleFeatureRuntime runtime)
+        internal HostEntityLabels(string gameDirectory, SingleFeatureRuntime runtime, Npcs.NativeNpcObservation nativeNpcs = null)
         {
             this.runtime = runtime;
-            source = new EntityHostObservation(() => runtime.IsSessionActive);
+            source = new EntityHostObservation(() => runtime.IsSessionActive, nativeNpcs);
             Feature = new EntityLabelFeature(source);
             World = new EntityWorldLayer(Feature.Labels, () => runtime.IsSessionActive && LayersReady);
             preferences = new PreferenceDocument<EntityLabelSettings>(new AtomicFileDocument(Path.Combine(gameDirectory,

@@ -11,6 +11,8 @@ namespace Terraria
         public int type, netID, life = 100, lifeMax = 100, realLife = -1;
         public short catchItem;
         public bool townNPC, hide;
+        public int rarity, homeTileX, homeTileY;
+        public bool boss, homeless;
         public bool CountsAsACritter { get; set; }
         public byte generation { get; set; }
         public float gfxOffY;
