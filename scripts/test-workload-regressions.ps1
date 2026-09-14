@@ -42,10 +42,11 @@ $fixture = Build-WorkloadFixture 'Phase0SFixtureTerraria'
 foreach ($mode in @('notes-input', 'entity-style', 'world-targets-style')) { Invoke-WorkloadCheck ('core-' + $mode) $fixture @($mode) }
 $native = Build-WorkloadFixture 'NativeWorldTextProbe'
 Invoke-WorkloadCheck 'core-native-host' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'native-cpu'), 'WorkloadCpu')
+if ($route.groups -contains 'shared-host') { Invoke-WorkloadCheck 'information-native-host' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'information-cpu'), 'InformationCpu') }
 $modes = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
 if ($route.groups -contains 'notes-host') { [void]$modes.Add('hotkeys-popup'); [void]$modes.Add('focus-input') }
 if ($route.groups -contains 'world-host') { foreach ($mode in @('world-targets-observation', 'world-targets-projection', 'entity-observation')) { [void]$modes.Add($mode) } }
-if ($route.groups -contains 'shared-host') { foreach ($mode in @('f5-cpu', 'focus-input', 'hotkeys-popup', 'entity-observation', 'entity-projection', 'entity-preferences', 'entity-controls', 'world-targets-observation', 'world-targets-projection', 'items-safety')) { [void]$modes.Add($mode) } }
+if ($route.groups -contains 'shared-host') { foreach ($mode in @('f5-cpu', 'focus-input', 'hotkeys-popup', 'entity-observation', 'entity-projection', 'entity-preferences', 'entity-controls', 'world-targets-observation', 'world-targets-projection', 'items-safety', 'information-defaults')) { [void]$modes.Add($mode) } }
 foreach ($mode in @($modes | Sort-Object)) { Invoke-WorkloadCheck $mode $fixture @($mode) }
 if ($route.groups -contains 'storage-host') { Invoke-WorkloadCheck 'storage-host' $architecture @('--workload-storage', $repositoryRoot) }
 if (@($changes.paths | Where-Object { $_ -match '^scripts/(workload/|test-workload-regressions\.ps1|build\.ps1)|^tests/Workload/' }).Count -gt 0) {

@@ -8,6 +8,7 @@
     <Reference Include="JueMingR.Features"><HintPath>..\..\artifacts\build\Debug\work\bin\JueMingR.Features\x86\Debug\net472\JueMingR.Features.dll</HintPath></Reference>
     <Reference Include="JueMingR.Infrastructure"><HintPath>..\..\artifacts\build\Debug\work\bin\JueMingR.Infrastructure\x86\Debug\net472\JueMingR.Infrastructure.dll</HintPath></Reference>
     <Reference Include="Terraria"><HintPath>..\..\external\TerrariaRefs\Terraria.exe</HintPath><Private>false</Private></Reference>
+    <Reference Include="0Harmony"><HintPath>..\..\external\Harmony\0Harmony.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="ReLogic"><HintPath>..\..\external\TerrariaRefs\ReLogic.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Microsoft.Xna.Framework"><HintPath>..\..\external\TerrariaRefs\Microsoft.Xna.Framework.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Microsoft.Xna.Framework.Graphics"><HintPath>..\..\external\TerrariaRefs\Microsoft.Xna.Framework.Graphics.dll</HintPath><Private>false</Private></Reference>

@@ -79,7 +79,7 @@ namespace Terraria
             Equal(1, dividers, "exactly one semantic content divider");
             // The accepted object-text contract adds the two previously absent
             // sign/tombstone entries. This counts artwork slots, not registry IDs.
-            Equal(17, keyboardSlots, "fifteen prior information slots plus sign and tombstone entries");
+            Equal(18, keyboardSlots, "seventeen prior information slots plus the shared position action");
             if (F5Layout.DisplayTitle != "决明R" || layout.TitleDivider.Y <= layout.Title.Bottom ||
                 layout.TitleDivider.Bottom >= layout.Navigation(0).Y)
                 throw new InvalidOperationException("Display-only Chinese title has its own fixed separator before navigation.");

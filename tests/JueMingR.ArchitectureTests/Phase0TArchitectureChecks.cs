@@ -12,6 +12,9 @@ namespace JueMingR.ArchitectureTests
             Assembly features = Assembly.Load("JueMingR.Features");
             var expected = new HashSet<string>(StringComparer.Ordinal)
             {
+                "JueMingR.Features.Information.InformationPreferences", "JueMingR.Features.Information.InformationStyle",
+                "JueMingR.Features.Information.InformationPreferenceCodec", "JueMingR.Features.Information.InformationText",
+                "JueMingR.Features.Information.InfectionSummary", "JueMingR.Features.Information.AnglerSummary", "JueMingR.Features.Information.LuckSummary",
                 "JueMingR.Features.WorldObjectText.WorldObjectResolver", "JueMingR.Features.WorldObjectText.WorldObjectSelection",
                 "JueMingR.Features.WorldObjectText.WorldObjectSettings", "JueMingR.Features.WorldObjectText.WorldObjectStyle", "JueMingR.Features.WorldObjectText.WorldObjectCodec",
                 "JueMingR.Features.Text.VisibleTextBoundary", "JueMingR.Features.WorldObjectText.WorldTextCursor",

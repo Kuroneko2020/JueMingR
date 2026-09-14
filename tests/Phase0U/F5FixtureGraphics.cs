@@ -18,6 +18,26 @@ namespace Terraria
         private IntPtr window;
         internal readonly GraphicsDevice Device;
         private readonly Texture2D texture;
+        internal static SpriteBatch HeadlessInformationBatch;
+        internal static void PrepareHeadlessInformation()
+        {
+            if (Main.spriteBatch != null) return;
+            // Only the GPU call boundary is doubled. The loaded Host still
+            // prepares its real shared HUD using ReLogic glyph measurements.
+            HeadlessInformationBatch = (SpriteBatch)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(SpriteBatch));
+            Main.spriteBatch = HeadlessInformationBatch;
+            var font = new DynamicSpriteFont(0, 20, '?');
+            Type pageType = typeof(DynamicSpriteFont).Assembly.GetType("ReLogic.Graphics.FontPage", true);
+            object page = Activator.CreateInstance(pageType, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null,
+                new object[] { null, new List<Rectangle> { new Rectangle(0, 0, 10, 20) }, new List<Rectangle> { new Rectangle(0, 0, 10, 20) },
+                    new List<char> { '?' }, new List<Vector3> { new Vector3(0, 10, 0) } }, null);
+            Array pages = Array.CreateInstance(pageType, 1); pages.SetValue(page, 0);
+            typeof(DynamicSpriteFont).GetMethod("SetPages", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(font, new object[] { pages });
+            var asset = (Asset<DynamicSpriteFont>)Activator.CreateInstance(typeof(Asset<DynamicSpriteFont>), BindingFlags.Instance | BindingFlags.NonPublic, null, new object[] { "headless-information" }, null);
+            typeof(Asset<DynamicSpriteFont>).GetMethod("SubmitLoadedContent", BindingFlags.Instance | BindingFlags.NonPublic)
+                .Invoke(asset, new object[] { font, new FileSystemContentSource(Environment.CurrentDirectory) });
+            GameContent.FontAssets.MouseText = asset;
+        }
         internal F5FixtureGraphics()
         {
             window = CreateWindowEx(0, "STATIC", "Phase 0-U fixture", 0, 0, 0, 1920, 1080,
@@ -107,6 +127,9 @@ namespace Terraria
         public static void DrawBorderStringFourWay(SpriteBatch batch, DynamicSpriteFont font, string text,
             float x, float y, Color textColor, Color borderColor, Vector2 origin, float scale = 1)
         {
+            if (text != null && text.StartsWith("群系: ", StringComparison.Ordinal))
+                DrawBorderString(batch, text, new Vector2(x, y), textColor, scale);
+            if (ReferenceEquals(batch, F5FixtureGraphics.HeadlessInformationBatch)) return;
             // Fault after headers, inside the clipped content batch.
             if (ThrowF5Text && text == "敌怪显名") throw new InvalidOperationException("Controlled F5 content draw failure.");
             F5TextDraws++;

@@ -16,10 +16,11 @@ namespace Terraria
                 "existing enemy row must carry real configure/enable/disable consumers");
             string[] expected = { "entity-labels.enemy.toggle", "entity-labels.critter.toggle", "entity-labels.npc.toggle", "biome-display.toggle",
                 "world-targets.life-crystal.toggle", "world-targets.life-fruit.toggle", "world-targets.mana-crystal.toggle", "world-targets.sleeping-digtoise.toggle", "world-targets.chillet-egg.toggle",
-                "world-object-text.chest.toggle", "world-object-text.sign.toggle", "world-object-text.tombstone.toggle" };
-            Check(layout.Elements.Where(e => e.HotkeyTarget != null).Select(e => e.HotkeyTarget).OrderBy(id => id).SequenceEqual(expected.OrderBy(id => id)), "old stable hotkey rows survive with exactly three new identities");
+                "world-object-text.chest.toggle", "world-object-text.sign.toggle", "world-object-text.tombstone.toggle",
+                "information.infection.toggle", "information.luck.toggle", "information.angler.toggle", "information-window.adjust" };
+            Check(layout.Elements.Where(e => e.HotkeyTarget != null).Select(e => e.HotkeyTarget).OrderBy(id => id).SequenceEqual(expected.OrderBy(id => id)), "existing hotkey rows survive with three summary toggles and one position action");
             Check(layout.Elements.Where(e => e.Command != F5Command.None).All(e => EntityLabelControls.Target(e.Command).HasValue || WorldTargetControls.Target(e.Command).HasValue || WorldObjectControls.Target(e.Command).HasValue ||
-                e.Command == F5Command.EnableBiome || e.Command == F5Command.DisableBiome), "only accepted information commands activate");
+                JueMingR.TerrariaHost.Information.InformationControls.Target(e.Command).HasValue || e.Command == F5Command.AdjustInformation), "only accepted information commands activate");
             var shell = new F5Interaction { Ready = true };
             shell.Update(new F5Input { Width = 1280, Height = 900, Scale = 1, Active = true, Focused = true, F5 = true });
             shell.Layout.Ensure(1280, 900, 1, 9, new object(), text => new F5Size(text.Length * 14, 24));

@@ -286,12 +286,14 @@ namespace JueMingR.TerrariaHost
                 harmony.Patch(npcHoverMethod, new HarmonyMethod(npcHoverPrefixMethod), null, null, null);
                 VerifyExactPatchInfo(npcHoverMethod, npcHoverPrefixMethod, manifest.PatchOwner, true);
                 Input.HostInputHooks.Install(harmony, inputTargets, postfixContext.Input);
+                postfixContext.InstallInformationSources();
                 // Publish readiness only after every exact patch and its evidence have succeeded.
                 EvidenceWriter.AppendEvent(evidencePath, manifest.PackageId, 3, "HOOK_INSTALLED");
                 Volatile.Write(ref hookCommitted, 1);
             }
             catch (Exception primaryException)
             {
+                postfixContext?.DisposeInformationSources();
                 Exception cleanupException = null;
                 if (patchAttempted)
                 {
@@ -580,7 +582,7 @@ namespace JueMingR.TerrariaHost
         private static void EnsureEntityLayer(List<GameInterfaceLayer> layers, bool setupComplete)
         {
             var context = postfixContext;
-            if (context == null || !(context.PackageId.StartsWith("entity-labels-", StringComparison.Ordinal) || context.PackageId.StartsWith("world-targets-", StringComparison.Ordinal) || context.PackageId.StartsWith("world-object-text-", StringComparison.Ordinal))) return;
+            if (context == null || !(context.PackageId.StartsWith("entity-labels-", StringComparison.Ordinal) || context.PackageId.StartsWith("world-targets-", StringComparison.Ordinal) || context.PackageId.StartsWith("world-object-text-", StringComparison.Ordinal) || context.PackageId.StartsWith("information-summary-", StringComparison.Ordinal))) return;
             try
             {
                 // Capture's early return precedes this Game-scale layer. Normal
@@ -734,45 +736,20 @@ namespace JueMingR.TerrariaHost
 
         private static bool DrawBiomeDisplayLayer()
         {
-            // Drawing consumes the published model only; observation stays on the Update cadence.
+            // One shared consumer replaces the former fixed-position biome
+            // drawing. All native observation and layout finish before Draw.
             try
             {
-                PostfixContext context = postfixContext;
-                Phase0TBiomeRuntime runtime = context == null ? null : context.Runtime;
-                BiomeDisplayViewModel viewModel = runtime == null ? null : runtime.CurrentViewModel;
-                if (runtime == null ||
-                    !runtime.FeatureEnabled ||
-                    viewModel == null ||
-                    !viewModel.Visible ||
-                    String.IsNullOrEmpty(viewModel.Text))
+                var information = postfixContext?.Information;
+                if (information != null)
                 {
-                    return true;
+                    if (information.Adjustment.Active) information.Pointer.Begin(information.Tick, information.Session);
+                    information.Hud.Draw(Terraria.Main.spriteBatch, information.Adjustment.Active);
                 }
-
-                const float scale = 0.72f;
-                const float lineBoxHeight = 40f * scale;
-                int clientHeight = Terraria.Main.screenHeight;
-                if (clientHeight <= 0)
-                {
-                    throw new InvalidOperationException("The Terraria client height is unavailable.");
-                }
-
-                float y = clientHeight * 0.45f;
-                if (y + lineBoxHeight > clientHeight)
-                {
-                    y = Math.Max(0f, clientHeight - lineBoxHeight);
-                }
-
-                Terraria.Utils.DrawBorderString(
-                    Terraria.Main.spriteBatch,
-                    viewModel.Text,
-                    new Vector2(20f, y),
-                    new Color(144, 238, 144, 255),
-                    scale);
             }
             catch (Exception exception)
             {
-                DisableBiomeFeature("BIOME_DRAW", exception);
+                postfixContext?.Information?.DisplayFailed(exception);
             }
 
             return true;
@@ -832,6 +809,15 @@ namespace JueMingR.TerrariaHost
             internal EntityLabels.HostEntityLabels Labels { get; private set; }
             internal WorldTargets.HostWorldTargets WorldTargets { get; private set; }
             internal WorldObjectText.HostWorldObjectText WorldObjects { get; private set; }
+            internal Information.HostInformation Information { get; private set; }
+            internal readonly Information.InformationReadiness InformationReadiness = new Information.InformationReadiness();
+            private Information.InformationSourceHooks informationHooks;
+            internal void InstallInformationSources()
+            {
+                if (!PackageId.StartsWith("information-summary-", StringComparison.Ordinal) || informationHooks != null) return;
+                informationHooks = new Information.InformationSourceHooks(InformationReadiness); informationHooks.Install();
+            }
+            internal void DisposeInformationSources() { informationHooks?.Dispose(); }
             private World.WorldTileObservation worldTiles;
 
             internal void RecordBiomeFailure(string stage, Exception exception)
@@ -864,7 +850,8 @@ namespace JueMingR.TerrariaHost
                 }
 
                 preferences = new HostPreferences(gameDirectory);
-                bool objectPackage = PackageId.StartsWith("world-object-text-", StringComparison.Ordinal);
+                bool informationPackage = PackageId.StartsWith("information-summary-", StringComparison.Ordinal);
+                bool objectPackage = informationPackage || PackageId.StartsWith("world-object-text-", StringComparison.Ordinal);
                 bool worldPackage = objectPackage || PackageId.StartsWith("world-targets-", StringComparison.Ordinal);
                 bool entityPackage = worldPackage || PackageId.StartsWith("entity-labels-", StringComparison.Ordinal);
                 bool hotkeyPackage = entityPackage || PackageId.StartsWith("unified-hotkeys-", StringComparison.Ordinal);
@@ -875,9 +862,12 @@ namespace JueMingR.TerrariaHost
                 if (entityPackage) { Labels = new EntityLabels.HostEntityLabels(gameDirectory, runtime.SharedRuntime) { LayerStatus = entityLayerStatus }; runtime.SharedRuntime.AddFeature(Labels); }
                 if (worldPackage) { worldTiles = new World.WorldTileObservation(() => runtime.SharedRuntime.IsSessionActive); WorldTargets = new WorldTargets.HostWorldTargets(gameDirectory, runtime.SharedRuntime, worldTiles) { LayerStatus = entityLayerStatus }; runtime.SharedRuntime.AddFeature(WorldTargets); }
                 if (objectPackage) { WorldObjects = new WorldObjectText.HostWorldObjectText(gameDirectory, runtime.SharedRuntime, worldTiles, () => items != null && items.World.AutomaticOperation) { LayerStatus = entityLayerStatus }; runtime.SharedRuntime.AddFeature(WorldObjects); }
+                Information = new Information.HostInformation(gameDirectory, runtime, preferences, InformationReadiness, error => RecordBiomeFailure("BIOME_DRAW", error));
+                runtime.SharedRuntime.AddFeature(Information);
                 notes = new Notes.HostNotes(gameDirectory);
-                var hotkeys = hotkeyPackage ? new Hotkeys.HostHotkeys(gameDirectory, runtime, preferences, items, Labels, WorldTargets, WorldObjects) : null;
-                Shell = new F5Shell(runtime, preferences, notes, items, Input, hotkeys, Labels, WorldTargets, WorldObjects) { LayersReady = f5LayersReady };
+                var hotkeys = hotkeyPackage ? new Hotkeys.HostHotkeys(gameDirectory, runtime, preferences, items, Labels, WorldTargets, WorldObjects,
+                    informationPackage ? Information : null, () => Shell != null && Shell.CanAdjustInformation, () => Shell?.RequestInformationAdjustment()) : null;
+                Shell = new F5Shell(runtime, preferences, notes, items, Input, hotkeys, Labels, WorldTargets, WorldObjects, Information) { LayersReady = f5LayersReady };
             }
 
             internal void UpdateRuntime()
@@ -894,6 +884,7 @@ namespace JueMingR.TerrariaHost
                 Labels?.PollPreferences();
                 WorldTargets?.PollPreferences();
                 WorldObjects?.PollPreferences();
+                Information?.PollPreferences();
                 current.SetFeatureEnabled(preferences.BiomeLoaded && preferences.BiomeEnabled);
                 worldTiles?.BeginTick();
                 current.Update(updateTick);
@@ -906,6 +897,7 @@ namespace JueMingR.TerrariaHost
                 Labels?.FailClosed();
                 WorldTargets?.FailClosed();
                 WorldObjects?.FailClosed();
+                Information?.FailClosed();
                 Phase0TBiomeRuntime current = runtime;
                 if (current != null)
                 {
@@ -913,7 +905,7 @@ namespace JueMingR.TerrariaHost
                 }
             }
 
-            internal void UpdateShell() { if (Shell != null) Shell.AfterUpdate(); }
+            internal void UpdateShell() { if (Shell != null) Shell.AfterUpdate(); Information?.PrepareHud(); }
         }
     }
 

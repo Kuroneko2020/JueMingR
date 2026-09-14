@@ -41,6 +41,7 @@ namespace JueMingR.ArchitectureTests
                 HotkeyStorageChecks.Check(repositoryRoot, failures);
                 Phase0TArchitectureChecks.Check(failures);
                 PreferenceChecks.Check(failures);
+                InformationTests.Check(failures);
                 PreferenceConcurrencyChecks.Check(failures);
                 EntityLabelSettingsChecks.Check(failures);
                 EntityLabelRulesChecks.Check(failures);

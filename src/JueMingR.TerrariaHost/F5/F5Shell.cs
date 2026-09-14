@@ -31,6 +31,7 @@ namespace JueMingR.TerrariaHost.F5
         private readonly HostEntityLabels labels;
         private readonly WorldTargets.HostWorldTargets worldTargets;
         private readonly WorldObjectText.HostWorldObjectText worldObjects;
+        private readonly Information.HostInformation information;
         private long labelSession = -1;
         private string reportedStyleFailure;
         private readonly System.Diagnostics.Stopwatch clickClock = System.Diagnostics.Stopwatch.StartNew();
@@ -39,20 +40,24 @@ namespace JueMingR.TerrariaHost.F5
         private Player leasedPlayer;
         private bool priorMouseInterface, hoverLease, priorMouseText;
         private bool failed, failureNotified, positionRestored;
+        private bool adjustmentPending;
+        private long adjustmentRequest;
         private Matrix matrix;
         internal bool LayersReady { get; set; }
         internal bool Failed { get { return failed; } }
 
         internal F5Shell(Phase0TBiomeRuntime biome, HostPreferences preferences, HostNotes hostNotes)
             : this(biome, preferences, hostNotes, null) { }
-        internal F5Shell(Phase0TBiomeRuntime biome, HostPreferences preferences, HostNotes hostNotes, HostItems hostItems, Input.HostInputState inputState = null, HostHotkeys hotkeys = null, HostEntityLabels labels = null, WorldTargets.HostWorldTargets worldTargets = null, WorldObjectText.HostWorldObjectText worldObjects = null)
+        internal F5Shell(Phase0TBiomeRuntime biome, HostPreferences preferences, HostNotes hostNotes, HostItems hostItems, Input.HostInputState inputState = null, HostHotkeys hotkeys = null, HostEntityLabels labels = null, WorldTargets.HostWorldTargets worldTargets = null, WorldObjectText.HostWorldObjectText worldObjects = null, Information.HostInformation information = null)
         { this.biome = biome; this.preferences = preferences; this.hostItems = hostItems; notes = new NotesPresentation(hostNotes.Workspace); notes.Attach(State);
             this.inputState = inputState ?? new Input.HostInputState();
             this.hotkeys = hotkeys;
             this.labels = labels;
             this.worldTargets = worldTargets;
             this.worldObjects = worldObjects;
-            if (labels != null || worldTargets != null || worldObjects != null) StylePopup = new StylePopup(labels, this.inputState, worldTargets: worldTargets, worldObjects: worldObjects);
+            this.information = information;
+            if (labels != null || worldTargets != null || worldObjects != null || information != null) StylePopup = new StylePopup(labels, this.inputState, worldTargets: worldTargets, worldObjects: worldObjects, information: information);
+            if (information != null) renderer.InformationControls = new Information.InformationControls(information);
             if (labels != null) renderer.EntityControls = new EntityLabelControls(labels);
             if (worldTargets != null) renderer.WorldControls = new WorldTargetControls(worldTargets);
             if (worldObjects != null) renderer.ObjectControls = new WorldObjectControls(worldObjects);
@@ -60,7 +65,7 @@ namespace JueMingR.TerrariaHost.F5
             {
                 HotkeyPopup = new HotkeyPopup(hotkeys.Bindings, hotkeys.Registry, this.inputState);
             }
-            if (hotkeys != null || labels != null || worldTargets != null || worldObjects != null) this.inputState.ClaimsHotkeyPointer = ClaimsPopupPointer;
+            if (hotkeys != null || labels != null || worldTargets != null || worldObjects != null || information != null) this.inputState.ClaimsHotkeyPointer = ClaimsPopupPointer;
             drawKeyboard = rect => renderer.Keyboard(Main.spriteBatch, rect);
             if (hostItems != null) { items = new ItemsPresentation(hostItems, State); items.HotkeyClicked = OpenHotkey; }
             Func<int, bool> prior = State.BeforeLeave;
@@ -80,7 +85,49 @@ namespace JueMingR.TerrariaHost.F5
             Vector2 point = Vector2.Transform(raw, Matrix.Invert(Main.UIScaleMatrix));
             return StylePopup != null && (StylePopup.HasCapture || StylePopup.ContainsPointer(point.X, point.Y)) || HotkeyPopup != null && HotkeyPopup.ContainsPointer(point.X, point.Y);
         }
-        internal bool OwnsPointer { get { return !failed && CanPresentNow && (inputState.HotkeyPointerOwned || State.OwnsPointer || notes.OwnsPointer || items != null && items.OwnsPointer || HotkeyPopup != null && HotkeyPopup.OwnsPointer || StylePopup != null && StylePopup.OwnsPointer); } }
+        internal bool OwnsPointer { get { return !failed && CanPresentNow && (information != null && information.Adjustment.Dragging || inputState.HotkeyPointerOwned || State.OwnsPointer || notes.OwnsPointer || items != null && items.OwnsPointer || HotkeyPopup != null && HotkeyPopup.OwnsPointer || StylePopup != null && StylePopup.OwnsPointer); } }
+
+        internal bool CanAdjustInformation { get { return information != null && information.PositionReady && biome.SharedRuntime.IsSessionActive && !failed && CanPresentNow && inputState.CanUseInput; } }
+        internal void RequestInformationAdjustment()
+        {
+            if (!CanAdjustInformation || information.Adjustment.Active || adjustmentPending ||
+                HotkeyPopup != null && HotkeyPopup.Capturing || StylePopup != null && StylePopup.HasCapture || items != null && items.Selecting) return;
+            long request = ++adjustmentRequest, session = information.Session;
+            bool returnToF5 = State.Visible;
+            Action<bool> completed = success =>
+            {
+                if (request != adjustmentRequest) return;
+                adjustmentPending = false;
+                if (!success || information.Session != session || !information.PositionReady || !CanPresentNow || failed) return;
+                HotkeyPopup?.Close(); StylePopup?.Close(); State.Close();
+                information.Adjustment.Begin(information.Position.Value, returnToF5, session, information.NativeEpoch, inputState.SampleFocused && NeutralAdjustmentInput());
+                information.Pointer.Invalidate(); information.PrepareHud();
+                if (!information.Hud.Visible) { information.Adjustment.Cancel(); if (returnToF5) State.RestoreVisible(); return; }
+                // Entry is one action. Its whole physical chord must end before
+                // the HUD can acquire a new press; no binding is replayed.
+                inputState.Hotkeys.SuppressHeld(); inputState.ConsumeHotkeyActions();
+            };
+            if (State.Visible && State.Page == 4)
+            {
+                adjustmentPending = true;
+                if (!notes.RequestSafeLeave(completed)) adjustmentPending = false;
+            }
+            else completed(State.BeforeLeave == null || !State.Visible || State.BeforeLeave(-1));
+        }
+        private void CancelInformationAdjustment(bool restore)
+        {
+            adjustmentRequest++; adjustmentPending = false;
+            if (information == null) return;
+            bool returnToF5 = information.Adjustment.Active && information.Adjustment.ReturnToF5;
+            information.Adjustment.Cancel(); information.Pointer.Invalidate();
+            information.Hud.Project(information.Position.Value);
+            if (restore && returnToF5 && CanPresentNow && !failed) State.RestoreVisible();
+        }
+        private bool NeutralAdjustmentInput()
+        {
+            for (int key = 0; key < HotkeyChord.KeyCount; key++) if (inputState.Hotkeys.IsDown(key)) return false;
+            return true;
+        }
 
         private bool CanPresentNow
         {
@@ -115,7 +162,19 @@ namespace JueMingR.TerrariaHost.F5
                 // Map/camera requests precede their modal flags and draw layers.
                 // The shell and Notes must yield the same newly sampled input.
                 bool inputActive = !failed && CanPresentNow && inputState.CanUseInput && !PlayerInput.Triggers.Current.MapFull && !PlayerInput.Triggers.Current.ToggleCameraMode;
-                Vector2 pointer = State.Visible || f5 ? Vector2.Transform(raw, Matrix.Invert(matrix)) : raw;
+                Vector2 pointer = Vector2.Transform(raw, Matrix.Invert(matrix));
+                bool adjusting = information != null && information.Adjustment.Active;
+                // Native menu entry is the ordinary world-exit edge. Preserve
+                // the last valid cached foreground sample before UI teardown;
+                // focus loss has already cancelled it in UpdatePrefix.
+                if (adjusting && Main.gameMenu && inputState.SampleFocused)
+                { information.FinishNormalAdjustment(); adjusting = false; }
+                if (adjusting && (!inputActive || !information.InputGeometryCurrent || inputState.Hotkeys.IsNew((int)Keys.Escape) || inputState.Hotkeys.IsNew(257) || f5))
+                {
+                    CancelInformationAdjustment(inputActive);
+                    inputState.Hotkeys.SuppressHeld(); inputState.ConsumeHotkeyActions(); f5 = false;
+                }
+                if (!inputActive && adjustmentPending) CancelInformationAdjustment(false);
                 if (StylePopup != null && StylePopup.Visible)
                 {
                     // Resource/viewport changes invalidate an in-flight gesture
@@ -143,6 +202,29 @@ namespace JueMingR.TerrariaHost.F5
                 if (!State.Visible) { HotkeyPopup?.Close(); StylePopup?.Close(); }
                 notes.ProcessInput(inputActive, matrix, screen, raw, inputState.SampleFocused, popupPointer, keySample);
                 items?.ProcessInput(inputActive, keySample, pointer, State.Layout.Matches(screen.X, screen.Y, matrix.M11, State.Page), inputState.SampleFocused, popupPointer);
+                if (information != null)
+                {
+                    var adjustment = information.Adjustment; bool wasActive = adjustment.Active;
+                    var mouse = PlayerInput.MouseInfo;
+                    WindowPosition submitted = adjustment.Step(new Information.InformationPointerSample
+                    {
+                        Active = inputActive, Focused = inputState.SampleFocused,
+                        Neutral = wasActive && !adjustment.Dragging && NeutralAdjustmentInput(),
+                        NewLeft = inputState.Hotkeys.IsNew(256), Left = mouse.LeftButton == ButtonState.Pressed,
+                        X = pointer.X, Y = pointer.Y, Geometry = information.Hud.GeometryVersion, Session = information.Session,
+                        NativeEpoch = wasActive ? information.NativeEpoch : 0,
+                        CanGrab = wasActive && information.Pointer.CanGrab(information.Tick, information.Session),
+                        HigherOwner = State.Visible || notes.OwnsPointer || items != null && items.OwnsPointer ||
+                            HotkeyPopup != null && HotkeyPopup.BlockPointer || StylePopup != null && StylePopup.BlockPointer ||
+                            wasActive && information.Pointer.NativeOwnsPointer(information.Tick, information.Session)
+                    }, information.Hud.Bounds);
+                    if (submitted != null) information.SetPosition(submitted);
+                    if (wasActive)
+                    {
+                        information.Hud.Project(adjustment.Draft ?? information.Position.Value);
+                        if (!adjustment.Active && inputActive && adjustment.ReturnToF5) State.RestoreVisible();
+                    }
+                }
                 if (State.ClickedHotkey != null)
                     OpenHotkey(State.ClickedHotkey.HotkeyTarget, State.ClickedHotkey.Rect.Offset(State.X + State.Layout.Viewport.X, State.Y + State.Layout.Viewport.Y - State.Scroll));
                 if (State.ClickedControl != null && EntityLabelControls.IsStyle(State.Command) && renderer.EntityControls != null && renderer.EntityControls.Available(State.Command))
@@ -155,7 +237,7 @@ namespace JueMingR.TerrariaHost.F5
                 SubmitPosition();
                 // Settings owns intent; the Feature still owns actual state and
                 // its failure latch. Loading or a failure cannot become a click.
-                if ((State.Command == F5Command.EnableBiome || State.Command == F5Command.DisableBiome) && Main.netMode == 0 && preferences.BiomeLoaded && !biome.FeatureFailed)
+                if ((State.Command == F5Command.EnableBiome || State.Command == F5Command.DisableBiome) && biome.CanObserveLocalPlayer && preferences.BiomeLoaded && !biome.FeatureFailed)
                     preferences.SetBiomeEnabled(State.Command == F5Command.EnableBiome);
                 else if (State.ClickedControl != null && WorldTargetControls.IsStyle(State.Command) && renderer.WorldControls != null && renderer.WorldControls.Available(State.Command))
                 {
@@ -167,8 +249,15 @@ namespace JueMingR.TerrariaHost.F5
                     HotkeyPopup?.Close();
                     StylePopup.Click(WorldObjectControls.Target(State.Command).Value, ControlRect(State.ClickedControl), State.Page);
                 }
-                else { renderer.EntityControls?.Execute(State.Command); renderer.WorldControls?.Execute(State.Command); renderer.ObjectControls?.Execute(State.Command); }
-                bool gameplay = inputActive && !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest &&
+                else if (State.ClickedControl != null && Information.InformationControls.IsStyle(State.Command) && renderer.InformationControls != null && renderer.InformationControls.Available(State.Command))
+                {
+                    HotkeyPopup?.Close();
+                    StylePopup.Click(Information.InformationControls.Target(State.Command).Value, ControlRect(State.ClickedControl), State.Page);
+                }
+                else if (State.Command == F5Command.AdjustInformation) RequestInformationAdjustment();
+                else { renderer.EntityControls?.Execute(State.Command); renderer.WorldControls?.Execute(State.Command); renderer.ObjectControls?.Execute(State.Command);
+                    if (State.Command != F5Command.EnableBiome && State.Command != F5Command.DisableBiome) renderer.InformationControls?.Execute(State.Command); }
+                bool gameplay = inputActive && !(information != null && information.Adjustment.Active) && !adjustmentPending && !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest &&
                     Main.CurrentInputTextTakerOverride == null && !PlayerInput.WritingText && !OwnsPointer &&
                     !(HotkeyPopup != null && HotkeyPopup.Visible) && !(StylePopup != null && StylePopup.Visible) && !(items != null && items.Selecting) &&
                     !(Main.LocalPlayer != null && Main.LocalPlayer.mouseInterface);
@@ -179,7 +268,7 @@ namespace JueMingR.TerrariaHost.F5
 
         private void ConsumeSample()
         {
-            if (State.ConsumeLeft || notes.ConsumeLeft || items != null && items.ConsumeLeft)
+            if (State.ConsumeLeft || notes.ConsumeLeft || items != null && items.ConsumeLeft || information != null && information.Adjustment.ConsumeLeft)
             {
                 PlayerInput.Triggers.Current.MouseLeft = false;
                 PlayerInput.Triggers.JustPressed.MouseLeft = false;
@@ -212,7 +301,7 @@ namespace JueMingR.TerrariaHost.F5
                 // Do not consume a required alert while normal game text is hidden.
                 if (!Main.gameMenu && !Main.hideUI)
                 {
-                    preferences.TakeFeedback(displayPreferenceFeedback); hostItems?.TakeFeedback(displayPreferenceFeedback); labels?.TakeFeedback(displayPreferenceFeedback); worldTargets?.TakeFeedback(displayPreferenceFeedback); worldObjects?.TakeFeedback(displayPreferenceFeedback);
+                    preferences.TakeFeedback(displayPreferenceFeedback); hostItems?.TakeFeedback(displayPreferenceFeedback); labels?.TakeFeedback(displayPreferenceFeedback); worldTargets?.TakeFeedback(displayPreferenceFeedback); worldObjects?.TakeFeedback(displayPreferenceFeedback); information?.TakeFeedback(displayPreferenceFeedback);
                     if (StylePopup?.Failure != null && StylePopup.Failure != reportedStyleFailure)
                     { reportedStyleFailure = StylePopup.Failure; displayPreferenceFeedback(reportedStyleFailure); }
                 }
@@ -306,7 +395,7 @@ namespace JueMingR.TerrariaHost.F5
                     notes.DrawPins();
                     if (State.Visible && State.Ready)
                     {
-                        renderer.Draw(State, matrix, biome.FeatureEnabled, Main.netMode != 0 || biome.FeatureFailed || !preferences.BiomeLoaded);
+                        renderer.Draw(State, matrix, biome.FeatureEnabled, !biome.CanObserveLocalPlayer || biome.FeatureFailed || !preferences.BiomeLoaded);
                         notes.DrawCards();
                         items?.Draw(drawKeyboard);
                         if (HotkeyPopup != null) renderer.DrawPopup(HotkeyPopup);
@@ -318,7 +407,7 @@ namespace JueMingR.TerrariaHost.F5
             return true;
         }
 
-        internal bool EndPointerLayer() { RestoreLeases(); return true; }
+        internal bool EndPointerLayer() { RestoreLeases(); if (information != null && information.Adjustment.Active) information.Pointer.End(); return true; }
 
         private void LeaseMouseInterface()
         {
@@ -364,7 +453,8 @@ namespace JueMingR.TerrariaHost.F5
                 foreach (var element in State.Layout.Elements)
                     if (EntityLabelControls.IsStyle(element.Command) && EntityLabelControls.Target(element.Command) == StylePopup.Target ||
                         WorldTargetControls.IsStyle(element.Command) && WorldTargetControls.Target(element.Command) == StylePopup.WorldTarget ||
-                        WorldObjectControls.IsStyle(element.Command) && WorldObjectControls.Target(element.Command) == StylePopup.WorldObject) return ControlRect(element);
+                        WorldObjectControls.IsStyle(element.Command) && WorldObjectControls.Target(element.Command) == StylePopup.WorldObject ||
+                        Information.InformationControls.IsStyle(element.Command) && Information.InformationControls.Target(element.Command) == StylePopup.InformationTarget) return ControlRect(element);
             return new F5Rect(State.X, State.Y, 0, 0);
         }
         private void CheckLabelSession()
@@ -374,10 +464,10 @@ namespace JueMingR.TerrariaHost.F5
             labelSession = generation; StylePopup?.Close();
         }
 
-        internal void CloseAndSubmitPosition() { HotkeyPopup?.Close(); StylePopup?.Close(); State.Close(); notes.Suspend(); items?.Suspend(); SubmitPosition(); }
+        internal void CloseAndSubmitPosition() { CancelInformationAdjustment(false); HotkeyPopup?.Close(); StylePopup?.Close(); State.Close(); notes.Suspend(); items?.Suspend(); SubmitPosition(); }
 
         internal void CancelForFocusLoss()
-        { HotkeyPopup?.Close(); StylePopup?.Close(); State.CancelForFocusLoss(); notes.Suspend(true); items?.Suspend(); RestoreLeases(); }
+        { CancelInformationAdjustment(false); HotkeyPopup?.Close(); StylePopup?.Close(); State.CancelForFocusLoss(); notes.Suspend(true); items?.Suspend(); RestoreLeases(); }
 
         internal void FailClosed()
         { failed = true; State.Ready = false; CloseAndSubmitPosition(); RestoreLeases(); notes.FailClosed(); renderer.Dispose(); }

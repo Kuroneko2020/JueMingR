@@ -13,6 +13,7 @@ namespace JueMingR.TerrariaHost.EntityLabels
         internal EntityLabelKind? Entity;
         internal WorldTargetKind? World;
         internal Platform.WorldObjectText.WorldObjectKind? WorldObject;
+        internal Platform.Information.InformationKind? Information;
         internal string Title;
         internal Func<bool> CanConfigure;
         internal Func<int> Color;
@@ -21,7 +22,11 @@ namespace JueMingR.TerrariaHost.EntityLabels
         internal Func<int> Size;
         internal Func<int, bool> StepSize;
         internal Action Reset;
-        internal bool Same(StyleTarget other) { return other != null && Entity == other.Entity && World == other.World && WorldObject == other.WorldObject; }
+        internal bool Same(StyleTarget other) { return other != null && Entity == other.Entity && World == other.World && WorldObject == other.WorldObject && Information == other.Information; }
+        internal static StyleTarget For(Information.IInformationControls host, Platform.Information.InformationKind kind)
+        { return new StyleTarget { Information = kind, Title = TerrariaHost.Information.InformationControls.Name(kind), CanConfigure = () => host.CanConfigure,
+            Color = () => host.Settings.Style(kind).Rgb, Message = () => host.PreferenceMessage, SetColor = rgb => host.SetColor(kind, rgb),
+            Size = () => host.Settings.Style(kind).Size, StepSize = direction => host.StepSize(kind, direction), Reset = () => host.ResetStyle(kind) }; }
         internal static StyleTarget For(HostEntityLabels host, EntityLabelKind kind)
         { return new StyleTarget { Entity = kind, Title = StylePopupLayout.Name(kind), CanConfigure = () => host.CanConfigure,
             Color = () => host.Preferences.Value.Style(kind).Rgb, Message = () => host.PreferenceMessage, SetColor = rgb => host.SetColor(kind, rgb),
