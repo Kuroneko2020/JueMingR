@@ -13,7 +13,8 @@ namespace JueMingR.TerrariaHost.Hotkeys
     {
         internal readonly HotkeyRegistry Registry = new HotkeyRegistry();
         internal readonly HotkeyBindings Bindings;
-        internal HostHotkeys(string gameDirectory, Phase0TBiomeRuntime biome, HostPreferences preferences, HostItems items, EntityLabels.HostEntityLabels labels = null, WorldTargets.HostWorldTargets targets = null, WorldObjectText.HostWorldObjectText worldObjects = null)
+        internal HostHotkeys(string gameDirectory, Phase0TBiomeRuntime biome, HostPreferences preferences, HostItems items, EntityLabels.HostEntityLabels labels = null, WorldTargets.HostWorldTargets targets = null, WorldObjectText.HostWorldObjectText worldObjects = null,
+            Information.HostInformation information = null, Func<bool> canAdjustInformation = null, Action adjustInformation = null)
         {
             Registry.Register(new HotkeyAction(HotkeyActionIds.Biome, "群系显示", HotkeyContext.SinglePlayer,
                 () => preferences.BiomeLoaded && !biome.FeatureFailed && Main.netMode == 0,
@@ -47,6 +48,17 @@ namespace JueMingR.TerrariaHost.Hotkeys
                     Registry.Register(new HotkeyAction(HotkeyActionIds.WorldObject(kind), F5.WorldObjectControls.Name(kind), HotkeyContext.Gameplay,
                         () => worldObjects.ControlsEnabled, () => worldObjects.Toggle(kind)));
                 }
+            if (information != null)
+            {
+                for (int i = 1; i < 4; i++)
+                {
+                    var kind = (Platform.Information.InformationKind)i;
+                    Registry.Register(new HotkeyAction(HotkeyActionIds.Information(kind), Information.InformationControls.Name(kind), HotkeyContext.Gameplay,
+                        () => information.CanConfigure, () => information.Toggle(kind)));
+                }
+                Registry.Register(new HotkeyAction(HotkeyActionIds.AdjustInformation, "调整信息窗位置", HotkeyContext.Gameplay,
+                    canAdjustInformation ?? (() => false), adjustInformation ?? (() => { })));
+            }
             Bindings = new HotkeyBindings(Registry, new AtomicFileDocument(Path.Combine(gameDirectory, "JueMingRData", "config", "hotkeys.json"), 65536, true));
             AppDomain.CurrentDomain.ProcessExit += OnExit;
         }

@@ -20,18 +20,20 @@ namespace JueMingR.TerrariaHost.Information
         internal int LocalizationReads { get; private set; }
 #endif
         internal InformationObservationReader(InformationReadiness readiness) { this.readiness = readiness; }
+        internal long NativeEpoch { get { return readiness.Snapshot().Epoch; } }
         internal void Clear() { localizedItem = -1; culture = null; questName = questLocation = null; epoch = -1; }
         internal void Update(HostInformation host)
         {
             var settings = host.Preferences.Value;
             if (!settings.AnySummaryEnabled) return;
             var state = readiness.Snapshot();
-            if (epoch != state.Epoch) { Clear(); epoch = state.Epoch; host.ClearContent(); }
+            if (epoch != state.Epoch) { Clear(); epoch = state.Epoch; host.Adjustment.Cancel(); host.Pointer.Invalidate(); host.ClearContent(); }
             bool wantInfection = settings.Enabled(InformationKind.Infection), wantLuck = settings.Enabled(InformationKind.Luck), wantAngler = settings.Enabled(InformationKind.Angler);
             var player = Main.LocalPlayer;
             if (Main.gameMenu || Main.dedServ || Main.netMode != 0 && Main.netMode != 1 || player == null || !player.active)
             { host.ClearContent(); return; }
             bool dryad = false, wizard = wantLuck && NPC.savedWizard, angler = wantAngler && NPC.savedAngler;
+            bool qualificationReadable = true;
             // One demand-limited table traversal. No savedDryad fiction, NPC
             // name scan, history cache or dependency on entity-label settings.
             if (wantInfection || wantLuck && !wizard || wantAngler && !angler)
@@ -40,6 +42,9 @@ namespace JueMingR.TerrariaHost.Information
                 NpcQueries++;
 #endif
                 NPC[] npcs = Main.npc;
+                // A missing/incomplete native table is not proof of absence.
+                // Positive saved/current facts remain independently sufficient.
+                qualificationReadable = npcs != null && npcs.Length >= 200;
                 if (npcs != null)
                     for (int i = 0; i < Math.Min(200, npcs.Length); i++)
                     {
@@ -55,7 +60,7 @@ namespace JueMingR.TerrariaHost.Information
             }
             if (wantInfection)
             {
-                var availability = !dryad ? MissingQualification() : !state.Available ? InformationAvailability.Unavailable : !state.Infection ? InformationAvailability.Waiting : InformationAvailability.Ready;
+                var availability = !dryad ? MissingQualification(qualificationReadable) : !state.Available ? InformationAvailability.Unavailable : !state.Infection ? InformationAvailability.Waiting : InformationAvailability.Ready;
                 host.Infection.Update(new InfectionObservation { Availability = availability,
                     Hallow = availability == InformationAvailability.Ready ? (int?)WorldGen.tGood : null,
                     Corruption = availability == InformationAvailability.Ready ? (int?)WorldGen.tEvil : null,
@@ -63,7 +68,7 @@ namespace JueMingR.TerrariaHost.Information
             }
             if (wantLuck)
             {
-                var sample = new LuckObservation { Availability = wizard ? InformationAvailability.Ready : MissingQualification() };
+                var sample = new LuckObservation { Availability = wizard ? InformationAvailability.Ready : MissingQualification(qualificationReadable) };
                 if (wizard)
                 {
 #if DEBUG
@@ -78,13 +83,13 @@ namespace JueMingR.TerrariaHost.Information
             }
             if (wantAngler)
             {
-                var sample = new AnglerObservation { Availability = !angler ? MissingQualification() : !state.Available ? InformationAvailability.Unavailable : InformationAvailability.Ready };
+                var sample = new AnglerObservation { Availability = !angler ? MissingQualification(qualificationReadable) : !state.Available ? InformationAvailability.Unavailable : !state.Quest || !state.Today ? InformationAvailability.Waiting : InformationAvailability.Ready,
+                    Completed = player.anglerQuestsFinished >= 0 ? (int?)player.anglerQuestsFinished : null };
                 if (angler)
                 {
 #if DEBUG
                     ScalarSamples++;
 #endif
-                    sample.Completed = player.anglerQuestsFinished >= 0 ? (int?)player.anglerQuestsFinished : null;
                     sample.SubmittedToday = state.Today ? (bool?)Main.anglerQuestFinished : null;
                     int index = Main.anglerQuest; var mapping = Main.anglerQuestItemNetIDs;
                     if (state.Quest && mapping != null && index >= 0 && index < mapping.Length && mapping[index] > 0 && mapping[index] < ItemID.Count)
@@ -95,8 +100,8 @@ namespace JueMingR.TerrariaHost.Information
                 host.Angler.Update(sample);
             }
         }
-        private static InformationAvailability MissingQualification()
-        { return Main.netMode == 1 ? InformationAvailability.Waiting : InformationAvailability.ConditionUnmet; }
+        private static InformationAvailability MissingQualification(bool readable)
+        { return !readable ? InformationAvailability.Unavailable : Main.netMode == 1 ? InformationAvailability.Waiting : InformationAvailability.ConditionUnmet; }
         private void Localize(int item)
         {
             object currentCulture = Language.ActiveCulture;
@@ -111,7 +116,9 @@ namespace JueMingR.TerrariaHost.Information
                 string internalName = ItemID.Search.GetName(item);
                 if (String.IsNullOrEmpty(internalName)) return;
                 string key = "AnglerQuestText.Quest_" + internalName;
-                string value = Language.GetTextValue(key);
+                // Only the final location line is needed. Value would expand
+                // narrative NPC-name variables and perform unrelated searches.
+                string value = Language.GetText(key).UnformattedValue;
                 if (value == key) return;
                 questLocation = ParseLocation(value);
             }

@@ -17,6 +17,7 @@ namespace NativeWorldTextProbe
             Main.ActiveWorldFileData = new Terraria.IO.WorldFileData(Path.Combine(root, "fixture.wld"), false) { UniqueId = new Guid("00000000-0000-0000-0000-000000000071") };
             var assembly = Assembly.LoadFrom(Path.Combine(Program.Repository, "artifacts/build/Debug/work/bin/JueMingR.TerrariaHost/x86/Debug/net472/JueMingR.TerrariaHost.dll"));
             var worker = assembly.GetType("JueMingR.TerrariaHost.Phase0SHarmonyWorker", true);
+            string[] oldActions = NativeInformationConfigurationChecks.SeedOldBindings(worker, root);
             object context = Activator.CreateInstance(worker.GetNestedType("PostfixContext", Flags), Flags, null,
                 new object[] { "information-summary-" + new string('7', 40), Path.Combine(root, "evidence.txt"), root }, null);
             try
@@ -32,16 +33,29 @@ namespace NativeWorldTextProbe
                 while (!(bool)Get(Get(information, "Preferences"), "IsLoaded"))
                 { if (DateTime.UtcNow > deadline) throw new Exception("information preferences did not load"); Call(context, "UpdateRuntime"); Thread.Sleep(5); }
                 var shell = Get(context, "Shell"); var renderer = Get(shell, "renderer");
+                var registry = (JueMingR.Platform.Hotkeys.HotkeyRegistry)Get(Get(shell, "hotkeys"), "Registry");
+                Require(registry.Actions.Count == oldActions.Length + 4, "complete profile must preserve the actual previous catalog and register four information actions");
+                foreach (string id in new[] { "biome-display.toggle", "information.infection.toggle", "information.luck.toggle", "information.angler.toggle", "information-window.adjust" })
+                    Require(registry.Find(id) != null, "full frozen registry missing " + id);
                 Require(Get(renderer, "InformationControls") != null, "real shell must route information commands");
                 var controls = Get(renderer, "InformationControls");
                 var command = assembly.GetType("JueMingR.TerrariaHost.F5.F5Command", true);
                 Call(controls, "Execute", Enum.Parse(command, "EnableLuck"));
                 Require((bool)Call(information, "Enabled", InformationKind.Luck), "actual F5 command must update the owning document");
+                NativeInformationConfigurationChecks.Run(context, information, root, oldActions);
                 Require((bool)Get(Call(readiness, "Snapshot"), "Infection"), "initial successful native data survives later Session composition");
+                WithReadOnlyGuards(() => CheckObservationAndHud(context, information, readiness));
+                NativeInformationInputChecks.Run(context, information);
                 Console.WriteLine("PASS: built full Host composes independent information controls and preference command.");
             }
             finally
             {
+                StopContext(context);
+                Main.netMode = 0; Main.gameMenu = false;
+            }
+        }
+        internal static void StopContext(object context)
+        {
                 var hooks = GetOptional(context, "informationHooks"); if (hooks != null) Call(hooks, "Dispose");
                 foreach (string name in new[] { "Information", "Labels", "WorldTargets", "WorldObjects", "items", "notes", "preferences" })
                 {
@@ -49,14 +63,111 @@ namespace NativeWorldTextProbe
                     (owner?.GetType().GetMethod("OnExit", Flags) ?? owner?.GetType().GetMethod("OnProcessExit", Flags))?.Invoke(owner, new object[] { null, EventArgs.Empty });
                 }
                 var shell = GetOptional(context, "Shell"); if (shell != null) { var hotkeys = GetOptional(shell, "hotkeys"); if (hotkeys != null) Call(hotkeys, "OnExit", null, EventArgs.Empty); }
-                Main.netMode = 0; Main.gameMenu = false;
-            }
         }
         internal static object Get(object value, string name) { return GetOptional(value, name) ?? throw new InvalidOperationException("Required consumer missing: " + name); }
         internal static object GetOptional(object value, string name) { var type = value.GetType(); return type.GetProperty(name, Flags)?.GetValue(value) ?? type.GetField(name, Flags)?.GetValue(value); }
         internal static object Call(object value, string name, params object[] args) { return value.GetType().GetMethod(name, Flags).Invoke(value, args); }
+        internal static void Set(object value, string name, object data)
+        { var field = value.GetType().GetField(name, Flags); if (field != null) field.SetValue(value, data); else value.GetType().GetProperty(name, Flags).SetValue(value, data); }
         internal static void Require(bool value, string reason) { if (!value) throw new InvalidOperationException(reason); }
         private static bool SkipMessage() { return false; }
+        private static int forbiddenCalls;
+        private static bool RejectUnexpectedOperation() { forbiddenCalls++; return false; }
+        private static void WithReadOnlyGuards(Action check)
+        {
+            var guard = new Harmony("JueMingR.NativeInformation.ReadOnlyGuard");
+            var methods = new[] { typeof(WorldGen).GetMethod("CountTiles", Flags, null, new[] { typeof(int) }, null),
+                typeof(Player).GetMethod("UpdateLuck", Flags), typeof(Player).GetMethod("UpdateLuckFactors", Flags), typeof(Player).GetMethod("RecalculateLuck", Flags),
+                typeof(Player).GetMethod("RollLuck", Flags), typeof(Lang).GetMethod("AnglerQuestChat", Flags), typeof(NPC).GetMethod("GetFirstNPCNameOrNull", Flags) };
+            var random = new Terraria.Utilities.UnifiedRandom(711); var expected = new Terraria.Utilities.UnifiedRandom(711); var priorRandom = Main.rand;
+            forbiddenCalls = 0;
+            try
+            {
+                foreach (var method in methods)
+                {
+                    Require(method != null, "fixed native read-only guard target exists");
+                    guard.Patch(method, new HarmonyMethod(typeof(NativeInformationChecks).GetMethod(nameof(RejectUnexpectedOperation), Flags)));
+                    Require(Harmony.GetPatchInfo(method).Owners.Contains(guard.Id), "guard is installed on actual native method");
+                }
+                Main.rand = random; check();
+                Require(forbiddenCalls == 0 && ReferenceEquals(Main.rand, random) && random.Next() == expected.Next() && Main.LocalPlayer.luck == .2f && Main.LocalPlayer.torchLuck == 1,
+                    "real source path cannot recalculate, use chat/NPC fallback, write luck or consume native RNG");
+            }
+            finally { foreach (var method in methods) if (method != null) guard.Unpatch(method, HarmonyPatchType.All, guard.Id); Main.rand = priorRandom; }
+        }
+        private static void CheckObservationAndHud(object context, object host, object readiness)
+        {
+            CheckDemandStates(context, host);
+            var reader = Get(host, "source"); var hud = Get(host, "Hud");
+            typeof(Main).GetField("_uiScaleMatrix", Flags).SetValue(null, Microsoft.Xna.Framework.Matrix.Identity);
+            Main.netMode = 1; NPC.savedWizard = NPC.savedAngler = true;
+            Main.npc = new NPC[200]; Main.npc[0] = new NPC { active = true, type = Terraria.ID.NPCID.Dryad };
+            Main.LocalPlayer.anglerQuestsFinished = 12; Main.LocalPlayer.luck = .2f; Main.LocalPlayer.torchLuck = 1;
+            foreach (InformationKind kind in new[] { InformationKind.Infection, InformationKind.Luck, InformationKind.Angler }) Call(host, "SetEnabled", kind, true);
+            Call(context, "UpdateRuntime"); Call(host, "PrepareHud");
+            Require((bool)Get(hud, "Visible") && ((JueMingR.Features.Information.LuckSummary)Get(host, "Luck")).Content.Text.Contains("+0.2"), "workload must exercise visible populated real HUD before counting stable work");
+            int reads = (int)Get(reader, "LocalizationReads"), queries = (int)Get(reader, "NpcQueries"), visits = (int)Get(reader, "NpcVisits");
+            int measures = (int)Get(hud, "Measurements"), layouts = (int)Get(hud, "LayoutBuilds");
+            int luckBuilds = ((JueMingR.Features.Information.LuckSummary)Get(host, "Luck")).TextBuilds;
+            for (int i = 0; i < 100; i++) { Call(context, "UpdateRuntime"); Call(host, "PrepareHud"); }
+            Require((int)Get(reader, "NpcQueries") - queries == 100 && (int)Get(reader, "NpcVisits") - visits == 100, "three enabled summaries share one demand-limited NPC traversal per update");
+            Require((int)Get(reader, "LocalizationReads") == reads && (int)Get(hud, "Measurements") == measures && (int)Get(hud, "LayoutBuilds") == layouts &&
+                ((JueMingR.Features.Information.LuckSummary)Get(host, "Luck")).TextBuilds == luckBuilds, "stable real Host reader/content/HUD does no localization, format or measurement rebuild");
+            Call(host, "SetColor", InformationKind.Luck, 0x112233); Call(host, "SetPosition", new JueMingR.Platform.Settings.WindowPosition(40, 50)); Call(host, "PrepareHud");
+            Require((int)Get(hud, "Measurements") == measures, "color and position must reuse real HUD glyph layout");
+            Call(host, "StepSize", InformationKind.Luck, 1); Call(host, "PrepareHud");
+            Require((int)Get(hud, "LayoutBuilds") == layouts + 1 && (int)Get(hud, "Measurements") > measures, "only resized block rebuilds");
+            Call(hud, "Prepare", Terraria.GameContent.FontAssets.MouseText.Value, 240f, 48f, false, null);
+            foreach (object block in (Array)Get(hud, "blocks"))
+                if ((int)Get(block, "VisibleLines") > 0) Require((float)Get(block, "OffsetY") + (int)Get(block, "VisibleLines") * (float)Get(block, "LineHeight") <= 48,
+                    "actual tiny-viewport packet cannot paint below its hit/projection rectangle");
+            Call(host, "PrepareHud");
+            Set(readiness, "Installed", false); Call(context, "UpdateRuntime");
+            string angler = ((JueMingR.Features.Information.AnglerSummary)Get(host, "Angler")).Content.Text;
+            Require(angler.Contains("累计完成：12") && angler.Contains("不可用"), "real reader keeps local count when source observer unavailable");
+            Set(readiness, "Installed", true);
+            foreach (string language in new[] { "en-US", "zh-Hans" })
+            {
+                Terraria.Localization.LanguageManager.Instance.SetLanguage(language);
+                Terraria.Lang.InitializeLegacyLocalization();
+                for (int i = 0; i < Main.anglerQuestItemNetIDs.Length; i++)
+                {
+                    Main.anglerQuest = i; Call(reader, "Localize", Main.anglerQuestItemNetIDs[i]);
+                    Require(GetOptional(reader, "questName") != null && GetOptional(reader, "questLocation") != null, "actual native quest name/location " + language + " #" + i + ": " +
+                        Terraria.Localization.Language.GetText("AnglerQuestText.Quest_" + Terraria.ID.ItemID.Search.GetName(Main.anglerQuestItemNetIDs[i])).UnformattedValue);
+                }
+            }
+            Terraria.Localization.LanguageManager.Instance.SetLanguage("en-US"); Terraria.Lang.InitializeLegacyLocalization();
+            foreach (InformationKind kind in new[] { InformationKind.Biome, InformationKind.Infection, InformationKind.Luck, InformationKind.Angler }) Call(host, "SetEnabled", kind, false);
+            Call(context, "UpdateRuntime"); Call(host, "PrepareHud");
+            reads = (int)Get(reader, "LocalizationReads"); queries = (int)Get(reader, "NpcQueries"); int scalars = (int)Get(reader, "ScalarSamples"); measures = (int)Get(hud, "Measurements");
+            for (int i = 0; i < 100; i++) { Call(context, "UpdateRuntime"); Call(host, "PrepareHud"); }
+            Require(!(bool)Get(hud, "Visible") && (int)Get(reader, "LocalizationReads") == reads && (int)Get(reader, "NpcQueries") == queries &&
+                (int)Get(reader, "ScalarSamples") == scalars && (int)Get(hud, "Measurements") == measures, "all-off actual consumer performs zero summary queries, sampling and glyph measurement");
+            Console.WriteLine("PASS: real Host demand traversal, stable/dirty/off work, partial facts and all native en-US/zh-Hans quest locations; no GPU or game loop.");
+        }
+        private static void CheckDemandStates(object context, object host)
+        {
+            var reader = Get(host, "source"); Main.netMode = 0; NPC.savedWizard = NPC.savedAngler = false; Main.npc = new NPC[200];
+            foreach (InformationKind kind in new[] { InformationKind.Infection, InformationKind.Luck, InformationKind.Angler }) Call(host, "SetEnabled", kind, false);
+            foreach (InformationKind kind in new[] { InformationKind.Infection, InformationKind.Luck, InformationKind.Angler })
+            {
+                Call(host, "SetEnabled", kind, true);
+                int queries = (int)Get(reader, "NpcQueries"), samples = (int)Get(reader, "ScalarSamples"), localizations = (int)Get(reader, "LocalizationReads");
+                Call(context, "UpdateRuntime");
+                Require(((string)Call(host, "Text", kind)).Contains("需要") && (int)Get(reader, "NpcQueries") == queries + 1 &&
+                    (int)Get(reader, "ScalarSamples") == samples && (int)Get(reader, "LocalizationReads") == localizations, "single enabled row with proven absent NPC samples no unrelated business: " + kind);
+                Main.netMode = 1; Call(context, "UpdateRuntime");
+                Require(((string)Call(host, "Text", kind)).Contains("等待"), "ordinary client's unconfirmed history stays unknown: " + kind);
+                Main.netMode = 0; Main.npc = null; Call(context, "UpdateRuntime");
+                Require(((string)Call(host, "Text", kind)).Contains("不可用"), "missing native NPC table cannot certify absence: " + kind);
+                Main.npc = new NPC[200]; Call(host, "SetEnabled", kind, false);
+            }
+            NPC.savedWizard = true; Call(host, "SetEnabled", InformationKind.Luck, true);
+            int before = (int)Get(reader, "NpcQueries"); Call(context, "UpdateRuntime");
+            Require((int)Get(reader, "NpcQueries") == before, "saved Wizard independently satisfies single luck display without scanning NPCs");
+            Call(host, "SetEnabled", InformationKind.Luck, false);
+        }
         private static void CheckReceipts(object readiness)
         {
             Main.netMode = 1;

@@ -28,6 +28,7 @@
     <Compile Include="..\WorldObjectText\*.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\IWorldObjectControls.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\Information\InformationControls.cs" />
+    <Compile Include="..\..\src\JueMingR.TerrariaHost\Information\InformationAdjustment.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\WorldObjectControls.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\World\WorldTileObservation.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\WorldTargets\*.cs" Link="Production\WorldTargets\%(Filename)%(Extension)" />

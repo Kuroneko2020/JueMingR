@@ -23,12 +23,13 @@ namespace JueMingR.Features.Information
 #endif
             // The three personal/world facts have separate readiness. A missing
             // quest never substitutes index zero or erases a known count.
-            if (value.Availability == InformationAvailability.ConditionUnmet || value.Availability == InformationAvailability.Unavailable)
+            if (value.Availability == InformationAvailability.ConditionUnmet)
             { Content.Publish(InformationText.Status("渔夫任务", value.Availability, "需要已解救渔夫")); return; }
-            Content.Publish("渔夫任务：" + (value.ItemType.HasValue && !String.IsNullOrEmpty(value.Name) ? value.Name : "等待任务同步") +
+            string missing = value.Availability == InformationAvailability.Unavailable ? "暂不可用" : value.Availability == InformationAvailability.Waiting ? "等待同步" : "未知";
+            Content.Publish("渔夫任务：" + (value.ItemType.HasValue && !String.IsNullOrEmpty(value.Name) ? value.Name : missing) +
                 "\n地点：" + (String.IsNullOrEmpty(value.Location) ? "未知" : value.Location) +
                 "\n累计完成：" + (value.Completed.HasValue && value.Completed >= 0 ? value.Completed.Value.ToString(CultureInfo.InvariantCulture) : "未知") +
-                "；今日：" + (!value.SubmittedToday.HasValue ? "等待同步" : value.SubmittedToday.Value ? "已提交" : "未提交"));
+                "；今日：" + (!value.SubmittedToday.HasValue ? missing : value.SubmittedToday.Value ? "已提交" : "未提交"));
         }
         public void Clear() { hasPrevious = false; Content.Clear(); }
     }

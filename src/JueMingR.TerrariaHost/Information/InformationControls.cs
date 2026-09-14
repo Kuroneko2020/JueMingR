@@ -14,7 +14,9 @@ namespace JueMingR.TerrariaHost.Information
     {
         InformationPreferences Settings { get; }
         bool CanConfigure { get; }
+        bool PositionReady { get; }
         string PreferenceMessage { get; }
+        string PositionMessage { get; }
         bool Enabled(InformationKind kind);
         bool SetEnabled(InformationKind kind, bool enabled);
         bool SetColor(InformationKind kind, int rgb);
@@ -59,7 +61,7 @@ namespace JueMingR.TerrariaHost.Information
         }
         internal static bool IsStyle(F5Command command) { return command == F5Command.ConfigureBiome || command == F5Command.ConfigureInfection || command == F5Command.ConfigureLuck || command == F5Command.ConfigureAngler; }
         private static bool IsEnable(F5Command command) { return command == F5Command.EnableBiome || command == F5Command.EnableInfection || command == F5Command.EnableLuck || command == F5Command.EnableAngler; }
-        internal bool Available(F5Command command) { return (Target(command).HasValue || command == F5Command.AdjustInformation) && host.CanConfigure; }
+        internal bool Available(F5Command command) { return command == F5Command.AdjustInformation ? host.PositionReady : Target(command).HasValue && host.CanConfigure; }
         internal Color? Selected(F5Command command)
         {
             var kind = Target(command);
@@ -67,6 +69,6 @@ namespace JueMingR.TerrariaHost.Information
                 (Color?)(IsEnable(command) ? Color.LightGreen : Color.IndianRed) : null;
         }
         internal void Execute(F5Command command) { var kind = Target(command); if (kind.HasValue && !IsStyle(command) && Available(command)) host.SetEnabled(kind.Value, IsEnable(command)); }
-        internal string Hint(F5Command command) { return !Available(command) ? host.PreferenceMessage ?? "信息设置暂不可用" : IsStyle(command) ? "调整本项文字颜色与字号" : command == F5Command.AdjustInformation ? "拖动后松手完成；Esc、右键或 F5 取消" : "保留显示选择；条件和数据不足时显示简短说明"; }
+        internal string Hint(F5Command command) { return !Available(command) ? (command == F5Command.AdjustInformation ? host.PositionMessage : host.PreferenceMessage) ?? "信息设置暂不可用" : IsStyle(command) ? "调整本项文字颜色与字号" : command == F5Command.AdjustInformation ? "拖动后松手完成；Esc、右键或 F5 取消" : "保留显示选择；条件和数据不足时显示简短说明"; }
     }
 }

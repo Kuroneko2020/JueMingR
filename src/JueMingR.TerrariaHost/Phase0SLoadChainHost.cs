@@ -582,7 +582,7 @@ namespace JueMingR.TerrariaHost
         private static void EnsureEntityLayer(List<GameInterfaceLayer> layers, bool setupComplete)
         {
             var context = postfixContext;
-            if (context == null || !(context.PackageId.StartsWith("entity-labels-", StringComparison.Ordinal) || context.PackageId.StartsWith("world-targets-", StringComparison.Ordinal) || context.PackageId.StartsWith("world-object-text-", StringComparison.Ordinal))) return;
+            if (context == null || !(context.PackageId.StartsWith("entity-labels-", StringComparison.Ordinal) || context.PackageId.StartsWith("world-targets-", StringComparison.Ordinal) || context.PackageId.StartsWith("world-object-text-", StringComparison.Ordinal) || context.PackageId.StartsWith("information-summary-", StringComparison.Ordinal))) return;
             try
             {
                 // Capture's early return precedes this Game-scale layer. Normal
@@ -740,11 +740,16 @@ namespace JueMingR.TerrariaHost
             // drawing. All native observation and layout finish before Draw.
             try
             {
-                postfixContext?.Information?.Hud.Draw(Terraria.Main.spriteBatch, false);
+                var information = postfixContext?.Information;
+                if (information != null)
+                {
+                    if (information.Adjustment.Active) information.Pointer.Begin(information.Tick, information.Session);
+                    information.Hud.Draw(Terraria.Main.spriteBatch, information.Adjustment.Active);
+                }
             }
             catch (Exception exception)
             {
-                DisableBiomeFeature("BIOME_DRAW", exception);
+                postfixContext?.Information?.DisplayFailed(exception);
             }
 
             return true;
@@ -857,10 +862,11 @@ namespace JueMingR.TerrariaHost
                 if (entityPackage) { Labels = new EntityLabels.HostEntityLabels(gameDirectory, runtime.SharedRuntime) { LayerStatus = entityLayerStatus }; runtime.SharedRuntime.AddFeature(Labels); }
                 if (worldPackage) { worldTiles = new World.WorldTileObservation(() => runtime.SharedRuntime.IsSessionActive); WorldTargets = new WorldTargets.HostWorldTargets(gameDirectory, runtime.SharedRuntime, worldTiles) { LayerStatus = entityLayerStatus }; runtime.SharedRuntime.AddFeature(WorldTargets); }
                 if (objectPackage) { WorldObjects = new WorldObjectText.HostWorldObjectText(gameDirectory, runtime.SharedRuntime, worldTiles, () => items != null && items.World.AutomaticOperation) { LayerStatus = entityLayerStatus }; runtime.SharedRuntime.AddFeature(WorldObjects); }
-                Information = new Information.HostInformation(gameDirectory, runtime, preferences, InformationReadiness);
+                Information = new Information.HostInformation(gameDirectory, runtime, preferences, InformationReadiness, error => RecordBiomeFailure("BIOME_DRAW", error));
                 runtime.SharedRuntime.AddFeature(Information);
                 notes = new Notes.HostNotes(gameDirectory);
-                var hotkeys = hotkeyPackage ? new Hotkeys.HostHotkeys(gameDirectory, runtime, preferences, items, Labels, WorldTargets, WorldObjects) : null;
+                var hotkeys = hotkeyPackage ? new Hotkeys.HostHotkeys(gameDirectory, runtime, preferences, items, Labels, WorldTargets, WorldObjects,
+                    informationPackage ? Information : null, () => Shell != null && Shell.CanAdjustInformation, () => Shell?.RequestInformationAdjustment()) : null;
                 Shell = new F5Shell(runtime, preferences, notes, items, Input, hotkeys, Labels, WorldTargets, WorldObjects, Information) { LayersReady = f5LayersReady };
             }
 

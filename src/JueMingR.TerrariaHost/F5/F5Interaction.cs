@@ -29,6 +29,7 @@ namespace JueMingR.TerrariaHost.F5
         internal readonly F5Layout Layout = new F5Layout();
         internal bool Visible { get; private set; }
         internal bool Ready { get; set; }
+        internal void RestoreVisible() { if (Ready) Visible = true; }
         internal Func<int, bool> BeforeLeave { get; set; }
         internal int Page { get; private set; } = 9;
         internal float X { get; private set; }

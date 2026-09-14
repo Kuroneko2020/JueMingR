@@ -27,6 +27,23 @@ namespace JueMingR.TerrariaHost.Notes
         private object preparedFont;
         private NoteEditor preparedEditor;
         private string preparedFeedback;
+        private NotesAction externalLeave;
+        private Action<bool> leaveCompleted;
+        internal bool RequestSafeLeave(Action<bool> completed)
+        {
+            if (leaveCompleted != null) return false;
+            externalLeave = new NotesAction(NotesActionKind.Leave, x: -1);
+            if (!Request(externalLeave)) { externalLeave = null; return false; }
+            leaveCompleted = completed; return true;
+        }
+        private void CompleteLeave(bool success)
+        {
+            Action<bool> callback = leaveCompleted; leaveCompleted = null; externalLeave = null;
+            // Retire the dependent navigation through Notes' existing epoch.
+            // Its accepted save still updates the acknowledged editor baseline.
+            if (callback != null && !success) workspace.Suspend();
+            callback?.Invoke(success);
+        }
         internal NotesPresentation(NotesWorkspace workspace)
         {
             this.workspace = workspace;
@@ -124,6 +141,7 @@ namespace JueMingR.TerrariaHost.Notes
         }
         private bool Request(NotesAction action)
         {
+            if (leaveCompleted != null && !ReferenceEquals(externalLeave, action)) CompleteLeave(false);
             input.FinishComposition(false);
             // Finalization can still leave a candidate or half of a WM_CHAR pair.
             // Keep its editor alive until a later complete input can be saved.
@@ -143,9 +161,12 @@ namespace JueMingR.TerrariaHost.Notes
         }
         private void ApplyNavigation()
         {
-            NotesAction action = workspace.TakeNavigation(); if (action == null) return;
+            NotesAction action = workspace.TakeNavigation();
+            if (action == null) { if (leaveCompleted != null && !workspace.Feature.Busy) CompleteLeave(false); return; }
+            bool completed = ReferenceEquals(action, externalLeave);
             input.Release(false); cards.Suspend();
             if (action.X < 0) shell.Close(); else shell.Navigate(action.X);
+            if (leaveCompleted != null) CompleteLeave(completed);
         }
         internal void DrawPins()
         { if (ready && pins.HasPins) renderer.Pass(Matrix.Identity, null, pins.Draw); }
@@ -155,7 +176,7 @@ namespace JueMingR.TerrariaHost.Notes
             renderer.Pass(matrix, shell.Layout.Viewport.Offset(shell.X, shell.Y), () => cards.Draw(shell));
         }
         internal void Suspend(bool focusLost = false)
-        { input.Release(false); pins.Suspend(focusLost); cards.Suspend(); if (wasActive) workspace.Suspend(); wasActive = false;
+        { CompleteLeave(false); input.Release(false); pins.Suspend(focusLost); cards.Suspend(); if (wasActive) workspace.Suspend(); wasActive = false;
             if (focusLost) previousLeft = true; }
         internal void FailClosed() { Suspend(); ready = false; renderer.Dispose(); }
     }

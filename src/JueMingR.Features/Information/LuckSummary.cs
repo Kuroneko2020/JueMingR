@@ -23,16 +23,16 @@ namespace JueMingR.Features.Information
             if (visible.Status != InformationAvailability.Ready)
             { Content.Publish(InformationText.Status("幸运值", visible.Status, "需要已解救巫师")); return; }
             var parts = new List<string>(11);
-            Add(parts, "瓢虫", visible.Ladybug, "；游戏时钟剩余 " + (visible.Seconds / 60) + "分" + (visible.Seconds % 60) + "秒");
-            Add(parts, "火把", visible.Torch, "；原值 " + InformationText.Signed(visible.RawTorch));
-            Add(parts, "幸运药水", visible.Potion * 0.1, "；等级 " + visible.Potion);
-            Add(parts, "风筝", visible.Kite * 0.1 / 3, "；等级 " + visible.Kite);
+            if (visible.Ladybug != 0) Add(parts, "瓢虫", visible.Ladybug, "；游戏时钟剩余 " + (visible.Seconds / 60) + "分" + (visible.Seconds % 60) + "秒");
+            if (visible.Torch != 0) Add(parts, "火把", visible.Torch, "；原值 " + InformationText.Signed(visible.RawTorch));
+            if (visible.Potion != 0) Add(parts, "幸运药水", visible.Potion * 0.1, "；等级 " + visible.Potion);
+            if (visible.Kite != 0) Add(parts, "风筝", visible.Kite * 0.1 / 3, "；等级 " + visible.Kite);
             Add(parts, "银河珍珠", (visible.Flags & 1) != 0 ? 0.03 : 0);
             Add(parts, "灯笼夜", (visible.Flags & 2) != 0 ? 0.3 : 0);
             Add(parts, "花园侏儒", (visible.Flags & 4) != 0 ? 0.2 : 0);
             Add(parts, "臭味", (visible.Flags & 8) != 0 ? -0.25 : 0);
             Add(parts, "装备", visible.Equipment);
-            Add(parts, "钱币", visible.Coin, "；原值 " + InformationText.Number(visible.RawCoin) + "；" + CoinBand(visible.Coin));
+            if (visible.Coin != 0) Add(parts, "钱币", visible.Coin, "；原值 " + InformationText.Number(visible.RawCoin) + "；" + CoinBand(visible.Coin));
             Add(parts, "破镜坏运", (visible.Flags & 16) != 0 ? -0.25 : 0);
             string details = parts.Count == 0 ? (visible.Complete ? "无" : "部分明细不可用") : String.Join("，", parts);
             Content.Publish("幸运值：" + InformationText.Signed(visible.Total) + "\n来源：" + details +
@@ -79,10 +79,10 @@ namespace JueMingR.Features.Information
                     rawCoin = coin ? LuckSummary.Coin(value.Coin.Value) : 0;
                 Ladybug = InformationText.Rounded(rawLadybug); Torch = InformationText.Rounded(rawTorch);
                 Equipment = InformationText.Rounded(rawEquipment); Coin = rawCoin;
-                RawTorch = torch ? InformationText.Rounded(value.Torch.Value) : 0; RawCoin = coin ? InformationText.Rounded(value.Coin.Value) : 0;
+                RawTorch = Torch != 0 ? InformationText.Rounded(value.Torch.Value) : 0; RawCoin = Coin != 0 ? InformationText.Rounded(value.Coin.Value) : 0;
                 // Bound rendering of pathological but finite values. Normal
                 // vanilla timers are far below Int32.MaxValue seconds.
-                Seconds = ladybug ? (int)Math.Min(Int32.MaxValue, Math.Ceiling(Math.Abs((double)value.LadybugTime.Value) / 60)) : 0;
+                Seconds = Ladybug != 0 ? (int)Math.Min(Int32.MaxValue, Math.Ceiling(Math.Abs((double)value.LadybugTime.Value) / 60)) : 0;
                 Potion = potion ? value.Potion.Value : 0; Kite = kite ? value.Kite.Value : 0;
                 Flags = (value.Pearl == true ? 1 : 0) | (value.Lantern == true ? 2 : 0) | (value.Gnome == true ? 4 : 0) |
                     (value.Stinky == true ? 8 : 0) | (value.Mirror == true ? 16 : 0);

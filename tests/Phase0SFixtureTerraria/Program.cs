@@ -105,6 +105,7 @@ namespace Terraria
 
         public static void ConfigureDesertWorld()
         {
+            F5FixtureGraphics.PrepareHeadlessInformation();
             gameMenu = false;
             LocalPlayer = new Player
             {
@@ -1424,13 +1425,13 @@ namespace Terraria
             Microsoft.Xna.Framework.Vector2 position = global::Terraria.Main.FixtureDrawPosition;
             if (global::Terraria.Main.FixtureDrawCount != expectedDrawCount ||
                 global::Terraria.Main.FixtureDrawText != expectedText ||
-                Math.Abs(position.X - 20f) > 0.001f ||
-                Math.Abs(position.Y - 270f) > 0.001f ||
+                Math.Abs(position.X - 24f) > 0.001f ||
+                Math.Abs(position.Y - (GameInput.PlayerInput.OriginalScreenSize.Y * 0.45f + 4)) > 0.001f ||
                 color.R != 144 ||
                 color.G != 238 ||
                 color.B != 144 ||
                 color.A != 255 ||
-                Math.Abs(global::Terraria.Main.FixtureDrawScale - 0.72f) > 0.001f)
+                Math.Abs(global::Terraria.Main.FixtureDrawScale - 0.82f) > 0.001f)
             {
                 throw new InvalidOperationException(
                     "The biome UI layer did not preserve the approved text, position, color, scale, or draw count.");

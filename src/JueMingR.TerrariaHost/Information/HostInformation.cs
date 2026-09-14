@@ -17,17 +17,25 @@ namespace JueMingR.TerrariaHost.Information
         private readonly PreferenceDocument<WindowPosition> position;
         private readonly HostPreferences biomePreferences;
         private readonly Phase0TBiomeRuntime biome;
+        private readonly Action<Exception> biomeFailure;
         private readonly Stopwatch startup = Stopwatch.StartNew();
         private bool stopping;
         private string reportedSettings, reportedPosition;
+        private int displayFailures, reportedDisplayFailures;
+        private Microsoft.Xna.Framework.Matrix hudMatrix;
         private readonly InformationObservationReader source;
         internal readonly InfectionSummary Infection = new InfectionSummary();
         internal readonly LuckSummary Luck = new LuckSummary();
         internal readonly AnglerSummary Angler = new AnglerSummary();
         internal readonly InformationHud Hud;
-        internal HostInformation(string gameDirectory, Phase0TBiomeRuntime biome, HostPreferences biomePreferences, InformationReadiness readiness)
+        internal readonly InformationAdjustment Adjustment = new InformationAdjustment();
+        internal readonly InformationPointerObservation Pointer = new InformationPointerObservation();
+        internal long Tick { get; private set; }
+        internal long Session { get { return biome.SharedRuntime.Generation; } }
+        internal long NativeEpoch { get { return source.NativeEpoch; } }
+        internal HostInformation(string gameDirectory, Phase0TBiomeRuntime biome, HostPreferences biomePreferences, InformationReadiness readiness, Action<Exception> biomeFailure = null)
         {
-            this.biome = biome; this.biomePreferences = biomePreferences;
+            this.biome = biome; this.biomePreferences = biomePreferences; this.biomeFailure = biomeFailure;
             source = new InformationObservationReader(readiness);
             string config = Path.Combine(gameDirectory, "JueMingRData", "config");
             preferences = new PreferenceDocument<InformationPreferences>(new AtomicFileDocument(Path.Combine(config, "features", "information-display.json"), 65536, true),
@@ -39,7 +47,9 @@ namespace JueMingR.TerrariaHost.Information
         internal PreferenceSnapshot<InformationPreferences> Preferences { get { return preferences.Snapshot; } }
         InformationPreferences IInformationControls.Settings { get { return Preferences.Value; } }
         bool IInformationControls.CanConfigure { get { return CanConfigure; } }
+        bool IInformationControls.PositionReady { get { return PositionReady; } }
         string IInformationControls.PreferenceMessage { get { return PreferenceMessage; } }
+        string IInformationControls.PositionMessage { get { return PositionMessage; } }
         bool IInformationControls.Enabled(InformationKind kind) { return Enabled(kind); }
         bool IInformationControls.SetEnabled(InformationKind kind, bool enabled) { return SetEnabled(kind, enabled); }
         bool IInformationControls.SetColor(InformationKind kind, int rgb) { return SetColor(kind, rgb); }
@@ -96,29 +106,69 @@ namespace JueMingR.TerrariaHost.Information
         }
         internal void TakeFeedback(Action<string> display)
         {
+            int fresh = displayFailures & ~reportedDisplayFailures;
+            if (fresh != 0)
+            {
+                reportedDisplayFailures |= fresh;
+                for (int i = 0; i < 4; i++) if ((fresh & (1 << i)) != 0) display(InformationControls.Name((InformationKind)i) + "绘制不可用，设置已保留。");
+            }
             string message = PreferenceMessage;
             if (Preferences.IsLoaded && message != null && message != reportedSettings) { display(message); reportedSettings = message; }
             message = PositionMessage;
             if (Position.IsLoaded && message != null && message != reportedPosition) { display(message); reportedPosition = message; }
         }
         internal void ClearContent() { Infection.Clear(); Luck.Clear(); Angler.Clear(); Hud.Clear(); }
+        internal bool InputGeometryCurrent
+        {
+            get
+            {
+                var matrix = Terraria.Main.UIScaleMatrix; var screen = ScreenSize();
+                return matrix == hudMatrix && matrix.M11 > 0 && matrix.M22 > 0 &&
+                    Hud.MatchesInput(Terraria.GameContent.FontAssets.MouseText?.Value, screen.X / matrix.M11, screen.Y / matrix.M22);
+            }
+        }
+        private static Microsoft.Xna.Framework.Vector2 ScreenSize()
+        {
+            var screen = Terraria.GameInput.PlayerInput.OriginalScreenSize;
+            return screen.X <= 0 || screen.Y <= 0 ? new Microsoft.Xna.Framework.Vector2(Terraria.Main.screenWidth, Terraria.Main.screenHeight) : screen;
+        }
         internal void PrepareHud()
         {
             if (!biome.SharedRuntime.IsSessionActive || Terraria.Main.hideUI || Terraria.Main.mapFullscreen || Terraria.Main.dedServ)
             { if (Hud.Visible) Hud.Clear(); return; }
-            var matrix = Terraria.Main.UIScaleMatrix; var screen = Terraria.GameInput.PlayerInput.OriginalScreenSize;
-            if (screen.X <= 0 || screen.Y <= 0) screen = new Microsoft.Xna.Framework.Vector2(Terraria.Main.screenWidth, Terraria.Main.screenHeight);
+            var matrix = Terraria.Main.UIScaleMatrix; var screen = ScreenSize();
             if (matrix.M11 <= 0 || matrix.M22 <= 0) { Hud.Clear(); return; }
-            Hud.Prepare(Terraria.GameContent.FontAssets.MouseText?.Value, screen.X / matrix.M11, screen.Y / matrix.M22, false);
+            Hud.Prepare(Terraria.GameContent.FontAssets.MouseText?.Value, screen.X / matrix.M11, screen.Y / matrix.M22, Adjustment.Active, Adjustment.Draft);
+            hudMatrix = matrix;
+            Adjustment.BindGeometry(Hud.GeometryVersion);
         }
         bool Platform.Runtime.IRuntimeFeature.Enabled { get { return Preferences.Value.AnySummaryEnabled; } }
-        public void OnSessionStarted() { source.Clear(); ClearContent(); }
-        public void OnSessionEnded() { source.Clear(); ClearContent(); }
-        public void Update(ulong tick) { source.Update(this); }
-        public void FailClosed() { source.Clear(); ClearContent(); }
+        public void OnSessionStarted() { Adjustment.Cancel(); Pointer.Invalidate(); source.Clear(); ClearContent(); }
+        public void OnSessionEnded()
+        {
+            // No native input is read during shutdown. Only a still-trusted
+            // cached foreground drag can produce this final intent.
+            FinishNormalAdjustment();
+            Pointer.Invalidate(); source.Clear(); ClearContent();
+        }
+        public void Update(ulong tick) { Tick++; source.Update(this); }
+        public void FailClosed() { Adjustment.Cancel(); Pointer.Invalidate(); source.Clear(); ClearContent(); }
+        internal void DisplayFailed(Exception error)
+        { Adjustment.Cancel(); Pointer.Invalidate(); Hud.Clear(); displayFailures |= 15; }
+        internal void DisplayFailed(InformationKind kind, Exception error)
+        {
+            displayFailures |= 1 << (int)kind;
+            // Retain the existing biome fault latch and diagnostic identity;
+            // its shared layer remains available to the independent summaries.
+            if (kind == InformationKind.Biome) { biome.FailClosed(); biomeFailure?.Invoke(error); }
+        }
+        internal void FinishNormalAdjustment()
+        { WindowPosition intent = Adjustment.FinishNormal(); if (intent != null) SetPosition(intent); Pointer.Invalidate(); }
         private void OnExit(object sender, EventArgs args)
         {
-            AppDomain.CurrentDomain.ProcessExit -= OnExit; stopping = true;
+            AppDomain.CurrentDomain.ProcessExit -= OnExit;
+            FinishNormalAdjustment();
+            stopping = true;
             var budget = Stopwatch.StartNew(); preferences.Stop(750); position.Stop(Math.Max(0, 750 - (int)budget.ElapsedMilliseconds));
         }
     }

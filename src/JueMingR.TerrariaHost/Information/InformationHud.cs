@@ -30,6 +30,8 @@ namespace JueMingR.TerrariaHost.Information
         internal int Draws { get; private set; }
 #endif
         internal InformationHud(HostInformation host) { this.host = host; }
+        internal bool MatchesInput(DynamicSpriteFont currentFont, float width, float height)
+        { return Visible && ReferenceEquals(font, currentFont) && viewportWidth == width && viewportHeight == height; }
         internal void Clear() { Visible = false; Bounds = default(F5Rect); GeometryVersion++; }
         internal void Prepare(DynamicSpriteFont currentFont, float width, float height, bool adjusting, WindowPosition draft = null)
         {
@@ -47,32 +49,32 @@ namespace JueMingR.TerrariaHost.Information
                 var style = host.Preferences.Value.Style((InformationKind)i); block.Rgb = style.Rgb;
                 if (block.Prepare(text, style.Size / 100f, font, maximumWidth, Measure))
                 {
-                    geometryChanged = true;
 #if DEBUG
                     LayoutBuilds++;
 #endif
                 }
-                if (block.Lines.Count > 0) { primaryHeight += block.LineHeight + 4; active++; }
+                if (!block.Failed && block.Lines.Count > 0) { primaryHeight += block.LineHeight + 4; active++; }
             }
             placeholder = active == 0 && adjusting;
             if (placeholder)
             {
                 empty.Rgb = 0xFAFAD2;
-                if (empty.Prepare("信息窗", 0.82f, font, maximumWidth, Measure)) geometryChanged = true;
+                empty.Prepare("信息窗", 0.82f, font, maximumWidth, Measure);
                 primaryHeight = empty.LineHeight + 4; active = 1;
             }
-            if (geometryChanged) GeometryVersion++;
-            if (active == 0) { Visible = false; Bounds = default(F5Rect); return; }
+            if (active == 0) { if (Visible) Clear(); return; }
             float remaining = Math.Max(0, height - 16 - primaryHeight), y = 4, usedWidth = 0;
             for (int i = 0; i < (placeholder ? 1 : 4); i++)
             {
                 Block block = placeholder ? empty : blocks[i]; block.OffsetY = y;
-                block.VisibleLines = block.Lines.Count == 0 ? 0 : Math.Min(block.Lines.Count, 1 + (int)(remaining / block.LineHeight));
+                block.VisibleLines = block.Failed || block.Lines.Count == 0 ? 0 : Math.Min(block.Lines.Count, 1 + (int)(remaining / block.LineHeight));
+                if (block.VisibleLines > 0) block.VisibleLines = Math.Min(block.VisibleLines, Math.Max(0, (int)((height - 4 - y) / block.LineHeight)));
                 remaining -= Math.Max(0, block.VisibleLines - 1) * block.LineHeight;
                 if (block.VisibleLines > 0) y += block.VisibleLines * block.LineHeight + 4;
                 for (int j = 0; j < block.VisibleLines; j++) usedWidth = Math.Max(usedWidth, block.Lines[j].Size.Width * block.Scale);
             }
             float hudWidth = Math.Min(width, usedWidth + 8), hudHeight = Math.Min(height, y);
+            if (geometryChanged || Bounds.Width != hudWidth || Bounds.Height != hudHeight) GeometryVersion++;
             WindowPosition intent = draft ?? host.Position.Value;
             float x = intent == null ? 20 : intent.X, top = intent == null ? height * 0.45f : intent.Y;
             Bounds = new F5Rect(Math.Max(0, Math.Min(width - hudWidth, x)), Math.Max(0, Math.Min(height - hudHeight, top)), hudWidth, hudHeight);
@@ -100,13 +102,23 @@ namespace JueMingR.TerrariaHost.Information
             for (int i = 0; i < (placeholder ? 1 : 4); i++)
             {
                 Block block = placeholder ? empty : blocks[i]; var rgb = block.Rgb;
+                if (block.Failed) continue;
                 var color = new Color((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb);
+                try
+                {
                 for (int j = 0; j < block.VisibleLines; j++)
                 {
                     Line line = block.Lines[j];
                     if (j > 0 && j == block.VisibleLines - 1 && block.VisibleLines < block.Lines.Count) line = block.Ellipsis;
                     var point = new Vector2(Bounds.X + 4 - line.Size.OffsetX * block.Scale, Bounds.Y + block.OffsetY + j * block.LineHeight - line.Size.OffsetY * block.Scale);
                     Terraria.Utils.DrawBorderStringFourWay(batch, font, line.Text, point.X, point.Y, color, Color.Black, Vector2.Zero, block.Scale);
+                }
+                }
+                catch (Exception error)
+                {
+                    // A failed block stops retrying on this font, without
+                    // disabling its peers, native observations or game actions.
+                    block.Failed = true; host.DisplayFailed((InformationKind)i, error);
                 }
             }
             if (adjusting)
@@ -132,6 +144,7 @@ namespace JueMingR.TerrariaHost.Information
             internal readonly List<Line> Lines = new List<Line>();
             internal float Scale, LineHeight, OffsetY;
             internal int Rgb, VisibleLines;
+            internal bool Failed;
             internal Line Ellipsis;
             private string text;
             private object font;
@@ -139,13 +152,20 @@ namespace JueMingR.TerrariaHost.Information
             internal bool Prepare(string value, float scale, DynamicSpriteFont currentFont, float maximumWidth, Func<string, F5Size> measure)
             {
                 if (String.Equals(text, value, StringComparison.Ordinal) && scale == Scale && ReferenceEquals(font, currentFont) && width == maximumWidth) return false;
+                if (!ReferenceEquals(font, currentFont)) Failed = false;
                 text = value; Scale = scale; font = currentFont; width = maximumWidth; Lines.Clear();
                 if (String.IsNullOrEmpty(value)) return true;
                 Ellipsis = new Line("…", measure("…"));
                 LineHeight = Math.Max(1, currentFont.LineSpacing * scale + 2);
                 // Binary-search complete text-element boundaries using actual
                 // glyph geometry. No UTF-16 count is used as a visual width.
-                string bounded = value.Length > 8192 ? value.Substring(0, 8192) + "…" : value;
+                string bounded = value;
+                if (value.Length > 8192)
+                {
+                    int limit = 0; var elements = StringInfo.GetTextElementEnumerator(value);
+                    while (elements.MoveNext()) { if (elements.ElementIndex > 8192) break; limit = elements.ElementIndex; }
+                    bounded = value.Substring(0, limit) + "…";
+                }
                 foreach (string paragraph in bounded.Split('\n'))
                 {
                     int[] boundaries = StringInfo.ParseCombiningCharacters(paragraph); int start = 0;
