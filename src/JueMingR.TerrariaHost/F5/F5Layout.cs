@@ -17,7 +17,9 @@ namespace JueMingR.TerrariaHost.F5
     }
 
     internal enum F5ElementKind { Panel, Text, Button, Field, Hotkey, Divider }
-    internal enum F5Command { None, EnableBiome, DisableBiome,
+    internal enum F5Command { None, EnableBiome, DisableBiome, ConfigureBiome,
+        ConfigureInfection, EnableInfection, DisableInfection, ConfigureLuck, EnableLuck, DisableLuck,
+        ConfigureAngler, EnableAngler, DisableAngler, AdjustInformation,
         ConfigureEnemy, EnableEnemy, DisableEnemy, ConfigureCritter, EnableCritter, DisableCritter,
         ConfigureNpc, NpcName, NpcType, DisableNpc,
         ConfigureLifeCrystal, EnableLifeCrystal, DisableLifeCrystal, ConfigureLifeFruit, EnableLifeFruit, DisableLifeFruit,
@@ -238,7 +240,14 @@ namespace JueMingR.TerrariaHost.F5
                         null, default(F5Size), 0, F5Command.None));
                     y += 12;
                 }
-                string[] actions = i == 12 ? new[] { "开启", "关闭", "键" } : i == 11 ? new[] { "开始" } :
+                if (i == 11 || i == 12 || i == 13 || i == 14 || i == 17)
+                {
+                    Platform.Information.InformationKind? kind = i == 11 ? (Platform.Information.InformationKind?)null :
+                        i == 12 ? Platform.Information.InformationKind.Biome : i == 13 ? Platform.Information.InformationKind.Infection :
+                        i == 14 ? Platform.Information.InformationKind.Luck : Platform.Information.InformationKind.Angler;
+                    Information.InformationControls.AddRow(elements, TextSize, ref y, kind); continue;
+                }
+                string[] actions = i == 11 ? new[] { "开始" } :
                     new[] { "配置", "开启", "关闭", "键" };
                 Row(ref y, 0, 522, names[i], actions, i == 12);
                 if (i == 12)
@@ -280,7 +289,7 @@ namespace JueMingR.TerrariaHost.F5
         private void Buttons(ref float y, float x, float width, string[] labels, bool biome)
         { new F5RowLayout(elements, TextSize).Buttons(ref y, x, width, labels, biome ? (Func<string, F5Command>)BiomeCommand : null); }
         private static F5Command BiomeCommand(string label)
-        { return label == "\u5f00\u542f" ? F5Command.EnableBiome : label == "关闭" ? F5Command.DisableBiome : F5Command.None; }
+        { return label == "配置" ? F5Command.ConfigureBiome : label == "\u5f00\u542f" ? F5Command.EnableBiome : label == "关闭" ? F5Command.DisableBiome : F5Command.None; }
         private void Panel(F5Rect rect)
         { elements.Add(new F5Element(F5ElementKind.Panel, rect, null, default(F5Size), 0, F5Command.None)); }
         private void TextLines(string text, float x, ref float y, float width, float scale)

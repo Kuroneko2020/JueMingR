@@ -27,6 +27,9 @@ try {
         'src/JueMingR.Features/WorldObjectText/OpenedPositionStore.cs' = 'records';
         'src/JueMingR.Platform/Persistence/DocumentWorker.cs' = 'storage-host';
         'src/JueMingR.TerrariaHost/F5/F5Layout.cs' = 'shared-host';
+        'src/JueMingR.TerrariaHost/Information/InformationHud.cs' = 'shared-host';
+        'src/JueMingR.Features/Information/InformationPreferenceCodec.cs' = 'storage-host';
+        'src/JueMingR.Platform/Information/InformationObservation.cs' = 'shared-host';
         'docs/guide.md' = 'core'
     }
     foreach ($path in $cases.Keys) { Write-Fixture $path "baseline`n" }

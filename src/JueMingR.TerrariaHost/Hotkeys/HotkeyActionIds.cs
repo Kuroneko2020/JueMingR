@@ -3,6 +3,18 @@ namespace JueMingR.TerrariaHost.Hotkeys
     internal static class HotkeyActionIds
     {
         internal const string Biome = "biome-display.toggle";
+        internal const string AdjustInformation = "information-window.adjust";
+        internal static string Information(Platform.Information.InformationKind kind)
+        {
+            switch (kind)
+            {
+                case Platform.Information.InformationKind.Biome: return Biome;
+                case Platform.Information.InformationKind.Infection: return "information.infection.toggle";
+                case Platform.Information.InformationKind.Luck: return "information.luck.toggle";
+                case Platform.Information.InformationKind.Angler: return "information.angler.toggle";
+                default: throw new System.ArgumentOutOfRangeException(nameof(kind));
+            }
+        }
         internal const string EnemyLabels = "entity-labels.enemy.toggle", CritterLabels = "entity-labels.critter.toggle", NpcLabels = "entity-labels.npc.toggle";
         internal static readonly string[] EntityLabels = { EnemyLabels, CritterLabels, NpcLabels };
         internal static readonly string[] Items = { "items.auto-stack.toggle", "items.auto-sell.toggle", "items.auto-discard.toggle" };

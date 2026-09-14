@@ -1,0 +1,109 @@
+using System;
+using System.Diagnostics;
+using System.IO;
+using JueMingR.Features.Information;
+using JueMingR.Infrastructure.Storage;
+using JueMingR.Platform.Information;
+using JueMingR.Platform.Settings;
+using JueMingR.TerrariaHost.Settings;
+
+namespace JueMingR.TerrariaHost.Information
+{
+    // Preference intent is process-scoped. Native facts and each content owner
+    // have their own session lifetime; no world state is saved in these files.
+    internal sealed class HostInformation : IInformationControls
+    {
+        private readonly PreferenceDocument<InformationPreferences> preferences;
+        private readonly PreferenceDocument<WindowPosition> position;
+        private readonly HostPreferences biomePreferences;
+        private readonly Phase0TBiomeRuntime biome;
+        private readonly Stopwatch startup = Stopwatch.StartNew();
+        private bool stopping;
+        private string reportedSettings, reportedPosition;
+        internal readonly InfectionSummary Infection = new InfectionSummary();
+        internal readonly LuckSummary Luck = new LuckSummary();
+        internal readonly AnglerSummary Angler = new AnglerSummary();
+        internal readonly InformationHud Hud;
+        internal HostInformation(string gameDirectory, Phase0TBiomeRuntime biome, HostPreferences biomePreferences)
+        {
+            this.biome = biome; this.biomePreferences = biomePreferences;
+            string config = Path.Combine(gameDirectory, "JueMingRData", "config");
+            preferences = new PreferenceDocument<InformationPreferences>(new AtomicFileDocument(Path.Combine(config, "features", "information-display.json"), 65536, true),
+                new InformationPreferenceCodec(), InformationPreferences.Default);
+            position = new PreferenceDocument<WindowPosition>(new AtomicFileDocument(Path.Combine(config, "information-window.json"), 65536, true), new UiPreferenceCodec(), null);
+            Hud = new InformationHud(this);
+            AppDomain.CurrentDomain.ProcessExit += OnExit;
+        }
+        internal PreferenceSnapshot<InformationPreferences> Preferences { get { return preferences.Snapshot; } }
+        InformationPreferences IInformationControls.Settings { get { return Preferences.Value; } }
+        bool IInformationControls.CanConfigure { get { return CanConfigure; } }
+        string IInformationControls.PreferenceMessage { get { return PreferenceMessage; } }
+        bool IInformationControls.Enabled(InformationKind kind) { return Enabled(kind); }
+        bool IInformationControls.SetEnabled(InformationKind kind, bool enabled) { return SetEnabled(kind, enabled); }
+        bool IInformationControls.SetColor(InformationKind kind, int rgb) { return SetColor(kind, rgb); }
+        bool IInformationControls.StepSize(InformationKind kind, int direction) { return StepSize(kind, direction); }
+        void IInformationControls.ResetStyle(InformationKind kind) { ResetStyle(kind); }
+        internal PreferenceSnapshot<WindowPosition> Position { get { return position.Snapshot; } }
+        internal bool CanConfigure { get { return !stopping && Preferences.IsLoaded; } }
+        internal bool PositionReady { get { return !stopping && Position.IsLoaded; } }
+        internal bool Enabled(InformationKind kind) { return kind == InformationKind.Biome ? biomePreferences.BiomeEnabled : Preferences.Value.Enabled(kind); }
+        internal bool SetEnabled(InformationKind kind, bool enabled)
+        {
+            if (!CanConfigure) return false;
+            if (kind == InformationKind.Biome)
+            {
+                if (!biomePreferences.BiomeLoaded) return false;
+                biomePreferences.SetBiomeEnabled(enabled); return true;
+            }
+            return preferences.Set(Preferences.Value.WithEnabled(kind, enabled));
+        }
+        internal bool Toggle(InformationKind kind) { return SetEnabled(kind, !Enabled(kind)); }
+        internal bool SetColor(InformationKind kind, int rgb) { return CanConfigure && preferences.Set(Preferences.Value.WithStyle(kind, Preferences.Value.Style(kind).WithColor(rgb))); }
+        internal bool StepSize(InformationKind kind, int direction) { return CanConfigure && preferences.Set(Preferences.Value.WithStyle(kind, Preferences.Value.Style(kind).Step(direction))); }
+        internal void ResetStyle(InformationKind kind) { if (CanConfigure) preferences.Set(Preferences.Value.ResetStyle(kind)); }
+        internal bool SetPosition(WindowPosition value) { return PositionReady && position.Set(value); }
+        internal string Text(InformationKind kind)
+        {
+            if (!Enabled(kind)) return null;
+            switch (kind)
+            {
+                case InformationKind.Biome: var model = biome.CurrentViewModel; return biome.FeatureEnabled && model != null && model.Visible ? model.Text : null;
+                case InformationKind.Infection: return Infection.Content.Text;
+                case InformationKind.Luck: return Luck.Content.Text;
+                default: return Angler.Content.Text;
+            }
+        }
+        internal void PollPreferences()
+        {
+            if (startup.ElapsedMilliseconds >= 2000)
+            { if (!Preferences.IsLoaded) preferences.AbandonSlowLoad(); if (!Position.IsLoaded) position.AbandonSlowLoad(); }
+        }
+        internal string PreferenceMessage { get { return Message(Preferences, "信息显示设置"); } }
+        internal string PositionMessage { get { return Message(Position, "信息窗位置"); } }
+        private static string Message<T>(PreferenceSnapshot<T> snapshot, string label)
+        {
+            if (snapshot.CommitUnconfirmed) return label + "保存结果未确认，原件已保护；当前选择仅本次内存生效。";
+            switch (snapshot.Status)
+            {
+                case PreferenceStatus.Loading: return "正在读取" + label;
+                case PreferenceStatus.Missing: case PreferenceStatus.Pending: case PreferenceStatus.Saved: return null;
+                case PreferenceStatus.UnknownFields: case PreferenceStatus.UnsupportedVersion: return label + "含未知版本或字段，原件已保留；当前选择仅本次有效。";
+                case PreferenceStatus.Conflict: return label + "发生外部变化，已停止覆盖；当前选择仅本次有效。";
+                default: return label + "未能可靠读取或保存，原件已保留；当前选择仅本次有效。";
+            }
+        }
+        internal void TakeFeedback(Action<string> display)
+        {
+            string message = PreferenceMessage;
+            if (Preferences.IsLoaded && message != null && message != reportedSettings) { display(message); reportedSettings = message; }
+            message = PositionMessage;
+            if (Position.IsLoaded && message != null && message != reportedPosition) { display(message); reportedPosition = message; }
+        }
+        internal void ClearContent() { Infection.Clear(); Luck.Clear(); Angler.Clear(); Hud.Clear(); }
+        private void OnExit(object sender, EventArgs args)
+        {
+            AppDomain.CurrentDomain.ProcessExit -= OnExit; stopping = true;
+            var budget = Stopwatch.StartNew(); preferences.Stop(750); position.Stop(Math.Max(0, 750 - (int)budget.ElapsedMilliseconds));
+        }
+    }
+}

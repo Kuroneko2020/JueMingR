@@ -24,6 +24,7 @@ namespace JueMingR.TerrariaHost.F5
         internal EntityLabelControls EntityControls { get; set; }
         internal WorldTargetControls WorldControls { get; set; }
         internal WorldObjectControls ObjectControls { get; set; }
+        internal Information.InformationControls InformationControls { get; set; }
         internal F5Size PopupMeasure(string text, float scale)
         { F5Size size = textMetrics.Measure(font, text); return new F5Size(size.Width * scale, size.Height * scale, size.OffsetX * scale, size.OffsetY * scale); }
         internal void DrawPopup(Hotkeys.HotkeyPopup popup)
@@ -154,10 +155,14 @@ namespace JueMingR.TerrariaHost.F5
                         bool entity = EntityLabelControls.Target(element.Command).HasValue;
                         bool world = WorldTargetControls.Target(element.Command).HasValue;
                         bool objects = WorldObjectControls.Target(element.Command).HasValue;
-                        bool enabled = entity ? EntityControls != null && EntityControls.Available(element.Command) : world ? WorldControls != null && WorldControls.Available(element.Command) : objects ? ObjectControls != null && ObjectControls.Available(element.Command) : element.Command != F5Command.None && !biomeFailed;
+                        bool information = Information.InformationControls.Target(element.Command).HasValue || element.Command == F5Command.AdjustInformation;
+                        bool legacyBiome = element.Command == F5Command.EnableBiome || element.Command == F5Command.DisableBiome;
+                        bool enabled = entity ? EntityControls != null && EntityControls.Available(element.Command) : world ? WorldControls != null && WorldControls.Available(element.Command) : objects ? ObjectControls != null && ObjectControls.Available(element.Command) :
+                            information ? legacyBiome ? !biomeFailed : InformationControls != null && InformationControls.Available(element.Command) : false;
                         bool hovered = !state.PointerBlocked && rect.Contains(state.PointerX, state.PointerY) && view.Contains(state.PointerX, state.PointerY);
                         F5ControlRenderer.Button(batch, pixel, button, font, element, hovered, enabled,
-                            entity ? EntityControls?.Selected(element.Command) : world ? WorldControls?.Selected(element.Command) : objects ? ObjectControls?.Selected(element.Command) : F5Layout.IsSelected(element, biomeEnabled, biomeFailed) ? (Color?)(biomeEnabled ? Color.LightGreen : Color.IndianRed) : null,
+                            entity ? EntityControls?.Selected(element.Command) : world ? WorldControls?.Selected(element.Command) : objects ? ObjectControls?.Selected(element.Command) :
+                            information && !legacyBiome ? InformationControls?.Selected(element.Command) : F5Layout.IsSelected(element, biomeEnabled, biomeFailed) ? (Color?)(biomeEnabled ? Color.LightGreen : Color.IndianRed) : null,
                             view.X, view.Y - state.Scroll);
                     }
                 }
@@ -189,7 +194,8 @@ namespace JueMingR.TerrariaHost.F5
             F5Element hover = state.HitButton(state.PointerX - state.X, state.PointerY - state.Y);
             if (hover == null) return;
             int index = F5Layout.HintIndex(hover, biomeFailed);
-            string hint = EntityControls?.Hint(hover.Command) ?? WorldControls?.Hint(hover.Command) ?? ObjectControls?.Hint(hover.Command);
+            string hint = EntityControls?.Hint(hover.Command) ?? WorldControls?.Hint(hover.Command) ?? ObjectControls?.Hint(hover.Command) ??
+                (Information.InformationControls.Target(hover.Command).HasValue || hover.Command == F5Command.AdjustInformation ? InformationControls?.Hint(hover.Command) : null);
             if (index < 0 && hint == null) return;
             F5Size size = hint == null ? state.Layout.HintSize(index) : state.Layout.TextSize(hint, 0.65f);
             float x = Math.Max(state.X + 8, Math.Min(state.X + state.Layout.Window.Width - size.Width - 24, state.PointerX + 14));

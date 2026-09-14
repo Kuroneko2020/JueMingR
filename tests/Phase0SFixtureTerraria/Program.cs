@@ -212,6 +212,8 @@ namespace Terraria
                 // device exception. The caller records authorization and reason.
                 bool deferGraphics = args.Length > 0 && args[args.Length - 1] == "--defer-graphics";
                 if (deferGraphics) Array.Resize(ref args, args.Length - 1);
+                if (args.Length == 1 && args[0] == "information-defaults")
+                { InformationFixtureTests.Run(); return 0; }
                 if (args.Length == 1 && args[0] == "f5-cpu")
                 { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; F5LayoutChecks.Run(); F5InputChecks.Run(); return 0; }
                 if (args.Length == 1 && args[0] == "focus-input") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; HostInputChecks.Run(); return 0; }
