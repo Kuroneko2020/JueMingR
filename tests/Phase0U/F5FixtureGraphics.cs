@@ -133,7 +133,7 @@ namespace Terraria
             // Fault after headers, inside the clipped content batch.
             if (ThrowF5Text && text == "敌怪显名") throw new InvalidOperationException("Controlled F5 content draw failure.");
             F5TextDraws++;
-            if (text == "开启群系显示" || text == "关闭群系显示" ||
+            if (text == "显示你当前所在的群系与深度区域。" ||
                 text == "群系显示暂不可用") F5HintDraws++;
             if (text == "群系显示暂不可用") UnavailableDraws++;
             if ((text == "群系显示" || text == "开启" || text == "关闭" || text == "配置" || text == "开始") && textColor != Color.White)

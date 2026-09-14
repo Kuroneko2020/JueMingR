@@ -73,7 +73,7 @@ namespace JueMingR.TerrariaHost.Items
                     withFeedback[0] = value.DiscardFeedbackEnabled ? "提示 开" : "提示 关";
                     Array.Copy(actions, 0, withFeedback, 1, actions.Length); actions = withFeedback;
                 }
-                rowLayout.Row(ref y, 0, width, ItemsPresentation.Name(action), actions);
+                rowLayout.Row(ref y, 0, width, ItemsPresentation.Name(action), actions, description: ItemsPresentation.Description(action));
                 foreach (F5Element e in rows.GetRange(start, rows.Count - start))
                 {
                     if (e.Kind == F5ElementKind.Hotkey)
@@ -132,7 +132,8 @@ namespace JueMingR.TerrariaHost.Items
         {
             elements.Clear(); controls.Clear(); float dy = view.Y - scroll;
             foreach (var e in rows)
-                if (Visible(e.Rect, scroll, view.Height)) elements.Add(new F5Element(e.Kind, e.Rect.Offset(view.X, dy), e.Text, e.TextSize, e.TextScale, e.Command));
+                if (Visible(e.Rect, scroll, view.Height)) elements.Add(new F5Element(e.Kind, e.Rect.Offset(view.X, dy), e.Text, e.TextSize, e.TextScale, e.Command,
+                    e.HotkeyTarget, e.Description, e.HintRect.Offset(view.X, dy)));
             foreach (var c in buttons)
                 if (Visible(c.Rect, scroll, view.Height)) controls.Add(Offset(c, view.X, dy));
             for (int i = 0; i < 2; i++)

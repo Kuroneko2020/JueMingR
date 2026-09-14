@@ -9,6 +9,12 @@ namespace JueMingR.TerrariaHost.F5
 {
     internal sealed class WorldTargetControls
     {
+        private static readonly F5RowDescription[] descriptions = {
+            new F5RowDescription(HotkeyActionIds.WorldTarget(WorldTargetKind.LifeCrystal), "用三个箭头标记附近完整的生命水晶，不包含生命水晶巨石。需要原版金属探测能力生效。"),
+            new F5RowDescription(HotkeyActionIds.WorldTarget(WorldTargetKind.LifeFruit), "用箭头标记附近世界中的生命果。需要原版金属探测能力生效，不标记掉落物。"),
+            new F5RowDescription(HotkeyActionIds.WorldTarget(WorldTargetKind.ManaCrystal), "用箭头标记附近世界中的完整魔力水晶。需要原版金属探测能力生效，不标记背包或掉落物。"),
+            new F5RowDescription(HotkeyActionIds.WorldTarget(WorldTargetKind.SleepingDigtoise), "用三个箭头标记附近完整的睡眠碎岩龟，不追踪采下后的物品或召出物。需要原版金属探测能力生效。"),
+            new F5RowDescription(HotkeyActionIds.WorldTarget(WorldTargetKind.ChilletEgg), "用三个箭头标记附近完整的巨型龙蛋，不追踪拾取物或打开产物。需要原版金属探测能力生效。") };
         private readonly HostWorldTargets host;
         internal WorldTargetControls(HostWorldTargets host) { this.host = host; }
         internal static string Name(WorldTargetKind kind)
@@ -26,7 +32,7 @@ namespace JueMingR.TerrariaHost.F5
         {
             var commands = Commands(kind);
             new F5RowLayout(elements, measure).Row(ref y, 0, 522, Name(kind), new[] { "配置", "开启", "关闭", "键" },
-                text => text == "配置" ? commands[0] : text == "开启" ? commands[1] : text == "关闭" ? commands[2] : F5Command.None);
+                text => text == "配置" ? commands[0] : text == "开启" ? commands[1] : text == "关闭" ? commands[2] : F5Command.None, descriptions[(int)kind]);
             F5Element key = elements[elements.Count - 1];
             elements[elements.Count - 1] = new F5Element(key.Kind, key.Rect, key.Text, key.TextSize, key.TextScale, F5Command.None, HotkeyActionIds.WorldTarget(kind));
         }
@@ -70,7 +76,7 @@ namespace JueMingR.TerrariaHost.F5
         {
             if (!Target(command).HasValue) return null;
             if (!Available(command)) return "附近目标设置暂不可用";
-            return IsStyle(command) ? "调整本项箭头颜色" : "标记附近完整目标；需要原版金属探测能力生效";
+            return null;
         }
     }
 }

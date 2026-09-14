@@ -25,6 +25,15 @@ namespace JueMingR.TerrariaHost.Information
     }
     internal sealed class InformationControls
     {
+        private static readonly F5RowDescription[] descriptions = {
+            new F5RowDescription(HotkeyActionIds.Information(InformationKind.Biome), "显示你当前所在的群系与深度区域。"),
+            new F5RowDescription(HotkeyActionIds.Information(InformationKind.Infection), "显示世界的神圣、腐化和猩红比例。需要当前存在树妖；数值随原版统计更新，感染变化后不会立即刷新。"),
+            new F5RowDescription(HotkeyActionIds.Information(InformationKind.Luck), "显示当前幸运总值及有效的非零来源明细。需要本世界已解救巫师，或当前存在巫师。"),
+            new F5RowDescription(HotkeyActionIds.Information(InformationKind.Angler), "显示今日任务鱼、捕获地点、个人累计完成次数和今日完成状态。需要本世界已解救渔夫，或当前存在渔夫；不会自动交付。") };
+        private static readonly F5RowDescription adjustmentDescription = new F5RowDescription(HotkeyActionIds.AdjustInformation,
+            "调整群系与信息摘要的共同位置。拖动后松手完成；Esc、右键或 F5 取消。");
+        internal static F5RowDescription Description(InformationKind? kind)
+        { return kind.HasValue ? descriptions[(int)kind.Value] : adjustmentDescription; }
         private readonly IInformationControls host;
         internal InformationControls(IInformationControls host) { this.host = host; }
         internal static string Name(InformationKind kind)
@@ -33,7 +42,7 @@ namespace JueMingR.TerrariaHost.Information
         {
             new F5RowLayout(elements, measure).Row(ref y, 0, 522, kind.HasValue ? Name(kind.Value) : "调整信息窗位置",
                 kind.HasValue ? new[] { "配置", "开启", "关闭", "键" } : new[] { "开始", "键" },
-                text => text == "键" ? F5Command.None : !kind.HasValue ? F5Command.AdjustInformation : Command(kind.Value, text));
+                text => text == "键" ? F5Command.None : !kind.HasValue ? F5Command.AdjustInformation : Command(kind.Value, text), Description(kind));
             F5Element key = elements[elements.Count - 1];
             elements[elements.Count - 1] = new F5Element(key.Kind, key.Rect, key.Text, key.TextSize, key.TextScale, F5Command.None,
                 kind.HasValue ? HotkeyActionIds.Information(kind.Value) : HotkeyActionIds.AdjustInformation);
@@ -71,9 +80,9 @@ namespace JueMingR.TerrariaHost.Information
         internal void Execute(F5Command command) { var kind = Target(command); if (kind.HasValue && !IsStyle(command) && Available(command)) host.SetEnabled(kind.Value, IsEnable(command)); }
         internal string Hint(F5Command command)
         {
+            if (!Target(command).HasValue && command != F5Command.AdjustInformation) return null;
             if (!Available(command)) return (command == F5Command.AdjustInformation ? host.PositionMessage : host.PreferenceMessage) ?? "信息设置暂不可用";
-            if (Target(command) == InformationKind.Infection) return "显示原版最近公布的统计，感染变化后不会立即刷新。";
-            return IsStyle(command) ? "调整本项文字颜色与字号" : command == F5Command.AdjustInformation ? "拖动后松手完成；Esc、右键或 F5 取消" : "保留显示选择；条件和数据不足时显示简短说明";
+            return null;
         }
     }
 }

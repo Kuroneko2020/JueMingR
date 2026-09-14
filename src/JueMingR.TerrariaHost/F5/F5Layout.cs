@@ -38,9 +38,13 @@ namespace JueMingR.TerrariaHost.F5
         internal readonly float TextScale;
         internal readonly F5Command Command;
         internal readonly string HotkeyTarget;
+        internal readonly F5RowDescription Description;
+        internal readonly F5Rect HintRect;
         internal F5Element(F5ElementKind kind, F5Rect rect, string text,
-            F5Size size, float scale, F5Command command, string hotkeyTarget = null)
-        { Kind = kind; Rect = rect; Text = text; TextSize = size; TextScale = scale; Command = command; HotkeyTarget = hotkeyTarget; }
+            F5Size size, float scale, F5Command command, string hotkeyTarget = null,
+            F5RowDescription description = null, F5Rect hintRect = default(F5Rect))
+        { Kind = kind; Rect = rect; Text = text; TextSize = size; TextScale = scale; Command = command; HotkeyTarget = hotkeyTarget;
+            Description = description; HintRect = hintRect; }
     }
 
     // All rectangles are window-local or page-local. Origin and scrolling never
@@ -50,8 +54,6 @@ namespace JueMingR.TerrariaHost.F5
         internal static readonly string[] Pages =
         { "物品", "杂项", "地图", "查询", "笔记", "关于", "蓝图", "钓鱼", "战斗", "信息", "增益", "移动" };
         internal const string DisplayTitle = "决明R";
-        private static readonly string[] Hints = { "开启群系显示", "关闭群系显示", "群系显示暂不可用" };
-        private readonly F5Size[] hintSizes = new F5Size[Hints.Length];
         private readonly Dictionary<string, F5Size> textSizes = new Dictionary<string, F5Size>(StringComparer.Ordinal);
         private readonly List<F5Element> elements = new List<F5Element>(160);
         private readonly F5Size[] navSizes = new F5Size[12];
@@ -130,12 +132,6 @@ namespace JueMingR.TerrariaHost.F5
             ContentPanel = new F5Rect(12, 131, 556, size.Height - 143);
             Viewport = new F5Rect(20, 139, 522, size.Height - 159);
             TitleSize = TextSize(DisplayTitle, 0.75f);
-            for (int i = 0; i < Hints.Length; i++)
-            {
-                hintSizes[i] = TextSize(Hints[i], 0.65f);
-                if (hintSizes[i].Width > Window.Width - 32 || hintSizes[i].Height > Window.Height - 32)
-                    throw new InvalidOperationException("F5 hover text cannot fit its window.");
-            }
             if (TitleSize.Height > Title.Height - 2) throw new InvalidOperationException("F5 title font exceeds the approved title bar.");
             for (int i = 0; i < Pages.Length; i++)
             {
@@ -204,10 +200,6 @@ namespace JueMingR.TerrariaHost.F5
         }
         internal static bool IsSelected(F5Element element, bool biomeEnabled, bool biomeFailed)
         { return !biomeFailed && (biomeEnabled ? element.Command == F5Command.EnableBiome : element.Command == F5Command.DisableBiome); }
-        internal static int HintIndex(F5Element element, bool biomeFailed)
-        { return element.Command != F5Command.EnableBiome && element.Command != F5Command.DisableBiome ? -1 : biomeFailed ? 2 : element.Command == F5Command.EnableBiome ? 0 : 1; }
-        internal static string HintText(int index) { return Hints[index]; }
-        internal F5Size HintSize(int index) { return hintSizes[index]; }
         internal F5Rect ScrollTrack { get { return new F5Rect(550, 139, 10, Viewport.Height); } }
         internal F5Rect ScrollTrackVisual { get { return new F5Rect(553, 139, 4, Viewport.Height); } }
         internal F5Rect ScrollThumbVisual(float scroll)

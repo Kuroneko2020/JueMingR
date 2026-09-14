@@ -9,6 +9,10 @@ namespace JueMingR.TerrariaHost.F5
 {
     internal sealed class WorldObjectControls
     {
+        private static readonly F5RowDescription[] descriptions = {
+            new F5RowDescription(Hotkeys.HotkeyActionIds.WorldObject(WorldObjectKind.Chest), "显示附近宝箱和梳妆台的名称。“始终”需要金属探测能力；“开过”显示本角色在此世界已记录位置上的当前容器，无需探测能力。"),
+            new F5RowDescription(Hotkeys.HotkeyActionIds.WorldObject(WorldObjectKind.Sign), "显示附近牌子的已知正文。可显示全部、前几行或前几个可见字符；按排版后的行数截取，全文最多十行。"),
+            new F5RowDescription(Hotkeys.HotkeyActionIds.WorldObject(WorldObjectKind.Tombstone), "显示附近墓碑的已知正文。可显示全部、前几行或前几个可见字符；按排版后的行数截取，全文最多十行。") };
         private readonly IWorldObjectControls host;
         internal WorldObjectControls(IWorldObjectControls host) { this.host = host; }
         internal static string Name(WorldObjectKind kind) { return kind == WorldObjectKind.Chest ? "宝箱显名" : kind == WorldObjectKind.Sign ? "牌子显示" : "墓碑显示"; }
@@ -16,7 +20,7 @@ namespace JueMingR.TerrariaHost.F5
         {
             var kind = style.Kind;
             string[] labels = kind == WorldObjectKind.Chest ? new[] { "配置", "始终", "开过", "关闭", "键" } : new[] { "配置", "全部", "前几行", "前几字", "关闭", "键" };
-            new F5RowLayout(elements, measure).Row(ref y, 0, 522, Name(kind), labels, text => Command(kind, text));
+            new F5RowLayout(elements, measure).Row(ref y, 0, 522, Name(kind), labels, text => Command(kind, text), descriptions[(int)kind]);
             var key = elements[elements.Count - 1];
             elements[elements.Count - 1] = new F5Element(key.Kind, key.Rect, key.Text, key.TextSize, key.TextScale, F5Command.None, Hotkeys.HotkeyActionIds.WorldObject(kind));
             if (kind != WorldObjectKind.Chest && (style.Mode == WorldObjectMode.Lines || style.Mode == WorldObjectMode.Characters))
@@ -83,17 +87,16 @@ namespace JueMingR.TerrariaHost.F5
         {
             if (!Target(command).HasValue) return null;
             if (!Available(command)) return "此项暂不可用或已到数量边界";
-            if (IsStyle(command)) return "调整本项颜色与字号";
-            if (command == F5Command.ChestAlways) return "显示附近完整容器；需要原版金属探测能力";
-            if (command == F5Command.ChestOpened) return "显示本角色在此世界开过的位置上的当前容器";
+            if (IsStyle(command)) return null;
+            if (command == F5Command.ChestAlways || command == F5Command.ChestOpened) return null;
             if (command == F5Command.ChestOff) return "关闭显名；正常开箱仍会登记位置";
             if (Step(command) != 0) return "调整当前模式的数量";
             switch (Mode(command))
             {
-                case WorldObjectMode.Off: return "关闭本项正文显示";
-                case WorldObjectMode.All: return "显示当前已知正文，最多十个排版行，超出以省略号提示";
-                case WorldObjectMode.Lines: return "按换行后的实际排版行数截取，保留内部空行";
-                default: return "按完整可见字符截取，图标计一字；最多十个排版行";
+                case WorldObjectMode.Lines: return "按实际排版行截取，内部空行也计入行数。";
+                case WorldObjectMode.Characters: return "图标计一个可见字符；超出十个排版行仍会截取并提示省略。";
+                case WorldObjectMode.All: return "超出十个排版行以省略号提示。";
+                default: return null;
             }
         }
     }

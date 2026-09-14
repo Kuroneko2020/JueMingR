@@ -13,6 +13,11 @@ namespace JueMingR.TerrariaHost.Items
 {
     internal sealed class ItemsPresentation
     {
+        private static readonly F5RowDescription[] descriptions = {
+            new F5RowDescription(Hotkeys.HotkeyActionIds.Items[0], "将拾取或手动开出后入包的合格可堆叠物品，存入附近已有同类物品的箱子，可处理对应的未收藏整栈。收藏、当前使用和手动操作的物品受保护；按出售、丢弃、存放的有效规则顺序处理。"),
+            new F5RowDescription(Hotkeys.HotkeyActionIds.Items[1], "在你已打开有效商店时，出售拾取或手动开出后入包、命中名单的合格物品，可处理对应的未收藏整栈。收藏、当前使用和手动操作的物品受保护；出售不适用时继续判断丢弃、存放。"),
+            new F5RowDescription(Hotkeys.HotkeyActionIds.Items[2], "将拾取或手动开出后入包、命中名单的合格物品放入垃圾桶，可处理对应的未收藏整栈；收藏、当前使用和手动操作的物品受保护，适用的出售规则优先。会覆盖垃圾桶原内容，连续丢弃通常只剩最后一项可取回。") };
+        internal static F5RowDescription Description(ItemActionKind action) { return descriptions[(int)action]; }
         private readonly HostItems host;
         private readonly F5Interaction shell;
         private readonly ItemsRenderer renderer = new ItemsRenderer();
@@ -194,7 +199,28 @@ namespace JueMingR.TerrariaHost.Items
             }
         }
         private F5Rect OnScreen(F5Rect rect) { return rect.Offset(view.X, view.Y - shell.Scroll); }
-        internal void Draw(Action<F5Rect> keyboard = null)
+        // Consume only the final projection. Hover cannot prepare a picker,
+        // refresh business state or invalidate the controls it is inspecting.
+        internal string Hint(float x, float y, out F5Rect target, F5Rect? contentClip = null)
+        {
+            target = default(F5Rect);
+            if (!ready || dirty || !shell.Visible || shell.Page != 0 || laidOutScroll != shell.Scroll ||
+                layoutGeneration != shell.Layout.Generation || view.X != shell.X + shell.Layout.Viewport.X || view.Y != shell.Y + shell.Layout.Viewport.Y ||
+                !view.Contains(x, y)) return null;
+            var visible = contentClip.HasValue ? F5HintLayout.Intersect(view, contentClip.Value) : view;
+            if (!visible.Contains(x, y)) return null;
+            foreach (var control in controls)
+            {
+                if (!control.Rect.Contains(x, y)) continue;
+                target = F5HintLayout.Intersect(control.Rect, visible);
+                if (control.Command == ItemUiCommand.Hotkey) return "设置快捷键";
+                if (control.Command == ItemUiCommand.ToggleDiscardFeedback) return "显示或隐藏自动丢弃完成后的头顶提示。";
+                return null; // Item cards retain their own name/replace/remove help.
+            }
+            var name = F5HintLayout.HitName(elements, visible, 0, 0, x, y, out target);
+            return name == null ? null : name.Description.Text;
+        }
+        internal void Draw(Action<F5Rect> keyboard = null, bool allowHints = true)
         {
             if (!ready || !shell.Visible || shell.Page != 0) return;
             renderer.Pass(matrix, view, () =>
@@ -226,7 +252,7 @@ namespace JueMingR.TerrariaHost.Items
                 }
                 if (laidOutMessage != null) renderer.Text(laidOutMessage, OnScreen(layout.Error), Color.Gold, .63f);
             });
-            var hovered = Hit(pointerPosition);
+            var hovered = allowHints ? Hit(pointerPosition) : null;
             if (hovered != null && hovered.Type != 0)
             {
                 var target = hovered.Command == ItemUiCommand.Remove ? new F5Rect(hovered.Rect.Right - ItemsLayout.CardWidth,

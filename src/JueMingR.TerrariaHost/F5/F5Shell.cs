@@ -397,7 +397,10 @@ namespace JueMingR.TerrariaHost.F5
                     {
                         renderer.Draw(State, matrix, biome.FeatureEnabled, !biome.CanObserveLocalPlayer || biome.FeatureFailed || !preferences.BiomeLoaded);
                         notes.DrawCards();
-                        items?.Draw(drawKeyboard);
+                        bool hintsBlocked = !inputState.CanUseInput || HotkeyPopup != null && HotkeyPopup.Visible || StylePopup != null && StylePopup.Visible;
+                        items?.Draw(drawKeyboard, !hintsBlocked && State.CanShowHint);
+                        renderer.DrawHints(State, matrix, items, hintsBlocked,
+                            !biome.CanObserveLocalPlayer || biome.FeatureFailed || !preferences.BiomeLoaded);
                         if (HotkeyPopup != null) renderer.DrawPopup(HotkeyPopup);
                         if (StylePopup != null) renderer.DrawStylePopup(StylePopup);
                     }

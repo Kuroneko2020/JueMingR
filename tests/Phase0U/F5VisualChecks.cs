@@ -46,6 +46,10 @@ namespace Terraria
                         Render(graphics, renderer, outputDirectory, "default-information", 9, 1, 0);
                         Render(graphics, renderer, outputDirectory, "default-information-off", 9, 1, 0, false);
                         Render(graphics, renderer, outputDirectory, "default-information-unavailable", 9, 1, 0, false, true);
+                        Render(graphics, renderer, outputDirectory, "name-chest", 9, 1, 0, hintTarget: "宝箱显名");
+                        Render(graphics, renderer, outputDirectory, "name-infection", 9, 1, 0, hintTarget: "世界感染");
+                        Render(graphics, renderer, outputDirectory, "hint-keyboard", 9, 1, 0, hintTarget: "keyboard");
+                        Render(graphics, renderer, outputDirectory, "hint-unavailable", 9, 1, 0, false, true, "unavailable");
                         Render(graphics, renderer, outputDirectory, "default-fishing", 7, 1, 0);
                         // Synthetic 24-high glyphs exercise a 0.6-unit surface inset;
                         // this is a geometric stress case, not a real font-pack claim.
@@ -154,7 +158,7 @@ namespace Terraria
         }
 
         private static void Render(F5FixtureGraphics graphics, F5Renderer renderer, string output,
-            string name, int page, float scale, int wheel, bool enabled = true, bool failed = false)
+            string name, int page, float scale, int wheel, bool enabled = true, bool failed = false, string hintTarget = null)
         {
             Main.UIScaleMatrix = Matrix.CreateScale(scale, scale, 1);
             var state = new F5Interaction { Ready = true };
@@ -167,6 +171,16 @@ namespace Terraria
             state.Update(input); renderer.Prepare(state, input.Width, input.Height, input.Scale);
             input.Left = false; input.Wheel = -wheel; input.Y = state.Y + 160;
             state.Update(input); input.Wheel = 0;
+            if (hintTarget != null)
+                foreach (var element in state.Layout.Elements)
+                    if (element.Text == hintTarget || hintTarget == "keyboard" && element.HotkeyTarget != null ||
+                        hintTarget == "unavailable" && element.Command == F5Command.EnableBiome)
+                    {
+                        state.ScrollTo(element.Rect.Y - 100);
+                        var view = state.Layout.Viewport.Offset(state.X, state.Y);
+                        input.X = view.X + element.Rect.X + 2; input.Y = view.Y + element.Rect.Y - state.Scroll + 2;
+                        state.Update(input); break;
+                    }
             using (var target = new RenderTarget2D(graphics.Device, 1920, 1080))
             {
                 graphics.Device.SetRenderTarget(target);
@@ -175,11 +189,13 @@ namespace Terraria
                 int titles = Utils.RefinedTitleDraws, errors = Utils.FunctionColorErrors;
                 int status = Utils.NormalStatusDraws, keys = Utils.KeyboardTextDraws;
                 renderer.Draw(state, Main.UIScaleMatrix, enabled, failed);
+                renderer.DrawHints(state, Main.UIScaleMatrix, null, false, failed);
+                if (hintTarget != null) F5InputChecks.Check(renderer.HintLayout.Visible, "real information preview consumes the shared hint draw path");
                 Main.spriteBatch.End(); graphics.Device.SetRenderTarget(null);
                 F5InputChecks.Check(Utils.RefinedTitleDraws == titles + 1 && Utils.FunctionColorErrors == errors &&
                     Utils.NormalStatusDraws == status && Utils.KeyboardTextDraws == keys,
                     "actual renderer uses the Chinese display title, neutral function text and no normal-status/key text");
-                if (page == 9 && scale == 1) CheckRefinedPixels(target, state, enabled, failed);
+                if (page == 9 && scale == 1 && hintTarget == null) CheckRefinedPixels(target, state, enabled, failed);
                 SaveTexture(target, Path.Combine(output, name + ".png"));
             }
         }

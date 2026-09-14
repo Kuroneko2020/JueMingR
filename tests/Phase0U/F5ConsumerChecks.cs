@@ -134,6 +134,16 @@ namespace Terraria
                 measurements = Main.PendingMeasurements;
                 int hints = Utils.F5HintDraws;
                 int layoutMeasurements = (int)Get(layout, "MeasurementCount");
+                for (int i = 0; i < 3; i++) Frame(main, Main.SampleX, Main.SampleY);
+                Check(Utils.F5HintDraws == hints, "normal biome enable button no longer repeats its action");
+                foreach (object element in (IEnumerable)Get(layout, "Elements"))
+                    if ((string)Get(element, "Text") == "群系显示")
+                    {
+                        object rect = Get(element, "Rect"), view = Get(layout, "Viewport");
+                        FrameLocal(main, state, (float)Get(view, "X") + (float)Get(rect, "X") + 4,
+                            (float)Get(view, "Y") + (float)Get(rect, "Y") - (float)Get(state, "Scroll") + 4);
+                        break;
+                    }
                 for (int i = 0; i < 12; i++) Frame(main, Main.SampleX, Main.SampleY);
                 Check(Main.PendingMeasurements == measurements && Utils.F5HintDraws > hints &&
                     (int)Get(layout, "MeasurementCount") == layoutMeasurements,

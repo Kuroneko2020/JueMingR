@@ -8,6 +8,7 @@ namespace Terraria
     {
         internal static void Run()
         {
+            F5NameHintChecks.Run();
             var state = new F5Interaction { Ready = true };
             var input = new F5Input { Width = 1920, Height = 1080, Scale = 1,
                 Active = true, Focused = true, Right = false, X = 1900, Y = 900 };

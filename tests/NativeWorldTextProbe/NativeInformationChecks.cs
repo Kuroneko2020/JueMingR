@@ -40,7 +40,11 @@ namespace NativeWorldTextProbe
                 Require(Get(renderer, "InformationControls") != null, "real shell must route information commands");
                 var controls = Get(renderer, "InformationControls");
                 var command = assembly.GetType("JueMingR.TerrariaHost.F5.F5Command", true);
-                Require(((string)Call(controls, "Hint", Enum.Parse(command, "ConfigureInfection"))).Contains("显示原版最近公布的统计，感染变化后不会立即刷新。"), "actual infection help explains publication cadence");
+                Require(Call(controls, "Hint", Enum.Parse(command, "ConfigureInfection")) == null, "actual configuration button does not repeat infection help");
+                var description = Call(controls, "Description", InformationKind.Infection);
+                string help = (string)Get(description, "Text");
+                Require(help.Contains("神圣、腐化和猩红") && help.Contains("当前存在树妖") && help.Contains("随原版统计更新") && help.Contains("不会立即刷新"),
+                    "actual infection name metadata retains the accepted scope, condition and publication cadence");
                 Call(controls, "Execute", Enum.Parse(command, "EnableLuck"));
                 Require((bool)Call(information, "Enabled", InformationKind.Luck), "actual F5 command must update the owning document");
                 NativeInformationConfigurationChecks.Run(context, information, root, oldActions);
