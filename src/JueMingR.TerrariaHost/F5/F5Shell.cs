@@ -237,7 +237,7 @@ namespace JueMingR.TerrariaHost.F5
                 SubmitPosition();
                 // Settings owns intent; the Feature still owns actual state and
                 // its failure latch. Loading or a failure cannot become a click.
-                if ((State.Command == F5Command.EnableBiome || State.Command == F5Command.DisableBiome) && Main.netMode == 0 && preferences.BiomeLoaded && !biome.FeatureFailed)
+                if ((State.Command == F5Command.EnableBiome || State.Command == F5Command.DisableBiome) && biome.CanObserveLocalPlayer && preferences.BiomeLoaded && !biome.FeatureFailed)
                     preferences.SetBiomeEnabled(State.Command == F5Command.EnableBiome);
                 else if (State.ClickedControl != null && WorldTargetControls.IsStyle(State.Command) && renderer.WorldControls != null && renderer.WorldControls.Available(State.Command))
                 {
@@ -395,7 +395,7 @@ namespace JueMingR.TerrariaHost.F5
                     notes.DrawPins();
                     if (State.Visible && State.Ready)
                     {
-                        renderer.Draw(State, matrix, biome.FeatureEnabled, Main.netMode != 0 || biome.FeatureFailed || !preferences.BiomeLoaded);
+                        renderer.Draw(State, matrix, biome.FeatureEnabled, !biome.CanObserveLocalPlayer || biome.FeatureFailed || !preferences.BiomeLoaded);
                         notes.DrawCards();
                         items?.Draw(drawKeyboard);
                         if (HotkeyPopup != null) renderer.DrawPopup(HotkeyPopup);

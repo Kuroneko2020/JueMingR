@@ -16,8 +16,8 @@ namespace JueMingR.TerrariaHost.Hotkeys
         internal HostHotkeys(string gameDirectory, Phase0TBiomeRuntime biome, HostPreferences preferences, HostItems items, EntityLabels.HostEntityLabels labels = null, WorldTargets.HostWorldTargets targets = null, WorldObjectText.HostWorldObjectText worldObjects = null,
             Information.HostInformation information = null, Func<bool> canAdjustInformation = null, Action adjustInformation = null)
         {
-            Registry.Register(new HotkeyAction(HotkeyActionIds.Biome, "群系显示", HotkeyContext.SinglePlayer,
-                () => preferences.BiomeLoaded && !biome.FeatureFailed && Main.netMode == 0,
+            Registry.Register(new HotkeyAction(HotkeyActionIds.Biome, "群系显示", HotkeyContext.Gameplay,
+                () => preferences.BiomeLoaded && !biome.FeatureFailed && biome.CanObserveLocalPlayer,
                 () => preferences.SetBiomeEnabled(!preferences.BiomeEnabled)));
             if (items != null)
                 for (int i = 0; i < HotkeyActionIds.Items.Length; i++)

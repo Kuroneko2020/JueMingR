@@ -46,6 +46,7 @@ namespace NativeWorldTextProbe
                 NativeInformationConfigurationChecks.Run(context, information, root, oldActions);
                 Require((bool)Get(Call(readiness, "Snapshot"), "Infection"), "initial successful native data survives later Session composition");
                 WithReadOnlyGuards(() => CheckObservationAndHud(context, information, readiness));
+                NativeInformationBiomeChecks.Run(context, information);
                 NativeInformationInputChecks.Run(context, information);
                 NativeInformationFailureChecks.Run(context, information);
                 Console.WriteLine("PASS: built full Host composes independent information controls and preference command.");

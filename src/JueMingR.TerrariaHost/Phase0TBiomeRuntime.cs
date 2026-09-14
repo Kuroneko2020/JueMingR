@@ -52,6 +52,7 @@ namespace JueMingR.TerrariaHost
         internal bool FeatureFailed { get { return feature.HasFailed; } }
 
         internal void SetFeatureEnabled(bool enabled) { feature.SetEnabled(enabled); }
+        internal bool CanObserveLocalPlayer { get { Player player; return TerrariaBiomeWorldReader.TryGetActivePlayer(out player); } }
 
         private sealed class TerrariaBiomeWorldReader : IGameSessionProbe, IBiomeObservationSource
         {
@@ -105,12 +106,13 @@ namespace JueMingR.TerrariaHost
                 return true;
             }
 
-            private static bool TryGetActivePlayer(out Player player)
+            internal static bool TryGetActivePlayer(out Player player)
             {
                 player = null;
-                // Notes expands local-client presentation availability, not the
-                // accepted single-player biome observation/control boundary.
-                if (Main.gameMenu || Main.dedServ || Main.netMode != 0)
+                // Read the native local client's existing Zone facts in both
+                // playing modes. Dedicated servers have no local HUD player.
+                if (Main.gameMenu || Main.dedServ || Main.netMode != 0 && Main.netMode != 1 ||
+                    Main.player == null || Main.myPlayer < 0 || Main.myPlayer >= Main.player.Length)
                 {
                     return false;
                 }

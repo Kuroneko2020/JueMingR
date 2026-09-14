@@ -27,6 +27,9 @@ try {
         'src/JueMingR.Features/WorldObjectText/OpenedPositionStore.cs' = 'records';
         'src/JueMingR.Platform/Persistence/DocumentWorker.cs' = 'storage-host';
         'src/JueMingR.TerrariaHost/F5/F5Layout.cs' = 'shared-host';
+        'src/JueMingR.Features/Biomes/BiomeDisplayFeature.cs' = 'shared-host';
+        'src/JueMingR.TerrariaHost/Hotkeys/HostHotkeys.cs' = 'shared-host';
+        'src/JueMingR.TerrariaHost/Phase0TBiomeRuntime.cs' = 'shared-host';
         'src/JueMingR.TerrariaHost/Information/InformationHud.cs' = 'shared-host';
         'src/JueMingR.Features/Information/InformationPreferenceCodec.cs' = 'storage-host';
         'src/JueMingR.Platform/Information/InformationObservation.cs' = 'shared-host';
