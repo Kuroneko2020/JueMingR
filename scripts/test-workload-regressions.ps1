@@ -42,6 +42,7 @@ $fixture = Build-WorkloadFixture 'Phase0SFixtureTerraria'
 foreach ($mode in @('notes-input', 'entity-style', 'world-targets-style')) { Invoke-WorkloadCheck ('core-' + $mode) $fixture @($mode) }
 $native = Build-WorkloadFixture 'NativeWorldTextProbe'
 Invoke-WorkloadCheck 'core-native-host' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'native-cpu'), 'WorkloadCpu')
+if ($route.groups -contains 'shared-host') { Invoke-WorkloadCheck 'information-native-host' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'information-cpu'), 'InformationCpu') }
 $modes = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
 if ($route.groups -contains 'notes-host') { [void]$modes.Add('hotkeys-popup'); [void]$modes.Add('focus-input') }
 if ($route.groups -contains 'world-host') { foreach ($mode in @('world-targets-observation', 'world-targets-projection', 'entity-observation')) { [void]$modes.Add($mode) } }

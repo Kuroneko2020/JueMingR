@@ -14,7 +14,7 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
-            if (scope != "Full" && scope != "SelectionCpuCosts" && scope != "SelectionCpuChecks" && scope != "WorkloadCpu") throw new ArgumentException("Unknown probe scope");
+            if (scope != "Full" && scope != "SelectionCpuCosts" && scope != "SelectionCpuChecks" && scope != "WorkloadCpu" && scope != "InformationCpu") throw new ArgumentException("Unknown probe scope");
             if (IntPtr.Size != 4 || typeof(object).Assembly.GetName().Name != "mscorlib") throw new InvalidOperationException("Native workload requires .NET Framework x86.");
             string isolated = Path.Combine(Path.GetTempPath(), "JueMingR-native-text-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(isolated);
             // Main's beforefieldinit constructor reads Program.SavePath. This is
@@ -39,7 +39,7 @@ namespace NativeWorldTextProbe
             NativeLayerReadinessChecks.Run();
             if (content == "--metrics") return 0;
             if (scope == "SelectionCpuCosts") { FiniteCostChecks.RunSelection(output); return 0; }
-            if (scope == "SelectionCpuChecks" || scope == "WorkloadCpu")
+            if (scope == "SelectionCpuChecks" || scope == "WorkloadCpu" || scope == "InformationCpu")
             {
                 if (scope == "SelectionCpuChecks") FiniteCostChecks.RunSelection(output);
                 else
@@ -58,6 +58,7 @@ namespace NativeWorldTextProbe
                 Terraria.Main.dedServ = true;
                 try { RuntimeHelpers.RunClassConstructor(typeof(Terraria.Graphics.Capture.CaptureManager).TypeHandle); }
                 finally { Terraria.Main.dedServ = false; }
+                if (scope == "InformationCpu") { NativeInformationChecks.RunCpu(); return 0; }
                 NativeWorldChecks.RunSelectionCpu();
                 NativeCompositionChecks.RunSelectionCpu();
                 return 0;

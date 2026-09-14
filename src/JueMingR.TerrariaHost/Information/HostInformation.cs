@@ -11,7 +11,7 @@ namespace JueMingR.TerrariaHost.Information
 {
     // Preference intent is process-scoped. Native facts and each content owner
     // have their own session lifetime; no world state is saved in these files.
-    internal sealed class HostInformation : IInformationControls
+    internal sealed class HostInformation : IInformationControls, Platform.Runtime.IRuntimeFeature
     {
         private readonly PreferenceDocument<InformationPreferences> preferences;
         private readonly PreferenceDocument<WindowPosition> position;
@@ -20,13 +20,15 @@ namespace JueMingR.TerrariaHost.Information
         private readonly Stopwatch startup = Stopwatch.StartNew();
         private bool stopping;
         private string reportedSettings, reportedPosition;
+        private readonly InformationObservationReader source;
         internal readonly InfectionSummary Infection = new InfectionSummary();
         internal readonly LuckSummary Luck = new LuckSummary();
         internal readonly AnglerSummary Angler = new AnglerSummary();
         internal readonly InformationHud Hud;
-        internal HostInformation(string gameDirectory, Phase0TBiomeRuntime biome, HostPreferences biomePreferences)
+        internal HostInformation(string gameDirectory, Phase0TBiomeRuntime biome, HostPreferences biomePreferences, InformationReadiness readiness)
         {
             this.biome = biome; this.biomePreferences = biomePreferences;
+            source = new InformationObservationReader(readiness);
             string config = Path.Combine(gameDirectory, "JueMingRData", "config");
             preferences = new PreferenceDocument<InformationPreferences>(new AtomicFileDocument(Path.Combine(config, "features", "information-display.json"), 65536, true),
                 new InformationPreferenceCodec(), InformationPreferences.Default);
@@ -100,6 +102,20 @@ namespace JueMingR.TerrariaHost.Information
             if (Position.IsLoaded && message != null && message != reportedPosition) { display(message); reportedPosition = message; }
         }
         internal void ClearContent() { Infection.Clear(); Luck.Clear(); Angler.Clear(); Hud.Clear(); }
+        internal void PrepareHud()
+        {
+            if (!biome.SharedRuntime.IsSessionActive || Terraria.Main.hideUI || Terraria.Main.mapFullscreen || Terraria.Main.dedServ)
+            { if (Hud.Visible) Hud.Clear(); return; }
+            var matrix = Terraria.Main.UIScaleMatrix; var screen = Terraria.GameInput.PlayerInput.OriginalScreenSize;
+            if (screen.X <= 0 || screen.Y <= 0) screen = new Microsoft.Xna.Framework.Vector2(Terraria.Main.screenWidth, Terraria.Main.screenHeight);
+            if (matrix.M11 <= 0 || matrix.M22 <= 0) { Hud.Clear(); return; }
+            Hud.Prepare(Terraria.GameContent.FontAssets.MouseText?.Value, screen.X / matrix.M11, screen.Y / matrix.M22, false);
+        }
+        bool Platform.Runtime.IRuntimeFeature.Enabled { get { return Preferences.Value.AnySummaryEnabled; } }
+        public void OnSessionStarted() { source.Clear(); ClearContent(); }
+        public void OnSessionEnded() { source.Clear(); ClearContent(); }
+        public void Update(ulong tick) { source.Update(this); }
+        public void FailClosed() { source.Clear(); ClearContent(); }
         private void OnExit(object sender, EventArgs args)
         {
             AppDomain.CurrentDomain.ProcessExit -= OnExit; stopping = true;
