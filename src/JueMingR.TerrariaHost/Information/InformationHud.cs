@@ -47,12 +47,16 @@ namespace JueMingR.TerrariaHost.Information
             {
                 Block block = blocks[i]; string text = host.Text((InformationKind)i);
                 var style = host.Preferences.Value.Style((InformationKind)i); block.Rgb = style.Rgb;
-                if (block.Prepare(text, style.Size / 100f, font, maximumWidth, Measure))
+                try
                 {
+                    if (block.Prepare(text, style.Size / 100f, font, maximumWidth, Measure))
+                    {
 #if DEBUG
-                    LayoutBuilds++;
+                        LayoutBuilds++;
 #endif
+                    }
                 }
+                catch (Exception error) { block.Fail(font); host.DisplayFailed((InformationKind)i, error); }
                 if (!block.Failed && block.Lines.Count > 0) { primaryHeight += block.LineHeight + 4; active++; }
             }
             placeholder = active == 0 && adjusting;
@@ -118,7 +122,9 @@ namespace JueMingR.TerrariaHost.Information
                 {
                     // A failed block stops retrying on this font, without
                     // disabling its peers, native observations or game actions.
-                    block.Failed = true; host.DisplayFailed((InformationKind)i, error);
+                    block.Fail(font);
+                    if (placeholder) { host.DisplayFailed(error); return; }
+                    host.DisplayFailed((InformationKind)i, error);
                 }
             }
             if (adjusting)
@@ -149,8 +155,13 @@ namespace JueMingR.TerrariaHost.Information
             private string text;
             private object font;
             private float width;
+            internal void Fail(DynamicSpriteFont currentFont)
+            { font = currentFont; Failed = true; Lines.Clear(); VisibleLines = 0; }
             internal bool Prepare(string value, float scale, DynamicSpriteFont currentFont, float maximumWidth, Func<string, F5Size> measure)
             {
+                // A changing timer cannot retry a broken font every update.
+                // A genuinely replaced font may prepare this block again.
+                if (Failed && ReferenceEquals(font, currentFont)) return false;
                 if (String.Equals(text, value, StringComparison.Ordinal) && scale == Scale && ReferenceEquals(font, currentFont) && width == maximumWidth) return false;
                 if (!ReferenceEquals(font, currentFont)) Failed = false;
                 text = value; Scale = scale; font = currentFont; width = maximumWidth; Lines.Clear();

@@ -46,6 +46,7 @@ namespace NativeWorldTextProbe
                 Require((bool)Get(Call(readiness, "Snapshot"), "Infection"), "initial successful native data survives later Session composition");
                 WithReadOnlyGuards(() => CheckObservationAndHud(context, information, readiness));
                 NativeInformationInputChecks.Run(context, information);
+                NativeInformationFailureChecks.Run(context, information);
                 Console.WriteLine("PASS: built full Host composes independent information controls and preference command.");
             }
             finally
@@ -158,7 +159,7 @@ namespace NativeWorldTextProbe
                 Require(((string)Call(host, "Text", kind)).Contains("需要") && (int)Get(reader, "NpcQueries") == queries + 1 &&
                     (int)Get(reader, "ScalarSamples") == samples && (int)Get(reader, "LocalizationReads") == localizations, "single enabled row with proven absent NPC samples no unrelated business: " + kind);
                 Main.netMode = 1; Call(context, "UpdateRuntime");
-                Require(((string)Call(host, "Text", kind)).Contains("等待"), "ordinary client's unconfirmed history stays unknown: " + kind);
+                Require(((string)Call(host, "Text", kind)).Contains(kind == InformationKind.Infection ? "需要当前活动树妖" : "等待"), "current Dryad absence differs from ordinary client's unconfirmed saved history: " + kind);
                 Main.netMode = 0; Main.npc = null; Call(context, "UpdateRuntime");
                 Require(((string)Call(host, "Text", kind)).Contains("不可用"), "missing native NPC table cannot certify absence: " + kind);
                 Main.npc = new NPC[200]; Call(host, "SetEnabled", kind, false);

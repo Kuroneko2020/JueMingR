@@ -20,6 +20,7 @@ namespace JueMingR.TerrariaHost.Information
         private readonly Action<Exception> biomeFailure;
         private readonly Stopwatch startup = Stopwatch.StartNew();
         private bool stopping;
+        private bool hudFailed;
         private string reportedSettings, reportedPosition;
         private int displayFailures, reportedDisplayFailures;
         private Microsoft.Xna.Framework.Matrix hudMatrix;
@@ -134,6 +135,14 @@ namespace JueMingR.TerrariaHost.Information
         }
         internal void PrepareHud()
         {
+            if (hudFailed) return;
+            // Presentation is optional. An unexpected resource/geometry error
+            // must never escape UpdateShell into the shared Runtime failure gate.
+            try { PrepareHudCore(); }
+            catch (Exception error) { DisplayFailed(error); }
+        }
+        private void PrepareHudCore()
+        {
             if (!biome.SharedRuntime.IsSessionActive || Terraria.Main.hideUI || Terraria.Main.mapFullscreen || Terraria.Main.dedServ)
             { if (Hud.Visible) Hud.Clear(); return; }
             var matrix = Terraria.Main.UIScaleMatrix; var screen = ScreenSize();
@@ -143,7 +152,7 @@ namespace JueMingR.TerrariaHost.Information
             Adjustment.BindGeometry(Hud.GeometryVersion);
         }
         bool Platform.Runtime.IRuntimeFeature.Enabled { get { return Preferences.Value.AnySummaryEnabled; } }
-        public void OnSessionStarted() { Adjustment.Cancel(); Pointer.Invalidate(); source.Clear(); ClearContent(); }
+        public void OnSessionStarted() { hudFailed = false; Adjustment.Cancel(); Pointer.Invalidate(); source.Clear(); ClearContent(); }
         public void OnSessionEnded()
         {
             // No native input is read during shutdown. Only a still-trusted
@@ -154,7 +163,7 @@ namespace JueMingR.TerrariaHost.Information
         public void Update(ulong tick) { Tick++; source.Update(this); }
         public void FailClosed() { Adjustment.Cancel(); Pointer.Invalidate(); source.Clear(); ClearContent(); }
         internal void DisplayFailed(Exception error)
-        { Adjustment.Cancel(); Pointer.Invalidate(); Hud.Clear(); displayFailures |= 15; }
+        { hudFailed = true; Adjustment.Cancel(); Pointer.Invalidate(); Hud.Clear(); displayFailures |= 15; }
         internal void DisplayFailed(InformationKind kind, Exception error)
         {
             displayFailures |= 1 << (int)kind;

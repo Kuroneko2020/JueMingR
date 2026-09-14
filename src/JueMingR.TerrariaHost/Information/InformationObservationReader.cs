@@ -60,7 +60,9 @@ namespace JueMingR.TerrariaHost.Information
             }
             if (wantInfection)
             {
-                var availability = !dryad ? MissingQualification(qualificationReadable) : !state.Available ? InformationAvailability.Unavailable : !state.Infection ? InformationAvailability.Waiting : InformationAvailability.Ready;
+                // Infection requires a currently active Dryad, never saved
+                // history. A readable absence has the same meaning on clients.
+                var availability = !dryad ? MissingQualification(qualificationReadable, false) : !state.Available ? InformationAvailability.Unavailable : !state.Infection ? InformationAvailability.Waiting : InformationAvailability.Ready;
                 host.Infection.Update(new InfectionObservation { Availability = availability,
                     Hallow = availability == InformationAvailability.Ready ? (int?)WorldGen.tGood : null,
                     Corruption = availability == InformationAvailability.Ready ? (int?)WorldGen.tEvil : null,
@@ -100,8 +102,8 @@ namespace JueMingR.TerrariaHost.Information
                 host.Angler.Update(sample);
             }
         }
-        private static InformationAvailability MissingQualification(bool readable)
-        { return !readable ? InformationAvailability.Unavailable : Main.netMode == 1 ? InformationAvailability.Waiting : InformationAvailability.ConditionUnmet; }
+        private static InformationAvailability MissingQualification(bool readable, bool needsHistory = true)
+        { return !readable ? InformationAvailability.Unavailable : needsHistory && Main.netMode == 1 ? InformationAvailability.Waiting : InformationAvailability.ConditionUnmet; }
         private void Localize(int item)
         {
             object currentCulture = Language.ActiveCulture;
