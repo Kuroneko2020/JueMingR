@@ -56,7 +56,9 @@ namespace Terraria
             var a = Rect(Control(p, "Replace", (int)ItemListKind.Sell, 2337)); var b = Rect(Control(p, "Replace", (int)ItemListKind.Sell, 2338));
             Check(a.Y == b.Y && b.X > a.Right && a.Width > a.Height && a.Y > panels[1].Rect.Bottom && a.Bottom < panels[2].Rect.Y, "compact sale icons belong between sale and discard rows");
             int builds = p.LayoutBuildCount; for (int i = 0; i < 100; i++) prepare(); Check(p.LayoutBuildCount == builds, "stable frames do not rebuild controls");
+            F5NameHintChecks.Items(host, shell, p);
             Click(p, Control(p, "Enable", 1)); prepare(); long revision = host.Preferences.Revision;
+            F5NameHintChecks.Items(host, shell, p);
             Click(p, Control(p, "Enable", 1)); prepare();
             Check(host.Preferences.Value.SellEnabled && revision == host.Preferences.Revision && Main.npcShop == 0, "explicit on is idempotent while no shop is open");
             Click(p, Control(p, "Disable", 1)); prepare(); Check(!host.Preferences.Value.SellEnabled, "explicit off");
@@ -74,6 +76,7 @@ namespace Terraria
             Check(p.Selecting && !shell.BeforeLeave(9), "Notes denied leave preserves picker");
             var inlineCandidate = Rect(Control(p, "Select", type: 8));
             Check(inlineCandidate.Width < inlineCandidate.Height && inlineCandidate.Height == 48 && HasControl(p, "Enable", 0), "inline candidate grid retains legal feature controls");
+            F5NameHintChecks.Picker(host, shell, p, inlineCandidate);
             Click(p, Control(p, "Select", type: 8)); prepare(); Click(p, Control(p, "Select", type: 101)); prepare();
             Check(!host.Preferences.Value.SellTypes.Contains(8), "batch selection remains draft"); Click(p, Control(p, "Confirm")); prepare();
             Check(host.Preferences.Value.SellTypes.Contains(8) && Main.LocalPlayer.inventory[10].stack == 4 && HasControl(p, "Add", argument: (int)ItemListKind.Sell), "commit only changes type list and restores add");
@@ -303,7 +306,15 @@ namespace Terraria
                 Click(presentation, Control(presentation, "Add", (int)ItemListKind.Discard)); prepare();
                 Check(shell.BeforeLeave(9) && !presentation.Selecting, "accepted leave cancels picker without replacing Notes gate");
                 prepare();
+                HoverName(shell, presentation);
                 Draw(graphics, shellRenderer, shell, presentation, null);
+                Check(shellRenderer.HintLayout.Visible, "real item drawing consumes ordinary shared name hints");
+                int hintBuilds = shellRenderer.HintLayout.BuildCount;
+                Draw(graphics, shellRenderer, shell, presentation, null);
+                Check(shellRenderer.HintLayout.BuildCount == hintBuilds, "stable real item draws reuse the same prepared hint");
+                Pointer(presentation, Control(presentation, "Replace", (int)ItemListKind.Sell, 8), false);
+                Draw(graphics, shellRenderer, shell, presentation, null);
+                Check(!shellRenderer.HintLayout.Visible, "moving from a name to an item leaves only the original item help");
                 // A taller offset font and skin replacement use the same real
                 // draw pass, clipping, texture ownership and input rectangles.
                 FontAssets.MouseText = graphics.Asset("item-offset-font", graphics.CreateFont(12, 26, -3, 8, 39)); prepare();
@@ -355,6 +366,9 @@ namespace Terraria
                             CheckOriginalHintRows(graphics, shellRenderer, shell, presentation, host, output);
                             prepare();
                             Draw(graphics, shellRenderer, shell, presentation, Path.Combine(output, "items-original-short-scrollbar.png"));
+                            HoverName(shell, presentation);
+                            Draw(graphics, shellRenderer, shell, presentation, Path.Combine(output, "items-feature-name-hint.png"));
+                            Check(shellRenderer.HintLayout.Visible, "original resources draw the actual item name hint");
                             Pointer(presentation, Control(presentation, "Replace", (int)ItemListKind.Sell, 2337), false); prepare();
                             Draw(graphics, shellRenderer, shell, presentation, Path.Combine(output, "items-body-hover.png"));
                             Pointer(presentation, Control(presentation, "Remove", (int)ItemListKind.Sell, 2337), false); prepare();
@@ -419,15 +433,34 @@ namespace Terraria
             host.Change(ItemAutomationSettings.Default);
             Console.WriteLine("PASS: original-font hint on/off keeps neighboring row heights and stable geometry at 100%/150% UI scale; four real XNA previews saved.");
         }
+        private static void HoverName(F5Interaction shell, ItemsPresentation items)
+        {
+            var elements = (System.Collections.Generic.List<F5Element>)typeof(ItemsPresentation).GetField("elements", Fields).GetValue(items);
+            var view = shell.Layout.Viewport.Offset(shell.X, shell.Y);
+            var name = elements.First(e => e.Description != null && e.Rect.Y >= view.Y && e.Rect.Bottom <= view.Bottom);
+            SamplePointer(items, new Vector2(name.Rect.X + 1, name.Rect.Y + 1), false, true);
+        }
         private static void Draw(F5FixtureGraphics graphics, F5Renderer renderer, F5Interaction shell, ItemsPresentation items, string path)
         {
+            // Both consumers see the same sample, as they do in F5Shell. A
+            // name preview must not leave a second stale pointer over a card.
+            var point = (Vector2)typeof(ItemsPresentation).GetField("pointerPosition", Fields).GetValue(items);
+            var screen = PlayerInput.OriginalScreenSize;
+            shell.Update(new F5Input { Active = true, Focused = true, Width = screen.X, Height = screen.Y,
+                Scale = Main.UIScaleMatrix.M11, X = point.X, Y = point.Y, Left = PlayerInput.MouseInfo.LeftButton == ButtonState.Pressed });
             using (var target = new RenderTarget2D(graphics.Device, 1920, 1080))
             {
                 graphics.Device.SetRenderTarget(target); graphics.Device.Clear(Color.Transparent);
                 Main.spriteBatch.Begin(SpriteSortMode.Deferred, null, null, null, null, null, Main.UIScaleMatrix);
                 Rectangle clip = graphics.Device.ScissorRectangle;
+                var rasterizer = graphics.Device.RasterizerState; var blend = graphics.Device.BlendState;
+                var depth = graphics.Device.DepthStencilState; var sampler = graphics.Device.SamplerStates[0];
                 renderer.Draw(shell, Main.UIScaleMatrix, false, false); items.Draw(rect => renderer.Keyboard(Main.spriteBatch, rect));
+                renderer.DrawHints(shell, Main.UIScaleMatrix, items, false, false);
                 Check(graphics.Device.ScissorRectangle == clip, "item pass restores caller scissor");
+                Check(ReferenceEquals(graphics.Device.RasterizerState, rasterizer) && ReferenceEquals(graphics.Device.BlendState, blend) &&
+                    ReferenceEquals(graphics.Device.DepthStencilState, depth) && ReferenceEquals(graphics.Device.SamplerStates[0], sampler),
+                    "content and ordinary hint passes restore caller graphics state");
                 Main.spriteBatch.Draw(TextureAssets.MagicPixel.Value, new Rectangle(0, 0, 8, 8), Color.Red);
                 Main.spriteBatch.End(); graphics.Device.SetRenderTarget(null);
                 var pixels = new Color[1920 * 1080]; target.GetData(pixels);
@@ -457,6 +490,10 @@ namespace Terraria
         {
             F5Rect rect = (F5Rect)control.GetType().GetField("Rect", Fields).GetValue(control);
             var point = new Vector2(rect.X + rect.Width / 2, rect.Y + rect.Height / 2);
+            SamplePointer(presentation, point, pressed, geometryCurrent);
+        }
+        private static void SamplePointer(ItemsPresentation presentation, Vector2 point, bool pressed, bool geometryCurrent)
+        {
             PlayerInput.MouseInfo = new MouseState((int)point.X, (int)point.Y, 0, pressed ? ButtonState.Pressed : ButtonState.Released, ButtonState.Released, ButtonState.Released, ButtonState.Released, ButtonState.Released);
             presentation.ProcessInput(true, new KeyboardState(), point, geometryCurrent);
         }

@@ -2,6 +2,13 @@ using System;
 using System.Collections.Generic;
 namespace JueMingR.TerrariaHost.F5
 {
+    // The module owns this static metadata. An identity does not require a
+    // registered hotkey, and a description never carries an executable command.
+    internal sealed class F5RowDescription
+    {
+        internal readonly string Id, Text;
+        internal F5RowDescription(string id, string text) { Id = id; Text = text; }
+    }
     // Shared row geometry; callers own commands and cache border-inclusive metrics.
     internal sealed class F5RowLayout
     {
@@ -10,7 +17,7 @@ namespace JueMingR.TerrariaHost.F5
         private readonly Func<string, float, F5Size> TextSize;
         internal F5RowLayout(List<F5Element> elements, Func<string, float, F5Size> measure)
         { this.elements = elements; TextSize = measure; }
-        internal void Row(ref float y, float x, float width, string label, string[] actions, Func<string, F5Command> commandFor = null)
+        internal void Row(ref float y, float x, float width, string label, string[] actions, Func<string, F5Command> commandFor = null, F5RowDescription description = null)
         {
             float actionWidth = 0;
             foreach (string action in actions)
@@ -37,8 +44,13 @@ namespace JueMingR.TerrariaHost.F5
             for (int i = firstText; i < elements.Count; i++)
             {
                 F5Element text = elements[i];
-                elements[i] = new F5Element(text.Kind, text.Rect.Offset(0, shift), text.Text,
-                    text.TextSize, text.TextScale, text.Command);
+                var rect = text.Rect.Offset(0, shift);
+                // Padding follows each measured line, bounded by its name column.
+                // Blank row space and buttons on the next line remain separate.
+                var hintRect = new F5Rect(Math.Max(x + 6, rect.X - 2), rect.Y - 2,
+                    Math.Min(textWidth + 2, rect.Width + 4), rect.Height + 4);
+                elements[i] = new F5Element(text.Kind, rect, text.Text,
+                    text.TextSize, text.TextScale, text.Command, description: description, hintRect: hintRect);
             }
             float end = y + rowHeight;
             if (actions.Length > 0)

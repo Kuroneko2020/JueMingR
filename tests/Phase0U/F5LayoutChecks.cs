@@ -123,7 +123,7 @@ namespace Terraria
                     if (page != 9 || element.Kind != F5ElementKind.Button || panel == null) continue;
                     if (Math.Abs(element.Rect.Y + element.Rect.Height / 2 - panel.Rect.Y - panel.Rect.Height / 2) > 0.01f)
                         failures.Add("information button group is not vertically centered");
-                    if (element.Command == F5Command.None && F5Layout.HintIndex(element, false) >= 0)
+                    if (element.Command == F5Command.None && element.Description != null)
                         failures.Add("inactive control still has a development hover hint");
                 }
                 if (page == 9 && layout.Elements[0].Rect.Height > 44)

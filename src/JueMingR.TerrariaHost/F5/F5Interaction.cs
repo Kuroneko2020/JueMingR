@@ -45,6 +45,7 @@ namespace JueMingR.TerrariaHost.F5
         internal float PointerX { get; private set; }
         internal float PointerY { get; private set; }
         internal bool DraggingScroll { get { return capture == 2; } }
+        internal bool CanShowHint { get { return OwnsPointer && !PointerBlocked && capture == 0 && !leftTail && !rightTail; } }
         internal bool OwnsPointer
         {
             get { return Ready && Visible && active &&

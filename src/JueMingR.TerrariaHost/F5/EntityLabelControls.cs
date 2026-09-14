@@ -11,6 +11,9 @@ namespace JueMingR.TerrariaHost.F5
     // Row order and localized button text never dispatch gameplay commands.
     internal sealed class EntityLabelControls
     {
+        private static readonly F5RowDescription enemyDescription = new F5RowDescription(HotkeyActionIds.EnemyLabels, "显示附近敌怪的名称和当前／最大生命值。");
+        private static readonly F5RowDescription critterDescription = new F5RowDescription(HotkeyActionIds.CritterLabels, "显示附近动物的名称，金色动物保留金色标识。");
+        private static readonly F5RowDescription npcDescription = new F5RowDescription(HotkeyActionIds.NpcLabels, "显示附近城镇 NPC 和骷髅商人的名字或类型。“名字”优先显示个体名字，没有时显示类型名。");
         private readonly HostEntityLabels host;
         internal EntityLabelControls(HostEntityLabels host) { this.host = host; }
         internal static void AddRows(List<F5Element> elements, Func<string, float, F5Size> measure, ref float y)
@@ -25,7 +28,8 @@ namespace JueMingR.TerrariaHost.F5
         }
         private static void Add(F5RowLayout rows, List<F5Element> elements, ref float y, string title, string[] actions, Func<string, F5Command> command, string hotkey)
         {
-            rows.Row(ref y, 0, 522, title, actions, command);
+            rows.Row(ref y, 0, 522, title, actions, command,
+                hotkey == HotkeyActionIds.EnemyLabels ? enemyDescription : hotkey == HotkeyActionIds.CritterLabels ? critterDescription : npcDescription);
             F5Element key = elements[elements.Count - 1];
             elements[elements.Count - 1] = new F5Element(key.Kind, key.Rect, key.Text, key.TextSize, key.TextScale, F5Command.None, hotkey);
         }
@@ -71,9 +75,7 @@ namespace JueMingR.TerrariaHost.F5
         {
             if (!Target(command).HasValue) return null;
             if (!Available(command)) return "显名设置暂不可用";
-            return IsStyle(command) ? "调整本项颜色与字号" : command == F5Command.NpcName ? "显示 NPC 的名字" :
-                command == F5Command.NpcType ? "显示 NPC 的类型" :
-                command == F5Command.DisableEnemy || command == F5Command.DisableCritter || command == F5Command.DisableNpc ? "关闭本项显名" : "开启本项显名";
+            return null;
         }
     }
 }

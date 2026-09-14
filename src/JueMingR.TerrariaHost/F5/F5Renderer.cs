@@ -17,6 +17,8 @@ namespace JueMingR.TerrariaHost.F5
         private Texture2D roundCap;
         private readonly F5IconAtlas icons = new F5IconAtlas();
         private readonly EntityLabels.StylePopupRenderer styleRenderer = new EntityLabels.StylePopupRenderer();
+        internal readonly F5HintLayout HintLayout = new F5HintLayout();
+        private readonly Func<string, float, F5Size> hintMeasure;
         internal void DrawStylePopup(EntityLabels.StylePopup popup)
         { styleRenderer.Draw(popup, Main.spriteBatch, font, background, pixel); }
         internal int SkinGeneration { get; private set; }
@@ -75,7 +77,9 @@ namespace JueMingR.TerrariaHost.F5
         private void PopupRule(SpriteBatch batch, float x, float y, float width)
         { batch.Draw(pixel, new Vector2(x, y), new Rectangle(0, 0, 1, 1), Color.White * .25f, 0, Vector2.Zero, new Vector2(width, 1), SpriteEffects.None, 0); }
 
-        internal F5Renderer() { measure = Measure; }
+        internal F5Renderer() { measure = Measure; hintMeasure = MeasureHint; }
+        private F5Size MeasureHint(string text, float scale)
+        { var size = PopupMeasure(text, scale); return new F5Size(size.Width + 4, size.Height + 4, size.OffsetX - 2, size.OffsetY - 2); }
 
         internal bool RefreshResources()
         {
@@ -129,12 +133,7 @@ namespace JueMingR.TerrariaHost.F5
                 batch.End();
                 contentBatch = false;
                 F5Rect view = layout.Viewport.Offset(state.X, state.Y);
-                Vector2 top = Vector2.Transform(new Vector2(view.X, view.Y), matrix);
-                Vector2 bottom = Vector2.Transform(new Vector2(view.Right, view.Bottom), matrix);
-                Rectangle clip = new Rectangle((int)Math.Ceiling(top.X), (int)Math.Ceiling(top.Y),
-                    Math.Max(0, (int)Math.Floor(bottom.X) - (int)Math.Ceiling(top.X)),
-                    Math.Max(0, (int)Math.Floor(bottom.Y) - (int)Math.Ceiling(top.Y)));
-                device.ScissorRectangle = Rectangle.Intersect(oldScissor, clip);
+                device.ScissorRectangle = F5ControlRenderer.ContentClip(view, matrix, oldScissor);
                 batch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.LinearClamp,
                     DepthStencilState.None, clipped, null, matrix);
                 contentBatch = true;
@@ -171,7 +170,6 @@ namespace JueMingR.TerrariaHost.F5
                 device.ScissorRectangle = oldScissor;
                 batch.Begin(SpriteSortMode.Deferred, null, null, null, null, null, matrix);
                 contentBatch = true;
-                DrawHint(batch, state, biomeFailed);
             }
             finally
             {
@@ -188,20 +186,80 @@ namespace JueMingR.TerrariaHost.F5
             }
         }
 
-        private void DrawHint(SpriteBatch batch, F5Interaction state, bool biomeFailed)
+        internal string ResolveHint(F5Interaction state, Items.ItemsPresentation items, bool blocked, bool biomeFailed, out F5Rect target, F5Rect? contentClip = null)
         {
-            if (!state.OwnsPointer || state.PointerBlocked) return;
+            target = default(F5Rect);
+            if (!state.CanShowHint || blocked) return null;
+            if (state.Page == 0) return items == null ? null : items.Hint(state.PointerX, state.PointerY, out target, contentClip);
+            var view = state.Layout.Viewport.Offset(state.X, state.Y);
+            var visible = contentClip.HasValue ? F5HintLayout.Intersect(view, contentClip.Value) : view;
+            if (!visible.Contains(state.PointerX, state.PointerY)) return null;
+            var name = F5HintLayout.HitName(state.Layout.Elements, visible, view.X, view.Y - state.Scroll,
+                state.PointerX, state.PointerY, out target);
+            if (name != null) return name.Description.Text;
             F5Element hover = state.HitButton(state.PointerX - state.X, state.PointerY - state.Y);
-            if (hover == null) return;
-            int index = F5Layout.HintIndex(hover, biomeFailed);
-            string hint = EntityControls?.Hint(hover.Command) ?? WorldControls?.Hint(hover.Command) ?? ObjectControls?.Hint(hover.Command) ??
-                (Information.InformationControls.Target(hover.Command).HasValue || hover.Command == F5Command.AdjustInformation ? InformationControls?.Hint(hover.Command) : null);
-            if (index < 0 && hint == null) return;
-            F5Size size = hint == null ? state.Layout.HintSize(index) : state.Layout.TextSize(hint, 0.65f);
-            float x = Math.Max(state.X + 8, Math.Min(state.X + state.Layout.Window.Width - size.Width - 24, state.PointerX + 14));
-            float y = Math.Max(state.Y + 8, Math.Min(state.Y + state.Layout.Window.Height - size.Height - 24, state.PointerY + 18));
-            Panel(batch, new F5Rect(x, y, size.Width + 16, size.Height + 16), background, Color.White);
-            Text(batch, hint ?? F5Layout.HintText(index), new Vector2(x + 8, y + 8), 0.65f, Color.White, size);
+            if (hover == null) return null;
+            target = F5HintLayout.Intersect(hover.Rect.Offset(view.X, view.Y - state.Scroll), visible);
+            if (hover.Kind == F5ElementKind.Hotkey && hover.HotkeyTarget != null) return "设置快捷键";
+            return ButtonHint(hover, biomeFailed);
+        }
+        internal string ButtonHint(F5Element hover, bool biomeFailed)
+        {
+            if (biomeFailed && (hover.Command == F5Command.EnableBiome || hover.Command == F5Command.DisableBiome)) return "群系显示暂不可用";
+            return EntityControls?.Hint(hover.Command) ?? WorldControls?.Hint(hover.Command) ?? ObjectControls?.Hint(hover.Command) ?? InformationControls?.Hint(hover.Command);
+        }
+        // The shell owns one current hint for every ordinary page. Adapters
+        // supply only content and final name regions; preparation is shared with
+        // the CPU consumer checks and never rebuilds a page or reads business.
+        internal void PrepareHints(F5Interaction state, Items.ItemsPresentation items, bool blocked, bool biomeFailed,
+            F5Rect bounds, F5Rect contentClip, object fontIdentity, Func<string, float, F5Size> measureText)
+        {
+            F5Rect target;
+            string hint = ResolveHint(state, items, blocked, biomeFailed, out target, contentClip);
+            if (hint == null) { HintLayout.Hide(); return; }
+            HintLayout.Prepare(hint, target, bounds, fontIdentity, measureText);
+        }
+        internal void DrawHints(F5Interaction state, Matrix matrix, Items.ItemsPresentation items, bool blocked, bool biomeFailed)
+        {
+            // No graphics or text preparation for a hidden window or higher owner.
+            if (!state.CanShowHint || blocked) { HintLayout.Hide(); return; }
+            // Blank content and ordinary buttons need no graphics state at all.
+            // A real target is checked again against the final pixel clip below.
+            F5Rect preliminaryTarget;
+            if (ResolveHint(state, items, blocked, biomeFailed, out preliminaryTarget) == null)
+            { HintLayout.Hide(); return; }
+            var batch = Main.spriteBatch; var device = batch.GraphicsDevice;
+            var screen = Terraria.GameInput.PlayerInput.OriginalScreenSize;
+            var bounds = new F5Rect(8, 8, screen.X / matrix.M11 - 16, screen.Y / matrix.M11 - 16);
+            Rectangle oldScissor = device.ScissorRectangle;
+            bounds = F5HintLayout.Intersect(bounds, F5ControlRenderer.LogicalClip(oldScissor, matrix));
+            var contentClip = F5ControlRenderer.LogicalClip(F5ControlRenderer.ContentClip(
+                state.Layout.Viewport.Offset(state.X, state.Y), matrix, oldScissor), matrix);
+            PrepareHints(state, items, blocked, biomeFailed, bounds, contentClip, font, hintMeasure);
+            if (!HintLayout.Visible) return;
+            RasterizerState oldRasterizer = device.RasterizerState; BlendState oldBlend = device.BlendState;
+            DepthStencilState oldDepth = device.DepthStencilState; SamplerState oldSampler = device.SamplerStates[0];
+            if (clipped == null) clipped = new RasterizerState { CullMode = CullMode.None, ScissorTestEnable = true };
+            bool began = false; batch.End();
+            try
+            {
+                batch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.LinearClamp,
+                    DepthStencilState.None, clipped, null, matrix);
+                began = true;
+                var panel = HintLayout.Panel; Panel(batch, panel, background, Color.White);
+                foreach (var line in HintLayout.Lines)
+                    Text(batch, line.Text, new Vector2(panel.X + 8, panel.Y + 8 + line.Rect.Y), line.TextScale, Color.White, line.TextSize);
+            }
+            finally
+            {
+                try { if (began) batch.End(); }
+                finally
+                {
+                    device.ScissorRectangle = oldScissor; device.RasterizerState = oldRasterizer; device.BlendState = oldBlend;
+                    device.DepthStencilState = oldDepth; device.SamplerStates[0] = oldSampler;
+                    batch.Begin(SpriteSortMode.Deferred, null, null, null, null, null, Main.UIScaleMatrix);
+                }
+            }
         }
 
         private void DrawChrome(SpriteBatch batch, F5Interaction state)
@@ -281,6 +339,7 @@ namespace JueMingR.TerrariaHost.F5
 
         public void Dispose()
         {
+            HintLayout.Clear();
             // Dispose only our GPU objects; font and skin textures belong to Terraria assets.
             if (clipped != null) { clipped.Dispose(); clipped = null; }
             if (roundCap != null) { roundCap.Dispose(); roundCap = null; }

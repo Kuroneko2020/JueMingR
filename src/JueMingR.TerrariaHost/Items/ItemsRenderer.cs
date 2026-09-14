@@ -45,12 +45,10 @@ namespace JueMingR.TerrariaHost.Items
             RasterizerState oldRasterizer = device.RasterizerState; BlendState oldBlend = device.BlendState;
             DepthStencilState oldDepth = device.DepthStencilState; SamplerState oldSampler = device.SamplerStates[0];
             if (clipped == null) clipped = new RasterizerState { CullMode = CullMode.None, ScissorTestEnable = true };
-            Vector2 a = Vector2.Transform(new Vector2(clip.X, clip.Y), matrix), b = Vector2.Transform(new Vector2(clip.Right, clip.Bottom), matrix);
-            var rectangle = new Rectangle((int)Math.Ceiling(a.X), (int)Math.Ceiling(a.Y), Math.Max(0, (int)Math.Floor(b.X) - (int)Math.Ceiling(a.X)), Math.Max(0, (int)Math.Floor(b.Y) - (int)Math.Ceiling(a.Y)));
             bool began = false; target.End();
             try
             {
-                device.ScissorRectangle = Rectangle.Intersect(oldScissor, rectangle);
+                device.ScissorRectangle = F5ControlRenderer.ContentClip(clip, matrix, oldScissor);
                 target.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.LinearClamp, DepthStencilState.None, clipped, null, matrix);
                 began = true; batch = target; draw();
             }
