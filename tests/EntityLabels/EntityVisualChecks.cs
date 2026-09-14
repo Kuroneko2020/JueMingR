@@ -46,7 +46,9 @@ namespace Terraria
                             Main.UIScaleMatrix = Matrix.CreateScale(scale, scale, 1);
                             Main.LocalPlayer = new Player { active = true }; Main.gameMenu = false; Main.netMode = 0;
                             Main.screenPosition = Vector2.Zero; Main.screenWidth = width; Main.screenHeight = height;
-                            GameContent.FontAssets.MouseText = graphics.Asset("entity-visual-font", scene == 3 ? graphics.CreateFont(16, 30, -3, 5) : font);
+                            // Positive resource-replacement scene must leave the accepted navigation underline clearance.
+                            // F5LayoutChecks separately keeps the over-tall-font rejection case.
+                            GameContent.FontAssets.MouseText = graphics.Asset("entity-visual-font", scene == 3 ? graphics.CreateFont(16, 26, -3, 5) : font);
                             GameContent.TextureAssets.InventoryBack = graphics.Asset("entity-visual-skin", scene == 3 ? alternate : skin);
                             renderer.RefreshResources();
                             var state = new F5Interaction { Ready = true };

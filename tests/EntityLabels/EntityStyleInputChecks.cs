@@ -36,6 +36,13 @@ namespace Terraria
             editor.SelectAll(); editor.Insert("123456"); editor.CommitHex(); Check(submissions == 3 && last == 0x123456, "Enter after auto submit causes no duplicate write");
             editor.Load(0x808080); editor.PreviewHsl(0, 250); double hue = editor.Hue; editor.Commit(); editor.Load(0x808080);
             Check(editor.Hue == hue, "achromatic field retains transient hue without persisting another preference");
+            editor.PreviewHsl(0, 250); int unchangedRevision = editor.Revision;
+            for (int i = 0; i < 100; i++) editor.PreviewHsl(0, 250);
+            Check(editor.Revision == unchangedRevision && editor.Hue == 250, "stationary HSL preview does not invalidate presentation");
+            editor.BeginHex(); editor.Insert("12"); editor.CommitHex();
+            editor.PreviewHsl(0, 250);
+            Check(editor.Hex.Length == 6 && editor.Error == null && editor.SelectionLength == 0 && editor.Caret == 6,
+                "first same-axis preview still normalizes an incomplete HEX/error/selection draft");
             NativeInput();
             PopupInput();
             Console.WriteLine("PASS: style draft, exact RGB, HSL preview/commit, HEX replacement/completeness and prior commit preservation.");
@@ -106,6 +113,10 @@ namespace Terraria
                 long revision = host.Preferences.Revision; int old = host.Preferences.Value.EnemyStyle.Rgb;
                 frame(slider.X + slider.Width / 2, slider.Y + 3, true, true, new Keys[0]); prepare();
                 Check(popup.Editor.Rgb != old && host.Preferences.Revision == revision, "real slider down only previews");
+                int stationaryRevision = popup.Editor.Revision, stationaryMeasurements = measurements;
+                for (int i = 0; i < 100; i++) frame(slider.X + slider.Width / 2, slider.Y + 3, true, true, new Keys[0]);
+                Check(popup.ActiveSlider == 0 && popup.Editor.Revision == stationaryRevision && measurements == stationaryMeasurements && host.Preferences.Revision == revision,
+                    "held stationary slider preserves capture with zero repeated layout measurements or preference submissions");
                 frame(slider.Right + 200, slider.Y, true, true, new Keys[0]); Check(popup.BlockPointer && popup.ConsumeWheel, "captured drag owns outside pointer and wheel");
                 frame(slider.X + slider.Width / 2, slider.Y, false, true, new Keys[0]);
                 Check(host.Preferences.Revision == revision + 1, "one genuine focused release publishes once");
@@ -130,6 +141,10 @@ namespace Terraria
                 frame(slider.X, slider.Y + 3, true, true, new Keys[0]); frame(slider.X, slider.Y + 3, true, true, new[] { Keys.Escape });
                 Check(popup.Visible && popup.ActiveSlider < 0 && host.Preferences.Revision == revision, "Esc cancels slider first and preserves the popup");
                 frame(slider.X, slider.Y + 3, false, true, new Keys[0]); Check(host.Preferences.Revision == revision, "cancelled gesture cannot publish on its later release");
+                var retired = popup.Editor; popup.Close(); int retiredRevision = retired.Revision;
+                for (int i = 0; i < 100; i++) popup.Close();
+                Check(popup.Editor == null && !popup.Visible && !popup.HasCapture && retired.Revision == retiredRevision,
+                    "closed popup retires its draft once and repeated Close leaves it untouched");
             }
             finally
             {

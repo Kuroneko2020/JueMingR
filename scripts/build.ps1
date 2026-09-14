@@ -2,13 +2,15 @@
 param(
     [ValidateSet('Debug', 'Release')]
     [string] $Configuration = 'Debug',
-    [switch] $RequireClean
+    [switch] $RequireClean,
+    [string] $WorkloadBaseline
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+. (Join-Path $PSScriptRoot 'workload/Workload.Support.ps1')
 $solutionPath = Join-Path $repositoryRoot 'JueMingR.sln'
 $baselinePath = Join-Path $repositoryRoot 'eng\TerrariaReferences.baseline.json'
 $harmonyBaselinePath = Join-Path $repositoryRoot 'eng\Harmony.baseline.json'
@@ -102,8 +104,10 @@ if ($RequireClean -and -not $isClean) {
 
 $commit = [string] (Invoke-Git -Arguments @('rev-parse', 'HEAD') | Select-Object -First 1)
 $commit = $commit.Trim()
+$sourceIdentity = Get-WorkloadIdentity $repositoryRoot
 
 if ([System.IO.Directory]::Exists($buildRoot)) {
+    if (-not [IO.Path]::GetFullPath($buildRoot).StartsWith($repositoryRoot.TrimEnd('\') + '\artifacts\build\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Build cleanup escaped its workspace output root.' }
     Remove-Item -LiteralPath $buildRoot -Recurse -Force
 }
 [System.IO.Directory]::CreateDirectory($workRoot) | Out-Null
@@ -179,18 +183,57 @@ $outputRecords = @($declaredFiles | ForEach-Object {
     }
 })
 $record = [ordered]@{
-    schemaVersion = 2
+    schemaVersion = 3
     commit = $commit
     clean = $isClean
     sdk = $sdkVersion.Trim()
     configuration = $Configuration
+    sourceFingerprint = $sourceIdentity.fingerprint
     baselineSha256 = (Get-FileHash -LiteralPath $baselinePath -Algorithm SHA256).Hash.ToUpperInvariant()
     harmonyBaselineSha256 = (Get-FileHash -LiteralPath $harmonyBaselinePath -Algorithm SHA256).Hash.ToUpperInvariant()
     references = $referenceRecords
     outputs = $outputRecords
+    workload = [ordered]@{ status = 'PENDING' }
 }
-$json = ($record | ConvertTo-Json -Depth 6) + [Environment]::NewLine
+# A Release package needs observable Debug assertions from exactly this source.
+# Reuse only hash-matching outputs; otherwise compile that variant once here.
+# The thin runner never calls back into this build entry.
+$debugRecordPath = Join-Path $repositoryRoot 'artifacts/build/Debug/build-record.json'
+if ($Configuration -ceq 'Release') {
+    $debugRecord = if ([IO.File]::Exists($debugRecordPath)) { Get-Content -LiteralPath $debugRecordPath -Raw | ConvertFrom-Json } else { $null }
+    if (-not (Test-WorkloadBuildMatch $repositoryRoot $debugRecord $sourceIdentity)) {
+        $debugRoot = [IO.Path]::GetFullPath((Join-Path $repositoryRoot 'artifacts/build/Debug'))
+        if (-not $debugRoot.StartsWith($repositoryRoot.TrimEnd('\') + '\artifacts\build\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Detection cleanup escaped its workspace output root.' }
+        if ([IO.Directory]::Exists($debugRoot)) { Remove-Item -LiteralPath $debugRoot -Recurse -Force }
+        $debugWork = Join-Path $debugRoot 'work'; [IO.Directory]::CreateDirectory($debugWork) | Out-Null
+        & $dotnetCommand.Source build $solutionPath --configuration Debug --no-incremental --nologo -p:Platform=x86 "-p:JueMingRBuildRoot=$debugWork" "-p:TerrariaReferencesDirectory=$referencesDirectory" "-p:HarmonyReferencesDirectory=$harmonyReferencesDirectory" "-p:SourceRevisionId=$commit"
+        if ($LASTEXITCODE -ne 0) { throw 'Same-source Debug detection build failed.' }
+        $debugRecord = [ordered]@{}
+        foreach ($key in $record.Keys) { $debugRecord[$key] = $record[$key] }
+        $debugRecord.configuration = 'Debug'
+        $debugRecord.outputs = @(Get-ChildItem -LiteralPath (Join-Path $debugWork 'bin') -Recurse -File | Where-Object { $_.Extension -in @('.dll', '.exe', '.pdb') } | Sort-Object FullName | ForEach-Object {
+            if ($forbiddenNames -icontains $_.Name -or $_.Name.StartsWith('JueMingZ', [StringComparison]::OrdinalIgnoreCase) -or $_.Name.StartsWith('TerrariaHelper', [StringComparison]::OrdinalIgnoreCase)) { throw 'Forbidden detection output.' }
+            [ordered]@{ path = Get-RelativePath $debugWork $_.FullName; length = $_.Length; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash }
+        })
+        [IO.File]::WriteAllText($debugRecordPath, ($debugRecord | ConvertTo-Json -Depth 8), (New-Object Text.UTF8Encoding($false)))
+        Write-Output 'Built same-source Debug detection variant.'
+    } else { Write-Output 'Reused hash-matching same-source Debug detection variant; workload checks still run.' }
+}
+$json = ($record | ConvertTo-Json -Depth 8) + [Environment]::NewLine
+[IO.File]::WriteAllText($recordPath, $json, (New-Object Text.UTF8Encoding($false)))
+try { $workload = & (Join-Path $PSScriptRoot 'test-workload-regressions.ps1') -Baseline $WorkloadBaseline }
+catch {
+    $failure = $_.Exception.Data['workload']
+    if ($null -eq $failure) { $failure = [ordered]@{ status = 'FAILED'; failedCheck = 'workload-entry'; reason = $_.Exception.Message; checkCount = 0 } }
+    $record.workload = $failure
+    [IO.File]::WriteAllText($recordPath, ($record | ConvertTo-Json -Depth 8), (New-Object Text.UTF8Encoding($false)))
+    throw
+}
+if ($null -eq $workload -or $workload.status -cne 'PASS' -or $workload.checkCount -lt 5) { throw 'Workload gate did not complete.' }
+if ($sourceIdentity.fingerprint -cne (Get-WorkloadIdentity $repositoryRoot).fingerprint -or $commit -cne [string](Invoke-Git -Arguments @('rev-parse', 'HEAD'))) { throw 'Build inputs changed during validation.' }
+$record.workload = $workload
+$json = ($record | ConvertTo-Json -Depth 8) + [Environment]::NewLine
 [System.IO.File]::WriteAllText($recordPath, $json, (New-Object System.Text.UTF8Encoding($false)))
 
-Write-Output ("PASS: {0} build, ArchitectureTests PASS, declared outputs={1}." -f $Configuration, $declaredFiles.Count)
+Write-Output ("PASS: {0} build, ArchitectureTests + workload PASS ({1} checks), declared outputs={2}." -f $Configuration, $workload.checkCount, $declaredFiles.Count)
 Write-Output ("Build record: {0}" -f $recordPath)

@@ -12,6 +12,16 @@ namespace JueMingR.ArchitectureTests
             {
                 if (args.Length == 2 && args[0] == "--preference-storage-probe")
                     return PreferenceStorageChecks.RunWriterProbe(args[1]);
+                if (args.Length == 2 && (args[0] == "--workload-core" || args[0] == "--workload-storage"))
+                {
+                    if (IntPtr.Size != 4 || typeof(object).Assembly.GetName().Name != "mscorlib") throw new InvalidOperationException("Workload requires .NET Framework x86.");
+                    var workloadFailures = new List<string>();
+                    if (args[0] == "--workload-core") { ObjectDiscoveryChecks.Check(workloadFailures); OpenedConcurrencyChecks.Run(); }
+                    else { NotesConcurrencyChecks.Check(workloadFailures); HotkeyStorageChecks.Check(Path.GetFullPath(args[1]), workloadFailures); PreferenceConcurrencyChecks.Check(workloadFailures); PreferenceStorageChecks.Check(workloadFailures); }
+                    foreach (string failure in workloadFailures) Console.Error.WriteLine(failure);
+                    Console.WriteLine("Workload runtime: " + Environment.Version + "; x86; " + args[0] + "; failures=" + workloadFailures.Count);
+                    return workloadFailures.Count == 0 ? 0 : 1;
+                }
                 if (args.Length != 1)
                 {
                     throw new ArgumentException("Usage: JueMingR.ArchitectureTests <repository-root>");

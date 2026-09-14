@@ -3,7 +3,8 @@ param(
     [Parameter(Mandatory = $true)]
     [string] $OutputDirectory,
     [ValidateSet('Phase0S', 'Phase0TBiome', 'Phase0UF5UI', 'Phase0VSettings', 'Phase0WNotes', 'ItemAutomation', 'UnifiedHotkeys', 'EntityLabels', 'WorldTargets', 'WorldObjectText')]
-    [string] $Profile = 'Phase0S'
+    [string] $Profile = 'Phase0S',
+    [string] $WorkloadBaseline
 )
 
 $ErrorActionPreference = 'Stop'
@@ -332,7 +333,7 @@ if ($outputRoot.StartsWith($repositoryPrefix, [System.StringComparison]::Ordinal
     }
 }
 
-$buildOutput = @(& (Join-Path $PSScriptRoot 'build.ps1') -Configuration Release -RequireClean 2>&1)
+$buildOutput = @(& (Join-Path $PSScriptRoot 'build.ps1') -Configuration Release -RequireClean -WorkloadBaseline $WorkloadBaseline 2>&1)
 if (-not $?) {
     throw 'The locked Release build failed.'
 }
@@ -345,10 +346,14 @@ if ($statusAfterBuild.Count -ne 0 -or $headAfterBuild -cne $sourceCommit) {
 
 $buildRecordPath = Join-Path $repositoryRoot 'artifacts\build\Release\build-record.json'
 $buildRecord = (Get-Phase0SStrictUtf8Text -Path $buildRecordPath -MaximumLength 1048576) | ConvertFrom-Json
-if ([int] $buildRecord.schemaVersion -ne 2 -or [string] $buildRecord.commit -cne $sourceCommit -or
+if ([int] $buildRecord.schemaVersion -ne 3 -or [string] $buildRecord.commit -cne $sourceCommit -or
     -not [bool] $buildRecord.clean -or [string] $buildRecord.sdk -cne '10.0.203' -or
     [string] $buildRecord.configuration -cne 'Release') {
     throw 'The Release build record does not describe the clean source commit.'
+}
+if ($buildRecord.workload.status -cne 'PASS' -or $buildRecord.workload.checkCount -lt 5 -or
+    $buildRecord.workload.commit -cne $sourceCommit -or $buildRecord.workload.sourceFingerprint -cne $buildRecord.sourceFingerprint) {
+    throw 'The Release package requires the completed matching automatic workload gate.'
 }
 if (@($buildRecord.outputs | Where-Object { [string] $_.path -match '(?i)(^|\\)0Harmony\.dll$' }).Count -ne 0) {
     throw 'Ordinary Release output unexpectedly contains Harmony.'
@@ -522,6 +527,8 @@ try {
         buildEntry = 'scripts/build.ps1'
         solution = 'JueMingR.sln'
         sourceBuildRecordSha256 = Get-Phase0SFileSha256 -Path $buildRecordPath
+        sourceFingerprint = $buildRecord.sourceFingerprint
+        workload = $buildRecord.workload
         target = [ordered]@{
             simpleName = 'Terraria'
             version = '1.4.5.8'
