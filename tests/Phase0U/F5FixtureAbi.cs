@@ -13,6 +13,9 @@ namespace Terraria
 
     public partial class Main
     {
+        // Slot bounds used by the typed Host; these focused fixtures continue
+        // supplying LocalPlayer directly. Native tests verify actual indexing.
+        public static Player[] player = new Player[256];
         public static Main instance;
         public static bool dedServ, mouseLeft, mouseRight, mouseText, blockMouse, HoveringOverAnNPC;
         public static bool mapFullscreen, hideUI, onlyDrawFancyUI, ingameOptionsWindow, inFancyUI;
@@ -259,6 +262,16 @@ namespace Terraria.GameContent
 
 namespace Terraria.Localization
 {
+    // T8 callback/field/event ABI for the shared Information lifetime, including
+    // older package profiles. This fixture only retains subscriptions; real
+    // resource reload behavior is tested against T8 by NativeWorldTextProbe.
+    public delegate void LanguageChangeCallback(LanguageManager languageManager);
+    public sealed class LanguageManager
+    {
+        public static readonly LanguageManager Instance = new LanguageManager();
+        private LanguageChangeCallback changed;
+        public event LanguageChangeCallback OnLanguageChanged { add { changed += value; } remove { changed -= value; } }
+    }
     // Fixture language table; production calls Terraria's current language API.
     public static class Language
     {
