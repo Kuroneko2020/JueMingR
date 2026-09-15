@@ -49,7 +49,7 @@ namespace JueMingR.TerrariaHost.Guidance
                 NativeCalls++;
 #endif
                 spawn();
-                if (TryFind(out found) && found) return Result(GameOperationOutcome.Succeeded, "已观察到旅商到访；请手动开启旅商方向。");
+                if (TryFind(out found) && found) return Result(GameOperationOutcome.Succeeded, "已观察到旅商到访。");
                 return Result(GameOperationOutcome.Unconfirmed, "已尝试原版到访，未确认生成；可能缺少合适住房或位置，不会自动重试。");
             }
             catch (Exception) { return Result(GameOperationOutcome.Failed, "原版到访发生异常；可能已有商品或世界副作用，不会自动重试。"); }

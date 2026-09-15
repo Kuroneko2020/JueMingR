@@ -35,7 +35,6 @@ namespace JueMingR.TerrariaHost.F5
             if (page == 1)
             {
                 rows.Row(ref y, 0, 522, "游商测试", new[] { "召唤" }, text => F5Command.SummonMerchant, descriptions[3]);
-                rows.TextLines("生成真实旅商，会影响当前世界；建议在测试世界使用。", 12, ref y, 498, .70f);
                 y += 6; return;
             }
             int first = page == 2 ? 0 : 2, last = page == 2 ? 1 : 2;

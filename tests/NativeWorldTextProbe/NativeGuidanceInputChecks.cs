@@ -78,7 +78,7 @@ namespace NativeWorldTextProbe
                 string text=GetOptional(e,"Text") as string; if(text!=null && text.Contains("生成真实旅商")) risk=true;
                 var description=GetOptional(e,"Description"); if(description!=null) {name=true;Require(Get(e,"Command").ToString()=="None","name help never executes summon");}
             }
-            Require(risk&&name,"single summon row has public name help and always-visible risk");
+            Require(!risk&&name,"single summon row retains public name help without the removed inline notice");
             foreach (object e in (IEnumerable)Get(pageLayout,"Elements"))
             {
                 if (GetOptional(e,"Description") == null) continue;
