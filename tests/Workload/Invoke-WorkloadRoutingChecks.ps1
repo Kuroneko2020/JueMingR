@@ -33,6 +33,8 @@ try {
         'src/JueMingR.TerrariaHost/Information/InformationHud.cs' = 'shared-host';
         'src/JueMingR.Features/Information/InformationPreferenceCodec.cs' = 'storage-host';
         'src/JueMingR.Platform/Information/InformationObservation.cs' = 'shared-host';
+        'src/JueMingR.Features/DeathHistory/DeathArchive.cs' = 'death-host';
+        'src/JueMingR.TerrariaHost/WorldTime/WorldTimeSourceHooks.cs' = 'death-host';
         'docs/guide.md' = 'core'
     }
     foreach ($path in $cases.Keys) { Write-Fixture $path "baseline`n" }

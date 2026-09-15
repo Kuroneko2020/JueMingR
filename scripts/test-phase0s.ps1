@@ -28,6 +28,7 @@ $requiredProductionPaths = @(
     'scripts\phase0s\World-Object-Text-Owner-Test-Card.zh-CN.md',
     'scripts\phase0s\Information-Summary-Owner-Test-Card.zh-CN.md',
     'scripts\phase0s\Direction-Equipment-Owner-Test-Card.zh-CN.md',
+    'scripts\phase0s\Death-History-Owner-Test-Card.zh-CN.md',
     'src\JueMingR.Bootstrap\Phase0SAppDomainManager.cs',
     'src\JueMingR.TerrariaHost\Phase0SLoadChainHost.cs',
     'eng\Harmony.baseline.json'

@@ -63,6 +63,7 @@ function Get-WorkloadRoute {
             '^src/JueMingR.TerrariaHost/EntityLabels/(Style|Hex)|^tests/EntityLabels/EntityStyle|^tests/WorldTargets/WorldTargetStyle' { [void]$groups.Add('style-host'); continue }
             '^src/[^/]+/WorldObjectText/Opened|^tests/JueMingR.ArchitectureTests/WorldObjectText/Opened' { [void]$groups.Add('records'); continue }
             '^src/JueMingR.Infrastructure/Storage/|^src/JueMingR.Platform/(Persistence|Settings)/' { [void]$groups.Add('storage-host'); continue }
+            '^src/[^/]+/(DeathHistory|WorldTime)/|^tests/DeathHistory/' { [void]$groups.Add('death-host'); continue }
             '^src/[^/]+/Information/' { [void]$groups.Add('shared-host'); [void]$groups.Add('style-host'); [void]$groups.Add('storage-host'); continue }
             '^src/[^/]+/(Guidance|Npcs)/' { [void]$groups.Add('shared-host'); [void]$groups.Add('storage-host'); continue }
             '^src/JueMingR.TerrariaHost/(F5|Input)/|^src/JueMingR.TerrariaHost/Phase0|^src/JueMingR.Platform/Runtime/' { [void]$groups.Add('shared-host'); continue }
@@ -72,6 +73,7 @@ function Get-WorkloadRoute {
             default { $unknown += $path }
         }
     }
+    if ($groups.Contains('shared-host') -or $groups.Contains('storage-host')) { [void]$groups.Add('death-host') }
     return [ordered]@{ groups = @($groups | Sort-Object); unknown = $unknown; slowGraphics = $false }
 }
 function Test-WorkloadBuildMatch {

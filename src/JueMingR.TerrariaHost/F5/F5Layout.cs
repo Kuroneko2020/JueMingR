@@ -29,7 +29,7 @@ namespace JueMingR.TerrariaHost.F5
         ConfigureSign, SignAll, SignLines, SignCharacters, SignOff, SignLess, SignMore,
         ConfigureTombstone, TombstoneAll, TombstoneLines, TombstoneCharacters, TombstoneOff, TombstoneLess, TombstoneMore,
         EnableRare, DisableRare, EnableMerchant, DisableMerchant, EnableEquipment, DisableEquipment, SummonMerchant,
-        ConfigureRare, ConfigureMerchant }
+        ConfigureRare, ConfigureMerchant, DeathDetails, DeathConfigure, DeathEnable, DeathDisable }
 
     internal sealed class F5Element
     {
@@ -65,6 +65,10 @@ namespace JueMingR.TerrariaHost.F5
         private int page = -1;
         private Features.WorldObjectText.WorldObjectSettings objectSettings = Features.WorldObjectText.WorldObjectSettings.Default;
         private long informationRevision, builtInformationRevision;
+        private string deathCount = "正在读取…", worldDays = "正在读取…";
+        private long deathRevision, builtDeathRevision;
+        internal void SetDeathInformation(string count, string days)
+        { if (deathCount != count || worldDays != days) { deathCount = count; worldDays = days; deathRevision++; } }
         internal void SetWorldObjectSettings(Features.WorldObjectText.WorldObjectSettings value)
         {
             bool changed = false;
@@ -100,7 +104,7 @@ namespace JueMingR.TerrariaHost.F5
         }
 
         internal bool Matches(float width, float height, float scale, int currentPage)
-        { return Generation > 0 && width == screenWidth && height == screenHeight && scale == uiScale && page == currentPage && (currentPage != 9 || builtInformationRevision == informationRevision); }
+        { return Generation > 0 && width == screenWidth && height == screenHeight && scale == uiScale && page == currentPage && (currentPage != 9 || builtInformationRevision == informationRevision) && (currentPage != 2 || builtDeathRevision == deathRevision); }
 
         internal void Ensure(float width, float height, float scale, int currentPage,
             object font, Func<string, F5Size> measureText)
@@ -122,6 +126,7 @@ namespace JueMingR.TerrariaHost.F5
                         old.OffsetX != value.OffsetX || old.OffsetY != value.OffsetY;
                 }
                 fontIdentity = font;
+                if (currentPage == 2) metricsChanged = true;
                 if (currentPage == 9)
                     for (int i = 1; i < 3; i++)
                     { var mode = objectSettings.Style((Platform.WorldObjectText.WorldObjectKind)i).Mode;
@@ -147,9 +152,11 @@ namespace JueMingR.TerrariaHost.F5
             if (currentPage == 9) BuildInformation(ref y);
             else if (currentPage == 7) BuildFishing(ref y);
             else if (currentPage == 1 || currentPage == 2 || currentPage == 8) GuidanceControls.AddRows(elements, TextSize, ref y, currentPage);
+            if (currentPage == 2) DeathControls.AddRows(elements, DynamicTextSize, ref y, deathCount, worldDays);
             ContentHeight = Math.Max(0, y - 6);
             screenWidth = width; screenHeight = height; uiScale = scale; page = currentPage;
             builtInformationRevision = informationRevision;
+            builtDeathRevision = deathRevision;
             Generation++;
         }
 

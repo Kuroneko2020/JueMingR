@@ -25,9 +25,13 @@ namespace NativeWorldTextProbe
         public GraphicsDevice GraphicsDevice { get; private set; }
         internal DynamicSpriteFont Font { get; }
         internal void SetMouseFont(DynamicSpriteFont value) { Terraria.GameContent.FontAssets.MouseText = Loaded("probe-replaced-font", value); }
+        internal void LoadDeathTexture()
+        { using (var stream = File.OpenRead(Path.Combine(contentDirectory, "Images", "Map_Death.xnb"))) Terraria.GameContent.TextureAssets.MapDeath = Loaded("Images/Map_Death", reader.FromStream<Texture2D>(stream)); }
         internal ProbeGraphics(string content, bool largeCanvas = false)
         {
             contentDirectory = content;
+            if (GraphicsAdapter.Adapters.Count == 0)
+                throw new NotSupportedException("No XNA graphics adapters are available before device creation; resource drawing and pixels were not executed.");
             window = CreateWindowEx(0, "STATIC", "Native text probe", 0, 0, 0, 960, 640, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
             if (window == IntPtr.Zero) throw new InvalidOperationException("hidden-test-window-unavailable");
             // A 2560-wide offscreen render target exceeds Reach's 2048 texture

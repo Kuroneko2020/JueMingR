@@ -10,6 +10,13 @@ namespace JueMingR.ArchitectureTests
         {
             try
             {
+                if (args.Length == 1 && args[0] == "--death-history")
+                {
+                    var checks = new List<string>(); DeathArchiveChecks.Check(checks); DeathHistoryWorkerChecks.Check(checks); WorldTimeChecks.Check(checks); DeathPreferenceChecks.Check(checks); DeathWorkloadChecks.Check(checks);
+                    foreach (string failure in checks) Console.Error.WriteLine(failure);
+                    Console.WriteLine("Death history checks: failures=" + checks.Count);
+                    return checks.Count == 0 ? 0 : 1;
+                }
                 if (args.Length == 1 && args[0] == "--guidance")
                 {
                     var checks = new List<string>(); GuidanceTests.Check(checks);
@@ -49,6 +56,11 @@ namespace JueMingR.ArchitectureTests
                 PreferenceChecks.Check(failures);
                 InformationTests.Check(failures);
                 GuidanceTests.Check(failures);
+                DeathArchiveChecks.Check(failures);
+                DeathHistoryWorkerChecks.Check(failures);
+                WorldTimeChecks.Check(failures);
+                DeathPreferenceChecks.Check(failures);
+                DeathWorkloadChecks.Check(failures);
                 PreferenceConcurrencyChecks.Check(failures);
                 EntityLabelSettingsChecks.Check(failures);
                 EntityLabelRulesChecks.Check(failures);

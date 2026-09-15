@@ -23,6 +23,7 @@
     <Compile Include="..\Notes\*.cs" />
     <Compile Include="..\Items\*.cs" />
     <Compile Include="..\Hotkeys\*.cs" />
+    <Compile Include="..\DeathHistory\DeathPopupChecks.cs" />
     <Compile Include="..\EntityLabels\*.cs" />
     <Compile Include="..\WorldTargets\*.cs" />
     <Compile Include="..\WorldObjectText\*.cs" />
@@ -55,6 +56,8 @@
     <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\F5HintLayout.cs" Link="Production\F5HintLayout.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\EntityLabelControls.cs" Link="Production\EntityLabelControls.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\GuidanceControls.cs" Link="Production\GuidanceControls.cs" />
+    <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\DeathControls.cs" Link="Production\DeathControls.cs" />
+    <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\DeathHistoryPopup.cs" Link="Production\DeathHistoryPopup.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\Npcs\NativeNpcObservation.cs" Link="Production\NativeNpcObservation.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\F5ControlRenderer.cs" Link="Production\F5ControlRenderer.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\F5Layout.cs" Link="Production\F5Layout.cs" />

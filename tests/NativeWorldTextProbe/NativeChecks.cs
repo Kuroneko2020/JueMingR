@@ -14,7 +14,7 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
-            if (scope != "Full" && scope != "SelectionCpuCosts" && scope != "SelectionCpuChecks" && scope != "WorkloadCpu" && scope != "InformationCpu" && scope != "GuidanceCpu" && scope != "GuidanceVisual") throw new ArgumentException("Unknown probe scope");
+            if (scope != "Full" && scope != "SelectionCpuCosts" && scope != "SelectionCpuChecks" && scope != "WorkloadCpu" && scope != "InformationCpu" && scope != "GuidanceCpu" && scope != "GuidanceVisual" && scope != "DeathCpu" && scope != "DeathVisual") throw new ArgumentException("Unknown probe scope");
             if (IntPtr.Size != 4 || typeof(object).Assembly.GetName().Name != "mscorlib") throw new InvalidOperationException("Native workload requires .NET Framework x86.");
             string isolated = Path.Combine(Path.GetTempPath(), "JueMingR-native-text-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(isolated);
             // Main's beforefieldinit constructor reads Program.SavePath. This is
@@ -35,6 +35,13 @@ namespace NativeWorldTextProbe
             var parsed = ChatManager.ParseMessage("[c/ff0000:literal]", Color.White);
             Require(parsed.Count == 1 && parsed[0].Text == "literal" && parsed[0].Color == Color.Red, "actual native color parser");
             Console.WriteLine("PASS: real ChatManager assembly, MVID, hash and parser; no fixture Terraria assembly.");
+            if (scope == "DeathCpu")
+            {
+                Terraria.Main.dedServ = true;
+                try { RuntimeHelpers.RunClassConstructor(typeof(Terraria.Graphics.Capture.CaptureManager).TypeHandle); }
+                finally { Terraria.Main.dedServ = false; }
+                NativeDeathSourceChecks.Run(); return 0;
+            }
             NativeTextAnchorChecks.Metrics();
             NativeLayerReadinessChecks.Run();
             if (content == "--metrics") return 0;
@@ -66,6 +73,7 @@ namespace NativeWorldTextProbe
             }
             using (var graphics = new ProbeGraphics(content, scope == "GuidanceVisual"))
             {
+                if (scope == "DeathVisual") { NativeDeathVisualChecks.Run(graphics, output); return 0; }
                 if (scope == "GuidanceVisual") { NativeGuidanceVisualChecks.Run(graphics, output); return 0; }
                 var style = WorldObjectSettings.Default.Style(WorldObjectKind.Sign).WithMode(WorldObjectMode.Characters).WithLimits(3, 3);
                 foreach (string blank in new[] { new string('\n', 11), "  " })

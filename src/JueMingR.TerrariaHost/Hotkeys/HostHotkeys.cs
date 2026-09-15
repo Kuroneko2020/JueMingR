@@ -14,7 +14,7 @@ namespace JueMingR.TerrariaHost.Hotkeys
         internal readonly HotkeyRegistry Registry = new HotkeyRegistry();
         internal readonly HotkeyBindings Bindings;
         internal HostHotkeys(string gameDirectory, Phase0TBiomeRuntime biome, HostPreferences preferences, HostItems items, EntityLabels.HostEntityLabels labels = null, WorldTargets.HostWorldTargets targets = null, WorldObjectText.HostWorldObjectText worldObjects = null,
-            Information.HostInformation information = null, Func<bool> canAdjustInformation = null, Action adjustInformation = null, Guidance.HostGuidance guidance = null)
+            Information.HostInformation information = null, Func<bool> canAdjustInformation = null, Action adjustInformation = null, Guidance.HostGuidance guidance = null, F5.IDeathControls deaths = null)
         {
             Registry.Register(new HotkeyAction(HotkeyActionIds.Biome, "群系显示", HotkeyContext.Gameplay,
                 () => preferences.BiomeLoaded && !biome.FeatureFailed && biome.CanObserveLocalPlayer,
@@ -66,6 +66,8 @@ namespace JueMingR.TerrariaHost.Hotkeys
                     Registry.Register(new HotkeyAction(HotkeyActionIds.Guidance[i], F5.GuidanceControls.Name(kind), HotkeyContext.Gameplay,
                         () => guidance.ControlsEnabled, () => guidance.Toggle(kind)));
                 }
+            if (deaths != null) Registry.Register(new HotkeyAction(F5.DeathControls.ActionId, "死亡点常驻", HotkeyContext.Gameplay,
+                () => deaths.ControlsEnabled, () => deaths.SetEnabled(!deaths.Settings.Enabled)));
             Bindings = new HotkeyBindings(Registry, new AtomicFileDocument(Path.Combine(gameDirectory, "JueMingRData", "config", "hotkeys.json"), 65536, true));
             AppDomain.CurrentDomain.ProcessExit += OnExit;
         }

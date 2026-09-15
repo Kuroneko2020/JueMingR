@@ -28,6 +28,27 @@ namespace JueMingR.TerrariaHost.F5
         internal WorldObjectControls ObjectControls { get; set; }
         internal Information.InformationControls InformationControls { get; set; }
         internal GuidanceControls GuidanceControls { get; set; }
+        internal DeathControls DeathControls { get; set; }
+        internal void DrawDeathPopup(DeathHistoryPopup popup)
+        {
+            if (!popup.Visible) return;
+            var batch = Main.spriteBatch;
+            Panel(batch, popup.Panel, background, Color.White, true);
+            foreach (var line in popup.Text) Text(batch, line.Text, new Vector2(popup.Panel.X + line.Rect.X, popup.Panel.Y + line.Rect.Y), line.TextScale, Color.White, line.TextSize);
+            for (int i = 0; i < popup.Buttons.Count; i++)
+            {
+                int command = popup.Commands[i];
+                if (command >= 10 && command < 16)
+                {
+                    // The reason cell itself is the read-only entry, without
+                    // another large per-row button or a repeated action label.
+                    var cell = popup.Buttons[i]; Text(batch, cell.Text, new Vector2(popup.Panel.X + cell.Rect.X + 4, popup.Panel.Y + cell.Rect.Y), cell.TextScale, popup.Hovered == command ? Color.LightGoldenrodYellow : Color.White, cell.TextSize);
+                    continue;
+                }
+                F5ControlRenderer.Button(batch, pixel, button, font, popup.Buttons[i], popup.Hovered == command, popup.Enabled[i], popup.IsSelected(command) ? (Color?)Color.LightGreen : null,
+                    popup.Panel.X, popup.Panel.Y, true, popup.Pressed == command && popup.Hovered == command);
+            }
+        }
         internal F5Size PopupMeasure(string text, float scale)
         { F5Size size = textMetrics.Measure(font, text); return new F5Size(size.Width * scale, size.Height * scale, size.OffsetX * scale, size.OffsetY * scale); }
         internal void DrawPopup(Hotkeys.HotkeyPopup popup)
@@ -159,11 +180,11 @@ namespace JueMingR.TerrariaHost.F5
                         bool legacyBiome = element.Command == F5Command.EnableBiome || element.Command == F5Command.DisableBiome;
                         bool guidance = F5.GuidanceControls.Owns(element.Command);
                         bool enabled = entity ? EntityControls != null && EntityControls.Available(element.Command) : world ? WorldControls != null && WorldControls.Available(element.Command) : objects ? ObjectControls != null && ObjectControls.Available(element.Command) :
-                            information ? legacyBiome ? !biomeFailed : InformationControls != null && InformationControls.Available(element.Command) : guidance && GuidanceControls != null && GuidanceControls.Available(element.Command);
+                            information ? legacyBiome ? !biomeFailed : InformationControls != null && InformationControls.Available(element.Command) : guidance ? GuidanceControls != null && GuidanceControls.Available(element.Command) : DeathControls != null && DeathControls.Available(element.Command);
                         bool hovered = !state.PointerBlocked && rect.Contains(state.PointerX, state.PointerY) && view.Contains(state.PointerX, state.PointerY);
                         F5ControlRenderer.Button(batch, pixel, button, font, element, hovered, enabled,
                             entity ? EntityControls?.Selected(element.Command) : world ? WorldControls?.Selected(element.Command) : objects ? ObjectControls?.Selected(element.Command) :
-                            information && !legacyBiome ? InformationControls?.Selected(element.Command) : guidance ? GuidanceControls?.Selected(element.Command) : F5Layout.IsSelected(element, biomeEnabled, biomeFailed) ? (Color?)(biomeEnabled ? Color.LightGreen : Color.IndianRed) : null,
+                            information && !legacyBiome ? InformationControls?.Selected(element.Command) : guidance ? GuidanceControls?.Selected(element.Command) : F5.DeathControls.Owns(element.Command) ? DeathControls?.Selected(element.Command) : F5Layout.IsSelected(element, biomeEnabled, biomeFailed) ? (Color?)(biomeEnabled ? Color.LightGreen : Color.IndianRed) : null,
                             view.X, view.Y - state.Scroll);
                     }
                 }
@@ -209,7 +230,7 @@ namespace JueMingR.TerrariaHost.F5
         internal string ButtonHint(F5Element hover, bool biomeFailed)
         {
             if (biomeFailed && (hover.Command == F5Command.EnableBiome || hover.Command == F5Command.DisableBiome)) return "群系显示暂不可用";
-            return EntityControls?.Hint(hover.Command) ?? WorldControls?.Hint(hover.Command) ?? ObjectControls?.Hint(hover.Command) ?? InformationControls?.Hint(hover.Command) ?? GuidanceControls?.Hint(hover.Command);
+            return EntityControls?.Hint(hover.Command) ?? WorldControls?.Hint(hover.Command) ?? ObjectControls?.Hint(hover.Command) ?? InformationControls?.Hint(hover.Command) ?? GuidanceControls?.Hint(hover.Command) ?? DeathControls?.Hint(hover.Command);
         }
         // The shell owns one current hint for every ordinary page. Adapters
         // supply only content and final name regions; preparation is shared with
