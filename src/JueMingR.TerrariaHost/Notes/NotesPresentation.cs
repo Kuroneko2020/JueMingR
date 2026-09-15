@@ -115,20 +115,20 @@ namespace JueMingR.TerrariaHost.Notes
         private string Feedback(out Color color)
         {
             var feature = workspace.Feature; color = Color.Salmon;
-            if (!feature.Loaded) return "正在首次读取笔记，尚未取得可编辑内容。";
-            if (feature.NeedsRecovery) return "磁盘提交结果未确认，已停写。显示为最后可信内容；退出后保留 notes.json / .bak / .tmp 检查恢复。";
+            if (!feature.Loaded) return "正在加载笔记……";
+            if (feature.NeedsRecovery) return "无法确认是否保存成功，已暂停保存。";
             if (!feature.Readable)
             {
-                string cause = feature.Error == "UnsupportedVersion" ? "文件版本较新" : feature.Error == "UnknownFields" ? "含未知字段" :
-                    feature.Error == "another-writer" ? "另一进程占用" : feature.Error == "missing-document-with-recovery-material" ? "正式文件缺失但恢复材料存在" : "格式、规模或访问失败";
-                return "笔记读取受保护：" + cause + "。未建立空白替代；退出后保留 notes 目录检查。";
+                string cause = feature.Error == "UnsupportedVersion" ? "笔记由较新版本保存，暂时无法打开" : feature.Error == "UnknownFields" ? "笔记包含当前版本不支持的内容，暂时无法打开" :
+                    feature.Error == "another-writer" ? "笔记正被其他程序使用，暂时无法打开" : feature.Error == "missing-document-with-recovery-material" ? "未找到完整的笔记文件，暂时无法打开" : "笔记无法读取";
+                return cause + "。现有文件未改动。";
             }
-            if (workspace.Error != null) return workspace.Error + (feature.Error == null ? "" : " 请检查 notes 目录权限和恢复材料；冲突需退出后处理。");
+            if (workspace.Error != null) return workspace.Error;
             if (input.Error != null) return input.Error;
             if (workspace.Editor != null && workspace.Editor.Error != null) return workspace.Editor.Error;
             if (feature.ReadingError != null) return feature.ReadingError;
             color = Color.LightGray;
-            if (feature.Busy) return workspace.Editor == null ? "正在提交变更。" : "正在提交；取消编辑不会撤回正在进行的磁盘提交。";
+            if (feature.Busy) return workspace.Editor == null ? "正在保存……" : "正在保存；取消编辑不会取消这次保存。";
             if (input.HasComposition) { color = Color.Gold; return "Enter 确认候选，Esc 取消输入。"; }
             string editState = workspace.Editor != null && workspace.Editor.Dirty ? "未保存 · " : "";
             if (editState.Length != 0) color = Color.Gold;
@@ -137,7 +137,7 @@ namespace JueMingR.TerrariaHost.Notes
                 : editState + "Enter 换行，Esc 取消编辑。";
             if (feature.Saved.Notes.Count == 0) return "点击 + 新建笔记，双击标题或正文编辑。";
             if (workspace.DeleteConfirmation != null) return "点击确认删除，或取消删除。";
-            return "双击标题或正文编辑；悬挂后可独立阅读，鼠标移到便签查看操作提示。";
+            return "双击标题或正文编辑。悬挂后可单独阅读，移到便签上查看操作提示。";
         }
         private bool Request(NotesAction action)
         {

@@ -10,11 +10,11 @@ namespace JueMingR.TerrariaHost.F5
     internal sealed class WorldTargetControls
     {
         private static readonly F5RowDescription[] descriptions = {
-            new F5RowDescription(HotkeyActionIds.WorldTarget(WorldTargetKind.LifeCrystal), "用三个箭头标记附近完整的生命水晶，不包含生命水晶巨石。需要原版金属探测能力生效。"),
-            new F5RowDescription(HotkeyActionIds.WorldTarget(WorldTargetKind.LifeFruit), "用箭头标记附近世界中的生命果。需要原版金属探测能力生效，不标记掉落物。"),
-            new F5RowDescription(HotkeyActionIds.WorldTarget(WorldTargetKind.ManaCrystal), "用箭头标记附近世界中的完整魔力水晶。需要原版金属探测能力生效，不标记背包或掉落物。"),
-            new F5RowDescription(HotkeyActionIds.WorldTarget(WorldTargetKind.SleepingDigtoise), "用三个箭头标记附近完整的睡眠碎岩龟，不追踪采下后的物品或召出物。需要原版金属探测能力生效。"),
-            new F5RowDescription(HotkeyActionIds.WorldTarget(WorldTargetKind.ChilletEgg), "用三个箭头标记附近完整的巨型龙蛋，不追踪拾取物或打开产物。需要原版金属探测能力生效。") };
+            new F5RowDescription(HotkeyActionIds.WorldTarget(WorldTargetKind.LifeCrystal), "标记附近的生命水晶，需要金属探测能力生效。"),
+            new F5RowDescription(HotkeyActionIds.WorldTarget(WorldTargetKind.LifeFruit), "标记附近的生命果，需要金属探测能力生效。"),
+            new F5RowDescription(HotkeyActionIds.WorldTarget(WorldTargetKind.ManaCrystal), "标记附近的魔力水晶，需要金属探测能力生效。"),
+            new F5RowDescription(HotkeyActionIds.WorldTarget(WorldTargetKind.SleepingDigtoise), "标记附近睡眠中的碎岩龟，需要金属探测能力生效。"),
+            new F5RowDescription(HotkeyActionIds.WorldTarget(WorldTargetKind.ChilletEgg), "标记附近的巨型龙蛋，需要金属探测能力生效。") };
         private readonly HostWorldTargets host;
         internal WorldTargetControls(HostWorldTargets host) { this.host = host; }
         internal static string Name(WorldTargetKind kind)

@@ -116,9 +116,12 @@ namespace NativeWorldTextProbe
             }
             Call(host, "RequestMerchant"); update(); for (int i = 0; i < 20; i++) update();
             Require(calls == 1 && feature.Result.Outcome == GameOperationOutcome.Succeeded && ((TravellingMerchantDirection)Get(host, "Merchant")).Visible, "one operation result enters ordinary NPC observation, no injected render target");
+            Require(feature.Result.Message == "旅商已到访。", "confirmed native result contains only the arrival message");
             Call(host, "RequestMerchant"); update(); Require(calls == 1 && feature.Result.Outcome == GameOperationOutcome.Rejected, "existing active target never refreshes shop");
             Main.npc[8] = null; Set(port, "spawn", (Action)(() => calls++)); Call(host, "RequestMerchant"); update(); update(); Require(calls == 2 && feature.Result.Outcome == GameOperationOutcome.Unconfirmed, "empty result is unconfirmed without retry");
+            Require(feature.Result.Message == "已尝试召唤，无法确认旅商是否到访；不会自动重试。", "unconfirmed native result never uses the confirmed arrival message");
             Set(port, "spawn", (Action)(() => { calls++; throw new InvalidOperationException(); })); Call(host, "RequestMerchant"); update(); update(); Require(calls == 3 && feature.Result.Outcome == GameOperationOutcome.Failed, "exception is terminal with possible partial native side effects");
+            Require(feature.Result.Message == "召唤出错，结果未确认；不会自动重试。", "thrown operation preserves uncertainty about partial results");
         }
     }
 }

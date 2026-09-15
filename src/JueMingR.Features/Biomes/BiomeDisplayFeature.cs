@@ -164,7 +164,7 @@ namespace JueMingR.Features.Biomes
                 names.Add("森林");
             }
 
-            return "群系: " + (names.Count == 0 ? "N/A" : String.Join(" / ", names.ToArray()));
+            return "群系：" + (names.Count == 0 ? "未知" : String.Join(" / ", names.ToArray()));
         }
 
         private static bool Has(BiomeFlags flags, BiomeFlags value)

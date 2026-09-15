@@ -32,6 +32,8 @@ namespace Terraria
                 Run(failures, "deferred and failed presentation", Deferred);
                 Run(failures, "real conflict and new cause", Conflict);
                 Run(failures, "unsupported, unknown, I/O and busy", OtherErrors);
+                Run(failures, "unconfirmed save feedback", Unconfirmed);
+                Run(failures, "style failure identity and player text", StyleFailures);
             }
             finally { Main.gameMenu = menu; Main.hideUI = hidden; }
             if (failures.Count != 0) throw new InvalidOperationException(String.Join("; ", failures));
@@ -96,8 +98,50 @@ namespace Terraria
                 // immutable result projection tests only the feedback policy for
                 // a different cause, not an invented disk recovery transition.
                 test.ProjectStatus("biome", "IoFailure");
-                Check(Capture(test.Pump).Contains("访问权限"), "a new actionable cause is still visible");
+                Check(Capture(test.Pump).Contains("加载或保存失败"), "a new actionable cause is still visible");
                 Check(Capture(test.Pump) == "", "new cause is also deduplicated");
+            }
+        }
+
+        private static Exception styleFailure;
+        private static T ThrowStyleMeasure<T>(string text, float scale) { throw styleFailure; }
+        private static void StyleFailures()
+        {
+            using (var test = new Session(Path.Combine(root, "style-failures"), true))
+            {
+                object popup = Get(test.Shell, "StylePopup");
+                var prepare = popup.GetType().GetMethod("Prepare", Instance);
+                var measureType = prepare.GetParameters()[4].ParameterType;
+                var measure = Delegate.CreateDelegate(measureType, typeof(PreferenceFeedbackChecks).GetMethod("ThrowStyleMeasure", BindingFlags.Static | BindingFlags.NonPublic)
+                    .MakeGenericMethod(measureType.GetGenericArguments()[2]));
+                var click = Array.Find(popup.GetType().GetMethods(Instance), m => m.Name == "Click" && m.GetParameters()[0].ParameterType.Name == "EntityLabelKind");
+                object anchor = Activator.CreateInstance(click.GetParameters()[1].ParameterType, Instance, null, new object[] { 100f, 100f, 40f, 30f }, null);
+                var types = new Exception[] { new ArgumentException(), new ArgumentException(), new InvalidOperationException() };
+                for (int i = 0; i < types.Length; i++)
+                {
+                    styleFailure = types[i];
+                    click.Invoke(popup, new[] { Enum.ToObject(click.GetParameters()[0].ParameterType, 0), anchor, 9 });
+                    prepare.Invoke(popup, new object[] { 800f, 600f, 1f, new object(), measure, 0, anchor });
+                    Check(!(bool)Get(popup, "Visible") && !(bool)Get(popup, "HasCapture") && (string)Get(popup, "FailureKey") == styleFailure.GetType().Name,
+                        "real layout failure closes the popup and retains its diagnostic type");
+                    string message = Capture(test.Pump);
+                    Check(i == 1 ? message == "" : message.Contains("显示设置窗口暂不可用。") && !message.Contains("Exception"),
+                        "same type stays silent; a different type reports the player message once");
+                    for (int steady = 0; steady < 30; steady++) Check(Capture(test.Pump) == "", "stable style failure does not repeat");
+                }
+            }
+            styleFailure = null;
+        }
+
+        private static void Unconfirmed()
+        {
+            using (var test = new Session(Path.Combine(root, "unconfirmed")))
+            {
+                test.ProjectStatus("biome", "IoFailure", true);
+                string message = Capture(test.Pump);
+                Check(message.Contains("无法确认群系选择是否保存成功") && message.Contains("文件已保护") && !message.Contains("保存失败"),
+                    "unconfirmed write must not be presented as a confirmed failure");
+                for (int i = 0; i < 30; i++) Check(Capture(test.Pump) == "", "stable unknown result does not repeat");
             }
         }
 
@@ -127,7 +171,7 @@ namespace Terraria
                 File.WriteAllText(test.BiomePath, BiomeJson(1, ""), new UTF8Encoding(false));
                 Call(test.Preferences, "SetBiomeEnabled", false);
                 Wait(() => test.Status("biome") == "Conflict", "real first-create conflict");
-                Check(Capture(test.Pump).Contains("停止覆盖"), "real conflict still notifies");
+                Check(Capture(test.Pump).Contains("停止保存"), "real conflict still notifies");
                 Call(test.Preferences, "SetBiomeEnabled", true);
                 Check(Capture(test.Pump) == "", "conflict does not repeat after another choice");
                 Check(File.ReadAllText(test.BiomePath) == BiomeJson(1, ""), "external bytes preserved");
@@ -155,7 +199,7 @@ namespace Terraria
             using (var other = new Session(busy))
             {
                 Check(other.Status("biome") == "Busy" && other.Status("ui") == "Busy", "real second writer rejected");
-                Check(Capture(other.Pump).Contains("另一进程") && Capture(other.Pump).Contains("F5 位置"), "both busy documents notify");
+                Check(Capture(other.Pump).Contains("其他程序") && Capture(other.Pump).Contains("F5 位置"), "both busy documents notify");
                 Check(Capture(other.Pump) == "", "busy does not flood");
             }
         }
@@ -164,8 +208,9 @@ namespace Terraria
         {
             internal readonly object Preferences, Shell;
             private readonly object notes;
+            private readonly object labels;
             internal readonly string BiomePath, UiPath;
-            internal Session(string path)
+            internal Session(string path, bool styles = false)
             {
                 // Caller supplies an isolated root before Host construction.
                 Preferences = Activator.CreateInstance(host.GetType("JueMingR.TerrariaHost.Settings.HostPreferences", true), Instance,
@@ -175,8 +220,14 @@ namespace Terraria
                 // on this same isolated installation and join it before cleanup.
                 notes = Activator.CreateInstance(host.GetType("JueMingR.TerrariaHost.Notes.HostNotes", true), Instance,
                     null, new object[] { path }, null);
+                if (styles)
+                {
+                    labels = Activator.CreateInstance(host.GetType("JueMingR.TerrariaHost.EntityLabels.HostEntityLabels", true), Instance,
+                        null, new[] { path, Get(runtime, "SharedRuntime"), null }, null);
+                    Wait(() => (bool)Get(Get(labels, "Preferences"), "IsLoaded"), "style settings load completes");
+                }
                 Shell = Activator.CreateInstance(host.GetType("JueMingR.TerrariaHost.F5.F5Shell", true), Instance,
-                    null, new[] { runtime, Preferences, notes }, null);
+                    null, styles ? new[] { runtime, Preferences, notes, null, null, null, labels, null, null, null, null } : new[] { runtime, Preferences, notes }, null);
                 BiomePath = Path.Combine(path, "JueMingRData", "config", "features", "biome-display.json");
                 UiPath = Path.Combine(path, "JueMingRData", "config", "ui.json");
             }
@@ -188,18 +239,19 @@ namespace Terraria
                 Type type = Preferences.GetType().GetMethod("SetPosition", Instance).GetParameters()[0].ParameterType;
                 Call(Preferences, "SetPosition", Activator.CreateInstance(type, new object[] { x, y }));
             }
-            internal void ProjectStatus(string document, string status)
+            internal void ProjectStatus(string document, string status, bool? unconfirmed = null)
             {
                 object owner = Get(Preferences, document);
                 Check((bool)Call(owner, "Stop", 3000), "worker stopped before policy-only projection");
                 object snapshot = Get(owner, "Snapshot");
                 object projected = Activator.CreateInstance(snapshot.GetType(), Instance, null, new[] {
                     Get(snapshot, "Value"), true, Get(snapshot, "Revision"), Enum.Parse(Get(snapshot, "Status").GetType(), status),
-                    Get(snapshot, "CommitUnconfirmed"), Get(snapshot, "IsProtected"), Get(snapshot, "Error") }, null);
+                    unconfirmed.HasValue ? unconfirmed.Value : Get(snapshot, "CommitUnconfirmed"), Get(snapshot, "IsProtected"), Get(snapshot, "Error") }, null);
                 owner.GetType().GetField("snapshot", Instance).SetValue(owner, projected);
             }
             public void Dispose()
             {
+                if (labels != null) Call(labels, "OnExit", null, EventArgs.Empty);
                 Main.gameMenu = false; Main.hideUI = false;
                 foreach (string document in new[] { "biome", "ui" })
                     Check((bool)Call(Get(Preferences, document), "Stop", 3000), "worker joined before fixture directory cleanup");

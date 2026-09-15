@@ -43,8 +43,8 @@ namespace NativeWorldTextProbe
                 Require(Call(controls, "Hint", Enum.Parse(command, "ConfigureInfection")) == null, "actual configuration button does not repeat infection help");
                 var description = Call(controls, "Description", InformationKind.Infection);
                 string help = (string)Get(description, "Text");
-                Require(help.Contains("神圣、腐化和猩红") && help.Contains("当前存在树妖") && help.Contains("随原版统计更新") && help.Contains("不会立即刷新"),
-                    "actual infection name metadata retains the accepted scope, condition and publication cadence");
+                Require(help == "显示世界感染比例。需要当前世界存在树妖。",
+                    "actual infection name metadata uses the owner sample and retains the current-NPC condition");
                 Call(controls, "Execute", Enum.Parse(command, "EnableLuck"));
                 Require((bool)Call(information, "Enabled", InformationKind.Luck), "actual F5 command must update the owning document");
                 NativeInformationConfigurationChecks.Run(context, information, root, oldActions);
@@ -154,7 +154,7 @@ namespace NativeWorldTextProbe
                 Require(((string)Call(host, "Text", kind)).Contains("需要") && (int)Get(reader, "NpcQueries") == queries + 1 &&
                     (int)Get(reader, "ScalarSamples") == samples && (int)Get(reader, "LocalizationReads") == localizations, "single enabled row with proven absent NPC samples no unrelated business: " + kind);
                 Main.netMode = 1; Call(context, "UpdateRuntime");
-                Require(((string)Call(host, "Text", kind)).Contains(kind == InformationKind.Infection ? "需要当前活动树妖" : "等待"), "current Dryad absence differs from ordinary client's unconfirmed saved history: " + kind);
+                Require(((string)Call(host, "Text", kind)).Contains(kind == InformationKind.Infection ? "需要世界中有树妖" : "等待"), "current Dryad absence differs from ordinary client's unconfirmed saved history: " + kind);
                 Main.netMode = 0; Main.npc = null; Call(context, "UpdateRuntime");
                 Require(((string)Call(host, "Text", kind)).Contains("不可用"), "missing native NPC table cannot certify absence: " + kind);
                 Main.npc = new NPC[200]; Call(host, "SetEnabled", kind, false);

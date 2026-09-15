@@ -20,6 +20,7 @@ namespace Terraria
         {
             new Main(); Main.blockInput = Main.drawingPlayerChat = Main.editSign = Main.editChest = false;
             Main.CurrentInputTextTakerOverride = null; Main.UIScaleMatrix = Matrix.Identity;
+            NotesCopyChecks.Run();
             WithWorkspace(workspace =>
             {
                 string id = workspace.Feature.Saved.Notes[0].Id;

@@ -127,13 +127,13 @@ namespace Terraria
         public static void DrawBorderStringFourWay(SpriteBatch batch, DynamicSpriteFont font, string text,
             float x, float y, Color textColor, Color borderColor, Vector2 origin, float scale = 1)
         {
-            if (text != null && text.StartsWith("群系: ", StringComparison.Ordinal))
+            if (text != null && text.StartsWith("群系：", StringComparison.Ordinal))
                 DrawBorderString(batch, text, new Vector2(x, y), textColor, scale);
             if (ReferenceEquals(batch, F5FixtureGraphics.HeadlessInformationBatch)) return;
             // Fault after headers, inside the clipped content batch.
             if (ThrowF5Text && text == "敌怪显名") throw new InvalidOperationException("Controlled F5 content draw failure.");
             F5TextDraws++;
-            if (text == "显示你当前所在的群系与深度区域。" ||
+            if (text == "显示当前所在的群系。" ||
                 text == "群系显示暂不可用") F5HintDraws++;
             if (text == "群系显示暂不可用") UnavailableDraws++;
             if ((text == "群系显示" || text == "开启" || text == "关闭" || text == "配置" || text == "开始") && textColor != Color.White)

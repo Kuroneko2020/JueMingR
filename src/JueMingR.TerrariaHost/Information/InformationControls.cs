@@ -26,12 +26,12 @@ namespace JueMingR.TerrariaHost.Information
     internal sealed class InformationControls
     {
         private static readonly F5RowDescription[] descriptions = {
-            new F5RowDescription(HotkeyActionIds.Information(InformationKind.Biome), "显示你当前所在的群系与深度区域。"),
-            new F5RowDescription(HotkeyActionIds.Information(InformationKind.Infection), "显示世界的神圣、腐化和猩红比例。需要当前存在树妖；数值随原版统计更新，感染变化后不会立即刷新。"),
-            new F5RowDescription(HotkeyActionIds.Information(InformationKind.Luck), "显示当前幸运总值及有效的非零来源明细。需要本世界已解救巫师，或当前存在巫师。"),
-            new F5RowDescription(HotkeyActionIds.Information(InformationKind.Angler), "显示今日任务鱼、捕获地点、个人累计完成次数和今日完成状态。需要本世界已解救渔夫，或当前存在渔夫；不会自动交付。") };
+            new F5RowDescription(HotkeyActionIds.Information(InformationKind.Biome), "显示当前所在的群系。"),
+            new F5RowDescription(HotkeyActionIds.Information(InformationKind.Infection), "显示世界感染比例。需要当前世界存在树妖。"),
+            new F5RowDescription(HotkeyActionIds.Information(InformationKind.Luck), "显示当前幸运值及来源明细。需要在此世界解救过巫师，或当前有巫师。"),
+            new F5RowDescription(HotkeyActionIds.Information(InformationKind.Angler), "显示今日任务鱼、捕获地点、个人累计完成次数和今日完成状态。需要在此世界解救过渔夫，或当前有渔夫。") };
         private static readonly F5RowDescription adjustmentDescription = new F5RowDescription(HotkeyActionIds.AdjustInformation,
-            "调整群系与信息摘要的共同位置。拖动后松手完成；Esc、右键或 F5 取消。");
+            "调整信息窗的位置，拖动后松手完成。");
         internal static F5RowDescription Description(InformationKind? kind)
         { return kind.HasValue ? descriptions[(int)kind.Value] : adjustmentDescription; }
         private readonly IInformationControls host;

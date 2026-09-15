@@ -125,7 +125,7 @@ namespace Terraria
                 NotesPin pin = pins.Pins[0];
                 Check(pin.Body.Bottom <= pin.Rect.Bottom - renderer.ControlHeight - 8,
                     "footer has its own space outside the scrollable body, including an error message");
-                Check(pin.Footer.Width >= renderer.ButtonWidth("未保存；F5 查看原因") && pin.Footer.Bottom <= pin.Rect.Bottom - 8,
+                Check(pin.Footer.Width >= renderer.ButtonWidth("保存异常；到 F5 笔记页查看") && pin.Footer.Bottom <= pin.Rect.Bottom - 8,
                     "footer error label fits inside the actual pin at the current font");
                 pins.Pointer(pin.Body.X + 4, pin.Body.Y + 4, false, false, -12000, true, true, false, 1920, 1080);
                 Check(pin.Layout.Complete && Math.Abs(pin.Scroll - (pin.Layout.Lines.Count * pin.LineHeight - pin.Body.Height)) < 0.01f,

@@ -28,12 +28,12 @@ namespace JueMingR.TerrariaHost.Hotkeys
         private int helpGeneration = -1;
         private const float Pad = 12, BodyPad = 20;
         private static readonly string[] help = {
-            "单键直接按；组合先按住修饰键，再按主键。",
-            "Ctrl/Shift/Alt 区分左右，最多三个修饰键，总计最多四键。",
-            "可识别的键盘键、鼠标按钮可录入；滚轮滚动不参与。",
-            "Esc 取消录入；清除按钮移除当前绑定。",
-            "决明同场景重复不保存；原版键位重合仅提醒。",
-            "只在设置时核对原版键位，后续改键需自行调整。"
+            "单键直接按；组合键先按住 Ctrl、Shift 或 Alt，再按主键。",
+            "Ctrl、Shift、Alt 区分左右，最多三个，再加一个主键。",
+            "支持键盘键和鼠标按钮，不支持滚轮。",
+            "Esc 取消录入；“清除”移除当前快捷键。",
+            "与其他决明功能在同一场景使用相同快捷键时不能保存；与原版重复时只提醒。",
+            "仅在设置时检查原版键位；更改原版按键后，请重新检查这里的快捷键。"
         };
         internal void ResetAnchor() { anchored = false; previous = null; }
         internal bool Matches(float width, float height, object currentFont, int currentSkin = 0)
@@ -87,13 +87,13 @@ namespace JueMingR.TerrariaHost.Hotkeys
             y = HeaderBottom + 10;
             if (tooMany) AddText("修饰键超过三个", BodyPad, ref y, w - BodyPad * 2, .8f, HotkeyTextRole.Warning, measure, true);
             else if (labels.Count > 0) BuildCaps(labels, ref y, w, measure);
-            else AddText(view.Capturing ? "请按单键或组合键" : view.Known ? "未设置快捷键" : "快捷键状态待核对", BodyPad, ref y, w - BodyPad * 2, .8f, HotkeyTextRole.Muted, measure, true);
+            else AddText(view.Capturing ? "请按单键或组合键" : view.Known ? "未设置快捷键" : "快捷键状态暂不确定", BodyPad, ref y, w - BodyPad * 2, .8f, HotkeyTextRole.Muted, measure, true);
             if (view.Capturing && labels.Count > 0)
             { y += 6; AddText("请再按一个主键", BodyPad, ref y, w - BodyPad * 2, .7f, HotkeyTextRole.Muted, measure, true); }
             if (view.Capturing)
-            { y += 8; AddText("单键直接按；组合先按修饰键。Esc 取消录入。", BodyPad, ref y, w - BodyPad * 2, .65f, HotkeyTextRole.Muted, measure, true); }
+            { y += 8; AddText("单键直接按；组合键先按住修饰键。Esc 取消录入。", BodyPad, ref y, w - BodyPad * 2, .65f, HotkeyTextRole.Muted, measure, true); }
             if ((view.Capturing || view.Feedback.Kind == HotkeyFeedbackKind.Saving && view.Candidate != null) && view.Effective != null)
-            { y += 8; AddText("当前绑定：" + view.Effective.DisplayText, BodyPad, ref y, w - BodyPad * 2, .65f, HotkeyTextRole.Muted, measure, true); }
+            { y += 8; AddText("当前快捷键：" + view.Effective.DisplayText, BodyPad, ref y, w - BodyPad * 2, .65f, HotkeyTextRole.Muted, measure, true); }
             var feedback = view.Feedback;
             bool success = feedback.Kind == HotkeyFeedbackKind.Saved || feedback.Kind == HotkeyFeedbackKind.Cleared;
             bool shortResult = success || feedback.Kind == HotkeyFeedbackKind.Cancelled || feedback.Kind == HotkeyFeedbackKind.Saving;
@@ -231,8 +231,8 @@ namespace JueMingR.TerrariaHost.Hotkeys
         {
             Text.Clear(); Roles.Clear(); Keycaps.Clear(); Buttons.Clear(); Commands.Clear(); Enabled.Clear(); DetailText.Clear(); HelpText.Clear();
             DetailViewport = HelpPanel = default(F5Rect); DetailVisibleLines = DetailMaxOffset = 0;
-            float w = Math.Min(Width - 24, measure("视口过小，请降低 UI 缩放", .65f).Width + 24), y = 12;
-            AddText("视口过小，请降低 UI 缩放", 12, ref y, w - 24, .65f, HotkeyTextRole.Warning, measure);
+            float w = Math.Min(Width - 24, measure("窗口空间不足，请降低 UI 缩放", .65f).Width + 24), y = 12;
+            AddText("窗口空间不足，请降低 UI 缩放", 12, ref y, w - 24, .65f, HotkeyTextRole.Warning, measure);
             HeaderBottom = 0; FooterTop = y + 8;
             AddButton(HotkeyPopupCommand.Close, "X", new F5Rect(w - 42, FooterTop + 6, 30, 30), true, measure);
             Panel = new F5Rect(12, 12, w, FooterTop + 48);

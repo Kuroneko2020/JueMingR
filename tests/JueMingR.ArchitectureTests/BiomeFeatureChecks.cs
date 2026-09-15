@@ -31,22 +31,22 @@ namespace JueMingR.ArchitectureTests
                 BiomeFlags.LihzhardTemple |
                 BiomeFlags.Graveyard |
                 BiomeFlags.RockLayer,
-                "群系: 沙漠 / 地下沙漠 / 雪原 / 丛林 / 地牢 / 海洋 / 腐化 / 猩红 / 神圣 / 发光蘑菇 / 陨石 / 花岗岩 / 大理石 / 蜂巢 / 神庙 / 墓地 / 洞穴",
+                "群系：沙漠 / 地下沙漠 / 雪原 / 丛林 / 地牢 / 海洋 / 腐化 / 猩红 / 神圣 / 发光蘑菇 / 陨石 / 花岗岩 / 大理石 / 蜂巢 / 神庙 / 墓地 / 洞穴",
                 "ordered special biomes, Chinese de-duplication, and cave height",
                 failures);
-            AssertText(BiomeFlags.Overworld, "群系: 森林", "plain overworld forest", failures);
+            AssertText(BiomeFlags.Overworld, "群系：森林", "plain overworld forest", failures);
             AssertText(
                 BiomeFlags.Desert | BiomeFlags.Overworld,
-                "群系: 沙漠",
+                "群系：沙漠",
                 "special surface biome does not append forest",
                 failures);
             AssertText(
                 BiomeFlags.Sky | BiomeFlags.Underworld | BiomeFlags.RockLayer | BiomeFlags.DirtLayer,
-                "群系: 天空",
+                "群系：天空",
                 "mutually exclusive height priority",
                 failures);
-            AssertText(BiomeFlags.BelowSurface, "群系: 地下", "shopping below-surface fallback", failures);
-            AssertText(BiomeFlags.None, "群系: N/A", "valid player with no recognized biome", failures);
+            AssertText(BiomeFlags.BelowSurface, "群系：地下", "shopping below-surface fallback", failures);
+            AssertText(BiomeFlags.None, "群系：未知", "valid player with no recognized biome", failures);
         }
 
         private static void AssertText(
@@ -82,7 +82,7 @@ namespace JueMingR.ArchitectureTests
             session.Active = true;
             runtime.Update(1);
             AssertLifecycle(source.ReadCount == 1 && feature.CurrentViewModel.Visible &&
-                feature.CurrentViewModel.Text == "群系: 沙漠",
+                feature.CurrentViewModel.Text == "群系：沙漠",
                 "session enter must observe immediately", failures);
 
             source.Next = new BiomeObservation(BiomeFlags.Snow);
@@ -90,10 +90,10 @@ namespace JueMingR.ArchitectureTests
             {
                 runtime.Update(tick);
             }
-            AssertLifecycle(source.ReadCount == 1 && feature.CurrentViewModel.Text == "群系: 沙漠",
+            AssertLifecycle(source.ReadCount == 1 && feature.CurrentViewModel.Text == "群系：沙漠",
                 "equivalent observation must not run within 30 ticks", failures);
             runtime.Update(31);
-            AssertLifecycle(source.ReadCount == 2 && feature.CurrentViewModel.Text == "群系: 雪原",
+            AssertLifecycle(source.ReadCount == 2 && feature.CurrentViewModel.Text == "群系：雪原",
                 "30-tick boundary must publish changed observation", failures);
 
             BiomeDisplayViewModel unchanged = feature.CurrentViewModel;

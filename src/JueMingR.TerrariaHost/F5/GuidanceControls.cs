@@ -22,10 +22,10 @@ namespace JueMingR.TerrariaHost.F5
     internal sealed class GuidanceControls
     {
         private static readonly F5RowDescription[] descriptions = {
-            new F5RowDescription(HotkeyActionIds.RareDirection, "有生命分析能力且未隐藏该信息时，连续指向1300像素内优先稀有目标；屏外显示名字与约距离。"),
-            new F5RowDescription(HotkeyActionIds.MerchantDirection, "旅商在画面外时显示方向、约距离与可靠位置线索；不需要信息装备。"),
-            new F5RowDescription(HotkeyActionIds.EquipmentWarning, "Boss或指定事件期间，有效装备含固定非战斗用品时提示3秒并淡出；只提示，不自动换装。"),
-            new F5RowDescription("merchant-test.once", "仅在单人世界显式尝试一次原版旅商到访；需要白天、非日食且没有正在入侵或活动旅商。") };
+            new F5RowDescription(HotkeyActionIds.RareDirection, "箭头指向附近稀有生物，需要生命体分析仪。"),
+            new F5RowDescription(HotkeyActionIds.MerchantDirection, "显示画面外旅商大致位置。"),
+            new F5RowDescription(HotkeyActionIds.EquipmentWarning, "Boss战或指定事件中，提醒正在穿戴的部分非战斗用品。血月本身不触发。"),
+            new F5RowDescription("merchant-test.once", "在单人世界尝试一次原版条件下的旅商到访。") };
         private readonly IGuidanceControls host;
         internal GuidanceControls(IGuidanceControls host) { this.host = host; }
         internal static string Name(GuidanceKind kind) { return kind == GuidanceKind.Rare ? "稀有生物方向" : kind == GuidanceKind.Merchant ? "旅商方向" : "装备提示"; }
@@ -60,6 +60,6 @@ namespace JueMingR.TerrariaHost.F5
         }
         internal void Execute(F5Command command)
         { if (!Available(command) || IsStyle(command)) return; if (command == F5Command.SummonMerchant) host.RequestMerchant(); else host.SetEnabled(Kind(command), Enable(command)); }
-        internal string Hint(F5Command command) { return !Owns(command) ? null : command == F5Command.SummonMerchant ? host.SummonReason : !host.ControlsEnabled ? "需要已就绪的活动世界。" : IsStyle(command) ? "设置文字颜色和字号" : null; }
+        internal string Hint(F5Command command) { return !Owns(command) ? null : command == F5Command.SummonMerchant ? host.SummonReason : !host.ControlsEnabled ? "当前暂不可用。" : IsStyle(command) ? "设置文字颜色和字号" : null; }
     }
 }

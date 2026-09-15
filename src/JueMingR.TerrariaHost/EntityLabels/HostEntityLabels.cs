@@ -21,7 +21,7 @@ namespace JueMingR.TerrariaHost.EntityLabels
         private string reportedPreference, reportedCapability;
         internal readonly EntityLabelFeature Feature;
         internal readonly EntityWorldLayer World;
-        private const string LayerUnavailableMessage = "显名绘制层不可用，选择已保留。";
+        private const string LayerUnavailableMessage = "显名暂时无法显示，设置已保留。";
         private Rendering.WorldLayerStatus layerStatus;
         internal Rendering.WorldLayerStatus LayerStatus
         {
@@ -73,17 +73,17 @@ namespace JueMingR.TerrariaHost.EntityLabels
             get
             {
                 var snapshot = Preferences;
-                if (snapshot.CommitUnconfirmed) return "保存结果未确认，文件已保护；当前颜色仅能确认在本次内存生效。退出后保留配置及恢复材料核对。";
+                if (snapshot.CommitUnconfirmed) return "无法确认显名设置是否保存成功；本次仍可使用，文件已保护。";
                 switch (snapshot.Status)
                 {
-                    case PreferenceStatus.Loading: return "正在读取显名设置";
+                    case PreferenceStatus.Loading: return "正在加载显名设置";
                     case PreferenceStatus.Missing: case PreferenceStatus.Pending: case PreferenceStatus.Saved: return null;
                     case PreferenceStatus.UnsupportedVersion: case PreferenceStatus.UnknownFields:
-                        return "显名设置仅本次有效：版本或字段不受支持，原文件已保留。";
-                    case PreferenceStatus.Invalid: return "显名配置格式有误，原文件已保留；本次选择只在内存生效。";
-                    case PreferenceStatus.Conflict: return "显名配置发生外部变化，已停止覆盖；本次选择只在内存生效。";
-                    case PreferenceStatus.Busy: return "另一进程占用显名配置；本次选择只在内存生效。";
-                    default: return "显名设置未能可靠加载或保存；退出后检查 entity-labels.json 及恢复材料。";
+                        return "显名设置含当前版本不支持的内容；当前修改仅本次有效，原文件已保留。";
+                    case PreferenceStatus.Invalid: return "显名设置格式有误；当前修改仅本次有效，原文件已保留。";
+                    case PreferenceStatus.Conflict: return "显名设置文件已有变化，已停止保存；当前修改仅本次有效。";
+                    case PreferenceStatus.Busy: return "显名设置正被其他程序使用；当前修改仅本次有效。";
+                    default: return "显名设置加载或保存失败；当前修改仅本次有效，原文件已保留。";
                 }
             }
         }
@@ -92,11 +92,14 @@ namespace JueMingR.TerrariaHost.EntityLabels
             string message = PreferenceMessage;
             if (Preferences.IsLoaded && message != null && message != reportedPreference) { display(message); reportedPreference = message; }
             string capability = !Enabled && !Feature.HasFailed ? null : LayerStatus == Rendering.WorldLayerStatus.Unavailable ? LayerUnavailableMessage :
-                World.Failure != null || Feature.HasFailed ? "显名本次已停止：" + (World.Failure ?? Feature.UnavailableReason) :
-                Feature.UnavailableReason != null ? "显名观察暂不可用，选择已保留。" :
-                source.FailedObjects > 0 || Feature.UnresolvedGroups > 0 ? "部分显名对象或生命关系尚未可靠取得，已跳过；其它对象继续显示。" :
-                World.FontUnavailable ? "显名字体暂不可用，选择已保留。" : null;
-            if (capability != null && capability != reportedCapability) { display(capability); reportedCapability = capability; }
+                World.Failure != null || Feature.HasFailed ? "显名已停止，设置已保留。" :
+                Feature.UnavailableReason != null ? "暂时无法读取显名信息，设置已保留。" :
+                source.FailedObjects > 0 || Feature.UnresolvedGroups > 0 ? "部分对象暂时无法显名，其余正常显示。" :
+                World.FontUnavailable ? "显名字体暂不可用，设置已保留。" : null;
+            // Keep the diagnostic cause in deduplication, not in player copy.
+            // Different failures still notify once each; layer recovery retains its key.
+            string key = capability == "显名已停止，设置已保留。" ? "stopped:" + (World.Failure ?? Feature.UnavailableReason) : capability;
+            if (capability != null && key != reportedCapability) { display(capability); reportedCapability = key; }
             if (capability == null) reportedCapability = null;
         }
         private void OnExit(object sender, EventArgs args)

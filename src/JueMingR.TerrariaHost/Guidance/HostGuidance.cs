@@ -61,9 +61,9 @@ namespace JueMingR.TerrariaHost.Guidance
             get
             {
                 var snapshot = Preferences;
-                return !snapshot.IsLoaded ? "正在读取指引设置" : snapshot.CommitUnconfirmed ? "指引设置保存结果未确认，原件已保护；当前选择仅本次有效。" :
+                return !snapshot.IsLoaded ? "正在加载指引设置" : snapshot.CommitUnconfirmed ? "无法确认指引设置是否保存成功；本次仍可使用，文件已保护。" :
                     snapshot.Status == PreferenceStatus.Missing || snapshot.Status == PreferenceStatus.Pending || snapshot.Status == PreferenceStatus.Saved ? null :
-                    "指引设置未能可靠读取或保存，原件已保护；当前选择仅本次有效。";
+                    "指引设置加载或保存失败；当前修改仅本次有效，原文件已保留。";
             }
         }
         // An unsampled outer Update revokes action permission, but can still
@@ -80,7 +80,7 @@ namespace JueMingR.TerrariaHost.Guidance
             return changed;
         }
         internal void Toggle(GuidanceKind kind) { SetEnabled(kind, !IsEnabled(kind)); }
-        internal string SummonReason { get { return !ControlsEnabled ? "需要已就绪的活动世界。" : MerchantTest.Pending ? "本次尝试正在处理。" : MerchantTestOperations.UnavailableReason; } }
+        internal string SummonReason { get { return !ControlsEnabled ? "当前暂不可用。" : MerchantTest.Pending ? "正在尝试召唤。" : MerchantTestOperations.UnavailableReason; } }
         internal void RequestMerchant() { if (SummonReason == null && inputAllowed()) MerchantTest.Request(Session); }
         // Kept enabled to retire pending intents and disabled feature content;
         // each closed display exits before any NPC/equipment/pylon observation.
@@ -122,7 +122,7 @@ namespace JueMingR.TerrariaHost.Guidance
             if (fresh != 0)
             {
                 reportedFailures |= fresh;
-                for (int i = 0; i < 3; i++) if ((fresh & 1 << i) != 0) display(F5.GuidanceControls.Name((GuidanceKind)i) + "本次暂不可用，设置已保留；恢复环境后重新开启可重试。");
+                for (int i = 0; i < 3; i++) if ((fresh & 1 << i) != 0) display(F5.GuidanceControls.Name((GuidanceKind)i) + "暂不可用，设置已保留；可重新开启尝试恢复。");
             }
             var result = MerchantTest.Result;
             if (result != null && !ReferenceEquals(result, reportedResult)) { reportedResult = result; display(result.Message); }

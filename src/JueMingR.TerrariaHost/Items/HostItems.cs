@@ -67,7 +67,7 @@ namespace JueMingR.TerrariaHost.Items
             {
                 SetupError = e;
                 try { foreach (var method in harmony.GetPatchedMethods().ToArray()) harmony.Unpatch(method, HarmonyPatchType.All, harmony.Id); } catch { }
-                CapabilityError = "物品处理接入不可用：" + e.GetType().Name + "；本次未启用自动操作。";
+                CapabilityError = "物品处理暂不可用，本次未启用自动操作。";
                 Feature.FailClosed();
             }
             AppDomain.CurrentDomain.ProcessExit += OnExit;
@@ -114,7 +114,7 @@ namespace JueMingR.TerrariaHost.Items
             if (actionPlayerAvailable && !available) DiscardUnsubmittedAcquisitions();
             actionPlayerAvailable = available;
             Storage.Tick = tick; Storage.Update(); Feature.Update(tick);
-            if (Feature.HasFailed && CapabilityError == null) CapabilityError = "物品处理已停止：本次会话观察未能可靠完成；未确认操作不会重试。"; }
+            if (Feature.HasFailed && CapabilityError == null) CapabilityError = "物品信息读取出错，自动处理已停止；结果未确认的操作不会自动重试。"; }
         internal void DiscardUnsubmittedAcquisitions()
         { Feature.DiscardPendingAcquisitions(); World.DiscardUnsubmittedObservation(); ItemSourceHooks.CancelPendingAcquisition(); }
         public void FailClosed()
@@ -122,19 +122,20 @@ namespace JueMingR.TerrariaHost.Items
             Feature.FailClosed();
             var unknown = new ItemOperationResult(ItemOperationState.Unconfirmed, reason: "item-host-failed");
             Ownership.FinishSale(Runtime.Generation, unknown); Ownership.FinishDiscard(Runtime.Generation, unknown); Ownership.FinishStore(Runtime.Generation, unknown);
-            CapabilityError = "物品处理已停止：宿主状态异常；未确认操作不会自动重试。";
+            CapabilityError = "物品自动处理出错，已停止；结果未确认的操作不会自动重试。";
         }
         internal string PreferenceMessage
         {
             get
             {
+                if (Preferences.CommitUnconfirmed) return "无法确认物品设置是否保存成功；本次仍可使用，文件已保护。";
                 switch (Preferences.Status)
                 {
-                    case PreferenceStatus.Loading: return "正在读取物品设置";
+                    case PreferenceStatus.Loading: return "正在加载物品设置";
                     case PreferenceStatus.Missing:
                     case PreferenceStatus.Pending:
                     case PreferenceStatus.Saved: return null;
-                    default: return "物品设置未能可靠保存；本次选择仍可使用，原配置已保留。请退出游戏后检查 config/features/item-automation.json。";
+                    default: return "物品设置加载或保存失败；当前修改仅本次有效，原文件已保留。";
                 }
             }
         }

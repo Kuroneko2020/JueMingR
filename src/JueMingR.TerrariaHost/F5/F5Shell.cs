@@ -324,15 +324,15 @@ namespace JueMingR.TerrariaHost.F5
                 {
                     preferences.TakeFeedback(displayPreferenceFeedback); hostItems?.TakeFeedback(displayPreferenceFeedback); labels?.TakeFeedback(displayPreferenceFeedback); worldTargets?.TakeFeedback(displayPreferenceFeedback); worldObjects?.TakeFeedback(displayPreferenceFeedback); information?.TakeFeedback(displayPreferenceFeedback);
                     guidance?.TakeFeedback(displayPreferenceFeedback);
-                    if (StylePopup?.Failure != null && StylePopup.Failure != reportedStyleFailure)
-                    { reportedStyleFailure = StylePopup.Failure; displayPreferenceFeedback(reportedStyleFailure); }
+                    if (StylePopup?.Failure != null && StylePopup.FailureKey != reportedStyleFailure)
+                    { reportedStyleFailure = StylePopup.FailureKey; displayPreferenceFeedback(StylePopup.Failure); }
                 }
                 if (failed)
                 {
                     if (!failureNotified && !Main.gameMenu)
                     {
                         failureNotified = true;
-                        Main.NewText("F5 界面已安全关闭：资源、布局或绘制不可用。群系设置保留。", 255, 180, 90);
+                        Main.NewText("F5 界面出现问题，已关闭；设置已保留。", 255, 180, 90);
                     }
                     return;
                 }

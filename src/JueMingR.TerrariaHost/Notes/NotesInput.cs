@@ -132,13 +132,13 @@ namespace JueMingR.TerrariaHost.Notes
             {
                 if (!editor.HasSelection) return;
                 if (clipboard.TryCopy(editor.SelectedText)) { if (cut) editor.DeleteSelection(); Error = null; }
-                else Error = "剪贴板不可用，草稿没有删改。";
+                else Error = "无法复制到剪贴板，草稿未改动。";
                 return;
             }
             if (control && Pressed(Keys.V) || shift && Pressed(Keys.Insert))
             {
                 string text; if (clipboard.TryPaste(out text)) { editor.Insert(text); Error = null; }
-                else Error = "未能读取剪贴板（不可用或超过正文上限），草稿保留。";
+                else Error = "无法粘贴：剪贴板不可用或内容过长。草稿未改动。";
                 return;
             }
             if (control && Pressed(Keys.A)) { editor.SelectAll(); return; }

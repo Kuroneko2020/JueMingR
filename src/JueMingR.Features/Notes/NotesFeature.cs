@@ -45,7 +45,7 @@ namespace JueMingR.Features.Notes
                         ReadingError = null;
                     }
                     else
-                    { readingFailed = true; ReadingError = "阅读调整尚未可靠保存；当前预览可能无法在重启后恢复。请在 F5 笔记页查看原因。"; }
+                    { readingFailed = true; ReadingError = result.CommitUnconfirmed ? "无法确认阅读区域和字号是否保存成功，重启后可能无法保留。" : "阅读区域和字号保存失败，重启后可能无法保留。"; }
                     readingCommand = 0; submittedReading = null; ReadingRevision++;
                     PruneReading();
                     // Workspace owns ordinary command acknowledgments. This completion
@@ -114,7 +114,7 @@ namespace JueMingR.Features.Notes
                     // into one whole-document write per completion after one second.
                     foreach (ReadingIntent intent in batch) intent.Submitted = true;
                 }
-                else { readingFailed = true; ReadingError = "阅读调整尚未可靠保存；存储受保护，请退出后检查恢复材料。"; }
+                else { readingFailed = true; ReadingError = "暂时无法保存阅读区域和字号，重启后可能无法保留。"; }
             }
         }
         public bool Stop(int milliseconds)

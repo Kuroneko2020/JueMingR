@@ -96,14 +96,14 @@ namespace JueMingR.TerrariaHost.Information
         internal string PositionMessage { get { return Message(Position, "信息窗位置"); } }
         private static string Message<T>(PreferenceSnapshot<T> snapshot, string label)
         {
-            if (snapshot.CommitUnconfirmed) return label + "保存结果未确认，原件已保护；当前选择仅本次内存生效。";
+            if (snapshot.CommitUnconfirmed) return "无法确认" + label + "是否保存成功；本次仍可使用，文件已保护。";
             switch (snapshot.Status)
             {
-                case PreferenceStatus.Loading: return "正在读取" + label;
+                case PreferenceStatus.Loading: return "正在加载" + label;
                 case PreferenceStatus.Missing: case PreferenceStatus.Pending: case PreferenceStatus.Saved: return null;
-                case PreferenceStatus.UnknownFields: case PreferenceStatus.UnsupportedVersion: return label + "含未知版本或字段，原件已保留；当前选择仅本次有效。";
-                case PreferenceStatus.Conflict: return label + "发生外部变化，已停止覆盖；当前选择仅本次有效。";
-                default: return label + "未能可靠读取或保存，原件已保留；当前选择仅本次有效。";
+                case PreferenceStatus.UnknownFields: case PreferenceStatus.UnsupportedVersion: return label + "含当前版本不支持的内容；当前修改仅本次有效，原文件已保留。";
+                case PreferenceStatus.Conflict: return label + "文件已有变化，已停止保存；当前修改仅本次有效。";
+                default: return label + "加载或保存失败；当前修改仅本次有效，原文件已保留。";
             }
         }
         internal void TakeFeedback(Action<string> display)
@@ -112,7 +112,7 @@ namespace JueMingR.TerrariaHost.Information
             if (fresh != 0)
             {
                 reportedDisplayFailures |= fresh;
-                for (int i = 0; i < 4; i++) if ((fresh & (1 << i)) != 0) display(InformationControls.Name((InformationKind)i) + "绘制不可用，设置已保留。");
+                for (int i = 0; i < 4; i++) if ((fresh & (1 << i)) != 0) display(InformationControls.Name((InformationKind)i) + "暂时无法显示，设置已保留。");
             }
             string message = PreferenceMessage;
             if (Preferences.IsLoaded && message != null && message != reportedSettings) { display(message); reportedSettings = message; }

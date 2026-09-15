@@ -47,11 +47,11 @@ namespace JueMingR.TerrariaHost.Settings
 
         internal void TakeFeedback(Action<string> display)
         {
-            if (Feedback(biome.Snapshot, ref seenBiome, "群系选择", "config/features/biome-display.json", display)) return;
-            Feedback(ui.Snapshot, ref seenUi, "F5 位置", "config/ui.json", display);
+            if (Feedback(biome.Snapshot, ref seenBiome, "群系选择", display)) return;
+            Feedback(ui.Snapshot, ref seenUi, "F5 位置", display);
         }
 
-        private static bool Feedback<T>(PreferenceSnapshot<T> current, ref PreferenceStatus? seen, string label, string path,
+        private static bool Feedback<T>(PreferenceSnapshot<T> current, ref PreferenceStatus? seen, string label,
             Action<string> display)
         {
             // Each document retains just its last delivered cause for this Host
@@ -59,7 +59,10 @@ namespace JueMingR.TerrariaHost.Settings
             // latched storage failure and must not repeat its notification.
             if (!current.IsLoaded || current.Status == seen) return false;
             string message;
-            switch (current.Status)
+            // A write may have reached disk before confirmation failed. Keep that
+            // existing storage fact distinct from a confirmed failure in the UI.
+            if (current.CommitUnconfirmed) message = "无法确认" + label + "是否保存成功；本次仍可使用，文件已保护。";
+            else switch (current.Status)
             {
                 // Normal state/revision still prove persistence internally. No
                 // success string, logging or notification work is needed here.
@@ -68,15 +71,15 @@ namespace JueMingR.TerrariaHost.Settings
                 case PreferenceStatus.Pending: return false;
                 case PreferenceStatus.UnsupportedVersion:
                 case PreferenceStatus.UnknownFields:
-                    message = label + "仅本次有效：配置含当前程序不认识的版本或字段，原件已保留。请退出游戏后使用匹配程序检查 " + path + "。"; break;
+                    message = label + "的设置含当前版本不支持的内容；当前修改仅本次有效，原文件已保留。"; break;
                 case PreferenceStatus.Invalid:
-                    message = label + "仅本次有效：配置格式有误，原件已保留。请退出游戏，备份并移走 JueMingRData/" + path + " 后重启。"; break;
+                    message = label + "的设置格式有误；当前修改仅本次有效，原文件已保留。"; break;
                 case PreferenceStatus.Conflict:
-                    message = label + "未能可靠保存：文件在运行中发生变化，已停止覆盖。请退出所有游戏，保留该文件及 .bak，检查后重启。"; break;
+                    message = label + "的设置文件已有变化，已停止保存；当前修改仅本次有效。"; break;
                 case PreferenceStatus.Busy:
-                    message = label + "仅本次有效：另一进程正在使用配置。请退出使用此安装的所有游戏后重启。"; break;
+                    message = label + "的设置正被其他程序使用；当前修改仅本次有效。"; break;
                 default:
-                    message = label + "未能可靠加载或保存：请退出游戏后检查 JueMingRData/" + path + " 的访问权限及 .tmp 文件；原件保持保护。"; break;
+                    message = label + "加载或保存失败；当前修改仅本次有效，原文件已保留。"; break;
             }
             // The game-thread caller invokes us only when text can be presented.
             // A throwing sink has not delivered anything: leave its cause pending.

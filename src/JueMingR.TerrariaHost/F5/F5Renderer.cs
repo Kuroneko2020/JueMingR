@@ -202,7 +202,8 @@ namespace JueMingR.TerrariaHost.F5
             F5Element hover = state.HitButton(state.PointerX - state.X, state.PointerY - state.Y);
             if (hover == null) return null;
             target = F5HintLayout.Intersect(hover.Rect.Offset(view.X, view.Y - state.Scroll), visible);
-            if (hover.Kind == F5ElementKind.Hotkey && hover.HotkeyTarget != null) return "设置快捷键";
+            if (hover.Kind == F5ElementKind.Hotkey && hover.HotkeyTarget != null)
+                return hover.HotkeyTarget == Hotkeys.HotkeyActionIds.AdjustInformation ? "双击设置调整信息窗位置的快捷键" : "双击设置功能开关快捷键";
             return ButtonHint(hover, biomeFailed);
         }
         internal string ButtonHint(F5Element hover, bool biomeFailed)

@@ -33,15 +33,15 @@ namespace JueMingR.TerrariaHost.Hotkeys
             try
             {
                 if (key >= 96 && key <= 105 && Terraria.Testing.DebugOptions.enableDebugCommands)
-                    found.Add("fixed:Debug" + HotkeyChord.KeyName(key), new HotkeyOverlap("fixed:Debug" + HotkeyChord.KeyName(key), "原版数字区调试入口", new[] { HotkeyChord.DisplayName(key) }));
+                    found.Add("fixed:Debug" + HotkeyChord.KeyName(key), new HotkeyOverlap("fixed:Debug" + HotkeyChord.KeyName(key), "原版小键盘调试快捷键", new[] { HotkeyChord.DisplayName(key) }));
             }
-            catch { unread.Add("未能核对原版数字区调试入口。"); }
+            catch { unread.Add("未能核对原版小键盘调试快捷键。"); }
             try
             {
                 var profile = PlayerInput.CurrentProfile;
                 KeyConfiguration keyboard;
                 if (profile == null || profile.InputModes == null || !profile.InputModes.TryGetValue(InputMode.Keyboard, out keyboard) || keyboard == null || keyboard.KeyStatus == null)
-                    unread.Add("无法读取当前原版键盘配置。");
+                    unread.Add("无法读取原版键位。");
                 else
                 {
                     var mappings = keyboard.KeyStatus;
@@ -54,7 +54,7 @@ namespace JueMingR.TerrariaHost.Hotkeys
                         {
                             List<string> values;
                             if (!mappings.TryGetValue(id, out values) || values == null)
-                            { unread.Add("无法读取原版动作「" + DisplayAction(id) + "」的键位（" + id + "）。"); continue; }
+                            { unread.Add("无法读取「" + DisplayAction(id) + "」的按键。"); continue; }
                             var keys = new List<string>(4);
                             for (int i = 0; i < 6; i++)
                                 if (((int)chord.Modifiers & (1 << i)) != 0 && values.Contains(HotkeyChord.KeyName(HotkeyChord.ModifierCode(i))))
@@ -62,11 +62,11 @@ namespace JueMingR.TerrariaHost.Hotkeys
                             if (mainReports && values.Contains(HotkeyChord.KeyName(key))) keys.Add(HotkeyChord.DisplayName(key));
                             if (keys.Count != 0) found.Add("mapping:" + id, new HotkeyOverlap("mapping:" + id, DisplayAction(id), keys));
                         }
-                        catch { unread.Add("未能完整核对原版动作（" + id + "）。"); }
+                        catch { unread.Add("无法完整检查「" + DisplayAction(id) + "」的按键。"); }
                     }
                 }
             }
-            catch { unread.Add("未能完整读取原版键盘配置。"); }
+            catch { unread.Add("部分原版键位无法读取。"); }
             return new HotkeyAdvisory(found.Values, unread);
         }
         private static void AddFixed(IDictionary<string, HotkeyOverlap> found, string handler, HotkeyChord chord = null, HotkeyModifiers relevant = HotkeyModifiers.None)
@@ -104,8 +104,8 @@ namespace JueMingR.TerrariaHost.Hotkeys
                 string label = key == null ? null : Terraria.Localization.Language.GetTextValue(key);
                 if (!String.IsNullOrWhiteSpace(label) && label != key) return label;
             }
-            catch { /* Preserve the identifiable action when language assets are unavailable. */ }
-            return "原版动作（" + action + "）";
+            catch { /* The stable overlap Id still identifies this action if its name cannot be read. */ }
+            return "原版操作（名称暂不可用）";
         }
     }
 }

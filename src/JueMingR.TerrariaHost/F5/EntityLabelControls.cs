@@ -11,9 +11,9 @@ namespace JueMingR.TerrariaHost.F5
     // Row order and localized button text never dispatch gameplay commands.
     internal sealed class EntityLabelControls
     {
-        private static readonly F5RowDescription enemyDescription = new F5RowDescription(HotkeyActionIds.EnemyLabels, "显示附近敌怪的名称和当前／最大生命值。");
-        private static readonly F5RowDescription critterDescription = new F5RowDescription(HotkeyActionIds.CritterLabels, "显示附近动物的名称，金色动物保留金色标识。");
-        private static readonly F5RowDescription npcDescription = new F5RowDescription(HotkeyActionIds.NpcLabels, "显示附近城镇 NPC 和骷髅商人的名字或类型。“名字”优先显示个体名字，没有时显示类型名。");
+        private static readonly F5RowDescription enemyDescription = new F5RowDescription(HotkeyActionIds.EnemyLabels, "显示附近敌怪的名称和生命值。");
+        private static readonly F5RowDescription critterDescription = new F5RowDescription(HotkeyActionIds.CritterLabels, "显示附近动物的名称。");
+        private static readonly F5RowDescription npcDescription = new F5RowDescription(HotkeyActionIds.NpcLabels, "显示附近NPC的名字或类型。");
         private readonly HostEntityLabels host;
         internal EntityLabelControls(HostEntityLabels host) { this.host = host; }
         internal static void AddRows(List<F5Element> elements, Func<string, float, F5Size> measure, ref float y)

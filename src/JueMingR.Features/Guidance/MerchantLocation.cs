@@ -42,7 +42,7 @@ namespace JueMingR.Features.Guidance
                 if (!npcs.TryRead(i, NpcDemand.Housing, out n) || !n.Active || !n.Town || n.Type == 368 || n.Homeless || n.HomeX < 0 || n.HomeY < 0) continue;
                 if (RareCreatureDirection.Distance(n.X / 16, n.Y / 16, n.HomeX, n.HomeY) <= 100 * 100 &&
                     RareCreatureDirection.Distance(x, y, n.HomeX, n.HomeY) <= 120 * 120 && ++residents >= 2)
-                { Text = "居民聚居处附近"; return; }
+                { Text = "居民区附近"; return; }
             }
             int width, height; double surface;
             if (!source.TryWorld(out width, out height, out surface) || width <= 0 || height <= 200 || !RareCreatureDirection.Finite(surface) ||

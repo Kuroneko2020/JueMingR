@@ -47,9 +47,9 @@ namespace JueMingR.TerrariaHost.Items
             if (!ValidateSession() || !Active) return;
             Message = null;
             if (Target != 0 && !Types(host.Preferences.Value, List.Value).Contains(Target))
-            { Cancel(); Message = "原名单物品已变化，请重新选择要替换的图标。"; return; }
+            { Cancel(); Message = "名单已变化，请重新选择要替换的物品。"; return; }
             if (Target == 0 && selected.Remove(type)) return;
-            if (!CanSelect(type)) { Message = "该物品已在当前名单中，请选择其它物品。"; return; }
+            if (!CanSelect(type)) { Message = "此物品已在名单中，请选择其他物品。"; return; }
             if (Target == 0) { selected.Add(type); return; }
             var value = host.Preferences.Value;
             Commit(value.WithTypes(List.Value, Types(value, List.Value).Where(t => t != Target).Concat(new[] { type })));
@@ -61,10 +61,10 @@ namespace JueMingR.TerrariaHost.Items
             // latest list and switches, never a captured preferences revision.
             var value = host.Preferences.Value;
             int[] additions = selected.Where(CanSelect).ToArray();
-            if (additions.Length == 0) { Message = "已选物品均已在名单中，请调整选择或关闭。"; return; }
+            if (additions.Length == 0) { Message = "所选物品都已在名单中。"; return; }
             Commit(value.WithTypes(List.Value, Types(value, List.Value).Concat(additions)));
         }
         private void Commit(ItemAutomationSettings value)
-        { if (host.Change(value)) Cancel(); else Message = "本次名单修改未被接受，选择已保留，请重试。"; }
+        { if (host.Change(value)) Cancel(); else Message = "暂时无法修改名单，选择已保留。"; }
     }
 }

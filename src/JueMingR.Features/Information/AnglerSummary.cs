@@ -24,7 +24,7 @@ namespace JueMingR.Features.Information
             // The three personal/world facts have separate readiness. A missing
             // quest never substitutes index zero or erases a known count.
             if (value.Availability == InformationAvailability.ConditionUnmet)
-            { Content.Publish(InformationText.Status("渔夫任务", value.Availability, "需要已解救渔夫")); return; }
+            { Content.Publish(InformationText.Status("渔夫任务", value.Availability, "需要在此世界解救过渔夫，或当前有渔夫")); return; }
             string missing = value.Availability == InformationAvailability.Unavailable ? "暂不可用" : value.Availability == InformationAvailability.Waiting ? "等待同步" : "未知";
             Content.Publish("渔夫任务：" + (value.ItemType.HasValue && !String.IsNullOrEmpty(value.Name) ? value.Name : missing) +
                 "；地点：" + (String.IsNullOrEmpty(value.Location) ? "未知" : value.Location) +

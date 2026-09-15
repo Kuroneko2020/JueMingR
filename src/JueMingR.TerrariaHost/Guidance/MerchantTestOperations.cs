@@ -24,35 +24,35 @@ namespace JueMingR.TerrariaHost.Guidance
         {
             get
             {
-                if (!GuidanceObservationReader.ValidPlayer) return "需要有效且存活的本地玩家。";
+                if (!GuidanceObservationReader.ValidPlayer) return "角色尚未就绪或已死亡。";
                 if (Main.netMode != 0) return "游商测试仅限单人世界。";
-                if (!Main.dayTime) return "原版旅商到访需要白天。";
-                if (Main.eclipse) return "日食期间不能尝试到访。";
-                if (Main.invasionType > 0 && Main.invasionDelay == 0 && Main.invasionSize > 0) return "正在入侵，不能尝试到访。";
+                if (!Main.dayTime) return "旅商只能在白天到访。";
+                if (Main.eclipse) return "日食期间无法召唤旅商。";
+                if (Main.invasionType > 0 && Main.invasionDelay == 0 && Main.invasionSize > 0) return "入侵期间无法召唤旅商。";
                 return null;
             }
         }
         public MerchantTestReceipt Execute(MerchantTestRequest request)
         {
             if (request == null || thread != Thread.CurrentThread.ManagedThreadId || request.Session != session() || !inputAllowed())
-                return Result(GameOperationOutcome.Cancelled, "输入或世界已改变，本次未召唤。");
+                return Result(GameOperationOutcome.Cancelled, "召唤已取消。");
             string unavailable = UnavailableReason;
             if (unavailable != null) return Result(GameOperationOutcome.Rejected, unavailable);
             bool found;
-            if (!TryFind(out found)) return Result(GameOperationOutcome.Rejected, "NPC资料未可靠取得，本次未召唤。");
+            if (!TryFind(out found)) return Result(GameOperationOutcome.Rejected, "无法确认旅商是否在场，本次未召唤。");
             // Hidden active merchants also block vanilla's entry. Never refresh
             // their shop or fabricate a client-only target for the direction.
-            if (found) return Result(GameOperationOutcome.Rejected, "当前已有活动旅商，本次未召唤。");
+            if (found) return Result(GameOperationOutcome.Rejected, "已有旅商在场，本次未召唤。");
             try
             {
 #if DEBUG
                 NativeCalls++;
 #endif
                 spawn();
-                if (TryFind(out found) && found) return Result(GameOperationOutcome.Succeeded, "已观察到旅商到访。");
-                return Result(GameOperationOutcome.Unconfirmed, "已尝试原版到访，未确认生成；可能缺少合适住房或位置，不会自动重试。");
+                if (TryFind(out found) && found) return Result(GameOperationOutcome.Succeeded, "旅商已到访。");
+                return Result(GameOperationOutcome.Unconfirmed, "已尝试召唤，无法确认旅商是否到访；不会自动重试。");
             }
-            catch (Exception) { return Result(GameOperationOutcome.Failed, "原版到访发生异常；可能已有商品或世界副作用，不会自动重试。"); }
+            catch (Exception) { return Result(GameOperationOutcome.Failed, "召唤出错，结果未确认；不会自动重试。"); }
         }
         private static bool TryFind(out bool found)
         {

@@ -103,7 +103,7 @@ namespace JueMingR.ArchitectureTests
             source.Pylons = new GuidancePylon[0]; source.Npcs[2] = Npc(2, 17, 0, merchant.X, merchant.Y); source.Npcs[3] = Npc(3, 18, 0, merchant.X, merchant.Y);
             for (int i = 2; i <= 3; i++) { source.Npcs[i].Town = true; source.Npcs[i].HomeX = 3000; source.Npcs[i].HomeY = 350; }
             for (int i = 0; i < 15; i++) location.Update(merchant, source, source);
-            Require(location.Text == "居民聚居处附近", "removed pylon falls back to actual resident evidence");
+            Require(location.Text == "居民区附近", "removed pylon falls back to actual resident evidence");
             merchant.X = 4000 * 16; for (int i = 0; i < 15; i++) location.Update(merchant, source, source); Require(location.Text == "地表", "moving away invalidates location within bound");
             source.WorldKnown = false; for (int i = 0; i < 15; i++) location.Update(merchant, source, source); Require(location.Text == "位置未知", "missing evidence is unknown");
         }

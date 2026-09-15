@@ -35,6 +35,7 @@ namespace JueMingR.TerrariaHost.EntityLabels
         internal StylePopupCommand Pressed { get { return armed; } }
         internal bool HasCapture { get { return ActiveSlider >= 0 || armed != StylePopupCommand.None || TextInput.Editing; } }
         internal string Failure { get; private set; }
+        internal string FailureKey { get; private set; }
         private int page, armedGeneration;
         private bool previousLeft;
         private StylePopupCommand armed;
@@ -54,7 +55,7 @@ namespace JueMingR.TerrariaHost.EntityLabels
         {
             bool same = target.Same(selection); Close();
             if (same || !target.CanConfigure()) return;
-            selection = target; page = currentPage; Failure = null;
+            selection = target; page = currentPage; Failure = FailureKey = null;
             // The editor captures this target, never the next popup selection.
             Editor = new StyleEditor(target.Color(), target.SetColor); Layout.Reset();
         }
@@ -90,7 +91,12 @@ namespace JueMingR.TerrariaHost.EntityLabels
                     Layout.Build(width, height, scale, font, measure, skin, anchor, selection.Title, selection.Entity == EntityLabelKind.Critter, Editor, NameSize, Message);
                 }
             }
-            catch (Exception e) { Failure = "显示设置窗口暂不可用：" + e.GetType().Name; Close(); }
+            catch (Exception e)
+            {
+                // The shell still deduplicates by exception type. Player wording
+                // must not merge distinct failures or expose the diagnostic key.
+                FailureKey = e.GetType().Name; Failure = "显示设置窗口暂不可用。"; Close();
+            }
         }
         internal void Process(bool active, int currentPage, float x, float y, bool geometryCurrent, int wheel = 0)
         {

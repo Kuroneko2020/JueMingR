@@ -77,7 +77,7 @@ namespace JueMingR.TerrariaHost.Input
             // Its priority only suppresses control actions, never those characters.
             if (!control)
             {
-                if (tooLong) editor.SetError("请输入六位 RGB 色码");
+                if (tooLong) editor.SetError("请输入 6 位色码（0–9、A–F）。");
                 else if (committed.Length != 0) editor.Insert(committed.ToString());
             }
             if (!compositionPriority)
@@ -86,13 +86,13 @@ namespace JueMingR.TerrariaHost.Input
                 else if (control && Pressed(Keys.V) || shift && Pressed(Keys.Insert))
                 {
                     string text;
-                    if (!clipboard.TryPaste(out text)) editor.SetError("未能读取剪贴板，草稿保留");
+                    if (!clipboard.TryPaste(out text)) editor.SetError("无法读取剪贴板，输入内容未改动。");
                     else
                     {
                         // Accept exactly one optional external #, never trim or
                         // truncate a longer candidate into an accidental color.
                         if (text != null && text.Length == 7 && text[0] == '#') text = text.Substring(1);
-                        if (text == null || text.Length > 6) editor.SetError("粘贴内容须为六位 RGB 色码"); else editor.Insert(text);
+                        if (text == null || text.Length > 6) editor.SetError("请粘贴 6 位色码，可带开头的 #。"); else editor.Insert(text);
                     }
                 }
                 else if (!control)
