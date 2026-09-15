@@ -16,6 +16,7 @@ namespace JueMingR.TerrariaHost.Guidance
         private readonly NativeNpcObservation npcs;
         private readonly GuidanceObservationReader source;
         private readonly Func<bool> inputAllowed;
+        private readonly Func<bool> presentationAllowed;
         private readonly PreferenceDocument<GuidancePreferences> preferences;
         private readonly Stopwatch clock = Stopwatch.StartNew();
         private bool stopping;
@@ -30,12 +31,13 @@ namespace JueMingR.TerrariaHost.Guidance
         internal readonly MerchantTestFeature MerchantTest;
         internal readonly GuidanceWorldLayer World;
         internal Rendering.WorldLayerStatus LayerStatus { get; set; }
-        internal HostGuidance(string gameDirectory, SingleFeatureRuntime runtime, NativeNpcObservation npcs, Func<bool> inputAllowed, Func<bool> merchantInputAllowed)
+        internal HostGuidance(string gameDirectory, SingleFeatureRuntime runtime, NativeNpcObservation npcs, Func<bool> inputAllowed, Func<bool> merchantInputAllowed, Func<bool> presentationAllowed)
         {
-            this.runtime = runtime; this.npcs = npcs; this.inputAllowed = inputAllowed;
+            this.runtime = runtime; this.npcs = npcs; this.inputAllowed = inputAllowed; this.presentationAllowed = presentationAllowed;
             source = new GuidanceObservationReader(npcs); Rare = new RareCreatureDirection(npcs); Merchant = new TravellingMerchantDirection(npcs);
             MerchantTest = new MerchantTestFeature(new MerchantTestOperations(() => Session, merchantInputAllowed));
-            preferences = new PreferenceDocument<GuidancePreferences>(new AtomicFileDocument(Path.Combine(gameDirectory, "JueMingRData", "config", "features", "guidance.json"), 65536, true), new GuidancePreferenceCodec(), GuidancePreferences.Default);
+            var file = new AtomicFileDocument(Path.Combine(gameDirectory, "JueMingRData", "config", "features", "guidance.json"), 65536, true, ".schema1-original");
+            preferences = new PreferenceDocument<GuidancePreferences>(file, new RetainingCodec(file), GuidancePreferences.Default);
             World = new GuidanceWorldLayer(this); AppDomain.CurrentDomain.ProcessExit += OnExit;
         }
         internal long Session { get { return runtime.IsSessionActive ? runtime.Generation : -1; } }
@@ -46,7 +48,28 @@ namespace JueMingR.TerrariaHost.Guidance
         bool F5.IGuidanceControls.SetEnabled(GuidanceKind kind, bool enabled) { return SetEnabled(kind, enabled); }
         string F5.IGuidanceControls.SummonReason { get { return SummonReason; } }
         void F5.IGuidanceControls.RequestMerchant() { RequestMerchant(); }
-        internal bool CanDraw { get { return runtime.IsSessionActive && LayerStatus == Rendering.WorldLayerStatus.Ready && inputAllowed() && GuidanceObservationReader.ValidPlayer; } }
+        GuidancePreferences F5.IGuidanceControls.Settings { get { return Preferences.Value; } }
+        string F5.IGuidanceControls.PreferenceMessage { get { return PreferenceMessage; } }
+        bool F5.IGuidanceControls.SetColor(GuidanceKind kind, int rgb) { return SetColor(kind, rgb); }
+        bool F5.IGuidanceControls.StepSize(GuidanceKind kind, int direction) { return StepSize(kind, direction); }
+        void F5.IGuidanceControls.ResetStyle(GuidanceKind kind) { ResetStyle(kind); }
+        internal bool SetColor(GuidanceKind kind, int rgb) { return ControlsEnabled && preferences.Set(Preferences.Value.WithStyle(kind, Preferences.Value.Style(kind).WithColor(rgb))); }
+        internal bool StepSize(GuidanceKind kind, int direction) { return ControlsEnabled && preferences.Set(Preferences.Value.WithStyle(kind, Preferences.Value.Style(kind).Step(direction))); }
+        internal bool ResetStyle(GuidanceKind kind) { return ControlsEnabled && preferences.Set(Preferences.Value.ResetStyle(kind)); }
+        internal string PreferenceMessage
+        {
+            get
+            {
+                var snapshot = Preferences;
+                return !snapshot.IsLoaded ? "正在读取指引设置" : snapshot.CommitUnconfirmed ? "指引设置保存结果未确认，原件已保护；当前选择仅本次有效。" :
+                    snapshot.Status == PreferenceStatus.Missing || snapshot.Status == PreferenceStatus.Pending || snapshot.Status == PreferenceStatus.Saved ? null :
+                    "指引设置未能可靠读取或保存，原件已保护；当前选择仅本次有效。";
+            }
+        }
+        // An unsampled outer Update revokes action permission, but can still
+        // be followed by Draw (native FrameSkip.Off). Presentation uses focus
+        // quarantine independently; never retain the old action permission.
+        internal bool CanDraw { get { return runtime.IsSessionActive && LayerStatus == Rendering.WorldLayerStatus.Ready && presentationAllowed() && GuidanceObservationReader.ValidPlayer; } }
         internal bool IsEnabled(GuidanceKind kind) { return Preferences.Value.Enabled(kind); }
         internal bool SetEnabled(GuidanceKind kind, bool enabled)
         {
@@ -103,12 +126,24 @@ namespace JueMingR.TerrariaHost.Guidance
             }
             var result = MerchantTest.Result;
             if (result != null && !ReferenceEquals(result, reportedResult)) { reportedResult = result; display(result.Message); }
-            var snapshot = Preferences;
-            string text = !snapshot.IsLoaded ? null : snapshot.CommitUnconfirmed ? "指引设置保存结果未确认，原件已保护。" :
-                snapshot.Status == PreferenceStatus.Missing || snapshot.Status == PreferenceStatus.Pending || snapshot.Status == PreferenceStatus.Saved ? null : "指引设置未能可靠读取或保存，原件已保护；当前选择仅本次有效。";
+            string text = Preferences.IsLoaded ? PreferenceMessage : null;
             if (text != null && text != reportedPreference) { reportedPreference = text; display(text); }
         }
         private void OnExit(object sender, EventArgs args)
         { AppDomain.CurrentDomain.ProcessExit -= OnExit; stopping = true; Clear(); World.Stop(); preferences.Stop(750); }
+        private sealed class RetainingCodec : IPreferenceCodec<GuidancePreferences>
+        {
+            private readonly AtomicFileDocument file;
+            private readonly GuidancePreferenceCodec codec = new GuidancePreferenceCodec();
+            internal RetainingCodec(AtomicFileDocument file) { this.file = file; }
+            public GuidancePreferences Decode(byte[] contents)
+            {
+                int version; var value = codec.Decode(contents, out version);
+                // Load is read-only. The first explicit save archives validated
+                // schema1 bytes before replacing them; unknown input never migrates.
+                if (version == 1) file.RetainLoadedSource(); return value;
+            }
+            public byte[] Encode(GuidancePreferences value) { return codec.Encode(value); }
+        }
     }
 }

@@ -59,7 +59,7 @@ namespace JueMingR.TerrariaHost.F5
             this.information = information;
             this.guidance = guidance;
             if (guidance != null) renderer.GuidanceControls = new GuidanceControls(guidance);
-            if (labels != null || worldTargets != null || worldObjects != null || information != null) StylePopup = new StylePopup(labels, this.inputState, worldTargets: worldTargets, worldObjects: worldObjects, information: information);
+            if (labels != null || worldTargets != null || worldObjects != null || information != null || guidance != null) StylePopup = new StylePopup(labels, this.inputState, worldTargets: worldTargets, worldObjects: worldObjects, information: information, guidance: guidance);
             if (information != null) renderer.InformationControls = new Information.InformationControls(information);
             if (labels != null) renderer.EntityControls = new EntityLabelControls(labels);
             if (worldTargets != null) renderer.WorldControls = new WorldTargetControls(worldTargets);
@@ -270,6 +270,11 @@ namespace JueMingR.TerrariaHost.F5
                     StylePopup.Click(Information.InformationControls.Target(State.Command).Value, ControlRect(State.ClickedControl), State.Page);
                 }
                 else if (State.Command == F5Command.AdjustInformation) RequestInformationAdjustment();
+                else if (State.ClickedControl != null && GuidanceControls.IsStyle(State.Command) && renderer.GuidanceControls != null && renderer.GuidanceControls.Available(State.Command))
+                {
+                    HotkeyPopup?.Close();
+                    StylePopup.Click(GuidanceControls.Target(State.Command).Value, ControlRect(State.ClickedControl), State.Page);
+                }
                 else { renderer.EntityControls?.Execute(State.Command); renderer.WorldControls?.Execute(State.Command); renderer.ObjectControls?.Execute(State.Command);
                     renderer.GuidanceControls?.Execute(State.Command);
                     if (State.Command != F5Command.EnableBiome && State.Command != F5Command.DisableBiome) renderer.InformationControls?.Execute(State.Command); }
@@ -414,7 +419,10 @@ namespace JueMingR.TerrariaHost.F5
                     {
                         renderer.Draw(State, matrix, biome.FeatureEnabled, !biome.CanObserveLocalPlayer || biome.FeatureFailed || !preferences.BiomeLoaded);
                         notes.DrawCards();
-                        bool hintsBlocked = !inputState.CanUseInput || HotkeyPopup != null && HotkeyPopup.Visible || StylePopup != null && StylePopup.Visible;
+                        // FrameSkip.Off can draw after an outer Update with no
+                        // HandleInput call. That revokes actions, not a focused
+                        // hover's read-only text; focus quarantine still applies.
+                        bool hintsBlocked = !inputState.CanPrepareText || HotkeyPopup != null && HotkeyPopup.Visible || StylePopup != null && StylePopup.Visible;
                         items?.Draw(drawKeyboard, !hintsBlocked && State.CanShowHint);
                         renderer.DrawHints(State, matrix, items, hintsBlocked,
                             !biome.CanObserveLocalPlayer || biome.FeatureFailed || !preferences.BiomeLoaded);
@@ -474,7 +482,8 @@ namespace JueMingR.TerrariaHost.F5
                     if (EntityLabelControls.IsStyle(element.Command) && EntityLabelControls.Target(element.Command) == StylePopup.Target ||
                         WorldTargetControls.IsStyle(element.Command) && WorldTargetControls.Target(element.Command) == StylePopup.WorldTarget ||
                         WorldObjectControls.IsStyle(element.Command) && WorldObjectControls.Target(element.Command) == StylePopup.WorldObject ||
-                        Information.InformationControls.IsStyle(element.Command) && Information.InformationControls.Target(element.Command) == StylePopup.InformationTarget) return ControlRect(element);
+                        Information.InformationControls.IsStyle(element.Command) && Information.InformationControls.Target(element.Command) == StylePopup.InformationTarget ||
+                        GuidanceControls.IsStyle(element.Command) && GuidanceControls.Target(element.Command) == StylePopup.GuidanceTarget) return ControlRect(element);
             return new F5Rect(State.X, State.Y, 0, 0);
         }
         private void CheckLabelSession()

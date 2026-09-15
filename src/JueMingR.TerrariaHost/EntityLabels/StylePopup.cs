@@ -15,6 +15,7 @@ namespace JueMingR.TerrariaHost.EntityLabels
         private readonly WorldTargets.HostWorldTargets worldTargets;
         private readonly IWorldObjectControls worldObjects;
         private readonly Information.IInformationControls information;
+        private readonly IGuidanceControls guidance;
         private StyleTarget selection;
         private readonly HostInputState input;
         internal readonly StylePopupLayout Layout = new StylePopupLayout();
@@ -23,6 +24,7 @@ namespace JueMingR.TerrariaHost.EntityLabels
         internal Platform.WorldTargets.WorldTargetKind? WorldTarget { get { return selection?.World; } }
         internal Platform.WorldObjectText.WorldObjectKind? WorldObject { get { return selection?.WorldObject; } }
         internal Platform.Information.InformationKind? InformationTarget { get { return selection?.Information; } }
+        internal Features.Guidance.GuidanceKind? GuidanceTarget { get { return selection?.Guidance; } }
         internal StyleEditor Editor { get; private set; }
         internal bool Visible { get { return selection != null; } }
         internal bool OwnsPointer { get; private set; }
@@ -36,8 +38,10 @@ namespace JueMingR.TerrariaHost.EntityLabels
         private int page, armedGeneration;
         private bool previousLeft;
         private StylePopupCommand armed;
-        internal StylePopup(HostEntityLabels host, HostInputState input, INotesClipboard clipboard = null, INotesIme ime = null, WorldTargets.HostWorldTargets worldTargets = null, IWorldObjectControls worldObjects = null, Information.IInformationControls information = null)
-        { this.host = host; this.worldTargets = worldTargets; this.worldObjects = worldObjects; this.information = information; this.input = input; TextInput = new HexTextInput(input, clipboard, ime); }
+        internal StylePopup(HostEntityLabels host, HostInputState input, INotesClipboard clipboard = null, INotesIme ime = null, WorldTargets.HostWorldTargets worldTargets = null, IWorldObjectControls worldObjects = null, Information.IInformationControls information = null, IGuidanceControls guidance = null)
+        { this.host = host; this.worldTargets = worldTargets; this.worldObjects = worldObjects; this.information = information; this.guidance = guidance; this.input = input; TextInput = new HexTextInput(input, clipboard, ime); }
+        internal void Click(Features.Guidance.GuidanceKind target, F5Rect anchor, int currentPage)
+        { if (guidance != null) Open(StyleTarget.For(guidance, target), currentPage); }
         internal void Click(Platform.Information.InformationKind target, F5Rect anchor, int currentPage)
         { if (information != null) Open(StyleTarget.For(information, target), currentPage); }
         internal void Click(EntityLabelKind target, F5Rect anchor, int currentPage)

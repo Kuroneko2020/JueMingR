@@ -18,6 +18,7 @@ namespace JueMingR.TerrariaHost.Guidance
         private Matrix inverse;
         private Vector2 rarePoint, rareLabel, merchantLabel, equipmentLabel;
         private float rotation, alpha, arrowScale;
+        private Color rareColor, merchantColor;
         private bool rareVisible, rareOutside, merchantVisible, equipmentVisible;
         private int failed, rareDistance = -1, merchantDistance = -1;
         private string rareName, location, rareContent, merchantContent;
@@ -48,6 +49,10 @@ namespace JueMingR.TerrariaHost.Guidance
             if (!host.Rare.Visible && !host.Merchant.Visible && host.Equipment.Alpha <= 0) { Occupancy.Clear(); return; }
             Matrix zoom = Main.GameViewMatrix.ZoomMatrix;
             if (zoom.M11 <= 0 || zoom.M22 <= 0 || float.IsNaN(zoom.M11) || float.IsNaN(zoom.M22)) return;
+            // Text shares the information HUD's UI scale, while anchors and
+            // the circle remain in physical pixels, independent of Game zoom.
+            float uiScale = Main.UIScaleMatrix.M11;
+            if (uiScale <= 0 || float.IsNaN(uiScale) || float.IsInfinity(uiScale)) return;
             inverse = Matrix.Invert(zoom);
             Vector2 player = Project(Main.LocalPlayer.Center, zoom);
             float width = Main.screenWidth, height = Main.screenHeight;
@@ -56,6 +61,7 @@ namespace JueMingR.TerrariaHost.Guidance
             {
                 if ((failed & 1) == 0 && host.Rare.Visible)
                 {
+                    var style = host.Preferences.Value.Style(GuidanceKind.Rare); rareColor = ColorFrom(style.Rgb);
                     var target = host.Rare.Target; Vector2 point = Project(new Vector2(target.DrawX, target.DrawY), zoom);
                     var pose = DirectionProjection.Circle(player.X, player.Y, point.X, point.Y, 46);
                     if (pose.Visible)
@@ -70,7 +76,7 @@ namespace JueMingR.TerrariaHost.Guidance
                             int distance = DirectionProjection.Tiles(Main.LocalPlayer.Center.X, Main.LocalPlayer.Center.Y, target.X, target.Y);
                             if (name != rareName || distance != rareDistance)
                             { rareName = name; rareDistance = distance; rareContent = name + "\n约" + distance.ToString(CultureInfo.InvariantCulture) + "格"; }
-                            RareText.Prepare(font, rareContent, .78f, width - 16);
+                            RareText.Prepare(font, rareContent, style.Size / 100f * uiScale, width - 16);
                             // Near the bottom edge put the label above its arrow;
                             // clamping a below-arrow box upward can cover the player.
                             float labelY = pose.Y + 24 + RareText.Height <= height - 8
@@ -86,13 +92,14 @@ namespace JueMingR.TerrariaHost.Guidance
             {
                 if ((failed & 2) == 0 && host.Merchant.Visible && font != null)
                 {
+                    var style = host.Preferences.Value.Style(GuidanceKind.Merchant); merchantColor = ColorFrom(style.Rgb);
                     var target = host.Merchant.Target; Vector2 point = Project(new Vector2(target.DrawX, target.DrawY), zoom);
                     if (!DirectionProjection.OnScreen(point.X, point.Y, width, height))
                     {
                         int distance = DirectionProjection.Tiles(Main.LocalPlayer.Center.X, Main.LocalPlayer.Center.Y, target.X, target.Y);
                         if (distance != merchantDistance || location != host.Location.Text)
                         { merchantDistance = distance; location = host.Location.Text; merchantContent = "旅商\n约" + distance.ToString(CultureInfo.InvariantCulture) + "格\n" + location; }
-                        MerchantText.Prepare(font, merchantContent, .86f, width - 16);
+                        MerchantText.Prepare(font, merchantContent, style.Size / 100f * uiScale, width - 16);
                         var pose = DirectionProjection.Ellipse(point.X, point.Y, width, height);
                         merchantVisible = pose.Visible && MerchantText.Height <= height - 16;
                         merchantLabel = MerchantText.Clamp(new Vector2((float)pose.X, (float)pose.Y), width, height);
@@ -105,7 +112,7 @@ namespace JueMingR.TerrariaHost.Guidance
                 alpha = host.Equipment.Alpha;
                 if ((failed & 4) == 0 && alpha > 0 && font != null)
                 {
-                    EquipmentText.Prepare(font, EquipmentWarning.Text, .96f, width - 16);
+                    EquipmentText.Prepare(font, EquipmentWarning.Text, uiScale, width - 16);
                     equipmentVisible = EquipmentText.Height <= height - 16;
                     Vector2 head = Project(Main.LocalPlayer.Top, zoom);
                     // Mirrored head anchor, upright text. The local lane is
@@ -120,21 +127,22 @@ namespace JueMingR.TerrariaHost.Guidance
         internal bool Draw()
         {
             if (!host.CanDraw || !WorldPresentation.CanDraw || Main.spriteBatch == null) return true;
-            SpriteBatch batch = Main.spriteBatch; var gold = new Color(255, 224, 96, 240);
+            SpriteBatch batch = Main.spriteBatch; var gold = new Color(255, 224, 96);
             try
             {
                 if (rareVisible)
                 {
                     if (arrow == null || arrow.IsDisposed || !ReferenceEquals(arrow.GraphicsDevice, batch.GraphicsDevice))
                     { if (arrow != null) arrow.Dispose(); arrow = WorldTargets.WorldTargetWorldLayer.CreateArrow(batch.GraphicsDevice); }
-                    batch.Draw(arrow, rarePoint, null, gold, rotation, new Vector2(10), new Vector2(inverse.M11, inverse.M22) * arrowScale, SpriteEffects.None, 0);
-                    if (rareOutside) RareText.Draw(batch, rareLabel, inverse, gold);
+                    batch.Draw(arrow, rarePoint, null, rareColor, rotation, new Vector2(10), new Vector2(inverse.M11, inverse.M22) * arrowScale, SpriteEffects.None, 0);
+                    if (rareOutside) RareText.Draw(batch, rareLabel, inverse, rareColor);
                 }
             }
             catch { failed |= 1; rareVisible = rareOutside = false; }
-            try { if (merchantVisible) MerchantText.Draw(batch, merchantLabel, inverse, gold); } catch { failed |= 2; merchantVisible = false; }
+            try { if (merchantVisible) MerchantText.Draw(batch, merchantLabel, inverse, merchantColor); } catch { failed |= 2; merchantVisible = false; }
             try { if (equipmentVisible) EquipmentText.Draw(batch, equipmentLabel, inverse, gold * alpha); } catch { failed |= 4; equipmentVisible = false; }
             return true;
         }
+        private static Color ColorFrom(int rgb) { return new Color((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb); }
     }
 }

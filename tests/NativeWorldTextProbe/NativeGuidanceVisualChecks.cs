@@ -19,6 +19,9 @@ namespace NativeWorldTextProbe
             Directory.CreateDirectory(output); string root=Path.Combine(Terraria.Program.SavePath,"guidance-visual"); Directory.CreateDirectory(root);
             Main.gameMenu=Main.dedServ=Main.hideUI=Main.mapFullscreen=Main.inFancyUI=Main.onlyDrawFancyUI=Main.ingameOptionsWindow=false;
             Main.netMode=Main.myPlayer=0; Main.screenWidth=960;Main.screenHeight=640; Main.screenPosition=Vector2.Zero;
+            typeof(Main).GetField("_uiScaleMatrix",Flags).SetValue(null,Matrix.Identity);
+            typeof(Terraria.GameInput.PlayerInput).GetField("_originalScreenWidth",Flags).SetValue(null,960);
+            typeof(Terraria.GameInput.PlayerInput).GetField("_originalScreenHeight",Flags).SetValue(null,640);
             Main.GameViewMatrix=new Terraria.Graphics.SpriteViewMatrix(graphics.GraphicsDevice); Main.GameViewMatrix.SetViewportOverride(new Viewport(0,0,960,640));
             Main.player[0]=new Player {active=true,accCritterGuide=true,position=new Vector2(470,320),gravDir=1}; Main.ActiveWorldFileData=new Terraria.IO.WorldFileData(Path.Combine(root,"isolated.wld"),false);
             Main.npc=new NPC[Main.maxNPCs]; Main.npc[1]=NativeGuidanceChecks.Npc(1,45,4,1300); Main.npc[1].GivenName="稀有目标长名字：金色生物与待救角色";
@@ -27,6 +30,7 @@ namespace NativeWorldTextProbe
             Main.maxTilesX=8400;Main.maxTilesY=2400;Main.worldSurface=400;Main.dayTime=true; Main.eclipse=false;Main.invasionType=0;
             Main.dedServ=true;try{System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(Terraria.Graphics.Capture.CaptureManager).TypeHandle);}finally{Main.dedServ=false;}
             var assembly=Assembly.LoadFrom(Path.Combine(Program.Repository,"artifacts/build/Debug/work/bin/JueMingR.TerrariaHost/x86/Debug/net472/JueMingR.TerrariaHost.dll"));
+            NativeGuidanceVisualRepairChecks.Stroke(graphics,assembly);
             object context=Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Phase0SHarmonyWorker").GetNestedType("PostfixContext",Flags),Flags,null,
                 new object[]{"direction-equipment-"+new string('8',40),Path.Combine(root,"evidence.txt"),root},null);
             try
@@ -90,6 +94,8 @@ namespace NativeWorldTextProbe
                     Call(state,"Navigate",page);Call(state,"RestoreVisible");Call(renderer,"Prepare",state,960f,640f,1f);
                     graphics.Image(Path.Combine(output,"guidance-f5-page-"+page+".png"),()=>Call(renderer,"Draw",state,Matrix.Identity,false,false),Matrix.Identity);
                 }
+                NativeGuidanceVisualRepairChecks.Cadence(graphics,context,host);
+                NativeGuidanceVisualRepairChecks.LargeWindow(graphics,context,host,output);
                 Console.WriteLine("PASS: actual-resource Guidance previews produced; inspect images for appearance (not live game acceptance).");
             }
             finally{StopContext(context);}

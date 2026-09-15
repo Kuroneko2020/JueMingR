@@ -11,6 +11,11 @@ namespace JueMingR.TerrariaHost.F5
         bool ControlsEnabled { get; }
         bool IsEnabled(GuidanceKind kind);
         bool SetEnabled(GuidanceKind kind, bool enabled);
+        GuidancePreferences Settings { get; }
+        string PreferenceMessage { get; }
+        bool SetColor(GuidanceKind kind, int rgb);
+        bool StepSize(GuidanceKind kind, int direction);
+        void ResetStyle(GuidanceKind kind);
         string SummonReason { get; }
         void RequestMerchant();
     }
@@ -37,23 +42,25 @@ namespace JueMingR.TerrariaHost.F5
             for (int i = first; i <= last; i++)
             {
                 int index = i;
-                rows.Row(ref y, 0, 522, Name((GuidanceKind)i), new[] { "开启", "关闭", "键" },
-                    text => text == "开启" ? (F5Command)((int)F5Command.EnableRare + index * 2) : text == "关闭" ? (F5Command)((int)F5Command.DisableRare + index * 2) : F5Command.None, descriptions[i]);
+                rows.Row(ref y, 0, 522, Name((GuidanceKind)i), i < 2 ? new[] { "配置", "开启", "关闭", "键" } : new[] { "开启", "关闭", "键" },
+                    text => text == "配置" ? (index == 0 ? F5Command.ConfigureRare : F5Command.ConfigureMerchant) : text == "开启" ? (F5Command)((int)F5Command.EnableRare + index * 2) : text == "关闭" ? (F5Command)((int)F5Command.DisableRare + index * 2) : F5Command.None, descriptions[i]);
                 var key = elements[elements.Count - 1];
                 elements[elements.Count - 1] = new F5Element(key.Kind, key.Rect, key.Text, key.TextSize, key.TextScale, F5Command.None, HotkeyActionIds.Guidance[i]);
             }
         }
-        internal static bool Owns(F5Command command) { return command >= F5Command.EnableRare && command <= F5Command.SummonMerchant; }
+        internal static bool Owns(F5Command command) { return command >= F5Command.EnableRare && command <= F5Command.SummonMerchant || IsStyle(command); }
+        internal static bool IsStyle(F5Command command) { return command == F5Command.ConfigureRare || command == F5Command.ConfigureMerchant; }
+        internal static GuidanceKind? Target(F5Command command) { return command == F5Command.ConfigureRare ? GuidanceKind.Rare : command == F5Command.ConfigureMerchant ? (GuidanceKind?)GuidanceKind.Merchant : null; }
         private static GuidanceKind Kind(F5Command command) { return (GuidanceKind)(((int)command - (int)F5Command.EnableRare) / 2); }
         private static bool Enable(F5Command command) { return ((int)command - (int)F5Command.EnableRare) % 2 == 0; }
         internal bool Available(F5Command command) { return Owns(command) && host.ControlsEnabled && (command != F5Command.SummonMerchant || host.SummonReason == null); }
         internal Color? Selected(F5Command command)
         {
-            if (!Owns(command) || command == F5Command.SummonMerchant) return null;
+            if (!Owns(command) || command == F5Command.SummonMerchant || IsStyle(command)) return null;
             bool enabled = Enable(command); return host.IsEnabled(Kind(command)) == enabled ? (Color?)(enabled ? Color.LightGreen : Color.IndianRed) : null;
         }
         internal void Execute(F5Command command)
-        { if (!Available(command)) return; if (command == F5Command.SummonMerchant) host.RequestMerchant(); else host.SetEnabled(Kind(command), Enable(command)); }
-        internal string Hint(F5Command command) { return !Owns(command) ? null : command == F5Command.SummonMerchant ? host.SummonReason : !host.ControlsEnabled ? "需要已就绪的活动世界。" : null; }
+        { if (!Available(command) || IsStyle(command)) return; if (command == F5Command.SummonMerchant) host.RequestMerchant(); else host.SetEnabled(Kind(command), Enable(command)); }
+        internal string Hint(F5Command command) { return !Owns(command) ? null : command == F5Command.SummonMerchant ? host.SummonReason : !host.ControlsEnabled ? "需要已就绪的活动世界。" : IsStyle(command) ? "设置文字颜色和字号" : null; }
     }
 }

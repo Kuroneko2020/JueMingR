@@ -40,6 +40,18 @@ namespace NativeWorldTextProbe
             }
             finally { npc.position=position; Main.screenPosition=oldPosition; Main.GameViewMatrix.Zoom=oldZoom; player.gravDir=gravity; }
             Call(context,"UpdateRuntime"); Call(world,"Prepare");
+            var oldUi = Main.UIScaleMatrix;
+            try
+            {
+                typeof(Main).GetField("_uiScaleMatrix",Flags).SetValue(null,Matrix.Identity);
+                Call(world,"Prepare");
+                float first=(float)Get(Get(world,"MerchantText"),"Height");
+                typeof(Main).GetField("_uiScaleMatrix",Flags).SetValue(null,Matrix.CreateScale(1.5f,1.5f,1));
+                Call(world,"Prepare");
+                float second=(float)Get(Get(world,"MerchantText"),"Height");
+                Require(Math.Abs((second-12)/(first-12)-1.5f)<.001,"direction text follows the information window's UI scaling independently of Game zoom");
+            }
+            finally {typeof(Main).GetField("_uiScaleMatrix",Flags).SetValue(null,oldUi);Call(world,"Prepare");}
             var warning=(EquipmentWarning)Get(host,"Equipment"); int shows=warning.Notifications;
             PopupText.popupText=new PopupText[20]; for(int i=0;i<20;i++)PopupText.popupText[i]=new PopupText();
             Main.combatText=new CombatText[100]; for(int i=0;i<100;i++)Main.combatText[i]=new CombatText();

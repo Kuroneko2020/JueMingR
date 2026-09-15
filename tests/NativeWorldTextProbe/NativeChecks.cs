@@ -64,7 +64,7 @@ namespace NativeWorldTextProbe
                 NativeCompositionChecks.RunSelectionCpu();
                 return 0;
             }
-            using (var graphics = new ProbeGraphics(content))
+            using (var graphics = new ProbeGraphics(content, scope == "GuidanceVisual"))
             {
                 if (scope == "GuidanceVisual") { NativeGuidanceVisualChecks.Run(graphics, output); return 0; }
                 var style = WorldObjectSettings.Default.Style(WorldObjectKind.Sign).WithMode(WorldObjectMode.Characters).WithLimits(3, 3);

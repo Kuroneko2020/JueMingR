@@ -870,7 +870,7 @@ namespace JueMingR.TerrariaHost
                 if (objectPackage) { WorldObjects = new WorldObjectText.HostWorldObjectText(gameDirectory, runtime.SharedRuntime, worldTiles, () => items != null && items.World.AutomaticOperation) { LayerStatus = entityLayerStatus }; runtime.SharedRuntime.AddFeature(WorldObjects); }
                 Information = new Information.HostInformation(gameDirectory, runtime, preferences, InformationReadiness, error => RecordBiomeFailure("BIOME_DRAW", error), nativeNpcs);
                 runtime.SharedRuntime.AddFeature(Information);
-                if (guidancePackage) { Guidance = new Guidance.HostGuidance(gameDirectory, runtime.SharedRuntime, nativeNpcs, () => Input.CanStartActions, () => Shell != null && Shell.CanExecuteMerchantInput) { LayerStatus = entityLayerStatus }; runtime.SharedRuntime.AddFeature(Guidance); }
+                if (guidancePackage) { Guidance = new Guidance.HostGuidance(gameDirectory, runtime.SharedRuntime, nativeNpcs, () => Input.CanStartActions, () => Shell != null && Shell.CanExecuteMerchantInput, () => Input.CanPrepareText) { LayerStatus = entityLayerStatus }; runtime.SharedRuntime.AddFeature(Guidance); }
                 notes = new Notes.HostNotes(gameDirectory);
                 var hotkeys = hotkeyPackage ? new Hotkeys.HostHotkeys(gameDirectory, runtime, preferences, items, Labels, WorldTargets, WorldObjects,
                     informationPackage ? Information : null, () => Shell != null && Shell.CanAdjustInformation, () => Shell?.RequestInformationAdjustment(), Guidance) : null;

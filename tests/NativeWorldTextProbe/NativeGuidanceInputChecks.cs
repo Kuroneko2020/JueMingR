@@ -53,6 +53,7 @@ namespace NativeWorldTextProbe
             click(2,"EnableRare"); click(2,"EnableMerchant"); click(8,"EnableEquipment");
             Require(((PreferenceSnapshot<GuidancePreferences>)Get(host,"Preferences")).Value.Mask==7,"all three actual page buttons reach sole preference owner");
             click(2,"DisableMerchant");
+            NativeGuidanceStyleChecks.Popup(context,host,click,root);
             var feature=(MerchantTestFeature)Get(host,"MerchantTest"); object port=Get(feature,"port"); int calls=0;
             Set(port,"spawn",(Action)(()=>calls++)); click(1,"SummonMerchant");
             Require(feature.Pending && calls==0,"button submits exactly one intent, never calls vanilla in input/UI");
@@ -78,6 +79,14 @@ namespace NativeWorldTextProbe
                 var description=GetOptional(e,"Description"); if(description!=null) {name=true;Require(Get(e,"Command").ToString()=="None","name help never executes summon");}
             }
             Require(risk&&name,"single summon row has public name help and always-visible risk");
+            foreach (object e in (IEnumerable)Get(pageLayout,"Elements"))
+            {
+                if (GetOptional(e,"Description") == null) continue;
+                object r=Get(e,"Rect"), v=Get(pageLayout,"Viewport");
+                frame((int)((float)Get(state,"X")+(float)Get(v,"X")+(float)Get(r,"X")+8),
+                    (int)((float)Get(state,"Y")+(float)Get(v,"Y")+(float)Get(r,"Y")-(float)Get(state,"Scroll")+8),false,none);
+                NativeGuidanceCadenceChecks.NameHint(shell,input); break;
+            }
             int generation=(int)Get(pageLayout,"Generation"), measurements=(int)Get(pageLayout,"MeasurementCount");
             for(int i=0;i<100;i++)Call(renderer,"Prepare",state,960f,640f,1f);
             Require((int)Get(pageLayout,"Generation")==generation&&(int)Get(pageLayout,"MeasurementCount")==measurements,"stable Misc page does not rebuild/remeasure");

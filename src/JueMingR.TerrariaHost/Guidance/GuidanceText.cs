@@ -55,11 +55,18 @@ namespace JueMingR.TerrariaHost.Guidance
         {
             if (count == 0) return;
             var drawScale = new Vector2(scale * inverse.M11, scale * inverse.M22);
+            var border = Color.Black * (color.A / 255f);
             float y = physicalTopLeft.Y;
             for (int i = 0; i < count; i++)
             {
                 Vector2 physical = new Vector2(physicalTopLeft.X + (Width - sizes[i].Width * scale) / 2 - sizes[i].OffsetX * scale, y + 2 - sizes[i].OffsetY * scale);
-                batch.DrawString(font, lines[i], Vector2.Transform(physical + new Vector2(2), inverse), new Color(12, 14, 20, 210) * (color.A / 255f), 0, Vector2.Zero, drawScale, SpriteEffects.None, 0);
+                // Match native four-way text contrast. Offsets are physical
+                // pixels before the inverse Game transform, so zoom/gravity
+                // cannot flatten the border; warning alpha fades all five passes.
+                batch.DrawString(font, lines[i], Vector2.Transform(physical + new Vector2(-2, 0), inverse), border, 0, Vector2.Zero, drawScale, SpriteEffects.None, 0);
+                batch.DrawString(font, lines[i], Vector2.Transform(physical + new Vector2(2, 0), inverse), border, 0, Vector2.Zero, drawScale, SpriteEffects.None, 0);
+                batch.DrawString(font, lines[i], Vector2.Transform(physical + new Vector2(0, -2), inverse), border, 0, Vector2.Zero, drawScale, SpriteEffects.None, 0);
+                batch.DrawString(font, lines[i], Vector2.Transform(physical + new Vector2(0, 2), inverse), border, 0, Vector2.Zero, drawScale, SpriteEffects.None, 0);
                 batch.DrawString(font, lines[i], Vector2.Transform(physical, inverse), color, 0, Vector2.Zero, drawScale, SpriteEffects.None, 0);
                 y += sizes[i].Height * scale + 4;
             }

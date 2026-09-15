@@ -28,7 +28,8 @@ namespace JueMingR.TerrariaHost.F5
         ConfigureChest, ChestAlways, ChestOpened, ChestOff,
         ConfigureSign, SignAll, SignLines, SignCharacters, SignOff, SignLess, SignMore,
         ConfigureTombstone, TombstoneAll, TombstoneLines, TombstoneCharacters, TombstoneOff, TombstoneLess, TombstoneMore,
-        EnableRare, DisableRare, EnableMerchant, DisableMerchant, EnableEquipment, DisableEquipment, SummonMerchant }
+        EnableRare, DisableRare, EnableMerchant, DisableMerchant, EnableEquipment, DisableEquipment, SummonMerchant,
+        ConfigureRare, ConfigureMerchant }
 
     internal sealed class F5Element
     {

@@ -26,6 +26,7 @@ namespace NativeWorldTextProbe
             var assembly = Assembly.LoadFrom(Path.Combine(Program.Repository, "artifacts/build/Debug/work/bin/JueMingR.TerrariaHost/x86/Debug/net472/JueMingR.TerrariaHost.dll"));
             var worker = assembly.GetType("JueMingR.TerrariaHost.Phase0SHarmonyWorker", true);
             string[] old = NativeInformationConfigurationChecks.SeedOldBindings(worker, root);
+            NativeGuidanceStyleChecks.Codec(); NativeGuidanceStyleChecks.Seed(root);
             object context = Activator.CreateInstance(worker.GetNestedType("PostfixContext", Flags), Flags, null,
                 new object[] { "direction-equipment-" + new string('8', 40), Path.Combine(root, "evidence.txt"), root }, null);
             var guard = new Harmony("JueMingR.Guidance.NoWorldGeneration");
@@ -37,6 +38,9 @@ namespace NativeWorldTextProbe
                 Call(context, "InstallInformationSources"); Require((bool)Get(Get(context, "InformationReadiness"), "Installed"), "new complete profile preserves real information observers");
                 Call(context, "InitializeRuntime", true); var host = Get(context, "Guidance"); var npcs = Get(context, "nativeNpcs");
                 Until(() => { Call(context, "UpdateRuntime"); return (bool)Get(host, "ControlsEnabled"); });
+                Require(((JueMingR.Platform.Settings.PreferenceSnapshot<GuidancePreferences>)Get(host,"Preferences")).Status==JueMingR.Platform.Settings.PreferenceStatus.Saved &&
+                    File.ReadAllText(Path.Combine(root,"JueMingRData/config/features/guidance.json"))==NativeGuidanceStyleChecks.Legacy &&
+                    !File.Exists(Path.Combine(root,"JueMingRData/config/features/guidance.json.schema1-original")),"loading schema1 preserves exact original without writing or archiving");
                 Require(Get(context, "Labels") != null && Get(context, "WorldObjects") != null && Get(context, "Information") != null && Get(context, "items") != null, "new profile retains prior complete feature chain");
                 var registry = (HotkeyRegistry)Get(Get(Get(context, "Shell"), "hotkeys"), "Registry");
                 Require(registry.Actions.Count == old.Length + 7 && registry.Find("merchant-test.once") == null, "three toggle actions added; summon has no hotkey action");
@@ -80,7 +84,8 @@ namespace NativeWorldTextProbe
                 p.hideInfo[11] = true; Call(context, "UpdateRuntime"); Require(!rare.Visible, "independent native information hidden gate"); p.hideInfo[11] = false;
             }
             Main.netMode = 0;
-            Call(context, "UpdateRuntime"); NativeGuidancePresentationChecks.Run(context, host, npcs);
+            Call(context, "UpdateRuntime"); NativeGuidanceCadenceChecks.Displays(context, host);
+            NativeGuidancePresentationChecks.Run(context, host, npcs);
             Main.npc[3].active = false; Main.bloodMoon = true; Call(context, "UpdateRuntime"); Require(warning.Alpha == 0, "single blood moon does not trigger");
             Main.npc[3].active = true; Call(context, "UpdateRuntime"); Require(warning.Alpha == 1, "blood moon does not veto boss");
             Main.npc[3].active = false; Main.invasionType = 1; Call(context, "UpdateRuntime"); int notifications = warning.Notifications;

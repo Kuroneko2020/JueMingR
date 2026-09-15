@@ -25,12 +25,14 @@ namespace NativeWorldTextProbe
         public GraphicsDevice GraphicsDevice { get; private set; }
         internal DynamicSpriteFont Font { get; }
         internal void SetMouseFont(DynamicSpriteFont value) { Terraria.GameContent.FontAssets.MouseText = Loaded("probe-replaced-font", value); }
-        internal ProbeGraphics(string content)
+        internal ProbeGraphics(string content, bool largeCanvas = false)
         {
             contentDirectory = content;
             window = CreateWindowEx(0, "STATIC", "Native text probe", 0, 0, 0, 960, 640, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
             if (window == IntPtr.Zero) throw new InvalidOperationException("hidden-test-window-unavailable");
-            GraphicsDevice = new GraphicsDevice(GraphicsAdapter.DefaultAdapter, GraphicsProfile.Reach, new PresentationParameters {
+            // A 2560-wide offscreen render target exceeds Reach's 2048 texture
+            // limit. Only the explicit large-window visual scope needs HiDef.
+            GraphicsDevice = new GraphicsDevice(GraphicsAdapter.DefaultAdapter, largeCanvas ? GraphicsProfile.HiDef : GraphicsProfile.Reach, new PresentationParameters {
                 DeviceWindowHandle = window, BackBufferWidth = 960, BackBufferHeight = 640, BackBufferFormat = SurfaceFormat.Color, DepthStencilFormat = DepthFormat.None, IsFullScreen = false });
             batch = new SpriteBatch(GraphicsDevice); Terraria.Main.spriteBatch = batch;
             var services = new GameServiceContainer(); services.AddService(typeof(IGraphicsDeviceService), this); reader = new XnbReader(services);
@@ -86,13 +88,22 @@ namespace NativeWorldTextProbe
             GraphicsDevice.SetRenderTarget(costCanvas); GraphicsDevice.Clear(new Color(30, 43, 47));
             batch.Begin(); layer.Draw(); batch.End(); GraphicsDevice.SetRenderTarget(null);
         }
-        internal void Image(string output, Action draw, Matrix matrix)
+        internal void Image(string output, Action draw, Matrix matrix, int width = 960, int height = 640)
         {
-            using (var canvas = new RenderTarget2D(GraphicsDevice, 960, 640))
+            using (var canvas = new RenderTarget2D(GraphicsDevice, width, height))
             {
                 GraphicsDevice.SetRenderTarget(canvas); GraphicsDevice.Clear(new Color(30, 43, 47));
                 batch.Begin(SpriteSortMode.Deferred, null, null, null, null, null, matrix); draw(); batch.End(); GraphicsDevice.SetRenderTarget(null);
-                using (var stream = new FileStream(output, FileMode.CreateNew)) canvas.SaveAsPng(stream, 960, 640);
+                using (var stream = new FileStream(output, FileMode.CreateNew)) canvas.SaveAsPng(stream, width, height);
+            }
+        }
+        internal Color[] Pixels(Action draw, Matrix matrix)
+        {
+            using (var canvas = new RenderTarget2D(GraphicsDevice, 960, 640))
+            {
+                GraphicsDevice.SetRenderTarget(canvas); GraphicsDevice.Clear(Color.Transparent);
+                batch.Begin(SpriteSortMode.Deferred, null, null, null, null, null, matrix); draw(); batch.End(); GraphicsDevice.SetRenderTarget(null);
+                var pixels = new Color[960 * 640]; canvas.GetData(pixels); return pixels;
             }
         }
         internal void Scene(WorldObjectTextWorldLayer layer, string output)
