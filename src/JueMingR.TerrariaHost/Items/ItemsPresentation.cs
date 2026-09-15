@@ -14,9 +14,9 @@ namespace JueMingR.TerrariaHost.Items
     internal sealed class ItemsPresentation
     {
         private static readonly F5RowDescription[] descriptions = {
-            new F5RowDescription(Hotkeys.HotkeyActionIds.Items[0], "将拾取或手动开出后入包的合格可堆叠物品，存入附近已有同类物品的箱子，可处理对应的未收藏整栈。收藏、当前使用和手动操作的物品受保护；按出售、丢弃、存放的有效规则顺序处理。"),
-            new F5RowDescription(Hotkeys.HotkeyActionIds.Items[1], "在你已打开有效商店时，出售拾取或手动开出后入包、命中名单的合格物品，可处理对应的未收藏整栈。收藏、当前使用和手动操作的物品受保护；出售不适用时继续判断丢弃、存放。"),
-            new F5RowDescription(Hotkeys.HotkeyActionIds.Items[2], "将拾取或手动开出后入包、命中名单的合格物品放入垃圾桶，可处理对应的未收藏整栈；收藏、当前使用和手动操作的物品受保护，适用的出售规则优先。会覆盖垃圾桶原内容，连续丢弃通常只剩最后一项可取回。") };
+            new F5RowDescription(Hotkeys.HotkeyActionIds.Items[0], "将刚拾取的物品存入附近已有同类物品的箱子，优先级为出售→丢弃→存放。"),
+            new F5RowDescription(Hotkeys.HotkeyActionIds.Items[1], "将刚拾取的名单内物品在已打开的商店界面出售，优先级为出售→丢弃→存放。"),
+            new F5RowDescription(Hotkeys.HotkeyActionIds.Items[2], "将刚拾取的名单内物品放入垃圾桶，优先级为出售→丢弃→存放。") };
         internal static F5RowDescription Description(ItemActionKind action) { return descriptions[(int)action]; }
         private readonly HostItems host;
         private readonly F5Interaction shell;
@@ -119,7 +119,7 @@ namespace JueMingR.TerrariaHost.Items
                 case ItemUiCommand.Replace: OpenPicker(list, c.Type); break;
                 case ItemUiCommand.Remove:
                     if (!ItemSelection.Types(value, list).Contains(c.Type)) commandMessage = "名单已变化，请重新选择图标。";
-                    else if (!host.Change(value.WithTypes(list, ItemSelection.Types(value, list).Where(t => t != c.Type)))) commandMessage = "本次移除未被接受，请重试。";
+                    else if (!host.Change(value.WithTypes(list, ItemSelection.Types(value, list).Where(t => t != c.Type)))) commandMessage = "暂时无法移除，名单未改变。";
                     break;
                 case ItemUiCommand.Select: selection.Select(c.Type); break;
                 case ItemUiCommand.Confirm: selection.Confirm(); break;
@@ -191,9 +191,9 @@ namespace JueMingR.TerrariaHost.Items
                 {
                     var result = host.Feature.LastResult((ItemActionKind)i);
                     if (result == null) continue;
-                    if (result.State == ItemOperationState.TimedOut) return "等待超时；相关槽仍受保护，不会重发";
-                    if (result.State == ItemOperationState.Unconfirmed) return "结果未确认；相关槽仍受保护，不会重试";
-                    if (result.State == ItemOperationState.Failed) return "处理失败；相关槽仍受保护";
+                    if (result.State == ItemOperationState.TimedOut) return "物品处理超时，结果未确认；相关物品已暂停自动处理。";
+                    if (result.State == ItemOperationState.Unconfirmed) return "处理结果未确认；相关物品已暂停自动处理，不会自动重试。";
+                    if (result.State == ItemOperationState.Failed) return "处理失败，相关物品已暂停自动处理。";
                 }
                 return null;
             }
@@ -213,8 +213,8 @@ namespace JueMingR.TerrariaHost.Items
             {
                 if (!control.Rect.Contains(x, y)) continue;
                 target = F5HintLayout.Intersect(control.Rect, visible);
-                if (control.Command == ItemUiCommand.Hotkey) return "设置快捷键";
-                if (control.Command == ItemUiCommand.ToggleDiscardFeedback) return "显示或隐藏自动丢弃完成后的头顶提示。";
+                if (control.Command == ItemUiCommand.Hotkey) return "双击设置功能开关快捷键";
+                if (control.Command == ItemUiCommand.ToggleDiscardFeedback) return "开启或关闭自动丢弃提示。";
                 return null; // Item cards retain their own name/replace/remove help.
             }
             var name = F5HintLayout.HitName(elements, visible, 0, 0, x, y, out target);
@@ -232,8 +232,8 @@ namespace JueMingR.TerrariaHost.Items
                     string list = selection.List == ItemListKind.Sell ? "出售" : "丢弃";
                     renderer.Text(selection.Target == 0 ? "添加" + list + "物品" : "替换「" + Lang.GetItemNameValue(selection.Target) + "」", OnScreen(layout.Title), Color.White);
                     if (selection.Target == 0) renderer.Text("已选 " + selection.Count + " 项", OnScreen(layout.Count), Color.LightGray, .63f);
-                    if (layout.Risk.Height > 0) renderer.Text("名单只影响拾取或开出物品后的处理去向。", OnScreen(layout.Risk), Color.Gold, .63f);
-                    if (layout.Empty.Height > 0) renderer.Text(selection.HasInventoryTypes ? "背包中的有效物品类型均已在此名单中。" : "背包中没有有效的非钱币物品。", OnScreen(layout.Empty), Color.Gray, .63f);
+                    if (layout.Risk.Height > 0) renderer.Text("名单用于处理刚拾取或开出的物品。", OnScreen(layout.Risk), Color.Gold, .63f);
+                    if (layout.Empty.Height > 0) renderer.Text(selection.HasInventoryTypes ? "背包中可选的物品都已在名单中。" : "背包中没有可添加的物品，钱币不能加入名单。", OnScreen(layout.Empty), Color.Gray, .63f);
                 }
                 foreach (var c in controls)
                 {

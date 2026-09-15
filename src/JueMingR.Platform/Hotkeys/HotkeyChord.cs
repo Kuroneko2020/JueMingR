@@ -39,16 +39,16 @@ namespace JueMingR.Platform.Hotkeys
             value = null; reason = null;
             int bits = (int)modifiers, count = 0;
             for (int i = 0; i < 6; i++) if ((bits & (1 << i)) != 0) count++;
-            if ((bits & ~63) != 0 || count > 3) reason = "最多三个左右独立修饰键。";
+            if ((bits & ~63) != 0 || count > 3) reason = "最多使用三个修饰键，左右键分别计算。";
             else if (key == 27) reason = "Esc 用于取消录入。";
-            else if (key == 116) reason = "F5 已保留给控制界面。";
-            else if (KeyName(key) == null || Modifier(key) != HotkeyModifiers.None) reason = "需要一个当前输入接口支持的键盘或鼠标主键。";
+            else if (key == 116) reason = "F5 用于打开或关闭控制界面。";
+            else if (KeyName(key) == null || Modifier(key) != HotkeyModifiers.None) reason = "请使用一个支持的键盘键或鼠标按钮。";
             if (reason != null) return false;
             value = new HotkeyChord(key, modifiers); return true;
         }
         public static bool TryParse(string text, out HotkeyChord value, out string reason)
         {
-            value = null; reason = "组合格式无效：请选择零至三个左右修饰键和一个主键。";
+            value = null; reason = "快捷键格式无效：需要一个主键，最多搭配三个修饰键。";
             if (String.IsNullOrEmpty(text) || text.Length > 128) return false;
             string[] parts = text.Split('+'); if (parts.Length > 4) return false;
             HotkeyModifiers modifiers = HotkeyModifiers.None;

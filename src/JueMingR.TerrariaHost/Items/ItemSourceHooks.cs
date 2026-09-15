@@ -109,7 +109,7 @@ namespace JueMingR.TerrariaHost.Items
                         origin.Touched.Contains(new ItemIdentity(item.type, item.prefix)))) affected |= 1UL << i;
                 }
                 host.Ownership.HoldInterruptedSource(host.Runtime.Generation, affected);
-                host.SourceMessage = "一次手动物品操作中断；受影响槽暂受保护，无关物品仍可处理";
+                host.SourceMessage = "手动物品操作中断，相关物品已暂停自动处理；其他物品不受影响。";
             }
             catch { host.FailClosed(); }
         }

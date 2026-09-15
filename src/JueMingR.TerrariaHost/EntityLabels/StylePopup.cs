@@ -15,6 +15,7 @@ namespace JueMingR.TerrariaHost.EntityLabels
         private readonly WorldTargets.HostWorldTargets worldTargets;
         private readonly IWorldObjectControls worldObjects;
         private readonly Information.IInformationControls information;
+        private readonly IGuidanceControls guidance;
         private StyleTarget selection;
         private readonly HostInputState input;
         internal readonly StylePopupLayout Layout = new StylePopupLayout();
@@ -23,6 +24,7 @@ namespace JueMingR.TerrariaHost.EntityLabels
         internal Platform.WorldTargets.WorldTargetKind? WorldTarget { get { return selection?.World; } }
         internal Platform.WorldObjectText.WorldObjectKind? WorldObject { get { return selection?.WorldObject; } }
         internal Platform.Information.InformationKind? InformationTarget { get { return selection?.Information; } }
+        internal Features.Guidance.GuidanceKind? GuidanceTarget { get { return selection?.Guidance; } }
         internal StyleEditor Editor { get; private set; }
         internal bool Visible { get { return selection != null; } }
         internal bool OwnsPointer { get; private set; }
@@ -33,11 +35,14 @@ namespace JueMingR.TerrariaHost.EntityLabels
         internal StylePopupCommand Pressed { get { return armed; } }
         internal bool HasCapture { get { return ActiveSlider >= 0 || armed != StylePopupCommand.None || TextInput.Editing; } }
         internal string Failure { get; private set; }
+        internal string FailureKey { get; private set; }
         private int page, armedGeneration;
         private bool previousLeft;
         private StylePopupCommand armed;
-        internal StylePopup(HostEntityLabels host, HostInputState input, INotesClipboard clipboard = null, INotesIme ime = null, WorldTargets.HostWorldTargets worldTargets = null, IWorldObjectControls worldObjects = null, Information.IInformationControls information = null)
-        { this.host = host; this.worldTargets = worldTargets; this.worldObjects = worldObjects; this.information = information; this.input = input; TextInput = new HexTextInput(input, clipboard, ime); }
+        internal StylePopup(HostEntityLabels host, HostInputState input, INotesClipboard clipboard = null, INotesIme ime = null, WorldTargets.HostWorldTargets worldTargets = null, IWorldObjectControls worldObjects = null, Information.IInformationControls information = null, IGuidanceControls guidance = null)
+        { this.host = host; this.worldTargets = worldTargets; this.worldObjects = worldObjects; this.information = information; this.guidance = guidance; this.input = input; TextInput = new HexTextInput(input, clipboard, ime); }
+        internal void Click(Features.Guidance.GuidanceKind target, F5Rect anchor, int currentPage)
+        { if (guidance != null) Open(StyleTarget.For(guidance, target), currentPage); }
         internal void Click(Platform.Information.InformationKind target, F5Rect anchor, int currentPage)
         { if (information != null) Open(StyleTarget.For(information, target), currentPage); }
         internal void Click(EntityLabelKind target, F5Rect anchor, int currentPage)
@@ -50,7 +55,7 @@ namespace JueMingR.TerrariaHost.EntityLabels
         {
             bool same = target.Same(selection); Close();
             if (same || !target.CanConfigure()) return;
-            selection = target; page = currentPage; Failure = null;
+            selection = target; page = currentPage; Failure = FailureKey = null;
             // The editor captures this target, never the next popup selection.
             Editor = new StyleEditor(target.Color(), target.SetColor); Layout.Reset();
         }
@@ -86,7 +91,12 @@ namespace JueMingR.TerrariaHost.EntityLabels
                     Layout.Build(width, height, scale, font, measure, skin, anchor, selection.Title, selection.Entity == EntityLabelKind.Critter, Editor, NameSize, Message);
                 }
             }
-            catch (Exception e) { Failure = "显示设置窗口暂不可用：" + e.GetType().Name; Close(); }
+            catch (Exception e)
+            {
+                // The shell still deduplicates by exception type. Player wording
+                // must not merge distinct failures or expose the diagnostic key.
+                FailureKey = e.GetType().Name; Failure = "显示设置窗口暂不可用。"; Close();
+            }
         }
         internal void Process(bool active, int currentPage, float x, float y, bool geometryCurrent, int wheel = 0)
         {

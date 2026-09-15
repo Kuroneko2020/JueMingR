@@ -39,8 +39,8 @@ namespace JueMingR.Features.Notes
             if (result.CommandId != pendingId) throw new InvalidOperationException("Unexpected notes completion identity.");
             if (!result.Success)
             {
-                Error = result.CommitUnconfirmed ? "磁盘提交结果未确认，已停止写入。当前显示最后可信内容；请退出并保留 notes.json、.bak、.tmp 检查恢复。"
-                    : "保存失败，草稿保留；后续动作未执行。";
+                Error = result.CommitUnconfirmed ? "无法确认是否保存成功，已暂停保存。"
+                    : Editor == null ? "保存失败，本次操作未完成。" : "保存失败，草稿已保留，本次操作未完成。";
                 ClearPending(); return;
             }
             Error = null;
@@ -70,13 +70,13 @@ namespace JueMingR.Features.Notes
         }
         public bool Request(NotesAction action)
         {
-            if (!Feature.Readable) { Error = "笔记未可靠读取，原件保持保护。"; return false; }
-            if (Feature.Busy) { Error = "上一项保存尚未完成，本次动作未执行。"; return false; }
+            if (!Feature.Readable) { Error = "笔记暂时无法读取，现有文件已保护。"; return false; }
+            if (Feature.Busy) { Error = "上一项还在保存，请稍候。"; return false; }
             Error = null;
             if (Editor != null && Editor.Dirty)
             {
                 Note note = Feature.Saved.Find(EditingId);
-                if (note == null) { Error = "编辑对象已不存在，草稿保留。"; return false; }
+                if (note == null) { Error = "这篇笔记已不存在，草稿已保留。"; return false; }
                 if (!Submit(Feature.Saved.Replace(note.WithEditor(Editor)))) return false;
                 submittedEditor = Editor; submittedText = Editor.Text; pendingRevision = Editor.Revision; afterSave = action;
                 return true;
@@ -117,7 +117,7 @@ namespace JueMingR.Features.Notes
                     if (note == null) return false;
                     DeleteConfirmation = note.Id; return true;
                 case NotesActionKind.Create:
-                    if (Feature.Saved.Notes.Count >= Notebook.MaximumNotes) { Error = "已达到 1,024 篇上限；现有内容保留。"; return false; }
+                    if (Feature.Saved.Notes.Count >= Notebook.MaximumNotes) { Error = "最多保存 1,024 篇笔记。"; return false; }
                     DeleteConfirmation = null; return Submit(Feature.Saved.Add(Note.Create()));
                 case NotesActionKind.Delete:
                     if (note == null || DeleteConfirmation != note.Id) return false;
@@ -140,7 +140,7 @@ namespace JueMingR.Features.Notes
         }
         private bool Submit(Notebook next)
         {
-            if (!Feature.TrySubmit(next, out pendingId)) { Error = "笔记暂不能写入，草稿保留。"; return false; }
+            if (!Feature.TrySubmit(next, out pendingId)) { Error = Editor == null ? "暂时无法保存，本次操作未完成。" : "暂时无法保存，草稿已保留。"; return false; }
             pendingEpoch = epoch; return true;
         }
         private void ClearPending() { pendingId = 0; submittedEditor = null; submittedText = null; afterSave = null; pendingDeleteId = null; pendingUncommittedInput = false; }

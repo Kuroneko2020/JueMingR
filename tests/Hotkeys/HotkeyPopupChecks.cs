@@ -26,8 +26,11 @@ namespace Terraria
             var map = profile.InputModes[InputMode.Keyboard].KeyStatus;
             map["SmartCursor"] = new List<string> { "LeftControl" };
             map["SmartSelect"] = new List<string> { "LeftShift" };
+            Localization.Language.Values["LegacyMenu.160"] = "快捷火把";
+            Localization.Language.Values["LegacyMenu.161"] = "智能光标";
             var both = VanillaHotkeyConflicts.Check(target, Parse("LeftControl+LeftShift+K"));
-            Check(both.Message.Contains("SmartCursor") && both.Message.Contains("SmartSelect"), "one submission reports both modifier overlaps");
+            Check(both.Items.Count == 2 && both.Items[0].Id == "mapping:SmartCursor" && both.Items[1].Id == "mapping:SmartSelect" &&
+                both.Message.Contains("智能光标") && both.Message.Contains("快捷火把"), "both stable overlap identities retain their localized player names");
             map.Remove("SmartSelect");
             Check(VanillaHotkeyConflicts.Check(target, Parse("LeftControl+K")).HasNotice, "modifier itself conflicts with native SmartCursor");
             Check(!VanillaHotkeyConflicts.Check(target, Parse("RightControl+K")).HasNotice, "side identity leaves free RightControl");
@@ -223,7 +226,7 @@ namespace Terraria
                     frame(new Keys[0], true, button.X + 3, button.Y + 3);
                     frame(new Keys[0], false, button.X + 3, button.Y + 3);
                     frame(new[] { Keys.LeftControl, Keys.K }, false, 0, 0);
-                    Check(storage.Entered.WaitOne(5000) && owner.Busy && popup.Status.Contains("SmartCursor"), "real worker accepted warned A before window switch");
+                    Check(storage.Entered.WaitOne(5000) && owner.Busy && popup.Status.Contains("智能光标"), "real worker accepted warned A before window switch");
                     Check(popup.Feedback.Kind == HotkeyFeedbackKind.Saving && (unconfirmed ? owner.Get("test.a").Text == "K" : owner.Get("test.a") == null) && popup.Layout.Keycaps.Count == 2, "pending candidate is visible but not effective");
                     var disabled = popup.Layout.Buttons[popup.Layout.Index(HotkeyPopupCommand.Record)].Rect.Offset(popup.Layout.Panel.X, popup.Layout.Panel.Y);
                     Check(popup.Layout.Hit(disabled.X + 3, disabled.Y + 3) == HotkeyPopupCommand.None && popup.Layout.Index(HotkeyPopupCommand.Clear) < 0, "busy modifications are not hit targets");
@@ -236,8 +239,8 @@ namespace Terraria
                     storage.Release.Set(); Wait(owner, () => !owner.Busy);
                     frame(new Keys[0], false, 0, 0);
                     Check((fail ? (unconfirmed ? owner.Get("test.a").Text == "K" : owner.Get("test.a") == null) : owner.Get("test.a")?.Text == "LeftControl+K") && owner.Get("test.b") == null, "submitted A completes after close without editing B");
-                    Check(popup.Target == "test.b" && popup.Feedback.Kind == (unconfirmed ? HotkeyFeedbackKind.Unconfirmed : HotkeyFeedbackKind.Ready) && !popup.Status.Contains("已保存") && !popup.Status.Contains("SmartCursor") && !popup.Status.Contains("原绑定仍有效"), "B reflects global availability without inheriting A result or retained binding claim");
-                    if (unconfirmed) Check(popup.Status.Contains("当前没有有效绑定") && !popup.Layout.Enabled[popup.Layout.Index(HotkeyPopupCommand.Record)], "B shows its own effective state while disk result remains unknown");
+                    Check(popup.Target == "test.b" && popup.Feedback.Kind == (unconfirmed ? HotkeyFeedbackKind.Unconfirmed : HotkeyFeedbackKind.Ready) && !popup.Status.Contains("已保存") && !popup.Status.Contains("智能光标") && !popup.Status.Contains("原快捷键仍有效"), "B reflects global availability without inheriting A result or retained binding claim");
+                    if (unconfirmed) Check(popup.Status.Contains("当前没有可用的快捷键") && !popup.Layout.Enabled[popup.Layout.Index(HotkeyPopupCommand.Record)], "B shows its own effective state while disk result remains unknown");
                 }
                 finally { storage.Release.Set(); }
             }
@@ -263,7 +266,7 @@ namespace Terraria
             Localization.Language.Values["LegacyMenu.160"] = "快捷火把";
             Localization.Language.Values["LegacyMenu.161"] = "智能光标";
             Check(VanillaHotkeyConflicts.DisplayAction("SmartSelect") == "快捷火把" && VanillaHotkeyConflicts.DisplayAction("SmartCursor") == "智能光标", "verified native keys use the active language");
-            Check(VanillaHotkeyConflicts.DisplayAction("unknown-source").Contains("unknown-source"), "unavailable label keeps identifiable native token");
+            Check(VanillaHotkeyConflicts.DisplayAction("unknown-source") == "原版操作（名称暂不可用）", "unavailable localization is explicit without leaking action IDs");
             Localization.Language.Values.Clear();
             var layout = new HotkeyPopupLayout(); var anchor = new F5Rect(580, 270, 22, 30);
             var effective = Parse("LeftControl+RightShift+LeftAlt+Add");
@@ -292,7 +295,7 @@ namespace Terraria
                 bool known = kind == HotkeyFeedbackKind.Cleared;
                 var view = new HotkeyPopupView("群系显示", null, null, HotkeyModifiers.None, new HotkeyFeedback(kind, "真实状态"), known, false, known);
                 layout.Build(604, 400, font, anchor, view, Measure);
-                Check(layout.Keycaps.Count == 0 && layout.Text.Exists(t => t.Text == (known ? "未设置快捷键" : "快捷键状态待核对")), "unknown/protected state cannot masquerade as unbound");
+                Check(layout.Keycaps.Count == 0 && layout.Text.Exists(t => t.Text == (known ? "未设置快捷键" : "快捷键状态暂不确定")), "unknown/protected state cannot masquerade as unbound");
                 Check(layout.Panel.Bottom <= 388 && layout.HelpPanel.Bottom <= 388, "minimum supported test viewport contains popup and help");
                 if (!known) Check(!layout.Enabled[layout.Index(HotkeyPopupCommand.Record)], "unknown/protected cannot edit");
             }

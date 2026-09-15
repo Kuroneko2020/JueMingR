@@ -8,6 +8,7 @@ namespace JueMingR.TerrariaHost.EntityLabels
     internal sealed class EntityHostObservation : IEntityObservationSource
     {
         private readonly Func<bool> sessionActive;
+        private readonly Npcs.NativeNpcObservation nativeNpcs;
         private EntityFact[] facts = new EntityFact[0];
         private int[] moonParts = new int[0];
         private Relation[] relations = new Relation[0];
@@ -20,7 +21,8 @@ namespace JueMingR.TerrariaHost.EntityLabels
             new[] { 412, 413, 414 }, new[] { 454, 455, 456, 457, 458, 459 }, new[] { 510, 511, 512 },
             new[] { 513, 514, 515 }, new[] { 621, 622, 623 }
         };
-        internal EntityHostObservation(Func<bool> sessionActive) { this.sessionActive = sessionActive ?? throw new ArgumentNullException(nameof(sessionActive)); }
+        internal EntityHostObservation(Func<bool> sessionActive, Npcs.NativeNpcObservation nativeNpcs = null)
+        { this.sessionActive = sessionActive ?? throw new ArgumentNullException(nameof(sessionActive)); this.nativeNpcs = nativeNpcs; }
         internal int FailedObjects { get; private set; }
         internal void EndSession()
         { Array.Clear(facts, 0, facts.Length); Array.Clear(relations, 0, relations.Length); FailedObjects = 0; }
@@ -41,11 +43,17 @@ namespace JueMingR.TerrariaHost.EntityLabels
             float halfWidth = Main.screenWidth / (2 * zoomX), halfHeight = Main.screenHeight / (2 * zoomY);
             for (int i = 0; i < count; i++)
             {
-                NPC npc = Main.npc[i];
-                if (npc == null || !npc.active) { relations[i] = null; continue; }
+                NPC npc; int type;
+                if (nativeNpcs == null) { npc = Main.npc[i]; type = npc == null ? 0 : npc.type; }
+                else
+                {
+                    Platform.Guidance.GuidanceNpc basic;
+                    nativeNpcs.TryRead(i, Platform.Guidance.NpcDemand.Basic, out basic);
+                    npc = basic.Active ? basic.Identity as NPC : null; type = basic.Type;
+                }
+                if (npc == null || nativeNpcs == null && !npc.active) { relations[i] = null; continue; }
                 try
                 {
-                    int type = npc.type;
                     if (type <= 0 || type >= NPCID.Count || !Finite(npc.position.X) || !Finite(npc.position.Y)) { FailedObjects++; continue; }
                     bool town = npc.townNPC, merchant = type == NPCID.SkeletonMerchant;
                     var fact = new EntityFact { Active = true, TownNpc = town, SkeletonMerchant = merchant, Friendly = npc.friendly,

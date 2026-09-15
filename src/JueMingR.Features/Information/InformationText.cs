@@ -13,7 +13,7 @@ namespace JueMingR.Features.Information
         internal static string Status(string name, InformationAvailability availability, string condition)
         {
             return name + "：" + (availability == InformationAvailability.ConditionUnmet ? condition :
-                availability == InformationAvailability.Waiting ? "等待可靠数据" : "暂不可用");
+                availability == InformationAvailability.Waiting ? "等待同步" : "暂不可用");
         }
         internal static bool Finite(float? value) { return value.HasValue && !Single.IsNaN(value.Value) && !Single.IsInfinity(value.Value); }
         internal static double Rounded(double value) { return Math.Abs(value) < 0.0005 ? 0 : Math.Round(value, 3, MidpointRounding.AwayFromZero); }

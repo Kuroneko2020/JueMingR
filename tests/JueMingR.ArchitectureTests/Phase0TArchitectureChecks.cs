@@ -14,6 +14,10 @@ namespace JueMingR.ArchitectureTests
             {
                 "JueMingR.Features.Information.InformationPreferences", "JueMingR.Features.Information.InformationStyle",
                 "JueMingR.Features.Information.InformationPreferenceCodec", "JueMingR.Features.Information.InformationText",
+                "JueMingR.Features.Guidance.RareCreatureDirection", "JueMingR.Features.Guidance.TravellingMerchantDirection", "JueMingR.Features.Guidance.MerchantLocation",
+                "JueMingR.Features.Guidance.EquipmentRules", "JueMingR.Features.Guidance.EquipmentWarning", "JueMingR.Features.Guidance.MerchantTestFeature",
+                "JueMingR.Features.Guidance.GuidanceKind", "JueMingR.Features.Guidance.GuidancePreferences", "JueMingR.Features.Guidance.GuidancePreferenceCodec", "JueMingR.Features.Guidance.GuidanceStyle",
+                "JueMingR.Features.Guidance.DirectionPose", "JueMingR.Features.Guidance.DirectionProjection",
                 "JueMingR.Features.Information.InfectionSummary", "JueMingR.Features.Information.AnglerSummary", "JueMingR.Features.Information.LuckSummary",
                 "JueMingR.Features.WorldObjectText.WorldObjectResolver", "JueMingR.Features.WorldObjectText.WorldObjectSelection",
                 "JueMingR.Features.WorldObjectText.WorldObjectSettings", "JueMingR.Features.WorldObjectText.WorldObjectStyle", "JueMingR.Features.WorldObjectText.WorldObjectCodec",

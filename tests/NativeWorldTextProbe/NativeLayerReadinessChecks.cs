@@ -43,7 +43,7 @@ namespace NativeWorldTextProbe
                 Require((bool)Get(labels, "LayersReady") && (bool)Get(targets, "LayersReady") && (bool)Get(objects, "LayersReady") && messages.Count == 0, "first draw setup publishes readiness to all three consumers without a stale alert");
                 ensure.Invoke(null, new object[] { new List<GameInterfaceLayer>(), true });
                 feedback(); feedback();
-                Require(messages.Count == 2 && messages[0] == "显名绘制层不可用，选择已保留。" && messages[1] == "附近目标绘制层不可用，选择已保留。", "a completed setup with a missing anchor still reports one real failure per consumer");
+                Require(messages.Count == 2 && messages[0] == "显名暂时无法显示，设置已保留。" && messages[1] == "附近目标暂时无法显示，设置已保留。", "a completed setup with a missing anchor still reports one real failure per consumer");
                 Require(!(bool)Get(labels, "LayersReady") && !(bool)Get(targets, "LayersReady") && !(bool)Get(objects, "LayersReady"), "real failure disables every shared drawing consumer");
                 // F5 suppresses feedback while hideUI/menu is active. Recovery
                 // must reset the layer alert even if nobody consumes that state.

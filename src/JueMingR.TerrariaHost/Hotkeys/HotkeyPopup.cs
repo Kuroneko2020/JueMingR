@@ -45,10 +45,10 @@ namespace JueMingR.TerrariaHost.Hotkeys
                 // Protection is global; a new target must not inherit another
                 // command's retained-binding claim or success/failure result.
                 bool unknown = bindings.CommitUnconfirmed;
-                string current = bindings.Get(Target) == null ? "该功能当前没有有效绑定。" : "当前显示的绑定仍有效。";
+                string current = bindings.Get(Target) == null ? "此功能当前没有可用的快捷键。" : "当前快捷键仍然有效。";
                 return new HotkeyFeedback(unknown ? HotkeyFeedbackKind.Unconfirmed : HotkeyFeedbackKind.Protected,
-                    unknown ? "磁盘结果未确认，文件已保护" : "快捷键文件已保护",
-                    current + (bindings.Error(Target) ?? (unknown ? "请退出后保留文件及恢复材料核对磁盘状态。" : "请退出后检查原文件或恢复材料。")));
+                    unknown ? "无法确认是否保存成功，暂时无法修改快捷键" : "快捷键文件已保护，暂时无法修改",
+                    current + (bindings.Error(Target) ?? ""));
             }
             return bindings.Busy ? new HotkeyFeedback(HotkeyFeedbackKind.Saving, "其他设置正在保存，请稍候") : new HotkeyFeedback(HotkeyFeedbackKind.Ready);
         }
@@ -95,7 +95,7 @@ namespace JueMingR.TerrariaHost.Hotkeys
             if (!geometryCurrent || cancelledGesture)
             {
                 armed = HotkeyPopupCommand.None;
-                if (Capturing) Cancel("布局已变化，录入已取消");
+                if (Capturing) Cancel("窗口布局已变化，录入已取消");
             }
             if (pressed && Hovered != HotkeyPopupCommand.None && !cancelledGesture)
             { armed = Hovered; armedGeneration = Layout.Generation; input.Hotkeys.SuppressHeld(); }
@@ -136,9 +136,9 @@ namespace JueMingR.TerrariaHost.Hotkeys
         private void Capture()
         {
             if (input.Hotkeys.IsNew(27)) { Cancel("录入已取消"); return; }
-            if (input.Hotkeys.SystemModifier) { if (Feedback.Kind != HotkeyFeedbackKind.Rejected) Feedback = new HotkeyFeedback(HotkeyFeedbackKind.Rejected, "Win 不参与组合"); return; }
+            if (input.Hotkeys.SystemModifier) { if (Feedback.Kind != HotkeyFeedbackKind.Rejected) Feedback = new HotkeyFeedback(HotkeyFeedbackKind.Rejected, "不能使用 Win 键"); return; }
             int key; int count = input.Hotkeys.NewPrimary(out key);
-            if (count > 1) { EndCapture(); Feedback = new HotkeyFeedback(HotkeyFeedbackKind.Rejected, "同时按下多个主键，未保存", "请重新录入，只按一个主键。"); return; }
+            if (count > 1) { EndCapture(); Feedback = new HotkeyFeedback(HotkeyFeedbackKind.Rejected, "同时按下了多个主键，未保存", "请重新录入，每次只按一个主键。"); return; }
             if (count == 0)
             {
                 int modifiers = 0; for (int i = 0; i < 6; i++) if (((int)input.Hotkeys.Modifiers & (1 << i)) != 0) modifiers++;

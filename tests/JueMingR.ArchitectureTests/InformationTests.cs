@@ -75,7 +75,7 @@ namespace JueMingR.ArchitectureTests
             Require(!summary.Content.Text.Contains("不一致"), "valid hidden small sources must count before mismatch");
             value.Equipment = 0; value.Torch = 1; value.Total = 0.2f; summary.Update(value); long version = summary.Content.Version;
             value.Torch = 1.001f; summary.Update(value);
-            Require(summary.Content.Version > version && summary.Content.Text.Contains("原值 +1.001"), "raw explanation must change even when total and contribution round the same");
+            Require(summary.Content.Version == version, "hidden raw value changes do not rebuild unchanged player contributions");
             value.Torch = 0; value.LadybugTime = 43200; value.Total = 0.2f; summary.Update(value); version = summary.Content.Version;
             value.LadybugTime = 43140; summary.Update(value); Require(summary.Content.Version > version && summary.Content.Text.Contains("11分59秒"), "visible game-clock remaining time updates");
 #if DEBUG

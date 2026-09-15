@@ -45,7 +45,7 @@ namespace JueMingR.TerrariaHost.EntityLabels
             if (String.IsNullOrEmpty(text)) return;
             int start = SelectionStart;
             string candidate = Hex.Remove(start, SelectionLength).Insert(start, text);
-            if (candidate.Length > 6 || !AllHex(candidate)) { SetError("请输入六位 RGB 色码"); return; }
+            if (candidate.Length > 6 || !AllHex(candidate)) { SetError("请输入 6 位色码（0–9、A–F）。"); return; }
             hslPreviewCurrent = false; Hex = candidate.ToUpperInvariant(); caret = selection = start + text.Length; Error = null; Revision++;
             if (Hex.Length == 6) CommitHex();
         }
@@ -53,7 +53,7 @@ namespace JueMingR.TerrariaHost.EntityLabels
         {
             int rgb;
             if (Hex.Length != 6 || !Int32.TryParse(Hex, NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out rgb))
-            { SetError("色码尚未满六位"); return; }
+            { SetError("请补满 6 位色码。"); return; }
             hslPreviewCurrent = false; SetRgb(rgb); Commit();
         }
         internal void PreviewHsl(int axis, double value)
@@ -71,7 +71,7 @@ namespace JueMingR.TerrariaHost.EntityLabels
         internal bool Commit()
         {
             if (Rgb == committed) { Error = null; return true; }
-            if (!submit(Rgb)) { SetError("本次修改未被接受，请重试"); return false; }
+            if (!submit(Rgb)) { SetError("暂时无法应用这个颜色。"); return false; }
             committed = Rgb; Error = null; Revision++; return true;
         }
         internal void SetError(string value) { if (Error != value) { hslPreviewCurrent = false; Error = value; Revision++; } }

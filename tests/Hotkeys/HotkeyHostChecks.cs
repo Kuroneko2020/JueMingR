@@ -46,9 +46,13 @@ namespace Terraria
             Frame(); Frame();
             if (mode == "expect-hotkeys-edit")
             {
+                // Install the layers while the CPU font/batch pair is current.
+                // After the GPU resource swap, Frame prepares the shared HUD
+                // before its first real draw (the native Update/Draw order).
+                main.SetupAndDrawBiomeLayer();
                 using (var graphics = new F5FixtureGraphics())
                 {
-                    main.SetupAndDrawBiomeLayer(); draw = true; Frame(); Frame(Keys.F5); Frame();
+                    draw = true; Frame(); Frame(Keys.F5); Frame();
                     Check((bool)Get(state, "Visible"), "real F5 opened");
                     for (int i = 0; i < ids.Length; i++)
                     {
@@ -79,6 +83,7 @@ namespace Terraria
             }
             else Check(ids.All(id => owner.GetType().GetMethod("Get").Invoke(owner, new object[] { id }) != null), "saved bindings loaded without UI resave/vanilla recheck");
             Main.SampleX = 1850; Main.SampleY = 900; Frame();
+            Check(!(bool)Get(Get(context,"runtime"),"FeatureFailed"), "resource transition keeps biome consumer healthy");
             for (int i = 0; i < ids.Length; i++)
             {
                 bool[] before = Values(); Frame(keys[i]); bool[] after = Values();

@@ -14,6 +14,7 @@ namespace JueMingR.TerrariaHost.EntityLabels
         internal WorldTargetKind? World;
         internal Platform.WorldObjectText.WorldObjectKind? WorldObject;
         internal Platform.Information.InformationKind? Information;
+        internal Features.Guidance.GuidanceKind? Guidance;
         internal string Title;
         internal Func<bool> CanConfigure;
         internal Func<int> Color;
@@ -22,7 +23,11 @@ namespace JueMingR.TerrariaHost.EntityLabels
         internal Func<int> Size;
         internal Func<int, bool> StepSize;
         internal Action Reset;
-        internal bool Same(StyleTarget other) { return other != null && Entity == other.Entity && World == other.World && WorldObject == other.WorldObject && Information == other.Information; }
+        internal bool Same(StyleTarget other) { return other != null && Entity == other.Entity && World == other.World && WorldObject == other.WorldObject && Information == other.Information && Guidance == other.Guidance; }
+        internal static StyleTarget For(IGuidanceControls host, Features.Guidance.GuidanceKind kind)
+        { return new StyleTarget { Guidance = kind, Title = GuidanceControls.Name(kind), CanConfigure = () => host.ControlsEnabled,
+            Color = () => host.Settings.Style(kind).Rgb, Message = () => host.PreferenceMessage, SetColor = rgb => host.SetColor(kind, rgb),
+            Size = () => host.Settings.Style(kind).Size, StepSize = direction => host.StepSize(kind, direction), Reset = () => host.ResetStyle(kind) }; }
         internal static StyleTarget For(Information.IInformationControls host, Platform.Information.InformationKind kind)
         { return new StyleTarget { Information = kind, Title = TerrariaHost.Information.InformationControls.Name(kind), CanConfigure = () => host.CanConfigure,
             Color = () => host.Settings.Style(kind).Rgb, Message = () => host.PreferenceMessage, SetColor = rgb => host.SetColor(kind, rgb),

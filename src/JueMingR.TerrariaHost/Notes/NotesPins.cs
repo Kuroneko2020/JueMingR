@@ -21,9 +21,9 @@ namespace JueMingR.TerrariaHost.Notes
     internal sealed class NotesPins
     {
         internal const int Width = 280, Height = 304;
-        private const string LessHint = "+5透明度", MoreHint = "-5透明度", CloseHint = "取消悬挂";
-        private const string ReadingHint = "滚轮翻页；按住Shift或Ctrl+滚轮调大小。";
-        private const string ErrorHint = "未保存；F5 查看原因";
+        private const string LessHint = "背景更透明", MoreHint = "背景更不透明", CloseHint = "取消悬挂";
+        private const string ReadingHint = "滚轮上下阅读；Shift+滚轮调整阅读区域，Ctrl+滚轮调整字号。";
+        private const string ErrorHint = "保存异常；到 F5 笔记页查看";
         private static readonly string[] FooterHints = { LessHint, MoreHint, CloseHint, ReadingHint };
         private readonly NotesWorkspace workspace;
         private readonly NotesRenderer renderer;

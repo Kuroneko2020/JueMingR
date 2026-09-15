@@ -75,25 +75,29 @@ namespace JueMingR.TerrariaHost.WorldObjectText
             get
             {
                 var snapshot = Preferences;
-                if (snapshot.CommitUnconfirmed) return "世界文字设置保存结果未确认，原文件与恢复材料已保护；当前选择仅能确认在本次生效。";
+                if (snapshot.CommitUnconfirmed) return "无法确认世界文字设置是否保存成功；本次仍可使用，文件已保护。";
                 switch (snapshot.Status)
                 {
-                    case PreferenceStatus.Loading: return "正在读取世界文字设置";
+                    case PreferenceStatus.Loading: return "正在加载世界文字设置";
                     case PreferenceStatus.Missing: case PreferenceStatus.Saved: case PreferenceStatus.Pending: return null;
-                    default: return "世界文字设置未能可靠加载或保存；本次选择仅在内存生效，原文件已保留。";
+                    default: return "世界文字设置加载或保存失败；当前修改仅本次有效，原文件已保留。";
                 }
             }
         }
         internal void TakeFeedback(Action<string> display)
         {
             string background = History.TakeBackgroundFailure();
-            if (background != null) display("开过记录有未能保存的内容，原文件与恢复材料已保留：" + background);
-            string message = observerFailure != null ? "本次成功开箱观察已停止：" + observerFailure :
-                World.Failure != null ? "世界文字显示本次已停止：" + World.Failure :
-                History.CommitUnconfirmed ? "开过记录保存结果未确认，原文件与恢复材料已保护。" :
-                History.Error != null ? "开过记录本次仅能确认在内存生效：" + History.Error :
-                History.HasAny && !History.HasPair ? "未取得可靠的角色与世界身份，开过记录仅本次有效。" : PreferenceMessage;
-            if (message != null && message != feedback) { display(message); feedback = message; }
+            if (background != null) display("部分开箱记录保存遇到问题，已有文件和备份已保留。");
+            string message = observerFailure != null ? "开箱记录已停止更新。" :
+                World.Failure != null ? "宝箱、牌子和墓碑显示已停止，设置已保留。" :
+                History.CommitUnconfirmed ? "无法确认开箱记录是否保存成功，文件和备份已保护。" :
+                History.Error != null ? "开箱记录暂时无法正常保存；当前记录可继续使用，但尚未确认保存。" :
+                History.HasAny && !History.HasPair ? "暂时无法保存此角色在这个世界的开箱记录，目前仅本次有效。" : PreferenceMessage;
+            // A changed internal cause must still be reported even if its player
+            // explanation is unchanged. Never feed these keys into displayed text.
+            string key = observerFailure != null ? "observer:" + observerFailure : World.Failure != null ? "draw:" + World.Failure :
+                !History.CommitUnconfirmed && History.Error != null ? "history:" + History.Error : message;
+            if (message != null && key != feedback) { display(message); feedback = key; }
         }
         private void OnExit(object sender, EventArgs args)
         { AppDomain.CurrentDomain.ProcessExit -= OnExit; stopping = true; preferences.Stop(750); History.Stop(1500); }

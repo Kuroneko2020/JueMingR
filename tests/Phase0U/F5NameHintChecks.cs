@@ -28,11 +28,11 @@ namespace Terraria
             Check(descriptions.Length == 16 && descriptions.Select(d => d.Id).Distinct().Count() == 16,
                 "only sixteen implemented information rows have distinct stable descriptions");
             string chest = Description(layout, "宝箱显名"), luck = Description(layout, "幸运值"), angler = Description(layout, "渔夫任务");
-            Check(chest.Contains("始终") && chest.Contains("开过") && chest.Contains("本角色在此世界") && chest.Contains("无需探测能力"), "chest modes preserve positional eligibility and different detector conditions");
-            Check(name.Description.Text.Contains("神圣、腐化和猩红") && name.Description.Text.Contains("当前存在树妖") && name.Description.Text.Contains("不会立即刷新"), "infection scope, active dryad and freshness");
-            Check(luck.Contains("本世界已解救巫师，或当前存在巫师") && angler.Contains("本世界已解救渔夫，或当前存在渔夫") && angler.Contains("累计") && angler.Contains("地点") && angler.Contains("不会自动交付"), "unlock alternatives and angler purpose");
+            Check(chest.Contains("始终") && chest.Contains("开过") && chest.Contains("本角色在此世界") && chest.Contains("无需金属探测"), "chest modes preserve positional eligibility and different detector conditions");
+            Check(name.Description.Text == "显示世界感染比例。需要当前世界存在树妖。", "infection summary retains the current Dryad requirement");
+            Check(luck.Contains("在此世界解救过巫师，或当前有巫师") && angler.Contains("在此世界解救过渔夫，或当前有渔夫") && angler.Contains("累计") && angler.Contains("地点"), "unlock alternatives and angler purpose");
             Check(!Description(layout, "群系显示").Contains("单人") && !Description(layout, "动物显名").Contains("金属"), "unrelated restrictions do not spread");
-            Check(Description(layout, "显示碎岩龟").Contains("睡眠碎岩龟") && Description(layout, "显示龙蛋").Contains("巨型龙蛋") && Description(layout, "牌子显示").Contains("十行"), "world targets and bounded text semantics");
+            Check(Description(layout, "显示碎岩龟").Contains("睡眠中的碎岩龟") && Description(layout, "显示龙蛋").Contains("巨型龙蛋") && Description(layout, "牌子显示").Contains("十行"), "world targets and bounded text semantics");
             Check(layout.Elements.Where(e => e.Text == "完整鱼获" || e.Text == "过滤鱼获").All(e => e.Description == null), "future samples receive no supported-feature copy");
             Geometry(); Interaction(); Cache(descriptions);
             Console.WriteLine("PASS: ordinary feature name hints.");
@@ -101,7 +101,12 @@ namespace Terraria
             Check(renderer.ButtonHint(state.Layout.Elements.First(e => e.Command == F5Command.EnableBiome), true) == "群系显示暂不可用", "legacy biome fault is retained");
             state.ScrollTo(0); var key = state.Layout.Elements.First(e => e.HotkeyTarget != null);
             input.X = state.X + state.Layout.Viewport.X + key.Rect.X + 3; input.Y = state.Y + state.Layout.Viewport.Y + key.Rect.Y + 3; state.Update(input);
-            Check(renderer.ResolveHint(state, null, false, false, out target) == "设置快捷键", "icon remains identifiable");
+            Check(renderer.ResolveHint(state, null, false, false, out target) == "双击设置功能开关快捷键", "icon explains its real double-click gesture and toggle purpose");
+            key = state.Layout.Elements.First(e => e.HotkeyTarget == JueMingR.TerrariaHost.Hotkeys.HotkeyActionIds.AdjustInformation);
+            state.ScrollTo(key.Rect.Y);
+            input.X = state.X + state.Layout.Viewport.X + key.Rect.X + 3;
+            input.Y = state.Y + state.Layout.Viewport.Y + key.Rect.Y - state.Scroll + 3; state.Update(input);
+            Check(renderer.ResolveHint(state, null, false, false, out target) == "双击设置调整信息窗位置的快捷键", "one-shot action is never described as a feature toggle");
             state.Navigate(7); state.Layout.Ensure(input.Width, input.Height, input.Scale, state.Page, font, s => new F5Size(s.Length * 18, 24));
             Check(renderer.ResolveHint(state, null, false, false, out target) == null, "page change cannot retain old hint");
             input.Focused = false; state.Update(input);
@@ -147,7 +152,7 @@ namespace Terraria
                 var input = new F5Input { Active = true, Focused = true, Width = 1920, Height = 1080, Scale = 1, X = name.Rect.X + 2, Y = name.Rect.Y + 2 };
                 shell.Update(input);
                 string text = renderer.ResolveHint(shell, presentation, false, false, out target);
-                Check(text == name.Description.Text && text.Contains("拾取或手动开出后入包") && text.Contains("整栈") && text.Contains("收藏") && text.Contains("使用"), "item source, whole-stack and protection wording survive actual path");
+                Check(text == name.Description.Text && text.Contains("刚拾取的") && text.Contains("出售→丢弃→存放"), "player acquisition summary and priority reach the actual name hint");
                 Prepare(renderer, shell, presentation, font, measure);
                 Check(renderer.HintLayout.Visible && string.Concat(renderer.HintLayout.Lines.Select(e => e.Text)) == text,
                     "real projected item name reaches the shared production preparation");
@@ -156,7 +161,7 @@ namespace Terraria
                 Check(measures == warm, "stable item consumer never rewraps or measures the hint");
                 Check(renderer.ResolveHint(shell, presentation, true, false, out target) == null, "item hints yield to modal owner");
             }
-            Check(names[1].Description.Text.Contains("已打开有效商店") && names[2].Description.Text.Contains("垃圾桶原内容") && names[2].Description.Text.Contains("出售规则优先"), "sale condition, discard destination/risk and ordering");
+            Check(names[1].Description.Text.Contains("已打开的商店") && names[2].Description.Text.Contains("垃圾桶"), "sale prerequisite and discard destination remain explicit");
             Check(host.Preferences.Revision == revision && presentation.LayoutBuildCount == builds, "hover neither saves settings nor rebuilds Items");
             // Reuse the SAME shell-owned renderer/cache for the other real page.
             var information = new F5Interaction { Ready = true };

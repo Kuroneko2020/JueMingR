@@ -80,7 +80,7 @@ namespace JueMingR.TerrariaHost.WorldObjectText
             if (family == ContainerNameFamily.Item) return Lang.GetItemNameValue(style);
             var table = family == ContainerNameFamily.Chest ? Lang.chestType : family == ContainerNameFamily.Chest2 ? Lang.chestType2 : Lang.dresserType;
             string value = table != null && style >= 0 && style < table.Length ? table[style]?.Value : null;
-            return String.IsNullOrEmpty(value) ? family == ContainerNameFamily.Dresser ? "衣柜（名称信息未就绪）" : "宝箱（名称信息未就绪）" : value;
+            return String.IsNullOrEmpty(value) ? family == ContainerNameFamily.Dresser ? "衣柜（名称暂不可用）" : "宝箱（名称暂不可用）" : value;
         }
         private sealed class SlotIndex
         {

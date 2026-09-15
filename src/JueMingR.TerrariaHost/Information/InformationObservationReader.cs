@@ -11,6 +11,7 @@ namespace JueMingR.TerrariaHost.Information
     internal sealed class InformationObservationReader
     {
         private readonly InformationReadiness readiness;
+        private readonly Npcs.NativeNpcObservation nativeNpcs;
         private int localizedItem = -1;
         private object culture;
         private string questName, questLocation;
@@ -27,7 +28,7 @@ namespace JueMingR.TerrariaHost.Information
         internal int LocalizationReads { get; private set; }
         internal int LocationParses { get; private set; }
 #endif
-        internal InformationObservationReader(InformationReadiness readiness) { this.readiness = readiness; }
+        internal InformationObservationReader(InformationReadiness readiness, Npcs.NativeNpcObservation nativeNpcs = null) { this.readiness = readiness; this.nativeNpcs = nativeNpcs; }
         internal long NativeEpoch { get { return readiness.Snapshot().Epoch; } }
         internal void Attach() { if (!attached) { LanguageManager.Instance.OnLanguageChanged += ResourcesChanged; attached = true; } }
         internal void Detach() { if (attached) { LanguageManager.Instance.OnLanguageChanged -= ResourcesChanged; attached = false; } Clear(); }
@@ -69,10 +70,12 @@ namespace JueMingR.TerrariaHost.Information
 #if DEBUG
                         NpcVisits++;
 #endif
-                        var npc = npcs[i]; if (npc == null || !npc.active) continue;
-                        if (wantInfection && npc.type == NPCID.Dryad) dryad = true;
-                        if (wantLuck && npc.type == NPCID.Wizard) wizard = true;
-                        if (wantAngler && npc.type == NPCID.Angler) angler = true;
+                        int type;
+                        if (nativeNpcs == null) { var npc = npcs[i]; if (npc == null || !npc.active) continue; type = npc.type; }
+                        else { Platform.Guidance.GuidanceNpc basic; if (!nativeNpcs.TryRead(i, Platform.Guidance.NpcDemand.Basic, out basic) || !basic.Active) continue; type = basic.Type; }
+                        if (wantInfection && type == NPCID.Dryad) dryad = true;
+                        if (wantLuck && type == NPCID.Wizard) wizard = true;
+                        if (wantAngler && type == NPCID.Angler) angler = true;
                         if ((!wantInfection || dryad) && (!wantLuck || wizard) && (!wantAngler || angler)) break;
                     }
             }

@@ -123,7 +123,7 @@ namespace JueMingR.TerrariaHost.Notes
             AddTop("add", "+", actionReadable && !actionBusy, width, ref controlX, ref controlY);
             if (actionEditor != null)
             {
-                if (actionDirty || actionComposition || actionBusy) AddTop("save", actionBusy ? "提交中" : "保存", actionReadable && !actionBusy, width, ref controlX, ref controlY);
+                if (actionDirty || actionComposition || actionBusy) AddTop("save", actionBusy ? "保存中" : "保存", actionReadable && !actionBusy, width, ref controlX, ref controlY);
                 AddTop("cancel", "取消编辑", true, width, ref controlX, ref controlY);
             }
             if (actionDelete != null) AddTop("cancel-delete", "取消删除", true, width, ref controlX, ref controlY);

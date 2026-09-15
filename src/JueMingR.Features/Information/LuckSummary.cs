@@ -21,10 +21,10 @@ namespace JueMingR.Features.Information
             TextBuilds++;
 #endif
             if (visible.Status != InformationAvailability.Ready)
-            { Content.Publish(InformationText.Status("幸运值", visible.Status, "需要已解救巫师")); return; }
+            { Content.Publish(InformationText.Status("幸运值", visible.Status, "需要在此世界解救过巫师，或当前有巫师")); return; }
             var parts = new List<string>(11);
-            if (visible.Ladybug != 0) Add(parts, "瓢虫", visible.Ladybug, "；游戏时钟剩余 " + (visible.Seconds / 60) + "分" + (visible.Seconds % 60) + "秒");
-            if (visible.Torch != 0) Add(parts, "火把", visible.Torch, "；原值 " + InformationText.Signed(visible.RawTorch));
+            if (visible.Ladybug != 0) Add(parts, "瓢虫", visible.Ladybug, "；剩余 " + (visible.Seconds / 60) + "分" + (visible.Seconds % 60) + "秒");
+            if (visible.Torch != 0) Add(parts, "火把", visible.Torch);
             if (visible.Potion != 0) Add(parts, "幸运药水", visible.Potion * 0.1, "；等级 " + visible.Potion);
             if (visible.Kite != 0) Add(parts, "风筝", visible.Kite * 0.1 / 3, "；等级 " + visible.Kite);
             Add(parts, "银河珍珠", (visible.Flags & 1) != 0 ? 0.03 : 0);
@@ -32,7 +32,7 @@ namespace JueMingR.Features.Information
             Add(parts, "花园侏儒", (visible.Flags & 4) != 0 ? 0.2 : 0);
             Add(parts, "臭味", (visible.Flags & 8) != 0 ? -0.25 : 0);
             Add(parts, "装备", visible.Equipment);
-            if (visible.Coin != 0) Add(parts, "钱币", visible.Coin, "；原值 " + InformationText.Number(visible.RawCoin) + "；" + CoinBand(visible.Coin));
+            if (visible.Coin != 0) Add(parts, "钱币", visible.Coin);
             Add(parts, "破镜坏运", (visible.Flags & 16) != 0 ? -0.25 : 0);
             string details = parts.Count == 0 ? (visible.Complete ? "无" : "部分明细不可用") : String.Join("，", parts);
             Content.Publish("幸运值：" + InformationText.Signed(visible.Total) + "\n来源：" + details +
@@ -46,11 +46,6 @@ namespace JueMingR.Features.Information
             return value > 249000 ? 0.2 : value > 24900 ? 0.175 : value > 2490 ? 0.15 : value > 249 ? 0.125 :
                 value > 24.9 ? 0.1 : value > 2.49 ? 0.075 : value > 0.249 ? 0.05 : 0.025;
         }
-        private static string CoinBand(double contribution)
-        {
-            return contribution == 0.2 ? ">249000 档" : contribution == 0.175 ? ">24900 档" : contribution == 0.15 ? ">2490 档" :
-                contribution == 0.125 ? ">249 档" : contribution == 0.1 ? ">24.9 档" : contribution == 0.075 ? ">2.49 档" : contribution == 0.05 ? ">0.249 档" : "非零基础档";
-        }
         private static void Add(List<string> parts, string name, double value, string explanation = "")
         { if (Math.Abs(value) >= 0.0005) parts.Add(name + " " + InformationText.Signed(value) + (explanation.Length == 0 ? "" : "（" + explanation.Substring(1) + "）")); }
 
@@ -60,7 +55,7 @@ namespace JueMingR.Features.Information
         private struct Visible
         {
             internal InformationAvailability Status;
-            internal double Total, Ladybug, Torch, Equipment, Coin, RawTorch, RawCoin;
+            internal double Total, Ladybug, Torch, Equipment, Coin;
             internal int Seconds, Potion, Kite, Flags;
             internal bool Complete, Mismatch;
             internal Visible(LuckObservation value)
@@ -79,7 +74,6 @@ namespace JueMingR.Features.Information
                     rawCoin = coin ? LuckSummary.Coin(value.Coin.Value) : 0;
                 Ladybug = InformationText.Rounded(rawLadybug); Torch = InformationText.Rounded(rawTorch);
                 Equipment = InformationText.Rounded(rawEquipment); Coin = rawCoin;
-                RawTorch = Torch != 0 ? InformationText.Rounded(value.Torch.Value) : 0; RawCoin = Coin != 0 ? InformationText.Rounded(value.Coin.Value) : 0;
                 // Bound rendering of pathological but finite values. Normal
                 // vanilla timers are far below Int32.MaxValue seconds.
                 Seconds = Ladybug != 0 ? (int)Math.Min(Int32.MaxValue, Math.Ceiling(Math.Abs((double)value.LadybugTime.Value) / 60)) : 0;
@@ -95,7 +89,7 @@ namespace JueMingR.Features.Information
             internal bool Same(Visible other)
             {
                 return Status == other.Status && Total == other.Total && Ladybug == other.Ladybug && Torch == other.Torch && Equipment == other.Equipment &&
-                    Coin == other.Coin && RawTorch == other.RawTorch && RawCoin == other.RawCoin && Seconds == other.Seconds && Potion == other.Potion &&
+                    Coin == other.Coin && Seconds == other.Seconds && Potion == other.Potion &&
                     Kite == other.Kite && Flags == other.Flags && Complete == other.Complete && Mismatch == other.Mismatch;
             }
         }

@@ -39,8 +39,8 @@ namespace Terraria
                             View("LeftShift+LeftAlt+X", HotkeyFeedbackKind.Ready),
                             View("LeftControl+LeftShift+K", HotkeyFeedbackKind.Saved, "已保存", HotkeyAdvisoryChecks.Notice(2)),
                             new HotkeyPopupView("自动丢弃", Parse("K"), null, HotkeyModifiers.RightControl | HotkeyModifiers.RightShift, new HotkeyFeedback(HotkeyFeedbackKind.Capturing, "等待主键"), true, true, true),
-                            View("K", HotkeyFeedbackKind.Rejected, "此组合已用于「自动堆叠」。"),
-                            View("K", HotkeyFeedbackKind.Failed, "保存失败，原绑定仍有效"),
+                            View("K", HotkeyFeedbackKind.Rejected, "此快捷键已用于「自动堆叠」。"),
+                            View("K", HotkeyFeedbackKind.Failed, "保存失败，原快捷键仍有效"),
                             View("RightControl+RightShift+RightAlt+MediaPreviousTrack", HotkeyFeedbackKind.Ready),
                             View("LeftControl+LeftShift+K", HotkeyFeedbackKind.Saved, "已保存", HotkeyAdvisoryChecks.Notice(24)),
                             new HotkeyPopupView("自动丢弃", Parse("LeftControl+LeftShift+K"), null, HotkeyModifiers.None, new HotkeyFeedback(HotkeyFeedbackKind.Saved, "已保存", advisory: HotkeyAdvisoryChecks.Notice(24)), true, false, true, true)

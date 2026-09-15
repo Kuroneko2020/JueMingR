@@ -332,7 +332,7 @@ namespace Terraria
                     {
                         SettingsHostChecks.PrepareLegacyScene(() => main.RunUpdateLoop(1));
                         main.SetupAndDrawBiomeLayer();
-                        AssertBiomeDraw("群系: 沙漠", 1);
+                        AssertBiomeDraw("群系：沙漠", 1);
                         int updateCountAfterHandoff = global::Terraria.Main.FixtureUpdateCount;
                         main.RunUpdateLoop(4);
                         if (global::Terraria.Main.FixtureUpdateCount != updateCountAfterHandoff + 4)
@@ -345,25 +345,29 @@ namespace Terraria
                         global::Terraria.Main.LocalPlayer.ZoneSnow = true;
                         main.RunUpdateLoop(25);
                         main.DrawBiomeLayer();
-                        AssertBiomeDraw("群系: 沙漠", 2);
+                        AssertBiomeDraw("群系：沙漠", 2);
                         main.RunUpdateLoop(1);
                         main.DrawBiomeLayer();
-                        AssertBiomeDraw("群系: 雪原", 3);
+                        AssertBiomeDraw("群系：雪原", 3);
 
                         global::Terraria.Main.gameMenu = true;
                         main.RunUpdateLoop(1);
                         main.DrawBiomeLayer();
-                        AssertBiomeDraw("群系: 雪原", 3);
+                        AssertBiomeDraw("群系：雪原", 3);
 
                         global::Terraria.Main.gameMenu = false;
                         main.RunUpdateLoop(1);
                         main.DrawBiomeLayer();
-                        AssertBiomeDraw("群系: 雪原", 4);
+                        AssertBiomeDraw("群系：雪原", 4);
 
                         if (deferGraphics) Console.WriteLine("DEFERRED: F5 actual input/render consumers, including Notes map/camera wheel requests, were not run.");
                         else F5ConsumerChecks.Run(main, mode == "expect-handoff-biome-failure");
                         AssertEvidenceReaderAllowsAppend(evidencePath, packageId);
 
+                        // The graphical consumer owns and disposes its batch.
+                        // Re-establish a coherent CPU font/batch and run the
+                        // actual preparation seam before injecting draw failure.
+                        PrepareAfterGraphicalConsumer(main);
                         global::Terraria.Main.FixtureThrowOnDraw = true;
                         main.DrawBiomeLayer();
                         int drawCountAfterFailure = global::Terraria.Main.FixtureDrawCount;
@@ -435,6 +439,15 @@ namespace Terraria
                 Console.Error.WriteLine("FAIL: fixture validation failed: {0}", exception);
                 return 1;
             }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void PrepareAfterGraphicalConsumer(Main main)
+        {
+            // Keep the ReLogic-owning helper out of entrypoint JIT: bootstrap
+            // must resolve that embedded assembly through the normal launch seam.
+            F5FixtureGraphics.PrepareHeadlessInformation();
+            main.RunUpdateLoop(1);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -577,13 +590,13 @@ namespace Terraria
                 if (mode == "driver-draw-before-install")
                 {
                     mainType.GetMethod("DrawExistingBiomeLayer").Invoke(instance, null);
-                    AssertDriverBiomeDraw(mainType, "群系: 沙漠", 1);
+                    AssertDriverBiomeDraw(mainType, "群系：沙漠", 1);
                 }
 
                 if (mode == "driver-handoff-error-fail-closed")
                 {
                     mainType.GetMethod("SetupAndDrawBiomeLayer").Invoke(instance, null);
-                    AssertDriverBiomeDraw(mainType, "群系: 沙漠", 1);
+                    AssertDriverBiomeDraw(mainType, "群系：沙漠", 1);
                     int zoneReadsBeforeFailure = GetStaticInt(mainType, "FixtureZoneReadCount");
                     int drawsBeforeFailure = GetStaticInt(mainType, "FixtureDrawCount");
                     SimulateEvent5AppendFailure(evidencePath, packageId);

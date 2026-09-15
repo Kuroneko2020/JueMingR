@@ -18,7 +18,7 @@ namespace JueMingR.Features.Information
 #if DEBUG
             TextBuilds++;
 #endif
-            Content.Publish(value.Availability != InformationAvailability.Ready ? InformationText.Status("世界感染", value.Availability, "需要当前活动树妖") :
+            Content.Publish(value.Availability != InformationAvailability.Ready ? InformationText.Status("世界感染", value.Availability, "需要世界中有树妖") :
                 "世界感染：神圣 " + Percentage(value.Hallow) + "，腐化 " + Percentage(value.Corruption) + "，猩红 " + Percentage(value.Crimson));
         }
         public void Clear() { hasPrevious = false; Content.Clear(); }

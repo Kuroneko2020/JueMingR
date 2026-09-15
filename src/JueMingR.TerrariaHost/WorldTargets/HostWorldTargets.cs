@@ -20,7 +20,7 @@ namespace JueMingR.TerrariaHost.WorldTargets
         private string reportedPreference, reportedFailure;
         internal readonly WorldTargetFeature Feature;
         internal readonly WorldTargetWorldLayer World;
-        private const string LayerUnavailableMessage = "附近目标绘制层不可用，选择已保留。";
+        private const string LayerUnavailableMessage = "附近目标暂时无法显示，设置已保留。";
         private Rendering.WorldLayerStatus layerStatus;
         internal Rendering.WorldLayerStatus LayerStatus
         {
@@ -71,16 +71,16 @@ namespace JueMingR.TerrariaHost.WorldTargets
             get
             {
                 var snapshot = Preferences;
-                if (snapshot.CommitUnconfirmed) return "保存结果未确认，目标配置已保护；当前选择仅能确认在本次内存生效。";
+                if (snapshot.CommitUnconfirmed) return "无法确认附近目标设置是否保存成功；本次仍可使用，文件已保护。";
                 switch (snapshot.Status)
                 {
-                    case PreferenceStatus.Loading: return "正在读取附近目标设置";
+                    case PreferenceStatus.Loading: return "正在加载附近目标设置";
                     case PreferenceStatus.Missing: case PreferenceStatus.Pending: case PreferenceStatus.Saved: return null;
-                    case PreferenceStatus.UnsupportedVersion: case PreferenceStatus.UnknownFields: return "附近目标设置仅本次有效：版本或字段不受支持，原文件已保留。";
-                    case PreferenceStatus.Invalid: return "附近目标配置格式有误，原文件已保留；本次选择只在内存生效。";
-                    case PreferenceStatus.Conflict: return "附近目标配置发生外部变化，已停止覆盖；本次选择只在内存生效。";
-                    case PreferenceStatus.Busy: return "另一进程占用附近目标配置；本次选择只在内存生效。";
-                    default: return "附近目标设置未能可靠加载或保存；退出后检查 world-targets.json 及恢复材料。";
+                    case PreferenceStatus.UnsupportedVersion: case PreferenceStatus.UnknownFields: return "附近目标设置含当前版本不支持的内容；当前修改仅本次有效，原文件已保留。";
+                    case PreferenceStatus.Invalid: return "附近目标设置格式有误；当前修改仅本次有效，原文件已保留。";
+                    case PreferenceStatus.Conflict: return "附近目标设置文件已有变化，已停止保存；当前修改仅本次有效。";
+                    case PreferenceStatus.Busy: return "附近目标设置正被其他程序使用；当前修改仅本次有效。";
+                    default: return "附近目标设置加载或保存失败；当前修改仅本次有效，原文件已保留。";
                 }
             }
         }
@@ -88,9 +88,11 @@ namespace JueMingR.TerrariaHost.WorldTargets
         {
             string message = PreferenceMessage;
             if (Preferences.IsLoaded && message != null && message != reportedPreference) { display(message); reportedPreference = message; }
-            string failure = Feature.HasFailed || World.Failure != null ? "附近目标本次已停止：" + (World.Failure ?? "观察不可用") :
+            string failure = Feature.HasFailed || World.Failure != null ? "附近目标显示已停止，设置已保留。" :
                 Enabled && LayerStatus == Rendering.WorldLayerStatus.Unavailable ? LayerUnavailableMessage : null;
-            if (failure != null && failure != reportedFailure) { display(failure); reportedFailure = failure; }
+            // Preserve per-cause feedback and layer recovery without exposing reason IDs.
+            string key = Feature.HasFailed || World.Failure != null ? "stopped:" + (World.Failure ?? "observation-unavailable") : failure;
+            if (failure != null && key != reportedFailure) { display(failure); reportedFailure = key; }
             if (failure == null) reportedFailure = null;
         }
         private void OnExit(object sender, EventArgs args)

@@ -10,9 +10,9 @@ namespace JueMingR.TerrariaHost.F5
     internal sealed class WorldObjectControls
     {
         private static readonly F5RowDescription[] descriptions = {
-            new F5RowDescription(Hotkeys.HotkeyActionIds.WorldObject(WorldObjectKind.Chest), "显示附近宝箱和梳妆台的名称。“始终”需要金属探测能力；“开过”显示本角色在此世界已记录位置上的当前容器，无需探测能力。"),
-            new F5RowDescription(Hotkeys.HotkeyActionIds.WorldObject(WorldObjectKind.Sign), "显示附近牌子的已知正文。可显示全部、前几行或前几个可见字符；按排版后的行数截取，全文最多十行。"),
-            new F5RowDescription(Hotkeys.HotkeyActionIds.WorldObject(WorldObjectKind.Tombstone), "显示附近墓碑的已知正文。可显示全部、前几行或前几个可见字符；按排版后的行数截取，全文最多十行。") };
+            new F5RowDescription(Hotkeys.HotkeyActionIds.WorldObject(WorldObjectKind.Chest), "显示附近宝箱名称。“始终”需要金属探测能力；“开过”显示本角色在此世界开过的箱子，无需金属探测。"),
+            new F5RowDescription(Hotkeys.HotkeyActionIds.WorldObject(WorldObjectKind.Sign), "显示附近牌子已知正文，最多十行。"),
+            new F5RowDescription(Hotkeys.HotkeyActionIds.WorldObject(WorldObjectKind.Tombstone), "显示附近墓碑已知正文，最多十行。") };
         private readonly IWorldObjectControls host;
         internal WorldObjectControls(IWorldObjectControls host) { this.host = host; }
         internal static string Name(WorldObjectKind kind) { return kind == WorldObjectKind.Chest ? "宝箱显名" : kind == WorldObjectKind.Sign ? "牌子显示" : "墓碑显示"; }
@@ -86,16 +86,15 @@ namespace JueMingR.TerrariaHost.F5
         internal string Hint(F5Command command)
         {
             if (!Target(command).HasValue) return null;
-            if (!Available(command)) return "此项暂不可用或已到数量边界";
+            if (!Available(command)) return !host.ControlsEnabled || Step(command) == 0 ? "此项暂不可用" : Step(command) < 0 ? "已到最小值" : "已到最大值";
             if (IsStyle(command)) return null;
             if (command == F5Command.ChestAlways || command == F5Command.ChestOpened) return null;
-            if (command == F5Command.ChestOff) return "关闭显名；正常开箱仍会登记位置";
-            if (Step(command) != 0) return "调整当前模式的数量";
+            if (command == F5Command.ChestOff) return "关闭后仍会记住开过的箱子。";
+            if (Step(command) != 0) return host.Settings.Style(Target(command).Value).Mode == WorldObjectMode.Lines ? "调整显示行数" : "调整显示字数";
             switch (Mode(command))
             {
-                case WorldObjectMode.Lines: return "按实际排版行截取，内部空行也计入行数。";
-                case WorldObjectMode.Characters: return "图标计一个可见字符；超出十个排版行仍会截取并提示省略。";
-                case WorldObjectMode.All: return "超出十个排版行以省略号提示。";
+                case WorldObjectMode.Lines: return "按显示行数截取，空行也计入。";
+                case WorldObjectMode.Characters: return "图标计一字，最多显示十行。";
                 default: return null;
             }
         }
