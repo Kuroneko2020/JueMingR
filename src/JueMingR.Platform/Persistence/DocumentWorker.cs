@@ -61,13 +61,21 @@ namespace JueMingR.Platform.Persistence
             }
         }
         public bool Stop(int milliseconds) { return Stop(milliseconds, null); }
-        public bool Stop(int milliseconds, Func<T, T> finishAccepted)
+        // Session retirement requests a bounded final immutable update without
+        // blocking the game thread or cancelling the still-running file owner.
+        // The process-level Stop remains responsible for the total join budget.
+        public void BeginStop(Func<T, T> finishAccepted = null)
         {
             lock (gate)
             {
                 if (!stopping) finalUpdate = finishAccepted;
                 stopping = true; Monitor.Pulse(gate);
             }
+        }
+        public bool IsFinished { get { return !thread.IsAlive; } }
+        public bool Stop(int milliseconds, Func<T, T> finishAccepted)
+        {
+            BeginStop(finishAccepted);
             if (thread.Join(Math.Max(0, milliseconds))) return true;
             cancelled = true; return false;
         }

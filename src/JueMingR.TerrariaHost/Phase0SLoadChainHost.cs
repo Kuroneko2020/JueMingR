@@ -582,7 +582,7 @@ namespace JueMingR.TerrariaHost
         private static void EnsureEntityLayer(List<GameInterfaceLayer> layers, bool setupComplete)
         {
             var context = postfixContext;
-            if (context == null || !(context.PackageId.StartsWith("entity-labels-", StringComparison.Ordinal) || context.PackageId.StartsWith("world-targets-", StringComparison.Ordinal) || context.PackageId.StartsWith("world-object-text-", StringComparison.Ordinal) || context.PackageId.StartsWith("information-summary-", StringComparison.Ordinal) || context.PackageId.StartsWith("direction-equipment-", StringComparison.Ordinal))) return;
+            if (context == null || !(context.PackageId.StartsWith("entity-labels-", StringComparison.Ordinal) || context.PackageId.StartsWith("world-targets-", StringComparison.Ordinal) || context.PackageId.StartsWith("world-object-text-", StringComparison.Ordinal) || context.PackageId.StartsWith("information-summary-", StringComparison.Ordinal) || context.PackageId.StartsWith("direction-equipment-", StringComparison.Ordinal) || context.PackageId.StartsWith("death-history-", StringComparison.Ordinal))) return;
             try
             {
                 // Capture's early return precedes this Game-scale layer. Normal
@@ -813,12 +813,13 @@ namespace JueMingR.TerrariaHost
             internal WorldObjectText.HostWorldObjectText WorldObjects { get; private set; }
             internal Information.HostInformation Information { get; private set; }
             internal Guidance.HostGuidance Guidance { get; private set; }
+            internal DeathHistory.HostDeathRecords DeathRecords { get; private set; }
             private Npcs.NativeNpcObservation nativeNpcs;
             internal readonly Information.InformationReadiness InformationReadiness = new Information.InformationReadiness();
             private Information.InformationSourceHooks informationHooks;
             internal void InstallInformationSources()
             {
-                if (!(PackageId.StartsWith("information-summary-", StringComparison.Ordinal) || PackageId.StartsWith("direction-equipment-", StringComparison.Ordinal)) || informationHooks != null) return;
+                if (!(PackageId.StartsWith("information-summary-", StringComparison.Ordinal) || PackageId.StartsWith("direction-equipment-", StringComparison.Ordinal) || PackageId.StartsWith("death-history-", StringComparison.Ordinal)) || informationHooks != null) return;
                 informationHooks = new Information.InformationSourceHooks(InformationReadiness); informationHooks.Install();
             }
             internal void DisposeInformationSources() { informationHooks?.Dispose(); }
@@ -854,14 +855,16 @@ namespace JueMingR.TerrariaHost
                 }
 
                 preferences = new HostPreferences(gameDirectory);
-                bool guidancePackage = PackageId.StartsWith("direction-equipment-", StringComparison.Ordinal);
+                bool deathPackage = PackageId.StartsWith("death-history-", StringComparison.Ordinal);
+                bool guidancePackage = deathPackage || PackageId.StartsWith("direction-equipment-", StringComparison.Ordinal);
                 bool informationPackage = guidancePackage || PackageId.StartsWith("information-summary-", StringComparison.Ordinal);
                 bool objectPackage = informationPackage || PackageId.StartsWith("world-object-text-", StringComparison.Ordinal);
                 bool worldPackage = objectPackage || PackageId.StartsWith("world-targets-", StringComparison.Ordinal);
                 bool entityPackage = worldPackage || PackageId.StartsWith("entity-labels-", StringComparison.Ordinal);
                 bool hotkeyPackage = entityPackage || PackageId.StartsWith("unified-hotkeys-", StringComparison.Ordinal);
                 bool itemPackage = hotkeyPackage || PackageId.StartsWith("item-automation-", StringComparison.Ordinal);
-                runtime = itemPackage ? Phase0TBiomeRuntime.Create(enabled, preferences.BiomeLoaded && preferences.BiomeEnabled, new Items.ItemSessionProbe()) :
+                var itemProbe = itemPackage ? new Items.ItemSessionProbe() : null;
+                runtime = itemPackage ? Phase0TBiomeRuntime.Create(enabled, preferences.BiomeLoaded && preferences.BiomeEnabled, itemProbe) :
                     Phase0TBiomeRuntime.Create(enabled, preferences.BiomeLoaded && preferences.BiomeEnabled);
                 if (itemPackage) { items = new Items.HostItems(gameDirectory, runtime.SharedRuntime, () => Input.CanStartActions); runtime.SharedRuntime.AddFeature(items); }
                 nativeNpcs = new Npcs.NativeNpcObservation();
@@ -871,10 +874,11 @@ namespace JueMingR.TerrariaHost
                 Information = new Information.HostInformation(gameDirectory, runtime, preferences, InformationReadiness, error => RecordBiomeFailure("BIOME_DRAW", error), nativeNpcs);
                 runtime.SharedRuntime.AddFeature(Information);
                 if (guidancePackage) { Guidance = new Guidance.HostGuidance(gameDirectory, runtime.SharedRuntime, nativeNpcs, () => Input.CanStartActions, () => Shell != null && Shell.CanExecuteMerchantInput, () => Input.CanPrepareText) { LayerStatus = entityLayerStatus }; runtime.SharedRuntime.AddFeature(Guidance); }
+                if (deathPackage) { DeathRecords = new DeathHistory.HostDeathRecords(gameDirectory, runtime.SharedRuntime, itemProbe); runtime.SharedRuntime.AddFeature(DeathRecords); }
                 notes = new Notes.HostNotes(gameDirectory);
                 var hotkeys = hotkeyPackage ? new Hotkeys.HostHotkeys(gameDirectory, runtime, preferences, items, Labels, WorldTargets, WorldObjects,
-                    informationPackage ? Information : null, () => Shell != null && Shell.CanAdjustInformation, () => Shell?.RequestInformationAdjustment(), Guidance) : null;
-                Shell = new F5Shell(runtime, preferences, notes, items, Input, hotkeys, Labels, WorldTargets, WorldObjects, Information, Guidance) { LayersReady = f5LayersReady };
+                    informationPackage ? Information : null, () => Shell != null && Shell.CanAdjustInformation, () => Shell?.RequestInformationAdjustment(), Guidance, DeathRecords) : null;
+                Shell = new F5Shell(runtime, preferences, notes, items, Input, hotkeys, Labels, WorldTargets, WorldObjects, Information, Guidance, DeathRecords) { LayersReady = f5LayersReady };
             }
 
             internal void UpdateRuntime()
@@ -893,6 +897,7 @@ namespace JueMingR.TerrariaHost
                 WorldObjects?.PollPreferences();
                 Information?.PollPreferences();
                 Guidance?.PollPreferences();
+                DeathRecords?.PollPreferences();
                 current.SetFeatureEnabled(preferences.BiomeLoaded && preferences.BiomeEnabled);
                 worldTiles?.BeginTick();
                 nativeNpcs?.BeginTick();
@@ -908,6 +913,7 @@ namespace JueMingR.TerrariaHost
                 WorldObjects?.FailClosed();
                 Information?.FailClosed();
                 Guidance?.FailClosed();
+                DeathRecords?.FailClosed();
                 nativeNpcs?.Clear();
                 Phase0TBiomeRuntime current = runtime;
                 if (current != null)

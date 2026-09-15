@@ -530,7 +530,8 @@ function Read-Phase0SPackage {
         ('world-targets-' + [string] $manifest.sourceCommit),
         ('world-object-text-' + [string] $manifest.sourceCommit),
         ('information-summary-' + [string] $manifest.sourceCommit),
-        ('direction-equipment-' + [string] $manifest.sourceCommit)
+        ('direction-equipment-' + [string] $manifest.sourceCommit),
+        ('death-history-' + [string] $manifest.sourceCommit)
     )
     if ([string] $manifest.sourceCommit -notmatch '^[0-9a-f]{40}$' -or
         $allowedPackageIds -cnotcontains [string] $manifest.packageId) {

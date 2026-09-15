@@ -12,6 +12,9 @@ namespace JueMingR.ArchitectureTests
             Assembly features = Assembly.Load("JueMingR.Features");
             var expected = new HashSet<string>(StringComparer.Ordinal)
             {
+                "JueMingR.Features.DeathHistory.DeathArchive", "JueMingR.Features.DeathHistory.DeathHistory",
+                "JueMingR.Features.DeathHistory.DeathDisplayPreferences", "JueMingR.Features.DeathHistory.DeathDisplayCodec",
+                "JueMingR.Features.WorldTime.WorldTimeHistory",
                 "JueMingR.Features.Information.InformationPreferences", "JueMingR.Features.Information.InformationStyle",
                 "JueMingR.Features.Information.InformationPreferenceCodec", "JueMingR.Features.Information.InformationText",
                 "JueMingR.Features.Guidance.RareCreatureDirection", "JueMingR.Features.Guidance.TravellingMerchantDirection", "JueMingR.Features.Guidance.MerchantLocation",

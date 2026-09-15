@@ -44,6 +44,11 @@ $native = Build-WorkloadFixture 'NativeWorldTextProbe'
 Invoke-WorkloadCheck 'core-native-host' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'native-cpu'), 'WorkloadCpu')
 if ($route.groups -contains 'shared-host') { Invoke-WorkloadCheck 'information-native-host' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'information-cpu'), 'InformationCpu') }
 if ($route.groups -contains 'shared-host') { Invoke-WorkloadCheck 'guidance-native-host' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'guidance-cpu'), 'GuidanceCpu') }
+if ($route.groups -contains 'death-host') {
+    Invoke-WorkloadCheck 'death-history-storage-workload' $architecture @('--death-history')
+    Invoke-WorkloadCheck 'death-native-execution' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'death-cpu'), 'DeathCpu')
+    Invoke-WorkloadCheck 'death-popup-input-layout' $fixture @('death-popup')
+}
 $modes = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
 if ($route.groups -contains 'notes-host') { [void]$modes.Add('hotkeys-popup'); [void]$modes.Add('focus-input') }
 if ($route.groups -contains 'world-host') { foreach ($mode in @('world-targets-observation', 'world-targets-projection', 'entity-observation')) { [void]$modes.Add($mode) } }

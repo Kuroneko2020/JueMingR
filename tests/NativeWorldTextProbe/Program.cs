@@ -14,7 +14,7 @@ namespace NativeWorldTextProbe
         {
             try
             {
-                if (args.Length < 3 || args.Length > 4) throw new ArgumentException("repository Content output [Full|SelectionCpuCosts|SelectionCpuChecks|WorkloadCpu|InformationCpu|GuidanceCpu|GuidanceVisual] required");
+                if (args.Length < 3 || args.Length > 4) throw new ArgumentException("repository Content output [Full|SelectionCpuCosts|SelectionCpuChecks|WorkloadCpu|InformationCpu|GuidanceCpu|GuidanceVisual|DeathCpu|DeathVisual] required");
                 Repository = Path.GetFullPath(args[0]);
                 references = Path.Combine(Repository, "external", "TerrariaRefs");
                 AppDomain.CurrentDomain.AssemblyResolve += Resolve;
