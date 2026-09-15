@@ -66,7 +66,7 @@ namespace JueMingR.Features.DeathHistory
                     { protectedFile = true; throw new InvalidOperationException("death-event-identity-conflict"); }
                     continue;
                 }
-                string text = files.CreatePage(DeathArchiveCodec.Text(fact.Reason));
+                string text = files.CreatePage(DeathArchiveCodec.Text(fact.Reason, fact.DirectCause));
                 var header = new DeathHeader { Id = fact.EventId, Offset = checked((short)fact.Time.Offset.TotalMinutes), Text = text, Previous = candidateLast,
                     PreviousPosition = candidatePosition, Occurrence = checked(count + 1), Position = fact.HasPosition, X = fact.X, Y = fact.Y };
                 byte[] bytes = DeathArchiveCodec.Header(header); DeathArchiveCodec.Header(bytes);
@@ -105,7 +105,10 @@ namespace JueMingR.Features.DeathHistory
         }
         private DeathHeader Header(string id) { if (!DeathArchiveCodec.PageId(id)) throw PreferenceJson.Invalid(); return DeathArchiveCodec.Header(files.ReadPage(id)); }
         private DeathFact Fact(DeathHeader header)
-        { return new DeathFact(header.Id, TimeSpan.FromMinutes(header.Offset), header.Position, header.X, header.Y, DeathArchiveCodec.Text(files.ReadPage(header.Text))); }
+        {
+            string cause; string original = DeathArchiveCodec.Text(files.ReadPage(header.Text), out cause);
+            return new DeathFact(header.Id, TimeSpan.FromMinutes(header.Offset), header.Position, header.X, header.Y, original, cause);
+        }
         private void Check() { if (cancelled()) throw new OperationCanceledException(); }
     }
 }

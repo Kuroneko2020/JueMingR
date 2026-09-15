@@ -46,8 +46,9 @@ namespace NativeWorldTextProbe
                 for (int i = 0; i < 1040; i++)
                 {
                     var fact = new DeathFact(DeathEventId.Create(moment.AddSeconds(i), new Guid(i + 1, 0, 0, new byte[8])), moment.Offset, true,
-                        (40 + i % 30 * 25) * 16, (50 + i / 30 * 15) * 16, i == 0 ? longReason : "隔离角色被击败了。记录 " + (i + 1));
+                        (40 + i % 30 * 25) * 16, (50 + i / 30 * 15) * 16, i == 0 ? longReason : "隔离角色被击败了。记录 " + (i + 1), i % 2 == 0 ? "死于飞鱼" : "死于摔落");
                     Until(() => { if (history.Snapshot.Error != null) throw new InvalidOperationException(history.Snapshot.Error); Call(context, "UpdateRuntime"); return history.Accept(fact); });
+                    if (i == 0) { Until(() => history.Snapshot.Count == 1 && history.Snapshot.Rows.Count == 1); image("details-one", 960, 640); }
                     if (i % 32 == 31) { int expected = i + 1; Until(() => history.Snapshot.Count >= expected); }
                 }
                 Until(() => history.Snapshot.Count == 1040 && history.Snapshot.Rows.Count == 6);

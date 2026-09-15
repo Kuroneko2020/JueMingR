@@ -63,6 +63,11 @@ namespace NativeWorldTextProbe
                 player.dead = false; throwAfter = true;
                 try { player.KillMe(cause, 1, 0); throw new Exception("expected native exception"); } catch (InvalidOperationException e) { Require(ReferenceEquals(e, expected), "original exception returned unchanged"); }
                 throwAfter = false; Require(facts.Count == 4, "already completed transition survives later exception exactly once");
+                var fall = PlayerDeathReason.ByOther(0); Main.rand = new UnifiedRandom(29);
+                string expectedSentence = fall.GetDeathText(player.name).ToString(); int expectedNext = Main.rand.Next();
+                Main.rand = new UnifiedRandom(29); int previousTexts = texts; player.dead = false; player.KillMe(fall, 1, 0);
+                Require(facts.Count == 5 && texts == previousTexts + 1 && facts[4].Reason == expectedSentence && facts[4].DirectCause == "死于摔落" && Main.rand.Next() == expectedNext,
+                    "real random fall obituary captured once with direct cause and identical successor RNG state");
                 Main.dayTime = true; Main.fastForwardTimeToDawn = false; Main.fastForwardTimeToDusk = true; Main.dayRate = 7; Main.time = 100;
                 update.Invoke(null, null); Require(Main.time == 160 && contributions.SequenceEqual(new[] { 60.0 }), "actual inner rate 60, not entry rate 7");
                 Main.time = 53990; crossing = true; update.Invoke(null, null); crossing = false;

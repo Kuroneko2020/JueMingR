@@ -27,7 +27,7 @@ namespace JueMingR.TerrariaHost.DeathHistory
             internal Scope Parent;
             internal Player Player;
             internal object Token;
-            internal string Id, Reason;
+            internal string Id, Reason, DirectCause;
             internal TimeSpan Offset;
             internal DateTime NativeStamp;
             internal float X, Y;
@@ -83,7 +83,7 @@ namespace JueMingR.TerrariaHost.DeathHistory
         private static void CreatedText(NetworkText text, Player player)
         {
             var scope = top; if (scope == null || scope.Id == null || !ReferenceEquals(scope.Player, player)) return;
-            try { scope.Reason = NativeDeathText.Freeze(text); } catch (Exception e) { scope.Owner.Failure = "death-text: " + e.GetType().Name; }
+            try { scope.Reason = NativeDeathText.Capture(text, out scope.DirectCause); } catch (Exception e) { scope.Owner.Failure = "death-text: " + e.GetType().Name; }
         }
         private static void After(Scope __state) { Complete(__state); }
         private static Exception FinalizeCall(Exception __exception, Scope __state) { Complete(__state); return __exception; }
@@ -94,7 +94,7 @@ namespace JueMingR.TerrariaHost.DeathHistory
             // A later native exception does not undo an already observed dead
             // transition. Postfix/finalizer and nested calls share this token.
             if (scope.Id == null) return;
-            try { scope.Owner.accept(scope.Token, new DeathFact(scope.Id, scope.Offset, scope.Position, scope.X, scope.Y, scope.Reason), scope.NativeStamp); }
+            try { scope.Owner.accept(scope.Token, new DeathFact(scope.Id, scope.Offset, scope.Position, scope.X, scope.Y, scope.Reason, scope.DirectCause), scope.NativeStamp); }
             catch (Exception e) { scope.Owner.Failure = "death-admission: " + e.GetType().Name; }
         }
         private static IEnumerable<CodeInstruction> Rewrite(IEnumerable<CodeInstruction> instructions)

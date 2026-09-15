@@ -113,7 +113,7 @@ namespace JueMingR.TerrariaHost.DeathHistory
             {
                 var fact = host.Snapshot.Selected; if (fact == null || fact.EventId != hoveredId) return;
                 font = FontAssets.MouseText?.Value; var pixel = TextureAssets.MagicPixel?.Value; if (font == null || pixel == null || pixel.IsDisposed) return;
-                if (textId != hoveredId) { textId = hoveredId; text = DeathHistoryPopup.Stamp(fact) + "\n" + JueMingR.Platform.DeathHistory.DeathReadText.Preview(fact.Reason, 80); }
+                if (textId != hoveredId) { textId = hoveredId; text = DeathHistoryPopup.Stamp(fact) + "\n" + JueMingR.Platform.DeathHistory.DeathReadText.Preview(fact.DisplayCause, 80); }
                 // This native event is after End(), before the next Begin().
                 // Reuse the shared hint layout and plain font; bracket tags in
                 // player names/reasons never enter Terraria's rich-text parser.

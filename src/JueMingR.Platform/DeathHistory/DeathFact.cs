@@ -21,11 +21,15 @@ namespace JueMingR.Platform.DeathHistory
     }
     public sealed class DeathFact
     {
+        public const int MaximumDirectCauseLength = 1024;
         public DeathFact(string eventId, TimeSpan offset, bool hasPosition, float x, float y, string reason)
+            : this(eventId, offset, hasPosition, x, y, reason, null) { }
+        public DeathFact(string eventId, TimeSpan offset, bool hasPosition, float x, float y, string reason, string directCause)
         {
+            if (directCause != null && (String.IsNullOrWhiteSpace(directCause) || directCause.Length > MaximumDirectCauseLength)) throw new ArgumentException("invalid-direct-death-cause");
             EventId = eventId; Time = DeathEventId.Time(eventId, offset);
             HasPosition = hasPosition && !Single.IsNaN(x) && !Single.IsInfinity(x) && !Single.IsNaN(y) && !Single.IsInfinity(y) && x >= 0 && y >= 0;
-            X = HasPosition ? x : 0; Y = HasPosition ? y : 0; Reason = reason;
+            X = HasPosition ? x : 0; Y = HasPosition ? y : 0; Reason = reason; DirectCause = directCause;
         }
         public string EventId { get; }
         public DateTimeOffset Time { get; }
@@ -33,8 +37,12 @@ namespace JueMingR.Platform.DeathHistory
         public float X { get; }
         public float Y { get; }
         public string Reason { get; }
+        // Original text remains the full reader's source. Older/unsupported
+        // causes have no trustworthy classification and retain that original.
+        public string DirectCause { get; }
+        public string DisplayCause { get { return DirectCause ?? Reason; } }
         public bool SameSource(DeathFact other)
-        { return other != null && EventId == other.EventId && Time.Offset == other.Time.Offset && HasPosition == other.HasPosition && X == other.X && Y == other.Y && Reason == other.Reason; }
+        { return other != null && EventId == other.EventId && Time.Offset == other.Time.Offset && HasPosition == other.HasPosition && X == other.X && Y == other.Y && Reason == other.Reason && DirectCause == other.DirectCause; }
     }
     public sealed class DeathMarker
     {

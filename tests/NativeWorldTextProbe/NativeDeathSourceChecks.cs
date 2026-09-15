@@ -19,6 +19,7 @@ namespace NativeWorldTextProbe
             string before = (string)typeof(NetworkText).GetField("_text", Flags).GetValue(malformed);
             safe.GetMethod("Freeze", Flags).Invoke(null, new object[] { malformed });
             NativeInformationChecks.Require((string)typeof(NetworkText).GetField("_text", Flags).GetValue(malformed) == before, "format failure cannot mutate vanilla NetworkText");
+            NativeDeathCauseChecks.Run(safe);
             var deaths = assembly.GetType("JueMingR.TerrariaHost.DeathHistory.DeathSourceHooks", true);
             var time = assembly.GetType("JueMingR.TerrariaHost.WorldTime.WorldTimeSourceHooks", true);
             var token = new object(); var captured = new System.Collections.Generic.List<JueMingR.Platform.DeathHistory.DeathFact>();

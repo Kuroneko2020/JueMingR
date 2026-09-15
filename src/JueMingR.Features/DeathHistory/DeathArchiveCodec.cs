@@ -22,14 +22,17 @@ namespace JueMingR.Features.DeathHistory
         internal static bool PageId(string id)
         { if (id == null || id.Length != 64) return false; foreach (char c in id) if (!(c >= '0' && c <= '9' || c >= 'a' && c <= 'f')) return false; return true; }
         internal static void Ref(string id) { if (id != "" && !PageId(id)) throw PreferenceJson.Invalid(); }
-        internal static BinaryWriter Writer(MemoryStream stream, int kind)
-        { var writer = new BinaryWriter(stream, Encoding.UTF8, true); writer.Write(0x4A524448); writer.Write(1); writer.Write(kind); return writer; }
+        internal static BinaryWriter Writer(MemoryStream stream, int kind, int version = 1)
+        { var writer = new BinaryWriter(stream, Encoding.UTF8, true); writer.Write(0x4A524448); writer.Write(version); writer.Write(kind); return writer; }
         internal static BinaryReader Reader(byte[] bytes, int kind)
+        { int version; return Reader(bytes, kind, 1, out version); }
+        private static BinaryReader Reader(byte[] bytes, int kind, int maximumVersion, out int version)
         {
             if (bytes == null || bytes.Length < 12 || bytes.Length > 1048576) throw PreferenceJson.Invalid();
             var reader = new BinaryReader(new MemoryStream(bytes, false), Encoding.UTF8);
             if (reader.ReadInt32() != 0x4A524448) { reader.Dispose(); throw PreferenceJson.Invalid(); }
-            if (reader.ReadInt32() != 1) { reader.Dispose(); throw new PreferenceFormatException(PreferenceStatus.UnsupportedVersion, "unsupported-death-page-version"); }
+            version = reader.ReadInt32();
+            if (version < 1 || version > maximumVersion) { reader.Dispose(); throw new PreferenceFormatException(PreferenceStatus.UnsupportedVersion, "unsupported-death-page-version"); }
             if (reader.ReadInt32() != kind) { reader.Dispose(); throw PreferenceJson.Invalid(); }
             return reader;
         }
@@ -43,14 +46,33 @@ namespace JueMingR.Features.DeathHistory
             var chars = new char[length]; for (int i = 0; i < length; i++) chars[i] = (char)reader.ReadUInt16(); return new string(chars);
         }
         internal static void End(BinaryReader reader) { if (reader.BaseStream.Position != reader.BaseStream.Length) throw PreferenceJson.Invalid(); }
-        internal static byte[] Text(string reason)
+        internal static byte[] Text(string reason, string directCause)
         {
             if (reason != null && reason.Length > MaximumText) throw new ArgumentException("death-reason-too-long");
-            using (var stream = new MemoryStream()) using (var writer = Writer(stream, 1))
-            { writer.Write(reason != null); if (reason != null) String(writer, reason); writer.Flush(); return stream.ToArray(); }
+            ValidateCause(directCause);
+            using (var stream = new MemoryStream()) using (var writer = Writer(stream, 1, 2))
+            {
+                writer.Write(reason != null); if (reason != null) String(writer, reason);
+                writer.Write(directCause != null); if (directCause != null) String(writer, directCause);
+                writer.Flush(); return stream.ToArray();
+            }
         }
         internal static string Text(byte[] bytes)
-        { using (var reader = Reader(bytes, 1)) { string text = reader.ReadBoolean() ? String(reader, MaximumText) : null; End(reader); return text; } }
+        { string directCause; return Text(bytes, out directCause); }
+        internal static string Text(byte[] bytes, out string directCause)
+        {
+            // Only text pages advance to v2. Old immutable pages are not
+            // rewritten, and header/index future versions remain protected.
+            int version;
+            using (var reader = Reader(bytes, 1, 2, out version))
+            {
+                string text = reader.ReadBoolean() ? String(reader, MaximumText) : null;
+                directCause = version == 2 && reader.ReadBoolean() ? String(reader, DeathFact.MaximumDirectCauseLength) : null;
+                ValidateCause(directCause); End(reader); return text;
+            }
+        }
+        private static void ValidateCause(string value)
+        { if (value != null && (System.String.IsNullOrWhiteSpace(value) || value.Length > DeathFact.MaximumDirectCauseLength)) throw PreferenceJson.Invalid(); }
         internal static byte[] Header(DeathHeader value)
         {
             using (var stream = new MemoryStream()) using (var writer = Writer(stream, 2))

@@ -65,11 +65,11 @@ namespace NativeWorldTextProbe
             Main.gameMenu = false; player.dead = false;
             Until(() => { Call(context, "UpdateRuntime"); return history.Snapshot.Known && time.Known; });
             Require((string)Get(host, "pair") == pair && history.Snapshot.Count == 2 && time.Total == 120, "re-entry restores same reliable identity and observed tail");
+            NativeDeathInputChecks.Run(context, host);
             Call(host, "MarkMissed"); Require((string)Get(host, "CountText") == "记录可能不完整", "missed acceptance marks its own reliable pair");
             Main.ActiveWorldFileData = new Terraria.IO.WorldFileData(Path.Combine(root, "another.wld"), false) { UniqueId = Guid.NewGuid() };
             Until(() => { Call(context, "UpdateRuntime"); return (string)Get(host, "pair") != pair && history.Snapshot.Known && time.Known; });
             Require(history.Snapshot.Count == 0 && time.Total == 0 && history.Snapshot.Markers.Count == 0 && (string)Get(host, "CountText") == "0", "world change cannot expose earlier identity rows/time/markers/completeness error");
-            NativeDeathInputChecks.Run(context, host);
             NativeDeathMapLoopChecks.Run(context, host);
             Console.WriteLine("PASS: full Host native pre-admission/dead/revive/foreign-player chain, scalar rows, session re-entry, world isolation, preferences and map CPU geometry.");
         }

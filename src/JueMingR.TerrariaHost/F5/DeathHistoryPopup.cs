@@ -96,7 +96,9 @@ namespace JueMingR.TerrariaHost.F5
             { SelectedId = rowIds[command - 10]; host.RequestSelection(SelectedId); Mode = 3; scroll = 0; full = null; readText = null; dirty = true; }
         }
         private void Back() { Mode = 2; SelectedId = null; host.RequestSelection(null); scroll = 0; full = null; readText = null; dirty = true; }
-        internal static string Stamp(DeathFact fact) { return fact.Time.ToString("yyyy-MM-dd HH:mm:ss zzz", CultureInfo.InvariantCulture); }
+        // Time already carries the offset frozen at death; viewing it must not
+        // convert it into the current machine's timezone.
+        internal static string Stamp(DeathFact fact) { return fact.Time.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture); }
         private static string Status(DeathHistorySnapshot value, bool ready)
         { return value.CommitUnconfirmed ? "保存结果未确认" : value.Error != null ? "读取或保存失败；现有记录已保留" : !value.Known || !ready ? "正在读取…" : value.Pending != 0 ? "有记录尚未保存" : value.Count == 0 ? "暂无记录" : null; }
         internal void Prepare(float w, float h, object f, Func<string, float, F5Size> measure, int s)
@@ -108,7 +110,7 @@ namespace JueMingR.TerrariaHost.F5
             if (Mode == 3 && queryReady && value.Selected?.EventId == SelectedId && (!ReferenceEquals(readText, value.SelectedText) || full == null))
             {
                 readText = value.SelectedText;
-                if (readText != null) full = new NotesTextLayout(readText.Text, Math.Min(760, w - 24) - 32, text => measure(text, .75f).Width, readText.Boundaries);
+                if (readText != null) full = new NotesTextLayout(readText.Text, Math.Min(560, w - 24) - 32, text => measure(text, .75f).Width, readText.Boundaries);
                 dirty = true;
             }
             if (full != null && !full.Complete) { full.Continue(1024); dirty = true; }
@@ -119,8 +121,12 @@ namespace JueMingR.TerrariaHost.F5
             // Every body slot fits both the ordinary glyph and a standard button.
             // Short viewports scroll complete slots; header/footer never move.
             float textHeight = measure("测试Ag", .75f).Height; lineHeight = Math.Max(34, textHeight + 10);
-            float panelWidth = Mode == 1 ? Math.Min(490, w - 24) : Math.Min(760, w - 24);
-            float panelHeight = Math.Min((Mode == 1 ? 4 : 8) * lineHeight + 84, h - 24);
+            float panelWidth = Math.Min(Mode == 1 ? 490 : 560, w - 24);
+            // A short list uses only its actual rows. Full text keeps a fixed
+            // viewport while incremental wrapping continues, so exit stays put.
+            int listSlots = Math.Max(1, (queryReady ? value.Rows.Count : 0) + (nextStatus == null ? 0 : 1));
+            float wantedHeight = Mode == 2 ? (listSlots + 2) * lineHeight + 50 : (Mode == 1 ? 4 : 6) * lineHeight + 84;
+            float panelHeight = Math.Min(wantedHeight, h - 24);
             var oldPanel = Panel;
             Panel = new F5Rect((w - panelWidth) / 2, (h - panelHeight) / 2, panelWidth, panelHeight);
             AddText(Mode == 1 ? "死亡点常驻" : "死亡详情", 16, 12, panelWidth - 32, .75f, measure);
@@ -159,18 +165,17 @@ namespace JueMingR.TerrariaHost.F5
         }
         private void BuildList(DeathHistorySnapshot value, float top, float footer, Func<string, float, F5Size> measure)
         {
-            float timeWidth = Math.Max(200, measure("2026-09-15 23:59:59 +08:00", .70f).Width + 12);
+            float timeWidth = measure("2026-09-15 23:59:59", .70f).Width + 12;
             int visible = Math.Max(0, (int)(Body.Height / lineHeight));
-            bodyMax = Math.Max(0, value.Rows.Count + 2 - visible); scroll = Math.Min(scroll, (int)bodyMax);
-            if (scroll == 0 && visible > 0) AddText(status ?? "点击原因查看全文", 16, top, Body.Width, .70f, measure);
-            if (scroll <= 1 && 1 < scroll + visible)
-            { AddText("时间", 16, top + (1 - scroll) * lineHeight, timeWidth, .70f, measure); AddText("原因", 16 + timeWidth, top + (1 - scroll) * lineHeight, Body.Width - timeWidth, .70f, measure); }
+            int leading = status == null ? 0 : 1;
+            bodyMax = Math.Max(0, (ready ? value.Rows.Count : 0) + leading - visible); scroll = Math.Min(scroll, (int)bodyMax);
+            if (leading != 0 && scroll == 0 && visible > 0) AddText(status, 16, top, Body.Width, .70f, measure);
             for (int i = 0; i < value.Rows.Count; i++) rowIds.Add(value.Rows[i].EventId);
-            if (ready) for (int i = Math.Max(0, scroll - 2); i < Math.Min(value.Rows.Count, scroll + visible - 2); i++)
+            if (ready) for (int i = Math.Max(0, scroll - leading); i < Math.Min(value.Rows.Count, scroll + visible - leading); i++)
             {
-                var fact = value.Rows[i]; float y = top + (i + 2 - scroll) * lineHeight;
+                var fact = value.Rows[i]; float y = top + (i + leading - scroll) * lineHeight;
                 AddText(Stamp(fact), 16, y, timeWidth, .70f, measure);
-                string preview = Fit(DeathReadText.Preview(fact.Reason), Body.Width - timeWidth - 8, .75f, measure);
+                string preview = Fit(DeathReadText.Preview(fact.DisplayCause), Body.Width - timeWidth - 8, .75f, measure);
                 AddButton(preview, 10 + i, 16 + timeWidth, y, Body.Width - timeWidth, true, measure);
             }
             AddButton("上一页", 2, 16, footer, 82, ready && value.Known && Offset > 0, measure);

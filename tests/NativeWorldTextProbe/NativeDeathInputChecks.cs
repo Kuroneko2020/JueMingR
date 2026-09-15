@@ -38,11 +38,12 @@ namespace NativeWorldTextProbe
                 Require(!(bool)Get(shell, "Failed"), "actual death input shell must stay available");
             };
             Action open = () => { frame(0, 0, false); frame(0, 0, false); Set(state, "Ready", true); Call(state, "Navigate", 2); Call(state, "RestoreVisible"); Call(popup, "Open", true, 2); Call(renderer, "RefreshResources"); layout(); };
-            Func<Vector2> option = () =>
+            Func<int, Vector2> button = command =>
             {
-                var commands = (IList)Get(popup, "Commands"); var buttons = (IList)Get(popup, "Buttons"); var rect = Get(buttons[commands.IndexOf(128)], "Rect"); var panel = Get(popup, "Panel");
+                var commands = (IList)Get(popup, "Commands"); var buttons = (IList)Get(popup, "Buttons"); var rect = Get(buttons[commands.IndexOf(command)], "Rect"); var panel = Get(popup, "Panel");
                 return new Vector2((float)Get(rect, "X") + (float)Get(panel, "X") + 4, (float)Get(rect, "Y") + (float)Get(panel, "Y") + 4);
             };
+            Func<Vector2> option = () => button(128);
             open(); var point = option(); frame((int)point.X, (int)point.Y, true);
             Require((int)Get(popup, "Pressed") == 128, "actual shell forwards physical press into death popup");
             FiniteCostChecks.SetCpuFont(8); // Same dimensions; do not pre-refresh or Prepare before release.
@@ -57,8 +58,16 @@ namespace NativeWorldTextProbe
             }
             open(); point = option(); frame((int)point.X, (int)point.Y, true); frame((int)point.X, (int)point.Y, false);
             Require(((DeathDisplayPreferences)Get(host, "Settings")).Count == 128, "ordinary actual-shell click still performs exactly the intended quantity change");
+            Call(popup, "Open", false, 2); Wait(() => (bool)Get(host, "QueryReady")); layout(); point = button(10);
+            frame((int)point.X, (int)point.Y, true); frame((int)point.X, (int)point.Y, false);
+            Require((int)Get(popup, "Mode") == 3, "actual shell cause click opens full original");
+            Wait(() => (bool)Get(host, "QueryReady")); layout(); point = button(1);
+            frame((int)point.X, (int)point.Y, true); frame((int)point.X, (int)point.Y, false);
+            Require((int)Get(popup, "Mode") == 2 && (long)Get(popup, "Offset") == 0, "actual shell full-text back keeps page");
             Call(popup, "Close"); Call(host, "SetCount", 512);
             Console.WriteLine("PASS: actual F5 shell death-popup press/release, font identity before release, focus loss and fullscreen transition cancellation.");
         }
+        private static void Wait(Func<bool> ready)
+        { var timer = System.Diagnostics.Stopwatch.StartNew(); while (!ready()) { if (timer.ElapsedMilliseconds > 5000) throw new TimeoutException("death input query unavailable"); System.Threading.Thread.Sleep(5); } }
     }
 }

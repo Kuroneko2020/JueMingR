@@ -21,6 +21,7 @@ namespace Terraria
             Check(failures, "CRLF", Lines);
             Check(failures, "page/full/back and stale row", Navigation);
             Check(failures, "font replacement cancels press", Resources);
+            Check(failures, "compact rows and stored local time", Compact);
             if (failures.Count != 0) throw new Exception(String.Join("\n", failures));
             Console.WriteLine("PASS: death popup physical gestures, short viewport, full-text exit and CRLF.");
         }
@@ -85,6 +86,28 @@ namespace Terraria
         {
             var h = new Owner(); var d = new Driver(h); d.Popup.Open(true, 2); d.Prepare(); d.Press(128);
             d.Font = new object(); d.Prepare(); d.Release(); Require(h.Changes == 0, "same-size replacement font cancels old press");
+        }
+        private static void Compact()
+        {
+            var time = new DateTimeOffset(2026, 9, 15, 21, 18, 32, TimeSpan.FromMinutes(345));
+            var fact = new DeathFact(DeathEventId.Create(time, Guid.NewGuid()), time.Offset, true, 16, 16, "完整原句", "死于飞鱼");
+            Require(DeathHistoryPopup.Stamp(fact) == "2026-09-15 21:18:32", "display retains event offset without printing it");
+            var h = new Owner(); h.Snapshot = new DeathHistorySnapshot(true, 1, 1, 0, 0, new[] { fact }, new DeathMarker[0], null, null, false);
+            var d = new Driver(h); d.Popup.Open(false, 2); d.Prepare(); float shortHeight = d.Popup.Panel.Height;
+            Require(d.Popup.Panel.Width < 760, "list uses a compact width");
+            Require(d.Popup.Buttons[d.Popup.Commands.IndexOf(10)].Text == "死于飞鱼", "default row shows direct cause");
+            foreach (var text in d.Popup.Text) Require(text.Text != "时间" && text.Text != "原因" && text.Text != "点击原因查看全文", "redundant headings and instruction absent");
+            d.Click(10);
+            h.Snapshot = new DeathHistorySnapshot(true, 1, 1, 0, 0, new[] { fact }, new DeathMarker[0], fact, null, false, new DeathReadText(fact.Reason));
+            d.Prepare(); Require(d.Popup.Text.Exists(element => element.Text == "完整原句"), "click shows full original rather than direct cause");
+            d.Click(1); d.Prepare();
+            d.Press(10);
+            h.Snapshot = new DeathHistorySnapshot(true, 6, 2, 0, 0, new[] { fact, Fact(2), Fact(3), Fact(4), Fact(5), Fact(6) }, new DeathMarker[0], null, null, false);
+            d.Prepare(); Require(d.Popup.Panel.Height > shortHeight && d.Popup.Commands.Contains(15), "six normal rows fit and grow from one row");
+            d.Release(); Require(h.SelectionRequest == null, "new window size cancels held same-event row");
+            d.Height = 220; d.Prepare(); Require(d.Popup.Commands.Contains(10) && !d.Popup.Commands.Contains(15), "short viewport shows first rows");
+            d.Wheel(-120); d.Wheel(-120); Require(d.Popup.Commands.Contains(15), "short viewport can reach sixth row");
+            d.Wheel(120); d.Wheel(120); Require(d.Popup.Commands.Contains(10), "short viewport can return to first row");
         }
         internal sealed class Owner : IDeathControls
         {

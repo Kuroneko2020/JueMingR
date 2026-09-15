@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using JueMingR.Features.DeathHistory;
 using JueMingR.Platform.DeathHistory;
 using JueMingR.Platform.Settings;
@@ -18,6 +19,67 @@ namespace JueMingR.ArchitectureTests
             catch (Exception e) { failures.Add("death archive real-file protection: " + e.Message); }
             try { CancelBeforeCommit(); }
             catch (Exception e) { failures.Add("death archive cancellation: " + e.Message); }
+            try { VersionedText(); }
+            catch (Exception e) { failures.Add("death text compatibility: " + e.Message); }
+        }
+        private static void VersionedText()
+        {
+            string original = "原版完整报丧文案\uD800", direct = "死于摔落\uDC00", cause;
+            byte[] bytes = TextPage(2, original, direct);
+            Require(ReadText(bytes, out cause) == original && cause == direct, "independent v2 fixture retains both exact UTF16 fields");
+            Require(ReadText(TextPage(1, original, null), out cause) == original && cause == null, "independent v1 text falls back to original");
+            foreach (byte[] invalid in new[] { TextPage(3, original, direct), TextPage(2, original, " "), TextPage(2, original, new string('x', 1025)), TextPage(2, new string('x', 262145), null), new ArraySegment<byte>(bytes, 0, bytes.Length - 1).ToArray(), new ArraySegment<byte>(bytes, 0, 13).ToArray() })
+            {
+                bool rejected = false; try { ReadText(invalid, out cause); } catch (PreferenceFormatException) { rejected = true; } catch (EndOfStreamException) { rejected = true; }
+                Require(rejected, "future, oversized, blank and truncated text must be rejected");
+            }
+            byte[] trailing = new byte[bytes.Length + 1]; Array.Copy(bytes, trailing, bytes.Length);
+            bool badTail = false; try { ReadText(trailing, out cause); } catch (PreferenceFormatException) { badTail = true; } Require(badTail, "trailing bytes rejected");
+
+            // A complete v1 archive, encoded without the production codec. New
+            // commits may refer to this old immutable text and new v2 text.
+            var files = new MemoryArchive(); var old = Fact(1, 1); string pair = new string('a', 64);
+            string text = files.CreatePage(TextPage(1, old.Reason, null));
+            string header = files.CreatePage(Page(1, 2, writer =>
+            { Literal(writer, old.EventId); Literal(writer, text); Literal(writer, ""); Literal(writer, ""); writer.Write(1L); writer.Write((short)480); writer.Write(true); writer.Write(160f); writer.Write(320f); }));
+            string index = files.CreatePage(Page(1, 3, writer =>
+            { writer.Write(0); writer.Write(1); Literal(writer, old.EventId); Literal(writer, header); writer.Write(1L); }));
+            files.WriteRoot("0", System.Text.Encoding.UTF8.GetBytes("{\"format\":\"JueMingR.Deaths\",\"version\":1,\"pair\":\"" + pair + "\",\"count\":\"1\",\"tree\":\"" + index + "\",\"last\":\"" + header + "\",\"position\":\"" + header + "\"}"));
+            var archive = new DeathArchive(files, pair); archive.Load();
+            Require(archive.Find(old.EventId).DisplayCause == old.Reason, "old archive display uses original");
+            var next = Fact(2, 2); var current = new DeathFact(next.EventId, next.Time.Offset, true, 160, 320, original, direct);
+            archive.Append(new[] { current });
+            var reopened = new DeathArchive(files, pair); reopened.Load(); var restored = reopened.Find(current.EventId);
+            Require(reopened.Count == 2 && restored.Reason == original && restored.DirectCause == direct && restored.DisplayCause == direct, "mixed archive reopens both text versions");
+            Require(Convert.ToBase64String(files.ReadPage(text)) == Convert.ToBase64String(TextPage(1, old.Reason, null)), "old text never rewritten");
+            reopened.Append(new[] { current }); Require(reopened.Count == 2, "same direct-cause replay is idempotent");
+            bool conflict = false;
+            try { reopened.Append(new[] { new DeathFact(current.EventId, current.Time.Offset, true, 160, 320, original, "另一个死因") }); }
+            catch (InvalidOperationException) { conflict = true; }
+            Require(conflict && reopened.IsProtected && reopened.Count == 2, "same event with changed direct cause protects history");
+
+            var maximum = new DeathFact(Fact(3, 3).EventId, TimeSpan.Zero, true, 16, 16, new string('x', 262144), new string('y', 1024));
+            archive.Append(new[] { maximum });
+            Require(archive.Find(maximum.EventId).SameSource(maximum), "combined maximum fields fit one bounded page");
+            byte[] futureIndex = (byte[])files.Pages[index].Clone(); futureIndex[4] = 2;
+            var codec = typeof(DeathArchive).Assembly.GetType("JueMingR.Features.DeathHistory.DeathArchiveCodec", true);
+            bool strict = false;
+            try { codec.GetMethod("Reader", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic, null, new[] { typeof(byte[]), typeof(int) }, null).Invoke(null, new object[] { futureIndex, 3 }); }
+            catch (System.Reflection.TargetInvocationException e) { strict = e.InnerException is PreferenceFormatException; }
+            Require(strict, "index version 2 remains unsupported");
+        }
+        private static byte[] TextPage(int version, string original, string direct)
+        { return Page(version, 1, writer => { writer.Write(original != null); if (original != null) Literal(writer, original); if (version >= 2) { writer.Write(direct != null); if (direct != null) Literal(writer, direct); } }); }
+        private static byte[] Page(int version, int kind, Action<BinaryWriter> body)
+        { using (var stream = new MemoryStream()) using (var writer = new BinaryWriter(stream)) { writer.Write(0x4A524448); writer.Write(version); writer.Write(kind); body(writer); writer.Flush(); return stream.ToArray(); } }
+        private static void Literal(BinaryWriter writer, string text)
+        { writer.Write(text.Length); foreach (char c in text) writer.Write((ushort)c); }
+        private static string ReadText(byte[] bytes, out string cause)
+        {
+            var codec = typeof(DeathArchive).Assembly.GetType("JueMingR.Features.DeathHistory.DeathArchiveCodec", true);
+            object[] arguments = { bytes, null }; cause = null;
+            try { string text = (string)codec.GetMethod("Text", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic, null, new[] { typeof(byte[]), typeof(string).MakeByRefType() }, null).Invoke(null, arguments); cause = (string)arguments[1]; return text; }
+            catch (System.Reflection.TargetInvocationException e) { throw e.InnerException; }
         }
         // Catches counting a replay twice, coordinate dedup, and using UTC for
         // the map's recent ordering. These literal expectations precede code.
