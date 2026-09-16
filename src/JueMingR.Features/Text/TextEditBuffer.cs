@@ -8,8 +8,11 @@ namespace JueMingR.Features.Text
         private int[] boundaries;
         private readonly int maximumElements, maximumUnits;
         private readonly string elementLimitMessage;
+        private readonly Func<string, bool> validateCandidate;
         public TextEditBuffer(string text, bool singleLine, int maximumElements, int maximumUnits, string elementLimitMessage)
             : this(text, singleLine, TextElements.Boundaries(text), maximumElements, maximumUnits, elementLimitMessage) { }
+        public TextEditBuffer(string text, bool singleLine, int maximumElements, int maximumUnits, string elementLimitMessage, Func<string, bool> validateCandidate)
+            : this(text, singleLine, maximumElements, maximumUnits, elementLimitMessage) { this.validateCandidate = validateCandidate; }
         protected TextEditBuffer(string text, bool singleLine, IReadOnlyList<int> index, int maximumElements, int maximumUnits, string elementLimitMessage)
         {
             SingleLine = singleLine; Text = Baseline = text; this.maximumElements = maximumElements; this.maximumUnits = maximumUnits; this.elementLimitMessage = elementLimitMessage;
@@ -47,6 +50,10 @@ namespace JueMingR.Features.Text
             try { nextBoundaries = Rebuild(next, from, to, text.Length - (to - from)); }
             catch (ArgumentException) { Error = "字符组合过长，未添加到草稿。"; return false; }
             if (SingleLine && nextBoundaries.Length - 1 > maximumElements)
+            { Error = elementLimitMessage; return false; }
+            // Domain limits participate before the edit transaction commits, so
+            // rejected pastes/IME commits preserve both selection and the draft.
+            if (validateCandidate != null && !validateCandidate(next))
             { Error = elementLimitMessage; return false; }
             Change(next, nextBoundaries, from + text.Length, from); return true;
         }

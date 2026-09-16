@@ -3,6 +3,7 @@ using System.IO;
 using System.Reflection;
 using System.Threading;
 using JueMingR.Features.MapMarkers;
+using JueMingR.Features.Exploration;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Terraria;
@@ -40,10 +41,42 @@ namespace NativeWorldTextProbe
                 int[] icons = { 8, 48, 50, 224, 171, 393, 966, 29 };
                 for (int i = 0; i < 11; i++) { long op = library.Create(new MarkerRecord((i + 1).ToString("x32"), 200 + i * 40.125, 200.375, icons[i % 8], i == 0 ? "营地家的第一处标记点" : "标记" + i)); Until(() => { library.Poll(); return library.LastOperation == op; }); }
                 layout(960, 640); graphics.Image(Path.Combine(output, "map-management.png"), () => Call(renderer, "DrawMapPopup", popup), Matrix.Identity);
+                Require(((System.Collections.ICollection)Get(popup, "Icons")).Count == 10, "normal full page displays all ten markers");
+                Call(popup, "Execute", 2, null, 0f, 0f); layout(960, 640);
+                graphics.Image(Path.Combine(output, "map-second-page.png"), () => Call(renderer, "DrawMapPopup", popup), Matrix.Identity);
+                Call(popup, "Execute", 1, null, 0f, 0f); layout(960, 640);
                 var workspace = (MarkerWorkspace)Get(host, "Workspace"); workspace.Poll(); workspace.BeginEdit(library.Saved.Records[0].Id); layout(960, 640);
                 graphics.Image(Path.Combine(output, "map-name-edit.png"), () => Call(renderer, "DrawMapPopup", popup), Matrix.Identity); workspace.CancelEdit();
-                layout(640, 220); graphics.Image(Path.Combine(output, "map-management-small.png"), () => Call(renderer, "DrawMapPopup", popup), Matrix.Identity);
+                layout(640, 220); graphics.Image(Path.Combine(output, "map-management-small.png"), () => Call(renderer, "DrawMapPopup", popup), Matrix.Identity, 640, 220);
+                Set(popup, "scroll", 10); Set(popup, "dirty", true); layout(640, 220);
+                graphics.Image(Path.Combine(output, "map-management-small-tail.png"), () => Call(renderer, "DrawMapPopup", popup), Matrix.Identity, 640, 220);
                 Call(popup, "Open", true); layout(960, 640); graphics.Image(Path.Combine(output, "exploration-controls.png"), () => Call(renderer, "DrawMapPopup", popup), Matrix.Identity);
+                Set(popup, "Hovered", ((System.Collections.Generic.List<int>)Get(popup, "Commands")).IndexOf(24)); layout(960, 640);
+                graphics.Image(Path.Combine(output, "exploration-dynamic-help.png"), () => Call(renderer, "DrawMapPopup", popup), Matrix.Identity);
+                Set(popup, "Hovered", -1); layout(960, 640);
+                long now = 1000; Set(host, "milliseconds", (Func<long>)(() => now));
+                Action update = () => { now += 334; Call(context, "UpdateRuntime"); };
+                // These previews own only a map, not a populated live Tile world.
+                // SetTile is the real map store; UpdateLighting may invoke native
+                // UpdateType and clear a cell whose world Tile is absent.
+                var lit = new MapTile { Light = 255 };
+                for (int x = 100; x < 520; x++) for (int y = 100; y < 860; y++) Main.Map.SetTile(x, y, ref lit);
+                Call(host, "Recount");
+                Call(host, "PauseScan", true); update(); layout(960, 640);
+                graphics.Image(Path.Combine(output, "exploration-paused.png"), () => Call(renderer, "DrawMapPopup", popup), Matrix.Identity);
+                Call(host, "PauseScan", false); Set(host, "FastScan", true);
+                Until(() => { update(); return !((ExplorationCounter)Get(host, "Counter")).Scanning; }); layout(960, 640);
+                Require((string)Get(host, "ExplorationText") == "已揭示 6.33%" && (string)Get(host, "ScanText") == "上次结果", "actual completed count exposes ratio and honest historical context without a completion notice: " + Get(host, "ExplorationText") + " / " + Get(host, "ScanText"));
+                graphics.Image(Path.Combine(output, "exploration-complete.png"), () => Call(renderer, "DrawMapPopup", popup), Matrix.Identity);
+                Call(host, "SetDynamic", true); Until(() => { update(); return ((ExplorationCounter)Get(host, "Counter")).Current; });
+                for (int x = 640; x < 1920; x += 64) Main.Map.SetTile(x, 960, ref lit);
+                update(); Require(((ExplorationCounter)Get(host, "Counter")).Pending, "actual changed blocks still awaiting the bounded dynamic budget"); layout(960, 640);
+                graphics.Image(Path.Combine(output, "exploration-updating.png"), () => Call(renderer, "DrawMapPopup", popup), Matrix.Identity);
+                Until(() => { update(); return ((ExplorationCounter)Get(host, "Counter")).Current; }); layout(960, 640);
+                graphics.Image(Path.Combine(output, "exploration-current.png"), () => Call(renderer, "DrawMapPopup", popup), Matrix.Identity);
+                Call(popup, "Suspend"); var state = Get(shell, "State"); Set(state, "Ready", true); Call(state, "Navigate", 2); Call(state, "RestoreVisible");
+                Call(renderer, "Prepare", state, 960f, 640f, 1f); Call(renderer, "PrepareMapValue");
+                graphics.Image(Path.Combine(output, "map-f5-page.png"), () => Call(renderer, "Draw", state, Matrix.Identity, false, false), Matrix.Identity);
                 Call(popup, "Suspend"); Call(host, "SetMarkers", true); Main.mapFullscreen = true;
                 var layer = Get(host, "Layer"); var frameType = assembly.GetType("JueMingR.TerrariaHost.Map.MapView");
                 object frame = Activator.CreateInstance(frameType, Flags, null, new object[] { Vector2.Zero, Vector2.Zero, 1f, 1f, 255 }, null);

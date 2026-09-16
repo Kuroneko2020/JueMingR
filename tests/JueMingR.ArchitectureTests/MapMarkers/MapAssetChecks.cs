@@ -19,7 +19,16 @@ namespace JueMingR.ArchitectureTests
             Reject(() => new MarkerRecord(Guid.NewGuid().ToString("N"), Double.NaN, 1, 8, "x"), "NaN", failures);
             Reject(() => new MarkerDocument(pair, 4200, 1200, 0, new[] { new MarkerRecord(Guid.NewGuid().ToString("N"), 4200, 1, 8, "x") }), "outside world", failures);
             Reject(() => new MarkerRecord(Guid.NewGuid().ToString("N"), 1, 1, 9, "x"), "unknown icon", failures);
-            Reject(() => new MarkerRecord(Guid.NewGuid().ToString("N"), 1, 1, 8, "12345678901"), "eleventh element", failures);
+            Require(MarkerName.IsValid("abcdefghijklmnopqrst"), "Twenty half-width letters fit the owner's name limit.", failures);
+            Require(MarkerName.IsValid("一二三四五六七八九十"), "Ten Chinese characters fit the same limit.", failures);
+            Require(MarkerName.IsValid("一二三四五abcdefghiJ"), "Mixed names use the shared twenty-unit budget.", failures);
+            Require(MarkerName.IsValid("👩‍👩‍👦一二三四五六七八九"), "A complete emoji cluster consumes two units without splitting.", failures);
+            Require(MarkerName.IsValid(String.Concat(System.Linq.Enumerable.Repeat("1️⃣", 10))), "Ten keycap clusters fit the full-width budget.", failures);
+            Require(!MarkerName.IsValid(String.Concat(System.Linq.Enumerable.Repeat("1️⃣", 11))), "Keycap emoji with an ASCII base still costs two units.", failures);
+            Require(!MarkerName.IsValid(String.Concat(System.Linq.Enumerable.Repeat("e\u0301", 11))), "Non-ASCII composed clusters share the whole-element budget.", failures);
+            Reject(() => new MarkerRecord(Guid.NewGuid().ToString("N"), 1, 1, 8, "abcdefghijklmnopqrstu"), "twenty-first half-width letter", failures);
+            Reject(() => new MarkerRecord(Guid.NewGuid().ToString("N"), 1, 1, 8, "一二三四五六七八九十一"), "eleventh Chinese character", failures);
+            Reject(() => new MarkerRecord(Guid.NewGuid().ToString("N"), 1, 1, 8, "一二三四五abcdefghijk"), "mixed overflow", failures);
             Reject(() => MarkerCodec.Decode(Encoding.UTF8.GetBytes(Encoding.UTF8.GetString(MarkerCodec.Encode(doc)).Replace("\"version\":1", "\"version\":2")), pair, 4200, 1200), "future schema", failures);
             Require(MarkerName.Normalize("", new DateTime(2026, 9, 16, 21, 32, 0)) == "2609162132", "Default uses local wall time without timezone conversion.", failures);
             var many = new List<MarkerRecord>(); for (int i = 0; i < 121; i++) many.Add(new MarkerRecord(i.ToString("x32"), i + .25, 1.5, 8, "同名"));

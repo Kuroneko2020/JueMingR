@@ -38,10 +38,13 @@ namespace JueMingR.TerrariaHost.F5
             var rows = new F5RowLayout(elements, measure);
             rows.Row(ref y, 0, 522, "地图标记", new[] { "管理", "开启", "关闭", "键" }, text => text == "管理" ? F5Command.MarkerManage : text == "开启" ? F5Command.MarkerEnable : text == "关闭" ? F5Command.MarkerDisable : F5Command.None, markers);
             var key = elements[elements.Count - 1]; elements[elements.Count - 1] = new F5Element(key.Kind, key.Rect, key.Text, key.TextSize, key.TextScale, F5Command.None, ActionId);
+            int start = elements.Count;
             rows.Row(ref y, 0, 522, "揭示区域统计", new[] { "详情" }, _ => F5Command.ExplorationDetails, exploration);
-            // Reserved fixed-height dynamic line: values never enter TextSize's
-            // permanent cache or invalidate a held management/details action.
-            elements.Add(new F5Element(F5ElementKind.Text, new F5Rect(0, y, 522, 30), "", default(F5Size), .70f, F5Command.ExplorationValue)); y += 36;
+            // The changing summary shares the feature row but never enters the
+            // permanent text cache or invalidates a held details action.
+            var label = elements[start + 1]; var action = elements[elements.Count - 1]; var panel = elements[start];
+            float left = label.Rect.Right + 16;
+            elements.Add(new F5Element(F5ElementKind.Text, new F5Rect(left, panel.Rect.Y, action.Rect.X - left - 12, panel.Rect.Height), "", default(F5Size), .70f, F5Command.ExplorationValue));
         }
         internal static bool Owns(F5Command command) { return command >= F5Command.MarkerManage && command <= F5Command.ExplorationValue; }
         internal bool Available(F5Command command) { return host.ControlsEnabled && command != F5Command.ExplorationValue; }

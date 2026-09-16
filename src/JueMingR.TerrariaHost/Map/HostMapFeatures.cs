@@ -71,7 +71,7 @@ namespace JueMingR.TerrariaHost.Map
                 if (scanState != formattedState || scanProgress != formattedProgress)
                 {
                     formattedState = scanState; formattedProgress = scanProgress;
-                    scanText = scanState == 0 ? "等待地图就绪" : scanState == 1 ? "等待地图载入" : scanState == 2 || scanState == 3 ? (scanState == 3 ? "已暂停 " : "完整扫描 ") + (scanProgress / 10d).ToString("0.0", CultureInfo.InvariantCulture) + "%" : scanState == 4 ? "正在更新变化区域" : "完整扫描已结束";
+                    scanText = scanState == 0 ? "等待地图就绪" : scanState == 1 ? "等待地图载入" : scanState == 2 || scanState == 3 ? "已扫描：" + (scanProgress / 100d).ToString("0.00", CultureInfo.InvariantCulture) + "%" : scanState == 4 ? "更新中…" : scanState == 5 ? "上次结果" : "";
 #if DEBUG
                     FormattedDetails++;
 #endif
@@ -165,13 +165,13 @@ namespace JueMingR.TerrariaHost.Map
             if (status != shownStatus || percent != shownPercent)
             {
                 shownStatus = status; shownPercent = percent;
-                ExplorationText = status == 3 ? "统计中…" : (status == 0 ? "当前揭示 " : status == 1 ? "更新中 " : "上次统计 ") + (percent / 100d).ToString("0.00", CultureInfo.InvariantCulture) + "%";
+                ExplorationText = status == 3 ? "统计中…" : "已揭示 " + (percent / 100d).ToString("0.00", CultureInfo.InvariantCulture) + "%";
 #if DEBUG
                 FormattedValues++;
 #endif
             }
-            scanState = value.Scanning ? (paused ? 3 : 2) : value.Pending ? 4 : 5;
-            scanProgress = (int)Math.Round(1000d * value.CompletedBlocks / value.BlockCount);
+            scanState = value.Scanning ? (paused ? 3 : 2) : value.Pending ? 4 : value.Current ? 6 : 5;
+            scanProgress = (int)Math.Round(10000d * value.CompletedBlocks / value.BlockCount);
         }
         public bool Locate(string id)
         {

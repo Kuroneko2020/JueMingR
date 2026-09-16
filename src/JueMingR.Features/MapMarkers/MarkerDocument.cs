@@ -7,11 +7,22 @@ namespace JueMingR.Features.MapMarkers
 {
     public static class MarkerName
     {
-        public const int MaximumElements = 10;
+        public const int MaximumElements = 20;
+        public const string LimitMessage = "名称最多 10 个汉字或 20 个英文字母，混合输入按相同长度计算。";
         public static bool IsValid(string value)
         {
             if (String.IsNullOrEmpty(value) || value.Length > MaximumElements * VisibleTextBoundary.MaximumElementUnits || value.IndexOfAny(new[] { '\r', '\n', '\t' }) >= 0) return false;
-            try { return TextElements.Boundaries(value).Length - 1 <= MaximumElements; } catch (ArgumentException) { return false; }
+            try
+            {
+                // Count complete visible elements, never UTF-16 units. ASCII
+                // letters/digits/punctuation use half the Chinese-name budget;
+                // all other clusters (including emoji) retain whole boundaries.
+                int units = 0; var boundaries = TextElements.Boundaries(value);
+                for (int i = 0; i < boundaries.Length - 1; i++)
+                    units += boundaries[i + 1] - boundaries[i] == 1 && value[boundaries[i]] <= 0x7f ? 1 : 2;
+                return units <= MaximumElements;
+            }
+            catch (ArgumentException) { return false; }
         }
         public static string Normalize(string value, DateTime localTime)
         { value = (value ?? "").Trim(); if (value.Length == 0) value = localTime.ToString("yyMMddHHmm", CultureInfo.InvariantCulture); if (!IsValid(value)) throw new ArgumentException("marker-name-invalid"); return value; }

@@ -23,7 +23,7 @@ namespace JueMingR.Features.MapMarkers
             if (!library.CanEdit || Editor != null) return false;
             var record = Find(id); if (record == null) return false;
             generation = library.Generation; EditingId = id;
-            Editor = new TextEditBuffer(record.Name, true, 10, 10 * VisibleTextBoundary.MaximumElementUnits, "名称最多 10 个完整字符。 ");
+            Editor = new TextEditBuffer(record.Name, true, MarkerName.MaximumElements, MarkerName.MaximumElements * VisibleTextBoundary.MaximumElementUnits, MarkerName.LimitMessage, MarkerName.IsValid);
             Editor.SelectAll(); DeleteConfirmation = null; Error = null; return true;
         }
         public MarkerRecord Find(string id)
@@ -34,7 +34,7 @@ namespace JueMingR.Features.MapMarkers
             if (Editor != null && Editor.Dirty)
             {
                 string name;
-                try { name = MarkerName.Normalize(Editor.Text, DateTime.Now); } catch (ArgumentException) { Error = "名称最多 10 个完整字符。"; return false; }
+                try { name = MarkerName.Normalize(Editor.Text, DateTime.Now); } catch (ArgumentException) { Error = MarkerName.LimitMessage; return false; }
                 var record = Find(EditingId); if (record == null) { Error = "标记已不可用，草稿已保留。"; return false; }
                 if (name != record.Name)
                 {
