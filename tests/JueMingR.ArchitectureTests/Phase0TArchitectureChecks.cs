@@ -12,6 +12,10 @@ namespace JueMingR.ArchitectureTests
             Assembly features = Assembly.Load("JueMingR.Features");
             var expected = new HashSet<string>(StringComparer.Ordinal)
             {
+                "JueMingR.Features.Footprints.FootprintArchive", "JueMingR.Features.Footprints.FootprintRecorder",
+                "JueMingR.Features.Footprints.FootprintPlayback", "JueMingR.Features.Footprints.FootprintClearConfirmation",
+                "JueMingR.Features.Footprints.FootprintStore", "JueMingR.Features.Footprints.FootprintStoreState",
+                "JueMingR.Features.Footprints.FootprintPreferences", "JueMingR.Features.Footprints.FootprintPreferenceCodec",
                 "JueMingR.Features.DeathHistory.DeathArchive", "JueMingR.Features.DeathHistory.DeathHistory",
                 "JueMingR.Features.DeathHistory.DeathDisplayPreferences", "JueMingR.Features.DeathHistory.DeathDisplayCodec",
                 "JueMingR.Features.WorldTime.WorldTimeHistory",

@@ -12,6 +12,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\Footprints\FootprintCoreChecks.cs" Link="Footprints\FootprintCoreChecks.cs" />
+    <Compile Include="..\Footprints\FootprintFileChecks.cs" Link="Footprints\FootprintFileChecks.cs" />
+    <Compile Include="..\Footprints\FootprintWorkerChecks.cs" Link="Footprints\FootprintWorkerChecks.cs" />
     <Compile Include="..\DeathHistory\DeathArchiveChecks.cs" Link="DeathHistory\DeathArchiveChecks.cs" />
     <Compile Include="..\DeathHistory\DeathHistoryWorkerChecks.cs" Link="DeathHistory\DeathHistoryWorkerChecks.cs" />
     <Compile Include="..\DeathHistory\WorldTimeChecks.cs" Link="DeathHistory\WorldTimeChecks.cs" />

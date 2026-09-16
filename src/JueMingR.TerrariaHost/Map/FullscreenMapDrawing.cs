@@ -48,6 +48,7 @@ namespace JueMingR.TerrariaHost.Map
         private readonly List<MethodInfo> patched = new List<MethodInfo>();
         private int references, depth;
         internal event Action Begin;
+        internal event Action<MapView> Routes;
         internal event Action<MapView> Icons;
         internal event Action<MapView> Overlay;
         internal event Action<MapView> Completed;
@@ -92,7 +93,7 @@ namespace JueMingR.TerrariaHost.Map
             var owner = current;
             if (owner == null || !owner.Ready || owner.depth != 1 || !__runOriginal || !Main.mapFullscreen || Main.gameMenu || Main.hideUI || Main.dedServ || !ReferenceEquals(__instance, Main.MapIcons)) return;
             var frame = new MapView(mapPosition, mapOffset, mapScale, drawScale, alpha); if (!frame.Valid) return;
-            owner.Frame = frame; owner.Icons?.Invoke(frame); if (frame.HoverOwner != null) text = "";
+            owner.Frame = frame; owner.Routes?.Invoke(frame); owner.Icons?.Invoke(frame); if (frame.HoverOwner != null) text = "";
         }
         private void Post(Vector2 ignoredPosition, float ignoredScale) { if (depth == 1 && Frame != null) Overlay?.Invoke(Frame); }
         public void Dispose()

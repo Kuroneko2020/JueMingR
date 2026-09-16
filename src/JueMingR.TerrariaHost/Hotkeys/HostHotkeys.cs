@@ -14,7 +14,7 @@ namespace JueMingR.TerrariaHost.Hotkeys
         internal readonly HotkeyRegistry Registry = new HotkeyRegistry();
         internal readonly HotkeyBindings Bindings;
         internal HostHotkeys(string gameDirectory, Phase0TBiomeRuntime biome, HostPreferences preferences, HostItems items, EntityLabels.HostEntityLabels labels = null, WorldTargets.HostWorldTargets targets = null, WorldObjectText.HostWorldObjectText worldObjects = null,
-            Information.HostInformation information = null, Func<bool> canAdjustInformation = null, Action adjustInformation = null, Guidance.HostGuidance guidance = null, F5.IDeathControls deaths = null, F5.IMapControls maps = null)
+            Information.HostInformation information = null, Func<bool> canAdjustInformation = null, Action adjustInformation = null, Guidance.HostGuidance guidance = null, F5.IDeathControls deaths = null, F5.IMapControls maps = null, F5.IFootprintControls footprints = null)
         {
             Registry.Register(new HotkeyAction(HotkeyActionIds.Biome, "群系显示", HotkeyContext.Gameplay,
                 () => preferences.BiomeLoaded && !biome.FeatureFailed && biome.CanObserveLocalPlayer,
@@ -69,6 +69,7 @@ namespace JueMingR.TerrariaHost.Hotkeys
             if (deaths != null) Registry.Register(new HotkeyAction(F5.DeathControls.ActionId, "死亡点常驻", HotkeyContext.Gameplay,
                 () => deaths.ControlsEnabled, () => deaths.SetEnabled(!deaths.Settings.Enabled)));
             if (maps != null) Registry.Register(new HotkeyAction(F5.MapControls.ActionId, "地图标记", HotkeyContext.Gameplay, () => maps.ControlsEnabled, () => maps.SetMarkers(!maps.MarkersEnabled)));
+            if (footprints != null) Registry.Register(new HotkeyAction(F5.FootprintControls.ActionId, "足迹", HotkeyContext.Gameplay, () => footprints.ControlsEnabled, () => footprints.SetDisplay(!footprints.Display)));
             Bindings = new HotkeyBindings(Registry, new AtomicFileDocument(Path.Combine(gameDirectory, "JueMingRData", "config", "hotkeys.json"), 65536, true));
             AppDomain.CurrentDomain.ProcessExit += OnExit;
         }

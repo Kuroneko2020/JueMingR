@@ -533,6 +533,7 @@ function Read-Phase0SPackage {
         ('direction-equipment-' + [string] $manifest.sourceCommit),
         ('death-history-' + [string] $manifest.sourceCommit)
         ('map-markers-exploration-' + [string] $manifest.sourceCommit)
+        ('footprints-' + [string] $manifest.sourceCommit)
     )
     if ([string] $manifest.sourceCommit -notmatch '^[0-9a-f]{40}$' -or
         $allowedPackageIds -cnotcontains [string] $manifest.packageId) {

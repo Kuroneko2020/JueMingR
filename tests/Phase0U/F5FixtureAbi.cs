@@ -209,6 +209,17 @@ namespace Terraria.GameInput
     {
         public static TriggersPack Triggers = new TriggersPack();
         public static MouseState MouseInfo;
+        public static List<string> MouseKeys = new List<string>();
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void MouseInput()
+        {
+            bool permitted = FocusHelper.AllowInputProcessing; MouseKeys.Clear();
+            MouseInfo = new MouseState(Main.SampleX, Main.SampleY, ScrollWheelValue,
+                permitted && Main.SampleLeft ? ButtonState.Pressed : ButtonState.Released, permitted && Main.SampleMiddle ? ButtonState.Pressed : ButtonState.Released,
+                permitted && Main.SampleRight ? ButtonState.Pressed : ButtonState.Released, permitted && Main.SampleX1 ? ButtonState.Pressed : ButtonState.Released, permitted && Main.SampleX2 ? ButtonState.Pressed : ButtonState.Released);
+            if (!permitted) return;
+            if (Main.SampleLeft) MouseKeys.Add("Mouse1"); if (Main.SampleRight) MouseKeys.Add("Mouse2"); if (Main.SampleMiddle) MouseKeys.Add("Mouse3"); if (Main.SampleX1) MouseKeys.Add("Mouse4"); if (Main.SampleX2) MouseKeys.Add("Mouse5");
+        }
         public static int MouseX, MouseY;
         public static Vector2 RawMouseScale = Vector2.One;
         public static int ScrollWheelValue, ScrollWheelValueOld, ScrollWheelDelta, ScrollWheelDeltaForUI;
@@ -219,11 +230,12 @@ namespace Terraria.GameInput
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void UpdateInput()
         {
+            MouseInput();
             foreach (string key in new List<string>(Triggers.Current.KeyStatus.Keys))
             { Triggers.Old.KeyStatus[key] = Triggers.Current.KeyStatus[key]; Triggers.Current.KeyStatus[key] = false; }
             bool permitted = FocusHelper.AllowInputProcessing;
-            Triggers.Current.MouseLeft = permitted && Main.SampleLeft;
-            Triggers.Current.MouseRight = permitted && Main.SampleRight;
+            Triggers.Current.MouseLeft = permitted && MouseKeys.Contains("Mouse1");
+            Triggers.Current.MouseRight = permitted && MouseKeys.Contains("Mouse2");
             Triggers.Current.MapFull = permitted && Main.SampleMap;
             Triggers.Current.ToggleCameraMode = permitted && Main.SampleCapture;
             Triggers.Current.KeyStatus["ViewZoomIn"] = !WritingText && Main.keyState.IsKeyDown(Keys.Z);
@@ -236,7 +248,7 @@ namespace Terraria.GameInput
                 foreach (string token in entry.Value)
                 {
                     Keys key;
-                    bool physical = token == "Mouse1" ? Main.SampleLeft : token == "Mouse2" ? Main.SampleRight : token == "Mouse3" ? Main.SampleMiddle : token == "Mouse4" ? Main.SampleX1 : token == "Mouse5" ? Main.SampleX2 : !WritingText && Enum.TryParse(token, out key) && Main.keyState.IsKeyDown(key);
+                    bool physical = token.StartsWith("Mouse", StringComparison.Ordinal) ? MouseKeys.Contains(token) : !WritingText && Enum.TryParse(token, out key) && Main.keyState.IsKeyDown(key);
                     if (permitted && physical) Triggers.Current.KeyStatus[entry.Key] = true;
                 }
             }
