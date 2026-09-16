@@ -11,11 +11,12 @@ namespace JueMingR.TerrariaHost.Input
         {
             return new[] { Exact(target, "Terraria.FocusHelper", "get_AllowInputProcessing", typeof(bool)),
                 Exact(target, "Terraria.GameInput.PlayerInput", "UpdateInput", typeof(void)),
-                Exact(target, "Terraria.Main", "GetInputText", typeof(string), typeof(string), typeof(bool)) };
+                Exact(target, "Terraria.Main", "GetInputText", typeof(string), typeof(string), typeof(bool)),
+                Exact(target, "Terraria.GameInput.PlayerInput", "MouseInput", typeof(void)) };
         }
         private static MethodInfo Exact(Assembly target, string type, string name, Type result, params Type[] parameters)
         {
-            MethodInfo method = target.GetType(type, true).GetMethod(name, BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly,
+            MethodInfo method = target.GetType(type, true).GetMethod(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.DeclaredOnly,
                 null, parameters, null);
             if (method == null || method.ReturnType != result || method.IsGenericMethod || method.GetMethodBody() == null)
                 throw new MissingMethodException("host-input-abi:" + type + "." + name);
@@ -24,7 +25,7 @@ namespace JueMingR.TerrariaHost.Input
         internal static void Install(Harmony harmony, MethodInfo[] targets, HostInputState input)
         {
             state = input;
-            string[] names = { "PermissionPostfix", "MappingPostfix", "TextPrefix" };
+            string[] names = { "PermissionPostfix", "MappingPostfix", "TextPrefix", "MousePostfix" };
             for (int i = 0; i < targets.Length; i++)
             {
                 MethodInfo patch = typeof(HostInputHooks).GetMethod(names[i], BindingFlags.NonPublic | BindingFlags.Static);
@@ -40,6 +41,7 @@ namespace JueMingR.TerrariaHost.Input
         }
         private static void PermissionPostfix(ref bool __result) { if (state != null) __result = state.RestrictNativePermission(__result); }
         private static void MappingPostfix() { if (state != null) state.AfterMapping(); }
+        private static void MousePostfix(System.Collections.Generic.List<string> ___MouseKeys) { if (state != null) state.AfterNativeMouse(___MouseKeys); }
         private static bool TextPrefix(string oldString, ref string __result)
         {
             // .8 chat/menu/sign consumers call after DoUpdate_HandleInput's

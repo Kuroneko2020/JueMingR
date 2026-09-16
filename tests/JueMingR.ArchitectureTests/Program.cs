@@ -10,6 +10,12 @@ namespace JueMingR.ArchitectureTests
         {
             try
             {
+                if (args.Length == 1 && args[0] == "--footprints")
+                {
+                    var checks = new List<string>(); FootprintCoreChecks.Check(checks); FootprintFileChecks.Check(checks); FootprintWorkerChecks.Check(checks);
+                    foreach (string failure in checks) Console.Error.WriteLine(failure);
+                    Console.WriteLine("Footprint checks: failures=" + checks.Count); return checks.Count == 0 ? 0 : 1;
+                }
                 if (args.Length == 1 && args[0] == "--map-markers-exploration")
                 {
                     var checks = new List<string>(); MapAssetChecks.Check(checks); ExplorationChecks.Check(checks); MapPersistenceChecks.Check(checks);
@@ -55,6 +61,9 @@ namespace JueMingR.ArchitectureTests
                 RepositoryModel model = RepositoryModel.Load(repositoryRoot);
                 var failures = new List<string>();
                 ArchitectureChecks.Check(model, failures);
+                FootprintCoreChecks.Check(failures);
+                FootprintFileChecks.Check(failures);
+                FootprintWorkerChecks.Check(failures);
                 MapAssetChecks.Check(failures);
                 ExplorationChecks.Check(failures);
                 MapPersistenceChecks.Check(failures);

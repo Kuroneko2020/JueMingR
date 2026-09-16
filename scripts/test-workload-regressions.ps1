@@ -50,6 +50,11 @@ if ($route.groups -contains 'death-host') {
     Invoke-WorkloadCheck 'death-popup-input-layout' $fixture @('death-popup')
 }
 $modes = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
+if ($route.groups -contains 'footprints-host') {
+    Invoke-WorkloadCheck 'footprints-storage-worker' $architecture @('--footprints')
+    Invoke-WorkloadCheck 'footprints-native-execution' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'footprints-cpu'), 'FootprintsCpu')
+    Invoke-WorkloadCheck 'footprints-popup-input-layout' $fixture @('footprints-popup')
+}
 if ($route.groups -contains 'map-host') {
     Invoke-WorkloadCheck 'map-assets-exploration-storage' $architecture @('--map-markers-exploration')
     Invoke-WorkloadCheck 'map-native-execution' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'map-cpu'), 'ExplorationCpu')

@@ -30,6 +30,21 @@ namespace JueMingR.TerrariaHost.F5
         internal GuidanceControls GuidanceControls { get; set; }
         internal DeathControls DeathControls { get; set; }
         internal MapControls MapControls { get; set; }
+        internal FootprintControls FootprintControls { get; set; }
+        internal void DrawFootprintPopup(FootprintPopup popup)
+        {
+            if (!popup.Visible) return; var batch = Main.spriteBatch;
+            Panel(batch, popup.Panel, background, Color.White, true);
+            Panel(batch, popup.RecordingPanel.Offset(popup.Panel.X, popup.Panel.Y), row, new Color(175, 185, 215), true);
+            Panel(batch, popup.ClearPanel.Offset(popup.Panel.X, popup.Panel.Y), row, new Color(190, 145, 150), true);
+            for (int i = 0; i < popup.Text.Count; i++) { var line = popup.Text[i]; Text(batch, line.Text, new Vector2(popup.Panel.X + line.Rect.X, popup.Panel.Y + line.Rect.Y), line.TextScale, popup.TextColors[i], line.TextSize); }
+            for (int i = 0; i < popup.Buttons.Count; i++)
+            {
+                int command = popup.Commands[i]; Color? selected = command == 1 ? (popup.RecordingSelected ? Color.LightGreen : Color.LightGray) : command == 2 || command == 4 ? (Color?)new Color(255, 145, 130) : null;
+                F5ControlRenderer.Button(batch, pixel, button, font, popup.Buttons[i], popup.Hovered == command, popup.Enabled[i], selected, popup.Panel.X, popup.Panel.Y, true, popup.Pressed == command);
+            }
+            popup.Presented();
+        }
         private readonly Map.MarkerIcons markerIcons = new Map.MarkerIcons();
         private string mapValue;
         private object mapValueFont;
@@ -221,11 +236,11 @@ namespace JueMingR.TerrariaHost.F5
                         bool legacyBiome = element.Command == F5Command.EnableBiome || element.Command == F5Command.DisableBiome;
                         bool guidance = F5.GuidanceControls.Owns(element.Command);
                         bool enabled = entity ? EntityControls != null && EntityControls.Available(element.Command) : world ? WorldControls != null && WorldControls.Available(element.Command) : objects ? ObjectControls != null && ObjectControls.Available(element.Command) :
-                            information ? legacyBiome ? !biomeFailed : InformationControls != null && InformationControls.Available(element.Command) : guidance ? GuidanceControls != null && GuidanceControls.Available(element.Command) : F5.MapControls.Owns(element.Command) ? MapControls != null && MapControls.Available(element.Command) : DeathControls != null && DeathControls.Available(element.Command);
+                            information ? legacyBiome ? !biomeFailed : InformationControls != null && InformationControls.Available(element.Command) : guidance ? GuidanceControls != null && GuidanceControls.Available(element.Command) : F5.FootprintControls.Owns(element.Command) ? FootprintControls != null && FootprintControls.Available(element.Command) : F5.MapControls.Owns(element.Command) ? MapControls != null && MapControls.Available(element.Command) : DeathControls != null && DeathControls.Available(element.Command);
                         bool hovered = !state.PointerBlocked && rect.Contains(state.PointerX, state.PointerY) && view.Contains(state.PointerX, state.PointerY);
                         F5ControlRenderer.Button(batch, pixel, button, font, element, hovered, enabled,
                             entity ? EntityControls?.Selected(element.Command) : world ? WorldControls?.Selected(element.Command) : objects ? ObjectControls?.Selected(element.Command) :
-                            information && !legacyBiome ? InformationControls?.Selected(element.Command) : guidance ? GuidanceControls?.Selected(element.Command) : F5.MapControls.Owns(element.Command) ? MapControls?.Selected(element.Command) : F5.DeathControls.Owns(element.Command) ? DeathControls?.Selected(element.Command) : F5Layout.IsSelected(element, biomeEnabled, biomeFailed) ? (Color?)(biomeEnabled ? Color.LightGreen : Color.IndianRed) : null,
+                            information && !legacyBiome ? InformationControls?.Selected(element.Command) : guidance ? GuidanceControls?.Selected(element.Command) : F5.FootprintControls.Owns(element.Command) ? FootprintControls?.Selected(element.Command) : F5.MapControls.Owns(element.Command) ? MapControls?.Selected(element.Command) : F5.DeathControls.Owns(element.Command) ? DeathControls?.Selected(element.Command) : F5Layout.IsSelected(element, biomeEnabled, biomeFailed) ? (Color?)(biomeEnabled ? Color.LightGreen : Color.IndianRed) : null,
                             view.X, view.Y - state.Scroll);
                     }
                 }
@@ -271,7 +286,7 @@ namespace JueMingR.TerrariaHost.F5
         internal string ButtonHint(F5Element hover, bool biomeFailed)
         {
             if (biomeFailed && (hover.Command == F5Command.EnableBiome || hover.Command == F5Command.DisableBiome)) return "群系显示暂不可用";
-            return EntityControls?.Hint(hover.Command) ?? WorldControls?.Hint(hover.Command) ?? ObjectControls?.Hint(hover.Command) ?? InformationControls?.Hint(hover.Command) ?? GuidanceControls?.Hint(hover.Command) ?? DeathControls?.Hint(hover.Command) ?? MapControls?.Hint(hover.Command);
+            return EntityControls?.Hint(hover.Command) ?? WorldControls?.Hint(hover.Command) ?? ObjectControls?.Hint(hover.Command) ?? InformationControls?.Hint(hover.Command) ?? GuidanceControls?.Hint(hover.Command) ?? DeathControls?.Hint(hover.Command) ?? MapControls?.Hint(hover.Command) ?? FootprintControls?.Hint(hover.Command);
         }
         // The shell owns one current hint for every ordinary page. Adapters
         // supply only content and final name regions; preparation is shared with

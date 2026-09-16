@@ -218,6 +218,7 @@ namespace Terraria
                 if (args.Length == 1 && args[0] == "f5-cpu")
                 { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; F5LayoutChecks.Run(); F5InputChecks.Run(); return 0; }
                 if (args.Length == 1 && args[0] == "map-popup") { MapPopupChecks.Run(); return 0; }
+                if (args.Length == 1 && args[0] == "footprints-popup") { FootprintPopupChecks.Run(); return 0; }
                 if (args.Length == 1 && args[0] == "death-popup")
                 { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; DeathPopupChecks.Run(); return 0; }
                 if (args.Length == 1 && args[0] == "focus-input") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; HostInputChecks.Run(); return 0; }

@@ -23,6 +23,35 @@ namespace JueMingR.TerrariaHost.Input
         internal int MapMouseY { get; private set; }
         internal bool HotkeyCapture { get; set; }
         internal Func<bool> ClaimsHotkeyPointer { get; set; }
+        internal Func<bool> ClaimsMapPointer { get; set; }
+        internal int MapWheel { get; private set; }
+        internal int PhysicalMapX { get; private set; }
+        internal int PhysicalMapY { get; private set; }
+        internal int OwnedMouseMask { get; private set; }
+        internal bool MapPointerOwned { get { return OwnedMouseMask != 0 || mapWheelOwned; } }
+        private int mouseTail, previousMouse;
+        private bool mapWheelOwned;
+        internal void AfterNativeMouse(List<string> mouseKeys)
+        {
+            RefreshFocus(); MouseState sample = PlayerInput.MouseInfo;
+            PhysicalMapX = (int)(sample.X * PlayerInput.RawMouseScale.X); PhysicalMapY = (int)(sample.Y * PlayerInput.RawMouseScale.Y);
+            int down = (sample.LeftButton == ButtonState.Pressed ? 1 : 0) | (sample.RightButton == ButtonState.Pressed ? 2 : 0) |
+                (sample.MiddleButton == ButtonState.Pressed ? 4 : 0) | (sample.XButton1 == ButtonState.Pressed ? 8 : 0) | (sample.XButton2 == ButtonState.Pressed ? 16 : 0);
+            bool reliable = IsFocused && FocusHelper.IsSelectedApplication && !rearming;
+            bool claims = reliable && ClaimsMapPointer != null && ClaimsMapPointer();
+            if (claims) mouseTail |= down & ~previousMouse;
+            OwnedMouseMask = mouseTail; mapWheelOwned = claims;
+            // MouseInput only staged these tokens; keyboard and gamepad mappings
+            // have not merged yet. Filtering here preserves shared keyboard binds.
+            for (int i = mouseKeys.Count - 1; i >= 0; i--)
+            {
+                string key = mouseKeys[i];
+                if (key.Length == 6 && key.StartsWith("Mouse", StringComparison.Ordinal) && key[5] >= '1' && key[5] <= '5' && (OwnedMouseMask & 1 << (key[5] - '1')) != 0) mouseKeys.RemoveAt(i);
+            }
+            if (reliable) { mouseTail &= down; previousMouse = down; }
+        }
+        internal void ConsumeOwnedMouseEdges()
+        { for (int i = 0; i < 5; i++) if ((OwnedMouseMask & 1 << i) != 0) Hotkeys.ConsumePress(256 + i); }
         private bool hotkeyTailSample;
         internal bool HotkeyPointerOwned { get { return HotkeyCapture || Hotkeys.HasSuppressedKeys || hotkeyTailSample; } }
         internal bool IsFocused { get; private set; }
@@ -65,6 +94,8 @@ namespace JueMingR.TerrariaHost.Input
             // observations, not values to restore after consuming an action.
             RefreshFocus(); mapped = true;
             MapMouseX = PlayerInput.MouseX; MapMouseY = PlayerInput.MouseY;
+            MapWheel = PlayerInput.ScrollWheelDeltaForUI;
+            if (MapPointerOwned) PlayerInput.ScrollWheelDelta = PlayerInput.ScrollWheelDeltaForUI = 0;
             // Do not depend on interception of the tiny native getter: a caller
             // may have inlined it before patching. Mapping is independently
             // guarded below; this native field only distinguishes its synthetic

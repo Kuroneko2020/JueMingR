@@ -35,6 +35,8 @@ namespace JueMingR.ArchitectureTests
         {
             var expected = new HashSet<string>(StringComparer.Ordinal)
             {
+                "JueMingR.Platform.Footprints.FootprintPosition", "JueMingR.Platform.Footprints.FootprintSample",
+                "JueMingR.Platform.Footprints.IFootprintArchiveFiles", "JueMingR.Platform.Footprints.FootprintQuery",
                 "JueMingR.Platform.DeathHistory.DeathEventId", "JueMingR.Platform.DeathHistory.DeathFact", "JueMingR.Platform.DeathHistory.DeathMarker",
                 "JueMingR.Platform.DeathHistory.IDeathArchiveFiles", "JueMingR.Platform.DeathHistory.DeathHistorySnapshot", "JueMingR.Platform.DeathHistory.DeathReadText",
                 "JueMingR.Platform.Guidance.NpcDemand", "JueMingR.Platform.Guidance.GuidanceNpc", "JueMingR.Platform.Guidance.IGuidanceNpcSource",

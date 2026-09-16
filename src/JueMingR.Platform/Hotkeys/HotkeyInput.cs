@@ -15,6 +15,11 @@ namespace JueMingR.Platform.Hotkeys
         public bool HasSuppressedKeys { get; private set; }
         public bool IsDown(int key) { return down[key]; }
         public bool IsNew(int key) { return Reliable && edges[key] && !suppressed[key]; }
+        // Consume this already-frozen edge without changing physical state or
+        // claiming keyboard suppression. A pointer owner separately retains its
+        // native mouse tail until the same physical sample proves release.
+        public void ConsumePress(int key)
+        { if (key <= 0 || key >= edges.Length) throw new ArgumentOutOfRangeException(nameof(key)); edges[key] = false; }
         public void Update(bool[] sample, bool reliable)
         {
             if (sample == null || sample.Length != down.Length) throw new ArgumentException("Expected one complete physical key sample.");
