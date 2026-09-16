@@ -6,8 +6,8 @@
 
 证据记号：
 
-- **Z**：`C:/Users/kongd/Desktop/JueMingZ`，固定提交 `6ac6356c0c564f43284590c168855e96c50e13f7`；下列 Z 路径以 `src/JueMingZ/` 为根。
-- **R**：`C:/Users/kongd/Desktop/JueMingR`，生产基线 `df8a029873176276d0f620d32b0ac02ae9ea7744`。本次调查产生的文档提交不代表生产实现变化。
+- **Z**：`同级 Legacy 仓库 JueMingZ`，固定提交 `6ac6356c0c564f43284590c168855e96c50e13f7`；下列 Z 路径以 `src/JueMingZ/` 为根。
+- **R**：`当前 R 仓库 JueMingR`，生产基线 `df8a029873176276d0f620d32b0ac02ae9ea7744`。本次调查产生的文档提交不代表生产实现变化。
 - **V8**：已锁定 Terraria 1.4.5.8，`external/TerrariaRefs/Terraria.exe` 的 SHA-256 为 `960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3`。
 - **V8-Main**：R `.local/death-history-world-time/Terraria.Main.cs`，SHA-256 `558166C0FC8F15B24B25EF62A0F94A877976C52C1BD5928B14527453CDFB8B1F`。
 - **V8-Player**：R `.local/death-history-world-time/Terraria.Player.cs`，SHA-256 `2C983B62766C713D96904B617E916A831518C38F0158556DE7F8FA392885D40C`。
