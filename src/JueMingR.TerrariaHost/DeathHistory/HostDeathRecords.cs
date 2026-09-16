@@ -130,13 +130,7 @@ namespace JueMingR.TerrariaHost.DeathHistory
         }
         private void ObserveIdentity()
         {
-            var player = Main.LocalPlayer; var file = Main.ActivePlayerFileData; var world = Main.ActiveWorldFileData;
-            if (file == null || !ReferenceEquals(file.Player, player) || file.ServerSideCharacter || Main.ServerSideCharacter || String.IsNullOrEmpty(file.Path) || file.Path.Length > 32768 || world == null || world.UniqueId == Guid.Empty ||
-                Main.netMode == 1 && (Netplay.Connection == null || Netplay.Connection.State != 10)) return;
-            // Separate domain from opened-v1; death and time share only this
-            // admitted reliable pair, never opened-position set semantics.
-            using (var sha = SHA256.Create())
-                pair = BitConverter.ToString(sha.ComputeHash(new UTF8Encoding(false, true).GetBytes("world-records-v1\0" + (file.IsCloudSave ? "cloud:" : "local:") + file.Path + "\0" + world.UniqueId.ToString("N")))).Replace("-", "").ToLowerInvariant();
+            pair = JueMingR.TerrariaHost.Map.LocalWorldIdentity.Observe(); if (pair == null) return;
             if (missedToken != null && ReferenceEquals(missedToken, activeToken)) MarkMissed();
         }
         public void RequestDetails(long offset) { pageOffset = offset; UpdateDemand(); }

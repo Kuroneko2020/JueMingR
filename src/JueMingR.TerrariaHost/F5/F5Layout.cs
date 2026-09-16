@@ -29,7 +29,8 @@ namespace JueMingR.TerrariaHost.F5
         ConfigureSign, SignAll, SignLines, SignCharacters, SignOff, SignLess, SignMore,
         ConfigureTombstone, TombstoneAll, TombstoneLines, TombstoneCharacters, TombstoneOff, TombstoneLess, TombstoneMore,
         EnableRare, DisableRare, EnableMerchant, DisableMerchant, EnableEquipment, DisableEquipment, SummonMerchant,
-        ConfigureRare, ConfigureMerchant, DeathDetails, DeathConfigure, DeathEnable, DeathDisable }
+        ConfigureRare, ConfigureMerchant, DeathDetails, DeathConfigure, DeathEnable, DeathDisable,
+        MarkerManage, MarkerEnable, MarkerDisable, ExplorationDetails, ExplorationValue }
 
     internal sealed class F5Element
     {
@@ -153,6 +154,7 @@ namespace JueMingR.TerrariaHost.F5
             else if (currentPage == 7) BuildFishing(ref y);
             else if (currentPage == 1 || currentPage == 2 || currentPage == 8) GuidanceControls.AddRows(elements, TextSize, ref y, currentPage);
             if (currentPage == 2) DeathControls.AddRows(elements, DynamicTextSize, ref y, deathCount, worldDays);
+            if (currentPage == 2) MapControls.AddRows(elements, TextSize, ref y);
             ContentHeight = Math.Max(0, y - 6);
             screenWidth = width; screenHeight = height; uiScale = scale; page = currentPage;
             builtInformationRevision = informationRevision;

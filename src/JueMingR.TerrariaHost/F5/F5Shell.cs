@@ -30,6 +30,8 @@ namespace JueMingR.TerrariaHost.F5
         internal readonly StylePopup StylePopup;
         internal readonly DeathHistoryPopup DeathPopup;
         private readonly IDeathControls deaths;
+        private readonly IMapControls maps;
+        internal readonly MapManagementPopup MapPopup;
         private readonly HostEntityLabels labels;
         private readonly WorldTargets.HostWorldTargets worldTargets;
         private readonly WorldObjectText.HostWorldObjectText worldObjects;
@@ -51,7 +53,7 @@ namespace JueMingR.TerrariaHost.F5
 
         internal F5Shell(Phase0TBiomeRuntime biome, HostPreferences preferences, HostNotes hostNotes)
             : this(biome, preferences, hostNotes, null) { }
-        internal F5Shell(Phase0TBiomeRuntime biome, HostPreferences preferences, HostNotes hostNotes, HostItems hostItems, Input.HostInputState inputState = null, HostHotkeys hotkeys = null, HostEntityLabels labels = null, WorldTargets.HostWorldTargets worldTargets = null, WorldObjectText.HostWorldObjectText worldObjects = null, Information.HostInformation information = null, Guidance.HostGuidance guidance = null, IDeathControls deaths = null)
+        internal F5Shell(Phase0TBiomeRuntime biome, HostPreferences preferences, HostNotes hostNotes, HostItems hostItems, Input.HostInputState inputState = null, HostHotkeys hotkeys = null, HostEntityLabels labels = null, WorldTargets.HostWorldTargets worldTargets = null, WorldObjectText.HostWorldObjectText worldObjects = null, Information.HostInformation information = null, Guidance.HostGuidance guidance = null, IDeathControls deaths = null, IMapControls maps = null)
         { this.biome = biome; this.preferences = preferences; this.hostItems = hostItems; notes = new NotesPresentation(hostNotes.Workspace); notes.Attach(State);
             this.inputState = inputState ?? new Input.HostInputState();
             this.hotkeys = hotkeys;
@@ -60,7 +62,8 @@ namespace JueMingR.TerrariaHost.F5
             this.worldObjects = worldObjects;
             this.information = information;
             this.guidance = guidance;
-            this.deaths = deaths;
+            this.deaths = deaths; this.maps = maps;
+            if (maps != null) { renderer.MapControls = new MapControls(maps); MapPopup = new MapManagementPopup(maps, this.inputState); }
             if (deaths != null) { renderer.DeathControls = new DeathControls(deaths); DeathPopup = new DeathHistoryPopup(deaths, this.inputState); }
             if (guidance != null) renderer.GuidanceControls = new GuidanceControls(guidance);
             if (labels != null || worldTargets != null || worldObjects != null || information != null || guidance != null) StylePopup = new StylePopup(labels, this.inputState, worldTargets: worldTargets, worldObjects: worldObjects, information: information, guidance: guidance);
@@ -72,12 +75,14 @@ namespace JueMingR.TerrariaHost.F5
             {
                 HotkeyPopup = new HotkeyPopup(hotkeys.Bindings, hotkeys.Registry, this.inputState);
             }
-            if (hotkeys != null || labels != null || worldTargets != null || worldObjects != null || information != null || deaths != null) this.inputState.ClaimsHotkeyPointer = ClaimsPopupPointer;
+            if (hotkeys != null || labels != null || worldTargets != null || worldObjects != null || information != null || deaths != null || maps != null) this.inputState.ClaimsHotkeyPointer = ClaimsPopupPointer;
             drawKeyboard = rect => renderer.Keyboard(Main.spriteBatch, rect);
             if (hostItems != null) { items = new ItemsPresentation(hostItems, State); items.HotkeyClicked = OpenHotkey; }
             Func<int, bool> prior = State.BeforeLeave;
-            State.BeforeLeave = page => { if (prior != null && !prior(page)) return false; HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); return true; };
+            State.BeforeLeave = page => { if (MapPopup != null && !MapPopup.TryLeave(() => { if (page < 0) State.Close(); else State.Navigate(page); })) return false; if (prior != null && !prior(page)) return false; HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); return true; };
         }
+        internal bool BlocksMapInput { get { return failed || State.Visible || notes.OwnsPointer || HotkeyPopup != null && HotkeyPopup.Visible || StylePopup != null && StylePopup.Visible || MapPopup != null && MapPopup.Visible; } }
+        internal void CloseForMapLocate() { MapPopup?.Suspend(); State.Close(); notes.Suspend(); items?.Suspend(); }
         private void OpenHotkey(string id, F5Rect rect)
         { HotkeyPopup?.Click(id, rect, State.Layout.Generation, State.Page, clickClock.ElapsedMilliseconds); if (HotkeyPopup != null && HotkeyPopup.Visible) { StylePopup?.Close(); DeathPopup?.Close(); } }
         private bool ClaimsPopupPointer()
@@ -90,15 +95,15 @@ namespace JueMingR.TerrariaHost.F5
             MouseState mouse = PlayerInput.MouseInfo;
             Vector2 raw = new Vector2(mouse.X * PlayerInput.RawMouseScale.X, mouse.Y * PlayerInput.RawMouseScale.Y);
             Vector2 point = Vector2.Transform(raw, Matrix.Invert(Main.UIScaleMatrix));
-            return StylePopup != null && (StylePopup.HasCapture || StylePopup.ContainsPointer(point.X, point.Y)) || HotkeyPopup != null && HotkeyPopup.ContainsPointer(point.X, point.Y) || DeathPopup != null && (DeathPopup.Pressed >= 0 || DeathPopup.ContainsPointer(point.X, point.Y));
+            return StylePopup != null && (StylePopup.HasCapture || StylePopup.ContainsPointer(point.X, point.Y)) || HotkeyPopup != null && HotkeyPopup.ContainsPointer(point.X, point.Y) || DeathPopup != null && (DeathPopup.Pressed >= 0 || DeathPopup.ContainsPointer(point.X, point.Y)) || MapPopup != null && (MapPopup.Pressed >= 0 || MapPopup.ContainsPointer(point.X, point.Y));
         }
-        internal bool OwnsPointer { get { return !failed && CanPresentNow && (information != null && information.Adjustment.Dragging || inputState.HotkeyPointerOwned || State.OwnsPointer || notes.OwnsPointer || items != null && items.OwnsPointer || HotkeyPopup != null && HotkeyPopup.OwnsPointer || StylePopup != null && StylePopup.OwnsPointer || DeathPopup != null && DeathPopup.OwnsPointer); } }
+        internal bool OwnsPointer { get { return !failed && CanPresentNow && (information != null && information.Adjustment.Dragging || inputState.HotkeyPointerOwned || State.OwnsPointer || notes.OwnsPointer || items != null && items.OwnsPointer || HotkeyPopup != null && HotkeyPopup.OwnsPointer || StylePopup != null && StylePopup.OwnsPointer || DeathPopup != null && DeathPopup.OwnsPointer || MapPopup != null && MapPopup.OwnsPointer); } }
 
         internal bool CanAdjustInformation { get { return information != null && information.PositionReady && biome.SharedRuntime.IsSessionActive && !failed && CanPresentNow && inputState.CanUseInput; } }
         internal void RequestInformationAdjustment()
         {
             if (!CanAdjustInformation || information.Adjustment.Active || adjustmentPending ||
-                HotkeyPopup != null && HotkeyPopup.Capturing || StylePopup != null && StylePopup.HasCapture || DeathPopup != null && DeathPopup.Visible || items != null && items.Selecting) return;
+                HotkeyPopup != null && HotkeyPopup.Capturing || StylePopup != null && StylePopup.HasCapture || DeathPopup != null && DeathPopup.Visible || MapPopup != null && MapPopup.Visible || items != null && items.Selecting) return;
             long request = ++adjustmentRequest, session = information.Session;
             bool returnToF5 = State.Visible;
             Action<bool> completed = success =>
@@ -138,17 +143,18 @@ namespace JueMingR.TerrariaHost.F5
 
         private bool CanPresentNow
         {
-            get
+            get { return CanPresent(false); }
+        }
+        private bool CanPresent(bool allowMap)
             {
                 Player player = Main.LocalPlayer;
                 var capture = Terraria.Graphics.Capture.CaptureManager.Instance;
                 return !Main.gameMenu && !Main.dedServ && (Main.netMode == 0 || Main.netMode == 1) && player != null && player.active &&
                     inputState.IsFocused && !PlayerInput.UsingGamepad && !PlayerInput.ShouldFastUseItem &&
-                    !Main.mapFullscreen && !Main.hideUI && !Main.onlyDrawFancyUI && !Main.ingameOptionsWindow &&
+                    (!Main.mapFullscreen || allowMap) && !Main.hideUI && !Main.onlyDrawFancyUI && !Main.ingameOptionsWindow &&
                     !Main.inFancyUI && capture != null && !capture.Active &&
-                    (!notes.OtherTextOwner || (items != null && items.OwnsTextToken || StylePopup != null && StylePopup.TextInput.OwnsTextToken) && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest);
+                    (!notes.OtherTextOwner || (items != null && items.OwnsTextToken || StylePopup != null && StylePopup.TextInput.OwnsTextToken || MapPopup != null && MapPopup.TextInput.OwnsTextToken) && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest);
             }
-        }
 
         // Input may be taken over by vanilla after this frame's button release.
         // Recheck at the operation outlet, while retaining our own mouse lease.
@@ -158,12 +164,12 @@ namespace JueMingR.TerrariaHost.F5
                 !PlayerInput.Triggers.Current.MapFull && !PlayerInput.Triggers.Current.ToggleCameraMode &&
                 !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest &&
                 Main.CurrentInputTextTakerOverride == null && !PlayerInput.WritingText &&
-                !(HotkeyPopup != null && HotkeyPopup.Visible) && !(StylePopup != null && StylePopup.Visible) && !(DeathPopup != null && DeathPopup.Visible) &&
+                !(HotkeyPopup != null && HotkeyPopup.Visible) && !(StylePopup != null && StylePopup.Visible) && !(DeathPopup != null && DeathPopup.Visible) && !(MapPopup != null && MapPopup.Visible) &&
                 !(items != null && items.Selecting) && !(information != null && information.Adjustment.Active) && !adjustmentPending; }
         }
 
         internal void BeforeInput()
-        { try { CheckLabelSession(); StylePopup?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); notes.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); items?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); } catch { FailClosed(); } }
+        { try { CheckLabelSession(); MapPopup?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); StylePopup?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); notes.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); items?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); } catch { FailClosed(); } }
 
         internal void ProcessInput()
         {
@@ -195,7 +201,7 @@ namespace JueMingR.TerrariaHost.F5
                     inputState.Hotkeys.SuppressHeld(); inputState.ConsumeHotkeyActions(); f5 = false;
                 }
                 if (!inputActive && adjustmentPending) CancelInformationAdjustment(false);
-                if (StylePopup != null && StylePopup.Visible || DeathPopup != null && DeathPopup.Visible) renderer.RefreshResources();
+                if (StylePopup != null && StylePopup.Visible || DeathPopup != null && DeathPopup.Visible || MapPopup != null && MapPopup.Visible) renderer.RefreshResources();
                 if (StylePopup != null && StylePopup.Visible)
                 {
                     // Resource/viewport changes invalidate an in-flight gesture
@@ -208,7 +214,8 @@ namespace JueMingR.TerrariaHost.F5
                     HotkeyPopup.Layout.Matches(screen.X / matrix.M11, screen.Y / matrix.M11, renderer.FontIdentity, renderer.SkinGeneration), PlayerInput.ScrollWheelDeltaForUI);
                 DeathPopup?.Process(inputActive && State.Visible, State.Page, pointer.X, pointer.Y,
                     DeathPopup.Matches(screen.X / matrix.M11, screen.Y / matrix.M11, renderer.FontIdentity, renderer.SkinGeneration), PlayerInput.ScrollWheelDeltaForUI);
-                bool popupPointer = HotkeyPopup != null && HotkeyPopup.BlockPointer || StylePopup != null && StylePopup.BlockPointer || DeathPopup != null && DeathPopup.BlockPointer || inputState.HotkeyPointerOwned;
+                MapPopup?.Process(inputActive && State.Visible, pointer.X, pointer.Y, MapPopup.Matches(screen.X / matrix.M11, screen.Y / matrix.M11, renderer.FontIdentity, renderer.SkinGeneration), PlayerInput.ScrollWheelDeltaForUI);
+                bool popupPointer = HotkeyPopup != null && HotkeyPopup.BlockPointer || StylePopup != null && StylePopup.BlockPointer || DeathPopup != null && DeathPopup.BlockPointer || MapPopup != null && MapPopup.BlockPointer || inputState.HotkeyPointerOwned;
                 State.Update(new F5Input
                 {
                     Width = screen.X, Height = screen.Y, Scale = matrix.M11, X = pointer.X, Y = pointer.Y,
@@ -219,9 +226,9 @@ namespace JueMingR.TerrariaHost.F5
                     Right = PlayerInput.MouseInfo.RightButton == ButtonState.Pressed,
                     BlockPointer = popupPointer,
                     Wheel = PlayerInput.ScrollWheelDeltaForUI,
-                    PageWheelHandled = HotkeyPopup != null && HotkeyPopup.ConsumeWheel || StylePopup != null && StylePopup.ConsumeWheel || DeathPopup != null && DeathPopup.Visible || inputActive && notes.Wheel(pointer.X, pointer.Y, PlayerInput.ScrollWheelDeltaForUI)
+                    PageWheelHandled = HotkeyPopup != null && HotkeyPopup.ConsumeWheel || StylePopup != null && StylePopup.ConsumeWheel || DeathPopup != null && DeathPopup.Visible || MapPopup != null && MapPopup.Visible || inputActive && notes.Wheel(pointer.X, pointer.Y, PlayerInput.ScrollWheelDeltaForUI)
                 });
-                if (!State.Visible) { HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); }
+                if (!State.Visible) { HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); }
                 notes.ProcessInput(inputActive, matrix, screen, raw, inputState.SampleFocused, popupPointer, keySample);
                 items?.ProcessInput(inputActive, keySample, pointer, State.Layout.Matches(screen.X, screen.Y, matrix.M11, State.Page), inputState.SampleFocused, popupPointer);
                 if (information != null)
@@ -249,6 +256,8 @@ namespace JueMingR.TerrariaHost.F5
                 }
                 if (State.ClickedHotkey != null)
                     OpenHotkey(State.ClickedHotkey.HotkeyTarget, State.ClickedHotkey.Rect.Offset(State.X + State.Layout.Viewport.X, State.Y + State.Layout.Viewport.Y - State.Scroll));
+                if (State.ClickedControl != null && (State.Command == F5Command.MarkerManage || State.Command == F5Command.ExplorationDetails) && renderer.MapControls != null && renderer.MapControls.Available(State.Command))
+                { HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup.Open(State.Command == F5Command.ExplorationDetails); }
                 if (State.ClickedControl != null && (State.Command == F5Command.DeathDetails || State.Command == F5Command.DeathConfigure) && renderer.DeathControls != null && renderer.DeathControls.Available(State.Command))
                 { HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup.Open(State.Command == F5Command.DeathConfigure, State.Page); }
                 if (State.ClickedControl != null && EntityLabelControls.IsStyle(State.Command) && renderer.EntityControls != null && renderer.EntityControls.Available(State.Command))
@@ -286,13 +295,19 @@ namespace JueMingR.TerrariaHost.F5
                 }
                 else { renderer.EntityControls?.Execute(State.Command); renderer.WorldControls?.Execute(State.Command); renderer.ObjectControls?.Execute(State.Command);
                     renderer.GuidanceControls?.Execute(State.Command);
-                    renderer.DeathControls?.Execute(State.Command);
+                    renderer.DeathControls?.Execute(State.Command); renderer.MapControls?.Execute(State.Command);
                     if (State.Command != F5Command.EnableBiome && State.Command != F5Command.DisableBiome) renderer.InformationControls?.Execute(State.Command); }
                 bool gameplay = inputActive && !(information != null && information.Adjustment.Active) && !adjustmentPending && !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest &&
                     Main.CurrentInputTextTakerOverride == null && !PlayerInput.WritingText && !OwnsPointer &&
-                    !(HotkeyPopup != null && HotkeyPopup.Visible) && !(StylePopup != null && StylePopup.Visible) && !(DeathPopup != null && DeathPopup.Visible) && !(items != null && items.Selecting) &&
+                    !(HotkeyPopup != null && HotkeyPopup.Visible) && !(StylePopup != null && StylePopup.Visible) && !(DeathPopup != null && DeathPopup.Visible) && !(MapPopup != null && MapPopup.Visible) && !(items != null && items.Selecting) &&
                     !(Main.LocalPlayer != null && Main.LocalPlayer.mouseInterface);
                 hotkeys?.Bindings.Dispatch(inputState.Hotkeys, Main.netMode == 0 ? HotkeyContext.SinglePlayer : HotkeyContext.Multiplayer, gameplay);
+                // Fullscreen map owns native mouseInterface. Admit only its
+                // registered master switch, through the same binding engine.
+                bool mapHotkey = !failed && maps != null && Main.mapFullscreen && CanPresent(true) && inputState.CanUseInput &&
+                    !PlayerInput.Triggers.Current.MapFull && !PlayerInput.Triggers.Current.ToggleCameraMode && !Main.blockInput &&
+                    Main.CurrentInputTextTakerOverride == null && !PlayerInput.WritingText && !inputState.HotkeyCapture;
+                hotkeys?.Bindings.Dispatch(inputState.Hotkeys, Main.netMode == 0 ? HotkeyContext.SinglePlayer : HotkeyContext.Multiplayer, mapHotkey, MapControls.ActionId);
             }
             catch { FailClosed(); ConsumeSample(); }
         }
@@ -313,7 +328,7 @@ namespace JueMingR.TerrariaHost.F5
                 PlayerInput.Triggers.JustReleased.MouseRight = false;
                 Main.mouseRight = false;
             }
-            if (State.ConsumeWheel || notes.ConsumeWheel || items != null && items.ConsumeWheel || HotkeyPopup != null && HotkeyPopup.ConsumeWheel || StylePopup != null && StylePopup.ConsumeWheel || DeathPopup != null && DeathPopup.ConsumeWheel)
+            if (State.ConsumeWheel || notes.ConsumeWheel || items != null && items.ConsumeWheel || HotkeyPopup != null && HotkeyPopup.ConsumeWheel || StylePopup != null && StylePopup.ConsumeWheel || DeathPopup != null && DeathPopup.ConsumeWheel || MapPopup != null && MapPopup.ConsumeWheel)
             { PlayerInput.ScrollWheelDelta = 0; PlayerInput.ScrollWheelDeltaForUI = 0; }
             // Absolute wheel and physical MouseInfo are never changed. Consumed
             // button transitions/deltas are never restored or replayed later.
@@ -326,7 +341,7 @@ namespace JueMingR.TerrariaHost.F5
                 RestoreLeases();
                 RestorePositionWhenLoaded();
                 CheckLabelSession();
-                DeathPopup?.CheckSession();
+                DeathPopup?.CheckSession(); MapPopup?.CheckSession();
                 if (deaths != null) State.Layout.SetDeathInformation(deaths.CountText, deaths.DaysText);
                 if (worldObjects != null) State.Layout.SetWorldObjectSettings(worldObjects.Preferences.Value);
                 hotkeys?.Bindings.Poll();
@@ -336,7 +351,7 @@ namespace JueMingR.TerrariaHost.F5
                 {
                     preferences.TakeFeedback(displayPreferenceFeedback); hostItems?.TakeFeedback(displayPreferenceFeedback); labels?.TakeFeedback(displayPreferenceFeedback); worldTargets?.TakeFeedback(displayPreferenceFeedback); worldObjects?.TakeFeedback(displayPreferenceFeedback); information?.TakeFeedback(displayPreferenceFeedback);
                     guidance?.TakeFeedback(displayPreferenceFeedback);
-                    deaths?.TakeFeedback(displayPreferenceFeedback);
+                    deaths?.TakeFeedback(displayPreferenceFeedback); maps?.TakeFeedback(displayPreferenceFeedback);
                     if (StylePopup?.Failure != null && StylePopup.FailureKey != reportedStyleFailure)
                     { reportedStyleFailure = StylePopup.FailureKey; displayPreferenceFeedback(StylePopup.Failure); }
                 }
@@ -363,6 +378,7 @@ namespace JueMingR.TerrariaHost.F5
                     HotkeyPopup?.Prepare(screen.X / matrix.M11, screen.Y / matrix.M11, renderer.FontIdentity, renderer.PopupMeasure, renderer.SkinGeneration);
                     StylePopup?.Prepare(screen.X / matrix.M11, screen.Y / matrix.M11, matrix.M11, renderer.FontIdentity, renderer.PopupMeasure, renderer.SkinGeneration, StyleAnchor());
                     DeathPopup?.Prepare(screen.X / matrix.M11, screen.Y / matrix.M11, renderer.FontIdentity, renderer.PopupMeasure, renderer.SkinGeneration);
+                    MapPopup?.Prepare(screen.X / matrix.M11, screen.Y / matrix.M11, renderer.FontIdentity, renderer.PopupMeasure, renderer.SkinGeneration);
                     // Emote Bubbles runs before the modal early-return layers.
                     // Clear only the old pointer-triggered NPC bubble at update end.
                     if (OwnsPointer) Main.instance.currentNPCShowingChatBubble = -1;
@@ -436,13 +452,14 @@ namespace JueMingR.TerrariaHost.F5
                         // FrameSkip.Off can draw after an outer Update with no
                         // HandleInput call. That revokes actions, not a focused
                         // hover's read-only text; focus quarantine still applies.
-                        bool hintsBlocked = !inputState.CanPrepareText || HotkeyPopup != null && HotkeyPopup.Visible || StylePopup != null && StylePopup.Visible || DeathPopup != null && DeathPopup.Visible;
+                        bool hintsBlocked = !inputState.CanPrepareText || HotkeyPopup != null && HotkeyPopup.Visible || StylePopup != null && StylePopup.Visible || DeathPopup != null && DeathPopup.Visible || MapPopup != null && MapPopup.Visible;
                         items?.Draw(drawKeyboard, !hintsBlocked && State.CanShowHint);
                         renderer.DrawHints(State, matrix, items, hintsBlocked,
                             !biome.CanObserveLocalPlayer || biome.FeatureFailed || !preferences.BiomeLoaded);
                         if (HotkeyPopup != null) renderer.DrawPopup(HotkeyPopup);
                         if (StylePopup != null) renderer.DrawStylePopup(StylePopup);
                         if (DeathPopup != null) renderer.DrawDeathPopup(DeathPopup);
+                        if (MapPopup != null) renderer.DrawMapPopup(MapPopup);
                     }
                 }
             }
@@ -508,10 +525,10 @@ namespace JueMingR.TerrariaHost.F5
             labelSession = generation; StylePopup?.Close();
         }
 
-        internal void CloseAndSubmitPosition() { CancelInformationAdjustment(false); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); State.Close(); notes.Suspend(); items?.Suspend(); SubmitPosition(); }
+        internal void CloseAndSubmitPosition() { CancelInformationAdjustment(false); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); State.Close(); notes.Suspend(); items?.Suspend(); SubmitPosition(); }
 
         internal void CancelForFocusLoss()
-        { CancelInformationAdjustment(false); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); State.CancelForFocusLoss(); notes.Suspend(true); items?.Suspend(); RestoreLeases(); }
+        { CancelInformationAdjustment(false); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); State.CancelForFocusLoss(); notes.Suspend(true); items?.Suspend(); RestoreLeases(); }
 
         internal void FailClosed()
         { failed = true; State.Ready = false; CloseAndSubmitPosition(); RestoreLeases(); notes.FailClosed(); renderer.Dispose(); }

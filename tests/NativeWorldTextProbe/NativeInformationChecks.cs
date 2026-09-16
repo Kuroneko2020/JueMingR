@@ -64,7 +64,7 @@ namespace NativeWorldTextProbe
         internal static void StopContext(object context)
         {
                 var hooks = GetOptional(context, "informationHooks"); if (hooks != null) Call(hooks, "Dispose");
-                foreach (string name in new[] { "Guidance", "Information", "Labels", "WorldTargets", "WorldObjects", "items", "notes", "preferences" })
+                foreach (string name in new[] { "MapFeatures", "DeathRecords", "Guidance", "Information", "Labels", "WorldTargets", "WorldObjects", "items", "notes", "preferences" })
                 {
                     var owner = GetOptional(context, name);
                     (owner?.GetType().GetMethod("OnExit", Flags) ?? owner?.GetType().GetMethod("OnProcessExit", Flags))?.Invoke(owner, new object[] { null, EventArgs.Empty });

@@ -10,6 +10,12 @@ namespace JueMingR.ArchitectureTests
         {
             try
             {
+                if (args.Length == 1 && args[0] == "--map-markers-exploration")
+                {
+                    var checks = new List<string>(); MapAssetChecks.Check(checks); ExplorationChecks.Check(checks); MapPersistenceChecks.Check(checks);
+                    foreach (string failure in checks) Console.Error.WriteLine(failure);
+                    Console.WriteLine("Map checks: failures=" + checks.Count); return checks.Count == 0 ? 0 : 1;
+                }
                 if (args.Length == 1 && args[0] == "--death-history")
                 {
                     var checks = new List<string>(); DeathArchiveChecks.Check(checks); DeathHistoryWorkerChecks.Check(checks); WorldTimeChecks.Check(checks); DeathPreferenceChecks.Check(checks); DeathWorkloadChecks.Check(checks);
@@ -49,6 +55,9 @@ namespace JueMingR.ArchitectureTests
                 RepositoryModel model = RepositoryModel.Load(repositoryRoot);
                 var failures = new List<string>();
                 ArchitectureChecks.Check(model, failures);
+                MapAssetChecks.Check(failures);
+                ExplorationChecks.Check(failures);
+                MapPersistenceChecks.Check(failures);
                 OperationContractChecks.Check(failures);
                 HotkeyCoreChecks.Check(failures);
                 HotkeyStorageChecks.Check(repositoryRoot, failures);

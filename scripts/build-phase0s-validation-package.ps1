@@ -2,7 +2,7 @@
 param(
     [Parameter(Mandatory = $true)]
     [string] $OutputDirectory,
-    [ValidateSet('Phase0S', 'Phase0TBiome', 'Phase0UF5UI', 'Phase0VSettings', 'Phase0WNotes', 'ItemAutomation', 'UnifiedHotkeys', 'EntityLabels', 'WorldTargets', 'WorldObjectText', 'InformationSummary', 'DirectionEquipment', 'DeathHistory')]
+    [ValidateSet('Phase0S', 'Phase0TBiome', 'Phase0UF5UI', 'Phase0VSettings', 'Phase0WNotes', 'ItemAutomation', 'UnifiedHotkeys', 'EntityLabels', 'WorldTargets', 'WorldObjectText', 'InformationSummary', 'DirectionEquipment', 'DeathHistory', 'MapMarkersExploration')]
     [string] $Profile = 'Phase0S',
     [string] $WorkloadBaseline
 )
@@ -12,7 +12,7 @@ Set-StrictMode -Version 2.0
 
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..')).TrimEnd('\')
 . (Join-Path $PSScriptRoot 'phase0s\Phase0S.ScriptSupport.ps1')
-$ownerTestCardName = if ($Profile -eq 'DeathHistory') {
+$ownerTestCardName = if ($Profile -eq 'MapMarkersExploration') { 'Map-Markers-Exploration-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'DeathHistory') {
     'Death-History-Owner-Test-Card.zh-CN.md'
 } elseif ($Profile -eq 'DirectionEquipment') {
     'Direction-Equipment-Owner-Test-Card.zh-CN.md'
@@ -319,7 +319,7 @@ $sourceCommit = ([string] (Invoke-Phase0SGit -Arguments @('rev-parse', 'HEAD') |
 if ($sourceCommit -notmatch '^[0-9a-f]{40}$') {
     throw 'The source commit identity is invalid.'
 }
-$packageId = $(if ($Profile -eq 'DeathHistory') { 'death-history-' } elseif ($Profile -eq 'DirectionEquipment') { 'direction-equipment-' } elseif ($Profile -eq 'InformationSummary') { 'information-summary-' } elseif ($Profile -eq 'WorldObjectText') { 'world-object-text-' } elseif ($Profile -eq 'WorldTargets') { 'world-targets-' } elseif ($Profile -eq 'EntityLabels') { 'entity-labels-' } elseif ($Profile -eq 'UnifiedHotkeys') { 'unified-hotkeys-' } elseif ($Profile -eq 'ItemAutomation') { 'item-automation-' } elseif ($Profile -eq 'Phase0WNotes') { 'phase0w-notes-' } elseif ($Profile -eq 'Phase0VSettings') { 'phase0v-settings-' } elseif ($Profile -eq 'Phase0UF5UI') { 'phase0u-f5-ui-' } elseif ($Profile -eq 'Phase0TBiome') { 'phase0t-biome-' } else { 'phase0s-' }) + $sourceCommit
+$packageId = $(if ($Profile -eq 'MapMarkersExploration') { 'map-markers-exploration-' } elseif ($Profile -eq 'DeathHistory') { 'death-history-' } elseif ($Profile -eq 'DirectionEquipment') { 'direction-equipment-' } elseif ($Profile -eq 'InformationSummary') { 'information-summary-' } elseif ($Profile -eq 'WorldObjectText') { 'world-object-text-' } elseif ($Profile -eq 'WorldTargets') { 'world-targets-' } elseif ($Profile -eq 'EntityLabels') { 'entity-labels-' } elseif ($Profile -eq 'UnifiedHotkeys') { 'unified-hotkeys-' } elseif ($Profile -eq 'ItemAutomation') { 'item-automation-' } elseif ($Profile -eq 'Phase0WNotes') { 'phase0w-notes-' } elseif ($Profile -eq 'Phase0VSettings') { 'phase0v-settings-' } elseif ($Profile -eq 'Phase0UF5UI') { 'phase0u-f5-ui-' } elseif ($Profile -eq 'Phase0TBiome') { 'phase0t-biome-' } else { 'phase0s-' }) + $sourceCommit
 
 $outputRoot = [System.IO.Path]::GetFullPath($OutputDirectory).TrimEnd('\')
 if ([string]::IsNullOrWhiteSpace($outputRoot) -or (Get-Phase0SPathState -Path $outputRoot).exists) {
@@ -385,7 +385,7 @@ if ($harmonyIdentity.fullName -cne '0Harmony, Version=2.4.2.0, Culture=neutral, 
     throw 'Prepared Harmony identity or license is invalid.'
 }
 
-$packageDirectoryName = $(if ($Profile -eq 'DeathHistory') { 'JueMingR-Death-History-' } elseif ($Profile -eq 'DirectionEquipment') { 'JueMingR-Direction-Equipment-' } elseif ($Profile -eq 'InformationSummary') { 'JueMingR-Information-Summary-' } elseif ($Profile -eq 'WorldObjectText') { 'JueMingR-World-Object-Text-' } elseif ($Profile -eq 'WorldTargets') { 'JueMingR-World-Targets-' } elseif ($Profile -eq 'EntityLabels') { 'JueMingR-Entity-Labels-' } elseif ($Profile -eq 'UnifiedHotkeys') { 'JueMingR-Unified-Hotkeys-' } elseif ($Profile -eq 'ItemAutomation') { 'JueMingR-Item-Automation-' } elseif ($Profile -eq 'Phase0WNotes') { 'JueMingR-Phase0W-Notes-' } elseif ($Profile -eq 'Phase0VSettings') { 'JueMingR-Phase0V-Settings-' } elseif ($Profile -eq 'Phase0UF5UI') { 'JueMingR-Phase0U-F5UI-' } elseif ($Profile -eq 'Phase0TBiome') { 'JueMingR-Phase0T-Biome-' } else { 'JueMingR-Phase0S-' }) + $sourceCommit
+$packageDirectoryName = $(if ($Profile -eq 'MapMarkersExploration') { 'JueMingR-Map-Markers-Exploration-' } elseif ($Profile -eq 'DeathHistory') { 'JueMingR-Death-History-' } elseif ($Profile -eq 'DirectionEquipment') { 'JueMingR-Direction-Equipment-' } elseif ($Profile -eq 'InformationSummary') { 'JueMingR-Information-Summary-' } elseif ($Profile -eq 'WorldObjectText') { 'JueMingR-World-Object-Text-' } elseif ($Profile -eq 'WorldTargets') { 'JueMingR-World-Targets-' } elseif ($Profile -eq 'EntityLabels') { 'JueMingR-Entity-Labels-' } elseif ($Profile -eq 'UnifiedHotkeys') { 'JueMingR-Unified-Hotkeys-' } elseif ($Profile -eq 'ItemAutomation') { 'JueMingR-Item-Automation-' } elseif ($Profile -eq 'Phase0WNotes') { 'JueMingR-Phase0W-Notes-' } elseif ($Profile -eq 'Phase0VSettings') { 'JueMingR-Phase0V-Settings-' } elseif ($Profile -eq 'Phase0UF5UI') { 'JueMingR-Phase0U-F5UI-' } elseif ($Profile -eq 'Phase0TBiome') { 'JueMingR-Phase0T-Biome-' } else { 'JueMingR-Phase0S-' }) + $sourceCommit
 $zipFileName = $packageDirectoryName + '.zip'
 $stagingToken = [Guid]::NewGuid().ToString('N')
 $stagingRoot = Join-Path $outputParent ((Split-Path -Leaf $outputRoot) + '.phase0s-stage-' + $stagingToken)

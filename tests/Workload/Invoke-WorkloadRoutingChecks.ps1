@@ -35,6 +35,10 @@ try {
         'src/JueMingR.Platform/Information/InformationObservation.cs' = 'shared-host';
         'src/JueMingR.Features/DeathHistory/DeathArchive.cs' = 'death-host';
         'src/JueMingR.TerrariaHost/WorldTime/WorldTimeSourceHooks.cs' = 'death-host';
+        'src/JueMingR.Features/MapMarkers/MarkerLibrary.cs' = 'map-host';
+        'src/JueMingR.Features/Exploration/ExplorationCounter.cs' = 'map-host';
+        'src/JueMingR.Features/Text/TextEditBuffer.cs' = 'notes-host';
+        'src/JueMingR.TerrariaHost/Map/FullscreenMapDrawing.cs' = 'map-host';
         'docs/guide.md' = 'core'
     }
     foreach ($path in $cases.Keys) { Write-Fixture $path "baseline`n" }

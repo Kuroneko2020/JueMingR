@@ -209,6 +209,7 @@ namespace Terraria.GameInput
     {
         public static TriggersPack Triggers = new TriggersPack();
         public static MouseState MouseInfo;
+        public static int MouseX, MouseY;
         public static Vector2 RawMouseScale = Vector2.One;
         public static int ScrollWheelValue, ScrollWheelValueOld, ScrollWheelDelta, ScrollWheelDeltaForUI;
         internal static Vector2 FixtureScreen = new Vector2(1920, 1080);

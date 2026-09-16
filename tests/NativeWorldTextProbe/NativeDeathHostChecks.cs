@@ -104,7 +104,7 @@ namespace NativeWorldTextProbe
                 Require(!(bool)Call(value, "Contains", (float)Get(hit, "X") - 1, (float)Get(hit, "Y")), "outside hit does not claim pointer");
             }
             long projections = (long)Get(map, "Projections"), draws = (long)Get(map, "Draws"), hits = (long)Get(map, "Hits");
-            var icons = type.GetMethod("IconsDrawn", Flags); var begin = type.GetMethod("BeginMap", Flags); var end = type.GetMethod("EndMap", Flags);
+            var shared = Get(map, "drawing").GetType(); var icons = shared.GetMethod("IconsDrawn", Flags); var begin = shared.GetMethod("BeginMap", Flags); var end = shared.GetMethod("EndMap", Flags);
             for (int i = 0; i < 100; i++)
             {
                 begin.Invoke(null, null);

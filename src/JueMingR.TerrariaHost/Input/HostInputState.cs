@@ -19,6 +19,8 @@ namespace JueMingR.TerrariaHost.Input
         private readonly bool[] physical = new bool[HotkeyChord.KeyCount];
         internal readonly HotkeyInput Hotkeys = new HotkeyInput();
         internal KeyboardState KeyboardSample { get; private set; }
+        internal int MapMouseX { get; private set; }
+        internal int MapMouseY { get; private set; }
         internal bool HotkeyCapture { get; set; }
         internal Func<bool> ClaimsHotkeyPointer { get; set; }
         private bool hotkeyTailSample;
@@ -62,6 +64,7 @@ namespace JueMingR.TerrariaHost.Input
             // Keep MouseInfo and the absolute wheel owned by Terraria; they are
             // observations, not values to restore after consuming an action.
             RefreshFocus(); mapped = true;
+            MapMouseX = PlayerInput.MouseX; MapMouseY = PlayerInput.MouseY;
             // Do not depend on interception of the tiny native getter: a caller
             // may have inlined it before patching. Mapping is independently
             // guarded below; this native field only distinguishes its synthetic
