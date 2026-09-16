@@ -60,6 +60,8 @@ function Get-WorkloadRoute {
         switch -Regex ($path.Replace('\', '/')) {
             '^docs/|^AGENTS\.md$|^README(?:\.[^/]+)?$|^LICENSE$|^THIRD-PARTY-NOTICES\.md$' { continue }
             '^src/[^/]+/Notes/|^tests/Notes/' { [void]$groups.Add('notes-host'); continue }
+            '^src/[^/]+/Text/' { [void]$groups.Add('notes-host'); [void]$groups.Add('map-host'); continue }
+            '^src/[^/]+/(MapMarkers|Exploration)/|^src/JueMingR.TerrariaHost/Map/|^tests/MapMarkers/' { [void]$groups.Add('map-host'); [void]$groups.Add('death-host'); continue }
             '^src/JueMingR.TerrariaHost/EntityLabels/(Style|Hex)|^tests/EntityLabels/EntityStyle|^tests/WorldTargets/WorldTargetStyle' { [void]$groups.Add('style-host'); continue }
             '^src/[^/]+/WorldObjectText/Opened|^tests/JueMingR.ArchitectureTests/WorldObjectText/Opened' { [void]$groups.Add('records'); continue }
             '^src/JueMingR.Infrastructure/Storage/|^src/JueMingR.Platform/(Persistence|Settings)/' { [void]$groups.Add('storage-host'); continue }
@@ -73,7 +75,7 @@ function Get-WorkloadRoute {
             default { $unknown += $path }
         }
     }
-    if ($groups.Contains('shared-host') -or $groups.Contains('storage-host')) { [void]$groups.Add('death-host') }
+    if ($groups.Contains('shared-host') -or $groups.Contains('storage-host')) { [void]$groups.Add('death-host'); [void]$groups.Add('map-host') }
     return [ordered]@{ groups = @($groups | Sort-Object); unknown = $unknown; slowGraphics = $false }
 }
 function Test-WorkloadBuildMatch {

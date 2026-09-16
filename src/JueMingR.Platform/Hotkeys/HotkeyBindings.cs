@@ -98,14 +98,14 @@ namespace JueMingR.Platform.Hotkeys
             command = next; pendingAction = id; pendingWarning = warning; pendingClear = chord == null; pendingHadBinding = Get(id) != null; Busy = true;
             Feedback = new HotkeyFeedback(HotkeyFeedbackKind.Saving, "正在保存", pendingHadBinding ? "当前快捷键保持不变" : "当前仍未设置快捷键", warning); return true;
         }
-        public void Dispatch(HotkeyInput input, HotkeyContext context, bool permitted)
+        public void Dispatch(HotkeyInput input, HotkeyContext context, bool permitted, string onlyAction = null)
         {
             if (!permitted || !Loaded || effective.Count == 0 || input.SystemModifier || !input.Reliable) return;
             for (int key = 1; key < byKey.Length; key++)
             {
                 List<Bound> entries = byKey[key]; if (entries == null || !input.IsNew(key)) continue;
                 foreach (Bound bound in entries)
-                    if (bound.Chord.Modifiers == input.Modifiers) bound.Action.Invoke(context);
+                    if ((onlyAction == null || bound.Action.Id == onlyAction) && bound.Chord.Modifiers == input.Modifiers) bound.Action.Invoke(context);
             }
         }
         private void Compile()

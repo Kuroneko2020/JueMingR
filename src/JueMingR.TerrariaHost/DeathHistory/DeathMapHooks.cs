@@ -27,6 +27,7 @@ namespace JueMingR.TerrariaHost.DeathHistory
         private readonly Func<string, float, F5Size> measure;
         private DynamicSpriteFont font;
         private int depth;
+        private Map.FullscreenMapDrawing drawing;
         private string nativeId, hoveredId, textId, text;
         private F5Rect hoveredRect;
         internal bool Ready { get; private set; }
@@ -41,10 +42,10 @@ namespace JueMingR.TerrariaHost.DeathHistory
             {
                 if (current != null || typeof(Main).Module.ModuleVersionId != new Guid("2c29f6c3-4bd9-4add-9c58-da159804e083")) throw new InvalidOperationException("death-map-identity");
                 current = this;
-                Patch(typeof(Main), "DrawMap", new[] { typeof(GameTime) }, nameof(BeginMap), null, nameof(EndMap));
+                drawing = Map.FullscreenMapDrawing.Acquire(); drawing.Begin += BeginShared; drawing.Icons += DrawShared; drawing.Overlay += TooltipShared; drawing.Completed += EndShared;
                 Patch(typeof(Main), "DrawPlayerDeathMarker", new[] { typeof(float), typeof(float), typeof(float), typeof(float), typeof(float), typeof(float), typeof(int), typeof(int) }, null, nameof(NativeDrawn), null);
-                Patch(typeof(MapIconOverlay), "Draw", new[] { typeof(Vector2), typeof(Vector2), typeof(Rectangle?), typeof(float), typeof(float), typeof(int), typeof(string).MakeByRefType() }, null, nameof(IconsDrawn), null);
-                Main.OnPostFullscreenMapDraw += Tooltip; Ready = true;
+
+                Ready = true;
             }
             catch (Exception e) { Failure = "death-map-install: " + e.GetType().Name; Dispose(); }
         }
@@ -56,21 +57,21 @@ namespace JueMingR.TerrariaHost.DeathHistory
         }
         private static HarmonyMethod Hook(string method) { return method == null ? null : new HarmonyMethod(typeof(DeathMapHooks).GetMethod(method, Flags)); }
         internal bool Active { get { return Ready && host.Session >= 0 && host.Settings.Enabled && Main.mapFullscreen && !Main.gameMenu && !Main.dedServ && !Main.hideUI; } }
-        private static void BeginMap() { var owner = current; if (owner == null || ++owner.depth != 1) return; owner.nativeId = null; owner.hoveredId = null; owner.hint.Hide(); }
-        private static Exception EndMap(Exception __exception) { var owner = current; if (owner != null) { owner.depth = Math.Max(0, owner.depth - 1); if (owner.depth == 0) owner.nativeId = null; } return __exception; }
+        private void BeginShared() { depth = 1; nativeId = null; hoveredId = null; hint.Hide(); }
+        private void EndShared(Map.MapView view) { depth = 0; nativeId = null; }
+        private void DrawShared(Map.MapView view)
+        {
+            if (!Active) return;
+            try { Draw(view.Position, view.Offset, view.Zoom, view.IconScale, view.Alpha); if (hoveredId != null) view.HoverOwner = this; }
+            catch (Exception e) { Failure = "death-map-draw: " + e.GetType().Name; Ready = false; hint.Hide(); }
+        }
+        private void TooltipShared(Map.MapView view) { if (ReferenceEquals(view.HoverOwner, this)) Tooltip(Vector2.Zero, 0); }
         private static void NativeDrawn(int i, bool __runOriginal)
         {
             var owner = current; if (owner == null || !__runOriginal || !owner.Active || owner.depth != 1 || i != Main.myPlayer) return;
             var player = Main.LocalPlayer;
             if (owner.host.NativeEventId != null && player.lastDeathTime == owner.host.NativeStamp && player.lastDeathPostion.X == owner.host.NativeX && player.lastDeathPostion.Y == owner.host.NativeY)
                 owner.nativeId = owner.host.NativeEventId;
-        }
-        private static void IconsDrawn(MapIconOverlay __instance, Vector2 mapPosition, Vector2 mapOffset, Rectangle? clippingRect, float mapScale, float drawScale, int alpha, ref string text, bool __runOriginal)
-        {
-            var owner = current;
-            if (owner == null || !__runOriginal || !owner.Active || owner.depth != 1 || !ReferenceEquals(__instance, Main.MapIcons)) return;
-            try { owner.Draw(mapPosition, mapOffset, mapScale, drawScale, alpha); if (owner.hoveredId != null) text = ""; }
-            catch (Exception e) { owner.Failure = "death-map-draw: " + e.GetType().Name; owner.Ready = false; owner.hint.Hide(); }
         }
         private void Draw(Vector2 position, Vector2 offset, float zoom, float scale, int alpha)
         {
@@ -138,7 +139,8 @@ namespace JueMingR.TerrariaHost.DeathHistory
         }
         public void Dispose()
         {
-            Ready = false; Main.OnPostFullscreenMapDraw -= Tooltip;
+            Ready = false;
+            if (drawing != null) { drawing.Begin -= BeginShared; drawing.Icons -= DrawShared; drawing.Overlay -= TooltipShared; drawing.Completed -= EndShared; drawing.Dispose(); drawing = null; }
             if (ReferenceEquals(current, this)) current = null;
             foreach (var method in patched) try { harmony.Unpatch(method, HarmonyPatchType.All, Owner); } catch (Exception e) { Failure = "death-map-unpatch: " + e.GetType().Name; }
             patched.Clear(); hint.Clear();

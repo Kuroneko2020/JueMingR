@@ -29,6 +29,45 @@ namespace JueMingR.TerrariaHost.F5
         internal Information.InformationControls InformationControls { get; set; }
         internal GuidanceControls GuidanceControls { get; set; }
         internal DeathControls DeathControls { get; set; }
+        internal MapControls MapControls { get; set; }
+        private readonly Map.MarkerIcons markerIcons = new Map.MarkerIcons();
+        private string mapValue;
+        private object mapValueFont;
+        private F5Size mapValueSize;
+        internal void PrepareMapValue()
+        {
+            string value = MapControls?.Value ?? "暂不可用";
+            if (value == mapValue && ReferenceEquals(mapValueFont, font)) return;
+            mapValue = value; mapValueFont = font; mapValueSize = PopupMeasure(value, .70f);
+        }
+        internal void DrawMapPopup(MapManagementPopup popup)
+        {
+            if (!popup.Visible) return; var batch = Main.spriteBatch;
+            Panel(batch, popup.Panel, background, Color.White, true);
+            foreach (var section in popup.Sections) F5ControlRenderer.Panel(batch, pixel, row, section.Offset(popup.Panel.X, popup.Panel.Y));
+            for (int i = 0; i < popup.Text.Count; i++)
+            { var line = popup.Text[i]; Text(batch, line.Text, new Vector2(popup.Panel.X + popup.TextX(i), popup.Panel.Y + line.Rect.Y), line.TextScale, Color.White, line.TextSize); }
+            foreach (var icon in popup.Icons) { F5Rect bounds; var rect = icon.Item2.Offset(popup.Panel.X, popup.Panel.Y); markerIcons.Draw(batch, icon.Item1, new Vector2(rect.X + rect.Width / 2, rect.Y + rect.Height / 2), 24, 1, out bounds); }
+            for (int i = 0; i < popup.Buttons.Count; i++) F5ControlRenderer.Button(batch, pixel, button, font, popup.Buttons[i], popup.Hovered == i, popup.Enabled[i], popup.Selected(popup.Commands[i]) ? (Color?)Color.LightGreen : null, popup.Panel.X, popup.Panel.Y, true, popup.Pressed == i && popup.Hovered == i);
+            if (popup.Hint.Visible)
+            {
+                var hint = popup.Hint.Panel; Panel(batch, hint, background, Color.White, true);
+                foreach (var line in popup.Hint.Lines) Text(batch, line.Text, new Vector2(hint.X + 8 + line.Rect.X, hint.Y + 8 + line.Rect.Y), line.TextScale, Color.White, line.TextSize);
+            }
+            if (popup.Editor != null && popup.EditRect.Width > 0)
+            {
+                var r = popup.EditRect; var editor = popup.Editor; var view = popup.EditView;
+                float caret = view.Caret;
+                if (editor.HasSelection)
+                {
+                    float left = view.SelectionLeft, right = view.SelectionRight;
+                    batch.Draw(pixel, new Vector2(r.X + 4 + left, r.Y + 3), new Rectangle(0, 0, 1, 1), Color.CornflowerBlue * .45f, 0, Vector2.Zero, new Vector2(Math.Max(1, right - left), r.Height - 6), SpriteEffects.None, 0);
+                }
+                Text(batch, view.Text, new Vector2(r.X + 4, r.Y + 3), .70f, Color.White, view.Size);
+                if ((Environment.TickCount & 1023) < 512) batch.Draw(pixel, new Vector2(r.X + 4 + caret, r.Y + 3), new Rectangle(0, 0, 1, 1), Color.White, 0, Vector2.Zero, new Vector2(1, r.Height - 6), SpriteEffects.None, 0);
+                Main.instance.SetIMEPanelAnchor(new Vector2(r.X + 4 + caret, r.Bottom + 32), 0);
+            }
+        }
         internal void DrawDeathPopup(DeathHistoryPopup popup)
         {
             if (!popup.Visible) return;
@@ -166,6 +205,8 @@ namespace JueMingR.TerrariaHost.F5
                     if (rect.Bottom <= view.Y || rect.Y >= view.Bottom) continue;
                     if (element.Kind == F5ElementKind.Panel) F5ControlRenderer.Panel(batch, pixel, row, rect);
                     else if (element.Kind == F5ElementKind.Field) Panel(batch, rect, row, new Color(180, 180, 180));
+                    else if (element.Command == F5Command.ExplorationValue)
+                    { Text(batch, mapValue ?? "", new Vector2(rect.Right - mapValueSize.Width, rect.Y + (rect.Height - mapValueSize.Height) / 2), element.TextScale, Color.White, mapValueSize); }
                     else if (element.Kind == F5ElementKind.Text)
                         Text(batch, element.Text, new Vector2(rect.X, rect.Y), element.TextScale,
                             Color.White, element.TextSize);
@@ -180,11 +221,11 @@ namespace JueMingR.TerrariaHost.F5
                         bool legacyBiome = element.Command == F5Command.EnableBiome || element.Command == F5Command.DisableBiome;
                         bool guidance = F5.GuidanceControls.Owns(element.Command);
                         bool enabled = entity ? EntityControls != null && EntityControls.Available(element.Command) : world ? WorldControls != null && WorldControls.Available(element.Command) : objects ? ObjectControls != null && ObjectControls.Available(element.Command) :
-                            information ? legacyBiome ? !biomeFailed : InformationControls != null && InformationControls.Available(element.Command) : guidance ? GuidanceControls != null && GuidanceControls.Available(element.Command) : DeathControls != null && DeathControls.Available(element.Command);
+                            information ? legacyBiome ? !biomeFailed : InformationControls != null && InformationControls.Available(element.Command) : guidance ? GuidanceControls != null && GuidanceControls.Available(element.Command) : F5.MapControls.Owns(element.Command) ? MapControls != null && MapControls.Available(element.Command) : DeathControls != null && DeathControls.Available(element.Command);
                         bool hovered = !state.PointerBlocked && rect.Contains(state.PointerX, state.PointerY) && view.Contains(state.PointerX, state.PointerY);
                         F5ControlRenderer.Button(batch, pixel, button, font, element, hovered, enabled,
                             entity ? EntityControls?.Selected(element.Command) : world ? WorldControls?.Selected(element.Command) : objects ? ObjectControls?.Selected(element.Command) :
-                            information && !legacyBiome ? InformationControls?.Selected(element.Command) : guidance ? GuidanceControls?.Selected(element.Command) : F5.DeathControls.Owns(element.Command) ? DeathControls?.Selected(element.Command) : F5Layout.IsSelected(element, biomeEnabled, biomeFailed) ? (Color?)(biomeEnabled ? Color.LightGreen : Color.IndianRed) : null,
+                            information && !legacyBiome ? InformationControls?.Selected(element.Command) : guidance ? GuidanceControls?.Selected(element.Command) : F5.MapControls.Owns(element.Command) ? MapControls?.Selected(element.Command) : F5.DeathControls.Owns(element.Command) ? DeathControls?.Selected(element.Command) : F5Layout.IsSelected(element, biomeEnabled, biomeFailed) ? (Color?)(biomeEnabled ? Color.LightGreen : Color.IndianRed) : null,
                             view.X, view.Y - state.Scroll);
                     }
                 }
@@ -230,7 +271,7 @@ namespace JueMingR.TerrariaHost.F5
         internal string ButtonHint(F5Element hover, bool biomeFailed)
         {
             if (biomeFailed && (hover.Command == F5Command.EnableBiome || hover.Command == F5Command.DisableBiome)) return "群系显示暂不可用";
-            return EntityControls?.Hint(hover.Command) ?? WorldControls?.Hint(hover.Command) ?? ObjectControls?.Hint(hover.Command) ?? InformationControls?.Hint(hover.Command) ?? GuidanceControls?.Hint(hover.Command) ?? DeathControls?.Hint(hover.Command);
+            return EntityControls?.Hint(hover.Command) ?? WorldControls?.Hint(hover.Command) ?? ObjectControls?.Hint(hover.Command) ?? InformationControls?.Hint(hover.Command) ?? GuidanceControls?.Hint(hover.Command) ?? DeathControls?.Hint(hover.Command) ?? MapControls?.Hint(hover.Command);
         }
         // The shell owns one current hint for every ordinary page. Adapters
         // supply only content and final name regions; preparation is shared with

@@ -29,7 +29,7 @@ namespace NativeWorldTextProbe
                 catch (Exception e) { throw new Exception("map fixture admission " + i + ", count=" + history.Snapshot.Count + ", pending=" + history.Snapshot.Pending + ", error=" + history.Error + "/" + history.Snapshot.Error, e); }
             }
             Until(() => history.Snapshot.Count == 1040 && history.Snapshot.Pending == 0);
-            object map = Get(host, "Map"); Type type = map.GetType(); var method = type.GetMethod("Draw", Flags);
+            object map = Get(host, "Map"); Type type = map.GetType(); var shared = Get(map, "drawing").GetType(); var method = type.GetMethod("Draw", Flags);
             var isolation = new Harmony("JueMingR.Tests.DeathMapGraphicsSink");
             try
             {
@@ -41,9 +41,9 @@ namespace NativeWorldTextProbe
                 Main.mapFullscreen = true; Call(host, "SetEnabled", true);
                 Action<Vector2> draw = offset =>
                 {
-                    type.GetMethod("BeginMap", Flags).Invoke(null, null);
-                    try { type.GetMethod("IconsDrawn", Flags).Invoke(null, new object[] { Main.MapIcons, Vector2.Zero, offset, null, 1f, 1f, 255, "native", true }); }
-                    finally { type.GetMethod("EndMap", Flags).Invoke(null, new object[] { null }); }
+                    shared.GetMethod("BeginMap", Flags).Invoke(null, null);
+                    try { shared.GetMethod("IconsDrawn", Flags).Invoke(null, new object[] { Main.MapIcons, Vector2.Zero, offset, null, 1f, 1f, 255, "native", true }); }
+                    finally { shared.GetMethod("EndMap", Flags).Invoke(null, new object[] { null }); }
                     Require(GetOptional(map, "Failure") == null, "production map adapter has no failure with isolated graphics sink: " + GetOptional(map, "Failure"));
                 };
                 foreach (int k in new[] { 128, 256, 512, 1024 })

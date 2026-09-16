@@ -58,7 +58,7 @@ namespace NativeWorldTextProbe
                 image("reason-full", 960, 640); Call(popup, "Back"); Until(() => (bool)Get(host, "QueryReady")); image("details-return", 960, 640);
                 image("details-small", 640, 220); Call(popup, "Open", true, 2); image("quantity-small", 640, 220); Call(popup, "Close");
                 graphics.LoadDeathTexture(); Main.mapFullscreen = true; Call(host, "SetEnabled", true);
-                var map = Get(host, "Map"); var mapType = map.GetType();
+                var map = Get(host, "Map"); var mapType = Get(map, "drawing").GetType();
                 foreach (int k in new[] { 128, 256, 512, 1024 })
                 {
                     Call(host, "SetCount", k); Call(context, "UpdateRuntime"); Until(() => history.Snapshot.Markers.Count == k);

@@ -24,6 +24,20 @@ namespace Terraria
             WithWorkspace(workspace =>
             {
                 string id = workspace.Feature.Saved.Notes[0].Id;
+                var input = new NotesInput(workspace, new Clipboard(), new Ime());
+                workspace.Request(new NotesAction(NotesActionKind.BeginEdit, id, true, 0)); input.PrepareEditor();
+                workspace.Editor.SelectAll(); workspace.Editor.Insert("abcdefghijklmnopqrstuvwxy");
+                workspace.Editor.MoveTo(15); Frame(input, workspace, "", Keys.Up);
+                Check(workspace.Editor.Caret == 5, "wrapped title Up follows the previous visual row");
+                Frame(input, workspace, ""); workspace.Editor.MoveTo(15); Frame(input, workspace, "", Keys.Home);
+                Check(workspace.Editor.Caret == 10, "wrapped title Home follows its visual row start");
+                Frame(input, workspace, ""); workspace.Editor.MoveTo(5); Frame(input, workspace, "", Keys.End);
+                Check(workspace.Editor.Caret == 10, "wrapped title End follows its visual row end");
+                input.Release(true); workspace.CancelEdit();
+            });
+            WithWorkspace(workspace =>
+            {
+                string id = workspace.Feature.Saved.Notes[0].Id;
                 var clipboard = new Clipboard(); var ime = new Ime(); var input = new NotesInput(workspace, clipboard, ime);
                 workspace.Request(new NotesAction(NotesActionKind.BeginEdit, id, true, 3)); input.PrepareEditor();
                 ime.Preview = "ni"; Frame(input, workspace, "", Keys.N);

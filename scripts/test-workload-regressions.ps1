@@ -50,6 +50,11 @@ if ($route.groups -contains 'death-host') {
     Invoke-WorkloadCheck 'death-popup-input-layout' $fixture @('death-popup')
 }
 $modes = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
+if ($route.groups -contains 'map-host') {
+    Invoke-WorkloadCheck 'map-assets-exploration-storage' $architecture @('--map-markers-exploration')
+    Invoke-WorkloadCheck 'map-native-execution' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'map-cpu'), 'ExplorationCpu')
+    Invoke-WorkloadCheck 'map-popup-input-layout' $fixture @('map-popup')
+}
 if ($route.groups -contains 'notes-host') { [void]$modes.Add('hotkeys-popup'); [void]$modes.Add('focus-input') }
 if ($route.groups -contains 'world-host') { foreach ($mode in @('world-targets-observation', 'world-targets-projection', 'entity-observation')) { [void]$modes.Add($mode) } }
 if ($route.groups -contains 'shared-host') { foreach ($mode in @('f5-cpu', 'focus-input', 'hotkeys-popup', 'entity-observation', 'entity-projection', 'entity-preferences', 'entity-controls', 'world-targets-observation', 'world-targets-projection', 'items-safety', 'information-defaults')) { [void]$modes.Add($mode) } }
