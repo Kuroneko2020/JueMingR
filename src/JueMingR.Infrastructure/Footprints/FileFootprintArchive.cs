@@ -28,9 +28,6 @@ namespace JueMingR.Infrastructure.Footprints
             if (!String.Equals(Path.GetPathRoot(absolute), Path.GetPathRoot(fullFootprintsDirectory), StringComparison.OrdinalIgnoreCase)) throw new ArgumentException("footprint-absolute-root");
             pairDirectory = Path.Combine(absolute, pair);
         }
-        public long BlockReads { get; private set; }
-        public long BlockBytesWritten { get; private set; }
-        public long DeletedFiles { get; private set; }
         public PreferenceReadResult ReadCatalog()
         {
             Alive(); if (catalog != null) return catalog.Read(); Guard(pairDirectory);
@@ -53,7 +50,7 @@ namespace JueMingR.Infrastructure.Footprints
         { Alive(); GuardDocument(Path.Combine(generationDirectory, "root.bin")); return root.Write(identity, bytes); }
         public byte[] ReadBlock(long number)
         {
-            Alive(); string path = BlockPath(number); Guard(path); BlockReads++;
+            Alive(); string path = BlockPath(number); Guard(path);
             return ReadBounded(path);
         }
         public void CreateBlock(long number, byte[] bytes)
@@ -70,7 +67,6 @@ namespace JueMingR.Infrastructure.Footprints
             // overwrite it on retry or treat it as a committed historical block.
             using (var stream = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
             { stream.Write(bytes, 0, bytes.Length); stream.Flush(true); }
-            BlockBytesWritten += bytes.Length;
         }
         public bool ValidateBlockNamesStep(long blockCount, int budget)
         {
@@ -117,14 +113,14 @@ namespace JueMingR.Infrastructure.Footprints
                 {
                     Guard(entry); long number;
                     if (Directory.Exists(entry) || !BlockNumber(Path.GetFileName(entry), out number)) throw new InvalidDataException("footprint-clear-unknown-block");
-                    File.Delete(entry); DeletedFiles++; if (++deleted >= budget) return false;
+                    File.Delete(entry); if (++deleted >= budget) return false;
                 }
                 Directory.Delete(blocksPath, false);
             }
             foreach (string entry in Directory.EnumerateFileSystemEntries(target))
             {
                 Guard(entry); if (Directory.Exists(entry) || !RootName(Path.GetFileName(entry))) throw new InvalidDataException("footprint-clear-unknown-entry");
-                File.Delete(entry); DeletedFiles++; if (++deleted >= budget) return false;
+                File.Delete(entry); if (++deleted >= budget) return false;
             }
             Directory.Delete(target, false); return true;
         }

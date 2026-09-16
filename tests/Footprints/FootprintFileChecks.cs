@@ -5,6 +5,7 @@ using System.Linq;
 using JueMingR.Features.Footprints;
 using JueMingR.Infrastructure.Footprints;
 using JueMingR.Platform.Footprints;
+using JueMingR.Platform.Settings;
 
 namespace JueMingR.ArchitectureTests
 {
@@ -21,7 +22,7 @@ namespace JueMingR.ArchitectureTests
         private static void RoundTrip(string area)
         {
             string path = Path.Combine(area, "roundtrip"); string pair = new string('a', 64);
-            using (var files = new FileFootprintArchive(path, pair))
+            using (var files = new CountedFiles(path, pair))
             {
                 var archive = new FootprintArchive(files, pair, 8400, 2400); archive.Load();
                 var recorder = new FootprintRecorder(archive.Count, archive.End, archive.Segment, (items, count) => { archive.Append(items, count); return true; }, () => 0);
@@ -35,7 +36,7 @@ namespace JueMingR.ArchitectureTests
                 for (int i = 0; i < 100; i++) archive.Query(900, 400);
                 FootprintCoreChecks.Require(files.BlockReads == reads && frozen.Samples.Length <= 400, "bounded immutable cache avoids repeated reads of fixed history");
             }
-            using (var files = new FileFootprintArchive(path, pair))
+            using (var files = new CountedFiles(path, pair))
             {
                 var archive = new FootprintArchive(files, pair, 8400, 2400); archive.Load();
                 FootprintCoreChecks.Require(archive.Count == 2050 && archive.End == 43418050, "reopen retains full simulation time");
@@ -47,11 +48,11 @@ namespace JueMingR.ArchitectureTests
         private static void Corruption(string area)
         {
             string path = Path.Combine(area, "corrupt"); string pair = new string('b', 64); string generation;
-            using (var files = new FileFootprintArchive(path, pair))
+            using (var files = new CountedFiles(path, pair))
             { var a = new FootprintArchive(files, pair, 100, 100); a.Load(); a.Append(new[] { new FootprintSample(1, 0, 1, 1, 2, 3, FootprintPosition.Valid) }, 1); generation = a.Generation; }
             string root = Path.Combine(path, pair, generation, "root.bin"); byte[] before = File.ReadAllBytes(root); before[0] ^= 1; File.WriteAllBytes(root, before);
             bool rejected = false;
-            using (var files = new FileFootprintArchive(path, pair))
+            using (var files = new CountedFiles(path, pair))
             { try { new FootprintArchive(files, pair, 100, 100).Load(); } catch (InvalidDataException) { rejected = true; } }
             FootprintCoreChecks.Require(rejected && before.SequenceEqual(File.ReadAllBytes(root)), "corrupt root stays byte-for-byte protected");
         }
@@ -59,7 +60,7 @@ namespace JueMingR.ArchitectureTests
         {
             string path = Path.Combine(area, "clear"); string pair = new string('c', 64); string old, operation = Guid.NewGuid().ToString("N");
             string sentinel = Path.Combine(path, "other-feature.bin"); Directory.CreateDirectory(path); File.WriteAllText(sentinel, "do not touch");
-            using (var files = new FileFootprintArchive(path, pair))
+            using (var files = new CountedFiles(path, pair))
             {
                 var a = new FootprintArchive(files, pair, 100, 100); a.Load();
                 for (int i = 0; i < 600; i++) a.Append(new[] { new FootprintSample(i + 1, i, i + 1, 1, 2, 3, FootprintPosition.Valid) }, 1);
@@ -70,7 +71,7 @@ namespace JueMingR.ArchitectureTests
                 FootprintCoreChecks.Require(failed && a.Clearing && a.Generation == old, "partial clear remains bound to old generation");
                 File.Delete(Path.Combine(path, pair, old, "unknown.bin"));
             }
-            using (var files = new FileFootprintArchive(path, pair))
+            using (var files = new CountedFiles(path, pair))
             {
                 var a = new FootprintArchive(files, pair, 100, 100); a.Load();
                 FootprintCoreChecks.Require(a.Clearing, "restart discovers exact durable intent");
@@ -84,7 +85,7 @@ namespace JueMingR.ArchitectureTests
         private static void GrowingHistory(string area)
         {
             string path = Path.Combine(area, "growth"), pair = new string('5', 64);
-            using (var files = new FileFootprintArchive(path, pair))
+            using (var files = new CountedFiles(path, pair))
             {
                 var archive = new FootprintArchive(files, pair, 100, 100); archive.Load(); long priorBytes = 0;
                 for (int n = 0; n < 129; n++)
@@ -92,22 +93,22 @@ namespace JueMingR.ArchitectureTests
                     var batch = new FootprintSample[256];
                     for (int i = 0; i < batch.Length; i++) { long p = n * 256 + i + 1; batch[i] = new FootprintSample(p, p - 1, p, 1, i % 90, n % 90, FootprintPosition.Valid); }
                     archive.Append(batch, batch.Length);
-                    if (n > 0) FootprintCoreChecks.Require(files.BlockBytesWritten - priorBytes <= 16384, "append writes one bounded block regardless of total N");
-                    priorBytes = files.BlockBytesWritten;
+                    if (n > 0) FootprintCoreChecks.Require(files.BlockBytesSubmitted - priorBytes <= 16384, "append submits one bounded block regardless of total N");
+                    priorBytes = files.BlockBytesSubmitted;
                 }
                 FootprintCoreChecks.Require(archive.Count == 33024 && archive.Query(0).Samples[0].Sequence == 1 && archive.Query(archive.End).Partial, "N=33024 oldest and latest remain reachable with bounded partial query");
                 var middle = archive.Query(16000); long reads = files.BlockReads;
                 for (int i = 0; i < 2000; i++) archive.Query(16000);
                 FootprintCoreChecks.Require(middle.Samples.Length == 8192 && files.BlockReads == reads, "2000 fixed queries use bounded cache without full-history disk scans");
             }
-            using (var files = new FileFootprintArchive(path, pair))
+            using (var files = new CountedFiles(path, pair))
             {
                 var archive = new FootprintArchive(files, pair, 100, 100); long previous = 0; int steps = 0;
                 while (!archive.LoadStep()) { FootprintCoreChecks.Require(files.BlockReads - previous <= 8, "first recovery decodes at most eight blocks per step"); previous = files.BlockReads; steps++; }
                 FootprintCoreChecks.Require(steps > 16 && archive.Count == 33024, "large first recovery is cancellable and complete");
             }
             string catalog = Path.Combine(path, pair, "catalog.json"), before = File.ReadAllText(catalog); string future = before.Replace("\"version\":1", "\"version\":2"); File.WriteAllText(catalog, future);
-            bool rejected = false; using (var files = new FileFootprintArchive(path, pair)) { try { new FootprintArchive(files, pair, 100, 100).Load(); } catch (InvalidDataException) { rejected = true; } }
+            bool rejected = false; using (var files = new CountedFiles(path, pair)) { try { new FootprintArchive(files, pair, 100, 100).Load(); } catch (InvalidDataException) { rejected = true; } }
             FootprintCoreChecks.Require(rejected && File.ReadAllText(catalog) == future, "future catalog remains unchanged and unwritable");
         }
         private static void ClearBoundaries(string area)
@@ -118,7 +119,7 @@ namespace JueMingR.ArchitectureTests
             var protectedFiles = Directory.GetFiles(Path.Combine(path, other), "*", SearchOption.AllDirectories).ToDictionary(p => p, File.ReadAllBytes);
             foreach (string domain in new[] { "markers", "deaths", "notes", "hotkeys", "original.map", "original.plr", "original.wld" })
             { string p = Path.Combine(path, domain); File.WriteAllBytes(p, new byte[] { 41, 0, 199, 255 }); protectedFiles.Add(p, File.ReadAllBytes(p)); }
-            using (var files = new FileFootprintArchive(path, pair))
+            using (var files = new CountedFiles(path, pair))
             {
                 var a = new FootprintArchive(files, pair, 100, 100); a.Load();
                 for (int i = 0; i < 600; i++) a.Append(new[] { new FootprintSample(i + 1, i, i + 1, 1, 2, 3, FootprintPosition.Valid) }, 1);
@@ -154,6 +155,24 @@ namespace JueMingR.ArchitectureTests
                 FootprintCoreChecks.Require(!Directory.Exists(target), "old body and all recoverable root files physically removed after retry");
             }
             foreach (var file in protectedFiles) FootprintCoreChecks.Require(File.Exists(file.Key) && file.Value.SequenceEqual(File.ReadAllBytes(file.Key)), "other pair and adjacent domain sentinel unchanged: " + Path.GetFileName(file.Key));
+        }
+        // Counts actual mechanical port calls while preserving the production
+        // filesystem adapter. Submitted bytes are not claimed as physical bytes
+        // on idempotent retries. No counters are installed in ordinary Release.
+        private sealed class CountedFiles : IFootprintArchiveFiles
+        {
+            private readonly FileFootprintArchive inner;
+            internal long BlockReads, BlockBytesSubmitted;
+            internal CountedFiles(string path, string pair) { inner = new FileFootprintArchive(path, pair); }
+            public PreferenceReadResult ReadCatalog() { return inner.ReadCatalog(); }
+            public PreferenceWriteResult WriteCatalog(string i, byte[] b) { return inner.WriteCatalog(i, b); }
+            public PreferenceReadResult OpenRoot(string g) { return inner.OpenRoot(g); }
+            public PreferenceWriteResult WriteRoot(string i, byte[] b) { return inner.WriteRoot(i, b); }
+            public byte[] ReadBlock(long n) { BlockReads++; return inner.ReadBlock(n); }
+            public void CreateBlock(long n, byte[] b) { BlockBytesSubmitted += b.Length; inner.CreateBlock(n, b); }
+            public bool ValidateBlockNamesStep(long n, int budget) { return inner.ValidateBlockNamesStep(n, budget); }
+            public bool DeleteGenerationStep(string g, int n) { return inner.DeleteGenerationStep(g, n); }
+            public void Dispose() { inner.Dispose(); }
         }
     }
 }
