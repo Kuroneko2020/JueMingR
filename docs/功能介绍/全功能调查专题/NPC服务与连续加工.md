@@ -334,7 +334,7 @@ V8 `ItemSlot.RightClick` 先拒绝 `Main.LocalPlayerHasPendingInventoryActions()
 - Oyster 总给 4411；另有 1/4 概率进入珍珠分支：其中 1/10 给 4414，否则再按 1/3 给 4413，否则 4412。
 - CanOfWorms 给 Worm 5–8，另有 30% 给 3191 的 1–2 个、5% 给 2895。
 - ChilletEgg 在 5665/5666 之间等概率给一个。
-- 奖励先生成、袋/钥匙后续扣减或异常并不是跨所有步骤的可回滚事务；异常后不能自动补造奖励或返还袋子。
+- LockBox 的黄金钥匙先消费，随后生成奖励，袋本体最后扣减；这些步骤没有整体回滚。任一后续异常都不能自动视为前面未发生，也不能未经确认补造奖励或返还袋子/钥匙。
 
 证据：R `.local/研究/item-processing-1.4.5.8/ItemSlot.cs:648–805`，SHA-256 `BDF8CFD535FFA8AE6EEFF04AFDFCDDE8D39AC5F96579EDE4DA1775D7B9298D2B`；同目录 `Player.Openables.cs:142–843,844–2128,2129–2301`，SHA-256 `95F70F0F01729792C975E5EC9C82C5BB543601B5AB1F08EDE5465EA584B8EE1D`；V8-Player `QuickSpawnItem/GetOrDropItem:7174–7203`；`Item.Request.cs:4–10`。
 
