@@ -226,6 +226,13 @@ namespace JueMingR.TerrariaHost.F5
             if (changed) { Generation++; Hovered = Pressed = -1; } dirty = false; PrepareHint(measure);
         }
         internal bool Selected(int command) { return command == 20 && !host.FastScan || command == 21 && host.FastScan || (command == 24 || command == 25) && host.DynamicEnabled; }
+        internal float TextX(int index)
+        {
+            var line = Text[index];
+            // Resolve from the current measured scalar; progress/state changes
+            // must not rebuild controls or disturb a held button.
+            return index == valueIndex && String.IsNullOrEmpty(shownScan) ? (Panel.Width - line.TextSize.Width) / 2 : line.Rect.X;
+        }
         private void AddSection(int first, int end, float top, int slots, float pw)
         {
             int from = Math.Max(first, scroll), to = Math.Min(end, scroll + slots);

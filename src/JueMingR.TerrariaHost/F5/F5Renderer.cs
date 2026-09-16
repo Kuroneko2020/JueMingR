@@ -45,7 +45,8 @@ namespace JueMingR.TerrariaHost.F5
             if (!popup.Visible) return; var batch = Main.spriteBatch;
             Panel(batch, popup.Panel, background, Color.White, true);
             foreach (var section in popup.Sections) F5ControlRenderer.Panel(batch, pixel, row, section.Offset(popup.Panel.X, popup.Panel.Y));
-            foreach (var line in popup.Text) Text(batch, line.Text, new Vector2(popup.Panel.X + line.Rect.X, popup.Panel.Y + line.Rect.Y), line.TextScale, Color.White, line.TextSize);
+            for (int i = 0; i < popup.Text.Count; i++)
+            { var line = popup.Text[i]; Text(batch, line.Text, new Vector2(popup.Panel.X + popup.TextX(i), popup.Panel.Y + line.Rect.Y), line.TextScale, Color.White, line.TextSize); }
             foreach (var icon in popup.Icons) { F5Rect bounds; var rect = icon.Item2.Offset(popup.Panel.X, popup.Panel.Y); markerIcons.Draw(batch, icon.Item1, new Vector2(rect.X + rect.Width / 2, rect.Y + rect.Height / 2), 24, 1, out bounds); }
             for (int i = 0; i < popup.Buttons.Count; i++) F5ControlRenderer.Button(batch, pixel, button, font, popup.Buttons[i], popup.Hovered == i, popup.Enabled[i], popup.Selected(popup.Commands[i]) ? (Color?)Color.LightGreen : null, popup.Panel.X, popup.Panel.Y, true, popup.Pressed == i && popup.Hovered == i);
             if (popup.Hint.Visible)
@@ -205,7 +206,7 @@ namespace JueMingR.TerrariaHost.F5
                     if (element.Kind == F5ElementKind.Panel) F5ControlRenderer.Panel(batch, pixel, row, rect);
                     else if (element.Kind == F5ElementKind.Field) Panel(batch, rect, row, new Color(180, 180, 180));
                     else if (element.Command == F5Command.ExplorationValue)
-                    { Text(batch, mapValue ?? "", new Vector2(rect.X, rect.Y + (rect.Height - mapValueSize.Height) / 2), element.TextScale, Color.White, mapValueSize); }
+                    { Text(batch, mapValue ?? "", new Vector2(rect.Right - mapValueSize.Width, rect.Y + (rect.Height - mapValueSize.Height) / 2), element.TextScale, Color.White, mapValueSize); }
                     else if (element.Kind == F5ElementKind.Text)
                         Text(batch, element.Text, new Vector2(rect.X, rect.Y), element.TextScale,
                             Color.White, element.TextSize);

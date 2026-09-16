@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 using JueMingR.Features.MapMarkers;
@@ -15,7 +16,7 @@ namespace NativeWorldTextProbe
     internal static class NativeMapVisualChecks
     {
         private const BindingFlags Flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
-        internal static void Run(ProbeGraphics graphics, string output)
+        internal static void Run(ProbeGraphics graphics, string output, bool alignmentOnly = false)
         {
             Directory.CreateDirectory(output); graphics.LoadMarkerTextures(); graphics.LoadDeathTexture();
             Main.gameMenu = Main.dedServ = Main.hideUI = Main.mapFullscreen = false; Main.netMode = Main.myPlayer = 0;
@@ -37,6 +38,7 @@ namespace NativeWorldTextProbe
                 var shell = Get(context, "Shell"); var renderer = Get(shell, "renderer"); var popup = Get(shell, "MapPopup"); Call(renderer, "RefreshResources");
                 var prepare = popup.GetType().GetMethod("Prepare", Flags); var measure = Delegate.CreateDelegate(prepare.GetParameters()[3].ParameterType, renderer, renderer.GetType().GetMethod("PopupMeasure", Flags));
                 Action<float, float> layout = (w, h) => prepare.Invoke(popup, new object[] { w, h, Get(renderer, "FontIdentity"), measure, Get(renderer, "SkinGeneration") });
+                if (alignmentOnly) { AlignmentImages(graphics, output, context, host, shell, renderer, popup, layout); return; }
                 Call(popup, "Open", false); layout(960, 640); graphics.Image(Path.Combine(output, "map-empty.png"), () => Call(renderer, "DrawMapPopup", popup), Matrix.Identity);
                 int[] icons = { 8, 48, 50, 224, 171, 393, 966, 29 };
                 for (int i = 0; i < 11; i++) { long op = library.Create(new MarkerRecord((i + 1).ToString("x32"), 200 + i * 40.125, 200.375, icons[i % 8], i == 0 ? "营地家的第一处标记点" : "标记" + i)); Until(() => { library.Poll(); return library.LastOperation == op; }); }
@@ -109,6 +111,26 @@ namespace NativeWorldTextProbe
                 Console.WriteLine("PASS: actual native marker resources, fallback, compact/short management, editor and exploration controls rendered; inspect generated PNGs separately.");
             }
             finally { Main.gameMenu = true; Call(context, "UpdateRuntime"); StopContext(context); Main.gameMenu = false; }
+        }
+        private static void AlignmentImages(ProbeGraphics graphics, string output, object context, object host, object shell, object renderer, object popup, Action<float, float> layout)
+        {
+            long now = 1000; Set(host, "milliseconds", (Func<long>)(() => now));
+            var lit = new MapTile { Light = 255 };
+            for (int x = 100; x < 520; x++) for (int y = 100; y < 860; y++) Main.Map.SetTile(x, y, ref lit);
+            Call(host, "SetDynamic", true); Set(host, "FastScan", true);
+            Until(() => { now += 334; Call(context, "UpdateRuntime"); return ((ExplorationCounter)Get(host, "Counter")).Current; });
+            Require((string)Get(host, "ExplorationText") == "已揭示 6.33%" && (string)Get(host, "ScanText") == "", "alignment preview uses a real current result");
+            Call(popup, "Open", true); layout(344, 292);
+            graphics.Image(Path.Combine(output, "exploration-centered.png"), () => Call(renderer, "DrawMapPopup", popup), Matrix.Identity, 344, 292);
+            Call(popup, "Suspend"); var state = Get(shell, "State"); Set(state, "Ready", true); Call(state, "Navigate", 2); Call(state, "RestoreVisible");
+            Call(renderer, "Prepare", state, 960f, 640f, 1f); Call(renderer, "PrepareMapValue");
+            var page = Get(state, "Layout"); var view = Get(page, "Viewport");
+            var value = ((System.Collections.IEnumerable)Get(page, "Elements")).Cast<object>().Single(e => Get(e, "Command").ToString() == "ExplorationValue");
+            var rect = Get(value, "Rect");
+            float rowX = (float)Get(state, "X") + (float)Get(view, "X"), rowY = (float)Get(state, "Y") + (float)Get(view, "Y") + (float)Get(rect, "Y") - (float)Get(state, "Scroll");
+            var matrix = Matrix.CreateTranslation(4 - rowX, 4 - rowY, 0);
+            graphics.Image(Path.Combine(output, "map-row-right-aligned.png"), () => Call(renderer, "Draw", state, matrix, false, false), Matrix.Identity, 530, (int)Math.Ceiling((float)Get(rect, "Height")) + 8);
+            Console.WriteLine("PASS: two focused actual-font alignment previews rendered from the current Host result.");
         }
         private static void PixelAnchors(ProbeGraphics graphics, MarkerLibrary library, object layer, Type frameType)
         {
