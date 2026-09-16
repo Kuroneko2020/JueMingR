@@ -31,6 +31,15 @@ namespace JueMingR.TerrariaHost.F5
         internal DeathControls DeathControls { get; set; }
         internal MapControls MapControls { get; set; }
         private readonly Map.MarkerIcons markerIcons = new Map.MarkerIcons();
+        private string mapValue;
+        private object mapValueFont;
+        private F5Size mapValueSize;
+        internal void PrepareMapValue()
+        {
+            string value = MapControls?.Value ?? "暂不可用";
+            if (value == mapValue && ReferenceEquals(mapValueFont, font)) return;
+            mapValue = value; mapValueFont = font; mapValueSize = PopupMeasure(value, .70f);
+        }
         internal void DrawMapPopup(MapManagementPopup popup)
         {
             if (!popup.Visible) return; var batch = Main.spriteBatch;
@@ -190,7 +199,7 @@ namespace JueMingR.TerrariaHost.F5
                     if (element.Kind == F5ElementKind.Panel) F5ControlRenderer.Panel(batch, pixel, row, rect);
                     else if (element.Kind == F5ElementKind.Field) Panel(batch, rect, row, new Color(180, 180, 180));
                     else if (element.Command == F5Command.ExplorationValue)
-                    { string value = MapControls?.Value ?? "暂不可用"; Text(batch, value, new Vector2(rect.X, rect.Y), element.TextScale, Color.White, PopupMeasure(value, element.TextScale)); }
+                    { Text(batch, mapValue ?? "", new Vector2(rect.X, rect.Y), element.TextScale, Color.White, mapValueSize); }
                     else if (element.Kind == F5ElementKind.Text)
                         Text(batch, element.Text, new Vector2(rect.X, rect.Y), element.TextScale,
                             Color.White, element.TextSize);

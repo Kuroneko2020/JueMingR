@@ -18,6 +18,7 @@ namespace JueMingR.ArchitectureTests
             Run(failures, "marker unknown receipt reentry", MarkerUnknown);
             Run(failures, "summary workerless retirement", SummaryRetirement);
             Run(failures, "summary old failure isolation", SummaryIsolation);
+            Run(failures, "acknowledged marker navigation", MarkerNavigation);
         }
         private static void Run(List<string> failures, string name, Action action)
         { try { action(); } catch (Exception e) { failures.Add(name + ": " + e.Message); } }
@@ -82,8 +83,41 @@ namespace JueMingR.ArchitectureTests
                 owner.BeginSession(128, 64); owner.UsePair(B); Until(owner.Poll, () => owner.Loaded); owner.Offer(30, DateTime.UtcNow.Ticks); clock = 20000; Until(owner.Poll, () => owner.Saved);
                 first.WriteRelease.Set(); Until(() => { }, () => !first.Worker.IsAlive); owner.Poll();
                 Require(owner.Error == null && owner.Saved && ExplorationSummary.Decode(second.Inner.Bytes, B, 128, 64).Count == 30, "A late failure cannot change B state");
+                Require(owner.TakeBackgroundError() != null && owner.TakeBackgroundError() == null, "A late failure remains consumable once after B succeeds");
             }
             finally { first.Release(); second.Release(); Require(owner.Stop(5000), "stop"); first.DisposeEvents(); second.DisposeEvents(); }
+        }
+        private static void MarkerNavigation()
+        {
+            foreach (string mode in new[] { "success", "failure", "unknown", "later-text", "composition", "suspend", "session" })
+            {
+                var seed = new MarkerDocument(A, 128, 64, 1, new[] { new MarkerRecord(new string('1', 32), 2.5, 3.5, 8, "原名") });
+                var gate = new Gate(MarkerCodec.Encode(seed), holdWrite: true, fail: mode == "failure" || mode == "unknown", unknown: mode == "unknown");
+                var library = new MarkerLibrary(_ => gate); var workspace = new MarkerWorkspace(library); int navigated = 0;
+                try
+                {
+                    library.BeginSession(1, 128, 64); library.UsePair(A); Until(library.Poll, () => library.Loaded); workspace.Poll(); Require(workspace.BeginEdit(new string('1', 32)), "begin name edit");
+                    workspace.Editor.Insert("新名"); Require(workspace.Request(() => navigated++), "rename accepted"); Require(gate.WriteEntered.Wait(3000), "rename held in worker");
+                    Require(navigated == 0 && workspace.Editor != null && library.Saved.Records[0].Name == "原名", "navigation waits for authoritative receipt");
+                    Require(!workspace.Request(() => navigated += 100), "second dependent action cannot replace active command");
+                    if (mode == "later-text") workspace.Editor.Insert("续");
+                    if (mode == "composition") workspace.PreserveUncommittedInput(workspace.Editor);
+                    if (mode == "suspend") workspace.Suspend();
+                    if (mode == "session") { library.EndSession(); workspace.Poll(); }
+                    gate.WriteRelease.Set();
+                    if (mode == "session") { Until(() => { library.Poll(); workspace.Poll(); }, () => !gate.Worker.IsAlive); Require(navigated == 0 && workspace.Editor == null && library.Saved == null, "retired success cannot navigate next session"); }
+                    else
+                    {
+                        Until(() => { library.Poll(); workspace.Poll(); }, () => !library.Busy);
+                        Require(navigated == (mode == "success" ? 1 : 0), "only unchanged successful edit invokes one dependent action: " + mode);
+                        if (mode == "failure" || mode == "unknown") Require(workspace.Editor?.Text == "新名" && library.Saved.Records[0].Name == "原名", "failed receipt retains draft and trusted baseline");
+                        if (mode == "unknown") Require(library.CommitUnconfirmed && !library.CanEdit, "unknown commit cannot retry asset");
+                        if (mode == "later-text") Require(workspace.Editor?.Text == "新名续" && workspace.Editor.Dirty && library.Saved.Records[0].Name == "新名", "new text survives accepted older snapshot");
+                        if (mode == "composition") Require(workspace.Editor != null, "composition keeps editing owner after save");
+                    }
+                }
+                finally { gate.Release(); Require(library.Stop(5000), "navigation owner stopped"); gate.DisposeEvents(); }
+            }
         }
         private static void Until(Action pump, Func<bool> condition)
         { if (!SpinWait.SpinUntil(() => { pump(); return condition(); }, 5000)) throw new TimeoutException("map persistence result"); }

@@ -86,11 +86,14 @@ namespace JueMingR.TerrariaHost.Map
 #endif
             current.Counter.Changed(x, y);
         }
-        private static void BeginBatch(WorldMap __instance, out ExplorationCounter __state)
+        private static void BeginBatch(WorldMap __instance, MethodBase __originalMethod, out ExplorationCounter __state)
         {
             Interlocked.Increment(ref batches); Interlocked.Increment(ref batchEpoch);
             var current = Volatile.Read(ref binding);
-            __state = current != null && ReferenceEquals(current.Map, __instance) ? current.Counter : null;
+            // Load's version helpers write Main.Map, even if its receiver was
+            // captured before a map replacement. That batch invalidates the
+            // current binding as well; Clear/ClearEdges only mutate receiver.
+            __state = current != null && (__originalMethod.Name == "Load" || ReferenceEquals(current.Map, __instance)) ? current.Counter : null;
             __state?.BeginBatch();
         }
         private static Exception EndBatch(Exception __exception, ExplorationCounter __state)

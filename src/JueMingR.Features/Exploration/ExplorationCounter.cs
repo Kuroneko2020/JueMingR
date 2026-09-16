@@ -16,7 +16,11 @@ namespace JueMingR.Features.Exploration
         private int dynamicEnabled, activeBatch, epoch, seenEpoch, signalled;
         private int initial, dirtyCursor;
         private bool sweeping, complete, scanActive = true;
+        private bool calibrationTurn;
         private long running, published;
+#if DEBUG
+        internal long CellReads, BlockReads, MetadataVisits, FullScans;
+#endif
         public ExplorationCounter(int width, int height, Func<int, int, bool> revealed, bool startScan = true)
         {
             if (width <= 0 || height <= 0 || width > 20000 || height > 20000) throw new ArgumentException("exploration-dimensions-invalid");
@@ -55,8 +59,10 @@ namespace JueMingR.Features.Exploration
             // Manual calibration may share the already valid per-block base.
             // Pausing its cursor must not pause ordinary dirty maintenance.
             // Lost continuity (off/on, replacement or bulk epoch) cannot reuse it.
-            if (!preserveBaseline) { running = 0; complete = false; sweeping = false; dirtyCursor = 0; }
-            seenEpoch = Volatile.Read(ref epoch); Revision++;
+            if (!preserveBaseline) { running = 0; complete = false; sweeping = false; dirtyCursor = 0; seenEpoch = Volatile.Read(ref epoch); }
+            // A retained base keeps its original epoch, including when a batch
+            // races the Complete check above. Never bless old counts as new.
+            Revision++;
         }
         public void Changed(int x, int y)
         {
@@ -66,7 +72,7 @@ namespace JueMingR.Features.Exploration
         }
         public void BeginBatch() { Interlocked.Increment(ref activeBatch); Interlocked.Increment(ref epoch); }
         public void EndBatch() { Interlocked.Increment(ref epoch); Interlocked.Decrement(ref activeBatch); }
-        public void Advance(int cellBudget, int metadataBudget)
+        public void Advance(int cellBudget, int metadataBudget, bool advanceScan = true)
         {
             if (cellBudget < BlockSize * BlockSize || metadataBudget < 1) throw new ArgumentOutOfRangeException(nameof(cellBudget));
             if (Volatile.Read(ref activeBatch) != 0) return;
@@ -77,15 +83,30 @@ namespace JueMingR.Features.Exploration
             }
             if (!scanActive && !Dynamic) return;
             int blocks = cellBudget / (BlockSize * BlockSize);
-            if (scanActive && !Paused)
+            if (scanActive && !Paused && advanceScan)
             {
-                while (blocks-- > 0 && initial < counts.Length)
+                int scanBlocks = blocks;
+                if (complete && Dynamic && Pending)
                 {
+                    // Calibration and changes share one cell budget. Reserve
+                    // maintenance capacity; a one-block budget alternates.
+                    if (blocks > 1) scanBlocks--;
+                    else { calibrationTurn = !calibrationTurn; if (!calibrationTurn) scanBlocks = 0; }
+                }
+                while (blocks > 0 && scanBlocks > 0 && initial < counts.Length)
+                {
+                    blocks--; scanBlocks--;
                     int value; if (!ReadBlock(initial, out value)) return;
                     running += value - (complete ? counts[initial] : 0); counts[initial] = value; initial++;
                 }
                 if (initial == counts.Length)
-                { complete = true; scanActive = false; Revision++; CalibrationRevision++; if (!Dynamic) Publish(); }
+                {
+                    complete = true; scanActive = false; Revision++; CalibrationRevision++;
+#if DEBUG
+                    FullScans++;
+#endif
+                    if (!Dynamic) Publish();
+                }
             }
             if (!complete || !Dynamic) return;
             if (!sweeping && Interlocked.Exchange(ref signalled, 0) != 0) { sweeping = true; dirtyCursor = 0; }
@@ -95,6 +116,9 @@ namespace JueMingR.Features.Exploration
             while (sweeping && metadataBudget-- > 0 && blocks > 0)
             {
                 int i = dirtyCursor;
+#if DEBUG
+                MetadataVisits++;
+#endif
                 if (Volatile.Read(ref dirty[i]) != 0)
                 {
                     int value; if (!ReadBlock(i, out value)) return;
@@ -114,6 +138,9 @@ namespace JueMingR.Features.Exploration
             if (beforeEpoch != seenEpoch || Volatile.Read(ref activeBatch) != 0) return false;
             Interlocked.Exchange(ref dirty[i], 0); long version = Interlocked.Read(ref versions[i]);
             int left = i % columns * BlockSize, top = i / columns * BlockSize;
+#if DEBUG
+            BlockReads++; CellReads += (long)(Math.Min(left + BlockSize, width) - left) * (Math.Min(top + BlockSize, height) - top);
+#endif
             for (int y = top; y < Math.Min(top + BlockSize, height); y++) for (int x = left; x < Math.Min(left + BlockSize, width); x++) if (revealed(x, y)) value++;
             if (beforeEpoch != Volatile.Read(ref epoch) || Volatile.Read(ref activeBatch) != 0 || version != Interlocked.Read(ref versions[i]))
             { Volatile.Write(ref dirty[i], 1); Volatile.Write(ref signalled, 1); return false; }

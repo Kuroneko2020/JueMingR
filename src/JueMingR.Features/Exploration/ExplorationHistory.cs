@@ -29,6 +29,9 @@ namespace JueMingR.Features.Exploration
         private bool stopping, protectedFile, identityFailed;
         private long due, command;
         private ExplorationSummary latest, sent, confirmed;
+#if DEBUG
+        internal long Submitted, Committed;
+#endif
         public ExplorationHistory(Func<string, IPreferenceStorage> storage, Func<long> clock)
         { this.storage = storage ?? throw new ArgumentNullException(nameof(storage)); this.clock = clock ?? throw new ArgumentNullException(nameof(clock)); }
         public bool Loaded { get; private set; }
@@ -74,12 +77,24 @@ namespace JueMingR.Features.Exploration
             if (current.Worker.TryTake(out result))
             {
                 if (result.CommandId == 0) { Loaded = true; Historical = result.Value; protectedFile |= !result.Success; }
-                else { if (result.Success) { confirmed = sent; failures = 0; } else { failures++; due = clock() + 1000; } sent = null; }
+                else {
+                    if (result.Success) {
+                        confirmed = sent; failures = 0;
+#if DEBUG
+                        Committed++;
+#endif
+                    } else { failures++; due = clock() + 1000; } sent = null;
+                }
                 protectedFile |= result.IsProtected || result.CommitUnconfirmed; CommitUnconfirmed |= result.CommitUnconfirmed;
                 current.Failed = !result.Success; current.Unknown |= result.CommitUnconfirmed; current.Error = Error = identityFailed ? "exploration-identity-changed" : result.Error;
             }
             if (Loaded && !protectedFile && failures < 3 && latest != null && sent == null && !ReferenceEquals(latest, confirmed) && clock() >= due)
-                if (current.Worker.TrySubmit(++command, latest)) sent = latest;
+                if (current.Worker.TrySubmit(++command, latest)) {
+                    sent = latest;
+#if DEBUG
+                    Submitted++;
+#endif
+                }
         }
         public void EndSession()
         {
@@ -106,6 +121,7 @@ namespace JueMingR.Features.Exploration
                 if (prior) continue; lease.Worker = Worker(lease.Pair, lease.Width, lease.Height); active++; Finish(lease);
             }
         }
+        public string TakeBackgroundError() { string value = BackgroundError; BackgroundError = null; return value; }
         private void Reap()
         {
             for (int i = retired.Count - 1; i >= 0; i--)

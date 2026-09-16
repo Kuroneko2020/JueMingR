@@ -375,6 +375,7 @@ namespace JueMingR.TerrariaHost.F5
                 {
                     Vector2 screen = PlayerInput.OriginalScreenSize;
                     renderer.Prepare(State, screen.X, screen.Y, matrix.M11);
+                    if (State.Page == 2) renderer.PrepareMapValue();
                     HotkeyPopup?.Prepare(screen.X / matrix.M11, screen.Y / matrix.M11, renderer.FontIdentity, renderer.PopupMeasure, renderer.SkinGeneration);
                     StylePopup?.Prepare(screen.X / matrix.M11, screen.Y / matrix.M11, matrix.M11, renderer.FontIdentity, renderer.PopupMeasure, renderer.SkinGeneration, StyleAnchor());
                     DeathPopup?.Prepare(screen.X / matrix.M11, screen.Y / matrix.M11, renderer.FontIdentity, renderer.PopupMeasure, renderer.SkinGeneration);

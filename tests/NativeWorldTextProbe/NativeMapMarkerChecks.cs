@@ -26,11 +26,13 @@ namespace NativeWorldTextProbe
         private const BindingFlags Flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
         private static Vector2 nativePosition, nativeOrigin;
         private static float nativeScale;
-        internal static void Run()
+        internal static void Run(string output)
         {
             Main.dedServ = true; try { System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(CaptureManager).TypeHandle); } finally { Main.dedServ = false; }
             string root = Path.Combine(Terraria.Program.SavePath, "map-composition"); Directory.CreateDirectory(root);
-            var assembly = Assembly.LoadFrom(Path.Combine(Program.Repository, "artifacts/build/Debug/work/bin/JueMingR.TerrariaHost/x86/Debug/net472/JueMingR.TerrariaHost.dll"));
+            string config = Program.ProductionConfiguration;
+            var assembly = Assembly.LoadFrom(Path.Combine(Program.Repository, "artifacts/build/" + config + "/work/bin/JueMingR.TerrariaHost/x86/" + config + "/net472/JueMingR.TerrariaHost.dll"));
+            Require((typeof(ExplorationCounter).GetField("CellReads", Flags) == null) == (config == "Release"), "cost probe production Features configuration matches Host");
             Main.gameMenu = Main.hideUI = Main.mapFullscreen = Main.inFancyUI = Main.onlyDrawFancyUI = Main.ingameOptionsWindow = false;
             Main.netMode = Main.myPlayer = 0; Main.maxTilesX = 256; Main.maxTilesY = 128; Main.Map = new WorldMap(256, 128);
             Main.screenWidth = 960; Main.screenHeight = 640; Main.GameViewMatrix = new Terraria.Graphics.SpriteViewMatrix(null); Main.GameViewMatrix.SetViewportOverride(new Viewport(0, 0, 960, 640));
@@ -49,8 +51,14 @@ namespace NativeWorldTextProbe
                 Require(!(bool)Get(host, "MarkersEnabled") && !(bool)Get(host, "DynamicEnabled"), "both ordinary defaults off");
                 var bindings = (JueMingR.Platform.Hotkeys.HotkeyBindings)Get(Get(Get(context, "Shell"), "hotkeys"), "Bindings"); Until(() => { bindings.Poll(); return bindings.Loaded; }); Require(bindings.Get("map-markers.toggle") == null, "common marker hotkey initially unbound");
                 Geometry(assembly);
+                NativeMapDrawOracle.Run(host);
                 Inputs(worker, context, host);
+                NativeMapFeedbackChecks.Run(host);
                 HostCounting(context, host, root);
+                NativeExplorationCosts.Run(context, host, output);
+                NativeMapCoexistenceChecks.Run(context, host);
+                var retired = EndAndCapture(context, host); GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
+                Require(!retired[0].IsAlive && !retired[1].IsAlive, "large current counter and map are released after session exit");
             }
             finally { Main.gameMenu = true; Call(context, "UpdateRuntime"); StopContext(context); Main.gameMenu = false; }
             Console.WriteLine("PASS: complete map profile, native geometry oracle, actual InputPostfix ownership, reliable asset commit, locate and Host counting lifecycle.");
@@ -122,6 +130,12 @@ namespace NativeWorldTextProbe
             Func<Vector2> option = () => { Array options = (Array)Get(layer, "options"); object r = options.GetValue(0); return new Vector2((float)Get(r, "X") + 20, (float)Get(r, "Y") + 20); };
             try
             {
+                var bindings = (JueMingR.Platform.Hotkeys.HotkeyBindings)Get(Get(shell, "hotkeys"), "Bindings");
+                JueMingR.Platform.Hotkeys.HotkeyChord chord; string reason; long command;
+                Require(JueMingR.Platform.Hotkeys.HotkeyChord.TryCreate((int)Keys.F6, JueMingR.Platform.Hotkeys.HotkeyModifiers.None, out chord, out reason) && bindings.TrySet("map-markers.toggle", chord, null, out command, out reason), "map common binding admitted");
+                Until(() => { bindings.Poll(); return !bindings.Busy; });
+                pick(); frame(451, 301, false, false, Keys.F6, null);
+                Require(!(bool)Get(host, "MarkersEnabled") && !(bool)Get(layer, "Picking"), "actual full-map common hotkey disables marker picker"); neutral();
                 pick(); frame(451, 301, false, false, Keys.Escape, "Inventory"); PlayerInput.Triggers.Current.CopyInto(Main.LocalPlayer);
                 Require(!(bool)Get(layer, "Picking") && !Main.LocalPlayer.controlInv && Main.mapFullscreen, "picker Esc cancels only picker and cannot enter native Inventory"); neutral();
                 foreach (string takeover in new[] { "MapFull", "ToggleCameraMode", "capture", "map", "world", "focus" })
@@ -147,6 +161,9 @@ namespace NativeWorldTextProbe
             finally { worker.GetField("postfixContext", Flags).SetValue(null, oldContext); worker.GetField("hookCommitted", Flags).SetValue(null, oldCommitted); Main.mapFullscreen = false; }
         }
         private static readonly string rootDummy = Path.GetTempPath();
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        private static WeakReference[] EndAndCapture(object context, object host)
+        { var refs = new[] { new WeakReference(Get(host, "Counter")), new WeakReference(Main.Map) }; Main.gameMenu = true; Call(context, "UpdateRuntime"); Main.Map = null; Main.tile = null; return refs; }
         private static void HostCounting(object context, object host, string root)
         {
             long now = 0; Set(host, "milliseconds", (Func<long>)(() => now));
@@ -161,6 +178,9 @@ namespace NativeWorldTextProbe
             Call(host, "SetDynamic", false); Main.gameMenu = true; Call(context, "UpdateRuntime"); Require(GetOptional(host, "Counter") == null, "session exit releases current map counter");
             Main.gameMenu = false; Until(() => { Call(context, "UpdateRuntime"); return GetOptional(host, "Counter") != null; }); counter = (ExplorationCounter)Get(host, "Counter");
             Require(!counter.Scanning && !counter.Current && !(bool)Get(host, "FastScan") && !counter.Paused, "off plus persisted history is historical and restores no scan speed/pause");
+            Main.maxTilesX = 300; Main.maxTilesY = 140; Main.Map = new WorldMap(300, 140); Call(host, "SetDynamic", true);
+            Until(() => { Call(context, "UpdateRuntime"); var c = GetOptional(host, "Counter") as ExplorationCounter; return c != null && c.Current; });
+            counter = (ExplorationCounter)Get(host, "Counter"); Require(counter.Total == 42000 && counter.Count == 0, "same world object with changed logical dimensions rebuilds valid memory result");
         }
         private static void Until(Func<bool> value)
         { var clock = System.Diagnostics.Stopwatch.StartNew(); while (!value()) { if (clock.ElapsedMilliseconds > 5000) throw new TimeoutException("map native state"); Thread.Sleep(2); } }

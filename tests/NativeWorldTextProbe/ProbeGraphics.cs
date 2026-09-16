@@ -26,7 +26,9 @@ namespace NativeWorldTextProbe
         internal DynamicSpriteFont Font { get; }
         internal void SetMouseFont(DynamicSpriteFont value) { Terraria.GameContent.FontAssets.MouseText = Loaded("probe-replaced-font", value); }
         internal void LoadDeathTexture()
-        { using (var stream = File.OpenRead(Path.Combine(contentDirectory, "Images", "Map_Death.xnb"))) Terraria.GameContent.TextureAssets.MapDeath = Loaded("Images/Map_Death", reader.FromStream<Texture2D>(stream)); }
+        { using (var stream = File.OpenRead(Path.Combine(contentDirectory, "Images", "MapDeath.xnb"))) Terraria.GameContent.TextureAssets.MapDeath = Loaded("Images/MapDeath", reader.FromStream<Texture2D>(stream)); }
+        internal void LoadMarkerTextures()
+        { foreach (int id in new[] { 8, 48, 50, 224, 171, 393, 966, 29 }) using (var stream = File.OpenRead(Path.Combine(contentDirectory, "Images", "Item_" + id + ".xnb"))) Terraria.GameContent.TextureAssets.Item[id] = Loaded("Images/Item_" + id, reader.FromStream<Texture2D>(stream)); }
         internal ProbeGraphics(string content, bool largeCanvas = false)
         {
             contentDirectory = content;

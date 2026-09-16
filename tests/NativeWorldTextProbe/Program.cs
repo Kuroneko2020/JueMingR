@@ -10,12 +10,14 @@ namespace NativeWorldTextProbe
         private static string references;
         private static Assembly game;
         internal static string Repository { get; private set; }
+        internal static string ProductionConfiguration { get; private set; } = "Debug";
         private static int Main(string[] args)
         {
             try
             {
-                if (args.Length < 3 || args.Length > 4) throw new ArgumentException("repository Content output [Full|SelectionCpuCosts|SelectionCpuChecks|WorkloadCpu|InformationCpu|GuidanceCpu|GuidanceVisual|DeathCpu|DeathVisual] required");
+                if (args.Length < 3 || args.Length > 4) throw new ArgumentException("repository Content output [Full|SelectionCpuCosts|SelectionCpuChecks|WorkloadCpu|InformationCpu|GuidanceCpu|GuidanceVisual|DeathCpu|DeathVisual|ExplorationCpu|ExplorationRelease|MapVisual] required");
                 Repository = Path.GetFullPath(args[0]);
+                if (args.Length == 4 && args[3] == "ExplorationRelease") ProductionConfiguration = "Release";
                 references = Path.Combine(Repository, "external", "TerrariaRefs");
                 AppDomain.CurrentDomain.AssemblyResolve += Resolve;
                 return Run(args[1], args[2], args.Length == 4 ? args[3] : "Full");

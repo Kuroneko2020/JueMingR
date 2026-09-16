@@ -22,6 +22,9 @@ namespace JueMingR.TerrariaHost.Map
         private long visibleSession = -1, visibleGeneration, selectionSession, selectionGeneration;
         private double pointX, pointY;
         private string selectedPair, hoverName;
+        private string measuredHover;
+        private DynamicSpriteFont measuredFont;
+        private Vector2 hoverSize;
         private MarkerRecord candidate, pendingLocate;
         private long createCommand;
         private bool picking, tail, previousLeft;
@@ -175,7 +178,8 @@ namespace JueMingR.TerrariaHost.Map
                 }
                 else
                 {
-                    var size = font.MeasureString(hoverName) * .75f; var r = new F5Rect(Math.Max(8, Math.Min(frame.Width - size.X - 24, Main.mouseX + 16)), Math.Max(8, Math.Min(frame.Height - size.Y - 24, Main.mouseY + 16)), size.X + 16, size.Y + 16);
+                    if (measuredHover != hoverName || !ReferenceEquals(measuredFont, font)) { measuredHover = hoverName; measuredFont = font; hoverSize = font.MeasureString(hoverName) * .75f; }
+                    var size = hoverSize; var r = new F5Rect(Math.Max(8, Math.Min(frame.Width - size.X - 24, Main.mouseX + 16)), Math.Max(8, Math.Min(frame.Height - size.Y - 24, Main.mouseY + 16)), size.X + 16, size.Y + 16);
                     UiSurface.Panel(batch, pixel, r, TextureAssets.InventoryBack?.Value, Color.White, true); batch.DrawString(font, hoverName, new Vector2(r.X + 8, r.Y + 8), Color.White, 0, Vector2.Zero, .75f, SpriteEffects.None, 0);
                 }
             }

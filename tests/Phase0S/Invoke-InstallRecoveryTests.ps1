@@ -432,14 +432,20 @@ exit $LASTEXITCODE
                     [System.IO.Directory]::CreateDirectory((Join-Path $dataRoot 'config\features')) | Out-Null
                     [System.IO.Directory]::CreateDirectory((Join-Path $dataRoot 'notes\nested')) | Out-Null
                     [System.IO.Directory]::CreateDirectory((Join-Path $dataRoot 'records\opened-containers')) | Out-Null
+                    [System.IO.Directory]::CreateDirectory((Join-Path $dataRoot 'map-markers')) | Out-Null
+                    [System.IO.Directory]::CreateDirectory((Join-Path $dataRoot 'records\exploration')) | Out-Null
                     # User bytes are opaque to installation, including damaged/future settings and unrelated content.
                     [System.IO.File]::WriteAllText((Join-Path $dataRoot 'config\ui.json'), '{damaged-user-config', (New-Object System.Text.UTF8Encoding($false)))
                     [System.IO.File]::WriteAllText((Join-Path $dataRoot 'config\hotkeys.json'), '{"version":999,"keep":"opaque-user-binding"}', (New-Object System.Text.UTF8Encoding($false)))
                     [System.IO.File]::WriteAllText((Join-Path $dataRoot 'config\features\biome-display.json'), '{"schemaVersion":999,"keep":"user-value"}', (New-Object System.Text.UTF8Encoding($false)))
                     [System.IO.File]::WriteAllBytes((Join-Path $dataRoot 'notes\nested\keep.bin'), [byte[]] @(0, 255, 17, 128))
                     [System.IO.File]::WriteAllText((Join-Path $dataRoot 'config\features\world-object-text.json'), '{"version":999,"opaque":"keep-style-mode"}', (New-Object System.Text.UTF8Encoding($false)))
+                    [System.IO.File]::WriteAllText((Join-Path $dataRoot 'config\features\map-markers.json'), '{damaged-marker-preference', (New-Object System.Text.UTF8Encoding($false)))
+                    [System.IO.File]::WriteAllText((Join-Path $dataRoot 'config\features\exploration-dynamic.json'), '{"version":999,"keep":"future"}', (New-Object System.Text.UTF8Encoding($false)))
                     foreach ($name in @('pair.json', 'pair.json.bak', 'pair.json.recovery')) {
                         [System.IO.File]::WriteAllBytes((Join-Path $dataRoot ('records\opened-containers\' + $name)), [byte[]] @(0, 21, 88, 255))
+                        [System.IO.File]::WriteAllBytes((Join-Path $dataRoot ('map-markers\' + $name)), [byte[]] @(0, 29, 171, 255))
+                        [System.IO.File]::WriteAllBytes((Join-Path $dataRoot ('records\exploration\' + $name)), [byte[]] @(0, 8, 48, 255))
                     }
                     $dataBefore = Get-Phase0STreeSnapshot -Root $dataRoot
                     $expectedDataEntries = @(Get-Phase0STreeSnapshot -Root $dataTarget | Where-Object { $_.path -eq 'JueMingRData' -or $_.path.StartsWith('JueMingRData\', [System.StringComparison]::Ordinal) })

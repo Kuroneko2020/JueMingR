@@ -101,6 +101,7 @@ namespace JueMingR.Features.MapMarkers
             if (current != null) { current.Worker.BeginStop(); retired.Add(current); }
             current = null; requestedPair = null; Saved = null; Loaded = Protected = CommitUnconfirmed = identityFailed = false; InFlight = LastOperation = 0; LastSuccess = false; Generation = -1; Error = null; Reap();
         }
+        public string TakeBackgroundError() { string value = BackgroundError; BackgroundError = null; return value; }
         private void Reap()
         {
             for (int i = retired.Count - 1; i >= 0; i--)

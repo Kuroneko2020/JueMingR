@@ -30,6 +30,12 @@ namespace JueMingR.TerrariaHost.Map
         private int width, height;
         private bool failed, stopping, paused;
         private long nextPublish, offeredRevision = -1, offeredCalibration = -1;
+        private int shownPercent = -1, shownStatus = -1, scanProgress, scanState, formattedProgress = -1, formattedState = -1;
+        private long assetGeneration;
+        private string scanText = "等待地图就绪";
+#if DEBUG
+        internal long PublishChecks, FormattedValues, FormattedDetails, SummaryOffers;
+#endif
         internal ExplorationCounter Counter { get; private set; }
         internal long MapGeneration { get; private set; }
         internal string Pair { get { return pair; } }
@@ -56,8 +62,23 @@ namespace JueMingR.TerrariaHost.Map
         public bool DynamicEnabled { get { return dynamicPreference.Snapshot.Value; } }
         public bool FastScan { get; set; }
         public bool ScanPaused { get { return paused; } }
+        public bool ScanActive { get { return Counter != null && Counter.Scanning; } }
         public string ExplorationText { get; private set; } = "统计中…";
-        public string ScanText { get; private set; } = "等待地图就绪";
+        public string ScanText
+        {
+            get
+            {
+                if (scanState != formattedState || scanProgress != formattedProgress)
+                {
+                    formattedState = scanState; formattedProgress = scanProgress;
+                    scanText = scanState == 0 ? "等待地图就绪" : scanState == 1 ? "等待地图载入" : scanState == 2 || scanState == 3 ? (scanState == 3 ? "已暂停 " : "完整扫描 ") + (scanProgress / 10d).ToString("0.0", CultureInfo.InvariantCulture) + "%" : scanState == 4 ? "正在更新变化区域" : "完整扫描已结束";
+#if DEBUG
+                    FormattedDetails++;
+#endif
+                }
+                return scanText;
+            }
+        }
         public string StatusMessage
         {
             get
@@ -75,14 +96,14 @@ namespace JueMingR.TerrariaHost.Map
         public bool SetDynamic(bool value)
         {
             if (!ControlsEnabled || value && !observation.Ready) return false;
-            bool changed = dynamicPreference.Set(value); if (changed && Counter != null) Counter.SetDynamic(value); return changed;
+            bool changed = dynamicPreference.Set(value); if (changed && Counter != null) Counter.SetDynamic(value); if (changed) nextPublish = 0; return changed;
         }
         public void PauseScan(bool value) { paused = value; if (Counter != null) Counter.Paused = value; nextPublish = 0; }
         public void Recount() { if (ControlsEnabled && Counter != null) { Counter.Restart(); nextPublish = 0; } }
         public void OnSessionStarted()
         {
             token = probe.SessionIdentity; pair = null; map = null; FastScan = paused = false; width = Main.maxTilesX; height = Main.maxTilesY;
-            Markers.BeginSession(runtime.Generation, width, height); history.BeginSession(width, height); offeredRevision = -1; nextPublish = 0; MapGeneration++;
+            Markers.BeginSession(++assetGeneration, width, height); history.BeginSession(width, height); offeredRevision = -1; nextPublish = 0; MapGeneration++; shownPercent = shownStatus = -1; scanState = 0; ExplorationText = "统计中…";
         }
         public void OnSessionEnded()
         { observation.Bind(null, null); Counter = null; map = null; token = null; pair = null; Markers.EndSession(); history.EndSession(); Workspace.Poll(); Layer.Invalidate(); MapGeneration++; }
@@ -96,9 +117,18 @@ namespace JueMingR.TerrariaHost.Map
             if (pair != null) { Markers.UsePair(pair); history.UsePair(pair); }
             Markers.Poll(); Workspace.Poll(); history.Poll(); Layer.Update();
             var current = Main.Map;
-            if (current == null || width <= 0 || height <= 0 || Main.maxTilesX != width || Main.maxTilesY != height || width > current.MaxWidth || height > current.MaxHeight)
+            if (current == null || Main.maxTilesX <= 0 || Main.maxTilesY <= 0 || Main.maxTilesX > current.MaxWidth || Main.maxTilesY > current.MaxHeight)
             { observation.Bind(null, null); Counter = null; map = null; ExplorationText = "地图范围暂不可用"; return; }
-            if (ExplorationMapHooks.Loading) { ScanText = "等待地图载入"; return; }
+            if (Main.maxTilesX != width || Main.maxTilesY != height)
+            {
+                // The current world object can replace its logical extent.
+                // Rebind documents with the new dimensions; incompatible old
+                // assets stay protected, while this map can compute in memory.
+                observation.Bind(null, null); Counter = null; map = null; width = Main.maxTilesX; height = Main.maxTilesY;
+                Markers.BeginSession(++assetGeneration, width, height); history.BeginSession(width, height); Workspace.Poll(); Layer.Invalidate(); MapGeneration++;
+                if (pair != null) { Markers.UsePair(pair); history.UsePair(pair); } nextPublish = 0;
+            }
+            if (ExplorationMapHooks.Loading) { scanState = 1; return; }
             if (!ReferenceEquals(current, map))
             {
                 // Wait for a known pair's initial document result before deciding
@@ -111,18 +141,37 @@ namespace JueMingR.TerrariaHost.Map
                 if (ExplorationMapHooks.Loading) return;
             }
             if (Counter.Dynamic != (DynamicEnabled && observation.Ready)) Counter.SetDynamic(DynamicEnabled && observation.Ready);
-            if (!Counter.Scanning || FastScan || tick % 4 == 0) Counter.Advance(FastScan && Counter.Scanning ? 32768 : 4096, 64);
+            bool advanceScan = FastScan || tick % 4 == 0;
+            Counter.Advance(FastScan && Counter.Scanning && !Counter.Paused ? 32768 : 4096, 64, advanceScan);
             if (Counter.HasResult && Counter.Complete && Counter.Revision != offeredRevision)
-            { history.Offer(Counter.Count, DateTime.UtcNow.Ticks, Counter.CalibrationRevision != offeredCalibration); offeredRevision = Counter.Revision; offeredCalibration = Counter.CalibrationRevision; }
+            {
+                bool calibrated = Counter.CalibrationRevision != offeredCalibration;
+                history.Offer(Counter.Count, DateTime.UtcNow.Ticks, calibrated); offeredRevision = Counter.Revision; offeredCalibration = Counter.CalibrationRevision; if (calibrated) nextPublish = 0;
+#if DEBUG
+                SummaryOffers++;
+#endif
+            }
             if (milliseconds() >= nextPublish) { Publish(); nextPublish = milliseconds() + 333; }
         }
         private void Publish()
         {
             var value = Counter; if (value == null) return;
+#if DEBUG
+            PublishChecks++;
+#endif
             long? count = value.HasResult ? (long?)value.Count : history.Historical?.Count;
-            string status = value.Current ? "当前揭示" : value.Dynamic && value.Complete && value.Pending ? "更新中" : "上次统计";
-            ExplorationText = count.HasValue ? status + " " + ((double)count.Value * 100 / value.Total).ToString("0.00", CultureInfo.InvariantCulture) + "%" : "统计中…";
-            ScanText = value.Scanning ? (paused ? "已暂停 " : "完整扫描 ") + (100d * value.CompletedBlocks / value.BlockCount).ToString("0.0", CultureInfo.InvariantCulture) + "%" : value.Pending ? "正在更新变化区域" : "完整扫描已结束";
+            int status = !count.HasValue ? 3 : value.Current ? 0 : value.Dynamic && value.Complete && value.Pending ? 1 : 2;
+            int percent = count.HasValue ? (int)Math.Round(count.Value * 10000d / value.Total) : -1;
+            if (status != shownStatus || percent != shownPercent)
+            {
+                shownStatus = status; shownPercent = percent;
+                ExplorationText = status == 3 ? "统计中…" : (status == 0 ? "当前揭示 " : status == 1 ? "更新中 " : "上次统计 ") + (percent / 100d).ToString("0.00", CultureInfo.InvariantCulture) + "%";
+#if DEBUG
+                FormattedValues++;
+#endif
+            }
+            scanState = value.Scanning ? (paused ? 3 : 2) : value.Pending ? 4 : 5;
+            scanProgress = (int)Math.Round(1000d * value.CompletedBlocks / value.BlockCount);
         }
         public bool Locate(string id)
         {
@@ -130,7 +179,14 @@ namespace JueMingR.TerrariaHost.Map
             return Layer.Locate(record);
         }
         internal void Feedback(string value) { feedback = value; }
-        public void TakeFeedback(Action<string> display) { if (feedback == null) return; string value = feedback; feedback = null; display(value); }
+        public void TakeFeedback(Action<string> display)
+        {
+            if (feedback != null) { string value = feedback; feedback = null; display(value); return; }
+            // A retired world's failure must reach the player once without
+            // becoming the current world's file status or being erased by it.
+            if (Markers.TakeBackgroundError() != null) { display("先前世界的标记保存未完成；原文件已保护，请保留现场并反馈。"); return; }
+            if (history.TakeBackgroundError() != null) display("先前世界的统计保存未完成；原文件已保护，请保留现场并反馈。");
+        }
         private void OnExit(object sender, EventArgs args)
         {
             if (stopping) return; stopping = true; AppDomain.CurrentDomain.ProcessExit -= OnExit;

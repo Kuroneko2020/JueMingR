@@ -77,7 +77,14 @@ namespace JueMingR.TerrariaHost.Map
         private static Exception EndMap(Exception __exception)
         {
             var owner = current; if (owner == null) return __exception;
-            if (--owner.depth == 0) { if (__exception != null) owner.Frame = null; owner.Completed?.Invoke(owner.Frame); }
+            if (--owner.depth == 0)
+            {
+                var completed = __exception == null ? owner.Frame : null;
+                // The draw coordinator owns only the in-progress frame. A
+                // consumer retaining visible geometry must clear it on session
+                // exit; the shared owner must not pin an entire retired map.
+                owner.Frame = null; owner.Completed?.Invoke(completed);
+            }
             return __exception;
         }
         private static void IconsDrawn(MapIconOverlay __instance, Vector2 mapPosition, Vector2 mapOffset, Rectangle? clippingRect, float mapScale, float drawScale, int alpha, ref string text, bool __runOriginal)

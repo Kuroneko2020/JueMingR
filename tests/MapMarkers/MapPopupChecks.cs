@@ -18,10 +18,11 @@ namespace Terraria
             new Main(); Main.blockInput = Main.drawingPlayerChat = Main.editSign = Main.editChest = false; Main.CurrentInputTextTakerOverride = null;
             using (var owner = new Owner())
             {
-                var d = new Driver(owner); d.Popup.Open(false); d.Prepare(); d.Click(10); d.Click(10);
+                var d = new Driver(owner); d.Popup.Open(false); d.Prepare(); Require(d.Popup.Panel.Height < 260, "one row uses a compact management window"); d.Click(10); d.Click(10);
                 Require(owner.Workspace.Editor != null, "double click starts real name editor");
                 d.Prepare(); Require(d.Popup.Buttons[d.Popup.Commands.IndexOf(10)].Text == "", "editor uses its own aligned text viewport, not a centered button label");
                 owner.Workspace.Editor.SelectAll(); Require(owner.Workspace.Editor.Insert("1234567890"), "ten elements accepted"); Require(!owner.Workspace.Editor.Insert("1") && owner.Workspace.Editor.Text == "1234567890", "eleventh is atomic rejection");
+                owner.Workspace.Editor.MoveTo(0, false); d.Ime.Composition = "ni"; d.Step(false, 0, 0); Require(d.Popup.EditView.Text.StartsWith("ni1") && d.Popup.EditView.Caret > 0, "IME composition is drawn at caret with matching anchor"); d.Ime.Composition = ""; d.Step(false, 0, 0);
                 d.Step(false, 0, 0, "\x1b", Keys.Escape);
                 Require(owner.Workspace.Editor == null && d.Popup.Visible, "one Esc cancels draft only, not its management window");
                 d.Step(false, 0, 0); d.Click(10); d.Click(10); Require(owner.Workspace.Editor != null, "re-edit");
@@ -35,6 +36,10 @@ namespace Terraria
                 foreach (var button in d.Popup.Buttons) Require(button.Rect.Bottom <= d.Popup.Panel.Height && button.Rect.Right <= d.Popup.Panel.Width, "small view keeps controls in panel");
                 d.Click(0); Require(!d.Popup.Visible, "close stays reachable"); d.Popup.Open(true); d.Prepare();
                 int generation = d.Popup.Generation; owner.ExplorationText = "当前揭示 12.34%"; owner.ScanText = "完整扫描 34.0%"; d.Prepare(); Require(d.Popup.Generation == generation, "text-only progress preserves held actions");
+                long layouts = d.Popup.LayoutBuilds; for (int i = 0; i < 2000; i++) { owner.ScanText = "完整扫描 " + i + "%"; d.Prepare(); } Require(d.Popup.LayoutBuilds == layouts, "2000 detail changes never rebuild controls");
+                d.Click(0); for (int i = 2; i <= 11; i++) { long op = owner.Markers.Create(new MarkerRecord(i.ToString("x32"), i, i, 48, "同名")); Until(owner.Markers.Poll, () => owner.Markers.LastOperation == op); }
+                d.Height = 800; d.Popup.Open(false); d.Prepare(); d.Click(2); d.Click(12); d.Click(12); Until(() => { owner.Markers.Poll(); owner.Workspace.Poll(); }, () => owner.Markers.Saved.Records.Count == 10); d.Prepare();
+                Require(d.Popup.Icons.Count == 10 && d.Popup.Panel.Height > 400, "deleting second-page tail clamps page before deriving first-page geometry");
             }
             Console.WriteLine("PASS: map management physical clicks, name/IME transaction, confirmation identity and fixed progress geometry.");
         }
@@ -50,6 +55,7 @@ namespace Terraria
             public bool DynamicEnabled { get; private set; }
             public bool FastScan { get; set; }
             public bool ScanPaused { get; private set; }
+            public bool ScanActive { get { return true; } }
             public string ExplorationText { get; set; } = "统计中…";
             public string ScanText { get; set; } = "完整扫描 0.0%";
             public string StatusMessage { get { return null; } }

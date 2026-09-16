@@ -2,6 +2,8 @@ using System;
 using System.IO;
 using System.Reflection;
 using JueMingR.Features.Exploration;
+using Microsoft.Xna.Framework;
+using Terraria.Graphics.Light;
 using Terraria;
 using Terraria.Map;
 
@@ -12,7 +14,8 @@ namespace NativeWorldTextProbe
         private const BindingFlags Flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance;
         internal static void Run()
         {
-            var assembly = Assembly.LoadFrom(Path.Combine(Program.Repository, "artifacts/build/Debug/work/bin/JueMingR.TerrariaHost/x86/Debug/net472/JueMingR.TerrariaHost.dll"));
+            string config = Program.ProductionConfiguration;
+            var assembly = Assembly.LoadFrom(Path.Combine(Program.Repository, "artifacts/build/" + config + "/work/bin/JueMingR.TerrariaHost/x86/" + config + "/net472/JueMingR.TerrariaHost.dll"));
             var type = assembly.GetType("JueMingR.TerrariaHost.Map.ExplorationMapHooks", true);
             object hooks = Activator.CreateInstance(type, true);
             var map = new WorldMap(128, 128); int reads = 0;
@@ -38,6 +41,18 @@ namespace NativeWorldTextProbe
                 count.SetDynamic(false); stable = reads; for (int i = 0; i < 2000; i++) { map.SetTile(60, 60, ref lit); count.Advance(4096, 64); }
                 Require(reads == stable, "disabled observer adds no map reads");
                 count.SetDynamic(true); Drain(count); Require(count.Count == 1, "re-enable independently rebuilds actual map");
+                map.Clear(); Drain(count); Main.mapEnabled = true; MapHelper.sceneArea = new Rectangle(0, 0, 128, 128);
+                var lighting = new LightingEngine(); object light = lighting.GetType().GetField("_activeLightMap", Flags).GetValue(lighting);
+                light.GetType().GetMethod("SetSize", Flags).Invoke(light, new object[] { 128, 128 });
+                var indexer = light.GetType().GetProperty("Item", Flags);
+                for (int x = 0; x < 128; x++) for (int y = 0; y < 128; y++) indexer.SetValue(light, Vector3.One, new object[] { x, y });
+                Main.tile[70, 70] = new Tile(); Main.tile[70, 70].active(true); Main.tile[70, 70].type = 1;
+                lighting.GetType().GetField("_activeProcessedArea", Flags).SetValue(lighting, new Rectangle(0, 0, 128, 128));
+                var export = (Action)Delegate.CreateDelegate(typeof(Action), lighting, lighting.GetType().GetMethod("ExportToMiniMap", Flags)); export(); Drain(count);
+                long independent = 0; for (int x = 0; x < 128; x++) for (int y = 0; y < 128; y++) if (map[x, y].Light > 0) independent++;
+                Require(independent == 2304 && count.Count == independent, "actual LightingEngine to FastParallel writers converge to independent full answer");
+                Console.WriteLine("Native lighting partitions=" + Math.Min(Math.Max(1, Environment.ProcessorCount - 1), 48) + "; independently revealed=" + independent + ".");
+                NativeExplorationBoundaries.Run(count);
                 Console.WriteLine("PASS: actual WorldMap store hooks, reveal/unreveal, UpdateType, bulk Clear, disabled gate and 2000 unchanged native calls.");
             }
             finally { ((IDisposable)hooks).Dispose(); }

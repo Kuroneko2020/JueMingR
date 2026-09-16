@@ -13,6 +13,7 @@ namespace JueMingR.TerrariaHost.F5
         bool DynamicEnabled { get; }
         bool FastScan { get; set; }
         bool ScanPaused { get; }
+        bool ScanActive { get; }
         string ExplorationText { get; }
         string ScanText { get; }
         string StatusMessage { get; }

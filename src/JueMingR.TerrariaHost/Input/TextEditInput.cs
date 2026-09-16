@@ -151,7 +151,9 @@ namespace JueMingR.TerrariaHost.Input
                 Pressed(Keys.Down) || repeat && sample.IsKeyDown(Keys.Down) ? Keys.Down : Pressed(Keys.Home) ? Keys.Home : Pressed(Keys.End) ? Keys.End : Keys.None;
             if (navigation != Keys.None)
             { pendingNavigation = navigation; navigationRevision = editor.Revision; navigationCaret = editor.Caret; navigationSelection = editor.CaretRevision; navigationExtend = shift; }
-            if (editor.SingleLine && navigation != Keys.None)
+            // Notes titles are single-line documents but may wrap visually;
+            // only the map's unwrapped field has no Notes layout to navigate.
+            if (editor.SingleLine && layout == null && navigation != Keys.None)
             {
                 if (navigation == Keys.Home) editor.MoveTo(0, shift);
                 else if (navigation == Keys.End) editor.MoveTo(editor.Text.Length, shift);
