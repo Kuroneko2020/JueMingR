@@ -142,7 +142,14 @@ namespace JueMingR.TerrariaHost.ItemBrowser
                 case 15: state.RelationOffset = Math.Min(Math.Max(0, relations.Count - 1), state.RelationOffset + 1); detailScroll = 0; group = -1; break;
                 case 16: host.Shops.Request(); break;
                 case 17: LocateRequested?.Invoke(locator.Text); break;
-                case 18: ClearLocator?.Invoke(); break;
+                case 18:
+                    ClearLocator?.Invoke(); state.ResetToCatalog();
+                    query = NewDraft(""); locator = NewDraft(""); locatorCandidates = new int[0];
+                    candidateQuery = ""; candidateCatalog = host.Native.Catalog; locatorView = locatorOffset = 0;
+                    // Retire page-local projections, keeping this click's input
+                    // release tail and the shared text lease's normal finish gate.
+                    Hovered = lastHint = null; HintLines.Clear();
+                    break;
                 case 19: Navigate(part.Type, right); break;
                 case 20: group = part.Argument; groupPage = 0; break;
                 case 21: group = -1; break;
@@ -234,7 +241,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
                 var lines = new List<Tuple<string, int, int>>(); foreach (string line in LocatorDetails?.Invoke() ?? new string[0]) AddWrapped(lines, line, bounds.Width);
                 locatorOffset = Math.Min(locatorOffset, Math.Max(0, lines.Count - visible));
                 for (int i = locatorOffset; i < lines.Count && i < locatorOffset + visible; i++) Label(lines[i].Item1, bounds.X, bounds.Y + (i - locatorOffset) * row, bounds.Width, row);
-                if (lines.Count == 0) Label("尚无定位结果；草稿保留", bounds.X, bounds.Y, bounds.Width, row);
+                if (lines.Count == 0) Label("尚无定位结果", bounds.X, bounds.Y, bounds.Width, row);
             }
             Button(28, -visible, "上一页", bounds.X, bounds.Bottom - row, bounds.Width / 2 - 2, row, locatorOffset > 0);
             Button(28, visible, "下一页", bounds.X + bounds.Width / 2 + 2, bounds.Bottom - row, bounds.Width / 2 - 2, row);

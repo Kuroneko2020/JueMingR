@@ -13,6 +13,7 @@ namespace NativeWorldTextProbe
     internal static class NativeAnnouncementTargetChecks
     {
         private const BindingFlags Flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance;
+        internal static Color TestLight = Color.White;
         internal static void Run(Assembly assembly, object catalog)
         {
             var method = assembly.GetType("JueMingR.TerrariaHost.ItemBrowser.NativeTargetObservation").GetMethod("World", Flags);
@@ -25,6 +26,9 @@ namespace NativeWorldTextProbe
                 // Only lighting is controlled; production object recognition uses
                 // real .8 tiles, items and the actual tile-entity dictionary.
                 lighting.Patch(getColor, prefix: new HarmonyMethod(typeof(NativeAnnouncementTargetChecks).GetMethod(nameof(Lit), Flags)));
+                NativeAnnouncementObjectChecks.Run(assembly, catalog);
+                NativePlacementIdentityChecks.Run(catalog);
+                NativeSwitchIdentityChecks.Run(catalog);
                 Main.tile[1, 1] = new Tile();
                 var air = observe(); Require((bool)Get(air, "EmptyAir") && (bool)Get(air, "Literal"), "visible air retains its separate cooldown kind and complete notice");
                 string phrase = ((List<string>)Get(air, "Entries"))[0];
@@ -57,6 +61,6 @@ namespace NativeWorldTextProbe
             }
             finally { lighting.Unpatch(getColor, HarmonyPatchType.All, lighting.Id); if (hadPrevious) TileEntity.ByPosition[origin] = previous; else TileEntity.ByPosition.Remove(origin); Main.tile[1, 1] = new Tile(); }
         }
-        private static bool Lit(ref Color __result) { __result = Color.White; return false; }
+        private static bool Lit(ref Color __result) { __result = TestLight; return false; }
     }
 }

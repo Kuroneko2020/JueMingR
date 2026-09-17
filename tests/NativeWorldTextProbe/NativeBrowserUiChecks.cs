@@ -51,6 +51,7 @@ namespace NativeWorldTextProbe
                 }
                 CheckCompleteRelations(assembly, catalog, host, page);
                 CheckDynamicTextLifetime(host, shell, page);
+                CheckExplicitClear(assembly, host, page);
                 var draft = Get(page, "query"); Call(draft, "SelectAll"); Call(draft, "Insert", "最后一个字"); Set(page, "editing", 1);
                 Require((bool)Call(page, "RequestFinish") && (string)Get(workspace, "Query") == "最后一个字", "finish commits latest query before releasing editor");
                 Set(page, "leftTail", true); Set(page, "rightTail", true);
@@ -69,6 +70,25 @@ namespace NativeWorldTextProbe
             var directory = (BrowserCatalog)Get(catalog, "Catalog");
             return ((IEnumerable<ItemRelation>)Get(catalog, "RecipeValues")).Where(r => r.Ingredients.Count > 0).OrderByDescending(r => r.Ingredients.Max(i => (i.Types.Count > 1 ? i.Label : directory.Find(i.Types[0])?.Name ?? "").Length)).First();
         }
+        private static void CheckExplicitClear(Assembly assembly, object host, object page)
+        {
+            var state = (BrowserWorkspace)Get(host, "Workspace");
+            state.Query = "wood"; state.Category = 16; state.SortByName = true; state.Navigate(9, true);
+            state.CatalogOffset = 23; state.DetailScroll = 4;
+            Call(Get(page, "query"), "SelectAll"); Call(Get(page, "query"), "Insert", "wood");
+            Call(Get(page, "locator"), "Insert", "#9"); Set(page, "locatorView", 2); Set(page, "locatorCandidates", new[] { 9 });
+            int cleared = 0; Set(page, "ClearLocator", (Action)(() => cleared++));
+            var part = Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.ItemBrowser.BrowserPart"), true); Set(part, "Command", 18);
+            Call(page, "Execute", part, false);
+            Require(cleared == 1 && (string)Get(Get(page, "locator"), "Text") == "" && (string)Get(Get(page, "query"), "Text") == "" &&
+                ((int[])Get(page, "locatorCandidates")).Length == 0 && (int)Get(page, "locatorView") == 0 && state.Query == "" && state.Category == 0 && !state.SortByName &&
+                state.CatalogOffset == 0 && state.Selected == 0 && !state.Detail, "explicit clear resets both drafts, candidates and filters to the initial icon directory");
+            state.Back(); Require(state.Query == "wood" && state.Category == 16 && state.SortByName && state.Selected == 9 && state.Uses && state.CatalogOffset == 23 && state.DetailScroll == 4,
+                "explicit clear preserves the previous browse context in history");
+            state.Forward(); Require(state.Query == "" && state.Selected == 0 && !state.Detail, "forward returns to cleared full directory");
+            int historyCount = ((IList)Get(state, "history")).Count;
+            Call(page, "Execute", part, false); Require(((IList)Get(state, "history")).Count == historyCount, "repeated clear does not grow history");
+        }
         private static void CheckDynamicTextLifetime(object host, object shell, object page)
         {
             var state = (BrowserWorkspace)Get(host, "Workspace");
@@ -82,7 +102,7 @@ namespace NativeWorldTextProbe
                 Call(page, "Build");
             }
             Call(page, "Suspend"); Call(shell, "Close"); Call(shell, "RestoreVisible");
-            Set(page, "shownLocatorStatus", "已清除定位结果；输入保留"); Call(page, "Build");
+            Set(page, "shownLocatorStatus", "已清除定位结果"); Call(page, "Build");
             Require(fixedText.Count == before, "browser dynamic names/prefixes and clear status cannot grow the fixed F5 text cache across reopen");
             Console.WriteLine("PASS: 160 real item details and reopen/clear retain the fixed F5 text-cache size.");
         }

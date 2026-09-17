@@ -6,16 +6,14 @@ using Microsoft.Xna.Framework;
 using Terraria;
 using Terraria.ID;
 using Terraria.Map;
-using Terraria.ObjectData;
-using Terraria.DataStructures;
-using Terraria.GameContent.Tile_Entities;
 
 namespace JueMingR.TerrariaHost.ItemBrowser
 {
     internal sealed class TargetValue
     {
         internal int ItemType, Quantity;
-        internal bool EmptyAir, UiSlot, Literal;
+        internal bool EmptyAir, UiSlot, Literal, JoinItems;
+        internal NativeDisplayContents Display;
         internal Tile Placement;
         internal bool WallPlacement;
         internal int PlacementX, PlacementY, PlacementEntry;
@@ -56,17 +54,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
                 value.Entries.Add(Name(npc.FullName) + " 生命 " + npc.life + "/" + npc.lifeMax);
             }
             if (value.Entries.Count != 0) { if (value.Entries.Count >= 12) value.Entries.Add("目标较多，仅列出前 12 个"); return value; }
-            for (int i = 0; i < Main.item.Length; i++)
-            {
-                WorldItem drop = Main.item[i]; if (drop == null || !drop.active || drop.inner == null || drop.inner.IsAir || !drop.Hitbox.Contains(position)) continue;
-                long count = 0; int tx = (int)(drop.Center.X / 16), ty = (int)(drop.Center.Y / 16);
-                for (int j = 0; j < Main.item.Length; j++)
-                {
-                    WorldItem other = Main.item[j]; if (other == null || !other.active || other.inner == null || other.inner.type != drop.inner.type || other.inner.stack <= 0) continue;
-                    if (Math.Abs((int)(other.Center.X / 16) - tx) <= 1 && Math.Abs((int)(other.Center.Y / 16) - ty) <= 1) count += other.inner.stack;
-                }
-                value.ItemType = drop.inner.type; value.Quantity = (int)Math.Min(int.MaxValue, count); value.Entries.Add(count + " 个 " + Name(Lang.GetItemNameValue(value.ItemType))); return value;
-            }
+            if (DroppedItems(value, position, announcement)) return value;
             int x = (int)Math.Floor(point.X / 16), y = (int)Math.Floor(point.Y / 16);
             if (Main.tile == null || x < 0 || y < 0 || x >= Main.maxTilesX || y >= Main.maxTilesY || Main.netMode == 1 && (Main.sectionManager == null || !Main.sectionManager.TileLoaded(x, y)))
             { value.Literal = true; value.Entries.Add("这里的世界资料尚未接收"); return value; }
@@ -77,26 +65,37 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             if (tile.wire()) wires.Add("红线"); if (tile.wire2()) wires.Add("蓝线"); if (tile.wire3()) wires.Add("绿线"); if (tile.wire4()) wires.Add("黄线");
             bool lit = false; try { Color color = Lighting.GetColor(x, y); lit = color.R > 0 || color.G > 0 || color.B > 0; } catch { }
             bool echo = Main.ShouldShowInvisibleBlocksAndWalls();
-            bool tileHidden = tile.invisibleBlock() || tile.type == 541 || tile.type == 631 || tile.type == 19 && tile.frameY / 18 == 48;
-            // Native DrawSingleTile admits these declared light-independent
-            // layers before its separate echo gate. Light is not visibility.
-            bool drawWithoutLight = tile.fullbrightBlock() || TileID.Sets.IgnoreDrawLightConditions[tile.type] ||
-                Main.tileGlowMask[tile.type] != -1 || Main.tileFlame[tile.type] ||
-                tile.wall > 0 && (tile.wall == 318 || tile.fullbrightWall());
-            bool visibleTile = tile.active() && (!tileHidden || echo) && (lit || drawWithoutLight || VisionReveals(tile, x, y));
+            Tile targetTile = tile; int targetX = x, targetY = y; bool ambiguousJar = false;
+            if (tile.active() && tile.type == 698)
+            {
+                // Native jar drawing uses only its upper tile. Coating/lighting
+                // on the lower occupied cell does not control that sprite; freeze
+                // the draw anchor too so coating it during cold capture cancels.
+                targetY -= tile.frameY / 18 % 2;
+                targetTile = NativeDisplayContents.Loaded(x, targetY) ? Main.tile[x, targetY] : null;
+                if (targetTile == null || targetTile.type != 698 || targetTile.frameY != 0 || targetTile.frameX != tile.frameX) targetTile = null;
+            }
+            bool visibleTile = Visible(targetTile, targetX, targetY, echo);
+            // The jar's native sprite is 36x44 over a 1x2 tile body. Resolve its
+            // static visible footprint only when no foreground was hit; keep
+            // liquid/wires/wall observations tied to the original cursor cell.
+            if (!visibleTile && !tile.active()) visibleTile = TryJar(point, x, y, echo, out targetTile, out targetX, out targetY, out ambiguousJar);
             if (visibleTile)
             {
-                int item = VisibleContent(tile, x, y);
-                bool resolvedContent = item > 0;
-                if (!resolvedContent) item = catalog.PlacedItem(tile);
-                value.ItemType = item; value.Quantity = item > 0 ? 1 : 0;
-                value.Entries.Add(item > 0 ? Name(Lang.GetItemNameValue(item)) : MapName(tile, x, y) ?? "可见物件（暂无可靠物品对应）");
-                if (!resolvedContent) FreezePlacement(value, tile, x, y, false, catalog);
+                int herb = Herb(targetTile);
+                value.Display = NativeDisplayContents.Capture(targetTile, targetX, targetY);
+                int item = herb > 0 ? herb : catalog.PlacedItem(targetTile);
+                value.ItemType = value.Display != null && value.Display.ItemType > 0 ? value.Display.ItemType : item;
+                value.Quantity = value.Display != null && value.Display.ItemType > 0 ? value.Display.Quantity : item > 0 ? 1 : 0;
+                string body = item > 0 ? Name(Lang.GetItemNameValue(item)) : value.Display?.FallbackName ?? MapName(targetTile, targetX, targetY) ?? "可见物件（暂无可靠物品对应）";
+                value.Entries.Add(value.Display == null ? body : value.Display.Describe(body));
+                if (herb == 0) FreezePlacement(value, targetTile, targetX, targetY, false, catalog);
             }
+            else if (ambiguousJar) value.Entries.Add("可见物件（重叠，无法确定目标）");
             if (lit && tile.liquid > 0 && (!tile.active() || !Main.tileSolid[tile.type] || Main.tileSolidTop[tile.type] || tile.inActive()))
                 value.Entries.Add(tile.liquidType() == 1 ? "熔岩" : tile.liquidType() == 2 ? "蜂蜜" : tile.liquidType() == 3 ? "微光" : "水");
             if (wires.Count > 0) value.Entries.Add(string.Join("、", wires));
-            if (tile.actuator()) value.Entries.Add("制动器");
+            if (tile.actuator()) value.Entries.Add("执行器");
             // WallDrawing.FullTile explicitly does not occlude walls behind an
             // echo-painted foreground when echo vision is off. Keep the wall's
             // own echo gate independent, including fullbright hidden walls.
@@ -117,18 +116,69 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             }
             return value;
         }
-        private static int VisibleContent(Tile tile, int x, int y)
+        private static bool TryJar(Vector2 point, int x, int y, bool echo, out Tile tile, out int tx, out int ty, out bool ambiguous)
+        {
+            tile = null; tx = ty = 0; ambiguous = false;
+            // At most twelve anchors, only on an explicit world gesture. Do
+            // not inspect unreceived sections or call native placement helpers.
+            for (int ax = x - 1; ax <= x + 1; ax++) for (int ay = y - 2; ay <= y + 1; ay++)
+            {
+                if (!NativeDisplayContents.Loaded(ax, ay)) continue;
+                Tile candidate = Main.tile[ax, ay];
+                if (candidate == null || !candidate.active() || candidate.type != 698 || candidate.frameY != 0 || candidate.frameX < 0 || candidate.invisibleBlock() && !echo) continue;
+                int top = ay * 16 - 2;
+                if (!NativeDisplayContents.Loaded(ax, ay - 1)) continue;
+                Tile above = Main.tile[ax, ay - 1];
+                if (above != null && above.active() && TileID.Sets.Platforms[above.type] && !above.halfBrick() && above.slope() == 0) top -= 8;
+                if (point.X < ax * 16 - 10 || point.X >= ax * 16 + 26 || point.Y < top || point.Y >= top + 44) continue;
+                if (!Visible(candidate, ax, ay, echo)) continue;
+                // Multiple overlapping silhouettes are ambiguous. Leave the
+                // target unknown rather than picking hidden neighbour contents.
+                if (tile != null) { tile = null; ambiguous = true; return false; }
+                tile = candidate; tx = ax; ty = ay;
+            }
+            return tile != null;
+        }
+        private static bool Visible(Tile tile, int x, int y, bool echo)
+        {
+            if (tile == null || !tile.active()) return false;
+            bool hidden = tile.invisibleBlock() || tile.type == 541 || tile.type == 631 || tile.type == 19 && tile.frameY / 18 == 48;
+            if (hidden && !echo) return false;
+            // Native light-independent drawing still has its separate echo gate.
+            if (tile.fullbrightBlock() || TileID.Sets.IgnoreDrawLightConditions[tile.type] || Main.tileGlowMask[tile.type] != -1 || Main.tileFlame[tile.type] ||
+                tile.wall > 0 && (tile.wall == 318 || tile.fullbrightWall()) || NativeDisplayContents.JarGlows(tile, x, y)) return true;
+            try { Color light = Lighting.GetColor(x, y); if (light.R > 0 || light.G > 0 || light.B > 0) return true; } catch { }
+            return VisionReveals(tile, x, y);
+        }
+        private static int Herb(Tile tile)
         {
             // .8 Lang.BuildMapAtlas identifies all three growth stages by this
             // style. This names the plant; it does not predict harvest drops.
             if (tile.type >= 82 && tile.type <= 84)
             { int style = tile.frameX / 18; return style >= 0 && style < herbItems.Length ? herbItems[style] : 0; }
-            if (tile.type != 395) return 0;
-            // Match TEItemFrame's 2x2 anchor. Ordinary clients may not have its
-            // entity: read only what was received, without requesting/opening it.
-            if (tile.frameX % 36 != 0) x--; if (tile.frameY % 36 != 0) y--;
-            TEItemFrame frame;
-            return TileEntity.TryGetAt(x, y, out frame) && frame.item != null && !frame.item.IsAir ? frame.item.type : 0;
+            return 0;
+        }
+        private static bool DroppedItems(TargetValue value, Point position, bool announcement)
+        {
+            WorldItem first = null;
+            foreach (var drop in Main.item)
+                if (drop != null && drop.active && drop.inner != null && !drop.inner.IsAir && drop.Hitbox.Contains(position)) { first = drop; break; }
+            if (first == null) return false;
+            int tx = (int)Math.Floor(first.Center.X / 16), ty = (int)Math.Floor(first.Center.Y / 16);
+            var counts = new Dictionary<int, long>(); var order = new List<int>();
+            // Keep Legacy's fixed neighbourhood, not a transitive flood fill.
+            // One additional pass aggregates every type, instead of rescanning
+            // the world-item array once for each co-located item.
+            foreach (var drop in Main.item)
+            {
+                if (drop == null || !drop.active || drop.inner == null || drop.inner.IsAir || !announcement && drop.inner.type != first.inner.type ||
+                    Math.Abs((int)Math.Floor(drop.Center.X / 16) - tx) > 1 || Math.Abs((int)Math.Floor(drop.Center.Y / 16) - ty) > 1) continue;
+                long count; if (!counts.TryGetValue(drop.inner.type, out count)) order.Add(drop.inner.type);
+                counts[drop.inner.type] = count + drop.inner.stack;
+            }
+            value.ItemType = first.inner.type; value.Quantity = (int)Math.Min(int.MaxValue, counts[first.inner.type]); value.JoinItems = announcement;
+            foreach (int type in order) value.Entries.Add(counts[type] + " 个 " + Name(Lang.GetItemNameValue(type)));
+            return true;
         }
         private static string MapName(Tile tile, int x, int y)
         {
@@ -157,9 +207,11 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             // silently declaring a replacement after the bounded cold capture.
             if (current == null || current.type != observed.type || current.wall != observed.wall || current.frameX != observed.frameX || current.frameY != observed.frameY ||
                 current.active() != observed.active() || current.invisibleBlock() != observed.invisibleBlock() || current.invisibleWall() != observed.invisibleWall()) return false;
+            if (value.Display != null && !value.Display.StillMatches()) return false;
             int item = value.WallPlacement ? catalog.WallItem(observed.wall) : catalog.PlacedItem(observed);
-            value.ItemType = item; value.Quantity = item > 0 ? 1 : 0;
-            if (item > 0) value.Entries[value.PlacementEntry] = Name(Lang.GetItemNameValue(item));
+            value.ItemType = value.Display != null && value.Display.ItemType > 0 ? value.Display.ItemType : item;
+            value.Quantity = value.Display != null && value.Display.ItemType > 0 ? value.Display.Quantity : item > 0 ? 1 : 0;
+            if (item > 0) { string name = Name(Lang.GetItemNameValue(item)); value.Entries[value.PlacementEntry] = value.Display == null ? name : value.Display.Describe(name); }
             value.Placement = null; return true;
         }
         private static bool VisionReveals(Tile tile, int x, int y)

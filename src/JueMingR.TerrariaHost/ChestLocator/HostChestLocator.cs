@@ -59,7 +59,7 @@ namespace JueMingR.TerrariaHost.ChestLocator
             Status = "正在查找附近箱子…";
         }
         internal void Clear()
-        { scanning = false; types = null; Results.Clear(); visited.Clear(); candidates = unknown = 0; Details = new string[0]; Revision++; Status = "已清除定位结果；输入保留"; }
+        { scanning = false; types = null; Results.Clear(); visited.Clear(); candidates = unknown = 0; Details = new string[0]; Revision++; Status = "已清除定位结果"; }
         internal void Update(long currentTick)
         {
             Receiver.Tick = currentTick; Receiver.Update();

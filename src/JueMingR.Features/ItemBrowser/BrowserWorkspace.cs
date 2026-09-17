@@ -43,6 +43,20 @@ namespace JueMingR.Features.ItemBrowser
         }
         public void Back() { if (CanBack) Move(cursor - 1); }
         public void Forward() { if (CanForward) Move(cursor + 1); }
+        // Only an explicit page command resets browsing. Locator expiry and
+        // world changes do not own this state; Back can recover the prior view.
+        public void ResetToCatalog()
+        {
+            if (Query == "" && Category == 0 && !SortByName && CatalogOffset == 0 && Selected == 0 && !Uses && !Detail &&
+                RelationOffset == 0 && Kind == -1 && DetailScroll == 0 && Group == -1 && GroupPage == 0) return;
+            history[cursor] = Capture();
+            if (CanForward) history.RemoveRange(cursor + 1, history.Count - cursor - 1);
+            Query = ""; Category = CatalogOffset = RelationOffset = Selected = DetailScroll = GroupPage = 0;
+            SortByName = Uses = Detail = false; Kind = Group = -1;
+            history.Add(Capture());
+            if (history.Count > 64) history.RemoveAt(0);
+            cursor = history.Count - 1;
+        }
         private void Move(int target)
         {
             history[cursor] = Capture(); cursor = target; Position p = history[cursor];

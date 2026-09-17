@@ -115,6 +115,41 @@ namespace NativeWorldTextProbe
                 int beforeChanged = delivered;
                 for (int i = 0; i < 180 && (bool)Get(gesture, "Busy"); i++) Call(gesture, "Update", ++coldTick);
                 Require(delivered == beforeChanged, "a changed furniture style cancels the frozen cold query instead of substituting another item");
+                var displayOrigin = new Terraria.DataStructures.Point16(1, 1);
+                var display = new Terraria.GameContent.Tile_Entities.TEItemFrame { Position = displayOrigin, item = new Item() };
+                display.item.SetDefaults(4);
+                Terraria.DataStructures.TileEntity priorEntity; bool hadEntity = Terraria.DataStructures.TileEntity.ByPosition.TryGetValue(displayOrigin, out priorEntity);
+                bool frameFlag = Main.tileFrameImportant[395]; Main.tileFrameImportant[395] = true;
+                try
+                {
+                    Terraria.DataStructures.TileEntity.ByPosition[displayOrigin] = display;
+                    for (int x = 0; x < 2; x++) for (int y = 0; y < 2; y++)
+                    { var tile = new Tile { type = 395, frameX = (short)(18 * x), frameY = (short)(18 * y) }; tile.active(true); tile.fullbrightBlock(true); Main.tile[1 + x, 1 + y] = tile; }
+                    foreach (bool changed in new[] { true, false })
+                    {
+                        Call(coldCatalog, "Reset"); int before = announced; long reads = (long)Get(coldCatalog, "PlacementReads");
+                        Call(gesture, "Request", 2); uiPass(false); Call(gesture, "Update", ++coldTick);
+                        Require((bool)Get(gesture, "Busy") && (long)Get(coldCatalog, "PlacementReads") - reads == 64, "carrier cold observation waits for bounded placement metadata");
+                        if (changed) display.item.SetDefaults(8);
+                        for (int i = 0; i < 180 && (bool)Get(gesture, "Busy"); i++) Call(gesture, "Update", ++coldTick);
+                        Require(!(bool)Get(gesture, "Busy") && announced == before + (changed ? 0 : 1), "real cold gesture cancels changed contents and delivers unchanged contents");
+                        if (!changed) Require(((List<string>)Get(wallAnnouncement, "Entries"))[0].Contains("放在" + Lang.GetItemNameValue(3270) + "的1 个 " + Lang.GetItemNameValue(8)), "cold delivery retains both carrier and its received content");
+                        long stopped = (long)Get(coldCatalog, "PlacementReads"); Call(gesture, "Update", ++coldTick);
+                        Require((long)Get(coldCatalog, "PlacementReads") == stopped, "finished carrier gesture stops metadata reads");
+                    }
+                    var jar = new Terraria.GameContent.Tile_Entities.TEDeadCellsDisplayJar { Position = displayOrigin, item = new Item() }; jar.item.SetDefaults(4);
+                    Terraria.DataStructures.TileEntity.ByPosition[displayOrigin] = jar;
+                    for (int y = 0; y < 2; y++) { var tile = new Tile { type = 698, frameY = (short)(18 * y) }; tile.active(true); tile.fullbrightBlock(true); Main.tile[1, 1 + y] = tile; }
+                    Main.mouseY = 36; PlayerInput.MouseInfo = new MouseState(20, 36, 0, ButtonState.Released, ButtonState.Released, ButtonState.Released, ButtonState.Released, ButtonState.Released);
+                    Call(coldCatalog, "Reset"); int beforeCoating = announced;
+                    Call(gesture, "Request", 2); uiPass(false); Call(gesture, "Update", ++coldTick);
+                    Require((bool)Get(gesture, "Busy"), "jar lower-cell cold gesture waits for body identity");
+                    Main.tile[1, 1].invisibleBlock(true);
+                    for (int i = 0; i < 180 && (bool)Get(gesture, "Busy"); i++) Call(gesture, "Update", ++coldTick);
+                    Require(announced == beforeCoating && !(bool)Get(gesture, "Busy"), "coating the real jar draw anchor cancels a pending lower-cell gesture");
+                    Main.mouseY = 20; PlayerInput.MouseInfo = new MouseState(20, 20, 0, ButtonState.Released, ButtonState.Released, ButtonState.Released, ButtonState.Released, ButtonState.Released);
+                }
+                finally { Main.tileFrameImportant[395] = frameFlag; if (hadEntity) Terraria.DataStructures.TileEntity.ByPosition[displayOrigin] = priorEntity; else Terraria.DataStructures.TileEntity.ByPosition.Remove(displayOrigin); }
                 // Actual original slot methods are intercepted before transfer.
                 var held = new Item(); held.SetDefaults(9); held.stack = 17; var inventory = new[] { held }; Main.mouseItem = new Item();
                 Set(input, "ReadOnlyMouseMask", 3); Main.mouseLeft = Main.mouseRight = Main.mouseLeftRelease = Main.mouseRightRelease = true;

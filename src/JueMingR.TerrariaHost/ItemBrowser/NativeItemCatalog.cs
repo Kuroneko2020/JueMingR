@@ -18,6 +18,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         private readonly List<ItemRelation> recipes = new List<ItemRelation>();
         private readonly Dictionary<long, int> stations = new Dictionary<long, int>();
         private readonly Dictionary<int, int> walls = new Dictionary<int, int>();
+        private readonly NativePlacementNames placementNames = new NativePlacementNames();
         private int itemCursor = 1, placementCursor = 1, recipeCursor, failures;
         internal int ExcludedIdentities { get; private set; }
         private bool dirty;
@@ -96,13 +97,13 @@ namespace JueMingR.TerrariaHost.ItemBrowser
 #else
                 _ = error;
 #endif
-                failures++; Catalog = null; Recipes = null; items.Clear(); recipes.Clear(); stations.Clear(); walls.Clear();
+                failures++; Catalog = null; Recipes = null; items.Clear(); recipes.Clear(); stations.Clear(); walls.Clear(); placementNames.Clear();
                 itemCursor = placementCursor = 1; recipeCursor = ExcludedIdentities = 0;
                 Status = "原版资料读取未完成（" + failures + "/3）";
             }
         }
         private void Reset()
-        { dirty = false; itemCursor = placementCursor = 1; recipeCursor = failures = ExcludedIdentities = 0; items.Clear(); recipes.Clear(); stations.Clear(); walls.Clear(); Catalog = null; Recipes = null; Revision++; }
+        { dirty = false; itemCursor = placementCursor = 1; recipeCursor = failures = ExcludedIdentities = 0; items.Clear(); recipes.Clear(); stations.Clear(); walls.Clear(); placementNames.Clear(); Catalog = null; Recipes = null; Revision++; }
         // A cold world gesture needs only canonical placement metadata. It does
         // not materialize descriptions, recipes, drops, shops, or the directory.
         // The gesture owns the demand and cancellation; no background warm-up.
@@ -122,6 +123,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         }
         private void CapturePlacement(Item sample)
         {
+            placementNames.Capture(sample);
             if (sample.createTile >= 0)
             {
                 long key = ((long)sample.createTile << 32) | (uint)sample.placeStyle;
@@ -130,25 +132,9 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             if (sample.createWall > 0) { int old; walls[sample.createWall] = walls.TryGetValue(sample.createWall, out old) && old != sample.type ? -1 : sample.type; }
         }
         internal int WallItem(int wall) { int type; return PlacementReady && walls.TryGetValue(wall, out type) && type > 0 ? type : 0; }
-        private static readonly System.Reflection.FieldInfo tileData = typeof(Terraria.ObjectData.TileObjectData).GetField("_data", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
         internal int PlacedItem(Tile tile)
         {
-            if (!PlacementReady || tile == null || !tile.active()) return 0;
-            int style = 0;
-            if (Main.tileFrameImportant[tile.type])
-            {
-                var values = tileData?.GetValue(null) as List<Terraria.ObjectData.TileObjectData>;
-                if (values == null || tile.type >= values.Count) return 0;
-                var data = values[tile.type];
-                if (data == null || data.GetStyleOverride != null || tile.frameX < 0 || tile.frameY < 0 || data.CoordinateFullWidth <= 0 || data.CoordinateFullHeight <= 0 || data.StyleMultiplier <= 0) return 0;
-                int x = tile.frameX / data.CoordinateFullWidth, y = tile.frameY / data.CoordinateFullHeight, wrap = Math.Max(1, data.StyleWrapLimit);
-                style = (data.StyleHorizontal ? y * wrap + x : x * wrap + y) / data.StyleMultiplier;
-                if (data.StyleLineSkip > 1) style = data.StyleHorizontal ? y / data.StyleLineSkip * wrap + x : x / data.StyleLineSkip * wrap + y;
-                // Match the native alternate/subtile resolution before using its
-                // style. Override-based natural piles remain deliberately unknown.
-                if (Terraria.ObjectData.TileObjectData.GetTileData(tile) == null) return 0;
-            }
-            int item; return stations.TryGetValue(((long)tile.type << 32) | (uint)style, out item) && item > 0 ? item : 0;
+            return PlacementReady ? placementNames.Find(tile) : 0;
         }
         internal static CatalogItem CaptureItem(Item item)
         {

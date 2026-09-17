@@ -82,8 +82,8 @@ namespace NativeWorldTextProbe
                 Require(lunar.SequenceEqual(new[] { 5408, 5401, 5403, 5402, 5406, 5407, 5405, 5404 }), "actual moon index order");
                 Console.WriteLine("PASS: actual .8 drop reports and shimmer declarations; globals once; no random operations.");
                 CheckShops(assembly);
-                NativeBrowserUiChecks.Run(assembly, subject);
                 NativeTargetGestureChecks.Run(assembly, subject);
+                NativeBrowserUiChecks.Run(assembly, subject);
                 NativeChestLocatorChecks.Run(assembly);
                 NativeChestScanChecks.Run(assembly, subject);
                 NativeBrowserCompositionChecks.Run(assembly);

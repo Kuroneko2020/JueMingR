@@ -49,7 +49,7 @@ namespace JueMingR.TerrariaHost.Announcements
             if (!Enabled || value == null) return;
             if (value.UiSlot && value.ItemType <= 0) { Feedback("这里是空槽，未发送宣告"); return; }
             if (!cooldown.TryTake(clock.ElapsedMilliseconds, value.EmptyAir)) { CooldownFeedback(); return; }
-            string text = value.Literal ? SafeChatText.BuildNotice(value.Entries, 1024) : SafeChatText.Build(value.Entries, 1024);
+            string text = value.Literal ? SafeChatText.BuildNotice(value.Entries, 1024) : value.JoinItems ? SafeChatText.BuildItems(value.Entries, 1024) : SafeChatText.Build(value.Entries, 1024);
             if (text.Length == 0) { Feedback("目标文字无法安全发送"); return; }
             try
             {

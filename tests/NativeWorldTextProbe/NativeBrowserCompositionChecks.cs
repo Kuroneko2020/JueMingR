@@ -83,6 +83,22 @@ namespace NativeWorldTextProbe
                 object empty = assembly.GetType("JueMingR.TerrariaHost.ItemBrowser.NativeTargetObservation").GetMethod("UiItem", Flags).Invoke(null, new object[] { 0, 0 });
                 Call(Get(announcements, "cooldown"), "Clear"); Call(announcements, "Submit", empty);
                 Require(local == 1 && network == 1, "empty UI slot never falls back to public world text");
+                var savedDrops = Main.item;
+                try
+                {
+                    Main.item = new WorldItem[savedDrops.Length]; Main.LocalPlayer.position = new Vector2(800, 800);
+                    var drops = new[] { new[] { 9, 3, 20, 20 }, new[] { 8, 7, 20, 20 }, new[] { 9, 5, 21, 20 }, new[] { 8, 4, 20, 21 }, new[] { 9, 99, 23, 20 } };
+                    for (int i = 0; i < drops.Length; i++)
+                    { var item = new Item(); item.SetDefaults(drops[i][0]); item.stack = drops[i][1]; Main.item[i] = new WorldItem(item) { position = new Vector2(drops[i][2] * 16, drops[i][3] * 16), width = 16, height = 16 }; }
+                    foreach (int mode in new[] { 0, 1 })
+                    {
+                        Main.netMode = mode; Call(Get(announcements, "cooldown"), "Clear"); int beforeLocal = local, beforeNetwork = network;
+                        object mixed = assembly.GetType("JueMingR.TerrariaHost.ItemBrowser.NativeTargetObservation").GetMethod("World", Flags).Invoke(null, new object[] { new Vector2(328, 328), native, true });
+                        Call(announcements, "Submit", mixed);
+                        Require(last == "[c/FFD966:这里有 8 个 " + Lang.GetItemNameValue(9) + "和11 个 " + Lang.GetItemNameValue(8) + "]" && local == beforeLocal + (mode == 0 ? 1 : 0) && network == beforeNetwork + (mode == 1 ? 1 : 0), "mixed world drops reach the correct intercepted outlet as one exact joined quantity sentence");
+                    }
+                }
+                finally { Main.item = savedDrops; }
                 Console.WriteLine("PASS: complete ItemBrowser profile, retained consumers, shared unbound actions, closed cost and production SP/client chat outlet selection. Outlets intercepted; no network or in-game claim.");
             }
             finally

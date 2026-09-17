@@ -20,6 +20,8 @@ namespace JueMingR.ArchitectureTests
             string complete = (string)type.GetMethod("Build").Invoke(null, new object[] { new[] { "甲", "乙" }, 100 });
             if (complete.Contains("省略")) failures.Add("G04 complete announcements must not claim omission");
             if (complete != "[c/FFD966:这里有 甲，乙]") failures.Add("G04 normal announcements retain the shared Legacy sentence and separator");
+            string multiple = (string)type.GetMethod("BuildItems").Invoke(null, new object[] { new[] { "8 个 木材", "11 个 火把" }, 100 });
+            if (multiple != "[c/FFD966:这里有 8 个 木材和11 个 火把]") failures.Add("G04 distinct dropped-item groups retain both exact quantities joined with 和");
             string notice = (string)type.GetMethod("BuildNotice").Invoke(null, new object[] { new[] { "这里看不见东西" }, 100 });
             if (notice != "[c/FFD966:这里看不见东西]") failures.Add("G04 complete notices must not gain a duplicate normal sentence prefix");
             Type clock = type.Assembly.GetType("JueMingR.Features.Announcements.AnnouncementCooldown");

@@ -5,6 +5,7 @@ using System.Linq;
 using System.Reflection;
 using System.Threading;
 using JueMingR.Platform.Hotkeys;
+using JueMingR.Features.ItemBrowser;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
@@ -49,7 +50,12 @@ namespace NativeWorldTextProbe
                 while (!(bool)Get(Get(shell, "preferences"), "UiLoaded"))
                 { Call(context, "UpdateRuntime"); if (wait.ElapsedMilliseconds > 10000) throw new TimeoutException("lifecycle settings"); Thread.Sleep(5); }
                 for (int i = 0; i < 1800; i++) Call(knowledge, "Step", true);
-                Set(page, "locatorView", 1); Call(Get(page, "locator"), "Insert", "#9");
+                var workspace = (BrowserWorkspace)Get(knowledge, "Workspace"); var catalog = (BrowserCatalog)Get(Get(knowledge, "Native"), "Catalog");
+                graphics.LoadItemTextures(catalog.Search("", 0, false).Take(64)); graphics.LoadItemTextures(new[] { 9 });
+                graphics.LoadItemTextures(catalog.Search("wood", 16, true).Take(64));
+                workspace.Query = "wood"; workspace.Category = 16; workspace.SortByName = true;
+                Call(Get(page, "query"), "Insert", "wood");
+                Set(page, "locatorView", 2); Call(Get(page, "locator"), "Insert", "#9");
                 Action<int, int, bool, bool> frame = (x, y, down, f5) =>
                 {
                     Call(input, "BeginUpdate"); Call(shell, "BeforeInput"); Require(!(bool)Get(shell, "Failed"), "lifecycle BeforeInput remains healthy");
@@ -76,11 +82,18 @@ namespace NativeWorldTextProbe
                 Require(graphics.Pixels(() => Call(locator, "Draw"), Matrix.Identity).Any(c => c.A > 0 && c.G > c.R), "located chest has world highlight");
                 frame(0, 0, false, false); frame(0, 0, false, true); frame(0, 0, false, false);
                 Require((bool)Get(state, "Visible") && (int)Get(state, "Page") == 3, "real F5 key reopens the same query page after successful locate");
+                Require(((IEnumerable)Get(page, "Parts")).Cast<object>().Any(p => (int)Get(p, "Command") == 27), "real pre-clear page contains locator candidates");
                 click(18); frame(0, 0, false, false);
                 Require(((IList)Get(locator, "Results")).Count == 0 && !(bool)Get(locator, "scanning") && ((IList)Get(locator, "Details")).Count == 0, "real clear click retires results and details");
                 Require(!graphics.Pixels(() => Call(locator, "Draw"), Matrix.Identity).Any(c => c.A > 0), "cleared locator emits no world pixels");
                 Require(!(bool)Get(shell, "Failed") && (bool)Get(state, "Visible"), "clear leaves F5 usable");
+                Require(workspace.Query == "" && workspace.Category == 0 && !workspace.SortByName && workspace.Selected == 0 && !workspace.Detail && workspace.CatalogOffset == 0 &&
+                    (string)Get(Get(page, "query"), "Text") == "" && (string)Get(Get(page, "locator"), "Text") == "" && ((int[])Get(page, "locatorCandidates")).Length == 0 && (int)Get(page, "locatorView") == 0,
+                    "real clear restores both drafts and the complete initial directory state");
+                Require(((IEnumerable)Get(page, "Parts")).Cast<object>().Any(p => (int)Get(p, "Command") == 19) && !((IEnumerable)Get(page, "Parts")).Cast<object>().Any(p => (int)Get(p, "Command") == 27), "actual post-clear layout shows catalog icons without locator candidates");
                 graphics.Image(Path.Combine(output, "browser-after-clear.png"), () => Call(shell, "DrawLayer"), Matrix.Identity, 960, 640);
+                click(5); Require(workspace.Query == "wood" && workspace.Category == 16 && workspace.SortByName && (string)Get(Get(page, "locator"), "Text") == "", "actual Back restores browsing without resurrecting locator input");
+                click(6); Require(workspace.Query == "" && workspace.Category == 0 && !workspace.SortByName, "actual Forward restores the cleared catalog");
                 Call(state, "Navigate", 2); frame(0, 0, false, false);
                 graphics.Image(Path.Combine(output, "announcement-bindings.png"), () => Call(shell, "DrawLayer"), Matrix.Identity, 960, 640);
                 var bindings = (HotkeyBindings)Get(Get(shell, "hotkeys"), "Bindings");
