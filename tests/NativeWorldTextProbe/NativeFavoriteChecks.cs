@@ -52,11 +52,7 @@ namespace NativeWorldTextProbe
         private static void Transfers(object favorite,Player p)
         {
             Main.keyState=new Microsoft.Xna.Framework.Input.KeyboardState();
-            Item stack=new Item();stack.SetDefaults(ItemID.Wood);stack.stack=10;stack.favorited=true;p.inventory[20]=stack;Call(favorite,"Observe");
-            typeof(ItemSlot).GetMethod("PickupItemIntoMouse",Flags).Invoke(null,new object[]{p.inventory,0,20,p});
-            Require(stack.stack==9 && Main.mouseItem.stack==1 && Main.mouseItem.favorited,"real one-item split inherits intent");
-            Item plain=new Item();plain.SetDefaults(ItemID.Wood);plain.stack=5;p.inventory[21]=plain;Call(favorite,"Observe");
-            Click(p.inventory,0,21);Require(p.inventory[21].stack==6 && p.inventory[21].favorited && stack.favorited,"mixed real merge ORs intent without changing neighbor count");
+            Item stack=SplitsAndMerges(favorite,p);
             Click(p.inventory,0,20);Main.mouseLeft=Main.mouseLeftRelease=true;ItemSlot.Handle(ref p.trashItem,6);Main.mouseLeft=false;
             Require(ReferenceEquals(p.trashItem,stack),"native ref trash assignment retained exact item");
             Main.mouseLeft=Main.mouseLeftRelease=true;ItemSlot.Handle(ref p.trashItem,6);Main.mouseLeft=false;Click(p.inventory,0,20);
@@ -76,6 +72,42 @@ namespace NativeWorldTextProbe
             Main.mouseItem=new Item();p.inventory[58]=new Item();Main.playerInventory=false;p.itemAnimation=p.itemTime=0;p.selectedItemState.Select(2);p.selectedItemState.Update();
             Call(favorite,"Observe");Require((int)Get(favorite,"Count")<100,"retired mirror and external items do not accumulate");
         }
+        private static Item SplitsAndMerges(object favorite,Player p)
+        {
+            Item stack=new Item();stack.SetDefaults(ItemID.Wood);stack.stack=10;stack.favorited=true;p.inventory[20]=stack;Call(favorite,"Observe");
+            Right(p.inventory,0,20);
+            Require(stack.stack==9 && stack.favorited && Main.mouseItem.stack==1 && !Main.mouseItem.favorited,"partial right-click split leaves new mouse stack unstarred");
+            Right(p.inventory,0,20);Right(p.inventory,0,20);Click(p.inventory,0,21);
+            Item split=p.inventory[21];Call(favorite,"Observe");Call(favorite,"Observe");
+            Require(stack.stack==7 && stack.favorited && split.stack==3 && !split.favorited,"repeated split and placement preserve only the original remainder favorite");
+            Click(p.inventory,0,21);Click(p.inventory,0,22);Call(favorite,"Observe");
+            Require(ReferenceEquals(p.inventory[22],split) && !split.favorited,"later movement does not resurrect split provenance");
+            typeof(ItemSlot).GetMethod("ToggleFavorited",Flags).Invoke(null,new object[]{split});
+            Item plain=new Item();plain.SetDefaults(ItemID.Wood);plain.stack=5;p.inventory[21]=plain;Call(favorite,"Observe");
+            Click(p.inventory,0,22);Click(p.inventory,0,21);
+            Require(p.inventory[21].stack==8 && p.inventory[21].favorited && stack.stack==7 && stack.favorited,"explicit favorite on a split and ordinary mixed merge still OR intent");
+            Item last=new Item();last.SetDefaults(ItemID.Wood);last.stack=2;last.favorited=true;p.inventory[23]=last;Call(favorite,"Observe");
+            Right(p.inventory,0,23);Require(!Main.mouseItem.favorited,"first part remains unstarred before source exhaustion");
+            Right(p.inventory,0,23);Click(p.inventory,0,24);
+            Require(p.inventory[23].IsAir && p.inventory[24].stack==2 && p.inventory[24].favorited,"taking the final remaining whole source merges its favorite intent");
+            Item unstarred=new Item();unstarred.SetDefaults(ItemID.Wood);unstarred.stack=2;p.inventory[23]=unstarred;Call(favorite,"Observe");
+            Click(p.inventory,0,24);Right(p.inventory,0,23);Click(p.inventory,0,24);
+            Require(unstarred.stack==1 && !unstarred.favorited && p.inventory[24].stack==3 && p.inventory[24].favorited,"partial extraction preserves an already-favorited destination's own intent");
+            Item single=new Item();single.SetDefaults(ItemID.Wood);single.favorited=true;p.inventory[23]=single;Call(favorite,"Observe");
+            Right(p.inventory,0,23);Click(p.inventory,0,22);
+            Require(p.inventory[23].IsAir && p.inventory[22].stack==1 && p.inventory[22].favorited,"whole singleton pickup retains favorite");
+            Click(p.inventory,0,20);Click(p.inventory,0,25);Call(favorite,"Observe");
+            Require(ReferenceEquals(p.inventory[25],stack) && stack.favorited,"whole original stack movement retains favorite");
+            Click(p.inventory,0,25);Click(p.inventory,0,20);
+            Item helmets=new Item();helmets.SetDefaults(ItemID.CopperHelmet);helmets.stack=2;helmets.favorited=true;p.inventory[26]=helmets;Call(favorite,"Observe");
+            Click(p.inventory,0,26);Click(p.armor,8,0);
+            Require(Main.mouseItem.stack==1 && p.armor[0].stack==1 && !ReferenceEquals(Main.mouseItem,p.armor[0]),"native equipment placement really split a clone");
+            Click(p.inventory,0,26);Click(p.armor,8,0);Click(p.inventory,0,27);Call(favorite,"Observe");
+            Require(helmets.favorited && !p.inventory[27].favorited,"one-piece equipment split returns without inherited favorite");
+            return stack;
+        }
+        private static void Right(Item[] inventory,int context,int slot)
+        {Main.mouseRight=Main.mouseRightRelease=true;Main.stackSplit=0;Main.superFastStack=0;ItemSlot.RightClick(inventory,context,slot);Main.mouseRight=false;}
         private static void Click(Item[] inventory,int context,int slot)
         {Main.mouseLeft=Main.mouseLeftRelease=true;Main.cursorOverride=0;ItemSlot.LeftClick(inventory,context,slot);Main.mouseLeft=false;}
     }

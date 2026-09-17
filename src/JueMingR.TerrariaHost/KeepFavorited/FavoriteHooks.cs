@@ -77,8 +77,9 @@ namespace JueMingR.TerrariaHost.KeepFavorited
                     if(s.B.stack>s.BStack && s.A.stack<s.AStack)host.Link(s.AClaim,s.B);
                     host.CorrectParticipant(s.A,s.AFavorite);host.CorrectParticipant(s.B,s.BFavorite);
                 }
-                Item target=s.Array[s.Slot];
-                if(s.AStack<=0 && s.B!=null && s.BStack==s.B.stack+1 && target!=null && target.stack==1 && target.type==s.BType && target.prefix==s.BPrefix && !ReferenceEquals(target,s.B))host.Link(s.BClaim,target);
+                // A one-piece clone placed from a larger mouse stack is a new
+                // split, not a favorite transfer. The remaining mouse member
+                // retains its intent; a final singleton moves by reference.
             }
             Finish(s);
         }
@@ -93,7 +94,11 @@ namespace JueMingR.TerrariaHost.KeepFavorited
         {
             if(__state==null)return;
             var s=__state;Item mouse=Main.mouseItem;
-            if(Active && s.Context!=29 && s.A!=null && s.A.stack==s.AStack-1 && mouse!=null && mouse.type==s.AType && mouse.prefix==s.APrefix && mouse.stack==s.BStack+1)host.Link(s.AClaim,mouse);
+            // Right-click can collect several pieces into the same mouse stack.
+            // Partial extraction never lends it the source favorite. Only the
+            // final whole source participates in the existing merge/transfer rule;
+            // an already-favorited mouse stack keeps its own independent intent.
+            if(Active && s.Context!=29 && s.AStack==1 && s.A!=null && s.A.stack==0 && mouse!=null && mouse.type==s.AType && mouse.prefix==s.APrefix && mouse.stack==s.BStack+1)host.Link(s.AClaim,mouse);
             Finish(s);
         }
         private static void AfterSlot(SlotScope __state){Finish(__state);}
