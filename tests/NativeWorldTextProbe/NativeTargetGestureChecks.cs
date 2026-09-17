@@ -47,6 +47,7 @@ namespace NativeWorldTextProbe
                 object hidden = observer.Invoke(null, new object[] { new Vector2(20, 20), catalog, true });
                 Require(!((System.Collections.Generic.List<string>)Get(hidden, "Entries")).Exists(s => s.Contains("生命")), "ghost players and hidden NPCs cannot become public actor targets");
                 Main.LocalPlayer.ghost = false; Main.LocalPlayer.position = new Vector2(800, 800); Main.npc[0].active = false;
+                NativeAnnouncementTargetChecks.Run(assembly, catalog);
                 var wallTile = new Tile { type = 1, wall = 4 }; wallTile.active(true); wallTile.invisibleBlock(true); wallTile.fullbrightWall(true);
                 Main.tile[1, 1] = wallTile;
                 object wallTarget = observer.Invoke(null, new object[] { new Vector2(20, 20), catalog, false });

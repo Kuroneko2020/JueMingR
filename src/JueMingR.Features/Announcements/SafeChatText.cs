@@ -26,8 +26,12 @@ namespace JueMingR.Features.Announcements
             catch (ArgumentException) { return ""; }
         }
         public static string Build(IEnumerable<string> entries, int byteBudget = 1024)
+        { return BuildCore(entries, byteBudget, "[c/FFD966:这里有 "); }
+        public static string BuildNotice(IEnumerable<string> entries, int byteBudget = 1024)
+        { return BuildCore(entries, byteBudget, "[c/FFD966:"); }
+        private static string BuildCore(IEnumerable<string> entries, int byteBudget, string prefix)
         {
-            const string prefix = "[c/FFD966:"; const string suffix = "]";
+            const string suffix = "]";
             const string omittedText = "部分内容已省略";
             if (byteBudget < 32) return "";
             var accepted = new List<string>(); int bytes = Encoding.UTF8.GetByteCount(prefix + suffix), count = 0;
@@ -50,7 +54,7 @@ namespace JueMingR.Features.Announcements
                 { int last = accepted.Count - 1; bytes -= Encoding.UTF8.GetByteCount(accepted[last]) + (last == 0 ? 0 : 3); accepted.RemoveAt(last); }
                 if (bytes + (accepted.Count == 0 ? 0 : 3) + notice <= byteBudget) accepted.Add(omittedText);
             }
-            return accepted.Count == 0 ? "" : prefix + string.Join("；", accepted) + suffix;
+            return accepted.Count == 0 ? "" : prefix + string.Join("，", accepted) + suffix;
         }
     }
 }

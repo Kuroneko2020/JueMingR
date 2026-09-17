@@ -64,6 +64,7 @@ namespace JueMingR.TerrariaHost.Items
             }
         }
         internal void Panel(F5Rect rect) { F5ControlRenderer.Panel(batch, pixel, surface, rect); }
+        internal void Divider(F5Rect rect) { Fill(rect, Color.White * .35f); }
         internal void Label(F5Element element) { F5ControlRenderer.Text(batch, font, element, Color.White); }
         internal void Button(F5Element element, bool selected, bool enabled, bool off, bool hovered)
         { F5ControlRenderer.Button(batch, pixel, surface, font, element, hovered, enabled, selected ? (Color?)(off ? Color.IndianRed : Color.LightGreen) : null, subduedWhenDisabled: true); }

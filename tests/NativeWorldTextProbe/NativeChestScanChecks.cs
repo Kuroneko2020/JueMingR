@@ -38,6 +38,7 @@ namespace NativeWorldTextProbe
                 var results = (IList)Get(locator, "Results");
                 Require(results.Count == 5 && results.Cast<object>().Select(r => (string)Get(r, "Name")).Distinct().Count() == 5, "all real container families, dresser dedup, no fabricated fake-chest stock");
                 Require(results.Cast<object>().Select(r => (int)Get(Get(r, "Chest"), "index")).SequenceEqual(new[] { 0, 1, 2, 3, 4 }), "stable X-outer Y-inner container order");
+                Require(results.Cast<object>().Select(r => (string)Get(r, "WorldLabel")).SequenceEqual(new[] { "2个", "3个", "4个", "5个", "6个" }), "world labels contain only the matched total across slots");
                 reads = (long)Get(locator, "CellReads"); slots = (long)Get(locator, "SlotReads"); for (int i = 0; i < 120; i++) update();
                 Require((long)Get(locator, "CellReads") == reads && (long)Get(locator, "SlotReads") == slots, "stable highlight performs no content or discovery scan");
                 InvalidateThroughSelectiveStorage(); update();

@@ -316,7 +316,9 @@ namespace JueMingR.TerrariaHost.F5
                 size.OffsetX * scale - 2, size.OffsetY * scale - 2);
         }
 
-        private F5Size DynamicTextSize(string text, float scale)
+        // Dynamic pages own their rebuilt layout. Their names and wrapping
+        // prefixes must never populate the bounded lifetime fixed-label cache.
+        internal F5Size DynamicTextSize(string text, float scale)
         { var size = MeasureChecked(text); return new F5Size(size.Width * scale + 4, size.Height * scale + 4, size.OffsetX * scale - 2, size.OffsetY * scale - 2); }
 
         private F5Size MeasureChecked(string text)

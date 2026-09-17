@@ -52,7 +52,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         private IReadOnlyList<ItemRelation> relations = new ItemRelation[0];
         private string shownStatus, shownLocatorStatus;
         private float row;
-        internal F5Rect View, EditRect;
+        internal F5Rect View, EditRect, LocatorDivider;
         internal BrowserPart Hovered;
         public bool OwnsPointer { get; private set; }
         public bool OwnsTextToken { get { return TextInput.OwnsTextToken; } }
@@ -189,12 +189,12 @@ namespace JueMingR.TerrariaHost.ItemBrowser
                 LayoutBuilds++;
 #endif
             }
-            if (Editor != null) EditView.Prepare(Editor, TextInput.Composition, EditRect.Width - 12, shell.Layout.TextSize);
+            if (Editor != null) EditView.Prepare(Editor, TextInput.Composition, EditRect.Width - 12, shell.Layout.DynamicTextSize);
             renderer.PrepareIcons(Parts, rebuilt);
         }
         private void Build()
         {
-            Parts.Clear(); var s = host.Workspace; float x = View.X, y = View.Y, w = View.Width;
+            Parts.Clear(); LocatorDivider = default(F5Rect); var s = host.Workspace; float x = View.X, y = View.Y, w = View.Width;
             if (View.Height < row * 9 + 22) { Label("窗口过矮；请降低 UI 缩放或增大窗口后浏览物品。", x, y, w, row); return; }
             Button(1, 0, editing == 1 ? "" : (query.Text.Length == 0 ? "搜索名称 / 内部名 / #ID" : query.Text), x, y, w - 150, row);
             if (editing == 1) EditRect = new F5Rect(x, y, w - 150, row);
@@ -208,6 +208,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             Button(16, 0, "商店", x + 444, y, w - 444, row, !host.Shops.Busy); y += row + 4;
             Label(shownStatus, x, y, w, row); y += row;
             float footer = View.Bottom - row * 2 - 8, height = footer - y - 4;
+            LocatorDivider = new F5Rect(x, footer - 2, w, 1);
             bool narrow = View.Height < 400;
             if (locatorView != 0) LocatorPanel(new F5Rect(x, y, w, height));
             else if (!narrow) { Catalog(new F5Rect(x, y, 192, height)); Detail(new F5Rect(x + 202, y, w - 202, height)); }
@@ -334,7 +335,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             float height = count * row + 12, x = Math.Min(View.Right - width, Math.Max(View.X, pointer.X + 18)), y = Math.Min(View.Bottom - height, Math.Max(View.Y, pointer.Y + 24));
             HintPanel = new F5Rect(x, y, width, height);
             for (int i = 0; i < count; i++)
-            { string text = i == count - 1 && count < lines.Count ? "更多说明可在详情中滚动查看" : lines[i].Item1; HintLines.Add(new F5Element(F5ElementKind.Text, new F5Rect(x + 8, y + 6 + i * row, width - 16, row), text, shell.Layout.TextSize(text, .7f), .7f, F5Command.None)); }
+            { string text = i == count - 1 && count < lines.Count ? "更多说明可在详情中滚动查看" : lines[i].Item1; HintLines.Add(new F5Element(F5ElementKind.Text, new F5Rect(x + 8, y + 6 + i * row, width - 16, row), text, shell.Layout.DynamicTextSize(text, .7f), .7f, F5Command.None)); }
         }
         private void AddRelationText(List<Tuple<string, int, int>> lines, string text, float width, int type, int groupIndex)
         {
@@ -352,7 +353,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             for (int i = 1; i < boundaries.Length; i++)
             {
                 int end = boundaries[i];
-                if (shell.Layout.TextSize(text.Substring(start, end - start), .7f).Width > width - 12 && boundaries[i - 1] > start)
+                if (shell.Layout.DynamicTextSize(text.Substring(start, end - start), .7f).Width > width - 12 && boundaries[i - 1] > start)
                 { lines.Add(Tuple.Create(text.Substring(start, boundaries[i - 1] - start), 0, -1)); start = boundaries[i - 1]; }
             }
             if (start < text.Length) lines.Add(Tuple.Create(text.Substring(start), 0, -1));
@@ -364,12 +365,12 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         private void Add(int command, int argument, int type, string text, float x, float y, float w, float h, bool enabled, bool selected)
         { string full = type > 0 ? host.Native.Catalog?.Find(type)?.Name ?? "" : text; text = Fit(text, w - 12);
             Parts.Add(new BrowserPart { Command = command, Argument = argument, Type = type, Enabled = enabled, Selected = selected, FullText = full,
-            Element = new F5Element(command == 0 ? F5ElementKind.Text : F5ElementKind.Button, new F5Rect(x, y, w, h), text, shell.Layout.TextSize(text, .7f), .7f, F5Command.None) }); }
+            Element = new F5Element(command == 0 ? F5ElementKind.Text : F5ElementKind.Button, new F5Rect(x, y, w, h), text, shell.Layout.DynamicTextSize(text, .7f), .7f, F5Command.None) }); }
         private string Fit(string text, float width)
         {
-            if (shell.Layout.TextSize(text, .7f).Width <= width) return text;
+            if (shell.Layout.DynamicTextSize(text, .7f).Width <= width) return text;
             int[] edges = TextElements.Boundaries(text); int lo = 0, hi = edges.Length - 1;
-            while (lo < hi) { int mid = (lo + hi + 1) / 2; if (shell.Layout.TextSize(text.Substring(0, edges[mid]) + "…", .7f).Width <= width) lo = mid; else hi = mid - 1; }
+            while (lo < hi) { int mid = (lo + hi + 1) / 2; if (shell.Layout.DynamicTextSize(text.Substring(0, edges[mid]) + "…", .7f).Width <= width) lo = mid; else hi = mid - 1; }
             return text.Substring(0, edges[lo]) + "…";
         }
         internal string HoverText { get { if (Hovered == null) return ""; var item = host.Native.Catalog?.Find(Hovered.Type); return item == null ? Hovered.FullText : item.Name + "  #" + item.Type + " · 左键获取 / 右键用途"; } }

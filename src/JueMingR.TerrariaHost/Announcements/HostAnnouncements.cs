@@ -5,6 +5,7 @@ using JueMingR.Features.Announcements;
 using JueMingR.Infrastructure.Storage;
 using JueMingR.Platform.Settings;
 using JueMingR.TerrariaHost.ItemBrowser;
+using Microsoft.Xna.Framework;
 using Terraria;
 using Terraria.Chat;
 using Terraria.UI.Chat;
@@ -13,12 +14,11 @@ namespace JueMingR.TerrariaHost.Announcements
 {
     internal sealed class HostAnnouncements : IDisposable, F5.IAnnouncementControls
     {
-        internal const string ActionId = "announcement.send";
         private readonly PreferenceDocument<AnnouncementSettings> preferences;
         private readonly AnnouncementCooldown cooldown = new AnnouncementCooldown();
         private readonly Stopwatch clock = Stopwatch.StartNew();
         private object world, player, connection;
-        private long feedbackAt = -1;
+        private long feedbackAt = -1, cooldownFeedbackAt = -1;
         public bool Enabled { get { return preferences.Snapshot.IsLoaded && preferences.Snapshot.Value.Enabled; } }
         public bool CanConfigure { get { return preferences.Snapshot.IsLoaded; } }
         public string SettingsMessage
@@ -42,14 +42,15 @@ namespace JueMingR.TerrariaHost.Announcements
         {
             if (!preferences.Snapshot.IsLoaded && clock.ElapsedMilliseconds >= 2000) preferences.AbandonSlowLoad();
             if (!ReferenceEquals(world, Main.ActiveWorldFileData) || !ReferenceEquals(player, Main.LocalPlayer) || !ReferenceEquals(connection, Netplay.Connection) || Main.gameMenu)
-            { world = Main.ActiveWorldFileData; player = Main.LocalPlayer; connection = Netplay.Connection; cooldown.Clear(); }
+            { world = Main.ActiveWorldFileData; player = Main.LocalPlayer; connection = Netplay.Connection; cooldown.Clear(); cooldownFeedbackAt = -1; }
         }
         internal void Submit(TargetValue value)
         {
             if (!Enabled || value == null) return;
             if (value.UiSlot && value.ItemType <= 0) { Feedback("这里是空槽，未发送宣告"); return; }
-            if (!cooldown.TryTake(clock.ElapsedMilliseconds, value.EmptyAir)) return;
-            string text = SafeChatText.Build(value.Entries, 1024); if (text.Length == 0) { Feedback("目标文字无法安全发送"); return; }
+            if (!cooldown.TryTake(clock.ElapsedMilliseconds, value.EmptyAir)) { CooldownFeedback(); return; }
+            string text = value.Literal ? SafeChatText.BuildNotice(value.Entries, 1024) : SafeChatText.Build(value.Entries, 1024);
+            if (text.Length == 0) { Feedback("目标文字无法安全发送"); return; }
             try
             {
                 var message = ChatManager.Commands.CreateOutgoingMessage(text);
@@ -60,6 +61,16 @@ namespace JueMingR.TerrariaHost.Announcements
                 // The native client outlet does not confirm server receipt.
             }
             catch { Feedback("宣告提交失败，未自动重试"); }
+        }
+        private void CooldownFeedback()
+        {
+            long now = clock.ElapsedMilliseconds;
+            if (Main.gameMenu || Main.hideUI || Main.netMode == 2 || Main.LocalPlayer == null || cooldownFeedbackAt >= 0 && now - cooldownFeedbackAt < 500) return;
+            cooldownFeedbackAt = now;
+            // Legacy feedback is a local player floating text, not another chat
+            // message. Its own throttle cannot extend either send cooldown.
+            try { CombatText.NewText(Main.LocalPlayer.Hitbox, new Color(255, 217, 102), "宣告冷却ing"); }
+            catch { /* A cosmetic failure must not escape into input or replay chat. */ }
         }
         internal void Feedback(string message)
         {

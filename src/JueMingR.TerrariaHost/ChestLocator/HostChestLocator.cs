@@ -19,7 +19,7 @@ namespace JueMingR.TerrariaHost.ChestLocator
         internal Chest Chest; internal WorldObject Object; internal long Revision, ObservedTick;
         internal readonly List<KeyValuePair<int, long>> Counts = new List<KeyValuePair<int, long>>();
         internal readonly Dictionary<int, int> Slots = new Dictionary<int, int>();
-        internal string Name, Label;
+        internal string Name, Label, WorldLabel;
     }
     internal sealed class HostChestLocator : IDisposable
     {
@@ -112,6 +112,7 @@ namespace JueMingR.TerrariaHost.ChestLocator
                     ObservedTick = Main.netMode == 1 ? Receiver.Knowledge.Tick(index) : tick, Name = name };
                 foreach (var pair in counts.OrderBy(p => p.Key)) { result.Counts.Add(pair); result.Slots[pair.Key] = slots[pair.Key]; }
                 result.Label = name + " · " + counts.Values.Sum() + " 件 / " + slots.Values.Sum() + " 槽 / " + counts.Count + " 种";
+                result.WorldLabel = counts.Values.Sum() + "个";
                 Results.Add(result);
             }
         }
@@ -157,7 +158,7 @@ namespace JueMingR.TerrariaHost.ChestLocator
                 Main.spriteBatch.Draw(TextureAssets.MagicPixel.Value, new Rectangle(box.X, box.Bottom - 2, box.Width, 2), border);
                 Main.spriteBatch.Draw(TextureAssets.MagicPixel.Value, new Rectangle(box.X, box.Y, 2, box.Height), border);
                 Main.spriteBatch.Draw(TextureAssets.MagicPixel.Value, new Rectangle(box.Right - 2, box.Y, 2, box.Height), border);
-                Utils.DrawBorderString(Main.spriteBatch, result.Label, new Vector2(box.Center.X, box.Y - 22), Color.LightGreen, .7f, .5f);
+                Utils.DrawBorderString(Main.spriteBatch, result.WorldLabel, new Vector2(box.Center.X, box.Y - 22), Color.LightGreen, .7f, .5f);
             }
         }
         public void Dispose() { Receiver.Dispose(); Clear(); }

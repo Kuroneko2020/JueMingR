@@ -84,7 +84,7 @@ namespace JueMingR.TerrariaHost.F5
             if (hotkeys != null || labels != null || worldTargets != null || worldObjects != null || information != null || deaths != null || maps != null || footprints != null) this.inputState.ClaimsHotkeyPointer = ClaimsPopupPointer;
             drawKeyboard = rect => renderer.Keyboard(Main.spriteBatch, rect);
             if (hostItems != null) { items = new ItemsPresentation(hostItems, State); items.HotkeyClicked = OpenHotkey; }
-            if (announcements != null) renderer.AnnouncementControls = new AnnouncementControls(announcements);
+            if (announcements != null) renderer.AnnouncementControls = new AnnouncementControls(announcements, hotkeys?.Bindings);
             Func<int, bool> prior = State.BeforeLeave;
             State.BeforeLeave = page => { if (MapPopup != null && !MapPopup.TryLeave(() => { if (page < 0) State.Close(); else State.Navigate(page); })) return false; if (prior != null && !prior(page)) return false; if (Browser != null && !Browser.RequestFinish()) return false; Browser?.Suspend(); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); FootprintPopup?.Close(); return true; };
         }
@@ -319,7 +319,7 @@ namespace JueMingR.TerrariaHost.F5
                 // do not evaluate the new native observation gate for them.
                 if (Browser != null)
                 {
-                    hotkeys?.Bindings.Dispatch(inputState.Hotkeys, Main.netMode == 0 ? HotkeyContext.SinglePlayer : HotkeyContext.Multiplayer, CanTargetInput, AnnouncementControls.ActionId);
+                    hotkeys?.Bindings.Dispatch(inputState.Hotkeys, Main.netMode == 0 ? HotkeyContext.SinglePlayer : HotkeyContext.Multiplayer, CanTargetInput, AnnouncementControls.SendActionId);
                     hotkeys?.Bindings.Dispatch(inputState.Hotkeys, Main.netMode == 0 ? HotkeyContext.SinglePlayer : HotkeyContext.Multiplayer, CanTargetInput, "item-browser.query");
                 }
                 // Fullscreen map owns native mouseInterface. Admit only its

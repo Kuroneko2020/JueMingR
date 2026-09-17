@@ -50,6 +50,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         {
             surface.Pass(matrix, page.View, () =>
             {
+                surface.Divider(page.LocatorDivider);
                 foreach (var part in page.Parts)
                 {
                     if (part.Command == 19) { surface.ItemButton(part.Element.Rect, part.Enabled, part == page.Hovered); if (part.Selected) surface.Selection(part.Element.Rect); }

@@ -39,7 +39,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             Targets.CanAnnounce = CanAnnounce;
             page.ConfigurePickHotkey = rect => shell.OpenHotkey("item-browser.query", rect);
             Targets.QueryBinding = () => hotkeys.Bindings.Get("item-browser.query");
-            Targets.AnnouncementBinding = () => hotkeys.Bindings.Get(AnnouncementControls.ActionId);
+            Targets.AnnouncementBinding = () => hotkeys.Bindings.Get(AnnouncementControls.SendActionId);
             Targets.Announced = Announcements.Submit; Targets.Feedback = Announcements.Feedback;
             Targets.PickCancelled = RestoreBrowser;
             Targets.Picked = target => { RestoreBrowser(); if (target.ItemType > 0) page.Navigate(target.ItemType, false); else Announcements.Feedback(target.UiSlot ? "这里是空槽，未改变查询" : "无法确定对应物品，未改变查询"); };

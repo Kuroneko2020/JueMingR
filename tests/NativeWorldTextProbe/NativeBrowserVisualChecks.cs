@@ -69,6 +69,7 @@ namespace NativeWorldTextProbe
                 Require((int)Get(state, "Selected") == recipe.Output, "return and editor cancel preserve long relation history");
                 draw(960, 760, 1, "browser-return-cancel.png");
                 NativeBrowserLocatorVisualChecks.Run(graphics, output, assembly, host, page, draw);
+                NativeBrowserLifecycleChecks.Run(graphics, output, assembly);
                 Console.WriteLine("PASS: original XNB browser drawings produced; inspect each PNG before delivery.");
             }
             finally { ((IDisposable)page).Dispose(); ((IDisposable)host).Dispose(); }

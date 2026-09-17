@@ -44,23 +44,39 @@ namespace NativeWorldTextProbe
                     Require(GetOptional(context, name) != null, "complete browser package retains " + name);
                 Require((bool)Get(Get(browser, "Targets"), "Ready") && (bool)Get(Get(Get(browser, "Locator"), "Receiver"), "Ready"), "complete profile installs both fixed native observation owners");
                 var registry = (HotkeyRegistry)Get(keys, "Registry");
-                foreach (string id in new[] { "announcement.send", "item-browser.query" })
+                foreach (string id in new[] { "announcement.send", "announcement.toggle", "item-browser.query" })
                     Require(registry.Actions.Any(a => a.Id == id && a.Context == HotkeyContext.Gameplay) && bindings.Get(id) == null, "shared action is available to both topologies and unbound by default: " + id);
                 var native = Get(Get(browser, "Knowledge"), "Native");
                 for (int i = 0; i < 120; i++) Call(context, "UpdateRuntime");
                 Require((long)Get(native, "ItemReads") == 0 && !(bool)Get(announcements, "Enabled"), "complete closed profile does no directory work and announcements default off");
+                Require(registry.Find("announcement.toggle").Invoke(HotkeyContext.SinglePlayer) && (bool)Get(announcements, "Enabled"), "toggle binding can enable a disabled announcement feature");
+                Require(registry.Find("announcement.toggle").Invoke(HotkeyContext.Multiplayer) && !(bool)Get(announcements, "Enabled"), "toggle binding works in ordinary client context without sending");
+                CheckSharedBindings(bindings);
+                CheckBindingPresentation(Get(context, "Shell"));
+                NativeAnnouncementInputChecks.Run(context);
 
                 // Execute production Submit and native message construction while
                 // intercepting both final outlets: no local/public chat is sent.
                 isolation.Patch(send, prefix: new HarmonyMethod(typeof(NativeBrowserCompositionChecks).GetMethod(nameof(Network), Flags)));
                 isolation.Patch(incoming, prefix: new HarmonyMethod(typeof(NativeBrowserCompositionChecks).GetMethod(nameof(Local), Flags)));
+                for (int i = 0; i < Main.combatText.Length; i++) Main.combatText[i] = new CombatText();
+                Terraria.GameContent.FontAssets.CombatText[0] = Terraria.GameContent.FontAssets.MouseText;
                 object value = assembly.GetType("JueMingR.TerrariaHost.ItemBrowser.NativeTargetObservation").GetMethod("UiItem", Flags).Invoke(null, new object[] { 9, 23 });
                 Main.hideUI = true; local = network = 0; Call(announcements, "Submit", value);
                 Require(local == 0 && network == 0, "disabled announcement has no chat outlet");
                 Require((bool)Call(announcements, "SetEnabled", true), "isolated normal preference enables announcement");
                 string statusBeforeSend = (string)Get(announcements, "Status");
                 Main.netMode = 1; Call(announcements, "Submit", value); Call(announcements, "Submit", value);
-                Require(network == 1 && local == 0 && last.Contains("23") && !last.StartsWith("/") && System.Text.Encoding.UTF8.GetByteCount(last) <= 1024, "production client submits one bounded ordinary message and cannot replay within cooldown");
+                Require(network == 1 && local == 0 && last.Contains("这里有 23 个 " + Lang.GetItemNameValue(9)) && !last.StartsWith("/") && System.Text.Encoding.UTF8.GetByteCount(last) <= 1024, "production client submits the quantity sentence once through ordinary bounded chat");
+                Main.hideUI = false; Call(announcements, "Submit", value); Call(announcements, "Submit", value);
+                Require(Main.combatText.Count(c => c.active && c.text == "宣告冷却ing" && c.color == new Color(255, 217, 102)) == 1 && local == 0 && network == 1, "cooldown gives one real local Legacy floating notice, independently throttled without another chat");
+                Set(announcements, "cooldownFeedbackAt", -1L); Call(announcements, "Submit", value);
+                Require(Main.combatText.Count(c => c.active && c.text == "宣告冷却ing") == 2 && local == 0 && network == 1, "cooldown notice can rearm independently of message eligibility");
+                var combatFont = Terraria.GameContent.FontAssets.CombatText[0];
+                try { Terraria.GameContent.FontAssets.CombatText[0] = null; Set(announcements, "cooldownFeedbackAt", -1L); Call(announcements, "Submit", value); }
+                finally { Terraria.GameContent.FontAssets.CombatText[0] = combatFont; }
+                Require(local == 0 && network == 1, "native floating-text resource failure cannot escape input or replay chat");
+                Main.hideUI = true;
                 Call(Get(announcements, "cooldown"), "Clear"); Main.netMode = 0; Call(announcements, "Submit", value);
                 Require(local == 1 && network == 1, "single player selects the native local processor only");
                 Require((string)Get(announcements, "Status") == statusBeforeSend, "normal announcements do not add a success feedback message");
@@ -78,6 +94,29 @@ namespace NativeWorldTextProbe
         }
         private static bool Network(ChatMessage __0) { network++; last = __0.Text; return false; }
         private static bool Local(ChatMessage __0) { local++; last = __0.Text; return false; }
+        private static void CheckSharedBindings(HotkeyBindings bindings)
+        {
+            HotkeyChord send, toggle; string reason; long command;
+            Require(HotkeyChord.TryParse("LeftControl+K", out send, out reason), "fixture send chord parses");
+            Require(HotkeyChord.TryParse("LeftControl+L", out toggle, out reason), "fixture toggle chord parses");
+            Require(bindings.TrySet("announcement.send", send, null, out command, out reason), "send uses shared binding transaction");
+            Until(() => { bindings.Poll(); return !bindings.Busy; });
+            Require(bindings.Get("announcement.send").Equals(send) && bindings.Validate("announcement.toggle", send) != null && bindings.Validate("item-browser.query", send) != null, "send/toggle/query share one conflict table");
+            Require(bindings.TrySet("announcement.toggle", toggle, null, out command, out reason), "independent toggle binding saves");
+            Until(() => { bindings.Poll(); return !bindings.Busy; });
+            Require(bindings.Get("announcement.toggle").Equals(toggle) && bindings.Get("announcement.send").Equals(send), "setting the toggle preserves the existing send binding");
+        }
+        private static void CheckBindingPresentation(object shell)
+        {
+            object state = Get(shell, "State"), renderer = Get(shell, "renderer"); Call(state, "Navigate", 2); Call(renderer, "RefreshResources");
+            Call(renderer, "Prepare", state, 960f, 640f, 1f); Call(renderer, "PrepareMapValue");
+            var elements = ((System.Collections.IEnumerable)Get(Get(state, "Layout"), "Elements")).Cast<object>().ToArray();
+            var send = elements.Single(e => (string)GetOptional(e, "HotkeyTarget") == "announcement.send");
+            var toggle = elements.Single(e => (string)GetOptional(e, "HotkeyTarget") == "announcement.toggle");
+            Require(Get(send, "Kind").ToString() == "Field" && Get(toggle, "Kind").ToString() == "Hotkey" && (float)Get(Get(send, "Rect"), "Right") < (float)Get(Get(toggle, "Rect"), "X"), "send is a visible field to the left of the independent switch hotkey icon");
+            Require((string)Get(renderer, "fittedSendValue") == "LCtrl+K", "bound send chord is prepared for actual row drawing");
+            Call(state, "Navigate", 0);
+        }
         private static void CheckAnnouncementPersistence(Assembly assembly, string root)
         {
             var type = assembly.GetType("JueMingR.TerrariaHost.Announcements.HostAnnouncements");

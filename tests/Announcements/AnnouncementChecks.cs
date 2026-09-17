@@ -19,6 +19,9 @@ namespace JueMingR.ArchitectureTests
             if (!message.Contains("省略")) failures.Add("G04 omitted complete entries must be visible within the final byte budget");
             string complete = (string)type.GetMethod("Build").Invoke(null, new object[] { new[] { "甲", "乙" }, 100 });
             if (complete.Contains("省略")) failures.Add("G04 complete announcements must not claim omission");
+            if (complete != "[c/FFD966:这里有 甲，乙]") failures.Add("G04 normal announcements retain the shared Legacy sentence and separator");
+            string notice = (string)type.GetMethod("BuildNotice").Invoke(null, new object[] { new[] { "这里看不见东西" }, 100 });
+            if (notice != "[c/FFD966:这里看不见东西]") failures.Add("G04 complete notices must not gain a duplicate normal sentence prefix");
             Type clock = type.Assembly.GetType("JueMingR.Features.Announcements.AnnouncementCooldown");
             object cooldown = Activator.CreateInstance(clock);
             Func<long, bool, bool> take = (now, air) => (bool)clock.GetMethod("TryTake").Invoke(cooldown, new object[] { now, air });

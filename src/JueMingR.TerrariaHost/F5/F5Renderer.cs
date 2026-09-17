@@ -50,8 +50,23 @@ namespace JueMingR.TerrariaHost.F5
         private string mapValue;
         private object mapValueFont;
         private F5Size mapValueSize;
+        private string sendValue, fittedSendValue;
+        private object sendValueFont;
+        private F5Size sendValueSize;
         internal void PrepareMapValue()
         {
+            string binding = AnnouncementControls?.SendBindingText ?? "暂不可用";
+            if (binding != sendValue || !ReferenceEquals(sendValueFont, font))
+            {
+                sendValue = binding; sendValueFont = font; fittedSendValue = binding;
+                sendValueSize = PopupMeasure(binding, .70f);
+                if (sendValueSize.Width > 108)
+                {
+                    var boundaries = Features.Text.TextElements.Boundaries(binding);
+                    int end = boundaries.Length - 1;
+                    do { fittedSendValue = binding.Substring(0, boundaries[--end]) + "…"; sendValueSize = PopupMeasure(fittedSendValue, .70f); } while (end > 0 && sendValueSize.Width > 108);
+                }
+            }
             string value = MapControls?.Value ?? "暂不可用";
             if (value == mapValue && ReferenceEquals(mapValueFont, font)) return;
             mapValue = value; mapValueFont = font; mapValueSize = PopupMeasure(value, .70f);
@@ -220,7 +235,12 @@ namespace JueMingR.TerrariaHost.F5
                     F5Rect rect = element.Rect.Offset(view.X, view.Y - state.Scroll);
                     if (rect.Bottom <= view.Y || rect.Y >= view.Bottom) continue;
                     if (element.Kind == F5ElementKind.Panel) F5ControlRenderer.Panel(batch, pixel, row, rect);
-                    else if (element.Kind == F5ElementKind.Field) Panel(batch, rect, row, new Color(180, 180, 180));
+                    else if (element.Kind == F5ElementKind.Field)
+                    {
+                        Panel(batch, rect, row, new Color(180, 180, 180));
+                        if (element.HotkeyTarget == F5.AnnouncementControls.SendActionId)
+                            Text(batch, fittedSendValue ?? "", new Vector2(rect.X + (rect.Width - sendValueSize.Width) / 2, rect.Y + (rect.Height - sendValueSize.Height) / 2), element.TextScale, Color.White, sendValueSize);
+                    }
                     else if (element.Command == F5Command.ExplorationValue)
                     { Text(batch, mapValue ?? "", new Vector2(rect.Right - mapValueSize.Width, rect.Y + (rect.Height - mapValueSize.Height) / 2), element.TextScale, Color.White, mapValueSize); }
                     else if (element.Kind == F5ElementKind.Text)
@@ -280,6 +300,7 @@ namespace JueMingR.TerrariaHost.F5
             F5Element hover = state.HitButton(state.PointerX - state.X, state.PointerY - state.Y);
             if (hover == null) return null;
             target = F5HintLayout.Intersect(hover.Rect.Offset(view.X, view.Y - state.Scroll), visible);
+            if (hover.HotkeyTarget == F5.AnnouncementControls.SendActionId) return AnnouncementControls?.SendHint;
             if (hover.Kind == F5ElementKind.Hotkey && hover.HotkeyTarget != null)
                 return hover.HotkeyTarget == Hotkeys.HotkeyActionIds.AdjustInformation ? "双击设置调整信息窗位置的快捷键" : "双击设置功能开关快捷键";
             return ButtonHint(hover, biomeFailed);

@@ -50,6 +50,7 @@ namespace NativeWorldTextProbe
                         Require(!Overlap(Get(Get(buttons[i], "Element"), "Rect"), Get(Get(buttons[j], "Element"), "Rect")), "browser controls cannot overlap at height=" + height + " commands=" + Get(buttons[i], "Command") + "," + Get(buttons[j], "Command"));
                 }
                 CheckCompleteRelations(assembly, catalog, host, page);
+                CheckDynamicTextLifetime(host, shell, page);
                 var draft = Get(page, "query"); Call(draft, "SelectAll"); Call(draft, "Insert", "最后一个字"); Set(page, "editing", 1);
                 Require((bool)Call(page, "RequestFinish") && (string)Get(workspace, "Query") == "最后一个字", "finish commits latest query before releasing editor");
                 Set(page, "leftTail", true); Set(page, "rightTail", true);
@@ -67,6 +68,23 @@ namespace NativeWorldTextProbe
         {
             var directory = (BrowserCatalog)Get(catalog, "Catalog");
             return ((IEnumerable<ItemRelation>)Get(catalog, "RecipeValues")).Where(r => r.Ingredients.Count > 0).OrderByDescending(r => r.Ingredients.Max(i => (i.Types.Count > 1 ? i.Label : directory.Find(i.Types[0])?.Name ?? "").Length)).First();
+        }
+        private static void CheckDynamicTextLifetime(object host, object shell, object page)
+        {
+            var state = (BrowserWorkspace)Get(host, "Workspace");
+            var fixedText = (IDictionary)Get(Get(shell, "Layout"), "textSizes");
+            int before = fixedText.Count;
+            // One unchanged viewport/session: growing item descriptions and all
+            // their wrapping prefixes must not enter the fixed F5 label cache.
+            for (int type = 1; type <= 160; type++)
+            {
+                state.Navigate(type, false); state.Kind = 0; state.Group = -1; state.DetailScroll = 0;
+                Call(page, "Build");
+            }
+            Call(page, "Suspend"); Call(shell, "Close"); Call(shell, "RestoreVisible");
+            Set(page, "shownLocatorStatus", "已清除定位结果；输入保留"); Call(page, "Build");
+            Require(fixedText.Count == before, "browser dynamic names/prefixes and clear status cannot grow the fixed F5 text cache across reopen");
+            Console.WriteLine("PASS: 160 real item details and reopen/clear retain the fixed F5 text-cache size.");
         }
         private static void CheckCompleteRelations(Assembly assembly, object catalog, object host, object page)
         {
