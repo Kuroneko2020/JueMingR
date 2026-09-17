@@ -7,12 +7,21 @@ namespace JueMingR.Platform.Items
     public sealed class ItemOperationOwnership
     {
         private const ulong AllInventorySlots = (1UL << 58) - 1;
-        private ulong saleSlots, discardSlots, storeSlots, interruptedSourceSlots;
+        private ulong saleSlots, discardSlots, storeSlots, interruptedSourceSlots, useSlots;
+        private long useToken;
         public long Session { get; private set; }
         public ItemOperationResult SaleResult { get; private set; }
         public ItemOperationResult DiscardResult { get; private set; }
         public ItemOperationResult StoreResult { get; private set; }
-        public ulong ProtectedSlots { get { return saleSlots | discardSlots | storeSlots | interruptedSourceSlots; } }
+        public ulong ProtectedSlots { get { return saleSlots | discardSlots | storeSlots | interruptedSourceSlots | useSlots; } }
+        public bool IsUseSlot(int slot) { return slot >= 0 && slot < 50 && (useSlots & (1UL << slot)) != 0; }
+        public bool TryBeginUse(long generation, int slot, long token)
+        {
+            if (slot < 0 || slot >= 50 || token <= 0 || generation <= 0 || generation != Session || useSlots != 0 || IsProtected(slot)) return false;
+            useSlots = 1UL << slot; useToken = token; return true;
+        }
+        public void EndUse(long generation, long token)
+        { if (generation == Session && token == useToken) { useSlots = 0; useToken = 0; } }
         public bool SaleBlocked { get { return ProtectedSlots != 0; } }
         public bool DiscardBlocked { get { return discardSlots != 0; } }
         public bool StoreBlocked { get { return storeSlots != 0; } }
@@ -25,7 +34,7 @@ namespace JueMingR.Platform.Items
             if (saleSlots != 0) SaleResult = Unknown();
             if (discardSlots != 0) DiscardResult = Unknown();
             if (storeSlots != 0) StoreResult = Unknown();
-            saleSlots = discardSlots = storeSlots = interruptedSourceSlots = 0;
+            saleSlots = discardSlots = storeSlots = interruptedSourceSlots = useSlots = 0; useToken = 0;
             Session = generation;
             // Old unknown results describe the ended session. A fresh session
             // has no current protected range and must not display them as live.

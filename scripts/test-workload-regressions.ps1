@@ -48,6 +48,10 @@ if ($route.groups -contains 'browser-host') {
     Invoke-WorkloadCheck 'browser-core-contracts' $architecture @('--item-browser')
     Invoke-WorkloadCheck 'browser-native-execution' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'browser-cpu'), 'BrowserCpu')
 }
+if ($route.groups -contains 'quick-items-host') {
+    Invoke-WorkloadCheck 'quick-items-dynamic-rules-storage' $architecture @('--quick-items')
+    Invoke-WorkloadCheck 'quick-items-native-execution' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'quick-items-cpu'), 'QuickItemsCpu')
+}
 if ($route.groups -contains 'death-host') {
     Invoke-WorkloadCheck 'death-history-storage-workload' $architecture @('--death-history')
     Invoke-WorkloadCheck 'death-native-execution' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'death-cpu'), 'DeathCpu')

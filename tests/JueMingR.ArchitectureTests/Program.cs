@@ -10,6 +10,13 @@ namespace JueMingR.ArchitectureTests
         {
             try
             {
+                if (args.Length == 1 && (args[0] == "--dynamic-hotkeys" || args[0] == "--quick-items"))
+                {
+                    var checks = new List<string>(); HotkeyCoreChecks.Check(checks); DynamicHotkeyChecks.Check(checks);
+                    if (args[0] == "--quick-items") QuickItemChecks.Check(checks);
+                    foreach (string failure in checks) Console.Error.WriteLine(failure);
+                    Console.WriteLine("Dynamic hotkey checks: failures=" + checks.Count); return checks.Count == 0 ? 0 : 1;
+                }
                 if (args.Length == 1 && args[0] == "--item-browser")
                 {
                     var checks = new List<string>(); BrowserCoreChecks.Check(checks); RelationChecks.Check(checks); BrowserHistoryChecks.Check(checks); ChestKnowledgeChecks.Check(checks); AnnouncementChecks.Check(checks);
@@ -79,6 +86,8 @@ namespace JueMingR.ArchitectureTests
                 MapPersistenceChecks.Check(failures);
                 OperationContractChecks.Check(failures);
                 HotkeyCoreChecks.Check(failures);
+                DynamicHotkeyChecks.Check(failures);
+                QuickItemChecks.Check(failures);
                 HotkeyStorageChecks.Check(repositoryRoot, failures);
                 Phase0TArchitectureChecks.Check(failures);
                 PreferenceChecks.Check(failures);

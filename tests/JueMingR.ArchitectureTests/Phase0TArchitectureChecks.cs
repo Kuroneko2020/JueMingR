@@ -12,6 +12,11 @@ namespace JueMingR.ArchitectureTests
             Assembly features = Assembly.Load("JueMingR.Features");
             var expected = new HashSet<string>(StringComparer.Ordinal)
             {
+                "JueMingR.Features.KeepFavorited.FavoriteIntent", "JueMingR.Features.KeepFavorited.FavoriteClaim",
+                "JueMingR.Features.QuickItems.QuickItemMode", "JueMingR.Features.QuickItems.QuickItemEntry",
+                "JueMingR.Features.QuickItems.QuickItemCandidate", "JueMingR.Features.QuickItems.QuickItemChoice",
+                "JueMingR.Features.QuickItems.QuickItemRules", "JueMingR.Features.QuickItems.QuickItemDocument",
+                "JueMingR.Features.QuickItems.QuickItemSettings",
                 "JueMingR.Features.ItemBrowser.BrowserCatalog", "JueMingR.Features.ItemBrowser.RelationIndex", "JueMingR.Features.ItemBrowser.BrowserWorkspace",
                 "JueMingR.Features.ChestLocator.ChestKnowledge",
                 "JueMingR.Features.Announcements.AnnouncementCooldown", "JueMingR.Features.Announcements.AnnouncementSettings",

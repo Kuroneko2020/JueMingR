@@ -54,7 +54,7 @@ namespace JueMingR.TerrariaHost.Hotkeys
         }
         internal void Click(string target, F5Rect bounds, int generation, int page, long milliseconds)
         {
-            if (registry.Find(target) == null) return;
+            if (registry.Find(target) == null || !registry.Find(target).CanConfigure) return;
             bool twice = lastClick == target && lastGeneration == generation && this.page == page && milliseconds - lastClickTime <= 500 &&
                 Math.Abs(lastAnchor.X - bounds.X) <= 6 && Math.Abs(lastAnchor.Y - bounds.Y) <= 6;
             lastClick = target; lastGeneration = generation; this.page = page; lastAnchor = bounds; lastClickTime = milliseconds;
@@ -68,6 +68,7 @@ namespace JueMingR.TerrariaHost.Hotkeys
         internal void Process(bool active, int currentPage, float x, float y, bool geometryCurrent, int wheel = 0)
         {
             bindings.Poll();
+            if (Visible && (registry.Find(Target) == null || !registry.Find(Target).CanConfigure)) { Close(); return; }
             if (Visible && (awaitingSaveSlot && !bindings.Busy || Feedback.Kind == HotkeyFeedbackKind.Loading && bindings.Loaded))
             { awaitingSaveSlot = false; Feedback = InitialFeedback(); }
             if (pendingCommand != 0 && bindings.CompletionId == pendingCommand)
@@ -164,6 +165,7 @@ namespace JueMingR.TerrariaHost.Hotkeys
         internal void Prepare(float width, float height, object font, Func<string, float, F5Size> measure, int skin = 0)
         {
             if (!Visible) return;
+            if (registry.Find(Target) == null || !registry.Find(Target).CanConfigure) { Close(); return; }
             var chord = bindings.Get(Target); bool editable = bindings.Loaded && !bindings.Busy && !bindings.Protected;
             bool known = bindings.Loaded && (chord != null || !bindings.Protected);
             if (view == null || !Equals(view.Effective, chord) || !Equals(view.Candidate, candidate) || view.Modifiers != shownModifiers ||

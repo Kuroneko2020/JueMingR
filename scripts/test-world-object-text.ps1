@@ -2,7 +2,7 @@
 param(
     [Parameter(Mandatory = $true)][string] $ContentDirectory,
     [Parameter(Mandatory = $true)][string] $OutputDirectory,
-    [ValidateSet('Full', 'SelectionCpuCosts', 'SelectionCpuChecks', 'FootprintsVisual')][string] $Scope = 'Full'
+    [ValidateSet('Full', 'SelectionCpuCosts', 'SelectionCpuChecks', 'FootprintsVisual', 'QuickItemsVisual')][string] $Scope = 'Full'
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0

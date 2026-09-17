@@ -22,6 +22,8 @@ try {
     Invoke-WorkloadGit $fixtureRoot @('init', '--quiet') | Out-Null
     Invoke-WorkloadGit $fixtureRoot @('config', 'core.autocrlf', 'false') | Out-Null
     $cases = [ordered]@{
+        'src/JueMingR.TerrariaHost/QuickItems/QuickItemUse.cs' = 'quick-items-host';
+        'src/JueMingR.TerrariaHost/KeepFavorited/FavoriteHooks.cs' = 'quick-items-host';
         'src/JueMingR.TerrariaHost/Notes/NotesCards.cs' = 'notes-host';
         'src/JueMingR.TerrariaHost/EntityLabels/StyleEditor.cs' = 'style-host';
         'src/JueMingR.Features/WorldObjectText/OpenedPositionStore.cs' = 'records';
@@ -51,14 +53,16 @@ try {
         'docs/guide.md' = 'core'
     }
     $exactGroups = @{
+        'src/JueMingR.TerrariaHost/QuickItems/QuickItemUse.cs' = @('core','quick-items-host');
+        'src/JueMingR.TerrariaHost/KeepFavorited/FavoriteHooks.cs' = @('core','quick-items-host');
         'src/JueMingR.Features/Text/TextEditBuffer.cs' = @('core','notes-host','map-host','footprints-host','browser-host');
         'src/JueMingR.TerrariaHost/Notes/NotesClipboard.cs' = @('core','notes-host','browser-host');
         'src/JueMingR.TerrariaHost/Notes/NotesInput.cs' = @('core','notes-host','browser-host');
         'src/JueMingR.Features/WorldObjectText/WorldObjectResolver.cs' = @('core','world-host','browser-host');
         'src/JueMingR.TerrariaHost/World/WorldTileObservation.cs' = @('core','world-host','browser-host');
         'src/JueMingR.TerrariaHost/ItemBrowser/NativeItemCatalog.cs' = @('core','browser-host');
-        'src/JueMingR.TerrariaHost/Hotkeys/HostHotkeys.cs' = @('core','shared-host','death-host','map-host','footprints-host','browser-host');
-        'src/JueMingR.TerrariaHost/F5/F5Layout.cs' = @('core','shared-host','death-host','map-host','footprints-host','browser-host');
+        'src/JueMingR.TerrariaHost/Hotkeys/HostHotkeys.cs' = @('core','shared-host','death-host','map-host','footprints-host','browser-host','quick-items-host');
+        'src/JueMingR.TerrariaHost/F5/F5Layout.cs' = @('core','shared-host','death-host','map-host','footprints-host','browser-host','quick-items-host');
         'src/JueMingR.TerrariaHost/Notes/NotesCards.cs' = @('core','notes-host');
         'src/JueMingR.Features/WorldObjectText/OpenedPositionStore.cs' = @('core','records');
         'src/JueMingR.TerrariaHost/EntityLabels/StyleEditor.cs' = @('core','style-host');

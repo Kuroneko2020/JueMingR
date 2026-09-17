@@ -63,6 +63,7 @@ namespace JueMingR.TerrariaHost.Input
         internal bool SampleFocused { get { return mapped && IsFocused && nativePermission; } }
         internal bool CanUseInput { get { return SampleFocused && finalized && !quarantine; } }
         internal bool CanStartActions { get { return CanUseInput; } }
+        internal long Frame { get; private set; }
         internal bool CanPrepareText { get { return IsFocused && !rearming && !quarantine; } }
         internal HostInputState() : this(() => Main.instance == null ? IntPtr.Zero : Main.instance.Window.Handle, GetForegroundWindow) { }
         internal HostInputState(Func<IntPtr> gameWindow, Func<IntPtr> foregroundWindow)
@@ -70,6 +71,7 @@ namespace JueMingR.TerrariaHost.Input
 
         internal void BeginUpdate()
         {
+            Frame++;
             mapped = finalized = nativePermission = false;
             RefreshFocus();
             quarantine = !IsFocused || rearming;

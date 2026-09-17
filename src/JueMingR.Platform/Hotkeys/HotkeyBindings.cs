@@ -14,7 +14,8 @@ namespace JueMingR.Platform.Hotkeys
         private readonly DocumentWorker<HotkeyDocument> worker;
         private readonly Dictionary<string, HotkeyChord> effective = new Dictionary<string, HotkeyChord>(StringComparer.Ordinal);
         private readonly Dictionary<string, string> errors = new Dictionary<string, string>(StringComparer.Ordinal);
-        private readonly List<Bound>[] byKey = new List<Bound>[HotkeyChord.KeyCount];
+        private List<Bound>[] byKey = new List<Bound>[HotkeyChord.KeyCount];
+        private long compiledRevision = -1;
         private HotkeyDocument document = HotkeyDocument.Empty;
         private long nextCommand;
         private string pendingAction;
@@ -35,10 +36,11 @@ namespace JueMingR.Platform.Hotkeys
             this.registry = registry ?? throw new ArgumentNullException(nameof(registry)); registry.Freeze();
             worker = new DocumentWorker<HotkeyDocument>(storage, HotkeyDocument.Decode, HotkeyDocument.Encode, HotkeyDocument.Empty);
         }
-        public HotkeyChord Get(string action) { HotkeyChord value; return effective.TryGetValue(action, out value) ? value : null; }
-        public string Error(string action) { string value; return errors.TryGetValue(action, out value) ? value : null; }
+        public HotkeyChord Get(string action) { EnsureRegistry(); HotkeyChord value; return effective.TryGetValue(action, out value) ? value : null; }
+        public string Error(string action) { EnsureRegistry(); string value; return errors.TryGetValue(action, out value) ? value : null; }
         public void Poll()
         {
+            EnsureRegistry();
             DocumentResult<HotkeyDocument> result;
             if (!worker.TryTake(out result)) return;
             if (result.CommandId == 0)
@@ -66,8 +68,10 @@ namespace JueMingR.Platform.Hotkeys
         }
         public string Validate(string id, HotkeyChord chord)
         {
+            EnsureRegistry();
             HotkeyAction action = registry.Find(id);
             if (action == null) return "此功能暂不支持设置快捷键。";
+            if (!action.CanConfigure) return "此条目正在修改或保存失败，暂时不能修改快捷键。";
             if (!Loaded) return "正在加载快捷键……";
             if (Protected) return Message ?? "快捷键设置有问题，暂时无法修改。";
             if (chord == null) return null;
@@ -93,6 +97,7 @@ namespace JueMingR.Platform.Hotkeys
                 catch { warning = unavailable; }
             }
             HotkeyDocument candidate = document.With(id, chord);
+            if (HotkeyDocument.Encode(candidate).Length > 65536) { reason = "快捷键文件已达到大小上限，无法新增。"; return false; }
             long next = ++nextCommand;
             if (!worker.TrySubmit(next, candidate)) { reason = "暂时无法保存，当前快捷键未改变。"; return false; }
             command = next; pendingAction = id; pendingWarning = warning; pendingClear = chord == null; pendingHadBinding = Get(id) != null; Busy = true;
@@ -100,17 +105,21 @@ namespace JueMingR.Platform.Hotkeys
         }
         public void Dispatch(HotkeyInput input, HotkeyContext context, bool permitted, string onlyAction = null)
         {
+            EnsureRegistry();
             if (!permitted || !Loaded || effective.Count == 0 || input.SystemModifier || !input.Reliable) return;
-            for (int key = 1; key < byKey.Length; key++)
+            // A command may retire its own set. Keep this dispatch snapshot, but
+            // each action also checks its current registration before invoking.
+            var table = byKey;
+            for (int key = 1; key < table.Length; key++)
             {
-                List<Bound> entries = byKey[key]; if (entries == null || !input.IsNew(key)) continue;
+                List<Bound> entries = table[key]; if (entries == null || !input.IsNew(key)) continue;
                 foreach (Bound bound in entries)
                     if ((onlyAction == null || bound.Action.Id == onlyAction) && bound.Chord.Modifiers == input.Modifiers) bound.Action.Invoke(context);
             }
         }
         private void Compile()
         {
-            effective.Clear(); errors.Clear(); Array.Clear(byKey, 0, byKey.Length);
+            effective.Clear(); errors.Clear(); byKey = new List<Bound>[HotkeyChord.KeyCount]; compiledRevision = registry.Revision;
             var seen = new HashSet<string>(StringComparer.Ordinal);
             foreach (var entry in document.Entries)
             {
@@ -136,6 +145,21 @@ namespace JueMingR.Platform.Hotkeys
                 if (byKey[key] == null) byKey[key] = new List<Bound>();
                 byKey[key].Add(new Bound { Action = registry.Find(entry.Key), Chord = entry.Value });
             }
+        }
+        private void EnsureRegistry() { if (Loaded && compiledRevision != registry.Revision) Compile(); }
+        // Only a pre-reserved owner can remove its retired row. Other actions,
+        // including unknown future IDs, are preserved byte-for-value in the model.
+        // A late earlier save may leave an inert orphan; it cannot register an action.
+        public bool TryRemoveRetired(DynamicHotkeyOwner owner, string id, out long command, out string reason)
+        {
+            command = 0; reason = null; EnsureRegistry();
+            if (owner == null || owner.Registry != registry || !owner.Owns(id) || registry.Find(id) != null)
+            { reason = "只能清理已经移除的本组快捷动作。"; return false; }
+            if (!Loaded || Protected || Busy) { reason = "快捷键尚未就绪、受保护或正在保存，请稍后重试。"; return false; }
+            var candidate = document.Without(id); long next = ++nextCommand;
+            if (!worker.TrySubmit(next, candidate)) { reason = "暂时无法清理快捷键。"; return false; }
+            command = next; pendingAction = id; pendingWarning = null; pendingClear = true; pendingHadBinding = false; Busy = true;
+            Feedback = new HotkeyFeedback(HotkeyFeedbackKind.Saving, "正在清理已删除条目的快捷键"); return true;
         }
         public bool Stop(int milliseconds) { return worker.Stop(milliseconds); }
         public void Dispose() { worker.Dispose(); }

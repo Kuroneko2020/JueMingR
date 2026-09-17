@@ -45,6 +45,12 @@ namespace JueMingR.Platform.Hotkeys
             }
             return new HotkeyDocument(entries);
         }
+        internal HotkeyDocument Without(string id)
+        {
+            var copy = new List<KeyValuePair<string, string>>();
+            foreach (var entry in Entries) if (entry.Key != id) copy.Add(entry);
+            return new HotkeyDocument(copy);
+        }
         public static byte[] Encode(HotkeyDocument value)
         {
             // IDs and canonical keys have a restricted alphabet. Unknown action

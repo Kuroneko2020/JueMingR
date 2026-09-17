@@ -535,6 +535,7 @@ function Read-Phase0SPackage {
         ('map-markers-exploration-' + [string] $manifest.sourceCommit)
         ('footprints-' + [string] $manifest.sourceCommit)
         ('item-browser-' + [string] $manifest.sourceCommit)
+        ('favorite-quick-items-' + [string] $manifest.sourceCommit)
     )
     if ([string] $manifest.sourceCommit -notmatch '^[0-9a-f]{40}$' -or
         $allowedPackageIds -cnotcontains [string] $manifest.packageId) {

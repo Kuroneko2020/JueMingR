@@ -14,6 +14,12 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if (scope == "QuickItemsCpu" || scope == "QuickItemsVisual")
+            {
+                Terraria.Program.SavePath = Path.Combine(Path.GetTempPath(), "JueMingR-native-quick-items-" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(Terraria.Program.SavePath);
+                NativeQuickItemChecks.Run(scope=="QuickItemsVisual"?(Action<object>)(context=>{using(var graphics=new ProbeGraphics(content))NativeQuickUiChecks.Run(context,graphics,output);}):null);return 0;
+            }
             if (scope == "BrowserCpu" || scope == "BrowserVisual")
             {
                 Terraria.Program.SavePath = Path.Combine(Path.GetTempPath(), "JueMingR-native-browser-" + Guid.NewGuid().ToString("N"));
