@@ -16,6 +16,7 @@ namespace NativeWorldTextProbe
         internal static void Run(ProbeGraphics graphics, string output)
         {
             Directory.CreateDirectory(output);
+            NativeAnnouncementIconChecks.Draw(graphics, output);
             var assembly = Assembly.LoadFrom(Path.Combine(Program.Repository, "artifacts/build/Debug/work/bin/JueMingR.TerrariaHost/x86/Debug/net472/JueMingR.TerrariaHost.dll"));
             object host = Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.ItemBrowser.HostItemKnowledge"), true);
             object shell = Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.F5.F5Interaction"), true);

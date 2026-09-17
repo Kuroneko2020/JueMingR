@@ -35,6 +35,7 @@ namespace NativeWorldTextProbe
             Recipe.SetupRecipeGroups(); ItemID.Sets.PostSetupContent();
             for (int i = 0; i < Main.recipe.Length; i++) Main.recipe[i] = new Recipe();
             Recipe.SetupRecipes(); ContentSamples.FixItemsAfterRecipesAreAdded(); MapHelper.Initialize();
+            NativeAnnouncementIconChecks.Run(assembly);
             Console.WriteLine("Native aliases: " + string.Join(",", ContentSamples.ItemsByType.Where(p => p.Key > 0 && p.Value.type > 0 && p.Key != p.Value.type).Select(p => p.Key + "->" + p.Value.type)));
             object subject = Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.ItemBrowser.NativeItemCatalog"), true);
             try

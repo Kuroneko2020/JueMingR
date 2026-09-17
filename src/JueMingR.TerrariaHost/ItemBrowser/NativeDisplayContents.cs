@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
-using System.Text;
+using JueMingR.Features.Announcements;
 using Terraria;
 using Terraria.DataStructures;
 using Terraria.GameContent.Tile_Entities;
@@ -123,10 +123,10 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             for (int i = 0; i < facts.Length; i += 2)
             {
                 if (facts[i] <= 0 || facts[i + 1] <= 0) continue;
-                string next = facts[i + 1] + " 个 " + NativeTargetObservation.Name(Lang.GetItemNameValue(facts[i]));
+                string next = facts[i + 1] + " 个 " + NativeTargetObservation.ItemName(facts[i]);
                 // Whole slot facts remain intact inside a bounded carrier entry;
                 // final chat framing and other world layers have their own budget.
-                if (Encoding.UTF8.GetByteCount("放在" + body + "的" + string.Join("和", entries) + "和" + next) > 760) { omitted = true; break; }
+                if (SafeChatText.EncodedEntryByteCount("放在" + body + "的" + string.Join("和", entries) + "和" + next) > 760) { omitted = true; break; }
                 entries.Add(next);
             }
             return "放在" + body + "的" + string.Join("和", entries) + (omitted ? "（部分内容已省略）" : "");

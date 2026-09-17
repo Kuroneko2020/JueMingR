@@ -47,7 +47,8 @@ namespace NativeWorldTextProbe
                 {
                     var tile = new Tile { type = (ushort)stage, frameX = (short)(herb * 18) }; tile.active(true); Main.tile[1, 1] = tile;
                     var value = observe();
-                    Require((int)Get(value, "ItemType") == herbItems[herb] && ((List<string>)Get(value, "Entries"))[0] == Lang.GetItemNameValue(herbItems[herb]), "real growing/mature/blooming herb identifies plant, not seed or generic object");
+                    Require((int)Get(value, "ItemType") == herbItems[herb], "real growing/mature/blooming herb identifies plant, not seed or generic object");
+                    NativeAnnouncementIconChecks.AssertMessage(JueMingR.Features.Announcements.SafeChatText.Build((List<string>)Get(value, "Entries")), "这里有 " + Lang.GetItemNameValue(herbItems[herb]) + " ", herbItems[herb]);
                 }
                 var frame = new TEItemFrame { Position = origin, item = new Item() }; frame.item.SetDefaults(4); frame.item.stack = 1;
                 TileEntity.ByPosition[origin] = frame;

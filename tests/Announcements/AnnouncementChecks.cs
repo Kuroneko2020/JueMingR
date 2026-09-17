@@ -24,6 +24,8 @@ namespace JueMingR.ArchitectureTests
             if (multiple != "[c/FFD966:这里有 8 个 木材和11 个 火把]") failures.Add("G04 distinct dropped-item groups retain both exact quantities joined with 和");
             string notice = (string)type.GetMethod("BuildNotice").Invoke(null, new object[] { new[] { "这里看不见东西" }, 100 });
             if (notice != "[c/FFD966:这里看不见东西]") failures.Add("G04 complete notices must not gain a duplicate normal sentence prefix");
+            string icon = (string)type.GetMethod("Build").Invoke(null, new object[] { new[] { "泥土块 [i:2]" }, 100 });
+            if (icon != "[c/FFD966:这里有 泥土块 ][i:2]") failures.Add("G04 icons must be siblings of color text, with no literal empty color tag");
             Type clock = type.Assembly.GetType("JueMingR.Features.Announcements.AnnouncementCooldown");
             object cooldown = Activator.CreateInstance(clock);
             Func<long, bool, bool> take = (now, air) => (bool)clock.GetMethod("TryTake").Invoke(cooldown, new object[] { now, air });

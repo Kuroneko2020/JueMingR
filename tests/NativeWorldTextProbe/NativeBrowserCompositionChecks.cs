@@ -68,6 +68,7 @@ namespace NativeWorldTextProbe
                 string statusBeforeSend = (string)Get(announcements, "Status");
                 Main.netMode = 1; Call(announcements, "Submit", value); Call(announcements, "Submit", value);
                 Require(network == 1 && local == 0 && last.Contains("这里有 23 个 " + Lang.GetItemNameValue(9)) && !last.StartsWith("/") && System.Text.Encoding.UTF8.GetByteCount(last) <= 1024, "production client submits the quantity sentence once through ordinary bounded chat");
+                NativeAnnouncementIconChecks.AssertMessage(last, "这里有 23 个 " + Lang.GetItemNameValue(9) + " ", 9);
                 Main.hideUI = false; Call(announcements, "Submit", value); Call(announcements, "Submit", value);
                 Require(Main.combatText.Count(c => c.active && c.text == "宣告冷却ing" && c.color == new Color(255, 217, 102)) == 1 && local == 0 && network == 1, "cooldown gives one real local Legacy floating notice, independently throttled without another chat");
                 Set(announcements, "cooldownFeedbackAt", -1L); Call(announcements, "Submit", value);
@@ -95,7 +96,8 @@ namespace NativeWorldTextProbe
                         Main.netMode = mode; Call(Get(announcements, "cooldown"), "Clear"); int beforeLocal = local, beforeNetwork = network;
                         object mixed = assembly.GetType("JueMingR.TerrariaHost.ItemBrowser.NativeTargetObservation").GetMethod("World", Flags).Invoke(null, new object[] { new Vector2(328, 328), native, true });
                         Call(announcements, "Submit", mixed);
-                        Require(last == "[c/FFD966:这里有 8 个 " + Lang.GetItemNameValue(9) + "和11 个 " + Lang.GetItemNameValue(8) + "]" && local == beforeLocal + (mode == 0 ? 1 : 0) && network == beforeNetwork + (mode == 1 ? 1 : 0), "mixed world drops reach the correct intercepted outlet as one exact joined quantity sentence");
+                        Require(local == beforeLocal + (mode == 0 ? 1 : 0) && network == beforeNetwork + (mode == 1 ? 1 : 0), "mixed world drops reach the correct intercepted outlet once");
+                        NativeAnnouncementIconChecks.AssertMessage(last, "这里有 8 个 " + Lang.GetItemNameValue(9) + " 和11 个 " + Lang.GetItemNameValue(8) + " ", 9, 8);
                     }
                 }
                 finally { Main.item = savedDrops; }

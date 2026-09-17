@@ -30,10 +30,17 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         private static readonly MethodInfo dangerous = typeof(Terraria.GameContent.Drawing.TileDrawing).GetMethod("IsTileDangerous", BindingFlags.NonPublic | BindingFlags.Static,
             null, new[] { typeof(Player), typeof(int), typeof(int), typeof(Tile), typeof(ushort) }, null);
         internal static string Name(string value) { return SafeChatText.CleanName(value, 80); }
+        internal static string ItemName(int type)
+        {
+            if (type <= 0 || type >= ItemID.Count) return "";
+            // Only native IDs create markup; localized/external names still pass
+            // the same sanitizer. Quantity stays in text, not a clamped tag stack.
+            return Name(Lang.GetItemNameValue(type)) + " [i:" + type.ToString(System.Globalization.CultureInfo.InvariantCulture) + "]";
+        }
         internal static TargetValue UiItem(int type, int quantity)
         {
-            var value = new TargetValue { UiSlot = true, ItemType = type > 0 && quantity > 0 ? type : 0, Quantity = Math.Max(0, quantity) };
-            if (value.ItemType > 0) value.Entries.Add(quantity + " 个 " + Name(Lang.GetItemNameValue(type)));
+            var value = new TargetValue { UiSlot = true, ItemType = type > 0 && type < ItemID.Count && quantity > 0 ? type : 0, Quantity = Math.Max(0, quantity) };
+            if (value.ItemType > 0) value.Entries.Add(quantity + " 个 " + ItemName(type));
             return value;
         }
         internal static TargetValue World(Vector2 point, NativeItemCatalog catalog, bool announcement)
@@ -87,7 +94,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
                 int item = herb > 0 ? herb : catalog.PlacedItem(targetTile);
                 value.ItemType = value.Display != null && value.Display.ItemType > 0 ? value.Display.ItemType : item;
                 value.Quantity = value.Display != null && value.Display.ItemType > 0 ? value.Display.Quantity : item > 0 ? 1 : 0;
-                string body = item > 0 ? Name(Lang.GetItemNameValue(item)) : value.Display?.FallbackName ?? MapName(targetTile, targetX, targetY) ?? "可见物件（暂无可靠物品对应）";
+                string body = item > 0 ? ItemName(item) : value.Display?.FallbackName ?? MapName(targetTile, targetX, targetY) ?? "可见物件（暂无可靠物品对应）";
                 value.Entries.Add(value.Display == null ? body : value.Display.Describe(body));
                 if (herb == 0) FreezePlacement(value, targetTile, targetX, targetY, false, catalog);
             }
@@ -103,7 +110,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             if (value.Entries.Count == 0 && tile.wall > 0 && (!tile.invisibleWall() && tile.wall != 318 || echo) && (lit || tile.fullbrightWall() || tile.wall == 318 && echo) && wallExposed)
             {
                 int item = catalog.WallItem(tile.wall); value.ItemType = item; value.Quantity = item > 0 ? 1 : 0;
-                value.Entries.Add(Name(item > 0 ? Lang.GetItemNameValue(item) : "背景墙"));
+                value.Entries.Add(item > 0 ? ItemName(item) : "背景墙");
                 FreezePlacement(value, tile, x, y, true, catalog);
             }
             if (value.Entries.Count == 0)
@@ -177,7 +184,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
                 counts[drop.inner.type] = count + drop.inner.stack;
             }
             value.ItemType = first.inner.type; value.Quantity = (int)Math.Min(int.MaxValue, counts[first.inner.type]); value.JoinItems = announcement;
-            foreach (int type in order) value.Entries.Add(counts[type] + " 个 " + Name(Lang.GetItemNameValue(type)));
+            foreach (int type in order) value.Entries.Add(counts[type] + " 个 " + ItemName(type));
             return true;
         }
         private static string MapName(Tile tile, int x, int y)
@@ -211,7 +218,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             int item = value.WallPlacement ? catalog.WallItem(observed.wall) : catalog.PlacedItem(observed);
             value.ItemType = value.Display != null && value.Display.ItemType > 0 ? value.Display.ItemType : item;
             value.Quantity = value.Display != null && value.Display.ItemType > 0 ? value.Display.Quantity : item > 0 ? 1 : 0;
-            if (item > 0) { string name = Name(Lang.GetItemNameValue(item)); value.Entries[value.PlacementEntry] = value.Display == null ? name : value.Display.Describe(name); }
+            if (item > 0) { string name = ItemName(item); value.Entries[value.PlacementEntry] = value.Display == null ? name : value.Display.Describe(name); }
             value.Placement = null; return true;
         }
         private static bool VisionReveals(Tile tile, int x, int y)

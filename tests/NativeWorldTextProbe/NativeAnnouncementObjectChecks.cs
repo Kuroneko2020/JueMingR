@@ -19,7 +19,9 @@ namespace NativeWorldTextProbe
             var failures = new List<string>();
             Action<bool, string> check = (ok, text) => { if (!ok) failures.Add(text); };
             Func<int, int, object> at = (x, y) => observe.Invoke(null, new object[] { new Vector2(x * 16 + 8, y * 16 + 8), catalog, true });
-            Func<object, string> textOf = value => string.Join("|", (List<string>)Get(value, "Entries"));
+            // Existing semantic checks omit only canonical icon tokens. Separate
+            // real native-parser assertions below verify their exact identities.
+            Func<object, string> textOf = value => System.Text.RegularExpressions.Regex.Replace(string.Join("|", (List<string>)Get(value, "Entries")), @" \[i:[1-9][0-9]*\]", "");
             int[] types = { 27, 395, 471, 698, 520, 470, 475 };
             bool[] oldFlags = types.Select(t => Main.tileFrameImportant[t]).ToArray();
             var savedTiles = new Tile[8, 8];
@@ -53,6 +55,7 @@ namespace NativeWorldTextProbe
                     string furniture = Lang.GetItemNameValue(c.Item2);
                     for (int x = 0; x < c.Item3; x++) for (int y = 0; y < c.Item4; y++)
                         check(textOf(at(20 + x, 20 + y)).Contains(furniture), "empty support identifies its body at every cell " + c.Item1);
+                    NativeAnnouncementIconChecks.AssertMessage(JueMingR.Features.Announcements.SafeChatText.Build((List<string>)Get(at(20, 20), "Entries")), "这里有 " + furniture + " ", c.Item2);
                     item.SetDefaults(4); item.stack = 1;
                     if (c.Item1 == 698)
                     {
@@ -66,6 +69,7 @@ namespace NativeWorldTextProbe
                         Main.tile[20, 19] = new Tile();
                     }
                     var frozen = at(20, 20);
+                    NativeAnnouncementIconChecks.AssertMessage(JueMingR.Features.Announcements.SafeChatText.Build((List<string>)Get(frozen, "Entries")), "这里有 放在" + furniture + " 的1 个 " + Lang.GetItemNameValue(4) + " ", c.Item2, 4);
                     for (int x = 0; x < c.Item3; x++) for (int y = 0; y < c.Item4; y++)
                     {
                         string text = textOf(at(20 + x, 20 + y));
@@ -98,6 +102,15 @@ namespace NativeWorldTextProbe
                     {
                         string text = textOf(at(20 + x, 20 + y));
                         check(text.Contains("放在") && text.Contains(Lang.GetItemNameValue(4)) && text.Contains(Lang.GetItemNameValue(8)), "multiple received display slots and every body cell " + c.Item1);
+                    }
+                    if (c.Item1 == 470)
+                    {
+                        int longName = Terraria.ID.ContentSamples.ItemsByType.Values.Where(i => i.type > 0).OrderByDescending(i => Lang.GetItemNameValue(i.type).Length).First().type;
+                        foreach (string field in new[] { "_equip", "_dyes", "_misc" }) foreach (Item slot in (Item[])Get(c.Item4, field)) slot.SetDefaults(longName);
+                        var many = (List<string>)Get(at(20, 20), "Entries");
+                        string bounded = JueMingR.Features.Announcements.SafeChatText.Build(many);
+                        check(bounded.Contains("放在") && bounded.Contains("部分内容已省略") && bounded.Contains("[i:" + longName + "]") && System.Text.Encoding.UTF8.GetByteCount(bounded) <= 1024,
+                            "19 occupied display slots reserve icon/color overhead and retain whole names plus icons before omission");
                     }
                     Main.tile[20, 20] = new Tile();
                     check(textOf(at(21, 21)).Contains("内容尚未确认"), "incomplete body cannot authorize stale tile-entity contents " + c.Item1);

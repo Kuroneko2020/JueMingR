@@ -133,7 +133,7 @@ namespace NativeWorldTextProbe
                         if (changed) display.item.SetDefaults(8);
                         for (int i = 0; i < 180 && (bool)Get(gesture, "Busy"); i++) Call(gesture, "Update", ++coldTick);
                         Require(!(bool)Get(gesture, "Busy") && announced == before + (changed ? 0 : 1), "real cold gesture cancels changed contents and delivers unchanged contents");
-                        if (!changed) Require(((List<string>)Get(wallAnnouncement, "Entries"))[0].Contains("放在" + Lang.GetItemNameValue(3270) + "的1 个 " + Lang.GetItemNameValue(8)), "cold delivery retains both carrier and its received content");
+                        if (!changed) NativeAnnouncementIconChecks.AssertMessage(JueMingR.Features.Announcements.SafeChatText.Build((List<string>)Get(wallAnnouncement, "Entries")), "这里有 放在" + Lang.GetItemNameValue(3270) + " 的1 个 " + Lang.GetItemNameValue(8) + " ", 3270, 8);
                         long stopped = (long)Get(coldCatalog, "PlacementReads"); Call(gesture, "Update", ++coldTick);
                         Require((long)Get(coldCatalog, "PlacementReads") == stopped, "finished carrier gesture stops metadata reads");
                     }
