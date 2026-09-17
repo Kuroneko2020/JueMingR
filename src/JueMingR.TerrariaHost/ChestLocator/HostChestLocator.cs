@@ -51,8 +51,8 @@ namespace JueMingR.TerrariaHost.ChestLocator
             int[] matches = knowledge.Native.Catalog.Search(query, 0, false);
             if (matches.Length > 24) { Status = "匹配超过 24 种，请缩小名称或输入 ID"; return; }
             if (matches.Length == 0) { Status = "没有匹配物品，输入已保留"; return; }
-            if (Main.netMode == 1 && (!Receiver.Ready || !Receiver.Trusted || Receiver.Pending))
-            { Status = "箱内容尚未完成可信接收；请等待正常同步后重试"; return; }
+            string blocked = Main.netMode == 1 ? Receiver.BlockReason : null;
+            if (blocked != null) { Status = blocked; return; }
             if (!world.TryView(96, out view)) { Status = "当前无法读取附近世界"; return; }
             types = new HashSet<int>(matches); playerCenter = Main.LocalPlayer.Center;
             x = view.X; y = view.Y; started = tick; scanning = true; generation = Receiver.Generation;
@@ -119,7 +119,8 @@ namespace JueMingR.TerrariaHost.ChestLocator
         private void Finish(bool truncated)
         {
             scanning = false;
-            Status = "已确认 " + Results.Count + " 箱 / " + Results.Sum(r => r.Slots.Values.Sum()) + " 槽 / " + Results.Sum(r => r.Counts.Sum(c => c.Value)) + " 件" + (unknown > 0 ? "；部分库存或区块未知" : "") + (truncated ? "；达到查询上限，结果未完整列出" : "") +
+            Status = "已确认 " + Results.Count + " 箱 / " + Results.Sum(r => r.Slots.Values.Sum()) + " 槽 / " + Results.Sum(r => r.Counts.Sum(c => c.Value)) + " 件" +
+                (unknown > 0 ? "；部分库存或区块未知" + (Main.netMode == 1 ? "，需收到完整同步后重新定位" : "") : "") + (truncated ? "；达到查询上限，结果未完整列出" : "") +
                 (Main.netMode == 1 ? "；最近接收的数据" : "");
             PrepareDetails(); if (Results.Count > 0) PositiveResult?.Invoke();
         }

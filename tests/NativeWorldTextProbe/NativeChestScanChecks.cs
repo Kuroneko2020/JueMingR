@@ -77,9 +77,50 @@ namespace NativeWorldTextProbe
                 }
                 update(); slots = (long)Get(locator, "SlotReads"); Call(locator, "Submit", "#9"); RunScan(locator, update);
                 Require(results.Count == 1 && (long)Get(locator, "SlotReads") - slots == 3 && ((string)Get(locator, "Status")).Contains("最近接收"), "actual native 155 plus every 32 slot unlock the normal client scanner without opening a chest");
+                ReceiveRecovery(locator, update, buffer, results);
                 Console.WriteLine("PASS: actual spatial scanner families/order/64 candidates/24 hits/TTL/open-chest/client unknown, with zero stable slot rescans.");
             }
             finally { ((IDisposable)locator).Dispose(); Main.netMode = 0; }
+        }
+        private static void ReceiveRecovery(object locator, Action update, MessageBuffer buffer, IList results)
+        {
+            object receiver = Get(locator, "Receiver");
+            Action header = () => NativeChestLocatorChecks.Receive(buffer, 155, writer => { writer.Write((short)0); writer.Write((short)3); });
+            Action<int> slot = index => NativeChestLocatorChecks.Receive(buffer, 32, writer =>
+            { writer.Write((short)0); writer.Write((byte)index); writer.Write((short)(index == 0 ? 99 : 0)); writer.Write((byte)0); writer.Write((short)(index == 0 ? 9 : 0)); });
+            long cells = (long)Get(locator, "CellReads"), slots = (long)Get(locator, "SlotReads");
+            slot(0); Call(locator, "Submit", "#9");
+            Require(!(bool)Get(locator, "scanning") && (long)Get(locator, "CellReads") == cells && (long)Get(locator, "SlotReads") == slots &&
+                ((string)Get(locator, "Status")).Contains("同步正在处理"), "pending native receipt blocks a real query before world or inventory reads");
+            update(); Call(locator, "Submit", "#9"); RunScan(locator, update);
+            Require(results.Count == 1, "consuming a normal revision permits explicit query again");
+
+            // 4097 drops the full queue and the overflowing receipt. Pending must
+            // still guard the old complete knowledge even with an empty queue.
+            for (int i = 0; i < 4097; i++) slot(0);
+            Require(((ICollection)Get(receiver, "receipts")).Count == 0 && (bool)Get(receiver, "Pending"), "queue-loss boundary remains pending without queued receipts");
+            Call(locator, "Submit", "#9"); Require(((string)Get(locator, "Status")).Contains("同步正在处理"), "unconsumed loss is not a reconnect failure");
+            update(); slots = (long)Get(locator, "SlotReads");
+            Call(locator, "Submit", "#9"); RunScan(locator, update);
+            Require(results.Count == 0 && (long)Get(locator, "SlotReads") == slots && ((string)Get(locator, "Status")).Contains("需收到完整同步"), "loss retires old query evidence and describes the actual complete-sync recovery gate");
+            slot(0); slot(1); slot(2); update(); Call(locator, "Submit", "#9"); RunScan(locator, update);
+            Require(results.Count == 0 && (long)Get(locator, "SlotReads") == slots, "all slots without a new capacity cannot reuse pre-loss completeness");
+            header(); slot(0); slot(0); slot(2); update(); Call(locator, "Submit", "#9"); RunScan(locator, update);
+            Require(results.Count == 0 && (long)Get(locator, "SlotReads") == slots, "duplicate slots cannot replace the missing slot at the real scanner");
+            slot(1); update(); Call(locator, "Submit", "#9"); RunScan(locator, update);
+            Require(results.Count == 1 && (long)Get(locator, "SlotReads") - slots == 3 && (string)Get(results[0], "WorldLabel") == "99个", "fresh complete coverage recovers the actual query on the same connection after overflow");
+            cells = (long)Get(locator, "CellReads"); slots = (long)Get(locator, "SlotReads"); string status = (string)Get(locator, "Status");
+            for (int i = 0; i < 120; i++) update();
+            Require((long)Get(locator, "CellReads") == cells && (long)Get(locator, "SlotReads") == slots && ReferenceEquals(status, Get(locator, "Status")), "recovered stable query neither rescans nor rebuilds status text");
+
+            // Invoke the existing provenance seam; do not deliver real socket data.
+            Call(receiver, "ReadBefore", new RemoteServer()); Call(locator, "Submit", "#9");
+            Require(((string)Get(locator, "Status")).Contains("请重新连接"), "unconsumed old-source contamination requires reconnect rather than normal waiting");
+            update(); header(); slot(0); slot(1); slot(2); update(); Call(locator, "Submit", "#9");
+            Require(results.Count == 0 && !(bool)Get(locator, "scanning") && ((string)Get(locator, "Status")).Contains("请重新连接"), "fresh coverage cannot rehabilitate a contaminated connection");
+            ((IDisposable)receiver).Dispose(); Call(locator, "Submit", "#9");
+            Require(((string)Get(locator, "Status")).Contains("接收功能不可用"), "unavailable hooks do not promise recovery through synchronization");
+            Console.WriteLine("PASS: real scanner overflow recovery, incomplete coverage, pending/source/unavailable feedback, and stable recovered workload.");
         }
         private static void RunScan(object locator, Action update)
         { for (int i = 0; i < 100 && (bool)Get(locator, "scanning"); i++) update(); Require(!(bool)Get(locator, "scanning"), "bounded scanner finishes"); }

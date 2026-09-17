@@ -18,10 +18,20 @@ namespace JueMingR.TerrariaHost.ChestLocator
         private readonly object gate = new object();
         private object connection, world, chests, tiles;
         private int contamination;
+        private bool coverageLost;
         internal readonly ChestKnowledge Knowledge = new ChestKnowledge();
         internal bool Ready { get; private set; }
         internal bool Trusted { get; private set; } = true;
-        internal bool Pending { get { lock (gate) return receipts.Count != 0; } }
+        internal bool Pending { get { lock (gate) return coverageLost || Volatile.Read(ref contamination) != 0 || receipts.Count != 0; } }
+        internal string BlockReason
+        {
+            get
+            {
+                if (!Ready) return "箱内容接收功能不可用，暂不能定位";
+                if (!Trusted || Volatile.Read(ref contamination) != 0) return "箱内容接收来源已失效；请重新连接后再定位";
+                return Pending ? "箱内容同步正在处理；处理完后请重新定位" : null;
+            }
+        }
         internal long Generation { get; private set; }
         internal long LocalMutation { get; private set; }
         private long tick;
@@ -69,7 +79,7 @@ namespace JueMingR.TerrariaHost.ChestLocator
             int index = Signed(bytes, __0 + 1);
             if (index < 0 || index >= Main.chest.Length || Main.chest[index] == null) return;
             var chest = Main.chest[index];
-            __state = new Receipt { Kind = kind, Index = index, Chest = chest, Connection = Netplay.Connection, Tiles = Main.tile, Tick = owner.Tick,
+            __state = new Receipt { Kind = kind, Index = index, Chest = chest, Connection = Netplay.Connection, World = Main.ActiveWorldFileData, Chests = Main.chest, Tiles = Main.tile, Tick = owner.Tick,
                 Size = kind == 155 ? Signed(bytes, __0 + 3) : chest.maxItems,
                 Slot = kind == 32 ? bytes[__0 + 3] : -1, Quantity = kind == 32 ? Signed(bytes, __0 + 4) : 0,
                 Prefix = kind == 32 ? bytes[__0 + 6] : 0, Type = kind == 32 ? Signed(bytes, __0 + 7) : 0 };
@@ -77,7 +87,8 @@ namespace JueMingR.TerrariaHost.ChestLocator
         private static void After(Receipt __state, bool __runOriginal)
         {
             var owner = current;
-            if (owner == null || !__runOriginal || __state.Chest == null || !ReferenceEquals(__state.Connection, Netplay.Connection) || !ReferenceEquals(__state.Tiles, Main.tile)) return;
+            if (owner == null || !__runOriginal || __state.Chest == null || !ReferenceEquals(__state.Connection, Netplay.Connection) || !ReferenceEquals(__state.World, Main.ActiveWorldFileData) ||
+                !ReferenceEquals(__state.Chests, Main.chest) || !ReferenceEquals(__state.Tiles, Main.tile)) return;
             try
             {
                 Chest chest = Main.chest[__state.Index];
@@ -90,28 +101,45 @@ namespace JueMingR.TerrariaHost.ChestLocator
                 }
                 lock (owner.gate)
                 {
-                    if (owner.receipts.Count >= 4096) { owner.receipts.Clear(); Interlocked.Exchange(ref owner.contamination, 1); return; }
+                    // Losing our bounded observation queue does not contaminate
+                    // native packet provenance. Retire all old coverage before
+                    // consuming later receipts; only a new capacity + every slot
+                    // can rebuild it. Do not rehabilitate an old-source failure.
+                    if (owner.receipts.Count >= 4096) { owner.receipts.Clear(); owner.coverageLost = true; return; }
                     owner.receipts.Enqueue(__state);
                 }
             }
-            catch { Interlocked.Exchange(ref owner.contamination, 1); }
+            catch { lock (owner.gate) { owner.receipts.Clear(); owner.coverageLost = true; } }
         }
         internal void Update()
         {
-            if (!ReferenceEquals(connection, Netplay.Connection) || !ReferenceEquals(world, Main.ActiveWorldFileData) || !ReferenceEquals(chests, Main.chest) || !ReferenceEquals(tiles, Main.tile))
-            { connection = Netplay.Connection; world = Main.ActiveWorldFileData; chests = Main.chest; tiles = Main.tile; Knowledge.Clear(); Trusted = true; Generation++; }
-            if (Interlocked.Exchange(ref contamination, 0) != 0) { Trusted = false; Knowledge.Clear(); Generation++; }
-            for (int i = 0; i < 256; i++)
+            // The bounded batch and loss boundary share the producer gate so a
+            // concurrent overflow cannot mix pre-loss completeness with new slots.
+            lock (gate)
             {
-                Receipt receipt;
-                lock (gate) { if (receipts.Count == 0) break; receipt = receipts.Dequeue(); }
-                if (!Trusted || !ReferenceEquals(receipt.Connection, connection) || !ReferenceEquals(receipt.Tiles, tiles) || !ReferenceEquals(Main.chest[receipt.Index], receipt.Chest)) continue;
-                if (receipt.Kind == 155) Knowledge.Capacity(receipt.Index, receipt.Chest, receipt.Chest.x, receipt.Chest.y, receipt.Size, receipt.Tick);
-                else Knowledge.Slot(receipt.Index, receipt.Chest, receipt.Slot, receipt.Tick);
+                bool reconnected = !ReferenceEquals(connection, Netplay.Connection);
+                if (reconnected || !ReferenceEquals(world, Main.ActiveWorldFileData) || !ReferenceEquals(chests, Main.chest) || !ReferenceEquals(tiles, Main.tile))
+                {
+                    connection = Netplay.Connection; world = Main.ActiveWorldFileData; chests = Main.chest; tiles = Main.tile;
+                    // .8 ClientLoopSetup clears buffer[256] and creates a new
+                    // RemoteServer. World/array changes alone cannot cleanse a
+                    // connection whose global buffer received old-source bytes.
+                    Knowledge.Clear(); if (reconnected) Trusted = true; Generation++;
+                }
+                if (Interlocked.Exchange(ref contamination, 0) != 0) { Trusted = false; Knowledge.Clear(); Generation++; }
+                if (coverageLost) { coverageLost = false; Knowledge.Clear(); Generation++; }
+                for (int i = 0; i < 256 && receipts.Count != 0; i++)
+                {
+                    Receipt receipt = receipts.Dequeue();
+                    if (!Trusted || !ReferenceEquals(receipt.Connection, connection) || !ReferenceEquals(receipt.World, world) || !ReferenceEquals(receipt.Chests, chests) ||
+                        !ReferenceEquals(receipt.Tiles, tiles) || !ReferenceEquals(Main.chest[receipt.Index], receipt.Chest)) continue;
+                    if (receipt.Kind == 155) Knowledge.Capacity(receipt.Index, receipt.Chest, receipt.Chest.x, receipt.Chest.y, receipt.Size, receipt.Tick);
+                    else Knowledge.Slot(receipt.Index, receipt.Chest, receipt.Slot, receipt.Tick);
+                }
             }
         }
         internal struct Receipt
-        { internal int Kind, Index, Size, Slot, Type, Quantity, Prefix; internal long Tick; internal Chest Chest; internal object Connection, Tiles; }
+        { internal int Kind, Index, Size, Slot, Type, Quantity, Prefix; internal long Tick; internal Chest Chest; internal object Connection, World, Chests, Tiles; }
         public void Dispose()
         { Ready = false; foreach (var method in patches) harmony.Unpatch(method, HarmonyPatchType.All, Owner); patches.Clear(); if (ReferenceEquals(current, this)) current = null; }
     }

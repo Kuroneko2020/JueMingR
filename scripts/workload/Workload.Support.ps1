@@ -60,8 +60,11 @@ function Get-WorkloadRoute {
         switch -Regex ($path.Replace('\', '/')) {
             '^docs/|^AGENTS\.md$|^README(?:\.[^/]+)?$|^LICENSE$|^THIRD-PARTY-NOTICES\.md$' { continue }
             '^src/[^/]+/(ItemCatalog|ItemBrowser|ChestLocator|Announcements)/|^tests/(ItemBrowser|ChestLocator|Announcements)/' { [void]$groups.Add('browser-host'); continue }
+            # BrowserPresentation directly shares these input adapters, but not
+            # the rest of Notes UI. Preserve the narrow ordinary Notes route.
+            '^src/JueMingR.TerrariaHost/Notes/Notes(Clipboard|Input)\.cs$' { [void]$groups.Add('notes-host'); [void]$groups.Add('browser-host'); continue }
             '^src/[^/]+/Notes/|^tests/Notes/' { [void]$groups.Add('notes-host'); continue }
-            '^src/[^/]+/Text/' { [void]$groups.Add('notes-host'); [void]$groups.Add('map-host'); continue }
+            '^src/[^/]+/Text/' { [void]$groups.Add('notes-host'); [void]$groups.Add('map-host'); [void]$groups.Add('browser-host'); continue }
             '^src/[^/]+/Footprints/|^tests/Footprints/' { [void]$groups.Add('footprints-host'); [void]$groups.Add('map-host'); [void]$groups.Add('storage-host'); continue }
             '^src/[^/]+/(MapMarkers|Exploration)/|^src/JueMingR.TerrariaHost/Map/|^tests/MapMarkers/' { [void]$groups.Add('map-host'); [void]$groups.Add('death-host'); continue }
             '^src/JueMingR.TerrariaHost/EntityLabels/(Style|Hex)|^tests/EntityLabels/EntityStyle|^tests/WorldTargets/WorldTargetStyle' { [void]$groups.Add('style-host'); continue }
@@ -79,7 +82,9 @@ function Get-WorkloadRoute {
     }
     if ($groups.Contains('shared-host') -or $groups.Contains('storage-host')) { [void]$groups.Add('death-host'); [void]$groups.Add('map-host') }
     if ($groups.Contains('map-host') -or $groups.Contains('shared-host') -or $groups.Contains('storage-host')) { [void]$groups.Add('footprints-host') }
-    if ($groups.Contains('shared-host') -or $groups.Contains('storage-host')) { [void]$groups.Add('browser-host') }
+    # Browser text editing and chest/target resolution consume these shared
+    # paths even when no ItemBrowser file itself changed in the current diff.
+    if ($groups.Contains('shared-host') -or $groups.Contains('storage-host') -or $groups.Contains('world-host')) { [void]$groups.Add('browser-host') }
     return [ordered]@{ groups = @($groups | Sort-Object); unknown = $unknown; slowGraphics = $false }
 }
 function Test-WorkloadBuildMatch {

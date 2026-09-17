@@ -43,8 +43,27 @@ try {
         'src/JueMingR.Features/ChestLocator/ChestKnowledge.cs' = 'browser-host';
         'src/JueMingR.Features/Announcements/SafeChatText.cs' = 'browser-host';
         'src/JueMingR.Features/Text/TextEditBuffer.cs' = 'notes-host';
+        'src/JueMingR.TerrariaHost/Notes/NotesClipboard.cs' = 'notes-host';
+        'src/JueMingR.TerrariaHost/Notes/NotesInput.cs' = 'notes-host';
+        'src/JueMingR.Features/WorldObjectText/WorldObjectResolver.cs' = 'world-host';
+        'src/JueMingR.TerrariaHost/World/WorldTileObservation.cs' = 'world-host';
         'src/JueMingR.TerrariaHost/Map/FullscreenMapDrawing.cs' = 'map-host';
         'docs/guide.md' = 'core'
+    }
+    $exactGroups = @{
+        'src/JueMingR.Features/Text/TextEditBuffer.cs' = @('core','notes-host','map-host','footprints-host','browser-host');
+        'src/JueMingR.TerrariaHost/Notes/NotesClipboard.cs' = @('core','notes-host','browser-host');
+        'src/JueMingR.TerrariaHost/Notes/NotesInput.cs' = @('core','notes-host','browser-host');
+        'src/JueMingR.Features/WorldObjectText/WorldObjectResolver.cs' = @('core','world-host','browser-host');
+        'src/JueMingR.TerrariaHost/World/WorldTileObservation.cs' = @('core','world-host','browser-host');
+        'src/JueMingR.TerrariaHost/ItemBrowser/NativeItemCatalog.cs' = @('core','browser-host');
+        'src/JueMingR.TerrariaHost/Hotkeys/HostHotkeys.cs' = @('core','shared-host','death-host','map-host','footprints-host','browser-host');
+        'src/JueMingR.TerrariaHost/F5/F5Layout.cs' = @('core','shared-host','death-host','map-host','footprints-host','browser-host');
+        'src/JueMingR.TerrariaHost/Notes/NotesCards.cs' = @('core','notes-host');
+        'src/JueMingR.Features/WorldObjectText/OpenedPositionStore.cs' = @('core','records');
+        'src/JueMingR.TerrariaHost/EntityLabels/StyleEditor.cs' = @('core','style-host');
+        'src/JueMingR.Features/DeathHistory/DeathArchive.cs' = @('core','death-host');
+        'docs/guide.md' = @('core')
     }
     foreach ($path in $cases.Keys) { Write-Fixture $path "baseline`n" }
     Invoke-WorkloadGit $fixtureRoot @('add', '.') | Out-Null
@@ -55,6 +74,9 @@ try {
         $changes = Get-WorkloadChanges $fixtureRoot $baseline; $route = Get-WorkloadRoute $changes.paths
         Assert-Route ($changes.paths.Count -eq 1 -and $changes.paths[0] -ceq $path -and $route.groups -contains $cases[$path]) ('actual unstaged route ' + $path)
         Assert-Route (-not $route.slowGraphics -and $route.unknown.Count -eq 0) 'known local/document edits never automatically launch slow graphics'
+        if ($exactGroups.ContainsKey($path)) {
+            Assert-Route ((@($route.groups | Sort-Object) -join ',') -ceq (@($exactGroups[$path] | Sort-Object) -join ',')) ('exact consumers, without all-group fallback: ' + $path)
+        }
         if ($path -ceq 'docs/guide.md') { Assert-Route ($route.groups.Count -eq 1) 'behaviorless document selects core only' }
         Write-Output ('PASS route: ' + $path + ' -> ' + ($route.groups -join ', '))
         Write-Fixture $path "baseline`n"
@@ -77,7 +99,7 @@ try {
     Assert-Route ($route.groups -contains 'core' -and $route.unknown -contains 'unclassified/new.cs') 'unknown untracked input keeps core and blocks unclassified delivery'
     Assert-Route ($identity.fingerprint -cne (Get-WorkloadIdentity $fixtureRoot).fingerprint) 'untracked bytes belong to build identity'
     Assert-Route ($null -ne (Get-WorkloadChanges $fixtureRoot 'missing-baseline').reason) 'missing baseline is an explicit unresolved risk'
-    Write-Output 'PASS: six actual diff routes, staged cancellation, rename/deletion, cumulative commits, untracked identity, and missing baseline.'
+    Write-Output 'PASS: actual single-file diff routes, staged cancellation, rename/deletion, cumulative commits, untracked identity, and missing baseline.'
 } finally {
     $resolved = [IO.Path]::GetFullPath($fixtureRoot); $temp = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
     if (-not $resolved.StartsWith($temp, [StringComparison]::OrdinalIgnoreCase) -or -not [IO.Path]::GetFileName($resolved).StartsWith('JueMingR-routing-', [StringComparison]::Ordinal)) { throw 'Unsafe route fixture cleanup.' }
