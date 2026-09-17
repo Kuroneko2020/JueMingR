@@ -26,10 +26,12 @@ namespace JueMingR.TerrariaHost.QuickItems
         internal void TryStart(QuickItemEntry requested)
         {
             Player current=host.Player;
+            // Dispatch precedes Player.ResetControls/CopyInto. Read this frame's
+            // residual actions, not last frame's controlTorch/controlUseTile.
             if (Active || current==null || !host.Input.CanStartActions || host.CanGameplay==null || !host.CanGameplay() ||
                 !current.selectedItemState.CanChangeSelectedItemImmediately || current.CCed || current.noItems || current.isOperatingAnotherEntity ||
                 current.HasLockedInventory() || Main.LocalPlayerHasPendingInventoryActions() || host.Items.World.Busy ||
-                current.controlUseTile || current.controlTorch || PlayerInput.Triggers.Current.MouseLeft || Main.mouseLeft || !Main.mouseItem.IsAir)
+                PlayerInput.Triggers.Current.MouseRight || PlayerInput.Triggers.Current.SmartSelect || PlayerInput.Triggers.Current.MouseLeft || Main.mouseLeft || !Main.mouseItem.IsAir)
             { host.Message="当前无法快捷使用；请结束手中操作后重新按键。"; return; }
             for(int i=0;i<50;i++) { Item item=current.inventory[i]; candidates[i]=item==null ? default(QuickItemCandidate) :
                 new QuickItemCandidate(i,item.type,item.stack,item.useStyle!=0,host.Items.Ownership.IsProtected(i)); }

@@ -56,11 +56,41 @@ namespace NativeWorldTextProbe
                 // Later manual choices have precedence over the native return.
                 p.selectedItemState.Select(4);p.selectedItemState.Select(6);Frames(input,shell,p,130);Returned(p,use,6,"latest manual selection during use");
                 Handoff(context,entry);
+                MouseHandoff(context,entry,ordinaryShots,ordinaryAmmo);
                 Console.WriteLine("PASS: real native burst differential, last consumable, all 11 state families, compatible provider and manual selection precedence.");
             }
             finally {foreach(var method in audit.GetPatchedMethods().ToArray())audit.Unpatch(method,HarmonyPatchType.All,audit.Id);Change(quick,entry);Reset(p);}
         }
         private static void Shot(Item sItem){if(sItem.type==ItemID.ClockworkAssaultRifle)shots++;}
+        private static void MouseHandoff(object context,QuickItemEntry entry,int ordinaryShots,int ordinaryAmmo)
+        {
+            object quick=Get(context,"QuickItems"),input=Get(context,"Input"),shell=Get(context,"Shell"),use=Get(quick,"Use");Player p=Main.LocalPlayer;
+            var settings=(QuickItemSettings)Get(quick,"Settings");var bindings=(HotkeyBindings)Get(Get(shell,"hotkeys"),"Bindings");
+            var b=new QuickItemEntry("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",50,QuickItemMode.Use,false,true);string reason;
+            Require(settings.TryChange(settings.Current.Change(entry.With(ItemID.ClockworkAssaultRifle,QuickItemMode.Use,false,true)).Change(b),entry.Id,out reason),"mouse A/B save");
+            Until(()=>{Call(quick,"Poll");return !settings.Busy;});
+            NativeQuickGestureChecks.Bind(bindings,entry.ActionId,"Mouse1");NativeQuickGestureChecks.Bind(bindings,b.ActionId,"Mouse2");
+            try
+            {
+                Reset(p);p.inventory[17].SetDefaults(ItemID.ClockworkAssaultRifle);p.inventory[18].SetDefaults(50);
+                p.inventory[54].SetDefaults(ItemID.MusketBall);p.inventory[54].stack=30;shots=0;int recalls=NativeQuickItemChecks.Recalls;
+                NativeQuickGestureChecks.Frame(input,shell,p,0);NativeQuickGestureChecks.Frame(input,shell,p,1);
+                NativeQuickGestureChecks.Frame(input,shell,p,3); // Busy B is consumed, never queued.
+                int frames=0;while(!p.selectedItemState.CanChangeSelectedItemImmediately && frames++<120)NativeQuickGestureChecks.Frame(input,shell,p,1);
+                Require(frames<120 && shots==ordinaryShots && 30-p.inventory[54].stack==ordinaryAmmo,"Mouse1 native burst includes final shot/ammo and does not repeat while held");
+                Require(NativeQuickItemChecks.Recalls==recalls,"busy Mouse2 never used B");
+                NativeQuickGestureChecks.Frame(input,shell,p,3);
+                Require(p.selectedItem==18 && p.itemAnimation>0,"fresh Mouse2 starts B on first free frame while Mouse1 is still held");
+                for(int i=0;i<160;i++)NativeQuickGestureChecks.Frame(input,shell,p,3);
+                Require(shots==ordinaryShots && NativeQuickItemChecks.Recalls==recalls+1,"held A/B each produces one completed use");
+                Returned(p,use,2,"Mouse1/Mouse2 fast handoff final state");
+            }
+            finally
+            {
+                NativeQuickGestureChecks.Frame(input,shell,p,0);NativeQuickGestureChecks.Bind(bindings,entry.ActionId,"J");
+                Require((bool)Call(quick,"Delete",b.Id),"remove mouse B");Until(()=>{Call(quick,"Poll");bindings.Poll();return !settings.Busy && !bindings.Busy;});
+            }
+        }
         private static void Handoff(object context,QuickItemEntry entry)
         {
             object quick=Get(context,"QuickItems"),input=Get(context,"Input"),shell=Get(context,"Shell"),use=Get(quick,"Use");Player p=Main.LocalPlayer;

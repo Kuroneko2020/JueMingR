@@ -83,6 +83,9 @@ namespace JueMingR.TerrariaHost.QuickItems
         internal void Poll()
         {
             Settings.Poll();
+            // Runtime Poll publishes saved enablement after input dispatch, so
+            // this source-observation gate is ready BEFORE its first mapped frame.
+            Input.UseGesture.Enabled=Available && Settings.Enabled;
             if (actions==null || published==Settings.Revision) { CleanRetiredBinding(); return; }
             var next=new List<HotkeyAction>(); var ids=new HashSet<string>(StringComparer.Ordinal);
             foreach(var entry in Settings.Current.Entries)
@@ -90,7 +93,7 @@ namespace JueMingR.TerrariaHost.QuickItems
                 if (entry.Target>=ItemID.Count) continue;
                 var captured=entry;
                 next.Add(new HotkeyAction(entry.ActionId,"快捷使用："+SafeName(entry.Target),HotkeyContext.Gameplay,
-                    ()=>Available && Settings.CanExecute(captured.Id),()=>Request(captured.Id),()=>Settings.Registered(captured.Id)));
+                    ()=>Available && Settings.CanExecute(captured.Id),gesture=>Request(captured.Id,gesture),()=>Settings.Registered(captured.Id)));
                 ids.Add(entry.ActionId);
             }
             string reason;
@@ -117,8 +120,11 @@ namespace JueMingR.TerrariaHost.QuickItems
             else {cleaning=id;cleanupCommand=command;}
         }
         internal void RetryCleanup(){if(!CanRetryCleanup)return;foreach(string id in failedCleanup)retiredBindings.Enqueue(id);failedCleanup.Clear();CleanRetiredBinding();}
-        private void Request(string id)
+        private void Request(string id,HotkeyChord gesture)
         {
+            // Even a busy/missing-provider shortcut must not fall through into
+            // an ordinary attack. Foreign input remains mapped for admission.
+            Input.ClaimUseGesture(gesture);
             Use.RetireCompleted();
             if (requested!=null || Use.Active) { Message="上一件物品仍在使用，请结束后重新按键。"; return; }
             requested=id; requestRevision=Settings.Revision;

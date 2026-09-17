@@ -114,7 +114,7 @@ namespace JueMingR.Platform.Hotkeys
             {
                 List<Bound> entries = table[key]; if (entries == null || !input.IsNew(key)) continue;
                 foreach (Bound bound in entries)
-                    if ((onlyAction == null || bound.Action.Id == onlyAction) && bound.Chord.Modifiers == input.Modifiers) bound.Action.Invoke(context);
+                    if ((onlyAction == null || bound.Action.Id == onlyAction) && bound.Chord.Modifiers == input.Modifiers) bound.Action.Invoke(context, bound.Chord);
             }
         }
         private void Compile()

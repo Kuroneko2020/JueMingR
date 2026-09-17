@@ -38,6 +38,7 @@ namespace NativeWorldTextProbe
             object context=Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Phase0SHarmonyWorker").GetNestedType("PostfixContext",Flags),Flags,null,
                 new object[]{"favorite-quick-items-"+new string('5',40),Path.Combine(root,"evidence.txt"),root},null);
             var isolation=new Harmony("JueMingR.Tests.QuickItemOutlets");
+            var inputHooks=new Harmony("JueMingR.Tests.QuickInput");
             try
             {
                 // Only final effects unrelated to selection/use are intercepted.
@@ -50,6 +51,10 @@ namespace NativeWorldTextProbe
                 Require((bool)Get(Get(context,"InformationReadiness"),"Installed"),"full G05 profile installs prior information source hooks");
                 foreach(string layer in new[]{"Browser","Footprints","Information","Guidance","WorldObjects","WorldTargets","Labels"})Require(GetOptional(context,layer)!=null,"full G05 composition retains "+layer);
                 object quick=Get(context,"QuickItems"), use=Get(quick,"Use"), input=Get(context,"Input"), shell=Get(context,"Shell");
+                var inputType=assembly.GetType("JueMingR.TerrariaHost.Input.HostInputHooks");
+                var inputTargets=(MethodInfo[])inputType.GetMethod("Resolve",Flags).Invoke(null,new object[]{typeof(Main).Assembly});
+                Require(inputTargets.Length==5,"five exact shared input seams, including native mapping provenance");
+                inputType.GetMethod("Install",Flags).Invoke(null,new object[]{inputHooks,inputTargets,input});
                 Require((bool)Get(quick,"Available"),"production quick hooks installed: "+GetOptional(quick,"SetupError"));
                 var settings=(QuickItemSettings)Get(quick,"Settings");var keys=Get(shell,"hotkeys");var bindings=(HotkeyBindings)Get(keys,"Bindings");
                 Until(()=>{Call(context,"UpdateRuntime");bindings.Poll();return settings.Loaded && bindings.Loaded;});
@@ -83,7 +88,8 @@ namespace NativeWorldTextProbe
                 try { NativeFrame(player);Require(player.selectedItem==2 && !(bool)Get(use,"Active"),"chat opening after dispatch cancels before transform/pulse"); }
                 finally {Main.drawingPlayerChat=false;}
                 NativeQuickUseMatrix.Run(context,entry);
-                NativeQuickManualInputChecks.Run(context);
+                NativeQuickGestureChecks.Run(context,entry);
+                NativeQuickManualInputChecks.Run(context,entry);
                 NativeQuickNetworkChecks.Run(context,entry);
                 NativeQuickLifecycleChecks.Run(context,entry);
                 NativeQuickPersistenceChecks.Run(context,entry);
@@ -102,6 +108,7 @@ namespace NativeWorldTextProbe
                 var quick=GetOptional(context,"QuickItems");if(quick!=null)Call(quick,"Exit",null,EventArgs.Empty);
                 var browser=GetOptional(context,"Browser");if(browser!=null)((IDisposable)browser).Dispose();StopContext(context);
                 foreach(var method in isolation.GetPatchedMethods().ToArray())isolation.Unpatch(method,HarmonyPatchType.All,isolation.Id);
+                foreach(var method in inputHooks.GetPatchedMethods().ToArray())inputHooks.Unpatch(method,HarmonyPatchType.All,inputHooks.Id);
                 assembly.GetType("JueMingR.TerrariaHost.QuickItems.QuickItemHooks").GetMethod("Uninstall",Flags).Invoke(null,null);
                 assembly.GetType("JueMingR.TerrariaHost.KeepFavorited.FavoriteHooks").GetMethod("Uninstall",Flags).Invoke(null,null);
             }

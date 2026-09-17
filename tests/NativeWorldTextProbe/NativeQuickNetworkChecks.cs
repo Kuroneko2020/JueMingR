@@ -4,6 +4,7 @@ using System.Linq;
 using System.Reflection;
 using HarmonyLib;
 using JueMingR.Features.QuickItems;
+using JueMingR.Platform.Hotkeys;
 using Microsoft.Xna.Framework.Input;
 using Terraria;
 using static NativeWorldTextProbe.NativeInformationChecks;
@@ -20,18 +21,20 @@ namespace NativeWorldTextProbe
             MethodInfo send=typeof(NetMessage).GetMethod("SendData",Flags);
             audit.Patch(send,postfix:new HarmonyMethod(typeof(NativeQuickNetworkChecks).GetMethod(nameof(Capture),Flags)));
             object input=Get(context,"Input"),shell=Get(context,"Shell"),quick=Get(context,"QuickItems"),use=Get(quick,"Use");Player p=Main.LocalPlayer;
+            var bindings=(HotkeyBindings)Get(Get(shell,"hotkeys"),"Bindings");
             try
             {
                 // No connected socket exists; the enclosing fixture throws if
                 // any final SendPacket is attempted. SendData remains original,
                 // including OnControlsSynced's real client baseline mutation.
                 Netplay.Connection=new RemoteServer();Netplay.Connection.PendingTermination=true;NetMessage.buffer[256]=new MessageBuffer();Main.netMode=1;
+                NativeQuickGestureChecks.Bind(bindings,entry.ActionId,"Mouse1");
                 foreach(int target in new[]{50,3199,3124,5358,4263,5360,4819,5361,5359})
                 {
                     NativeQuickUseMatrix.Change(quick,entry.With(target,QuickItemMode.Use,false,true));NativeQuickUseMatrix.Reset(p);
                     p.inventory[7]=new Item();p.inventory[18]=new Item();p.inventory[17].SetDefaults(target);Main.clientPlayer=new Player();packets.Clear();
-                    NativeQuickUseMatrix.Press(input,shell,Keys.J);Frame(p);
-                    for(int i=0;i<150;i++){NativeQuickItemChecks.Sample(input,new[]{Keys.W});Call(shell,"ProcessInput");Frame(p);}
+                    NativeQuickGestureChecks.Sample(input,0);Call(shell,"ProcessInput");NativeQuickGestureChecks.Sample(input,1);Call(shell,"ProcessInput");Frame(p);
+                    for(int i=0;i<150;i++){NativeQuickGestureChecks.Sample(input,1,Keys.W);Call(shell,"ProcessInput");Frame(p);}
                     NativeQuickUseMatrix.Returned(p,use,2,"client provider "+target);
                     var controls=packets.Where(b=>b[2]==13).ToArray();
                     Require(controls.Any(b=>b[8]==17 && (b[4]&32)!=0),"real packet13 carries provider/use: "+target);
@@ -40,6 +43,7 @@ namespace NativeWorldTextProbe
                     var teleports=packets.Where(b=>b[2]==73).ToArray();
                     Require(destination==0?teleports.Length==0:teleports.Length==1 && teleports[0][3]==destination,"actual native destination packet73 exactly matches target: "+target);
                 }
+                NativeQuickGestureChecks.Sample(input,0);Call(shell,"ProcessInput");NativeQuickGestureChecks.Bind(bindings,entry.ActionId,"J");
                 // A real family transition occurs after this frame's inventory
                 // sync. Next native sync must publish it without custom packets.
                 NativeQuickUseMatrix.Change(quick,entry.With(5360,QuickItemMode.SetStateAndUse,false,true));NativeQuickUseMatrix.Reset(p);p.inventory[17].SetDefaults(5361);packets.Clear();
@@ -60,7 +64,7 @@ namespace NativeWorldTextProbe
                 }
                 Console.WriteLine("PASS: native packet13/73 for 9 providers, all 4x4 phone destinations plus 4 internal-state recovery paths and inventory sync. No server/socket execution.");
             }
-            finally{Main.netMode=0;audit.Unpatch(send,HarmonyPatchType.All,audit.Id);NativeQuickUseMatrix.Change(quick,entry);NativeQuickUseMatrix.Reset(p);}
+            finally{Main.netMode=0;NativeQuickGestureChecks.Sample(input,0);NativeQuickGestureChecks.Bind(bindings,entry.ActionId,"J");audit.Unpatch(send,HarmonyPatchType.All,audit.Id);NativeQuickUseMatrix.Change(quick,entry);NativeQuickUseMatrix.Reset(p);}
         }
         private static void Frame(Player p)
         {typeof(Main).GetMethod("TrySyncingMyPlayer",Flags).Invoke(null,null);NativeQuickItemChecks.NativeFrame(p);}

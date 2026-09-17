@@ -4,6 +4,8 @@ using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
 using HarmonyLib;
+using JueMingR.Features.QuickItems;
+using JueMingR.Platform.Hotkeys;
 using Microsoft.Xna.Framework.Input;
 using Terraria;
 using Terraria.GameInput;
@@ -14,31 +16,36 @@ namespace NativeWorldTextProbe
     internal static class NativeQuickManualInputChecks
     {
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance|BindingFlags.Static;
-        internal static void Run(object context)
+        internal static void Run(object context,QuickItemEntry entry)
         {
             object input=Get(context,"Input"),shell=Get(context,"Shell"),use=Get(Get(context,"QuickItems"),"Use");Player p=Main.LocalPlayer;
+            var bindings=(HotkeyBindings)Get(Get(shell,"hotkeys"),"Bindings");
             var isolated=new Harmony("JueMingR.Tests.QuickNativeSelectionSegment");
             var method=typeof(Player).GetMethod("Update",new[]{typeof(int)});
             isolated.Patch(method,transpiler:new HarmonyMethod(typeof(NativeQuickManualInputChecks).GetMethod(nameof(Isolate),Flags)));
             try
             {
                 NativeQuickUseMatrix.Reset(p);p.inventory[17].SetDefaults(50);p.inventory[7]=new Item();p.changeItem=-1;
-                NativeQuickUseMatrix.Press(input,shell,Keys.J);NativeQuickItemChecks.NativeFrame(p);
+                NativeQuickGestureChecks.Bind(bindings,entry.ActionId,"Mouse1");
+                NativeQuickGestureChecks.Frame(input,shell,p,0);NativeQuickGestureChecks.Frame(input,shell,p,1);
                 Require(p.itemAnimation>0 && p.selectedItem==17,"manual matrix starts actual mirror animation");
                 p.inventory[7].SetDefaults(50);
-                NativeQuickItemChecks.Sample(input,new[]{Keys.D7,Keys.W});
-                // Use the real profile mapping, not a D7-to-slot copy in tests.
-                PlayerInput.CurrentProfile.InputModes[InputMode.Keyboard].Processkey(PlayerInput.Triggers.Current,"D7",InputMode.Keyboard);
+                NativeQuickGestureChecks.Sample(input,1,Keys.D7,Keys.W);
+                Call(shell,"ProcessInput");Frame(p);
+                // Native mapping sees the previous keyboard refresh. Release
+                // D7 in the fresh sample as its cached native mapping runs.
+                NativeQuickGestureChecks.Sample(input,1,Keys.W);
                 Require(PlayerInput.Triggers.Current.Hotbar7,"native default key profile maps D7");
                 PlayerInput.ScrollWheelDelta=-120;Frame(p);PlayerInput.ScrollWheelDelta=0;
                 Require(p.selectedItem==17 && p.selectedItemState.Hotbar==7,"real number then wheel order is buffered while provider is busy");
-                for(int i=0;i<130;i++){NativeQuickItemChecks.Sample(input,new[]{Keys.W,Keys.Space,Keys.LeftShift});Call(shell,"ProcessInput");Frame(p);}
+                for(int i=0;i<130;i++){NativeQuickGestureChecks.Sample(input,1,Keys.W,Keys.Space);Call(shell,"ProcessInput");Frame(p);}
                 NativeQuickUseMatrix.Returned(p,use,7,"native numeric/wheel latest choice");
-                PlayerInput.Triggers.Current.MouseLeft=true;Frame(p);Require(p.selectedItem==7 && p.itemAnimation>0,"ordinary click after quick return starts actual newly selected item");
+                NativeQuickGestureChecks.Sample(input,0);NativeQuickGestureChecks.Bind(bindings,entry.ActionId,"J");
+                NativeQuickGestureChecks.Sample(input,1);Frame(p);Require(p.selectedItem==7 && p.itemAnimation>0,"ordinary click after quick return starts actual newly selected item");
                 for(int i=0;i<130;i++){NativeQuickItemChecks.Sample(input,new Keys[0]);Frame(p);}
                 Console.WriteLine("PASS: retained original Player.Update number/radial/wheel/selection IL, real profile mapping, latest choice and subsequent ordinary use.");
             }
-            finally{isolated.Unpatch(method,HarmonyPatchType.All,isolated.Id);PlayerInput.ScrollWheelDelta=0;NativeQuickUseMatrix.Reset(p);}
+            finally{NativeQuickGestureChecks.Sample(input,0);NativeQuickGestureChecks.Bind(bindings,entry.ActionId,"J");isolated.Unpatch(method,HarmonyPatchType.All,isolated.Id);PlayerInput.ScrollWheelDelta=0;NativeQuickUseMatrix.Reset(p);}
         }
         private static void Frame(Player p)
         {typeof(Player).GetMethod("ResetControls",Flags).Invoke(p,null);PlayerInput.Triggers.Current.CopyInto(p);p.Update(Main.myPlayer);typeof(Player).GetMethod("TrySyncingInput",Flags).Invoke(p,null);p.ItemCheck();}

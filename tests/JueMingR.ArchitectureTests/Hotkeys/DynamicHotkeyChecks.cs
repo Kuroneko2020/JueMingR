@@ -9,9 +9,10 @@ namespace JueMingR.ArchitectureTests
         internal static void Check(IList<string> failures)
         {
             int oldCalls = 0, newCalls = 0, coreCalls = 0;
+            HotkeyChord dispatched = null;
             var registry = new HotkeyRegistry(); var dynamic = registry.CreateDynamicOwner("quick.use.");
             registry.Register(new HotkeyAction("core", "核心", HotkeyContext.Gameplay, () => true, () => coreCalls++));
-            var old = new HotkeyAction("quick.use.one", "条目一", HotkeyContext.Gameplay, () => true, () => oldCalls++);
+            var old = new HotkeyAction("quick.use.one", "条目一", HotkeyContext.Gameplay, () => true, chord => {oldCalls++;dispatched=chord;});
             var storage = new HotkeyCoreChecks.MemoryStorage { Bytes = HotkeyDocument.Encode(new HotkeyDocument(new[] {
                 new KeyValuePair<string,string>("quick.use.one", "J"), new KeyValuePair<string,string>("core", "K"),
                 new KeyValuePair<string,string>("future.other", "Mouse5") })) };
@@ -26,6 +27,9 @@ namespace JueMingR.ArchitectureTests
                 var input = new HotkeyInput(); var keys = new bool[HotkeyChord.KeyCount]; input.Update(keys, true);
                 keys[74] = keys[75] = true; input.Update(keys, true); bindings.Dispatch(input, HotkeyContext.SinglePlayer, true);
                 if (oldCalls != 1 || coreCalls != 1) failures.Add("Dynamic: shared dispatcher did not execute both actions.");
+                if (!ReferenceEquals(dispatched,bindings.Get(old.Id)) || old.Invoke(HotkeyContext.SinglePlayer)) failures.Add("Dynamic: gesture identity missing or invoked without a matched chord.");
+                input.Update(keys,true);bindings.Dispatch(input,HotkeyContext.SinglePlayer,true);
+                if(oldCalls!=1 || coreCalls!=1) failures.Add("Dynamic: held gesture repeated.");
                 storage.Block.Reset(); long save; string error;
                 if (!bindings.TrySet(old.Id, HotkeyCoreChecks.Parse("L"), (a,c) => null, out save, out error)) throw new Exception(error);
                 dynamic.TryReplace(new HotkeyAction[0], out reason);

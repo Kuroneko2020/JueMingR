@@ -12,6 +12,7 @@ namespace JueMingR.Platform.Hotkeys
         public HotkeyContext Context { get; }
         private readonly Func<bool> available;
         private readonly Action command;
+        private readonly Action<HotkeyChord> gestureCommand;
         private readonly Func<bool> configurable;
         public bool CanConfigure {get{return configurable==null || configurable();}}
         internal Func<bool> RegistrationIsCurrent;
@@ -23,7 +24,17 @@ namespace JueMingR.Platform.Hotkeys
             this.command = command ?? throw new ArgumentNullException(nameof(command));
             this.configurable=configurable;
         }
-        public bool Invoke(HotkeyContext context) { if ((Context & context) == 0 || RegistrationIsCurrent != null && !RegistrationIsCurrent() || !available()) return false; command(); return true; }
+        public HotkeyAction(string id, string name, HotkeyContext context, Func<bool> available, Action<HotkeyChord> command, Func<bool> configurable = null)
+            : this(id, name, context, available, () => { }, configurable)
+        { gestureCommand = command ?? throw new ArgumentNullException(nameof(command)); }
+        // Pass the immutable matched binding, never a later lookup of settings.
+        // Gesture consumers cannot be invoked without a real dispatch identity.
+        public bool Invoke(HotkeyContext context, HotkeyChord gesture = null)
+        {
+            if ((Context & context) == 0 || RegistrationIsCurrent != null && !RegistrationIsCurrent() || !available() || gestureCommand != null && gesture == null) return false;
+            if (gestureCommand != null) gestureCommand(gesture); else command();
+            return true;
+        }
         public static bool ValidId(string id)
         { if (String.IsNullOrEmpty(id) || id.Length > 96) return false; foreach (char c in id) if (!(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '.' || c == '-')) return false; return true; }
     }

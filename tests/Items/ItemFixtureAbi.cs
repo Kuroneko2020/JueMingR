@@ -89,6 +89,7 @@ namespace Terraria
         public int itemAnimation, itemTime, SellCalls, Paints, Actuators, Uses, Places, WireEffects;
         public int selectedItem { get; set; }
         public int talkNPC { get; set; }
+        public int sign = -1;
         public long Selling = 25, Buying = 125;
         public static int FlexibleWandRandomSeed, FlexibleWandCycleOffset;
         public bool HasLockedInventory() { return Main.PendingInventory || Main.NativeVoidPending || inventoryChestStack.Any(b => b); }
@@ -296,7 +297,13 @@ namespace Terraria.GameContent
 namespace Terraria.GameInput
 {
     public enum InputMode { Keyboard, KeyboardUI, Mouse, XBoxGamepad, XBoxGamepadUI }
-    public sealed class KeyConfiguration { public Dictionary<string, List<string>> KeyStatus = new Dictionary<string, List<string>>(); }
+    public sealed class KeyConfiguration
+    {
+        public Dictionary<string, List<string>> KeyStatus = new Dictionary<string, List<string>>();
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        public void Processkey(TriggersSet set,string token,InputMode mode)
+        {foreach(var entry in KeyStatus)if(entry.Value.Contains(token))set.KeyStatus[entry.Key]=true;}
+    }
     public sealed class PlayerInputProfile { public Dictionary<InputMode, KeyConfiguration> InputModes = new Dictionary<InputMode, KeyConfiguration> { { InputMode.Keyboard, new KeyConfiguration() }, { InputMode.KeyboardUI, new KeyConfiguration() }, { InputMode.Mouse, new KeyConfiguration() } }; }
     public static partial class PlayerInput { public static PlayerInputProfile CurrentProfile { get; set; } = new PlayerInputProfile(); public static bool CurrentlyRebinding { get; set; } }
 }
