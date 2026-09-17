@@ -483,7 +483,7 @@ namespace JueMingR.TerrariaHost
         {
             PostfixContext context = postfixContext;
             if (Volatile.Read(ref hookCommitted) == 1 && context != null)
-            { context.Input.AfterKeyboardRefresh(); context.Footprints?.Layer.ProcessInput(); if (context.Shell != null) context.Shell.ProcessInput(); context.MapFeatures?.Layer.ProcessInput(); }
+            { context.Input.AfterKeyboardRefresh(); context.Browser?.Targets.ProcessInput(); context.Footprints?.Layer.ProcessInput(); if (context.Shell != null) context.Shell.ProcessInput(); context.MapFeatures?.Layer.ProcessInput(); }
         }
 
         private static bool NpcHoverPrefix()
@@ -582,7 +582,7 @@ namespace JueMingR.TerrariaHost
         private static void EnsureEntityLayer(List<GameInterfaceLayer> layers, bool setupComplete)
         {
             var context = postfixContext;
-            if (context == null || !(context.PackageId.StartsWith("entity-labels-", StringComparison.Ordinal) || context.PackageId.StartsWith("world-targets-", StringComparison.Ordinal) || context.PackageId.StartsWith("world-object-text-", StringComparison.Ordinal) || context.PackageId.StartsWith("information-summary-", StringComparison.Ordinal) || context.PackageId.StartsWith("direction-equipment-", StringComparison.Ordinal) || context.PackageId.StartsWith("death-history-", StringComparison.Ordinal) || context.PackageId.StartsWith("map-markers-exploration-", StringComparison.Ordinal) || context.PackageId.StartsWith("footprints-", StringComparison.Ordinal))) return;
+            if (context == null || !(context.PackageId.StartsWith("entity-labels-", StringComparison.Ordinal) || context.PackageId.StartsWith("world-targets-", StringComparison.Ordinal) || context.PackageId.StartsWith("world-object-text-", StringComparison.Ordinal) || context.PackageId.StartsWith("information-summary-", StringComparison.Ordinal) || context.PackageId.StartsWith("direction-equipment-", StringComparison.Ordinal) || context.PackageId.StartsWith("death-history-", StringComparison.Ordinal) || context.PackageId.StartsWith("map-markers-exploration-", StringComparison.Ordinal) || (context.PackageId.StartsWith("footprints-", StringComparison.Ordinal) || context.PackageId.StartsWith("item-browser-", StringComparison.Ordinal)))) return;
             try
             {
                 // Capture's early return precedes this Game-scale layer. Normal
@@ -612,6 +612,7 @@ namespace JueMingR.TerrariaHost
             try { postfixContext?.WorldTargets?.World.Draw(); } catch { postfixContext?.WorldTargets?.FailClosed(); }
             try { postfixContext?.WorldObjects?.World.Draw(); } catch { postfixContext?.WorldObjects?.FailClosed(); }
             try { postfixContext?.Guidance?.World.Draw(); } catch { postfixContext?.Guidance?.World.Clear(); }
+            try { if (entityLayerStatus == Rendering.WorldLayerStatus.Ready) postfixContext?.Browser?.Locator.Draw(); } catch { postfixContext?.Browser?.Locator.Clear(); }
             return true;
         }
 
@@ -816,12 +817,13 @@ namespace JueMingR.TerrariaHost
             internal DeathHistory.HostDeathRecords DeathRecords { get; private set; }
             internal Map.HostMapFeatures MapFeatures { get; private set; }
             internal Footprints.HostFootprints Footprints { get; private set; }
+            internal ItemBrowser.HostItemBrowser Browser { get; private set; }
             private Npcs.NativeNpcObservation nativeNpcs;
             internal readonly Information.InformationReadiness InformationReadiness = new Information.InformationReadiness();
             private Information.InformationSourceHooks informationHooks;
             internal void InstallInformationSources()
             {
-                if (!(PackageId.StartsWith("information-summary-", StringComparison.Ordinal) || PackageId.StartsWith("direction-equipment-", StringComparison.Ordinal) || PackageId.StartsWith("death-history-", StringComparison.Ordinal) || PackageId.StartsWith("map-markers-exploration-", StringComparison.Ordinal) || PackageId.StartsWith("footprints-", StringComparison.Ordinal)) || informationHooks != null) return;
+                if (!(PackageId.StartsWith("information-summary-", StringComparison.Ordinal) || PackageId.StartsWith("direction-equipment-", StringComparison.Ordinal) || PackageId.StartsWith("death-history-", StringComparison.Ordinal) || PackageId.StartsWith("map-markers-exploration-", StringComparison.Ordinal) || (PackageId.StartsWith("footprints-", StringComparison.Ordinal) || PackageId.StartsWith("item-browser-", StringComparison.Ordinal))) || informationHooks != null) return;
                 informationHooks = new Information.InformationSourceHooks(InformationReadiness); informationHooks.Install();
             }
             internal void DisposeInformationSources() { informationHooks?.Dispose(); }
@@ -857,7 +859,7 @@ namespace JueMingR.TerrariaHost
                 }
 
                 preferences = new HostPreferences(gameDirectory);
-                bool footprintPackage = PackageId.StartsWith("footprints-", StringComparison.Ordinal);
+                bool footprintPackage = (PackageId.StartsWith("footprints-", StringComparison.Ordinal) || PackageId.StartsWith("item-browser-", StringComparison.Ordinal));
                 bool mapPackage = footprintPackage || PackageId.StartsWith("map-markers-exploration-", StringComparison.Ordinal);
                 bool deathPackage = mapPackage || PackageId.StartsWith("death-history-", StringComparison.Ordinal);
                 bool guidancePackage = deathPackage || PackageId.StartsWith("direction-equipment-", StringComparison.Ordinal);
@@ -882,9 +884,11 @@ namespace JueMingR.TerrariaHost
                 if (mapPackage) { MapFeatures = new Map.HostMapFeatures(gameDirectory, runtime.SharedRuntime, itemProbe, Input); runtime.SharedRuntime.AddFeature(MapFeatures); }
                 if (footprintPackage) { Footprints = new Footprints.HostFootprints(gameDirectory, runtime.SharedRuntime, itemProbe, Input); runtime.SharedRuntime.AddFeature(Footprints); }
                 notes = new Notes.HostNotes(gameDirectory);
+                if (PackageId.StartsWith("item-browser-", StringComparison.Ordinal)) Browser = new ItemBrowser.HostItemBrowser(gameDirectory, worldTiles, Input);
                 var hotkeys = hotkeyPackage ? new Hotkeys.HostHotkeys(gameDirectory, runtime, preferences, items, Labels, WorldTargets, WorldObjects,
-                    informationPackage ? Information : null, () => Shell != null && Shell.CanAdjustInformation, () => Shell?.RequestInformationAdjustment(), Guidance, DeathRecords, MapFeatures, Footprints) : null;
-                Shell = new F5Shell(runtime, preferences, notes, items, Input, hotkeys, Labels, WorldTargets, WorldObjects, Information, Guidance, DeathRecords, MapFeatures, Footprints) { LayersReady = f5LayersReady };
+                    informationPackage ? Information : null, () => Shell != null && Shell.CanAdjustInformation, () => Shell?.RequestInformationAdjustment(), Guidance, DeathRecords, MapFeatures, Footprints, Browser == null ? (Func<bool>)null : Browser.CanAnnounce, Browser == null ? (Action)null : Browser.Announce, Browser == null ? (Func<bool>)null : Browser.CanQuery, Browser == null ? (Action)null : Browser.Query, Browser?.Announcements) : null;
+                Shell = new F5Shell(runtime, preferences, notes, items, Input, hotkeys, Labels, WorldTargets, WorldObjects, Information, Guidance, DeathRecords, MapFeatures, Footprints, Browser?.Announcements) { LayersReady = f5LayersReady };
+                Browser?.Attach(Shell, hotkeys);
                 if (MapFeatures != null) { MapFeatures.Layer.UiOwnsInput = () => Shell.BlocksMapInput || Input.MapPointerOwned; MapFeatures.Layer.CloseForLocate = Shell.CloseForMapLocate; }
                 if (Footprints != null) Footprints.Layer.UiOwnsInput = () => Shell.BlocksMapInput || MapFeatures != null && MapFeatures.Layer.OwnsPointer;
             }
@@ -910,6 +914,7 @@ namespace JueMingR.TerrariaHost
                 worldTiles?.BeginTick();
                 nativeNpcs?.BeginTick();
                 current.Update(updateTick);
+                Browser?.Update(unchecked((long)updateTick));
                 updateTick = unchecked(updateTick + 1);
             }
 
@@ -922,6 +927,7 @@ namespace JueMingR.TerrariaHost
                 Information?.FailClosed();
                 Guidance?.FailClosed();
                 DeathRecords?.FailClosed(); MapFeatures?.FailClosed(); Footprints?.FailClosed();
+                Browser?.FailClosed();
                 nativeNpcs?.Clear();
                 Phase0TBiomeRuntime current = runtime;
                 if (current != null)

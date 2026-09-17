@@ -64,6 +64,7 @@ namespace JueMingR.TerrariaHost.Items
             }
         }
         internal void Panel(F5Rect rect) { F5ControlRenderer.Panel(batch, pixel, surface, rect); }
+        internal void Divider(F5Rect rect) { Fill(rect, Color.White * .35f); }
         internal void Label(F5Element element) { F5ControlRenderer.Text(batch, font, element, Color.White); }
         internal void Button(F5Element element, bool selected, bool enabled, bool off, bool hovered)
         { F5ControlRenderer.Button(batch, pixel, surface, font, element, hovered, enabled, selected ? (Color?)(off ? Color.IndianRed : Color.LightGreen) : null, subduedWhenDisabled: true); }
@@ -95,6 +96,10 @@ namespace JueMingR.TerrariaHost.Items
             if (type <= 0 || type >= TextureAssets.Item.Length) return;
             Main.instance.LoadItem(type);
             Texture2D texture = TextureAssets.Item[type]?.Value;
+            PreparedItem(type, texture, rect);
+        }
+        internal void PreparedItem(int type, Texture2D texture, F5Rect rect)
+        {
             if (texture == null || texture.IsDisposed) return;
             Rectangle frame = Main.itemAnimations[type] == null ? texture.Bounds : Main.itemAnimations[type].GetFrame(texture);
             float scale = Math.Min(1, Math.Min((rect.Width - 4) / frame.Width, (rect.Height - 4) / frame.Height));

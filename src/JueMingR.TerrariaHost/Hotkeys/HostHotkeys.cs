@@ -14,7 +14,7 @@ namespace JueMingR.TerrariaHost.Hotkeys
         internal readonly HotkeyRegistry Registry = new HotkeyRegistry();
         internal readonly HotkeyBindings Bindings;
         internal HostHotkeys(string gameDirectory, Phase0TBiomeRuntime biome, HostPreferences preferences, HostItems items, EntityLabels.HostEntityLabels labels = null, WorldTargets.HostWorldTargets targets = null, WorldObjectText.HostWorldObjectText worldObjects = null,
-            Information.HostInformation information = null, Func<bool> canAdjustInformation = null, Action adjustInformation = null, Guidance.HostGuidance guidance = null, F5.IDeathControls deaths = null, F5.IMapControls maps = null, F5.IFootprintControls footprints = null)
+            Information.HostInformation information = null, Func<bool> canAdjustInformation = null, Action adjustInformation = null, Guidance.HostGuidance guidance = null, F5.IDeathControls deaths = null, F5.IMapControls maps = null, F5.IFootprintControls footprints = null, Func<bool> canAnnounce = null, Action announce = null, Func<bool> canQuery = null, Action query = null, F5.IAnnouncementControls announcements = null)
         {
             Registry.Register(new HotkeyAction(HotkeyActionIds.Biome, "群系显示", HotkeyContext.Gameplay,
                 () => preferences.BiomeLoaded && !biome.FeatureFailed && biome.CanObserveLocalPlayer,
@@ -70,6 +70,11 @@ namespace JueMingR.TerrariaHost.Hotkeys
                 () => deaths.ControlsEnabled, () => deaths.SetEnabled(!deaths.Settings.Enabled)));
             if (maps != null) Registry.Register(new HotkeyAction(F5.MapControls.ActionId, "地图标记", HotkeyContext.Gameplay, () => maps.ControlsEnabled, () => maps.SetMarkers(!maps.MarkersEnabled)));
             if (footprints != null) Registry.Register(new HotkeyAction(F5.FootprintControls.ActionId, "足迹", HotkeyContext.Gameplay, () => footprints.ControlsEnabled, () => footprints.SetDisplay(!footprints.Display)));
+            if (canAnnounce != null && announce != null) Registry.Register(new HotkeyAction(F5.AnnouncementControls.SendActionId, "宣告指向内容", HotkeyContext.Gameplay, canAnnounce, announce));
+            // Preserve existing send bindings. The switch is a distinct shared
+            // action and must remain available while announcements are disabled.
+            if (announcements != null) Registry.Register(new HotkeyAction(F5.AnnouncementControls.ToggleActionId, "快捷宣告开关", HotkeyContext.Gameplay, () => announcements.CanConfigure, () => announcements.SetEnabled(!announcements.Enabled)));
+            if (canQuery != null && query != null) Registry.Register(new HotkeyAction("item-browser.query", "查询悬停物品", HotkeyContext.Gameplay, canQuery, query));
             Bindings = new HotkeyBindings(Registry, new AtomicFileDocument(Path.Combine(gameDirectory, "JueMingRData", "config", "hotkeys.json"), 65536, true));
             AppDomain.CurrentDomain.ProcessExit += OnExit;
         }

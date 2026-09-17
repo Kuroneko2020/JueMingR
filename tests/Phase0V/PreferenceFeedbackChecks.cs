@@ -227,7 +227,7 @@ namespace Terraria
                     Wait(() => (bool)Get(Get(labels, "Preferences"), "IsLoaded"), "style settings load completes");
                 }
                 Shell = Activator.CreateInstance(host.GetType("JueMingR.TerrariaHost.F5.F5Shell", true), Instance,
-                    null, styles ? new[] { runtime, Preferences, notes, null, null, null, labels, null, null, null, null, null, null, null } : new[] { runtime, Preferences, notes }, null);
+                    null, styles ? new[] { runtime, Preferences, notes, null, null, null, labels, null, null, null, null, null, null, null, null } : new[] { runtime, Preferences, notes }, null);
                 BiomePath = Path.Combine(path, "JueMingRData", "config", "features", "biome-display.json");
                 UiPath = Path.Combine(path, "JueMingRData", "config", "ui.json");
             }

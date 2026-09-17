@@ -12,6 +12,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\ItemBrowser\BrowserCoreChecks.cs" Link="ItemBrowser\BrowserCoreChecks.cs" />
+    <Compile Include="..\ItemBrowser\RelationChecks.cs" Link="ItemBrowser\RelationChecks.cs" />
+    <Compile Include="..\ItemBrowser\BrowserHistoryChecks.cs" Link="ItemBrowser\BrowserHistoryChecks.cs" />
+    <Compile Include="..\ChestLocator\ChestKnowledgeChecks.cs" Link="ChestLocator\ChestKnowledgeChecks.cs" />
+    <Compile Include="..\Announcements\AnnouncementChecks.cs" Link="Announcements\AnnouncementChecks.cs" />
     <Compile Include="..\Footprints\FootprintCoreChecks.cs" Link="Footprints\FootprintCoreChecks.cs" />
     <Compile Include="..\Footprints\FootprintFileChecks.cs" Link="Footprints\FootprintFileChecks.cs" />
     <Compile Include="..\Footprints\FootprintWorkerChecks.cs" Link="Footprints\FootprintWorkerChecks.cs" />

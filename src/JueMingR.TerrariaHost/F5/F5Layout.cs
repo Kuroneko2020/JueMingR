@@ -31,7 +31,7 @@ namespace JueMingR.TerrariaHost.F5
         EnableRare, DisableRare, EnableMerchant, DisableMerchant, EnableEquipment, DisableEquipment, SummonMerchant,
         ConfigureRare, ConfigureMerchant, DeathDetails, DeathConfigure, DeathEnable, DeathDisable,
         MarkerManage, MarkerEnable, MarkerDisable, ExplorationDetails, ExplorationValue,
-        FootprintConfigure, FootprintEnable, FootprintDisable }
+        FootprintConfigure, FootprintEnable, FootprintDisable, AnnouncementEnable, AnnouncementDisable }
 
     internal sealed class F5Element
     {
@@ -157,6 +157,7 @@ namespace JueMingR.TerrariaHost.F5
             if (currentPage == 2) DeathControls.AddRows(elements, DynamicTextSize, ref y, deathCount, worldDays);
             if (currentPage == 2) MapControls.AddRows(elements, TextSize, ref y);
             if (currentPage == 2) FootprintControls.AddRows(elements, TextSize, ref y);
+            if (currentPage == 2) AnnouncementControls.AddRows(elements, TextSize, ref y);
             ContentHeight = Math.Max(0, y - 6);
             screenWidth = width; screenHeight = height; uiScale = scale; page = currentPage;
             builtInformationRevision = informationRevision;
@@ -315,7 +316,9 @@ namespace JueMingR.TerrariaHost.F5
                 size.OffsetX * scale - 2, size.OffsetY * scale - 2);
         }
 
-        private F5Size DynamicTextSize(string text, float scale)
+        // Dynamic pages own their rebuilt layout. Their names and wrapping
+        // prefixes must never populate the bounded lifetime fixed-label cache.
+        internal F5Size DynamicTextSize(string text, float scale)
         { var size = MeasureChecked(text); return new F5Size(size.Width * scale + 4, size.Height * scale + 4, size.OffsetX * scale - 2, size.OffsetY * scale - 2); }
 
         private F5Size MeasureChecked(string text)

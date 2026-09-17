@@ -24,6 +24,9 @@ namespace JueMingR.TerrariaHost.Input
         internal bool HotkeyCapture { get; set; }
         internal Func<bool> ClaimsHotkeyPointer { get; set; }
         internal Func<bool> ClaimsMapPointer { get; set; }
+        internal Func<int, int, int> ClaimsReadOnlyGesture { get; set; }
+        internal int ReadOnlyMouseMask { get; private set; }
+        private int readOnlyTail;
         internal int MapWheel { get; private set; }
         internal int PhysicalMapX { get; private set; }
         internal int PhysicalMapY { get; private set; }
@@ -40,15 +43,17 @@ namespace JueMingR.TerrariaHost.Input
             bool reliable = IsFocused && FocusHelper.IsSelectedApplication && !rearming;
             bool claims = reliable && ClaimsMapPointer != null && ClaimsMapPointer();
             if (claims) mouseTail |= down & ~previousMouse;
+            if (reliable && !claims && ClaimsReadOnlyGesture != null) readOnlyTail |= ClaimsReadOnlyGesture(down, down & ~previousMouse) & down & ~previousMouse & 31;
             OwnedMouseMask = mouseTail; mapWheelOwned = claims;
+            ReadOnlyMouseMask = readOnlyTail;
             // MouseInput only staged these tokens; keyboard and gamepad mappings
             // have not merged yet. Filtering here preserves shared keyboard binds.
             for (int i = mouseKeys.Count - 1; i >= 0; i--)
             {
                 string key = mouseKeys[i];
-                if (key.Length == 6 && key.StartsWith("Mouse", StringComparison.Ordinal) && key[5] >= '1' && key[5] <= '5' && (OwnedMouseMask & 1 << (key[5] - '1')) != 0) mouseKeys.RemoveAt(i);
+                if (key.Length == 6 && key.StartsWith("Mouse", StringComparison.Ordinal) && key[5] >= '1' && key[5] <= '5' && ((OwnedMouseMask | ReadOnlyMouseMask) & 1 << (key[5] - '1')) != 0) mouseKeys.RemoveAt(i);
             }
-            if (reliable) { mouseTail &= down; previousMouse = down; }
+            if (reliable) { mouseTail &= down; readOnlyTail &= down; previousMouse = down; }
         }
         internal void ConsumeOwnedMouseEdges()
         { for (int i = 0; i < 5; i++) if ((OwnedMouseMask & 1 << i) != 0) Hotkeys.ConsumePress(256 + i); }

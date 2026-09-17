@@ -14,6 +14,13 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if (scope == "BrowserCpu" || scope == "BrowserVisual")
+            {
+                Terraria.Program.SavePath = Path.Combine(Path.GetTempPath(), "JueMingR-native-browser-" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(Terraria.Program.SavePath); NativeBrowserChecks.Run();
+                if (scope == "BrowserVisual") using (var graphics = new ProbeGraphics(content)) NativeBrowserVisualChecks.Run(graphics, output);
+                return 0;
+            }
             if (scope == "ExplorationRelease") scope = "ExplorationCpu";
             if (scope != "Full" && scope != "SelectionCpuCosts" && scope != "SelectionCpuChecks" && scope != "WorkloadCpu" && scope != "InformationCpu" && scope != "GuidanceCpu" && scope != "GuidanceVisual" && scope != "DeathCpu" && scope != "DeathVisual" && scope != "ExplorationCpu" && scope != "MapVisual" && scope != "MapAlignment" && scope != "FootprintsCpu" && scope != "FootprintsVisual") throw new ArgumentException("Unknown probe scope");
             if (IntPtr.Size != 4 || typeof(object).Assembly.GetName().Name != "mscorlib") throw new InvalidOperationException("Native workload requires .NET Framework x86.");
