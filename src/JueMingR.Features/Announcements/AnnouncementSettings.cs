@@ -4,10 +4,15 @@ using JueMingR.Platform.Settings;
 
 namespace JueMingR.Features.Announcements
 {
-    public sealed class AnnouncementSettings
+    public sealed class AnnouncementSettings : IEquatable<AnnouncementSettings>
     {
         public bool Enabled { get; }
         public AnnouncementSettings(bool enabled) { Enabled = enabled; }
+        // PreferenceDocument compares decoded bytes with the requested value
+        // before committing and suppresses repeated selections by value.
+        public bool Equals(AnnouncementSettings other) { return other != null && Enabled == other.Enabled; }
+        public override bool Equals(object obj) { return Equals(obj as AnnouncementSettings); }
+        public override int GetHashCode() { return Enabled.GetHashCode(); }
     }
     public sealed class AnnouncementCodec : IPreferenceCodec<AnnouncementSettings>
     {

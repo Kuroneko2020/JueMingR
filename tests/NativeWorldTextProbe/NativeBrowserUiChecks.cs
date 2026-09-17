@@ -1,11 +1,14 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 using Terraria;
 using Terraria.GameInput;
+using JueMingR.Features.ItemBrowser;
+using JueMingR.Platform.ItemCatalog;
 using static NativeWorldTextProbe.NativeInformationChecks;
 
 namespace NativeWorldTextProbe
@@ -46,6 +49,7 @@ namespace NativeWorldTextProbe
                     for (int i = 0; i < buttons.Length; i++) for (int j = i + 1; j < buttons.Length; j++)
                         Require(!Overlap(Get(Get(buttons[i], "Element"), "Rect"), Get(Get(buttons[j], "Element"), "Rect")), "browser controls cannot overlap at height=" + height + " commands=" + Get(buttons[i], "Command") + "," + Get(buttons[j], "Command"));
                 }
+                CheckCompleteRelations(assembly, catalog, host, page);
                 var draft = Get(page, "query"); Call(draft, "SelectAll"); Call(draft, "Insert", "最后一个字"); Set(page, "editing", 1);
                 Require((bool)Call(page, "RequestFinish") && (string)Get(workspace, "Query") == "最后一个字", "finish commits latest query before releasing editor");
                 Set(page, "leftTail", true); Set(page, "rightTail", true);
@@ -58,6 +62,45 @@ namespace NativeWorldTextProbe
                 Console.WriteLine("PASS: production browser bounded layout, measured text, latest edit commit and closed-page release retirement.");
             }
             finally { ((IDisposable)page).Dispose(); }
+        }
+        internal static ItemRelation LongRelation(object catalog)
+        {
+            var directory = (BrowserCatalog)Get(catalog, "Catalog");
+            return ((IEnumerable<ItemRelation>)Get(catalog, "RecipeValues")).Where(r => r.Ingredients.Count > 0).OrderByDescending(r => r.Ingredients.Max(i => (i.Types.Count > 1 ? i.Label : directory.Find(i.Types[0])?.Name ?? "").Length)).First();
+        }
+        private static void CheckCompleteRelations(Assembly assembly, object catalog, object host, object page)
+        {
+            var directory = (BrowserCatalog)Get(catalog, "Catalog");
+            var recipes = ((IEnumerable<ItemRelation>)Get(catalog, "RecipeValues")).ToArray();
+            var samples = new[] { LongRelation(catalog), recipes.OrderByDescending(r => r.StationName.Length).First(), recipes.First(r => r.Ingredients.Any(i => i.Types.Count > 1)) };
+            foreach (int height in new[] { 297, 580 }) foreach (var recipe in samples)
+            {
+                var state = (BrowserWorkspace)Get(host, "Workspace"); state.Navigate(recipe.Output, false); state.Kind = 0;
+                var choices = ((IEnumerable<ItemRelation>)Call(Get(host, "Sources"), "Find", recipe.Output, false, 0, catalog, Get(host, "Shops"))).ToArray();
+                state.RelationOffset = Array.FindIndex(choices, r => r.Id == recipe.Id);
+                Set(page, "View", Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.F5.F5Rect"), Flags, null, new object[] { 0f, 0f, 522f, (float)height }, null));
+                var recovered = new System.Text.StringBuilder();
+                for (int scroll = 0; scroll < 300; scroll++)
+                {
+                    state.DetailScroll = scroll; Call(page, "Build");
+                    var parts = ((IEnumerable)Get(page, "Parts")).Cast<object>().ToArray();
+                    var body = parts.Where(p => (int)Get(p, "Command") == 0 && (float)Get(Get(Get(p, "Element"), "Rect"), "X") >= (height >= 400 ? 202 : 0) &&
+                        (float)Get(Get(Get(p, "Element"), "Rect"), "Y") >= 160 && (float)Get(Get(Get(p, "Element"), "Rect"), "Y") < height - 102).ToArray();
+                    Require(body.Length > 0, "relation has scrollable body rows");
+                    Require(body.All(p => !((string)Get(Get(p, "Element"), "Text")).EndsWith("…")), "relation text must wrap instead of losing a name or quantity");
+                    bool more = parts.Any(p => (int)Get(p, "Command") == 23 && (int)Get(p, "Argument") == 1 && (bool)Get(p, "Enabled"));
+                    foreach (var part in more ? body.Take(1) : body) recovered.Append((string)Get(Get(part, "Element"), "Text"));
+                    if (!more) break;
+                }
+                string text = recovered.ToString();
+                Require(text.Contains(directory.Find(recipe.Output).Name + " ×" + recipe.Minimum), "full output name and quantity recover through detail scrolling");
+                foreach (var ingredient in recipe.Ingredients)
+                {
+                    string name = ingredient.Types.Count > 1 ? "任选 " + ingredient.Label + "（" + ingredient.Types.Count + " 种）" : directory.Find(ingredient.Types[0]).Name;
+                    Require(text.Contains(name + " ×" + ingredient.Count), "full material/group name and required quantity recover through detail scrolling");
+                }
+                Require(recipe.StationName.Length == 0 || text.Contains("工作台：" + recipe.StationName), "full station requirement recovers through detail scrolling");
+            }
         }
         private static bool Overlap(object a, object b)
         { return (float)Get(a, "X") < (float)Get(b, "Right") && (float)Get(b, "X") < (float)Get(a, "Right") && (float)Get(a, "Y") < (float)Get(b, "Bottom") && (float)Get(b, "Y") < (float)Get(a, "Bottom"); }

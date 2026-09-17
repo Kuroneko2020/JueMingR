@@ -8,6 +8,7 @@ namespace JueMingR.TerrariaHost.F5
     {
         bool Enabled { get; }
         bool CanConfigure { get; }
+        string SettingsMessage { get; }
         bool SetEnabled(bool value);
     }
     internal sealed class AnnouncementControls
@@ -25,6 +26,6 @@ namespace JueMingR.TerrariaHost.F5
         internal bool Available(F5Command command) { return Owns(command) && host.CanConfigure; }
         internal Color? Selected(F5Command command) { return command == F5Command.AnnouncementEnable && host.Enabled ? (Color?)Color.LightGreen : command == F5Command.AnnouncementDisable && !host.Enabled ? (Color?)Color.IndianRed : null; }
         internal void Execute(F5Command command) { if (Available(command)) host.SetEnabled(command == F5Command.AnnouncementEnable); }
-        internal string Hint(F5Command command) { return Owns(command) && !Available(command) ? "宣告设置暂不可用。" : null; }
+        internal string Hint(F5Command command) { return Owns(command) ? host.SettingsMessage : null; }
     }
 }

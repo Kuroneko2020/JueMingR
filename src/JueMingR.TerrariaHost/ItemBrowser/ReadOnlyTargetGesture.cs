@@ -26,7 +26,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         private long tick, expires;
         private int pending;
         private bool picking, released, rawPick, inPass, completed, seenSlot, uiBlocked;
-        private bool uiBoundary, resourceBoundary;
+        private bool uiBoundary, resourceBoundary, preparingPlacement;
         private object player, world, tiles, connection;
         private bool inventory;
         private int chest;
@@ -127,7 +127,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         }
         private void Request(int kind)
         {
-            pending = kind; completed = inPass = seenSlot = uiBlocked = false; hovered = null; expires = tick + 4;
+            pending = kind; preparingPlacement = completed = inPass = seenSlot = uiBlocked = false; hovered = null; expires = tick + 4;
             player = Main.LocalPlayer; world = Main.ActiveWorldFileData; tiles = Main.tile; connection = Netplay.Connection;
             raw = new Vector2(PlayerInput.MouseInfo.X, PlayerInput.MouseInfo.Y); screen = PlayerInput.OriginalScreenSize;
             matrix = Main.UIScaleMatrix; zoom = Main.GameViewMatrix.ZoomMatrix; mouseScale = PlayerInput.RawMouseScale; camera = Main.screenPosition;
@@ -185,6 +185,18 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             if (Busy && (tick > expires || Main.gameMenu || !input.IsFocused || !SessionMatches() || picking && CanPick != null && !CanPick())) { Cancel("未取得有效的新目标，点选或宣告已取消"); return; }
             if (pending == 0 || !completed) return;
             int kind = pending; bool valid = Matches() && (kind == 1 ? CanPick == null || CanPick() : CanAnnounce != null && CanAnnounce()); TargetValue target = seenSlot ? hovered : uiBlocked ? null : frozen;
+            if (valid && target != null && target.Placement != null)
+            {
+                if (!preparingPlacement) { preparingPlacement = true; expires = tick + 180; Feedback?.Invoke("正在准备物品对应资料；移动指针或 Esc 可取消"); }
+                if (input.Hotkeys.IsNew(27)) { Cancel("目标查询已取消"); return; }
+                try
+                {
+                    catalog.StepPlacement();
+                    if (!catalog.PlacementReady) return;
+                    valid = NativeTargetObservation.ResolvePlacement(target, catalog);
+                }
+                catch { valid = false; }
+            }
             pending = 0; completed = false; frozen = hovered = null;
             if (!valid || target == null) { Feedback?.Invoke("目标已变化或被界面遮挡，请重新操作"); if (kind == 1) PickCancelled?.Invoke(); return; }
             if (kind == 1) Picked?.Invoke(target); else Announced?.Invoke(target);

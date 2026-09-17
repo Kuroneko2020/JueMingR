@@ -19,6 +19,12 @@ namespace NativeWorldTextProbe
         {
             Main.gameMenu = Main.mapFullscreen = Main.hideUI = false; Main.netMode = 0;
             Main.maxTilesX = Main.maxTilesY = 64; Main.tile = new Tile[64, 64]; Main.tile[1, 1] = new Tile();
+            Terraria.ObjectData.TileObjectData.Initialize();
+            // Main.Initialize_TileAndNPCData2 sets this exact native fixture flag.
+            Main.tileFrameImportant[21] = true;
+            // The headless probe skips Main.Initialize: its zero-filled arrays
+            // must not masquerade as an enabled glow mask for ordinary tiles.
+            foreach (int tileType in new[] { 0, 1, 21, 144 }) { Main.tileGlowMask[tileType] = -1; Main.tileFlame[tileType] = false; }
             Main.LocalPlayer.position = new Vector2(800, 800); Main.LocalPlayer.gravDir = 1; Main.LocalPlayer.chest = -1;
             Main.GameViewMatrix = new Terraria.Graphics.SpriteViewMatrix(null); Main.GameViewMatrix.SetViewportOverride(new Viewport(0, 0, 960, 640));
             Main.screenPosition = Vector2.Zero; Main.screenWidth = 960; Main.screenHeight = 640;
@@ -31,7 +37,8 @@ namespace NativeWorldTextProbe
             object input = Activator.CreateInstance(inputType, Flags, null, new object[] { (Func<IntPtr>)(() => new IntPtr(1)), (Func<IntPtr>)(() => new IntPtr(1)) }, null);
             FocusHelper.IsSelectedApplication = true; Call(input, "BeginUpdate"); Call(input, "AfterMapping"); Call(input, "AfterKeyboardRefresh");
             var type = assembly.GetType("JueMingR.TerrariaHost.ItemBrowser.ReadOnlyTargetGesture");
-            object gesture = Activator.CreateInstance(type, Flags, null, new[] { input, catalog }, null);
+            object coldCatalog = Activator.CreateInstance(catalog.GetType(), true);
+            object gesture = Activator.CreateInstance(type, Flags, null, new[] { input, coldCatalog }, null);
             try
             {
                 var observer = assembly.GetType("JueMingR.TerrariaHost.ItemBrowser.NativeTargetObservation").GetMethod("World", Flags);
@@ -40,6 +47,18 @@ namespace NativeWorldTextProbe
                 object hidden = observer.Invoke(null, new object[] { new Vector2(20, 20), catalog, true });
                 Require(!((System.Collections.Generic.List<string>)Get(hidden, "Entries")).Exists(s => s.Contains("生命")), "ghost players and hidden NPCs cannot become public actor targets");
                 Main.LocalPlayer.ghost = false; Main.LocalPlayer.position = new Vector2(800, 800); Main.npc[0].active = false;
+                var wallTile = new Tile { type = 1, wall = 4 }; wallTile.active(true); wallTile.invisibleBlock(true); wallTile.fullbrightWall(true);
+                Main.tile[1, 1] = wallTile;
+                object wallTarget = observer.Invoke(null, new object[] { new Vector2(20, 20), catalog, false });
+                Require((int)Get(wallTarget, "ItemType") == (int)Call(catalog, "WallItem", (ushort)4) && (int)Get(wallTarget, "ItemType") > 0,
+                    "visible fullbright wall remains identifiable behind an echo-painted foreground");
+                wallTile.invisibleWall(true);
+                Require((int)Get(observer.Invoke(null, new object[] { new Vector2(20, 20), catalog, false }), "ItemType") == 0,
+                    "hidden wall and foreground are not revealed by the wall light override");
+                var alwaysDrawn = new Tile { type = 144 }; alwaysDrawn.active(true); Main.tile[1, 1] = alwaysDrawn;
+                Require(Terraria.ID.TileID.Sets.IgnoreDrawLightConditions[144] && (int)Get(observer.Invoke(null, new object[] { new Vector2(20, 20), catalog, false }), "ItemType") > 0,
+                    "native IgnoreDrawLightConditions tile remains identifiable without a lighting sample");
+                Main.tile[1, 1] = new Tile();
                 Require((bool)Get(gesture, "Ready"), "fixed native read-only gesture hooks install");
                 Set(gesture, "CanPick", (Func<bool>)(() => true)); Set(gesture, "CanAnnounce", (Func<bool>)(() => true));
                 object result = null; int delivered = 0, cancelled = 0;
@@ -66,6 +85,35 @@ namespace NativeWorldTextProbe
                 Require(!(bool)Get(gesture, "Picking"), "waiting-for-click session replacement cancels old selection");
                 Call(gesture, "Request", 1); uiPass(false); Set(gesture, "CanPick", (Func<bool>)(() => false)); Call(gesture, "Update", 11L);
                 Require(delivered == previous, "modal takeover before delivery vetoes frozen target"); Set(gesture, "CanPick", (Func<bool>)(() => true));
+                var goldChest = new Tile { type = 21, frameX = 36, frameY = 0 }; goldChest.active(true); goldChest.fullbrightBlock(true); Main.tile[1, 1] = goldChest;
+                Call(gesture, "Request", 1); uiPass(false); Call(gesture, "Update", 12L);
+                Require((bool)Get(gesture, "Busy") && (long)Get(coldCatalog, "PlacementReads") == 64, "cold gesture does not synchronously scan every item");
+                Set(gesture, "CanPick", (Func<bool>)(() => false)); Call(gesture, "Update", 13L);
+                long cancelledReads = (long)Get(coldCatalog, "PlacementReads");
+                for (int i = 14; i < 24; i++) Call(gesture, "Update", (long)i);
+                Require(!(bool)Get(gesture, "Busy") && (long)Get(coldCatalog, "PlacementReads") == cancelledReads, "cancelled cold gesture stops placement reads");
+                Set(gesture, "CanPick", (Func<bool>)(() => true));
+                Call(gesture, "Request", 1); uiPass(false);
+                int beforeCold = delivered;
+                for (int update = 24; update < 180 && (bool)Get(gesture, "Busy"); update++)
+                { long reads = (long)Get(coldCatalog, "PlacementReads"); Call(gesture, "Update", (long)update); Require((long)Get(coldCatalog, "PlacementReads") - reads <= 64, "cold placement capture is bounded to 64 metadata entries per update"); }
+                Require(delivered == beforeCold + 1 && (int)Get(result, "ItemType") == Terraria.ID.ItemID.GoldChest,
+                    "first world query resolves the actual gold chest style without opening the browser; delivered=" + (delivered - beforeCold) + "; type=" + Get(result, "ItemType") + "; reads=" + Get(coldCatalog, "PlacementReads") + "; mouse=" + Main.MouseWorld);
+                Require(GetOptional(coldCatalog, "Catalog") == null && (long)Get(coldCatalog, "ItemReads") == 0 && (long)Get(coldCatalog, "RecipeReads") == 0,
+                    "cold world query prepares only placement metadata, never the full catalog or recipe families");
+                long completedReads = (long)Get(coldCatalog, "PlacementReads"); for (int i = 200; i < 320; i++) Call(gesture, "Update", (long)i);
+                Require((long)Get(coldCatalog, "PlacementReads") == completedReads, "completed cold gesture has zero continuing placement work");
+                Call(coldCatalog, "Reset"); var coldWall = new Tile { wall = 4 }; coldWall.fullbrightWall(true); Main.tile[1, 1] = coldWall;
+                int announced = 0; object wallAnnouncement = null;
+                Set(gesture, "Announced", Adapt(type.GetProperty("Announced", Flags).PropertyType, value => { announced++; wallAnnouncement = value; }));
+                Call(gesture, "Request", 2); uiPass(false); long coldTick = (long)Get(gesture, "tick");
+                for (int i = 0; i < 180 && (bool)Get(gesture, "Busy"); i++) Call(gesture, "Update", ++coldTick);
+                Require(announced == 1 && (int)Get(wallAnnouncement, "ItemType") == (int)Call(catalog, "WallItem", (ushort)4), "cold announcement resolves a visible wall without a directory warm-up");
+                Call(coldCatalog, "Reset"); Main.tile[1, 1] = goldChest;
+                Call(gesture, "Request", 1); uiPass(false); Call(gesture, "Update", ++coldTick); goldChest.frameX = 72;
+                int beforeChanged = delivered;
+                for (int i = 0; i < 180 && (bool)Get(gesture, "Busy"); i++) Call(gesture, "Update", ++coldTick);
+                Require(delivered == beforeChanged, "a changed furniture style cancels the frozen cold query instead of substituting another item");
                 // Actual original slot methods are intercepted before transfer.
                 var held = new Item(); held.SetDefaults(9); held.stack = 17; var inventory = new[] { held }; Main.mouseItem = new Item();
                 Set(input, "ReadOnlyMouseMask", 3); Main.mouseLeft = Main.mouseRight = Main.mouseLeftRelease = Main.mouseRightRelease = true;
@@ -84,7 +132,7 @@ namespace NativeWorldTextProbe
                 }
                 Console.WriteLine("PASS: fixed hook installation, fresh UI/empty-slot boundary, timeout/session/modal cancellation, actual ItemSlot safety and all five mapping tails.");
             }
-            finally { ((IDisposable)gesture).Dispose(); Main.mouseLeft = Main.mouseRight = false; }
+            finally { ((IDisposable)gesture).Dispose(); ((IDisposable)coldCatalog).Dispose(); Main.mouseLeft = Main.mouseRight = false; }
         }
         private static Delegate Adapt(Type type, Action<object> callback)
         { var value = Expression.Parameter(type.GetGenericArguments()[0]); return Expression.Lambda(type, Expression.Invoke(Expression.Constant(callback), Expression.Convert(value, typeof(object))), value).Compile(); }

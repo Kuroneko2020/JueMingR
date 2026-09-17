@@ -4,7 +4,9 @@ using System.Linq;
 using System.Reflection;
 using System.Threading;
 using HarmonyLib;
+using JueMingR.Features.Announcements;
 using JueMingR.Platform.Hotkeys;
+using JueMingR.Platform.Settings;
 using Microsoft.Xna.Framework;
 using Terraria;
 using Terraria.Chat;
@@ -21,6 +23,7 @@ namespace NativeWorldTextProbe
         {
             Main.dedServ = true; try { System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(Terraria.Graphics.Capture.CaptureManager).TypeHandle); } finally { Main.dedServ = false; }
             string root = Path.Combine(Terraria.Program.SavePath, "browser-composition"); Directory.CreateDirectory(root);
+            CheckAnnouncementPersistence(assembly, Path.Combine(root, "preferences"));
             Main.gameMenu = Main.hideUI = Main.mapFullscreen = Main.inFancyUI = Main.onlyDrawFancyUI = Main.ingameOptionsWindow = false;
             Main.netMode = Main.myPlayer = 0; Main.LocalPlayer.active = true; Main.LocalPlayer.chest = -1;
             Main.Map = new Terraria.Map.WorldMap(Main.maxTilesX, Main.maxTilesY);
@@ -55,10 +58,12 @@ namespace NativeWorldTextProbe
                 Main.hideUI = true; local = network = 0; Call(announcements, "Submit", value);
                 Require(local == 0 && network == 0, "disabled announcement has no chat outlet");
                 Require((bool)Call(announcements, "SetEnabled", true), "isolated normal preference enables announcement");
+                string statusBeforeSend = (string)Get(announcements, "Status");
                 Main.netMode = 1; Call(announcements, "Submit", value); Call(announcements, "Submit", value);
                 Require(network == 1 && local == 0 && last.Contains("23") && !last.StartsWith("/") && System.Text.Encoding.UTF8.GetByteCount(last) <= 1024, "production client submits one bounded ordinary message and cannot replay within cooldown");
                 Call(Get(announcements, "cooldown"), "Clear"); Main.netMode = 0; Call(announcements, "Submit", value);
                 Require(local == 1 && network == 1, "single player selects the native local processor only");
+                Require((string)Get(announcements, "Status") == statusBeforeSend, "normal announcements do not add a success feedback message");
                 object empty = assembly.GetType("JueMingR.TerrariaHost.ItemBrowser.NativeTargetObservation").GetMethod("UiItem", Flags).Invoke(null, new object[] { 0, 0 });
                 Call(Get(announcements, "cooldown"), "Clear"); Call(announcements, "Submit", empty);
                 Require(local == 1 && network == 1, "empty UI slot never falls back to public world text");
@@ -73,6 +78,41 @@ namespace NativeWorldTextProbe
         }
         private static bool Network(ChatMessage __0) { network++; last = __0.Text; return false; }
         private static bool Local(ChatMessage __0) { local++; last = __0.Text; return false; }
+        private static void CheckAnnouncementPersistence(Assembly assembly, string root)
+        {
+            var type = assembly.GetType("JueMingR.TerrariaHost.Announcements.HostAnnouncements");
+            Func<string, object> create = path => Activator.CreateInstance(type, Flags, null, new object[] { path }, null);
+            object owner = create(root);
+            try
+            {
+                var document = (PreferenceDocument<AnnouncementSettings>)Get(owner, "preferences");
+                Until(() => document.Snapshot.IsLoaded);
+                Require(!(bool)Get(owner, "Enabled") && (bool)Call(owner, "SetEnabled", true), "fresh announcement preference starts off and accepts enable");
+                Until(() => document.Snapshot.Status != PreferenceStatus.Pending);
+                Require(document.Snapshot.Status == PreferenceStatus.Saved, "announcement enable must be committed to the actual isolated file");
+                long revision = document.Snapshot.Revision;
+                Require(!(bool)Call(owner, "SetEnabled", true) && document.Snapshot.Revision == revision, "repeated announcement selection does not enqueue another save");
+            }
+            finally { ((IDisposable)owner).Dispose(); }
+            owner = create(root);
+            try
+            {
+                Until(() => (bool)Get(owner, "CanConfigure"));
+                Require((bool)Get(owner, "Enabled"), "recreated announcement owner restores enabled from disk");
+            }
+            finally { ((IDisposable)owner).Dispose(); }
+            string protectedRoot = Path.Combine(root, "protected"), pathName = Path.Combine(protectedRoot, "JueMingRData", "config", "features", "announcements.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(pathName)); File.WriteAllText(pathName, "invalid-owner-test");
+            owner = create(protectedRoot);
+            try
+            {
+                Until(() => (bool)Get(owner, "CanConfigure"));
+                Require((bool)Call(owner, "SetEnabled", true) && (bool)Get(owner, "Enabled"), "protected preference still permits session-only selection");
+                Require(!string.IsNullOrEmpty((string)Get(owner, "SettingsMessage")), "protected announcement preference has a visible persistence warning");
+            }
+            finally { ((IDisposable)owner).Dispose(); }
+            Require(File.ReadAllText(pathName) == "invalid-owner-test", "protected announcement file is retained unchanged");
+        }
         private static void Until(Func<bool> predicate)
         { var clock = System.Diagnostics.Stopwatch.StartNew(); while (!predicate()) { if (clock.ElapsedMilliseconds > 10000) throw new TimeoutException("browser composition ready"); Thread.Sleep(5); } }
     }

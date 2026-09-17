@@ -18,7 +18,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         private readonly List<ItemRelation> recipes = new List<ItemRelation>();
         private readonly Dictionary<long, int> stations = new Dictionary<long, int>();
         private readonly Dictionary<int, int> walls = new Dictionary<int, int>();
-        private int itemCursor = 1, recipeCursor, failures;
+        private int itemCursor = 1, placementCursor = 1, recipeCursor, failures;
         internal int ExcludedIdentities { get; private set; }
         private bool dirty;
         private object world;
@@ -29,8 +29,9 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         internal long Revision { get; private set; }
         internal string Status { get; private set; } = "打开查询页后准备资料";
         internal bool Ready { get { return Catalog != null && Recipes != null && !dirty; } }
+        internal bool PlacementReady { get { return !dirty && (placementCursor >= ItemID.Count || itemCursor >= ItemID.Count); } }
 #if DEBUG
-        internal long ItemReads, RecipeReads;
+        internal long ItemReads, RecipeReads, PlacementReads;
         internal Exception CaptureFailure;
 #endif
         internal NativeItemCatalog() { LanguageManager.Instance.OnLanguageChanged += LanguageChanged; }
@@ -67,12 +68,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
                         if (sample.type <= 0 || sample.type != itemCursor) { ExcludedIdentities++; continue; }
                         sample = sample.Clone(); sample.Refresh(); // Own display sample; never mutate ContentSamples.
                         items.Add(CaptureItem(sample));
-                        if (sample.createTile >= 0)
-                        {
-                            long key = ((long)sample.createTile << 32) | (uint)sample.placeStyle;
-                            int old; stations[key] = stations.TryGetValue(key, out old) && old != sample.type ? -1 : sample.type;
-                        }
-                        if (sample.createWall > 0) { int old; walls[sample.createWall] = walls.TryGetValue(sample.createWall, out old) && old != sample.type ? -1 : sample.type; }
+                        CapturePlacement(sample);
 #if DEBUG
                         ItemReads++;
 #endif
@@ -101,17 +97,43 @@ namespace JueMingR.TerrariaHost.ItemBrowser
                 _ = error;
 #endif
                 failures++; Catalog = null; Recipes = null; items.Clear(); recipes.Clear(); stations.Clear(); walls.Clear();
-                itemCursor = 1; recipeCursor = ExcludedIdentities = 0;
+                itemCursor = placementCursor = 1; recipeCursor = ExcludedIdentities = 0;
                 Status = "原版资料读取未完成（" + failures + "/3）";
             }
         }
         private void Reset()
-        { dirty = false; itemCursor = 1; recipeCursor = failures = ExcludedIdentities = 0; items.Clear(); recipes.Clear(); stations.Clear(); walls.Clear(); Catalog = null; Recipes = null; Revision++; }
-        internal int WallItem(int wall) { int type; return Ready && walls.TryGetValue(wall, out type) && type > 0 ? type : 0; }
+        { dirty = false; itemCursor = placementCursor = 1; recipeCursor = failures = ExcludedIdentities = 0; items.Clear(); recipes.Clear(); stations.Clear(); walls.Clear(); Catalog = null; Recipes = null; Revision++; }
+        // A cold world gesture needs only canonical placement metadata. It does
+        // not materialize descriptions, recipes, drops, shops, or the directory.
+        // The gesture owns the demand and cancellation; no background warm-up.
+        internal void StepPlacement()
+        {
+            ObserveContext(); if (dirty) Reset();
+            if (PlacementReady || ContentSamples.ItemsByType.Count < ItemID.Count) return;
+            int end = Math.Min(ItemID.Count, placementCursor + 64);
+            for (; placementCursor < end; placementCursor++)
+            {
+                Item sample = ContentSamples.ItemsByType[placementCursor];
+                if (sample.type == placementCursor) CapturePlacement(sample);
+#if DEBUG
+                PlacementReads++;
+#endif
+            }
+        }
+        private void CapturePlacement(Item sample)
+        {
+            if (sample.createTile >= 0)
+            {
+                long key = ((long)sample.createTile << 32) | (uint)sample.placeStyle;
+                int old; stations[key] = stations.TryGetValue(key, out old) && old != sample.type ? -1 : sample.type;
+            }
+            if (sample.createWall > 0) { int old; walls[sample.createWall] = walls.TryGetValue(sample.createWall, out old) && old != sample.type ? -1 : sample.type; }
+        }
+        internal int WallItem(int wall) { int type; return PlacementReady && walls.TryGetValue(wall, out type) && type > 0 ? type : 0; }
         private static readonly System.Reflection.FieldInfo tileData = typeof(Terraria.ObjectData.TileObjectData).GetField("_data", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
         internal int PlacedItem(Tile tile)
         {
-            if (!Ready || tile == null || !tile.active()) return 0;
+            if (!PlacementReady || tile == null || !tile.active()) return 0;
             int style = 0;
             if (Main.tileFrameImportant[tile.type])
             {

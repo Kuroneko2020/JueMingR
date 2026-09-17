@@ -115,6 +115,8 @@ namespace NativeWorldTextProbe
             }
         }
         internal void Scene(WorldObjectTextWorldLayer layer, string output)
+        { Scene(() => layer.Draw(), output); }
+        internal void Scene(Action overlay, string output)
         {
             Image(output, () =>
             {
@@ -131,7 +133,7 @@ namespace NativeWorldTextProbe
                     batch.Draw(texture, position, new Rectangle(frameX, frameY, 16, height), Color.White, 0, Vector2.Zero, 1,
                         Terraria.Main.LocalPlayer.gravDir == -1 ? SpriteEffects.FlipVertically : SpriteEffects.None, 0);
                 }
-                layer.Draw();
+                overlay();
             }, Terraria.Main.GameViewMatrix.ZoomMatrix);
         }
         private Texture2D TileTexture(int type)

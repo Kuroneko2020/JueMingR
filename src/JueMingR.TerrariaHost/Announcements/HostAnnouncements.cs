@@ -21,6 +21,16 @@ namespace JueMingR.TerrariaHost.Announcements
         private long feedbackAt = -1;
         public bool Enabled { get { return preferences.Snapshot.IsLoaded && preferences.Snapshot.Value.Enabled; } }
         public bool CanConfigure { get { return preferences.Snapshot.IsLoaded; } }
+        public string SettingsMessage
+        {
+            get
+            {
+                var snapshot = preferences.Snapshot;
+                return !snapshot.IsLoaded ? "正在加载宣告设置。" : snapshot.CommitUnconfirmed ? "无法确认宣告设置是否保存成功；本次仍可使用，原文件已保护。" :
+                    snapshot.Status == PreferenceStatus.Missing || snapshot.Status == PreferenceStatus.Pending || snapshot.Status == PreferenceStatus.Saved ? null :
+                    "宣告设置加载或保存失败；当前修改仅本次有效，原文件已保留。";
+            }
+        }
         internal string Status { get; private set; } = "默认关闭；请设置自己的宣告快捷键";
         internal HostAnnouncements(string directory)
         {
@@ -46,7 +56,8 @@ namespace JueMingR.TerrariaHost.Announcements
                 if (Main.netMode == 1) ChatHelper.SendChatMessageFromClient(message);
                 else if (Main.netMode == 0) ChatManager.Commands.ProcessIncomingMessage(message, Main.myPlayer);
                 else return;
-                Feedback(Main.netMode == 1 ? "已提交宣告；是否收到请由队友确认" : "已在本地显示宣告");
+                // The ordinary chat message is the only successful-send feedback.
+                // The native client outlet does not confirm server receipt.
             }
             catch { Feedback("宣告提交失败，未自动重试"); }
         }

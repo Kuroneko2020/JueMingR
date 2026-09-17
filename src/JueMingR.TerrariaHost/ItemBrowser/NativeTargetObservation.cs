@@ -14,6 +14,9 @@ namespace JueMingR.TerrariaHost.ItemBrowser
     {
         internal int ItemType, Quantity;
         internal bool EmptyAir, UiSlot;
+        internal Tile Placement;
+        internal bool WallPlacement;
+        internal int PlacementX, PlacementY, PlacementEntry;
         internal readonly List<string> Entries = new List<string>();
     }
     internal static class NativeTargetObservation
@@ -29,6 +32,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         }
         internal static TargetValue World(Vector2 point, NativeItemCatalog catalog, bool announcement)
         {
+            catalog.ObserveContext();
             var value = new TargetValue();
             if (Main.mapFullscreen) { value.Entries.Add("大地图已打开，无法确定世界目标"); return value; }
             Point position = point.ToPoint();
@@ -43,7 +47,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
                 NPC npc = Main.npc[i]; if (npc == null || !npc.active || npc.hide || npc.life <= 0 || !npc.Hitbox.Contains(position)) continue;
                 value.Entries.Add(Name(npc.FullName) + " 生命 " + npc.life + "/" + npc.lifeMax);
             }
-            if (value.Entries.Count != 0) return value;
+            if (value.Entries.Count != 0) { if (value.Entries.Count >= 12) value.Entries.Add("目标较多，仅列出前 12 个"); return value; }
             for (int i = 0; i < Main.item.Length; i++)
             {
                 WorldItem drop = Main.item[i]; if (drop == null || !drop.active || drop.inner == null || drop.inner.IsAir || !drop.Hitbox.Contains(position)) continue;
@@ -66,21 +70,31 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             bool lit = false; try { Color color = Lighting.GetColor(x, y); lit = color.R > 0 || color.G > 0 || color.B > 0; } catch { }
             bool echo = Main.ShouldShowInvisibleBlocksAndWalls();
             bool tileHidden = tile.invisibleBlock() || tile.type == 541 || tile.type == 631 || tile.type == 19 && tile.frameY / 18 == 48;
-            bool visibleTile = tile.active() && (!tileHidden || echo) && (lit || tile.fullbrightBlock() || VisionReveals(tile, x, y));
+            // Native DrawSingleTile admits these declared light-independent
+            // layers before its separate echo gate. Light is not visibility.
+            bool drawWithoutLight = tile.fullbrightBlock() || TileID.Sets.IgnoreDrawLightConditions[tile.type] ||
+                Main.tileGlowMask[tile.type] != -1 || Main.tileFlame[tile.type] ||
+                tile.wall > 0 && (tile.wall == 318 || tile.fullbrightWall());
+            bool visibleTile = tile.active() && (!tileHidden || echo) && (lit || drawWithoutLight || VisionReveals(tile, x, y));
             if (visibleTile)
             {
                 int item = catalog.PlacedItem(tile);
                 value.ItemType = item; value.Quantity = item > 0 ? 1 : 0;
-                string name = item > 0 ? Lang.GetItemNameValue(item) : Lang.GetMapObjectName(MapHelper.TileToLookup(tile.type, 0));
-                value.Entries.Add(Name(string.IsNullOrEmpty(name) ? "可见物件" : name));
+                value.Entries.Add(item > 0 ? Name(Lang.GetItemNameValue(item)) : "可见物件（暂无可靠物品对应）");
+                FreezePlacement(value, tile, x, y, false, catalog);
             }
             if (lit && tile.liquid > 0 && (!tile.active() || !Main.tileSolid[tile.type] || Main.tileSolidTop[tile.type] || tile.inActive()))
                 value.Entries.Add(tile.liquidType() == 1 ? "熔岩" : tile.liquidType() == 2 ? "蜂蜜" : tile.liquidType() == 3 ? "微光" : "水");
             value.Entries.AddRange(wires);
-            if (value.Entries.Count == 0 && tile.wall > 0 && (!tile.invisibleWall() && tile.wall != 318 || echo) && (lit || tile.fullbrightWall()) && !tile.active())
+            // WallDrawing.FullTile explicitly does not occlude walls behind an
+            // echo-painted foreground when echo vision is off. Keep the wall's
+            // own echo gate independent, including fullbright hidden walls.
+            bool wallExposed = !tile.active() || tile.invisibleBlock() && !echo;
+            if (value.Entries.Count == 0 && tile.wall > 0 && (!tile.invisibleWall() && tile.wall != 318 || echo) && (lit || tile.fullbrightWall() || tile.wall == 318 && echo) && wallExposed)
             {
                 int item = catalog.WallItem(tile.wall); value.ItemType = item; value.Quantity = item > 0 ? 1 : 0;
                 value.Entries.Add(Name(item > 0 ? Lang.GetItemNameValue(item) : "背景墙"));
+                FreezePlacement(value, tile, x, y, true, catalog);
             }
             if (value.Entries.Count == 0)
             {
@@ -88,6 +102,24 @@ namespace JueMingR.TerrariaHost.ItemBrowser
                 value.Entries.Add(value.EmptyAir ? "这里是空气" : "这里看不清，无法确认目标");
             }
             return value;
+        }
+        private static void FreezePlacement(TargetValue value, Tile tile, int x, int y, bool wall, NativeItemCatalog catalog)
+        {
+            if (catalog.PlacementReady) return;
+            value.Placement = new Tile(); value.Placement.CopyFrom(tile);
+            value.PlacementX = x; value.PlacementY = y; value.WallPlacement = wall; value.PlacementEntry = value.Entries.Count - 1;
+        }
+        internal static bool ResolvePlacement(TargetValue value, NativeItemCatalog catalog)
+        {
+            Tile observed = value.Placement, current = Main.tile[value.PlacementX, value.PlacementY];
+            // Resolve only the frozen target. A changed tile cancels instead of
+            // silently declaring a replacement after the bounded cold capture.
+            if (current == null || current.type != observed.type || current.wall != observed.wall || current.frameX != observed.frameX || current.frameY != observed.frameY ||
+                current.active() != observed.active() || current.invisibleBlock() != observed.invisibleBlock() || current.invisibleWall() != observed.invisibleWall()) return false;
+            int item = value.WallPlacement ? catalog.WallItem(observed.wall) : catalog.PlacedItem(observed);
+            value.ItemType = item; value.Quantity = item > 0 ? 1 : 0;
+            if (item > 0) value.Entries[value.PlacementEntry] = Name(Lang.GetItemNameValue(item));
+            value.Placement = null; return true;
         }
         private static bool VisionReveals(Tile tile, int x, int y)
         {

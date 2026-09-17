@@ -244,7 +244,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             pageSize = columns * rows; int start = Math.Max(0, Math.Min(host.Workspace.CatalogOffset, Math.Max(0, matches.Length - 1)));
             for (int i = start; i < matches.Length && i < start + pageSize; i++)
             { int n = i - start; Icon(matches[i], bounds.X + n % columns * 46, bounds.Y + n / columns * 46, 42); }
-            if (matches.Length == 0) Label(BrowserCatalog.ClassifyQuery(host.Workspace.Query) < 0 ? "ID 格式不正确" : "没有匹配物品", bounds.X, bounds.Y, bounds.Width, row);
+            if (matches.Length == 0) Label(host.Native.Catalog == null ? "正在准备物品目录…" : BrowserCatalog.ClassifyQuery(host.Workspace.Query) < 0 ? "ID 格式不正确" : "没有匹配物品", bounds.X, bounds.Y, bounds.Width, row);
             Button(12, 0, "上一页", bounds.X, bounds.Bottom - row, bounds.Width / 2 - 2, row, start > 0);
             Button(13, 0, "下一页", bounds.X + bounds.Width / 2 + 2, bounds.Bottom - row, bounds.Width / 2 - 2, row, start + pageSize < matches.Length);
         }
@@ -285,13 +285,13 @@ namespace JueMingR.TerrariaHost.ItemBrowser
                 else
                 {
                     AddWrapped(lines, relation.Title + " · " + (s.RelationOffset + 1) + "/" + relations.Count, contentWidth);
-                    lines.Add(Tuple.Create((host.Native.Catalog?.Find(relation.Output)?.Name ?? "产物") + " ×" + relation.Minimum + (relation.Maximum == relation.Minimum ? "" : "–" + relation.Maximum), relation.Output, -1));
+                    AddRelationText(lines, (host.Native.Catalog?.Find(relation.Output)?.Name ?? "产物") + " ×" + relation.Minimum + (relation.Maximum == relation.Minimum ? "" : "–" + relation.Maximum), contentWidth, relation.Output, -1);
                     for (int i = 0; i < relation.Ingredients.Count; i++)
                     {
                         var ingredient = relation.Ingredients[i]; string name = ingredient.Types.Count > 1 ? "任选 " + ingredient.Label + "（" + ingredient.Types.Count + " 种）" : host.Native.Catalog?.Find(ingredient.Types[0])?.Name ?? "物品";
-                        lines.Add(Tuple.Create(name + " ×" + ingredient.Count, ingredient.Types[0], ingredient.Types.Count > 1 ? i : -1));
+                        AddRelationText(lines, name + " ×" + ingredient.Count, contentWidth, ingredient.Types[0], ingredient.Types.Count > 1 ? i : -1);
                     }
-                    if (relation.StationName.Length > 0) lines.Add(Tuple.Create("工作台：" + relation.StationName, relation.Station, -1));
+                    if (relation.StationName.Length > 0) AddRelationText(lines, "工作台：" + relation.StationName, contentWidth, relation.Station, -1);
                     AddWrapped(lines, relation.Conditions, contentWidth);
                 }
                 AddWrapped(lines, "内部名 " + item.InternalName + "；基础价值 " + item.BaseValue + " 铜币（非当前成交价）", contentWidth);
@@ -335,6 +335,14 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             HintPanel = new F5Rect(x, y, width, height);
             for (int i = 0; i < count; i++)
             { string text = i == count - 1 && count < lines.Count ? "更多说明可在详情中滚动查看" : lines[i].Item1; HintLines.Add(new F5Element(F5ElementKind.Text, new F5Rect(x + 8, y + 6 + i * row, width - 16, row), text, shell.Layout.TextSize(text, .7f), .7f, F5Command.None)); }
+        }
+        private void AddRelationText(List<Tuple<string, int, int>> lines, string text, float width, int type, int groupIndex)
+        {
+            // Names and quantities belong to one complete relation, not a label
+            // ellipsis. Every continuation remains reachable by detail scrolling.
+            int first = lines.Count;
+            AddWrapped(lines, text, width - (type > 0 ? row : 0) - (groupIndex >= 0 ? 60 : 0));
+            if (lines.Count > first) lines[first] = Tuple.Create(lines[first].Item1, type, groupIndex);
         }
         private void AddWrapped(List<Tuple<string, int, int>> lines, string text, float width)
         {

@@ -28,20 +28,29 @@ namespace JueMingR.Features.Announcements
         public static string Build(IEnumerable<string> entries, int byteBudget = 1024)
         {
             const string prefix = "[c/FFD966:"; const string suffix = "]";
+            const string omittedText = "部分内容已省略";
             if (byteBudget < 32) return "";
-            var body = new StringBuilder(); int bytes = Encoding.UTF8.GetByteCount(prefix + suffix), count = 0;
+            var accepted = new List<string>(); int bytes = Encoding.UTF8.GetByteCount(prefix + suffix), count = 0;
+            bool omitted = false;
             foreach (string entry in entries)
             {
-                if (++count > 24) break;
-                if (string.IsNullOrEmpty(entry) || entry.Length > 1024) continue;
+                if (++count > 24) { omitted = true; break; }
+                if (string.IsNullOrEmpty(entry) || entry.Length > 1024) { omitted = true; continue; }
                 // Entries are already composed from sanitized names and trusted
                 // punctuation. Reject unexpected tags rather than nesting parsers.
-                if (entry.IndexOf('[') >= 0 || entry.IndexOf(']') >= 0 || !TextElements.IsValid(entry)) continue;
-                int next = Encoding.UTF8.GetByteCount(entry) + (body.Length == 0 ? 0 : Encoding.UTF8.GetByteCount("；"));
-                if (bytes + next > byteBudget) continue;
-                if (body.Length != 0) body.Append('；'); body.Append(entry); bytes += next;
+                if (entry.IndexOf('[') >= 0 || entry.IndexOf(']') >= 0 || !TextElements.IsValid(entry)) { omitted = true; continue; }
+                int next = Encoding.UTF8.GetByteCount(entry) + (accepted.Count == 0 ? 0 : 3);
+                if (bytes + next > byteBudget) { omitted = true; continue; }
+                accepted.Add(entry); bytes += next;
             }
-            return body.Length == 0 ? "" : prefix + body + suffix;
+            if (omitted)
+            {
+                int notice = Encoding.UTF8.GetByteCount(omittedText);
+                while (accepted.Count > 0 && bytes + 3 + notice > byteBudget)
+                { int last = accepted.Count - 1; bytes -= Encoding.UTF8.GetByteCount(accepted[last]) + (last == 0 ? 0 : 3); accepted.RemoveAt(last); }
+                if (bytes + (accepted.Count == 0 ? 0 : 3) + notice <= byteBudget) accepted.Add(omittedText);
+            }
+            return accepted.Count == 0 ? "" : prefix + string.Join("；", accepted) + suffix;
         }
     }
 }

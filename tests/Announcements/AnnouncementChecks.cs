@@ -16,6 +16,9 @@ namespace JueMingR.ArchitectureTests
             if (clean("Á😀B", 2) != "Á😀") failures.Add("G04 name limits preserve complete Unicode text elements");
             string message = (string)type.GetMethod("Build").Invoke(null, new object[] { new[] { "甲", new string('中', 600), "乙" }, 100 });
             if (Encoding.UTF8.GetByteCount(message) > 100 || !message.Contains("甲") || message.Contains("中")) failures.Add("G04 final encoded budget must retain only complete entries including color wrapper");
+            if (!message.Contains("省略")) failures.Add("G04 omitted complete entries must be visible within the final byte budget");
+            string complete = (string)type.GetMethod("Build").Invoke(null, new object[] { new[] { "甲", "乙" }, 100 });
+            if (complete.Contains("省略")) failures.Add("G04 complete announcements must not claim omission");
             Type clock = type.Assembly.GetType("JueMingR.Features.Announcements.AnnouncementCooldown");
             object cooldown = Activator.CreateInstance(clock);
             Func<long, bool, bool> take = (now, air) => (bool)clock.GetMethod("TryTake").Invoke(cooldown, new object[] { now, air });
