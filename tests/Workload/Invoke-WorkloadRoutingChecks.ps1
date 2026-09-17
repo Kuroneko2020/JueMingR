@@ -38,6 +38,10 @@ try {
         'src/JueMingR.Features/MapMarkers/MarkerLibrary.cs' = 'map-host';
         'src/JueMingR.Features/Exploration/ExplorationCounter.cs' = 'map-host';
         'src/JueMingR.Features/Footprints/FootprintRecorder.cs' = 'footprints-host';
+        'src/JueMingR.TerrariaHost/ItemBrowser/NativeItemCatalog.cs' = 'browser-host';
+        'src/JueMingR.Platform/ItemCatalog/CatalogItem.cs' = 'browser-host';
+        'src/JueMingR.Features/ChestLocator/ChestKnowledge.cs' = 'browser-host';
+        'src/JueMingR.Features/Announcements/SafeChatText.cs' = 'browser-host';
         'src/JueMingR.Features/Text/TextEditBuffer.cs' = 'notes-host';
         'src/JueMingR.TerrariaHost/Map/FullscreenMapDrawing.cs' = 'map-host';
         'docs/guide.md' = 'core'

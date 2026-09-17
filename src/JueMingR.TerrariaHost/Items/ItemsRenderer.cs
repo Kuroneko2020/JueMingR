@@ -95,6 +95,10 @@ namespace JueMingR.TerrariaHost.Items
             if (type <= 0 || type >= TextureAssets.Item.Length) return;
             Main.instance.LoadItem(type);
             Texture2D texture = TextureAssets.Item[type]?.Value;
+            PreparedItem(type, texture, rect);
+        }
+        internal void PreparedItem(int type, Texture2D texture, F5Rect rect)
+        {
             if (texture == null || texture.IsDisposed) return;
             Rectangle frame = Main.itemAnimations[type] == null ? texture.Bounds : Main.itemAnimations[type].GetFrame(texture);
             float scale = Math.Min(1, Math.Min((rect.Width - 4) / frame.Width, (rect.Height - 4) / frame.Height));

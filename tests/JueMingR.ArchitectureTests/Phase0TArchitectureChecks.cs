@@ -12,6 +12,10 @@ namespace JueMingR.ArchitectureTests
             Assembly features = Assembly.Load("JueMingR.Features");
             var expected = new HashSet<string>(StringComparer.Ordinal)
             {
+                "JueMingR.Features.ItemBrowser.BrowserCatalog", "JueMingR.Features.ItemBrowser.RelationIndex", "JueMingR.Features.ItemBrowser.BrowserWorkspace",
+                "JueMingR.Features.ChestLocator.ChestKnowledge",
+                "JueMingR.Features.Announcements.AnnouncementCooldown", "JueMingR.Features.Announcements.AnnouncementSettings",
+                "JueMingR.Features.Announcements.AnnouncementCodec", "JueMingR.Features.Announcements.SafeChatText",
                 "JueMingR.Features.Footprints.FootprintArchive", "JueMingR.Features.Footprints.FootprintRecorder",
                 "JueMingR.Features.Footprints.FootprintPlayback", "JueMingR.Features.Footprints.FootprintClearConfirmation",
                 "JueMingR.Features.Footprints.FootprintStore", "JueMingR.Features.Footprints.FootprintStoreState",

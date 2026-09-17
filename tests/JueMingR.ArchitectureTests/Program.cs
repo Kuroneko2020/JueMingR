@@ -10,6 +10,12 @@ namespace JueMingR.ArchitectureTests
         {
             try
             {
+                if (args.Length == 1 && args[0] == "--item-browser")
+                {
+                    var checks = new List<string>(); BrowserCoreChecks.Check(checks); RelationChecks.Check(checks); BrowserHistoryChecks.Check(checks); ChestKnowledgeChecks.Check(checks); AnnouncementChecks.Check(checks);
+                    foreach (string failure in checks) Console.Error.WriteLine(failure);
+                    return checks.Count == 0 ? 0 : 1;
+                }
                 if (args.Length == 1 && args[0] == "--footprints")
                 {
                     var checks = new List<string>(); FootprintCoreChecks.Check(checks); FootprintFileChecks.Check(checks); FootprintWorkerChecks.Check(checks);
@@ -61,6 +67,10 @@ namespace JueMingR.ArchitectureTests
                 RepositoryModel model = RepositoryModel.Load(repositoryRoot);
                 var failures = new List<string>();
                 ArchitectureChecks.Check(model, failures);
+                BrowserCoreChecks.Check(failures);
+                RelationChecks.Check(failures);
+                BrowserHistoryChecks.Check(failures);
+                ChestKnowledgeChecks.Check(failures); AnnouncementChecks.Check(failures);
                 FootprintCoreChecks.Check(failures);
                 FootprintFileChecks.Check(failures);
                 FootprintWorkerChecks.Check(failures);

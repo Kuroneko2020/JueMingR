@@ -44,6 +44,10 @@ $native = Build-WorkloadFixture 'NativeWorldTextProbe'
 Invoke-WorkloadCheck 'core-native-host' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'native-cpu'), 'WorkloadCpu')
 if ($route.groups -contains 'shared-host') { Invoke-WorkloadCheck 'information-native-host' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'information-cpu'), 'InformationCpu') }
 if ($route.groups -contains 'shared-host') { Invoke-WorkloadCheck 'guidance-native-host' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'guidance-cpu'), 'GuidanceCpu') }
+if ($route.groups -contains 'browser-host') {
+    Invoke-WorkloadCheck 'browser-core-contracts' $architecture @('--item-browser')
+    Invoke-WorkloadCheck 'browser-native-execution' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'browser-cpu'), 'BrowserCpu')
+}
 if ($route.groups -contains 'death-host') {
     Invoke-WorkloadCheck 'death-history-storage-workload' $architecture @('--death-history')
     Invoke-WorkloadCheck 'death-native-execution' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'death-cpu'), 'DeathCpu')

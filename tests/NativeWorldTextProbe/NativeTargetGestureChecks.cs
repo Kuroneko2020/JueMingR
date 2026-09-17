@@ -1,0 +1,94 @@
+using System;
+using System.Collections.Generic;
+using System.Linq.Expressions;
+using System.Reflection;
+using JueMingR.Platform.Hotkeys;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
+using Terraria;
+using Terraria.GameInput;
+using static NativeWorldTextProbe.NativeInformationChecks;
+
+namespace NativeWorldTextProbe
+{
+    internal static class NativeTargetGestureChecks
+    {
+        private const BindingFlags Flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance;
+        internal static void Run(Assembly assembly, object catalog)
+        {
+            Main.gameMenu = Main.mapFullscreen = Main.hideUI = false; Main.netMode = 0;
+            Main.maxTilesX = Main.maxTilesY = 64; Main.tile = new Tile[64, 64]; Main.tile[1, 1] = new Tile();
+            Main.LocalPlayer.position = new Vector2(800, 800); Main.LocalPlayer.gravDir = 1; Main.LocalPlayer.chest = -1;
+            Main.GameViewMatrix = new Terraria.Graphics.SpriteViewMatrix(null); Main.GameViewMatrix.SetViewportOverride(new Viewport(0, 0, 960, 640));
+            Main.screenPosition = Vector2.Zero; Main.screenWidth = 960; Main.screenHeight = 640;
+            typeof(Main).GetField("_uiScaleMatrix", Flags).SetValue(null, Matrix.Identity);
+            typeof(PlayerInput).GetField("_originalScreenWidth", Flags).SetValue(null, 960); typeof(PlayerInput).GetField("_originalScreenHeight", Flags).SetValue(null, 640);
+            typeof(PlayerInput).GetField("RawMouseScale", Flags).SetValue(null, Vector2.One);
+            PlayerInput.Triggers.Initialize(); Main.keyState = new KeyboardState(); Main.mouseX = Main.mouseY = 20;
+            PlayerInput.MouseInfo = new MouseState(20, 20, 0, ButtonState.Released, ButtonState.Released, ButtonState.Released, ButtonState.Released, ButtonState.Released);
+            var inputType = assembly.GetType("JueMingR.TerrariaHost.Input.HostInputState");
+            object input = Activator.CreateInstance(inputType, Flags, null, new object[] { (Func<IntPtr>)(() => new IntPtr(1)), (Func<IntPtr>)(() => new IntPtr(1)) }, null);
+            FocusHelper.IsSelectedApplication = true; Call(input, "BeginUpdate"); Call(input, "AfterMapping"); Call(input, "AfterKeyboardRefresh");
+            var type = assembly.GetType("JueMingR.TerrariaHost.ItemBrowser.ReadOnlyTargetGesture");
+            object gesture = Activator.CreateInstance(type, Flags, null, new[] { input, catalog }, null);
+            try
+            {
+                var observer = assembly.GetType("JueMingR.TerrariaHost.ItemBrowser.NativeTargetObservation").GetMethod("World", Flags);
+                Main.LocalPlayer.position = new Vector2(16, 16); Main.LocalPlayer.name = "ghost sentinel"; Main.LocalPlayer.ghost = true;
+                Main.npc[0] = new NPC { active = true, hide = true, life = 10, lifeMax = 20, position = new Vector2(16, 16), width = 32, height = 32 };
+                object hidden = observer.Invoke(null, new object[] { new Vector2(20, 20), catalog, true });
+                Require(!((System.Collections.Generic.List<string>)Get(hidden, "Entries")).Exists(s => s.Contains("生命")), "ghost players and hidden NPCs cannot become public actor targets");
+                Main.LocalPlayer.ghost = false; Main.LocalPlayer.position = new Vector2(800, 800); Main.npc[0].active = false;
+                Require((bool)Get(gesture, "Ready"), "fixed native read-only gesture hooks install");
+                Set(gesture, "CanPick", (Func<bool>)(() => true)); Set(gesture, "CanAnnounce", (Func<bool>)(() => true));
+                object result = null; int delivered = 0, cancelled = 0;
+                Set(gesture, "Picked", Adapt(type.GetProperty("Picked", Flags).PropertyType, value => { delivered++; result = value; }));
+                Set(gesture, "PickCancelled", (Action)(() => cancelled++));
+                Action<bool> uiPass = blocked => { Call(gesture, "BeginPass"); Main.LocalPlayer.mouseInterface = blocked; Main.mouseText = blocked; Call(gesture, "BeforeWorldHover"); Call(gesture, "AfterResources", true); Main.mouseText = true; Call(gesture, "EndPass", true); };
+                Call(gesture, "Request", 1); uiPass(false); Call(gesture, "Update", 1L);
+                Require(delivered == 1 && result != null, "world tooltip flag after UI boundary is not UI遮挡");
+                Call(gesture, "Request", 1); uiPass(true); Call(gesture, "Update", 2L);
+                Require(delivered == 1 && cancelled == 1, "fresh UI boundary vetoes world target");
+                Call(gesture, "Request", 1); Call(gesture, "BeginPass"); Call(gesture, "Hover", new Item[] { new Item() }, 0, 0);
+                Main.LocalPlayer.mouseInterface = true; Main.mouseText = false; Call(gesture, "BeforeWorldHover"); Call(gesture, "AfterResources", true); Call(gesture, "EndPass", true); Call(gesture, "Update", 3L);
+                Require(delivered == 2 && (bool)Get(result, "UiSlot") && (int)Get(result, "ItemType") == 0, "fresh empty slot wins over frozen world target");
+                foreach (int context in new[] { 22, 41, 42 })
+                {
+                    var sample = new Item(); sample.SetDefaults(9); sample.stack = 123;
+                    Call(gesture, "Request", 1); Call(gesture, "BeginPass"); Call(gesture, "Hover", new[] { sample }, context, 0);
+                    Call(gesture, "BeforeWorldHover"); Call(gesture, "AfterResources", true); Call(gesture, "EndPass", true); Call(gesture, "Update", 3L);
+                    Require((int)Get(result, "ItemType") == 0, "craft sample context never becomes possessed stack " + context);
+                }
+                int previous = delivered; Call(gesture, "Request", 1); Call(gesture, "BeginPass"); Call(gesture, "EndPass", true); Call(gesture, "Update", 9L);
+                Require(delivered == previous && !(bool)Get(gesture, "Busy"), "UI pass missing concrete hover boundary times out without fallback");
+                Call(gesture, "BeginPick"); Main.tile = new Tile[64, 64]; Call(gesture, "Update", 10L);
+                Require(!(bool)Get(gesture, "Picking"), "waiting-for-click session replacement cancels old selection");
+                Call(gesture, "Request", 1); uiPass(false); Set(gesture, "CanPick", (Func<bool>)(() => false)); Call(gesture, "Update", 11L);
+                Require(delivered == previous, "modal takeover before delivery vetoes frozen target"); Set(gesture, "CanPick", (Func<bool>)(() => true));
+                // Actual original slot methods are intercepted before transfer.
+                var held = new Item(); held.SetDefaults(9); held.stack = 17; var inventory = new[] { held }; Main.mouseItem = new Item();
+                Set(input, "ReadOnlyMouseMask", 3); Main.mouseLeft = Main.mouseRight = Main.mouseLeftRelease = Main.mouseRightRelease = true;
+                Terraria.UI.ItemSlot.LeftClick(inventory, 0, 0); Terraria.UI.ItemSlot.RightClick(inventory, 0, 0);
+                Require(ReferenceEquals(inventory[0], held) && held.stack == 17 && Main.mouseItem.IsAir, "actual ItemSlot click outlets leave all items untouched");
+                Set(input, "ReadOnlyMouseMask", 0);
+                for (int mouse = 0; mouse < 5; mouse++)
+                {
+                    int bit = 1 << mouse; Set(input, "ClaimsReadOnlyGesture", (Func<int, int, int>)((down, press) => press));
+                    PlayerInput.MouseInfo = Mouse(mouse); var tokens = new List<string> { "Mouse" + (mouse + 1), "K" };
+                    Call(input, "AfterNativeMouse", tokens);
+                    Require(tokens.Count == 1 && tokens[0] == "K" && ((int)Get(input, "ReadOnlyMouseMask") & bit) != 0, "five-button mapping consumes only owned mouse token");
+                    PlayerInput.MouseInfo = new MouseState(); Call(input, "AfterNativeMouse", tokens);
+                    Require(((int)Get(input, "ReadOnlyMouseMask") & bit) != 0, "mouse release remains owned");
+                    Call(input, "AfterNativeMouse", tokens); Require((int)Get(input, "ReadOnlyMouseMask") == 0, "release tail retires exactly once");
+                }
+                Console.WriteLine("PASS: fixed hook installation, fresh UI/empty-slot boundary, timeout/session/modal cancellation, actual ItemSlot safety and all five mapping tails.");
+            }
+            finally { ((IDisposable)gesture).Dispose(); Main.mouseLeft = Main.mouseRight = false; }
+        }
+        private static Delegate Adapt(Type type, Action<object> callback)
+        { var value = Expression.Parameter(type.GetGenericArguments()[0]); return Expression.Lambda(type, Expression.Invoke(Expression.Constant(callback), Expression.Convert(value, typeof(object))), value).Compile(); }
+        private static MouseState Mouse(int button)
+        { return new MouseState(20, 20, 0, button == 0 ? ButtonState.Pressed : ButtonState.Released, button == 2 ? ButtonState.Pressed : ButtonState.Released, button == 1 ? ButtonState.Pressed : ButtonState.Released, button == 3 ? ButtonState.Pressed : ButtonState.Released, button == 4 ? ButtonState.Pressed : ButtonState.Released); }
+    }
+}
