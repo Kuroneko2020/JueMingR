@@ -12,6 +12,8 @@ namespace JueMingR.ArchitectureTests
             Assembly features = Assembly.Load("JueMingR.Features");
             var expected = new HashSet<string>(StringComparer.Ordinal)
             {
+                "JueMingR.Features.CoinDeposit.CoinIntent", "JueMingR.Features.CoinDeposit.CoinRules",
+                "JueMingR.Features.CoinDeposit.CoinOutcome", "JueMingR.Features.CoinDeposit.CoinPreferenceCodec", "JueMingR.Features.CoinDeposit.CoinSettings",
                 "JueMingR.Features.KeepFavorited.FavoriteIntent", "JueMingR.Features.KeepFavorited.FavoriteClaim",
                 "JueMingR.Features.QuickItems.QuickItemMode", "JueMingR.Features.QuickItems.QuickItemEntry",
                 "JueMingR.Features.QuickItems.QuickItemCandidate", "JueMingR.Features.QuickItems.QuickItemChoice",

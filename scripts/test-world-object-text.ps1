@@ -2,7 +2,8 @@
 param(
     [Parameter(Mandatory = $true)][string] $ContentDirectory,
     [Parameter(Mandatory = $true)][string] $OutputDirectory,
-    [ValidateSet('Full', 'SelectionCpuCosts', 'SelectionCpuChecks', 'FootprintsVisual', 'QuickItemsVisual')][string] $Scope = 'Full'
+    [ValidateSet('Full', 'SelectionCpuCosts', 'SelectionCpuChecks', 'FootprintsVisual', 'QuickItemsVisual', 'CoinDepositCpu', 'CoinDepositVisual')][string] $Scope = 'Full',
+    [string] $WorkloadBaseline
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
@@ -11,7 +12,7 @@ if (Test-Path -LiteralPath $OutputDirectory) { throw 'OutputDirectory must be ne
 if (-not (Test-Path -LiteralPath (Join-Path $ContentDirectory 'Fonts\Mouse_Text.xnb') -PathType Leaf)) { throw 'Actual matching Terraria Content directory is required.' }
 # A neutral executable loads fixed EXE metadata and original XNB resources. It
 # never constructs/initializes/runs Main, starts a server or reads player saves.
-& (Join-Path $PSScriptRoot 'build.ps1') -Configuration Debug
+& (Join-Path $PSScriptRoot 'build.ps1') -Configuration Debug -WorkloadBaseline $WorkloadBaseline
 if ($LASTEXITCODE -ne 0) { throw 'Debug build failed.' }
 & dotnet.exe build (Join-Path $repositoryRoot 'tests\NativeWorldTextProbe\NativeWorldTextProbe.csproj') --configuration Debug --nologo -p:Platform=x86
 if ($LASTEXITCODE -ne 0) { throw 'Native probe build failed.' }

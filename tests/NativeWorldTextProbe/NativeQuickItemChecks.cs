@@ -24,7 +24,7 @@ namespace NativeWorldTextProbe
         private static int recalls;
         internal static int Recalls {get{return recalls;}}
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static void Run(Action<object> visual=null)
+        internal static void Run(Action<object> visual=null, bool coins=false)
         {
             Require(IntPtr.Size==4,"G05 native fixture must use .NET Framework x86");
             Require(typeof(Main).Assembly.ManifestModule.ModuleVersionId==new Guid("2c29f6c3-4bd9-4add-9c58-da159804e083"),"fixed .8 MVID");
@@ -36,7 +36,7 @@ namespace NativeWorldTextProbe
             Main.ActivePlayerFileData=new Terraria.IO.PlayerFileData(Path.Combine(root,"fixture.plr"),false){Player=Main.LocalPlayer};
             Main.ActiveWorldFileData=new Terraria.IO.WorldFileData(Path.Combine(root,"fixture.wld"),false){UniqueId=Guid.NewGuid()};
             object context=Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Phase0SHarmonyWorker").GetNestedType("PostfixContext",Flags),Flags,null,
-                new object[]{"favorite-quick-items-"+new string('5',40),Path.Combine(root,"evidence.txt"),root},null);
+                new object[]{(coins?"coin-deposit-":"favorite-quick-items-")+new string('5',40),Path.Combine(root,"evidence.txt"),root},null);
             var isolation=new Harmony("JueMingR.Tests.QuickItemOutlets");
             var inputHooks=new Harmony("JueMingR.Tests.QuickInput");
             try
@@ -106,6 +106,7 @@ namespace NativeWorldTextProbe
             {
                 Main.gameMenu=true;Call(context,"UpdateRuntime");
                 var quick=GetOptional(context,"QuickItems");if(quick!=null)Call(quick,"Exit",null,EventArgs.Empty);
+                var coin=GetOptional(context,"CoinDeposit");if(coin!=null)Call(coin,"Exit",null,EventArgs.Empty);
                 var browser=GetOptional(context,"Browser");if(browser!=null)((IDisposable)browser).Dispose();StopContext(context);
                 foreach(var method in isolation.GetPatchedMethods().ToArray())isolation.Unpatch(method,HarmonyPatchType.All,isolation.Id);
                 foreach(var method in inputHooks.GetPatchedMethods().ToArray())inputHooks.Unpatch(method,HarmonyPatchType.All,inputHooks.Id);
@@ -146,7 +147,7 @@ namespace NativeWorldTextProbe
             typeof(Player).GetMethod("ResetControls",Flags).Invoke(player,null);PlayerInput.Triggers.Current.CopyInto(player);
             player.selectedItemState.Update();typeof(Player).GetMethod("TrySyncingInput",Flags).Invoke(player,null);player.ItemCheck();
         }
-        private static void Until(Func<bool> done) {var until=DateTime.UtcNow.AddSeconds(8);while(!done()){if(DateTime.UtcNow>until)throw new Exception("G05 worker timeout");Thread.Sleep(2);}}
+        internal static void Until(Func<bool> done) {var until=DateTime.UtcNow.AddSeconds(8);while(!done()){if(DateTime.UtcNow>until)throw new Exception("G05 worker timeout");Thread.Sleep(2);}}
         private static void Patch(Harmony harmony,MethodInfo method,string prefix) {Require(method!=null,"native fixture exact outlet exists: "+prefix);harmony.Patch(method,new HarmonyMethod(typeof(NativeQuickItemChecks).GetMethod(prefix,Flags)));}
         private static bool Recall(PlayerSpawnContext __0) {Require(__0==PlayerSpawnContext.RecallFromItem,"only recall outlet intercepted");recalls++;return false;}
         private static bool DrawHitbox(ref Rectangle __result) {__result=new Rectangle(0,0,24,24);return false;}

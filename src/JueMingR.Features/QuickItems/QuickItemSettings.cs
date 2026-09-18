@@ -60,7 +60,7 @@ namespace JueMingR.Features.QuickItems
                 // A successful save for the other independent toggle is not
                 // permission to revive an earlier failed/suspended command.
                 if(editingFavorite)favoriteSuspended=false;if(editingQuick)quickSuspended=false;
-                Message = "已保存";
+                Message = "";
             }
             else Message = result.CommitUnconfirmed ? "无法确认保存结果，文件已保护；修改中的条目已停用。" :
                 "保存失败，修改中的条目已停用。重新编辑可重试；重启将读取原有设置。";
