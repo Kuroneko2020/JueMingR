@@ -52,6 +52,10 @@ if ($route.groups -contains 'quick-items-host') {
     Invoke-WorkloadCheck 'quick-items-dynamic-rules-storage' $architecture @('--quick-items')
     Invoke-WorkloadCheck 'quick-items-native-execution' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'quick-items-cpu'), 'QuickItemsCpu')
 }
+if ($route.groups -contains 'coin-deposit-host') {
+    Invoke-WorkloadCheck 'coin-deposit-intent-rules' $architecture @('--coin-deposit')
+    Invoke-WorkloadCheck 'coin-deposit-native-execution' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'coin-deposit-cpu'), 'CoinDepositCpu')
+}
 if ($route.groups -contains 'death-host') {
     Invoke-WorkloadCheck 'death-history-storage-workload' $architecture @('--death-history')
     Invoke-WorkloadCheck 'death-native-execution' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'death-cpu'), 'DeathCpu')

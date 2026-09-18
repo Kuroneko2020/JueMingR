@@ -30,6 +30,7 @@ namespace JueMingR.TerrariaHost.F5
         private readonly HostHotkeys hotkeys;
         internal QuickItems.HostQuickItems QuickItems { get; set; }
         internal void AttachQuickItems(QuickItems.HostQuickItems owner) { QuickItems = owner; items?.AttachQuick(owner); }
+        internal void AttachCoinDeposit(CoinDeposit.HostCoinDeposit owner) { items?.AttachCoins(owner); }
         internal readonly HotkeyPopup HotkeyPopup;
         internal readonly StylePopup StylePopup;
         internal readonly DeathHistoryPopup DeathPopup;

@@ -10,6 +10,12 @@ namespace JueMingR.ArchitectureTests
         {
             try
             {
+                if (args.Length == 1 && args[0] == "--coin-deposit")
+                {
+                    var checks = new List<string>(); CoinDepositChecks.Check(checks);
+                    foreach (string failure in checks) Console.Error.WriteLine(failure);
+                    Console.WriteLine("Coin checks: failures=" + checks.Count); return checks.Count == 0 ? 0 : 1;
+                }
                 if (args.Length == 1 && (args[0] == "--dynamic-hotkeys" || args[0] == "--quick-items"))
                 {
                     var checks = new List<string>(); HotkeyCoreChecks.Check(checks); DynamicHotkeyChecks.Check(checks);
@@ -88,6 +94,7 @@ namespace JueMingR.ArchitectureTests
                 HotkeyCoreChecks.Check(failures);
                 DynamicHotkeyChecks.Check(failures);
                 QuickItemChecks.Check(failures);
+                CoinDepositChecks.Check(failures);
                 HotkeyStorageChecks.Check(repositoryRoot, failures);
                 Phase0TArchitectureChecks.Check(failures);
                 PreferenceChecks.Check(failures);
