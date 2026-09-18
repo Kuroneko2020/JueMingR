@@ -30,6 +30,19 @@ namespace NativeWorldTextProbe
             Click(page,Find(page,"Coin",settings.Enabled?"关闭":"开启"));
             NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return !settings.Busy;});prepare(960,760,1);
             bool first=settings.Enabled;
+            Require(!first && !((IEnumerable)Get(panel,"rows")).Cast<object>().Any(row=>(string)GetOptional(row,"Text")=="已关闭") &&
+                (float)Get(Get(panel,"statusRect"),"Height")==0,"normal off has no redundant status or reserved gap");
+            if(graphics!=null)
+            {
+                Directory.CreateDirectory(output);
+                graphics.LoadItemTextures(((IEnumerable)Get(Get(page,"QuickPanel"),"visibleTypes")).Cast<int>());
+                Call(page,"Prepare",true,Matrix.Identity,new Vector2(960,760));
+                graphics.Image(Path.Combine(output,"coin-off-960x760.png"),()=>
+                {Call(renderer,"Draw",state,Matrix.Identity,false,false);Call(page,"Draw",Get(shell,"drawKeyboard"),true);},Matrix.Identity,960,760);
+            }
+            Set(settings,"Message","存钱设置保存结果未确认，已暂停并保护文件。");prepare(960,760,1);
+            Require(((IEnumerable)Get(panel,"rows")).Cast<object>().Any(row=>((string)GetOptional(row,"Text")??"").Contains("保存结果未确认")),"settings failure is visible without hovering");
+            Set(settings,"Message",null);prepare(960,760,1);
             Click(page,Find(page,"Coin",first?"关闭":"开启"));
             NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return !settings.Busy;});prepare(960,760,1);
             Require(settings.Enabled!=first,"real F5 coin pointer toggle commits independent preference");

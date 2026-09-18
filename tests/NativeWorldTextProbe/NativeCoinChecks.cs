@@ -43,6 +43,9 @@ namespace NativeWorldTextProbe
             Require(!intent.Protected, "complete current zero-bank observation releases protection");
             NativeCoinMatrix.Run(context, host);
             NativeCoinEnvelopeChecks.Run(host);
+            NativeCoinSeedChecks.Run(context, host);
+            NativeCoinSeedAdmissionChecks.Run(context, host);
+            NativeCoinSeedWriteChecks.Run(context, host);
             NativeCoinRangeChecks.Run(host);
             NativeCoinLifecycleChecks.Run(context, host);
             NativeCoinUseChecks.Run(context, host);

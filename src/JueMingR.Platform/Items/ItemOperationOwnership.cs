@@ -26,6 +26,11 @@ namespace JueMingR.Platform.Items
             // range. Toggling its preference is not a settlement or unlock.
             if (generation == Session && token == coinToken && !unconfirmed) { coinSlots = 0; coinToken = 0; }
         }
+        public bool OwnsCoins(long generation, ulong slots, long token)
+        {
+            return generation > 0 && generation == Session && token == coinToken && slots != 0 && coinSlots == slots &&
+                ((saleSlots | discardSlots | storeSlots | interruptedSourceSlots | useSlots) & slots) == 0;
+        }
         public bool IsUseSlot(int slot) { return slot >= 0 && slot < 50 && (useSlots & (1UL << slot)) != 0; }
         public bool TryBeginUse(long generation, int slot, long token)
         {

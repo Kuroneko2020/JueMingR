@@ -29,13 +29,14 @@ namespace NativeWorldTextProbe
                 Call(context, "UpdateRuntime");
                 int[] ids = { PlayerItemSlotID.Bank1_0, PlayerItemSlotID.Bank2_0, PlayerItemSlotID.Bank3_0, PlayerItemSlotID.Bank4_0 };
                 int[] tiles = { 29, 97, 463, 491 };
-                for (int b = 0; b < 4; b++)
+                for (int scenario = 0; scenario < 5; scenario++)
                 {
+                    int b=scenario%4;bool seed=scenario==4;
                     NativeCoinMatrix.Reset(p, host); Main.tile[40, 40].type = (ushort)tiles[b];
-                    p.inventory[50] = Coin(73, 1); Bank(p, b).item[0] = Coin(71, 1);
+                    p.inventory[50] = Coin(73, 1); if(!seed) Bank(p, b).item[0] = Coin(71, 1);
                     Main.clientPlayer = new Player(); typeof(Main).GetMethod("TrySyncingMyPlayer", Flags).Invoke(null, null); packets.Clear();
                     NativeCoinMatrix.Tick(host, 0, 150);
-                    Require(Total(p.inventory, 58) == 0 && Total(Bank(p, b).item, 40) == 10001, "ordinary client real personal-bank deposit " + b);
+                    Require(Total(p.inventory, 58) == 0 && Total(Bank(p, b).item, 40) == (seed?10000:10001), "ordinary client real personal-bank deposit " + b+"; first="+seed);
                     Require(!packets.Any(row => row[2] == 32), "personal bank does not emit an invented world-chest transaction");
                     typeof(Main).GetMethod("TrySyncingMyPlayer", Flags).Invoke(null, null);
                     Require(packets.Any(row => Slot(row) == PlayerItemSlotID.Inventory0 + 50 && Type(row) == 0), "real inventory removal serialized " + b);

@@ -126,6 +126,36 @@ namespace JueMingR.TerrariaHost.CoinDeposit
             Item template = nativeCoins[value.type - 71]; template.stack = value.stack;
             return SameFields(template, value);
         }
+        internal bool EmptyNormalization()
+        {
+            // The owner-approved exception is only this fixed native zero path.
+            // NativeEnvelope with TargetTotal=0 proves every wallet member and
+            // every nonempty/other-account member unchanged, with new canonical
+            // objects in exactly the old target's native-empty positions.
+            return TargetTotal == 0 && Total(Target, 40) == 0 && NativeEnvelope();
+        }
+        internal bool SeedEnvelope(int source, int target, Item empty, bool placed)
+        {
+            // After the first write the source is temporarily outside all live
+            // slots. Its exact fields still belong to the recovery proof; an
+            // altered detached object must never be put back into the wallet.
+            if (!Identities() || !SameFields(nativeAir, empty) || !SameFields(WalletRefs[source], WalletValues[source])) return false;
+            var seen = new HashSet<Item>();
+            for (int i = 0; i < 59; i++)
+            {
+                Validate(Wallet[i], seen);
+                if (i == source) { if (!ReferenceEquals(Wallet[i], empty)) return false; }
+                else if (!ReferenceEquals(Wallet[i], WalletRefs[i]) || !SameFields(Wallet[i], WalletValues[i])) return false;
+            }
+            for (int b = 0; b < 4; b++) for (int i = 0; i < 40; i++)
+            {
+                Item current = accountArrays[b][i]; Validate(current, seen);
+                if (placed && ReferenceEquals(accounts[b], Bank) && i == target)
+                { if (!ReferenceEquals(current, WalletRefs[source]) || !SameFields(current, WalletValues[source])) return false; }
+                else if (!ReferenceEquals(current, accountRefs[b][i]) || !SameFields(current, accountValues[b][i])) return false;
+            }
+            return true;
+        }
         private static Func<Item, Item, bool> CompileComparer()
         {
             var a = Expression.Parameter(typeof(Item), "a"); var b = Expression.Parameter(typeof(Item), "b");

@@ -79,11 +79,16 @@ namespace JueMingR.TerrariaHost.CoinDeposit
         internal void Poll()
         {
             Settings.Poll(); Intent.Configure(Settings.Enabled, Settings.Revision);
+            // Off stops new work; it does not settle an unknown transaction or
+            // hide the reason its original source range remains protected.
+            if (Intent.Faulted) { UnconfirmedStatus(); return; }
             if (!Available) { Unavailable(); return; }
             if (!Settings.Enabled) { Status = "已关闭"; Detail = Settings.Message; }
         }
         private void Unavailable()
         { Status = "暂不可用"; Detail = "存钱或物品保护入口未就绪，原版手动存取不受影响。"; }
+        private void UnconfirmedStatus()
+        { Status = "结果未确认"; Detail = "已暂停新的自动存钱；重新开关不会重做这笔交易。请保留当前状态供检查。"; }
         public void OnSessionStarted()
         {
             ConfirmIdentity();
@@ -126,7 +131,7 @@ namespace JueMingR.TerrariaHost.CoinDeposit
             if (!TrustedIdentity) ConfirmIdentity();
             Player p = Player;
             if (p == null || !Input.CanStartActions || Main.gamePaused) return;
-            if (Intent.Faulted) { Status = "结果未确认"; Detail = "已暂停新的自动存钱；重新开关不会重做这笔交易。请保留当前状态供检查。"; return; }
+            if (Intent.Faulted) { UnconfirmedStatus(); return; }
             if (Intent.Protected || Intent.Pending)
             {
                 Status = Intent.Pending ? "正在确认取出" : "取出保护中";
@@ -191,7 +196,7 @@ namespace JueMingR.TerrariaHost.CoinDeposit
                 if (result != CoinOutcome.Rejected && result != CoinOutcome.Cancelled)
                 { triedWallet[kind] = wallet.Revision; triedBank[kind] = bank.Revision; triedIntent[kind] = Intent.Generation; }
                 attempted = true;
-                Status = result == CoinOutcome.Completed ? "已存入" : result == CoinOutcome.Partial ? "部分已存入" : result == CoinOutcome.Unconfirmed ? "结果未确认" : result == CoinOutcome.Rejected || result == CoinOutcome.Cancelled ? "等待有关操作" : "暂无可用空间";
+                Status = result == CoinOutcome.Completed ? "已存入" : result == CoinOutcome.Partial ? "部分已存入" : result == CoinOutcome.Unconfirmed ? "结果未确认" : result == CoinOutcome.Failed ? "本次未存入" : result == CoinOutcome.Rejected || result == CoinOutcome.Cancelled ? "等待有关操作" : "暂无可用空间";
                 Detail = result == CoinOutcome.None ? "已有钱币的银行会按原版整理；空账户首存仅限存钱罐。" : null;
                 break; // One bounded attempt. Never loop seed/MoveCoins on zero.
             }

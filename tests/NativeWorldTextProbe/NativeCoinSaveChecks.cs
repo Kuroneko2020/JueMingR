@@ -15,7 +15,7 @@ namespace NativeWorldTextProbe
         {
             Player p = Main.LocalPlayer; NativeCoinMatrix.Reset(p, host);
             p.name = "G06 Coin Probe"; p.inventory[50] = Coin(74, 9000); p.inventory[51] = Coin(73, 99); p.inventory[51].favorited = true;
-            Main.tile[40, 40].type = 29; p.bank.item[0] = Coin(71, 1);
+            Main.tile[40, 40].type = 29; // Persist the true empty-piggy first-deposit path.
             NativeCoinMatrix.Tick(host, 0, 150);
             for (int b = 1; b < 4; b++) Bank(p, b).item[0] = Coin(74, b + 1);
             p.bank4.item[0].favorited = true; p.inventory[10].SetDefaults(8); p.inventory[10].stack = 7;

@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Linq;
 using System.Reflection;
 using HarmonyLib;
@@ -40,6 +41,12 @@ namespace NativeWorldTextProbe
                 calls = (long)Get(transfer, "NativeCalls");
                 var settings = (CoinSettings)Get(host, "Settings");
                 Require(settings.Set(false), "faulted preference can turn off"); NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return !settings.Busy; });
+                object shell=Get(context,"Shell"),state=Get(shell,"State"),page=Get(shell,"items"),renderer=Get(shell,"renderer");
+                Set(state,"Ready",true);Call(state,"Navigate",0);Call(state,"RestoreVisible");Call(renderer,"RefreshResources");
+                Call(renderer,"Prepare",state,960f,760f,1f);Call(page,"PrepareLayout",Microsoft.Xna.Framework.Matrix.Identity,new Microsoft.Xna.Framework.Vector2(960,760));
+                Require(((IEnumerable)Get(Get(page,"CoinPanel"),"rows")).Cast<object>().Any(row=>(string)GetOptional(row,"Text")=="结果未确认"),
+                    "real unknown transaction remains directly visible after turning the feature off");
+                Call(state,"Close");
                 Require(settings.Set(true), "faulted preference can turn on without settlement"); NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return !settings.Busy; });
                 p.inventory[51] = Coin(72, 5); NativeCoinMatrix.Tick(host, 130, 500);
                 Require(intent.Faulted && (long)Get(transfer, "NativeCalls") == calls && p.inventory[51].stack == 5, "off/on and new coins cannot replay an unknown transaction");

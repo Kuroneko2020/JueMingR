@@ -107,11 +107,11 @@ namespace JueMingR.TerrariaHost.QuickItems
             this.width=width;this.row=row;this.measure=measure;logical.Clear();generation++;
             float y=start+8;bool can=host.ControlsEnabled;
             Row(ref y,"保持收藏",new[]{"开启","关闭","键"},new[]{Command.FavoriteOn,Command.FavoriteOff,Command.None},host.FavoriteControlsEnabled,HostQuickItems.FavoriteAction,
-                host.FavoriteError??"保留随身实物的收藏意图；装备期间不改变装备组共享。",host.FavoriteError!=null?-1:host.Settings.KeepFavorited?0:1);
+                host.FavoriteError??"保持随身物品的收藏标记。",host.FavoriteError!=null?-1:host.Settings.KeepFavorited?0:1);
             if(host.FavoriteError!=null)Text(ref y,host.FavoriteError);
             Row(ref y,"快捷物品",Editing?new[]{"开启","关闭","键"}:new[]{"添加","开启","关闭","键"},
                 Editing?new[]{Command.QuickOn,Command.QuickOff,Command.None}:new[]{Command.Add,Command.QuickOn,Command.QuickOff,Command.None},can,HostQuickItems.ToggleAction,
-                "每次重新按键使用一件物品；双击键位栏设置快捷键。",!host.Available?-1:host.Settings.Enabled?(Editing?0:1):(Editing?1:2));
+                "用快捷键使用背包物品或切换形态。",!host.Available?-1:host.Settings.Enabled?(Editing?0:1):(Editing?1:2));
             if(Editing)BuildPicker(ref y,can);
             if(!String.IsNullOrEmpty(Message))Text(ref y,Message);
             if(host.CanRetryCleanup)Buttons(ref y,new[]{"重试清理旧按键"},new[]{Command.RetryCleanup},true);

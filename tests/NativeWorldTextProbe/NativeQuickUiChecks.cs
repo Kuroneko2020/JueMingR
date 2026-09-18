@@ -30,6 +30,10 @@ namespace NativeWorldTextProbe
             NativeQuickUseMatrix.Until(()=>{bindings.Poll();return !bindings.Busy;});
             Action<float,float,float> prepare=(width,height,scale)=>{Call(renderer,"Prepare",state,width,height,scale);Call(page,"PrepareLayout",Matrix.CreateScale(scale),new Vector2(width,height));};
             prepare(960,760,1);
+            Require(!((IEnumerable)Get(panel,"logical")).Cast<object>().Any(part=>(string)GetOptional(Get(part,"Element"),"Text")=="已保存"),"successful save leaves no persistent redundant status row");
+            Set(settings,"Message","保存失败，请重试");prepare(960,760,1);
+            Require(((IEnumerable)Get(panel,"logical")).Cast<object>().Any(part=>((string)GetOptional(Get(part,"Element"),"Text")??"").Contains("保存失败")),"failure remains visible after normal save status removal");
+            Set(settings,"Message","");prepare(960,760,1);
             object favorite=Get(context,"KeepFavorited");
             Require(settings.TryChange(settings.Current.Toggles(true,false),null,out reason),"visible capability fixture enabled preference");NativeQuickUseMatrix.Until(()=>{Call(quick,"Poll");return !settings.Busy;});prepare(960,760,1);
             Call(favorite,"FailClosed");Require((bool)Get(panel,"NeedsBuild"),"live capability failure invalidates existing panel");prepare(960,760,1);
@@ -52,7 +56,9 @@ namespace NativeWorldTextProbe
             Reveal(panel,state,"Edit");prepare(960,760,1);ClickControl(page,Controls(page).First(c=>Get(c,"Command").ToString()=="Quick" && GetPart(panel,c,"Command")=="Edit"));prepare(960,760,1);
             Call(page,"ProcessInput",true,new KeyboardState(Keys.Escape),Vector2.Zero,true,true,false);prepare(960,760,1);
             Require(!(bool)Get(panel,"Editing"),"escape closes inventory selector without mutation");            // Shared key button uses the one real popup callback/target.
-            Reveal(panel,state,"Edit");prepare(960,760,1);Click(page,"QuickHotkey",null);Click(page,"QuickHotkey",null);
+            Reveal(panel,state,"Edit");prepare(960,760,1);
+            var entryKey=Controls(page).First(c=>Get(c,"Command").ToString()=="QuickHotkey" && (string)Get(Get(c,"Element"),"HotkeyTarget")==entries[0].ActionId);
+            ClickControl(page,entryKey);ClickControl(page,entryKey);
             Require((bool)Get(Get(shell,"HotkeyPopup"),"Visible"),"dynamic row reaches common binding popup");Call(Get(shell,"HotkeyPopup"),"Close");
             long reads=(long)Get(panel,"PickerReads");int layouts=(int)Get(page,"LayoutBuildCount");
             for(int i=0;i<240;i++){Call(quick,"Update",0UL);prepare(960,760,1);}

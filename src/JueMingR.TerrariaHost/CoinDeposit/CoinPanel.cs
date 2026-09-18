@@ -10,7 +10,7 @@ namespace JueMingR.TerrariaHost.CoinDeposit
     internal sealed class CoinPanel
     {
         private static readonly F5RowDescription description = new F5RowDescription(HostCoinDeposit.ActionId,
-            "将未收藏钱币存入附近个人银行。主动从箱子或银行取钱后先留在身上；离开全部银行范围，或关闭再开启后恢复。空账户首存仅限存钱罐。");
+            "将未收藏的钱币存入附近个人银行，主动取钱后暂停。");
         private readonly HostCoinDeposit host;
         private readonly List<F5Element> rows = new List<F5Element>();
         private long revision = -1;
@@ -29,7 +29,10 @@ namespace JueMingR.TerrariaHost.CoinDeposit
             var layout = new F5RowLayout(rows, measure);
             layout.Row(ref y, 0, width, "自动存钱", new[] { "开启", "关闭", "键" }, description: description);
             float top = y;
-            layout.TextLines(status, 8, ref y, width - 16, .65f);
+            // The selected switch already communicates a normal off state.
+            // Saving/failure messages remain visible, not hidden in a tooltip.
+            string visible = host.Settings.Message ?? (status == "已关闭" ? null : status);
+            if (!string.IsNullOrEmpty(visible)) layout.TextLines(visible, 8, ref y, width - 16, .65f);
             statusRect = new F5Rect(8, top, width - 16, y - top);
             Height = y + 5;
         }
