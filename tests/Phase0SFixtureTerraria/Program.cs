@@ -1324,6 +1324,8 @@ namespace Terraria
                 "MappingPostfix", "PlayerInput.UpdateInput", declaringType: inputHooks);
             AssertExactPostfix(mainType.GetMethod("GetInputText", new[] { typeof(string), typeof(bool) }), owner,
                 "TextPrefix", "Main.GetInputText(string,bool)", true, declaringType: inputHooks);
+            AssertExactPostfix(inputTarget.GetType("Terraria.GameInput.KeyConfiguration", true).GetMethod("Processkey"), owner,
+                "KeyPostfix", "KeyConfiguration.Processkey", declaringType: inputHooks);
 
             foreach (MethodInfo candidate in mainType.GetMethods(flags))
             {

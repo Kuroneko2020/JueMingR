@@ -57,12 +57,13 @@ namespace JueMingR.TerrariaHost.Items
         }
         private static bool Active { get { return host != null && host.World.SessionPlayer != null && !host.World.AutomaticOperation; } }
         private static bool Protected(Item[] array, int slot)
-        { return host != null && host.Ownership.IsProtected(slot) && Active && ReferenceEquals(array, host.World.SessionPlayer.inventory); }
+        { return host != null && host.Ownership.IsProtected(slot) && Active && ReferenceEquals(array, host.World.SessionPlayer.inventory) &&
+                !(host.Ownership.IsUseSlot(slot) && host.AllowsOwnedUse != null && host.AllowsOwnedUse(slot)); }
         private static bool Protected(Item item)
         {
             if (host == null || host.Ownership.ProtectedSlots == 0 || item == null || !Active) return false;
             Item[] inv = host.World.SessionPlayer.inventory;
-            for (int i = 0; i < 58; i++) if (ReferenceEquals(item, inv[i]) && host.Ownership.IsProtected(i)) return true;
+            for (int i = 0; i < 58; i++) if (ReferenceEquals(item, inv[i]) && Protected(inv, i)) return true;
             return false;
         }
         internal static Item ReadSelectionSlot(Item[] array, int slot)

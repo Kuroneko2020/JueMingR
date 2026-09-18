@@ -28,6 +28,8 @@ namespace JueMingR.TerrariaHost.F5
         private readonly HostItems hostItems;
         private readonly Input.HostInputState inputState;
         private readonly HostHotkeys hotkeys;
+        internal QuickItems.HostQuickItems QuickItems { get; set; }
+        internal void AttachQuickItems(QuickItems.HostQuickItems owner) { QuickItems = owner; items?.AttachQuick(owner); }
         internal readonly HotkeyPopup HotkeyPopup;
         internal readonly StylePopup StylePopup;
         internal readonly DeathHistoryPopup DeathPopup;
@@ -315,6 +317,7 @@ namespace JueMingR.TerrariaHost.F5
                     !(HotkeyPopup != null && HotkeyPopup.Visible) && !(StylePopup != null && StylePopup.Visible) && !(DeathPopup != null && DeathPopup.Visible) && !(MapPopup != null && MapPopup.Visible) && !(FootprintPopup != null && FootprintPopup.Visible) && !(items != null && items.Selecting) &&
                     !(Main.LocalPlayer != null && Main.LocalPlayer.mouseInterface);
                 hotkeys?.Bindings.Dispatch(inputState.Hotkeys, Main.netMode == 0 ? HotkeyContext.SinglePlayer : HotkeyContext.Multiplayer, gameplay);
+                QuickItems?.AfterDispatch(gameplay);
                 // Older development profiles have no target owner or actions;
                 // do not evaluate the new native observation gate for them.
                 if (Browser != null)

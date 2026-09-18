@@ -87,6 +87,7 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Platform.Hotkeys.HotkeyContext",
                 "JueMingR.Platform.Hotkeys.HotkeyAction",
                 "JueMingR.Platform.Hotkeys.HotkeyRegistry",
+                "JueMingR.Platform.Hotkeys.DynamicHotkeyOwner",
                 "JueMingR.Platform.Hotkeys.HotkeyDocument",
                 "JueMingR.Platform.Hotkeys.HotkeyBindings",
                 "JueMingR.Platform.Hotkeys.HotkeyFeedback",

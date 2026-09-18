@@ -33,6 +33,7 @@ namespace JueMingR.TerrariaHost.Items
         internal readonly ItemVanillaOperations Operations;
         internal readonly ItemNearbyStorage Storage;
         internal readonly int ThreadId = Thread.CurrentThread.ManagedThreadId;
+        internal Func<int, bool> AllowsOwnedUse;
         internal string CapabilityError { get; private set; }
         internal string SourceMessage { get; set; }
         internal Exception SetupError { get; private set; }

@@ -18,6 +18,9 @@ namespace JueMingR.TerrariaHost.Input
         private string[] keys = new string[0];
         private readonly bool[] physical = new bool[HotkeyChord.KeyCount];
         internal readonly HotkeyInput Hotkeys = new HotkeyInput();
+        internal readonly HotkeyUseGesture UseGesture = new HotkeyUseGesture();
+        internal void ClaimUseGesture(HotkeyChord chord)
+        { if (CanStartActions) UseGesture.Claim(chord, Hotkeys, physical); }
         internal KeyboardState KeyboardSample { get; private set; }
         internal int MapMouseX { get; private set; }
         internal int MapMouseY { get; private set; }
@@ -63,6 +66,7 @@ namespace JueMingR.TerrariaHost.Input
         internal bool SampleFocused { get { return mapped && IsFocused && nativePermission; } }
         internal bool CanUseInput { get { return SampleFocused && finalized && !quarantine; } }
         internal bool CanStartActions { get { return CanUseInput; } }
+        internal long Frame { get; private set; }
         internal bool CanPrepareText { get { return IsFocused && !rearming && !quarantine; } }
         internal HostInputState() : this(() => Main.instance == null ? IntPtr.Zero : Main.instance.Window.Handle, GetForegroundWindow) { }
         internal HostInputState(Func<IntPtr> gameWindow, Func<IntPtr> foregroundWindow)
@@ -70,6 +74,8 @@ namespace JueMingR.TerrariaHost.Input
 
         internal void BeginUpdate()
         {
+            Frame++;
+            UseGesture.BeginUpdate();
             mapped = finalized = nativePermission = false;
             RefreshFocus();
             quarantine = !IsFocused || rearming;
@@ -98,6 +104,7 @@ namespace JueMingR.TerrariaHost.Input
             // Keep MouseInfo and the absolute wheel owned by Terraria; they are
             // observations, not values to restore after consuming an action.
             RefreshFocus(); mapped = true;
+            UseGesture.AfterMapping();
             MapMouseX = PlayerInput.MouseX; MapMouseY = PlayerInput.MouseY;
             MapWheel = PlayerInput.ScrollWheelDeltaForUI;
             if (MapPointerOwned) PlayerInput.ScrollWheelDelta = PlayerInput.ScrollWheelDeltaForUI = 0;
@@ -122,6 +129,8 @@ namespace JueMingR.TerrariaHost.Input
             // held bit. Independent UI consumers also read physical MouseInfo.
             hotkeyTailSample = Hotkeys.HasSuppressedKeys;
             Hotkeys.Update(physical, SampleFocused);
+            if (UseGesture.HasTail) UseGesture.AfterSample(physical, SampleFocused,
+                CanUseInput && !HotkeyPointerOwned && (ClaimsHotkeyPointer == null || !ClaimsHotkeyPointer()));
             if (HotkeyCapture || Hotkeys.HasSuppressedKeys) ConsumeHotkeyActions();
             if (!quarantine) return;
             KeyboardState sample = KeyboardSample;

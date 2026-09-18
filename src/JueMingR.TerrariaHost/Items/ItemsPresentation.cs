@@ -24,6 +24,8 @@ namespace JueMingR.TerrariaHost.Items
         private readonly ItemsLayout layout = new ItemsLayout();
         private readonly ItemSelection selection;
         private readonly ItemPickerInput input = new ItemPickerInput();
+        internal QuickItems.QuickItemPanel QuickPanel { get; private set; }
+        internal void AttachQuick(QuickItems.HostQuickItems owner) { QuickPanel = new QuickItems.QuickItemPanel(owner, shell); dirty = true; }
         private readonly List<ItemUiControl> controls = new List<ItemUiControl>();
         private readonly List<F5Element> elements = new List<F5Element>();
         private ItemAutomationSettings laidOutValue;
@@ -39,9 +41,9 @@ namespace JueMingR.TerrariaHost.Items
         private int revealRow = -1;
         private float anchorY;
         internal int LayoutBuildCount { get; private set; }
-        internal bool Selecting { get { return selection.Active; } }
+        internal bool Selecting { get { return selection.Active || QuickPanel != null && QuickPanel.Editing; } }
         internal bool OwnsPointer { get { return ready && ownPointer; } }
-        internal bool OwnsTextToken { get { return input.OwnsTextToken; } }
+        internal bool OwnsTextToken { get { return input.OwnsTextToken || QuickPanel != null && QuickPanel.OwnsTextToken; } }
         internal bool ConsumeLeft { get; private set; }
         internal bool ConsumeRight { get; private set; }
         internal bool ConsumeWheel { get; private set; }
@@ -57,13 +59,15 @@ namespace JueMingR.TerrariaHost.Items
         private void ValidateSession()
         { if (!selection.ValidateSession()) { armed = null; dirty = true; input.Release(); revealRow = -1; } }
         internal void BeforeInput(bool active)
-        { ValidateSession(); input.BeforeInput(active && shell.Visible && shell.Page == 0 && Selecting); }
+        { ValidateSession(); input.BeforeInput(active && shell.Visible && shell.Page == 0 && selection.Active); QuickPanel?.BeforeInput(active); }
         internal void ProcessInput(bool active, KeyboardState sample, Vector2 pointer, bool geometryCurrent = true, bool focused = true, bool blockPointer = false)
         {
             ValidateSession(); pointerPosition = pointer;
             bool left = PlayerInput.MouseInfo.LeftButton == ButtonState.Pressed, right = PlayerInput.MouseInfo.RightButton == ButtonState.Pressed;
             bool pageActive = active && focused && shell.Visible && shell.Page == 0;
             input.Sample(sample, focused);
+            QuickPanel?.Process(pageActive, sample, focused);
+            if (QuickPanel != null && QuickPanel.NeedsBuild) { armed = null; dirty = true; }
             ConsumeLeft = leftTail; ConsumeRight = rightTail; ConsumeWheel = false; ownPointer = false;
             if (!pageActive || !ready)
             {
@@ -77,7 +81,7 @@ namespace JueMingR.TerrariaHost.Items
                 !ReferenceEquals(laidOutValue, host.Preferences.Value) || laidOutScroll != shell.Scroll ||
                 view.X != shell.Layout.Viewport.X + shell.X || view.Y != shell.Layout.Viewport.Y + shell.Y)
             { armed = null; dirty = true; }
-            if (sample.IsKeyDown(Keys.Escape) && !previousEscape && Selecting) CancelPicker();
+            if (sample.IsKeyDown(Keys.Escape) && !previousEscape && Selecting) { if (selection.Active) CancelPicker(); else QuickPanel.Suspend(); }
             previousEscape = sample.IsKeyDown(Keys.Escape);
             ownPointer = view.Contains(pointer.X, pointer.Y);
             if (ownPointer)
@@ -106,7 +110,8 @@ namespace JueMingR.TerrariaHost.Items
         { return a.Command == b.Command && a.Argument == b.Argument && a.Type == b.Type && a.Generation == b.Generation && SameRect(a.Rect, b.Rect); }
         private void Execute(ItemUiControl c)
         {
-            if (c.Command == ItemUiCommand.Hotkey) { HotkeyClicked?.Invoke(c.Element.HotkeyTarget, c.Rect); return; }
+            if (c.Command == ItemUiCommand.Hotkey || c.Command == ItemUiCommand.QuickHotkey) { HotkeyClicked?.Invoke(c.Element.HotkeyTarget, c.Rect); return; }
+            if (c.Command == ItemUiCommand.Quick) { CancelPicker(); QuickPanel?.Execute(c); dirty = true; return; }
             dirty = true; commandMessage = null;
             var value = host.Preferences.Value; var list = (ItemListKind)c.Argument;
             bool wasSelecting = Selecting;
@@ -129,19 +134,21 @@ namespace JueMingR.TerrariaHost.Items
         }
         private void OpenPicker(ItemListKind list, int target)
         {
+            QuickPanel?.Suspend();
             int row = list == ItemListKind.Sell ? 1 : 2;
             float oldY = layout.RowY[row] - shell.Scroll;
             if (selection.Open(list, target)) { revealRow = row; anchorY = oldY; armed = null; }
         }
         private void CancelPicker() { selection.Cancel(); revealRow = -1; armed = null; dirty = true; input.Release(); }
         internal void Suspend()
-        { ready = false; ownPointer = false; CancelPicker(); commandMessage = null; controls.Clear(); elements.Clear(); renderer.Dispose(); }
+        { ready = false; ownPointer = false; CancelPicker(); QuickPanel?.Suspend(); commandMessage = null; controls.Clear(); elements.Clear(); renderer.Dispose(); }
         internal void Prepare(bool active, Matrix transform, Vector2 screen)
         {
             ValidateSession();
             ready = active && shell.Visible && shell.Page == 0 && renderer.Refresh();
             if (!ready) { if (!active || !shell.Visible || shell.Page != 0) Suspend(); else controls.Clear(); return; }
             PrepareLayout(transform, screen);
+            QuickPanel?.PrepareIcons();
         }
         internal void PrepareLayout(Matrix transform, Vector2 screen)
         {
@@ -152,14 +159,17 @@ namespace JueMingR.TerrariaHost.Items
             if (!SameRect(view, next)) dirty = true;
             view = next;
             string message = ErrorMessage;
-            bool rebuild = dirty || !ReferenceEquals(laidOutValue, host.Preferences.Value) || layoutGeneration != shell.Layout.Generation ||
+            bool rebuild = dirty || QuickPanel != null && QuickPanel.NeedsBuild || !ReferenceEquals(laidOutValue, host.Preferences.Value) || layoutGeneration != shell.Layout.Generation ||
                 skinGeneration != renderer.Generation || laidOutEnabled != ControlsEnabled || laidOutMessage != message;
             if (!rebuild && laidOutScroll == shell.Scroll) return;
             armed = null;
             if (rebuild)
             {
                 layout.Build(view.Width, renderer.RowHeight, host.Preferences.Value, selection, ControlsEnabled, message != null, shell.Layout.TextSize);
-                shell.Layout.SetItemsContentHeight(layout.Height);
+                QuickPanel?.Build(layout.Height, view.Width, renderer.RowHeight, shell.Layout.TextSize);
+                shell.Layout.SetItemsContentHeight(QuickPanel == null ? layout.Height : QuickPanel.Height);
+                if(QuickPanel!=null && QuickPanel.RevealRequested)
+                {shell.ScrollTo(QuickPanel.SelectorTop);QuickPanel.RevealRequested=false;}
                 if (revealRow >= 0)
                 {
                     // Preserve the row across a switch, then reveal only once.
@@ -173,6 +183,7 @@ namespace JueMingR.TerrariaHost.Items
                 shell.ClampScroll();
             }
             layout.Project(view, shell.Scroll, elements, controls); LayoutBuildCount++;
+            QuickPanel?.Project(view, shell.Scroll, controls, elements);
             dirty = false; laidOutValue = host.Preferences.Value; laidOutScroll = shell.Scroll;
             layoutGeneration = shell.Layout.Generation; skinGeneration = renderer.Generation;
             laidOutEnabled = ControlsEnabled; laidOutMessage = message;
@@ -213,10 +224,14 @@ namespace JueMingR.TerrariaHost.Items
             {
                 if (!control.Rect.Contains(x, y)) continue;
                 target = F5HintLayout.Intersect(control.Rect, visible);
-                if (control.Command == ItemUiCommand.Hotkey) return "双击设置功能开关快捷键";
+                if (control.Command == ItemUiCommand.Hotkey || control.Command == ItemUiCommand.QuickHotkey)
+                    return String.IsNullOrEmpty(control.Element.Text)?"双击设置快捷键":control.Element.Text+" · 双击设置快捷键";
                 if (control.Command == ItemUiCommand.ToggleDiscardFeedback) return "开启或关闭自动丢弃提示。";
+                if(control.Command==ItemUiCommand.Quick)return QuickPanel?.Hint(x,y,out target);
                 return null; // Item cards retain their own name/replace/remove help.
             }
+            string quickHint = QuickPanel?.Hint(x, y, out target);
+            if (quickHint != null) return quickHint;
             var name = F5HintLayout.HitName(elements, visible, 0, 0, x, y, out target);
             return name == null ? null : name.Description.Text;
         }
@@ -227,7 +242,7 @@ namespace JueMingR.TerrariaHost.Items
             {
                 foreach (var e in elements)
                 { if (e.Kind == F5ElementKind.Panel) renderer.Panel(e.Rect); else if (e.Kind == F5ElementKind.Text) renderer.Label(e); }
-                if (Selecting)
+                if (selection.Active)
                 {
                     string list = selection.List == ItemListKind.Sell ? "出售" : "丢弃";
                     renderer.Text(selection.Target == 0 ? "添加" + list + "物品" : "替换「" + Lang.GetItemNameValue(selection.Target) + "」", OnScreen(layout.Title), Color.White);
@@ -237,6 +252,7 @@ namespace JueMingR.TerrariaHost.Items
                 }
                 foreach (var c in controls)
                 {
+                    if (c.Command == ItemUiCommand.Quick || c.Command == ItemUiCommand.QuickHotkey) continue;
                     if (c.Command == ItemUiCommand.Hotkey) { keyboard?.Invoke(c.Rect); continue; }
                     if (c.Command == ItemUiCommand.Remove) continue;
                     bool hover = c.Rect.Contains(pointerPosition.X, pointerPosition.Y) && view.Contains(pointerPosition.X, pointerPosition.Y);
@@ -251,6 +267,7 @@ namespace JueMingR.TerrariaHost.Items
                     else renderer.Button(c.Element, c.Selected, c.Enabled, c.Command == ItemUiCommand.Disable, hover);
                 }
                 if (laidOutMessage != null) renderer.Text(laidOutMessage, OnScreen(layout.Error), Color.Gold, .63f);
+                QuickPanel?.Draw(renderer, pointerPosition, keyboard);
             });
             var hovered = allowHints ? Hit(pointerPosition) : null;
             if (hovered != null && hovered.Type != 0)
