@@ -32,10 +32,10 @@ namespace JueMingR.TerrariaHost.QuickItems
         private readonly List<int> candidates=new List<int>(),removed=new List<int>();
         private readonly Dictionary<int,Texture2D> icons=new Dictionary<int,Texture2D>();
         private readonly HashSet<int> visibleTypes=new HashSet<int>();
-        private string draftId,builtMessage,builtFavoriteError;
+        private string draftId;
         private int target,generation;
         private QuickItemMode mode;
-        private bool compatible,entryEnabled,dirty=true,builtQuickAvailable,builtFavoriteAvailable;
+        private bool compatible,entryEnabled,dirty=true,builtQuickAvailable,builtFavoriteAvailable,builtFavoriteCapability,builtQuickCapability,builtCleanup;
         private long editSession,builtRevision=-1,builtBindings=-1;
         private float width,row;
         private Func<string,float,F5Size> measure;
@@ -48,9 +48,9 @@ namespace JueMingR.TerrariaHost.QuickItems
         internal long PickerReads {get;private set;}
         internal long IconLoads {get;private set;}
 #endif
-        private string Message {get{return host.Message ?? host.Settings.Message;}}
-        internal bool NeedsBuild {get{return dirty || builtRevision!=host.Settings.Revision || builtBindings!=host.BindingRevision || builtMessage!=Message ||
-            builtQuickAvailable!=host.ControlsEnabled || builtFavoriteAvailable!=host.FavoriteControlsEnabled || builtFavoriteError!=host.FavoriteError;}}
+        internal bool NeedsBuild {get{return dirty || builtRevision!=host.Settings.Revision || builtBindings!=host.BindingRevision ||
+            builtQuickAvailable!=host.ControlsEnabled || builtFavoriteAvailable!=host.FavoriteControlsEnabled ||
+            builtFavoriteCapability!=host.FavoriteAvailable || builtQuickCapability!=host.Available || builtCleanup!=host.CanRetryCleanup;}}
         internal QuickItemPanel(HostQuickItems host,F5Interaction shell) {this.host=host;this.shell=shell;}
         internal void BeforeInput(bool active)
         {if(Editing && editSession!=host.Runtime.Generation)Suspend();input.BeforeInput(active && shell.Visible && shell.Page==0 && Editing);}
@@ -62,7 +62,7 @@ namespace JueMingR.TerrariaHost.QuickItems
         {
             if(control.Generation!=generation || control.Argument<0 || control.Argument>=logical.Count)return;
             Part part=logical[control.Argument];if(!part.Enabled)return;
-            var existing=part.Id==null?null:host.Settings.Current.Find(part.Id);dirty=true;host.Message=null;
+            var existing=part.Id==null?null:host.Settings.Current.Find(part.Id);dirty=true;
             switch(part.Command)
             {
                 case Command.FavoriteOn: if(!host.Settings.KeepFavorited)host.ToggleFavorite();break;
@@ -105,15 +105,13 @@ namespace JueMingR.TerrariaHost.QuickItems
         internal void Build(float start,float width,float row,Func<string,float,F5Size> measure)
         {
             this.width=width;this.row=row;this.measure=measure;logical.Clear();generation++;
-            float y=start+8;bool can=host.ControlsEnabled;
+            float y=start;bool can=host.ControlsEnabled;
             Row(ref y,"保持收藏",new[]{"开启","关闭","键"},new[]{Command.FavoriteOn,Command.FavoriteOff,Command.None},host.FavoriteControlsEnabled,HostQuickItems.FavoriteAction,
-                host.FavoriteError??"保持随身物品的收藏标记。",host.FavoriteError!=null?-1:host.Settings.KeepFavorited?0:1);
-            if(host.FavoriteError!=null)Text(ref y,host.FavoriteError);
+                "保持随身物品的收藏标记。",!host.FavoriteAvailable?-1:host.Settings.KeepFavorited?0:1);
             Row(ref y,"快捷物品",Editing?new[]{"开启","关闭","键"}:new[]{"添加","开启","关闭","键"},
                 Editing?new[]{Command.QuickOn,Command.QuickOff,Command.None}:new[]{Command.Add,Command.QuickOn,Command.QuickOff,Command.None},can,HostQuickItems.ToggleAction,
                 "用快捷键使用背包物品或切换形态。",!host.Available?-1:host.Settings.Enabled?(Editing?0:1):(Editing?1:2));
             if(Editing)BuildPicker(ref y,can);
-            if(!String.IsNullOrEmpty(Message))Text(ref y,Message);
             if(host.CanRetryCleanup)Buttons(ref y,new[]{"重试清理旧按键"},new[]{Command.RetryCleanup},true);
             // Legacy's small icon + key field, wrapping from one to three
             // columns. Hidden rows carry no textures or projected hit targets.
@@ -129,8 +127,9 @@ namespace JueMingR.TerrariaHost.QuickItems
                 index++;
             }
             if(index>0)y=top+(float)Math.Ceiling(index/(double)columns)*39;
-            Height=y+4;builtRevision=host.Settings.Revision;builtBindings=host.BindingRevision;builtMessage=Message;
-            builtQuickAvailable=host.ControlsEnabled;builtFavoriteAvailable=host.FavoriteControlsEnabled;builtFavoriteError=host.FavoriteError;dirty=false;
+            Height=y;builtRevision=host.Settings.Revision;builtBindings=host.BindingRevision;
+            builtQuickAvailable=host.ControlsEnabled;builtFavoriteAvailable=host.FavoriteControlsEnabled;
+            builtFavoriteCapability=host.FavoriteAvailable;builtQuickCapability=host.Available;builtCleanup=host.CanRetryCleanup;dirty=false;
         }
         private void BuildPicker(ref float y,bool can)
         {
@@ -227,7 +226,8 @@ namespace JueMingR.TerrariaHost.QuickItems
         {
             foreach(var p in visible)
             {if(p.Hint!=null && p.Element.Rect.Contains(x,y)){rect=p.Element.Rect;return p.Hint;}
-                if(p.Element.Description!=null && p.Element.HintRect.Contains(x,y)){rect=p.Element.HintRect;return p.Element.Description.Text;}}
+                if(p.Element.Description!=null && p.Element.HintRect.Contains(x,y))
+                {rect=p.Element.HintRect;return (p.Element.Description.Id==HostQuickItems.FavoriteAction?host.FavoriteHint:host.QuickHint)??p.Element.Description.Text;}}
             rect=default(F5Rect);return null;
         }
     }

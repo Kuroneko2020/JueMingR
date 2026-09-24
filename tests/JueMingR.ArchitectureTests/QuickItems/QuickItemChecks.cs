@@ -75,6 +75,10 @@ namespace JueMingR.ArchitectureTests
                 storage.Fail=true;settings.TryChange(settings.Current.Change(null,entry.Id),entry.Id,out reason);Wait(settings,()=>!settings.Busy);
                 if(settings.CanExecute(entry.Id) || settings.Registered(entry.Id) || settings.Current.Find(entry.Id)==null || settings.Message.Contains("已保存"))
                     failures.Add("Quick config: failed deletion revived execution or claimed deletion.");
+                string failedEntry=settings.Message;
+                storage.Fail=false;settings.TryChange(settings.Current.Toggles(false,true),null,out reason,changeQuick:false);Wait(settings,()=>!settings.Busy);
+                if(settings.CanExecute(entry.Id) || settings.Message!=failedEntry)
+                    failures.Add("Quick config: unrelated reliable favorite save erased the still-suspended entry error.");
                 storage.Fail=false;settings.TryChange(settings.Current.Change(entry),entry.Id,out reason);Wait(settings,()=>!settings.Busy);
                 if(!settings.CanExecute(entry.Id))failures.Add("Quick config: explicit retry failed to restore known saved entry.");
                 storage.Fail=storage.Unknown=true;settings.TryChange(settings.Current.Change(null,entry.Id),entry.Id,out reason);Wait(settings,()=>!settings.Busy);

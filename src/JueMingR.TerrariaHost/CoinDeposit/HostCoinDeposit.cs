@@ -31,6 +31,27 @@ namespace JueMingR.TerrariaHost.CoinDeposit
         internal Exception SetupError { get; private set; }
         internal string Status { get; private set; } = "已关闭";
         internal string Detail { get; private set; }
+        private bool reportedUnavailable, reportedSsc, operationFeedback;
+        private long reportedFaultSession = -1;
+        private string operationError, noProgressHint;
+        private int hintBank = -1;
+        private long hintWalletRevision, hintBankRevision;
+        internal string NameHint
+        {
+            get
+            {
+                if (Intent.Faulted) return "存钱结果未确认，已暂停。重新开关不会重做这笔交易，请保留当前状态供检查。";
+                if (!Available) return "自动存钱暂不可用，原版手动存取不受影响。";
+                if (Settings.Message != null) return Settings.Message;
+                if (operationError != null) return operationError;
+                if (!Settings.Enabled) return null;
+                if (ServerCharacter) return "此服务器管理角色存档，暂不支持自动存钱。";
+                if (Intent.Protected || Intent.Pending) return "主动取出的钱先留在身上；离开全部个人银行范围，或关闭再开启后恢复。";
+                return hintBank >= 0 && Range.Count != 0 && hasCoins && wallet.Revision == hintWalletRevision &&
+                    accounts[hintBank].Revision == hintBankRevision ? noProgressHint : null;
+            }
+        }
+        private static bool ServerCharacter { get { return Main.ServerSideCharacter || Main.ActivePlayerFileData != null && Main.ActivePlayerFileData.ServerSideCharacter; } }
         internal bool ControlsEnabled { get { return Available && Settings.Loaded && !Settings.Busy && !Settings.Protected; } }
         internal Player Player { get { return Runtime.IsSessionActive && Thread.CurrentThread.ManagedThreadId == threadId && TrustedIdentity ? Items.World.Player : null; } }
         internal bool Observing { get { return Available && Settings.Enabled && Player != null && !Transfer.Executing && !Items.World.AutomaticOperation; } }
@@ -85,6 +106,19 @@ namespace JueMingR.TerrariaHost.CoinDeposit
             if (!Available) { Unavailable(); return; }
             if (!Settings.Enabled) { Status = "已关闭"; Detail = Settings.Message; }
         }
+        internal void TakeFeedback(Action<string> display)
+        {
+            Settings.TakeFeedback(display);
+            if (!Available && !reportedUnavailable) { display("自动存钱暂不可用，原版手动存取不受影响。"); reportedUnavailable = true; }
+            if (Available) reportedUnavailable = false;
+            if (Intent.Faulted && reportedFaultSession != identity)
+            { display("存钱结果未确认，已暂停。请保留当前状态供检查。"); reportedFaultSession = identity; }
+            if (!Intent.Faulted) reportedFaultSession = -1;
+            bool ssc = Settings.Enabled && ServerCharacter;
+            if (ssc && !reportedSsc) { display("此服务器管理角色存档，暂不支持自动存钱。"); reportedSsc = true; }
+            if (!ssc) reportedSsc = false;
+            if (operationFeedback) { display(operationError); operationFeedback = false; }
+        }
         private void Unavailable()
         { Status = "暂不可用"; Detail = "存钱或物品保护入口未就绪，原版手动存取不受影响。"; }
         private void UnconfirmedStatus()
@@ -111,13 +145,14 @@ namespace JueMingR.TerrariaHost.CoinDeposit
             // reading never becomes evidence of a different world.
             if (p == null || world == null || Main.netMode == 1 && socket == null) { Intent.Invalidate(); return; }
             if (!ReferenceEquals(p, identityPlayer) || !ReferenceEquals(world, identityWorld) || !ReferenceEquals(socket, identitySocket) || identityMode != Main.netMode)
-            { identityPlayer = p; identityWorld = world; identitySocket = socket; identityMode = Main.netMode; Intent.BeginSession(++identity); Transfer.BeginSession(); Range.Clear(); ResetAttempts(); }
+            { identityPlayer = p; identityWorld = world; identitySocket = socket; identityMode = Main.netMode; Intent.BeginSession(++identity); Transfer.BeginSession(); Range.Clear(); ResetAttempts(); ClearPresentationResult(); }
         }
         public void OnSessionEnded()
         {
             Intent.Invalidate(); CoinWithdrawalHooks.Retire(); Range.Clear();
-            if (Main.gameMenu) { identityPlayer = null; identityWorld = identitySocket = null; Intent.BeginSession(++identity); Transfer.BeginSession(); }
+            if (Main.gameMenu) { identityPlayer = null; identityWorld = identitySocket = null; Intent.BeginSession(++identity); Transfer.BeginSession(); ClearPresentationResult(); }
         }
+        private void ClearPresentationResult() { operationError = noProgressHint = null; operationFeedback = false; hintBank = -1; }
         public void FailClosed() { if (Transfer.Executing) Intent.Unconfirmed(); else Intent.Invalidate(); }
         internal long Session { get { return identity; } }
         public void Update(ulong tick)
@@ -193,6 +228,13 @@ namespace JueMingR.TerrariaHost.CoinDeposit
                 }
                 CoinOutcome result = Transfer.Execute(entrance, Intent.Generation);
                 ReadWallet(p); bank.Read(entrance.Bank.item);
+                // These cached facts only explain the last verified result.
+                // Hover never re-reads inventory, bank capacity or native state.
+                hintBank = result == CoinOutcome.None ? kind : -1;
+                hintWalletRevision = wallet.Revision; hintBankRevision = bank.Revision;
+                noProgressHint = bank.HasEmpty ? "无币账户首存仅支持存钱罐。" : "上次存入时账户没有可用空间；腾出空间后会继续。";
+                if (result == CoinOutcome.Failed) { operationError = "本次自动存钱失败，钱币未转移。"; operationFeedback = true; }
+                else if (result == CoinOutcome.Completed || result == CoinOutcome.Partial) { operationError = null; operationFeedback = false; }
                 if (result != CoinOutcome.Rejected && result != CoinOutcome.Cancelled)
                 { triedWallet[kind] = wallet.Revision; triedBank[kind] = bank.Revision; triedIntent[kind] = Intent.Generation; }
                 attempted = true;
@@ -253,6 +295,7 @@ namespace JueMingR.TerrariaHost.CoinDeposit
             private struct Slot { internal Item Ref; internal int Type, Stack, Max; internal byte Prefix; internal bool Favorite; }
             private readonly Slot[] values; private Item[] array;
             internal long Revision { get; private set; }
+            internal bool HasEmpty { get; private set; }
             internal Facts(int count) { values = new Slot[count]; }
             internal bool Read(Item[] current)
             {
@@ -260,10 +303,11 @@ namespace JueMingR.TerrariaHost.CoinDeposit
                 // Validate the complete finite read before publishing any member.
                 // A late unreadable slot must not swallow an earlier space change.
                 for (int i = 0; i < values.Length; i++) if (current[i] == null || current[i].stack < 0) return false;
-                bool changed = !ReferenceEquals(current, array); array = current;
+                bool changed = !ReferenceEquals(current, array); array = current; HasEmpty = false;
                 for (int i = 0; i < values.Length; i++)
                 {
                     Item item = current[i]; if (item == null || item.stack < 0) return false;
+                    HasEmpty |= item.type < 1 || item.stack < 1;
                     Slot old = values[i];
                     // This is a no-progress cache, never a write permission.
                     // Native equivalent Item reconstruction cannot awaken another

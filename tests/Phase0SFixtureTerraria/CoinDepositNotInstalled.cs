@@ -7,7 +7,8 @@ using JueMingR.TerrariaHost.Items;
 // actual currency tests load the real Host and fixed .8 executable instead.
 namespace JueMingR.TerrariaHost.CoinDeposit
 {
-    internal sealed class HostCoinDeposit { }
+    internal sealed class HostCoinDeposit
+    { internal void TakeFeedback(Action<string> display) { throw new InvalidOperationException("Use the real G06 native fixture."); } }
     internal sealed class CoinPanel
     {
         private static Exception Missing() { return new InvalidOperationException("Use the real G06 native fixture."); }

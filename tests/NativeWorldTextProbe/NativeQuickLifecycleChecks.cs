@@ -83,9 +83,13 @@ namespace NativeWorldTextProbe
                 for(int toggle=0;toggle<2;toggle++){Call(quick,"ToggleQuick");Until(()=>{Call(quick,"Poll");return !settings.Busy;});NativeQuickItemChecks.Sample(input,new[]{Keys.J});Call(shell,"ProcessInput");NativeQuickItemChecks.NativeFrame(p);}
                 Require(!(bool)Get(use,"Active") && p.selectedItem==2 && p.itemAnimation==0,"re-enable cannot replay an already held key");
                 prepare();Press(input,shell,Keys.J);throwDuringUse=true;int recalls=NativeQuickItemChecks.Recalls;
+                Call(quick,"TakeFeedback",(Action<string>)(_=>{}));var errors=new List<string>();
                 try{NativeQuickItemChecks.NativeFrame(p);throw new Exception("mid-use exception not raised");}
                 catch(Exception error){while(error is TargetInvocationException && error.InnerException!=null)error=error.InnerException;Require(ReferenceEquals(error,expected),"actual ItemCheck mid-use exception preserved");}
-                Require(!Main.mouseLeft && !(bool)Get(use,"InNativeUse") && p.inventory[17].stack==1,"mid-use finalizer releases borrowed input without rollback");finish("mid-use exception");
+                Require(!Main.mouseLeft && !(bool)Get(use,"InNativeUse") && p.inventory[17].stack==1,"mid-use finalizer releases borrowed input without rollback");
+                Call(quick,"TakeFeedback",(Action<string>)errors.Add);Require(errors.Count==1 && ((string)Get(quick,"QuickHint")).Contains("中断"),"true native exception alerts and remains available to name hover");
+                finish("mid-use exception");Call(quick,"TakeFeedback",(Action<string>)errors.Add);
+                Require(errors.Count==1 && ((string)Get(quick,"QuickHint")).Contains("中断"),"ordinary tail frames do not repeat or erase that operation's exception");
                 Require(NativeQuickItemChecks.Recalls<=recalls+1,"mid-use exception never repeats native effect");
                 prepare();Change(quick,entry.With(ItemID.LesserHealingPotion,QuickItemMode.Use,false,true));p.inventory[17].SetDefaults(ItemID.LesserHealingPotion);p.statLife=20;p.statLifeMax2=100;p.potionDelay=0;
                 Press(input,shell,Keys.J);throwAfterUse=true;

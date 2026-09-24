@@ -44,8 +44,11 @@ namespace NativeWorldTextProbe
                 object shell=Get(context,"Shell"),state=Get(shell,"State"),page=Get(shell,"items"),renderer=Get(shell,"renderer");
                 Set(state,"Ready",true);Call(state,"Navigate",0);Call(state,"RestoreVisible");Call(renderer,"RefreshResources");
                 Call(renderer,"Prepare",state,960f,760f,1f);Call(page,"PrepareLayout",Microsoft.Xna.Framework.Matrix.Identity,new Microsoft.Xna.Framework.Vector2(960,760));
-                Require(((IEnumerable)Get(Get(page,"CoinPanel"),"rows")).Cast<object>().Any(row=>(string)GetOptional(row,"Text")=="结果未确认"),
-                    "real unknown transaction remains directly visible after turning the feature off");
+                var alerts=new System.Collections.Generic.List<string>();Call(host,"TakeFeedback",(Action<string>)alerts.Add);
+                Require(alerts.Any(message=>message.Contains("结果未确认")) && ((string)Get(host,"NameHint")).Contains("结果未确认"),
+                    "real unknown transaction alerts and stays readable after turning the feature off");
+                int alertCount=alerts.Count;for(int i=0;i<20;i++)Call(host,"TakeFeedback",(Action<string>)alerts.Add);
+                Require(alerts.Count==alertCount,"same unknown transaction does not repeat its alert");
                 Call(state,"Close");
                 Require(settings.Set(true), "faulted preference can turn on without settlement"); NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return !settings.Busy; });
                 p.inventory[51] = Coin(72, 5); NativeCoinMatrix.Tick(host, 130, 500);

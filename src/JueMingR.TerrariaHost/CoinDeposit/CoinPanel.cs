@@ -5,8 +5,8 @@ using JueMingR.TerrariaHost.Items;
 
 namespace JueMingR.TerrariaHost.CoinDeposit
 {
-    // A small projection inside the existing Items page. Layout changes only
-    // when published status/preferences or the shared viewport actually change.
+    // Ordinary scheduling and errors do not own any row height. Only controls
+    // invalidate geometry; current reasons use the projected name on demand.
     internal sealed class CoinPanel
     {
         private static readonly F5RowDescription description = new F5RowDescription(HostCoinDeposit.ActionId,
@@ -14,31 +14,25 @@ namespace JueMingR.TerrariaHost.CoinDeposit
         private readonly HostCoinDeposit host;
         private readonly List<F5Element> rows = new List<F5Element>();
         private long revision = -1;
-        private string status, detail;
         private bool enabled, available;
-        private F5Rect statusRect, projectedStatus;
+        private readonly List<F5Rect> names = new List<F5Rect>();
         internal float Height { get; private set; }
-        internal bool NeedsBuild { get { return revision != host.Settings.Revision || status != host.Status || detail != (host.Settings.Message ?? host.Detail) || available != host.ControlsEnabled; } }
+        internal bool NeedsBuild { get { return revision != host.Settings.Revision || available != host.ControlsEnabled; } }
         internal CoinPanel(HostCoinDeposit host) { this.host = host; }
         internal void Execute(ItemUiControl control) { host.SetEnabled(control.Argument != 0); }
         internal void Build(float start, float width, Func<string, float, F5Size> measure)
         {
-            revision = host.Settings.Revision; status = host.Status; detail = host.Settings.Message ?? host.Detail;
+            revision = host.Settings.Revision;
             enabled = host.Settings.Enabled; available = host.ControlsEnabled; rows.Clear();
-            float y = start + 6;
+            float y = start;
             var layout = new F5RowLayout(rows, measure);
             layout.Row(ref y, 0, width, "自动存钱", new[] { "开启", "关闭", "键" }, description: description);
-            float top = y;
-            // The selected switch already communicates a normal off state.
-            // Saving/failure messages remain visible, not hidden in a tooltip.
-            string visible = host.Settings.Message ?? (status == "已关闭" ? null : status);
-            if (!string.IsNullOrEmpty(visible)) layout.TextLines(visible, 8, ref y, width - 16, .65f);
-            statusRect = new F5Rect(8, top, width - 16, y - top);
-            Height = y + 5;
+            // Row already includes the gap to the next complete feature block.
+            Height = y;
         }
         internal void Project(F5Rect view, float scroll, List<ItemUiControl> controls, List<F5Element> elements)
         {
-            projectedStatus = statusRect.Offset(view.X, view.Y - scroll);
+            names.Clear();
             foreach (var e in rows)
             {
                 if (e.Rect.Bottom <= scroll || e.Rect.Y >= scroll + view.Height) continue;
@@ -49,10 +43,13 @@ namespace JueMingR.TerrariaHost.CoinDeposit
                     controls.Add(new ItemUiControl { Command = e.Kind == F5ElementKind.Hotkey ? ItemUiCommand.Hotkey : ItemUiCommand.Coin,
                         Argument = e.Text == "开启" ? 1 : 0, Generation = unchecked((int)revision), Rect = rect, Element = projected,
                         Enabled = available, Selected = e.Kind == F5ElementKind.Button && enabled == (e.Text == "开启") });
-                else elements.Add(projected);
+                else { elements.Add(projected); if (e.Description != null) names.Add(projected.HintRect); }
             }
         }
         internal string Hint(float x, float y, out F5Rect rect)
-        { rect = projectedStatus; return projectedStatus.Contains(x, y) ? detail : null; }
+        {
+            foreach (var name in names) if (name.Contains(x, y)) { rect = name; return host.NameHint ?? description.Text; }
+            rect = default(F5Rect); return null;
+        }
     }
 }
