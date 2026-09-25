@@ -20,10 +20,13 @@ namespace JueMingR.TerrariaHost.Recovery
         private struct Failure{internal Item Item;internal int Type,Stack,Mana;internal long Revision;}
         internal BuffRecovery(HostRecovery host){this.host=host;}
         internal void Reset(){Array.Clear(failures,0,failures.Length);nextScan=0;revision=-1;}
+        // A Fairy Bell really produces any of these three effects. Other
+        // same-group pets/foods are competitors, not the same learning source.
+        internal static bool ProviderEffect(int a,int b){return a>0 && b>0 && (a==b || (a==27 || a==101 || a==102) && (b==27 || b==101 || b==102));}
         internal static bool SameEffect(int a,int b)
         {
             if(a<=0 || b<=0)return false;
-            return a==b || (a==27 || a==101 || a==102) && (b==27 || b==101 || b==102) ||
+            return ProviderEffect(a,b) ||
                 BuffID.Sets.IsWellFed[a] && BuffID.Sets.IsWellFed[b] || Main.meleeBuff[a] && Main.meleeBuff[b] ||
                 Main.lightPet[a] && Main.lightPet[b] || Main.vanityPet[a] && Main.vanityPet[b];
         }
@@ -58,7 +61,7 @@ namespace JueMingR.TerrariaHost.Recovery
 #if DEBUG
                     CandidateReads++;
 #endif
-                    Item item=items[i];if(!RecoveryCatalog.BuffCandidate(item) || !settings.Value.BuffAllowed(item.type) || !Missing(p,item.buffType) || host.Protected(p,items,account,i))continue;
+                    Item item=items[i];if(!RecoveryCatalog.BuffCandidate(item) || !settings.Value.BuffAllowed(item.type) || !Missing(p,item.buffType) || TemporarilyBlocked(p,item) || host.Protected(p,items,account,i))continue;
                     var f=failures[a*58+i];if(ReferenceEquals(item,f.Item) && item.type==f.Type && item.stack==f.Stack && p.statMana==f.Mana && f.Revision==settings.Revision)continue;
                     Use(host.Source(p,items,account,i,settings.Revision));return;
                 }
@@ -66,12 +69,16 @@ namespace JueMingR.TerrariaHost.Recovery
             nextScan=tick+30;
         }
         internal bool Owns(Item[] items,int slot){return Executing && ReferenceEquals(items,source.Items) && slot==source.Slot;}
+        // Cooldown and silence are known temporary native gates, not a failed
+        // attempt. Do not poison a stable provider when those gates later clear.
+        private static bool TemporarilyBlocked(Player p,Item item){return item.potion && p.potionDelay>0 || item.mana>0 && p.silence;}
         private bool Valid(Player p)
-        {return Executing && ReferenceEquals(p,source.Player) && source.Matches(host,true) && host.Buffs.Ready && host.Buffs.Revision==source.Revision && host.Value(4)!=0 && host.Buffs.Value.BuffAllowed(source.Type) && Missing(p,source.Item.buffType);}
+        {return Executing && ReferenceEquals(p,source.Player) && source.Matches(host,true) && host.Buffs.Ready && host.Buffs.Revision==source.Revision && host.Value(4)!=0 && host.Buffs.Value.BuffAllowed(source.Type) && !TemporarilyBlocked(p,source.Item) && Missing(p,source.Item.buffType);}
         internal Item Food(Player p)
         {if(attempted || !Valid(p) || !BuffID.Sets.IsWellFed[source.Item.buffType])return null;attempted=true;return source.Item;}
         internal bool Permit(Player p,Item item)
         {if(attempted || !ReferenceEquals(item,source.Item) || !Valid(p) || BuffID.Sets.IsWellFed[item.buffType])return false;attempted=true;return true;}
+        internal bool AllowsPet(Player p,Item item){return attempted && ReferenceEquals(item,source.Item) && Valid(p);}
         private void Use(RecoverySource candidate)
         {
             if(!candidate.Matches(host) || !host.Admit(candidate.Player))return;

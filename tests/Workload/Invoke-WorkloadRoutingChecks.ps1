@@ -66,6 +66,7 @@ try {
         'src/JueMingR.TerrariaHost/Notes/NotesPresentation.cs' = 'notes-host';
         'src/JueMingR.Features/WorldObjectText/WorldObjectResolver.cs' = 'world-host';
         'src/JueMingR.TerrariaHost/World/WorldTileObservation.cs' = 'world-host';
+        'src/JueMingR.Platform/WorldTargets/WorldTargetObservation.cs' = 'world-host';
         'src/JueMingR.TerrariaHost/Map/FullscreenMapDrawing.cs' = 'map-host';
         'docs/guide.md' = 'core'
     }
@@ -88,7 +89,8 @@ try {
         'src/JueMingR.TerrariaHost/Notes/NotesInput.cs' = @('core','notes-host','browser-host');
         'src/JueMingR.TerrariaHost/Notes/NotesPresentation.cs' = @('core','notes-host','about-host');
         'src/JueMingR.Features/WorldObjectText/WorldObjectResolver.cs' = @('core','world-host','browser-host');
-        'src/JueMingR.TerrariaHost/World/WorldTileObservation.cs' = @('core','world-host','browser-host');
+        'src/JueMingR.TerrariaHost/World/WorldTileObservation.cs' = @('core','world-host','browser-host','recovery-host');
+        'src/JueMingR.Platform/WorldTargets/WorldTargetObservation.cs' = @('core','world-host','browser-host','recovery-host');
         'src/JueMingR.TerrariaHost/ItemBrowser/NativeItemCatalog.cs' = @('core','browser-host');
         'src/JueMingR.TerrariaHost/Hotkeys/HostHotkeys.cs' = @('core','shared-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host','recovery-host');
         'src/JueMingR.TerrariaHost/F5/F5Layout.cs' = @('core','shared-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host','recovery-host');

@@ -46,6 +46,12 @@ namespace NativeWorldTextProbe
             Require(p.FindBuffIndex(BuffID.Ironskin)<0,"actual drawn native icon cancels buff");
             Call(host,"Poll");NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return !prefs.Busy;});
             Require(!prefs.Value.BuffAllowed(ItemID.IronskinPotion),"actual manual icon cancellation removes corresponding allowed item");
+            int fairy=NativeRecoveryPetChecks.ManualFairy(context);
+            graphics.LoadBuffTexture(fairy);Main.mouseX=Main.mouseY=15;Main.mouseRight=Main.mouseRightRelease=true;
+            graphics.Image(Path.Combine(output,"manual-fairy-icon-cancel.png"),()=>Main.DrawBuffIcon(-1,p.FindBuffIndex(fairy),10,10),Matrix.Identity);
+            Require(p.FindBuffIndex(fairy)<0,"actual native fairy-variant icon cancels buff");
+            Call(host,"Poll");NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return !prefs.Busy;});
+            Require(!prefs.Value.BuffAllowed(ItemID.FairyBell) && prefs.Value.BuffAllowed(1183),"variant cancellation removes Fairy Bell only, not another light-pet provider");
             Main.mouseRight=false;Main.mouseRightRelease=true;p.mouseInterface=false;NativeRecoveryChecks.Save(prefs,new RecoveryOptions());
             Console.WriteLine("PASS G07 graphics: native Chinese F5 at normal/150/small sizes, real catalogue and actual icon-cancel follow removal.");
         }

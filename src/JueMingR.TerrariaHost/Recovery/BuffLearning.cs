@@ -38,7 +38,7 @@ namespace JueMingR.TerrariaHost.Recovery
         {ClearSource();if(!RecoveryCatalog.BuffCandidate(source))return;item=source;type=source.type;buff=source.buffType;session=host.Runtime.Generation;}
         private void ClearSource(){item=null;type=buff=0;}
         internal int BeforeAdd(Player p,int effect)
-        {return scope!=0 && type>0 && session==host.Runtime.Generation && effect==buff && Manual(p)?Time(p,effect):-1;}
+        {return scope!=0 && type>0 && session==host.Runtime.Generation && BuffRecovery.ProviderEffect(buff,effect) && Manual(p)?Time(p,effect):-1;}
         internal void AfterAdd(Player p,int effect,int before)
         {
             if(before<0 || Time(p,effect)<=before || !Manual(p) || !host.Buffs.Value.FollowAdd)return;
@@ -53,7 +53,7 @@ namespace JueMingR.TerrariaHost.Recovery
         {
             var p=host.Player;if(!observed || p==null || Time(p,effect)>0 || !host.Buffs.Ready)return;
             foreach(int allowed in host.Buffs.Value.AllowedBuffs)
-            {Item definition;if(ContentSamples.ItemsByType.TryGetValue(allowed,out definition) && definition.buffType==effect)Queue(allowed,false);}
+            {Item definition;if(ContentSamples.ItemsByType.TryGetValue(allowed,out definition) && BuffRecovery.ProviderEffect(definition.buffType,effect))Queue(allowed,false);}
             host.ObserveManual();
         }
         private void Queue(int value,bool add)

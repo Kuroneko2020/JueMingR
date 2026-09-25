@@ -39,7 +39,23 @@ namespace NativeWorldTextProbe
             p.ClearBuff(BuffID.Ironskin);Call(host,"Poll");Require(s.Value.BuffAllowed(ItemID.IronskinPotion),"natural/generic removal does not unlearn");
             p.AddBuff(BuffID.Regeneration,3600);Call(host,"Poll");Require(!s.Value.BuffAllowed(ItemID.RegenerationPotion),"unrelated AddBuff is not manual learning");
             NativeRecoveryChecks.Save(s,new RecoveryOptions());
+            TemporaryCooldown(host,input,s,p);
+            NativeRecoveryPetChecks.Run(context);
             Console.WriteLine("PASS G07 buffs: real multi-target completion, existing effects, immune provider and independent progress.");
+        }
+        private static void TemporaryCooldown(object host,object input,RecoverySettings s,Player p)
+        {
+            foreach(var item in p.inventory)item.TurnToAir();Array.Clear(p.buffType,0,p.buffType.Length);Array.Clear(p.buffTime,0,p.buffTime.Length);
+            p.controlUseItem=p.channel=false;p.itemAnimation=p.itemTime=0;Main.mouseLeft=false;
+            var honey=p.inventory[2];honey.SetDefaults(ItemID.BottledHoney);honey.stack=3;p.potionDelay=60;
+            Require(honey.potion && honey.buffType==BuffID.Honey,"real honey has potion cooldown and a buff");
+            NativeRecoveryChecks.Save(s,new RecoveryOptions(buffs:true,allowedBuffs:new[]{honey.type}));
+            object use=Get(host,"BuffUse");long calls=(long)Get(use,"NativeCalls");
+            for(ulong tick=300;tick<900;tick++)NativeRecoveryChecks.Frame(host,input,tick);
+            Require((long)Get(use,"NativeCalls")==calls && honey.stack==3 && p.FindBuffIndex(BuffID.Honey)<0,"temporary potion cooldown has no repeated native buff attempts");
+            p.potionDelay=0;NativeRecoveryChecks.Frame(host,input,930);
+            Require(ReferenceEquals(honey,p.inventory[2]) && honey.stack==2 && p.FindBuffIndex(BuffID.Honey)>=0,"same unchanged honey is admitted after its real cooldown clears");
+            NativeRecoveryChecks.Save(s,new RecoveryOptions());
         }
     }
 }

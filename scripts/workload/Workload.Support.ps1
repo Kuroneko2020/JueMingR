@@ -83,6 +83,8 @@ function Get-WorkloadRoute {
             '^src/[^/]+/Information/' { [void]$groups.Add('shared-host'); [void]$groups.Add('style-host'); [void]$groups.Add('storage-host'); continue }
             '^src/[^/]+/(Guidance|Npcs)/' { [void]$groups.Add('shared-host'); [void]$groups.Add('storage-host'); continue }
             '^src/JueMingR.TerrariaHost/(F5|Input)/|^src/JueMingR.TerrariaHost/Phase0|^src/JueMingR.Platform/Runtime/' { [void]$groups.Add('shared-host'); continue }
+            # Furniture consumes this shared raw tile source and its value DTO.
+            '^src/JueMingR.TerrariaHost/World/WorldTileObservation\.cs$|^src/JueMingR.Platform/WorldTargets/WorldTargetObservation\.cs$' { [void]$groups.Add('world-host'); [void]$groups.Add('recovery-host'); continue }
             '^src/[^/]+/(WorldObjectText|WorldTargets|World|Rendering)/|^tests/(WorldObjectText|WorldTargets)/' { [void]$groups.Add('world-host'); continue }
             '^src/[^/]+/(EntityLabels|Hotkeys|Items|Settings|Biomes)/|^tests/(EntityLabels|Hotkeys|Items|Phase0U|Phase0V)/' { [void]$groups.Add('shared-host'); continue }
             '^scripts/|^tests/|^eng/|^src/.*\.(csproj|props|targets)$|^Directory\.Build\.|^global\.json$|^JueMingR\.sln$|^NuGet\.Config$|^\.github/' { [void]$groups.Add('shared-host'); [void]$groups.Add('storage-host'); continue }
