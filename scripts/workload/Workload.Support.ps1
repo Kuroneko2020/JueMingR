@@ -58,14 +58,19 @@ function Get-WorkloadRoute {
     $unknown = @()
     foreach ($path in $Paths) {
         switch -Regex ($path.Replace('\', '/')) {
-            '^src/[^/]+/(About|Onboarding)/|^tests/JueMingR.ArchitectureTests/Onboarding|^tests/NativeWorldTextProbe/NativeAbout' { [void]$groups.Add('shared-host'); [void]$groups.Add('storage-host'); continue }
+            # Consuming shared input/storage does not make a feature-local edit
+            # a change to those providers. Keep reverse dependencies below.
+            '^src/[^/]+/(About|Onboarding)/|^tests/(About|Onboarding)/|^tests/Phase0U/AboutChecks\.cs$|^tests/JueMingR.ArchitectureTests/Onboarding|^tests/NativeWorldTextProbe/NativeAbout' { [void]$groups.Add('about-host'); continue }
             '^src/[^/]+/CoinDeposit/|^tests/JueMingR.ArchitectureTests/CoinDeposit/|^tests/CoinDeposit/|^tests/NativeWorldTextProbe/NativeCoin' { [void]$groups.Add('coin-deposit-host'); continue }
             '^docs/|^AGENTS\.md$|^README(?:\.[^/]+)?$|^LICENSE$|^THIRD-PARTY-NOTICES\.md$' { continue }
             '^src/[^/]+/(QuickItems|KeepFavorited)/|^tests/JueMingR.ArchitectureTests/(QuickItems|KeepFavorited)/|^tests/NativeWorldTextProbe/Native(Quick|Favorite)' { [void]$groups.Add('quick-items-host'); continue }
             '^src/[^/]+/(ItemCatalog|ItemBrowser|ChestLocator|Announcements)/|^tests/(ItemBrowser|ChestLocator|Announcements)/' { [void]$groups.Add('browser-host'); continue }
-            # BrowserPresentation directly shares these input adapters, but not
-            # the rest of Notes UI. Preserve the narrow ordinary Notes route.
-            '^src/JueMingR.TerrariaHost/Notes/Notes(Clipboard|Input)\.cs$' { [void]$groups.Add('notes-host'); [void]$groups.Add('browser-host'); continue }
+            # About copies via NotesClipboard; onboarding consults prepared
+            # Notes overlap geometry. Neither consumes the Notes text editor.
+            '^src/JueMingR.TerrariaHost/Notes/NotesClipboard\.cs$' { [void]$groups.Add('notes-host'); [void]$groups.Add('browser-host'); [void]$groups.Add('about-host'); continue }
+            '^src/JueMingR.TerrariaHost/Notes/NotesPresentation\.cs$' { [void]$groups.Add('notes-host'); [void]$groups.Add('about-host'); continue }
+            # BrowserPresentation also shares NotesInput, but not the rest of Notes UI.
+            '^src/JueMingR.TerrariaHost/Notes/NotesInput\.cs$' { [void]$groups.Add('notes-host'); [void]$groups.Add('browser-host'); continue }
             '^src/[^/]+/Notes/|^tests/Notes/' { [void]$groups.Add('notes-host'); continue }
             '^src/[^/]+/Text/' { [void]$groups.Add('notes-host'); [void]$groups.Add('map-host'); [void]$groups.Add('browser-host'); continue }
             '^src/[^/]+/Footprints/|^tests/Footprints/' { [void]$groups.Add('footprints-host'); [void]$groups.Add('map-host'); [void]$groups.Add('storage-host'); continue }
@@ -83,7 +88,7 @@ function Get-WorkloadRoute {
             default { $unknown += $path }
         }
     }
-    if ($groups.Contains('shared-host') -or $groups.Contains('storage-host')) { [void]$groups.Add('death-host'); [void]$groups.Add('map-host') }
+    if ($groups.Contains('shared-host') -or $groups.Contains('storage-host')) { [void]$groups.Add('about-host'); [void]$groups.Add('death-host'); [void]$groups.Add('map-host') }
     if ($groups.Contains('shared-host') -or $groups.Contains('storage-host')) { [void]$groups.Add('quick-items-host') }
     if ($groups.Contains('shared-host') -or $groups.Contains('storage-host') -or $groups.Contains('quick-items-host')) { [void]$groups.Add('coin-deposit-host') }
     if ($groups.Contains('map-host') -or $groups.Contains('shared-host') -or $groups.Contains('storage-host')) { [void]$groups.Add('footprints-host') }

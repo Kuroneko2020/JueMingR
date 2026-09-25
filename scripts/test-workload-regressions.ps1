@@ -35,14 +35,22 @@ function Build-WorkloadFixture {
     $name = if ($Project -ceq 'Phase0SFixtureTerraria') { 'Terraria' } else { $Project }
     return Join-Path $checksRoot ('bin/' + $Project + '/x86/Debug/net472/' + $name + '.exe')
 }
+function Invoke-AboutWorkloadChecks {
+    param([string[]] $Groups, [string] $Architecture, [string] $Fixture, [string] $Native)
+    if ($Groups -notcontains 'about-host') { return }
+    # Reuse the existing assertions and F5 entry (which includes AboutChecks).
+    # Shared provider routes include this group too; execute it only once.
+    Invoke-WorkloadCheck 'onboarding-markers' $Architecture @('--onboarding')
+    Invoke-WorkloadCheck 'about-native-composition' $Native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'about-cpu'), 'AboutCpu')
+    Invoke-WorkloadCheck 'f5-cpu' $Fixture @('f5-cpu')
+}
 try {
 $architecture = Join-Path $repositoryRoot 'artifacts/build/Debug/work/bin/JueMingR.ArchitectureTests/x86/Debug/net472/JueMingR.ArchitectureTests.exe'
 Invoke-WorkloadCheck 'core-records-selection' $architecture @('--workload-core', $repositoryRoot)
-if ($route.groups -contains 'shared-host' -or $route.groups -contains 'storage-host') { Invoke-WorkloadCheck 'onboarding-markers' $architecture @('--onboarding') }
 $fixture = Build-WorkloadFixture 'Phase0SFixtureTerraria'
 foreach ($mode in @('notes-input', 'entity-style', 'world-targets-style')) { Invoke-WorkloadCheck ('core-' + $mode) $fixture @($mode) }
 $native = Build-WorkloadFixture 'NativeWorldTextProbe'
-if ($route.groups -contains 'shared-host' -or $route.groups -contains 'storage-host') { Invoke-WorkloadCheck 'about-native-composition' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'about-cpu'), 'AboutCpu') }
+Invoke-AboutWorkloadChecks $route.groups $architecture $fixture $native
 Invoke-WorkloadCheck 'core-native-host' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'native-cpu'), 'WorkloadCpu')
 if ($route.groups -contains 'shared-host') { Invoke-WorkloadCheck 'information-native-host' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'information-cpu'), 'InformationCpu') }
 if ($route.groups -contains 'shared-host') { Invoke-WorkloadCheck 'guidance-native-host' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'guidance-cpu'), 'GuidanceCpu') }
@@ -76,7 +84,7 @@ if ($route.groups -contains 'map-host') {
 }
 if ($route.groups -contains 'notes-host') { [void]$modes.Add('hotkeys-popup'); [void]$modes.Add('focus-input') }
 if ($route.groups -contains 'world-host') { foreach ($mode in @('world-targets-observation', 'world-targets-projection', 'entity-observation')) { [void]$modes.Add($mode) } }
-if ($route.groups -contains 'shared-host') { foreach ($mode in @('f5-cpu', 'focus-input', 'hotkeys-popup', 'entity-observation', 'entity-projection', 'entity-preferences', 'entity-controls', 'world-targets-observation', 'world-targets-projection', 'items-safety', 'information-defaults')) { [void]$modes.Add($mode) } }
+if ($route.groups -contains 'shared-host') { foreach ($mode in @('focus-input', 'hotkeys-popup', 'entity-observation', 'entity-projection', 'entity-preferences', 'entity-controls', 'world-targets-observation', 'world-targets-projection', 'items-safety', 'information-defaults')) { [void]$modes.Add($mode) } }
 foreach ($mode in @($modes | Sort-Object)) { Invoke-WorkloadCheck $mode $fixture @($mode) }
 if ($route.groups -contains 'storage-host') { Invoke-WorkloadCheck 'storage-host' $architecture @('--workload-storage', $repositoryRoot) }
 if (@($changes.paths | Where-Object { $_ -match '^scripts/(workload/|test-workload-regressions\.ps1|build\.ps1)|^tests/Workload/' }).Count -gt 0) {
