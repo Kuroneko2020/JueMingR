@@ -46,6 +46,7 @@ namespace NativeWorldTextProbe
                 Call(page, "Leave");
             }
             DrawOnboarding(context, graphics, output);
+            Call(renderer, "Prepare", state, 1280f, 1080f, 1f); // Leave invalidates; image lookup requires the rebuilt home layout.
             var images = (Texture2D[])Get(Get(renderer, "sponsorImages"), "textures"); var first = images[0]; var second = images[1];
             int oldGeneration = (int)Get(layout, "Generation");
             object failedImages = Activator.CreateInstance(Get(renderer, "sponsorImages").GetType(), true);
