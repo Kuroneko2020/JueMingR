@@ -250,11 +250,10 @@ namespace JueMingR.TerrariaHost.F5
                         Text(batch, element.Text, new Vector2(rect.X, rect.Y), element.TextScale,
                             element.Kind == F5ElementKind.AboutHeading ? About.AboutPainter.Gold : element.Kind == F5ElementKind.AboutMuted ? About.AboutPainter.Muted : Color.White, element.TextSize);
                     else if (element.Kind == F5ElementKind.AboutCard) aboutPainter.Card(batch, pixel, rect, element.Text, element.TextScale > 0 ? element.TextScale : 1);
-                    else if (element.Kind == F5ElementKind.AboutOrnament) About.AboutPainter.Ornament(batch, pixel, rect);
                     else if (element.Kind == F5ElementKind.Divider) Decoration(batch, rect, Color.White * 0.35f);
                     else if (element.Kind == F5ElementKind.Image)
                     {
-                        aboutPainter.QrFrame(batch, pixel, rect, element.TextScale);
+                        aboutPainter.QrFrame(batch, pixel, rect, element.TextScale, element.Text == "wechat.png");
                         sponsorImages.Draw(batch, pixel, rect, element.Text, element.TextScale);
                         state.Layout.About.SetImageFailure(sponsorImages.Failed);
                     }

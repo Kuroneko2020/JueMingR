@@ -16,7 +16,7 @@ namespace JueMingR.TerrariaHost.F5
         { return new F5Rect(X + x, Y + y, Width, Height); }
     }
 
-    internal enum F5ElementKind { Panel, Text, Button, Field, Hotkey, Divider, Image, AboutCard, AboutHeading, AboutMuted, AboutOrnament }
+    internal enum F5ElementKind { Panel, Text, Button, Field, Hotkey, Divider, Image, AboutCard, AboutHeading, AboutMuted }
     internal enum F5Command { None, EnableBiome, DisableBiome, ConfigureBiome,
         ConfigureInfection, EnableInfection, DisableInfection, ConfigureLuck, EnableLuck, DisableLuck,
         ConfigureAngler, EnableAngler, DisableAngler, AdjustInformation,
@@ -32,7 +32,7 @@ namespace JueMingR.TerrariaHost.F5
         ConfigureRare, ConfigureMerchant, DeathDetails, DeathConfigure, DeathEnable, DeathDisable,
         MarkerManage, MarkerEnable, MarkerDisable, ExplorationDetails, ExplorationValue,
         FootprintConfigure, FootprintEnable, FootprintDisable, AnnouncementEnable, AnnouncementDisable,
-        AboutHelp, AboutBack, AboutCopyGroup, AboutCopyVersion }
+        AboutCopyGroup }
 
     internal sealed class F5Element
     {

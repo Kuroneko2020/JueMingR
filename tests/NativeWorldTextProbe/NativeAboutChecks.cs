@@ -19,17 +19,16 @@ namespace NativeWorldTextProbe
             foreach (string name in new[] { "CoinDeposit", "QuickItems", "KeepFavorited", "Browser", "Footprints", "MapFeatures", "DeathRecords", "Information", "Guidance", "WorldObjects", "WorldTargets", "Labels", "onboarding" }) Require(GetOptional(context, name) != null, "Full About profile retains " + name);
             object shell = Get(context, "Shell"), state = Get(shell, "State"), layout = Get(state, "Layout"), page = Get(layout, "About"), renderer = Get(shell, "renderer");
             var assembly = shell.GetType().Assembly;
-            string version = (string)Get(page, "Version");
-            Require(version.Contains(assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>().InformationalVersion) && version.Contains("1.4.5.8"), "Displayed identity comes from loaded Host and actual .8 EXE");
             var names = new[] { "wechat.png", "alipay.jpg" };
             var hashes = new[] { "8AFAD8D5C17B1A23DA579155D772A4BABE4AAEB900CC5CCEAB6CB0712E049835", "6C5F1165FE46901BE2A3C5FFF273116374FA995960ABF79A1A9CA4305B9C7BE3" };
             for (int i = 0; i < 2; i++) using (var stream = assembly.GetManifestResourceStream("JueMingR.About." + names[i])) using (var hash = SHA256.Create())
                 Require(stream != null && BitConverter.ToString(hash.ComputeHash(stream)).Replace("-", "") == hashes[i], "Built Host embeds exact authorized bytes " + names[i]);
             int copies = 0; string copied = null;
-            Call(page, "Attach", (Func<string>)(() => version), (Func<string, bool>)(text => { copies++; copied = text; return true; }));
+            Call(page, "Attach", (Func<string, bool>)(text => { copies++; copied = text; return true; }), null);
             Call(state, "Navigate", 5); Call(state, "RestoreVisible"); Set(state, "Ready", true); Call(renderer, "RefreshResources");
             Call(renderer, "Prepare", state, (float)PlayerInput.OriginalScreenSize.X, (float)PlayerInput.OriginalScreenSize.Y, Main.UIScaleMatrix.M11);
             var button = ((IEnumerable)Get(layout, "Elements")).Cast<object>().First(e => Get(e, "Command").ToString() == "AboutCopyGroup");
+            Require(((IEnumerable)Get(layout, "Elements")).Cast<object>().Count(e => Get(e, "Kind").ToString() == "Button") == 1, "No removed help/version actions remain in the actual host page");
             Click(context, button);
             Require(copies == 1 && copied == "915753352", "Actual Shell.ProcessInput dispatch reaches the injected clipboard outlet exactly once");
             var identity = assembly.GetType("JueMingR.TerrariaHost.Onboarding.CharacterIdentity");
@@ -59,7 +58,7 @@ namespace NativeWorldTextProbe
                 finally { Main.player[Main.myPlayer] = oldPlayer; Call(owner, "OnSessionEnded"); }
             }
             finally { Main.ActiveWorldFileData = previousWorld; Main.ActivePlayerFileData = previousFile; Main.netMode = previousMode; Netplay.Connection.State = previousConnection; }
-            Console.WriteLine("PASS: complete About native composition, built asset bytes, loaded identity, real Shell clipboard dispatch, ordinary-client and SSC identity, stale-role receipt.");
+            Console.WriteLine("PASS: complete About native composition, built asset bytes, single real Shell clipboard action, ordinary-client and SSC identity, stale-role receipt.");
         }
         private static void Click(object context, object element)
         {

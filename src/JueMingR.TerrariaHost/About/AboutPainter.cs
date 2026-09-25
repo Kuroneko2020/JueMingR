@@ -86,17 +86,12 @@ namespace JueMingR.TerrariaHost.About
             c.Round(0, 0, 198, 26, 6, panel, hovered ? 158 : 122); c.Round(1, 1, 196, 24, 5, row, 68); c.Border(1, 1, 196, 24, 1, border, hovered ? 214 : 152);
             c.Fill(8, 21, 182, 1, Color.White, hovered ? 58 : 36); c.Spark(18, 13, 2, new Color(255, 226, 150), hovered ? 240 : 190); c.Spark(180, 13, 2, new Color(255, 226, 150), hovered ? 240 : 190);
         }
-        internal void QrFrame(SpriteBatch batch, Texture2D pixel, F5Rect rect, float scale)
+        internal void QrFrame(SpriteBatch batch, Texture2D pixel, F5Rect rect, float scale, bool wechat)
         {
             var c = new Canvas(batch, pixel, rect.X, rect.Y, scale); float size = rect.Width / scale;
-            c.Round(-4, -4, size + 8, size + 8, 5, border, 178); c.Round(-2, -2, size + 4, size + 4, 4, panel, 160);
-            c.Round(0, 0, size, size, 4, new Color(242, 244, 250), 248); c.Border(3, 3, size - 6, size - 6, 1, new Color(84, 96, 154), 150);
-            float length = Math.Max(8, size / 6);
-            c.Corners(-12, -12, size + 24, size + 24, length, border, 220);
-            c.Dots(6, size + 18, 14, border, 90); c.Dots(size - 20, size + 18, 14, border, 90);
+            c.Fill(0, 0, size, size, Color.White, 255);
+            c.Border(-1, -1, size + 2, size + 2, 1, wechat ? new Color(64, 190, 108) : new Color(64, 156, 235), 255);
         }
-        internal static void Ornament(SpriteBatch batch, Texture2D pixel, F5Rect rect)
-        { new Canvas(batch, pixel, rect.X, rect.Y, 1).Dots(0, 2, rect.Width, Muted, 96); }
         private void Icon(Canvas c, float x, float y, string kind)
         {
             c.Round(x, y, 20, 20, 4, panel, 180); c.Border(x, y, 20, 20, 1, border, 220); c.Fill(x + 3, y + 3, 14, 1, Color.White, 54);

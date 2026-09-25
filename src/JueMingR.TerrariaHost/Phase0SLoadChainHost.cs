@@ -911,7 +911,7 @@ namespace JueMingR.TerrariaHost
                 Shell = new F5Shell(runtime, preferences, notes, items, Input, hotkeys, Labels, WorldTargets, WorldObjects, Information, Guidance, DeathRecords, MapFeatures, Footprints, Browser?.Announcements) { LayersReady = f5LayersReady };
                 Browser?.Attach(Shell, hotkeys);
                 if (PackageId.StartsWith("about-help-feedback-", StringComparison.Ordinal))
-                { onboarding = new Onboarding.HostOnboarding(gameDirectory); runtime.SharedRuntime.AddFeature(onboarding); Shell.Onboarding = onboarding; }
+                { onboarding = new Onboarding.HostOnboarding(gameDirectory); runtime.SharedRuntime.AddFeature(onboarding); Shell.AttachOnboarding(onboarding); }
                 if (CoinDeposit != null) { Shell.AttachCoinDeposit(CoinDeposit); CoinDeposit.CanGameplay = () => Shell.CanTargetInput && !Terraria.Main.mapFullscreen; }
                 if (QuickItems != null) { Shell.AttachQuickItems(QuickItems); QuickItems.CanGameplay=()=>Shell.CanTargetInput && !Terraria.Main.mapFullscreen && !Terraria.Main.LocalPlayer.mouseInterface; }
                 if (MapFeatures != null) { MapFeatures.Layer.UiOwnsInput = () => Shell.BlocksMapInput || Input.MapPointerOwned; MapFeatures.Layer.CloseForLocate = Shell.CloseForMapLocate; }

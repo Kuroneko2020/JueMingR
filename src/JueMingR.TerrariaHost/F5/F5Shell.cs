@@ -30,7 +30,13 @@ namespace JueMingR.TerrariaHost.F5
         private readonly HostHotkeys hotkeys;
         internal QuickItems.HostQuickItems QuickItems { get; set; }
         private CoinDeposit.HostCoinDeposit coinDeposit;
-        internal Onboarding.HostOnboarding Onboarding { get; set; }
+        internal Onboarding.HostOnboarding Onboarding { get; private set; }
+        internal void AttachOnboarding(Onboarding.HostOnboarding owner)
+        {
+            Onboarding = owner;
+            owner.CanPresent = () => CanTargetInput && !notes.OwnsPointer && !Main.LocalPlayer.mouseInterface;
+            owner.Overlaps = onboardingOverlap;
+        }
         private readonly Func<F5Rect, bool> onboardingOverlap;
         private bool OverlapsOnboarding(F5Rect rect)
         {
@@ -73,7 +79,7 @@ namespace JueMingR.TerrariaHost.F5
         { this.biome = biome; this.preferences = preferences; this.hostItems = hostItems; notes = new NotesPresentation(hostNotes.Workspace); notes.Attach(State);
             this.inputState = inputState ?? new Input.HostInputState();
             onboardingOverlap = OverlapsOnboarding;
-            State.Layout.About.Attach(About.RuntimeVersion.Read, new NotesClipboard(() => Main.instance.Window.Handle).TryCopy);
+            State.Layout.About.Attach(new NotesClipboard(() => Main.instance.Window.Handle).TryCopy);
             this.hotkeys = hotkeys;
             this.labels = labels;
             this.worldTargets = worldTargets;
@@ -326,7 +332,6 @@ namespace JueMingR.TerrariaHost.F5
                 else { renderer.EntityControls?.Execute(State.Command); renderer.WorldControls?.Execute(State.Command); renderer.ObjectControls?.Execute(State.Command);
                     renderer.GuidanceControls?.Execute(State.Command);
                     State.Layout.About.Execute(State.Command);
-                    if (State.Command == F5Command.AboutHelp || State.Command == F5Command.AboutBack) State.ScrollTo(0);
                     renderer.DeathControls?.Execute(State.Command); renderer.MapControls?.Execute(State.Command); renderer.FootprintControls?.Execute(State.Command); renderer.AnnouncementControls?.Execute(State.Command);
                     if (State.Command != F5Command.EnableBiome && State.Command != F5Command.DisableBiome) renderer.InformationControls?.Execute(State.Command); }
                 bool gameplay = !(TargetGestureBusy?.Invoke() ?? false) && inputActive && !(information != null && information.Adjustment.Active) && !adjustmentPending && !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest &&
@@ -396,7 +401,6 @@ namespace JueMingR.TerrariaHost.F5
                     deaths?.TakeFeedback(displayPreferenceFeedback); maps?.TakeFeedback(displayPreferenceFeedback); footprints?.TakeFeedback(displayPreferenceFeedback);
                     QuickItems?.TakeFeedback(displayPreferenceFeedback); coinDeposit?.TakeFeedback(displayPreferenceFeedback);
                     Onboarding?.State.TakeFeedback(displayPreferenceFeedback);
-                    if (Onboarding?.State.Failure != null) State.Layout.About.SetNotice(Onboarding.State.Failure);
                     if (StylePopup?.Failure != null && StylePopup.FailureKey != reportedStyleFailure)
                     { reportedStyleFailure = StylePopup.FailureKey; displayPreferenceFeedback(StylePopup.Failure); }
                 }
@@ -487,7 +491,7 @@ namespace JueMingR.TerrariaHost.F5
 
         internal bool DrawLayer()
         {
-            Onboarding?.Draw(CanTargetInput && !notes.OwnsPointer && !Main.LocalPlayer.mouseInterface, onboardingOverlap);
+            Onboarding?.ConfirmNativeDraw();
             try
             {
                 if (!CanPresentNow) { CloseAndSubmitPosition(); RestoreLeases(); }

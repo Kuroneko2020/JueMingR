@@ -11,42 +11,45 @@ namespace Terraria
             var state = new F5Interaction { Ready = true };
             var input = new F5Input { Width = 1280, Height = 1080, Scale = 1, Active = true, Focused = true, F5 = true };
             state.Update(input); input.F5 = false; state.Update(input); state.Navigate(5);
-            int copies = 0, behavior = 0; string copied = null;
-            state.Layout.About.Attach(() => "决明R · 开发构建\n构建：0.0.0-dev+" + new string('a', 40) + "\n当前 Terraria：1.4.5.8", text => { copies++; copied = text; if (behavior == 2) throw new InvalidOperationException(); return behavior == 0; });
+            int copies = 0, behavior = 0; string copied = null; double now = 1000;
+            state.Layout.About.Attach(text => { copies++; copied = text; if (behavior == 2) throw new InvalidOperationException(); return behavior == 0; }, () => now);
             object font = new object(); Func<string, F5Size> measure = t => new F5Size(t.Length * 18, 24);
             Action prepare = () => state.Layout.Ensure(input.Width, input.Height, input.Scale, state.Page, font, measure);
             prepare(); var page = state.Layout.About;
+            Require(!state.Layout.Elements.Any(e => e.Text == "使用帮助 / 版本信息" || e.Text == "微信" || e.Text == "支付宝"), "About has no removed help/version entry or QR captions");
             Require(state.Layout.Elements.Any(e => e.Text == "决明R") && state.Layout.Elements.Count(e => e.Kind == F5ElementKind.Image) == 2, "Real page introduction and both image elements");
             Require(state.Layout.MaxScroll == 0, "Home presents its whole composition without scrolling");
-            pageOpenHelp(state, prepare);
-            F5Element version = state.Layout.Elements.First(e => e.Command == F5Command.AboutCopyVersion);
-            Click(state, ref input, version, page); Require(copies == 1 && copied == page.Version, "Real release dispatch copies exactly the displayed Unicode version");
+            Require(state.Layout.Elements.Count(e => e.Kind == F5ElementKind.Button) == 1, "Only the requested group action remains");
+            F5Element group = state.Layout.Elements.First(e => e.Command == F5Command.AboutCopyGroup);
+            Click(state, ref input, group, page); Require(copies == 1 && copied == "915753352", "Real release dispatch copies exactly the displayed group number");
             int generation = state.Layout.Generation, measurements = state.Layout.MeasurementCount;
             for (int i = 0; i < 1000; i++) prepare();
-            Require(page.Display(version).Text == "已复制" && page.Display(version).Rect.Equals(version.Rect) && generation == state.Layout.Generation && measurements == state.Layout.MeasurementCount, "Persistent copy outcome has stable geometry and idle layout cost");
-            behavior = 1; Click(state, ref input, version, page); Require(page.Display(version).Text == "复制失败" && page.Hint(version.Command) != null, "Busy clipboard failure persists");
-            for (int i = 0; i < 50; i++) prepare(); Require(page.Display(version).Text == "复制失败" && copies == 2, "Failure is not cleared to manufacture success or retried by polling");
-            behavior = 2; Click(state, ref input, version, page); Require(copies == 3 && page.Display(version).Text == "复制失败", "Thrown clipboard result is failure");
-            behavior = 0; page.Execute(F5Command.AboutCopyGroup); Require(copied == "915753352", "Group copy has no decoration");
-            page.Execute(F5Command.AboutHelp); prepare(); Require(page.Help && state.Layout.MaxScroll > 0, "Help is a real long scrollable page");
-            page.Execute(F5Command.AboutBack); prepare(); Require(!page.Help && page.Display(version).Text == version.Text, "Returning clears previous action results");
-            page.Execute(F5Command.AboutHelp); prepare();
+            Require(page.Display(group).Text == "复制成功" && page.Display(group).Rect.Equals(group.Rect) && generation == state.Layout.Generation && measurements == state.Layout.MeasurementCount, "Temporary feedback has stable geometry and idle layout cost");
+            Require(page.Hint(group.Command) == "点击复制", "Hover remains the requested short instruction");
+            now = 3999; Require(page.Display(group).Text == "复制成功", "Success remains visible for three seconds");
+            now = 4000; Require(page.Display(group).Text == "915753352" && copies == 1, "Deadline restores group without re-copying");
+            behavior = 1; Click(state, ref input, group, page); Require(page.Display(group).Text == "复制失败" && page.Hint(group.Command) == "点击复制", "Failed copy is accurately shown with the same short hover");
+            for (int i = 0; i < 50; i++) prepare(); Require(page.Display(group).Text == "复制失败" && copies == 2, "Failure is not retried by polling");
+            now = 7000; Require(page.Display(group).Text == group.Text, "Failure also restores the visible group after its reading period");
+            behavior = 2; Click(state, ref input, group, page); Require(copies == 3 && page.Display(group).Text == "复制失败", "Thrown clipboard result is failure");
+            behavior = 0; now = 8000; Click(state, ref input, group, page); now = 10001;
+            Require(page.Display(group).Text == "复制成功", "A later explicit click starts its own full feedback period");
+            page.Leave(); Require(page.Display(group).Text == group.Text, "Leaving clears transient feedback");
             // A reflow during a held click must revoke its old geometry.
-            version = state.Layout.Elements.First(e => e.Command == F5Command.AboutCopyVersion);
-            Place(state, ref input, version); input.Left = true; state.Update(input); int before = copies;
+            Place(state, ref input, group); input.Left = true; state.Update(input); int before = copies;
             font = new object(); measure = t => new F5Size(t.Length * 17, 24); prepare(); input.Left = false; state.Update(input); page.Execute(state.Command);
             Require(copies == before, "Font reflow cancels old press");
-            Place(state, ref input, version); input.Left = true; state.Update(input); input.Focused = false; state.Update(input); input.Left = false; state.Update(input); page.Execute(state.Command);
+            Place(state, ref input, group); input.Left = true; state.Update(input); input.Focused = false; state.Update(input); input.Left = false; state.Update(input); page.Execute(state.Command);
             Require(copies == before, "Focus loss cannot release into copy");
             font = new object(); measure = t => new F5Size(t.Length * 36, 24); prepare();
             Require(state.Layout.Elements.Where(e => e.Kind == F5ElementKind.Button).All(e => e.Rect.X >= 0 && e.Rect.Right <= 522), "Larger replacement glyphs keep all action geometry in the content width");
             page.SetImageFailure(true); prepare(); Require(state.Layout.Elements.Any(e => e.Text != null && e.Text.Contains("赞助图片")), "Resource failure is visible");
             page.SetImageFailure(false); prepare(); Require(!state.Layout.Elements.Any(e => e.Text != null && e.Text.Contains("赞助图片")), "Actual resource recovery clears the stale error");
-            page.Execute(F5Command.AboutBack); input.Height = 720; input.Scale = 1.5f; prepare();
+            input.Height = 720; input.Scale = 1.5f; prepare();
             Require(state.Layout.MaxScroll > 0 && state.Layout.Elements.Where(e => e.Kind == F5ElementKind.Image).All(e => e.Rect.Width >= 76), "Short viewport scrolls while preserving readable QR dimensions");
-            Console.WriteLine("PASS: About real shared geometry gestures, Unicode copy success/busy/throw, persistent results and idle layout work.");
+            Require(generation < state.Layout.Generation && copies == before, "Real changes reflow; passive timer expiry never changes clipboard");
+            Console.WriteLine("PASS: About single action, shared input safety, three-second copy feedback, short hover, unchanged layout and readable small-window scrolling.");
         }
-        private static void pageOpenHelp(F5Interaction state, Action prepare) { state.Layout.About.Execute(F5Command.AboutHelp); prepare(); }
         private static void Place(F5Interaction state, ref F5Input input, F5Element button)
         { state.ScrollTo(Math.Max(0, button.Rect.Bottom - state.Layout.Viewport.Height + 8)); input.X = state.X + state.Layout.Viewport.X + button.Rect.X + 5; input.Y = state.Y + state.Layout.Viewport.Y + button.Rect.Y - state.Scroll + 5; }
         private static void Click(F5Interaction state, ref F5Input input, F5Element button, AboutPage page)

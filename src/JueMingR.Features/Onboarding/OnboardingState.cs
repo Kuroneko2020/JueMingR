@@ -34,6 +34,7 @@ namespace JueMingR.Features.Onboarding
         public bool Saved { get { return current != null && current.Saved; } }
         public bool Ready { get { return active && !stopped && !suppressed && (shown ? visibleMilliseconds < 3600 : waitingKey == null && (current == null || current.Loaded && !current.Seen)); } }
         public float Opacity { get { return (float)Math.Max(0, Math.Min(1, (3600 - visibleMilliseconds) / 600)); } }
+        public float Progress { get { return (float)Math.Min(1, visibleMilliseconds / 3000); } }
         public OnboardingState(Func<string, IPreferenceStorage> storage)
         { this.storage = storage ?? throw new ArgumentNullException(nameof(storage)); }
         public void Begin(long sessionGeneration)
@@ -55,7 +56,7 @@ namespace JueMingR.Features.Onboarding
                     if (oldest != null) entries.Remove(oldest.Key);
                 }
                 if (entries.Count >= MaximumEntries || workers.Count >= MaximumWorkers)
-                { if (!capacityReported) { capacityReported = true; Report("首次提示记录暂不可用，本次仍可查看帮助；下次启动后再尝试保存。"); } return; }
+                { if (!capacityReported) { capacityReported = true; Report("首次提示记录暂不可用，本次仍可使用决明R；下次启动后再尝试保存。"); } return; }
                 entry = new Entry { Key = key }; entries.Add(key, entry);
                 try
                 {
@@ -92,7 +93,7 @@ namespace JueMingR.Features.Onboarding
                 if (!entry.Retiring && entry.Loaded && entry.Seen && !entry.Saved && !entry.Failed && !entry.Attempted)
                 {
                     entry.Attempted = true;
-                    if (!worker.TrySubmit(1, true)) { entry.Failed = true; Report("首次提示记录未能保存；下次启动后再试。帮助仍可随时查看。"); }
+                    if (!worker.TrySubmit(1, true)) { entry.Failed = true; Report("首次提示记录未能保存；下次启动后再试。"); }
                 }
                 if (!entry.Retiring && (entry.Saved || entry.Failed)) { entry.Retiring = true; worker.BeginStop(); }
                 if (entry.Retiring && worker.IsFinished) { workers.RemoveAt(i); entry.Worker = null; }
@@ -115,6 +116,7 @@ namespace JueMingR.Features.Onboarding
             lastDraw = monotonicMilliseconds;
         }
         public void Pause() { lastDraw = -1; }
+        public void FinishPresentation() { if (shown) visibleMilliseconds = 3600; Pause(); }
         public void End()
         {
             DetachIdentity(); active = false;
@@ -134,23 +136,23 @@ namespace JueMingR.Features.Onboarding
         private void Report(string message) { Failure = message; notified = false; }
         private static string FailureMessage(DocumentResult<bool> result)
         {
-            if (result.CommitUnconfirmed) return "首次提示记录的保存结果无法确认，已停止写入；下次启动后重新读取。帮助仍可随时查看。";
+            if (result.CommitUnconfirmed) return "首次提示记录的保存结果无法确认，已停止写入；下次启动后重新读取。";
             switch (result.Error)
             {
                 case "first-create-conflict":
                 case "unexpected-source-identity":
                 case "external-document-change":
-                case "document-disappeared": return "首次提示记录在保存前被其它操作更改，已停止写入以保护现有文件；下次启动后重新读取。帮助仍可随时查看。";
-                case "document-write-access-denied": return "没有权限保存首次提示记录，已停止写入；恢复权限后下次启动再试。帮助仍可随时查看。";
-                case "UnsupportedVersion": return "首次提示记录来自当前程序不支持的版本，已保留文件且不写入。请使用兼容版本；帮助仍可随时查看。";
-                case "UnknownFields": return "首次提示记录含当前程序不认识的字段，已保留文件且不写入。帮助仍可随时查看。";
-                case "Invalid": return "首次提示记录格式损坏或身份不符，已保留文件且不写入。帮助仍可随时查看。";
-                case "document-too-large": return "首次提示记录过大，已保留文件且不写入。帮助仍可随时查看。";
-                case "another-writer": return "首次提示记录正由另一实例使用，本次不写入；关闭占用后下次启动再试。帮助仍可随时查看。";
-                case "missing-document-with-recovery-material": return "首次提示记录缺失但存在恢复文件，已保留恢复材料且不写入。帮助仍可随时查看。";
+                case "document-disappeared": return "首次提示记录在保存前被其它操作更改，已停止写入以保护现有文件；下次启动后重新读取。";
+                case "document-write-access-denied": return "没有权限保存首次提示记录，已停止写入；恢复权限后下次启动再试。";
+                case "UnsupportedVersion": return "首次提示记录来自当前程序不支持的版本，已保留文件且不写入。请使用兼容版本。";
+                case "UnknownFields": return "首次提示记录含当前程序不认识的字段，已保留文件且不写入。";
+                case "Invalid": return "首次提示记录格式损坏或身份不符，已保留文件且不写入。";
+                case "document-too-large": return "首次提示记录过大，已保留文件且不写入。";
+                case "another-writer": return "首次提示记录正由另一实例使用，本次不写入；关闭占用后下次启动再试。";
+                case "missing-document-with-recovery-material": return "首次提示记录缺失但存在恢复文件，已保留恢复材料且不写入。";
                 case "data-root-access-denied":
-                case "document-read-access-denied": return "没有权限读取首次提示记录，本次不写入；恢复权限后下次启动再试。帮助仍可随时查看。";
-                default: return result.CommandId != 0 ? "首次提示记录保存失败，已停止本次写入；下次启动后重新读取。帮助仍可随时查看。" : "首次提示记录读取失败，本次不写入；下次启动后再试。帮助仍可随时查看。";
+                case "document-read-access-denied": return "没有权限读取首次提示记录，本次不写入；恢复权限后下次启动再试。";
+                default: return result.CommandId != 0 ? "首次提示记录保存失败，已停止本次写入；下次启动后重新读取。" : "首次提示记录读取失败，本次不写入；下次启动后再试。";
             }
         }
         public void TakeFeedback(Action<string> display)
