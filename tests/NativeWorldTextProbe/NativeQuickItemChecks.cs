@@ -24,7 +24,7 @@ namespace NativeWorldTextProbe
         private static int recalls;
         internal static int Recalls {get{return recalls;}}
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static void Run(Action<object> visual=null, bool coins=false, bool about=false)
+        internal static void Run(Action<object> visual=null, bool coins=false, bool about=false, bool recovery=false)
         {
             Require(IntPtr.Size==4,"G05 native fixture must use .NET Framework x86");
             Require(typeof(Main).Assembly.ManifestModule.ModuleVersionId==new Guid("2c29f6c3-4bd9-4add-9c58-da159804e083"),"fixed .8 MVID");
@@ -36,7 +36,7 @@ namespace NativeWorldTextProbe
             Main.ActivePlayerFileData=new Terraria.IO.PlayerFileData(Path.Combine(root,"fixture.plr"),false){Player=Main.LocalPlayer};
             Main.ActiveWorldFileData=new Terraria.IO.WorldFileData(Path.Combine(root,"fixture.wld"),false){UniqueId=Guid.NewGuid()};
             object context=Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Phase0SHarmonyWorker").GetNestedType("PostfixContext",Flags),Flags,null,
-                new object[]{(about?"about-help-feedback-":coins?"coin-deposit-":"favorite-quick-items-")+new string('5',40),Path.Combine(root,"evidence.txt"),root},null);
+                new object[]{(recovery?"recovery-buffs-services-":about?"about-help-feedback-":coins?"coin-deposit-":"favorite-quick-items-")+new string('5',40),Path.Combine(root,"evidence.txt"),root},null);
             var isolation=new Harmony("JueMingR.Tests.QuickItemOutlets");
             var inputHooks=new Harmony("JueMingR.Tests.QuickInput");
             try
@@ -62,6 +62,7 @@ namespace NativeWorldTextProbe
                 Set(input,"gameWindow",(Func<IntPtr>)(()=>new IntPtr(1)));Set(input,"foregroundWindow",(Func<IntPtr>)(()=>new IntPtr(1)));
                 Set(shell,"LayersReady",true);Set(Get(shell,"State"),"Ready",true);
                 Sample(input,new Keys[0]);Sample(input,new Keys[0]);
+                if(recovery){NativeRecoveryChecks.Run(context);visual?.Invoke(context);return;}
                 var entry=new QuickItemEntry("0123456789abcdef0123456789abcdef",50,QuickItemMode.Use,true,true);string reason;
                 Require(settings.TryChange(new QuickItemDocument(false,true,new[]{entry}),entry.Id,out reason),"isolated entry commit admitted: "+reason);
                 Until(()=>{Call(quick,"Poll");return !settings.Busy;});
@@ -107,6 +108,7 @@ namespace NativeWorldTextProbe
                 Main.gameMenu=true;Call(context,"UpdateRuntime");
                 var quick=GetOptional(context,"QuickItems");if(quick!=null)Call(quick,"Exit",null,EventArgs.Empty);
                 var coin=GetOptional(context,"CoinDeposit");if(coin!=null)Call(coin,"Exit",null,EventArgs.Empty);
+                var recoveryHost=GetOptional(context,"Recovery");if(recoveryHost!=null){Call(recoveryHost,"Exit",null,EventArgs.Empty);assembly.GetType("JueMingR.TerrariaHost.Recovery.RecoveryHooks").GetMethod("Uninstall",Flags).Invoke(null,null);}
                 var onboarding=GetOptional(context,"onboarding");if(onboarding!=null)Call(onboarding,"Exit",null,EventArgs.Empty);
                 var browser=GetOptional(context,"Browser");if(browser!=null)((IDisposable)browser).Dispose();StopContext(context);
                 foreach(var method in isolation.GetPatchedMethods().ToArray())isolation.Unpatch(method,HarmonyPatchType.All,isolation.Id);

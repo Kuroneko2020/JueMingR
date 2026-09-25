@@ -57,13 +57,22 @@ namespace JueMingR.TerrariaHost.Items
         }
         private static bool Active { get { return host != null && host.World.SessionPlayer != null && !host.World.AutomaticOperation; } }
         private static bool Protected(Item[] array, int slot)
-        { return host != null && host.Ownership.IsProtected(slot) && Active && ReferenceEquals(array, host.World.SessionPlayer.inventory) &&
-                !(host.Ownership.IsUseSlot(slot) && host.AllowsOwnedUse != null && host.AllowsOwnedUse(slot)); }
+        {
+            if(host==null || !Active)return false;
+            int account=Account(host.World.SessionPlayer,array);
+            return account>=0 && host.Ownership.IsProtected(account,slot) &&
+                !(host.AllowsOwnedRecovery!=null && host.AllowsOwnedRecovery(array,slot)) &&
+                !(account==0 && host.Ownership.IsUseSlot(slot) && host.AllowsOwnedUse!=null && host.AllowsOwnedUse(slot));
+        }
+        private static int Account(Player p,Item[] array)
+        {return ReferenceEquals(p.inventory,array)?0:ReferenceEquals(p.bank.item,array)?1:ReferenceEquals(p.bank2.item,array)?2:ReferenceEquals(p.bank3.item,array)?3:ReferenceEquals(p.bank4.item,array)?4:-1;}
         private static bool Protected(Item item)
         {
-            if (host == null || host.Ownership.ProtectedSlots == 0 || item == null || !Active) return false;
+            if (host == null || !host.Ownership.AnyProtected || item == null || !Active) return false;
             Item[] inv = host.World.SessionPlayer.inventory;
             for (int i = 0; i < 58; i++) if (ReferenceEquals(item, inv[i]) && Protected(inv, i)) return true;
+            Player p=host.World.SessionPlayer;
+            for(int a=1;a<5;a++){Item[] bank=a==1?p.bank.item:a==2?p.bank2.item:a==3?p.bank3.item:p.bank4.item;for(int i=0;i<40;i++)if(host.Ownership.IsProtected(a,i) && ReferenceEquals(item,bank[i]) && Protected(bank,i))return true;}
             return false;
         }
         internal static Item ReadSelectionSlot(Item[] array, int slot)

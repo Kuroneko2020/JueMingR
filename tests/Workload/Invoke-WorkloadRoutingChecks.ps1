@@ -22,6 +22,8 @@ try {
     Invoke-WorkloadGit $fixtureRoot @('init', '--quiet') | Out-Null
     Invoke-WorkloadGit $fixtureRoot @('config', 'core.autocrlf', 'false') | Out-Null
     $cases = [ordered]@{
+        'src/JueMingR.TerrariaHost/Recovery/HostRecovery.cs' = 'recovery-host';
+        'tests/NativeWorldTextProbe/NativeRecoveryChecks.cs' = 'recovery-host';
         'src/JueMingR.TerrariaHost/About/AboutPage.cs' = 'about-host';
         'src/JueMingR.TerrariaHost/Onboarding/HostOnboarding.cs' = 'about-host';
         'src/JueMingR.Features/Onboarding/OnboardingState.cs' = 'about-host';
@@ -68,6 +70,8 @@ try {
         'docs/guide.md' = 'core'
     }
     $exactGroups = @{
+        'src/JueMingR.TerrariaHost/Recovery/HostRecovery.cs' = @('core','recovery-host');
+        'tests/NativeWorldTextProbe/NativeRecoveryChecks.cs' = @('core','recovery-host');
         'src/JueMingR.TerrariaHost/About/AboutPage.cs' = @('core','about-host');
         'src/JueMingR.TerrariaHost/Onboarding/HostOnboarding.cs' = @('core','about-host');
         'src/JueMingR.Features/Onboarding/OnboardingState.cs' = @('core','about-host');
@@ -75,10 +79,10 @@ try {
         'tests/Phase0U/AboutChecks.cs' = @('core','about-host');
         'tests/JueMingR.ArchitectureTests/OnboardingFailureChecks.cs' = @('core','about-host');
         'tests/NativeWorldTextProbe/NativeAboutVisualChecks.cs' = @('core','about-host');
-        'src/JueMingR.TerrariaHost/CoinDeposit/CoinTransfer.cs' = @('core','coin-deposit-host');
-        'src/JueMingR.Features/CoinDeposit/CoinIntent.cs' = @('core','coin-deposit-host');
-        'src/JueMingR.TerrariaHost/QuickItems/QuickItemUse.cs' = @('core','quick-items-host','coin-deposit-host');
-        'src/JueMingR.TerrariaHost/KeepFavorited/FavoriteHooks.cs' = @('core','quick-items-host','coin-deposit-host');
+        'src/JueMingR.TerrariaHost/CoinDeposit/CoinTransfer.cs' = @('core','coin-deposit-host','recovery-host');
+        'src/JueMingR.Features/CoinDeposit/CoinIntent.cs' = @('core','coin-deposit-host','recovery-host');
+        'src/JueMingR.TerrariaHost/QuickItems/QuickItemUse.cs' = @('core','quick-items-host','coin-deposit-host','recovery-host');
+        'src/JueMingR.TerrariaHost/KeepFavorited/FavoriteHooks.cs' = @('core','quick-items-host','coin-deposit-host','recovery-host');
         'src/JueMingR.Features/Text/TextEditBuffer.cs' = @('core','notes-host','map-host','footprints-host','browser-host');
         'src/JueMingR.TerrariaHost/Notes/NotesClipboard.cs' = @('core','notes-host','browser-host','about-host');
         'src/JueMingR.TerrariaHost/Notes/NotesInput.cs' = @('core','notes-host','browser-host');
@@ -86,11 +90,11 @@ try {
         'src/JueMingR.Features/WorldObjectText/WorldObjectResolver.cs' = @('core','world-host','browser-host');
         'src/JueMingR.TerrariaHost/World/WorldTileObservation.cs' = @('core','world-host','browser-host');
         'src/JueMingR.TerrariaHost/ItemBrowser/NativeItemCatalog.cs' = @('core','browser-host');
-        'src/JueMingR.TerrariaHost/Hotkeys/HostHotkeys.cs' = @('core','shared-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host');
-        'src/JueMingR.TerrariaHost/F5/F5Layout.cs' = @('core','shared-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host');
-        'src/JueMingR.TerrariaHost/Input/HostInputState.cs' = @('core','shared-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host');
-        'src/JueMingR.Platform/Persistence/DocumentWorker.cs' = @('core','storage-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host');
-        'src/JueMingR.Infrastructure/Storage/AtomicFileDocument.cs' = @('core','storage-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host');
+        'src/JueMingR.TerrariaHost/Hotkeys/HostHotkeys.cs' = @('core','shared-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host','recovery-host');
+        'src/JueMingR.TerrariaHost/F5/F5Layout.cs' = @('core','shared-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host','recovery-host');
+        'src/JueMingR.TerrariaHost/Input/HostInputState.cs' = @('core','shared-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host','recovery-host');
+        'src/JueMingR.Platform/Persistence/DocumentWorker.cs' = @('core','storage-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host','recovery-host');
+        'src/JueMingR.Infrastructure/Storage/AtomicFileDocument.cs' = @('core','storage-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host','recovery-host');
         'src/JueMingR.TerrariaHost/Notes/NotesCards.cs' = @('core','notes-host');
         'src/JueMingR.Features/WorldObjectText/OpenedPositionStore.cs' = @('core','records');
         'src/JueMingR.TerrariaHost/EntityLabels/StyleEditor.cs' = @('core','style-host');

@@ -66,6 +66,10 @@ if ($route.groups -contains 'coin-deposit-host') {
     Invoke-WorkloadCheck 'coin-deposit-intent-rules' $architecture @('--coin-deposit')
     Invoke-WorkloadCheck 'coin-deposit-native-execution' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'coin-deposit-cpu'), 'CoinDepositCpu')
 }
+if ($route.groups -contains 'recovery-host') {
+    Invoke-WorkloadCheck 'recovery-rules-storage' $architecture @('--recovery')
+    Invoke-WorkloadCheck 'recovery-native-execution' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'recovery-cpu'), 'RecoveryCpu')
+}
 if ($route.groups -contains 'death-host') {
     Invoke-WorkloadCheck 'death-history-storage-workload' $architecture @('--death-history')
     Invoke-WorkloadCheck 'death-native-execution' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'death-cpu'), 'DeathCpu')
