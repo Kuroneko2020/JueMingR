@@ -16,7 +16,7 @@ namespace JueMingR.TerrariaHost.F5
         { return new F5Rect(X + x, Y + y, Width, Height); }
     }
 
-    internal enum F5ElementKind { Panel, Text, Button, Field, Hotkey, Divider }
+    internal enum F5ElementKind { Panel, Text, Button, Field, Hotkey, Divider, Image, AboutCard, AboutHeading, AboutMuted, AboutOrnament }
     internal enum F5Command { None, EnableBiome, DisableBiome, ConfigureBiome,
         ConfigureInfection, EnableInfection, DisableInfection, ConfigureLuck, EnableLuck, DisableLuck,
         ConfigureAngler, EnableAngler, DisableAngler, AdjustInformation,
@@ -31,7 +31,8 @@ namespace JueMingR.TerrariaHost.F5
         EnableRare, DisableRare, EnableMerchant, DisableMerchant, EnableEquipment, DisableEquipment, SummonMerchant,
         ConfigureRare, ConfigureMerchant, DeathDetails, DeathConfigure, DeathEnable, DeathDisable,
         MarkerManage, MarkerEnable, MarkerDisable, ExplorationDetails, ExplorationValue,
-        FootprintConfigure, FootprintEnable, FootprintDisable, AnnouncementEnable, AnnouncementDisable }
+        FootprintConfigure, FootprintEnable, FootprintDisable, AnnouncementEnable, AnnouncementDisable,
+        AboutHelp, AboutBack, AboutCopyGroup, AboutCopyVersion }
 
     internal sealed class F5Element
     {
@@ -65,6 +66,8 @@ namespace JueMingR.TerrariaHost.F5
         private object fontIdentity;
         private float screenWidth, screenHeight, uiScale;
         private int page = -1;
+        internal readonly About.AboutPage About = new About.AboutPage();
+        private int builtAboutRevision;
         private Features.WorldObjectText.WorldObjectSettings objectSettings = Features.WorldObjectText.WorldObjectSettings.Default;
         private long informationRevision, builtInformationRevision;
         private string deathCount = "正在读取…", worldDays = "正在读取…";
@@ -106,7 +109,7 @@ namespace JueMingR.TerrariaHost.F5
         }
 
         internal bool Matches(float width, float height, float scale, int currentPage)
-        { return Generation > 0 && width == screenWidth && height == screenHeight && scale == uiScale && page == currentPage && (currentPage != 9 || builtInformationRevision == informationRevision) && (currentPage != 2 || builtDeathRevision == deathRevision); }
+        { return Generation > 0 && width == screenWidth && height == screenHeight && scale == uiScale && page == currentPage && (currentPage != 9 || builtInformationRevision == informationRevision) && (currentPage != 2 || builtDeathRevision == deathRevision) && (currentPage != 5 || builtAboutRevision == About.Revision); }
 
         internal void Ensure(float width, float height, float scale, int currentPage,
             object font, Func<string, F5Size> measureText)
@@ -128,7 +131,7 @@ namespace JueMingR.TerrariaHost.F5
                         old.OffsetX != value.OffsetX || old.OffsetY != value.OffsetY;
                 }
                 fontIdentity = font;
-                if (currentPage == 2) metricsChanged = true;
+                if (currentPage == 2 || currentPage == 5) metricsChanged = true;
                 if (currentPage == 9)
                     for (int i = 1; i < 3; i++)
                     { var mode = objectSettings.Style((Platform.WorldObjectText.WorldObjectKind)i).Mode;
@@ -152,6 +155,7 @@ namespace JueMingR.TerrariaHost.F5
             elements.Clear();
             float y = 0;
             if (currentPage == 9) BuildInformation(ref y);
+            else if (currentPage == 5) About.Build(elements, DynamicTextSize, Viewport.Height, ref y);
             else if (currentPage == 7) BuildFishing(ref y);
             else if (currentPage == 1 || currentPage == 2 || currentPage == 8) GuidanceControls.AddRows(elements, TextSize, ref y, currentPage);
             if (currentPage == 2) DeathControls.AddRows(elements, DynamicTextSize, ref y, deathCount, worldDays);
@@ -162,6 +166,7 @@ namespace JueMingR.TerrariaHost.F5
             screenWidth = width; screenHeight = height; uiScale = scale; page = currentPage;
             builtInformationRevision = informationRevision;
             builtDeathRevision = deathRevision;
+            builtAboutRevision = About.Revision;
             Generation++;
         }
 

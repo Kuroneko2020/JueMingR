@@ -15,6 +15,13 @@ namespace JueMingR.TerrariaHost.Notes
         private readonly NotesInput input;
         private readonly NotesCards cards;
         private readonly NotesPins pins;
+        internal bool Overlaps(F5Rect rect)
+        {
+            if (!ready) return false;
+            foreach (var pin in pins.Pins)
+                if (pin.Rect.X < rect.Right && pin.Rect.Right > rect.X && pin.Rect.Y < rect.Bottom && pin.Rect.Bottom > rect.Y) return true;
+            return false;
+        }
         private F5Interaction shell;
         private Matrix matrix;
         private Vector2 screen;

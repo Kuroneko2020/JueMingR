@@ -38,9 +38,11 @@ function Build-WorkloadFixture {
 try {
 $architecture = Join-Path $repositoryRoot 'artifacts/build/Debug/work/bin/JueMingR.ArchitectureTests/x86/Debug/net472/JueMingR.ArchitectureTests.exe'
 Invoke-WorkloadCheck 'core-records-selection' $architecture @('--workload-core', $repositoryRoot)
+if ($route.groups -contains 'shared-host' -or $route.groups -contains 'storage-host') { Invoke-WorkloadCheck 'onboarding-markers' $architecture @('--onboarding') }
 $fixture = Build-WorkloadFixture 'Phase0SFixtureTerraria'
 foreach ($mode in @('notes-input', 'entity-style', 'world-targets-style')) { Invoke-WorkloadCheck ('core-' + $mode) $fixture @($mode) }
 $native = Build-WorkloadFixture 'NativeWorldTextProbe'
+if ($route.groups -contains 'shared-host' -or $route.groups -contains 'storage-host') { Invoke-WorkloadCheck 'about-native-composition' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'about-cpu'), 'AboutCpu') }
 Invoke-WorkloadCheck 'core-native-host' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'native-cpu'), 'WorkloadCpu')
 if ($route.groups -contains 'shared-host') { Invoke-WorkloadCheck 'information-native-host' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'information-cpu'), 'InformationCpu') }
 if ($route.groups -contains 'shared-host') { Invoke-WorkloadCheck 'guidance-native-host' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'guidance-cpu'), 'GuidanceCpu') }

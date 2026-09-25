@@ -14,6 +14,7 @@ namespace JueMingR.ArchitectureTests
             {
                 "JueMingR.Features.CoinDeposit.CoinIntent", "JueMingR.Features.CoinDeposit.CoinRules",
                 "JueMingR.Features.CoinDeposit.CoinOutcome", "JueMingR.Features.CoinDeposit.CoinPreferenceCodec", "JueMingR.Features.CoinDeposit.CoinSettings",
+                "JueMingR.Features.Onboarding.OnboardingState", "JueMingR.Features.Onboarding.OnboardingMarkerCodec",
                 "JueMingR.Features.KeepFavorited.FavoriteIntent", "JueMingR.Features.KeepFavorited.FavoriteClaim",
                 "JueMingR.Features.QuickItems.QuickItemMode", "JueMingR.Features.QuickItems.QuickItemEntry",
                 "JueMingR.Features.QuickItems.QuickItemCandidate", "JueMingR.Features.QuickItems.QuickItemChoice",

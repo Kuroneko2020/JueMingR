@@ -30,6 +30,14 @@ namespace JueMingR.TerrariaHost.F5
         private readonly HostHotkeys hotkeys;
         internal QuickItems.HostQuickItems QuickItems { get; set; }
         private CoinDeposit.HostCoinDeposit coinDeposit;
+        internal Onboarding.HostOnboarding Onboarding { get; set; }
+        private readonly Func<F5Rect, bool> onboardingOverlap;
+        private bool OverlapsOnboarding(F5Rect rect)
+        {
+            var hud = information?.Hud;
+            var b = hud == null ? default(F5Rect) : hud.Bounds;
+            return hud != null && hud.Visible && b.X < rect.Right && b.Right > rect.X && b.Y < rect.Bottom && b.Bottom > rect.Y || notes.Overlaps(rect);
+        }
         internal void AttachQuickItems(QuickItems.HostQuickItems owner) { QuickItems = owner; items?.AttachQuick(owner); }
         internal void AttachCoinDeposit(CoinDeposit.HostCoinDeposit owner) { coinDeposit = owner; items?.AttachCoins(owner); }
         internal readonly HotkeyPopup HotkeyPopup;
@@ -64,6 +72,8 @@ namespace JueMingR.TerrariaHost.F5
         internal F5Shell(Phase0TBiomeRuntime biome, HostPreferences preferences, HostNotes hostNotes, HostItems hostItems, Input.HostInputState inputState = null, HostHotkeys hotkeys = null, HostEntityLabels labels = null, WorldTargets.HostWorldTargets worldTargets = null, WorldObjectText.HostWorldObjectText worldObjects = null, Information.HostInformation information = null, Guidance.HostGuidance guidance = null, IDeathControls deaths = null, IMapControls maps = null, IFootprintControls footprints = null, IAnnouncementControls announcements = null)
         { this.biome = biome; this.preferences = preferences; this.hostItems = hostItems; notes = new NotesPresentation(hostNotes.Workspace); notes.Attach(State);
             this.inputState = inputState ?? new Input.HostInputState();
+            onboardingOverlap = OverlapsOnboarding;
+            State.Layout.About.Attach(About.RuntimeVersion.Read, new NotesClipboard(() => Main.instance.Window.Handle).TryCopy);
             this.hotkeys = hotkeys;
             this.labels = labels;
             this.worldTargets = worldTargets;
@@ -90,7 +100,7 @@ namespace JueMingR.TerrariaHost.F5
             if (hostItems != null) { items = new ItemsPresentation(hostItems, State); items.HotkeyClicked = OpenHotkey; }
             if (announcements != null) renderer.AnnouncementControls = new AnnouncementControls(announcements, hotkeys?.Bindings);
             Func<int, bool> prior = State.BeforeLeave;
-            State.BeforeLeave = page => { if (MapPopup != null && !MapPopup.TryLeave(() => { if (page < 0) State.Close(); else State.Navigate(page); })) return false; if (prior != null && !prior(page)) return false; if (Browser != null && !Browser.RequestFinish()) return false; Browser?.Suspend(); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); FootprintPopup?.Close(); return true; };
+            State.BeforeLeave = page => { if (MapPopup != null && !MapPopup.TryLeave(() => { if (page < 0) State.Close(); else State.Navigate(page); })) return false; if (prior != null && !prior(page)) return false; if (Browser != null && !Browser.RequestFinish()) return false; Browser?.Suspend(); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); FootprintPopup?.Close(); State.Layout.About.Leave(); return true; };
         }
         internal void AttachBrowser(IBrowserPage page) { if (Browser != null) throw new InvalidOperationException("Browser already attached."); Browser = page; }
         internal bool CanTargetInput { get { return !failed && LayersReady && biome.SharedRuntime.IsSessionActive && CanPresentNow && !State.Visible && !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest && Main.CurrentInputTextTakerOverride == null && !PlayerInput.WritingText && !inputState.HotkeyCapture && Main.LocalPlayer != null && Main.LocalPlayer.talkNPC < 0 && Main.LocalPlayer.sign < 0 && Main.npcShop == 0 && string.IsNullOrEmpty(Main.npcChatText) && !Main.clothesWindow && !Main.hairWindow && !(information != null && information.Adjustment.Active) && !adjustmentPending; } }
@@ -230,6 +240,9 @@ namespace JueMingR.TerrariaHost.F5
                 MapPopup?.Process(inputActive && State.Visible, pointer.X, pointer.Y, MapPopup.Matches(screen.X / matrix.M11, screen.Y / matrix.M11, renderer.FontIdentity, renderer.SkinGeneration), PlayerInput.ScrollWheelDeltaForUI);
                 FootprintPopup?.Process(inputActive && State.Visible, State.Page, pointer.X, pointer.Y, FootprintPopup.Matches(screen.X / matrix.M11, screen.Y / matrix.M11, renderer.FontIdentity, renderer.SkinGeneration));
                 bool popupPointer = HotkeyPopup != null && HotkeyPopup.BlockPointer || StylePopup != null && StylePopup.BlockPointer || DeathPopup != null && DeathPopup.BlockPointer || MapPopup != null && MapPopup.BlockPointer || FootprintPopup != null && FootprintPopup.BlockPointer || inputState.HotkeyPointerOwned;
+                // About has long dynamically measured content. Refresh before
+                // release dispatch so a replaced font cannot fire stale geometry.
+                if (State.Visible && State.Page == 5 && renderer.RefreshResources()) renderer.Prepare(State, screen.X, screen.Y, matrix.M11);
                 State.Update(new F5Input
                 {
                     Width = screen.X, Height = screen.Y, Scale = matrix.M11, X = pointer.X, Y = pointer.Y,
@@ -312,6 +325,8 @@ namespace JueMingR.TerrariaHost.F5
                 }
                 else { renderer.EntityControls?.Execute(State.Command); renderer.WorldControls?.Execute(State.Command); renderer.ObjectControls?.Execute(State.Command);
                     renderer.GuidanceControls?.Execute(State.Command);
+                    State.Layout.About.Execute(State.Command);
+                    if (State.Command == F5Command.AboutHelp || State.Command == F5Command.AboutBack) State.ScrollTo(0);
                     renderer.DeathControls?.Execute(State.Command); renderer.MapControls?.Execute(State.Command); renderer.FootprintControls?.Execute(State.Command); renderer.AnnouncementControls?.Execute(State.Command);
                     if (State.Command != F5Command.EnableBiome && State.Command != F5Command.DisableBiome) renderer.InformationControls?.Execute(State.Command); }
                 bool gameplay = !(TargetGestureBusy?.Invoke() ?? false) && inputActive && !(information != null && information.Adjustment.Active) && !adjustmentPending && !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest &&
@@ -365,6 +380,7 @@ namespace JueMingR.TerrariaHost.F5
             try
             {
                 RestoreLeases();
+                if (!State.Visible || State.Page != 5) State.Layout.About.Leave();
                 RestorePositionWhenLoaded();
                 CheckLabelSession();
                 DeathPopup?.CheckSession(); MapPopup?.CheckSession(); FootprintPopup?.CheckSession();
@@ -379,6 +395,8 @@ namespace JueMingR.TerrariaHost.F5
                     guidance?.TakeFeedback(displayPreferenceFeedback);
                     deaths?.TakeFeedback(displayPreferenceFeedback); maps?.TakeFeedback(displayPreferenceFeedback); footprints?.TakeFeedback(displayPreferenceFeedback);
                     QuickItems?.TakeFeedback(displayPreferenceFeedback); coinDeposit?.TakeFeedback(displayPreferenceFeedback);
+                    Onboarding?.State.TakeFeedback(displayPreferenceFeedback);
+                    if (Onboarding?.State.Failure != null) State.Layout.About.SetNotice(Onboarding.State.Failure);
                     if (StylePopup?.Failure != null && StylePopup.FailureKey != reportedStyleFailure)
                     { reportedStyleFailure = StylePopup.FailureKey; displayPreferenceFeedback(StylePopup.Failure); }
                 }
@@ -469,6 +487,7 @@ namespace JueMingR.TerrariaHost.F5
 
         internal bool DrawLayer()
         {
+            Onboarding?.Draw(CanTargetInput && !notes.OwnsPointer && !Main.LocalPlayer.mouseInterface, onboardingOverlap);
             try
             {
                 if (!CanPresentNow) { CloseAndSubmitPosition(); RestoreLeases(); }

@@ -22,6 +22,8 @@ try {
     Invoke-WorkloadGit $fixtureRoot @('init', '--quiet') | Out-Null
     Invoke-WorkloadGit $fixtureRoot @('config', 'core.autocrlf', 'false') | Out-Null
     $cases = [ordered]@{
+        'src/JueMingR.TerrariaHost/About/AboutPage.cs' = 'shared-host';
+        'src/JueMingR.Features/Onboarding/OnboardingState.cs' = 'storage-host';
         'src/JueMingR.TerrariaHost/CoinDeposit/CoinTransfer.cs' = 'coin-deposit-host';
         'src/JueMingR.Features/CoinDeposit/CoinIntent.cs' = 'coin-deposit-host';
         'src/JueMingR.Platform/Items/ItemOperationOwnership.cs' = 'coin-deposit-host';
