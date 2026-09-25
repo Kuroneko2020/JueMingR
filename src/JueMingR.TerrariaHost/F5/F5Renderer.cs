@@ -15,6 +15,8 @@ namespace JueMingR.TerrariaHost.F5
         private readonly UiTextMetrics textMetrics = new UiTextMetrics();
         private RasterizerState clipped;
         private Texture2D roundCap;
+        private readonly About.SponsorImages sponsorImages = new About.SponsorImages();
+        private readonly About.AboutPainter aboutPainter = new About.AboutPainter();
         private readonly F5IconAtlas icons = new F5IconAtlas();
         private readonly EntityLabels.StylePopupRenderer styleRenderer = new EntityLabels.StylePopupRenderer();
         internal readonly F5HintLayout HintLayout = new F5HintLayout();
@@ -229,6 +231,7 @@ namespace JueMingR.TerrariaHost.F5
                 batch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.LinearClamp,
                     DepthStencilState.None, clipped, null, matrix);
                 contentBatch = true;
+                if (state.Page == 5) aboutPainter.Prepare(row);
                 for (int i = 0; i < layout.Elements.Count; i++)
                 {
                     F5Element element = layout.Elements[i];
@@ -243,10 +246,17 @@ namespace JueMingR.TerrariaHost.F5
                     }
                     else if (element.Command == F5Command.ExplorationValue)
                     { Text(batch, mapValue ?? "", new Vector2(rect.Right - mapValueSize.Width, rect.Y + (rect.Height - mapValueSize.Height) / 2), element.TextScale, Color.White, mapValueSize); }
-                    else if (element.Kind == F5ElementKind.Text)
+                    else if (element.Kind == F5ElementKind.Text || element.Kind == F5ElementKind.AboutHeading || element.Kind == F5ElementKind.AboutMuted)
                         Text(batch, element.Text, new Vector2(rect.X, rect.Y), element.TextScale,
-                            Color.White, element.TextSize);
+                            element.Kind == F5ElementKind.AboutHeading ? About.AboutPainter.Gold : element.Kind == F5ElementKind.AboutMuted ? About.AboutPainter.Muted : Color.White, element.TextSize);
+                    else if (element.Kind == F5ElementKind.AboutCard) aboutPainter.Card(batch, pixel, rect, element.Text, element.TextScale > 0 ? element.TextScale : 1);
                     else if (element.Kind == F5ElementKind.Divider) Decoration(batch, rect, Color.White * 0.35f);
+                    else if (element.Kind == F5ElementKind.Image)
+                    {
+                        aboutPainter.QrFrame(batch, pixel, rect, element.TextScale, element.Text == "wechat.png");
+                        sponsorImages.Draw(batch, pixel, rect, element.Text, element.TextScale);
+                        state.Layout.About.SetImageFailure(sponsorImages.Failed);
+                    }
                     else if (element.Kind == F5ElementKind.Hotkey) Keyboard(batch, rect);
                     else
                     {
@@ -259,6 +269,13 @@ namespace JueMingR.TerrariaHost.F5
                         bool enabled = entity ? EntityControls != null && EntityControls.Available(element.Command) : world ? WorldControls != null && WorldControls.Available(element.Command) : objects ? ObjectControls != null && ObjectControls.Available(element.Command) :
                             information ? legacyBiome ? !biomeFailed : InformationControls != null && InformationControls.Available(element.Command) : guidance ? GuidanceControls != null && GuidanceControls.Available(element.Command) : F5.FootprintControls.Owns(element.Command) ? FootprintControls != null && FootprintControls.Available(element.Command) : F5.MapControls.Owns(element.Command) ? MapControls != null && MapControls.Available(element.Command) : F5.AnnouncementControls.Owns(element.Command) ? AnnouncementControls != null && AnnouncementControls.Available(element.Command) : DeathControls != null && DeathControls.Available(element.Command);
                         bool hovered = !state.PointerBlocked && rect.Contains(state.PointerX, state.PointerY) && view.Contains(state.PointerX, state.PointerY);
+                        if (About.AboutPage.Owns(element.Command)) { enabled = true; element = state.Layout.About.Display(element); }
+                        if (element.Command == F5Command.AboutCopyGroup)
+                        {
+                            aboutPainter.FeedbackButton(batch, pixel, rect, hovered);
+                            Text(batch, element.Text, new Vector2(rect.X + (rect.Width - element.TextSize.Width) / 2, rect.Y + (rect.Height - element.TextSize.Height) / 2), element.TextScale, new Color(255, 226, 150), element.TextSize);
+                            continue;
+                        }
                         F5ControlRenderer.Button(batch, pixel, button, font, element, hovered, enabled,
                             entity ? EntityControls?.Selected(element.Command) : world ? WorldControls?.Selected(element.Command) : objects ? ObjectControls?.Selected(element.Command) :
                             information && !legacyBiome ? InformationControls?.Selected(element.Command) : guidance ? GuidanceControls?.Selected(element.Command) : F5.FootprintControls.Owns(element.Command) ? FootprintControls?.Selected(element.Command) : F5.MapControls.Owns(element.Command) ? MapControls?.Selected(element.Command) : F5.AnnouncementControls.Owns(element.Command) ? AnnouncementControls?.Selected(element.Command) : F5.DeathControls.Owns(element.Command) ? DeathControls?.Selected(element.Command) : F5Layout.IsSelected(element, biomeEnabled, biomeFailed) ? (Color?)(biomeEnabled ? Color.LightGreen : Color.IndianRed) : null,
@@ -299,6 +316,8 @@ namespace JueMingR.TerrariaHost.F5
             if (name != null) return name.Description.Text;
             F5Element hover = state.HitButton(state.PointerX - state.X, state.PointerY - state.Y);
             if (hover == null) return null;
+            if (About.AboutPage.Owns(hover.Command))
+            { target = F5HintLayout.Intersect(hover.Rect.Offset(view.X, view.Y - state.Scroll), visible); return state.Layout.About.Hint(hover.Command); }
             target = F5HintLayout.Intersect(hover.Rect.Offset(view.X, view.Y - state.Scroll), visible);
             if (hover.HotkeyTarget == F5.AnnouncementControls.SendActionId) return AnnouncementControls?.SendHint;
             if (hover.Kind == F5ElementKind.Hotkey && hover.HotkeyTarget != null)
@@ -446,6 +465,7 @@ namespace JueMingR.TerrariaHost.F5
             if (clipped != null) { clipped.Dispose(); clipped = null; }
             if (roundCap != null) { roundCap.Dispose(); roundCap = null; }
             icons.Dispose();
+            sponsorImages.Dispose();
         }
     }
 }

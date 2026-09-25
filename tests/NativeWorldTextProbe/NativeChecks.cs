@@ -14,6 +14,15 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if (scope == "AboutCpu" || scope == "AboutVisual")
+            {
+                Terraria.Program.SavePath = Path.Combine(Path.GetTempPath(), "JueMingR-native-about-" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(Terraria.Program.SavePath);
+                NativeQuickItemChecks.Run(context => {
+                    NativeAboutChecks.Run(context);
+                    if (scope == "AboutVisual") using (var graphics = new ProbeGraphics(content)) NativeAboutVisualChecks.Run(context, graphics, output);
+                }, true, true); return 0;
+            }
             if (scope == "CoinDepositCpu" || scope == "CoinDepositVisual")
             {
                 Terraria.Program.SavePath = Path.Combine(Path.GetTempPath(), "JueMingR-native-coins-" + Guid.NewGuid().ToString("N"));

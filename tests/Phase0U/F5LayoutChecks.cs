@@ -7,6 +7,11 @@ namespace Terraria
     {
         internal static void Run()
         {
+            AboutChecks.Run();
+            var about = new F5Layout();
+            about.Ensure(1920, 1080, 1, 5, new object(), Measure);
+            if (about.Elements.Count == 0)
+                throw new InvalidOperationException("About must display its real introduction and help entry.");
             UiTextMetricsChecks.Run();
             CheckRefinementContract();
             CheckVisualRows();
@@ -153,7 +158,10 @@ namespace Terraria
             Equal(track.X + track.Width / 2, visual.X + visual.Width / 2, "visual and interactive scroll centers");
             foreach (F5Element element in layout.Elements)
             {
-                if (element.Kind == F5ElementKind.Button)
+                // About actions have no selected-state underline; the original
+                // 26-unit QQ button uses its own decorative surface. General
+                // clipping and measured-label assertions below still apply.
+                if (element.Kind == F5ElementKind.Button && !JueMingR.TerrariaHost.About.AboutPage.Owns(element.Command))
                 {
                     F5Rect surface = F5Layout.ButtonSurface(element), label = F5Layout.ButtonLabel(element);
                     F5Rect line = F5Layout.ButtonUnderline(element);

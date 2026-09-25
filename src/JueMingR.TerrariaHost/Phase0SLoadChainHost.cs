@@ -582,7 +582,7 @@ namespace JueMingR.TerrariaHost
         private static void EnsureEntityLayer(List<GameInterfaceLayer> layers, bool setupComplete)
         {
             var context = postfixContext;
-            if (context == null || !(context.PackageId.StartsWith("entity-labels-", StringComparison.Ordinal) || context.PackageId.StartsWith("world-targets-", StringComparison.Ordinal) || context.PackageId.StartsWith("world-object-text-", StringComparison.Ordinal) || context.PackageId.StartsWith("information-summary-", StringComparison.Ordinal) || context.PackageId.StartsWith("direction-equipment-", StringComparison.Ordinal) || context.PackageId.StartsWith("death-history-", StringComparison.Ordinal) || context.PackageId.StartsWith("map-markers-exploration-", StringComparison.Ordinal) || (context.PackageId.StartsWith("footprints-", StringComparison.Ordinal) || (context.PackageId.StartsWith("item-browser-", StringComparison.Ordinal) || (context.PackageId.StartsWith("favorite-quick-items-", StringComparison.Ordinal) || context.PackageId.StartsWith("coin-deposit-", StringComparison.Ordinal)))))) return;
+            if (context == null || !(context.PackageId.StartsWith("entity-labels-", StringComparison.Ordinal) || context.PackageId.StartsWith("world-targets-", StringComparison.Ordinal) || context.PackageId.StartsWith("world-object-text-", StringComparison.Ordinal) || context.PackageId.StartsWith("information-summary-", StringComparison.Ordinal) || context.PackageId.StartsWith("direction-equipment-", StringComparison.Ordinal) || context.PackageId.StartsWith("death-history-", StringComparison.Ordinal) || context.PackageId.StartsWith("map-markers-exploration-", StringComparison.Ordinal) || (context.PackageId.StartsWith("footprints-", StringComparison.Ordinal) || (context.PackageId.StartsWith("item-browser-", StringComparison.Ordinal) || (context.PackageId.StartsWith("favorite-quick-items-", StringComparison.Ordinal) || (context.PackageId.StartsWith("coin-deposit-", StringComparison.Ordinal) || context.PackageId.StartsWith("about-help-feedback-", StringComparison.Ordinal))))))) return;
             try
             {
                 // Capture's early return precedes this Game-scale layer. Normal
@@ -787,6 +787,7 @@ namespace JueMingR.TerrariaHost
             private readonly string gameDirectory;
             private HostPreferences preferences;
             private Notes.HostNotes notes;
+            private Onboarding.HostOnboarding onboarding;
             private Items.HostItems items;
             private bool startupEvidenceComplete;
             private string pendingBiomeErrorStage;
@@ -826,7 +827,7 @@ namespace JueMingR.TerrariaHost
             private Information.InformationSourceHooks informationHooks;
             internal void InstallInformationSources()
             {
-                if (!(PackageId.StartsWith("information-summary-", StringComparison.Ordinal) || PackageId.StartsWith("direction-equipment-", StringComparison.Ordinal) || PackageId.StartsWith("death-history-", StringComparison.Ordinal) || PackageId.StartsWith("map-markers-exploration-", StringComparison.Ordinal) || (PackageId.StartsWith("footprints-", StringComparison.Ordinal) || PackageId.StartsWith("item-browser-", StringComparison.Ordinal) || (PackageId.StartsWith("favorite-quick-items-", StringComparison.Ordinal) || PackageId.StartsWith("coin-deposit-", StringComparison.Ordinal)))) || informationHooks != null) return;
+                if (!(PackageId.StartsWith("information-summary-", StringComparison.Ordinal) || PackageId.StartsWith("direction-equipment-", StringComparison.Ordinal) || PackageId.StartsWith("death-history-", StringComparison.Ordinal) || PackageId.StartsWith("map-markers-exploration-", StringComparison.Ordinal) || (PackageId.StartsWith("footprints-", StringComparison.Ordinal) || PackageId.StartsWith("item-browser-", StringComparison.Ordinal) || (PackageId.StartsWith("favorite-quick-items-", StringComparison.Ordinal) || (PackageId.StartsWith("coin-deposit-", StringComparison.Ordinal) || PackageId.StartsWith("about-help-feedback-", StringComparison.Ordinal))))) || informationHooks != null) return;
                 informationHooks = new Information.InformationSourceHooks(InformationReadiness); informationHooks.Install();
             }
             internal void DisposeInformationSources() { informationHooks?.Dispose(); }
@@ -862,7 +863,7 @@ namespace JueMingR.TerrariaHost
                 }
 
                 preferences = new HostPreferences(gameDirectory);
-                bool quickPackage = (PackageId.StartsWith("favorite-quick-items-", StringComparison.Ordinal) || PackageId.StartsWith("coin-deposit-", StringComparison.Ordinal));
+                bool quickPackage = (PackageId.StartsWith("favorite-quick-items-", StringComparison.Ordinal) || (PackageId.StartsWith("coin-deposit-", StringComparison.Ordinal) || PackageId.StartsWith("about-help-feedback-", StringComparison.Ordinal)));
                 bool footprintPackage = (PackageId.StartsWith("footprints-", StringComparison.Ordinal) || PackageId.StartsWith("item-browser-", StringComparison.Ordinal) || quickPackage);
                 bool mapPackage = footprintPackage || PackageId.StartsWith("map-markers-exploration-", StringComparison.Ordinal);
                 bool deathPackage = mapPackage || PackageId.StartsWith("death-history-", StringComparison.Ordinal);
@@ -887,7 +888,7 @@ namespace JueMingR.TerrariaHost
                     }
                     runtime.SharedRuntime.AddFeature(items);
                     if (QuickItems != null) runtime.SharedRuntime.AddFeature(QuickItems);
-                    if (PackageId.StartsWith("coin-deposit-", StringComparison.Ordinal))
+                    if ((PackageId.StartsWith("coin-deposit-", StringComparison.Ordinal) || PackageId.StartsWith("about-help-feedback-", StringComparison.Ordinal)))
                     {
                         CoinDeposit = new CoinDeposit.HostCoinDeposit(gameDirectory, runtime.SharedRuntime, items, Input);
                         runtime.SharedRuntime.AddFeature(CoinDeposit);
@@ -909,6 +910,8 @@ namespace JueMingR.TerrariaHost
                     informationPackage ? Information : null, () => Shell != null && Shell.CanAdjustInformation, () => Shell?.RequestInformationAdjustment(), Guidance, DeathRecords, MapFeatures, Footprints, Browser == null ? (Func<bool>)null : Browser.CanAnnounce, Browser == null ? (Action)null : Browser.Announce, Browser == null ? (Func<bool>)null : Browser.CanQuery, Browser == null ? (Action)null : Browser.Query, Browser?.Announcements, QuickItems, CoinDeposit) : null;
                 Shell = new F5Shell(runtime, preferences, notes, items, Input, hotkeys, Labels, WorldTargets, WorldObjects, Information, Guidance, DeathRecords, MapFeatures, Footprints, Browser?.Announcements) { LayersReady = f5LayersReady };
                 Browser?.Attach(Shell, hotkeys);
+                if (PackageId.StartsWith("about-help-feedback-", StringComparison.Ordinal))
+                { onboarding = new Onboarding.HostOnboarding(gameDirectory); runtime.SharedRuntime.AddFeature(onboarding); Shell.AttachOnboarding(onboarding); }
                 if (CoinDeposit != null) { Shell.AttachCoinDeposit(CoinDeposit); CoinDeposit.CanGameplay = () => Shell.CanTargetInput && !Terraria.Main.mapFullscreen; }
                 if (QuickItems != null) { Shell.AttachQuickItems(QuickItems); QuickItems.CanGameplay=()=>Shell.CanTargetInput && !Terraria.Main.mapFullscreen && !Terraria.Main.LocalPlayer.mouseInterface; }
                 if (MapFeatures != null) { MapFeatures.Layer.UiOwnsInput = () => Shell.BlocksMapInput || Input.MapPointerOwned; MapFeatures.Layer.CloseForLocate = Shell.CloseForMapLocate; }
@@ -925,6 +928,7 @@ namespace JueMingR.TerrariaHost
 
                 preferences.Update();
                 notes.Update();
+                onboarding?.Poll();
                 items?.PollPreferences();
                 QuickItems?.Poll();
                 CoinDeposit?.Poll();
@@ -955,6 +959,7 @@ namespace JueMingR.TerrariaHost
                 QuickItems?.FailClosed();
                 CoinDeposit?.FailClosed();
                 KeepFavorited?.FailClosed();
+                onboarding?.FailClosed();
                 nativeNpcs?.Clear();
                 Phase0TBiomeRuntime current = runtime;
                 if (current != null)

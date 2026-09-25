@@ -16,6 +16,7 @@ if (-not $DeferGraphics -and -not [string]::IsNullOrWhiteSpace($GraphicsDeferral
 
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $requiredProductionPaths = @(
+    'scripts\phase0s\About-Help-Feedback-Owner-Test-Card.zh-CN.md',
     'scripts\phase0s\Install-Phase0S.ps1',
     'scripts\phase0s\Restore-Phase0S.ps1',
     'scripts\build-phase0s-validation-package.ps1',

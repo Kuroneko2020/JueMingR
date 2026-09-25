@@ -17,6 +17,11 @@
     <EmbedReLogicResource Condition="'$(EmbedReLogicResource)' == ''">true</EmbedReLogicResource>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="..\..\src\JueMingR.TerrariaHost\About\AboutPage.cs" />
+    <Compile Include="..\..\src\JueMingR.TerrariaHost\About\AboutPainter.cs" />
+    <Compile Include="..\..\src\JueMingR.TerrariaHost\About\SponsorImages.cs" />
+    <EmbeddedResource Include="..\..\src\JueMingR.TerrariaHost\About\Assets\wechat.png" LogicalName="JueMingR.About.wechat.png" />
+    <EmbeddedResource Include="..\..\src\JueMingR.TerrariaHost\About\Assets\alipay.jpg" LogicalName="JueMingR.About.alipay.jpg" />
     <Reference Include="JueMingR.Platform"><HintPath>..\..\artifacts\build\Debug\work\bin\JueMingR.Platform\x86\Debug\net472\JueMingR.Platform.dll</HintPath></Reference>
     <Reference Include="JueMingR.Features"><HintPath>..\..\artifacts\build\Debug\work\bin\JueMingR.Features\x86\Debug\net472\JueMingR.Features.dll</HintPath></Reference>
     <Reference Include="JueMingR.Infrastructure"><HintPath>..\..\artifacts\build\Debug\work\bin\JueMingR.Infrastructure\x86\Debug\net472\JueMingR.Infrastructure.dll</HintPath></Reference>
