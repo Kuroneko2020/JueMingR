@@ -39,7 +39,11 @@ namespace JueMingR.TerrariaHost.Recovery
                 Main.NPCChatText_DoTaxCollector();
                 if(p.taxMoney==0)host.Dialog.Success();else unconfirmed=true;
             }
+#if DEBUG
             catch(Exception error)
+#else
+            catch(Exception)
+#endif
             {
 #if DEBUG
                 LastFailure=error;

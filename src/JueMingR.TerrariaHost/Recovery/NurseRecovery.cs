@@ -66,7 +66,11 @@ namespace JueMingR.TerrariaHost.Recovery
                 else if(!paid && funds==after)refused=true;
                 else unknown=true;
             }
+#if DEBUG
             catch(Exception error)
+#else
+            catch(Exception)
+#endif
             {
 #if DEBUG
                 LastFailure=error;
