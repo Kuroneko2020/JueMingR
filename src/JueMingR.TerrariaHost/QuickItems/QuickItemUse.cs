@@ -32,13 +32,13 @@ namespace JueMingR.TerrariaHost.QuickItems
                 !current.selectedItemState.CanChangeSelectedItemImmediately || current.CCed || current.noItems || current.isOperatingAnotherEntity ||
                 current.HasLockedInventory() || Main.LocalPlayerHasPendingInventoryActions() || host.Items.World.Busy ||
                 PlayerInput.Triggers.Current.MouseRight || PlayerInput.Triggers.Current.SmartSelect || PlayerInput.Triggers.Current.MouseLeft || Main.mouseLeft || !Main.mouseItem.IsAir)
-            { host.Message="当前无法快捷使用；请结束手中操作后重新按键。"; return; }
+            { host.Feedback(HostQuickItems.FeedbackKind.NotExecuted,notify:false); return; }
             for(int i=0;i<50;i++) { Item item=current.inventory[i]; candidates[i]=item==null ? default(QuickItemCandidate) :
                 new QuickItemCandidate(i,item.type,item.stack,item.useStyle!=0,host.Items.Ownership.IsProtected(i)); }
             choice=QuickItemRules.Choose(requested,candidates,current.selectedItem);
-            if(!choice.Found) {host.Message="背包中没有可用的目标物品。";return;}
+            if(!choice.Found) {host.Feedback(HostQuickItems.FeedbackKind.NotExecuted,"背包中没有可用的目标物品。");return;}
             long next=++nextToken;
-            if(!host.Items.Ownership.TryBeginUse(host.Runtime.Generation,choice.Slot,next)) {host.Message="目标物品正在被其他操作使用。";return;}
+            if(!host.Items.Ownership.TryBeginUse(host.Runtime.Generation,choice.Slot,next)) {host.Feedback(HostQuickItems.FeedbackKind.NotExecuted,"目标物品正在被其他操作使用。");return;}
             token=next;session=host.Runtime.Generation;admittedFrame=host.Input.Frame;player=current;provider=current.inventory[choice.Slot];entry=requested;
             selected=pulsed=checkedItem=cancelled=started=false;original=current.selectedItem;
         }
@@ -67,11 +67,11 @@ namespace JueMingR.TerrariaHost.QuickItems
             }
             if(cancelled || result || !StillAdmitted || !ReferenceEquals(current.inventory[choice.Slot],provider) ||
                 provider.type!=choice.OriginalType || provider.stack<=0 || !Main.mouseItem.IsAir)
-            {host.Message="原版选择已接管，本次快捷使用未开始。";Retire();return;}
+            {host.Feedback(HostQuickItems.FeedbackKind.NotExecuted,notify:false);Retire();return;}
             try { Transform(); }
-            catch {host.Message="形态转换未确认，未尝试其他物品。";Retire();return;}
+            catch {host.Feedback(HostQuickItems.FeedbackKind.Error,"快捷物品形态转换未确认，已停止本次操作。",entry.Id);Retire();return;}
             if(!choice.Use)
-            {host.Message="已设置为「"+HostQuickItems.SafeName(choice.TargetType)+"」。";Retire();return;}
+            {host.Feedback(HostQuickItems.FeedbackKind.Success,id:entry.Id);Retire();return;}
             original=current.selectedItem;selected=true;slot=choice.Slot;result=true;
         }
         internal void BeforeSync(Player current)
@@ -106,8 +106,9 @@ namespace JueMingR.TerrariaHost.QuickItems
             // The one-frame pulse releases through normal mapping; native
             // SelectedItemState returns its override when animation/channel/
             // reuse completes. Explicit cancellation still uses its buffer.
-            if(error!=null) {cancelled=true;host.Message="物品使用中断；不重试、不回滚物品。";}
-            else if(!started)host.Message="原版未开始本次使用，未尝试其他物品。";
+            if(error!=null) {cancelled=true;host.Feedback(HostQuickItems.FeedbackKind.Error,"快捷物品使用中断，已停止本次操作。",entry.Id);}
+            else if(!started)host.Feedback(HostQuickItems.FeedbackKind.NotExecuted,"原版未开始本次使用。请确认物品的使用条件。",entry.Id);
+            else host.Feedback(HostQuickItems.FeedbackKind.Success,id:entry.Id);
         }
         private void ReturnSelection()
         {

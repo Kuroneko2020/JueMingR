@@ -29,7 +29,9 @@ namespace JueMingR.TerrariaHost.F5
         private readonly Input.HostInputState inputState;
         private readonly HostHotkeys hotkeys;
         internal QuickItems.HostQuickItems QuickItems { get; set; }
+        private CoinDeposit.HostCoinDeposit coinDeposit;
         internal void AttachQuickItems(QuickItems.HostQuickItems owner) { QuickItems = owner; items?.AttachQuick(owner); }
+        internal void AttachCoinDeposit(CoinDeposit.HostCoinDeposit owner) { coinDeposit = owner; items?.AttachCoins(owner); }
         internal readonly HotkeyPopup HotkeyPopup;
         internal readonly StylePopup StylePopup;
         internal readonly DeathHistoryPopup DeathPopup;
@@ -376,6 +378,7 @@ namespace JueMingR.TerrariaHost.F5
                     preferences.TakeFeedback(displayPreferenceFeedback); hostItems?.TakeFeedback(displayPreferenceFeedback); labels?.TakeFeedback(displayPreferenceFeedback); worldTargets?.TakeFeedback(displayPreferenceFeedback); worldObjects?.TakeFeedback(displayPreferenceFeedback); information?.TakeFeedback(displayPreferenceFeedback);
                     guidance?.TakeFeedback(displayPreferenceFeedback);
                     deaths?.TakeFeedback(displayPreferenceFeedback); maps?.TakeFeedback(displayPreferenceFeedback); footprints?.TakeFeedback(displayPreferenceFeedback);
+                    QuickItems?.TakeFeedback(displayPreferenceFeedback); coinDeposit?.TakeFeedback(displayPreferenceFeedback);
                     if (StylePopup?.Failure != null && StylePopup.FailureKey != reportedStyleFailure)
                     { reportedStyleFailure = StylePopup.FailureKey; displayPreferenceFeedback(StylePopup.Failure); }
                 }

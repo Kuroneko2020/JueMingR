@@ -15,6 +15,7 @@ namespace JueMingR.TerrariaHost.QuickItems
     {
         internal HostQuickItems(HostItems items)
         {items.AllowsOwnedUse=null;throw new InvalidOperationException("G05 cannot be installed in the receiver fixture.");}
+        internal void TakeFeedback(Action<string> display){throw new InvalidOperationException("Use the real G05 native fixture.");}
     }
     internal sealed class QuickItemPanel
     {

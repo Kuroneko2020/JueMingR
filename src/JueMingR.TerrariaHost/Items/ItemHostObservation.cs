@@ -50,6 +50,14 @@ namespace JueMingR.TerrariaHost.Items
         { sessionPlayer = Main.LocalPlayer; previous = null; cached = null; previousShop = null; previousNpc = null; ClearManual(); Array.Clear(references, 0, references.Length); }
         internal void EndSession() { sessionPlayer = null; cached = null; previous = null; ClearManual(); CausalDepth = 0; }
         private void ClearManual() { ManualSlot = -1; ManualItem = null; ManualMaterials.Clear(); }
+        // Gesture retirement is shared by the coin consumer, which deliberately
+        // does not request the noncoin inventory/acquisition snapshot. Only real
+        // physical release under valid input admission ends these manual facts.
+        internal void RefreshManualRelease()
+        {
+            if (HasManualOperation && Player != null && CausalDepth == 0 && !AutomaticOperation && CanStartActions &&
+                PlayerInput.MouseInfo.LeftButton == ButtonState.Released && PlayerInput.MouseInfo.RightButton == ButtonState.Released) ClearManual();
+        }
         internal bool HasManualOperation { get { return ManualSlot >= 0 || ManualMaterials.Count != 0; } }
         internal void InvalidateObservation() { cached = null; }
         internal void DiscardUnsubmittedObservation() { cached = null; previous = null; ClearManual(); }
@@ -68,7 +76,7 @@ namespace JueMingR.TerrariaHost.Items
             observation = null;
             Player player = Player;
             if (player == null || CausalDepth != 0 || AutomaticOperation || !acquisition && Main.LocalPlayerHasPendingInventoryActions()) return false;
-            if (CanStartActions && PlayerInput.MouseInfo.LeftButton == ButtonState.Released && PlayerInput.MouseInfo.RightButton == ButtonState.Released) ClearManual();
+            RefreshManualRelease();
             Chest shop; NPC npc;
             bool available = TryShop(out shop, out npc);
             // These temporary native gates can change without changing a single
@@ -137,7 +145,7 @@ namespace JueMingR.TerrariaHost.Items
             if (current == null || !current.active || !current.friendly || currentShop == null || currentShop.item == null || currentShop.item.Length < 39) return false;
             shop = currentShop; npc = current; return true;
         }
-        private bool IsProtected(Player player, Item item, int slot)
+        internal bool IsProtected(Player player, Item item, int slot)
         {
             return item.favorited || slot == player.selectedItem || slot == ManualSlot ||
                 ManualMaterials.Contains(item) || ReferenceEquals(item, Main.mouseItem) ||

@@ -2,18 +2,35 @@ using System;
 
 namespace JueMingR.Platform.Items
 {
-    // Game-thread owner for these three real operations, not a scheduler. Native
+    // Game-thread owner for real overlapping operations, not a scheduler. Native
     // receipt data belongs to the Host; only this owner releases conflict ranges.
     public sealed class ItemOperationOwnership
     {
         private const ulong AllInventorySlots = (1UL << 58) - 1;
-        private ulong saleSlots, discardSlots, storeSlots, interruptedSourceSlots, useSlots;
-        private long useToken;
+        private ulong saleSlots, discardSlots, storeSlots, interruptedSourceSlots, useSlots, coinSlots;
+        private long useToken, coinToken;
         public long Session { get; private set; }
         public ItemOperationResult SaleResult { get; private set; }
         public ItemOperationResult DiscardResult { get; private set; }
         public ItemOperationResult StoreResult { get; private set; }
-        public ulong ProtectedSlots { get { return saleSlots | discardSlots | storeSlots | interruptedSourceSlots | useSlots; } }
+        public ulong ProtectedSlots { get { return saleSlots | discardSlots | storeSlots | interruptedSourceSlots | useSlots | coinSlots; } }
+        public bool TryBeginCoins(long generation, ulong slots, long token)
+        {
+            if (slots == 0 || (slots & ~AllInventorySlots) != 0 || token <= 0 || generation <= 0 ||
+                generation != Session || coinSlots != 0 || (ProtectedSlots & slots) != 0) return false;
+            coinSlots = slots; coinToken = token; return true;
+        }
+        public void EndCoins(long generation, long token, bool unconfirmed)
+        {
+            // Unknown native writes retain only this operation's real source
+            // range. Toggling its preference is not a settlement or unlock.
+            if (generation == Session && token == coinToken && !unconfirmed) { coinSlots = 0; coinToken = 0; }
+        }
+        public bool OwnsCoins(long generation, ulong slots, long token)
+        {
+            return generation > 0 && generation == Session && token == coinToken && slots != 0 && coinSlots == slots &&
+                ((saleSlots | discardSlots | storeSlots | interruptedSourceSlots | useSlots) & slots) == 0;
+        }
         public bool IsUseSlot(int slot) { return slot >= 0 && slot < 50 && (useSlots & (1UL << slot)) != 0; }
         public bool TryBeginUse(long generation, int slot, long token)
         {
@@ -34,7 +51,7 @@ namespace JueMingR.Platform.Items
             if (saleSlots != 0) SaleResult = Unknown();
             if (discardSlots != 0) DiscardResult = Unknown();
             if (storeSlots != 0) StoreResult = Unknown();
-            saleSlots = discardSlots = storeSlots = interruptedSourceSlots = useSlots = 0; useToken = 0;
+            saleSlots = discardSlots = storeSlots = interruptedSourceSlots = useSlots = coinSlots = 0; useToken = coinToken = 0;
             Session = generation;
             // Old unknown results describe the ended session. A fresh session
             // has no current protected range and must not display them as live.

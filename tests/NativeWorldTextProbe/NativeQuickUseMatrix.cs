@@ -44,12 +44,14 @@ namespace NativeWorldTextProbe
                 Require(p.statLife>20 && p.inventory[17].stack==0,"last potion applies native healing and is consumed once");Returned(p,use,2,"last consumable");
                 foreach(int target in new[]{5391,5453,5060,5454,5455,5329,5360,6169,6195,5325,5526})
                 {
+                    var feedback=new System.Collections.Generic.List<string>();Call(quick,"TakeFeedback",(Action<string>)(_=>{}));
                     Change(quick,entry.With(target,QuickItemMode.SetState,false,true));Reset(p);
                     int source=target;do{source=QuickItemRules.NextState(source);}while(QuickItemRules.NextState(source)!=target);
                     p.inventory[17].SetDefaults(source);p.inventory[17].favorited=true;Item physical=p.inventory[17];int prefix=physical.prefix;
                     Press(input,shell,Keys.J);NativeQuickItemChecks.NativeFrame(p);
                     Require(ReferenceEquals(p.inventory[17],physical) && physical.type==target && physical.stack==1 && physical.prefix==prefix && physical.favorited,"native state edge preserves physical attributes: "+source+"→"+target);
                     Returned(p,use,2,"state-only no selected override");
+                    Call(quick,"TakeFeedback",(Action<string>)feedback.Add);Require(feedback.Count==0,"real successful shape change stays silent");
                 }
                 Change(quick,entry.With(50,QuickItemMode.Use,true,true));Reset(p);p.inventory[17].SetDefaults(3199);
                 Press(input,shell,Keys.J);NativeQuickItemChecks.NativeFrame(p);Require(p.selectedItem==17,"compatible ice mirror selected from main bag");

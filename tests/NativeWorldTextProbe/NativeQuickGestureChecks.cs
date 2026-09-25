@@ -22,6 +22,16 @@ namespace NativeWorldTextProbe
             try
             {
                 NativeQuickUseMatrix.Change(quick,entry.With(ItemID.MagicMirror,QuickItemMode.Use,false,true));
+                Bind(bindings,entry.ActionId,"Mouse1");Prepare(input,shell,p);
+                for(int slot=0;slot<50;slot++)if(p.inventory[slot].type==ItemID.MagicMirror)p.inventory[slot].TurnToAir();
+                var feedback=new List<string>();Call(quick,"TakeFeedback",(Action<string>)(_=>{}));
+                for(int i=0;i<120;i++){Frame(input,shell,p,1);Call(quick,"TakeFeedback",(Action<string>)feedback.Add);}
+                Require(feedback.Count==1 && !(bool)Get(use,"Active") && p.inventory[2].stack==2,"missing provider reports once per press, with no fallback attack while held");
+                Frame(input,shell,p,0);Frame(input,shell,p,1);Call(quick,"TakeFeedback",(Action<string>)feedback.Add);
+                Require(feedback.Count==2,"a fresh missing-provider request is not permanently muted");
+                Prepare(input,shell,p);p.noItems=true;feedback.Clear();
+                Frame(input,shell,p,1);Call(quick,"TakeFeedback",(Action<string>)feedback.Add);
+                Require(feedback.Count==0 && !(bool)Get(use,"Active") && p.inventory[2].stack==2,"ordinary input/admission pre-emption remains quiet and cannot use an item");p.noItems=false;
                 for(int button=0;button<5;button++)
                 {
                     Bind(bindings,entry.ActionId,"Mouse"+(button+1));Prepare(input,shell,p);
