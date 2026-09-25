@@ -99,6 +99,7 @@ namespace JueMingR.TerrariaHost.F5
         internal float MaxScroll { get { return Math.Max(0, ContentHeight - Viewport.Height); } }
         internal void SetNotesContentHeight(float height) { if (page == 4) ContentHeight = Math.Max(0, height); }
         internal void SetItemsContentHeight(float height) { if (page == 0) ContentHeight = Math.Max(0, height); }
+        internal void SetRecoveryContentHeight(float height) { if (page==10 || page==1) ContentHeight=Math.Max(0,height); }
 
         internal static F5Size WindowSize(float width, float height, float scale)
         {

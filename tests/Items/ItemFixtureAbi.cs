@@ -79,6 +79,7 @@ namespace Terraria
     public sealed partial class Player : Entity
     {
         public readonly Item[] inventory = Enumerable.Range(0, 59).Select(_ => new Item()).ToArray();
+        public readonly Chest bank=new Chest(),bank2=new Chest(),bank3=new Chest(),bank4=new Chest();
         public readonly bool[] inventoryChestStack = new bool[59];
         public Item trashItem = new Item();
         public DataStructures.PlayerInteractionAnchor tileEntityAnchor = new DataStructures.PlayerInteractionAnchor();

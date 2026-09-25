@@ -34,6 +34,7 @@ namespace JueMingR.TerrariaHost.F5
         internal MapControls MapControls { get; set; }
         internal AnnouncementControls AnnouncementControls { get; set; }
         internal FootprintControls FootprintControls { get; set; }
+        internal Recovery.RecoveryPresentation RecoveryUi {get;set;}
         internal void DrawFootprintPopup(FootprintPopup popup)
         {
             if (!popup.Visible) return; var batch = Main.spriteBatch;
@@ -194,7 +195,7 @@ namespace JueMingR.TerrariaHost.F5
             state.Layout.Ensure(width, height, scale, state.Page, font, measure);
             // Dynamic pages clamp after committing their real content height.
             // Ensure's temporary empty height must not reset their offset.
-            if (state.Page != 0 && state.Page != 4) state.ClampScroll();
+            if (state.Page != 0 && state.Page != 4 && !(RecoveryUi!=null && (state.Page==10 || state.Page==1))) state.ClampScroll();
         }
 
         private F5Size Measure(string text)
@@ -307,6 +308,8 @@ namespace JueMingR.TerrariaHost.F5
         {
             target = default(F5Rect);
             if (!state.CanShowHint || blocked) return null;
+            if(RecoveryUi!=null && (state.Page==10 || state.Page==1))
+            {string recoveryHint=RecoveryUi.Hint(state.PointerX,state.PointerY,out target,contentClip);if(recoveryHint!=null)return recoveryHint;}
             if (state.Page == 0) return items == null ? null : items.Hint(state.PointerX, state.PointerY, out target, contentClip);
             var view = state.Layout.Viewport.Offset(state.X, state.Y);
             var visible = contentClip.HasValue ? F5HintLayout.Intersect(view, contentClip.Value) : view;

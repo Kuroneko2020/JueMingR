@@ -44,6 +44,12 @@ function Invoke-AboutWorkloadChecks {
     Invoke-WorkloadCheck 'about-native-composition' $Native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'about-cpu'), 'AboutCpu')
     Invoke-WorkloadCheck 'f5-cpu' $Fixture @('f5-cpu')
 }
+function Invoke-RecoveryWorkloadChecks {
+    param([string[]] $Groups, [string] $Architecture, [string] $Native)
+    if ($Groups -notcontains 'recovery-host') { return }
+    Invoke-WorkloadCheck 'recovery-rules-storage' $Architecture @('--recovery')
+    Invoke-WorkloadCheck 'recovery-native-execution' $Native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'recovery-cpu'), 'RecoveryCpu')
+}
 try {
 $architecture = Join-Path $repositoryRoot 'artifacts/build/Debug/work/bin/JueMingR.ArchitectureTests/x86/Debug/net472/JueMingR.ArchitectureTests.exe'
 Invoke-WorkloadCheck 'core-records-selection' $architecture @('--workload-core', $repositoryRoot)
@@ -66,6 +72,7 @@ if ($route.groups -contains 'coin-deposit-host') {
     Invoke-WorkloadCheck 'coin-deposit-intent-rules' $architecture @('--coin-deposit')
     Invoke-WorkloadCheck 'coin-deposit-native-execution' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'coin-deposit-cpu'), 'CoinDepositCpu')
 }
+Invoke-RecoveryWorkloadChecks $route.groups $architecture $native
 if ($route.groups -contains 'death-host') {
     Invoke-WorkloadCheck 'death-history-storage-workload' $architecture @('--death-history')
     Invoke-WorkloadCheck 'death-native-execution' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'death-cpu'), 'DeathCpu')

@@ -14,6 +14,11 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if(scope=="RecoveryCpu" || scope=="RecoveryVisual")
+            {
+                Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-recovery-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
+                NativeQuickItemChecks.Run(scope=="RecoveryVisual"?(Action<object>)(context=>{using(var graphics=new ProbeGraphics(content))NativeRecoveryVisualChecks.Run(context,graphics,output);}):null,recovery:true);return 0;
+            }
             if (scope == "AboutCpu" || scope == "AboutVisual")
             {
                 Terraria.Program.SavePath = Path.Combine(Path.GetTempPath(), "JueMingR-native-about-" + Guid.NewGuid().ToString("N"));

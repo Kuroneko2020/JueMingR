@@ -31,6 +31,8 @@ namespace NativeWorldTextProbe
         { foreach (int id in new[] { 8, 48, 50, 224, 171, 393, 966, 29 }) using (var stream = File.OpenRead(Path.Combine(contentDirectory, "Images", "Item_" + id + ".xnb"))) Terraria.GameContent.TextureAssets.Item[id] = Loaded("Images/Item_" + id, reader.FromStream<Texture2D>(stream)); }
         internal void LoadItemTextures(IEnumerable<int> ids)
         { foreach (int id in ids) if (Terraria.GameContent.TextureAssets.Item[id] == null || !Terraria.GameContent.TextureAssets.Item[id].IsLoaded) using (var stream = File.OpenRead(Path.Combine(contentDirectory, "Images", "Item_" + id + ".xnb"))) Terraria.GameContent.TextureAssets.Item[id] = Loaded("Images/Item_" + id, reader.FromStream<Texture2D>(stream)); }
+        internal void LoadBuffTexture(int id)
+        {using(var stream=File.OpenRead(Path.Combine(contentDirectory,"Images","Buff_"+id+".xnb")))Terraria.GameContent.TextureAssets.Buff[id]=Loaded("Images/Buff_"+id,reader.FromStream<Texture2D>(stream));}
         internal ProbeGraphics(string content, bool largeCanvas = false)
         {
             contentDirectory = content;

@@ -582,7 +582,7 @@ namespace JueMingR.TerrariaHost
         private static void EnsureEntityLayer(List<GameInterfaceLayer> layers, bool setupComplete)
         {
             var context = postfixContext;
-            if (context == null || !(context.PackageId.StartsWith("entity-labels-", StringComparison.Ordinal) || context.PackageId.StartsWith("world-targets-", StringComparison.Ordinal) || context.PackageId.StartsWith("world-object-text-", StringComparison.Ordinal) || context.PackageId.StartsWith("information-summary-", StringComparison.Ordinal) || context.PackageId.StartsWith("direction-equipment-", StringComparison.Ordinal) || context.PackageId.StartsWith("death-history-", StringComparison.Ordinal) || context.PackageId.StartsWith("map-markers-exploration-", StringComparison.Ordinal) || (context.PackageId.StartsWith("footprints-", StringComparison.Ordinal) || (context.PackageId.StartsWith("item-browser-", StringComparison.Ordinal) || (context.PackageId.StartsWith("favorite-quick-items-", StringComparison.Ordinal) || (context.PackageId.StartsWith("coin-deposit-", StringComparison.Ordinal) || context.PackageId.StartsWith("about-help-feedback-", StringComparison.Ordinal))))))) return;
+            if (context == null || !(context.PackageId.StartsWith("entity-labels-", StringComparison.Ordinal) || context.PackageId.StartsWith("world-targets-", StringComparison.Ordinal) || context.PackageId.StartsWith("world-object-text-", StringComparison.Ordinal) || context.PackageId.StartsWith("information-summary-", StringComparison.Ordinal) || context.PackageId.StartsWith("direction-equipment-", StringComparison.Ordinal) || context.PackageId.StartsWith("death-history-", StringComparison.Ordinal) || context.PackageId.StartsWith("map-markers-exploration-", StringComparison.Ordinal) || (context.PackageId.StartsWith("footprints-", StringComparison.Ordinal) || (context.PackageId.StartsWith("item-browser-", StringComparison.Ordinal) || (context.PackageId.StartsWith("favorite-quick-items-", StringComparison.Ordinal) || (context.PackageId.StartsWith("coin-deposit-", StringComparison.Ordinal) || (context.PackageId.StartsWith("about-help-feedback-", StringComparison.Ordinal) || context.PackageId.StartsWith("recovery-buffs-services-", StringComparison.Ordinal)))))))) return;
             try
             {
                 // Capture's early return precedes this Game-scale layer. Normal
@@ -822,12 +822,13 @@ namespace JueMingR.TerrariaHost
             internal QuickItems.HostQuickItems QuickItems { get; private set; }
             internal KeepFavorited.HostKeepFavorited KeepFavorited { get; private set; }
             internal CoinDeposit.HostCoinDeposit CoinDeposit { get; private set; }
+            internal Recovery.HostRecovery Recovery { get; private set; }
             private Npcs.NativeNpcObservation nativeNpcs;
             internal readonly Information.InformationReadiness InformationReadiness = new Information.InformationReadiness();
             private Information.InformationSourceHooks informationHooks;
             internal void InstallInformationSources()
             {
-                if (!(PackageId.StartsWith("information-summary-", StringComparison.Ordinal) || PackageId.StartsWith("direction-equipment-", StringComparison.Ordinal) || PackageId.StartsWith("death-history-", StringComparison.Ordinal) || PackageId.StartsWith("map-markers-exploration-", StringComparison.Ordinal) || (PackageId.StartsWith("footprints-", StringComparison.Ordinal) || PackageId.StartsWith("item-browser-", StringComparison.Ordinal) || (PackageId.StartsWith("favorite-quick-items-", StringComparison.Ordinal) || (PackageId.StartsWith("coin-deposit-", StringComparison.Ordinal) || PackageId.StartsWith("about-help-feedback-", StringComparison.Ordinal))))) || informationHooks != null) return;
+                if (!(PackageId.StartsWith("information-summary-", StringComparison.Ordinal) || PackageId.StartsWith("direction-equipment-", StringComparison.Ordinal) || PackageId.StartsWith("death-history-", StringComparison.Ordinal) || PackageId.StartsWith("map-markers-exploration-", StringComparison.Ordinal) || (PackageId.StartsWith("footprints-", StringComparison.Ordinal) || PackageId.StartsWith("item-browser-", StringComparison.Ordinal) || (PackageId.StartsWith("favorite-quick-items-", StringComparison.Ordinal) || (PackageId.StartsWith("coin-deposit-", StringComparison.Ordinal) || (PackageId.StartsWith("about-help-feedback-", StringComparison.Ordinal) || PackageId.StartsWith("recovery-buffs-services-", StringComparison.Ordinal)))))) || informationHooks != null) return;
                 informationHooks = new Information.InformationSourceHooks(InformationReadiness); informationHooks.Install();
             }
             internal void DisposeInformationSources() { informationHooks?.Dispose(); }
@@ -863,7 +864,7 @@ namespace JueMingR.TerrariaHost
                 }
 
                 preferences = new HostPreferences(gameDirectory);
-                bool quickPackage = (PackageId.StartsWith("favorite-quick-items-", StringComparison.Ordinal) || (PackageId.StartsWith("coin-deposit-", StringComparison.Ordinal) || PackageId.StartsWith("about-help-feedback-", StringComparison.Ordinal)));
+                bool quickPackage = (PackageId.StartsWith("favorite-quick-items-", StringComparison.Ordinal) || (PackageId.StartsWith("coin-deposit-", StringComparison.Ordinal) || (PackageId.StartsWith("about-help-feedback-", StringComparison.Ordinal) || PackageId.StartsWith("recovery-buffs-services-", StringComparison.Ordinal))));
                 bool footprintPackage = (PackageId.StartsWith("footprints-", StringComparison.Ordinal) || PackageId.StartsWith("item-browser-", StringComparison.Ordinal) || quickPackage);
                 bool mapPackage = footprintPackage || PackageId.StartsWith("map-markers-exploration-", StringComparison.Ordinal);
                 bool deathPackage = mapPackage || PackageId.StartsWith("death-history-", StringComparison.Ordinal);
@@ -888,7 +889,7 @@ namespace JueMingR.TerrariaHost
                     }
                     runtime.SharedRuntime.AddFeature(items);
                     if (QuickItems != null) runtime.SharedRuntime.AddFeature(QuickItems);
-                    if ((PackageId.StartsWith("coin-deposit-", StringComparison.Ordinal) || PackageId.StartsWith("about-help-feedback-", StringComparison.Ordinal)))
+                    if ((PackageId.StartsWith("coin-deposit-", StringComparison.Ordinal) || (PackageId.StartsWith("about-help-feedback-", StringComparison.Ordinal) || PackageId.StartsWith("recovery-buffs-services-", StringComparison.Ordinal))))
                     {
                         CoinDeposit = new CoinDeposit.HostCoinDeposit(gameDirectory, runtime.SharedRuntime, items, Input);
                         runtime.SharedRuntime.AddFeature(CoinDeposit);
@@ -897,6 +898,8 @@ namespace JueMingR.TerrariaHost
                 nativeNpcs = new Npcs.NativeNpcObservation();
                 if (entityPackage) { Labels = new EntityLabels.HostEntityLabels(gameDirectory, runtime.SharedRuntime, nativeNpcs) { LayerStatus = entityLayerStatus }; runtime.SharedRuntime.AddFeature(Labels); }
                 if (worldPackage) { worldTiles = new World.WorldTileObservation(() => runtime.SharedRuntime.IsSessionActive); WorldTargets = new WorldTargets.HostWorldTargets(gameDirectory, runtime.SharedRuntime, worldTiles) { LayerStatus = entityLayerStatus }; runtime.SharedRuntime.AddFeature(WorldTargets); }
+                if(PackageId.StartsWith("recovery-buffs-services-",StringComparison.Ordinal))
+                {Recovery=new Recovery.HostRecovery(gameDirectory,runtime.SharedRuntime,items,Input,worldTiles,nativeNpcs);runtime.SharedRuntime.AddFeature(Recovery);}
                 if (objectPackage) { WorldObjects = new WorldObjectText.HostWorldObjectText(gameDirectory, runtime.SharedRuntime, worldTiles, () => items != null && items.World.AutomaticOperation) { LayerStatus = entityLayerStatus }; runtime.SharedRuntime.AddFeature(WorldObjects); }
                 Information = new Information.HostInformation(gameDirectory, runtime, preferences, InformationReadiness, error => RecordBiomeFailure("BIOME_DRAW", error), nativeNpcs);
                 runtime.SharedRuntime.AddFeature(Information);
@@ -907,10 +910,11 @@ namespace JueMingR.TerrariaHost
                 notes = new Notes.HostNotes(gameDirectory);
                 if (PackageId.StartsWith("item-browser-", StringComparison.Ordinal) || quickPackage) Browser = new ItemBrowser.HostItemBrowser(gameDirectory, worldTiles, Input);
                 var hotkeys = hotkeyPackage ? new Hotkeys.HostHotkeys(gameDirectory, runtime, preferences, items, Labels, WorldTargets, WorldObjects,
-                    informationPackage ? Information : null, () => Shell != null && Shell.CanAdjustInformation, () => Shell?.RequestInformationAdjustment(), Guidance, DeathRecords, MapFeatures, Footprints, Browser == null ? (Func<bool>)null : Browser.CanAnnounce, Browser == null ? (Action)null : Browser.Announce, Browser == null ? (Func<bool>)null : Browser.CanQuery, Browser == null ? (Action)null : Browser.Query, Browser?.Announcements, QuickItems, CoinDeposit) : null;
+                    informationPackage ? Information : null, () => Shell != null && Shell.CanAdjustInformation, () => Shell?.RequestInformationAdjustment(), Guidance, DeathRecords, MapFeatures, Footprints, Browser == null ? (Func<bool>)null : Browser.CanAnnounce, Browser == null ? (Action)null : Browser.Announce, Browser == null ? (Func<bool>)null : Browser.CanQuery, Browser == null ? (Action)null : Browser.Query, Browser?.Announcements, QuickItems, CoinDeposit, Recovery) : null;
                 Shell = new F5Shell(runtime, preferences, notes, items, Input, hotkeys, Labels, WorldTargets, WorldObjects, Information, Guidance, DeathRecords, MapFeatures, Footprints, Browser?.Announcements) { LayersReady = f5LayersReady };
                 Browser?.Attach(Shell, hotkeys);
-                if (PackageId.StartsWith("about-help-feedback-", StringComparison.Ordinal))
+                if(Recovery!=null){Shell.AttachRecovery(Recovery);Recovery.CanGameplay=()=>Shell.CanTargetInput && !Terraria.Main.mapFullscreen && !Terraria.Main.LocalPlayer.mouseInterface;Recovery.CanBackgroundBuff=()=>Shell.CanBackgroundBuff;Recovery.IsQuickUse=()=>QuickItems!=null && (QuickItems.Use.Active || QuickItems.Use.InNativeUse);}
+                if ((PackageId.StartsWith("about-help-feedback-", StringComparison.Ordinal) || PackageId.StartsWith("recovery-buffs-services-", StringComparison.Ordinal)))
                 { onboarding = new Onboarding.HostOnboarding(gameDirectory); runtime.SharedRuntime.AddFeature(onboarding); Shell.AttachOnboarding(onboarding); }
                 if (CoinDeposit != null) { Shell.AttachCoinDeposit(CoinDeposit); CoinDeposit.CanGameplay = () => Shell.CanTargetInput && !Terraria.Main.mapFullscreen; }
                 if (QuickItems != null) { Shell.AttachQuickItems(QuickItems); QuickItems.CanGameplay=()=>Shell.CanTargetInput && !Terraria.Main.mapFullscreen && !Terraria.Main.LocalPlayer.mouseInterface; }
@@ -932,6 +936,7 @@ namespace JueMingR.TerrariaHost
                 items?.PollPreferences();
                 QuickItems?.Poll();
                 CoinDeposit?.Poll();
+                Recovery?.Poll();
                 Labels?.PollPreferences();
                 WorldTargets?.PollPreferences();
                 WorldObjects?.PollPreferences();
@@ -958,6 +963,7 @@ namespace JueMingR.TerrariaHost
                 Browser?.FailClosed();
                 QuickItems?.FailClosed();
                 CoinDeposit?.FailClosed();
+                Recovery?.FailClosed();
                 KeepFavorited?.FailClosed();
                 onboarding?.FailClosed();
                 nativeNpcs?.Clear();

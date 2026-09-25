@@ -9,11 +9,31 @@ namespace JueMingR.Platform.Items
         private const ulong AllInventorySlots = (1UL << 58) - 1;
         private ulong saleSlots, discardSlots, storeSlots, interruptedSourceSlots, useSlots, coinSlots;
         private long useToken, coinToken;
+        private readonly ulong[] recoverySlots = new ulong[5];
+        private long recoveryToken;
         public long Session { get; private set; }
         public ItemOperationResult SaleResult { get; private set; }
         public ItemOperationResult DiscardResult { get; private set; }
         public ItemOperationResult StoreResult { get; private set; }
-        public ulong ProtectedSlots { get { return saleSlots | discardSlots | storeSlots | interruptedSourceSlots | useSlots | coinSlots; } }
+        public ulong ProtectedSlots { get { return saleSlots | discardSlots | storeSlots | interruptedSourceSlots | useSlots | coinSlots | recoverySlots[0]; } }
+        public bool AnyProtected {get{return (ProtectedSlots|recoverySlots[1]|recoverySlots[2]|recoverySlots[3]|recoverySlots[4])!=0;}}
+        public bool IsProtected(int account,int slot)
+        { return account>=0 && account<5 && slot>=0 && slot<(account==0?58:40) && (account==0?IsProtected(slot):(recoverySlots[account]&(1UL<<slot))!=0); }
+        public bool TryBeginRecovery(long generation,ulong[] slots,long token)
+        {
+            if(generation<=0 || generation!=Session || token<=0 || recoveryToken!=0 || slots==null || slots.Length!=5)return false;
+            if((slots[0]|slots[1]|slots[2]|slots[3]|slots[4])==0)return false;
+            for(int a=0;a<5;a++)if((slots[a]&~((1UL<<(a==0?58:40))-1))!=0 || (slots[a]&(a==0?ProtectedSlots:recoverySlots[a]))!=0)return false;
+            for(int a=0;a<5;a++)recoverySlots[a]|=slots[a];recoveryToken=token;return true;
+        }
+        public void EndRecovery(long generation,ulong[] slots,long token,bool unknown)
+        {
+            if(generation!=Session || token!=recoveryToken)return;
+            if(!unknown)for(int a=0;a<5;a++)recoverySlots[a]&=~slots[a];
+            recoveryToken=0;
+        }
+        public void HoldRecovery(long generation,ulong[] slots)
+        { if(generation==Session && generation>0)for(int a=0;a<5;a++)recoverySlots[a]|=slots[a]; }
         public bool TryBeginCoins(long generation, ulong slots, long token)
         {
             if (slots == 0 || (slots & ~AllInventorySlots) != 0 || token <= 0 || generation <= 0 ||
@@ -53,6 +73,7 @@ namespace JueMingR.Platform.Items
             if (storeSlots != 0) StoreResult = Unknown();
             saleSlots = discardSlots = storeSlots = interruptedSourceSlots = useSlots = coinSlots = 0; useToken = coinToken = 0;
             Session = generation;
+            Array.Clear(recoverySlots,0,recoverySlots.Length);recoveryToken=0;
             // Old unknown results describe the ended session. A fresh session
             // has no current protected range and must not display them as live.
             if (generation > 0) SaleResult = DiscardResult = StoreResult = null;

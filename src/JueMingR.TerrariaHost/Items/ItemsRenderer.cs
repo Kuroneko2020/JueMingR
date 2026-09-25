@@ -117,8 +117,8 @@ namespace JueMingR.TerrariaHost.Items
         }
         internal void Cross(F5Rect r, bool enabled)
         {
-            // Only the drawing is inset; the layout retains its 18x18 hit area.
-            Fill(new F5Rect(r.X + 3, r.Y + 3, r.Width - 6, r.Height - 6), Color.Black * .5f);
+            // Shared pure-stroke symbol for close controls and missing stock.
+            // Drawing is inset; the caller retains the complete hit area.
             var color = enabled ? new Color(255, 92, 92) : new Color(146, 68, 68);
             Stroke(new Vector2(r.X + 6, r.Y + 5.5f), new Vector2(r.Right - 6.5f, r.Bottom - 6), color, 1.6f);
             Stroke(new Vector2(r.Right - 5.5f, r.Y + 6), new Vector2(r.X + 5.5f, r.Bottom - 6), color, 1.5f);
