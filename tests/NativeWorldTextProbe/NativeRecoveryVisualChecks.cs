@@ -33,8 +33,7 @@ namespace NativeWorldTextProbe
             Call(ui,"Suspend");draw(960,760,1,"recovery-controls-reset.png");
             var buffPrefs=(RecoverySettings)Get(host,"Buffs");NativeRecoveryChecks.Save(buffPrefs,new RecoveryOptions(allowedBuffs:new int[]{ItemID.RegenerationPotion}));
             Main.LocalPlayer.inventory[9].SetDefaults(ItemID.IronskinPotion);
-            button=((IEnumerable)Get(ui,"visible")).Cast<object>().First(part=>(int)Get(part,"Command")==-2 && (int)Get(part,"Value")==2);
-            Call(ui,"Execute",button);draw(960,760,1,"recovery-buff-two-panes.png");
+            Call(ui,"Refresh");draw(960,760,1,"recovery-buff-two-panes.png");draw(1280,720,1.5f,"recovery-buff-two-panes-150.png");
             NativeRecoveryChecks.Save(buffPrefs,new RecoveryOptions());
             Call(ui,"Suspend");Call(state,"Navigate",1);draw(960,760,1,"recovery-tax-misc.png");
             Call(state,"Close");Call(ui,"Suspend");

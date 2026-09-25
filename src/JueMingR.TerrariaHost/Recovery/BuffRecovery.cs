@@ -81,7 +81,7 @@ namespace JueMingR.TerrariaHost.Recovery
         internal bool AllowsPet(Player p,Item item){return attempted && ReferenceEquals(item,source.Item) && Valid(p);}
         private void Use(RecoverySource candidate)
         {
-            if(!candidate.Matches(host) || !host.Admit(candidate.Player))return;
+            if(!candidate.Matches(host) || !host.AdmitBuff(candidate.Player))return;
             Array.Clear(lease,0,5);lease[candidate.Account]=1UL<<candidate.Slot;
             if(!host.Items.Ownership.TryBeginRecovery(candidate.Session,lease,++token))return;
             source=candidate;Executing=true;attempted=false;bool unknown=false;int buff=source.Item.buffType;

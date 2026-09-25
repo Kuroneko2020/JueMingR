@@ -29,6 +29,7 @@ namespace JueMingR.TerrariaHost.Recovery
         internal readonly TaxRecovery Tax;
         internal readonly RecoveryCatalog Catalog;
         internal Func<bool> CanGameplay;
+        internal Func<bool> CanBackgroundBuff;
         internal Func<bool> IsQuickUse;
         internal bool Available {get;private set;}
         internal Exception SetupError {get;private set;}
@@ -70,9 +71,15 @@ namespace JueMingR.TerrariaHost.Recovery
         {for(int i=0;i<6;i++){int id=i;registry.Register(new HotkeyAction(Actions[i],Names[i],HotkeyContext.Gameplay,()=>Controls(id),()=>Set(id,Value(id)==0?1:0)));}}
         internal void Poll(){Potions.Poll();Buffs.Poll();Services.Poll();Learning.Poll();Tax.ObserveSettlement();}
         internal bool Admit(Player p)
+        {return Input.CanStartActions && CanGameplay!=null && CanGameplay() && SafePlayer(p);}
+        // Only automatic buffs may run without an input gesture in background.
+        // Never unpause, manufacture input, or discard unknown source ownership.
+        internal bool AdmitBuff(Player p)
+        {return Input.IsFocused?Admit(p):Main.CanUpdateGameplay && CanBackgroundBuff!=null && CanBackgroundBuff() && SafePlayer(p);}
+        private bool SafePlayer(Player p)
         {
-            return Available && p!=null && ReferenceEquals(p,Player) && Input.CanStartActions && !Main.gamePaused &&
-                CanGameplay!=null && CanGameplay() && !p.dead && !p.CCed && !p.cursed && !p.noItems && !p.isOperatingAnotherEntity &&
+            return Available && p!=null && ReferenceEquals(p,Player) && !Main.gamePaused &&
+                !p.dead && !p.CCed && !p.cursed && !p.noItems && !p.isOperatingAnotherEntity &&
                 !p.HasLockedInventory() && !Main.LocalPlayerHasPendingInventoryActions() && !Items.World.Busy &&
                 p.chest==-1 && p.talkNPC<0 && p.sign<0 && Main.npcShop==0 && Main.mouseItem!=null && Main.mouseItem.IsAir &&
                 !Main.drawingPlayerChat && !Main.editSign && !Main.editChest && !PlayerInput.WritingText && !Main.blockInput &&
@@ -99,7 +106,7 @@ namespace JueMingR.TerrariaHost.Recovery
         public void Update(ulong tick)
         {
             Tick=tick;if(!Enabled)return;
-            Player p=Player;if(!Admit(p))return;
+            Player p=Player;if(!Admit(p)){if(Value(4)!=0 && AdmitBuff(p))BuffUse.Update(p,tick);return;}
             Items.World.RefreshManualRelease();
             if(Value(0)!=0)PotionsUse.Heal(p);
             if(Value(1)!=0)PotionsUse.Mana(p);

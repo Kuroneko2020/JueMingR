@@ -22,16 +22,33 @@ namespace NativeWorldTextProbe
             var button=((IEnumerable)Get(ui,"visible")).Cast<object>().First(p=>(int)Get(p,"Command")==-2 && (int)Get(p,"Value")==0);
             Call(ui,"Execute",button);prepare();
             var popup=Get(ui,"PotionPopup");Require((bool)Get(popup,"Visible") && ((int[])Get(popup,"Candidates")).Length>10,"full medication catalogue opens independent popup");
-            Require((float)Get(layout,"ContentHeight")==height && !((IEnumerable)Get(ui,"logical")).Cast<object>().Any(part=>(int)Get(part,"Type")>0),"medication popup never expands parent page or inserts an inline grid");
+            Require((float)Get(layout,"ContentHeight")==height,"medication popup never expands parent page");
             PopupInput(context,ui,popup,settings);
             Call(ui,"Suspend");prepare();
             var buffs=(RecoverySettings)Get(Get(context,"Recovery"),"Buffs");NativeRecoveryChecks.Save(buffs,new RecoveryOptions(allowedBuffs:new int[]{Terraria.ID.ItemID.RegenerationPotion}));
             Terraria.Main.LocalPlayer.inventory[9].SetDefaults(Terraria.ID.ItemID.IronskinPotion);
-            button=((IEnumerable)Get(ui,"visible")).Cast<object>().First(p=>(int)Get(p,"Command")==-2 && (int)Get(p,"Value")==2);Call(ui,"Execute",button);prepare();
+            Call(ui,"Refresh");prepare();
+            Require(!((IEnumerable)Get(ui,"logical")).Cast<object>().Any(p=>(int)Get(p,"Command")==-2 && (int)Get(p,"Value")==2),"buff list is visible by default without a toggle button");
+            ListMovement(context,ui);
             var selected=((IEnumerable)Get(ui,"logical")).Cast<object>().First(p=>(int)Get(p,"Type")==Terraria.ID.ItemID.RegenerationPotion);
             var candidate=((IEnumerable)Get(ui,"logical")).Cast<object>().First(p=>(int)Get(p,"Type")==Terraria.ID.ItemID.IronskinPotion);
             var a=Get(Get(candidate,"Element"),"Rect");var b=Get(Get(selected,"Element"),"Rect");
             Require((float)Get(a,"Right")<(float)Get(b,"X") && (float)Get(a,"Y")== (float)Get(b,"Y"),"available left and selected right share grid start in separate panes");
+            Require(!(bool)Get(selected,"Selected") && (bool)Get(selected,"MissingStock"),"selected missing inventory shows a cross, not a membership check");
+            var tick=typeof(Terraria.Main).GetField("_gameUpdateCount",System.Reflection.BindingFlags.Static|System.Reflection.BindingFlags.NonPublic);
+            var catalog=Get(Get(context,"Recovery"),"Catalog");long reads=(long)Get(catalog,"StockReads");
+            var before=Get(ui,"candidates");for(int n=0;n<100;n++)prepare();Require(ReferenceEquals(before,Get(ui,"candidates")) && reads==(long)Get(catalog,"StockReads"),"stable draws reuse snapshot without reading inventory");
+            for(int n=0;n<300;n++){tick.SetValue(null,Terraria.Main.GameUpdateCount+1);prepare();}
+            long observed=(long)Get(catalog,"StockReads")-reads;Require(observed>0 && observed<=10*98,"visible list observes bounded actual inventory work at 30 update cadence");
+            Call(state,"Close");reads=(long)Get(catalog,"StockReads");for(int n=0;n<300;n++){tick.SetValue(null,Terraria.Main.GameUpdateCount+1);Call(ui,"Prepare",false,Matrix.Identity,new Vector2(960,760));}
+            Require(reads==(long)Get(catalog,"StockReads"),"closed presentation has zero stock reads");Call(state,"RestoreVisible");prepare();
+            Terraria.Main.LocalPlayer.inventory[10].SetDefaults(Terraria.ID.ItemID.RegenerationPotion);
+            tick.SetValue(null,Terraria.Main.GameUpdateCount+30);prepare();
+            selected=((IEnumerable)Get(ui,"logical")).Cast<object>().First(p=>(int)Get(p,"Type")==Terraria.ID.ItemID.RegenerationPotion);
+            Require((bool)Get(selected,"Selected") && !(bool)Get(selected,"MissingStock"),"refill updates check through bounded visible-page observation");
+            Terraria.Main.LocalPlayer.inventory[10].TurnToAir();tick.SetValue(null,Terraria.Main.GameUpdateCount+30);prepare();
+            selected=((IEnumerable)Get(ui,"logical")).Cast<object>().First(p=>(int)Get(p,"Type")==Terraria.ID.ItemID.RegenerationPotion);
+            Require((bool)Get(selected,"MissingStock") && buffs.Value.BuffAllowed(Terraria.ID.ItemID.RegenerationPotion) && !buffs.Busy,"depletion changes only display and preserves persistent whitelist");
             var parts=((IEnumerable)Get(ui,"logical")).Cast<object>().ToArray();
             var panels=parts.Where(part=>Get(Get(part,"Element"),"Kind").ToString()=="Panel").Select(part=>Get(Get(part,"Element"),"Rect")).ToArray();
             foreach(var action in parts.Where(part=>new[]{-4,-5,6,7}.Contains((int)Get(part,"Command"))))
@@ -44,6 +61,18 @@ namespace NativeWorldTextProbe
             Call(state,"Navigate",1);prepare();Require(((IEnumerable)Get(ui,"logical")).Cast<object>().Any(p=>(string)GetOptional(Get(p,"Element"),"Text")=="自动收税"),"tax remains on misc page");
             Call(state,"Close");Call(ui,"Suspend");NativeRecoveryChecks.Save(settings,new RecoveryOptions());
             Console.WriteLine("PASS G07 UI: real composition controls, full catalogue, stable off/pending/saved heights and scroll.");
+        }
+        private static void ListMovement(object context,object ui)
+        {
+            var input=Get(context,"Input");var keys=new Microsoft.Xna.Framework.Input.KeyboardState(Microsoft.Xna.Framework.Input.Keys.W,Microsoft.Xna.Framework.Input.Keys.A,Microsoft.Xna.Framework.Input.Keys.Space);
+            Terraria.Main.blockInput=false;Terraria.GameInput.PlayerInput.WritingText=false;
+            Call(Get(context,"Shell"),"BeforeInput");
+            NativeQuickItemChecks.Sample(input,keys.GetPressedKeys());
+            Call(ui,"ProcessInput",true,keys,new Vector2(-10,-10),true,true,false);
+            Call(Get(context,"Shell"),"ConsumeSample");
+            Require(!Terraria.Main.blockInput && !Terraria.GameInput.PlayerInput.WritingText && !(bool)Get(ui,"OwnsTextToken"),"inline buff list does not acquire the native movement-blocking text lease");
+            Require(Terraria.Main.keyState.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.Space),"inline list keeps movement keyboard sample");
+            NativeQuickItemChecks.Sample(input,new Microsoft.Xna.Framework.Input.Keys[0]);
         }
         private static void PopupInput(object context,object ui,object popup,RecoverySettings settings)
         {

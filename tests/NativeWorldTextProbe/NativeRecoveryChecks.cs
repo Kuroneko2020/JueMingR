@@ -40,6 +40,7 @@ namespace NativeWorldTextProbe
             Sources(host,input,settings,p);
             NativeRecoveryUiChecks.Run(context);
             NativeRecoveryBuffChecks.Run(context);
+            NativeRecoveryBackgroundChecks.Run(context);
             NativeRecoveryFurnitureChecks.Run(context);
             NativeRecoveryServiceChecks.Run(context);
             NativeRecoveryBankChecks.Run(context);

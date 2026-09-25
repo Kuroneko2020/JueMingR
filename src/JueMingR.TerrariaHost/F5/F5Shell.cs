@@ -116,7 +116,12 @@ namespace JueMingR.TerrariaHost.F5
             State.BeforeLeave = page => { if (MapPopup != null && !MapPopup.TryLeave(() => { if (page < 0) State.Close(); else State.Navigate(page); })) return false; if (prior != null && !prior(page)) return false; if (Browser != null && !Browser.RequestFinish()) return false; Browser?.Suspend(); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); FootprintPopup?.Close(); State.Layout.About.Leave(); return true; };
         }
         internal void AttachBrowser(IBrowserPage page) { if (Browser != null) throw new InvalidOperationException("Browser already attached."); Browser = page; }
-        internal bool CanTargetInput { get { return !failed && LayersReady && biome.SharedRuntime.IsSessionActive && CanPresentNow && !State.Visible && !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest && Main.CurrentInputTextTakerOverride == null && !PlayerInput.WritingText && !inputState.HotkeyCapture && Main.LocalPlayer != null && Main.LocalPlayer.talkNPC < 0 && Main.LocalPlayer.sign < 0 && Main.npcShop == 0 && string.IsNullOrEmpty(Main.npcChatText) && !Main.clothesWindow && !Main.hairWindow && !(information != null && information.Adjustment.Active) && !adjustmentPending; } }
+        internal bool CanTargetInput { get { return CanTargetActions(true); } }
+        // Background buffs share every UI safety condition. Focus is the only
+        // presentation exception; no keyboard or pointer permission is granted.
+        internal bool CanBackgroundBuff { get { return !inputState.IsFocused && CanTargetActions(false); } }
+        private bool CanTargetActions(bool requireFocus)
+        { return !failed && LayersReady && biome.SharedRuntime.IsSessionActive && CanPresent(false,requireFocus) && !State.Visible && !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest && Main.CurrentInputTextTakerOverride == null && !PlayerInput.WritingText && !inputState.HotkeyCapture && Main.LocalPlayer != null && Main.LocalPlayer.talkNPC < 0 && Main.LocalPlayer.sign < 0 && Main.npcShop == 0 && string.IsNullOrEmpty(Main.npcChatText) && !Main.clothesWindow && !Main.hairWindow && !(information != null && information.Adjustment.Active) && !adjustmentPending; }
         internal bool BlocksMapInput { get { return failed || State.Visible || notes.OwnsPointer || HotkeyPopup != null && HotkeyPopup.Visible || StylePopup != null && StylePopup.Visible || MapPopup != null && MapPopup.Visible; } }
         internal void CloseForMapLocate() { MapPopup?.Suspend(); State.Close(); notes.Suspend(); items?.Suspend(); RecoveryUi?.Suspend(); Browser?.Suspend(); }
         internal void OpenHotkey(string id, F5Rect rect)
@@ -182,11 +187,13 @@ namespace JueMingR.TerrariaHost.F5
             get { return CanPresent(false); }
         }
         private bool CanPresent(bool allowMap)
+        {return CanPresent(allowMap,true);}
+        private bool CanPresent(bool allowMap,bool requireFocus)
             {
                 Player player = Main.LocalPlayer;
                 var capture = Terraria.Graphics.Capture.CaptureManager.Instance;
                 return !Main.gameMenu && !Main.dedServ && (Main.netMode == 0 || Main.netMode == 1) && player != null && player.active &&
-                    inputState.IsFocused && !PlayerInput.UsingGamepad && !PlayerInput.ShouldFastUseItem &&
+                    (!requireFocus || inputState.IsFocused) && !PlayerInput.UsingGamepad && !PlayerInput.ShouldFastUseItem &&
                     (!Main.mapFullscreen || allowMap) && !Main.hideUI && !Main.onlyDrawFancyUI && !Main.ingameOptionsWindow &&
                     !Main.inFancyUI && capture != null && !capture.Active &&
                     (!notes.OtherTextOwner || (RecoveryUi != null && RecoveryUi.OwnsTextToken || items != null && items.OwnsTextToken || Browser != null && Browser.OwnsTextToken || StylePopup != null && StylePopup.TextInput.OwnsTextToken || MapPopup != null && MapPopup.TextInput.OwnsTextToken) && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest);
