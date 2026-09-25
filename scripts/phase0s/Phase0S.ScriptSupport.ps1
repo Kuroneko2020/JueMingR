@@ -538,6 +538,7 @@ function Read-Phase0SPackage {
         ('favorite-quick-items-' + [string] $manifest.sourceCommit)
         ('coin-deposit-' + [string] $manifest.sourceCommit)
         ('about-help-feedback-' + [string] $manifest.sourceCommit)
+        ('recovery-buffs-services-' + [string] $manifest.sourceCommit)
     )
     if ([string] $manifest.sourceCommit -notmatch '^[0-9a-f]{40}$' -or
         $allowedPackageIds -cnotcontains [string] $manifest.packageId) {

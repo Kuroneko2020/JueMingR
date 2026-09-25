@@ -63,7 +63,7 @@ namespace JueMingR.TerrariaHost.World
             if (cache.Count < 65536) cache.Add(key, value);
             return value;
         }
-        private static WorldTargetTile ReadCurrent(int x, int y)
+        internal static WorldTargetTile ReadCurrent(int x, int y)
         {
             if (x < 0 || y < 0 || x >= Main.maxTilesX || y >= Main.maxTilesY || Main.tile == null ||
                 Main.netMode == 1 && (Main.sectionManager == null || !Main.sectionManager.TileLoaded(x, y))) return default(WorldTargetTile);

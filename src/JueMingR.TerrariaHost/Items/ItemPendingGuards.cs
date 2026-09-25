@@ -135,14 +135,16 @@ namespace JueMingR.TerrariaHost.Items
         private static bool Sort() { return !Active || host.Ownership.ProtectedSlots == 0; }
         private static bool Buy(Player __instance, int __1, ref bool __result)
         {
-            if (!Active || !ReferenceEquals(__instance, host.World.SessionPlayer) || host.Ownership.ProtectedSlots == 0) return true;
+            if (!Active || !ReferenceEquals(__instance, host.World.SessionPlayer) || !host.Ownership.AnyProtected || (host.AllowsOwnedPayment?.Invoke()??false)) return true;
             // Custom currency backs up every source inventory. Normal currency
             // also writes change into empty slots, including an early Air reply
             // whose sibling source slots have not completed the batch yet.
             bool conflict = __1 != -1;
-            for (int i = 0; i < 54 && !conflict; i++)
-                if (host.Ownership.IsProtected(i))
-                { Item item = __instance.inventory[i]; conflict = item == null || item.IsAir || item.type >= 71 && item.type <= 74; }
+            for(int a=0;a<5 && !conflict;a++)
+            {
+                var array=a==0?__instance.inventory:a==1?__instance.bank.item:a==2?__instance.bank2.item:a==3?__instance.bank3.item:__instance.bank4.item;
+                for(int i=0;i<(a==0?54:40) && !conflict;i++)if(host.Ownership.IsProtected(a,i)){Item item=array[i];conflict=item==null || item.IsAir || item.type>=71 && item.type<=74;}
+            }
             if (!conflict) return true;
             __result = false; return false;
         }

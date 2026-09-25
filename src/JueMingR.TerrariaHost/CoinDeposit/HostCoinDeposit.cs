@@ -269,6 +269,10 @@ namespace JueMingR.TerrariaHost.CoinDeposit
             mask = 0; Player p = Player;
             if (p == null || !Available || !Settings.Enabled || !Intent.Allows(identity, generation) || !Input.CanStartActions || Main.gamePaused || !CanAct(p)) return false;
             if (!TrySources(p, out mask)) return false;
+            // MoveCoins may normalize or fill target coin/Air slots. G07
+            // payment and void-use uncertainty must protect these accounts too.
+            for(int i=0;i<40;i++)if(Items.Ownership.IsProtected(entrance.Kind+1,i))
+            {Item item=entrance.Bank.item[i];if(item==null || item.IsAir || CoinRules.IsCoin(item.type))return false;}
             bool currentVoidClosed = false;
             for (int i = 0; i < 58; i++) if (p.inventory[i].type == 5325 && p.inventory[i].stack > 0) currentVoidClosed = true;
             return entrance.Valid(p, currentVoidClosed);

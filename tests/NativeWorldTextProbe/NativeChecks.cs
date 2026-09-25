@@ -17,7 +17,7 @@ namespace NativeWorldTextProbe
             if(scope=="RecoveryCpu" || scope=="RecoveryVisual")
             {
                 Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-recovery-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
-                NativeQuickItemChecks.Run(recovery:true);return 0;
+                NativeQuickItemChecks.Run(scope=="RecoveryVisual"?(Action<object>)(context=>{using(var graphics=new ProbeGraphics(content))NativeRecoveryVisualChecks.Run(context,graphics,output);}):null,recovery:true);return 0;
             }
             if (scope == "AboutCpu" || scope == "AboutVisual")
             {

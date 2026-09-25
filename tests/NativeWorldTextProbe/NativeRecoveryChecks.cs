@@ -37,7 +37,26 @@ namespace NativeWorldTextProbe
             var red=(int[])Call(Get(host,"Catalog"),"Get",true);var blue=(int[])Call(Get(host,"Catalog"),"Get",false);
             Require(red.Contains(3001) && red.Contains(5496) && red.Contains(227) && !red.Contains(226) && !blue.Contains(3001),"current complete actual-type catalogue includes special and new potions without false duplicate");
             Save(settings,new RecoveryOptions());Console.WriteLine("PASS G07: real native healing/cooldown/consumption, licence, continuous mana cost and complete definition catalogue.");
+            Sources(host,input,settings,p);
             NativeRecoveryUiChecks.Run(context);
+            NativeRecoveryBuffChecks.Run(context);
+            NativeRecoveryFurnitureChecks.Run(context);
+            NativeRecoveryServiceChecks.Run(context);
+            NativeRecoveryBankChecks.Run(context);
+            NativeRecoveryFaultChecks.Run(context);
+            NativeRecoveryWorkloadChecks.Run(context);
+            NativeRecoveryNetworkChecks.Run(context);
+        }
+        private static void Sources(object host,object input,RecoverySettings settings,Player p)
+        {
+            foreach(var item in p.inventory)item.TurnToAir();foreach(var item in p.bank.item)item.TurnToAir();foreach(var item in p.bank4.item)item.TurnToAir();
+            p.statLife=300;p.potionDelay=0;p.inventory[58].SetDefaults(188);p.bank.item[0].SetDefaults(188);p.bank4.item[0].SetDefaults(188);
+            Save(settings,new RecoveryOptions(1));Frame(host,input,10);Require(p.statLife==300,"mouse slot, other banks and closed void cannot supply recovery");
+            p.inventory[1].SetDefaults(4131);p.bank4.item[0].favorited=true;Frame(host,input,11);
+            Require(p.statLife==400 && p.bank4.item[0].IsAir && p.inventory[58].stack==1 && p.bank.item[0].stack==1,"open void favorite last item uses exactly its real source");
+            p.inventory[2].SetDefaults(188);p.inventory[2].favorited=true;p.potionDelay=0;Frame(host,input,12);
+            Require(p.statLife==500 && p.inventory[2].IsAir,"favorite main last item is a lawful provider");
+            p.inventory[58].TurnToAir();Save(settings,new RecoveryOptions());
         }
         internal static void Save(RecoverySettings settings,RecoveryOptions value)
         {Require(settings.Set(value),"isolated recovery preference admitted");NativeQuickItemChecks.Until(()=>{settings.Poll();return !settings.Busy;});Require(settings.Ready,"isolated preference reliably committed");}

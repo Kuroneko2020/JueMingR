@@ -178,6 +178,25 @@ try {
         }
     }
     # Run the real process wrapper in a child PowerShell: failed checks must
+    $recoveryDispatch = $runnerAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Invoke-RecoveryWorkloadChecks' }, $false)
+    Assert-Route ($null -ne $recoveryDispatch) 'actual recovery dispatcher exists'
+    & {
+        . ([scriptblock]::Create($recoveryDispatch.Extent.Text))
+        $calls = New-Object 'System.Collections.Generic.List[object]'
+        $checksRoot = Join-Path $fixtureRoot 'checks'
+        function Invoke-WorkloadCheck {
+            param([string] $Name, [string] $Executable, [string[]] $Arguments)
+            $calls.Add(@{ name = $Name; executable = $Executable; arguments = $Arguments })
+        }
+        foreach ($groups in @(@('core'), @('core','recovery-host'), @('core','recovery-host','shared-host'))) {
+            $calls.Clear(); Invoke-RecoveryWorkloadChecks $groups 'architecture.exe' 'native.exe'
+            if ($groups -notcontains 'recovery-host') { Assert-Route ($calls.Count -eq 0) 'no recovery group has no recovery dispatch'; continue }
+            Assert-Route ($calls.Count -eq 2) 'recovery actual dispatcher executes both checks exactly once'
+            Assert-Route ($calls[0].name -ceq 'recovery-rules-storage' -and $calls[0].executable -ceq 'architecture.exe' -and ($calls[0].arguments -join '|') -ceq '--recovery') 'actual recovery core arguments'
+            Assert-Route ($calls[1].name -ceq 'recovery-native-execution' -and $calls[1].executable -ceq 'native.exe' -and ($calls[1].arguments -join '|') -ceq (@($repositoryRoot,'--cpu',(Join-Path $checksRoot 'recovery-cpu'),'RecoveryCpu') -join '|')) 'actual recovery native arguments'
+        }
+    }
+    # Run the real process wrapper in a child PowerShell: failed checks must
     # escape as a nonzero process exit and must never append a PASS result.
     $failurePath = Join-Path $fixtureRoot 'failure-exit.ps1'
     $failureBody = @'

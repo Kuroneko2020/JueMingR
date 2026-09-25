@@ -896,10 +896,10 @@ namespace JueMingR.TerrariaHost
                     }
                 }
                 nativeNpcs = new Npcs.NativeNpcObservation();
-                if(PackageId.StartsWith("recovery-buffs-services-",StringComparison.Ordinal))
-                {Recovery=new Recovery.HostRecovery(gameDirectory,runtime.SharedRuntime,items,Input);runtime.SharedRuntime.AddFeature(Recovery);}
                 if (entityPackage) { Labels = new EntityLabels.HostEntityLabels(gameDirectory, runtime.SharedRuntime, nativeNpcs) { LayerStatus = entityLayerStatus }; runtime.SharedRuntime.AddFeature(Labels); }
                 if (worldPackage) { worldTiles = new World.WorldTileObservation(() => runtime.SharedRuntime.IsSessionActive); WorldTargets = new WorldTargets.HostWorldTargets(gameDirectory, runtime.SharedRuntime, worldTiles) { LayerStatus = entityLayerStatus }; runtime.SharedRuntime.AddFeature(WorldTargets); }
+                if(PackageId.StartsWith("recovery-buffs-services-",StringComparison.Ordinal))
+                {Recovery=new Recovery.HostRecovery(gameDirectory,runtime.SharedRuntime,items,Input,worldTiles,nativeNpcs);runtime.SharedRuntime.AddFeature(Recovery);}
                 if (objectPackage) { WorldObjects = new WorldObjectText.HostWorldObjectText(gameDirectory, runtime.SharedRuntime, worldTiles, () => items != null && items.World.AutomaticOperation) { LayerStatus = entityLayerStatus }; runtime.SharedRuntime.AddFeature(WorldObjects); }
                 Information = new Information.HostInformation(gameDirectory, runtime, preferences, InformationReadiness, error => RecordBiomeFailure("BIOME_DRAW", error), nativeNpcs);
                 runtime.SharedRuntime.AddFeature(Information);
@@ -913,7 +913,7 @@ namespace JueMingR.TerrariaHost
                     informationPackage ? Information : null, () => Shell != null && Shell.CanAdjustInformation, () => Shell?.RequestInformationAdjustment(), Guidance, DeathRecords, MapFeatures, Footprints, Browser == null ? (Func<bool>)null : Browser.CanAnnounce, Browser == null ? (Action)null : Browser.Announce, Browser == null ? (Func<bool>)null : Browser.CanQuery, Browser == null ? (Action)null : Browser.Query, Browser?.Announcements, QuickItems, CoinDeposit, Recovery) : null;
                 Shell = new F5Shell(runtime, preferences, notes, items, Input, hotkeys, Labels, WorldTargets, WorldObjects, Information, Guidance, DeathRecords, MapFeatures, Footprints, Browser?.Announcements) { LayersReady = f5LayersReady };
                 Browser?.Attach(Shell, hotkeys);
-                if(Recovery!=null){Shell.AttachRecovery(Recovery);Recovery.CanGameplay=()=>Shell.CanTargetInput && !Terraria.Main.mapFullscreen && !Terraria.Main.LocalPlayer.mouseInterface;Recovery.IsQuickUse=()=>QuickItems!=null && QuickItems.Use.InNativeUse;}
+                if(Recovery!=null){Shell.AttachRecovery(Recovery);Recovery.CanGameplay=()=>Shell.CanTargetInput && !Terraria.Main.mapFullscreen && !Terraria.Main.LocalPlayer.mouseInterface;Recovery.IsQuickUse=()=>QuickItems!=null && (QuickItems.Use.Active || QuickItems.Use.InNativeUse);}
                 if ((PackageId.StartsWith("about-help-feedback-", StringComparison.Ordinal) || PackageId.StartsWith("recovery-buffs-services-", StringComparison.Ordinal)))
                 { onboarding = new Onboarding.HostOnboarding(gameDirectory); runtime.SharedRuntime.AddFeature(onboarding); Shell.AttachOnboarding(onboarding); }
                 if (CoinDeposit != null) { Shell.AttachCoinDeposit(CoinDeposit); CoinDeposit.CanGameplay = () => Shell.CanTargetInput && !Terraria.Main.mapFullscreen; }
