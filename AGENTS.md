@@ -6,7 +6,7 @@
 
 JueMingR 是原版 Terraria 客户端辅助工具，不依赖 tModLoader；与 JueMingZ 的独立重写关系不构成全部产品定义或功能上限。完整恢复有意义旧能力的目标保留，已批准的改进和新能力按各自任务开展，Agent 不得自行扩展。
 
-定位说明由[根 README](README.md)承载，恢复与演进的适用边界由 [Legacy 规则](docs/规范/Legacy平替与行为契约规则.md#一目的与适用范围)承载。本节澄清及关联修订为 [ADR-0015（Proposed）](docs/决策/ADR-0015-产品定位与能力演进边界.md) 候选；所有者已确认定位方向，最终文档接受与合并生效仍按现行流程，原有规则继续有效。
+定位说明由[根 README](README.md)承载，恢复与演进的适用边界由 [Legacy 规则](docs/规范/Legacy平替与行为契约规则.md#一目的与适用范围)承载。本节澄清及关联修订已随 [ADR-0015（Accepted）](docs/决策/ADR-0015-产品定位与能力演进边界.md) 获所有者接受，自 [PR #104](https://github.com/Kuroneko2020/JueMingR/pull/104) 合并进入 `main` 后生效，未被有限替代的原有规则继续有效。
 
 ## 阶段与任务授权
 
