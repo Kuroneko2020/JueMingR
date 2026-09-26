@@ -8,7 +8,10 @@ namespace JueMingR.Platform.Items
     {
         private const ulong AllInventorySlots = (1UL << 58) - 1;
         private ulong saleSlots, discardSlots, storeSlots, interruptedSourceSlots, useSlots, coinSlots;
-        private long useToken, coinToken;
+        private long useToken, coinToken, nextUseToken;
+        // Shared by QuickItems, extraction and tools. A delayed native finalizer
+        // cannot match a successor from another owner's local counter.
+        public long NewUseToken(){if(nextUseToken==long.MaxValue)throw new InvalidOperationException("Use lease exhausted.");return ++nextUseToken;}
         private readonly ulong[] recoverySlots = new ulong[5];
         private long recoveryToken;
         private readonly ulong[] processingSlots = new ulong[5];

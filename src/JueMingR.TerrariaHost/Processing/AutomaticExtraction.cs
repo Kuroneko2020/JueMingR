@@ -15,7 +15,7 @@ namespace JueMingR.TerrariaHost.Processing
         private Player player;
         private Item material;
         private int slot,original,type,expected,dropReturns;
-        private long token,nextToken,session,frame,nextProbe;
+        private long token,session,frame,nextProbe;
         private bool cancelled,unknown,inCheck,borrowed,attempted;
         private ExtractionMachine machine;
         private bool machineCached;
@@ -54,7 +54,7 @@ namespace JueMingR.TerrariaHost.Processing
             for(int i=0;i<50 && candidate<0;i++)if(Candidate(p,i))candidate=i;
             if(candidate<0){nextProbe=host.Input.Frame+6;return;}
             if(!TryMachine(p,p.inventory[candidate])){nextProbe=host.Input.Frame+6;return;}
-            long next=++nextToken;if(!host.Items.Ownership.TryBeginUse(host.Runtime.Generation,candidate,next))return;
+            long next=host.Items.Ownership.NewUseToken();if(!host.Items.Ownership.TryBeginUse(host.Runtime.Generation,candidate,next))return;
             token=next;session=host.Runtime.Generation;player=p;slot=candidate;original=p.selectedItem;material=p.inventory[slot];type=material.type;expected=material.stack;
             cancelled=false;chosen=slot;result=true;
         }
@@ -123,6 +123,7 @@ namespace JueMingR.TerrariaHost.Processing
             {
                 if(!ReferenceEquals(p.inventory[slot],material) && !p.inventory[slot].IsAir || after!=expected-1){Fail();return;}
                 expected=after;if(after<=0 || material.IsAir)Cancel();
+                if(host.YieldTools?.Invoke()??false){Cancel();nextProbe=host.Input.Frame+3;}
             }
             // Native cleanup may turn a proved last consumption into Air on a
             // later animation frame. That frame did not start another extract.
@@ -132,7 +133,7 @@ namespace JueMingR.TerrariaHost.Processing
         internal void Cancel()
         {
             cancelled=true;
-            if(player!=null && player.selectedItemState.HasActiveOverride && !player.selectedItemState.HasBufferedChange)player.selectedItemState.Select(original);
+            if(player!=null && player.selectedItemState.HasActiveOverride && !player.selectedItemState.HasBufferedChange)host.Items.ReturnSelection(()=>player.selectedItemState.Select(original));
             if(player!=null && frame==host.Input.Frame && !PlayerInput.Triggers.Current.MouseLeft){player.controlUseItem=false;player.releaseUseItem=true;}
         }
         internal void Update()

@@ -37,9 +37,9 @@ namespace NativeWorldTextProbe
             var preferences=Get(items,"Preferences");
             Call(items,"Change",((ItemAutomationSettings)Get(preferences,"Value")).WithEnabled(ItemActionKind.Stack,false));Call(items,"PollPreferences");
             Require((int)Get(display,"Count")==0,"F5/domain setter does not manufacture hotkey success");
-            string[] once={"information-window.adjust","announcement.send","item-browser.query"};
+            string[] once={"information-window.adjust","announcement.send","item-browser.query","tools.mining.select"};
             var actions=registry.Actions.Where(a=>!once.Contains(a.Id) && !a.Id.StartsWith("items.quick-use.",StringComparison.Ordinal)).ToArray();
-            Require(actions.Length==37 && once.All(id=>registry.Find(id)!=null),"37 registered switches plus three distinct once-actions");
+            Require(actions.Length==40 && once.All(id=>registry.Find(id)!=null),"40 registered switches plus four distinct once-actions");
             foreach(var action in actions)
             {
                 Call(display,"Clear");

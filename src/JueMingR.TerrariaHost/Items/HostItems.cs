@@ -34,6 +34,12 @@ namespace JueMingR.TerrariaHost.Items
         internal readonly ItemNearbyStorage Storage;
         internal readonly int ThreadId = Thread.CurrentThread.ManagedThreadId;
         internal Func<int, bool> AllowsOwnedUse;
+        internal Func<Item[],int,bool> AllowsOwnedTools {get;set;}
+        internal bool ReturningSelection {get;private set;}
+        // Synchronous owner scope only: explicit user Select still advances
+        // intent, while a completed native lease returns without impersonating it.
+        internal void ReturnSelection(Action select)
+        {ReturningSelection=true;try{select();}finally{ReturningSelection=false;}}
         internal Func<Item[],int,bool> AllowsOwnedRecovery {get;set;}
         internal Func<bool> AllowsOwnedPayment {get;set;}
         internal Func<Item[],int,bool> AllowsOwnedProcessing {get;set;}

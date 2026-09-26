@@ -63,6 +63,7 @@ namespace JueMingR.TerrariaHost.Items
             return account>=0 && host.Ownership.IsProtected(account,slot) &&
                 !(host.AllowsOwnedProcessing!=null && host.AllowsOwnedProcessing(array,slot)) &&
                 !(host.AllowsOwnedRecovery!=null && host.AllowsOwnedRecovery(array,slot)) &&
+                !(host.AllowsOwnedTools!=null && host.AllowsOwnedTools(array,slot)) &&
                 !(account==0 && host.Ownership.IsUseSlot(slot) && host.AllowsOwnedUse!=null && host.AllowsOwnedUse(slot));
         }
         private static int Account(Player p,Item[] array)

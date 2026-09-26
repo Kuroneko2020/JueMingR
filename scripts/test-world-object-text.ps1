@@ -2,7 +2,7 @@
 param(
     [Parameter(Mandatory = $true)][string] $ContentDirectory,
     [Parameter(Mandatory = $true)][string] $OutputDirectory,
-    [ValidateSet('Full', 'SelectionCpuCosts', 'SelectionCpuChecks', 'FootprintsVisual', 'QuickItemsVisual', 'CoinDepositCpu', 'CoinDepositVisual', 'AboutCpu', 'AboutVisual', 'ProcessingCpu', 'ProcessingVisual', 'ShortFeedbackCpu', 'ShortFeedbackVisual')][string] $Scope = 'Full',
+    [ValidateSet('Full', 'SelectionCpuCosts', 'SelectionCpuChecks', 'FootprintsVisual', 'QuickItemsVisual', 'CoinDepositCpu', 'CoinDepositVisual', 'AboutCpu', 'AboutVisual', 'ProcessingCpu', 'ProcessingVisual', 'ShortFeedbackCpu', 'ShortFeedbackVisual', 'ToolsCpu', 'ToolsVisual')][string] $Scope = 'Full',
     [string] $WorkloadBaseline
 )
 $ErrorActionPreference = 'Stop'

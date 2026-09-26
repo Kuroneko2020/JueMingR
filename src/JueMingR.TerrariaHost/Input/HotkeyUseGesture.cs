@@ -19,6 +19,7 @@ namespace JueMingR.TerrariaHost.Input
         private KeyboardState mappedKeyboard;
         internal bool HasTail { get { return active; } }
         internal bool Enabled { get; set; }
+        internal bool ToolsEnabled {get;set;}
 #if DEBUG
         internal long SourceChecks { get; private set; }
 #endif
@@ -29,7 +30,7 @@ namespace JueMingR.TerrariaHost.Input
         }
         internal void ObserveMapping(KeyConfiguration configuration, TriggersSet set, string token, InputMode mode)
         {
-            if ((!Enabled && !active) || (mode != InputMode.XBoxGamepad && mode != InputMode.XBoxGamepadUI) || !ReferenceEquals(set, PlayerInput.Triggers.Current)) return;
+            if ((!Enabled && !ToolsEnabled && !active) || (mode != InputMode.XBoxGamepad && mode != InputMode.XBoxGamepadUI) || !ReferenceEquals(set, PlayerInput.Triggers.Current)) return;
             // Observe native mapping, including BEFORE the first dispatch. Its
             // LatestInputMode dictionary survives Reset and cannot prove source.
             for (int i = 0; i < actions.Length; i++)

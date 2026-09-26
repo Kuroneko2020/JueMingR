@@ -58,7 +58,7 @@ function Invoke-ProcessingWorkloadChecks {
 }
 function Invoke-ShortFeedbackWorkloadChecks {
     param([string[]] $Groups, [string] $Native)
-    if (@($Groups | Where-Object { $_ -in @('shared-host','storage-host','quick-items-host','coin-deposit-host','recovery-host','processing-host','about-host') }).Count -eq 0) { return }
+    if (@($Groups | Where-Object { $_ -in @('shared-host','storage-host','quick-items-host','coin-deposit-host','recovery-host','processing-host','about-host','tools-host') }).Count -eq 0) { return }
     Invoke-WorkloadCheck 'short-feedback-native-host' $Native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'short-feedback-cpu'), 'ShortFeedbackCpu')
 }
 try {
@@ -67,6 +67,10 @@ Invoke-WorkloadCheck 'core-records-selection' $architecture @('--workload-core',
 $fixture = Build-WorkloadFixture 'Phase0SFixtureTerraria'
 foreach ($mode in @('notes-input', 'entity-style', 'world-targets-style')) { Invoke-WorkloadCheck ('core-' + $mode) $fixture @($mode) }
 $native = Build-WorkloadFixture 'NativeWorldTextProbe'
+if ($route.groups -contains 'tools-host') {
+    Invoke-WorkloadCheck 'tools-rules-storage' $architecture @('--tools')
+    Invoke-WorkloadCheck 'tools-native-execution' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'tools-cpu'), 'ToolsCpu')
+}
 Invoke-AboutWorkloadChecks $route.groups $architecture $fixture $native
 Invoke-WorkloadCheck 'core-native-host' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'native-cpu'), 'WorkloadCpu')
 if ($route.groups -contains 'shared-host') { Invoke-WorkloadCheck 'information-native-host' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'information-cpu'), 'InformationCpu') }

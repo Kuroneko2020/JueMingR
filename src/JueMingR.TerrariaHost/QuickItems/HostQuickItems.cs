@@ -26,6 +26,7 @@ namespace JueMingR.TerrariaHost.QuickItems
         internal readonly SingleFeatureRuntime Runtime;
         internal readonly int ThreadId = Thread.CurrentThread.ManagedThreadId;
         internal Func<bool> CanGameplay;
+        internal Action YieldTools;
         internal KeepFavorited.HostKeepFavorited Favorite;
         private HostHotkeys hotkeys;
         private DynamicHotkeyOwner actions;
@@ -164,6 +165,7 @@ namespace JueMingR.TerrariaHost.QuickItems
             // Even a busy/missing-provider shortcut must not fall through into
             // an ordinary attack. Foreign input remains mapped for admission.
             Input.ClaimUseGesture(gesture);
+            YieldTools?.Invoke();
             Use.RetireCompleted();
             if (requested!=null || Use.Active) { Feedback(FeedbackKind.NotExecuted,"上一件物品仍在使用，请结束后重新按键。"); return; }
             requestMessage=null;
