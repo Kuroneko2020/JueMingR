@@ -56,6 +56,11 @@ function Invoke-ProcessingWorkloadChecks {
     Invoke-WorkloadCheck 'processing-rules-storage' $Architecture @('--processing')
     Invoke-WorkloadCheck 'processing-native-execution' $Native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'processing-cpu'), 'ProcessingCpu')
 }
+function Invoke-ShortFeedbackWorkloadChecks {
+    param([string[]] $Groups, [string] $Native)
+    if (@($Groups | Where-Object { $_ -in @('shared-host','storage-host','quick-items-host','coin-deposit-host','recovery-host','processing-host','about-host') }).Count -eq 0) { return }
+    Invoke-WorkloadCheck 'short-feedback-native-host' $Native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'short-feedback-cpu'), 'ShortFeedbackCpu')
+}
 try {
 $architecture = Join-Path $repositoryRoot 'artifacts/build/Debug/work/bin/JueMingR.ArchitectureTests/x86/Debug/net472/JueMingR.ArchitectureTests.exe'
 Invoke-WorkloadCheck 'core-records-selection' $architecture @('--workload-core', $repositoryRoot)
@@ -66,6 +71,7 @@ Invoke-AboutWorkloadChecks $route.groups $architecture $fixture $native
 Invoke-WorkloadCheck 'core-native-host' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'native-cpu'), 'WorkloadCpu')
 if ($route.groups -contains 'shared-host') { Invoke-WorkloadCheck 'information-native-host' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'information-cpu'), 'InformationCpu') }
 if ($route.groups -contains 'shared-host') { Invoke-WorkloadCheck 'guidance-native-host' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'guidance-cpu'), 'GuidanceCpu') }
+Invoke-ShortFeedbackWorkloadChecks $route.groups $native
 if ($route.groups -contains 'browser-host') {
     Invoke-WorkloadCheck 'browser-core-contracts' $architecture @('--item-browser')
     Invoke-WorkloadCheck 'browser-native-execution' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'browser-cpu'), 'BrowserCpu')

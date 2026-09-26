@@ -5,6 +5,7 @@ using JueMingR.Features.Recovery;
 using JueMingR.Infrastructure.Storage;
 using JueMingR.Platform.Hotkeys;
 using JueMingR.Platform.Runtime;
+using JueMingR.Platform.Settings;
 using JueMingR.TerrariaHost.Items;
 using JueMingR.TerrariaHost.Input;
 using Terraria;
@@ -51,7 +52,8 @@ namespace JueMingR.TerrariaHost.Recovery
         {
             Runtime=runtime;Items=items;Input=input;
             string root=Path.Combine(directory,"JueMingRData","config","features");
-            Potions=new RecoverySettings(new AtomicFileDocument(Path.Combine(root,"recovery-potions.json"),65536),0);
+            var potionsFile=new AtomicFileDocument(Path.Combine(root,"recovery-potions.json"),65536,true,".schema1-original");
+            Potions=new RecoverySettings(potionsFile,0,new RetainingPotionCodec(potionsFile));
             Buffs=new RecoverySettings(new AtomicFileDocument(Path.Combine(root,"recovery-buffs.json"),65536),1);
             Services=new RecoverySettings(new AtomicFileDocument(Path.Combine(root,"nearby-services.json"),65536),2);
             PotionsUse=new PotionRecovery(this);BuffUse=new BuffRecovery(this);Learning=new BuffLearning(this);Furniture=new FurnitureRecovery(this,tiles);Catalog=new RecoveryCatalog(this);
@@ -67,8 +69,17 @@ namespace JueMingR.TerrariaHost.Recovery
         internal void Set(int feature,int value){if(Controls(feature) && Settings(feature).Set(Settings(feature).Value.Change(feature,value)) && feature==2 && value==0)Nurse.Rearm();}
         internal int Value(int feature)
         {var s=Settings(feature);if(!s.Ready)return 0;var v=s.Value;return feature==0?v.LifeMode:feature==1?(v.Mana?1:0):feature==2?(v.Nurse?1:0):feature==3?(v.Furniture?1:0):feature==4?(v.Buffs?1:0):feature==5?(v.Tax?1:0):feature==6?(v.FollowAdd?1:0):(v.FollowRemove?1:0);}
-        internal void Register(HotkeyRegistry registry)
-        {for(int i=0;i<6;i++){int id=i;registry.Register(new HotkeyAction(Actions[i],Names[i],HotkeyContext.Gameplay,()=>Controls(id),()=>Set(id,Value(id)==0?1:0)));}}
+        internal void Register(HotkeyRegistry registry, Hotkeys.HotkeyStateFeedback feedback = null)
+        {
+            for(int i=0;i<6;i++)
+            {
+                int id=i; var settings=Settings(id); Action command=()=>Set(id,Value(id)==0?(id==0?settings.Value.LastLifeMode:1):0);
+                if(feedback!=null)command=feedback.Committed(Actions[id],Names[id],command,()=>Value(id),()=>Controls(id),
+                    ()=>settings.AcceptedCommandId,()=>settings.CompletedCommandId,()=>settings.CompletionSucceeded,
+                    id==0?(Func<int,string>)(mode=>mode==2?"智能":"快速"):null);
+                registry.Register(new HotkeyAction(Actions[id],Names[id],HotkeyContext.Gameplay,()=>Controls(id),command));
+            }
+        }
         internal void Poll(){Potions.Poll();Buffs.Poll();Services.Poll();Learning.Poll();Tax.ObserveSettlement();}
         internal bool Admit(Player p)
         {return Input.CanStartActions && CanGameplay!=null && CanGameplay() && SafePlayer(p);}
@@ -122,5 +133,19 @@ namespace JueMingR.TerrariaHost.Recovery
         internal void TakeFeedback(Action<string> display){Potions.TakeFeedback(display);Buffs.TakeFeedback(display);Services.TakeFeedback(display);if(feedback){display(Error);feedback=false;}}
         public void FailClosed(){Available=false;Report("自动恢复已停止；结果未确认的操作不会重试。");}
         internal void Exit(object sender,EventArgs e){AppDomain.CurrentDomain.ProcessExit-=Exit;Potions.Stop(750);Buffs.Stop(750);Services.Stop(750);}
+        private sealed class RetainingPotionCodec : IPreferenceCodec<RecoveryOptions>
+        {
+            private readonly AtomicFileDocument file;
+            private readonly RecoveryCodec codec=new RecoveryCodec(0);
+            internal RetainingPotionCodec(AtomicFileDocument file){this.file=file;}
+            public RecoveryOptions Decode(byte[] contents)
+            {
+                int version;var value=codec.Decode(contents,out version);
+                // Loading never rewrites the source. Archive validated v1 bytes
+                // before the first explicit save, with the existing conflict gate.
+                if(version==1)file.RetainLoadedSource();return value;
+            }
+            public byte[] Encode(RecoveryOptions value){return codec.Encode(value);}
+        }
     }
 }

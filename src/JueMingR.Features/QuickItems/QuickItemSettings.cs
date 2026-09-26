@@ -31,6 +31,11 @@ namespace JueMingR.Features.QuickItems
         public bool Protected { get; private set; }
         public bool CommitUnconfirmed { get; private set; }
         public long Revision { get; private set; }
+        // Read-only command receipts; Poll remains the sole worker consumer.
+        // A suspended false value alone does not prove a successful disable.
+        public long AcceptedCommandId { get; private set; }
+        public long CompletedCommandId { get; private set; }
+        public bool CompletionSucceeded { get; private set; }
         public string Message { get; private set; }
         public string FavoriteMessage { get; private set; }
         public string QuickMessage { get; private set; }
@@ -50,6 +55,7 @@ namespace JueMingR.Features.QuickItems
             try { QuickItemDocument.Encode(value); } catch (Exception e) when (e is ArgumentException || e is PreferenceFormatException)
             { reason = "设置内容无效或超出容量。"; return false; }
             if (!worker.TrySubmit(++command, value)) { reason = "暂时无法保存。"; return false; }
+            AcceptedCommandId = command;
             editing = affectedId;
             adding = affectedId != null && Current.Find(affectedId) == null;
             editingFavorite=affectedId==null && changeFavorite;editingQuick=affectedId==null && changeQuick;
@@ -68,6 +74,7 @@ namespace JueMingR.Features.QuickItems
                 RefreshMessages(); Revision++; return;
             }
             Busy = false; CommitUnconfirmed = result.CommitUnconfirmed; Protected = result.IsProtected || result.CommitUnconfirmed;
+            CompletedCommandId = result.CommandId; CompletionSucceeded = result.Success;
             if (result.Success)
             {
                 Current = result.Value;

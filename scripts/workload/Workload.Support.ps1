@@ -58,6 +58,7 @@ function Get-WorkloadRoute {
     $unknown = @()
     foreach ($path in $Paths) {
         switch -Regex ($path.Replace('\', '/')) {
+            '^src/JueMingR.TerrariaHost/Feedback/|^tests/NativeWorldTextProbe/NativeShortFeedback' { [void]$groups.Add('shared-host'); continue }
             '^src/[^/]+/Processing/|^tests/JueMingR.ArchitectureTests/Processing/|^tests/Processing/|^tests/NativeWorldTextProbe/Native(Processing|Extraction|Reforge)' { [void]$groups.Add('processing-host'); continue }
             # G08 consumes the existing bank guards and their account facts.
             '^src/JueMingR.TerrariaHost/Recovery/(HostRecovery|RecoveryHooks|RecoveryBankGuards|RecoverySource)\.cs$' { [void]$groups.Add('recovery-host'); [void]$groups.Add('processing-host'); continue }

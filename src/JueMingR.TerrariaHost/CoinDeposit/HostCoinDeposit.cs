@@ -94,8 +94,13 @@ namespace JueMingR.TerrariaHost.CoinDeposit
             catch (Exception error) { SetupError = error; CoinWithdrawalHooks.Uninstall(); Status = "暂不可用"; Detail = "当前存钱入口未就绪，原版手动存取不受影响。"; }
             AppDomain.CurrentDomain.ProcessExit += Exit;
         }
-        internal void Register(HotkeyRegistry registry)
-        { registry.Register(new HotkeyAction(ActionId, "自动存钱", HotkeyContext.Gameplay, () => ControlsEnabled, () => SetEnabled(!Settings.Enabled))); }
+        internal void Register(HotkeyRegistry registry, Hotkeys.HotkeyStateFeedback feedback = null)
+        {
+            Action command = () => SetEnabled(!Settings.Enabled);
+            if (feedback != null) command = feedback.Committed(ActionId,"自动存钱",command,()=>Settings.Enabled?1:0,()=>ControlsEnabled,
+                ()=>Settings.AcceptedCommandId,()=>Settings.CompletedCommandId,()=>Settings.CompletionSucceeded);
+            registry.Register(new HotkeyAction(ActionId, "自动存钱", HotkeyContext.Gameplay, () => ControlsEnabled, command));
+        }
         internal void SetEnabled(bool enabled) { if (ControlsEnabled && Settings.Set(enabled)) Poll(); }
         internal void Poll()
         {

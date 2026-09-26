@@ -18,6 +18,10 @@ namespace JueMingR.Features.CoinDeposit
         public bool Busy { get; private set; }
         public bool Protected { get; private set; }
         public long Revision { get; private set; }
+        // Observation only: the existing Poll owns the reliable file result.
+        public long AcceptedCommandId { get; private set; }
+        public long CompletedCommandId { get; private set; }
+        public bool CompletionSucceeded { get; private set; }
         public string Message { get; private set; }
         public CoinSettings(IPreferenceStorage storage)
         {
@@ -28,6 +32,7 @@ namespace JueMingR.Features.CoinDeposit
         {
             if (!Loaded || Busy || Protected || value == Enabled) return false;
             if (!worker.TrySubmit(++command, value)) return false;
+            AcceptedCommandId = command;
             suspended = true; Busy = true; Revision++; return true;
         }
         public void Poll()
@@ -35,6 +40,7 @@ namespace JueMingR.Features.CoinDeposit
             DocumentResult<bool> result;
             if (!worker.TryTake(out result)) return;
             if (result.CommandId == 0) Loaded = true;
+            else { CompletedCommandId = result.CommandId; CompletionSucceeded = result.Success; }
             Busy = false; Protected = result.IsProtected || result.CommitUnconfirmed || result.CommandId == 0 && !result.Success;
             if (result.Success) { Value = result.Value; suspended = false; Message = null; feedbackPending = false; }
             else

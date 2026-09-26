@@ -12,6 +12,7 @@ namespace JueMingR.ArchitectureTests
     {
         internal static void Check(List<string> failures)
         {
+            RecoveryModeChecks.Check(failures);
             var codec=new RecoveryCodec(1);var value=new RecoveryOptions(buffs:true,followRemove:true,allowedBuffs:Enumerable.Range(1,500));
             var read=codec.Decode(codec.Encode(value));if(!read.Buffs || !read.FollowRemove || read.AllowedBuffs.Count!=500 || read.FollowAdd)failures.Add("Recovery settings lost long whitelist or independent follow values.");
             foreach(string json in new[]{"{\"format\":\"JueMingR.RecoveryBuffs\",\"version\":9,\"buffs\":true,\"followAdd\":false,\"followRemove\":false,\"allowedBuffs\":[]}",

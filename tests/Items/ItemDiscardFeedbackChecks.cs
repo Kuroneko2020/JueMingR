@@ -16,8 +16,14 @@ namespace Terraria
         public int DurationInFrames;
         public Vector2 Velocity;
     }
-    public static class PopupText
+    public enum PopupTextContext { Advanced = 5 }
+    public class PopupText
     {
+        public bool active, freeAdvanced;
+        public PopupTextContext context;
+        public string name, displayText;
+        public static PopupText[] popupText = Pool();
+        private static PopupText[] Pool() { var result = new PopupText[20]; for (int i = 0; i < result.Length; i++) result[i] = new PopupText(); return result; }
         public static int Calls;
         public static bool Throw, Reject;
         public static AdvancedPopupRequest Last;
@@ -28,9 +34,14 @@ namespace Terraria
             Calls++; Last = request; Position = position;
             if (OnShow != null) OnShow();
             if (Throw) throw new InvalidOperationException("fixture-popup-unavailable");
-            return Reject ? -1 : 0;
+            if (Reject) return -1;
+            int slot = Array.FindIndex(popupText, p => !p.active);
+            if (slot < 0) slot = 0;
+            var popup = popupText[slot]; popup.active = popup.freeAdvanced = true; popup.context = PopupTextContext.Advanced;
+            popup.name = popup.displayText = request.Text;
+            return slot;
         }
-        internal static void Reset() { Calls = 0; Throw = Reject = false; Last = default(AdvancedPopupRequest); OnShow = null; }
+        internal static void Reset() { Calls = 0; Throw = Reject = false; Last = default(AdvancedPopupRequest); OnShow = null; popupText = Pool(); }
     }
     public partial class Main { public static bool showItemText = true; }
 

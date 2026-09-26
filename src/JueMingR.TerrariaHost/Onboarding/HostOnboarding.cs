@@ -23,6 +23,7 @@ namespace JueMingR.TerrariaHost.Onboarding
         private DynamicSpriteFont font;
         private Vector2 textSize;
         private PopupText popup;
+        private string popupToken;
         private int slot = -1;
         private int fadeTicks;
         internal Func<bool> CanPresent;
@@ -64,15 +65,12 @@ namespace JueMingR.TerrariaHost.Onboarding
         }
         private bool OwnsPopup()
         {
-            // Native NewText reuses objects; a reference alone is insufficient.
-            // ClearAll also replaces the array entries. Never retire a successor.
-            return popup != null && PopupText.popupText != null && slot >= 0 && slot < PopupText.popupText.Length && ReferenceEquals(PopupText.popupText[slot], popup) &&
-                popup.active && popup.freeAdvanced && popup.context == PopupTextContext.Advanced && popup.name == Prompt && popup.displayText == Prompt;
+            return Feedback.NativePopupText.Owns(popup, slot, popupToken);
         }
         private void ReleasePopup()
         {
-            if (OwnsPopup()) popup.active = false;
-            popup = null; slot = -1; State.Pause();
+            Feedback.NativePopupText.Release(popup, slot, popupToken);
+            popup = null; popupToken = null; slot = -1; State.Pause();
         }
         private void UpdatePopup()
         {
@@ -89,13 +87,7 @@ namespace JueMingR.TerrariaHost.Onboarding
                 bool inverted = Main.LocalPlayer.gravDir == -1;
                 var anchor = inverted ? Main.LocalPlayer.Bottom + new Vector2(0, 24 + textSize.Y) : Main.LocalPlayer.Top - new Vector2(0, 24);
                 if (!VisibleBounds(anchor - textSize / 2)) return;
-                // FindNextItemTextSlot overwrites an existing popup when full.
-                // Admission and NewText run synchronously on the game thread.
-                bool free = false;
-                foreach (var item in PopupText.popupText) if (item != null && !item.active) { free = true; break; }
-                if (!free) return;
-                slot = PopupText.NewText(new AdvancedPopupRequest { Text = Prompt, Color = new Color(255, 250, 150), DurationInFrames = 180, Velocity = new Vector2(0, inverted ? 7 : -7) }, anchor);
-                if (slot >= 0) { popup = PopupText.popupText[slot]; fadeTicks = 0; }
+                if (Feedback.NativePopupText.TryCreate(Prompt, new Color(255, 250, 150), 180, new Vector2(0, inverted ? 7 : -7), anchor, out popup, out slot, out popupToken)) fadeTicks = 0;
             }
             if (!OwnsPopup()) return;
             if (!VisibleBounds(popup.position)) { ReleasePopup(); return; }
