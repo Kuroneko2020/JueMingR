@@ -6,7 +6,7 @@ using JueMingR.TerrariaHost.F5;
 
 namespace JueMingR.TerrariaHost.Items
 {
-    internal enum ItemUiCommand { Enable, Disable, Add, Replace, Remove, Select, Confirm, Cancel, ToggleDiscardFeedback, Hotkey, Quick, QuickHotkey, Coin }
+    internal enum ItemUiCommand { Enable, Disable, Add, Replace, Remove, Select, Confirm, Cancel, ToggleDiscardFeedback, Hotkey, Quick, QuickHotkey, Coin, Processing }
     internal sealed class ItemUiControl
     {
         internal ItemUiCommand Command;

@@ -20,6 +20,7 @@ namespace NativeWorldTextProbe
             PopupText.ClearAll();
             NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return (bool)Call(host,"Controls",0);});
             Require(!(bool)Call(host,"Value",0),"bags default off");
+            Require(GetOptional(Get(context,"Shell"),"ReforgeUi")!=null,"complete profile exposes reforge editor in existing F5 shell");
             Main.playerInventory=true;p.inventory[12].SetDefaults(1774);p.inventory[12].stack=12;
             Call(host,"Set",0,true);
             NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return (bool)Call(host,"Value",0);});
@@ -50,8 +51,10 @@ namespace NativeWorldTextProbe
             }
             Sample(input,false);Call(context,"UpdateRuntime");
             NativeBagBoundaryChecks.Run(context,host,input);
+            NativeProcessingFlowChecks.Run(context,host,input);
             NativeExtractionChecks.Run(context,host,input);
             NativeReforgeChecks.Run(context,host,input);
+            NativeProcessingUiChecks.Run(context);
             Console.WriteLine("PASS: native continuous bags consume once per Update and never again from Draw; release stops.");
         }
         internal static void Sample(object input,bool held)

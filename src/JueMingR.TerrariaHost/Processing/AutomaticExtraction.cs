@@ -14,7 +14,7 @@ namespace JueMingR.TerrariaHost.Processing
         private readonly HostProcessing host;
         private Player player;
         private Item material;
-        private int slot,original,type,expected,products;
+        private int slot,original,type,expected,dropReturns;
         private long token,nextToken,session,frame,nextProbe;
         private bool cancelled,unknown,inCheck,borrowed,attempted;
         private ExtractionMachine machine;
@@ -67,12 +67,18 @@ namespace JueMingR.TerrariaHost.Processing
         internal bool Begin(Player p)
         {
             if(!ReferenceEquals(p,player) || p.selectedItem!=slot)return false;
-            inCheck=true;products=0;attempted=false;
+            inCheck=true;dropReturns=0;attempted=false;
             if(cancelled || !Admitted(p) || !SameSource()){Cancel();return true;}
             mouseX=Main.mouseX;mouseY=Main.mouseY;mouseLeft=Main.mouseLeft;targetX=Player.tileTargetX;targetY=Player.tileTargetY;
+            Aim();borrowed=true;return true;
+        }
+        private void Aim()
+        {
+            // Native drops read MouseScreen, whereas machine qualification
+            // reads tileTarget. Both must describe the newly chosen part.
             Vector2 screen=Main.ReverseGravitySupport(new Vector2(machine.X*16+8,machine.Y*16+8)-Main.screenPosition);
             Main.mouseX=ownMouseX=(int)screen.X;Main.mouseY=ownMouseY=(int)screen.Y;Main.mouseLeft=true;
-            Player.tileTargetX=machine.X;Player.tileTargetY=machine.Y;borrowed=true;return true;
+            Player.tileTargetX=machine.X;Player.tileTargetY=machine.Y;
         }
         internal bool Owns(Item[] array,int index){return inCheck && ReferenceEquals(array,player?.inventory) && index==slot && ReferenceEquals(array[index],material);}
         internal bool Place(Player p,ref Player.ItemCheckContext context)
@@ -86,20 +92,22 @@ namespace JueMingR.TerrariaHost.Processing
             {
                 ExtractionMachine nearest;
                 if(!ExtractionMachine.Find(p,material,out nearest)){context.SkipItemConsumption=true;Cancel();return false;}
-                machine=nearest;Player.tileTargetX=nearest.X;Player.tileTargetY=nearest.Y;
+                machine=nearest;Aim();
                 attempted=true;ProcessingHooks.Extract(p,ref context);
             }
             else context.SkipItemConsumption=true;
             return false;
         }
-        internal void Product(Player p){if(inCheck && ReferenceEquals(p,player))products++;}
+        // A returned drop call proves native generation/request was attempted,
+        // never server acknowledgement, a usable world slot, or a later pickup.
+        internal void Product(Player p){if(inCheck && ReferenceEquals(p,player))dropReturns++;}
         internal void End(Player p,long operation,bool entered,Exception error)
         {
             if(!entered || operation!=token || !ReferenceEquals(p,player))return;
             RestoreMouse();inCheck=false;
             if(error!=null){Failure=error;Fail();return;}
             int after=material.stack;
-            if(products>0)
+            if(dropReturns>0)
             {
                 if(!ReferenceEquals(p.inventory[slot],material) && !p.inventory[slot].IsAir || after!=expected-1){Fail();return;}
                 expected=after;if(after<=0 || material.IsAir)Cancel();

@@ -35,6 +35,7 @@ namespace JueMingR.TerrariaHost.F5
         internal AnnouncementControls AnnouncementControls { get; set; }
         internal FootprintControls FootprintControls { get; set; }
         internal Recovery.RecoveryPresentation RecoveryUi {get;set;}
+        internal Processing.ReforgePanel ReforgeUi {get;set;}
         internal void DrawFootprintPopup(FootprintPopup popup)
         {
             if (!popup.Visible) return; var batch = Main.spriteBatch;
@@ -308,6 +309,8 @@ namespace JueMingR.TerrariaHost.F5
         {
             target = default(F5Rect);
             if (!state.CanShowHint || blocked) return null;
+            if(ReforgeUi!=null && state.Page==1)
+            {string hint=ReforgeUi.Hint(state.PointerX,state.PointerY,out target,contentClip);if(hint!=null)return hint;}
             if(RecoveryUi!=null && (state.Page==10 || state.Page==1))
             {string recoveryHint=RecoveryUi.Hint(state.PointerX,state.PointerY,out target,contentClip);if(recoveryHint!=null)return recoveryHint;}
             if (state.Page == 0) return items == null ? null : items.Hint(state.PointerX, state.PointerY, out target, contentClip);

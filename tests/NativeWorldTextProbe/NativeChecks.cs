@@ -14,10 +14,10 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
-            if(scope=="ProcessingCpu")
+            if(scope=="ProcessingCpu" || scope=="ProcessingVisual")
             {
                 Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-processing-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
-                NativeQuickItemChecks.Run(processing:true);return 0;
+                NativeQuickItemChecks.Run(scope=="ProcessingVisual"?(Action<object>)(context=>{using(var graphics=new ProbeGraphics(content))NativeProcessingVisualChecks.Run(context,graphics,output);}):null,processing:true);return 0;
             }
             if(scope=="RecoveryCpu" || scope=="RecoveryVisual")
             {

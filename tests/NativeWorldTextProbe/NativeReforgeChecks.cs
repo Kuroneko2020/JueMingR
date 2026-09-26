@@ -40,11 +40,11 @@ namespace NativeWorldTextProbe
             Sample(input,false);Call(owner,"Update");Main.InReforgeMenu=false;p.SetTalkNPC(-1);Main.playerInventory=false;
             Console.WriteLine("PASS G08 reforge: complete target list, real BuyItem/inner roll, exact fee, auto-hit tail and fresh manual exception. This CPU case supplies the quote/hit observation; it does not exercise outer DrawInventory.");
         }
-        private static long Total(Player p){long total=NativeCoinChecks.Total(p.inventory,54);for(int a=0;a<4;a++)total+=NativeCoinChecks.Total(NativeCoinChecks.Bank(p,a).item,40);return total;}
-        private static void Sample(object input,bool left)
+        internal static long Total(Player p){long total=NativeCoinChecks.Total(p.inventory,54);for(int a=0;a<4;a++)total+=NativeCoinChecks.Total(NativeCoinChecks.Bank(p,a).item,40);return total;}
+        internal static void Sample(object input,bool left,int x=120,int y=310)
         {
             Main.keyState=new KeyboardState();
-            PlayerInput.MouseInfo=new MouseState(120,310,0,left?ButtonState.Pressed:ButtonState.Released,ButtonState.Released,ButtonState.Released,ButtonState.Released,ButtonState.Released);
+            PlayerInput.MouseInfo=new MouseState(x,y,0,left?ButtonState.Pressed:ButtonState.Released,ButtonState.Released,ButtonState.Released,ButtonState.Released,ButtonState.Released);
             Main.mouseLeft=left;Main.mouseLeftRelease=true;
             PlayerInput.Triggers.Reset();PlayerInput.Triggers.Current.MouseLeft=left;PlayerInput.Triggers.Update();
             Call(input,"BeginUpdate");Call(input,"AfterNativeMouse",new System.Collections.Generic.List<string>());Call(input,"AfterMapping");Call(input,"AfterKeyboardRefresh");

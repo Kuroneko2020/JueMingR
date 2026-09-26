@@ -12,6 +12,9 @@ namespace JueMingR.TerrariaHost.Processing
 {
     internal sealed class HostProcessing : IRuntimeFeature
     {
+        internal static readonly string[] Actions={"processing.bags","processing.extraction","processing.reforge"};
+        internal static readonly string[] Names={"持续开袋","自动提炼","自动重铸"};
+        internal static readonly string[] Help={"按住shift长按右键点击匣子快速打开","靠近提炼机尝试自动提炼","按住重铸键直到名单的词缀停下"};
         internal readonly SingleFeatureRuntime Runtime;
         internal readonly HostItems Items;
         internal readonly HostInputState Input;
@@ -52,6 +55,10 @@ namespace JueMingR.TerrariaHost.Processing
         internal bool Value(int feature){return Available && Settings[feature].Ready && Settings[feature].Value.Enabled;}
         internal void Set(int feature,bool value){if(Controls(feature))Settings[feature].Set(new ProcessingOptions(value,Settings[feature].Value.Names));}
         internal void Poll(){foreach(var s in Settings)s.Poll();}
+        internal void Register(JueMingR.Platform.Hotkeys.HotkeyRegistry registry)
+        {
+            for(int i=0;i<3;i++){int feature=i;registry.Register(new JueMingR.Platform.Hotkeys.HotkeyAction(Actions[i],Names[i],JueMingR.Platform.Hotkeys.HotkeyContext.Gameplay,()=>Controls(feature),()=>Set(feature,!Settings[feature].Value.Enabled)));}
+        }
         internal bool Admit(Player p)
         {
             return Available && p!=null && ReferenceEquals(p,Player) && Input.CanStartActions && CanInterface!=null && CanInterface() &&

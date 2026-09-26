@@ -65,14 +65,16 @@ namespace JueMingR.TerrariaHost.Processing
             if(!host.Value(2) || !Valid()){quoteReady=false;return hovered;}
             var p=host.Player;quotedItem=Main.reforgeItem;quotedType=quotedItem.type;quotedPrefix=quotedItem.prefix;quotedValue=quotedItem.value;quotedStack=quotedItem.stack;
             quote=nativeCost;quoteFrame=host.Input.Frame;quoteDiscount=p.discountAvailable;quoteAdjustment=p.currentShoppingSettings.PriceAdjustment;
-            cx=x;cy=y;radius=halfSize;scale=Main.UIScale;width=Main.screenWidth;height=Main.screenHeight;quoteReady=true;return hovered;
+            // Main.screenWidth/Height change domains during native UI Draw.
+            // Compare the physical viewport in both Draw and Update instead.
+            cx=x;cy=y;radius=halfSize;scale=Main.UIScale;width=(int)PlayerInput.OriginalScreenSize.X;height=(int)PlayerInput.OriginalScreenSize.Y;quoteReady=true;return hovered;
         }
         private bool FreshQuote()
         {
             var p=host.Player;var current=Main.reforgeItem;
             if(!quoteReady || host.Input.Frame-quoteFrame>1 || host.Input.Frame<quoteFrame || !ReferenceEquals(quotedItem,current) ||
                 current.type!=quotedType || current.prefix!=quotedPrefix || current.value!=quotedValue || current.stack!=quotedStack ||
-                quoteDiscount!=p.discountAvailable || quoteAdjustment!=p.currentShoppingSettings.PriceAdjustment || scale!=Main.UIScale || width!=Main.screenWidth || height!=Main.screenHeight)return false;
+                quoteDiscount!=p.discountAvailable || quoteAdjustment!=p.currentShoppingSettings.PriceAdjustment || scale!=Main.UIScale || width!=(int)PlayerInput.OriginalScreenSize.X || height!=(int)PlayerInput.OriginalScreenSize.Y)return false;
             int x=(int)(host.Input.PhysicalMapX*(1f/scale)),y=(int)(host.Input.PhysicalMapY*(1f/scale));
             return x>cx-radius && x<cx+radius && y>cy-radius && y<cy+radius;
         }
