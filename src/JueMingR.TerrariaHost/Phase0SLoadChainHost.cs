@@ -824,6 +824,8 @@ namespace JueMingR.TerrariaHost
             internal CoinDeposit.HostCoinDeposit CoinDeposit { get; private set; }
             internal Recovery.HostRecovery Recovery { get; private set; }
             internal Processing.HostProcessing Processing { get; private set; }
+            internal Feedback.LocalShortFeedback ShortFeedback { get; private set; }
+            private Hotkeys.HotkeyStateFeedback hotkeyFeedback;
             private Npcs.NativeNpcObservation nativeNpcs;
             internal readonly Information.InformationReadiness InformationReadiness = new Information.InformationReadiness();
             private Information.InformationSourceHooks informationHooks;
@@ -912,14 +914,21 @@ namespace JueMingR.TerrariaHost
                 if (footprintPackage) { Footprints = new Footprints.HostFootprints(gameDirectory, runtime.SharedRuntime, itemProbe, Input); runtime.SharedRuntime.AddFeature(Footprints); }
                 notes = new Notes.HostNotes(gameDirectory);
                 if (PackageId.StartsWith("item-browser-", StringComparison.Ordinal) || quickPackage) Browser = new ItemBrowser.HostItemBrowser(gameDirectory, worldTiles, Input);
+                if (hotkeyPackage) ShortFeedback = new Feedback.LocalShortFeedback(runtime.SharedRuntime, Input);
                 var hotkeys = hotkeyPackage ? new Hotkeys.HostHotkeys(gameDirectory, runtime, preferences, items, Labels, WorldTargets, WorldObjects,
-                    informationPackage ? Information : null, () => Shell != null && Shell.CanAdjustInformation, () => Shell?.RequestInformationAdjustment(), Guidance, DeathRecords, MapFeatures, Footprints, Browser == null ? (Func<bool>)null : Browser.CanAnnounce, Browser == null ? (Action)null : Browser.Announce, Browser == null ? (Func<bool>)null : Browser.CanQuery, Browser == null ? (Action)null : Browser.Query, Browser?.Announcements, QuickItems, CoinDeposit, Recovery, Processing) : null;
+                    informationPackage ? Information : null, () => Shell != null && Shell.CanAdjustInformation, () => Shell?.RequestInformationAdjustment(), Guidance, DeathRecords, MapFeatures, Footprints, Browser == null ? (Func<bool>)null : Browser.CanAnnounce, Browser == null ? (Action)null : Browser.Announce, Browser == null ? (Func<bool>)null : Browser.CanQuery, Browser == null ? (Action)null : Browser.Query, Browser?.Announcements, QuickItems, CoinDeposit, Recovery, Processing, ShortFeedback) : null;
+                hotkeyFeedback = hotkeys?.Feedback;
                 Shell = new F5Shell(runtime, preferences, notes, items, Input, hotkeys, Labels, WorldTargets, WorldObjects, Information, Guidance, DeathRecords, MapFeatures, Footprints, Browser?.Announcements) { LayersReady = f5LayersReady };
                 Browser?.Attach(Shell, hotkeys);
                 if(Processing!=null){Shell.AttachProcessing(Processing);Processing.CanInterface=()=>Shell.CanProcessingInput;Processing.BankGuardsReady=()=>Recovery!=null && Recovery.Available;}
                 if(Recovery!=null){Shell.AttachRecovery(Recovery);Recovery.CanGameplay=()=>Shell.CanTargetInput && !Terraria.Main.mapFullscreen && !Terraria.Main.LocalPlayer.mouseInterface;Recovery.CanBackgroundBuff=()=>Shell.CanBackgroundBuff;Recovery.IsQuickUse=()=>QuickItems!=null && (QuickItems.Use.Active || QuickItems.Use.InNativeUse);}
                 if ((PackageId.StartsWith("about-help-feedback-", StringComparison.Ordinal) || (PackageId.StartsWith("recovery-buffs-services-", StringComparison.Ordinal) || PackageId.StartsWith("continuous-processing-", StringComparison.Ordinal))))
                 { onboarding = new Onboarding.HostOnboarding(gameDirectory); runtime.SharedRuntime.AddFeature(onboarding); Shell.AttachOnboarding(onboarding); }
+                if (ShortFeedback != null)
+                {
+                    runtime.SharedRuntime.AddFeature(ShortFeedback); Shell.ShortFeedback = ShortFeedback;
+                    if (items != null) items.Operations.DiscardFeedback.Present = ShortFeedback.Discard;
+                }
                 if (CoinDeposit != null) { Shell.AttachCoinDeposit(CoinDeposit); CoinDeposit.CanGameplay = () => Shell.CanTargetInput && !Terraria.Main.mapFullscreen; }
                 if (QuickItems != null) { Shell.AttachQuickItems(QuickItems); QuickItems.CanGameplay=()=>Shell.CanTargetInput && !Terraria.Main.mapFullscreen && !Terraria.Main.LocalPlayer.mouseInterface; }
                 if (MapFeatures != null) { MapFeatures.Layer.UiOwnsInput = () => Shell.BlocksMapInput || Input.MapPointerOwned; MapFeatures.Layer.CloseForLocate = Shell.CloseForMapLocate; }
@@ -953,6 +962,7 @@ namespace JueMingR.TerrariaHost
                 nativeNpcs?.BeginTick();
                 current.Update(updateTick);
                 Browser?.Update(unchecked((long)updateTick));
+                hotkeyFeedback?.Poll();
                 updateTick = unchecked(updateTick + 1);
             }
 
@@ -972,6 +982,7 @@ namespace JueMingR.TerrariaHost
                 Processing?.FailClosed();
                 KeepFavorited?.FailClosed();
                 onboarding?.FailClosed();
+                hotkeyFeedback?.Clear();
                 nativeNpcs?.Clear();
                 Phase0TBiomeRuntime current = runtime;
                 if (current != null)

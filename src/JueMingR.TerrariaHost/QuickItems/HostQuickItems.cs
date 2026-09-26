@@ -85,10 +85,18 @@ namespace JueMingR.TerrariaHost.QuickItems
         internal long BindingRevision {get{return hotkeys==null || !hotkeys.Bindings.Loaded?-1:hotkeys.Bindings.CompletionId;}}
         internal string BindingText(string action) {return hotkeys?.Bindings.Get(action)?.DisplayText??"+";}
         internal Player Player { get { return Runtime.IsSessionActive && Thread.CurrentThread.ManagedThreadId == ThreadId ? Items.World.Player : null; } }
-        internal void Register(HotkeyRegistry registry)
+        internal void Register(HotkeyRegistry registry, HotkeyStateFeedback feedback = null)
         {
-            registry.Register(new HotkeyAction(FavoriteAction,"保持收藏",HotkeyContext.Gameplay,()=>FavoriteControlsEnabled,()=>ToggleFavorite()));
-            registry.Register(new HotkeyAction(ToggleAction,"快捷物品开关",HotkeyContext.Gameplay,()=>ControlsEnabled,()=>ToggleQuick()));
+            Action favorite = ToggleFavorite, quick = ToggleQuick;
+            if (feedback != null)
+            {
+                favorite = feedback.Committed(FavoriteAction,"保持收藏",favorite,()=>Settings.KeepFavorited?1:0,()=>FavoriteControlsEnabled,
+                    ()=>Settings.AcceptedCommandId,()=>Settings.CompletedCommandId,()=>Settings.CompletionSucceeded);
+                quick = feedback.Committed(ToggleAction,"快捷物品",quick,()=>Settings.Enabled?1:0,()=>ControlsEnabled,
+                    ()=>Settings.AcceptedCommandId,()=>Settings.CompletedCommandId,()=>Settings.CompletionSucceeded);
+            }
+            registry.Register(new HotkeyAction(FavoriteAction,"保持收藏",HotkeyContext.Gameplay,()=>FavoriteControlsEnabled,favorite));
+            registry.Register(new HotkeyAction(ToggleAction,"快捷物品开关",HotkeyContext.Gameplay,()=>ControlsEnabled,quick));
             actions = registry.CreateDynamicOwner("items.quick-use.");
         }
         internal void Attach(HostHotkeys value) { hotkeys = value; Poll(); }

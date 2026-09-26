@@ -24,7 +24,7 @@ namespace NativeWorldTextProbe
         private static int recalls;
         internal static int Recalls {get{return recalls;}}
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static void Run(Action<object> visual=null, bool coins=false, bool about=false, bool recovery=false, bool processing=false)
+        internal static void Run(Action<object> visual=null, bool coins=false, bool about=false, bool recovery=false, bool processing=false, bool shortFeedback=false)
         {
             Require(IntPtr.Size==4,"G05 native fixture must use .NET Framework x86");
             Require(typeof(Main).Assembly.ManifestModule.ModuleVersionId==new Guid("2c29f6c3-4bd9-4add-9c58-da159804e083"),"fixed .8 MVID");
@@ -65,6 +65,7 @@ namespace NativeWorldTextProbe
                 Set(input,"gameWindow",(Func<IntPtr>)(()=>new IntPtr(1)));Set(input,"foregroundWindow",(Func<IntPtr>)(()=>new IntPtr(1)));
                 Set(shell,"LayersReady",true);Set(Get(shell,"State"),"Ready",true);
                 Sample(input,new Keys[0]);Sample(input,new Keys[0]);
+                if(shortFeedback){visual?.Invoke(context);return;}
                 if(processing){NativeProcessingChecks.Run(context);visual?.Invoke(context);return;}
                 if(recovery){NativeRecoveryChecks.Run(context);visual?.Invoke(context);return;}
                 var entry=new QuickItemEntry("0123456789abcdef0123456789abcdef",50,QuickItemMode.Use,true,true);string reason;

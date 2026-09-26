@@ -22,6 +22,9 @@ try {
     Invoke-WorkloadGit $fixtureRoot @('init', '--quiet') | Out-Null
     Invoke-WorkloadGit $fixtureRoot @('config', 'core.autocrlf', 'false') | Out-Null
     $cases = [ordered]@{
+        'src/JueMingR.TerrariaHost/Feedback/NativePopupText.cs' = 'shared-host';
+        'src/JueMingR.TerrariaHost/Feedback/LocalShortFeedback.cs' = 'shared-host';
+        'tests/NativeWorldTextProbe/NativeShortFeedbackChecks.cs' = 'shared-host';
         'src/JueMingR.TerrariaHost/Recovery/HostRecovery.cs' = 'recovery-host';
         'tests/NativeWorldTextProbe/NativeRecoveryChecks.cs' = 'recovery-host';
         'src/JueMingR.TerrariaHost/About/AboutPage.cs' = 'about-host';
@@ -192,6 +195,25 @@ try {
             Assert-Route ($calls[2].name -ceq 'f5-cpu' -and $calls[2].executable -ceq 'fixture.exe' -and ($calls[2].arguments -join '|') -ceq 'f5-cpu') 'existing F5 input/layout entry arguments'
         }
     }
+    # Run the real process wrapper in a child PowerShell: failed checks must
+    $shortDispatch = $runnerAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Invoke-ShortFeedbackWorkloadChecks' }, $false)
+    Assert-Route ($null -ne $shortDispatch) 'actual short feedback dispatcher exists'
+    & {
+        . ([scriptblock]::Create($shortDispatch.Extent.Text))
+        $calls = New-Object 'System.Collections.Generic.List[object]'
+        $checksRoot = Join-Path $fixtureRoot 'checks'
+        function Invoke-WorkloadCheck {
+            param([string] $Name, [string] $Executable, [string[]] $Arguments)
+            $calls.Add(@{ name = $Name; executable = $Executable; arguments = $Arguments })
+        }
+        foreach ($group in @('core','shared-host','storage-host','quick-items-host','coin-deposit-host','recovery-host','processing-host','about-host')) {
+            $calls.Clear(); Invoke-ShortFeedbackWorkloadChecks @('core',$group) 'native.exe'
+            if ($group -ceq 'core') { Assert-Route ($calls.Count -eq 0) 'unrelated core skips feedback'; continue }
+            Assert-Route ($calls.Count -eq 1 -and $calls[0].name -ceq 'short-feedback-native-host' -and $calls[0].executable -ceq 'native.exe' -and ($calls[0].arguments -join '|') -ceq (@($repositoryRoot,'--cpu',(Join-Path $checksRoot 'short-feedback-cpu'),'ShortFeedbackCpu') -join '|')) 'feedback runs exact real native consumer once for each affected provider'
+        }
+    }
+    $shortCalls = @($runnerAst.FindAll({ param($node) $node -is [Management.Automation.Language.CommandAst] -and $node.GetCommandName() -ceq 'Invoke-ShortFeedbackWorkloadChecks' }, $true))
+    Assert-Route ($shortCalls.Count -eq 1 -and $shortCalls[0].Extent.Text -ceq 'Invoke-ShortFeedbackWorkloadChecks $route.groups $native') 'normal runner dispatches short feedback exactly once'
     # Run the real process wrapper in a child PowerShell: failed checks must
     $recoveryDispatch = $runnerAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Invoke-RecoveryWorkloadChecks' }, $false)
     Assert-Route ($null -ne $recoveryDispatch) 'actual recovery dispatcher exists'
