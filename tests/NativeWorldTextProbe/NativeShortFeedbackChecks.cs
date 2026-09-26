@@ -1,6 +1,8 @@
 using System;
 using System.Collections;
 using System.Linq;
+using System.Reflection;
+using HarmonyLib;
 using JueMingR.Features.Items;
 using JueMingR.Features.QuickItems;
 using JueMingR.Platform.Hotkeys;
@@ -100,6 +102,7 @@ namespace NativeWorldTextProbe
             stack.Invoke(HotkeyContext.SinglePlayer);Call(Get(Get(context,"Runtime"),"SharedRuntime"),"InvalidateSession");
             Require((int)Get(display,"Count")==0 && (int)Get(feedback,"PendingCount")==0,"session end releases all requests synchronously");
             Call(context,"UpdateRuntime");
+            MapFailure(context,registry,display);
             Console.WriteLine("PASS: 37 registered consumers, runtime/commit separation, modes, owner tokens, bounded replacement, native ownership, fallback, no network and idle/session cleanup.");
         }
         private static void AsyncFailures(object context,HotkeyRegistry registry,object display,object feedback)
@@ -117,7 +120,8 @@ namespace NativeWorldTextProbe
                     Require(!action.Invoke(HotkeyContext.SinglePlayer),"Busy blocks duplicate");
                     store.Gate.Set();NativeQuickItemChecks.Until(()=>{Call(context,"UpdateRuntime");return !settings.Busy;});
                     Require(Has(display,"快捷物品 已开启") && settings.Enabled,"reliable commit publishes success");
-                    Call(display,"Clear");store.Fail=true;Require(action.Invoke(HotkeyContext.SinglePlayer),"failing close accepted");
+                    store.Fail=true;Require(action.Invoke(HotkeyContext.SinglePlayer),"failing close accepted");
+                    Require(GetOptional(display,"map")==null,"replacing last active result while save is pending releases the map lease immediately");
                     NativeQuickItemChecks.Until(()=>{Call(context,"UpdateRuntime");return !settings.Busy;});
                     Require(!settings.Enabled && !settings.CompletionSucceeded && (int)Get(display,"Count")==0 && settings.QuickMessage!=null,"failed suspension is not successful close");
                     int alerts=0;settings.TakeFeedback(text=>alerts++);settings.TakeFeedback(text=>alerts++);Require(alerts==1,"original error channel remains unconsumed");
@@ -136,6 +140,21 @@ namespace NativeWorldTextProbe
                 }
                 finally{store.Gate.Set();Set(quick,"Settings",original);Set(quick,"published",-1L);Call(quick,"Poll");Call(display,"Clear");}
             }
+        }
+        private static int acquireCalls;
+        private static void RejectMap() { acquireCalls++;throw new InvalidOperationException("isolated map presentation failure"); }
+        private static void MapFailure(object context,HotkeyRegistry registry,object display)
+        {
+            Call(display,"Clear");var harmony=new Harmony("JueMingR.Tests.ShortFeedbackMapFailure");
+            var method=display.GetType().Assembly.GetType("JueMingR.TerrariaHost.Map.FullscreenMapDrawing").GetMethod("Acquire",BindingFlags.Static|BindingFlags.NonPublic);
+            try
+            {
+                harmony.Patch(method,new HarmonyMethod(typeof(NativeShortFeedbackChecks).GetMethod(nameof(RejectMap),BindingFlags.Static|BindingFlags.NonPublic)));
+                acquireCalls=0;Require(registry.Find("items.auto-stack.toggle").Invoke(HotkeyContext.SinglePlayer),"map failure cannot reject the original command");
+                for(int i=0;i<20;i++)Call(display,"Refresh");
+                Require(acquireCalls==1 && Entries(display).Length==1,"failed map hook admission is attempted once per active display lifetime, not retried every frame");
+            }
+            finally{harmony.Unpatch(method,HarmonyPatchType.All,harmony.Id);Call(display,"Clear");}
         }
         private static void InputDispatch(object context,HotkeyRegistry registry,object display)
         {

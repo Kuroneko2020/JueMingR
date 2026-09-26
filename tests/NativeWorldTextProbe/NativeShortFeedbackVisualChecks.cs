@@ -64,6 +64,13 @@ namespace NativeWorldTextProbe
             graphics.Image(Path.Combine(output,"fullscreen-map.png"),mapDraw,Matrix.Identity);
             Main.mapFullscreen=false;graphics.Pixels(fallback,Main.UIScaleMatrix);
             Require((double)Get(entry,"Expires")==expiry && (bool)Get(entry,"Fallback"),"return from map never replays native admission");
+            reset();trigger();animate();Main.screenPosition-=new Vector2(460,0);
+            var edgeFrame=graphics.Pixels(()=>{native();Call(display,"Draw");},Matrix.Identity);
+            bool edge=edgeFrame.Where((c,i)=>i%960>850 && i/960>150).Any(c=>c.A>0);
+            bool top=edgeFrame.Where((c,i)=>i/960<150).Any(c=>c.A>0);
+            Require(edge && !top,"native already submitted at screen edge cannot duplicate into fallback later in the same frame");
+            Call(display,"Refresh");var continuation=graphics.Pixels(()=>{native();Call(display,"Draw");},Matrix.Identity);
+            Require(continuation.Where((c,i)=>i/960<150).Any(c=>c.A>0) && !continuation.Where((c,i)=>i%960>850 && i/960>150).Any(c=>c.A>0),"next Update continues only fallback with no stale native pixels");
             reset();Main.showItemText=false;
             foreach(string id in new[]{"items.auto-stack.toggle","items.auto-sell.toggle","items.auto-discard.toggle","biome-display.toggle"})registry.Find(id).Invoke(HotkeyContext.SinglePlayer);
             var four=Bounds(graphics.Pixels(fallback,Main.UIScaleMatrix));Require(Entries(display).Length==4 && four.Height>60 && four.Bottom<300,"four bounded readable lines");

@@ -25,7 +25,7 @@ namespace JueMingR.TerrariaHost.Feedback
         private sealed class Entry
         {
             internal string Id, Text, Token;
-            internal bool On, Fallback;
+            internal bool On, Fallback, FallbackAfterNativeDraw;
             internal int Slot = -1;
             internal double Expires;
             internal PopupText Popup;
@@ -37,6 +37,7 @@ namespace JueMingR.TerrariaHost.Feedback
         private readonly HostInputState input;
         private readonly List<Entry> entries = new List<Entry>(4);
         private FullscreenMapDrawing map;
+        private bool mapUnavailable;
         internal event Action Ended;
         public bool Enabled { get { return true; } }
         public void OnSessionStarted() { OnSessionEnded(); }
@@ -68,7 +69,12 @@ namespace JueMingR.TerrariaHost.Feedback
             Refresh();
         }
         internal void Remove(string id)
-        { for (int i = entries.Count - 1; i >= 0; i--) if (entries[i].Id == id) Retire(i); }
+        {
+            for (int i = entries.Count - 1; i >= 0; i--) if (entries[i].Id == id) Retire(i);
+            // A replacement intent may fail or time out without publishing a
+            // successor. No active result means no retained map subscription.
+            if (entries.Count == 0) ReleaseMap();
+        }
         private void Retire(int i)
         {
             var e = entries[i];
@@ -83,11 +89,13 @@ namespace JueMingR.TerrariaHost.Feedback
         }
         private void ReleaseMap()
         {
-            var old = map; map = null;
+            var old = map; map = null; mapUnavailable = false;
             if (old == null) return;
             try { old.Overlay -= DrawMap; old.Dispose(); } catch { }
         }
         internal void Refresh()
+        { UpdatePresentation(false); }
+        private void UpdatePresentation(bool nativeAlreadyDrawn)
         {
             // OFF contract: before clock, font, pool, map lease or state getters.
             if (entries.Count == 0) return;
@@ -101,16 +109,23 @@ namespace JueMingR.TerrariaHost.Feedback
                 try
                 {
                     if (!Current(e.Scope) || now >= e.Expires || !e.Valid()) { Retire(i); continue; }
+                    if (!nativeAlreadyDrawn) e.FallbackAfterNativeDraw = false;
+                    bool couldHaveDrawn = nativeAlreadyDrawn && Main.showItemText && !Main.mapFullscreen && !Main.hideUI && NativePopupText.Owns(e.Popup, e.Slot, e.Token);
                     Prepare(e, i);
+                    // DrawInterface follows the native popup flush. If camera or
+                    // scale changed after Update, a partially clipped native item
+                    // may already have pixels this frame. Retire it now, but wait
+                    // for the next Update before drawing its fallback continuation.
+                    if (couldHaveDrawn && e.Fallback) e.FallbackAfterNativeDraw = true;
                     if (!e.Fallback && NativePopupText.Owns(e.Popup, e.Slot, e.Token)) e.Popup.lifeTime = e.Expires - now > 250 ? 2 : 0;
                 }
                 catch { Retire(i); }
             }
             if (entries.Count == 0) { ReleaseMap(); return; }
-            if (map == null)
+            if (map == null && !mapUnavailable)
             {
                 try { map = FullscreenMapDrawing.Acquire(); map.Overlay += DrawMap; }
-                catch { map = null; } // display failure cannot disable F5/business
+                catch { map = null; mapUnavailable = true; } // once per active lifetime, never a frame-by-frame Hook retry
             }
         }
         private static Color ColorFor(Entry e) { return e.On ? new Color(170, 245, 190) : new Color(225, 225, 225); }
@@ -149,7 +164,7 @@ namespace JueMingR.TerrariaHost.Feedback
         internal void Draw()
         {
             if (entries.Count == 0 || Main.mapFullscreen) return;
-            try { Refresh(); DrawFallback(Matrix.Invert(Main.UIScaleMatrix)); } catch { Clear(); }
+            try { UpdatePresentation(true); DrawFallback(Matrix.Invert(Main.UIScaleMatrix)); } catch { Clear(); }
         }
         private void DrawFallback(Matrix inverse)
         {
@@ -158,7 +173,7 @@ namespace JueMingR.TerrariaHost.Feedback
             double now = Now;
             foreach (var e in entries)
             {
-                if (!e.Fallback) continue;
+                if (!e.Fallback || e.FallbackAfterNativeDraw) continue;
                 float alpha = (float)Math.Min(1, Math.Max(0, (e.Expires - now) / 250));
                 e.Renderer.Draw(Main.spriteBatch, new Vector2(PlayerInput.OriginalScreenSize.X / 2f, y), inverse, ColorFor(e) * alpha);
                 y += e.Renderer.Height;
