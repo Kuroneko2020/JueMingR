@@ -15,8 +15,8 @@ namespace JueMingR.TerrariaHost.Items
     {
         private static readonly F5RowDescription[] descriptions = {
             new F5RowDescription(Hotkeys.HotkeyActionIds.Items[0], "将刚拾取的物品存入附近已有同类物品的箱子，优先级为出售→丢弃→存放。"),
-            new F5RowDescription(Hotkeys.HotkeyActionIds.Items[1], "将刚拾取的名单内物品在已打开的商店界面出售，优先级为出售→丢弃→存放。"),
-            new F5RowDescription(Hotkeys.HotkeyActionIds.Items[2], "将刚拾取的名单内物品放入垃圾桶，优先级为出售→丢弃→存放。") };
+            new F5RowDescription(Hotkeys.HotkeyActionIds.Items[1], "将背包中未收藏的名单内物品在已打开的商店界面出售，优先级为出售→丢弃→存放。"),
+            new F5RowDescription(Hotkeys.HotkeyActionIds.Items[2], "将背包中未收藏的名单内物品放入垃圾桶，优先级为出售→丢弃→存放。") };
         internal static F5RowDescription Description(ItemActionKind action) { return descriptions[(int)action]; }
         private readonly HostItems host;
         private readonly F5Interaction shell;
@@ -26,6 +26,8 @@ namespace JueMingR.TerrariaHost.Items
         private readonly ItemPickerInput input = new ItemPickerInput();
         internal QuickItems.QuickItemPanel QuickPanel { get; private set; }
         internal CoinDeposit.CoinPanel CoinPanel { get; private set; }
+        internal Processing.ProcessingPanel ProcessingPanel {get;private set;}
+        internal void AttachProcessing(Processing.HostProcessing owner){ProcessingPanel=new Processing.ProcessingPanel(owner);dirty=true;}
         internal void AttachCoins(CoinDeposit.HostCoinDeposit owner) { CoinPanel = new CoinDeposit.CoinPanel(owner); dirty = true; }
         internal void AttachQuick(QuickItems.HostQuickItems owner) { QuickPanel = new QuickItems.QuickItemPanel(owner, shell); dirty = true; }
         private readonly List<ItemUiControl> controls = new List<ItemUiControl>();
@@ -71,6 +73,7 @@ namespace JueMingR.TerrariaHost.Items
             QuickPanel?.Process(pageActive, sample, focused);
             if (QuickPanel != null && QuickPanel.NeedsBuild) { armed = null; dirty = true; }
             if (CoinPanel != null && CoinPanel.NeedsBuild) { armed = null; dirty = true; }
+            if (ProcessingPanel != null && ProcessingPanel.NeedsBuild) { armed=null;dirty=true; }
             ConsumeLeft = leftTail; ConsumeRight = rightTail; ConsumeWheel = false; ownPointer = false;
             if (!pageActive || !ready)
             {
@@ -114,6 +117,7 @@ namespace JueMingR.TerrariaHost.Items
         private void Execute(ItemUiControl c)
         {
             if (c.Command == ItemUiCommand.Coin) { CoinPanel?.Execute(c); dirty = true; return; }
+            if (c.Command == ItemUiCommand.Processing) { ProcessingPanel?.Execute(c); dirty=true;return; }
             if (c.Command == ItemUiCommand.Hotkey || c.Command == ItemUiCommand.QuickHotkey) { HotkeyClicked?.Invoke(c.Element.HotkeyTarget, c.Rect); return; }
             if (c.Command == ItemUiCommand.Quick) { CancelPicker(); QuickPanel?.Execute(c); dirty = true; return; }
             dirty = true; commandMessage = null;
@@ -163,7 +167,7 @@ namespace JueMingR.TerrariaHost.Items
             if (!SameRect(view, next)) dirty = true;
             view = next;
             string message = ErrorMessage;
-            bool rebuild = dirty || QuickPanel != null && QuickPanel.NeedsBuild || CoinPanel != null && CoinPanel.NeedsBuild || !ReferenceEquals(laidOutValue, host.Preferences.Value) || layoutGeneration != shell.Layout.Generation ||
+            bool rebuild = dirty || ProcessingPanel != null && ProcessingPanel.NeedsBuild || QuickPanel != null && QuickPanel.NeedsBuild || CoinPanel != null && CoinPanel.NeedsBuild || !ReferenceEquals(laidOutValue, host.Preferences.Value) || layoutGeneration != shell.Layout.Generation ||
                 skinGeneration != renderer.Generation || laidOutEnabled != ControlsEnabled || laidOutMessage != message;
             if (!rebuild && laidOutScroll == shell.Scroll) return;
             armed = null;
@@ -172,6 +176,8 @@ namespace JueMingR.TerrariaHost.Items
                 layout.Build(view.Width, renderer.RowHeight, host.Preferences.Value, selection, ControlsEnabled, message != null, shell.Layout.TextSize);
                 CoinPanel?.Build(layout.Height, view.Width, shell.Layout.TextSize);
                 float coinBottom = CoinPanel == null ? layout.Height : CoinPanel.Height;
+                ProcessingPanel?.Build(coinBottom,view.Width,shell.Layout.TextSize);
+                if(ProcessingPanel!=null)coinBottom=ProcessingPanel.Height;
                 QuickPanel?.Build(coinBottom, view.Width, renderer.RowHeight, shell.Layout.TextSize);
                 shell.Layout.SetItemsContentHeight(QuickPanel == null ? coinBottom : QuickPanel.Height);
                 if(QuickPanel!=null && QuickPanel.RevealRequested)
@@ -190,6 +196,7 @@ namespace JueMingR.TerrariaHost.Items
             }
             layout.Project(view, shell.Scroll, elements, controls); LayoutBuildCount++;
             CoinPanel?.Project(view, shell.Scroll, controls, elements);
+            ProcessingPanel?.Project(view,shell.Scroll,controls,elements);
             QuickPanel?.Project(view, shell.Scroll, controls, elements);
             dirty = false; laidOutValue = host.Preferences.Value; laidOutScroll = shell.Scroll;
             layoutGeneration = shell.Layout.Generation; skinGeneration = renderer.Generation;
@@ -241,6 +248,8 @@ namespace JueMingR.TerrariaHost.Items
             if (quickHint != null) return quickHint;
             string coinHint = CoinPanel?.Hint(x, y, out target);
             if (coinHint != null) return coinHint;
+            string processingHint=ProcessingPanel?.Hint(x,y,out target);
+            if(processingHint!=null)return processingHint;
             var name = F5HintLayout.HitName(elements, visible, 0, 0, x, y, out target);
             return name == null ? null : name.Description.Text;
         }
@@ -256,7 +265,7 @@ namespace JueMingR.TerrariaHost.Items
                     string list = selection.List == ItemListKind.Sell ? "出售" : "丢弃";
                     renderer.Text(selection.Target == 0 ? "添加" + list + "物品" : "替换「" + Lang.GetItemNameValue(selection.Target) + "」", OnScreen(layout.Title), Color.White);
                     if (selection.Target == 0) renderer.Text("已选 " + selection.Count + " 项", OnScreen(layout.Count), Color.LightGray, .63f);
-                    if (layout.Risk.Height > 0) renderer.Text("名单用于处理刚拾取或开出的物品。", OnScreen(layout.Risk), Color.Gold, .63f);
+                    if (layout.Risk.Height > 0) renderer.Text("名单会处理背包中已有的未收藏物品。", OnScreen(layout.Risk), Color.Gold, .63f);
                     if (layout.Empty.Height > 0) renderer.Text(selection.HasInventoryTypes ? "背包中可选的物品都已在名单中。" : "背包中没有可添加的物品，钱币不能加入名单。", OnScreen(layout.Empty), Color.Gray, .63f);
                 }
                 foreach (var c in controls)

@@ -60,15 +60,12 @@ namespace Terraria
                 Main.spriteBatch.End(); graphics.Device.SetRenderTarget(null);
                 var pixels = new Color[384 * 256]; target.GetData(pixels);
                 if (path != null) { Directory.CreateDirectory(Path.GetDirectoryName(path)); using (var file = File.Create(path)) target.SaveAsPng(file, 384, 256); }
-                int ink = 0;
                 for (int y = 0; y < 256; y++) for (int x = 0; x < 384; x++)
                 {
                     if (pixels[y * 384 + x].A == 0) continue;
-                    ink++;
                     Check(regions.Any(b => x >= b.X * scale + 8 && x < b.Right * scale + 10 && y >= b.Y * scale + 6 && y < b.Bottom * scale + 8),
                         "decoration escaped the corner check/red cross region at " + x + "," + y);
                 }
-                Check(ink > 150, "selection and cross actually produce pixels");
                 for (int j = 0; j < 2; j++)
                 {
                     var green = Enumerable.Range(0, pixels.Length).Where(i => pixels[i].A > 0 && pixels[i].G > pixels[i].R &&
@@ -81,6 +78,20 @@ namespace Terraria
                 }
                 for (int j = 2; j < 4; j++)
                 {
+                    // G07 removed the old 12x12 black backing. Test each pure
+                    // stroke's visible shape instead of counting backing area.
+                    var cross = Enumerable.Range(0, pixels.Length).Where(i => pixels[i].A > 0 &&
+                        i % 384 >= boxes[j].X * scale + 9 && i % 384 < boxes[j].Right * scale + 9).ToArray();
+                    Check(cross.Length > 0 && cross.All(i => pixels[i].R > pixels[i].G * 1.5f && pixels[i].R > pixels[i].B * 1.5f),
+                        "each removal cross is visible red strokes with no backing pixels");
+                    int width = cross.Max(i => i % 384) - cross.Min(i => i % 384) + 1;
+                    int height = cross.Max(i => i / 384) - cross.Min(i => i / 384) + 1;
+                    Check(width >= 6 * scale && height >= 5 * scale && cross.Length < width * height * .7f,
+                        "each removal cross has visible open strokes, not a filled block");
+                    float centerX = (boxes[j].X + 9) * scale + 9, centerY = (boxes[j].Y + 9) * scale + 7;
+                    foreach (int sx in new[] { -1, 1 }) foreach (int sy in new[] { -1, 1 })
+                        Check(cross.Any(i => (i % 384 - centerX) * sx >= 1.5f * scale && (i / 384 - centerY) * sy >= 1.5f * scale),
+                            "each removal cross has all four diagonal arms, not a dot or single stroke");
                     Color center = pixels[(int)((boxes[j].Y + 9) * scale + 7) * 384 + (int)((boxes[j].X + 9) * scale + 9)];
                     Check(center.R > 80 && center.R > center.G * 1.5f && center.R > center.B * 1.5f,
                         "enabled and subdued removal crosses remain visibly red");

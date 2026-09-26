@@ -61,6 +61,7 @@ namespace JueMingR.TerrariaHost.Items
             if(host==null || !Active)return false;
             int account=Account(host.World.SessionPlayer,array);
             return account>=0 && host.Ownership.IsProtected(account,slot) &&
+                !(host.AllowsOwnedProcessing!=null && host.AllowsOwnedProcessing(array,slot)) &&
                 !(host.AllowsOwnedRecovery!=null && host.AllowsOwnedRecovery(array,slot)) &&
                 !(account==0 && host.Ownership.IsUseSlot(slot) && host.AllowsOwnedUse!=null && host.AllowsOwnedUse(slot));
         }
@@ -100,6 +101,11 @@ namespace JueMingR.TerrariaHost.Items
             if (!ReferenceEquals(array, host.World.SessionPlayer.inventory))
             { if (Main.mouseLeft || Main.mouseRight) host.Storage.InvalidateCapacity(); return; }
             if (slot < 0 || slot >= 58) return;
+            if(host.ControlledBag?.Invoke(array,slot)??false)return;
+            // Handle runs on hover even with both buttons released. That is not
+            // a manual transaction; only physical input creates this fact.
+            if(Terraria.GameInput.PlayerInput.MouseInfo.LeftButton==Microsoft.Xna.Framework.Input.ButtonState.Released &&
+                Terraria.GameInput.PlayerInput.MouseInfo.RightButton==Microsoft.Xna.Framework.Input.ButtonState.Released)return;
             // Physical release clears this in observation; vanilla consumes its
             // mouse flags before that point, so those flags cannot end ownership.
             host.World.ManualSlot = slot; host.World.ManualItem = array[slot];
@@ -135,7 +141,7 @@ namespace JueMingR.TerrariaHost.Items
         private static bool Sort() { return !Active || host.Ownership.ProtectedSlots == 0; }
         private static bool Buy(Player __instance, int __1, ref bool __result)
         {
-            if (!Active || !ReferenceEquals(__instance, host.World.SessionPlayer) || !host.Ownership.AnyProtected || (host.AllowsOwnedPayment?.Invoke()??false)) return true;
+            if (!Active || !ReferenceEquals(__instance, host.World.SessionPlayer) || !host.Ownership.AnyProtected || (host.AllowsOwnedPayment?.Invoke()??false) || (host.AllowsProcessingPayment?.Invoke()??false)) return true;
             // Custom currency backs up every source inventory. Normal currency
             // also writes change into empty slots, including an early Air reply
             // whose sibling source slots have not completed the batch yet.
@@ -170,7 +176,7 @@ namespace JueMingR.TerrariaHost.Items
             for (int n = 0; n < 58; n++)
             {
                 int i = __1 ? 57 - n : n; Item item = __instance.inventory[i];
-                if (item.type == __0 && item.stack > 0 && !Protected(item)) { host.World.ManualMaterials.Add(item); return; }
+                if (item.type == __0 && item.stack > 0 && !Protected(item)) { if(!(host.AllowsOwnedProcessing?.Invoke(__instance.inventory,i)??false))host.World.ManualMaterials.Add(item); return; }
             }
         }
         private static bool Wand(Player __instance, ref bool __result)

@@ -35,6 +35,8 @@ namespace JueMingR.TerrariaHost.Recovery
         private Part armed;
         internal Action<string,F5Rect> HotkeyClicked;
         internal readonly PotionConfigurationPopup PotionPopup;
+        internal float ContentBottom {get;private set;}
+        internal bool SharedMiscHeight {get;set;}
         private bool pagePointer,pageLeft,pageRight;
         internal bool OwnsPointer {get{return pagePointer || PotionPopup.OwnsPointer;}}
         internal bool OwnsTextToken {get{return input.OwnsTextToken;}}
@@ -137,7 +139,8 @@ namespace JueMingR.TerrariaHost.Recovery
                 logical.Clear();float y=0;
                 if(shell.Page==1){foreach(var e in shell.Layout.Elements)y=Math.Max(y,e.Rect.Bottom+6);Row(ref y,5);}
                 else{for(int i=0;i<5;i++)Row(ref y,i);if(editor==2)Editor(ref y);}
-                shell.Layout.SetRecoveryContentHeight(y);shell.ClampScroll();
+                ContentBottom=y;
+                if(shell.Page!=1 || !SharedMiscHeight){shell.Layout.SetRecoveryContentHeight(y);shell.ClampScroll();}
             }
             visible.Clear();icons.Clear();
             foreach(var p in logical)

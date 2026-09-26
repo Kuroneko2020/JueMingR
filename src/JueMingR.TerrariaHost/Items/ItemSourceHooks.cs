@@ -46,7 +46,7 @@ namespace JueMingR.TerrariaHost.Items
             Item item = __0[__2];
             if (item == null || item.type <= 0 || item.type >= ItemID.Sets.OpenableBag.Length || !ItemID.Sets.OpenableBag[item.type]) return;
             __state = new Origin(__3, item, null); current = __state; host.World.CausalDepth++;
-            if (ReferenceEquals(__0, __3.inventory)) { host.World.ManualSlot = __2; host.World.ManualItem = item; }
+            if (ReferenceEquals(__0, __3.inventory) && !(host.ControlledBag?.Invoke(__0,__2)??false)) { host.World.ManualSlot = __2; host.World.ManualItem = item; }
         }
         private static void GrantAfter(Item __0, Player __1, bool __result)
         { if (current != null && current.WorldItem == null && ReferenceEquals(current.Item, __0) && ReferenceEquals(current.Player, __1)) current.Opened = __result; }
@@ -86,7 +86,7 @@ namespace JueMingR.TerrariaHost.Items
             try
             {
             bool completed = returned && (origin.WorldItem != null ? origin.WorldItem.stack < origin.Before :
-                origin.Opened && origin.Item.stack == origin.Before - 1);
+                origin.Opened && (origin.Before==1 ? origin.Item.IsAir : origin.Item.stack == origin.Before - 1));
             if (!completed || !host.CanCapture || origin.Gained.Count == 0) return;
             ItemInventoryObservation inventory;
             if (!host.World.TryObserveAcquisition(out inventory)) return;
@@ -109,7 +109,8 @@ namespace JueMingR.TerrariaHost.Items
                         origin.Touched.Contains(new ItemIdentity(item.type, item.prefix)))) affected |= 1UL << i;
                 }
                 host.Ownership.HoldInterruptedSource(host.Runtime.Generation, affected);
-                host.SourceMessage = "手动物品操作中断，相关物品已暂停自动处理；其他物品不受影响。";
+                host.InterruptedProcessingSource?.Invoke(affected);
+                host.SourceMessage = "物品操作中断，相关物品已暂停自动处理；其他物品不受影响。";
             }
             catch { host.FailClosed(); }
         }

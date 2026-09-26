@@ -59,7 +59,9 @@ namespace Terraria
 
             foreach (bool nativeDrop in new[] { false, true })
             {
-                NewSession(0); Configure(false, false, true, trash: new[] { 8 }); p = Main.LocalPlayer;
+                NewSession(0); Configure(true, false, false); p = Main.LocalPlayer;
+                var target = new Chest(); target.item[0] = Make(8, 1);
+                NearbyChests.Targets.Add(new PositionedChest { chest = target });
                 p.inventory[10] = Make(8, 20); allowActions(false);
                 p.Pickup(new WorldItem { inner = Make(8, 3) }); Step();
                 Check(p.inventory[10].stack == 23, "unfocused acquisition waits before death");

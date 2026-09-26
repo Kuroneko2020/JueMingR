@@ -29,6 +29,7 @@ namespace JueMingR.TerrariaHost.Items
         internal int CausalDepth { get; set; }
         internal bool AutomaticOperation { get; set; }
         internal Func<Item, bool> AdditionalProtection { get; set; }
+        internal Func<Item, bool> ProcessingProtection { get; set; }
         internal ItemHostObservation(Func<long> generation, ItemOperationOwnership ownership, Func<bool> canStartActions)
         { this.generation = generation; this.ownership = ownership; this.canStartActions = canStartActions ?? throw new ArgumentNullException(nameof(canStartActions)); }
         internal bool CanStartActions { get { return canStartActions(); } }
@@ -149,7 +150,7 @@ namespace JueMingR.TerrariaHost.Items
         {
             return item.favorited || slot == player.selectedItem || slot == ManualSlot ||
                 ManualMaterials.Contains(item) || ReferenceEquals(item, Main.mouseItem) ||
-                player.inventoryChestStack[slot] || ownership.IsProtected(slot) ||
+                player.inventoryChestStack[slot] || ownership.IsProtected(slot) || (ProcessingProtection?.Invoke(item)??false) ||
                 (AdditionalProtection != null && AdditionalProtection(item));
         }
         private static bool Equal(ItemSlotObservation a, ItemSlotObservation b)

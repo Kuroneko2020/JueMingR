@@ -24,7 +24,7 @@ namespace NativeWorldTextProbe
         private static int recalls;
         internal static int Recalls {get{return recalls;}}
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static void Run(Action<object> visual=null, bool coins=false, bool about=false, bool recovery=false)
+        internal static void Run(Action<object> visual=null, bool coins=false, bool about=false, bool recovery=false, bool processing=false)
         {
             Require(IntPtr.Size==4,"G05 native fixture must use .NET Framework x86");
             Require(typeof(Main).Assembly.ManifestModule.ModuleVersionId==new Guid("2c29f6c3-4bd9-4add-9c58-da159804e083"),"fixed .8 MVID");
@@ -36,7 +36,7 @@ namespace NativeWorldTextProbe
             Main.ActivePlayerFileData=new Terraria.IO.PlayerFileData(Path.Combine(root,"fixture.plr"),false){Player=Main.LocalPlayer};
             Main.ActiveWorldFileData=new Terraria.IO.WorldFileData(Path.Combine(root,"fixture.wld"),false){UniqueId=Guid.NewGuid()};
             object context=Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Phase0SHarmonyWorker").GetNestedType("PostfixContext",Flags),Flags,null,
-                new object[]{(recovery?"recovery-buffs-services-":about?"about-help-feedback-":coins?"coin-deposit-":"favorite-quick-items-")+new string('5',40),Path.Combine(root,"evidence.txt"),root},null);
+                new object[]{(processing?"continuous-processing-":recovery?"recovery-buffs-services-":about?"about-help-feedback-":coins?"coin-deposit-":"favorite-quick-items-")+new string('5',40),Path.Combine(root,"evidence.txt"),root},null);
             var isolation=new Harmony("JueMingR.Tests.QuickItemOutlets");
             var inputHooks=new Harmony("JueMingR.Tests.QuickInput");
             try
@@ -46,6 +46,9 @@ namespace NativeWorldTextProbe
                 Patch(isolation,typeof(Player).GetMethod("Spawn",Flags,null,new[]{typeof(PlayerSpawnContext)},null),nameof(Recall));
                 Patch(isolation,typeof(Item).GetMethod("GetDrawHitbox",Flags,null,new[]{typeof(int),typeof(Player)},null),nameof(DrawHitbox));
                 Patch(isolation,typeof(NetMessage).GetMethod("SendPacket",Flags),nameof(NoNetwork));
+                // Headless processing preserves the native roll/payment; only
+                // its final cosmetic particle dispatch needs a graphics sink.
+                if(processing)Patch(isolation,typeof(Terraria.GameContent.Drawing.ParticleOrchestrator).GetMethod("RequestParticleSpawn",Flags),nameof(NoParticles));
                 Call(context,"InitializeRuntime",true);
                 Call(context,"InstallInformationSources");
                 Require((bool)Get(Get(context,"InformationReadiness"),"Installed"),"full G05 profile installs prior information source hooks");
@@ -62,6 +65,7 @@ namespace NativeWorldTextProbe
                 Set(input,"gameWindow",(Func<IntPtr>)(()=>new IntPtr(1)));Set(input,"foregroundWindow",(Func<IntPtr>)(()=>new IntPtr(1)));
                 Set(shell,"LayersReady",true);Set(Get(shell,"State"),"Ready",true);
                 Sample(input,new Keys[0]);Sample(input,new Keys[0]);
+                if(processing){NativeProcessingChecks.Run(context);visual?.Invoke(context);return;}
                 if(recovery){NativeRecoveryChecks.Run(context);visual?.Invoke(context);return;}
                 var entry=new QuickItemEntry("0123456789abcdef0123456789abcdef",50,QuickItemMode.Use,true,true);string reason;
                 Require(settings.TryChange(new QuickItemDocument(false,true,new[]{entry}),entry.Id,out reason),"isolated entry commit admitted: "+reason);
@@ -109,6 +113,7 @@ namespace NativeWorldTextProbe
                 var quick=GetOptional(context,"QuickItems");if(quick!=null)Call(quick,"Exit",null,EventArgs.Empty);
                 var coin=GetOptional(context,"CoinDeposit");if(coin!=null)Call(coin,"Exit",null,EventArgs.Empty);
                 var recoveryHost=GetOptional(context,"Recovery");if(recoveryHost!=null){Call(recoveryHost,"Exit",null,EventArgs.Empty);assembly.GetType("JueMingR.TerrariaHost.Recovery.RecoveryHooks").GetMethod("Uninstall",Flags).Invoke(null,null);}
+                var processingHost=GetOptional(context,"Processing");if(processingHost!=null){Call(processingHost,"Exit",null,EventArgs.Empty);assembly.GetType("JueMingR.TerrariaHost.Processing.ProcessingHooks").GetMethod("Uninstall",Flags).Invoke(null,null);assembly.GetType("JueMingR.TerrariaHost.Processing.ReforgeHooks").GetMethod("Uninstall",Flags).Invoke(null,null);}
                 var onboarding=GetOptional(context,"onboarding");if(onboarding!=null)Call(onboarding,"Exit",null,EventArgs.Empty);
                 var browser=GetOptional(context,"Browser");if(browser!=null)((IDisposable)browser).Dispose();StopContext(context);
                 foreach(var method in isolation.GetPatchedMethods().ToArray())isolation.Unpatch(method,HarmonyPatchType.All,isolation.Id);
@@ -155,5 +160,6 @@ namespace NativeWorldTextProbe
         private static bool Recall(PlayerSpawnContext __0) {Require(__0==PlayerSpawnContext.RecallFromItem,"only recall outlet intercepted");recalls++;return false;}
         private static bool DrawHitbox(ref Rectangle __result) {__result=new Rectangle(0,0,24,24);return false;}
         private static bool NoNetwork() {throw new InvalidOperationException("Isolated fixture attempted real network output.");}
+        private static bool NoParticles(){return false;}
     }
 }

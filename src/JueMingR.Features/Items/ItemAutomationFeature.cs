@@ -5,7 +5,7 @@ using JueMingR.Platform.Runtime;
 
 namespace JueMingR.Features.Items
 {
-    // This owner knows business priority and finite acquisition intentions. The
+    // This owner knows inventory rules and finite storage acquisitions. The
     // operation port owns actual conflicts/receipts, including its wider sale range.
     public sealed class ItemAutomationFeature : IRuntimeFeature
     {
@@ -19,6 +19,7 @@ namespace JueMingR.Features.Items
         private bool active, immediate = true, hasTick;
         private ulong lastTick;
         private long session;
+        private int nextSlot;
         public bool HasFailed { get; private set; }
         public bool Enabled { get { return !HasFailed && (settings.StackEnabled || settings.SellEnabled || settings.DiscardEnabled); } }
         public ItemAutomationFeature(IItemObservationSource source, IItemOperationPort operations, Func<bool> canStartActions = null)
@@ -92,16 +93,23 @@ namespace JueMingR.Features.Items
         {
             if (!active || !Enabled || source.SessionGeneration != session) return;
             PruneAcquisitions(null, tick);
-            if (acquisitions.Count == 0 || !canStartActions()) return;
+            // Sale/trash lists apply to current inventory. Only storage needs a
+            // finite causal acquisition; do not fabricate one while scanning.
+            bool inventoryDemand = settings.SellEnabled && sellTypes.Count != 0 || settings.DiscardEnabled && discardTypes.Count != 0;
+            if ((!inventoryDemand && (!settings.StackEnabled || acquisitions.Count == 0)) || !canStartActions()) return;
             if (!immediate && hasTick && unchecked(tick - lastTick) < 6) return;
             immediate = false; hasTick = true; lastTick = tick;
             ItemInventoryObservation inventory;
             if (!source.TryObserve(out inventory) || inventory == null || inventory.Session != session) return;
             PruneAcquisitions(inventory, tick);
+            // New low-slot products may arrive every Update. Continue after the
+            // last attempted slot, then wrap once, so older high slots progress.
+            for(int pass=0;pass<2;pass++)
             foreach (ItemSlotObservation slot in inventory.Slots)
             {
+                if(pass==0 ? slot.Slot<nextSlot : slot.Slot>=nextSlot)continue;
                 ItemAcquisitionOpportunity opportunity;
-                if (!acquisitions.TryGetValue(slot.Identity, out opportunity) || !opportunity.Contains(slot)) continue;
+                acquisitions.TryGetValue(slot.Identity, out opportunity);
                 if (!slot.IsCandidate || operations.Ownership.IsProtected(slot.Slot) || attemptedRevision[slot.Slot] == inventory.Revision) continue;
                 // Requests execute synchronously on the game thread. Recheck this
                 // owner's current source/rules here; the Host then rechecks the
@@ -124,7 +132,7 @@ namespace JueMingR.Features.Items
                     result = operations.Execute(new DiscardItemRequest(session, slot));
                 }
                 if ((result == null || result.State == ItemOperationState.NotApplicable) &&
-                    settings.StackEnabled && slot.MaximumStack > 1)
+                    settings.StackEnabled && slot.MaximumStack > 1 && opportunity != null && opportunity.Contains(slot))
                 {
                     if (operations.Ownership.StoreBlocked) continue;
                     var group = new List<ItemSlotObservation>();
@@ -138,14 +146,17 @@ namespace JueMingR.Features.Items
                     if (result.State != ItemOperationState.Rejected)
                         foreach (ItemSlotObservation submitted in group) opportunity.Retire(submitted);
                 }
-                // A submitted/finished stack cannot be replaced by a subsequent
-                // withdrawal before the next six-tick observation. Unknown native
-                // results retain their separate resource ownership, not permission
-                // to submit that member again. A favorite-only group ends too.
-                if (result == null || result.State != ItemOperationState.Rejected) opportunity.Retire(slot);
-                if (opportunity.Count == 0) acquisitions.Remove(slot.Identity);
+                // Sale/trash may consume a storage member, but later withdrawals
+                // must never inherit its storage permission. Unknown results keep
+                // their independent resource ownership for every action.
+                if (opportunity != null)
+                {
+                    if (result == null || result.State != ItemOperationState.Rejected) opportunity.Retire(slot);
+                    if (opportunity.Count == 0) acquisitions.Remove(slot.Identity);
+                }
                 if (result == null) continue;
                 attemptedRevision[slot.Slot] = inventory.Revision;
+                nextSlot=(slot.Slot+1)%58;
                 return; // One admitted attempt per observation; no stale batch walks.
             }
         }
@@ -160,6 +171,6 @@ namespace JueMingR.Features.Items
             }
             foreach (ItemIdentity key in expired) acquisitions.Remove(key);
         }
-        private void ResetAttempts() { for (int i = 0; i < attemptedRevision.Length; i++) attemptedRevision[i] = Int64.MinValue; }
+        private void ResetAttempts() { nextSlot=0;for (int i = 0; i < attemptedRevision.Length; i++) attemptedRevision[i] = Int64.MinValue; }
     }
 }

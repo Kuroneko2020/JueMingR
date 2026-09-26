@@ -11,11 +11,13 @@ namespace JueMingR.ArchitectureTests
         {
             try
             {
-                ReliableSourcesForEveryAction();
+                CurrentInventorySalesAndDiscards();
+                StorageRequiresReliableSource();
                 FiniteMembersDoNotAdoptWithdrawals();
                 InputLifetimeAndRetirement();
                 FallbackAndRemainingGroup();
                 FeedbackDoesNotChangeOpportunity();
+                RepeatedLowSlotDoesNotStarve();
                 var port = new Boundary();
                 var feature = new ItemAutomationFeature(port, port);
                 feature.OnSessionStarted();
@@ -61,9 +63,40 @@ namespace JueMingR.ArchitectureTests
             }
             catch (Exception e) { failures.Add("item automation decisions: " + e.Message); }
         }
-        private static void ReliableSourcesForEveryAction()
+        private static void CurrentInventorySalesAndDiscards()
         {
-            foreach (ItemActionKind action in new[] { ItemActionKind.Sell, ItemActionKind.Discard, ItemActionKind.Stack })
+            foreach (ItemActionKind action in new[] { ItemActionKind.Sell, ItemActionKind.Discard })
+            {
+                var port = new Boundary(); var feature = new ItemAutomationFeature(port, port);
+                var settings = ItemAutomationSettings.Default.WithEnabled(action, true)
+                    .WithTypes(ItemListKind.Sell, new[] { 9 }).WithTypes(ItemListKind.Discard, new[] { 9 });
+                feature.Configure(settings); feature.OnSessionStarted();
+                port.Set(true, Slot(1, 9, 20), Slot(2, 9, 8, true), Slot(3, 10, 6));
+                feature.Update(0);
+                Require(port.Calls.Count == 1 && port.Calls[0].EndsWith(":1:20"), "current listed inventory needs no acquisition: " + action);
+                for (ulong tick = 1; tick < 600; tick++) feature.Update(tick);
+                Require(port.Calls.Count == 1 && port.ObservationReads == 100, "stable inventory has bounded cadence and no repeated unchanged attempt");
+                port.Set(true, Slot(1, 9, 7), Slot(2, 9, 8, true)); feature.Update(600);
+                Require(port.Calls.Count == 2 && port.Calls[1].EndsWith(":1:7"), "later withdrawal is eligible current stock, not reuse of acquisition");
+                port.Set(true, Slot(2, 9, 8)); feature.Update(606);
+                Require(port.Calls.Count == 3 && port.Calls[2].EndsWith(":2:8"), "removing favorite makes current listed inventory eligible");
+                feature.Configure(settings.WithEnabled(action, false)); int reads = port.ObservationReads;
+                feature.Update(612); Require(port.ObservationReads == reads, "disabled processing does not observe inventory");
+                feature.Configure(settings.WithTypes(ItemListKind.Sell, new int[0]).WithTypes(ItemListKind.Discard, new int[0]));
+                feature.Update(613); Require(port.ObservationReads == reads, "empty lists without stack demand do not observe inventory");
+            }
+            var boundary = new Boundary(); var selector = new ItemAutomationFeature(boundary, boundary);
+            selector.Configure(new ItemAutomationSettings(true, true, true, new[] { 9 }, new[] { 9 })); selector.OnSessionStarted();
+            boundary.Set(true, Slot(1, 9, 20)); selector.Update(0);
+            Require(boundary.Calls.Count == 1 && boundary.Calls[0] == "sell:1:20", "current inventory retains sale priority");
+            boundary.Set(false, Slot(1, 9, 7)); selector.Update(6);
+            Require(boundary.Calls.Count == 2 && boundary.Calls[1] == "discard:1:7", "closed shop permits listed discard without acquisition");
+            boundary.Set(false, Slot(1, 10, 5)); selector.Update(12);
+            Require(boundary.Calls.Count == 2, "inventory scan never fabricates stack acquisition");
+        }
+        private static void StorageRequiresReliableSource()
+        {
+            foreach (ItemActionKind action in new[] { ItemActionKind.Stack })
             {
                 var port = new Boundary();
                 var feature = new ItemAutomationFeature(port, port);
@@ -89,17 +122,18 @@ namespace JueMingR.ArchitectureTests
         {
             var port = new Boundary(); var feature = new ItemAutomationFeature(port, port);
             feature.OnSessionStarted();
-            var settings = ItemAutomationSettings.Default.WithTypes(ItemListKind.Discard, new[] { 9 }).WithEnabled(ItemActionKind.Discard, true);
+            var settings = ItemAutomationSettings.Default.WithEnabled(ItemActionKind.Stack, true);
             feature.Configure(settings);
             port.Set(false, Slot(1, 9, 10), Slot(2, 9, 13), Slot(3, 9, 8, true));
-            Acquire(feature, port, 0); feature.Update(0);
+            Acquire(feature, port, 0);
+            Require(port.Ownership.TryBeginUse(1, 2, 1), "temporary second member protection admitted");
+            feature.Update(0); port.Ownership.EndUse(1, 1);
             port.Set(false, Slot(1, 9, 40), Slot(2, 9, 13), Slot(3, 9, 8, true)); feature.Update(6);
-            Require(port.Calls.Count == 2 && port.Calls[1] == "discard:2:13", "remaining original member survives; consumed slot refill is excluded");
+            Require(port.Calls.Count == 2 && port.Calls[1] == "store:2:13", "remaining original member survives; consumed slot refill is excluded from storage");
             port.Set(false, Slot(1, 9, 40), Slot(3, 9, 8)); feature.Update(12);
             Require(port.Calls.Count == 2, "favorite-only remainder cannot keep a completed opportunity alive");
-            // No action is currently applicable. Editing its list afterwards is
-            // a policy change, not another acquisition.
-            feature.Configure(settings.WithTypes(ItemListKind.Discard, new[] { 10 }));
+            // Re-enabling storage is not another acquisition.
+            feature.Configure(settings.WithEnabled(ItemActionKind.Stack, false));
             Acquire(feature, port, 13); feature.Update(13);
             feature.Configure(settings); feature.Update(14);
             Require(port.Calls.Count == 2, "no-target/list-change cannot resurrect old members");
@@ -116,14 +150,15 @@ namespace JueMingR.ArchitectureTests
             Require(port.Calls.Count == 2 && port.Calls[1] == "store:0:23", "actual not-applicable sale must reach legal storage");
             port.Next = new ItemOperationResult(ItemOperationState.Completed);
             port.Set(true, Slot(0, 9, 10), Slot(1, 9, 13)); Acquire(feature, port, 10); feature.Update(10);
-            port.Set(false, Slot(1, 9, 13)); feature.Update(16);
-            Require(port.Calls[port.Calls.Count - 1] == "store:1:13", "selling one source stack must not retire the other eligible stack's acquisition");
+            Require(port.Calls[port.Calls.Count-1]=="sell:1:13","fair cursor continues after the prior slot zero attempt");
+            port.Set(false, Slot(0, 9, 10)); feature.Update(16);
+            Require(port.Calls[port.Calls.Count - 1] == "store:0:10", "selling one source stack must not retire the other eligible stack's acquisition");
         }
         private static void InputLifetimeAndRetirement()
         {
             bool ready = false;
             var port = new Boundary(); var feature = new ItemAutomationFeature(port, port, () => ready);
-            var settings = ItemAutomationSettings.Default.WithEnabled(ItemActionKind.Discard, true).WithTypes(ItemListKind.Discard, new[] { 9 });
+            var settings = ItemAutomationSettings.Default.WithEnabled(ItemActionKind.Stack, true);
             feature.Configure(settings); feature.OnSessionStarted();
             port.Set(false, Slot(1, 9, 23)); Acquire(feature, port, 0); feature.Update(1);
             Require(port.Calls.Count == 0, "source capture does not bypass current input permission");
@@ -158,7 +193,7 @@ namespace JueMingR.ArchitectureTests
         {
             var port = new Boundary { Next = new ItemOperationResult(ItemOperationState.Rejected) };
             var feature = new ItemAutomationFeature(port, port);
-            var settings = ItemAutomationSettings.Default.WithEnabled(ItemActionKind.Discard, true).WithTypes(ItemListKind.Discard, new[] { 9 });
+            var settings = ItemAutomationSettings.Default.WithEnabled(ItemActionKind.Stack, true);
             feature.Configure(settings); feature.OnSessionStarted(); port.Set(false, Slot(1, 9, 23));
             Acquire(feature, port, 0); feature.Update(0);
             Require(port.Calls.Count == 1, "initial rejected attempt is visible to this boundary");
@@ -172,6 +207,19 @@ namespace JueMingR.ArchitectureTests
             Require(port.Calls.Count == 2, "feedback change preserves actual pending member until legitimate observation changes");
             port.Set(false, Slot(1, 9, 23)); feature.Configure(settings); feature.Update(18);
             Require(port.Calls.Count == 2, "feedback re-enable cannot resurrect the completed opportunity");
+        }
+        private static void RepeatedLowSlotDoesNotStarve()
+        {
+            var port=new Boundary();var feature=new ItemAutomationFeature(port,port);
+            feature.Configure(new ItemAutomationSettings(false,false,true,new int[0],new[]{9,10}));feature.OnSessionStarted();
+            port.Set(false,Slot(1,9,1),Slot(49,10,23));
+            feature.RegisterAcquisitions(new[]{new ItemIdentity(9,0)},port.Observation,0);feature.Update(0);
+            for(ulong tick=1;tick<4;tick++)
+            {
+                port.Set(false,Slot(1,9,1),Slot(49,10,23));
+                feature.RegisterAcquisitions(new[]{new ItemIdentity(9,0)},port.Observation,tick);feature.Update(tick);
+            }
+            Require(port.Calls.Contains("discard:49:23"),"repeated low-slot native gains must not starve old high-slot inventory with no acquisition");
         }
         private static void Acquire(ItemAutomationFeature feature, Boundary port, ulong tick)
         { feature.RegisterAcquisitions(new[] { new ItemIdentity(9, 0) }, port.Observation, tick); }

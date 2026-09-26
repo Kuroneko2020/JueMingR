@@ -152,7 +152,7 @@ namespace Terraria
                 var input = new F5Input { Active = true, Focused = true, Width = 1920, Height = 1080, Scale = 1, X = name.Rect.X + 2, Y = name.Rect.Y + 2 };
                 shell.Update(input);
                 string text = renderer.ResolveHint(shell, presentation, false, false, out target);
-                Check(text == name.Description.Text && text.Contains("刚拾取的") && text.Contains("出售→丢弃→存放"), "player acquisition summary and priority reach the actual name hint");
+                Check(text == name.Description.Text && text.Contains(name == names[0] ? "刚拾取的" : "背包中未收藏的") && text.Contains("出售→丢弃→存放"), "storage acquisition and sale/trash inventory scope reach the actual name hint");
                 Prepare(renderer, shell, presentation, font, measure);
                 Check(renderer.HintLayout.Visible && string.Concat(renderer.HintLayout.Lines.Select(e => e.Text)) == text,
                     "real projected item name reaches the shared production preparation");

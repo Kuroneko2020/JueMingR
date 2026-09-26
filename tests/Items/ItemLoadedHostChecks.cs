@@ -70,8 +70,10 @@ namespace Terraria
             discard = settings.GetType().GetMethod("WithEnabled").Invoke(discard, new[] { Enum.ToObject(action, 2), (object)true });
             items.GetType().GetMethod("Change", Flags).Invoke(items, new[] { discard });
             Main.LocalPlayer.inventory[10] = new Item { type = 100, stack = 2 }; main.RunUpdateLoop(7);
-            Check(Main.LocalPlayer.inventory[10].stack == 2, "loaded discard list does not invent source for old inventory");
+            Check(Main.LocalPlayer.inventory[10].IsAir && Main.LocalPlayer.trashItem.stack == 2, "loaded discard list processes old unfavorited inventory without source");
+            PopupText.Reset(); Item.AffixReads = 0;
             HostInputChecks.Foreground = false; main.RunUpdateLoop(1);
+            Main.LocalPlayer.inventory[10] = new Item { type = 100, stack = 2 };
             Main.LocalPlayer.Pickup(new WorldItem { inner = new Item { type = 100, stack = 1 } }); main.RunUpdateLoop(7);
             Check(Main.LocalPlayer.inventory[10].stack == 3, "loaded input gate blocks new actions but keeps genuine source capture");
             HostInputChecks.Foreground = true; Main.SampleLeft = true; main.RunUpdateLoop(1);
@@ -100,16 +102,16 @@ namespace Terraria
             sale = settings.GetType().GetMethod("WithEnabled").Invoke(sale, new[] { Enum.ToObject(action, 1), (object)true });
             items.GetType().GetMethod("Change", Flags).Invoke(items, new[] { sale });
             Main.playerInventory = true; Main.npcShop = 1;
-            Main.LocalPlayer.inventory[10] = new Item { type = 100, stack = 2 }; main.RunUpdateLoop(7);
-            Check(Main.LocalPlayer.inventory[10].stack == 2, "loaded sale list/shop does not invent source for old inventory");
-            Main.LocalPlayer.Pickup(new WorldItem { inner = new Item { type = 100, stack = 1 } }); main.RunUpdateLoop(7);
+            Main.LocalPlayer.inventory[10] = new Item { type = 100, stack = 3 }; main.RunUpdateLoop(7);
             Check(Main.LocalPlayer.inventory[10].IsAir && Main.LocalPlayer.inventory[50].stack == 15 && Main.instance.shop[1].item[0].buyOnce,
-                "production configuration/native sale verifies source, coin value and buyback");
+                "production configuration/native sale processes current inventory with exact coin value and buyback");
             object stack = settings.GetType().GetMethod("WithEnabled").Invoke(settings, new[] { Enum.ToObject(action, 0), (object)true });
             items.GetType().GetMethod("Change", Flags).Invoke(items, new[] { stack });
             Main.LocalPlayer.inventory[10] = new Item { type = 8, stack = 20 }; main.RunUpdateLoop(1);
             var chest = new Chest(); chest.item[0] = new Item { type = 8, stack = 1 };
             GameContent.NearbyChests.Targets.Add(new GameContent.PositionedChest { chest = chest });
+            main.RunUpdateLoop(7);
+            Check(Main.LocalPlayer.inventory[10].stack == 20 && chest.item[0].stack == 1, "loaded storage still requires new reliable acquisition despite an available target");
             Main.LocalPlayer.Pickup(new WorldItem { inner = new Item { type = 8, stack = 3 } }); main.RunUpdateLoop(7);
             if (!Main.LocalPlayer.inventory[10].IsAir)
             {
