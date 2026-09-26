@@ -2,6 +2,12 @@
 
 本文件是 Codex 和其他 Agent 的项目总入口及路由表，应纳入 Git。这里只记录稳定的项目级信息和路由，不记录动态任务进度。
 
+## 产品定位与权威入口
+
+JueMingR 是原版 Terraria 客户端辅助工具，不依赖 tModLoader；与 JueMingZ 的独立重写关系不构成全部产品定义或功能上限。完整恢复有意义旧能力的目标保留，已批准的改进和新能力按各自任务开展，Agent 不得自行扩展。
+
+定位说明由[根 README](README.md)承载，恢复与演进的适用边界由 [Legacy 规则](docs/规范/Legacy平替与行为契约规则.md#一目的与适用范围)承载。本节澄清及关联修订已随 [ADR-0015（Accepted）](docs/决策/ADR-0015-产品定位与能力演进边界.md) 获所有者接受，自 [PR #104](https://github.com/Kuroneko2020/JueMingR/pull/104) 合并进入 `main` 后生效，未被有限替代的原有规则继续有效。
+
 ## 阶段与任务授权
 
 当前阶段、当前任务和阻塞查 [稳定起步总跟踪 Issue #7](https://github.com/Kuroneko2020/JueMingR/issues/7)，具体实施范围查其指向的任务 Issue。[稳定起步路线图](docs/计划/稳定起步路线图.md) 规定方向和退出条件，不是每次任务的自动授权。
