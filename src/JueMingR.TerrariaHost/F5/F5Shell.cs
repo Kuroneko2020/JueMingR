@@ -117,6 +117,10 @@ namespace JueMingR.TerrariaHost.F5
         }
         internal void AttachBrowser(IBrowserPage page) { if (Browser != null) throw new InvalidOperationException("Browser already attached."); Browser = page; }
         internal bool CanTargetInput { get { return CanTargetActions(true); } }
+        // Processing evaluates native shops/reforge per business. This shared
+        // permission excludes public UI owners without banning those contexts.
+        internal bool CanProcessingInput {get{return !failed && LayersReady && biome.SharedRuntime.IsSessionActive && CanPresent(false,true) && !State.Visible &&
+            !inputState.HotkeyCapture && !OwnsPointer && !(information!=null && information.Adjustment.Active) && !adjustmentPending && !Main.clothesWindow && !Main.hairWindow;}}
         // Background buffs share every UI safety condition. Focus is the only
         // presentation exception; no keyboard or pointer permission is granted.
         internal bool CanBackgroundBuff { get { return !inputState.IsFocused && CanTargetActions(false); } }

@@ -19,6 +19,7 @@ namespace JueMingR.Features.Items
         private bool active, immediate = true, hasTick;
         private ulong lastTick;
         private long session;
+        private int nextSlot;
         public bool HasFailed { get; private set; }
         public bool Enabled { get { return !HasFailed && (settings.StackEnabled || settings.SellEnabled || settings.DiscardEnabled); } }
         public ItemAutomationFeature(IItemObservationSource source, IItemOperationPort operations, Func<bool> canStartActions = null)
@@ -98,8 +99,12 @@ namespace JueMingR.Features.Items
             ItemInventoryObservation inventory;
             if (!source.TryObserve(out inventory) || inventory == null || inventory.Session != session) return;
             PruneAcquisitions(inventory, tick);
+            // New low-slot products may arrive every Update. Continue after the
+            // last attempted slot, then wrap once, so older high slots progress.
+            for(int pass=0;pass<2;pass++)
             foreach (ItemSlotObservation slot in inventory.Slots)
             {
+                if(pass==0 ? slot.Slot<nextSlot : slot.Slot>=nextSlot)continue;
                 ItemAcquisitionOpportunity opportunity;
                 if (!acquisitions.TryGetValue(slot.Identity, out opportunity) || !opportunity.Contains(slot)) continue;
                 if (!slot.IsCandidate || operations.Ownership.IsProtected(slot.Slot) || attemptedRevision[slot.Slot] == inventory.Revision) continue;
@@ -146,6 +151,7 @@ namespace JueMingR.Features.Items
                 if (opportunity.Count == 0) acquisitions.Remove(slot.Identity);
                 if (result == null) continue;
                 attemptedRevision[slot.Slot] = inventory.Revision;
+                nextSlot=(slot.Slot+1)%58;
                 return; // One admitted attempt per observation; no stale batch walks.
             }
         }
@@ -160,6 +166,6 @@ namespace JueMingR.Features.Items
             }
             foreach (ItemIdentity key in expired) acquisitions.Remove(key);
         }
-        private void ResetAttempts() { for (int i = 0; i < attemptedRevision.Length; i++) attemptedRevision[i] = Int64.MinValue; }
+        private void ResetAttempts() { nextSlot=0;for (int i = 0; i < attemptedRevision.Length; i++) attemptedRevision[i] = Int64.MinValue; }
     }
 }

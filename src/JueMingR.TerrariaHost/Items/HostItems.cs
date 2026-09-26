@@ -36,6 +36,11 @@ namespace JueMingR.TerrariaHost.Items
         internal Func<int, bool> AllowsOwnedUse;
         internal Func<Item[],int,bool> AllowsOwnedRecovery {get;set;}
         internal Func<bool> AllowsOwnedPayment {get;set;}
+        internal Func<Item[],int,bool> AllowsOwnedProcessing {get;set;}
+        internal Func<Item[],int,bool> ControlledBag {get;set;}
+        internal Func<bool> ObservesProcessing {get;set;}
+        internal Action<ulong> InterruptedProcessingSource {get;set;}
+        internal Func<bool> AllowsProcessingPayment {get;set;}
         internal string CapabilityError { get; private set; }
         internal string SourceMessage { get; set; }
         internal Exception SetupError { get; private set; }
@@ -103,9 +108,9 @@ namespace JueMingR.TerrariaHost.Items
             return result.ToArray();
         }
         internal bool CanCapture
-        { get { return CanObserve; } }
+        { get { return Feature.Enabled && CanObserve; } }
         internal bool CanObserve
-        { get { return !stopping && Available && Feature.Enabled && Preferences.IsLoaded &&
+        { get { return !stopping && Available && (Feature.Enabled || (ObservesProcessing?.Invoke()??false)) && Preferences.IsLoaded &&
                     Runtime.IsSessionActive && Thread.CurrentThread.ManagedThreadId == ThreadId && World.Player != null && !World.AutomaticOperation; } }
         public void OnSessionStarted()
         { SourceMessage = null; Ownership.SetSession(Runtime.Generation); World.BeginSession(); actionPlayerAvailable = World.Player != null; Feature.OnSessionStarted(); }

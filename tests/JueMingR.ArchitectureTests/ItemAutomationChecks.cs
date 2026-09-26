@@ -16,6 +16,7 @@ namespace JueMingR.ArchitectureTests
                 InputLifetimeAndRetirement();
                 FallbackAndRemainingGroup();
                 FeedbackDoesNotChangeOpportunity();
+                RepeatedLowSlotDoesNotStarve();
                 var port = new Boundary();
                 var feature = new ItemAutomationFeature(port, port);
                 feature.OnSessionStarted();
@@ -116,8 +117,9 @@ namespace JueMingR.ArchitectureTests
             Require(port.Calls.Count == 2 && port.Calls[1] == "store:0:23", "actual not-applicable sale must reach legal storage");
             port.Next = new ItemOperationResult(ItemOperationState.Completed);
             port.Set(true, Slot(0, 9, 10), Slot(1, 9, 13)); Acquire(feature, port, 10); feature.Update(10);
-            port.Set(false, Slot(1, 9, 13)); feature.Update(16);
-            Require(port.Calls[port.Calls.Count - 1] == "store:1:13", "selling one source stack must not retire the other eligible stack's acquisition");
+            Require(port.Calls[port.Calls.Count-1]=="sell:1:13","fair cursor continues after the prior slot zero attempt");
+            port.Set(false, Slot(0, 9, 10)); feature.Update(16);
+            Require(port.Calls[port.Calls.Count - 1] == "store:0:10", "selling one source stack must not retire the other eligible stack's acquisition");
         }
         private static void InputLifetimeAndRetirement()
         {
@@ -172,6 +174,19 @@ namespace JueMingR.ArchitectureTests
             Require(port.Calls.Count == 2, "feedback change preserves actual pending member until legitimate observation changes");
             port.Set(false, Slot(1, 9, 23)); feature.Configure(settings); feature.Update(18);
             Require(port.Calls.Count == 2, "feedback re-enable cannot resurrect the completed opportunity");
+        }
+        private static void RepeatedLowSlotDoesNotStarve()
+        {
+            var port=new Boundary();var feature=new ItemAutomationFeature(port,port);
+            feature.Configure(new ItemAutomationSettings(false,false,true,new int[0],new[]{9,10}));feature.OnSessionStarted();
+            port.Set(false,Slot(1,9,1),Slot(49,10,23));
+            feature.RegisterAcquisitions(new[]{new ItemIdentity(9,0),new ItemIdentity(10,0)},port.Observation,0);feature.Update(0);
+            for(ulong tick=1;tick<4;tick++)
+            {
+                port.Set(false,Slot(1,9,1),Slot(49,10,23));
+                feature.RegisterAcquisitions(new[]{new ItemIdentity(9,0)},port.Observation,tick);feature.Update(tick);
+            }
+            Require(port.Calls.Contains("discard:49:23"),"repeated low-slot native gains must not starve the older high-slot member");
         }
         private static void Acquire(ItemAutomationFeature feature, Boundary port, ulong tick)
         { feature.RegisterAcquisitions(new[] { new ItemIdentity(9, 0) }, port.Observation, tick); }
