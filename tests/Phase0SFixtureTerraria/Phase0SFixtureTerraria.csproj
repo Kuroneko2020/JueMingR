@@ -53,6 +53,7 @@
     <Compile Include="..\..\src\JueMingR.TerrariaHost\Hotkeys\HotkeyPopupView.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\Hotkeys\VanillaHotkeyConflicts.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\Items\*.cs" Link="Production\Items\%(Filename)%(Extension)" />
+    <Compile Include="..\..\src\JueMingR.TerrariaHost\Feedback\NativePopupText.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\Notes\NotesInput.cs" Link="Production\NotesInput.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\Notes\NotesPresentation.cs" Link="Production\NotesPresentation.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\Notes\NotesClipboard.cs" Link="Production\NotesClipboard.cs" />

@@ -162,3 +162,5 @@ fixture 消费者严格保留关键顺序：采样 → 生产 input postfix → 
 沿用现有包 builder 的 `Phase0UF5UI` profile，ID 为 `phase0u-f5-ui-<FULL_SHA>`，ZIP 为 `JueMingR-Phase0U-F5UI-<FULL_SHA>.zip`。只从被审查 clean commit 构建；包内不带游戏、ReLogic/XNA、Legacy、字体材质、私人路径、原始调查或旧 evidence。安装恢复脚本的所有权合同和 Bootstrap evidence 语义保持不变。
 
 项目所有者体验接受与必要技术证据分别成立后，按对应任务的明确授权保存本包证据，并使用匹配包的原脚本安全恢复测试安装；独立机械复核通过后完成文档最终化与合并收口。Agent 不启动或操作 Terraria。本次基础接受不自动授权后续功能、重新安装测试包或正式发行；后续任务范围仍由对应 Issue 的明确授权决定。
+
+本批本地短提示：[#101](https://github.com/Kuroneko2020/JueMingR/issues/101) 的开发授权只为合法热键的真实开关变化新增有限本地回执，不改变本页普通 F5 操作与加载／保存的静默约定，不增加行高。短操作结果、持续错误、输入校验和外部宣告各自通道见[本地短提示合同](../功能介绍/本地短提示与快捷键反馈行为合同.md)，当前仍为分支实现，产品体验与合并待接受。

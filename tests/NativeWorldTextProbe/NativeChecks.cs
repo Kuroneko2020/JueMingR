@@ -14,6 +14,11 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if(scope=="ShortFeedbackCpu" || scope=="ShortFeedbackVisual")
+            {
+                Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-short-feedback-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
+                NativeQuickItemChecks.Run(scope=="ShortFeedbackVisual"?(Action<object>)(context=>{using(var graphics=new ProbeGraphics(content))NativeShortFeedbackVisualChecks.Run(context,graphics,output);}):NativeShortFeedbackChecks.Run,processing:true,shortFeedback:true);return 0;
+            }
             if(scope=="ProcessingCpu" || scope=="ProcessingVisual")
             {
                 Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-processing-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);

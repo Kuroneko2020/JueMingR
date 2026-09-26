@@ -55,9 +55,15 @@ namespace JueMingR.TerrariaHost.Processing
         internal bool Value(int feature){return Available && Settings[feature].Ready && Settings[feature].Value.Enabled;}
         internal void Set(int feature,bool value){if(Controls(feature))Settings[feature].Set(new ProcessingOptions(value,Settings[feature].Value.Names));}
         internal void Poll(){foreach(var s in Settings)s.Poll();}
-        internal void Register(JueMingR.Platform.Hotkeys.HotkeyRegistry registry)
+        internal void Register(JueMingR.Platform.Hotkeys.HotkeyRegistry registry, Hotkeys.HotkeyStateFeedback feedback = null)
         {
-            for(int i=0;i<3;i++){int feature=i;registry.Register(new JueMingR.Platform.Hotkeys.HotkeyAction(Actions[i],Names[i],JueMingR.Platform.Hotkeys.HotkeyContext.Gameplay,()=>Controls(feature),()=>Set(feature,!Settings[feature].Value.Enabled)));}
+            for(int i=0;i<3;i++)
+            {
+                int feature=i;var settings=Settings[feature];Action command=()=>Set(feature,!settings.Value.Enabled);
+                if(feedback!=null)command=feedback.Committed(Actions[i],Names[i],command,()=>Value(feature)?1:0,()=>Controls(feature),
+                    ()=>settings.AcceptedCommandId,()=>settings.CompletedCommandId,()=>settings.CompletionSucceeded);
+                registry.Register(new JueMingR.Platform.Hotkeys.HotkeyAction(Actions[i],Names[i],JueMingR.Platform.Hotkeys.HotkeyContext.Gameplay,()=>Controls(feature),command));
+            }
         }
         internal bool Admit(Player p)
         {

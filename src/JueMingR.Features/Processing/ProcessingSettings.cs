@@ -17,6 +17,10 @@ namespace JueMingR.Features.Processing
         public bool Protected {get;private set;}
         public bool Ready {get{return Loaded && !Busy && !Protected && Message==null;}}
         public long Revision {get;private set;}
+        // Observe the existing commit, without a second worker result consumer.
+        public long AcceptedCommandId {get;private set;}
+        public long CompletedCommandId {get;private set;}
+        public bool CompletionSucceeded {get;private set;}
         public string Message {get;private set;}
         public ProcessingSettings(IPreferenceStorage storage,int domain)
         {
@@ -27,6 +31,7 @@ namespace JueMingR.Features.Processing
         public bool Set(ProcessingOptions value)
         {
             if(!Loaded || Busy || Protected || value==null || !worker.TrySubmit(++command,value))return false;
+            AcceptedCommandId=command;
             // The previous consumption permission ends on submission, before
             // asynchronous disk work. Only a confirmed commit publishes it.
             Busy=true;Revision++;return true;
@@ -35,6 +40,7 @@ namespace JueMingR.Features.Processing
         {
             DocumentResult<ProcessingOptions> r;if(!worker.TryTake(out r))return;
             if(r.CommandId==0)Loaded=true;
+            else {CompletedCommandId=r.CommandId;CompletionSucceeded=r.Success;}
             Busy=false;Protected=r.IsProtected || r.CommitUnconfirmed || r.CommandId==0 && !r.Success;
             if(r.Success){Value=r.Value;Message=null;feedback=false;}
             else{Message=r.CommitUnconfirmed?"设置保存结果未确认，已暂停并保护文件。":"设置无法保存或读取，已暂停；原文件保留。";feedback=true;}

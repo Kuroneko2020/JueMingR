@@ -67,8 +67,17 @@ namespace JueMingR.TerrariaHost.Recovery
         internal void Set(int feature,int value){if(Controls(feature) && Settings(feature).Set(Settings(feature).Value.Change(feature,value)) && feature==2 && value==0)Nurse.Rearm();}
         internal int Value(int feature)
         {var s=Settings(feature);if(!s.Ready)return 0;var v=s.Value;return feature==0?v.LifeMode:feature==1?(v.Mana?1:0):feature==2?(v.Nurse?1:0):feature==3?(v.Furniture?1:0):feature==4?(v.Buffs?1:0):feature==5?(v.Tax?1:0):feature==6?(v.FollowAdd?1:0):(v.FollowRemove?1:0);}
-        internal void Register(HotkeyRegistry registry)
-        {for(int i=0;i<6;i++){int id=i;registry.Register(new HotkeyAction(Actions[i],Names[i],HotkeyContext.Gameplay,()=>Controls(id),()=>Set(id,Value(id)==0?1:0)));}}
+        internal void Register(HotkeyRegistry registry, Hotkeys.HotkeyStateFeedback feedback = null)
+        {
+            for(int i=0;i<6;i++)
+            {
+                int id=i; var settings=Settings(id); Action command=()=>Set(id,Value(id)==0?1:0);
+                if(feedback!=null)command=feedback.Committed(Actions[id],Names[id],command,()=>Value(id),()=>Controls(id),
+                    ()=>settings.AcceptedCommandId,()=>settings.CompletedCommandId,()=>settings.CompletionSucceeded,
+                    id==0?(Func<int,string>)(mode=>mode==2?"智能":"快速"):null);
+                registry.Register(new HotkeyAction(Actions[id],Names[id],HotkeyContext.Gameplay,()=>Controls(id),command));
+            }
+        }
         internal void Poll(){Potions.Poll();Buffs.Poll();Services.Poll();Learning.Poll();Tax.ObserveSettlement();}
         internal bool Admit(Player p)
         {return Input.CanStartActions && CanGameplay!=null && CanGameplay() && SafePlayer(p);}

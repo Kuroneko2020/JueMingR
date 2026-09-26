@@ -27,6 +27,7 @@ namespace JueMingR.TerrariaHost.F5
         internal Func<bool> TargetGestureBusy { get; set; }
         private readonly HostItems hostItems;
         private readonly Input.HostInputState inputState;
+        internal Feedback.LocalShortFeedback ShortFeedback;
         private readonly HostHotkeys hotkeys;
         internal QuickItems.HostQuickItems QuickItems { get; set; }
         private CoinDeposit.HostCoinDeposit coinDeposit;
@@ -525,6 +526,7 @@ namespace JueMingR.TerrariaHost.F5
         internal bool DrawLayer()
         {
             Onboarding?.ConfirmNativeDraw();
+            ShortFeedback?.Draw();
             try
             {
                 if (!CanPresentNow) { CloseAndSubmitPosition(); RestoreLeases(); }

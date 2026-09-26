@@ -10,6 +10,7 @@ namespace JueMingR.TerrariaHost.Items
     internal sealed class ItemDiscardFeedback
     {
         private readonly Func<bool> enabled;
+        internal Action<Player, string> Present { get; set; }
         internal ItemDiscardFeedback(Func<bool> enabled)
         { this.enabled = enabled ?? throw new ArgumentNullException(nameof(enabled)); }
 
@@ -28,17 +29,12 @@ namespace JueMingR.TerrariaHost.Items
             if (String.IsNullOrEmpty(name) || quantity <= 0) return;
             try
             {
-                // Target .8 reforge uses this same native popup pool and draw
-                // path. Advanced accepts the exact sentence without an item
-                // quantity suffix; it cannot merge into ordinary pickup text.
-                // Native capacity/showItemText rules apply; never replay failure.
-                PopupText.NewText(new AdvancedPopupRequest
-                {
-                    Text = "自动丢弃了" + quantity.ToString(CultureInfo.InvariantCulture) + "个" + name,
-                    Color = Color.White,
-                    DurationInFrames = 60,
-                    Velocity = new Vector2(0, -7)
-                }, player.Center);
+                string text = "自动丢弃了" + quantity.ToString(CultureInfo.InvariantCulture) + "个" + name;
+                if (Present != null) { Present(player, text); return; }
+                // The native Advanced path keeps the original exact quantity,
+                // 60-frame motion and opt-out. A full pool drops display only.
+                PopupText popup; int slot; string token;
+                Feedback.NativePopupText.TryCreate(text, Color.White, 60, new Vector2(0, -7), player.Center, out popup, out slot, out token);
             }
             catch { }
         }
