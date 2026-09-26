@@ -36,6 +36,11 @@ namespace NativeWorldTextProbe
             var add=Parts(ui).First(p=>(int)Get(p,"Command")==2);
             var on=Parts(ui).First(p=>(int)Get(p,"Command")==4);
             Require(Y(field)==Y(add) && Y(field)==Y(on),"input, add and toggles share one row");
+            var hint=GetOptional(field,"Label");Require(hint!=null,"idle input hint has measured glyph layout");
+            var hintRect=Get(hint,"Rect");var fieldRect=Get(Get(field,"Element"),"Rect");
+            Require((float)Get(hintRect,"Width")<=(float)Get(fieldRect,"Width")-12 &&
+                Math.Abs((float)Get(hintRect,"X")+(float)Get(hintRect,"Width")/2-(float)Get(fieldRect,"X")-(float)Get(fieldRect,"Width")/2)<.01f &&
+                Math.Abs((float)Get(hintRect,"Y")+(float)Get(hintRect,"Height")/2-(float)Get(fieldRect,"Y")-(float)Get(fieldRect,"Height")/2)<.01f,"idle input hint is clipped and centered horizontally and vertically");
             Click(context,ui,field);prepare();Require(GetOptional(ui,"Editor")==null,"single click must not lease the text keyboard");
             Click(context,ui,Parts(ui).First(p=>(int)Get(p,"Command")==1));prepare();
             Require(GetOptional(ui,"Editor")!=null,"physical double click starts text editor");

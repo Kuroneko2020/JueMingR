@@ -127,7 +127,18 @@ namespace JueMingR.TerrariaHost.Processing
                 foreach(var e in rows)
                 {
                     int command=e.Kind==F5ElementKind.Field?1:e.Kind==F5ElementKind.Hotkey?6:e.Kind==F5ElementKind.Button?e.Text=="添加"?2:e.Text=="开启"?4:5:0;
-                    logical.Add(new Part{Element=e,Command=command,Enabled=host.Controls(2),Selected=(command==4 || command==5) && host.Settings[2].Value.Enabled==(command==4)});
+                    F5Element label=null;
+                    if(command==1)
+                    {
+                        const string hint="双击输入词缀";
+                        string text=hint;var size=shell.Layout.TextSize(text,.7f);
+                        for(int n=hint.Length;size.Width>e.Rect.Width-12 && n>0;)
+                        {text=hint.Substring(0,--n)+"…";size=shell.Layout.TextSize(text,.7f);}
+                        // Only the idle hint is centered. Editing retains its
+                        // existing caret/selection coordinate system and clip.
+                        label=new F5Element(F5ElementKind.Text,new F5Rect(e.Rect.X+(e.Rect.Width-size.Width)/2,e.Rect.Y+(e.Rect.Height-size.Height)/2,size.Width,size.Height),text,size,.7f,F5Command.None);
+                    }
+                    logical.Add(new Part{Element=e,Label=label,Command=command,Enabled=host.Controls(2),Selected=(command==4 || command==5) && host.Settings[2].Value.Enabled==(command==4)});
                 }
                 int columns=ItemsLayout.Columns(view.Width,ItemsLayout.CardWidth),index=0;
                 float gridX=(view.Width-columns*(ItemsLayout.CardWidth+ItemsLayout.Gap)+ItemsLayout.Gap)/2;
@@ -217,7 +228,8 @@ namespace JueMingR.TerrariaHost.Processing
                     {
                         renderer.ItemButton(e.Rect,p.Enabled,e.Rect.Contains(pointer.X,pointer.Y));
                         if(editing && EditView.SelectionRight>EditView.SelectionLeft)Main.spriteBatch.Draw(TextureAssets.MagicPixel.Value,new Rectangle((int)(e.Rect.X+6+EditView.SelectionLeft),(int)e.Rect.Y+4,(int)(EditView.SelectionRight-EditView.SelectionLeft),(int)e.Rect.Height-8),Color.CornflowerBlue);
-                        renderer.Text(draft.Text.Length==0 && !editing?"双击输入词缀":EditView.Text,new F5Rect(e.Rect.X+4,e.Rect.Y,e.Rect.Width-8,e.Rect.Height),Color.White,.7f);
+                        if(draft.Text.Length==0 && !editing)renderer.Label(p.Label);
+                        else renderer.Text(EditView.Text,new F5Rect(e.Rect.X+4,e.Rect.Y,e.Rect.Width-8,e.Rect.Height),Color.White,.7f);
                         if(editing){Main.spriteBatch.Draw(TextureAssets.MagicPixel.Value,new Rectangle((int)(e.Rect.X+6+EditView.Caret),(int)e.Rect.Y+5,1,(int)e.Rect.Height-10),Color.White);Main.instance.SetIMEPanelAnchor(new Vector2(e.Rect.X+6+EditView.Caret,e.Rect.Bottom+32),0);}
                     }
                     else if(e.Kind!=F5ElementKind.Button)renderer.Label(e);
