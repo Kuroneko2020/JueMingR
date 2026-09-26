@@ -60,10 +60,11 @@ namespace NativeWorldTextProbe
                 NativeReforgeChecks.Sample(input,true);ItemSlot.LeftClick(p.inventory,0,3);
                 Require(Main.mouseItem.IsAir && p.inventory[3].type==2002 && p.inventory[3].stack==7,"actual chest/mouse/inventory manual transfer completed");
                 NativeReforgeChecks.Sample(input,false);p.chest=-1;Main.SetNPCShopIndex(kind==0 || kind==3?1:0);p.SetTalkNPC(kind==0 || kind==3?0:-1);Call(context,"UpdateRuntime");
-                Require(!(bool)Get(Get(items,"World"),"HasManualOperation"),"manual transfer barrier really retires before source negative test");
-                // A real manual withdrawal cannot reuse the old bag grant.
+                Require(!(bool)Get(Get(items,"World"),"HasManualOperation"),"manual transfer barrier retires on real release");
+                // Withdrawal becomes current sale/trash stock, but cannot reuse
+                // the old bag grant as a storage opportunity.
                 for(int i=0;i<12;i++){NativeProcessingChecks.Sample(input,false);Call(context,"UpdateRuntime");}
-                Require(p.inventory[3].type==2002 && p.inventory[3].stack==7,"completed source cannot authorize unrelated later same-type stock");
+                Require(kind==2 ? p.inventory[3].type==2002 && p.inventory[3].stack==7 : p.inventory[3].IsAir,"withdrawn stock is processed by sale/trash only; storage still requires a new causal source");
             }
             Main.SetNPCShopIndex(0);p.SetTalkNPC(-1);Main.chest[0]=null;
             Call(items,"Change",ItemAutomationSettings.Default);NativeQuickItemChecks.Until(()=>{Call(items,"PollPreferences");return !(bool)Get(feature,"Enabled");});

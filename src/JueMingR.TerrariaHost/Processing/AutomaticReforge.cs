@@ -13,12 +13,13 @@ namespace JueMingR.TerrariaHost.Processing
         private readonly HostProcessing host;
         private readonly ReforgePayment payment;
         internal readonly ReforgeTargets Targets;
-        private bool down,owned,tail,manual,executing,unknown,paid;
+        private bool down,owned,tail,manual,executing,unknown,paid,pressReady;
         private Item item;
         private NPC npc;
         private GameCulture culture;
         private long revision,pressFrame=-1,spentFrame=-1,token,nextToken,session;
-        private int type,stack;
+        private int type,stack,pressPrefix,pressValue,pressX,pressY,pressWidth,pressHeight;
+        private float pressScale;
         private bool quoteReady,quoteDiscount;
         private long quote,quoteFrame;
         private Item quotedItem;
@@ -42,20 +43,28 @@ namespace JueMingR.TerrariaHost.Processing
             if(unknown)host.Items.Ownership.HoldProcessing(host.Runtime.Generation,unknownSlots);
             bool now=PlayerInput.MouseInfo.LeftButton==ButtonState.Pressed;
             // Focus-loss pseudo releases cannot create another manual allowance.
-            if(!now && host.Input.CanStartActions){down=owned=tail=manual=false;item=null;npc=null;pressFrame=-1;return;}
-            if(!down){down=true;pressFrame=host.Input.Frame;}
-            if(owned && (!Valid() || !Same())){owned=false;tail=true;}
-            if(!now || tail || unknown || !Valid() || !FreshQuote())return;
-            if(!owned)
+            if(!now && host.Input.CanStartActions){down=owned=tail=manual=pressReady=false;item=null;npc=null;pressFrame=-1;return;}
+            if(!down)
             {
-                if(pressFrame!=host.Input.Frame || !Targets.HasTargets(Main.reforgeItem))return;
-                item=Main.reforgeItem;type=item.type;stack=item.stack;npc=Main.npc[host.Player.talkNPC];culture=Language.ActiveCulture;revision=host.Settings[2].Revision;
-                // Fresh already-matched presses retain exactly the ordinary
-                // manual roll. It cannot later become a new automatic tail.
-                if(Targets.Matches(item)){manual=true;tail=true;return;}
-                owned=true;
+                down=true;pressFrame=host.Input.Frame;pressReady=now && !unknown && Valid();
+                if(pressReady)
+                {
+                    // Freeze the press identity before Draw supplies its first
+                    // quote. A late observation must not adopt a changed target.
+                    item=Main.reforgeItem;type=item.type;stack=item.stack;pressPrefix=item.prefix;pressValue=item.value;
+                    pressX=host.Input.PhysicalMapX;pressY=host.Input.PhysicalMapY;pressScale=Main.UIScale;
+                    pressWidth=(int)PlayerInput.OriginalScreenSize.X;pressHeight=(int)PlayerInput.OriginalScreenSize.Y;
+                    npc=Main.npc[host.Player.talkNPC];culture=Language.ActiveCulture;revision=host.Settings[2].Revision;
+                }
             }
-            if(ReforgeHooks.Cooldown()>0 || spentFrame==host.Input.Frame)return;
+            if((owned || pressReady) && (!Valid() || !Same())){Stop();pressReady=false;}
+            if(pressReady && !SamePress()){Stop();pressReady=false;}
+            if(!now || tail || unknown || !Valid() || !FreshQuote())return;
+            OwnPress();
+            if(!owned)return;
+            // Vanilla's top-tier pause belongs to its manual button. This owned
+            // loop continues until our target matches, without clearing that field.
+            if(spentFrame==host.Input.Frame)return;
             long cost=quote;quoteReady=false;
             if(Pay(host.Player,cost,-1))
             {try{ReforgeHooks.Roll();}catch(Exception error){if(executing)Fail(error);}}
@@ -67,8 +76,29 @@ namespace JueMingR.TerrariaHost.Processing
             quote=nativeCost;quoteFrame=host.Input.Frame;quoteDiscount=p.discountAvailable;quoteAdjustment=p.currentShoppingSettings.PriceAdjustment;
             // Main.screenWidth/Height change domains during native UI Draw.
             // Compare the physical viewport in both Draw and Update instead.
-            cx=x;cy=y;radius=halfSize;scale=Main.UIScale;width=(int)PlayerInput.OriginalScreenSize.X;height=(int)PlayerInput.OriginalScreenSize.Y;quoteReady=true;return hovered;
+            cx=x;cy=y;radius=halfSize;scale=Main.UIScale;width=(int)PlayerInput.OriginalScreenSize.X;height=(int)PlayerInput.OriginalScreenSize.Y;quoteReady=true;
+            // Frame skip can run several Updates before the first Draw. Keep
+            // the initial press point/identity; automatic payment stays in Update.
+            if(hovered)OwnPress();
+            return hovered;
         }
+        private void OwnPress()
+        {
+            if(owned || tail || unknown || !pressReady || !Valid() || PlayerInput.MouseInfo.LeftButton!=ButtonState.Pressed)return;
+            if(!Same() || !SamePress()){Stop();pressReady=false;return;}
+            if(!FreshQuote() || !Targets.HasTargets(item))return;
+            // A later quote may confirm an original press on this button, never
+            // promote a held press that started outside and then slid onto it.
+            int x=(int)(pressX*(1f/scale)),y=(int)(pressY*(1f/scale));
+            if(x<=cx-radius || x>=cx+radius || y<=cy-radius || y>=cy+radius){Stop();pressReady=false;return;}
+            pressReady=false;
+            // A matched initial item keeps one native manual roll. Repeated Draw
+            // calls cannot re-arm that allowance after its debit.
+            if(Targets.Matches(item)){manual=true;tail=true;return;}
+            owned=true;
+        }
+        private bool SamePress(){return item.prefix==pressPrefix && item.value==pressValue && pressScale==Main.UIScale &&
+            pressWidth==(int)PlayerInput.OriginalScreenSize.X && pressHeight==(int)PlayerInput.OriginalScreenSize.Y;}
         private bool FreshQuote()
         {
             var p=host.Player;var current=Main.reforgeItem;
@@ -118,6 +148,6 @@ namespace JueMingR.TerrariaHost.Processing
         private void Stop(){owned=false;tail=true;}
         private void Fail(Exception error){Failure=error;unknown=true;Stop();for(int a=0;a<5;a++)unknownSlots[a]|=payment.Slots[a];host.Report("重铸扣款或结果未确认，已停止自动重铸；不会重复扣款。");Finish(true);}
         private void Finish(bool unknownResult){host.Items.Ownership.EndProcessing(session,payment.Slots,token,unknownResult);executing=false;paid=false;host.Items.World.InvalidateObservation();}
-        internal void Reset(bool fresh){if(executing)Fail(null);quoteReady=false;owned=false;tail=PlayerInput.MouseInfo.LeftButton==ButtonState.Pressed;down=tail;pressFrame=-1;if(fresh){unknown=false;Failure=null;Array.Clear(unknownSlots,0,5);}}
+        internal void Reset(bool fresh){if(executing)Fail(null);quoteReady=false;owned=pressReady=manual=false;tail=PlayerInput.MouseInfo.LeftButton==ButtonState.Pressed;down=tail;pressFrame=-1;if(fresh){unknown=false;Failure=null;Array.Clear(unknownSlots,0,5);}}
     }
 }

@@ -15,8 +15,8 @@ namespace JueMingR.TerrariaHost.Items
     {
         private static readonly F5RowDescription[] descriptions = {
             new F5RowDescription(Hotkeys.HotkeyActionIds.Items[0], "将刚拾取的物品存入附近已有同类物品的箱子，优先级为出售→丢弃→存放。"),
-            new F5RowDescription(Hotkeys.HotkeyActionIds.Items[1], "将刚拾取的名单内物品在已打开的商店界面出售，优先级为出售→丢弃→存放。"),
-            new F5RowDescription(Hotkeys.HotkeyActionIds.Items[2], "将刚拾取的名单内物品放入垃圾桶，优先级为出售→丢弃→存放。") };
+            new F5RowDescription(Hotkeys.HotkeyActionIds.Items[1], "将背包中未收藏的名单内物品在已打开的商店界面出售，优先级为出售→丢弃→存放。"),
+            new F5RowDescription(Hotkeys.HotkeyActionIds.Items[2], "将背包中未收藏的名单内物品放入垃圾桶，优先级为出售→丢弃→存放。") };
         internal static F5RowDescription Description(ItemActionKind action) { return descriptions[(int)action]; }
         private readonly HostItems host;
         private readonly F5Interaction shell;
@@ -265,7 +265,7 @@ namespace JueMingR.TerrariaHost.Items
                     string list = selection.List == ItemListKind.Sell ? "出售" : "丢弃";
                     renderer.Text(selection.Target == 0 ? "添加" + list + "物品" : "替换「" + Lang.GetItemNameValue(selection.Target) + "」", OnScreen(layout.Title), Color.White);
                     if (selection.Target == 0) renderer.Text("已选 " + selection.Count + " 项", OnScreen(layout.Count), Color.LightGray, .63f);
-                    if (layout.Risk.Height > 0) renderer.Text("名单用于处理刚拾取或开出的物品。", OnScreen(layout.Risk), Color.Gold, .63f);
+                    if (layout.Risk.Height > 0) renderer.Text("名单会处理背包中已有的未收藏物品。", OnScreen(layout.Risk), Color.Gold, .63f);
                     if (layout.Empty.Height > 0) renderer.Text(selection.HasInventoryTypes ? "背包中可选的物品都已在名单中。" : "背包中没有可添加的物品，钱币不能加入名单。", OnScreen(layout.Empty), Color.Gray, .63f);
                 }
                 foreach (var c in controls)

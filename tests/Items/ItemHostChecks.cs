@@ -241,11 +241,11 @@ namespace Terraria
             Main.playerInventory = true; Main.npcShop = 1; player.inventory[10] = Make(100, 1); player.itemAnimation = 10;
             Step(); Check(player.SellCalls == 0, "temporary item-use range prevents sale");
             player.itemAnimation = 0; Step();
-            Check(player.SellCalls == 0, "ending use does not invent a source for old inventory");
-            player.itemAnimation = 10; player.Pickup(new WorldItem { inner = Make(100, 1) }); Step();
-            Check(player.SellCalls == 0, "actual source waits for temporary sale admission gate");
+            Check(player.SellCalls == 1 && player.inventory[10].IsAir, "ending use permits listed old inventory without inventing an acquisition");
+            player.inventory[10] = Make(100, 1); player.itemAnimation = 10; player.Pickup(new WorldItem { inner = Make(100, 1) }); Step();
+            Check(player.SellCalls == 1, "actual source waits for temporary sale admission gate");
             player.itemAnimation = 0; Step();
-            Check(player.SellCalls == 1 && player.inventory[10].IsAir, "ending temporary use re-evaluates source-qualified unchanged candidate");
+            Check(player.SellCalls == 2 && player.inventory[10].IsAir, "ending temporary use re-evaluates the current candidate");
         }
         private static void UnifiedSourceAndFocus()
         {
@@ -255,16 +255,18 @@ namespace Terraria
                 Player p = Main.LocalPlayer; Main.playerInventory = true; Main.npcShop = 1;
                 p.inventory[10] = Make(8, 20); p.inventory[11] = Make(8, 9); p.inventory[11].favorited = true;
                 var chest = new Chest(); chest.item[0] = Make(8, 1); NearbyChests.Targets.Add(new PositionedChest { chest = chest });
-                Step(); Check(p.inventory[10].stack == 20, "only-enabled action cannot process old inventory: " + action);
+                Step(); Check(action == ItemActionKind.Stack ? p.inventory[10].stack == 20 : p.inventory[10].IsAir, "only storage requires acquisition for old inventory: " + action);
+                p.inventory[10] = Make(8, 20);
                 canStartActions = false; p.Pickup(new WorldItem { inner = Make(8, 3) }); Step();
                 Check(p.inventory[10].stack == 23, "unfocused actual gain observed without automatic action: " + action);
                 canStartActions = true; Step();
                 Check(p.inventory[10].IsAir && p.inventory[11].stack == 9, "only-enabled action receives whole eligible source group: " + action);
-                p.inventory[10] = Make(8, 20); Step(); Check(p.inventory[10].stack == 20, "immediate withdrawal cannot borrow completed opportunity: " + action);
+                p.inventory[10] = Make(8, 20); Step(); Check(action == ItemActionKind.Stack ? p.inventory[10].stack == 20 : p.inventory[10].IsAir, "withdrawal is current sale/trash stock but has no storage opportunity: " + action);
                 Configure(false, false, false, new[] { 8 }, new[] { 8 });
+                p.inventory[10] = Make(8, 20);
                 p.Pickup(new WorldItem { inner = Make(8, 1) }); Step();
                 Configure(action == ItemActionKind.Stack, action == ItemActionKind.Sell, action == ItemActionKind.Discard, new[] { 8 }, new[] { 8 }); Step();
-                Check(p.inventory[10].stack == 21, "all-off source never replays after reopening: " + action);
+                Check(action == ItemActionKind.Stack ? p.inventory[10].stack == 21 : p.inventory[10].IsAir, "re-enable scans sale/trash stock without replaying a storage source: " + action);
                 // Both common container branches exercise the final single bag;
                 // the fixture now models vanilla SetDefaults(0)'s stack == 0.
                 foreach (int bag in new[] { 1000, 1001 })
@@ -302,8 +304,10 @@ namespace Terraria
         {
             foreach (bool arbitraryReplacement in new[] { false, true })
             {
-                NewSession(0); Configure(false, true, true, new[] { 100 }, new[] { 100 });
+                NewSession(0); Configure(true, true, false, new[] { 100 }, new[] { 100 });
                 Player p = Main.LocalPlayer; Main.playerInventory = true; Main.npcShop = 1;
+                var target = new Chest(); target.item[0] = Make(100, 1);
+                NearbyChests.Targets.Add(new PositionedChest { chest = target });
                 p.inventory[10] = Make(100, 20); p.RejectSale = true;
                 p.Pickup(new WorldItem { inner = Make(100, 3) }); Item original = p.inventory[10]; Step();
                 Check(p.SellCalls == 1 && !ReferenceEquals(original, p.inventory[10]) && p.inventory[10].stack == 23,
@@ -312,7 +316,7 @@ namespace Terraria
                 if (arbitraryReplacement) p.inventory[10] = p.inventory[10].Clone();
                 Main.npcShop = 0; Step();
                 Check(arbitraryReplacement ? p.inventory[10].stack == 23 : p.inventory[10].IsAir,
-                    "only synchronous proved rejection retains association across later shop close; arbitrary equal replacement cancels it");
+                    "only synchronous proved rejection retains storage association across later shop close; arbitrary equal replacement cancels it");
             }
         }
         private static void SelectionAndSources()

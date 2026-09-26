@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
-using System.Linq.Expressions;
 using HarmonyLib;
 using Terraria;
 using Terraria.GameContent;
@@ -15,16 +14,12 @@ namespace JueMingR.TerrariaHost.Processing
         private static HostProcessing host;
         private static Harmony harmony;
         internal static Action Roll;
-        internal static Func<int> Cooldown;
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static|BindingFlags.Instance;
         internal static void Install(HostProcessing value)
         {
             host=value;harmony=new Harmony("JueMingR.Reforge");
             var roll=typeof(Main).GetMethod("ReforgeItemInReforgeSlot",Flags);
             if(roll==null)throw new MissingMethodException("Main.ReforgeItemInReforgeSlot");
-            var cooldown=typeof(Main).GetField("reforgeCooldown",Flags);
-            if(cooldown==null || cooldown.FieldType!=typeof(int))throw new MissingFieldException("Main.reforgeCooldown");
-            Cooldown=Expression.Lambda<Func<int>>(Expression.Field(null,cooldown)).Compile();
             harmony.Patch(roll,postfix:new HarmonyMethod(typeof(ReforgeHooks),nameof(AfterRoll)),finalizer:new HarmonyMethod(typeof(ReforgeHooks),nameof(FinalRoll)));
             Roll=(Action)Delegate.CreateDelegate(typeof(Action),roll);
             harmony.Patch(typeof(Main).GetMethod("DrawInventory",Flags),transpiler:new HarmonyMethod(typeof(ReforgeHooks),nameof(Button)),finalizer:new HarmonyMethod(typeof(ReforgeHooks),nameof(FinalDraw)));

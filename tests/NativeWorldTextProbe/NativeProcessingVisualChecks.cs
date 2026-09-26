@@ -61,16 +61,22 @@ namespace NativeWorldTextProbe
             var host=Get(context,"Processing");var owner=Get(host,"Reforge");var input=Get(context,"Input");var settings=((ProcessingSettings[])Get(host,"Settings"))[2];
             NativeProcessingUiChecks.Save(settings,new ProcessingOptions(true,Main.reforgeItem.GetRollablePrefixes().Select(id=>Lang.prefix[id].Value).Distinct()));
             Main.screenWidth=960;Main.screenHeight=760;Main.UIScale=1;typeof(PlayerInput).GetField("_originalScreenWidth",Flags).SetValue(null,960);typeof(PlayerInput).GetField("_originalScreenHeight",Flags).SetValue(null,760);
-            NativeReforgeChecks.Sample(input,false);Call(owner,"Update");Draw(graphics);
-            Require((bool)Get(owner,"quoteReady"),"actual outer DrawInventory supplies quote and geometry");
-            long fee=(long)Get(owner,"quote"),before=NativeReforgeChecks.Total(p);
-            NativeReforgeChecks.Sample(input,true);Call(owner,"Update");Draw(graphics);Draw(graphics);
+            NativeReforgeChecks.Sample(input,false);Call(owner,"Update");
+            owner.GetType().GetField("quoteReady",Flags).SetValue(owner,false);
+            long before=NativeReforgeChecks.Total(p);
+            NativeReforgeChecks.Sample(input,true);Call(owner,"Update");
+            NativeReforgeChecks.Sample(input,true);Main.mouseLeftRelease=false;Call(owner,"Update");Draw(graphics);Draw(graphics);
+            Require((bool)Get(owner,"quoteReady") && before==NativeReforgeChecks.Total(p),"first actual pressed Draw after skipped rendering supplies its late quote without leaking a native debit");
+            long fee=(long)Get(owner,"quote");
+            NativeReforgeChecks.Sample(input,true);Main.mouseLeftRelease=false;Call(owner,"Update");Draw(graphics);Draw(graphics);
             Require(before-NativeReforgeChecks.Total(p)==fee && Main.reforgeItem.prefix!=0,"actual draw tails cannot charge after one auto-hit update");
             NativeReforgeChecks.Sample(input,false,200,600);Call(owner,"Update");Draw(graphics);Draw(graphics); // Native hover exit ends any top-tier cooldown.
-            NativeReforgeChecks.Sample(input,false);Call(owner,"Update");Draw(graphics);
-            before=NativeReforgeChecks.Total(p);fee=(long)Get(owner,"quote");NativeReforgeChecks.Sample(input,true);Call(owner,"Update");Draw(graphics);Draw(graphics);
+            NativeReforgeChecks.Sample(input,false);Call(owner,"Update");
+            owner.GetType().GetField("quoteReady",Flags).SetValue(owner,false);
+            before=NativeReforgeChecks.Total(p);fee=(long)Main.reforgeItem.value/3;NativeReforgeChecks.Sample(input,true);Call(owner,"Update");Draw(graphics);Draw(graphics);
             Require(before-NativeReforgeChecks.Total(p)==fee,"already-matched fresh press pays exactly once through complete original DrawInventory; delta="+(before-NativeReforgeChecks.Total(p))+" fee="+fee+" cooldown="+typeof(Main).GetField("reforgeCooldown",Flags).GetValue(null)+" quote="+Get(owner,"quoteReady")+" manual="+Get(owner,"manual"));
             graphics.Image(Path.Combine(output,"processing-native-reforge.png"),()=>Call(Main.instance,"DrawInventory"),Main.UIScaleMatrix,960,760);
+            ContinuousTopTier(host,owner,input,p,settings,graphics);
             NativeReforgeChecks.Sample(input,false,200,600);Call(owner,"Update");Draw(graphics);Draw(graphics);
             Main.reforgeItem.ResetPrefix();Main.screenWidth=1920;Main.screenHeight=1080;PlayerInput.CacheOriginalScreenDimensions();Main.UIScale=1.5f;
             NativeReforgeChecks.Sample(input,false,180,465);Call(owner,"Update");Draw(graphics);
@@ -79,6 +85,37 @@ namespace NativeWorldTextProbe
             Require(before-NativeReforgeChecks.Total(p)==fee,"150% first automatic payment happens in Update, before ordinary Draw fallback");Draw(graphics);
             Require(before-NativeReforgeChecks.Total(p)==fee && Main.reforgeItem.prefix!=0,"physical pointer and native UI quote remain valid across 150% Draw to unscaled Update");
             NativeReforgeChecks.Sample(input,false);Call(owner,"Update");Main.InReforgeMenu=false;p.SetTalkNPC(-1);Main.playerInventory=false;
+        }
+        private static void ContinuousTopTier(object host,object owner,object input,Player p,ProcessingSettings settings,ProbeGraphics graphics)
+        {
+            var saved=Main.rand;int seed=0,prefix=0;
+            try
+            {
+                for(;seed<512;seed++)
+                {
+                    Main.rand=new Terraria.Utilities.UnifiedRandom(seed);var probe=new Item();probe.SetDefaults(53);bool top;
+                    probe.Prefix(-2,out top);if(top){prefix=probe.prefix;break;}
+                }
+                Require(prefix>0,"native top-tier prefix seed available for full Draw loop");
+                NativeReforgeChecks.Sample(input,false);Call(owner,"Update");Main.reforgeItem.ResetPrefix();
+                NativeProcessingUiChecks.Save(settings,new ProcessingOptions(true,new[]{Lang.prefix[Main.reforgeItem.GetRollablePrefixes().First(id=>id!=prefix)].Value}));
+                typeof(Main).GetField("reforgeCooldown",Flags).SetValue(null,0); // Initial fixture only, never between rolls.
+                Draw(graphics);
+                for(int i=0;i<3;i++)
+                {
+                    long before=NativeReforgeChecks.Total(p),fee=(long)Get(owner,"quote");Main.rand=new Terraria.Utilities.UnifiedRandom(seed);
+                    NativeReforgeChecks.Sample(input,true);Main.mouseLeftRelease=i==0;Call(owner,"Update");Draw(graphics);Draw(graphics);
+                    Require(before-NativeReforgeChecks.Total(p)==fee && Main.reforgeItem.prefix==prefix,"full native Draw/Update top-tier loop pays once per held Update: "+i);
+                    Require((int)typeof(Main).GetField("reforgeCooldown",Flags).GetValue(null)==60,"top-tier automatic loop leaves native cooldown intact through repeated Draws");
+                }
+                NativeReforgeChecks.Sample(input,false);Call(owner,"Update");
+                NativeProcessingUiChecks.Save(settings,new ProcessingOptions(true,new[]{Lang.prefix[prefix].Value}));Draw(graphics);
+                long manualMoney=NativeReforgeChecks.Total(p);NativeReforgeChecks.Sample(input,true);Call(owner,"Update");Draw(graphics);Draw(graphics);
+                Require(manualMoney==NativeReforgeChecks.Total(p),"already-matched manual exception still obeys original top-tier cooldown");
+                NativeReforgeChecks.Sample(input,false,200,600);Call(owner,"Update");Draw(graphics);Draw(graphics);
+                NativeProcessingUiChecks.Save(settings,new ProcessingOptions(true,Main.reforgeItem.GetRollablePrefixes().Select(id=>Lang.prefix[id].Value).Distinct()));
+            }
+            finally{Main.rand=saved;}
         }
         private static void Draw(ProbeGraphics graphics){Main.mouseX=PlayerInput.MouseInfo.X;Main.mouseY=PlayerInput.MouseInfo.Y;typeof(PlayerInput).GetMethod("CacheOriginalInput",Flags).Invoke(null,null);PlayerInput.SetZoom_UI();graphics.Pixels(()=>Call(Main.instance,"DrawInventory"),Main.UIScaleMatrix);}
     }
