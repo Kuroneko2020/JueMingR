@@ -55,6 +55,7 @@ namespace NativeWorldTextProbe
             NativeExtractionChecks.Run(context,host,input);
             NativeReforgeChecks.Run(context,host,input);
             NativeProcessingUiChecks.Run(context);
+            NativeProcessingFaultChecks.Run(context);
             Console.WriteLine("PASS: native continuous bags consume once per Update and never again from Draw; release stops.");
         }
         internal static void Sample(object input,bool held)

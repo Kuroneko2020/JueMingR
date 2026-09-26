@@ -11,7 +11,7 @@ namespace JueMingR.ArchitectureTests
             try
             {
                 if(args.Length==1 && args[0]=="--processing")
-                {var checks=new List<string>();ItemAutomationChecks.Check(checks);foreach(var failure in checks)Console.Error.WriteLine(failure);return checks.Count==0?0:1;}
+                {var checks=new List<string>();ItemAutomationChecks.Check(checks);ProcessingChecks.Check(checks);foreach(var failure in checks)Console.Error.WriteLine(failure);Console.WriteLine("Processing rules/storage failures="+checks.Count);return checks.Count==0?0:1;}
                 if (args.Length == 1 && args[0] == "--recovery")
                 { var checks = new List<string>(); RecoveryChecks.Check(checks); foreach(string failure in checks) Console.Error.WriteLine(failure); return checks.Count == 0 ? 0 : 1; }
                 if (args.Length == 1 && args[0] == "--onboarding")

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
@@ -29,8 +29,29 @@ namespace NativeWorldTextProbe
             for(int frame=0;frame<35;frame++)Frame(context,input);
             Require(p.selectedItem==0 && !p.controlUseItem && !Main.mouseLeft,"extraction restores its selection and input");
             Require(GetOptional(host,"Error")==null,"normal depletion and delayed native Air cleanup are confirmed, not an unknown result");
+            NativeExtractionPickupChecks.Run(context,host,input);
             Matrix(context,host,input);
+            StableMachine(context,host,input);
+            NativeExtractionBoundaryChecks.Run(context,host,input);
+            NativeExtractionTradeChecks.Run(context,host,input);
             Console.WriteLine("PASS G08 extraction: actual native ItemCheck, material consumption, world products and own input return.");
+        }
+        private static void StableMachine(object context,object host,object input)
+        {
+            var p=Main.LocalPlayer;foreach(var item in p.inventory)item.TurnToAir();p.position=new Vector2(640,640);p.inventory[10].SetDefaults(424);p.inventory[10].stack=100;Machine(42,40,219);
+            var field=host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Processing.ExtractionMachine").GetField("Searches",BindingFlags.Static|BindingFlags.NonPublic);
+            long before=(long)field.GetValue(null);Call(host,"Set",1,true);NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return (bool)Call(host,"Value",1);});
+            for(int i=0;i<180;i++)Frame(context,input);
+            Require(p.inventory[10].stack<95,"stable machine has real repeated consumes");
+            Require((long)field.GetValue(null)-before<=1,"stable reachable machine is reused instead of repeated full-area searches");
+            Call(host,"Set",1,false);NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return (bool)Call(host,"Controls",1);});for(int i=0;i<40;i++)Frame(context,input);
+            before=(long)field.GetValue(null);foreach(var item in p.inventory)item.TurnToAir();Call(host,"Set",1,true);NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return (bool)Call(host,"Value",1);});
+            for(int i=0;i<180;i++)Frame(context,input);Require(before==(long)field.GetValue(null),"no material does zero machine searches");
+            p.inventory[10].SetDefaults(424);p.inventory[10].stack=100;for(int y=40;y<43;y++)for(int x=42;x<45;x++)Main.tile[x,y].active(false);
+            before=(long)field.GetValue(null);for(int i=0;i<180;i++)Frame(context,input);
+            Require((long)field.GetValue(null)-before<=30 && p.inventory[10].stack==100,"known missing machine probes at most once per six updates without native consumption");
+            Call(host,"Set",1,false);NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return (bool)Call(host,"Controls",1);});
+            before=(long)field.GetValue(null);for(int i=0;i<600;i++)Frame(context,input);Require(before==(long)field.GetValue(null),"disabled extraction does no machine work even with materials present");
         }
         private static void Matrix(object context,object host,object input)
         {

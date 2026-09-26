@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Microsoft.Xna.Framework.Input;
 using Terraria;
 using Terraria.GameInput;
@@ -24,7 +24,15 @@ namespace JueMingR.TerrariaHost.Processing
         internal ContinuousBags(HostProcessing host){this.host=host;}
         private bool PhysicalHold {get{return (host.Input.KeyboardSample.IsKeyDown(Keys.LeftShift) || host.Input.KeyboardSample.IsKeyDown(Keys.RightShift)) &&
             PlayerInput.MouseInfo.RightButton==ButtonState.Pressed && PlayerInput.MouseInfo.LeftButton==ButtonState.Released;}}
-        internal bool Holding {get{return host.Value(0) && host.Admit(host.Player) && Main.playerInventory && PhysicalHold && Main.mouseItem!=null && Main.mouseItem.IsAir;}}
+        internal bool Holding {get{return host.Value(0) && host.Admit(host.Player) && Main.playerInventory && AllowedContext() && PhysicalHold && Main.mouseItem!=null && Main.mouseItem.IsAir;}}
+        private bool AllowedContext()
+        {
+            // Only an already valid merchant shop relaxes the NPC boundary.
+            // Other service/chat screens never inherit that narrow exception.
+            if(Main.InReforgeMenu || Main.InGuideCraftMenu)return false;
+            if(Main.npcShop>0){Chest shop;NPC npc;return host.Items.World.TryShop(out shop,out npc);}
+            return host.Player.talkNPC<0 && string.IsNullOrEmpty(Main.npcChatText);
+        }
         internal bool Controls(Item[] array,int index)
         {return ReferenceEquals(array,host.Player?.inventory) && index>=0 && index<50 &&
             (executing && index==slot || claimed && PhysicalHold && (Eligible(array[index]) || (claimedSlots&(1UL<<index))!=0));}

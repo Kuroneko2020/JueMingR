@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -19,6 +19,7 @@ namespace NativeWorldTextProbe
             var shell=Get(context,"Shell");var state=Get(shell,"State");var ui=Get(shell,"ReforgeUi");var renderer=Get(shell,"renderer");
             var settings=((ProcessingSettings[])Get(Get(context,"Processing"),"Settings"))[2];
             NativeProcessingUiChecks.Save(settings,new ProcessingOptions(false,Lang.prefix.Skip(1).Select(p=>p.Value).Where(s=>!string.IsNullOrEmpty(s)).Distinct()));
+            ui.GetType().GetField("draft",BindingFlags.Instance|BindingFlags.NonPublic).SetValue(ui,new JueMingR.Features.Text.TextEditBuffer("",true,128,512,"词缀名称最多 128 个字"));
             Call(state,"Navigate",1);Call(state,"RestoreVisible");Call(renderer,"RefreshResources");
             foreach(var size in new[]{new[]{960,760,100},new[]{1280,720,150},new[]{960,440,100}})
             {

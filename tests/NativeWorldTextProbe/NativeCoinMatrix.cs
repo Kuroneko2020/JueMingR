@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using JueMingR.Features.CoinDeposit;
 using Terraria;
 using Terraria.UI;
@@ -94,8 +94,11 @@ namespace NativeWorldTextProbe
             Reset(p, host); Main.tile[40, 40].type = 29; p.bank.item[0] = Coin(71, 1); p.inventory[50] = Coin(73, 1);
             object items = Get(host, "Items"), world = Get(items, "World"), feature = Get(items, "Feature");
             Call(feature, "Configure", JueMingR.Features.Items.ItemAutomationSettings.Default.WithEnabled(JueMingR.Features.Items.ItemActionKind.Stack, true));
-            ItemSlot.LeftClick(p.inventory, 0, 50); // Native slot hook records the physical gesture even if no click moves an item.
+            ItemSlot.Handle(p.inventory,0,50);Require((int)Get(world,"ManualSlot")==-1,"released hover cannot invent a manual coin gesture");
+            Terraria.GameInput.PlayerInput.MouseInfo=new Microsoft.Xna.Framework.Input.MouseState(0,0,0,Microsoft.Xna.Framework.Input.ButtonState.Pressed,Microsoft.Xna.Framework.Input.ButtonState.Released,Microsoft.Xna.Framework.Input.ButtonState.Released,Microsoft.Xna.Framework.Input.ButtonState.Released,Microsoft.Xna.Framework.Input.ButtonState.Released);
+            ItemSlot.LeftClick(p.inventory, 0, 50); // Frozen physical press remains visible after vanilla consumes its mutable mouse flags.
             Require((int)Get(world, "ManualSlot") == 50, "real shared inventory hook records manual coin slot");
+            Terraria.GameInput.PlayerInput.MouseInfo=new Microsoft.Xna.Framework.Input.MouseState();
             Tick(host, 0, 180);
             Require(Total(p.inventory, 58) == 0 && (int)Get(world, "ManualSlot") == -1,
                 "physical release retires shared manual facts without a noncoin acquisition");

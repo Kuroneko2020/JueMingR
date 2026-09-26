@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param()
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
@@ -71,7 +71,20 @@ try {
         'docs/guide.md' = 'core'
     }
     $exactGroups = @{
-        'src/JueMingR.TerrariaHost/Recovery/HostRecovery.cs' = @('core','recovery-host');
+        'src/JueMingR.TerrariaHost/Processing/HostProcessing.cs' = @('core','processing-host');
+        'src/JueMingR.Features/Processing/ProcessingSettings.cs' = @('core','processing-host');
+        'tests/JueMingR.ArchitectureTests/Processing/ProcessingChecks.cs' = @('core','processing-host');
+        'tests/NativeWorldTextProbe/NativeProcessingUiChecks.cs' = @('core','processing-host');
+        'tests/NativeWorldTextProbe/NativeExtractionChecks.cs' = @('core','processing-host');
+        'tests/NativeWorldTextProbe/NativeReforgeChecks.cs' = @('core','processing-host');
+        'src/JueMingR.TerrariaHost/Recovery/RecoveryHooks.cs' = @('core','recovery-host','processing-host');
+        'src/JueMingR.TerrariaHost/Recovery/RecoveryBankGuards.cs' = @('core','recovery-host','processing-host');
+        'src/JueMingR.TerrariaHost/Recovery/RecoverySource.cs' = @('core','recovery-host','processing-host');
+        'src/JueMingR.TerrariaHost/Input/TextEditInput.cs' = @('core','shared-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host','recovery-host','processing-host');
+        'src/JueMingR.TerrariaHost/Input/SingleLineEditView.cs' = @('core','shared-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host','recovery-host','processing-host');
+        'src/JueMingR.Platform/Items/ItemOperationOwnership.cs' = @('core','shared-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host','recovery-host','processing-host');
+
+        'src/JueMingR.TerrariaHost/Recovery/HostRecovery.cs' = @('core','recovery-host','processing-host');
         'tests/NativeWorldTextProbe/NativeRecoveryChecks.cs' = @('core','recovery-host');
         'src/JueMingR.TerrariaHost/About/AboutPage.cs' = @('core','about-host');
         'src/JueMingR.TerrariaHost/Onboarding/HostOnboarding.cs' = @('core','about-host');
@@ -84,19 +97,19 @@ try {
         'src/JueMingR.Features/CoinDeposit/CoinIntent.cs' = @('core','coin-deposit-host','recovery-host');
         'src/JueMingR.TerrariaHost/QuickItems/QuickItemUse.cs' = @('core','quick-items-host','coin-deposit-host','recovery-host');
         'src/JueMingR.TerrariaHost/KeepFavorited/FavoriteHooks.cs' = @('core','quick-items-host','coin-deposit-host','recovery-host');
-        'src/JueMingR.Features/Text/TextEditBuffer.cs' = @('core','notes-host','map-host','footprints-host','browser-host');
-        'src/JueMingR.TerrariaHost/Notes/NotesClipboard.cs' = @('core','notes-host','browser-host','about-host');
-        'src/JueMingR.TerrariaHost/Notes/NotesInput.cs' = @('core','notes-host','browser-host');
+        'src/JueMingR.Features/Text/TextEditBuffer.cs' = @('core','notes-host','map-host','footprints-host','browser-host','processing-host');
+        'src/JueMingR.TerrariaHost/Notes/NotesClipboard.cs' = @('core','notes-host','browser-host','about-host','processing-host');
+        'src/JueMingR.TerrariaHost/Notes/NotesInput.cs' = @('core','notes-host','browser-host','processing-host');
         'src/JueMingR.TerrariaHost/Notes/NotesPresentation.cs' = @('core','notes-host','about-host');
         'src/JueMingR.Features/WorldObjectText/WorldObjectResolver.cs' = @('core','world-host','browser-host');
-        'src/JueMingR.TerrariaHost/World/WorldTileObservation.cs' = @('core','world-host','browser-host','recovery-host');
-        'src/JueMingR.Platform/WorldTargets/WorldTargetObservation.cs' = @('core','world-host','browser-host','recovery-host');
+        'src/JueMingR.TerrariaHost/World/WorldTileObservation.cs' = @('core','world-host','browser-host','recovery-host','processing-host');
+        'src/JueMingR.Platform/WorldTargets/WorldTargetObservation.cs' = @('core','world-host','browser-host','recovery-host','processing-host');
         'src/JueMingR.TerrariaHost/ItemBrowser/NativeItemCatalog.cs' = @('core','browser-host');
-        'src/JueMingR.TerrariaHost/Hotkeys/HostHotkeys.cs' = @('core','shared-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host','recovery-host');
-        'src/JueMingR.TerrariaHost/F5/F5Layout.cs' = @('core','shared-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host','recovery-host');
-        'src/JueMingR.TerrariaHost/Input/HostInputState.cs' = @('core','shared-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host','recovery-host');
-        'src/JueMingR.Platform/Persistence/DocumentWorker.cs' = @('core','storage-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host','recovery-host');
-        'src/JueMingR.Infrastructure/Storage/AtomicFileDocument.cs' = @('core','storage-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host','recovery-host');
+        'src/JueMingR.TerrariaHost/Hotkeys/HostHotkeys.cs' = @('core','shared-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host','recovery-host','processing-host');
+        'src/JueMingR.TerrariaHost/F5/F5Layout.cs' = @('core','shared-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host','recovery-host','processing-host');
+        'src/JueMingR.TerrariaHost/Input/HostInputState.cs' = @('core','shared-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host','recovery-host','processing-host');
+        'src/JueMingR.Platform/Persistence/DocumentWorker.cs' = @('core','storage-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host','recovery-host','processing-host');
+        'src/JueMingR.Infrastructure/Storage/AtomicFileDocument.cs' = @('core','storage-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host','recovery-host','processing-host');
         'src/JueMingR.TerrariaHost/Notes/NotesCards.cs' = @('core','notes-host');
         'src/JueMingR.Features/WorldObjectText/OpenedPositionStore.cs' = @('core','records');
         'src/JueMingR.TerrariaHost/EntityLabels/StyleEditor.cs' = @('core','style-host');
@@ -198,6 +211,26 @@ try {
             Assert-Route ($calls[1].name -ceq 'recovery-native-execution' -and $calls[1].executable -ceq 'native.exe' -and ($calls[1].arguments -join '|') -ceq (@($repositoryRoot,'--cpu',(Join-Path $checksRoot 'recovery-cpu'),'RecoveryCpu') -join '|')) 'actual recovery native arguments'
         }
     }
+    $processingDispatch = $runnerAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Invoke-ProcessingWorkloadChecks' }, $false)
+    Assert-Route ($null -ne $processingDispatch) 'actual processing dispatcher exists'
+    & {
+        . ([scriptblock]::Create($processingDispatch.Extent.Text))
+        $calls = New-Object 'System.Collections.Generic.List[object]'
+        $checksRoot = Join-Path $fixtureRoot 'checks'
+        function Invoke-WorkloadCheck {
+            param([string] $Name, [string] $Executable, [string[]] $Arguments)
+            $calls.Add(@{ name = $Name; executable = $Executable; arguments = $Arguments })
+        }
+        foreach ($groups in @(@('core'), @('core','processing-host'), @('core','processing-host','shared-host'))) {
+            $calls.Clear(); Invoke-ProcessingWorkloadChecks $groups 'architecture.exe' 'native.exe'
+            if ($groups -notcontains 'processing-host') { Assert-Route ($calls.Count -eq 0) 'no processing group has no processing dispatch'; continue }
+            Assert-Route ($calls.Count -eq 2) 'processing actual dispatcher executes both checks exactly once'
+            Assert-Route ($calls[0].name -ceq 'processing-rules-storage' -and $calls[0].executable -ceq 'architecture.exe' -and ($calls[0].arguments -join '|') -ceq '--processing') 'actual processing core arguments'
+            Assert-Route ($calls[1].name -ceq 'processing-native-execution' -and $calls[1].executable -ceq 'native.exe' -and ($calls[1].arguments -join '|') -ceq (@($repositoryRoot,'--cpu',(Join-Path $checksRoot 'processing-cpu'),'ProcessingCpu') -join '|')) 'actual processing native arguments'
+        }
+    }
+    $processingCalls = @($runnerAst.FindAll({ param($node) $node -is [Management.Automation.Language.CommandAst] -and $node.GetCommandName() -ceq 'Invoke-ProcessingWorkloadChecks' }, $true))
+    Assert-Route ($processingCalls.Count -eq 1 -and $processingCalls[0].Extent.Text -ceq 'Invoke-ProcessingWorkloadChecks $route.groups $architecture $native') 'normal runner invokes processing dispatcher exactly once'
     # Run the real process wrapper in a child PowerShell: failed checks must
     # escape as a nonzero process exit and must never append a PASS result.
     $failurePath = Join-Path $fixtureRoot 'failure-exit.ps1'

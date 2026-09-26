@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using JueMingR.Features.Processing;
@@ -16,11 +16,17 @@ namespace JueMingR.TerrariaHost.Processing
         private long revision=-1;
         private GameCulture culture;
         internal string Message {get;private set;}
+#if DEBUG
+        internal long Resolutions;
+#endif
         internal ReforgeTargets(HostProcessing host){this.host=host;}
         internal bool HasTargets(Item current)
         {
             var settings=host.Settings[2];
             if(ReferenceEquals(item,current) && type==(current?.type??0) && revision==settings.Revision && ReferenceEquals(culture,Language.ActiveCulture))return valid.Count!=0;
+#if DEBUG
+            Resolutions++;
+#endif
             item=current;type=current?.type??0;revision=settings.Revision;culture=Language.ActiveCulture;valid.Clear();Message=null;
             if(current==null || current.IsAir || !current.CanHavePrefixes())return false;
             Item plain=current.Clone();plain.ResetPrefix();

@@ -8,9 +8,15 @@ namespace JueMingR.TerrariaHost.Processing
 {
     internal struct ExtractionMachine
     {
+#if DEBUG
+        internal static long Searches,SearchCells;
+#endif
         internal int X,Y,Type;
         internal static bool Find(Player p,Item material,out ExtractionMachine result)
         {
+#if DEBUG
+            Searches++;
+#endif
             result=default(ExtractionMachine);bool found=false;float best=float.MaxValue;
             var region=TileReachCheckSettings.Simple.GetTileRegion(p,material.tileBoost+p.blockRange);
             // An idle probe is bounded by actual reach; every admitted use reads
@@ -18,6 +24,9 @@ namespace JueMingR.TerrariaHost.Processing
             for(int y=System.Math.Max(0,region.Top);y<System.Math.Min(Main.maxTilesY,region.Bottom);y++)
             for(int x=System.Math.Max(0,region.Left);x<System.Math.Min(Main.maxTilesX,region.Right);x++)
             {
+#if DEBUG
+                SearchCells++;
+#endif
                 var t=WorldTileObservation.ReadCurrent(x,y);
                 if(!t.Readable || !t.Active || t.Inactive || t.Type!=219 && t.Type!=642)continue;
                 float distance=Vector2.DistanceSquared(p.Center,new Vector2(x*16+8,y*16+8));

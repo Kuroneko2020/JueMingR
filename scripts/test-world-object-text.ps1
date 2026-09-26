@@ -1,8 +1,8 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string] $ContentDirectory,
     [Parameter(Mandatory = $true)][string] $OutputDirectory,
-    [ValidateSet('Full', 'SelectionCpuCosts', 'SelectionCpuChecks', 'FootprintsVisual', 'QuickItemsVisual', 'CoinDepositCpu', 'CoinDepositVisual', 'AboutCpu', 'AboutVisual')][string] $Scope = 'Full',
+    [ValidateSet('Full', 'SelectionCpuCosts', 'SelectionCpuChecks', 'FootprintsVisual', 'QuickItemsVisual', 'CoinDepositCpu', 'CoinDepositVisual', 'AboutCpu', 'AboutVisual', 'ProcessingCpu', 'ProcessingVisual')][string] $Scope = 'Full',
     [string] $WorkloadBaseline
 )
 $ErrorActionPreference = 'Stop'

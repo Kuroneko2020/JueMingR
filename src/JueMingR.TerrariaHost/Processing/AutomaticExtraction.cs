@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 using Terraria;
@@ -18,7 +18,11 @@ namespace JueMingR.TerrariaHost.Processing
         private long token,nextToken,session,frame,nextProbe;
         private bool cancelled,unknown,inCheck,borrowed,attempted;
         private ExtractionMachine machine;
-        private int mouseX,mouseY,targetX,targetY,ownMouseX,ownMouseY;
+        private bool machineCached;
+        private Vector2 machinePosition;
+        private int machineReach;
+        private object machineTiles;
+        private int mouseX,mouseY,targetX,targetY,ownMouseX,ownMouseY,ownTargetX,ownTargetY;
         private bool mouseLeft;
         private readonly ulong[] unknownSlots=new ulong[5];
         internal Exception Failure {get;private set;}
@@ -49,11 +53,20 @@ namespace JueMingR.TerrariaHost.Processing
             int candidate=Candidate(p,p.selectedItem)?p.selectedItem:-1;
             for(int i=0;i<50 && candidate<0;i++)if(Candidate(p,i))candidate=i;
             if(candidate<0){nextProbe=host.Input.Frame+6;return;}
-            ExtractionMachine target;
-            if(!ExtractionMachine.Find(p,p.inventory[candidate],out target)){nextProbe=host.Input.Frame+6;return;}
+            if(!TryMachine(p,p.inventory[candidate])){nextProbe=host.Input.Frame+6;return;}
             long next=++nextToken;if(!host.Items.Ownership.TryBeginUse(host.Runtime.Generation,candidate,next))return;
             token=next;session=host.Runtime.Generation;player=p;slot=candidate;original=p.selectedItem;material=p.inventory[slot];type=material.type;expected=material.stack;
-            cancelled=false;machine=target;chosen=slot;result=true;
+            cancelled=false;chosen=slot;result=true;
+        }
+        private bool TryMachine(Player p,Item source)
+        {
+            // Cache only discovery, never consumption authority. The retained
+            // full object is revalidated at each use; movement/reach/object
+            // changes perform a fresh nearest selection in the bounded region.
+            int reach=source.tileBoost+p.blockRange;
+            if(machineCached && machinePosition==p.position && machineReach==reach && ReferenceEquals(machineTiles,Main.tile) && ExtractionMachine.Valid(p,source,machine.X,machine.Y))return true;
+            machineCached=ExtractionMachine.Find(p,source,out machine);
+            machinePosition=p.position;machineReach=reach;machineTiles=Main.tile;return machineCached;
         }
         private bool SameSource(){return player!=null && session==host.Runtime.Generation && ReferenceEquals(player.inventory[slot],material) && material.type==type && material.stack==expected && expected>0;}
         internal void BeforeSync(Player p)
@@ -78,7 +91,7 @@ namespace JueMingR.TerrariaHost.Processing
             // reads tileTarget. Both must describe the newly chosen part.
             Vector2 screen=Main.ReverseGravitySupport(new Vector2(machine.X*16+8,machine.Y*16+8)-Main.screenPosition);
             Main.mouseX=ownMouseX=(int)screen.X;Main.mouseY=ownMouseY=(int)screen.Y;Main.mouseLeft=true;
-            Player.tileTargetX=machine.X;Player.tileTargetY=machine.Y;
+            Player.tileTargetX=ownTargetX=machine.X;Player.tileTargetY=ownTargetY=machine.Y;
         }
         internal bool Owns(Item[] array,int index){return inCheck && ReferenceEquals(array,player?.inventory) && index==slot && ReferenceEquals(array[index],material);}
         internal bool Place(Player p,ref Player.ItemCheckContext context)
@@ -86,13 +99,12 @@ namespace JueMingR.TerrariaHost.Processing
             if(!inCheck || !ReferenceEquals(p,player))return true;
             // Always intercept the whole placement branch in our own scope.
             // An invalid machine must not turn silt into a placed block.
-            if(cancelled || !SameSource() || !Admitted(p) || !ExtractionMachine.Valid(p,material,machine.X,machine.Y))
+            if(cancelled || !SameSource() || !Admitted(p))
             {context.SkipItemConsumption=true;Cancel();return false;}
             if(p.ItemTimeIsZero && p.itemAnimation>0 && p.controlUseItem)
             {
-                ExtractionMachine nearest;
-                if(!ExtractionMachine.Find(p,material,out nearest)){context.SkipItemConsumption=true;Cancel();return false;}
-                machine=nearest;Aim();
+                if(!TryMachine(p,material)){context.SkipItemConsumption=true;Cancel();return false;}
+                Aim();
                 attempted=true;ProcessingHooks.Extract(p,ref context);
             }
             else context.SkipItemConsumption=true;
@@ -130,7 +142,7 @@ namespace JueMingR.TerrariaHost.Processing
             if(!Admitted(player))Cancel();
             if(player.selectedItem!=slot || !player.selectedItemState.HasActiveOverride && player.selectedItemState.CanChangeSelectedItemImmediately)Retire(false);
         }
-        internal void Reset(bool fresh){Retire(true);nextProbe=0;if(fresh){unknown=false;Failure=null;Array.Clear(unknownSlots,0,5);}}
+        internal void Reset(bool fresh){Retire(true);nextProbe=0;machineCached=false;machineTiles=null;if(fresh){unknown=false;Failure=null;Array.Clear(unknownSlots,0,5);}}
         private void Retire(bool returnSelection)
         {
             if(player==null)return;if(returnSelection)Cancel();RestoreMouse();
@@ -141,7 +153,9 @@ namespace JueMingR.TerrariaHost.Processing
             if(!borrowed)return;borrowed=false;
             if(Main.mouseX==ownMouseX)Main.mouseX=mouseX;if(Main.mouseY==ownMouseY)Main.mouseY=mouseY;
             if(Main.mouseLeft && PlayerInput.MouseInfo.LeftButton==ButtonState.Released)Main.mouseLeft=mouseLeft;
-            if(Player.tileTargetX==machine.X)Player.tileTargetX=targetX;if(Player.tileTargetY==machine.Y)Player.tileTargetY=targetY;
+            // Discovery can fail or select a new object after Begin. Restore
+            // against the values actually written, never the discovery cache.
+            if(Player.tileTargetX==ownTargetX)Player.tileTargetX=targetX;if(Player.tileTargetY==ownTargetY)Player.tileTargetY=targetY;
         }
     }
 }

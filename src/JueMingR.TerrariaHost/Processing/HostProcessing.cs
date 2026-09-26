@@ -73,6 +73,7 @@ namespace JueMingR.TerrariaHost.Processing
             object socket=Main.netMode==1?Netplay.Connection.Socket:null;
             bool fresh=!ReferenceEquals(identityPlayer,Main.LocalPlayer) || !ReferenceEquals(identityWorld,Main.ActiveWorldFileData) || !ReferenceEquals(identitySocket,socket) || identityMode!=Main.netMode;
             identityPlayer=Main.LocalPlayer;identityWorld=Main.ActiveWorldFileData;identitySocket=socket;identityMode=Main.netMode;
+            if(fresh && Available){Error=null;feedback=false;}
             Bags.StartSession(fresh);
             Extraction.Reset(fresh);
             Reforge.Reset(fresh);

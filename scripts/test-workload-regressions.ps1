@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param([string] $Baseline)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
@@ -50,6 +50,12 @@ function Invoke-RecoveryWorkloadChecks {
     Invoke-WorkloadCheck 'recovery-rules-storage' $Architecture @('--recovery')
     Invoke-WorkloadCheck 'recovery-native-execution' $Native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'recovery-cpu'), 'RecoveryCpu')
 }
+function Invoke-ProcessingWorkloadChecks {
+    param([string[]] $Groups, [string] $Architecture, [string] $Native)
+    if ($Groups -notcontains 'processing-host') { return }
+    Invoke-WorkloadCheck 'processing-rules-storage' $Architecture @('--processing')
+    Invoke-WorkloadCheck 'processing-native-execution' $Native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'processing-cpu'), 'ProcessingCpu')
+}
 try {
 $architecture = Join-Path $repositoryRoot 'artifacts/build/Debug/work/bin/JueMingR.ArchitectureTests/x86/Debug/net472/JueMingR.ArchitectureTests.exe'
 Invoke-WorkloadCheck 'core-records-selection' $architecture @('--workload-core', $repositoryRoot)
@@ -73,6 +79,7 @@ if ($route.groups -contains 'coin-deposit-host') {
     Invoke-WorkloadCheck 'coin-deposit-native-execution' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'coin-deposit-cpu'), 'CoinDepositCpu')
 }
 Invoke-RecoveryWorkloadChecks $route.groups $architecture $native
+Invoke-ProcessingWorkloadChecks $route.groups $architecture $native
 if ($route.groups -contains 'death-host') {
     Invoke-WorkloadCheck 'death-history-storage-workload' $architecture @('--death-history')
     Invoke-WorkloadCheck 'death-native-execution' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'death-cpu'), 'DeathCpu')
