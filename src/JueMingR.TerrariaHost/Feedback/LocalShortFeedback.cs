@@ -145,8 +145,12 @@ namespace JueMingR.TerrariaHost.Feedback
             {
                 bool inverted = Main.LocalPlayer.gravDir == -1;
                 var size = e.Renderer.NativeSize;
-                float offset = 24 + index * (size.Y + 8);
-                Vector2 anchor = inverted ? Main.LocalPlayer.Bottom + new Vector2(0, offset + size.Y) : Main.LocalPlayer.Top - new Vector2(0, offset);
+                // Reforge starts at player.Center; NewText subtracts half the
+                // glyph box and its own animation raises it towards the head.
+                // Inverted Draw mirrors position before adding half the box,
+                // so one full text height preserves the same screen-side origin.
+                float offset = index * (size.Y + 8);
+                Vector2 anchor = Main.LocalPlayer.Center + new Vector2(0, inverted ? offset + size.Y : -offset);
                 if (!Visible(anchor - size / 2, size) || !NativePopupText.TryCreate(e.Text, ColorFor(e), 108, new Vector2(0, inverted ? 7 : -7), anchor, out e.Popup, out e.Slot, out e.Token)) e.Fallback = true;
             }
             if (e.Fallback) { NativePopupText.Release(e.Popup, e.Slot, e.Token); e.Popup = null; e.Token = null; e.Slot = -1; }

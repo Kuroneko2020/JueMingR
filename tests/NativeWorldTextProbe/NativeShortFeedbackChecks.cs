@@ -59,10 +59,12 @@ namespace NativeWorldTextProbe
             Require(registry.Find("recovery.life").Invoke(HotkeyContext.SinglePlayer),"smart close admitted");
             NativeQuickItemChecks.Until(()=>{Call(context,"UpdateRuntime");return Has(display,"自动回血（智能） 已关闭");});
             Require(registry.Find("recovery.life").Invoke(HotkeyContext.SinglePlayer),"recovery enable admitted");
-            NativeQuickItemChecks.Until(()=>{Call(context,"UpdateRuntime");return Has(display,"自动回血（快速） 已开启");});
-            Require((int)Call(recovery,"Value",0)==1,"off-to-on always selects fast");
+            NativeQuickItemChecks.Until(()=>{Call(context,"UpdateRuntime");return (bool)Get(Get(recovery,"Potions"),"Ready");});
+            Require((int)Call(recovery,"Value",0)==2,"off-to-on restores the last selected smart mode");
+            Require(Has(display,"自动回血（智能） 已开启"),"successful smart restoration reports its actual mode");
             Call(recovery,"Set",0,0);NativeQuickItemChecks.Until(()=>{Call(context,"UpdateRuntime");return (bool)Get(Get(recovery,"Potions"),"Ready");});
-            Require(!Has(display,"自动回血（快速） 已开启"),"later F5 command retires active result");
+            Require(!Has(display,"自动回血（智能） 已开启"),"later F5 command retires active result");
+            NativeRecoveryModeChecks.Run(context,registry,display);
             InputDispatch(context,registry,display);
             AsyncFailures(context,registry,display,feedback);
             Call(display,"Clear");

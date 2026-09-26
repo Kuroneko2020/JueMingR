@@ -24,6 +24,7 @@ namespace NativeWorldTextProbe
             Action trigger=()=>{Require(registry.Find("items.auto-stack.toggle").Invoke(HotkeyContext.SinglePlayer),"actual graphical command");Call(context,"UpdateRuntime");};
             Action animate=()=>{for(int i=0;i<12;i++){PopupText.UpdateItemText();Call(display,"Refresh");}};
             Action native=()=>PopupText.DrawItemTextPopups(PopupText.TargetScale);
+            ReforgeBaseline(display,graphics,reset,trigger,native,output);
             reset();trigger();
             var entry=Entries(display).Single();Require(!(bool)Get(entry,"Fallback"),"real font admitted native head popup");
             double expiry=(double)Get(entry,"Expires");
@@ -77,6 +78,24 @@ namespace NativeWorldTextProbe
             graphics.Image(Path.Combine(output,"four-results.png"),fallback,Main.UIScaleMatrix);
             Call(display,"Clear");Main.showItemText=true;
             Console.WriteLine("PASS: real .8 popup/XNB pixels, head/camera/inverted/zoom/UI, full-text fallback/map batch, stable layouts and unchanged lifetime.");
+        }
+        private static void ReforgeBaseline(object display,ProbeGraphics graphics,Action reset,Action trigger,Action draw,string output)
+        {
+            // Same text/font, separate empty pools: compare the actual item-re-forge
+            // popup overload without invoking a reforge, payment or game session.
+            foreach(int age in new[]{1,10,12,30})
+            {
+                reset();trigger();string text=(string)Get(Entries(display).Single(),"Text");
+                for(int i=0;i<age;i++){PopupText.UpdateItemText();Call(display,"Refresh");}
+                var actual=Bounds(graphics.Pixels(draw,Main.GameViewMatrix.ZoomMatrix));
+                if(age==12)graphics.Image(Path.Combine(output,"reforge-baseline-feedback.png"),draw,Main.GameViewMatrix.ZoomMatrix);
+                reset();var item=new Item();item.SetDefaults(1);item.SetNameOverride(text);item.stack=1;item.rare=0;item.prefix=0;
+                PopupText.NewText(PopupTextContext.ItemReforge,item,Main.LocalPlayer.Center,1,noStack:true);
+                for(int i=0;i<age;i++)PopupText.UpdateItemText();
+                var reference=Bounds(graphics.Pixels(draw,Main.GameViewMatrix.ZoomMatrix));
+                if(age==12)graphics.Image(Path.Combine(output,"reforge-baseline-native.png"),draw,Main.GameViewMatrix.ZoomMatrix);
+                Require(actual==reference,"short feedback must match native reforge glyph position at frame "+age+": actual="+actual+", native="+reference);
+            }
         }
         private static void Viewport(int width,int height,float scale)
         {

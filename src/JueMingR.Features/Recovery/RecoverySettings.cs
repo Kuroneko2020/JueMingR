@@ -20,8 +20,8 @@ namespace JueMingR.Features.Recovery
         public long CompletedCommandId {get;private set;}
         public bool CompletionSucceeded {get;private set;}
         public string Message {get;private set;}
-        public RecoverySettings(IPreferenceStorage storage,int domain)
-        {var codec=new RecoveryCodec(domain);worker=new DocumentWorker<RecoveryOptions>(storage,codec.Decode,codec.Encode,Value);}
+        public RecoverySettings(IPreferenceStorage storage,int domain,IPreferenceCodec<RecoveryOptions> codec=null)
+        {codec=codec??new RecoveryCodec(domain);worker=new DocumentWorker<RecoveryOptions>(storage,codec.Decode,codec.Encode,Value);}
         public bool Set(RecoveryOptions value)
         {
             if(!Loaded || Busy || Protected || value==null)return false;

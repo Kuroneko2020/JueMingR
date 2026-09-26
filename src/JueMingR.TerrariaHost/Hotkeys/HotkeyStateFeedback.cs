@@ -13,7 +13,7 @@ namespace JueMingR.TerrariaHost.Hotkeys
         private sealed class Pending
         {
             internal string Id, Name;
-            internal int Before, Expected;
+            internal int Before;
             internal long Command;
             internal double Expires;
             internal LocalShortFeedback.Scope Scope;
@@ -55,7 +55,7 @@ namespace JueMingR.TerrariaHost.Hotkeys
                 try
                 {
                     long next = accepted(); if (next == request.Command) return;
-                    request.Command = next; request.Expected = request.Before == 0 ? 1 : 0;
+                    request.Command = next;
                     request.Expires = LocalShortFeedback.Now + 5000;
                     pending.RemoveAll(p => p.Id == id);
                     display.Remove(id); // a newer accepted intent retires its old result, even while saving
@@ -79,8 +79,14 @@ namespace JueMingR.TerrariaHost.Hotkeys
                     pending.RemoveAt(i);
                     // Disabling can already be suspended on submission. Only this
                     // exact reliable completion proves the requested final state.
-                    if (p.Success() && p.Available() && p.State() == p.Expected && p.Before != p.Expected)
-                        Publish(p.Id, p.Name, p.Before, p.Expected, p.State, () => p.Available() && p.Accepted() == p.Command, p.Mode, p.Scope);
+                    // The owner selects/restores modes. Never predict a binary
+                    // target here: a successful enable may restore mode 2 or 5.
+                    if (p.Success() && p.Available())
+                    {
+                        int after = p.State();
+                        if (after != p.Before)
+                            Publish(p.Id, p.Name, p.Before, after, p.State, () => p.Available() && p.Accepted() == p.Command, p.Mode, p.Scope);
+                    }
                 }
                 catch { if (i < pending.Count && ReferenceEquals(pending[i], p)) pending.RemoveAt(i); }
             }
