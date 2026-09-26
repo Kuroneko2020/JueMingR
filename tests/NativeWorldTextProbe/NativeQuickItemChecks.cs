@@ -115,6 +115,7 @@ namespace NativeWorldTextProbe
                 var coin=GetOptional(context,"CoinDeposit");if(coin!=null)Call(coin,"Exit",null,EventArgs.Empty);
                 var recoveryHost=GetOptional(context,"Recovery");if(recoveryHost!=null){Call(recoveryHost,"Exit",null,EventArgs.Empty);assembly.GetType("JueMingR.TerrariaHost.Recovery.RecoveryHooks").GetMethod("Uninstall",Flags).Invoke(null,null);}
                 var processingHost=GetOptional(context,"Processing");if(processingHost!=null){Call(processingHost,"Exit",null,EventArgs.Empty);assembly.GetType("JueMingR.TerrariaHost.Processing.ProcessingHooks").GetMethod("Uninstall",Flags).Invoke(null,null);assembly.GetType("JueMingR.TerrariaHost.Processing.ReforgeHooks").GetMethod("Uninstall",Flags).Invoke(null,null);}
+                var toolsHost=GetOptional(context,"Tools");if(toolsHost!=null){Call(toolsHost,"Exit",null,EventArgs.Empty);assembly.GetType("JueMingR.TerrariaHost.Tools.ToolHooks").GetMethod("Uninstall",Flags).Invoke(null,null);}
                 var onboarding=GetOptional(context,"onboarding");if(onboarding!=null)Call(onboarding,"Exit",null,EventArgs.Empty);
                 var browser=GetOptional(context,"Browser");if(browser!=null)((IDisposable)browser).Dispose();StopContext(context);
                 foreach(var method in isolation.GetPatchedMethods().ToArray())isolation.Unpatch(method,HarmonyPatchType.All,isolation.Id);

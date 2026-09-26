@@ -58,17 +58,18 @@ function Get-WorkloadRoute {
     $unknown = @()
     foreach ($path in $Paths) {
         switch -Regex ($path.Replace('\', '/')) {
+            '^src/[^/]+/Tools/|^tests/JueMingR.ArchitectureTests/Tools/|^tests/NativeWorldTextProbe/Native(Tools|Capture|Herb|Mining|FishingBorrow)' { [void]$groups.Add('tools-host'); continue }
             '^src/JueMingR.TerrariaHost/Feedback/|^tests/NativeWorldTextProbe/NativeShortFeedback' { [void]$groups.Add('shared-host'); continue }
-            '^src/[^/]+/Processing/|^tests/JueMingR.ArchitectureTests/Processing/|^tests/Processing/|^tests/NativeWorldTextProbe/Native(Processing|Extraction|Reforge)' { [void]$groups.Add('processing-host'); continue }
+            '^src/[^/]+/Processing/|^tests/JueMingR.ArchitectureTests/Processing/|^tests/Processing/|^tests/NativeWorldTextProbe/Native(Processing|Extraction|Reforge)' { if($path.StartsWith('src/')){[void]$groups.Add('tools-host')}; [void]$groups.Add('processing-host'); continue }
             # G08 consumes the existing bank guards and their account facts.
-            '^src/JueMingR.TerrariaHost/Recovery/(HostRecovery|RecoveryHooks|RecoveryBankGuards|RecoverySource)\.cs$' { [void]$groups.Add('recovery-host'); [void]$groups.Add('processing-host'); continue }
+            '^src/JueMingR.TerrariaHost/Recovery/(HostRecovery|RecoveryHooks|RecoveryBankGuards|RecoverySource)\.cs$' { [void]$groups.Add('tools-host'); [void]$groups.Add('recovery-host'); [void]$groups.Add('processing-host'); continue }
             '^src/[^/]+/Recovery/|^tests/JueMingR.ArchitectureTests/Recovery/|^tests/Recovery/|^tests/NativeWorldTextProbe/NativeRecovery' { [void]$groups.Add('recovery-host'); continue }
             # Consuming shared input/storage does not make a feature-local edit
             # a change to those providers. Keep reverse dependencies below.
             '^src/[^/]+/(About|Onboarding)/|^tests/(About|Onboarding)/|^tests/Phase0U/AboutChecks\.cs$|^tests/JueMingR.ArchitectureTests/Onboarding|^tests/NativeWorldTextProbe/NativeAbout' { [void]$groups.Add('about-host'); continue }
             '^src/[^/]+/CoinDeposit/|^tests/JueMingR.ArchitectureTests/CoinDeposit/|^tests/CoinDeposit/|^tests/NativeWorldTextProbe/NativeCoin' { [void]$groups.Add('coin-deposit-host'); continue }
             '^docs/|^AGENTS\.md$|^README(?:\.[^/]+)?$|^LICENSE$|^THIRD-PARTY-NOTICES\.md$' { continue }
-            '^src/[^/]+/(QuickItems|KeepFavorited)/|^tests/JueMingR.ArchitectureTests/(QuickItems|KeepFavorited)/|^tests/NativeWorldTextProbe/Native(Quick|Favorite)' { [void]$groups.Add('quick-items-host'); continue }
+            '^src/[^/]+/(QuickItems|KeepFavorited)/|^tests/JueMingR.ArchitectureTests/(QuickItems|KeepFavorited)/|^tests/NativeWorldTextProbe/Native(Quick|Favorite)' { if($path.StartsWith('src/')){[void]$groups.Add('tools-host')}; [void]$groups.Add('quick-items-host'); continue }
             '^src/[^/]+/(ItemCatalog|ItemBrowser|ChestLocator|Announcements)/|^tests/(ItemBrowser|ChestLocator|Announcements)/' { [void]$groups.Add('browser-host'); continue }
             # About copies via NotesClipboard; onboarding consults prepared
             # Notes overlap geometry. Neither consumes the Notes text editor.
@@ -88,7 +89,7 @@ function Get-WorkloadRoute {
             '^src/[^/]+/(Guidance|Npcs)/' { [void]$groups.Add('shared-host'); [void]$groups.Add('storage-host'); continue }
             '^src/JueMingR.TerrariaHost/(F5|Input)/|^src/JueMingR.TerrariaHost/Phase0|^src/JueMingR.Platform/Runtime/' { [void]$groups.Add('shared-host'); continue }
             # Furniture consumes this shared raw tile source and its value DTO.
-            '^src/JueMingR.TerrariaHost/World/WorldTileObservation\.cs$|^src/JueMingR.Platform/WorldTargets/WorldTargetObservation\.cs$' { [void]$groups.Add('world-host'); [void]$groups.Add('recovery-host'); [void]$groups.Add('processing-host'); continue }
+            '^src/JueMingR.TerrariaHost/World/WorldTileObservation\.cs$|^src/JueMingR.Platform/WorldTargets/WorldTargetObservation\.cs$' { [void]$groups.Add('tools-host'); [void]$groups.Add('world-host'); [void]$groups.Add('recovery-host'); [void]$groups.Add('processing-host'); continue }
             '^src/[^/]+/(WorldObjectText|WorldTargets|World|Rendering)/|^tests/(WorldObjectText|WorldTargets)/' { [void]$groups.Add('world-host'); continue }
             '^src/[^/]+/(EntityLabels|Hotkeys|Items|Settings|Biomes)/|^tests/(EntityLabels|Hotkeys|Items|Phase0U|Phase0V)/' { [void]$groups.Add('shared-host'); continue }
             '^scripts/|^tests/|^eng/|^src/.*\.(csproj|props|targets)$|^Directory\.Build\.|^global\.json$|^JueMingR\.sln$|^NuGet\.Config$|^\.github/' { [void]$groups.Add('shared-host'); [void]$groups.Add('storage-host'); continue }
@@ -96,6 +97,8 @@ function Get-WorkloadRoute {
         }
     }
     if ($groups.Contains('shared-host') -or $groups.Contains('storage-host')) { [void]$groups.Add('about-host'); [void]$groups.Add('death-host'); [void]$groups.Add('map-host') }
+    if ($groups.Contains('shared-host') -or $groups.Contains('storage-host')) { [void]$groups.Add('tools-host') }
+    if ($groups.Contains('tools-host')) { [void]$groups.Add('quick-items-host'); [void]$groups.Add('recovery-host'); [void]$groups.Add('processing-host'); [void]$groups.Add('coin-deposit-host') }
     if ($groups.Contains('shared-host') -or $groups.Contains('storage-host')) { [void]$groups.Add('quick-items-host') }
     if ($groups.Contains('shared-host') -or $groups.Contains('storage-host')) { [void]$groups.Add('processing-host') }
     if ($groups.Contains('shared-host') -or $groups.Contains('storage-host') -or $groups.Contains('quick-items-host') -or $groups.Contains('coin-deposit-host')) { [void]$groups.Add('recovery-host') }

@@ -14,6 +14,11 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if(scope=="ToolsCpu" || scope=="ToolsVisual")
+            {
+                Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-tools-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
+                NativeQuickItemChecks.Run(context=>{NativeToolsChecks.Run(context);if(scope=="ToolsVisual")using(var graphics=new ProbeGraphics(content)){graphics.LoadItemTextures(new[]{1294});NativeCaptureChecks.Run(context,graphics);NativeToolsVisualChecks.Run(context,graphics,output);NativeToolsIntegrationChecks.Fault(context);}else NativeToolsIntegrationChecks.Fault(context);},processing:true,shortFeedback:true);return 0;
+            }
             if(scope=="ShortFeedbackCpu" || scope=="ShortFeedbackVisual")
             {
                 Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-short-feedback-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);

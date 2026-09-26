@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param()
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
@@ -26,6 +26,8 @@ try {
         'src/JueMingR.TerrariaHost/Feedback/LocalShortFeedback.cs' = 'shared-host';
         'tests/NativeWorldTextProbe/NativeShortFeedbackChecks.cs' = 'shared-host';
         'src/JueMingR.TerrariaHost/Recovery/HostRecovery.cs' = 'recovery-host';
+        'src/JueMingR.TerrariaHost/Tools/AutoCapture.cs' = 'tools-host';
+        'tests/NativeWorldTextProbe/NativeFishingBorrowChecks.cs' = 'tools-host';
         'tests/NativeWorldTextProbe/NativeRecoveryChecks.cs' = 'recovery-host';
         'src/JueMingR.TerrariaHost/About/AboutPage.cs' = 'about-host';
         'src/JueMingR.TerrariaHost/Onboarding/HostOnboarding.cs' = 'about-host';
@@ -74,20 +76,22 @@ try {
         'docs/guide.md' = 'core'
     }
     $exactGroups = @{
-        'src/JueMingR.TerrariaHost/Processing/HostProcessing.cs' = @('core','processing-host');
-        'src/JueMingR.Features/Processing/ProcessingSettings.cs' = @('core','processing-host');
+        'src/JueMingR.TerrariaHost/Tools/AutoCapture.cs' = @('core','tools-host','quick-items-host','coin-deposit-host','recovery-host','processing-host');
+        'tests/NativeWorldTextProbe/NativeFishingBorrowChecks.cs' = @('core','tools-host','quick-items-host','coin-deposit-host','recovery-host','processing-host');
+        'src/JueMingR.TerrariaHost/Processing/HostProcessing.cs' = @('core','tools-host','quick-items-host','coin-deposit-host','recovery-host','processing-host');
+        'src/JueMingR.Features/Processing/ProcessingSettings.cs' = @('core','tools-host','quick-items-host','coin-deposit-host','recovery-host','processing-host');
         'tests/JueMingR.ArchitectureTests/Processing/ProcessingChecks.cs' = @('core','processing-host');
         'tests/NativeWorldTextProbe/NativeProcessingUiChecks.cs' = @('core','processing-host');
         'tests/NativeWorldTextProbe/NativeExtractionChecks.cs' = @('core','processing-host');
         'tests/NativeWorldTextProbe/NativeReforgeChecks.cs' = @('core','processing-host');
-        'src/JueMingR.TerrariaHost/Recovery/RecoveryHooks.cs' = @('core','recovery-host','processing-host');
-        'src/JueMingR.TerrariaHost/Recovery/RecoveryBankGuards.cs' = @('core','recovery-host','processing-host');
-        'src/JueMingR.TerrariaHost/Recovery/RecoverySource.cs' = @('core','recovery-host','processing-host');
-        'src/JueMingR.TerrariaHost/Input/TextEditInput.cs' = @('core','shared-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host','recovery-host','processing-host');
-        'src/JueMingR.TerrariaHost/Input/SingleLineEditView.cs' = @('core','shared-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host','recovery-host','processing-host');
-        'src/JueMingR.Platform/Items/ItemOperationOwnership.cs' = @('core','shared-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host','recovery-host','processing-host');
+        'src/JueMingR.TerrariaHost/Recovery/RecoveryHooks.cs' = @('core','tools-host','quick-items-host','coin-deposit-host','recovery-host','processing-host');
+        'src/JueMingR.TerrariaHost/Recovery/RecoveryBankGuards.cs' = @('core','tools-host','quick-items-host','coin-deposit-host','recovery-host','processing-host');
+        'src/JueMingR.TerrariaHost/Recovery/RecoverySource.cs' = @('core','tools-host','quick-items-host','coin-deposit-host','recovery-host','processing-host');
+        'src/JueMingR.TerrariaHost/Input/TextEditInput.cs' = @('core','shared-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host','recovery-host','processing-host','tools-host');
+        'src/JueMingR.TerrariaHost/Input/SingleLineEditView.cs' = @('core','shared-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host','recovery-host','processing-host','tools-host');
+        'src/JueMingR.Platform/Items/ItemOperationOwnership.cs' = @('core','shared-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host','recovery-host','processing-host','tools-host');
 
-        'src/JueMingR.TerrariaHost/Recovery/HostRecovery.cs' = @('core','recovery-host','processing-host');
+        'src/JueMingR.TerrariaHost/Recovery/HostRecovery.cs' = @('core','tools-host','quick-items-host','coin-deposit-host','recovery-host','processing-host');
         'tests/NativeWorldTextProbe/NativeRecoveryChecks.cs' = @('core','recovery-host');
         'src/JueMingR.TerrariaHost/About/AboutPage.cs' = @('core','about-host');
         'src/JueMingR.TerrariaHost/Onboarding/HostOnboarding.cs' = @('core','about-host');
@@ -98,21 +102,21 @@ try {
         'tests/NativeWorldTextProbe/NativeAboutVisualChecks.cs' = @('core','about-host');
         'src/JueMingR.TerrariaHost/CoinDeposit/CoinTransfer.cs' = @('core','coin-deposit-host','recovery-host');
         'src/JueMingR.Features/CoinDeposit/CoinIntent.cs' = @('core','coin-deposit-host','recovery-host');
-        'src/JueMingR.TerrariaHost/QuickItems/QuickItemUse.cs' = @('core','quick-items-host','coin-deposit-host','recovery-host');
-        'src/JueMingR.TerrariaHost/KeepFavorited/FavoriteHooks.cs' = @('core','quick-items-host','coin-deposit-host','recovery-host');
+        'src/JueMingR.TerrariaHost/QuickItems/QuickItemUse.cs' = @('core','tools-host','quick-items-host','coin-deposit-host','recovery-host','processing-host');
+        'src/JueMingR.TerrariaHost/KeepFavorited/FavoriteHooks.cs' = @('core','tools-host','quick-items-host','coin-deposit-host','recovery-host','processing-host');
         'src/JueMingR.Features/Text/TextEditBuffer.cs' = @('core','notes-host','map-host','footprints-host','browser-host','processing-host');
         'src/JueMingR.TerrariaHost/Notes/NotesClipboard.cs' = @('core','notes-host','browser-host','about-host','processing-host');
         'src/JueMingR.TerrariaHost/Notes/NotesInput.cs' = @('core','notes-host','browser-host','processing-host');
         'src/JueMingR.TerrariaHost/Notes/NotesPresentation.cs' = @('core','notes-host','about-host');
         'src/JueMingR.Features/WorldObjectText/WorldObjectResolver.cs' = @('core','world-host','browser-host');
-        'src/JueMingR.TerrariaHost/World/WorldTileObservation.cs' = @('core','world-host','browser-host','recovery-host','processing-host');
-        'src/JueMingR.Platform/WorldTargets/WorldTargetObservation.cs' = @('core','world-host','browser-host','recovery-host','processing-host');
+        'src/JueMingR.TerrariaHost/World/WorldTileObservation.cs' = @('core','world-host','browser-host','tools-host','quick-items-host','coin-deposit-host','recovery-host','processing-host');
+        'src/JueMingR.Platform/WorldTargets/WorldTargetObservation.cs' = @('core','world-host','browser-host','tools-host','quick-items-host','coin-deposit-host','recovery-host','processing-host');
         'src/JueMingR.TerrariaHost/ItemBrowser/NativeItemCatalog.cs' = @('core','browser-host');
-        'src/JueMingR.TerrariaHost/Hotkeys/HostHotkeys.cs' = @('core','shared-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host','recovery-host','processing-host');
-        'src/JueMingR.TerrariaHost/F5/F5Layout.cs' = @('core','shared-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host','recovery-host','processing-host');
-        'src/JueMingR.TerrariaHost/Input/HostInputState.cs' = @('core','shared-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host','recovery-host','processing-host');
-        'src/JueMingR.Platform/Persistence/DocumentWorker.cs' = @('core','storage-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host','recovery-host','processing-host');
-        'src/JueMingR.Infrastructure/Storage/AtomicFileDocument.cs' = @('core','storage-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host','recovery-host','processing-host');
+        'src/JueMingR.TerrariaHost/Hotkeys/HostHotkeys.cs' = @('core','shared-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host','recovery-host','processing-host','tools-host');
+        'src/JueMingR.TerrariaHost/F5/F5Layout.cs' = @('core','shared-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host','recovery-host','processing-host','tools-host');
+        'src/JueMingR.TerrariaHost/Input/HostInputState.cs' = @('core','shared-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host','recovery-host','processing-host','tools-host');
+        'src/JueMingR.Platform/Persistence/DocumentWorker.cs' = @('core','storage-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host','recovery-host','processing-host','tools-host');
+        'src/JueMingR.Infrastructure/Storage/AtomicFileDocument.cs' = @('core','storage-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host','recovery-host','processing-host','tools-host');
         'src/JueMingR.TerrariaHost/Notes/NotesCards.cs' = @('core','notes-host');
         'src/JueMingR.Features/WorldObjectText/OpenedPositionStore.cs' = @('core','records');
         'src/JueMingR.TerrariaHost/EntityLabels/StyleEditor.cs' = @('core','style-host');

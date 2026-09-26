@@ -612,6 +612,7 @@ namespace JueMingR.TerrariaHost
             try { postfixContext?.WorldTargets?.World.Draw(); } catch { postfixContext?.WorldTargets?.FailClosed(); }
             try { postfixContext?.WorldObjects?.World.Draw(); } catch { postfixContext?.WorldObjects?.FailClosed(); }
             try { postfixContext?.Guidance?.World.Draw(); } catch { postfixContext?.Guidance?.World.Clear(); }
+            try { if(entityLayerStatus==Rendering.WorldLayerStatus.Ready)postfixContext?.Tools?.Mining.Draw(); } catch { postfixContext?.Tools?.Mining.Clear(); }
             try { if (entityLayerStatus == Rendering.WorldLayerStatus.Ready) postfixContext?.Browser?.Locator.Draw(); } catch { postfixContext?.Browser?.Locator.Clear(); }
             return true;
         }
@@ -824,6 +825,7 @@ namespace JueMingR.TerrariaHost
             internal CoinDeposit.HostCoinDeposit CoinDeposit { get; private set; }
             internal Recovery.HostRecovery Recovery { get; private set; }
             internal Processing.HostProcessing Processing { get; private set; }
+            internal Tools.HostTools Tools {get;private set;}
             internal Feedback.LocalShortFeedback ShortFeedback { get; private set; }
             private Hotkeys.HotkeyStateFeedback hotkeyFeedback;
             private Npcs.NativeNpcObservation nativeNpcs;
@@ -901,6 +903,12 @@ namespace JueMingR.TerrariaHost
                     }
                 }
                 nativeNpcs = new Npcs.NativeNpcObservation();
+                if(PackageId.StartsWith("continuous-processing-",StringComparison.Ordinal))
+                {
+                    Tools=new Tools.HostTools(gameDirectory,runtime.SharedRuntime,items,Input,nativeNpcs);runtime.SharedRuntime.AddFeature(Tools);
+                    if(QuickItems!=null)QuickItems.YieldTools=Tools.Yield;
+                    if(Processing!=null)Processing.YieldTools=()=>Tools.Enabled;
+                }
                 if (entityPackage) { Labels = new EntityLabels.HostEntityLabels(gameDirectory, runtime.SharedRuntime, nativeNpcs) { LayerStatus = entityLayerStatus }; runtime.SharedRuntime.AddFeature(Labels); }
                 if (worldPackage) { worldTiles = new World.WorldTileObservation(() => runtime.SharedRuntime.IsSessionActive); WorldTargets = new WorldTargets.HostWorldTargets(gameDirectory, runtime.SharedRuntime, worldTiles) { LayerStatus = entityLayerStatus }; runtime.SharedRuntime.AddFeature(WorldTargets); }
                 if((PackageId.StartsWith("recovery-buffs-services-",StringComparison.Ordinal) || PackageId.StartsWith("continuous-processing-",StringComparison.Ordinal)))
@@ -916,10 +924,11 @@ namespace JueMingR.TerrariaHost
                 if (PackageId.StartsWith("item-browser-", StringComparison.Ordinal) || quickPackage) Browser = new ItemBrowser.HostItemBrowser(gameDirectory, worldTiles, Input);
                 if (hotkeyPackage) ShortFeedback = new Feedback.LocalShortFeedback(runtime.SharedRuntime, Input);
                 var hotkeys = hotkeyPackage ? new Hotkeys.HostHotkeys(gameDirectory, runtime, preferences, items, Labels, WorldTargets, WorldObjects,
-                    informationPackage ? Information : null, () => Shell != null && Shell.CanAdjustInformation, () => Shell?.RequestInformationAdjustment(), Guidance, DeathRecords, MapFeatures, Footprints, Browser == null ? (Func<bool>)null : Browser.CanAnnounce, Browser == null ? (Action)null : Browser.Announce, Browser == null ? (Func<bool>)null : Browser.CanQuery, Browser == null ? (Action)null : Browser.Query, Browser?.Announcements, QuickItems, CoinDeposit, Recovery, Processing, ShortFeedback) : null;
+                    informationPackage ? Information : null, () => Shell != null && Shell.CanAdjustInformation, () => Shell?.RequestInformationAdjustment(), Guidance, DeathRecords, MapFeatures, Footprints, Browser == null ? (Func<bool>)null : Browser.CanAnnounce, Browser == null ? (Action)null : Browser.Announce, Browser == null ? (Func<bool>)null : Browser.CanQuery, Browser == null ? (Action)null : Browser.Query, Browser?.Announcements, QuickItems, CoinDeposit, Recovery, Processing, ShortFeedback, Tools) : null;
                 hotkeyFeedback = hotkeys?.Feedback;
                 Shell = new F5Shell(runtime, preferences, notes, items, Input, hotkeys, Labels, WorldTargets, WorldObjects, Information, Guidance, DeathRecords, MapFeatures, Footprints, Browser?.Announcements) { LayersReady = f5LayersReady };
                 Browser?.Attach(Shell, hotkeys);
+                if(Tools!=null){Shell.AttachTools(Tools);Tools.CanInterface=()=>Shell.CanProcessingInput;Tools.Feedback=ShortFeedback;}
                 if(Processing!=null){Shell.AttachProcessing(Processing);Processing.CanInterface=()=>Shell.CanProcessingInput;Processing.BankGuardsReady=()=>Recovery!=null && Recovery.Available;}
                 if(Recovery!=null){Shell.AttachRecovery(Recovery);Recovery.CanGameplay=()=>Shell.CanTargetInput && !Terraria.Main.mapFullscreen && !Terraria.Main.LocalPlayer.mouseInterface;Recovery.CanBackgroundBuff=()=>Shell.CanBackgroundBuff;Recovery.IsQuickUse=()=>QuickItems!=null && (QuickItems.Use.Active || QuickItems.Use.InNativeUse);}
                 if ((PackageId.StartsWith("about-help-feedback-", StringComparison.Ordinal) || (PackageId.StartsWith("recovery-buffs-services-", StringComparison.Ordinal) || PackageId.StartsWith("continuous-processing-", StringComparison.Ordinal))))
@@ -951,6 +960,7 @@ namespace JueMingR.TerrariaHost
                 CoinDeposit?.Poll();
                 Recovery?.Poll();
                 Processing?.Poll();
+                Tools?.Poll();
                 Labels?.PollPreferences();
                 WorldTargets?.PollPreferences();
                 WorldObjects?.PollPreferences();
@@ -980,6 +990,7 @@ namespace JueMingR.TerrariaHost
                 CoinDeposit?.FailClosed();
                 Recovery?.FailClosed();
                 Processing?.FailClosed();
+                Tools?.FailClosed();
                 KeepFavorited?.FailClosed();
                 onboarding?.FailClosed();
                 hotkeyFeedback?.Clear();

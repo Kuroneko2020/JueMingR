@@ -15,6 +15,8 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Features.CoinDeposit.CoinIntent", "JueMingR.Features.CoinDeposit.CoinRules",
                 "JueMingR.Features.CoinDeposit.CoinOutcome", "JueMingR.Features.CoinDeposit.CoinPreferenceCodec", "JueMingR.Features.CoinDeposit.CoinSettings",
                 "JueMingR.Features.Processing.ProcessingOptions", "JueMingR.Features.Processing.ProcessingSettings",
+                "JueMingR.Features.Tools.ToolOptions", "JueMingR.Features.Tools.ToolSettings", "JueMingR.Features.Tools.CaptureMode", "JueMingR.Features.Tools.MiningMode",
+                "JueMingR.Features.Tools.MiningPoint", "JueMingR.Features.Tools.MiningRegion", "JueMingR.Features.Tools.ReplantPoint", "JueMingR.Features.Tools.ReplantQueue",
                 "JueMingR.Features.Recovery.RecoveryRules", "JueMingR.Features.Recovery.RecoveryOptions", "JueMingR.Features.Recovery.RecoveryCodec", "JueMingR.Features.Recovery.RecoverySettings",
                 "JueMingR.Features.Onboarding.OnboardingState", "JueMingR.Features.Onboarding.OnboardingMarkerCodec",
                 "JueMingR.Features.KeepFavorited.FavoriteIntent", "JueMingR.Features.KeepFavorited.FavoriteClaim",
