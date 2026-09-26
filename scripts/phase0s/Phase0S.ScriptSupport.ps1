@@ -1,4 +1,4 @@
-﻿Set-StrictMode -Version 2.0
+Set-StrictMode -Version 2.0
 
 $script:Phase0SUtf8NoBom = New-Object System.Text.UTF8Encoding($false, $true)
 $script:Phase0SExpectedPayloadPaths = @(
