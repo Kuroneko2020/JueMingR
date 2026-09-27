@@ -36,6 +36,8 @@ namespace JueMingR.TerrariaHost.F5
         internal FootprintControls FootprintControls { get; set; }
         internal Recovery.RecoveryPresentation RecoveryUi {get;set;}
         internal Processing.ReforgePanel ReforgeUi {get;set;}
+        internal Tools.MiningPanel MiningUi {get;set;}
+        internal Tools.CaptureWindow CaptureUi {get;set;}
         internal void DrawFootprintPopup(FootprintPopup popup)
         {
             if (!popup.Visible) return; var batch = Main.spriteBatch;
@@ -308,9 +310,12 @@ namespace JueMingR.TerrariaHost.F5
         internal string ResolveHint(F5Interaction state, Items.ItemsPresentation items, bool blocked, bool biomeFailed, out F5Rect target, F5Rect? contentClip = null)
         {
             target = default(F5Rect);
+            if(CaptureUi!=null && CaptureUi.Visible && CaptureUi.Contains(state.PointerX,state.PointerY))
+                return state.Visible && CaptureUi.CanHint && !blocked?CaptureUi.Hint(state.PointerX,state.PointerY,out target):null;
             if (!state.CanShowHint || blocked) return null;
             if(ReforgeUi!=null && state.Page==1)
             {string hint=ReforgeUi.Hint(state.PointerX,state.PointerY,out target,contentClip);if(hint!=null)return hint;}
+            if(MiningUi!=null && state.Page==1){string hint=MiningUi.Hint(state.PointerX,state.PointerY,out target,contentClip);if(hint!=null)return hint;}
             if(RecoveryUi!=null && (state.Page==10 || state.Page==1))
             {string recoveryHint=RecoveryUi.Hint(state.PointerX,state.PointerY,out target,contentClip);if(recoveryHint!=null)return recoveryHint;}
             if (state.Page == 0) return items == null ? null : items.Hint(state.PointerX, state.PointerY, out target, contentClip);
@@ -349,7 +354,7 @@ namespace JueMingR.TerrariaHost.F5
         internal void DrawHints(F5Interaction state, Matrix matrix, Items.ItemsPresentation items, bool blocked, bool biomeFailed)
         {
             // No graphics or text preparation for a hidden window or higher owner.
-            if (!state.CanShowHint || blocked) { HintLayout.Hide(); return; }
+            if (!state.Visible || blocked) { HintLayout.Hide(); return; }
             // Blank content and ordinary buttons need no graphics state at all.
             // A real target is checked again against the final pixel clip below.
             F5Rect preliminaryTarget;

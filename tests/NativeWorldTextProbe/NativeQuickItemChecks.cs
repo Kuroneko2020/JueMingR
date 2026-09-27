@@ -24,13 +24,14 @@ namespace NativeWorldTextProbe
         private static int recalls;
         internal static int Recalls {get{return recalls;}}
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static void Run(Action<object> visual=null, bool coins=false, bool about=false, bool recovery=false, bool processing=false, bool shortFeedback=false)
+        internal static void Run(Action<object> visual=null, bool coins=false, bool about=false, bool recovery=false, bool processing=false, bool shortFeedback=false,string candidateAssembly=null)
         {
             Require(IntPtr.Size==4,"G05 native fixture must use .NET Framework x86");
             Require(typeof(Main).Assembly.ManifestModule.ModuleVersionId==new Guid("2c29f6c3-4bd9-4add-9c58-da159804e083"),"fixed .8 MVID");
             using(var file=File.OpenRead(typeof(Main).Assembly.Location))using(var sha=System.Security.Cryptography.SHA256.Create())
                 Require(BitConverter.ToString(sha.ComputeHash(file)).Replace("-","")=="960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3","fixed .8 source");
-            var assembly=Assembly.LoadFrom(Path.Combine(Program.Repository,"artifacts/build/Debug/work/bin/JueMingR.TerrariaHost/x86/Debug/net472/JueMingR.TerrariaHost.dll"));
+            var assembly=Assembly.LoadFrom(candidateAssembly??Path.Combine(Program.Repository,"artifacts/build/Debug/work/bin/JueMingR.TerrariaHost/x86/Debug/net472/JueMingR.TerrariaHost.dll"));
+            if(candidateAssembly!=null)Console.WriteLine("Explicit historical candidate: "+assembly.Location+" MVID="+assembly.ManifestModule.ModuleVersionId);
             Initialize();
             string root=Path.Combine(Terraria.Program.SavePath,"composition");Directory.CreateDirectory(root);
             Main.ActivePlayerFileData=new Terraria.IO.PlayerFileData(Path.Combine(root,"fixture.plr"),false){Player=Main.LocalPlayer};
@@ -115,6 +116,7 @@ namespace NativeWorldTextProbe
                 var coin=GetOptional(context,"CoinDeposit");if(coin!=null)Call(coin,"Exit",null,EventArgs.Empty);
                 var recoveryHost=GetOptional(context,"Recovery");if(recoveryHost!=null){Call(recoveryHost,"Exit",null,EventArgs.Empty);assembly.GetType("JueMingR.TerrariaHost.Recovery.RecoveryHooks").GetMethod("Uninstall",Flags).Invoke(null,null);}
                 var processingHost=GetOptional(context,"Processing");if(processingHost!=null){Call(processingHost,"Exit",null,EventArgs.Empty);assembly.GetType("JueMingR.TerrariaHost.Processing.ProcessingHooks").GetMethod("Uninstall",Flags).Invoke(null,null);assembly.GetType("JueMingR.TerrariaHost.Processing.ReforgeHooks").GetMethod("Uninstall",Flags).Invoke(null,null);}
+                var toolsHost=GetOptional(context,"Tools");if(toolsHost!=null){Call(toolsHost,"Exit",null,EventArgs.Empty);assembly.GetType("JueMingR.TerrariaHost.Tools.ToolHooks").GetMethod("Uninstall",Flags).Invoke(null,null);}
                 var onboarding=GetOptional(context,"onboarding");if(onboarding!=null)Call(onboarding,"Exit",null,EventArgs.Empty);
                 var browser=GetOptional(context,"Browser");if(browser!=null)((IDisposable)browser).Dispose();StopContext(context);
                 foreach(var method in isolation.GetPatchedMethods().ToArray())isolation.Unpatch(method,HarmonyPatchType.All,isolation.Id);
@@ -153,9 +155,15 @@ namespace NativeWorldTextProbe
         }
         internal static void NativeFrame(Player player)
         {
+            BeginWorldStep();
             typeof(Player).GetMethod("ResetControls",Flags).Invoke(player,null);PlayerInput.Triggers.Current.CopyInto(player);
             player.selectedItemState.Update();typeof(Player).GetMethod("TrySyncingInput",Flags).Invoke(player,null);player.ItemCheck();
         }
+        // These fixtures execute selected native stages, not Main.DoUpdate.
+        // Supply the world's entry counter exactly once per simulated step;
+        // input sampling and empty outer callbacks deliberately do not do so.
+        internal static void BeginWorldStep()
+        {typeof(Main).GetField("_gameUpdateCount",Flags).SetValue(null,unchecked(Main.GameUpdateCount+1));}
         internal static void Until(Func<bool> done) {var until=DateTime.UtcNow.AddSeconds(8);while(!done()){if(DateTime.UtcNow>until)throw new Exception("G05 worker timeout");Thread.Sleep(2);}}
         private static void Patch(Harmony harmony,MethodInfo method,string prefix) {Require(method!=null,"native fixture exact outlet exists: "+prefix);harmony.Patch(method,new HarmonyMethod(typeof(NativeQuickItemChecks).GetMethod(prefix,Flags)));}
         private static bool Recall(PlayerSpawnContext __0) {Require(__0==PlayerSpawnContext.RecallFromItem,"only recall outlet intercepted");recalls++;return false;}

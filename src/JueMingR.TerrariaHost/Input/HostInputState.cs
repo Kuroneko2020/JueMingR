@@ -66,6 +66,10 @@ namespace JueMingR.TerrariaHost.Input
         internal bool SampleFocused { get { return mapped && IsFocused && nativePermission; } }
         internal bool CanUseInput { get { return SampleFocused && finalized && !quarantine; } }
         internal bool CanStartActions { get { return CanUseInput; } }
+        // Main.Update can finish without DoUpdate sampling input (frame skip
+        // off). That revokes execution for this epoch, not an existing intent.
+        // Focus loss/reactivation quarantine still revokes both permissions.
+        internal bool CanRetainIntent { get { return IsFocused && !rearming && !quarantine; } }
         internal long Frame { get; private set; }
         internal bool CanPrepareText { get { return IsFocused && !rearming && !quarantine; } }
         internal HostInputState() : this(() => Main.instance == null ? IntPtr.Zero : Main.instance.Window.Handle, GetForegroundWindow) { }

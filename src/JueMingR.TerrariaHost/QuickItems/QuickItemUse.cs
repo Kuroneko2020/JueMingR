@@ -15,7 +15,7 @@ namespace JueMingR.TerrariaHost.QuickItems
         private Item provider;
         private QuickItemEntry entry;
         private QuickItemChoice choice;
-        private long nextToken, token, session, admittedFrame;
+        private long token, session, admittedFrame;
         private int original;
         private bool selected, pulsed, checkedItem, cancelled, started, ownsMouse;
         internal bool InNativeUse { get; private set; }
@@ -37,7 +37,7 @@ namespace JueMingR.TerrariaHost.QuickItems
                 new QuickItemCandidate(i,item.type,item.stack,item.useStyle!=0,host.Items.Ownership.IsProtected(i)); }
             choice=QuickItemRules.Choose(requested,candidates,current.selectedItem);
             if(!choice.Found) {host.Feedback(HostQuickItems.FeedbackKind.NotExecuted,"背包中没有可用的目标物品。");return;}
-            long next=++nextToken;
+            long next=host.Items.Ownership.NewUseToken();
             if(!host.Items.Ownership.TryBeginUse(host.Runtime.Generation,choice.Slot,next)) {host.Feedback(HostQuickItems.FeedbackKind.NotExecuted,"目标物品正在被其他操作使用。");return;}
             token=next;session=host.Runtime.Generation;admittedFrame=host.Input.Frame;player=current;provider=current.inventory[choice.Slot];entry=requested;
             selected=pulsed=checkedItem=cancelled=started=false;original=current.selectedItem;
@@ -113,7 +113,7 @@ namespace JueMingR.TerrariaHost.QuickItems
         private void ReturnSelection()
         {
             if(player!=null && player.selectedItemState.HasActiveOverride && !player.selectedItemState.HasBufferedChange)
-                player.selectedItemState.Select(original);
+                host.Items.ReturnSelection(()=>player.selectedItemState.Select(original));
         }
         internal void CancelEntry(string id) {if(entry!=null && entry.Id==id)Cancel();}
         // Shared dispatch precedes the next native selection update. Do not

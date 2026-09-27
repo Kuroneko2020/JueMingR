@@ -10,6 +10,8 @@ namespace JueMingR.ArchitectureTests
         {
             try
             {
+                if(args.Length==1 && args[0]=="--tools")
+                {var checks=new List<string>();ToolsChecks.Check(checks);foreach(var failure in checks)Console.Error.WriteLine(failure);Console.WriteLine("Tools failures="+checks.Count);return checks.Count==0?0:1;}
                 if(args.Length==1 && args[0]=="--processing")
                 {var checks=new List<string>();ItemAutomationChecks.Check(checks);ProcessingChecks.Check(checks);foreach(var failure in checks)Console.Error.WriteLine(failure);Console.WriteLine("Processing rules/storage failures="+checks.Count);return checks.Count==0?0:1;}
                 if (args.Length == 1 && args[0] == "--recovery")
@@ -102,6 +104,7 @@ namespace JueMingR.ArchitectureTests
                 QuickItemChecks.Check(failures);
                 CoinDepositChecks.Check(failures);
                 RecoveryChecks.Check(failures);
+                ToolsChecks.Check(failures);
                 OnboardingChecks.Check(failures);
                 HotkeyStorageChecks.Check(repositoryRoot, failures);
                 Phase0TArchitectureChecks.Check(failures);
