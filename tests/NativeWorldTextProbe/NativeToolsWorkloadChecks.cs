@@ -7,6 +7,7 @@ using Microsoft.Xna.Framework.Input;
 using Terraria;
 using JueMingR.Features.Tools;
 using Terraria.ObjectData;
+using Terraria.DataStructures;
 using static NativeWorldTextProbe.NativeInformationChecks;
 
 namespace NativeWorldTextProbe
@@ -37,8 +38,13 @@ namespace NativeWorldTextProbe
                 for(int i=0;i<64;i++){NativeQuickItemChecks.Sample(input,new Keys[0]);Call(context,"UpdateRuntime");}
                 long checks=(long)Get(mining,"OverlayChecks")-before;
                 Console.WriteLine("G09 mining warm 512 cells x64 updates: overlay="+checks+" eligibility="+eligibility+" ReadCurrent="+reads);
-                Require(checks<=24*64 && eligibility<=24*64,"stable coverage must not run full region eligibility each update");
                 var region=(MiningRegion)Get(mining,"Region");var coverage=Get(mining,"Coverage");
+                var reach=TileReachCheckSettings.Simple.GetTileRegion(p,p.HeldItem.tileBoost);
+                int reachable=Enumerable.Range(0,region.Count).Count(i=>region[i].X>=reach.Left && region[i].X<=reach.Right && region[i].Y>=reach.Top && region[i].Y<=reach.Bottom);
+                Require(checks>0 && eligibility>0 && reads>0 && checks<=24*64 && eligibility<=24*64,"stable coverage must observe real work without full region eligibility each update");
+                // Membership reads N, local witnesses 3R, and each full
+                // eligibility query reads at most current + nine neighbours.
+                Require(reads<=64*(region.Count+3*reachable)+10*eligibility,"stable mining total reads include membership, witnesses and bounded deep checks");
                 int index=Enumerable.Range(0,region.Count).First(i=>region[i].X==42 && region[i].Y==40);
                 Require((bool)Call(coverage,"Green",index),"reachable interior cell remains green");
                 Main.tile[42,40].inActive(true);Call(context,"UpdateRuntime");Require(!(bool)Call(coverage,"Green",index),"actuation invalidates coverage immediately");
@@ -56,7 +62,10 @@ namespace NativeWorldTextProbe
             finally{count.Unpatch(read,HarmonyPatchType.All,count.Id);count.Unpatch(progress,HarmonyPatchType.All,count.Id);NativeToolsChecks.SetMode(host,2,0);}
             Herbs(context,host,input);
             Boss(context,host,input);
+            NativeCaptureWorkloadChecks.Cpu(context);
             IdleConsumers(context,host,input);
+            NativeToolsCacheChecks.Run(context);
+            NativeToolsLifecycleChecks.Run(context);
         }
         private static void IdleConsumers(object context,object host,object input)
         {
@@ -80,7 +89,9 @@ namespace NativeWorldTextProbe
                 NativeToolsChecks.Frame(context,input);reads=eligibility=0;long intents=(long)Get(mining,"IntentCreations");
                 for(int i=0;i<240;i++)NativeToolsChecks.Frame(context,input);
                 Console.WriteLine("G09 actual idle native selection 512 low-power cells x240: eligibility="+eligibility+" ReadCurrent="+reads);
-                miningBound=eligibility<=24*240 && ((MiningRegion)Get(mining,"Region")).Count==512;
+                var idleRegion=(MiningRegion)Get(mining,"Region");var idleReach=TileReachCheckSettings.Simple.GetTileRegion(p,p.HeldItem.tileBoost);
+                int reachable=Enumerable.Range(0,idleRegion.Count).Count(i=>idleRegion[i].X>=idleReach.Left && idleRegion[i].X<=idleReach.Right && idleRegion[i].Y>=idleReach.Top && idleRegion[i].Y<=idleReach.Bottom);
+                miningBound=eligibility>0 && eligibility<=24*240 && idleRegion.Count==512 && reads>0 && reads<=240*(512+3*reachable)+10*eligibility;
                 Require((long)Get(mining,"IntentCreations")==intents,"no idle mining intent/closure construction");
                 p.inventory[0].pick=200;
                 for(int i=0;i<35 && ((MiningRegion)Get(mining,"Region")).Count==512;i++)NativeToolsChecks.Frame(context,input);

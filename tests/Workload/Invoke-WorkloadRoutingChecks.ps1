@@ -125,6 +125,18 @@ try {
         'src/JueMingR.Features/DeathHistory/DeathArchive.cs' = @('core','death-host');
         'docs/guide.md' = @('core')
     }
+    # Exercise production-only regressions too: a test-file edit must not be
+    # required to select these assertions. Shared facts retain all consumers.
+    foreach ($name in @('NetGeometry','AutoMining','MiningOverlay','MiningEligibility','HerbHarvest','HerbField','FishingBorrow','ToolHooks')) {
+        $path = 'src/JueMingR.TerrariaHost/Tools/' + $name + '.cs'
+        $cases[$path] = 'tools-host'; $exactGroups[$path] = $exactGroups['src/JueMingR.TerrariaHost/Tools/AutoCapture.cs']
+    }
+    foreach ($name in @('NativeCaptureWorkloadChecks','NativeToolsCacheChecks','NativeToolsWorkloadChecks','NativeCaptureChecks')) {
+        $path = 'tests/NativeWorldTextProbe/' + $name + '.cs'
+        $cases[$path] = 'tools-host'; $exactGroups[$path] = $exactGroups['src/JueMingR.TerrariaHost/Tools/AutoCapture.cs']
+    }
+    $cases['src/JueMingR.TerrariaHost/Npcs/NativeNpcObservation.cs'] = 'tools-host'
+    $exactGroups['src/JueMingR.TerrariaHost/Npcs/NativeNpcObservation.cs'] = @($exactGroups['src/JueMingR.TerrariaHost/F5/F5Layout.cs'] + 'storage-host' | Sort-Object -Unique)
     foreach ($path in $cases.Keys) { Write-Fixture $path "baseline`n" }
     Invoke-WorkloadGit $fixtureRoot @('add', '.') | Out-Null
     Invoke-WorkloadGit $fixtureRoot @('-c', 'user.name=Workload fixture', '-c', 'user.email=fixture@example.invalid', '-c', 'commit.gpgSign=false', 'commit', '--quiet', '-m', 'fixture baseline') | Out-Null
@@ -271,15 +283,17 @@ try {
         }
         Invoke-ToolsWorkloadChecks @('core') 'architecture.exe' 'native.exe'
         Assert-Route ($calls.Count -eq 0) 'unrelated route skips tools'
-        Invoke-ToolsWorkloadChecks @('core','tools-host','shared-host') 'architecture.exe' 'native.exe'
+        foreach($groups in @(@('core','tools-host'),@('core','tools-host','shared-host'))) {
+        $calls.Clear(); Invoke-ToolsWorkloadChecks $groups 'architecture.exe' 'native.exe'
         Assert-Route ($calls.Count -eq 4 -and ($calls[0].arguments -join '|') -ceq '--tools') 'tools rules and three native checks execute once'
         $scopes = @('ToolsCpu','ToolsCadence','ToolsWorkload'); $directories = @('tools-cpu','tools-cadence','tools-workload')
         for ($i=0; $i -lt 3; $i++) {
             Assert-Route ($calls[$i+1].executable -ceq 'native.exe' -and ($calls[$i+1].arguments -join '|') -ceq (@($repositoryRoot,'--cpu',(Join-Path $checksRoot $directories[$i]),$scopes[$i]) -join '|')) 'tools real CPU entry and isolated output'
         }
+        }
     }
     $toolsCalls = @($runnerAst.FindAll({ param($node) $node -is [Management.Automation.Language.CommandAst] -and $node.GetCommandName() -ceq 'Invoke-ToolsWorkloadChecks' }, $true))
-    Assert-Route ($toolsCalls.Count -eq 1) 'normal runner invokes tools exactly once'
+    Assert-Route ($toolsCalls.Count -eq 1 -and $toolsCalls[0].Extent.Text -ceq 'Invoke-ToolsWorkloadChecks $route.groups $architecture $native') 'normal runner invokes tools exactly once with actual route and detection executables'
     # Run the real process wrapper in a child PowerShell: failed checks must
     # escape as a nonzero process exit and must never append a PASS result.
     $failurePath = Join-Path $fixtureRoot 'failure-exit.ps1'

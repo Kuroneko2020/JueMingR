@@ -134,6 +134,7 @@ namespace NativeWorldTextProbe
             }
             Require(result.Effects.Count==points.Count || automatic,"native reference must finish the identical reachable layout tool="+id+" completed="+result.Effects.Count);
             if(herbs)Require(!p.inventory.Any(item=>item.type==ItemID.DaybloomSeeds),"continuous free regrowth does not fabricate/consume an inventory seed");
+            if(automatic && result.Effects.Count==points.Count)NativeToolsCacheChecks.NaturalCompletion(context,herbs);
             return result;
         }
     }

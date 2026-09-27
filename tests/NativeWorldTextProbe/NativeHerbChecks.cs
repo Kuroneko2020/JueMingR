@@ -58,11 +58,19 @@ namespace NativeWorldTextProbe
             NativeToolsChecks.Tile(42,40,84);Main.tile[42,40].frameX=0;Main.tile[42,40].liquid=255;Main.tile[42,40].liquidType(0);NativeToolsChecks.SetMode(host,1,1);
             for(int f=0;f<100 && Main.tile[42,40].active();f++)NativeToolsChecks.Frame(context,input);
             Require(!Main.tile[42,40].active() && pending.Count==1,"real harvest can leave a water-blocked empty plot with no immediate seed source");
-            for(int f=0;f<70;f++)NativeToolsChecks.Frame(context,input);Require(pending.Count==1,"absent seed does not discard finite delayed opportunity");
+            // Finish the current native animation before measuring idle seed
+            // discovery. One pending plot checks 50 slots per four-update probe.
+            for(int f=0;f<40;f++)NativeToolsChecks.Frame(context,input);
+            object herbs=Get(host,"Herbs");long seedReads=(long)Get(herbs,"SeedSlotsVisited");
+            for(int f=0;f<72;f++)NativeToolsChecks.Frame(context,input);
+            long seedDelta=(long)Get(herbs,"SeedSlotsVisited")-seedReads;
+            Require(pending.Count==1 && seedDelta>0 && seedDelta<=50*18,"absent seed retains responsibility with bounded actual inventory reads: "+seedDelta);
             p.inventory[17].SetDefaults(ItemID.DaybloomSeeds);p.inventory[17].stack=2;Main.tile[42,40].liquid=0;
             for(int f=0;f<100 && !Main.tile[42,40].active();f++)NativeToolsChecks.Frame(context,input);
             Require(Main.tile[42,40].active() && Main.tile[42,40].type==82 && Main.tile[42,40].frameX==0 && p.inventory[17].stack==1,"late seed uses real native placement and consumes exactly one matching seed");
-            for(int f=0;f<40;f++)NativeToolsChecks.Frame(context,input);Require(pending.Count==0 && p.selectedItem==0,"successful fallback releases seed and returns selection");NativeToolsChecks.SetMode(host,1,0);
+            for(int f=0;f<40;f++)NativeToolsChecks.Frame(context,input);Require(pending.Count==0 && p.selectedItem==0,"successful fallback releases seed and returns selection");
+            seedReads=(long)Get(herbs,"SeedSlotsVisited");for(int f=0;f<40;f++)NativeToolsChecks.Frame(context,input);
+            Require((long)Get(herbs,"SeedSlotsVisited")==seedReads,"completed fallback stops seed inventory traversal");NativeToolsChecks.SetMode(host,1,0);
             Console.WriteLine("PASS G09 herbs: two real tools x seven styles x two native containers, actual ItemCheck free replant without inventory seeds.");
             Console.WriteLine("PASS G09 real water-blocked harvest and delayed native seed consumption after material arrives.");
         }

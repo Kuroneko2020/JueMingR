@@ -50,7 +50,11 @@ namespace NativeWorldTextProbe
             p.position+=new Vector2(.7f,.3f);CheckChanged(subject,p,net,"fractional world position");
             p.width+=2;p.height+=4;CheckChanged(subject,p,net,"hitbox dimensions");
             p.direction=-1;CheckChanged(subject,p,net,"direction");p.gravDir=-1;CheckChanged(subject,p,net,"gravity");
-            p.meleeScaleGlove=true;CheckChanged(subject,p,net,"effective glove scale");net.scale*=1.2f;CheckChanged(subject,p,net,"item scale");
+            // Native ordinary nets are not melee items, so the glove alone is
+            // not an effective scale dependency. Exercise that no-op first,
+            // then an explicitly melee synthetic tool for real scale change.
+            p.meleeScaleGlove=true;CheckChanged(subject,p,net,"non-melee glove has no geometric effect",false);
+            net.melee=true;CheckChanged(subject,p,net,"effective glove scale");net.scale*=1.2f;CheckChanged(subject,p,net,"item scale");
             net.useAnimation=21;CheckChanged(subject,p,net,"use duration");net.melee=true;p.meleeSpeed=.75f;CheckChanged(subject,p,net,"effective duration");
             p.portableStoolInfo.SetStats(26,13,26);p.portableStoolInfo.IsInUse=true;CheckChanged(subject,p,net,"native hitbox center offset");p.portableStoolInfo.Reset();
             graphics.LoadTexture("Item","Images/Item_1991",1991);CheckChanged(subject,p,net,"replacement texture value");
@@ -60,13 +64,17 @@ namespace NativeWorldTextProbe
             p.width=width;p.height=height;p.meleeSpeed=speed;p.gravDir=1;p.meleeScaleGlove=false;p.itemAnimation=p.itemTime=0;
             Console.WriteLine("PASS G09 geometry invalidation: fractional position, dimensions, facing, gravity, scale/glove, duration, native center offset, texture value/frame, unavailable-to-ready resource.");
         }
-        private static void CheckChanged(object subject,Player p,Item net,string label)
+        private static void CheckChanged(object subject,Player p,Item net,string label,bool rebuild=true)
         {
+            long builds=(long)Get(subject,"ShapeBuilds"),styles=(long)Get(subject,"ApplyUseStyleCalls"),hitboxes=(long)Get(subject,"GetMeleeHitboxCalls");
             Rectangle frame=Item.GetDrawHitbox(net.type,p);int frames=Math.Max(1,(int)(net.useAnimation*(net.melee && !Terraria.ID.ItemID.Sets.NoMeleeSpeedBonus[net.type]?p.meleeSpeed:1f)));
             var expected=new List<Rectangle>();p.itemAnimationMax=frames;
             for(int f=frames-1;f>0;f--){p.itemAnimation=f;p.ItemCheck_ApplyUseStyle(p.HeightOffsetHitboxCenter,net,frame);bool inactive;Rectangle box;p.ItemCheck_GetMeleeHitbox(net,frame,out inactive,out box);if(!inactive)expected.Add(box);}
+            long update=1000;
             for(int x=560;x<750;x+=7)for(int y=530;y<770;y+=7)
-            {var target=new Rectangle(x,y,3,5);Require((bool)Call(subject,"Hits",p,net,target,42L)==expected.Exists(r=>r.Intersects(target)),"changed geometry independently matches native: "+label);}
+            {var target=new Rectangle(x,y,3,5);Require((bool)Call(subject,"Hits",p,net,target,update++)==expected.Exists(r=>r.Intersects(target)),"changed geometry independently matches native: "+label);}
+            Require((long)Get(subject,"ShapeBuilds")-builds==(rebuild?1:0) && (long)Get(subject,"ApplyUseStyleCalls")-styles==(rebuild?3:0) && (long)Get(subject,"GetMeleeHitboxCalls")-hitboxes==(rebuild?3:0),
+                "changed geometry rebuilds once then reuses across real update generations: "+label);
         }
         private static void ActualCapture(object context,int[] nets)
         {

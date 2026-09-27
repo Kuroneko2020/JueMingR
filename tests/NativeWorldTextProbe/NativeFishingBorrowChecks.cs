@@ -60,6 +60,8 @@ namespace NativeWorldTextProbe
                     var hits=new Rectangle[3];for(int i=0;i<3;i++){proxy.itemAnimation=i==0?24:i==1?12:3;proxy.ItemCheck_ApplyUseStyle(0,net,frame);bool inactive;proxy.ItemCheck_GetMeleeHitbox(net,frame,out inactive,out hits[i]);}
                     target.position=MissPosition(hits,0,target);target.velocity=stops?Vector2.UnitX:Vector2.Zero;Call(Get(host,"Npcs"),"BeginTick");
                     NativeToolsChecks.SetMode(host,0,1);casts=netUses=0;long previous=(long)Get(fish,"Token");bool finished=false;
+                    using(var workload=new NativeCaptureWorkloadChecks.Observation(host))
+                    {
                     for(int f=0;f<220;f++)
                     {
                         LoanFrame(context,input);
@@ -73,6 +75,8 @@ namespace NativeWorldTextProbe
                     }
                     Console.WriteLine("G09 missed loan contender="+contender+" nets="+netUses+" recasts="+casts+" tokens="+((long)Get(fish,"Token")-previous)+" phase="+Get(fish,"Phase"));
                     Require(finished && netUses>=1 && netUses<=2 && casts==1 && (long)Get(fish,"Token")==previous+1 && p.selectedItem==17 && Main.projectile.Any(q=>q.active && q.bobber),"finite real missed capture has one loan and one recast, including automatic contention");
+                    workload.Verify();
+                    }
                     long old=(long)Get(fish,"Token");
                     if(!stops){target.position=new Vector2(1000,600);for(int i=0;i<4;i++)LoanFrame(context,input);}
                     target.position=new Vector2(677,642);target.velocity=Vector2.Zero;

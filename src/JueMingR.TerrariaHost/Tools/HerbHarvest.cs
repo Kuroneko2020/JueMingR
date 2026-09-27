@@ -22,6 +22,7 @@ namespace JueMingR.TerrariaHost.Tools
 #if DEBUG
         internal long Probes {get;private set;}
         internal long ToolSlotsVisited {get;private set;}
+        internal long SeedSlotsVisited {get;private set;}
         internal long IntentCreations {get;private set;}
 #endif
         private readonly long[] unknownPlots=new long[50];
@@ -145,7 +146,13 @@ namespace JueMingR.TerrariaHost.Tools
         {
             if(Unknown(entry.X,entry.Y) || host.Tick-entry.Created>=ReplantQueue.Lifetime)return -1;
             for(int slot=0;slot<50;slot++)
-            {var source=p.inventory[slot];if(source!=null && source.type==seeds[entry.Style] && source.stack>0 && host.Candidate(p,slot,true) && CanPlant(p,source,entry))return slot;}
+            {
+#if DEBUG
+                // Count the actual inventory traversal, including empty slots.
+                SeedSlotsVisited++;
+#endif
+                var source=p.inventory[slot];if(source!=null && source.type==seeds[entry.Style] && source.stack>0 && host.Candidate(p,slot,true) && CanPlant(p,source,entry))return slot;
+            }
             return -1;
         }
         internal bool Ready(Player p)

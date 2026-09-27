@@ -145,6 +145,7 @@ namespace NativeWorldTextProbe
             var ownership=(JueMingR.Platform.Items.ItemOperationOwnership)Get(Get(host,"Items"),"Ownership");
             Require(ownership.IsProtected(0) && !ownership.IsUseSlot(0) && p.selectedItem==0 && !(bool)Get(use,"Active") && Main.tile[45,40].active(),"unknown source remains protected after finite use lease and selection cleanup, with no replay");
             NativeToolsChecks.SetMode(host,2,0);NativeToolsChecks.SetMode(host,2,1);Require(ownership.IsProtected(0),"preference toggle cannot settle unknown native result");NativeToolsChecks.SetMode(host,2,0);
+            NativeToolsLifecycleChecks.Unknown(context);
             Console.WriteLine("PASS G09 injected native post-mutation exception: idempotent finalizer, exact input return, finite use lease, persistent narrow unknown protection and no replay.");
         }
     }
