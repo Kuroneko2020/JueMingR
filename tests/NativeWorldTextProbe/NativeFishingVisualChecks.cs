@@ -34,7 +34,11 @@ namespace NativeWorldTextProbe
                 void Image(string name)
                 {graphics.Image(Path.Combine(output,"fishing-"+name+"-"+size[0]+"-"+size[1]+"-"+size[2]+".png"),()=>{Call(renderer,"Draw",state,matrix,false,false);Call(ui,"Draw",Get(shell,"drawKeyboard"));Call(ui,"DrawPopup",Get(shell,"drawKeyboard"));},matrix,size[0],size[1]);}
             }
-            Call(state,"Close");Call(ui,"Suspend");NativeFishingUiChecks.Save(host,new FishingOptions());
+            var keywords=new FishList(keywords:new[]{"鱼","任务鱼","金匣","魔法海螺","虹鳟鱼"});
+            NativeFishingUiChecks.Save(host,new FishingOptions(filterMode:1,match:1).WithList(1,1,keywords).SavePreset(1,1));
+            Prepare(context,graphics,new[]{960,760,100});Call(ui,"Execute",NativeFishingUiChecks.Part(ui,"PresetList"));Prepare(context,graphics,new[]{960,760,100});
+            graphics.Image(Path.Combine(output,"fishing-keyword-presets-960-760-100.png"),()=>{Call(renderer,"Draw",state,Matrix.Identity,false,false);Call(ui,"Draw",Get(shell,"drawKeyboard"));Call(ui,"DrawPopup",Get(shell,"drawKeyboard"));},Matrix.Identity,960,760);
+            Call(ui,"CloseOverlay");Call(state,"Close");Call(ui,"Suspend");NativeFishingUiChecks.Save(host,new FishingOptions());
             NativeFishingUiChecks.FullBindings(context);
             Console.WriteLine("PASS G10 original-font/texture page, search and presets at normal, 150 percent and short viewports; stable prepared layouts.");
         }

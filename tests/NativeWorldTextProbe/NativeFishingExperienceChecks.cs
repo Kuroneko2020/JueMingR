@@ -74,8 +74,14 @@ namespace NativeWorldTextProbe
             Call(ui,"CloseOverlay");
             string[] words={"鱼","很长的关键词鱼获",new string('x',90),"crates","鲨"};
             Save(host,new FishingOptions(filterMode:1,match:1,presets:new[]{new FishPreset(1,1,new FishList(keywords:words),"words")}));Prepare(context);Click(context,Part(ui,"PresetList"));
-            var pills=Parts(ui).Where(p=>(int)Get(p,"Region")==3 && GetOptional(p,"Label")!=null).ToArray();
+            var pills=Parts(ui).Where(p=>(int)Get(p,"Region")==3 && Get(p,"Command").ToString()=="None" && GetOptional(p,"Label")!=null).ToArray();
             Require(pills.Length==words.Length && pills.Select(p=>(float)Get(Get(Get(p,"Element"),"Rect"),"Width")).Distinct().Count()>1 && pills.Select(p=>(float)Get(Get(Get(p,"Element"),"Rect"),"Y")).Distinct().Count()>1,"keyword preset shows variable-width capsules and wraps even an oversized word");
+            var visibleText=Parts(ui).Where(p=>(int)Get(p,"Region")==3).SelectMany(p=>new[]{GetOptional(Get(p,"Element"),"Text") as string,GetOptional(p,"Label")==null?null:Get(Get(p,"Label"),"Text") as string}).Where(s=>!string.IsNullOrEmpty(s)).ToArray();
+            Require(words.Where(w=>w.Length<90).All(w=>visibleText.Contains(w)) && visibleText.Where(s=>s.All(c=>c=='x')).Sum(s=>s.Length)==90,"every keyword remains fully readable without hints or ellipsis, including a word wider than the window");
+            var close=Part(ui,"Close");Require((float)Get(Get(Get(close,"Element"),"Rect"),"Bottom")<(float)Get(Get(ui,"popupBody"),"Y"),"preset close is a separate header action above the scrollable contents");
+            string cluster="a"+new string('\u0301',30);
+            var clusterLines=(string[])Call(ui,"PresetWordLines",cluster,80f);var layout=Get(Get(ui,"shell"),"Layout");
+            Require(string.Concat(clusterLines)==cluster && clusterLines.All(line=>(float)Get(Call(layout,"DynamicTextSize",line,.7f),"Width")<=80),"a single oversized combining sequence also preserves all text within the readable capsule width");
             Call(ui,"CloseOverlay");Save(host,new FishingOptions(filterMode:1));Prepare(context);
             Main.screenWidth=960;Main.screenHeight=760;Main.UIScale=1;PlayerInput.CacheOriginalScreenDimensions();ShellFrame(context,Vector2.Zero,false);
             Click(context,Part(ui,"Plus"));var feature=Part(ui,"Feature",p=>(int)Get(p,"Feature")==0 && (int)Get(p,"Value")==1);var point=NativeToolsUiChecks.Point(Get(Get(feature,"Element"),"Rect"));

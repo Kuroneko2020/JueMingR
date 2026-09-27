@@ -74,7 +74,7 @@ namespace JueMingR.TerrariaHost.Fishing
             var e=p.Element;var rect=e.Rect.Offset(dx,dy);if(rect.Right<=clip.X || rect.X>=clip.Right || rect.Bottom<=clip.Y || rect.Y>=clip.Bottom)return;
             var copy=new Part{Element=new F5Element(e.Kind,rect,e.Text,e.TextSize,e.TextScale,e.Command,e.HotkeyTarget,e.Description,e.HintRect.Offset(dx,dy)),
                 Label=p.Label==null?null:new F5Element(F5ElementKind.Text,p.Label.Rect.Offset(dx,dy),p.Label.Text,p.Label.TextSize,p.Label.TextScale,F5Command.None),
-                Command=p.Command,Feature=p.Feature,Value=p.Value,Mode=p.Mode,Match=p.Match,Region=p.Region,Fish=p.Fish,Name=p.Name,Hint=p.Hint,Preset=p.Preset,Enabled=p.Enabled,Selected=p.Selected};
+                Command=p.Command,Feature=p.Feature,Value=p.Value,Mode=p.Mode,Match=p.Match,Region=p.Region,Fish=p.Fish,Name=p.Name,Hint=p.Hint,Preset=p.Preset,Enabled=p.Enabled,Selected=p.Selected,PlainIcon=p.PlainIcon,Ink=p.Ink};
             Parts.Add(copy);if(Editor!=null && (copy.Command==Command.Field || copy.Command==Command.RenameField && editing==Edit.Rename))editRect=rect;
         }
         private Part Make(F5Element element,Command command=Command.None,int region=0)
@@ -148,11 +148,39 @@ namespace JueMingR.TerrariaHost.Fishing
         private void BuildPopup()
         {
             if(!Visible)return;
-            float desiredWidth=overlay==Overlay.Keyword?340:overlay==Overlay.Current?Math.Min(420,Math.Max(260,Math.Min(3,candidates.Length)*136+24)):420;
+            var presets=overlay==Overlay.Presets?ScopedPresets():Array.Empty<FishPreset>();
+            float nameWidth=0,contentWidth=0,deleteWidth=0;
+            if(overlay==Overlay.Presets)
+            {
+                deleteWidth=24;
+                for(int i=0;i<presets.Length;i++)
+                {
+                    var preset=presets[i];nameWidth=Math.Max(nameWidth,shell.Layout.DynamicTextSize(PresetName(preset,i),.7f).Width+8);
+                    float natural=preset.Match==0?preset.Content.Exact.Count*40-4:preset.Content.Keywords.Sum(word=>shell.Layout.DynamicTextSize(word,.7f).Width+20)-4;
+                    contentWidth=Math.Max(contentWidth,Math.Min(236,natural));
+                }
+                nameWidth=Math.Max(64,nameWidth);contentWidth=Math.Max(76,contentWidth);
+            }
+            float desiredWidth=overlay==Overlay.Presets?Math.Max(260,Math.Min(460,24+nameWidth+12+contentWidth+deleteWidth+8)):overlay==Overlay.Keyword?340:overlay==Overlay.Current?Math.Min(420,Math.Max(260,Math.Min(3,candidates.Length)*136+24)):420;
             float width=Math.Min(desiredWidth,screen.X/matrix.M11-24),bodyWidth=width-24;
             if(presetWidth!=bodyWidth || presetSkin!=renderer.Generation){presetDescriptions.Clear();presetWidth=bodyWidth;presetSkin=renderer.Generation;}
             float y=10;string title=overlay==Overlay.Search?"添加鱼获":overlay==Overlay.Current?"当前水域候选":overlay==Overlay.Keyword?"添加关键词":"名单预设";
-            Text(popupParts,title+" · "+(scopeMode==1?"白名单":"黑名单"),12,ref y,width-24,2);
+            if(overlay==Overlay.Presets)
+            {
+                float closeWidth=shell.Layout.DynamicTextSize("关闭",.6f).Width+16;
+                var titleSize=shell.Layout.DynamicTextSize(title,.85f);
+                popupParts.Add(Make(Fit(title,new F5Rect(14,y,titleSize.Width,titleSize.Height+4),.85f,0),region:2));
+                var close=Make(Element(F5ElementKind.Button,new F5Rect(width-closeWidth-12,y,closeWidth,titleSize.Height+4)),Command.Close,2);close.Label=Fit("关闭",close.Element.Rect,.6f,4);close.Enabled=true;popupParts.Add(close);
+                string context=(scopeMode==1?"白名单":"黑名单")+" · "+(scopeMatch==0?"精确匹配":"关键词");
+                var contextSize=shell.Layout.DynamicTextSize(context,.55f);float contextX=22+titleSize.Width;
+                bool inline=contextX+contextSize.Width+8<=close.Element.Rect.X;
+                var contextPart=Make(Fit(context,new F5Rect(inline?contextX:14,inline?y:y+titleSize.Height+6,inline?contextSize.Width+1:bodyWidth,inline?titleSize.Height+4:contextSize.Height),.55f,0),region:2);contextPart.Ink=Color.LightSteelBlue;popupParts.Add(contextPart);
+                y+=titleSize.Height+10+(inline?0:contextSize.Height+6);
+                popupParts.Add(Make(Element(F5ElementKind.Divider,new F5Rect(14,y,bodyWidth-4,1)),region:2));y+=5;
+                nameWidth=Math.Min(nameWidth,Math.Max(64,bodyWidth*.34f));
+                contentWidth=bodyWidth-nameWidth-12-deleteWidth-8;
+            }
+            else Text(popupParts,title+" · "+(scopeMode==1?"白名单":"黑名单"),12,ref y,width-24,2);
             if(overlay==Overlay.Search || overlay==Overlay.Keyword)
             {
                 var field=Make(Element(F5ElementKind.Field,new F5Rect(12,y,width-24,CardHeight())),Command.Field,2);field.Enabled=true;
@@ -160,7 +188,7 @@ namespace JueMingR.TerrariaHost.Fishing
             }
             string popupMessage=host.Settings.Message??TextInput.Error??draft?.Error??message;
             var footer=new List<Part>();float fy=0;
-            Buttons(footer,ref fy,12,width-24,overlay==Overlay.Presets?new[]{"关闭"}:overlay==Overlay.Keyword?new[]{"确认","取消"}:new[]{"添加至名单","取消"},overlay==Overlay.Presets?new[]{Command.Close}:overlay==Overlay.Keyword?new[]{Command.Confirm,Command.Close}:new[]{Command.Add,Command.Close},2,p=>{if(p.Command==Command.Close)p.Enabled=true;else if(p.Command==Command.Add)p.Enabled=PresentationAvailable && selected.Count>0;},fill:true);
+            if(overlay!=Overlay.Presets)Buttons(footer,ref fy,12,width-24,overlay==Overlay.Keyword?new[]{"确认","取消"}:new[]{"添加至名单","取消"},overlay==Overlay.Keyword?new[]{Command.Confirm,Command.Close}:new[]{Command.Add,Command.Close},2,p=>{if(p.Command==Command.Close)p.Enabled=true;else if(p.Command==Command.Add)p.Enabled=PresentationAvailable && selected.Count>0;},fill:true);
             // Errors belong to the scrolling body; long file-system messages
             // cannot push the input field or confirmation footer out of reach.
             // Only the title/input and footer are fixed. Explanations, counts
@@ -170,10 +198,9 @@ namespace JueMingR.TerrariaHost.Fishing
                 (overlay==Overlay.Search?"名称 / #ID · ":"")+(candidates.Length>96?"共 "+candidates.Length+" 项，显示前 96 项；已选 "+selected.Count+" 项":"已选 "+selected.Count+" 项");
             if(summary!=null){Text(popupParts,summary,0,ref bodyStart,bodyWidth,3);bodyStart+=4;}
             if(popupMessage!=null){Text(popupParts,popupMessage,0,ref bodyStart,bodyWidth,3);bodyStart+=6;}
-            var presets=overlay==Overlay.Presets?ScopedPresets():Array.Empty<FishPreset>();
             float row=CardHeight()+4;int count=Math.Min(96,candidates.Length),columns=CardColumns(bodyWidth,true);
             popupHeight=bodyStart;
-            if(overlay==Overlay.Presets)foreach(var preset in presets)popupHeight+=PreparePreset(preset,bodyWidth-(ReferenceEquals(preset,TrashPreset)?0:32)).Height+8;
+            if(overlay==Overlay.Presets)foreach(var preset in presets)popupHeight+=PreparePreset(preset,contentWidth).Height+6;
             else popupHeight+=((count+columns-1)/columns)*row;
             if(overlay==Overlay.Presets?presets.Length==0:count==0 && popupMessage==null)
             {
@@ -190,19 +217,20 @@ namespace JueMingR.TerrariaHost.Fishing
                 float py=bodyStart;
                 for(int i=0;i<presets.Length;i++)
                 {
-                    var preset=presets[i];bool builtin=ReferenceEquals(preset,TrashPreset);float pw=bodyWidth-(builtin?0:32);var content=PreparePreset(preset,pw);
+                    var preset=presets[i];bool builtin=ReferenceEquals(preset,TrashPreset);float pw=bodyWidth-deleteWidth-8;var content=PreparePreset(preset,contentWidth);
                     if(py+content.Height>=popupScroll && py<popupScroll+popupBody.Height)
                     {
                         var p=Make(Element(F5ElementKind.Panel,new F5Rect(0,py,pw,content.Height)),Command.ApplyPreset,3);p.Preset=preset;popupParts.Add(p);
-                        var label=Make(Fit(builtin?"低渔力垃圾":"预设 "+(i+1),new F5Rect(8,py+4,pw-16,CardHeight()-8),.7f,0),region:3);popupParts.Add(label);
+                        var label=Make(Fit(PresetName(preset,i),new F5Rect(4,py+6,nameWidth-4,CardHeight()-12),.7f,0),region:3);popupParts.Add(label);
                         foreach(var chip in content.Chips)
                         {
                             if(py+chip.Element.Rect.Bottom<popupScroll || py+chip.Element.Rect.Y>=popupScroll+popupBody.Height)continue;
-                            var copy=Make(Move(chip.Element,0,py),region:3);copy.Fish=chip.Fish;copy.Label=chip.Label==null?null:Move(chip.Label,0,py);popupParts.Add(copy);
+                            var copy=Make(Move(chip.Element,nameWidth+12,py),region:3);copy.Fish=chip.Fish;copy.PlainIcon=chip.Fish.HasValue;copy.Label=chip.Label==null?null:Move(chip.Label,nameWidth+12,py);popupParts.Add(copy);
                         }
-                        if(!builtin){var remove=Make(Element(F5ElementKind.Button,new F5Rect(bodyWidth-28,py,28,CardHeight()),"×"),Command.DeletePreset,3);remove.Name=preset.Name;popupParts.Add(remove);}
+                        if(!builtin){var remove=Make(Element(F5ElementKind.Button,new F5Rect(bodyWidth-deleteWidth,py+2,deleteWidth,CardHeight())),Command.DeletePreset,3);remove.Name=preset.Name;popupParts.Add(remove);}
+                        if(i<presets.Length-1)popupParts.Add(Make(Element(F5ElementKind.Divider,new F5Rect(4,py+content.Height+2,bodyWidth-8,1)),region:3));
                     }
-                    py+=content.Height+8;
+                    py+=content.Height+6;
                 }
             }
             else if(count>0)
@@ -211,6 +239,8 @@ namespace JueMingR.TerrariaHost.Fishing
                 for(int i=first;i<last;i++)Card(popupParts,new F5Rect(i%columns*(popupBody.Width+4)/columns,bodyStart+i/columns*row,(popupBody.Width-4*(columns-1))/columns,CardHeight()),candidates[i],FishingCatalog.Name(candidates[i]),Command.Select,3);
             }
         }
+        private string PresetName(FishPreset preset,int index)
+        {return ReferenceEquals(preset,TrashPreset)?"低渔力垃圾":"预设 "+(index+1-(scopeMode==2 && scopeMatch==0?1:0));}
         private FishPreset[] ScopedPresets()
         {
             var source=host.Settings.Value.Presets;
@@ -223,18 +253,46 @@ namespace JueMingR.TerrariaHost.Fishing
         private PresetContent PreparePreset(FishPreset preset,float width)
         {
             PresetContent content;if(presetDescriptions.TryGetValue(preset,out content))return content;
-            content=new PresetContent();float x=8,y=CardHeight(),height=CardHeight(),available=width-16;
+            content=new PresetContent();float x=0,y=2,rowHeight=0,available=Math.Max(36,width);
             int count=preset.Match==0?preset.Content.Exact.Count:preset.Content.Keywords.Count;
             for(int i=0;i<count;i++)
             {
                 string word=preset.Match==0?null:preset.Content.Keywords[i];
-                float w=word==null?36:Math.Min(available,shell.Layout.DynamicTextSize(word,.7f).Width+16);
-                if(x>8 && x+w>width-8){x=8;y+=height+4;}
+                float w=word==null?36:Math.Min(available,(float)Math.Ceiling(shell.Layout.DynamicTextSize(word,.7f).Width)+20);
+                var lines=word==null?Array.Empty<string>():PresetWordLines(word,w-16);
+                float lineHeight=word==null?0:shell.Layout.DynamicTextSize(word,.7f).Height+2;
+                float height=Math.Max(CardHeight(),lines.Length*lineHeight+10);
+                if(x>0 && x+w>available){x=0;y+=rowHeight+4;rowHeight=0;}
                 var chip=Make(Element(F5ElementKind.Button,new F5Rect(x,y,w,height)),region:3);
-                if(word==null)chip.Fish=preset.Content.Exact[i];else chip.Label=Fit(word,chip.Element.Rect,.7f,8);
-                content.Chips.Add(chip);x+=w+4;
+                if(word==null)chip.Fish=preset.Content.Exact[i];else chip.Label=Fit(lines[0],new F5Rect(x,y+5,w,lineHeight),.7f,8);
+                content.Chips.Add(chip);
+                for(int line=1;line<lines.Length;line++)content.Chips.Add(Make(Fit(lines[line],new F5Rect(x,y+5+line*lineHeight,w,lineHeight),.7f,8),region:3));
+                rowHeight=Math.Max(rowHeight,height);x+=w+4;
             }
-            content.Height=y+(count==0?0:height)+8;presetDescriptions.Add(preset,content);PresetDescriptions++;return content;
+            content.Height=Math.Max(CardHeight()+4,y+rowHeight+2);presetDescriptions.Add(preset,content);PresetDescriptions++;return content;
+        }
+        private string[] PresetWordLines(string word,float width)
+        {
+            // Presets deliberately have no tooltips: an oversized keyword must
+            // remain readable inside its capsule. Normally keep text elements
+            // together; a pathological over-wide combining/ZWJ element alone
+            // falls back to scalar boundaries, never dropping text or splitting
+            // a UTF-16 surrogate pair to manufacture an ellipsis.
+            var lines=new List<string>();var elements=TextElements.Boundaries(word);var stops=new List<int>{0};
+            for(int i=1;i<elements.Length;i++)
+            {
+                int from=elements[i-1],end=elements[i];
+                if(shell.Layout.DynamicTextSize(word.Substring(from,end-from),.7f).Width<=width)stops.Add(end);
+                else while(from<end){from+=char.IsHighSurrogate(word[from]) && from+1<end && char.IsLowSurrogate(word[from+1])?2:1;stops.Add(from);}
+            }
+            var boundaries=stops.ToArray();int start=0;
+            while(start<boundaries.Length-1)
+            {
+                int low=start+1,high=boundaries.Length-1;
+                while(low<high){int mid=(low+high+1)/2;string part=word.Substring(boundaries[start],boundaries[mid]-boundaries[start]);if(shell.Layout.DynamicTextSize(part,.7f).Width<=width)low=mid;else high=mid-1;}
+                lines.Add(word.Substring(boundaries[start],boundaries[low]-boundaries[start]));start=low;
+            }
+            return lines.ToArray();
         }
         private float CardHeight(){return Math.Max(36,shell.Layout.TextSize("鱼获",.7f).Height+12);}
         private int CardColumns(float width,bool icons)

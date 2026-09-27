@@ -41,13 +41,19 @@ namespace JueMingR.TerrariaHost.Fishing
         private void DrawPart(Part p,Action<F5Rect> keyboard)
         {
             var e=p.Element;bool hover=e.Rect.Contains(pointer.X,pointer.Y) && (!Visible || p.Region>=2);
+            // Presets are content rows, not nested cards. Only the whole apply
+            // target lights on hover; icons do not imply separate commands.
+            if(p.Command==Command.ApplyPreset){if(hover && p.Enabled)renderer.ItemButton(e.Rect,true,true);return;}
+            if(p.Command==Command.DeletePreset){if(hover)renderer.ItemButton(e.Rect,p.Enabled,true);renderer.Cross(new F5Rect(e.Rect.X+(e.Rect.Width-22)/2,e.Rect.Y+(e.Rect.Height-22)/2,22,22),p.Enabled);return;}
+            if(p.Command==Command.Close && overlay==Overlay.Presets)
+            {if(hover)renderer.ItemButton(e.Rect,p.Enabled,true);F5ControlRenderer.Text(Main.spriteBatch,FontAssets.MouseText.Value,p.Label,hover?Color.White:Color.LightSteelBlue);return;}
             // Keep the forgiving hit target; the glyph itself is a small square
             // rather than two diagonals stretched to the full card height.
             if(p.Command==Command.Remove){renderer.Cross(new F5Rect(e.Rect.X+(e.Rect.Width-22)/2,e.Rect.Y+(e.Rect.Height-22)/2,22,22),p.Enabled);return;}
             if(p.Command==Command.Hotkey){keyboard?.Invoke(e.Rect);return;}
             if(e.Kind==F5ElementKind.Panel){renderer.Panel(e.Rect);return;}
             if(e.Kind==F5ElementKind.Divider){renderer.Divider(e.Rect);return;}
-            if(e.Kind!=F5ElementKind.Button && e.Kind!=F5ElementKind.Field){renderer.Label(e);return;}
+            if(e.Kind!=F5ElementKind.Button && e.Kind!=F5ElementKind.Field){if(p.Ink.HasValue)F5ControlRenderer.Text(Main.spriteBatch,FontAssets.MouseText.Value,e,p.Ink.Value);else renderer.Label(e);return;}
             if(p.Command==Command.Field || p.Command==Command.RenameField)
             {
                 renderer.ItemButton(e.Rect,p.Enabled,hover);
@@ -64,7 +70,7 @@ namespace JueMingR.TerrariaHost.Fishing
             }
             if(p.Fish.HasValue || p.Label!=null)
             {
-                renderer.ItemButton(e.Rect,p.Enabled,hover);Texture2D icon;
+                if(!p.PlainIcon)renderer.ItemButton(e.Rect,p.Enabled,hover);Texture2D icon;
                 if(p.Fish.HasValue && icons.TryGetValue(p.Fish.Value,out icon) && icon!=null && !icon.IsDisposed)
                 {
                     var fish=p.Fish.Value;var rect=new F5Rect(e.Rect.X+3,e.Rect.Y+3,30,e.Rect.Height-6);

@@ -23,7 +23,7 @@ namespace JueMingR.TerrariaHost.Fishing
         private enum Overlay { None,Current,Search,Presets,Keyword }
         private enum Edit { None,Search,Keyword,Rename }
         internal sealed class Part
-        {internal F5Element Element,Label;internal Command Command;internal int Feature,Value,Mode,Match,Region;internal FishKey? Fish;internal string Name,Hint;internal FishPreset Preset;internal bool Enabled,Selected;}
+        {internal F5Element Element,Label;internal Command Command;internal int Feature,Value,Mode,Match,Region;internal FishKey? Fish;internal string Name,Hint;internal FishPreset Preset;internal bool Enabled,Selected,PlainIcon;internal Color? Ink;}
         private readonly HostFishing host;
         private readonly F5Interaction shell;
         private readonly ItemsRenderer renderer=new ItemsRenderer();
