@@ -132,7 +132,9 @@ namespace NativeWorldTextProbe
                     Call(Get(herbs,"Field"),"Clear");Require(!(bool)Call(herbs,"Ready",p),"dormant herb style "+style);
                     if(style==0)Main.dayTime=true;else if(style==1)Main.dayTime=false;else if(style==3){Main.dayTime=false;Main.bloodMoon=true;}
                     else if(style==4)Main.cloudAlpha=.1f;else if(style==5)Main.time=40501;else NativeToolsChecks.Tile(42,40,84);
-                    if(style==2 || style==6){Main.tile[42,40].frameX=(short)(style*18);for(int i=0;i<19;i++){NativeQuickItemChecks.Sample(input,new Keys[0]);Call(herbs,"Update");}}
+                    // Maturity polling requires simulated world progress;
+                    // merely supplying input does not enter the native world.
+                    if(style==2 || style==6){Main.tile[42,40].frameX=(short)(style*18);for(int i=0;i<19;i++){NativeQuickItemChecks.Sample(input,new Keys[0]);NativeQuickItemChecks.BeginWorldStep();Call(herbs,"Update");}}
                     Require((bool)Call(herbs,"Ready",p),"native environment/maturity change restores herb style "+style);
                 }
             }

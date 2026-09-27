@@ -15,7 +15,9 @@ namespace JueMingR.TerrariaHost.Tools
         private Item rod,lastCastRod;
         private Player player;
         private int slot,type;
-        private long session,selection,deadline,checkAfter,lastCastSession,nextToken;
+        private long session,selection,lastCastSession,nextToken;
+        private ulong created,returned;
+        private bool Expired {get{return host.Tick-created>=300;}}
         private Vector2 target,lastCast;
         private readonly int[] keys=new int[Main.maxProjectiles];
         private readonly Projectile[] references=new Projectile[Main.maxProjectiles];
@@ -51,21 +53,24 @@ namespace JueMingR.TerrariaHost.Tools
             if(found==0)return 0;
             player=p;rod=p.HeldItem;slot=p.selectedItem;type=rod.type;session=host.Runtime.Generation;selection=host.SelectionIntent;
             target=ReferenceEquals(lastCastRod,rod) && lastCastSession==session?lastCast:point;
-            count=found;Token=++nextToken;RecastAttempted=RecastStarted=RecastObserved=false;deadline=host.Input.Frame+300;Phase=FishingBorrowPhase.Borrowed;return Token;
+            count=found;Token=++nextToken;RecastAttempted=RecastStarted=RecastObserved=false;created=host.Tick;Phase=FishingBorrowPhase.Borrowed;return Token;
         }
         internal void NetFinished(long lease,bool started,bool unknown)
         {
             if(lease==0 || lease!=Token || Phase!=FishingBorrowPhase.Borrowed)return;
             if(unknown){End(FishingBorrowPhase.Unknown);return;}
+            if(Expired){End(FishingBorrowPhase.Expired);return;}
             // Merely selecting the net ends native bobber AI. An animation
             // need not have started for this admitted borrow to owe a return.
-            Phase=FishingBorrowPhase.Returning;checkAfter=host.Input.Frame+1;
+            Phase=FishingBorrowPhase.Returning;returned=host.Tick;
         }
         internal void Update()
         {
             if(!Active)return;
-            if(host.Input.Frame>=deadline){End(FishingBorrowPhase.Expired);return;}
-            if(!IntentValid()){End(FishingBorrowPhase.Cancelled);return;}
+            if(Expired){End(FishingBorrowPhase.Expired);return;}
+            // The loan outlives ToolUse. Losing focus/UI admission must retire
+            // its own recast permission even when simulation time is stopped.
+            if(!host.CanRetainUse(player,false) || !IntentValid()){End(FishingBorrowPhase.Cancelled);return;}
         }
         private bool IntentValid()
         {
@@ -75,7 +80,7 @@ namespace JueMingR.TerrariaHost.Tools
         }
         internal ToolIntent Choose(Player p)
         {
-            if(Phase!=FishingBorrowPhase.Returning || host.Input.Frame<checkAfter || !IntentValid() || !host.Admit(p,false) || p.selectedItem!=slot || p.selectedItemState.HasBufferedChange)return null;
+            if(Phase!=FishingBorrowPhase.Returning || Expired || host.Tick-returned<1 || !IntentValid() || !host.Admit(p,false) || p.selectedItem!=slot || p.selectedItemState.HasBufferedChange)return null;
             // Any local bobber (including a newer one not in our snapshot)
             // prevents use: vanilla would pull it instead of making a new cast.
             for(int i=0;i<Main.maxProjectiles;i++)if(Bobber(Main.projectile[i],p)){End(FishingBorrowPhase.Completed);return null;}
@@ -84,7 +89,7 @@ namespace JueMingR.TerrariaHost.Tools
             if(!disappeared){End(FishingBorrowPhase.Completed);return null;}
             long lease=Token;
             return new ToolIntent{Kind=ToolKind.Recast,Slot=slot,Target=target,
-                Valid=()=>Token==lease && (Phase==FishingBorrowPhase.Returning || Phase==FishingBorrowPhase.RecastOwned) && IntentValid() && !AnyBobber(p),
+                Valid=()=>Token==lease && !Expired && (Phase==FishingBorrowPhase.Returning || Phase==FishingBorrowPhase.RecastOwned) && IntentValid() && !AnyBobber(p),
                 Admitted=()=>{if(Token==lease && Phase==FishingBorrowPhase.Returning){RecastAttempted=true;Phase=FishingBorrowPhase.RecastOwned;}},
                 Completed=(started,unknown)=>{if(Token==lease && Phase==FishingBorrowPhase.RecastOwned){RecastStarted=started;RecastObserved=AnyBobber(p);End(unknown || started && !RecastObserved?FishingBorrowPhase.Unknown:started?FishingBorrowPhase.Completed:FishingBorrowPhase.Cancelled);}}};
         }

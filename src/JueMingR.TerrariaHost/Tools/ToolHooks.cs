@@ -53,9 +53,10 @@ namespace JueMingR.TerrariaHost.Tools
         // Reference state exists before Begin; even a Prefix exception midway
         // through temporary input borrowing reaches the same idempotent cleanup.
         private sealed class Lease {internal long Token;}
-        private static void Before(Player __instance,out Lease __state){__state=null;if(host==null || !host.Use.Active)return;__state=new Lease{Token=host.Use.Operation};host.Use.Begin(__instance);}
-        private static void After(Player __instance,Lease __state){host?.Use.End(__instance,__state?.Token??0,null);}
-        private static Exception Final(Player __instance,Lease __state,Exception __exception){if(__exception!=null)host?.Use.End(__instance,__state?.Token??0,__exception);return __exception;}
+        private static void SeedBoundary(Player player){if(ReferenceEquals(player,host?.Player))host.Herbs.InvalidateSeeds();}
+        private static void Before(Player __instance,out Lease __state){__state=null;SeedBoundary(__instance);if(host==null || !host.Use.Active)return;__state=new Lease{Token=host.Use.Operation};host.Use.Begin(__instance);}
+        private static void After(Player __instance,Lease __state){SeedBoundary(__instance);host?.Use.End(__instance,__state?.Token??0,null);}
+        private static Exception Final(Player __instance,Lease __state,Exception __exception){if(__exception!=null){SeedBoundary(__instance);host?.Use.End(__instance,__state?.Token??0,__exception);}return __exception;}
         private static void Select(Player ___player){if(host!=null && host.Enabled && ReferenceEquals(___player,host.Player) && !host.Use.Returning && !host.Items.ReturningSelection){manualBuffered=true;host.ManualSelection();}}
         private static void SelectionUpdate(Player ___player)
         {

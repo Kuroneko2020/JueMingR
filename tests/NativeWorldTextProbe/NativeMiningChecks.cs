@@ -111,10 +111,10 @@ namespace NativeWorldTextProbe
             for(int x=25;x<67;x++)for(int y=25;y<66;y++)Main.tile[x,y].ClearEverything();
             for(int x=30;x<62;x++)for(int y=30;y<46;y++)NativeToolsChecks.Tile(x,y,123);NativeToolsChecks.SetMode(host,2,1);Require((bool)Call(mining,"Select",p,42,40,123,false) && ((MiningRegion)Get(mining,"Region")).Count==512,"full 512-member gravity observation region");
             for(int x=30;x<62;x++)for(int y=30;y<46;y++)Main.tile[x,y].ClearEverything();Call(context,"UpdateRuntime");Require((int)Get(mining,"falls")==512,"all observed disappeared members receive bounded witnesses");
-            for(int f=0;f<25;f++)Call(context,"UpdateRuntime");for(int x=30;x<62;x++)NativeToolsChecks.Tile(x,47,123);
-            for(int f=0;f<105;f++)Call(context,"UpdateRuntime");
+            for(int f=0;f<25;f++){NativeQuickItemChecks.BeginWorldStep();Call(context,"UpdateRuntime");}for(int x=30;x<62;x++)NativeToolsChecks.Tile(x,47,123);
+            for(int f=0;f<105;f++){NativeQuickItemChecks.BeginWorldStep();Call(context,"UpdateRuntime");}
             Require(((MiningRegion)Get(mining,"Region")).Count==32 && (int)Get(mining,"falls")>0,"full queue observes all delayed lower columns before its bounded observation window closes");
-            for(int f=0;f<75;f++)Call(context,"UpdateRuntime");Require((int)Get(mining,"falls")==0,"expired full queue retires with bounded eight-per-update cleanup");NativeToolsChecks.SetMode(host,2,0);
+            for(int f=0;f<75;f++){NativeQuickItemChecks.BeginWorldStep();Call(context,"UpdateRuntime");}Require((int)Get(mining,"falls")==0,"expired full queue retires with bounded eight-per-update cleanup");NativeToolsChecks.SetMode(host,2,0);
             for(int x=25;x<67;x++)for(int y=25;y<66;y++)Main.tile[x,y].ClearEverything();
             Console.WriteLine("PASS G09 bounded gravity observation workload: 512 vanished cells, delayed columns, two-round opportunity and finite retirement (separate from native physics cases).");
         }
@@ -153,8 +153,8 @@ namespace NativeWorldTextProbe
             Require((int)Get(mining,"falls")>0,"pre-hit gravity evidence survives the entirely empty post-hit vein");
             Terraria.GameInput.PlayerInput.Triggers.Current.MouseLeft=false;Main.mouseLeft=false;
             ulong tick=(ulong)Get(host,"Tick");
-            for(int frame=0;frame<100;frame++){for(int i=0;i<Main.projectile.Length;i++)if(Main.projectile[i].active && Main.projectile[i].type==projectileType)Main.projectile[i].Update(i);Call(context,"UpdateRuntime");}
-            Require((ulong)Get(host,"Tick")>=tick+100,"gravity waiting uses real runtime updates");
+            for(int frame=0;frame<100;frame++){NativeQuickItemChecks.BeginWorldStep();for(int i=0;i<Main.projectile.Length;i++)if(Main.projectile[i].active && Main.projectile[i].type==projectileType)Main.projectile[i].Update(i);Call(context,"UpdateRuntime");}
+            Require((ulong)Get(host,"Tick")>=tick+100,"gravity waiting observes explicitly simulated native world steps");
             var region=(MiningRegion)Get(mining,"Region");
             Require(Enumerable.Range(38,3).All(y=>Main.tile[43,y].active() && Main.tile[43,y].type==material),"real projectile movement/collision/Kill placed the fallen column");
             Require(region.Count==3 && Enumerable.Range(0,region.Count).Select(i=>region[i].Y).OrderBy(y=>y).SequenceEqual(new[]{38,39,40}),"selected gravity members can land back in their proven-vacated selected cells");

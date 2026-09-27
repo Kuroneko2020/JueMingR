@@ -39,7 +39,23 @@ namespace JueMingR.TerrariaHost.Tools
         private int identityMode;
         internal long SelectionIntent {get;private set;}
         internal long ManualSelectionFrame=-1,NextUseFrame;
-        internal ulong Tick {get;private set;}
+        private uint nativeTick;
+        private ulong simulationTick;
+        // .8 advances GameUpdateCount on entry to DoUpdateInWorld_Inner,
+        // before players/projectiles. Outer Update and even HandleInput may
+        // skip that stage. This measures simulation opportunities, not success
+        // or server acknowledgement; it never authorizes another operation.
+        internal ulong Tick
+        {
+            get
+            {
+                uint current=Main.GameUpdateCount;
+                // Natural uint wrap is a small step. A native rollback retires
+                // finite waits via a large age, without renewing unknown work.
+                simulationTick+=unchecked(current-nativeTick);nativeTick=current;
+                return simulationTick;
+            }
+        }
         internal bool Available {get;private set;}
         internal Exception SetupError {get;private set;}
         internal string Error {get;private set;}
@@ -135,11 +151,12 @@ namespace JueMingR.TerrariaHost.Tools
             bool fresh=!ReferenceEquals(identityPlayer,Main.LocalPlayer) || !ReferenceEquals(identityWorld,Main.ActiveWorldFileData) || !ReferenceEquals(identitySocket,socket) || identityMode!=Main.netMode;
             identityPlayer=Main.LocalPlayer;identityWorld=Main.ActiveWorldFileData;identitySocket=socket;identityMode=Main.netMode;
             Use.Retire();if(fresh){unknown=0;Capture.ClearUnknown();Herbs.ClearUnknown();Error=null;report=false;}Capture.Reset();Herbs.Reset();Mining.Clear();Fishing.Reset();SelectionIntent++;NextUseFrame=Input.Frame+1;
+            nativeTick=Main.GameUpdateCount;simulationTick=0;
         }
         public void OnSessionEnded(){Use.Retire();Capture.Reset();Herbs.Reset();Mining.Clear();Fishing.Reset();SelectionIntent++;}
         public void Update(ulong tick)
         {
-            Tick=tick;if(unknown!=0)Items.Ownership.HoldInterruptedSource(Runtime.Generation,unknown);
+            if(unknown!=0)Items.Ownership.HoldInterruptedSource(Runtime.Generation,unknown);
             Use.Update();Fishing.Update();Herbs.Update();Mining.Update();
         }
         public void FailClosed(){Available=false;Use.Cancel();Fishing.Cancel();Herbs.Reset();Mining.Clear();Report("自动采集已停止，未确认的操作不会重试。");}

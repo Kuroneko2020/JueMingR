@@ -58,7 +58,7 @@ function Get-WorkloadRoute {
     $unknown = @()
     foreach ($path in $Paths) {
         switch -Regex ($path.Replace('\', '/')) {
-            '^src/[^/]+/Tools/|^tests/JueMingR.ArchitectureTests/Tools/|^tests/NativeWorldTextProbe/Native(Tools|ToolCadence|ToolExecution|Capture|Herb|Mining|FishingBorrow)' { [void]$groups.Add('tools-host'); continue }
+            '^src/[^/]+/Tools/|^tests/JueMingR.ArchitectureTests/Tools/|^tests/NativeWorldTextProbe/Native(Tools|ToolCadence|ToolExecution|ToolWait|SeedDiscovery|Capture|Herb|Mining|FishingBorrow)' { [void]$groups.Add('tools-host'); continue }
             '^src/JueMingR.TerrariaHost/Feedback/|^tests/NativeWorldTextProbe/NativeShortFeedback' { [void]$groups.Add('shared-host'); continue }
             '^src/[^/]+/Processing/|^tests/JueMingR.ArchitectureTests/Processing/|^tests/Processing/|^tests/NativeWorldTextProbe/Native(Processing|Extraction|Reforge)' { if($path.StartsWith('src/')){[void]$groups.Add('tools-host')}; [void]$groups.Add('processing-host'); continue }
             # G08 consumes the existing bank guards and their account facts.

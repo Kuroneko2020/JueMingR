@@ -17,6 +17,9 @@ namespace JueMingR.TerrariaHost.Tools
         private int cachedSlot=-1;
         private long nextToolSearch;
         private static readonly int[] seeds={307,308,309,310,311,312,2357};
+        private readonly ulong[] seedSlots=new ulong[7];
+        private Item[] seedInventory;
+        private long seedFrame=-1;
         private long nextProbe;
         private bool yieldHarvest;
 #if DEBUG
@@ -52,11 +55,12 @@ namespace JueMingR.TerrariaHost.Tools
         }
         internal void Update()
         {
+            InvalidateSeeds();
             if(!host.KeepsIntent(1) || host.Player==null || host.Player.dead){Pending.Clear();return;}
             if(cachedTool!=null)
             {
                 if(cachedSlot<0 || !ReferenceEquals(host.Player.inventory[cachedSlot],cachedTool) || !IsTool(cachedTool)){cachedTool=null;cachedSlot=-1;Field.Clear();nextToolSearch=0;}
-                else Field.Observe(host.Player,cachedTool,host.Input.Frame);
+                else Field.Observe(host.Player,cachedTool,host.Tick);
             }
             Pending.Expire(host.Tick);
             for(int i=Pending.Count-1;i>=0;i--)
@@ -82,7 +86,7 @@ namespace JueMingR.TerrariaHost.Tools
             if(fallback!=null && yieldHarvest){yieldHarvest=false;return fallback;}
             int tool=FindTool(p);
             if(tool<0)return fallback;
-            Item source=p.inventory[tool];cachedSlot=tool;cachedTool=source;Field.Observe(p,source,host.Input.Frame);
+            Item source=p.inventory[tool];cachedSlot=tool;cachedTool=source;Field.Observe(p,source,host.Tick);
             if(Field.Count==0)return fallback;
             int bx,by,style;if(!FindTarget(p,source,out bx,out by,out style))return fallback;
             yieldHarvest=true;return CreateHarvest(p,tool,source,bx,by,style);
@@ -112,7 +116,7 @@ namespace JueMingR.TerrariaHost.Tools
             intent.Refresh=()=>
             {
                 if(host.Mode(1)==0 || !IsTool(source))return false;
-                Field.Observe(p,source,host.Input.Frame);
+                Field.Observe(p,source,host.Tick);
                 if(intent.Valid())return true;
                 Field.Reject(bx,by);
                 if(!FindTarget(p,source,out bx,out by,out style))return false;
@@ -142,16 +146,39 @@ namespace JueMingR.TerrariaHost.Tools
         }
         internal bool SeedReady(Player p)
         {for(int i=0;i<Pending.Count;i++)if(SeedSlot(p,Pending[i])>=0)return true;return false;}
+        internal void InvalidateSeeds(){seedInventory=null;seedFrame=-1;}
+        private Item ReadSeed(Player p,int slot)
+        {
+#if DEBUG
+            // Discovery and live candidate rereads both count actual slots.
+            SeedSlotsVisited++;
+#endif
+            return p.inventory[slot];
+        }
+        private void DiscoverSeeds(Player p)
+        {
+            if(seedFrame==host.Input.Frame && ReferenceEquals(seedInventory,p.inventory))return;
+            Array.Clear(seedSlots,0,seedSlots.Length);
+            for(int slot=0;slot<50;slot++)
+            {
+                var item=ReadSeed(p,slot);if(item==null || item.stack<=0)continue;
+                int style=Array.IndexOf(seeds,item.type);if(style>=0)seedSlots[style]|=1UL<<slot;
+            }
+            seedInventory=p.inventory;seedFrame=host.Input.Frame;
+        }
         private int SeedSlot(Player p,ReplantPoint entry)
         {
             if(Unknown(entry.X,entry.Y) || host.Tick-entry.Created>=ReplantQueue.Lifetime)return -1;
+            // Share discovery, never protection or planting permission. Empty
+            // styles cost no per-plot inventory traversal. Native ItemCheck
+            // boundaries, outer observation and new input invalidate the mask;
+            // an acquired ToolUse still verifies its exact live source.
+            DiscoverSeeds(p);ulong candidates=seedSlots[entry.Style];
+            if(candidates==0)return -1;
             for(int slot=0;slot<50;slot++)
             {
-#if DEBUG
-                // Count the actual inventory traversal, including empty slots.
-                SeedSlotsVisited++;
-#endif
-                var source=p.inventory[slot];if(source!=null && source.type==seeds[entry.Style] && source.stack>0 && host.Candidate(p,slot,true) && CanPlant(p,source,entry))return slot;
+                if((candidates&(1UL<<slot))==0)continue;
+                var source=ReadSeed(p,slot);if(source!=null && source.type==seeds[entry.Style] && source.stack>0 && host.Candidate(p,slot,true) && CanPlant(p,source,entry))return slot;
             }
             return -1;
         }
@@ -159,7 +186,7 @@ namespace JueMingR.TerrariaHost.Tools
         {
             if(host.Mode(1)==0 || !host.Admit(p,false) || p.HeldItem.fishingPole>0 && FishingBorrow.HasBobber(p))return false;
             if(SeedReady(p))return true;
-            int slot=FindTool(p);if(slot<0)return false;cachedTool=p.inventory[slot];cachedSlot=slot;Field.Observe(p,cachedTool,host.Input.Frame);
+            int slot=FindTool(p);if(slot<0)return false;cachedTool=p.inventory[slot];cachedSlot=slot;Field.Observe(p,cachedTool,host.Tick);
             int x,y,style;return FindTarget(p,cachedTool,out x,out y,out style);
         }
         private ToolIntent ChooseSeed(Player p)
@@ -171,7 +198,7 @@ namespace JueMingR.TerrariaHost.Tools
                 int slot=SeedSlot(p,entry);
                 if(slot>=0)
                 {
-                    Item source=p.inventory[slot];
+                    Item source=ReadSeed(p,slot);
                     return new ToolIntent{Kind=ToolKind.Seed,Slot=slot,Target=new Vector2(entry.X*16+8,entry.Y*16+8),
                         Valid=()=>host.Mode(1)!=0 && !Unknown(entry.X,entry.Y) && host.Tick-entry.Created<ReplantQueue.Lifetime && source.type==seeds[entry.Style] && CanPlant(p,source,entry),Completed=(started,unknown)=>{if(unknown)HoldUnknown(entry.X,entry.Y);}};
                 }
@@ -199,6 +226,6 @@ namespace JueMingR.TerrariaHost.Tools
             var bottom=WorldTileObservation.ReadCurrent(receipt.X,receipt.Y+1);
             if(after.Readable && !after.Active && bottom.Readable && bottom.Active && (bottom.Type==78 || bottom.Type==380))Pending.Add(receipt.X,receipt.Y,receipt.Style,host.Tick);
         }
-        internal void Reset(){Pending.Clear();Field.Clear();cachedTool=null;cachedSlot=-1;nextProbe=nextToolSearch=0;yieldHarvest=false;}
+        internal void Reset(){Pending.Clear();Field.Clear();InvalidateSeeds();cachedTool=null;cachedSlot=-1;nextProbe=nextToolSearch=0;yieldHarvest=false;}
     }
 }

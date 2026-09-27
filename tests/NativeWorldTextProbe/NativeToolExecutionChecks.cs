@@ -22,7 +22,7 @@ namespace NativeWorldTextProbe
         private static int consumers,catchCalls,catchSkipped,catchHits;
         private static NPC watched;
         private static ProbeGraphics textures;
-        internal static void Run(object context,ProbeGraphics graphics)
+        internal static void Run(object context,ProbeGraphics graphics,bool release=false)
         {
             textures=graphics;
             object host=Get(context,"Tools"),input=Get(context,"Input");
@@ -65,6 +65,7 @@ namespace NativeWorldTextProbe
                 }
                 Require(failures.Count==0,"full native execution: "+string.Join("; ",failures));
                 MiningManual(context,host,input);Safety(context,host,input);
+                NativeToolWaitChecks.Run(context,host,input,release);
                 Console.WriteLine("PASS G09 full Player.Update/ItemCheckWrapped: true automatic first hit, continuous effects, unsampled outer updates, focused retention and safety cancellation"+(graphics==null?"; texture-free CPU cadence, capture not run.":"; three real net textures, native rabbit AI from both sides and actual catch output."));
             }
             finally{for(int i=0;i<3;i++)NativeToolsChecks.SetMode(host,i,0);foreach(var method in watch.GetPatchedMethods().ToArray())watch.Unpatch(method,HarmonyPatchType.All,watch.Id);}
@@ -73,7 +74,7 @@ namespace NativeWorldTextProbe
         private static void Consumed(bool __runOriginal){if(__runOriginal)consumers++;}
         private static void Caught(Rectangle __1,bool __runOriginal)
         {if(!__runOriginal){catchSkipped++;return;}catchCalls++;if(watched!=null && __1.Intersects(watched.Hitbox))catchHits++;}
-        private static void Sample(object context,object input,Vector2 world,bool held)
+        internal static void Sample(object context,object input,Vector2 world,bool held)
         {
             Call(input,"BeginUpdate");
             Vector2 pixel=Vector2.Transform(world-Main.screenPosition,Main.GameViewMatrix.ZoomMatrix);
@@ -85,7 +86,7 @@ namespace NativeWorldTextProbe
             Main.oldKeyState=Main.keyState;Main.keyState=new KeyboardState();Call(input,"AfterMapping");Call(input,"AfterKeyboardRefresh");Call(Get(context,"Shell"),"ProcessInput");
             PlayerInput.SetZoom_World();
         }
-        private static void Outer(object context,object input,int count)
+        internal static void Outer(object context,object input,int count)
         {
             // Fixed .8 Main.DoUpdate may return before HandleInput and world
             // update while Main.Update's prefix/postfix still execute. This is
@@ -93,7 +94,7 @@ namespace NativeWorldTextProbe
             int before=consumers;for(int i=0;i<count;i++){Call(input,"BeginUpdate");Call(context,"UpdateRuntime");}
             Require(consumers==before && (count==0 || !(bool)Get(input,"CanStartActions")),"unsampled outer update cannot execute a native consumer or authorize new input");
         }
-        private static Player Reset(object context,object host,object input,int tool,int slot,int selected)
+        internal static Player Reset(object context,object host,object input,int tool,int slot,int selected)
         {
             for(int i=0;i<3;i++)NativeToolsChecks.SetMode(host,i,0);
             textures?.LoadItemTextures(Main.LocalPlayer.inventory.Where(item=>!item.IsAir).Select(item=>item.type).Distinct());
@@ -106,6 +107,7 @@ namespace NativeWorldTextProbe
             p.statLife=p.statLifeMax=400;p.position=new Vector2(640,646);p.velocity=Vector2.Zero;p.direction=1;p.gravDir=1;
             p.itemAnimation=p.itemTime=p.toolTime=0;p.controlUseItem=p.channel=false;p.hitTile=new HitTile();
             p.inventory[slot].SetDefaults(tool);p.selectedItemState.Select(selected);p.selectedItemState.Update();
+            textures?.LoadItemTextures(new[]{tool});
             return p;
         }
         private static void Compare(object context,object host,object input,int tool,int slot,bool herbs,bool smart,int empty,List<string> failures)
@@ -134,7 +136,7 @@ namespace NativeWorldTextProbe
                 bool held=!automatic || !herbs && effects.Count==0;
                 if(target<0 || completed[target])target=Enumerable.Range(0,points.Count).Where(i=>!completed[i]).OrderBy(i=>Vector2.DistanceSquared(p.Center,new Vector2(points[i].X*16+8,points[i].Y*16+8))).First();
                 Vector2 mouse=held?new Vector2(points[target].X*16+8,points[target].Y*16+8):new Vector2(480,540);
-                Sample(context,input,mouse,held);p.Update(0);
+                Sample(context,input,mouse,held);NativeQuickItemChecks.BeginWorldStep();p.Update(0);
                 if(herbs)Require(p.HeldItem.type==tool,"native regrowth keeps the actual regeneration tool; dropped seeds may be picked up normally");
                 foreach(var q in Main.projectile.Where(q=>q.active && q.owner==0 && (q.aiStyle==20 || q.type==445)))q.AI();
                 Call(context,"UpdateRuntime");Outer(context,input,empty);
@@ -152,7 +154,7 @@ namespace NativeWorldTextProbe
             for(int frame=0;frame<160;frame++)
             {
                 // Both sides keep their physical cursor far opposite the rabbit.
-                Sample(context,input,new Vector2(direction==1?480:820,540),!automatic);p.Update(0);
+                Sample(context,input,new Vector2(direction==1?480:820,540),!automatic);NativeQuickItemChecks.BeginWorldStep();p.Update(0);
                 if(!target.active)
                 {
                     Require(Main.item.Where(w=>w.active && w.type==target.catchItem).Sum(w=>w.stack)==1 && target.catchItem==2019,"actual native rabbit catch creates exactly one correct world item");caught=frame;break;
@@ -168,7 +170,7 @@ namespace NativeWorldTextProbe
             {
                 var p=Reset(context,host,input,ItemID.StaffofRegrowth,12,0);object use=Get(host,"Use");
                 for(int x=41;x<=44;x++){Require(WorldGen.PlaceTile(x,42,78,mute:true,forced:true,plr:0),"safety actual pot");NativeToolsChecks.Tile(x,41,84);}
-                NativeToolsChecks.SetMode(host,1,1);Sample(context,input,new Vector2(480,540),false);p.Update(0);Call(context,"UpdateRuntime");
+                NativeToolsChecks.SetMode(host,1,1);Sample(context,input,new Vector2(480,540),false);NativeQuickItemChecks.BeginWorldStep();p.Update(0);Call(context,"UpdateRuntime");
                 Require((bool)Get(use,"Active"),"safety obtains actual continuous use");long token=(long)Get(use,"Operation");int animation=p.itemAnimation,time=p.itemTime,toolTime=p.toolTime;Outer(context,input,3);
                 Require((bool)Get(use,"Active") && !(bool)Get(use,"cancelled") && (long)Get(use,"Operation")==token,"unsampled epochs retain the same valid operation");
                 Require(p.itemAnimation==animation && p.itemTime==time && p.toolTime==toolTime,"unsampled retention never advances or resets native timers");
@@ -189,13 +191,13 @@ namespace NativeWorldTextProbe
         {
             var p=Reset(context,host,input,ItemID.ShroomiteDiggingClaw,0,0);object use=Get(host,"Use");
             NativeToolsChecks.Tile(42,40,6);NativeToolsChecks.Tile(43,40,6);NativeToolsChecks.SetMode(host,2,2);
-            var first=new Vector2(42*16+8,40*16+8);Sample(context,input,first,true);p.Update(0);Call(context,"UpdateRuntime");
+            var first=new Vector2(42*16+8,40*16+8);Sample(context,input,first,true);NativeQuickItemChecks.BeginWorldStep();p.Update(0);Call(context,"UpdateRuntime");
             Require(!Main.tile[42,40].active() && Main.tile[43,40].active(),"real first manual pick establishes a connected remaining target");
-            for(int i=0;i<4;i++){Sample(context,input,first,true);p.Update(0);Call(context,"UpdateRuntime");Outer(context,input,1);}
+            for(int i=0;i<4;i++){Sample(context,input,first,true);NativeQuickItemChecks.BeginWorldStep();p.Update(0);Call(context,"UpdateRuntime");Outer(context,input,1);}
             Require(!(bool)Get(use,"Active") && Main.tile[43,40].active(),"continued physical hold keeps manual target and cannot be stolen by automatic mining");
-            Sample(context,input,new Vector2(480,540),false);p.Update(0);Call(context,"UpdateRuntime");
+            Sample(context,input,new Vector2(480,540),false);NativeQuickItemChecks.BeginWorldStep();p.Update(0);Call(context,"UpdateRuntime");
             Require((bool)Get(use,"Active") && p.selectedItem==0 && !p.selectedItemState.HasActiveOverride,"release continues same held source inside the existing animation without a selection override");
-            Sample(context,input,first,true);p.Update(0);Call(context,"UpdateRuntime");
+            Sample(context,input,first,true);NativeQuickItemChecks.BeginWorldStep();p.Update(0);Call(context,"UpdateRuntime");
             Require(!(bool)Get(use,"Active") || (bool)Get(use,"cancelled"),"fresh physical press immediately owns the native ItemCheck");
             NativeToolsChecks.SetMode(host,2,0);
         }

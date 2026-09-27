@@ -30,6 +30,8 @@ try {
         'tests/NativeWorldTextProbe/NativeFishingBorrowChecks.cs' = 'tools-host';
         'tests/NativeWorldTextProbe/NativeToolCadenceChecks.cs' = 'tools-host';
         'tests/NativeWorldTextProbe/NativeToolExecutionChecks.cs' = 'tools-host';
+        'tests/NativeWorldTextProbe/NativeToolWaitChecks.cs' = 'tools-host';
+        'tests/NativeWorldTextProbe/NativeSeedDiscoveryChecks.cs' = 'tools-host';
         'tests/NativeWorldTextProbe/NativeRecoveryChecks.cs' = 'recovery-host';
         'src/JueMingR.TerrariaHost/About/AboutPage.cs' = 'about-host';
         'src/JueMingR.TerrariaHost/Onboarding/HostOnboarding.cs' = 'about-host';
@@ -82,6 +84,8 @@ try {
         'tests/NativeWorldTextProbe/NativeFishingBorrowChecks.cs' = @('core','tools-host','quick-items-host','coin-deposit-host','recovery-host','processing-host');
         'tests/NativeWorldTextProbe/NativeToolCadenceChecks.cs' = @('core','tools-host','quick-items-host','coin-deposit-host','recovery-host','processing-host');
         'tests/NativeWorldTextProbe/NativeToolExecutionChecks.cs' = @('core','tools-host','quick-items-host','coin-deposit-host','recovery-host','processing-host');
+        'tests/NativeWorldTextProbe/NativeToolWaitChecks.cs' = @('core','tools-host','quick-items-host','coin-deposit-host','recovery-host','processing-host');
+        'tests/NativeWorldTextProbe/NativeSeedDiscoveryChecks.cs' = @('core','tools-host','quick-items-host','coin-deposit-host','recovery-host','processing-host');
         'src/JueMingR.TerrariaHost/Processing/HostProcessing.cs' = @('core','tools-host','quick-items-host','coin-deposit-host','recovery-host','processing-host');
         'src/JueMingR.Features/Processing/ProcessingSettings.cs' = @('core','tools-host','quick-items-host','coin-deposit-host','recovery-host','processing-host');
         'tests/JueMingR.ArchitectureTests/Processing/ProcessingChecks.cs' = @('core','processing-host');

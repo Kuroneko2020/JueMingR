@@ -41,7 +41,7 @@ namespace NativeWorldTextProbe
             audit.Patch(method,postfix:new HarmonyMethod(typeof(NativeFishingBorrowChecks),nameof(Observe)));
             try
             {
-                for(int scenario=0;scenario<3;scenario++)
+                foreach(int empty in new[]{0,1,3})for(int scenario=0;scenario<3;scenario++)
                 {
                     bool contender=scenario==1,stops=scenario==2;
                     for(int i=0;i<3;i++)NativeToolsChecks.SetMode(host,i,0);foreach(var n in Main.npc)n.active=false;
@@ -53,7 +53,7 @@ namespace NativeWorldTextProbe
                     NativeQuickItemChecks.Sample(input,new Microsoft.Xna.Framework.Input.Keys[0]);Main.mouseX=880;Main.mouseY=620;Terraria.GameInput.PlayerInput.Triggers.Current.MouseLeft=true;Main.mouseLeft=true;
                     NativeQuickItemChecks.NativeFrame(p);Call(context,"UpdateRuntime");
                     Require(Main.projectile.Any(q=>q.active && q.bobber),"miss fixture begins with a real native rod cast");
-                    for(int i=0;i<35;i++)LoanFrame(context,input);
+                    for(int i=0;i<35;i++)LoanFrame(context,input,empty);
                     if(contender){NativeToolsChecks.Tile(42,42,1);Require(WorldGen.PlaceTile(42,41,78,mute:true,forced:true,plr:0),"miss contention pot");NativeToolsChecks.Tile(42,40,84);NativeToolsChecks.SetMode(host,1,1);}
                     var target=Main.npc[0];target.SetDefaults(46);target.whoAmI=0;target.active=true;target.life=target.lifeMax;
                     var net=p.inventory[12];var proxy=new Player{position=p.position,direction=1,gravDir=1,itemAnimationMax=net.useAnimation};var frame=Item.GetDrawHitbox(net.type,p);
@@ -64,7 +64,7 @@ namespace NativeWorldTextProbe
                     {
                     for(int f=0;f<220;f++)
                     {
-                        LoanFrame(context,input);
+                        LoanFrame(context,input,empty);
                         Require(target.active,"controlled nonlinear phase-entry motion really misses native Catch");
                         if((long)Get(fish,"Token")>previous && !(bool)Get(fish,"Active"))finished=true;
                         // Adversarial controlled jumps between native phases,
@@ -73,14 +73,14 @@ namespace NativeWorldTextProbe
                         if(!finished && (bool)Get(use,"Active") && Get(Get(use,"Intent"),"Kind").ToString()=="Capture")
                         {int remaining=p.itemAnimation<=1?24:p.itemAnimation-1;int phase=remaining<25*.333?2:remaining<25*.666?1:0;target.position=MissPosition(hits,phase,target);target.velocity=stops?Vector2.UnitX:Vector2.Zero;}
                     }
-                    Console.WriteLine("G09 missed loan contender="+contender+" nets="+netUses+" recasts="+casts+" tokens="+((long)Get(fish,"Token")-previous)+" phase="+Get(fish,"Phase"));
+                    Console.WriteLine("G09 missed loan empty="+empty+" contender="+contender+" nets="+netUses+" recasts="+casts+" tokens="+((long)Get(fish,"Token")-previous)+" phase="+Get(fish,"Phase"));
                     Require(finished && netUses>=1 && netUses<=2 && casts==1 && (long)Get(fish,"Token")==previous+1 && p.selectedItem==17 && Main.projectile.Any(q=>q.active && q.bobber),"finite real missed capture has one loan and one recast, including automatic contention");
                     workload.Verify();
                     }
                     long old=(long)Get(fish,"Token");
-                    if(!stops){target.position=new Vector2(1000,600);for(int i=0;i<4;i++)LoanFrame(context,input);}
+                    if(!stops){target.position=new Vector2(1000,600);for(int i=0;i<4;i++)LoanFrame(context,input,empty);}
                     target.position=new Vector2(677,642);target.velocity=Vector2.Zero;
-                    for(int i=0;i<100 && target.active;i++)LoanFrame(context,input);
+                    for(int i=0;i<100 && target.active;i++)LoanFrame(context,input,empty);
                     Require(!target.active && (long)Get(fish,"Token")==old+1,stops?"motion stopping inside the envelope creates a new actually catchable opportunity":"leaving and reentering creates a real fresh opportunity instead of a permanent ban");
                 }
             }
@@ -92,10 +92,10 @@ namespace NativeWorldTextProbe
             {var box=new Rectangle(x,y,n.width,n.height);if(!hits[phase].Intersects(box) && hits.Any(h=>h.Intersects(box)))return new Vector2(x,y);}
             throw new InvalidOperationException("native phase-specific miss point unavailable");
         }
-        private static void LoanFrame(object context,object input)
+        private static void LoanFrame(object context,object input,int empty)
         {
             NativeQuickItemChecks.Sample(input,new Microsoft.Xna.Framework.Input.Keys[0]);Call(Get(context,"Shell"),"ProcessInput");NativeQuickItemChecks.NativeFrame(Main.LocalPlayer);
-            foreach(var q in Main.projectile.Where(q=>q.active && q.bobber).ToArray())Call(q,"AI_061_FishingBobber");Call(context,"UpdateRuntime");
+            foreach(var q in Main.projectile.Where(q=>q.active && q.bobber).ToArray())Call(q,"AI_061_FishingBobber");Call(context,"UpdateRuntime");NativeToolExecutionChecks.Outer(context,input,empty);
         }
         internal static void Run(object context)
         {

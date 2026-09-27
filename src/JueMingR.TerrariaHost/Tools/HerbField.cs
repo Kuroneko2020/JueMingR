@@ -19,11 +19,11 @@ namespace JueMingR.TerrariaHost.Tools
         private double surface;
         private bool blocked;
         internal int Count {get;private set;}
-        private long frame=-1;
+        private ulong frame;
 #if DEBUG
         internal long TileReads {get;private set;}
 #endif
-        internal void Observe(Player p,Item tool,long update)
+        internal void Observe(Player p,Item tool,ulong update)
         {
             int cx=(int)(p.Center.X/16)-10,cy=(int)(p.Center.Y/16)-10;
             Rectangle current=TileReachCheckSettings.Simple.GetTileRegion(p,tool.tileBoost+p.blockRange);
@@ -49,6 +49,6 @@ namespace JueMingR.TerrariaHost.Tools
         {px=x+index/21;py=y+index%21;return initialized && plants[index];}
         internal void Reject(int px,int py)
         {int dx=px-x,dy=py-y;if(dx<0 || dx>=21 || dy<0 || dy>=21)return;int i=dx*21+dy;if(plants[i]){plants[i]=false;Count--;}}
-        internal void Clear(){initialized=false;frame=-1;Count=0;tiles=sections=null;System.Array.Clear(plants,0,plants.Length);}
+        internal void Clear(){initialized=false;frame=0;Count=0;tiles=sections=null;System.Array.Clear(plants,0,plants.Length);}
     }
 }

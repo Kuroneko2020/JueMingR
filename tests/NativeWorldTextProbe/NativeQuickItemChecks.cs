@@ -155,9 +155,15 @@ namespace NativeWorldTextProbe
         }
         internal static void NativeFrame(Player player)
         {
+            BeginWorldStep();
             typeof(Player).GetMethod("ResetControls",Flags).Invoke(player,null);PlayerInput.Triggers.Current.CopyInto(player);
             player.selectedItemState.Update();typeof(Player).GetMethod("TrySyncingInput",Flags).Invoke(player,null);player.ItemCheck();
         }
+        // These fixtures execute selected native stages, not Main.DoUpdate.
+        // Supply the world's entry counter exactly once per simulated step;
+        // input sampling and empty outer callbacks deliberately do not do so.
+        internal static void BeginWorldStep()
+        {typeof(Main).GetField("_gameUpdateCount",Flags).SetValue(null,unchecked(Main.GameUpdateCount+1));}
         internal static void Until(Func<bool> done) {var until=DateTime.UtcNow.AddSeconds(8);while(!done()){if(DateTime.UtcNow>until)throw new Exception("G05 worker timeout");Thread.Sleep(2);}}
         private static void Patch(Harmony harmony,MethodInfo method,string prefix) {Require(method!=null,"native fixture exact outlet exists: "+prefix);harmony.Patch(method,new HarmonyMethod(typeof(NativeQuickItemChecks).GetMethod(prefix,Flags)));}
         private static bool Recall(PlayerSpawnContext __0) {Require(__0==PlayerSpawnContext.RecallFromItem,"only recall outlet intercepted");recalls++;return false;}
