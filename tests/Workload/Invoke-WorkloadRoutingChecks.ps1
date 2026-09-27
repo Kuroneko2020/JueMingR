@@ -29,6 +29,7 @@ try {
         'src/JueMingR.TerrariaHost/Tools/AutoCapture.cs' = 'tools-host';
         'tests/NativeWorldTextProbe/NativeFishingBorrowChecks.cs' = 'tools-host';
         'tests/NativeWorldTextProbe/NativeToolCadenceChecks.cs' = 'tools-host';
+        'tests/NativeWorldTextProbe/NativeToolExecutionChecks.cs' = 'tools-host';
         'tests/NativeWorldTextProbe/NativeRecoveryChecks.cs' = 'recovery-host';
         'src/JueMingR.TerrariaHost/About/AboutPage.cs' = 'about-host';
         'src/JueMingR.TerrariaHost/Onboarding/HostOnboarding.cs' = 'about-host';
@@ -80,6 +81,7 @@ try {
         'src/JueMingR.TerrariaHost/Tools/AutoCapture.cs' = @('core','tools-host','quick-items-host','coin-deposit-host','recovery-host','processing-host');
         'tests/NativeWorldTextProbe/NativeFishingBorrowChecks.cs' = @('core','tools-host','quick-items-host','coin-deposit-host','recovery-host','processing-host');
         'tests/NativeWorldTextProbe/NativeToolCadenceChecks.cs' = @('core','tools-host','quick-items-host','coin-deposit-host','recovery-host','processing-host');
+        'tests/NativeWorldTextProbe/NativeToolExecutionChecks.cs' = @('core','tools-host','quick-items-host','coin-deposit-host','recovery-host','processing-host');
         'src/JueMingR.TerrariaHost/Processing/HostProcessing.cs' = @('core','tools-host','quick-items-host','coin-deposit-host','recovery-host','processing-host');
         'src/JueMingR.Features/Processing/ProcessingSettings.cs' = @('core','tools-host','quick-items-host','coin-deposit-host','recovery-host','processing-host');
         'tests/JueMingR.ArchitectureTests/Processing/ProcessingChecks.cs' = @('core','processing-host');
@@ -285,9 +287,9 @@ try {
         Assert-Route ($calls.Count -eq 0) 'unrelated route skips tools'
         foreach($groups in @(@('core','tools-host'),@('core','tools-host','shared-host'))) {
         $calls.Clear(); Invoke-ToolsWorkloadChecks $groups 'architecture.exe' 'native.exe'
-        Assert-Route ($calls.Count -eq 4 -and ($calls[0].arguments -join '|') -ceq '--tools') 'tools rules and three native checks execute once'
-        $scopes = @('ToolsCpu','ToolsCadence','ToolsWorkload'); $directories = @('tools-cpu','tools-cadence','tools-workload')
-        for ($i=0; $i -lt 3; $i++) {
+        Assert-Route ($calls.Count -eq 5 -and ($calls[0].arguments -join '|') -ceq '--tools') 'tools rules and four native checks execute once'
+        $scopes = @('ToolsCpu','ToolsCadence','ToolsExecutionCpu','ToolsWorkload'); $directories = @('tools-cpu','tools-cadence','tools-full-update','tools-workload')
+        for ($i=0; $i -lt $scopes.Count; $i++) {
             Assert-Route ($calls[$i+1].executable -ceq 'native.exe' -and ($calls[$i+1].arguments -join '|') -ceq (@($repositoryRoot,'--cpu',(Join-Path $checksRoot $directories[$i]),$scopes[$i]) -join '|')) 'tools real CPU entry and isolated output'
         }
         }

@@ -67,6 +67,7 @@ function Invoke-ToolsWorkloadChecks {
     Invoke-WorkloadCheck 'tools-rules-storage' $Architecture @('--tools')
     Invoke-WorkloadCheck 'tools-native-execution' $Native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'tools-cpu'), 'ToolsCpu')
     Invoke-WorkloadCheck 'tools-native-cadence' $Native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'tools-cadence'), 'ToolsCadence')
+    Invoke-WorkloadCheck 'tools-native-full-update' $Native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'tools-full-update'), 'ToolsExecutionCpu')
     Invoke-WorkloadCheck 'tools-native-workload' $Native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'tools-workload'), 'ToolsWorkload')
 }
 try {

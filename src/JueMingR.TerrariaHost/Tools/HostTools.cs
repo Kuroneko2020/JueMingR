@@ -91,8 +91,12 @@ namespace JueMingR.TerrariaHost.Tools
             Feedback?.Show(SelectAction,message,ok,()=>Runtime.IsSessionActive,Feedback.Capture());
         }
         internal bool Admit(Player p,bool heldInventory)
+        {return Input.CanStartActions && CanRetainUse(p,heldInventory);}
+        // Retention never authorizes a consumer. An outer update without a
+        // native input sample must not tear down a still safe continuous use.
+        internal bool CanRetainUse(Player p,bool heldInventory)
         {
-            return Available && p!=null && ReferenceEquals(p,Player) && Input.CanStartActions && CanInterface!=null && CanInterface() &&
+            return Available && p!=null && ReferenceEquals(p,Player) && Input.CanRetainIntent && CanInterface!=null && CanInterface() &&
                 !Main.gamePaused && !p.dead && !p.CCed && !p.cursed && !p.noItems && !p.isOperatingAnotherEntity && !p.HasLockedInventory() &&
                 !Items.World.Busy && !Items.World.HasManualOperation && !Main.mapFullscreen && !Main.inFancyUI && !Main.onlyDrawFancyUI && !Main.ingameOptionsWindow &&
                 !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest && !PlayerInput.WritingText && Main.CurrentInputTextTakerOverride==null &&

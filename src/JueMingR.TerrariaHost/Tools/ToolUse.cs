@@ -56,9 +56,13 @@ namespace JueMingR.TerrariaHost.Tools
             }
             if(result || host.Input.Frame<host.NextUseFrame || host.ManualSelectionFrame==host.Input.Frame)return;
             ToolIntent candidate=host.Choose(p);if(candidate==null)return;
-            if(candidate.Slot<0 || candidate.Slot>=50 || !(candidate.Valid?.Invoke()??false))return;
+            if(Acquire(p,candidate)){chosen=candidate.Slot;result=true;}
+        }
+        private bool Acquire(Player p,ToolIntent candidate)
+        {
+            if(candidate.Slot<0 || candidate.Slot>=50 || !(candidate.Valid?.Invoke()??false))return false;
             long next=host.Items.Ownership.NewUseToken();
-            if(!host.Items.Ownership.TryBeginUse(host.Runtime.Generation,candidate.Slot,next))return;
+            if(!host.Items.Ownership.TryBeginUse(host.Runtime.Generation,candidate.Slot,next))return false;
             player=p;Intent=candidate;item=p.inventory[candidate.Slot];type=item.type;stack=item.stack;original=p.selectedItem;
             originalItem=original>=0 && original<50?p.inventory[original]:null;originalType=originalItem?.type??0;
             token=next;session=host.Runtime.Generation;selection=host.SelectionIntent;
@@ -66,7 +70,7 @@ namespace JueMingR.TerrariaHost.Tools
             pulsed=checkedItem=started=cancelled=notified=false;
             yieldExternal=false;
             candidate.Admitted?.Invoke();
-            chosen=candidate.Slot;result=true;
+            return true;
         }
         private bool SourceIdentity(){return session==host.Runtime.Generation && host.SelectionIntent==selection && ReferenceEquals(player.inventory[Intent.Slot],item) && item.type==type && item.stack>0;}
         private bool Identity(){return SourceIdentity() && player.selectedItem==Intent.Slot;}
@@ -79,6 +83,18 @@ namespace JueMingR.TerrariaHost.Tools
         private void HandToManual(){Cancel();host.Items.Ownership.EndUse(session,token);}
         internal void BeforeSync(Player p)
         {
+            // A genuine first hit established this automatic region. After
+            // release the same held tool can keep its current animation; it
+            // needs no selection change and must not wait for the next swing.
+            // All consumers still use this one lease and the native timers.
+            if(!Active && ReferenceEquals(p,host.Player) && host.Mode(2)==2 &&
+                !p.selectedItemState.CanChangeSelectedItemImmediately && !p.selectedItemState.HasActiveOverride && !p.selectedItemState.HasBufferedChange &&
+                host.Input.Frame>=host.NextUseFrame && host.ManualSelectionFrame!=host.Input.Frame &&
+                !PlayerInput.Triggers.Current.MouseLeft && !PlayerInput.Triggers.Current.MouseRight && !PlayerInput.Triggers.Current.SmartSelect)
+            {
+                ToolIntent candidate=host.Mining.Choose(p);
+                if(candidate!=null && candidate.Slot==p.selectedItem)Acquire(p,candidate);
+            }
             if(!ReferenceEquals(p,player))return;
             if(PlayerInput.Triggers.Current.MouseLeft || PlayerInput.Triggers.Current.MouseRight || PlayerInput.Triggers.Current.SmartSelect){HandToManual();return;}
             if(!Refresh()){Cancel();return;}
@@ -138,7 +154,7 @@ namespace JueMingR.TerrariaHost.Tools
         internal void Update()
         {
             if(!Active)return;
-            if(!Identity() || !host.Admit(player,Intent.Kind==ToolKind.Capture && host.Mode(0)==2))Cancel();
+            if(!Identity() || !host.CanRetainUse(player,Intent.Kind==ToolKind.Capture && host.Mode(0)==2))Cancel();
             if(checkedItem && (cancelled || Intent.Refresh==null) && player.selectedItemState.CanChangeSelectedItemImmediately)Retire();
         }
         private void Notify(bool unknown){if(notified)return;notified=true;Intent?.Completed?.Invoke(started,unknown);}

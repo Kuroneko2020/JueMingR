@@ -14,6 +14,14 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if(scope=="ToolsExecution" || scope=="ToolsExecutionRelease" || scope=="ToolsExecutionOld" || scope=="ToolsExecutionCpu")
+            {
+                Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-tools-execution-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
+                Directory.CreateDirectory(output);
+                string candidate=scope=="ToolsExecutionRelease"?Path.Combine(Program.Repository,"artifacts/build/Release/work/bin/JueMingR.TerrariaHost/x86/Release/net472/JueMingR.TerrariaHost.dll"):
+                    scope=="ToolsExecutionOld"?Path.Combine(Program.Repository,"outputs/g09/d4cc715/round2/JueMingR-Continuous-Processing-d4cc715a1a126d0904cbd62d84e76d27588d1d5d/payload/JueMingR.Validation/JueMingR.TerrariaHost.dll"):null;
+                NativeQuickItemChecks.Run(context=>{if(scope=="ToolsExecutionCpu")NativeToolExecutionChecks.Run(context,null);else using(var graphics=new ProbeGraphics(content))NativeToolExecutionChecks.Run(context,graphics);},processing:true,shortFeedback:true,candidateAssembly:candidate);return 0;
+            }
             if(scope=="ToolsBindings" || scope=="ToolsBindingsReload")
             {
                 string pathRecord=Path.Combine(output,"bindings-data-path.txt");
