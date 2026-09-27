@@ -41,6 +41,10 @@ namespace JueMingR.TerrariaHost.Tools
             if(!ReferenceEquals(p,host.Player) || item==null || item.fishingPole<=0 || host.Use.InNativeUse)return;
             lastCastRod=item;lastCast=Main.MouseWorld;lastCastSession=host.Runtime.Generation;
         }
+        // Only the participant that actually used the rod transfers its saved
+        // world aim. A later net borrow must not fall back to today's mouse.
+        internal void RecordOwnedCast(Player p,Item item,Vector2 worldAim)
+        {if(ReferenceEquals(p,host.Player) && item!=null && item.fishingPole>0){lastCastRod=item;lastCast=worldAim;lastCastSession=host.Runtime.Generation;}}
         internal long Prepare(Player p)
         {
             if(Active || p.selectedItem<0 || p.selectedItem>=50 || p.HeldItem.fishingPole<=0)return 0;

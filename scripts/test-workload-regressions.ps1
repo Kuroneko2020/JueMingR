@@ -58,7 +58,7 @@ function Invoke-ProcessingWorkloadChecks {
 }
 function Invoke-ShortFeedbackWorkloadChecks {
     param([string[]] $Groups, [string] $Native)
-    if (@($Groups | Where-Object { $_ -in @('shared-host','storage-host','quick-items-host','coin-deposit-host','recovery-host','processing-host','about-host','tools-host') }).Count -eq 0) { return }
+    if (@($Groups | Where-Object { $_ -in @('shared-host','storage-host','quick-items-host','coin-deposit-host','recovery-host','processing-host','about-host','tools-host','fishing-host') }).Count -eq 0) { return }
     Invoke-WorkloadCheck 'short-feedback-native-host' $Native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'short-feedback-cpu'), 'ShortFeedbackCpu')
 }
 function Invoke-ToolsWorkloadChecks {
@@ -70,6 +70,12 @@ function Invoke-ToolsWorkloadChecks {
     Invoke-WorkloadCheck 'tools-native-full-update' $Native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'tools-full-update'), 'ToolsExecutionCpu')
     Invoke-WorkloadCheck 'tools-native-workload' $Native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'tools-workload'), 'ToolsWorkload')
 }
+function Invoke-FishingWorkloadChecks {
+    param([string[]] $Groups, [string] $Architecture, [string] $Native)
+    if ($Groups -notcontains 'fishing-host') { return }
+    Invoke-WorkloadCheck 'fishing-rules-storage' $Architecture @('--fishing')
+    Invoke-WorkloadCheck 'fishing-native-execution' $Native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'fishing-cpu'), 'FishingCpu')
+}
 try {
 $architecture = Join-Path $repositoryRoot 'artifacts/build/Debug/work/bin/JueMingR.ArchitectureTests/x86/Debug/net472/JueMingR.ArchitectureTests.exe'
 Invoke-WorkloadCheck 'core-records-selection' $architecture @('--workload-core', $repositoryRoot)
@@ -77,6 +83,7 @@ $fixture = Build-WorkloadFixture 'Phase0SFixtureTerraria'
 foreach ($mode in @('notes-input', 'entity-style', 'world-targets-style')) { Invoke-WorkloadCheck ('core-' + $mode) $fixture @($mode) }
 $native = Build-WorkloadFixture 'NativeWorldTextProbe'
 Invoke-ToolsWorkloadChecks $route.groups $architecture $native
+Invoke-FishingWorkloadChecks $route.groups $architecture $native
 Invoke-AboutWorkloadChecks $route.groups $architecture $fixture $native
 Invoke-WorkloadCheck 'core-native-host' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'native-cpu'), 'WorkloadCpu')
 if ($route.groups -contains 'shared-host') { Invoke-WorkloadCheck 'information-native-host' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'information-cpu'), 'InformationCpu') }

@@ -50,22 +50,33 @@ namespace JueMingR.TerrariaHost.Items
         }
         private static void GrantAfter(Item __0, Player __1, bool __result)
         { if (current != null && current.WorldItem == null && ReferenceEquals(current.Item, __0) && ReferenceEquals(current.Player, __1)) current.Opened = __result; }
+        // The fishing owner proves the full projectile and consumed pull token.
+        // GetItem inside this one original Give call supplies actual product and
+        // receipt facts. Later pickup cannot extend or replay this scope.
+        internal static Origin BeginFishing(Player player,Item rod,int type,long token)
+        {
+            if(current!=null || !host.CanCaptureFishing || !ReferenceEquals(player,host.World.Player) || rod==null || type<=0 || type>=ItemID.Count)return null;
+            var origin=new Origin(player,rod,null){FishingToken=token,FishingType=type,Produced=new HashSet<ItemIdentity>()};current=origin;host.World.CausalDepth++;return origin;
+        }
+        internal static void FinishFishing(Origin origin,bool returned){Finish(origin,returned);}
         private static void GetBefore(Player __instance, Item __0, out Gain __state)
         {
             __state = default(Gain);
             try
             {
             if (current == null || !ReferenceEquals(current.Player, __instance) || __0 == null || __0.type <= 0 || __0.type >= 71 && __0.type <= 74) return;
+            if(current.FishingToken!=0 && (__0.type!=current.FishingType || __0.stack<=0))return;
             var identity = new ItemIdentity(__0.type, __0.prefix);
             current.Touched.Add(identity);
             __state = new Gain(current, identity, Quantity(__instance, identity));
             }
             catch { host.FailClosed(); }
         }
-        private static void GetAfter(Player __instance, Gain __state)
+        private static void GetAfter(Player __instance, Gain __state,bool __runOriginal)
         {
             try
             {
+                if(__runOriginal && __state.Origin!=null && ReferenceEquals(current,__state.Origin) && current.FishingToken!=0)current.Produced.Add(__state.Identity);
                 if (__state.Origin != null && ReferenceEquals(current, __state.Origin) && Quantity(__instance, __state.Identity) > __state.Before)
                     current.Gained.Add(__state.Identity);
             }
@@ -85,6 +96,13 @@ namespace JueMingR.TerrariaHost.Items
             if (origin.Cancelled) return;
             try
             {
+            if(origin.FishingToken!=0)
+            {
+                if(!host.CanCaptureFishing || origin.Produced.Count==0)return;
+                host.UpdateFishingStorage?.Invoke();ItemInventoryObservation fishInventory;
+                if(host.World.TryObserveAcquisition(out fishInventory))host.Feature.RegisterFishingAcquisitions(origin.FishingToken,origin.Produced,fishInventory,host.Tick);
+                return;
+            }
             bool completed = returned && (origin.WorldItem != null ? origin.WorldItem.stack < origin.Before :
                 origin.Opened && (origin.Before==1 ? origin.Item.IsAir : origin.Item.stack == origin.Before - 1));
             if (!completed || !host.CanCapture || origin.Gained.Count == 0) return;
@@ -144,6 +162,9 @@ namespace JueMingR.TerrariaHost.Items
             internal readonly HashSet<ItemIdentity> Gained = new HashSet<ItemIdentity>();
             internal readonly HashSet<ItemIdentity> Touched = new HashSet<ItemIdentity>();
             internal bool Opened, Cancelled;
+            internal long FishingToken;
+            internal int FishingType;
+            internal HashSet<ItemIdentity> Produced;
             internal Origin(Player player, Item item, WorldItem worldItem) { Player = player; Item = item; WorldItem = worldItem; Before = item.stack; }
         }
         private readonly struct Gain

@@ -141,6 +141,14 @@ try {
         $path = 'tests/NativeWorldTextProbe/' + $name + '.cs'
         $cases[$path] = 'tools-host'; $exactGroups[$path] = $exactGroups['src/JueMingR.TerrariaHost/Tools/AutoCapture.cs']
     }
+    foreach ($path in @('src/JueMingR.TerrariaHost/Fishing/FishingEquipment.cs','src/JueMingR.Features/Fishing/FishFilter.cs','tests/JueMingR.ArchitectureTests/Fishing/FishingChecks.cs','tests/NativeWorldTextProbe/NativeFishingChecks.cs','tests/NativeWorldTextProbe/NativeFishingUiChecks.cs','tests/NativeWorldTextProbe/NativeFishingNetworkChecks.cs','tests/NativeWorldTextProbe/NativePlayerRenameChecks.cs')) {
+        $cases[$path] = 'fishing-host'; $exactGroups[$path] = @('core','fishing-host')
+    }
+    foreach ($path in @($exactGroups.Keys)) {
+        if ($exactGroups[$path] -contains 'tools-host' -or $path -in @('src/JueMingR.Features/Text/TextEditBuffer.cs','src/JueMingR.TerrariaHost/Notes/NotesClipboard.cs')) {
+            $exactGroups[$path] = @($exactGroups[$path] + 'fishing-host' | Sort-Object -Unique)
+        }
+    }
     $cases['src/JueMingR.TerrariaHost/Npcs/NativeNpcObservation.cs'] = 'tools-host'
     $exactGroups['src/JueMingR.TerrariaHost/Npcs/NativeNpcObservation.cs'] = @($exactGroups['src/JueMingR.TerrariaHost/F5/F5Layout.cs'] + 'storage-host' | Sort-Object -Unique)
     foreach ($path in $cases.Keys) { Write-Fixture $path "baseline`n" }
@@ -165,6 +173,20 @@ try {
     $changes = Get-WorkloadChanges $fixtureRoot $baseline; $route = Get-WorkloadRoute $changes.paths
     Assert-Route ($changes.paths.Count -eq 2 -and (($route.groups | Sort-Object) -join ',') -ceq (($exactGroups[$sharedPath] | Sort-Object) -join ',')) 'mixed About/F5 diff retains exact shared consumers'
     Write-Fixture $aboutPath "baseline`n"; Write-Fixture $sharedPath "baseline`n"
+    $fishingPath = 'src/JueMingR.TerrariaHost/Fishing/FishingEquipment.cs'
+    Write-Fixture $fishingPath "mixed`n"; Write-Fixture $sharedPath "mixed`n"
+    $changes = Get-WorkloadChanges $fixtureRoot $baseline; $route = Get-WorkloadRoute $changes.paths
+    Assert-Route ($changes.paths.Count -eq 2 -and ($route.groups -join ',') -ceq (($exactGroups[$sharedPath] | Sort-Object) -join ',')) 'mixed Fishing/F5 retains all shared consumers'
+    Write-Fixture $fishingPath "baseline`n"; Write-Fixture $sharedPath "baseline`n"
+    Invoke-WorkloadGit $fixtureRoot @('rm','--quiet',$fishingPath) | Out-Null
+    $route = Get-WorkloadRoute (Get-WorkloadChanges $fixtureRoot $baseline).paths
+    Assert-Route (($route.groups -join ',') -ceq 'core,fishing-host') 'Fishing deletion keeps its own checks'
+    Write-Fixture $fishingPath "baseline`n"; Invoke-WorkloadGit $fixtureRoot @('add',$fishingPath) | Out-Null
+    $fishingRename = 'src/JueMingR.TerrariaHost/Fishing/FormerInput.cs'
+    Invoke-WorkloadGit $fixtureRoot @('mv',$sharedPath,$fishingRename) | Out-Null
+    $changes = Get-WorkloadChanges $fixtureRoot $baseline; $route = Get-WorkloadRoute $changes.paths
+    Assert-Route ($changes.paths.Count -eq 2 -and ($route.groups -join ',') -ceq (($exactGroups[$sharedPath] | Sort-Object) -join ',')) 'rename from shared to Fishing retains deleted provider consumers'
+    Invoke-WorkloadGit $fixtureRoot @('mv',$fishingRename,$sharedPath) | Out-Null
     Invoke-WorkloadGit $fixtureRoot @('rm', '--quiet', $aboutPath) | Out-Null
     $changes = Get-WorkloadChanges $fixtureRoot $baseline; $route = Get-WorkloadRoute $changes.paths
     Assert-Route ($changes.paths.Count -eq 1 -and ($route.groups -join ',') -ceq 'about-host,core') 'About deletion selects only core and feature checks'
@@ -230,7 +252,7 @@ try {
             param([string] $Name, [string] $Executable, [string[]] $Arguments)
             $calls.Add(@{ name = $Name; executable = $Executable; arguments = $Arguments })
         }
-        foreach ($group in @('core','shared-host','storage-host','quick-items-host','coin-deposit-host','recovery-host','processing-host','about-host')) {
+        foreach ($group in @('core','shared-host','storage-host','quick-items-host','coin-deposit-host','recovery-host','processing-host','about-host','tools-host','fishing-host')) {
             $calls.Clear(); Invoke-ShortFeedbackWorkloadChecks @('core',$group) 'native.exe'
             if ($group -ceq 'core') { Assert-Route ($calls.Count -eq 0) 'unrelated core skips feedback'; continue }
             Assert-Route ($calls.Count -eq 1 -and $calls[0].name -ceq 'short-feedback-native-host' -and $calls[0].executable -ceq 'native.exe' -and ($calls[0].arguments -join '|') -ceq (@($repositoryRoot,'--cpu',(Join-Path $checksRoot 'short-feedback-cpu'),'ShortFeedbackCpu') -join '|')) 'feedback runs exact real native consumer once for each affected provider'
@@ -300,6 +322,25 @@ try {
     }
     $toolsCalls = @($runnerAst.FindAll({ param($node) $node -is [Management.Automation.Language.CommandAst] -and $node.GetCommandName() -ceq 'Invoke-ToolsWorkloadChecks' }, $true))
     Assert-Route ($toolsCalls.Count -eq 1 -and $toolsCalls[0].Extent.Text -ceq 'Invoke-ToolsWorkloadChecks $route.groups $architecture $native') 'normal runner invokes tools exactly once with actual route and detection executables'
+    $fishingDispatch = $runnerAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Invoke-FishingWorkloadChecks' }, $false)
+    Assert-Route ($null -ne $fishingDispatch) 'actual Fishing dispatcher exists'
+    & {
+        . ([scriptblock]::Create($fishingDispatch.Extent.Text))
+        $calls = New-Object 'System.Collections.Generic.List[object]'
+        $checksRoot = Join-Path $fixtureRoot 'checks'
+        function Invoke-WorkloadCheck {
+            param([string] $Name, [string] $Executable, [string[]] $Arguments)
+            $calls.Add(@{ name=$Name; executable=$Executable; arguments=$Arguments })
+        }
+        foreach ($groups in @(@('core'),@('core','fishing-host'),@('core','fishing-host','tools-host','shared-host','storage-host'))) {
+            $calls.Clear(); Invoke-FishingWorkloadChecks $groups 'architecture.exe' 'native.exe'
+            if ($groups -notcontains 'fishing-host') { Assert-Route ($calls.Count -eq 0) 'unrelated group skips Fishing'; continue }
+            Assert-Route ($calls.Count -eq 2 -and $calls[0].executable -ceq 'architecture.exe' -and ($calls[0].arguments -join '|') -ceq '--fishing') 'Fishing rules execute once'
+            Assert-Route ($calls[1].name -ceq 'fishing-native-execution' -and $calls[1].executable -ceq 'native.exe' -and ($calls[1].arguments -join '|') -ceq (@($repositoryRoot,'--cpu',(Join-Path $checksRoot 'fishing-cpu'),'FishingCpu') -join '|')) 'Fishing actual CPU fixture and isolated directory'
+        }
+    }
+    $fishingCalls = @($runnerAst.FindAll({ param($node) $node -is [Management.Automation.Language.CommandAst] -and $node.GetCommandName() -ceq 'Invoke-FishingWorkloadChecks' }, $true))
+    Assert-Route ($fishingCalls.Count -eq 1 -and $fishingCalls[0].Extent.Text -ceq 'Invoke-FishingWorkloadChecks $route.groups $architecture $native') 'normal runner invokes Fishing exactly once'
     # Run the real process wrapper in a child PowerShell: failed checks must
     # escape as a nonzero process exit and must never append a PASS result.
     $failurePath = Join-Path $fixtureRoot 'failure-exit.ps1'

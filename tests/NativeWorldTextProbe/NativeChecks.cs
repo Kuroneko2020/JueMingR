@@ -14,6 +14,16 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if(scope=="FishingCpu" || scope=="FishingVisual" || scope=="FishingRelease")
+            {
+                Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-fishing-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
+                Directory.CreateDirectory(output);
+                NativeQuickItemChecks.Run(context=>
+                {
+                    if(scope=="FishingVisual")using(var graphics=new ProbeGraphics(content)){NativeFishingChecks.Run(context,graphics);graphics.SetMouseFont(graphics.Font);NativeFishingVisualChecks.Run(context,graphics,output);}
+                    else NativeFishingChecks.Run(context);
+                },processing:true,shortFeedback:true,candidateAssembly:scope=="FishingRelease"?Path.Combine(Program.Repository,"artifacts/build/Release/work/bin/JueMingR.TerrariaHost/x86/Release/net472/JueMingR.TerrariaHost.dll"):null);return 0;
+            }
             if(scope=="ToolsExecution" || scope=="ToolsExecutionRelease" || scope=="ToolsExecutionOld" || scope=="ToolsExecutionCpu")
             {
                 Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-tools-execution-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);

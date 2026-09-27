@@ -14,6 +14,8 @@ namespace JueMingR.TerrariaHost.Hotkeys
                 case Platform.Information.InformationKind.Infection: return "information.infection.toggle";
                 case Platform.Information.InformationKind.Luck: return "information.luck.toggle";
                 case Platform.Information.InformationKind.Angler: return "information.angler.toggle";
+                case Platform.Information.InformationKind.FullFish: return "information.full-fish.toggle";
+                case Platform.Information.InformationKind.FilteredFish: return "information.filtered-fish.toggle";
                 default: throw new System.ArgumentOutOfRangeException(nameof(kind));
             }
         }

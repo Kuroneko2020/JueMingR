@@ -10,6 +10,8 @@ namespace JueMingR.ArchitectureTests
         {
             try
             {
+                if(args.Length==1 && args[0]=="--fishing")
+                {var checks=new List<string>();FishingChecks.Check(checks);FishingStorageChecks.Check(checks);InformationTests.Check(checks);foreach(var failure in checks)Console.Error.WriteLine(failure);Console.WriteLine("Fishing failures="+checks.Count);return checks.Count==0?0:1;}
                 if(args.Length==1 && args[0]=="--tools")
                 {var checks=new List<string>();ToolsChecks.Check(checks);foreach(var failure in checks)Console.Error.WriteLine(failure);Console.WriteLine("Tools failures="+checks.Count);return checks.Count==0?0:1;}
                 if(args.Length==1 && args[0]=="--processing")
@@ -105,6 +107,8 @@ namespace JueMingR.ArchitectureTests
                 CoinDepositChecks.Check(failures);
                 RecoveryChecks.Check(failures);
                 ToolsChecks.Check(failures);
+                FishingChecks.Check(failures);
+                FishingStorageChecks.Check(failures);
                 OnboardingChecks.Check(failures);
                 HotkeyStorageChecks.Check(repositoryRoot, failures);
                 Phase0TArchitectureChecks.Check(failures);

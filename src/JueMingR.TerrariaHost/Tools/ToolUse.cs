@@ -5,7 +5,7 @@ using Terraria.GameInput;
 
 namespace JueMingR.TerrariaHost.Tools
 {
-    internal enum ToolKind { Capture, Harvest, Seed, Mining, Recast }
+    internal enum ToolKind { Capture, Harvest, Seed, Mining, Recast, FishingPull, FishingCast, FishingCut }
     internal sealed class ToolIntent
     {
         internal ToolKind Kind;
@@ -17,6 +17,8 @@ namespace JueMingR.TerrariaHost.Tools
         internal Action Used;
         internal Action Yielded;
         internal Action<bool,bool> Completed;
+        internal bool SelectionOnly;
+        internal bool HeldInventory;
     }
     // The target, sustained business intent and actual use lease have distinct
     // lifetimes. Only the feature refreshes targets; vanilla owns selection,
@@ -38,7 +40,8 @@ namespace JueMingR.TerrariaHost.Tools
         internal bool Returning {get;private set;}
         internal bool Active {get{return player!=null;}}
         internal long Operation {get{return token;}}
-        internal bool ActionValid {get{return Active && !cancelled && Identity() && host.Admit(player,Intent.Kind==ToolKind.Capture && host.Mode(0)==2) && (Intent.Valid?.Invoke()??false);}}
+        private bool HeldInventory {get{return Intent.HeldInventory || Intent.Kind==ToolKind.Capture && host.Mode(0)==2;}}
+        internal bool ActionValid {get{return Active && !cancelled && Identity() && host.Admit(player,HeldInventory) && (Intent.Valid?.Invoke()??false);}}
         internal ToolUse(HostTools host){this.host=host;}
         internal void Pick(Player p,ref int chosen,ref bool result)
         {
@@ -50,7 +53,7 @@ namespace JueMingR.TerrariaHost.Tools
                 // selection change between animations; no timer is rewritten.
                 if(!result && !cancelled && Intent.Refresh!=null && SourceIdentity() &&
                     host.ManualSelectionFrame!=host.Input.Frame && !PlayerInput.Triggers.Current.MouseLeft &&
-                    host.Admit(p,Intent.Kind==ToolKind.Capture && host.Mode(0)==2) && Intent.Refresh())
+                    host.Admit(p,HeldInventory) && Intent.Refresh())
                 {chosen=Intent.Slot;result=true;return;}
                 bool handoff=yieldExternal;Retire();if(handoff)return;
             }
@@ -72,7 +75,7 @@ namespace JueMingR.TerrariaHost.Tools
             candidate.Admitted?.Invoke();
             return true;
         }
-        private bool SourceIdentity(){return session==host.Runtime.Generation && host.SelectionIntent==selection && ReferenceEquals(player.inventory[Intent.Slot],item) && item.type==type && item.stack>0;}
+        private bool SourceIdentity(){return session==host.Runtime.Generation && host.SelectionIntent==selection && ReferenceEquals(player.inventory[Intent.Slot],item) && item.type==type && (item.stack>0 || Intent.SelectionOnly && item.IsAir);}
         private bool Identity(){return SourceIdentity() && player.selectedItem==Intent.Slot;}
         private bool Refresh(){return Active && !cancelled && Identity() && (Intent.Refresh==null || Intent.Refresh()) && ActionValid;}
         // Selecting a temporary tool must not make the original held source
@@ -98,6 +101,9 @@ namespace JueMingR.TerrariaHost.Tools
             if(!ReferenceEquals(p,player))return;
             if(PlayerInput.Triggers.Current.MouseLeft || PlayerInput.Triggers.Current.MouseRight || PlayerInput.Triggers.Current.SmartSelect){HandToManual();return;}
             if(!Refresh()){Cancel();return;}
+            // A cut borrows selection only. No virtual use press is produced;
+            // vanilla projectile AI observes the temporary non-rod itself.
+            if(Intent.SelectionOnly)return;
             if(Intent.Refresh==null && (pulsed || checkedItem))return;
             p.controlUseItem=true;if(!pulsed)p.releaseUseItem=true;pulseFrame=host.Input.Frame;pulsed=true;
         }
@@ -109,6 +115,7 @@ namespace JueMingR.TerrariaHost.Tools
             if(PlayerInput.Triggers.Current.MouseLeft || host.SelectionIntent!=selection){HandToManual();return;}
             InNativeUse=true;
             if(!Refresh()){Cancel();return;}
+            if(Intent.SelectionOnly)return;
             // Establish cleanup ownership BEFORE the first temporary write.
             BorrowAim();
             if(pulsed && (Intent.Refresh!=null || !checkedItem))Main.mouseLeft=true;
@@ -154,7 +161,7 @@ namespace JueMingR.TerrariaHost.Tools
         internal void Update()
         {
             if(!Active)return;
-            if(!Identity() || !host.CanRetainUse(player,Intent.Kind==ToolKind.Capture && host.Mode(0)==2))Cancel();
+            if(!Identity() || !host.CanRetainUse(player,HeldInventory))Cancel();
             if(checkedItem && (cancelled || Intent.Refresh==null) && player.selectedItemState.CanChangeSelectedItemImmediately)Retire();
         }
         private void Notify(bool unknown){if(notified)return;notified=true;Intent?.Completed?.Invoke(started,unknown);}

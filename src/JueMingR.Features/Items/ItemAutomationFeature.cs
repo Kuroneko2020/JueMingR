@@ -12,7 +12,12 @@ namespace JueMingR.Features.Items
         private readonly IItemObservationSource source;
         private readonly IItemOperationPort operations;
         private readonly Dictionary<ItemIdentity, ItemAcquisitionOpportunity> acquisitions = new Dictionary<ItemIdentity, ItemAcquisitionOpportunity>();
+        private readonly Dictionary<ItemIdentity,ItemAcquisitionOpportunity> fishingAcquisitions=new Dictionary<ItemIdentity,ItemAcquisitionOpportunity>();
+        private long fishingToken;
+        private int fishingMode,questType;
+        private bool fishingAdmitted;
         private readonly Func<bool> canStartActions;
+        private readonly Func<ulong> fishingClock;
         private readonly HashSet<int> sellTypes = new HashSet<int>(), discardTypes = new HashSet<int>();
         private readonly long[] attemptedRevision = new long[58];
         private ItemAutomationSettings settings = ItemAutomationSettings.Default;
@@ -21,12 +26,15 @@ namespace JueMingR.Features.Items
         private long session;
         private int nextSlot;
         public bool HasFailed { get; private set; }
-        public bool Enabled { get { return !HasFailed && (settings.StackEnabled || settings.SellEnabled || settings.DiscardEnabled); } }
-        public ItemAutomationFeature(IItemObservationSource source, IItemOperationPort operations, Func<bool> canStartActions = null)
+        public bool OrdinaryEnabled {get{return !HasFailed && (settings.StackEnabled || settings.SellEnabled || settings.DiscardEnabled);}}
+        public bool Enabled { get { return !HasFailed && (OrdinaryEnabled || fishingMode!=0); } }
+        public bool FishingStorageEnabled {get{return !HasFailed && active && fishingMode!=0;}}
+        public ItemAutomationFeature(IItemObservationSource source, IItemOperationPort operations, Func<bool> canStartActions = null,Func<ulong> fishingClock=null)
         {
             this.source = source ?? throw new ArgumentNullException(nameof(source));
             this.operations = operations ?? throw new ArgumentNullException(nameof(operations));
             this.canStartActions = canStartActions ?? (() => true);
+            this.fishingClock=fishingClock;
         }
         public ItemOperationResult LastResult(ItemActionKind action)
         {
@@ -49,21 +57,52 @@ namespace JueMingR.Features.Items
             ResetAttempts(); immediate = true;
         }
         public void OnSessionStarted()
-        { session = source.SessionGeneration; active = true; acquisitions.Clear(); ResetAttempts(); hasTick = false; immediate = true; }
+        { session = source.SessionGeneration; active = true; acquisitions.Clear();ClearFishing(); ResetAttempts(); hasTick = false; immediate = true; }
         public void OnSessionEnded()
-        { active = false; acquisitions.Clear(); ResetAttempts(); }
+        { active = false; acquisitions.Clear();ClearFishing(); ResetAttempts(); }
         // Death retires opportunities that have not been submitted. The shared
         // world Session and operation-port receipt ownership remain untouched.
         public void DiscardPendingAcquisitions()
-        { acquisitions.Clear(); ResetAttempts(); hasTick = false; immediate = true; }
-        public void FailClosed() { HasFailed = true; active = false; acquisitions.Clear(); }
+        { acquisitions.Clear();fishingAcquisitions.Clear(); ResetAttempts(); hasTick = false; immediate = true; }
+        public void FailClosed() { HasFailed = true; active = false; acquisitions.Clear();ClearFishing(); }
+        private void ClearFishing(){fishingAcquisitions.Clear();fishingToken=0;fishingMode=questType=0;fishingAdmitted=false;}
+        // Retained session intent and momentary action admission are distinct.
+        // Pausing input/persistence must not renew or consume finite products.
+        public void SetFishingStorage(long ownerSession,long token,int mode,int currentQuestType,bool admitted)
+        {
+            if(mode<0 || mode>2)throw new ArgumentOutOfRangeException(nameof(mode));
+            if(!active || ownerSession!=session || token<=0){mode=0;token=0;currentQuestType=0;admitted=false;}
+            if(fishingToken!=token || fishingMode!=mode || questType!=currentQuestType)
+            {fishingAcquisitions.Clear();ResetAttempts();immediate=true;}
+            else if(!fishingAdmitted && admitted)immediate=true;
+            fishingToken=token;fishingMode=mode;questType=currentQuestType;fishingAdmitted=admitted;
+        }
+        public void RegisterFishingAcquisitions(long token,IEnumerable<ItemIdentity> identities,ItemInventoryObservation inventory,ulong tick)
+        {
+            if(identities==null)throw new ArgumentNullException(nameof(identities));
+            if(!active || HasFailed || fishingMode!=1 || token!=fishingToken || inventory==null || inventory.Session!=session)return;
+            tick=FishingTime(tick);
+            Prune(fishingAcquisitions,null,tick);
+            var types=new HashSet<int>();foreach(var identity in identities)if(identity.Type>0 && !ItemAutomationSettings.IsCoin(identity.Type))types.Add(identity.Type);
+            var captured=new HashSet<ItemIdentity>();
+            foreach(var slot in inventory.Slots)
+            {
+                if(!slot.IsCandidate || !types.Contains(slot.Identity.Type) || !captured.Add(slot.Identity))continue;
+                ItemAcquisitionOpportunity opportunity;
+                if(!fishingAcquisitions.TryGetValue(slot.Identity,out opportunity))
+                {opportunity=new ItemAcquisitionOpportunity(tick);fishingAcquisitions.Add(slot.Identity,opportunity);}
+                opportunity.Capture(slot.Identity,inventory);
+                foreach(var member in inventory.Slots)if(member.Identity.Equals(slot.Identity))attemptedRevision[member.Slot]=Int64.MinValue;
+            }
+            Prune(fishingAcquisitions,inventory,tick);immediate=true;
+        }
 
         // Only the Host's completed causal scope calls this. Positive inventory
         // polling, settings changes and ordinary GetItem calls never call it.
         public void RegisterAcquisitions(IEnumerable<ItemIdentity> identities, ItemInventoryObservation inventory, ulong tick)
         {
             if (identities == null) throw new ArgumentNullException(nameof(identities));
-            if (!active || !Enabled || inventory == null || inventory.Session != session) return;
+            if (!active || !OrdinaryEnabled || inventory == null || inventory.Session != session) return;
             PruneAcquisitions(null, tick);
             // Capture the whole causal batch before reconciling old members: two
             // products changing together must not reset each other's first age.
@@ -93,15 +132,18 @@ namespace JueMingR.Features.Items
         {
             if (!active || !Enabled || source.SessionGeneration != session) return;
             PruneAcquisitions(null, tick);
+            Prune(fishingAcquisitions,null,FishingTime(tick));
             // Sale/trash lists apply to current inventory. Only storage needs a
             // finite causal acquisition; do not fabricate one while scanning.
             bool inventoryDemand = settings.SellEnabled && sellTypes.Count != 0 || settings.DiscardEnabled && discardTypes.Count != 0;
-            if ((!inventoryDemand && (!settings.StackEnabled || acquisitions.Count == 0)) || !canStartActions()) return;
+            bool fishingDemand=fishingAdmitted && (fishingMode==2 && questType>0 || fishingMode==1 && fishingAcquisitions.Count!=0);
+            if ((!inventoryDemand && (!settings.StackEnabled || acquisitions.Count == 0) && !fishingDemand) || !canStartActions()) return;
             if (!immediate && hasTick && unchecked(tick - lastTick) < 6) return;
             immediate = false; hasTick = true; lastTick = tick;
             ItemInventoryObservation inventory;
             if (!source.TryObserve(out inventory) || inventory == null || inventory.Session != session) return;
             PruneAcquisitions(inventory, tick);
+            Prune(fishingAcquisitions,inventory,FishingTime(tick));
             // New low-slot products may arrive every Update. Continue after the
             // last attempted slot, then wrap once, so older high slots progress.
             for(int pass=0;pass<2;pass++)
@@ -110,6 +152,7 @@ namespace JueMingR.Features.Items
                 if(pass==0 ? slot.Slot<nextSlot : slot.Slot>=nextSlot)continue;
                 ItemAcquisitionOpportunity opportunity;
                 acquisitions.TryGetValue(slot.Identity, out opportunity);
+                ItemAcquisitionOpportunity fishOpportunity;fishingAcquisitions.TryGetValue(slot.Identity,out fishOpportunity);
                 if (!slot.IsCandidate || operations.Ownership.IsProtected(slot.Slot) || attemptedRevision[slot.Slot] == inventory.Revision) continue;
                 // Requests execute synchronously on the game thread. Recheck this
                 // owner's current source/rules here; the Host then rechecks the
@@ -131,20 +174,28 @@ namespace JueMingR.Features.Items
                     if (operations.Ownership.DiscardBlocked) continue;
                     result = operations.Execute(new DiscardItemRequest(session, slot));
                 }
+                bool fishStore=fishingDemand && (fishingMode==2?slot.Identity.Type==questType:fishOpportunity!=null && fishOpportunity.Contains(slot));
                 if ((result == null || result.State == ItemOperationState.NotApplicable) &&
-                    settings.StackEnabled && slot.MaximumStack > 1 && opportunity != null && opportunity.Contains(slot))
+                    (fishStore || settings.StackEnabled && slot.MaximumStack > 1 && opportunity != null && opportunity.Contains(slot)))
                 {
                     if (operations.Ownership.StoreBlocked) continue;
-                    var group = new List<ItemSlotObservation>();
+                    var group = new List<ItemSlotObservation>();bool dedicated=false;
                     foreach (ItemSlotObservation candidate in inventory.Slots)
+                    {
+                        bool fishMember=fishingDemand && (fishingMode==2?candidate.Identity.Type==questType:fishOpportunity!=null && fishOpportunity.Contains(candidate));
+                        bool ordinaryMember=settings.StackEnabled && candidate.MaximumStack>1 && opportunity!=null && opportunity.Contains(candidate);
                         if (candidate.IsCandidate && !operations.Ownership.IsProtected(candidate.Slot) &&
-                            candidate.MaximumStack > 1 && opportunity.Contains(candidate)) group.Add(candidate);
-                    result = operations.Execute(new StoreItemsRequest(session, group));
+                            candidate.Identity.Equals(slot.Identity) && (fishMember || ordinaryMember)){group.Add(candidate);dedicated|=fishMember;}
+                    }
+                    result = operations.Execute(new StoreItemsRequest(session, group,!dedicated));
                     // Rejected admission has not consumed a source opportunity.
                     // Executing or a terminal/no-target result does; actual late
                     // receipts remain the operation owner's responsibility.
-                    if (result.State != ItemOperationState.Rejected)
-                        foreach (ItemSlotObservation submitted in group) opportunity.Retire(submitted);
+                    foreach (ItemSlotObservation submitted in group)
+                    {
+                        attemptedRevision[submitted.Slot]=inventory.Revision;
+                        if(result.State!=ItemOperationState.Rejected){opportunity?.Retire(submitted);fishOpportunity?.Retire(submitted);}
+                    }
                 }
                 // Sale/trash may consume a storage member, but later withdrawals
                 // must never inherit its storage permission. Unknown results keep
@@ -154,6 +205,10 @@ namespace JueMingR.Features.Items
                     if (result == null || result.State != ItemOperationState.Rejected) opportunity.Retire(slot);
                     if (opportunity.Count == 0) acquisitions.Remove(slot.Identity);
                 }
+                // A pause or an inapplicable higher-priority action cannot spend
+                // a fish opportunity. Actual submitted storage retired its group.
+                if(fishOpportunity!=null)
+                {if(result!=null && result.State!=ItemOperationState.Rejected && result.State!=ItemOperationState.NotApplicable)fishOpportunity.Retire(slot);if(fishOpportunity.Count==0)fishingAcquisitions.Remove(slot.Identity);}
                 if (result == null) continue;
                 attemptedRevision[slot.Slot] = inventory.Revision;
                 nextSlot=(slot.Slot+1)%58;
@@ -161,15 +216,18 @@ namespace JueMingR.Features.Items
             }
         }
         private void PruneAcquisitions(ItemInventoryObservation inventory, ulong tick)
+        {Prune(acquisitions,inventory,tick);}
+        private ulong FishingTime(ulong tick){return fishingClock?.Invoke()??tick;}
+        private static void Prune(Dictionary<ItemIdentity,ItemAcquisitionOpportunity> entries,ItemInventoryObservation inventory,ulong tick)
         {
-            if (acquisitions.Count == 0) return;
+            if (entries.Count == 0) return;
             var expired = new List<ItemIdentity>();
-            foreach (KeyValuePair<ItemIdentity, ItemAcquisitionOpportunity> entry in acquisitions)
+            foreach (KeyValuePair<ItemIdentity, ItemAcquisitionOpportunity> entry in entries)
             {
                 if (inventory != null) entry.Value.Reconcile(inventory);
                 if (entry.Value.Count == 0 || unchecked(tick - entry.Value.Started) >= 600) expired.Add(entry.Key);
             }
-            foreach (ItemIdentity key in expired) acquisitions.Remove(key);
+            foreach (ItemIdentity key in expired) entries.Remove(key);
         }
         private void ResetAttempts() { nextSlot=0;for (int i = 0; i < attemptedRevision.Length; i++) attemptedRevision[i] = Int64.MinValue; }
     }

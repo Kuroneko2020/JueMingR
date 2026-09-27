@@ -34,8 +34,8 @@ namespace NativeWorldTextProbe
                 { if (DateTime.UtcNow > deadline) throw new Exception("information preferences did not load"); Call(context, "UpdateRuntime"); Thread.Sleep(5); }
                 var shell = Get(context, "Shell"); var renderer = Get(shell, "renderer");
                 var registry = (JueMingR.Platform.Hotkeys.HotkeyRegistry)Get(Get(shell, "hotkeys"), "Registry");
-                Require(registry.Actions.Count == oldActions.Length + 4, "complete profile must preserve the actual previous catalog and register four information actions");
-                foreach (string id in new[] { "biome-display.toggle", "information.infection.toggle", "information.luck.toggle", "information.angler.toggle", "information-window.adjust" })
+                Require(registry.Actions.Count == oldActions.Length + 6, "complete profile must preserve the actual previous catalog and register six information actions");
+                foreach (string id in new[] { "biome-display.toggle", "information.infection.toggle", "information.luck.toggle", "information.angler.toggle", "information.full-fish.toggle", "information.filtered-fish.toggle", "information-window.adjust" })
                     Require(registry.Find(id) != null, "full frozen registry missing " + id);
                 Require(Get(renderer, "InformationControls") != null, "real shell must route information commands");
                 var controls = Get(renderer, "InformationControls");
@@ -63,6 +63,7 @@ namespace NativeWorldTextProbe
         }
         internal static void StopContext(object context)
         {
+                var fishing=GetOptional(context,"Fishing");if(fishing!=null)Call(fishing,"Exit",null,EventArgs.Empty);
                 var hooks = GetOptional(context, "informationHooks"); if (hooks != null) Call(hooks, "Dispose");
                 foreach (string name in new[] { "Footprints", "MapFeatures", "DeathRecords", "Guidance", "Information", "Labels", "WorldTargets", "WorldObjects", "items", "notes", "preferences" })
                 {

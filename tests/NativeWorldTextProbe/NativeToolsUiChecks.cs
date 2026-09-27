@@ -146,17 +146,17 @@ namespace NativeWorldTextProbe
             Require((int)Call(host,"Mode",2)==1 && ((MiningRegion)Get(mining,"Region")).Count==0,"main key restores previous mode without selecting a vein");
             NativeToolsChecks.SetMode(host,2,0);
         }
-        private static void Nav(object context,int page)
+        internal static void Nav(object context,int page)
         {var state=Get(Get(context,"Shell"),"State");Vector2 point=(Point(Call(Get(state,"Layout"),"Navigation",page))+new Vector2((float)Get(state,"X"),(float)Get(state,"Y")))*Main.UIScale;Click(context,point);Require((int)Get(state,"Page")==page,"real navigation click "+page);}
-        private static void PopupClick(object context,object popup,string command)
+        internal static void PopupClick(object context,object popup,string command)
         {
             var layout=Get(popup,"Layout");var commands=((IEnumerable)Get(layout,"Commands")).Cast<object>().ToArray();var buttons=((IEnumerable)Get(layout,"Buttons")).Cast<object>().ToArray();
             int index=Array.FindIndex(commands,c=>c.ToString()==command);Require(index>=0,"popup command exists: "+command);
             Vector2 point=(Point(Get(buttons[index],"Rect"))+new Vector2((float)Get(Get(layout,"Panel"),"X"),(float)Get(Get(layout,"Panel"),"Y")))*Main.UIScale;Click(context,point);
         }
-        private static void Click(object context,Vector2 point){UiFrame(context,point,false);UiFrame(context,point,true);UiFrame(context,point,false);}
-        private static void UiFrame(object context,Vector2 point,bool left,params Keys[] keys){UiFrame(context,point,left,keys,0);}
-        private static void UiFrame(object context,Vector2 point,bool left,Keys[] keys,int wheel)
+        internal static void Click(object context,Vector2 point){UiFrame(context,point,false);UiFrame(context,point,true);UiFrame(context,point,false);}
+        internal static void UiFrame(object context,Vector2 point,bool left,params Keys[] keys){UiFrame(context,point,left,keys,0);}
+        internal static void UiFrame(object context,Vector2 point,bool left,Keys[] keys,int wheel)
         {
             var shell=Get(context,"Shell");var input=Get(context,"Input");Call(input,"BeginUpdate");Call(shell,"BeforeInput");
             PlayerInput.MouseInfo=new MouseState((int)point.X,(int)point.Y,PlayerInput.MouseInfo.ScrollWheelValue+wheel,left?ButtonState.Pressed:ButtonState.Released,ButtonState.Released,ButtonState.Released,ButtonState.Released,ButtonState.Released);

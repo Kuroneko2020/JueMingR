@@ -30,6 +30,11 @@ namespace JueMingR.TerrariaHost.Tools
         private readonly Func<Item,bool> priorProtection;
         internal Func<bool> CanInterface;
         internal Func<bool> OtherUseReady;
+        internal Func<bool> FishingEnabled;
+        internal Func<Player,ToolIntent> FishingChoice;
+        internal Action<Player,Item> FishingStarted;
+        internal Action<Player,Projectile> FishingProjectile;
+        internal Action FishingManualSelection;
         internal Feedback.LocalShortFeedback Feedback;
         private bool report;
         private int roundRobin;
@@ -60,7 +65,7 @@ namespace JueMingR.TerrariaHost.Tools
         internal Exception SetupError {get;private set;}
         internal string Error {get;private set;}
         internal Player Player {get{return Runtime.IsSessionActive?Items.World.Player:null;}}
-        public bool Enabled {get{return Mode(0)!=0 || Mode(1)!=0 || Mode(2)!=0 || Use.Active || Fishing.Active || unknown!=0;}}
+        public bool Enabled {get{return Mode(0)!=0 || Mode(1)!=0 || Mode(2)!=0 || Use.Active || Fishing.Active || unknown!=0 || (FishingEnabled?.Invoke()??false);}}
         internal HostTools(string directory,SingleFeatureRuntime runtime,HostItems items,HostInputState input,NativeNpcObservation npcs)
         {
             Runtime=runtime;Items=items;Input=input;Npcs=npcs;
@@ -87,7 +92,7 @@ namespace JueMingR.TerrariaHost.Tools
             if(Use.Active && ModeFor(Use.Intent.Kind)==0)Use.Cancel();
             if(Mode(0)!=1)Fishing.Cancel();if(!KeepsIntent(1))Herbs.Reset();if(!KeepsIntent(2))Mining.Clear();
         }
-        private int ModeFor(ToolKind kind){return Mode(kind==ToolKind.Capture || kind==ToolKind.Recast?0:kind==ToolKind.Harvest || kind==ToolKind.Seed?1:2);}
+        private int ModeFor(ToolKind kind){return kind>=ToolKind.FishingPull?(FishingEnabled?.Invoke()??false?1:0):Mode(kind==ToolKind.Capture || kind==ToolKind.Recast?0:kind==ToolKind.Harvest || kind==ToolKind.Seed?1:2);}
         internal void Register(HotkeyRegistry registry,Hotkeys.HotkeyStateFeedback feedback)
         {
             for(int i=0;i<3;i++)
@@ -127,10 +132,10 @@ namespace JueMingR.TerrariaHost.Tools
         {
             if(!Enabled || Use.Active || PlayerInput.Triggers.Current.MouseLeft || p.selectedItemState.HasBufferedChange)return null;
             var restore=Fishing.Choose(p);if(restore!=null)return restore;
-            for(int i=0;i<3;i++)
+            for(int i=0;i<4;i++)
             {
-                int domain=(roundRobin+i)%3;ToolIntent result=domain==0?Capture.Choose(p):domain==1?Herbs.Choose(p):Mining.Choose(p);
-                if(result==null)continue;roundRobin=(domain+1)%3;return result;
+                int domain=(roundRobin+i)%4;ToolIntent result=domain==0?Capture.Choose(p):domain==1?Herbs.Choose(p):domain==2?Mining.Choose(p):FishingChoice?.Invoke(p);
+                if(result==null)continue;roundRobin=(domain+1)%4;return result;
             }
             return null;
         }
@@ -142,7 +147,7 @@ namespace JueMingR.TerrariaHost.Tools
             bool other=kind!=ToolKind.Capture && Capture.Ready(p) || kind!=ToolKind.Harvest && Herbs.Ready(p) || kind==ToolKind.Harvest && Herbs.SeedReady(p) || kind!=ToolKind.Mining && Mining.Ready(p);
             return external || other;
         }
-        internal void ManualSelection(){SelectionIntent++;ManualSelectionFrame=Input.Frame;Fishing.Cancel();Use.Cancel();}
+        internal void ManualSelection(){SelectionIntent++;ManualSelectionFrame=Input.Frame;Fishing.Cancel();Use.Cancel();FishingManualSelection?.Invoke();}
         internal void Yield(){Use.Cancel();if(Player!=null && Player.selectedItemState.CanChangeSelectedItemImmediately)Use.Retire();NextUseFrame=Input.Frame+1;}
         internal void HoldUnknown(int slot){unknown|=1UL<<slot;Items.Ownership.HoldInterruptedSource(Runtime.Generation,unknown);}
         public void OnSessionStarted()

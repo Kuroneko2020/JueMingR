@@ -25,19 +25,20 @@ namespace JueMingR.Platform.Items
     {
         public long Session { get; }
         public ReadOnlyCollection<ItemSlotObservation> Sources { get; }
-        public StoreItemsRequest(long session, IEnumerable<ItemSlotObservation> sources)
+        public bool RequireStackable {get;}
+        public StoreItemsRequest(long session, IEnumerable<ItemSlotObservation> sources,bool requireStackable=true)
         {
             if (sources == null) throw new ArgumentNullException(nameof(sources));
             var copy = new List<ItemSlotObservation>();
             var slots = new HashSet<int>();
             foreach (ItemSlotObservation source in sources)
             {
-                if (copy.Count == 58 || !slots.Add(source.Slot) || !source.IsCandidate || source.MaximumStack <= 1)
+                if (copy.Count == 58 || !slots.Add(source.Slot) || !source.IsCandidate || source.MaximumStack<=0 || requireStackable && source.MaximumStack <= 1)
                     throw new ArgumentException("invalid-store-input");
                 copy.Add(source);
             }
             if (copy.Count == 0) throw new ArgumentException("empty-store-input");
-            Session = session; Sources = copy.AsReadOnly();
+            Session = session; Sources = copy.AsReadOnly();RequireStackable=requireStackable;
         }
     }
     public sealed class ItemOperationResult
