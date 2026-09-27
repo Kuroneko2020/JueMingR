@@ -41,7 +41,9 @@ namespace JueMingR.TerrariaHost.Tools
         internal bool Active {get{return player!=null;}}
         internal long Operation {get{return token;}}
         private bool HeldInventory {get{return Intent.HeldInventory || Intent.Kind==ToolKind.Capture && host.Mode(0)==2;}}
-        internal bool ActionValid {get{return Active && !cancelled && Identity() && host.Admit(player,HeldInventory) && (Intent.Valid?.Invoke()??false);}}
+        private bool FishingIntent {get{return Intent.Kind==ToolKind.FishingPull || Intent.Kind==ToolKind.FishingCast || Intent.Kind==ToolKind.FishingCut;}}
+        private bool Admitted(Player p){return FishingIntent?host.AdmitFishing(p,HeldInventory):host.Admit(p,HeldInventory);}
+        internal bool ActionValid {get{return Active && !cancelled && Identity() && Admitted(player) && (Intent.Valid?.Invoke()??false);}}
         internal ToolUse(HostTools host){this.host=host;}
         internal void Pick(Player p,ref int chosen,ref bool result)
         {
@@ -53,7 +55,7 @@ namespace JueMingR.TerrariaHost.Tools
                 // selection change between animations; no timer is rewritten.
                 if(!result && !cancelled && Intent.Refresh!=null && SourceIdentity() &&
                     host.ManualSelectionFrame!=host.Input.Frame && !PlayerInput.Triggers.Current.MouseLeft &&
-                    host.Admit(p,HeldInventory) && Intent.Refresh())
+                    Admitted(p) && Intent.Refresh())
                 {chosen=Intent.Slot;result=true;return;}
                 bool handoff=yieldExternal;Retire();if(handoff)return;
             }
@@ -161,7 +163,7 @@ namespace JueMingR.TerrariaHost.Tools
         internal void Update()
         {
             if(!Active)return;
-            if(!Identity() || !host.CanRetainUse(player,HeldInventory))Cancel();
+            if(!Identity() || !(FishingIntent?host.CanRetainFishing(player,HeldInventory):host.CanRetainUse(player,HeldInventory)))Cancel();
             // Select only queues the original slot. Unsampled outer updates
             // must retain this exact lease until native selection consumes it;
             // otherwise fishing mistakes our own temporary slot for manual exit.

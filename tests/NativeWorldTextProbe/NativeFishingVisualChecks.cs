@@ -22,6 +22,7 @@ namespace NativeWorldTextProbe
             foreach(var size in new[]{new[]{960,760,100},new[]{1440,900,150},new[]{960,440,100},new[]{604,220,100},new[]{906,330,150}})
             {
                 float scale=size[2]/100f;var matrix=Matrix.CreateScale(scale);Call(state,"ScrollTo",0f);
+                string notice="当前名单已保存为预设。";Call(host,"ClearReport",notice);Prepare(context,graphics,size);Call(host,"Report",notice);
                 Prepare(context,graphics,size);Image("page");
                 if(!((IEnumerable)Get(ui,"Parts")).Cast<object>().Any(p=>Get(p,"Command").ToString()=="Plus"))
                 {var local=((IEnumerable)Get(ui,"pageParts")).Cast<object>().First(p=>Get(p,"Command").ToString()=="Plus");Call(state,"ScrollTo",Get(Get(Get(local,"Element"),"Rect"),"Y"));Prepare(context,graphics,size);Image("scrolled");}

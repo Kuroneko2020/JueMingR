@@ -15,6 +15,27 @@ namespace NativeWorldTextProbe
     {
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static|BindingFlags.Instance;
         private static readonly List<byte[]> packets=new List<byte[]>();
+        internal static void Rename(object context,object owner)
+        {
+            var audit=new Harmony("JueMingR.Tests.RenameNetwork");var send=typeof(NetMessage).GetMethod("SendData",Flags);
+            var connection=Netplay.Connection;var buffer=NetMessage.buffer[256];var p=Main.LocalPlayer;var file=Main.ActivePlayerFileData;
+            audit.Patch(send,postfix:new HarmonyMethod(typeof(NativeFishingNetworkChecks),nameof(Capture)));
+            try
+            {
+                Netplay.Connection=new RemoteServer{PendingTermination=true};NetMessage.buffer[256]=new MessageBuffer();Main.netMode=1;Call(context,"UpdateRuntime");packets.Clear();
+                Require((bool)Get(owner,"CanRename") && (bool)Call(owner,"Rename","多人改名009") && p.name=="多人改名009" && (bool)Get(owner,"PersistedVerified"),"multiplayer runs real native rename and verifies the isolated local player file");
+                Require(ReferenceEquals(Main.ActivePlayerFileData,file) && ReferenceEquals(file.Player,p) && Player.LoadPlayer(file.Path,false).Player.name==p.name,"multiplayer rename retains the actual file and player identity");
+                var packet=packets.Single(b=>b[2]==4);
+                using(var reader=new System.IO.BinaryReader(new System.IO.MemoryStream(packet)))
+                {reader.ReadInt16();Require(reader.ReadByte()==4 && reader.ReadByte()==p.whoAmI,"rename serializes the original player-info message and local index");reader.ReadByte();reader.ReadByte();reader.ReadSingle();reader.ReadByte();Require(reader.ReadString()==p.name,"original player-info packet contains the new full name");}
+                packets.Clear();Require(!(bool)Call(owner,"Rename",new string('x',21)) && packets.Count==0,"invalid input emits no rename packet");
+                Main.ServerSideCharacter=true;var bytes=System.IO.File.ReadAllBytes(file.Path);
+                Require((bool)Get(owner,"CanRename") && !(bool)Call(owner,"Rename","服务器角色") && p.name=="服务器角色" && !(bool)Get(owner,"PersistedVerified") && System.IO.File.ReadAllBytes(file.Path).SequenceEqual(bytes),"SSC may attempt rename; native skipped save remains an accurate partial result");
+                Require(packets.Count(b=>b[2]==4)==1,"applied SSC runtime name sends one notification without claiming save/server acknowledgement");
+                Console.WriteLine("PASS G10 multiplayer local rename/save and original message4 serialization; SSC partial result, no real server or cloud connection.");
+            }
+            finally{Main.ServerSideCharacter=false;Main.netMode=0;Netplay.Connection=connection;NetMessage.buffer[256]=buffer;audit.Unpatch(send,HarmonyPatchType.All,audit.Id);Call(context,"UpdateRuntime");packets.Clear();}
+        }
         internal static void Equipment(object context,Func<Player> reset,Action<FishingOptions> cast,Action stop)
         {
             var audit=new Harmony("JueMingR.Tests.FishingNetwork");var send=typeof(NetMessage).GetMethod("SendData",Flags);
@@ -92,7 +113,7 @@ namespace NativeWorldTextProbe
         }
         private static void Capture(int __0)
         {
-            if(Main.netMode!=1 || __0!=5 && __0!=147 && __0!=85)return;
+            if(Main.netMode!=1 || __0!=4 && __0!=5 && __0!=147 && __0!=85)return;
             var buffer=NetMessage.buffer[256].writeBuffer;int size=BitConverter.ToUInt16(buffer,0);
             Require(size>=3 && size<=buffer.Length && buffer[2]==__0,"native serialized frame boundary");packets.Add(buffer.Take(size).ToArray());
         }

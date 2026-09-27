@@ -137,6 +137,7 @@ namespace NativeWorldTextProbe
                     Require(prompts.SequenceEqual(new[]{"开始钓鱼","停止钓鱼"}),"native pull/recast/cut/borrow preserve one prompt pair until genuine manual exit");
                 }
                 Console.WriteLine("PASS G10 native manual cast, liquid admission, actual pull/item/recast with 0/1/3 unsampled outer updates.");
+                Background(context,host,tools,input);
                 NativeFishingOutcomeChecks.Run(context);
                 Truffle(context,host,tools,input);
                 NativeFishingStorageChecks.Run(context);
@@ -146,6 +147,51 @@ namespace NativeWorldTextProbe
         }
         internal static void Save(object host,FishingOptions value)
         {var settings=(FishingSettings)Get(host,"Settings");NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return !settings.Busy;});Require(settings.Set(value),"fishing save admitted");NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return !settings.Busy;});Require(settings.CompletionSucceeded,"fishing save completed");}
+        private static void Background(object context,object host,object tools,object input)
+        {
+            var foreground=Get(input,"foregroundWindow");bool updates=Main.CanUpdateGameplay;
+            try
+            {
+                foreach(bool staleMouse in new[]{false,true})
+                {
+                    Save(host,new FishingOptions());var p=NativeToolExecutionChecks.Reset(context,tools,input,ItemID.WoodFishingPole,0,0);
+                    p.armor[3].SetDefaults(ItemID.HighTestFishingLine);p.inventory[54].SetDefaults(ItemID.Worm);p.inventory[54].stack=100;
+                    for(int x=44;x<74;x++)for(int y=42;y<61;y++){Main.tile[x,y].ClearEverything();if(y>=44 && y<60)Main.tile[x,y].liquid=255;if(y==60)NativeToolsChecks.Tile(x,y,1);}
+                    Save(host,new FishingOptions(auto:true,filterMode:2));var point=new Vector2(850,718);
+                    for(int i=0;i<150;i++)Step(context,input,point,i==0,1);
+                    long token=(long)Get(Get(host,"Session"),"Token");p.AddBuff(122,4000);
+                    Set(input,"foregroundWindow",(Func<IntPtr>)(()=>new IntPtr(2)));Terraria.FocusHelper.IsSelectedApplication=false;Main.ToggleGameplayUpdates(true);p.mouseInterface=staleMouse;
+                    var b=Main.projectile.First(q=>q.active && q.bobber && q.owner==p.whoAmI);b.ai[1]=-240;b.localAI[1]=ItemID.Bass;b.localAI[2]=ItemID.Worm;
+                    int priorCasts=casts,priorProducts=products;
+                    for(int i=0;i<240 && casts==priorCasts;i++)Step(context,input,point,false,1);
+                    Require(!(bool)Get(input,"CanStartActions") && !(bool)Get(input,"CanRetainIntent"),"background fishing never grants physical input permission");
+                    Require(products==priorProducts+1 && casts==priorCasts+1,"background accepted bite completes native product and one recast, staleMouse="+staleMouse);
+                    for(int i=0;i<70;i++)Step(context,input,point,false,1);
+                    Save(host,new FishingOptions(auto:true,filterMode:1,crates:0,quests:0,npcs:0));
+                    b=Main.projectile.First(q=>q.active && q.bobber && q.owner==p.whoAmI);b.ai[1]=-240;b.localAI[1]=ItemID.Bass;b.localAI[2]=ItemID.Worm;int key=(int)b.key;priorCasts=casts;priorProducts=products;
+                    for(int i=0;i<30;i++)Step(context,input,point,false,1);
+                    Require(products==priorProducts && casts==priorCasts && b.active,"background rejected bite waits naturally with cut off");
+                    Save(host,new FishingOptions(auto:true,cut:true,filterMode:1,crates:0,quests:0,npcs:0));
+                    Call(Get(host,"Observation"),"Invalidate");Call(Get(host,"Observation"),"Read",p);
+                    Action<Action,Action,string> blocked=(enter,leave,label)=>{enter();try{Require(Call(Get(host,"Session"),"Choose",p)==null,"background fishing refuses "+label);}finally{leave();}};
+                    blocked(()=>Main.gamePaused=true,()=>Main.gamePaused=false,"pause");
+                    blocked(()=>Main.ToggleGameplayUpdates(false),()=>Main.ToggleGameplayUpdates(true),"stopped simulation");
+                    blocked(()=>Main.drawingPlayerChat=true,()=>Main.drawingPlayerChat=false,"chat");
+                    blocked(()=>Main.mouseItem.SetDefaults(ItemID.DirtBlock),()=>Main.mouseItem.TurnToAir(),"held mouse item");
+                    blocked(()=>p.chest=0,()=>p.chest=-1,"open chest");
+                    blocked(()=>Call(Get(Get(context,"Shell"),"State"),"RestoreVisible"),()=>Call(Get(Get(context,"Shell"),"State"),"Close"),"F5 tool pause");
+                    for(int i=0;i<240 && casts==priorCasts;i++)Step(context,input,point,false,1);
+                    Require(products==priorProducts && casts==priorCasts+1 && !Main.projectile.Any(q=>q.active && q.bobber && (int)q.key==key),"background rejected bite cuts and recasts without a product");
+                    for(int i=0;i<70;i++)Step(context,input,point,false,1);
+                    Require(p.selectedItem==0 && (long)Get(Get(host,"Session"),"Token")==token && (bool)Get(Get(host,"Session"),"Active"),"background cut retains its original fishing session and rod");
+                    Set(input,"foregroundWindow",foreground);Terraria.FocusHelper.IsSelectedApplication=true;p.mouseInterface=false;
+                    Step(context,input,point,false,1);Step(context,input,point,false,1);
+                    p.selectedItemState.Select(1);Step(context,input,point,false,1);Require(!(bool)Get(Get(host,"Session"),"Active"),"real manual selection still ends background-owned session after focus returns");
+                }
+                Console.WriteLine("PASS G10 background native product/recast, rejection/cut/rod return, unchanged input quarantine and real manual takeover.");
+            }
+            finally{Set(input,"foregroundWindow",foreground);Terraria.FocusHelper.IsSelectedApplication=true;Main.ToggleGameplayUpdates(updates);Main.LocalPlayer.mouseInterface=false;Save(host,new FishingOptions());}
+        }
         private static void Truffle(object context,object host,object tools,object input)
         {
             foreach(bool damage in new[]{false,true})

@@ -55,11 +55,12 @@ namespace NativeWorldTextProbe
                 blocked(()=>Main.gamePaused=true,()=>Main.gamePaused=false,"pause");
                 blocked(()=>Main.ToggleGameplayUpdates(false),()=>Main.ToggleGameplayUpdates(true),"stopped native gameplay updates");
                 blocked(()=>Main.mapFullscreen=true,()=>Main.mapFullscreen=false,"fullscreen map");
-                blocked(()=>Call(Get(shell,"State"),"RestoreVisible"),()=>Call(Get(shell,"State"),"Close"),"F5 controls");
                 blocked(()=>Main.drawingPlayerChat=true,()=>Main.drawingPlayerChat=false,"chat");
                 blocked(()=>Main.mouseItem.SetDefaults(ItemID.DirtBlock),()=>Main.mouseItem.TurnToAir(),"mouse item");
                 blocked(()=>p.chest=0,()=>p.chest=-1,"open container");
-                Call(host,"Update",10101UL);Require(p.inventory[2].stack==1,"same source resumes after actual safety gate clears");
+                Call(Get(shell,"State"),"RestoreVisible");
+                Call(host,"Update",10101UL);Require(p.inventory[2].stack==1,"background buffs resume with ordinary F5 open after actual safety gate clears");
+                Call(Get(shell,"State"),"Close");
 
                 p.ClearBuff(BuffID.Fishing);p.inventory[2].stack=3;
                 patch.Patch(outlet,postfix:new HarmonyMethod(typeof(NativeRecoveryBackgroundChecks).GetMethod(nameof(AfterUse),BindingFlags.Static|BindingFlags.NonPublic)));
@@ -76,6 +77,9 @@ namespace NativeWorldTextProbe
                 NativeRecoveryChecks.Save(buffs,new RecoveryOptions());long reads=(long)Get(use,"CandidateReads"),definitions=(long)Get(use,"DefinitionReads");
                 for(ulong t=10800;t<11400;t++)Call(host,"Update",t);
                 Require(reads==(long)Get(use,"CandidateReads") && definitions==(long)Get(use,"DefinitionReads"),"background OFF retains zero buff scan work");
+                Set(input,"foregroundWindow",foreground);FocusHelper.IsSelectedApplication=true;p.mouseInterface=false;
+                NativeQuickItemChecks.Sample(input,new Keys[0]);NativeQuickItemChecks.Sample(input,new Keys[0]);
+                ForegroundF5(context,host,input,shell,buffs,p,otherCalls);
                 Console.WriteLine("PASS G07 background: actual focus quarantine, native buffs, fishing state, UI/pause gates, other features unchanged, unknown consumption survives focus cycling.");
             }
             finally
@@ -87,5 +91,37 @@ namespace NativeWorldTextProbe
             }
         }
         private static void AfterUse(){if(throwAfterUse){throwAfterUse=false;throw new InvalidOperationException("isolated failure after actual buff consumption");}}
+        private static void ForegroundF5(object context,object host,object input,object shell,RecoverySettings buffs,Player p,Func<long[]> otherCalls)
+        {
+            var state=Get(shell,"State");var renderer=Get(shell,"renderer");var ui=Get(shell,"RecoveryUi");
+            if(Main.instance==null){Main.instance=(Main)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(Main));GC.SuppressFinalize(Main.instance);}
+            Main.screenWidth=960;Main.screenHeight=760;Main.UIScale=1;PlayerInput.CacheOriginalScreenDimensions();FiniteCostChecks.SetCpuFont(10);Call(renderer,"RefreshResources");
+            Call(state,"Navigate",10);Call(state,"RestoreVisible");
+            Action prepare=()=>{Call(renderer,"Prepare",state,960f,760f,1f);Call(ui,"PrepareLayout",Microsoft.Xna.Framework.Matrix.Identity);};prepare();
+            var point=new Microsoft.Xna.Framework.Vector2((float)Get(state,"X")+100,(float)Get(state,"Y")+160);
+            ulong tick=12000;
+            Action frame=()=>{
+                // Native PlayerInput clears WritingText before current owners
+                // claim it again. Preserve that frame boundary in this fixture.
+                PlayerInput.WritingText=false;Call(input,"BeginUpdate");Call(shell,"BeforeInput");
+                PlayerInput.MouseInfo=new MouseState((int)point.X,(int)point.Y,0,ButtonState.Released,ButtonState.Released,ButtonState.Released,ButtonState.Released,ButtonState.Released);
+                PlayerInput.Triggers.Reset();PlayerInput.Triggers.Update();Main.mouseLeft=false;Main.mouseX=(int)point.X;Main.mouseY=(int)point.Y;
+                Call(input,"AfterMapping");Main.keyState=new KeyboardState();Call(input,"AfterKeyboardRefresh");Call(shell,"ProcessInput");NativeQuickItemChecks.BeginWorldStep();Call(context,"UpdateRuntime");Call(host,"Update",tick);tick+=31;prepare();
+            };
+            frame();point=new Microsoft.Xna.Framework.Vector2((float)Get(state,"X")+100,(float)Get(state,"Y")+160);
+            p.inventory[8].SetDefaults(ItemID.RegenerationPotion);p.inventory[8].stack=3;p.ClearBuff(BuffID.Regeneration);
+            NativeRecoveryChecks.Save(buffs,new RecoveryOptions(buffs:true,allowedBuffs:new int[]{ItemID.RegenerationPotion}));var before=otherCalls();
+            frame();Require((bool)Get(state,"OwnsPointer") && p.mouseInterface && ReferenceEquals(GetOptional(shell,"leasedPlayer"),p) && !(bool)Get(shell,"priorMouseInterface"),"real F5 hover owns its exact mouse interface lease: state="+Get(state,"OwnsPointer")+" mouse="+p.mouseInterface+" shell="+Get(shell,"OwnsPointer")+" visible="+Get(state,"Visible")+" failed="+Get(shell,"Failed")+" input="+Get(input,"CanStartActions")+" origin="+Get(state,"X")+","+Get(state,"Y")+" point="+point);
+            Require(p.FindBuffIndex(BuffID.Regeneration)>=0 && p.inventory[8].stack==2 && before.SequenceEqual(otherCalls()),"foreground F5 permits only actual automatic buff consumption");
+            p.ClearBuff(BuffID.Regeneration);Call(shell,"EndPointerLayer");p.mouseInterface=true;frame();
+            Require(p.inventory[8].stack==2 && p.FindBuffIndex(BuffID.Regeneration)<0,"foreign native mouse interface is not mistaken for F5 ownership");
+            Call(shell,"EndPointerLayer");p.mouseInterface=false;frame();Require(p.inventory[8].stack==1 && p.FindBuffIndex(BuffID.Regeneration)>=0,"same real source resumes after foreign UI releases");
+            p.ClearBuff(BuffID.Regeneration);
+            var button=((System.Collections.IEnumerable)Get(ui,"visible")).Cast<object>().First(part=>(int)Get(part,"Command")==-2 && (int)Get(part,"Value")==0);
+            Call(ui,"Execute",button);prepare();frame();Require((bool)Get(Get(ui,"PotionPopup"),"Visible") && p.inventory[8].stack==1 && p.FindBuffIndex(BuffID.Regeneration)<0,"real medication editor still owns input and blocks automatic consumption");
+            Call(Get(ui,"PotionPopup"),"Close");frame();frame();Require(p.FindBuffIndex(BuffID.Regeneration)>=0,"closing the actual popup resumes the pending buff: admit="+Call(host,"AdmitBuff",p)+" interface="+Get(shell,"CanAutomaticBuff")+" input="+Get(input,"CanStartActions")+" text="+Main.blockInput+" writing="+PlayerInput.WritingText+" stack="+p.inventory[8].stack);
+            NativeRecoveryChecks.Save(buffs,new RecoveryOptions());Call(state,"Close");Call(shell,"EndPointerLayer");p.mouseInterface=false;
+            Console.WriteLine("PASS G10 foreground F5 actual hover lease/native buff, foreign interface and popup boundaries; other recovery actions unchanged.");
+        }
     }
 }

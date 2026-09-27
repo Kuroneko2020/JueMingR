@@ -46,10 +46,31 @@ namespace NativeWorldTextProbe
                 "filter off visibly disables every list operation");
             Require((bool)Get(Part(ui,"Match"),"Enabled") && (bool)Get(Part(ui,"Special"),"Enabled"),"off retains the independent mode and special-rule controls");
             Save(host,new FishingOptions(filterMode:1,crates:0,quests:0,npcs:0));Prepare(context);
+            PageNotice(context,host,ui);
             PopupExperience(context,host,ui);
             Console.WriteLine("PASS G10 physical save appearance stability, reliable single command admission and filter-off list affordances.");
         }
         private static object[] Parts(object ui){return ((IEnumerable)Get(ui,"Parts")).Cast<object>().ToArray();}
+        private static void PageNotice(object context,object host,object ui)
+        {
+            Click(context,Part(ui,"Save"));Drain(host);Prepare(context);
+            var parts=((IEnumerable)Get(ui,"pageParts")).Cast<object>().ToArray();
+            var rules=parts.Where(p=>Get(p,"Command").ToString()=="Special").Select(p=>Get(Get(p,"Element"),"Rect")).ToArray();
+            var notice=parts.Where(p=>((string)GetOptional(Get(p,"Element"),"Text")??"").Contains("当前名单")).ToArray();
+            Require(notice.Length>0 && notice.All(p=>(float)Get(Get(Get(p,"Element"),"Rect"),"X")>=(float)Get(rules[0],"X") && (float)Get(Get(Get(p,"Element"),"Rect"),"Y")>rules.Max(r=>(float)Get(r,"Bottom"))),"completed list notice appears below the right-hand special rules, never under the left list");
+            // Move the monotonic deadline past without sleeping or changing the
+            // business result. Stable retained errors must not restart a toast.
+            string error="当前操作未完成，请稍后重试；这是一条需要在右侧完整换行显示的提示。";
+            Call(host,"Report",error);Prepare(context);
+            var lines=((IEnumerable)Get(ui,"pageParts")).Cast<object>().Where(p=>GetOptional(p,"Name") as string=="page-notice").ToArray();
+            Require(lines.Length>1 && string.Concat(lines.Select(p=>(string)Get(Get(p,"Element"),"Text")))==error,"right-column feedback wraps without dropping text");
+            ui.GetType().GetField("noticeExpires",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).SetValue(ui,0d);Prepare(context);
+            for(int i=0;i<30;i++)Prepare(context);
+            Require(!((IEnumerable)Get(ui,"pageParts")).Cast<object>().Any(p=>GetOptional(p,"Name") as string=="page-notice") && (string)Get(host,"Error")==error,"expired notice stays hidden while its diagnostic cause remains intact");
+            Call(host,"ClearReport",error);Prepare(context);Click(context,Part(ui,"Save"));Drain(host);Prepare(context);
+            Require(((IEnumerable)Get(ui,"pageParts")).Cast<object>().Any(p=>GetOptional(p,"Name") as string=="page-notice"),"a new completed operation can display the same confirmation again");
+            Save(host,new FishingOptions(filterMode:1,crates:0,quests:0,npcs:0));Prepare(context);
+        }
         private static float PopupHeight(object ui){return (float)Get(Get(ui,"popupRect"),"Height");}
         private static void PopupExperience(object context,object host,object ui)
         {

@@ -30,7 +30,7 @@ namespace JueMingR.TerrariaHost.Recovery
         internal readonly TaxRecovery Tax;
         internal readonly RecoveryCatalog Catalog;
         internal Func<bool> CanGameplay;
-        internal Func<bool> CanBackgroundBuff;
+        internal Func<bool> CanBuffInterface;
         internal Func<bool> IsQuickUse;
         internal bool Available {get;private set;}
         internal Exception SetupError {get;private set;}
@@ -83,10 +83,10 @@ namespace JueMingR.TerrariaHost.Recovery
         internal void Poll(){Potions.Poll();Buffs.Poll();Services.Poll();Learning.Poll();Tax.ObserveSettlement();}
         internal bool Admit(Player p)
         {return Input.CanStartActions && CanGameplay!=null && CanGameplay() && SafePlayer(p);}
-        // Only automatic buffs may run without an input gesture in background.
+        // Only automatic buffs may run during ordinary F5 browsing/background.
         // Never unpause, manufacture input, or discard unknown source ownership.
         internal bool AdmitBuff(Player p)
-        {return Input.IsFocused?Admit(p):Main.CanUpdateGameplay && CanBackgroundBuff!=null && CanBackgroundBuff() && SafePlayer(p);}
+        {return (Input.IsFocused?Input.CanStartActions:Main.CanUpdateGameplay) && (CanBuffInterface?.Invoke()??false) && SafePlayer(p);}
         private bool SafePlayer(Player p)
         {
             return Available && p!=null && ReferenceEquals(p,Player) && !Main.gamePaused &&

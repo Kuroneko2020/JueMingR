@@ -934,7 +934,7 @@ namespace JueMingR.TerrariaHost
                 if(Tools!=null){Shell.AttachTools(Tools);Tools.CanInterface=()=>Shell.CanProcessingInput;Tools.Feedback=ShortFeedback;}
                 if(Fishing!=null)Shell.AttachFishing(Fishing);
                 if(Processing!=null){Shell.AttachProcessing(Processing);Processing.CanInterface=()=>Shell.CanProcessingInput;Processing.BankGuardsReady=()=>Recovery!=null && Recovery.Available;}
-                if(Recovery!=null){Shell.AttachRecovery(Recovery);Recovery.CanGameplay=()=>Shell.CanTargetInput && !Terraria.Main.mapFullscreen && !Terraria.Main.LocalPlayer.mouseInterface;Recovery.CanBackgroundBuff=()=>Shell.CanBackgroundBuff;Recovery.IsQuickUse=()=>QuickItems!=null && (QuickItems.Use.Active || QuickItems.Use.InNativeUse);}
+                if(Recovery!=null){Shell.AttachRecovery(Recovery);Recovery.CanGameplay=()=>Shell.CanTargetInput && !Terraria.Main.mapFullscreen && !Terraria.Main.LocalPlayer.mouseInterface;Recovery.CanBuffInterface=()=>Shell.CanAutomaticBuff;Recovery.IsQuickUse=()=>QuickItems!=null && (QuickItems.Use.Active || QuickItems.Use.InNativeUse);}
                 if ((PackageId.StartsWith("about-help-feedback-", StringComparison.Ordinal) || (PackageId.StartsWith("recovery-buffs-services-", StringComparison.Ordinal) || PackageId.StartsWith("continuous-processing-", StringComparison.Ordinal))))
                 { onboarding = new Onboarding.HostOnboarding(gameDirectory); runtime.SharedRuntime.AddFeature(onboarding); Shell.AttachOnboarding(onboarding); }
                 if (ShortFeedback != null)

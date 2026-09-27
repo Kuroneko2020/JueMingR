@@ -34,10 +34,9 @@ namespace JueMingR.TerrariaHost.Fishing
             get
             {
                 if(!available)return "快捷改名暂不可用。";
-                if(Main.netMode!=0)return "快捷改名仅限单人。";
                 var p=host.Player;var file=Main.ActivePlayerFileData;
                 if(busy || p==null || !p.active || !ReferenceEquals(p,Main.LocalPlayer) || Main.gameMenu || p.dead || WorldGen.isGeneratingOrLoadingWorld)return "当前不能改名。";
-                if(file==null || !ReferenceEquals(file.Player,p) || string.IsNullOrWhiteSpace(file.Path) || file.Metadata==null || Main.ServerSideCharacter || file.ServerSideCharacter)return "当前角色存档身份不可用。";
+                if(file==null || !ReferenceEquals(file.Player,p) || string.IsNullOrWhiteSpace(file.Path) || file.Metadata==null)return "当前角色存档身份不可用。";
                 if(file.IsCloudSave && SocialAPI.Cloud==null)return "云存档服务不可用。";
                 if(host.Tools.Items.World.Busy || host.Tools.Items.World.HasManualOperation || host.Tools.Use.Active || host.Tools.Fishing.Active || p.UsingOrReusingItem)return "请等待当前操作结束后改名。";
                 if(Main.drawingPlayerChat || Main.editSign || Main.editChest || Main.CurrentInputTextTakerOverride!=null && !(OwnTextInput?.Invoke()??false))return "请先结束其它文字输入。";
@@ -120,7 +119,17 @@ namespace JueMingR.TerrariaHost.Fishing
                 // The name used by the actual angler gate is the runtime name,
                 // including a partially successful save. Never clear today's list.
                 if(ReferenceEquals(host.Player,p) && ReferenceEquals(Main.ActivePlayerFileData?.Player,p))
-                {Main.ActivePlayerFileData.Player=p;Main.anglerQuestFinished=Main.anglerWhoFinishedToday.Contains(p.name);}
+                {
+                    Main.ActivePlayerFileData.Player=p;Main.anglerQuestFinished=Main.anglerWhoFinishedToday.Contains(p.name);
+                    // Vanilla's regular client diff does not include name.
+                    // Notify once even when native SSC saving was skipped;
+                    // serialization is not a server acknowledgement or retry.
+                    if(RuntimeNameApplied && Main.netMode==1)
+                    {
+                        try{NetMessage.SendData(4,-1,-1,null,p.whoAmI);}
+                        catch(Exception){Message=PersistedVerified?"本地改名已保存，联机通知未能发送。":Message+"联机通知未能发送。";}
+                    }
+                }
                 Monitor.Exit(nativeLock);
             }
         }

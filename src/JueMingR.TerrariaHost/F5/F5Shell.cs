@@ -39,6 +39,7 @@ namespace JueMingR.TerrariaHost.F5
         {
             fishing=owner;FishingUi=new Fishing.FishingPresentation(owner,State){HotkeyClicked=OpenHotkey};renderer.FishingUi=FishingUi;State.Layout.FishingAttached=true;
             owner.CanEquipmentInterface=()=>CanFishingEquipmentInput;
+            owner.Tools.CanBackgroundFishing=()=>!inputState.IsFocused && CanProcessingActions(false);
             FishingUi.Opened=()=>{CaptureUi?.Close();RecoveryUi?.PotionPopup.Close();HotkeyPopup?.Close();StylePopup?.Close();DeathPopup?.Close();FootprintPopup?.Close();};
         }
         internal Tools.CaptureWindow CaptureUi {get;private set;}
@@ -142,14 +143,23 @@ namespace JueMingR.TerrariaHost.F5
         internal bool CanTargetInput { get { return CanTargetActions(true); } }
         // Processing evaluates native shops/reforge per business. This shared
         // permission excludes public UI owners without banning those contexts.
-        internal bool CanProcessingInput {get{return !failed && LayersReady && biome.SharedRuntime.IsSessionActive && CanPresent(false,true) && !State.Visible &&
-            !inputState.HotkeyCapture && !OwnsPointer && !(information!=null && information.Adjustment.Active) && !adjustmentPending && !Main.clothesWindow && !Main.hairWindow;}}
+        internal bool CanProcessingInput {get{return CanProcessingActions(true);}}
+        private bool CanProcessingActions(bool requireFocus){return !failed && LayersReady && biome.SharedRuntime.IsSessionActive && CanPresent(false,requireFocus) && !State.Visible &&
+            !inputState.HotkeyCapture && !OwnsPointer && !(information!=null && information.Adjustment.Active) && !adjustmentPending && !Main.clothesWindow && !Main.hairWindow;}
         private bool CanFishingEquipmentInput {get{return !failed && LayersReady && biome.SharedRuntime.IsSessionActive && CanPresent(false,true) &&
             !inputState.HotkeyCapture && (!OwnsPointer || State.Visible && State.OwnsPointer) && !(information!=null && information.Adjustment.Active) && !adjustmentPending && !Main.clothesWindow && !Main.hairWindow &&
             Main.LocalPlayer!=null && (!Main.LocalPlayer.mouseInterface || State.Visible && State.OwnsPointer && ReferenceEquals(leasedPlayer,Main.LocalPlayer) && !priorMouseInterface);}}
-        // Background buffs share every UI safety condition. Focus is the only
-        // presentation exception; no keyboard or pointer permission is granted.
-        internal bool CanBackgroundBuff { get { return !inputState.IsFocused && CanTargetActions(false); } }
+        // Automatic buffs do not need a gameplay gesture. Ordinary F5 browsing
+        // is allowed, but an editor/popup and any foreign mouse lease still win.
+        // Draw can leave mouseInterface stale when unfocused; only that case
+        // ignores it. This grants no permission to other recovery operations.
+        internal bool CanAutomaticBuff {get{return !failed && LayersReady && biome.SharedRuntime.IsSessionActive && CanPresent(false,false) &&
+            !inputState.HotkeyCapture && !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest && Main.CurrentInputTextTakerOverride==null && !PlayerInput.WritingText &&
+            !(HotkeyPopup?.Visible??false) && !(StylePopup?.Visible??false) && !(DeathPopup?.Visible??false) && !(MapPopup?.Visible??false) && !(FootprintPopup?.Visible??false) &&
+            !(FishingUi?.Visible??false) && !(CaptureUi?.Visible??false) && !(RecoveryUi?.Selecting??false) && !(items?.Selecting??false) &&
+            !(information!=null && information.Adjustment.Active) && !adjustmentPending && !Main.clothesWindow && !Main.hairWindow && string.IsNullOrEmpty(Main.npcChatText) &&
+            (!inputState.IsFocused || (!OwnsPointer || State.Visible && State.OwnsPointer) && Main.LocalPlayer!=null &&
+                (!Main.LocalPlayer.mouseInterface || State.Visible && State.OwnsPointer && ReferenceEquals(leasedPlayer,Main.LocalPlayer) && !priorMouseInterface));}}
         private bool CanTargetActions(bool requireFocus)
         { return !failed && LayersReady && biome.SharedRuntime.IsSessionActive && CanPresent(false,requireFocus) && !State.Visible && !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest && Main.CurrentInputTextTakerOverride == null && !PlayerInput.WritingText && !inputState.HotkeyCapture && Main.LocalPlayer != null && Main.LocalPlayer.talkNPC < 0 && Main.LocalPlayer.sign < 0 && Main.npcShop == 0 && string.IsNullOrEmpty(Main.npcChatText) && !Main.clothesWindow && !Main.hairWindow && !(information != null && information.Adjustment.Active) && !adjustmentPending; }
         internal bool BlocksMapInput { get { return failed || State.Visible || notes.OwnsPointer || HotkeyPopup != null && HotkeyPopup.Visible || StylePopup != null && StylePopup.Visible || MapPopup != null && MapPopup.Visible; } }

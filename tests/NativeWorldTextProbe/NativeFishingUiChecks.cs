@@ -53,6 +53,8 @@ namespace NativeWorldTextProbe
             Require(!((bool)Get(state,"CanShowHint")) && Call(renderer,"ResolveHint",popupHint)==null,"preset contents are visible inline without a hover reminder");
             Click(context,Part(ui,"Close"));
             Click(context,Part(ui,"Match",p=>(int)Get(p,"Value")==1));Drain(host);Prepare(context);Click(context,Part(ui,"Plus"));
+            Click(context,Part(ui,"Confirm"));Prepare(context);
+            Require((bool)Get(ui,"Visible") && ((IEnumerable)Get(ui,"popupParts")).Cast<object>().Any(p=>(string)GetOptional(Get(p,"Element"),"Text")=="请输入关键词。"),"empty keyword confirmation retains its draft and shows validation inside the popup");
             Step(context,false,new Vector2(0,0),"鱼");Prepare(context);Click(context,Part(ui,"Confirm"));Drain(host);Prepare(context);
             Require(settings.Value.List(1,1).Keywords.SequenceEqual(new[]{"鱼"}) && settings.Value.List(1,0).Exact.Count==1,"Chinese committed character enters independent keyword scope");
             Click(context,Part(ui,"Plus"));Step(context,false,new Vector2(0,0),"取消草稿");Prepare(context);Click(context,Part(ui,"Close"));
@@ -144,7 +146,7 @@ namespace NativeWorldTextProbe
             Call(ui,"CloseOverlay");
             Save(host,new FishingOptions(filterMode:1,crates:0,quests:0,npcs:0));Prepare(context);
         }
-        private static void Drain(object host){var s=(FishingSettings)Get(host,"Settings");NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return s.Loaded && !s.Busy;});Require(s.Message==null,"UI fixture real storage result");}
+        internal static void Drain(object host){var s=(FishingSettings)Get(host,"Settings");NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return s.Loaded && !s.Busy;});Require(s.Message==null,"UI fixture real storage result");}
         internal static void Prepare(object context,float width=960,float height=760,float scale=1)
         {var shell=Get(context,"Shell");var state=Get(shell,"State");Call(Get(shell,"renderer"),"Prepare",state,width,height,scale);Call(Get(shell,"FishingUi"),"PrepareLayout",Matrix.CreateScale(scale),new Vector2(width,height));}
         private static void LongText(Assembly assembly)

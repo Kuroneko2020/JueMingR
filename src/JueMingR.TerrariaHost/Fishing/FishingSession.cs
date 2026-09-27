@@ -101,7 +101,7 @@ namespace JueMingR.TerrariaHost.Fishing
         {ownedCount=host.Observation.Count;Array.Copy(host.Observation.Bobbers,owned,ownedCount);}
         private bool AnyOwned(){for(int i=0;i<ownedCount;i++)if(FishingObservation.Live(owned[i],player))return true;return false;}
         private bool Ready()
-        {return Active && Identity() && host.Ready && host.Settings.Value.Auto && !Tools.Fishing.Active && Tools.Admit(player,true) && !PlayerInput.Triggers.Current.MouseLeft && !player.selectedItemState.HasBufferedChange;}
+        {return Active && Identity() && host.Ready && host.Settings.Value.Auto && !Tools.Fishing.Active && Tools.AdmitFishing(player,true) && !PlayerInput.Triggers.Current.MouseLeft && !player.selectedItemState.HasBufferedChange;}
         private bool AnyCurrent(){return FishingBorrow.HasBobber(player);}
         internal ToolIntent Choose(Player p)
         {

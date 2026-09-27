@@ -50,7 +50,27 @@ namespace JueMingR.TerrariaHost.Fishing
         private Matrix matrix;
         private Vector2 pointer,screen;
         private object culture;
-        private string message,pendingMessage;
+        private string notice,pendingMessage,validation,seenSettingsMessage,seenHostError,seenRenameMessage,seenRenameInput;
+        private long seenRenameRevision=-1;
+        private double noticeExpires;
+        // The presentation owns the deadline, never the retained business
+        // failure. An unchanged error cannot renew an expired notice each frame.
+        private string message
+        {
+            get{return notice;}
+            set{notice=value;noticeExpires=value==null?0:Feedback.LocalShortFeedback.Now+6000;dirty=true;}
+        }
+        private void UpdateNotice()
+        {
+            string settings=host.Settings.Message,error=host.Error,rename=RenameMessage?.Invoke();
+            string renameInput=editing==Edit.Rename?TextInput.Error??draft?.Error:null;
+            if(seenSettingsMessage!=settings && settings!=null)message=settings;
+            if(seenHostError!=error && error!=null)message=error;
+            if((seenRenameRevision!=host.Rename.Revision || seenRenameMessage!=rename) && rename!=null)message=rename;
+            if(seenRenameInput!=renameInput && renameInput!=null)message=renameInput;
+            seenSettingsMessage=settings;seenHostError=error;seenRenameMessage=rename;seenRenameRevision=host.Rename.Revision;seenRenameInput=renameInput;
+            if(notice!=null && Feedback.LocalShortFeedback.Now>=noticeExpires)message=null;
+        }
         internal Action<string,F5Rect> HotkeyClicked;
         internal Action Opened;
         internal Func<string,bool> RenameRequested {get;set;}
@@ -99,7 +119,7 @@ namespace JueMingR.TerrariaHost.Fishing
         internal bool Contains(float px,float py){return ready && Visible && popupRect.Contains(px,py);}
         internal void BeforeInput(bool active){TextInput.BeforeSample(active && shell.Visible && shell.Page==7);}
         private void BeginEdit(Edit mode,string text)
-        {TextInput.Release(false);editing=mode;draft=new TextEditBuffer(text??"",true,16384,65536,"输入内容过长。");TextInput.PrepareEditor();queryRevision=-1;dirty=true;}
+        {TextInput.Release(false);validation=null;editing=mode;draft=new TextEditBuffer(text??"",true,16384,65536,"输入内容过长。");TextInput.PrepareEditor();queryRevision=-1;dirty=true;}
         public void PreserveUncommittedInput(TextEditBuffer editor){if(ReferenceEquals(editor,pendingEditor))pendingClose=false;}
         public bool RequestFinish()
         {
@@ -107,7 +127,8 @@ namespace JueMingR.TerrariaHost.Fishing
             if(editing==Edit.Search){RefreshSearch();TextInput.Release(false);editing=Edit.None;dirty=true;return true;}
             if(editing==Edit.Keyword)
             {
-                string word=draft.Text.Trim();if(word.Length==0){message="请输入关键词。";dirty=true;return false;}
+                string word=draft.Text.Trim();if(word.Length==0){validation="请输入关键词。";dirty=true;return false;}
+                validation=null;
                 return Submit(host.Settings.Value.WithList(scopeMode,scopeMatch,host.Settings.Value.List(scopeMode,scopeMatch).Add(word)),true,"关键词已添加。");
             }
             if(editing==Edit.Rename)
@@ -121,7 +142,7 @@ namespace JueMingR.TerrariaHost.Fishing
             return true;
         }
         public void CancelEdit(){if(Visible)CloseOverlay();else EndEdit();}
-        private void EndEdit(){TextInput.Release(true);editing=Edit.None;draft=null;dirty=true;}
+        private void EndEdit(){TextInput.Release(true);editing=Edit.None;draft=null;validation=null;dirty=true;}
         internal void CloseOverlay()
         {EndEdit();overlay=Overlay.None;candidates=Array.Empty<FishKey>();selected.Clear();armed=null;clicked=false;epoch++;dirty=true;}
         private void Open(Overlay value)

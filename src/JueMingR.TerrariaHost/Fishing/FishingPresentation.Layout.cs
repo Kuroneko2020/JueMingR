@@ -45,7 +45,7 @@ namespace JueMingR.TerrariaHost.Fishing
             // Retire drafts before publishing the next generation or processing
             // a late save receipt. Prepare can precede the next input callback.
             if(session!=host.Tools.Runtime.Generation){CloseOverlay();message=null;listScroll=0;}
-            matrix=transform;screen=viewport;PollReceipt();RefreshSearch();
+            matrix=transform;screen=viewport;PollReceipt();RefreshSearch();UpdateNotice();
             var next=shell.Layout.Viewport.Offset(shell.X,shell.Y);
             bool shape=dirty || hostError!=host.Error || inputError!=TextInput.Error || draftError!=draft?.Error || renameRevision!=host.Rename.Revision || renameAllowed!=host.Rename.CanRename || generation!=shell.Layout.Generation || skin!=renderer.Generation || revision!=host.Settings.Revision || canConfigure!=host.Controls || session!=host.Tools.Runtime.Generation || !ReferenceEquals(culture,Language.ActiveCulture) || playerName!=host.Player?.name || view.X!=next.X || view.Y!=next.Y || view.Width!=next.Width || view.Height!=next.Height;
             view=next;ready=true;
@@ -100,7 +100,6 @@ namespace JueMingR.TerrariaHost.Fishing
                 p.Hint=p.Command==Command.RenameField?"双击编辑名字，回车或点击确定保存。":p.Command==Command.Rename?"未编辑时将名字末尾数字加一。":null;
                 if(p.Command==Command.RenameField)p.Label=Fit(host.Player?.name??"",e.Rect,.7f,6);pageParts.Add(p);
             }
-            string rename=(editing==Edit.Rename?TextInput.Error??draft?.Error:null)??RenameMessage?.Invoke();if(rename!=null)Text(pageParts,rename,0,ref y,view.Width);
             float top=y,left=y+8;
             float rightWidth=Math.Max(140,shell.Layout.DynamicTextSize("任务鱼：不要",.7f).Width+36);
             string matchLabel=scopeMatch==0?"精确匹配":"关键词";
@@ -132,7 +131,7 @@ namespace JueMingR.TerrariaHost.Fishing
                 int first=Math.Max(0,(int)(listScroll/(cardHeight+4))*columns),last=Math.Min(count,first+((int)(bodyHeight/(cardHeight+4))+2)*columns);
                 for(int i=first;i<last;i++)Card(listParts,new F5Rect(i%columns*(listLocal.Width+4)/columns,i/columns*(cardHeight+4),(listLocal.Width-4*(columns-1))/columns,cardHeight),scopeMatch==0?(FishKey?)list.Exact[i]:null,scopeMatch==0?FishingCatalog.Name(list.Exact[i]):list.Keywords[i],Command.Remove,1);
             }
-            left+=bodyHeight+8;string status=host.Settings.Message??host.Error??message;if(status!=null)Text(pageParts,status,8,ref left,leftWidth-16);
+            left+=bodyHeight+8;
             float right=side?top+8:left+20,rx=side?leftWidth+12:0,rw=side?rightWidth:view.Width;float rightTop=right-8;
             var rightPanel=Panel(new F5Rect(rx,rightTop,rw,0));pageParts.Add(rightPanel);
             Text(pageParts,"特殊规则",rx+8,ref right,rw-16);
@@ -141,8 +140,14 @@ namespace JueMingR.TerrariaHost.Fishing
                 string name=feature==7?"匣子":feature==8?"任务鱼":"怪物";int state=host.Settings.Value.State(feature);string mode=state==0?"跟随":state==1?"要":"不要";
                 Buttons(pageParts,ref right,rx+8,rw-16,new[]{name+"："+mode},new[]{Command.Special},0,p=>{p.Feature=feature;p.Hint=state==0?"按照黑白名单过滤"+name+"，需要声呐buff":"忽略黑白名单，"+(state==1?"会":"不会")+"钓上"+name+"，需要声呐buff";},fill:true);
             }
-            float bottom=Math.Max(left,right+8);leftPanel.Element=Element(F5ElementKind.Panel,new F5Rect(0,top,leftWidth,left-top));
+            leftPanel.Element=Element(F5ElementKind.Panel,new F5Rect(0,top,leftWidth,left-top));
             rightPanel.Element=Element(F5ElementKind.Panel,new F5Rect(rx,rightTop,rw,right+8-rightTop));
+            if(message!=null)
+            {
+                right+=20;int first=pageParts.Count;Text(pageParts,message,rx+8,ref right,rw-16);
+                for(int i=first;i<pageParts.Count;i++){pageParts[i].Name="page-notice";pageParts[i].Ink=Color.LightSteelBlue;}
+            }
+            float bottom=Math.Max(left,right+8);
             shell.Layout.SetFishingContentHeight(bottom+6);shell.ClampScroll();
         }
         private void BuildPopup()
@@ -186,7 +191,7 @@ namespace JueMingR.TerrariaHost.Fishing
                 var field=Make(Element(F5ElementKind.Field,new F5Rect(12,y,width-24,CardHeight())),Command.Field,2);field.Enabled=true;
                 if(Editor==null)field.Label=Fit(draft?.Text??"",field.Element.Rect,.7f,6);popupParts.Add(field);y+=CardHeight()+6;
             }
-            string popupMessage=host.Settings.Message??TextInput.Error??draft?.Error??message;
+            string popupMessage=TextInput.Error??draft?.Error??validation;
             var footer=new List<Part>();float fy=0;
             if(overlay!=Overlay.Presets)Buttons(footer,ref fy,12,width-24,overlay==Overlay.Keyword?new[]{"确认","取消"}:new[]{"添加至名单","取消"},overlay==Overlay.Keyword?new[]{Command.Confirm,Command.Close}:new[]{Command.Add,Command.Close},2,p=>{if(p.Command==Command.Close)p.Enabled=true;else if(p.Command==Command.Add)p.Enabled=PresentationAvailable && selected.Count>0;},fill:true);
             // Errors belong to the scrolling body; long file-system messages

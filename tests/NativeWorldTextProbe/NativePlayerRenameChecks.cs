@@ -45,7 +45,8 @@ namespace NativeWorldTextProbe
             var copy=Player.LoadPlayer(path,false);Require(copy.Player.loadStatus==Terraria.ID.StatusID.Ok && copy.Player.name=="Test010" && copy.Player.inventory[12].type==8 && copy.Player.inventory[12].stack==7 && copy.Player.inventory[12].favorited && ReferenceEquals(p.inventory[12],retained),"test-only native reload validates real player content without replacing runtime player");
             Require((bool)Call(owner,"Rename","  钓鱼009\r\n\t ") && p.name=="钓鱼009","Chinese name normalization through actual native save");
             var before=File.ReadAllBytes(path);Require(!(bool)Call(owner,"Rename",new string('x',21)) && File.ReadAllBytes(path).SequenceEqual(before) && p.name=="钓鱼009" && !(bool)Get(owner,"RuntimeNameApplied") && !(bool)Get(owner,"NativeWriteCompleted") && !(bool)Get(owner,"PersistedVerified"),"invalid name never enters native write or inherits the prior success receipt");
-            Main.netMode=1;Require(!(bool)Call(owner,"Rename","多人拒绝") && p.name=="钓鱼009","multiplayer is rejected without local display mutation");Main.netMode=0;
+            NativeFishingNetworkChecks.Rename(context,owner);
+            Require((bool)Call(owner,"Rename","钓鱼009"),"restore isolated name after multiplayer scenario");
             var ioLock=typeof(Player).GetField("IOLock",Flags).GetValue(null);using(var held=new ManualResetEvent(false))using(var release=new ManualResetEvent(false))
             {
                 var thread=new Thread(()=>{lock(ioLock){held.Set();release.WaitOne();}});thread.Start();Require(held.WaitOne(5000),"native autosave contention fixture");
@@ -70,7 +71,7 @@ namespace NativeWorldTextProbe
             }
             finally{SocialAPI.Cloud=oldCloud;Main.ActivePlayerFileData=file;file.Player=p;}
             Ui(context,owner,path);
-            Call(owner,"Clear");Console.WriteLine("PASS G10 real Rename/outer SavePlayer, local decrypt/reload, identity/angler rules, invalid/multiplayer/lock refusal, truncated/skipped native saves and isolated cloud true/false/short/stale results. Map saving disabled; no real cloud service.");
+            Call(owner,"Clear");Console.WriteLine("PASS G10 real Rename/outer SavePlayer, local decrypt/reload, identity/angler rules, multiplayer attempt, invalid/lock refusal, truncated/skipped native saves and isolated cloud true/false/short/stale results. Map saving disabled; no real cloud service.");
         }
         private static void Ui(object context,object owner,string path)
         {

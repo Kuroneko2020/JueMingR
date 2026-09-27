@@ -113,6 +113,13 @@ namespace JueMingR.TerrariaHost.Tools
         }
         internal bool Admit(Player p,bool heldInventory)
         {return Input.CanStartActions && CanRetainUse(p,heldInventory);}
+        internal Func<bool> CanBackgroundFishing;
+        // Only an established G10 fishing intent uses this autonomous path.
+        // Focus quarantine still owns all physical input and G09 tool uses.
+        internal bool AdmitFishing(Player p,bool heldInventory)
+        {return Input.IsFocused?Admit(p,heldInventory):CanRetainFishing(p,heldInventory);}
+        internal bool CanRetainFishing(Player p,bool heldInventory)
+        {return Input.IsFocused?CanRetainUse(p,heldInventory):Main.CanUpdateGameplay && (CanBackgroundFishing?.Invoke()??false) && CanRetainPlayer(p,heldInventory,true,true);}
         // Retention never authorizes a consumer. An outer update without a
         // native input sample must not tear down a still safe continuous use.
         internal bool CanRetainUse(Player p,bool heldInventory)
@@ -121,9 +128,9 @@ namespace JueMingR.TerrariaHost.Tools
         // its own F5 pointer lease. Tool uses retain their original UI gate.
         internal bool AdmitFishingEquipment(Player p,bool interfaceAllowed)
         {return Input.CanStartActions && interfaceAllowed && CanRetainPlayer(p,true,true);}
-        private bool CanRetainPlayer(Player p,bool heldInventory,bool ownInterface)
+        private bool CanRetainPlayer(Player p,bool heldInventory,bool ownInterface,bool background=false)
         {
-            return Available && p!=null && ReferenceEquals(p,Player) && Input.CanRetainIntent &&
+            return Available && p!=null && ReferenceEquals(p,Player) && (background || Input.CanRetainIntent) &&
                 !Main.gamePaused && !p.dead && !p.CCed && !p.cursed && !p.noItems && !p.isOperatingAnotherEntity && !p.HasLockedInventory() &&
                 !Items.World.Busy && !Items.World.HasManualOperation && !Main.mapFullscreen && !Main.inFancyUI && !Main.onlyDrawFancyUI && !Main.ingameOptionsWindow &&
                 !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest && !PlayerInput.WritingText && Main.CurrentInputTextTakerOverride==null &&
