@@ -2,7 +2,7 @@
 param(
     [Parameter(Mandatory = $true)][string] $ContentDirectory,
     [Parameter(Mandatory = $true)][string] $OutputDirectory,
-    [ValidateSet('Full', 'SelectionCpuCosts', 'SelectionCpuChecks', 'FootprintsVisual', 'QuickItemsVisual', 'CoinDepositCpu', 'CoinDepositVisual', 'AboutCpu', 'AboutVisual', 'ProcessingCpu', 'ProcessingVisual', 'ShortFeedbackCpu', 'ShortFeedbackVisual', 'ToolsCpu', 'ToolsVisual')][string] $Scope = 'Full',
+    [ValidateSet('Full', 'SelectionCpuCosts', 'SelectionCpuChecks', 'FootprintsVisual', 'QuickItemsVisual', 'CoinDepositCpu', 'CoinDepositVisual', 'AboutCpu', 'AboutVisual', 'ProcessingCpu', 'ProcessingVisual', 'ShortFeedbackCpu', 'ShortFeedbackVisual', 'ToolsCpu', 'ToolsVisual', 'ToolsTiming', 'ToolsBindings')][string] $Scope = 'Full',
     [string] $WorkloadBaseline
 )
 $ErrorActionPreference = 'Stop'
@@ -18,6 +18,10 @@ if ($LASTEXITCODE -ne 0) { throw 'Debug build failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'Native probe build failed.' }
 & (Join-Path $repositoryRoot 'tests\NativeWorldTextProbe\bin\x86\Debug\net472\NativeWorldTextProbe.exe') $repositoryRoot $ContentDirectory $OutputDirectory $Scope
 if ($LASTEXITCODE -ne 0) { throw 'Native world text check failed. A draw/layout failure is not an environment deferral.' }
+if ($Scope -ceq 'ToolsBindings') {
+    & (Join-Path $repositoryRoot 'tests\NativeWorldTextProbe\bin\x86\Debug\net472\NativeWorldTextProbe.exe') $repositoryRoot $ContentDirectory $OutputDirectory 'ToolsBindingsReload'
+    if ($LASTEXITCODE -ne 0) { throw 'Native binding reload/dispatch check failed.' }
+}
 $inputs = @(& git -C $repositoryRoot ls-files -- src tests/NativeWorldTextProbe | ForEach-Object {
     $file = Join-Path $repositoryRoot $_
     [ordered]@{ path = $_; sha256 = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash }

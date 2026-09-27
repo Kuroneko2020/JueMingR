@@ -28,8 +28,71 @@ namespace NativeWorldTextProbe
         }
         private const BindingFlags Flags=BindingFlags.Instance|BindingFlags.Static|BindingFlags.Public|BindingFlags.NonPublic;
         private static int casts;
+        private static int netUses;
         private static Vector2 castTarget;
-        private static void Observe(Item __0){if(__0.fishingPole>0){casts++;castTarget=Main.MouseWorld;}}
+        private static void Observe(Item __0){if(__0.fishingPole>0){casts++;castTarget=Main.MouseWorld;}if(__0.type==1991)netUses++;}
+        internal static void Misses(object context)
+        {
+            object host=Get(context,"Tools"),fish=Get(host,"Fishing"),input=Get(context,"Input"),use=Get(host,"Use");var p=Main.LocalPlayer;
+            new Harmony("JueMingR.Tests.QuickItemOutlets").Unpatch(typeof(Item).GetMethod("GetDrawHitbox"),HarmonyPatchType.Prefix,"JueMingR.Tests.QuickItemOutlets");
+            for(int i=1;i<Main.player.Length;i++)if(Main.player[i]==null)Main.player[i]=new Player{whoAmI=i};
+            typeof(Main).GetMethod("Initialize_TileAndNPCData1",Flags).Invoke(null,null);typeof(Main).GetMethod("Initialize_TileAndNPCData2",Flags).Invoke(null,null);Terraria.ObjectData.TileObjectData.Initialize();
+            var audit=new Harmony("JueMingR.Tests.G09MissLoans");var method=typeof(Player).GetMethod("ItemCheck_StartActualUse",Flags);
+            audit.Patch(method,postfix:new HarmonyMethod(typeof(NativeFishingBorrowChecks),nameof(Observe)));
+            try
+            {
+                for(int scenario=0;scenario<3;scenario++)
+                {
+                    bool contender=scenario==1,stops=scenario==2;
+                    for(int i=0;i<3;i++)NativeToolsChecks.SetMode(host,i,0);foreach(var n in Main.npc)n.active=false;
+                    for(int i=0;i<60;i++)NativeToolsChecks.Frame(context,input);
+                    foreach(var item in p.inventory)item.TurnToAir();foreach(var q in Main.projectile)q.active=false;
+                    for(int x=30;x<60;x++)for(int y=30;y<48;y++)Main.tile[x,y].ClearEverything();
+                    p.inventory[17].SetDefaults(ItemID.WoodFishingPole);p.inventory[12].SetDefaults(1991);p.inventory[14].SetDefaults(213);
+                    p.position=new Vector2(640,640);p.velocity=Vector2.Zero;p.direction=1;p.gravDir=1;p.itemAnimation=p.itemTime=0;p.selectedItemState.Select(17);p.selectedItemState.Update();
+                    NativeQuickItemChecks.Sample(input,new Microsoft.Xna.Framework.Input.Keys[0]);Main.mouseX=880;Main.mouseY=620;Terraria.GameInput.PlayerInput.Triggers.Current.MouseLeft=true;Main.mouseLeft=true;
+                    NativeQuickItemChecks.NativeFrame(p);Call(context,"UpdateRuntime");
+                    Require(Main.projectile.Any(q=>q.active && q.bobber),"miss fixture begins with a real native rod cast");
+                    for(int i=0;i<35;i++)LoanFrame(context,input);
+                    if(contender){NativeToolsChecks.Tile(42,42,1);Require(WorldGen.PlaceTile(42,41,78,mute:true,forced:true,plr:0),"miss contention pot");NativeToolsChecks.Tile(42,40,84);NativeToolsChecks.SetMode(host,1,1);}
+                    var target=Main.npc[0];target.SetDefaults(46);target.whoAmI=0;target.active=true;target.life=target.lifeMax;
+                    var net=p.inventory[12];var proxy=new Player{position=p.position,direction=1,gravDir=1,itemAnimationMax=net.useAnimation};var frame=Item.GetDrawHitbox(net.type,p);
+                    var hits=new Rectangle[3];for(int i=0;i<3;i++){proxy.itemAnimation=i==0?24:i==1?12:3;proxy.ItemCheck_ApplyUseStyle(0,net,frame);bool inactive;proxy.ItemCheck_GetMeleeHitbox(net,frame,out inactive,out hits[i]);}
+                    target.position=MissPosition(hits,0,target);target.velocity=stops?Vector2.UnitX:Vector2.Zero;Call(Get(host,"Npcs"),"BeginTick");
+                    NativeToolsChecks.SetMode(host,0,1);casts=netUses=0;long previous=(long)Get(fish,"Token");bool finished=false;
+                    for(int f=0;f<220;f++)
+                    {
+                        LoanFrame(context,input);
+                        Require(target.active,"controlled nonlinear phase-entry motion really misses native Catch");
+                        if((long)Get(fish,"Token")>previous && !(bool)Get(fish,"Active"))finished=true;
+                        // Adversarial controlled jumps between native phases,
+                        // deliberately violating linear prediction. Actual AI
+                        // and terrain trajectories are a separate timing arm.
+                        if(!finished && (bool)Get(use,"Active") && Get(Get(use,"Intent"),"Kind").ToString()=="Capture")
+                        {int remaining=p.itemAnimation<=1?24:p.itemAnimation-1;int phase=remaining<25*.333?2:remaining<25*.666?1:0;target.position=MissPosition(hits,phase,target);target.velocity=stops?Vector2.UnitX:Vector2.Zero;}
+                    }
+                    Console.WriteLine("G09 missed loan contender="+contender+" nets="+netUses+" recasts="+casts+" tokens="+((long)Get(fish,"Token")-previous)+" phase="+Get(fish,"Phase"));
+                    Require(finished && netUses>=1 && netUses<=2 && casts==1 && (long)Get(fish,"Token")==previous+1 && p.selectedItem==17 && Main.projectile.Any(q=>q.active && q.bobber),"finite real missed capture has one loan and one recast, including automatic contention");
+                    long old=(long)Get(fish,"Token");
+                    if(!stops){target.position=new Vector2(1000,600);for(int i=0;i<4;i++)LoanFrame(context,input);}
+                    target.position=new Vector2(677,642);target.velocity=Vector2.Zero;
+                    for(int i=0;i<100 && target.active;i++)LoanFrame(context,input);
+                    Require(!target.active && (long)Get(fish,"Token")==old+1,stops?"motion stopping inside the envelope creates a new actually catchable opportunity":"leaving and reentering creates a real fresh opportunity instead of a permanent ban");
+                }
+            }
+            finally{audit.Unpatch(method,HarmonyPatchType.All,audit.Id);for(int i=0;i<3;i++)NativeToolsChecks.SetMode(host,i,0);}
+        }
+        private static Vector2 MissPosition(Rectangle[] hits,int phase,NPC n)
+        {
+            for(int x=600;x<740;x+=2)for(int y=590;y<730;y+=2)
+            {var box=new Rectangle(x,y,n.width,n.height);if(!hits[phase].Intersects(box) && hits.Any(h=>h.Intersects(box)))return new Vector2(x,y);}
+            throw new InvalidOperationException("native phase-specific miss point unavailable");
+        }
+        private static void LoanFrame(object context,object input)
+        {
+            NativeQuickItemChecks.Sample(input,new Microsoft.Xna.Framework.Input.Keys[0]);Call(Get(context,"Shell"),"ProcessInput");NativeQuickItemChecks.NativeFrame(Main.LocalPlayer);
+            foreach(var q in Main.projectile.Where(q=>q.active && q.bobber).ToArray())Call(q,"AI_061_FishingBobber");Call(context,"UpdateRuntime");
+        }
         internal static void Run(object context)
         {
             object host=Get(context,"Tools"),fish=Get(host,"Fishing"),input=Get(context,"Input");var p=Main.LocalPlayer;

@@ -24,13 +24,14 @@ namespace NativeWorldTextProbe
         private static int recalls;
         internal static int Recalls {get{return recalls;}}
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static void Run(Action<object> visual=null, bool coins=false, bool about=false, bool recovery=false, bool processing=false, bool shortFeedback=false)
+        internal static void Run(Action<object> visual=null, bool coins=false, bool about=false, bool recovery=false, bool processing=false, bool shortFeedback=false,string candidateAssembly=null)
         {
             Require(IntPtr.Size==4,"G05 native fixture must use .NET Framework x86");
             Require(typeof(Main).Assembly.ManifestModule.ModuleVersionId==new Guid("2c29f6c3-4bd9-4add-9c58-da159804e083"),"fixed .8 MVID");
             using(var file=File.OpenRead(typeof(Main).Assembly.Location))using(var sha=System.Security.Cryptography.SHA256.Create())
                 Require(BitConverter.ToString(sha.ComputeHash(file)).Replace("-","")=="960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3","fixed .8 source");
-            var assembly=Assembly.LoadFrom(Path.Combine(Program.Repository,"artifacts/build/Debug/work/bin/JueMingR.TerrariaHost/x86/Debug/net472/JueMingR.TerrariaHost.dll"));
+            var assembly=Assembly.LoadFrom(candidateAssembly??Path.Combine(Program.Repository,"artifacts/build/Debug/work/bin/JueMingR.TerrariaHost/x86/Debug/net472/JueMingR.TerrariaHost.dll"));
+            if(candidateAssembly!=null)Console.WriteLine("Explicit historical candidate: "+assembly.Location+" MVID="+assembly.ManifestModule.ModuleVersionId);
             Initialize();
             string root=Path.Combine(Terraria.Program.SavePath,"composition");Directory.CreateDirectory(root);
             Main.ActivePlayerFileData=new Terraria.IO.PlayerFileData(Path.Combine(root,"fixture.plr"),false){Player=Main.LocalPlayer};

@@ -28,6 +28,7 @@ try {
         'src/JueMingR.TerrariaHost/Recovery/HostRecovery.cs' = 'recovery-host';
         'src/JueMingR.TerrariaHost/Tools/AutoCapture.cs' = 'tools-host';
         'tests/NativeWorldTextProbe/NativeFishingBorrowChecks.cs' = 'tools-host';
+        'tests/NativeWorldTextProbe/NativeToolCadenceChecks.cs' = 'tools-host';
         'tests/NativeWorldTextProbe/NativeRecoveryChecks.cs' = 'recovery-host';
         'src/JueMingR.TerrariaHost/About/AboutPage.cs' = 'about-host';
         'src/JueMingR.TerrariaHost/Onboarding/HostOnboarding.cs' = 'about-host';
@@ -78,6 +79,7 @@ try {
     $exactGroups = @{
         'src/JueMingR.TerrariaHost/Tools/AutoCapture.cs' = @('core','tools-host','quick-items-host','coin-deposit-host','recovery-host','processing-host');
         'tests/NativeWorldTextProbe/NativeFishingBorrowChecks.cs' = @('core','tools-host','quick-items-host','coin-deposit-host','recovery-host','processing-host');
+        'tests/NativeWorldTextProbe/NativeToolCadenceChecks.cs' = @('core','tools-host','quick-items-host','coin-deposit-host','recovery-host','processing-host');
         'src/JueMingR.TerrariaHost/Processing/HostProcessing.cs' = @('core','tools-host','quick-items-host','coin-deposit-host','recovery-host','processing-host');
         'src/JueMingR.Features/Processing/ProcessingSettings.cs' = @('core','tools-host','quick-items-host','coin-deposit-host','recovery-host','processing-host');
         'tests/JueMingR.ArchitectureTests/Processing/ProcessingChecks.cs' = @('core','processing-host');
@@ -257,6 +259,27 @@ try {
     }
     $processingCalls = @($runnerAst.FindAll({ param($node) $node -is [Management.Automation.Language.CommandAst] -and $node.GetCommandName() -ceq 'Invoke-ProcessingWorkloadChecks' }, $true))
     Assert-Route ($processingCalls.Count -eq 1 -and $processingCalls[0].Extent.Text -ceq 'Invoke-ProcessingWorkloadChecks $route.groups $architecture $native') 'normal runner invokes processing dispatcher exactly once'
+    $toolsDispatch = $runnerAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Invoke-ToolsWorkloadChecks' }, $false)
+    Assert-Route ($null -ne $toolsDispatch) 'actual tools dispatcher exists'
+    & {
+        . ([scriptblock]::Create($toolsDispatch.Extent.Text))
+        $calls = New-Object 'System.Collections.Generic.List[object]'
+        $checksRoot = Join-Path $fixtureRoot 'checks'
+        function Invoke-WorkloadCheck {
+            param([string] $Name, [string] $Executable, [string[]] $Arguments)
+            $calls.Add(@{ name = $Name; executable = $Executable; arguments = $Arguments })
+        }
+        Invoke-ToolsWorkloadChecks @('core') 'architecture.exe' 'native.exe'
+        Assert-Route ($calls.Count -eq 0) 'unrelated route skips tools'
+        Invoke-ToolsWorkloadChecks @('core','tools-host','shared-host') 'architecture.exe' 'native.exe'
+        Assert-Route ($calls.Count -eq 4 -and ($calls[0].arguments -join '|') -ceq '--tools') 'tools rules and three native checks execute once'
+        $scopes = @('ToolsCpu','ToolsCadence','ToolsWorkload'); $directories = @('tools-cpu','tools-cadence','tools-workload')
+        for ($i=0; $i -lt 3; $i++) {
+            Assert-Route ($calls[$i+1].executable -ceq 'native.exe' -and ($calls[$i+1].arguments -join '|') -ceq (@($repositoryRoot,'--cpu',(Join-Path $checksRoot $directories[$i]),$scopes[$i]) -join '|')) 'tools real CPU entry and isolated output'
+        }
+    }
+    $toolsCalls = @($runnerAst.FindAll({ param($node) $node -is [Management.Automation.Language.CommandAst] -and $node.GetCommandName() -ceq 'Invoke-ToolsWorkloadChecks' }, $true))
+    Assert-Route ($toolsCalls.Count -eq 1) 'normal runner invokes tools exactly once'
     # Run the real process wrapper in a child PowerShell: failed checks must
     # escape as a nonzero process exit and must never append a PASS result.
     $failurePath = Join-Path $fixtureRoot 'failure-exit.ps1'

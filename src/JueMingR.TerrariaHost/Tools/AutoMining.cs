@@ -32,11 +32,11 @@ namespace JueMingR.TerrariaHost.Tools
             if(host.Mode(2)!=2 || !host.Input.CanStartActions)return;
             if(held && !manualHeld)gesture++;manualHeld=held;
         }
-        private readonly Vector2[] overlay=new Vector2[MiningRegion.Capacity];
-        private readonly bool[] green=new bool[MiningRegion.Capacity];
+        internal readonly MiningOverlay Coverage=new MiningOverlay();
         private int drawn;
 #if DEBUG
-        internal long OverlayChecks {get;private set;}
+        internal long OverlayChecks {get{return Coverage.Checks;}}
+        internal long IntentCreations {get;private set;}
 #endif
         internal AutoMining(HostTools host){this.host=host;}
         // Dirt is an active type-zero tile. Keep it distinct from confirmed
@@ -53,6 +53,7 @@ namespace JueMingR.TerrariaHost.Tools
         private void Adopt(Player p,MiningRegion candidate,Dictionary<long,ulong> baseline)
         {
             Region=candidate;tool=p.HeldItem;slot=p.selectedItem;type=tool.type;session=host.Runtime.Generation;selection=host.SelectionIntent;cursor=falls=drawn=fallCursor=0;
+            Coverage.Clear();
             gravityBaseline.Clear();foreach(var pair in baseline)gravityBaseline.Add(pair.Key,pair.Value);
         }
         private static long Key(int x,int y){return ((long)x<<32)|(uint)y;}
@@ -106,6 +107,7 @@ namespace JueMingR.TerrariaHost.Tools
                 // PickTile target is not the only possible falling member.
                 ulong before;if(gravityBaseline.TryGetValue(Key(point.X,point.Y),out before)){WaitForFalling(point.X,point.Y,point.Type,before);gravityBaseline.Remove(Key(point.X,point.Y));}
                 Region.RemoveAt(i);
+                Coverage.RemoveAt(i);if(cursor>i)cursor--;
             }
             // A previously occupied cell may receive an upper selected block
             // only after we observed that selected cell become empty. Clear
@@ -114,13 +116,8 @@ namespace JueMingR.TerrariaHost.Tools
             if(vacated.Count>0)for(int i=0;i<falls;i++)
             {var f=falling[i];for(int dx=-1;dx<=1;dx++)for(int dy=1;dy<=18;dy++)if(vacated.Contains(Key(f.X+dx,f.Y+dy)))f.Occupied&=~(1UL<<((dx+1)*18+dy-1));falling[i]=f;}
             UpdateFalling();drawn=Region.Count;
-            for(int i=0;i<drawn;i++)
-            {
-#if DEBUG
-                OverlayChecks++;
-#endif
-                var point=Region[i];overlay[i]=new Vector2(point.X*16+8,point.Y*16+8);green[i]=p.selectedItem==slot && ReferenceEquals(p.HeldItem,tool) && MiningEligibility.CanProgress(p,tool,point.X,point.Y,point.Type);
-            }
+            if(drawn==0 && falls==0){RetireRegion();return;}
+            Coverage.Update(Region,p,tool,p.selectedItem==slot && ReferenceEquals(p.HeldItem,tool));
         }
         private void UpdateFalling()
         {
@@ -144,17 +141,48 @@ namespace JueMingR.TerrariaHost.Tools
         internal ToolIntent Choose(Player p)
         {
             if(host.Mode(2)==0 || tool==null || !host.Admit(p,false) || p.selectedItem!=slot || !ReferenceEquals(p.HeldItem,tool))return null;
+            if(!FindTarget(p))return null;
+            return CreateIntent(p);
+        }
+        private ToolIntent CreateIntent(Player p)
+        {
+#if DEBUG
+            IntentCreations++;
+#endif
+            var intent=new ToolIntent{Kind=ToolKind.Mining,Slot=slot};
+            intent.Refresh=()=>Refresh(p,intent);
+            intent.Valid=()=>host.Mode(2)!=0 && tool!=null && session==host.Runtime.Generation && ReferenceEquals(p.inventory[slot],tool) &&
+                MiningEligibility.CanProgress(p,tool,(int)(intent.Target.X/16),(int)(intent.Target.Y/16),RegionType(intent.Target));
+            return intent.Refresh()?intent:null;
+        }
+        internal bool Ready(Player p)
+        {
+            if(host.Mode(2)==0 || tool==null || !host.Admit(p,false) || session!=host.Runtime.Generation || selection!=host.SelectionIntent || !ReferenceEquals(p.inventory[slot],tool))return false;
+            return FindTarget(p);
+        }
+        private int RegionType(Vector2 target)
+        {return cursor<Region.Count && Region[cursor].X==(int)(target.X/16) && Region[cursor].Y==(int)(target.Y/16)?Region[cursor].Type:-1;}
+        private bool Refresh(Player p,ToolIntent intent)
+        {
+            if(host.Mode(2)==0 || tool==null || session!=host.Runtime.Generation || !ReferenceEquals(p.inventory[slot],tool))return false;
+            if(!FindTarget(p))return false;
+            var point=Region[cursor];intent.Target=new Vector2(point.X*16+8,point.Y*16+8);return true;
+        }
+        private bool FindTarget(Player p)
+        {
+            Coverage.Prepare(Region,p,tool,p.selectedItem==slot && ReferenceEquals(p.HeldItem,tool));
+            if(!Coverage.Any)return false;
             for(int n=0;n<Region.Count;n++)
             {
-                int i=(cursor+n)%Region.Count;var point=Region[i];if(!MiningEligibility.CanProgress(p,tool,point.X,point.Y,point.Type))continue;
+                int i=(cursor+n)%Region.Count;if(!Coverage.Candidate(i))continue;var point=Region[i];
+                if(!MiningEligibility.CanProgress(p,tool,point.X,point.Y,point.Type)){Coverage.Reject(i);continue;}
                 // Native HitTile has a finite damage cache. Finish this valid
                 // tile before advancing, otherwise a broad low-power vein can
                 // evict every partial hit without ever removing anything.
                 cursor=i;
-                return new ToolIntent{Kind=ToolKind.Mining,Slot=slot,Target=new Vector2(point.X*16+8,point.Y*16+8),
-                    Valid=()=>host.Mode(2)!=0 && session==host.Runtime.Generation && ReferenceEquals(p.HeldItem,tool) && MiningEligibility.CanProgress(p,tool,point.X,point.Y,point.Type)};
+                return true;
             }
-            return null;
+            return false;
         }
         internal void Draw()
         {
@@ -162,12 +190,15 @@ namespace JueMingR.TerrariaHost.Tools
             Matrix zoom=Main.GameViewMatrix.ZoomMatrix;
             for(int i=0;i<drawn;i++)
             {
-                Vector2 screen=Main.ReverseGravitySupport(overlay[i]-Main.screenPosition);Vector2 a=Vector2.Transform(screen-new Vector2(8),zoom),b=Vector2.Transform(screen+new Vector2(8),zoom);
+                Vector2 screen=Main.ReverseGravitySupport(Coverage.Center(i)-Main.screenPosition);Vector2 a=Vector2.Transform(screen-new Vector2(8),zoom),b=Vector2.Transform(screen+new Vector2(8),zoom);
                 if(b.X<0 || b.Y<0 || a.X>Main.screenWidth || a.Y>Main.screenHeight)continue;
-                var rect=new Rectangle((int)screen.X-8,(int)screen.Y-8,16,16);var color=green[i]?Color.FromNonPremultiplied(65,230,95,90):Color.FromNonPremultiplied(240,65,65,90);
+                var rect=new Rectangle((int)screen.X-8,(int)screen.Y-8,16,16);var color=Coverage.Green(i)?Color.FromNonPremultiplied(65,230,95,90):Color.FromNonPremultiplied(240,65,65,90);
                 Main.spriteBatch.Draw(TextureAssets.MagicPixel.Value,rect,color);
             }
         }
-        internal void Clear(){Region.Clear();gravityBaseline.Clear();vacated.Clear();tool=null;falls=drawn=cursor=fallCursor=0;manualHeld=false;}
+        // Completion does not manufacture a new physical press. Keep gesture
+        // ownership while retiring all region-specific temporary references.
+        private void RetireRegion(){Region.Clear();gravityBaseline.Clear();vacated.Clear();Coverage.Clear();tool=null;falls=drawn=cursor=fallCursor=0;}
+        internal void Clear(){RetireRegion();manualHeld=false;}
     }
 }

@@ -12,8 +12,9 @@ namespace NativeWorldTextProbe
         {
             Directory.CreateDirectory(output);Terraria.Localization.LanguageManager.Instance.SetLanguage("zh-Hans");Main.InitializeItemAnimations();
             NativeToolsUiChecks.Run(context,graphics);
+            NativeToolsUiChecks.FullBindings(context,graphics,output);
             object shell=Get(context,"Shell"),state=Get(shell,"State"),renderer=Get(shell,"renderer"),items=Get(shell,"items"),popup=Get(shell,"CaptureUi");
-            foreach(var size in new[]{new[]{960,760,100},new[]{1280,720,150},new[]{960,440,100}})
+            foreach(var size in new[]{new[]{960,760,100},new[]{1440,900,150},new[]{960,440,100}})
             {
                 float scale=size[2]/100f;var matrix=Matrix.CreateScale(scale);NativeToolsUiChecks.Prepare(context,0,size[0],size[1],scale);
                 var config=NativeToolsUiChecks.Controls(items).FirstOrDefault(c=>Get(c,"Command").ToString()=="Tools" && (int)Get(c,"Argument")==3);

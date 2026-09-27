@@ -907,7 +907,7 @@ namespace JueMingR.TerrariaHost
                 {
                     Tools=new Tools.HostTools(gameDirectory,runtime.SharedRuntime,items,Input,nativeNpcs);runtime.SharedRuntime.AddFeature(Tools);
                     if(QuickItems!=null)QuickItems.YieldTools=Tools.Yield;
-                    if(Processing!=null)Processing.YieldTools=()=>Tools.Enabled;
+                    if(Processing!=null){Processing.YieldTools=Tools.Ready;Processing.ToolsYieldProtection=Tools.ProtectedAfterYield;Tools.OtherUseReady=Processing.Extraction.Ready;}
                 }
                 if (entityPackage) { Labels = new EntityLabels.HostEntityLabels(gameDirectory, runtime.SharedRuntime, nativeNpcs) { LayerStatus = entityLayerStatus }; runtime.SharedRuntime.AddFeature(Labels); }
                 if (worldPackage) { worldTiles = new World.WorldTileObservation(() => runtime.SharedRuntime.IsSessionActive); WorldTargets = new WorldTargets.HostWorldTargets(gameDirectory, runtime.SharedRuntime, worldTiles) { LayerStatus = entityLayerStatus }; runtime.SharedRuntime.AddFeature(WorldTargets); }

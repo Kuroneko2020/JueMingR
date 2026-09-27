@@ -12,6 +12,11 @@ namespace JueMingR.TerrariaHost.Npcs
         private readonly NpcDemand[] demands = new NpcDemand[Main.maxNPCs];
         private readonly int[] epochs = new int[Main.maxNPCs];
         private int epoch = 1;
+        private long actionFrame=-1;
+        internal int Epoch {get{return epoch;}}
+        // Player consumers precede NPC updates. Their facts must not reuse a
+        // post-world observation from the previous game update.
+        internal void BeginActions(long frame){if(actionFrame==frame)return;actionFrame=frame;BeginTick();}
 #if DEBUG
         internal int BasicReads { get; private set; }
         internal int DirectionReads { get; private set; }

@@ -12,9 +12,10 @@ namespace JueMingR.TerrariaHost.Tools
         private static readonly Harmony harmony=new Harmony("JueMingR.Tools");
         private struct NativeMiningScope {internal Player Player;internal Item Item;internal int X,Y;}
         private static NativeMiningScope miningScope;
+        private static bool manualBuffered;
         internal static void Install(HostTools value)
         {
-            host=value;
+            host=value;manualBuffered=false;
             Patch(typeof(Player),"PickItemSelectionOverride",new[]{typeof(int).MakeByRefType()},null,nameof(Pick));
             Patch(typeof(Player),"TrySyncingInput",Type.EmptyTypes,nameof(Sync));
             Patch(typeof(Player),"ItemCheck",Type.EmptyTypes,nameof(Before),nameof(After),nameof(Final));
@@ -55,8 +56,16 @@ namespace JueMingR.TerrariaHost.Tools
         private static void Before(Player __instance,out Lease __state){__state=null;if(host==null || !host.Use.Active)return;__state=new Lease{Token=host.Use.Operation};host.Use.Begin(__instance);}
         private static void After(Player __instance,Lease __state){host?.Use.End(__instance,__state?.Token??0,null);}
         private static Exception Final(Player __instance,Lease __state,Exception __exception){if(__exception!=null)host?.Use.End(__instance,__state?.Token??0,__exception);return __exception;}
-        private static void Select(Player ___player){if(host!=null && host.Enabled && ReferenceEquals(___player,host.Player) && !host.Use.Returning && !host.Items.ReturningSelection)host.ManualSelection();}
-        private static void SelectionUpdate(Player ___player){if(host!=null && host.Enabled && ReferenceEquals(___player,host.Player) && ___player.selectedItemState.HasBufferedChange && !host.Use.Returning)host.ManualSelectionFrame=host.Input.Frame;}
+        private static void Select(Player ___player){if(host!=null && host.Enabled && ReferenceEquals(___player,host.Player) && !host.Use.Returning && !host.Items.ReturningSelection){manualBuffered=true;host.ManualSelection();}}
+        private static void SelectionUpdate(Player ___player)
+        {
+            if(host==null || !host.Enabled || !ReferenceEquals(___player,host.Player))return;
+            host.Npcs.BeginActions(host.Input.Frame);
+            // Only a genuine Select owns a buffered manual handoff. Another
+            // automatic owner returning its lease is not a new player intent.
+            if(!___player.selectedItemState.HasBufferedChange)manualBuffered=false;
+            else if(manualBuffered)host.ManualSelectionFrame=host.Input.Frame;
+        }
         // Pets and other projectile consumers also call Player.PickTile. Only
         // the exact native held-tool scope may establish a manual first hit.
         private static void MiningEnter(Player __instance,Item __0,int __2,int __3,out NativeMiningScope __state)

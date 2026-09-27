@@ -22,12 +22,18 @@ namespace JueMingR.TerrariaHost.Tools
         private int generation=-1,skin=-1;
         private bool ready,previousLeft,leftTail,rightTail;
         private ItemUiControl armed;
+        private readonly JueMingR.Platform.Hotkeys.HotkeyBindings bindings;
+        private string bindingText,fittedBinding;
+        private object bindingFont;
+        private float bindingWidth;
+        private F5Size bindingSize;
+        private F5Element bindingDisplay;
         internal Action<string,F5Rect> HotkeyClicked;
         internal bool OwnsPointer {get;private set;}
         internal bool ConsumeLeft {get;private set;}
         internal bool ConsumeRight {get;private set;}
         internal float Height {get{return panel.Height;}}
-        internal MiningPanel(HostTools host,F5Interaction shell){this.host=host;this.shell=shell;panel=new ToolsPanel(host,true);}
+        internal MiningPanel(HostTools host,F5Interaction shell,JueMingR.Platform.Hotkeys.HotkeyBindings bindings=null){this.host=host;this.shell=shell;this.bindings=bindings;panel=new ToolsPanel(host,true);}
         internal void Prepare(bool active,Matrix transform,float bottom)
         {
             if(!active || !shell.Visible || shell.Page!=1){Suspend();return;}if(!renderer.Refresh()){ready=false;return;}
@@ -40,6 +46,26 @@ namespace JueMingR.TerrariaHost.Tools
             matrix=transform;view=next;ready=true;
             if(build)panel.Build(bottom,view.Width,shell.Layout.TextSize);
             if(project){armed=null;controls.Clear();elements.Clear();panel.Project(view,shell.Scroll,controls,elements);}
+            string text=bindings==null?"暂不可用":!bindings.Loaded?"正在加载":bindings.Get(HostTools.SelectAction)?.DisplayText??(bindings.Error(HostTools.SelectAction)!=null?"绑定无效":bindings.Protected?"文件已保护":"未设置");
+            object font=Terraria.GameContent.FontAssets.MouseText?.Value;
+            if(project || bindingText!=text || !ReferenceEquals(bindingFont,font))
+            {
+                bindingDisplay=null;
+                foreach(var c in controls)if(c.Element.Kind==F5ElementKind.Field)
+                {
+                    if(bindingText!=text || !ReferenceEquals(bindingFont,font) || bindingWidth!=c.Rect.Width)
+                    {
+                        bindingText=text;bindingFont=font;bindingWidth=c.Rect.Width;
+                        fittedBinding=text;bindingSize=shell.Layout.DynamicTextSize(text,.70f);
+                        if(bindingSize.Width>c.Rect.Width-12)
+                        {
+                            var ends=JueMingR.Features.Text.TextElements.Boundaries(text);int end=ends.Length-1;
+                            do{fittedBinding=text.Substring(0,ends[--end])+"…";bindingSize=shell.Layout.DynamicTextSize(fittedBinding,.70f);}while(end>0 && bindingSize.Width>c.Rect.Width-12);
+                        }
+                    }
+                    bindingDisplay=new F5Element(F5ElementKind.Field,c.Rect,fittedBinding,bindingSize,.70f,F5Command.None,HostTools.SelectAction);
+                }
+            }
             start=bottom;scroll=shell.Scroll;generation=shell.Layout.Generation;skin=renderer.Generation;
         }
         internal void ProcessInput(bool active,Vector2 point,bool geometryCurrent,bool focused,bool blocked)
@@ -61,7 +87,7 @@ namespace JueMingR.TerrariaHost.Tools
         internal void Draw(Action<F5Rect> keyboard)
         {
             if(!ready || !shell.Visible || shell.Page!=1)return;
-            renderer.Pass(matrix,view,()=>{foreach(var e in elements)if(e.Kind==F5ElementKind.Panel)renderer.Panel(e.Rect);else renderer.Label(e);foreach(var c in controls){if(c.Command==ItemUiCommand.Hotkey)keyboard?.Invoke(c.Rect);else renderer.Button(c.Element,c.Selected,c.Enabled,c.Argument%10==0,false);}});
+            renderer.Pass(matrix,view,()=>{foreach(var e in elements)if(e.Kind==F5ElementKind.Panel)renderer.Panel(e.Rect);else renderer.Label(e);foreach(var c in controls){if(c.Element.Kind==F5ElementKind.Field){if(bindingDisplay!=null)renderer.Button(bindingDisplay,false,c.Enabled,false,false);}else if(c.Command==ItemUiCommand.Hotkey)keyboard?.Invoke(c.Rect);else renderer.Button(c.Element,c.Selected,c.Enabled,c.Argument%10==0,false);}});
         }
         internal string Hint(float x,float y,out F5Rect rect,F5Rect? clip=null){rect=default(F5Rect);return ready && view.Contains(x,y) && (!clip.HasValue || clip.Value.Contains(x,y))?panel.Hint(x,y,out rect):null;}
         internal void Suspend(){armed=null;ready=false;OwnsPointer=false;renderer.Dispose();}

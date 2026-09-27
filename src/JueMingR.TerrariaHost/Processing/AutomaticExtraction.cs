@@ -16,7 +16,7 @@ namespace JueMingR.TerrariaHost.Processing
         private Item material;
         private int slot,original,type,expected,dropReturns;
         private long token,session,frame,nextProbe;
-        private bool cancelled,unknown,inCheck,borrowed,attempted;
+        private bool cancelled,unknown,inCheck,borrowed,attempted,yieldingTools;
         private ExtractionMachine machine;
         private bool machineCached;
         private Vector2 machinePosition;
@@ -37,8 +37,17 @@ namespace JueMingR.TerrariaHost.Processing
                 PlayerInput.MouseInfo.LeftButton==ButtonState.Released && PlayerInput.MouseInfo.RightButton==ButtonState.Released && !host.Items.World.HasManualOperation;
         }
         private static bool Eligible(Item item){return item!=null && item.stack>0 && item.type>0 && item.type<ItemID.Sets.ExtractinatorMode.Length && ItemID.Sets.ExtractinatorMode[item.type]>=0;}
-        private bool Candidate(Player p,int i){return i>=0 && i<50 && Eligible(p.inventory[i]) && !host.Items.Ownership.IsProtected(i) &&
-            !p.inventoryChestStack[i] && !host.Items.World.ManualMaterials.Contains(p.inventory[i]) && !(host.Items.World.AdditionalProtection?.Invoke(p.inventory[i])??false);}
+        private bool Candidate(Player p,int i,bool afterYield=false){return i>=0 && i<50 && Eligible(p.inventory[i]) && !host.Items.Ownership.IsProtected(i) &&
+            !p.inventoryChestStack[i] && !host.Items.World.ManualMaterials.Contains(p.inventory[i]) && !((afterYield?host.ToolsYieldProtection??host.Items.World.AdditionalProtection:host.Items.World.AdditionalProtection)?.Invoke(p.inventory[i])??false);}
+        internal bool Ready()
+        {
+            var p=host.Player;if(unknown || Active || p==null || !Admitted(p) || host.Input.Frame<nextProbe)return false;
+            // Readiness asks whether returning the tool lease would allow
+            // progress. Pick still rechecks every current protection before use.
+            int slot=Candidate(p,p.selectedItem,true)?p.selectedItem:-1;
+            for(int i=0;i<50 && slot<0;i++)if(Candidate(p,i,true))slot=i;
+            return slot>=0 && TryMachine(p,p.inventory[slot]);
+        }
         internal void Pick(Player p,ref int chosen,ref bool result)
         {
             if(!ReferenceEquals(p,host.Player))return;
@@ -48,6 +57,9 @@ namespace JueMingR.TerrariaHost.Processing
                 Retire(false);
                 if(newer)return;
             }
+            // A real competing candidate gets this next legal selection turn.
+            // A fixed delay may expire while the old animation is still busy.
+            if(yieldingTools){yieldingTools=false;return;}
             if(unknown || result || !Admitted(p) || host.Input.Frame<nextProbe)return;
             host.Items.World.RefreshManualRelease();
             int candidate=Candidate(p,p.selectedItem)?p.selectedItem:-1;
@@ -123,7 +135,7 @@ namespace JueMingR.TerrariaHost.Processing
             {
                 if(!ReferenceEquals(p.inventory[slot],material) && !p.inventory[slot].IsAir || after!=expected-1){Fail();return;}
                 expected=after;if(after<=0 || material.IsAir)Cancel();
-                if(host.YieldTools?.Invoke()??false){Cancel();nextProbe=host.Input.Frame+3;}
+                if(host.YieldTools?.Invoke()??false){yieldingTools=true;Cancel();}
             }
             // Native cleanup may turn a proved last consumption into Air on a
             // later animation frame. That frame did not start another extract.
@@ -143,7 +155,7 @@ namespace JueMingR.TerrariaHost.Processing
             if(!Admitted(player))Cancel();
             if(player.selectedItem!=slot || !player.selectedItemState.HasActiveOverride && player.selectedItemState.CanChangeSelectedItemImmediately)Retire(false);
         }
-        internal void Reset(bool fresh){Retire(true);nextProbe=0;machineCached=false;machineTiles=null;if(fresh){unknown=false;Failure=null;Array.Clear(unknownSlots,0,5);}}
+        internal void Reset(bool fresh){Retire(true);nextProbe=0;yieldingTools=false;machineCached=false;machineTiles=null;if(fresh){unknown=false;Failure=null;Array.Clear(unknownSlots,0,5);}}
         private void Retire(bool returnSelection)
         {
             if(player==null)return;if(returnSelection)Cancel();RestoreMouse();

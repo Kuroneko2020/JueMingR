@@ -37,7 +37,7 @@ namespace JueMingR.TerrariaHost.F5
         internal Tools.MiningPanel MiningUi {get;private set;}
         internal void AttachTools(Tools.HostTools owner)
         {
-            tools=owner;CaptureUi=new Tools.CaptureWindow(owner,State.Layout.TextSize);MiningUi=new Tools.MiningPanel(owner,State){HotkeyClicked=OpenHotkey};
+            tools=owner;CaptureUi=new Tools.CaptureWindow(owner,State.Layout.TextSize);MiningUi=new Tools.MiningPanel(owner,State,hotkeys?.Bindings){HotkeyClicked=OpenHotkey};
             items?.AttachTools(owner,CaptureUi.Open);renderer.MiningUi=MiningUi;renderer.CaptureUi=CaptureUi;
             CaptureUi.Opened=()=>{RecoveryUi?.PotionPopup.Close();HotkeyPopup?.Close();StylePopup?.Close();DeathPopup?.Close();FootprintPopup?.Close();};
             var prior=State.BeforeLeave;State.BeforeLeave=p=>{if(prior!=null && !prior(p))return false;CaptureUi.Close();MiningUi.Suspend();return true;};

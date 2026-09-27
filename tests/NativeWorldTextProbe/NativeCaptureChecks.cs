@@ -30,14 +30,43 @@ namespace NativeWorldTextProbe
                 for(int x=570;x<=740;x+=10)for(int y=560;y<=760;y+=10)
                 {
                     var target=new Rectangle(x,y,6,8);bool expected=oracle.Exists(r=>r.Intersects(target));
-                    bool actual=(bool)Call(subject,"Hits",p,net,target,100L);
+                    bool actual=(bool)Call(subject,"Hits",p,net,target,(long)cases+100);
                     Require(expected==actual,"net actual facing/gravity geometry id="+id+" direction="+direction+" gravity="+gravity+" x="+x+" y="+y);cases++;
                 }
+                Require((long)Get(subject,"ShapeBuilds")==1 && (long)Get(subject,"ApplyUseStyleCalls")==3 && (long)Get(subject,"GetMeleeHitboxCalls")==3 && (long)Get(subject,"FrameReads")==1,"static geometry is prepared only three native phases across 378 updates/candidates");
             }
             p.itemAnimation=p.itemTime=0;p.gravDir=1;p.meleeScaleGlove=false;
             Console.WriteLine("PASS G09 real XNB/original melee geometry: "+cases+" symmetric facing/gravity/glove samples for all three nets.");
+            GeometryChanges(context,graphics);
             ActualCapture(context,nets);
             NativeToolsIntegrationChecks.Visual(context,graphics);
+        }
+        private static void GeometryChanges(object context,ProbeGraphics graphics)
+        {
+            var p=Main.LocalPlayer;var type=Get(context,"Tools").GetType().Assembly.GetType("JueMingR.TerrariaHost.Tools.NetGeometry");var subject=Activator.CreateInstance(type,true);
+            var net=new Item();net.SetDefaults(1991);int width=p.width,height=p.height;float speed=p.meleeSpeed;
+            p.position=new Vector2(640,640);p.direction=1;p.gravDir=1;p.meleeScaleGlove=false;
+            CheckChanged(subject,p,net,"initial");
+            p.position+=new Vector2(.7f,.3f);CheckChanged(subject,p,net,"fractional world position");
+            p.width+=2;p.height+=4;CheckChanged(subject,p,net,"hitbox dimensions");
+            p.direction=-1;CheckChanged(subject,p,net,"direction");p.gravDir=-1;CheckChanged(subject,p,net,"gravity");
+            p.meleeScaleGlove=true;CheckChanged(subject,p,net,"effective glove scale");net.scale*=1.2f;CheckChanged(subject,p,net,"item scale");
+            net.useAnimation=21;CheckChanged(subject,p,net,"use duration");net.melee=true;p.meleeSpeed=.75f;CheckChanged(subject,p,net,"effective duration");
+            p.portableStoolInfo.SetStats(26,13,26);p.portableStoolInfo.IsInUse=true;CheckChanged(subject,p,net,"native hitbox center offset");p.portableStoolInfo.Reset();
+            graphics.LoadTexture("Item","Images/Item_1991",1991);CheckChanged(subject,p,net,"replacement texture value");
+            var asset=Terraria.GameContent.TextureAssets.Item[1991];Terraria.GameContent.TextureAssets.Item[1991]=null;
+            Require(!(bool)Call(subject,"Hits",p,net,new Rectangle(640,640,20,20),1L),"missing asset fails safely");Terraria.GameContent.TextureAssets.Item[1991]=asset;CheckChanged(subject,p,net,"asset becomes ready again");
+            var animation=Main.itemAnimations[1991];Main.itemAnimations[1991]=new Terraria.DataStructures.DrawAnimationVertical(1,2);CheckChanged(subject,p,net,"animated texture first frame");Main.itemAnimations[1991].Update();CheckChanged(subject,p,net,"animated texture next frame");Main.itemAnimations[1991]=animation;
+            p.width=width;p.height=height;p.meleeSpeed=speed;p.gravDir=1;p.meleeScaleGlove=false;p.itemAnimation=p.itemTime=0;
+            Console.WriteLine("PASS G09 geometry invalidation: fractional position, dimensions, facing, gravity, scale/glove, duration, native center offset, texture value/frame, unavailable-to-ready resource.");
+        }
+        private static void CheckChanged(object subject,Player p,Item net,string label)
+        {
+            Rectangle frame=Item.GetDrawHitbox(net.type,p);int frames=Math.Max(1,(int)(net.useAnimation*(net.melee && !Terraria.ID.ItemID.Sets.NoMeleeSpeedBonus[net.type]?p.meleeSpeed:1f)));
+            var expected=new List<Rectangle>();p.itemAnimationMax=frames;
+            for(int f=frames-1;f>0;f--){p.itemAnimation=f;p.ItemCheck_ApplyUseStyle(p.HeightOffsetHitboxCenter,net,frame);bool inactive;Rectangle box;p.ItemCheck_GetMeleeHitbox(net,frame,out inactive,out box);if(!inactive)expected.Add(box);}
+            for(int x=560;x<750;x+=7)for(int y=530;y<770;y+=7)
+            {var target=new Rectangle(x,y,3,5);Require((bool)Call(subject,"Hits",p,net,target,42L)==expected.Exists(r=>r.Intersects(target)),"changed geometry independently matches native: "+label);}
         }
         private static void ActualCapture(object context,int[] nets)
         {

@@ -25,6 +25,7 @@ namespace JueMingR.TerrariaHost.Processing
         internal Func<bool> CanInterface;
         internal Func<bool> BankGuardsReady;
         internal Func<bool> YieldTools;
+        internal Func<Item,bool> ToolsYieldProtection;
         private Player identityPlayer;
         private object identityWorld,identitySocket;
         private int identityMode;

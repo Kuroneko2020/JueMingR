@@ -29,6 +29,7 @@ namespace JueMingR.TerrariaHost.Tools
         internal readonly FishingBorrow Fishing;
         private readonly Func<Item,bool> priorProtection;
         internal Func<bool> CanInterface;
+        internal Func<bool> OtherUseReady;
         internal Feedback.LocalShortFeedback Feedback;
         private bool report;
         private int roundRobin;
@@ -101,6 +102,7 @@ namespace JueMingR.TerrariaHost.Tools
         }
         internal bool Candidate(Player p,int i,bool seed=false)
         {return i>=0 && i<50 && p.inventory[i]!=null && !p.inventory[i].IsAir && !Items.Ownership.IsProtected(i) && !p.inventoryChestStack[i] && !Items.World.ManualMaterials.Contains(p.inventory[i]) && !(priorProtection?.Invoke(p.inventory[i])??false) && (seed || !Herbs.ProtectSeed(p.inventory[i]));}
+        internal bool ProtectedAfterYield(Item item){return (priorProtection?.Invoke(item)??false) || Fishing.ProtectRod(item) || Herbs.ProtectSeed(item);}
         internal ToolIntent Choose(Player p)
         {
             if(!Enabled || Use.Active || PlayerInput.Triggers.Current.MouseLeft || p.selectedItemState.HasBufferedChange)return null;
@@ -112,17 +114,25 @@ namespace JueMingR.TerrariaHost.Tools
             }
             return null;
         }
+        internal bool Ready(){var p=Player;return p!=null && !Use.Active && (Capture.Ready(p) || Herbs.Ready(p) || Mining.Ready(p));}
+        internal bool Contended(ToolKind kind,out bool external)
+        {
+            external=false;var p=Player;if(p==null)return false;
+            external=OtherUseReady?.Invoke()??false;
+            bool other=kind!=ToolKind.Capture && Capture.Ready(p) || kind!=ToolKind.Harvest && Herbs.Ready(p) || kind==ToolKind.Harvest && Herbs.SeedReady(p) || kind!=ToolKind.Mining && Mining.Ready(p);
+            return external || other;
+        }
         internal void ManualSelection(){SelectionIntent++;ManualSelectionFrame=Input.Frame;Fishing.Cancel();Use.Cancel();}
-        internal void Yield(){Use.Cancel();if(Player!=null && Player.selectedItemState.CanChangeSelectedItemImmediately)Use.Retire();NextUseFrame=Input.Frame+3;}
+        internal void Yield(){Use.Cancel();if(Player!=null && Player.selectedItemState.CanChangeSelectedItemImmediately)Use.Retire();NextUseFrame=Input.Frame+1;}
         internal void HoldUnknown(int slot){unknown|=1UL<<slot;Items.Ownership.HoldInterruptedSource(Runtime.Generation,unknown);}
         public void OnSessionStarted()
         {
             object socket=Main.netMode==1?Netplay.Connection.Socket:null;
             bool fresh=!ReferenceEquals(identityPlayer,Main.LocalPlayer) || !ReferenceEquals(identityWorld,Main.ActiveWorldFileData) || !ReferenceEquals(identitySocket,socket) || identityMode!=Main.netMode;
             identityPlayer=Main.LocalPlayer;identityWorld=Main.ActiveWorldFileData;identitySocket=socket;identityMode=Main.netMode;
-            Use.Retire();if(fresh){unknown=0;Capture.ClearUnknown();Herbs.ClearUnknown();Error=null;report=false;}Herbs.Reset();Mining.Clear();Fishing.Reset();SelectionIntent++;NextUseFrame=Input.Frame+1;
+            Use.Retire();if(fresh){unknown=0;Capture.ClearUnknown();Herbs.ClearUnknown();Error=null;report=false;}Capture.Reset();Herbs.Reset();Mining.Clear();Fishing.Reset();SelectionIntent++;NextUseFrame=Input.Frame+1;
         }
-        public void OnSessionEnded(){Use.Retire();Herbs.Reset();Mining.Clear();Fishing.Reset();SelectionIntent++;}
+        public void OnSessionEnded(){Use.Retire();Capture.Reset();Herbs.Reset();Mining.Clear();Fishing.Reset();SelectionIntent++;}
         public void Update(ulong tick)
         {
             Tick=tick;if(unknown!=0)Items.Ownership.HoldInterruptedSource(Runtime.Generation,unknown);

@@ -14,6 +14,35 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if(scope=="ToolsBindings" || scope=="ToolsBindingsReload")
+            {
+                string pathRecord=Path.Combine(output,"bindings-data-path.txt");
+                if(scope=="ToolsBindingsReload")
+                {
+                    string bindingRoot=Path.GetFullPath(File.ReadAllText(pathRecord));
+                    Require(bindingRoot.StartsWith(Path.GetTempPath(),StringComparison.OrdinalIgnoreCase) && Path.GetFileName(bindingRoot).StartsWith("JueMingR-native-tools-bindings-",StringComparison.Ordinal),"reload uses only the prior isolated binding fixture");
+                    Terraria.Program.SavePath=bindingRoot;NativeQuickItemChecks.Run(NativeToolsUiChecks.DispatchBindings,processing:true,shortFeedback:true);Console.WriteLine("PASS G09 both persisted bindings dispatched after process/Host reload from the same isolated directory.");return 0;
+                }
+                Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-tools-bindings-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);Directory.CreateDirectory(output);File.WriteAllText(pathRecord,Terraria.Program.SavePath);
+                NativeQuickItemChecks.Run(context=>{using(var graphics=new ProbeGraphics(content)){Terraria.Localization.LanguageManager.Instance.SetLanguage("zh-Hans");Terraria.Main.InitializeItemAnimations();NativeToolsUiChecks.FullBindings(context,graphics,output);}},processing:true,shortFeedback:true);
+                return 0;
+            }
+            if(scope=="ToolsBorrow")
+            {
+                Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-tools-borrow-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
+                NativeQuickItemChecks.Run(context=>{using(var graphics=new ProbeGraphics(content)){graphics.LoadItemTextures(new[]{0,1991,2289});NativeFishingBorrowChecks.Misses(context);}},processing:true,shortFeedback:true);return 0;
+            }
+            if(scope=="ToolsTiming" || scope=="ToolsTimingOld")
+            {
+                Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-tools-timing-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
+                string old=scope=="ToolsTimingOld"?Path.Combine(Program.Repository,"outputs/g09/387d4b9/round2/JueMingR-Continuous-Processing-387d4b9ecdc15121e7c43acda3dda5600bce5a5c/payload/JueMingR.Validation/JueMingR.TerrariaHost.dll"):null;
+                NativeQuickItemChecks.Run(context=>{using(var graphics=new ProbeGraphics(content)){NativeCaptureTimingChecks.Run(context,graphics);if(old==null)NativeFishingBorrowChecks.Misses(context);}},processing:true,shortFeedback:true,candidateAssembly:old);return 0;
+            }
+            if(scope=="ToolsCadence" || scope=="ToolsWorkload")
+            {
+                Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-tools-cadence-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
+                NativeQuickItemChecks.Run(scope=="ToolsCadence"?(Action<object>)NativeToolCadenceChecks.Run:NativeToolsWorkloadChecks.Run,processing:true,shortFeedback:true);return 0;
+            }
             if(scope=="ToolsCpu" || scope=="ToolsVisual")
             {
                 Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-tools-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);

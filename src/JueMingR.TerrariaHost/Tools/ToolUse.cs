@@ -12,19 +12,23 @@ namespace JueMingR.TerrariaHost.Tools
         internal int Slot;
         internal Vector2 Target;
         internal Func<bool> Valid;
+        internal Func<bool> Refresh;
         internal Action Admitted;
+        internal Action Used;
+        internal Action Yielded;
         internal Action<bool,bool> Completed;
     }
-    // One native animation, not a business scheduler. Selection belongs to
-    // vanilla; this lease only contributes a pulse and an owned aim scope.
+    // The target, sustained business intent and actual use lease have distinct
+    // lifetimes. Only the feature refreshes targets; vanilla owns selection,
+    // animation and tool timing, including consecutive legal uses.
     internal sealed class ToolUse
     {
         private readonly HostTools host;
         private Player player;
         private Item item,originalItem;
         private int type,original,stack,originalType;
-        private long token,session,pulseFrame,selection;
-        private bool pulsed,checkedItem,started,cancelled,borrowed,notified;
+        private long token,session,pulseFrame,selection,nextContention;
+        private bool pulsed,checkedItem,started,cancelled,borrowed,notified,yieldExternal;
         private int oldX,oldY,oldTileX,oldTileY,ownX,ownY,ownTileX,ownTileY;
         private bool oldMouse;
         private Projectile drill;
@@ -39,7 +43,17 @@ namespace JueMingR.TerrariaHost.Tools
         internal void Pick(Player p,ref int chosen,ref bool result)
         {
             if(!ReferenceEquals(p,host.Player))return;
-            if(Active){Retire();return;} // Native Update has already returned it.
+            if(Active)
+            {
+                // Vanilla has restored its original selection before this
+                // callback. Reapplying the same override avoids a spurious
+                // selection change between animations; no timer is rewritten.
+                if(!result && !cancelled && Intent.Refresh!=null && SourceIdentity() &&
+                    host.ManualSelectionFrame!=host.Input.Frame && !PlayerInput.Triggers.Current.MouseLeft &&
+                    host.Admit(p,Intent.Kind==ToolKind.Capture && host.Mode(0)==2) && Intent.Refresh())
+                {chosen=Intent.Slot;result=true;return;}
+                bool handoff=yieldExternal;Retire();if(handoff)return;
+            }
             if(result || host.Input.Frame<host.NextUseFrame || host.ManualSelectionFrame==host.Input.Frame)return;
             ToolIntent candidate=host.Choose(p);if(candidate==null)return;
             if(candidate.Slot<0 || candidate.Slot>=50 || !(candidate.Valid?.Invoke()??false))return;
@@ -48,11 +62,15 @@ namespace JueMingR.TerrariaHost.Tools
             player=p;Intent=candidate;item=p.inventory[candidate.Slot];type=item.type;stack=item.stack;original=p.selectedItem;
             originalItem=original>=0 && original<50?p.inventory[original]:null;originalType=originalItem?.type??0;
             token=next;session=host.Runtime.Generation;selection=host.SelectionIntent;
+            nextContention=host.Input.Frame+Math.Max(1,item.useAnimation);
             pulsed=checkedItem=started=cancelled=notified=false;
+            yieldExternal=false;
             candidate.Admitted?.Invoke();
             chosen=candidate.Slot;result=true;
         }
-        private bool Identity(){return session==host.Runtime.Generation && host.SelectionIntent==selection && player.selectedItem==Intent.Slot && ReferenceEquals(player.inventory[Intent.Slot],item) && item.type==type && item.stack>0;}
+        private bool SourceIdentity(){return session==host.Runtime.Generation && host.SelectionIntent==selection && ReferenceEquals(player.inventory[Intent.Slot],item) && item.type==type && item.stack>0;}
+        private bool Identity(){return SourceIdentity() && player.selectedItem==Intent.Slot;}
+        private bool Refresh(){return Active && !cancelled && Identity() && (Intent.Refresh==null || Intent.Refresh()) && ActionValid;}
         // Selecting a temporary tool must not make the original held source
         // available to automatic sell/store/discard. This observation-only
         // guard never blocks a real manual move or a newer selection intent.
@@ -63,9 +81,9 @@ namespace JueMingR.TerrariaHost.Tools
         {
             if(!ReferenceEquals(p,player))return;
             if(PlayerInput.Triggers.Current.MouseLeft || PlayerInput.Triggers.Current.MouseRight || PlayerInput.Triggers.Current.SmartSelect){HandToManual();return;}
-            if(!ActionValid){Cancel();return;}
-            if(pulsed || checkedItem)return;
-            p.controlUseItem=true;p.releaseUseItem=true;pulseFrame=host.Input.Frame;pulsed=true;
+            if(!Refresh()){Cancel();return;}
+            if(Intent.Refresh==null && (pulsed || checkedItem))return;
+            p.controlUseItem=true;if(!pulsed)p.releaseUseItem=true;pulseFrame=host.Input.Frame;pulsed=true;
         }
         internal void Begin(Player p)
         {
@@ -74,10 +92,10 @@ namespace JueMingR.TerrariaHost.Tools
             // manual press owns this ItemCheck, including during a Boss pause.
             if(PlayerInput.Triggers.Current.MouseLeft || host.SelectionIntent!=selection){HandToManual();return;}
             InNativeUse=true;
-            if(!ActionValid){Cancel();return;}
+            if(!Refresh()){Cancel();return;}
             // Establish cleanup ownership BEFORE the first temporary write.
             BorrowAim();
-            if(pulsed && !checkedItem)Main.mouseLeft=true;
+            if(pulsed && (Intent.Refresh!=null || !checkedItem))Main.mouseLeft=true;
         }
         private void BorrowAim()
         {
@@ -96,7 +114,7 @@ namespace JueMingR.TerrariaHost.Tools
         internal void BeginProjectile(){BorrowAim();}
         internal void EndProjectile(long operation,Exception error)
         {if(operation!=token)return;Restore();if(error!=null){host.HoldUnknown(Intent.Slot);Notify(true);Cancel();}}
-        internal void Started(Player p){if(ReferenceEquals(p,player) && InNativeUse)started=true;}
+        internal void Started(Player p){if(ReferenceEquals(p,player) && InNativeUse){started=true;Intent.Used?.Invoke();}}
         internal void End(Player p,long operation,Exception error)
         {
             if(operation==0 || operation!=token || !ReferenceEquals(p,player))return;
@@ -109,6 +127,11 @@ namespace JueMingR.TerrariaHost.Tools
             }
             else if(item.stack>stack || item.stack<stack-1 || !ReferenceEquals(p.inventory[Intent.Slot],item) && !p.inventory[Intent.Slot].IsAir)
             {host.HoldUnknown(Intent.Slot);Notify(true);Cancel();}
+            if(!cancelled && Intent.Refresh!=null && host.Input.Frame>=nextContention)
+            {
+                nextContention=host.Input.Frame+Math.Max(1,p.itemAnimationMax);
+                bool external;if(host.Contended(Intent.Kind,out external)){yieldExternal=external;Intent.Yielded?.Invoke();Cancel();}
+            }
         }
         internal bool Owns(Item[] array,int slot){return InNativeUse && ReferenceEquals(array,player?.inventory) && Intent!=null && slot==Intent.Slot && ReferenceEquals(array[slot],item);}
         internal bool Is(ToolKind kind){return InNativeUse && Intent!=null && Intent.Kind==kind;}
@@ -116,7 +139,7 @@ namespace JueMingR.TerrariaHost.Tools
         {
             if(!Active)return;
             if(!Identity() || !host.Admit(player,Intent.Kind==ToolKind.Capture && host.Mode(0)==2))Cancel();
-            if(checkedItem && player.selectedItemState.CanChangeSelectedItemImmediately)Retire();
+            if(checkedItem && (cancelled || Intent.Refresh==null) && player.selectedItemState.CanChangeSelectedItemImmediately)Retire();
         }
         private void Notify(bool unknown){if(notified)return;notified=true;Intent?.Completed?.Invoke(started,unknown);}
         internal void Cancel()
@@ -129,7 +152,7 @@ namespace JueMingR.TerrariaHost.Tools
         internal void Retire()
         {
             if(!Active)return;Restore();Cancel();Notify(false);
-            host.Items.Ownership.EndUse(session,token);host.NextUseFrame=host.Input.Frame+2;
+            host.Items.Ownership.EndUse(session,token);
             player=null;item=originalItem=null;drill=null;Intent=null;token=0;InNativeUse=false;
         }
         private void Restore()
@@ -137,7 +160,7 @@ namespace JueMingR.TerrariaHost.Tools
             if(!borrowed)return;borrowed=false;
             if(Main.mouseX==ownX)Main.mouseX=oldX;if(Main.mouseY==ownY)Main.mouseY=oldY;
             if(Player.tileTargetX==ownTileX)Player.tileTargetX=oldTileX;if(Player.tileTargetY==ownTileY)Player.tileTargetY=oldTileY;
-            if(!oldMouse && Main.mouseLeft && pulsed && !checkedItem)Main.mouseLeft=false;
+            if(!oldMouse && Main.mouseLeft && pulsed)Main.mouseLeft=false;
         }
     }
 }
