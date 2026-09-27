@@ -38,6 +38,7 @@ namespace JueMingR.TerrariaHost.F5
         internal void AttachFishing(Fishing.HostFishing owner)
         {
             fishing=owner;FishingUi=new Fishing.FishingPresentation(owner,State){HotkeyClicked=OpenHotkey};renderer.FishingUi=FishingUi;State.Layout.FishingAttached=true;
+            owner.CanEquipmentInterface=()=>CanFishingEquipmentInput;
             FishingUi.Opened=()=>{CaptureUi?.Close();RecoveryUi?.PotionPopup.Close();HotkeyPopup?.Close();StylePopup?.Close();DeathPopup?.Close();FootprintPopup?.Close();};
         }
         internal Tools.CaptureWindow CaptureUi {get;private set;}
@@ -143,6 +144,9 @@ namespace JueMingR.TerrariaHost.F5
         // permission excludes public UI owners without banning those contexts.
         internal bool CanProcessingInput {get{return !failed && LayersReady && biome.SharedRuntime.IsSessionActive && CanPresent(false,true) && !State.Visible &&
             !inputState.HotkeyCapture && !OwnsPointer && !(information!=null && information.Adjustment.Active) && !adjustmentPending && !Main.clothesWindow && !Main.hairWindow;}}
+        private bool CanFishingEquipmentInput {get{return !failed && LayersReady && biome.SharedRuntime.IsSessionActive && CanPresent(false,true) &&
+            !inputState.HotkeyCapture && (!OwnsPointer || State.Visible && State.OwnsPointer) && !(information!=null && information.Adjustment.Active) && !adjustmentPending && !Main.clothesWindow && !Main.hairWindow &&
+            Main.LocalPlayer!=null && (!Main.LocalPlayer.mouseInterface || State.Visible && State.OwnsPointer && ReferenceEquals(leasedPlayer,Main.LocalPlayer) && !priorMouseInterface);}}
         // Background buffs share every UI safety condition. Focus is the only
         // presentation exception; no keyboard or pointer permission is granted.
         internal bool CanBackgroundBuff { get { return !inputState.IsFocused && CanTargetActions(false); } }

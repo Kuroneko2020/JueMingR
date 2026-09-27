@@ -22,10 +22,69 @@ namespace NativeWorldTextProbe
         {
             context=value;host=Get(value,"Fishing");owner=Get(host,"Equipment");tools=Get(value,"Tools");input=Get(value,"Input");
             bool hint=Player.Settings.ShowLoadoutShareHint;Player.Settings.ShowLoadoutShareHint=false;
-            try{Clothing();Social();Loadout();Void();ManualGroup();Favorites();MovedOriginal();LaterIntent();StackSource();WaterHook();UpgradeChain();Lifecycle();NativeFishingNetworkChecks.Equipment(context,Reset,Cast,Stop);}
+            try{NoBorrowNotice();F5Equipment();PendingLoadoutTakeover();Clothing();Social();Loadout();Void();ManualGroup();Favorites();MovedOriginal();LaterIntent();StackSource();WaterHook();UpgradeChain();Lifecycle();NativeFishingNetworkChecks.Equipment(context,Reset,Cast,Stop);}
             finally{Player.Settings.ShowLoadoutShareHint=hint;}
             NativeFishingChecks.Save(host,new FishingOptions());Frames(25);
             Console.WriteLine("PASS G10 real wet-bobber equipment admission, strict clothing upgrade, exact-reference return, social sources, shared loadout projection, usable void and manual group handoff.");
+        }
+        private static void NoBorrowNotice()
+        {
+            var p=Reset();Put(p.armor,0,5591);Cast(new FishingOptions(loadout:true));
+            Require(!(bool)Get(owner,"Active"),"best current group does not create a loan");
+            var notices=new List<string>();Call(host,"TakeFeedback",(Action<string>)notices.Add);notices.Clear();Stop();
+            Require(GetOptional(owner,"player")==null,"ending an unborrowed session retires its prepared owner");
+            NativeFishingChecks.Step(context,input,new Vector2(850,718),true,0);Frames(150);Cast(new FishingOptions(loadout:true));
+            p.TrySwitchingLoadout(1);Frames(25);Stop();Call(host,"TakeFeedback",(Action<string>)notices.Add);
+            Require(!notices.Any(x=>x.Contains("归还") || x.Contains("接管装备组")),"no actual loan never claims restoration or handoff");
+        }
+        private static void F5Equipment()
+        {
+            object shell=Get(context,"Shell"),state=Get(shell,"State");
+            foreach(bool group in new[]{true,false})
+            {
+                var p=Reset();var hat=Put(group?p.Loadouts[1].Armor:p.inventory,group?0:12,5591);
+                Cast(new FishingOptions(auto:true));
+                Main.screenWidth=960;Main.screenHeight=760;Main.UIScale=1;Terraria.GameInput.PlayerInput.CacheOriginalScreenDimensions();
+                FiniteCostChecks.SetCpuFont(10);Call(Get(shell,"renderer"),"RefreshResources");Call(state,"Navigate",7);Call(state,"RestoreVisible");NativeFishingUiChecks.Prepare(context);NativeFishingExperienceChecks.ShellFrame(context,Vector2.Zero,false);
+                var point=new Vector2((float)Get(state,"X")+30,(float)Get(state,"Y")+30);
+                NativeFishingChecks.Save(host,new FishingOptions(auto:true,loadout:group,equipment:!group));
+                NativeFishingExperienceChecks.ShellFrame(context,point,true);
+                Require(p.CurrentLoadoutIndex==0 && !ReferenceEquals(p.armor[0],hat),"consumed F5 physical press cannot apply equipment");
+                p.chest=0;NativeFishingExperienceChecks.ShellFrame(context,point,false);Require(p.CurrentLoadoutIndex==0 && !ReferenceEquals(p.armor[0],hat),"open native chest still prevents F5 equipment");p.chest=-1;
+                Main.drawingPlayerChat=true;NativeFishingExperienceChecks.ShellFrame(context,point,false);Require(p.CurrentLoadoutIndex==0 && !ReferenceEquals(p.armor[0],hat),"chat remains an equipment safety gate while F5 is visible");Main.drawingPlayerChat=false;
+                // Native chat admission closes F5. Reopen its real presentation
+                // before testing a held item and the ordinary hover exception.
+                Call(state,"RestoreVisible");NativeFishingUiChecks.Prepare(context);
+                Main.mouseItem.SetDefaults(ItemID.StoneBlock);NativeFishingExperienceChecks.ShellFrame(context,point,false);Require(p.CurrentLoadoutIndex==0 && !ReferenceEquals(p.armor[0],hat),"held mouse item remains protected in F5");Main.mouseItem.TurnToAir();
+                NativeFishingExperienceChecks.ShellFrame(context,point,false);
+                Require((bool)Get(state,"OwnsPointer") && p.mouseInterface,"fixture exercises the actual F5-owned native mouse-interface lease: visible="+Get(state,"Visible")+" ready="+Get(state,"Ready")+" xy="+Get(state,"X")+","+Get(state,"Y")+" point="+point+" pointer="+Get(state,"PointerX")+","+Get(state,"PointerY")+" mouse="+p.mouseInterface+" raw="+Terraria.GameInput.PlayerInput.RawMouseScale);
+                Require((bool)Get(state,"Visible") && ReferenceEquals(p.armor[0],hat) && p.CurrentLoadoutIndex==(group?1:0),"actual F5 hover permits fishing equipment after physical release, group="+group+" interface="+Get(shell,"CanFishingEquipmentInput")+" start="+Get(input,"CanStartActions")+" retain="+Get(input,"CanRetainIntent")+" apply="+Call(owner,"ApplyGate")+" mouse="+p.mouseInterface+" own="+Get(state,"OwnsPointer")+" original="+Get(shell,"priorMouseInterface")+" session="+Get(Get(host,"Session"),"Phase")+" owner="+(GetOptional(owner,"player")!=null)+" use="+Get(Get(tools,"Use"),"Active")+" buffered="+p.selectedItemState.HasBufferedChange+" animation="+p.itemAnimation+" time="+p.itemTime+" return="+Get(owner,"returning"));
+                Require(!(bool)Get(shell,"CanProcessingInput"),"fishing equipment exception leaves tool/processing permission closed");
+                NativeFishingChecks.Save(host,new FishingOptions());
+                for(int i=0;i<25;i++)
+                {
+                    NativeFishingExperienceChecks.ShellFrame(context,point,true);
+                    Require(ReferenceEquals(p.armor[0],hat) && (bool)Get(owner,"Active"),"F5-consumed physical press also defers an existing equipment loan's return");
+                }
+                for(int i=0;i<25;i++)NativeFishingExperienceChecks.ShellFrame(context,point,false);
+                Require(p.CurrentLoadoutIndex==0 && !ReferenceEquals(p.armor[0],hat) && !(bool)Get(owner,"Active"),"physical release completes the exact equipment return while F5 stays open");
+                Call(shell,"CloseAndSubmitPosition");NativeFishingExperienceChecks.ShellFrame(context,Vector2.Zero,false);Stop();
+            }
+        }
+        private static void PendingLoadoutTakeover()
+        {
+            var p=Reset();Put(p.Loadouts[1].Armor,0,5591);Cast(new FishingOptions(loadout:true));
+            Require(p.CurrentLoadoutIndex==1 && (bool)Get(owner,"Active"),"takeover fixture actually borrows a saved loadout");
+            NativeFishingChecks.Save(host,new FishingOptions());
+            // Isolate the native CC rejection at the real return boundary; a
+            // full Player.Update would recompute CCed before this observation.
+            p.frozen=true;Call(owner,"Restore",false);
+            string pending=(string)GetOptional(owner,"Status");
+            Require(pending?.Contains("待归还")==true && (bool)Get(owner,"Active"),"blocked actual return retains an accurate pending result");
+            p.frozen=false;p.TrySwitchingLoadout(2);
+            var notices=new List<string>();Call(host,"TakeFeedback",(Action<string>)notices.Add);
+            Require(p.CurrentLoadoutIndex==2 && !(bool)Get(owner,"Active") && GetOptional(owner,"Status")==null && !Equals(GetOptional(host,"Error"),pending) && !notices.Contains(pending),"real manual takeover clears the retired loan's status and pending announcement");
+            Stop();
         }
         private static void Clothing()
         {
@@ -39,6 +98,7 @@ namespace NativeWorldTextProbe
             Require(p.fishingSkill==10,"the actually equipped fishing clothing contributes power through full native Player.Update");
             long plans=(long)Get(owner,"Plans"),exchanges=(long)Get(owner,"Exchanges");Frames(100,3);
             Require((long)Get(owner,"Plans")==plans && (long)Get(owner,"Exchanges")==exchanges,"stable equipment does not re-plan or repeat exchanges across extra outer callbacks");
+            CutWhileBorrowed(p,false);
             Stop();Require(ReferenceEquals(p.armor[0],old) && ReferenceEquals(p.inventory[12],better) && (int)Get(owner,"Count")==0,"disabled strategy restores the exact original objects");
         }
         private static void Social()
@@ -55,10 +115,25 @@ namespace NativeWorldTextProbe
             Cast(new FishingOptions(loadout:true));
             Require(p.CurrentLoadoutIndex==1 && p.armor[0].IsAir && ReferenceEquals(p.GetEffectiveArmor(0),head) && ReferenceEquals(p.GetEffectiveArmor(1),body) && ReferenceEquals(p.armor[2],legs),"native double-swap projection includes shared original wear and chooses group1, without moving shared items");
             Require(p.fishingSkill==15,"native effective shared head/body plus switched legs actually contribute fishing power");
+            CutWhileBorrowed(p,true);
             Stop();Require(p.CurrentLoadoutIndex==0 && ReferenceEquals(p.armor[0],head) && ReferenceEquals(p.armor[1],body),"whole-group owner restores using actual native switching");
             NativeFishingChecks.Step(context,input,new Vector2(850,718),true,0);Frames(150);
             Cast(new FishingOptions(loadout:true));p.TrySwitchingLoadout(2);Frames(30);Stop();
             Require(p.CurrentLoadoutIndex==2,"a real manual group switch revokes automatic switch-back and same-session reapplication");
+        }
+        private static void CutWhileBorrowed(Player p,bool group)
+        {
+            var session=Get(host,"Session");long token=(long)Get(session,"Token"),swaps=(long)Get(owner,"Exchanges");int loadout=p.CurrentLoadoutIndex;
+            var armor=p.armor.ToArray();var old=Main.projectile.First(q=>q.active && q.bobber && q.owner==p.whoAmI);int key=(int)old.key;
+            NativeFishingChecks.Save(host,new FishingOptions(auto:true,cut:true,filterMode:1,crates:0,quests:0,npcs:0,loadout:group,equipment:!group));
+            p.AddBuff(122,2000);old.ai[1]=-240;old.localAI[1]=ItemID.Bass;old.localAI[2]=ItemID.Worm;
+            for(int i=0;i<300;i++)
+            {
+                Frames(1,3);
+                Require((bool)Get(session,"Active") && (long)Get(session,"Token")==token && (long)Get(owner,"Exchanges")==swaps && p.CurrentLoadoutIndex==loadout && p.armor.SequenceEqual(armor),"owned cut never ends the equipment loan or swaps its real objects");
+                if(!Main.projectile.Any(q=>q.active && q.bobber && (int)q.key==key) && (bool)Get(session,"InLiquid"))break;
+            }
+            Require(p.selectedItem==0 && (bool)Get(session,"InLiquid") && !Main.projectile.Any(q=>q.active && q.bobber && (int)q.key==key),"cut returns the rod and wet replacement with the same equipment loan");
         }
         private static void Void()
         {

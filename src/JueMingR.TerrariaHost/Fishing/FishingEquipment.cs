@@ -58,7 +58,13 @@ namespace JueMingR.TerrariaHost.Fishing
         internal void Update()
         {
             int desired=Desired();
-            if(!Active && desired==0)return; // OFF has no clock or container work.
+            if(!Active && desired==0)
+            {
+                // A prepared best-already-worn plan is not a loan. Retire it
+                // with its fishing identity without inventing a return result.
+                if(player!=null && (!host.Session.Active || token!=host.Session.Token)){ClearStatus();ClearOwner();}
+                return; // OFF has no clock or container work.
+            }
             if(player!=null && !Identity()){EndSession();host.Session.Stop();return;}
             if(player==null)
             {
@@ -108,12 +114,14 @@ namespace JueMingR.TerrariaHost.Fishing
         private bool Truffle()
         {var p=host.Player;if(p==null)return false;for(int i=54;i<58;i++)if(!p.inventory[i].IsAir && p.inventory[i].bait>0)return p.inventory[i].type==Terraria.ID.ItemID.TruffleWorm;for(int i=0;i<50;i++)if(!p.inventory[i].IsAir && p.inventory[i].bait>0)return p.inventory[i].type==Terraria.ID.ItemID.TruffleWorm;return false;}
         private bool ApplyGate()
-        {return Identity() && host.Ready && !Truffle() && host.Tools.Admit(player,true) && !player.UsingOrReusingItem && !host.Tools.Use.Active && !host.Tools.Fishing.Active && !player.selectedItemState.HasBufferedChange && !PlayerInput.Triggers.Current.MouseLeft;}
+        {return Identity() && host.Ready && !Truffle() && host.Tools.AdmitFishingEquipment(player,host.CanEquipmentInterface?.Invoke()??false) && !player.UsingOrReusingItem && !host.Tools.Use.Active && !host.Tools.Fishing.Active && !player.selectedItemState.HasBufferedChange && !PlayerInput.Triggers.Current.MouseLeft && PlayerInput.MouseInfo.LeftButton==Microsoft.Xna.Framework.Input.ButtonState.Released && PlayerInput.MouseInfo.RightButton==Microsoft.Xna.Framework.Input.ButtonState.Released;}
         private bool ReturnGate(bool boundary)
         {
             return Identity() && !Main.gameMenu && !Main.ServerSideCharacter && !(Main.ActivePlayerFileData?.ServerSideCharacter??false) && !Main.gamePaused &&
                 !player.UsingOrReusingItem && !host.Tools.Use.InNativeUse && !player.HasLockedInventory() && !host.Tools.Items.World.Busy && !host.Tools.Items.World.HasManualOperation &&
-                Main.mouseItem!=null && Main.mouseItem.IsAir && (boundary || !PlayerInput.Triggers.Current.MouseLeft && !PlayerInput.Triggers.Current.MouseRight);
+                // F5 consumes mapped presses, but an ordinary return must also
+                // wait for physical release. Death/exit retain their own boundary.
+                Main.mouseItem!=null && Main.mouseItem.IsAir && (boundary || !PlayerInput.Triggers.Current.MouseLeft && !PlayerInput.Triggers.Current.MouseRight && PlayerInput.MouseInfo.LeftButton==Microsoft.Xna.Framework.Input.ButtonState.Released && PlayerInput.MouseInfo.RightButton==Microsoft.Xna.Framework.Input.ButtonState.Released);
         }
         private bool Allowed(Item[] array,int slot)
         {
@@ -227,7 +235,7 @@ namespace JueMingR.TerrariaHost.Fishing
             if(!ReturnGate(boundary))return;
             if(loadoutOwned)
             {
-                if(player.CurrentLoadoutIndex!=appliedLoadout){loadoutOwned=false;Say("已由玩家接管装备组，未自动切回。");}
+                if(player.CurrentLoadoutIndex!=appliedLoadout)loadoutOwned=false;
                 else if(!player.dead && !player.CCed)Switch(originalLoadout,true);
             }
             for(int i=entries.Count-1;i>=0;i--)
@@ -251,7 +259,7 @@ namespace JueMingR.TerrariaHost.Fishing
                 finally{try{if(favoriteScope)favorites?.End();}catch{Fail("收藏状态检查异常，已停止配装并保留实际物品。");}finally{depth--;}}
             }
             if(Active)Say("部分钓鱼装备待归还；请放下鼠标物品并回到原装备组，保留原物位置。");
-            else Say("钓鱼装备已归还。");
+            else ClearStatus();
         }
         internal void BeforeBoundary(Player current,bool quitting)
         {
@@ -281,8 +289,8 @@ namespace JueMingR.TerrariaHost.Fishing
         internal void ManualLoadout(Player current,int before)
         {
             if(depth!=0 || !Identity() || !ReferenceEquals(current,player) || before==player.CurrentLoadoutIndex)return;
-            if(mode==1){loadoutOwned=false;suppressed=host.Session.Token;Say("已由玩家接管装备组，未自动切回。");ClearOwner();}
-            else{dirty=true;haveFingerprint=false;Say("已切换装备组；原钓鱼配装记录等待回到原组后处理。");}
+            if(mode==1){loadoutOwned=false;suppressed=host.Session.Token;ClearStatus();ClearOwner();}
+            else{dirty=true;haveFingerprint=false;if(Active)Say("已切换装备组；原钓鱼配装记录等待回到原组后处理。");}
         }
         internal void ManualSlots()
         {
@@ -332,6 +340,7 @@ namespace JueMingR.TerrariaHost.Fishing
         }
         internal void Fail(string message){failed=true;returning=true;dirty=true;haveFingerprint=false;Say(message);}
         private void Say(string message){Status=message;host.Report(message);}
+        private void ClearStatus(){host.ClearReport(Status);Status=null;}
         internal void EndSession(){if(Active)Say("会话已结束，未归还装备保留在实际角色物品格；不会带入下一角色重试。");Detach();}
         private void Detach(){entries.Clear();loadoutOwned=false;ClearOwner();}
         private void ClearOwner(){player=null;world=socket=null;mode=0;returning=false;dirty=true;haveFingerprint=false;Array.Clear(shareEpochs,0,shareEpochs.Length);manualSlots=0;}

@@ -30,7 +30,7 @@ namespace JueMingR.TerrariaHost.Tools
         private Item item,originalItem;
         private int type,original,stack,originalType;
         private long token,session,pulseFrame,selection,nextContention;
-        private bool pulsed,checkedItem,started,cancelled,borrowed,notified,yieldExternal;
+        private bool pulsed,checkedItem,started,cancelled,borrowed,notified,yieldExternal,returnRequested;
         private int oldX,oldY,oldTileX,oldTileY,ownX,ownY,ownTileX,ownTileY;
         private bool oldMouse;
         private Projectile drill;
@@ -71,7 +71,7 @@ namespace JueMingR.TerrariaHost.Tools
             token=next;session=host.Runtime.Generation;selection=host.SelectionIntent;
             nextContention=host.Input.Frame+Math.Max(1,item.useAnimation);
             pulsed=checkedItem=started=cancelled=notified=false;
-            yieldExternal=false;
+            yieldExternal=returnRequested=false;
             candidate.Admitted?.Invoke();
             return true;
         }
@@ -162,6 +162,11 @@ namespace JueMingR.TerrariaHost.Tools
         {
             if(!Active)return;
             if(!Identity() || !host.CanRetainUse(player,HeldInventory))Cancel();
+            // Select only queues the original slot. Unsampled outer updates
+            // must retain this exact lease until native selection consumes it;
+            // otherwise fishing mistakes our own temporary slot for manual exit.
+            // A newer manual intent or changed source immediately loses this right.
+            if(returnRequested && SourceIdentity() && player.selectedItem!=original && player.selectedItemState.HasBufferedChange)return;
             if(checkedItem && (cancelled || Intent.Refresh==null) && player.selectedItemState.CanChangeSelectedItemImmediately)Retire();
         }
         private void Notify(bool unknown){if(notified)return;notified=true;Intent?.Completed?.Invoke(started,unknown);}
@@ -169,7 +174,7 @@ namespace JueMingR.TerrariaHost.Tools
         {
             if(!Active)return;cancelled=true;
             if(player.selectedItemState.HasActiveOverride && !player.selectedItemState.HasBufferedChange && host.SelectionIntent==selection)
-            {Returning=true;try{player.selectedItemState.Select(original);}finally{Returning=false;}}
+            {Returning=true;try{player.selectedItemState.Select(original);returnRequested=true;}finally{Returning=false;}}
             if(pulseFrame==host.Input.Frame && pulsed){player.controlUseItem=PlayerInput.Triggers.Current.MouseLeft;player.releaseUseItem=!player.controlUseItem;}
         }
         internal void Retire()

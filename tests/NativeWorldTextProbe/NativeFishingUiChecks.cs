@@ -27,6 +27,7 @@ namespace NativeWorldTextProbe
             FiniteCostChecks.SetCpuFont(10);Call(renderer,"RefreshResources");
             var text=Get(ui,"TextInput");var field=text.GetType().GetField("ime",BindingFlags.Instance|BindingFlags.NonPublic);var ime=new Ime(field.FieldType);field.SetValue(text,ime.GetTransparentProxy());
             Call(state,"Navigate",7);Call(state,"RestoreVisible");Prepare(context);
+            NativeFishingExperienceChecks.RunUi(context);
             BalancedLayout(context,host,ui);
             long layouts=(long)Get(ui,"LayoutBuilds"),rules=(long)Get(Get(host,"Catalog"),"RuleChecks"),tiles=(long)Get(Get(host,"Catalog"),"TileReads");
             for(int i=0;i<30;i++)Prepare(context);
@@ -49,7 +50,7 @@ namespace NativeWorldTextProbe
             var stateInput=Activator.CreateInstance(state.GetType().Assembly.GetType("JueMingR.TerrariaHost.F5.F5Input"));
             foreach(var entry in new[]{Tuple.Create("Width",(object)960f),Tuple.Create("Height",(object)760f),Tuple.Create("Scale",(object)1f),Tuple.Create("X",(object)pp.X),Tuple.Create("Y",(object)pp.Y),Tuple.Create("Active",(object)true),Tuple.Create("Focused",(object)true),Tuple.Create("BlockPointer",(object)true)})stateInput.GetType().GetField(entry.Item1,BindingFlags.Instance|BindingFlags.NonPublic).SetValue(stateInput,entry.Item2);
             Call(state,"Update",stateInput);var popupHint=new object[]{state,null,false,false,null,null};
-            Require(!((bool)Get(state,"CanShowHint")) && ((string)Call(renderer,"ResolveHint",popupHint))?.StartsWith("应用后替换当前名单：")==true,"actual renderer resolves owned popup preview despite blocked underlying page");
+            Require(!((bool)Get(state,"CanShowHint")) && Call(renderer,"ResolveHint",popupHint)==null,"preset contents are visible inline without a hover reminder");
             Click(context,Part(ui,"Close"));
             Click(context,Part(ui,"Match",p=>(int)Get(p,"Value")==1));Drain(host);Prepare(context);Click(context,Part(ui,"Plus"));
             Step(context,false,new Vector2(0,0),"鱼");Prepare(context);Click(context,Part(ui,"Confirm"));Drain(host);Prepare(context);
@@ -112,7 +113,7 @@ namespace NativeWorldTextProbe
             Save(host,new FishingOptions(filterMode:2).WithList(2,0,new FishList(new[]{2290,2297,2334,2335,2336,2337}.Select(id=>new FishKey(FishKind.Item,id)))));Prepare(context);
             var parts=((IEnumerable)Get(ui,"pageParts")).Cast<object>().ToArray();
             var match=parts.Single(p=>Get(p,"Command").ToString()=="Match");
-            var title=parts.Single(p=>(string)GetOptional(Get(p,"Element"),"Text")=="当前模式：" && Get(Get(p,"Element"),"Kind").ToString()=="Text");
+            var title=parts.Single(p=>(string)GetOptional(Get(p,"Element"),"Text")=="当前过滤模式：" && Get(Get(p,"Element"),"Kind").ToString()=="Text");
             var mr=Get(Get(match,"Element"),"Rect");var tr=Get(Get(title,"Element"),"Rect");
             var filter=parts.Single(p=>Get(p,"Command").ToString()=="Filter");var fr=Get(Get(filter,"Element"),"Rect");
             Require((float)Get(tr,"Y")>=(float)Get(mr,"Y") && (float)Get(tr,"Y")<(float)Get(mr,"Bottom") && (float)Get(fr,"Y")== (float)Get(mr,"Y") && (float)Get(tr,"Right")<(float)Get(fr,"X") && (float)Get(fr,"Right")<(float)Get(mr,"X"),"current-mode heading, filter and match toggle share one nonoverlapping row in that order");

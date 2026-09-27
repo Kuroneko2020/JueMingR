@@ -23,6 +23,7 @@ namespace JueMingR.TerrariaHost.Fishing
         internal readonly FishingSession Session;
         internal readonly PlayerRename Rename;
         internal readonly FishingEquipment Equipment;
+        internal Func<bool> CanEquipmentInterface;
         internal bool Available {get;private set;}
         internal Exception SetupError {get;private set;}
         internal string Error {get;private set;}
@@ -42,7 +43,7 @@ namespace JueMingR.TerrariaHost.Fishing
             Rename=new PlayerRename(this);
             tools.Items.UpdateFishingStorage=SyncStorage;
             tools.Items.FishingClock=()=>Tools.Tick;
-            tools.FishingEnabled=()=>NeedsSession || Session.Active;tools.FishingChoice=Session.Choose;tools.FishingStarted=Session.ObserveUse;tools.FishingProjectile=Session.ObserveCreated;tools.FishingManualSelection=()=>Session.Stop();
+            tools.FishingEnabled=()=>NeedsSession || Session.Active;tools.FishingChoice=Session.Choose;tools.FishingStarted=Session.ObserveUse;tools.FishingProjectile=Session.ObserveCreated;tools.FishingManualSelection=Session.ManualSelection;
             var prior=tools.Items.World.AdditionalProtection;Equipment=new FishingEquipment(this,favorites,prior);
             tools.Items.World.AdditionalProtection=item=>(prior?.Invoke(item)??false) || Session.Protect(item) || Equipment.Protect(item);
             try{FishingHooks.Install(this);FishingEquipmentHooks.Install(Equipment);Available=tools.Available;}
@@ -67,9 +68,9 @@ namespace JueMingR.TerrariaHost.Fishing
                 !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest && !PlayerInput.WritingText && Main.CurrentInputTextTakerOverride==null &&
                 !Main.ServerSideCharacter && !(Main.ActivePlayerFileData?.ServerSideCharacter??false) && !WorldGen.isGeneratingOrLoadingWorld && p.talkNPC<0 && p.sign<0 && Main.npcShop==0 && Main.mouseItem!=null && Main.mouseItem.IsAir;
         }
-        internal void Set(int feature,int value){if(Controls)Settings.Set(Settings.Value.Change(feature,value));}
+        internal void Set(int feature,int value){if(Controls && Settings.Value.State(feature)!=value)Settings.Set(Settings.Value.Change(feature,value));}
         internal static string ModeName(int feature,int value)
-        {return value==0?"关闭":feature==3?(value==1?"所有":"任务鱼"):feature==5?(value==1?"白名单":"黑名单"):"开启";}
+        {return value==0?(feature==5?"关闭过滤":"关闭"):feature==3?(value==1?"所有":"任务鱼"):feature==5?(value==1?"白名单":"黑名单"):"开启";}
         internal void Register(HotkeyRegistry registry,Hotkeys.HotkeyStateFeedback feedback)
         {
             // The owner chose an on-page cycle for the filter mode, without a
@@ -82,6 +83,7 @@ namespace JueMingR.TerrariaHost.Fishing
             }
         }
         internal void Report(string message){if(Error==message)return;Error=message;feedback=true;}
+        internal void ClearReport(string message){if(message!=null && Error==message){Error=null;feedback=false;}}
         internal void TakeFeedback(Action<string> display)
         {
             Settings.TakeFeedback(display);

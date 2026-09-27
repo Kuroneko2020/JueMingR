@@ -25,8 +25,10 @@ namespace JueMingR.Features.Fishing
             FishKey key=candidate.Value;FishList list=options.List(options.FilterMode,options.Match);
             bool match=options.Match==0?list.Contains(key):list.Matches(localizedName);
             int special=crate?options.Crates:quest?options.Quests:key.Kind==FishKind.Npc?options.Npcs:0;
-            if(special==1)return options.FilterMode!=2 || !match;
-            if(special==2)return options.FilterMode==1 && match;
+            // Explicit special rules override either list, including an empty
+            // active list. Follow (0) alone delegates to ordinary matching.
+            if(special==1)return true;
+            if(special==2)return false;
             return options.FilterMode==1?match:!match;
         }
     }

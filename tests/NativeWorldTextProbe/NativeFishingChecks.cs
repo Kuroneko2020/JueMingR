@@ -18,6 +18,8 @@ namespace NativeWorldTextProbe
         private static int pulls,products,casts;
         private static Vector2 lastVelocity,firstNativeAim;
         private static ProbeGraphics textures;
+        private static readonly System.Collections.Generic.List<string> prompts=new System.Collections.Generic.List<string>();
+        private static void Shown(string __0,string __1){if(__0=="fishing.session")prompts.Add(__1);}
         private sealed class UnexpectedFishingCondition : Terraria.GameContent.FishDropRules.AFishingCondition
         {internal static int Calls;public override bool Matches(Terraria.GameContent.FishDropRules.FishingContext context){Calls++;Main.rand.Next();return true;}}
         private static bool SkipAchievement(){return false;}
@@ -68,18 +70,22 @@ namespace NativeWorldTextProbe
             audit.Patch(typeof(Player).GetMethod("ItemCheck_PullFishingBobbers",Flags),postfix:new HarmonyMethod(typeof(NativeFishingChecks),nameof(Pulled)));
             audit.Patch(typeof(Projectile).GetMethod("AI_061_FishingBobber_GiveItemToPlayer",Flags),postfix:new HarmonyMethod(typeof(NativeFishingChecks),nameof(Given)));
             audit.Patch(typeof(Player).GetMethod("TryUpdateChannel",Flags),postfix:new HarmonyMethod(typeof(NativeFishingChecks),nameof(Created)));
+            audit.Patch(Get(context,"ShortFeedback").GetType().GetMethod("Show",Flags),postfix:new HarmonyMethod(typeof(NativeFishingChecks),nameof(Shown)));
             try
             {
                 foreach(bool inventory in new[]{false,true})foreach(int empty in new[]{0,1,3})
                 {
                     Save(host,new FishingOptions());
-                    var p=NativeToolExecutionChecks.Reset(context,tools,input,ItemID.WoodFishingPole,0,0);
+                    int rodSlot=inventory?3:0;var p=NativeToolExecutionChecks.Reset(context,tools,input,ItemID.WoodFishingPole,rodSlot,rodSlot);
+                    if(inventory){for(int i=0;i<10;i++)if(i!=rodSlot)p.inventory[i].SetDefaults(ItemID.WoodFishingPole);}
+                    else if(empty!=0){p.inventory[1].SetDefaults(ItemID.StoneBlock);p.inventory[1].stack=17;}
                     foreach(var item in p.armor)item.TurnToAir();p.armor[3].SetDefaults(ItemID.HighTestFishingLine);p.inventory[54].SetDefaults(ItemID.Worm);p.inventory[54].stack=100;
                     for(int x=44;x<74;x++)for(int y=42;y<61;y++){Main.tile[x,y].ClearEverything();if(y>=44 && y<60)Main.tile[x,y].liquid=255;if(y==60)NativeToolsChecks.Tile(x,y,1);}
-                    Save(host,new FishingOptions(auto:true));pulls=products=casts=0;var point=new Vector2(850,718);
+                    Save(host,new FishingOptions(auto:true));pulls=products=casts=0;prompts.Clear();var point=new Vector2(850,718);
                     for(int frame=0;frame<150;frame++)Step(context,input,point,frame==0,empty);
                     var b=Main.projectile.FirstOrDefault(q=>q.active && q.bobber && q.owner==p.whoAmI);
                     Require(b!=null && b.wet && (bool)Get(Get(host,"Session"),"Active"),"manual real native cast enters liquid before auto session; empty="+empty+" casts="+casts);
+                    Require(prompts.SequenceEqual(new[]{"开始钓鱼"}),"one actual wet-session start emits its player-head prompt");
                     if(!inventory && empty==0)Catalog(host,p,b);
                     Require(settings.Set(settings.Value.Change(5,2)),"active session filter edit accepted");
                     Call(host,"Update",(ulong)0);
@@ -98,8 +104,9 @@ namespace NativeWorldTextProbe
                     for(int frame=0;frame<70;frame++)Step(context,input,point,false,empty);
                     Require(Get(Get(host,"Session"),"Phase").ToString()=="Waiting","new cast receipt retires and session waits again");
                     if(nativeNet && !inventory)Borrow(context,host,tools,input,p,firstNativeAim,empty);
-                    if(empty==0 && !inventory)
                     {
+                        if(empty==0 && !inventory)
+                        {
                         var questBobber=Main.projectile.First(q=>q.active && q.bobber && q.owner==p.whoAmI);int savedQuest=Main.anglerQuest;bool savedFinished=Main.anglerQuestFinished;
                         p.AddBuff(122,2000);Save(host,new FishingOptions(auto:true,filterMode:1,crates:0,quests:1,npcs:0));
                         Main.anglerQuest=0;Main.anglerQuestFinished=false;questBobber.ai[1]=-240;questBobber.localAI[1]=Main.anglerQuestItemNetIDs[0];questBobber.localAI[2]=ItemID.Worm;
@@ -108,6 +115,7 @@ namespace NativeWorldTextProbe
                         Main.anglerQuest=1;Require(Call(Get(host,"Session"),"Choose",p)==null,"yesterday's bitten quest item falls back to active ordinary whitelist");
                         Main.anglerQuest=0;Main.anglerQuestFinished=true;Require(Call(Get(host,"Session"),"Choose",p)==null,"completed current quest no longer receives the actual-bite exception");
                         Main.anglerQuest=savedQuest;Main.anglerQuestFinished=savedFinished;
+                        }
                         Save(host,new FishingOptions(auto:true,filterMode:1,crates:0,quests:0,npcs:0));
                         p.AddBuff(122,2000);var rejected=Main.projectile.First(q=>q.active && q.bobber && q.owner==p.whoAmI);
                         rejected.ai[1]=-240;rejected.localAI[1]=ItemID.Bass;rejected.localAI[2]=ItemID.Worm;
@@ -116,18 +124,21 @@ namespace NativeWorldTextProbe
                         Require(pulls==priorPulls && products==priorProducts && rejected.active && p.inventory[54].stack==priorBait,"sonar refusal waits beyond old forced-pull timeout without consuming bait");
                         rejected.ai[1]=-1;for(int frame=0;frame<3;frame++)Step(context,input,point,false,empty);
                         Save(host,settings.Value.Change(4,1));rejected.ai[1]=-240;rejected.localAI[1]=ItemID.Bass;rejected.localAI[2]=ItemID.Worm;
-                        int priorCasts=casts;
+                        int priorCasts=casts;long cutSession=(long)Get(Get(host,"Session"),"Token");
                         for(int frame=0;frame<150 && casts==priorCasts;frame++)Step(context,input,point,false,empty);
                         Require(casts==priorCasts+1 && products==priorProducts && p.inventory[54].stack==priorBait && !Main.projectile.Any(q=>q.active && q.bobber && (int)q.key==rejectedKey),"cut selects an empty slot without use, native AI removes old bobber, one recast and no rejected product");
                         for(int frame=0;frame<70;frame++)Step(context,input,point,false,empty);
-                        Require(p.selectedItem==0 && (bool)Get(Get(host,"Session"),"Active"),"cut returns rod without treating owned selection as manual exit");
-                        Console.WriteLine("PASS G10 native sonar refusal/natural wait and empty-slot cut without bait or item use.");
+                        Require(p.selectedItem==rodSlot && (bool)Get(Get(host,"Session"),"Active") && (long)Get(Get(host,"Session"),"Token")==cutSession,"cut returns rod without treating owned selection as manual exit; empty="+empty+" inventory="+inventory);
+                        if(!inventory && empty!=0)Require(p.inventory[1].type==ItemID.StoneBlock && p.inventory[1].stack==17,"nonempty temporary selection is never used or consumed: type="+p.inventory[1].type+" stack="+p.inventory[1].stack);
+                        Console.WriteLine("PASS G10 native sonar refusal/natural wait and exact rod return after selection-only cut, inventory="+inventory+" extraUpdates="+empty+".");
                     }
                     Step(context,input,point,true,empty);
                     Require(!(bool)Get(Get(host,"Session"),"Active"),"real manual pull immediately takes back the fishing session");
+                    Require(prompts.SequenceEqual(new[]{"开始钓鱼","停止钓鱼"}),"native pull/recast/cut/borrow preserve one prompt pair until genuine manual exit");
                 }
                 Console.WriteLine("PASS G10 native manual cast, liquid admission, actual pull/item/recast with 0/1/3 unsampled outer updates.");
                 NativeFishingOutcomeChecks.Run(context);
+                Truffle(context,host,tools,input);
                 NativeFishingStorageChecks.Run(context);
                 NativeFishingEquipmentChecks.Run(context);
             }
@@ -135,6 +146,33 @@ namespace NativeWorldTextProbe
         }
         internal static void Save(object host,FishingOptions value)
         {var settings=(FishingSettings)Get(host,"Settings");NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return !settings.Busy;});Require(settings.Set(value),"fishing save admitted");NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return !settings.Busy;});Require(settings.CompletionSucceeded,"fishing save completed");}
+        private static void Truffle(object context,object host,object tools,object input)
+        {
+            foreach(bool damage in new[]{false,true})
+            {
+                Save(host,new FishingOptions());var p=NativeToolExecutionChecks.Reset(context,tools,input,ItemID.WoodFishingPole,0,0);
+                foreach(var item in p.armor)item.TurnToAir();p.inventory[12].SetDefaults(5591);p.inventory[54].SetDefaults(ItemID.TruffleWorm);p.inventory[54].stack=10;
+                for(int x=44;x<74;x++)for(int y=42;y<61;y++){Main.tile[x,y].ClearEverything();if(y>=44 && y<60)Main.tile[x,y].liquid=255;if(y==60)NativeToolsChecks.Tile(x,y,1);}
+                Save(host,new FishingOptions(auto:true,equipment:true,cut:true,filterMode:1,crates:2,quests:2,npcs:2));prompts.Clear();
+                var point=new Vector2(850,718);for(int i=0;i<150;i++)Step(context,input,point,i==0,1);
+                Require(prompts.SequenceEqual(new[]{"开始鲨猪"}) && p.armor[0].IsAir,"actual Truffle Worm session prompts once and leaves equipment alone");
+                if(damage){p.statLife-=20;Step(context,input,point,false,1);}
+                else
+                {
+                    var b=Main.projectile.First(q=>q.active && q.bobber && q.owner==p.whoAmI);int previousCasts=casts,previousProducts=products;
+                    p.AddBuff(122,2000);b.ai[1]=-120;b.localAI[1]=1;b.localAI[2]=ItemID.TruffleWorm;
+                    for(int i=0;i<240 && casts==previousCasts;i++)Step(context,input,point,false,1);
+                    Require(NPC.AnyNPCs(NPCID.DukeFishron) && p.inventory[54].stack==9 && products==previousProducts && casts==previousCasts+1,
+                        "original truffle pull spawns the real isolated NPC and consumes one bait despite empty whitelist/reject specials; no Item1 product or cut");
+                    Require(prompts.SequenceEqual(new[]{"开始鲨猪"}),"automatic truffle recast is not a second session or a boss-success prompt");
+                    for(int i=0;i<70;i++)Step(context,input,point,false,1);
+                    p.selectedItemState.Select(1);Step(context,input,point,false,1);
+                }
+                Require(prompts.SequenceEqual(new[]{"开始鲨猪",damage?"停止钓鱼":"鲨猪啦！"}),"Truffle session ending distinguishes damage from real selection exit: damage="+damage+" prompts="+string.Join("/",prompts));
+                Call(Get(host,"Session"),"Stop");Require(prompts.Count==2,"duplicate stop has no duplicate prompt");Save(host,new FishingOptions());
+            }
+            Console.WriteLine("PASS G10 real truffle session, original Duke Fishron spawn/consumption, equipment exclusion, auto recast continuity and exact start/end feedback.");
+        }
         private static void Borrow(object context,object host,object tools,object input,Player p,Vector2 originalAim,int empty)
         {
             object borrow=Get(tools,"Fishing"),session=Get(host,"Session"),use=Get(tools,"Use");long token=(long)Get(session,"Token"),beforeBorrow=(long)Get(borrow,"Token");

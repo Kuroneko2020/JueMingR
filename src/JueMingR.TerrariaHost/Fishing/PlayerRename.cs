@@ -100,7 +100,12 @@ namespace JueMingR.TerrariaHost.Fishing
                 }
                 Verify(bytes,name);
                 if(!scope.Matches(host.Player,host.Tools.Runtime.Generation))throw new IOException("Player identity changed.");
-                PersistedVerified=true;Message="已改名为「"+name+"」，角色存档已验证。";return true;
+                PersistedVerified=true;Message=null;
+                // Publish only after the native save and readback were verified.
+                // A later request or changed name invalidates this short result.
+                var feedback=host.Tools.Feedback;
+                feedback?.Show("fishing.rename","已改名为「"+name+"」",true,()=>PersistedVerified && p.name==name,feedback.Capture());
+                return true;
             }
             catch(Exception)
             {

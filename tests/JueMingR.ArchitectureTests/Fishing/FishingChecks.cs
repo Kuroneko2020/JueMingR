@@ -53,8 +53,14 @@ namespace JueMingR.ArchitectureTests
             Require(FishFilter.Keep(options,item,"fish",true,false,false),"explicit whitelist item kept");
             Require(!FishFilter.Keep(options,npc,"fish",true,false,false),"NPC and item same ID cannot collide");
             Require(FishFilter.Keep(options,npc,"fish",false,false,false) && FishFilter.Keep(options,null,null,true,false,false),"missing sonar and unknown always keep");
-            Require(!FishFilter.Keep(options.Change(5,2).WithList(2,0,new FishList(new[]{item})).Change(7,1),item,"crate",true,true,false),"explicit blacklist beats special allow");
-            Require(FishFilter.Keep(options.Change(7,2),item,"crate",true,true,false),"explicit whitelist beats special deny");
+            Require(FishFilter.Keep(options.Change(5,2).WithList(2,0,new FishList(new[]{item})).Change(7,1),item,"crate",true,true,false),"special allow overrides an explicit blacklist entry");
+            Require(!FishFilter.Keep(options.Change(7,2),item,"crate",true,true,false),"special deny overrides an explicit whitelist entry");
+            foreach(int mode in new[]{1,2})foreach(int match in new[]{0,1})
+            {
+                var empty=new FishingOptions(filterMode:mode,match:match,crates:1,quests:1,npcs:2);
+                Require(FishFilter.Keep(empty,item,"crate",true,true,false) && FishFilter.Keep(empty,item,"quest",true,false,true) && !FishFilter.Keep(empty,npc,"npc",true,false,false),"empty active list still honors each explicit special rule, mode="+mode+" match="+match);
+                Require(FishFilter.Keep(empty.Change(5,0),npc,"npc",true,false,false) && FishFilter.Keep(empty,npc,"npc",false,false,false),"disabled filter and missing sonar override even explicit special refusal");
+            }
             Require(FishFilter.Keep(options.Change(7,1).Change(8,2),npc,"both",true,true,true),"crate special precedes quest and NPC");
             Require(!FishFilter.Keep(options.Change(8,2).Change(9,1),npc,"quest NPC",true,false,true),"quest special precedes NPC allow");
             var old=CultureInfo.CurrentCulture;

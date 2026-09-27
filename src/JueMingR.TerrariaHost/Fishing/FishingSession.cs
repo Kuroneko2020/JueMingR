@@ -16,7 +16,7 @@ namespace JueMingR.TerrariaHost.Fishing
         private int rodSlot,rodType,life,lastSlot;
         private long generation,selection,lastGeneration,nextSession,operation,borrow;
         private Vector2 target,lastTarget;
-        private bool manualCast,used,pullConsumed,newCast;
+        private bool manualCast,used,pullConsumed,newCast,truffle,lastTruffle;
         private ulong entered;
         private readonly FishingBobber[] owned=new FishingBobber[Main.maxProjectiles];
         private readonly bool[] pullable=new bool[Main.maxProjectiles];
@@ -44,6 +44,7 @@ namespace JueMingR.TerrariaHost.Fishing
             Stop();host.Observation.Invalidate();
             if(p.selectedItem<0 || p.selectedItem>=50 || FishingBorrow.HasBobber(p))return;
             lastPlayer=p;lastRod=item;lastSlot=p.selectedItem;lastTarget=Main.MouseWorld;lastGeneration=Tools.Runtime.Generation;manualCast=true;
+            lastTruffle=p.GetFishingConditions().BaitItemType==Terraria.ID.ItemID.TruffleWorm;
         }
         internal void ObserveCreated(Player p,Projectile projectile)
         {
@@ -59,11 +60,12 @@ namespace JueMingR.TerrariaHost.Fishing
                 for(int i=0;i<host.Observation.Count;i++)if(host.Observation.Bobbers[i].InLiquid)
                 {
                     player=lastPlayer;rod=lastRod;rodSlot=lastSlot;rodType=rod.type;generation=lastGeneration;selection=Tools.SelectionIntent;
-                    target=lastTarget;life=player.statLife;Token=++nextSession;Phase=FishingPhase.Waiting;manualCast=false;Snapshot();break;
+                    target=lastTarget;life=player.statLife;Token=++nextSession;Phase=FishingPhase.Waiting;manualCast=false;truffle=lastTruffle;Snapshot();Prompt(true,false);break;
                 }
                 if(!Active)return;
             }
-            if(!Identity() || player.statLife<life){Stop();return;}life=player.statLife;
+            if(!Identity()){End(player!=null && !player.dead && ReferenceEquals(player,host.Player) && generation==Tools.Runtime.Generation);return;}
+            if(player.statLife<life){Stop();return;}life=player.statLife;
             if(!host.KeepsSession && Phase==FishingPhase.Waiting){Stop();return;}
             bool borrowed=Tools.Fishing.Active;
             if(borrowed)
@@ -74,13 +76,13 @@ namespace JueMingR.TerrariaHost.Fishing
                 if(Tools.Fishing.Token!=previous || Tools.Fishing.Phase!=FishingBorrowPhase.Completed || host.Observation.Count==0){Stop();return;}
                 Snapshot();Phase=FishingPhase.Waiting;
             }
-            if(player.selectedItem!=rodSlot && !(Tools.Use.Active && (Tools.Use.Intent.SelectionOnly || Tools.Use.Intent.Kind< ToolKind.FishingPull)) && !Tools.Items.ReturningSelection){Stop();return;}
+            if(player.selectedItem!=rodSlot && !(Tools.Use.Active && (Tools.Use.Intent.SelectionOnly || Tools.Use.Intent.Kind< ToolKind.FishingPull)) && !Tools.Items.ReturningSelection){End(true);return;}
             InLiquid=false;
             for(int i=0;i<host.Observation.Count;i++)if(host.Observation.Bobbers[i].InLiquid)
             {InLiquid=true;var b=host.Observation.Bobbers[i].Projectile;Liquid=b.lavaWet?3:b.honeyWet?2:1;break;}
             if(Phase==FishingPhase.Waiting)
             {
-                if(host.Observation.Count==0){Stop();return;}
+                if(host.Observation.Count==0){End(true);return;}
                 Snapshot();return;
             }
             // Pauses do not erase observed consumption or authorize a new use.
@@ -156,7 +158,7 @@ namespace JueMingR.TerrariaHost.Fishing
         internal long BeforeNativePull(Player p,Item item)
         {
             if(ReferenceEquals(p,player) && item!=null && item.fishingPole>0 && !Tools.Use.InNativeUse && PlayerInput.Triggers.Current.MouseLeft && AnyCurrent())
-            {Stop();return 0;}
+            {End(true);return 0;}
             if(!ReferenceEquals(p,player) || Phase!=FishingPhase.PullRequested || !Tools.Use.Is(ToolKind.FishingPull) || !Tools.Use.ActionValid)return 0;
             for(int i=0;i<ownedCount;i++)pullable[i]=FishingObservation.Live(owned[i],p) && owned[i].Projectile.ai[0]<1;
             return operation;
@@ -176,8 +178,22 @@ namespace JueMingR.TerrariaHost.Fishing
             for(int i=0;i<ownedCount;i++)if(pullable[i] && ReferenceEquals(owned[i].Projectile,b) && owned[i].Key==(int)b.key)return true;return false;
         }
         internal void Stop()
+        {End(false);}
+        internal void ManualSelection(){End(true);}
+        private void Prompt(bool start,bool naturalEnd)
         {
+            // Preserve the four Legacy session-edge messages. "鲨猪啦！" is
+            // a playful end notice, never evidence that a boss was spawned.
+            // Our owned cuts, rethrows and tool loans keep the same token.
+            var feedback=Tools.Feedback;if(feedback==null)return;long token=Token;
+            string text=start?(truffle?"开始鲨猪":"开始钓鱼"):(truffle && naturalEnd?"鲨猪啦！":"停止钓鱼");
+            feedback.Show("fishing.session",text,start,()=>Token==token && Active==start,feedback.Capture());
+        }
+        private void End(bool natural)
+        {
+            bool wasActive=Active;
             Phase=FishingPhase.Idle;manualCast=false;InLiquid=false;Liquid=0;borrow=0;pullConsumed=false;
+            if(wasActive)Prompt(false,natural);
             if(Tools.Use.Active && Tools.Use.Intent.Kind>=ToolKind.FishingPull)Tools.Use.Cancel();
             Array.Clear(owned,0,ownedCount);ownedCount=0;player=null;rod=null;
         }

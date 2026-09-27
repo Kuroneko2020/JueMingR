@@ -38,6 +38,7 @@ namespace NativeWorldTextProbe
             p.inventory[12].SetDefaults(8);p.inventory[12].stack=7;p.inventory[12].favorited=true;var retained=p.inventory[12];var generation=Get(runtime,"Generation");
             Require((bool)Get(owner,"CanRename"),"native rename admission: "+GetOptional(owner,"Status"));
             Require((bool)Call(owner,"Rename",new object[]{null}) && p.name=="Test010" && (bool)Get(owner,"PersistedVerified"),"real Rename plus outer SavePlayer increments and verifies encrypted player");
+            Require(GetOptional(owner,"Message")==null && NativeFishingExperienceChecks.FeedbackText(context,"fishing.rename")=="已改名为「Test010」","verified rename succeeds through player-head feedback without an inline message");
             Require(ReferenceEquals(Main.ActivePlayerFileData,file) && ReferenceEquals(file.Player,p) && file.Path==path && file.Name==p.name && Equals(Get(runtime,"Generation"),generation),"rename retains player, file path, native name cache and R generation");
             Require(!Main.anglerQuestFinished && Main.anglerWhoFinishedToday.SequenceEqual(new[]{"Test009"}),"new runtime name refreshes angler eligibility without clearing native today list");
             Require(File.Exists(Path.Combine(Terraria.Program.SavePath,"achievements.dat")),"actual outer native achievement save ran in isolated root");
