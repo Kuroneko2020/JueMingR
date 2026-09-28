@@ -43,6 +43,7 @@ if ($null -ne $cache -and $null -ne $cache.PSObject.Properties['schemaVersion'] 
 } elseif ($null -ne $cache) { Write-Host 'INVALIDATED: executable input/dependency/environment set changed or old evidence schema.' }
 $results = New-Object 'System.Collections.Generic.List[object]'
 $pending = @{}
+$liveChecks = @{}
 $built = @{}
 $currentCheck = 'planning'
 function Save-Evidence {
@@ -53,6 +54,9 @@ function Assert-StableInputs {
     if ($now.commit -cne $identity.commit -or $now.fingerprint -cne $identity.fingerprint -or
         (Get-WorkloadEvidenceInput $repositoryRoot $now).fingerprint -cne $inputIdentity.fingerprint -or
         -not (Test-WorkloadBuildMatch $repositoryRoot $record $now)) { throw 'Inputs or detection outputs changed during validation.' }
+    foreach ($live in $liveChecks.Values) {
+        if (-not (Test-WorkloadLiveArtifacts $live.outputs $live.exact $live.absent)) { throw 'Execution artifacts or runtime configuration changed during validation.' }
+    }
 }
 function Ensure-Fixture([string] $Project) {
     if (-not $Project -or $built.ContainsKey($Project)) { return }
@@ -69,6 +73,8 @@ try {
         $old = if ($entries.ContainsKey($check.name)) { $entries[$check.name] } else { $null }
         $reuse = -not $Rerun -and (Test-WorkloadReusable $repositoryRoot $old $inputIdentity $check.name $signature)
         if ($reuse) {
+            $absent=@($old.outputs | ForEach-Object {Split-Path -Parent $_.livePath} | Sort-Object -Unique | Where-Object {-not [IO.Directory]::Exists($_)})
+            $liveChecks[$check.name]=@{outputs=$old.outputs;absent=$absent;exact=($old.detectionCommit -ceq $record.commit -and $old.allInputFingerprint -ceq $inputIdentity.fingerprint)}
             Write-Host ('REUSED ' + $check.name + ' from ' + $old.sourceCommit + '/' + $old.executionId + ' original-ms=' + $old.milliseconds)
             $results.Add([ordered]@{name=$check.name; result='PASS'; disposition='REUSED'; milliseconds=0; originalMilliseconds=$old.milliseconds; executionId=$old.executionId; sourceCommit=$old.sourceCommit})
             continue
@@ -78,9 +84,14 @@ try {
         # back to it on the next invocation. Other valid successes stay usable.
         $entries.Remove($check.name); Save-Evidence
         Ensure-Fixture $check.project
+        # Capture the actual inputs to the process before launch, then require
+        # the same bytes/configuration/set after it and at the whole-run exit.
+        $outputs = @(Get-WorkloadEvidenceOutputs $repositoryRoot $record $check.executable)
+        $liveOutputs=@($outputs | ForEach-Object {[pscustomobject]@{path=$_.path;livePath=$_.path;length=$_.length;sha256=$_.sha256}})
+        $liveChecks[$check.name]=@{outputs=$liveOutputs;absent=@();exact=$true}
         $clock = [Diagnostics.Stopwatch]::StartNew()
         Invoke-WorkloadProcess $check.name $check.executable $check.arguments
-        $outputs = @(Get-WorkloadEvidenceOutputs $repositoryRoot $record $check.executable)
+        if (-not (Test-WorkloadLiveArtifacts $liveOutputs $true)) {throw ('Execution artifacts changed during check: '+$check.name)}
         $outputs = @(Save-WorkloadArtifacts $repositoryRoot $outputs)
         $entry = [ordered]@{schemaVersion=2; name=$check.name; status='PASS'; inputFingerprint=(Get-WorkloadCheckFingerprint $inputIdentity $check.name); signature=$signature;
             allInputFingerprint=$inputIdentity.fingerprint; inputs=$inputIdentity.inputs;

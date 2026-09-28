@@ -11,7 +11,7 @@ function Get-WorkloadEvidenceInput {
     # Keep exact source bytes, assertions, fixtures, recipes and build options.
     # Documentation is not compiled; package assets remain in the build identity.
     # This deliberately invalidates more than a semantic dependency analyser.
-    $rows = @($Identity.inputs | Where-Object { $_ -notmatch '^(docs/|AGENTS\.md:|README(?:\.[^/:]+)?:|LICENSE:|THIRD-PARTY-NOTICES\.md:)' })
+    $rows = @($Identity.inputs | Where-Object { $_ -notmatch '^(docs/|scripts/phase0s/[^:]*Owner-Test-Card[^:]*\.md:|AGENTS\.md:|README(?:\.[^/:]+)?:|LICENSE:|THIRD-PARTY-NOTICES\.md:)' })
     foreach ($directory in @('external/TerrariaRefs','external/Harmony')) {
         $location = Join-Path $Root $directory
         if (-not [IO.Directory]::Exists($location)) { throw ('Missing evidence dependency: ' + $directory) }
@@ -135,7 +135,14 @@ function Save-WorkloadArtifacts {
     $index=0
     foreach ($output in $Outputs) {
         $path=Join-Path $directory ([string]$index+'-'+[IO.Path]::GetFileName($output.path)); $index++
-        if (-not [IO.File]::Exists($path)) { [IO.File]::Copy($output.path,$path,$false) }
+        if (-not [IO.File]::Exists($path) -or (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -cne $output.sha256) {
+            # A failed archive must recover after a real successful rerun. Copy
+            # only current, already checked output into this owned hash slot.
+            $temporary=$path+'.pending'
+            [IO.File]::Copy($output.path,$temporary,$true)
+            if ((Get-FileHash -LiteralPath $temporary -Algorithm SHA256).Hash -cne $output.sha256) {throw 'Execution artifact changed while archiving.'}
+            Move-Item -LiteralPath $temporary -Destination $path -Force
+        }
         [ordered]@{path=$path;livePath=$output.path;length=$output.length;sha256=$output.sha256}
     }
 }
@@ -150,12 +157,12 @@ function Remove-UnusedWorkloadArtifacts {
     }
 }
 function Test-WorkloadLiveArtifacts {
-    param($Outputs, [bool] $SameInputs)
+    param($Outputs, [bool] $SameInputs, [string[]] $MayBeAbsent = @())
     $directories=@($Outputs | ForEach-Object {Split-Path -Parent $_.livePath} | Sort-Object -Unique)
     foreach ($directory in $directories) {
         # A fresh compile can remove an unneeded fixture directory. Its original
         # archived execution remains evidence; it is not a current executable.
-        if (-not [IO.Directory]::Exists($directory)) { continue }
+        if (-not [IO.Directory]::Exists($directory)) { if ($MayBeAbsent -notcontains $directory) {return $false}; continue }
         $expected=@($Outputs | Where-Object {(Split-Path -Parent $_.livePath) -ceq $directory})
         # System executables are individual environment inputs, not an owned
         # fixture directory whose entire OS file set belongs to this check.
@@ -184,7 +191,8 @@ function Test-WorkloadReusable {
         (Get-WorkloadCheckFingerprint $Evidence $Name) -cne $Evidence.inputFingerprint) {return $false}
     $debug=Read-WorkloadJson (Join-Path $Root 'artifacts/build/Debug/build-record.json')
     $sameBuild=$null -ne $debug -and $Evidence.detectionCommit -ceq $debug.commit -and $Evidence.allInputFingerprint -ceq $InputIdentity.fingerprint
-    return (Test-WorkloadEvidenceOutputs $Root $Evidence.outputs) -and (Test-WorkloadLiveArtifacts $Evidence.outputs $sameBuild)
+    $absent=@($Evidence.outputs | ForEach-Object {Split-Path -Parent $_.livePath} | Sort-Object -Unique | Where-Object {-not [IO.Directory]::Exists($_)})
+    return (Test-WorkloadEvidenceOutputs $Root $Evidence.outputs) -and (Test-WorkloadLiveArtifacts $Evidence.outputs $sameBuild $absent)
 }
 function Test-WorkloadEvidenceOutputs {
     param([string] $Root, $Outputs)

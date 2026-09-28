@@ -41,6 +41,8 @@ try {
     Assert-Evidence (-not (Test-WorkloadLiveArtifacts $archived $true)) 'new dependency cannot hide outside the original file list'
     [IO.File]::WriteAllText($archived[0].path,'damaged original')
     Assert-Evidence (-not (Test-WorkloadEvidenceOutputs $fixture $archived)) 'damaged archived execution cannot supply evidence'
+    $repaired=@(Save-WorkloadArtifacts $fixture $captured)
+    Assert-Evidence (Test-WorkloadEvidenceOutputs $fixture $repaired) 'fresh matching execution repairs a damaged archive slot'
     $artifact = Join-Path $fixture 'check.bin'
     [IO.File]::WriteAllText($artifact, 'original')
     $output = [pscustomobject]@{path=$artifact; length=8; sha256=(Get-FileHash -LiteralPath $artifact -Algorithm SHA256).Hash}
