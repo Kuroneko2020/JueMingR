@@ -9,7 +9,7 @@ namespace JueMingR.Platform.Items
         private const ulong AllInventorySlots = (1UL << 58) - 1;
         private ulong saleSlots, discardSlots, storeSlots, interruptedSourceSlots, useSlots, coinSlots;
         private long useToken, coinToken, nextUseToken;
-        // Shared by QuickItems, extraction and tools. A delayed native finalizer
+        // Shared by QuickItems, extraction, tools and combat. A delayed native finalizer
         // cannot match a successor from another owner's local counter.
         public long NewUseToken(){if(nextUseToken==long.MaxValue)throw new InvalidOperationException("Use lease exhausted.");return ++nextUseToken;}
         private readonly ulong[] recoverySlots = new ulong[5];
@@ -73,9 +73,18 @@ namespace JueMingR.Platform.Items
                 ((saleSlots | discardSlots | storeSlots | interruptedSourceSlots | useSlots) & slots) == 0;
         }
         public bool IsUseSlot(int slot) { return slot >= 0 && slot < 50 && (useSlots & (1UL << slot)) != 0; }
+        public bool HasUse {get{return useToken!=0;}}
+        // Native cursor use has no inventory source range. Its input lease
+        // excludes a concurrent borrowed use without pretending slot 58 is a
+        // protected inventory slot or relaxing existing callers' slot contract.
+        public bool TryBeginCursorUse(long generation,long token)
+        {
+            if(token<=0 || generation<=0 || generation!=Session || useToken!=0)return false;
+            useToken=token;return true;
+        }
         public bool TryBeginUse(long generation, int slot, long token)
         {
-            if (slot < 0 || slot >= 50 || token <= 0 || generation <= 0 || generation != Session || useSlots != 0 || IsProtected(slot)) return false;
+            if (slot < 0 || slot >= 50 || token <= 0 || generation <= 0 || generation != Session || useToken != 0 || IsProtected(slot)) return false;
             useSlots = 1UL << slot; useToken = token; return true;
         }
         public void EndUse(long generation, long token)

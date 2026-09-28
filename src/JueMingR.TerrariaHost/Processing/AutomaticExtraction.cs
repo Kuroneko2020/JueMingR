@@ -33,8 +33,9 @@ namespace JueMingR.TerrariaHost.Processing
         {
             return host.Value(1) && host.AdmitAutomatic(p) && p.chest==-1 && p.talkNPC<0 && p.sign<0 && Main.npcShop==0 &&
                 Main.mouseItem!=null && Main.mouseItem.IsAir && !p.selectedItemState.HasBufferedChange &&
-                !PlayerInput.Triggers.Current.MouseLeft && !PlayerInput.Triggers.Current.MouseRight && !PlayerInput.Triggers.Current.SmartSelect &&
-                (!host.Input.IsFocused || PlayerInput.MouseInfo.LeftButton==ButtonState.Released && PlayerInput.MouseInfo.RightButton==ButtonState.Released) && !host.Items.World.HasManualOperation;
+                !PlayerInput.Triggers.Current.SmartSelect && ((host.HeldUsePermit?.Invoke()??false) ||
+                !PlayerInput.Triggers.Current.MouseLeft && !PlayerInput.Triggers.Current.MouseRight &&
+                (!host.Input.IsFocused || PlayerInput.MouseInfo.LeftButton==ButtonState.Released && PlayerInput.MouseInfo.RightButton==ButtonState.Released)) && !host.Items.World.HasManualOperation;
         }
         private static bool Eligible(Item item){return item!=null && item.stack>0 && item.type>0 && item.type<ItemID.Sets.ExtractinatorMode.Length && ItemID.Sets.ExtractinatorMode[item.type]>=0;}
         private bool Candidate(Player p,int i,bool afterYield=false){return i>=0 && i<50 && Eligible(p.inventory[i]) && !host.Items.Ownership.IsProtected(i) &&
@@ -146,7 +147,7 @@ namespace JueMingR.TerrariaHost.Processing
         {
             cancelled=true;
             if(player!=null && player.selectedItemState.HasActiveOverride && !player.selectedItemState.HasBufferedChange)host.Items.ReturnSelection(()=>player.selectedItemState.Select(original));
-            if(player!=null && frame==host.Input.Frame && !PlayerInput.Triggers.Current.MouseLeft){player.controlUseItem=false;player.releaseUseItem=true;}
+            if(player!=null && frame==host.Input.Frame && (!PlayerInput.Triggers.Current.MouseLeft || (host.HeldUsePermit?.Invoke()??false))){player.controlUseItem=false;player.releaseUseItem=true;}
         }
         internal void Update()
         {

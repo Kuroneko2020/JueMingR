@@ -27,6 +27,7 @@ namespace JueMingR.TerrariaHost.QuickItems
         internal readonly int ThreadId = Thread.CurrentThread.ManagedThreadId;
         internal Func<bool> CanGameplay;
         internal Action YieldTools;
+        internal Func<bool> HeldUsePermit;
         internal KeepFavorited.HostKeepFavorited Favorite;
         private HostHotkeys hotkeys;
         private DynamicHotkeyOwner actions;

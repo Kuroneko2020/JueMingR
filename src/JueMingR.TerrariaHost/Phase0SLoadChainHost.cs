@@ -483,7 +483,7 @@ namespace JueMingR.TerrariaHost
         {
             PostfixContext context = postfixContext;
             if (Volatile.Read(ref hookCommitted) == 1 && context != null)
-            { context.Input.AfterKeyboardRefresh(); context.Browser?.Targets.ProcessInput(); context.Footprints?.Layer.ProcessInput(); if (context.Shell != null) context.Shell.ProcessInput(); context.MapFeatures?.Layer.ProcessInput(); }
+            { context.Input.AfterKeyboardRefresh(); context.Browser?.Targets.ProcessInput(); context.Footprints?.Layer.ProcessInput(); if (context.Shell != null) context.Shell.ProcessInput(); context.MapFeatures?.Layer.ProcessInput(); context.Combat?.Sample(); }
         }
 
         private static bool NpcHoverPrefix()
@@ -827,6 +827,7 @@ namespace JueMingR.TerrariaHost
             internal Processing.HostProcessing Processing { get; private set; }
             internal Tools.HostTools Tools {get;private set;}
             internal Fishing.HostFishing Fishing {get;private set;}
+            internal Combat.HostCombat Combat {get;private set;}
             internal Feedback.LocalShortFeedback ShortFeedback { get; private set; }
             private Hotkeys.HotkeyStateFeedback hotkeyFeedback;
             private Npcs.NativeNpcObservation nativeNpcs;
@@ -908,8 +909,8 @@ namespace JueMingR.TerrariaHost
                 {
                     Tools=new Tools.HostTools(gameDirectory,runtime.SharedRuntime,items,Input,nativeNpcs);runtime.SharedRuntime.AddFeature(Tools);
                     Fishing=new Fishing.HostFishing(gameDirectory,Tools,KeepFavorited);runtime.SharedRuntime.AddFeature(Fishing);
-                    if(QuickItems!=null)QuickItems.YieldTools=Tools.Yield;
-                    if(Processing!=null){Processing.YieldTools=Tools.Ready;Processing.ToolsYieldProtection=Tools.ProtectedAfterYield;Tools.OtherUseReady=Processing.Extraction.Ready;}
+                    Combat=new Combat.HostCombat(gameDirectory,Tools);runtime.SharedRuntime.AddFeature(Combat);
+                    Combat.Handoff.Attach(Processing,QuickItems);
                 }
                 if (entityPackage) { Labels = new EntityLabels.HostEntityLabels(gameDirectory, runtime.SharedRuntime, nativeNpcs) { LayerStatus = entityLayerStatus }; runtime.SharedRuntime.AddFeature(Labels); }
                 if (worldPackage) { worldTiles = new World.WorldTileObservation(() => runtime.SharedRuntime.IsSessionActive); WorldTargets = new WorldTargets.HostWorldTargets(gameDirectory, runtime.SharedRuntime, worldTiles) { LayerStatus = entityLayerStatus }; runtime.SharedRuntime.AddFeature(WorldTargets); }
@@ -927,11 +928,12 @@ namespace JueMingR.TerrariaHost
                 if (PackageId.StartsWith("item-browser-", StringComparison.Ordinal) || quickPackage) Browser = new ItemBrowser.HostItemBrowser(gameDirectory, worldTiles, Input);
                 if (hotkeyPackage) ShortFeedback = new Feedback.LocalShortFeedback(runtime.SharedRuntime, Input);
                 var hotkeys = hotkeyPackage ? new Hotkeys.HostHotkeys(gameDirectory, runtime, preferences, items, Labels, WorldTargets, WorldObjects,
-                    informationPackage ? Information : null, () => Shell != null && Shell.CanAdjustInformation, () => Shell?.RequestInformationAdjustment(), Guidance, DeathRecords, MapFeatures, Footprints, Browser == null ? (Func<bool>)null : Browser.CanAnnounce, Browser == null ? (Action)null : Browser.Announce, Browser == null ? (Func<bool>)null : Browser.CanQuery, Browser == null ? (Action)null : Browser.Query, Browser?.Announcements, QuickItems, CoinDeposit, Recovery, Processing, ShortFeedback, Tools, Fishing) : null;
+                    informationPackage ? Information : null, () => Shell != null && Shell.CanAdjustInformation, () => Shell?.RequestInformationAdjustment(), Guidance, DeathRecords, MapFeatures, Footprints, Browser == null ? (Func<bool>)null : Browser.CanAnnounce, Browser == null ? (Action)null : Browser.Announce, Browser == null ? (Func<bool>)null : Browser.CanQuery, Browser == null ? (Action)null : Browser.Query, Browser?.Announcements, QuickItems, CoinDeposit, Recovery, Processing, ShortFeedback, Tools, Fishing, Combat) : null;
                 hotkeyFeedback = hotkeys?.Feedback;
                 Shell = new F5Shell(runtime, preferences, notes, items, Input, hotkeys, Labels, WorldTargets, WorldObjects, Information, Guidance, DeathRecords, MapFeatures, Footprints, Browser?.Announcements) { LayersReady = f5LayersReady };
                 Browser?.Attach(Shell, hotkeys);
                 if(Tools!=null){Shell.AttachTools(Tools);Tools.CanInterface=()=>Shell.CanAutomaticProcessingInput;Tools.CanMouseInterface=()=>Shell.CanAutomaticMouseInterface;Tools.Feedback=ShortFeedback;}
+                if(Combat!=null){Shell.AttachCombat(Combat);Combat.CanInterface=()=>Shell.CanTargetInput && !Shell.OwnsPointer && Shell.CanAutomaticMouseInterface;}
                 if(Fishing!=null)Shell.AttachFishing(Fishing);
                 if(Processing!=null){Shell.AttachProcessing(Processing);Processing.CanInterface=()=>Shell.CanProcessingInput;Processing.CanAutomaticInterface=()=>Shell.CanAutomaticProcessingInput;Processing.BankGuardsReady=()=>Recovery!=null && Recovery.Available;}
                 if(Recovery!=null){Shell.AttachRecovery(Recovery);Recovery.CanGameplay=()=>Shell.CanAutomaticTargetInput && !Terraria.Main.mapFullscreen;Recovery.CanMouseInterface=()=>Shell.CanAutomaticMouseInterface;Recovery.CanBuffInterface=()=>Shell.CanAutomaticBuff;Recovery.IsQuickUse=()=>QuickItems!=null && (QuickItems.Use.Active || QuickItems.Use.InNativeUse);}
@@ -966,6 +968,7 @@ namespace JueMingR.TerrariaHost
                 Processing?.Poll();
                 Tools?.Poll();
                 Fishing?.Poll();
+                Combat?.Poll();
                 Labels?.PollPreferences();
                 WorldTargets?.PollPreferences();
                 WorldObjects?.PollPreferences();
@@ -997,6 +1000,7 @@ namespace JueMingR.TerrariaHost
                 Processing?.FailClosed();
                 Tools?.FailClosed();
                 Fishing?.FailClosed();
+                Combat?.FailClosed();
                 KeepFavorited?.FailClosed();
                 onboarding?.FailClosed();
                 hotkeyFeedback?.Clear();

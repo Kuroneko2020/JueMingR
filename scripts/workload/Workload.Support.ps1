@@ -58,6 +58,7 @@ function Get-WorkloadRoute {
     $unknown = @()
     foreach ($path in $Paths) {
         switch -Regex ($path.Replace('\', '/')) {
+            '^src/[^/]+/Combat/|^src/JueMingR.TerrariaHost/F5/Combat(Controls|IntervalDrag)\.cs$|^tests/JueMingR.ArchitectureTests/Combat/|^tests/NativeWorldTextProbe/(NativeCombat|CombatNetworkFixture)' { [void]$groups.Add('combat-host'); continue }
             '^src/JueMingR.TerrariaHost/F5/MiscAutomationPanel\.cs$|^tests/NativeWorldTextProbe/NativePageComposition' { [void]$groups.Add('pages-host'); continue }
             '^src/[^/]+/Tools/|^tests/JueMingR.ArchitectureTests/Tools/|^tests/NativeWorldTextProbe/Native(Tools|ToolCadence|ToolExecution|ToolWait|SeedDiscovery|Capture|Herb|Mining|FishingBorrow)' { [void]$groups.Add('tools-host'); continue }
             '^src/[^/]+/Fishing/|^tests/JueMingR.ArchitectureTests/Fishing/|^tests/NativeWorldTextProbe/Native(Fishing|PlayerRename|BackgroundAutomation|F5Automation)' { [void]$groups.Add('fishing-host'); continue }
@@ -117,6 +118,7 @@ function Get-WorkloadRoute {
     if ($groups.Contains('processing-host')) { [void]$groups.Add('items') }
     if ($groups.Contains('world-host')) { [void]$groups.Add('records'); [void]$groups.Add('entity') }
     if ($groups.Contains('tools-host')) { [void]$groups.Add('pages-host') }
+    if ($groups.Contains('shared-host') -or $groups.Contains('storage-host') -or $groups.Contains('tools-host')) { [void]$groups.Add('combat-host') }
     return [ordered]@{ groups = @($groups | Sort-Object); unknown = $unknown; slowGraphics = $false }
 }
 function Test-WorkloadBuildMatch {

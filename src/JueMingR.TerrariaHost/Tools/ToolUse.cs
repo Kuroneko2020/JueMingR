@@ -40,6 +40,7 @@ namespace JueMingR.TerrariaHost.Tools
         internal bool Returning {get;private set;}
         internal bool Active {get{return player!=null;}}
         internal long Operation {get{return token;}}
+        internal bool CompletedAnimation {get{return Active && started && player.itemAnimation<=0;}}
         private bool HeldInventory {get{return Intent.HeldInventory || Intent.Kind==ToolKind.Capture && host.Mode(0)==2;}}
         // Only G10 automatic fishing pauses with F5. New tool kinds and the
         // G09 borrowed-net return must not inherit this feature-specific gate.
@@ -56,7 +57,7 @@ namespace JueMingR.TerrariaHost.Tools
                 // callback. Reapplying the same override avoids a spurious
                 // selection change between animations; no timer is rewritten.
                 if(!result && !cancelled && Intent.Refresh!=null && SourceIdentity() &&
-                    host.ManualSelectionFrame!=host.Input.Frame && !PlayerInput.Triggers.Current.MouseLeft &&
+                    host.ManualSelectionFrame!=host.Input.Frame && !host.ManualLeft &&
                     Admitted(p) && Intent.Refresh())
                 {chosen=Intent.Slot;result=true;return;}
                 bool handoff=yieldExternal;Retire();if(handoff)return;
@@ -97,13 +98,13 @@ namespace JueMingR.TerrariaHost.Tools
             if(!Active && ReferenceEquals(p,host.Player) && host.Mode(2)==2 &&
                 !p.selectedItemState.CanChangeSelectedItemImmediately && !p.selectedItemState.HasActiveOverride && !p.selectedItemState.HasBufferedChange &&
                 host.Input.Frame>=host.NextUseFrame && host.ManualSelectionFrame!=host.Input.Frame &&
-                !PlayerInput.Triggers.Current.MouseLeft && !PlayerInput.Triggers.Current.MouseRight && !PlayerInput.Triggers.Current.SmartSelect)
+                !host.ManualLeft && !host.ManualRight && !PlayerInput.Triggers.Current.SmartSelect)
             {
                 ToolIntent candidate=host.Mining.Choose(p);
                 if(candidate!=null && candidate.Slot==p.selectedItem)Acquire(p,candidate);
             }
             if(!ReferenceEquals(p,player))return;
-            if(PlayerInput.Triggers.Current.MouseLeft || PlayerInput.Triggers.Current.MouseRight || PlayerInput.Triggers.Current.SmartSelect){HandToManual();return;}
+            if(host.ManualLeft || host.ManualRight || PlayerInput.Triggers.Current.SmartSelect){HandToManual();return;}
             if(!Refresh()){Cancel();return;}
             // A cut borrows selection only. No virtual use press is produced;
             // vanilla projectile AI observes the temporary non-rod itself.
@@ -116,7 +117,7 @@ namespace JueMingR.TerrariaHost.Tools
             if(!ReferenceEquals(p,player) || p.selectedItem!=Intent.Slot)return;
             // Cleanup responsibility may outlive automatic intent. A genuine
             // manual press owns this ItemCheck, including during a Boss pause.
-            if(PlayerInput.Triggers.Current.MouseLeft || host.SelectionIntent!=selection){HandToManual();return;}
+            if(host.ManualLeft || host.SelectionIntent!=selection){HandToManual();return;}
             InNativeUse=true;
             if(!Refresh()){Cancel();return;}
             if(Intent.SelectionOnly)return;
@@ -134,13 +135,15 @@ namespace JueMingR.TerrariaHost.Tools
         internal void ObserveProjectile(Player p,Projectile projectile)
         {if(ReferenceEquals(p,player) && Is(ToolKind.Mining) && projectile.owner==p.whoAmI && projectile.type==item.shoot && (projectile.aiStyle==20 || projectile.type==445)){drill=projectile;drillKey=(int)projectile.key;}}
         internal bool OwnsProjectile(Projectile projectile)
-        {return Active && !cancelled && ReferenceEquals(drill,projectile) && projectile.active && (int)projectile.key==drillKey && Identity() && !PlayerInput.Triggers.Current.MouseLeft && host.Admit(player,false);}
+        {return Active && !cancelled && ReferenceEquals(drill,projectile) && projectile.active && (int)projectile.key==drillKey && Identity() && !host.ManualLeft && host.Admit(player,false);}
         // The original projectile AI runs after ItemCheck. It only positions
         // the drill; retain this operation's submitted aim even if its tile was
         // just removed, without leasing another projectile or a later gesture.
         internal void BeginProjectile(){BorrowAim();}
+        // Zero is the idle sentinel, never a receipt; stale callbacks cannot
+        // borrow cancellation or unknown-source protection from another use.
         internal void EndProjectile(long operation,Exception error)
-        {if(operation!=token)return;Restore();if(error!=null){host.HoldUnknown(Intent.Slot);Notify(true);Cancel();}}
+        {if(operation<=0 || operation!=token || !Active)return;Restore();if(error!=null){host.HoldUnknown(Intent.Slot);Notify(true);Cancel();}}
         internal void Started(Player p){if(ReferenceEquals(p,player) && InNativeUse){started=true;Intent.Used?.Invoke();}}
         internal void End(Player p,long operation,Exception error)
         {
@@ -154,7 +157,7 @@ namespace JueMingR.TerrariaHost.Tools
             }
             else if(item.stack>stack || item.stack<stack-1 || !ReferenceEquals(p.inventory[Intent.Slot],item) && !p.inventory[Intent.Slot].IsAir)
             {host.HoldUnknown(Intent.Slot);Notify(true);Cancel();}
-            if(!cancelled && Intent.Refresh!=null && host.Input.Frame>=nextContention)
+            if(!cancelled && Intent.Refresh!=null && (host.Input.Frame>=nextContention || (host.Combat?.Handoff.ResumeWanted??false)))
             {
                 nextContention=host.Input.Frame+Math.Max(1,p.itemAnimationMax);
                 bool external;if(host.Contended(Intent.Kind,out external)){yieldExternal=external;Intent.Yielded?.Invoke();Cancel();}
@@ -179,7 +182,7 @@ namespace JueMingR.TerrariaHost.Tools
             if(!Active)return;cancelled=true;
             if(player.selectedItemState.HasActiveOverride && !player.selectedItemState.HasBufferedChange && host.SelectionIntent==selection)
             {Returning=true;try{player.selectedItemState.Select(original);returnRequested=true;}finally{Returning=false;}}
-            if(pulseFrame==host.Input.Frame && pulsed){player.controlUseItem=PlayerInput.Triggers.Current.MouseLeft;player.releaseUseItem=!player.controlUseItem;}
+            if(pulseFrame==host.Input.Frame && pulsed){player.controlUseItem=host.ManualLeft;player.releaseUseItem=!player.controlUseItem;}
         }
         internal void Retire()
         {

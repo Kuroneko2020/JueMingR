@@ -128,11 +128,18 @@ namespace NativeWorldTextProbe
                     NativeFishingChecks.Save(host,new FishingOptions(auto:mode==1,storeMode:mode));var b=Cast(context,input);
                     p.inventory[12].SetDefaults(type);p.inventory[12].stack=3;Main.anglerQuestFinished=false;Call(Get(items,"World"),"InvalidateObservation");
                     Set(input,"foregroundWindow",(Func<IntPtr>)(()=>new IntPtr(2)));FocusHelper.IsSelectedApplication=false;Main.ToggleGameplayUpdates(true);p.mouseInterface=staleMouse;
+                    int productsBefore=productCount;
                     if(mode==1){b.ai[1]=-120;b.localAI[1]=type;b.localAI[2]=ItemID.Worm;}
-                    for(int i=0;i<280;i++)NativeFishingChecks.Step(context,input,new Vector2(850,718),false,0);
+                    // Observe completion of this actual storage opportunity.
+                    // A blind 280-step wait can naturally catch a second Bass
+                    // after automatic recast (vanilla's wait counter is random,
+                    // not a minimum tick duration), making exact totals flaky.
+                    for(int i=0;i<280 && (p.inventory.Any(x=>x.type==type) || mode==1 && productCount==productsBefore);i++)
+                        NativeFishingChecks.Step(context,input,new Vector2(850,718),false,0);
+                    Require(productCount-productsBefore==(mode==1?1:0),"background fixture observes exactly the intended original product");
                     Require(!(bool)Get(input,"CanStartActions") && !(bool)Get(input,"CanRetainIntent"),"background storage does not grant physical input");
                     Require(chest.item.Where(x=>x.type==type).Sum(x=>x.stack)==(mode==1?5:4) && p.inventory.Where(x=>x.type==type).Sum(x=>x.stack)==0,
-                        "background native fish storage completes both modes through actual shared item outlet; mode="+mode+" staleMouse="+staleMouse);
+                        "background native fish storage completes both modes through actual shared item outlet; mode="+mode+" staleMouse="+staleMouse+" chest="+chest.item.Where(x=>x.type==type).Sum(x=>x.stack)+" inventory="+p.inventory.Where(x=>x.type==type).Sum(x=>x.stack)+" session="+Get(Get(host,"Session"),"Active"));
                 }
             }
             finally{Set(input,"foregroundWindow",foreground);FocusHelper.IsSelectedApplication=true;Main.ToggleGameplayUpdates(updates);Main.LocalPlayer.mouseInterface=false;}

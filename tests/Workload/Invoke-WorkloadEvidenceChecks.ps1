@@ -12,7 +12,7 @@ $page = Get-WorkloadRoute @('src/JueMingR.TerrariaHost/F5/MiscAutomationPanel.cs
 Assert-Evidence ($page.groups -contains 'pages-host') 'page arrangement must select actual page composition/input checks'
 Assert-Evidence ($page.groups -notcontains 'fishing-host' -and $page.groups -notcontains 'storage-host') 'page arrangement must not select unrelated fishing/storage execution'
 $shared = Get-WorkloadRoute @('src/JueMingR.Platform/Items/ItemOperationOwnership.cs')
-foreach ($group in @('fishing-host','tools-host','quick-items-host','coin-deposit-host','processing-host')) {
+foreach ($group in @('fishing-host','tools-host','quick-items-host','coin-deposit-host','processing-host','combat-host')) {
     Assert-Evidence ($shared.groups -contains $group) ('shared item provider must include ' + $group)
 }
 Write-Output 'PASS: local page exclusions and transitive shared item consumers.'

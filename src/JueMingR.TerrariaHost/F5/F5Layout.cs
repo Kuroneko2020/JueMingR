@@ -33,7 +33,10 @@ namespace JueMingR.TerrariaHost.F5
         ConfigureRare, ConfigureMerchant, DeathDetails, DeathConfigure, DeathEnable, DeathDisable,
         MarkerManage, MarkerEnable, MarkerDisable, ExplorationDetails, ExplorationValue,
         FootprintConfigure, FootprintEnable, FootprintDisable, AnnouncementEnable, AnnouncementDisable,
-        AboutCopyGroup }
+        AboutCopyGroup,
+        CombatAutoClickOn, CombatAutoClickOff, CombatFlailOn, CombatFlailOff, CombatSwitchOn, CombatSwitchOff,
+        CombatRevolverOn, CombatRevolverOff, CombatStringOn, CombatStringOff, CombatFacingOn, CombatFacingOff,
+        CombatReportOn, CombatReportOff, CombatGoblinOn, CombatGoblinOff, CombatInterval }
 
     internal sealed class F5Element
     {
@@ -173,7 +176,9 @@ namespace JueMingR.TerrariaHost.F5
             if (currentPage == 9) BuildInformation(ref y);
             else if (currentPage == 5) About.Build(elements, DynamicTextSize, Viewport.Height, ref y);
             else if (currentPage == 7 && !FishingAttached) BuildFishing(ref y);
-            else if (currentPage == 1 || currentPage == 2 || currentPage == 8) GuidanceControls.AddRows(elements, TextSize, ref y, currentPage);
+            else if (currentPage == 8)
+            {CombatControls.AddRows(elements,TextSize,ref y,0,6);GuidanceControls.AddRows(elements,TextSize,ref y,8);CombatControls.AddRows(elements,TextSize,ref y,6,2);}
+            else if (currentPage == 1 || currentPage == 2) GuidanceControls.AddRows(elements, TextSize, ref y, currentPage);
             if (currentPage == 2) DeathControls.AddRows(elements, DynamicTextSize, ref y, deathCount, worldDays);
             if (currentPage == 2) MapControls.AddRows(elements, TextSize, ref y);
             if (currentPage == 2) FootprintControls.AddRows(elements, TextSize, ref y);

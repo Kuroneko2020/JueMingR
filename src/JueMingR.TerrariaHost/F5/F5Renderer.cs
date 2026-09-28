@@ -30,6 +30,11 @@ namespace JueMingR.TerrariaHost.F5
         internal WorldObjectControls ObjectControls { get; set; }
         internal Information.InformationControls InformationControls { get; set; }
         internal GuidanceControls GuidanceControls { get; set; }
+        internal CombatControls CombatControls {get;set;}
+        internal CombatIntervalDrag CombatInterval {get;set;}
+        private readonly string[] intervalLabels=new string[31];
+        private readonly F5Size[] intervalSizes=new F5Size[31];
+        private object intervalFont;
         internal DeathControls DeathControls { get; set; }
         internal MapControls MapControls { get; set; }
         internal AnnouncementControls AnnouncementControls { get; set; }
@@ -198,6 +203,8 @@ namespace JueMingR.TerrariaHost.F5
         internal void Prepare(F5Interaction state, float width, float height, float scale)
         {
             state.Layout.Ensure(width, height, scale, state.Page, font, measure);
+            if(state.Page==8 && !ReferenceEquals(intervalFont,font))
+            {for(int i=0;i<=30;i++){intervalLabels[i]="间隔 "+i;intervalSizes[i]=state.Layout.TextSize(intervalLabels[i],.65f);}intervalFont=font;}
             // Dynamic pages clamp after committing their real content height.
             // Ensure's temporary empty height must not reset their offset.
             if (state.Page != 0 && state.Page != 1 && state.Page != 4 && !(FishingUi!=null && state.Page==7) && !(RecoveryUi!=null && state.Page==10)) state.ClampScroll();
@@ -247,6 +254,15 @@ namespace JueMingR.TerrariaHost.F5
                     else if (element.Kind == F5ElementKind.Field)
                     {
                         Panel(batch, rect, row, new Color(180, 180, 180));
+                        if(element.Command==F5Command.CombatInterval && CombatInterval!=null)
+                        {
+                            int value=CombatInterval.Value;var track=CombatIntervalDrag.TrackIn(rect);var size=intervalSizes[value];
+                            Color tint=CombatInterval.Available?Color.LightSkyBlue:Color.Gray;
+                            Text(batch,intervalLabels[value],new Vector2(rect.X+4,rect.Y+(rect.Height-size.Height)/2),.65f,Color.White,size);
+                            Decoration(batch,new F5Rect(track.X,track.Y+6,track.Width,2),Color.Gray);
+                            Decoration(batch,new F5Rect(track.X,track.Y+6,track.Width*value/30,2),tint);
+                            Decoration(batch,new F5Rect(track.X+track.Width*value/30-3,track.Y,6,14),tint);
+                        }
                         if (element.HotkeyTarget == F5.AnnouncementControls.SendActionId)
                             Text(batch, fittedSendValue ?? "", new Vector2(rect.X + (rect.Width - sendValueSize.Width) / 2, rect.Y + (rect.Height - sendValueSize.Height) / 2), element.TextScale, Color.White, sendValueSize);
                     }
@@ -272,8 +288,9 @@ namespace JueMingR.TerrariaHost.F5
                         bool information = Information.InformationControls.Target(element.Command).HasValue || element.Command == F5Command.AdjustInformation;
                         bool legacyBiome = element.Command == F5Command.EnableBiome || element.Command == F5Command.DisableBiome;
                         bool guidance = F5.GuidanceControls.Owns(element.Command);
+                        bool combat = F5.CombatControls.Owns(element.Command);
                         bool enabled = entity ? EntityControls != null && EntityControls.Available(element.Command) : world ? WorldControls != null && WorldControls.Available(element.Command) : objects ? ObjectControls != null && ObjectControls.Available(element.Command) :
-                            information ? legacyBiome ? !biomeFailed : InformationControls != null && InformationControls.Available(element.Command) : guidance ? GuidanceControls != null && GuidanceControls.Available(element.Command) : F5.FootprintControls.Owns(element.Command) ? FootprintControls != null && FootprintControls.Available(element.Command) : F5.MapControls.Owns(element.Command) ? MapControls != null && MapControls.Available(element.Command) : F5.AnnouncementControls.Owns(element.Command) ? AnnouncementControls != null && AnnouncementControls.Available(element.Command) : DeathControls != null && DeathControls.Available(element.Command);
+                            combat ? CombatControls!=null && CombatControls.Available(element.Command) : information ? legacyBiome ? !biomeFailed : InformationControls != null && InformationControls.Available(element.Command) : guidance ? GuidanceControls != null && GuidanceControls.Available(element.Command) : F5.FootprintControls.Owns(element.Command) ? FootprintControls != null && FootprintControls.Available(element.Command) : F5.MapControls.Owns(element.Command) ? MapControls != null && MapControls.Available(element.Command) : F5.AnnouncementControls.Owns(element.Command) ? AnnouncementControls != null && AnnouncementControls.Available(element.Command) : DeathControls != null && DeathControls.Available(element.Command);
                         bool hovered = !state.PointerBlocked && rect.Contains(state.PointerX, state.PointerY) && view.Contains(state.PointerX, state.PointerY);
                         if (About.AboutPage.Owns(element.Command)) { enabled = true; element = state.Layout.About.Display(element); }
                         if (element.Command == F5Command.AboutCopyGroup)
@@ -284,7 +301,7 @@ namespace JueMingR.TerrariaHost.F5
                         }
                         F5ControlRenderer.Button(batch, pixel, button, font, element, hovered, enabled,
                             entity ? EntityControls?.Selected(element.Command) : world ? WorldControls?.Selected(element.Command) : objects ? ObjectControls?.Selected(element.Command) :
-                            information && !legacyBiome ? InformationControls?.Selected(element.Command) : guidance ? GuidanceControls?.Selected(element.Command) : F5.FootprintControls.Owns(element.Command) ? FootprintControls?.Selected(element.Command) : F5.MapControls.Owns(element.Command) ? MapControls?.Selected(element.Command) : F5.AnnouncementControls.Owns(element.Command) ? AnnouncementControls?.Selected(element.Command) : F5.DeathControls.Owns(element.Command) ? DeathControls?.Selected(element.Command) : F5Layout.IsSelected(element, biomeEnabled, biomeFailed) ? (Color?)(biomeEnabled ? Color.LightGreen : Color.IndianRed) : null,
+                            combat ? CombatControls?.Selected(element.Command) : information && !legacyBiome ? InformationControls?.Selected(element.Command) : guidance ? GuidanceControls?.Selected(element.Command) : F5.FootprintControls.Owns(element.Command) ? FootprintControls?.Selected(element.Command) : F5.MapControls.Owns(element.Command) ? MapControls?.Selected(element.Command) : F5.AnnouncementControls.Owns(element.Command) ? AnnouncementControls?.Selected(element.Command) : F5.DeathControls.Owns(element.Command) ? DeathControls?.Selected(element.Command) : F5Layout.IsSelected(element, biomeEnabled, biomeFailed) ? (Color?)(biomeEnabled ? Color.LightGreen : Color.IndianRed) : null,
                             view.X, view.Y - state.Scroll);
                     }
                 }
@@ -331,6 +348,12 @@ namespace JueMingR.TerrariaHost.F5
             var name = F5HintLayout.HitName(state.Layout.Elements, visible, view.X, view.Y - state.Scroll,
                 state.PointerX, state.PointerY, out target);
             if (name != null) return name.Description.Text;
+            if(state.Page==8 && CombatControls!=null)
+                foreach(var element in state.Layout.Elements)if(element.Command==F5Command.CombatInterval)
+                {
+                    var field=F5HintLayout.Intersect(element.Rect.Offset(view.X,view.Y-state.Scroll),visible);
+                    if(field.Contains(state.PointerX,state.PointerY)){target=field;return CombatControls.Hint(element.Command);}
+                }
             F5Element hover = state.HitButton(state.PointerX - state.X, state.PointerY - state.Y);
             if (hover == null) return null;
             if (About.AboutPage.Owns(hover.Command))
@@ -344,7 +367,7 @@ namespace JueMingR.TerrariaHost.F5
         internal string ButtonHint(F5Element hover, bool biomeFailed)
         {
             if (biomeFailed && (hover.Command == F5Command.EnableBiome || hover.Command == F5Command.DisableBiome)) return "群系显示暂不可用";
-            return EntityControls?.Hint(hover.Command) ?? WorldControls?.Hint(hover.Command) ?? ObjectControls?.Hint(hover.Command) ?? InformationControls?.Hint(hover.Command) ?? GuidanceControls?.Hint(hover.Command) ?? DeathControls?.Hint(hover.Command) ?? MapControls?.Hint(hover.Command) ?? FootprintControls?.Hint(hover.Command) ?? AnnouncementControls?.Hint(hover.Command);
+            return CombatControls?.Hint(hover.Command) ?? EntityControls?.Hint(hover.Command) ?? WorldControls?.Hint(hover.Command) ?? ObjectControls?.Hint(hover.Command) ?? InformationControls?.Hint(hover.Command) ?? GuidanceControls?.Hint(hover.Command) ?? DeathControls?.Hint(hover.Command) ?? MapControls?.Hint(hover.Command) ?? FootprintControls?.Hint(hover.Command) ?? AnnouncementControls?.Hint(hover.Command);
         }
         // The shell owns one current hint for every ordinary page. Adapters
         // supply only content and final name regions; preparation is shared with
