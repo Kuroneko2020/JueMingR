@@ -147,6 +147,7 @@ namespace NativeWorldTextProbe
         }
         private static Projectile Cast(object context,object input)
         {
+            if(((FishingSettings)Get(Get(context,"Fishing"),"Settings")).Value.Auto)return NativeFishingChecks.CastToWaiting(context,input);
             for(int i=0;i<150;i++)NativeFishingChecks.Step(context,input,new Vector2(850,718),i==0,0);
             var b=Main.projectile.FirstOrDefault(x=>x.active && x.bobber && x.owner==Main.myPlayer);
             Require(b!=null && b.wet && (bool)Get(Get(Get(context,"Fishing"),"Session"),"Active"),"real manually cast wet bobber admits storage session");return b;

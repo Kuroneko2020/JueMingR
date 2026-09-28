@@ -73,6 +73,7 @@ namespace NativeWorldTextProbe
             audit.Patch(Get(context,"ShortFeedback").GetType().GetMethod("Show",Flags),postfix:new HarmonyMethod(typeof(NativeFishingChecks),nameof(Shown)));
             try
             {
+                NativeFishingObservationChecks.Run(context);
                 foreach(bool inventory in new[]{false,true})foreach(int empty in new[]{0,1,3})
                 {
                     Save(host,new FishingOptions());
@@ -152,6 +153,19 @@ namespace NativeWorldTextProbe
         }
         internal static void Save(object host,FishingOptions value)
         {var settings=(FishingSettings)Get(host,"Settings");NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return !settings.Busy;});Require(settings.Set(value),"fishing save admitted");NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return !settings.Busy;});Require(settings.CompletionSucceeded,"fishing save completed");}
+        internal static Projectile CastToWaiting(object context,object input,int empty=0)
+        {
+            // Stop at the actual first liquid admission. A fixed long setup
+            // delay can already catch naturally and return before bite injection.
+            for(int i=0;i<180;i++)
+            {
+                Step(context,input,new Vector2(850,718),i==0,empty);
+                var b=Main.projectile.FirstOrDefault(q=>q.active && q.bobber && q.owner==Main.myPlayer && q.wet && q.ai[0]<1);
+                if(b!=null && Get(Get(Get(context,"Fishing"),"Session"),"Phase").ToString()=="Waiting")
+                {Require(b.ai[1]==0,"first liquid admission precedes native bite/return");return b;}
+            }
+            throw new InvalidOperationException("native manual cast did not enter its first waiting liquid phase");
+        }
         private static void F5CutRefresh(object context,object host,object tools,object input)
         {
             Save(host,new FishingOptions());var p=NativeToolExecutionChecks.Reset(context,tools,input,ItemID.WoodFishingPole,0,0);
@@ -190,14 +204,14 @@ namespace NativeWorldTextProbe
                     p.armor[3].SetDefaults(ItemID.HighTestFishingLine);p.inventory[54].SetDefaults(ItemID.Worm);p.inventory[54].stack=100;
                     for(int x=44;x<74;x++)for(int y=42;y<61;y++){Main.tile[x,y].ClearEverything();if(y>=44 && y<60)Main.tile[x,y].liquid=255;if(y==60)NativeToolsChecks.Tile(x,y,1);}
                     Save(host,new FishingOptions(auto:true,filterMode:2));var point=new Vector2(850,718);
-                    for(int i=0;i<150;i++)Step(context,input,point,i==0,1);
+                    var b=CastToWaiting(context,input,1);
                     long token=(long)Get(Get(host,"Session"),"Token");p.AddBuff(122,4000);
                     Set(input,"foregroundWindow",(Func<IntPtr>)(()=>new IntPtr(2)));Terraria.FocusHelper.IsSelectedApplication=false;Main.ToggleGameplayUpdates(true);p.mouseInterface=staleMouse;
-                    var b=Main.projectile.First(q=>q.active && q.bobber && q.owner==p.whoAmI);b.ai[1]=-240;b.localAI[1]=ItemID.Bass;b.localAI[2]=ItemID.Worm;
+                    b.ai[1]=-240;b.localAI[1]=ItemID.Bass;b.localAI[2]=ItemID.Worm;
                     int priorCasts=casts,priorProducts=products;
                     for(int i=0;i<240 && casts==priorCasts;i++)Step(context,input,point,false,1);
                     Require(!(bool)Get(input,"CanStartActions") && !(bool)Get(input,"CanRetainIntent"),"background fishing never grants physical input permission");
-                    Require(products==priorProducts+1 && casts==priorCasts+1,"background accepted bite completes native product and one recast, staleMouse="+staleMouse);
+                    Require(products==priorProducts+1 && casts==priorCasts+1,"background accepted bite completes native product and one recast, staleMouse="+staleMouse+" products="+(products-priorProducts)+" casts="+(casts-priorCasts)+" phase="+Get(Get(host,"Session"),"Phase")+" bobber="+b.active+" ai="+b.ai[0]+","+b.ai[1]+" item="+b.localAI[1]+" line="+p.accFishingLine);
                     for(int i=0;i<70;i++)Step(context,input,point,false,1);
                     Save(host,new FishingOptions(auto:true,filterMode:1,crates:0,quests:0,npcs:0));
                     b=Main.projectile.First(q=>q.active && q.bobber && q.owner==p.whoAmI);b.ai[1]=-240;b.localAI[1]=ItemID.Bass;b.localAI[2]=ItemID.Worm;int key=(int)b.key;priorCasts=casts;priorProducts=products;

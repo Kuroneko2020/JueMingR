@@ -43,7 +43,7 @@ namespace JueMingR.TerrariaHost.Fishing
             Rename=new PlayerRename(this);
             tools.Items.UpdateFishingStorage=SyncStorage;
             tools.Items.FishingClock=()=>Tools.Tick;
-            tools.FishingEnabled=()=>NeedsSession || Session.Active;tools.FishingChoice=Session.Choose;tools.FishingStarted=Session.ObserveUse;tools.FishingProjectile=Session.ObserveCreated;tools.FishingManualSelection=Session.ManualSelection;
+            tools.FishingEnabled=()=>NeedsSession || Session.Active;tools.FishingChoice=Session.Choose;tools.FishingStarted=Session.ObserveUse;tools.FishingProjectile=ObserveCreated;tools.FishingManualSelection=Session.ManualSelection;
             var prior=tools.Items.World.AdditionalProtection;Equipment=new FishingEquipment(this,favorites,prior);
             tools.Items.World.AdditionalProtection=item=>(prior?.Invoke(item)??false) || Session.Protect(item) || Equipment.Protect(item);
             try{FishingHooks.Install(this);FishingEquipmentHooks.Install(Equipment);Available=tools.Available;}
@@ -101,7 +101,25 @@ namespace JueMingR.TerrariaHost.Fishing
             Session.Reset();Observation.Clear();Catalog.Clear();Display?.Clear();Rename.Clear();
         }
         public void Update(ulong tick)
-        {if(!Available){Equipment.Update();return;}if(!Enabled){Observation.Clear();Display?.Clear();return;}var p=Player;if(p==null){Session.Reset();Equipment.Update();Observation.Clear();Display?.Clear();return;}Observation.Read(p);Session.Update();Equipment.Update();Display?.Update(p);}
+        {
+            if(!Available){Equipment.Update();return;}
+            if(!Enabled){Observation.Clear();Display?.Clear();return;}
+            var p=Player;
+            if(p==null){Session.Reset();Equipment.Update();Observation.Clear();Display?.Clear();return;}
+            // Settings keep the lightweight entry alive, not a perpetual scan.
+            // A loan pauses G10 observation; its owner supplies the recast.
+            // Equipment returns and in-flight session results still advance.
+            bool display=(Display?.Enabled??false) && !p.dead && p.HeldItem.fishingPole>0;
+            Observation.Update(p,Session.NeedsObservation || display);
+            Session.Update();Equipment.Update();Display?.Update(p);
+        }
+        private void ObserveCreated(Player p,Projectile projectile)
+        {
+            if(!Available || !ReferenceEquals(p,Player) || projectile==null || !projectile.active || !projectile.bobber || projectile.owner!=p.whoAmI || (int)projectile.key==-1)return;
+            // This is a native creation fact, not an automatic-use permission.
+            // Read-only displays must also wake when automation is disabled.
+            Observation.Invalidate();Session.ObserveCreated(p,projectile);
+        }
         public void FailClosed(){Available=false;Session.Stop();Equipment.Fail("钓鱼辅助已停止，仍需归还的装备保留实际记录。");Observation.Clear();Display?.Clear();Report("钓鱼辅助已停止，未确认的操作不会重试。");}
         private void Exit(object sender,EventArgs e){AppDomain.CurrentDomain.ProcessExit-=Exit;Settings.Stop(1000);Rename.Dispose();Display?.Dispose();}
     }

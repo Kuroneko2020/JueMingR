@@ -22,7 +22,7 @@ namespace NativeWorldTextProbe
         {
             context=value;host=Get(value,"Fishing");owner=Get(host,"Equipment");tools=Get(value,"Tools");input=Get(value,"Input");
             bool hint=Player.Settings.ShowLoadoutShareHint;Player.Settings.ShowLoadoutShareHint=false;
-            try{NoBorrowNotice();F5Equipment();PendingLoadoutTakeover();Clothing();Social();Loadout();Void();ManualGroup();Favorites();MovedOriginal();LaterIntent();StackSource();WaterHook();UpgradeChain();Lifecycle();NativeFishingNetworkChecks.Equipment(context,Reset,Cast,Stop);}
+            try{NoBorrowNotice();ReturnOnlyObservation();F5Equipment();PendingLoadoutTakeover();Clothing();Social();Loadout();Void();ManualGroup();Favorites();MovedOriginal();LaterIntent();StackSource();WaterHook();UpgradeChain();Lifecycle();NativeFishingNetworkChecks.Equipment(context,Reset,Cast,Stop);}
             finally{Player.Settings.ShowLoadoutShareHint=hint;}
             NativeFishingChecks.Save(host,new FishingOptions());Frames(25);
             Console.WriteLine("PASS G10 real wet-bobber equipment admission, strict clothing upgrade, exact-reference return, social sources, shared loadout projection, usable void and manual group handoff.");
@@ -36,6 +36,20 @@ namespace NativeWorldTextProbe
             NativeFishingChecks.Step(context,input,new Vector2(850,718),true,0);Frames(150);Cast(new FishingOptions(loadout:true));
             p.TrySwitchingLoadout(1);Frames(25);Stop();Call(host,"TakeFeedback",(Action<string>)notices.Add);
             Require(!notices.Any(x=>x.Contains("归还") || x.Contains("接管装备组")),"no actual loan never claims restoration or handoff");
+        }
+        private static void ReturnOnlyObservation()
+        {
+            var p=Reset();var old=Put(p.armor,0,ItemID.CopperHelmet);var hat=Put(p.inventory,12,5591);Cast(new FishingOptions(equipment:true));
+            Require(ReferenceEquals(p.armor[0],hat),"return-only fixture acquired real equipment");
+            Main.mouseItem.SetDefaults(ItemID.StoneBlock);NativeFishingChecks.Save(host,new FishingOptions());
+            NativeQuickItemChecks.BeginWorldStep();Call(host,"Update",(ulong)Main.GameUpdateCount);
+            Require(!(bool)Get(Get(host,"Session"),"Active") && (bool)Get(owner,"Active"),"disabled fishing retains only its blocked equipment return");
+            object observation=Get(host,"Observation");long scans=(long)Get(observation,"Scans");
+            for(int i=0;i<120;i++){NativeQuickItemChecks.BeginWorldStep();Call(host,"Update",(ulong)Main.GameUpdateCount);}
+            Require((long)Get(observation,"Scans")==scans && (bool)Get(owner,"Active") && ReferenceEquals(p.armor[0],hat),"equipment-only tail keeps exact items without waking projectile scans");
+            Main.mouseItem.TurnToAir();Frames(25);
+            Require(!(bool)Get(owner,"Active") && ReferenceEquals(p.armor[0],old) && ReferenceEquals(p.inventory[12],hat),"return resumes independently when the real mouse ownership clears");
+            Console.WriteLine("PASS G10 independent equipment return: 120 retained-tail updates, zero projectile scans, exact items restored.");
         }
         private static void F5Equipment()
         {

@@ -31,8 +31,12 @@ namespace JueMingR.TerrariaHost.Fishing
         internal bool InLiquid {get;private set;}
         internal int Liquid {get;private set;}
         internal bool StorageSession {get{return Active && Identity() && player.statLife>=life && host.KeepsSession;}}
+        internal bool NeedsObservation {get{return Active?!Tools.Fishing.Active:host.NeedsSession && PendingCastIdentity();}}
         internal FishingSession(HostFishing host){this.host=host;}
         private HostTools Tools {get{return host.Tools;}}
+        private bool PendingCastIdentity()
+        {return manualCast && ReferenceEquals(lastPlayer,host.Player) && lastGeneration==Tools.Runtime.Generation && lastSlot>=0 && lastSlot<50 &&
+            ReferenceEquals(lastPlayer.inventory[lastSlot],lastRod) && lastPlayer.selectedItem==lastSlot && !lastPlayer.dead && lastRod.stack>0 && lastRod.fishingPole>0;}
         private bool Identity()
         {return player!=null && ReferenceEquals(player,host.Player) && generation==Tools.Runtime.Generation && selection==Tools.SelectionIntent && rodSlot>=0 && rodSlot<50 && ReferenceEquals(player.inventory[rodSlot],rod) && rod.type==rodType && rod.stack>0 && rod.fishingPole>0 && !player.dead;}
         internal bool Protect(Item item){return Active && Identity() && ReferenceEquals(item,rod);}
@@ -55,14 +59,21 @@ namespace JueMingR.TerrariaHost.Fishing
         {
             if(!Active)
             {
-                if(!host.NeedsSession || !manualCast || !ReferenceEquals(lastPlayer,host.Player) || lastGeneration!=Tools.Runtime.Generation ||
-                    lastSlot<0 || lastSlot>=50 || !ReferenceEquals(lastPlayer.inventory[lastSlot],lastRod) || lastPlayer.selectedItem!=lastSlot || lastPlayer.dead)return;
+                if(!PendingCastIdentity()){manualCast=false;return;}
+                if(!host.NeedsSession)return;
                 for(int i=0;i<host.Observation.Count;i++)if(host.Observation.Bobbers[i].InLiquid)
                 {
                     player=lastPlayer;rod=lastRod;rodSlot=lastSlot;rodType=rod.type;generation=lastGeneration;selection=Tools.SelectionIntent;
                     target=lastTarget;life=player.statLife;Token=++nextSession;Phase=FishingPhase.Waiting;manualCast=false;truffle=lastTruffle;Snapshot();Prompt(true,false);break;
                 }
-                if(!Active)return;
+                if(!Active)
+                {
+                    // A completed native use with no surviving bobber is a
+                    // failed/retired cast, not an indefinite discovery task.
+                    // Airborne bobbers remain observable for any flight time.
+                    if(host.Observation.Count==0 && lastPlayer.itemAnimation==0)manualCast=false;
+                    return;
+                }
             }
             if(!Identity()){End(player!=null && !player.dead && ReferenceEquals(player,host.Player) && generation==Tools.Runtime.Generation);return;}
             if(player.statLife<life){Stop();return;}life=player.statLife;
