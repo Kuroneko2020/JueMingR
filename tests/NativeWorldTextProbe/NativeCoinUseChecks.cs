@@ -67,10 +67,10 @@ namespace NativeWorldTextProbe
                 for (ulong tick = 0; tick < 160; tick++)
                 {
                     NativeQuickItemChecks.NativeFrame(p);
-                    NativeQuickItemChecks.Sample(input, new Keys[0]); Call(shell, "ProcessInput");
                     bool usingAmmo = p.itemAnimation > 0 || p.itemTime > 0 || p.channel;
                     Call(host, "Update", tick);
                     if (usingAmmo) Require((long)Get(Get(host, "Transfer"), "NativeCalls") == calls, "deposit waits for actual CoinGun ammunition use, including final shot");
+                    NativeQuickItemChecks.Sample(input, new Keys[0]); Call(shell, "ProcessInput");
                 }
                 Require(shots == expectedShots && Total(p.inventory, 58) == 0 && Total(p.bank.item, 40) == 31 - spent,
                     "G05 CoinGun shot/ammunition matches ordinary native use and only remainder deposits");

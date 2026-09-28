@@ -62,7 +62,7 @@ namespace JueMingR.TerrariaHost.Items
             for (int i = 0; i < count; i++)
             {
                 ItemSlotObservation source = request.Sources[i];
-                if (!source.Identity.Equals(identity) || source.MaximumStack <= 1 || !world.Matches(source)) return Result(ItemOperationState.Rejected, "storage-source-changed");
+                if (!source.Identity.Equals(identity) || request.RequireStackable && source.MaximumStack <= 1 || !world.Matches(source)) return Result(ItemOperationState.Rejected, "storage-source-changed");
                 Item item = player.inventory[source.Slot];
                 if (i > 0 && !Item.CanStack(items[0], item)) return Result(ItemOperationState.Rejected, "storage-incompatible-source");
                 for (int j = 0; j < i; j++) if (ReferenceEquals(item, items[j])) return Result(ItemOperationState.Rejected, "storage-aliased-source");

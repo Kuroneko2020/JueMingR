@@ -1,4 +1,4 @@
-﻿# Shared by the existing build and its thin CPU runner. No build/test recursion.
+# Shared by the existing build and its thin CPU runner. No build/test recursion.
 function Invoke-WorkloadGit {
     param([string] $Root, [string[]] $Arguments)
     $start = New-Object Diagnostics.ProcessStartInfo
@@ -33,7 +33,7 @@ function Get-WorkloadIdentity {
         }
         $bytes = [Text.Encoding]::UTF8.GetBytes(($rows -join "`n"))
         return [ordered]@{ commit = [string](Invoke-WorkloadGit $Root @('rev-parse', 'HEAD'));
-            fingerprint = [BitConverter]::ToString($sha.ComputeHash($bytes)).Replace('-', ''); inputCount = $paths.Count }
+            fingerprint = [BitConverter]::ToString($sha.ComputeHash($bytes)).Replace('-', ''); inputCount = $paths.Count; inputs = @($rows) }
     } finally { $sha.Dispose() }
 }
 function Get-WorkloadChanges {
@@ -58,7 +58,9 @@ function Get-WorkloadRoute {
     $unknown = @()
     foreach ($path in $Paths) {
         switch -Regex ($path.Replace('\', '/')) {
+            '^src/JueMingR.TerrariaHost/F5/MiscAutomationPanel\.cs$|^tests/NativeWorldTextProbe/NativePageComposition' { [void]$groups.Add('pages-host'); continue }
             '^src/[^/]+/Tools/|^tests/JueMingR.ArchitectureTests/Tools/|^tests/NativeWorldTextProbe/Native(Tools|ToolCadence|ToolExecution|ToolWait|SeedDiscovery|Capture|Herb|Mining|FishingBorrow)' { [void]$groups.Add('tools-host'); continue }
+            '^src/[^/]+/Fishing/|^tests/JueMingR.ArchitectureTests/Fishing/|^tests/NativeWorldTextProbe/Native(Fishing|PlayerRename|BackgroundAutomation|F5Automation)' { [void]$groups.Add('fishing-host'); continue }
             '^src/JueMingR.TerrariaHost/Feedback/|^tests/NativeWorldTextProbe/NativeShortFeedback' { [void]$groups.Add('shared-host'); continue }
             '^src/[^/]+/Processing/|^tests/JueMingR.ArchitectureTests/Processing/|^tests/Processing/|^tests/NativeWorldTextProbe/Native(Processing|Extraction|Reforge)' { if($path.StartsWith('src/')){[void]$groups.Add('tools-host')}; [void]$groups.Add('processing-host'); continue }
             # G08 consumes the existing bank guards and their account facts.
@@ -73,12 +75,12 @@ function Get-WorkloadRoute {
             '^src/[^/]+/(ItemCatalog|ItemBrowser|ChestLocator|Announcements)/|^tests/(ItemBrowser|ChestLocator|Announcements)/' { [void]$groups.Add('browser-host'); continue }
             # About copies via NotesClipboard; onboarding consults prepared
             # Notes overlap geometry. Neither consumes the Notes text editor.
-            '^src/JueMingR.TerrariaHost/Notes/NotesClipboard\.cs$' { [void]$groups.Add('notes-host'); [void]$groups.Add('browser-host'); [void]$groups.Add('about-host'); [void]$groups.Add('processing-host'); continue }
+            '^src/JueMingR.TerrariaHost/Notes/NotesClipboard\.cs$' { [void]$groups.Add('fishing-host'); [void]$groups.Add('notes-host'); [void]$groups.Add('browser-host'); [void]$groups.Add('about-host'); [void]$groups.Add('processing-host'); continue }
             '^src/JueMingR.TerrariaHost/Notes/NotesPresentation\.cs$' { [void]$groups.Add('notes-host'); [void]$groups.Add('about-host'); continue }
             # BrowserPresentation also shares NotesInput, but not the rest of Notes UI.
             '^src/JueMingR.TerrariaHost/Notes/NotesInput\.cs$' { [void]$groups.Add('notes-host'); [void]$groups.Add('browser-host'); [void]$groups.Add('processing-host'); continue }
             '^src/[^/]+/Notes/|^tests/Notes/' { [void]$groups.Add('notes-host'); continue }
-            '^src/[^/]+/Text/' { [void]$groups.Add('notes-host'); [void]$groups.Add('map-host'); [void]$groups.Add('browser-host'); [void]$groups.Add('processing-host'); continue }
+            '^src/[^/]+/Text/' { [void]$groups.Add('fishing-host'); [void]$groups.Add('notes-host'); [void]$groups.Add('map-host'); [void]$groups.Add('browser-host'); [void]$groups.Add('processing-host'); continue }
             '^src/[^/]+/Footprints/|^tests/Footprints/' { [void]$groups.Add('footprints-host'); [void]$groups.Add('map-host'); [void]$groups.Add('storage-host'); continue }
             '^src/[^/]+/(MapMarkers|Exploration)/|^src/JueMingR.TerrariaHost/Map/|^tests/MapMarkers/' { [void]$groups.Add('map-host'); [void]$groups.Add('death-host'); continue }
             '^src/JueMingR.TerrariaHost/EntityLabels/(Style|Hex)|^tests/EntityLabels/EntityStyle|^tests/WorldTargets/WorldTargetStyle' { [void]$groups.Add('style-host'); continue }
@@ -98,7 +100,7 @@ function Get-WorkloadRoute {
     }
     if ($groups.Contains('shared-host') -or $groups.Contains('storage-host')) { [void]$groups.Add('about-host'); [void]$groups.Add('death-host'); [void]$groups.Add('map-host') }
     if ($groups.Contains('shared-host') -or $groups.Contains('storage-host')) { [void]$groups.Add('tools-host') }
-    if ($groups.Contains('tools-host')) { [void]$groups.Add('quick-items-host'); [void]$groups.Add('recovery-host'); [void]$groups.Add('processing-host'); [void]$groups.Add('coin-deposit-host') }
+    if ($groups.Contains('tools-host')) { [void]$groups.Add('fishing-host'); [void]$groups.Add('quick-items-host'); [void]$groups.Add('recovery-host'); [void]$groups.Add('processing-host'); [void]$groups.Add('coin-deposit-host') }
     if ($groups.Contains('shared-host') -or $groups.Contains('storage-host')) { [void]$groups.Add('quick-items-host') }
     if ($groups.Contains('shared-host') -or $groups.Contains('storage-host')) { [void]$groups.Add('processing-host') }
     if ($groups.Contains('shared-host') -or $groups.Contains('storage-host') -or $groups.Contains('quick-items-host') -or $groups.Contains('coin-deposit-host')) { [void]$groups.Add('recovery-host') }
@@ -107,16 +109,25 @@ function Get-WorkloadRoute {
     # Browser text editing and chest/target resolution consume these shared
     # paths even when no ItemBrowser file itself changed in the current diff.
     if ($groups.Contains('shared-host') -or $groups.Contains('storage-host') -or $groups.Contains('world-host')) { [void]$groups.Add('browser-host') }
+    if ($groups.Contains('shared-host') -or $groups.Contains('storage-host')) {
+        foreach ($group in @('notes-host','records','style-host','world-host','hotkeys','preferences','information','guidance','entity','items','biomes','pages-host')) { [void]$groups.Add($group) }
+    }
+    if ($groups.Contains('fishing-host')) { [void]$groups.Add('information') }
+    if ($groups.Contains('quick-items-host') -or $groups.Contains('notes-host') -or $groups.Contains('pages-host')) { [void]$groups.Add('hotkeys') }
+    if ($groups.Contains('processing-host')) { [void]$groups.Add('items') }
+    if ($groups.Contains('world-host')) { [void]$groups.Add('records'); [void]$groups.Add('entity') }
+    if ($groups.Contains('tools-host')) { [void]$groups.Add('pages-host') }
     return [ordered]@{ groups = @($groups | Sort-Object); unknown = $unknown; slowGraphics = $false }
 }
 function Test-WorkloadBuildMatch {
     param([string] $Root, $Record, $Identity)
-    if ($null -eq $Record -or $null -eq $Record.PSObject.Properties['sourceFingerprint'] -or
-        $Record.commit -cne $Identity.commit -or $Record.sourceFingerprint -cne $Identity.fingerprint -or
-        $Record.configuration -cne 'Debug' -or $Record.sdk -cne '10.0.203') { return $false }
-    foreach ($output in $Record.outputs) {
-        $path = Join-Path (Join-Path $Root 'artifacts/build/Debug/work') $output.path
-        if (-not [IO.File]::Exists($path) -or (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -cne $output.sha256) { return $false }
+    if ($null -eq $Record) { return $false }
+    foreach ($key in @('schemaVersion','inputFingerprint','outputs','configuration','sdk')) {
+        if ($null -eq $Record.PSObject.Properties[$key]) { return $false }
     }
-    return @($Record.outputs).Count -gt 0
+    if ($Record.schemaVersion -ne 4 -or $Record.configuration -cne 'Debug' -or $Record.sdk -cne '10.0.203' -or
+        $Record.inputFingerprint -cne (Get-WorkloadEvidenceInput $Root $Identity).fingerprint) { return $false }
+    return Test-WorkloadOutputs (Join-Path $Root 'artifacts/build/Debug/work') $Record.outputs
 }
+
+. (Join-Path $PSScriptRoot 'Workload.Evidence.ps1')

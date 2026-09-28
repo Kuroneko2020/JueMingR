@@ -64,6 +64,7 @@ namespace JueMingR.TerrariaHost.Input
         {
             if (prepared == workspace.Editor) return;
             prepared = workspace.Editor;
+            Error = null;
             // Discard pre-activation text at the click/completion boundary, not in
             // the next prefix where a newly typed first character may already wait.
             if (prepared != null && !OtherTextOwner) Main.clrInput();

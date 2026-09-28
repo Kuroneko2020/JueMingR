@@ -14,6 +14,7 @@ namespace JueMingR.TerrariaHost.Input
     {
         private readonly Func<IntPtr> gameWindow, foregroundWindow;
         private bool observed, rearming, quarantine, mapped, finalized, nativePermission;
+        private uint worldAtBegin;
         private Dictionary<string, bool> mappedKeys;
         private string[] keys = new string[0];
         private readonly bool[] physical = new bool[HotkeyChord.KeyCount];
@@ -66,6 +67,15 @@ namespace JueMingR.TerrariaHost.Input
         internal bool SampleFocused { get { return mapped && IsFocused && nativePermission; } }
         internal bool CanUseInput { get { return SampleFocused && finalized && !quarantine; } }
         internal bool CanStartActions { get { return CanUseInput; } }
+        // Automation observes game state, not an OS gesture. A background
+        // simulation may continue, but it never proves a physical release or
+        // rearms hotkeys. An empty outer Update cannot start work: the native
+        // world stage must arrive in this epoch even without physical input.
+        // Input runs before native pause/step checks, so sampling alone is not
+        // proof. This gates new consumers, never receipts or retained ownership.
+        // Equality also handles the native uint counter wrapping naturally.
+        internal bool CanRunAutomaticActions { get { return mapped && finalized && Main.CanUpdateGameplay && !Main.gamePaused && Main.GameUpdateCount != worldAtBegin && (!IsFocused || CanStartActions); } }
+        internal bool CanRetainAutomaticIntent { get { return IsFocused ? CanRetainIntent : Main.CanUpdateGameplay && !Main.gamePaused; } }
         // Main.Update can finish without DoUpdate sampling input (frame skip
         // off). That revokes execution for this epoch, not an existing intent.
         // Focus loss/reactivation quarantine still revokes both permissions.
@@ -79,6 +89,7 @@ namespace JueMingR.TerrariaHost.Input
         internal void BeginUpdate()
         {
             Frame++;
+            worldAtBegin = Main.GameUpdateCount;
             UseGesture.BeginUpdate();
             mapped = finalized = nativePermission = false;
             RefreshFocus();

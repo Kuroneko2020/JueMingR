@@ -37,6 +37,8 @@ namespace JueMingR.TerrariaHost.Recovery
         internal readonly PotionConfigurationPopup PotionPopup;
         internal float ContentBottom {get;private set;}
         internal bool SharedMiscHeight {get;set;}
+        internal float MiscStart {get;set;}
+        private float builtMiscStart=-1;
         private bool pagePointer,pageLeft,pageRight;
         internal bool OwnsPointer {get{return pagePointer || PotionPopup.OwnsPointer;}}
         internal bool OwnsTextToken {get{return input.OwnsTextToken;}}
@@ -130,14 +132,14 @@ namespace JueMingR.TerrariaHost.Recovery
                 else if(editor==2 && Main.GameUpdateCount>=nextStockScan)Refresh();
             }
             var next=shell.Layout.Viewport.Offset(shell.X,shell.Y);
-            bool changed=dirty || generation!=shell.Layout.Generation || skin!=renderer.Generation || revision!=Revision || page!=shell.Page || session!=host.Runtime.Generation || view.X!=next.X || view.Y!=next.Y;
+            bool changed=dirty || generation!=shell.Layout.Generation || skin!=renderer.Generation || revision!=Revision || page!=shell.Page || session!=host.Runtime.Generation || view.X!=next.X || view.Y!=next.Y || shell.Page==1 && builtMiscStart!=MiscStart;
             view=next;
             if(!changed && scroll==shell.Scroll)return;
             armed=null;
             if(changed)
             {
                 logical.Clear();float y=0;
-                if(shell.Page==1){foreach(var e in shell.Layout.Elements)y=Math.Max(y,e.Rect.Bottom+6);Row(ref y,5);}
+                if(shell.Page==1){y=MiscStart;Row(ref y,5);builtMiscStart=MiscStart;}
                 else{for(int i=0;i<5;i++)Row(ref y,i);if(editor==2)Editor(ref y);}
                 ContentBottom=y;
                 if(shell.Page!=1 || !SharedMiscHeight){shell.Layout.SetRecoveryContentHeight(y);shell.ClampScroll();}

@@ -11,7 +11,7 @@ namespace JueMingR.ArchitectureTests
     {
         internal static void Check(List<string> failures)
         {
-            foreach (Action check in new Action[] { Preferences, Content, Luck })
+            foreach (Action check in new Action[] { Preferences, FishingMigration, Content, Luck })
                 try { check(); } catch (Exception e) { failures.Add("Information behavior: " + e.Message); }
         }
         private static void Preferences()
@@ -53,6 +53,18 @@ namespace JueMingR.ArchitectureTests
             quest.Completed = 13; angler.Update(quest); Require(angler.Content.Text.Contains("13"), "personal count changes independently");
             quest = new AnglerObservation { Availability = InformationAvailability.Unavailable, Completed = 12 };
             angler.Update(quest); Require(angler.Content.Text.Contains("累计完成：12") && angler.Content.Text.Contains("不可用"), "unavailable quest must preserve reliable personal count");
+        }
+        private static void FishingMigration()
+        {
+            const string legacy="{\"format\":\"JueMingR.InformationDisplay\",\"version\":1,\"enabled\":10,\"biome\":{\"rgb\":1122867,\"size\":92},\"infection\":{\"rgb\":1,\"size\":72},\"luck\":{\"rgb\":2,\"size\":82},\"angler\":{\"rgb\":3,\"size\":102}}";
+            var codec=new InformationPreferenceCodec();var v=codec.Decode(Encoding.UTF8.GetBytes(legacy));
+            var full=(InformationKind)4;var filtered=(InformationKind)5;
+            Require(v.EnabledMask==10 && v.Style(InformationKind.Biome).Rgb==1122867 && v.Style(InformationKind.Angler).Size==102,"schema1 preserves previous values");
+            Require(!v.Enabled(full) && !v.Enabled(filtered) && v.Style(full).Rgb==0x87CEFA && v.Style(filtered).Rgb==0xFFB366 && v.Style(full).Size==72 && v.Style(filtered).Size==72,"schema1 gains two disabled independent fishing styles");
+            v=v.WithEnabled(full,true).WithStyle(filtered,new InformationStyle(0x123456,122));
+            var roundtrip=codec.Decode(codec.Encode(v));Require(roundtrip.Equals(v) && !roundtrip.Enabled(filtered),"schema2 preserves both independent fishing settings");
+            foreach(string invalid in new[]{legacy.Replace("\"enabled\":10","\"enabled\":26"),legacy.Replace("\"version\":1","\"version\":9"),legacy.Replace("\"angler\":","\"future\":0,\"angler\":")})
+            {try{codec.Decode(Encoding.UTF8.GetBytes(invalid));throw new Exception("unknown legacy fields/bits/version accepted");}catch(PreferenceFormatException){}}
         }
         internal static void Require(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); }
         private static void Luck()

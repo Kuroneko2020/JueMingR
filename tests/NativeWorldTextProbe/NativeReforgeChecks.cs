@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Reflection;
 using JueMingR.Features.Processing;
@@ -27,10 +27,13 @@ namespace NativeWorldTextProbe
             long quote=(long)Main.reforgeItem.value*Main.reforgeItem.stack/3,before=Total(p);
             Sample(input,false);Call(owner,"Update");Call(owner,"Observe",true,120,310,15,quote);
             Sample(input,true);Call(owner,"Update");
+            Require(Total(p)==before && Main.reforgeItem.prefix==0,"sampled press without world entry cannot pay for an automatic roll");
+            Sample(input,false);Call(owner,"Update");Call(owner,"Observe",true,120,310,15,quote);
+            SampleWorld(input,true);Call(owner,"Update");
             if(GetOptional(owner,"Failure")!=null)Console.WriteLine(Get(owner,"Failure"));
             Require(before-Total(p)==quote && Main.reforgeItem.prefix!=0,"one exact debit and native prefix roll; error="+GetOptional(host,"Error"));
             Require(!(bool)Call(owner,"NativePayment",p,quote,-1),"auto hit consumes the rest of the same physical hold");
-            Sample(input,true);Call(owner,"Update");Require(!(bool)Call(owner,"NativePayment",p,quote,-1),"new Update with held left cannot bypass hit stop");
+            SampleWorld(input,true);Call(owner,"Update");Require(!(bool)Call(owner,"NativePayment",p,quote,-1),"new Update with held left cannot bypass hit stop");
             Sample(input,false);Call(owner,"Update");
             quote=(long)Main.reforgeItem.value*Main.reforgeItem.stack/3;before=Total(p);
             Call(owner,"Observe",true,120,310,15,quote);Sample(input,true);Call(owner,"Update");Call(owner,"Observe",true,120,310,15,quote);
@@ -42,6 +45,8 @@ namespace NativeWorldTextProbe
             Console.WriteLine("PASS G08 reforge: complete target list, real BuyItem/inner roll, exact fee, auto-hit tail and fresh manual exception. This CPU case supplies the quote/hit observation; it does not exercise outer DrawInventory.");
         }
         internal static long Total(Player p){long total=NativeCoinChecks.Total(p.inventory,54);for(int a=0;a<4;a++)total+=NativeCoinChecks.Total(NativeCoinChecks.Bank(p,a).item,40);return total;}
+        internal static void SampleWorld(object input,bool left,int x=120,int y=310)
+        {Sample(input,left,x,y);NativeQuickItemChecks.BeginWorldStep();}
         internal static void Sample(object input,bool left,int x=120,int y=310)
         {
             Main.keyState=new KeyboardState();

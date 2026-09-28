@@ -106,8 +106,6 @@ namespace JueMingR.TerrariaHost.QuickItems
         {
             this.width=width;this.row=row;this.measure=measure;logical.Clear();generation++;
             float y=start;bool can=host.ControlsEnabled;
-            Row(ref y,"保持收藏",new[]{"开启","关闭","键"},new[]{Command.FavoriteOn,Command.FavoriteOff,Command.None},host.FavoriteControlsEnabled,HostQuickItems.FavoriteAction,
-                "保持随身物品的收藏标记。",!host.FavoriteAvailable?-1:host.Settings.KeepFavorited?0:1);
             Row(ref y,"快捷物品",Editing?new[]{"开启","关闭","键"}:new[]{"添加","开启","关闭","键"},
                 Editing?new[]{Command.QuickOn,Command.QuickOff,Command.None}:new[]{Command.Add,Command.QuickOn,Command.QuickOff,Command.None},can,HostQuickItems.ToggleAction,
                 "用快捷键使用背包物品或切换形态。",!host.Available?-1:host.Settings.Enabled?(Editing?0:1):(Editing?1:2));
@@ -130,6 +128,15 @@ namespace JueMingR.TerrariaHost.QuickItems
             Height=y;builtRevision=host.Settings.Revision;builtBindings=host.BindingRevision;
             builtQuickAvailable=host.ControlsEnabled;builtFavoriteAvailable=host.FavoriteControlsEnabled;
             builtFavoriteCapability=host.FavoriteAvailable;builtQuickCapability=host.Available;builtCleanup=host.CanRetryCleanup;dirty=false;
+        }
+        internal void AppendFavorite(float start)
+        {
+            // Page order is independent of the shared settings owner. Keep the
+            // same command generation and identity across these two sections.
+            float y=start;
+            Row(ref y,"保持收藏",new[]{"开启","关闭","键"},new[]{Command.FavoriteOn,Command.FavoriteOff,Command.None},host.FavoriteControlsEnabled,HostQuickItems.FavoriteAction,
+                "保持随身物品的收藏标记。",!host.FavoriteAvailable?-1:host.Settings.KeepFavorited?0:1);
+            Height=y;
         }
         private void BuildPicker(ref float y,bool can)
         {

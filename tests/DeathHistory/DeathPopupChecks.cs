@@ -86,6 +86,7 @@ namespace Terraria
         {
             var h = new Owner(); var d = new Driver(h); d.Popup.Open(true, 2); d.Prepare(); d.Press(128);
             d.Font = new object(); d.Prepare(); d.Release(); Require(h.Changes == 0, "same-size replacement font cancels old press");
+            d.Press(128);d.Popup.Anchor=new F5Rect(160,80,80,30);d.Prepare();d.Release();Require(h.Changes==0,"moved entry anchor cancels old quantity press");
         }
         private static void Compact()
         {

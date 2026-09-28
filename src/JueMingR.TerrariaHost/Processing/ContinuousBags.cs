@@ -51,6 +51,9 @@ namespace JueMingR.TerrariaHost.Processing
         internal void Update()
         {
             if(!Holding || unknown){ReleaseIntent();return;}
+            // A held physical gesture does not prove the world advanced. Keep
+            // its ownership but never repeat consumption in an empty update.
+            if(!host.Input.CanRunAutomaticActions)return;
             var p=host.Player;
             if(p.itemAnimation>0 || p.itemTime>0 || p.chest!=-1 || p.sign>=0 || Main.mouseItem==null || !Main.mouseItem.IsAir || host.Items.World.HasManualOperation)return;
             // Hover chooses a type; native inventory order chooses its first

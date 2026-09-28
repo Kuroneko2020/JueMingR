@@ -20,6 +20,7 @@ namespace JueMingR.TerrariaHost.F5
     internal enum F5Command { None, EnableBiome, DisableBiome, ConfigureBiome,
         ConfigureInfection, EnableInfection, DisableInfection, ConfigureLuck, EnableLuck, DisableLuck,
         ConfigureAngler, EnableAngler, DisableAngler, AdjustInformation,
+        ConfigureFullFish, EnableFullFish, DisableFullFish, ConfigureFilteredFish, EnableFilteredFish, DisableFilteredFish,
         ConfigureEnemy, EnableEnemy, DisableEnemy, ConfigureCritter, EnableCritter, DisableCritter,
         ConfigureNpc, NpcName, NpcType, DisableNpc,
         ConfigureLifeCrystal, EnableLifeCrystal, DisableLifeCrystal, ConfigureLifeFruit, EnableLifeFruit, DisableLifeFruit,
@@ -99,7 +100,20 @@ namespace JueMingR.TerrariaHost.F5
         internal float MaxScroll { get { return Math.Max(0, ContentHeight - Viewport.Height); } }
         internal void SetNotesContentHeight(float height) { if (page == 4) ContentHeight = Math.Max(0, height); }
         internal void SetItemsContentHeight(float height) { if (page == 0) ContentHeight = Math.Max(0, height); }
+        private float miscFooterStart=-1;
+        internal void SetMiscFooterStart(float start)
+        {
+            if(page!=1)return;
+            if(miscFooterStart!=start)
+            {
+                elements.Clear();float y=start;
+                GuidanceControls.AddRows(elements,TextSize,ref y,1);
+                ContentHeight=Math.Max(0,y-6);miscFooterStart=start;Generation++;
+            }
+        }
         internal void SetRecoveryContentHeight(float height) { if (page==10 || page==1) ContentHeight=Math.Max(0,height); }
+        internal bool FishingAttached {get;set;}
+        internal void SetFishingContentHeight(float height){if(page==7)ContentHeight=Math.Max(0,height);}
 
         internal static F5Size WindowSize(float width, float height, float scale)
         {
@@ -154,10 +168,11 @@ namespace JueMingR.TerrariaHost.F5
                 NavigationUnderline(i); // Validate text clearance before drawing.
             }
             elements.Clear();
+            miscFooterStart=-1;
             float y = 0;
             if (currentPage == 9) BuildInformation(ref y);
             else if (currentPage == 5) About.Build(elements, DynamicTextSize, Viewport.Height, ref y);
-            else if (currentPage == 7) BuildFishing(ref y);
+            else if (currentPage == 7 && !FishingAttached) BuildFishing(ref y);
             else if (currentPage == 1 || currentPage == 2 || currentPage == 8) GuidanceControls.AddRows(elements, TextSize, ref y, currentPage);
             if (currentPage == 2) DeathControls.AddRows(elements, DynamicTextSize, ref y, deathCount, worldDays);
             if (currentPage == 2) MapControls.AddRows(elements, TextSize, ref y);
@@ -253,20 +268,13 @@ namespace JueMingR.TerrariaHost.F5
                         null, default(F5Size), 0, F5Command.None));
                     y += 12;
                 }
-                if (i == 11 || i == 12 || i == 13 || i == 14 || i == 17)
+                if (i >= 11)
                 {
                     Platform.Information.InformationKind? kind = i == 11 ? (Platform.Information.InformationKind?)null :
                         i == 12 ? Platform.Information.InformationKind.Biome : i == 13 ? Platform.Information.InformationKind.Infection :
-                        i == 14 ? Platform.Information.InformationKind.Luck : Platform.Information.InformationKind.Angler;
+                        i == 14 ? Platform.Information.InformationKind.Luck : i==15?Platform.Information.InformationKind.FullFish:
+                        i==16?Platform.Information.InformationKind.FilteredFish:Platform.Information.InformationKind.Angler;
                     Information.InformationControls.AddRow(elements, TextSize, ref y, kind); continue;
-                }
-                string[] actions = i == 11 ? new[] { "开始" } :
-                    new[] { "配置", "开启", "关闭", "键" };
-                Row(ref y, 0, 522, names[i], actions, i == 12);
-                if (i == 12)
-                {
-                    int last = elements.Count - 1; F5Element key = elements[last];
-                    elements[last] = new F5Element(key.Kind, key.Rect, key.Text, key.TextSize, key.TextScale, F5Command.None, Hotkeys.HotkeyActionIds.Biome);
                 }
             }
         }

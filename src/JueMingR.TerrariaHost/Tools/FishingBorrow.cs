@@ -41,6 +41,10 @@ namespace JueMingR.TerrariaHost.Tools
             if(!ReferenceEquals(p,host.Player) || item==null || item.fishingPole<=0 || host.Use.InNativeUse)return;
             lastCastRod=item;lastCast=Main.MouseWorld;lastCastSession=host.Runtime.Generation;
         }
+        // Only the participant that actually used the rod transfers its saved
+        // world aim. A later net borrow must not fall back to today's mouse.
+        internal void RecordOwnedCast(Player p,Item item,Vector2 worldAim)
+        {if(ReferenceEquals(p,host.Player) && item!=null && item.fishingPole>0){lastCastRod=item;lastCast=worldAim;lastCastSession=host.Runtime.Generation;}}
         internal long Prepare(Player p)
         {
             if(Active || p.selectedItem<0 || p.selectedItem>=50 || p.HeldItem.fishingPole<=0)return 0;
@@ -68,8 +72,8 @@ namespace JueMingR.TerrariaHost.Tools
         {
             if(!Active)return;
             if(Expired){End(FishingBorrowPhase.Expired);return;}
-            // The loan outlives ToolUse. Losing focus/UI admission must retire
-            // its own recast permission even when simulation time is stopped.
+            // The loan outlives ToolUse. Actual UI/ownership conflicts retire
+            // its recast permission; focus alone is not an automatic boundary.
             if(!host.CanRetainUse(player,false) || !IntentValid()){End(FishingBorrowPhase.Cancelled);return;}
         }
         private bool IntentValid()

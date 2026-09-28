@@ -11,12 +11,13 @@ namespace JueMingR.TerrariaHost.Recovery
     {
         private readonly NativeNpcObservation npcs;
         private readonly int type;
+        private readonly Func<bool> allowMouseInterface;
         private NPC npc;
         private byte generation;
         private int slot=-1;
         private ulong next;
         private Rectangle region;
-        internal NearbyServiceTarget(NativeNpcObservation npcs,int type){this.npcs=npcs;this.type=type;}
+        internal NearbyServiceTarget(NativeNpcObservation npcs,int type,Func<bool> allowMouseInterface=null){this.npcs=npcs;this.type=type;this.allowMouseInterface=allowMouseInterface;}
 #if DEBUG
         internal long Reads;
 #endif
@@ -33,7 +34,7 @@ namespace JueMingR.TerrariaHost.Recovery
 #if DEBUG
                 Reads++;
 #endif
-                var candidate=npcs.Active(i);if(!Eligible(p,candidate,type))continue;
+                var candidate=npcs.Active(i);if(!Eligible(p,candidate,type,allowMouseInterface?.Invoke()??false))continue;
                 float d=Vector2.DistanceSquared(p.Center,candidate.Center+candidate.netOffset);if(d>=distance)continue;
                 distance=d;npc=candidate;slot=i;generation=npc.generation;
             }
@@ -41,10 +42,10 @@ namespace JueMingR.TerrariaHost.Recovery
         }
         internal int Slot {get{return slot;}}
         internal byte Generation {get{return generation;}}
-        internal bool Valid(Player p){return npc!=null && slot>=0 && slot<Main.maxNPCs && ReferenceEquals(Main.npc[slot],npc) && npc.generation==generation && Eligible(p,npc,type);}
-        internal static bool Eligible(Player p,NPC npc,int type)
+        internal bool Valid(Player p){return npc!=null && slot>=0 && slot<Main.maxNPCs && ReferenceEquals(Main.npc[slot],npc) && npc.generation==generation && Eligible(p,npc,type,allowMouseInterface?.Invoke()??false);}
+        internal static bool Eligible(Player p,NPC npc,int type,bool allowMouseInterface=false)
         {
-            if(p==null || npc==null || !npc.active || npc.type!=type || !npc.townNPC || npc.CurrentlyShimmerTransparent() || p.stinky || p.mouseInterface || p.dead || p.ownedProjectileCounts[651]>0 || p.tileInteractionHappened)return false;
+            if(p==null || npc==null || !npc.active || npc.type!=type || !npc.townNPC || npc.CurrentlyShimmerTransparent() || p.stinky || !allowMouseInterface && p.mouseInterface || p.dead || p.ownedProjectileCounts[651]>0 || p.tileInteractionHappened)return false;
             return TileReachCheckSettings.Simple.GetWorldRegion(p).Intersects(new Rectangle((int)(npc.position.X+npc.netOffset.X),(int)(npc.position.Y+npc.netOffset.Y),npc.width,npc.height));
         }
     }

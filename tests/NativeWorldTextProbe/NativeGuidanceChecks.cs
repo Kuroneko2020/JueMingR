@@ -43,7 +43,9 @@ namespace NativeWorldTextProbe
                     !File.Exists(Path.Combine(root,"JueMingRData/config/features/guidance.json.schema1-original")),"loading schema1 preserves exact original without writing or archiving");
                 Require(Get(context, "Labels") != null && Get(context, "WorldObjects") != null && Get(context, "Information") != null && Get(context, "items") != null, "new profile retains prior complete feature chain");
                 var registry = (HotkeyRegistry)Get(Get(Get(context, "Shell"), "hotkeys"), "Registry");
-                Require(registry.Actions.Count == old.Length + 7 && registry.Find("merchant-test.once") == null, "three toggle actions added; summon has no hotkey action");
+                Require(registry.Actions.Count == old.Length + 9 && registry.Find("merchant-test.once") == null, "six information and three guidance actions added; summon has no hotkey action");
+                foreach (string id in new[] { "rare-direction.toggle", "merchant-direction.toggle", "equipment-warning.toggle", "information.full-fish.toggle", "information.filtered-fish.toggle" })
+                    Require(registry.Find(id) != null, "complete guidance/information action identity: " + id);
                 int reads = (int)Get(npcs, "BasicReads"); for (int i = 0; i < 120; i++) Call(context, "UpdateRuntime");
                 Require((int)Get(npcs, "BasicReads") == reads, "all closed and never clicked: zero NPC source reads");
                 NativeGuidanceEquipmentChecks.Run(assembly);

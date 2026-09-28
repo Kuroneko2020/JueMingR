@@ -27,12 +27,14 @@ namespace JueMingR.Features.Information
             new InformationStyle(0x90EE90, 82), new InformationStyle(0xDDA0DD, 82),
             new InformationStyle(0xFAFAD2, 82), new InformationStyle(0xE0FFFF, 82));
         public InformationPreferences(int enabled, InformationStyle biome, InformationStyle infection, InformationStyle luck, InformationStyle angler)
+            :this(enabled,biome,infection,luck,angler,new InformationStyle(0x87CEFA,72),new InformationStyle(0xFFB366,72)) { }
+        public InformationPreferences(int enabled, InformationStyle biome, InformationStyle infection, InformationStyle luck, InformationStyle angler, InformationStyle fullFish, InformationStyle filteredFish)
         {
             // Bit zero is deliberately absent: the existing biome document is
             // still the sole owner of its enabled preference.
-            if ((enabled & ~14) != 0) throw new ArgumentOutOfRangeException(nameof(enabled));
-            if (biome == null || infection == null || luck == null || angler == null) throw new ArgumentNullException();
-            this.enabled = enabled; styles = new[] { biome, infection, luck, angler };
+            if ((enabled & ~62) != 0) throw new ArgumentOutOfRangeException(nameof(enabled));
+            if (biome == null || infection == null || luck == null || angler == null || fullFish==null || filteredFish==null) throw new ArgumentNullException();
+            this.enabled = enabled; styles = new[] { biome, infection, luck, angler, fullFish, filteredFish };
         }
         public int EnabledMask { get { return enabled; } }
         public bool AnySummaryEnabled { get { return enabled != 0; } }
@@ -42,23 +44,24 @@ namespace JueMingR.Features.Information
         {
             Validate(kind); if (kind == InformationKind.Biome) throw new ArgumentException("Biome enabled belongs to its existing document.");
             int bit = 1 << (int)kind;
-            return new InformationPreferences(value ? enabled | bit : enabled & ~bit, styles[0], styles[1], styles[2], styles[3]);
+            return new InformationPreferences(value ? enabled | bit : enabled & ~bit, styles[0], styles[1], styles[2], styles[3],styles[4],styles[5]);
         }
         public InformationPreferences WithStyle(InformationKind kind, InformationStyle style)
         {
             Validate(kind);
             return new InformationPreferences(enabled, kind == InformationKind.Biome ? style : styles[0],
-                kind == InformationKind.Infection ? style : styles[1], kind == InformationKind.Luck ? style : styles[2], kind == InformationKind.Angler ? style : styles[3]);
+                kind == InformationKind.Infection ? style : styles[1], kind == InformationKind.Luck ? style : styles[2], kind == InformationKind.Angler ? style : styles[3],
+                kind==InformationKind.FullFish?style:styles[4],kind==InformationKind.FilteredFish?style:styles[5]);
         }
         public InformationPreferences ResetStyle(InformationKind kind) { return WithStyle(kind, Default.Style(kind)); }
         public bool Equals(InformationPreferences other)
         {
             if (other == null || enabled != other.enabled) return false;
-            for (int i = 0; i < 4; i++) if (!styles[i].Equals(other.styles[i])) return false;
+            for (int i = 0; i < styles.Length; i++) if (!styles[i].Equals(other.styles[i])) return false;
             return true;
         }
         public override bool Equals(object other) { return Equals(other as InformationPreferences); }
-        public override int GetHashCode() { return enabled ^ styles[0].GetHashCode() ^ styles[1].GetHashCode() ^ styles[2].GetHashCode() ^ styles[3].GetHashCode(); }
-        private static void Validate(InformationKind kind) { if (kind < InformationKind.Biome || kind > InformationKind.Angler) throw new ArgumentOutOfRangeException(nameof(kind)); }
+        public override int GetHashCode() { int hash=enabled;foreach(var style in styles)hash=unchecked(hash*397^style.GetHashCode());return hash; }
+        private static void Validate(InformationKind kind) { if (kind < InformationKind.Biome || kind > InformationKind.FilteredFish) throw new ArgumentOutOfRangeException(nameof(kind)); }
     }
 }

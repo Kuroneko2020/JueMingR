@@ -15,7 +15,7 @@ namespace JueMingR.TerrariaHost.Hotkeys
         internal readonly HotkeyBindings Bindings;
         internal readonly HotkeyStateFeedback Feedback;
         internal HostHotkeys(string gameDirectory, Phase0TBiomeRuntime biome, HostPreferences preferences, HostItems items, EntityLabels.HostEntityLabels labels = null, WorldTargets.HostWorldTargets targets = null, WorldObjectText.HostWorldObjectText worldObjects = null,
-            Information.HostInformation information = null, Func<bool> canAdjustInformation = null, Action adjustInformation = null, Guidance.HostGuidance guidance = null, F5.IDeathControls deaths = null, F5.IMapControls maps = null, F5.IFootprintControls footprints = null, Func<bool> canAnnounce = null, Action announce = null, Func<bool> canQuery = null, Action query = null, F5.IAnnouncementControls announcements = null, QuickItems.HostQuickItems quickItems = null, CoinDeposit.HostCoinDeposit coinDeposit = null, Recovery.HostRecovery recovery = null, Processing.HostProcessing processing = null, Feedback.LocalShortFeedback display = null, Tools.HostTools tools = null)
+            Information.HostInformation information = null, Func<bool> canAdjustInformation = null, Action adjustInformation = null, Guidance.HostGuidance guidance = null, F5.IDeathControls deaths = null, F5.IMapControls maps = null, F5.IFootprintControls footprints = null, Func<bool> canAnnounce = null, Action announce = null, Func<bool> canQuery = null, Action query = null, F5.IAnnouncementControls announcements = null, QuickItems.HostQuickItems quickItems = null, CoinDeposit.HostCoinDeposit coinDeposit = null, Recovery.HostRecovery recovery = null, Processing.HostProcessing processing = null, Feedback.LocalShortFeedback display = null, Tools.HostTools tools = null, Fishing.HostFishing fishing = null)
         {
             if (display != null) Feedback = new HotkeyStateFeedback(display);
             RegisterSwitch(HotkeyActionIds.Biome, "群系显示",
@@ -57,7 +57,7 @@ namespace JueMingR.TerrariaHost.Hotkeys
                 }
             if (information != null)
             {
-                for (int i = 1; i < 4; i++)
+                for (int i = 1; i < 6; i++)
                 {
                     var kind = (Platform.Information.InformationKind)i;
                     RegisterSwitch(HotkeyActionIds.Information(kind), Information.InformationControls.Name(kind),
@@ -87,6 +87,7 @@ namespace JueMingR.TerrariaHost.Hotkeys
             recovery?.Register(Registry, Feedback);
             processing?.Register(Registry, Feedback);
             tools?.Register(Registry, Feedback);
+            fishing?.Register(Registry, Feedback);
             Bindings = new HotkeyBindings(Registry, new AtomicFileDocument(Path.Combine(gameDirectory, "JueMingRData", "config", "hotkeys.json"), 65536, true));
             quickItems?.Attach(this);
             AppDomain.CurrentDomain.ProcessExit += OnExit;

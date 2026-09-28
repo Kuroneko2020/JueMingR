@@ -18,6 +18,8 @@ namespace JueMingR.TerrariaHost.F5
         internal readonly List<int> Commands = new List<int>();
         internal readonly List<bool> Enabled = new List<bool>();
         internal F5Rect Panel;
+        internal F5Rect Anchor {get;set;}
+        private F5Rect preparedAnchor;
         internal F5Rect RecordingPanel, ClearPanel;
         internal bool RecordingSelected { get { return recording; } }
         internal bool Visible { get; private set; }
@@ -36,7 +38,7 @@ namespace JueMingR.TerrariaHost.F5
         { Close(); host.PrepareConfiguration(); Visible = true; page = currentPage; session = host.Session; archive = host.Generation; confirmation.Open(archive); input.Hotkeys.SuppressHeld(); input.ConsumeHotkeyActions(); }
         internal void Close() { Visible = OwnsPointer = false; Pressed = Hovered = -1; confirmation.Cancel(); dirty = true; }
         internal bool ContainsPointer(float x, float y) { return Visible && Panel.Contains(x, y); }
-        internal bool Matches(float w, float h, object f, int s) { return w == width && h == height && ReferenceEquals(f, font) && s == skin; }
+        internal bool Matches(float w, float h, object f, int s) { return F5PopupPlacement.SameAnchor(Anchor,preparedAnchor) && w == width && h == height && ReferenceEquals(f, font) && s == skin; }
         internal void CheckSession()
         {
             if (!Visible) return;
@@ -77,7 +79,7 @@ namespace JueMingR.TerrariaHost.F5
         internal void Prepare(float w, float h, object f, Func<string, float, F5Size> measure, int s)
         {
             CheckSession(); if (!Visible) return;
-            bool resources = w != width || h != height || !ReferenceEquals(f, font) || s != skin;
+            bool resources = !F5PopupPlacement.SameAnchor(Anchor,preparedAnchor) || w != width || h != height || !ReferenceEquals(f, font) || s != skin;
             if (resources) { confirmation.Open(archive); Pressed = -1; }
             if (!dirty && !resources && recording == host.Recording && canClear == host.CanClear && clearing == host.Clearing && canRetry == host.CanRetryClear && status == host.StatusMessage) return;
             width = w; height = h; font = f; skin = s; recording = host.Recording; canClear = host.CanClear; clearing = host.Clearing; canRetry = host.CanRetryClear; status = host.StatusMessage;
@@ -89,7 +91,7 @@ namespace JueMingR.TerrariaHost.F5
             float recordHeight = Math.Max(58, textHeight * 2 + (compact ? 18 : 28));
             float clearHeight = Math.Max(84, textHeight * 2 + (compact ? 44 : 56));
             float ph = header + gap + recordHeight + gap + clearHeight + gap;
-            Panel = new F5Rect((w - pw) / 2, Math.Max(8, (h - ph) / 2), pw, ph);
+            preparedAnchor=Anchor;Panel = F5PopupPlacement.Place(Anchor,pw,ph,w,h);
             RecordingPanel = new F5Rect(12, header + gap, pw - 24, recordHeight);
             ClearPanel = new F5Rect(12, RecordingPanel.Bottom + gap, pw - 24, clearHeight);
             AddText("足迹", 16, 10, measure);

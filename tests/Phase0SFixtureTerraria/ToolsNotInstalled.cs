@@ -5,13 +5,18 @@ using JueMingR.TerrariaHost.Items;
 
 // Old source-linked UI tests do not install tools. Native ToolsCpu/Visual
 // load the real Host and locked executable; accidental use here must fail.
+namespace JueMingR.TerrariaHost.F5
+{
+    internal sealed class MiscAutomationPanel
+    {internal string Hint(float x,float y,out F5Rect rect,F5Rect? clip=null){throw new InvalidOperationException("Use the real native page composition fixture.");}}
+}
 namespace JueMingR.TerrariaHost.Tools
 {
     internal sealed class HostTools {}
     internal sealed class ToolsPanel
     {
         private static Exception Missing(){return new InvalidOperationException("Use the real G09 native fixture.");}
-        internal Action<F5Rect> Configure;
+        internal Action<F5Rect> Configure {get{throw Missing();}set{throw Missing();}}
         internal ToolsPanel(HostTools host){throw Missing();}
         internal bool NeedsBuild {get{throw Missing();}}
         internal float Height {get{throw Missing();}}

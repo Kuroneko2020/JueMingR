@@ -47,6 +47,8 @@ namespace JueMingR.TerrariaHost.Items
         internal Func<bool> ObservesProcessing {get;set;}
         internal Action<ulong> InterruptedProcessingSource {get;set;}
         internal Func<bool> AllowsProcessingPayment {get;set;}
+        internal Action UpdateFishingStorage {get;set;}
+        internal Func<ulong> FishingClock {get;set;}
         internal string CapabilityError { get; private set; }
         internal string SourceMessage { get; set; }
         internal Exception SetupError { get; private set; }
@@ -55,13 +57,15 @@ namespace JueMingR.TerrariaHost.Items
         internal PreferenceSnapshot<ItemAutomationSettings> Preferences { get { return preferences.Snapshot; } }
         public bool Enabled { get { return Feature.Enabled; } }
         internal HostItems(string verifiedGameDirectory, SingleFeatureRuntime runtime, Func<bool> canStartActions)
+            :this(verifiedGameDirectory,runtime,canStartActions,canStartActions) { }
+        internal HostItems(string verifiedGameDirectory, SingleFeatureRuntime runtime, Func<bool> canStartActions,Func<bool> canReleaseManualInput)
         {
             Runtime = runtime;
-            World = new ItemHostObservation(() => Runtime.Generation, Ownership, canStartActions);
+            World = new ItemHostObservation(() => Runtime.Generation, Ownership, canStartActions,canReleaseManualInput);
             Operations = new ItemVanillaOperations(World, Ownership);
             Storage = new ItemNearbyStorage(World, Ownership);
             Operations.Store = Storage.Execute;
-            Feature = new ItemAutomationFeature(World, Operations, canStartActions);
+            Feature = new ItemAutomationFeature(World, Operations, canStartActions,()=>FishingClock?.Invoke()??Tick);
             var file = new AtomicFileDocument(Path.Combine(verifiedGameDirectory,
                 "JueMingRData", "config", "features", "item-automation.json"), 65536, true, ".schema1-original");
             preferences = new PreferenceDocument<ItemAutomationSettings>(file, new RetiringItemCodec(file), ItemAutomationSettings.Default);
@@ -114,10 +118,12 @@ namespace JueMingR.TerrariaHost.Items
             return result.ToArray();
         }
         internal bool CanCapture
-        { get { return Feature.Enabled && CanObserve; } }
+        { get { return Feature.OrdinaryEnabled && CanObserve; } }
+        private bool SourceAvailable
+        {get{return !stopping && Available && Preferences.IsLoaded && Runtime.IsSessionActive && Thread.CurrentThread.ManagedThreadId==ThreadId && World.Player!=null && !World.AutomaticOperation;}}
+        internal bool CanCaptureFishing {get{return SourceAvailable && Feature.FishingStorageEnabled;}}
         internal bool CanObserve
-        { get { return !stopping && Available && (Feature.Enabled || (ObservesProcessing?.Invoke()??false)) && Preferences.IsLoaded &&
-                    Runtime.IsSessionActive && Thread.CurrentThread.ManagedThreadId == ThreadId && World.Player != null && !World.AutomaticOperation; } }
+        { get { return SourceAvailable && (Feature.OrdinaryEnabled || (ObservesProcessing?.Invoke()??false)); } }
         public void OnSessionStarted()
         { SourceMessage = null; Ownership.SetSession(Runtime.Generation); World.BeginSession(); actionPlayerAvailable = World.Player != null; Feature.OnSessionStarted(); }
         public void OnSessionEnded()
@@ -127,7 +133,7 @@ namespace JueMingR.TerrariaHost.Items
             bool available = World.Player != null;
             if (actionPlayerAvailable && !available) DiscardUnsubmittedAcquisitions();
             actionPlayerAvailable = available;
-            Storage.Tick = tick; Storage.Update(); Feature.Update(tick);
+            Storage.Tick = tick; Storage.Update();UpdateFishingStorage?.Invoke(); Feature.Update(tick);
             if (Feature.HasFailed && CapabilityError == null) CapabilityError = "物品信息读取出错，自动处理已停止；结果未确认的操作不会自动重试。"; }
         internal void DiscardUnsubmittedAcquisitions()
         { Feature.DiscardPendingAcquisitions(); World.DiscardUnsubmittedObservation(); ItemSourceHooks.CancelPendingAcquisition(); }

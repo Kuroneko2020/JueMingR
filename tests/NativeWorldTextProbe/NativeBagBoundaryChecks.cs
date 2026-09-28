@@ -35,7 +35,7 @@ namespace NativeWorldTextProbe
             Frame(context,input);Require(p.inventory[10].stack==1 && p.inventory[10].favorited,"favorite remains normally usable");
             Main.playerInventory=false;Frame(context,input);Require(p.inventory[10].stack==1,"closed inventory stops next consume");Main.playerInventory=true;
             var state=Get(Get(context,"Shell"),"State");Set(state,"Visible",true);
-            Frame(context,input);Require(p.inventory[10].stack==1,"F5 takeover stops next consume");Set(state,"Visible",false);
+            Frame(context,input);Require(p.inventory[10].IsAir || p.inventory[10].stack==0,"F5 visibility alone does not stop a valid held bag gesture");Set(state,"Visible",false);
             NativeProcessingChecks.Sample(input,false);Call(context,"UpdateRuntime");
             int[] all=Enumerable.Range(1,Terraria.ID.ItemID.Sets.OpenableBag.Length-1).Where(id=>Terraria.ID.ItemID.Sets.OpenableBag[id]).ToArray();
             Require(all.Length==58,"fixed .8 native bag qualification set has 58 entries");
@@ -68,9 +68,9 @@ namespace NativeWorldTextProbe
             Call(host,"Set",0,false);NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return (bool)Call(host,"Controls",0);});
             Main.mouseRight=Main.mouseRightRelease=true;ItemSlot.RightClick(p.inventory,0,10);
             Require(p.inventory[10].IsAir,"ordinary manual native bag opening remains available");
-            Console.WriteLine("PASS G08 bag boundaries: 58 native entries (56 actual opens + 2 deprecated-to-Air), final/main/void keys, shadow possession, favorite, inventory/F5 stop and manual fallback.");
+            Console.WriteLine("PASS G08 bag boundaries: 58 native entries (56 actual opens + 2 deprecated-to-Air), final/main/void keys, shadow possession, favorite, inventory stop/F5 allowed and manual fallback.");
         }
         private static void Reset(Player p){foreach(var item in p.inventory)item.TurnToAir();Main.mouseItem.TurnToAir();p.trashItem.TurnToAir();}
-        private static void Frame(object context,object input){NativeProcessingChecks.Sample(input,true);Call(context,"UpdateRuntime");}
+        private static void Frame(object context,object input){NativeProcessingChecks.SampleWorld(input,true);Call(context,"UpdateRuntime");}
     }
 }

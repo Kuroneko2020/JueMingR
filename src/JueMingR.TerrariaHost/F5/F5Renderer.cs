@@ -37,7 +37,9 @@ namespace JueMingR.TerrariaHost.F5
         internal Recovery.RecoveryPresentation RecoveryUi {get;set;}
         internal Processing.ReforgePanel ReforgeUi {get;set;}
         internal Tools.MiningPanel MiningUi {get;set;}
+        internal MiscAutomationPanel MiscUi {get;set;}
         internal Tools.CaptureWindow CaptureUi {get;set;}
+        internal Fishing.FishingPresentation FishingUi {get;set;}
         internal void DrawFootprintPopup(FootprintPopup popup)
         {
             if (!popup.Visible) return; var batch = Main.spriteBatch;
@@ -198,7 +200,7 @@ namespace JueMingR.TerrariaHost.F5
             state.Layout.Ensure(width, height, scale, state.Page, font, measure);
             // Dynamic pages clamp after committing their real content height.
             // Ensure's temporary empty height must not reset their offset.
-            if (state.Page != 0 && state.Page != 4 && !(RecoveryUi!=null && (state.Page==10 || state.Page==1))) state.ClampScroll();
+            if (state.Page != 0 && state.Page != 1 && state.Page != 4 && !(FishingUi!=null && state.Page==7) && !(RecoveryUi!=null && state.Page==10)) state.ClampScroll();
         }
 
         private F5Size Measure(string text)
@@ -312,10 +314,14 @@ namespace JueMingR.TerrariaHost.F5
             target = default(F5Rect);
             if(CaptureUi!=null && CaptureUi.Visible && CaptureUi.Contains(state.PointerX,state.PointerY))
                 return state.Visible && CaptureUi.CanHint && !blocked?CaptureUi.Hint(state.PointerX,state.PointerY,out target):null;
+            if(FishingUi!=null && state.Page==7 && FishingUi.Visible && FishingUi.Contains(state.PointerX,state.PointerY))
+                return state.Visible && FishingUi.CanHint && !blocked?FishingUi.Hint(state.PointerX,state.PointerY,out target):null;
             if (!state.CanShowHint || blocked) return null;
+            if(FishingUi!=null && state.Page==7)return FishingUi.Hint(state.PointerX,state.PointerY,out target,contentClip);
             if(ReforgeUi!=null && state.Page==1)
             {string hint=ReforgeUi.Hint(state.PointerX,state.PointerY,out target,contentClip);if(hint!=null)return hint;}
             if(MiningUi!=null && state.Page==1){string hint=MiningUi.Hint(state.PointerX,state.PointerY,out target,contentClip);if(hint!=null)return hint;}
+            if(MiscUi!=null && state.Page==1){string hint=MiscUi.Hint(state.PointerX,state.PointerY,out target,contentClip);if(hint!=null)return hint;}
             if(RecoveryUi!=null && (state.Page==10 || state.Page==1))
             {string recoveryHint=RecoveryUi.Hint(state.PointerX,state.PointerY,out target,contentClip);if(recoveryHint!=null)return recoveryHint;}
             if (state.Page == 0) return items == null ? null : items.Hint(state.PointerX, state.PointerY, out target, contentClip);

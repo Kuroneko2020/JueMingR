@@ -115,7 +115,7 @@ namespace NativeWorldTextProbe
             object items=Get(host,"Items");p.inventory[20].SetDefaults(9);p.trashItem.TurnToAir();
             Call(items,"Change",new JueMingR.Features.Items.ItemAutomationSettings(false,false,true,new int[0],new[]{p.inventory[17].type,9},false));
             NativeQuickItemChecks.Until(()=>{Call(items,"PollPreferences");return (bool)Get(items,"ControlsEnabled");});
-            for(int i=0;i<14;i++){NativeQuickItemChecks.Sample(input,new Microsoft.Xna.Framework.Input.Keys[0]);Call(context,"UpdateRuntime");}
+            for(int i=0;i<14;i++){NativeQuickItemChecks.Sample(input,new Microsoft.Xna.Framework.Input.Keys[0]);NativeQuickItemChecks.BeginWorldStep();Call(context,"UpdateRuntime");}
             Require(p.inventory[17].fishingPole>0 && p.inventory[20].IsAir && p.trashItem.type==9,"actual automatic discard protects only the lent rod while an unrelated selected discard still executes");
             Call(items,"Change",JueMingR.Features.Items.ItemAutomationSettings.Default);NativeQuickItemChecks.Until(()=>{Call(items,"PollPreferences");return (bool)Get(items,"ControlsEnabled");});
             Call(b,"AI_061_FishingBobber");Require(!b.active,"real original bobber AI ends after selecting net");

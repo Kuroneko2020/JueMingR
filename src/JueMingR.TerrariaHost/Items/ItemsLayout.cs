@@ -50,7 +50,7 @@ namespace JueMingR.TerrariaHost.Items
             return new F5Rect(card.X + (card.Width - width) / 2, card.Y, width, card.Height);
         }
         internal void Build(float width, float rowHeight, ItemAutomationSettings value, ItemSelection selection,
-            bool enabled, bool error, Func<string, float, F5Size> measure)
+            bool enabled, bool error, Func<string, float, F5Size> measure, float startY = 0)
         {
             this.width = width; this.value = value; this.selection = selection; this.enabled = enabled; this.measure = measure;
             rows.Clear(); buttons.Clear(); Header = Title = Count = Risk = Empty = Error = default(F5Rect); RevealBottom = 0;
@@ -60,7 +60,7 @@ namespace JueMingR.TerrariaHost.Items
             // button labels are not drawn: Make below keeps the current text's
             // real metrics/offsets for the shared renderer and centered label.
             var rowLayout = new F5RowLayout(rows, (text, scale) => text == "提示 开" || text == "提示 关" ? feedbackSpace : measure(text, scale));
-            float y = 0;
+            float y = startY;
             for (int i = 0; i < 3; i++)
             {
                 RowY[i] = y; int start = rows.Count;

@@ -17,8 +17,14 @@ namespace JueMingR.TerrariaHost.Input
             string all = editor.Text.Insert(editor.Caret, composition);
             int caret = editor.Caret + composition.Length, start = 0, end = all.Length;
             var boundaries = TextElements.Boundaries(all);
-            for (int i = 1; i < boundaries.Length && boundaries[i] <= caret && measure(all.Substring(start, caret - start), .70f).Width > width; i++) start = boundaries[i];
-            for (int i = boundaries.Length - 2; i >= 0 && end > start && measure(all.Substring(start, end - start), .70f).Width > width; i--) end = Math.Max(start, boundaries[i]);
+            int low=0,high=Array.BinarySearch(boundaries,caret);if(high<0)high=~high-1;
+            // Glyph advances are nonnegative. Find the first whole-element
+            // origin that exposes the caret, then the last visible boundary.
+            // Long pasted text must not trigger one full measurement per glyph.
+            while(low<high){int mid=(low+high)/2;if(measure(all.Substring(boundaries[mid],caret-boundaries[mid]),.70f).Width<=width)high=mid;else low=mid+1;}
+            start=boundaries[low];high=boundaries.Length-1;
+            while(low<high){int mid=(low+high+1)/2;if(measure(all.Substring(start,boundaries[mid]-start),.70f).Width<=width)low=mid;else high=mid-1;}
+            end=boundaries[low];
             Text = all.Substring(start, end - start); Size = measure(Text, .70f);
             Caret = MeasureTo(all, start, end, caret, measure);
             int left = editor.SelectionStart, right = editor.SelectionEnd;

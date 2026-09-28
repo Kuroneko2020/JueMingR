@@ -13,17 +13,17 @@ namespace NativeWorldTextProbe
             Directory.CreateDirectory(output);Terraria.Localization.LanguageManager.Instance.SetLanguage("zh-Hans");Main.InitializeItemAnimations();
             NativeToolsUiChecks.Run(context,graphics);
             NativeToolsUiChecks.FullBindings(context,graphics,output);
-            object shell=Get(context,"Shell"),state=Get(shell,"State"),renderer=Get(shell,"renderer"),items=Get(shell,"items"),popup=Get(shell,"CaptureUi");
+            object shell=Get(context,"Shell"),state=Get(shell,"State"),renderer=Get(shell,"renderer"),items=Get(shell,"MiscUi"),popup=Get(shell,"CaptureUi");
             foreach(var size in new[]{new[]{960,760,100},new[]{1440,900,150},new[]{960,440,100}})
             {
-                float scale=size[2]/100f;var matrix=Matrix.CreateScale(scale);NativeToolsUiChecks.Prepare(context,0,size[0],size[1],scale);
+                float scale=size[2]/100f;var matrix=Matrix.CreateScale(scale);NativeToolsUiChecks.Prepare(context,1,size[0],size[1],scale);
                 var config=NativeToolsUiChecks.Controls(items).FirstOrDefault(c=>Get(c,"Command").ToString()=="Tools" && (int)Get(c,"Argument")==3);
-                if(config==null){var rows=(System.Collections.IEnumerable[])Get(Get(items,"ToolsPanel"),"rows");Call(state,"ScrollTo",Get(Get(rows[0].Cast<object>().First(),"Rect"),"Y"));NativeToolsUiChecks.Prepare(context,0,size[0],size[1],scale);config=NativeToolsUiChecks.Controls(items).First(c=>Get(c,"Command").ToString()=="Tools" && (int)Get(c,"Argument")==3);}
+                if(config==null){var rows=(System.Collections.IEnumerable[])Get(Get(items,"ToolsPanel"),"rows");Call(state,"ScrollTo",Get(Get(rows[0].Cast<object>().First(),"Rect"),"Y"));NativeToolsUiChecks.Prepare(context,1,size[0],size[1],scale);config=NativeToolsUiChecks.Controls(items).First(c=>Get(c,"Command").ToString()=="Tools" && (int)Get(c,"Argument")==3);}
                 graphics.LoadItemTextures(NativeToolsUiChecks.Controls(items).Select(c=>(int)Get(c,"Type")).Where(t=>t>0));
                 Call(popup,"Open",Get(config,"Rect"));Call(popup,"Prepare",matrix,new Vector2(size[0],size[1]),true);Require((bool)Get(popup,"Visible"),"capture configuration fits tested viewport");
-                graphics.Image(Path.Combine(output,"tools-capture-"+size[0]+"-"+size[1]+"-"+size[2]+".png"),()=>{Call(renderer,"Draw",state,matrix,false,false);Call(items,"Draw",Get(shell,"drawKeyboard"),false);Call(popup,"Draw");},matrix,size[0],size[1]);Call(popup,"Close");
+                graphics.Image(Path.Combine(output,"tools-capture-"+size[0]+"-"+size[1]+"-"+size[2]+".png"),()=>{Call(renderer,"Draw",state,matrix,false,false);Call(Get(shell,"ReforgeUi"),"Draw",Get(shell,"drawKeyboard"));Call(Get(shell,"MiningUi"),"Draw",Get(shell,"drawKeyboard"));Call(Get(shell,"RecoveryUi"),"Draw",Get(shell,"drawKeyboard"),false);Call(items,"Draw",Get(shell,"drawKeyboard"),false);Call(popup,"Draw");},matrix,size[0],size[1]);Call(popup,"Close");
                 NativeToolsUiChecks.Prepare(context,1,size[0],size[1],scale);var mining=Get(shell,"MiningUi");Call(state,"ScrollTo",(float)Get(mining,"Height"));NativeToolsUiChecks.Prepare(context,1,size[0],size[1],scale);
-                graphics.Image(Path.Combine(output,"tools-mining-"+size[0]+"-"+size[1]+"-"+size[2]+".png"),()=>{Call(renderer,"Draw",state,matrix,false,false);Call(Get(shell,"RecoveryUi"),"Draw",Get(shell,"drawKeyboard"),false);Call(Get(shell,"ReforgeUi"),"Draw",Get(shell,"drawKeyboard"));Call(mining,"Draw",Get(shell,"drawKeyboard"));},matrix,size[0],size[1]);
+                graphics.Image(Path.Combine(output,"tools-mining-"+size[0]+"-"+size[1]+"-"+size[2]+".png"),()=>{Call(renderer,"Draw",state,matrix,false,false);Call(Get(shell,"RecoveryUi"),"Draw",Get(shell,"drawKeyboard"),false);Call(Get(shell,"ReforgeUi"),"Draw",Get(shell,"drawKeyboard"));Call(mining,"Draw",Get(shell,"drawKeyboard"));Call(items,"Draw",Get(shell,"drawKeyboard"),false);},matrix,size[0],size[1]);
             }
             Call(shell,"CloseAndSubmitPosition");Overlay(context,graphics,output);Console.WriteLine("PASS G09 original-resource controls at normal, 150 percent and short viewports.");
         }

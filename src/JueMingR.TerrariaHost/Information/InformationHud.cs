@@ -10,13 +10,13 @@ using ReLogic.Graphics;
 
 namespace JueMingR.TerrariaHost.Information
 {
-    // Four independent text layouts, one UI anchor. Draw consumes this prepared
+    // Independent text layouts, one UI anchor. Draw consumes this prepared
     // projection only: it never samples the world or advances an input gesture.
     internal sealed class InformationHud
     {
         private readonly HostInformation host;
         private readonly UiTextMetrics metrics = new UiTextMetrics();
-        private readonly Block[] blocks = { new Block(), new Block(), new Block(), new Block() };
+        private readonly Block[] blocks = { new Block(), new Block(), new Block(), new Block(), new Block(), new Block() };
         private readonly Block empty = new Block();
         private DynamicSpriteFont font;
         private float viewportWidth, viewportHeight;
@@ -43,7 +43,7 @@ namespace JueMingR.TerrariaHost.Information
             bool geometryChanged = !ReferenceEquals(font, currentFont) || width != viewportWidth || height != viewportHeight;
             font = currentFont; viewportWidth = width; viewportHeight = height;
             float primaryHeight = 0; int active = 0;
-            for (int i = 0; i < 4; i++)
+            for (int i = 0; i < blocks.Length; i++)
             {
                 Block block = blocks[i]; string text = host.Text((InformationKind)i);
                 var style = host.Preferences.Value.Style((InformationKind)i); block.Rgb = style.Rgb;
@@ -68,7 +68,7 @@ namespace JueMingR.TerrariaHost.Information
             }
             if (active == 0) { if (Visible) Clear(); return; }
             float remaining = Math.Max(0, height - 16 - primaryHeight), y = 4, usedWidth = 0;
-            for (int i = 0; i < (placeholder ? 1 : 4); i++)
+            for (int i = 0; i < (placeholder ? 1 : blocks.Length); i++)
             {
                 Block block = placeholder ? empty : blocks[i]; block.OffsetY = y;
                 block.VisibleLines = block.Failed || block.Lines.Count == 0 ? 0 : Math.Min(block.Lines.Count, 1 + (int)(remaining / block.LineHeight));
@@ -103,7 +103,7 @@ namespace JueMingR.TerrariaHost.Information
 #if DEBUG
             Draws++;
 #endif
-            for (int i = 0; i < (placeholder ? 1 : 4); i++)
+            for (int i = 0; i < (placeholder ? 1 : blocks.Length); i++)
             {
                 Block block = placeholder ? empty : blocks[i]; var rgb = block.Rgb;
                 if (block.Failed) continue;

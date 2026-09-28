@@ -24,9 +24,13 @@ namespace NativeWorldTextProbe
             Main.playerInventory=true;p.inventory[12].SetDefaults(1774);p.inventory[12].stack=12;
             Call(host,"Set",0,true);
             NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return (bool)Call(host,"Value",0);});
+            Sample(input,true);for(int i=0;i<8;i++)Call(context,"UpdateRuntime");
+            Require(p.inventory[12].stack==12 && (bool)Get(Get(host,"Bags"),"Holding"),"held bag intent survives empty sampled updates without consumption");
+            Main.gamePaused=true;SampleWorld(input,true);Call(context,"UpdateRuntime");
+            Require(p.inventory[12].stack==12,"true pause cannot open bags");Main.gamePaused=false;
             for(int frame=0;frame<5;frame++)
             {
-                Sample(input,true);int before=p.inventory[12].stack;
+                Sample(input,true);NativeQuickItemChecks.BeginWorldStep();int before=p.inventory[12].stack;
                 Call(context,"UpdateRuntime");
                 if(GetOptional(Get(host,"Bags"),"Failure")!=null)Console.WriteLine(Get(Get(host,"Bags"),"Failure"));
                 Require(p.inventory[12].stack==before-1,"one native bag consumed each held update; frame="+frame+" stack="+p.inventory[12].stack+" error="+GetOptional(host,"Error")+" hold="+Get(Get(host,"Bags"),"Holding")+" permit="+Get(input,"CanStartActions")+" ui="+Get(Get(context,"Shell"),"CanProcessingInput"));
@@ -43,7 +47,7 @@ namespace NativeWorldTextProbe
             p.inventory[12].SetDefaults(3093);p.inventory[12].stack=40;p.trashItem.TurnToAir();
             for(int frame=0;frame<8;frame++)
             {
-                Sample(input,true);Call(context,"UpdateRuntime");
+                Sample(input,true);NativeQuickItemChecks.BeginWorldStep();Call(context,"UpdateRuntime");
                 Require(p.inventory[12].type==3093 && p.inventory[12].stack==39-frame,"no burst/drain pause with downstream enabled");
                 Require(!p.trashItem.IsAir,"actual native discard occurs before physical release");
                 Require(!(bool)Get(Get(items,"World"),"HasManualOperation"),"controlled bag has no phantom manual slot/material; slot="+Get(Get(items,"World"),"ManualSlot"));
@@ -58,6 +62,8 @@ namespace NativeWorldTextProbe
             NativeProcessingFaultChecks.Run(context);
             Console.WriteLine("PASS: native continuous bags consume once per Update and never again from Draw; release stops.");
         }
+        internal static void SampleWorld(object input,bool held)
+        {Sample(input,held);NativeQuickItemChecks.BeginWorldStep();}
         internal static void Sample(object input,bool held)
         {
             Main.keyState=held?new KeyboardState(Keys.LeftShift):new KeyboardState();

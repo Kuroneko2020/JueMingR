@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -64,11 +64,11 @@ namespace NativeWorldTextProbe
             NativeReforgeChecks.Sample(input,false);Call(owner,"Update");
             owner.GetType().GetField("quoteReady",Flags).SetValue(owner,false);
             long before=NativeReforgeChecks.Total(p);
-            NativeReforgeChecks.Sample(input,true);Call(owner,"Update");
-            NativeReforgeChecks.Sample(input,true);Main.mouseLeftRelease=false;Call(owner,"Update");Draw(graphics);Draw(graphics);
+            NativeReforgeChecks.SampleWorld(input,true);Call(owner,"Update");
+            NativeReforgeChecks.SampleWorld(input,true);Main.mouseLeftRelease=false;Call(owner,"Update");Draw(graphics);Draw(graphics);
             Require((bool)Get(owner,"quoteReady") && before==NativeReforgeChecks.Total(p),"first actual pressed Draw after skipped rendering supplies its late quote without leaking a native debit");
             long fee=(long)Get(owner,"quote");
-            NativeReforgeChecks.Sample(input,true);Main.mouseLeftRelease=false;Call(owner,"Update");Draw(graphics);Draw(graphics);
+            NativeReforgeChecks.SampleWorld(input,true);Main.mouseLeftRelease=false;Call(owner,"Update");Draw(graphics);Draw(graphics);
             Require(before-NativeReforgeChecks.Total(p)==fee && Main.reforgeItem.prefix!=0,"actual draw tails cannot charge after one auto-hit update");
             NativeReforgeChecks.Sample(input,false,200,600);Call(owner,"Update");Draw(graphics);Draw(graphics); // Native hover exit ends any top-tier cooldown.
             NativeReforgeChecks.Sample(input,false);Call(owner,"Update");
@@ -81,7 +81,7 @@ namespace NativeWorldTextProbe
             Main.reforgeItem.ResetPrefix();Main.screenWidth=1920;Main.screenHeight=1080;PlayerInput.CacheOriginalScreenDimensions();Main.UIScale=1.5f;
             NativeReforgeChecks.Sample(input,false,180,465);Call(owner,"Update");Draw(graphics);
             before=NativeReforgeChecks.Total(p);fee=(long)Get(owner,"quote");PlayerInput.SetZoom_Unscaled();
-            NativeReforgeChecks.Sample(input,true,180,465);Call(owner,"Update");
+            NativeReforgeChecks.SampleWorld(input,true,180,465);Call(owner,"Update");
             Require(before-NativeReforgeChecks.Total(p)==fee,"150% first automatic payment happens in Update, before ordinary Draw fallback");Draw(graphics);
             Require(before-NativeReforgeChecks.Total(p)==fee && Main.reforgeItem.prefix!=0,"physical pointer and native UI quote remain valid across 150% Draw to unscaled Update");
             NativeReforgeChecks.Sample(input,false);Call(owner,"Update");Main.InReforgeMenu=false;p.SetTalkNPC(-1);Main.playerInventory=false;
@@ -104,7 +104,7 @@ namespace NativeWorldTextProbe
                 for(int i=0;i<3;i++)
                 {
                     long before=NativeReforgeChecks.Total(p),fee=(long)Get(owner,"quote");Main.rand=new Terraria.Utilities.UnifiedRandom(seed);
-                    NativeReforgeChecks.Sample(input,true);Main.mouseLeftRelease=i==0;Call(owner,"Update");Draw(graphics);Draw(graphics);
+                    NativeReforgeChecks.SampleWorld(input,true);Main.mouseLeftRelease=i==0;Call(owner,"Update");Draw(graphics);Draw(graphics);
                     Require(before-NativeReforgeChecks.Total(p)==fee && Main.reforgeItem.prefix==prefix,"full native Draw/Update top-tier loop pays once per held Update: "+i);
                     Require((int)typeof(Main).GetField("reforgeCooldown",Flags).GetValue(null)==60,"top-tier automatic loop leaves native cooldown intact through repeated Draws");
                 }

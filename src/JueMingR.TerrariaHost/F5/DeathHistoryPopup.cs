@@ -19,6 +19,8 @@ namespace JueMingR.TerrariaHost.F5
         internal readonly List<bool> Enabled = new List<bool>();
         private readonly List<string> rowIds = new List<string>();
         internal F5Rect Panel, Body;
+        internal F5Rect Anchor {get;set;}
+        private F5Rect preparedAnchor;
         internal int Mode { get; private set; } // 0 closed, 1 quantity, 2 list, 3 full
         internal bool Visible { get { return Mode != 0; } }
         internal bool OwnsPointer { get; private set; }
@@ -55,7 +57,7 @@ namespace JueMingR.TerrariaHost.F5
         }
         internal bool ContainsPointer(float x, float y) { return Visible && Panel.Contains(x, y); }
         internal bool Matches(float w, float h, object f, int s)
-        { return !dirty && w == width && h == height && ReferenceEquals(font, f) && skin == s; }
+        { return !dirty && F5PopupPlacement.SameAnchor(Anchor,preparedAnchor) && w == width && h == height && ReferenceEquals(font, f) && skin == s; }
         internal void CheckSession() { if (Visible && session != host.Session) Close(); }
         internal void Process(bool active, int currentPage, float x, float y, bool geometryCurrent, int wheel)
         {
@@ -105,7 +107,7 @@ namespace JueMingR.TerrariaHost.F5
         {
             CheckSession(); if (!Visible) return;
             var value = host.Snapshot; bool queryReady = host.QueryReady; string nextStatus = Status(value, queryReady);
-            bool resources = width != w || height != h || !ReferenceEquals(font, f) || skin != s;
+            bool resources = !F5PopupPlacement.SameAnchor(Anchor,preparedAnchor) || width != w || height != h || !ReferenceEquals(font, f) || skin != s;
             if (resources) { full = null; dirty = true; }
             if (Mode == 3 && queryReady && value.Selected?.EventId == SelectedId && (!ReferenceEquals(readText, value.SelectedText) || full == null))
             {
@@ -128,7 +130,7 @@ namespace JueMingR.TerrariaHost.F5
             float wantedHeight = Mode == 2 ? (listSlots + 2) * lineHeight + 50 : (Mode == 1 ? 4 : 6) * lineHeight + 84;
             float panelHeight = Math.Min(wantedHeight, h - 24);
             var oldPanel = Panel;
-            Panel = new F5Rect((w - panelWidth) / 2, (h - panelHeight) / 2, panelWidth, panelHeight);
+            preparedAnchor=Anchor;Panel = F5PopupPlacement.Place(Anchor,panelWidth,panelHeight,w,h);
             AddText(Mode == 1 ? "死亡点常驻" : "死亡详情", 16, 12, panelWidth - 32, .75f, measure);
             float footer = panelHeight - lineHeight - 20;
             AddButton("关闭", 0, panelWidth - 84, footer, 68, true, measure);

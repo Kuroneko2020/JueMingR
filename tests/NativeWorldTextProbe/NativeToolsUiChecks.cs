@@ -19,11 +19,14 @@ namespace NativeWorldTextProbe
         {
             object host=Get(context,"Tools"),shell=Get(context,"Shell"),state=Get(shell,"State"),items=Get(shell,"items"),popup=Get(shell,"CaptureUi"),renderer=Get(shell,"renderer");
             var settings=((ToolSettings[])Get(host,"Settings"))[0];Prepare(context,0,960,760,1);
-            var panel=Get(items,"ToolsPanel");var rows=(IEnumerable[])Get(panel,"rows");var first=rows[0].Cast<object>().First();
-            Call(state,"ScrollTo",Get(Get(first,"Rect"),"Y"));Prepare(context,0,960,760,1);
-            var config=Controls(items).First(c=>Get(c,"Command").ToString()=="Tools" && (int)Get(c,"Argument")==3);var point=Point(Get(config,"Rect"));
-            foreach(bool left in new[]{false,true,false}){Mouse(point,left);Call(items,"ProcessInput",true,new KeyboardState(),point,true,true,false);}
-            Require((bool)Get(popup,"Visible"),"actual Items configuration button opens capture window");Call(popup,"Prepare",Matrix.Identity,new Vector2(960,760),true);
+            NativePageCompositionChecks.ItemsOrder(items);
+            var misc=Get(shell,"MiscUi");Prepare(context,1,960,760,1);
+            NativePageCompositionChecks.MiscOrder(shell);
+            var panel=Get(misc,"ToolsPanel");var rows=(IEnumerable[])Get(panel,"rows");var first=rows[0].Cast<object>().First();
+            Call(state,"ScrollTo",Get(Get(first,"Rect"),"Y"));Prepare(context,1,960,760,1);
+            var config=Controls(misc).First(c=>Get(c,"Command").ToString()=="Tools" && (int)Get(c,"Argument")==3);var point=Point(Get(config,"Rect"));
+            foreach(bool left in new[]{false,true,false}){Mouse(point,left);Call(misc,"ProcessInput",true,new KeyboardState(),point,true,true,false);}
+            Require((bool)Get(popup,"Visible"),"actual Misc configuration button opens capture window");Call(popup,"Prepare",Matrix.Identity,new Vector2(960,760),true);
             var cells=(Array)Get(popup,"cells");int saved=settings.Value.Categories;
             for(int i=0;i<8;i++)
             {
@@ -35,6 +38,16 @@ namespace NativeWorldTextProbe
             }
             int layouts=(int)Get(popup,"LayoutBuilds");for(int i=0;i<240;i++)Call(popup,"Prepare",Matrix.Identity,new Vector2(960,760),true);
             Require((int)Get(popup,"LayoutBuilds")==layouts,"stable popup does no repeated text/layout construction");
+            point=Point(cells.GetValue(0));long fontCommand=settings.AcceptedCommandId;
+            Mouse(point,true);Call(popup,"Process",true,new KeyboardState(),point,Matrix.Identity,new Vector2(960,760),true);
+            graphics.SetMouseFont(Terraria.GameContent.FontAssets.ItemStack.Value);Prepare(context,1,960,760,1);
+            Mouse(point,false);Call(popup,"Process",true,new KeyboardState(),point,Matrix.Identity,new Vector2(960,760),true);
+            Require(fontCommand==settings.AcceptedCommandId,"font/entry reflow cannot submit an old category press");
+            graphics.SetMouseFont(graphics.Font);Prepare(context,1,960,760,1);
+            point=Point(cells.GetValue(0));
+            foreach(bool left in new[]{false,true,false}){Mouse(point,left);Call(popup,"Process",true,new KeyboardState(),point,Matrix.Identity,new Vector2(960,760),true);}
+            NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return !settings.Busy;});
+            Require(settings.AcceptedCommandId==fontCommand+1,"fresh category click works after font reflow");Call(popup,"Prepare",Matrix.Identity,new Vector2(960,760),true);
             point=Point(cells.GetValue(0));Mouse(point,false);Call(popup,"Process",true,new KeyboardState(),point,Matrix.Identity,new Vector2(960,760),true);
             Set(state,"PointerX",point.X);Set(state,"PointerY",point.Y);Set(state,"PointerBlocked",true);
             object[] hintArgs={state,items,false,false,null,null};string hint=(string)renderer.GetType().GetMethod("ResolveHint",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).Invoke(renderer,hintArgs);
@@ -70,7 +83,7 @@ namespace NativeWorldTextProbe
                 Require((bool)Get(state,"Visible"),"real F5 opens complete G09 shell");
                 Nav(context,1);var layout=Get(state,"Layout");if(size[1]==440)Require((float)Get(layout,"MaxScroll")>0,"short populated Reforge produces genuine misc scrolling");
                 var view=Get(layout,"Viewport");var inside=(Point(view)+new Vector2((float)Get(state,"X"),(float)Get(state,"Y")))*Main.UIScale;
-                for(int n=0;n<80 && (float)Get(state,"Scroll")<(float)Get(layout,"MaxScroll");n++)
+                for(int n=0;n<80 && (Controls(mining).Count(c=>Get(c,"Command").ToString()=="Hotkey")<3 || (float)Get(state,"Scroll")==0 && (float)Get(layout,"MaxScroll")>0);n++)
                 {UiFrame(context,inside,false,new Keys[0],-120);}
                 var icons=Controls(mining).Where(c=>Get(c,"Command").ToString()=="Hotkey").ToArray();
                 Require(icons.Length==3 && ((float)Get(layout,"MaxScroll")==0 || (float)Get(state,"Scroll")>0),"both independent mining controls reached through actual scroll input: icons="+icons.Length+" scroll="+Get(state,"Scroll")+" max="+Get(layout,"MaxScroll"));
@@ -117,7 +130,7 @@ namespace NativeWorldTextProbe
                     Require(Controls(mining).Count(c=>Get(c,"Command").ToString()=="Hotkey")==3,"font restore retains both action controls");
                 }
                 Nav(context,0);Nav(context,1);UiFrame(context,Vector2.Zero,false);
-                Require((float)Get(Get(state,"Layout"),"ContentHeight")== (float)Get(mining,"Height"),"page return preserves final Recovery/Reforge/Mining height");
+                Require((float)Get(Get(state,"Layout"),"ContentHeight")> (float)Get(mining,"Height"),"page return preserves all blocks after Mining and the merchant footer");
                 Call(shell,"CloseAndSubmitPosition");UiFrame(context,Vector2.Zero,false);
             }
             NativeProcessingUiChecks.Save(reforge,new ProcessingOptions(false,new string[0]));
@@ -131,11 +144,12 @@ namespace NativeWorldTextProbe
         internal static void DispatchBindings(object context)
         {
             var host=Get(context,"Tools");var p=Main.LocalPlayer;var mining=Get(host,"Mining");
+            Main.screenPosition=Vector2.Zero;
             NativeToolsChecks.SetMode(host,2,1);p.inventory[0].SetDefaults(2176);p.itemAnimation=p.itemTime=0;p.selectedItemState.Select(0);p.selectedItemState.Update();p.position=new Vector2(640,640);
             for(int x=35;x<55;x++)for(int y=35;y<48;y++)Main.tile[x,y].ClearEverything();NativeToolsChecks.Tile(42,40,6);
             var aim=new Vector2(42*16+8,40*16+8);UiFrame(context,aim,false);
             UiFrame(context,aim,false,Keys.LeftControl,Keys.F10);UiFrame(context,aim,false);
-            Require(((MiningRegion)Get(mining,"Region")).Count==1 && (int)Call(host,"Mode",2)==1,"actual selection key only selects, leaving mode unchanged");
+            Require(((MiningRegion)Get(mining,"Region")).Count==1 && (int)Call(host,"Mode",2)==1,"actual selection key only selects, leaving mode unchanged region="+((MiningRegion)Get(mining,"Region")).Count+" mode="+Call(host,"Mode",2)+" input="+Get(Get(context,"Input"),"CanStartActions")+" retain="+Call(host,"CanRetainUse",p,false)+" mouse="+p.mouseInterface+" inventory="+Main.playerInventory+" manual="+Get(Get(Get(host,"Items"),"World"),"HasManualOperation")+" aim="+Main.MouseWorld);
             UiFrame(context,aim,false,Keys.LeftControl,Keys.F9);UiFrame(context,aim,false);
             NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return (bool)Call(host,"Controls",2);});
             Require((int)Call(host,"Mode",2)==0,"actual main key turns mode off");
@@ -146,17 +160,17 @@ namespace NativeWorldTextProbe
             Require((int)Call(host,"Mode",2)==1 && ((MiningRegion)Get(mining,"Region")).Count==0,"main key restores previous mode without selecting a vein");
             NativeToolsChecks.SetMode(host,2,0);
         }
-        private static void Nav(object context,int page)
+        internal static void Nav(object context,int page)
         {var state=Get(Get(context,"Shell"),"State");Vector2 point=(Point(Call(Get(state,"Layout"),"Navigation",page))+new Vector2((float)Get(state,"X"),(float)Get(state,"Y")))*Main.UIScale;Click(context,point);Require((int)Get(state,"Page")==page,"real navigation click "+page);}
-        private static void PopupClick(object context,object popup,string command)
+        internal static void PopupClick(object context,object popup,string command)
         {
             var layout=Get(popup,"Layout");var commands=((IEnumerable)Get(layout,"Commands")).Cast<object>().ToArray();var buttons=((IEnumerable)Get(layout,"Buttons")).Cast<object>().ToArray();
             int index=Array.FindIndex(commands,c=>c.ToString()==command);Require(index>=0,"popup command exists: "+command);
             Vector2 point=(Point(Get(buttons[index],"Rect"))+new Vector2((float)Get(Get(layout,"Panel"),"X"),(float)Get(Get(layout,"Panel"),"Y")))*Main.UIScale;Click(context,point);
         }
-        private static void Click(object context,Vector2 point){UiFrame(context,point,false);UiFrame(context,point,true);UiFrame(context,point,false);}
-        private static void UiFrame(object context,Vector2 point,bool left,params Keys[] keys){UiFrame(context,point,left,keys,0);}
-        private static void UiFrame(object context,Vector2 point,bool left,Keys[] keys,int wheel)
+        internal static void Click(object context,Vector2 point){UiFrame(context,point,false);UiFrame(context,point,true);UiFrame(context,point,false);}
+        internal static void UiFrame(object context,Vector2 point,bool left,params Keys[] keys){UiFrame(context,point,left,keys,0);}
+        internal static void UiFrame(object context,Vector2 point,bool left,Keys[] keys,int wheel)
         {
             var shell=Get(context,"Shell");var input=Get(context,"Input");Call(input,"BeginUpdate");Call(shell,"BeforeInput");
             PlayerInput.MouseInfo=new MouseState((int)point.X,(int)point.Y,PlayerInput.MouseInfo.ScrollWheelValue+wheel,left?ButtonState.Pressed:ButtonState.Released,ButtonState.Released,ButtonState.Released,ButtonState.Released,ButtonState.Released);
@@ -175,9 +189,7 @@ namespace NativeWorldTextProbe
             if(page==0)Call(Get(shell,"items"),"Prepare",true,matrix,new Vector2(width,height));
             else
             {
-                var recovery=Get(shell,"RecoveryUi");var reforge=Get(shell,"ReforgeUi");var mining=Get(shell,"MiningUi");
-                Call(recovery,"Prepare",true,matrix,new Vector2(width,height));float bottom=(float)Get(recovery,"ContentBottom");Call(reforge,"Prepare",true,matrix,bottom);Call(mining,"Prepare",true,matrix,Get(reforge,"Height"));
-                Call(Get(state,"Layout"),"SetRecoveryContentHeight",Get(mining,"Height"));Call(state,"ClampScroll");Call(recovery,"PrepareLayout",matrix);Call(reforge,"PrepareLayout",matrix,bottom);Call(mining,"PrepareLayout",matrix,Get(reforge,"Height"));
+                Call(shell,"PrepareMisc",true,matrix,new Vector2(width,height),true);
             }
         }
     }

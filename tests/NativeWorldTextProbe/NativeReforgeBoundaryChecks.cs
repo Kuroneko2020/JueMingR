@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Reflection;
 using JueMingR.Features.Processing;
@@ -32,24 +32,24 @@ namespace NativeWorldTextProbe
                 NativeReforgeChecks.Sample(input,false);Call(owner,"Update");
                 owner.GetType().GetField("quoteReady",Flags).SetValue(owner,false);
                 long initialFee=(long)Main.reforgeItem.value/3,initialMoney=NativeReforgeChecks.Total(p);
-                NativeReforgeChecks.Sample(input,true);Call(owner,"Update");Call(owner,"Observe",true,120,310,15,initialFee);
+                NativeReforgeChecks.SampleWorld(input,true);Call(owner,"Update");Call(owner,"Observe",true,120,310,15,initialFee);
                 Require(!(bool)Call(owner,"NativePayment",p,initialFee,-1) && initialMoney==NativeReforgeChecks.Total(p),"first press with a late quote is owned before native Draw payment");
-                NativeReforgeChecks.Sample(input,true);Main.mouseLeftRelease=false;Call(owner,"Update");
+                NativeReforgeChecks.SampleWorld(input,true);Main.mouseLeftRelease=false;Call(owner,"Update");
                 Require(initialMoney-NativeReforgeChecks.Total(p)==initialFee && Main.reforgeItem.prefix!=0,"first held gesture proceeds on the next Update without another click");
                 NativeReforgeChecks.Sample(input,false);Call(owner,"Update");Main.reforgeItem.ResetPrefix();
                 owner.GetType().GetField("quoteReady",Flags).SetValue(owner,false);
                 initialFee=(long)Main.reforgeItem.value/3;initialMoney=NativeReforgeChecks.Total(p);
-                NativeReforgeChecks.Sample(input,true);Call(owner,"Update");
-                NativeReforgeChecks.Sample(input,true);Main.mouseLeftRelease=false;Call(owner,"Update");
+                NativeReforgeChecks.SampleWorld(input,true);Call(owner,"Update");
+                NativeReforgeChecks.SampleWorld(input,true);Main.mouseLeftRelease=false;Call(owner,"Update");
                 Call(owner,"Observe",true,120,310,15,initialFee);
                 Require(!(bool)Call(owner,"NativePayment",p,initialFee,-1) && initialMoney==NativeReforgeChecks.Total(p),"frame skip late first Draw still owns the original press without a native debit");
-                NativeReforgeChecks.Sample(input,true);Call(owner,"Update");
+                NativeReforgeChecks.SampleWorld(input,true);Call(owner,"Update");
                 Require(initialMoney-NativeReforgeChecks.Total(p)==initialFee && Main.reforgeItem.prefix!=0,"multiple Updates before the first Draw do not require a second click");
                 foreach(int change in Enumerable.Range(0,4))
                 {
                     NativeReforgeChecks.Sample(input,false);Call(owner,"Update");Main.reforgeItem.ResetPrefix();
                     owner.GetType().GetField("quoteReady",Flags).SetValue(owner,false);
-                    NativeReforgeChecks.Sample(input,true);Call(owner,"Update");
+                    NativeReforgeChecks.SampleWorld(input,true);Call(owner,"Update");
                     float oldScale=Main.UIScale;int oldWidth=(int)Terraria.GameInput.PlayerInput.OriginalScreenSize.X;
                     if(change==0)NativeReforgeChecks.Sample(input,false);
                     else
@@ -57,7 +57,7 @@ namespace NativeWorldTextProbe
                         if(change==1)Main.UIScale=oldScale+0.5f;
                         if(change==2)typeof(Terraria.GameInput.PlayerInput).GetField("_originalScreenWidth",Flags).SetValue(null,oldWidth+10);
                         if(change==3)Main.reforgeItem.Prefix(62);
-                        NativeReforgeChecks.Sample(input,true);Call(owner,"Update");
+                        NativeReforgeChecks.SampleWorld(input,true);Call(owner,"Update");
                         Main.UIScale=oldScale;typeof(Terraria.GameInput.PlayerInput).GetField("_originalScreenWidth",Flags).SetValue(null,oldWidth);Main.reforgeItem.ResetPrefix();
                     }
                     long before=NativeReforgeChecks.Total(p);
@@ -69,7 +69,7 @@ namespace NativeWorldTextProbe
                     NativeReforgeChecks.Sample(input,false);Call(owner,"Update");Main.reforgeItem.ResetPrefix();
                     NativeProcessingUiChecks.Save(settings,new ProcessingOptions(true,Main.reforgeItem.GetRollablePrefixes().Select(id=>Lang.prefix[id].Value).Distinct()));
                     owner.GetType().GetField("quoteReady",Flags).SetValue(owner,false);
-                    NativeReforgeChecks.Sample(input,true);Call(owner,"Update");
+                    NativeReforgeChecks.SampleWorld(input,true);Call(owner,"Update");
                     string language=Language.ActiveCulture.Name;
                     if(change==0)Main.reforgeItem=Main.reforgeItem.Clone();
                     if(change==1){Main.npc[1].SetDefaults(107);Main.npc[1].active=true;p.SetTalkNPC(1);}
@@ -79,15 +79,15 @@ namespace NativeWorldTextProbe
                     long before=NativeReforgeChecks.Total(p);
                     Call(owner,"Observe",true,120,310,15,(long)Main.reforgeItem.value/3);
                     Require(!(bool)Call(owner,"NativePayment",p,(long)Main.reforgeItem.value/3,-1),"late press identity change cannot leak a native debit: "+change);
-                    NativeReforgeChecks.Sample(input,true);Main.mouseLeftRelease=false;Call(owner,"Update");
+                    NativeReforgeChecks.SampleWorld(input,true);Main.mouseLeftRelease=false;Call(owner,"Update");
                     Require(before==NativeReforgeChecks.Total(p),"late quote cannot adopt changed item/NPC/list/language/prefix: "+change);
                     p.SetTalkNPC(0);LanguageManager.Instance.SetLanguage(language);
                 }
                 NativeReforgeChecks.Sample(input,false,200,600);Call(owner,"Update");Main.reforgeItem.ResetPrefix();
                 NativeProcessingUiChecks.Save(settings,new ProcessingOptions(true,Main.reforgeItem.GetRollablePrefixes().Select(id=>Lang.prefix[id].Value).Distinct()));
-                NativeReforgeChecks.Sample(input,true,200,600);Call(owner,"Update");Call(owner,"Observe",false,120,310,15,(long)Main.reforgeItem.value/3);
+                NativeReforgeChecks.SampleWorld(input,true,200,600);Call(owner,"Update");Call(owner,"Observe",false,120,310,15,(long)Main.reforgeItem.value/3);
                 long outsideMoney=NativeReforgeChecks.Total(p);
-                NativeReforgeChecks.Sample(input,true);Main.mouseLeftRelease=false;Call(owner,"Observe",true,120,310,15,(long)Main.reforgeItem.value/3);Call(owner,"Update");
+                NativeReforgeChecks.SampleWorld(input,true);Main.mouseLeftRelease=false;Call(owner,"Observe",true,120,310,15,(long)Main.reforgeItem.value/3);Call(owner,"Update");
                 Require(outsideMoney==NativeReforgeChecks.Total(p),"pressing outside then sliding onto the button cannot start automation");
                 for(seed=0;seed<100;seed++){Main.rand=new UnifiedRandom(seed);var probe=new Item();probe.SetDefaults(53);probe.Prefix(-2,out top);if(!top && probe.prefix>0){chosen=probe.prefix;break;}}
                 Require(chosen>0,"real prefix generator supplies repeatable non-top-tier result");
@@ -99,7 +99,7 @@ namespace NativeWorldTextProbe
                 {
                     long fee=(long)Main.reforgeItem.value*Main.reforgeItem.stack/3,before=NativeReforgeChecks.Total(p);
                     Call(owner,"Observe",true,120,310,15,fee);Main.rand=new UnifiedRandom(seed);typeof(Main).GetField("reforgeCooldown",Flags).SetValue(null,0);
-                    NativeReforgeChecks.Sample(input,true);Call(owner,"Update");
+                    NativeReforgeChecks.SampleWorld(input,true);Call(owner,"Update");
                     Require(Main.reforgeItem.prefix==chosen && before-NativeReforgeChecks.Total(p)==fee && !(bool)Get(owner,"unknown") && !(bool)Get(owner,"Executing"),"same-prefix result is a new paid native roll with real bank change");
                 }
                 int topSeed=0,topPrefix=0;
@@ -113,7 +113,7 @@ namespace NativeWorldTextProbe
                 {
                     long fee=(long)Main.reforgeItem.value/3,before=NativeReforgeChecks.Total(p);
                     Call(owner,"Observe",true,120,310,15,fee);Main.rand=new UnifiedRandom(topSeed);
-                    NativeReforgeChecks.Sample(input,true);Main.mouseLeftRelease=i==0;Call(owner,"Update");
+                    NativeReforgeChecks.SampleWorld(input,true);Main.mouseLeftRelease=i==0;Call(owner,"Update");
                     Require(Main.reforgeItem.prefix==topPrefix && before-NativeReforgeChecks.Total(p)==fee,"top-tier non-target result never pauses the next paid automatic Update: "+i);
                     Require((int)typeof(Main).GetField("reforgeCooldown",Flags).GetValue(null)==60,"automatic loop does not reset vanilla top-tier cooldown");
                 }
@@ -126,7 +126,7 @@ namespace NativeWorldTextProbe
                     if(boundary==1){Main.npc[1].SetDefaults(107);Main.npc[1].active=true;p.SetTalkNPC(1);}
                     if(boundary==2)NativeProcessingUiChecks.Save(settings,new ProcessingOptions(true,new[]{Lang.prefix[chosen].Value}));
                     if(boundary==3)Main.InReforgeMenu=false;
-                    for(int i=0;i<3;i++){Call(owner,"Observe",true,120,310,15,(long)Main.reforgeItem.value/3);NativeReforgeChecks.Sample(input,true);Call(owner,"Update");}
+                    for(int i=0;i<3;i++){Call(owner,"Observe",true,120,310,15,(long)Main.reforgeItem.value/3);NativeReforgeChecks.SampleWorld(input,true);Call(owner,"Update");}
                     Require(before==NativeReforgeChecks.Total(p),"item/NPC/list/menu change revokes existing hold: "+boundary);
                     p.SetTalkNPC(0);Main.InReforgeMenu=true;
                 }
@@ -147,7 +147,7 @@ namespace NativeWorldTextProbe
         {
             NativeReforgeChecks.Sample(input,false);Call(owner,"Update");Call(owner,"Observe",true,120,310,15,(long)Main.reforgeItem.value*Main.reforgeItem.stack/3);
             if(seed.HasValue)Main.rand=new UnifiedRandom(seed.Value);typeof(Main).GetField("reforgeCooldown",Flags).SetValue(null,0);
-            NativeReforgeChecks.Sample(input,true);Call(owner,"Update");
+            NativeReforgeChecks.SampleWorld(input,true);Call(owner,"Update");
         }
     }
 }

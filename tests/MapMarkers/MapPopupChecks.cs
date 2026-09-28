@@ -37,6 +37,7 @@ namespace Terraria
                 Require(owner.Markers.Saved.Records[0].Name == "你好", "independent next Enter persists committed whole name");
                 d.Prepare(); d.Press(12); owner.Workspace.ConfirmDelete(owner.Markers.Saved.Records[0].Id); d.Prepare(); d.Release();
                 Require(owner.Markers.Saved.Records.Count == 1, "delete label transition must invalidate previous unconfirmed press");
+                d.Press(0);d.Popup.Anchor=new F5Rect(160,80,80,30);d.Prepare();d.Release();Require(d.Popup.Visible,"moved entry anchor cancels old close press");
                 d.Height = 220; d.Prepare();
                 foreach (var button in d.Popup.Buttons) Require(button.Rect.Bottom <= d.Popup.Panel.Height && button.Rect.Right <= d.Popup.Panel.Width, "small view keeps controls in panel");
                 d.Click(0); Require(!d.Popup.Visible, "close stays reachable"); d.Popup.Open(true); d.Prepare();

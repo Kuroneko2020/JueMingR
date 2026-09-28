@@ -29,7 +29,9 @@ namespace JueMingR.TerrariaHost.Information
             new F5RowDescription(HotkeyActionIds.Information(InformationKind.Biome), "显示当前所在的群系。"),
             new F5RowDescription(HotkeyActionIds.Information(InformationKind.Infection), "显示世界感染比例。需要当前世界存在树妖。"),
             new F5RowDescription(HotkeyActionIds.Information(InformationKind.Luck), "显示当前幸运值及来源明细。需要在此世界解救过巫师，或当前有巫师。"),
-            new F5RowDescription(HotkeyActionIds.Information(InformationKind.Angler), "显示今日任务鱼、捕获地点、个人累计完成次数和今日完成状态。需要在此世界解救过渔夫，或当前有渔夫。") };
+            new F5RowDescription(HotkeyActionIds.Information(InformationKind.Angler), "显示今日任务鱼、捕获地点、个人累计完成次数和今日完成状态。需要在此世界解救过渔夫，或当前有渔夫。"),
+            new F5RowDescription(HotkeyActionIds.Information(InformationKind.FullFish), "显示当前鱼漂水域可能出现的物品，不代表下一次必得。"),
+            new F5RowDescription(HotkeyActionIds.Information(InformationKind.FilteredFish), "按钓鱼页规则显示当前水域保留的物品。实际筛选需要有效声呐。") };
         private static readonly F5RowDescription adjustmentDescription = new F5RowDescription(HotkeyActionIds.AdjustInformation,
             "调整信息窗的位置，拖动后松手完成。");
         internal static F5RowDescription Description(InformationKind? kind)
@@ -37,7 +39,7 @@ namespace JueMingR.TerrariaHost.Information
         private readonly IInformationControls host;
         internal InformationControls(IInformationControls host) { this.host = host; }
         internal static string Name(InformationKind kind)
-        { switch (kind) { case InformationKind.Biome: return "群系显示"; case InformationKind.Infection: return "世界感染"; case InformationKind.Luck: return "幸运值"; default: return "渔夫任务"; } }
+        { switch (kind) { case InformationKind.Biome: return "群系显示"; case InformationKind.Infection: return "世界感染"; case InformationKind.Luck: return "幸运值"; case InformationKind.Angler: return "渔夫任务";case InformationKind.FullFish:return "完整鱼获";case InformationKind.FilteredFish:return "过滤鱼获";default:throw new ArgumentOutOfRangeException(nameof(kind)); } }
         internal static void AddRow(List<F5Element> elements, Func<string, float, F5Size> measure, ref float y, InformationKind? kind)
         {
             new F5RowLayout(elements, measure).Row(ref y, 0, 522, kind.HasValue ? Name(kind.Value) : "调整信息窗位置",
@@ -54,7 +56,10 @@ namespace JueMingR.TerrariaHost.Information
                 case InformationKind.Biome: return text == "配置" ? F5Command.ConfigureBiome : text == "开启" ? F5Command.EnableBiome : F5Command.DisableBiome;
                 case InformationKind.Infection: return text == "配置" ? F5Command.ConfigureInfection : text == "开启" ? F5Command.EnableInfection : F5Command.DisableInfection;
                 case InformationKind.Luck: return text == "配置" ? F5Command.ConfigureLuck : text == "开启" ? F5Command.EnableLuck : F5Command.DisableLuck;
-                default: return text == "配置" ? F5Command.ConfigureAngler : text == "开启" ? F5Command.EnableAngler : F5Command.DisableAngler;
+                case InformationKind.Angler: return text == "配置" ? F5Command.ConfigureAngler : text == "开启" ? F5Command.EnableAngler : F5Command.DisableAngler;
+                case InformationKind.FullFish: return text == "配置" ? F5Command.ConfigureFullFish : text == "开启" ? F5Command.EnableFullFish : F5Command.DisableFullFish;
+                case InformationKind.FilteredFish: return text == "配置" ? F5Command.ConfigureFilteredFish : text == "开启" ? F5Command.EnableFilteredFish : F5Command.DisableFilteredFish;
+                default:throw new ArgumentOutOfRangeException(nameof(kind));
             }
         }
         internal static InformationKind? Target(F5Command command)
@@ -65,11 +70,13 @@ namespace JueMingR.TerrariaHost.Information
                 case F5Command.ConfigureInfection: case F5Command.EnableInfection: case F5Command.DisableInfection: return InformationKind.Infection;
                 case F5Command.ConfigureLuck: case F5Command.EnableLuck: case F5Command.DisableLuck: return InformationKind.Luck;
                 case F5Command.ConfigureAngler: case F5Command.EnableAngler: case F5Command.DisableAngler: return InformationKind.Angler;
+                case F5Command.ConfigureFullFish: case F5Command.EnableFullFish: case F5Command.DisableFullFish: return InformationKind.FullFish;
+                case F5Command.ConfigureFilteredFish: case F5Command.EnableFilteredFish: case F5Command.DisableFilteredFish: return InformationKind.FilteredFish;
                 default: return null;
             }
         }
-        internal static bool IsStyle(F5Command command) { return command == F5Command.ConfigureBiome || command == F5Command.ConfigureInfection || command == F5Command.ConfigureLuck || command == F5Command.ConfigureAngler; }
-        private static bool IsEnable(F5Command command) { return command == F5Command.EnableBiome || command == F5Command.EnableInfection || command == F5Command.EnableLuck || command == F5Command.EnableAngler; }
+        internal static bool IsStyle(F5Command command) { return command == F5Command.ConfigureBiome || command == F5Command.ConfigureInfection || command == F5Command.ConfigureLuck || command == F5Command.ConfigureAngler || command==F5Command.ConfigureFullFish || command==F5Command.ConfigureFilteredFish; }
+        private static bool IsEnable(F5Command command) { return command == F5Command.EnableBiome || command == F5Command.EnableInfection || command == F5Command.EnableLuck || command == F5Command.EnableAngler || command==F5Command.EnableFullFish || command==F5Command.EnableFilteredFish; }
         internal bool Available(F5Command command) { return command == F5Command.AdjustInformation ? host.PositionReady : Target(command).HasValue && host.CanConfigure; }
         internal Color? Selected(F5Command command)
         {

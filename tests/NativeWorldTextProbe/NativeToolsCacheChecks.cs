@@ -31,7 +31,7 @@ namespace NativeWorldTextProbe
             finally { observer.Unpatch(read,HarmonyPatchType.All,observer.Id);observer.Unpatch(check,HarmonyPatchType.All,observer.Id); }
         }
         private static void Tick(object context,object input)
-        {NativeQuickItemChecks.Sample(input,new Keys[0]);Call(context,"UpdateRuntime");}
+        {NativeQuickItemChecks.Sample(input,new Keys[0]);NativeQuickItemChecks.BeginWorldStep();Call(context,"UpdateRuntime");}
         private static void ClearField()
         {for(int x=25;x<90;x++)for(int y=25;y<80;y++){if(Main.tile[x,y]==null)Main.tile[x,y]=new Tile();Main.tile[x,y].ClearEverything();}}
         internal static void NaturalCompletion(object context,bool herbs)

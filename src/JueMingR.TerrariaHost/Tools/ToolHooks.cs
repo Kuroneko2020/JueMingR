@@ -43,8 +43,8 @@ namespace JueMingR.TerrariaHost.Tools
         internal static void Uninstall(){foreach(var m in harmony.GetPatchedMethods().ToArray())harmony.Unpatch(m,HarmonyPatchType.All,harmony.Id);host=null;}
         private static void Pick(Player __instance,ref int __0,ref bool __result){host?.Use.Pick(__instance,ref __0,ref __result);}
         private static void Sync(Player __instance){if(ReferenceEquals(__instance,host?.Player))host.Mining.ObserveManual();host?.Use.BeforeSync(__instance);}
-        private static void Started(Player __instance,Item __0){host?.Use.Started(__instance);host?.Fishing.ObserveCast(__instance,__0);}
-        private static void ProjectileCreated(Player __instance,Projectile __0){host?.Use.ObserveProjectile(__instance,__0);}
+        private static void Started(Player __instance,Item __0){host?.Use.Started(__instance);host?.Fishing.ObserveCast(__instance,__0);host?.FishingStarted?.Invoke(__instance,__0);}
+        private static void ProjectileCreated(Player __instance,Projectile __0){host?.Use.ObserveProjectile(__instance,__0);host?.FishingProjectile?.Invoke(__instance,__0);}
         private static void ProjectileBefore(Projectile __instance,out Lease __state)
         {__state=null;if(host==null || !host.Use.OwnsProjectile(__instance))return;__state=new Lease{Token=host.Use.Operation};host.Use.BeginProjectile();}
         private static void ProjectileAfter(Lease __state){if(__state!=null)host?.Use.EndProjectile(__state.Token,null);}

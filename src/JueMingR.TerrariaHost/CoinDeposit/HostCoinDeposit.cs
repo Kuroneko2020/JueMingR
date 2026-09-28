@@ -170,7 +170,7 @@ namespace JueMingR.TerrariaHost.CoinDeposit
             if (!Settings.Enabled) return;
             if (!TrustedIdentity) ConfirmIdentity();
             Player p = Player;
-            if (p == null || !Input.CanStartActions || Main.gamePaused) return;
+            if (p == null || !Input.CanRunAutomaticActions || Main.gamePaused) return;
             if (Intent.Faulted) { UnconfirmedStatus(); return; }
             if (Intent.Protected || Intent.Pending)
             {
@@ -267,12 +267,12 @@ namespace JueMingR.TerrariaHost.CoinDeposit
                 !p.dead && p.chest == -1 && p.talkNPC < 0 && p.sign < 0 && Main.npcShop == 0 && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest &&
                 !PlayerInput.WritingText && Main.CurrentInputTextTakerOverride == null && !Main.blockInput &&
                 (CanGameplay == null || CanGameplay()) && Main.mouseItem != null && Main.mouseItem.IsAir &&
-                PlayerInput.MouseInfo.LeftButton != ButtonState.Pressed && PlayerInput.MouseInfo.RightButton != ButtonState.Pressed && !Items.World.Busy;
+                (!Input.IsFocused || PlayerInput.MouseInfo.LeftButton != ButtonState.Pressed && PlayerInput.MouseInfo.RightButton != ButtonState.Pressed) && !Items.World.Busy;
         }
         internal bool Admit(CoinRange.Entrance entrance, long generation, out ulong mask)
         {
             mask = 0; Player p = Player;
-            if (p == null || !Available || !Settings.Enabled || !Intent.Allows(identity, generation) || !Input.CanStartActions || Main.gamePaused || !CanAct(p)) return false;
+            if (p == null || !Available || !Settings.Enabled || !Intent.Allows(identity, generation) || !Input.CanRunAutomaticActions || Main.gamePaused || !CanAct(p)) return false;
             if (!TrySources(p, out mask)) return false;
             // MoveCoins may normalize or fill target coin/Air slots. G07
             // payment and void-use uncertainty must protect these accounts too.

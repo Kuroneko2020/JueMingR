@@ -17,8 +17,8 @@ namespace Terraria
             string[] expected = { "entity-labels.enemy.toggle", "entity-labels.critter.toggle", "entity-labels.npc.toggle", "biome-display.toggle",
                 "world-targets.life-crystal.toggle", "world-targets.life-fruit.toggle", "world-targets.mana-crystal.toggle", "world-targets.sleeping-digtoise.toggle", "world-targets.chillet-egg.toggle",
                 "world-object-text.chest.toggle", "world-object-text.sign.toggle", "world-object-text.tombstone.toggle",
-                "information.infection.toggle", "information.luck.toggle", "information.angler.toggle", "information-window.adjust" };
-            Check(layout.Elements.Where(e => e.HotkeyTarget != null).Select(e => e.HotkeyTarget).OrderBy(id => id).SequenceEqual(expected.OrderBy(id => id)), "existing hotkey rows survive with three summary toggles and one position action");
+                "information.infection.toggle", "information.luck.toggle", "information.angler.toggle", "information.full-fish.toggle", "information.filtered-fish.toggle", "information-window.adjust" };
+            Check(layout.Elements.Where(e => e.HotkeyTarget != null).Select(e => e.HotkeyTarget).OrderBy(id => id).SequenceEqual(expected.OrderBy(id => id)), "existing hotkey rows survive with five summary toggles and one position action");
             Check(layout.Elements.Where(e => e.Command != F5Command.None).All(e => EntityLabelControls.Target(e.Command).HasValue || WorldTargetControls.Target(e.Command).HasValue || WorldObjectControls.Target(e.Command).HasValue ||
                 JueMingR.TerrariaHost.Information.InformationControls.Target(e.Command).HasValue || e.Command == F5Command.AdjustInformation), "only accepted information commands activate");
             var shell = new F5Interaction { Ready = true };
@@ -29,7 +29,7 @@ namespace Terraria
             shell.Update(new F5Input { Width = 1280, Height = 900, Scale = 1, Active = true, Focused = true, X = rect.X + 3, Y = rect.Y + 3, Left = true });
             shell.Update(new F5Input { Width = 1280, Height = 900, Scale = 1, Active = true, Focused = true, X = rect.X + 3, Y = rect.Y + 3 });
             Check(shell.Command == enable.Command, "actual F5 hit consumer emits the stable command");
-            Console.WriteLine("PASS: actual information rows and F5 click consumer expose only accepted entity/world/biome controls.");
+            Console.WriteLine("PASS: actual information rows and F5 click consumer expose the exact entity/world/biome/summary controls.");
         }
         private static void Check(bool value, string message) { if (!value) throw new InvalidOperationException(message); }
     }

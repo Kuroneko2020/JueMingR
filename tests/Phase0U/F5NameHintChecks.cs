@@ -25,15 +25,18 @@ namespace Terraria
             Check(new F5Renderer().ButtonHint(layout.Elements.First(e => e.Command == F5Command.EnableBiome), false) == null,
                 "clear enable button no longer repeats the feature introduction");
             var descriptions = layout.Elements.Where(e => e.Description != null).Select(e => e.Description).Distinct().ToArray();
-            Check(descriptions.Length == 16 && descriptions.Select(d => d.Id).Distinct().Count() == 16,
-                "only sixteen implemented information rows have distinct stable descriptions");
+            Check(descriptions.Length == 18 && descriptions.Select(d => d.Id).Distinct().Count() == 18,
+                "eighteen implemented information rows have distinct stable descriptions");
             string chest = Description(layout, "宝箱显名"), luck = Description(layout, "幸运值"), angler = Description(layout, "渔夫任务");
             Check(chest.Contains("始终") && chest.Contains("开过") && chest.Contains("本角色在此世界") && chest.Contains("无需金属探测"), "chest modes preserve positional eligibility and different detector conditions");
             Check(name.Description.Text == "显示世界感染比例。需要当前世界存在树妖。", "infection summary retains the current Dryad requirement");
             Check(luck.Contains("在此世界解救过巫师，或当前有巫师") && angler.Contains("在此世界解救过渔夫，或当前有渔夫") && angler.Contains("累计") && angler.Contains("地点"), "unlock alternatives and angler purpose");
             Check(!Description(layout, "群系显示").Contains("单人") && !Description(layout, "动物显名").Contains("金属"), "unrelated restrictions do not spread");
             Check(Description(layout, "显示碎岩龟").Contains("睡眠中的碎岩龟") && Description(layout, "显示龙蛋").Contains("巨型龙蛋") && Description(layout, "牌子显示").Contains("十行"), "world targets and bounded text semantics");
-            Check(layout.Elements.Where(e => e.Text == "完整鱼获" || e.Text == "过滤鱼获").All(e => e.Description == null), "future samples receive no supported-feature copy");
+            var fishNames=layout.Elements.Where(e=>e.Kind==F5ElementKind.Text && (e.Text=="完整鱼获" || e.Text=="过滤鱼获")).ToArray();
+            Check(fishNames.Length==2 && fishNames.All(e=>e.Description!=null && e.Command==F5Command.None && e.HotkeyTarget==null) && fishNames.Select(e=>e.Description.Id).Distinct().Count()==2,"both implemented fish names have independent descriptions and remain display-only");
+            Check(fishNames.Single(e=>e.Text=="完整鱼获").Description.Id=="information.full-fish.toggle" && fishNames.Single(e=>e.Text=="过滤鱼获").Description.Id=="information.filtered-fish.toggle","fish name hints retain their exact independent public identities");
+            Check(Description(layout,"完整鱼获").Contains("不代表下一次必得") && Description(layout,"过滤鱼获").Contains("有效声呐"),"fish descriptions retain candidate and actual filtering limits");
             Geometry(); Interaction(); Cache(descriptions);
             Console.WriteLine("PASS: ordinary feature name hints.");
         }

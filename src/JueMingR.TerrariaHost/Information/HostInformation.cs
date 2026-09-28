@@ -31,6 +31,7 @@ namespace JueMingR.TerrariaHost.Information
         internal readonly InformationHud Hud;
         internal readonly InformationAdjustment Adjustment = new InformationAdjustment();
         internal readonly InformationPointerObservation Pointer = new InformationPointerObservation();
+        internal Func<InformationKind,string> FishingText;
         internal long Tick { get; private set; }
         internal long Session { get { return biome.SharedRuntime.Generation; } }
         internal long NativeEpoch { get { return source.NativeEpoch; } }
@@ -39,8 +40,8 @@ namespace JueMingR.TerrariaHost.Information
             this.biome = biome; this.biomePreferences = biomePreferences; this.biomeFailure = biomeFailure;
             source = new InformationObservationReader(readiness, nativeNpcs);
             string config = Path.Combine(gameDirectory, "JueMingRData", "config");
-            preferences = new PreferenceDocument<InformationPreferences>(new AtomicFileDocument(Path.Combine(config, "features", "information-display.json"), 65536, true),
-                new InformationPreferenceCodec(), InformationPreferences.Default);
+            var file=new AtomicFileDocument(Path.Combine(config,"features","information-display.json"),65536,true,".schema1-original");
+            preferences = new PreferenceDocument<InformationPreferences>(file,new RetainingCodec(file), InformationPreferences.Default);
             position = new PreferenceDocument<WindowPosition>(new AtomicFileDocument(Path.Combine(config, "information-window.json"), 65536, true), new UiPreferenceCodec(), null);
             Hud = new InformationHud(this);
             source.Attach();
@@ -84,7 +85,9 @@ namespace JueMingR.TerrariaHost.Information
                 case InformationKind.Biome: var model = biome.CurrentViewModel; return biome.FeatureEnabled && model != null && model.Visible ? model.Text : null;
                 case InformationKind.Infection: return Infection.Content.Text;
                 case InformationKind.Luck: return Luck.Content.Text;
-                default: return Angler.Content.Text;
+                case InformationKind.Angler: return Angler.Content.Text;
+                case InformationKind.FullFish: case InformationKind.FilteredFish: return FishingText?.Invoke(kind);
+                default: return null;
             }
         }
         internal void PollPreferences()
@@ -112,7 +115,7 @@ namespace JueMingR.TerrariaHost.Information
             if (fresh != 0)
             {
                 reportedDisplayFailures |= fresh;
-                for (int i = 0; i < 4; i++) if ((fresh & (1 << i)) != 0) display(InformationControls.Name((InformationKind)i) + "暂时无法显示，设置已保留。");
+                for (int i = 0; i < 6; i++) if ((fresh & (1 << i)) != 0) display(InformationControls.Name((InformationKind)i) + "暂时无法显示，设置已保留。");
             }
             string message = PreferenceMessage;
             if (Preferences.IsLoaded && message != null && message != reportedSettings) { display(message); reportedSettings = message; }
@@ -164,7 +167,7 @@ namespace JueMingR.TerrariaHost.Information
         public void Update(ulong tick) { Tick++; source.Update(this); }
         public void FailClosed() { Adjustment.Cancel(); Pointer.Invalidate(); source.Clear(); ClearContent(); }
         internal void DisplayFailed(Exception error)
-        { hudFailed = true; Adjustment.Cancel(); Pointer.Invalidate(); Hud.Clear(); displayFailures |= 15; }
+        { hudFailed = true; Adjustment.Cancel(); Pointer.Invalidate(); Hud.Clear(); displayFailures |= 63; }
         internal void DisplayFailed(InformationKind kind, Exception error)
         {
             displayFailures |= 1 << (int)kind;
@@ -181,6 +184,20 @@ namespace JueMingR.TerrariaHost.Information
             FinishNormalAdjustment();
             stopping = true;
             var budget = Stopwatch.StartNew(); preferences.Stop(750); position.Stop(Math.Max(0, 750 - (int)budget.ElapsedMilliseconds));
+        }
+        private sealed class RetainingCodec : IPreferenceCodec<InformationPreferences>
+        {
+            private readonly AtomicFileDocument file;
+            private readonly InformationPreferenceCodec codec=new InformationPreferenceCodec();
+            internal RetainingCodec(AtomicFileDocument file){this.file=file;}
+            public InformationPreferences Decode(byte[] contents)
+            {
+                int version;var value=codec.Decode(contents,out version);
+                // Loading never migrates. Only a later explicit user save retains
+                // the validated old bytes before committing the new schema.
+                if(version==1)file.RetainLoadedSource();return value;
+            }
+            public byte[] Encode(InformationPreferences value){return codec.Encode(value);}
         }
     }
 }
