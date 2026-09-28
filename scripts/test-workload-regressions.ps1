@@ -1,151 +1,115 @@
-﻿[CmdletBinding()]
-param([string] $Baseline)
+[CmdletBinding()]
+param(
+    [string] $Baseline,
+    [ValidateSet('Related','Full','Feedback')][string] $Mode = 'Related',
+    [switch] $Rerun
+)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 . (Join-Path $PSScriptRoot 'workload/Workload.Support.ps1')
 & (Join-Path $PSScriptRoot 'prepare-terraria-references.ps1') -VerifyOnly | Out-Host
 & (Join-Path $PSScriptRoot 'prepare-harmony.ps1') -VerifyOnly | Out-Host
-$identity = Get-WorkloadIdentity $repositoryRoot
-$recordPath = Join-Path $repositoryRoot 'artifacts/build/Debug/build-record.json'
-if (-not [IO.File]::Exists($recordPath)) { throw 'A matching Debug detection build is required; run scripts/build.ps1.' }
-$record = Get-Content -LiteralPath $recordPath -Raw | ConvertFrom-Json
-if (-not (Test-WorkloadBuildMatch $repositoryRoot $record $identity)) { throw 'Debug detection binaries do not match current source/SDK/output hashes.' }
 if ((& dotnet.exe --version).Trim() -cne '10.0.203' -or $LASTEXITCODE -ne 0) { throw 'Locked SDK unavailable.' }
-$changes = Get-WorkloadChanges $repositoryRoot $Baseline
-$route = Get-WorkloadRoute $changes.paths
-$results = New-Object 'System.Collections.Generic.List[object]'
-$checksRoot = Join-Path $repositoryRoot 'artifacts/build/Debug/checks'
-[IO.Directory]::CreateDirectory($checksRoot) | Out-Null
-function Invoke-WorkloadCheck {
-    param([string] $Name, [string] $Executable, [string[]] $Arguments)
-    $script:currentCheck = $Name
-    if (-not [IO.File]::Exists($Executable)) { throw ('Missing check executable: ' + $Name) }
-    $clock = [Diagnostics.Stopwatch]::StartNew()
-    & $Executable @Arguments | Out-Host
-    if ($LASTEXITCODE -ne 0) { throw ("Workload check $Name failed with exit $LASTEXITCODE.") }
-    $results.Add([ordered]@{ name = $Name; result = 'PASS'; milliseconds = $clock.ElapsedMilliseconds })
+$identity = Get-WorkloadIdentity $repositoryRoot
+$inputIdentity = Get-WorkloadEvidenceInput $repositoryRoot $identity
+$recordPath = Join-Path $repositoryRoot 'artifacts/build/Debug/build-record.json'
+$record = Read-WorkloadJson $recordPath
+if (-not (Test-WorkloadBuildMatch $repositoryRoot $record $identity)) { throw 'Debug detection binaries do not match current executable inputs/SDK/output hashes.' }
+# A supplied baseline is useful for feedback, but cannot shrink final obligations.
+$changes = Get-WorkloadChanges $repositoryRoot $(if ($Mode -ceq 'Feedback') { $Baseline } else { '' })
+if ($Mode -ceq 'Feedback' -and [string]::IsNullOrWhiteSpace($Baseline)) { throw 'Feedback requires an explicit comparison baseline; it cannot authorize delivery.' }
+if ($Mode -cne 'Feedback' -and $Baseline) {
+    $extra = Get-WorkloadChanges $repositoryRoot $Baseline
+    if ($extra.reason) { throw $extra.reason }
+    $changes.paths = @($changes.paths + $extra.paths | Sort-Object -Unique)
 }
-function Build-WorkloadFixture {
-    param([string] $Project)
-    $script:currentCheck = 'compile-' + $Project
-    # Consume the already compiled Features/Host outputs. This does not invoke build.ps1.
+$route = Get-WorkloadRoute $changes.paths
+if ($changes.reason -or $route.unknown.Count -gt 0) { throw ($changes.reason + ' Unclassified paths: ' + ($route.unknown -join ', ')) }
+if ($Mode -ceq 'Full') { $route = Get-WorkloadRoute @('scripts/build.ps1') }
+$checksRoot = Join-Path $repositoryRoot 'artifacts/build/Debug/checks'
+$architecture = Join-Path $repositoryRoot 'artifacts/build/Debug/work/bin/JueMingR.ArchitectureTests/x86/Debug/net472/JueMingR.ArchitectureTests.exe'
+$catalog = @(& $architecture --list-checks)
+if ($LASTEXITCODE -ne 0 -or $catalog.Count -eq 0) { throw 'The business check catalogue is unavailable.' }
+$plan = @(Get-WorkloadPlan $repositoryRoot $checksRoot $architecture $catalog $route.groups)
+$required = @($plan | ForEach-Object { $_.name })
+if (@($required | Sort-Object -Unique).Count -ne $required.Count) { throw 'Duplicate check identity in plan.' }
+$cachePath = Join-Path $repositoryRoot 'artifacts/build/workload-evidence.json'
+$cache = Read-WorkloadJson $cachePath
+$entries = @{}
+if ($null -ne $cache -and $null -ne $cache.PSObject.Properties['schemaVersion'] -and $cache.schemaVersion -eq 1 -and $cache.inputFingerprint -ceq $inputIdentity.fingerprint) {
+    foreach ($entry in $cache.results) { $entries[$entry.name] = $entry }
+} elseif ($null -ne $cache) { Write-Host 'INVALIDATED: executable input/dependency/environment set changed or old evidence schema.' }
+$results = New-Object 'System.Collections.Generic.List[object]'
+$pending = @{}
+$built = @{}
+$currentCheck = 'planning'
+function Save-Evidence {
+    Write-WorkloadJson $cachePath ([ordered]@{ schemaVersion=1; inputFingerprint=$inputIdentity.fingerprint; inputs=$inputIdentity.inputs; results=@($entries.Values | Sort-Object name) })
+}
+function Assert-StableInputs {
+    $now = Get-WorkloadIdentity $repositoryRoot
+    if ($now.commit -cne $identity.commit -or $now.fingerprint -cne $identity.fingerprint -or
+        (Get-WorkloadEvidenceInput $repositoryRoot $now).fingerprint -cne $inputIdentity.fingerprint -or
+        -not (Test-WorkloadBuildMatch $repositoryRoot $record $now)) { throw 'Inputs or detection outputs changed during validation.' }
+}
+function Ensure-Fixture([string] $Project) {
+    if (-not $Project -or $built.ContainsKey($Project)) { return }
     & dotnet.exe build (Join-Path $repositoryRoot ('tests/' + $Project + '/' + $Project + '.csproj')) --configuration Debug --nologo -p:Platform=x86 "-p:JueMingRBuildRoot=$checksRoot" | Out-Host
     if ($LASTEXITCODE -ne 0) { throw ('Workload fixture build failed: ' + $Project) }
-    $name = if ($Project -ceq 'Phase0SFixtureTerraria') { 'Terraria' } else { $Project }
-    return Join-Path $checksRoot ('bin/' + $Project + '/x86/Debug/net472/' + $name + '.exe')
+    $built[$Project] = $true
 }
-function Invoke-AboutWorkloadChecks {
-    param([string[]] $Groups, [string] $Architecture, [string] $Fixture, [string] $Native)
-    if ($Groups -notcontains 'about-host') { return }
-    # Reuse the existing assertions and F5 entry (which includes AboutChecks).
-    # Shared provider routes include this group too; execute it only once.
-    Invoke-WorkloadCheck 'onboarding-markers' $Architecture @('--onboarding')
-    Invoke-WorkloadCheck 'about-native-composition' $Native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'about-cpu'), 'AboutCpu')
-    Invoke-WorkloadCheck 'f5-cpu' $Fixture @('f5-cpu')
-}
-function Invoke-RecoveryWorkloadChecks {
-    param([string[]] $Groups, [string] $Architecture, [string] $Native)
-    if ($Groups -notcontains 'recovery-host') { return }
-    Invoke-WorkloadCheck 'recovery-rules-storage' $Architecture @('--recovery')
-    Invoke-WorkloadCheck 'recovery-native-execution' $Native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'recovery-cpu'), 'RecoveryCpu')
-}
-function Invoke-ProcessingWorkloadChecks {
-    param([string[]] $Groups, [string] $Architecture, [string] $Native)
-    if ($Groups -notcontains 'processing-host') { return }
-    Invoke-WorkloadCheck 'processing-rules-storage' $Architecture @('--processing')
-    Invoke-WorkloadCheck 'processing-native-execution' $Native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'processing-cpu'), 'ProcessingCpu')
-}
-function Invoke-ShortFeedbackWorkloadChecks {
-    param([string[]] $Groups, [string] $Native)
-    if (@($Groups | Where-Object { $_ -in @('shared-host','storage-host','quick-items-host','coin-deposit-host','recovery-host','processing-host','about-host','tools-host','fishing-host') }).Count -eq 0) { return }
-    Invoke-WorkloadCheck 'short-feedback-native-host' $Native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'short-feedback-cpu'), 'ShortFeedbackCpu')
-}
-function Invoke-ToolsWorkloadChecks {
-    param([string[]] $Groups, [string] $Architecture, [string] $Native)
-    if ($Groups -notcontains 'tools-host') { return }
-    Invoke-WorkloadCheck 'tools-rules-storage' $Architecture @('--tools')
-    Invoke-WorkloadCheck 'tools-native-execution' $Native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'tools-cpu'), 'ToolsCpu')
-    Invoke-WorkloadCheck 'tools-native-cadence' $Native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'tools-cadence'), 'ToolsCadence')
-    Invoke-WorkloadCheck 'tools-native-full-update' $Native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'tools-full-update'), 'ToolsExecutionCpu')
-    Invoke-WorkloadCheck 'tools-native-workload' $Native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'tools-workload'), 'ToolsWorkload')
-    Invoke-WorkloadCheck 'f5-page-composition' $Native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'page-composition'), 'PageCompositionCpu')
-}
-function Invoke-FishingWorkloadChecks {
-    param([string[]] $Groups, [string] $Architecture, [string] $Native)
-    if ($Groups -notcontains 'fishing-host') { return }
-    Invoke-WorkloadCheck 'fishing-rules-storage' $Architecture @('--fishing')
-    Invoke-WorkloadCheck 'fishing-native-execution' $Native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'fishing-cpu'), 'FishingCpu')
-    Invoke-WorkloadCheck 'background-automatic-execution' $Native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'background-cpu'), 'BackgroundCpu')
-    Invoke-WorkloadCheck 'f5-automatic-execution' $Native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'f5-automatic-cpu'), 'F5AutomationCpu')
-}
+Write-Host ('Selection: mode=' + $Mode + '; final/feedback baseline=' + $changes.baseline + '; changed paths=' + $changes.paths.Count + '; groups=' + ($route.groups -join ', '))
+Write-Host ('Required checks: ' + ($required -join ', '))
 try {
-$architecture = Join-Path $repositoryRoot 'artifacts/build/Debug/work/bin/JueMingR.ArchitectureTests/x86/Debug/net472/JueMingR.ArchitectureTests.exe'
-Invoke-WorkloadCheck 'core-records-selection' $architecture @('--workload-core', $repositoryRoot)
-$fixture = Build-WorkloadFixture 'Phase0SFixtureTerraria'
-foreach ($mode in @('notes-input', 'entity-style', 'world-targets-style')) { Invoke-WorkloadCheck ('core-' + $mode) $fixture @($mode) }
-$native = Build-WorkloadFixture 'NativeWorldTextProbe'
-Invoke-ToolsWorkloadChecks $route.groups $architecture $native
-Invoke-FishingWorkloadChecks $route.groups $architecture $native
-Invoke-AboutWorkloadChecks $route.groups $architecture $fixture $native
-Invoke-WorkloadCheck 'core-native-host' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'native-cpu'), 'WorkloadCpu')
-if ($route.groups -contains 'shared-host') { Invoke-WorkloadCheck 'information-native-host' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'information-cpu'), 'InformationCpu') }
-if ($route.groups -contains 'shared-host') { Invoke-WorkloadCheck 'guidance-native-host' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'guidance-cpu'), 'GuidanceCpu') }
-Invoke-ShortFeedbackWorkloadChecks $route.groups $native
-if ($route.groups -contains 'browser-host') {
-    Invoke-WorkloadCheck 'browser-core-contracts' $architecture @('--item-browser')
-    Invoke-WorkloadCheck 'browser-native-execution' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'browser-cpu'), 'BrowserCpu')
-}
-if ($route.groups -contains 'quick-items-host') {
-    Invoke-WorkloadCheck 'quick-items-dynamic-rules-storage' $architecture @('--quick-items')
-    Invoke-WorkloadCheck 'quick-items-native-execution' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'quick-items-cpu'), 'QuickItemsCpu')
-}
-if ($route.groups -contains 'coin-deposit-host') {
-    Invoke-WorkloadCheck 'coin-deposit-intent-rules' $architecture @('--coin-deposit')
-    Invoke-WorkloadCheck 'coin-deposit-native-execution' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'coin-deposit-cpu'), 'CoinDepositCpu')
-}
-Invoke-RecoveryWorkloadChecks $route.groups $architecture $native
-Invoke-ProcessingWorkloadChecks $route.groups $architecture $native
-if ($route.groups -contains 'death-host') {
-    Invoke-WorkloadCheck 'death-history-storage-workload' $architecture @('--death-history')
-    Invoke-WorkloadCheck 'death-native-execution' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'death-cpu'), 'DeathCpu')
-    Invoke-WorkloadCheck 'death-popup-input-layout' $fixture @('death-popup')
-}
-$modes = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
-if ($route.groups -contains 'footprints-host') {
-    Invoke-WorkloadCheck 'footprints-storage-worker' $architecture @('--footprints')
-    Invoke-WorkloadCheck 'footprints-native-execution' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'footprints-cpu'), 'FootprintsCpu')
-    Invoke-WorkloadCheck 'footprints-popup-input-layout' $fixture @('footprints-popup')
-}
-if ($route.groups -contains 'map-host') {
-    Invoke-WorkloadCheck 'map-assets-exploration-storage' $architecture @('--map-markers-exploration')
-    Invoke-WorkloadCheck 'map-native-execution' $native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'map-cpu'), 'ExplorationCpu')
-    Invoke-WorkloadCheck 'map-popup-input-layout' $fixture @('map-popup')
-}
-if ($route.groups -contains 'notes-host') { [void]$modes.Add('hotkeys-popup'); [void]$modes.Add('focus-input') }
-if ($route.groups -contains 'world-host') { foreach ($mode in @('world-targets-observation', 'world-targets-projection', 'entity-observation')) { [void]$modes.Add($mode) } }
-if ($route.groups -contains 'shared-host') { foreach ($mode in @('focus-input', 'hotkeys-popup', 'entity-observation', 'entity-projection', 'entity-preferences', 'entity-controls', 'world-targets-observation', 'world-targets-projection', 'items-safety', 'information-defaults')) { [void]$modes.Add($mode) } }
-foreach ($mode in @($modes | Sort-Object)) { Invoke-WorkloadCheck $mode $fixture @($mode) }
-if ($route.groups -contains 'storage-host') { Invoke-WorkloadCheck 'storage-host' $architecture @('--workload-storage', $repositoryRoot) }
-if (@($changes.paths | Where-Object { $_ -match '^scripts/(workload/|test-workload-regressions\.ps1|build\.ps1)|^tests/Workload/' }).Count -gt 0) {
-    Invoke-WorkloadCheck 'routing-contract' (Get-Command powershell.exe).Source @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $repositoryRoot 'tests/Workload/Invoke-WorkloadRoutingChecks.ps1'))
-}
-if ($results.Count -lt 5) { throw 'Zero/incomplete workload execution cannot pass.' }
-$script:currentCheck = 'final-source-and-route-validation'
-if ($identity.fingerprint -cne (Get-WorkloadIdentity $repositoryRoot).fingerprint) { throw 'Source changed during workload execution.' }
-if ($changes.reason -or $route.unknown.Count -gt 0) { throw ($changes.reason + ' Unclassified paths: ' + ($route.unknown -join ', ')) }
-$result = [ordered]@{ status = 'PASS'; commit = $identity.commit; sourceFingerprint = $identity.fingerprint;
-    baseline = $changes.baseline; changedPaths = $changes.paths; groups = $route.groups; runtime = '.NET Framework 4.7.2 target / x86';
-    checkCount = $results.Count; results = @($results.ToArray()); detectionOutputs = $record.outputs; slowGraphics = 'separate-risk-triggered-entry' }
-$record.workload = $result
-[IO.File]::WriteAllText($recordPath, ($record | ConvertTo-Json -Depth 8), (New-Object Text.UTF8Encoding($false)))
-Write-Output $result
+    foreach ($check in $plan) {
+        $currentCheck = $check.name
+        $signature = Get-WorkloadHash (@($check.executable) + @($check.arguments))
+        $old = if ($entries.ContainsKey($check.name)) { $entries[$check.name] } else { $null }
+        $reuse = -not $Rerun -and (Test-WorkloadEvidence $old $inputIdentity.fingerprint $check.name $signature)
+        if ($reuse) { $reuse = Test-WorkloadEvidenceOutputs $repositoryRoot $old.outputs }
+        if ($reuse) {
+            Write-Host ('REUSED ' + $check.name + ' from ' + $old.sourceCommit + '/' + $old.executionId + ' original-ms=' + $old.milliseconds)
+            $results.Add([ordered]@{name=$check.name; result='PASS'; disposition='REUSED'; milliseconds=0; originalMilliseconds=$old.milliseconds; executionId=$old.executionId; sourceCommit=$old.sourceCommit})
+            continue
+        }
+        if ($null -ne $old) { Write-Host ('INVALIDATED ' + $check.name + ': result/signature/artifact mismatch or explicit rerun.') }
+        # Retire an old success before starting; failure/cancellation cannot fall
+        # back to it on the next invocation. Other valid successes stay usable.
+        $entries.Remove($check.name); Save-Evidence
+        Ensure-Fixture $check.project
+        $clock = [Diagnostics.Stopwatch]::StartNew()
+        Invoke-WorkloadProcess $check.name $check.executable $check.arguments
+        $outputs = @(Get-WorkloadEvidenceOutputs $repositoryRoot $record $check.executable)
+        $entry = [ordered]@{schemaVersion=1; name=$check.name; status='PASS'; inputFingerprint=$inputIdentity.fingerprint; signature=$signature;
+            executionId=[Guid]::NewGuid().ToString('N'); executedUtc=[DateTime]::UtcNow.ToString('o'); sourceCommit=$identity.commit; sourceFingerprint=$identity.fingerprint;
+            detectionCommit=$record.commit; outputs=$outputs; milliseconds=$clock.ElapsedMilliseconds}
+        $pending[$check.name] = $entry
+        $results.Add([ordered]@{name=$check.name; result='PASS'; disposition='EXECUTED'; milliseconds=$entry.milliseconds; originalMilliseconds=$entry.milliseconds; executionId=$entry.executionId; sourceCommit=$identity.commit})
+        Write-Host ('EXECUTED ' + $check.name + ' ms=' + $entry.milliseconds)
+    }
+    Assert-StableInputs
+    foreach ($name in $pending.Keys) { $entries[$name]=$pending[$name] }
+    foreach ($item in $results) {
+        if (-not (Test-WorkloadEvidenceOutputs $repositoryRoot $entries[$item.name].outputs)) { throw ('Check artifacts changed: ' + $item.name) }
+    }
+    Save-Evidence
+    $result = [ordered]@{ status=$(if ($Mode -ceq 'Feedback') {'FEEDBACK'} else {'PASS'}); mode=$Mode; commit=$identity.commit; sourceFingerprint=$identity.fingerprint;
+        inputFingerprint=$inputIdentity.fingerprint; baseline=$changes.baseline; requestedBaseline=$Baseline; changedPaths=$changes.paths; groups=$route.groups;
+        runtime='.NET Framework 4.7.2 target / x86'; requiredChecks=$required; checkCount=$results.Count; results=@($results.ToArray());
+        notSelected=@((Get-WorkloadPlan $repositoryRoot $checksRoot $architecture $catalog (Get-WorkloadRoute @('scripts/build.ps1')).groups) | Where-Object { $required -notcontains $_.name } | ForEach-Object {$_.name});
+        evidenceFile='artifacts/build/workload-evidence.json'; evidenceSha256=(Get-FileHash -LiteralPath $cachePath -Algorithm SHA256).Hash;
+        slowGraphics='separate-risk-triggered-entry' }
+    if ($Mode -cne 'Feedback' -and -not (Test-WorkloadCoverage ($result | ConvertTo-Json -Depth 10 | ConvertFrom-Json) $required $inputIdentity.fingerprint)) { throw 'Incomplete final coverage.' }
+    $record.workload=$result; Write-WorkloadJson $recordPath $record
+    Write-Host ('Coverage: executed=' + @($results | Where-Object {$_.disposition -ceq 'EXECUTED'}).Count + '; reused=' + @($results | Where-Object {$_.disposition -ceq 'REUSED'}).Count + '; not-selected=' + $result.notSelected.Count + '; status=' + $result.status)
+    Write-Output $result
 } catch {
-    $failure = [ordered]@{ status = 'FAILED'; commit = $identity.commit; sourceFingerprint = $identity.fingerprint;
-        baseline = $changes.baseline; changedPaths = $changes.paths; groups = $route.groups; failedCheck = $script:currentCheck;
-        reason = $_.Exception.Message; checkCount = $results.Count; completedResults = @($results.ToArray()); remaining = 'not executed after failure' }
-    $record.workload = $failure
-    [IO.File]::WriteAllText($recordPath, ($record | ConvertTo-Json -Depth 8), (New-Object Text.UTF8Encoding($false)))
-    $_.Exception.Data['workload'] = $failure
+    # Successful siblings are useful only if the entire observed input set
+    # stayed fixed. An input race discards this invocation's pending evidence.
+    try { Assert-StableInputs; foreach ($name in $pending.Keys) {$entries[$name]=$pending[$name]}; Save-Evidence } catch { }
+    $failure=[ordered]@{status='FAILED'; mode=$Mode; commit=$identity.commit; sourceFingerprint=$identity.fingerprint; failedCheck=$currentCheck; reason=$_.Exception.Message; completedResults=@($results.ToArray()); remaining='not covered after failure'}
+    $record.workload=$failure; Write-WorkloadJson $recordPath $record
+    $_.Exception.Data['workload']=$failure
     throw
 }

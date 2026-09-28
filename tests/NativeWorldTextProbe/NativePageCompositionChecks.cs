@@ -19,7 +19,32 @@ namespace NativeWorldTextProbe
             prepare();MiscOrder(shell);prepare();
             var misc=Get(shell,"MiscUi");int builds=(int)Get(misc,"LayoutBuildCount");
             for(int i=0;i<30;i++)prepare();Require(builds==(int)Get(misc,"LayoutBuildCount"),"stable complete Misc composition does not rebuild migrated blocks");
+            Input(context, prepare);
             Call(shell,"CloseAndSubmitPosition");Console.WriteLine("PASS complete Items/Misc composition order, unchanged identities, final footer and stable layout work.");
+        }
+        private static void Input(object context, Action prepare)
+        {
+            var shell=Get(context,"Shell");var misc=Get(shell,"MiscUi");var host=Get(context,"Tools");
+            var setting=((JueMingR.Features.Tools.ToolSettings[])Get(host,"Settings"))[0];
+            var controls=NativeToolsUiChecks.Controls(misc);
+            Require(controls.Where(c=>Get(c,"Command").ToString()=="Hotkey").Select(c=>(string)Get(Get(c,"Element"),"HotkeyTarget"))
+                .OrderBy(x=>x).SequenceEqual(new[]{"tools.capture","tools.herbs","items.coin-deposit.toggle"}.OrderBy(x=>x)),"migrated bindings retain exact original identities");
+            var on=controls.Single(c=>Get(c,"Command").ToString()=="Tools" && (int)Get(c,"Argument")==1);
+            var rect=Get(on,"Rect");var point=new Microsoft.Xna.Framework.Vector2((float)Get(rect,"X")+2,(float)Get(rect,"Y")+2);
+            Action<bool,bool,bool> input=(left,current,focused)=>{NativeToolsUiChecks.Mouse(point,left);Call(misc,"ProcessInput",true,new Microsoft.Xna.Framework.Input.KeyboardState(),point,current,focused,false);};
+            long command=setting.AcceptedCommandId;
+            input(false,true,true);input(true,true,true);input(false,false,true);
+            Require(setting.AcceptedCommandId==command,"stale page geometry cannot execute an armed command");
+            prepare();input(false,true,true);input(true,true,true);input(false,true,false);
+            Require(setting.AcceptedCommandId==command,"focus loss cancels the page command");
+            prepare();input(false,true,true);input(true,true,true);input(false,true,true);
+            NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return !setting.Busy;});
+            Require(setting.AcceptedCommandId==command+1 && setting.Value.Mode==1,"fresh actual page click dispatches exactly one capture command");
+            prepare();var config=NativeToolsUiChecks.Controls(misc).Single(c=>Get(c,"Command").ToString()=="Tools" && (int)Get(c,"Argument")==3);
+            rect=Get(config,"Rect");point=new Microsoft.Xna.Framework.Vector2((float)Get(rect,"X")+2,(float)Get(rect,"Y")+2);
+            input(false,true,true);input(true,true,true);input(false,true,true);
+            Require((bool)Get(Get(shell,"CaptureUi"),"Visible"),"actual page configuration dispatch reaches its owning popup");
+            Call(Get(shell,"CaptureUi"),"Close");
         }
         internal static void MiscOrder(object shell)
         {

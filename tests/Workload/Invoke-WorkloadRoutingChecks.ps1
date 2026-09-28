@@ -150,6 +150,20 @@ try {
             $exactGroups[$path] = @($exactGroups[$path] + 'fishing-host' | Sort-Object -Unique)
         }
     }
+    foreach ($path in @($exactGroups.Keys)) {
+        $expected = @($exactGroups[$path])
+        if ($expected -contains 'shared-host' -or $expected -contains 'storage-host') {
+            $expected += @('notes-host','records','style-host','world-host','hotkeys','preferences','information','guidance','entity','items','biomes','pages-host')
+        }
+        if ($expected -contains 'fishing-host') { $expected += 'information' }
+        if ($expected -contains 'quick-items-host' -or $expected -contains 'notes-host') { $expected += 'hotkeys' }
+        if ($expected -contains 'processing-host') { $expected += 'items' }
+        if ($expected -contains 'world-host') { $expected += @('records','entity') }
+        if ($expected -contains 'tools-host') { $expected += 'pages-host' }
+        $exactGroups[$path] = @($expected | Sort-Object -Unique)
+    }
+    $cases['tests/NativeWorldTextProbe/NativePageCompositionChecks.cs'] = 'pages-host'
+    $exactGroups['tests/NativeWorldTextProbe/NativePageCompositionChecks.cs'] = @('core','hotkeys','pages-host')
     $cases['src/JueMingR.TerrariaHost/Npcs/NativeNpcObservation.cs'] = 'tools-host'
     $exactGroups['src/JueMingR.TerrariaHost/Npcs/NativeNpcObservation.cs'] = @($exactGroups['src/JueMingR.TerrariaHost/F5/F5Layout.cs'] + 'storage-host' | Sort-Object -Unique)
     foreach ($path in $cases.Keys) { Write-Fixture $path "baseline`n" }
@@ -181,7 +195,7 @@ try {
     Write-Fixture $fishingPath "baseline`n"; Write-Fixture $sharedPath "baseline`n"
     Invoke-WorkloadGit $fixtureRoot @('rm','--quiet',$fishingPath) | Out-Null
     $route = Get-WorkloadRoute (Get-WorkloadChanges $fixtureRoot $baseline).paths
-    Assert-Route (($route.groups -join ',') -ceq 'core,fishing-host') 'Fishing deletion keeps its own checks'
+    Assert-Route (($route.groups -join ',') -ceq 'core,fishing-host,information') 'Fishing deletion keeps its own checks'
     Write-Fixture $fishingPath "baseline`n"; Invoke-WorkloadGit $fixtureRoot @('add',$fishingPath) | Out-Null
     $fishingRename = 'src/JueMingR.TerrariaHost/Fishing/FormerInput.cs'
     Invoke-WorkloadGit $fixtureRoot @('mv',$sharedPath,$fishingRename) | Out-Null
@@ -215,158 +229,18 @@ try {
     Assert-Route ($route.groups -contains 'core' -and $route.unknown -contains 'unclassified/new.cs') 'unknown untracked input keeps core and blocks unclassified delivery'
     Assert-Route ($identity.fingerprint -cne (Get-WorkloadIdentity $fixtureRoot).fingerprint) 'untracked bytes belong to build identity'
     Assert-Route ($null -ne (Get-WorkloadChanges $fixtureRoot 'missing-baseline').reason) 'missing baseline is an explicit unresolved risk'
-    # Execute the runner's actual feature dispatcher with a recording process
-    # boundary. This proves wiring only; real assertions run in the normal build.
-    $runnerPath = Join-Path $repositoryRoot 'scripts/test-workload-regressions.ps1'
-    $tokens = $null; $parseErrors = $null
-    $runnerAst = [Management.Automation.Language.Parser]::ParseFile($runnerPath, [ref]$tokens, [ref]$parseErrors)
-    Assert-Route ($parseErrors.Count -eq 0) 'runner parses'
-    $dispatch = $runnerAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Invoke-AboutWorkloadChecks' }, $false)
-    $check = $runnerAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Invoke-WorkloadCheck' }, $false)
-    Assert-Route ($null -ne $dispatch -and $null -ne $check) 'actual runner functions available'
-    & {
-        . ([scriptblock]::Create($dispatch.Extent.Text))
-        $calls = New-Object 'System.Collections.Generic.List[object]'
-        $checksRoot = Join-Path $fixtureRoot 'checks'
-        function Invoke-WorkloadCheck {
-            param([string] $Name, [string] $Executable, [string[]] $Arguments)
-            $calls.Add(@{ name = $Name; executable = $Executable; arguments = $Arguments })
-        }
-        foreach ($groups in @(@('core'), @('core','about-host'), @('core','about-host','shared-host','storage-host'))) {
-            $calls.Clear()
-            Invoke-AboutWorkloadChecks $groups 'architecture.exe' 'fixture.exe' 'native.exe'
-            if ($groups -notcontains 'about-host') { Assert-Route ($calls.Count -eq 0) 'no feature group means no feature checks'; continue }
-            Assert-Route ($calls.Count -eq 3) 'local and shared routes execute feature checks exactly once'
-            Assert-Route ($calls[0].name -ceq 'onboarding-markers' -and $calls[0].executable -ceq 'architecture.exe' -and ($calls[0].arguments -join '|') -ceq '--onboarding') 'onboarding entry arguments'
-            Assert-Route ($calls[1].name -ceq 'about-native-composition' -and $calls[1].executable -ceq 'native.exe' -and ($calls[1].arguments -join '|') -ceq (@($repositoryRoot,'--cpu',(Join-Path $checksRoot 'about-cpu'),'AboutCpu') -join '|')) 'native About entry arguments'
-            Assert-Route ($calls[2].name -ceq 'f5-cpu' -and $calls[2].executable -ceq 'fixture.exe' -and ($calls[2].arguments -join '|') -ceq 'f5-cpu') 'existing F5 input/layout entry arguments'
-        }
+    # Exercise the actual executable plan, not script text or a duplicate dispatcher.
+    $catalog = @('FishingChecks|fishing-host','ProcessingChecks|processing-host','HotkeyCoreChecks|hotkeys','OnboardingChecks|about-host')
+    $plan = @(Get-WorkloadPlan $repositoryRoot (Join-Path $fixtureRoot 'checks') 'architecture.exe' $catalog @('core','pages-host','hotkeys'))
+    $names = @($plan | ForEach-Object {$_.name})
+    foreach ($expected in @('native-PageCompositionCpu','fixture-focus-input','fixture-hotkeys-popup','HotkeyCoreChecks')) { Assert-Route ($names -contains $expected) ('page actual consumer ' + $expected) }
+    foreach ($excluded in @('native-FishingCpu','native-ToolsCpu','native-ProcessingCpu','FishingChecks')) { Assert-Route ($names -notcontains $excluded) ('page excludes unrelated execution ' + $excluded) }
+    $all = @(Get-WorkloadPlan $repositoryRoot (Join-Path $fixtureRoot 'checks') 'architecture.exe' $catalog (Get-WorkloadRoute @('scripts/build.ps1')).groups)
+    Assert-Route (@($all.name | Sort-Object -Unique).Count -eq $all.Count) 'shared/domain overlaps dispatch each check only once'
+    foreach ($expected in @('native-FishingCpu','native-BackgroundCpu','native-F5AutomationCpu','native-ToolsCpu','native-ToolsCadence','native-ToolsWorkload','native-ToolsExecutionCpu','native-RecoveryCpu','native-ProcessingCpu','native-AboutCpu','native-CoinDepositCpu')) {
+        Assert-Route ($all.name -contains $expected) ('full entry retains ' + $expected)
     }
-    # Run the real process wrapper in a child PowerShell: failed checks must
-    $shortDispatch = $runnerAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Invoke-ShortFeedbackWorkloadChecks' }, $false)
-    Assert-Route ($null -ne $shortDispatch) 'actual short feedback dispatcher exists'
-    & {
-        . ([scriptblock]::Create($shortDispatch.Extent.Text))
-        $calls = New-Object 'System.Collections.Generic.List[object]'
-        $checksRoot = Join-Path $fixtureRoot 'checks'
-        function Invoke-WorkloadCheck {
-            param([string] $Name, [string] $Executable, [string[]] $Arguments)
-            $calls.Add(@{ name = $Name; executable = $Executable; arguments = $Arguments })
-        }
-        foreach ($group in @('core','shared-host','storage-host','quick-items-host','coin-deposit-host','recovery-host','processing-host','about-host','tools-host','fishing-host')) {
-            $calls.Clear(); Invoke-ShortFeedbackWorkloadChecks @('core',$group) 'native.exe'
-            if ($group -ceq 'core') { Assert-Route ($calls.Count -eq 0) 'unrelated core skips feedback'; continue }
-            Assert-Route ($calls.Count -eq 1 -and $calls[0].name -ceq 'short-feedback-native-host' -and $calls[0].executable -ceq 'native.exe' -and ($calls[0].arguments -join '|') -ceq (@($repositoryRoot,'--cpu',(Join-Path $checksRoot 'short-feedback-cpu'),'ShortFeedbackCpu') -join '|')) 'feedback runs exact real native consumer once for each affected provider'
-        }
-    }
-    $shortCalls = @($runnerAst.FindAll({ param($node) $node -is [Management.Automation.Language.CommandAst] -and $node.GetCommandName() -ceq 'Invoke-ShortFeedbackWorkloadChecks' }, $true))
-    Assert-Route ($shortCalls.Count -eq 1 -and $shortCalls[0].Extent.Text -ceq 'Invoke-ShortFeedbackWorkloadChecks $route.groups $native') 'normal runner dispatches short feedback exactly once'
-    # Run the real process wrapper in a child PowerShell: failed checks must
-    $recoveryDispatch = $runnerAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Invoke-RecoveryWorkloadChecks' }, $false)
-    Assert-Route ($null -ne $recoveryDispatch) 'actual recovery dispatcher exists'
-    & {
-        . ([scriptblock]::Create($recoveryDispatch.Extent.Text))
-        $calls = New-Object 'System.Collections.Generic.List[object]'
-        $checksRoot = Join-Path $fixtureRoot 'checks'
-        function Invoke-WorkloadCheck {
-            param([string] $Name, [string] $Executable, [string[]] $Arguments)
-            $calls.Add(@{ name = $Name; executable = $Executable; arguments = $Arguments })
-        }
-        foreach ($groups in @(@('core'), @('core','recovery-host'), @('core','recovery-host','shared-host'))) {
-            $calls.Clear(); Invoke-RecoveryWorkloadChecks $groups 'architecture.exe' 'native.exe'
-            if ($groups -notcontains 'recovery-host') { Assert-Route ($calls.Count -eq 0) 'no recovery group has no recovery dispatch'; continue }
-            Assert-Route ($calls.Count -eq 2) 'recovery actual dispatcher executes both checks exactly once'
-            Assert-Route ($calls[0].name -ceq 'recovery-rules-storage' -and $calls[0].executable -ceq 'architecture.exe' -and ($calls[0].arguments -join '|') -ceq '--recovery') 'actual recovery core arguments'
-            Assert-Route ($calls[1].name -ceq 'recovery-native-execution' -and $calls[1].executable -ceq 'native.exe' -and ($calls[1].arguments -join '|') -ceq (@($repositoryRoot,'--cpu',(Join-Path $checksRoot 'recovery-cpu'),'RecoveryCpu') -join '|')) 'actual recovery native arguments'
-        }
-    }
-    $processingDispatch = $runnerAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Invoke-ProcessingWorkloadChecks' }, $false)
-    Assert-Route ($null -ne $processingDispatch) 'actual processing dispatcher exists'
-    & {
-        . ([scriptblock]::Create($processingDispatch.Extent.Text))
-        $calls = New-Object 'System.Collections.Generic.List[object]'
-        $checksRoot = Join-Path $fixtureRoot 'checks'
-        function Invoke-WorkloadCheck {
-            param([string] $Name, [string] $Executable, [string[]] $Arguments)
-            $calls.Add(@{ name = $Name; executable = $Executable; arguments = $Arguments })
-        }
-        foreach ($groups in @(@('core'), @('core','processing-host'), @('core','processing-host','shared-host'))) {
-            $calls.Clear(); Invoke-ProcessingWorkloadChecks $groups 'architecture.exe' 'native.exe'
-            if ($groups -notcontains 'processing-host') { Assert-Route ($calls.Count -eq 0) 'no processing group has no processing dispatch'; continue }
-            Assert-Route ($calls.Count -eq 2) 'processing actual dispatcher executes both checks exactly once'
-            Assert-Route ($calls[0].name -ceq 'processing-rules-storage' -and $calls[0].executable -ceq 'architecture.exe' -and ($calls[0].arguments -join '|') -ceq '--processing') 'actual processing core arguments'
-            Assert-Route ($calls[1].name -ceq 'processing-native-execution' -and $calls[1].executable -ceq 'native.exe' -and ($calls[1].arguments -join '|') -ceq (@($repositoryRoot,'--cpu',(Join-Path $checksRoot 'processing-cpu'),'ProcessingCpu') -join '|')) 'actual processing native arguments'
-        }
-    }
-    $processingCalls = @($runnerAst.FindAll({ param($node) $node -is [Management.Automation.Language.CommandAst] -and $node.GetCommandName() -ceq 'Invoke-ProcessingWorkloadChecks' }, $true))
-    Assert-Route ($processingCalls.Count -eq 1 -and $processingCalls[0].Extent.Text -ceq 'Invoke-ProcessingWorkloadChecks $route.groups $architecture $native') 'normal runner invokes processing dispatcher exactly once'
-    $toolsDispatch = $runnerAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Invoke-ToolsWorkloadChecks' }, $false)
-    Assert-Route ($null -ne $toolsDispatch) 'actual tools dispatcher exists'
-    & {
-        . ([scriptblock]::Create($toolsDispatch.Extent.Text))
-        $calls = New-Object 'System.Collections.Generic.List[object]'
-        $checksRoot = Join-Path $fixtureRoot 'checks'
-        function Invoke-WorkloadCheck {
-            param([string] $Name, [string] $Executable, [string[]] $Arguments)
-            $calls.Add(@{ name = $Name; executable = $Executable; arguments = $Arguments })
-        }
-        Invoke-ToolsWorkloadChecks @('core') 'architecture.exe' 'native.exe'
-        Assert-Route ($calls.Count -eq 0) 'unrelated route skips tools'
-        foreach($groups in @(@('core','tools-host'),@('core','tools-host','shared-host'))) {
-        $calls.Clear(); Invoke-ToolsWorkloadChecks $groups 'architecture.exe' 'native.exe'
-        Assert-Route ($calls.Count -eq 6 -and ($calls[0].arguments -join '|') -ceq '--tools') 'tools rules and five native checks execute once'
-        $scopes = @('ToolsCpu','ToolsCadence','ToolsExecutionCpu','ToolsWorkload','PageCompositionCpu'); $directories = @('tools-cpu','tools-cadence','tools-full-update','tools-workload','page-composition')
-        for ($i=0; $i -lt $scopes.Count; $i++) {
-            Assert-Route ($calls[$i+1].executable -ceq 'native.exe' -and ($calls[$i+1].arguments -join '|') -ceq (@($repositoryRoot,'--cpu',(Join-Path $checksRoot $directories[$i]),$scopes[$i]) -join '|')) 'tools real CPU entry and isolated output'
-        }
-        }
-    }
-    $toolsCalls = @($runnerAst.FindAll({ param($node) $node -is [Management.Automation.Language.CommandAst] -and $node.GetCommandName() -ceq 'Invoke-ToolsWorkloadChecks' }, $true))
-    Assert-Route ($toolsCalls.Count -eq 1 -and $toolsCalls[0].Extent.Text -ceq 'Invoke-ToolsWorkloadChecks $route.groups $architecture $native') 'normal runner invokes tools exactly once with actual route and detection executables'
-    $fishingDispatch = $runnerAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Invoke-FishingWorkloadChecks' }, $false)
-    Assert-Route ($null -ne $fishingDispatch) 'actual Fishing dispatcher exists'
-    & {
-        . ([scriptblock]::Create($fishingDispatch.Extent.Text))
-        $calls = New-Object 'System.Collections.Generic.List[object]'
-        $checksRoot = Join-Path $fixtureRoot 'checks'
-        function Invoke-WorkloadCheck {
-            param([string] $Name, [string] $Executable, [string[]] $Arguments)
-            $calls.Add(@{ name=$Name; executable=$Executable; arguments=$Arguments })
-        }
-        foreach ($groups in @(@('core'),@('core','fishing-host'),@('core','fishing-host','tools-host','shared-host','storage-host'))) {
-            $calls.Clear(); Invoke-FishingWorkloadChecks $groups 'architecture.exe' 'native.exe'
-            if ($groups -notcontains 'fishing-host') { Assert-Route ($calls.Count -eq 0) 'unrelated group skips Fishing'; continue }
-            Assert-Route ($calls.Count -eq 4 -and $calls[0].executable -ceq 'architecture.exe' -and ($calls[0].arguments -join '|') -ceq '--fishing') 'Fishing rules execute once'
-            Assert-Route ($calls[1].name -ceq 'fishing-native-execution' -and $calls[1].executable -ceq 'native.exe' -and ($calls[1].arguments -join '|') -ceq (@($repositoryRoot,'--cpu',(Join-Path $checksRoot 'fishing-cpu'),'FishingCpu') -join '|')) 'Fishing actual CPU fixture and isolated directory'
-            Assert-Route ($calls[2].name -ceq 'background-automatic-execution' -and $calls[2].executable -ceq 'native.exe' -and ($calls[2].arguments -join '|') -ceq (@($repositoryRoot,'--cpu',(Join-Path $checksRoot 'background-cpu'),'BackgroundCpu') -join '|')) 'background regression runs once with isolated data'
-            Assert-Route ($calls[3].name -ceq 'f5-automatic-execution' -and $calls[3].executable -ceq 'native.exe' -and ($calls[3].arguments -join '|') -ceq (@($repositoryRoot,'--cpu',(Join-Path $checksRoot 'f5-automatic-cpu'),'F5AutomationCpu') -join '|')) 'F5 regression runs once with isolated data'
-        }
-    }
-    $fishingCalls = @($runnerAst.FindAll({ param($node) $node -is [Management.Automation.Language.CommandAst] -and $node.GetCommandName() -ceq 'Invoke-FishingWorkloadChecks' }, $true))
-    Assert-Route ($fishingCalls.Count -eq 1 -and $fishingCalls[0].Extent.Text -ceq 'Invoke-FishingWorkloadChecks $route.groups $architecture $native') 'normal runner invokes Fishing exactly once'
-    # Run the real process wrapper in a child PowerShell: failed checks must
-    # escape as a nonzero process exit and must never append a PASS result.
-    $failurePath = Join-Path $fixtureRoot 'failure-exit.ps1'
-    $failureBody = @'
-$ErrorActionPreference = 'Stop'
-$results = New-Object 'System.Collections.Generic.List[object]'
-try { Invoke-WorkloadCheck 'expected-failure' (Get-Command powershell.exe).Source @('-NoProfile','-Command','exit 7') }
-finally { if ($results.Count -ne 0) { throw 'Failed check was recorded as PASS.' } }
-'@
-    [IO.File]::WriteAllText($failurePath, ($check.Extent.Text + "`n" + $failureBody), (New-Object Text.UTF8Encoding($false)))
-    # Capture the expected child error without turning it into a parent native error.
-    $start = New-Object Diagnostics.ProcessStartInfo
-    $start.FileName = (Get-Command powershell.exe).Source
-    $start.Arguments = '-NoProfile -ExecutionPolicy Bypass -File "' + $failurePath + '"'
-    $start.UseShellExecute = $false; $start.CreateNoWindow = $true
-    $start.RedirectStandardOutput = $start.RedirectStandardError = $true
-    $process = New-Object Diagnostics.Process; $process.StartInfo = $start
-    try {
-        [void]$process.Start(); $stdout = $process.StandardOutput.ReadToEndAsync(); $stderr = $process.StandardError.ReadToEndAsync()
-        $process.WaitForExit(); $failureOutput = $stdout.GetAwaiter().GetResult() + $stderr.GetAwaiter().GetResult()
-        Assert-Route ($process.ExitCode -ne 0 -and $failureOutput.Contains('expected-failure failed with exit 7') -and -not $failureOutput.Contains('recorded as PASS')) 'real check failure exits nonzero without PASS'
-    } finally { $process.Dispose() }
-    Write-Output 'PASS: actual diff routes, exact consumers, mixed edits, staged cancellation, rename/deletion, cumulative commits, untracked identity, missing baseline, runner dispatch, and failure exit.'
+    Write-Output 'PASS: actual Git diff routes, local exclusions, shared consumers, mixed/index/worktree/rename/deletion/cumulative/untracked/missing baseline and executable plan.'
 } finally {
     $resolved = [IO.Path]::GetFullPath($fixtureRoot); $temp = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
     if (-not $resolved.StartsWith($temp, [StringComparison]::OrdinalIgnoreCase) -or -not [IO.Path]::GetFileName($resolved).StartsWith('JueMingR-routing-', [StringComparison]::Ordinal)) { throw 'Unsafe route fixture cleanup.' }

@@ -10,6 +10,16 @@ namespace JueMingR.ArchitectureTests
         {
             try
             {
+                if (args.Length == 1 && args[0] == "--list-checks") { CheckCatalog.List(); return 0; }
+                if ((args.Length == 2 && args[0] == "--structure") || (args.Length == 3 && args[0] == "--check"))
+                {
+                    var selectedFailures = new List<string>();
+                    if (args[0] == "--structure") CheckCatalog.Structure(Path.GetFullPath(args[1]), selectedFailures);
+                    else CheckCatalog.Run(args[1], args[2], selectedFailures);
+                    foreach (var failure in selectedFailures) Console.Error.WriteLine(failure);
+                    Console.WriteLine("Selected checks: failures=" + selectedFailures.Count);
+                    return selectedFailures.Count == 0 ? 0 : 1;
+                }
                 if(args.Length==1 && args[0]=="--fishing")
                 {var checks=new List<string>();FishingChecks.Check(checks);FishingStorageChecks.Check(checks);InformationTests.Check(checks);foreach(var failure in checks)Console.Error.WriteLine(failure);Console.WriteLine("Fishing failures="+checks.Count);return checks.Count==0?0:1;}
                 if(args.Length==1 && args[0]=="--tools")
@@ -87,64 +97,9 @@ namespace JueMingR.ArchitectureTests
                     throw new DirectoryNotFoundException("Repository root does not exist: " + repositoryRoot);
                 }
 
-                RepositoryModel model = RepositoryModel.Load(repositoryRoot);
                 var failures = new List<string>();
-                ArchitectureChecks.Check(model, failures);
-                BrowserCoreChecks.Check(failures);
-                RelationChecks.Check(failures);
-                BrowserHistoryChecks.Check(failures);
-                ChestKnowledgeChecks.Check(failures); AnnouncementChecks.Check(failures);
-                FootprintCoreChecks.Check(failures);
-                FootprintFileChecks.Check(failures);
-                FootprintWorkerChecks.Check(failures);
-                MapAssetChecks.Check(failures);
-                ExplorationChecks.Check(failures);
-                MapPersistenceChecks.Check(failures);
-                OperationContractChecks.Check(failures);
-                HotkeyCoreChecks.Check(failures);
-                DynamicHotkeyChecks.Check(failures);
-                QuickItemChecks.Check(failures);
-                CoinDepositChecks.Check(failures);
-                RecoveryChecks.Check(failures);
-                ToolsChecks.Check(failures);
-                FishingChecks.Check(failures);
-                FishingStorageChecks.Check(failures);
-                OnboardingChecks.Check(failures);
-                HotkeyStorageChecks.Check(repositoryRoot, failures);
-                Phase0TArchitectureChecks.Check(failures);
-                PreferenceChecks.Check(failures);
-                InformationTests.Check(failures);
-                GuidanceTests.Check(failures);
-                DeathArchiveChecks.Check(failures);
-                DeathHistoryWorkerChecks.Check(failures);
-                WorldTimeChecks.Check(failures);
-                DeathPreferenceChecks.Check(failures);
-                DeathWorkloadChecks.Check(failures);
-                PreferenceConcurrencyChecks.Check(failures);
-                EntityLabelSettingsChecks.Check(failures);
-                EntityLabelRulesChecks.Check(failures);
-                WorldTargetRulesChecks.Check(failures);
-                WorldTargetSettingsChecks.Check(failures);
-                ObjectRulesChecks.Check(failures);
-                ObjectSettingsChecks.Check(failures);
-                ObjectTextChecks.Check(failures);
-                ObjectDiscoveryChecks.Check(failures);
-                OpenedPositionChecks.Check(failures);
-                PreferenceStorageChecks.Check(failures);
-                ItemAutomationSettingsChecks.Check(failures);
-                ItemAutomationChecks.Check(failures);
-                ItemRuntimeChecks.Check(failures);
-                NotesDomainChecks.Check(failures);
-                NotesEditingChecks.Check(failures);
-                NotesStorageChecks.Check(failures);
-                NotesConcurrencyChecks.Check(failures);
-                NotesRevisionChecks.Check(failures);
-#if PHASE0T_MAPPING_TEST || PHASE0T_ALL_TESTS
-                BiomeFeatureChecks.CheckMapping(failures);
-#endif
-#if PHASE0T_LIFECYCLE_TEST || PHASE0T_ALL_TESTS
-                BiomeFeatureChecks.CheckLifecycle(failures);
-#endif
+                CheckCatalog.Structure(repositoryRoot, failures);
+                CheckCatalog.Run("*", repositoryRoot, failures);
 
                 if (failures.Count == 0)
                 {

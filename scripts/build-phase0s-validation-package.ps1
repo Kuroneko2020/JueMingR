@@ -4,7 +4,8 @@ param(
     [string] $OutputDirectory,
     [ValidateSet('Phase0S', 'Phase0TBiome', 'Phase0UF5UI', 'Phase0VSettings', 'Phase0WNotes', 'ItemAutomation', 'UnifiedHotkeys', 'EntityLabels', 'WorldTargets', 'WorldObjectText', 'InformationSummary', 'DirectionEquipment', 'DeathHistory', 'MapMarkersExploration', 'Footprints', 'ItemBrowser', 'KeepFavoritedQuickItems', 'CoinDeposit', 'AboutHelpFeedback', 'RecoveryBuffsServices', 'ContinuousProcessing')]
     [string] $Profile = 'Phase0S',
-    [string] $WorkloadBaseline
+    [string] $WorkloadBaseline,
+    [switch] $Rebuild
 )
 
 $ErrorActionPreference = 'Stop'
@@ -12,6 +13,7 @@ Set-StrictMode -Version 2.0
 
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..')).TrimEnd('\')
 . (Join-Path $PSScriptRoot 'phase0s\Phase0S.ScriptSupport.ps1')
+. (Join-Path $PSScriptRoot 'workload/Workload.Support.ps1')
 $ownerTestCardName = if ($Profile -eq 'ContinuousProcessing') { 'Fishing-And-Loadouts-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'RecoveryBuffsServices') { 'Recovery-Buffs-Services-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'AboutHelpFeedback') { 'About-Help-Feedback-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'CoinDeposit') { 'Coin-Deposit-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'KeepFavoritedQuickItems') { 'Keep-Favorited-Quick-Items-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'ItemBrowser') { 'Item-Browser-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'Footprints') { 'Footprints-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'MapMarkersExploration') { 'Map-Markers-Exploration-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'DeathHistory') {
     'Death-History-Owner-Test-Card.zh-CN.md'
 } elseif ($Profile -eq 'DirectionEquipment') {
@@ -339,9 +341,14 @@ if ($outputRoot.StartsWith($repositoryPrefix, [System.StringComparison]::Ordinal
     }
 }
 
-$buildOutput = @(& (Join-Path $PSScriptRoot 'build.ps1') -Configuration Release -RequireClean -WorkloadBaseline $WorkloadBaseline 2>&1)
-if (-not $?) {
-    throw 'The locked Release build failed.'
+$buildRecordPath = Join-Path $repositoryRoot 'artifacts\build\Release\build-record.json'
+$existingBuild = Read-WorkloadJson $buildRecordPath
+$buildOutput = @()
+if (-not $Rebuild -and -not $WorkloadBaseline -and (Test-WorkloadDelivery $repositoryRoot $existingBuild)) {
+    Write-Host 'REUSED verified Release build and complete applicable check evidence.'
+} else {
+    $buildOutput = @(& (Join-Path $PSScriptRoot 'build.ps1') -Configuration Release -RequireClean -WorkloadBaseline $WorkloadBaseline 2>&1)
+    if (-not $?) { throw 'The locked Release build failed.' }
 }
 $statusAfterBuild = @(Invoke-Phase0SGit -Arguments @('status', '--porcelain=v1', '--untracked-files=all'))
 # Bind packaging to the same clean commit across the build, not merely its earlier HEAD label.
@@ -352,13 +359,12 @@ if ($statusAfterBuild.Count -ne 0 -or $headAfterBuild -cne $sourceCommit) {
 
 $buildRecordPath = Join-Path $repositoryRoot 'artifacts\build\Release\build-record.json'
 $buildRecord = (Get-Phase0SStrictUtf8Text -Path $buildRecordPath -MaximumLength 1048576) | ConvertFrom-Json
-if ([int] $buildRecord.schemaVersion -ne 3 -or [string] $buildRecord.commit -cne $sourceCommit -or
+if ([int] $buildRecord.schemaVersion -ne 4 -or [string] $buildRecord.commit -cne $sourceCommit -or
     -not [bool] $buildRecord.clean -or [string] $buildRecord.sdk -cne '10.0.203' -or
     [string] $buildRecord.configuration -cne 'Release') {
     throw 'The Release build record does not describe the clean source commit.'
 }
-if ($buildRecord.workload.status -cne 'PASS' -or $buildRecord.workload.checkCount -lt 5 -or
-    $buildRecord.workload.commit -cne $sourceCommit -or $buildRecord.workload.sourceFingerprint -cne $buildRecord.sourceFingerprint) {
+if (-not (Test-WorkloadDelivery $repositoryRoot $buildRecord)) {
     throw 'The Release package requires the completed matching automatic workload gate.'
 }
 if (@($buildRecord.outputs | Where-Object { [string] $_.path -match '(?i)(^|\\)0Harmony\.dll$' }).Count -ne 0) {
@@ -575,6 +581,10 @@ try {
     if ([System.IO.File]::ReadAllText($markerPath).Trim() -cne $stagingToken) {
         throw 'Builder staging marker changed.'
     }
+    # Recheck live inputs, exact Release bytes and every required evidence item
+    # before promoting a staged package. A parseable old PASS cannot authorize it.
+    if (@(Invoke-Phase0SGit -Arguments @('status','--porcelain=v1','--untracked-files=all')).Count -ne 0 -or
+        -not (Test-WorkloadDelivery $repositoryRoot $buildRecord)) { throw 'Package inputs or evidence changed before promotion.' }
     [System.IO.File]::Delete($markerPath)
     $markerRemoved = $true
     if ((Get-Phase0SPathState -Path $outputRoot).exists) {
