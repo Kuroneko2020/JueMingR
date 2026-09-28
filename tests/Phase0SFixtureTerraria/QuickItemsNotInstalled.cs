@@ -32,6 +32,7 @@ namespace JueMingR.TerrariaHost.QuickItems
         internal void Suspend(){throw Missing();}
         internal void Execute(ItemUiControl control){throw Missing();}
         internal void Build(float start,float width,float row,Func<string,float,F5Size> measure){throw Missing();}
+        internal void AppendFavorite(float start){throw Missing();}
         internal void Project(F5Rect view,float scroll,List<ItemUiControl> controls,List<F5Element> elements){throw Missing();}
         internal void PrepareIcons(){throw Missing();}
         internal void Draw(ItemsRenderer renderer,Vector2 pointer,Action<F5Rect> keyboard){throw Missing();}

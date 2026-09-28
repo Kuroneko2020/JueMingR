@@ -161,7 +161,7 @@ namespace NativeWorldTextProbe
             for(int i=0;i<150;i++)Step(context,input,point,i==0,0);
             p.AddBuff(122,4000);var bobber=Main.projectile.First(q=>q.active && q.bobber && q.owner==p.whoAmI);
             bobber.ai[1]=-240;bobber.localAI[1]=ItemID.Bass;bobber.localAI[2]=ItemID.Worm;
-            NativeToolExecutionChecks.Sample(context,input,point,false);Call(Get(host,"Observation"),"Invalidate");Call(Get(host,"Observation"),"Read",p);
+            NativeToolExecutionChecks.Sample(context,input,point,false);NativeQuickItemChecks.BeginWorldStep();Call(Get(host,"Observation"),"Invalidate");Call(Get(host,"Observation"),"Read",p);
             var pick=typeof(Player).GetMethod("PickItemSelectionOverride",Flags);object[] choice={0};
             Require((bool)pick.Invoke(p,choice) && (int)choice[0]!=0,"native selection callback acquires a real pending cut");
             object use=Get(tools,"Use"),intent=Get(use,"Intent"),shell=Get(context,"Shell"),state=Get(shell,"State");
@@ -171,7 +171,7 @@ namespace NativeWorldTextProbe
             {
                 // The real selection callback is the seam before vanilla applies
                 // the chosen slot and advances bobber AI. No private use state is set.
-                NativeF5AutomationChecks.Open(context);choice[0]=0;
+                NativeF5AutomationChecks.Open(context);NativeQuickItemChecks.BeginWorldStep();choice[0]=0;
                 Require(!(bool)pick.Invoke(p,choice),"F5 blocks an already admitted cut at its native selection refresh");
                 Require(p.selectedItem==0 && bobber.active && pulls==priorPulls && casts==priorCasts && products==priorProducts && p.inventory[54].stack==bait,"opening F5 cannot turn pending cut into a native use or consume bait");
                 Require((bool)Get(Get(host,"Session"),"Active"),"F5 pause preserves the established fishing session");

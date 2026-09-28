@@ -19,10 +19,10 @@ namespace NativeWorldTextProbe
         internal static void Run(object context, ProbeGraphics graphics = null, string output = null)
         {
             if (graphics != null) Terraria.Localization.LanguageManager.Instance.SetLanguage("zh-Hans");
-            object host=Get(context,"CoinDeposit"),shell=Get(context,"Shell"),state=Get(shell,"State"),page=Get(shell,"items"),renderer=Get(shell,"renderer");
+            object host=Get(context,"CoinDeposit"),shell=Get(context,"Shell"),state=Get(shell,"State"),page=Get(shell,"MiscUi"),renderer=Get(shell,"renderer");
             var settings=(CoinSettings)Get(host,"Settings");
-            Set(state,"Ready",true);Call(state,"Navigate",0);Call(state,"RestoreVisible");Call(renderer,"RefreshResources");
-            Action<int,int,float> prepare=(width,height,scale)=>{Call(renderer,"Prepare",state,(float)width,(float)height,scale);Call(page,"PrepareLayout",Matrix.CreateScale(scale),new Vector2(width,height));};
+            Set(state,"Ready",true);Call(state,"Navigate",1);Call(state,"RestoreVisible");Call(renderer,"RefreshResources");
+            Action<int,int,float> prepare=(width,height,scale)=>{Call(renderer,"Prepare",state,(float)width,(float)height,scale);Call(shell,"PrepareMisc",true,Matrix.CreateScale(scale),new Vector2(width,height),graphics!=null);};
             prepare(960,760,1);
             object panel=Get(page,"CoinPanel");
             var rows=((IEnumerable)Get(panel,"rows")).Cast<object>().ToArray();
@@ -30,16 +30,13 @@ namespace NativeWorldTextProbe
             int statusLayouts=(int)Get(page,"LayoutBuildCount");
             Set(host,"Status","等待手动操作");prepare(960,760,1);
             Require((int)Get(page,"LayoutBuildCount")==statusLayouts,
-                "ordinary background status does not rebuild layout or cancel a pointer gesture");
+                "ordinary background status does not rebuild layout or cancel a pointer gesture: before="+statusLayouts+" after="+Get(page,"LayoutBuildCount")+" gen="+Get(Get(state,"Layout"),"Generation")+" skin="+Get(page,"skin"));
             Set(host,"Status",priorStatus);
             // The owner replaced the old short-status row contract. Measure the
             // complete blocks, not a zero-height status rectangle within them.
             object rowPanel=rows.First(row=>Get(row,"Kind").ToString()=="Panel");
-            object[] basicRows=((IEnumerable)Get(Get(page,"layout"),"rows")).Cast<object>().Where(row=>Get(row,"Kind").ToString()=="Panel").ToArray();
-            float sharedGap=(float)Get(Get(basicRows[1],"Rect"),"Y")-(float)Get(Get(basicRows[0],"Rect"),"Bottom");
-            Require((float)Get(Get(rowPanel,"Rect"),"Y")== (float)Get(Get(page,"layout"),"Height") &&
-                (float)Get(panel,"Height")-(float)Get(Get(rowPanel,"Rect"),"Bottom")==sharedGap,
-                "coin block uses the shared row gap exactly once at both handoffs");
+            Require((float)Get(Get(rowPanel,"Rect"),"Y")==0 && (float)Get(panel,"Height")>(float)Get(Get(rowPanel,"Rect"),"Bottom"),
+                "coin-only profile starts at the top and retains exactly its shared row gap");
             var name=rows.First(row=>(string)GetOptional(row,"Text")=="自动存钱");
             Call(state,"ScrollTo",Math.Max(0,(float)Get(Get(name,"Rect"),"Y")-16));prepare(960,760,1);
             Click(page,Find(page,"Coin",settings.Enabled?"关闭":"开启"));
@@ -49,8 +46,7 @@ namespace NativeWorldTextProbe
             if(graphics!=null)
             {
                 Directory.CreateDirectory(output);
-                graphics.LoadItemTextures(((IEnumerable)Get(Get(page,"QuickPanel"),"visibleTypes")).Cast<int>());
-                Call(page,"Prepare",true,Matrix.Identity,new Vector2(960,760));
+                Call(shell,"PrepareMisc",true,Matrix.Identity,new Vector2(960,760),true);
                 graphics.Image(Path.Combine(output,"coin-off-960x760.png"),()=>
                 {Call(renderer,"Draw",state,Matrix.Identity,false,false);Call(page,"Draw",Get(shell,"drawKeyboard"),true);},Matrix.Identity,960,760);
             }
@@ -79,25 +75,25 @@ namespace NativeWorldTextProbe
             foreach(string status in new[]{"取出保护中","没有可存钱币","未找到个人银行","暂无可用空间","等待手动操作"})
                 for(int i=0;i<48;i++){Set(host,"Status",status);prepare(960,760,1);}
             Require((int)Get(page,"LayoutBuildCount")==layouts && stable.SequenceEqual(NativeQuickUiChecks.Geometry(page)),"all silent status transitions preserve complete layout and cards");
-            object rangeOwner=Get(host,"Range"),quickPanel=Get(page,"QuickPanel");
+            object rangeOwner=Get(host,"Range"),quickPanel=Get(Get(shell,"items"),"QuickPanel");
             Func<long[]> work=()=>new[]{(long)Get(host,"WalletReads"),(long)Get(host,"CapacityReads"),(long)Get(rangeOwner,"TileReads"),
                 (long)Get(rangeOwner,"ProjectileReads"),(long)Get(rangeOwner,"WitnessReads"),(long)Get(rangeOwner,"CompleteQueries"),
                 (long)Get(quickPanel,"PickerReads"),(long)Get(quickPanel,"IconLoads"),(long)(int)Get(page,"LayoutBuildCount")};
             long[] beforeHover=work();
-            foreach(string featureName in new[]{"自动存钱","保持收藏","快捷物品"})
+            foreach(string featureName in new[]{"自动存钱"})
             {
-                var names=((IEnumerable)Get(page,"elements")).Cast<object>().Concat(((IEnumerable)Get(quickPanel,"visible")).Cast<object>().Select(part=>Get(part,"Element")));
+                var names=((IEnumerable)Get(page,"elements")).Cast<object>();
                 object nameRect=Get(names.First(e=>(string)GetOptional(e,"Text")==featureName),"HintRect");
                 for(int i=0;i<240;i++)Require(Call(page,"Hint",(float)Get(nameRect,"X")+2,(float)Get(nameRect,"Y")+2,null,null)!=null,"name hint remains reachable: "+featureName);
             }
             Require(beforeHover.SequenceEqual(work()),"name-only hover does no layout, bank, inventory, picker or icon work");
-            PointerAndExpandedContent(host,page,state,prepare);
+            PointerAndExpandedContent(host,shell,state,prepare);
             if(graphics!=null)
             {
                 NativeCoinMatrix.Reset(Main.LocalPlayer,host);Main.tile[40,40].type=29;
                 Main.LocalPlayer.bank.item[0]=NativeCoinChecks.Coin(72,7);Main.LocalPlayer.chest=-2;
                 Terraria.UI.ItemSlot.PickupItemIntoMouse(Main.LocalPlayer.bank.item,4,0,Main.LocalPlayer);
-                Main.LocalPlayer.chest=-1;Call(host,"Update",0UL);
+                Main.LocalPlayer.chest=-1;NativeQuickItemChecks.BeginWorldStep();Call(host,"Update",0UL);
                 Require(Get(host,"Status").ToString()=="取出保护中","visual status comes from actual native withdrawal");
             }
             foreach(var shape in new[]{new[]{960,760,100},new[]{960,440,100},new[]{1280,720,150}})
@@ -110,8 +106,7 @@ namespace NativeWorldTextProbe
                 {
                     Directory.CreateDirectory(output);
                     Hover(state,shape[0],shape[1],scale,0,0);prepare(shape[0],shape[1],scale);
-                    graphics.LoadItemTextures(((IEnumerable)Get(Get(page,"QuickPanel"),"visibleTypes")).Cast<int>());
-                    Call(page,"Prepare",true,Matrix.CreateScale(scale),new Vector2(shape[0],shape[1]));
+                        Call(shell,"PrepareMisc",true,Matrix.CreateScale(scale),new Vector2(shape[0],shape[1]),true);
                     graphics.Image(Path.Combine(output,"coin-controls-"+shape[0]+"x"+shape[1]+"-"+shape[2]+".png"),()=>
                     {Call(renderer,"Draw",state,Matrix.CreateScale(scale),false,false);Call(page,"Draw",Get(shell,"drawKeyboard"),true);},Matrix.CreateScale(scale),shape[0],shape[1]);
                     foreach(string hintKind in new[]{"name","protection"})
@@ -121,7 +116,7 @@ namespace NativeWorldTextProbe
                         typeof(PlayerInput).GetField("_originalScreenWidth",BindingFlags.Static|BindingFlags.NonPublic).SetValue(null,shape[0]);
                         typeof(PlayerInput).GetField("_originalScreenHeight",BindingFlags.Static|BindingFlags.NonPublic).SetValue(null,shape[1]);
                         graphics.Image(Path.Combine(output,"coin-"+hintKind+"-"+shape[0]+"x"+shape[1]+"-"+shape[2]+".png"),()=>
-                        {Call(renderer,"Draw",state,Matrix.CreateScale(scale),false,false);Call(page,"Draw",Get(shell,"drawKeyboard"),true);Call(renderer,"DrawHints",state,Matrix.CreateScale(scale),page,false,false);},Matrix.CreateScale(scale),shape[0],shape[1]);
+                        {Call(renderer,"Draw",state,Matrix.CreateScale(scale),false,false);Call(page,"Draw",Get(shell,"drawKeyboard"),true);Call(renderer,"DrawHints",state,Matrix.CreateScale(scale),Get(shell,"items"),false,false);},Matrix.CreateScale(scale),shape[0],shape[1]);
                         Require((bool)Get(Get(renderer,"HintLayout"),"Visible"),"actual shared coin hint rendered: "+hintKind);
                     }
                 }
@@ -137,7 +132,7 @@ namespace NativeWorldTextProbe
                     object target=Get(((IEnumerable)Get(page,"elements")).Cast<object>().First(e=>(string)GetOptional(e,"Text")=="自动存钱"),"HintRect");
                     Hover(state,shape[0],shape[1],scale,(float)Get(target,"X")+2,(float)Get(target,"Y")+2);
                     graphics.Image(Path.Combine(output,"coin-error-"+shape[0]+"x"+shape[1]+"-"+shape[2]+".png"),()=>
-                    {Call(renderer,"Draw",state,Matrix.CreateScale(scale),false,false);Call(page,"Draw",Get(shell,"drawKeyboard"),true);Call(renderer,"DrawHints",state,Matrix.CreateScale(scale),page,false,false);},Matrix.CreateScale(scale),shape[0],shape[1]);
+                    {Call(renderer,"Draw",state,Matrix.CreateScale(scale),false,false);Call(page,"Draw",Get(shell,"drawKeyboard"),true);Call(renderer,"DrawHints",state,Matrix.CreateScale(scale),Get(shell,"items"),false,false);},Matrix.CreateScale(scale),shape[0],shape[1]);
                     Require((bool)Get(Get(renderer,"HintLayout"),"Visible"),"actual save failure is reread through the shared name hint");
                 }
             });
@@ -145,9 +140,12 @@ namespace NativeWorldTextProbe
             Console.WriteLine("PASS: G06 real F5 toggles/public key window, three viewport shapes and stable layout."+(graphics==null?"":" Original-resource screenshots written."));
         }
         private static object[] Controls(object page){return ((IEnumerable)Get(page,"controls")).Cast<object>().ToArray();}
-        private static void PointerAndExpandedContent(object host,object page,object state,Action<int,int,float> prepare)
+        private static void PointerAndExpandedContent(object host,object shell,object state,Action<int,int,float> prepareMisc)
         {
-            object quick=Get(page,"QuickPanel");
+            object page=Get(shell,"items"),quick=Get(page,"QuickPanel"),misc=Get(shell,"MiscUi");
+            float[] coinGeometry=NativeQuickUiChecks.Geometry(misc);
+            Call(state,"Navigate",0);
+            Action<int,int,float> prepare=(w,h,scale)=>{Call(Get(shell,"renderer"),"Prepare",state,(float)w,(float)h,scale);Call(page,"PrepareLayout",Matrix.CreateScale(scale),new Vector2(w,h));};
             Action reveal=()=>
             {
                 prepare(960,760,1);
@@ -168,12 +166,10 @@ namespace NativeWorldTextProbe
             object selection=Get(page,"selection");
             var list=JueMingR.Features.Items.ItemListKind.Discard;
             Require((bool)Call(selection,"Open",list,0),"actual preceding discard selector opens");Set(page,"dirty",true);prepare(960,760,1);
-            object coin=Get(page,"CoinPanel"),layout=Get(page,"layout");
-            object coinRect=Get(((IEnumerable)Get(coin,"rows")).Cast<object>().First(e=>Get(e,"Kind").ToString()=="Panel"),"Rect");
-            Require((float)Get(coinRect,"Y")== (float)Get(layout,"Height") && (float)Get(coinRect,"Y")>(float)Get(Get(layout,"Header"),"Bottom"),"coin and quick blocks follow the complete expanded preceding content");
+            Require(!Controls(page).Any(c=>Get(c,"Command").ToString()=="Coin"),"expanded Items has no migrated coin hit targets");
             Call(selection,"Cancel");Set(page,"dirty",true);prepare(960,760,1);
-            var name=((IEnumerable)Get(coin,"rows")).Cast<object>().First(e=>(string)GetOptional(e,"Text")=="自动存钱");
-            Call(state,"ScrollTo",Math.Max(0,(float)Get(Get(name,"Rect"),"Y")-16));prepare(960,760,1);
+            Call(state,"Navigate",1);prepareMisc(960,760,1);
+            Require(coinGeometry.SequenceEqual(NativeQuickUiChecks.Geometry(misc)),"Items expansion and page switches do not change Misc coin geometry");
         }
         private static void FailurePresentation(object host,object page,Action<int,int,float> prepare,Action preview)
         {

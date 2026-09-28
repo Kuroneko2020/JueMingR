@@ -32,6 +32,7 @@ try {
         'tests/NativeWorldTextProbe/NativeToolExecutionChecks.cs' = 'tools-host';
         'tests/NativeWorldTextProbe/NativeToolWaitChecks.cs' = 'tools-host';
         'tests/NativeWorldTextProbe/NativeSeedDiscoveryChecks.cs' = 'tools-host';
+        'tests/NativeWorldTextProbe/NativePageCompositionChecks.cs' = 'tools-host';
         'tests/NativeWorldTextProbe/NativeRecoveryChecks.cs' = 'recovery-host';
         'src/JueMingR.TerrariaHost/About/AboutPage.cs' = 'about-host';
         'src/JueMingR.TerrariaHost/Onboarding/HostOnboarding.cs' = 'about-host';
@@ -313,8 +314,8 @@ try {
         Assert-Route ($calls.Count -eq 0) 'unrelated route skips tools'
         foreach($groups in @(@('core','tools-host'),@('core','tools-host','shared-host'))) {
         $calls.Clear(); Invoke-ToolsWorkloadChecks $groups 'architecture.exe' 'native.exe'
-        Assert-Route ($calls.Count -eq 5 -and ($calls[0].arguments -join '|') -ceq '--tools') 'tools rules and four native checks execute once'
-        $scopes = @('ToolsCpu','ToolsCadence','ToolsExecutionCpu','ToolsWorkload'); $directories = @('tools-cpu','tools-cadence','tools-full-update','tools-workload')
+        Assert-Route ($calls.Count -eq 6 -and ($calls[0].arguments -join '|') -ceq '--tools') 'tools rules and five native checks execute once'
+        $scopes = @('ToolsCpu','ToolsCadence','ToolsExecutionCpu','ToolsWorkload','PageCompositionCpu'); $directories = @('tools-cpu','tools-cadence','tools-full-update','tools-workload','page-composition')
         for ($i=0; $i -lt $scopes.Count; $i++) {
             Assert-Route ($calls[$i+1].executable -ceq 'native.exe' -and ($calls[$i+1].arguments -join '|') -ceq (@($repositoryRoot,'--cpu',(Join-Path $checksRoot $directories[$i]),$scopes[$i]) -join '|')) 'tools real CPU entry and isolated output'
         }

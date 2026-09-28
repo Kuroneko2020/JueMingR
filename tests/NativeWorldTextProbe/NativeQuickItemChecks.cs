@@ -130,6 +130,7 @@ namespace NativeWorldTextProbe
             LanguageManager.Instance.SetLanguage("en-US");Lang.InitializeLegacyLocalization();Main.rand=new UnifiedRandom(123);
             Main.gameMenu=Main.dedServ=Main.hideUI=Main.mapFullscreen=Main.inFancyUI=Main.onlyDrawFancyUI=Main.ingameOptionsWindow=false;
             Main.netMode=Main.myPlayer=0;Main.screenWidth=960;Main.screenHeight=640;
+            Main.ToggleGameplayUpdates(true);Main.gamePaused=false;
             Main.maxTilesX=Main.maxTilesY=120;Main.tile=new Tile[120,120];for(int x=0;x<120;x++)for(int y=0;y<120;y++)Main.tile[x,y]=new Tile();
             Main.Map=new Terraria.Map.WorldMap(120,120);Main.player[0]=new Player{active=true,whoAmI=0,position=new Vector2(640,640),gravDir=1};Main.clientPlayer=new Player();
             Main.LocalPlayer.chest=-1;Main.LocalPlayer.sign=-1;Player.tileTargetX=Player.tileTargetY=40;

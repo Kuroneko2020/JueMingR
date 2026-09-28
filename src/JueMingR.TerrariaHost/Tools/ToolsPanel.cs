@@ -15,6 +15,8 @@ namespace JueMingR.TerrariaHost.Tools
         private readonly bool[] available=new bool[3];
         internal Action<F5Rect> Configure;
         internal float Height {get;private set;}
+        internal F5Rect ConfigurationAnchor(F5Rect view,float scroll)
+        {foreach(var e in rows[0])if(e.Text=="配置")return e.Rect.Offset(view.X,view.Y-scroll);return default(F5Rect);}
         internal ToolsPanel(HostTools host,bool mining=false){this.host=host;this.mining=mining;}
         internal bool NeedsBuild {get{for(int i=mining?2:0;i<(mining?3:2);i++)if(revisions[i]!=host.Settings[i].Revision || available[i]!=host.Controls(i))return true;return false;}}
         internal void Execute(ItemUiControl control){int domain=control.Argument/10,command=control.Argument%10;if(domain==0 && command==3)Configure?.Invoke(control.Rect);else host.Set(domain,command);}

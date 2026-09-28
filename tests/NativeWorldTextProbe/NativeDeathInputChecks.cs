@@ -26,7 +26,10 @@ namespace NativeWorldTextProbe
             FiniteCostChecks.SetCpuFont(8); Call(renderer, "RefreshResources"); Set(state, "Ready", true);
             var prepare = popup.GetType().GetMethod("Prepare", Flags);
             var measure = Delegate.CreateDelegate(prepare.GetParameters()[3].ParameterType, renderer, renderer.GetType().GetMethod("PopupMeasure", Flags));
-            Action layout = () => prepare.Invoke(popup, new object[] { 960f, 640f, Get(renderer, "FontIdentity"), measure, Get(renderer, "SkinGeneration") });
+            // Match the shell's preparation order before a new gesture. Do not
+            // prepare inside frame: stale font/anchor releases must still fail.
+            Action layout = () => { Call(renderer, "Prepare", state, 960f, 640f, 1f); Call(shell, "RefreshPopupAnchors"); prepare.Invoke(popup, new object[] { 960f, 640f, Get(renderer, "FontIdentity"), measure, Get(renderer, "SkinGeneration") }); };
+            Action<bool> openPopup = quantity => { Set(shell, "deathPopupAnchor", Enum.Parse(Get(shell, "deathPopupAnchor").GetType(), quantity ? "DeathConfigure" : "DeathDetails")); Call(popup, "Open", quantity, 2); };
             Action<int, int, bool> frame = (x, y, down) =>
             {
                 Main.keyState = new KeyboardState(); PlayerInput.MouseInfo = new MouseState(x, y, 0, down ? ButtonState.Pressed : ButtonState.Released, ButtonState.Released, ButtonState.Released, ButtonState.Released, ButtonState.Released);
@@ -37,7 +40,7 @@ namespace NativeWorldTextProbe
                 Call(input, "BeginUpdate"); Call(input, "AfterMapping"); Call(input, "AfterKeyboardRefresh"); Call(shell, "ProcessInput");
                 Require(!(bool)Get(shell, "Failed"), "actual death input shell must stay available");
             };
-            Action open = () => { frame(0, 0, false); frame(0, 0, false); Set(state, "Ready", true); Call(state, "Navigate", 2); Call(state, "RestoreVisible"); Call(popup, "Open", true, 2); Call(renderer, "RefreshResources"); layout(); };
+            Action open = () => { frame(0, 0, false); frame(0, 0, false); Set(state, "Ready", true); Call(state, "Navigate", 2); Call(state, "RestoreVisible"); openPopup(true); Call(renderer, "RefreshResources"); layout(); };
             Func<int, Vector2> button = command =>
             {
                 var commands = (IList)Get(popup, "Commands"); var buttons = (IList)Get(popup, "Buttons"); var rect = Get(buttons[commands.IndexOf(command)], "Rect"); var panel = Get(popup, "Panel");
@@ -58,7 +61,7 @@ namespace NativeWorldTextProbe
             }
             open(); point = option(); frame((int)point.X, (int)point.Y, true); frame((int)point.X, (int)point.Y, false);
             Require(((DeathDisplayPreferences)Get(host, "Settings")).Count == 128, "ordinary actual-shell click still performs exactly the intended quantity change");
-            Call(popup, "Open", false, 2); Wait(() => (bool)Get(host, "QueryReady")); layout(); point = button(10);
+            openPopup(false); Wait(() => (bool)Get(host, "QueryReady")); layout(); point = button(10);
             frame((int)point.X, (int)point.Y, true); frame((int)point.X, (int)point.Y, false);
             Require((int)Get(popup, "Mode") == 3, "actual shell cause click opens full original");
             Wait(() => (bool)Get(host, "QueryReady")); layout(); point = button(1);

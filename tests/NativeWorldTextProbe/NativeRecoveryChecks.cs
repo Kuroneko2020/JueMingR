@@ -64,6 +64,7 @@ namespace NativeWorldTextProbe
         internal static void Frame(object host,object input,ulong tick,bool attacking=false)
         {
             NativeQuickItemChecks.Sample(input,new Keys[0]);
+            NativeQuickItemChecks.BeginWorldStep();
             if(attacking){Main.mouseLeft=true;Terraria.GameInput.PlayerInput.Triggers.Current.MouseLeft=true;}
             Call(host,"Update",tick);
         }

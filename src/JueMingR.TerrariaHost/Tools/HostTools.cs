@@ -107,7 +107,9 @@ namespace JueMingR.TerrariaHost.Tools
         }
         private void Select(HotkeyChord chord)
         {
-            Input.ClaimUseGesture(chord);var p=Player;if(!Input.CanStartActions || !Admit(p,false))return;
+            // Selection only records a region during HandleInput, before the
+            // world step. Its later swings still require automatic admission.
+            Input.ClaimUseGesture(chord);var p=Player;if(!Input.CanStartActions || !CanRetainUse(p,false))return;
             var point=Main.MouseWorld;int x=(int)(point.X/16),y=(int)(point.Y/16);var tile=World.WorldTileObservation.ReadCurrent(x,y);
             bool ok=tile.Readable && tile.Active && Mining.Select(p,x,y,tile.Type,false);
             string message=ok?(Mining.Region.Truncated?"已选中 512 格，超出部分未加入":"已选中 "+Mining.Region.Count+" 格挖矿区域"):"光标处没有可选矿物，保留原区域";

@@ -36,7 +36,7 @@ namespace NativeWorldTextProbe
                 NativeRecoveryChecks.Save(buffs,new RecoveryOptions(buffs:true,followAdd:true,followRemove:true,allowedBuffs:new int[]{ItemID.FishingPotion,ItemID.SonarPotion}));
                 long generation=(long)Get(runtime,"Generation");
                 Set(input,"foregroundWindow",(Func<IntPtr>)(()=>new IntPtr(2)));FocusHelper.IsSelectedApplication=false;
-                NativeQuickItemChecks.Sample(input,new Keys[0]);
+                NativeQuickItemChecks.Sample(input,new Keys[0]);NativeQuickItemChecks.BeginWorldStep();
                 Require(!(bool)Get(input,"IsFocused") && !(bool)Get(input,"CanStartActions") && (bool)Get(input,"CanRunAutomaticActions") && ((Func<bool>)Get(host,"CanGameplay"))(),"real focus quarantine denies physical input while simulation admits automation");
                 // mouseInterface is reset in native Draw and may remain true
                 // while minimized. Autonomous consumers ignore it in background.
@@ -68,17 +68,17 @@ namespace NativeWorldTextProbe
                 Require(p.inventory[2].stack==2 && (((ulong[])Get(host,"UnknownSlots"))[0]&(1UL<<2))!=0,"exception after real background consumption protects unknown source");
                 p.ClearBuff(BuffID.Fishing);
                 Set(input,"foregroundWindow",foreground);FocusHelper.IsSelectedApplication=true;
-                NativeQuickItemChecks.Sample(input,new Keys[0]);NativeQuickItemChecks.Sample(input,new Keys[0]);
+                NativeQuickItemChecks.Sample(input,new Keys[0]);NativeQuickItemChecks.Sample(input,new Keys[0]);NativeQuickItemChecks.BeginWorldStep();
                 Require(!(bool)Call(host,"AdmitBuff",p),"foreground still honors mouse interface");p.mouseInterface=false;
                 Call(context,"UpdateRuntime");Call(host,"Update",10103UL);
-                Set(input,"foregroundWindow",(Func<IntPtr>)(()=>new IntPtr(2)));FocusHelper.IsSelectedApplication=false;NativeQuickItemChecks.Sample(input,new Keys[0]);Call(context,"UpdateRuntime");
+                Set(input,"foregroundWindow",(Func<IntPtr>)(()=>new IntPtr(2)));FocusHelper.IsSelectedApplication=false;NativeQuickItemChecks.Sample(input,new Keys[0]);NativeQuickItemChecks.BeginWorldStep();Call(context,"UpdateRuntime");
                 for(ulong t=10104;t<10704;t++)Call(host,"Update",t);
                 Require(p.inventory[2].stack==2 && p.FindBuffIndex(BuffID.Fishing)<0 && p.FindBuffIndex(BuffID.Sonar)>=0 && (long)Get(runtime,"Generation")==generation,"focus cycling never replays unknown consumption; independent buff still progresses");
                 NativeRecoveryChecks.Save(buffs,new RecoveryOptions());long reads=(long)Get(use,"CandidateReads"),definitions=(long)Get(use,"DefinitionReads");
                 for(ulong t=10800;t<11400;t++)Call(host,"Update",t);
                 Require(reads==(long)Get(use,"CandidateReads") && definitions==(long)Get(use,"DefinitionReads"),"background OFF retains zero buff scan work");
                 Set(input,"foregroundWindow",foreground);FocusHelper.IsSelectedApplication=true;p.mouseInterface=false;
-                NativeQuickItemChecks.Sample(input,new Keys[0]);NativeQuickItemChecks.Sample(input,new Keys[0]);
+                NativeQuickItemChecks.Sample(input,new Keys[0]);NativeQuickItemChecks.Sample(input,new Keys[0]);NativeQuickItemChecks.BeginWorldStep();
                 ForegroundF5(context,host,input,shell,buffs,p,otherCalls);
                 Console.WriteLine("PASS G07/G10 automation: actual focus quarantine, native buffs/healing, fishing state, text/pause gates, unknown consumption survives focus cycling; ordinary F5 permits automatic work.");
             }
@@ -87,7 +87,7 @@ namespace NativeWorldTextProbe
                 throwAfterUse=false;patch.Unpatch(outlet,HarmonyPatchType.All,patch.Id);Set(input,"foregroundWindow",foreground);FocusHelper.IsSelectedApplication=true;
                 Main.ToggleGameplayUpdates(updates);Main.projectile[0]=bobber;p.mouseInterface=false;p.channel=p.controlUseItem=false;p.itemAnimation=p.itemTime=0;
                 NativeRecoveryChecks.Save(buffs,new RecoveryOptions());NativeRecoveryChecks.Save(potions,new RecoveryOptions());NativeRecoveryChecks.Save(services,new RecoveryOptions());
-                Main.gameMenu=true;Call(context,"UpdateRuntime");Main.gameMenu=false;Call(context,"UpdateRuntime");NativeQuickItemChecks.Sample(input,new Keys[0]);NativeQuickItemChecks.Sample(input,new Keys[0]);
+                Main.gameMenu=true;Call(context,"UpdateRuntime");Main.gameMenu=false;Call(context,"UpdateRuntime");NativeQuickItemChecks.Sample(input,new Keys[0]);NativeQuickItemChecks.Sample(input,new Keys[0]);NativeQuickItemChecks.BeginWorldStep();
             }
         }
         private static void AfterUse(){if(throwAfterUse){throwAfterUse=false;throw new InvalidOperationException("isolated failure after actual buff consumption");}}

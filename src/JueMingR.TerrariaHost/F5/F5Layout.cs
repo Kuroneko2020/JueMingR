@@ -100,6 +100,17 @@ namespace JueMingR.TerrariaHost.F5
         internal float MaxScroll { get { return Math.Max(0, ContentHeight - Viewport.Height); } }
         internal void SetNotesContentHeight(float height) { if (page == 4) ContentHeight = Math.Max(0, height); }
         internal void SetItemsContentHeight(float height) { if (page == 0) ContentHeight = Math.Max(0, height); }
+        private float miscFooterStart=-1;
+        internal void SetMiscFooterStart(float start)
+        {
+            if(page!=1)return;
+            if(miscFooterStart!=start)
+            {
+                elements.Clear();float y=start;
+                GuidanceControls.AddRows(elements,TextSize,ref y,1);
+                ContentHeight=Math.Max(0,y-6);miscFooterStart=start;Generation++;
+            }
+        }
         internal void SetRecoveryContentHeight(float height) { if (page==10 || page==1) ContentHeight=Math.Max(0,height); }
         internal bool FishingAttached {get;set;}
         internal void SetFishingContentHeight(float height){if(page==7)ContentHeight=Math.Max(0,height);}
@@ -157,6 +168,7 @@ namespace JueMingR.TerrariaHost.F5
                 NavigationUnderline(i); // Validate text clearance before drawing.
             }
             elements.Clear();
+            miscFooterStart=-1;
             float y = 0;
             if (currentPage == 9) BuildInformation(ref y);
             else if (currentPage == 5) About.Build(elements, DynamicTextSize, Viewport.Height, ref y);

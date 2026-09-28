@@ -69,6 +69,7 @@ function Invoke-ToolsWorkloadChecks {
     Invoke-WorkloadCheck 'tools-native-cadence' $Native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'tools-cadence'), 'ToolsCadence')
     Invoke-WorkloadCheck 'tools-native-full-update' $Native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'tools-full-update'), 'ToolsExecutionCpu')
     Invoke-WorkloadCheck 'tools-native-workload' $Native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'tools-workload'), 'ToolsWorkload')
+    Invoke-WorkloadCheck 'f5-page-composition' $Native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'page-composition'), 'PageCompositionCpu')
 }
 function Invoke-FishingWorkloadChecks {
     param([string[]] $Groups, [string] $Architecture, [string] $Native)

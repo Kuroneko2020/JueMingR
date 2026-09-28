@@ -58,7 +58,7 @@ function Get-WorkloadRoute {
     $unknown = @()
     foreach ($path in $Paths) {
         switch -Regex ($path.Replace('\', '/')) {
-            '^src/[^/]+/Tools/|^tests/JueMingR.ArchitectureTests/Tools/|^tests/NativeWorldTextProbe/Native(Tools|ToolCadence|ToolExecution|ToolWait|SeedDiscovery|Capture|Herb|Mining|FishingBorrow)' { [void]$groups.Add('tools-host'); continue }
+            '^src/[^/]+/Tools/|^tests/JueMingR.ArchitectureTests/Tools/|^tests/NativeWorldTextProbe/Native(Tools|ToolCadence|ToolExecution|ToolWait|SeedDiscovery|Capture|Herb|Mining|FishingBorrow|PageComposition)' { [void]$groups.Add('tools-host'); continue }
             '^src/[^/]+/Fishing/|^tests/JueMingR.ArchitectureTests/Fishing/|^tests/NativeWorldTextProbe/Native(Fishing|PlayerRename|BackgroundAutomation|F5Automation)' { [void]$groups.Add('fishing-host'); continue }
             '^src/JueMingR.TerrariaHost/Feedback/|^tests/NativeWorldTextProbe/NativeShortFeedback' { [void]$groups.Add('shared-host'); continue }
             '^src/[^/]+/Processing/|^tests/JueMingR.ArchitectureTests/Processing/|^tests/Processing/|^tests/NativeWorldTextProbe/Native(Processing|Extraction|Reforge)' { if($path.StartsWith('src/')){[void]$groups.Add('tools-host')}; [void]$groups.Add('processing-host'); continue }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Reflection;
 using HarmonyLib;
@@ -42,7 +42,7 @@ namespace NativeWorldTextProbe
                     // lottery correctness is separately covered by all bag kinds.
                     Main.rand=new Terraria.Utilities.UnifiedRandom(123);
                     long money=NativeCoinChecks.Total(p.inventory,54);int stored=chest.item.Where(i=>i.type==2002).Sum(i=>i.stack);
-                    NativeProcessingChecks.Sample(input,true);Call(context,"UpdateRuntime");
+                    NativeProcessingChecks.SampleWorld(input,true);Call(context,"UpdateRuntime");
                     Require(p.inventory[12].stack==19-frame,"flow kind="+kind+" frame="+frame+" one bag every held update");
                     var result=Call(feature,"LastResult",(ItemActionKind)(kind==0 || kind==3?1:kind==1?2:0));
                     Require(!p.inventory.Any(i=>i.type==2002 && i.stack>0),"flow kind="+kind+" frame="+frame+" real native processing completes before next bag; result="+(result==null?"null":Get(result,"State"))+" reason="+(result==null?"":GetOptional(result,"Reason")));
@@ -63,7 +63,7 @@ namespace NativeWorldTextProbe
                 Require(!(bool)Get(Get(items,"World"),"HasManualOperation"),"manual transfer barrier retires on real release");
                 // Withdrawal becomes current sale/trash stock, but cannot reuse
                 // the old bag grant as a storage opportunity.
-                for(int i=0;i<12;i++){NativeProcessingChecks.Sample(input,false);Call(context,"UpdateRuntime");}
+                for(int i=0;i<12;i++){NativeProcessingChecks.SampleWorld(input,false);Call(context,"UpdateRuntime");}
                 Require(kind==2 ? p.inventory[3].type==2002 && p.inventory[3].stack==7 : p.inventory[3].IsAir,"withdrawn stock is processed by sale/trash only; storage still requires a new causal source");
             }
             Main.SetNPCShopIndex(0);p.SetTalkNPC(-1);Main.chest[0]=null;
@@ -81,7 +81,7 @@ namespace NativeWorldTextProbe
                 foreach(var item in p.inventory)item.TurnToAir();p.inventory[0].SetDefaults(9);p.inventory[12].SetDefaults(4345);p.inventory[12].stack=30;
                 if(test==2){var chest=MakeChest();foreach(var item in chest.item){item.SetDefaults(2002);item.stack=item.maxStack;}}else Main.chest[0]=null;
                 Call(items,"Change",new ItemAutomationSettings(test!=0,true,true,new[]{9},new[]{9},false));NativeQuickItemChecks.Until(()=>{Call(items,"PollPreferences");return (bool)Get(items,"ControlsEnabled");});
-                for(int frame=0;frame<20;frame++){NativeProcessingChecks.Sample(input,true);Call(context,"UpdateRuntime");Require(p.inventory[12].stack==29-frame,"no shop/list match/chest capacity cannot add a fixed pause: "+test);}
+                for(int frame=0;frame<20;frame++){NativeProcessingChecks.SampleWorld(input,true);Call(context,"UpdateRuntime");Require(p.inventory[12].stack==29-frame,"no shop/list match/chest capacity cannot add a fixed pause: "+test);}
                 NativeProcessingChecks.Sample(input,false);Call(context,"UpdateRuntime");Require(p.inventory[12].stack==10,"no target backlog starts an extra bag after release");
             }
             Main.chest[0]=null;Call(items,"Change",ItemAutomationSettings.Default);NativeQuickItemChecks.Until(()=>{Call(items,"PollPreferences");return (bool)Get(items,"ControlsEnabled");});
@@ -93,7 +93,7 @@ namespace NativeWorldTextProbe
             {
                 p.SetTalkNPC(mode==0 || mode==3?0:-1);Main.SetNPCShopIndex(mode==3?1:0);
                 Main.InReforgeMenu=mode==1;Main.InGuideCraftMenu=mode==2;Main.npcChatText=mode==4?"ordinary dialogue":"";
-                Main.npc[0].active=mode!=3;NativeProcessingChecks.Sample(input,true);Call(context,"UpdateRuntime");
+                Main.npc[0].active=mode!=3;NativeProcessingChecks.SampleWorld(input,true);Call(context,"UpdateRuntime");
                 Require(p.inventory[12].stack==10,"only valid merchant shop may relax NPC/chat/service admission: "+mode);
                 NativeProcessingChecks.Sample(input,false);Call(context,"UpdateRuntime");
             }
@@ -103,11 +103,11 @@ namespace NativeWorldTextProbe
         {
             var p=Main.LocalPlayer;foreach(var item in p.inventory)item.TurnToAir();p.inventory[0].SetDefaults(9);p.inventory[12].SetDefaults(4345);p.inventory[12].stack=10;
             var ownership=(JueMingR.Platform.Items.ItemOperationOwnership)Get(Get(host,"Items"),"Ownership");Require(ownership.TryBeginUse(ownership.Session,12,987),"synthetic real overlapping use lease admitted");
-            for(int i=0;i<8;i++){NativeProcessingChecks.Sample(input,true);Call(context,"UpdateRuntime");}Require(p.inventory[12].stack==10,"real overlapping source blocks bag consume");
-            ownership.EndUse(ownership.Session,987);NativeProcessingChecks.Sample(input,true);Call(context,"UpdateRuntime");Require(p.inventory[12].stack==9,"conflict release resumes next Update without cooldown");
+            for(int i=0;i<8;i++){NativeProcessingChecks.SampleWorld(input,true);Call(context,"UpdateRuntime");}Require(p.inventory[12].stack==10,"real overlapping source blocks bag consume");
+            ownership.EndUse(ownership.Session,987);NativeProcessingChecks.SampleWorld(input,true);Call(context,"UpdateRuntime");Require(p.inventory[12].stack==9,"conflict release resumes next Update without cooldown");
             var recovery=Get(context,"Recovery");var prefs=(JueMingR.Features.Recovery.RecoverySettings)Get(recovery,"Potions");
             p.statLifeMax2=500;p.statLife=449;p.potionDelay=0;p.inventory[3].SetDefaults(188);p.inventory[3].stack=4;
-            NativeRecoveryChecks.Save(prefs,new JueMingR.Features.Recovery.RecoveryOptions(2));NativeProcessingChecks.Sample(input,true);Call(context,"UpdateRuntime");
+            NativeRecoveryChecks.Save(prefs,new JueMingR.Features.Recovery.RecoveryOptions(2));NativeProcessingChecks.SampleWorld(input,true);Call(context,"UpdateRuntime");
             Require(p.inventory[12].stack==8 && p.inventory[3].stack==3 && p.statLife==500,"finished bag scope permits actual G07 heal in same held update");
             NativeRecoveryChecks.Save(prefs,new JueMingR.Features.Recovery.RecoveryOptions());NativeProcessingChecks.Sample(input,false);Call(context,"UpdateRuntime");
         }

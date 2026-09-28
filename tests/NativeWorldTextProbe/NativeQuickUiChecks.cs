@@ -48,9 +48,9 @@ namespace NativeWorldTextProbe
             prepare(960,760,1);
             EmptyPresentation(quick,page,panel,prepare);
             var header=((IEnumerable)Get(panel,"logical")).Cast<object>().First(part=>Get(Get(part,"Element"),"Kind").ToString()=="Panel");
-            float preceding=(float)Get(GetOptional(page,"CoinPanel")??Get(page,"layout"),"Height");
+            float preceding=0;
             Require((float)Get(Get(Get(header,"Element"),"Rect"),"Y")==preceding,
-                "quick section starts at the complete preceding block with no second top margin");
+                "quick section starts at the top of Items with no empty migrated blocks");
             Require(!((IEnumerable)Get(panel,"logical")).Cast<object>().Any(part=>(string)GetOptional(Get(part,"Element"),"Text")=="已保存"),"successful save leaves no persistent redundant status row");
             SavePresentation(quick,shell,page,panel,state,prepare);
             object favorite=Get(context,"KeepFavorited");
@@ -97,6 +97,7 @@ namespace NativeWorldTextProbe
                 {
                     Call(renderer,"RefreshResources");prepare(width,height,scale);
                     graphics.LoadItemTextures(((IEnumerable)Get(panel,"visibleTypes")).Cast<int>());
+                    graphics.LoadItemTextures(((IEnumerable)Get(page,"controls")).Cast<object>().Where(c=>Get(c,"Command").ToString()=="Replace" || Get(c,"Command").ToString()=="Select").Select(c=>(int)Get(c,"Type")));
                     Call(page,"Prepare",true,Matrix.CreateScale(scale),new Vector2(width,height));
                     graphics.Image(Path.Combine(output,name),()=>{Call(renderer,"Draw",state,Matrix.CreateScale(scale),false,false);Call(page,"Draw",Get(shell,"drawKeyboard"),true);},Matrix.CreateScale(scale),width,height);
                 };
@@ -142,11 +143,11 @@ namespace NativeWorldTextProbe
         {
             var values=new List<float>();
             Action<object> rectangle=e=>{object r=Get(e,"Rect");values.Add((float)Get(r,"X"));values.Add((float)Get(r,"Y"));values.Add((float)Get(r,"Width"));values.Add((float)Get(r,"Height"));};
-            object layout=Get(page,"layout"),coin=GetOptional(page,"CoinPanel"),quick=Get(page,"QuickPanel");
-            foreach(object e in (IEnumerable)Get(layout,"rows"))rectangle(e);
+            object layout=GetOptional(page,"layout"),coin=GetOptional(page,"CoinPanel"),quick=GetOptional(page,"QuickPanel");
+            if(layout!=null)foreach(object e in (IEnumerable)Get(layout,"rows"))rectangle(e);
             if(coin!=null){foreach(object e in (IEnumerable)Get(coin,"rows"))rectangle(e);values.Add((float)Get(coin,"Height"));}
-            foreach(object part in (IEnumerable)Get(quick,"logical"))rectangle(Get(part,"Element"));
-            values.Add((float)Get(quick,"Height"));return values.ToArray();
+            if(quick!=null){foreach(object part in (IEnumerable)Get(quick,"logical"))rectangle(Get(part,"Element"));values.Add((float)Get(quick,"Height"));}
+            return values.ToArray();
         }
         private static void SavePresentation(object quick,object shell,object page,object panel,object state,Action<float,float,float> prepare)
         {

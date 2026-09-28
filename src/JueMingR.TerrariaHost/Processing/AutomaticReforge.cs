@@ -59,7 +59,9 @@ namespace JueMingR.TerrariaHost.Processing
             }
             if((owned || pressReady) && (!Valid() || !Same())){Stop();pressReady=false;}
             if(pressReady && !SamePress()){Stop();pressReady=false;}
-            if(!now || tail || unknown || !Valid() || !FreshQuote())return;
+            // Quotes/manual ownership may arrive from Draw while paused. Only
+            // the repeated paid action requires this epoch's actual world step.
+            if(!now || tail || unknown || !Valid() || !FreshQuote() || !host.Input.CanRunAutomaticActions)return;
             OwnPress();
             if(!owned)return;
             // Vanilla's top-tier pause belongs to its manual button. This owned

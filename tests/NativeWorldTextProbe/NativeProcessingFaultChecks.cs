@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Reflection;
 using HarmonyLib;
@@ -24,13 +24,13 @@ namespace NativeWorldTextProbe
             audit.Patch(getItem,postfix:new HarmonyMethod(typeof(NativeProcessingFaultChecks),nameof(AfterGrant)));
             try
             {
-                throwGrant=true;NativeProcessingChecks.Sample(input,true);Call(context,"UpdateRuntime");
+                throwGrant=true;NativeProcessingChecks.SampleWorld(input,true);Call(context,"UpdateRuntime");
                 Require(!throwGrant && p.inventory.Any(i=>i.type==2002 && i.stack>0) && p.inventory[12].stack==20,"injected exception follows real grant and precedes bag debit");
                 ulong mask=ownership.ProtectedSlots;Require((mask&(1UL<<12))!=0 && mask!=((1UL<<58)-1) && ownership.SaleBlocked,"unknown source holds actual bag/affected stock, not all inventory");
                 int stock=p.inventory.Where(i=>i.type==2002).Sum(i=>i.stack);
-                for(int i=0;i<10;i++){NativeProcessingChecks.Sample(input,i%2==0);Call(context,"UpdateRuntime");}
+                for(int i=0;i<10;i++){NativeProcessingChecks.SampleWorld(input,i%2==0);Call(context,"UpdateRuntime");}
                 NativeProcessingUiChecks.Save(settings[0],new ProcessingOptions(false));NativeProcessingUiChecks.Save(settings[0],new ProcessingOptions(true));
-                NativeProcessingChecks.Sample(input,true);Call(context,"UpdateRuntime");
+                NativeProcessingChecks.SampleWorld(input,true);Call(context,"UpdateRuntime");
                 Require(p.inventory[12].stack==20 && stock==p.inventory.Where(i=>i.type==2002).Sum(i=>i.stack),"unknown grant cannot replay through release/enable cycles");
                 var world=Main.ActiveWorldFileData;Main.ActiveWorldFileData=null;Call(context,"UpdateRuntime");Main.ActiveWorldFileData=world;Call(context,"UpdateRuntime");
                 Require(ownership.ProtectedSlots==mask,"temporary same-world identity absence retains unknown protection");
@@ -48,12 +48,12 @@ namespace NativeWorldTextProbe
             try
             {
                 NativeReforgeChecks.Sample(input,false);Call(owner,"Update");Call(owner,"Observe",true,120,310,15,fee);
-                throwPayment=true;NativeReforgeChecks.Sample(input,true);Call(owner,"Update");
+                throwPayment=true;NativeReforgeChecks.SampleWorld(input,true);Call(owner,"Update");
                 Require(!throwPayment && before-NativeReforgeChecks.Total(p)==fee && Main.reforgeItem.prefix==0,"post-payment exception keeps actual bank debit/change, never free roll or refund");
                 before=NativeReforgeChecks.Total(p);
-                for(int i=0;i<10;i++){NativeReforgeChecks.Sample(input,i%2==0);Call(owner,"Observe",true,120,310,15,fee);Call(owner,"Update");}
+                for(int i=0;i<10;i++){NativeReforgeChecks.SampleWorld(input,i%2==0);Call(owner,"Observe",true,120,310,15,fee);Call(owner,"Update");}
                 NativeProcessingUiChecks.Save(settings[2],new ProcessingOptions(false));NativeProcessingUiChecks.Save(settings[2],new ProcessingOptions(true,new[]{Lang.prefix[62].Value}));
-                NativeReforgeChecks.Sample(input,true);Call(owner,"Update");
+                NativeReforgeChecks.SampleWorld(input,true);Call(owner,"Update");
                 Require(before==NativeReforgeChecks.Total(p) && (bool)Get(owner,"unknown"),"unknown payment cannot retry after new presses or list/toggle edits");
             }
             finally{audit.Unpatch(buy,HarmonyPatchType.All,audit.Id);throwPayment=false;}
@@ -65,12 +65,12 @@ namespace NativeWorldTextProbe
             {
                 typeof(Main).GetField("reforgeCooldown",Flags).SetValue(null,0);fee=(long)Main.reforgeItem.value/3;before=NativeReforgeChecks.Total(p);
                 NativeReforgeChecks.Sample(input,false);Call(owner,"Update");Call(owner,"Observe",true,120,310,15,fee);throwPopup=true;
-                NativeReforgeChecks.Sample(input,true);Call(owner,"Update");
+                NativeReforgeChecks.SampleWorld(input,true);Call(owner,"Update");
                 Require(!throwPopup && Main.reforgeItem.prefix!=0 && before-NativeReforgeChecks.Total(p)==fee && (bool)Get(owner,"unknown") && !(bool)Get(owner,"Executing"),"post-prefix feedback exception retains changed prefix and paid bank debit, closes execution lease");
                 int prefix=Main.reforgeItem.prefix;before=NativeReforgeChecks.Total(p);
-                for(int i=0;i<12;i++){NativeReforgeChecks.Sample(input,i%2==0);Call(owner,"Observe",true,120,310,15,(long)Main.reforgeItem.value/3);Call(owner,"Update");}
+                for(int i=0;i<12;i++){NativeReforgeChecks.SampleWorld(input,i%2==0);Call(owner,"Observe",true,120,310,15,(long)Main.reforgeItem.value/3);Call(owner,"Update");}
                 NativeProcessingUiChecks.Save(settings[2],new ProcessingOptions(false));NativeProcessingUiChecks.Save(settings[2],new ProcessingOptions(true,new[]{Lang.prefix[62].Value}));
-                NativeReforgeChecks.Sample(input,true);Call(owner,"Update");Require(before==NativeReforgeChecks.Total(p) && prefix==Main.reforgeItem.prefix && ownership.SaleBlocked,"feedback fault cannot replay or refund after release, list and toggle changes");
+                NativeReforgeChecks.SampleWorld(input,true);Call(owner,"Update");Require(before==NativeReforgeChecks.Total(p) && prefix==Main.reforgeItem.prefix && ownership.SaleBlocked,"feedback fault cannot replay or refund after release, list and toggle changes");
             }
             finally{audit.Unpatch(popup,HarmonyPatchType.All,audit.Id);throwPopup=false;}
             Main.InReforgeMenu=false;p.SetTalkNPC(-1);FreshWorld(context,input);NativeProcessingUiChecks.Save(settings[2],new ProcessingOptions());Main.playerInventory=false;

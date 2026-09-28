@@ -68,9 +68,9 @@ namespace NativeWorldTextProbe
             Call(host,"Set",0,false);NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return (bool)Call(host,"Controls",0);});
             Main.mouseRight=Main.mouseRightRelease=true;ItemSlot.RightClick(p.inventory,0,10);
             Require(p.inventory[10].IsAir,"ordinary manual native bag opening remains available");
-            Console.WriteLine("PASS G08 bag boundaries: 58 native entries (56 actual opens + 2 deprecated-to-Air), final/main/void keys, shadow possession, favorite, inventory/F5 stop and manual fallback.");
+            Console.WriteLine("PASS G08 bag boundaries: 58 native entries (56 actual opens + 2 deprecated-to-Air), final/main/void keys, shadow possession, favorite, inventory stop/F5 allowed and manual fallback.");
         }
         private static void Reset(Player p){foreach(var item in p.inventory)item.TurnToAir();Main.mouseItem.TurnToAir();p.trashItem.TurnToAir();}
-        private static void Frame(object context,object input){NativeProcessingChecks.Sample(input,true);Call(context,"UpdateRuntime");}
+        private static void Frame(object context,object input){NativeProcessingChecks.SampleWorld(input,true);Call(context,"UpdateRuntime");}
     }
 }

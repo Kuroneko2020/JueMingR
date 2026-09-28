@@ -14,6 +14,11 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if(scope=="PageCompositionCpu")
+            {
+                Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-pages-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
+                NativeQuickItemChecks.Run(NativePageCompositionChecks.Run,processing:true,shortFeedback:true);return 0;
+            }
             if(scope=="BackgroundCpu" || scope=="F5AutomationCpu")
             {
                 Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-background-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);

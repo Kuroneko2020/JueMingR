@@ -22,6 +22,7 @@ namespace Terraria
         public static int netMode;
         public static bool CanUpdateGameplay { get; set; } = true;
         public static bool gamePaused;
+        public static uint GameUpdateCount;
         public static KeyboardState keyState;
         public static KeyboardState oldKeyState;
         public static Matrix UIScaleMatrix { get; set; } = Matrix.Identity;

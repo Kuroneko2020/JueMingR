@@ -31,9 +31,17 @@ namespace NativeWorldTextProbe
                 NativeQuickItemChecks.Until(()=>{Call(context,"UpdateRuntime");return coinSettings.Loaded && potions.Loaded && (bool)Call(processing,"Controls",1) && (bool)Call(tools,"Controls",1);});
                 Set(input,"foregroundWindow",(Func<IntPtr>)(()=>new IntPtr(f5?1:2)));FocusHelper.IsSelectedApplication=f5;Main.ToggleGameplayUpdates(true);Main.gamePaused=false;
                 if(f5)NativeF5AutomationChecks.Open(context);
+                NativeQuickItemChecks.Sample(input,new Keys[0]);
+                Require(!(bool)Get(input,"CanRunAutomaticActions"),"input sampling without a world step cannot admit automatic actions");
+                NativeQuickItemChecks.BeginWorldStep();
+                Require((bool)Get(input,"CanRunAutomaticActions"),"a real world step admits legal foreground/background automation");
+                Main.gamePaused=true;
+                Require(!(bool)Get(input,"CanRunAutomaticActions"),"true pause denies new automatic actions in both focus states");
+                Main.gamePaused=false;
                 if(!f5)
                 {
                 NativeQuickItemChecks.Sample(input,new Keys[0]);p.mouseInterface=true;
+                NativeQuickItemChecks.BeginWorldStep();
                 Require(!(bool)Get(input,"CanStartActions") && !(bool)Get(input,"CanRetainIntent") && (bool)Get(input,"CanRunAutomaticActions"),"background automatic permission never grants physical input");
                 Require((bool)Call(tools,"Admit",p,false) && (bool)Call(processing,"AdmitAutomatic",p) && (bool)Call(recovery,"Admit",p),"all autonomous host gates tolerate stale Draw mouse state");
                 Require(!(bool)Call(processing,"Admit",p) && !(bool)Get(shell,"CanTargetInput"),"held bag/reforge and manual targets remain foreground only");
@@ -50,6 +58,7 @@ namespace NativeWorldTextProbe
                 Call(world,"RefreshManualRelease");Require(manual.Contains(held),"background synthetic release never clears manual ownership");manual.Clear();
                 Call(input,"BeginUpdate");Require(!(bool)Get(input,"CanRunAutomaticActions") && (bool)Get(input,"CanRetainAutomaticIntent"),"empty outer Update retains intent but cannot execute autonomous work");
                 NativeQuickItemChecks.Sample(input,new Keys[0]);
+                NativeQuickItemChecks.BeginWorldStep();
                 }
 
                 NativeCoinMatrix.Reset(p,coins);p.mouseInterface=true;p.inventory[50]=NativeCoinChecks.Coin(ItemID.GoldCoin,3);p.bank.item[0]=NativeCoinChecks.Coin(ItemID.CopperCoin,1);Main.tile[40,40].type=29;
@@ -61,6 +70,12 @@ namespace NativeWorldTextProbe
                 p.inventory[12].SetDefaults(ItemID.DirtBlock);p.inventory[12].stack=7;p.trashItem.TurnToAir();
                 Call(items,"Change",new ItemAutomationSettings(false,false,true,new int[0],new int[]{ItemID.DirtBlock},false));
                 NativeQuickItemChecks.Until(()=>{Call(items,"PollPreferences");return (bool)Get(Get(items,"Feature"),"Enabled");});
+                NativeQuickItemChecks.Sample(input,new Keys[0]);
+                for(int i=0;i<40;i++)Call(context,"UpdateRuntime");
+                Require(p.inventory[12].stack==7 && p.trashItem.IsAir,"empty sampled outer updates never discard live items");
+                NativeQuickItemChecks.BeginWorldStep();Main.gamePaused=true;
+                for(int i=0;i<40;i++)Call(context,"UpdateRuntime");
+                Require(p.inventory[12].stack==7 && p.trashItem.IsAir,"true pause never discards live items");Main.gamePaused=false;
                 for(int i=0;i<40;i++){NativeQuickItemChecks.BeginWorldStep();Call(context,"UpdateRuntime");}
                 Require(p.inventory[12].IsAir && p.trashItem.type==ItemID.DirtBlock && p.trashItem.stack==7,"background ordinary item automation reaches actual discard outlet");
                 Call(items,"Change",new ItemAutomationSettings(false,false,false,new int[0],new int[0],false));NativeQuickItemChecks.Until(()=>{Call(items,"PollPreferences");return !(bool)Get(Get(items,"Feature"),"Enabled");});

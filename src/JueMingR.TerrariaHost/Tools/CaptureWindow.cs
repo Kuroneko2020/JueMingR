@@ -19,6 +19,7 @@ namespace JueMingR.TerrariaHost.Tools
         internal int LayoutBuilds {get;private set;}
         private F5Rect anchor,close,title,note,note2;
         private Matrix matrix;
+        private int layoutGeneration=-1;
         private Vector2 screen,pointer;
         private long revision,session;
         private int armed=-1,skin;
@@ -35,6 +36,13 @@ namespace JueMingR.TerrariaHost.Tools
         internal void Open(F5Rect button){bool was=Visible;Close();if(was)return;Visible=true;layoutDirty=true;anchor=button;session=host.Runtime.Generation;Opened?.Invoke();}
         internal void Close(){Visible=false;armed=-1;CanHint=false;renderer.Dispose();}
         internal bool Contains(float x,float y){return Visible && Panel.Contains(x,y);}
+        internal void MoveAnchor(F5Rect current,int generation)
+        {
+            // The entry can move after an upstream list or font changes. Keep
+            // this same window, but never commit a press using its old cells.
+            if(anchor.X==current.X && anchor.Y==current.Y && anchor.Width==current.Width && anchor.Height==current.Height && layoutGeneration==generation)return;
+            anchor=current;layoutGeneration=generation;layoutDirty=true;armed=-1;
+        }
         internal void Prepare(Matrix transform,Vector2 physical,bool resources=true)
         {
             if(!Visible)return;if(resources && !renderer.Refresh())return;

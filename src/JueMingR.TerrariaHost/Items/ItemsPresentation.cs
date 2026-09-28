@@ -25,12 +25,8 @@ namespace JueMingR.TerrariaHost.Items
         private readonly ItemSelection selection;
         private readonly ItemPickerInput input = new ItemPickerInput();
         internal QuickItems.QuickItemPanel QuickPanel { get; private set; }
-        internal CoinDeposit.CoinPanel CoinPanel { get; private set; }
         internal Processing.ProcessingPanel ProcessingPanel {get;private set;}
-        internal Tools.ToolsPanel ToolsPanel {get;private set;}
-        internal void AttachTools(Tools.HostTools owner,Action<F5Rect> configure){ToolsPanel=new Tools.ToolsPanel(owner){Configure=configure};dirty=true;}
         internal void AttachProcessing(Processing.HostProcessing owner){ProcessingPanel=new Processing.ProcessingPanel(owner);dirty=true;}
-        internal void AttachCoins(CoinDeposit.HostCoinDeposit owner) { CoinPanel = new CoinDeposit.CoinPanel(owner); dirty = true; }
         internal void AttachQuick(QuickItems.HostQuickItems owner) { QuickPanel = new QuickItems.QuickItemPanel(owner, shell); dirty = true; }
         private readonly List<ItemUiControl> controls = new List<ItemUiControl>();
         private readonly List<F5Element> elements = new List<F5Element>();
@@ -74,9 +70,7 @@ namespace JueMingR.TerrariaHost.Items
             input.Sample(sample, focused);
             QuickPanel?.Process(pageActive, sample, focused);
             if (QuickPanel != null && QuickPanel.NeedsBuild) { armed = null; dirty = true; }
-            if (CoinPanel != null && CoinPanel.NeedsBuild) { armed = null; dirty = true; }
             if (ProcessingPanel != null && ProcessingPanel.NeedsBuild) { armed=null;dirty=true; }
-            if (ToolsPanel != null && ToolsPanel.NeedsBuild) {armed=null;dirty=true;}
             ConsumeLeft = leftTail; ConsumeRight = rightTail; ConsumeWheel = false; ownPointer = false;
             if (!pageActive || !ready)
             {
@@ -119,9 +113,7 @@ namespace JueMingR.TerrariaHost.Items
         { return a.Command == b.Command && a.Argument == b.Argument && a.Type == b.Type && a.Generation == b.Generation && SameRect(a.Rect, b.Rect); }
         private void Execute(ItemUiControl c)
         {
-            if (c.Command == ItemUiCommand.Coin) { CoinPanel?.Execute(c); dirty = true; return; }
             if (c.Command == ItemUiCommand.Processing) { ProcessingPanel?.Execute(c); dirty=true;return; }
-            if (c.Command == ItemUiCommand.Tools) { ToolsPanel?.Execute(c);dirty=true;return; }
             if (c.Command == ItemUiCommand.Hotkey || c.Command == ItemUiCommand.QuickHotkey) { HotkeyClicked?.Invoke(c.Element.HotkeyTarget, c.Rect); return; }
             if (c.Command == ItemUiCommand.Quick) { CancelPicker(); QuickPanel?.Execute(c); dirty = true; return; }
             dirty = true; commandMessage = null;
@@ -171,20 +163,18 @@ namespace JueMingR.TerrariaHost.Items
             if (!SameRect(view, next)) dirty = true;
             view = next;
             string message = ErrorMessage;
-            bool rebuild = dirty || ToolsPanel != null && ToolsPanel.NeedsBuild || ProcessingPanel != null && ProcessingPanel.NeedsBuild || QuickPanel != null && QuickPanel.NeedsBuild || CoinPanel != null && CoinPanel.NeedsBuild || !ReferenceEquals(laidOutValue, host.Preferences.Value) || layoutGeneration != shell.Layout.Generation ||
+            bool rebuild = dirty || ProcessingPanel != null && ProcessingPanel.NeedsBuild || QuickPanel != null && QuickPanel.NeedsBuild || !ReferenceEquals(laidOutValue, host.Preferences.Value) || layoutGeneration != shell.Layout.Generation ||
                 skinGeneration != renderer.Generation || laidOutEnabled != ControlsEnabled || laidOutMessage != message;
             if (!rebuild && laidOutScroll == shell.Scroll) return;
             armed = null;
             if (rebuild)
             {
-                layout.Build(view.Width, renderer.RowHeight, host.Preferences.Value, selection, ControlsEnabled, message != null, shell.Layout.TextSize);
-                CoinPanel?.Build(layout.Height, view.Width, shell.Layout.TextSize);
-                float coinBottom = CoinPanel == null ? layout.Height : CoinPanel.Height;
-                ProcessingPanel?.Build(coinBottom,view.Width,shell.Layout.TextSize);
-                if(ProcessingPanel!=null)coinBottom=ProcessingPanel.Height;
-                ToolsPanel?.Build(coinBottom,view.Width,shell.Layout.TextSize);if(ToolsPanel!=null)coinBottom=ToolsPanel.Height;
-                QuickPanel?.Build(coinBottom, view.Width, renderer.RowHeight, shell.Layout.TextSize);
-                shell.Layout.SetItemsContentHeight(QuickPanel == null ? coinBottom : QuickPanel.Height);
+                QuickPanel?.Build(0, view.Width, renderer.RowHeight, shell.Layout.TextSize);
+                layout.Build(view.Width, renderer.RowHeight, host.Preferences.Value, selection, ControlsEnabled, message != null, shell.Layout.TextSize, QuickPanel == null ? 0 : QuickPanel.Height);
+                ProcessingPanel?.Build(layout.Height,view.Width,shell.Layout.TextSize);
+                float processingBottom=ProcessingPanel == null ? layout.Height : ProcessingPanel.Height;
+                QuickPanel?.AppendFavorite(processingBottom);
+                shell.Layout.SetItemsContentHeight(QuickPanel == null ? processingBottom : QuickPanel.Height);
                 if(QuickPanel!=null && QuickPanel.RevealRequested)
                 {shell.ScrollTo(QuickPanel.SelectorTop);QuickPanel.RevealRequested=false;}
                 if (revealRow >= 0)
@@ -200,9 +190,7 @@ namespace JueMingR.TerrariaHost.Items
                 shell.ClampScroll();
             }
             layout.Project(view, shell.Scroll, elements, controls); LayoutBuildCount++;
-            CoinPanel?.Project(view, shell.Scroll, controls, elements);
             ProcessingPanel?.Project(view,shell.Scroll,controls,elements);
-            ToolsPanel?.Project(view,shell.Scroll,controls,elements);
             QuickPanel?.Project(view, shell.Scroll, controls, elements);
             dirty = false; laidOutValue = host.Preferences.Value; laidOutScroll = shell.Scroll;
             layoutGeneration = shell.Layout.Generation; skinGeneration = renderer.Generation;
@@ -248,16 +236,12 @@ namespace JueMingR.TerrariaHost.Items
                     return String.IsNullOrEmpty(control.Element.Text)?"双击设置快捷键":control.Element.Text+" · 双击设置快捷键";
                 if (control.Command == ItemUiCommand.ToggleDiscardFeedback) return "开启或关闭自动丢弃提示。";
                 if(control.Command==ItemUiCommand.Quick)return QuickPanel?.Hint(x,y,out target);
-                if(control.Command==ItemUiCommand.Tools)return ToolsPanel?.Hint(x,y,out target);
                 return null; // Item cards retain their own name/replace/remove help.
             }
             string quickHint = QuickPanel?.Hint(x, y, out target);
             if (quickHint != null) return quickHint;
-            string coinHint = CoinPanel?.Hint(x, y, out target);
-            if (coinHint != null) return coinHint;
             string processingHint=ProcessingPanel?.Hint(x,y,out target);
             if(processingHint!=null)return processingHint;
-            string toolsHint=ToolsPanel?.Hint(x,y,out target);if(toolsHint!=null)return toolsHint;
             var name = F5HintLayout.HitName(elements, visible, 0, 0, x, y, out target);
             return name == null ? null : name.Description.Text;
         }

@@ -28,7 +28,7 @@ namespace NativeWorldTextProbe
             p.bank.item[0] = Coin(71, 1); p.bank.item[1].SetDefaults(8); p.bank.item[1].stack = 7;
             Main.tile[40, 40].type = 29;
             long before = Total(p.inventory, 58) + Total(p.bank.item, 40);
-            for (ulong tick = 0; tick < 180; tick++) Call(host, "Update", tick);
+            NativeCoinMatrix.Tick(host, 0, 180);
             Require(Total(p.inventory, 58) == 2000000 && Total(p.bank.item, 40) == 1000001, "real MoveCoins carry and favored source exclusion; wallet=" + Total(p.inventory,58) + "; bank=" + Total(p.bank.item,40) + "; status=" + Get(host,"Status") + "; calls=" + Get(Get(host,"Transfer"),"NativeCalls") + "; banks=" + Get(Get(host,"Range"),"Count") + "; input=" + Get(Get(host,"Input"),"CanStartActions"));
             Require(Total(p.inventory, 58) + Total(p.bank.item, 40) == before && p.inventory[58].stack == 3 && p.bank.item[1].stack == 7, "full native transfer conserves both ends and excluded/noncoin slots");
             p.chest = -2; Main.mouseItem = new Item();
@@ -36,10 +36,10 @@ namespace NativeWorldTextProbe
             var intent = (CoinIntent)Get(host, "Intent");
             Require(intent.Protected, "real partial mouse withdrawal immediately protects");
             p.chest = -1; Main.mouseItem = new Item(); p.inventory[50] = Coin(74, 1);
-            for (ulong tick = 180; tick < 400; tick++) Call(host, "Update", tick);
+            NativeCoinMatrix.Tick(host, 180, 400);
             Require(p.inventory[50].stack == 1 && intent.Protected, "closing bank and receiving new coins does not consume intent");
             Main.tile[40, 40].type = 0;
-            for (ulong tick = 400; tick < 420; tick++) Call(host, "Update", tick);
+            NativeCoinMatrix.Tick(host, 400, 420);
             Require(!intent.Protected, "complete current zero-bank observation releases protection");
             NativeCoinMatrix.Run(context, host);
             NativeCoinEnvelopeChecks.Run(host);

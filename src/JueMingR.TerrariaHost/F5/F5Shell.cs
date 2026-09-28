@@ -44,10 +44,20 @@ namespace JueMingR.TerrariaHost.F5
         }
         internal Tools.CaptureWindow CaptureUi {get;private set;}
         internal Tools.MiningPanel MiningUi {get;private set;}
+        internal MiscAutomationPanel MiscUi {get;private set;}
+        private MiscAutomationPanel EnsureMiscUi()
+        {
+            if(MiscUi==null)
+            {
+                MiscUi=new MiscAutomationPanel(State){HotkeyClicked=OpenHotkey};renderer.MiscUi=MiscUi;
+                var prior=State.BeforeLeave;State.BeforeLeave=p=>{if(prior!=null && !prior(p))return false;MiscUi.Suspend();return true;};
+            }
+            return MiscUi;
+        }
         internal void AttachTools(Tools.HostTools owner)
         {
             tools=owner;CaptureUi=new Tools.CaptureWindow(owner,State.Layout.TextSize);MiningUi=new Tools.MiningPanel(owner,State,hotkeys?.Bindings){HotkeyClicked=OpenHotkey};
-            items?.AttachTools(owner,CaptureUi.Open);renderer.MiningUi=MiningUi;renderer.CaptureUi=CaptureUi;
+            EnsureMiscUi().AttachTools(owner,CaptureUi.Open);renderer.MiningUi=MiningUi;renderer.CaptureUi=CaptureUi;
             CaptureUi.Opened=()=>{FishingUi?.CloseOverlay();RecoveryUi?.PotionPopup.Close();HotkeyPopup?.Close();StylePopup?.Close();DeathPopup?.Close();FootprintPopup?.Close();};
             var prior=State.BeforeLeave;State.BeforeLeave=p=>{if(prior!=null && !prior(p))return false;CaptureUi.Close();MiningUi.Suspend();return true;};
         }
@@ -58,7 +68,7 @@ namespace JueMingR.TerrariaHost.F5
         internal Recovery.RecoveryPresentation RecoveryUi {get;private set;}
         internal void AttachRecovery(Recovery.HostRecovery owner)
         {
-            recovery=owner;RecoveryUi=new Recovery.RecoveryPresentation(owner,State){HotkeyClicked=OpenHotkey};renderer.RecoveryUi=RecoveryUi;RecoveryUi.SharedMiscHeight=ReforgeUi!=null;
+            recovery=owner;RecoveryUi=new Recovery.RecoveryPresentation(owner,State){HotkeyClicked=OpenHotkey};renderer.RecoveryUi=RecoveryUi;RecoveryUi.SharedMiscHeight=true;
             RecoveryUi.PotionPopup.Opened=()=>{FishingUi?.CloseOverlay();CaptureUi?.Close();HotkeyPopup?.Close();StylePopup?.Close();DeathPopup?.Close();FootprintPopup?.Close();};
         }
         internal Onboarding.HostOnboarding Onboarding { get; private set; }
@@ -76,7 +86,7 @@ namespace JueMingR.TerrariaHost.F5
             return hud != null && hud.Visible && b.X < rect.Right && b.Right > rect.X && b.Y < rect.Bottom && b.Bottom > rect.Y || notes.Overlaps(rect);
         }
         internal void AttachQuickItems(QuickItems.HostQuickItems owner) { QuickItems = owner; items?.AttachQuick(owner); }
-        internal void AttachCoinDeposit(CoinDeposit.HostCoinDeposit owner) { coinDeposit = owner; items?.AttachCoins(owner); }
+        internal void AttachCoinDeposit(CoinDeposit.HostCoinDeposit owner) { coinDeposit = owner; EnsureMiscUi().AttachCoins(owner); }
         internal readonly HotkeyPopup HotkeyPopup;
         internal readonly StylePopup StylePopup;
         internal readonly DeathHistoryPopup DeathPopup;
@@ -160,7 +170,7 @@ namespace JueMingR.TerrariaHost.F5
         private bool CanTargetActions(bool requireFocus)
         { return !failed && LayersReady && biome.SharedRuntime.IsSessionActive && CanPresent(false,requireFocus) && !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest && Main.CurrentInputTextTakerOverride == null && !PlayerInput.WritingText && !inputState.HotkeyCapture && Main.LocalPlayer != null && Main.LocalPlayer.talkNPC < 0 && Main.LocalPlayer.sign < 0 && Main.npcShop == 0 && string.IsNullOrEmpty(Main.npcChatText) && !Main.clothesWindow && !Main.hairWindow && !(information != null && information.Adjustment.Active) && !adjustmentPending; }
         internal bool BlocksMapInput { get { return failed || State.Visible || notes.OwnsPointer || HotkeyPopup != null && HotkeyPopup.Visible || StylePopup != null && StylePopup.Visible || MapPopup != null && MapPopup.Visible; } }
-        internal void CloseForMapLocate() { FishingUi?.Suspend(); CaptureUi?.Close(); MiningUi?.Suspend(); MapPopup?.Suspend(); State.Close(); notes.Suspend(); items?.Suspend(); RecoveryUi?.Suspend(); ReforgeUi?.Suspend(); Browser?.Suspend(); }
+        internal void CloseForMapLocate() { MiscUi?.Suspend(); FishingUi?.Suspend(); CaptureUi?.Close(); MiningUi?.Suspend(); MapPopup?.Suspend(); State.Close(); notes.Suspend(); items?.Suspend(); RecoveryUi?.Suspend(); ReforgeUi?.Suspend(); Browser?.Suspend(); }
         internal void OpenHotkey(string id, F5Rect rect)
         { HotkeyPopup?.Click(id, rect, State.Layout.Generation, State.Page, clickClock.ElapsedMilliseconds); if (HotkeyPopup != null && HotkeyPopup.Visible) { FishingUi?.CloseOverlay(); CaptureUi?.Close(); RecoveryUi?.PotionPopup.Close(); StylePopup?.Close(); DeathPopup?.Close(); FootprintPopup?.Close(); } }
         private bool ClaimsPopupPointer()
@@ -175,7 +185,7 @@ namespace JueMingR.TerrariaHost.F5
             Vector2 point = Vector2.Transform(raw, Matrix.Invert(Main.UIScaleMatrix));
             return FishingUi != null && (FishingUi.Captured || FishingUi.Contains(point.X,point.Y)) || CaptureUi != null && (CaptureUi.Captured || CaptureUi.Contains(point.X,point.Y)) || RecoveryUi != null && (RecoveryUi.PotionPopup.Captured || RecoveryUi.PotionPopup.Contains(point.X,point.Y)) || StylePopup != null && (StylePopup.HasCapture || StylePopup.ContainsPointer(point.X, point.Y)) || HotkeyPopup != null && HotkeyPopup.ContainsPointer(point.X, point.Y) || DeathPopup != null && (DeathPopup.Pressed >= 0 || DeathPopup.ContainsPointer(point.X, point.Y)) || MapPopup != null && (MapPopup.Pressed >= 0 || MapPopup.ContainsPointer(point.X, point.Y)) || FootprintPopup != null && (FootprintPopup.Pressed >= 0 || FootprintPopup.ContainsPointer(point.X, point.Y));
         }
-        internal bool OwnsPointer { get { return !failed && CanPresentNow && (information != null && information.Adjustment.Dragging || inputState.HotkeyPointerOwned || FishingUi != null && FishingUi.OwnsPointer || CaptureUi != null && CaptureUi.OwnsPointer || MiningUi != null && MiningUi.OwnsPointer || State.OwnsPointer || Browser != null && Browser.OwnsPointer || notes.OwnsPointer || ReforgeUi != null && ReforgeUi.OwnsPointer || RecoveryUi != null && RecoveryUi.OwnsPointer || items != null && items.OwnsPointer || HotkeyPopup != null && HotkeyPopup.OwnsPointer || StylePopup != null && StylePopup.OwnsPointer || DeathPopup != null && DeathPopup.OwnsPointer || MapPopup != null && MapPopup.OwnsPointer || FootprintPopup != null && FootprintPopup.OwnsPointer); } }
+        internal bool OwnsPointer { get { return !failed && CanPresentNow && (information != null && information.Adjustment.Dragging || inputState.HotkeyPointerOwned || FishingUi != null && FishingUi.OwnsPointer || CaptureUi != null && CaptureUi.OwnsPointer || MiningUi != null && MiningUi.OwnsPointer || MiscUi != null && MiscUi.OwnsPointer || State.OwnsPointer || Browser != null && Browser.OwnsPointer || notes.OwnsPointer || ReforgeUi != null && ReforgeUi.OwnsPointer || RecoveryUi != null && RecoveryUi.OwnsPointer || items != null && items.OwnsPointer || HotkeyPopup != null && HotkeyPopup.OwnsPointer || StylePopup != null && StylePopup.OwnsPointer || DeathPopup != null && DeathPopup.OwnsPointer || MapPopup != null && MapPopup.OwnsPointer || FootprintPopup != null && FootprintPopup.OwnsPointer); } }
 
         internal bool CanAdjustInformation { get { return information != null && information.PositionReady && biome.SharedRuntime.IsSessionActive && !failed && CanPresentNow && inputState.CanUseInput; } }
         internal void RequestInformationAdjustment()
@@ -281,6 +291,14 @@ namespace JueMingR.TerrariaHost.F5
                     inputState.Hotkeys.SuppressHeld(); inputState.ConsumeHotkeyActions(); f5 = false;
                 }
                 if (!inputActive && adjustmentPending) CancelInformationAdjustment(false);
+                // Compose the complete page before release dispatch. An upstream
+                // list/font change must retire old targets, including the footer.
+                if (State.Visible && (State.Page==0 || State.Page==1 || State.Page==5) && renderer.RefreshResources())
+                {
+                    renderer.Prepare(State,screen.X,screen.Y,matrix.M11);
+                    if(State.Page==0)items?.Prepare(CanPresentNow && LayersReady,matrix,screen);
+                    if(State.Page==1)PrepareMisc(CanPresentNow && LayersReady,matrix,screen);
+                }
                 if (StylePopup != null && StylePopup.Visible || DeathPopup != null && DeathPopup.Visible || MapPopup != null && MapPopup.Visible || FootprintPopup != null && FootprintPopup.Visible) renderer.RefreshResources();
                 if (StylePopup != null && StylePopup.Visible)
                 {
@@ -298,12 +316,9 @@ namespace JueMingR.TerrariaHost.F5
                 MapPopup?.Process(inputActive && State.Visible, pointer.X, pointer.Y, MapPopup.Matches(screen.X / matrix.M11, screen.Y / matrix.M11, renderer.FontIdentity, renderer.SkinGeneration), PlayerInput.ScrollWheelDeltaForUI);
                 FootprintPopup?.Process(inputActive && State.Visible, State.Page, pointer.X, pointer.Y, FootprintPopup.Matches(screen.X / matrix.M11, screen.Y / matrix.M11, renderer.FontIdentity, renderer.SkinGeneration));
                 RecoveryUi?.PotionPopup.Process(inputActive && State.Visible && State.Page==10,keySample,pointer,matrix,screen,inputState.SampleFocused,PlayerInput.ScrollWheelDeltaForUI);
-                CaptureUi?.Process(inputActive && State.Visible && State.Page==0,keySample,pointer,matrix,screen,inputState.SampleFocused);
+                CaptureUi?.Process(inputActive && State.Visible && State.Page==1,keySample,pointer,matrix,screen,inputState.SampleFocused);
                 FishingUi?.ProcessPopup(inputActive,keySample,pointer,State.Layout.Matches(screen.X,screen.Y,matrix.M11,State.Page),inputState.SampleFocused,PlayerInput.ScrollWheelDeltaForUI);
                 bool popupPointer = FishingUi!=null && FishingUi.BlockPointer || CaptureUi!=null && (CaptureUi.OwnsPointer || CaptureUi.ConsumeLeft || CaptureUi.ConsumeRight) || RecoveryUi != null && RecoveryUi.PotionPopup.OwnsPointer || HotkeyPopup != null && HotkeyPopup.BlockPointer || StylePopup != null && StylePopup.BlockPointer || DeathPopup != null && DeathPopup.BlockPointer || MapPopup != null && MapPopup.BlockPointer || FootprintPopup != null && FootprintPopup.BlockPointer || inputState.HotkeyPointerOwned;
-                // About has long dynamically measured content. Refresh before
-                // release dispatch so a replaced font cannot fire stale geometry.
-                if (State.Visible && State.Page == 5 && renderer.RefreshResources()) renderer.Prepare(State, screen.X, screen.Y, matrix.M11);
                 State.Update(new F5Input
                 {
                     Width = screen.X, Height = screen.Y, Scale = matrix.M11, X = pointer.X, Y = pointer.Y,
@@ -316,12 +331,13 @@ namespace JueMingR.TerrariaHost.F5
                     Wheel = PlayerInput.ScrollWheelDeltaForUI,
                     PageWheelHandled = FishingUi!=null && FishingUi.BlocksPageWheel || CaptureUi != null && CaptureUi.OwnsPointer || RecoveryUi != null && RecoveryUi.ConsumeWheel || HotkeyPopup != null && HotkeyPopup.ConsumeWheel || StylePopup != null && StylePopup.ConsumeWheel || DeathPopup != null && DeathPopup.Visible || MapPopup != null && MapPopup.Visible || FootprintPopup != null && FootprintPopup.Visible || inputActive && (notes.Wheel(pointer.X, pointer.Y, PlayerInput.ScrollWheelDeltaForUI) || Browser != null && Browser.Wheel(pointer.X, pointer.Y, PlayerInput.ScrollWheelDeltaForUI))
                 });
-                if (!State.Visible) { FishingUi?.Suspend(); CaptureUi?.Close(); MiningUi?.Suspend(); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup?.Close(); }
+                if (!State.Visible) { MiscUi?.Suspend(); FishingUi?.Suspend(); CaptureUi?.Close(); MiningUi?.Suspend(); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup?.Close(); }
                 notes.ProcessInput(inputActive, matrix, screen, raw, inputState.SampleFocused, popupPointer, keySample);
                 items?.ProcessInput(inputActive, keySample, pointer, State.Layout.Matches(screen.X, screen.Y, matrix.M11, State.Page), inputState.SampleFocused, popupPointer);
                 RecoveryUi?.ProcessInput(inputActive,keySample,pointer,State.Layout.Matches(screen.X,screen.Y,matrix.M11,State.Page),inputState.SampleFocused,popupPointer);
                 ReforgeUi?.ProcessInput(inputActive,keySample,pointer,State.Layout.Matches(screen.X,screen.Y,matrix.M11,State.Page),inputState.SampleFocused,popupPointer);
                 MiningUi?.ProcessInput(inputActive,pointer,State.Layout.Matches(screen.X,screen.Y,matrix.M11,State.Page),inputState.SampleFocused,popupPointer);
+                MiscUi?.ProcessInput(inputActive,keySample,pointer,State.Layout.Matches(screen.X,screen.Y,matrix.M11,State.Page),inputState.SampleFocused,popupPointer);
                 FishingUi?.ProcessInput(inputActive,keySample,pointer,State.Layout.Matches(screen.X,screen.Y,matrix.M11,State.Page),inputState.SampleFocused,popupPointer,PlayerInput.ScrollWheelDeltaForUI);
                 Browser?.Process(inputActive, pointer, popupPointer, State.Layout.Matches(screen.X, screen.Y, matrix.M11, State.Page));
                 if (information != null)
@@ -419,14 +435,14 @@ namespace JueMingR.TerrariaHost.F5
 
         private void ConsumeSample()
         {
-            if (FishingUi != null && FishingUi.ConsumeLeft || CaptureUi != null && CaptureUi.ConsumeLeft || MiningUi != null && MiningUi.ConsumeLeft || State.ConsumeLeft || Browser != null && Browser.ConsumeLeft || notes.ConsumeLeft || ReforgeUi != null && ReforgeUi.ConsumeLeft || RecoveryUi != null && RecoveryUi.ConsumeLeft || items != null && items.ConsumeLeft || information != null && information.Adjustment.ConsumeLeft)
+            if (FishingUi != null && FishingUi.ConsumeLeft || CaptureUi != null && CaptureUi.ConsumeLeft || MiningUi != null && MiningUi.ConsumeLeft || MiscUi != null && MiscUi.ConsumeLeft || State.ConsumeLeft || Browser != null && Browser.ConsumeLeft || notes.ConsumeLeft || ReforgeUi != null && ReforgeUi.ConsumeLeft || RecoveryUi != null && RecoveryUi.ConsumeLeft || items != null && items.ConsumeLeft || information != null && information.Adjustment.ConsumeLeft)
             {
                 PlayerInput.Triggers.Current.MouseLeft = false;
                 PlayerInput.Triggers.JustPressed.MouseLeft = false;
                 PlayerInput.Triggers.JustReleased.MouseLeft = false;
                 Main.mouseLeft = false;
             }
-            if (FishingUi != null && FishingUi.ConsumeRight || CaptureUi != null && CaptureUi.ConsumeRight || MiningUi != null && MiningUi.ConsumeRight || State.ConsumeRight || Browser != null && Browser.ConsumeRight || notes.ConsumeRight || ReforgeUi != null && ReforgeUi.ConsumeRight || RecoveryUi != null && RecoveryUi.ConsumeRight || items != null && items.ConsumeRight)
+            if (FishingUi != null && FishingUi.ConsumeRight || CaptureUi != null && CaptureUi.ConsumeRight || MiningUi != null && MiningUi.ConsumeRight || MiscUi != null && MiscUi.ConsumeRight || State.ConsumeRight || Browser != null && Browser.ConsumeRight || notes.ConsumeRight || ReforgeUi != null && ReforgeUi.ConsumeRight || RecoveryUi != null && RecoveryUi.ConsumeRight || items != null && items.ConsumeRight)
             {
                 PlayerInput.Triggers.Current.MouseRight = false;
                 PlayerInput.Triggers.JustPressed.MouseRight = false;
@@ -492,22 +508,16 @@ namespace JueMingR.TerrariaHost.F5
                     DeathPopup?.Prepare(screen.X / matrix.M11, screen.Y / matrix.M11, renderer.FontIdentity, renderer.PopupMeasure, renderer.SkinGeneration);
                     MapPopup?.Prepare(screen.X / matrix.M11, screen.Y / matrix.M11, renderer.FontIdentity, renderer.PopupMeasure, renderer.SkinGeneration);
                     FootprintPopup?.Prepare(screen.X / matrix.M11, screen.Y / matrix.M11, renderer.FontIdentity, renderer.PopupMeasure, renderer.SkinGeneration);
-                    CaptureUi?.Prepare(matrix,screen);
+
                     // Emote Bubbles runs before the modal early-return layers.
                     // Clear only the old pointer-triggered NPC bubble at update end.
                     if (OwnsPointer) Main.instance.currentNPCShowingChatBubble = -1;
                 }
                 notes.Prepare(CanPresentNow && LayersReady, matrix, PlayerInput.OriginalScreenSize);
                 items?.Prepare(CanPresentNow && LayersReady, matrix, PlayerInput.OriginalScreenSize);
-                RecoveryUi?.Prepare(CanPresentNow && LayersReady,matrix,PlayerInput.OriginalScreenSize);
+                if(State.Page!=1)RecoveryUi?.Prepare(CanPresentNow && LayersReady,matrix,PlayerInput.OriginalScreenSize);
                 FishingUi?.Prepare(CanPresentNow && LayersReady,matrix,PlayerInput.OriginalScreenSize);
-                if(ReforgeUi!=null)
-                {
-                    float bottom=RecoveryUi==null?State.Layout.ContentHeight:RecoveryUi.ContentBottom;
-                    ReforgeUi.Prepare(CanPresentNow && LayersReady,matrix,bottom);
-                    if(State.Visible && State.Page==1)
-                    {MiningUi?.Prepare(CanPresentNow && LayersReady,matrix,ReforgeUi.Height);State.Layout.SetRecoveryContentHeight(MiningUi==null?ReforgeUi.Height:MiningUi.Height);State.ClampScroll();RecoveryUi?.PrepareLayout(matrix);ReforgeUi.PrepareLayout(matrix,bottom);MiningUi?.PrepareLayout(matrix,ReforgeUi.Height);}
-                }
+                PrepareMisc(CanPresentNow && LayersReady,matrix,PlayerInput.OriginalScreenSize);
                 Browser?.Prepare(CanPresentNow && LayersReady, matrix);
             }
             catch { FailClosed(); }
@@ -583,6 +593,7 @@ namespace JueMingR.TerrariaHost.F5
                         RecoveryUi?.Draw(drawKeyboard,!hintsBlocked && State.CanShowHint);
                         ReforgeUi?.Draw(drawKeyboard);
                         MiningUi?.Draw(drawKeyboard);
+                        MiscUi?.Draw(drawKeyboard,!hintsBlocked && State.CanShowHint && !(CaptureUi?.Visible??false));
                         FishingUi?.Draw(drawKeyboard);
                         Browser?.Draw();
                         RecoveryUi?.PotionPopup.Draw();
@@ -673,10 +684,28 @@ namespace JueMingR.TerrariaHost.F5
             labelSession = generation; StylePopup?.Close();
         }
 
-        internal void CloseAndSubmitPosition() { FishingUi?.Suspend(); CaptureUi?.Close(); MiningUi?.Suspend(); CancelInformationAdjustment(false); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup?.Close(); State.Close(); notes.Suspend(); items?.Suspend(); RecoveryUi?.Suspend(); ReforgeUi?.Suspend(); Browser?.Suspend(); SubmitPosition(); }
+        internal void PrepareMisc(bool active,Matrix matrix,Vector2 screen,bool resources=true)
+        {
+            if(resources)ReforgeUi?.Prepare(active,matrix,0);else ReforgeUi?.PrepareLayout(matrix,0);
+            float miningStart=ReforgeUi==null?0:ReforgeUi.Height;
+            if(resources)MiningUi?.Prepare(active,matrix,miningStart);else MiningUi?.PrepareLayout(matrix,miningStart);
+            float miscStart=MiningUi==null?miningStart:MiningUi.Height;
+            if(resources)MiscUi?.Prepare(active,matrix,miscStart);else MiscUi?.PrepareLayout(matrix,miscStart);
+            if(!active || !State.Visible || State.Page!=1)return;
+            if(RecoveryUi!=null){RecoveryUi.MiscStart=MiscUi==null?miscStart:MiscUi.Height;if(resources)RecoveryUi.Prepare(active,matrix,screen);else RecoveryUi.PrepareLayout(matrix);}
+            float footer=RecoveryUi!=null?RecoveryUi.ContentBottom:MiscUi!=null?MiscUi.Height:miscStart;
+            State.Layout.SetMiscFooterStart(footer);
+            // Only the final page height may clamp the scroll. Reproject all
+            // blocks after that single clamp so paint and input use one offset.
+            State.ClampScroll();
+            ReforgeUi?.PrepareLayout(matrix,0);MiningUi?.PrepareLayout(matrix,miningStart);
+            MiscUi?.PrepareLayout(matrix,miscStart);RecoveryUi?.PrepareLayout(matrix);
+            if(CaptureUi!=null && MiscUi!=null){CaptureUi.MoveAnchor(MiscUi.ConfigurationAnchor,State.Layout.Generation);CaptureUi.Prepare(matrix,screen,resources);}
+        }
+        internal void CloseAndSubmitPosition() { MiscUi?.Suspend(); FishingUi?.Suspend(); CaptureUi?.Close(); MiningUi?.Suspend(); CancelInformationAdjustment(false); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup?.Close(); State.Close(); notes.Suspend(); items?.Suspend(); RecoveryUi?.Suspend(); ReforgeUi?.Suspend(); Browser?.Suspend(); SubmitPosition(); }
 
         internal void CancelForFocusLoss()
-        { FishingUi?.Suspend(); CaptureUi?.Close(); MiningUi?.Suspend(); CancelInformationAdjustment(false); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup?.Close(); State.CancelForFocusLoss(); notes.Suspend(true); items?.Suspend(); RecoveryUi?.Suspend(); ReforgeUi?.Suspend(); Browser?.Suspend(); RestoreLeases(); }
+        { MiscUi?.Suspend(); FishingUi?.Suspend(); CaptureUi?.Close(); MiningUi?.Suspend(); CancelInformationAdjustment(false); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup?.Close(); State.CancelForFocusLoss(); notes.Suspend(true); items?.Suspend(); RecoveryUi?.Suspend(); ReforgeUi?.Suspend(); Browser?.Suspend(); RestoreLeases(); }
 
         internal void FailClosed()
         { failed = true; State.Ready = false; CloseAndSubmitPosition(); RestoreLeases(); notes.FailClosed(); renderer.Dispose(); }

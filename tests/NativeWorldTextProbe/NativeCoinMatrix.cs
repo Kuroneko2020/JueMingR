@@ -123,7 +123,7 @@ namespace NativeWorldTextProbe
             Require((long)Get(range, "TileReads") == scans && (long)Get(transfer, "Snapshots") == snapshots, "enabled empty wallet has no bank query or transaction snapshots");
             Console.WriteLine("PASS: five native withdrawal sources/four entrances; full-bank suppression, space/selection recovery, moving discovery, void qualification and empty-wallet work.");
         }
-        internal static void Tick(object host, ulong start, ulong end) { for (ulong tick = start; tick < end; tick++) Call(host, "Update", tick); }
+        internal static void Tick(object host, ulong start, ulong end) { for (ulong tick = start; tick < end; tick++) { NativeQuickItemChecks.BeginWorldStep(); Call(host, "Update", tick); } }
         internal static void Reset(Player p, object host)
         {
             for (int i = 0; i < 59; i++) p.inventory[i] = new Item();

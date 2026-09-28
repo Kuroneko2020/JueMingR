@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Linq;
 using System.Runtime.Remoting.Messaging;
@@ -77,7 +77,7 @@ namespace NativeWorldTextProbe
             Click(context,ui,cards[0]);Require(settings.Value.Names.Count==2,"card body does not delete a target");
             prepare=()=>Prepare(context,960,440,1);
             var names=Lang.prefix.Skip(1).Select(p=>p.Value).Where(s=>!string.IsNullOrEmpty(s)).Distinct().ToArray();Save(settings,new ProcessingOptions(false,names));prepare();
-            Call(state,"ScrollTo",100000f);prepare();float bottom=(float)Get(state,"Scroll");Require(bottom>0,"full list owns shared Misc scroll height");
+            Call(state,"ScrollTo",Math.Max(0,(float)Get(ui,"Height")-(float)Get(Get(Get(state,"Layout"),"Viewport"),"Height")));prepare();float bottom=(float)Get(state,"Scroll");Require(bottom>0,"full list owns shared Misc scroll height");
             for(int i=0;i<20;i++)prepare();Require(bottom==(float)Get(state,"Scroll"),"tax preparation cannot reset reforge list scroll");
             remove=Parts(ui).Last(p=>(int)Get(p,"Command")==3);string identity=(string)Get(remove,"Name");Click(context,ui,remove);
             NativeQuickItemChecks.Until(()=>{settings.Poll();return !settings.Busy;});Require(!settings.Value.Names.Contains(identity) && settings.Value.Names.Count==names.Length-1,"visible bottom removes exact whole-name identity");
@@ -100,8 +100,7 @@ namespace NativeWorldTextProbe
         internal static void Prepare(object context,float width,float height,float scale)
         {
             var shell=Get(context,"Shell");var state=Get(shell,"State");var recovery=Get(shell,"RecoveryUi");var ui=Get(shell,"ReforgeUi");var matrix=Matrix.CreateScale(scale);
-            Call(Get(shell,"renderer"),"Prepare",state,width,height,scale);Call(recovery,"PrepareLayout",matrix);
-            float bottom=(float)Get(recovery,"ContentBottom");Call(ui,"PrepareLayout",matrix,bottom);Call(Get(state,"Layout"),"SetRecoveryContentHeight",Get(ui,"Height"));Call(state,"ClampScroll");Call(recovery,"PrepareLayout",matrix);Call(ui,"PrepareLayout",matrix,bottom);
+            Call(Get(shell,"renderer"),"Prepare",state,width,height,scale);Call(shell,"PrepareMisc",true,matrix,new Vector2(width,height),false);
         }
         internal static object[] Parts(object ui){return ((IEnumerable)Get(ui,"Parts")).Cast<object>().ToArray();}
         private static float X(object part){return (float)Get(Get(Get(part,"Element"),"Rect"),"X");}

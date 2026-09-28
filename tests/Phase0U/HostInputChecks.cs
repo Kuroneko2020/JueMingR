@@ -29,6 +29,9 @@ namespace Terraria
             var input = new HostInputState(() => new IntPtr(1), () => foreground ? new IntPtr(1) : new IntPtr(2));
             Frame(input, false);
             Check(input.CanStartActions, "normal neutral foreground admits new actions");
+            Check(!input.CanRunAutomaticActions,"foreground input alone cannot start automatic work");
+            Main.GameUpdateCount++;Check(input.CanRunAutomaticActions,"world entry enables automatic work");
+            Main.gamePaused=true;Check(!input.CanRunAutomaticActions,"foreground pause denies automatic work");Main.gamePaused=false;
             Main.keyState = new KeyboardState(Keys.Z); foreground = false;
             input.BeginUpdate();
             Check(Main.keyState.IsKeyUp(Keys.Z) && !input.CanStartActions, "loss prevents earlier cached keyboard consumers");
@@ -40,6 +43,8 @@ namespace Terraria
             PlayerInput.Triggers.JustReleased.MouseLeft = true;
             PlayerInput.ScrollWheelValue = 720; PlayerInput.ScrollWheelDelta = PlayerInput.ScrollWheelDeltaForUI = 240;
             input.AfterMapping(); Main.keyState = new KeyboardState(Keys.F5); input.AfterKeyboardRefresh();
+            Check(!input.CanRunAutomaticActions,"background input without world entry cannot start automatic work");
+            Main.GameUpdateCount++;
             Check(input.CanRunAutomaticActions && !input.CanStartActions,"current background native update admits automation without physical input");
             Main.gamePaused=true;Check(!input.CanRunAutomaticActions && !input.CanRetainAutomaticIntent,"pause blocks background automation");Main.gamePaused=false;
             Main.CanUpdateGameplay=false;Check(!input.CanRunAutomaticActions && !input.CanRetainAutomaticIntent,"stopped simulation blocks background automation");Main.CanUpdateGameplay=true;
