@@ -65,6 +65,7 @@ namespace NativeWorldTextProbe
                     int selected=p.selectedItem;for(int t=0;t<60;t++)Step(context,false,false,empty);
                     Require(p.selectedItem==selected,"stopping quick switch retains last real slot");
                 }
+                NativeCombatReleaseChecks.Run(context);
                 NativeCombatInteractionChecks.Run(context);
                 Dedicated(context,combat,tools,input);
                 NativeCombatHitChecks.FlailReceipts(context);

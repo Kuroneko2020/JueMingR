@@ -24,7 +24,7 @@ namespace JueMingR.TerrariaHost.F5
         private static readonly F5RowDescription[] descriptions = {
             new F5RowDescription(HotkeyActionIds.RareDirection, "箭头指向附近稀有生物，需要生命体分析仪。"),
             new F5RowDescription(HotkeyActionIds.MerchantDirection, "显示画面外旅商大致位置。"),
-            new F5RowDescription(HotkeyActionIds.EquipmentWarning, "Boss战或指定事件中，提醒正在穿戴的部分非战斗用品。血月本身不触发。"),
+            new F5RowDescription(HotkeyActionIds.EquipmentWarning, "还得是穿渔夫套打boss"),
             new F5RowDescription("merchant-test.once", "在单人世界尝试一次原版条件下的旅商到访。") };
         private readonly IGuidanceControls host;
         internal GuidanceControls(IGuidanceControls host) { this.host = host; }

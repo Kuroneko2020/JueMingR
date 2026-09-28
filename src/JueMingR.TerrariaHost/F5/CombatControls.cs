@@ -18,14 +18,14 @@ namespace JueMingR.TerrariaHost.F5
         internal static readonly string[] Names={"自动连点","链球连击","光剑快切","完美左轮","省力魔法绳","自动转向","自动汇报","哥布林必死"};
         internal static readonly string[] Actions={"combat.auto-click","combat.flail","combat.quick-switch","combat.revolver","combat.magic-string","combat.facing","combat.report","combat.goblin"};
         private static readonly string[] Help={
-            "按住使用键，补全原版未提供的连续使用。支持快捷栏和在游戏区域使用的鼠标物品；蓄力武器、工具等不适用。",
-            "长按右键连续发射、释放和收回链球，左键使用优先。保留原版碰撞、返回阶段及右键交互。",
-            "长按右键，依次使用并切换快捷栏中的释放发射武器。至少需要两格；支持光剑、钥匙剑、颌骨剑、时尚剪刀、燧石和冰川之牙。松开后停留在最后一格。",
-            "按住使用键时，协调原版左轮的按下与释放，让原版积累暴击机会；不保证每枪暴击。",
-            "具备魔法绳效果时，按住使用键自动释放并再次使用悠悠球。仍需实际装备效果与原版生成条件。",
-            "使用武器时自动朝向附近敌人；没有合格目标时朝向光标。实际左右移动输入优先，无需辅助瞄准。",
-            "自动请求原版战斗统计，包含有伤害的 Boss 击败、逃离与六类事件。每次输出全部近期记录，最多三条；联机向所有活动玩家广播，建议由一人开启，避免重复。",
-            "允许玩家武器和投射物正常击中哥布林工匠。保留原版伤害、碰撞与免疫；不瞬杀，不影响被捆住的哥布林或其它城镇 NPC。"};
+            "补全原版不支持连点的物品",
+            "长按右键触发连击",
+            "按住右键快切快捷栏的光剑",
+            "按住左键最大程度发挥左轮威力",
+            "装备魔法绳后长按左键实现连点效果",
+            "固定方向的武器可以随时转头了",
+            "boss战结束后自动汇报",
+            "rnm 还钱！！"};
         private static readonly F5RowDescription[] descriptions=Descriptions();
         private readonly ICombatControls host;
         internal CombatControls(ICombatControls host){this.host=host;}

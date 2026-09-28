@@ -35,6 +35,13 @@ namespace NativeWorldTextProbe
                 Image("page");
                 if(size[1]==760)
                 {
+                    string[] descriptions={"补全原版不支持连点的物品","长按右键触发连击","按住右键快切快捷栏的光剑","按住左键最大程度发挥左轮威力","装备魔法绳后长按左键实现连点效果","固定方向的武器可以随时转头了","还得是穿渔夫套打boss","boss战结束后自动汇报","rnm 还钱！！"};
+                    for(int i=0;i<labels.Length;i++)
+                    {
+                        UiFrame(context,Position(labels[i]),false);Image("description-"+i);
+                        var hint=Get(renderer,"HintLayout");string shown=string.Concat(((IEnumerable)Get(hint,"Lines")).Cast<object>().Select(e=>(string)Get(e,"Text")));
+                        Require((bool)Get(hint,"Visible") && shown==descriptions[i],"owner-approved actual hover text for "+names[i]+": "+shown);
+                    }
                     foreach(var element in elements.Where(e=>Get(e,"Command").ToString().StartsWith("Combat") && Get(e,"Command").ToString().EndsWith("On")))
                     {
                         string command=Get(element,"Command").ToString();Click(context,Position(element));

@@ -191,7 +191,12 @@ namespace JueMingR.TerrariaHost.Combat
                     if(released){press=false;if(!releaseObserved && WeaponCatalog.Ready(player)){released=false;used=false;}break;}
                     press=true;
                     ReleaseMechanism mechanism=WeaponCatalog.Release(source);
-                    if(mechanism==ReleaseMechanism.ItemRelease && player.itemAnimation==2 && player.itemTime==0 && used ||
+                    // Throw after a real start, leaving the native remaining
+                    // animation as itemTime while the projectile travels. A
+                    // tail-only release makes the next press recall it almost
+                    // immediately. Entry animation 1 is too late: native
+                    // AutoReuseLogic can consume it before the shoot check.
+                    if(mechanism==ReleaseMechanism.ItemRelease && used && player.itemAnimation>1 && player.itemTime==0 ||
                         mechanism==ReleaseMechanism.Flint && Valid(primary,primaryKey) && primary.ai[1]>=30 ||
                         mechanism==ReleaseMechanism.Glacier && Valid(primary,primaryKey) && (primary.ai[0]>=60 || primary.ai[1]==1))
                     {press=false;released=true;if(mechanism==ReleaseMechanism.Glacier && primary.ai[1]==1)releaseObserved=true;}
