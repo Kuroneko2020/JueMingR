@@ -76,10 +76,28 @@ namespace JueMingR.TerrariaHost.Tools
         private static void Started(Player __instance,Item __0){host?.Use.Started(__instance);host?.Fishing.ObserveCast(__instance,__0);host?.FishingStarted?.Invoke(__instance,__0);host?.Combat?.Use.Started(__instance,__0);}
         private static void AfterReuse(Player __instance){host?.Combat?.Use.AfterReuse(__instance);}
         private static void ProjectileCreated(Player __instance,Projectile __0){host?.Use.ObserveProjectile(__instance,__0);host?.FishingProjectile?.Invoke(__instance,__0);host?.Combat?.Use.Created(__instance,__0);}
-        private static void ProjectileBefore(Projectile __instance,out Lease __state)
-        {__state=null;if(host==null)return;var combat=host.Combat?.Use.BeginProjectile(__instance);if(combat!=null){__state=new Lease{Combat=combat};return;}if(!host.Use.OwnsProjectile(__instance))return;__state=new Lease{Token=host.Use.Operation};host.Use.BeginProjectile();}
-        private static void ProjectileAfter(Projectile __instance,Lease __state){if(__state!=null){host?.Use.EndProjectile(__state.Token,null);host?.Combat?.Use.EndProjectile(__instance,__state.Combat,null);}}
-        private static Exception ProjectileFinal(Projectile __instance,Lease __state,Exception __exception){if(__state!=null && __exception!=null){host?.Use.EndProjectile(__state.Token,__exception);host?.Combat?.Use.EndProjectile(__instance,__state.Combat,__exception);}return __exception;}
+        // This call's receipt chooses its owner, even if that action has since
+        // stopped or another one began. A value receipt adds no idle allocation;
+        // the out scope is published before Combat borrows any input.
+        private struct ProjectileLease {internal long Token;internal ToolUse Tool;internal Combat.CombatUse Combat;internal Combat.CombatInputScope Scope;}
+        private static void ProjectileBefore(Projectile __instance,out ProjectileLease __state)
+        {
+            __state=default(ProjectileLease);var current=host;if(current==null)return;
+            __state.Combat=current.Combat?.Use;
+            __state.Combat?.BeginProjectile(__instance,out __state.Scope);
+            if(__state.Scope!=null || !current.Use.OwnsProjectile(__instance))return;
+            __state.Tool=current.Use;__state.Token=current.Use.Operation;current.Use.BeginProjectile();
+        }
+        private static void EndProjectile(Projectile shot,ref ProjectileLease state,Exception error)
+        {
+            // Consume before dispatch: Postfix plus a later failing postfix's
+            // Finalizer must not notify/return twice or touch a successor.
+            var receipt=state;state=default(ProjectileLease);
+            if(receipt.Scope!=null)receipt.Combat.EndProjectile(shot,receipt.Scope,error);
+            else if(receipt.Token>0)receipt.Tool.EndProjectile(receipt.Token,error);
+        }
+        private static void ProjectileAfter(Projectile __instance,ref ProjectileLease __state){EndProjectile(__instance,ref __state,null);}
+        private static Exception ProjectileFinal(Projectile __instance,ref ProjectileLease __state,Exception __exception){if(__exception!=null)EndProjectile(__instance,ref __state,__exception);return __exception;}
         private static void Boundary(Player __instance){if(ReferenceEquals(__instance,host?.Player))host.Use.Retire();}
         // Reference state exists before Begin; even a Prefix exception midway
         // through temporary input borrowing reaches the same idempotent cleanup.

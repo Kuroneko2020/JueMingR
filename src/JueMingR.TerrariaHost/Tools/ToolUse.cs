@@ -140,8 +140,10 @@ namespace JueMingR.TerrariaHost.Tools
         // the drill; retain this operation's submitted aim even if its tile was
         // just removed, without leasing another projectile or a later gesture.
         internal void BeginProjectile(){BorrowAim();}
+        // Zero is the idle sentinel, never a receipt; stale callbacks cannot
+        // borrow cancellation or unknown-source protection from another use.
         internal void EndProjectile(long operation,Exception error)
-        {if(operation!=token)return;Restore();if(error!=null){host.HoldUnknown(Intent.Slot);Notify(true);Cancel();}}
+        {if(operation<=0 || operation!=token || !Active)return;Restore();if(error!=null){host.HoldUnknown(Intent.Slot);Notify(true);Cancel();}}
         internal void Started(Player p){if(ReferenceEquals(p,player) && InNativeUse){started=true;Intent.Used?.Invoke();}}
         internal void End(Player p,long operation,Exception error)
         {

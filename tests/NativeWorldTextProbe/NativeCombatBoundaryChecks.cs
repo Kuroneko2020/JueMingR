@@ -20,6 +20,7 @@ namespace NativeWorldTextProbe
         }
         internal static void Run(object context)
         {
+            NativeCombatProjectileChecks.Run(context);
             var combat=Get(context,"Combat");var use=Get(combat,"Use");var tools=Get(context,"Tools");var input=Get(context,"Input");
             Idle(context,combat,use,tools,input);
             NativeCombatCadenceChecks.Save(combat,new CombatOptions());var p=NativeToolExecutionChecks.Reset(context,tools,input,ItemID.CopperShortsword,0,0);

@@ -251,18 +251,20 @@ namespace JueMingR.TerrariaHost.Combat
         internal bool TracksFlail(Projectile shot)
         {return kind==1 && Identity() && (ReferenceEquals(shot,primary) && Valid(primary,primaryKey) || ReferenceEquals(shot,paired) && Valid(paired,pairedKey));}
         internal void FlailReceipt(Projectile shot){if(TracksFlail(shot))flailReceipt=true;}
-        internal CombatInputScope BeginProjectile(Projectile shot)
+        internal void BeginProjectile(Projectile shot,out CombatInputScope scope)
         {
+            scope=null;
             if(!Active || !(ReferenceEquals(shot,primary) && Valid(primary,primaryKey) || ReferenceEquals(shot,paired) && Valid(paired,pairedKey)) ||
-                !Identity() || !FeatureEnabled || !host.Admitted(player,slot==58))return null;
-            var scope=new CombatInputScope(player,press,kind==1 || kind==2,false);scopes.Add(scope);scope.Apply();
+                !Identity() || !FeatureEnabled || !host.Admitted(player,slot==58))return;
+            // Give the shared finalizer cleanup responsibility before Apply or
+            // aim borrowing can fail; a return-value handoff would lose it.
+            scope=new CombatInputScope(player,press,kind==1 || kind==2,false);scopes.Add(scope);scope.Apply();
             // These are the .8 stages that actually read the point. Flint and
             // Glacier retain native direction/velocity after charge; no aim
             // override is lent to a returning projectile or a future Kill.
             if(kind==1 && shot.ai[0]==0 && !player.channel)BorrowAim(scope,CombatAimStage.FlailRelease,shot);
             else if(kind==2 && type==5462 && shot.ai[0]==0)BorrowAim(scope,CombatAimStage.FlintCharge,shot);
             else if(kind==2 && type==6153 && player.channel && shot.ai[1]==0 && (int)shot.ai[0]%3==0)BorrowAim(scope,CombatAimStage.GlacierCharge,shot);
-            return scope;
         }
         private void BorrowAim(CombatInputScope scope,CombatAimStage stage,Projectile projectile)
         {
