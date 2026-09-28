@@ -14,6 +14,11 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if(scope=="CombatObservationCpu")
+            {
+                Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-combat-observation-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
+                NativeQuickItemChecks.Run(context=>{NativeCombatObservationChecks.Run(context);NativeCombatPredictionChecks.Run(context);NativeCombatGeometryChecks.Run(context);},processing:true,shortFeedback:true);return 0;
+            }
             if(scope=="CombatVisual")
             {
                 Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-combat-visual-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
@@ -140,7 +145,7 @@ namespace NativeWorldTextProbe
             return Check(content, output, scope);
         }
         private static void CombatRelease(object context)
-        {NativeCombatChecks.Run(context);NativeCombatFacingChecks.Run(context);NativeCombatHitChecks.Run(context);NativeCombatReportChecks.Run(context);NativeCombatUiChecks.Run(context);}
+        {NativeCombatChecks.Run(context);NativeCombatFacingChecks.Run(context);NativeCombatHitChecks.Run(context);NativeCombatReportChecks.Run(context);NativeCombatUiChecks.Run(context);NativeCombatObservationChecks.Release(context);}
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static int Check(string content, string output, string scope)
         {

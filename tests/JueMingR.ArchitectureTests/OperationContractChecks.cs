@@ -35,6 +35,9 @@ namespace JueMingR.ArchitectureTests
         {
             var expected = new HashSet<string>(StringComparer.Ordinal)
             {
+                "JueMingR.Platform.Combat.NpcIdentity", "JueMingR.Platform.Combat.PredictionAssumption", "JueMingR.Platform.Combat.PredictionStop",
+                "JueMingR.Platform.Combat.MotionRect", "JueMingR.Platform.Combat.NpcMotionState", "JueMingR.Platform.Combat.PredictionEnvironment",
+                "JueMingR.Platform.Combat.IPredictionTerrain", "JueMingR.Platform.Combat.NpcTrajectoryPoint", "JueMingR.Platform.Combat.NpcTrajectory",
                 "JueMingR.Platform.ItemCatalog.ItemCategory", "JueMingR.Platform.ItemCatalog.CatalogItem",
                 "JueMingR.Platform.ItemCatalog.RelationKind", "JueMingR.Platform.ItemCatalog.RelationIngredient", "JueMingR.Platform.ItemCatalog.ItemRelation",
                 "JueMingR.Platform.Footprints.FootprintPosition", "JueMingR.Platform.Footprints.FootprintSample",
