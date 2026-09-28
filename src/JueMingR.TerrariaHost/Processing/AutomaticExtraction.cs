@@ -31,10 +31,10 @@ namespace JueMingR.TerrariaHost.Processing
         internal AutomaticExtraction(HostProcessing host){this.host=host;}
         private bool Admitted(Player p)
         {
-            return host.Value(1) && host.Admit(p) && p.chest==-1 && p.talkNPC<0 && p.sign<0 && Main.npcShop==0 &&
-                Main.mouseItem!=null && Main.mouseItem.IsAir && !p.mouseInterface && !p.selectedItemState.HasBufferedChange &&
+            return host.Value(1) && host.AdmitAutomatic(p) && p.chest==-1 && p.talkNPC<0 && p.sign<0 && Main.npcShop==0 &&
+                Main.mouseItem!=null && Main.mouseItem.IsAir && !p.selectedItemState.HasBufferedChange &&
                 !PlayerInput.Triggers.Current.MouseLeft && !PlayerInput.Triggers.Current.MouseRight && !PlayerInput.Triggers.Current.SmartSelect &&
-                PlayerInput.MouseInfo.LeftButton==ButtonState.Released && PlayerInput.MouseInfo.RightButton==ButtonState.Released && !host.Items.World.HasManualOperation;
+                (!host.Input.IsFocused || PlayerInput.MouseInfo.LeftButton==ButtonState.Released && PlayerInput.MouseInfo.RightButton==ButtonState.Released) && !host.Items.World.HasManualOperation;
         }
         private static bool Eligible(Item item){return item!=null && item.stack>0 && item.type>0 && item.type<ItemID.Sets.ExtractinatorMode.Length && ItemID.Sets.ExtractinatorMode[item.type]>=0;}
         private bool Candidate(Player p,int i,bool afterYield=false){return i>=0 && i<50 && Eligible(p.inventory[i]) && !host.Items.Ownership.IsProtected(i) &&

@@ -37,9 +37,9 @@ namespace NativeWorldTextProbe
                 long generation=(long)Get(runtime,"Generation");
                 Set(input,"foregroundWindow",(Func<IntPtr>)(()=>new IntPtr(2)));FocusHelper.IsSelectedApplication=false;
                 NativeQuickItemChecks.Sample(input,new Keys[0]);
-                Require(!(bool)Get(input,"IsFocused") && !(bool)Get(input,"CanStartActions") && !((Func<bool>)Get(host,"CanGameplay"))(),"real focus quarantine still denies all foreground input");
+                Require(!(bool)Get(input,"IsFocused") && !(bool)Get(input,"CanStartActions") && (bool)Get(input,"CanRunAutomaticActions") && ((Func<bool>)Get(host,"CanGameplay"))(),"real focus quarantine denies physical input while simulation admits automation");
                 // mouseInterface is reset in native Draw and may remain true
-                // while minimized. Buffs ignore it only in background.
+                // while minimized. Autonomous consumers ignore it in background.
                 p.mouseInterface=true;p.channel=true;p.controlUseItem=true;p.itemAnimation=12;p.itemTime=8;
                 var rod=p.inventory[0];Main.projectile[0]=new Projectile{active=true,bobber=true,owner=p.whoAmI};Main.projectile[0].ai[0]=0;
                 object nurse=Get(host,"Nurse"),tax=Get(host,"Tax"),furniture=Get(host,"Furniture"),healing=Get(host,"PotionsUse");
@@ -48,7 +48,7 @@ namespace NativeWorldTextProbe
                 Require((long)Get(runtime,"Generation")==generation,"focus change keeps actual player/world session identity");
                 Require(p.FindBuffIndex(BuffID.Fishing)>=0 && p.FindBuffIndex(BuffID.Sonar)>=0 && p.inventory[2].stack==2 && p.inventory[3].stack==2,"background actual QuickBuff completes two missing effects once");
                 Require(ReferenceEquals(rod,p.inventory[0]) && p.selectedItem==0 && p.channel && p.controlUseItem && p.itemAnimation==12 && p.itemTime==8 && Main.projectile[0].active && Main.projectile[0].ai[0]==0,"background buff preserves held rod, casting state and native bobber");
-                Require(before.SequenceEqual(otherCalls()) && p.statLife==300 && p.inventory[4].stack==3,"background exception does not enable healing, mana or nearby services");
+                var after=otherCalls();Require(before.Take(3).SequenceEqual(after.Take(3)) && after[3]==before[3]+1 && p.statLife==400 && p.inventory[4].stack==2,"background heals through native consumption; absent service targets do not invent actions");
                 Call(host,"Poll");Require(!buffs.Busy && buffs.Value.AllowedBuffs.Count==2,"automatic use never becomes a manual follow event");
                 p.ClearBuff(BuffID.Fishing);p.ClearBuff(BuffID.Sonar);
                 Action<Action,Action,string> blocked=(enter,leave,name)=>{enter();try{Call(host,"Update",10100UL);Require(p.inventory[2].stack==2 && p.FindBuffIndex(BuffID.Fishing)<0,"background refuses "+name);}finally{leave();}};
@@ -80,7 +80,7 @@ namespace NativeWorldTextProbe
                 Set(input,"foregroundWindow",foreground);FocusHelper.IsSelectedApplication=true;p.mouseInterface=false;
                 NativeQuickItemChecks.Sample(input,new Keys[0]);NativeQuickItemChecks.Sample(input,new Keys[0]);
                 ForegroundF5(context,host,input,shell,buffs,p,otherCalls);
-                Console.WriteLine("PASS G07 background: actual focus quarantine, native buffs, fishing state, UI/pause gates, other features unchanged, unknown consumption survives focus cycling.");
+                Console.WriteLine("PASS G07/G10 automation: actual focus quarantine, native buffs/healing, fishing state, text/pause gates, unknown consumption survives focus cycling; ordinary F5 permits automatic work.");
             }
             finally
             {
@@ -111,8 +111,9 @@ namespace NativeWorldTextProbe
             frame();point=new Microsoft.Xna.Framework.Vector2((float)Get(state,"X")+100,(float)Get(state,"Y")+160);
             p.inventory[8].SetDefaults(ItemID.RegenerationPotion);p.inventory[8].stack=3;p.ClearBuff(BuffID.Regeneration);
             NativeRecoveryChecks.Save(buffs,new RecoveryOptions(buffs:true,allowedBuffs:new int[]{ItemID.RegenerationPotion}));var before=otherCalls();
+            p.statLife=300;p.potionDelay=0;p.inventory[4].SetDefaults(ItemID.HealingPotion);p.inventory[4].stack=3;
             frame();Require((bool)Get(state,"OwnsPointer") && p.mouseInterface && ReferenceEquals(GetOptional(shell,"leasedPlayer"),p) && !(bool)Get(shell,"priorMouseInterface"),"real F5 hover owns its exact mouse interface lease: state="+Get(state,"OwnsPointer")+" mouse="+p.mouseInterface+" shell="+Get(shell,"OwnsPointer")+" visible="+Get(state,"Visible")+" failed="+Get(shell,"Failed")+" input="+Get(input,"CanStartActions")+" origin="+Get(state,"X")+","+Get(state,"Y")+" point="+point);
-            Require(p.FindBuffIndex(BuffID.Regeneration)>=0 && p.inventory[8].stack==2 && before.SequenceEqual(otherCalls()),"foreground F5 permits only actual automatic buff consumption");
+            var after=otherCalls();Require(p.FindBuffIndex(BuffID.Regeneration)>=0 && p.inventory[8].stack==2 && p.statLife==400 && p.inventory[4].stack==2 && after[3]==before[3]+1,"foreground F5 permits actual buff and healing consumption under its own hover lease");
             p.ClearBuff(BuffID.Regeneration);Call(shell,"EndPointerLayer");p.mouseInterface=true;frame();
             Require(p.inventory[8].stack==2 && p.FindBuffIndex(BuffID.Regeneration)<0,"foreign native mouse interface is not mistaken for F5 ownership");
             Call(shell,"EndPointerLayer");p.mouseInterface=false;frame();Require(p.inventory[8].stack==1 && p.FindBuffIndex(BuffID.Regeneration)>=0,"same real source resumes after foreign UI releases");
@@ -121,7 +122,7 @@ namespace NativeWorldTextProbe
             Call(ui,"Execute",button);prepare();frame();Require((bool)Get(Get(ui,"PotionPopup"),"Visible") && p.inventory[8].stack==1 && p.FindBuffIndex(BuffID.Regeneration)<0,"real medication editor still owns input and blocks automatic consumption");
             Call(Get(ui,"PotionPopup"),"Close");frame();frame();Require(p.FindBuffIndex(BuffID.Regeneration)>=0,"closing the actual popup resumes the pending buff: admit="+Call(host,"AdmitBuff",p)+" interface="+Get(shell,"CanAutomaticBuff")+" input="+Get(input,"CanStartActions")+" text="+Main.blockInput+" writing="+PlayerInput.WritingText+" stack="+p.inventory[8].stack);
             NativeRecoveryChecks.Save(buffs,new RecoveryOptions());Call(state,"Close");Call(shell,"EndPointerLayer");p.mouseInterface=false;
-            Console.WriteLine("PASS G10 foreground F5 actual hover lease/native buff, foreign interface and popup boundaries; other recovery actions unchanged.");
+            Console.WriteLine("PASS G10 foreground F5 actual hover lease/native buff and healing, foreign interface and text ownership boundaries.");
         }
     }
 }

@@ -57,9 +57,11 @@ namespace JueMingR.TerrariaHost.Items
         internal PreferenceSnapshot<ItemAutomationSettings> Preferences { get { return preferences.Snapshot; } }
         public bool Enabled { get { return Feature.Enabled; } }
         internal HostItems(string verifiedGameDirectory, SingleFeatureRuntime runtime, Func<bool> canStartActions)
+            :this(verifiedGameDirectory,runtime,canStartActions,canStartActions) { }
+        internal HostItems(string verifiedGameDirectory, SingleFeatureRuntime runtime, Func<bool> canStartActions,Func<bool> canReleaseManualInput)
         {
             Runtime = runtime;
-            World = new ItemHostObservation(() => Runtime.Generation, Ownership, canStartActions);
+            World = new ItemHostObservation(() => Runtime.Generation, Ownership, canStartActions,canReleaseManualInput);
             Operations = new ItemVanillaOperations(World, Ownership);
             Storage = new ItemNearbyStorage(World, Ownership);
             Operations.Store = Storage.Execute;

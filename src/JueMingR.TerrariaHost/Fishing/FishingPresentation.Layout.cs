@@ -32,7 +32,7 @@ namespace JueMingR.TerrariaHost.Fishing
         private int presetSkin=-1;
         internal long PresetScans {get;private set;}
         internal long PresetDescriptions {get;private set;}
-        private static readonly string[] help={"收竿后自动在原位抛竿","进入钓鱼后自动将保存的套装换成适合钓鱼的","进入钓鱼后自动将当前套装饰品换成适合钓鱼的","钓上的鱼获尝试放进附近箱子","有可用过滤模式下，尝试跳过不要的鱼获"};
+        private static readonly string[] help={"收竿后自动在原位抛竿；f5菜单开启时不生效","进入钓鱼后自动将保存的套装换成适合钓鱼的","进入钓鱼后自动将当前套装饰品换成适合钓鱼的","钓上的鱼获尝试放进附近箱子","有可用过滤模式下，尝试跳过不要的鱼获"};
         internal long LayoutBuilds {get;private set;}
         internal void Prepare(bool active,Matrix transform,Vector2 viewport)
         {
@@ -45,6 +45,7 @@ namespace JueMingR.TerrariaHost.Fishing
             // Retire drafts before publishing the next generation or processing
             // a late save receipt. Prepare can precede the next input callback.
             if(session!=host.Tools.Runtime.Generation){CloseOverlay();message=null;listScroll=0;}
+            if(matrix!=transform || screen!=viewport)dirty=true;
             matrix=transform;screen=viewport;PollReceipt();RefreshSearch();UpdateNotice();
             var next=shell.Layout.Viewport.Offset(shell.X,shell.Y);
             bool shape=dirty || hostError!=host.Error || inputError!=TextInput.Error || draftError!=draft?.Error || renameRevision!=host.Rename.Revision || renameAllowed!=host.Rename.CanRename || generation!=shell.Layout.Generation || skin!=renderer.Generation || revision!=host.Settings.Revision || canConfigure!=host.Controls || session!=host.Tools.Runtime.Generation || !ReferenceEquals(culture,Language.ActiveCulture) || playerName!=host.Player?.name || view.X!=next.X || view.Y!=next.Y || view.Width!=next.Width || view.Height!=next.Height;
@@ -60,6 +61,7 @@ namespace JueMingR.TerrariaHost.Fishing
             if(shape || scroll!=shell.Scroll)
             {
                 projection++;armed=null;Parts.Clear();editRect=default(F5Rect);
+                PositionPopup();
                 listRect=F5HintLayout.Intersect(listLocal.Offset(view.X,view.Y-shell.Scroll),view);
                 foreach(var p in pageParts)Project(p,view.X,view.Y-shell.Scroll,view);
                 foreach(var p in listParts)Project(p,view.X+listLocal.X,view.Y+listLocal.Y-shell.Scroll-listScroll,listRect);
@@ -213,7 +215,7 @@ namespace JueMingR.TerrariaHost.Fishing
                 Text(popupParts,empty,0,ref popupHeight,bodyWidth,3);
             }
             float height=Math.Min(Math.Min(450,screen.Y/matrix.M22-24),y+Math.Max(CardHeight(),popupHeight)+fy+14);
-            popupRect=new F5Rect((screen.X/matrix.M11-width)/2,(screen.Y/matrix.M22-height)/2,width,height);
+            popupRect=new F5Rect(0,0,width,height);
             float footerY=height-fy-8;foreach(var p in footer){p.Element=Move(p.Element,0,footerY);popupParts.Add(p);}
             popupBody=new F5Rect(popupRect.X+12,popupRect.Y+Math.Min(y,footerY),bodyWidth,Math.Max(0,footerY-y-6));
             popupScroll=Math.Min(popupScroll,Math.Max(0,popupHeight-popupBody.Height));
@@ -242,6 +244,16 @@ namespace JueMingR.TerrariaHost.Fishing
             {
                 int first=Math.Max(0,(int)((popupScroll-bodyStart)/row)*columns),last=Math.Min(count,first+((int)(popupBody.Height/row)+2)*columns);
                 for(int i=first;i<last;i++)Card(popupParts,new F5Rect(i%columns*(popupBody.Width+4)/columns,bodyStart+i/columns*row,(popupBody.Width-4*(columns-1))/columns,CardHeight()),candidates[i],FishingCatalog.Name(candidates[i]),Command.Select,3);
+            }
+        }
+        private void PositionPopup()
+        {
+            if(!Visible)return;
+            Command source=overlay==Overlay.Current?Command.Current:overlay==Overlay.Presets?Command.PresetList:Command.Plus;
+            foreach(var part in pageParts)if(part.Command==source)
+            {
+                var next=F5PopupPlacement.Place(part.Element.Rect.Offset(view.X,view.Y-shell.Scroll),popupRect.Width,popupRect.Height,screen.X/matrix.M11,screen.Y/matrix.M22);
+                popupBody=popupBody.Offset(next.X-popupRect.X,next.Y-popupRect.Y);popupRect=next;return;
             }
         }
         private string PresetName(FishPreset preset,int index)

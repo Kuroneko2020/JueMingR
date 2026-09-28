@@ -39,7 +39,7 @@ namespace JueMingR.TerrariaHost.F5
         {
             fishing=owner;FishingUi=new Fishing.FishingPresentation(owner,State){HotkeyClicked=OpenHotkey};renderer.FishingUi=FishingUi;State.Layout.FishingAttached=true;
             owner.CanEquipmentInterface=()=>CanFishingEquipmentInput;
-            owner.Tools.CanBackgroundFishing=()=>!inputState.IsFocused && CanProcessingActions(false);
+            owner.Tools.CanFishingInterface=()=>!State.Visible;
             FishingUi.Opened=()=>{CaptureUi?.Close();RecoveryUi?.PotionPopup.Close();HotkeyPopup?.Close();StylePopup?.Close();DeathPopup?.Close();FootprintPopup?.Close();};
         }
         internal Tools.CaptureWindow CaptureUi {get;private set;}
@@ -83,6 +83,7 @@ namespace JueMingR.TerrariaHost.F5
         private readonly IDeathControls deaths;
         private readonly IMapControls maps;
         internal readonly MapManagementPopup MapPopup;
+        private F5Command mapPopupAnchor,deathPopupAnchor;
         internal readonly FootprintPopup FootprintPopup;
         private readonly IFootprintControls footprints;
         private readonly HostEntityLabels labels;
@@ -141,27 +142,23 @@ namespace JueMingR.TerrariaHost.F5
         }
         internal void AttachBrowser(IBrowserPage page) { if (Browser != null) throw new InvalidOperationException("Browser already attached."); Browser = page; }
         internal bool CanTargetInput { get { return CanTargetActions(true); } }
+        internal bool CanAutomaticTargetInput { get { return CanTargetActions(false) && CanAutomaticMouseInterface; } }
         // Processing evaluates native shops/reforge per business. This shared
         // permission excludes public UI owners without banning those contexts.
-        internal bool CanProcessingInput {get{return CanProcessingActions(true);}}
-        private bool CanProcessingActions(bool requireFocus){return !failed && LayersReady && biome.SharedRuntime.IsSessionActive && CanPresent(false,requireFocus) && !State.Visible &&
-            !inputState.HotkeyCapture && !OwnsPointer && !(information!=null && information.Adjustment.Active) && !adjustmentPending && !Main.clothesWindow && !Main.hairWindow;}
-        private bool CanFishingEquipmentInput {get{return !failed && LayersReady && biome.SharedRuntime.IsSessionActive && CanPresent(false,true) &&
-            !inputState.HotkeyCapture && (!OwnsPointer || State.Visible && State.OwnsPointer) && !(information!=null && information.Adjustment.Active) && !adjustmentPending && !Main.clothesWindow && !Main.hairWindow &&
-            Main.LocalPlayer!=null && (!Main.LocalPlayer.mouseInterface || State.Visible && State.OwnsPointer && ReferenceEquals(leasedPlayer,Main.LocalPlayer) && !priorMouseInterface);}}
-        // Automatic buffs do not need a gameplay gesture. Ordinary F5 browsing
-        // is allowed, but an editor/popup and any foreign mouse lease still win.
-        // Draw can leave mouseInterface stale when unfocused; only that case
-        // ignores it. This grants no permission to other recovery operations.
-        internal bool CanAutomaticBuff {get{return !failed && LayersReady && biome.SharedRuntime.IsSessionActive && CanPresent(false,false) &&
-            !inputState.HotkeyCapture && !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest && Main.CurrentInputTextTakerOverride==null && !PlayerInput.WritingText &&
-            !(HotkeyPopup?.Visible??false) && !(StylePopup?.Visible??false) && !(DeathPopup?.Visible??false) && !(MapPopup?.Visible??false) && !(FootprintPopup?.Visible??false) &&
-            !(FishingUi?.Visible??false) && !(CaptureUi?.Visible??false) && !(RecoveryUi?.Selecting??false) && !(items?.Selecting??false) &&
-            !(information!=null && information.Adjustment.Active) && !adjustmentPending && !Main.clothesWindow && !Main.hairWindow && string.IsNullOrEmpty(Main.npcChatText) &&
-            (!inputState.IsFocused || (!OwnsPointer || State.Visible && State.OwnsPointer) && Main.LocalPlayer!=null &&
-                (!Main.LocalPlayer.mouseInterface || State.Visible && State.OwnsPointer && ReferenceEquals(leasedPlayer,Main.LocalPlayer) && !priorMouseInterface));}}
+        internal bool CanProcessingInput {get{return CanProcessingActions(true) && !OwnsPointer;}}
+        internal bool CanAutomaticProcessingInput {get{return CanProcessingActions(false) && CanAutomaticMouseInterface;}}
+        private bool CanProcessingActions(bool requireFocus){return !failed && LayersReady && biome.SharedRuntime.IsSessionActive && CanPresent(false,requireFocus) &&
+            !inputState.HotkeyCapture && !(information!=null && information.Adjustment.Active) && !adjustmentPending && !Main.clothesWindow && !Main.hairWindow;}
+        // Opening F5 is not a gameplay barrier. Only its actual text/gesture
+        // owners may conflict. While focused, automatic work may coexist with
+        // our proven hover lease, never a foreign one. In the background that
+        // Draw-owned flag can be stale; actual owners have separate gates.
+        internal bool CanAutomaticMouseInterface {get{return !inputState.IsFocused || Main.LocalPlayer!=null &&
+            (!Main.LocalPlayer.mouseInterface || ReferenceEquals(leasedPlayer,Main.LocalPlayer) && !priorMouseInterface);}}
+        private bool CanFishingEquipmentInput {get{return CanAutomaticProcessingInput;}}
+        internal bool CanAutomaticBuff {get{return CanAutomaticTargetInput;}}
         private bool CanTargetActions(bool requireFocus)
-        { return !failed && LayersReady && biome.SharedRuntime.IsSessionActive && CanPresent(false,requireFocus) && !State.Visible && !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest && Main.CurrentInputTextTakerOverride == null && !PlayerInput.WritingText && !inputState.HotkeyCapture && Main.LocalPlayer != null && Main.LocalPlayer.talkNPC < 0 && Main.LocalPlayer.sign < 0 && Main.npcShop == 0 && string.IsNullOrEmpty(Main.npcChatText) && !Main.clothesWindow && !Main.hairWindow && !(information != null && information.Adjustment.Active) && !adjustmentPending; }
+        { return !failed && LayersReady && biome.SharedRuntime.IsSessionActive && CanPresent(false,requireFocus) && !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest && Main.CurrentInputTextTakerOverride == null && !PlayerInput.WritingText && !inputState.HotkeyCapture && Main.LocalPlayer != null && Main.LocalPlayer.talkNPC < 0 && Main.LocalPlayer.sign < 0 && Main.npcShop == 0 && string.IsNullOrEmpty(Main.npcChatText) && !Main.clothesWindow && !Main.hairWindow && !(information != null && information.Adjustment.Active) && !adjustmentPending; }
         internal bool BlocksMapInput { get { return failed || State.Visible || notes.OwnsPointer || HotkeyPopup != null && HotkeyPopup.Visible || StylePopup != null && StylePopup.Visible || MapPopup != null && MapPopup.Visible; } }
         internal void CloseForMapLocate() { FishingUi?.Suspend(); CaptureUi?.Close(); MiningUi?.Suspend(); MapPopup?.Suspend(); State.Close(); notes.Suspend(); items?.Suspend(); RecoveryUi?.Suspend(); ReforgeUi?.Suspend(); Browser?.Suspend(); }
         internal void OpenHotkey(string id, F5Rect rect)
@@ -295,6 +292,7 @@ namespace JueMingR.TerrariaHost.F5
                 }
                 HotkeyPopup?.Process(inputActive && State.Visible, State.Page, pointer.X, pointer.Y,
                     HotkeyPopup.Layout.Matches(screen.X / matrix.M11, screen.Y / matrix.M11, renderer.FontIdentity, renderer.SkinGeneration), PlayerInput.ScrollWheelDeltaForUI);
+                RefreshPopupAnchors();
                 DeathPopup?.Process(inputActive && State.Visible, State.Page, pointer.X, pointer.Y,
                     DeathPopup.Matches(screen.X / matrix.M11, screen.Y / matrix.M11, renderer.FontIdentity, renderer.SkinGeneration), PlayerInput.ScrollWheelDeltaForUI);
                 MapPopup?.Process(inputActive && State.Visible, pointer.X, pointer.Y, MapPopup.Matches(screen.X / matrix.M11, screen.Y / matrix.M11, renderer.FontIdentity, renderer.SkinGeneration), PlayerInput.ScrollWheelDeltaForUI);
@@ -352,9 +350,9 @@ namespace JueMingR.TerrariaHost.F5
                 if (State.ClickedHotkey != null)
                     OpenHotkey(State.ClickedHotkey.HotkeyTarget, State.ClickedHotkey.Rect.Offset(State.X + State.Layout.Viewport.X, State.Y + State.Layout.Viewport.Y - State.Scroll));
                 if (State.ClickedControl != null && (State.Command == F5Command.MarkerManage || State.Command == F5Command.ExplorationDetails) && renderer.MapControls != null && renderer.MapControls.Available(State.Command))
-                { HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); FootprintPopup?.Close(); MapPopup.Open(State.Command == F5Command.ExplorationDetails); }
+                { HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); FootprintPopup?.Close(); mapPopupAnchor=State.Command;MapPopup.Open(State.Command == F5Command.ExplorationDetails); }
                 if (State.ClickedControl != null && (State.Command == F5Command.DeathDetails || State.Command == F5Command.DeathConfigure) && renderer.DeathControls != null && renderer.DeathControls.Available(State.Command))
-                { HotkeyPopup?.Close(); StylePopup?.Close(); FootprintPopup?.Close(); DeathPopup.Open(State.Command == F5Command.DeathConfigure, State.Page); }
+                { HotkeyPopup?.Close(); StylePopup?.Close(); FootprintPopup?.Close(); deathPopupAnchor=State.Command;DeathPopup.Open(State.Command == F5Command.DeathConfigure, State.Page); }
                 if (State.ClickedControl != null && State.Command == F5Command.FootprintConfigure && renderer.FootprintControls != null && renderer.FootprintControls.Available(State.Command))
                 { HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup.Open(State.Page); }
                 if (State.ClickedControl != null && EntityLabelControls.IsStyle(State.Command) && renderer.EntityControls != null && renderer.EntityControls.Available(State.Command))
@@ -490,6 +488,7 @@ namespace JueMingR.TerrariaHost.F5
                     if (State.Page == 2) renderer.PrepareMapValue();
                     HotkeyPopup?.Prepare(screen.X / matrix.M11, screen.Y / matrix.M11, renderer.FontIdentity, renderer.PopupMeasure, renderer.SkinGeneration);
                     StylePopup?.Prepare(screen.X / matrix.M11, screen.Y / matrix.M11, matrix.M11, renderer.FontIdentity, renderer.PopupMeasure, renderer.SkinGeneration, StyleAnchor());
+                    RefreshPopupAnchors();
                     DeathPopup?.Prepare(screen.X / matrix.M11, screen.Y / matrix.M11, renderer.FontIdentity, renderer.PopupMeasure, renderer.SkinGeneration);
                     MapPopup?.Prepare(screen.X / matrix.M11, screen.Y / matrix.M11, renderer.FontIdentity, renderer.PopupMeasure, renderer.SkinGeneration);
                     FootprintPopup?.Prepare(screen.X / matrix.M11, screen.Y / matrix.M11, renderer.FontIdentity, renderer.PopupMeasure, renderer.SkinGeneration);
@@ -643,6 +642,19 @@ namespace JueMingR.TerrariaHost.F5
 
         private F5Rect ControlRect(F5Element element)
         { return element.Rect.Offset(State.X + State.Layout.Viewport.X, State.Y + State.Layout.Viewport.Y - State.Scroll); }
+        private void RefreshPopupAnchors()
+        {
+            // Resolve current elements after reflow; never retain a stale row
+            // rectangle across viewport/scale changes or a modal mode switch.
+            if(DeathPopup?.Visible==true)DeathPopup.Anchor=PopupAnchor(deathPopupAnchor);
+            if(MapPopup?.Visible==true)MapPopup.Anchor=PopupAnchor(mapPopupAnchor);
+            if(FootprintPopup?.Visible==true)FootprintPopup.Anchor=PopupAnchor(F5Command.FootprintConfigure);
+        }
+        private F5Rect PopupAnchor(F5Command command)
+        {
+            foreach(var element in State.Layout.Elements)if(element.Command==command)return ControlRect(element);
+            return State.Layout.Viewport.Offset(State.X,State.Y);
+        }
         private F5Rect StyleAnchor()
         {
             if (StylePopup != null && StylePopup.Visible)

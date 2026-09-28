@@ -14,6 +14,11 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if(scope=="BackgroundCpu" || scope=="F5AutomationCpu")
+            {
+                Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-background-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
+                NativeQuickItemChecks.Run(scope=="BackgroundCpu"?(Action<object>)NativeBackgroundAutomationChecks.Run:NativeBackgroundAutomationChecks.RunF5,processing:true,shortFeedback:true);return 0;
+            }
             if(scope=="FishingCpu" || scope=="FishingVisual" || scope=="FishingRelease")
             {
                 Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-fishing-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);

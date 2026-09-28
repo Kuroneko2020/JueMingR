@@ -14,6 +14,7 @@ namespace JueMingR.TerrariaHost.Items
         private readonly Func<long> generation;
         private readonly ItemOperationOwnership ownership;
         private readonly Func<bool> canStartActions;
+        private readonly Func<bool> canReleaseManualInput;
         private readonly Item[] references = new Item[58];
         private readonly long[] instances = new long[58];
         private ItemSlotObservation[] previous;
@@ -31,7 +32,9 @@ namespace JueMingR.TerrariaHost.Items
         internal Func<Item, bool> AdditionalProtection { get; set; }
         internal Func<Item, bool> ProcessingProtection { get; set; }
         internal ItemHostObservation(Func<long> generation, ItemOperationOwnership ownership, Func<bool> canStartActions)
-        { this.generation = generation; this.ownership = ownership; this.canStartActions = canStartActions ?? throw new ArgumentNullException(nameof(canStartActions)); }
+            :this(generation,ownership,canStartActions,canStartActions) { }
+        internal ItemHostObservation(Func<long> generation, ItemOperationOwnership ownership, Func<bool> canStartActions,Func<bool> canReleaseManualInput)
+        { this.generation = generation; this.ownership = ownership; this.canStartActions = canStartActions ?? throw new ArgumentNullException(nameof(canStartActions)); this.canReleaseManualInput=canReleaseManualInput??throw new ArgumentNullException(nameof(canReleaseManualInput)); }
         internal bool CanStartActions { get { return canStartActions(); } }
         public long SessionGeneration { get { return generation(); } }
         internal Player Player
@@ -56,7 +59,7 @@ namespace JueMingR.TerrariaHost.Items
         // physical release under valid input admission ends these manual facts.
         internal void RefreshManualRelease()
         {
-            if (HasManualOperation && Player != null && CausalDepth == 0 && !AutomaticOperation && CanStartActions &&
+            if (HasManualOperation && Player != null && CausalDepth == 0 && !AutomaticOperation && canReleaseManualInput() &&
                 PlayerInput.MouseInfo.LeftButton == ButtonState.Released && PlayerInput.MouseInfo.RightButton == ButtonState.Released) ClearManual();
         }
         internal bool HasManualOperation { get { return ManualSlot >= 0 || ManualMaterials.Count != 0; } }

@@ -41,8 +41,10 @@ namespace JueMingR.TerrariaHost.Tools
         internal bool Active {get{return player!=null;}}
         internal long Operation {get{return token;}}
         private bool HeldInventory {get{return Intent.HeldInventory || Intent.Kind==ToolKind.Capture && host.Mode(0)==2;}}
-        private bool FishingIntent {get{return Intent.Kind==ToolKind.FishingPull || Intent.Kind==ToolKind.FishingCast || Intent.Kind==ToolKind.FishingCut;}}
-        private bool Admitted(Player p){return FishingIntent?host.AdmitFishing(p,HeldInventory):host.Admit(p,HeldInventory);}
+        // Only G10 automatic fishing pauses with F5. New tool kinds and the
+        // G09 borrowed-net return must not inherit this feature-specific gate.
+        private bool CanRunFeature {get{return (Intent.Kind!=ToolKind.FishingPull && Intent.Kind!=ToolKind.FishingCast && Intent.Kind!=ToolKind.FishingCut) || (host.CanFishingInterface?.Invoke()??true);}}
+        private bool Admitted(Player p){return CanRunFeature && host.Admit(p,HeldInventory);}
         internal bool ActionValid {get{return Active && !cancelled && Identity() && Admitted(player) && (Intent.Valid?.Invoke()??false);}}
         internal ToolUse(HostTools host){this.host=host;}
         internal void Pick(Player p,ref int chosen,ref bool result)
@@ -163,7 +165,7 @@ namespace JueMingR.TerrariaHost.Tools
         internal void Update()
         {
             if(!Active)return;
-            if(!Identity() || !(FishingIntent?host.CanRetainFishing(player,HeldInventory):host.CanRetainUse(player,HeldInventory)))Cancel();
+            if(!Identity() || !host.CanRetainUse(player,HeldInventory) || !CanRunFeature)Cancel();
             // Select only queues the original slot. Unsampled outer updates
             // must retain this exact lease until native selection consumes it;
             // otherwise fishing mistakes our own temporary slot for manual exit.

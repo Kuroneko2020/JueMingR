@@ -20,6 +20,8 @@ namespace Terraria
         public static bool dedServ, mouseLeft, mouseRight, mouseText, blockMouse, HoveringOverAnNPC;
         public static bool mapFullscreen, hideUI, onlyDrawFancyUI, ingameOptionsWindow, inFancyUI;
         public static int netMode;
+        public static bool CanUpdateGameplay { get; set; } = true;
+        public static bool gamePaused;
         public static KeyboardState keyState;
         public static KeyboardState oldKeyState;
         public static Matrix UIScaleMatrix { get; set; } = Matrix.Identity;

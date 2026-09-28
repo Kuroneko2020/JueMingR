@@ -21,7 +21,7 @@ namespace JueMingR.TerrariaHost.Recovery
         internal long Quotes,NativeCalls;
         internal Exception LastFailure;
 #endif
-        internal NurseRecovery(HostRecovery host,NativeNpcObservation npcs){this.host=host;Target=new NearbyServiceTarget(npcs,18);payment=new NursePayment(host);}
+        internal NurseRecovery(HostRecovery host,NativeNpcObservation npcs){this.host=host;Target=new NearbyServiceTarget(npcs,18,()=>host.CanMouseInterface?.Invoke()??!host.Input.IsFocused);payment=new NursePayment(host);}
         internal void Reset(){unknown=refused=zeroPrice=false;next=0;Target.Reset();}
         internal void Rearm(){refused=zeroPrice=false;next=0;}
         internal static bool Need(Player p)
@@ -90,7 +90,7 @@ namespace JueMingR.TerrariaHost.Recovery
             // target and unchanged physical accounts may reach the debit.
             return ReferenceEquals(p,host.Player) && host.Dialog.Owns && Target.Valid(p) && Need(p) &&
                 host.Services.Ready && host.Services.Revision==settingsRevision && host.Services.Value.Nurse &&
-                host.Input.CanStartActions && !Main.gamePaused && !Main.mapFullscreen && !Main.ServerSideCharacter &&
+                host.Input.CanRunAutomaticActions && !Main.gamePaused && !Main.mapFullscreen && !Main.ServerSideCharacter &&
                 !p.dead && !p.CCed && !p.noItems && !p.HasLockedInventory() && !Main.LocalPlayerHasPendingInventoryActions() &&
                 payment.Unchanged(p) && currency==-1 && cost==expectedCost && ++payCalls==1;
         }

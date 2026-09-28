@@ -138,6 +138,11 @@ namespace NativeWorldTextProbe
                 }
                 Console.WriteLine("PASS G10 native manual cast, liquid admission, actual pull/item/recast with 0/1/3 unsampled outer updates.");
                 Background(context,host,tools,input);
+                // The F5 seam case adds native simulation steps. Give it its
+                // own RNG so unrelated later bite timing does not change.
+                var priorRandom=Main.rand;
+                try{Main.rand=new Terraria.Utilities.UnifiedRandom(107);F5CutRefresh(context,host,tools,input);}
+                finally{Main.rand=priorRandom;}
                 NativeFishingOutcomeChecks.Run(context);
                 Truffle(context,host,tools,input);
                 NativeFishingStorageChecks.Run(context);
@@ -147,6 +152,33 @@ namespace NativeWorldTextProbe
         }
         internal static void Save(object host,FishingOptions value)
         {var settings=(FishingSettings)Get(host,"Settings");NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return !settings.Busy;});Require(settings.Set(value),"fishing save admitted");NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return !settings.Busy;});Require(settings.CompletionSucceeded,"fishing save completed");}
+        private static void F5CutRefresh(object context,object host,object tools,object input)
+        {
+            Save(host,new FishingOptions());var p=NativeToolExecutionChecks.Reset(context,tools,input,ItemID.WoodFishingPole,0,0);
+            p.armor[3].SetDefaults(ItemID.HighTestFishingLine);p.inventory[54].SetDefaults(ItemID.Worm);p.inventory[54].stack=100;
+            for(int x=44;x<74;x++)for(int y=42;y<61;y++){Main.tile[x,y].ClearEverything();if(y>=44 && y<60)Main.tile[x,y].liquid=255;if(y==60)NativeToolsChecks.Tile(x,y,1);}
+            Save(host,new FishingOptions(auto:true,cut:true,filterMode:1,crates:0,quests:0,npcs:0));var point=new Vector2(850,718);
+            for(int i=0;i<150;i++)Step(context,input,point,i==0,0);
+            p.AddBuff(122,4000);var bobber=Main.projectile.First(q=>q.active && q.bobber && q.owner==p.whoAmI);
+            bobber.ai[1]=-240;bobber.localAI[1]=ItemID.Bass;bobber.localAI[2]=ItemID.Worm;
+            NativeToolExecutionChecks.Sample(context,input,point,false);Call(Get(host,"Observation"),"Invalidate");Call(Get(host,"Observation"),"Read",p);
+            var pick=typeof(Player).GetMethod("PickItemSelectionOverride",Flags);object[] choice={0};
+            Require((bool)pick.Invoke(p,choice) && (int)choice[0]!=0,"native selection callback acquires a real pending cut");
+            object use=Get(tools,"Use"),intent=Get(use,"Intent"),shell=Get(context,"Shell"),state=Get(shell,"State");
+            Require(Get(intent,"Kind").ToString()=="FishingCut" && ((Func<bool>)Get(intent,"Refresh"))(),"live cut refresh would otherwise reapply the selection");
+            int priorPulls=pulls,priorCasts=casts,priorProducts=products,bait=p.inventory[54].stack;
+            try
+            {
+                // The real selection callback is the seam before vanilla applies
+                // the chosen slot and advances bobber AI. No private use state is set.
+                NativeF5AutomationChecks.Open(context);choice[0]=0;
+                Require(!(bool)pick.Invoke(p,choice),"F5 blocks an already admitted cut at its native selection refresh");
+                Require(p.selectedItem==0 && bobber.active && pulls==priorPulls && casts==priorCasts && products==priorProducts && p.inventory[54].stack==bait,"opening F5 cannot turn pending cut into a native use or consume bait");
+                Require((bool)Get(Get(host,"Session"),"Active"),"F5 pause preserves the established fishing session");
+            }
+            finally{Call(state,"Close");Call(shell,"EndPointerLayer");p.mouseInterface=false;Save(host,new FishingOptions());}
+            Console.WriteLine("PASS G10 actual pending cut selection refresh is paused by F5 without native consumption.");
+        }
         private static void Background(object context,object host,object tools,object input)
         {
             var foreground=Get(input,"foregroundWindow");bool updates=Main.CanUpdateGameplay;

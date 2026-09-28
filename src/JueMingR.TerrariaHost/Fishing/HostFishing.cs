@@ -64,7 +64,7 @@ namespace JueMingR.TerrariaHost.Fishing
             var p=Player;
             // Storage has its own native container admission. Ordinary inventory
             // or an unrelated open chest must not inherit tool-use restrictions.
-            return p!=null && Tools.Input.CanStartActions && (Tools.CanInterface?.Invoke()??false) && !Tools.Fishing.Active && !Main.gamePaused && !p.dead && !p.CCed && !p.cursed && !p.noItems &&
+            return p!=null && Tools.Input.CanRunAutomaticActions && (Tools.CanInterface?.Invoke()??false) && !Tools.Fishing.Active && !Main.gamePaused && !p.dead && !p.CCed && !p.cursed && !p.noItems &&
                 !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest && !PlayerInput.WritingText && Main.CurrentInputTextTakerOverride==null &&
                 !Main.ServerSideCharacter && !(Main.ActivePlayerFileData?.ServerSideCharacter??false) && !WorldGen.isGeneratingOrLoadingWorld && p.talkNPC<0 && p.sign<0 && Main.npcShop==0 && Main.mouseItem!=null && Main.mouseItem.IsAir;
         }

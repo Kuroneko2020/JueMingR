@@ -74,7 +74,11 @@ namespace NativeWorldTextProbe
         private static float PopupHeight(object ui){return (float)Get(Get(ui,"popupRect"),"Height");}
         private static void PopupExperience(object context,object host,object ui)
         {
-            Click(context,Part(ui,"Plus"));float blank=PopupHeight(ui);
+            var anchor=Get(Get(Part(ui,"Plus"),"Element"),"Rect");
+            Click(context,Part(ui,"Plus"));float blank=PopupHeight(ui);var window=Get(ui,"popupRect");
+            Require(Math.Abs((float)Get(window,"X")-(float)Get(anchor,"X"))<.01f &&
+                (Math.Abs((float)Get(window,"Y")-(float)Get(anchor,"Bottom")-6)<.01f || Math.Abs((float)Get(window,"Bottom")-(float)Get(anchor,"Y")+6)<.01f),
+                "search popup aligns to its actual source button and opens immediately above or below it");
             Step(context,false,Vector2.Zero,"#2290");Prepare(context);float single=PopupHeight(ui);
             Require(blank<250 && single<300,"empty and one-result search use compact content-sized windows");
             var draft=Get(ui,"Editor");var main=Get(Get(context,"Shell"),"State");

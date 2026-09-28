@@ -66,6 +66,13 @@ namespace JueMingR.TerrariaHost.Input
         internal bool SampleFocused { get { return mapped && IsFocused && nativePermission; } }
         internal bool CanUseInput { get { return SampleFocused && finalized && !quarantine; } }
         internal bool CanStartActions { get { return CanUseInput; } }
+        // Automation observes game state, not an OS gesture. A background
+        // simulation may continue, but it never proves a physical release or
+        // rearms hotkeys. An empty outer Update cannot start work: the native
+        // update stage must arrive in this epoch even without physical input.
+        // Foreground activation quarantine still applies.
+        internal bool CanRunAutomaticActions { get { return IsFocused ? CanStartActions : mapped && finalized && Main.CanUpdateGameplay && !Main.gamePaused; } }
+        internal bool CanRetainAutomaticIntent { get { return IsFocused ? CanRetainIntent : Main.CanUpdateGameplay && !Main.gamePaused; } }
         // Main.Update can finish without DoUpdate sampling input (frame skip
         // off). That revokes execution for this epoch, not an existing intent.
         // Focus loss/reactivation quarantine still revokes both permissions.

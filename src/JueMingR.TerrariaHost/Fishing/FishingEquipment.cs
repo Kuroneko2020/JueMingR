@@ -114,14 +114,14 @@ namespace JueMingR.TerrariaHost.Fishing
         private bool Truffle()
         {var p=host.Player;if(p==null)return false;for(int i=54;i<58;i++)if(!p.inventory[i].IsAir && p.inventory[i].bait>0)return p.inventory[i].type==Terraria.ID.ItemID.TruffleWorm;for(int i=0;i<50;i++)if(!p.inventory[i].IsAir && p.inventory[i].bait>0)return p.inventory[i].type==Terraria.ID.ItemID.TruffleWorm;return false;}
         private bool ApplyGate()
-        {return Identity() && host.Ready && !Truffle() && host.Tools.AdmitFishingEquipment(player,host.CanEquipmentInterface?.Invoke()??false) && !player.UsingOrReusingItem && !host.Tools.Use.Active && !host.Tools.Fishing.Active && !player.selectedItemState.HasBufferedChange && !PlayerInput.Triggers.Current.MouseLeft && PlayerInput.MouseInfo.LeftButton==Microsoft.Xna.Framework.Input.ButtonState.Released && PlayerInput.MouseInfo.RightButton==Microsoft.Xna.Framework.Input.ButtonState.Released;}
+        {return Identity() && host.Ready && !Truffle() && host.Tools.AdmitFishingEquipment(player,host.CanEquipmentInterface?.Invoke()??false) && !player.UsingOrReusingItem && !host.Tools.Use.Active && !host.Tools.Fishing.Active && !player.selectedItemState.HasBufferedChange && (!host.Tools.Input.IsFocused || !PlayerInput.Triggers.Current.MouseLeft && PlayerInput.MouseInfo.LeftButton==Microsoft.Xna.Framework.Input.ButtonState.Released && PlayerInput.MouseInfo.RightButton==Microsoft.Xna.Framework.Input.ButtonState.Released);}
         private bool ReturnGate(bool boundary)
         {
             return Identity() && !Main.gameMenu && !Main.ServerSideCharacter && !(Main.ActivePlayerFileData?.ServerSideCharacter??false) && !Main.gamePaused &&
                 !player.UsingOrReusingItem && !host.Tools.Use.InNativeUse && !player.HasLockedInventory() && !host.Tools.Items.World.Busy && !host.Tools.Items.World.HasManualOperation &&
-                // F5 consumes mapped presses, but an ordinary return must also
-                // wait for physical release. Death/exit retain their own boundary.
-                Main.mouseItem!=null && Main.mouseItem.IsAir && (boundary || !PlayerInput.Triggers.Current.MouseLeft && !PlayerInput.Triggers.Current.MouseRight && PlayerInput.MouseInfo.LeftButton==Microsoft.Xna.Framework.Input.ButtonState.Released && PlayerInput.MouseInfo.RightButton==Microsoft.Xna.Framework.Input.ButtonState.Released);
+                // Foreground returns require physical release. Background mouse
+                // samples may be stale; real manual ownership above still blocks.
+                Main.mouseItem!=null && Main.mouseItem.IsAir && (boundary || host.Tools.Input.CanRetainAutomaticIntent && (!host.Tools.Input.IsFocused || !PlayerInput.Triggers.Current.MouseLeft && !PlayerInput.Triggers.Current.MouseRight && PlayerInput.MouseInfo.LeftButton==Microsoft.Xna.Framework.Input.ButtonState.Released && PlayerInput.MouseInfo.RightButton==Microsoft.Xna.Framework.Input.ButtonState.Released));
         }
         private bool Allowed(Item[] array,int slot)
         {

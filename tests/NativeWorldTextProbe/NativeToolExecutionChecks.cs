@@ -166,7 +166,7 @@ namespace NativeWorldTextProbe
         }
         private static void Safety(object context,object host,object input)
         {
-            foreach(string boundary in new[]{"focus","ui","off","selection","source","death","session"})
+            foreach(string boundary in new[]{"focus","f5","ui","off","selection","source","death","session"})
             {
                 var p=Reset(context,host,input,ItemID.StaffofRegrowth,12,0);object use=Get(host,"Use");
                 for(int x=41;x<=44;x++){Require(WorldGen.PlaceTile(x,42,78,mute:true,forced:true,plr:0),"safety actual pot");NativeToolsChecks.Tile(x,41,84);}
@@ -174,15 +174,28 @@ namespace NativeWorldTextProbe
                 Require((bool)Get(use,"Active"),"safety obtains actual continuous use");long token=(long)Get(use,"Operation");int animation=p.itemAnimation,time=p.itemTime,toolTime=p.toolTime;Outer(context,input,3);
                 Require((bool)Get(use,"Active") && !(bool)Get(use,"cancelled") && (long)Get(use,"Operation")==token,"unsampled epochs retain the same valid operation");
                 Require(p.itemAnimation==animation && p.itemTime==time && p.toolTime==toolTime,"unsampled retention never advances or resets native timers");
-                if(boundary=="focus")Set(input,"foregroundWindow",(Func<IntPtr>)(()=>IntPtr.Zero));
+                bool updates=Main.CanUpdateGameplay;
+                if(boundary=="focus"){Main.ToggleGameplayUpdates(true);Set(input,"foregroundWindow",(Func<IntPtr>)(()=>IntPtr.Zero));}
+                else if(boundary=="f5")NativeF5AutomationChecks.Open(context);
                 else if(boundary=="ui")Main.drawingPlayerChat=true;
                 else if(boundary=="off")NativeToolsChecks.SetMode(host,1,0);
                 else if(boundary=="selection")p.selectedItemState.Select(1);
                 else if(boundary=="death")p.dead=true;
                 else if(boundary=="session")Main.gameMenu=true;
                 else p.inventory[12]=new Item();
-                Outer(context,input,1);Require(!(bool)Get(use,"Active") || (bool)Get(use,"cancelled"),"unsampled update still cancels "+boundary);
+                Outer(context,input,1);
+                if(boundary=="focus" || boundary=="f5")
+                {
+                    Require((bool)Get(use,"Active") && !(bool)Get(use,"cancelled") && (long)Get(use,"Operation")==token,"background empty update retains original operation");
+                    Require(p.itemAnimation==animation && p.itemTime==time && p.toolTime==toolTime,"background empty update never advances timers");
+                    for(int f=0;f<80;f++){Sample(context,input,new Vector2(480,540),false);NativeQuickItemChecks.BeginWorldStep();p.Update(0);Call(context,"UpdateRuntime");}
+                    Require(Enumerable.Range(41,4).Any(x=>Main.tile[x,41].type!=84),"real player simulation continues herb harvesting with "+boundary);
+                    if(boundary=="f5")Require((bool)Get(Get(Get(context,"Shell"),"State"),"Visible"),"harvesting completes while F5 remains open");
+                    Main.ToggleGameplayUpdates(updates);
+                }
+                else Require(!(bool)Get(use,"Active") || (bool)Get(use,"cancelled"),"unsampled update still cancels "+boundary);
                 Main.drawingPlayerChat=false;p.dead=false;Main.gameMenu=false;Call(context,"UpdateRuntime");Set(input,"foregroundWindow",(Func<IntPtr>)(()=>new IntPtr(1)));
+                if(boundary=="f5"){Call(Get(Get(context,"Shell"),"State"),"Close");Call(Get(context,"Shell"),"EndPointerLayer");p.mouseInterface=false;}
                 if(boundary=="focus"){Sample(context,input,new Vector2(480,540),true);Require(!(bool)Get(input,"CanStartActions"),"reactivation held chord stays quarantined");Sample(context,input,new Vector2(480,540),false);}
                 NativeToolsChecks.SetMode(host,1,0);
             }

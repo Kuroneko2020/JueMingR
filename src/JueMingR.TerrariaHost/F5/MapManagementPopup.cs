@@ -67,7 +67,9 @@ namespace JueMingR.TerrariaHost.F5
         }
         internal void CheckSession() { if (session != host.Session) { Suspend(); session = host.Session; page = 0; } }
         internal bool ContainsPointer(float x, float y) { return Visible && Panel.Contains(x, y); }
-        internal bool Matches(float w, float h, object f, int s) { return width == w && height == h && ReferenceEquals(font, f) && skin == s && !dirty; }
+        internal F5Rect Anchor {get;set;}
+        private F5Rect preparedAnchor;
+        internal bool Matches(float w, float h, object f, int s) { return F5PopupPlacement.SameAnchor(Anchor,preparedAnchor) && width == w && height == h && ReferenceEquals(font, f) && skin == s && !dirty; }
         internal void Process(bool active, float x, float y, bool geometryCurrent, int wheel)
         {
             CheckSession(); ConsumeWheel = OwnsPointer = false;
@@ -121,7 +123,7 @@ namespace JueMingR.TerrariaHost.F5
         {
             CheckSession(); if (!Visible) return;
             string status = Editor?.Error ?? TextInput.Error ?? host.Workspace.Error ?? host.StatusMessage;
-            bool resources = width != w || height != h || !ReferenceEquals(font, f) || skin != s;
+            bool resources = !F5PopupPlacement.SameAnchor(Anchor,preparedAnchor) || width != w || height != h || !ReferenceEquals(font, f) || skin != s;
             if (mode == 2 && !dirty && !resources && shownStatus == status && shownBusy == host.Markers.Busy && shownFast == host.FastScan && shownPaused == host.ScanPaused && shownDynamic == host.DynamicEnabled && shownScanning == host.ScanActive)
             {
                 string value = host.ExplorationText, scan = host.ScanText;
@@ -149,7 +151,7 @@ namespace JueMingR.TerrariaHost.F5
             // otherwise a fully sized window silently loses its final row.
             float top = mode == 1 ? rowHeight + 16 : 56;
             float pw = Math.Min(mode == 1 ? 480 : 320, w - 24), ph = Math.Min(top + contentRows * rowHeight + (mode == 1 ? rowHeight + 20 : 12), h - 24);
-            Panel = new F5Rect((w - pw) / 2, (h - ph) / 2, pw, ph);
+            preparedAnchor=Anchor;Panel = F5PopupPlacement.Place(Anchor,pw,ph,w,h);
             AddText(mode == 1 ? "地图标记" : "揭示区域统计", 16, mode == 1 ? 10 : 17, pw - (mode == 1 ? 32 : 88), measure);
             float footer = ph - rowHeight - 12;
             Body = new F5Rect(Panel.X + 16, Panel.Y + top, pw - 32, Math.Max(0, (mode == 1 ? footer - 8 : ph - 12) - top));

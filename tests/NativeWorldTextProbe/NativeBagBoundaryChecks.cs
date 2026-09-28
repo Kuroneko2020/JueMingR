@@ -35,7 +35,7 @@ namespace NativeWorldTextProbe
             Frame(context,input);Require(p.inventory[10].stack==1 && p.inventory[10].favorited,"favorite remains normally usable");
             Main.playerInventory=false;Frame(context,input);Require(p.inventory[10].stack==1,"closed inventory stops next consume");Main.playerInventory=true;
             var state=Get(Get(context,"Shell"),"State");Set(state,"Visible",true);
-            Frame(context,input);Require(p.inventory[10].stack==1,"F5 takeover stops next consume");Set(state,"Visible",false);
+            Frame(context,input);Require(p.inventory[10].IsAir || p.inventory[10].stack==0,"F5 visibility alone does not stop a valid held bag gesture");Set(state,"Visible",false);
             NativeProcessingChecks.Sample(input,false);Call(context,"UpdateRuntime");
             int[] all=Enumerable.Range(1,Terraria.ID.ItemID.Sets.OpenableBag.Length-1).Where(id=>Terraria.ID.ItemID.Sets.OpenableBag[id]).ToArray();
             Require(all.Length==58,"fixed .8 native bag qualification set has 58 entries");

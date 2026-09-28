@@ -141,7 +141,7 @@ try {
         $path = 'tests/NativeWorldTextProbe/' + $name + '.cs'
         $cases[$path] = 'tools-host'; $exactGroups[$path] = $exactGroups['src/JueMingR.TerrariaHost/Tools/AutoCapture.cs']
     }
-    foreach ($path in @('src/JueMingR.TerrariaHost/Fishing/FishingEquipment.cs','src/JueMingR.Features/Fishing/FishFilter.cs','tests/JueMingR.ArchitectureTests/Fishing/FishingChecks.cs','tests/NativeWorldTextProbe/NativeFishingChecks.cs','tests/NativeWorldTextProbe/NativeFishingUiChecks.cs','tests/NativeWorldTextProbe/NativeFishingNetworkChecks.cs','tests/NativeWorldTextProbe/NativePlayerRenameChecks.cs')) {
+    foreach ($path in @('src/JueMingR.TerrariaHost/Fishing/FishingEquipment.cs','src/JueMingR.Features/Fishing/FishFilter.cs','tests/JueMingR.ArchitectureTests/Fishing/FishingChecks.cs','tests/NativeWorldTextProbe/NativeFishingChecks.cs','tests/NativeWorldTextProbe/NativeFishingUiChecks.cs','tests/NativeWorldTextProbe/NativeFishingNetworkChecks.cs','tests/NativeWorldTextProbe/NativePlayerRenameChecks.cs','tests/NativeWorldTextProbe/NativeBackgroundAutomationChecks.cs','tests/NativeWorldTextProbe/NativeF5AutomationChecks.cs')) {
         $cases[$path] = 'fishing-host'; $exactGroups[$path] = @('core','fishing-host')
     }
     foreach ($path in @($exactGroups.Keys)) {
@@ -335,8 +335,10 @@ try {
         foreach ($groups in @(@('core'),@('core','fishing-host'),@('core','fishing-host','tools-host','shared-host','storage-host'))) {
             $calls.Clear(); Invoke-FishingWorkloadChecks $groups 'architecture.exe' 'native.exe'
             if ($groups -notcontains 'fishing-host') { Assert-Route ($calls.Count -eq 0) 'unrelated group skips Fishing'; continue }
-            Assert-Route ($calls.Count -eq 2 -and $calls[0].executable -ceq 'architecture.exe' -and ($calls[0].arguments -join '|') -ceq '--fishing') 'Fishing rules execute once'
+            Assert-Route ($calls.Count -eq 4 -and $calls[0].executable -ceq 'architecture.exe' -and ($calls[0].arguments -join '|') -ceq '--fishing') 'Fishing rules execute once'
             Assert-Route ($calls[1].name -ceq 'fishing-native-execution' -and $calls[1].executable -ceq 'native.exe' -and ($calls[1].arguments -join '|') -ceq (@($repositoryRoot,'--cpu',(Join-Path $checksRoot 'fishing-cpu'),'FishingCpu') -join '|')) 'Fishing actual CPU fixture and isolated directory'
+            Assert-Route ($calls[2].name -ceq 'background-automatic-execution' -and $calls[2].executable -ceq 'native.exe' -and ($calls[2].arguments -join '|') -ceq (@($repositoryRoot,'--cpu',(Join-Path $checksRoot 'background-cpu'),'BackgroundCpu') -join '|')) 'background regression runs once with isolated data'
+            Assert-Route ($calls[3].name -ceq 'f5-automatic-execution' -and $calls[3].executable -ceq 'native.exe' -and ($calls[3].arguments -join '|') -ceq (@($repositoryRoot,'--cpu',(Join-Path $checksRoot 'f5-automatic-cpu'),'F5AutomationCpu') -join '|')) 'F5 regression runs once with isolated data'
         }
     }
     $fishingCalls = @($runnerAst.FindAll({ param($node) $node -is [Management.Automation.Language.CommandAst] -and $node.GetCommandName() -ceq 'Invoke-FishingWorkloadChecks' }, $true))

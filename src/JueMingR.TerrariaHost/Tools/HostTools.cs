@@ -29,6 +29,8 @@ namespace JueMingR.TerrariaHost.Tools
         internal readonly FishingBorrow Fishing;
         private readonly Func<Item,bool> priorProtection;
         internal Func<bool> CanInterface;
+        internal Func<bool> CanMouseInterface;
+        internal Func<bool> CanFishingInterface;
         internal Func<bool> OtherUseReady;
         internal Func<bool> FishingEnabled;
         internal Func<Player,ToolIntent> FishingChoice;
@@ -105,37 +107,32 @@ namespace JueMingR.TerrariaHost.Tools
         }
         private void Select(HotkeyChord chord)
         {
-            Input.ClaimUseGesture(chord);var p=Player;if(!Admit(p,false))return;
+            Input.ClaimUseGesture(chord);var p=Player;if(!Input.CanStartActions || !Admit(p,false))return;
             var point=Main.MouseWorld;int x=(int)(point.X/16),y=(int)(point.Y/16);var tile=World.WorldTileObservation.ReadCurrent(x,y);
             bool ok=tile.Readable && tile.Active && Mining.Select(p,x,y,tile.Type,false);
             string message=ok?(Mining.Region.Truncated?"已选中 512 格，超出部分未加入":"已选中 "+Mining.Region.Count+" 格挖矿区域"):"光标处没有可选矿物，保留原区域";
             Feedback?.Show(SelectAction,message,ok,()=>Runtime.IsSessionActive,Feedback.Capture());
         }
         internal bool Admit(Player p,bool heldInventory)
-        {return Input.CanStartActions && CanRetainUse(p,heldInventory);}
-        internal Func<bool> CanBackgroundFishing;
-        // Only an established G10 fishing intent uses this autonomous path.
-        // Focus quarantine still owns all physical input and G09 tool uses.
-        internal bool AdmitFishing(Player p,bool heldInventory)
-        {return Input.IsFocused?Admit(p,heldInventory):CanRetainFishing(p,heldInventory);}
-        internal bool CanRetainFishing(Player p,bool heldInventory)
-        {return Input.IsFocused?CanRetainUse(p,heldInventory):Main.CanUpdateGameplay && (CanBackgroundFishing?.Invoke()??false) && CanRetainPlayer(p,heldInventory,true,true);}
+        {return Input.CanRunAutomaticActions && CanRetainUse(p,heldInventory);}
         // Retention never authorizes a consumer. An outer update without a
         // native input sample must not tear down a still safe continuous use.
         internal bool CanRetainUse(Player p,bool heldInventory)
-        {return CanInterface!=null && CanInterface() && CanRetainPlayer(p,heldInventory,false);}
-        // Only fishing equipment receives the shell's explicit permission for
-        // its own F5 pointer lease. Tool uses retain their original UI gate.
+        {return CanInterface!=null && CanInterface() && CanRetainPlayer(p,heldInventory);}
+        // Equipment shares the same ownership proof as other autonomous work.
         internal bool AdmitFishingEquipment(Player p,bool interfaceAllowed)
-        {return Input.CanStartActions && interfaceAllowed && CanRetainPlayer(p,true,true);}
-        private bool CanRetainPlayer(Player p,bool heldInventory,bool ownInterface,bool background=false)
+        {return Input.CanRunAutomaticActions && interfaceAllowed && CanRetainPlayer(p,true);}
+        private bool CanRetainPlayer(Player p,bool heldInventory)
         {
-            return Available && p!=null && ReferenceEquals(p,Player) && (background || Input.CanRetainIntent) &&
+            // Draw-owned mouseInterface can be stale while the window is not
+            // drawn. Actual menus, text, manual items and operation owners below
+            // remain authoritative; background admission never clears them.
+            return Available && p!=null && ReferenceEquals(p,Player) && Input.CanRetainAutomaticIntent &&
                 !Main.gamePaused && !p.dead && !p.CCed && !p.cursed && !p.noItems && !p.isOperatingAnotherEntity && !p.HasLockedInventory() &&
                 !Items.World.Busy && !Items.World.HasManualOperation && !Main.mapFullscreen && !Main.inFancyUI && !Main.onlyDrawFancyUI && !Main.ingameOptionsWindow &&
                 !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest && !PlayerInput.WritingText && Main.CurrentInputTextTakerOverride==null &&
                 !Main.ServerSideCharacter && (Main.ActivePlayerFileData==null || !Main.ActivePlayerFileData.ServerSideCharacter) && !WorldGen.isGeneratingOrLoadingWorld &&
-                !PlayerInput.UsingGamepadUI && p.chest==-1 && p.talkNPC<0 && p.sign<0 && Main.npcShop==0 && (ownInterface || !p.mouseInterface) && Main.mouseItem!=null && Main.mouseItem.IsAir &&
+                !PlayerInput.UsingGamepadUI && p.chest==-1 && p.talkNPC<0 && p.sign<0 && Main.npcShop==0 && (CanMouseInterface?.Invoke()??(!Input.IsFocused || !p.mouseInterface)) && Main.mouseItem!=null && Main.mouseItem.IsAir &&
                 (!Main.playerInventory || heldInventory && p.selectedItem>=0 && p.selectedItem<10) && !PlayerInput.Triggers.Current.MouseRight && !PlayerInput.Triggers.Current.SmartSelect;
         }
         internal bool Candidate(Player p,int i,bool seed=false)

@@ -23,6 +23,8 @@ namespace Terraria
             driver.Present(); driver.Click(2); driver.Present(); driver.Click(3); Require(driver.Label == "清除足迹", "cancel resets all stages");
             driver.Click(1); Require(!owner.Recording && owner.Display == false, "recording control never changes display");
             driver.Present(); driver.Click(2); driver.Present(); driver.Press(2); driver.Font = new object(); driver.Release(); Require(driver.Label == "清除足迹" && owner.Deleted == 1, "font replacement cancels old press and confirmation");
+            driver.Present();driver.Click(2);driver.Present();driver.Press(2);driver.Popup.Anchor=new F5Rect(160,80,80,30);driver.Release();
+            Require(driver.Label=="清除足迹" && owner.Deleted==1,"moved entry anchor cancels old press and resets clear confirmation");
             driver.Click(0); Require(!driver.Popup.Visible, "close stays reachable");
             Console.WriteLine("PASS: footprint popup three physically released and presented stages; cancellation, archive identity, resource changes, independent recording.");
         }

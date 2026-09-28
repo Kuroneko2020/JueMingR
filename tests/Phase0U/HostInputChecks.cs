@@ -24,6 +24,7 @@ namespace Terraria
         }
         internal static void Run()
         {
+            PopupPlacementChecks.Run();
             bool foreground = true;
             var input = new HostInputState(() => new IntPtr(1), () => foreground ? new IntPtr(1) : new IntPtr(2));
             Frame(input, false);
@@ -32,17 +33,22 @@ namespace Terraria
             input.BeginUpdate();
             Check(Main.keyState.IsKeyUp(Keys.Z) && !input.CanStartActions, "loss prevents earlier cached keyboard consumers");
             Check(!input.RestrictNativePermission(true), "stale native application selection cannot allow a different foreground window");
+            Check(!input.CanRunAutomaticActions && input.CanRetainAutomaticIntent && !input.CanRetainIntent,"empty background outer update retains intent without executing automation");
             // Deliberately emulate a too-permissive native mapping. The earlier
             // mapping seam must still stop actual consumers and all edge packs.
             PlayerInput.Triggers.Current.KeyStatus["ViewZoomIn"] = true;
             PlayerInput.Triggers.JustReleased.MouseLeft = true;
             PlayerInput.ScrollWheelValue = 720; PlayerInput.ScrollWheelDelta = PlayerInput.ScrollWheelDeltaForUI = 240;
             input.AfterMapping(); Main.keyState = new KeyboardState(Keys.F5); input.AfterKeyboardRefresh();
+            Check(input.CanRunAutomaticActions && !input.CanStartActions,"current background native update admits automation without physical input");
+            Main.gamePaused=true;Check(!input.CanRunAutomaticActions && !input.CanRetainAutomaticIntent,"pause blocks background automation");Main.gamePaused=false;
+            Main.CanUpdateGameplay=false;Check(!input.CanRunAutomaticActions && !input.CanRetainAutomaticIntent,"stopped simulation blocks background automation");Main.CanUpdateGameplay=true;
             Check(!PlayerInput.Triggers.Current.KeyStatus["ViewZoomIn"] && !PlayerInput.Triggers.JustReleased.MouseLeft && Main.keyState.IsKeyUp(Keys.F5), "background mapping and fresh raw keys cannot escape");
             Check(PlayerInput.ScrollWheelValue == 720 && PlayerInput.ScrollWheelDelta == 0 && PlayerInput.ScrollWheelDeltaForUI == 0, "consume wheel delta without rewinding native absolute baseline");
             foreground = true;
             Frame(input, true, Keys.F5);
             Check(!input.CanStartActions && !PlayerInput.Triggers.Current.MouseLeft && Main.keyState.IsKeyUp(Keys.F5), "activating click/chord cannot operate a prior target");
+            Check(!input.CanRunAutomaticActions,"foreground activation quarantine also protects automation");
             Frame(input, true);
             Check(!input.CanStartActions, "held activating pointer remains denied without a fixed timeout");
             Frame(input, false);

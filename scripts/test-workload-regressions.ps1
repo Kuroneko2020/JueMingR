@@ -75,6 +75,8 @@ function Invoke-FishingWorkloadChecks {
     if ($Groups -notcontains 'fishing-host') { return }
     Invoke-WorkloadCheck 'fishing-rules-storage' $Architecture @('--fishing')
     Invoke-WorkloadCheck 'fishing-native-execution' $Native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'fishing-cpu'), 'FishingCpu')
+    Invoke-WorkloadCheck 'background-automatic-execution' $Native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'background-cpu'), 'BackgroundCpu')
+    Invoke-WorkloadCheck 'f5-automatic-execution' $Native @($repositoryRoot, '--cpu', (Join-Path $checksRoot 'f5-automatic-cpu'), 'F5AutomationCpu')
 }
 try {
 $architecture = Join-Path $repositoryRoot 'artifacts/build/Debug/work/bin/JueMingR.ArchitectureTests/x86/Debug/net472/JueMingR.ArchitectureTests.exe'

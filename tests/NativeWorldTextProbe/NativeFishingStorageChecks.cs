@@ -60,12 +60,13 @@ namespace NativeWorldTextProbe
                 Require(p.inventory[12].stack==2,"today-completed quest revokes current inventory eligibility");Main.anglerQuestFinished=false;
                 var state=Get(Get(context,"Shell"),"State");Call(state,"RestoreVisible");
                 for(int i=0;i<24;i++)NativeFishingChecks.Step(context,input,new Vector2(850,718),false,0);
-                Require(p.inventory[12].stack==2,"F5 pauses new dedicated store requests without ending the fishing session");Call(state,"Close");
+                Require(p.inventory[12].IsAir && chest.item.Where(x=>x.type==type).Sum(x=>x.stack)==6 && (bool)Get(Get(host,"Session"),"Active"),"F5 allows actual fish storage while retaining the fishing session");Call(state,"Close");
+                p.inventory[12].SetDefaults(type);p.inventory[12].stack=2;
                 for(int y=0;y<2;y++)for(int x=0;x<2;x++){var tile=Main.tile[39+x,40+y];tile.active(true);tile.type=21;tile.frameX=(short)(x*18);tile.frameY=(short)(y*18);}
                 Main.chest[1]=null;Terraria.Chest.CreateWorldChest(1,39,40);Call(p,"OpenChest",39,40,1);
                 for(int i=0;i<24;i++)NativeFishingChecks.Step(context,input,new Vector2(850,718),false,0);
                 Require(p.chest==1,"the native fixture keeps the unrelated chest open at its actual coordinates");
-                Require(p.inventory[12].IsAir && chest.item.Where(x=>x.type==type).Sum(x=>x.stack)==6,"an unrelated open chest does not prohibit current quest storage into the other valid nearby target");p.chest=-1;Main.chest[1]=null;Main.playerInventory=false;
+                Require(p.inventory[12].IsAir && chest.item.Where(x=>x.type==type).Sum(x=>x.stack)==8,"an unrelated open chest does not prohibit current quest storage into the other valid nearby target");p.chest=-1;Main.chest[1]=null;Main.playerInventory=false;
             }
             {
                 var p=Reset(context,host,tools,input);p.inventory[12].SetDefaults(ItemID.Bass);p.inventory[12].stack=12;var chest=Chest(ItemID.Bass);
@@ -109,9 +110,33 @@ namespace NativeWorldTextProbe
                     Require(productCount==2 && chest.item.Where(x=>x.type==ItemID.Bass).Sum(x=>x.stack)==10012 && p.inventory.Where(x=>x.type==ItemID.Bass).Sum(x=>x.stack)==0,"a genuinely new native catch grants a new finite opportunity for remaining old stock");
                 }
             }
+            Background(context,host,tools,input,items);
             NativeFishingNetworkChecks.Storage(context,()=>Reset(context,host,tools,input),Chest,()=>Cast(context,input));
             NativeFishingChecks.Save(host,new FishingOptions());Main.chest[0]=null;
             Console.WriteLine("PASS G10 actual auto Give/GetItem -> same-type old inventory -> native nearby chest; Bass/ReaverShark/favorite protection, finite member retirement, Quest-only old stock and manual-pull exclusion.");
+        }
+        private static void Background(object context,object host,object tools,object input,object items)
+        {
+            object foreground=Get(input,"foregroundWindow");bool updates=Main.CanUpdateGameplay;
+            try
+            {
+                foreach(int mode in new[]{1,2})foreach(bool staleMouse in new[]{false,true})
+                {
+                    Set(input,"foregroundWindow",foreground);FocusHelper.IsSelectedApplication=true;Main.LocalPlayer.mouseInterface=false;Main.ToggleGameplayUpdates(true);
+                    var p=Reset(context,host,tools,input);Main.anglerQuest=0;Main.anglerQuestFinished=true;
+                    int type=mode==1?ItemID.Bass:Main.anglerQuestItemNetIDs[0];var chest=Chest(type);
+                    NativeFishingChecks.Save(host,new FishingOptions(auto:mode==1,storeMode:mode));var b=Cast(context,input);
+                    p.inventory[12].SetDefaults(type);p.inventory[12].stack=3;Main.anglerQuestFinished=false;Call(Get(items,"World"),"InvalidateObservation");
+                    Set(input,"foregroundWindow",(Func<IntPtr>)(()=>new IntPtr(2)));FocusHelper.IsSelectedApplication=false;Main.ToggleGameplayUpdates(true);p.mouseInterface=staleMouse;
+                    if(mode==1){b.ai[1]=-120;b.localAI[1]=type;b.localAI[2]=ItemID.Worm;}
+                    for(int i=0;i<280;i++)NativeFishingChecks.Step(context,input,new Vector2(850,718),false,0);
+                    Require(!(bool)Get(input,"CanStartActions") && !(bool)Get(input,"CanRetainIntent"),"background storage does not grant physical input");
+                    Require(chest.item.Where(x=>x.type==type).Sum(x=>x.stack)==(mode==1?5:4) && p.inventory.Where(x=>x.type==type).Sum(x=>x.stack)==0,
+                        "background native fish storage completes both modes through actual shared item outlet; mode="+mode+" staleMouse="+staleMouse);
+                }
+            }
+            finally{Set(input,"foregroundWindow",foreground);FocusHelper.IsSelectedApplication=true;Main.ToggleGameplayUpdates(updates);Main.LocalPlayer.mouseInterface=false;}
+            Console.WriteLine("PASS G10 background actual fish storage, both modes and stale Draw mouse state; input quarantine retained.");
         }
         private static Player Reset(object context,object host,object tools,object input)
         {

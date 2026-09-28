@@ -27,7 +27,7 @@ namespace NativeWorldTextProbe
                 Check(()=>Loan(context,host,input,empty,true),"rod expiry empty="+empty,failures);
             }
             Check(()=>ClockBoundary(context,host,input),"native wrap and rollback",failures);
-            foreach(bool returning in new[]{false,true})foreach(string boundary in new[]{"focus","ui","off","selection","source","death","boss","unknown"})
+            foreach(bool returning in new[]{false,true})foreach(string boundary in new[]{"focus","f5","ui","off","selection","source","death","boss","unknown"})
                 if(!returning || boundary!="unknown")Check(()=>LoanSafety(context,host,input,returning,boundary),"loan safety "+returning+"/"+boundary,failures);
             Require(failures.Count==0,"finite simulation waits: "+string.Join("; ",failures));
             Console.WriteLine("PASS G09 finite waits: equal native simulation with 0/1/3 empty outer updates; late seed, expiry, real silt/slush motion, delayed rod completion and single recast.");
@@ -177,11 +177,22 @@ namespace NativeWorldTextProbe
             var p=NativeToolExecutionChecks.Reset(context,host,input,ItemID.WoodFishingPole,17,17);
             Step(context,input,0,true,new Vector2(880,620));for(int i=0;i<40;i++)Step(context,input,0);
             NativeToolsChecks.SetMode(host,0,1);object fish=Get(host,"Fishing");long token=(long)Call(fish,"Prepare",p);
-            Require(token>0,"safety native cast establishes loan");if(returning)Call(fish,"NetFinished",token,false,false);
-            ulong before=(ulong)Get(host,"Tick");
+            Require(token>0,"safety native cast establishes loan");
+            if(boundary=="focus" || boundary=="f5")
+            {
+                // Exercise a real borrowed selection before requiring a new
+                // cast; an untouched existing bobber correctly forbids recast.
+                p.inventory[12].SetDefaults(ItemID.BugNet);object selected=p.selectedItemState;
+                typeof(Player.SelectedItemState).GetMethod("OverrideSelection",Flags).Invoke(selected,new object[]{12});p.selectedItemState=(Player.SelectedItemState)selected;
+                foreach(var q in Main.projectile.Where(q=>q.active && q.bobber))Call(q,"AI_061_FishingBobber");
+                Require(!Main.projectile.Any(q=>q.active && q.bobber),"native borrowed net ends original bobber");
+            }
+            if(returning)Call(fish,"NetFinished",token,false,false);
+            ulong before=(ulong)Get(host,"Tick");bool updates=Main.CanUpdateGameplay;
             try
             {
-                if(boundary=="focus")Set(input,"foregroundWindow",(Func<IntPtr>)(()=>IntPtr.Zero));
+                if(boundary=="focus"){Main.ToggleGameplayUpdates(true);Set(input,"foregroundWindow",(Func<IntPtr>)(()=>IntPtr.Zero));}
+                else if(boundary=="f5")NativeF5AutomationChecks.Open(context);
                 else if(boundary=="ui")Main.drawingPlayerChat=true;
                 else if(boundary=="off")NativeToolsChecks.SetMode(host,0,0);
                 else if(boundary=="selection")p.selectedItemState.Select(0);
@@ -190,12 +201,26 @@ namespace NativeWorldTextProbe
                 else if(boundary=="unknown")Call(fish,"NetFinished",token,false,true);
                 else {Main.npc[1].SetDefaults(4);Main.npc[1].active=true;Main.npc[1].life=100;Call(Get(host,"Npcs"),"BeginTick");}
                 NativeToolExecutionChecks.Outer(context,input,1);
+                if(boundary=="focus" || boundary=="f5")
+                {
+                    Require((ulong)Get(host,"Tick")==before && (bool)Get(fish,"Active") && (long)Get(fish,"Token")==token,"background empty update retains the same loan without advancing simulation");
+                    if(!returning)Call(fish,"NetFinished",token,false,false);
+                    for(int i=0;i<100;i++)Step(context,input,0);
+                    Require(!(bool)Get(fish,"Active") && (bool)Get(fish,"RecastAttempted") && (bool)Get(fish,"RecastObserved"),"loan completes one actual recast with "+boundary);
+                    if(boundary=="f5")Require((bool)Get(Get(Get(context,"Shell"),"State"),"Visible"),"borrowed-net return completes while F5 remains open");
+                    var bobber=Main.projectile.Single(q=>q.active && q.bobber);Call(fish,"NetFinished",token,false,false);
+                    for(int i=0;i<20;i++)Step(context,input,0);
+                    Require(bobber.active && Main.projectile.Count(q=>q.active && q.bobber)==1,"duplicate background completion cannot pull or repeat recast");
+                    return;
+                }
                 Require((ulong)Get(host,"Tick")==before && !(bool)Get(fish,"Active"),"unsampled "+boundary+" cancels loan before any native time advances");
             }
             finally
             {
                 Main.drawingPlayerChat=false;p.dead=false;Main.npc[1].active=false;Call(Get(host,"Npcs"),"BeginTick");
                 Set(input,"foregroundWindow",(Func<IntPtr>)(()=>new IntPtr(1)));
+                Main.ToggleGameplayUpdates(updates);
+                if(boundary=="f5"){Call(Get(Get(context,"Shell"),"State"),"Close");Call(Get(context,"Shell"),"EndPointerLayer");p.mouseInterface=false;}
                 NativeToolExecutionChecks.Sample(context,input,Away,false);
                 NativeToolsChecks.SetMode(host,0,0);
             }

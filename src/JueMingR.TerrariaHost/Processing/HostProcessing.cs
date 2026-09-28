@@ -23,6 +23,7 @@ namespace JueMingR.TerrariaHost.Processing
         internal readonly AutomaticExtraction Extraction;
         internal readonly AutomaticReforge Reforge;
         internal Func<bool> CanInterface;
+        internal Func<bool> CanAutomaticInterface;
         internal Func<bool> BankGuardsReady;
         internal Func<bool> YieldTools;
         internal Func<Item,bool> ToolsYieldProtection;
@@ -68,8 +69,12 @@ namespace JueMingR.TerrariaHost.Processing
             }
         }
         internal bool Admit(Player p)
+        {return AdmitCore(p,false);}
+        internal bool AdmitAutomatic(Player p)
+        {return AdmitCore(p,true);}
+        private bool AdmitCore(Player p,bool automatic)
         {
-            return Available && p!=null && ReferenceEquals(p,Player) && Input.CanStartActions && CanInterface!=null && CanInterface() &&
+            return Available && p!=null && ReferenceEquals(p,Player) && (automatic?Input.CanRunAutomaticActions && (CanAutomaticInterface?.Invoke()??false):Input.CanStartActions && (CanInterface?.Invoke()??false)) &&
                 !Main.gamePaused && !p.dead && !p.CCed && !p.cursed && !p.noItems && !p.isOperatingAnotherEntity && !p.HasLockedInventory() &&
                 !Items.World.Busy && !Main.mapFullscreen && !Main.inFancyUI && !Main.onlyDrawFancyUI && !Main.ingameOptionsWindow &&
                 !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest && !PlayerInput.WritingText &&

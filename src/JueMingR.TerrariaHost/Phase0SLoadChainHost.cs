@@ -886,7 +886,7 @@ namespace JueMingR.TerrariaHost
                     Phase0TBiomeRuntime.Create(enabled, preferences.BiomeLoaded && preferences.BiomeEnabled);
                 if (itemPackage)
                 {
-                    items = new Items.HostItems(gameDirectory, runtime.SharedRuntime, () => Input.CanStartActions);
+                    items = new Items.HostItems(gameDirectory, runtime.SharedRuntime, () => Input.CanRunAutomaticActions, () => Input.CanStartActions);
                     if (quickPackage)
                     {
                         QuickItems = new QuickItems.HostQuickItems(gameDirectory,runtime.SharedRuntime,items,Input);
@@ -931,10 +931,10 @@ namespace JueMingR.TerrariaHost
                 hotkeyFeedback = hotkeys?.Feedback;
                 Shell = new F5Shell(runtime, preferences, notes, items, Input, hotkeys, Labels, WorldTargets, WorldObjects, Information, Guidance, DeathRecords, MapFeatures, Footprints, Browser?.Announcements) { LayersReady = f5LayersReady };
                 Browser?.Attach(Shell, hotkeys);
-                if(Tools!=null){Shell.AttachTools(Tools);Tools.CanInterface=()=>Shell.CanProcessingInput;Tools.Feedback=ShortFeedback;}
+                if(Tools!=null){Shell.AttachTools(Tools);Tools.CanInterface=()=>Shell.CanAutomaticProcessingInput;Tools.CanMouseInterface=()=>Shell.CanAutomaticMouseInterface;Tools.Feedback=ShortFeedback;}
                 if(Fishing!=null)Shell.AttachFishing(Fishing);
-                if(Processing!=null){Shell.AttachProcessing(Processing);Processing.CanInterface=()=>Shell.CanProcessingInput;Processing.BankGuardsReady=()=>Recovery!=null && Recovery.Available;}
-                if(Recovery!=null){Shell.AttachRecovery(Recovery);Recovery.CanGameplay=()=>Shell.CanTargetInput && !Terraria.Main.mapFullscreen && !Terraria.Main.LocalPlayer.mouseInterface;Recovery.CanBuffInterface=()=>Shell.CanAutomaticBuff;Recovery.IsQuickUse=()=>QuickItems!=null && (QuickItems.Use.Active || QuickItems.Use.InNativeUse);}
+                if(Processing!=null){Shell.AttachProcessing(Processing);Processing.CanInterface=()=>Shell.CanProcessingInput;Processing.CanAutomaticInterface=()=>Shell.CanAutomaticProcessingInput;Processing.BankGuardsReady=()=>Recovery!=null && Recovery.Available;}
+                if(Recovery!=null){Shell.AttachRecovery(Recovery);Recovery.CanGameplay=()=>Shell.CanAutomaticTargetInput && !Terraria.Main.mapFullscreen;Recovery.CanMouseInterface=()=>Shell.CanAutomaticMouseInterface;Recovery.CanBuffInterface=()=>Shell.CanAutomaticBuff;Recovery.IsQuickUse=()=>QuickItems!=null && (QuickItems.Use.Active || QuickItems.Use.InNativeUse);}
                 if ((PackageId.StartsWith("about-help-feedback-", StringComparison.Ordinal) || (PackageId.StartsWith("recovery-buffs-services-", StringComparison.Ordinal) || PackageId.StartsWith("continuous-processing-", StringComparison.Ordinal))))
                 { onboarding = new Onboarding.HostOnboarding(gameDirectory); runtime.SharedRuntime.AddFeature(onboarding); Shell.AttachOnboarding(onboarding); }
                 if (ShortFeedback != null)
@@ -942,7 +942,7 @@ namespace JueMingR.TerrariaHost
                     runtime.SharedRuntime.AddFeature(ShortFeedback); Shell.ShortFeedback = ShortFeedback;
                     if (items != null) items.Operations.DiscardFeedback.Present = ShortFeedback.Discard;
                 }
-                if (CoinDeposit != null) { Shell.AttachCoinDeposit(CoinDeposit); CoinDeposit.CanGameplay = () => Shell.CanTargetInput && !Terraria.Main.mapFullscreen; }
+                if (CoinDeposit != null) { Shell.AttachCoinDeposit(CoinDeposit); CoinDeposit.CanGameplay = () => Shell.CanAutomaticTargetInput && !Terraria.Main.mapFullscreen; }
                 if (QuickItems != null) { Shell.AttachQuickItems(QuickItems); QuickItems.CanGameplay=()=>Shell.CanTargetInput && !Terraria.Main.mapFullscreen && !Terraria.Main.LocalPlayer.mouseInterface; }
                 if (MapFeatures != null) { MapFeatures.Layer.UiOwnsInput = () => Shell.BlocksMapInput || Input.MapPointerOwned; MapFeatures.Layer.CloseForLocate = Shell.CloseForMapLocate; }
                 if (Footprints != null) Footprints.Layer.UiOwnsInput = () => Shell.BlocksMapInput || MapFeatures != null && MapFeatures.Layer.OwnsPointer;

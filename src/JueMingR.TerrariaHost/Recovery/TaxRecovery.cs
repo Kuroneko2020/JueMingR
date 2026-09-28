@@ -13,7 +13,7 @@ namespace JueMingR.TerrariaHost.Recovery
         internal long NativeCalls;
         internal Exception LastFailure;
 #endif
-        internal TaxRecovery(HostRecovery host,NativeNpcObservation npcs){this.host=host;Target=new NearbyServiceTarget(npcs,441);}
+        internal TaxRecovery(HostRecovery host,NativeNpcObservation npcs){this.host=host;Target=new NearbyServiceTarget(npcs,441,()=>host.CanMouseInterface?.Invoke()??!host.Input.IsFocused);}
         internal void Reset(){unconfirmed=refused=false;Target.Reset();}
         internal void ObserveSettlement()
         {

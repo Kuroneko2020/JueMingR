@@ -35,6 +35,7 @@
     <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\AnnouncementControls.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\IBrowserPage.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\FootprintPopup.cs" />
+    <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\F5PopupPlacement.cs" />
     <Compile Include="..\EntityLabels\*.cs" />
     <Compile Include="..\WorldTargets\*.cs" />
     <Compile Include="..\WorldObjectText\*.cs" />
