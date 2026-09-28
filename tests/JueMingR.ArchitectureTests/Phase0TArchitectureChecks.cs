@@ -19,6 +19,8 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Features.Tools.MiningPoint", "JueMingR.Features.Tools.MiningRegion", "JueMingR.Features.Tools.ReplantPoint", "JueMingR.Features.Tools.ReplantQueue",
                 "JueMingR.Features.Fishing.FishKind", "JueMingR.Features.Fishing.FishKey", "JueMingR.Features.Fishing.FishFilter",
                 "JueMingR.Features.Fishing.FishList", "JueMingR.Features.Fishing.FishPreset", "JueMingR.Features.Fishing.FishingOptions",
+                "JueMingR.Features.Combat.CombatOptions", "JueMingR.Features.Combat.CombatSettings", "JueMingR.Features.Combat.BattleEndLedger",
+                "JueMingR.Features.Combat.FacingCandidate", "JueMingR.Features.Combat.FacingSelector",
                 "JueMingR.Features.Fishing.FishingCodec", "JueMingR.Features.Fishing.FishingSettings", "JueMingR.Features.Fishing.PlayerNameRules",
                 "JueMingR.Features.Fishing.FishingGear", "JueMingR.Features.Fishing.FishingGearCandidate", "JueMingR.Features.Fishing.FishingEquipmentCatalog",
                 "JueMingR.Features.Recovery.RecoveryRules", "JueMingR.Features.Recovery.RecoveryOptions", "JueMingR.Features.Recovery.RecoveryCodec", "JueMingR.Features.Recovery.RecoverySettings",

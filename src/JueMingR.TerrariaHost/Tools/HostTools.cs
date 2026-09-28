@@ -23,6 +23,7 @@ namespace JueMingR.TerrariaHost.Tools
         internal readonly HostInputState Input;
         internal readonly NativeNpcObservation Npcs;
         internal readonly ToolUse Use;
+        internal Combat.HostCombat Combat;
         internal readonly AutoCapture Capture;
         internal readonly HerbHarvest Herbs;
         internal readonly AutoMining Mining;
@@ -32,6 +33,8 @@ namespace JueMingR.TerrariaHost.Tools
         internal Func<bool> CanMouseInterface;
         internal Func<bool> CanFishingInterface;
         internal Func<bool> OtherUseReady;
+        internal bool ManualLeft {get{return PlayerInput.Triggers.Current.MouseLeft && !(Combat?.Handoff.AllowsTools??false);}}
+        internal bool ManualRight {get{return PlayerInput.Triggers.Current.MouseRight && !(Combat?.Handoff.AllowsTools??false);}}
         internal Func<bool> FishingEnabled;
         internal Func<Player,ToolIntent> FishingChoice;
         internal Action<Player,Item> FishingStarted;
@@ -135,14 +138,14 @@ namespace JueMingR.TerrariaHost.Tools
                 !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest && !PlayerInput.WritingText && Main.CurrentInputTextTakerOverride==null &&
                 !Main.ServerSideCharacter && (Main.ActivePlayerFileData==null || !Main.ActivePlayerFileData.ServerSideCharacter) && !WorldGen.isGeneratingOrLoadingWorld &&
                 !PlayerInput.UsingGamepadUI && p.chest==-1 && p.talkNPC<0 && p.sign<0 && Main.npcShop==0 && (CanMouseInterface?.Invoke()??(!Input.IsFocused || !p.mouseInterface)) && Main.mouseItem!=null && Main.mouseItem.IsAir &&
-                (!Main.playerInventory || heldInventory && p.selectedItem>=0 && p.selectedItem<10) && !PlayerInput.Triggers.Current.MouseRight && !PlayerInput.Triggers.Current.SmartSelect;
+                (!Main.playerInventory || heldInventory && p.selectedItem>=0 && p.selectedItem<10) && !ManualRight && !PlayerInput.Triggers.Current.SmartSelect;
         }
         internal bool Candidate(Player p,int i,bool seed=false)
         {return i>=0 && i<50 && p.inventory[i]!=null && !p.inventory[i].IsAir && !Items.Ownership.IsProtected(i) && !p.inventoryChestStack[i] && !Items.World.ManualMaterials.Contains(p.inventory[i]) && !(priorProtection?.Invoke(p.inventory[i])??false) && (seed || !Herbs.ProtectSeed(p.inventory[i]));}
         internal bool ProtectedAfterYield(Item item){return (priorProtection?.Invoke(item)??false) || Fishing.ProtectRod(item) || Herbs.ProtectSeed(item);}
         internal ToolIntent Choose(Player p)
         {
-            if(!Enabled || Use.Active || PlayerInput.Triggers.Current.MouseLeft || p.selectedItemState.HasBufferedChange)return null;
+            if(!Enabled || Use.Active || ManualLeft || p.selectedItemState.HasBufferedChange)return null;
             var restore=Fishing.Choose(p);if(restore!=null)return restore;
             for(int i=0;i<4;i++)
             {
@@ -159,7 +162,7 @@ namespace JueMingR.TerrariaHost.Tools
             bool other=kind!=ToolKind.Capture && Capture.Ready(p) || kind!=ToolKind.Harvest && Herbs.Ready(p) || kind==ToolKind.Harvest && Herbs.SeedReady(p) || kind!=ToolKind.Mining && Mining.Ready(p);
             return external || other;
         }
-        internal void ManualSelection(){SelectionIntent++;ManualSelectionFrame=Input.Frame;Fishing.Cancel();Use.Cancel();FishingManualSelection?.Invoke();}
+        internal void ManualSelection(){SelectionIntent++;ManualSelectionFrame=Input.Frame;Combat?.Use.ManualSelection();Combat?.Handoff.Reset();Fishing.Cancel();Use.Cancel();FishingManualSelection?.Invoke();}
         internal void Yield(){Use.Cancel();if(Player!=null && Player.selectedItemState.CanChangeSelectedItemImmediately)Use.Retire();NextUseFrame=Input.Frame+1;}
         internal void HoldUnknown(int slot){unknown|=1UL<<slot;Items.Ownership.HoldInterruptedSource(Runtime.Generation,unknown);}
         public void OnSessionStarted()

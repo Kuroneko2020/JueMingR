@@ -20,6 +20,8 @@ namespace JueMingR.ArchitectureTests
                     Console.WriteLine("Selected checks: failures=" + selectedFailures.Count);
                     return selectedFailures.Count == 0 ? 0 : 1;
                 }
+                if(args.Length==1 && args[0]=="--combat")
+                {var checks=new List<string>();CombatChecks.Check(checks);foreach(var failure in checks)Console.Error.WriteLine(failure);Console.WriteLine("Combat failures="+checks.Count);return checks.Count==0?0:1;}
                 if(args.Length==1 && args[0]=="--fishing")
                 {var checks=new List<string>();FishingChecks.Check(checks);FishingStorageChecks.Check(checks);InformationTests.Check(checks);foreach(var failure in checks)Console.Error.WriteLine(failure);Console.WriteLine("Fishing failures="+checks.Count);return checks.Count==0?0:1;}
                 if(args.Length==1 && args[0]=="--tools")

@@ -31,7 +31,7 @@ namespace JueMingR.TerrariaHost.QuickItems
             if (Active || current==null || !host.Input.CanStartActions || host.CanGameplay==null || !host.CanGameplay() ||
                 !current.selectedItemState.CanChangeSelectedItemImmediately || current.CCed || current.noItems || current.isOperatingAnotherEntity ||
                 current.HasLockedInventory() || Main.LocalPlayerHasPendingInventoryActions() || host.Items.World.Busy ||
-                PlayerInput.Triggers.Current.MouseRight || PlayerInput.Triggers.Current.SmartSelect || PlayerInput.Triggers.Current.MouseLeft || Main.mouseLeft || !Main.mouseItem.IsAir)
+                PlayerInput.Triggers.Current.SmartSelect || !(host.HeldUsePermit?.Invoke()??false) && (PlayerInput.Triggers.Current.MouseRight || PlayerInput.Triggers.Current.MouseLeft || Main.mouseLeft) || !Main.mouseItem.IsAir)
             { host.Feedback(HostQuickItems.FeedbackKind.NotExecuted,notify:false); return; }
             for(int i=0;i<50;i++) { Item item=current.inventory[i]; candidates[i]=item==null ? default(QuickItemCandidate) :
                 new QuickItemCandidate(i,item.type,item.stack,item.useStyle!=0,host.Items.Ownership.IsProtected(i)); }
@@ -78,7 +78,7 @@ namespace JueMingR.TerrariaHost.QuickItems
         {
             // A later physical use press takes over. The native buffered return
             // stops repeating our provider without clearing the player's input.
-            if(ReferenceEquals(current,player) && selected && pulsed && PlayerInput.Triggers.Current.MouseLeft)Cancel();
+            if(ReferenceEquals(current,player) && selected && pulsed && PlayerInput.Triggers.Current.MouseLeft && !(host.HeldUsePermit?.Invoke()??false))Cancel();
             if(!ReferenceEquals(current,player) || !selected || pulsed || checkedItem)return;
             if(cancelled || current.selectedItem!=choice.Slot || current.CCed || !StillAdmitted ||
                 !ReferenceEquals(current.inventory[choice.Slot],provider)) {Cancel();return;}
