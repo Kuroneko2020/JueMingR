@@ -37,10 +37,31 @@ function Test-WorkloadEvidence {
     foreach ($key in @('schemaVersion','status','inputFingerprint','name','signature','executionId','sourceCommit','sourceFingerprint','milliseconds','outputs')) {
         if ($null -eq $Evidence.PSObject.Properties[$key]) { return $false }
     }
-    return $Evidence.schemaVersion -eq 1 -and $Evidence.status -ceq 'PASS' -and
+    return $Evidence.schemaVersion -eq 2 -and $Evidence.status -ceq 'PASS' -and
         $Evidence.inputFingerprint -ceq $Fingerprint -and $Evidence.name -ceq $Name -and
         $Evidence.signature -ceq $Signature -and $Evidence.executionId -match '^[0-9a-f]{32}$' -and
         $Evidence.sourceCommit -match '^[0-9a-f]{40}$' -and $Evidence.sourceFingerprint -match '^[0-9A-F]{64}$' -and @($Evidence.outputs).Count -gt 0
+}
+function Get-WorkloadCheckFingerprint {
+    param($InputIdentity, [string] $Name)
+    # Only reviewed leaf assertion files may be omitted from another CPU check.
+    # NativeChecks/CheckCatalog, shared helpers, projects, all production and all
+    # recipes remain common inputs. New consumers must update this map in the
+    # same change (the dispatcher change itself invalidates all old evidence).
+    # Page composition is also used by ToolsVisual, outside this CPU cache.
+    $leaves = @{
+        'tests/NativeWorldTextProbe/NativePageCompositionChecks.cs'=@('native-PageCompositionCpu')
+        'tests/NativeWorldTextProbe/NativeBackgroundAutomationChecks.cs'=@('native-BackgroundCpu','native-F5AutomationCpu')
+        'tests/NativeWorldTextProbe/NativeToolCadenceChecks.cs'=@('native-ToolsCadence')
+        'tests/NativeWorldTextProbe/NativeToolsWorkloadChecks.cs'=@('native-ToolsWorkload')
+        'tests/Workload/Invoke-WorkloadRoutingChecks.ps1'=@('workload-Routing')
+        'tests/Workload/Invoke-WorkloadEvidenceChecks.ps1'=@('workload-Evidence')
+    }
+    $rows = @($InputIdentity.inputs | Where-Object {
+        $path = ($_ -split ':',2)[0]
+        -not $leaves.ContainsKey($path) -or $leaves[$path] -contains $Name
+    })
+    return Get-WorkloadHash $rows
 }
 function Write-WorkloadJson {
     param([string] $Path, $Value)
@@ -67,7 +88,7 @@ function Test-WorkloadOutputs {
             (Get-Item -LiteralPath $path).Length -ne $output.length -or
             (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -cne $output.sha256) { return $false }
     }
-    $actual = @(Get-ChildItem -LiteralPath (Join-Path $WorkRoot 'bin') -Recurse -File | Where-Object { $_.Extension -in @('.dll','.exe','.pdb') })
+    $actual = @(Get-ChildItem -LiteralPath (Join-Path $WorkRoot 'bin') -Recurse -File)
     return $actual.Count -eq $seen.Count
 }
 function Test-WorkloadCoverage {
@@ -97,11 +118,73 @@ function Get-WorkloadEvidenceOutputs {
     $paths = @($Record.outputs | ForEach-Object { Join-Path (Join-Path $Root 'artifacts/build/Debug/work') $_.path })
     $paths += $Executable
     if ($Executable.StartsWith((Join-Path $Root 'artifacts/build/Debug/checks'), [StringComparison]::OrdinalIgnoreCase)) {
-        $paths += @(Get-ChildItem -LiteralPath (Split-Path -Parent $Executable) -File | Where-Object { $_.Extension -in @('.exe','.dll','.pdb') } | ForEach-Object {$_.FullName})
+        $paths += @(Get-ChildItem -LiteralPath (Split-Path -Parent $Executable) -File | ForEach-Object {$_.FullName})
     }
     foreach ($path in @($paths | Sort-Object -Unique)) {
         [ordered]@{path=$path; length=(Get-Item -LiteralPath $path).Length; sha256=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash}
     }
+}
+function Save-WorkloadArtifacts {
+    param([string] $Root, $Outputs)
+    # Content-addressed snapshots preserve the actual original execution bytes
+    # when a later compile changes only an unrelated leaf test or Git metadata.
+    # No old binary is relabelled as the current build or shipped in a package.
+    $key = Get-WorkloadHash @($Outputs | ForEach-Object {$_.path+':'+$_.sha256})
+    $directory = Join-Path $Root ('artifacts/build/evidence-artifacts/'+$key)
+    [IO.Directory]::CreateDirectory($directory) | Out-Null
+    $index=0
+    foreach ($output in $Outputs) {
+        $path=Join-Path $directory ([string]$index+'-'+[IO.Path]::GetFileName($output.path)); $index++
+        if (-not [IO.File]::Exists($path)) { [IO.File]::Copy($output.path,$path,$false) }
+        [ordered]@{path=$path;livePath=$output.path;length=$output.length;sha256=$output.sha256}
+    }
+}
+function Remove-UnusedWorkloadArtifacts {
+    param([string] $Root, $Entries)
+    $base=[IO.Path]::GetFullPath((Join-Path $Root 'artifacts/build/evidence-artifacts')).TrimEnd('\')+'\'
+    if (-not [IO.Directory]::Exists($base)) { return }
+    $used=@($Entries | ForEach-Object {$_.outputs} | ForEach-Object {Split-Path -Parent $_.path} | Sort-Object -Unique)
+    foreach ($directory in @(Get-ChildItem -LiteralPath $base -Directory)) {
+        if ($directory.Name -notmatch '^[0-9A-F]{64}$' -or -not $directory.FullName.StartsWith($base,[StringComparison]::OrdinalIgnoreCase)) { throw 'Unexpected evidence archive path.' }
+        if ($used -notcontains $directory.FullName) { Remove-Item -LiteralPath $directory.FullName -Recurse -Force }
+    }
+}
+function Test-WorkloadLiveArtifacts {
+    param($Outputs, [bool] $SameInputs)
+    $directories=@($Outputs | ForEach-Object {Split-Path -Parent $_.livePath} | Sort-Object -Unique)
+    foreach ($directory in $directories) {
+        # A fresh compile can remove an unneeded fixture directory. Its original
+        # archived execution remains evidence; it is not a current executable.
+        if (-not [IO.Directory]::Exists($directory)) { continue }
+        $expected=@($Outputs | Where-Object {(Split-Path -Parent $_.livePath) -ceq $directory})
+        # System executables are individual environment inputs, not an owned
+        # fixture directory whose entire OS file set belongs to this check.
+        if ($directory -notmatch '[\\/]artifacts[\\/]build[\\/]Debug[\\/]') {
+            foreach ($output in $expected) { if ((Get-FileHash -LiteralPath $output.livePath -Algorithm SHA256).Hash -cne $output.sha256) {return $false} }
+            continue
+        }
+        $actual=@(Get-ChildItem -LiteralPath $directory -File)
+        if ((@($actual.Name | Sort-Object) -join '|') -cne (@($expected | ForEach-Object {[IO.Path]::GetFileName($_.livePath)} | Sort-Object) -join '|')) {return $false}
+        foreach ($output in $expected) {
+            # Cross-input reuse is a source proof for the archived run, not a
+            # claim that rebuilt assemblies have identical metadata. Runtime
+            # configuration is never exempted from live validation.
+            if ($SameInputs -or [IO.Path]::GetExtension($output.livePath) -notin @('.dll','.exe','.pdb')) {
+                if ((Get-FileHash -LiteralPath $output.livePath -Algorithm SHA256).Hash -cne $output.sha256) {return $false}
+            }
+        }
+    }
+    return $true
+}
+function Test-WorkloadReusable {
+    param([string] $Root, $Evidence, $InputIdentity, [string] $Name, [string] $Signature)
+    if (-not (Test-WorkloadEvidence $Evidence (Get-WorkloadCheckFingerprint $InputIdentity $Name) $Name $Signature)) {return $false}
+    if ($null -eq $Evidence.PSObject.Properties['allInputFingerprint'] -or $null -eq $Evidence.PSObject.Properties['inputs'] -or
+        (Get-WorkloadHash @($Evidence.inputs)) -cne $Evidence.allInputFingerprint -or
+        (Get-WorkloadCheckFingerprint $Evidence $Name) -cne $Evidence.inputFingerprint) {return $false}
+    $debug=Read-WorkloadJson (Join-Path $Root 'artifacts/build/Debug/build-record.json')
+    $sameBuild=$null -ne $debug -and $Evidence.detectionCommit -ceq $debug.commit -and $Evidence.allInputFingerprint -ceq $InputIdentity.fingerprint
+    return (Test-WorkloadEvidenceOutputs $Root $Evidence.outputs) -and (Test-WorkloadLiveArtifacts $Evidence.outputs $sameBuild)
 }
 function Test-WorkloadEvidenceOutputs {
     param([string] $Root, $Outputs)
@@ -179,13 +262,12 @@ function Test-WorkloadDelivery {
         $required = @($plan | ForEach-Object {$_.name})
         if (-not (Test-WorkloadCoverage $Record.workload $required $inputIdentity.fingerprint)) { return $false }
         $cache = Read-WorkloadJson (Join-Path $Root 'artifacts/build/workload-evidence.json')
-        if ($null -eq $cache -or $cache.schemaVersion -ne 1 -or $cache.inputFingerprint -cne $inputIdentity.fingerprint) { return $false }
+        if ($null -eq $cache -or $cache.schemaVersion -ne 2) { return $false }
         foreach ($check in $plan) {
             $found = @($cache.results | Where-Object {$_.name -ceq $check.name})
             $receipt = @($Record.workload.results | Where-Object {$_.name -ceq $check.name})
             if ($found.Count -ne 1 -or $receipt.Count -ne 1 -or $receipt[0].executionId -cne $found[0].executionId -or
-                -not (Test-WorkloadEvidence $found[0] $inputIdentity.fingerprint $check.name (Get-WorkloadHash (@($check.executable)+@($check.arguments)))) -or
-                -not (Test-WorkloadEvidenceOutputs $Root $found[0].outputs)) { return $false }
+                -not (Test-WorkloadReusable $Root $found[0] $inputIdentity $check.name (Get-WorkloadHash (@($check.executable)+@($check.arguments))))) { return $false }
         }
         return $true
     } catch { return $false }

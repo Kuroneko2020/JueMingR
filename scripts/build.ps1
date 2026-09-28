@@ -143,9 +143,7 @@ if ($LASTEXITCODE -ne 0) {
     throw 'ArchitectureTests failed.'
 }
 
-$declaredFiles = @(Get-ChildItem -LiteralPath (Join-Path $workRoot 'bin') -Recurse -File | Where-Object {
-    $_.Extension -in @('.dll', '.exe', '.pdb')
-} | Sort-Object FullName)
+$declaredFiles = @(Get-ChildItem -LiteralPath (Join-Path $workRoot 'bin') -Recurse -File | Sort-Object FullName)
 if ($declaredFiles.Count -eq 0) {
     throw 'The build produced no declared DLL, EXE, or PDB outputs.'
 }
@@ -215,7 +213,7 @@ if ($Configuration -ceq 'Release') {
         $debugRecord = [ordered]@{}
         foreach ($key in $record.Keys) { $debugRecord[$key] = $record[$key] }
         $debugRecord.configuration = 'Debug'
-        $debugRecord.outputs = @(Get-ChildItem -LiteralPath (Join-Path $debugWork 'bin') -Recurse -File | Where-Object { $_.Extension -in @('.dll', '.exe', '.pdb') } | Sort-Object FullName | ForEach-Object {
+        $debugRecord.outputs = @(Get-ChildItem -LiteralPath (Join-Path $debugWork 'bin') -Recurse -File | Sort-Object FullName | ForEach-Object {
             if ($forbiddenNames -icontains $_.Name -or $_.Name.StartsWith('JueMingZ', [StringComparison]::OrdinalIgnoreCase) -or $_.Name.StartsWith('TerrariaHelper', [StringComparison]::OrdinalIgnoreCase)) { throw 'Forbidden detection output.' }
             [ordered]@{ path = Get-RelativePath $debugWork $_.FullName; length = $_.Length; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash }
         })

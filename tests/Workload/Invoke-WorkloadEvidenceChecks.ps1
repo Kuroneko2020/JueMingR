@@ -16,13 +16,35 @@ foreach ($group in @('fishing-host','tools-host','quick-items-host','coin-deposi
     Assert-Evidence ($shared.groups -contains $group) ('shared item provider must include ' + $group)
 }
 Write-Output 'PASS: local page exclusions and transitive shared item consumers.'
+$before = [pscustomobject]@{inputs=@('src/Provider.cs:A','tests/NativeWorldTextProbe/NativePageCompositionChecks.cs:A','environment:x:A')}
+$after = [pscustomobject]@{inputs=@('src/Provider.cs:A','tests/NativeWorldTextProbe/NativePageCompositionChecks.cs:B','environment:x:A')}
+Assert-Evidence ((Get-WorkloadCheckFingerprint $before 'native-FishingCpu') -ceq (Get-WorkloadCheckFingerprint $after 'native-FishingCpu')) 'local page assertion repair preserves unrelated fishing inputs'
+Assert-Evidence ((Get-WorkloadCheckFingerprint $before 'native-PageCompositionCpu') -cne (Get-WorkloadCheckFingerprint $after 'native-PageCompositionCpu')) 'local page assertion repair invalidates its actual consumer'
+$after.inputs[0]='src/Provider.cs:B'
+Assert-Evidence ((Get-WorkloadCheckFingerprint $before 'native-FishingCpu') -cne (Get-WorkloadCheckFingerprint $after 'native-FishingCpu')) 'shared production changes still invalidate'
 $fixture = Join-Path ([IO.Path]::GetTempPath()) ('JueMingR-evidence-' + [Guid]::NewGuid().ToString('N'))
 [IO.Directory]::CreateDirectory($fixture) | Out-Null
 try {
+    $bin=Join-Path $fixture 'artifacts/build/Debug/checks/probe'
+    [IO.Directory]::CreateDirectory($bin) | Out-Null
+    $exe=Join-Path $bin 'probe.exe'; $config=$exe+'.config'
+    [IO.File]::WriteAllText($exe,'isolated artifact'); [IO.File]::WriteAllText($config,'<configuration/>')
+    $captured=@(Get-WorkloadEvidenceOutputs $fixture ([pscustomobject]@{outputs=@()}) $exe)
+    Assert-Evidence (@($captured | Where-Object {$_.path -ceq $config}).Count -eq 1) 'actual exe.config is captured'
+    $archived=@(Save-WorkloadArtifacts $fixture $captured)
+    Assert-Evidence (Test-WorkloadLiveArtifacts $archived $true) 'complete original fixture directory matches'
+    [IO.File]::WriteAllText($config,'invalid runtime configuration')
+    Assert-Evidence (-not (Test-WorkloadLiveArtifacts $archived $false)) 'runtime config changes invalidate even across leaf revisions'
+    Assert-Evidence (Test-WorkloadEvidenceOutputs $fixture $archived) 'original execution bytes remain independently verifiable'
+    [IO.File]::WriteAllText($config,'<configuration/>')
+    [IO.File]::WriteAllText((Join-Path $bin 'extra.dll'),'unexpected dependency')
+    Assert-Evidence (-not (Test-WorkloadLiveArtifacts $archived $true)) 'new dependency cannot hide outside the original file list'
+    [IO.File]::WriteAllText($archived[0].path,'damaged original')
+    Assert-Evidence (-not (Test-WorkloadEvidenceOutputs $fixture $archived)) 'damaged archived execution cannot supply evidence'
     $artifact = Join-Path $fixture 'check.bin'
     [IO.File]::WriteAllText($artifact, 'original')
     $output = [pscustomobject]@{path=$artifact; length=8; sha256=(Get-FileHash -LiteralPath $artifact -Algorithm SHA256).Hash}
-    $evidence = [pscustomobject]@{schemaVersion=1; status='PASS'; name='one'; signature='signature'; inputFingerprint='input';
+    $evidence = [pscustomobject]@{schemaVersion=2; status='PASS'; name='one'; signature='signature'; inputFingerprint='input';
         executionId=[Guid]::NewGuid().ToString('N'); sourceCommit=('a'*40); sourceFingerprint=('B'*64); milliseconds=3; outputs=@($output)}
     Assert-Evidence (Test-WorkloadEvidence $evidence 'input' 'one' 'signature') 'valid execution identity can be reused'
     Assert-Evidence (Test-WorkloadEvidenceOutputs $root $evidence.outputs) 'actual recorded artifact must still match'

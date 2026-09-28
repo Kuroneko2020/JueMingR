@@ -33,19 +33,20 @@ $catalog = @(& $architecture --list-checks)
 if ($LASTEXITCODE -ne 0 -or $catalog.Count -eq 0) { throw 'The business check catalogue is unavailable.' }
 $plan = @(Get-WorkloadPlan $repositoryRoot $checksRoot $architecture $catalog $route.groups)
 $required = @($plan | ForEach-Object { $_.name })
+$knownNames = @((Get-WorkloadPlan $repositoryRoot $checksRoot $architecture $catalog (Get-WorkloadRoute @('scripts/build.ps1')).groups) | ForEach-Object {$_.name})
 if (@($required | Sort-Object -Unique).Count -ne $required.Count) { throw 'Duplicate check identity in plan.' }
 $cachePath = Join-Path $repositoryRoot 'artifacts/build/workload-evidence.json'
 $cache = Read-WorkloadJson $cachePath
 $entries = @{}
-if ($null -ne $cache -and $null -ne $cache.PSObject.Properties['schemaVersion'] -and $cache.schemaVersion -eq 1 -and $cache.inputFingerprint -ceq $inputIdentity.fingerprint) {
-    foreach ($entry in $cache.results) { $entries[$entry.name] = $entry }
+if ($null -ne $cache -and $null -ne $cache.PSObject.Properties['schemaVersion'] -and $cache.schemaVersion -eq 2) {
+    foreach ($entry in $cache.results) { if ($knownNames -contains $entry.name) {$entries[$entry.name] = $entry} }
 } elseif ($null -ne $cache) { Write-Host 'INVALIDATED: executable input/dependency/environment set changed or old evidence schema.' }
 $results = New-Object 'System.Collections.Generic.List[object]'
 $pending = @{}
 $built = @{}
 $currentCheck = 'planning'
 function Save-Evidence {
-    Write-WorkloadJson $cachePath ([ordered]@{ schemaVersion=1; inputFingerprint=$inputIdentity.fingerprint; inputs=$inputIdentity.inputs; results=@($entries.Values | Sort-Object name) })
+    Write-WorkloadJson $cachePath ([ordered]@{ schemaVersion=2; inputFingerprint=$inputIdentity.fingerprint; results=@($entries.Values | Sort-Object name) })
 }
 function Assert-StableInputs {
     $now = Get-WorkloadIdentity $repositoryRoot
@@ -66,8 +67,7 @@ try {
         $currentCheck = $check.name
         $signature = Get-WorkloadHash (@($check.executable) + @($check.arguments))
         $old = if ($entries.ContainsKey($check.name)) { $entries[$check.name] } else { $null }
-        $reuse = -not $Rerun -and (Test-WorkloadEvidence $old $inputIdentity.fingerprint $check.name $signature)
-        if ($reuse) { $reuse = Test-WorkloadEvidenceOutputs $repositoryRoot $old.outputs }
+        $reuse = -not $Rerun -and (Test-WorkloadReusable $repositoryRoot $old $inputIdentity $check.name $signature)
         if ($reuse) {
             Write-Host ('REUSED ' + $check.name + ' from ' + $old.sourceCommit + '/' + $old.executionId + ' original-ms=' + $old.milliseconds)
             $results.Add([ordered]@{name=$check.name; result='PASS'; disposition='REUSED'; milliseconds=0; originalMilliseconds=$old.milliseconds; executionId=$old.executionId; sourceCommit=$old.sourceCommit})
@@ -81,7 +81,9 @@ try {
         $clock = [Diagnostics.Stopwatch]::StartNew()
         Invoke-WorkloadProcess $check.name $check.executable $check.arguments
         $outputs = @(Get-WorkloadEvidenceOutputs $repositoryRoot $record $check.executable)
-        $entry = [ordered]@{schemaVersion=1; name=$check.name; status='PASS'; inputFingerprint=$inputIdentity.fingerprint; signature=$signature;
+        $outputs = @(Save-WorkloadArtifacts $repositoryRoot $outputs)
+        $entry = [ordered]@{schemaVersion=2; name=$check.name; status='PASS'; inputFingerprint=(Get-WorkloadCheckFingerprint $inputIdentity $check.name); signature=$signature;
+            allInputFingerprint=$inputIdentity.fingerprint; inputs=$inputIdentity.inputs;
             executionId=[Guid]::NewGuid().ToString('N'); executedUtc=[DateTime]::UtcNow.ToString('o'); sourceCommit=$identity.commit; sourceFingerprint=$identity.fingerprint;
             detectionCommit=$record.commit; outputs=$outputs; milliseconds=$clock.ElapsedMilliseconds}
         $pending[$check.name] = $entry
@@ -94,6 +96,7 @@ try {
         if (-not (Test-WorkloadEvidenceOutputs $repositoryRoot $entries[$item.name].outputs)) { throw ('Check artifacts changed: ' + $item.name) }
     }
     Save-Evidence
+    Remove-UnusedWorkloadArtifacts $repositoryRoot @($entries.Values)
     $result = [ordered]@{ status=$(if ($Mode -ceq 'Feedback') {'FEEDBACK'} else {'PASS'}); mode=$Mode; commit=$identity.commit; sourceFingerprint=$identity.fingerprint;
         inputFingerprint=$inputIdentity.fingerprint; baseline=$changes.baseline; requestedBaseline=$Baseline; changedPaths=$changes.paths; groups=$route.groups;
         runtime='.NET Framework 4.7.2 target / x86'; requiredChecks=$required; checkCount=$results.Count; results=@($results.ToArray());
