@@ -14,10 +14,15 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if(scope=="CombatCosts")
+            {
+                Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-combat-costs-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
+                NativeQuickItemChecks.Run(context=>NativeCombatCostChecks.Run(context,output),processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_COST_CANDIDATE"));return 0;
+            }
             if(scope=="CombatObservationCpu")
             {
                 Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-combat-observation-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
-                NativeQuickItemChecks.Run(context=>{NativeCombatObservationChecks.Run(context);NativeCombatPredictionChecks.Run(context);NativeCombatGeometryChecks.Run(context);},processing:true,shortFeedback:true);return 0;
+                NativeQuickItemChecks.Run(context=>{NativeCombatObservationChecks.Run(context);NativeCombatBodyChecks.Run(context);NativeCombatTerrainChecks.Run(context);NativeCombatPredictionChecks.Run(context);NativeCombatEventChecks.Run(context);NativeCombatGeometryChecks.Run(context);},processing:true,shortFeedback:true);return 0;
             }
             if(scope=="CombatVisual")
             {
@@ -145,7 +150,7 @@ namespace NativeWorldTextProbe
             return Check(content, output, scope);
         }
         private static void CombatRelease(object context)
-        {NativeCombatChecks.Run(context);NativeCombatFacingChecks.Run(context);NativeCombatHitChecks.Run(context);NativeCombatReportChecks.Run(context);NativeCombatUiChecks.Run(context);NativeCombatObservationChecks.Release(context);}
+        {NativeCombatChecks.Run(context);NativeCombatFacingChecks.Run(context);NativeCombatHitChecks.Run(context);NativeCombatReportChecks.Run(context);NativeCombatUiChecks.Run(context);NativeCombatObservationChecks.Release(context);NativeCombatBodyChecks.Run(context);}
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static int Check(string content, string output, string scope)
         {

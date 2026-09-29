@@ -52,6 +52,18 @@ namespace NativeWorldTextProbe
             Main.mouseX=Main.mouseY=2;Fresh(context,host);Require((bool)Get(selection,"HasTarget") && ((NpcIdentity)Get(selection,"Target")).Slot==2,"zero-radius physical point can overlap a body and ignores later virtual mouse writes");
             Set(input,"mapped",false);Set(input,"PhysicalMapX",1);Call(host,"SampleMouse");Require((Vector2)Get(selection,"RealMouse")==physical,"invalid/focusless input retains last reliable intent");
             for(int i=0;i<300;i++){near.active=false;Fresh(context,host);}Require(cache.Read(0)==null,"enabled empty world never preserves a stale path");
+            Save(host,new ObservationOptions(path:true,collision:true));
+            foreach(int type in new[]{438,439,440})
+            {
+                near.SetDefaults(type);near.whoAmI=2;near.active=true;near.position=new Vector2(680,650);near.dontTakeDamage=false;near.immortal=false;near.friendly=false;near.damage=0;near.chaseable=false;Fresh(context,host);
+                Require((bool)Get(selection,"HasTarget") && ((NpcIdentity)Get(selection,"Target")).Slot==2,"vulnerable ritual NPC remains receivable without contact damage or homing: "+type);
+                near.dontTakeDamage=true;Fresh(context,host);Require(!(bool)Get(selection,"HasTarget"),"ritual invulnerability still excludes "+type);
+            }
+            near.SetDefaults(437);near.whoAmI=2;near.active=true;near.position=new Vector2(680,650);Fresh(context,host);Require(!(bool)Get(selection,"HasTarget"),"native cultist controller is not a damage receiver");
+            near.SetDefaults(414);near.whoAmI=2;near.active=true;near.position=new Vector2(760,650);near.dontTakeDamage=false;near.immortal=false;
+            Save(host,new ObservationOptions(path:true,collision:true,mouseCenter:true,radius:0));
+            Call(input,"BeginUpdate");PlayerInput.MouseInfo=new MouseState(754,655,0,ButtonState.Released,ButtonState.Released,ButtonState.Released,ButtonState.Released,ButtonState.Released);Call(input,"AfterNativeMouse",new List<string>());Call(input,"AfterMapping");Call(input,"AfterKeyboardRefresh");Call(host,"SampleMouse");Fresh(context,host);
+            Require((bool)Get(selection,"HasTarget") && ((NpcIdentity)Get(selection,"Target")).Slot==2,"mouse in native projectile tail extension selects the same observed receivable region");near.active=false;
             Save(host,new ObservationOptions());
             Console.WriteLine("PASS first batch: actual OFF=600, independent toggles, no-weapon path, bubble/dummy eligibility, identity retirement, 2000 cached reads.");
         }

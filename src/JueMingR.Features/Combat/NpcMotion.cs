@@ -12,7 +12,7 @@ namespace JueMingR.Features.Combat
         public static PredictionAssumption Assumptions(NpcMotionState n)
         {
             var result=PredictionAssumption.TargetPlayerStationary|PredictionAssumption.FixedTarget|PredictionAssumption.NoNewHits|PredictionAssumption.LocalTerrain;
-            if(n.Identity.Type==371)result|=PredictionAssumption.RandomRepresentative;
+            if(n.Identity.Type==371 || n.Identity.Type==166)result|=PredictionAssumption.RandomRepresentative;
             // Terrain contacts and unlisted variants are qualified separately
             // from the audited air-motion families. A shared aiStyle alone is
             // not evidence that every variant has the same movement formula.
@@ -23,12 +23,32 @@ namespace JueMingR.Features.Combat
         public static bool Step(ref NpcMotionState n,NpcMotionState[] group,int count,PredictionEnvironment env,IPredictionTerrain terrain,int elapsed,out PredictionStop stop)
         {
             stop=PredictionStop.None;n.NewSegment=false;
-            if(!n.Active || n.TimeLeft<=elapsed){stop=PredictionStop.Despawn;return false;}
-            if(n.BuffExpires>0 && elapsed>=n.BuffExpires){stop=PredictionStop.BuffTransition;return false;}
+            if(!n.Active){stop=PredictionStop.Despawn;return false;}
+            if(n.BuffFingerprint!=0){stop=PredictionStop.BuffTransition;return false;}
             if(!Finite(n.X) || !Finite(n.Y) || !Finite(n.Vx) || !Finite(n.Vy)){stop=PredictionStop.InvalidState;return false;}
+            // Native UpdateNPC smooths the last received offset before AI.
+            // Future packets remain unknown under NetworkObservation; no
+            // live entity or network state is advanced by this scalar copy.
+            if(n.ResetNetOffset || n.SmoothingRange<=0)n.NetOffsetX=n.NetOffsetY=0;
+            else if(n.NetOffsetX!=0 || n.NetOffsetY!=0)
+            {
+                float length=(float)Math.Sqrt(n.NetOffsetX*n.NetOffsetX+n.NetOffsetY*n.NetOffsetY);
+                if(length>n.SmoothingRange){float inverse=1/length;n.NetOffsetX*=inverse;n.NetOffsetY*=inverse;n.NetOffsetX*=n.SmoothingRange;n.NetOffsetY*=n.SmoothingRange;length=(float)Math.Sqrt(n.NetOffsetX*n.NetOffsetX+n.NetOffsetY*n.NetOffsetY);}
+                float step=2+length/n.SmoothingRange*2,normal=1/length;n.NetOffsetX-=n.NetOffsetX*normal*step;n.NetOffsetY-=n.NetOffsetY*normal*step;
+                if((float)Math.Sqrt(n.NetOffsetX*n.NetOffsetX+n.NetOffsetY*n.NetOffsetY)<step)n.NetOffsetX=n.NetOffsetY=0;
+            }
+            if(!NpcHealth.Step(ref n,group,count,env,out stop))return false;
+            // Native fixes gravity from the pre-AI position and old wet state.
+            // A teleport or liquid entry later in this update cannot alter it.
+            float gravity=.3f,fall=10,worldScale=env.WorldWidth/4200f;worldScale*=worldScale;
+            gravity*=Clamp((n.Y/16-(60+10*worldScale))/Math.Max(1,env.WorldSurface/6),.25f,1);
+            if(n.Wet){gravity=n.Shimmer?.15f:n.Honey?.1f:.2f;fall=n.Shimmer?5.5f:n.Honey?4:7;}
+            n.Gravity=gravity;n.MaxFall=fall;
             if(n.Identity.Type==488){n.Vx=n.Vy=0;return true;}
-            int direction=env.PlayerX<n.Bounds.CenterX?-1:1, vertical=env.PlayerY<n.Bounds.CenterY?-1:1;
-            if(n.ConfusedTicks>0){direction=-direction;n.ConfusedTicks--;}
+            bool face=!env.PlayerDead && !(n.TargetNoAggro && n.Direction!=0) && !(env.PlayerIdleWithNegativeAggro && n.Target>=0 && n.Target<255 && !n.Boss);
+            int direction=face?(int)(env.PlayerX-env.PlayerWidth/2)+(int)env.PlayerWidth/2<n.X+n.Width/2?-1:1:n.Direction;
+            int vertical=face?(int)(env.PlayerY-env.PlayerHeight/2)+(int)env.PlayerHeight/2<n.Y+n.Height/2?-1:1:n.DirectionY;
+            bool confused=n.ConfusedTicks>0;if(confused){direction=-direction;n.ConfusedTicks--;}
             bool linked=false;
             if(n.Identity.Type==371)Bubble(ref n,env);
             else if(n.Identity.Type==372 || n.Identity.Type==373)
@@ -47,11 +67,27 @@ namespace JueMingR.Features.Combat
             }
             else if(n.Style==6 || n.Style==37)
             {
+                int wormType=n.Identity.Type;
+                int oldTarget=n.Target;
+                // Life regen has already used the previous shared-life owner.
+                // Native worm AI then updates that owner for the next tick.
+                if(n.Style==6 && wormType>=13 && wormType<=15)n.Health.RealLife=-1;
+                else if(n.A3>0)n.Health.RealLife=(int)n.A3;
+                if(n.Target<0 || n.Target>=255 || env.PlayerDead || n.Style==6 && (wormType==10 || wormType==39 || wormType==95) && env.PlayerY-env.PlayerHeight/2<env.WorldSurface*16)
+                    NpcWormMotion.Target(ref n,env,oldTarget,confused);
+                if(n.Style==37 && !NpcWormMotion.Head(ref n,env,terrain,oldTarget,confused,out stop))return false;
+                if(!env.Multiplayer && (wormType==7 || wormType==8 || wormType==10 || wormType==11 || wormType==13 || wormType==14 || wormType==39 || wormType==40 || wormType==95 || wormType==96 || wormType==98 || wormType==99 || n.Style==37 && wormType!=136))
+                {
+                    bool child=false;for(int i=0;i<count;i++)if(group[i].Identity.Equals(n.ChildIdentity) && group[i].Active && group[i].Style==n.Style){child=true;break;}
+                    if(!child){stop=PredictionStop.MissingDependency;return false;}
+                }
                 if(n.ParentSlot>=0)
                 {
                     int parent=-1;for(int i=0;i<count;i++)if(group[i].Identity.Slot==n.ParentSlot){parent=i;break;}
-                    if(parent<0 || !group[parent].Active){stop=PredictionStop.MissingDependency;return false;}
-                    float dx=group[parent].Bounds.CenterX-n.Bounds.CenterX,dy=group[parent].Bounds.CenterY-n.Bounds.CenterY;
+                    if(parent<0 || !group[parent].Active || group[parent].Style!=n.Style){stop=PredictionStop.MissingDependency;return false;}
+                    // AI37 uses integer half dimensions for the parent; AI6
+                    // uses its floating Center, including odd dimensions.
+                    float dx=group[parent].X+(n.Style==37?group[parent].Width/2:group[parent].Width*.5f)-n.Bounds.CenterX,dy=group[parent].Y+(n.Style==37?group[parent].Height/2:group[parent].Height*.5f)-n.Bounds.CenterY;
                     float distance=(float)Math.Sqrt(dx*dx+dy*dy),spacing=n.Width;
                     int type=n.Identity.Type;
                     if(n.Style==37)spacing=(int)(44*n.Scale);
@@ -60,9 +96,14 @@ namespace JueMingR.Features.Combat
                     else if(type>=513 && type<=515)spacing-=6;
                     else if(type>=412 && type<=414)spacing+=6;
                     else if(type>=621 && type<=623)spacing=24;
-                    if(distance>.001f){float amount=(distance-spacing)/distance;n.X+=dx*amount;n.Y+=dy*amount;}
+                    if(env.GoodWorld && type>=13 && type<=15)spacing=62;
+                    if(distance<=.001f){stop=PredictionStop.InvalidState;return false;}
+                    float amount=(distance-spacing)/distance;dx*=amount;dy*=amount;n.X+=dx;n.Y+=dy;
                     n.Vx=n.Vy=0;linked=true;
                 }
+                else if(n.Style==6 && NpcWormMotion.KnownHead(wormType))
+                {if(!NpcWormMotion.Head(ref n,env,terrain,oldTarget,confused,out stop))return false;}
+                else if(n.Style==37){}
                 else
                 {
                     // Burrowing heads react to the local solid/air phase. The
@@ -74,6 +115,8 @@ namespace JueMingR.Features.Combat
             }
             else if(n.Style==1)
             {if(n.A0==-999){stop=PredictionStop.PhaseBoundary;return false;}Slime(ref n,env,direction,vertical);}
+            else if(n.Style==3 && NpcGroundMotion.Known(n.Identity.Type))
+            {if(!NpcGroundMotion.Step(ref n,env,terrain,confused,out stop))return false;}
             else if(n.Style==3)
             {
                 n.Direction=direction;
@@ -84,34 +127,88 @@ namespace JueMingR.Features.Combat
             else if(n.Style==2 && (n.Identity.Type==2 || n.Identity.Type==133 || n.Identity.Type>=190 && n.Identity.Type<=194))
             {
                 n.NoGravity=true;
-                if(env.Day){stop=PredictionStop.PhaseBoundary;return false;}
-                Bounce(ref n);n.Direction=direction;n.DirectionY=vertical;
-                float sx=4*(2-n.Scale),sy=1.5f*(2-n.Scale);
-                EyeAxis(ref n.Vx,direction,sx,.1f,.1f,.05f);EyeAxis(ref n.Vy,vertical,sy,.04f,.05f,.03f);
-                if(n.Wet){if(n.Vy>0)n.Vy*=.95f;n.Vy=Math.Max(-4,n.Vy-.5f);}
+                if(!n.NoTileCollide)Bounce(ref n);
+                int eyeDirection=direction,eyeVertical=vertical;
+                if(env.Day && !env.Remix && !env.Graveyard && n.Y<=env.WorldSurface*16)
+                {n.TimeLeft=Math.Min(n.TimeLeft,10);eyeDirection=n.Vx>0?1:-1;eyeVertical=-1;}
+                n.Direction=eyeDirection;n.DirectionY=eyeVertical;
+                bool wandering=n.Identity.Type==133,damaged=wandering && n.Life<n.LifeMax*.5f;
+                float sx=wandering?(damaged?6:4):4*(2-n.Scale),sy=wandering?(damaged?4:1.5f):1.5f*(2-n.Scale);
+                EyeAxis(ref n.Vx,eyeDirection,sx,.1f,.1f,.05f);EyeAxis(ref n.Vy,eyeVertical,sy,damaged?.1f:.04f,damaged?.1f:.05f,damaged?.05f:.03f);
+                if(n.Wet){if(n.Vy>0)n.Vy*=.95f;n.Vy=Math.Max(-4,n.Vy-.5f);n.Direction=direction;n.DirectionY=vertical;}
             }
             else if(n.Style==5 && FlyingType(n.Identity.Type))Flying(ref n,env,direction,vertical);
-            else if(n.Style==14 && BatType(n.Identity.Type))Bat(ref n,env,direction,vertical);
+            else if(n.Style==14 && BatType(n.Identity.Type))
+            {
+                if(n.A1+1>200 && n.A1+1<=1000 && !env.PlayerWet)
+                {bool clear;if(!terrain.CanHit(n.Bounds,new MotionRect(env.PlayerX-env.PlayerWidth/2,env.PlayerY-env.PlayerHeight/2,env.PlayerWidth,env.PlayerHeight),out clear,out stop))return false;env.ClearLine=clear;}
+                Bat(ref n,env,direction,vertical);
+            }
+            else if(n.Style==17 && n.Identity.Type==61)Vulture(ref n,env,direction,vertical);
             else if(elapsed>12){stop=PredictionStop.UnsupportedMechanism;return false;}
             if(!n.Active){stop=PredictionStop.Despawn;return false;}
-            if(linked)return true;
-            // Vanilla gravity uses the previous wet state before AI/movement.
-            float gravity=.3f,fall=10;
-            float worldScale=env.WorldWidth/4200f;worldScale*=worldScale;
-            gravity*=Clamp((n.Y/16-(60+10*worldScale))/Math.Max(1,env.WorldSurface/6),.25f,1);
-            if(n.Wet){gravity=n.Honey?.1f:.2f;fall=n.Honey?4:7;}
-            n.Gravity=gravity;n.MaxFall=fall;
-            if(!n.NoGravity)n.Vy=Math.Min(fall,n.Vy+gravity);
+            // Linked AI already attached the segment and zeroed velocity. It
+            // still enters native free movement's water-extinguish phase.
+            if(!linked && !n.NoGravity)n.Vy=Math.Min(fall,n.Vy+gravity);
             if(Math.Abs(n.Vx)<.005f)n.Vx=0;
             // oldVelocity belongs to native UpdateCollision. NoTileCollide
             // bypasses that owner; changing it here would defeat rolling reuse
             // for a correctly predicted Sharkron/Duke step.
-            return terrain.Move(ref n,out stop);
+            if(!terrain.Move(ref n,env,out stop))return false;
+            if(n.Style==3 && NpcGroundMotion.Known(n.Identity.Type))NpcGroundMotion.AfterMove(ref n);
+            if(n.Style==69 || n.Identity.Type==371 || n.Identity.Type==372 || n.Identity.Type==373)n.Health.DontTakeDamage=!n.CanReceive;
+            n.JustHit=false;return CheckActive(ref n,env,out stop);
         }
+        private static bool CheckActive(ref NpcMotionState n,PredictionEnvironment e,out PredictionStop stop)
+        {
+            stop=PredictionStop.None;int type=n.Identity.Type;
+            if(n.InactivityImmune || type==668 || type==690 && n.A0==0)return true;
+            bool keep=false;int count=e.Players==null?1:e.Players.Count;
+            var far=new MotionRect((int)(n.X+n.Width/2-4032),(int)(n.Y+n.Height/2-2520),8064,5040);
+            var near=new MotionRect((int)(n.X+n.Width/2-960-n.Width),(int)(n.Y+n.Height/2-600-n.Height),1920+2*n.Width,1200+2*n.Height);
+            for(int i=0;i<count;i++)
+            {
+                var player=e.Players==null?new MotionRect((int)(e.PlayerX-e.PlayerWidth/2),(int)(e.PlayerY-e.PlayerHeight/2),e.PlayerWidth,e.PlayerHeight):e.Players[i];
+                if(Intersects(far,player) || n.Boss || type==7 || type==10 || type==13 || type==39 || type==87)keep=true;
+                if(Intersects(near,player))n.TimeLeft=750;
+            }
+            if(--n.TimeLeft<=0)keep=false;
+            if(!keep && !e.Multiplayer){n.Active=false;stop=PredictionStop.Despawn;return false;}return true;
+        }
+        private static bool Intersects(MotionRect a,MotionRect b){return a.X<b.X+b.Width && a.X+a.Width>b.X && a.Y<b.Y+b.Height && a.Y+a.Height>b.Y;}
         private static bool FlyingType(int t){return t==6 || t==173 || t==42 || t>=231 && t<=235;}
         private static bool BatType(int t){return t==49 || t==51 || t==60 || t==62 || t==66 || t==93 || t==137 || t==150 || t==151 || t==152 || t==634;}
         private static bool KnownMotion(NpcMotionState n)
-        {int t=n.Identity.Type;return t==488 || t>=370 && t<=373 || n.Style==1 || n.Style==3 || n.Style==6 || n.Style==8 || n.Style==37 || n.Style==2 && (t==2 || t==133 || t>=190 && t<=194) || n.Style==5 && FlyingType(t) || n.Style==14 && BatType(t);}
+        {int t=n.Identity.Type;return t==488 || t>=370 && t<=373 || n.Style==1 || n.Style==3 || n.Style==6 || n.Style==8 || n.Style==37 || n.Style==17 && t==61 || n.Style==2 && (t==2 || t==133 || t>=190 && t<=194) || n.Style==5 && FlyingType(t) || n.Style==14 && BatType(t);}
+        private static void Vulture(ref NpcMotionState n,PredictionEnvironment env,int direction,int vertical)
+        {
+            n.NoGravity=true;
+            if(n.A0==0)
+            {
+                // The launch update still has gravity. Pursuit starts only on
+                // the next update, after native has published the flying phase.
+                n.NoGravity=false;n.Direction=direction;n.DirectionY=vertical;
+                if(!env.Multiplayer)
+                {
+                    if(n.Vx!=0 || n.Vy<0 || (double)n.Vy>.3)n.A0=1;
+                    else if((int)n.X-100<env.PlayerX+env.PlayerWidth/2 && (int)n.X+n.Width+100>env.PlayerX-env.PlayerWidth/2 &&
+                        (int)n.Y-100<env.PlayerY+env.PlayerHeight/2 && (int)n.Y+n.Height+100>env.PlayerY-env.PlayerHeight/2 || n.Life<n.LifeMax)
+                    {n.A0=1;n.Vy-=6;}
+                }
+            }
+            else
+            {
+                Bounce(ref n,.5f,2,1);n.Direction=direction;n.DirectionY=vertical;
+                float toward=n.Vx*direction;
+                if(toward<3){toward+=.1f;if(toward<-3)toward+=.1f;else if(toward<0)toward+=.05f;n.Vx=Math.Min(3,toward)*direction;}
+                float height=env.PlayerY-env.PlayerHeight/2-n.Height/2;
+                if(Math.Abs(n.Bounds.CenterX-env.PlayerX)>50)height-=100;
+                if(n.Y<height){n.Vy+=.05f;if(n.Vy<0)n.Vy+=.01f;}
+                else{n.Vy-=.05f;if(n.Vy>0)n.Vy-=.01f;}
+                n.Vy=Clamp(n.Vy,-3,3);
+            }
+            if(n.Wet){if(n.Vy>0)n.Vy*=.95f;n.Vy=Math.Max(-4,n.Vy-.5f);n.Direction=direction;n.DirectionY=vertical;}
+        }
         private static void Flying(ref NpcMotionState n,PredictionEnvironment env,int direction,int vertical)
         {
             n.NoGravity=true;
@@ -209,42 +306,83 @@ namespace JueMingR.Features.Combat
         {
             stop=PredictionStop.None;bool phase2=n.A0>4,phase3=n.A0>9,early=n.A3<(phase2?6:10);
             n.CanReceive=true;
-            if(n.L0==0){stop=PredictionStop.PhaseBoundary;return false;}
+            float distanceX=env.PlayerX-n.Bounds.CenterX,distanceY=env.PlayerY-n.Bounds.CenterY;
+            if(env.PlayerDead || distanceX*distanceX+distanceY*distanceY>5600*5600)
+            {n.Vy-=.4f;n.TimeLeft=Math.Min(n.TimeLeft,10);n.A0=n.A0>4?5:0;n.A2=0;}
+            if(n.L0==0){n.L0=1;if(!env.Multiplayer)n.A0=-1;}
             int wait=env.Expert?40:60,dash=env.Expert?28:30;
             float speed=env.Expert?8.5f:7.5f,acc=env.Expert?.55f:.45f,burst=env.Expert?17:16;
             if(phase3){wait=30;speed=12;acc=.7f;dash=25;burst=27;}
             else if(phase2 && early){wait=env.Expert?40:20;speed=env.Expert?10:8;acc=env.Expert?.6f:.5f;dash=env.Expert?27:30;if(env.Expert)burst=21;}
             else if(early)wait=30;
             if(env.Enraged){wait=10;burst+=6;}
-            if(n.A0==0 || n.A0==5 || n.A0==10)
+            if((n.A0==0 || n.A0==5 || n.A0==10) && !env.PlayerDead)
             {
-                if(n.A1==0)n.A1=(phase3?360:300)*Math.Sign(n.Bounds.CenterX-env.PlayerX);
-                float hx=env.PlayerX+n.A1-n.Bounds.CenterX-n.Vx,hy=env.PlayerY-200-n.Bounds.CenterY-n.Vy;Normalize(ref hx,ref hy,speed);
-                FlyAxis(ref n.Vx,hx,acc);FlyAxis(ref n.Vy,hy,acc);
+                DukeHover(ref n,env,phase3?360:300,speed,acc);
                 if(++n.A2>=wait)
                 {
-                    if(!phase3 && (!early || !phase2 && n.Life<=n.LifeMax*.5f || phase2 && env.Expert && n.Life<=n.LifeMax*.15f)){stop=PredictionStop.PhaseBoundary;return false;}
-                    bool teleport=phase3 && (n.A3==1 || n.A3==4 || n.A3==8);
-                    n.A0=teleport?12:n.A0+1;n.A1=n.A2=0;
-                    if(!teleport){float dx=env.PlayerX-n.Bounds.CenterX,dy=env.PlayerY-n.Bounds.CenterY;Normalize(ref dx,ref dy,burst);n.Vx=dx;n.Vy=dy;}
+                    int stage=(int)n.A3,next=0;
+                    if(phase3)next=stage==1 || stage==4 || stage==8?12:11;
+                    else if(phase2)
+                    {
+                        if(stage<6)next=6;else if(stage==6){next=7;n.A3=1;}else if(stage==7){next=8;n.A3=0;}
+                        if(env.Enraged && next==7)next=8;
+                        if(env.Expert && n.Life<=n.LifeMax*.15f)next=9;
+                    }
+                    else
+                    {
+                        if(stage<10)next=1;else if(stage==10){next=2;n.A3=1;}else if(stage==11){next=3;n.A3=0;}
+                        if(env.Enraged && next==2)next=3;
+                        if(n.Life<=n.LifeMax*.5f)next=4;
+                    }
+                    n.A0=next;n.A1=n.A2=0;
+                    if(next==1 || next==6 || next==11 || next==7)
+                    {float dx=env.PlayerX-n.Bounds.CenterX,dy=env.PlayerY-n.Bounds.CenterY;Normalize(ref dx,ref dy,next==7?20:burst);n.Vx=dx;n.Vy=dy;DukeDirection(ref n,env);}
+                    if(next==3 && env.Enraged)n.A2=50;
                 }
             }
             else if(n.A0==1 || n.A0==6 || n.A0==11)
             {if(++n.A2>=dash){n.A0--;n.A1=n.A2=0;n.A3+=phase3?1:2;}}
+            else if(n.A0==2)
+            {DukeHover(ref n,env,300,5,.3f);if(++n.A2>=80){n.A0=0;n.A1=n.A2=0;}}
+            else if(n.A0==3 || n.A0==8)
+            {DukeDamp(ref n);if(++n.A2>=90){n.A0=n.A0==3?0:5;n.A1=n.A2=0;}}
+            else if(n.A0==4 || n.A0==9)
+            {
+                // Damage immunity belongs to the branch executed this update,
+                // including the last frame that publishes the next phase.
+                n.CanReceive=false;DukeDamp(ref n);
+                if(++n.A2>=180){n.A0=n.A0==4?5:10;n.A1=n.A2=n.A3=0;}
+            }
+            else if(n.A0==7 || n.A0==13)
+            {
+                float angle=-(float)Math.PI*2/(120/2)*n.Direction,c=(float)Math.Cos(angle),s=(float)Math.Sin(angle),x=n.Vx,y=n.Vy;
+                n.Vx=x*c-y*s;n.Vy=x*s+y*c;
+                if(++n.A2>=120){bool last=n.A0==13;n.A0=last?10:5;n.A1=n.A2=0;if(last)n.A3++;}
+            }
             else if(n.A0==12)
             {
-                n.CanReceive=false;n.Vx*=.98f;n.Vy*=.98f;n.Vy+=(0-n.Vy)*.02f;
+                n.CanReceive=false;DukeDamp(ref n);
                 if(n.A2==15)
                 {
                     if(env.Multiplayer){stop=PredictionStop.PhaseBoundary;return false;}
                     if(n.A1==0)n.A1=300*Math.Sign(n.Bounds.CenterX-env.PlayerX);
-                    n.X=env.PlayerX-n.A1-n.Width*.5f;n.Y=env.PlayerY-200-n.Height*.5f;n.NewSegment=true;
+                    n.X=env.PlayerX-n.A1-n.Width*.5f;n.Y=env.PlayerY-200-n.Height*.5f;n.NewSegment=true;DukeDirection(ref n,env);
                 }
                 if(++n.A2>=30){n.A0=10;n.A1=n.A2=0;if(++n.A3>=9)n.A3=0;}
             }
+            else if(n.A0==-1)
+            {n.CanReceive=false;n.Vx*=.98f;n.Vy*=.98f;if(n.A2>20)n.Vy=-2;DukeDirection(ref n,env);if(++n.A2>=75){n.A0=0;n.A1=n.A2=0;}}
+            else if(env.PlayerDead && (n.A0==0 || n.A0==5 || n.A0==10)){}
             else{stop=PredictionStop.PhaseBoundary;return false;}
             return true;
         }
+        private static void DukeHover(ref NpcMotionState n,PredictionEnvironment env,int offset,float speed,float acceleration)
+        {if(n.A1==0)n.A1=offset*Math.Sign(n.Bounds.CenterX-env.PlayerX);float x=env.PlayerX+n.A1-n.Bounds.CenterX-n.Vx,y=env.PlayerY-200-n.Bounds.CenterY-n.Vy;Normalize(ref x,ref y,speed);FlyAxis(ref n.Vx,x,acceleration);FlyAxis(ref n.Vy,y,acceleration);DukeDirection(ref n,env);}
+        private static void DukeDirection(ref NpcMotionState n,PredictionEnvironment env)
+        {int direction=Math.Sign(env.PlayerX-n.Bounds.CenterX);if(direction!=0){n.Direction=direction;n.SpriteDirection=-direction;}}
+        private static void DukeDamp(ref NpcMotionState n)
+        {n.Vx*=.98f;n.Vy*=.98f;n.Vy+=(0-n.Vy)*.02f;}
         private static void Bounce(ref NpcMotionState n,float scale=.5f,float yMin=1,float ySpeed=1)
         {if(n.CollideX){n.Vx=-n.OldVx*scale;if(n.Direction==-1 && n.Vx>0 && n.Vx<2)n.Vx=2;if(n.Direction==1 && n.Vx<0 && n.Vx>-2)n.Vx=-2;}if(n.CollideY){n.Vy=-n.OldVy*scale;if(n.Vy>0 && n.Vy<yMin)n.Vy=ySpeed;if(n.Vy<0 && n.Vy>-yMin)n.Vy=-ySpeed;}}
         private static void FlyAxis(ref float v,float target,float a){if(v<target){v+=a;if(v<0 && target>0)v+=a;}else if(v>target){v-=a;if(v>0 && target<0)v-=a;}}

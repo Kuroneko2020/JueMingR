@@ -9,18 +9,49 @@ namespace JueMingR.TerrariaHost.Combat
     internal struct CombatShape
     {
         internal Vector2 A,B;internal float Width;internal int Category;internal bool Line,Approximate;
+        // Curves describe filled native domains, not a collection of damaging
+        // outline segments. Conditions remain separate from display geometry:
+        // several native rules also depend on the victim's size or visibility.
+        // Kind: 0 rectangle/line, 1 strict circle, 2 asymmetric ellipse,
+        // 3/4 native fast/slow cone, 5 discrete points, 6 inclusive circle,
+        // 7 endpoint/corner-distance capsule. Condition: 1 center LOS,
+        // 2 rectangle LOS, 3 line LOS+distance, 4 target shrink, 5 aura LOS,
+        // 6 connected liquid, 7 projectile-only NPC extension, 8 unknown
+        // remote Volcano phase, 9 native endpoint/corner distance semantics,
+        // 10 player contact LOS/target immunity, 11 target-center distance,
+        // 12 Inferno target-center/buff immunity, 13 selected-victim event.
+        internal int Kind,Condition;internal Vector2 Sight;
+        internal Rectangle Bounds;internal bool HasBounds;
     }
     internal sealed class CombatShapeSample
     {
-        internal readonly CombatShape[] Shapes=new CombatShape[160];
+        internal CombatShape[] Shapes=new CombatShape[8];
         internal int Count,Owner,Identity,Type,Sequence;internal uint Tick;internal long Session;internal bool Overflow;
         internal object Token;
+        internal bool Presented;internal long Presentation;
+        internal Vector2[] Points;internal int PointCount;internal Point PointSize;internal Rectangle PointBounds;
         internal void Rectangle(Rectangle box,int category,bool approximate=false)
         {Add(new CombatShape{A=new Vector2(box.X,box.Y),B=new Vector2(box.Right,box.Bottom),Category=category,Approximate=approximate});}
         internal void Line(Vector2 start,Vector2 end,float width,int category,bool approximate=false)
         {Add(new CombatShape{A=start,B=end,Width=width,Line=true,Category=category,Approximate=approximate});}
-        private void Add(CombatShape value){if(Count==Shapes.Length){Overflow=true;return;}Shapes[Count++]=value;}
-        internal void Reset(uint tick,long session){Count=0;Overflow=false;Tick=tick;Session=session;Sequence++;}
+        internal void Capsule(Vector2 start,Vector2 end,float radius,int category)
+        {Add(new CombatShape{A=start,B=end,Width=radius,Kind=7,Category=category,Condition=9});}
+        internal void Curve(Vector2 center,float radius,Vector2 parameters,int kind,int category,int condition=0)
+        {if(radius>0)Add(new CombatShape{A=center,B=parameters,Width=radius,Kind=kind,Category=category,Condition=condition,Sight=center});}
+        internal void Condition(int condition,Vector2 sight){if(Count>0){Shapes[Count-1].Condition=condition;Shapes[Count-1].Sight=sight;}}
+        internal void Limit(Rectangle box){if(Count>0){Shapes[Count-1].HasBounds=true;Shapes[Count-1].Bounds=box;}}
+        internal void PointSet(Terraria.DataStructures.MultiPointHitbox source,int category)
+        {
+            // Dedicated storage keeps normal projectiles small. 65536 points
+            // covers the native generator across the largest supported world
+            // diagonal (2 * distance / 8); it is not the shape-slot budget.
+            PointCount=Math.Min(source.Points.Length,65536);Overflow|=PointCount!=source.Points.Length;
+            if(Points==null || Points.Length<PointCount)Points=new Vector2[PointCount];
+            Array.Copy(source.Points,Points,PointCount);PointSize=source.PointSize;PointBounds=source.BoundingRect;
+            Add(new CombatShape{Kind=5,Category=category});
+        }
+        private void Add(CombatShape value){if(Count==Shapes.Length){if(Count==160){Overflow=true;return;}Array.Resize(ref Shapes,Math.Min(160,Shapes.Length*2));}Shapes[Count++]=value;}
+        internal void Reset(uint tick,long session){Count=PointCount=0;Overflow=Presented=false;Presentation=0;Tick=tick;Session=session;Sequence++;}
     }
     // Samples are current native damage windows, not speculative hit tests.
     // Per-projectile replacement keeps extraUpdates distinct: only the last
@@ -28,49 +59,102 @@ namespace JueMingR.TerrariaHost.Combat
     internal sealed class CombatGeometry
     {
         internal readonly CombatShapeSample[] Attacks=new CombatShapeSample[Main.maxProjectiles+Main.maxPlayers];
-        internal readonly CombatShapeSample[] Events=new CombatShapeSample[128];
+        // A full projectile array can terminate in one update; Venom Bullet
+        // alone emits three Damage calls. Four records per slot covers that
+        // native burst plus an earlier pulse, without inflating regular slots.
+        internal readonly CombatShapeSample[] Events=new CombatShapeSample[Main.maxProjectiles*4];
         internal readonly CombatShapeSample[] Npcs=new CombatShapeSample[Main.maxNPCs];
+        internal readonly CombatShapeSample[] Bodies=new CombatShapeSample[Main.maxPlayers];
         private readonly List<Vector2> whipNow=new List<Vector2>(64),whipBefore=new List<Vector2>(64);
-        private int eventCount;private uint eventTick;private bool eventOverflow;
+        private int eventCount,eventReplacement;private uint eventTick;private bool eventOverflow;
         internal int EventCount {get{return eventCount;}}
-        internal bool EventOverflow {get{return eventTick==Main.GameUpdateCount && eventOverflow;}}
+        internal bool EventOverflow {get{return eventOverflow;}}
         internal long Session;
         internal bool Failed;
 #if DEBUG
         internal int ProjectileSamples,NpcSamples,MeleeSamples;
 #endif
-        private static readonly HashSet<int> Special=new HashSet<int>{76,77,78,85,121,122,123,124,125,126,294,301,452,454,455,461,464,466,537,554,580,597,598,607,611,614,623,632,636,642,661,684,686,687,697,698,699,707,711,756,758,802,842,871,872,877,878,879,919,923,927,932,933,938,939,940,941,942,943,944,945,961,963,965,973,974,985,1041,1093,1100,1106,1112,1115,1116,1117,1118,1124,1125,1127};
-        internal void Clear(){Array.Clear(Attacks,0,Attacks.Length);Array.Clear(Events,0,Events.Length);Array.Clear(Npcs,0,Npcs.Length);eventCount=0;eventOverflow=false;Failed=false;}
+        internal void Clear(){Array.Clear(Attacks,0,Attacks.Length);Array.Clear(Events,0,Events.Length);Array.Clear(Npcs,0,Npcs.Length);Array.Clear(Bodies,0,Bodies.Length);eventCount=eventReplacement=0;eventOverflow=false;Failed=false;}
         internal void BeginNpcs(){for(int i=0;i<Npcs.Length;i++)if(Npcs[i]!=null)Npcs[i].Count=0;}
         internal void BeginDamage(Projectile shot)
         {
             if(shot.whoAmI<0 || shot.whoAmI>=Main.maxProjectiles)return;
             if(Attacks[shot.whoAmI]!=null)Attacks[shot.whoAmI].Count=0;
-            // The remote sentry's owner-only Damage is not called locally.
-            // Its naturally advanced phase still gives the same current burst
-            // area. Deduplicate the owner's nested and regular Damage callbacks.
-            if(shot.type==644 && shot.localAI[1]==30 && shot.damage>0 && Ally(shot.owner))
+        }
+        internal void Crystal(Projectile shot)
+        {
+            // Only the remote owner needs this adapter. The same native helper
+            // is called in both the midlife pulse and the terminal explosion.
+            if(shot.damage<=0 || !Ally(shot.owner))return;var sample=Event();if(sample==null)return;
+            Stamp(sample,shot);sample.Rectangle(Utils.CenteredRectangle(shot.Center,new Vector2(60)),0);
+        }
+        internal void SelfHurt(Projectile shot)
+        {
+            // Torch God's flame bypasses Damage entirely. Other callers also
+            // have a natural Damage callback; their geometry is captured there.
+            if(shot.type!=949)return;
+            Projectile(shot,shot.Hitbox,true);
+        }
+        internal void RemoteTermination(Projectile shot,Vector2 position,Vector2 size,Vector2 oldVelocity,float scale,int category)
+        {
+            if(category<0 || shot.damage<=0)return;
+            int type=shot.type,side=type==711?140:type==41?64:type==514?112:type==283 || type==286?80:type>=424 && type<=426?(int)(128*scale):type==1037 || type==1049 || type==1078?(int)(192*scale):0;
+            if(side==0 && type!=483)return;
+            // These exact owner-only native Kill branches do not call Damage
+            // on this client. Preserve integer recentering before Resize: the
+            // odd intermediate meteor size can move its center by half a pixel.
+            if(type==483){position-=new Vector2(50);size+=new Vector2(100,1);}
+            else if(type==711){position+=size/2-new Vector2(70);size=new Vector2(140);}
+            else
             {
-                StartEvents();for(int i=0;i<eventCount;i++)if(ReferenceEquals(Events[i].Token,shot) && Events[i].Identity==(int)shot.key)return;
-                var sample=Event();if(sample==null)return;Stamp(sample,shot);var center=shot.Center;sample.Rectangle(new Rectangle((int)(center.X-30),(int)(center.Y-30),60,60),0);
+                position+=new Vector2((int)size.X/2,(int)size.Y/2)-new Vector2(side/2);size=new Vector2(side);
+                if(type==1037 || type==1049 || type==1078){int final=type==1049?112:64;position+=size/2-new Vector2(final/2);size=new Vector2(final);}
+            }
+            int count=type==283?3:1;var step=((float)Math.Atan2(oldVelocity.Y,oldVelocity.X)).ToRotationVector2()*60;
+            for(int i=0;i<count;i++)
+            {var sample=Event();Stamp(sample,shot);sample.Rectangle(new Rectangle((int)position.X,(int)position.Y,(int)size.X,(int)size.Y),category);position+=step;}
+        }
+        internal void CatImpact(Projectile shot)
+        {
+            int category=Category(shot);if(category<0 || shot.damage<=0)return;
+            int side=40+8*(int)shot.ai[0];var sample=Event();Stamp(sample,shot);
+            sample.Rectangle(Utils.CenteredRectangle(shot.Center,new Vector2(side)),category);
+        }
+        internal void PrepareEvents()
+        {
+            if(eventTick==Main.GameUpdateCount)return;eventTick=Main.GameUpdateCount;
+            for(int i=eventCount-1;i>=0;i--)
+            {
+                var value=Events[i];bool expired=unchecked(Main.GameUpdateCount-value.Tick)>4;
+                if(!value.Presented && !expired)continue;
+                if(expired && !value.Presented)eventOverflow=true;
+                Events[i]=Events[--eventCount];Events[eventCount]=value;
             }
         }
-        private void StartEvents(){if(eventTick!=Main.GameUpdateCount){eventCount=0;eventOverflow=false;eventTick=Main.GameUpdateCount;}}
-        private CombatShapeSample Event(){StartEvents();if(eventCount==Events.Length){eventOverflow=true;return null;}return Sample(Events,eventCount++);}
+        internal void PresentedEvents(long presentation)
+        {for(int i=0;i<eventCount;i++)if(Events[i].Presentation==presentation)Events[i].Presented=true;eventOverflow=false;}
+        private CombatShapeSample Event()
+        {
+            PrepareEvents();if(eventCount<Events.Length)return Sample(Events,eventCount++);
+            // Exceptional overload rotates replacement; it does not reserve
+            // the first events forever while suppressing every later attack.
+            eventOverflow=true;int replacement=eventReplacement;eventReplacement=(eventReplacement+1)%Events.Length;return Sample(Events,replacement);
+        }
         private static void Stamp(CombatShapeSample sample,Projectile shot){sample.Owner=shot.owner;sample.Identity=(int)shot.key;sample.Type=shot.type;sample.Token=shot;}
         private CombatShapeSample Sample(CombatShapeSample[] array,int slot)
         {var sample=array[slot]??(array[slot]=new CombatShapeSample());sample.Reset(Main.GameUpdateCount,Session);return sample;}
         private static bool Ally(int owner)
         {return owner>=0 && owner<Main.maxPlayers && Main.player[owner]!=null && Main.player[owner].active && Main.LocalPlayer!=null && (owner==Main.myPlayer || !Main.LocalPlayer.InOpposingTeam(Main.player[owner]));}
+        internal static int Category(Projectile shot)
+        {return shot.friendly && !shot.npcProj && !shot.trap && Ally(shot.owner)?0:shot.hostile || shot.type==949?3:-1;}
         internal void Projectile(Projectile shot,Rectangle hitbox,bool killing)
         {
             int type=shot.type;
-            if(type==644)return; // Its temporary owner/remote phase is captured above.
             // Colliding has target-independent harmless phases after the
             // general Damage gate. A dashed outline must not turn these
             // telegraphs/control states into an apparent live damage region.
             if(type==1115 && shot.ai[1]!=1 || type==454 && shot.ai[0]>=0 && shot.ai[0]<60 && shot.ai[1]!=-1 || type==1124 && shot.ai[0]<15 || type==965 && shot.alpha>64 || type==452 && shot.ai[0]<2 || (type==756 || type==961 || type==1041 || type==1125) && shot.ai[0]<0)return;
-            int category=shot.friendly && !shot.npcProj && !shot.trap && Ally(shot.owner)?0:shot.hostile?3:-1;
+            int category=Category(shot);
             if(category<0 || shot.damage<=0 || shot.whoAmI<0 || shot.whoAmI>=Main.maxProjectiles)return;
             CombatShapeSample sample;
             // Rainbow-crystal sentry damage exists only inside its AI call;
@@ -82,6 +166,7 @@ namespace JueMingR.TerrariaHost.Combat
 #if DEBUG
             ProjectileSamples++;
 #endif
+            if(ProjectileCollisionGeometry.TryCapture(shot,hitbox,category,sample))return;
             // These pure Colliding adjustments happen after Damage_GetHitbox.
             // The destructive getter's observed rectangle alone is too small
             // for these explosions; do not call it again to reconstruct them.
@@ -107,42 +192,52 @@ namespace JueMingR.TerrariaHost.Combat
                 if(shot.owner>=0 && shot.owner<Main.maxPlayers && shot.AI_019_Spears_GetExtensionHitbox(Main.player[shot.owner],out extension))
                 {
                     var to=new Vector2(extension.Center.X,extension.Center.Y);float length=Vector2.Distance(to,shot.Center),spacing=Math.Max(12,Math.Max(extension.Width,extension.Height));
-                    for(float offset=spacing;offset<length && sample.Count<158;offset+=spacing){var p=Vector2.Lerp(shot.Center,to,offset/length);sample.Rectangle(new Rectangle((int)p.X-extension.Width/2,(int)p.Y-extension.Height/2,extension.Width,extension.Height),category);}
+                    for(float offset=spacing;offset<length;offset+=spacing){var p=Vector2.Lerp(shot.Center,to,offset/length);sample.Rectangle(Utils.CenteredRectangle(p,new Vector2(extension.Width,extension.Height)),category);}
                     sample.Rectangle(extension,category);
                 }
                 return;
             }
-            if(type==877 || type==878 || type==879)
-            {float angle=shot.rotation-(float)Math.PI/4-(float)Math.PI/2-(shot.spriteDirection==1?(float)Math.PI:(float)Math.PI/2);sample.Line(shot.Center,shot.Center+new Vector2((float)Math.Cos(angle),(float)Math.Sin(angle))*95,23*shot.scale,category);return;}
             if(type==699)
             {sample.Rectangle(hitbox,category);float angle=shot.rotation-(float)Math.PI/4*Math.Sign(shot.velocity.X)+(shot.spriteDirection==-1?(float)Math.PI:0);sample.Line(shot.Center,shot.Center+new Vector2((float)Math.Cos(angle),(float)Math.Sin(angle))*-95,23*shot.scale,category);return;}
             if(type==466 || type==580 || type==686 || type==711 && shot.penetrate!=-1)
             {sample.Rectangle(hitbox,category);for(int i=0;i<shot.oldPos.Length && shot.oldPos[i]!=Vector2.Zero;i++){var b=hitbox;b.X=(int)shot.oldPos[i].X;b.Y=(int)shot.oldPos[i].Y;sample.Rectangle(b,category);}return;}
             if(type==464 && shot.ai[1]!=1)
             {
-                sample.Rectangle(hitbox,category);float baseAngle=(float)Math.Atan2(shot.velocity.Y,shot.velocity.X)-(float)Math.PI/2;
-                float radius=720*(shot.ai[0]%45/45);
-                for(int i=0;i<6;i++){float angle=baseAngle+i*(float)Math.PI/3;var p=shot.Center+new Vector2((float)Math.Cos(angle),(float)Math.Sin(angle))*radius;sample.Rectangle(new Rectangle((int)p.X-15,(int)p.Y-15,30,30),category);}return;
+                // Preserve native rotation order before integer truncation:
+                // combining angles shifts a horizontal satellite by one pixel.
+                sample.Rectangle(hitbox,category);var ray=new Vector2(0,-720).RotatedBy(shot.velocity.ToRotation())*(shot.ai[0]%45/45);
+                for(int i=0;i<6;i++){float angle=i*((float)Math.PI*2)/6;sample.Rectangle(Utils.CenteredRectangle(shot.Center+ray.RotatedBy(angle),new Vector2(30,30)),category);}return;
             }
-            if(shot.aiStyle==15 && shot.ai[0]==0 && shot.owner>=0 && shot.owner<Main.maxPlayers)
-            {
-                var player=Main.player[shot.owner];var c=player.MountedCenter;
-                for(int i=0;i<32;i++){double a=i*Math.PI/16,b=(i+1)*Math.PI/16;float ay=(float)Math.Sin(a),by=(float)Math.Sin(b);sample.Line(c+new Vector2((float)Math.Cos(a)*55,ay*55*(player.gravDir>0 && ay>0?.4f:.8f)),c+new Vector2((float)Math.Cos(b)*55,by*55*(player.gravDir>0 && by>0?.4f:.8f)),1,category,true);}return;
-            }
-            // Special native Colliding branches not yet represented stay dashed
-            // and labelled approximate. Ordinary rectangles keep exact size;
-            // scale is never blindly applied a second time.
-            sample.Rectangle(hitbox,category,Special.Contains(type) || shot.aiStyle==137 || shot.aiStyle==190 || shot.aiStyle==203);
+            // All native special geometry has been dispatched above. A phase
+            // gate alone does not make the remaining ordinary box approximate.
+            sample.Rectangle(hitbox,category);
         }
-        internal void Melee(Player player,Item item,Rectangle box,int damage)
+        internal void Melee(Player player,Item item,Rectangle box,int damage,bool? volcanoPending=null)
         {
             if(damage<=0 || !Ally(player.whoAmI))return;
             var sample=Sample(Attacks,Main.maxProjectiles+player.whoAmI);sample.Owner=player.whoAmI;sample.Type=item.type;sample.Token=player;
 #if DEBUG
             MeleeSamples++;
 #endif
-            sample.Rectangle(box,0,item.type==121);
-            if(item.type==121){Vector2 a,b,d;player.GetPointOnSwungItemPath(70,70,0,player.GetAdjustedItemScale(item),out a,out d);player.GetPointOnSwungItemPath(70,70,.9f,player.GetAdjustedItemScale(item),out b,out d);sample.Line(a,b,32,0,true);}
+            if(item.type!=121 || volcanoPending!=true){sample.Rectangle(box,0);if(item.type==121 && !volcanoPending.HasValue)sample.Condition(8,Vector2.Zero);}
+            if(item.type==121){Vector2 a,b,d;player.GetPointOnSwungItemPath(70,70,0,player.GetAdjustedItemScale(item),out a,out d);player.GetPointOnSwungItemPath(70,70,.9f,player.GetAdjustedItemScale(item),out b,out d);sample.Capsule(a,b,16,0);}
+        }
+        private CombatShapeSample BodySample(Player player)
+        {
+            if(!Ally(player.whoAmI) || player.dead)return null;var prior=Bodies[player.whoAmI];
+            var sample=prior!=null && prior.Tick==Main.GameUpdateCount && prior.Session==Session && ReferenceEquals(prior.Token,player)?prior:Sample(Bodies,player.whoAmI);
+            sample.Owner=player.whoAmI;sample.Token=player;return sample;
+        }
+        internal void Body(Player player,Rectangle box)
+        {var sample=BodySample(player);if(sample==null)return;sample.Rectangle(box,0);sample.Condition(10,player.Center);}
+        internal void BodyCircle(Player player,float radius,bool transient,int condition)
+        {if(!Ally(player.whoAmI) || player.dead)return;var sample=transient?Event():BodySample(player);sample.Owner=player.whoAmI;sample.Token=player;sample.Curve(player.Center,radius,Vector2.Zero,6,0,condition);}
+        internal void TargetEvent(Player player,NPC target)
+        {
+            if(!Ally(player.whoAmI))return;var sample=Event();sample.Owner=player.whoAmI;sample.Token=player;
+            // Retaliation and electric-eel tag hits select actual victims. No
+            // line between actors or surrounding aura is a damaging region.
+            sample.Rectangle(target.Hitbox,0);sample.Condition(13,target.Center);
         }
         internal void Npc(NPC n)
         {
@@ -152,10 +247,9 @@ namespace JueMingR.TerrariaHost.Combat
 #if DEBUG
             NpcSamples++;
 #endif
-            var body=new Rectangle((int)(n.position.X+n.netOffset.X),(int)(n.position.Y+n.netOffset.Y),n.width,n.height);
-            if(n.type==414)body.Inflate(8,8);
+            var body=CombatSelection.ReceiveBounds(n);
             bool attack=CombatSelection.ProjectileLike(n);
-            if(receive)sample.Rectangle(body,attack?4:1);
+            if(receive){sample.Rectangle(body,attack?4:1);if(n.type==414)sample.Condition(7,Vector2.Zero);}
             if(!harm)return;
             var danger=new Rectangle((int)(n.position.X+n.netOffset.X),(int)(n.position.Y+n.netOffset.Y),n.width,n.height);
             int type=n.type,d=n.direction;var center=new Vector2(danger.X+n.width*.5f,danger.Y+n.height*.5f);

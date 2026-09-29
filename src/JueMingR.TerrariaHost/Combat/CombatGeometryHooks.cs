@@ -13,23 +13,40 @@ namespace JueMingR.TerrariaHost.Combat
         private readonly HostCombatObservation host;
         private readonly Harmony harmony=new Harmony("JueMingR.CombatObservation");
         private readonly List<MethodBase> methods=new List<MethodBase>();
+        private AccessTools.FieldRef<Player,bool> volcanoPending;
         [ThreadStatic] private static Projectile damageOwner;
         [ThreadStatic] private static int killDepth;
+        [ThreadStatic] private static int transientDepth;
+        [ThreadStatic] private static bool damageTransient;
+        private struct DamageScope {internal Projectile Owner;internal bool Transient;}
+        private struct KillScope {internal int Depth,Category;internal bool Capture;internal Vector2 Position,Size,OldVelocity;internal float Scale;}
+        private struct MovementScope {internal int Depth;internal Projectile Owner;internal float InitialBounce;internal bool Sampled;}
+        [ThreadStatic] private static Projectile movementOwner;
+        [ThreadStatic] private static float initialBounce;
+        [ThreadStatic] private static bool movementSampled;
         [ThreadStatic] private static Player itemOwner;
         internal bool Ready {get;private set;}
         internal Exception Error {get;private set;}
+        internal static HostCombatObservation CaptureHost {get{var self=current;return self!=null && self.Ready && self.host.Capture?self.host:null;}}
         internal CombatGeometryHooks(HostCombatObservation host)
         {
             this.host=host;
             try
             {
                 if(current!=null)throw new InvalidOperationException("Collision observer already installed");current=this;
+                volcanoPending=AccessTools.FieldRefAccess<Player,bool>("_spawnVolcanoExplosion");
                 Patch(typeof(Projectile),"Damage",nameof(BeforeDamage),null,nameof(EndDamage));
                 Patch(typeof(Projectile),"Damage_GetHitbox",null,nameof(Hitbox),null);
                 Patch(typeof(Projectile),"Kill",nameof(BeforeKill),null,nameof(EndKill));
-                Patch(typeof(Player),"ItemCheck_MeleeHitNPCs",nameof(Melee),null,null);
+                Patch(typeof(Projectile),"AI",nameof(BeforeAi),null,nameof(EndTransient));
+                Patch(typeof(Projectile),"HandleMovement",nameof(BeforeMovement),null,nameof(EndMovement));
+                Patch(typeof(Projectile),"UpdatePosition",nameof(BeforePosition),null,null);
+                Patch(typeof(Projectile),"DoRainbowCrystalStaffExplosion",nameof(RemoteCrystal),null,null);
+                Patch(typeof(Projectile),"SelfHurtPlayers",nameof(SelfHurt),null,null);
+                Patch(typeof(Player),"ItemCheck_MeleeHitNPCs",nameof(Melee),nameof(AfterMelee),null);
                 Patch(typeof(Player),"AnimatePlayerAndGetItemFrame",null,nameof(RemoteMelee),null);
                 Patch(typeof(Player),"ItemCheck",nameof(BeforeItem),null,nameof(EndItem));
+                PlayerCollisionGeometryHooks.Install(harmony,methods);
                 Ready=true;
             }
             catch(Exception e){Error=e;Dispose();}
@@ -39,25 +56,86 @@ namespace JueMingR.TerrariaHost.Combat
             var method=AccessTools.DeclaredMethod(type,name);if(method==null)throw new MissingMethodException(type.Name,name);
             methods.Add(method);harmony.Patch(method,prefix==null?null:new HarmonyMethod(GetType(),prefix),postfix==null?null:new HarmonyMethod(GetType(),postfix),null,finalizer==null?null:new HarmonyMethod(GetType(),finalizer));
         }
-        private static void BeforeDamage(Projectile __instance,out Projectile __state)
+        private static void BeforeDamage(Projectile __instance,out DamageScope __state)
         {
-            __state=damageOwner;var self=current;damageOwner=self!=null && self.Ready && self.host.Capture?__instance:null;
-            if(damageOwner!=null && killDepth==0)self.host.Geometry.BeginDamage(__instance);
+            __state=new DamageScope{Owner=damageOwner,Transient=damageTransient};var self=current;damageOwner=self!=null && self.Ready && self.host.Capture?__instance:null;
+            if(damageOwner==null)return;
+            // Read this before the getter consumes localAI[0]. A later harmless
+            // substep retires a sustained region but cannot erase this event.
+            bool expansion=(__instance.type==301 || __instance.type==383 || __instance.type==262) && __instance.localAI[0]>0;
+            damageTransient=killDepth>0 || transientDepth>0 || expansion;
+            if(!damageTransient && __instance.type!=949)self.host.Geometry.BeginDamage(__instance);
         }
-        private static void EndDamage(Projectile __state){damageOwner=__state;}
-        private static void BeforeKill(Projectile __instance,out int __state)
-        {__state=killDepth;killDepth++;var self=current;if(self!=null && self.Ready && self.host.Capture)self.host.Geometry.BeginDamage(__instance);}
-        private static void EndKill(int __state){killDepth=__state;}
+        private static void EndDamage(DamageScope __state){damageOwner=__state.Owner;damageTransient=__state.Transient;}
+        private static void BeforeKill(Projectile __instance,out KillScope __state)
+        {
+            __state=new KillScope{Depth=killDepth};killDepth++;var self=current;
+            if(self==null || !self.Ready || !self.host.Capture)return;
+            self.host.Geometry.BeginDamage(__instance);
+            if(__instance.active && __instance.owner!=Main.myPlayer)
+            {__state.Capture=true;__state.Category=CombatGeometry.Category(__instance);__state.Position=__instance.position;__state.Size=__instance.Size;__state.OldVelocity=__instance.oldVelocity;__state.Scale=__instance.scale;}
+        }
+        private static Exception EndKill(Projectile __instance,KillScope __state,Exception __exception)
+        {
+            killDepth=__state.Depth;var self=current;
+            if(__exception==null && __state.Capture && self!=null && self.Ready && self.host.Capture)
+                try{self.host.Geometry.RemoteTermination(__instance,__state.Position,__state.Size,__state.OldVelocity,__state.Scale,__state.Category);}catch{self.host.CollisionFailed();}
+            return __exception;
+        }
+        private static void BeforeTransient(out int __state)
+        {__state=transientDepth;var self=current;if(self!=null && self.Ready && self.host.Capture)transientDepth++;}
+        private static void BeforeAi(Projectile __instance,out int __state)
+        {BeforeTransient(out __state);var self=current;if(self!=null && self.Ready && self.host.Capture && __instance.type==949)self.host.Geometry.BeginDamage(__instance);}
+        private static void EndTransient(int __state){transientDepth=__state;}
+        private static void BeforeMovement(Projectile __instance,out MovementScope __state)
+        {
+            __state=new MovementScope{Depth=transientDepth,Owner=movementOwner,InitialBounce=initialBounce,Sampled=movementSampled};var self=current;
+            movementOwner=null;movementSampled=false;
+            if(self==null || !self.Ready || !self.host.Capture)return;
+            transientDepth++;if(__instance.type==502){movementOwner=__instance;initialBounce=__instance.ai[0];}
+        }
+        private static void BeforePosition(Projectile __instance)
+        {
+            var self=current;if(self==null || !self.Ready || !self.host.Capture || !ReferenceEquals(movementOwner,__instance) || movementSampled || __instance.owner==Main.myPlayer || __instance.ai[0]<=initialBounce)return;
+            movementSampled=true;
+            // Collision may have moved a projectile along a slope before the
+            // impact. This natural boundary is after that correction and the
+            // temporary Damage window, but before final velocity integration.
+            // The fifth impact has already killed the projectile here.
+            try{self.host.Geometry.CatImpact(__instance);}catch{self.host.CollisionFailed();}
+        }
+        private static void EndMovement(MovementScope __state)
+        {transientDepth=__state.Depth;movementOwner=__state.Owner;initialBounce=__state.InitialBounce;movementSampled=__state.Sampled;}
+        private static void RemoteCrystal(Projectile __instance)
+        {
+            var self=current;if(self==null || !self.Ready || !self.host.Capture || __instance.owner==Main.myPlayer)return;
+            try{self.host.Geometry.Crystal(__instance);}catch{self.host.CollisionFailed();}
+        }
+        private static void SelfHurt(Projectile __instance)
+        {
+            var self=current;if(self==null || !self.Ready || !self.host.Capture)return;
+            try{self.host.Geometry.SelfHurt(__instance);}catch{self.host.CollisionFailed();}
+        }
         private static void BeforeItem(Player __instance,out Player __state)
         {__state=itemOwner;var self=current;itemOwner=self!=null && self.Ready && self.host.Capture?__instance:null;}
         private static void EndItem(Player __state){itemOwner=__state;}
         private static void Hitbox(Projectile __instance,Rectangle __result)
         {
-            var self=current;if(self==null || !self.Ready || !self.host.Capture || !ReferenceEquals(damageOwner,__instance))return;
-            try{self.host.Geometry.Projectile(__instance,__result,killDepth>0);}catch{self.host.CollisionFailed();}
+            var self=current;if(self==null || !self.Ready || !self.host.Capture || !ReferenceEquals(damageOwner,__instance) || __instance.type==949)return;
+            // Torch God uses the earlier SelfHurt window. Its ordinary Damage
+            // runs even when harmless, after movement; it is not a hurt sample.
+            try{self.host.Geometry.Projectile(__instance,__result,damageTransient);}catch{self.host.CollisionFailed();}
         }
         private static void Melee(Player __instance,Item __0,Rectangle __1,int __2)
-        {var self=current;if(self==null || !self.Ready || !self.host.Capture)return;try{self.host.Geometry.Melee(__instance,__0,__1,__2);}catch{self.host.CollisionFailed();}}
+        {var self=current;if(self==null || !self.Ready || !self.host.Capture)return;try{self.host.Geometry.Melee(__instance,__0,__1,__2,__instance.whoAmI==Main.myPlayer?(bool?)self.volcanoPending(__instance):null);}catch{self.host.CollisionFailed();}}
+        private static void AfterMelee(Player __instance,Item __0,Rectangle __1,int __2)
+        {
+            var self=current;if(self==null || !self.Ready || !self.host.Capture || __0.type!=121 || __instance.whoAmI!=Main.myPlayer)return;
+            // The first struck NPC can consume the pending volcano inside the
+            // native loop. The later rectangle is then a real phase of this
+            // same swing; both phases share the always-active capsule.
+            try{if(!self.volcanoPending(__instance))self.host.Geometry.Melee(__instance,__0,__1,__2,false);}catch{self.host.CollisionFailed();}
+        }
         private static void RemoteMelee(Player __instance,Item __1,Rectangle __result)
         {
             var self=current;if(self==null || !self.Ready || !self.host.Capture || __instance.whoAmI==Main.myPlayer || !ReferenceEquals(itemOwner,__instance) || __instance.whoAmI<0 || __instance.whoAmI>=Main.maxPlayers || !ReferenceEquals(Main.player[__instance.whoAmI],__instance))return;
@@ -74,6 +152,6 @@ namespace JueMingR.TerrariaHost.Combat
             catch{self.host.CollisionFailed();}
         }
         public void Dispose()
-        {Ready=false;foreach(var method in methods)try{harmony.Unpatch(method,HarmonyPatchType.All,harmony.Id);}catch(Exception e){if(Error==null)Error=e;}methods.Clear();if(ReferenceEquals(current,this))current=null;damageOwner=null;itemOwner=null;killDepth=0;}
+        {Ready=false;foreach(var method in methods)try{harmony.Unpatch(method,HarmonyPatchType.All,harmony.Id);}catch(Exception e){if(Error==null)Error=e;}methods.Clear();if(ReferenceEquals(current,this))current=null;damageOwner=movementOwner=null;itemOwner=null;killDepth=transientDepth=0;damageTransient=movementSampled=false;}
     }
 }

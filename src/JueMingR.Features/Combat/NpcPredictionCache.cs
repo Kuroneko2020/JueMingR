@@ -47,7 +47,7 @@ namespace JueMingR.Features.Combat
                 // A new update number alone cannot change a stationary or
                 // failed forecast with identical dependencies. Republish its
                 // sampling identity without repeating the same failed work.
-                if(sampleTick!=tick){tick=sampleTick;result=new NpcTrajectory(source[chosen].Identity,tick,++version,assumptions,stop,points,length+1);}
+                if(sampleTick!=tick){tick=sampleTick;result=result.Republish(tick,++version);}
 #if DEBUG
                 Reuses++;
 #endif
@@ -99,13 +99,24 @@ namespace JueMingR.Features.Combat
             return true;
         }
         private static NpcTrajectoryPoint Rebase(NpcTrajectoryPoint p,int offset)
-        {return new NpcTrajectoryPoint(offset,new NpcMotionState{X=p.Bounds.X,Y=p.Bounds.Y,Width=(int)p.Bounds.Width,Height=(int)p.Bounds.Height,Vx=p.Vx,Vy=p.Vy,A0=p.Phase,CanReceive=p.CanReceive,CanHarm=p.CanHarm,NewSegment=p.NewSegment});}
+        {return p.AtOffset(offset);}
         private static bool Equal(NpcMotionState[] a,NpcMotionState[] b,int size)
         {for(int i=0;i<size;i++)if(!Same(a[i],b[i]))return false;return true;}
         public static bool Same(NpcMotionState a,NpcMotionState b)
         {
+            // These random clocks only emit new attacks, which this NPC-motion
+            // model never consumes. Ignoring their difference cannot hide a
+            // position/phase/target change; all those fields still compare.
+            if(a.Style==3 && a.Identity.Type==109)b.A2=a.A2;
+            if(!a.Health.Equals(b.Health))return false;
+            if(a.Friendly!=b.Friendly)return false;
+            if(a.NetOffsetX!=b.NetOffsetX || a.NetOffsetY!=b.NetOffsetY || a.SmoothingRange!=b.SmoothingRange || a.ResetNetOffset!=b.ResetNetOffset)return false;
+            if(a.ChildSlot!=b.ChildSlot || !a.ChildIdentity.Equals(b.ChildIdentity))return false;
+            if(a.Boss!=b.Boss || a.InactivityImmune!=b.InactivityImmune || a.TargetNoAggro!=b.TargetNoAggro)return false;
+            if(a.LavaSpeed!=b.LavaSpeed || a.ShimmerSpeed!=b.ShimmerSpeed || a.Lava!=b.Lava || a.Shimmer!=b.Shimmer)return false;
+            if(a.OldX!=b.OldX || a.OldY!=b.OldY || a.StairFall!=b.StairFall || a.SpriteDirection!=b.SpriteDirection || a.SpawnedFromStatue!=b.SpawnedFromStatue)return false;
             if(a.TimeLeft!=b.TimeLeft || a.BuffFingerprint!=b.BuffFingerprint || a.BuffExpires!=b.BuffExpires || a.WaterSpeed!=b.WaterSpeed || a.HoneySpeed!=b.HoneySpeed)return false;
-            return a.Identity.Equals(b.Identity) && a.X==b.X && a.Y==b.Y && a.Vx==b.Vx && a.Vy==b.Vy && a.OldVx==b.OldVx && a.OldVy==b.OldVy && a.Scale==b.Scale && a.A0==b.A0 && a.A1==b.A1 && a.A2==b.A2 && a.A3==b.A3 && a.L0==b.L0 && a.L1==b.L1 && a.L2==b.L2 && a.L3==b.L3 && a.Width==b.Width && a.Height==b.Height && a.Style==b.Style && a.Direction==b.Direction && a.DirectionY==b.DirectionY && a.Target==b.Target && a.ParentSlot==b.ParentSlot && a.ConfusedTicks==b.ConfusedTicks && a.Life==b.Life && a.LifeMax==b.LifeMax && a.Active==b.Active && a.NoGravity==b.NoGravity && a.NoTileCollide==b.NoTileCollide && a.Wet==b.Wet && a.Honey==b.Honey && a.CollideX==b.CollideX && a.CollideY==b.CollideY && a.CanReceive==b.CanReceive && a.CanHarm==b.CanHarm && a.JustHit==b.JustHit;
+            return a.Identity.Equals(b.Identity) && a.X==b.X && a.Y==b.Y && a.Vx==b.Vx && a.Vy==b.Vy && a.OldVx==b.OldVx && a.OldVy==b.OldVy && a.Scale==b.Scale && a.A0==b.A0 && a.A1==b.A1 && a.A2==b.A2 && a.A3==b.A3 && (a.L0==b.L0 || a.Style==37 && a.Identity.Type==135) && a.L1==b.L1 && a.L2==b.L2 && a.L3==b.L3 && a.Width==b.Width && a.Height==b.Height && a.Style==b.Style && a.Direction==b.Direction && a.DirectionY==b.DirectionY && a.Target==b.Target && a.ParentSlot==b.ParentSlot && a.ConfusedTicks==b.ConfusedTicks && a.Life==b.Life && a.LifeMax==b.LifeMax && a.Active==b.Active && a.NoGravity==b.NoGravity && a.NoTileCollide==b.NoTileCollide && a.Wet==b.Wet && a.Honey==b.Honey && a.CollideX==b.CollideX && a.CollideY==b.CollideY && a.CanReceive==b.CanReceive && a.CanHarm==b.CanHarm && a.JustHit==b.JustHit;
         }
     }
 }

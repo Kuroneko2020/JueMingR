@@ -39,9 +39,17 @@ namespace JueMingR.TerrariaHost.Combat
         {
             if(n==null || !n.active || n.life<=0 || n.dontTakeDamage)return false;
             if(n.type==NPCID.TargetDummy)return dummy;
-            // Low-health projectile NPCs must survive this gate. chaseable is
-            // a homing preference, not proof that ordinary attacks cannot hit.
-            return !n.friendly && !n.immortal && (n.damage>0 || n.boss || n.chaseable || ProjectileLike(n));
+            // Receiving damage is independent of contact damage and homing.
+            // In particular, devotees and the vulnerable ritual clone can be
+            // struck while damage==0 and chaseable==false.
+            return !n.friendly && !n.immortal;
+        }
+        internal static Rectangle ReceiveBounds(NPC n)
+        {
+            var box=new Rectangle((int)(n.position.X+n.netOffset.X),(int)(n.position.Y+n.netOffset.Y),n.width,n.height);
+            // The tail extension is available to projectiles; melee keeps the
+            // body rectangle. Selection uses the union of legal attack areas.
+            if(n.type==414)box.Inflate(8,8);return box;
         }
         internal static NpcIdentity Identity(NPC n,long session){return new NpcIdentity(session,n,n.whoAmI,n.generation,n.type,n.netID);}
         internal static bool Valid(NpcIdentity key,long session)
@@ -64,7 +72,7 @@ namespace JueMingR.TerrariaHost.Combat
 #if DEBUG
                 Candidates++;
 #endif
-                var box=new Rectangle((int)(n.position.X+n.netOffset.X),(int)(n.position.Y+n.netOffset.Y),n.width,n.height);
+                var box=ReceiveBounds(n);
                 float dx=center.X-MathHelper.Clamp(center.X,box.Left,box.Right),dy=center.Y-MathHelper.Clamp(center.Y,box.Top,box.Bottom),distance=dx*dx+dy*dy;
                 if(distance>radius*radius)continue;
                 bool clear=false;
