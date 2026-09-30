@@ -57,6 +57,7 @@ namespace NativeWorldTextProbe
             Console.WriteLine("PASS existing player item/selection/sitting pure values, original SoulDrain/RNG and projectile difficulty curve; malformed leaf pages rejected.");
             NativeCombatWorkerTagChecks.Run(host);
             MountRoundTrip(host);
+            SpecialStateRoundTrip(host);
         }
         private static void MountRoundTrip(Assembly host)
         {
@@ -68,10 +69,11 @@ namespace NativeWorldTextProbe
             try
             {
                 Main.netMode=2;Main.dedServ=true;Mount.Initialize();
-                foreach(int type in new[]{0,Terraria.ID.MountID.WitchBroom,54,8,35,44})
+                foreach(int type in Enumerable.Range(0,Terraria.ID.MountID.Count))
                 {
                     var source=new Player{whoAmI=1,active=true,position=new Vector2(750,800)};
                     source.mount.SetMount(type,source);
+                    Require(source.mount.Active && source.mount.Type==type,"Original SetMount establishes type "+type);
                     typeof(Player).GetField("_portalPhysicsTime",Flags).SetValue(source,12);
                     if(type==54)
                     {object specific=typeof(Mount).GetField("_mountSpecificData",Flags).GetValue(source.mount);specific.GetType().GetField("allowedToFly",Flags).SetValue(specific,true);}
@@ -93,12 +95,68 @@ namespace NativeWorldTextProbe
                         Require(copy.mount.AimAbility(copy,new Vector2(1200,700)),"Restored drill leaf supports the original observed-projectile consumer.");
                         Require(prior.SequenceEqual(Write(context,"WritePlayer",source)),"Private drill mutation cannot alter the captured owner.");
                     }
+                    if(type==44 || type==45)
+                    {
+                        // Both values are legal UpdateFrame leaves. This is a
+                        // codec fixture, not a claim of replaying mount motion.
+                        var specific=typeof(Mount).GetField("_mountSpecificData",Flags);
+                        foreach(bool state in new[]{false,true})
+                        {specific.SetValue(source.mount,state);Read(context,"ReadPlayer",Write(context,"WritePlayer",source),copy);Require((bool)specific.GetValue(copy.mount)==state,"Boxed mount leaf value survives type "+type);}
+                    }
                     source.mount.Dismount(source);Read(context,"ReadPlayer",Write(context,"WritePlayer",source),copy);
                     Require(!copy.mount.Active && copy.mount.Type==-1 && source.PortalPhysicsEnabled==copy.PortalPhysicsEnabled,"Dismount clears active identity without losing native retained definition state.");
                 }
             }
             finally{Main.netMode=network;Main.dedServ=dedicated;}
-            Console.WriteLine("PASS mounted player frame-zero, portal/geometry, native flying/drill leaf consumers and dismount roundtrips");
+            Console.WriteLine("PASS all "+Terraria.ID.MountID.Count+" mount types: original SetMount, frame-zero, portal/geometry, flying/drill/bool leaves and dismount roundtrips");
+        }
+        private static void SpecialStateRoundTrip(Assembly host)
+        {
+            var context=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativeActorContext",true);
+            var premise=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativePredictionAlignment",true).GetMethod("PlayerPremise",Flags);
+            var motion=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativePlayerMotion",true).GetMethod("Write",Flags);
+            object values=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.PredictionWire",true).GetField("Players",Flags).GetValue(null);
+            int network=Main.netMode;bool dedicated=Main.dedServ;
+            string[] cases={"ordinary","mount","hooked","pulley","sitting","dash","wing","shimmer","tongue","hook-tail-only","wing-no-jump"};
+            try
+            {
+                Main.netMode=2;Main.dedServ=true;
+                foreach(string name in cases)
+                {
+                    // Isolate the input predicate from native activation. The
+                    // real mounted production scenario is tested separately.
+                    var source=new Player{whoAmI=1,active=true};
+                    source.grappling[0]=-1;source.pulley=false;source.sitting=default(Terraria.GameContent.PlayerSittingHelper);
+                    source.dashDelay=0;source.wingTime=0;source.controlJump=false;source.shimmering=source.tongued=false;
+                    switch(name)
+                    {
+                        case "mount":source.mount.SetMount(Terraria.ID.MountID.WitchBroom,source);break;
+                        case "hooked":source.grappling[0]=7;break;
+                        case "pulley":source.pulley=true;break;
+                        case "sitting":source.sitting=new Terraria.GameContent.PlayerSittingHelper{isSitting=true,offsetForSeat=new Vector2(3,-4),sittingIndex=1};break;
+                        case "dash":source.dashDelay=-3;break;
+                        case "wing":source.wingTime=10;source.controlJump=true;break;
+                        case "shimmer":source.shimmering=true;break;
+                        case "tongue":source.tongued=true;break;
+                        case "hook-tail-only":source.grappling[1]=0;break;
+                        case "wing-no-jump":source.wingTime=10;break;
+                    }
+                    var copy=new Player();
+                    using(var bytes=new MemoryStream())using(var writer=new BinaryWriter(bytes))
+                    {values.GetType().GetMethod("Write",Flags).Invoke(values,new object[]{writer,source});writer.Flush();bytes.Position=0;using(var reader=new BinaryReader(bytes))values.GetType().GetMethod("Read",Flags).Invoke(values,new object[]{reader,copy});}
+                    Read(context,"ReadPlayer",Write(context,"WritePlayer",source),copy);
+                    byte[] before=PlayerPremise(premise,source),profile=PlayerPremise(motion,source);
+                    bool complex=name!="ordinary" && name!="hook-tail-only" && name!="wing-no-jump";
+                    Require((profile[0]!=0)==complex && profile.SequenceEqual(PlayerPremise(motion,copy)),"Complex predicate restored: "+name);
+                    Require(before.SequenceEqual(PlayerPremise(premise,copy)),"Full frame-zero premise restored: "+name);
+                    Require(!ReferenceEquals(source.grappling,copy.grappling) && source.grappling.SequenceEqual(copy.grappling),"Independent grapple array: "+name);
+                    copy.grappling[0]=99;
+                    Require(source.grappling[0]!=99 && before.SequenceEqual(PlayerPremise(premise,source)),"Restored context never mutates source: "+name);
+                    Console.WriteLine("STATE-CODEC "+name+" complex="+complex+" frame-zero=equal");
+                }
+            }
+            finally{Main.netMode=network;Main.dedServ=dedicated;}
+            Console.WriteLine("PASS eight Complex input predicates, baseline and two negative boundaries; codec evidence, not full special movement replay");
         }
         private static byte[] PlayerPremise(MethodInfo method,Player player)
         {using(var stream=new MemoryStream())using(var writer=new BinaryWriter(stream)){method.Invoke(null,new object[]{writer,player});writer.Flush();return stream.ToArray();}}
