@@ -9,6 +9,9 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
     {
         internal const int Protocol=25,MaximumBytes=4*1024*1024,MaximumPayload=MaximumBytes-17;
         internal const string GameHash="960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3";
+        // Explicit isolated development probes only; the installed path does
+        // no per-request/step cost sampling unless this process opted in.
+        internal static readonly bool Measure=Environment.GetEnvironmentVariable("JUEMINGR_PREDICTION_DIAGNOSTICS")=="1";
         private const int ReadyMagic=0x4A525052,TransportVersion=1;
         private const int ExchangeMagic=0x4A525058;
         internal static byte[] ClearWorld(){return new byte[]{0x43,0x57,0x52,0x44,(byte)Protocol};}

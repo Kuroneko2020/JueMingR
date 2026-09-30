@@ -74,16 +74,17 @@ namespace NativeWorldTextProbe
             var capture=wire.GetMethod("CaptureSceneValues",Flags);var send=clientType.GetMethod("TrySendValues",Flags);var take=clientType.GetMethod("TryTakeResult",Flags);var reset=clientType.GetMethod("ResetWorld",Flags);
             var n=Terraria.Main.npc[0];var identity=new NpcIdentity(1,null,0,n.generation,n.type,n.netID);
             Func<object> snapshot=()=>capture.Invoke(null,new object[]{new[]{0},new[]{0,1,2},0,1000L,120});
-            Require((bool)send.Invoke(client,new object[]{snapshot(),identity,1000L}),"Typed capture enters the real background encoder.");
+            Require((bool)send.Invoke(client,new object[]{snapshot(),identity,1000L,false}),"Typed capture enters the real background encoder.");
             reset.Invoke(client,null);reset.Invoke(client,null);Wait(clientType,client,1,15000);
             Require(take.Invoke(client,null)==null,"Repeated retirement suppresses queued or in-flight typed work.");
-            Require((bool)send.Invoke(client,new object[]{snapshot(),identity,1000L}),"Fresh typed capture succeeds after the newest world-clear acknowledgement.");Wait(clientType,client,3,15000);
+            Require((bool)send.Invoke(client,new object[]{snapshot(),identity,1000L,false}),"Fresh typed capture succeeds after the newest world-clear acknowledgement.");Wait(clientType,client,3,15000);
             Require(clientType.GetMethod("TryTake",Flags).Invoke(client,null)==null && (int)clientType.GetProperty("State",Flags).GetValue(client)==3,"The legacy raw consumer cannot consume a decoded mailbox.");
             reset.Invoke(client,null);Wait(clientType,client,1,15000);Require(take.Invoke(client,null)==null,"Already decoded old-world work is also retired before main-thread acceptance.");
-            Require((bool)send.Invoke(client,new object[]{snapshot(),identity,1000L}),"Typed request remains usable after decoded-result retirement.");Wait(clientType,client,3,15000);
+            Require((bool)send.Invoke(client,new object[]{snapshot(),identity,1000L,true}),"Typed request remains usable after decoded-result retirement.");Wait(clientType,client,3,15000);
             var reply=take.Invoke(client,null);var result=reply.GetType().GetField("Result",Flags).GetValue(reply);var trajectory=(NpcTrajectory)result.GetType().GetField("Trajectory",Flags).GetValue(result);
             Require(trajectory!=null && trajectory.Count==121 && trajectory.CaptureTick==1000 && trajectory.Identity.Equals(identity) && trajectory.Identity.Token==null,"Background decoder returns the whole frozen horizon with only the original value identity.");
-            bool denied=false;try{send.Invoke(client,new object[]{snapshot(),new NpcIdentity(1,n,0,n.generation,n.type,n.netID),1000L});}catch(TargetInvocationException e){denied=e.InnerException is ArgumentException;}Require(denied,"A live NPC token cannot enter background work.");
+            Require((trajectory.Assumptions&PredictionAssumption.NetworkObservation)!=0,"Typed transport preserves host client observation even though its private world is offline.");
+            bool denied=false;try{send.Invoke(client,new object[]{snapshot(),new NpcIdentity(1,n,0,n.generation,n.type,n.netID),1000L,false});}catch(TargetInvocationException e){denied=e.InnerException is ArgumentException;}Require(denied,"A live NPC token cannot enter background work.");
             Console.WriteLine("PASS typed background requests / repeated world retirement / decoded mailbox retirement / fresh ACK recovery / token exclusion");
         }
         private static void Wait(Type type,object client,int state,int timeout)

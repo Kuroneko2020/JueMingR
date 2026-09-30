@@ -18,6 +18,8 @@ namespace NativeWorldTextProbe
             NativeCombatProductionPredictionChecks.Codec(host);
             BoundedShootingClock(host);
             NumericAndEventPremises(host);
+            WindConvergence(host);
+            BuffClocks(host);
             EffectAllocation(host);
             LightingIdentity(host);
             var permission=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativeEntityDirectory+FieldPermissions",true);
@@ -209,6 +211,49 @@ namespace NativeWorldTextProbe
             }
             finally{Terraria.GameContent.Events.DD2Event.Ongoing=ongoing;Main.CurrentFrameFlags.ActivePlayersCount=active;NPC.waveKills=kills;}
             Console.WriteLine("PASS explicit velocity numerical bound; zero/sign/position/AI boundaries; all biome flags and DD2 event premises");
+        }
+        private static void BuffClocks(Assembly host)
+        {
+            var type=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativePlayerMotion",true);var advance=type.GetMethod("AdvanceBuffClocks",Flags);
+            foreach(int[] types in new[]{new[]{1},new[]{5},new[]{12},new[]{71},new[]{73},new[]{104},new[]{343},new[]{2,3,26},new[]{26,3,2},new[]{206},new[]{207}})
+            foreach(int duration in new[]{1,3,1200})foreach(int owner in new[]{Main.myPlayer,Main.myPlayer==0?1:0})
+            {
+                var original=new Player{whoAmI=owner};var predicted=new Player{whoAmI=owner};
+                for(int i=0;i<types.Length;i++){original.buffType[i]=predicted.buffType[i]=types[i];original.buffTime[i]=predicted.buffTime[i]=duration;}
+                for(int step=0;step<4;step++)
+                {
+                    original.moveSpeed=1;original.UpdateBuffs(owner);
+                    if(owner==Main.myPlayer)for(int i=0;i<original.buffType.Length;i++)if(original.buffType[i]>0 && original.buffTime[i]<=0)original.DelBuff(i);
+                    object[] args={predicted,0f};bool ordinary=(bool)advance.Invoke(null,args);
+                    Require(original.buffType.SequenceEqual(predicted.buffType) && original.buffTime.SequenceEqual(predicted.buffTime),"Original buff decrement, ownership and ordered expiry compaction.");
+                    if(ordinary)Require(original.moveSpeed==(float)args[1],"Last valid buff step retains original movement contribution.");
+                }
+            }
+            foreach(int special in new[]{49,60,95,98,170,173,28,34,37,38,62,86,87,89,103,146,147,148,151,157,158,194,215,332,350,353})
+                Require(!(bool)type.GetMethod("OrdinaryClock",Flags).Invoke(null,new object[]{special}),"Special refresh/transform clock cannot become an ordinary decrement: "+special);
+            Console.WriteLine("PASS original common buff clocks / local and remote / last effect / mixed expiry order / special-clock exclusions");
+        }
+        private static void WindConvergence(Assembly host)
+        {
+            var advance=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativeWorldSnapshot",true).GetMethod("AdvanceObservedWind",Flags);
+            var original=(Main)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(Main));
+            float wind=Main.windSpeedCurrent,target=Main.windSpeedTarget,rain=Main.maxRaining;int rate=Main.dayRate,mode=Main.netMode;
+            try
+            {
+                foreach(int count in new[]{0,1,3})foreach(float current in new[]{-.9f,0f,.4999f,.9f})foreach(float wet in new[]{0f,.6f})
+                {
+                    Main.dayRate=count;Main.windSpeedTarget=.5f;Main.maxRaining=wet;Main.windSpeedCurrent=current;Main.netMode=1;
+                    for(int i=0;i<count;i++)original.UpdateWeather(new GameTime(),1);float expected=Main.windSpeedCurrent;
+                    Main.windSpeedCurrent=current;advance.Invoke(null,null);Require(Main.windSpeedCurrent==expected,"Observed wind follows original float sequence, clamp and day-rate loops.");
+                }
+                NativeCombatWorkerChecks.Scene(false);var alignment=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativePredictionAlignment",true);
+                Func<object> observe=()=>alignment.GetMethod("Observe",Flags).Invoke(null,new object[]{1000L,new[]{0},new int[0],0});
+                Func<object,object,string> difference=(a,b)=>(string)alignment.GetMethod("Difference",Flags).Invoke(null,new[]{a,b});
+                var before=observe();Main.windSpeedTarget+=.1f;Require(difference(before,observe())=="world premise","Changed wind driver invalidates before current wind diverges.");
+                before=observe();Main.maxRaining+=.1f;Require(difference(before,observe())=="world premise","Changed rain driver invalidates before current wind diverges.");
+            }
+            finally{Main.windSpeedCurrent=wind;Main.windSpeedTarget=target;Main.maxRaining=rain;Main.dayRate=rate;Main.netMode=mode;}
+            Console.WriteLine("PASS original wind convergence / clamp / paused and accelerated clock / strict target and rain drivers");
         }
         private static void CheckTerrain(Assembly host)
         {

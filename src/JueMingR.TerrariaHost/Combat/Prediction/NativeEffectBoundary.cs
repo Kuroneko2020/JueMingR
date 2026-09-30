@@ -21,7 +21,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         internal static string Failure { get; private set; }
         internal NativeEffectBoundary(bool fixtureOriginal=false)
         {
-            var cost=System.Diagnostics.Stopwatch.StartNew();
+            var cost=PredictionPipeProtocol.Measure?System.Diagnostics.Stopwatch.StartNew():null;
             NativeImmunitySnapshot.Install(patches);
             NativeLightingSnapshot.Install(patches);
             Part(cost,"immunity-install");
@@ -87,7 +87,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             Console.Error.WriteLine("STARTUP operand-discovery-ms="+discovery.ToString("F3",System.Globalization.CultureInfo.InvariantCulture)+" selected-transpiler-install-ms="+installation.ToString("F3",System.Globalization.CultureInfo.InvariantCulture));
         }
         private static void Part(System.Diagnostics.Stopwatch watch,string name)
-        {Console.Error.WriteLine("STARTUP "+name+"-ms="+watch.Elapsed.TotalMilliseconds.ToString("F3",System.Globalization.CultureInfo.InvariantCulture));watch.Restart();}
+        {if(watch!=null){Console.Error.WriteLine("STARTUP "+name+"-ms="+watch.Elapsed.TotalMilliseconds.ToString("F3",System.Globalization.CultureInfo.InvariantCulture));watch.Restart();}}
         internal static void Begin(){Failure=null;VerifyFacilities();camera=new Terraria.Graphics.CameraModifiers.CameraModifierStack();}
         private static void VerifyFacilities()
         {

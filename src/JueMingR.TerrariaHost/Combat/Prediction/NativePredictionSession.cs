@@ -24,7 +24,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             internal bool Retired;
             internal double CaptureMs;
         }
-        internal sealed class Measurement
+        internal struct Measurement
         {
             internal long CaptureTick,ArriveTick;
             internal int Bytes,ReplyBytes,Age;
@@ -117,7 +117,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             checkedTerrain=null;observation=null;
             EnsureEnvironment();
             if(stopped)return;
-            long started=Stopwatch.GetTimestamp();
+            long started=PredictionPipeProtocol.Measure?Stopwatch.GetTimestamp():0;
             if(pending!=null && !pending.Retired && tick>pending.Tick)
             {
                 if(tick-pending.Tick>PredictionWire.MaximumAlignmentAge || !TerrainCurrent(pending.Terrain,identity.Session)){pending.Retired=true;Reason="in-flight age or terrain changed";}
@@ -129,7 +129,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 string difference=!CanReuseProof(age,accepted.Frames.Length)?"expired":!TerrainCurrent(acceptedRequest.Terrain,identity.Session)?"terrain changed":NativePredictionAlignment.Difference(accepted.Frames[(int)age],Observe(tick,acceptedRequest.Npcs,acceptedRequest.Projectiles,identity.Slot));
                 if(difference!=null){Reason=difference;accepted=null;acceptedRequest=null;cache.Publish(null);}
             }
-            double observed=Milliseconds(Stopwatch.GetTimestamp()-started);ObserveMilliseconds+=observed;ObserveMaximum=Math.Max(ObserveMaximum,observed);Observed++;
+            if(PredictionPipeProtocol.Measure){double observed=Milliseconds(Stopwatch.GetTimestamp()-started);ObserveMilliseconds+=observed;ObserveMaximum=Math.Max(ObserveMaximum,observed);}Observed++;
             var response=Worker.TryTakeResult();if(response!=null)Receive(response,tick);
             if(accepted!=null)
             {
@@ -146,8 +146,9 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         private void Receive(PredictionWorkerClient.DecodedReply response,long tick)
         {
             Request request=pending;pending=null;if(request==null)return;
-            var m=new Measurement{CaptureTick=request.Tick,ArriveTick=tick,Age=(int)Math.Min(int.MaxValue,tick-request.Tick),WallAgeMs=Milliseconds(Stopwatch.GetTimestamp()-request.Wall),CaptureMs=request.CaptureMs,Bytes=response.Bytes,ReplyBytes=response.ReplyBytes,EncodeMs=response.EncodeMs,ExchangeMs=response.ExchangeMs,DecodeMs=response.DecodeMs};
-            long begin=Stopwatch.GetTimestamp();
+            var m=default(Measurement);
+            if(PredictionPipeProtocol.Measure)m=new Measurement{CaptureTick=request.Tick,ArriveTick=tick,Age=(int)Math.Min(int.MaxValue,tick-request.Tick),WallAgeMs=Milliseconds(Stopwatch.GetTimestamp()-request.Wall),CaptureMs=request.CaptureMs,Bytes=response.Bytes,ReplyBytes=response.ReplyBytes,EncodeMs=response.EncodeMs,ExchangeMs=response.ExchangeMs,DecodeMs=response.DecodeMs};
+            long begin=PredictionPipeProtocol.Measure?Stopwatch.GetTimestamp():0;
             try
             {
                 if(request.Retired || !request.Identity.Equals(current)){m.Outcome="retired identity/age/terrain";Rejected++;return;}
@@ -176,11 +177,11 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 accepted=result;acceptedRequest=request;m.Outcome="accepted";Reason=null;
             }
             catch(Exception error){if(error is OutOfMemoryException)throw;m.Outcome="invalid result: "+error.Message;Reason=m.Outcome;Rejected++;Failed=true;Stop();}
-            finally{m.AcceptMs=Milliseconds(Stopwatch.GetTimestamp()-begin);Measurements.Enqueue(m);while(Measurements.Count>256)Measurements.Dequeue();}
+            finally{if(PredictionPipeProtocol.Measure){m.AcceptMs=Milliseconds(Stopwatch.GetTimestamp()-begin);Measurements.Enqueue(m);while(Measurements.Count>256)Measurements.Dequeue();}}
         }
         private void Capture(NpcIdentity identity,long tick)
         {
-            lastAttempt=tick;long begin=Stopwatch.GetTimestamp();
+            lastAttempt=tick;long begin=PredictionPipeProtocol.Measure?Stopwatch.GetTimestamp():0;
             try
             {
                 GatherDependencies();
@@ -196,9 +197,9 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 var request=new Request{Identity=identity,Tick=tick,Wall=begin,Npcs=ns,Projectiles=ps,Terrain=terrain};
                 request.History.Add(Observe(tick,ns,ps,identity.Slot));
                 var values=PredictionWire.FillProductionValues(Worker.BeginCapture(),ns,ps,identity.Slot,tick,PredictionWire.MaximumHorizon,terrain,assets.ToArray(),ReferenceEquals(terrain,acknowledgedTerrain));
-                request.CaptureMs=Milliseconds(Stopwatch.GetTimestamp()-begin);
+                if(PredictionPipeProtocol.Measure)request.CaptureMs=Milliseconds(Stopwatch.GetTimestamp()-begin);
                 var valueIdentity=new NpcIdentity(identity.Session,null,identity.Slot,identity.Generation,identity.Type,identity.NetId);
-                if(Worker.TrySendValues(values,valueIdentity,tick)){pending=request;Requests++;}
+                if(Worker.TrySendValues(values,valueIdentity,tick,Main.netMode==1)){pending=request;Requests++;}
             }
             catch(Exception error){if(error is OutOfMemoryException)throw;Reason="capture: "+error.Message;lastAttempt=tick+57;}
         }

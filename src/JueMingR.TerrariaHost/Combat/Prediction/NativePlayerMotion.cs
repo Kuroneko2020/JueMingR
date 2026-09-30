@@ -54,7 +54,8 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         private void Step(Player p,Profile profile)
         {
             if(p.width<1 || p.height<1 || p.width>512 || p.height>512 || p.gravDir!=1f && p.gravDir!=-1f || !Finite(p.gravity) || !Finite(p.maxFallSpeed) || !Finite(p.runAcceleration) || !Finite(p.runSlowdown) || !Finite(p.maxRunSpeed))throw new InvalidDataException("Player movement premise.");
-            if(!profile.Complex)AdvanceOrdinarySpeed(p);
+            float speed;bool ordinaryBuffs=AdvanceBuffClocks(p,out speed);
+            if(!profile.Complex && ordinaryBuffs)AdvanceOrdinarySpeed(p,speed);
             Vector2 old=p.position;
             // ResetEffects decays the observed gravity timer before the
             // original nearby-brain refresh. The brain page is a real player
@@ -139,7 +140,44 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             if(p.position!=old || p.controlLeft || p.controlRight || p.controlJump)Quality|=1;
             if(!Finite(p.position.X) || !Finite(p.position.Y) || !Finite(p.velocity.X) || !Finite(p.velocity.Y))throw new InvalidDataException("Nonfinite player continuation.");
         }
-        private static void AdvanceOrdinarySpeed(Player p)
+        private static bool AdvanceBuffClocks(Player p,out float speed)
+        {
+            // Buff clocks belong to Player.Update even when equipment or a
+            // complex movement profile prevents speed reconstruction. Keep
+            // the time 1 -> 0 effect for this step, then native forward-order
+            // DelBuff compaction; unknown effects still retain exact premises.
+            speed=1f;bool ordinary=true;
+            for(int i=0;i<p.buffType.Length;i++)
+            {
+                int type=p.buffType[i];if(type<=0)continue;
+                ordinary&=type==2 || type==3 || type==26 || type==206 || type==207;
+                if(p.buffTime[i]<=0)continue;
+                if(type==3)speed+=.25f;else if(type==26)speed+=.2f;else if(type==206)speed+=.3f;else if(type==207)speed+=.4f;
+                if(p.whoAmI==Main.myPlayer && OrdinaryClock(type) && !Terraria.ID.BuffID.Sets.TimeLeftDoesNotDecrease[type])p.buffTime[i]--;
+            }
+            if(p.whoAmI==Main.myPlayer)for(int i=0;i<p.buffType.Length;i++)if(p.buffType[i]>0 && p.buffTime[i]<=0)p.DelBuff(i);
+            return ordinary && !Main.dontStarveWorld;
+        }
+        private static bool OrdinaryClock(int type)
+        {
+            // Locked .8 UpdateBuffs: exclude renewal/deletion/type-changing
+            // branches, pets/mounts, and adjacent environmental refreshes.
+            // Remaining clocks use its common decrement; movement/effect
+            // changes still require exact observed history, not frozen timers.
+            if(type>=Terraria.ID.BuffID.Count)throw new InvalidDataException("Unknown player buff clock.");
+            if(Terraria.ID.BuffID.Sets.MountType[type]!=-1 || Main.vanityPet[type] || Main.lightPet[type] || type>=95 && type<=100 || type>=170 && type<=181 || type>=332 && type<=334)return false;
+            switch(type)
+            {
+                // Summon ownership and native legacy pet renewal.
+                case 49:case 60:case 64:case 83:case 125:case 126:case 133:case 134:case 135:case 139:case 140:case 161:case 182:case 187:case 188:case 213:case 214:case 216:case 263:case 271:case 322:case 325:case 335:case 355:case 385:case 386:case 389:case 390:case 393:case 394:
+                // Conditional removal, random insertion and phase refresh.
+                case 28:case 34:case 37:case 38:case 62:case 103:case 148:case 151:case 353:
+                // Player.Update scene refresh before UpdateBuffs.
+                case 86:case 87:case 89:case 146:case 147:case 157:case 158:case 194:case 215:case 350:return false;
+                default:return true;
+            }
+        }
+        private static void AdvanceOrdinarySpeed(Player p,float speed)
         {
             // Fixed native subset with reconstructible equipment inputs. Never
             // divide the sampled speed by a buff multiplier: an expired buff
@@ -149,19 +187,12 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             // Other effects retain the existing conditional continuation and
             // strict premise rejection; this is not a full Player.Update.
             if(Player.originalRunSpeed!=3f || p.slowOgreSpit || p.dazed || p.burned || p.slow || p.chilled || p.shieldRaised || p.sticky || p.powerrun || p.slippy || p.slippy2 || p.sandStorm || p.shadowArmor || p.hasMagiluminescence || p.empressBrooch || p.wingsLogic>0 || p.carpetFrame!=-1 || p.jumpBoost || p.frogLegJumpBoost || p.wereWolf || p.moonLordLegs || p.inventory[p.selectedItem].type==3106)return;
-            for(int i=0;i<p.buffType.Length;i++)if(p.buffType[i]!=0 && p.buffType[i]!=3)return;
             for(int slot=0;slot<10;slot++)
             {
                 var item=p.GetEffectiveArmor(slot);if(item.IsAir || !p.IsItemSlotUnlockedAndUsable(slot) || item.expertOnly && !Main.expertMode)continue;
                 if(slot<3 || !item.accessory || item.type!=54 && item.type!=2423 || item.prefix!=0 && (item.prefix<73 || item.prefix>76))return;
             }
-            p.moveSpeed=1f;p.runAcceleration=.08f;p.runSlowdown=.2f;p.maxRunSpeed=p.accRunSpeed=3f;p.autoJump=false;p.jumpSpeedBoost=0;
-            for(int i=0;i<p.buffType.Length;i++)if(p.buffType[i]==3 && p.buffTime[i]>0)
-            {
-                if(p.whoAmI==Main.myPlayer && !Terraria.ID.BuffID.Sets.TimeLeftDoesNotDecrease[3])p.buffTime[i]--;
-                p.moveSpeed+=.25f; // Time 1 -> 0 still contributes this step.
-            }
-            if(p.whoAmI==Main.myPlayer)for(int i=0;i<p.buffType.Length;i++)if(p.buffType[i]>0 && p.buffTime[i]<=0)p.DelBuff(i);
+            p.moveSpeed=speed;p.runAcceleration=.08f;p.runSlowdown=.2f;p.maxRunSpeed=p.accRunSpeed=3f;p.autoJump=false;p.jumpSpeedBoost=0;
             for(int slot=3;slot<10;slot++)
             {
                 var item=p.GetEffectiveArmor(slot);if(item.IsAir || !p.IsItemSlotUnlockedAndUsable(slot) || item.expertOnly && !Main.expertMode)continue;

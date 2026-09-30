@@ -19,12 +19,20 @@ namespace NativeWorldTextProbe
     internal static class NativeCombatWorkerChecks
     {
         internal const int ExpectedProtocol=25, PointBytes=75;
+        private static readonly Main weatherOracle=(Main)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(Main));
+        internal static void AdvanceWeather()
+        {
+            // Locked original convergence branch. Client return excludes
+            // authority weather RNG; iteration 1 excludes lightning outlets.
+            int mode=Main.netMode;try{Main.netMode=1;for(int i=0;i<Main.dayRate;i++)weatherOracle.UpdateWeather(new GameTime(),1);}finally{Main.netMode=mode;}
+        }
         private const BindingFlags Flags=BindingFlags.Static|BindingFlags.Instance|BindingFlags.NonPublic|BindingFlags.Public;
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static void Run(string output,bool catalogue=false,bool linkedOnly=false,bool lifetimeOnly=false,bool assetsOnly=false,bool randomOnly=false,bool playerOnly=false,bool entityOnly=false,bool birthOnly=false,bool contextOnly=false,bool immunityOnly=false,bool lifecycleOnly=false,bool fieldsOnly=false,bool transportOnly=false,bool productionOnly=false,string content=null,bool preparationOnly=false,bool menuOnly=false,bool snapshotOnly=false,bool longCoverageOnly=false,bool legalOnly=false)
         {
             output=Path.GetFullPath(output);
             Directory.CreateDirectory(output);
+            Environment.SetEnvironmentVariable("JUEMINGR_PREDICTION_DIAGNOSTICS",Environment.GetEnvironmentVariable("JUEMINGR_NPC_MEASURE_OFF")=="1"?null:"1");
             string build=Environment.GetEnvironmentVariable("JUEMINGR_NPC_WORKER_BUILD")??Path.Combine(Program.Repository,"artifacts/build/Debug/work/bin");
             string configuration=Environment.GetEnvironmentVariable("JUEMINGR_NPC_CONFIGURATION")??"Debug";
             if(configuration!="Debug" && configuration!="Release")throw new InvalidOperationException("Unknown prediction build configuration.");
@@ -233,7 +241,7 @@ namespace NativeWorldTextProbe
             for(int x=0;x<120;x++)for(int y=0;y<120;y++)Main.tile[x,y]=new Tile();
             Main.tileSolid[1]=true;for(int x=0;x<120;x++)for(int y=65;y<120;y++){Main.tile[x,y].active(true);Main.tile[x,y].type=1;}
             Main.leftWorld=Main.topWorld=0;Main.rightWorld=Main.bottomWorld=1920;Main.screenWidth=960;Main.screenHeight=640;
-            Main.worldSurface=60;Main.rockLayer=80;Main.dayTime=false;Main.time=1800;Main.GameMode=0;Main.bloodMoon=Main.eclipse=false;Main.windSpeedCurrent=0;
+            Main.worldSurface=60;Main.rockLayer=80;Main.dayTime=false;Main.time=1800;Main.GameMode=0;Main.bloodMoon=Main.eclipse=false;Main.windSpeedCurrent=Main.windSpeedTarget=Main.maxRaining=0;
             for(int i=0;i<Main.npc.Length;i++)Main.npc[i]=new NPC();
             for(int i=0;i<Main.player.Length;i++)Main.player[i]=new Player();
             for(int i=0;i<Main.projectile.Length;i++)Main.projectile[i]=new Projectile();
@@ -267,6 +275,7 @@ namespace NativeWorldTextProbe
                     if(i>0)
                     {
                         typeof(Main).GetField("_gameUpdateCount",Flags).SetValue(null,(uint)(1000+i));NPC.UpdateProtectedSpawnSlots();NPC.ClearFoundActiveNPCs();NPC.UpdateFoundActiveNPCs();
+                        AdvanceWeather();
                         playerUpdate?.Invoke();
                         // Main.UpdateWorld_NPCs retires a stale gravity source
                         // after players have consumed this tick's old index.

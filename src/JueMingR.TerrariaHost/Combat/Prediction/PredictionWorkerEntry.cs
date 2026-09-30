@@ -19,10 +19,10 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static int Simulate(Stream input,Stream output,byte[] ready)
         {
-            var initialize=System.Diagnostics.Stopwatch.StartNew();
+            var initialize=PredictionPipeProtocol.Measure?System.Diagnostics.Stopwatch.StartNew():null;
             using(var sandbox=new PredictionSandbox())
             {
-                Console.Error.WriteLine("READY native-initialize-ms="+initialize.Elapsed.TotalMilliseconds.ToString("F3"));
+                if(initialize!=null)Console.Error.WriteLine("READY native-initialize-ms="+initialize.Elapsed.TotalMilliseconds.ToString("F3"));
                 // Only fully initialized native state may invite a fresh
                 // game-thread capture. Parent-bound is not a Ready signal.
                 if(ready!=null)PredictionPipeProtocol.WriteFrame(output,ready);

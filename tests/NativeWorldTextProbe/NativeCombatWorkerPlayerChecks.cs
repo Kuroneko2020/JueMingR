@@ -44,7 +44,7 @@ namespace NativeWorldTextProbe
             display.Patch(typeof(Item).GetMethod("GetDrawHitbox",Flags),prefix:new HarmonyMethod(typeof(NativeCombatWorkerPlayerChecks).GetMethod("EmptyItemMetrics",Flags)));
             try
             {
-                string[] scenes=Environment.GetEnvironmentVariable("JUEMINGR_NPC_PLAYER_SCENES")?.Split(',')??new[]{"wall","jump","fall","reverse","boots","frog","frog-cycle","two-jumps","left-border","forced-expiry","forced-source-retired","swift-long","swift-expiry","swift-expired","swift-boots-long","swift-boots-expiry","swift-boots-expired","swift-frog-long","swift-frog-expiry","swift-frog-expired","swift-boots-prefix-expiry"};
+                string[] scenes=Environment.GetEnvironmentVariable("JUEMINGR_NPC_PLAYER_SCENES")?.Split(',')??new[]{"wall","jump","fall","reverse","boots","frog","frog-cycle","two-jumps","left-border","forced-expiry","forced-source-retired","swift-long","swift-expiry","swift-expired","swift-boots-long","swift-boots-expiry","swift-boots-expired","swift-frog-long","swift-frog-expiry","swift-frog-expired","swift-boots-prefix-expiry","food26-long","food26-expiry","food26-expired","food206-expiry","food207-expiry","mixed-expiry","mixed-reverse-expiry"};
                 using(var child=NativeCombatWorkerChecks.Start(layout))
                 {
                 var errors=child.StandardError.ReadToEndAsync();
@@ -71,6 +71,12 @@ namespace NativeWorldTextProbe
                     if(scene.Contains("boots"))player.armor[3].SetDefaults(54);
                     if(scene.Contains("frog"))player.armor[3].SetDefaults(2423);
                     if(scene.Contains("prefix"))player.armor[3].prefix=76;
+                }
+                if(scene.StartsWith("food",StringComparison.Ordinal))player.AddBuff(int.Parse(scene.Substring(4,scene.IndexOf('-')-4)),scene.EndsWith("long",StringComparison.Ordinal)?600:scene.EndsWith("expired",StringComparison.Ordinal)?1:3);
+                if(scene.StartsWith("mixed",StringComparison.Ordinal))
+                {
+                    int[] types=scene.Contains("reverse")?new[]{26,3,2}:new[]{2,3,26};
+                    for(int b=0;b<types.Length;b++){player.buffType[b]=types[b];player.buffTime[b]=3;}
                 }
                 if(scene.StartsWith("frog",StringComparison.Ordinal))player.armor[3].SetDefaults(Terraria.ID.ItemID.FrogLeg);
                 if(scene=="two-jumps")

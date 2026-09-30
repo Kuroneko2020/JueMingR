@@ -41,13 +41,13 @@ namespace JueMingR.PredictionWorker
                 if(Hash(harmonyPath)!="7B9E756306FA3D7620E02A857C8927A6AB04973F9BD8A77D3866700A6DEAC55C")throw new InvalidOperationException("Prediction metadata engine identity mismatch.");
                 var harmony=Assembly.LoadFrom(harmonyPath);
                 var host=Assembly.LoadFrom(hostPath);
-                var watch=System.Diagnostics.Stopwatch.StartNew();
+                var watch=PredictionPipeProtocol.Measure?System.Diagnostics.Stopwatch.StartNew():null;
                 var rewrite=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativeTileImage",true).GetMethod("Rewrite",BindingFlags.Static|BindingFlags.NonPublic);
                 string expected=(string)host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativeMaterialIdentity",true).GetMethod("Expected",BindingFlags.Static|BindingFlags.NonPublic).Invoke(null,null);
                 string key=PredictionMaterialCache.Hash(System.Text.Encoding.UTF8.GetBytes("material-v1|"+GameHash+"|"+args[2]+"|"+Hash(typeof(Program).Assembly.Location)+"|"+Hash(typeof(Program).Assembly.Location+".config")+"|"+Hash(harmonyPath)+"|protocol"+PredictionPipeProtocol.Protocol+"|x86|"+Environment.Version));
                 string cache=anonymous && args.Length==9?args[8]:Path.Combine(payloadDirectory,"prediction-materials");
                 byte[] guarded=PredictionMaterialCache.Load(cache,key,expected,()=> (byte[])rewrite.Invoke(null,new object[]{gameImage,harmony}));
-                Console.Error.WriteLine("TERRAIN private-image-ms="+watch.Elapsed.TotalMilliseconds.ToString("F1"));
+                if(watch!=null)Console.Error.WriteLine("TERRAIN private-image-ms="+watch.Elapsed.TotalMilliseconds.ToString("F1"));
                 game=Assembly.Load(guarded);
                 var entry=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.PredictionWorkerEntry",true);
                 var run=entry.GetMethod("Run",BindingFlags.NonPublic|BindingFlags.Static,null,new[]{typeof(Stream),typeof(Stream),typeof(byte[])},null);

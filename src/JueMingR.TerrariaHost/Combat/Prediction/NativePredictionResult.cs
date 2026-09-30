@@ -15,7 +15,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         internal string Error;
         internal readonly SortedSet<int> Npcs=new SortedSet<int>(),Projectiles=new SortedSet<int>();
         internal double TotalMs,ResetMs,RestoreMs,AdvanceMs;
-        internal static NativePredictionResult Read(byte[] core,byte[] alignment,NpcIdentity identity,long tick,long version)
+        internal static NativePredictionResult Read(byte[] core,byte[] alignment,NpcIdentity identity,long tick,long version,bool networkObservation)
         {
             var value=new NativePredictionResult();
             using(var stream=new MemoryStream(core,false))using(var r=new BinaryReader(stream))
@@ -72,6 +72,9 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 if(advance<0 || advance>total)throw new InvalidDataException("Native advance timing.");
                 value.TotalMs=1000.0*total/frequency;value.ResetMs=1000.0*reset/frequency;value.RestoreMs=1000.0*restore/frequency;value.AdvanceMs=1000.0*advance/frequency;End(stream);
                 var assumptions=PredictionAssumption.NoNewHits|PredictionAssumption.RandomRepresentative|PredictionAssumption.LocalTerrain|PredictionAssumption.HeldPlayerControls;
+                // Request-owned host observation, never the private world's
+                // forced offline netMode or a later live game-thread read.
+                if(networkObservation)assumptions|=PredictionAssumption.NetworkObservation;
                 if((quality&6)!=0)assumptions|=PredictionAssumption.ApproximateMechanism;
                 if((quality&8)!=0)assumptions|=PredictionAssumption.ObservedLighting;
                 value.Trajectory=new NpcTrajectory(identity,tick,version,assumptions,ended?PredictionStop.Despawn:PredictionStop.None,points,length,PredictionStrategy.NativeIsolated);return value;

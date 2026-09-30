@@ -20,7 +20,7 @@ namespace JueMingR.PredictionWorker
             if(!Identity(key) || expected!=null && !Identity(expected))throw new InvalidDataException("Invalid material identity.");
             if(expected==null){Console.Error.WriteLine("MATERIAL uncertified-rules; rebuild required");return Build(build,null);}
             directory=Path.GetFullPath(directory);Directory.CreateDirectory(directory);
-            string target=Path.Combine(directory,key+".image");var elapsed=Stopwatch.StartNew();
+            string target=Path.Combine(directory,key+".image");var elapsed=JueMingR.TerrariaHost.Combat.Prediction.PredictionPipeProtocol.Measure?Stopwatch.StartNew():null;
             string lockPath=Path.Combine(directory,key+".lock");
             try
             {
@@ -28,7 +28,7 @@ namespace JueMingR.PredictionWorker
             {
                 ReclaimInterrupted(directory,key);
                 byte[] image=Read(target,key,expected);
-                if(image!=null){Console.Error.WriteLine("MATERIAL hit-ms="+elapsed.Elapsed.TotalMilliseconds.ToString("F3",CultureInfo.InvariantCulture));return image;}
+                if(image!=null){if(elapsed!=null)Console.Error.WriteLine("MATERIAL hit-ms="+elapsed.Elapsed.TotalMilliseconds.ToString("F3",CultureInfo.InvariantCulture));return image;}
                 image=Build(build,expected);
                 string temporary=Path.Combine(directory,key+"."+Guid.NewGuid().ToString("N")+".tmp");
                 try
@@ -40,7 +40,7 @@ namespace JueMingR.PredictionWorker
                     Trim(directory,target);
                 }
                 finally{if(File.Exists(temporary))File.Delete(temporary);}
-                Console.Error.WriteLine("MATERIAL generated-published-ms="+elapsed.Elapsed.TotalMilliseconds.ToString("F3",CultureInfo.InvariantCulture));return image;
+                if(elapsed!=null)Console.Error.WriteLine("MATERIAL generated-published-ms="+elapsed.Elapsed.TotalMilliseconds.ToString("F3",CultureInfo.InvariantCulture));return image;
             }
             }
             finally{DeleteReleasedLock(lockPath);}

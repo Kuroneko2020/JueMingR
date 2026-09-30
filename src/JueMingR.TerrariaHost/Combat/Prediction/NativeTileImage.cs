@@ -23,7 +23,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         private const string GameHash="960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3";
         internal static byte[] Rewrite(byte[] original,Assembly harmony)
         {
-            var timing=System.Diagnostics.Stopwatch.StartNew();
+            var timing=PredictionPipeProtocol.Measure?System.Diagnostics.Stopwatch.StartNew():null;
             using(var sha=SHA256.Create())if(BitConverter.ToString(sha.ComputeHash(original)).Replace("-","")!=GameHash)throw new InvalidDataException("Private image identity.");
             var api=new MetadataApi(harmony);
             using(var input=new MemoryStream(original,false))
@@ -93,7 +93,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             }
         }
         private static void Stage(System.Diagnostics.Stopwatch watch,string name)
-        {Console.Error.WriteLine("MATERIAL stage="+name+" ms="+watch.Elapsed.TotalMilliseconds.ToString("F3",CultureInfo.InvariantCulture));watch.Restart();}
+        {if(watch!=null){Console.Error.WriteLine("MATERIAL stage="+name+" ms="+watch.Elapsed.TotalMilliseconds.ToString("F3",CultureInfo.InvariantCulture));watch.Restart();}}
         private static void VerifyOutput(MetadataApi api,byte[] image,List<Tuple<object,int[]>> originals)
         {
             using(var input=new MemoryStream(image,false))using(var module=(IDisposable)api.Static("ModuleDefinition","ReadModule",input))

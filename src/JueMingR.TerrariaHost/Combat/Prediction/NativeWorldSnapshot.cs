@@ -18,6 +18,21 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             new NativeValueSnapshot(typeof(Terraria.Testing.DebugOptions),true,false,new[]{"Shared_RandomizeProjectileSlots","noLimits"})};
         private static readonly NativeValueSnapshot Dd2=new NativeValueSnapshot(typeof(DD2Event),true,false);
         private static readonly FieldInfo DeadGoblins=typeof(DD2Event).GetField("_deadGoblinSpots",BindingFlags.Static|BindingFlags.NonPublic);
+        internal static void AdvanceObservedWind()
+        {
+            // Main.UpdateWeather runs before players once per day-rate unit.
+            // Continue only its deterministic convergence with the observed
+            // target/rain driver; later driver changes retire exact history.
+            // Do not consume weather RNG or create lightning/cloud effects.
+            float target=Main.windSpeedTarget*(1f+5f/9f*Main.maxRaining);
+            if(float.IsNaN(target) || float.IsInfinity(target) || float.IsNaN(Main.windSpeedCurrent) || float.IsInfinity(Main.windSpeedCurrent) || Main.dayRate<0 || Main.dayRate>86400)throw new InvalidDataException("Wind continuation premise.");
+            for(int i=0;i<Main.dayRate && Main.windSpeedCurrent!=target;i++)
+            {
+                float delta=.0003f+Math.Abs(target-Main.windSpeedCurrent)*.0015f;
+                if(Main.windSpeedCurrent<target){Main.windSpeedCurrent+=delta;if(Main.windSpeedCurrent>target)Main.windSpeedCurrent=target;}
+                else{Main.windSpeedCurrent-=delta;if(Main.windSpeedCurrent<target)Main.windSpeedCurrent=target;}
+            }
+        }
         internal static void Write(BinaryWriter writer)
         {
             foreach(var value in Values)value.Write(writer,null);

@@ -32,6 +32,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             internal NativeCapturedValues Values;
             internal NpcIdentity Identity;
             internal long Tick;
+            internal bool NetworkObservation;
         }
         internal sealed class DecodedReply
         {
@@ -78,10 +79,10 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         {lock(gate){if(state!=3 || stopping!=0 || result==null)return null;byte[] answer=result;result=null;Volatile.Write(ref state,1);return answer;}}
         internal NativeCapturedValues BeginCapture()
         {lock(gate){if(state!=1 || stopping!=0)throw new InvalidOperationException("Capture requires a ready transport.");var values=new NativeCapturedValues(captureStorage);captureStorage=null;return values;}}
-        internal bool TrySendValues(NativeCapturedValues values,NpcIdentity identity,long tick)
+        internal bool TrySendValues(NativeCapturedValues values,NpcIdentity identity,long tick,bool networkObservation)
         {
             if(values==null || !values.IsSealed || identity.Token!=null || tick<0)throw new ArgumentException("Prediction transport accepts sealed values and a token-free identity only.");
-            lock(gate){if(state!=1 || stopping!=0)return false;valueRequest=new ValueRequest{Values=values,Identity=identity,Tick=tick};Volatile.Write(ref state,2);wake.Set();return true;}
+            lock(gate){if(state!=1 || stopping!=0)return false;valueRequest=new ValueRequest{Values=values,Identity=identity,Tick=tick,NetworkObservation=networkObservation};Volatile.Write(ref state,2);wake.Set();return true;}
         }
         internal DecodedReply TryTakeResult()
         {lock(gate){if(state!=3 || stopping!=0 || decodedReply==null)return null;var answer=decodedReply;decodedReply=null;Volatile.Write(ref state,1);return answer;}}
@@ -150,7 +151,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                     // CLR cannot reopen a different config or lazy dependency.
                     for(int i=0;i<PayloadNames.Length;i++)if(Hash(leases[i]=new FileStream(Path.Combine(directory,PayloadNames[i]),FileMode.Open,FileAccess.Read,FileShare.Read))!=expectedHashes[i])throw new InvalidDataException("Prediction payload identity mismatch: "+PayloadNames[i]);
                     if(Hash(leases[PayloadNames.Length]=new FileStream(gamePath,FileMode.Open,FileAccess.Read,FileShare.Read))!=PredictionPipeProtocol.GameHash)throw new InvalidDataException("Prediction original identity mismatch.");
-                    var layouts=Stopwatch.StartNew();PredictionWire.PrepareCaptureLayouts();CapturePreparationMilliseconds=layouts.Elapsed.TotalMilliseconds;
+                    var layouts=PredictionPipeProtocol.Measure?Stopwatch.StartNew():null;PredictionWire.PrepareCaptureLayouts();CapturePreparationMilliseconds=layouts==null?0:layouts.Elapsed.TotalMilliseconds;
                     string hostHash=expectedHashes[2];Guid nonce=Guid.NewGuid();
                     int parentId=parent.Id;long parentStarted=parent.StartTime.ToUniversalTime().Ticks;
                     var start=new ProcessStartInfo(Path.Combine(directory,"JueMingR.PredictionWorker.exe"),"--anonymous-pipes "+Quote(gamePath)+" "+hostHash+" "+parentId.ToString(CultureInfo.InvariantCulture)+" "+parentStarted.ToString(CultureInfo.InvariantCulture)+" "+output.GetClientHandleAsString()+" "+input.GetClientHandleAsString()+" "+nonce.ToString("N")+" "+Quote(cacheDirectory))
@@ -179,12 +180,12 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                         Limit(requestMilliseconds);double encodeMs=0;
                         if(values!=null)
                         {
-                            var encoding=Stopwatch.StartNew();payload=values.Values.Encode();
+                            var encoding=PredictionPipeProtocol.Measure?Stopwatch.StartNew():null;payload=values.Values.Encode();
                             var reusable=values.Values.ReleaseStorage();values.Values=null;
                             lock(gate){if(stopping==0)captureStorage=reusable;}
-                            encodeMs=encoding.Elapsed.TotalMilliseconds;
+                            encodeMs=encoding?.Elapsed.TotalMilliseconds??0;
                         }
-                        var exchange=Stopwatch.StartNew();PredictionPipeProtocol.WriteFrame(output,PredictionPipeProtocol.Envelope(payload,checked(++sequence),false));
+                        var exchange=PredictionPipeProtocol.Measure?Stopwatch.StartNew():null;PredictionPipeProtocol.WriteFrame(output,PredictionPipeProtocol.Envelope(payload,checked(++sequence),false));
                         byte[] answer=PredictionPipeProtocol.ReadFrame(input);if(answer==null)throw new EndOfStreamException("Prediction helper ended without a result.");
                         answer=PredictionPipeProtocol.OpenEnvelope(answer,sequence,true);
                         if(clear)
@@ -194,11 +195,11 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                             continue;
                         }
                         byte[] alignment;int asset;answer=PredictionPipeProtocol.OpenResult(answer,out alignment,out asset);
-                        double exchangeMs=exchange.Elapsed.TotalMilliseconds;DecodedReply decoded=null;
+                        double exchangeMs=exchange?.Elapsed.TotalMilliseconds??0;DecodedReply decoded=null;
                         if(values!=null)
                         {
-                            var decoding=Stopwatch.StartNew();var parsed=NativePredictionResult.Read(answer,alignment,values.Identity,values.Tick,0);
-                            decoded=new DecodedReply{Result=parsed,Bytes=payload.Length,ReplyBytes=answer.Length+(alignment?.Length??0),MissingAsset=asset,EncodeMs=encodeMs,ExchangeMs=exchangeMs,DecodeMs=decoding.Elapsed.TotalMilliseconds};
+                            var decoding=PredictionPipeProtocol.Measure?Stopwatch.StartNew():null;var parsed=NativePredictionResult.Read(answer,alignment,values.Identity,values.Tick,0,values.NetworkObservation);
+                            decoded=new DecodedReply{Result=parsed,Bytes=payload.Length,ReplyBytes=answer.Length+(alignment?.Length??0),MissingAsset=asset,EncodeMs=encodeMs,ExchangeMs=exchangeMs,DecodeMs=decoding?.Elapsed.TotalMilliseconds??0};
                         }
                         // Encoding and decoding do not hold the mailbox lock.
                         // World retirement can happen during either operation;

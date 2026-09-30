@@ -16,7 +16,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         private const BindingFlags Flags=BindingFlags.Instance|BindingFlags.Static|BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.DeclaredOnly;
         internal static void Run()
         {
-            var watch=Stopwatch.StartNew();var pending=new Queue<MethodBase>();var visited=new HashSet<MethodBase>();
+            var watch=PredictionPipeProtocol.Measure?Stopwatch.StartNew():null;var pending=new Queue<MethodBase>();var visited=new HashSet<MethodBase>();
             foreach(var type in new[]{typeof(NPC),typeof(Projectile)})
                 foreach(var method in type.GetMethods(Flags))
                     if(method.Name=="AI" || method.Name=="UpdateNPC" || method.Name=="Update")pending.Enqueue(method);
@@ -37,7 +37,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                     if(called!=null && Relevant(called.DeclaringType))pending.Enqueue(called);
                 }
             }
-            Console.Error.WriteLine("PREPARED native-methods="+count+" il-bytes="+bytes+" ms="+watch.Elapsed.TotalMilliseconds.ToString("F3",CultureInfo.InvariantCulture));
+            if(watch!=null)Console.Error.WriteLine("PREPARED native-methods="+count+" il-bytes="+bytes+" ms="+watch.Elapsed.TotalMilliseconds.ToString("F3",CultureInfo.InvariantCulture));
         }
         private static bool Relevant(Type type)
         {

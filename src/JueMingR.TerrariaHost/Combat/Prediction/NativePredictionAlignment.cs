@@ -86,8 +86,8 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             w.Write(p.selectedItem);foreach(var item in p.inventory){w.Write(item.type);w.Write(item.prefix);w.Write(item.stack);}
             for(int slot=0;slot<10;slot++){var item=p.GetEffectiveArmor(slot);w.Write(item.type);w.Write(item.prefix);w.Write(item.stack);w.Write(item.accessory);w.Write(item.expertOnly);w.Write(p.IsItemSlotUnlockedAndUsable(slot));}
             foreach(bool value in p.npcTypeNoAggro)w.Write(value);
-            // Only the explicitly reconstructed ordinary speed subset advances
-            // clocks. Other buff/equipment changes still retire the premise;
+            // Proven ordinary clocks advance independently of movement and
+            // equipment support. Other effect changes still retire the premise;
             // unsupported effects never become equivalent by omitting clocks.
             foreach(int value in p.buffType)w.Write(value);foreach(int value in p.buffTime)w.Write(value);
         }
@@ -130,7 +130,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         }
         private static void WorldPremise(BinaryWriter w)
         {
-            w.Write(Main.dayTime);w.Write(Main.time);w.Write(Main.dayRate);w.Write(Main.GameMode);w.Write(Main.bloodMoon);w.Write(Main.eclipse);w.Write(Main.windSpeedCurrent);
+            w.Write(Main.dayTime);w.Write(Main.time);w.Write(Main.dayRate);w.Write(Main.GameMode);w.Write(Main.bloodMoon);w.Write(Main.eclipse);w.Write(Main.windSpeedCurrent);w.Write(Main.windSpeedTarget);w.Write(Main.maxRaining);
             w.Write(Main.maxTilesX);w.Write(Main.maxTilesY);w.Write(Main.worldSurface);w.Write(Main.rockLayer);w.Write(Main.remixWorld);w.Write(Main.getGoodWorld);w.Write(Main.slimeRain);w.Write(Main.invasionType);
             w.Write(Terraria.Testing.DebugOptions.Shared_RandomizeProjectileSlots);w.Write(Terraria.Testing.DebugOptions.noLimits);
             // Equal NPC pages do not imply the same gravity source: the

@@ -25,7 +25,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         internal byte[] Alignment {get;private set;}
         internal PredictionSandbox()
         {
-            var startup=Stopwatch.StartNew();
+            var startup=PredictionPipeProtocol.Measure?Stopwatch.StartNew():null;
             if(typeof(Main).Assembly.ManifestModule.ModuleVersionId!=new Guid("2c29f6c3-4bd9-4add-9c58-da159804e083"))throw new InvalidOperationException("Native version mismatch.");
             Main.dedServ=true;Main.netMode=0;Main.myPlayer=0;Main.gameMenu=false;
             Main.ActiveWorldFileData=new Terraria.IO.WorldFileData();
@@ -58,7 +58,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             Console.Error.WriteLine("TERRAIN methods="+terrain.Methods+" accesses="+terrain.Accesses);
         }
         private static void StartupPart(Stopwatch watch,string name)
-        {Console.Error.WriteLine("STARTUP "+name+"-ms="+watch.Elapsed.TotalMilliseconds.ToString("F3",System.Globalization.CultureInfo.InvariantCulture));watch.Restart();}
+        {if(watch!=null){Console.Error.WriteLine("STARTUP "+name+"-ms="+watch.Elapsed.TotalMilliseconds.ToString("F3",System.Globalization.CultureInfo.InvariantCulture));watch.Restart();}}
         internal void ClearWorld()
         {
             // Execution code and intrinsic hooks survive; private world values
@@ -85,7 +85,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         internal byte[] Predict(byte[] bytes,bool withAlignment=false)
         {
             Alignment=null;
-            long started=Stopwatch.GetTimestamp();
+            long started=PredictionPipeProtocol.Measure?Stopwatch.GetTimestamp():0;
             NativeEffectBoundary.Begin();
             NativeEntityDirectory.Reset();
             NativeImmunitySnapshot.Reset();
@@ -97,7 +97,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 int width=reader.ReadInt32(),height=reader.ReadInt32();
                 NativeTerrainSnapshot.ValidateExtent(1,width,height);
                 Reset(width,height);
-                long reset=Stopwatch.GetTimestamp();
+                long reset=PredictionPipeProtocol.Measure?Stopwatch.GetTimestamp():0;
                 Main.worldSurface=reader.ReadDouble();Main.rockLayer=reader.ReadDouble();Main.dayTime=reader.ReadBoolean();Main.time=reader.ReadDouble();
                 Main.GameMode=reader.ReadInt32();Main.myPlayer=reader.ReadInt32();Main.bloodMoon=reader.ReadBoolean();Main.eclipse=reader.ReadBoolean();Main.windSpeedCurrent=reader.ReadSingle();
                 if(Main.GameMode<0 || Main.GameMode>3 || Main.myPlayer<0 || Main.myPlayer>=Main.maxPlayers || !Finite(Main.worldSurface) || !Finite(Main.rockLayer) || !Finite(Main.time) || !Finite(Main.windSpeedCurrent))throw new InvalidDataException("Invalid world values.");
@@ -131,7 +131,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 if(input.Position!=input.Length)throw new InvalidDataException("Trailing snapshot data.");
                 foreach(int slot in slots)if(Main.npc[slot].type==36)
                 {int parent=(int)Main.npc[slot].ai[1];if(parent<0 || parent>=Main.maxNPCs || !Main.npc[parent].active || Main.npc[parent].type!=35)throw new InvalidDataException("Missing Skeletron parent.");}
-                long restored=Stopwatch.GetTimestamp();
+                long restored=PredictionPipeProtocol.Measure?Stopwatch.GetTimestamp():0;
                 var playerFuture=new float[(horizon+1)*playerCount*4];RecordPlayers(playerSlots,playerFuture,0);
                 using(var result=new MemoryStream())using(var writer=new BinaryWriter(result,Encoding.UTF8,true))using(var dependencies=new NativeDependencyTimeline())
                 using(var proofBytes=new MemoryStream())using(var proof=new BinaryWriter(proofBytes))
@@ -147,9 +147,10 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                     long advanceTicks=0;
                     for(int step=1;step<=horizon;step++)
                     {
-                        long advanceStart=Stopwatch.GetTimestamp();
+                        long advanceStart=PredictionPipeProtocol.Measure?Stopwatch.GetTimestamp():0;
                         Vector2 priorPosition=selectedNpc.position;
                         UpdateCount.SetValue(null,unchecked((uint)(tick+step)));
+                        NativeWorldSnapshot.AdvanceObservedWind();
                         NPC.UpdateProtectedSpawnSlots();
                         NPC.ClearFoundActiveNPCs();NPC.UpdateFoundActiveNPCs();
                         playerMotion.Advance();
@@ -197,7 +198,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                         // on this same object through Transform. End once and
                         // never reconnect a selected path to a later birth.
                         ended=TargetEnd(Main.npc[selected],selectedNpc,selectedGeneration,ended);
-                        advanceTicks+=Stopwatch.GetTimestamp()-advanceStart;
+                        if(PredictionPipeProtocol.Measure)advanceTicks+=Stopwatch.GetTimestamp()-advanceStart;
                         WritePoint(writer,selectedNpc,selectedGeneration,ended,step);
                         if(withAlignment)
                         {
@@ -224,7 +225,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                     writer.Write(playerCount);foreach(int slot in playerSlots)writer.Write(slot);foreach(float value in playerFuture)writer.Write(value);
                     dependencies.WriteTo(writer);
                     if(withAlignment){proof.Flush();Alignment=proofBytes.ToArray();}
-                    writer.Write(Stopwatch.GetTimestamp()-started);writer.Write(Stopwatch.Frequency);
+                    writer.Write(PredictionPipeProtocol.Measure?Stopwatch.GetTimestamp()-started:0);writer.Write(Stopwatch.Frequency);
                     writer.Write(reset-started);writer.Write(restored-reset);
                     writer.Flush();return result.ToArray();
                 }

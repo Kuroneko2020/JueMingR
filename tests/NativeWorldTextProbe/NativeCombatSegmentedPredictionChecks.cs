@@ -164,6 +164,7 @@ namespace NativeWorldTextProbe
         {
             typeof(Main).GetField("_gameUpdateCount",Flags).SetValue(null,unchecked(Main.GameUpdateCount+1));
             NPC.UpdateProtectedSpawnSlots();NPC.ClearFoundActiveNPCs();NPC.UpdateFoundActiveNPCs();
+            NativeCombatWorkerChecks.AdvanceWeather();
             for(int i=0;i<Main.maxNPCs;i++)if(Main.npc[i].active)Main.npc[i].UpdateNPC(i);
         }
         private static void Require(bool value,string reason){if(!value)throw new InvalidOperationException(reason);}
