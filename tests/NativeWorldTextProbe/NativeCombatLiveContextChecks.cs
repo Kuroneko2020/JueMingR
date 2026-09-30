@@ -28,6 +28,7 @@ namespace NativeWorldTextProbe
             if(mode=="relocations"){Relocations(context,native,cache,step);return;}
             if(mode=="special"){Special(context,native,cache,step);return;}
             if(mode=="families"){NativeCombatLiveCoverageChecks.Run(context,native,cache,step);return;}
+            if(mode=="environment"){NativeCombatEnvironmentChecks.Run(context,native,cache,step,output);return;}
             if(mode=="post-delivery-suite"){Relocations(context,native,cache,step);Liquid(context,native,cache,step);Special(context,native,cache,step);PostDelivery(context,native,cache,step);NativeCombatLiveCoverageChecks.Run(context,native,cache,step);return;}
             if(mode!="shared-rng")throw new InvalidOperationException("Unknown live-context scenario.");
             int failed=0;
