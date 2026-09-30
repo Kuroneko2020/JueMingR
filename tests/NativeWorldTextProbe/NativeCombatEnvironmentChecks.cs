@@ -25,6 +25,7 @@ namespace NativeWorldTextProbe
         {
             var selection=Get(Get(context,"CombatObservation"),"Selection");
             string axis=Environment.GetEnvironmentVariable("JUEMINGR_NPC_ENV_AXIS")??"bunnies";
+            if(axis=="query-boundary"){NativeCombatQueryBoundaryChecks.Run(context,output);return;}
             if(axis=="route-feasibility"){Continuous(context,native,cache,step,output);return;}
             int[] types={42,176,110,175,153,51,56,674};
             string selectedTypes=Environment.GetEnvironmentVariable("JUEMINGR_NPC_ENV_TYPES");
