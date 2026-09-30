@@ -22,7 +22,9 @@ namespace Terraria
         public static int netMode;
         public static bool CanUpdateGameplay { get; set; } = true;
         public static bool gamePaused;
-        public static uint GameUpdateCount;
+        // The separately compiled Host calls the native UInt32 getter. Keep
+        // that ABI; the fixture-only setter lets input checks advance a tick.
+        public static uint GameUpdateCount { get; set; }
         public static KeyboardState keyState;
         public static KeyboardState oldKeyState;
         public static Matrix UIScaleMatrix { get; set; } = Matrix.Identity;
