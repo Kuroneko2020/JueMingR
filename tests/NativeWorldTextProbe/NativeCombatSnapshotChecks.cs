@@ -15,9 +15,13 @@ namespace NativeWorldTextProbe
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance|BindingFlags.Static;
         internal static void Run(Assembly host)
         {
+            ConditionalPlayerPremises(host);
+            TerrainRestore(host);
+            NativeCombatTerrainChecks.Trace(host);
             NativeCombatProductionPredictionChecks.Codec(host);
             BoundedShootingClock(host);
             NumericAndEventPremises(host);
+            PresentationPremises(host);
             WindConvergence(host);
             BuffClocks(host);
             EffectAllocation(host);
@@ -195,11 +199,14 @@ namespace NativeWorldTextProbe
             Func<object> observe=()=>type.GetMethod("Observe",Flags).Invoke(null,new object[]{1000L,new[]{0},new int[0],0});
             Func<object,object,string> difference=(a,b)=>(string)type.GetMethod("Difference",Flags).Invoke(null,new[]{a,b});
             n.velocity.X=1.37426448f;object before=observe();n.velocity.X=1.3742646f;Require(difference(before,observe())==null,"Measured ghost velocity tail has bounded numerical equivalence.");
-            n.velocity.X+=.00001f;Require(difference(before,observe())!=null,"Numerical bound is not a motion smoothing allowance.");
+            n.velocity.X+=.003f;Require(difference(before,observe())!=null,"Numeric bound cannot become a motion smoothing allowance.");
             n.velocity=Vector2.Zero;before=observe();n.velocity.X=.0000001f;Require(difference(before,observe())!=null,"Zero/nonzero branch remains exact.");
             n.velocity.X=-.0000001f;before=observe();n.velocity.X=.0000001f;Require(difference(before,observe())!=null,"Sign branch remains exact.");
             n.oldVelocity.X=1.37426448f;before=observe();n.oldVelocity.X=1.3742646f;Require(difference(before,observe())==null,"Collision's copied prior velocity has the same explicit numeric bound.");
-            before=observe();n.position.X+=.0001f;Require(difference(before,observe())!=null,"Position remains exact.");
+            before=observe();n.position.X+=.0001f;Require(difference(before,observe())==null,"Position tails allowed by the 120-step original oracle must remain usable in production.");
+            n.position.X+=.003f;Require(difference(before,observe())!=null,"Absolute drift stays bounded at each observation; no reanchoring or accumulated allowance.");
+            before=observe();n.oldPosition.X+=.0001f;n.oldPos[0].X+=.0001f;Require(difference(before,observe())==null,"Copied continuous history has the same small bound.");
+            before=observe();n.position.X+=100;Require(difference(before,observe())!=null,"True relocation remains invalid.");
             before=observe();n.ai[0]+=.0000001f;Require(difference(before,observe())!=null,"AI phase/angle/index values remain exact.");
             foreach(string biome in new[]{"ZoneHallow","ZoneDesert","ZoneJungle","ZoneLihzhardTemple","ZoneSandstorm"})
             {var property=typeof(Player).GetProperty(biome);before=observe();bool original=(bool)property.GetValue(Main.LocalPlayer,null);property.SetValue(Main.LocalPlayer,!original,null);Require(difference(before,observe())!=null,"Observed biome invalidates: "+biome);property.SetValue(Main.LocalPlayer,original,null);}
@@ -211,6 +218,44 @@ namespace NativeWorldTextProbe
             }
             finally{Terraria.GameContent.Events.DD2Event.Ongoing=ongoing;Main.CurrentFrameFlags.ActivePlayersCount=active;NPC.waveKills=kills;}
             Console.WriteLine("PASS explicit velocity numerical bound; zero/sign/position/AI boundaries; all biome flags and DD2 event premises");
+        }
+        private static void PresentationPremises(Assembly host)
+        {
+            NativeCombatWorkerChecks.Scene(false);var n=Main.npc[0];
+            var type=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativePredictionAlignment",true);
+            Func<object> observe=()=>type.GetMethod("Observe",Flags).Invoke(null,new object[]{1000L,new[]{0},new int[0],0});
+            Func<object,object,string> difference=(a,b)=>(string)type.GetMethod("Difference",Flags).Invoke(null,new[]{a,b});
+            object before=observe();n.nameOver+=NPC.nameOverIncrement;
+            Require(difference(before,observe())==null,"Name fade is a Draw-owned value and must not retire an otherwise valid trajectory.");
+            var clock=typeof(NPC).GetField("targetSetFrame",Flags);before=observe();clock.SetValue(n,Convert.ChangeType(Convert.ToDouble(clock.GetValue(n))+1,clock.FieldType));
+            Require(difference(before,observe())==null,"The DrawAggro timestamp is not a movement or AI premise.");
+            before=observe();n.life--;Require(difference(before,observe())!=null,"Real damage is not a presentation change.");
+            before=observe();n.dontTakeDamage=!n.dontTakeDamage;Require(difference(before,observe())!=null,"Damage eligibility still retires the prediction.");
+            before=observe();n.localAI[0]++;Require(difference(before,observe())!=null,"AI-local state is not excluded along with name fade.");
+            Console.WriteLine("PASS name fade equivalence with life, eligibility and localAI counterexamples (state perturbation, not rendering).");
+        }
+        private static void ConditionalPlayerPremises(Assembly host)
+        {
+            NativeCombatWorkerChecks.Scene(false);var p=Main.LocalPlayer;var n=Main.npc[0];
+            var type=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativePredictionAlignment",true);
+            Func<object> observe=()=>type.GetMethod("Observe",Flags).Invoke(null,new object[]{1000L,new[]{0},new int[0],0});
+            Func<object,object,string> difference=(a,b)=>(string)type.GetMethod("Difference",Flags).Invoke(null,new[]{a,b});
+            p.pulley=true;object before=observe();p.position.X+=3;p.velocity.X=2;p.jump=3;
+            Require(difference(before,observe())==null,"Conditional pulley continuation does not require exact future player kinematics when current NPC state remains valid.");
+            n.target=p.whoAmI;n.targetRect=p.Hitbox;before=observe();p.position.X+=3;n.targetRect=p.Hitbox;
+            Require(difference(before,observe())==null,"A current player-derived target rectangle follows conditional player motion without hiding NPC state changes.");
+            before=observe();n.targetRect.X++;Require(difference(before,observe())!=null,"A cached or non-player rectangle cannot inherit conditional equivalence.");n.targetRect=p.Hitbox;
+            p.tankPet=1;before=observe();p.position.X+=3;n.targetRect=p.Hitbox;Require(difference(before,observe())!=null,"A possible tank-pet rectangle keeps its coordinates exact.");p.tankPet=-1;
+            before=observe();n.target=300;Require(difference(before,observe())!=null,"Changing player target to NPC target remains exact.");n.target=p.whoAmI;
+            before=observe();p.controlDown=!p.controlDown;Require(difference(before,observe())!=null,"A new input retires the conditional premise.");
+            before=observe();p.pulley=false;p.grappling[0]=1;Require(difference(before,observe())!=null,"Changing between Complex mechanisms is not equivalent.");
+            before=observe();p.wet=!p.wet;Require(difference(before,observe())!=null,"Water pursuit qualification remains causal.");
+            before=observe();n.ai[0]++;Require(difference(before,observe())!=null,"Conditional player motion cannot excuse a changed NPC branch.");
+            before=observe();n.position.X+=100;Require(difference(before,observe())!=null,"Conditional player motion cannot excuse target teleportation.");
+            p.inventory[10].SetDefaults(1);p.inventory[10].stack=20;before=observe();p.inventory[10].stack=19;Require(difference(before,observe())==null,"An unused positive inventory count does not reject a pure NPC continuation.");
+            before=observe();p.inventory[10].stack=0;Require(difference(before,observe())!=null,"Loss of item presence is not a count-only change.");
+            p.grappling[0]=-1;p.pulley=false;before=observe();p.position.X+=3;Require(difference(before,observe())!=null,"Supported ordinary kinematics still have the original small error bound.");
+            Console.WriteLine("PASS conditional player result vs fixed input/mechanism/target premise; unrelated pure-NPC stack count boundary.");
         }
         private static void BuffClocks(Assembly host)
         {
@@ -255,6 +300,25 @@ namespace NativeWorldTextProbe
             finally{Main.windSpeedCurrent=wind;Main.windSpeedTarget=target;Main.maxRaining=rain;Main.dayRate=rate;Main.netMode=mode;}
             Console.WriteLine("PASS original wind convergence / clamp / paused and accelerated clock / strict target and rain drivers");
         }
+        private static void TerrainRestore(Assembly host)
+        {
+            NativeCombatWorkerChecks.Scene(false);var original=Main.tile;
+            var snapshotType=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativeTerrainSnapshot",true);
+            object snapshot=snapshotType.GetMethod("CaptureChunks",Flags).Invoke(null,new object[]{1L,new SortedSet<int>{0}});
+            var storeType=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativeTerrainStore",true);object store=Activator.CreateInstance(storeType,true);
+            Action<bool> restore=references=>{using(var stream=new MemoryStream())using(var writer=new BinaryWriter(stream)){snapshotType.GetMethod("Write",Flags).Invoke(snapshot,new object[]{writer,references});writer.Flush();stream.Position=0;using(var reader=new BinaryReader(stream))storeType.GetMethod("Read",Flags).Invoke(store,new object[]{reader,120,120});}};
+            try
+            {
+                restore(false);var tile=Main.tile[0,0];var baseline=original[0,0];
+                tile.type=1;tile.wall=2;tile.liquid=3;tile.sTileHeader=4;tile.bTileHeader=5;tile.bTileHeader2=6;tile.bTileHeader3=7;tile.frameX=8;tile.frameY=9;
+                restore(true);
+                Require(ReferenceEquals(tile,Main.tile[0,0]),"Repeated terrain restore reuses its private Tile instead of allocating every cell again.");
+                Require(tile.type==baseline.type && tile.wall==baseline.wall && tile.liquid==baseline.liquid && tile.sTileHeader==baseline.sTileHeader && tile.bTileHeader==baseline.bTileHeader && tile.bTileHeader2==baseline.bTileHeader2 && tile.bTileHeader3==baseline.bTileHeader3 && tile.frameX==baseline.frameX && tile.frameY==baseline.frameY,"Every mutable Tile field is restored even for cached immutable bytes.");
+                Require(Main.tile[32,0]==null,"Reuse never provides an undeclared tile.");
+                Console.WriteLine("PASS terrain private Tile reuse and all nine fields restored after simulated edits.");
+            }
+            finally{Main.tile=original;}
+        }
         private static void CheckTerrain(Assembly host)
         {
             var type=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativeTerrainSnapshot",true);
@@ -274,6 +338,24 @@ namespace NativeWorldTextProbe
                     }
                 }
                 Require((bool)type.GetMethod("IsCurrent",Flags).Invoke(value,new object[]{1L}),"Unknown unrelated middle terrain cannot invalidate the sampled union.");
+                var passType=type.GetNestedType("Comparison",Flags);var pass=Activator.CreateInstance(passType,true);var compare=type.GetMethod("IsCurrentObserved",Flags);
+                object equivalent=type.GetMethod("CaptureChunks",Flags).Invoke(null,new object[]{1L,keys});
+                Require((bool)compare.Invoke(value,new[]{(object)1L,pass}) && (bool)compare.Invoke(equivalent,new[]{(object)1L,pass}),"Two independently captured equal baselines share only this synchronous comparison proof.");
+                bool measure=(bool)host.GetType("JueMingR.TerrariaHost.Combat.Prediction.PredictionPipeProtocol",true).GetField("Measure",Flags).GetValue(null);
+                long reads=(long)passType.GetField("TilesRead",Flags).GetValue(pass),hits=(long)passType.GetField("ChunkHits",Flags).GetValue(pass);
+                Require(reads==(measure?1600:0) && hits==(measure?2:0),"Overlapping baseline comparison reads each live tile once; detailed counters remain OFF when disabled.");
+                Console.WriteLine("TERRAIN compare distinct-equal-baselines=2 chunks-each=2 live-tiles="+reads+" reused-chunks="+hits+" old-required-live-tiles=3200 measure="+measure);
+                var expandedKeys=new SortedSet<int>(keys){1};object expanded=type.GetMethod("CaptureChunksObserved",Flags).Invoke(null,new object[]{1L,expandedKeys,pass});var expandedChunks=(Array)type.GetField("Chunks",Flags).GetValue(expanded);
+                Require(ReferenceEquals(chunks.GetValue(0),expandedChunks.GetValue(0)) && ReferenceEquals(chunks.GetValue(1),expandedChunks.GetValue(2)),"Region growth reuses only chunks proven against live tiles in this call.");
+                Require((long)passType.GetField("TilesCaptured",Flags).GetValue(pass)==(measure?1024:0),"Expanded capture reads only its new chunk, not the two already verified chunks.");
+                foreach(string field in new[]{"type","wall","liquid","sTileHeader","bTileHeader","bTileHeader2","bTileHeader3","frameX","frameY"})
+                {
+                    var f=typeof(Tile).GetField(field,Flags);var tile=Main.tile[0,0];object original=f.GetValue(tile);f.SetValue(tile,Convert.ChangeType(Convert.ToInt32(original)^1,f.FieldType));passType.GetMethod("Clear",Flags).Invoke(pass,null);
+                    Require(!(bool)compare.Invoke(value,new[]{(object)1L,pass}),"Next update must read and reject a changed tile field: "+field);
+                    object changed=type.GetMethod("CaptureChunks",Flags).Invoke(null,new object[]{1L,keys});Require((bool)compare.Invoke(changed,new[]{(object)1L,pass}),"Failed first comparison cannot poison another current baseline.");
+                    f.SetValue(tile,original);
+                }
+                passType.GetMethod("Clear",Flags).Invoke(pass,null);Require(!(bool)compare.Invoke(value,new[]{(object)2L,pass}),"No proof crosses a world session.");
                 Main.tile[0,0].wall++;Require(!(bool)type.GetMethod("IsCurrent",Flags).Invoke(value,new object[]{1L}),"A sampled tile change immediately retires the baseline.");Main.tile[0,0].wall--;
             }
             finally{Main.tile[50,50]=prior;}

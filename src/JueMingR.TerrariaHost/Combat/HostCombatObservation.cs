@@ -39,7 +39,7 @@ namespace JueMingR.TerrariaHost.Combat
         {
             if(LayerStatus==Rendering.WorldLayerStatus.Unavailable)return "世界显示入口不可用，设置已保留；需要重新进入游戏。";
             if(field==0 && (!Hooks.Ready || collisionFailed))return "碰撞箱显示暂不可用，设置已保留；可点击开启重试。";
-            if(field==1 && pathFailed)return "NPC寻路预测暂不可用，设置已保留；可点击开启重试。";
+            if(field==1 && (!Hooks.Ready || pathFailed))return "NPC寻路预测暂不可用，设置已保留；可点击开启重试。";
             return null;
         }
         internal bool Capture {get{return Collision && runtime.IsSessionActive;}}
@@ -66,7 +66,7 @@ namespace JueMingR.TerrariaHost.Combat
             // Reliable preference intent is available in the safe Main.Update
             // callback even in menus. This does not activate any Gameplay
             // feature, sample a world, or grant input/operation ownership.
-            Prediction.Native?.PollEnvironment(Settings.CanRun && Options.Path && !pathFailed || Prediction.Cache.Required>0,runtime.IsSessionActive);
+            Prediction.Native?.PollEnvironment(Hooks.Ready && (Settings.CanRun && Options.Path && !pathFailed || Prediction.Cache.Required>0),runtime.IsSessionActive);
             if(Prediction.Native!=null && Prediction.Native.Failed)pathFailed=true;
             wasCollision=collision;wasPath=path;
         }
@@ -79,6 +79,7 @@ namespace JueMingR.TerrariaHost.Combat
         public void Update(ulong tick)
         {
             if(!Enabled)return;
+            if(!Hooks.Ready){Selection.RetireTarget();Prediction.Clear();return;}
             var player=Main.LocalPlayer;if(player==null || !player.active || player.dead || player.ghost){Selection.RetireTarget();Prediction.Clear();Geometry.BeginNpcs();return;}
             if(Collision)Geometry.BeginNpcs();
             if(Path)Prediction.Cache.Demand(0,NpcPredictionCache.Horizon);else Prediction.Cache.Release(0);

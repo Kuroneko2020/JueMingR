@@ -23,6 +23,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         private readonly NativePlayerMotion playerMotion=new NativePlayerMotion();
         private readonly byte[] emptyWorld;
         internal byte[] Alignment {get;private set;}
+        internal int MeasuredCompletedSteps {get;private set;}
         internal PredictionSandbox()
         {
             var startup=PredictionPipeProtocol.Measure?Stopwatch.StartNew():null;
@@ -85,7 +86,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         }
         internal byte[] Predict(byte[] bytes,bool withAlignment=false)
         {
-            Alignment=null;
+            Alignment=null;if(PredictionPipeProtocol.Measure)MeasuredCompletedSteps=0;
             long started=PredictionPipeProtocol.Measure?Stopwatch.GetTimestamp():0;
             NativeEffectBoundary.Begin();
             NativeEntityDirectory.Reset();
@@ -149,7 +150,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                     for(int step=1;step<=horizon;step++)
                     {
                         long advanceStart=PredictionPipeProtocol.Measure?Stopwatch.GetTimestamp():0;
-                        Vector2 priorPosition=selectedNpc.position;
+                        NativeNpcMotionTrace.Begin(selectedNpc);
                         UpdateCount.SetValue(null,unchecked((uint)(tick+step)));
                         NativeWorldSnapshot.AdvanceObservedWind();
                         NPC.UpdateProtectedSpawnSlots();
@@ -166,7 +167,8 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                         // Anchors are per tick, not persistent scene state.
                         Main.sittingManager.ClearNPCAnchors();
                         using(NativeRandomSnapshot.Use("UpdateNPCs"))
-                            for(int slot=0;slot<Main.maxNPCs;slot++)if(Main.npc[slot].active && NativeEntityDirectory.CanAdvance(Main.npc[slot]))Main.npc[slot].UpdateNPC(slot);
+                            for(int slot=0;slot<Main.maxNPCs;slot++)if(Main.npc[slot].active && NativeEntityDirectory.CanAdvance(Main.npc[slot]))
+                            {NativeNpcMotionTrace.Enter(Main.npc[slot]);try{Main.npc[slot].UpdateNPC(slot);}finally{NativeNpcMotionTrace.Leave();}}
                         // Enumerate native slots at the phase itself: a new
                         // higher slot participates this tick; a reused lower
                         // slot waits until the next tick. This also includes
@@ -211,18 +213,16 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                             // full native movement and presentation semantics,
                             // but cannot ever serve as an acceptance proof.
                             var observed=step<=PredictionWire.MaximumAlignmentAge?NativePredictionAlignment.Observe(tick+step,slots,projectileSlots,selected):NativePredictionAlignment.Presentation(tick+step,selected);
-                            // Any relocation outside the final native velocity
-                            // interval breaks the rendered segment; never join
-                            // an AI position correction across intervening walls.
-                            observed.NewSegment=Vector2.DistanceSquared(selectedNpc.position,priorPosition+selectedNpc.velocity)>.0625f;
+                            observed.NewSegment=NativeNpcMotionTrace.Complete();
                             NativePredictionAlignment.Write(proof,observed);
                         }
                         RecordPlayers(playerSlots,playerFuture,step);
                         dependencies.Record(step);
+                        if(PredictionPipeProtocol.Measure)MeasuredCompletedSteps=step;
                     }
                     if(withAlignment)proof.Write(advanceTicks);
                     }
-                    finally{NativeTileBoundary.End();NativeEntityDirectory.End();Main.tileSolid[379]=oldSolid379;}
+                    finally{NativeNpcMotionTrace.Clear();NativeTileBoundary.End();NativeEntityDirectory.End();Main.tileSolid[379]=oldSolid379;}
                     // Player continuation is a dependency timeline, not another
                     // combat target. It permits alignment to observed movement
                     // and direct comparison with an independent native oracle.

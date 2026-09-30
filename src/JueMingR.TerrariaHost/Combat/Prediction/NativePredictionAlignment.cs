@@ -15,9 +15,13 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
     internal static class NativePredictionAlignment
     {
         private static readonly NativeValueSnapshot Projectiles=new NativeValueSnapshot(typeof(Projectile),fieldNames:new NativeValueSnapshot(typeof(Projectile)).FieldIdentities.Where(ExactMotionField).Select(Name).ToArray());
-        private static readonly NativeValueSnapshot Npcs=new NativeValueSnapshot(typeof(NPC),fieldNames:PredictionWire.Npcs.FieldIdentities.Where(f=>ExactMotionField(f) && !f.EndsWith(".localAI",StringComparison.Ordinal)).Select(Name).ToArray());
+        // nameOver belongs exclusively to Main.DrawNPCDirect's name fade and
+        // targetSetFrame to DrawAggro's color fade. They
+        // remains in the complete capture, but different Draw/Update ratios
+        // cannot change whether the captured AI continuation is still useful.
+        private static readonly NativeValueSnapshot Npcs=new NativeValueSnapshot(typeof(NPC),fieldNames:PredictionWire.Npcs.FieldIdentities.Where(f=>ExactMotionField(f) && Name(f)!="nameOver" && Name(f)!="targetSetFrame" && Name(f)!="targetRect" && Name(f)!="localAI").Select(Name).ToArray());
         private static string Name(string field){return field.Substring(field.LastIndexOf('.')+1);}
-        private static bool ExactMotionField(string field){return Name(field)!="velocity" && Name(field)!="oldVelocity";}
+        private static bool ExactMotionField(string field){string name=Name(field);return name!="velocity" && name!="oldVelocity" && name!="position" && name!="oldPosition" && name!="oldPos";}
         internal sealed class Frame
         {
             internal long Tick;
@@ -25,7 +29,9 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             internal int[] Npcs,Projectiles,Players;
             internal ulong[] NpcState,ProjectileState,PlayerPremise;
             internal Vector2[] PlayerPosition,PlayerVelocity;
+            internal bool[] PlayerConditional;
             internal Vector2[] NpcVelocity,NpcOldVelocity,ProjectileVelocity,ProjectileOldVelocity;
+            internal Vector2[][] NpcPositions,ProjectilePositions;
             internal Vector2 NetOffset;
             internal bool CanReceive,CanHarm,NewSegment,HasState;
         }
@@ -34,14 +40,25 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             var players=new List<int>();for(int i=0;i<Main.maxPlayers;i++)if(Main.player[i]!=null && Main.player[i].active)players.Add(i);
             var frame=new Frame{Tick=tick,HasState=true,Npcs=npcs,Projectiles=projectiles,Players=players.ToArray(),NpcState=new ulong[npcs.Length],ProjectileState=new ulong[projectiles.Length],PlayerPremise=new ulong[players.Count],PlayerPosition=new Vector2[players.Count],PlayerVelocity=new Vector2[players.Count]};
             frame.NpcVelocity=new Vector2[npcs.Length];frame.NpcOldVelocity=new Vector2[npcs.Length];frame.ProjectileVelocity=new Vector2[projectiles.Length];frame.ProjectileOldVelocity=new Vector2[projectiles.Length];
-            for(int i=0;i<npcs.Length;i++){frame.NpcVelocity[i]=Main.npc[npcs[i]].velocity;frame.NpcOldVelocity[i]=Main.npc[npcs[i]].oldVelocity;}
-            for(int i=0;i<projectiles.Length;i++){frame.ProjectileVelocity[i]=Main.projectile[projectiles[i]].velocity;frame.ProjectileOldVelocity[i]=Main.projectile[projectiles[i]].oldVelocity;}
+            frame.NpcPositions=new Vector2[npcs.Length][];frame.ProjectilePositions=new Vector2[projectiles.Length][];
+            frame.PlayerConditional=new bool[players.Count];
+            for(int i=0;i<npcs.Length;i++){var n=Main.npc[npcs[i]];frame.NpcVelocity[i]=n.velocity;frame.NpcOldVelocity[i]=n.oldVelocity;frame.NpcPositions[i]=Positions(n.position,n.oldPosition,n.oldPos);}
+            for(int i=0;i<projectiles.Length;i++){var p=Main.projectile[projectiles[i]];frame.ProjectileVelocity[i]=p.velocity;frame.ProjectileOldVelocity[i]=p.oldVelocity;frame.ProjectilePositions[i]=Positions(p.position,p.oldPosition,p.oldPos);}
             using(var writer=new ValueHashWriter())
             {
                 writer.Reset();WorldPremise(writer);frame.World=writer.Hash;
                 for(int i=0;i<npcs.Length;i++){writer.Reset();NpcPremise(writer,Main.npc[npcs[i]]);NativeEntityContext.WriteNpc(writer,Main.npc[npcs[i]]);frame.NpcState[i]=writer.Hash;}
                 for(int i=0;i<projectiles.Length;i++){writer.Reset();Projectiles.Write(writer,Main.projectile[projectiles[i]]);NativeActorContext.WriteProjectile(writer,Main.projectile[projectiles[i]]);frame.ProjectileState[i]=writer.Hash;}
-                for(int i=0;i<players.Count;i++){Player p=Main.player[players[i]];writer.Reset();PlayerPremise(writer,p);frame.PlayerPremise[i]=writer.Hash;frame.PlayerPosition[i]=p.position;frame.PlayerVelocity[i]=p.velocity;}
+                for(int i=0;i<players.Count;i++)
+                {
+                    Player p=Main.player[players[i]];writer.Reset();PlayerPremise(writer,p);
+                    // Captured projectile AI may consume ammo (HasAmmo /
+                    // PickAmmo). Pure NPC motion does not depend on an unused
+                    // positive inventory stack's exact count; keep presence,
+                    // type/prefix, selected item and all projectile counts.
+                    if(projectiles.Length!=0)foreach(var item in p.inventory)writer.Write(item.stack);
+                    frame.PlayerPremise[i]=writer.Hash;frame.PlayerPosition[i]=p.position;frame.PlayerVelocity[i]=p.velocity;frame.PlayerConditional[i]=NativePlayerMotion.Conditional(p);
+                }
             }
             NPC target=Main.npc[selected];frame.NetOffset=target.netOffset;frame.CanReceive=target.active && CombatSelection.Receives(target,true);frame.CanHarm=target.active && !target.friendly && target.damage>0;
             return frame;
@@ -49,6 +66,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         private static void NpcPremise(BinaryWriter writer,NPC n)
         {
             Npcs.Write(writer,n);writer.Write(n.localAI==null?-1:n.localAI.Length);
+            TargetRectangle(writer,n);
             writer.Write(NativeLightingSnapshot.Observe(n));
             if(n.localAI==null)return;
             for(int i=0;i<n.localAI.Length;i++)
@@ -64,6 +82,20 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 writer.Write(value);
             }
         }
+        private static void TargetRectangle(BinaryWriter writer,NPC n)
+        {
+            // TargetClosest and NPCUtils can select a player, tank pet or NPC.
+            // Only a rectangle that currently equals the conditional player's
+            // own hitbox has the same derived-motion contract as that player.
+            // Keep a source discriminator: cached/other-source rectangles,
+            // target identity, dimensions and all actual NPC AI/motion remain
+            // strict. Full captures retain the unmodified rectangle.
+            Player player=n.HasPlayerTarget?Main.player[n.target]:null;
+            bool derived=player!=null && player.active && NativePlayerMotion.Conditional(player) && n.targetRect==player.Hitbox;
+            if(derived)for(int i=0;i<Main.maxPlayers;i++)if(Main.player[i]!=null && Main.player[i].active && Main.player[i].tankPet>=0){derived=false;break;}
+            writer.Write(derived);writer.Write(n.targetRect.Width);writer.Write(n.targetRect.Height);
+            if(!derived){writer.Write(n.targetRect.X);writer.Write(n.targetRect.Y);}
+        }
         internal static Frame Presentation(long tick,int selected)
         {
             NPC target=Main.npc[selected];
@@ -71,11 +103,17 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         }
         private static void PlayerPremise(BinaryWriter w,Player p)
         {
+            bool conditional=NativePlayerMotion.Conditional(p);w.Write(conditional);
             w.Write(p.whoAmI);w.Write(p.active);w.Write(p.dead);w.Write(p.ghost);w.Write(p.width);w.Write(p.height);w.Write(p.gravDir);
             w.Write(p.controlLeft);w.Write(p.controlRight);w.Write(p.controlUp);w.Write(p.controlDown);w.Write(p.controlJump);w.Write(p.controlUseItem);w.Write(p.controlUseTile);
-            w.Write(p.runAcceleration);w.Write(p.runSlowdown);w.Write(p.maxRunSpeed);w.Write(p.accRunSpeed);w.Write(p.jumpSpeedBoost);w.Write(p.autoJump);
+            // Special mounts may recompute these outputs from fatigue or
+            // flight stage on every step (e.g. bee RunSpeed). Their equipment,
+            // input and mechanism remain fixed premises, not these outputs.
+            if(!conditional){w.Write(p.runAcceleration);w.Write(p.runSlowdown);w.Write(p.maxRunSpeed);w.Write(p.accRunSpeed);}
+            w.Write(p.jumpSpeedBoost);w.Write(p.autoJump);
             w.Write(p.ignoreWater);w.Write(p.merman);w.Write(p.trident);w.Write(p.waterWalk);w.Write(p.waterWalk2);w.Write(p.aggro);w.Write(p.insideUnbreakableWalls);
-            w.Write(p.jump);w.Write(p.releaseJump);w.Write(p.wet);w.Write(p.honeyWet);w.Write(p.lavaWet);w.Write(p.shimmerWet);
+            if(!conditional){w.Write(p.jump);w.Write(p.releaseJump);}
+            w.Write(p.wet);w.Write(p.honeyWet);w.Write(p.lavaWet);w.Write(p.shimmerWet);
             w.Write(p.forcedGravity);w.Write(p.creativeGodMode);w.Write(p.gravControl);w.Write(p.gravControl2);
             w.Write(p.PortalPhysicsEnabled);w.Write(p.wingsLogic);w.Write(p.carpetFrame);w.Write(p.jumpBoost);w.Write(p.wereWolf);w.Write(p.moonLordLegs);w.Write(p.sticky);w.Write(p.dazed);w.Write(p.vortexDebuff);
             // Biome gates can change pursuit, vulnerability and despawn (for
@@ -83,10 +121,12 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             // bitfields carried by the captured player, not just evil biomes.
             w.Write((byte)p.zone1);w.Write((byte)p.zone2);w.Write((byte)p.zone3);w.Write((byte)p.zone4);w.Write((byte)p.zone5);
             NativePlayerMotion.Write(w,p);
+            w.Write(NativePlayerMotion.Mechanism(p));w.Write(p.CCed);w.Write(p.teleporting);
+            if(p.grappling!=null && p.grappling.Length>0 && p.grappling[0]>=0){w.Write(p.grappling.Length);foreach(int slot in p.grappling)w.Write(slot);}
             // Mount changes retire a conditional continuation even if both
             // old/new states satisfy the same broad Complex movement flag.
             w.Write(p.mount.Active);w.Write(p.mount.Type);
-            w.Write(p.selectedItem);foreach(var item in p.inventory){w.Write(item.type);w.Write(item.prefix);w.Write(item.stack);}
+            w.Write(p.selectedItem);for(int i=0;i<p.inventory.Length;i++){var item=p.inventory[i];w.Write(item.type);w.Write(item.prefix);w.Write(i==p.selectedItem?item.stack:item.stack>0?1:0);}
             for(int slot=0;slot<10;slot++){var item=p.GetEffectiveArmor(slot);w.Write(item.type);w.Write(item.prefix);w.Write(item.stack);w.Write(item.accessory);w.Write(item.expertOnly);w.Write(p.IsItemSlotUnlockedAndUsable(slot));}
             foreach(bool value in p.npcTypeNoAggro)w.Write(value);
             // Proven ordinary clocks advance independently of movement and
@@ -101,7 +141,8 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             {
             writer.Write(frame.World);Pairs(writer,frame.Npcs,frame.NpcState);Pairs(writer,frame.Projectiles,frame.ProjectileState);
             Velocities(writer,frame.NpcVelocity,frame.NpcOldVelocity);Velocities(writer,frame.ProjectileVelocity,frame.ProjectileOldVelocity);
-            writer.Write(frame.Players.Length);for(int i=0;i<frame.Players.Length;i++){writer.Write(frame.Players[i]);writer.Write(frame.PlayerPremise[i]);Vector(writer,frame.PlayerPosition[i]);Vector(writer,frame.PlayerVelocity[i]);}
+            WritePositions(writer,frame.NpcPositions);WritePositions(writer,frame.ProjectilePositions);
+            writer.Write(frame.Players.Length);for(int i=0;i<frame.Players.Length;i++){writer.Write(frame.Players[i]);writer.Write(frame.PlayerPremise[i]);writer.Write(frame.PlayerConditional[i]);Vector(writer,frame.PlayerPosition[i]);Vector(writer,frame.PlayerVelocity[i]);}
             }
             Vector(writer,frame.NetOffset);writer.Write(frame.CanReceive);writer.Write(frame.CanHarm);writer.Write(frame.NewSegment);
         }
@@ -112,9 +153,10 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             {
             frame.World=reader.ReadUInt64();ReadPairs(reader,201,out frame.Npcs,out frame.NpcState);ReadPairs(reader,1001,out frame.Projectiles,out frame.ProjectileState);
             ReadVelocities(reader,frame.Npcs.Length,out frame.NpcVelocity,out frame.NpcOldVelocity);ReadVelocities(reader,frame.Projectiles.Length,out frame.ProjectileVelocity,out frame.ProjectileOldVelocity);
+            frame.NpcPositions=ReadPositions(reader,frame.Npcs.Length);frame.ProjectilePositions=ReadPositions(reader,frame.Projectiles.Length);
             int count=reader.ReadInt32();if(count<0 || count>255)throw new InvalidDataException("Alignment player count.");
-            frame.Players=new int[count];frame.PlayerPremise=new ulong[count];frame.PlayerPosition=new Vector2[count];frame.PlayerVelocity=new Vector2[count];int prior=-1;
-            for(int i=0;i<count;i++){int slot=reader.ReadInt32();if(slot<=prior || slot>=255)throw new InvalidDataException("Alignment player order.");prior=slot;frame.Players[i]=slot;frame.PlayerPremise[i]=reader.ReadUInt64();frame.PlayerPosition[i]=Vector(reader);frame.PlayerVelocity[i]=Vector(reader);}
+            frame.Players=new int[count];frame.PlayerPremise=new ulong[count];frame.PlayerConditional=new bool[count];frame.PlayerPosition=new Vector2[count];frame.PlayerVelocity=new Vector2[count];int prior=-1;
+            for(int i=0;i<count;i++){int slot=reader.ReadInt32();if(slot<=prior || slot>=255)throw new InvalidDataException("Alignment player order.");prior=slot;frame.Players[i]=slot;frame.PlayerPremise[i]=reader.ReadUInt64();frame.PlayerConditional[i]=reader.ReadBoolean();frame.PlayerPosition[i]=Vector(reader);frame.PlayerVelocity[i]=Vector(reader);}
             }
             frame.NetOffset=Vector(reader);frame.CanReceive=reader.ReadBoolean();frame.CanHarm=reader.ReadBoolean();frame.NewSegment=reader.ReadBoolean();return frame;
         }
@@ -127,8 +169,17 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             changed=Different(expected.Projectiles,expected.ProjectileState,actual.Projectiles,actual.ProjectileState,"Projectile");if(changed!=null)return changed;
             if(!SameVelocities(expected.NpcVelocity,actual.NpcVelocity) || !SameVelocities(expected.NpcOldVelocity,actual.NpcOldVelocity))return "NPC velocity";
             if(!SameVelocities(expected.ProjectileVelocity,actual.ProjectileVelocity) || !SameVelocities(expected.ProjectileOldVelocity,actual.ProjectileOldVelocity))return "Projectile velocity";
+            if(!SamePositions(expected.NpcPositions,actual.NpcPositions))return "NPC position";
+            if(!SamePositions(expected.ProjectilePositions,actual.ProjectilePositions))return "Projectile position";
             changed=Different(expected.Players,expected.PlayerPremise,actual.Players,actual.PlayerPremise,"Player premise");if(changed!=null)return changed;
-            for(int i=0;i<expected.Players.Length;i++)if(!Near(expected.PlayerPosition[i],actual.PlayerPosition[i]) || !Near(expected.PlayerVelocity[i],actual.PlayerVelocity[i]))return "Player motion "+expected.Players[i];
+            // Unsupported special movement is a sampled conditional future,
+            // not a claim to replay its exact player kinematics. Its inputs,
+            // mechanism and qualifications above stay strict; NPC/projectile
+            // current motion and branches have already been checked. The
+            // owner still refreshes every available third update, bounds age
+            // at 60 and never translates points or renews CaptureTick.
+            for(int i=0;i<expected.Players.Length;i++)
+            {if(expected.PlayerConditional[i]!=actual.PlayerConditional[i])return "Player mechanism "+expected.Players[i];if(!expected.PlayerConditional[i] && (!Near(expected.PlayerPosition[i],actual.PlayerPosition[i]) || !Near(expected.PlayerVelocity[i],actual.PlayerVelocity[i])))return "Player motion "+expected.Players[i];}
             return null;
         }
         private static void WorldPremise(BinaryWriter w)
@@ -143,13 +194,22 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             if(Terraria.GameContent.Events.DD2Event.Ongoing)NativeWorldSnapshot.WriteEvent(w);
         }
         private static bool Near(Vector2 a,Vector2 b){return Math.Abs(a.X-b.X)<=.002f && Math.Abs(a.Y-b.Y)<=.002f;}
-        // Guard instrumentation changes x86 intermediate rounding: observed
-        // 248/662 and projectile 452 velocity tails differ by <=9.54e-7 while
-        // complete 120-update positions and AI/identity remain unchanged.
-        // Compare true values (no hash quantization), retaining zero/sign
-        // branches. Position/history/rotation/AI still use exact state hashes.
+        // The complete original 120-update oracle admits 0.002px numerical
+        // drift from x86 instrumentation/rounding. Acceptance uses the same
+        // absolute bound on actual continuous values, including copied motion
+        // history; it never adds an allowance per tick or moves old points.
+        // Zero/sign velocity branches and all identity, AI, collision flags,
+        // animation/rotation and network corrections remain strict.
         private static bool VelocityComponent(float a,float b)
-        {return !float.IsNaN(a) && !float.IsInfinity(a) && !float.IsNaN(b) && !float.IsInfinity(b) && (a==0)==(b==0) && (a<0)==(b<0) && Math.Abs((double)a-b)<=.000001;}
+        {return !float.IsNaN(a) && !float.IsInfinity(a) && !float.IsNaN(b) && !float.IsInfinity(b) && (a==0)==(b==0) && (a<0)==(b<0) && Math.Abs((double)a-b)<=.002;}
+        private static Vector2[] Positions(Vector2 position,Vector2 old,Vector2[] trail)
+        {var values=new Vector2[2+(trail?.Length??0)];values[0]=position;values[1]=old;if(trail!=null)Array.Copy(trail,0,values,2,trail.Length);return values;}
+        private static bool SamePositions(Vector2[][] a,Vector2[][] b)
+        {if(a.Length!=b.Length)return false;for(int i=0;i<a.Length;i++){if(a[i].Length!=b[i].Length)return false;for(int j=0;j<a[i].Length;j++)if(!Near(a[i][j],b[i][j]))return false;}return true;}
+        private static void WritePositions(BinaryWriter w,Vector2[][] values)
+        {foreach(var positions in values){w.Write(positions.Length);foreach(var p in positions)Vector(w,p);}}
+        private static Vector2[][] ReadPositions(BinaryReader r,int count)
+        {var result=new Vector2[count][];for(int i=0;i<count;i++){int length=r.ReadInt32();if(length<2 || length>4098)throw new InvalidDataException("Alignment motion history count.");result[i]=new Vector2[length];for(int j=0;j<length;j++)result[i][j]=Vector(r);}return result;}
         private static bool SameVelocities(Vector2[] a,Vector2[] b)
         {if(a.Length!=b.Length)return false;for(int i=0;i<a.Length;i++)if(!VelocityComponent(a[i].X,b[i].X) || !VelocityComponent(a[i].Y,b[i].Y))return false;return true;}
         private static void Velocities(BinaryWriter w,Vector2[] current,Vector2[] prior)

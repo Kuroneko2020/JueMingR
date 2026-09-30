@@ -7,7 +7,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
     // must not initialize PredictionWire's Terraria snapshot schemas.
     internal static class PredictionPipeProtocol
     {
-        internal const int Protocol=26,MaximumBytes=4*1024*1024,MaximumPayload=MaximumBytes-17;
+        internal const int Protocol=27,MaximumBytes=4*1024*1024,MaximumPayload=MaximumBytes-17;
         internal const string GameHash="960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3";
         // Explicit isolated development probes only; the installed path does
         // no per-request/step cost sampling unless this process opted in.

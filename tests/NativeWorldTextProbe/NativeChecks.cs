@@ -14,6 +14,8 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if(scope=="NpcPostDelivery"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT","post-delivery-suite");scope="NpcProduction";}
+            if(scope=="NpcNameDraw"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT","name-draw");scope="NpcProduction";}
             if(scope=="NpcDiagnosticsOff"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_MEASURE_OFF","1");scope="NpcProduction";}
             if(scope=="NpcMaterialCache"){NativeCombatMaterialCacheChecks.Run(output);return 0;}
             if(scope=="NpcMaterialPrepare"){NativeCombatMaterialCacheChecks.Prepare(output);return 0;}

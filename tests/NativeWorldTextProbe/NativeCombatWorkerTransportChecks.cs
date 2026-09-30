@@ -53,6 +53,7 @@ namespace NativeWorldTextProbe
                 byte[] repeated=Take(type,client);Require(repeated.Length==future.Length,"Repeated frozen result length.");
                 for(int i=0;i<future.Length-32;i++)Require(repeated[i]==future[i],"Failure then repeat preserves every non-timing result byte.");
                 Require((int)type.GetProperty("ChildId",Flags).GetValue(client)==pid,"Repeated requests reuse the same owned child.");
+                NativeCombatLiquidChecks.Run(host,output,bytes=>{Require(Send(type,client,bytes),"Frozen liquid request uses the ready production transport.");Wait(type,client,3,15000);return Take(type,client);},()=> (byte[])type.GetProperty("Alignment",Flags).GetValue(client));
                 Require(Send(type,client,snapshot),"A final request is queued or executing during Stop.");
                 var stop=Stopwatch.StartNew();type.GetMethod("Stop",Flags).Invoke(client,null);
                 Require(stop.ElapsedMilliseconds<1000,"Stop schedules background cleanup without waiting for process exit.");

@@ -106,6 +106,12 @@ namespace NativeWorldTextProbe
             GraphicsDevice.SetRenderTarget(costCanvas); GraphicsDevice.Clear(new Color(30, 43, 47));
             batch.Begin(); layer.Draw(); batch.End(); GraphicsDevice.SetRenderTarget(null);
         }
+        internal void Render(Action draw,Matrix matrix)
+        {
+            if(costCanvas==null)costCanvas=new RenderTarget2D(GraphicsDevice,960,640);
+            GraphicsDevice.SetRenderTarget(costCanvas);GraphicsDevice.Clear(Color.Transparent);
+            batch.Begin(SpriteSortMode.Deferred,null,null,null,null,null,matrix);draw();batch.End();GraphicsDevice.SetRenderTarget(null);
+        }
         internal void Image(string output, Action draw, Matrix matrix, int width = 960, int height = 640)
         {
             using (var canvas = new RenderTarget2D(GraphicsDevice, width, height))

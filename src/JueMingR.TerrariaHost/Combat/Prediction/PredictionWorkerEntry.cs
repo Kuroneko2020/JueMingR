@@ -44,7 +44,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                         // A native scenario failure invalidates this request;
                         // it is never replaced by extrapolated success points.
                         using(var buffer=new MemoryStream())using(var writer=new BinaryWriter(buffer))
-                        {writer.Write(-PredictionWire.Protocol);writer.Write(error.GetType().Name);string message=error.ToString();writer.Write(message.Length>4096?message.Substring(0,4096):message);writer.Write(NativeTileBoundary.MissingX);writer.Write(NativeTileBoundary.MissingY);writer.Write(NativeEntityDirectory.MissingKind);writer.Write(NativeEntityDirectory.MissingSlot);writer.Write(NativeEntityDirectory.MissingField);writer.Flush();result=buffer.ToArray();}
+                        {writer.Write(-PredictionWire.Protocol);writer.Write(error.GetType().Name);string message=(PredictionPipeProtocol.Measure?"completed-steps="+sandbox.MeasuredCompletedSteps+"; ":"")+error;writer.Write(message.Length>4096?message.Substring(0,4096):message);writer.Write(NativeTileBoundary.MissingX);writer.Write(NativeTileBoundary.MissingY);writer.Write(NativeEntityDirectory.MissingKind);writer.Write(NativeEntityDirectory.MissingSlot);writer.Write(NativeEntityDirectory.MissingField);writer.Flush();result=buffer.ToArray();}
                     }
                     PredictionWire.WriteFrame(output,ready==null?result:PredictionPipeProtocol.Envelope(PredictionPipeProtocol.Result(result,sandbox.Alignment,NativeAssetSnapshot.MissingKey),sequence,true));
                 }

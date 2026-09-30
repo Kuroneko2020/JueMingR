@@ -13,12 +13,16 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         private struct Profile { internal bool Complex; internal float DefaultGravity; }
         private readonly Profile[] profiles=new Profile[Main.maxPlayers];
         internal int Quality { get; private set; }
+        internal static int Mechanism(Player p)
+        {return (p.mount.Active?1:0)|(p.grappling!=null && p.grappling.Length>0 && p.grappling[0]>=0?2:0)|(p.pulley?4:0)|(p.sitting.isSitting?8:0)|(p.dashDelay<0?16:0)|(p.wingTime>0 && p.controlJump?32:0)|(p.shimmering?64:0)|(p.tongued?128:0);}
+        private static bool SupportedHover(Player p)
+        {return p.mount.Active && (p.mount.Type==Terraria.ID.MountID.WitchBroom || p.mount.Type==5) && !p.CCed && !p.pulley && !p.shimmering && !p.tongued && (p.grappling==null || p.grappling.Length==0 || p.grappling[0]<0);}
+        internal static bool Conditional(Player p){return Mechanism(p)!=0 && !SupportedHover(p);}
         internal static void Write(BinaryWriter writer,Player player)
         {
             // The native sentinel is grappling[0]; unused trailing capacity may
             // contain zero and does not mean projectile slot 0 is attached.
-            bool hooked=player.grappling!=null && player.grappling.Length>0 && player.grappling[0]>=0;
-            writer.Write(player.mount.Active || hooked || player.pulley || player.sitting.isSitting || player.dashDelay<0 || player.wingTime>0 && player.controlJump || player.shimmering || player.tongued);
+            writer.Write(Mechanism(player)!=0);
             // jumpSpeed is a shared scratch field last written by whichever
             // player updated last. Never treat it as this player's observation.
             writer.Write(Player.defaultGravity);
@@ -65,10 +69,25 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             if(NPC.brainOfGravity>=0 && NPC.brainOfGravity<Main.maxNPCs && Vector2.Distance(p.Center,Main.npc[NPC.brainOfGravity].Center)<4000f)p.forcedGravity=10;
             if(p.forcedGravity>0)p.gravDir=-1;
             else if(hadForcedGravity && !p.gravControl && !p.gravControl2)p.gravDir=1;
+            bool hover=SupportedHover(p),broom=hover && p.mount.Type==Terraria.ID.MountID.WitchBroom;
+            if(hover && p.velocity.Y==0)p.mount.FatigueRecovery();
             if(profile.Complex)Quality|=2;
-            else
+            if(!profile.Complex || hover)
             {
                 int jumpHeight;float jumpSpeed=MovementParameters(p,profile.DefaultGravity,out jumpHeight);
+                if(hover)
+                {
+                    // Fixed .8 broom/bee movement uses mount parameters after
+                    // equipment, before horizontal motion. Hover owns vertical
+                    // acceleration AND its tiny position compensation; freezing
+                    // velocity or rounding it to zero loses that contract.
+                    p.runSlowdown=.2f;p.runAcceleration=p.mount.Acceleration;
+                    p.maxRunSpeed=p.mount.RunSpeed;p.accRunSpeed=p.mount.DashSpeed;
+                    p.autoJump=p.mount.AutoJump;
+                    jumpSpeed=p.mount.JumpSpeed(p.velocity.X);jumpHeight=p.mount.JumpHeight(p.velocity.X);
+                    if(p.sticky){jumpSpeed/=5f;jumpHeight/=10;}if(p.dazed){jumpSpeed/=2f;jumpHeight/=5;}
+                    if(p.forcedGravity<=0)p.gravDir=1;
+                }
                 // Fixed sampled ordinary controls; retain reversal braking and
                 // the native distinction between ground and air deceleration.
                 if(p.controlLeft && p.velocity.X>-p.maxRunSpeed)
@@ -86,23 +105,36 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                     float slowdown=p.velocity.Y==0?p.runSlowdown:p.runSlowdown*0.5f;
                     p.velocity.X=p.velocity.X>slowdown?p.velocity.X-slowdown:p.velocity.X< -slowdown?p.velocity.X+slowdown:0;
                 }
+                if(hover)
+                {
+                    if(p.controlUp && p.releaseUp && p.velocity.Y==0)p.velocity.Y=-(p.mount.Acceleration+p.gravity+.001f);
+                    p.releaseUp=!p.controlUp;
+                }
+                bool justJumped=false;
                 if(p.controlJump)
                 {
-                    if(p.jump>0){if(p.velocity.Y==0)p.jump=0;else{p.velocity.Y=-jumpSpeed*p.gravDir;p.jump--;}}
-                    else if(p.velocity.Y==0 && (p.releaseJump || p.autoJump)){p.velocity.Y=-jumpSpeed*p.gravDir;p.jump=jumpHeight;}
+                    if(p.jump>0){if(p.velocity.Y==0)p.jump=0;else{p.velocity.Y=-jumpSpeed*p.gravDir;if(hover && p.merman){if(p.swimTime<=10)p.swimTime=30;}else p.jump--;}}
+                    else if((p.velocity.Y==0 || hover && p.wet && p.accFlipper) && (p.releaseJump || p.autoJump && p.velocity.Y==0)){p.velocity.Y=-jumpSpeed*p.gravDir;p.jump=jumpHeight;justJumped=true;if(hover && p.wet && p.accFlipper && p.swimTime==0)p.swimTime=30;}
                     p.releaseJump=false;
                 }
                 else{p.jump=0;p.releaseJump=true;}
-                p.velocity.Y+=p.gravity*p.gravDir;
+                // Flight time resets after jump state, while fatigue recovery
+                // occurs before horizontal parameters. Reordering these loses
+                // the bee's real fatigue-driven speed and landing lifecycle.
+                if(hover && ((p.velocity.Y==0 || p.sliding) && p.releaseJump || p.autoJump && justJumped))p.mount.ResetFlightTime(p);
+                if(hover)p.mount.Hover(p);else p.velocity.Y+=p.gravity*p.gravDir;
                 if(p.velocity.Y*p.gravDir>p.maxFallSpeed)p.velocity.Y=p.maxFallSpeed*p.gravDir;
+                if(hover && p.slowFall)
+                {if(p.velocity.Y*p.gravDir>p.maxFallSpeed/3f && !p.TryingToHoverDown)p.velocity.Y=p.maxFallSpeed/3f*p.gravDir;if(p.velocity.Y*p.gravDir>p.maxFallSpeed/5f && p.TryingToHoverUp)p.velocity.Y=p.maxFallSpeed/10f*p.gravDir;}
             }
             // Liquid transitions use original occupancy tests. Holding sampled
             // movement parameters across a transition is explicitly approximate.
             bool oldWet=p.wet;
             p.wet=Collision.WetCollision(p.position,p.width,p.height);p.honeyWet=Collision.honey;p.shimmerWet=Collision.shimmer;
             p.lavaWet=p.wet && Collision.LavaCollision(p.position,p.width,p.height);
+            if(hover && oldWet && !p.wet && p.wetSlime==0){int height=p.mount.JumpHeight(p.velocity.X);if(p.sticky)height/=10;if(p.dazed)height/=5;if(p.jump>height/5)p.jump=height/5;}
             if(p.wet || oldWet!=p.wet)Quality|=4;
-            bool ignorePlatforms=p.gravDir==-1f,fallThrough=p.controlDown || ignorePlatforms;
+            bool ignorePlatforms=broom || p.gravDir==-1f,fallThrough=broom || p.controlDown || ignorePlatforms;
             float movement=p.shimmerWet?0.375f:p.honeyWet && !p.ignoreWater?0.25f:p.wet && !p.ignoreWater && !p.merman && !p.trident?0.5f:1f;
             float length=p.velocity.Length(),limit=Math.Min(16f,Math.Min(p.width-0.5f,p.height-0.5f));
             if(!Finite(length) || limit<=0)throw new InvalidDataException("Invalid player movement magnitude.");
@@ -111,7 +143,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             for(int part=0;part<segments;part++)
             {
                 p.velocity=velocity/segments;
-                if(!profile.Complex)
+                if(!profile.Complex || hover)
                 {
                     p.SlopeDownMovement();
                     if(p.velocity.Y==p.gravity)Collision.StepDown(ref p.position,ref p.velocity,p.width,p.height,ref p.stepSpeed,ref p.gfxOffY,(int)p.gravDir,p.waterWalk || p.waterWalk2);
@@ -137,6 +169,16 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             // acceleration step and changes NPC.targetRect's integer branch.
             // Native death/save exits remain fenced by NativeEffectBoundary.
             p.BordersMovement();
+            // Locked broom/bee PlayerFrame branches own flight compensation
+            // and the near-ground landing transition. Its UpdateFrame has no
+            // idle RNG or light (unlike other mount types); never generalize
+            // this call to arbitrary mounts or invoke their UpdateEffects.
+            if(hover)
+            {
+                if(p.velocity.Y!=0 && p.mount.RunningGraceTime<=0)
+                {if(p.wet)p.mount.UpdateFrame(p,4,p.velocity);else{p.mount.TryBeginningFlight(p,2);p.mount.UpdateFrame(p,2,p.velocity);p.mount.TryLanding(p);}}
+                else p.mount.UpdateFrame(p,p.mount.GetIntendedGroundedFrame(p),p.velocity);
+            }
             if(p.position!=old || p.controlLeft || p.controlRight || p.controlJump)Quality|=1;
             if(!Finite(p.position.X) || !Finite(p.position.Y) || !Finite(p.velocity.X) || !Finite(p.velocity.Y))throw new InvalidDataException("Nonfinite player continuation.");
         }

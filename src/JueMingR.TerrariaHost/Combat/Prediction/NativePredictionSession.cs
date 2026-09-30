@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using JueMingR.Features.Combat;
 using JueMingR.Platform.Combat;
 using Terraria;
@@ -39,11 +40,13 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         private NativePredictionResult accepted;
         private NativeTerrainSnapshot terrain,acknowledgedTerrain;
         private NativeTerrainSnapshot checkedTerrain;
+        private readonly NativeTerrainSnapshot.Comparison terrainComparison=new NativeTerrainSnapshot.Comparison();
         private bool checkedTerrainCurrent;
         private NativePredictionAlignment.Frame observation;
         private long lastTick=-1,lastAttempt=-100,version;
         private readonly SortedSet<int> extraChunks=new SortedSet<int>();
         private bool stopped;
+        private int observedRelocation;
         private bool environmentIntent,menuExpired;
         private long idleSince;
         internal PredictionWorkerClient Worker {get;private set;}
@@ -99,12 +102,16 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             current=default(NpcIdentity);accepted=null;acceptedRequest=null;cache.Publish(null);lastTick=-1;
             if(pending!=null)pending.Retired=true;
             npcs.Clear();projectiles.Clear();assets.Clear();terrain=null;
-            extraChunks.Clear();checkedTerrain=null;observation=null;
+            extraChunks.Clear();checkedTerrain=null;observation=null;terrainComparison.Clear();
         }
         // Stopping destroys the transport mailbox. Its request can never
         // complete in a later worker; retain pending only across target swaps.
         internal void Stop(){ClearTarget();pending=null;stopped=true;Worker?.Stop();}
         internal void Retry(){Stop();Failed=false;Reason=null;}
+        // Native/network callbacks only publish a fact. The game-thread owner
+        // retires all results and in-flight history before its next Prepare;
+        // never mutate the cache or worker mailbox from a receive callback.
+        internal void ObservePlayerRelocation(){Interlocked.Exchange(ref observedRelocation,1);}
         // An alternate synchronous strategy owns publication. Let at most the
         // already-running native request finish, then consume its mailbox
         // without sampling, retrying, or publishing to the shared cache.
@@ -114,6 +121,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         {
             if(Failed)return;
             if(cache.Required==0){ClearTarget();return;}
+            if(Interlocked.Exchange(ref observedRelocation,0)!=0)ClearTarget();
             if(!identity.Equals(current)){ClearTarget();current=identity;npcs.Add(identity.Slot);assets.Add(identity.Type);lastAttempt=-100;}
             if(tick==lastTick)return;
             if(lastTick>=0 && tick!=lastTick+1){accepted=null;acceptedRequest=null;if(pending!=null)pending.Retired=true;cache.Publish(null);}
@@ -121,7 +129,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             // Reuse only within this completed game update. History frames
             // own their arrays; none is mutated or carried as a live cache
             // into the next update, world or changed dependency page set.
-            checkedTerrain=null;observation=null;
+            checkedTerrain=null;observation=null;terrainComparison.Clear();
             EnsureEnvironment();
             if(stopped)return;
             long started=PredictionPipeProtocol.Measure?Stopwatch.GetTimestamp():0;
@@ -173,7 +181,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                     bool added=result.Kind==1 && result.Slot>=0 && result.Slot<=Main.maxNPCs && npcs.Count<=Main.maxNPCs && npcs.Add(result.Slot) || result.Kind==2 && result.Slot>=0 && result.Slot<=Main.maxProjectiles && projectiles.Count<=Main.maxProjectiles && projectiles.Add(result.Slot);
                     if(result.Kind==0 && response.MissingAsset>=0 && assets.Count<128)added|=assets.Add(response.MissingAsset);
                     if(result.TileX>=0 && result.TileY>=0 && result.TileX<Main.maxTilesX && result.TileY<Main.maxTilesY)
-                    {added|=extraChunks.Add(result.TileX/32*128+result.TileY/32);terrain=null;}
+                    {added|=AddMissingTerrain(request.Terrain,result.TileX/32,result.TileY/32);}
                     if(!added)lastAttempt=tick+57;return;
                 }
                 acknowledgedTerrain=request.Terrain;
@@ -208,7 +216,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 var chunks=new SortedSet<int>(extraChunks);AddRegion(chunks,x,y,64);
                 foreach(int slot in ns)if(slot!=identity.Slot && Main.npc[slot].active)AddRegion(chunks,(int)Main.npc[slot].Center.X/16,(int)Main.npc[slot].Center.Y/16,24);
                 foreach(var player in Main.player)if(player!=null && player.active)AddRegion(chunks,(int)player.Center.X/16,(int)player.Center.Y/16,24);
-                if(terrain==null || !TerrainCurrent(terrain,identity.Session) || !Covers(terrain,chunks))terrain=NativeTerrainSnapshot.CaptureChunks(identity.Session,chunks);
+                if(terrain==null || !TerrainCurrent(terrain,identity.Session) || !Covers(terrain,chunks))terrain=NativeTerrainSnapshot.CaptureChunksObserved(identity.Session,chunks,terrainComparison);
                 var request=new Request{Identity=identity,Tick=tick,Wall=begin,Npcs=ns,Projectiles=ps,Terrain=terrain};
                 request.History.Add(Observe(tick,ns,ps,identity.Slot));
                 var values=PredictionWire.FillProductionValues(Worker.BeginCapture(),ns,ps,identity.Slot,tick,PredictionWire.MaximumHorizon,terrain,assets.ToArray(),ReferenceEquals(terrain,acknowledgedTerrain));
@@ -261,7 +269,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         private bool AddNpcIndex(float value)
         {if(float.IsNaN(value) || float.IsInfinity(value) || value<0 || value>=Main.maxNPCs || value!=(int)value)throw new InvalidDataException("Invalid native NPC link.");return npcs.Add((int)value);}
         private bool TerrainCurrent(NativeTerrainSnapshot value,long world)
-        {if(!ReferenceEquals(checkedTerrain,value)){checkedTerrain=value;checkedTerrainCurrent=value.IsCurrent(world);}return checkedTerrainCurrent;}
+        {if(!ReferenceEquals(checkedTerrain,value)){checkedTerrain=value;checkedTerrainCurrent=value.IsCurrentObserved(world,terrainComparison);}return checkedTerrainCurrent;}
         private NativePredictionAlignment.Frame Observe(long tick,int[] ns,int[] ps,int selected)
         {
             if(observation==null || !Same(observation.Npcs,ns) || !Same(observation.Projectiles,ps))observation=NativePredictionAlignment.Observe(tick,ns,ps,selected);
@@ -269,6 +277,23 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         }
         private static bool Same(int[] a,int[] b)
         {if(ReferenceEquals(a,b))return true;if(a.Length!=b.Length)return false;for(int i=0;i<a.Length;i++)if(a[i]!=b[i])return false;return true;}
+        private bool AddMissingTerrain(NativeTerrainSnapshot prior,int x,int y)
+        {
+            // A moving player crossing a chunk corner otherwise takes several
+            // full async retries one cell at a time. Acquire a bounded local
+            // neighborhood around the actual missing page, never an assumed
+            // whole-world/future sweep. Capacity and unknown-cell refusal stay.
+            var union=new HashSet<int>(extraChunks);foreach(var chunk in prior.Chunks)union.Add(chunk.X*128+chunk.Y);
+            bool added=false;
+            for(int radius=0;radius<=1;radius++)for(int dx=-radius;dx<=radius;dx++)for(int dy=-radius;dy<=radius;dy++)
+            {
+                if(Math.Max(Math.Abs(dx),Math.Abs(dy))!=radius)continue;
+                int cx=x+dx,cy=y+dy;if(cx<0 || cy<0 || cx*32>=Main.maxTilesX || cy*32>=Main.maxTilesY)continue;
+                int key=cx*128+cy;if(union.Contains(key) || union.Count>=NativeTerrainSnapshot.MaximumChunks)continue;
+                union.Add(key);added|=extraChunks.Add(key);
+            }
+            return added;
+        }
         // One freshness limit applies even to natural-end/short-demand
         // windows, which TryWindow can otherwise keep after age 60. Their
         // future end remains real; continuing display needs a fresh capture.

@@ -18,7 +18,7 @@ namespace NativeWorldTextProbe
     // Harmony patches, and the whole future is received before time advances.
     internal static class NativeCombatWorkerChecks
     {
-        internal const int ExpectedProtocol=26, PointBytes=75;
+        internal const int ExpectedProtocol=27, PointBytes=75;
         private static readonly Main weatherOracle=(Main)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(Main));
         internal static void AdvanceWeather()
         {
@@ -169,6 +169,8 @@ namespace NativeWorldTextProbe
         internal sealed class FrozenScene
         {internal byte[] Snapshot,Future;internal int[] Npcs,Projectiles;}
         internal static FrozenScene AcquireFrozen(Assembly host,Process child,int[] npcs,int[] projectiles,int selected,Rectangle? terrain=null,bool sparse=false,int horizon=120)
+        {return AcquireFrozen(host,request=>Exchange(child,request),npcs,projectiles,selected,terrain,sparse,horizon);}
+        internal static FrozenScene AcquireFrozen(Assembly host,Func<byte[],byte[]> exchange,int[] npcs,int[] projectiles,int selected,Rectangle? terrain=null,bool sparse=false,int horizon=120)
         {
             var capture=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.PredictionWire",true).GetMethod(sparse?"CaptureProduction":terrain.HasValue?"CaptureSceneRegion":"CaptureScene",Flags);
             var npcPages=new SortedSet<int>(npcs);var projectilePages=new SortedSet<int>(projectiles);
@@ -185,7 +187,7 @@ namespace NativeWorldTextProbe
                 object[] args=terrain.HasValue?new object[]{n,p,selected,1000L,horizon,1L,terrain.Value.Left,terrain.Value.Top,terrain.Value.Right-1,terrain.Value.Bottom-1,false}:new object[]{n,p,selected,1000L,horizon};
                 if(sparse){object tiles=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativeTerrainSnapshot",true).GetMethod("CaptureChunks",Flags).Invoke(null,new object[]{1L,chunks});args=new object[]{n,p,selected,1000L,horizon,tiles,null,false};}
                 byte[] request=(byte[])capture.Invoke(null,args);
-                byte[] response=Exchange(child,request);
+                byte[] response=exchange(request);
                 Require(request.SequenceEqual((byte[])capture.Invoke(null,args)),"child leaves every captured parent scene value unchanged");
                 using(var reader=new BinaryReader(new MemoryStream(response,false)))
                 {
@@ -259,7 +261,7 @@ namespace NativeWorldTextProbe
         }
         private static void SetNpc(int slot,int type,float x,float y)
         {var n=Main.npc[slot];n.SetDefaults(type);n.whoAmI=slot;n.active=true;n.position=new Vector2(x,y);n.target=0;n.timeLeft=750;}
-        internal static void Compare(byte[] frozen,int selected,string output,string name,int[] projectiles=null,bool nativeStreams=false,Action playerUpdate=null,Action projectileUpdate=null,Action<byte[],byte[]> dependencyComparison=null,bool expectPlayerMotion=true,Action<int,NPC> nativeStep=null,float motionTolerance=0)
+        internal static void Compare(byte[] frozen,int selected,string output,string name,int[] projectiles=null,bool nativeStreams=false,Action playerUpdate=null,Action projectileUpdate=null,Action<byte[],byte[]> dependencyComparison=null,bool? expectPlayerMotion=true,Action<int,NPC> nativeStep=null,float motionTolerance=0)
         {
             using(var stream=new MemoryStream(frozen))using(var reader=new BinaryReader(stream))using(var log=new StreamWriter(Path.Combine(output,name+"-oracle.csv"),false,Encoding.UTF8))
             using(var nativeDependencies=new MemoryStream())using(var dependencyWriter=new BinaryWriter(nativeDependencies))
@@ -293,7 +295,7 @@ namespace NativeWorldTextProbe
                     var point=new Vector2(reader.ReadSingle(),reader.ReadSingle());var velocity=new Vector2(reader.ReadSingle(),reader.ReadSingle());
                     int width=reader.ReadInt32(),height=reader.ReadInt32();float phase=reader.ReadSingle();int life=reader.ReadInt32();NPC actual=capturedTarget;
                     var frame=new Rectangle(reader.ReadInt32(),reader.ReadInt32(),reader.ReadInt32(),reader.ReadInt32());double frameCounter=reader.ReadDouble();
-                    int playerQuality=reader.ReadInt32();if(playerUpdate!=null && i>0)Require(((playerQuality&1)!=0)==expectPlayerMotion,"player motion quality matches the native fixture movement premise");
+                    int playerQuality=reader.ReadInt32();if(playerUpdate!=null && i>0 && expectPlayerMotion.HasValue)Require(((playerQuality&1)!=0)==expectPlayerMotion.Value,"player motion quality matches the native fixture movement premise");
                     int netId=reader.ReadInt32();byte generation=reader.ReadByte(),ended=reader.ReadByte();
                     if(expectedEnd==0)
                         expectedEnd=!ReferenceEquals(Main.npc[selected],capturedTarget)?(byte)2:capturedTarget.generation!=capturedGeneration?(byte)3:!capturedTarget.active?(byte)1:(byte)0;

@@ -24,6 +24,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             var cost=PredictionPipeProtocol.Measure?System.Diagnostics.Stopwatch.StartNew():null;
             NativeImmunitySnapshot.Install(patches);
             NativeLightingSnapshot.Install(patches);
+            NativeNpcMotionTrace.Install(patches);
             Part(cost,"immunity-install");
             Patch(typeof(NetMessage),"SendData","Skip");
             foreach(string name in new[]{"Broadcast","SendToServer","SendToClient"})Patch(typeof(NetManager),name,"RecyclePacket");
@@ -161,6 +162,6 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 yield return code[i];
             }
         }
-        public void Dispose(){patches.UnpatchAll(patches.Id);NativeLightingSnapshot.Release();camera=null;}
+        public void Dispose(){patches.UnpatchAll(patches.Id);NativeNpcMotionTrace.Clear();NativeLightingSnapshot.Release();camera=null;}
     }
 }

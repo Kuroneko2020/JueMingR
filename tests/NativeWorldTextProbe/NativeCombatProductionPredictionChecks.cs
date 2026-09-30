@@ -83,7 +83,7 @@ namespace NativeWorldTextProbe
                     if(Environment.GetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT")!=null)
                     {
                         phase="live-context";
-                        NativeCombatLiveContextChecks.Run(context,cache,()=>Step(context,samples,prepares,false),output);return;
+                        NativeCombatLiveContextChecks.Run(context,cache,()=>Step(context,samples,prepares,false),output,graphics);return;
                     }
                     if(Environment.GetEnvironmentVariable("JUEMINGR_NPC_MEASURE_OFF")=="1")
                     {
@@ -291,10 +291,6 @@ namespace NativeWorldTextProbe
                 if(Main.LocalPlayer.itemAnimation>0)attacking++;
                 if(path!=null){Check(path,path.Identity.Slot);shown++;blank=0;}else{blank++;longestBlank=Math.Max(longestBlank,blank);}
                 if(!expected)Require(path==null,"OFF baseline does not create a result.");
-                // Drain all measurements, including failures, before the
-                // product's bounded development queue can overwrite history.
-                foreach(var m in (IEnumerable)Get(native,"Measurements"))measurementRows.Add(MeasurementRow(m));
-                Call(Get(native,"Measurements"),"Clear");
             }
             Console.WriteLine("WINDOW "+label+" frames="+frames+" shown="+shown+" longest-blank-updates="+longestBlank+" x-span="+(maxX-minX).ToString("F3")+" airborne-updates="+airborne+" wall-ms="+watch.Elapsed.TotalMilliseconds.ToString("F3")+" gc="+(GC.CollectionCount(0)-g0)+"/"+(GC.CollectionCount(1)-g1)+"/"+(GC.CollectionCount(2)-g2)+" worker-cpu-ms="+(Cpu(pid)-cpu).ToString("F3")+" private-start="+before+" private-end="+(pid==0?0:Private(pid)));
             Print("window-"+label,samples.Skip(start).ToList());Print("world-interval-"+label,cadence.Skip(cadenceStart).ToList());if(expected)Require(shown>0 && longestBlank<60,"Expected window must deliver without a one-second starvation: "+label);
@@ -382,7 +378,7 @@ namespace NativeWorldTextProbe
         {
             long now=Stopwatch.GetTimestamp();double interval=priorStep==0?0:Ms(now-priorStep);if(priorStep!=0)cadence.Add(interval);priorStep=now;
             int gc0=GC.CollectionCount(0),gc1=GC.CollectionCount(1),gc2=GC.CollectionCount(2);
-            var pace=Stopwatch.StartNew();NativeQuickItemChecks.BeginWorldStep();NPC.UpdateProtectedSpawnSlots();NPC.ClearFoundActiveNPCs();NPC.UpdateFoundActiveNPCs();
+            var pace=Stopwatch.StartNew();NativeQuickItemChecks.BeginWorldStep();Main.EverLastingTicker++;NPC.UpdateProtectedSpawnSlots();NPC.ClearFoundActiveNPCs();NPC.UpdateFoundActiveNPCs();
             // Exercise the locked original deterministic branch, excluding
             // first-iteration lightning and authority-only weather RNG.
             NativeCombatWorkerChecks.AdvanceWeather();
@@ -395,28 +391,32 @@ namespace NativeWorldTextProbe
             sampleIntent?.Invoke();
             double originalMs=pace.Elapsed.TotalMilliseconds;
             var native=Get(Get(Get(context,"CombatObservation"),"Prediction"),"Native");
-            long requests=(long)Get(native,"Requests"),observed=(long)Get(native,"Observed");int measured=((ICollection)Get(native,"Measurements")).Count;
+            long requests=(long)Get(native,"Requests"),observed=(long)Get(native,"Observed");double observeBefore=(double)Get(native,"ObserveMilliseconds");
             long start=Stopwatch.GetTimestamp();Call(context,"UpdateRuntime");samples.Add(Ms(Stopwatch.GetTimestamp()-start));start=Stopwatch.GetTimestamp();Call(context,"UpdateShell");prepares.Add(Ms(Stopwatch.GetTimestamp()-start));
             var worker=GetOptional(native,"Worker");bool ready=worker!=null && (double)Get(worker,"ReadyMilliseconds")>0;
             if(ready)warm.Add(samples.Last());
             var cache=(NpcPredictionCache)Get(Get(Get(context,"CombatObservation"),"Prediction"),"Cache");var shown=cache.Read(0);var accepted=GetOptional(native,"acceptedRequest");
-            bool didWork=shown!=null && shown.Strategy==PredictionStrategy.SegmentedTrend || requests!=(long)Get(native,"Requests") || observed!=(long)Get(native,"Observed") && (GetOptional(native,"pending")!=null || GetOptional(native,"accepted")!=null) || measured!=((ICollection)Get(native,"Measurements")).Count;
+            // Drain on the common step, including LiveContext. A full bounded
+            // queue keeps Count==256 even when a new reply replaces an old one.
+            int received=((ICollection)Get(native,"Measurements")).Count;foreach(var m in (IEnumerable)Get(native,"Measurements"))measurementRows.Add(MeasurementRow(m));Call(Get(native,"Measurements"),"Clear");
+            bool didWork=shown!=null && shown.Strategy==PredictionStrategy.SegmentedTrend || requests!=(long)Get(native,"Requests") || observed!=(long)Get(native,"Observed") && (GetOptional(native,"pending")!=null || GetOptional(native,"accepted")!=null) || received!=0;
             if(didWork)active.Add(samples.Last());
             double age=shown!=null && accepted!=null && (long)Get(accepted,"Wall")>0?Ms(Stopwatch.GetTimestamp()-(long)Get(accepted,"Wall")):-1;
             if(age>=0)displayAge.Add(age);
-            string row=string.Join(",",Main.GameUpdateCount,Ms(Stopwatch.GetTimestamp()).ToString("R",System.Globalization.CultureInfo.InvariantCulture),phase,ready?1:0,didWork?1:0,requests!=(long)Get(native,"Requests")?1:0,measured!=((ICollection)Get(native,"Measurements")).Count?1:0,samples.Last().ToString("R",System.Globalization.CultureInfo.InvariantCulture),shown==null?-1:shown.CaptureTick,age.ToString("R",System.Globalization.CultureInfo.InvariantCulture),(long)Get(native,"Requests"),GC.CollectionCount(0)-gc0,GC.CollectionCount(1)-gc1,GC.CollectionCount(2)-gc2,originalMs.ToString("R",System.Globalization.CultureInfo.InvariantCulture),prepares.Last().ToString("R",System.Globalization.CultureInfo.InvariantCulture),interval.ToString("R",System.Globalization.CultureInfo.InvariantCulture),shown==null?"none":shown.Strategy.ToString());
+            string row=string.Join(",",Main.GameUpdateCount,Ms(Stopwatch.GetTimestamp()).ToString("R",System.Globalization.CultureInfo.InvariantCulture),phase,ready?1:0,didWork?1:0,requests!=(long)Get(native,"Requests")?1:0,received,samples.Last().ToString("R",System.Globalization.CultureInfo.InvariantCulture),shown==null?-1:shown.CaptureTick,age.ToString("R",System.Globalization.CultureInfo.InvariantCulture),(long)Get(native,"Requests"),GC.CollectionCount(0)-gc0,GC.CollectionCount(1)-gc1,GC.CollectionCount(2)-gc2,originalMs.ToString("R",System.Globalization.CultureInfo.InvariantCulture),prepares.Last().ToString("R",System.Globalization.CultureInfo.InvariantCulture),interval.ToString("R",System.Globalization.CultureInfo.InvariantCulture),shown==null?"none":shown.Strategy.ToString());
             // Occluded Windows probes can lose timeBeginPeriod resolution.
             // A high-resolution waitable timer keeps the fixture near 60 Hz
             // without spinning; actual intervals are still recorded, not assumed.
             double work=pace.Elapsed.TotalMilliseconds;long waitStart=Stopwatch.GetTimestamp();double remaining=1000.0/60-work;
             if(remaining>0){long due=-(long)(remaining*10000);if(!SetWaitableTimer(cadenceTimer,ref due,0,IntPtr.Zero,IntPtr.Zero,false) || WaitForSingleObject(cadenceTimer,1000)!=0)throw new InvalidOperationException("Fixture cadence timer failed.");}
-            updates.Add(row+","+work.ToString("R",System.Globalization.CultureInfo.InvariantCulture)+","+Ms(Stopwatch.GetTimestamp()-waitStart).ToString("R",System.Globalization.CultureInfo.InvariantCulture));
+            var terrainCost=Get(native,"terrainComparison");
+            updates.Add(row+","+work.ToString("R",System.Globalization.CultureInfo.InvariantCulture)+","+Ms(Stopwatch.GetTimestamp()-waitStart).ToString("R",System.Globalization.CultureInfo.InvariantCulture)+","+((double)Get(native,"ObserveMilliseconds")-observeBefore).ToString("R",System.Globalization.CultureInfo.InvariantCulture)+","+Get(terrainCost,"TilesRead")+","+Get(terrainCost,"TilesCaptured")+","+Get(terrainCost,"ChunkHits"));
         }
         private static void Check(NpcTrajectory path,int slot)
         {Require(path.Identity.Slot==slot && ReferenceEquals(path.Identity.Token,Main.npc[slot]),"never display another target");Require(path.SampleTick==Main.GameUpdateCount && path.CaptureTick<=path.SampleTick && path.Count==121,"current window retains capture age and 120 future steps");Require(Math.Abs(path[0].Bounds.X-Main.npc[slot].position.X)<.002f && Math.Abs(path[0].Bounds.Y-Main.npc[slot].position.Y)<.002f,"visible origin is current observed position");}
         private static void Dump(object native,object worker,string output)
         {
-            File.WriteAllLines(Path.Combine(output,"production-updates.csv"),new[]{"tick,wallMs,phase,ready,active,sampled,received,hostMs,displayCaptureTick,displayAgeMs,requests,gc0,gc1,gc2,originalMs,shellMs,intervalMs,strategy,workMs,waitMs"}.Concat(updates));
+            File.WriteAllLines(Path.Combine(output,"production-updates.csv"),new[]{"tick,wallMs,phase,ready,active,sampled,received,hostMs,displayCaptureTick,displayAgeMs,requests,gc0,gc1,gc2,originalMs,shellMs,intervalMs,strategy,workMs,waitMs,observeMs,tilesCompared,tilesCaptured,chunkHits"}.Concat(updates));
             using(var csv=new StreamWriter(Path.Combine(output,"production-costs.csv"))){csv.WriteLine(string.Join(",",MeasurementFields));foreach(string row in measurementRows)csv.WriteLine(row);foreach(var m in (IEnumerable)Get(native,"Measurements"))csv.WriteLine(MeasurementRow(m));}
             Console.WriteLine("SESSION requests="+Get(native,"Requests")+" published-frames="+Get(native,"Published")+" rejected="+Get(native,"Rejected")+" refused="+Get(native,"Refused")+" observe-total-ms="+Get(native,"ObserveMilliseconds")+" observe-max-ms="+Get(native,"ObserveMaximum"));
             if(worker!=null){Console.WriteLine("READY ms="+Get(worker,"ReadyMilliseconds"));File.WriteAllText(Path.Combine(output,"production-worker.log"),(string)GetOptional(worker,"Diagnostics")??"");}
@@ -445,7 +445,7 @@ namespace NativeWorldTextProbe
                 for(int i=0;i<count;i++){w.Write(i);w.Write(1);w.Write(0);w.Write((byte)0);w.Write(2);w.Write(2);for(int j=0;j<4;j++)w.Write(0f);w.Write(100);for(int j=0;j<4;j++)w.Write(key);w.Write(1);w.Write(0);w.Write(1U);w.Write(1);for(int j=0;j<4;j++)w.Write(0f);w.Write(100);for(int j=0;j<3;j++)w.Write(key);}
                 w.Write(0L);w.Write(1000L);w.Write(0L);w.Write(0L);w.Flush();core=bytes.ToArray();
             }
-            Func<int,byte[]> proofBytes=changed=>{using(var bytes=new MemoryStream())using(var w=new BinaryWriter(bytes)){w.Write(count);for(int i=0;i<count;i++){bool hasState=i<=60;if(i==changed)hasState=!hasState;w.Write((long)i);w.Write(hasState);if(hasState){w.Write(0UL);w.Write(1);w.Write(0);w.Write(0UL);w.Write(0);for(int j=0;j<4;j++)w.Write(0f);w.Write(0);}w.Write(0f);w.Write(0f);w.Write(true);w.Write(true);w.Write(false);}w.Write(0L);w.Flush();return bytes.ToArray();}};
+            Func<int,byte[]> proofBytes=changed=>{using(var bytes=new MemoryStream())using(var w=new BinaryWriter(bytes)){w.Write(count);for(int i=0;i<count;i++){bool hasState=i<=60;if(i==changed)hasState=!hasState;w.Write((long)i);w.Write(hasState);if(hasState){w.Write(0UL);w.Write(1);w.Write(0);w.Write(0UL);w.Write(0);for(int j=0;j<4;j++)w.Write(0f);w.Write(2);for(int j=0;j<4;j++)w.Write(0f);w.Write(0);}w.Write(0f);w.Write(0f);w.Write(true);w.Write(true);w.Write(false);}w.Write(0L);w.Flush();return bytes.ToArray();}};
             alignment=proofBytes(-1);
             foreach(bool network in new[]{false,true})
             {

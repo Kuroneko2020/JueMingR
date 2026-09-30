@@ -46,6 +46,13 @@ namespace JueMingR.TerrariaHost.Combat
                 Patch(typeof(Player),"ItemCheck_MeleeHitNPCs",nameof(Melee),nameof(AfterMelee),null);
                 Patch(typeof(Player),"AnimatePlayerAndGetItemFrame",null,nameof(RemoteMelee),null);
                 Patch(typeof(Player),"ItemCheck",nameof(BeforeItem),null,nameof(EndItem));
+                // Share the established native-observer lifetime, not the
+                // collision-display gate. Prediction needs actual relocation
+                // facts even when only its path consumer is enabled.
+                Patch(typeof(Player),"Teleport",nameof(PlayerTeleport),null,null);
+                Patch(typeof(Player),"Spawn",nameof(PlayerSpawn),null,null);
+                Patch(typeof(Player),"Hurt",null,nameof(PlayerHurt),null);
+                Patch(typeof(MessageBuffer),"GetData",nameof(PlayerNetwork),null,null);
                 PlayerCollisionGeometryHooks.Install(harmony,methods);
                 Ready=true;
             }
@@ -55,6 +62,36 @@ namespace JueMingR.TerrariaHost.Combat
         {
             var method=AccessTools.DeclaredMethod(type,name);if(method==null)throw new MissingMethodException(type.Name,name);
             methods.Add(method);harmony.Patch(method,prefix==null?null:new HarmonyMethod(GetType(),prefix),postfix==null?null:new HarmonyMethod(GetType(),postfix),null,finalizer==null?null:new HarmonyMethod(GetType(),finalizer));
+        }
+        private static HostCombatObservation PredictionHost
+        {get{var self=current;return self!=null && self.Ready && self.host.Session>0 && self.host.Prediction.Cache.Required>0?self.host:null;}}
+        private static bool Live(Player player)
+        {return player!=null && player.active && player.whoAmI>=0 && player.whoAmI<Main.maxPlayers && ReferenceEquals(Main.player[player.whoAmI],player);}
+        private static void PlayerTeleport(Player __instance,Vector2 __0)
+        {var owner=PredictionHost;if(owner!=null && Live(__instance) && __instance.position!=__0)owner.Prediction.Native?.ObservePlayerRelocation();}
+        private static void PlayerSpawn(Player __instance)
+        {var owner=PredictionHost;if(owner!=null && Live(__instance))owner.Prediction.Native?.ObservePlayerRelocation();}
+        private static void PlayerHurt(Player __instance,double __result)
+        {
+            // A successful native hit is new external input, including recoil
+            // on otherwise conditional mounts. Rejected/immune hits do not
+            // revoke results; ordinary immunity clocks are not exact premises.
+            var owner=PredictionHost;if(owner!=null && __result>0 && Live(__instance))owner.Prediction.Native?.ObservePlayerRelocation();
+        }
+        private static void PlayerNetwork(MessageBuffer __instance,int __0,int __1)
+        {
+            var owner=PredictionHost;if(owner==null || Main.netMode!=1)return;
+            var data=__instance.readBuffer;
+            // Locked .8 packet 13: type, player, four bitsets, held slot,
+            // position. Observe only a complete header without consuming its
+            // reader or changing native handling. This is the original large
+            // correction threshold: netOffset is reset to zero AFTER it, so
+            // polling netOffset later would miss the actual discontinuity.
+            if(data==null || __0<0 || __1<15 || __0>data.Length-15 || data[__0]!=13)return;
+            int slot=data[__0+1];if(slot>=Main.maxPlayers || slot==Main.myPlayer && !Main.ServerSideCharacter)return;
+            var player=Main.player[slot];if(!Live(player) || player.unacknowledgedTeleports>0 || player.position==Vector2.Zero)return;
+            var incoming=new Vector2(BitConverter.ToSingle(data,__0+7),BitConverter.ToSingle(data,__0+11));
+            if((player.netOffset+player.position-incoming).Length()>Main.multiplayerNPCSmoothingRange)owner.Prediction.Native?.ObservePlayerRelocation();
         }
         private static void BeforeDamage(Projectile __instance,out DamageScope __state)
         {
