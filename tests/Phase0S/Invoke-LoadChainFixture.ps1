@@ -405,7 +405,7 @@ function New-Phase0STempInstallLaunchPackage {
 
     New-Phase0SFixtureConfig -ConfigPath (Join-Path $payloadRoot 'Terraria.exe.config')
     Copy-Item -LiteralPath $ProductionOutputs['Bootstrap'] -Destination (Join-Path $payloadRoot 'JueMingR.Bootstrap.dll')
-    foreach ($name in @('Host', 'Platform', 'Features', 'Infrastructure')) {
+    foreach ($name in @('Host', 'Platform', 'Features', 'Infrastructure', 'Worker', 'WorkerConfig')) {
         Copy-Item -LiteralPath $ProductionOutputs[$name] -Destination (Join-Path $sidecarRoot (Split-Path -Leaf $ProductionOutputs[$name]))
     }
     Copy-Item -LiteralPath $HarmonyPath -Destination (Join-Path $sidecarRoot '0Harmony.dll')
