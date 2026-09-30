@@ -80,6 +80,11 @@ namespace NativeWorldTextProbe
                     long retiredRequests=(long)Get(native,"Requests");for(int i=0;i<6;i++)Step(context,samples,prepares);
                     Require((long)Get(native,"Requests")==retiredRequests && cache.Required==0,"No native requests follow final consumer retirement.");
                     NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true));WaitPath(context,cache,samples,prepares,0,"shared-consumer-return");
+                    if(Environment.GetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT")!=null)
+                    {
+                        phase="live-context";
+                        NativeCombatLiveContextChecks.Run(context,cache,()=>Step(context,samples,prepares,false),output);return;
+                    }
                     if(Environment.GetEnvironmentVariable("JUEMINGR_NPC_MEASURE_OFF")=="1")
                     {
                         Require(((ICollection)Get(native,"Measurements")).Count==0 && (double)Get(native,"ObserveMilliseconds")==0 && (double)Get(worker,"ExchangeMilliseconds")==0,"Default product path must not collect detailed costs.");

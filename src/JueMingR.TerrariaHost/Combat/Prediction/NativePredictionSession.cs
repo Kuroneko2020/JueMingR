@@ -33,6 +33,9 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         }
         private readonly PredictionLaunchIdentity launch;
         private readonly NpcPredictionCache cache;
+#if PREDICTION_DIAGNOSTIC
+        private readonly NativePredictionDiagnostic diagnostic;
+#endif
         private readonly SortedSet<int> npcs=new SortedSet<int>(),projectiles=new SortedSet<int>(),assets=new SortedSet<int>();
         private NpcIdentity current;
         private Request pending,acceptedRequest;
@@ -52,7 +55,13 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         internal double ObserveMilliseconds,ObserveMaximum;
         internal string Reason {get;private set;}
         internal bool Failed {get;private set;}
-        internal NativePredictionSession(PredictionLaunchIdentity launch,NpcPredictionCache cache){this.launch=launch;this.cache=cache;}
+        internal NativePredictionSession(PredictionLaunchIdentity launch,NpcPredictionCache cache)
+        {
+            this.launch=launch;this.cache=cache;
+#if PREDICTION_DIAGNOSTIC
+            diagnostic=new NativePredictionDiagnostic(launch.CacheDirectory);
+#endif
+        }
         // Called from the already initialized Host's menu-capable preference
         // poll. It never observes Terraria entities or expands Gameplay gates.
         internal void PollEnvironment(bool requested,bool inWorld)
@@ -74,7 +83,21 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             }
             else{idleSince=0;menuExpired=false;}
             if(requested && !menuExpired)EnsureEnvironment();
-            if(Worker!=null && !stopped && Worker.State==4){Reason=Worker.Failure;Failed=true;Stop();}
+            if(Worker!=null && !stopped && Worker.State==4)
+            {
+                Reason=Worker.Failure;
+#if PREDICTION_DIAGNOSTIC
+                // A startup fault can close the Path gate before Prepare is
+                // reached. This observation must not depend on an NPC target.
+                diagnostic.WorkerFault(Reason);
+#endif
+                Failed=true;Stop();
+            }
+#if PREDICTION_DIAGNOSTIC
+            // The transport drains bounded stderr before publishing Closed;
+            // this later poll preserves the cause behind a generic pipe EOF.
+            if(Worker!=null && Worker.Closed)diagnostic.WorkerExit(Worker.Diagnostics);
+#endif
         }
         private void EnsureEnvironment()
         {
@@ -105,6 +128,11 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         {if(pending!=null && pending.Retired && Worker!=null && Worker.TryTakeResult()!=null)pending=null;}
         internal void Prepare(NpcIdentity identity,long tick)
         {
+#if PREDICTION_DIAGNOSTIC
+            try
+            {
+            diagnostic.Observe(this,identity,tick,lastTick);
+#endif
             if(Failed)return;
             if(cache.Required==0){ClearTarget();return;}
             if(!identity.Equals(current)){ClearTarget();current=identity;npcs.Add(identity.Slot);assets.Add(identity.Type);lastAttempt=-100;}
@@ -137,11 +165,22 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 if(accepted.Trajectory.TryWindow(tick,cache.Required,++version,out window)){cache.Publish(window);Published++;}
                 else{accepted=null;acceptedRequest=null;cache.Publish(null);Reason="remaining horizon exhausted";}
             }
-            if(Worker.State==4){Reason=Worker.Failure;Failed=true;Stop();return;}
+            if(Worker.State==4)
+            {
+                Reason=Worker.Failure;
+#if PREDICTION_DIAGNOSTIC
+                diagnostic.WorkerFault(Reason);
+#endif
+                Failed=true;Stop();return;
+            }
             // One request may run to completion. Refresh after completion at
             // most once per three updates; changes revoke old presentation
             // immediately but do not cancel every in-flight attempt.
             if(Worker.State==1 && pending==null && tick-lastAttempt>=3)Capture(identity,tick);
+#if PREDICTION_DIAGNOSTIC
+            }
+            catch(Exception error){diagnostic.WorkerFault("prepare: "+error);throw;}
+#endif
         }
         private void Receive(PredictionWorkerClient.DecodedReply response,long tick)
         {
@@ -176,7 +215,14 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 NpcTrajectory window;if(!result.Trajectory.TryWindow(tick,cache.Required,version,out window)){m.Outcome="insufficient remaining horizon";Rejected++;return;}
                 accepted=result;acceptedRequest=request;m.Outcome="accepted";Reason=null;
             }
-            catch(Exception error){if(error is OutOfMemoryException)throw;m.Outcome="invalid result: "+error.Message;Reason=m.Outcome;Rejected++;Failed=true;Stop();}
+            catch(Exception error)
+            {
+                if(error is OutOfMemoryException)throw;m.Outcome="invalid result: "+error.Message;Reason=m.Outcome;Rejected++;
+#if PREDICTION_DIAGNOSTIC
+                diagnostic.WorkerFault("receive: "+error);
+#endif
+                Failed=true;Stop();
+            }
             finally{if(PredictionPipeProtocol.Measure){m.AcceptMs=Milliseconds(Stopwatch.GetTimestamp()-begin);Measurements.Enqueue(m);while(Measurements.Count>256)Measurements.Dequeue();}}
         }
         private void Capture(NpcIdentity identity,long tick)
@@ -201,7 +247,13 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 var valueIdentity=new NpcIdentity(identity.Session,null,identity.Slot,identity.Generation,identity.Type,identity.NetId);
                 if(Worker.TrySendValues(values,valueIdentity,tick,Main.netMode==1)){pending=request;Requests++;}
             }
-            catch(Exception error){if(error is OutOfMemoryException)throw;Reason="capture: "+error.Message;lastAttempt=tick+57;}
+            catch(Exception error)
+            {
+                if(error is OutOfMemoryException)throw;Reason="capture: "+error.Message;lastAttempt=tick+57;
+#if PREDICTION_DIAGNOSTIC
+                diagnostic.CaptureFault(error);
+#endif
+            }
         }
         private void GatherDependencies()
         {
