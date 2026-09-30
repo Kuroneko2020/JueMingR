@@ -53,11 +53,33 @@ namespace NativeWorldTextProbe
                 int projectileType=Main.projectile[a].type;
                 RefuseConflict(child,SpoofPage(projectileScene,projectileSchema,Main.projectile[a],()=>Main.projectile[a].type=2,()=>Main.projectile[a].type=projectileType),"Projectile page conflicts");
                 Require(BitConverter.ToInt32(NativeCombatWorkerChecks.Exchange(child,complete),0)==NativeCombatWorkerChecks.ExpectedProtocol,"Identity failures do not poison the next request.");
+                SeatedTown(host,child,output);
+                Require(BitConverter.ToInt32(NativeCombatWorkerChecks.Exchange(child,complete),0)==NativeCombatWorkerChecks.ExpectedProtocol,"Seated NPC state cannot leak into the next request.");
                 }
                 finally
                 {NativeCombatWorkerChecks.Exit(child,"entity helper exits");File.WriteAllText(Path.Combine(output,"entity-worker.log"),errors.Result);Console.WriteLine(errors.Result);}
             }
             Console.WriteLine("PASS unknown entity field, native directory read/write/ref and inactive-key checks; conflicting NPC type/generation and projectile key/type refused; same-worker recovery.");
+        }
+        private static void SeatedTown(Assembly host,System.Diagnostics.Process child,string output)
+        {
+            NativeCombatWorkerChecks.Scene(false);NPC.ClearAll();Projectile.ClearAll();
+            Require(Main.player[0].talkNPC==-1,"Town fixture is not talking to the player.");
+            // The real parent has this Main-initialized collection. It is not
+            // part of the wire, so a missing private collection remains visible.
+            Main.sittingManager=new Terraria.DataStructures.AnchoredEntitiesCollection();
+            bool dedicated=Main.dedServ;
+            try{Main.dedServ=true;System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(Terraria.GameContent.TownNPCProfiles).TypeHandle);}finally{Main.dedServ=dedicated;}
+            Require(WorldGen.PlaceTile(44,64,15,mute:true,forced:true,plr:0,style:0),"Original chair placement.");
+            int slot=NPC.NewNPC(new Terraria.DataStructures.EntitySource_DebugCommand(),44*16+8,65*16,Terraria.ID.NPCID.Guide,Target:0);
+            Require(slot>=0 && slot<Main.maxNPCs,"Original Guide birth.");var guide=Main.npc[slot];
+            typeof(NPC).GetMethod("AI_007_TryForcingSitting",Flags).Invoke(guide,new object[]{44,65});
+            Require(guide.ai[0]==5 && guide.ai[1]>=900 && guide.velocity==Vector2.Zero,"Original seated Guide state.");
+            var capture=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.PredictionWire",true).GetMethod("Capture",Flags);
+            byte[] request=(byte[])capture.Invoke(null,new object[]{new[]{slot},slot,1000L,120});
+            byte[] future=NativeCombatWorkerChecks.Exchange(child,request);
+            NativeCombatWorkerChecks.Compare(future,slot,output,"native-seated-guide",playerUpdate:()=>Main.sittingManager.ClearNPCAnchors(),expectPlayerMotion:false);
+            Require(guide.ai[0]==5,"Town oracle remains seated across the full window.");
         }
         internal static void DirectoryRoundTrip(Assembly host)
         {

@@ -36,6 +36,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             foreach(string name in new[]{"Initialize_TileAndNPCData1","Initialize_TileAndNPCData2"})
                 typeof(Main).GetMethod(name,BindingFlags.Static|BindingFlags.NonPublic).Invoke(null,null);
             Reset(120,120);
+            NativeMountSnapshot.InitializePrivateDefinitions();
             StartupPart(startup,"type-data-reset");
             Terraria.ID.ContentSamples.Initialize();
             StartupPart(startup,"content-samples");
@@ -161,6 +162,9 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                         if(NPC.brainOfGravity>=0 && NPC.brainOfGravity<Main.maxNPCs && (!Main.npc[NPC.brainOfGravity].active || Main.npc[NPC.brainOfGravity].type!=266))NPC.brainOfGravity=-1;
                         // A selected hand sees the already updated lower head
                         // slot. Spawned private entities retain native indices.
+                        // Native town AI registers seats during this phase.
+                        // Anchors are per tick, not persistent scene state.
+                        Main.sittingManager.ClearNPCAnchors();
                         using(NativeRandomSnapshot.Use("UpdateNPCs"))
                             for(int slot=0;slot<Main.maxNPCs;slot++)if(Main.npc[slot].active && NativeEntityDirectory.CanAdvance(Main.npc[slot]))Main.npc[slot].UpdateNPC(slot);
                         // Enumerate native slots at the phase itself: a new
@@ -236,6 +240,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             Main.rand=new UnifiedRandom(123);Main.dedServ=true;Main.netMode=0;Main.gameMenu=false;Main.gamePaused=false;
             Main.maxTilesX=width;Main.maxTilesY=height;Main.leftWorld=Main.topWorld=0;Main.rightWorld=width*16;Main.bottomWorld=height*16;
             Main.screenWidth=960;Main.screenHeight=640;
+            Main.sittingManager=new Terraria.DataStructures.AnchoredEntitiesCollection();
             for(int i=0;i<Main.npc.Length;i++)Main.npc[i]=new NPC();
             // Player construction creates inventories/equipment/banks. Only
             // previously restored players can carry request-specific state;

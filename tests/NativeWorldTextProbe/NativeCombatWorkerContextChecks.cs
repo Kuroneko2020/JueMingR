@@ -56,7 +56,52 @@ namespace NativeWorldTextProbe
             bad=(byte[])bytes.Clone();Buffer.BlockCopy(BitConverter.GetBytes(-2),0,bad,first,4);Refuse(context,"ReadPlayer",bad,new Player(),"selection");
             Console.WriteLine("PASS existing player item/selection/sitting pure values, original SoulDrain/RNG and projectile difficulty curve; malformed leaf pages rejected.");
             NativeCombatWorkerTagChecks.Run(host);
+            MountRoundTrip(host);
         }
+        private static void MountRoundTrip(Assembly host)
+        {
+            Type context=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativeActorContext",true);
+            Type alignment=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativePredictionAlignment",true);
+            var premise=alignment.GetMethod("PlayerPremise",Flags);
+            object values=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.PredictionWire",true).GetField("Players",Flags).GetValue(null);
+            int network=Main.netMode;bool dedicated=Main.dedServ;
+            try
+            {
+                Main.netMode=2;Main.dedServ=true;Mount.Initialize();
+                foreach(int type in new[]{0,Terraria.ID.MountID.WitchBroom,54,8,35,44})
+                {
+                    var source=new Player{whoAmI=1,active=true,position=new Vector2(750,800)};
+                    source.mount.SetMount(type,source);
+                    typeof(Player).GetField("_portalPhysicsTime",Flags).SetValue(source,12);
+                    if(type==54)
+                    {object specific=typeof(Mount).GetField("_mountSpecificData",Flags).GetValue(source.mount);specific.GetType().GetField("allowedToFly",Flags).SetValue(specific,true);}
+                    if(type==8)Require(source.mount.AimAbility(source,new Vector2(900,1000)),"Original drill ability establishes nonzero leaf state.");
+                    var copy=new Player();
+                    using(var bytes=new MemoryStream())using(var writer=new BinaryWriter(bytes))
+                    {
+                        values.GetType().GetMethod("Write",Flags).Invoke(values,new object[]{writer,source});writer.Flush();bytes.Position=0;
+                        using(var reader=new BinaryReader(bytes))values.GetType().GetMethod("Read",Flags).Invoke(values,new object[]{reader,copy});
+                    }
+                    Read(context,"ReadPlayer",Write(context,"WritePlayer",source),copy);
+                    Require(copy.mount.Active && copy.mount.Type==type && !ReferenceEquals(copy.mount,source.mount),"Independent mount identity survives pure restoration.");
+                    Require(!source.PortalPhysicsEnabled && !copy.PortalPhysicsEnabled && copy.MountedCenter==source.MountedCenter,"Original portal and mounted geometry getters retain their captured meaning.");
+                    Require(PlayerPremise(premise,source).SequenceEqual(PlayerPremise(premise,copy)),"Frame-zero player premise is identical after primitive and leaf restoration.");
+                    if(type==54)Require(copy.mount.CanFly(copy)==source.mount.CanFly(source),"Selective flying leaf feeds original CanFly.");
+                    if(type==8)
+                    {
+                        byte[] prior=Write(context,"WritePlayer",source);
+                        Require(copy.mount.AimAbility(copy,new Vector2(1200,700)),"Restored drill leaf supports the original observed-projectile consumer.");
+                        Require(prior.SequenceEqual(Write(context,"WritePlayer",source)),"Private drill mutation cannot alter the captured owner.");
+                    }
+                    source.mount.Dismount(source);Read(context,"ReadPlayer",Write(context,"WritePlayer",source),copy);
+                    Require(!copy.mount.Active && copy.mount.Type==-1 && source.PortalPhysicsEnabled==copy.PortalPhysicsEnabled,"Dismount clears active identity without losing native retained definition state.");
+                }
+            }
+            finally{Main.netMode=network;Main.dedServ=dedicated;}
+            Console.WriteLine("PASS mounted player frame-zero, portal/geometry, native flying/drill leaf consumers and dismount roundtrips");
+        }
+        private static byte[] PlayerPremise(MethodInfo method,Player player)
+        {using(var stream=new MemoryStream())using(var writer=new BinaryWriter(stream)){method.Invoke(null,new object[]{writer,player});writer.Flush();return stream.ToArray();}}
         private static string SoulDrain(Player player)
         {
             Main.player[0]=player;player.soulDrain=0;Main.rand=new UnifiedRandom(777);

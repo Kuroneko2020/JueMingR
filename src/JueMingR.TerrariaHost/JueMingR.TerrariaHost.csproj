@@ -10,7 +10,6 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <!-- Task #112 one-shot investigation only; ordinary builds contain no
          diagnostic type or call sites. Remove after the live cause is known. -->
-    <DefineConstants Condition="'$(JueMingRPredictionDiagnostic)' == 'true'">$(DefineConstants);PREDICTION_DIAGNOSTIC</DefineConstants>
     <TerrariaReferencesDirectory Condition="'$(TerrariaReferencesDirectory)' == ''">$(MSBuildThisFileDirectory)..\..\external\TerrariaRefs</TerrariaReferencesDirectory>
     <HarmonyReferencesDirectory Condition="'$(HarmonyReferencesDirectory)' == ''">$(MSBuildThisFileDirectory)..\..\external\Harmony</HarmonyReferencesDirectory>
   </PropertyGroup>

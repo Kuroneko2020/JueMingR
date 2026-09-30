@@ -18,7 +18,7 @@ namespace NativeWorldTextProbe
     // Harmony patches, and the whole future is received before time advances.
     internal static class NativeCombatWorkerChecks
     {
-        internal const int ExpectedProtocol=25, PointBytes=75;
+        internal const int ExpectedProtocol=26, PointBytes=75;
         private static readonly Main weatherOracle=(Main)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(Main));
         internal static void AdvanceWeather()
         {
@@ -63,8 +63,6 @@ namespace NativeWorldTextProbe
             {
                 Terraria.Program.SavePath=Path.Combine(output,"isolated-user");
                 string cached=Path.Combine(Terraria.Program.SavePath,"composition/JueMingRData/cache/npc-prediction");Directory.CreateDirectory(cached);
-                if(Environment.GetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT")=="diagnostic")
-                    File.WriteAllText(Path.Combine(cached,"ordinary-live-20260930.arm"),"#112 isolated live-entry diagnostic test");
                 // Repeat measurements may reuse exact authenticated prepared
                 // materials. Product still selects its normal gameDirectory
                 // cache path; no alternate sampling or publication seam.

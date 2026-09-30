@@ -11,7 +11,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
 {
     // Explicit leaf state which is not in the primitive actor page. Restoring
     // it must not rerun gameplay operations (Select, SitDown, Item.SetDefaults
-    // or Prefix). Mount, effects and other complex objects remain separate
+    // or Prefix). Mount uses its explicit leaf codec; other complex objects remain separate
     // closure requirements; this is not a general object-graph serializer.
     internal static class NativeActorContext
     {
@@ -35,6 +35,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             var seat=player.sitting;writer.Write(seat.isSitting);writer.Write(seat.details.IsAToilet);
             writer.Write(seat.offsetForSeat.X);writer.Write(seat.offsetForSeat.Y);writer.Write(seat.sittingIndex);
             NativeTagSnapshot.Write(writer,player);
+            NativeMountSnapshot.Write(writer,player.mount);
         }
         internal static void ReadPlayer(BinaryReader reader,Player player)
         {
@@ -48,6 +49,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             for(int slot=0;slot<10;slot++)player.armor[slot]=ReadItem(reader)??throw new InvalidDataException("Effective equipment is absent.");
             player.sitting=new PlayerSittingHelper{isSitting=reader.ReadBoolean(),details=new ExtraSeatInfo{IsAToilet=reader.ReadBoolean()},offsetForSeat=new Vector2(Finite(reader.ReadSingle(),"sitting"),Finite(reader.ReadSingle(),"sitting")),sittingIndex=reader.ReadInt32()};
             NativeTagSnapshot.Read(reader,player);
+            player.mount=NativeMountSnapshot.Read(reader);
         }
         private static void WriteItem(BinaryWriter writer,Item item)
         {writer.Write(item!=null);if(item!=null){Items.Write(writer,item);writer.Write(VariantId(item.Variant));}}

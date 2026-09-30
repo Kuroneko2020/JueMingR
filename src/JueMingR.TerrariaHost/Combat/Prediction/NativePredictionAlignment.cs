@@ -83,6 +83,9 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             // bitfields carried by the captured player, not just evil biomes.
             w.Write((byte)p.zone1);w.Write((byte)p.zone2);w.Write((byte)p.zone3);w.Write((byte)p.zone4);w.Write((byte)p.zone5);
             NativePlayerMotion.Write(w,p);
+            // Mount changes retire a conditional continuation even if both
+            // old/new states satisfy the same broad Complex movement flag.
+            w.Write(p.mount.Active);w.Write(p.mount.Type);
             w.Write(p.selectedItem);foreach(var item in p.inventory){w.Write(item.type);w.Write(item.prefix);w.Write(item.stack);}
             for(int slot=0;slot<10;slot++){var item=p.GetEffectiveArmor(slot);w.Write(item.type);w.Write(item.prefix);w.Write(item.stack);w.Write(item.accessory);w.Write(item.expertOnly);w.Write(p.IsItemSlotUnlockedAndUsable(slot));}
             foreach(bool value in p.npcTypeNoAggro)w.Write(value);
