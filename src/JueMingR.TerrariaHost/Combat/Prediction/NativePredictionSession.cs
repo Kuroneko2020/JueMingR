@@ -59,7 +59,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         {
             this.launch=launch;this.cache=cache;
 #if PREDICTION_DIAGNOSTIC
-            diagnostic=new NativePredictionDiagnostic(launch.CacheDirectory);
+            diagnostic=launch==null?null:new NativePredictionDiagnostic(launch.CacheDirectory);
 #endif
         }
         // Called from the already initialized Host's menu-capable preference
@@ -89,14 +89,14 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
 #if PREDICTION_DIAGNOSTIC
                 // A startup fault can close the Path gate before Prepare is
                 // reached. This observation must not depend on an NPC target.
-                diagnostic.WorkerFault(Reason);
+                diagnostic?.WorkerFault(Reason);
 #endif
                 Failed=true;Stop();
             }
 #if PREDICTION_DIAGNOSTIC
             // The transport drains bounded stderr before publishing Closed;
             // this later poll preserves the cause behind a generic pipe EOF.
-            if(Worker!=null && Worker.Closed)diagnostic.WorkerExit(Worker.Diagnostics);
+            if(Worker!=null && Worker.Closed)diagnostic?.WorkerExit(Worker.Diagnostics);
 #endif
         }
         private void EnsureEnvironment()
@@ -131,7 +131,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
 #if PREDICTION_DIAGNOSTIC
             try
             {
-            diagnostic.Observe(this,identity,tick,lastTick);
+            diagnostic?.Observe(this,identity,tick,lastTick);
 #endif
             if(Failed)return;
             if(cache.Required==0){ClearTarget();return;}
@@ -169,7 +169,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             {
                 Reason=Worker.Failure;
 #if PREDICTION_DIAGNOSTIC
-                diagnostic.WorkerFault(Reason);
+                diagnostic?.WorkerFault(Reason);
 #endif
                 Failed=true;Stop();return;
             }
@@ -179,7 +179,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             if(Worker.State==1 && pending==null && tick-lastAttempt>=3)Capture(identity,tick);
 #if PREDICTION_DIAGNOSTIC
             }
-            catch(Exception error){diagnostic.WorkerFault("prepare: "+error);throw;}
+            catch(Exception error){diagnostic?.WorkerFault("prepare: "+error);throw;}
 #endif
         }
         private void Receive(PredictionWorkerClient.DecodedReply response,long tick)
@@ -219,7 +219,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             {
                 if(error is OutOfMemoryException)throw;m.Outcome="invalid result: "+error.Message;Reason=m.Outcome;Rejected++;
 #if PREDICTION_DIAGNOSTIC
-                diagnostic.WorkerFault("receive: "+error);
+                diagnostic?.WorkerFault("receive: "+error);
 #endif
                 Failed=true;Stop();
             }
@@ -251,7 +251,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             {
                 if(error is OutOfMemoryException)throw;Reason="capture: "+error.Message;lastAttempt=tick+57;
 #if PREDICTION_DIAGNOSTIC
-                diagnostic.CaptureFault(error);
+                diagnostic?.CaptureFault(error);
 #endif
             }
         }
