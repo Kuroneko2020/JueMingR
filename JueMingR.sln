@@ -16,12 +16,18 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JueMingR.Setup", "src\JueMi
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JueMingR.ArchitectureTests", "tests\JueMingR.ArchitectureTests\JueMingR.ArchitectureTests.csproj", "{662A2881-FC74-4FA3-B227-37E03B6EA19C}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JueMingR.PredictionWorker", "src\JueMingR.PredictionWorker\JueMingR.PredictionWorker.csproj", "{93DE72C2-0369-407A-95E8-E94481014F7A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x86 = Debug|x86
 		Release|x86 = Release|x86
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{93DE72C2-0369-407A-95E8-E94481014F7A}.Debug|x86.ActiveCfg = Debug|x86
+		{93DE72C2-0369-407A-95E8-E94481014F7A}.Debug|x86.Build.0 = Debug|x86
+		{93DE72C2-0369-407A-95E8-E94481014F7A}.Release|x86.ActiveCfg = Release|x86
+		{93DE72C2-0369-407A-95E8-E94481014F7A}.Release|x86.Build.0 = Release|x86
 		{2E53A49F-E624-4E8C-A607-E3BB0F68B43D}.Debug|x86.ActiveCfg = Debug|x86
 		{2E53A49F-E624-4E8C-A607-E3BB0F68B43D}.Debug|x86.Build.0 = Debug|x86
 		{2E53A49F-E624-4E8C-A607-E3BB0F68B43D}.Release|x86.ActiveCfg = Release|x86

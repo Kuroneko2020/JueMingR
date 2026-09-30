@@ -10,15 +10,31 @@ namespace JueMingR.TerrariaHost.Combat
     {
         internal readonly NpcPredictionCache Cache=new NpcPredictionCache();
         internal readonly PredictionTerrain Terrain=new PredictionTerrain();
+        internal readonly Prediction.NativePredictionSession Native;
+        private readonly Prediction.SegmentedNpcPrediction segmented=new Prediction.SegmentedNpcPrediction();
+        private bool usingSegmented;
+        internal NpcPredictionSource(Prediction.PredictionLaunchIdentity launch=null)
+        {if(launch!=null)Native=new Prediction.NativePredictionSession(launch,Cache);}
         private readonly NpcMotionState[] states=new NpcMotionState[NpcPredictionCache.Capacity];
         private readonly bool[] visited=new bool[NpcPredictionCache.Capacity];
         private readonly int[] pending=new int[NpcPredictionCache.Capacity];
         private readonly MotionRect[] playerAreas=new MotionRect[255];
         private PredictionPlayers players;
-        internal void Clear(){Cache.Clear();Terrain.Reset();Array.Clear(states,0,states.Length);}
+        internal void Clear(){Native?.ClearTarget();segmented.Clear();usingSegmented=false;Cache.Clear();Terrain.Reset();Array.Clear(states,0,states.Length);}
+        internal void Stop(){Native?.Stop();Clear();}
+        internal void EndWorld(){Native?.DetachWorld();Clear();}
         internal void Prepare(NpcIdentity identity,long tick)
         {
+            if(Cache.Required==0){Clear();return;}
             if(!CombatSelection.Valid(identity,identity.Session)){Clear();return;}
+            if(Prediction.SegmentedNpcPrediction.Family(identity.Type)!=0)
+            {
+                if(!usingSegmented){Native?.ClearTarget();usingSegmented=true;}
+                Native?.DiscardRetiredResult();
+                Cache.Publish(segmented.Prepare(identity,tick,Cache.Required));return;
+            }
+            if(usingSegmented){Cache.Clear();usingSegmented=false;}
+            if(Native!=null){Native.Prepare(identity,tick);return;}
             Array.Clear(visited,0,visited.Length);int count=0,queued=1;pending[0]=identity.Slot;visited[identity.Slot]=true;
             for(int next=0;next<queued;next++)
             {

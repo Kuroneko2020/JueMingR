@@ -43,7 +43,7 @@ if (-not (Test-Phase0STerrariaIdentity -Path $terrariaExe)) {
     Write-Phase0SResultAndExit -Operation 'install' -Status 'failure' -Code 'TERRARIA_IDENTITY_MISMATCH' -ExitCode 4 -PackageId $null -Object 'Terraria.exe' -Sha256 $null
 }
 
-$runningProcesses = @(Get-Process -Name 'Terraria', 'TerrariaServer' -ErrorAction SilentlyContinue)
+$runningProcesses = @(Get-Process -Name 'Terraria', 'TerrariaServer', 'JueMingR.PredictionWorker' -ErrorAction SilentlyContinue)
 if ($runningProcesses.Count -ne 0) {
     Write-Phase0SResultAndExit -Operation 'install' -Status 'conflict' -Code 'TERRARIA_RUNNING' -ExitCode 5 -PackageId $null -Object 'process' -Sha256 $null
 }
@@ -82,6 +82,8 @@ try {
         'JueMingR.Validation/JueMingR.Features.dll',
         'JueMingR.Validation/JueMingR.Infrastructure.dll',
         'JueMingR.Validation/JueMingR.Platform.dll',
+        'JueMingR.Validation/JueMingR.PredictionWorker.exe',
+        'JueMingR.Validation/JueMingR.PredictionWorker.exe.config',
         'JueMingR.Validation/JueMingR.TerrariaHost.dll',
         'JueMingR.Validation/phase-0-s-runtime.manifest'
     )

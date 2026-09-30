@@ -24,7 +24,7 @@ namespace NativeWorldTextProbe
         private static int recalls;
         internal static int Recalls {get{return recalls;}}
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static void Run(Action<object> visual=null, bool coins=false, bool about=false, bool recovery=false, bool processing=false, bool shortFeedback=false,string candidateAssembly=null)
+        internal static void Run(Action<object> visual=null, bool coins=false, bool about=false, bool recovery=false, bool processing=false, bool shortFeedback=false,string candidateAssembly=null,string predictionHostHash=null)
         {
             Require(IntPtr.Size==4,"G05 native fixture must use .NET Framework x86");
             Require(typeof(Main).Assembly.ManifestModule.ModuleVersionId==new Guid("2c29f6c3-4bd9-4add-9c58-da159804e083"),"fixed .8 MVID");
@@ -37,7 +37,7 @@ namespace NativeWorldTextProbe
             Main.ActivePlayerFileData=new Terraria.IO.PlayerFileData(Path.Combine(root,"fixture.plr"),false){Player=Main.LocalPlayer};
             Main.ActiveWorldFileData=new Terraria.IO.WorldFileData(Path.Combine(root,"fixture.wld"),false){UniqueId=Guid.NewGuid()};
             object context=Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Phase0SHarmonyWorker").GetNestedType("PostfixContext",Flags),Flags,null,
-                new object[]{(processing?"continuous-processing-":recovery?"recovery-buffs-services-":about?"about-help-feedback-":coins?"coin-deposit-":"favorite-quick-items-")+new string('5',40),Path.Combine(root,"evidence.txt"),root},null);
+                predictionHostHash==null?new object[]{(processing?"continuous-processing-":recovery?"recovery-buffs-services-":about?"about-help-feedback-":coins?"coin-deposit-":"favorite-quick-items-")+new string('5',40),Path.Combine(root,"evidence.txt"),root}:new object[]{"continuous-processing-"+new string('5',40),Path.Combine(root,"evidence.txt"),root,predictionHostHash},null);
             var isolation=new Harmony("JueMingR.Tests.QuickItemOutlets");
             var inputHooks=new Harmony("JueMingR.Tests.QuickInput");
             try

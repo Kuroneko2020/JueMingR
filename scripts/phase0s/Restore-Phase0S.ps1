@@ -40,7 +40,7 @@ if ($ownership.noop) {
 
 # A running host can lock only some payload files. Refuse before the first
 # deletion rather than leave a partially restored installation behind.
-$runningProcesses = @(Get-Process -Name 'Terraria', 'TerrariaServer' -ErrorAction SilentlyContinue)
+$runningProcesses = @(Get-Process -Name 'Terraria', 'TerrariaServer', 'JueMingR.PredictionWorker' -ErrorAction SilentlyContinue)
 if ($runningProcesses.Count -ne 0) {
     Write-Phase0SResultAndExit -Operation 'restore' -Status 'conflict' -Code 'TERRARIA_RUNNING' -ExitCode 5 -PackageId $null -Object 'process' -Sha256 $null
 }

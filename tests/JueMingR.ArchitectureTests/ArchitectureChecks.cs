@@ -16,7 +16,8 @@ namespace JueMingR.ArchitectureTests
             Pair("JueMingR.TerrariaHost", "src/JueMingR.TerrariaHost/JueMingR.TerrariaHost.csproj"),
             Pair("JueMingR.Infrastructure", "src/JueMingR.Infrastructure/JueMingR.Infrastructure.csproj"),
             Pair("JueMingR.Setup", "src/JueMingR.Setup/JueMingR.Setup.csproj"),
-            Pair("JueMingR.ArchitectureTests", "tests/JueMingR.ArchitectureTests/JueMingR.ArchitectureTests.csproj")
+            Pair("JueMingR.ArchitectureTests", "tests/JueMingR.ArchitectureTests/JueMingR.ArchitectureTests.csproj"),
+            Pair("JueMingR.PredictionWorker", "src/JueMingR.PredictionWorker/JueMingR.PredictionWorker.csproj")
         };
 
         private static readonly IDictionary<string, string[]> ExpectedProjectReferences =
@@ -25,10 +26,11 @@ namespace JueMingR.ArchitectureTests
                 { ExpectedProjects[0].Value, new string[0] },
                 { ExpectedProjects[1].Value, new string[0] },
                 { ExpectedProjects[2].Value, new[] { ExpectedProjects[1].Value } },
-                { ExpectedProjects[3].Value, new[] { ExpectedProjects[1].Value, ExpectedProjects[2].Value, ExpectedProjects[4].Value } },
+                { ExpectedProjects[3].Value, new[] { ExpectedProjects[1].Value, ExpectedProjects[2].Value, ExpectedProjects[4].Value, ExpectedProjects[7].Value } },
                 { ExpectedProjects[4].Value, new[] { ExpectedProjects[1].Value } },
                 { ExpectedProjects[5].Value, new string[0] },
-                { ExpectedProjects[6].Value, new[] { ExpectedProjects[1].Value, ExpectedProjects[2].Value, ExpectedProjects[4].Value } }
+                { ExpectedProjects[6].Value, new[] { ExpectedProjects[1].Value, ExpectedProjects[2].Value, ExpectedProjects[4].Value } },
+                { ExpectedProjects[7].Value, new string[0] }
             };
 
         private static readonly IDictionary<string, string> ExpectedGameReferences =
@@ -84,7 +86,7 @@ namespace JueMingR.ArchitectureTests
                     string.Equals(actual.RelativePath, expected.Value, StringComparison.OrdinalIgnoreCase)));
             if (!matches)
             {
-                failures.Add("solution must contain exactly the six production projects and ArchitectureTests.");
+                failures.Add("solution must contain exactly the six product modules, owned PredictionWorker executable and ArchitectureTests.");
             }
         }
 
@@ -104,6 +106,9 @@ namespace JueMingR.ArchitectureTests
                     .Select(include => model.ResolveProjectReference(expected.Key, include))
                     .ToList();
                 List<string> expectedPaths = expected.Value.Select(model.GetFullPath).ToList();
+                foreach(var reference in Elements(project,"ProjectReference"))
+                    if(((string)reference.Attribute("Include")??string.Empty).IndexOf("JueMingR.PredictionWorker",StringComparison.OrdinalIgnoreCase)>=0 && (string)reference.Attribute("ReferenceOutputAssembly")!="false")
+                        failures.Add("PredictionWorker is a build-order edge only, never a Host compilation dependency.");
                 if (actual.Count != expectedPaths.Count ||
                     !new HashSet<string>(actual, StringComparer.OrdinalIgnoreCase).SetEquals(expectedPaths))
                 {
@@ -151,7 +156,7 @@ namespace JueMingR.ArchitectureTests
 
         private static void CheckNeutralProjects(RepositoryModel model, IList<string> failures)
         {
-            foreach (string path in new[] { ExpectedProjects[0].Value, ExpectedProjects[1].Value })
+            foreach (string path in new[] { ExpectedProjects[0].Value, ExpectedProjects[1].Value, ExpectedProjects[7].Value })
             {
                 XDocument project;
                 if (model.Projects.TryGetValue(path, out project) &&

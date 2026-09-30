@@ -29,6 +29,9 @@ namespace JueMingR.Features.Combat
         public void Release(int consumer){if(consumer<0 || consumer>=demands.Length)throw new ArgumentOutOfRangeException();demands[consumer]=0;if(Required==0)Clear();}
         public int Required {get{int n=0;for(int i=0;i<demands.Length;i++)n=Math.Max(n,demands[i]);return n;}}
         public NpcTrajectory Read(int consumer){return consumer>=0 && consumer<demands.Length && demands[consumer]>0?result:null;}
+        // The native asynchronous owner validates age/identity before passing
+        // an immutable window here. Readers still never sample or wait.
+        public void Publish(NpcTrajectory value){result=Required>0?value:null;}
         public void Clear(){result=null;count=length=0;tick=-1;Array.Clear(initial,0,initial.Length);Array.Clear(first,0,first.Length);Array.Clear(tail,0,tail.Length);}
         public void EndSession(){Array.Clear(demands,0,demands.Length);Clear();}
         public void Prepare(NpcMotionState[] source,int sourceCount,int chosen,long sampleTick,PredictionEnvironment env,IPredictionTerrain terrain)

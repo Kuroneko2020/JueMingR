@@ -14,6 +14,23 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if(scope=="NpcMaterialCache"){NativeCombatMaterialCacheChecks.Run(output);return 0;}
+            if(scope=="NpcMaterialPrepare"){NativeCombatMaterialCacheChecks.Prepare(output);return 0;}
+            if(scope=="NpcInstructionInventory"){NativeCombatMaterialCacheChecks.Inventory();return 0;}
+            if(scope=="NpcWorkerParentExit")
+            {NativeCombatWorkerBoundaryChecks.ParentProbe(output);return 0;}
+            if(scope=="NpcTileManifest" || scope=="NpcTileManifestGenerate")
+            {NativeCombatTileManifestChecks.Run(output,scope=="NpcTileManifestGenerate");return 0;}
+            if(scope=="NpcWorkerIntegration" || scope=="NpcLegalCoverage" || scope=="NpcWorkerCatalogue" || scope=="NpcWorkerLinked" || scope=="NpcWorkerLifetime" || scope=="NpcWorkerAssets" || scope=="NpcWorkerRandom" || scope=="NpcWorkerPlayer" || scope=="NpcWorkerEntity" || scope=="NpcWorkerBirth" || scope=="NpcWorkerContext" || scope=="NpcWorkerImmunity" || scope=="NpcWorkerLifecycle" || scope=="NpcWorkerFields" || scope=="NpcWorkerTransport" || scope=="NpcProduction" || scope=="NpcWorkerPreparation" || scope=="NpcMenuPreparation" || scope=="NpcSnapshot" || scope=="NpcLongCoverage")
+            {
+                Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-worker-oracle-"+Guid.NewGuid().ToString("N"));
+                NativeCombatWorkerChecks.Run(output,scope=="NpcWorkerCatalogue",scope=="NpcWorkerLinked",scope=="NpcWorkerLifetime",scope=="NpcWorkerAssets",scope=="NpcWorkerRandom",scope=="NpcWorkerPlayer",scope=="NpcWorkerEntity",scope=="NpcWorkerBirth",scope=="NpcWorkerContext",scope=="NpcWorkerImmunity",scope=="NpcWorkerLifecycle",scope=="NpcWorkerFields",scope=="NpcWorkerTransport",scope=="NpcProduction",content,scope=="NpcWorkerPreparation",scope=="NpcMenuPreparation",scope=="NpcSnapshot",scope=="NpcLongCoverage",scope=="NpcLegalCoverage");return 0;
+            }
+            if(scope=="NpcCoverageBaseline" || scope=="NpcLongPrediction")
+            {
+                Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-npc-coverage-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
+                NativeQuickItemChecks.Run(context=>NativeCombatNpcCoverageChecks.Baseline(context,output,scope=="NpcLongPrediction"),processing:true,shortFeedback:true);return 0;
+            }
             if(scope=="CombatCosts")
             {
                 Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-combat-costs-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);

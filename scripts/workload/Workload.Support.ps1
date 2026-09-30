@@ -58,6 +58,7 @@ function Get-WorkloadRoute {
     $unknown = @()
     foreach ($path in $Paths) {
         switch -Regex ($path.Replace('\', '/')) {
+            '^src/JueMingR.PredictionWorker/' { [void]$groups.Add('combat-host'); continue }
             '^src/[^/]+/Combat/|^src/JueMingR.TerrariaHost/F5/Combat(Controls|IntervalDrag)\.cs$|^tests/JueMingR.ArchitectureTests/Combat/|^tests/NativeWorldTextProbe/(NativeCombat|CombatNetworkFixture)' { [void]$groups.Add('combat-host'); continue }
             '^src/JueMingR.TerrariaHost/F5/MiscAutomationPanel\.cs$|^tests/NativeWorldTextProbe/NativePageComposition' { [void]$groups.Add('pages-host'); continue }
             '^src/[^/]+/Tools/|^tests/JueMingR.ArchitectureTests/Tools/|^tests/NativeWorldTextProbe/Native(Tools|ToolCadence|ToolExecution|ToolWait|SeedDiscovery|Capture|Herb|Mining|FishingBorrow)' { [void]$groups.Add('tools-host'); continue }

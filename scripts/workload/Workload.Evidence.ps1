@@ -227,6 +227,8 @@ function Get-WorkloadPlan {
         if (@($modes[$mode] | Where-Object {$Groups -contains $_}).Count -gt 0) { $plan.Add(@{name='fixture-'+$mode; executable=$fixture; arguments=@($mode); project='Phase0SFixtureTerraria'}) }
     }
     $scopes = [ordered]@{
+        'NpcWorkerIntegration'=@('combat-host'); 'NpcSnapshot'=@('combat-host'); 'NpcWorkerPreparation'=@('combat-host');
+        'NpcLegalCoverage'=@('combat-host'); 'NpcWorkerTransport'=@('combat-host'); 'NpcMenuPreparation'=@('combat-host'); 'NpcProduction'=@('combat-host'); 'NpcLongCoverage'=@('combat-host');
         'WorkloadCpu'=@('world-host','shared-host'); 'InformationCpu'=@('information','shared-host'); 'GuidanceCpu'=@('guidance','shared-host');
         'ShortFeedbackCpu'=@('shared-host','storage-host','quick-items-host','coin-deposit-host','recovery-host','processing-host','about-host','tools-host','fishing-host','combat-host');
         'CombatCpu'=@('combat-host'); 'CombatFacingCpu'=@('combat-host'); 'CombatHitsCpu'=@('combat-host'); 'CombatReportCpu'=@('combat-host'); 'CombatUiCpu'=@('combat-host'); 'CombatObservationCpu'=@('combat-host'); 'CombatCosts'=@('combat-host');
@@ -237,6 +239,11 @@ function Get-WorkloadPlan {
     }
     foreach ($scope in $scopes.Keys) {
         if (@($scopes[$scope] | Where-Object {$Groups -contains $_}).Count -gt 0) { $plan.Add(@{name='native-'+$scope; executable=$native; arguments=@($Root,'--cpu',(Join-Path $ChecksRoot $scope),$scope); project='NativeWorldTextProbe'}) }
+    }
+    if ($Groups -contains 'combat-host') {
+        # Integration above creates and authenticates this exact shared layout.
+        # The separate process binds the private image before native fixture JIT.
+        $plan.Add(@{name='native-NpcPrivateSafety'; executable=$native; arguments=@($Root,(Join-Path $ChecksRoot 'prediction-worker-layout'),(Join-Path $ChecksRoot 'NpcPrivateSafety'),'NpcPrivateSafety'); project='NativeWorldTextProbe'})
     }
     if ($Groups -contains 'shared-host' -or $Groups -contains 'storage-host') {
         foreach ($name in @('Routing','Evidence')) {

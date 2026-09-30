@@ -7,6 +7,8 @@ $script:Phase0SExpectedPayloadPaths = @(
     'JueMingR.Validation/JueMingR.Features.dll',
     'JueMingR.Validation/JueMingR.Infrastructure.dll',
     'JueMingR.Validation/JueMingR.Platform.dll',
+    'JueMingR.Validation/JueMingR.PredictionWorker.exe',
+    'JueMingR.Validation/JueMingR.PredictionWorker.exe.config',
     'JueMingR.Validation/JueMingR.TerrariaHost.dll',
     'JueMingR.Validation/phase-0-s-runtime.manifest',
     'Terraria.exe.config'
@@ -861,6 +863,8 @@ function Assert-Phase0SSidecarDirectory {
         'JueMingR.Features.dll',
         'JueMingR.Infrastructure.dll',
         'JueMingR.Platform.dll',
+        'JueMingR.PredictionWorker.exe',
+        'JueMingR.PredictionWorker.exe.config',
         'JueMingR.TerrariaHost.dll',
         'phase-0-s-runtime.manifest'
     )
@@ -995,6 +999,8 @@ function Remove-Phase0SControlledDirectory {
         'JueMingR.Features.dll',
         'JueMingR.Infrastructure.dll',
         'JueMingR.Platform.dll',
+        'JueMingR.PredictionWorker.exe',
+        'JueMingR.PredictionWorker.exe.config',
         'JueMingR.TerrariaHost.dll',
         'phase-0-s-runtime.manifest'
     )

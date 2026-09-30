@@ -43,7 +43,9 @@ namespace JueMingR.TerrariaHost.Combat
             pathText=path.Stop==PredictionStop.None?(approximate?"NPC 路径：近似":"NPC 路径：条件预测"):StopText(path.Stop);
             if((path.Assumptions&PredictionAssumption.RandomRepresentative)!=0)pathText+=" · 随机代表路线";
             if((path.Assumptions&PredictionAssumption.NetworkObservation)!=0)pathText+=" · 依据本机网络观察";
-            pathText+=" · 假设玩家保持当前位置";
+            if(path.Strategy==PredictionStrategy.SegmentedTrend)
+                pathText+=path.Quality==PredictionQuality.LimitedObservation?" · 运动观察较少":" · 依据近期移动，远端仅供参考";
+            else pathText+=(path.Assumptions&PredictionAssumption.HeldPlayerControls)!=0?" · 假设玩家延续当前输入":" · 假设玩家保持当前位置";
         }
         private static string StopText(PredictionStop reason)
         {

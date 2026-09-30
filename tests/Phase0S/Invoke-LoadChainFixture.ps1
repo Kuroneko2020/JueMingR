@@ -266,7 +266,7 @@ function New-Phase0SFixtureRunDirectory {
     $runFixtureExe = Join-Path $runRoot 'Terraria.exe'
     Copy-Item -LiteralPath $FixtureExe -Destination $runFixtureExe
     Copy-Item -LiteralPath $ProductionOutputs['Bootstrap'] -Destination (Join-Path $runRoot 'JueMingR.Bootstrap.dll')
-    foreach ($name in @('Host', 'Platform', 'Features', 'Infrastructure')) {
+    foreach ($name in @('Host', 'Platform', 'Features', 'Infrastructure', 'Worker', 'WorkerConfig')) {
         Copy-Item -LiteralPath $ProductionOutputs[$name] -Destination (Join-Path $sidecar (Split-Path -Leaf $ProductionOutputs[$name]))
     }
     Copy-Item -LiteralPath $HarmonyPath -Destination (Join-Path $sidecar '0Harmony.dll')
@@ -421,6 +421,8 @@ function New-Phase0STempInstallLaunchPackage {
         'JueMingR.Validation/JueMingR.Features.dll',
         'JueMingR.Validation/JueMingR.Infrastructure.dll',
         'JueMingR.Validation/JueMingR.Platform.dll',
+        'JueMingR.Validation/JueMingR.PredictionWorker.exe',
+        'JueMingR.Validation/JueMingR.PredictionWorker.exe.config',
         'JueMingR.Validation/JueMingR.TerrariaHost.dll',
         'JueMingR.Validation/phase-0-s-runtime.manifest',
         'Terraria.exe.config'
@@ -548,6 +550,8 @@ function Invoke-Phase0SLoadChainFixtureTests {
         Platform = Get-Phase0SProductionOutput -RepositoryRoot $RepositoryRoot -ProjectName 'JueMingR.Platform' -FileName 'JueMingR.Platform.dll'
         Features = Get-Phase0SProductionOutput -RepositoryRoot $RepositoryRoot -ProjectName 'JueMingR.Features' -FileName 'JueMingR.Features.dll'
         Infrastructure = Get-Phase0SProductionOutput -RepositoryRoot $RepositoryRoot -ProjectName 'JueMingR.Infrastructure' -FileName 'JueMingR.Infrastructure.dll'
+        Worker = Get-Phase0SProductionOutput -RepositoryRoot $RepositoryRoot -ProjectName 'JueMingR.PredictionWorker' -FileName 'JueMingR.PredictionWorker.exe'
+        WorkerConfig = Get-Phase0SProductionOutput -RepositoryRoot $RepositoryRoot -ProjectName 'JueMingR.PredictionWorker' -FileName 'JueMingR.PredictionWorker.exe.config'
     }
     $harmonyPath = Join-Path $RepositoryRoot 'external\Harmony\0Harmony.dll'
     if (-not [System.IO.File]::Exists($harmonyPath)) {

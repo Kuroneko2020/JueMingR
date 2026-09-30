@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [switch] $Run,
     [string] $RepositoryRoot
@@ -87,6 +87,8 @@ function New-Phase0SControlledPackageFixture {
         'JueMingR.Validation/JueMingR.Platform.dll' = 'phase0s-controlled-platform-fixture'
         'JueMingR.Validation/JueMingR.Features.dll' = 'phase0s-controlled-features-fixture'
         'JueMingR.Validation/JueMingR.Infrastructure.dll' = 'phase0s-controlled-infrastructure-fixture'
+        'JueMingR.Validation/JueMingR.PredictionWorker.exe' = 'phase0s-controlled-worker-fixture'
+        'JueMingR.Validation/JueMingR.PredictionWorker.exe.config' = '<configuration><startup useLegacyV2RuntimeActivationPolicy="true" /></configuration>'
         'JueMingR.Validation/0Harmony.dll' = 'phase0s-controlled-harmony-fixture'
         'JueMingR.Validation/phase-0-s-runtime.manifest' = $runtimeManifest + [Environment]::NewLine
     }
@@ -272,6 +274,8 @@ function Assert-Phase0SInstalledLayout {
         'JueMingR.Validation\JueMingR.Platform.dll',
         'JueMingR.Validation\JueMingR.Features.dll',
         'JueMingR.Validation\JueMingR.Infrastructure.dll',
+        'JueMingR.Validation\JueMingR.PredictionWorker.exe',
+        'JueMingR.Validation\JueMingR.PredictionWorker.exe.config',
         'JueMingR.Validation\0Harmony.dll',
         'JueMingR.Validation\phase-0-s-runtime.manifest'
     )
@@ -380,11 +384,11 @@ function global:Get-Process {
     [CmdletBinding()] param([string[]] $Name)
     if ($Name -contains $global:Phase0SFixtureRunningProcess) { [pscustomobject]@{ ProcessName = $global:Phase0SFixtureRunningProcess; Id = 1234 } }
 }
-if (@(Get-Process -Name 'Terraria', 'TerrariaServer').Count -ne 1) { throw 'Controlled process-query boundary was not installed.' }
+if (@(Get-Process -Name 'Terraria', 'TerrariaServer', 'JueMingR.PredictionWorker').Count -ne 1) { throw 'Controlled process-query boundary was not installed.' }
 & (Join-Path $PackageRoot 'Restore-Phase0S.ps1') -TerrariaDirectory $Target
 exit $LASTEXITCODE
 '@, (New-Object Text.UTF8Encoding($false)))
-        foreach ($processName in @('Terraria', 'TerrariaServer')) {
+        foreach ($processName in @('Terraria', 'TerrariaServer', 'JueMingR.PredictionWorker')) {
             $beforeRunning = Get-Phase0STreeSnapshot -Root $successTarget
             $runningResult = Invoke-Phase0SWindowsPowerShell -ScriptPath $processWrapper -Arguments @('-PackageRoot', $packageRoot, '-Target', $successTarget, '-ProcessName', $processName)
             Assert-Phase0SExitAndNoWrite -Result $runningResult -ExpectedExitCode 5 -Before $beforeRunning -Target $successTarget -Scenario ('running restore: ' + $processName) -Operation 'restore' -ExpectedCode 'TERRARIA_RUNNING' -ExpectedStatus 'conflict'

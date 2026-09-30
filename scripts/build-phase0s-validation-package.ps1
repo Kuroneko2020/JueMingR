@@ -167,6 +167,8 @@ function Assert-Phase0SFixedPackageTree {
         'payload/JueMingR.Validation/JueMingR.Features.dll',
         'payload/JueMingR.Validation/JueMingR.Infrastructure.dll',
         'payload/JueMingR.Validation/JueMingR.Platform.dll',
+        'payload/JueMingR.Validation/JueMingR.PredictionWorker.exe',
+        'payload/JueMingR.Validation/JueMingR.PredictionWorker.exe.config',
         'payload/JueMingR.Validation/JueMingR.TerrariaHost.dll',
         'payload/JueMingR.Validation/phase-0-s-runtime.manifest',
         'payload/Terraria.exe.config',
@@ -376,6 +378,8 @@ $hostOutput = Get-Phase0SBuildOutputPath -ProjectName 'JueMingR.TerrariaHost' -F
 $platformOutput = Get-Phase0SBuildOutputPath -ProjectName 'JueMingR.Platform' -FileName 'JueMingR.Platform.dll'
 $featuresOutput = Get-Phase0SBuildOutputPath -ProjectName 'JueMingR.Features' -FileName 'JueMingR.Features.dll'
 $infrastructureOutput = Get-Phase0SBuildOutputPath -ProjectName 'JueMingR.Infrastructure' -FileName 'JueMingR.Infrastructure.dll'
+$workerOutput = Get-Phase0SBuildOutputPath -ProjectName 'JueMingR.PredictionWorker' -FileName 'JueMingR.PredictionWorker.exe'
+$workerConfigOutput = Get-Phase0SBuildOutputPath -ProjectName 'JueMingR.PredictionWorker' -FileName 'JueMingR.PredictionWorker.exe.config'
 $hostIdentity = Get-Phase0SAssemblyFileIdentity -Path $hostOutput
 if ($hostIdentity.simpleName -cne 'JueMingR.TerrariaHost' -or $hostIdentity.version -cne '0.0.0.0') {
     throw 'The Host Release output identity is invalid.'
@@ -431,6 +435,8 @@ try {
     Copy-Phase0SBuilderFileCreateNew -SourcePath $platformOutput -DestinationPath (Join-Path $sidecarPayloadRoot 'JueMingR.Platform.dll')
     Copy-Phase0SBuilderFileCreateNew -SourcePath $featuresOutput -DestinationPath (Join-Path $sidecarPayloadRoot 'JueMingR.Features.dll')
     Copy-Phase0SBuilderFileCreateNew -SourcePath $infrastructureOutput -DestinationPath (Join-Path $sidecarPayloadRoot 'JueMingR.Infrastructure.dll')
+    Copy-Phase0SBuilderFileCreateNew -SourcePath $workerOutput -DestinationPath (Join-Path $sidecarPayloadRoot 'JueMingR.PredictionWorker.exe')
+    Copy-Phase0SBuilderFileCreateNew -SourcePath $workerConfigOutput -DestinationPath (Join-Path $sidecarPayloadRoot 'JueMingR.PredictionWorker.exe.config')
     Copy-Phase0SBuilderFileCreateNew -SourcePath $harmonyPath -DestinationPath (Join-Path $sidecarPayloadRoot '0Harmony.dll')
 
     $runtimeLines = @(

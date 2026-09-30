@@ -260,7 +260,7 @@ namespace JueMingR.TerrariaHost
                 manifest.EvidenceFileName);
             // Install has already verified the exact target assembly and path.
             postfixContext = new PostfixContext(manifest.PackageId, evidencePath,
-                Path.GetDirectoryName(Path.GetFullPath(targetAssembly.Location)));
+                Path.GetDirectoryName(Path.GetFullPath(targetAssembly.Location)),manifest.HostAssemblySha256);
 
             Harmony harmony = new Harmony(manifest.PatchOwner);
             bool patchAttempted = false;
@@ -788,6 +788,7 @@ namespace JueMingR.TerrariaHost
             private Phase0TBiomeRuntime runtime;
             private ulong updateTick;
             private readonly string gameDirectory;
+            private readonly string predictionHostHash;
             private HostPreferences preferences;
             private Notes.HostNotes notes;
             private Onboarding.HostOnboarding onboarding;
@@ -797,10 +798,13 @@ namespace JueMingR.TerrariaHost
             private Exception pendingBiomeError;
 
             internal PostfixContext(string packageId, string evidencePath, string gameDirectory)
+                :this(packageId,evidencePath,gameDirectory,null){}
+            internal PostfixContext(string packageId, string evidencePath, string gameDirectory,string predictionHostHash)
             {
                 PackageId = packageId;
                 EvidencePath = evidencePath;
                 this.gameDirectory = gameDirectory;
+                this.predictionHostHash=predictionHostHash;
             }
 
             internal string PackageId { get; private set; }
@@ -914,7 +918,7 @@ namespace JueMingR.TerrariaHost
                     Fishing=new Fishing.HostFishing(gameDirectory,Tools,KeepFavorited);runtime.SharedRuntime.AddFeature(Fishing);
                     Combat=new Combat.HostCombat(gameDirectory,Tools);runtime.SharedRuntime.AddFeature(Combat);
                     Combat.Handoff.Attach(Processing,QuickItems);
-                    CombatObservation=new Combat.HostCombatObservation(gameDirectory,runtime.SharedRuntime,Input,nativeNpcs){LayerStatus=entityLayerStatus};runtime.SharedRuntime.AddFeature(CombatObservation);
+                    CombatObservation=new Combat.HostCombatObservation(gameDirectory,runtime.SharedRuntime,Input,nativeNpcs,predictionHostHash==null?null:new Combat.Prediction.PredictionLaunchIdentity(predictionHostHash,gameDirectory)){LayerStatus=entityLayerStatus};runtime.SharedRuntime.AddFeature(CombatObservation);
                 }
                 if (entityPackage) { Labels = new EntityLabels.HostEntityLabels(gameDirectory, runtime.SharedRuntime, nativeNpcs) { LayerStatus = entityLayerStatus }; runtime.SharedRuntime.AddFeature(Labels); }
                 if (worldPackage) { worldTiles = new World.WorldTileObservation(() => runtime.SharedRuntime.IsSessionActive); WorldTargets = new WorldTargets.HostWorldTargets(gameDirectory, runtime.SharedRuntime, worldTiles) { LayerStatus = entityLayerStatus }; runtime.SharedRuntime.AddFeature(WorldTargets); }

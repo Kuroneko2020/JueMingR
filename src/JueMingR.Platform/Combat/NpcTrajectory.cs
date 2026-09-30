@@ -17,8 +17,10 @@ namespace JueMingR.Platform.Combat
         public override int GetHashCode(){return Slot^Generation^Type^Session.GetHashCode();}
     }
     [Flags]
-    public enum PredictionAssumption { None=0, TargetPlayerStationary=1, FixedTarget=2, NoNewHits=4, RandomRepresentative=8, LocalTerrain=16, NetworkObservation=32, ApproximateMechanism=64 }
+    public enum PredictionAssumption { None=0, TargetPlayerStationary=1, FixedTarget=2, NoNewHits=4, RandomRepresentative=8, LocalTerrain=16, NetworkObservation=32, ApproximateMechanism=64, HeldPlayerControls=128, CurrentConnection=256, ObservedLighting=512 }
     public enum PredictionStop { None, UnsupportedMechanism, RandomDestination, MissingDependency, TerrainUnavailable, TerrainLimit, Slope, LiquidEffect, BuffTransition, Despawn, PhaseBoundary, InvalidState, RandomDecision }
+    public enum PredictionStrategy { Model, NativeIsolated, SegmentedTrend }
+    public enum PredictionQuality { Conditional, LimitedObservation, ObservedTrend }
     public struct MotionRect
     {
         public float X,Y,Width,Height;
@@ -111,21 +113,77 @@ namespace JueMingR.Platform.Combat
     public sealed class NpcTrajectory
     {
         private readonly NpcTrajectoryPoint[] points;
+        private readonly int first,count;
+        private readonly bool isWindow;
+        private readonly PredictionStop sourceStop;
         public NpcIdentity Identity {get;}
         public long SampleTick {get;}
+        // SampleTick is the first displayed point. CaptureTick retains the
+        // original observation so repeated slicing cannot make old work fresh.
+        public long CaptureTick {get;}
         public long Version {get;}
+        public long RelationVersion {get;}
+        public PredictionStrategy Strategy {get;}
+        public PredictionQuality Quality {get;}
         public const string SamplePhase="CompletedWorldUpdate";
         public PredictionAssumption Assumptions {get;}
         public PredictionStop Stop {get;}
-        public int Count {get{return points.Length;}}
-        public NpcTrajectoryPoint this[int index] {get{return points[index];}}
-        public NpcTrajectory(NpcIdentity identity,long sampleTick,long version,PredictionAssumption assumptions,PredictionStop stop,NpcTrajectoryPoint[] source,int count)
-        {Identity=identity;SampleTick=sampleTick;Version=version;Assumptions=assumptions;Stop=stop;points=new NpcTrajectoryPoint[count];Array.Copy(source,points,count);}
-        private NpcTrajectory(NpcTrajectory prior,long sampleTick,long version)
-        {Identity=prior.Identity;SampleTick=sampleTick;Version=version;Assumptions=prior.Assumptions;Stop=prior.Stop;points=prior.points;}
+        public int Count {get{return count;}}
+        public NpcTrajectoryPoint this[int index]
+        {get{if((uint)index>=(uint)count)throw new IndexOutOfRangeException();return points[first+index].AtOffset(index);}}
+        public NpcTrajectory(NpcIdentity identity,long sampleTick,long version,PredictionAssumption assumptions,PredictionStop stop,NpcTrajectoryPoint[] source,int count,PredictionStrategy strategy=PredictionStrategy.Model,long relationVersion=0,PredictionQuality quality=PredictionQuality.Conditional)
+        {
+            if(source==null)throw new ArgumentNullException(nameof(source));
+            if(sampleTick<0 || count<1 || count>source.Length)throw new ArgumentOutOfRangeException();
+            for(int i=0;i<count;i++)if(source[i].TickOffset!=i)throw new ArgumentException("Prediction points must cover consecutive updates.",nameof(source));
+            Identity=identity;SampleTick=CaptureTick=sampleTick;Version=version;Assumptions=assumptions;Stop=sourceStop=stop;
+            Strategy=strategy;RelationVersion=relationVersion;Quality=quality;
+            points=new NpcTrajectoryPoint[count];Array.Copy(source,points,count);this.count=count;
+        }
+        private NpcTrajectory(NpcTrajectory prior,long sampleTick,long version,int first,int count,bool republish)
+        {
+            Identity=prior.Identity;SampleTick=sampleTick;CaptureTick=republish?sampleTick:prior.CaptureTick;Version=version;Assumptions=prior.Assumptions;
+            Strategy=prior.Strategy;RelationVersion=prior.RelationVersion;Quality=prior.Quality;
+            sourceStop=prior.sourceStop;points=prior.points;this.first=first;this.count=count;isWindow=!republish;
+            Stop=first+count==points.Length?sourceStop:PredictionStop.None;
+        }
+        private NpcTrajectory(NpcTrajectory prior,NpcIdentity identity)
+        {
+            Identity=identity;SampleTick=prior.SampleTick;CaptureTick=prior.CaptureTick;Version=prior.Version;Assumptions=prior.Assumptions;
+            Strategy=prior.Strategy;RelationVersion=prior.RelationVersion;Quality=prior.Quality;
+            Stop=prior.Stop;sourceStop=prior.sourceStop;points=prior.points;first=prior.first;count=prior.count;isWindow=prior.isWindow;
+        }
+        // Background decoding owns only a value identity, never the game's
+        // object token. The game-thread owner binds the original token after
+        // validating its request. This cannot retarget, rebase time or copy the
+        // already immutable point array into another large game-thread buffer.
+        public NpcTrajectory BindIdentity(NpcIdentity identity)
+        {
+            var value=new NpcIdentity(identity.Session,null,identity.Slot,identity.Generation,identity.Type,identity.NetId);
+            if(Identity.Token!=null || identity.Token==null || !Identity.Equals(value))throw new InvalidOperationException("Only the matching value identity can bind its original token.");
+            return new NpcTrajectory(this,identity);
+        }
         // Only an already-published immutable array may be shared. The public
         // construction path still copies mutable model work buffers. A newer
         // sampling identity never mutates records retained by another consumer.
-        public NpcTrajectory Republish(long sampleTick,long version){return new NpcTrajectory(this,sampleTick,version);}
+        // The synchronous model may rebase after observing identical complete
+        // inputs again. This is not an age waiver for an asynchronous result.
+        public NpcTrajectory Republish(long sampleTick,long version)
+        {
+            if(isWindow)throw new InvalidOperationException("A result window cannot be republished with a new capture time.");
+            if(sampleTick<SampleTick)throw new ArgumentOutOfRangeException(nameof(sampleTick));
+            return new NpcTrajectory(this,sampleTick,version,0,count,true);
+        }
+        public bool TryWindow(long currentTick,int requiredFuture,long version,out NpcTrajectory window)
+        {
+            window=null;if(currentTick<SampleTick || requiredFuture<0)return false;
+            long age=currentTick-CaptureTick;if(age<0 || age>=points.Length)return false;
+            int available=points.Length-(int)age;long wanted=(long)requiredFuture+1;
+            // Unknown/failed work cannot stand in for a shorter valid horizon.
+            // Actual natural ending may terminate it without invented padding.
+            if(wanted>available && sourceStop!=PredictionStop.Despawn)return false;
+            int length=(int)Math.Min(wanted,available);
+            window=new NpcTrajectory(this,currentTick,version,(int)age,length,false);return true;
+        }
     }
 }
