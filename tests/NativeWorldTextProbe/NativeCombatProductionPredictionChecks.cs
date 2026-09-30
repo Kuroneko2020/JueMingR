@@ -72,6 +72,14 @@ namespace NativeWorldTextProbe
                         if(worker!=null && (int)Get(worker,"State")==4)throw new InvalidOperationException("Production helper fault: "+GetOptional(worker,"Failure"));
                     }
                     Require(valid>=90 && moving>0 && playerMoving>5,"continuous original NPC and player movement publishes full future windows; moving-player="+playerMoving+" reason="+GetOptional(native,"Reason"));
+                    cache.Demand(1,120);NativeCombatObservationChecks.Save(host,new ObservationOptions());
+                    Require(cache.Read(1)!=null,"Path OFF cannot detach a real native timeline still requested by another consumer.");
+                    for(int i=0;i<6;i++)Step(context,samples,prepares);
+                    Require(cache.Read(1)!=null && (bool)Get(Get(host,"Selection"),"HasTarget"),"Remaining native consumer continues through actual Host updates.");
+                    cache.Release(1);Call(host,"Poll");Require(!(bool)Get(Get(host,"Selection"),"HasTarget"),"Last native consumer retires selection after path was already OFF.");
+                    long retiredRequests=(long)Get(native,"Requests");for(int i=0;i<6;i++)Step(context,samples,prepares);
+                    Require((long)Get(native,"Requests")==retiredRequests && cache.Required==0,"No native requests follow final consumer retirement.");
+                    NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true));WaitPath(context,cache,samples,prepares,0,"shared-consumer-return");
                     if(Environment.GetEnvironmentVariable("JUEMINGR_NPC_MEASURE_OFF")=="1")
                     {
                         Require(((ICollection)Get(native,"Measurements")).Count==0 && (double)Get(native,"ObserveMilliseconds")==0 && (double)Get(worker,"ExchangeMilliseconds")==0,"Default product path must not collect detailed costs.");

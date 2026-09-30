@@ -59,11 +59,14 @@ namespace JueMingR.TerrariaHost.Combat
             Settings.Poll();bool collision=Collision,path=Path;
             if(wasCollision && !collision)Geometry.Clear();
             if(wasPath && !path)Prediction.Cache.Release(0);
-            if(wasPath && !path && Prediction.Cache.Required==0){Prediction.Clear();Selection.RetireTarget();}
+            // Other registered consumers can outlive the path toggle. Retire
+            // the final target on actual demand removal, once, even when the
+            // display was already OFF before that consumer released it.
+            if(!path && Prediction.Cache.Required==0 && Selection.HasTarget){Prediction.Clear();Selection.RetireTarget();}
             // Reliable preference intent is available in the safe Main.Update
             // callback even in menus. This does not activate any Gameplay
             // feature, sample a world, or grant input/operation ownership.
-            Prediction.Native?.PollEnvironment(Settings.CanRun && Options.Path && !pathFailed,runtime.IsSessionActive);
+            Prediction.Native?.PollEnvironment(Settings.CanRun && Options.Path && !pathFailed || Prediction.Cache.Required>0,runtime.IsSessionActive);
             if(Prediction.Native!=null && Prediction.Native.Failed)pathFailed=true;
             wasCollision=collision;wasPath=path;
         }
