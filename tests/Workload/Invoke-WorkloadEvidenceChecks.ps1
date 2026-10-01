@@ -94,7 +94,22 @@ throw 'Incorrectly returned from a failed process.'
         $text=$stdout.GetAwaiter().GetResult()+$stderr.GetAwaiter().GetResult()
         Assert-Evidence ($process.ExitCode -ne 0 -and $text.Contains('failed with exit 7') -and -not $text.Contains('Incorrectly returned')) 'real child failure propagates nonzero'
     } finally {$process.Dispose()}
-    Write-Output 'PASS: evidence identity, changed bytes/options, missing/failed/partial/feedback receipts, old schema and real nonzero process exit.'
+    # Match the formal package entry's parent 2>&1 capture with a native
+    # receiver, rather than PowerShell's different stderr forwarding behavior.
+    $stderrExe=Join-Path $fixture 'stderr-receiver.exe'
+    Add-Type -TypeDefinition 'using System; public static class WorkloadStderrReceiver { public static int Main(string[] args) { Console.Error.WriteLine("ordinary native information"); return int.Parse(args[0]); } }' -OutputAssembly $stderrExe -OutputType ConsoleApplication
+    $captured=@(& { Invoke-WorkloadProcess 'stderr-success' $stderrExe @('0') } 2>&1)
+    Assert-Evidence (($captured | Out-String).Contains('ordinary native information')) 'successful native stderr is retained under package capture'
+    Assert-Evidence ($ErrorActionPreference -ceq 'Stop') 'success restores caller error preference'
+    $failed=$false
+    try { $null=@(& { Invoke-WorkloadProcess 'stderr-failure' $stderrExe @('7') } 2>&1) }
+    catch { $failed=$_.Exception.Message.Contains('failed with exit 7') }
+    Assert-Evidence ($failed -and $ErrorActionPreference -ceq 'Stop') 'native stderr cannot hide exit 7 and failure restores preference'
+    $LASTEXITCODE=0; $failed=$false
+    try { $null=@(& { Invoke-WorkloadProcess 'not-an-executable' $exe @() } 2>&1) }
+    catch { $failed=$true }
+    Assert-Evidence ($failed -and $ErrorActionPreference -ceq 'Stop') 'launch failure cannot reuse an earlier zero exit and restores preference'
+    Write-Output 'PASS: evidence identity, changed bytes/options, missing/failed/partial/feedback receipts, old schema, stderr capture, real nonzero exit and launch failure.'
 } finally {
     $resolved=[IO.Path]::GetFullPath($fixture);$temp=[IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\')+'\'
     if (-not $resolved.StartsWith($temp,[StringComparison]::OrdinalIgnoreCase) -or -not [IO.Path]::GetFileName($resolved).StartsWith('JueMingR-evidence-',[StringComparison]::Ordinal)) {throw 'Unsafe fixture cleanup.'}

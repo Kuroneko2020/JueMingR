@@ -110,8 +110,19 @@ function Test-WorkloadCoverage {
 function Invoke-WorkloadProcess {
     param([string] $Name, [string] $Executable, [string[]] $Arguments)
     if (-not [IO.File]::Exists($Executable)) { throw ('Missing check executable: ' + $Name) }
-    & $Executable @Arguments | Out-Host
-    if ($LASTEXITCODE -ne 0) { throw ("Workload check $Name failed with exit $LASTEXITCODE.") }
+    $previousPreference = $ErrorActionPreference
+    $exitCode = $null
+    try {
+        # Windows PowerShell can promote ordinary native stderr to an error
+        # under the package entry's 2>&1 capture. Keep that output, but decide
+        # success only from this invocation's exit, never a stale prior value.
+        $ErrorActionPreference = 'Continue'
+        $global:LASTEXITCODE = $null
+        & $Executable @Arguments | Out-Host
+        $exitCode = $global:LASTEXITCODE
+    } finally { $ErrorActionPreference = $previousPreference }
+    if ($null -eq $exitCode) { throw ("Workload check $Name did not produce a process exit code.") }
+    if ($exitCode -ne 0) { throw ("Workload check $Name failed with exit $exitCode.") }
 }
 function Get-WorkloadEvidenceOutputs {
     param([string] $Root, $Record, [string] $Executable)
