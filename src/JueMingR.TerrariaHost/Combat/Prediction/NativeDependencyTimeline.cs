@@ -14,6 +14,8 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         private readonly MemoryStream bytes=new MemoryStream();
         private readonly BinaryWriter writer;
         internal NativeDependencyTimeline(){writer=new BinaryWriter(bytes);}
+        internal long Position {get{return bytes.Position;}}
+        internal void Truncate(long position){bytes.SetLength(position);bytes.Position=position;}
         internal void Record(int step)
         {
             int npcs=0,projectiles=0;

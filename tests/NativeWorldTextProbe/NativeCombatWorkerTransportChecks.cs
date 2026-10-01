@@ -19,6 +19,7 @@ namespace NativeWorldTextProbe
             var names=new[]{"JueMingR.PredictionWorker.exe","JueMingR.PredictionWorker.exe.config","JueMingR.TerrariaHost.dll","JueMingR.Platform.dll","JueMingR.Features.dll","JueMingR.Infrastructure.dll","0Harmony.dll"};
             var hashes=new string[names.Length];for(int i=0;i<names.Length;i++)using(var stream=File.OpenRead(Path.Combine(layout,names[i])))using(var sha=SHA256.Create())hashes[i]=BitConverter.ToString(sha.ComputeHash(stream)).Replace("-","");
             ProtocolBoundaries(host,hashes[2]);
+            ShootingClockProof(host);
             var wrong=(string[])hashes.Clone();wrong[1]=new string('0',64);
             object refused=Create(type,layout,wrong);Wait(type,refused,4,5000);Closed(type,refused);
             Require((int)type.GetProperty("ChildId",Flags).GetValue(refused)==0,"Wrong config identity is refused before CLR startup, not inside worker Main.");
@@ -47,6 +48,7 @@ namespace NativeWorldTextProbe
                 byte[] future=Take(type,client);Require(future!=null && State(type,client)==1 && Take(type,client)==null,"Result is transferred once; only then is another request allowed.");
                 File.WriteAllBytes(Path.Combine(output,"transport-harpy-frozen.bin"),future);
                 NativeCombatWorkerChecks.Compare(future,0,output,"transport-harpy");
+                TailPrefix(host,type,client,capture,output);
                 if(Environment.GetEnvironmentVariable("JUEMINGR_NPC_CAPACITY_CHECK")=="1")Capacity(host,type,client,capture,output,pid,snapshot);
                 Require(Send(type,client,new byte[]{1}),"Malformed native payload remains bounded within a valid transport envelope.");Wait(type,client,3,15000);
                 using(var reader=new BinaryReader(new MemoryStream(Take(type,client),false)))Require(reader.ReadInt32()==-NativeCombatWorkerChecks.ExpectedProtocol,"Native request refusal keeps its matching transport sequence.");
@@ -64,6 +66,59 @@ namespace NativeWorldTextProbe
             finally{type.GetMethod("Stop",Flags).Invoke(client,null);}
         }
         private static object Create(Type type,string layout,string[] hashes){return Activator.CreateInstance(type,Flags,null,new object[]{layout,Path.Combine(Program.Repository,"external/TerrariaRefs/Terraria.exe"),hashes,60000,10000},null);}
+        private static void ShootingClockProof(Assembly host)
+        {
+            var alignment=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativePredictionAlignment",true);
+            var observe=alignment.GetMethod("Observe",Flags);var difference=alignment.GetMethod("Difference",Flags);
+            Func<object> frame=()=>observe.Invoke(null,new object[]{1000L,new[]{0},new int[0],0});
+            foreach(int kind in new[]{42,176,231,232,233,234,235})
+            {
+                NativeCombatWorkerChecks.Scene(false);var n=Terraria.Main.npc[0];n.SetDefaults(kind);n.active=true;n.whoAmI=0;n.target=0;n.ai[1]=80;
+                object original=frame();n.ai[1]=81;
+                Require(difference.Invoke(null,new[]{original,frame()})==null,"Same original firing mechanism admits only future random clock equivalence: "+kind);
+                original.GetType().GetField("IsSample",Flags).SetValue(original,true);
+                Require(difference.Invoke(null,new[]{original,frame()})!=null,"Frame zero retains exact observed firing clock: "+kind);
+                original.GetType().GetField("IsSample",Flags).SetValue(original,false);
+                n.ai[1]=80;int mode=Terraria.Main.netMode;
+                try
+                {Terraria.Main.netMode=1;object network=frame();network.GetType().GetField("IsSample",Flags).SetValue(network,true);Terraria.Main.netMode=0;
+                 Require(difference.Invoke(null,new[]{network,frame()})==null,"Equal real frame-zero timer cannot disagree solely because the private world is offline.");
+                 n.ai[1]=81;Require(difference.Invoke(null,new[]{network,frame()})!=null,"Network-observed frame zero still proves raw clock bits.");}
+                finally{Terraria.Main.netMode=mode;}
+                foreach(float boundary in new[]{0f,101f,129.9999f,130f,-1f})
+                {n.ai[1]=boundary;Require(difference.Invoke(null,new[]{original,frame()})!=null,"Reset/sound/next-update firing/unsupported clock stays strict: "+kind+" clock="+boundary);}
+                n.ai[1]=81;n.ai[0]+=1;Require(difference.Invoke(null,new[]{original,frame()})!=null,"Other AI phase stays strict.");n.ai[0]-=1;
+                n.life--;Require(difference.Invoke(null,new[]{original,frame()})!=null,"Actual damage stays strict.");n.life++;
+                n.velocity.X+=1;Require(difference.Invoke(null,new[]{original,frame()})!=null,"Real motion stays strict.");
+            }
+            NativeCombatWorkerChecks.Scene(false);var other=Terraria.Main.npc[0];other.ai[1]=80;object exact=frame();other.ai[1]=81;
+            Require(difference.Invoke(null,new[]{exact,frame()})!=null,"Another original AI mechanism does not inherit timer equivalence.");
+            Console.WriteLine("PASS AI_005 firing mechanism future clock / frame-zero raw bits / 0-101-130 boundaries / other AI damage motion strict");
+        }
+        private static void TailPrefix(Assembly host,Type clientType,object client,MethodInfo capture,string output)
+        {
+            // Original harpy AI fires at ai[0]==30. This real initial clock
+            // puts the first unsampled projectile allocation at update 150.
+            // No synthetic responder or change to the isolation gate is used.
+            NativeCombatWorkerChecks.Scene(false);Terraria.Main.npc[0].ai[0]=-120;
+            byte[] snapshot=(byte[])capture.Invoke(null,new object[]{new[]{0},new int[0],0,1000L,180});
+            Require(Send(clientType,client,snapshot),"Late birth uses the actual ready worker.");Wait(clientType,client,3,15000);
+            byte[] prefix=Take(clientType,client),proof=(byte[])clientType.GetProperty("Alignment",Flags).GetValue(client);
+            using(var reader=new BinaryReader(new MemoryStream(prefix,false)))
+                Require(reader.ReadInt32()==NativeCombatWorkerChecks.ExpectedProtocol && reader.ReadInt64()==1000 && reader.ReadInt32()==0 && reader.ReadInt32()==150,"Only completed updates 0..149 survive birth failure at 150.");
+            var n=Terraria.Main.npc[0];var identity=new JueMingR.Platform.Combat.NpcIdentity(1,n,0,n.generation,n.type,n.netID);
+            object decoded=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativePredictionResult",true).GetMethod("Read",Flags).Invoke(null,new object[]{prefix,proof,identity,1000L,1L,false});
+            var path=(JueMingR.Platform.Combat.NpcTrajectory)decoded.GetType().GetField("Trajectory",Flags).GetValue(decoded);
+            JueMingR.Platform.Combat.NpcTrajectory window;
+            Require(path.TryWindow(1029,120,2,out window) && window.Count==121 && window.CaptureTick==1000 && window.SampleTick==1029,"Age29 genuinely retains current+120 without rewriting capture time.");
+            Require(!path.TryWindow(1030,120,3,out window),"Age30 cannot manufacture the missing two-second extent.");
+            NativeCombatWorkerChecks.Compare(prefix,0,output,"transport-late-prefix",expectedHorizon:149);
+            NativeCombatWorkerChecks.Scene(false);Terraria.Main.npc[0].ai[0]=-90;
+            snapshot=(byte[])capture.Invoke(null,new object[]{new[]{0},new int[0],0,1000L,180});
+            Require(Send(clientType,client,snapshot),"Early birth negative shares the same worker.");Wait(clientType,client,3,15000);
+            using(var reader=new BinaryReader(new MemoryStream(Take(clientType,client),false)))Require(reader.ReadInt32()==-NativeCombatWorkerChecks.ExpectedProtocol,"Failure at120 leaves119 updates and remains a real refusal.");
+            Console.WriteLine("PASS true late birth prefix149 / native oracle / age29 current+120 / age30 refusal / early119 refusal");
+        }
         private static void Capacity(Assembly host,Type clientType,object client,MethodInfo capture,string output,int pid,byte[] normal)
         {
             // Real sealed scene values, not an alternate protocol responder.

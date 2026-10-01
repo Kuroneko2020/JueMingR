@@ -152,15 +152,17 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                     if(withAlignment){proof.Write(horizon+1);NativePredictionAlignment.Write(proof,NativePredictionAlignment.Observe(tick,alignmentSlots,projectileSlots,selected));}
                     writer.Write(PredictionWire.Protocol);writer.Write(tick);writer.Write(selected);writer.Write(horizon+1);
                     playerMotion.Begin();WritePoint(writer,selectedNpc,selectedGeneration,ended,0);dependencies.Record(0);
+                    int completed=0;
+                    long pointEnd=result.Position,proofEnd=proofBytes.Position,dependencyEnd=dependencies.Position;
+                    long advanceTicks=0;
+#if JMR_CONDITIONAL_RESEARCH
+                    long actualNpcCalls=0,actualProjectileCalls=0;
+#endif
                     bool oldSolid379=Main.tileSolid[379];Main.tileSolid[379]=false;
                     NativeTileBoundary.Begin();
                     NativeEntityDirectory.Begin();
                     try
                     {
-                    long advanceTicks=0;
-#if JMR_CONDITIONAL_RESEARCH
-                    long actualNpcCalls=0,actualProjectileCalls=0;
-#endif
                     for(int step=1;step<=horizon;step++)
                     {
                         long advanceStart=PredictionPipeProtocol.Measure?Stopwatch.GetTimestamp():0;
@@ -243,18 +245,38 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                         }
                         RecordPlayers(playerSlots,playerFuture,step);
                         dependencies.Record(step);
+                        completed=step;pointEnd=result.Position;proofEnd=proofBytes.Position;dependencyEnd=dependencies.Position;
                         if(PredictionPipeProtocol.Measure)MeasuredCompletedSteps=step;
                     }
-                    if(withAlignment){proof.Write(advanceTicks);NativeTileBoundary.Usage.Write(proof);}
+                    }
+                    catch(InvalidDataException) when(withAlignment && completed>120
+                        && (NativeEntityDirectory.MissingKind==1 || NativeEntityDirectory.MissingKind==2)
+                        && !NativeTileBoundary.Missing && NativeEffectBoundary.Failure==null && NativeAssetSnapshot.Failure==null && NativeImmunitySnapshot.Failure==null)
+                    {
+                        // A missing page beyond the useful prefix does not
+                        // invalidate earlier fully completed native updates.
+                        // The failing update can have partially written any
+                        // record: roll all three streams back together. Never
+                        // include its mutated state or invent a stop/lifetime.
+                        // Session still proves history/terrain and requires a
+                        // full current+120 window at the actual receive age.
+                        result.SetLength(pointEnd);result.Position=pointEnd;
+                        proofBytes.SetLength(proofEnd);proofBytes.Position=proofEnd;
+                        dependencies.Truncate(dependencyEnd);
+                        if(PredictionPipeProtocol.Measure)Console.Error.WriteLine("PREFIX completed="+completed+" missing-kind="+NativeEntityDirectory.MissingKind+" slot="+NativeEntityDirectory.MissingSlot);
+                    }
+                    finally{NativeNpcMotionTrace.Clear();NativeTileBoundary.End();NativeEntityDirectory.End();Main.tileSolid[379]=oldSolid379;}
+                    // Count denotes genuinely completed points, including
+                    // frame zero. Only successful full horizons reach 181.
+                    result.Position=16;writer.Write(completed+1);result.Position=pointEnd;
+                    if(withAlignment){proofBytes.Position=0;proof.Write(completed+1);proofBytes.Position=proofEnd;proof.Write(advanceTicks);NativeTileBoundary.Usage.Write(proof);}
 #if JMR_CONDITIONAL_RESEARCH
                     Console.Error.WriteLine("RESEARCH calls npc="+actualNpcCalls+" projectile="+actualProjectileCalls+" query-reads="+ConditionalNpcQuery.QueryReads+" geometry-stores="+ConditionalNpcQuery.GeometryStores+" exact-roles="+alignmentSlots.Length+" query-pages="+(slots.Length-alignmentSlots.Length));
 #endif
-                    }
-                    finally{NativeNpcMotionTrace.Clear();NativeTileBoundary.End();NativeEntityDirectory.End();Main.tileSolid[379]=oldSolid379;}
                     // Player continuation is a dependency timeline, not another
                     // combat target. It permits alignment to observed movement
                     // and direct comparison with an independent native oracle.
-                    writer.Write(playerCount);foreach(int slot in playerSlots)writer.Write(slot);foreach(float value in playerFuture)writer.Write(value);
+                    writer.Write(playerCount);foreach(int slot in playerSlots)writer.Write(slot);for(int i=0;i<(completed+1)*playerCount*4;i++)writer.Write(playerFuture[i]);
                     dependencies.WriteTo(writer);
                     if(withAlignment){proof.Flush();Alignment=proofBytes.ToArray();}
                     writer.Write(PredictionPipeProtocol.Measure?Stopwatch.GetTimestamp()-started:0);writer.Write(Stopwatch.Frequency);

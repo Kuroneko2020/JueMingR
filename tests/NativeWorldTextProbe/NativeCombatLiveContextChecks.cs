@@ -306,7 +306,7 @@ namespace NativeWorldTextProbe
             Require(failures==0,"Post-delivery production continuity failed windows="+failures);
         }
         private static bool mountsReady;
-        private static void InitializeMount()
+        internal static void InitializeMount()
         {if(mountsReady)return;bool dedicated=Main.dedServ;int network=Main.netMode;try{Main.dedServ=true;Main.netMode=2;Mount.Initialize();mountsReady=true;}finally{Main.dedServ=dedicated;Main.netMode=network;}}
         internal static void FlightWorld()
         {

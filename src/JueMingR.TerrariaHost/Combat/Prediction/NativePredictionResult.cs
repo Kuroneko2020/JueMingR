@@ -34,6 +34,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                     for(int i=0;i<count;i++)
                     {
                         var frame=NativePredictionAlignment.Read(proof);value.Frames[i]=frame;
+                        frame.IsSample=i==0;
                         if(frame.Tick!=tick+i || frame.HasState!=(i<=PredictionWire.MaximumAlignmentAge))throw new InvalidDataException("Alignment proof extent.");
                         if(frame.HasState && Array.IndexOf(frame.Npcs,identity.Slot)<0)throw new InvalidDataException("Alignment target absent.");
                     }

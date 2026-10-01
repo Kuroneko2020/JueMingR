@@ -19,9 +19,9 @@ namespace NativeWorldTextProbe
     internal static class NativeCombatWorkerChecks
     {
 #if JMR_CONDITIONAL_RESEARCH
-        internal const int ExpectedProtocol=129, PointBytes=75;
+        internal const int ExpectedProtocol=130, PointBytes=75;
 #else
-        internal const int ExpectedProtocol=29, PointBytes=75;
+        internal const int ExpectedProtocol=30, PointBytes=75;
 #endif
         private static readonly Main weatherOracle=(Main)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(Main));
         internal static void AdvanceWeather()
@@ -265,18 +265,18 @@ namespace NativeWorldTextProbe
         }
         private static void SetNpc(int slot,int type,float x,float y)
         {var n=Main.npc[slot];n.SetDefaults(type);n.whoAmI=slot;n.active=true;n.position=new Vector2(x,y);n.target=0;n.timeLeft=750;}
-        internal static void Compare(byte[] frozen,int selected,string output,string name,int[] projectiles=null,bool nativeStreams=false,Action playerUpdate=null,Action projectileUpdate=null,Action<byte[],byte[]> dependencyComparison=null,bool? expectPlayerMotion=true,Action<int,NPC> nativeStep=null,float motionTolerance=0)
+        internal static void Compare(byte[] frozen,int selected,string output,string name,int[] projectiles=null,bool nativeStreams=false,Action playerUpdate=null,Action projectileUpdate=null,Action<byte[],byte[]> dependencyComparison=null,bool? expectPlayerMotion=true,Action<int,NPC> nativeStep=null,float motionTolerance=0,int expectedHorizon=120)
         {
             using(var stream=new MemoryStream(frozen))using(var reader=new BinaryReader(stream))using(var log=new StreamWriter(Path.Combine(output,name+"-oracle.csv"),false,Encoding.UTF8))
             using(var nativeDependencies=new MemoryStream())using(var dependencyWriter=new BinaryWriter(nativeDependencies))
             {
                 int protocol=reader.ReadInt32();if(protocol<0)throw new InvalidOperationException("Worker refused oracle: "+reader.ReadString()+": "+reader.ReadString());
-                Require(protocol==ExpectedProtocol && reader.ReadInt64()==1000 && reader.ReadInt32()==selected && reader.ReadInt32()==121,"result identity and 120-step horizon");
+                Require(protocol==ExpectedProtocol && reader.ReadInt64()==1000 && reader.ReadInt32()==selected && reader.ReadInt32()==expectedHorizon+1,"result identity and genuine completed horizon");
                 log.WriteLine("tick,predictedX,predictedY,nativeX,nativeY,error");
                 float worst=0;double sum=0;
                 NPC capturedTarget=Main.npc[selected];byte capturedGeneration=capturedTarget.generation,expectedEnd=0;
-                int[] playerSlots=Enumerable.Range(0,Main.maxPlayers).Where(slot=>Main.player[slot].active).ToArray();var playerFuture=new float[121*playerSlots.Length*4];
-                for(int i=0;i<=120;i++)
+                int[] playerSlots=Enumerable.Range(0,Main.maxPlayers).Where(slot=>Main.player[slot].active).ToArray();var playerFuture=new float[(expectedHorizon+1)*playerSlots.Length*4];
+                for(int i=0;i<=expectedHorizon;i++)
                 {
                     if(i>0)
                     {
@@ -322,7 +322,7 @@ namespace NativeWorldTextProbe
                 for(int at=0;at<playerFuture.Length;at++){float value=reader.ReadSingle();float difference=Math.Abs(value-playerFuture[at]);dependencyError=Math.Max(dependencyError,difference);dependencyLog.WriteLine(at+","+value.ToString("R")+","+playerFuture[at].ToString("R"));Require(difference<=0.002f,name+" player dependency mismatch tick="+(at/(playerSlots.Length*4))+" component="+(at%4)+" predicted="+value.ToString("R")+" native="+playerFuture[at].ToString("R"));}
                 dependencyWriter.Flush();NativeCombatWorkerBirthChecks.Compare(reader,nativeDependencies.ToArray(),output,name,dependencyComparison);
                 double milliseconds=reader.ReadInt64()*1000.0/reader.ReadInt64();reader.ReadInt64();reader.ReadInt64();Require(stream.Position==stream.Length,"no extra result data");
-                Console.WriteLine("ORACLE "+name+" ticks=120 mean="+(sum/121)+" max="+worst+" player-component-max="+dependencyError.ToString("R")+" child-snapshot-and-native-ms="+milliseconds.ToString("F3"));
+                Console.WriteLine("ORACLE "+name+" ticks="+expectedHorizon+" mean="+(sum/(expectedHorizon+1))+" max="+worst+" player-component-max="+dependencyError.ToString("R")+" child-snapshot-and-native-ms="+milliseconds.ToString("F3"));
             }
         }
         internal static string RandomStamp()

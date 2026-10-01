@@ -19,7 +19,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         // targetSetFrame to DrawAggro's color fade. They
         // remains in the complete capture, but different Draw/Update ratios
         // cannot change whether the captured AI continuation is still useful.
-        private static readonly NativeValueSnapshot Npcs=new NativeValueSnapshot(typeof(NPC),fieldNames:PredictionWire.Npcs.FieldIdentities.Where(f=>ExactMotionField(f) && Name(f)!="nameOver" && Name(f)!="targetSetFrame" && Name(f)!="targetRect" && Name(f)!="localAI").Select(Name).ToArray());
+        private static readonly NativeValueSnapshot Npcs=new NativeValueSnapshot(typeof(NPC),fieldNames:PredictionWire.Npcs.FieldIdentities.Where(f=>ExactMotionField(f) && Name(f)!="nameOver" && Name(f)!="targetSetFrame" && Name(f)!="targetRect" && Name(f)!="localAI" && Name(f)!="ai").Select(Name).ToArray());
         private static string Name(string field){return field.Substring(field.LastIndexOf('.')+1);}
         private static bool ExactMotionField(string field){string name=Name(field);return name!="velocity" && name!="oldVelocity" && name!="position" && name!="oldPosition" && name!="oldPos";}
         internal sealed class Frame
@@ -28,6 +28,8 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             internal ulong World;
             internal int[] Npcs,Projectiles,Players;
             internal ulong[] NpcState,ProjectileState,PlayerPremise;
+            internal float[] NpcShootClock;
+            internal bool IsSample;
             internal Vector2[] PlayerPosition,PlayerVelocity;
             internal bool[] PlayerConditional;
             internal Vector2[] NpcVelocity,NpcOldVelocity,ProjectileVelocity,ProjectileOldVelocity;
@@ -42,6 +44,8 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             frame.NpcVelocity=new Vector2[npcs.Length];frame.NpcOldVelocity=new Vector2[npcs.Length];frame.ProjectileVelocity=new Vector2[projectiles.Length];frame.ProjectileOldVelocity=new Vector2[projectiles.Length];
             frame.NpcPositions=new Vector2[npcs.Length][];frame.ProjectilePositions=new Vector2[projectiles.Length][];
             frame.PlayerConditional=new bool[players.Count];
+            frame.NpcShootClock=new float[npcs.Length];
+            for(int i=0;i<npcs.Length;i++)frame.NpcShootClock[i]=Main.npc[npcs[i]].ai[1];
             for(int i=0;i<npcs.Length;i++){var n=Main.npc[npcs[i]];frame.NpcVelocity[i]=n.velocity;frame.NpcOldVelocity[i]=n.oldVelocity;frame.NpcPositions[i]=Positions(n.position,n.oldPosition,n.oldPos);}
             for(int i=0;i<projectiles.Length;i++){var p=Main.projectile[projectiles[i]];frame.ProjectileVelocity[i]=p.velocity;frame.ProjectileOldVelocity[i]=p.oldVelocity;frame.ProjectilePositions[i]=Positions(p.position,p.oldPosition,p.oldPos);}
             using(var writer=new ValueHashWriter())
@@ -65,7 +69,10 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         }
         private static void NpcPremise(BinaryWriter writer,NPC n)
         {
-            Npcs.Write(writer,n);writer.Write(n.localAI==null?-1:n.localAI.Length);
+            Npcs.Write(writer,n);writer.Write(n.ai.Length);
+            for(int i=0;i<n.ai.Length;i++)
+            {float value=n.ai[i];bool representative=i==1 && RepresentativeShootClock(n,value);writer.Write(representative);writer.Write(representative?0f:value);}
+            writer.Write(n.localAI==null?-1:n.localAI.Length);
             TargetRectangle(writer,n);
             writer.Write(NativeLightingSnapshot.Observe(n));
             if(n.localAI==null)return;
@@ -81,6 +88,23 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 if(i==0 && n.active && n.type==Terraria.ID.NPCID.TheDestroyerBody && n.aiStyle==37 && value>=0 && value+3*PredictionWire.MaximumHorizon<1400)value=0;
                 writer.Write(value);
             }
+        }
+        // Locked .8 AI_005's hornet mechanism accumulates a keyed random
+        // firing timer, independently of position/turning. Returned futures
+        // already declare RandomRepresentative. Keep sound marker101 and any
+        // next-update crossing of130 exact; all other AI, motion, life, births
+        // and dependencies still prove themselves. Full capture retains the
+        // real timer; frame zero separately proves its raw bits. This never
+        // certifies a changed sample or another mechanism. Classification
+        // cannot depend on Main.netMode: the private worker is always offline,
+        // while the request separately owns NetworkObservation provenance.
+        private static bool RepresentativeShootClock(NPC n,float value)
+        {
+            bool mechanism=n.type==42 || n.type==176 || n.type>=231 && n.type<=235;
+            if(!n.active || n.aiStyle!=5 || !mechanism || !(n.scale>0) || float.IsInfinity(n.scale)
+                || value<=0 || float.IsNaN(value) || value==101)return false;
+            int draws=1+(n.type==176?1:0)+(Main.getGoodWorld?1:0);
+            return (double)value+1.900001*n.scale*draws+.0001<130;
         }
         private static void TargetRectangle(BinaryWriter writer,NPC n)
         {
@@ -140,6 +164,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             if(frame.HasState)
             {
             writer.Write(frame.World);Pairs(writer,frame.Npcs,frame.NpcState);Pairs(writer,frame.Projectiles,frame.ProjectileState);
+            foreach(float clock in frame.NpcShootClock)writer.Write(clock);
             Velocities(writer,frame.NpcVelocity,frame.NpcOldVelocity);Velocities(writer,frame.ProjectileVelocity,frame.ProjectileOldVelocity);
             WritePositions(writer,frame.NpcPositions);WritePositions(writer,frame.ProjectilePositions);
             writer.Write(frame.Players.Length);for(int i=0;i<frame.Players.Length;i++){writer.Write(frame.Players[i]);writer.Write(frame.PlayerPremise[i]);writer.Write(frame.PlayerConditional[i]);Vector(writer,frame.PlayerPosition[i]);Vector(writer,frame.PlayerVelocity[i]);}
@@ -152,6 +177,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             if(frame.HasState)
             {
             frame.World=reader.ReadUInt64();ReadPairs(reader,201,out frame.Npcs,out frame.NpcState);ReadPairs(reader,1001,out frame.Projectiles,out frame.ProjectileState);
+            frame.NpcShootClock=new float[frame.Npcs.Length];for(int i=0;i<frame.NpcShootClock.Length;i++)frame.NpcShootClock[i]=reader.ReadSingle();
             ReadVelocities(reader,frame.Npcs.Length,out frame.NpcVelocity,out frame.NpcOldVelocity);ReadVelocities(reader,frame.Projectiles.Length,out frame.ProjectileVelocity,out frame.ProjectileOldVelocity);
             frame.NpcPositions=ReadPositions(reader,frame.Npcs.Length);frame.ProjectilePositions=ReadPositions(reader,frame.Projectiles.Length);
             int count=reader.ReadInt32();if(count<0 || count>255)throw new InvalidDataException("Alignment player count.");
@@ -166,6 +192,8 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             if(!expected.HasState || !actual.HasState)return "missing state proof";
             if(expected.World!=actual.World)return "world premise";
             string changed=Different(expected.Npcs,expected.NpcState,actual.Npcs,actual.NpcState,"NPC");if(changed!=null)return changed;
+            if(expected.IsSample)for(int i=0;i<expected.NpcShootClock.Length;i++)
+                if(new ClockBits{Value=expected.NpcShootClock[i]}.Bits!=new ClockBits{Value=actual.NpcShootClock[i]}.Bits)return "NPC sampled shooting clock slot="+expected.Npcs[i];
             changed=Different(expected.Projectiles,expected.ProjectileState,actual.Projectiles,actual.ProjectileState,"Projectile");if(changed!=null)return changed;
             if(!SameVelocities(expected.NpcVelocity,actual.NpcVelocity) || !SameVelocities(expected.NpcOldVelocity,actual.NpcOldVelocity))return "NPC velocity";
             if(!SameVelocities(expected.ProjectileVelocity,actual.ProjectileVelocity) || !SameVelocities(expected.ProjectileOldVelocity,actual.ProjectileOldVelocity))return "Projectile velocity";
@@ -194,6 +222,8 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             if(Terraria.GameContent.Events.DD2Event.Ongoing)NativeWorldSnapshot.WriteEvent(w);
         }
         private static bool Near(Vector2 a,Vector2 b){return Math.Abs(a.X-b.X)<=.002f && Math.Abs(a.Y-b.Y)<=.002f;}
+        [StructLayout(LayoutKind.Explicit)]private struct ClockBits
+        {[FieldOffset(0)]internal float Value;[FieldOffset(0)]internal int Bits;}
         // The complete original 120-update oracle admits 0.002px numerical
         // drift from x86 instrumentation/rounding. Acceptance uses the same
         // absolute bound on actual continuous values, including copied motion

@@ -29,6 +29,7 @@ namespace NativeWorldTextProbe
             if(axis=="conditional-candidate"){NativeCombatConditionalChecks.Run(context,native,cache,step,output);return;}
             if(axis=="conditional-scope"){NativeCombatConditionalChecks.CheckGeometryScope(native);return;}
             if(axis=="route-feasibility"){Continuous(context,native,cache,step,output);return;}
+            if(axis=="continuous-flight"){Continuous(context,native,cache,step,output,flight:true);return;}
             if(axis=="failure-recovery"){NativeCombatFailureRecoveryChecks.Run(context,native,cache,step,output);return;}
             if(axis=="terrain-relevance"){NativeCombatTerrainRelevanceChecks.Run(context,native,cache,step,output);return;}
             if(axis=="asset-recovery"){NativeCombatAssetRecoveryChecks.Run(context,native,cache,step,output);return;}
@@ -140,7 +141,7 @@ namespace NativeWorldTextProbe
         private static readonly List<FutureSample> futures=new List<FutureSample>();
         private static readonly List<string> futureRows=new List<string>(),replyRows=new List<string>();
         private static readonly int[] horizons={15,30,60,90,120};
-        private static readonly string[] costFields={"CaptureMs","EncodeMs","ExchangeMs","DecodeMs","AcceptMs","TotalMs","ResetMs","RestoreMs","AdvanceMs","Bytes","ReplyBytes"};
+        private static readonly string[] costFields={"CaptureMs","EncodeMs","ExchangeMs","DecodeMs","AcceptMs","TotalMs","ResetMs","RestoreMs","AdvanceMs","Bytes","ReplyBytes","DiscoverySlots","QueryPages","FullNpcPages","FullProjectilePages","QueryReads","FullNpcCalls","FullProjectileCalls"};
         private static string Csv(params object[] values)=>string.Join(",",values.Select(v=>"\""+Convert.ToString(v,CultureInfo.InvariantCulture).Replace("\"","\"\"")+"\""));
         private static double Milliseconds(long value)=>value*1000.0/Stopwatch.Frequency;
         private static void PrepareStarting(object __instance,ref long __state)
@@ -156,8 +157,10 @@ namespace NativeWorldTextProbe
             object measurement=((IEnumerable)Get(__instance,"Measurements")).Cast<object>().LastOrDefault();
             string outcome=measurement==null?"measurement unavailable":(string)Get(measurement,"Outcome");
             long capture=(long)Get(request,"Tick");var identity=(NpcIdentity)Get(request,"Identity");
-            replyRows.Add(Csv(new object[]{routeFrame,routePhase,capture,tick,identity.Slot,identity.Generation,identity.Type,outcome,Get(result,"Error")}
-                .Concat(costFields.Select(f=>measurement==null?null:Get(measurement,f))).ToArray()));
+            if(boundaryTerrain!=null && terrainReplyTraces<4 && outcome=="intervening relevant terrain changed")
+            {terrainReplyTraces++;TraceTerrain(Get(request,"Terrain"),Get(result,"TerrainUsage"),Get(request,"TerrainChanges"),"reply",capture,tick);}
+            replyRows.Add(Csv(new object[]{routeFrame,routePhase,capture,tick,identity.Slot,identity.Generation,identity.Type,outcome,Get(result,"Error"),((Array)Get(result,"Frames"))?.Length}
+                .Concat(costFields.Select(f=>measurement==null?null:measurement.GetType().GetField(f,Flags)?.GetValue(measurement))).ToArray()));
             var path=(NpcTrajectory)Get(result,"Trajectory");
             if(path!=null)SampleFuture("candidate",outcome,path,identity,capture,tick);
         }
@@ -198,15 +201,50 @@ namespace NativeWorldTextProbe
                 futures.RemoveAt(i);
             }
         }
-        internal static void Continuous(object context,object native,NpcPredictionCache cache,Action step,string output,bool conditional=false)
+        private static void SampleBackground(int slot)
         {
-            int frames=conditional?1440:2400;
+            var n=Main.npc[slot];var identity=new NpcIdentity(0,n,slot,n.generation,n.type,n.netID);
+            foreach(int h in new[]{15,60,120})futures.Add(new FutureSample{Source="observed-background-held-velocity",Outcome="conditional-geometry",Phase=routePhase,Identity=identity,Capture=Main.GameUpdateCount,Sample=Main.GameUpdateCount,Due=Main.GameUpdateCount+h,Horizon=h,Selection=routeSelection,Environment=routeEnvironment,NearTerrain=routeNearTerrain,Life=n.life,PlayerLife=Main.LocalPlayer.statLife,Predicted=n.position+n.velocity*h,Linear=n.position+n.velocity*h});
+        }
+        private static string boundaryTerrain;
+        private static int terrainRouteTraces,terrainReplyTraces;
+        private static void TraceTerrain(object snapshot,object usage,object changes,string source,long capture,long tick)
+        {
+            if(boundaryTerrain==null || snapshot==null || usage==null)return;
+            var contains=usage.GetType().GetMethod("Contains",Flags);
+            var chunks=(Array)Get(snapshot,"Chunks");int height=(int)Get(snapshot,"Height"),count=0;
+            var records=new List<string>();
+            foreach(var chunk in chunks)
+            {
+                int cx=(int)Get(chunk,"X"),cy=(int)Get(chunk,"Y");byte[] values=(byte[])Get(chunk,"Values");int at=0;
+                for(int x=cx*32;x<Math.Min(Main.maxTilesX,(cx+1)*32);x++)for(int y=cy*32;y<Math.Min(height,(cy+1)*32);y++,at+=14)
+                {
+                    if(!(bool)contains.Invoke(usage,new object[]{cx*128+cy,x,y}))continue;
+                    Tile t=Main.tile[x,y];var now=new byte[14];
+                    using(var bytes=new MemoryStream(now,true))using(var w=new BinaryWriter(bytes)){w.Write(t.type);w.Write(t.wall);w.Write(t.liquid);w.Write(t.sTileHeader);w.Write(t.bTileHeader);w.Write(t.bTileHeader2);w.Write(t.bTileHeader3);w.Write(t.frameX);w.Write(t.frameY);}
+                    bool different=false;for(int j=0;j<14;j++)different|=values[at+j]!=now[j];
+                    bool intervening=changes!=null && (bool)contains.Invoke(changes,new object[]{cx*128+cy,x,y});
+                    if(!different && !intervening)continue;
+                    records.Add(Csv(source,routeFrame,routePhase,capture,tick,x,y,BitConverter.ToString(values,at,14),BitConverter.ToString(now),intervening?1:0,
+                        Main.npc[16].position,Main.npc[16].velocity,Main.LocalPlayer.position,string.Join(";",Main.npc.Where(n=>n.active).Select(n=>n.whoAmI+":"+n.position))));
+                    if(++count==8){File.AppendAllLines(boundaryTerrain,records);return;}
+                }
+            }
+            File.AppendAllLines(boundaryTerrain,records);
+        }
+        internal static void Continuous(object context,object native,NpcPredictionCache cache,Action step,string output,bool conditional=false,bool flight=false)
+        {
+            int frames=conditional?1440:flight?3360:2400;
             var host=Get(context,"CombatObservation");var selection=Get(host,"Selection");
             var worker=Get(native,"Worker");int child=(int)Get(worker,"ChildId");
             routeNative=native;routeSelection=routeEnvironment=routeNearTerrain=0;futures.Clear();futureRows.Clear();replyRows.Clear();
+            string trace=Environment.GetEnvironmentVariable("JUEMINGR_NPC_BOUNDARY_TRACE");boundaryTerrain=string.IsNullOrEmpty(trace)?null:Path.Combine(trace,"terrain.csv");terrainRouteTraces=terrainReplyTraces=0;
             NativeCombatConditionalChecks.RolePeak=NativeCombatConditionalChecks.HarpyConsumed=0;
             var rows=new List<string>{"frame,phase,tick,desiredSlot,selectedSlot,selectedType,selectedCorrect,shown,childId,workerState,failed,requests,rejected,refused,npcPages,projectilePages,extraChunks,terrainChunks,activeBackground,activeProjectiles,newProjectiles,projectileUpdateFrames,x,y,vx,vy,life,playerLife,prepareMs,stepWallMs,tilesCompared,tilesCaptured,reason,fullAiRoles,fullAiActive,remainingFuture"};
-            var backgrounds=new List<int>();var seenProjectiles=new HashSet<string>();int projectileUpdateFrames=0,secondary=-1,desired=-1;
+            var backgrounds=new List<int>();var seenProjectiles=new HashSet<string>();int projectileUpdateFrames=0,secondary=-1,desired=-1,entering=-1,entryFrame=-1;
+            double workerCpuStart;using(var process=Process.GetProcessById(child))workerCpuStart=process.TotalProcessorTime.TotalMilliseconds;
+            var movementRows=new List<string>{"frame,phase,tick,x,y,vx,vy,mounted,wet,enteringX,enteringY,enteringDistance,enteringInScope,workerCpuMs"};
+            var phaseStarts=new Dictionary<string,Vector2>();var wetPhases=new HashSet<string>();
             bool oldHard=Main.hardMode;var patches=new Harmony("JueMingR.Tests.RouteFeasibility");
             try
             {
@@ -241,16 +279,39 @@ namespace NativeWorldTextProbe
                     }
                     else
                     {
-                    routePhase=routeFrame<480?"simple-start":routeFrame<960?"background":routeFrame<1440?"remote-liquid":routeFrame<1800?"rapid-switch":"simple-return";
+                    int switchStart=flight?2400:1440,returnStart=switchStart+360;
+                    routePhase=routeFrame<480?"simple-start":routeFrame<960?"background":routeFrame<1440?"remote-liquid":flight && routeFrame<1560?"broom-up":flight && routeFrame<1680?"broom-right":flight && routeFrame<1800?"broom-brake":flight && routeFrame<1920?"broom-hover":flight && routeFrame<2040?"broom-down":flight && routeFrame<2160?"broom-reverse":flight && routeFrame<2400?"wading":routeFrame<returnStart?"rapid-switch":"simple-return";
                     if(routeFrame==480){routeEnvironment++;for(int i=0;i<8;i++)backgrounds.Add(NPC.NewNPC(NPC.GetSpawnSourceForNaturalSpawn(),2700+i*25,2400,NPCID.Bunny,Start:i));}
+                    if(flight && routeFrame==480){entering=NPC.NewNPC(NPC.GetSpawnSourceForNaturalSpawn(),4300,2100,NPCID.DemonEye,Start:10,Target:Main.myPlayer);backgrounds.Add(entering);if(Main.npc[entering].velocity!=Vector2.Zero)throw new InvalidOperationException("Natural entering actor starts with a true stationary observation.");SampleBackground(entering);}
                     if(routeFrame==960){routeEnvironment++;WorldGen.TileFrame(132,104,false,false);Main.tile[132,115].active(false);for(int tx=130;tx<=135;tx++)for(int ty=101;ty<115;ty++)Liquid.AddWater(tx,ty);}
-                    if(routeFrame==1440){routeNearTerrain++;Main.tile[93,149].active(true);Main.tile[93,149].type=60;secondary=NPC.NewNPC(NPC.GetSpawnSourceForNaturalSpawn(),1500,2400,NPCID.AngryTrapper,Start:17,ai0:93,ai1:149,Target:Main.myPlayer);}
-                    if(routeFrame==1800){routeEnvironment++;foreach(int slot in backgrounds)Main.npc[slot].active=false;Main.npc[secondary].active=false;foreach(var p in Main.projectile)p.active=false;for(int tx=130;tx<=135;tx++)for(int ty=101;ty<150;ty++)Main.tile[tx,ty].liquid=0;Main.tile[132,115].active(true);}
-                    if(routeFrame>=960 && routeFrame<1800)Liquid.UpdateLiquid();
+                    if(flight && routeFrame==1440){NativeCombatLiveContextChecks.InitializeMount();int owner=Main.myPlayer;try{Main.myPlayer=1;player.mount.SetMount(MountID.WitchBroom,player);}finally{Main.myPlayer=owner;}}
+                    if(flight && routeFrame==2160){int owner=Main.myPlayer;try{Main.myPlayer=1;player.mount.Dismount(player);}finally{Main.myPlayer=owner;}routeNearTerrain++;int center=(int)player.Center.X/16;for(int tx=center-12;tx<=center+12;tx++)for(int ty=145;ty<150;ty++)Main.tile[tx,ty].liquid=255;}
+                    if(routeFrame==switchStart){routeNearTerrain++;Main.tile[93,149].active(true);Main.tile[93,149].type=60;secondary=NPC.NewNPC(NPC.GetSpawnSourceForNaturalSpawn(),1500,2400,NPCID.AngryTrapper,Start:17,ai0:93,ai1:149,Target:Main.myPlayer);}
+                    if(routeFrame==returnStart){routeEnvironment++;if(!flight){foreach(int slot in backgrounds)Main.npc[slot].active=false;foreach(var p in Main.projectile)p.active=false;}Main.npc[secondary].active=false;for(int tx=130;tx<=135;tx++)for(int ty=101;ty<150;ty++)Main.tile[tx,ty].liquid=0;Main.tile[132,115].active(true);}
+                    if(routeFrame>=960 && routeFrame<returnStart)Liquid.UpdateLiquid();
+                    if(flight){player.controlLeft=routePhase=="broom-reverse" || routePhase=="wading" && routeFrame%120>=60;player.controlRight=routePhase=="broom-right" || routePhase=="wading" && routeFrame%120<60;player.controlUp=routePhase=="broom-up";player.controlDown=routePhase=="broom-down";}
                     }
-                    int next=!conditional && routeFrame>=1440 && routeFrame<1788 && (routeFrame-1440)/12%2!=0?secondary:primary;
+                    int switching=flight?2400:1440;int next=!conditional && routeFrame>=switching && routeFrame<switching+348 && (routeFrame-switching)/12%2!=0?secondary:primary;
                     if(next!=desired){desired=next;routeSelection++;}
+                    object beforeAccepted=boundaryTerrain==null?null:Get(native,"accepted"),beforeRequest=boundaryTerrain==null?null:Get(native,"acceptedRequest");
                     SampleMouse(context,Main.npc[desired].Center);prepareMs=0;var clock=Stopwatch.StartNew();step();double elapsed=clock.Elapsed.TotalMilliseconds;
+                    if(boundaryTerrain!=null && terrainRouteTraces<4 && beforeAccepted!=null && Get(native,"accepted")==null && (string)Get(native,"Reason")=="relevant terrain changed")
+                    {terrainRouteTraces++;TraceTerrain(Get(beforeRequest,"Terrain"),Get(beforeAccepted,"TerrainUsage"),null,"retire",(long)Get(beforeRequest,"Tick"),Main.GameUpdateCount);}
+                    if(flight)
+                    {
+                        if(!phaseStarts.ContainsKey(routePhase))phaseStarts.Add(routePhase,player.position);if(player.wet)wetPhases.Add(routePhase);
+                        NPC entrant=entering<0?null:Main.npc[entering];float distance=entrant==null?float.PositiveInfinity:Vector2.Distance(entrant.Center,Main.npc[primary].Center);
+                        if(entryFrame<0 && entering>=0 && distance<1024){entryFrame=routeFrame;routeEnvironment++;Console.WriteLine("NATURAL-ENTRY frame="+entryFrame+" distance="+distance+" velocity="+entrant.velocity+" active="+entrant.active);}
+                        if(entering>=0 && routeFrame%30==0)SampleBackground(entering);
+                        double cpu;using(var process=Process.GetProcessById(child))cpu=process.TotalProcessorTime.TotalMilliseconds-workerCpuStart;
+                        movementRows.Add(Csv(routeFrame,routePhase,Main.GameUpdateCount,player.position.X,player.position.Y,player.velocity.X,player.velocity.Y,player.mount.Active,player.wet,entrant?.position.X,entrant?.position.Y,distance,entering>=0 && distance<1024?1:0,cpu));
+                        if(routeFrame==1559 && !(player.position.Y<phaseStarts[routePhase].Y-100))throw new InvalidOperationException("Final broom must really ascend from ground.");
+                        if(routeFrame==1679 && !(player.velocity.X>4 && player.position.Y<2300))throw new InvalidOperationException("Final broom must move horizontally while airborne.");
+                        if(routeFrame==1799 && !(player.velocity.X==0 && player.position.X>phaseStarts[routePhase].X))throw new InvalidOperationException("Final broom must really brake before the world border.");
+                        if(routeFrame==1919 && !(player.position.Y<2300 && Math.Abs(player.velocity.Y)<.1f))throw new InvalidOperationException("Final broom must hover airborne.");
+                        if(routeFrame==2039 && !(player.position.Y>phaseStarts[routePhase].Y+100))throw new InvalidOperationException("Final broom must descend.");
+                        if(routeFrame==2399 && !wetPhases.Contains("wading"))throw new InvalidOperationException("Final player must really enter water.");
+                    }
                     if(!ReferenceEquals(worker,Get(native,"Worker")) || (int)Get(worker,"ChildId")!=child)throw new InvalidOperationException("Continuous investigation must retain one exact prepared child.");
                     CompleteFutures();var path=cache.Read(0);var target=(NpcIdentity)Get(selection,"Target");bool selected=(bool)Get(selection,"HasTarget") && target.Slot==desired;
                     bool shown=path!=null && path.Identity.Slot==desired && ReferenceEquals(path.Identity.Token,Main.npc[desired]);
@@ -267,14 +328,16 @@ namespace NativeWorldTextProbe
                     if(routeFrame%480==479)Console.WriteLine("ROUTE phase="+routePhase+" through="+routeFrame+" child="+child+" requests="+Get(native,"Requests")+" rejected="+Get(native,"Rejected")+" refused="+Get(native,"Refused")+" background="+backgrounds.Count(s=>Main.npc[s].active)+" distinct-shots="+seenProjectiles.Count);
                 }
                 CompleteFutures(true);
+                if(flight && entryFrame<0)throw new InvalidOperationException("Background original AI must naturally enter from outside the local scope.");
                 Console.WriteLine("INVESTIGATION COMPLETE: continuous "+frames+" updates, unchanged Host/worker; received/published futures distinguished, no product PASS or FPS inferred.");
             }
             finally
             {
                 patches.UnpatchAll(patches.Id);Main.hardMode=oldHard;routeNative=null;
                 File.WriteAllLines(Path.Combine(output,"route-updates.csv"),rows);
+                if(flight)File.WriteAllLines(Path.Combine(output,"route-movement.csv"),movementRows);
                 File.WriteAllLines(Path.Combine(output,"route-futures.csv"),new[]{"source,outcome,phase,captureTick,sampleTick,slot,generation,type,horizon,dueTick,condition,predictedX,predictedY,actualX,actualY,error,linearError,evaluable"}.Concat(futureRows));
-                File.WriteAllLines(Path.Combine(output,"route-replies.csv"),new[]{"frame,phase,captureTick,arriveTick,slot,generation,type,outcome,error,"+string.Join(",",costFields)}.Concat(replyRows));
+                File.WriteAllLines(Path.Combine(output,"route-replies.csv"),new[]{"frame,phase,captureTick,arriveTick,slot,generation,type,outcome,error,completedPoints,"+string.Join(",",costFields)}.Concat(replyRows));
             }
         }
     }
