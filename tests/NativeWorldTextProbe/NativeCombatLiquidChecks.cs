@@ -40,7 +40,7 @@ namespace NativeWorldTextProbe
                 {
                     Require(reader.ReadInt32()==121,"Complete liquid proof horizon.");
                     for(int i=0;i<=120;i++){object frame=proofType.GetMethod("Read",Flags).Invoke(null,new object[]{reader});Require((long)frame.GetType().GetField("Tick",Flags).GetValue(frame)==1000+i && !(bool)frame.GetType().GetField("NewSegment",Flags).GetValue(frame),"Normal original liquid/collision motion must stay continuous: "+scene+" step="+i);}
-                    reader.ReadInt64();Require(stream.Position==stream.Length,"Complete liquid proof consumption.");
+                    reader.ReadInt64();host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativeTerrainUsage",true).GetMethod("Read",Flags).Invoke(null,new object[]{reader});Require(stream.Position==stream.Length,"Complete liquid proof consumption.");
                 }
                 int wet=0,dry=0,xContact=0,yContact=0,transitions=0,slope=0;bool prior=npc.wet;
                 NativeCombatWorkerChecks.Compare(frozen.Future,slot,output,"liquid-"+scene,dependencyComparison:NativeCombatLegalCoverageChecks.CompareMotion,motionTolerance:.002f,nativeStep:(tick,n)=>

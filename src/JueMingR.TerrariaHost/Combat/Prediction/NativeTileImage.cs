@@ -137,21 +137,27 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             api.Call(api.Get(module,"Types"),"Add",guard);
             object enabled=Field(api,guard,"Enabled",api.Get(system,"Boolean")),missing=Field(api,guard,"Missing",api.Get(system,"Boolean"));
             object x=Field(api,guard,"MissingX",integer),y=Field(api,guard,"MissingY",integer);
+            object observed=Field(api,guard,"Observed",api.Call(module,"ImportReference",typeof(Action<int,int>)));
             object array=api.Get(native[0],"DeclaringType");
             object main=api.Call(module,"GetType","Terraria.Main");
             object tiles=((IEnumerable)api.Get(main,"Fields")).Cast<object>().Single(f=>(string)api.Get(f,"Name")=="tile");
             object check=Method(api,guard,"Check",voidType,new[]{array,integer,integer});
             object instructions=api.Get(api.Get(check,"Body"),"Instructions");
-            object done=api.Instruction("Ret"),failure=api.Instruction("Ldstr","Unobserved native terrain.");
+            object done=api.Instruction("Ret"),failure=api.Instruction("Ldstr","Unobserved native terrain."),record=api.Instruction("Ldsfld",observed);
             Add(api,instructions,"Ldsfld",enabled);Add(api,instructions,"Brfalse",done);
             Add(api,instructions,"Ldarg_0");Add(api,instructions,"Ldsfld",tiles);Add(api,instructions,"Bne_Un",done);
-            Add(api,instructions,"Ldarg_0");Add(api,instructions,"Ldarg_1");Add(api,instructions,"Ldarg_2");Add(api,instructions,"Call",native[0]);Add(api,instructions,"Brtrue",done);
+            Add(api,instructions,"Ldarg_0");Add(api,instructions,"Ldarg_1");Add(api,instructions,"Ldarg_2");Add(api,instructions,"Call",native[0]);Add(api,instructions,"Brtrue",record);
             Add(api,instructions,"Ldsfld",missing);Add(api,instructions,"Brtrue",failure);
             Add(api,instructions,"Ldc_I4_1");Add(api,instructions,"Stsfld",missing);
             Add(api,instructions,"Ldarg_1");Add(api,instructions,"Stsfld",x);Add(api,instructions,"Ldarg_2");Add(api,instructions,"Stsfld",y);
             api.Call(instructions,"Add",failure);
             object exception=api.Call(module,"ImportReference",typeof(InvalidDataException).GetConstructor(new[]{typeof(string)}));
-            Add(api,instructions,"Newobj",exception);Add(api,instructions,"Throw");api.Call(instructions,"Add",done);
+            Add(api,instructions,"Newobj",exception);Add(api,instructions,"Throw");
+            // Only an enabled private Main.tile access reaches this BCL
+            // delegate. Unrelated arrays, outside-world and unknown cells keep
+            // their original behavior; the image has no product reference.
+            api.Call(instructions,"Add",record);Add(api,instructions,"Ldarg_1");Add(api,instructions,"Ldarg_2");
+            Add(api,instructions,"Callvirt",api.Call(module,"ImportReference",typeof(Action<int,int>).GetMethod("Invoke")));api.Call(instructions,"Add",done);
             var guards=new object[3];
             for(int i=0;i<3;i++)
             {

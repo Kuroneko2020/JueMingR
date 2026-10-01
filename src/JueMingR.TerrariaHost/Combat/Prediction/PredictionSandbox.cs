@@ -242,7 +242,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                         dependencies.Record(step);
                         if(PredictionPipeProtocol.Measure)MeasuredCompletedSteps=step;
                     }
-                    if(withAlignment)proof.Write(advanceTicks);
+                    if(withAlignment){proof.Write(advanceTicks);NativeTileBoundary.Usage.Write(proof);}
 #if JMR_CONDITIONAL_RESEARCH
                     Console.Error.WriteLine("RESEARCH calls npc="+actualNpcCalls+" projectile="+actualProjectileCalls+" query-reads="+ConditionalNpcQuery.QueryReads+" geometry-stores="+ConditionalNpcQuery.GeometryStores+" exact-roles="+alignmentSlots.Length+" query-pages="+(slots.Length-alignmentSlots.Length));
 #endif

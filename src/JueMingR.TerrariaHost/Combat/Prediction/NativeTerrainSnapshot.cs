@@ -85,26 +85,44 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         internal bool IsCurrent(long world)
         {return IsCurrentObserved(world,null);}
         internal bool IsCurrentObserved(long world,Comparison pass)
+        {return Compare(world,null,pass,null);}
+        internal bool IsCurrentRelevant(long world,NativeTerrainUsage usage,Comparison pass)
+        {return Compare(world,usage,pass,null);}
+        // Before the reply supplies its actual read set, retain all observed
+        // changed cells against THIS immutable capture. A change and return
+        // cannot disappear from the request's union. This replaces the old
+        // pending full comparison, never adds a second whole-region scan.
+        internal bool ObserveChanges(long world,NativeTerrainUsage changes,Comparison pass,out bool exactCurrent)
+        {exactCurrent=false;if(World!=world || Main.maxTilesX!=Width || Main.maxTilesY!=Height)return false;exactCurrent=Compare(world,null,pass,changes);return true;}
+        private bool Compare(long world,NativeTerrainUsage usage,Comparison pass,NativeTerrainUsage changes)
         {
             if(World!=world || Main.maxTilesX!=Width || Main.maxTilesY!=Height)return false;
             if(pass!=null && (pass.World!=world || pass.Width!=Width || pass.Height!=Height)){pass.Clear();pass.World=world;pass.Width=Width;pass.Height=Height;}
+            bool current=true;
             foreach(var chunk in Chunks)
             {
-                int key=chunk.X*128+chunk.Y;Chunk matched;
+                int key=chunk.X*128+chunk.Y;Chunk matched;byte[] relevant=null;
+                if(usage!=null && !usage.Cells.TryGetValue(key,out relevant))continue;
                 if(pass!=null && pass.Matched.TryGetValue(key,out matched))
                 {
-                    if(matched.Version!=chunk.Version || !SameBytes(matched.Values,chunk.Values))return false;
-                    if(PredictionPipeProtocol.Measure)pass.ChunkHits++;continue;
+                    if(matched.Version==chunk.Version && SameBytes(matched.Values,chunk.Values))
+                    {if(PredictionPipeProtocol.Measure)pass.ChunkHits++;continue;}
                 }
-                byte[] b=chunk.Values;int at=0;
+                byte[] b=chunk.Values;int at=0;bool equal=true;
                 for(int x=chunk.X*32;x<Math.Min(Width,chunk.X*32+32);x++)for(int y=chunk.Y*32;y<Math.Min(Height,chunk.Y*32+32);y++,at+=14)
                 {
+                    int cell=x%32*32+y%32;
+                    if(relevant!=null && (relevant[cell/8]&(1<<(cell%8)))==0)continue;
+                    if(pass!=null && PredictionPipeProtocol.Measure)pass.TilesRead++;
                     Tile t=Main.tile[x,y];if(t==null || t.type!=U16(b,at) || t.wall!=U16(b,at+2) || t.liquid!=b[at+4] || t.sTileHeader!=U16(b,at+5) || t.bTileHeader!=b[at+7] || t.bTileHeader2!=b[at+8] || t.bTileHeader3!=b[at+9] || t.frameX!=(short)U16(b,at+10) || t.frameY!=(short)U16(b,at+12))
-                    {if(pass!=null && PredictionPipeProtocol.Measure)pass.TilesRead+=at/14+1;return false;}
+                    {equal=current=false;if(changes==null)return false;changes.Add(x,y);}
                 }
-                if(pass!=null){pass.Matched.Add(key,chunk);if(PredictionPipeProtocol.Measure)pass.TilesRead+=at/14;}
+                // Only a complete nine-field chunk comparison proves exact
+                // bytes reusable for a NEW capture. Relevant-only success is
+                // never entered in the raw-byte cache.
+                if(pass!=null && equal && usage==null)pass.Matched[key]=chunk;
             }
-            return true;
+            return current;
         }
         private static bool SameBytes(byte[] a,byte[] b)
         {if(ReferenceEquals(a,b))return true;if(a.Length!=b.Length)return false;for(int i=0;i<a.Length;i++)if(a[i]!=b[i])return false;return true;}

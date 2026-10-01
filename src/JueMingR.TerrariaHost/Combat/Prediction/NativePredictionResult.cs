@@ -11,6 +11,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
     {
         internal NativePredictionAlignment.Frame[] Frames;
         internal NpcTrajectory Trajectory;
+        internal NativeTerrainUsage TerrainUsage;
         internal int Kind,Slot,TileX,TileY;
         internal string Error;
         internal readonly SortedSet<int> Npcs=new SortedSet<int>(),Projectiles=new SortedSet<int>();
@@ -36,7 +37,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                         if(frame.Tick!=tick+i || frame.HasState!=(i<=PredictionWire.MaximumAlignmentAge))throw new InvalidDataException("Alignment proof extent.");
                         if(frame.HasState && Array.IndexOf(frame.Npcs,identity.Slot)<0)throw new InvalidDataException("Alignment target absent.");
                     }
-                    advance=proof.ReadInt64();End(data);
+                    advance=proof.ReadInt64();value.TerrainUsage=NativeTerrainUsage.Read(proof);End(data);
                 }
                 var points=new NpcTrajectoryPoint[count];int length=count,quality=0;bool ended=false;
                 for(int i=0;i<count;i++)

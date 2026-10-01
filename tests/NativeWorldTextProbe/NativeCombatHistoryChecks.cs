@@ -133,7 +133,9 @@ namespace NativeWorldTextProbe
                         catch(TargetInvocationException){if(enabled)throw;continue;}
                         if(!enabled)continue;
                         byte[] proof=(byte[])sandbox.GetType().GetProperty("Alignment",Flags).GetValue(sandbox),expected=File.ReadAllBytes(Path.Combine(output,"history-response.bin"));
-                        if(!camera && (proof.Length!=expected.Length+8 || !proof.Take(expected.Length).SequenceEqual(expected)))throw new InvalidOperationException("Replay must reproduce the actual worker response proof before interpreting differences.");
+                        if(!camera && (proof.Length<expected.Length+12 || !proof.Take(expected.Length).SequenceEqual(expected)))throw new InvalidOperationException("Replay must reproduce the actual worker response proof before interpreting differences.");
+                        using(var trailer=new MemoryStream(proof))using(var reader=new BinaryReader(trailer))
+                        {trailer.Position=expected.Length;reader.ReadInt64();host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativeTerrainUsage",true).GetMethod("Read",Flags).Invoke(null,new object[]{reader});if(trailer.Position!=trailer.Length)throw new InvalidOperationException("Complete replay timing/terrain trailer.");}
                         using(var original=new BinaryReader(File.OpenRead(Path.Combine(output,"history-native-proof.bin"))))using(var predicted=new BinaryReader(new MemoryStream(proof)))
                         {
                             var alignment=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativePredictionAlignment",true);var read=alignment.GetMethod("Read",Flags);int count=original.ReadInt32();predicted.ReadInt32();int different=0;string first=null;

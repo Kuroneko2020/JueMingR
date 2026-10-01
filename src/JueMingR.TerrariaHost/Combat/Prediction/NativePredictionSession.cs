@@ -22,6 +22,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             internal int[] Npcs,Projectiles;
             internal NativeTerrainSnapshot Terrain;
             internal readonly List<NativePredictionAlignment.Frame> History=new List<NativePredictionAlignment.Frame>(61);
+            internal readonly NativeTerrainUsage TerrainChanges=new NativeTerrainUsage();
             internal bool Retired;
             internal double CaptureMs;
         }
@@ -161,13 +162,18 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             long started=PredictionPipeProtocol.Measure?Stopwatch.GetTimestamp():0;
             if(pending!=null && !pending.Retired && tick>pending.Tick)
             {
-                if(tick-pending.Tick>PredictionWire.MaximumAlignmentAge || !TerrainCurrent(pending.Terrain,identity.Session)){pending.Retired=true;Reason="in-flight age or terrain changed";}
-                else pending.History.Add(Observe(tick,pending.Npcs,pending.Projectiles,identity.Slot));
+                bool exact;
+                if(tick-pending.Tick>PredictionWire.MaximumAlignmentAge || !pending.Terrain.ObserveChanges(identity.Session,pending.TerrainChanges,terrainComparison,out exact)){pending.Retired=true;Reason="in-flight age or world extent changed";}
+                else
+                {
+                    checkedTerrain=pending.Terrain;checkedTerrainCurrent=exact;
+                    pending.History.Add(Observe(tick,pending.Npcs,pending.Projectiles,identity.Slot));
+                }
             }
             if(accepted!=null)
             {
                 long age=tick-acceptedRequest.Tick;
-                string difference=!CanReuseProof(age,accepted.Frames.Length)?"expired":!TerrainCurrent(acceptedRequest.Terrain,identity.Session)?"terrain changed":NativePredictionAlignment.Difference(accepted.Frames[(int)age],Observe(tick,acceptedRequest.Npcs,acceptedRequest.Projectiles,identity.Slot));
+                string difference=!CanReuseProof(age,accepted.Frames.Length)?"expired":!acceptedRequest.Terrain.IsCurrentRelevant(identity.Session,accepted.TerrainUsage,terrainComparison)?"relevant terrain changed":NativePredictionAlignment.Difference(accepted.Frames[(int)age],Observe(tick,acceptedRequest.Npcs,acceptedRequest.Projectiles,identity.Slot));
                 if(difference!=null){Reason=difference;accepted=null;acceptedRequest=null;cache.Publish(null);}
             }
             if(PredictionPipeProtocol.Measure){double observed=Milliseconds(Stopwatch.GetTimestamp()-started);ObserveMilliseconds+=observed;ObserveMaximum=Math.Max(ObserveMaximum,observed);}Observed++;
@@ -225,6 +231,9 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                     return;
                 }
                 acknowledgedTerrain=request.Terrain;
+                result.TerrainUsage.Validate(request.Terrain);
+                if(result.TerrainUsage.Intersects(request.TerrainChanges))
+                {m.Outcome="intervening relevant terrain changed";Reason=m.Outcome;Rejected++;return;}
                 bool missing=false;foreach(int slot in result.Npcs)if(!npcs.Contains(slot)){if(npcs.Count>Main.maxNPCs)throw new InvalidDataException("NPC dependency capacity.");npcs.Add(slot);missing=true;
 #if JMR_CONDITIONAL_RESEARCH
                     exactNpcs.Add(slot);
