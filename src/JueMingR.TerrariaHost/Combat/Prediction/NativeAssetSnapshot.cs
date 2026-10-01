@@ -27,6 +27,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         private static readonly bool[] known=new bool[placeholders.Length];
         internal static string Failure { get; private set; }
         internal static int MissingKey {get;private set;}=-1;
+        internal static void ResetFailure(){Failure=null;MissingKey=-1;}
         private static readonly Type AssetType=typeof(Asset<Texture2D>);
         private static readonly MethodInfo IsLoaded=AssetType.GetProperty("IsLoaded").GetGetMethod();
         private static readonly MethodInfo AssetValue=AssetType.GetProperty("Value").GetGetMethod();
@@ -63,7 +64,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         }
         internal static void Read(BinaryReader reader)
         {
-            Failure=null;MissingKey=-1;Array.Clear(known,0,known.Length);
+            ResetFailure();Array.Clear(known,0,known.Length);
             if(placeholders[0]==null)
             {
                 var ctor=AssetType.GetConstructor(BindingFlags.NonPublic|BindingFlags.Instance,null,new[]{typeof(string)},null);

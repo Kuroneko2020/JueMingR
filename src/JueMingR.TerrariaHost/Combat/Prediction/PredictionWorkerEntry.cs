@@ -50,10 +50,11 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                         bool capacity=error is PredictionCapacityException;
                         using(var buffer=new MemoryStream())using(var writer=new BinaryWriter(buffer))
                         {writer.Write(-PredictionWire.Protocol);writer.Write(error.GetType().Name);string message=(PredictionPipeProtocol.Measure?"completed-steps="+sandbox.MeasuredCompletedSteps+"; ":"")+error;writer.Write(message.Length>4096?message.Substring(0,4096):message);writer.Write(capacity?-1:NativeTileBoundary.MissingX);writer.Write(capacity?-1:NativeTileBoundary.MissingY);writer.Write(capacity?-1:NativeEntityDirectory.MissingKind);writer.Write(capacity?-1:NativeEntityDirectory.MissingSlot);writer.Write(capacity?-1:NativeEntityDirectory.MissingField);writer.Flush();result=buffer.ToArray();}
-                        // Failed predictions have no usable alignment or asset
-                        // acknowledgement. Never append the oversized proof to
-                        // their small refusal, or acknowledge stale terrain.
-                        if(ready!=null)result=PredictionPipeProtocol.Envelope(PredictionPipeProtocol.Result(result,null,-1),sequence,true);
+                        // Failed predictions have no usable alignment. A real
+                        // missing texture is a bounded page request, not an
+                        // acknowledgement; preserve it for Session discovery.
+                        // Capacity refusals carry neither proof nor stale key.
+                        if(ready!=null)result=PredictionPipeProtocol.Envelope(PredictionPipeProtocol.Result(result,null,capacity?-1:NativeAssetSnapshot.MissingKey),sequence,true);
                     }
                     // I/O is outside request recovery: after a partial write
                     // the only safe action is closing this owned connection.

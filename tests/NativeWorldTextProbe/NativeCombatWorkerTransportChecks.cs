@@ -81,6 +81,7 @@ namespace NativeWorldTextProbe
             File.WriteAllText(Path.Combine(output,"capacity-request.txt"),"requestBytes="+large.Length+" activeShots=300 horizon=180\n");
             Require(Send(clientType,client,large),"Capacity counterexample uses the ready real worker.");Wait(clientType,client,3,30000);
             byte[] refused=Take(clientType,client);
+            Require(refused.Length<4096 && (int)clientType.GetProperty("MissingAsset",Flags).GetValue(client)==-1 && clientType.GetProperty("Alignment",Flags).GetValue(client)==null,"Capacity refusal stays small and carries neither asset page request nor alignment.");
             using(var reader=new BinaryReader(new MemoryStream(refused,false)))
             {
                 Require(reader.ReadInt32()==-NativeCombatWorkerChecks.ExpectedProtocol,"Full result over capacity is a matching native refusal.");

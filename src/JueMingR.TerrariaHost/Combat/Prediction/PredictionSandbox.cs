@@ -91,6 +91,9 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             NativeEffectBoundary.Begin();
             NativeEntityDirectory.Reset();
             NativeImmunitySnapshot.Reset();
+            // A malformed request may fail before reading its asset pages.
+            // Only metadata discovered by this request may ask for a new page.
+            NativeAssetSnapshot.ResetFailure();
             using(var input=new MemoryStream(bytes,false))using(var reader=new BinaryReader(input,Encoding.UTF8,true))
             {
                 if(reader.ReadInt32()!=PredictionWire.Protocol)throw new InvalidDataException("Protocol mismatch.");
