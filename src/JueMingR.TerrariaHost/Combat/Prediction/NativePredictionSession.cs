@@ -51,6 +51,8 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         private long lastTick=-1,lastAttempt=-100,version;
         private readonly SortedSet<int> extraChunks=new SortedSet<int>();
         private bool stopped;
+        private int recoveries,refusalStreak;
+        private long capacityShape=-1;
         private int observedRelocation;
         private bool environmentIntent,menuExpired;
         private long idleSince;
@@ -87,8 +89,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             if(requested && !menuExpired)EnsureEnvironment();
             if(Worker!=null && !stopped && Worker.State==4)
             {
-                Reason=Worker.Failure;
-                Failed=true;Stop();
+                WorkerFailed();
             }
         }
         private void EnsureEnvironment()
@@ -104,7 +105,8 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         }
         internal void ClearTarget()
         {
-            current=default(NpcIdentity);accepted=null;acceptedRequest=null;cache.Publish(null);lastTick=-1;
+            bool owned=current.Token!=null || accepted!=null;
+            current=default(NpcIdentity);accepted=null;acceptedRequest=null;if(owned)cache.Publish(null);lastTick=-1;refusalStreak=0;capacityShape=-1;
             if(pending!=null)pending.Retired=true;
             npcs.Clear();projectiles.Clear();assets.Clear();terrain=null;
 #if JMR_CONDITIONAL_RESEARCH
@@ -115,7 +117,19 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         // Stopping destroys the transport mailbox. Its request can never
         // complete in a later worker; retain pending only across target swaps.
         internal void Stop(){ClearTarget();pending=null;stopped=true;Worker?.Stop();}
-        internal void Retry(){Stop();Failed=false;Reason=null;}
+        internal void Retry(){Stop();Failed=false;Reason=null;recoveries=0;}
+        private void WorkerFailed()
+        {
+            Reason=Worker.Failure;
+            bool retry=Worker.Recoverable && recoveries==0;
+            if(retry)recoveries++;
+            else Failed=true;
+            // Clear every old mailbox/history before a new owner can start.
+            // EnsureEnvironment waits for Closed; old leases/process/late
+            // replies cannot overlap the replacement. One recovery budget is
+            // replenished only by a genuinely accepted result or explicit Retry.
+            Stop();
+        }
         // Native/network callbacks only publish a fact. The game-thread owner
         // retires all results and in-flight history before its next Prepare;
         // never mutate the cache or worker mailbox from a receive callback.
@@ -166,12 +180,12 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             }
             if(Worker.State==4)
             {
-                Reason=Worker.Failure;
-                Failed=true;Stop();return;
+                WorkerFailed();return;
             }
             // One request may run to completion. Refresh after completion at
             // most once per three updates; changes revoke old presentation
             // immediately but do not cancel every in-flight attempt.
+            if(capacityShape!=-1 && CapacityShape()!=capacityShape){capacityShape=-1;refusalStreak=0;lastAttempt=tick-3;}
             if(Worker.State==1 && pending==null && tick-lastAttempt>=3)Capture(identity,tick);
         }
         private void Receive(PredictionWorkerClient.DecodedReply response,long tick)
@@ -197,7 +211,18 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                     if(result.Kind==0 && response.MissingAsset>=0 && assets.Count<128)added|=assets.Add(response.MissingAsset);
                     if(result.TileX>=0 && result.TileY>=0 && result.TileX<Main.maxTilesX && result.TileY<Main.maxTilesY)
                     {added|=AddMissingTerrain(request.Terrain,result.TileX/32,result.TileY/32);}
-                    if(!added)lastAttempt=tick+57;return;
+                    if(added){refusalStreak=0;capacityShape=-1;}
+                    else
+                    {
+                        // Identical unsupported/capacity inputs back off, but
+                        // a new target or discovered necessary page resets the
+                        // delay. A first bounded refusal is not a universal
+                        // one-second feature outage or a per-update retry loop.
+                        bool capacity=result.Kind==-1;
+                        int delay=Math.Min(capacity?30:60,6<<Math.Min(4,refusalStreak++));lastAttempt=tick+delay-3;
+                        capacityShape=capacity?CapacityShape():-1;
+                    }
+                    return;
                 }
                 acknowledgedTerrain=request.Terrain;
                 bool missing=false;foreach(int slot in result.Npcs)if(!npcs.Contains(slot)){if(npcs.Count>Main.maxNPCs)throw new InvalidDataException("NPC dependency capacity.");npcs.Add(slot);missing=true;
@@ -212,7 +237,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 {string difference=NativePredictionAlignment.Difference(result.Frames[i],request.History[i]);if(difference!=null){m.Outcome="history "+i+": "+difference;Reason=m.Outcome;Rejected++;return;}}
                 result.Trajectory=result.Trajectory.BindIdentity(request.Identity);
                 NpcTrajectory window;if(!result.Trajectory.TryWindow(tick,cache.Required,version,out window)){m.Outcome="insufficient remaining horizon";Rejected++;return;}
-                accepted=result;acceptedRequest=request;m.Outcome="accepted";Reason=null;
+                accepted=result;acceptedRequest=request;m.Outcome="accepted";Reason=null;recoveries=refusalStreak=0;capacityShape=-1;
             }
             catch(Exception error)
             {
@@ -306,6 +331,21 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         }
         private bool AddNpcIndex(float value)
         {if(float.IsNaN(value) || float.IsInfinity(value) || value<0 || value>=Main.maxNPCs || value!=(int)value)throw new InvalidDataException("Invalid native NPC link.");return npcs.Add((int)value);}
+        private long CapacityShape()
+        {
+            // Only while a capacity refusal is backed off. Bound by pages
+            // already owned by this target, with no new observation/arrays or
+            // whole-state hashing. Activity, identity/trail extent and crossing
+            // the finite horizon can change result size and invite a new try.
+            unchecked
+            {
+                long shape=17;
+                foreach(int slot in npcs){var n=Main.npc[slot];shape=shape*31+(n.active?1:0);shape=shape*31+n.type;shape=shape*31+(n.oldPos?.Length??0);shape=shape*31+(n.timeLeft<=PredictionWire.MaximumHorizon?1:0);}
+                foreach(int slot in projectiles){var p=Main.projectile[slot];shape=shape*31+(p.active?1:0);shape=shape*31+p.type;shape=shape*31+(p.oldPos?.Length??0);shape=shape*31+(p.timeLeft<=PredictionWire.MaximumHorizon?1:0);}
+                foreach(var p in Main.player)if(p!=null && p.active)shape=shape*31+p.whoAmI+1;
+                return shape==-1?0:shape;
+            }
+        }
         private bool TerrainCurrent(NativeTerrainSnapshot value,long world)
         {if(!ReferenceEquals(checkedTerrain,value)){checkedTerrain=value;checkedTerrainCurrent=value.IsCurrentObserved(world,terrainComparison);}return checkedTerrainCurrent;}
         private NativePredictionAlignment.Frame Observe(long tick,int[] ns,int[] ps,int selected)

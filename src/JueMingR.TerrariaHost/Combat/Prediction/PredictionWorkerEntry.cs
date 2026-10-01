@@ -37,16 +37,27 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                         continue;
                     }
                     byte[] result;
-                    try{result=sandbox.Predict(frame,ready!=null);}
+                    try
+                    {
+                        byte[] core=sandbox.Predict(frame,ready!=null);
+                        result=ready==null?core:PredictionPipeProtocol.Envelope(PredictionPipeProtocol.Result(core,sandbox.Alignment,NativeAssetSnapshot.MissingKey),sequence,true);
+                    }
                     catch(Exception error)
                     {
                         if(error is OutOfMemoryException)throw;
                         // A native scenario failure invalidates this request;
                         // it is never replaced by extrapolated success points.
+                        bool capacity=error is PredictionCapacityException;
                         using(var buffer=new MemoryStream())using(var writer=new BinaryWriter(buffer))
-                        {writer.Write(-PredictionWire.Protocol);writer.Write(error.GetType().Name);string message=(PredictionPipeProtocol.Measure?"completed-steps="+sandbox.MeasuredCompletedSteps+"; ":"")+error;writer.Write(message.Length>4096?message.Substring(0,4096):message);writer.Write(NativeTileBoundary.MissingX);writer.Write(NativeTileBoundary.MissingY);writer.Write(NativeEntityDirectory.MissingKind);writer.Write(NativeEntityDirectory.MissingSlot);writer.Write(NativeEntityDirectory.MissingField);writer.Flush();result=buffer.ToArray();}
+                        {writer.Write(-PredictionWire.Protocol);writer.Write(error.GetType().Name);string message=(PredictionPipeProtocol.Measure?"completed-steps="+sandbox.MeasuredCompletedSteps+"; ":"")+error;writer.Write(message.Length>4096?message.Substring(0,4096):message);writer.Write(capacity?-1:NativeTileBoundary.MissingX);writer.Write(capacity?-1:NativeTileBoundary.MissingY);writer.Write(capacity?-1:NativeEntityDirectory.MissingKind);writer.Write(capacity?-1:NativeEntityDirectory.MissingSlot);writer.Write(capacity?-1:NativeEntityDirectory.MissingField);writer.Flush();result=buffer.ToArray();}
+                        // Failed predictions have no usable alignment or asset
+                        // acknowledgement. Never append the oversized proof to
+                        // their small refusal, or acknowledge stale terrain.
+                        if(ready!=null)result=PredictionPipeProtocol.Envelope(PredictionPipeProtocol.Result(result,null,-1),sequence,true);
                     }
-                    PredictionWire.WriteFrame(output,ready==null?result:PredictionPipeProtocol.Envelope(PredictionPipeProtocol.Result(result,sandbox.Alignment,NativeAssetSnapshot.MissingKey),sequence,true));
+                    // I/O is outside request recovery: after a partial write
+                    // the only safe action is closing this owned connection.
+                    PredictionWire.WriteFrame(output,result);
                 }
             }
             return 0;

@@ -23,7 +23,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         private readonly string[] expectedHashes;
         internal static readonly string[] PayloadNames={"JueMingR.PredictionWorker.exe","JueMingR.PredictionWorker.exe.config","JueMingR.TerrariaHost.dll","JueMingR.Platform.dll","JueMingR.Features.dll","JueMingR.Infrastructure.dll","0Harmony.dll"};
         private readonly int startupMilliseconds,requestMilliseconds;
-        private int state,stopping,childId,closed;
+        private int state,stopping,childId,closed,readySeen,recoverable;
         private long deadline;
         private long worldRevision,clearedRevision;
         private byte[] request,result;
@@ -56,6 +56,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         internal int ChildId {get{return Volatile.Read(ref childId);}}
         internal bool Closed {get{return Volatile.Read(ref closed)!=0;}}
         internal string Failure {get{return Volatile.Read(ref failure);}}
+        internal bool Recoverable {get{return Volatile.Read(ref recoverable)!=0;}}
         internal PredictionWorkerClient(string directory,string gamePath,string[] expectedHashes,int startupMilliseconds=60000,int requestMilliseconds=5000)
             :this(directory,gamePath,expectedHashes,startupMilliseconds,requestMilliseconds,Path.Combine(directory,"prediction-materials")){}
         internal PredictionWorkerClient(string directory,string gamePath,string[] expectedHashes,int startupMilliseconds,int requestMilliseconds,string cacheDirectory)
@@ -120,6 +121,11 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             lock(gate)
             {
                 if(stopping!=0)return;string message=error.GetType().Name+": "+error.Message;
+                // Only loss/timeout of an already authenticated connection can
+                // invite one Session-owned restart. InvalidDataException also
+                // derives from IOException: exclude it explicitly so corrupt
+                // identity, protocol or decode never becomes a retry signal.
+                Volatile.Write(ref recoverable,readySeen!=0 && (error is TimeoutException || error is IOException && !(error is InvalidDataException))?1:0);
                 Volatile.Write(ref failure,message.Length>1024?message.Substring(0,1024):message);
                 Volatile.Write(ref stopping,1);request=result=null;valueRequest=null;decodedReply=null;Volatile.Write(ref state,4);wake.Set();
             }
@@ -170,7 +176,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                     output.DisposeLocalCopyOfClientHandle();input.DisposeLocalCopyOfClientHandle();
                     StreamReader errorReader=child.StandardError;diagnostics=Task.Run(()=>Drain(errorReader));
                     PredictionPipeProtocol.VerifyReady(PredictionPipeProtocol.ReadFrame(input),nonce,parentId,parentStarted,childId,childStarted,hostHash);
-                    lock(gate){deadline=0;if(stopping!=0)return;ReadyMilliseconds=startup.Elapsed.TotalMilliseconds;Volatile.Write(ref state,worldRevision==clearedRevision?1:7);}
+                    lock(gate){deadline=0;if(stopping!=0)return;Volatile.Write(ref readySeen,1);ReadyMilliseconds=startup.Elapsed.TotalMilliseconds;Volatile.Write(ref state,worldRevision==clearedRevision?1:7);}
                     long sequence=0;
                     while(Volatile.Read(ref stopping)==0)
                     {

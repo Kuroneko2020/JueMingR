@@ -47,6 +47,7 @@ namespace NativeWorldTextProbe
                 byte[] future=Take(type,client);Require(future!=null && State(type,client)==1 && Take(type,client)==null,"Result is transferred once; only then is another request allowed.");
                 File.WriteAllBytes(Path.Combine(output,"transport-harpy-frozen.bin"),future);
                 NativeCombatWorkerChecks.Compare(future,0,output,"transport-harpy");
+                if(Environment.GetEnvironmentVariable("JUEMINGR_NPC_CAPACITY_CHECK")=="1")Capacity(host,type,client,capture,output,pid,snapshot);
                 Require(Send(type,client,new byte[]{1}),"Malformed native payload remains bounded within a valid transport envelope.");Wait(type,client,3,15000);
                 using(var reader=new BinaryReader(new MemoryStream(Take(type,client),false)))Require(reader.ReadInt32()==-NativeCombatWorkerChecks.ExpectedProtocol,"Native request refusal keeps its matching transport sequence.");
                 Require(Send(type,client,snapshot),"Worker remains available after a native request refusal.");Wait(type,client,3,15000);
@@ -63,6 +64,38 @@ namespace NativeWorldTextProbe
             finally{type.GetMethod("Stop",Flags).Invoke(client,null);}
         }
         private static object Create(Type type,string layout,string[] hashes){return Activator.CreateInstance(type,Flags,null,new object[]{layout,Path.Combine(Program.Repository,"external/TerrariaRefs/Terraria.exe"),hashes,60000,10000},null);}
+        private static void Capacity(Assembly host,Type clientType,object client,MethodInfo capture,string output,int pid,byte[] normal)
+        {
+            // Real sealed scene values, not an alternate protocol responder.
+            // These harmless active shots fill the full native dependency
+            // timeline and alignment independently below the frame budget.
+            NativeCombatWorkerChecks.Scene(false);
+            var slots=new int[303];
+            for(int i=0;i<300;i++)
+            {
+                var shot=Terraria.Main.projectile[i];shot.SetDefaults(1);shot.whoAmI=i;shot.active=true;shot.position=new Microsoft.Xna.Framework.Vector2(900,900);shot.velocity=Microsoft.Xna.Framework.Vector2.Zero;
+                shot.aiStyle=0;shot.friendly=shot.hostile=false;shot.damage=0;shot.tileCollide=false;shot.ignoreWater=true;shot.timeLeft=10000;
+            }
+            for(int i=0;i<slots.Length;i++)slots[i]=i;
+            byte[] large=(byte[])capture.Invoke(null,new object[]{new[]{0},slots,0,1000L,180});
+            File.WriteAllText(Path.Combine(output,"capacity-request.txt"),"requestBytes="+large.Length+" activeShots=300 horizon=180\n");
+            Require(Send(clientType,client,large),"Capacity counterexample uses the ready real worker.");Wait(clientType,client,3,30000);
+            byte[] refused=Take(clientType,client);
+            using(var reader=new BinaryReader(new MemoryStream(refused,false)))
+            {
+                Require(reader.ReadInt32()==-NativeCombatWorkerChecks.ExpectedProtocol,"Full result over capacity is a matching native refusal.");
+                string name=reader.ReadString(),reason=reader.ReadString();File.WriteAllText(Path.Combine(output,"capacity-refusal.txt"),name+": "+reason);
+                Require(name=="PredictionCapacityException" && reason.Contains("core=") && reason.Contains("alignment="),"Combined capacity has an explicit bounded reason.");
+                var sizes=System.Text.RegularExpressions.Regex.Match(reason,@"core=(\d+) alignment=(\d+) payload=(\d+) limit=(\d+)");Require(sizes.Success,"Capacity reason carries real generated sizes.");
+                long core=long.Parse(sizes.Groups[1].Value),proof=long.Parse(sizes.Groups[2].Value),payload=long.Parse(sizes.Groups[3].Value),limit=long.Parse(sizes.Groups[4].Value);
+                Require(core<limit && proof<limit && payload==core+proof+16 && payload>limit,"Each result part fits independently; wrapper plus combined parts actually exceeds the frame budget.");
+                File.WriteAllText(Path.Combine(output,"capacity-sizes.txt"),"core="+core+" alignment="+proof+" resultMetadata=16 envelope=17 payload="+payload+" frame="+(payload+17)+" limit=4194304 refusalCore="+refused.Length+"\n");
+                reader.ReadInt32();reader.ReadInt32();Require(reader.ReadInt32()==-1,"Capacity refusal cannot masquerade as a missing page.");
+            }
+            Require(Send(clientType,client,normal),"Ordinary input runs after capacity refusal without toggling or clearing Failed.");Wait(clientType,client,3,15000);
+            byte[] result=Take(clientType,client);using(var reader=new BinaryReader(new MemoryStream(result,false)))Require(reader.ReadInt32()==NativeCombatWorkerChecks.ExpectedProtocol,"Ordinary request succeeds automatically after oversized request.");
+            Require((int)clientType.GetProperty("ChildId",Flags).GetValue(client)==pid,"Capacity rejection keeps the healthy owned worker and sequence.");
+        }
         private static void Closed(Type type,object value)
         {var watch=Stopwatch.StartNew();while(!(bool)type.GetProperty("Closed",Flags).GetValue(value) && watch.ElapsedMilliseconds<6000)Thread.Sleep(10);Require((bool)type.GetProperty("Closed",Flags).GetValue(value),"Terminal client released its owned process and pipe resources.");}
         private static void ProtocolBoundaries(Assembly host,string hash)
@@ -77,6 +110,11 @@ namespace NativeWorldTextProbe
             Rejected(()=>open.Invoke(null,new object[]{envelope,8L,true}),"Wrong request sequence");Rejected(()=>open.Invoke(null,new object[]{envelope,7L,false}),"Wrong message direction");
             Rejected(()=>open.Invoke(null,new object[]{ready,7L,true}),"Duplicate Ready cannot be mistaken for a result");
             var read=protocol.GetMethod("ReadFrame",Flags);
+            var wrap=protocol.GetMethod("Result",Flags);int maximum=(int)protocol.GetField("MaximumPayload",Flags).GetRawConstantValue();
+            byte[] boundary=(byte[])wrap.Invoke(null,new object[]{new byte[maximum-19],new byte[]{7,8,9},-1});
+            byte[] bounded=(byte[])protocol.GetMethod("Envelope",Flags).Invoke(null,new object[]{boundary,9L,true});
+            Require(bounded.Length==maximum+17,"Complete legal response can occupy the exact frame limit.");
+            using(var stream=new MemoryStream()){protocol.GetMethod("WriteFrame",Flags).Invoke(null,new object[]{stream,bounded});stream.Position=0;Require(Equal((byte[])read.Invoke(null,new object[]{stream}),bounded),"Exact-capacity frame survives production framing intact.");}
             Require(read.Invoke(null,new object[]{new MemoryStream()})==null,"Clean EOF differs from a truncated frame.");
             foreach(byte[] bad in new[]{new byte[]{1},new byte[]{0,0,0,0},new byte[]{1,0,64,0},new byte[]{3,0,0,0,1,2}})
                 Rejected(()=>read.Invoke(null,new object[]{new MemoryStream(bad,false)}),"Truncated header/payload and invalid bounded length");

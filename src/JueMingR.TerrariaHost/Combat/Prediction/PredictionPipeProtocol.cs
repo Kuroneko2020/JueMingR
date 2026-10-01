@@ -8,9 +8,9 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
     internal static class PredictionPipeProtocol
     {
 #if JMR_CONDITIONAL_RESEARCH
-        internal const int Protocol=127,MaximumBytes=4*1024*1024,MaximumPayload=MaximumBytes-17;
+        internal const int Protocol=128,MaximumBytes=4*1024*1024,MaximumPayload=MaximumBytes-17;
 #else
-        internal const int Protocol=27,MaximumBytes=4*1024*1024,MaximumPayload=MaximumBytes-17;
+        internal const int Protocol=28,MaximumBytes=4*1024*1024,MaximumPayload=MaximumBytes-17;
 #endif
         internal const string GameHash="960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3";
         // Explicit isolated development probes only; the installed path does
@@ -23,8 +23,13 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         {return value!=null && value.Length==5 && value[0]==0x43 && value[1]==0x57 && value[2]==0x52 && value[3]==0x44 && value[4]==Protocol;}
         internal static byte[] Result(byte[] core,byte[] alignment,int missingAsset)
         {
+            // Check the complete result before allocating/copying its frame.
+            // Capacity is a request refusal, not a broken authenticated pipe.
+            if(core==null || core.Length<1)throw new InvalidDataException("Prediction core absent.");
+            long size=16L+core.Length+(alignment==null?0:alignment.Length);
+            if(size>MaximumPayload)throw new PredictionCapacityException("Prediction result capacity: core="+core.Length+" alignment="+(alignment==null?0:alignment.Length)+" payload="+size+" limit="+MaximumPayload);
             using(var bytes=new MemoryStream())using(var writer=new BinaryWriter(bytes))
-            {writer.Write(1);writer.Write(missingAsset);writer.Write(core.Length);writer.Write(core);writer.Write(alignment==null?0:alignment.Length);if(alignment!=null)writer.Write(alignment);writer.Flush();if(bytes.Length>MaximumPayload)throw new InvalidDataException("Prediction result capacity.");return bytes.ToArray();}
+            {writer.Write(1);writer.Write(missingAsset);writer.Write(core.Length);writer.Write(core);writer.Write(alignment==null?0:alignment.Length);if(alignment!=null)writer.Write(alignment);writer.Flush();return bytes.ToArray();}
         }
         internal static byte[] OpenResult(byte[] payload,out byte[] alignment,out int missingAsset)
         {
@@ -84,4 +89,8 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         private static void Exact(Stream input,byte[] bytes,int offset,int count)
         {while(count>0){int got=input.Read(bytes,offset,count);if(got==0)throw new EndOfStreamException("Truncated prediction frame.");offset+=got;count-=got;}}
     }
+    // Deliberately narrow: only known bounded result-generation limits use
+    // this refusal. Protocol/identity corruption and OOM are never relabeled.
+    internal sealed class PredictionCapacityException : Exception
+    {internal PredictionCapacityException(string message):base(message){}}
 }

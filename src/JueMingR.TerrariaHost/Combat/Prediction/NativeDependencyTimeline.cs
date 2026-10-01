@@ -20,7 +20,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             for(int i=0;i<=Main.maxNPCs;i++)if(Known(Main.npc[i]))npcs++;
             for(int i=0;i<=Main.maxProjectiles;i++)if(Known(Main.projectile[i]))projectiles++;
             if(bytes.Length+12L+49L*npcs+44L*projectiles>PredictionWire.MaximumBytes)
-                throw new InvalidDataException("Dependency timeline exceeds result capacity.");
+                throw new PredictionCapacityException("Dependency timeline exceeds result capacity.");
             writer.Write(step);writer.Write(npcs);
             for(int i=0;i<=Main.maxNPCs;i++)
             {
@@ -40,7 +40,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         {
             writer.Flush();
             if(destination.BaseStream.Length+4+bytes.Length+32>PredictionWire.MaximumBytes)
-                throw new InvalidDataException("Combined prediction result exceeds capacity.");
+                throw new PredictionCapacityException("Combined prediction result exceeds capacity.");
             destination.Write((int)bytes.Length);destination.Write(bytes.GetBuffer(),0,(int)bytes.Length);
         }
         private static bool Known(NPC n){return n.active && NativeEntityDirectory.CanAdvance(n);}

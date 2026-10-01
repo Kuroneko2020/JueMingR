@@ -67,7 +67,6 @@ namespace JueMingR.TerrariaHost.Combat
             // callback even in menus. This does not activate any Gameplay
             // feature, sample a world, or grant input/operation ownership.
             Prediction.Native?.PollEnvironment(Hooks.Ready && (Settings.CanRun && Options.Path && !pathFailed || Prediction.Cache.Required>0),runtime.IsSessionActive);
-            if(Prediction.Native!=null && Prediction.Native.Failed)pathFailed=true;
             wasCollision=collision;wasPath=path;
         }
         internal void SampleMouse(){if(Path || Prediction.Cache.Required>0)Selection.SampleMouse(input);}
@@ -85,7 +84,10 @@ namespace JueMingR.TerrariaHost.Combat
             if(Path)Prediction.Cache.Demand(0,NpcPredictionCache.Horizon);else Prediction.Cache.Release(0);
             try{Selection.Update(Options,Session,Prediction.Cache.Required>0,Collision?Geometry:null);}catch{CollisionFailed();pathFailed=true;Selection.RetireTarget();Prediction.Clear();return;}
             if(!Selection.HasTarget){Prediction.Clear();return;}
-            try{Prediction.Prepare(Selection.Target,Main.GameUpdateCount);if(Prediction.Native!=null && Prediction.Native.Failed)pathFailed=true;}catch{pathFailed=true;Prediction.Stop();}
+            // The native worker owns ordinary prediction failure. Selection,
+            // collision and the independent segmented strategy remain usable;
+            // only a failure of this shared entry latches the whole path.
+            try{Prediction.Prepare(Selection.Target,Main.GameUpdateCount);}catch{pathFailed=true;Prediction.Stop();}
         }
         internal void Register(HotkeyRegistry registry,Hotkeys.HotkeyStateFeedback feedback)
         {
@@ -103,6 +105,8 @@ namespace JueMingR.TerrariaHost.Combat
             Settings.TakeFeedback(show);
             if(Unavailable(0)!=null && Options.Collision && !reportedCollision){reportedCollision=true;show(Unavailable(0));}
             if(Unavailable(1)!=null && Options.Path && !reportedPath){reportedPath=true;show(Unavailable(1));}
+            else if(Prediction.Native!=null && Prediction.Native.Failed && Options.Path && !reportedPath)
+            {reportedPath=true;show("普通敌怪预测暂不可用，分节预测仍可用；可点击开启重试。");}
         }
         private void Exit(object sender,EventArgs e){AppDomain.CurrentDomain.ProcessExit-=Exit;Clear();Prediction.Stop();Hooks.Dispose();Settings.Stop(750);}
     }
