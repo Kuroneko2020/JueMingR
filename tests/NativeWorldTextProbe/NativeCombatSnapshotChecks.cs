@@ -380,11 +380,13 @@ namespace NativeWorldTextProbe
             var valueIdentity=new NpcIdentity(1,null,0,1,npc.type,npc.netID);
             foreach(int age in new[]{60,61,80})
             {
+                using(var wake=new System.Threading.AutoResetEvent(false))
+                {
                 bool natural=age==80;long now=1000+(natural?60:age);
                 var cache=new JueMingR.Features.Combat.NpcPredictionCache();cache.Demand(0,120);
                 object session=Activator.CreateInstance(owner,Flags,null,new object[]{null,cache},null);
                 object worker=System.Runtime.Serialization.FormatterServices.GetUninitializedObject(workerType);
-                set(worker,"gate",new object());set(worker,"state",natural?2:3);
+                set(worker,"gate",new object());set(worker,"wake",wake);set(worker,"state",natural?2:3);
                 set(session,"<Worker>k__BackingField",worker);set(session,"current",identity);set(session,"lastTick",now-1);set(session,"lastAttempt",now);
                 ((SortedSet<int>)owner.GetField("npcs",Flags).GetValue(session)).Add(0);
                 object request=Activator.CreateInstance(requestType,true);
@@ -398,6 +400,10 @@ namespace NativeWorldTextProbe
                 var points=Enumerable.Range(0,natural?80:181).Select(i=>new NpcTrajectoryPoint(i,new NpcMotionState{Identity=valueIdentity,X=npc.position.X,Y=npc.position.Y,Width=npc.width,Height=npc.height})).ToArray();
                 var trajectory=new NpcTrajectory(valueIdentity,1000,1,PredictionAssumption.None,natural?PredictionStop.Despawn:PredictionStop.None,points,points.Length);
                 object result=Activator.CreateInstance(resultType,true);set(result,"Frames",frames);set(result,"Trajectory",natural?typeof(NpcTrajectory).GetMethod("BindIdentity").Invoke(trajectory,new object[]{identity}):trajectory);
+                // This owner-age fixture supplies decoded values, not a terrain
+                // simulation. The real decoder always supplies a nonnull usage
+                // record; no terrain accesses are asserted for this static input.
+                set(result,"TerrainUsage",Activator.CreateInstance(host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativeTerrainUsage",true),true));
                 ((SortedSet<int>)resultType.GetField("Npcs",Flags).GetValue(result)).Add(0);
                 if(natural){set(session,"accepted",result);set(session,"acceptedRequest",request);}
                 else
@@ -405,6 +411,7 @@ namespace NativeWorldTextProbe
                     object reply=Activator.CreateInstance(replyType,true);set(reply,"Result",result);set(worker,"decodedReply",reply);set(session,"pending",request);
                 }
                 owner.GetMethod("Prepare",Flags).Invoke(session,new object[]{identity,now});
+                Require(!(bool)owner.GetProperty("Failed",Flags).GetValue(session),"Valid decoded age fixture must not fail the owner: "+owner.GetProperty("Reason",Flags).GetValue(session));
                 NpcTrajectory shown=cache.Read(0);
                 if(age==60)Require(shown!=null && shown.Count==121 && shown.SampleTick==1060 && shown.CaptureTick==1000 && shown.Identity.Equals(identity),"Age-60 receipt publishes the actual remaining 120 steps with its original capture and live identity.");
                 else if(age==61)Require(shown==null && (long)owner.GetField("Rejected",Flags).GetValue(session)==1,"Age-61 receipt is retired before it can enter the cache.");
@@ -413,6 +420,7 @@ namespace NativeWorldTextProbe
                     Require(shown!=null && shown.Stop==PredictionStop.Despawn && shown.CaptureTick==1000,"A proven natural end keeps its real shorter future at age 60.");
                     owner.GetMethod("Prepare",Flags).Invoke(session,new object[]{identity,1061L});
                     Require(cache.Read(0)==null && owner.GetField("accepted",Flags).GetValue(session)==null,"At age 61 even an already accepted natural end retires without renewing sample time or extending its tail.");
+                }
                 }
             }
             Console.WriteLine("PASS native session receive age60 / reject age61 / accepted natural-end expiry / original CaptureTick");
