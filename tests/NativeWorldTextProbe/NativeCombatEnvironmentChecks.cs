@@ -26,6 +26,8 @@ namespace NativeWorldTextProbe
             var selection=Get(Get(context,"CombatObservation"),"Selection");
             string axis=Environment.GetEnvironmentVariable("JUEMINGR_NPC_ENV_AXIS")??"bunnies";
             if(axis=="query-boundary"){NativeCombatQueryBoundaryChecks.Run(context,output);return;}
+            if(axis=="conditional-candidate"){NativeCombatConditionalChecks.Run(context,native,cache,step,output);return;}
+            if(axis=="conditional-scope"){NativeCombatConditionalChecks.CheckGeometryScope(native);return;}
             if(axis=="route-feasibility"){Continuous(context,native,cache,step,output);return;}
             int[] types={42,176,110,175,153,51,56,674};
             string selectedTypes=Environment.GetEnvironmentVariable("JUEMINGR_NPC_ENV_TYPES");
@@ -134,7 +136,7 @@ namespace NativeWorldTextProbe
         private static double prepareMs;
         private static readonly List<FutureSample> futures=new List<FutureSample>();
         private static readonly List<string> futureRows=new List<string>(),replyRows=new List<string>();
-        private static readonly int[] horizons={15,60,120};
+        private static readonly int[] horizons={15,30,60,90,120};
         private static readonly string[] costFields={"CaptureMs","EncodeMs","ExchangeMs","DecodeMs","AcceptMs","TotalMs","ResetMs","RestoreMs","AdvanceMs","Bytes","ReplyBytes"};
         private static string Csv(params object[] values)=>string.Join(",",values.Select(v=>"\""+Convert.ToString(v,CultureInfo.InvariantCulture).Replace("\"","\"\"")+"\""));
         private static double Milliseconds(long value)=>value*1000.0/Stopwatch.Frequency;
@@ -193,13 +195,14 @@ namespace NativeWorldTextProbe
                 futures.RemoveAt(i);
             }
         }
-        private static void Continuous(object context,object native,NpcPredictionCache cache,Action step,string output)
+        internal static void Continuous(object context,object native,NpcPredictionCache cache,Action step,string output,bool conditional=false)
         {
-            const int frames=2400;
+            int frames=conditional?1440:2400;
             var host=Get(context,"CombatObservation");var selection=Get(host,"Selection");
             var worker=Get(native,"Worker");int child=(int)Get(worker,"ChildId");
             routeNative=native;routeSelection=routeEnvironment=routeNearTerrain=0;futures.Clear();futureRows.Clear();replyRows.Clear();
-            var rows=new List<string>{"frame,phase,tick,desiredSlot,selectedSlot,selectedType,selectedCorrect,shown,childId,workerState,failed,requests,rejected,refused,npcPages,projectilePages,extraChunks,terrainChunks,activeBackground,activeProjectiles,newProjectiles,projectileUpdateFrames,x,y,vx,vy,life,playerLife,prepareMs,stepWallMs,tilesCompared,tilesCaptured,reason"};
+            NativeCombatConditionalChecks.RolePeak=NativeCombatConditionalChecks.HarpyConsumed=0;
+            var rows=new List<string>{"frame,phase,tick,desiredSlot,selectedSlot,selectedType,selectedCorrect,shown,childId,workerState,failed,requests,rejected,refused,npcPages,projectilePages,extraChunks,terrainChunks,activeBackground,activeProjectiles,newProjectiles,projectileUpdateFrames,x,y,vx,vy,life,playerLife,prepareMs,stepWallMs,tilesCompared,tilesCaptured,reason,fullAiRoles,fullAiActive,remainingFuture"};
             var backgrounds=new List<int>();var seenProjectiles=new HashSet<string>();int projectileUpdateFrames=0,secondary=-1,desired=-1;
             bool oldHard=Main.hardMode;var patches=new Harmony("JueMingR.Tests.RouteFeasibility");
             try
@@ -215,7 +218,8 @@ namespace NativeWorldTextProbe
                 player.statLife=player.statLifeMax=player.statLifeMax2=400;player.immune=true;player.immuneTime=100000;
                 for(int i=0;i<player.hurtCooldowns.Length;i++)player.hurtCooldowns[i]=100000;
                 Array.Clear(player.buffType,0,player.buffType.Length);Array.Clear(player.buffTime,0,player.buffTime.Length);
-                typeof(Main).GetField("_rngs",Flags).SetValue(null,new Dictionary<string,UnifiedRandom>{{"UpdatePlayers",new UnifiedRandom(531)},{"UpdateNPCs",new UnifiedRandom(879)},{"UpdateProjectiles",new UnifiedRandom(171)}});
+                int npcSeed; if(!int.TryParse(Environment.GetEnvironmentVariable("JUEMINGR_NPC_CONDITIONAL_SEED"),out npcSeed))npcSeed=879;
+                typeof(Main).GetField("_rngs",Flags).SetValue(null,new Dictionary<string,UnifiedRandom>{{"UpdatePlayers",new UnifiedRandom(531)},{"UpdateNPCs",new UnifiedRandom(npcSeed)},{"UpdateProjectiles",new UnifiedRandom(171)}});
                 Main.Map=new Terraria.Map.WorldMap(Main.maxTilesX,Main.maxTilesY);Main.liquid=new Liquid[Liquid.maxLiquid];Main.liquidBuffer=new LiquidBuffer[Liquid.maxLiquidBuffer];Liquid.ReInit();LiquidBuffer.numLiquidBuffer=0;
                 for(int tx=129;tx<=136;tx++)for(int ty=100;ty<=115;ty++){var tile=Main.tile[tx,ty];bool edge=tx==129 || tx==136 || ty==115;tile.active(edge);tile.type=1;if(!edge && ty>=101)tile.liquid=255;}
                 int primary=NPC.NewNPC(NPC.GetSpawnSourceForNaturalSpawn(),1500,2200,NPCID.Hornet,Start:16,Target:Main.myPlayer);
@@ -225,29 +229,42 @@ namespace NativeWorldTextProbe
                 patches.Patch(type.GetMethod("Receive",Flags),new HarmonyMethod(typeof(NativeCombatEnvironmentChecks).GetMethod(nameof(ReceiveStarting),Flags)),new HarmonyMethod(typeof(NativeCombatEnvironmentChecks).GetMethod(nameof(ReceiveFinished),Flags)));
                 for(routeFrame=0;routeFrame<frames;routeFrame++)
                 {
+                    if(conditional)
+                    {
+                        routePhase=routeFrame<120?"gate-simple":routeFrame<720?"gate-background":routeFrame<840?"gate-same-target-exit":"gate-harpy";
+                        if(routeFrame==120){routeEnvironment++;for(int i=0;i<8;i++)backgrounds.Add(NPC.NewNPC(NPC.GetSpawnSourceForNaturalSpawn(),300+i*25,2400,NPCID.Bunny,Start:i));}
+                        if(routeFrame==720){routeEnvironment++;foreach(int slot in backgrounds)Main.npc[slot].active=false;}
+                        if(routeFrame==840){Main.npc[primary].active=false;primary=NPC.NewNPC(NPC.GetSpawnSourceForNaturalSpawn(),1500,2200,NPCID.Harpy,Start:16,Target:Main.myPlayer);}
+                    }
+                    else
+                    {
                     routePhase=routeFrame<480?"simple-start":routeFrame<960?"background":routeFrame<1440?"remote-liquid":routeFrame<1800?"rapid-switch":"simple-return";
                     if(routeFrame==480){routeEnvironment++;for(int i=0;i<8;i++)backgrounds.Add(NPC.NewNPC(NPC.GetSpawnSourceForNaturalSpawn(),2700+i*25,2400,NPCID.Bunny,Start:i));}
                     if(routeFrame==960){routeEnvironment++;WorldGen.TileFrame(132,104,false,false);Main.tile[132,115].active(false);for(int tx=130;tx<=135;tx++)for(int ty=101;ty<115;ty++)Liquid.AddWater(tx,ty);}
                     if(routeFrame==1440){routeNearTerrain++;Main.tile[93,149].active(true);Main.tile[93,149].type=60;secondary=NPC.NewNPC(NPC.GetSpawnSourceForNaturalSpawn(),1500,2400,NPCID.AngryTrapper,Start:17,ai0:93,ai1:149,Target:Main.myPlayer);}
                     if(routeFrame==1800){routeEnvironment++;foreach(int slot in backgrounds)Main.npc[slot].active=false;Main.npc[secondary].active=false;foreach(var p in Main.projectile)p.active=false;for(int tx=130;tx<=135;tx++)for(int ty=101;ty<150;ty++)Main.tile[tx,ty].liquid=0;Main.tile[132,115].active(true);}
                     if(routeFrame>=960 && routeFrame<1800)Liquid.UpdateLiquid();
-                    int next=routeFrame>=1440 && routeFrame<1788 && (routeFrame-1440)/12%2!=0?secondary:primary;
+                    }
+                    int next=!conditional && routeFrame>=1440 && routeFrame<1788 && (routeFrame-1440)/12%2!=0?secondary:primary;
                     if(next!=desired){desired=next;routeSelection++;}
                     SampleMouse(context,Main.npc[desired].Center);prepareMs=0;var clock=Stopwatch.StartNew();step();double elapsed=clock.Elapsed.TotalMilliseconds;
                     if(!ReferenceEquals(worker,Get(native,"Worker")) || (int)Get(worker,"ChildId")!=child)throw new InvalidOperationException("Continuous investigation must retain one exact prepared child.");
                     CompleteFutures();var path=cache.Read(0);var target=(NpcIdentity)Get(selection,"Target");bool selected=(bool)Get(selection,"HasTarget") && target.Slot==desired;
                     bool shown=path!=null && path.Identity.Slot==desired && ReferenceEquals(path.Identity.Token,Main.npc[desired]);
+                    if(conditional && routePhase=="gate-background")NativeCombatConditionalChecks.RolePeak=Math.Max(NativeCombatConditionalChecks.RolePeak,NativeCombatConditionalChecks.Roles(native,false));
+                    if(conditional && routePhase=="gate-harpy" && shown && path.Count==121)NativeCombatConditionalChecks.HarpyConsumed++;
                     if(path!=null && !shown)throw new InvalidOperationException("Published route belongs to a retired/other selected actor.");
                     if(shown && routeFrame%15==0)SampleFuture("published","accepted",path,path.Identity,path.CaptureTick,path.SampleTick);
                     int shots=0;foreach(var p in Main.projectile)if(p.active && seenProjectiles.Add(((uint)p.key)+":"+p.type))shots++;
                     int activeShots=Main.projectile.Count(p=>p.active);projectileUpdateFrames+=activeShots;
                     var terrain=Get(native,"terrain");int chunks=terrain==null?0:((Array)Get(terrain,"Chunks")).Length;var comparison=Get(native,"terrainComparison");var npc=Main.npc[desired];
                     rows.Add(Csv(routeFrame,routePhase,Main.GameUpdateCount,desired,target.Slot,target.Type,selected?1:0,shown?1:0,child,Get(worker,"State"),Get(native,"Failed"),Get(native,"Requests"),Get(native,"Rejected"),Get(native,"Refused"),
-                        Get(Get(native,"npcs"),"Count"),Get(Get(native,"projectiles"),"Count"),Get(Get(native,"extraChunks"),"Count"),chunks,backgrounds.Count(s=>Main.npc[s].active),activeShots,shots,projectileUpdateFrames,npc.position.X,npc.position.Y,npc.velocity.X,npc.velocity.Y,npc.life,player.statLife,prepareMs,elapsed,Get(comparison,"TilesRead"),Get(comparison,"TilesCaptured"),Get(native,"Reason")));
+                        Get(Get(native,"npcs"),"Count"),Get(Get(native,"projectiles"),"Count"),Get(Get(native,"extraChunks"),"Count"),chunks,backgrounds.Count(s=>Main.npc[s].active),activeShots,shots,projectileUpdateFrames,npc.position.X,npc.position.Y,npc.velocity.X,npc.velocity.Y,npc.life,player.statLife,prepareMs,elapsed,Get(comparison,"TilesRead"),Get(comparison,"TilesCaptured"),Get(native,"Reason"),
+                        NativeCombatConditionalChecks.Roles(native,false),NativeCombatConditionalChecks.Roles(native,true),shown?path.Count-1:0));
                     if(routeFrame%480==479)Console.WriteLine("ROUTE phase="+routePhase+" through="+routeFrame+" child="+child+" requests="+Get(native,"Requests")+" rejected="+Get(native,"Rejected")+" refused="+Get(native,"Refused")+" background="+backgrounds.Count(s=>Main.npc[s].active)+" distinct-shots="+seenProjectiles.Count);
                 }
                 CompleteFutures(true);
-                Console.WriteLine("INVESTIGATION COMPLETE: continuous 2400 updates, unchanged Host/worker; candidates observed only, no product PASS or FPS inferred.");
+                Console.WriteLine("INVESTIGATION COMPLETE: continuous "+frames+" updates, unchanged Host/worker; received/published futures distinguished, no product PASS or FPS inferred.");
             }
             finally
             {

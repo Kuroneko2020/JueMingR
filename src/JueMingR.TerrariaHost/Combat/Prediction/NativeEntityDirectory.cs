@@ -89,10 +89,21 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         internal static void KnowProjectile(int slot){Know(OpaqueProjectiles[slot]);OpaqueProjectiles[slot]=null;}
         private static void Know(object value)
         {Entry entry=Opaque[value];Opaque.Remove(value);Captured.Add(value,entry);if(entry.Kind==1)CapturedNpcs[entry.Slot]=(NPC)value;else CapturedProjectiles[entry.Slot]=(Projectile)value;}
-        internal static bool CanAdvance(NPC npc){return !Opaque.ContainsKey(npc);}
+        internal static bool CanAdvance(NPC npc)
+        {
+#if JMR_CONDITIONAL_RESEARCH
+            if(ConditionalNpcQuery.IsQuery(npc))return false;
+#endif
+            return !Opaque.ContainsKey(npc);
+        }
         internal static bool CanAdvance(Projectile projectile){return !Opaque.ContainsKey(projectile);}
         internal static void RequireKnown(object value)
         {
+#if JMR_CONDITIONAL_RESEARCH
+            var query=value as NPC;
+            if(query!=null && ConditionalNpcQuery.IsQuery(query))
+            {if(MissingKind==0){MissingKind=5;MissingSlot=query.whoAmI;MissingField=0;}throw new InvalidDataException("Research query mutation requires exact actor.");}
+#endif
             Entry entry;if(!Opaque.TryGetValue(value,out entry))return;
             if(MissingKind==0){MissingKind=entry.Kind;MissingSlot=entry.Slot;MissingField=0;}
             throw new InvalidDataException("Unobserved entity for immunity reset: kind="+entry.Kind+" slot="+entry.Slot);
@@ -103,7 +114,12 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             throw new InvalidDataException("Unobserved NPC immunity column: slot="+slot);
         }
         internal static void Reset()
-        {End();MissingKind=0;MissingSlot=-1;MissingField=0;Opaque.Clear();Captured.Clear();Array.Clear(OpaqueNpcs,0,OpaqueNpcs.Length);Array.Clear(OpaqueProjectiles,0,OpaqueProjectiles.Length);Array.Clear(CapturedNpcs,0,CapturedNpcs.Length);Array.Clear(CapturedProjectiles,0,CapturedProjectiles.Length);}
+        {
+#if JMR_CONDITIONAL_RESEARCH
+            ConditionalNpcQuery.Reset();
+#endif
+            End();MissingKind=0;MissingSlot=-1;MissingField=0;Opaque.Clear();Captured.Clear();Array.Clear(OpaqueNpcs,0,OpaqueNpcs.Length);Array.Clear(OpaqueProjectiles,0,OpaqueProjectiles.Length);Array.Clear(CapturedNpcs,0,CapturedNpcs.Length);Array.Clear(CapturedProjectiles,0,CapturedProjectiles.Length);
+        }
         internal static void ClearWorld()
         {Reset();var index=(int[,])KeyIndex.GetValue(null);Array.Clear(index,0,index.Length);}
         internal static void Begin()
@@ -114,6 +130,9 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 columnHandler=guard.GetField("CanClearColumn",BindingFlags.Public|BindingFlags.Static);
                 FieldIdentities=((string)guard.GetField("OriginalFields").GetRawConstantValue()).Split('\n').Select(line=>line.Split('|')).ToDictionary(p=>int.Parse(p[0],System.Globalization.CultureInfo.InvariantCulture),p=>p[1]);
                 var names=FieldIdentities.ToDictionary(p=>p.Value,p=>p.Key);
+#if JMR_CONDITIONAL_RESEARCH
+                ConditionalNpcQuery.Prepare(names);
+#endif
                 NpcReads=new HashSet<int>(Npcs.FieldIdentities.Select(n=>names[n]));ProjectileReads=new HashSet<int>(Projectiles.FieldIdentities.Select(n=>names[n]));
                 NpcFields=new HashSet<int>(PredictionWire.Npcs.FieldIdentities.Where(names.ContainsKey).Select(n=>names[n]));
                 ProjectileFields=new HashSet<int>(new NativeValueSnapshot(typeof(Projectile)).FieldIdentities.Where(names.ContainsKey).Select(n=>names[n]));
@@ -262,6 +281,14 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         private static void Check(object value,int field,int mode)
         {
             Entry entry;if(value==null || !(value is NPC) && !(value is Projectile))return;
+#if JMR_CONDITIONAL_RESEARCH
+            var query=value as NPC;
+            if(query!=null && ConditionalNpcQuery.IsQuery(query) && !ConditionalNpcQuery.ReadOnly(query,field,mode))
+            {
+                if(MissingKind==0){MissingKind=5;MissingSlot=query.whoAmI;MissingField=field;}
+                throw new InvalidDataException("Research query address/reference/mutation requires exact actor field="+FieldIdentities[field]);
+            }
+#endif
             // Frequent native scalar access can prove membership by both slot
             // and reference, before paying two object dictionaries. Slot alone
             // is never authority: replaced objects and mutated whoAmI fall

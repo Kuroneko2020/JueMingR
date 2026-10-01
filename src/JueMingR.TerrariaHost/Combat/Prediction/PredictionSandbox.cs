@@ -110,6 +110,9 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 NativeEffectBoundary.ReadAllocation(reader);
                 NativeRandomSnapshot.Read(reader);
                 NativeEntityDirectory.Read(reader);
+#if JMR_CONDITIONAL_RESEARCH
+                ConditionalNpcQuery.ReadRoles(reader);
+#endif
                 int playerCount=Count(reader,1,Main.maxPlayers);var players=new bool[Main.maxPlayers];var playerSlots=new int[playerCount];
                 for(int i=0;i<playerCount;i++)
                 {int slot=Count(reader,0,Main.maxPlayers-1);if(players[slot])throw new InvalidDataException("Duplicate player slot.");playerSlots[i]=slot;players[slot]=restoredPlayers[slot]=true;PredictionWire.Players.Read(reader,Main.player[slot]);NativeActorContext.ReadPlayer(reader,Main.player[slot]);playerMotion.Read(reader,slot);if(!Main.player[slot].active || Main.player[slot].whoAmI!=slot)throw new InvalidDataException("Player identity mismatch.");}
@@ -131,6 +134,11 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 if(Main.maxTilesX!=width || Main.maxTilesY!=height)throw new InvalidDataException("Conflicting terrain dimensions.");
                 terrainValues.Read(reader,width,height);
                 if(input.Position!=input.Length)throw new InvalidDataException("Trailing snapshot data.");
+#if JMR_CONDITIONAL_RESEARCH
+                int[] alignmentSlots=ConditionalNpcQuery.Begin(slots,selected);
+#else
+                int[] alignmentSlots=slots;
+#endif
                 foreach(int slot in slots)if(Main.npc[slot].type==36)
                 {int parent=(int)Main.npc[slot].ai[1];if(parent<0 || parent>=Main.maxNPCs || !Main.npc[parent].active || Main.npc[parent].type!=35)throw new InvalidDataException("Missing Skeletron parent.");}
                 long restored=PredictionPipeProtocol.Measure?Stopwatch.GetTimestamp():0;
@@ -138,7 +146,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 using(var result=new MemoryStream())using(var writer=new BinaryWriter(result,Encoding.UTF8,true))using(var dependencies=new NativeDependencyTimeline())
                 using(var proofBytes=new MemoryStream())using(var proof=new BinaryWriter(proofBytes))
                 {
-                    if(withAlignment){proof.Write(horizon+1);NativePredictionAlignment.Write(proof,NativePredictionAlignment.Observe(tick,slots,projectileSlots,selected));}
+                    if(withAlignment){proof.Write(horizon+1);NativePredictionAlignment.Write(proof,NativePredictionAlignment.Observe(tick,alignmentSlots,projectileSlots,selected));}
                     writer.Write(PredictionWire.Protocol);writer.Write(tick);writer.Write(selected);writer.Write(horizon+1);
                     playerMotion.Begin();WritePoint(writer,selectedNpc,selectedGeneration,ended,0);dependencies.Record(0);
                     bool oldSolid379=Main.tileSolid[379];Main.tileSolid[379]=false;
@@ -147,12 +155,18 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                     try
                     {
                     long advanceTicks=0;
+#if JMR_CONDITIONAL_RESEARCH
+                    long actualNpcCalls=0,actualProjectileCalls=0;
+#endif
                     for(int step=1;step<=horizon;step++)
                     {
                         long advanceStart=PredictionPipeProtocol.Measure?Stopwatch.GetTimestamp():0;
                         NativeNpcMotionTrace.Begin(selectedNpc);
                         UpdateCount.SetValue(null,unchecked((uint)(tick+step)));
                         NativeWorldSnapshot.AdvanceObservedWind();
+#if JMR_CONDITIONAL_RESEARCH
+                        ConditionalNpcQuery.Advance(step);
+#endif
                         NPC.UpdateProtectedSpawnSlots();
                         NPC.ClearFoundActiveNPCs();NPC.UpdateFoundActiveNPCs();
                         playerMotion.Advance();
@@ -168,7 +182,11 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                         Main.sittingManager.ClearNPCAnchors();
                         using(NativeRandomSnapshot.Use("UpdateNPCs"))
                             for(int slot=0;slot<Main.maxNPCs;slot++)if(Main.npc[slot].active && NativeEntityDirectory.CanAdvance(Main.npc[slot]))
-                            {NativeNpcMotionTrace.Enter(Main.npc[slot]);try{Main.npc[slot].UpdateNPC(slot);}finally{NativeNpcMotionTrace.Leave();}}
+                            {
+#if JMR_CONDITIONAL_RESEARCH
+                                actualNpcCalls++;
+#endif
+                                NativeNpcMotionTrace.Enter(Main.npc[slot]);try{Main.npc[slot].UpdateNPC(slot);}finally{NativeNpcMotionTrace.Leave();}}
                         // Enumerate native slots at the phase itself: a new
                         // higher slot participates this tick; a reused lower
                         // slot waits until the next tick. This also includes
@@ -177,7 +195,11 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                         try
                         {
                             for(int slot=0;slot<Main.maxProjectiles;slot++)
-                            {Main.ProjectileUpdateLoopIndex=slot;if(Main.projectile[slot].active && NativeEntityDirectory.CanAdvance(Main.projectile[slot]))Main.projectile[slot].Update(slot);}
+                            {Main.ProjectileUpdateLoopIndex=slot;if(Main.projectile[slot].active && NativeEntityDirectory.CanAdvance(Main.projectile[slot])){
+#if JMR_CONDITIONAL_RESEARCH
+                                actualProjectileCalls++;
+#endif
+                                Main.projectile[slot].Update(slot);}}
                         }
                         finally{Main.ProjectileUpdateLoopIndex=-1;}
                         // Time follows both entity phases. Frozen or aligned
@@ -212,7 +234,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                             // natural ends and shorter demands. Later points retain
                             // full native movement and presentation semantics,
                             // but cannot ever serve as an acceptance proof.
-                            var observed=step<=PredictionWire.MaximumAlignmentAge?NativePredictionAlignment.Observe(tick+step,slots,projectileSlots,selected):NativePredictionAlignment.Presentation(tick+step,selected);
+                            var observed=step<=PredictionWire.MaximumAlignmentAge?NativePredictionAlignment.Observe(tick+step,alignmentSlots,projectileSlots,selected):NativePredictionAlignment.Presentation(tick+step,selected);
                             observed.NewSegment=NativeNpcMotionTrace.Complete();
                             NativePredictionAlignment.Write(proof,observed);
                         }
@@ -221,6 +243,9 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                         if(PredictionPipeProtocol.Measure)MeasuredCompletedSteps=step;
                     }
                     if(withAlignment)proof.Write(advanceTicks);
+#if JMR_CONDITIONAL_RESEARCH
+                    Console.Error.WriteLine("RESEARCH calls npc="+actualNpcCalls+" projectile="+actualProjectileCalls+" query-reads="+ConditionalNpcQuery.QueryReads+" geometry-stores="+ConditionalNpcQuery.GeometryStores+" exact-roles="+alignmentSlots.Length+" query-pages="+(slots.Length-alignmentSlots.Length));
+#endif
                     }
                     finally{NativeNpcMotionTrace.Clear();NativeTileBoundary.End();NativeEntityDirectory.End();Main.tileSolid[379]=oldSolid379;}
                     // Player continuation is a dependency timeline, not another

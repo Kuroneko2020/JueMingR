@@ -72,6 +72,9 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 if(advance<0 || advance>total)throw new InvalidDataException("Native advance timing.");
                 value.TotalMs=1000.0*total/frequency;value.ResetMs=1000.0*reset/frequency;value.RestoreMs=1000.0*restore/frequency;value.AdvanceMs=1000.0*advance/frequency;End(stream);
                 var assumptions=PredictionAssumption.NoNewHits|PredictionAssumption.RandomRepresentative|PredictionAssumption.LocalTerrain|PredictionAssumption.HeldPlayerControls;
+#if JMR_CONDITIONAL_RESEARCH
+                assumptions|=PredictionAssumption.ApproximateMechanism;
+#endif
                 // Request-owned host observation, never the private world's
                 // forced offline netMode or a later live game-thread read.
                 if(networkObservation)assumptions|=PredictionAssumption.NetworkObservation;

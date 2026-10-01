@@ -35,6 +35,11 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         private readonly PredictionLaunchIdentity launch;
         private readonly NpcPredictionCache cache;
         private readonly SortedSet<int> npcs=new SortedSet<int>(),projectiles=new SortedSet<int>(),assets=new SortedSet<int>();
+#if JMR_CONDITIONAL_RESEARCH
+        // Query pages do not own AI or strict future alignment. This Session
+        // owns exact roles; explicit native mutation replies promote a role.
+        private readonly SortedSet<int> exactNpcs=new SortedSet<int>();
+#endif
         private NpcIdentity current;
         private Request pending,acceptedRequest;
         private NativePredictionResult accepted;
@@ -102,6 +107,9 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             current=default(NpcIdentity);accepted=null;acceptedRequest=null;cache.Publish(null);lastTick=-1;
             if(pending!=null)pending.Retired=true;
             npcs.Clear();projectiles.Clear();assets.Clear();terrain=null;
+#if JMR_CONDITIONAL_RESEARCH
+            exactNpcs.Clear();
+#endif
             extraChunks.Clear();checkedTerrain=null;observation=null;terrainComparison.Clear();
         }
         // Stopping destroys the transport mailbox. Its request can never
@@ -122,7 +130,11 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             if(Failed)return;
             if(cache.Required==0){ClearTarget();return;}
             if(Interlocked.Exchange(ref observedRelocation,0)!=0)ClearTarget();
-            if(!identity.Equals(current)){ClearTarget();current=identity;npcs.Add(identity.Slot);assets.Add(identity.Type);lastAttempt=-100;}
+            if(!identity.Equals(current)){ClearTarget();current=identity;npcs.Add(identity.Slot);assets.Add(identity.Type);lastAttempt=-100;
+#if JMR_CONDITIONAL_RESEARCH
+                exactNpcs.Add(identity.Slot);
+#endif
+            }
             if(tick==lastTick)return;
             if(lastTick>=0 && tick!=lastTick+1){accepted=null;acceptedRequest=null;if(pending!=null)pending.Retired=true;cache.Publish(null);}
             lastTick=tick;
@@ -179,13 +191,20 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                     // Only explicit missing pages are discoverable. Unknown
                     // fields/unsupported calls never become default values.
                     bool added=result.Kind==1 && result.Slot>=0 && result.Slot<=Main.maxNPCs && npcs.Count<=Main.maxNPCs && npcs.Add(result.Slot) || result.Kind==2 && result.Slot>=0 && result.Slot<=Main.maxProjectiles && projectiles.Count<=Main.maxProjectiles && projectiles.Add(result.Slot);
+#if JMR_CONDITIONAL_RESEARCH
+                    if(result.Kind==5 && result.Slot>=0 && result.Slot<=Main.maxNPCs){added|=npcs.Add(result.Slot);added|=exactNpcs.Add(result.Slot);}
+#endif
                     if(result.Kind==0 && response.MissingAsset>=0 && assets.Count<128)added|=assets.Add(response.MissingAsset);
                     if(result.TileX>=0 && result.TileY>=0 && result.TileX<Main.maxTilesX && result.TileY<Main.maxTilesY)
                     {added|=AddMissingTerrain(request.Terrain,result.TileX/32,result.TileY/32);}
                     if(!added)lastAttempt=tick+57;return;
                 }
                 acknowledgedTerrain=request.Terrain;
-                bool missing=false;foreach(int slot in result.Npcs)if(!npcs.Contains(slot)){if(npcs.Count>Main.maxNPCs)throw new InvalidDataException("NPC dependency capacity.");npcs.Add(slot);missing=true;}
+                bool missing=false;foreach(int slot in result.Npcs)if(!npcs.Contains(slot)){if(npcs.Count>Main.maxNPCs)throw new InvalidDataException("NPC dependency capacity.");npcs.Add(slot);missing=true;
+#if JMR_CONDITIONAL_RESEARCH
+                    exactNpcs.Add(slot);
+#endif
+                }
                 foreach(int slot in result.Projectiles)if(!projectiles.Contains(slot)){if(projectiles.Count>Main.maxProjectiles)throw new InvalidDataException("Projectile dependency capacity.");projectiles.Add(slot);missing=true;}
                 if(missing){m.Outcome="newborn dependency pages require fresh observation";Rejected++;return;}
                 if(request.History.Count!=tick-request.Tick+1)throw new InvalidDataException("Missing intervening observations.");
@@ -207,18 +226,37 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             lastAttempt=tick;long begin=PredictionPipeProtocol.Measure?Stopwatch.GetTimestamp():0;
             try
             {
+#if JMR_CONDITIONAL_RESEARCH
+                // Gather native structural links only from exact actors. A
+                // queried bunny's unrelated links cannot grow this closure.
+                exactNpcs.RemoveWhere(slot=>slot!=identity.Slot && !Main.npc[slot].active);
+                npcs.RemoveWhere(slot=>slot!=identity.Slot && !Main.npc[slot].active);
+                int[] queries=npcs.Where(slot=>!exactNpcs.Contains(slot)).ToArray();
+                foreach(int slot in queries)npcs.Remove(slot);
+                GatherDependencies();exactNpcs.UnionWith(npcs);
+                foreach(int slot in queries)npcs.Add(slot);
+                ConditionalNpcQuery.CaptureRoles=exactNpcs.ToArray();
+#else
                 GatherDependencies();
+#endif
                 int[] ns=npcs.ToArray(),ps=projectiles.ToArray();foreach(int slot in ns)if(Main.npc[slot].type>=0)assets.Add(Main.npc[slot].type);
                 var target=Main.npc[identity.Slot];int x=(int)target.Center.X/16,y=(int)target.Center.Y/16;
                 // Disjoint observed neighborhoods: a distant player or linked
                 // actor must not make the unrelated rectangle between them
                 // part of every snapshot. Unprovided cells remain unknown.
                 var chunks=new SortedSet<int>(extraChunks);AddRegion(chunks,x,y,64);
-                foreach(int slot in ns)if(slot!=identity.Slot && Main.npc[slot].active)AddRegion(chunks,(int)Main.npc[slot].Center.X/16,(int)Main.npc[slot].Center.Y/16,24);
+                foreach(int slot in ns)if(slot!=identity.Slot && Main.npc[slot].active
+#if JMR_CONDITIONAL_RESEARCH
+                    && exactNpcs.Contains(slot)
+#endif
+                    )AddRegion(chunks,(int)Main.npc[slot].Center.X/16,(int)Main.npc[slot].Center.Y/16,24);
                 foreach(var player in Main.player)if(player!=null && player.active)AddRegion(chunks,(int)player.Center.X/16,(int)player.Center.Y/16,24);
                 if(terrain==null || !TerrainCurrent(terrain,identity.Session) || !Covers(terrain,chunks))terrain=NativeTerrainSnapshot.CaptureChunksObserved(identity.Session,chunks,terrainComparison);
                 var request=new Request{Identity=identity,Tick=tick,Wall=begin,Npcs=ns,Projectiles=ps,Terrain=terrain};
-                request.History.Add(Observe(tick,ns,ps,identity.Slot));
+#if JMR_CONDITIONAL_RESEARCH
+                request.Npcs=exactNpcs.ToArray();
+#endif
+                request.History.Add(Observe(tick,request.Npcs,ps,identity.Slot));
                 var values=PredictionWire.FillProductionValues(Worker.BeginCapture(),ns,ps,identity.Slot,tick,PredictionWire.MaximumHorizon,terrain,assets.ToArray(),ReferenceEquals(terrain,acknowledgedTerrain));
                 if(PredictionPipeProtocol.Measure)request.CaptureMs=Milliseconds(Stopwatch.GetTimestamp()-begin);
                 var valueIdentity=new NpcIdentity(identity.Session,null,identity.Slot,identity.Generation,identity.Type,identity.NetId);

@@ -25,6 +25,9 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             NativeImmunitySnapshot.Install(patches);
             NativeLightingSnapshot.Install(patches);
             NativeNpcMotionTrace.Install(patches);
+#if JMR_CONDITIONAL_RESEARCH
+            ConditionalNpcQuery.Install(patches);
+#endif
             Part(cost,"immunity-install");
             Patch(typeof(NetMessage),"SendData","Skip");
             foreach(string name in new[]{"Broadcast","SendToServer","SendToClient"})Patch(typeof(NetManager),name,"RecyclePacket");

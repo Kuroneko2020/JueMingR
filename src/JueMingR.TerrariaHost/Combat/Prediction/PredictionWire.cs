@@ -86,6 +86,9 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 NativeEffectBoundary.WriteAllocation(writer);
                 NativeRandomSnapshot.Write(writer);
                 NativeEntityDirectory.Write(writer);
+#if JMR_CONDITIONAL_RESEARCH
+                ConditionalNpcQuery.WriteRoles(writer,slots,selected);
+#endif
                 int playerCount=0;for(int i=0;i<Main.maxPlayers;i++)if(Main.player[i]!=null && Main.player[i].active)playerCount++;
                 writer.Write(playerCount);
                 for(int i=0;i<Main.maxPlayers;i++)if(Main.player[i]!=null && Main.player[i].active){writer.Write(i);Players.Write(writer,Main.player[i]);NativeActorContext.WritePlayer(writer,Main.player[i]);NativePlayerMotion.Write(writer,Main.player[i]);}
