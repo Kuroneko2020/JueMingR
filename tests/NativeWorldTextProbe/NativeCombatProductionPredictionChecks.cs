@@ -80,6 +80,15 @@ namespace NativeWorldTextProbe
                     long retiredRequests=(long)Get(native,"Requests");for(int i=0;i<6;i++)Step(context,samples,prepares);
                     Require((long)Get(native,"Requests")==retiredRequests && cache.Required==0,"No native requests follow final consumer retirement.");
                     NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true));WaitPath(context,cache,samples,prepares,0,"shared-consumer-return");
+                    if(Environment.GetEnvironmentVariable("JUEMINGR_NPC_RECOVERY_CHECK")=="1")
+                    {worker=FaultRecovery(context,cache,samples,prepares,worker,output);return;}
+                    if(Environment.GetEnvironmentVariable("JUEMINGR_NPC_SESSION_CAPACITY")=="1")
+                    {
+                        PrepareRecoveryScene(context,cache,samples,prepares);
+                        phase="capacity-session";
+                        NativeCombatFailureRecoveryChecks.Capacity(native,cache,()=>{phase="capacity-session";Step(context,samples,prepares,false);},()=>{phase="capacity-consumer-paused";Step(context,samples,prepares,false,prepareHost:false);},output);
+                        return;
+                    }
                     if(Environment.GetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT")!=null)
                     {
                         phase="live-context";
@@ -196,8 +205,35 @@ namespace NativeWorldTextProbe
             }
             finally
             {
-                Call(host,"Exit",null,EventArgs.Empty);if(worker==null)worker=GetOptional(native,"Worker");if(worker!=null)WaitClosed(worker);
-                try{Dump(native,worker,output);sink.UnpatchAll(sink.Id);}finally{cadenceTimer?.Dispose();cadenceTimer=null;if(timer)timeEndPeriod(1);}
+                // FaultRecovery can replace the owner and then throw before
+                // its returned worker is assigned. Capture the current owner
+                // before Exit detaches it; a Closed old local is not its exit.
+                object owner=null;
+                try
+                {
+                    owner=GetOptional(native,"Worker");
+                    try{Call(host,"Exit",null,EventArgs.Empty);}
+                    finally
+                    {
+                        try{if(owner!=null)WaitClosed(owner);}
+                        finally{if(worker!=null && !ReferenceEquals(worker,owner))WaitClosed(worker);}
+                    }
+                }
+                finally
+                {
+                    // Exit, either wait, or Dump failing must not retain the
+                    // test's global hooks or Windows cadence resources.
+                    try{Dump(native,owner??worker,output);}
+                    finally
+                    {
+                        try{sink.UnpatchAll(sink.Id);}
+                        finally
+                        {
+                            try{cadenceTimer?.Dispose();}
+                            finally{cadenceTimer=null;if(timer)timeEndPeriod(1);}
+                        }
+                    }
+                }
             }
         }
         private static void WindProduction(object context,NpcPredictionCache cache,List<double> samples,List<double> prepares)
@@ -346,18 +382,30 @@ namespace NativeWorldTextProbe
         }
         private static object FaultRecovery(object context,NpcPredictionCache cache,List<double> samples,List<double> prepares,object worker,string output)
         {
-            var host=Get(context,"CombatObservation");var native=Get(Get(host,"Prediction"),"Native");int oldPid=(int)Get(worker,"ChildId");
+            var host=Get(context,"CombatObservation");var native=Get(Get(host,"Prediction"),"Native");
             phase="owned-child-failure";
-            // Use the exact child handle retained by this test's transport;
-            // never enumerate or terminate processes by name or stale PID.
-            ((Process)Get(worker,"child")).Kill();var wait=Stopwatch.StartNew();
-            while(!(bool)Get(native,"Failed") && wait.ElapsedMilliseconds<6000)Step(context,samples,prepares);
-            Require((bool)Get(native,"Failed") && cache.Read(0)==null,"An actual child exit fails closed at the production Host.");
-            for(int i=0;i<20;i++)Step(context,samples,prepares);
-            Require(ReferenceEquals(worker,Get(native,"Worker")),"Failure does not create a restart storm.");
-            WaitClosed(worker);File.WriteAllText(Path.Combine(output,"production-first-worker.log"),(string)GetOptional(worker,"Diagnostics")??"");ClearActors();Scene(2);phase="explicit-retry";Call(host,"Set",1,true);wait.Restart();
-            while(wait.ElapsedMilliseconds<15000){Step(context,samples,prepares);if(cache.Read(0)!=null){Check(cache.Read(0),0);var fresh=Get(native,"Worker");Require(!ReferenceEquals(fresh,worker) && (int)Get(fresh,"ChildId")!=oldPid,"Explicit retry owns a fresh child.");Console.WriteLine("RESPONSE explicit-retry ms="+wait.Elapsed.TotalMilliseconds.ToString("F3"));return fresh;}}
-            throw new InvalidOperationException("Explicit production retry did not recover: "+GetOptional(native,"Reason"));
+            // An authenticated EOF has one bounded automatic replacement,
+            // rather than the former permanent Failed latch. Reuse the real
+            // Host recovery/exhaustion/Retry/OFF check. Capacity has its own
+            // independent NpcSessionCapacity entry and does not gate this test.
+            PrepareRecoveryScene(context,cache,samples,prepares);
+            NativeCombatFailureRecoveryChecks.Run(context,native,cache,()=>Step(context,samples,prepares,false),output);
+            // That check deliberately ends its world. Restore the actual Host
+            // lifecycle and consumer before the following buff/wind scenarios.
+            Call(host,"OnSessionStarted");phase="post-recovery-world-return";
+            PrepareRecoveryScene(context,cache,samples,prepares);
+            return Get(native,"Worker");
+        }
+        private static void PrepareRecoveryScene(object context,NpcPredictionCache cache,List<double> samples,List<double> prepares)
+        {
+            // The existing A entry runs after the initial eye scene and uses
+            // the caller's input, not this suite's forced rightward motion.
+            ClearActors();Scene(2);Main.LocalPlayer.controlRight=false;
+            // The first update must also retire the prior scene's accepted
+            // identity before the recovery fixture acquires its owned pages.
+            Step(context,samples,prepares,false);
+            for(int i=0;i<180 && cache.Read(0)==null;i++)Step(context,samples,prepares,false);
+            Require(cache.Read(0)!=null && cache.Read(0).SampleTick==Main.GameUpdateCount && cache.Read(0).Count==121,"Recovery preparation receives a fresh current+120 ordinary scene.");
         }
         private static double Cpu(int pid){if(pid==0)return 0;using(var p=Process.GetProcessById(pid))return p.TotalProcessorTime.TotalMilliseconds;}
         private static void Initialize()
@@ -374,7 +422,7 @@ namespace NativeWorldTextProbe
         }
         private static void Scene(int type,int slot=0)
         {var n=Main.npc[slot];n.SetDefaults(type);n.whoAmI=slot;n.active=true;n.target=0;n.position=new Vector2(650,850);n.timeLeft=750;NPC.ClearFoundActiveNPCs();NPC.mechQueen=NPC.golemBoss=-1;}
-        private static void Step(object context,List<double> samples,List<double> prepares,bool right=true,Action sampleIntent=null)
+        private static void Step(object context,List<double> samples,List<double> prepares,bool right=true,Action sampleIntent=null,bool prepareHost=true)
         {
             long now=Stopwatch.GetTimestamp();double interval=priorStep==0?0:Ms(now-priorStep);if(priorStep!=0)cadence.Add(interval);priorStep=now;
             int gc0=GC.CollectionCount(0),gc1=GC.CollectionCount(1),gc2=GC.CollectionCount(2);
@@ -392,10 +440,12 @@ namespace NativeWorldTextProbe
             double originalMs=pace.Elapsed.TotalMilliseconds;
             var native=Get(Get(Get(context,"CombatObservation"),"Prediction"),"Native");
             long requests=(long)Get(native,"Requests"),observed=(long)Get(native,"Observed");double observeBefore=(double)Get(native,"ObserveMilliseconds");
-            long start=Stopwatch.GetTimestamp();Call(context,"UpdateRuntime");samples.Add(Ms(Stopwatch.GetTimestamp()-start));start=Stopwatch.GetTimestamp();Call(context,"UpdateShell");prepares.Add(Ms(Stopwatch.GetTimestamp()-start));
+            // Explicit consumer-pause negative: original world still advances,
+            // but no Host presentation is consumed until the next real update.
+            long start=Stopwatch.GetTimestamp();if(prepareHost)Call(context,"UpdateRuntime");samples.Add(prepareHost?Ms(Stopwatch.GetTimestamp()-start):0);start=Stopwatch.GetTimestamp();if(prepareHost)Call(context,"UpdateShell");prepares.Add(prepareHost?Ms(Stopwatch.GetTimestamp()-start):0);
             var worker=GetOptional(native,"Worker");bool ready=worker!=null && (double)Get(worker,"ReadyMilliseconds")>0;
             if(ready)warm.Add(samples.Last());
-            var cache=(NpcPredictionCache)Get(Get(Get(context,"CombatObservation"),"Prediction"),"Cache");var shown=cache.Read(0);var accepted=GetOptional(native,"acceptedRequest");
+            var cache=(NpcPredictionCache)Get(Get(Get(context,"CombatObservation"),"Prediction"),"Cache");var shown=prepareHost?cache.Read(0):null;var accepted=GetOptional(native,"acceptedRequest");
             // Drain on the common step, including LiveContext. A full bounded
             // queue keeps Count==256 even when a new reply replaces an old one.
             int received=((ICollection)Get(native,"Measurements")).Count;foreach(var m in (IEnumerable)Get(native,"Measurements"))measurementRows.Add(MeasurementRow(m));Call(Get(native,"Measurements"),"Clear");
