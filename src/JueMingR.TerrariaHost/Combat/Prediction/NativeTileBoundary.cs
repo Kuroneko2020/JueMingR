@@ -29,7 +29,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             if(enabled==null || missing==null || x==null || y==null || enabled.FieldType!=typeof(bool) || missing.FieldType!=typeof(bool) || x.FieldType!=typeof(int) || y.FieldType!=typeof(int))
                 throw new InvalidDataException("Private tile guard shape.");
             if(observed==null || observed.FieldType!=typeof(Action<int,int>))throw new InvalidDataException("Private tile observation shape.");
-            observed.SetValue(null,new Action<int,int>((column,row)=>usage.Add(column,row)));
+            observed.SetValue(null,new Action<int,int>((column,row)=>{usage.Add(column,row);NativePredictionPurpose.Tile(column,row);}));
             VerifyIntrinsics(guard);End();
             guardedRead=(Func<Tile[,],int,int,Tile>)Delegate.CreateDelegate(typeof(Func<Tile[,],int,int,Tile>),guard.GetMethod("Get",BindingFlags.NonPublic|BindingFlags.Static));
         }

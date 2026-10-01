@@ -19,9 +19,9 @@ namespace NativeWorldTextProbe
     internal static class NativeCombatWorkerChecks
     {
 #if JMR_CONDITIONAL_RESEARCH
-        internal const int ExpectedProtocol=130, PointBytes=75;
+        internal const int ExpectedProtocol=131, PointBytes=75;
 #else
-        internal const int ExpectedProtocol=30, PointBytes=75;
+        internal const int ExpectedProtocol=31, PointBytes=75;
 #endif
         private static readonly Main weatherOracle=(Main)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(Main));
         internal static void AdvanceWeather()

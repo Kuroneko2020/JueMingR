@@ -75,7 +75,7 @@ namespace NativeWorldTextProbe
             using(var reader=new BinaryReader(new MemoryStream(NativeCombatWorkerChecks.Exchange(child,bad),false)))
             {Require(reader.ReadInt32()==-NativeCombatWorkerChecks.ExpectedProtocol,"Malformed immunity identity refuses.");reader.ReadString();Require(reader.ReadString().Contains("Immunity column"),"Column count/slot/generation boundary rejects exact cause.");}
         }
-        private static void CombatFont(string output)
+        internal static void CombatFont(string output)
         {
             // Original CombatText still allocates a slot and consumes RNG.
             // Supply actual ReLogic CPU glyph metrics, with no texture/device,

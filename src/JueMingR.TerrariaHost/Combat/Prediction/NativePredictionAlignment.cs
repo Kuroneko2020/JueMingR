@@ -29,6 +29,8 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             internal int[] Npcs,Projectiles,Players;
             internal ulong[] NpcState,ProjectileState,PlayerPremise;
             internal float[] NpcShootClock;
+            internal ulong[] NpcIdentity,ProjectileIdentity;
+            internal bool[] NpcRequired,ProjectileRequired;
             internal bool IsSample;
             internal Vector2[] PlayerPosition,PlayerVelocity;
             internal bool[] PlayerConditional;
@@ -45,14 +47,30 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             frame.NpcPositions=new Vector2[npcs.Length][];frame.ProjectilePositions=new Vector2[projectiles.Length][];
             frame.PlayerConditional=new bool[players.Count];
             frame.NpcShootClock=new float[npcs.Length];
+            frame.NpcIdentity=new ulong[npcs.Length];
+            frame.ProjectileIdentity=new ulong[projectiles.Length];
             for(int i=0;i<npcs.Length;i++)frame.NpcShootClock[i]=Main.npc[npcs[i]].ai[1];
             for(int i=0;i<npcs.Length;i++){var n=Main.npc[npcs[i]];frame.NpcVelocity[i]=n.velocity;frame.NpcOldVelocity[i]=n.oldVelocity;frame.NpcPositions[i]=Positions(n.position,n.oldPosition,n.oldPos);}
             for(int i=0;i<projectiles.Length;i++){var p=Main.projectile[projectiles[i]];frame.ProjectileVelocity[i]=p.velocity;frame.ProjectileOldVelocity[i]=p.oldVelocity;frame.ProjectilePositions[i]=Positions(p.position,p.oldPosition,p.oldPos);}
             using(var writer=new ValueHashWriter())
             {
                 writer.Reset();WorldPremise(writer);frame.World=writer.Hash;
-                for(int i=0;i<npcs.Length;i++){writer.Reset();NpcPremise(writer,Main.npc[npcs[i]]);NativeEntityContext.WriteNpc(writer,Main.npc[npcs[i]]);frame.NpcState[i]=writer.Hash;}
-                for(int i=0;i<projectiles.Length;i++){writer.Reset();Projectiles.Write(writer,Main.projectile[projectiles[i]]);NativeActorContext.WriteProjectile(writer,Main.projectile[projectiles[i]]);frame.ProjectileState[i]=writer.Hash;}
+                for(int i=0;i<npcs.Length;i++)
+                {
+                    var n=Main.npc[npcs[i]];writer.Reset();NpcPremise(writer,n);NativeEntityContext.WriteNpc(writer,n);frame.NpcState[i]=writer.Hash;
+                    // Vitality is an unconditional continuity condition even
+                    // for an unused background. Ordinary water movement may
+                    // be omitted; unobserved damage/healing may not. The Host
+                    // hit fact additionally catches hit+heal between samples.
+                    writer.Reset();writer.Write(n.whoAmI);writer.Write(n.type);writer.Write(n.netID);writer.Write(n.generation);writer.Write(n.friendly);writer.Write(n.life);frame.NpcIdentity[i]=writer.Hash;
+                }
+                for(int i=0;i<projectiles.Length;i++)
+                {
+                    var p=Main.projectile[projectiles[i]];writer.Reset();Projectiles.Write(writer,p);NativeActorContext.WriteProjectile(writer,p);frame.ProjectileState[i]=writer.Hash;
+                    // Even a currently unused shot must not silently become a
+                    // different instance or damaging faction under this proof.
+                    writer.Reset();writer.Write(p.whoAmI);writer.Write(p.type);writer.Write((uint)p.key);writer.Write(p.owner);writer.Write(p.friendly);writer.Write(p.hostile);frame.ProjectileIdentity[i]=writer.Hash;
+                }
                 for(int i=0;i<players.Count;i++)
                 {
                     Player p=Main.player[players[i]];writer.Reset();PlayerPremise(writer,p);
@@ -129,6 +147,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         {
             bool conditional=NativePlayerMotion.Conditional(p);w.Write(conditional);
             w.Write(p.whoAmI);w.Write(p.active);w.Write(p.dead);w.Write(p.ghost);w.Write(p.width);w.Write(p.height);w.Write(p.gravDir);
+            w.Write(p.immune && p.immuneTime>PredictionWire.MaximumHorizon);
             w.Write(p.controlLeft);w.Write(p.controlRight);w.Write(p.controlUp);w.Write(p.controlDown);w.Write(p.controlJump);w.Write(p.controlUseItem);w.Write(p.controlUseTile);
             // Special mounts may recompute these outputs from fatigue or
             // flight stage on every step (e.g. bee RunSpeed). Their equipment,
@@ -165,6 +184,8 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             {
             writer.Write(frame.World);Pairs(writer,frame.Npcs,frame.NpcState);Pairs(writer,frame.Projectiles,frame.ProjectileState);
             foreach(float clock in frame.NpcShootClock)writer.Write(clock);
+            foreach(ulong identity in frame.NpcIdentity)writer.Write(identity);
+            foreach(ulong identity in frame.ProjectileIdentity)writer.Write(identity);
             Velocities(writer,frame.NpcVelocity,frame.NpcOldVelocity);Velocities(writer,frame.ProjectileVelocity,frame.ProjectileOldVelocity);
             WritePositions(writer,frame.NpcPositions);WritePositions(writer,frame.ProjectilePositions);
             writer.Write(frame.Players.Length);for(int i=0;i<frame.Players.Length;i++){writer.Write(frame.Players[i]);writer.Write(frame.PlayerPremise[i]);writer.Write(frame.PlayerConditional[i]);Vector(writer,frame.PlayerPosition[i]);Vector(writer,frame.PlayerVelocity[i]);}
@@ -178,6 +199,8 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             {
             frame.World=reader.ReadUInt64();ReadPairs(reader,201,out frame.Npcs,out frame.NpcState);ReadPairs(reader,1001,out frame.Projectiles,out frame.ProjectileState);
             frame.NpcShootClock=new float[frame.Npcs.Length];for(int i=0;i<frame.NpcShootClock.Length;i++)frame.NpcShootClock[i]=reader.ReadSingle();
+            frame.NpcIdentity=new ulong[frame.Npcs.Length];for(int i=0;i<frame.NpcIdentity.Length;i++)frame.NpcIdentity[i]=reader.ReadUInt64();
+            frame.ProjectileIdentity=new ulong[frame.Projectiles.Length];for(int i=0;i<frame.ProjectileIdentity.Length;i++)frame.ProjectileIdentity[i]=reader.ReadUInt64();
             ReadVelocities(reader,frame.Npcs.Length,out frame.NpcVelocity,out frame.NpcOldVelocity);ReadVelocities(reader,frame.Projectiles.Length,out frame.ProjectileVelocity,out frame.ProjectileOldVelocity);
             frame.NpcPositions=ReadPositions(reader,frame.Npcs.Length);frame.ProjectilePositions=ReadPositions(reader,frame.Projectiles.Length);
             int count=reader.ReadInt32();if(count<0 || count>255)throw new InvalidDataException("Alignment player count.");
@@ -191,14 +214,18 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             if(expected.Tick!=actual.Tick)return "tick";
             if(!expected.HasState || !actual.HasState)return "missing state proof";
             if(expected.World!=actual.World)return "world premise";
-            string changed=Different(expected.Npcs,expected.NpcState,actual.Npcs,actual.NpcState,"NPC");if(changed!=null)return changed;
+            bool[] required=expected.IsSample?null:expected.NpcRequired;
+            bool[] requiredProjectiles=expected.IsSample?null:expected.ProjectileRequired;
+            string changed=Different(expected.Npcs,expected.NpcIdentity,actual.Npcs,actual.NpcIdentity,"NPC identity");if(changed!=null)return changed;
+            changed=Different(expected.Projectiles,expected.ProjectileIdentity,actual.Projectiles,actual.ProjectileIdentity,"Projectile identity");if(changed!=null)return changed;
+            changed=Different(expected.Npcs,expected.NpcState,actual.Npcs,actual.NpcState,"NPC",required);if(changed!=null)return changed;
             if(expected.IsSample)for(int i=0;i<expected.NpcShootClock.Length;i++)
                 if(new ClockBits{Value=expected.NpcShootClock[i]}.Bits!=new ClockBits{Value=actual.NpcShootClock[i]}.Bits)return "NPC sampled shooting clock slot="+expected.Npcs[i];
-            changed=Different(expected.Projectiles,expected.ProjectileState,actual.Projectiles,actual.ProjectileState,"Projectile");if(changed!=null)return changed;
-            if(!SameVelocities(expected.NpcVelocity,actual.NpcVelocity) || !SameVelocities(expected.NpcOldVelocity,actual.NpcOldVelocity))return "NPC velocity";
-            if(!SameVelocities(expected.ProjectileVelocity,actual.ProjectileVelocity) || !SameVelocities(expected.ProjectileOldVelocity,actual.ProjectileOldVelocity))return "Projectile velocity";
-            if(!SamePositions(expected.NpcPositions,actual.NpcPositions))return "NPC position";
-            if(!SamePositions(expected.ProjectilePositions,actual.ProjectilePositions))return "Projectile position";
+            changed=Different(expected.Projectiles,expected.ProjectileState,actual.Projectiles,actual.ProjectileState,"Projectile",requiredProjectiles);if(changed!=null)return changed;
+            if(!SameVelocities(expected.NpcVelocity,actual.NpcVelocity,required) || !SameVelocities(expected.NpcOldVelocity,actual.NpcOldVelocity,required))return "NPC velocity";
+            if(!SameVelocities(expected.ProjectileVelocity,actual.ProjectileVelocity,requiredProjectiles) || !SameVelocities(expected.ProjectileOldVelocity,actual.ProjectileOldVelocity,requiredProjectiles))return "Projectile velocity";
+            if(!SamePositions(expected.NpcPositions,actual.NpcPositions,required))return "NPC position";
+            if(!SamePositions(expected.ProjectilePositions,actual.ProjectilePositions,requiredProjectiles))return "Projectile position";
             changed=Different(expected.Players,expected.PlayerPremise,actual.Players,actual.PlayerPremise,"Player premise");if(changed!=null)return changed;
             // Unsupported special movement is a sampled conditional future,
             // not a claim to replay its exact player kinematics. Its inputs,
@@ -234,20 +261,20 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         {return !float.IsNaN(a) && !float.IsInfinity(a) && !float.IsNaN(b) && !float.IsInfinity(b) && (a==0)==(b==0) && (a<0)==(b<0) && Math.Abs((double)a-b)<=.002;}
         private static Vector2[] Positions(Vector2 position,Vector2 old,Vector2[] trail)
         {var values=new Vector2[2+(trail?.Length??0)];values[0]=position;values[1]=old;if(trail!=null)Array.Copy(trail,0,values,2,trail.Length);return values;}
-        private static bool SamePositions(Vector2[][] a,Vector2[][] b)
-        {if(a.Length!=b.Length)return false;for(int i=0;i<a.Length;i++){if(a[i].Length!=b[i].Length)return false;for(int j=0;j<a[i].Length;j++)if(!Near(a[i][j],b[i][j]))return false;}return true;}
+        private static bool SamePositions(Vector2[][] a,Vector2[][] b,bool[] required=null)
+        {if(a.Length!=b.Length)return false;for(int i=0;i<a.Length;i++){if(required!=null && !required[i])continue;if(a[i].Length!=b[i].Length)return false;for(int j=0;j<a[i].Length;j++)if(!Near(a[i][j],b[i][j]))return false;}return true;}
         private static void WritePositions(BinaryWriter w,Vector2[][] values)
         {foreach(var positions in values){w.Write(positions.Length);foreach(var p in positions)Vector(w,p);}}
         private static Vector2[][] ReadPositions(BinaryReader r,int count)
         {var result=new Vector2[count][];for(int i=0;i<count;i++){int length=r.ReadInt32();if(length<2 || length>4098)throw new InvalidDataException("Alignment motion history count.");result[i]=new Vector2[length];for(int j=0;j<length;j++)result[i][j]=Vector(r);}return result;}
-        private static bool SameVelocities(Vector2[] a,Vector2[] b)
-        {if(a.Length!=b.Length)return false;for(int i=0;i<a.Length;i++)if(!VelocityComponent(a[i].X,b[i].X) || !VelocityComponent(a[i].Y,b[i].Y))return false;return true;}
+        private static bool SameVelocities(Vector2[] a,Vector2[] b,bool[] required=null)
+        {if(a.Length!=b.Length)return false;for(int i=0;i<a.Length;i++)if((required==null || required[i]) && (!VelocityComponent(a[i].X,b[i].X) || !VelocityComponent(a[i].Y,b[i].Y)))return false;return true;}
         private static void Velocities(BinaryWriter w,Vector2[] current,Vector2[] prior)
         {for(int i=0;i<current.Length;i++){Vector(w,current[i]);Vector(w,prior[i]);}}
         private static void ReadVelocities(BinaryReader r,int count,out Vector2[] current,out Vector2[] prior)
         {current=new Vector2[count];prior=new Vector2[count];for(int i=0;i<count;i++){current[i]=Vector(r);prior[i]=Vector(r);}}
-        private static string Different(int[] a,ulong[] av,int[] b,ulong[] bv,string label)
-        {if(a.Length!=b.Length)return label+" count";for(int i=0;i<a.Length;i++)if(a[i]!=b[i] || av[i]!=bv[i])return label+" slot="+a[i];return null;}
+        private static string Different(int[] a,ulong[] av,int[] b,ulong[] bv,string label,bool[] required=null)
+        {if(a.Length!=b.Length)return label+" count";for(int i=0;i<a.Length;i++)if(a[i]!=b[i] || (required==null || required[i]) && av[i]!=bv[i])return label+" slot="+a[i];return null;}
         private static void Pairs(BinaryWriter w,int[] slots,ulong[] values){w.Write(slots.Length);for(int i=0;i<slots.Length;i++){w.Write(slots[i]);w.Write(values[i]);}}
         private static void ReadPairs(BinaryReader r,int maximum,out int[] slots,out ulong[] values)
         {int count=r.ReadInt32();if(count<0 || count>maximum)throw new InvalidDataException("Alignment entity count.");slots=new int[count];values=new ulong[count];int prior=-1;for(int i=0;i<count;i++){int slot=r.ReadInt32();if(slot<=prior || slot>=maximum)throw new InvalidDataException("Alignment entity order.");prior=slot;slots[i]=slot;values[i]=r.ReadUInt64();}}

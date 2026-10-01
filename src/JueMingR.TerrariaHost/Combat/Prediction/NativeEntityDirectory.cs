@@ -18,6 +18,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         private static readonly NativeValueSnapshot Projectiles=new NativeValueSnapshot(typeof(Projectile),fieldNames:new[]{"active","type","whoAmI","key","owner","netImportant","timeLeft"});
         private static HashSet<int> NpcReads,ProjectileReads,NpcFields,ProjectileFields;
         private static FieldPermissions NpcPermissions,ProjectilePermissions;
+        private static FieldPermissions NpcDirectoryPermissions,ProjectileDirectoryPermissions;
         private sealed class FieldPermissions
         {
             private readonly int first;
@@ -144,6 +145,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 // table identity. Repeated array reads in native immunity loops
                 // still check every receiver/field, without hashing each read.
                 NpcPermissions=new FieldPermissions(NpcFields);ProjectilePermissions=new FieldPermissions(ProjectileFields);
+                NpcDirectoryPermissions=new FieldPermissions(NpcReads);ProjectileDirectoryPermissions=new FieldPermissions(ProjectileReads);
             }
             handler.SetValue(null,(Action<object,int,int>)Check);
             columnHandler.SetValue(null,(Func<object,bool>)(value=>!Opaque.ContainsKey(value)));
@@ -295,19 +297,22 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             // through to the original identity-based rules, including unknown
             // fields and managed-address refusal. Reset clears both indexes.
             var npc=value as NPC;
-            if(npc!=null && (uint)npc.whoAmI<(uint)CapturedNpcs.Length && ReferenceEquals(CapturedNpcs[npc.whoAmI],npc) && NpcPermissions.Contains(field))return;
+            if(npc!=null && (uint)npc.whoAmI<(uint)CapturedNpcs.Length && ReferenceEquals(CapturedNpcs[npc.whoAmI],npc) && NpcPermissions.Contains(field))
+            {NativePredictionPurpose.Access(npc,mode,NpcDirectoryPermissions.Contains(field),field);return;}
             var projectile=value as Projectile;
-            if(projectile!=null && (uint)projectile.whoAmI<(uint)CapturedProjectiles.Length && ReferenceEquals(CapturedProjectiles[projectile.whoAmI],projectile) && ProjectilePermissions.Contains(field))return;
+            if(projectile!=null && (uint)projectile.whoAmI<(uint)CapturedProjectiles.Length && ReferenceEquals(CapturedProjectiles[projectile.whoAmI],projectile) && ProjectilePermissions.Contains(field))
+            {NativePredictionPurpose.Access(projectile,mode,ProjectileDirectoryPermissions.Contains(field),field);return;}
             if(!Opaque.TryGetValue(value,out entry))
             {
                 // A restored primitive page is not a restored object graph.
                 // Native future births are initialized by the original code;
                 // only captured objects carry missing historical field state.
-                if(!Captured.TryGetValue(value,out entry) || (entry.Kind==1?NpcFields:ProjectileFields).Contains(field))return;
+                if(!Captured.TryGetValue(value,out entry) || (entry.Kind==1?NpcFields:ProjectileFields).Contains(field))
+                {NativePredictionPurpose.Access(value,mode,npc!=null?NpcDirectoryPermissions.Contains(field):ProjectileDirectoryPermissions.Contains(field),field);return;}
                 // Preserve a complete original assignment, but never promote
                 // an unknown nested graph merely because its outer ref changed.
                 // A later read or managed address still requires its codec.
-                if(mode==2)return;
+                if(mode==2){NativePredictionPurpose.Access(value,mode,false,field);return;}
                 if(MissingKind==0){MissingKind=entry.Kind+2;MissingSlot=entry.Slot;MissingField=field;}
                 throw new InvalidDataException("Uncaptured full-page field kind="+entry.Kind+" slot="+entry.Slot+" field="+FieldIdentities[field]+" access="+mode);
             }

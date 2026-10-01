@@ -10,20 +10,35 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
     internal sealed class NativeTerrainUsage
     {
         internal readonly Dictionary<int,byte[]> Cells=new Dictionary<int,byte[]>();
+        private readonly Stack<byte[]> spare=new Stack<byte[]>();
         private int lastKey=-1;private byte[] lastBits;
+        // Worker provenance reuses storage, but never facts or instances from
+        // an earlier request. At most MaximumChunks buffers are retained.
+        internal void Reset()
+        {foreach(var bits in Cells.Values){Array.Clear(bits,0,bits.Length);spare.Push(bits);}Cells.Clear();lastKey=-1;lastBits=null;}
+        private byte[] Buffer(){return spare.Count==0?new byte[128]:spare.Pop();}
         internal void Add(int x,int y)
         {
             int key=x/32*128+y/32;byte[] bits=lastBits;
             if(key!=lastKey)
             {
                 if(!Cells.TryGetValue(key,out bits))
-                {if(Cells.Count>=NativeTerrainSnapshot.MaximumChunks)throw new InvalidDataException("Terrain usage capacity.");Cells.Add(key,bits=new byte[128]);}
+                {if(Cells.Count>=NativeTerrainSnapshot.MaximumChunks)throw new InvalidDataException("Terrain usage capacity.");Cells.Add(key,bits=Buffer());}
                 lastKey=key;lastBits=bits;
             }
             int at=x%32*32+y%32;bits[at/8]|=(byte)(1<<(at%8));
         }
         internal bool Contains(int key,int x,int y)
         {byte[] bits;int at=x%32*32+y%32;return Cells.TryGetValue(key,out bits) && (bits[at/8]&(1<<(at%8)))!=0;}
+        internal void Union(NativeTerrainUsage other)
+        {
+            foreach(var pair in other.Cells)
+            {
+                byte[] bits;if(!Cells.TryGetValue(pair.Key,out bits))
+                {if(Cells.Count>=NativeTerrainSnapshot.MaximumChunks)throw new InvalidDataException("Terrain usage capacity.");Cells.Add(pair.Key,bits=Buffer());}
+                for(int i=0;i<bits.Length;i++)bits[i]|=pair.Value[i];
+            }
+        }
         internal bool Intersects(NativeTerrainUsage other)
         {
             foreach(var pair in Cells){byte[] bits;if(other.Cells.TryGetValue(pair.Key,out bits))for(int i=0;i<128;i++)if((pair.Value[i]&bits[i])!=0)return true;}

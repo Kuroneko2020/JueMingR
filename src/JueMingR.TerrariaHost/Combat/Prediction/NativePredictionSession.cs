@@ -24,6 +24,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             internal readonly List<NativePredictionAlignment.Frame> History=new List<NativePredictionAlignment.Frame>(61);
             internal readonly NativeTerrainUsage TerrainChanges=new NativeTerrainUsage();
             internal bool Retired;
+            internal int Impact;
             internal double CaptureMs;
         }
         internal struct Measurement
@@ -135,6 +136,18 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         // retires all results and in-flight history before its next Prepare;
         // never mutate the cache or worker mailbox from a receive callback.
         internal void ObservePlayerRelocation(){Interlocked.Exchange(ref observedRelocation,1);}
+        internal void ObserveNpcImpact(NPC npc)
+        {
+            // Native hit callbacks record only a fact on the request which
+            // already owned that page. Prepare owns cache retirement; no
+            // projectile discovery or full-pool observation is introduced.
+            MarkImpact(acceptedRequest,npc);MarkImpact(pending,npc);
+        }
+        private static void MarkImpact(Request request,NPC npc)
+        {
+            if(request!=null && (Array.IndexOf(request.Npcs,npc.whoAmI)>=0 || npc.realLife>=0 && Array.IndexOf(request.Npcs,npc.realLife)>=0))
+                Interlocked.Exchange(ref request.Impact,1);
+        }
         // An alternate synchronous strategy owns publication. Let at most the
         // already-running native request finish, then consume its mailbox
         // without sampling, retrying, or publishing to the shared cache.
@@ -159,6 +172,12 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             checkedTerrain=null;observation=null;terrainComparison.Clear();
             EnsureEnvironment();
             if(stopped)return;
+            // A real hit can be absent from the captured projectile pages.
+            // Its affected background may have no prior route use, but the
+            // new input must revoke both old publication and delayed replies.
+            if(acceptedRequest!=null && acceptedRequest.Impact!=0)
+            {accepted=null;acceptedRequest=null;cache.Publish(null);Reason="captured NPC impact";}
+            if(pending!=null && pending.Impact!=0)pending.Retired=true;
             long started=PredictionPipeProtocol.Measure?Stopwatch.GetTimestamp():0;
             if(pending!=null && !pending.Retired && tick>pending.Tick)
             {
@@ -202,7 +221,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             long begin=PredictionPipeProtocol.Measure?Stopwatch.GetTimestamp():0;
             try
             {
-                if(request.Retired || !request.Identity.Equals(current)){m.Outcome="retired identity/age/terrain";Rejected++;return;}
+                if(request.Retired || !request.Identity.Equals(current)){m.Outcome=request.Impact!=0?"retired captured NPC impact":"retired identity/age/terrain";Rejected++;return;}
                 var result=response.Result;
                 m.TotalMs=result.TotalMs;m.ResetMs=result.ResetMs;m.RestoreMs=result.RestoreMs;m.AdvanceMs=result.AdvanceMs;
                 if(result.Error!=null)

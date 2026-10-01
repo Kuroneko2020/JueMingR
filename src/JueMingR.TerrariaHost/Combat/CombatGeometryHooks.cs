@@ -52,6 +52,7 @@ namespace JueMingR.TerrariaHost.Combat
                 Patch(typeof(Player),"Teleport",nameof(PlayerTeleport),null,null);
                 Patch(typeof(Player),"Spawn",nameof(PlayerSpawn),null,null);
                 Patch(typeof(Player),"Hurt",null,nameof(PlayerHurt),null);
+                Patch(typeof(NPC),"StrikeNPC",null,nameof(NpcStrike),null);
                 Patch(typeof(MessageBuffer),"GetData",nameof(PlayerNetwork),null,null);
                 PlayerCollisionGeometryHooks.Install(harmony,methods);
                 Ready=true;
@@ -77,6 +78,16 @@ namespace JueMingR.TerrariaHost.Combat
             // on otherwise conditional mounts. Rejected/immune hits do not
             // revoke results; ordinary immunity clocks are not exact premises.
             var owner=PredictionHost;if(owner!=null && __result>0 && Live(__instance))owner.Prediction.Native?.ObservePlayerRelocation();
+        }
+        private static void NpcStrike(NPC __instance,int __result)
+        {
+            // Locked .8 positive StrikeNPC return is an accepted native hit,
+            // including knockback and shared realLife damage. Keep this fact
+            // even if UpdateNPC clears justHit before CompletedWorldUpdate.
+            // OFF has no snapshot, array allocation or diagnostic work.
+            var owner=PredictionHost;
+            if(owner!=null && __result>0 && __instance.whoAmI>=0 && __instance.whoAmI<Main.maxNPCs && ReferenceEquals(Main.npc[__instance.whoAmI],__instance))
+                owner.Prediction.Native?.ObserveNpcImpact(__instance);
         }
         private static void PlayerNetwork(MessageBuffer __instance,int __0,int __1)
         {

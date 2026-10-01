@@ -49,6 +49,8 @@ namespace NativeWorldTextProbe
                 File.WriteAllBytes(Path.Combine(output,"transport-harpy-frozen.bin"),future);
                 NativeCombatWorkerChecks.Compare(future,0,output,"transport-harpy");
                 TailPrefix(host,type,client,capture,output);
+                NativeCombatPurposeChecks.Run(host,bytes=>
+                {Require(Send(type,client,bytes),"Purpose request shares the ready real transport.");Wait(type,client,3,15000);return Tuple.Create(Take(type,client),(byte[])type.GetProperty("Alignment",Flags).GetValue(client));},output);
                 if(Environment.GetEnvironmentVariable("JUEMINGR_NPC_CAPACITY_CHECK")=="1")Capacity(host,type,client,capture,output,pid,snapshot);
                 Require(Send(type,client,new byte[]{1}),"Malformed native payload remains bounded within a valid transport envelope.");Wait(type,client,3,15000);
                 using(var reader=new BinaryReader(new MemoryStream(Take(type,client),false)))Require(reader.ReadInt32()==-NativeCombatWorkerChecks.ExpectedProtocol,"Native request refusal keeps its matching transport sequence.");

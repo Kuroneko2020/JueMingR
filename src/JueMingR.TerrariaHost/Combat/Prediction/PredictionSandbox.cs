@@ -161,6 +161,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                     bool oldSolid379=Main.tileSolid[379];Main.tileSolid[379]=false;
                     NativeTileBoundary.Begin();
                     NativeEntityDirectory.Begin();
+                    NativePredictionPurpose.Begin(selected);
                     try
                     {
                     for(int step=1;step<=horizon;step++)
@@ -191,7 +192,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
 #if JMR_CONDITIONAL_RESEARCH
                                 actualNpcCalls++;
 #endif
-                                NativeNpcMotionTrace.Enter(Main.npc[slot]);try{Main.npc[slot].UpdateNPC(slot);}finally{NativeNpcMotionTrace.Leave();}}
+                                NativeNpcMotionTrace.Enter(Main.npc[slot]);int priorActor=NativePredictionPurpose.Enter(Main.npc[slot]);try{Main.npc[slot].UpdateNPC(slot);}finally{NativePredictionPurpose.Leave(priorActor);NativeNpcMotionTrace.Leave();}}
                         // Enumerate native slots at the phase itself: a new
                         // higher slot participates this tick; a reused lower
                         // slot waits until the next tick. This also includes
@@ -204,7 +205,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
 #if JMR_CONDITIONAL_RESEARCH
                                 actualProjectileCalls++;
 #endif
-                                Main.projectile[slot].Update(slot);}}
+                                int priorActor=NativePredictionPurpose.Enter(Main.projectile[slot]);try{Main.projectile[slot].Update(slot);}finally{NativePredictionPurpose.Leave(priorActor,Main.projectile[slot]);}}}
                         }
                         finally{Main.ProjectileUpdateLoopIndex=-1;}
                         // Time follows both entity phases. Frozen or aligned
@@ -239,7 +240,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                             // natural ends and shorter demands. Later points retain
                             // full native movement and presentation semantics,
                             // but cannot ever serve as an acceptance proof.
-                            var observed=step<=PredictionWire.MaximumAlignmentAge?NativePredictionAlignment.Observe(tick+step,alignmentSlots,projectileSlots,selected):NativePredictionAlignment.Presentation(tick+step,selected);
+                            var observed=ObserveProof(step,tick,alignmentSlots,projectileSlots,selected);
                             observed.NewSegment=NativeNpcMotionTrace.Complete();
                             NativePredictionAlignment.Write(proof,observed);
                         }
@@ -265,11 +266,17 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                         dependencies.Truncate(dependencyEnd);
                         if(PredictionPipeProtocol.Measure)Console.Error.WriteLine("PREFIX completed="+completed+" missing-kind="+NativeEntityDirectory.MissingKind+" slot="+NativeEntityDirectory.MissingSlot);
                     }
-                    finally{NativeNpcMotionTrace.Clear();NativeTileBoundary.End();NativeEntityDirectory.End();Main.tileSolid[379]=oldSolid379;}
+                    finally{NativePredictionPurpose.End();NativeNpcMotionTrace.Clear();NativeTileBoundary.End();NativeEntityDirectory.End();Main.tileSolid[379]=oldSolid379;}
                     // Count denotes genuinely completed points, including
                     // frame zero. Only successful full horizons reach 181.
                     result.Position=16;writer.Write(completed+1);result.Position=pointEnd;
-                    if(withAlignment){proofBytes.Position=0;proof.Write(completed+1);proofBytes.Position=proofEnd;proof.Write(advanceTicks);NativeTileBoundary.Usage.Write(proof);}
+                    if(withAlignment)
+                    {
+                        bool[] npcRequired,projectileRequired;
+                        var used=NativePredictionPurpose.Complete(alignmentSlots,projectileSlots,out npcRequired,out projectileRequired);
+                        proofBytes.Position=0;proof.Write(completed+1);proofBytes.Position=proofEnd;proof.Write(advanceTicks);used.Write(proof);
+                        foreach(bool required in npcRequired)proof.Write(required);foreach(bool required in projectileRequired)proof.Write(required);
+                    }
 #if JMR_CONDITIONAL_RESEARCH
                     Console.Error.WriteLine("RESEARCH calls npc="+actualNpcCalls+" projectile="+actualProjectileCalls+" query-reads="+ConditionalNpcQuery.QueryReads+" geometry-stores="+ConditionalNpcQuery.GeometryStores+" exact-roles="+alignmentSlots.Length+" query-pages="+(slots.Length-alignmentSlots.Length));
 #endif
@@ -284,6 +291,14 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                     writer.Flush();return result.ToArray();
                 }
             }
+        }
+        private static NativePredictionAlignment.Frame ObserveProof(int step,long tick,int[] npcs,int[] projectiles,int selected)
+        {
+            // Reading a certificate is not native simulation consuming a
+            // provider. Keep ordinary guards, pause provenance only.
+            bool prior=NativePredictionPurpose.Pause();
+            try{return step<=PredictionWire.MaximumAlignmentAge?NativePredictionAlignment.Observe(tick+step,npcs,projectiles,selected):NativePredictionAlignment.Presentation(tick+step,selected);}
+            finally{NativePredictionPurpose.Resume(prior);}
         }
         private void Reset(int width,int height)
         {

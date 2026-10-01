@@ -38,7 +38,16 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                         if(frame.Tick!=tick+i || frame.HasState!=(i<=PredictionWire.MaximumAlignmentAge))throw new InvalidDataException("Alignment proof extent.");
                         if(frame.HasState && Array.IndexOf(frame.Npcs,identity.Slot)<0)throw new InvalidDataException("Alignment target absent.");
                     }
-                    advance=proof.ReadInt64();value.TerrainUsage=NativeTerrainUsage.Read(proof);End(data);
+                    advance=proof.ReadInt64();value.TerrainUsage=NativeTerrainUsage.Read(proof);
+                    var first=value.Frames[0];var npcRequired=new bool[first.Npcs.Length];var projectileRequired=new bool[first.Projectiles.Length];
+                    for(int i=0;i<npcRequired.Length;i++)npcRequired[i]=proof.ReadBoolean();for(int i=0;i<projectileRequired.Length;i++)projectileRequired[i]=proof.ReadBoolean();
+                    if(!npcRequired[Array.IndexOf(first.Npcs,identity.Slot)])throw new InvalidDataException("Required target absent.");
+                    for(int i=0;i<value.Frames.Length;i++)if(value.Frames[i].HasState)
+                    {
+                        var frame=value.Frames[i];if(frame.Npcs.Length!=npcRequired.Length || frame.Projectiles.Length!=projectileRequired.Length)throw new InvalidDataException("Purpose role extent.");
+                        frame.NpcRequired=npcRequired;frame.ProjectileRequired=projectileRequired;
+                    }
+                    End(data);
                 }
                 var points=new NpcTrajectoryPoint[count];int length=count,quality=0;bool ended=false;
                 for(int i=0;i<count;i++)

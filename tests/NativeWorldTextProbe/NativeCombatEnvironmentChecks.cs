@@ -33,6 +33,8 @@ namespace NativeWorldTextProbe
             if(axis=="failure-recovery"){NativeCombatFailureRecoveryChecks.Run(context,native,cache,step,output);return;}
             if(axis=="terrain-relevance"){NativeCombatTerrainRelevanceChecks.Run(context,native,cache,step,output);return;}
             if(axis=="asset-recovery"){NativeCombatAssetRecoveryChecks.Run(context,native,cache,step,output);return;}
+            if(axis=="impact-retirement"){NativeCombatImpactRetirementChecks.Run(context,native,cache,step,output);return;}
+            if(axis=="impact-off"){NativeCombatImpactRetirementChecks.Off(context,native,cache,step,output);return;}
             int[] types={42,176,110,175,153,51,56,674};
             string selectedTypes=Environment.GetEnvironmentVariable("JUEMINGR_NPC_ENV_TYPES");
             if(!string.IsNullOrEmpty(selectedTypes))types=selectedTypes.Split(',').Select(int.Parse).ToArray();
