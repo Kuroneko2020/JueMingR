@@ -738,6 +738,7 @@ function Invoke-Phase0SLoadChainFixtureTests {
 }
 
 if ($Run) {
+    Write-Output 'LEGACY SYNTHETIC RECEIVER: its partial game ABI does not certify current full-product loading; fixture failures remain failures.'
     if ([string]::IsNullOrWhiteSpace($RepositoryRoot)) {
         throw 'The -Run entry point requires -RepositoryRoot.'
     }

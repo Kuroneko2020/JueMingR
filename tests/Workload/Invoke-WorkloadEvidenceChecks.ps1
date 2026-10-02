@@ -7,6 +7,22 @@ $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 function Assert-Evidence([bool] $Condition, [string] $Message) {
     if (-not $Condition) { throw ('Evidence contract: ' + $Message) }
 }
+# Standalone archive verification never calls a product CPU check. Its bytes
+# remain recorded, but only its own evidence projection may depend on them.
+foreach ($path in @('scripts/verify-existing-package.ps1','scripts/phase0s/PackageVerification.Support.ps1','tests/Phase0S/Invoke-PackageVerificationChecks.ps1')) {
+    $route = Get-WorkloadRoute @($path)
+    Assert-Evidence (($route.groups -join ',') -ceq 'core,package-tools') ('bounded package tool route: ' + $path)
+    $old = [pscustomobject]@{inputs=@('src/Provider.cs:A',($path+':A'))}
+    $new = [pscustomobject]@{inputs=@('src/Provider.cs:A',($path+':B'))}
+    Assert-Evidence ((Get-WorkloadCheckFingerprint $old 'workload-PackageVerification') -cne (Get-WorkloadCheckFingerprint $new 'workload-PackageVerification')) 'own tool changes invalidate'
+    foreach ($name in @('native-FishingCpu','native-CombatCpu')) {
+        Assert-Evidence ((Get-WorkloadCheckFingerprint $old $name) -ceq (Get-WorkloadCheckFingerprint $new $name)) 'unrelated CPU inputs remain equal'
+    }
+}
+foreach ($path in @('scripts/phase0s/Install-Phase0S.ps1','scripts/phase0s/Restore-Phase0S.ps1','scripts/phase0s/Phase0S.ScriptSupport.ps1','scripts/workload/Workload.Support.ps1','scripts/workload/Workload.Evidence.ps1','scripts/test-workload-regressions.ps1','tests/NativeWorldTextProbe/NativeChecks.cs','environment:runtime')) {
+    $old = [pscustomobject]@{inputs=@($path+':A')}; $new = [pscustomobject]@{inputs=@($path+':B')}
+    Assert-Evidence ((Get-WorkloadCheckFingerprint $old 'native-FishingCpu') -cne (Get-WorkloadCheckFingerprint $new 'native-FishingCpu')) ('shared inputs remain strict: ' + $path)
+}
 # The page-only provider owns arrangement, not the automation execution chain.
 $page = Get-WorkloadRoute @('src/JueMingR.TerrariaHost/F5/MiscAutomationPanel.cs')
 Assert-Evidence ($page.groups -contains 'pages-host') 'page arrangement must select actual page composition/input checks'

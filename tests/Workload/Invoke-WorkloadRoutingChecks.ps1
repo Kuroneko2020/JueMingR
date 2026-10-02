@@ -247,6 +247,13 @@ try {
     foreach ($expected in @('native-PageCompositionCpu','fixture-focus-input','fixture-hotkeys-popup','HotkeyCoreChecks')) { Assert-Route ($names -contains $expected) ('page actual consumer ' + $expected) }
     foreach ($excluded in @('native-FishingCpu','native-ToolsCpu','native-ProcessingCpu','FishingChecks')) { Assert-Route ($names -notcontains $excluded) ('page excludes unrelated execution ' + $excluded) }
     $all = @(Get-WorkloadPlan $repositoryRoot (Join-Path $fixtureRoot 'checks') 'architecture.exe' $catalog (Get-WorkloadRoute @('scripts/build.ps1')).groups)
+    $packageRoute = Get-WorkloadRoute @('scripts/verify-existing-package.ps1')
+    $packagePlan = @(Get-WorkloadPlan $repositoryRoot (Join-Path $fixtureRoot 'checks') 'architecture.exe' $catalog $packageRoute.groups)
+    Assert-Route ($packagePlan.Count -eq 1 -and $packagePlan[0].name -ceq 'workload-PackageVerification' -and $packagePlan[0].project -ceq '' -and $packagePlan[0].arguments[-1] -ceq (Join-Path $repositoryRoot 'tests/Phase0S/Invoke-PackageVerificationChecks.ps1')) 'standalone package tool has exactly its actual PowerShell check'
+    Assert-Route ($all.name -contains 'workload-PackageVerification') 'Full retains package verifier coverage'
+    $mixed = Get-WorkloadRoute @('scripts/verify-existing-package.ps1','src/JueMingR.TerrariaHost/Input/HostInputState.cs')
+    Assert-Route ($mixed.groups -contains 'package-tools' -and $mixed.groups -contains 'combat-host' -and $mixed.groups -contains 'shared-host' -and $mixed.groups -contains 'fishing-host') 'package plus shared provider retains all propagation'
+    Assert-Route ((Get-WorkloadRoute @('scripts/phase0s/UnknownHelper.ps1')).groups -contains 'shared-host') 'new helper cannot inherit an unproven leaf exemption'
     Assert-Route (@($all.name | Sort-Object -Unique).Count -eq $all.Count) 'shared/domain overlaps dispatch each check only once'
     foreach ($expected in @('native-FishingCpu','native-BackgroundCpu','native-F5AutomationCpu','native-ToolsCpu','native-ToolsCadence','native-ToolsWorkload','native-ToolsExecutionCpu','native-RecoveryCpu','native-ProcessingCpu','native-AboutCpu','native-CoinDepositCpu')) {
         Assert-Route ($all.name -contains $expected) ('full entry retains ' + $expected)

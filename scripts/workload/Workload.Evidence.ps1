@@ -50,6 +50,9 @@ function Get-WorkloadCheckFingerprint {
     # same change (the dispatcher change itself invalidates all old evidence).
     # Page composition is also used by ToolsVisual, outside this CPU cache.
     $leaves = @{
+        'scripts/verify-existing-package.ps1'=@('workload-PackageVerification')
+        'scripts/phase0s/PackageVerification.Support.ps1'=@('workload-PackageVerification')
+        'tests/Phase0S/Invoke-PackageVerificationChecks.ps1'=@('workload-PackageVerification')
         'tests/NativeWorldTextProbe/NativePageCompositionChecks.cs'=@('native-PageCompositionCpu')
         'tests/NativeWorldTextProbe/NativeBackgroundAutomationChecks.cs'=@('native-BackgroundCpu','native-F5AutomationCpu')
         'tests/NativeWorldTextProbe/NativeToolCadenceChecks.cs'=@('native-ToolsCadence')
@@ -261,6 +264,9 @@ function Get-WorkloadPlan {
         foreach ($name in @('Routing','Evidence')) {
             $plan.Add(@{name='workload-'+$name; executable=(Get-Command powershell.exe).Source; arguments=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $Root ('tests/Workload/Invoke-Workload'+$name+'Checks.ps1'))); project=''})
         }
+    }
+    if ($Groups -contains 'package-tools' -or $Groups -contains 'shared-host' -or $Groups -contains 'storage-host') {
+        $plan.Add(@{name='workload-PackageVerification'; executable=(Get-Command powershell.exe).Source; arguments=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $Root 'tests/Phase0S/Invoke-PackageVerificationChecks.ps1')); project=''})
     }
     return $plan.ToArray()
 }
