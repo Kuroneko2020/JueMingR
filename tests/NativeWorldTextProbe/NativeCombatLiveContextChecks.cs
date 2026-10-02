@@ -21,6 +21,20 @@ namespace NativeWorldTextProbe
             string mode=Environment.GetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT");
             var native=Get(Get(Get(context,"CombatObservation"),"Prediction"),"Native");
             Require(native.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativePredictionDiagnostic")==null,"Ordinary product excludes the retired one-shot diagnostic.");
+            if(mode=="attack-mechanism"){NativeCombatAttackMechanismChecks.Run(context,native,cache,step,output);return;}
+            if(mode=="modeled-impact"){NativeCombatModeledImpactChecks.Run(context,native,cache,step,output);return;}
+            if(mode=="other-impact"){NativeCombatModeledImpactChecks.Run(context,native,cache,step,output,true);return;}
+            if(mode=="impact-boundaries"){NativeCombatImpactBoundaryChecks.Run(context,native,cache,step,output);return;}
+            if(mode=="impact-suite")
+            {
+                NativeCombatModeledImpactChecks.Run(context,native,cache,step,output);
+                NativeCombatModeledImpactChecks.Run(context,native,cache,step,output,true);
+                NativeCombatImpactBoundaryChecks.Run(context,native,cache,step,output);
+                NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions(path:true,clearLine:false,mouseCenter:true,dummy:true,radius:25));
+                Action targetStep=()=>{NativeCombatModeledImpactChecks.SampleMouse(context,Main.npc[16].Center);step();};
+                NativeCombatImpactRetirementChecks.Run(context,native,cache,targetStep,output);
+                NativeCombatImpactRetirementChecks.Off(context,native,cache,targetStep,output);return;
+            }
             if(mode=="mounted"){Mounted(context,native,cache,step);return;}
             if(mode=="post-delivery"){PostDelivery(context,native,cache,step);return;}
             if(mode=="liquid"){Liquid(context,native,cache,step);return;}

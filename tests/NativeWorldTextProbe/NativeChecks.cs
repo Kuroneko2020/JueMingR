@@ -16,6 +16,7 @@ namespace NativeWorldTextProbe
         {
             if(scope=="NpcPostDelivery"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT","post-delivery-suite");scope="NpcProduction";}
             if(scope=="NpcGuardianQuery"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT","environment");Environment.SetEnvironmentVariable("JUEMINGR_NPC_ENV_AXIS","guardian-query");scope="NpcProduction";}
+            if(scope=="NpcModeledImpact"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT","impact-suite");scope="NpcProduction";}
             if(scope=="NpcNameDraw"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT","name-draw");scope="NpcProduction";}
             if(scope=="NpcDiagnosticsOff"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_MEASURE_OFF","1");scope="NpcProduction";}
             if(scope=="NpcSessionCapacity"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_SESSION_CAPACITY","1");scope="NpcProduction";}

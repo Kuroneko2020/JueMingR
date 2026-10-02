@@ -163,6 +163,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                     NativeTileBoundary.Begin();
                     NativeEntityDirectory.Begin();
                     NativePredictionPurpose.Begin(selected);
+                    if(withAlignment)NativeNpcImpact.BeginWorker(tick,alignmentSlots);
                     try
                     {
                     for(int step=1;step<=horizon;step++)
@@ -229,6 +230,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                         if(NativeAssetSnapshot.Failure!=null)throw new InvalidDataException(NativeAssetSnapshot.Failure);
                         if(NativeEntityDirectory.MissingKind!=0)throw new InvalidDataException("Native code swallowed an unknown entity access.");
                         if(NativeImmunitySnapshot.Failure!=null)throw new InvalidDataException(NativeImmunitySnapshot.Failure);
+                        if(withAlignment && NativeNpcImpact.Failure!=null)throw new InvalidDataException(NativeNpcImpact.Failure);
                         // A slot is not an instance. Native NewNPC may replace
                         // even an active object; type/netID may instead change
                         // on this same object through Transform. End once and
@@ -269,7 +271,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                         continuationKind=NativeEntityDirectory.MissingKind;continuationSlot=NativeEntityDirectory.MissingSlot;
                         if(PredictionPipeProtocol.Measure)Console.Error.WriteLine("PREFIX completed="+completed+" missing-kind="+NativeEntityDirectory.MissingKind+" slot="+NativeEntityDirectory.MissingSlot);
                     }
-                    finally{NativePredictionPurpose.End();NativeNpcMotionTrace.Clear();NativeTileBoundary.End();NativeEntityDirectory.End();Main.tileSolid[379]=oldSolid379;}
+                    finally{NativeNpcImpact.EndWorker();NativePredictionPurpose.End();NativeNpcMotionTrace.Clear();NativeTileBoundary.End();NativeEntityDirectory.End();Main.tileSolid[379]=oldSolid379;}
                     // Count denotes genuinely completed points, including
                     // frame zero. Only successful full horizons reach 181.
                     result.Position=16;writer.Write(completed+1);result.Position=pointEnd;
@@ -282,6 +284,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                         // The incomplete step contributes only a page hint for
                         // a new observed capture, never state or a proof frame.
                         proof.Write(continuationKind);proof.Write(continuationSlot);
+                        NativeNpcImpact.WriteWorker(proof);
                     }
 #if JMR_CONDITIONAL_RESEARCH
                     Console.Error.WriteLine("RESEARCH calls npc="+actualNpcCalls+" projectile="+actualProjectileCalls+" query-reads="+ConditionalNpcQuery.QueryReads+" geometry-stores="+ConditionalNpcQuery.GeometryStores+" exact-roles="+alignmentSlots.Length+" query-pages="+(slots.Length-alignmentSlots.Length));

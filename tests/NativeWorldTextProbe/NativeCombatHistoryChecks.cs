@@ -136,11 +136,12 @@ namespace NativeWorldTextProbe
                         if(!camera && (proof.Length<expected.Length+12 || !proof.Take(expected.Length).SequenceEqual(expected)))throw new InvalidOperationException("Replay must reproduce the actual worker response proof before interpreting differences.");
                         using(var trailer=new MemoryStream(proof))using(var reader=new BinaryReader(trailer))
                         {
-                            reader.ReadInt32();object first=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativePredictionAlignment",true).GetMethod("Read",Flags).Invoke(null,new object[]{reader});
+                            int frameCount=reader.ReadInt32();object first=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativePredictionAlignment",true).GetMethod("Read",Flags).Invoke(null,new object[]{reader});
                             int roles=((int[])Get(first,"Npcs")).Length+((int[])Get(first,"Projectiles")).Length;
                             trailer.Position=expected.Length;reader.ReadInt64();host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativeTerrainUsage",true).GetMethod("Read",Flags).Invoke(null,new object[]{reader});
                             for(int role=0;role<roles;role++)reader.ReadBoolean();reader.ReadInt32();reader.ReadInt32();
-                            if(trailer.Position!=trailer.Length)throw new InvalidOperationException("Complete replay timing/terrain/purpose/continuation trailer.");
+                            host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativeImpactProof",true).GetMethod("Read",Flags).Invoke(null,new object[]{reader,tick,frameCount});
+                            if(trailer.Position!=trailer.Length)throw new InvalidOperationException("Complete replay timing/terrain/purpose/continuation/impact trailer.");
                         }
                         using(var original=new BinaryReader(File.OpenRead(Path.Combine(output,"history-native-proof.bin"))))using(var predicted=new BinaryReader(new MemoryStream(proof)))
                         {

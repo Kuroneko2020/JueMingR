@@ -26,6 +26,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             NativeLightingSnapshot.Install(patches);
             NativeNpcMotionTrace.Install(patches);
             NativePredictionPurpose.Install(patches);
+            NativeNpcImpact.Install(patches);
             if(!fixtureOriginal)NativeNpcEligibility.Install(patches);
 #if JMR_CONDITIONAL_RESEARCH
             ConditionalNpcQuery.Install(patches);

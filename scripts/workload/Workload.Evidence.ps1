@@ -242,7 +242,7 @@ function Get-WorkloadPlan {
     }
     $scopes = [ordered]@{
         'NpcWorkerIntegration'=@('combat-host'); 'NpcSnapshot'=@('combat-host'); 'NpcWorkerPreparation'=@('combat-host');
-        'NpcDiagnosticsOff'=@('combat-host'); 'NpcPostDelivery'=@('combat-host'); 'NpcGuardianQuery'=@('combat-host');
+        'NpcDiagnosticsOff'=@('combat-host'); 'NpcPostDelivery'=@('combat-host'); 'NpcGuardianQuery'=@('combat-host'); 'NpcModeledImpact'=@('combat-host');
         'NpcLegalCoverage'=@('combat-host'); 'NpcWorkerTransport'=@('combat-host'); 'NpcMenuPreparation'=@('combat-host'); 'NpcSessionCapacity'=@('combat-host'); 'NpcProduction'=@('combat-host'); 'NpcLongCoverage'=@('combat-host');
         'WorkloadCpu'=@('world-host','shared-host'); 'InformationCpu'=@('information','shared-host'); 'GuidanceCpu'=@('guidance','shared-host');
         'ShortFeedbackCpu'=@('shared-host','storage-host','quick-items-host','coin-deposit-host','recovery-host','processing-host','about-host','tools-host','fishing-host','combat-host');

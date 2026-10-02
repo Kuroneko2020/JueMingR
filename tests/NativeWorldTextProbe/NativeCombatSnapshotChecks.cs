@@ -371,6 +371,7 @@ namespace NativeWorldTextProbe
             var workerType=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.PredictionWorkerClient",true);
             var replyType=workerType.GetNestedType("DecodedReply",Flags);
             var resultType=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativePredictionResult",true);
+            var impactType=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativeImpactProof",true);
             var alignment=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativePredictionAlignment",true);
             var frameType=alignment.GetNestedType("Frame",Flags);
             var observe=alignment.GetMethod("Observe",Flags);var presentation=alignment.GetMethod("Presentation",Flags);
@@ -392,6 +393,9 @@ namespace NativeWorldTextProbe
                 object request=Activator.CreateInstance(requestType,true);
                 set(request,"Identity",identity);set(request,"Tick",1000L);set(request,"Wall",System.Diagnostics.Stopwatch.GetTimestamp());
                 set(request,"Npcs",new[]{0});set(request,"Projectiles",new int[0]);
+                // This static age fixture has no hit sources or events; supply
+                // the same owned, nonnull proof objects as capture and decoding.
+                set(request,"Impacts",Activator.CreateInstance(impactType,Flags,null,new object[]{new int[0]},null));
                 set(request,"Queries",host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativeNpcEligibility",true).GetMethod("Capture",Flags).Invoke(null,new object[]{new[]{0}}));
                 set(request,"Terrain",terrainType.GetMethod("Capture",Flags).Invoke(null,new object[]{1L,0,0,31,31}));
                 Array frames=Array.CreateInstance(frameType,181);
@@ -401,6 +405,7 @@ namespace NativeWorldTextProbe
                 var points=Enumerable.Range(0,natural?80:181).Select(i=>new NpcTrajectoryPoint(i,new NpcMotionState{Identity=valueIdentity,X=npc.position.X,Y=npc.position.Y,Width=npc.width,Height=npc.height})).ToArray();
                 var trajectory=new NpcTrajectory(valueIdentity,1000,1,PredictionAssumption.None,natural?PredictionStop.Despawn:PredictionStop.None,points,points.Length);
                 object result=Activator.CreateInstance(resultType,true);set(result,"Frames",frames);set(result,"Trajectory",natural?typeof(NpcTrajectory).GetMethod("BindIdentity").Invoke(trajectory,new object[]{identity}):trajectory);
+                set(result,"Impacts",Array.CreateInstance(impactType.GetNestedType("Hit",Flags),0));
                 // This owner-age fixture supplies decoded values, not a terrain
                 // simulation. The real decoder always supplies a nonnull usage
                 // record; no terrain accesses are asserted for this static input.

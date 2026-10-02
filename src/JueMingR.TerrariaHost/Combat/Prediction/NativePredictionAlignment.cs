@@ -85,6 +85,11 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             NPC target=Main.npc[selected];frame.NetOffset=target.netOffset;frame.CanReceive=target.active && CombatSelection.Receives(target,true);frame.CanHarm=target.active && !target.friendly && target.damage>0;
             return frame;
         }
+        internal static void ImpactState(BinaryWriter writer,NPC npc,Projectile source)
+        {
+            NpcPremise(writer,npc);NativeEntityContext.WriteNpc(writer,npc);
+            Projectiles.Write(writer,source);NativeActorContext.WriteProjectile(writer,source);
+        }
         private static void NpcPremise(BinaryWriter writer,NPC n)
         {
             Npcs.Write(writer,n);writer.Write(n.ai.Length);

@@ -52,7 +52,7 @@ namespace JueMingR.TerrariaHost.Combat
                 Patch(typeof(Player),"Teleport",nameof(PlayerTeleport),null,null);
                 Patch(typeof(Player),"Spawn",nameof(PlayerSpawn),null,null);
                 Patch(typeof(Player),"Hurt",null,nameof(PlayerHurt),null);
-                Patch(typeof(NPC),"StrikeNPC",null,nameof(NpcStrike),null);
+                Prediction.NativeNpcImpact.Install(harmony,methods);
                 Patch(typeof(NPC),"SetDefaults",nameof(NpcReset),null,null);
                 Patch(typeof(MessageBuffer),"GetData",nameof(PlayerNetwork),nameof(NpcNetwork),null);
                 PlayerCollisionGeometryHooks.Install(harmony,methods);
@@ -67,6 +67,7 @@ namespace JueMingR.TerrariaHost.Combat
         }
         private static HostCombatObservation PredictionHost
         {get{var self=current;return self!=null && self.Ready && self.host.Session>0 && self.host.Prediction.Cache.Required>0?self.host:null;}}
+        internal static Prediction.NativePredictionSession PredictionSession=>PredictionHost?.Prediction.Native;
         private static bool Live(Player player)
         {return player!=null && player.active && player.whoAmI>=0 && player.whoAmI<Main.maxPlayers && ReferenceEquals(Main.player[player.whoAmI],player);}
         private static void PlayerTeleport(Player __instance,Vector2 __0)
@@ -79,16 +80,6 @@ namespace JueMingR.TerrariaHost.Combat
             // on otherwise conditional mounts. Rejected/immune hits do not
             // revoke results; ordinary immunity clocks are not exact premises.
             var owner=PredictionHost;if(owner!=null && __result>0 && Live(__instance))owner.Prediction.Native?.ObservePlayerRelocation();
-        }
-        private static void NpcStrike(NPC __instance,int __result)
-        {
-            // Locked .8 positive StrikeNPC return is an accepted native hit,
-            // including knockback and shared realLife damage. Keep this fact
-            // even if UpdateNPC clears justHit before CompletedWorldUpdate.
-            // OFF has no snapshot, array allocation or diagnostic work.
-            var owner=PredictionHost;
-            if(owner!=null && __result>0 && __instance.whoAmI>=0 && __instance.whoAmI<Main.maxNPCs && ReferenceEquals(Main.npc[__instance.whoAmI],__instance))
-                owner.Prediction.Native?.ObserveNpcImpact(__instance);
         }
         private static void NpcReset(NPC __instance)
         {

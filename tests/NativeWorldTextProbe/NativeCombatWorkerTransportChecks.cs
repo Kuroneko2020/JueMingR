@@ -98,6 +98,20 @@ namespace NativeWorldTextProbe
             Require(difference.Invoke(null,new[]{exact,frame()})!=null,"Another original AI mechanism does not inherit timer equivalence.");
             Console.WriteLine("PASS AI_005 firing mechanism future clock / frame-zero raw bits / 0-101-130 boundaries / other AI damage motion strict");
         }
+        private static int ContinuationOffset(Assembly host,byte[] proof,long tick)
+        {
+            using(var stream=new MemoryStream(proof,false))using(var reader=new BinaryReader(stream))
+            {
+                var frameType=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativePredictionAlignment",true);var read=frameType.GetMethod("Read",Flags);
+                int count=reader.ReadInt32();object first=read.Invoke(null,new object[]{reader});
+                for(int i=1;i<count;i++)read.Invoke(null,new object[]{reader});
+                reader.ReadInt64();host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativeTerrainUsage",true).GetMethod("Read",Flags).Invoke(null,new object[]{reader});
+                int roles=((int[])first.GetType().GetField("Npcs",Flags).GetValue(first)).Length+((int[])first.GetType().GetField("Projectiles",Flags).GetValue(first)).Length;
+                for(int i=0;i<roles;i++)reader.ReadBoolean();int offset=(int)stream.Position;reader.ReadInt32();reader.ReadInt32();
+                host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativeImpactProof",true).GetMethod("Read",Flags).Invoke(null,new object[]{reader,tick,count});
+                Require(stream.Position==stream.Length,"Complete transport proof includes the bounded impact history.");return offset;
+            }
+        }
         private static void TailPrefix(Assembly host,Type clientType,object client,MethodInfo capture,string output)
         {
             foreach(int count in new[]{123,133})
@@ -120,7 +134,7 @@ namespace NativeWorldTextProbe
                 var read=resultType.GetMethod("Read",Flags);
                 foreach(var invalid in new[]{new[]{0,0},new[]{-1,-1},new[]{3,0},new[]{1,-1},new[]{1,201},new[]{2,1001}})
                 {
-                    var broken=(byte[])alignment.Clone();Buffer.BlockCopy(BitConverter.GetBytes(invalid[0]),0,broken,broken.Length-8,4);Buffer.BlockCopy(BitConverter.GetBytes(invalid[1]),0,broken,broken.Length-4,4);
+                    var broken=(byte[])alignment.Clone();int hint=ContinuationOffset(host,alignment,1000L);Buffer.BlockCopy(BitConverter.GetBytes(invalid[0]),0,broken,hint,4);Buffer.BlockCopy(BitConverter.GetBytes(invalid[1]),0,broken,hint+4,4);
                     Rejected(()=>read.Invoke(null,new object[]{core,broken,id,1000L,1L,false}),"Invalid continuation kind/slot cannot enter a new capture.");
                 }
                 byte[] continuation=null,continuationProof=null;int age=count==123?2:8;

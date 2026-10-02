@@ -240,8 +240,9 @@ try {
     $capacityPlan=@($combatPlan | Where-Object {$_.name -ceq 'native-NpcSessionCapacity'})
     Assert-Route ($capacityPlan.Count -eq 1 -and $capacityPlan[0].arguments[-1] -ceq 'NpcSessionCapacity') 'independent capacity consumer is present once with its actual probe scope'
     $scopeValidation=@((Get-Command (Join-Path $repositoryRoot 'scripts/test-world-object-text.ps1')).Parameters['Scope'].Attributes | Where-Object {$_ -is [System.Management.Automation.ValidateSetAttribute]})
-    foreach($scope in @('NpcSessionCapacity','NpcFailureRecovery','NpcGuardianQuery')) {Assert-Route ($scopeValidation.Count -eq 1 -and $scopeValidation[0].ValidValues -contains $scope) ('native entry accepts '+$scope)}
+    foreach($scope in @('NpcSessionCapacity','NpcFailureRecovery','NpcGuardianQuery','NpcModeledImpact')) {Assert-Route ($scopeValidation.Count -eq 1 -and $scopeValidation[0].ValidValues -contains $scope) ('native entry accepts '+$scope)}
     Assert-Route (@($combatPlan | Where-Object {$_.name -ceq 'native-NpcGuardianQuery' -and $_.arguments[-1] -ceq 'NpcGuardianQuery'}).Count -eq 1) 'guardian continuous query regression belongs to ordinary combat delivery'
+    Assert-Route (@($combatPlan | Where-Object {$_.name -ceq 'native-NpcModeledImpact' -and $_.arguments[-1] -ceq 'NpcModeledImpact'}).Count -eq 1) 'modeled and unmodeled hit boundaries belong to ordinary combat delivery'
     foreach($expected in @('CombatChecks','native-CombatCpu','native-CombatFacingCpu','native-CombatHitsCpu','native-CombatReportCpu','native-CombatUiCpu','native-ShortFeedbackCpu')) {Assert-Route (@($combatPlan.name) -contains $expected) ('combat consumer '+$expected)}
     $plan = @(Get-WorkloadPlan $repositoryRoot (Join-Path $fixtureRoot 'checks') 'architecture.exe' $catalog @('core','pages-host','hotkeys'))
     $names = @($plan | ForEach-Object {$_.name})

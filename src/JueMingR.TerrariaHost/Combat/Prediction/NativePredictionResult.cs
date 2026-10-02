@@ -10,6 +10,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
     internal sealed class NativePredictionResult
     {
         internal NativePredictionAlignment.Frame[] Frames;
+        internal NativeImpactProof.Hit[] Impacts;
         internal NpcTrajectory Trajectory;
         internal NativeTerrainUsage TerrainUsage;
         internal int Kind,Slot,TileX,TileY;
@@ -52,6 +53,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                     int kind=value.ContinuationKind,slot=value.ContinuationSlot;
                     if(kind==0?slot!=-1:(kind!=1 && kind!=2) || slot<0 || slot>(kind==1?200:1000) || count<=121 || count>=181)
                         throw new InvalidDataException("Invalid continuation page hint.");
+                    value.Impacts=NativeImpactProof.Read(proof,tick,count);
                     End(data);
                 }
                 var points=new NpcTrajectoryPoint[count];int length=count,quality=0;bool ended=false;

@@ -26,6 +26,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             internal readonly NativeTerrainUsage TerrainChanges=new NativeTerrainUsage();
             internal bool Retired;
             internal int Impact;
+            internal NativeImpactProof Impacts;
             internal int QueryChanged;
             internal double CaptureMs;
         }
@@ -138,12 +139,34 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         // retires all results and in-flight history before its next Prepare;
         // never mutate the cache or worker mailbox from a receive callback.
         internal void ObservePlayerRelocation(){Interlocked.Exchange(ref observedRelocation,1);}
-        internal void ObserveNpcImpact(NPC npc)
+        internal bool HasImpactDemand=>acceptedRequest!=null || pending!=null && !pending.Retired && pending.Impact==0;
+        internal bool TracksNpcImpact(NPC npc,int shared)
+        {return OwnsImpact(acceptedRequest,npc,shared) || OwnsImpact(pending,npc,shared);}
+        private static bool OwnsImpact(Request request,NPC npc,int shared)
+        {return request!=null && !request.Retired && (Array.IndexOf(request.Npcs,npc.whoAmI)>=0 || shared>=0 && Array.IndexOf(request.Npcs,shared)>=0 || NativeNpcEligibility.Owns(request.Queries,npc));}
+        internal void ObserveImpactFailure()
         {
-            // Native hit callbacks record only a fact on the request which
-            // already owned that page. Prepare owns cache retirement; no
-            // projectile discovery or full-pool observation is introduced.
-            MarkImpact(acceptedRequest,npc);MarkImpact(pending,npc);
+            // The observer cannot reconstruct a reliable pre-hit owner after
+            // an exception. Keep native exception behavior and fail closed.
+            if(acceptedRequest!=null)Interlocked.Exchange(ref acceptedRequest.Impact,1);
+            if(pending!=null)Interlocked.Exchange(ref pending.Impact,1);
+        }
+        internal void ObserveNpcImpact(NPC npc,NativeImpactProof.Hit hit)
+        {
+            // The old accepted window has no newly completed full history;
+            // revoke it conservatively. Only pending can earn publication by
+            // proving every intervening frame AND every successful hit.
+            MarkImpact(acceptedRequest,npc);
+            if(acceptedRequest!=null && NativeImpactProof.Touches(acceptedRequest.Npcs,hit))Interlocked.Exchange(ref acceptedRequest.Impact,1);
+            if(pending==null || pending.Retired)return;
+            if(NativeNpcEligibility.Owns(pending.Queries,npc)
+                || NativeImpactProof.Touches(pending.Npcs,hit) && !pending.Impacts.Record(hit,pending.Tick))
+                Interlocked.Exchange(ref pending.Impact,1);
+        }
+        internal void ObserveProjectileReset(Projectile source)
+        {
+            if(acceptedRequest!=null && acceptedRequest.Impacts.Owns(source))Interlocked.Exchange(ref acceptedRequest.Impact,1);
+            if(pending!=null && pending.Impacts.Owns(source))Interlocked.Exchange(ref pending.Impact,1);
         }
         private static void MarkImpact(Request request,NPC npc)
         {
@@ -280,6 +303,8 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 if(request.History.Count!=tick-request.Tick+1)throw new InvalidDataException("Missing intervening observations.");
                 for(int i=0;i<request.History.Count;i++)
                 {string difference=NativePredictionAlignment.Difference(result.Frames[i],request.History[i]);if(difference!=null){m.Outcome="history "+i+": "+difference;Reason=m.Outcome;Rejected++;return;}}
+                string impactDifference=request.Impacts.Difference(result.Impacts,tick,request.Npcs);
+                if(impactDifference!=null){m.Outcome=impactDifference;Reason=m.Outcome;Rejected++;return;}
                 result.Trajectory=result.Trajectory.BindIdentity(request.Identity);
                 // Only a current, history-validated prefix may guide the next
                 // fresh sample. A short remaining window still cannot publish;
@@ -327,7 +352,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                     )AddRegion(chunks,(int)Main.npc[slot].Center.X/16,(int)Main.npc[slot].Center.Y/16,24);
                 foreach(var player in Main.player)if(player!=null && player.active)AddRegion(chunks,(int)player.Center.X/16,(int)player.Center.Y/16,24);
                 if(terrain==null || !TerrainCurrent(terrain,identity.Session) || !Covers(terrain,chunks))terrain=NativeTerrainSnapshot.CaptureChunksObserved(identity.Session,chunks,terrainComparison);
-                var request=new Request{Identity=identity,Tick=tick,Wall=begin,Npcs=ns,Projectiles=ps,Terrain=terrain,Queries=NativeNpcEligibility.Capture(ns)};
+                var request=new Request{Identity=identity,Tick=tick,Wall=begin,Npcs=ns,Projectiles=ps,Terrain=terrain,Queries=NativeNpcEligibility.Capture(ns),Impacts=new NativeImpactProof(ps)};
 #if JMR_CONDITIONAL_RESEARCH
                 request.Npcs=exactNpcs.ToArray();
 #endif
