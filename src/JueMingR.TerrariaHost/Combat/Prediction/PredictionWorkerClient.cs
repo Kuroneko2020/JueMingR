@@ -26,6 +26,10 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         private int state,stopping,childId,closed,readySeen,recoverable;
         private long deadline;
         private long worldRevision,clearedRevision;
+#if JMR_AIM_DIAGNOSTICS
+        internal readonly long DiagnosticGeneration=AimDiagnostics.NextGeneration();
+#endif
+
         private byte[] request,result;
         private sealed class ValueRequest
         {
@@ -33,10 +37,18 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             internal NpcIdentity Identity;
             internal long Tick;
             internal bool NetworkObservation;
+#if JMR_AIM_DIAGNOSTICS
+            internal long DiagnosticRequest;
+#endif
+
         }
         internal sealed class DecodedReply
         {
             internal NativePredictionResult Result;
+#if JMR_AIM_DIAGNOSTICS
+            internal long DiagnosticRequest,DiagnosticSequence,DiagnosticGeneration;
+#endif
+
             internal int Bytes,ReplyBytes,MissingAsset;
             internal double EncodeMs,ExchangeMs,DecodeMs;
         }
@@ -83,10 +95,18 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         internal bool TrySendValues(NativeCapturedValues values,NpcIdentity identity,long tick,bool networkObservation)
         {
             if(values==null || !values.IsSealed || identity.Token!=null || tick<0)throw new ArgumentException("Prediction transport accepts sealed values and a token-free identity only.");
-            lock(gate){if(state!=1 || stopping!=0)return false;valueRequest=new ValueRequest{Values=values,Identity=identity,Tick=tick,NetworkObservation=networkObservation};Volatile.Write(ref state,2);wake.Set();return true;}
+            lock(gate){if(state!=1 || stopping!=0)return false;valueRequest=new ValueRequest{Values=values,Identity=identity,Tick=tick,NetworkObservation=networkObservation
+#if JMR_AIM_DIAGNOSTICS
+                ,DiagnosticRequest=AimDiagnostics.Request
+#endif
+};Volatile.Write(ref state,2);wake.Set();return true;}
         }
         internal DecodedReply TryTakeResult()
-        {lock(gate){if(state!=3 || stopping!=0 || decodedReply==null)return null;var answer=decodedReply;decodedReply=null;Volatile.Write(ref state,1);return answer;}}
+        {lock(gate){if(state!=3 || stopping!=0 || decodedReply==null)return null;var answer=decodedReply;
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.Active)try{AimDiagnostics.Event("mailbox-take",-1,"decoded reply taken",request:answer.DiagnosticRequest,generation:answer.DiagnosticGeneration,sequence:answer.DiagnosticSequence);}catch(Exception diagnosticError){AimDiagnostics.Missing("PredictionWorkerClient",diagnosticError);}
+#endif
+decodedReply=null;Volatile.Write(ref state,1);return answer;}}
         // Host retirement is immediate. A running request is allowed to finish
         // within its deadline, but cannot publish after this revision changes.
         // The same serial pipe acknowledges private cleanup before Ready.
@@ -95,7 +115,11 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             lock(gate)
             {
                 if(stopping!=0)return;
-                worldRevision++;request=result=null;valueRequest=null;decodedReply=null;Alignment=null;
+
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.Active)try{AimDiagnostics.Event("transport-reset",-1,"worldRevision="+worldRevision,generation:DiagnosticGeneration);}catch(Exception diagnosticError){AimDiagnostics.Missing("PredictionWorkerClient",diagnosticError);}
+#endif
+worldRevision++;request=result=null;valueRequest=null;decodedReply=null;Alignment=null;
                 if(state!=0)Volatile.Write(ref state,7);wake.Set();
             }
         }
@@ -103,7 +127,11 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         {
             lock(gate)
             {
-                if(stopping!=0)return;Volatile.Write(ref stopping,1);request=result=null;valueRequest=null;decodedReply=null;captureStorage=null;
+
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.Active)try{AimDiagnostics.Event("transport-stop",-1,"state="+state+";worldRevision="+worldRevision,generation:DiagnosticGeneration);}catch(Exception diagnosticError){AimDiagnostics.Missing("PredictionWorkerClient",diagnosticError);}
+#endif
+if(stopping!=0)return;Volatile.Write(ref stopping,1);request=result=null;valueRequest=null;decodedReply=null;captureStorage=null;
                 Volatile.Write(ref state,5);wake.Set();
             }
         }
@@ -121,6 +149,10 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             lock(gate)
             {
                 if(stopping!=0)return;string message=error.GetType().Name+": "+error.Message;
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.Active)try{AimDiagnostics.Event("transport-fail",-1,message,generation:DiagnosticGeneration);AimDiagnostics.Trigger(message);}catch(Exception diagnosticError){AimDiagnostics.Missing("PredictionWorkerClient",diagnosticError);}
+#endif
+
                 // Only loss/timeout of an already authenticated connection can
                 // invite one Session-owned restart. InvalidDataException also
                 // derives from IOException: exclude it explicitly so corrupt
@@ -156,6 +188,9 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                     // the authenticated files until the child has exited, so
                     // CLR cannot reopen a different config or lazy dependency.
                     for(int i=0;i<PayloadNames.Length;i++)if(Hash(leases[i]=new FileStream(Path.Combine(directory,PayloadNames[i]),FileMode.Open,FileAccess.Read,FileShare.Read))!=expectedHashes[i])throw new InvalidDataException("Prediction payload identity mismatch: "+PayloadNames[i]);
+#if JMR_AIM_DIAGNOSTICS
+                    if(AimDiagnostics.Active)try{AimDiagnostics.Event("authenticated-payloads",-1,"names="+string.Join(",",PayloadNames)+";sha256="+string.Join(",",expectedHashes),generation:DiagnosticGeneration);}catch(Exception error){AimDiagnostics.Missing("authenticated-payloads",error);}
+#endif
                     if(Hash(leases[PayloadNames.Length]=new FileStream(gamePath,FileMode.Open,FileAccess.Read,FileShare.Read))!=PredictionPipeProtocol.GameHash)throw new InvalidDataException("Prediction original identity mismatch.");
                     var layouts=PredictionPipeProtocol.Measure?Stopwatch.StartNew():null;PredictionWire.PrepareCaptureLayouts();CapturePreparationMilliseconds=layouts==null?0:layouts.Elapsed.TotalMilliseconds;
                     string hostHash=expectedHashes[2];Guid nonce=Guid.NewGuid();
@@ -163,7 +198,11 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                     var start=new ProcessStartInfo(Path.Combine(directory,"JueMingR.PredictionWorker.exe"),"--anonymous-pipes "+Quote(gamePath)+" "+hostHash+" "+parentId.ToString(CultureInfo.InvariantCulture)+" "+parentStarted.ToString(CultureInfo.InvariantCulture)+" "+output.GetClientHandleAsString()+" "+input.GetClientHandleAsString()+" "+nonce.ToString("N")+" "+Quote(cacheDirectory))
                     {UseShellExecute=false,CreateNoWindow=true,WorkingDirectory=directory,RedirectStandardError=true};
                     foreach(string key in new[]{"APPDOMAIN_MANAGER_ASM","APPDOMAIN_MANAGER_TYPE","COMPLUS_Version","COMPLUS_ApplicationMigrationRuntimeActivationConfigPath","COR_ENABLE_PROFILING","COR_PROFILER","COR_PROFILER_PATH"})start.EnvironmentVariables.Remove(key);
-                    long childStarted;
+
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.Active)try{if(AimDiagnostics.Active){start.EnvironmentVariables["JMR_AIM_DIAGNOSTIC_ROOT"]=AimDiagnostics.Root;start.EnvironmentVariables["JMR_AIM_DIAGNOSTIC_GENERATION"]=DiagnosticGeneration.ToString(CultureInfo.InvariantCulture);}}catch(Exception diagnosticError){AimDiagnostics.Missing("PredictionWorkerClient",diagnosticError);}
+#endif
+long childStarted;
                     lock(processGate)
                     {
                         if(Volatile.Read(ref stopping)!=0)return;
@@ -184,16 +223,32 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                         lock(gate){revision=worldRevision;clear=revision!=clearedRevision;payload=clear?PredictionPipeProtocol.ClearWorld():request;values=clear?null:valueRequest;request=null;valueRequest=null;}
                         if(payload==null && values==null){wake.WaitOne(100);if(child.HasExited)throw new EndOfStreamException("Prediction helper exited while idle.");continue;}
                         Limit(requestMilliseconds);double encodeMs=0;
+#if JMR_AIM_DIAGNOSTICS
+                        long diagnosticEncode=Stopwatch.GetTimestamp();
+#endif
                         if(values!=null)
                         {
                             var encoding=PredictionPipeProtocol.Measure?Stopwatch.StartNew():null;payload=values.Values.Encode();
-                            var reusable=values.Values.ReleaseStorage();values.Values=null;
+
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.DetailActive)try{if(values.Values.DiagnosticTerrainPages!=null)AimDiagnostics.Event("terrain-pages",values.Tick,"full owned terrain for this original request",values.Values.DiagnosticTerrainPages,true,values.DiagnosticRequest,DiagnosticGeneration,sequence+1);}catch(Exception error){AimDiagnostics.Missing("terrain-pages",error);}
+            if(AimDiagnostics.Active)try{AimDiagnostics.Event("request-raw",values.Tick,"encoded bytes="+payload.Length+";revision="+revision+";encodeMs="+((Stopwatch.GetTimestamp()-diagnosticEncode)*1000.0/Stopwatch.Frequency).ToString("R",CultureInfo.InvariantCulture),payload,true,values.DiagnosticRequest,DiagnosticGeneration,sequence+1);}catch(Exception diagnosticError){AimDiagnostics.Missing("PredictionWorkerClient",diagnosticError);}
+#endif
+var reusable=values.Values.ReleaseStorage();values.Values=null;
                             lock(gate){if(stopping==0)captureStorage=reusable;}
                             encodeMs=encoding?.Elapsed.TotalMilliseconds??0;
                         }
                         var exchange=PredictionPipeProtocol.Measure?Stopwatch.StartNew():null;PredictionPipeProtocol.WriteFrame(output,PredictionPipeProtocol.Envelope(payload,checked(++sequence),false));
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.Active)try{AimDiagnostics.Event("sent",values?.Tick??-1,"action="+(clear?"clear-world":"prediction")+";bytes="+payload.Length,request:values?.DiagnosticRequest??0,generation:DiagnosticGeneration,sequence:sequence);}catch(Exception diagnosticError){AimDiagnostics.Missing("PredictionWorkerClient",diagnosticError);}
+#endif
+
                         byte[] answer=PredictionPipeProtocol.ReadFrame(input);if(answer==null)throw new EndOfStreamException("Prediction helper ended without a result.");
-                        answer=PredictionPipeProtocol.OpenEnvelope(answer,sequence,true);
+
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.Active)try{AimDiagnostics.Event("response-envelope",values?.Tick??-1,"raw return before OpenEnvelope;revision="+revision+";encodeExchangeMs="+((Stopwatch.GetTimestamp()-diagnosticEncode)*1000.0/Stopwatch.Frequency).ToString("R",CultureInfo.InvariantCulture),answer,true,values?.DiagnosticRequest??0,DiagnosticGeneration,sequence);}catch(Exception diagnosticError){AimDiagnostics.Missing("PredictionWorkerClient",diagnosticError);}
+#endif
+answer=PredictionPipeProtocol.OpenEnvelope(answer,sequence,true);
                         if(clear)
                         {
                             if(!PredictionPipeProtocol.IsClearWorld(answer))throw new InvalidDataException("Prediction world reset was not acknowledged.");
@@ -205,12 +260,24 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                         if(values!=null)
                         {
                             var decoding=PredictionPipeProtocol.Measure?Stopwatch.StartNew():null;var parsed=NativePredictionResult.Read(answer,alignment,values.Identity,values.Tick,0,values.NetworkObservation);
-                            decoded=new DecodedReply{Result=parsed,Bytes=payload.Length,ReplyBytes=answer.Length+(alignment?.Length??0),MissingAsset=asset,EncodeMs=encodeMs,ExchangeMs=exchangeMs,DecodeMs=decoding?.Elapsed.TotalMilliseconds??0};
+                            decoded=new DecodedReply{Result=parsed,Bytes=payload.Length,ReplyBytes=answer.Length+(alignment?.Length??0),MissingAsset=asset,EncodeMs=encodeMs,ExchangeMs=exchangeMs,DecodeMs=decoding?.Elapsed.TotalMilliseconds??0
+#if JMR_AIM_DIAGNOSTICS
+                                ,DiagnosticRequest=values.DiagnosticRequest,DiagnosticGeneration=DiagnosticGeneration,DiagnosticSequence=sequence
+#endif
+};
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.Active)try{AimDiagnostics.Event("decoded",values.Tick,"error="+parsed.Error+";kind="+parsed.Kind+";slot="+parsed.Slot+";field="+parsed.DiagnosticField+";tile="+parsed.TileX+","+parsed.TileY+";asset="+asset,request:values.DiagnosticRequest,generation:DiagnosticGeneration,sequence:sequence);}catch(Exception diagnosticError){AimDiagnostics.Missing("PredictionWorkerClient",diagnosticError);}
+#endif
+
                         }
                         // Encoding and decoding do not hold the mailbox lock.
                         // World retirement can happen during either operation;
                         // that revision must never publish a late old result.
-                        lock(gate){deadline=0;if(stopping!=0)return;if(revision!=worldRevision){Volatile.Write(ref state,7);continue;}Alignment=values==null?alignment:null;MissingAsset=asset;ExchangeMilliseconds=exchangeMs;result=values==null?answer:null;decodedReply=decoded;Volatile.Write(ref state,3);}
+                        lock(gate){deadline=0;if(stopping!=0)return;if(revision!=worldRevision){
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.Active)try{AimDiagnostics.Event("revision-discard",values?.Tick??-1,"captured="+revision+";current="+worldRevision,request:values?.DiagnosticRequest??0,generation:DiagnosticGeneration,sequence:sequence);}catch(Exception diagnosticError){AimDiagnostics.Missing("PredictionWorkerClient",diagnosticError);}
+#endif
+Volatile.Write(ref state,7);continue;}Alignment=values==null?alignment:null;MissingAsset=asset;ExchangeMilliseconds=exchangeMs;result=values==null?answer:null;decodedReply=decoded;Volatile.Write(ref state,3);}
                     }
                 }
             }

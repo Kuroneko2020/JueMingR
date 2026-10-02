@@ -22,10 +22,18 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         {
             // The native sentinel is grappling[0]; unused trailing capacity may
             // contain zero and does not mean projectile slot 0 is attached.
-            writer.Write(Mechanism(player)!=0);
+            {
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"NativePlayerMotion.Mechanism(player)!=0","context");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativePlayerMotion",diagnosticError);}
+#endif
+writer.Write(Mechanism(player)!=0);}
             // jumpSpeed is a shared scratch field last written by whichever
             // player updated last. Never treat it as this player's observation.
-            writer.Write(Player.defaultGravity);
+            {
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"NativePlayerMotion.Player.defaultGravity","context");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativePlayerMotion",diagnosticError);}
+#endif
+writer.Write(Player.defaultGravity);}
         }
         internal void Read(BinaryReader reader,int slot)
         {

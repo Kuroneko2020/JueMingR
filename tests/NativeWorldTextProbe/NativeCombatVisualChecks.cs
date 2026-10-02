@@ -88,7 +88,7 @@ namespace NativeWorldTextProbe
             Console.WriteLine("PASS G11A actual F5 rows/buttons, interval release/cancel/geometry, binding capture/save, original fonts and scroll at 100/150 percent.");
         }
         private static float CenterY(object element){var rect=Get(element,"Rect");return (float)Get(rect,"Y")+(float)Get(rect,"Height")/2;}
-        private static void World(object context,ProbeGraphics graphics,string output)
+        internal static void World(object context,ProbeGraphics graphics,string output,bool diagnosticGap=false)
         {
             var host=Get(context,"CombatObservation");var layer=Get(host,"World");Set(host,"LayerStatus",Enum.Parse(Get(host,"LayerStatus").GetType(),"Ready"));
             Main.screenWidth=960;Main.screenHeight=640;Main.UIScale=1;PlayerInput.CacheOriginalScreenDimensions();Main.screenPosition=new Vector2(300,300);Main.hideUI=false;Main.mapFullscreen=false;Main.dayTime=false;
@@ -102,8 +102,9 @@ namespace NativeWorldTextProbe
             graphics.Image(Path.Combine(output,"observation-world.png"),()=>Call(layer,"Draw"),Main.GameViewMatrix.ZoomMatrix);
             Main.LocalPlayer.gravDir=-1;Main.screenPosition+=new Vector2(70,30);Call(layer,"Prepare");graphics.Image(Path.Combine(output,"observation-world-inverted.png"),()=>Call(layer,"Draw"),Main.GameViewMatrix.ZoomMatrix);Main.LocalPlayer.gravDir=1;
             npc.SetDefaults(371);npc.whoAmI=0;npc.active=true;npc.position=new Vector2(700,650);npc.target=0;npc.ai[3]=1;
-            int priorMode=Main.netMode;try{Main.netMode=1;NativeCombatObservationChecks.Fresh(context,host);Call(layer,"Prepare");string shown=(string)Get(layer,"pathText");Require(shown.Contains("随机代表路线") && shown.Contains("依据本机网络观察") && shown.Contains("玩家保持当前位置"),"actual rendered path text retains random, network and player assumptions");}finally{Main.netMode=priorMode;}
+            int priorMode=Main.netMode;try{Main.netMode=1;NativeCombatObservationChecks.Fresh(context,host);Call(layer,"Prepare");string shown=(string)Get(layer,"pathText");Require(shown.Contains("随机代表路线") && shown.Contains("依据本机网络观察") && shown.Contains("玩家保持当前位置"),"actual rendered path text retains random, network and player assumptions");if(diagnosticGap)graphics.Image(Path.Combine(output,"observation-world-network-diagnostic.png"),()=>Call(layer,"Draw"),Main.GameViewMatrix.ZoomMatrix);}finally{Main.netMode=priorMode;}
             NativeCombatObservationChecks.Save(host,new ObservationOptions());Call(layer,"Prepare");Require((int)Get(layer,"StrokeCount")==0,"display off retires prepared geometry");
+            if(diagnosticGap)graphics.Image(Path.Combine(output,"observation-world-diagnostic-off.png"),()=>Call(layer,"Draw"),Main.GameViewMatrix.ZoomMatrix);
         }
         private static void ScrollTo(object context,object state,object element)
         {

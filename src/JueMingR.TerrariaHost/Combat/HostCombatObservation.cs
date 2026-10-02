@@ -1,3 +1,6 @@
+#if JMR_AIM_DIAGNOSTICS
+using AimDiagnostics=JueMingR.TerrariaHost.Combat.Prediction.AimDiagnostics;
+#endif
 using System;
 using System.IO;
 using JueMingR.Features.Combat;
@@ -25,6 +28,10 @@ namespace JueMingR.TerrariaHost.Combat
         internal HostCombatObservation(string directory,SingleFeatureRuntime runtime,HostInputState input,NativeNpcObservation npcs,Prediction.PredictionLaunchIdentity launch=null)
         {
             this.runtime=runtime;this.input=input;
+#if JMR_AIM_DIAGNOSTICS
+            JueMingR.TerrariaHost.Combat.Prediction.AimDiagnostics.Initialize(directory);
+#endif
+
             Prediction=new NpcPredictionSource(launch);
             Settings=new ObservationSettings(new AtomicFileDocument(System.IO.Path.Combine(directory,"JueMingRData","config","features","combat-observation.json"),65536));
             Selection=new CombatSelection(npcs);World=new CombatObservationWorldLayer(this);Hooks=new CombatGeometryHooks(this);
@@ -56,7 +63,11 @@ namespace JueMingR.TerrariaHost.Combat
         public void Radius(int value){if(CanConfigure && Options.Radius!=value)Settings.Set(Options.WithRadius(value));}
         internal void Poll()
         {
-            Settings.Poll();bool collision=Collision,path=Path;
+
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.Active)try{JueMingR.TerrariaHost.Combat.Prediction.AimDiagnostics.Event("environment",(long)Main.GameUpdateCount,"session="+Session+";menu="+Main.gameMenu+";requestedPath="+Options.Path+";hooks="+Hooks.Ready+";layer="+LayerStatus);}catch(Exception diagnosticError){AimDiagnostics.Missing("HostCombatObservation",diagnosticError);}
+#endif
+Settings.Poll();bool collision=Collision,path=Path;
             if(wasCollision && !collision)Geometry.Clear();
             if(wasPath && !path)Prediction.Cache.Release(0);
             // Other registered consumers can outlive the path toggle. Retire
@@ -77,7 +88,11 @@ namespace JueMingR.TerrariaHost.Combat
         public void FailClosed(){Clear();Prediction.Stop();collisionFailed=pathFailed=true;}
         public void Update(ulong tick)
         {
-            if(!Enabled)return;
+
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.Active)try{JueMingR.TerrariaHost.Combat.Prediction.AimDiagnostics.Update((long)tick,Session,"session="+Session+";enabled="+Enabled+";path="+Path+";hooks="+Hooks.Ready+";canDraw="+CanDraw+";demand="+Prediction.Cache.Required);}catch(Exception diagnosticError){AimDiagnostics.Missing("HostCombatObservation",diagnosticError);}
+#endif
+if(!Enabled)return;
             if(!Hooks.Ready){Selection.RetireTarget();Prediction.Clear();return;}
             var player=Main.LocalPlayer;if(player==null || !player.active || player.dead || player.ghost){Selection.RetireTarget();Prediction.Clear();Geometry.BeginNpcs();return;}
             if(Collision)Geometry.BeginNpcs();

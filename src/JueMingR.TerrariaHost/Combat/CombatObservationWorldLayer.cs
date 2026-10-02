@@ -1,3 +1,6 @@
+#if JMR_AIM_DIAGNOSTICS
+using AimDiagnostics=JueMingR.TerrariaHost.Combat.Prediction.AimDiagnostics;
+#endif
 using System;
 using JueMingR.Platform.Combat;
 using JueMingR.TerrariaHost.Guidance;
@@ -15,21 +18,41 @@ namespace JueMingR.TerrariaHost.Combat
         private readonly Stroke[] strokes=new Stroke[16384];
         private static readonly Color[] colors={new Color(90,205,250),new Color(145,230,120),new Color(245,185,65),new Color(245,100,120),new Color(215,140,255)};
         private readonly HostCombatObservation host;
+
+#if JMR_AIM_DIAGNOSTICS
+        private long diagnosticPresentation;
+        private int diagnosticPathStrokes;
+#endif
         private int count,eventStart,eventEnd;private long presentation;private bool eventsDrawn;private Matrix zoom,inverse;private string pathText;private bool legend,limited;
         internal CombatObservationWorldLayer(HostCombatObservation host){this.host=host;}
         internal int StrokeCount {get{return count;}}
         internal void Clear(){count=eventStart=eventEnd=0;eventsDrawn=false;pathText=null;legend=limited=false;}
         internal void Prepare()
         {
-            Clear();if(!host.Enabled || !host.CanDraw || !WorldPresentation.CanDraw || Main.GameViewMatrix==null)return;
-            zoom=Main.GameViewMatrix.ZoomMatrix;if(zoom.M11<=0 || zoom.M22<=0)return;inverse=Matrix.Invert(zoom);
+
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.Active)try{diagnosticPresentation++;diagnosticPathStrokes=0;Prediction.AimDiagnostics.Event("presentation-begin",(long)Main.GameUpdateCount,"presentation="+diagnosticPresentation+";enabled="+host.Enabled+";canDraw="+host.CanDraw+";worldCanDraw="+WorldPresentation.CanDraw+";matrix="+(Main.GameViewMatrix!=null));}catch(Exception diagnosticError){AimDiagnostics.Missing("CombatObservationWorldLayer",diagnosticError);}
+#endif
+Clear();if(!host.Enabled || !host.CanDraw || !WorldPresentation.CanDraw || Main.GameViewMatrix==null)return;
+            zoom=Main.GameViewMatrix.ZoomMatrix;
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.Active)try{AimDiagnostics.Event("presentation-zoom",(long)Main.GameUpdateCount,"presentation="+diagnosticPresentation+";M11="+zoom.M11+";M22="+zoom.M22+";return="+(zoom.M11<=0 || zoom.M22<=0));}catch(Exception error){AimDiagnostics.Missing("presentation-zoom",error);}
+#endif
+            if(zoom.M11<=0 || zoom.M22<=0)return;inverse=Matrix.Invert(zoom);
             if(host.Collision)
             {
                 host.Geometry.PrepareEvents();legend=true;limited=host.Geometry.EventOverflow;Samples(host.Geometry.Attacks,0);Samples(host.Geometry.Npcs,1);Samples(host.Geometry.Bodies,3);
                 eventStart=count;presentation++;Samples(host.Geometry.Events,2);eventEnd=count;
             }
             var path=host.Path?host.Prediction.Cache.Read(0):null;
-            if(path==null)return;
+
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.Active)try{Prediction.AimDiagnostics.Event("presentation-cache",(long)Main.GameUpdateCount,"presentation="+diagnosticPresentation+";path="+host.Path+";cache="+(path!=null)+";count="+(path?.Count??0));}catch(Exception diagnosticError){AimDiagnostics.Missing("CombatObservationWorldLayer",diagnosticError);}
+#endif
+if(path==null)return;
+#if JMR_AIM_DIAGNOSTICS
+            int diagnosticPathStart=count;
+#endif
             bool approximate=(path.Assumptions&(PredictionAssumption.ApproximateMechanism|PredictionAssumption.RandomRepresentative))!=0;
             var color=approximate?new Color(255,210,110):new Color(235,235,255);
             for(int i=1;i<path.Count;i++)
@@ -46,6 +69,10 @@ namespace JueMingR.TerrariaHost.Combat
             if(path.Strategy==PredictionStrategy.SegmentedTrend)
                 pathText+=path.Quality==PredictionQuality.LimitedObservation?" · 运动观察较少":" · 依据近期移动，远端仅供参考";
             else pathText+=(path.Assumptions&PredictionAssumption.HeldPlayerControls)!=0?" · 假设玩家延续当前输入":" · 假设玩家保持当前位置";
+#if JMR_AIM_DIAGNOSTICS
+            diagnosticPathStrokes=count-diagnosticPathStart;
+            if(AimDiagnostics.Active)try{AimDiagnostics.Event("presentation-ready",(long)Main.GameUpdateCount,"presentation="+diagnosticPresentation+";pathStrokes="+diagnosticPathStrokes+";pathText="+pathText+";strategy="+path.Strategy+";quality="+path.Quality+";stop="+path.Stop+";assumptions="+path.Assumptions);}catch(Exception error){AimDiagnostics.Missing("presentation-ready",error);}
+#endif
         }
         private static string StopText(PredictionStop reason)
         {
@@ -166,7 +193,11 @@ namespace JueMingR.TerrariaHost.Combat
         {if(p==0)return q>=0;float r=q/p;if(p<0){if(r>hi)return false;lo=Math.Max(lo,r);}else{if(r<lo)return false;hi=Math.Min(hi,r);}return true;}
         internal bool Draw()
         {
-            if(!host.Enabled || !host.CanDraw || !WorldPresentation.CanDraw || Main.spriteBatch==null)return true;
+
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.Active)try{Prediction.AimDiagnostics.Event("draw",(long)Main.GameUpdateCount,"presentation="+diagnosticPresentation+";enabled="+host.Enabled+";canDraw="+host.CanDraw+";worldCanDraw="+WorldPresentation.CanDraw+";spriteBatch="+(Main.spriteBatch!=null)+";strokes="+count+";pathStrokes="+diagnosticPathStrokes+";pathText="+(pathText!=null));}catch(Exception diagnosticError){AimDiagnostics.Missing("CombatObservationWorldLayer",diagnosticError);}
+#endif
+if(!host.Enabled || !host.CanDraw || !WorldPresentation.CanDraw || Main.spriteBatch==null)return true;
             var batch=Main.spriteBatch;var pixel=TextureAssets.MagicPixel.Value;
             // MagicPixel's asset is larger than one texel; a null source would
             // multiply both dimensions and turn outlines into opaque blocks.
@@ -180,9 +211,20 @@ namespace JueMingR.TerrariaHost.Combat
             }
             if(pathText!=null){Text(pathText,y,new Color(235,220,160));y+=22;}
             if(limited)Text("显示数量已达上限，部分区域未绘出",y,Color.Orange);
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.Active)try{AimDiagnostics.Event("draw-completed",(long)Main.GameUpdateCount,"presentation="+diagnosticPresentation+";pathStrokes="+diagnosticPathStrokes+";textPrepared="+(pathText!=null));}catch(Exception error){AimDiagnostics.Missing("draw-completed",error);}
+#endif
             return true;
         }
         private void Text(string value,float y,Color color)
-        {if(FontAssets.MouseText?.Value!=null)Utils.DrawBorderString(Main.spriteBatch,value,Vector2.Transform(new Vector2(16,Math.Max(16,y)),inverse),color,.72f*inverse.M11);}
+        {
+#if JMR_AIM_DIAGNOSTICS
+            var diagnosticFont=FontAssets.MouseText?.Value;
+            if(diagnosticFont!=null)Utils.DrawBorderString(Main.spriteBatch,value,Vector2.Transform(new Vector2(16,Math.Max(16,y)),inverse),color,.72f*inverse.M11);
+            if(AimDiagnostics.Active)try{AimDiagnostics.Event("text-draw",(long)Main.GameUpdateCount,"presentation="+diagnosticPresentation+";path="+(value==pathText)+";font="+(diagnosticFont!=null)+";drawn="+(diagnosticFont!=null)+";value="+value);}catch(Exception error){AimDiagnostics.Missing("text-draw",error);}
+#else
+            if(FontAssets.MouseText?.Value!=null)Utils.DrawBorderString(Main.spriteBatch,value,Vector2.Transform(new Vector2(16,Math.Max(16,y)),inverse),color,.72f*inverse.M11);
+#endif
+        }
     }
 }

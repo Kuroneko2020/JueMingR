@@ -76,6 +76,7 @@ namespace NativeWorldTextProbe
                     if(Directory.Exists(prepared))foreach(string file in Directory.EnumerateFiles(prepared,"*.image"))File.Copy(file,Path.Combine(cached,Path.GetFileName(file)),true);
                 }
                 string hash;using(var input=File.OpenRead(host.Location))using(var sha=SHA256.Create())hash=BitConverter.ToString(sha.ComputeHash(input)).Replace("-","");
+                string aimRoot=Environment.GetEnvironmentVariable("JMR_AIM_DIAGNOSTIC_FIXTURE_ROOT");if(!string.IsNullOrEmpty(aimRoot))NativeAimDiagnosticsChecks.Attach(host,aimRoot);
                 try{NativeQuickItemChecks.Run(context=>{if(menuOnly)NativeCombatMenuPreparationChecks.Run(context,output);else NativeCombatProductionPredictionChecks.Run(context,output,content);},processing:true,shortFeedback:true,candidateAssembly:host.Location,predictionHostHash:hash);}
                 finally
                 {

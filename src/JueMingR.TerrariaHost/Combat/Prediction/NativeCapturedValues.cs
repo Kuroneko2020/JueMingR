@@ -25,6 +25,9 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             internal readonly List<Entry> Entries=new List<Entry>(4096);
             internal readonly List<object> Buffers=new List<object>();
         }
+#if JMR_AIM_DIAGNOSTICS
+        internal byte[] DiagnosticTerrainPages;
+#endif
         private Storage storage;
         private List<Entry> entries=>storage.Entries;
         private List<object> buffers=>storage.Buffers;
@@ -59,6 +62,10 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             using(var stream=new MemoryStream())using(var writer=new BinaryWriter(stream,Encoding.UTF8,true))
             {Replay(writer);writer.Flush();if(stream.Length>PredictionPipeProtocol.MaximumPayload)throw new InvalidDataException("Snapshot exceeds frame limit.");return stream.ToArray();}
         }
+        #if JMR_AIM_DIAGNOSTICS
+        internal byte[] DiagnosticPartial()
+        {using(var stream=new MemoryStream())using(var writer=new BinaryWriter(stream)){Replay(writer);writer.Flush();return stream.ToArray();}}
+#endif
         private void Replay(BinaryWriter writer)
         {
             foreach(var entry in entries)

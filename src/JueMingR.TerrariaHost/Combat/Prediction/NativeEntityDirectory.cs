@@ -107,11 +107,17 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
 #endif
             Entry entry;if(!Opaque.TryGetValue(value,out entry))return;
             if(MissingKind==0){MissingKind=entry.Kind;MissingSlot=entry.Slot;MissingField=0;}
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.Active)try{NativePredictionPurpose.DiagnosticMissing("kind="+MissingKind+";slot="+MissingSlot+";field="+MissingField+";fieldName="+(FieldIdentities.ContainsKey(MissingField)?FieldIdentities[MissingField]:"unknown"));}catch(Exception error){AimDiagnostics.Missing("dependency-missing",error);}
+#endif
             throw new InvalidDataException("Unobserved entity for immunity reset: kind="+entry.Kind+" slot="+entry.Slot);
         }
         internal static void MissingNpcColumn(int slot)
         {
             if(MissingKind==0){MissingKind=1;MissingSlot=slot;MissingField=0;}
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.Active)try{NativePredictionPurpose.DiagnosticMissing("kind="+MissingKind+";slot="+MissingSlot+";field="+MissingField+";fieldName="+(FieldIdentities.ContainsKey(MissingField)?FieldIdentities[MissingField]:"unknown"));}catch(Exception error){AimDiagnostics.Missing("dependency-missing",error);}
+#endif
             throw new InvalidDataException("Unobserved NPC immunity column: slot="+slot);
         }
         internal static void Reset()
@@ -314,11 +320,17 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 // A later read or managed address still requires its codec.
                 if(mode==2){NativePredictionPurpose.Access(value,mode,false,field);return;}
                 if(MissingKind==0){MissingKind=entry.Kind+2;MissingSlot=entry.Slot;MissingField=field;}
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.Active)try{NativePredictionPurpose.DiagnosticMissing("kind="+MissingKind+";slot="+MissingSlot+";field="+MissingField+";fieldName="+(FieldIdentities.ContainsKey(MissingField)?FieldIdentities[MissingField]:"unknown"));}catch(Exception error){AimDiagnostics.Missing("dependency-missing",error);}
+#endif
                 throw new InvalidDataException("Uncaptured full-page field kind="+entry.Kind+" slot="+entry.Slot+" field="+FieldIdentities[field]+" access="+mode);
             }
             int kind=entry.Kind,slot=entry.Slot;
             if(mode==0 && (kind==1?NpcReads:ProjectileReads).Contains(field))return;
             if(MissingKind==0){MissingKind=kind;MissingSlot=slot;MissingField=field;}
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.Active)try{NativePredictionPurpose.DiagnosticMissing("kind="+MissingKind+";slot="+MissingSlot+";field="+MissingField+";fieldName="+(FieldIdentities.ContainsKey(MissingField)?FieldIdentities[MissingField]:"unknown"));}catch(Exception error){AimDiagnostics.Missing("dependency-missing",error);}
+#endif
             throw new InvalidDataException("Unobserved entity field kind="+kind+" slot="+slot+" token="+field.ToString("X8")+" field="+FieldIdentities[field]+" access="+mode);
         }
     }

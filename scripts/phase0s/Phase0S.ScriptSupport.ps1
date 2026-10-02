@@ -1,4 +1,4 @@
-Set-StrictMode -Version 2.0
+﻿Set-StrictMode -Version 2.0
 
 $script:Phase0SUtf8NoBom = New-Object System.Text.UTF8Encoding($false, $true)
 $script:Phase0SExpectedPayloadPaths = @(
@@ -542,6 +542,7 @@ function Read-Phase0SPackage {
         ('about-help-feedback-' + [string] $manifest.sourceCommit)
         ('recovery-buffs-services-' + [string] $manifest.sourceCommit)
         ('continuous-processing-' + [string] $manifest.sourceCommit)
+        ('continuous-processing-d-' + [string] $manifest.sourceCommit)
     )
     if ([string] $manifest.sourceCommit -notmatch '^[0-9a-f]{40}$' -or
         $allowedPackageIds -cnotcontains [string] $manifest.packageId) {

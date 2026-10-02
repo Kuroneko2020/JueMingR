@@ -1,3 +1,6 @@
+#if JMR_AIM_DIAGNOSTICS
+using AimDiagnostics=JueMingR.TerrariaHost.Combat.Prediction.AimDiagnostics;
+#endif
 using System;
 using JueMingR.Features.Combat;
 using JueMingR.Platform.Combat;
@@ -68,12 +71,22 @@ namespace JueMingR.TerrariaHost.Combat
             {
                 var n=npcs.Active(i);if(n==null)continue;
                 geometry?.Npc(n);
+
+#if JMR_AIM_DIAGNOSTICS
+                bool receives=canSelect && Receives(n,options.Dummy);
+                if(AimDiagnostics.Active)try{AimDiagnostics.Event("candidate",(long)Main.GameUpdateCount,AimDiagnostics.Identity(Identity(n,session))+";canSelect="+canSelect+";receives="+receives+";filter="+(!canSelect?"selection gate":!receives?"cannot receive damage":"range pending")+";radius="+radius+";mouseCenter="+options.MouseCenter+";clearLinePreference="+options.ClearLine);}catch(Exception error){AimDiagnostics.Missing("candidate",error);}
+                if(!receives)continue;
+#else
                 if(!canSelect || !Receives(n,options.Dummy))continue;
+#endif
 #if DEBUG
                 Candidates++;
 #endif
                 var box=ReceiveBounds(n);
                 float dx=center.X-MathHelper.Clamp(center.X,box.Left,box.Right),dy=center.Y-MathHelper.Clamp(center.Y,box.Top,box.Bottom),distance=dx*dx+dy*dy;
+                #if JMR_AIM_DIAGNOSTICS
+                if(AimDiagnostics.Active)try{AimDiagnostics.Event("candidate-range",(long)Main.GameUpdateCount,"slot="+n.whoAmI+";distanceSquared="+distance+";radius="+radius+";inRange="+(distance<=radius*radius));}catch(Exception error){AimDiagnostics.Missing("candidate-range",error);}
+#endif
                 if(distance>radius*radius)continue;
                 bool clear=false;
                 if(options.ClearLine)
@@ -91,6 +104,10 @@ namespace JueMingR.TerrariaHost.Combat
                 if(preferred){HasTarget=true;Target=identity;best=distance;bestClear=clear;bestSlot=i;}
             }
             ClearLine=bestClear;
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.Active)try{Prediction.AimDiagnostics.Event("selection",(long)Main.GameUpdateCount,"selected="+HasTarget+";"+Prediction.AimDiagnostics.Identity(Target)+";prior="+Prediction.AimDiagnostics.Identity(prior)+";canSelect="+canSelect+";distanceSquared="+best+";radius="+radius+";clear="+bestClear);}catch(Exception diagnosticError){AimDiagnostics.Missing("CombatSelection",diagnosticError);}
+#endif
+
         }
         internal static float PlayerRadius(Vector2 center)
         {

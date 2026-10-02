@@ -1,11 +1,12 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [ValidateSet('Debug', 'Release')]
     [string] $Configuration = 'Debug',
     [switch] $RequireClean,
     [string] $WorkloadBaseline,
     [ValidateSet('Related','Full','Feedback')][string] $WorkloadMode = 'Related',
-    [switch] $RerunChecks
+    [switch] $RerunChecks,
+    [switch] $AimDiagnostics
 )
 
 $ErrorActionPreference = 'Stop'
@@ -13,6 +14,7 @@ Set-StrictMode -Version 2.0
 
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 . (Join-Path $PSScriptRoot 'workload/Workload.Support.ps1')
+$script:AimDiagnosticsMode = [bool]$AimDiagnostics
 $solutionPath = Join-Path $repositoryRoot 'JueMingR.sln'
 $baselinePath = Join-Path $repositoryRoot 'eng\TerrariaReferences.baseline.json'
 $harmonyBaselinePath = Join-Path $repositoryRoot 'eng\Harmony.baseline.json'
@@ -125,13 +127,19 @@ $buildArguments = @(
     "-p:JueMingRBuildRoot=$workRoot",
     "-p:TerrariaReferencesDirectory=$referencesDirectory",
     "-p:HarmonyReferencesDirectory=$harmonyReferencesDirectory",
-    "-p:SourceRevisionId=$commit"
+    "-p:SourceRevisionId=$commit",
+    "-p:JueMingRAimDiagnostics=$([bool]$AimDiagnostics)"
 )
 & $dotnetCommand.Source @buildArguments
 if ($LASTEXITCODE -ne 0) {
     throw "The $Configuration solution build failed."
 }
 
+# Inspect the actual assembly for this variant before allowing evidence reuse.
+$aimHost = Join-Path $workRoot "bin/JueMingR.TerrariaHost/x86/$Configuration/net472/JueMingR.TerrariaHost.dll"
+$aimImage = [Text.Encoding]::UTF8.GetString([IO.File]::ReadAllBytes($aimHost))
+$hasAimType = $aimImage.Contains('AimDiagnosticRecorder') -and $aimImage.Contains('AimDiagnostics')
+if ($hasAimType -ne [bool]$AimDiagnostics -or (-not $AimDiagnostics -and ($aimImage.Contains('JMR_AIM_DIAGNOSTIC_ROOT') -or $aimImage.Contains('aim-diagnostics')))) { throw 'Actual Host diagnostic compilation boundary does not match requested variant.' }
 # The formal build includes architecture checks; compilation alone is not this entry's success gate.
 $architectureTests = Join-Path $workRoot "bin\JueMingR.ArchitectureTests\x86\$Configuration\net472\JueMingR.ArchitectureTests.exe"
 if (-not [System.IO.File]::Exists($architectureTests)) {
@@ -189,6 +197,7 @@ $record = [ordered]@{
     clean = $isClean
     sdk = $sdkVersion.Trim()
     configuration = $Configuration
+    aimDiagnostics = [bool]$AimDiagnostics
     sourceFingerprint = $sourceIdentity.fingerprint
     inputFingerprint = $inputIdentity.fingerprint
     baselineSha256 = (Get-FileHash -LiteralPath $baselinePath -Algorithm SHA256).Hash.ToUpperInvariant()
@@ -208,7 +217,7 @@ if ($Configuration -ceq 'Release') {
         if (-not $debugRoot.StartsWith($repositoryRoot.TrimEnd('\') + '\artifacts\build\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Detection cleanup escaped its workspace output root.' }
         if ([IO.Directory]::Exists($debugRoot)) { Remove-Item -LiteralPath $debugRoot -Recurse -Force }
         $debugWork = Join-Path $debugRoot 'work'; [IO.Directory]::CreateDirectory($debugWork) | Out-Null
-        & $dotnetCommand.Source build $solutionPath --configuration Debug --no-incremental --nologo -p:Platform=x86 "-p:JueMingRBuildRoot=$debugWork" "-p:TerrariaReferencesDirectory=$referencesDirectory" "-p:HarmonyReferencesDirectory=$harmonyReferencesDirectory" "-p:SourceRevisionId=$commit"
+        & $dotnetCommand.Source build $solutionPath --configuration Debug --no-incremental --nologo -p:Platform=x86 "-p:JueMingRBuildRoot=$debugWork" "-p:TerrariaReferencesDirectory=$referencesDirectory" "-p:HarmonyReferencesDirectory=$harmonyReferencesDirectory" "-p:SourceRevisionId=$commit" "-p:JueMingRAimDiagnostics=$([bool]$AimDiagnostics)"
         if ($LASTEXITCODE -ne 0) { throw 'Same-source Debug detection build failed.' }
         $debugRecord = [ordered]@{}
         foreach ($key in $record.Keys) { $debugRecord[$key] = $record[$key] }
@@ -223,7 +232,7 @@ if ($Configuration -ceq 'Release') {
 }
 $json = ($record | ConvertTo-Json -Depth 8) + [Environment]::NewLine
 [IO.File]::WriteAllText($recordPath, $json, (New-Object Text.UTF8Encoding($false)))
-try { $workload = & (Join-Path $PSScriptRoot 'test-workload-regressions.ps1') -Baseline $WorkloadBaseline -Mode $WorkloadMode -Rerun:$RerunChecks }
+try { $workload = & (Join-Path $PSScriptRoot 'test-workload-regressions.ps1') -Baseline $WorkloadBaseline -Mode $WorkloadMode -Rerun:$RerunChecks -AimDiagnostics:$AimDiagnostics }
 catch {
     $failure = $_.Exception.Data['workload']
     if ($null -eq $failure) { $failure = [ordered]@{ status = 'FAILED'; failedCheck = 'workload-entry'; reason = $_.Exception.Message; checkCount = 0 } }

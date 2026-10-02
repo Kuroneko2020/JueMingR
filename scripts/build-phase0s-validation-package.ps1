@@ -1,11 +1,12 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
     [string] $OutputDirectory,
     [ValidateSet('Phase0S', 'Phase0TBiome', 'Phase0UF5UI', 'Phase0VSettings', 'Phase0WNotes', 'ItemAutomation', 'UnifiedHotkeys', 'EntityLabels', 'WorldTargets', 'WorldObjectText', 'InformationSummary', 'DirectionEquipment', 'DeathHistory', 'MapMarkersExploration', 'Footprints', 'ItemBrowser', 'KeepFavoritedQuickItems', 'CoinDeposit', 'AboutHelpFeedback', 'RecoveryBuffsServices', 'ContinuousProcessing')]
     [string] $Profile = 'Phase0S',
     [string] $WorkloadBaseline,
-    [switch] $Rebuild
+    [switch] $Rebuild,
+    [switch] $AimDiagnostics
 )
 
 $ErrorActionPreference = 'Stop'
@@ -14,7 +15,9 @@ Set-StrictMode -Version 2.0
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..')).TrimEnd('\')
 . (Join-Path $PSScriptRoot 'phase0s\Phase0S.ScriptSupport.ps1')
 . (Join-Path $PSScriptRoot 'workload/Workload.Support.ps1')
-$ownerTestCardName = if ($Profile -eq 'ContinuousProcessing') { 'Continuous-Processing-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'RecoveryBuffsServices') { 'Recovery-Buffs-Services-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'AboutHelpFeedback') { 'About-Help-Feedback-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'CoinDeposit') { 'Coin-Deposit-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'KeepFavoritedQuickItems') { 'Keep-Favorited-Quick-Items-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'ItemBrowser') { 'Item-Browser-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'Footprints') { 'Footprints-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'MapMarkersExploration') { 'Map-Markers-Exploration-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'DeathHistory') {
+$script:AimDiagnosticsMode = [bool]$AimDiagnostics
+if ($AimDiagnostics -and $Profile -cne 'ContinuousProcessing') { throw 'Aim diagnostics requires the complete ContinuousProcessing profile.' }
+$ownerTestCardName = if ($AimDiagnostics) { 'Aim-Diagnostics-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'ContinuousProcessing') { 'Continuous-Processing-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'RecoveryBuffsServices') { 'Recovery-Buffs-Services-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'AboutHelpFeedback') { 'About-Help-Feedback-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'CoinDeposit') { 'Coin-Deposit-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'KeepFavoritedQuickItems') { 'Keep-Favorited-Quick-Items-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'ItemBrowser') { 'Item-Browser-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'Footprints') { 'Footprints-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'MapMarkersExploration') { 'Map-Markers-Exploration-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'DeathHistory') {
     'Death-History-Owner-Test-Card.zh-CN.md'
 } elseif ($Profile -eq 'DirectionEquipment') {
     'Direction-Equipment-Owner-Test-Card.zh-CN.md'
@@ -174,6 +177,7 @@ function Assert-Phase0SFixedPackageTree {
         'payload/Terraria.exe.config',
         'phase-0-s-package.manifest.json'
     )
+    if ($AimDiagnostics) { $expectedFiles += @('Aim-Diagnostics-Control.ps1', 'analyze-aim-diagnostics.py') }
     [Array]::Sort($expectedFiles, [System.StringComparer]::Ordinal)
     $records = @(Get-Phase0SPackageTreeRecords -PackageRoot $PackageRoot)
     $actualFiles = @($records | ForEach-Object { $_.path })
@@ -185,6 +189,7 @@ function Assert-Phase0SFixedPackageTree {
         'Phase0S.ScriptSupport.ps1', 'Restore-Phase0S.ps1', 'THIRD-PARTY-NOTICES.md',
         'payload', 'phase-0-s-package.manifest.json'
     ) | Sort-Object
+    if ($AimDiagnostics) { $expectedRootNames = @($expectedRootNames + @('Aim-Diagnostics-Control.ps1','analyze-aim-diagnostics.py') | Sort-Object) }
     $actualRootNames = @(Get-ChildItem -LiteralPath $PackageRoot -Force -ErrorAction Stop | Sort-Object Name | ForEach-Object { $_.Name })
     if (($actualRootNames -join '|') -cne ($expectedRootNames -join '|') -or
         -not (Test-Phase0SOrdinaryDirectory -Path (Join-Path $PackageRoot 'payload')) -or
@@ -203,7 +208,7 @@ function Assert-Phase0SPackageHasNoPrivatePath {
             $sensitiveValues.Add($value)
         }
     }
-    $textExtensions = @('.ps1', '.md', '.txt', '.json', '.config', '.manifest')
+    $textExtensions = @('.ps1', '.py', '.md', '.txt', '.json', '.config', '.manifest')
     foreach ($record in @(Get-Phase0SPackageTreeRecords -PackageRoot $PackageRoot)) {
         $filePath = Resolve-Phase0SContainedPath -Root $PackageRoot -RelativePath $record.path
         $file = Get-Item -LiteralPath $filePath -Force -ErrorAction Stop
@@ -323,7 +328,7 @@ $sourceCommit = ([string] (Invoke-Phase0SGit -Arguments @('rev-parse', 'HEAD') |
 if ($sourceCommit -notmatch '^[0-9a-f]{40}$') {
     throw 'The source commit identity is invalid.'
 }
-$packageId = $(if ($Profile -eq 'ContinuousProcessing') { 'continuous-processing-' } elseif ($Profile -eq 'RecoveryBuffsServices') { 'recovery-buffs-services-' } elseif ($Profile -eq 'AboutHelpFeedback') { 'about-help-feedback-' } elseif ($Profile -eq 'CoinDeposit') { 'coin-deposit-' } elseif ($Profile -eq 'KeepFavoritedQuickItems') { 'favorite-quick-items-' } elseif ($Profile -eq 'ItemBrowser') { 'item-browser-' } elseif ($Profile -eq 'Footprints') { 'footprints-' } elseif ($Profile -eq 'MapMarkersExploration') { 'map-markers-exploration-' } elseif ($Profile -eq 'DeathHistory') { 'death-history-' } elseif ($Profile -eq 'DirectionEquipment') { 'direction-equipment-' } elseif ($Profile -eq 'InformationSummary') { 'information-summary-' } elseif ($Profile -eq 'WorldObjectText') { 'world-object-text-' } elseif ($Profile -eq 'WorldTargets') { 'world-targets-' } elseif ($Profile -eq 'EntityLabels') { 'entity-labels-' } elseif ($Profile -eq 'UnifiedHotkeys') { 'unified-hotkeys-' } elseif ($Profile -eq 'ItemAutomation') { 'item-automation-' } elseif ($Profile -eq 'Phase0WNotes') { 'phase0w-notes-' } elseif ($Profile -eq 'Phase0VSettings') { 'phase0v-settings-' } elseif ($Profile -eq 'Phase0UF5UI') { 'phase0u-f5-ui-' } elseif ($Profile -eq 'Phase0TBiome') { 'phase0t-biome-' } else { 'phase0s-' }) + $sourceCommit
+$packageId = $(if ($AimDiagnostics) { 'continuous-processing-d-' } elseif ($Profile -eq 'ContinuousProcessing') { 'continuous-processing-' } elseif ($Profile -eq 'RecoveryBuffsServices') { 'recovery-buffs-services-' } elseif ($Profile -eq 'AboutHelpFeedback') { 'about-help-feedback-' } elseif ($Profile -eq 'CoinDeposit') { 'coin-deposit-' } elseif ($Profile -eq 'KeepFavoritedQuickItems') { 'favorite-quick-items-' } elseif ($Profile -eq 'ItemBrowser') { 'item-browser-' } elseif ($Profile -eq 'Footprints') { 'footprints-' } elseif ($Profile -eq 'MapMarkersExploration') { 'map-markers-exploration-' } elseif ($Profile -eq 'DeathHistory') { 'death-history-' } elseif ($Profile -eq 'DirectionEquipment') { 'direction-equipment-' } elseif ($Profile -eq 'InformationSummary') { 'information-summary-' } elseif ($Profile -eq 'WorldObjectText') { 'world-object-text-' } elseif ($Profile -eq 'WorldTargets') { 'world-targets-' } elseif ($Profile -eq 'EntityLabels') { 'entity-labels-' } elseif ($Profile -eq 'UnifiedHotkeys') { 'unified-hotkeys-' } elseif ($Profile -eq 'ItemAutomation') { 'item-automation-' } elseif ($Profile -eq 'Phase0WNotes') { 'phase0w-notes-' } elseif ($Profile -eq 'Phase0VSettings') { 'phase0v-settings-' } elseif ($Profile -eq 'Phase0UF5UI') { 'phase0u-f5-ui-' } elseif ($Profile -eq 'Phase0TBiome') { 'phase0t-biome-' } else { 'phase0s-' }) + $sourceCommit
 
 $outputRoot = [System.IO.Path]::GetFullPath($OutputDirectory).TrimEnd('\')
 if ([string]::IsNullOrWhiteSpace($outputRoot) -or (Get-Phase0SPathState -Path $outputRoot).exists) {
@@ -349,7 +354,7 @@ $buildOutput = @()
 if (-not $Rebuild -and -not $WorkloadBaseline -and (Test-WorkloadDelivery $repositoryRoot $existingBuild)) {
     Write-Host 'REUSED verified Release build and complete applicable check evidence.'
 } else {
-    $buildOutput = @(& (Join-Path $PSScriptRoot 'build.ps1') -Configuration Release -RequireClean -WorkloadBaseline $WorkloadBaseline 2>&1)
+    $buildOutput = @(& (Join-Path $PSScriptRoot 'build.ps1') -Configuration Release -RequireClean -WorkloadBaseline $WorkloadBaseline -AimDiagnostics:$AimDiagnostics 2>&1)
     if (-not $?) { throw 'The locked Release build failed.' }
 }
 $statusAfterBuild = @(Invoke-Phase0SGit -Arguments @('status', '--porcelain=v1', '--untracked-files=all'))
@@ -363,7 +368,7 @@ $buildRecordPath = Join-Path $repositoryRoot 'artifacts\build\Release\build-reco
 $buildRecord = (Get-Phase0SStrictUtf8Text -Path $buildRecordPath -MaximumLength 1048576) | ConvertFrom-Json
 if ([int] $buildRecord.schemaVersion -ne 4 -or [string] $buildRecord.commit -cne $sourceCommit -or
     -not [bool] $buildRecord.clean -or [string] $buildRecord.sdk -cne '10.0.203' -or
-    [string] $buildRecord.configuration -cne 'Release') {
+    [string] $buildRecord.configuration -cne 'Release' -or [bool]$buildRecord.aimDiagnostics -ne [bool]$AimDiagnostics) {
     throw 'The Release build record does not describe the clean source commit.'
 }
 if (-not (Test-WorkloadDelivery $repositoryRoot $buildRecord)) {
@@ -395,7 +400,7 @@ if ($harmonyIdentity.fullName -cne '0Harmony, Version=2.4.2.0, Culture=neutral, 
     throw 'Prepared Harmony identity or license is invalid.'
 }
 
-$packageDirectoryName = $(if ($Profile -eq 'ContinuousProcessing') { 'JueMingR-Continuous-Processing-' } elseif ($Profile -eq 'RecoveryBuffsServices') { 'JueMingR-Recovery-Buffs-Services-' } elseif ($Profile -eq 'AboutHelpFeedback') { 'JueMingR-About-Help-Feedback-' } elseif ($Profile -eq 'CoinDeposit') { 'JueMingR-Coin-Deposit-' } elseif ($Profile -eq 'KeepFavoritedQuickItems') { 'JueMingR-Keep-Favorited-Quick-Items-' } elseif ($Profile -eq 'ItemBrowser') { 'JueMingR-Item-Browser-' } elseif ($Profile -eq 'Footprints') { 'JueMingR-Footprints-' } elseif ($Profile -eq 'MapMarkersExploration') { 'JueMingR-Map-Markers-Exploration-' } elseif ($Profile -eq 'DeathHistory') { 'JueMingR-Death-History-' } elseif ($Profile -eq 'DirectionEquipment') { 'JueMingR-Direction-Equipment-' } elseif ($Profile -eq 'InformationSummary') { 'JueMingR-Information-Summary-' } elseif ($Profile -eq 'WorldObjectText') { 'JueMingR-World-Object-Text-' } elseif ($Profile -eq 'WorldTargets') { 'JueMingR-World-Targets-' } elseif ($Profile -eq 'EntityLabels') { 'JueMingR-Entity-Labels-' } elseif ($Profile -eq 'UnifiedHotkeys') { 'JueMingR-Unified-Hotkeys-' } elseif ($Profile -eq 'ItemAutomation') { 'JueMingR-Item-Automation-' } elseif ($Profile -eq 'Phase0WNotes') { 'JueMingR-Phase0W-Notes-' } elseif ($Profile -eq 'Phase0VSettings') { 'JueMingR-Phase0V-Settings-' } elseif ($Profile -eq 'Phase0UF5UI') { 'JueMingR-Phase0U-F5UI-' } elseif ($Profile -eq 'Phase0TBiome') { 'JueMingR-Phase0T-Biome-' } else { 'JueMingR-Phase0S-' }) + $sourceCommit
+$packageDirectoryName = $(if ($AimDiagnostics) { 'JueMingR-Aim-Diagnostics-' } elseif ($Profile -eq 'ContinuousProcessing') { 'JueMingR-Continuous-Processing-' } elseif ($Profile -eq 'RecoveryBuffsServices') { 'JueMingR-Recovery-Buffs-Services-' } elseif ($Profile -eq 'AboutHelpFeedback') { 'JueMingR-About-Help-Feedback-' } elseif ($Profile -eq 'CoinDeposit') { 'JueMingR-Coin-Deposit-' } elseif ($Profile -eq 'KeepFavoritedQuickItems') { 'JueMingR-Keep-Favorited-Quick-Items-' } elseif ($Profile -eq 'ItemBrowser') { 'JueMingR-Item-Browser-' } elseif ($Profile -eq 'Footprints') { 'JueMingR-Footprints-' } elseif ($Profile -eq 'MapMarkersExploration') { 'JueMingR-Map-Markers-Exploration-' } elseif ($Profile -eq 'DeathHistory') { 'JueMingR-Death-History-' } elseif ($Profile -eq 'DirectionEquipment') { 'JueMingR-Direction-Equipment-' } elseif ($Profile -eq 'InformationSummary') { 'JueMingR-Information-Summary-' } elseif ($Profile -eq 'WorldObjectText') { 'JueMingR-World-Object-Text-' } elseif ($Profile -eq 'WorldTargets') { 'JueMingR-World-Targets-' } elseif ($Profile -eq 'EntityLabels') { 'JueMingR-Entity-Labels-' } elseif ($Profile -eq 'UnifiedHotkeys') { 'JueMingR-Unified-Hotkeys-' } elseif ($Profile -eq 'ItemAutomation') { 'JueMingR-Item-Automation-' } elseif ($Profile -eq 'Phase0WNotes') { 'JueMingR-Phase0W-Notes-' } elseif ($Profile -eq 'Phase0VSettings') { 'JueMingR-Phase0V-Settings-' } elseif ($Profile -eq 'Phase0UF5UI') { 'JueMingR-Phase0U-F5UI-' } elseif ($Profile -eq 'Phase0TBiome') { 'JueMingR-Phase0T-Biome-' } else { 'JueMingR-Phase0S-' }) + $sourceCommit
 $zipFileName = $packageDirectoryName + '.zip'
 $stagingToken = [Guid]::NewGuid().ToString('N')
 $stagingRoot = Join-Path $outputParent ((Split-Path -Leaf $outputRoot) + '.phase0s-stage-' + $stagingToken)
@@ -521,6 +526,11 @@ try {
         Copy-Phase0SBuilderFileCreateNew -SourcePath $sourceAndName[0] -DestinationPath (Join-Path $packageRoot $sourceAndName[1])
     }
 
+    if ($AimDiagnostics) {
+        foreach ($name in @('Aim-Diagnostics-Control.ps1','analyze-aim-diagnostics.py')) {
+            Copy-Phase0SBuilderFileCreateNew -SourcePath (Join-Path $repositoryRoot ('scripts/' + $name)) -DestinationPath (Join-Path $packageRoot $name)
+        }
+    }
     $validatedPackage = Read-Phase0SPackage -PackageRoot $packageRoot
     if ($validatedPackage.packageId -cne $packageId -or $validatedPackage.sourceCommit -cne $sourceCommit) {
         throw 'Final package identity verification failed.'
@@ -540,6 +550,7 @@ try {
         packageId = $packageId
         sdk = '10.0.203'
         configuration = 'Release'
+        aimDiagnostics = [bool]$AimDiagnostics
         targetFramework = 'net472'
         platformTarget = 'x86'
         buildEntry = 'scripts/build.ps1'

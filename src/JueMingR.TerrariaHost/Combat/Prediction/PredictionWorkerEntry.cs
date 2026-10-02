@@ -14,7 +14,11 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             if(AppDomain.CurrentDomain.FriendlyName.IndexOf("JueMingR.PredictionWorker",StringComparison.Ordinal)<0)
                 throw new InvalidOperationException("Private simulation requires the owned worker executable.");
             Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-prediction-unused-"+Guid.NewGuid().ToString("N"));
-            return Simulate(input,output,ready);
+
+#if JMR_AIM_DIAGNOSTICS
+            AimDiagnostics.InitializeWorker();
+#endif
+return Simulate(input,output,ready);
         }
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static int Simulate(Stream input,Stream output,byte[] ready)
@@ -30,6 +34,10 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 while((frame=PredictionWire.ReadFrame(input))!=null)
                 {
                     if(ready!=null)frame=PredictionPipeProtocol.OpenEnvelope(frame,checked(++sequence),false);
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.Active)try{AimDiagnostics.Sequence=sequence;AimDiagnostics.Event("worker-receive",-1,"bytes="+frame.Length,frame,true);}catch(Exception diagnosticError){AimDiagnostics.Missing("PredictionWorkerEntry",diagnosticError);}
+#endif
+
                     if(ready!=null && PredictionPipeProtocol.IsClearWorld(frame))
                     {
                         sandbox.ClearWorld();
@@ -40,6 +48,10 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                     try
                     {
                         byte[] core=sandbox.Predict(frame,ready!=null);
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.Active)try{AimDiagnostics.Event("worker-completed",-1,"core="+core.Length+";alignment="+(sandbox.Alignment?.Length??0));}catch(Exception diagnosticError){AimDiagnostics.Missing("PredictionWorkerEntry",diagnosticError);}
+#endif
+
                         result=ready==null?core:PredictionPipeProtocol.Envelope(PredictionPipeProtocol.Result(core,sandbox.Alignment,NativeAssetSnapshot.MissingKey),sequence,true);
                     }
                     catch(Exception error)
@@ -48,6 +60,10 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                         // A native scenario failure invalidates this request;
                         // it is never replaced by extrapolated success points.
                         bool capacity=error is PredictionCapacityException;
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.Active)try{AimDiagnostics.Event("worker-exception",-1,error.ToString());AimDiagnostics.Trigger("worker-exception");}catch(Exception diagnosticError){AimDiagnostics.Missing("PredictionWorkerEntry",diagnosticError);}
+#endif
+
                         using(var buffer=new MemoryStream())using(var writer=new BinaryWriter(buffer))
                         {writer.Write(-PredictionWire.Protocol);writer.Write(error.GetType().Name);string message=(PredictionPipeProtocol.Measure?"completed-steps="+sandbox.MeasuredCompletedSteps+"; ":"")+error;writer.Write(message.Length>4096?message.Substring(0,4096):message);writer.Write(capacity?-1:NativeTileBoundary.MissingX);writer.Write(capacity?-1:NativeTileBoundary.MissingY);writer.Write(capacity?-1:NativeEntityDirectory.MissingKind);writer.Write(capacity?-1:NativeEntityDirectory.MissingSlot);writer.Write(capacity?-1:NativeEntityDirectory.MissingField);writer.Flush();result=buffer.ToArray();}
                         // Failed predictions have no usable alignment. A real
@@ -58,7 +74,11 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                     }
                     // I/O is outside request recovery: after a partial write
                     // the only safe action is closing this owned connection.
-                    PredictionWire.WriteFrame(output,result);
+
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.Active)try{AimDiagnostics.Event("worker-return",-1,"bytes="+result.Length,result,true);}catch(Exception diagnosticError){AimDiagnostics.Missing("PredictionWorkerEntry",diagnosticError);}
+#endif
+PredictionWire.WriteFrame(output,result);
                 }
             }
             return 0;

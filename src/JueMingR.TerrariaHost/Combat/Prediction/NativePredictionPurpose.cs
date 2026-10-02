@@ -18,6 +18,11 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         private static readonly NativeTerrainUsage[] terrain=new NativeTerrainUsage[Count];
         private static readonly bool[] relevant=new bool[Count];
         private static bool enabled;
+#if JMR_AIM_DIAGNOSTICS
+        private static string diagnosticSource;
+        internal static int DiagnosticActor=>actor;
+        internal static void DiagnosticMissing(string detail){if(AimDiagnostics.Active)try{AimDiagnostics.Event("dependency-missing",(long)Main.GameUpdateCount,"consumer="+actor+";"+detail);}catch(Exception error){AimDiagnostics.Missing("dependency-missing",error);}}
+#endif
         private static int actor=Global,selected,queryDepth,temporaryDepth,readOnlyDepth;
         private static NPC candidate;
         private static bool impact;
@@ -60,7 +65,11 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         internal static void Tile(int x,int y)
         {
             if(!enabled)return;
-            var used=terrain[actor];if(used==null)terrain[actor]=used=new NativeTerrainUsage();used.Add(x,y);
+            var used=terrain[actor];if(used==null)terrain[actor]=used=new NativeTerrainUsage();
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.Active && !used.Cells.ContainsKey(x/32*128+y/32))try{AimDiagnostics.Event("dependency-tile-source",(long)Main.GameUpdateCount,"consumer="+actor+";firstX="+x+";firstY="+y+";chunk="+(x/32*128+y/32));}catch(Exception error){AimDiagnostics.Missing("dependency-tile-source",error);}
+#endif
+            used.Add(x,y);
         }
         // Called only after the ordinary field permission/identity check. No
         // omitted page or unsupported field is promoted by provenance.
@@ -72,11 +81,19 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             if(npc!=null)provider=npc.whoAmI;
             else{var p=value as Projectile;if(p==null)return;provider=ProjectileBase+p.whoAmI;}
             if(provider<0 || provider>=Global || provider==actor)return;
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.Active && ((mode==0 || mode==1) && (needs[actor,provider/64]&(1UL<<(provider%64)))==0 || mode!=0 && (needs[provider,actor/64]&(1UL<<(actor%64)))==0))try{diagnosticSource="field="+field+";mode="+mode+";directoryRead="+directoryRead;}catch(Exception error){AimDiagnostics.Missing("dependency-source",error);}
+#endif
             if(mode==0)Link(actor,provider);
             else{Link(provider,actor);if(mode==1)Link(actor,provider);}
         }
         private static void Link(int consumer,int provider)
-        {needs[consumer,provider/64]|=1UL<<(provider%64);}
+        {
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.Active && (needs[consumer,provider/64]&(1UL<<(provider%64)))==0)try{AimDiagnostics.Event("dependency-source",(long)Main.GameUpdateCount,"consumer="+consumer+";provider="+provider+";actor="+actor+";source="+diagnosticSource);}catch(Exception error){AimDiagnostics.Missing("dependency-source",error);}
+#endif
+            needs[consumer,provider/64]|=1UL<<(provider%64);
+        }
         internal static NativeTerrainUsage Complete(int[] npcs,int[] projectiles,out bool[] npcRequired,out bool[] projectileRequired)
         {
             relevant[Global]=true;relevant[selected]=true;
@@ -100,7 +117,11 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             }
             npcRequired=new bool[npcs.Length];for(int i=0;i<npcs.Length;i++)npcRequired[i]=relevant[npcs[i]];
             projectileRequired=new bool[projectiles.Length];for(int i=0;i<projectiles.Length;i++)projectileRequired[i]=relevant[ProjectileBase+projectiles[i]];
-            var result=new NativeTerrainUsage();for(int i=0;i<Count;i++)if(relevant[i] && terrain[i]!=null)result.Union(terrain[i]);return result;
+            var result=new NativeTerrainUsage();for(int i=0;i<Count;i++)if(relevant[i] && terrain[i]!=null)result.Union(terrain[i]);
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.Active)try{AimDiagnostics.Event("dependency-final-roles",(long)Main.GameUpdateCount,"npcs="+string.Join(",",npcs)+";npcRequired="+string.Join(",",npcRequired)+";projectiles="+string.Join(",",projectiles)+";projectileRequired="+string.Join(",",projectileRequired)+";terrainChunks="+result.Cells.Count);}catch(Exception error){AimDiagnostics.Missing("dependency-final-roles",error);}
+#endif
+            return result;
         }
         private static void QueryBefore(out bool __state){__state=enabled;if(__state)queryDepth++;}
         private static void QueryAfter(bool __state){if(__state)queryDepth--;}
@@ -112,6 +133,9 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         {
             if(!enabled || !__result || candidate==null || actor<ProjectileBase || actor>=Global)return;
             impact=true;
+#if JMR_AIM_DIAGNOSTICS
+            diagnosticSource="projectile collision";
+#endif
             Link(actor,candidate.whoAmI);Link(candidate.whoAmI,actor);
         }
         private static void MarkProjectile(Projectile p)
@@ -119,9 +143,17 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         private static void BirthBefore(out int __state){__state=actor;}
         private static void BirthAfter(int __state){actor=__state;}
         private static void BirthSetupAfter(Projectile __result)
-        {if(!enabled)return;int producer=actor;actor=ProjectileBase+__result.whoAmI;Link(actor,producer);}
+        {if(!enabled)return;int producer=actor;actor=ProjectileBase+__result.whoAmI;
+#if JMR_AIM_DIAGNOSTICS
+            diagnosticSource="projectile birth";
+#endif
+            Link(actor,producer);}
         private static void PlayerHurtAfter(double __result)
-        {if(enabled && __result>0)Link(Global,actor);}
+        {if(enabled && __result>0){
+#if JMR_AIM_DIAGNOSTICS
+            diagnosticSource="player hurt";
+#endif
+            Link(Global,actor);}}
         // Only the locked original pair's +/-netOffset is bookkeeping. It
         // cannot manufacture a damaging write dependency for every query.
         private static void TemporaryBefore(out bool __state){__state=enabled;if(__state)temporaryDepth++;}

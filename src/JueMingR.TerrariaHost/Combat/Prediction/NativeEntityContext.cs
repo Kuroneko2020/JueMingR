@@ -30,8 +30,16 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
 
         internal static void WriteShared(BinaryWriter writer)
         {
-            ConditionalDialogue cake=RegisteredCake();writer.Write(cake!=null);
-            if(cake!=null)writer.Write(cake.ShowIndicator);
+            ConditionalDialogue cake=RegisteredCake();{
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"NativeEntityContext.cake!=null","context");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativeEntityContext",diagnosticError);}
+#endif
+writer.Write(cake!=null);}
+            if(cake!=null){
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"NativeEntityContext.cake.ShowIndicator","context");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativeEntityContext",diagnosticError);}
+#endif
+writer.Write(cake.ShowIndicator);}
         }
         internal static void ReadShared(BinaryReader reader)
         {
@@ -66,7 +74,11 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             ValidateConstants(npc);WriteText(writer,(string)GivenName.GetValue(npc));
             WriteSound(writer,npc.HitSound);WriteSound(writer,npc.DeathSound);
             if(npc.nextDialogue!=null && !ReferenceEquals(npc.nextDialogue,RegisteredCake()))throw new InvalidDataException("Unregistered NPC dialogue.");
-            writer.Write(npc.nextDialogue!=null);
+            {
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"NativeEntityContext.npc.nextDialogue!=null","context");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativeEntityContext",diagnosticError);}
+#endif
+writer.Write(npc.nextDialogue!=null);}
         }
         internal static void ReadNpc(BinaryReader reader,NPC npc)
         {
@@ -82,14 +94,46 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         }
         private static void WriteSound(BinaryWriter writer,LegacySoundStyle value)
         {
-            writer.Write(value!=null);if(value==null)return;
+            {
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"NativeEntityContext.value!=null","context");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativeEntityContext",diagnosticError);}
+#endif
+writer.Write(value!=null);}if(value==null)return;
             if(value.GetType()!=typeof(LegacySoundStyle))throw new InvalidDataException("Unknown NPC sound type.");
             int style=(int)Style.GetValue(value);
             ValidateSound(style,value.Variations,value.Type,value.Volume,value.PitchVariance);
             // Style is a RANDOM getter when Variations != 1. Sampling its
             // backing value must leave both live sound RNGs untouched.
-            writer.Write(value.SoundId);writer.Write(style);writer.Write(value.Variations);writer.Write((int)value.Type);
-            writer.Write(value.Volume);writer.Write(value.PitchVariance);writer.Write(value.MaxTrackedInstances);
+            {
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"NativeEntityContext.value.SoundId","context");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativeEntityContext",diagnosticError);}
+#endif
+writer.Write(value.SoundId);}{
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"NativeEntityContext.style","context");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativeEntityContext",diagnosticError);}
+#endif
+writer.Write(style);}{
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"NativeEntityContext.value.Variations","context");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativeEntityContext",diagnosticError);}
+#endif
+writer.Write(value.Variations);}{
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"NativeEntityContext.(int)value.Type","context");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativeEntityContext",diagnosticError);}
+#endif
+writer.Write((int)value.Type);}
+            {
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"NativeEntityContext.value.Volume","context");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativeEntityContext",diagnosticError);}
+#endif
+writer.Write(value.Volume);}{
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"NativeEntityContext.value.PitchVariance","context");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativeEntityContext",diagnosticError);}
+#endif
+writer.Write(value.PitchVariance);}{
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"NativeEntityContext.value.MaxTrackedInstances","context");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativeEntityContext",diagnosticError);}
+#endif
+writer.Write(value.MaxTrackedInstances);}
         }
         private static LegacySoundStyle ReadSound(BinaryReader reader)
         {
@@ -106,18 +150,58 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         internal static void WriteProjectile(BinaryWriter writer,Projectile projectile)
         {
             WriteText(writer,projectile.miscText);
-            var lightning=(Vector2?)Lightning.GetValue(projectile);writer.Write(lightning.HasValue);if(lightning.HasValue)WriteVector(writer,lightning.Value);
-            var points=projectile.WhipPointsForCollision;writer.Write(points==null?-1:points.Count);
+            var lightning=(Vector2?)Lightning.GetValue(projectile);{
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"NativeEntityContext.lightning.HasValue","context");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativeEntityContext",diagnosticError);}
+#endif
+writer.Write(lightning.HasValue);}if(lightning.HasValue)WriteVector(writer,lightning.Value);
+            var points=projectile.WhipPointsForCollision;{
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"NativeEntityContext.points==null?-1:points.Count","context");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativeEntityContext",diagnosticError);}
+#endif
+writer.Write(points==null?-1:points.Count);}
             if(points!=null){CheckCount(points.Count,0);foreach(var point in points)WriteVector(writer,point);}
-            writer.Write(projectile.customHitbox!=null);if(projectile.customHitbox==null)return;
+            {
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"NativeEntityContext.projectile.customHitbox!=null","context");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativeEntityContext",diagnosticError);}
+#endif
+writer.Write(projectile.customHitbox!=null);}if(projectile.customHitbox==null)return;
             if(projectile.customHitbox.GetType()!=typeof(MultiPointHitbox))throw new InvalidDataException("Unknown projectile hitbox type.");
             var hitbox=(MultiPointHitbox)projectile.customHitbox;
             if(hitbox.Points==null)throw new InvalidDataException("Null multipoint hitbox points.");CheckCount(hitbox.Points.Length,1);
             // Points are mutable but the cached rectangle is readonly. Refuse
             // an inconsistent source rather than silently changing its shape.
             if(new MultiPointHitbox(hitbox.PointSize,hitbox.Points).BoundingRect!=hitbox.BoundingRect)throw new InvalidDataException("Inconsistent multipoint bounds.");
-            writer.Write(hitbox.PointSize.X);writer.Write(hitbox.PointSize.Y);writer.Write(hitbox.Points.Length);foreach(var point in hitbox.Points)WriteVector(writer,point);
-            writer.Write(hitbox.BoundingRect.X);writer.Write(hitbox.BoundingRect.Y);writer.Write(hitbox.BoundingRect.Width);writer.Write(hitbox.BoundingRect.Height);
+            {
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"NativeEntityContext.hitbox.PointSize.X","context");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativeEntityContext",diagnosticError);}
+#endif
+writer.Write(hitbox.PointSize.X);}{
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"NativeEntityContext.hitbox.PointSize.Y","context");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativeEntityContext",diagnosticError);}
+#endif
+writer.Write(hitbox.PointSize.Y);}{
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"NativeEntityContext.hitbox.Points.Length","context");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativeEntityContext",diagnosticError);}
+#endif
+writer.Write(hitbox.Points.Length);}foreach(var point in hitbox.Points)WriteVector(writer,point);
+            {
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"NativeEntityContext.hitbox.BoundingRect.X","context");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativeEntityContext",diagnosticError);}
+#endif
+writer.Write(hitbox.BoundingRect.X);}{
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"NativeEntityContext.hitbox.BoundingRect.Y","context");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativeEntityContext",diagnosticError);}
+#endif
+writer.Write(hitbox.BoundingRect.Y);}{
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"NativeEntityContext.hitbox.BoundingRect.Width","context");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativeEntityContext",diagnosticError);}
+#endif
+writer.Write(hitbox.BoundingRect.Width);}{
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"NativeEntityContext.hitbox.BoundingRect.Height","context");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativeEntityContext",diagnosticError);}
+#endif
+writer.Write(hitbox.BoundingRect.Height);}
         }
         internal static void ReadProjectile(BinaryReader reader,Projectile projectile)
         {
@@ -134,11 +218,27 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         private static void CheckCount(int count,int minimum){if(count<minimum || count>MaximumPoints)throw new InvalidDataException("Entity context point limit.");}
         private static bool Finite(float value){return !float.IsNaN(value) && !float.IsInfinity(value);}
         private static void WriteVector(BinaryWriter writer,Vector2 value)
-        {if(!Finite(value.X)||!Finite(value.Y))throw new InvalidDataException("Nonfinite entity context point.");writer.Write(value.X);writer.Write(value.Y);}
+        {if(!Finite(value.X)||!Finite(value.Y))throw new InvalidDataException("Nonfinite entity context point.");{
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"NativeEntityContext.value.X","context");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativeEntityContext",diagnosticError);}
+#endif
+writer.Write(value.X);}{
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"NativeEntityContext.value.Y","context");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativeEntityContext",diagnosticError);}
+#endif
+writer.Write(value.Y);}}
         private static Vector2 ReadVector(BinaryReader reader)
         {var value=new Vector2(reader.ReadSingle(),reader.ReadSingle());if(!Finite(value.X)||!Finite(value.Y))throw new InvalidDataException("Nonfinite entity context point.");return value;}
         private static void WriteText(BinaryWriter writer,string text)
-        {if(text!=null && text.Length>MaximumText)throw new InvalidDataException("Entity context text limit.");writer.Write(text==null?-1:text.Length);if(text!=null)foreach(char value in text)writer.Write((ushort)value);}
+        {if(text!=null && text.Length>MaximumText)throw new InvalidDataException("Entity context text limit.");{
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"NativeEntityContext.text==null?-1:text.Length","context");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativeEntityContext",diagnosticError);}
+#endif
+writer.Write(text==null?-1:text.Length);}if(text!=null)foreach(char value in text){
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"NativeEntityContext.(ushort)value","context");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativeEntityContext",diagnosticError);}
+#endif
+writer.Write((ushort)value);}}
         private static string ReadText(BinaryReader reader)
         {int count=reader.ReadInt32();if(count< -1 || count>MaximumText)throw new InvalidDataException("Entity context text limit.");if(count<0)return null;var chars=new char[count];for(int i=0;i<count;i++)chars[i]=(char)reader.ReadUInt16();return new string(chars);}
     }

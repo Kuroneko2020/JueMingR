@@ -70,8 +70,19 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         internal static NativeCapturedValues FillProductionValues(NativeCapturedValues values,int[] slots,int[] projectiles,int selected,long tick,int horizon,NativeTerrainSnapshot terrain,int[] assets,bool referencesOnly)
         {
             if(slots==null || slots.Length<1 || slots.Length>Main.maxNPCs+1 || horizon<1 || horizon>MaximumHorizon)throw new ArgumentOutOfRangeException();
-            try{WriteCore(values,slots,projectiles,selected,tick,horizon,terrain,assets,referencesOnly);values.Seal();return values;}
-            catch{values.Dispose();throw;}
+            try{WriteCore(values,slots,projectiles,selected,tick,horizon,terrain,assets,referencesOnly);
+#if JMR_AIM_DIAGNOSTICS
+                // The snapshot owns these pages. Every refs-only request keeps
+                // a separate full diagnostic copy, so rolling its earlier full
+                // wire frame cannot erase the meaning of a retained reference.
+                if(AimDiagnostics.DetailActive)try{using(var copy=new MemoryStream())using(var writer=new BinaryWriter(copy)){terrain.Write(writer,false);writer.Flush();values.DiagnosticTerrainPages=copy.ToArray();}}catch(Exception error){AimDiagnostics.Missing("terrain-pages-copy",error);}
+#endif
+                values.Seal();return values;}
+            catch{
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.DetailActive)try{try{AimDiagnostics.Event("capture-partial",tick,"unsealed partial values;selected="+selected,values.DiagnosticPartial(),true);}catch(Exception diagnosticError){AimDiagnostics.Missing("PredictionWire",diagnosticError);}}catch(Exception diagnosticError){AimDiagnostics.Missing("PredictionWire",diagnosticError);}
+#endif
+values.Dispose();throw;}
         }
         private static void WriteCore(BinaryWriter writer,int[] slots,int[] projectiles,int selected,long tick,int horizon,NativeTerrainSnapshot terrain,int[] assets,bool referencesOnly)
         {

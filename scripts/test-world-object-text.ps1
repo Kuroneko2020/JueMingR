@@ -1,9 +1,10 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string] $ContentDirectory,
     [Parameter(Mandatory = $true)][string] $OutputDirectory,
-    [ValidateSet('Full', 'NpcWorkerIntegration', 'NpcWorkerCatalogue', 'NpcLegalCoverage', 'NpcWorkerLinked', 'NpcWorkerLifetime', 'NpcWorkerAssets', 'NpcWorkerRandom', 'NpcWorkerPlayer', 'NpcWorkerEntity', 'NpcWorkerBirth', 'NpcWorkerContext', 'NpcWorkerImmunity', 'NpcWorkerLifecycle', 'NpcWorkerFields', 'NpcWorkerTransport', 'NpcWorkerPreparation', 'NpcMenuPreparation', 'NpcSnapshot', 'NpcPostDelivery', 'NpcNameDraw', 'NpcDiagnosticsOff', 'NpcSessionCapacity', 'NpcFailureRecovery', 'NpcProduction', 'NpcLongCoverage', 'NpcTileManifest', 'CombatCosts', 'CombatObservationCpu', 'CombatCpu', 'CombatFacingCpu', 'CombatHitsCpu', 'CombatReportCpu', 'CombatUiCpu', 'CombatVisual', 'CombatRelease', 'SelectionCpuCosts', 'SelectionCpuChecks', 'FootprintsVisual', 'QuickItemsVisual', 'CoinDepositCpu', 'CoinDepositVisual', 'AboutCpu', 'AboutVisual', 'ProcessingCpu', 'ProcessingVisual', 'ShortFeedbackCpu', 'ShortFeedbackVisual', 'ToolsCpu', 'ToolsVisual', 'ToolsTiming', 'ToolsBindings', 'ToolsExecution', 'FishingCpu', 'FishingVisual', 'BackgroundCpu', 'F5AutomationCpu')][string] $Scope = 'Full',
-    [string] $WorkloadBaseline
+    [ValidateSet('AimDiagnostics', 'AimDiagnosticsLoad', 'AimDiagnosticsOrdinary','AimDiagnosticsVariant','AimDiagnosticsSession', 'AimDiagnosticsVisual', 'Full', 'NpcWorkerIntegration', 'NpcWorkerCatalogue', 'NpcLegalCoverage', 'NpcWorkerLinked', 'NpcWorkerLifetime', 'NpcWorkerAssets', 'NpcWorkerRandom', 'NpcWorkerPlayer', 'NpcWorkerEntity', 'NpcWorkerBirth', 'NpcWorkerContext', 'NpcWorkerImmunity', 'NpcWorkerLifecycle', 'NpcWorkerFields', 'NpcWorkerTransport', 'NpcWorkerPreparation', 'NpcMenuPreparation', 'NpcSnapshot', 'NpcPostDelivery', 'NpcNameDraw', 'NpcDiagnosticsOff', 'NpcSessionCapacity', 'NpcFailureRecovery', 'NpcProduction', 'NpcLongCoverage', 'NpcTileManifest', 'CombatCosts', 'CombatObservationCpu', 'CombatCpu', 'CombatFacingCpu', 'CombatHitsCpu', 'CombatReportCpu', 'CombatUiCpu', 'CombatVisual', 'CombatRelease', 'SelectionCpuCosts', 'SelectionCpuChecks', 'FootprintsVisual', 'QuickItemsVisual', 'CoinDepositCpu', 'CoinDepositVisual', 'AboutCpu', 'AboutVisual', 'ProcessingCpu', 'ProcessingVisual', 'ShortFeedbackCpu', 'ShortFeedbackVisual', 'ToolsCpu', 'ToolsVisual', 'ToolsTiming', 'ToolsBindings', 'ToolsExecution', 'FishingCpu', 'FishingVisual', 'BackgroundCpu', 'F5AutomationCpu')][string] $Scope = 'Full',
+    [string] $WorkloadBaseline,
+    [switch] $AimDiagnostics
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
@@ -12,7 +13,7 @@ if (Test-Path -LiteralPath $OutputDirectory) { throw 'OutputDirectory must be ne
 if (-not (Test-Path -LiteralPath (Join-Path $ContentDirectory 'Fonts\Mouse_Text.xnb') -PathType Leaf)) { throw 'Actual matching Terraria Content directory is required.' }
 # A neutral executable loads fixed EXE metadata and original XNB resources. It
 # never constructs/initializes/runs Main, starts a server or reads player saves.
-& (Join-Path $PSScriptRoot 'build.ps1') -Configuration Debug -WorkloadBaseline $WorkloadBaseline
+& (Join-Path $PSScriptRoot 'build.ps1') -Configuration Debug -WorkloadBaseline $WorkloadBaseline -AimDiagnostics:$AimDiagnostics
 if ($LASTEXITCODE -ne 0) { throw 'Debug build failed.' }
 & dotnet.exe build (Join-Path $repositoryRoot 'tests\NativeWorldTextProbe\NativeWorldTextProbe.csproj') --configuration Debug --nologo -p:Platform=x86
 if ($LASTEXITCODE -ne 0) { throw 'Native probe build failed.' }

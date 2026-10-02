@@ -297,7 +297,11 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             // Reading a certificate is not native simulation consuming a
             // provider. Keep ordinary guards, pause provenance only.
             bool prior=NativePredictionPurpose.Pause();
-            try{return step<=PredictionWire.MaximumAlignmentAge?NativePredictionAlignment.Observe(tick+step,npcs,projectiles,selected):NativePredictionAlignment.Presentation(tick+step,selected);}
+            try{
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.Active)try{AimDiagnostics.Event("worker-step",tick+step,"step="+step+";selected="+selected+";npcs="+npcs.Length+";projectiles="+projectiles.Length);}catch(Exception diagnosticError){AimDiagnostics.Missing("PredictionSandbox",diagnosticError);}
+#endif
+            return step<=PredictionWire.MaximumAlignmentAge?NativePredictionAlignment.Observe(tick+step,npcs,projectiles,selected):NativePredictionAlignment.Presentation(tick+step,selected);}
             finally{NativePredictionPurpose.Resume(prior);}
         }
         private void Reset(int width,int height)

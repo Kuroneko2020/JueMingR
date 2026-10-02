@@ -1,4 +1,4 @@
-# Local evidence only: a bounded record for the current executable input set.
+﻿# Local evidence only: a bounded record for the current executable input set.
 # No timestamps, Git labels or an old PASS alone establish applicability.
 function Get-WorkloadHash {
     param([string[]] $Rows)
@@ -24,6 +24,8 @@ function Get-WorkloadEvidenceInput {
         $rows += 'framework-x86/' + $name + ':' + (Get-FileHash -LiteralPath (Join-Path $framework $name) -Algorithm SHA256).Hash
     }
     $rows += 'sdk:10.0.203;target:net472;x86;detection:Debug'
+    $mode = if (Get-Variable -Name AimDiagnosticsMode -Scope Script -ErrorAction SilentlyContinue) { [bool]$script:AimDiagnosticsMode } else { $false }
+    $rows += 'aim-diagnostics:' + $mode
     $rows += 'os:' + [Environment]::OSVersion.VersionString + ';powershell:' + $PSVersionTable.PSVersion.ToString()
     # Hash only relevant build overrides; do not log unrelated private variables.
     foreach ($item in @(Get-ChildItem Env: | Where-Object { $_.Name -match '^(DOTNET_|MSBUILD|COMPlus_|JueMingR|Configuration$|Platform$|DefineConstants$|TargetFramework$)' } | Sort-Object Name)) {
@@ -242,7 +244,7 @@ function Get-WorkloadPlan {
     }
     $scopes = [ordered]@{
         'NpcWorkerIntegration'=@('combat-host'); 'NpcSnapshot'=@('combat-host'); 'NpcWorkerPreparation'=@('combat-host');
-        'NpcDiagnosticsOff'=@('combat-host'); 'NpcPostDelivery'=@('combat-host');
+        'AimDiagnosticsVariant'=@('combat-host'); 'NpcDiagnosticsOff'=@('combat-host'); 'NpcPostDelivery'=@('combat-host');
         'NpcLegalCoverage'=@('combat-host'); 'NpcWorkerTransport'=@('combat-host'); 'NpcMenuPreparation'=@('combat-host'); 'NpcSessionCapacity'=@('combat-host'); 'NpcProduction'=@('combat-host'); 'NpcLongCoverage'=@('combat-host');
         'WorkloadCpu'=@('world-host','shared-host'); 'InformationCpu'=@('information','shared-host'); 'GuidanceCpu'=@('guidance','shared-host');
         'ShortFeedbackCpu'=@('shared-host','storage-host','quick-items-host','coin-deposit-host','recovery-host','processing-host','about-host','tools-host','fishing-host','combat-host');

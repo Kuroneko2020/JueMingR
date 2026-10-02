@@ -40,10 +40,36 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         }
         internal static void WriteEvent(BinaryWriter writer)
         {
-            Dd2.Write(writer,null);writer.Write(Main.CurrentFrameFlags.ActivePlayersCount);
-            writer.Write(NPC.waveNumber);writer.Write(NPC.waveKills);writer.Write(NPC.totalInvasionPoints);
+            Dd2.Write(writer,null);
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(writer,"Main.CurrentFrameFlags.ActivePlayersCount","Int32");
+#endif
+            writer.Write(Main.CurrentFrameFlags.ActivePlayersCount);
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(writer,"NPC.waveNumber","Int32");
+#endif
+            writer.Write(NPC.waveNumber);
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(writer,"NPC.waveKills","Single");
+#endif
+            writer.Write(NPC.waveKills);
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(writer,"NPC.totalInvasionPoints","Single");
+#endif
+            writer.Write(NPC.totalInvasionPoints);
             var positions=(List<Vector2>)DeadGoblins.GetValue(null);if(positions.Count>2048)throw new InvalidDataException("DD2 dependency capacity.");
-            writer.Write(positions.Count);foreach(var point in positions){writer.Write(point.X);writer.Write(point.Y);}
+#if JMR_AIM_DIAGNOSTICS
+            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(writer,"DD2.DeadGoblins.Length","Int32");
+#endif
+            writer.Write(positions.Count);for(int i=0;i<positions.Count;i++){var point=positions[i];
+#if JMR_AIM_DIAGNOSTICS
+                if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"DD2.DeadGoblins["+i+"].X","Single");}catch(Exception error){AimDiagnostics.Missing("diagnostic-arguments",error);}
+#endif
+                writer.Write(point.X);
+#if JMR_AIM_DIAGNOSTICS
+                if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"DD2.DeadGoblins["+i+"].Y","Single");}catch(Exception error){AimDiagnostics.Missing("diagnostic-arguments",error);}
+#endif
+                writer.Write(point.Y);}
         }
         internal static void Read(BinaryReader reader)
         {
