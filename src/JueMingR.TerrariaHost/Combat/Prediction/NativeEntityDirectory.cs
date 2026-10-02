@@ -15,7 +15,8 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
     internal static class NativeEntityDirectory
     {
         private static readonly NativeValueSnapshot Npcs=new NativeValueSnapshot(typeof(NPC),fieldNames:new[]{"active","type","whoAmI","aiStyle","friendly","CanBeReplacedByOtherNPCs","<generation>k__BackingField"});
-        private static readonly NativeValueSnapshot Projectiles=new NativeValueSnapshot(typeof(Projectile),fieldNames:new[]{"active","type","whoAmI","key","owner","netImportant","timeLeft"});
+        private static readonly NativeValueSnapshot Projectiles=new NativeValueSnapshot(typeof(Projectile),fieldNames:new[]{"active","type","whoAmI","key","owner","netImportant","timeLeft","minion"});
+        private static readonly bool[] minionOwnersChecked=new bool[Main.maxPlayers+1];
         private static HashSet<int> NpcReads,ProjectileReads,NpcFields,ProjectileFields;
         private static FieldPermissions NpcPermissions,ProjectilePermissions;
         private static FieldPermissions NpcDirectoryPermissions,ProjectileDirectoryPermissions;
@@ -98,6 +99,14 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             return !Opaque.ContainsKey(npc);
         }
         internal static bool CanAdvance(Projectile projectile){return !Opaque.ContainsKey(projectile);}
+        internal static bool IsOpaque(NPC npc){return Opaque.ContainsKey(npc);}
+        internal static void RequireMinionContext(Projectile projectile)
+        {
+            if(!projectile.minion || minionOwnersChecked[projectile.owner])return;
+            for(int i=0;i<Main.maxProjectiles;i++)
+            {var p=Main.projectile[i];if(p.active && p.minion && p.owner==projectile.owner)RequireKnown(p);}
+            minionOwnersChecked[projectile.owner]=true;
+        }
         internal static void RequireKnown(object value)
         {
 #if JMR_CONDITIONAL_RESEARCH
@@ -107,21 +116,17 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
 #endif
             Entry entry;if(!Opaque.TryGetValue(value,out entry))return;
             if(MissingKind==0){MissingKind=entry.Kind;MissingSlot=entry.Slot;MissingField=0;}
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.Active)try{NativePredictionPurpose.DiagnosticMissing("kind="+MissingKind+";slot="+MissingSlot+";field="+MissingField+";fieldName="+(FieldIdentities.ContainsKey(MissingField)?FieldIdentities[MissingField]:"unknown"));}catch(Exception error){AimDiagnostics.Missing("dependency-missing",error);}
-#endif
             throw new InvalidDataException("Unobserved entity for immunity reset: kind="+entry.Kind+" slot="+entry.Slot);
         }
         internal static void MissingNpcColumn(int slot)
         {
             if(MissingKind==0){MissingKind=1;MissingSlot=slot;MissingField=0;}
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.Active)try{NativePredictionPurpose.DiagnosticMissing("kind="+MissingKind+";slot="+MissingSlot+";field="+MissingField+";fieldName="+(FieldIdentities.ContainsKey(MissingField)?FieldIdentities[MissingField]:"unknown"));}catch(Exception error){AimDiagnostics.Missing("dependency-missing",error);}
-#endif
             throw new InvalidDataException("Unobserved NPC immunity column: slot="+slot);
         }
         internal static void Reset()
         {
+            NativeNpcEligibility.Reset();
+            Array.Clear(minionOwnersChecked,0,minionOwnersChecked.Length);
 #if JMR_CONDITIONAL_RESEARCH
             ConditionalNpcQuery.Reset();
 #endif
@@ -320,17 +325,11 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 // A later read or managed address still requires its codec.
                 if(mode==2){NativePredictionPurpose.Access(value,mode,false,field);return;}
                 if(MissingKind==0){MissingKind=entry.Kind+2;MissingSlot=entry.Slot;MissingField=field;}
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.Active)try{NativePredictionPurpose.DiagnosticMissing("kind="+MissingKind+";slot="+MissingSlot+";field="+MissingField+";fieldName="+(FieldIdentities.ContainsKey(MissingField)?FieldIdentities[MissingField]:"unknown"));}catch(Exception error){AimDiagnostics.Missing("dependency-missing",error);}
-#endif
                 throw new InvalidDataException("Uncaptured full-page field kind="+entry.Kind+" slot="+entry.Slot+" field="+FieldIdentities[field]+" access="+mode);
             }
             int kind=entry.Kind,slot=entry.Slot;
-            if(mode==0 && (kind==1?NpcReads:ProjectileReads).Contains(field))return;
+            if(mode==0 && (kind==1?NpcReads:ProjectileReads).Contains(field) && !(kind==1 && NativeNpcEligibility.AllocationNeedsPage(npc)))return;
             if(MissingKind==0){MissingKind=kind;MissingSlot=slot;MissingField=field;}
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.Active)try{NativePredictionPurpose.DiagnosticMissing("kind="+MissingKind+";slot="+MissingSlot+";field="+MissingField+";fieldName="+(FieldIdentities.ContainsKey(MissingField)?FieldIdentities[MissingField]:"unknown"));}catch(Exception error){AimDiagnostics.Missing("dependency-missing",error);}
-#endif
             throw new InvalidDataException("Unobserved entity field kind="+kind+" slot="+slot+" token="+field.ToString("X8")+" field="+FieldIdentities[field]+" access="+mode);
         }
     }

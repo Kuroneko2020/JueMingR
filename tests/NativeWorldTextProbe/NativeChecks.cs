@@ -14,21 +14,8 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
-            if(scope=="AimDiagnosticsVisual"){Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-aim-visual-fixture-"+Guid.NewGuid().ToString("N"));NativeAimDiagnosticsChecks.Visual(content,output);return 0;}
-            if(scope=="AimDiagnosticsSession"){NativeAimDiagnosticsChecks.Session(output);return 0;}
-            if(scope=="AimDiagnosticsVariant")
-            {
-                Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-aim-diagnostic-oracle-"+Guid.NewGuid().ToString("N"));
-                string host=Path.Combine(Program.Repository,"artifacts/build/Debug/work/bin/JueMingR.TerrariaHost/x86/Debug/net472/JueMingR.TerrariaHost.dll");
-                string owned=Path.Combine(output,Guid.NewGuid().ToString("N"));
-                bool diagnostic=System.Reflection.Assembly.LoadFrom(host).GetType("JueMingR.TerrariaHost.Combat.Prediction.AimDiagnostics")!=null;
-                if(diagnostic){NativeAimDiagnosticsChecks.Run(Path.Combine(owned,"recorder"));NativeAimDiagnosticsChecks.Load(Path.Combine(owned,"native"));}
-                else NativeAimDiagnosticsChecks.Load(owned,true);
-                return 0;
-            }
-            if(scope=="AimDiagnosticsLoad" || scope=="AimDiagnosticsOrdinary"){Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-aim-diagnostic-oracle-"+Guid.NewGuid().ToString("N"));NativeAimDiagnosticsChecks.Load(output,scope=="AimDiagnosticsOrdinary");return 0;}
-            if(scope=="AimDiagnostics"){Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-aim-failure-fixture-"+Guid.NewGuid().ToString("N"));NativeAimDiagnosticsChecks.Run(output);return 0;}
             if(scope=="NpcPostDelivery"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT","post-delivery-suite");scope="NpcProduction";}
+            if(scope=="NpcGuardianQuery"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT","environment");Environment.SetEnvironmentVariable("JUEMINGR_NPC_ENV_AXIS","guardian-query");scope="NpcProduction";}
             if(scope=="NpcNameDraw"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT","name-draw");scope="NpcProduction";}
             if(scope=="NpcDiagnosticsOff"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_MEASURE_OFF","1");scope="NpcProduction";}
             if(scope=="NpcSessionCapacity"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_SESSION_CAPACITY","1");scope="NpcProduction";}

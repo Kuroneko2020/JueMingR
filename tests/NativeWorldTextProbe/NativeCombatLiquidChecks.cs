@@ -43,6 +43,7 @@ namespace NativeWorldTextProbe
                     reader.ReadInt64();host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativeTerrainUsage",true).GetMethod("Read",Flags).Invoke(null,new object[]{reader});
                     foreach(int role in frozen.Npcs){bool required=reader.ReadBoolean();if(role==slot)Require(required,"Selected liquid actor remains a required proof role.");}
                     foreach(int role in frozen.Projectiles)reader.ReadBoolean();
+                    Require(reader.ReadInt32()==0 && reader.ReadInt32()==-1,"Complete liquid horizon has no continuation hint.");
                     Require(stream.Position==stream.Length,"Complete liquid proof consumption.");
                 }
                 int wet=0,dry=0,xContact=0,yContact=0,transitions=0,slope=0;bool prior=npc.wet;

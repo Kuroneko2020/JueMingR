@@ -13,10 +13,8 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         internal NpcTrajectory Trajectory;
         internal NativeTerrainUsage TerrainUsage;
         internal int Kind,Slot,TileX,TileY;
+        internal int ContinuationKind,ContinuationSlot;
         internal string Error;
-#if JMR_AIM_DIAGNOSTICS
-        internal int DiagnosticField;
-#endif
         internal readonly SortedSet<int> Npcs=new SortedSet<int>(),Projectiles=new SortedSet<int>();
         internal double TotalMs,ResetMs,RestoreMs,AdvanceMs;
         internal static NativePredictionResult Read(byte[] core,byte[] alignment,NpcIdentity identity,long tick,long version,bool networkObservation)
@@ -26,13 +24,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             {
                 int protocol=r.ReadInt32();
                 if(protocol==-PredictionWire.Protocol)
-                {value.Error=r.ReadString()+": "+r.ReadString();value.TileX=r.ReadInt32();value.TileY=r.ReadInt32();value.Kind=r.ReadInt32();value.Slot=r.ReadInt32();
-#if JMR_AIM_DIAGNOSTICS
-                value.DiagnosticField=r.ReadInt32();
-#else
-                r.ReadInt32();
-#endif
-                End(stream);return value;}
+                {value.Error=r.ReadString()+": "+r.ReadString();value.TileX=r.ReadInt32();value.TileY=r.ReadInt32();value.Kind=r.ReadInt32();value.Slot=r.ReadInt32();r.ReadInt32();End(stream);return value;}
                 if(protocol!=PredictionWire.Protocol || r.ReadInt64()!=tick || r.ReadInt32()!=identity.Slot)throw new InvalidDataException("Native result identity.");
                 int count=Count(r,181);if(count<2)throw new InvalidDataException("Native result horizon.");
                 if(alignment==null)throw new InvalidDataException("Missing native alignment proof.");
@@ -56,6 +48,10 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                         var frame=value.Frames[i];if(frame.Npcs.Length!=npcRequired.Length || frame.Projectiles.Length!=projectileRequired.Length)throw new InvalidDataException("Purpose role extent.");
                         frame.NpcRequired=npcRequired;frame.ProjectileRequired=projectileRequired;
                     }
+                    value.ContinuationKind=proof.ReadInt32();value.ContinuationSlot=proof.ReadInt32();
+                    int kind=value.ContinuationKind,slot=value.ContinuationSlot;
+                    if(kind==0?slot!=-1:(kind!=1 && kind!=2) || slot<0 || slot>(kind==1?200:1000) || count<=121 || count>=181)
+                        throw new InvalidDataException("Invalid continuation page hint.");
                     End(data);
                 }
                 var points=new NpcTrajectoryPoint[count];int length=count,quality=0;bool ended=false;

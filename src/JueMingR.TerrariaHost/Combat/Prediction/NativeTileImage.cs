@@ -138,9 +138,6 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             object enabled=Field(api,guard,"Enabled",api.Get(system,"Boolean")),missing=Field(api,guard,"Missing",api.Get(system,"Boolean"));
             object x=Field(api,guard,"MissingX",integer),y=Field(api,guard,"MissingY",integer);
             object observed=Field(api,guard,"Observed",api.Call(module,"ImportReference",typeof(Action<int,int>)));
-            #if JMR_AIM_DIAGNOSTICS
-            object diagnosticMissing=Field(api,guard,"DiagnosticMissing",api.Call(module,"ImportReference",typeof(Action<int,int>)));
-#endif
             object array=api.Get(native[0],"DeclaringType");
             object main=api.Call(module,"GetType","Terraria.Main");
             object tiles=((IEnumerable)api.Get(main,"Fields")).Cast<object>().Single(f=>(string)api.Get(f,"Name")=="tile");
@@ -153,10 +150,6 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             Add(api,instructions,"Ldsfld",missing);Add(api,instructions,"Brtrue",failure);
             Add(api,instructions,"Ldc_I4_1");Add(api,instructions,"Stsfld",missing);
             Add(api,instructions,"Ldarg_1");Add(api,instructions,"Stsfld",x);Add(api,instructions,"Ldarg_2");Add(api,instructions,"Stsfld",y);
-#if JMR_AIM_DIAGNOSTICS
-            Add(api,instructions,"Ldsfld",diagnosticMissing);Add(api,instructions,"Brfalse",failure);
-            Add(api,instructions,"Ldsfld",diagnosticMissing);Add(api,instructions,"Ldarg_1");Add(api,instructions,"Ldarg_2");Add(api,instructions,"Callvirt",api.Call(module,"ImportReference",typeof(Action<int,int>).GetMethod("Invoke")));
-#endif
             api.Call(instructions,"Add",failure);
             object exception=api.Call(module,"ImportReference",typeof(InvalidDataException).GetConstructor(new[]{typeof(string)}));
             Add(api,instructions,"Newobj",exception);Add(api,instructions,"Throw");

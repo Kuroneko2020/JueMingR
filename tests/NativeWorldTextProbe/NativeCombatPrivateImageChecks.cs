@@ -46,6 +46,7 @@ namespace NativeWorldTextProbe
             {
                 if(safetyOnly)
                 {
+                    NativeCombatEligibilityChecks.Run(host);
                     Terraria.Main.dedServ=false;Terraria.FocusHelper.IsSelectedApplication=false;
                     var queue=typeof(Terraria.Main).GetField("_mainThreadActions",Flags).GetValue(null);var count=queue.GetType().GetProperty("Count");int before=(int)count.GetValue(queue);
                     if(!Terraria.FocusHelper.AllowTaskbarFlash)throw new InvalidOperationException("Notification fixture must allow native flashing.");
@@ -200,7 +201,7 @@ namespace NativeWorldTextProbe
             return rows;
         }
         internal static string[] Dump(object npc,object player)
-        {return Fields(npc,"NPC").Concat(Fields(player,"Player")).ToArray();}
+        {return Fields(npc,"NPC").Concat(Fields(player,"Player")).Concat(Terraria.Main.projectile.Where(p=>p.active).SelectMany(p=>Fields(p,"Projectile["+p.whoAmI+"]"))).ToArray();}
         private static IEnumerable<string> Fields(object value,string label)
         {
             var fields=new List<FieldInfo>();for(Type type=value.GetType();type!=null && type!=typeof(object);type=type.BaseType)fields.AddRange(type.GetFields(BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.DeclaredOnly));

@@ -19,9 +19,9 @@ namespace NativeWorldTextProbe
     internal static class NativeCombatWorkerChecks
     {
 #if JMR_CONDITIONAL_RESEARCH
-        internal const int ExpectedProtocol=131, PointBytes=75;
+        internal const int ExpectedProtocol=132, PointBytes=75;
 #else
-        internal const int ExpectedProtocol=31, PointBytes=75;
+        internal const int ExpectedProtocol=32, PointBytes=75;
 #endif
         private static readonly Main weatherOracle=(Main)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(Main));
         internal static void AdvanceWeather()
@@ -76,7 +76,6 @@ namespace NativeWorldTextProbe
                     if(Directory.Exists(prepared))foreach(string file in Directory.EnumerateFiles(prepared,"*.image"))File.Copy(file,Path.Combine(cached,Path.GetFileName(file)),true);
                 }
                 string hash;using(var input=File.OpenRead(host.Location))using(var sha=SHA256.Create())hash=BitConverter.ToString(sha.ComputeHash(input)).Replace("-","");
-                string aimRoot=Environment.GetEnvironmentVariable("JMR_AIM_DIAGNOSTIC_FIXTURE_ROOT");if(!string.IsNullOrEmpty(aimRoot))NativeAimDiagnosticsChecks.Attach(host,aimRoot);
                 try{NativeQuickItemChecks.Run(context=>{if(menuOnly)NativeCombatMenuPreparationChecks.Run(context,output);else NativeCombatProductionPredictionChecks.Run(context,output,content);},processing:true,shortFeedback:true,candidateAssembly:host.Location,predictionHostHash:hash);}
                 finally
                 {

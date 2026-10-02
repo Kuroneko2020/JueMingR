@@ -20,7 +20,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             foreach(var type in new[]{typeof(NPC),typeof(Projectile)})
                 foreach(var method in type.GetMethods(Flags))
                     if(method.Name=="AI" || method.Name=="UpdateNPC" || method.Name=="Update")pending.Enqueue(method);
-            foreach(var type in new[]{typeof(NativePlayerMotion),typeof(NativePredictionAlignment),typeof(NativeDependencyTimeline)})
+            foreach(var type in new[]{typeof(NativePlayerMotion),typeof(NativePredictionAlignment),typeof(NativeDependencyTimeline),typeof(NativeNpcEligibility)})
                 foreach(var method in type.GetMethods(Flags))pending.Enqueue(method);
             var inventory=new NativeInstructionInventory();int count=0,bytes=0;
             while(pending.Count!=0)

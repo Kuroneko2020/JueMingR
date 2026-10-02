@@ -46,6 +46,8 @@ namespace NativeWorldTextProbe
             display.Patch(typeof(Item).GetMethod("GetDrawHitbox",Flags),prefix:new HarmonyMethod(typeof(NativeCombatWorkerPlayerChecks).GetMethod("EmptyItemMetrics",Flags)));
             try
             {
+                NativeCombatTankPetChecks.Run(host);
+                if(Environment.GetEnvironmentVariable("JUEMINGR_NPC_PLAYER_SCENES")=="tank-pet-lifecycle")return;
                 string[] scenes=Environment.GetEnvironmentVariable("JUEMINGR_NPC_PLAYER_SCENES")?.Split(',')??new[]{"wall","jump","fall","reverse","boots","frog","frog-cycle","two-jumps","left-border","forced-expiry","forced-source-retired","swift-long","swift-expiry","swift-expired","swift-boots-long","swift-boots-expiry","swift-boots-expired","swift-frog-long","swift-frog-expiry","swift-frog-expired","swift-boots-prefix-expiry","food26-long","food26-expiry","food26-expired","food206-expiry","food207-expiry","mixed-expiry","mixed-reverse-expiry","broom-jump","broom-hover","broom-right","broom-brake","broom-reverse","broom-up","broom-down","broom-diagonal","broom-water-down","broom-water-up","broom-nearground","bee-hover","bee-right","bee-rejump"};
                 using(var child=NativeCombatWorkerChecks.Start(layout))
                 {

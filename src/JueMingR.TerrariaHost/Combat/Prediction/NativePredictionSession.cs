@@ -18,17 +18,15 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         private sealed class Request
         {
             internal NpcIdentity Identity;
-#if JMR_AIM_DIAGNOSTICS
-            internal long DiagnosticId,DiagnosticWall;
-#endif
-
             internal long Tick,Wall;
             internal int[] Npcs,Projectiles;
+            internal NativeNpcEligibility.Premise[] Queries;
             internal NativeTerrainSnapshot Terrain;
             internal readonly List<NativePredictionAlignment.Frame> History=new List<NativePredictionAlignment.Frame>(61);
             internal readonly NativeTerrainUsage TerrainChanges=new NativeTerrainUsage();
             internal bool Retired;
             internal int Impact;
+            internal int QueryChanged;
             internal double CaptureMs;
         }
         internal struct Measurement
@@ -106,19 +104,11 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         }
         internal void DetachWorld()
         {
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.Active)try{AimDiagnostics.Event("world-detach",lastTick,"pending="+(pending?.DiagnosticId??0)+";accepted="+(acceptedRequest?.DiagnosticId??0));}catch(Exception diagnosticError){AimDiagnostics.Missing("NativePredictionSession",diagnosticError);}
-#endif
-
             ClearTarget();pending=null;acknowledgedTerrain=null;lastAttempt=-100;
             if(Worker!=null && !stopped && !Worker.Closed)Worker.ResetWorld();
         }
         internal void ClearTarget()
         {
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.Active)try{AimDiagnostics.Event("target-clear",lastTick,"pending="+(pending?.DiagnosticId??0)+";accepted="+(acceptedRequest?.DiagnosticId??0)+";current="+AimDiagnostics.Identity(current));}catch(Exception diagnosticError){AimDiagnostics.Missing("NativePredictionSession",diagnosticError);}
-#endif
-
             bool owned=current.Token!=null || accepted!=null;
             current=default(NpcIdentity);accepted=null;acceptedRequest=null;if(owned)cache.Publish(null);lastTick=-1;refusalStreak=0;capacityShape=-1;
             if(pending!=null)pending.Retired=true;
@@ -157,28 +147,26 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         }
         private static void MarkImpact(Request request,NPC npc)
         {
-            if(request!=null && (Array.IndexOf(request.Npcs,npc.whoAmI)>=0 || npc.realLife>=0 && Array.IndexOf(request.Npcs,npc.realLife)>=0))
+            if(request!=null && (Array.IndexOf(request.Npcs,npc.whoAmI)>=0 || npc.realLife>=0 && Array.IndexOf(request.Npcs,npc.realLife)>=0 || NativeNpcEligibility.Owns(request.Queries,npc)))
                 Interlocked.Exchange(ref request.Impact,1);
+        }
+        internal void ObserveNpcReset(NPC npc)
+        {MarkQueryReset(acceptedRequest,npc);MarkQueryReset(pending,npc);}
+        private static void MarkQueryReset(Request request,NPC npc)
+        {if(request!=null && NativeNpcEligibility.Owns(request.Queries,npc))Interlocked.Exchange(ref request.QueryChanged,1);}
+        internal void ObserveNpcQueryUpdate(int slot)
+        {
+            if(acceptedRequest!=null && NativeNpcEligibility.Changed(acceptedRequest.Queries,slot))Interlocked.Exchange(ref acceptedRequest.QueryChanged,1);
+            if(pending!=null && NativeNpcEligibility.Changed(pending.Queries,slot))Interlocked.Exchange(ref pending.QueryChanged,1);
         }
         // An alternate synchronous strategy owns publication. Let at most the
         // already-running native request finish, then consume its mailbox
         // without sampling, retrying, or publishing to the shared cache.
         internal void DiscardRetiredResult()
-        {
-#if JMR_AIM_DIAGNOSTICS
-            if(pending!=null && pending.Retired && Worker!=null){var reply=Worker.TryTakeResult();if(reply!=null){if(AimDiagnostics.Active)try{AimDiagnostics.Event("alternate-retired-discard",lastTick,"error="+reply.Result.Error+";kind="+reply.Result.Kind+";slot="+reply.Result.Slot,request:pending.DiagnosticId,generation:reply.DiagnosticGeneration,sequence:reply.DiagnosticSequence);}catch(Exception error){AimDiagnostics.Missing("alternate-retired-discard",error);}pending=null;}}
-#else
-            if(pending!=null && pending.Retired && Worker!=null && Worker.TryTakeResult()!=null)pending=null;
-#endif
-        }
+        {if(pending!=null && pending.Retired && Worker!=null && Worker.TryTakeResult()!=null)pending=null;}
         internal void Prepare(NpcIdentity identity,long tick)
         {
-
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.Active)try{AimDiagnostics.Request=pending?.DiagnosticId??acceptedRequest?.DiagnosticId??0;AimDiagnostics.Generation=Worker?.DiagnosticGeneration??0;
-            AimDiagnostics.Event("session-prepare",tick,"selected="+AimDiagnostics.Identity(identity)+";failed="+Failed+";reason="+Reason+";pending="+(pending?.DiagnosticId??0)+";pendingRetired="+(pending?.Retired??false)+";accepted="+(acceptedRequest?.DiagnosticId??0)+";age="+(acceptedRequest==null?-1:tick-acceptedRequest.Tick)+";worker="+(Worker?.State??-1)+";lastAttempt="+lastAttempt+";capacityShape="+capacityShape+";demand="+cache.Required);}catch(Exception diagnosticError){AimDiagnostics.Missing("NativePredictionSession",diagnosticError);}
-#endif
-if(Failed)return;
+            if(Failed)return;
             if(cache.Required==0){ClearTarget();return;}
             if(Interlocked.Exchange(ref observedRelocation,0)!=0)ClearTarget();
             if(!identity.Equals(current)){ClearTarget();current=identity;npcs.Add(identity.Slot);assets.Add(identity.Type);lastAttempt=-100;
@@ -187,11 +175,7 @@ if(Failed)return;
 #endif
             }
             if(tick==lastTick)return;
-            if(lastTick>=0 && tick!=lastTick+1){
-#if JMR_AIM_DIAGNOSTICS
-                if(AimDiagnostics.Active)try{if(pending!=null && !pending.Retired)AimDiagnostics.Event("request-retired",tick,"cause=nonconsecutive update;previousTick="+lastTick+";age="+(tick-pending.Tick),request:pending.DiagnosticId);if(acceptedRequest!=null)AimDiagnostics.Event("cache-invalidated",tick,"cause=nonconsecutive update;previousTick="+lastTick,request:acceptedRequest.DiagnosticId);}catch(Exception error){AimDiagnostics.Missing("nonconsecutive-update",error);}
-#endif
-                accepted=null;acceptedRequest=null;if(pending!=null)pending.Retired=true;cache.Publish(null);}
+            if(lastTick>=0 && tick!=lastTick+1){accepted=null;acceptedRequest=null;if(pending!=null)pending.Retired=true;cache.Publish(null);}
             lastTick=tick;
             // Reuse only within this completed game update. History frames
             // own their arrays; none is mutated or carried as a live cache
@@ -203,46 +187,30 @@ if(Failed)return;
             // Its affected background may have no prior route use, but the
             // new input must revoke both old publication and delayed replies.
             if(acceptedRequest!=null && acceptedRequest.Impact!=0)
-            {
-#if JMR_AIM_DIAGNOSTICS
-                if(AimDiagnostics.Active)AimDiagnostics.Event("cache-invalidated",tick,"cause=captured NPC impact",request:acceptedRequest.DiagnosticId);
-#endif
-                accepted=null;acceptedRequest=null;cache.Publish(null);Reason="captured NPC impact";}
-            if(pending!=null && pending.Impact!=0){
-#if JMR_AIM_DIAGNOSTICS
-                if(AimDiagnostics.Active && !pending.Retired)AimDiagnostics.Event("request-retired",tick,"cause=captured NPC impact",request:pending.DiagnosticId);
-#endif
-                pending.Retired=true;}
+            {accepted=null;acceptedRequest=null;cache.Publish(null);Reason="captured NPC impact";}
+            if(pending!=null && pending.Impact!=0)pending.Retired=true;
+            // A query premise is not part of the full-page history. Latch its
+            // first observed change before mailbox consumption; restoring the
+            // original value must never revive a delayed reply or old window.
+            if(acceptedRequest!=null && (acceptedRequest.QueryChanged!=0 || !NativeNpcEligibility.Current(acceptedRequest.Queries)))
+            {accepted=null;acceptedRequest=null;cache.Publish(null);Reason="NPC query premise changed";}
+            if(pending!=null && !pending.Retired && (pending.QueryChanged!=0 || !NativeNpcEligibility.Current(pending.Queries)))pending.Retired=true;
             long started=PredictionPipeProtocol.Measure?Stopwatch.GetTimestamp():0;
             if(pending!=null && !pending.Retired && tick>pending.Tick)
             {
                 bool exact;
-                if(tick-pending.Tick>PredictionWire.MaximumAlignmentAge || !pending.Terrain.ObserveChanges(identity.Session,pending.TerrainChanges,terrainComparison,out exact)){
-#if JMR_AIM_DIAGNOSTICS
-                    if(AimDiagnostics.Active)try{AimDiagnostics.Event("request-retired",tick,"cause="+(tick-pending.Tick>PredictionWire.MaximumAlignmentAge?"age limit":"world extent")+";age="+(tick-pending.Tick),request:pending.DiagnosticId);}catch(Exception error){AimDiagnostics.Missing("diagnostic-arguments",error);}
-#endif
-                    pending.Retired=true;Reason="in-flight age or world extent changed";}
+                if(tick-pending.Tick>PredictionWire.MaximumAlignmentAge || !pending.Terrain.ObserveChanges(identity.Session,pending.TerrainChanges,terrainComparison,out exact)){pending.Retired=true;Reason="in-flight age or world extent changed";}
                 else
                 {
                     checkedTerrain=pending.Terrain;checkedTerrainCurrent=exact;
                     pending.History.Add(Observe(tick,pending.Npcs,pending.Projectiles,identity.Slot));
-#if JMR_AIM_DIAGNOSTICS
-                    if(AimDiagnostics.Active)try{AimDiagnostics.Event("history-frame",tick,"observation="+observation.DiagnosticObservation+";historyIndex="+(pending.History.Count-1),request:pending.DiagnosticId);}catch(Exception diagnosticError){AimDiagnostics.Missing("history-frame",diagnosticError);}
-#endif
                 }
             }
             if(accepted!=null)
             {
                 long age=tick-acceptedRequest.Tick;
                 string difference=!CanReuseProof(age,accepted.Frames.Length)?"expired":!acceptedRequest.Terrain.IsCurrentRelevant(identity.Session,accepted.TerrainUsage,terrainComparison)?"relevant terrain changed":NativePredictionAlignment.Difference(accepted.Frames[(int)age],Observe(tick,acceptedRequest.Npcs,acceptedRequest.Projectiles,identity.Slot));
-                #if JMR_AIM_DIAGNOSTICS
-                if(AimDiagnostics.Active)try{AimDiagnostics.Event("cache-proof-compare",tick,"observation="+(observation?.DiagnosticObservation??0)+";frameIndex="+age+";outcome="+difference,request:acceptedRequest.DiagnosticId);if(difference!=null)AimDiagnostics.Trigger("cache-proof: "+difference);}catch(Exception diagnosticError){AimDiagnostics.Missing("cache-proof",diagnosticError);}
-#endif
-                if(difference!=null){
-#if JMR_AIM_DIAGNOSTICS
-                    if(AimDiagnostics.Active)try{AimDiagnostics.Event("cache-invalidated",tick,"cause="+difference+";observation="+(observation?.DiagnosticObservation??0)+";age="+age,request:acceptedRequest.DiagnosticId);}catch(Exception error){AimDiagnostics.Missing("diagnostic-arguments",error);}
-#endif
-                    Reason=difference;accepted=null;acceptedRequest=null;cache.Publish(null);}
+                if(difference!=null){Reason=difference;accepted=null;acceptedRequest=null;cache.Publish(null);}
             }
             if(PredictionPipeProtocol.Measure){double observed=Milliseconds(Stopwatch.GetTimestamp()-started);ObserveMilliseconds+=observed;ObserveMaximum=Math.Max(ObserveMaximum,observed);}Observed++;
             var response=Worker.TryTakeResult();if(response!=null)Receive(response,tick);
@@ -250,11 +218,7 @@ if(Failed)return;
             {
                 NpcTrajectory window;
                 if(accepted.Trajectory.TryWindow(tick,cache.Required,++version,out window)){cache.Publish(window);Published++;}
-                else{
-#if JMR_AIM_DIAGNOSTICS
-                    if(AimDiagnostics.Active)try{AimDiagnostics.Event("cache-invalidated",tick,"cause=remaining horizon exhausted;demand="+cache.Required,request:acceptedRequest.DiagnosticId);}catch(Exception error){AimDiagnostics.Missing("diagnostic-arguments",error);}
-#endif
-                    accepted=null;acceptedRequest=null;cache.Publish(null);Reason="remaining horizon exhausted";}
+                else{accepted=null;acceptedRequest=null;cache.Publish(null);Reason="remaining horizon exhausted";}
             }
             if(Worker.State==4)
             {
@@ -268,11 +232,7 @@ if(Failed)return;
         }
         private void Receive(PredictionWorkerClient.DecodedReply response,long tick)
         {
-            Request request=pending;pending=null;
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.Active)try{AimDiagnostics.Event("receive",tick,"pending="+(request?.DiagnosticId??0)+";wallAgeMs="+(request==null?-1:Milliseconds(Stopwatch.GetTimestamp()-request.DiagnosticWall))+";retired="+(request?.Retired??false)+";error="+response.Result.Error+";kind="+response.Result.Kind+";slot="+response.Result.Slot+";field="+response.Result.DiagnosticField+";tile="+response.Result.TileX+","+response.Result.TileY,request:response.DiagnosticRequest,generation:response.DiagnosticGeneration,sequence:response.DiagnosticSequence);}catch(Exception diagnosticError){AimDiagnostics.Missing("NativePredictionSession",diagnosticError);}
-#endif
-if(request==null)return;
+            Request request=pending;pending=null;if(request==null)return;
             var m=default(Measurement);
             if(PredictionPipeProtocol.Measure)m=new Measurement{CaptureTick=request.Tick,ArriveTick=tick,Age=(int)Math.Min(int.MaxValue,tick-request.Tick),WallAgeMs=Milliseconds(Stopwatch.GetTimestamp()-request.Wall),CaptureMs=request.CaptureMs,Bytes=response.Bytes,ReplyBytes=response.ReplyBytes,EncodeMs=response.EncodeMs,ExchangeMs=response.ExchangeMs,DecodeMs=response.DecodeMs};
             long begin=PredictionPipeProtocol.Measure?Stopwatch.GetTimestamp():0;
@@ -319,12 +279,13 @@ if(request==null)return;
                 if(missing){m.Outcome="newborn dependency pages require fresh observation";Rejected++;return;}
                 if(request.History.Count!=tick-request.Tick+1)throw new InvalidDataException("Missing intervening observations.");
                 for(int i=0;i<request.History.Count;i++)
-                {string difference=NativePredictionAlignment.Difference(result.Frames[i],request.History[i]);
-#if JMR_AIM_DIAGNOSTICS
-                    if(AimDiagnostics.Active)try{AimDiagnostics.Event("history-compare",request.History[i].Tick,"observation="+request.History[i].DiagnosticObservation+";historyIndex="+i+";outcome="+difference,request:request.DiagnosticId,generation:response.DiagnosticGeneration,sequence:response.DiagnosticSequence);}catch(Exception diagnosticError){AimDiagnostics.Missing("history-compare",diagnosticError);}
-#endif
-                    if(difference!=null){m.Outcome="history "+i+": "+difference;Reason=m.Outcome;Rejected++;return;}}
+                {string difference=NativePredictionAlignment.Difference(result.Frames[i],request.History[i]);if(difference!=null){m.Outcome="history "+i+": "+difference;Reason=m.Outcome;Rejected++;return;}}
                 result.Trajectory=result.Trajectory.BindIdentity(request.Identity);
+                // Only a current, history-validated prefix may guide the next
+                // fresh sample. A short remaining window still cannot publish;
+                // stale/retired replies never seed another target's pages.
+                if(result.ContinuationKind==1)npcs.Add(result.ContinuationSlot);
+                else if(result.ContinuationKind==2)projectiles.Add(result.ContinuationSlot);
                 NpcTrajectory window;if(!result.Trajectory.TryWindow(tick,cache.Required,version,out window)){m.Outcome="insufficient remaining horizon";Rejected++;return;}
                 accepted=result;acceptedRequest=request;m.Outcome="accepted";Reason=null;recoveries=refusalStreak=0;capacityShape=-1;
             }
@@ -333,20 +294,11 @@ if(request==null)return;
                 if(error is OutOfMemoryException)throw;m.Outcome="invalid result: "+error.Message;Reason=m.Outcome;Rejected++;
                 Failed=true;Stop();
             }
-            finally{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.Active)try{AimDiagnostics.Event("acceptance",tick,"outcome="+m.Outcome+";reason="+Reason+";npcs="+npcs.Count+";projectiles="+projectiles.Count+";chunks="+extraChunks.Count+";backoff="+lastAttempt+";failed="+Failed,request:request.DiagnosticId,generation:response.DiagnosticGeneration,sequence:response.DiagnosticSequence);if(m.Outcome!="accepted")AimDiagnostics.Trigger("acceptance: "+m.Outcome);}catch(Exception diagnosticError){AimDiagnostics.Missing("NativePredictionSession",diagnosticError);}
-#endif
-if(PredictionPipeProtocol.Measure){m.AcceptMs=Milliseconds(Stopwatch.GetTimestamp()-begin);Measurements.Enqueue(m);while(Measurements.Count>256)Measurements.Dequeue();}}
+            finally{if(PredictionPipeProtocol.Measure){m.AcceptMs=Milliseconds(Stopwatch.GetTimestamp()-begin);Measurements.Enqueue(m);while(Measurements.Count>256)Measurements.Dequeue();}}
         }
         private void Capture(NpcIdentity identity,long tick)
         {
-
-#if JMR_AIM_DIAGNOSTICS
-            long diagnosticId=AimDiagnostics.NextRequest(),diagnosticCapture=Stopwatch.GetTimestamp();
-            if(AimDiagnostics.Active)try{AimDiagnostics.Request=diagnosticId;AimDiagnostics.Generation=Worker?.DiagnosticGeneration??0;AimDiagnostics.Event("capture-attempt",tick,AimDiagnostics.Identity(identity)+";npcs="+npcs.Count+";projectiles="+projectiles.Count+";extraChunks="+extraChunks.Count);}catch(Exception diagnosticError){AimDiagnostics.Missing("NativePredictionSession",diagnosticError);}
-#endif
-lastAttempt=tick;long begin=PredictionPipeProtocol.Measure?Stopwatch.GetTimestamp():0;
+            lastAttempt=tick;long begin=PredictionPipeProtocol.Measure?Stopwatch.GetTimestamp():0;
             try
             {
 #if JMR_CONDITIONAL_RESEARCH
@@ -375,33 +327,19 @@ lastAttempt=tick;long begin=PredictionPipeProtocol.Measure?Stopwatch.GetTimestam
                     )AddRegion(chunks,(int)Main.npc[slot].Center.X/16,(int)Main.npc[slot].Center.Y/16,24);
                 foreach(var player in Main.player)if(player!=null && player.active)AddRegion(chunks,(int)player.Center.X/16,(int)player.Center.Y/16,24);
                 if(terrain==null || !TerrainCurrent(terrain,identity.Session) || !Covers(terrain,chunks))terrain=NativeTerrainSnapshot.CaptureChunksObserved(identity.Session,chunks,terrainComparison);
-                var request=new Request{Identity=identity,Tick=tick,Wall=begin,Npcs=ns,Projectiles=ps,Terrain=terrain
-#if JMR_AIM_DIAGNOSTICS
-                    ,DiagnosticId=diagnosticId,DiagnosticWall=diagnosticCapture
-#endif
-};
+                var request=new Request{Identity=identity,Tick=tick,Wall=begin,Npcs=ns,Projectiles=ps,Terrain=terrain,Queries=NativeNpcEligibility.Capture(ns)};
 #if JMR_CONDITIONAL_RESEARCH
                 request.Npcs=exactNpcs.ToArray();
 #endif
                 request.History.Add(Observe(tick,request.Npcs,ps,identity.Slot));
-#if JMR_AIM_DIAGNOSTICS
-                if(AimDiagnostics.Active)try{AimDiagnostics.Event("history-frame",tick,"observation="+observation.DiagnosticObservation+";historyIndex=0",request:request.DiagnosticId);}catch(Exception diagnosticError){AimDiagnostics.Missing("history-frame",diagnosticError);}
-#endif
                 var values=PredictionWire.FillProductionValues(Worker.BeginCapture(),ns,ps,identity.Slot,tick,PredictionWire.MaximumHorizon,terrain,assets.ToArray(),ReferenceEquals(terrain,acknowledgedTerrain));
                 if(PredictionPipeProtocol.Measure)request.CaptureMs=Milliseconds(Stopwatch.GetTimestamp()-begin);
                 var valueIdentity=new NpcIdentity(identity.Session,null,identity.Slot,identity.Generation,identity.Type,identity.NetId);
                 if(Worker.TrySendValues(values,valueIdentity,tick,Main.netMode==1)){pending=request;Requests++;}
-#if JMR_AIM_DIAGNOSTICS
-                if(AimDiagnostics.Active)try{AimDiagnostics.Event("capture-completed",tick,"captureMs="+Milliseconds(Stopwatch.GetTimestamp()-diagnosticCapture)+";submitted="+(pending==request)+";npcs="+ns.Length+";projectiles="+ps.Length+";chunks="+terrain.Chunks.Length);}catch(Exception diagnosticError){AimDiagnostics.Missing("NativePredictionSession",diagnosticError);}
-#endif
             }
             catch(Exception error)
             {
-                if(error is OutOfMemoryException)throw;
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.Active)try{AimDiagnostics.Event("capture-failed",tick,error.ToString());AimDiagnostics.Trigger("capture-failed");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativePredictionSession",diagnosticError);}
-#endif
-Reason="capture: "+error.Message;lastAttempt=tick+57;
+                if(error is OutOfMemoryException)throw;Reason="capture: "+error.Message;lastAttempt=tick+57;
             }
         }
         private void GatherDependencies()
@@ -435,6 +373,11 @@ Reason="capture: "+error.Message;lastAttempt=tick+57;
                 }
                 if(npcs.Count>Main.maxNPCs+1 || projectiles.Count>Main.maxProjectiles+1)throw new InvalidDataException("Native dependency capacity.");
             }while(changed);
+            // Minion rank and slot budget are shared by an owner, rebuilt in
+            // original projectile order. Every observed contributor is needed
+            // when a captured minion consumes that aggregate.
+            HashSet<int> minionOwners=null;foreach(int slot in projectiles){var p=Main.projectile[slot];if(p.active && p.minion){if(minionOwners==null)minionOwners=new HashSet<int>();minionOwners.Add(p.owner);}}
+            if(minionOwners!=null)for(int i=0;i<Main.maxProjectiles;i++){var p=Main.projectile[i];if(p.active && p.minion && minionOwners.Contains(p.owner))projectiles.Add(i);}
             // Harpy's native 30/60/90 firing cycle can allocate three shots in
             // this horizon. Reserve actual inactive pages in native slot order;
             // do not construct replacement objects or advance unrelated shots.
@@ -462,15 +405,7 @@ Reason="capture: "+error.Message;lastAttempt=tick+57;
         {if(!ReferenceEquals(checkedTerrain,value)){checkedTerrain=value;checkedTerrainCurrent=value.IsCurrentObserved(world,terrainComparison);}return checkedTerrainCurrent;}
         private NativePredictionAlignment.Frame Observe(long tick,int[] ns,int[] ps,int selected)
         {
-            if(observation==null || !Same(observation.Npcs,ns) || !Same(observation.Projectiles,ps)){
-#if JMR_AIM_DIAGNOSTICS
-                long diagnosticStart=AimDiagnostics.Active?Stopwatch.GetTimestamp():0;
-#endif
-                observation=NativePredictionAlignment.Observe(tick,ns,ps,selected);
-#if JMR_AIM_DIAGNOSTICS
-                if(diagnosticStart!=0)try{AimDiagnostics.Event("session-observe-cost",tick,"observation="+observation.DiagnosticObservation+";observeTotalMs="+Milliseconds(Stopwatch.GetTimestamp()-diagnosticStart)+";scope=original observation plus diagnostic field collection and queue ownership");}catch(Exception error){AimDiagnostics.Missing("session-observe-cost",error);}
-#endif
-            }
+            if(observation==null || !Same(observation.Npcs,ns) || !Same(observation.Projectiles,ps))observation=NativePredictionAlignment.Observe(tick,ns,ps,selected);
             return observation;
         }
         private static bool Same(int[] a,int[] b)

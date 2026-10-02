@@ -25,9 +25,6 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         internal sealed class Frame
         {
             internal long Tick;
-#if JMR_AIM_DIAGNOSTICS
-            internal long DiagnosticObservation;
-#endif
             internal ulong World;
             internal int[] Npcs,Projectiles,Players;
             internal ulong[] NpcState,ProjectileState,PlayerPremise;
@@ -44,9 +41,6 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         }
         internal static Frame Observe(long tick,int[] npcs,int[] projectiles,int selected)
         {
-            #if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.Active)AimDiagnostics.Observation=AimDiagnostics.NextObservation();
-#endif
             var players=new List<int>();for(int i=0;i<Main.maxPlayers;i++)if(Main.player[i]!=null && Main.player[i].active)players.Add(i);
             var frame=new Frame{Tick=tick,HasState=true,Npcs=npcs,Projectiles=projectiles,Players=players.ToArray(),NpcState=new ulong[npcs.Length],ProjectileState=new ulong[projectiles.Length],PlayerPremise=new ulong[players.Count],PlayerPosition=new Vector2[players.Count],PlayerVelocity=new Vector2[players.Count]};
             frame.NpcVelocity=new Vector2[npcs.Length];frame.NpcOldVelocity=new Vector2[npcs.Length];frame.ProjectileVelocity=new Vector2[projectiles.Length];frame.ProjectileOldVelocity=new Vector2[projectiles.Length];
@@ -61,89 +55,21 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             using(var writer=new ValueHashWriter())
             {
                 writer.Reset();WorldPremise(writer);frame.World=writer.Hash;
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.Active)try{AimDiagnostics.Tape(writer,tick,"world");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativePredictionAlignment",diagnosticError);}
-#endif
-
                 for(int i=0;i<npcs.Length;i++)
                 {
                     var n=Main.npc[npcs[i]];writer.Reset();NpcPremise(writer,n);NativeEntityContext.WriteNpc(writer,n);frame.NpcState[i]=writer.Hash;
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.Active)try{AimDiagnostics.Tape(writer,tick,"npc-state slot="+npcs[i]);}catch(Exception diagnosticError){AimDiagnostics.Missing("NativePredictionAlignment",diagnosticError);}
-#endif
-
                     // Vitality is an unconditional continuity condition even
                     // for an unused background. Ordinary water movement may
                     // be omitted; unobserved damage/healing may not. The Host
                     // hit fact additionally catches hit+heal between samples.
-                    writer.Reset();{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(writer,"n.whoAmI","identity");
-#endif
-writer.Write(n.whoAmI);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(writer,"n.type","identity");
-#endif
-writer.Write(n.type);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(writer,"n.netID","identity");
-#endif
-writer.Write(n.netID);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(writer,"n.generation","identity");
-#endif
-writer.Write(n.generation);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(writer,"n.friendly","identity");
-#endif
-writer.Write(n.friendly);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(writer,"n.life","identity");
-#endif
-writer.Write(n.life);}frame.NpcIdentity[i]=writer.Hash;
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.Active)try{AimDiagnostics.Tape(writer,tick,"npc-identity slot="+npcs[i]);}catch(Exception diagnosticError){AimDiagnostics.Missing("NativePredictionAlignment",diagnosticError);}
-#endif
-
+                    writer.Reset();writer.Write(n.whoAmI);writer.Write(n.type);writer.Write(n.netID);writer.Write(n.generation);writer.Write(n.friendly);writer.Write(n.life);frame.NpcIdentity[i]=writer.Hash;
                 }
                 for(int i=0;i<projectiles.Length;i++)
                 {
                     var p=Main.projectile[projectiles[i]];writer.Reset();Projectiles.Write(writer,p);NativeActorContext.WriteProjectile(writer,p);frame.ProjectileState[i]=writer.Hash;
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.Active)try{AimDiagnostics.Tape(writer,tick,"projectile-state slot="+projectiles[i]);}catch(Exception diagnosticError){AimDiagnostics.Missing("NativePredictionAlignment",diagnosticError);}
-#endif
-
                     // Even a currently unused shot must not silently become a
                     // different instance or damaging faction under this proof.
-                    writer.Reset();{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(writer,"p.whoAmI","identity");
-#endif
-writer.Write(p.whoAmI);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(writer,"p.type","identity");
-#endif
-writer.Write(p.type);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(writer,"(uint)p.key","identity");
-#endif
-writer.Write((uint)p.key);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(writer,"p.owner","identity");
-#endif
-writer.Write(p.owner);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(writer,"p.friendly","identity");
-#endif
-writer.Write(p.friendly);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(writer,"p.hostile","identity");
-#endif
-writer.Write(p.hostile);}frame.ProjectileIdentity[i]=writer.Hash;
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.Active)try{AimDiagnostics.Tape(writer,tick,"projectile-identity slot="+projectiles[i]);}catch(Exception diagnosticError){AimDiagnostics.Missing("NativePredictionAlignment",diagnosticError);}
-#endif
-
+                    writer.Reset();writer.Write(p.whoAmI);writer.Write(p.type);writer.Write((uint)p.key);writer.Write(p.owner);writer.Write(p.friendly);writer.Write(p.hostile);frame.ProjectileIdentity[i]=writer.Hash;
                 }
                 for(int i=0;i<players.Count;i++)
                 {
@@ -152,55 +78,21 @@ writer.Write(p.hostile);}frame.ProjectileIdentity[i]=writer.Hash;
                     // PickAmmo). Pure NPC motion does not depend on an unused
                     // positive inventory stack's exact count; keep presence,
                     // type/prefix, selected item and all projectile counts.
-                    if(projectiles.Length!=0)for(int slot=0;slot<p.inventory.Length;slot++){
-#if JMR_AIM_DIAGNOSTICS
-                        if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"p.inventory["+slot+"].stack.exact","Int32");}catch(Exception error){AimDiagnostics.Missing("diagnostic-arguments",error);}
-#endif
-                        writer.Write(p.inventory[slot].stack);}
-                    frame.PlayerPremise[i]=writer.Hash;
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.Active)try{AimDiagnostics.Tape(writer,tick,"player-premise slot="+players[i]);}catch(Exception diagnosticError){AimDiagnostics.Missing("NativePredictionAlignment",diagnosticError);}
-#endif
-frame.PlayerPosition[i]=p.position;frame.PlayerVelocity[i]=p.velocity;frame.PlayerConditional[i]=NativePlayerMotion.Conditional(p);
+                    if(projectiles.Length!=0)foreach(var item in p.inventory)writer.Write(item.stack);
+                    frame.PlayerPremise[i]=writer.Hash;frame.PlayerPosition[i]=p.position;frame.PlayerVelocity[i]=p.velocity;frame.PlayerConditional[i]=NativePlayerMotion.Conditional(p);
                 }
             }
-            #if JMR_AIM_DIAGNOSTICS
-            frame.DiagnosticObservation=AimDiagnostics.Observation;
-#endif
             NPC target=Main.npc[selected];frame.NetOffset=target.netOffset;frame.CanReceive=target.active && CombatSelection.Receives(target,true);frame.CanHarm=target.active && !target.friendly && target.damage>0;
-            #if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)try{using(var bytes=new MemoryStream())using(var encoded=new BinaryWriter(bytes)){Write(encoded,frame);encoded.Flush();AimDiagnostics.Event("alignment-frame",tick,"observation="+frame.DiagnosticObservation+";frame-owned observation before final usage mask",bytes.ToArray(),true);}}catch(Exception error){AimDiagnostics.Missing("frame-copy",error);}
-#endif
             return frame;
         }
         private static void NpcPremise(BinaryWriter writer,NPC n)
         {
-            Npcs.Write(writer,n);{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(writer,"n.ai.Length","premise");
-#endif
-writer.Write(n.ai.Length);}
+            Npcs.Write(writer,n);writer.Write(n.ai.Length);
             for(int i=0;i<n.ai.Length;i++)
-            {float value=n.ai[i];bool representative=i==1 && RepresentativeShootClock(n,value);{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"n.ai["+i+"].representative","premise");}catch(Exception error){AimDiagnostics.Missing("diagnostic-arguments",error);}
-#endif
-writer.Write(representative);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"n.ai["+i+"].normalized","premise");}catch(Exception error){AimDiagnostics.Missing("diagnostic-arguments",error);}
-#endif
-writer.Write(representative?0f:value);}}
-            {
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(writer,"n.localAI==null?-1:n.localAI.Length","premise");
-#endif
-writer.Write(n.localAI==null?-1:n.localAI.Length);}
+            {float value=n.ai[i];bool representative=i==1 && RepresentativeShootClock(n,value);writer.Write(representative);writer.Write(representative?0f:value);}
+            writer.Write(n.localAI==null?-1:n.localAI.Length);
             TargetRectangle(writer,n);
-            {
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(writer,"NativeLightingSnapshot.Observe(n)","premise");
-#endif
-writer.Write(NativeLightingSnapshot.Observe(n));}
+            writer.Write(NativeLightingSnapshot.Observe(n));
             if(n.localAI==null)return;
             for(int i=0;i<n.localAI.Length;i++)
             {
@@ -212,11 +104,7 @@ writer.Write(NativeLightingSnapshot.Observe(n));}
                 // value, snapshot, guard or general localAI/RNG exception.
                 // Boundary clocks and all other fields remain bit-exact.
                 if(i==0 && n.active && n.type==Terraria.ID.NPCID.TheDestroyerBody && n.aiStyle==37 && value>=0 && value+3*PredictionWire.MaximumHorizon<1400)value=0;
-                {
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"n.localAI["+i+"]","premise");}catch(Exception error){AimDiagnostics.Missing("diagnostic-arguments",error);}
-#endif
-writer.Write(value);}
+                writer.Write(value);
             }
         }
         // Locked .8 AI_005's hornet mechanism accumulates a keyed random
@@ -247,28 +135,8 @@ writer.Write(value);}
             Player player=n.HasPlayerTarget?Main.player[n.target]:null;
             bool derived=player!=null && player.active && NativePlayerMotion.Conditional(player) && n.targetRect==player.Hitbox;
             if(derived)for(int i=0;i<Main.maxPlayers;i++)if(Main.player[i]!=null && Main.player[i].active && Main.player[i].tankPet>=0){derived=false;break;}
-            {
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(writer,"derived","premise");
-#endif
-writer.Write(derived);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(writer,"n.targetRect.Width","premise");
-#endif
-writer.Write(n.targetRect.Width);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(writer,"n.targetRect.Height","premise");
-#endif
-writer.Write(n.targetRect.Height);}
-            if(!derived){{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(writer,"n.targetRect.X","premise");
-#endif
-writer.Write(n.targetRect.X);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(writer,"n.targetRect.Y","premise");
-#endif
-writer.Write(n.targetRect.Y);}}
+            writer.Write(derived);writer.Write(n.targetRect.Width);writer.Write(n.targetRect.Height);
+            if(!derived){writer.Write(n.targetRect.X);writer.Write(n.targetRect.Y);}
         }
         internal static Frame Presentation(long tick,int selected)
         {
@@ -277,329 +145,37 @@ writer.Write(n.targetRect.Y);}}
         }
         private static void PlayerPremise(BinaryWriter w,Player p)
         {
-            bool conditional=NativePlayerMotion.Conditional(p);{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"conditional","premise");
-#endif
-w.Write(conditional);}
-            {
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.whoAmI","premise");
-#endif
-w.Write(p.whoAmI);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.active","premise");
-#endif
-w.Write(p.active);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.dead","premise");
-#endif
-w.Write(p.dead);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.ghost","premise");
-#endif
-w.Write(p.ghost);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.width","premise");
-#endif
-w.Write(p.width);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.height","premise");
-#endif
-w.Write(p.height);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.gravDir","premise");
-#endif
-w.Write(p.gravDir);}
-            {
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.immune && p.immuneTime>PredictionWire.MaximumHorizon","premise");
-#endif
-w.Write(p.immune && p.immuneTime>PredictionWire.MaximumHorizon);}
-            {
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.controlLeft","premise");
-#endif
-w.Write(p.controlLeft);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.controlRight","premise");
-#endif
-w.Write(p.controlRight);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.controlUp","premise");
-#endif
-w.Write(p.controlUp);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.controlDown","premise");
-#endif
-w.Write(p.controlDown);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.controlJump","premise");
-#endif
-w.Write(p.controlJump);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.controlUseItem","premise");
-#endif
-w.Write(p.controlUseItem);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.controlUseTile","premise");
-#endif
-w.Write(p.controlUseTile);}
+            bool conditional=NativePlayerMotion.Conditional(p);w.Write(conditional);
+            w.Write(p.whoAmI);w.Write(p.active);w.Write(p.dead);w.Write(p.ghost);w.Write(p.width);w.Write(p.height);w.Write(p.gravDir);
+            w.Write(p.immune && p.immuneTime>PredictionWire.MaximumHorizon);
+            w.Write(p.controlLeft);w.Write(p.controlRight);w.Write(p.controlUp);w.Write(p.controlDown);w.Write(p.controlJump);w.Write(p.controlUseItem);w.Write(p.controlUseTile);
             // Special mounts may recompute these outputs from fatigue or
             // flight stage on every step (e.g. bee RunSpeed). Their equipment,
             // input and mechanism remain fixed premises, not these outputs.
-            if(!conditional){{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.runAcceleration","premise");
-#endif
-w.Write(p.runAcceleration);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.runSlowdown","premise");
-#endif
-w.Write(p.runSlowdown);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.maxRunSpeed","premise");
-#endif
-w.Write(p.maxRunSpeed);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.accRunSpeed","premise");
-#endif
-w.Write(p.accRunSpeed);}}
-            {
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.jumpSpeedBoost","premise");
-#endif
-w.Write(p.jumpSpeedBoost);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.autoJump","premise");
-#endif
-w.Write(p.autoJump);}
-            {
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.ignoreWater","premise");
-#endif
-w.Write(p.ignoreWater);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.merman","premise");
-#endif
-w.Write(p.merman);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.trident","premise");
-#endif
-w.Write(p.trident);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.waterWalk","premise");
-#endif
-w.Write(p.waterWalk);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.waterWalk2","premise");
-#endif
-w.Write(p.waterWalk2);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.aggro","premise");
-#endif
-w.Write(p.aggro);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.insideUnbreakableWalls","premise");
-#endif
-w.Write(p.insideUnbreakableWalls);}
-            if(!conditional){{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.jump","premise");
-#endif
-w.Write(p.jump);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.releaseJump","premise");
-#endif
-w.Write(p.releaseJump);}}
-            {
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.wet","premise");
-#endif
-w.Write(p.wet);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.honeyWet","premise");
-#endif
-w.Write(p.honeyWet);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.lavaWet","premise");
-#endif
-w.Write(p.lavaWet);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.shimmerWet","premise");
-#endif
-w.Write(p.shimmerWet);}
-            {
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.forcedGravity","premise");
-#endif
-w.Write(p.forcedGravity);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.creativeGodMode","premise");
-#endif
-w.Write(p.creativeGodMode);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.gravControl","premise");
-#endif
-w.Write(p.gravControl);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.gravControl2","premise");
-#endif
-w.Write(p.gravControl2);}
-            {
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.PortalPhysicsEnabled","premise");
-#endif
-w.Write(p.PortalPhysicsEnabled);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.wingsLogic","premise");
-#endif
-w.Write(p.wingsLogic);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.carpetFrame","premise");
-#endif
-w.Write(p.carpetFrame);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.jumpBoost","premise");
-#endif
-w.Write(p.jumpBoost);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.wereWolf","premise");
-#endif
-w.Write(p.wereWolf);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.moonLordLegs","premise");
-#endif
-w.Write(p.moonLordLegs);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.sticky","premise");
-#endif
-w.Write(p.sticky);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.dazed","premise");
-#endif
-w.Write(p.dazed);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.vortexDebuff","premise");
-#endif
-w.Write(p.vortexDebuff);}
+            if(!conditional){w.Write(p.runAcceleration);w.Write(p.runSlowdown);w.Write(p.maxRunSpeed);w.Write(p.accRunSpeed);}
+            w.Write(p.jumpSpeedBoost);w.Write(p.autoJump);
+            w.Write(p.ignoreWater);w.Write(p.merman);w.Write(p.trident);w.Write(p.waterWalk);w.Write(p.waterWalk2);w.Write(p.aggro);w.Write(p.insideUnbreakableWalls);
+            if(!conditional){w.Write(p.jump);w.Write(p.releaseJump);}
+            w.Write(p.wet);w.Write(p.honeyWet);w.Write(p.lavaWet);w.Write(p.shimmerWet);
+            w.Write(p.forcedGravity);w.Write(p.creativeGodMode);w.Write(p.gravControl);w.Write(p.gravControl2);
+            w.Write(p.PortalPhysicsEnabled);w.Write(p.wingsLogic);w.Write(p.carpetFrame);w.Write(p.jumpBoost);w.Write(p.wereWolf);w.Write(p.moonLordLegs);w.Write(p.sticky);w.Write(p.dazed);w.Write(p.vortexDebuff);
             // Biome gates can change pursuit, vulnerability and despawn (for
             // example lacewings and sand elementals). Compare the actual zone
             // bitfields carried by the captured player, not just evil biomes.
-            {
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"(byte)p.zone1","premise");
-#endif
-w.Write((byte)p.zone1);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"(byte)p.zone2","premise");
-#endif
-w.Write((byte)p.zone2);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"(byte)p.zone3","premise");
-#endif
-w.Write((byte)p.zone3);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"(byte)p.zone4","premise");
-#endif
-w.Write((byte)p.zone4);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"(byte)p.zone5","premise");
-#endif
-w.Write((byte)p.zone5);}
+            w.Write((byte)p.zone1);w.Write((byte)p.zone2);w.Write((byte)p.zone3);w.Write((byte)p.zone4);w.Write((byte)p.zone5);
             NativePlayerMotion.Write(w,p);
-            {
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"NativePlayerMotion.Mechanism(p)","premise");
-#endif
-w.Write(NativePlayerMotion.Mechanism(p));}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.CCed","premise");
-#endif
-w.Write(p.CCed);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.teleporting","premise");
-#endif
-w.Write(p.teleporting);}
-            if(p.grappling!=null && p.grappling.Length>0 && p.grappling[0]>=0){{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.grappling.Length","premise");
-#endif
-w.Write(p.grappling.Length);}foreach(int slot in p.grappling){
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.grappling","premise");
-#endif
-w.Write(slot);}}
+            w.Write(NativePlayerMotion.Mechanism(p));w.Write(p.CCed);w.Write(p.teleporting);
+            if(p.grappling!=null && p.grappling.Length>0 && p.grappling[0]>=0){w.Write(p.grappling.Length);foreach(int slot in p.grappling)w.Write(slot);}
             // Mount changes retire a conditional continuation even if both
             // old/new states satisfy the same broad Complex movement flag.
-            {
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.mount.Active","premise");
-#endif
-w.Write(p.mount.Active);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.mount.Type","premise");
-#endif
-w.Write(p.mount.Type);}
-            {
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.selectedItem","premise");
-#endif
-w.Write(p.selectedItem);}for(int i=0;i<p.inventory.Length;i++){var item=p.inventory[i];{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(w,"p.inventory["+i+"].type","premise");}catch(Exception error){AimDiagnostics.Missing("diagnostic-arguments",error);}
-#endif
-w.Write(item.type);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(w,"p.inventory["+i+"].prefix","premise");}catch(Exception error){AimDiagnostics.Missing("diagnostic-arguments",error);}
-#endif
-w.Write(item.prefix);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(w,"p.inventory["+i+"].normalizedStack","premise");}catch(Exception error){AimDiagnostics.Missing("diagnostic-arguments",error);}
-#endif
-w.Write(i==p.selectedItem?item.stack:item.stack>0?1:0);}}
-            for(int slot=0;slot<10;slot++){var item=p.GetEffectiveArmor(slot);{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(w,"p.effectiveArmor["+slot+"].type","premise");}catch(Exception error){AimDiagnostics.Missing("diagnostic-arguments",error);}
-#endif
-w.Write(item.type);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(w,"p.effectiveArmor["+slot+"].prefix","premise");}catch(Exception error){AimDiagnostics.Missing("diagnostic-arguments",error);}
-#endif
-w.Write(item.prefix);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(w,"p.effectiveArmor["+slot+"].stack","premise");}catch(Exception error){AimDiagnostics.Missing("diagnostic-arguments",error);}
-#endif
-w.Write(item.stack);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(w,"p.effectiveArmor["+slot+"].accessory","premise");}catch(Exception error){AimDiagnostics.Missing("diagnostic-arguments",error);}
-#endif
-w.Write(item.accessory);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(w,"p.effectiveArmor["+slot+"].expertOnly","premise");}catch(Exception error){AimDiagnostics.Missing("diagnostic-arguments",error);}
-#endif
-w.Write(item.expertOnly);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.IsItemSlotUnlockedAndUsable(slot)","premise");
-#endif
-w.Write(p.IsItemSlotUnlockedAndUsable(slot));}}
-            foreach(bool value in p.npcTypeNoAggro){
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.npcTypeNoAggro","premise");
-#endif
-w.Write(value);}
+            w.Write(p.mount.Active);w.Write(p.mount.Type);
+            w.Write(p.selectedItem);for(int i=0;i<p.inventory.Length;i++){var item=p.inventory[i];w.Write(item.type);w.Write(item.prefix);w.Write(i==p.selectedItem?item.stack:item.stack>0?1:0);}
+            for(int slot=0;slot<10;slot++){var item=p.GetEffectiveArmor(slot);w.Write(item.type);w.Write(item.prefix);w.Write(item.stack);w.Write(item.accessory);w.Write(item.expertOnly);w.Write(p.IsItemSlotUnlockedAndUsable(slot));}
+            foreach(bool value in p.npcTypeNoAggro)w.Write(value);
             // Proven ordinary clocks advance independently of movement and
             // equipment support. Other effect changes still retire the premise;
             // unsupported effects never become equivalent by omitting clocks.
-            foreach(int value in p.buffType){
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.buffType","premise");
-#endif
-w.Write(value);}foreach(int value in p.buffTime){
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"p.buffTime","premise");
-#endif
-w.Write(value);}
+            foreach(int value in p.buffType)w.Write(value);foreach(int value in p.buffTime)w.Write(value);
         }
         internal static void Write(BinaryWriter writer,Frame frame)
         {
@@ -663,97 +239,13 @@ w.Write(value);}
         }
         private static void WorldPremise(BinaryWriter w)
         {
-            {
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"Main.dayTime","world");
-#endif
-w.Write(Main.dayTime);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"Main.time","world");
-#endif
-w.Write(Main.time);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"Main.dayRate","world");
-#endif
-w.Write(Main.dayRate);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"Main.GameMode","world");
-#endif
-w.Write(Main.GameMode);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"Main.bloodMoon","world");
-#endif
-w.Write(Main.bloodMoon);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"Main.eclipse","world");
-#endif
-w.Write(Main.eclipse);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"Main.windSpeedCurrent","world");
-#endif
-w.Write(Main.windSpeedCurrent);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"Main.windSpeedTarget","world");
-#endif
-w.Write(Main.windSpeedTarget);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"Main.maxRaining","world");
-#endif
-w.Write(Main.maxRaining);}
-            {
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"Main.maxTilesX","world");
-#endif
-w.Write(Main.maxTilesX);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"Main.maxTilesY","world");
-#endif
-w.Write(Main.maxTilesY);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"Main.worldSurface","world");
-#endif
-w.Write(Main.worldSurface);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"Main.rockLayer","world");
-#endif
-w.Write(Main.rockLayer);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"Main.remixWorld","world");
-#endif
-w.Write(Main.remixWorld);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"Main.getGoodWorld","world");
-#endif
-w.Write(Main.getGoodWorld);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"Main.slimeRain","world");
-#endif
-w.Write(Main.slimeRain);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"Main.invasionType","world");
-#endif
-w.Write(Main.invasionType);}
-            {
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"Terraria.Testing.DebugOptions.Shared_RandomizeProjectileSlots","world");
-#endif
-w.Write(Terraria.Testing.DebugOptions.Shared_RandomizeProjectileSlots);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"Terraria.Testing.DebugOptions.noLimits","world");
-#endif
-w.Write(Terraria.Testing.DebugOptions.noLimits);}
+            w.Write(Main.dayTime);w.Write(Main.time);w.Write(Main.dayRate);w.Write(Main.GameMode);w.Write(Main.bloodMoon);w.Write(Main.eclipse);w.Write(Main.windSpeedCurrent);w.Write(Main.windSpeedTarget);w.Write(Main.maxRaining);
+            w.Write(Main.maxTilesX);w.Write(Main.maxTilesY);w.Write(Main.worldSurface);w.Write(Main.rockLayer);w.Write(Main.remixWorld);w.Write(Main.getGoodWorld);w.Write(Main.slimeRain);w.Write(Main.invasionType);
+            w.Write(Terraria.Testing.DebugOptions.Shared_RandomizeProjectileSlots);w.Write(Terraria.Testing.DebugOptions.noLimits);
             // Equal NPC pages do not imply the same gravity source: the
             // original player step selects its refresh source by this index.
-            {
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"NPC.brainOfGravity","world");
-#endif
-w.Write(NPC.brainOfGravity);}
-            {
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)AimDiagnostics.Field(w,"Terraria.GameContent.Events.DD2Event.Ongoing","world");
-#endif
-w.Write(Terraria.GameContent.Events.DD2Event.Ongoing);}
+            w.Write(NPC.brainOfGravity);
+            w.Write(Terraria.GameContent.Events.DD2Event.Ongoing);
             if(Terraria.GameContent.Events.DD2Event.Ongoing)NativeWorldSnapshot.WriteEvent(w);
         }
         private static bool Near(Vector2 a,Vector2 b){return Math.Abs(a.X-b.X)<=.002f && Math.Abs(a.Y-b.Y)<=.002f;}
@@ -798,35 +290,16 @@ w.Write(Terraria.GameContent.Events.DD2Event.Ongoing);}
             {[FieldOffset(0)]internal float Single;[FieldOffset(0)]internal uint UInt32;[FieldOffset(0)]internal double Double;[FieldOffset(0)]internal ulong UInt64;}
             private static readonly Encoding Utf8=new UTF8Encoding(false,true);
             internal ValueHashWriter():base(Stream.Null){}
-#if JMR_AIM_DIAGNOSTICS
-            internal AimDiagnosticTape DiagnosticTape;
-#endif
-
-            internal ulong Hash;internal void Reset(){Hash=14695981039346656037UL;
-#if JMR_AIM_DIAGNOSTICS
-                try{DiagnosticTape=AimDiagnostics.DetailActive?new AimDiagnosticTape():null;}catch(Exception error){DiagnosticTape=null;AimDiagnostics.Missing("tape-allocation",error);}
-#endif
-}
-            public override void Write(byte value){
-#if JMR_AIM_DIAGNOSTICS
-                DiagnosticTape?.Add("u8",value);
-#endif
-unchecked{Hash=(Hash^value)*1099511628211UL;}}
+            internal ulong Hash;internal void Reset(){Hash=14695981039346656037UL;}
+            public override void Write(byte value){unchecked{Hash=(Hash^value)*1099511628211UL;}}
             public override void Write(bool value){Write((byte)(value?1:0));}
             public override void Write(sbyte value){Write(unchecked((byte)value));}
             public override void Write(short value){Write(unchecked((ushort)value));}
             public override void Write(ushort value)
-            {
-#if JMR_AIM_DIAGNOSTICS
-                DiagnosticTape?.Add("u16",value);
-#endif
-unchecked{ulong hash=Hash;hash=(hash^(byte)value)*1099511628211UL;Hash=(hash^(byte)(value>>8))*1099511628211UL;}}
+            {unchecked{ulong hash=Hash;hash=(hash^(byte)value)*1099511628211UL;Hash=(hash^(byte)(value>>8))*1099511628211UL;}}
             public override void Write(int value){Write(unchecked((uint)value));}
             public override void Write(uint value)
             {
-                #if JMR_AIM_DIAGNOSTICS
-                DiagnosticTape?.Add("u32",value);
-#endif
                 // Four zero bytes still participate in the exact FNV stream:
                 // their xor operations are identities, so prime^4 (mod 2^64)
                 // replaces four multiplies. Immune/timer arrays often use zero;
@@ -839,11 +312,7 @@ unchecked{ulong hash=Hash;hash=(hash^(byte)value)*1099511628211UL;Hash=(hash^(by
             public override void Write(double value){Write(new Bits{Double=value}.UInt64);}
             public override void Write(byte[] value){Write(value,0,value.Length);}
             public override void Write(byte[] value,int offset,int count)
-            {
-#if JMR_AIM_DIAGNOSTICS
-                for(int i=0;i<count;i++)DiagnosticTape?.Add("bytes",value[offset+i]);
-#endif
-unchecked{ulong hash=Hash;for(int i=0;i<count;i++)hash=(hash^value[offset+i])*1099511628211UL;Hash=hash;}}
+            {unchecked{ulong hash=Hash;for(int i=0;i<count;i++)hash=(hash^value[offset+i])*1099511628211UL;Hash=hash;}}
             public override void Write(string value)
             {byte[] bytes=Utf8.GetBytes(value);uint length=(uint)bytes.Length;while(length>=128){Write((byte)(length|128));length>>=7;}Write((byte)length);Write(bytes);}
             public override void Write(decimal value){throw new NotSupportedException("Unknown alignment primitive.");}

@@ -19,7 +19,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             // initializers samples Main, constructs an actor or reads assets.
             // Do this on the transport owner during finite preparation so the
             // first selected type does not compile field plans on a game frame.
-            var types=new[]{typeof(PredictionWire),typeof(NativeWorldSnapshot),typeof(NativeEntityDirectory),typeof(NativeActorContext),typeof(NativeEntitySnapshot),typeof(NativePredictionAlignment),typeof(NativePredictionAlignment.ValueHashWriter),typeof(NativeEntityContext),typeof(NativeRandomSnapshot),typeof(NativeTagSnapshot),typeof(NativeValueSnapshot),typeof(NativeCapturedValues),typeof(NativeTerrainSnapshot)};
+            var types=new[]{typeof(PredictionWire),typeof(NativeWorldSnapshot),typeof(NativeEntityDirectory),typeof(NativeNpcEligibility),typeof(NativeNpcEligibility.Premise),typeof(NativeActorContext),typeof(NativeEntitySnapshot),typeof(NativePredictionAlignment),typeof(NativePredictionAlignment.ValueHashWriter),typeof(NativeEntityContext),typeof(NativeRandomSnapshot),typeof(NativeTagSnapshot),typeof(NativeValueSnapshot),typeof(NativeCapturedValues),typeof(NativeTerrainSnapshot)};
             foreach(var type in types)
                 RuntimeHelpers.RunClassConstructor(type.TypeHandle);
             // Compiling these host codecs does not execute their reads. Their
@@ -70,19 +70,8 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         internal static NativeCapturedValues FillProductionValues(NativeCapturedValues values,int[] slots,int[] projectiles,int selected,long tick,int horizon,NativeTerrainSnapshot terrain,int[] assets,bool referencesOnly)
         {
             if(slots==null || slots.Length<1 || slots.Length>Main.maxNPCs+1 || horizon<1 || horizon>MaximumHorizon)throw new ArgumentOutOfRangeException();
-            try{WriteCore(values,slots,projectiles,selected,tick,horizon,terrain,assets,referencesOnly);
-#if JMR_AIM_DIAGNOSTICS
-                // The snapshot owns these pages. Every refs-only request keeps
-                // a separate full diagnostic copy, so rolling its earlier full
-                // wire frame cannot erase the meaning of a retained reference.
-                if(AimDiagnostics.DetailActive)try{using(var copy=new MemoryStream())using(var writer=new BinaryWriter(copy)){terrain.Write(writer,false);writer.Flush();values.DiagnosticTerrainPages=copy.ToArray();}}catch(Exception error){AimDiagnostics.Missing("terrain-pages-copy",error);}
-#endif
-                values.Seal();return values;}
-            catch{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)try{try{AimDiagnostics.Event("capture-partial",tick,"unsealed partial values;selected="+selected,values.DiagnosticPartial(),true);}catch(Exception diagnosticError){AimDiagnostics.Missing("PredictionWire",diagnosticError);}}catch(Exception diagnosticError){AimDiagnostics.Missing("PredictionWire",diagnosticError);}
-#endif
-values.Dispose();throw;}
+            try{WriteCore(values,slots,projectiles,selected,tick,horizon,terrain,assets,referencesOnly);values.Seal();return values;}
+            catch{values.Dispose();throw;}
         }
         private static void WriteCore(BinaryWriter writer,int[] slots,int[] projectiles,int selected,long tick,int horizon,NativeTerrainSnapshot terrain,int[] assets,bool referencesOnly)
         {
@@ -97,6 +86,7 @@ values.Dispose();throw;}
                 NativeEffectBoundary.WriteAllocation(writer);
                 NativeRandomSnapshot.Write(writer);
                 NativeEntityDirectory.Write(writer);
+                NativeNpcEligibility.Write(writer);
 #if JMR_CONDITIONAL_RESEARCH
                 ConditionalNpcQuery.WriteRoles(writer,slots,selected);
 #endif

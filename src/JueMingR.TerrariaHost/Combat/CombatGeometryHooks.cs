@@ -53,7 +53,8 @@ namespace JueMingR.TerrariaHost.Combat
                 Patch(typeof(Player),"Spawn",nameof(PlayerSpawn),null,null);
                 Patch(typeof(Player),"Hurt",null,nameof(PlayerHurt),null);
                 Patch(typeof(NPC),"StrikeNPC",null,nameof(NpcStrike),null);
-                Patch(typeof(MessageBuffer),"GetData",nameof(PlayerNetwork),null,null);
+                Patch(typeof(NPC),"SetDefaults",nameof(NpcReset),null,null);
+                Patch(typeof(MessageBuffer),"GetData",nameof(PlayerNetwork),nameof(NpcNetwork),null);
                 PlayerCollisionGeometryHooks.Install(harmony,methods);
                 Ready=true;
             }
@@ -88,6 +89,19 @@ namespace JueMingR.TerrariaHost.Combat
             var owner=PredictionHost;
             if(owner!=null && __result>0 && __instance.whoAmI>=0 && __instance.whoAmI<Main.maxNPCs && ReferenceEquals(Main.npc[__instance.whoAmI],__instance))
                 owner.Prediction.Native?.ObserveNpcImpact(__instance);
+        }
+        private static void NpcReset(NPC __instance)
+        {
+            // SetDefaults/Transform can restore the same type within one tick,
+            // retaining both object and generation. Latch the reconstruction.
+            var owner=PredictionHost;if(owner!=null)owner.Prediction.Native?.ObserveNpcReset(__instance);
+        }
+        private static void NpcNetwork(MessageBuffer __instance,int __0,int __1)
+        {
+            var owner=PredictionHost;if(owner==null || Main.netMode!=1)return;
+            var data=__instance.readBuffer;
+            if(data==null || __0<0 || __1<3 || __0>data.Length-3 || data[__0]!=23)return;
+            int slot=data[__0+1]|data[__0+2]<<8;if(slot<Main.maxNPCs)owner.Prediction.Native?.ObserveNpcQueryUpdate(slot);
         }
         private static void PlayerNetwork(MessageBuffer __instance,int __0,int __1)
         {

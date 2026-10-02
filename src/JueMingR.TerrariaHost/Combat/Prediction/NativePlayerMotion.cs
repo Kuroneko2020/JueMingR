@@ -22,18 +22,10 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         {
             // The native sentinel is grappling[0]; unused trailing capacity may
             // contain zero and does not mean projectile slot 0 is attached.
-            {
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"NativePlayerMotion.Mechanism(player)!=0","context");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativePlayerMotion",diagnosticError);}
-#endif
-writer.Write(Mechanism(player)!=0);}
+            writer.Write(Mechanism(player)!=0);
             // jumpSpeed is a shared scratch field last written by whichever
             // player updated last. Never treat it as this player's observation.
-            {
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"NativePlayerMotion.Player.defaultGravity","context");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativePlayerMotion",diagnosticError);}
-#endif
-writer.Write(Player.defaultGravity);}
+            writer.Write(Player.defaultGravity);
         }
         internal void Read(BinaryReader reader,int slot)
         {
@@ -48,11 +40,20 @@ writer.Write(Player.defaultGravity);}
             using(NativeRandomSnapshot.Use("UpdatePlayers"))
                 for(int slot=0;slot<Main.maxPlayers;slot++)
                 {
-                    var player=Main.player[slot];if(!player.active || !HasUpdateArea(player))continue;
+                    var player=Main.player[slot];if(!player.active)continue;
+                    bool inArea=HasUpdateArea(player);
+                    // Player.Update expires the prior projectile phase's claim
+                    // before its range/dead/ghost returns. The following NPC
+                    // phase consumes it; guardian AI may then reassert it.
+                    if(player.tankPet>=0){if(!player.tankPetReset)player.tankPetReset=true;else player.tankPet=-1;}
+                    if(!inArea)continue;
                     // Native Player.Update decrements existing tags before its
                     // dead/ghost returns. It does not apply new future attacks.
                     player.TagEffectStack.Update();
-                    if(player.dead || player.ghost)continue;
+                    if(player.ghost)continue;
+                    // Native UpdateDead clears this aggregate; Ghost returns
+                    // earlier and deliberately retains its distinct behavior.
+                    if(player.dead){player.numMinions=0;player.slotsMinions=0;continue;}
                     Step(player,profiles[slot]);
                 }
         }
@@ -177,6 +178,11 @@ writer.Write(Player.defaultGravity);}
             // acceleration step and changes NPC.targetRect's integer branch.
             // Native death/save exits remain fenced by NativeEffectBoundary.
             p.BordersMovement();
+            // Original Player.Update clears these phase accumulators after
+            // movement; native minions rebuild rank and occupied slots in
+            // projectile order. Retaining yesterday's total shifts minionPos
+            // every update and can incorrectly kill an over-budget minion.
+            p.numMinions=0;p.slotsMinions=0;
             // Locked broom/bee PlayerFrame branches own flight compensation
             // and the near-ground landing transition. Its UpdateFrame has no
             // idle RNG or light (unlike other mount types); never generalize

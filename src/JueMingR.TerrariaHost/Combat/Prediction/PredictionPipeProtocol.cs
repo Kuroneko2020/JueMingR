@@ -8,9 +8,9 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
     internal static class PredictionPipeProtocol
     {
 #if JMR_CONDITIONAL_RESEARCH
-        internal const int Protocol=131,MaximumBytes=4*1024*1024,MaximumPayload=MaximumBytes-17;
+        internal const int Protocol=132,MaximumBytes=4*1024*1024,MaximumPayload=MaximumBytes-17;
 #else
-        internal const int Protocol=31,MaximumBytes=4*1024*1024,MaximumPayload=MaximumBytes-17;
+        internal const int Protocol=32,MaximumBytes=4*1024*1024,MaximumPayload=MaximumBytes-17;
 #endif
         internal const string GameHash="960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3";
         // Explicit isolated development probes only; the installed path does

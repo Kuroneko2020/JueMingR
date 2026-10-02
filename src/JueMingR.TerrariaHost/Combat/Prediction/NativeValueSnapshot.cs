@@ -55,11 +55,6 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             var il=method.GetILGenerator();
             foreach(var field in fields)
             {
-#if JMR_AIM_DIAGNOSTICS
-                il.Emit(OpCodes.Ldarg_0);il.Emit(OpCodes.Ldstr,field.DeclaringType.FullName+"."+field.Name);il.Emit(OpCodes.Ldstr,field.FieldType.FullName);
-                il.Emit(OpCodes.Call,typeof(AimDiagnostics).GetMethod(nameof(AimDiagnostics.Field),BindingFlags.Static|BindingFlags.NonPublic));
-#endif
-
                 il.Emit(OpCodes.Ldarg_0);
                 if(field.IsStatic)il.Emit(OpCodes.Ldsfld,field);
                 else{il.Emit(OpCodes.Ldarg_1);il.Emit(field.DeclaringType.IsValueType?OpCodes.Unbox:OpCodes.Castclass,field.DeclaringType);il.Emit(OpCodes.Ldfld,field);}

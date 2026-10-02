@@ -2,14 +2,12 @@
 param(
     [string] $Baseline,
     [ValidateSet('Related','Full','Feedback')][string] $Mode = 'Related',
-    [switch] $Rerun,
-    [switch] $AimDiagnostics
+    [switch] $Rerun
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 . (Join-Path $PSScriptRoot 'workload/Workload.Support.ps1')
-$script:AimDiagnosticsMode=[bool]$AimDiagnostics
 & (Join-Path $PSScriptRoot 'prepare-terraria-references.ps1') -VerifyOnly | Out-Host
 & (Join-Path $PSScriptRoot 'prepare-harmony.ps1') -VerifyOnly | Out-Host
 if ((& dotnet.exe --version).Trim() -cne '10.0.203' -or $LASTEXITCODE -ne 0) { throw 'Locked SDK unavailable.' }

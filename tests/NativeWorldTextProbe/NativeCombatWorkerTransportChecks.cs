@@ -49,6 +49,7 @@ namespace NativeWorldTextProbe
                 File.WriteAllBytes(Path.Combine(output,"transport-harpy-frozen.bin"),future);
                 NativeCombatWorkerChecks.Compare(future,0,output,"transport-harpy");
                 TailPrefix(host,type,client,capture,output);
+                NativeCombatMinionPurposeChecks.Run(host,bytes=>{Require(Send(type,client,bytes),"Minion proof request shares the real worker.");Wait(type,client,3,15000);return Tuple.Create(Take(type,client),(byte[])type.GetProperty("Alignment",Flags).GetValue(client));});
                 NativeCombatPurposeChecks.Run(host,bytes=>
                 {Require(Send(type,client,bytes),"Purpose request shares the ready real transport.");Wait(type,client,3,15000);return Tuple.Create(Take(type,client),(byte[])type.GetProperty("Alignment",Flags).GetValue(client));},output);
                 if(Environment.GetEnvironmentVariable("JUEMINGR_NPC_CAPACITY_CHECK")=="1")Capacity(host,type,client,capture,output,pid,snapshot);
@@ -99,6 +100,41 @@ namespace NativeWorldTextProbe
         }
         private static void TailPrefix(Assembly host,Type clientType,object client,MethodInfo capture,string output)
         {
+            foreach(int count in new[]{123,133})
+            {
+                NativeCombatWorkerChecks.Scene(false);Terraria.Main.npc[0].ai[0]=30-count;
+                byte[] request=(byte[])capture.Invoke(null,new object[]{new[]{0},new int[0],0,1000L,180});
+                Require(Send(clientType,client,request),"Real short-prefix request.");Wait(clientType,client,3,15000);
+                byte[] core=Take(clientType,client),alignment=(byte[])clientType.GetProperty("Alignment",Flags).GetValue(client);
+                var actor=Terraria.Main.npc[0];var id=new JueMingR.Platform.Combat.NpcIdentity(1,actor,0,actor.generation,actor.type,actor.netID);
+                var resultType=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativePredictionResult",true);
+                object result=resultType.GetMethod("Read",Flags).Invoke(null,new object[]{core,alignment,id,1000L,1L,false});
+                var kind=resultType.GetField("ContinuationKind",Flags);var slot=resultType.GetField("ContinuationSlot",Flags);
+                Require(kind!=null && slot!=null,"Successful true prefixes must preserve the uncompleted birth's next-capture hint.");
+                Require((int)kind.GetValue(result)==2 && (int)slot.GetValue(result)==0,"Hint preserves the actual first unsampled projectile page.");
+                var completed=(System.Collections.Generic.SortedSet<int>)resultType.GetField("Projectiles",Flags).GetValue(result);
+                Require(!completed.Contains(0),"Uncompleted birth is not a dependency of the completed prefix.");
+                var trajectory=(JueMingR.Platform.Combat.NpcTrajectory)resultType.GetField("Trajectory",Flags).GetValue(result);
+                JueMingR.Platform.Combat.NpcTrajectory remaining;
+                Require(trajectory.Count==count && trajectory.TryWindow(1000+count-121,120,2,out remaining) && !trajectory.TryWindow(1000+count-120,120,3,out remaining),"123/133 prefix retains strict real-age current+120 boundary.");
+                var read=resultType.GetMethod("Read",Flags);
+                foreach(var invalid in new[]{new[]{0,0},new[]{-1,-1},new[]{3,0},new[]{1,-1},new[]{1,201},new[]{2,1001}})
+                {
+                    var broken=(byte[])alignment.Clone();Buffer.BlockCopy(BitConverter.GetBytes(invalid[0]),0,broken,broken.Length-8,4);Buffer.BlockCopy(BitConverter.GetBytes(invalid[1]),0,broken,broken.Length-4,4);
+                    Rejected(()=>read.Invoke(null,new object[]{core,broken,id,1000L,1L,false}),"Invalid continuation kind/slot cannot enter a new capture.");
+                }
+                byte[] continuation=null,continuationProof=null;int age=count==123?2:8;
+                NativeCombatWorkerChecks.Compare(core,0,output,"transport-prefix-"+count,expectedHorizon:count-1,nativeStep:(step,npc)=>
+                {
+                    if(step!=age)return;
+                    byte[] fresh=(byte[])capture.Invoke(null,new object[]{new[]{0},new[]{(int)slot.GetValue(result)},0,1000L+age,180});
+                    Require(Send(clientType,client,fresh),"The same worker receives a fresh world observation at the actual prefix age.");Wait(clientType,client,3,15000);
+                    continuation=Take(clientType,client);continuationProof=(byte[])clientType.GetProperty("Alignment",Flags).GetValue(client);
+                });
+                object next=read.Invoke(null,new object[]{continuation,continuationProof,id,1000L+age,2L,false});
+                var nextPath=(JueMingR.Platform.Combat.NpcTrajectory)resultType.GetField("Trajectory",Flags).GetValue(next);
+                Require(nextPath!=null && nextPath.Count>count && ((System.Collections.Generic.SortedSet<int>)resultType.GetField("Projectiles",Flags).GetValue(next)).Contains(0),"Fresh capture consumes the actual birth page and extends beyond the old prefix without stitching frames.");
+            }
             // Original harpy AI fires at ai[0]==30. This real initial clock
             // puts the first unsampled projectile allocation at update 150.
             // No synthetic responder or change to the isolation gate is used.

@@ -392,6 +392,7 @@ namespace NativeWorldTextProbe
                 object request=Activator.CreateInstance(requestType,true);
                 set(request,"Identity",identity);set(request,"Tick",1000L);set(request,"Wall",System.Diagnostics.Stopwatch.GetTimestamp());
                 set(request,"Npcs",new[]{0});set(request,"Projectiles",new int[0]);
+                set(request,"Queries",host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativeNpcEligibility",true).GetMethod("Capture",Flags).Invoke(null,new object[]{new[]{0}}));
                 set(request,"Terrain",terrainType.GetMethod("Capture",Flags).Invoke(null,new object[]{1L,0,0,31,31}));
                 Array frames=Array.CreateInstance(frameType,181);
                 for(int i=0;i<181;i++)frames.SetValue(i<=60?observe.Invoke(null,new object[]{1000L+i,new[]{0},new int[0],0}):presentation.Invoke(null,new object[]{1000L+i,0}),i);

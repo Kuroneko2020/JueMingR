@@ -1,6 +1,3 @@
-#if JMR_AIM_DIAGNOSTICS
-using AimDiagnostics=JueMingR.TerrariaHost.Combat.Prediction.AimDiagnostics;
-#endif
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -616,15 +613,7 @@ namespace JueMingR.TerrariaHost
             try { postfixContext?.WorldTargets?.World.Draw(); } catch { postfixContext?.WorldTargets?.FailClosed(); }
             try { postfixContext?.WorldObjects?.World.Draw(); } catch { postfixContext?.WorldObjects?.FailClosed(); }
             try { postfixContext?.Guidance?.World.Draw(); } catch { postfixContext?.Guidance?.World.Clear(); }
-
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.Active)try{Combat.Prediction.AimDiagnostics.Event("host-draw-entry",(long)Terraria.Main.GameUpdateCount,"context="+(postfixContext!=null)+";combat="+(postfixContext?.CombatObservation!=null));}catch(Exception diagnosticError){AimDiagnostics.Missing("Phase0SLoadChainHost",diagnosticError);}
-#endif
-try { postfixContext?.CombatObservation?.World.Draw(); } catch {
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.Active)try{Combat.Prediction.AimDiagnostics.Event("host-draw-exception",(long)Terraria.Main.GameUpdateCount,"combat world cleared");}catch(Exception diagnosticError){AimDiagnostics.Missing("Phase0SLoadChainHost",diagnosticError);}
-#endif
-postfixContext?.CombatObservation?.World.Clear(); }
+            try { postfixContext?.CombatObservation?.World.Draw(); } catch { postfixContext?.CombatObservation?.World.Clear(); }
             try { if(entityLayerStatus==Rendering.WorldLayerStatus.Ready)postfixContext?.Tools?.Mining.Draw(); } catch { postfixContext?.Tools?.Mining.Clear(); }
             try { if (entityLayerStatus == Rendering.WorldLayerStatus.Ready) postfixContext?.Browser?.Locator.Draw(); } catch { postfixContext?.Browser?.Locator.Clear(); }
             return true;
@@ -930,9 +919,6 @@ postfixContext?.CombatObservation?.World.Clear(); }
                     Combat=new Combat.HostCombat(gameDirectory,Tools);runtime.SharedRuntime.AddFeature(Combat);
                     Combat.Handoff.Attach(Processing,QuickItems);
                     CombatObservation=new Combat.HostCombatObservation(gameDirectory,runtime.SharedRuntime,Input,nativeNpcs,predictionHostHash==null?null:new Combat.Prediction.PredictionLaunchIdentity(predictionHostHash,gameDirectory)){LayerStatus=entityLayerStatus};runtime.SharedRuntime.AddFeature(CombatObservation);
-#if JMR_AIM_DIAGNOSTICS
-                    if(AimDiagnostics.Active)try{AimDiagnostics.Event("authenticated-package",-1,"packageId="+PackageId+";authenticatedHostSha="+predictionHostHash);}catch(Exception error){AimDiagnostics.Missing("authenticated-package",error);}
-#endif
                 }
                 if (entityPackage) { Labels = new EntityLabels.HostEntityLabels(gameDirectory, runtime.SharedRuntime, nativeNpcs) { LayerStatus = entityLayerStatus }; runtime.SharedRuntime.AddFeature(Labels); }
                 if (worldPackage) { worldTiles = new World.WorldTileObservation(() => runtime.SharedRuntime.IsSessionActive); WorldTargets = new WorldTargets.HostWorldTargets(gameDirectory, runtime.SharedRuntime, worldTiles) { LayerStatus = entityLayerStatus }; runtime.SharedRuntime.AddFeature(WorldTargets); }

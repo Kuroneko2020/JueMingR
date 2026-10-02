@@ -12,11 +12,6 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
     {
         internal static string Expected()
         {
-#if JMR_AIM_DIAGNOSTICS
-            // The temporary missing-tile callback changes the private image.
-            // Ordinary material approval must never authorize that image.
-            return null;
-#else
             var assembly=typeof(NativeMaterialIdentity).Assembly;
             var actual=new Dictionary<string,string>(StringComparer.Ordinal);
             foreach(var value in assembly.GetCustomAttributes<AssemblyMetadataAttribute>())
@@ -30,7 +25,6 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 {var row=line.Split('|');string hash;if(row.Length!=2 || !seen.Add(row[0]) || !actual.TryGetValue(row[0],out hash) || hash!=row[1])return null;}
                 return seen.Count==4 && actual.Count==4 && expected!=null && expected.Length==64?expected:null;
             }
-#endif
         }
     }
 }

@@ -113,6 +113,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 NativeEffectBoundary.ReadAllocation(reader);
                 NativeRandomSnapshot.Read(reader);
                 NativeEntityDirectory.Read(reader);
+                NativeNpcEligibility.Read(reader);
 #if JMR_CONDITIONAL_RESEARCH
                 ConditionalNpcQuery.ReadRoles(reader);
 #endif
@@ -152,7 +153,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                     if(withAlignment){proof.Write(horizon+1);NativePredictionAlignment.Write(proof,NativePredictionAlignment.Observe(tick,alignmentSlots,projectileSlots,selected));}
                     writer.Write(PredictionWire.Protocol);writer.Write(tick);writer.Write(selected);writer.Write(horizon+1);
                     playerMotion.Begin();WritePoint(writer,selectedNpc,selectedGeneration,ended,0);dependencies.Record(0);
-                    int completed=0;
+                    int completed=0,continuationKind=0,continuationSlot=-1;
                     long pointEnd=result.Position,proofEnd=proofBytes.Position,dependencyEnd=dependencies.Position;
                     long advanceTicks=0;
 #if JMR_CONDITIONAL_RESEARCH
@@ -205,6 +206,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
 #if JMR_CONDITIONAL_RESEARCH
                                 actualProjectileCalls++;
 #endif
+                                NativeEntityDirectory.RequireMinionContext(Main.projectile[slot]);
                                 int priorActor=NativePredictionPurpose.Enter(Main.projectile[slot]);try{Main.projectile[slot].Update(slot);}finally{NativePredictionPurpose.Leave(priorActor,Main.projectile[slot]);}}}
                         }
                         finally{Main.ProjectileUpdateLoopIndex=-1;}
@@ -264,6 +266,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                         result.SetLength(pointEnd);result.Position=pointEnd;
                         proofBytes.SetLength(proofEnd);proofBytes.Position=proofEnd;
                         dependencies.Truncate(dependencyEnd);
+                        continuationKind=NativeEntityDirectory.MissingKind;continuationSlot=NativeEntityDirectory.MissingSlot;
                         if(PredictionPipeProtocol.Measure)Console.Error.WriteLine("PREFIX completed="+completed+" missing-kind="+NativeEntityDirectory.MissingKind+" slot="+NativeEntityDirectory.MissingSlot);
                     }
                     finally{NativePredictionPurpose.End();NativeNpcMotionTrace.Clear();NativeTileBoundary.End();NativeEntityDirectory.End();Main.tileSolid[379]=oldSolid379;}
@@ -276,6 +279,9 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                         var used=NativePredictionPurpose.Complete(alignmentSlots,projectileSlots,out npcRequired,out projectileRequired);
                         proofBytes.Position=0;proof.Write(completed+1);proofBytes.Position=proofEnd;proof.Write(advanceTicks);used.Write(proof);
                         foreach(bool required in npcRequired)proof.Write(required);foreach(bool required in projectileRequired)proof.Write(required);
+                        // The incomplete step contributes only a page hint for
+                        // a new observed capture, never state or a proof frame.
+                        proof.Write(continuationKind);proof.Write(continuationSlot);
                     }
 #if JMR_CONDITIONAL_RESEARCH
                     Console.Error.WriteLine("RESEARCH calls npc="+actualNpcCalls+" projectile="+actualProjectileCalls+" query-reads="+ConditionalNpcQuery.QueryReads+" geometry-stores="+ConditionalNpcQuery.GeometryStores+" exact-roles="+alignmentSlots.Length+" query-pages="+(slots.Length-alignmentSlots.Length));
@@ -297,11 +303,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             // Reading a certificate is not native simulation consuming a
             // provider. Keep ordinary guards, pause provenance only.
             bool prior=NativePredictionPurpose.Pause();
-            try{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.Active)try{AimDiagnostics.Event("worker-step",tick+step,"step="+step+";selected="+selected+";npcs="+npcs.Length+";projectiles="+projectiles.Length);}catch(Exception diagnosticError){AimDiagnostics.Missing("PredictionSandbox",diagnosticError);}
-#endif
-            return step<=PredictionWire.MaximumAlignmentAge?NativePredictionAlignment.Observe(tick+step,npcs,projectiles,selected):NativePredictionAlignment.Presentation(tick+step,selected);}
+            try{return step<=PredictionWire.MaximumAlignmentAge?NativePredictionAlignment.Observe(tick+step,npcs,projectiles,selected):NativePredictionAlignment.Presentation(tick+step,selected);}
             finally{NativePredictionPurpose.Resume(prior);}
         }
         private void Reset(int width,int height)

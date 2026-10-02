@@ -232,7 +232,7 @@ try {
     Assert-Route ($null -ne (Get-WorkloadChanges $fixtureRoot 'missing-baseline').reason) 'missing baseline is an explicit unresolved risk'
     # Exercise the actual executable plan, not script text or a duplicate dispatcher.
     $catalog = @('FishingChecks|fishing-host','ProcessingChecks|processing-host','HotkeyCoreChecks|hotkeys','OnboardingChecks|about-host','CombatChecks|combat-host')
-    foreach($path in @('src/JueMingR.Features/Combat/CombatSettings.cs','src/JueMingR.TerrariaHost/Combat/CombatUse.cs','src/JueMingR.TerrariaHost/F5/CombatIntervalDrag.cs','tests/NativeWorldTextProbe/CombatNetworkFixture.cs')) {
+    foreach($path in @('src/JueMingR.Features/Combat/CombatSettings.cs','src/JueMingR.TerrariaHost/Combat/CombatUse.cs','src/JueMingR.TerrariaHost/Combat/Prediction/NativeNpcEligibility.cs','src/JueMingR.TerrariaHost/F5/CombatIntervalDrag.cs','tests/NativeWorldTextProbe/CombatNetworkFixture.cs','tests/NativeWorldTextProbe/NativeCombatGuardianQueryChecks.cs')) {
         $local = Get-WorkloadRoute @($path)
         Assert-Route ((@($local.groups) -join ',') -ceq 'combat-host,core') ('combat leaf classification: '+$path)
     }
@@ -240,7 +240,8 @@ try {
     $capacityPlan=@($combatPlan | Where-Object {$_.name -ceq 'native-NpcSessionCapacity'})
     Assert-Route ($capacityPlan.Count -eq 1 -and $capacityPlan[0].arguments[-1] -ceq 'NpcSessionCapacity') 'independent capacity consumer is present once with its actual probe scope'
     $scopeValidation=@((Get-Command (Join-Path $repositoryRoot 'scripts/test-world-object-text.ps1')).Parameters['Scope'].Attributes | Where-Object {$_ -is [System.Management.Automation.ValidateSetAttribute]})
-    foreach($scope in @('NpcSessionCapacity','NpcFailureRecovery')) {Assert-Route ($scopeValidation.Count -eq 1 -and $scopeValidation[0].ValidValues -contains $scope) ('native entry accepts '+$scope)}
+    foreach($scope in @('NpcSessionCapacity','NpcFailureRecovery','NpcGuardianQuery')) {Assert-Route ($scopeValidation.Count -eq 1 -and $scopeValidation[0].ValidValues -contains $scope) ('native entry accepts '+$scope)}
+    Assert-Route (@($combatPlan | Where-Object {$_.name -ceq 'native-NpcGuardianQuery' -and $_.arguments[-1] -ceq 'NpcGuardianQuery'}).Count -eq 1) 'guardian continuous query regression belongs to ordinary combat delivery'
     foreach($expected in @('CombatChecks','native-CombatCpu','native-CombatFacingCpu','native-CombatHitsCpu','native-CombatReportCpu','native-CombatUiCpu','native-ShortFeedbackCpu')) {Assert-Route (@($combatPlan.name) -contains $expected) ('combat consumer '+$expected)}
     $plan = @(Get-WorkloadPlan $repositoryRoot (Join-Path $fixtureRoot 'checks') 'architecture.exe' $catalog @('core','pages-host','hotkeys'))
     $names = @($plan | ForEach-Object {$_.name})

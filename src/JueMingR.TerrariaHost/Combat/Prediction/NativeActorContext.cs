@@ -32,28 +32,8 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             // favorited item from another loadout. The fixed-input continuation
             // materializes these values, not unused loadout/vanity subtrees.
             for(int slot=0;slot<10;slot++)WriteItem(writer,player.GetEffectiveArmor(slot));
-            var seat=player.sitting;{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"NativeActorContext.seat.isSitting","context");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativeActorContext",diagnosticError);}
-#endif
-writer.Write(seat.isSitting);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"NativeActorContext.seat.details.IsAToilet","context");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativeActorContext",diagnosticError);}
-#endif
-writer.Write(seat.details.IsAToilet);}
-            {
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"NativeActorContext.seat.offsetForSeat.X","context");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativeActorContext",diagnosticError);}
-#endif
-writer.Write(seat.offsetForSeat.X);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"NativeActorContext.seat.offsetForSeat.Y","context");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativeActorContext",diagnosticError);}
-#endif
-writer.Write(seat.offsetForSeat.Y);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"NativeActorContext.seat.sittingIndex","context");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativeActorContext",diagnosticError);}
-#endif
-writer.Write(seat.sittingIndex);}
+            var seat=player.sitting;writer.Write(seat.isSitting);writer.Write(seat.details.IsAToilet);
+            writer.Write(seat.offsetForSeat.X);writer.Write(seat.offsetForSeat.Y);writer.Write(seat.sittingIndex);
             NativeTagSnapshot.Write(writer,player);
             NativeMountSnapshot.Write(writer,player.mount);
         }
@@ -72,15 +52,7 @@ writer.Write(seat.sittingIndex);}
             player.mount=NativeMountSnapshot.Read(reader);
         }
         private static void WriteItem(BinaryWriter writer,Item item)
-        {{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"NativeActorContext.item!=null","context");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativeActorContext",diagnosticError);}
-#endif
-writer.Write(item!=null);}if(item!=null){Items.Write(writer,item);{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"NativeActorContext.VariantId(item.Variant)","context");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativeActorContext",diagnosticError);}
-#endif
-writer.Write(VariantId(item.Variant));}}}
+        {writer.Write(item!=null);if(item!=null){Items.Write(writer,item);writer.Write(VariantId(item.Variant));}}
         private static Item ReadItem(BinaryReader reader)
         {
             if(!reader.ReadBoolean())return null;
@@ -93,20 +65,8 @@ writer.Write(VariantId(item.Variant));}}}
         }
         internal static void WriteProjectile(BinaryWriter writer,Projectile projectile)
         {
-            var keys=projectile.hostileDamageScaling.keys;ValidateCurve(keys);{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"NativeActorContext.keys.Length","context");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativeActorContext",diagnosticError);}
-#endif
-writer.Write(keys.Length);}
-            foreach(var key in keys){{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"NativeActorContext.key.input","context");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativeActorContext",diagnosticError);}
-#endif
-writer.Write(key.input);}{
-#if JMR_AIM_DIAGNOSTICS
-            if(AimDiagnostics.DetailActive)try{AimDiagnostics.Field(writer,"NativeActorContext.key.output","context");}catch(Exception diagnosticError){AimDiagnostics.Missing("NativeActorContext",diagnosticError);}
-#endif
-writer.Write(key.output);}}
+            var keys=projectile.hostileDamageScaling.keys;ValidateCurve(keys);writer.Write(keys.Length);
+            foreach(var key in keys){writer.Write(key.input);writer.Write(key.output);}
             NativeEntityContext.WriteProjectile(writer,projectile);
         }
         internal static void ReadProjectile(BinaryReader reader,Projectile projectile)

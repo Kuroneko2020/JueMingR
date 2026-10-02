@@ -29,7 +29,4 @@
     <BaseOutputPath>$(JueMingRBuildRoot)\bin\$(MSBuildProjectName)\</BaseOutputPath>
     <BaseIntermediateOutputPath>$(JueMingRBuildRoot)\obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(JueMingRAimDiagnostics)' == 'true'">
-    <DefineConstants>$(DefineConstants);JMR_AIM_DIAGNOSTICS</DefineConstants>
-  </PropertyGroup>
 </Project>

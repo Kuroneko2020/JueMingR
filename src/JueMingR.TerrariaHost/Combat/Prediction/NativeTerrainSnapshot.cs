@@ -115,17 +115,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                     if(relevant!=null && (relevant[cell/8]&(1<<(cell%8)))==0)continue;
                     if(pass!=null && PredictionPipeProtocol.Measure)pass.TilesRead++;
                     Tile t=Main.tile[x,y];if(t==null || t.type!=U16(b,at) || t.wall!=U16(b,at+2) || t.liquid!=b[at+4] || t.sTileHeader!=U16(b,at+5) || t.bTileHeader!=b[at+7] || t.bTileHeader2!=b[at+8] || t.bTileHeader3!=b[at+9] || t.frameX!=(short)U16(b,at+10) || t.frameY!=(short)U16(b,at+12))
-                    {
-#if JMR_AIM_DIAGNOSTICS
-                        if(AimDiagnostics.DetailActive)try
-                        {
-                            byte[] baseline=new byte[14];Buffer.BlockCopy(b,at,baseline,0,14);
-                            byte[] live=null;if(t!=null)using(var copy=new MemoryStream())using(var writer=new BinaryWriter(copy)){writer.Write(t.type);writer.Write(t.wall);writer.Write(t.liquid);writer.Write(t.sTileHeader);writer.Write(t.bTileHeader);writer.Write(t.bTileHeader2);writer.Write(t.bTileHeader3);writer.Write(t.frameX);writer.Write(t.frameY);writer.Flush();live=copy.ToArray();}
-                            AimDiagnostics.Event("terrain-difference",(long)Main.GameUpdateCount,"world="+world+";x="+x+";y="+y+";baseline="+Convert.ToBase64String(baseline)+";live="+(live==null?"null":Convert.ToBase64String(live))+";usage="+(relevant==null?"full-nine-fields":Convert.ToBase64String(relevant))+";pendingChange="+(changes!=null));
-                        }catch(Exception diagnosticError){AimDiagnostics.Missing("NativeTerrainSnapshot",diagnosticError);}
-#endif
-                        equal=current=false;if(changes==null)return false;changes.Add(x,y);
-                    }
+                    {equal=current=false;if(changes==null)return false;changes.Add(x,y);}
                 }
                 // Only a complete nine-field chunk comparison proves exact
                 // bytes reusable for a NEW capture. Relevant-only success is

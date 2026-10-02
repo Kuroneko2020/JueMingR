@@ -30,9 +30,6 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 throw new InvalidDataException("Private tile guard shape.");
             if(observed==null || observed.FieldType!=typeof(Action<int,int>))throw new InvalidDataException("Private tile observation shape.");
             observed.SetValue(null,new Action<int,int>((column,row)=>{usage.Add(column,row);NativePredictionPurpose.Tile(column,row);}));
-#if JMR_AIM_DIAGNOSTICS
-            guard.GetField("DiagnosticMissing",flags)?.SetValue(null,new Action<int,int>((column,row)=>NativePredictionPurpose.DiagnosticMissing("tileX="+column+";tileY="+row)));
-#endif
             VerifyIntrinsics(guard);End();
             guardedRead=(Func<Tile[,],int,int,Tile>)Delegate.CreateDelegate(typeof(Func<Tile[,],int,int,Tile>),guard.GetMethod("Get",BindingFlags.NonPublic|BindingFlags.Static));
         }
