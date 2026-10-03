@@ -26,6 +26,15 @@ namespace NativeWorldTextProbe
         private static long birth;
         private static NPC target;
         private static int entryReads;
+        private static volatile bool delayPreparation;
+        private static int preparationDelay,delayedEncodes,completedDelays;
+        private static void DelayEncode()
+        {
+            // Delay only the first warm-up request. It must finish before
+            // capturing the tested arrow, so no injected sleep crosses hold.
+            if(delayPreparation && preparationDelay>0 && System.Threading.Interlocked.CompareExchange(ref delayedEncodes,1,0)==0)
+                try{System.Threading.Thread.Sleep(preparationDelay);}finally{System.Threading.Volatile.Write(ref completedDelays,1);}
+        }
         private static void ReadPatches(MethodBase __0){if(__0.DeclaringType==typeof(NewProjectileModifiers) || __0.DeclaringType==typeof(Projectile) && (__0.Name=="NewProjectile" || __0.Name=="SetDefaults"))entryReads++;}
         private static bool Mailbox(object __instance)=>!hold || !ReferenceEquals(worker,__instance);
         private static void Born(int __result){if(__result==0)birth=Main.GameUpdateCount;}
@@ -67,6 +76,10 @@ namespace NativeWorldTextProbe
             hooks.Patch(typeof(NPC).GetMethod("UpdateNPC",Flags),prefix:Hook(nameof(Foreign)));
             try
             {
+                preparationDelay=int.Parse(Environment.GetEnvironmentVariable("JUEMINGR_BIRTH_PREPARE_DELAY_MS")??"0");
+                Require(preparationDelay>=0 && preparationDelay<=1000,"Bounded test-only preparation delay.");
+                delayedEncodes=completedDelays=0;
+                if(preparationDelay>0)hooks.Patch(native.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativeCapturedValues",true).GetMethod("Encode",Flags),prefix:Hook(nameof(DelayEncode)));
                 foreach(string scenario in (Environment.GetEnvironmentVariable("JUEMINGR_BIRTH_CASES")??"natural,generation-wrap,foreign-scope,inactive-foreign,replacement,modifier-reset,same-key-reset,prefix-borrow,suppressed-exception,reset-prefix-borrow").Split(','))
                 {
                     mode=scenario;hold=inject=false;birth=0;Call(native,"ClearTarget");
@@ -92,15 +105,35 @@ namespace NativeWorldTextProbe
                         for(int i=0;i<33;i++)((SortedSet<int>)Get(native,"npcs")).Add(i);
                         ((SortedSet<int>)Get(native,"projectiles")).Add(0);((SortedSet<int>)Get(native,"projectiles")).Add(1);
                     };
-                    object pending=null;var wait=Stopwatch.StartNew();
+                    object pending=null;var wait=Stopwatch.StartNew();double preparationWait=0;
+                    delayPreparation=scenario=="generation-wrap";
                     while(wait.Elapsed.TotalSeconds<8)
                     {
+                        if(scenario=="generation-wrap" && (Get(native,"acceptedRequest")==null || birth!=0 && (long)Main.GameUpdateCount-birth>=18))
+                        {
+                            // The wrap is a lifecycle test, not a throughput test.
+                            // Finish initial warm-up and get a fresh capture in
+                            // the first arrow's window using real replies. Other
+                            // preparation ticks keep the normal asynchronous pace.
+                            long tick=(long)Main.GameUpdateCount;var busy=Stopwatch.StartNew();
+                            while((int)Get(worker,"State")==2 && wait.Elapsed.TotalSeconds<8)System.Threading.Thread.Sleep(1);
+                            preparationWait+=busy.Elapsed.TotalMilliseconds;
+                            int state=(int)Get(worker,"State");
+                            Require((long)Main.GameUpdateCount==tick && ReferenceEquals(worker,Get(native,"Worker")) && !(bool)Get(native,"Failed") && (state==1 || state==3),"Wrap preparation waits only for the real healthy worker; world tick is unchanged: state="+state+" elapsed-ms="+wait.ElapsedMilliseconds+" tick="+tick+"->"+Main.GameUpdateCount);
+                        }
                         advance();pending=Get(native,"pending");long since=(long)Main.GameUpdateCount-birth;
                         if(birth!=0 && since>=18 && since<=40 && pending!=null && !(bool)Get(pending,"Retired") && Main.projectile[0].active
                             && (bool)Call(Get(pending,"Impacts"),"Owns",Main.projectile[0]) && (long)Main.GameUpdateCount-(long)Get(pending,"Tick")<=2 && Get(native,"acceptedRequest")!=null)break;
                         pending=null;
                     }
+                    delayPreparation=false;
                     Require(pending!=null,"Capture an active original arrow before its next native reuse: "+scenario);
+                    if(scenario=="generation-wrap")
+                    {
+                        Require(generations[0]==16383 && Main.projectile[0].key.Generation==16383,"Capture precedes the first original packed-key wrap: generation="+generations[0]+" birth="+birth+" tick="+Main.GameUpdateCount);
+                        Require(preparationDelay==0 || delayedEncodes==1 && System.Threading.Volatile.Read(ref completedDelays)==1 && preparationWait>0,"One real background encoding delay completed entirely during preparation.");
+                        File.WriteAllLines(Path.Combine(output,"generation-wrap-preparation.csv"),new[]{"capture,birth,generation,packedGeneration,waitMs,delayMs,delayedEncodes,completedDelays",string.Join(",",Get(pending,"Tick"),birth,generations[0],Main.projectile[0].key.Generation,preparationWait.ToString("F3",System.Globalization.CultureInfo.InvariantCulture),preparationDelay,delayedEncodes,completedDelays)});
+                    }
                     hold=true;long capture=(long)Get(pending,"Tick"),priorBirth=birth;int priorGeneration=generations[0];
                     trace.Phase="birth-"+scenario;trace.RequiredCapture=capture;
                     var adversary=new Harmony("JueMingR.Tests.BirthAdversary");
@@ -146,7 +179,7 @@ namespace NativeWorldTextProbe
                 Require(entryReads==0 && observer.GetField("hash",Flags).GetValue(null)==null && observer.GetField("factory",Flags).GetValue(null)==null,"OFF births neither inspect patch metadata nor allocate a proof writer/factory.");
                 Console.WriteLine("BIRTH-PROOF OFF original-birth=true patch-reads=0 writer=false factory=false");
             }
-            finally{trace?.Dispose();hold=inject=false;Main.NoPooling=false;worker=null;target=null;hooks.UnpatchAll(hooks.Id);new Harmony("JueMingR.Tests.BirthAdversary").UnpatchAll("JueMingR.Tests.BirthAdversary");File.WriteAllLines(Path.Combine(output,"birth-proof.csv"),rows);}
+            finally{delayPreparation=false;try{trace?.Dispose();}finally{hold=inject=false;Main.NoPooling=false;worker=null;target=null;hooks.UnpatchAll(hooks.Id);new Harmony("JueMingR.Tests.BirthAdversary").UnpatchAll("JueMingR.Tests.BirthAdversary");File.WriteAllLines(Path.Combine(output,"birth-proof.csv"),rows);}}
         }
         private static void Wire(object native,object request)
         {
