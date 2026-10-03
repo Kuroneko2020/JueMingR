@@ -1,4 +1,4 @@
-# Local evidence only: a bounded record for the current executable input set.
+﻿# Local evidence only: a bounded record for the current executable input set.
 # No timestamps, Git labels or an old PASS alone establish applicability.
 function Get-WorkloadHash {
     param([string[]] $Rows)
@@ -50,6 +50,9 @@ function Get-WorkloadCheckFingerprint {
     # same change (the dispatcher change itself invalidates all old evidence).
     # Page composition is also used by ToolsVisual, outside this CPU cache.
     $leaves = @{
+        'scripts/verify-existing-package.ps1'=@('workload-PackageVerification')
+        'scripts/phase0s/PackageVerification.Support.ps1'=@('workload-PackageVerification')
+        'tests/Phase0S/Invoke-PackageVerificationChecks.ps1'=@('workload-PackageVerification')
         'tests/NativeWorldTextProbe/NativePageCompositionChecks.cs'=@('native-PageCompositionCpu')
         'tests/NativeWorldTextProbe/NativeBackgroundAutomationChecks.cs'=@('native-BackgroundCpu','native-F5AutomationCpu')
         'tests/NativeWorldTextProbe/NativeToolCadenceChecks.cs'=@('native-ToolsCadence')
@@ -110,8 +113,19 @@ function Test-WorkloadCoverage {
 function Invoke-WorkloadProcess {
     param([string] $Name, [string] $Executable, [string[]] $Arguments)
     if (-not [IO.File]::Exists($Executable)) { throw ('Missing check executable: ' + $Name) }
-    & $Executable @Arguments | Out-Host
-    if ($LASTEXITCODE -ne 0) { throw ("Workload check $Name failed with exit $LASTEXITCODE.") }
+    $previousPreference = $ErrorActionPreference
+    $exitCode = $null
+    try {
+        # Windows PowerShell can promote ordinary native stderr to an error
+        # under the package entry's 2>&1 capture. Keep that output, but decide
+        # success only from this invocation's exit, never a stale prior value.
+        $ErrorActionPreference = 'Continue'
+        $global:LASTEXITCODE = $null
+        & $Executable @Arguments | Out-Host
+        $exitCode = $global:LASTEXITCODE
+    } finally { $ErrorActionPreference = $previousPreference }
+    if ($null -eq $exitCode) { throw ("Workload check $Name did not produce a process exit code.") }
+    if ($exitCode -ne 0) { throw ("Workload check $Name failed with exit $exitCode.") }
 }
 function Get-WorkloadEvidenceOutputs {
     param([string] $Root, $Record, [string] $Executable)
@@ -227,9 +241,12 @@ function Get-WorkloadPlan {
         if (@($modes[$mode] | Where-Object {$Groups -contains $_}).Count -gt 0) { $plan.Add(@{name='fixture-'+$mode; executable=$fixture; arguments=@($mode); project='Phase0SFixtureTerraria'}) }
     }
     $scopes = [ordered]@{
+        'NpcWorkerIntegration'=@('combat-host'); 'NpcSnapshot'=@('combat-host'); 'NpcWorkerPreparation'=@('combat-host');
+        'NpcDiagnosticsOff'=@('combat-host'); 'NpcPostDelivery'=@('combat-host'); 'NpcGuardianQuery'=@('combat-host'); 'NpcModeledImpact'=@('combat-host');
+        'NpcLegalCoverage'=@('combat-host'); 'NpcWorkerTransport'=@('combat-host'); 'NpcMenuPreparation'=@('combat-host'); 'NpcSessionCapacity'=@('combat-host'); 'NpcProduction'=@('combat-host'); 'NpcLongCoverage'=@('combat-host');
         'WorkloadCpu'=@('world-host','shared-host'); 'InformationCpu'=@('information','shared-host'); 'GuidanceCpu'=@('guidance','shared-host');
         'ShortFeedbackCpu'=@('shared-host','storage-host','quick-items-host','coin-deposit-host','recovery-host','processing-host','about-host','tools-host','fishing-host','combat-host');
-        'CombatCpu'=@('combat-host'); 'CombatFacingCpu'=@('combat-host'); 'CombatHitsCpu'=@('combat-host'); 'CombatReportCpu'=@('combat-host'); 'CombatUiCpu'=@('combat-host');
+        'CombatCpu'=@('combat-host'); 'CombatFacingCpu'=@('combat-host'); 'CombatHitsCpu'=@('combat-host'); 'CombatReportCpu'=@('combat-host'); 'CombatUiCpu'=@('combat-host'); 'CombatObservationCpu'=@('combat-host'); 'CombatCosts'=@('combat-host');
         'ToolsCpu'=@('tools-host'); 'ToolsCadence'=@('tools-host'); 'ToolsExecutionCpu'=@('tools-host'); 'ToolsWorkload'=@('tools-host');
         'PageCompositionCpu'=@('pages-host'); 'FishingCpu'=@('fishing-host'); 'BackgroundCpu'=@('fishing-host','shared-host'); 'F5AutomationCpu'=@('fishing-host','shared-host');
         'AboutCpu'=@('about-host'); 'BrowserCpu'=@('browser-host'); 'QuickItemsCpu'=@('quick-items-host'); 'CoinDepositCpu'=@('coin-deposit-host');
@@ -238,10 +255,18 @@ function Get-WorkloadPlan {
     foreach ($scope in $scopes.Keys) {
         if (@($scopes[$scope] | Where-Object {$Groups -contains $_}).Count -gt 0) { $plan.Add(@{name='native-'+$scope; executable=$native; arguments=@($Root,'--cpu',(Join-Path $ChecksRoot $scope),$scope); project='NativeWorldTextProbe'}) }
     }
+    if ($Groups -contains 'combat-host') {
+        # Integration above creates and authenticates this exact shared layout.
+        # The separate process binds the private image before native fixture JIT.
+        $plan.Add(@{name='native-NpcPrivateSafety'; executable=$native; arguments=@($Root,(Join-Path $ChecksRoot 'prediction-worker-layout'),(Join-Path $ChecksRoot 'NpcPrivateSafety'),'NpcPrivateSafety'); project='NativeWorldTextProbe'})
+    }
     if ($Groups -contains 'shared-host' -or $Groups -contains 'storage-host') {
         foreach ($name in @('Routing','Evidence')) {
             $plan.Add(@{name='workload-'+$name; executable=(Get-Command powershell.exe).Source; arguments=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $Root ('tests/Workload/Invoke-Workload'+$name+'Checks.ps1'))); project=''})
         }
+    }
+    if ($Groups -contains 'package-tools' -or $Groups -contains 'shared-host' -or $Groups -contains 'storage-host') {
+        $plan.Add(@{name='workload-PackageVerification'; executable=(Get-Command powershell.exe).Source; arguments=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $Root 'tests/Phase0S/Invoke-PackageVerificationChecks.ps1')); project=''})
     }
     return $plan.ToArray()
 }

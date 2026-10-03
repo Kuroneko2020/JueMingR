@@ -58,6 +58,8 @@ function Get-WorkloadRoute {
     $unknown = @()
     foreach ($path in $Paths) {
         switch -Regex ($path.Replace('\', '/')) {
+            '^scripts/verify-existing-package\.ps1$|^scripts/phase0s/PackageVerification\.Support\.ps1$|^tests/Phase0S/Invoke-PackageVerificationChecks\.ps1$' { [void]$groups.Add('package-tools'); continue }
+            '^src/JueMingR.PredictionWorker/' { [void]$groups.Add('combat-host'); continue }
             '^src/[^/]+/Combat/|^src/JueMingR.TerrariaHost/F5/Combat(Controls|IntervalDrag)\.cs$|^tests/JueMingR.ArchitectureTests/Combat/|^tests/NativeWorldTextProbe/(NativeCombat|CombatNetworkFixture)' { [void]$groups.Add('combat-host'); continue }
             '^src/JueMingR.TerrariaHost/F5/MiscAutomationPanel\.cs$|^tests/NativeWorldTextProbe/NativePageComposition' { [void]$groups.Add('pages-host'); continue }
             '^src/[^/]+/Tools/|^tests/JueMingR.ArchitectureTests/Tools/|^tests/NativeWorldTextProbe/Native(Tools|ToolCadence|ToolExecution|ToolWait|SeedDiscovery|Capture|Herb|Mining|FishingBorrow)' { [void]$groups.Add('tools-host'); continue }

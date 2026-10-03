@@ -24,7 +24,7 @@ namespace NativeWorldTextProbe
         private static int recalls;
         internal static int Recalls {get{return recalls;}}
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static void Run(Action<object> visual=null, bool coins=false, bool about=false, bool recovery=false, bool processing=false, bool shortFeedback=false,string candidateAssembly=null)
+        internal static void Run(Action<object> visual=null, bool coins=false, bool about=false, bool recovery=false, bool processing=false, bool shortFeedback=false,string candidateAssembly=null,string predictionHostHash=null,string candidatePackageId=null)
         {
             Require(IntPtr.Size==4,"G05 native fixture must use .NET Framework x86");
             Require(typeof(Main).Assembly.ManifestModule.ModuleVersionId==new Guid("2c29f6c3-4bd9-4add-9c58-da159804e083"),"fixed .8 MVID");
@@ -36,8 +36,11 @@ namespace NativeWorldTextProbe
             string root=Path.Combine(Terraria.Program.SavePath,"composition");Directory.CreateDirectory(root);
             Main.ActivePlayerFileData=new Terraria.IO.PlayerFileData(Path.Combine(root,"fixture.plr"),false){Player=Main.LocalPlayer};
             Main.ActiveWorldFileData=new Terraria.IO.WorldFileData(Path.Combine(root,"fixture.wld"),false){UniqueId=Guid.NewGuid()};
+            // Package delivery must exercise the real manifest profile. The
+            // historical synthetic profile remains only for ordinary fixtures.
+            string packageId=candidatePackageId??((processing || predictionHostHash!=null?"continuous-processing-":recovery?"recovery-buffs-services-":about?"about-help-feedback-":coins?"coin-deposit-":"favorite-quick-items-")+new string('5',40));
             object context=Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Phase0SHarmonyWorker").GetNestedType("PostfixContext",Flags),Flags,null,
-                new object[]{(processing?"continuous-processing-":recovery?"recovery-buffs-services-":about?"about-help-feedback-":coins?"coin-deposit-":"favorite-quick-items-")+new string('5',40),Path.Combine(root,"evidence.txt"),root},null);
+                predictionHostHash==null?new object[]{packageId,Path.Combine(root,"evidence.txt"),root}:new object[]{packageId,Path.Combine(root,"evidence.txt"),root,predictionHostHash},null);
             var isolation=new Harmony("JueMingR.Tests.QuickItemOutlets");
             var inputHooks=new Harmony("JueMingR.Tests.QuickInput");
             try
@@ -51,6 +54,16 @@ namespace NativeWorldTextProbe
                 // its final cosmetic particle dispatch needs a graphics sink.
                 if(processing)Patch(isolation,typeof(Terraria.GameContent.Drawing.ParticleOrchestrator).GetMethod("RequestParticleSpawn",Flags),nameof(NoParticles));
                 Call(context,"InitializeRuntime",true);
+                if(candidatePackageId!=null)
+                {
+                    Require((string)Get(context,"PackageId")==candidatePackageId,"Actual manifest package identity reaches Host composition.");
+                    foreach(string capability in new[]{"Tools","Fishing","Combat","CombatObservation","Processing","Recovery","QuickItems","KeepFavorited","CoinDeposit","ShortFeedback","Shell"})
+                        Require(GetOptional(context,capability)!=null,"Actual package composition retains "+capability+": "+candidatePackageId);
+                    var light=assembly.GetType("JueMingR.TerrariaHost.Combat.Prediction.AimLightTrace");
+                    if(assembly.GetType("JueMingR.TerrariaHost.Combat.Prediction.AimLightLog")!=null && Environment.GetEnvironmentVariable("JUEMINGR_AIM_LIGHT_OFF")!="1")
+                        Require(light.GetField("log",Flags).GetValue(null)!=null,"Actual diagnostic Host composition attaches the light recorder.");
+                    Console.WriteLine("PACKAGE composition="+candidatePackageId+" complete=true");
+                }
                 Call(context,"InstallInformationSources");
                 Require((bool)Get(Get(context,"InformationReadiness"),"Installed"),"full G05 profile installs prior information source hooks");
                 foreach(string layer in new[]{"Browser","Footprints","Information","Guidance","WorldObjects","WorldTargets","Labels"})Require(GetOptional(context,layer)!=null,"full G05 composition retains "+layer);

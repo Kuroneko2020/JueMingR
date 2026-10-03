@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
     [string] $OutputDirectory,
@@ -14,7 +14,7 @@ Set-StrictMode -Version 2.0
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..')).TrimEnd('\')
 . (Join-Path $PSScriptRoot 'phase0s\Phase0S.ScriptSupport.ps1')
 . (Join-Path $PSScriptRoot 'workload/Workload.Support.ps1')
-$ownerTestCardName = if ($Profile -eq 'ContinuousProcessing') { 'Fishing-And-Loadouts-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'RecoveryBuffsServices') { 'Recovery-Buffs-Services-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'AboutHelpFeedback') { 'About-Help-Feedback-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'CoinDeposit') { 'Coin-Deposit-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'KeepFavoritedQuickItems') { 'Keep-Favorited-Quick-Items-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'ItemBrowser') { 'Item-Browser-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'Footprints') { 'Footprints-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'MapMarkersExploration') { 'Map-Markers-Exploration-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'DeathHistory') {
+$ownerTestCardName = if ($Profile -eq 'ContinuousProcessing') { 'Continuous-Processing-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'RecoveryBuffsServices') { 'Recovery-Buffs-Services-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'AboutHelpFeedback') { 'About-Help-Feedback-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'CoinDeposit') { 'Coin-Deposit-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'KeepFavoritedQuickItems') { 'Keep-Favorited-Quick-Items-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'ItemBrowser') { 'Item-Browser-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'Footprints') { 'Footprints-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'MapMarkersExploration') { 'Map-Markers-Exploration-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'DeathHistory') {
     'Death-History-Owner-Test-Card.zh-CN.md'
 } elseif ($Profile -eq 'DirectionEquipment') {
     'Direction-Equipment-Owner-Test-Card.zh-CN.md'
@@ -167,6 +167,8 @@ function Assert-Phase0SFixedPackageTree {
         'payload/JueMingR.Validation/JueMingR.Features.dll',
         'payload/JueMingR.Validation/JueMingR.Infrastructure.dll',
         'payload/JueMingR.Validation/JueMingR.Platform.dll',
+        'payload/JueMingR.Validation/JueMingR.PredictionWorker.exe',
+        'payload/JueMingR.Validation/JueMingR.PredictionWorker.exe.config',
         'payload/JueMingR.Validation/JueMingR.TerrariaHost.dll',
         'payload/JueMingR.Validation/phase-0-s-runtime.manifest',
         'payload/Terraria.exe.config',
@@ -192,6 +194,22 @@ function Assert-Phase0SFixedPackageTree {
     return $records
 }
 
+function Read-Phase0SPackageTextForPathScan {
+    param([string] $Path, [int] $MaximumLength)
+
+    # These fixed script/card sources retain their BOM for Windows PowerShell 5.1.
+    # This affects only the path scan; manifest/receipt canonical UTF-8 stays strict,
+    # and the archive continues to contain the exact source bytes.
+    if ([IO.Path]::GetFileName($Path) -notin @('Phase0S.ScriptSupport.ps1')) {
+        return Get-Phase0SStrictUtf8Text -Path $Path -MaximumLength $MaximumLength
+    }
+    $bytes = [IO.File]::ReadAllBytes($Path)
+    if ($bytes.Length -gt $MaximumLength) { throw 'Package text length exceeds limit.' }
+    $offset = 0
+    if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) { $offset = 3 }
+    return (New-Object Text.UTF8Encoding($false, $true)).GetString($bytes, $offset, $bytes.Length - $offset)
+}
+
 function Assert-Phase0SPackageHasNoPrivatePath {
     param([Parameter(Mandatory = $true)][string] $PackageRoot)
 
@@ -208,7 +226,7 @@ function Assert-Phase0SPackageHasNoPrivatePath {
         if ($textExtensions -notcontains $file.Extension) {
             continue
         }
-        $text = Get-Phase0SStrictUtf8Text -Path $file.FullName -MaximumLength 1048576
+        $text = Read-Phase0SPackageTextForPathScan -Path $file.FullName -MaximumLength 1048576
         foreach ($value in $sensitiveValues) {
             if ($text.IndexOf($value, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
                 throw 'A package text file contains a private absolute path.'
@@ -376,6 +394,8 @@ $hostOutput = Get-Phase0SBuildOutputPath -ProjectName 'JueMingR.TerrariaHost' -F
 $platformOutput = Get-Phase0SBuildOutputPath -ProjectName 'JueMingR.Platform' -FileName 'JueMingR.Platform.dll'
 $featuresOutput = Get-Phase0SBuildOutputPath -ProjectName 'JueMingR.Features' -FileName 'JueMingR.Features.dll'
 $infrastructureOutput = Get-Phase0SBuildOutputPath -ProjectName 'JueMingR.Infrastructure' -FileName 'JueMingR.Infrastructure.dll'
+$workerOutput = Get-Phase0SBuildOutputPath -ProjectName 'JueMingR.PredictionWorker' -FileName 'JueMingR.PredictionWorker.exe'
+$workerConfigOutput = Get-Phase0SBuildOutputPath -ProjectName 'JueMingR.PredictionWorker' -FileName 'JueMingR.PredictionWorker.exe.config'
 $hostIdentity = Get-Phase0SAssemblyFileIdentity -Path $hostOutput
 if ($hostIdentity.simpleName -cne 'JueMingR.TerrariaHost' -or $hostIdentity.version -cne '0.0.0.0') {
     throw 'The Host Release output identity is invalid.'
@@ -431,6 +451,8 @@ try {
     Copy-Phase0SBuilderFileCreateNew -SourcePath $platformOutput -DestinationPath (Join-Path $sidecarPayloadRoot 'JueMingR.Platform.dll')
     Copy-Phase0SBuilderFileCreateNew -SourcePath $featuresOutput -DestinationPath (Join-Path $sidecarPayloadRoot 'JueMingR.Features.dll')
     Copy-Phase0SBuilderFileCreateNew -SourcePath $infrastructureOutput -DestinationPath (Join-Path $sidecarPayloadRoot 'JueMingR.Infrastructure.dll')
+    Copy-Phase0SBuilderFileCreateNew -SourcePath $workerOutput -DestinationPath (Join-Path $sidecarPayloadRoot 'JueMingR.PredictionWorker.exe')
+    Copy-Phase0SBuilderFileCreateNew -SourcePath $workerConfigOutput -DestinationPath (Join-Path $sidecarPayloadRoot 'JueMingR.PredictionWorker.exe.config')
     Copy-Phase0SBuilderFileCreateNew -SourcePath $harmonyPath -DestinationPath (Join-Path $sidecarPayloadRoot '0Harmony.dll')
 
     $runtimeLines = @(

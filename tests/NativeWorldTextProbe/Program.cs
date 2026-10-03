@@ -20,6 +20,10 @@ namespace NativeWorldTextProbe
                 if (args.Length == 4 && args[3] == "ExplorationRelease") ProductionConfiguration = "Release";
                 references = Path.Combine(Repository, "external", "TerrariaRefs");
                 AppDomain.CurrentDomain.AssemblyResolve += Resolve;
+                if(args.Length==4 && args[3]=="AimLightDiagnostics"){NativeAimLightChecks.Run(args[2]);return 0;}
+                if(args.Length==4 && args[3]=="NpcPresentationOriginal")return NativeCombatPrivateImageChecks.PresentationOriginal(args[2]);
+                if(args.Length==4 && args[3]=="NpcPrivateValues")return NativeCombatPrivateImageChecks.Run(args[1],args[2]);
+                if(args.Length==4 && args[3]=="NpcPrivateSafety")return NativeCombatPrivateImageChecks.Run(args[1],args[2],true);
                 return Run(args[1], args[2], args.Length == 4 ? args[3] : "Full");
             }
             catch (Exception e) { Console.Error.WriteLine(e); return 1; }
@@ -27,6 +31,7 @@ namespace NativeWorldTextProbe
         private static Assembly Resolve(object sender, ResolveEventArgs args)
         {
             var name = new AssemblyName(args.Name).Name;
+            if(name=="Terraria" && game!=null)return game;
             string path = Path.Combine(references, name == "Terraria" ? "Terraria.exe" : name + ".dll");
             if (name == "0Harmony") path = Path.Combine(Repository, "external", "Harmony", "0Harmony.dll");
             if (File.Exists(path)) { var value = Assembly.LoadFrom(path); if (name == "Terraria") game = value; return value; }
@@ -39,5 +44,6 @@ namespace NativeWorldTextProbe
         }
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static int Run(string content, string output, string scope) { return NativeChecks.Run(content, output, scope); }
+        internal static void UsePrivateGame(Assembly value){if(game!=null)throw new InvalidOperationException("Original game already loaded.");game=value;}
     }
 }

@@ -7,12 +7,15 @@
     <RootNamespace>JueMingR.TerrariaHost</RootNamespace>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+    <DefineConstants Condition="'$(JueMingRAimLight)' == 'true'">$(DefineConstants);JMR_AIM_LIGHT</DefineConstants>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <TerrariaReferencesDirectory Condition="'$(TerrariaReferencesDirectory)' == ''">$(MSBuildThisFileDirectory)..\..\external\TerrariaRefs</TerrariaReferencesDirectory>
     <HarmonyReferencesDirectory Condition="'$(HarmonyReferencesDirectory)' == ''">$(MSBuildThisFileDirectory)..\..\external\Harmony</HarmonyReferencesDirectory>
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Combat\Prediction\NativeTileManifest.txt" LogicalName="JueMingR.Prediction.NativeTileManifest" />
+    <EmbeddedResource Include="Combat\Prediction\NativeMaterialApproval.txt" LogicalName="JueMingR.Prediction.NativeMaterialApproval" />
     <EmbeddedResource Include="About\Assets\wechat.png" LogicalName="JueMingR.About.wechat.png" />
     <EmbeddedResource Include="About\Assets\alipay.jpg" LogicalName="JueMingR.About.alipay.jpg" />
     <EmbeddedResource Include="F5\Icons\tab-icons.alpha" LogicalName="JueMingR.F5.TabIcons.alpha" />
@@ -23,7 +26,27 @@
     <ProjectReference Include="..\JueMingR.Platform\JueMingR.Platform.csproj" />
     <ProjectReference Include="..\JueMingR.Features\JueMingR.Features.csproj" />
     <ProjectReference Include="..\JueMingR.Infrastructure\JueMingR.Infrastructure.csproj" />
+    <ProjectReference Include="..\JueMingR.PredictionWorker\JueMingR.PredictionWorker.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
+
+  <Target Name="CapturePredictionBuildIdentity" BeforeTargets="CoreCompile" DependsOnTargets="ResolveReferences">
+    <MSBuild Projects="..\JueMingR.PredictionWorker\JueMingR.PredictionWorker.csproj" Targets="GetTargetPath" Properties="Configuration=$(Configuration);Platform=$(Platform);JueMingRBuildRoot=$(JueMingRBuildRoot)">
+      <Output TaskParameter="TargetOutputs" ItemName="PredictionWorkerTarget" />
+    </MSBuild>
+    <ItemGroup>
+      <PredictionIdentityFile Include="@(PredictionWorkerTarget);@(PredictionWorkerTarget->'%(Identity).config')" />
+      <PredictionIdentityFile Include="@(ReferencePath)" Condition="'%(ReferencePath.Filename)' == 'JueMingR.Platform' Or '%(ReferencePath.Filename)' == 'JueMingR.Features' Or '%(ReferencePath.Filename)' == 'JueMingR.Infrastructure'" />
+      <PredictionRuleFile Include="Combat\Prediction\NativeTileImage.cs;Combat\Prediction\NativeEntityImage.cs;Combat\Prediction\NativePresentationImage.cs;Combat\Prediction\NativeTileManifest.txt" />
+    </ItemGroup>
+    <GetFileHash Files="@(PredictionIdentityFile)" Algorithm="SHA256">
+      <Output TaskParameter="Items" ItemName="PredictionIdentityHash" />
+    </GetFileHash>
+    <WriteLinesToFile File="$(IntermediateOutputPath)PredictionBuildIdentity.g.cs" Lines="@(PredictionIdentityHash->'[assembly: System.Reflection.AssemblyMetadataAttribute(&quot;Prediction.File.%(Filename)%(Extension)&quot;, &quot;%(FileHash)&quot;)]')" Overwrite="true" WriteOnlyWhenDifferent="true" Encoding="UTF-8" />
+    <GetFileHash Files="@(PredictionRuleFile)" Algorithm="SHA256"><Output TaskParameter="Items" ItemName="PredictionRuleHash" /></GetFileHash>
+    <WriteLinesToFile File="$(IntermediateOutputPath)PredictionRuleIdentity.g.cs" Lines="@(PredictionRuleHash->'[assembly: System.Reflection.AssemblyMetadataAttribute(&quot;Prediction.Rule.%(Filename)%(Extension)&quot;, &quot;%(FileHash)&quot;)]')" Overwrite="true" WriteOnlyWhenDifferent="true" Encoding="UTF-8" />
+    <ItemGroup><Compile Include="$(IntermediateOutputPath)PredictionBuildIdentity.g.cs" /></ItemGroup>
+    <ItemGroup><Compile Include="$(IntermediateOutputPath)PredictionRuleIdentity.g.cs" /></ItemGroup>
+  </Target>
 
   <ItemGroup>
     <Reference Include="Terraria">

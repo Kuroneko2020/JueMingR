@@ -14,6 +14,53 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if(scope=="NpcPostDelivery"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT","post-delivery-suite");scope="NpcProduction";}
+            if(scope=="NpcGuardianQuery"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT","environment");Environment.SetEnvironmentVariable("JUEMINGR_NPC_ENV_AXIS","guardian-query");scope="NpcProduction";}
+            if(scope=="NpcModeledImpact"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT","impact-suite");scope="NpcProduction";}
+            if(scope=="NpcNameDraw"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT","name-draw");scope="NpcProduction";}
+            if(scope=="NpcDiagnosticsOff"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_MEASURE_OFF","1");scope="NpcProduction";}
+            if(scope=="NpcSessionCapacity"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_SESSION_CAPACITY","1");scope="NpcProduction";}
+            if(scope=="NpcFailureRecovery"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_RECOVERY_CHECK","1");scope="NpcProduction";}
+            if(scope=="NpcMaterialCache"){NativeCombatMaterialCacheChecks.Run(output);return 0;}
+            if(scope=="NpcMaterialPrepare"){NativeCombatMaterialCacheChecks.Prepare(output);return 0;}
+            if(scope=="NpcInstructionInventory"){NativeCombatMaterialCacheChecks.Inventory();return 0;}
+            if(scope=="NpcWorkerParentExit")
+            {NativeCombatWorkerBoundaryChecks.ParentProbe(output);return 0;}
+            if(scope=="NpcTileManifest" || scope=="NpcTileManifestGenerate")
+            {NativeCombatTileManifestChecks.Run(output,scope=="NpcTileManifestGenerate");return 0;}
+            if(scope=="NpcWorkerIntegration" || scope=="NpcLegalCoverage" || scope=="NpcWorkerCatalogue" || scope=="NpcWorkerLinked" || scope=="NpcWorkerLifetime" || scope=="NpcWorkerAssets" || scope=="NpcWorkerRandom" || scope=="NpcWorkerPlayer" || scope=="NpcWorkerEntity" || scope=="NpcWorkerBirth" || scope=="NpcWorkerContext" || scope=="NpcWorkerImmunity" || scope=="NpcWorkerLifecycle" || scope=="NpcWorkerFields" || scope=="NpcWorkerTransport" || scope=="NpcProduction" || scope=="NpcWorkerPreparation" || scope=="NpcMenuPreparation" || scope=="NpcSnapshot" || scope=="NpcLongCoverage")
+            {
+                Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-worker-oracle-"+Guid.NewGuid().ToString("N"));
+                NativeCombatWorkerChecks.Run(output,scope=="NpcWorkerCatalogue",scope=="NpcWorkerLinked",scope=="NpcWorkerLifetime",scope=="NpcWorkerAssets",scope=="NpcWorkerRandom",scope=="NpcWorkerPlayer",scope=="NpcWorkerEntity",scope=="NpcWorkerBirth",scope=="NpcWorkerContext",scope=="NpcWorkerImmunity",scope=="NpcWorkerLifecycle",scope=="NpcWorkerFields",scope=="NpcWorkerTransport",scope=="NpcProduction",content,scope=="NpcWorkerPreparation",scope=="NpcMenuPreparation",scope=="NpcSnapshot",scope=="NpcLongCoverage",scope=="NpcLegalCoverage");return 0;
+            }
+            if(scope=="NpcCoverageBaseline" || scope=="NpcLongPrediction")
+            {
+                Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-npc-coverage-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
+                NativeQuickItemChecks.Run(context=>NativeCombatNpcCoverageChecks.Baseline(context,output,scope=="NpcLongPrediction"),processing:true,shortFeedback:true);return 0;
+            }
+            if(scope=="CombatCosts")
+            {
+                Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-combat-costs-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
+                NativeQuickItemChecks.Run(context=>NativeCombatCostChecks.Run(context,output),processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_COST_CANDIDATE"));return 0;
+            }
+            if(scope=="CombatObservationCpu")
+            {
+                Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-combat-observation-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
+                NativeQuickItemChecks.Run(context=>{NativeCombatObservationChecks.Run(context);NativeCombatBodyChecks.Run(context);NativeCombatTerrainChecks.Run(context);NativeCombatPredictionChecks.Run(context);NativeCombatEventChecks.Run(context);NativeCombatGeometryChecks.Run(context);},processing:true,shortFeedback:true);return 0;
+            }
+            if(scope=="CombatEventsCpu")
+            {
+                // Use the original geometry fixture initialization for a Release
+                // candidate, without the broad scope's Debug-only cache counters.
+                Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-combat-geometry-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
+                NativeQuickItemChecks.Run(context=>
+                {
+                    // The broad scope's terrain/body checks normally initialize
+                    // these native tables before the event oracle reaches them.
+                    Terraria.Main.tileSolid[Terraria.ID.TileID.Stone]=true;Terraria.Lighting.Mode=Terraria.Graphics.Light.LightMode.Color;
+                    NativeCombatEventChecks.Run(context);
+                },processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
+            }
             if(scope=="CombatVisual")
             {
                 Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-combat-visual-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
@@ -140,7 +187,7 @@ namespace NativeWorldTextProbe
             return Check(content, output, scope);
         }
         private static void CombatRelease(object context)
-        {NativeCombatChecks.Run(context);NativeCombatFacingChecks.Run(context);NativeCombatHitChecks.Run(context);NativeCombatReportChecks.Run(context);NativeCombatUiChecks.Run(context);}
+        {NativeCombatChecks.Run(context);NativeCombatFacingChecks.Run(context);NativeCombatHitChecks.Run(context);NativeCombatReportChecks.Run(context);NativeCombatUiChecks.Run(context);NativeCombatObservationChecks.Release(context);NativeCombatBodyChecks.Run(context);}
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static int Check(string content, string output, string scope)
         {
