@@ -13,6 +13,7 @@ namespace JueMingR.TerrariaHost.Combat
         private readonly HostCombatObservation host;
         private readonly Harmony harmony=new Harmony("JueMingR.CombatObservation");
         private readonly List<MethodBase> methods=new List<MethodBase>();
+        private int birthGeometry;
         private AccessTools.FieldRef<Player,bool> volcanoPending;
         [ThreadStatic] private static Projectile damageOwner;
         [ThreadStatic] private static int killDepth;
@@ -37,8 +38,6 @@ namespace JueMingR.TerrariaHost.Combat
                 volcanoPending=AccessTools.FieldRefAccess<Player,bool>("_spawnVolcanoExplosion");
                 Patch(typeof(Projectile),"Damage",nameof(BeforeDamage),null,nameof(EndDamage));
                 Patch(typeof(Projectile),"Damage_GetHitbox",null,nameof(Hitbox),null);
-                Patch(typeof(Projectile),"Kill",nameof(BeforeKill),null,nameof(EndKill));
-                Patch(typeof(Projectile),"AI",nameof(BeforeAi),null,nameof(EndTransient));
                 Patch(typeof(Projectile),"HandleMovement",nameof(BeforeMovement),null,nameof(EndMovement));
                 Patch(typeof(Projectile),"UpdatePosition",nameof(BeforePosition),null,null);
                 Patch(typeof(Projectile),"DoRainbowCrystalStaffExplosion",nameof(RemoteCrystal),null,null);
@@ -52,7 +51,8 @@ namespace JueMingR.TerrariaHost.Combat
                 Patch(typeof(Player),"Teleport",nameof(PlayerTeleport),null,null);
                 Patch(typeof(Player),"Spawn",nameof(PlayerSpawn),null,null);
                 Patch(typeof(Player),"Hurt",null,nameof(PlayerHurt),null);
-                Prediction.NativeNpcImpact.Install(harmony,methods);
+                Prediction.NativeNpcImpact.Install(harmony,methods,PatchBirthCaller);
+                if(birthGeometry!=3)throw new MissingMethodException("Native birth/collision caller ABI.");
                 Patch(typeof(NPC),"SetDefaults",nameof(NpcReset),null,null);
                 Patch(typeof(MessageBuffer),"GetData",nameof(PlayerNetwork),nameof(NpcNetwork),null);
                 PlayerCollisionGeometryHooks.Install(harmony,methods);
@@ -64,6 +64,20 @@ namespace JueMingR.TerrariaHost.Combat
         {
             var method=AccessTools.DeclaredMethod(type,name);if(method==null)throw new MissingMethodException(type.Name,name);
             methods.Add(method);harmony.Patch(method,prefix==null?null:new HarmonyMethod(GetType(),prefix),postfix==null?null:new HarmonyMethod(GetType(),postfix),null,finalizer==null?null:new HarmonyMethod(GetType(),finalizer));
+        }
+        private void PatchBirthCaller(MethodInfo method,HarmonyMethod transpiler)
+        {
+            // These two large original bodies need both observations under
+            // this same owner. Register them together before Ready to avoid
+            // compiling each twice; keep the original declaring types and
+            // __state pairs, so ordering and owner-only cleanup stay intact.
+            string prefix=null,finalizer=null;
+            if(method.DeclaringType==typeof(Projectile))
+            {
+                if(method.Name=="Kill"){prefix=nameof(BeforeKill);finalizer=nameof(EndKill);birthGeometry|=1;}
+                else if(method.Name=="AI"){prefix=nameof(BeforeAi);finalizer=nameof(EndTransient);birthGeometry|=2;}
+            }
+            harmony.Patch(method,prefix:prefix==null?null:new HarmonyMethod(GetType(),prefix),transpiler:transpiler,finalizer:finalizer==null?null:new HarmonyMethod(GetType(),finalizer));
         }
         private static HostCombatObservation PredictionHost
         {get{var self=current;return self!=null && self.Ready && self.host.Session>0 && self.host.Prediction.Cache.Required>0?self.host:null;}}

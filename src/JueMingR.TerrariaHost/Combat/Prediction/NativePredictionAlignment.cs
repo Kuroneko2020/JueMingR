@@ -90,6 +90,8 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             NpcPremise(writer,npc);NativeEntityContext.WriteNpc(writer,npc);
             Projectiles.Write(writer,source);NativeActorContext.WriteProjectile(writer,source);
         }
+        internal static void BirthState(BinaryWriter writer,Projectile source)
+        {Projectiles.Write(writer,source);NativeActorContext.WriteProjectile(writer,source);}
         private static void NpcPremise(BinaryWriter writer,NPC n)
         {
             Npcs.Write(writer,n);writer.Write(n.ai.Length);

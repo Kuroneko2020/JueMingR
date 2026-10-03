@@ -26,6 +26,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             internal readonly NativeTerrainUsage TerrainChanges=new NativeTerrainUsage();
             internal bool Retired;
             internal int Impact;
+            internal bool LifecycleInvalid;
             internal NativeImpactProof Impacts;
             internal int QueryChanged;
             internal double CaptureMs;
@@ -167,6 +168,24 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         {
             if(acceptedRequest!=null && acceptedRequest.Impacts.Owns(source))Interlocked.Exchange(ref acceptedRequest.Impact,1);
             if(pending!=null && pending.Impacts.Owns(source))Interlocked.Exchange(ref pending.Impact,1);
+            ObserveUnprovenBirth(source);
+        }
+        internal void ObserveUnprovenBirth(Projectile source)
+        {
+            // Inactive reserved pages carry no old hit authority, but an
+            // external reset must not borrow their next predicted lifetime.
+            bool live=source.whoAmI>=0 && source.whoAmI<Main.maxProjectiles && ReferenceEquals(Main.projectile[source.whoAmI],source);
+            if(acceptedRequest!=null && (acceptedRequest.Impacts.HasPage(source) || live && Array.IndexOf(acceptedRequest.Projectiles,source.whoAmI)>=0))acceptedRequest.LifecycleInvalid=true;
+            if(pending!=null && (pending.Impacts.HasPage(source) || live && Array.IndexOf(pending.Projectiles,source.whoAmI)>=0))pending.LifecycleInvalid=true;
+        }
+        internal void ObserveProjectileBirth(NativeImpactProof.Hit value)
+        {
+            RecordBirth(acceptedRequest,value);RecordBirth(pending,value);
+        }
+        private static void RecordBirth(Request request,NativeImpactProof.Hit value)
+        {
+            if(request==null || request.Retired || Array.IndexOf(request.Projectiles,value.SourceSlot)<0)return;
+            if(!request.Impacts.RecordBirth(value,request.Tick))Interlocked.Exchange(ref request.Impact,1);
         }
         private static void MarkImpact(Request request,NPC npc)
         {
@@ -209,9 +228,9 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             // A real hit can be absent from the captured projectile pages.
             // Its affected background may have no prior route use, but the
             // new input must revoke both old publication and delayed replies.
-            if(acceptedRequest!=null && acceptedRequest.Impact!=0)
+            if(acceptedRequest!=null && (acceptedRequest.Impact!=0 || acceptedRequest.LifecycleInvalid))
             {accepted=null;acceptedRequest=null;cache.Publish(null);Reason="captured NPC impact";}
-            if(pending!=null && pending.Impact!=0)pending.Retired=true;
+            if(pending!=null && (pending.Impact!=0 || pending.LifecycleInvalid))pending.Retired=true;
             // A query premise is not part of the full-page history. Latch its
             // first observed change before mailbox consumption; restoring the
             // original value must never revive a delayed reply or old window.
@@ -233,6 +252,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             {
                 long age=tick-acceptedRequest.Tick;
                 string difference=!CanReuseProof(age,accepted.Frames.Length)?"expired":!acceptedRequest.Terrain.IsCurrentRelevant(identity.Session,accepted.TerrainUsage,terrainComparison)?"relevant terrain changed":NativePredictionAlignment.Difference(accepted.Frames[(int)age],Observe(tick,acceptedRequest.Npcs,acceptedRequest.Projectiles,identity.Slot));
+                if(difference==null)difference=acceptedRequest.Impacts.Difference(accepted.Impacts,tick,acceptedRequest.Npcs);
                 if(difference!=null){Reason=difference;accepted=null;acceptedRequest=null;cache.Publish(null);}
             }
             if(PredictionPipeProtocol.Measure){double observed=Milliseconds(Stopwatch.GetTimestamp()-started);ObserveMilliseconds+=observed;ObserveMaximum=Math.Max(ObserveMaximum,observed);}Observed++;
@@ -300,6 +320,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 }
                 foreach(int slot in result.Projectiles)if(!projectiles.Contains(slot)){if(projectiles.Count>Main.maxProjectiles)throw new InvalidDataException("Projectile dependency capacity.");projectiles.Add(slot);missing=true;}
                 if(missing){m.Outcome="newborn dependency pages require fresh observation";Rejected++;return;}
+                if(!request.Impacts.ValidTimeline(result.Impacts)){m.Outcome="projectile lifetime timeline";Reason=m.Outcome;Rejected++;return;}
                 if(request.History.Count!=tick-request.Tick+1)throw new InvalidDataException("Missing intervening observations.");
                 for(int i=0;i<request.History.Count;i++)
                 {string difference=NativePredictionAlignment.Difference(result.Frames[i],request.History[i]);if(difference!=null){m.Outcome="history "+i+": "+difference;Reason=m.Outcome;Rejected++;return;}}
@@ -352,7 +373,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                     )AddRegion(chunks,(int)Main.npc[slot].Center.X/16,(int)Main.npc[slot].Center.Y/16,24);
                 foreach(var player in Main.player)if(player!=null && player.active)AddRegion(chunks,(int)player.Center.X/16,(int)player.Center.Y/16,24);
                 if(terrain==null || !TerrainCurrent(terrain,identity.Session) || !Covers(terrain,chunks))terrain=NativeTerrainSnapshot.CaptureChunksObserved(identity.Session,chunks,terrainComparison);
-                var request=new Request{Identity=identity,Tick=tick,Wall=begin,Npcs=ns,Projectiles=ps,Terrain=terrain,Queries=NativeNpcEligibility.Capture(ns),Impacts=new NativeImpactProof(ps)};
+                var request=new Request{Identity=identity,Tick=tick,Wall=begin,Npcs=ns,Projectiles=ps,Terrain=terrain,Queries=NativeNpcEligibility.Capture(ns),Impacts=new NativeImpactProof(ps,ns)};
 #if JMR_CONDITIONAL_RESEARCH
                 request.Npcs=exactNpcs.ToArray();
 #endif

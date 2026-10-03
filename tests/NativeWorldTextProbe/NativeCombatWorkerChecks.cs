@@ -19,10 +19,11 @@ namespace NativeWorldTextProbe
     internal static class NativeCombatWorkerChecks
     {
 #if JMR_CONDITIONAL_RESEARCH
-        internal const int ExpectedProtocol=133, PointBytes=75;
+        internal static readonly int ExpectedProtocol=int.Parse(Environment.GetEnvironmentVariable("JUEMINGR_NPC_EXPECTED_PROTOCOL")??"134");
 #else
-        internal const int ExpectedProtocol=33, PointBytes=75;
+        internal static readonly int ExpectedProtocol=int.Parse(Environment.GetEnvironmentVariable("JUEMINGR_NPC_EXPECTED_PROTOCOL")??"34");
 #endif
+        internal const int PointBytes=75;
         private static readonly Main weatherOracle=(Main)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(Main));
         internal static void AdvanceWeather()
         {

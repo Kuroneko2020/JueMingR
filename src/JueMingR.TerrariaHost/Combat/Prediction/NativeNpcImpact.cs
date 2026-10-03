@@ -20,7 +20,9 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         private static bool worker;
         private static long lastProofTick;
         private static int[] workerNpcs;
-        private static readonly List<NativeImpactProof.Hit> workerHits=new List<NativeImpactProof.Hit>();
+        private static NativeImpactProof workerProof;
+        private static long captureTick;
+        internal static bool Collecting=>worker && Main.GameUpdateCount<=lastProofTick;
         internal static string Failure {get;private set;}
         private struct StrikeState
         {
@@ -29,7 +31,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             internal NPC Target,Shared;
             internal NativeImpactProof.Hit Hit;
         }
-        internal static void Install(Harmony patches,List<MethodBase> owned=null)
+        internal static void Install(Harmony patches,List<MethodBase> owned=null,Action<MethodInfo,HarmonyMethod> installBirthCaller=null)
         {
             var pve=AccessTools.DeclaredMethod(typeof(Projectile),"Damage_PVE_Inner");
             var strike=AccessTools.DeclaredMethod(typeof(NPC),"StrikeNPC");
@@ -43,7 +45,9 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             patches.Patch(pve,transpiler:rewrite);
             var before=Hook(nameof(BeforeStrike));before.priority=Priority.First;
             patches.Patch(strike,prefix:before,finalizer:Hook(nameof(EndStrike)));
-            patches.Patch(reset,prefix:Hook(nameof(ResetSource)));
+            var resetHook=Hook(nameof(ResetSource));resetHook.priority=Priority.First;
+            patches.Patch(reset,prefix:resetHook);
+            NativeProjectileBirth.Install(patches,owned,installBirthCaller);
         }
         private static HarmonyMethod Hook(string name)=>new HarmonyMethod(typeof(NativeNpcImpact),name);
         private static IEnumerable<CodeInstruction> StrikeCall(IEnumerable<CodeInstruction> input)
@@ -82,7 +86,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 NPC root=shared>=0 && shared<Main.maxNPCs?Main.npc[shared]:null;
                 bool known=source!=null && source.active && source.whoAmI>=0 && source.whoAmI<Main.maxProjectiles && ReferenceEquals(Main.projectile[source.whoAmI],source)
                     && (!collect || NativeEntityDirectory.CanAdvance(source) && NativeEntityDirectory.CanAdvance(__instance) && (root==null || NativeEntityDirectory.CanAdvance(root)));
-                var hit=new NativeImpactProof.Hit{Tick=Main.GameUpdateCount,Known=known,Source=source,SourceSlot=known?source.whoAmI:-1,SourceType=known?source.type:0,SourceOwner=known?source.owner:-1,SourceKey=known?(uint)source.key:0,TargetSlot=__instance.whoAmI,SharedSlot=shared};
+                var hit=new NativeImpactProof.Hit{Tick=Main.GameUpdateCount,Known=known,Source=source,SourceSlot=known?source.whoAmI:-1,SourceType=known?source.type:0,SourceOwner=known?source.owner:-1,SourceKey=known?(uint)source.key:0,SourceGeneration=known?NativeImpactProof.Generation(source.whoAmI):0,SourceEpoch=-1,TargetSlot=__instance.whoAmI,SharedSlot=shared};
                 __state.Shared=root;__state.Hit=hit;__state.Observed=true;
                 // Unknown sources are always conservative in the live owner.
                 // Do not read opaque worker pages just to build a certificate.
@@ -112,8 +116,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 if(__state.Shared!=null)w.Write(__state.Shared.life);hit.Signature=w.Hash;
                 if(__state.Worker && NativeImpactProof.Touches(workerNpcs,hit))
                 {
-                    if(workerHits.Count>=NativeImpactProof.MaximumHits)Failure="NPC impact proof capacity.";
-                    else{hit.Source=null;workerHits.Add(hit);}
+                    if(!workerProof.Record(hit,captureTick))Failure="NPC impact source proof.";
                 }
                 __state.Session?.ObserveNpcImpact(__state.Target,hit);
             }
@@ -128,16 +131,21 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         }
         private static void ResetSource(Projectile __instance)
         {
+            if(NativeProjectileBirth.ConsumeReset(__instance))return;
             // The native pool reuses objects and SetDefaults can retain key.
             // Remember reconstruction even if all identity values return to
             // their captured values before the next completed update.
-            CombatGeometryHooks.PredictionSession?.ObserveProjectileReset(__instance);
+            var session=CombatGeometryHooks.PredictionSession;
+            if(session?.HasImpactDemand==true)session.ObserveProjectileReset(__instance);
         }
         private static bool Live(NPC n)=>n!=null && n.whoAmI>=0 && n.whoAmI<Main.maxNPCs && ReferenceEquals(Main.npc[n.whoAmI],n);
         private static NativePredictionAlignment.ValueHashWriter Writer()=>hash??(hash=new NativePredictionAlignment.ValueHashWriter());
-        internal static void BeginWorker(long tick,int[] npcs)
-        {workerHits.Clear();Failure=null;workerNpcs=npcs;lastProofTick=tick+PredictionWire.MaximumAlignmentAge;worker=true;}
+        internal static void BeginWorker(long tick,int[] npcs,int[] projectiles)
+        {workerProof=new NativeImpactProof(projectiles,npcs);captureTick=tick;Failure=null;workerNpcs=npcs;lastProofTick=tick+PredictionWire.MaximumAlignmentAge;worker=true;}
         internal static void EndWorker(){worker=false;ticket=null;workerNpcs=null;}
-        internal static void WriteWorker(BinaryWriter writer){NativeImpactProof.Write(writer,workerHits);workerHits.Clear();}
+        internal static void RecordBirth(NativeImpactProof.Hit value)
+        {if(!workerProof.RecordBirth(value,captureTick))BirthFailure();}
+        internal static void BirthFailure(){Failure="Projectile birth proof.";}
+        internal static void WriteWorker(BinaryWriter writer){workerProof.WriteEvents(writer);workerProof=null;}
     }
 }

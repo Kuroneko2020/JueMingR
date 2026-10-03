@@ -163,7 +163,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                     NativeTileBoundary.Begin();
                     NativeEntityDirectory.Begin();
                     NativePredictionPurpose.Begin(selected);
-                    if(withAlignment)NativeNpcImpact.BeginWorker(tick,alignmentSlots);
+                    if(withAlignment)NativeNpcImpact.BeginWorker(tick,alignmentSlots,projectileSlots);
                     try
                     {
                     for(int step=1;step<=horizon;step++)

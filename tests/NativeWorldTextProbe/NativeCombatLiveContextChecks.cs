@@ -22,6 +22,12 @@ namespace NativeWorldTextProbe
             var native=Get(Get(Get(context,"CombatObservation"),"Prediction"),"Native");
             Require(native.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativePredictionDiagnostic")==null,"Ordinary product excludes the retired one-shot diagnostic.");
             if(mode=="attack-mechanism"){NativeCombatAttackMechanismChecks.Run(context,native,cache,step,output);return;}
+            if(mode=="hostile-query"){NativeCombatHostileQueryChecks.Run(context,native,cache,step,output);return;}
+            if(mode=="hostile-frozen"){NativeCombatFrozenDemandChecks.Run(context,native,output);return;}
+            if(mode=="hostile-oracle"){NativeCombatHostileQueryOracle.Run(context,output);return;}
+            if(mode=="hurt-hints"){NativeCombatHurtHintChecks.Run(context,native,cache,step,output);return;}
+            if(mode=="birth-proof"){NativeCombatBirthProofChecks.Run(context,native,cache,step,output);return;}
+            if(mode=="modifier-proof"){NativeCombatModifierBirthChecks.Run(context,native,cache,step,output);return;}
             if(mode=="modeled-impact"){NativeCombatModeledImpactChecks.Run(context,native,cache,step,output);return;}
             if(mode=="other-impact"){NativeCombatModeledImpactChecks.Run(context,native,cache,step,output,true);return;}
             if(mode=="impact-boundaries"){NativeCombatImpactBoundaryChecks.Run(context,native,cache,step,output);return;}
@@ -33,7 +39,10 @@ namespace NativeWorldTextProbe
                 NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions(path:true,clearLine:false,mouseCenter:true,dummy:true,radius:25));
                 Action targetStep=()=>{NativeCombatModeledImpactChecks.SampleMouse(context,Main.npc[16].Center);step();};
                 NativeCombatImpactRetirementChecks.Run(context,native,cache,targetStep,output);
-                NativeCombatImpactRetirementChecks.Off(context,native,cache,targetStep,output);return;
+                NativeCombatImpactRetirementChecks.Off(context,native,cache,targetStep,output);
+                NativeCombatBirthProofChecks.Run(context,native,cache,step,output);
+                string modifiers=System.IO.Path.Combine(output,"modifier-birth");System.IO.Directory.CreateDirectory(modifiers);
+                NativeCombatModifierBirthChecks.Run(context,native,cache,step,modifiers);return;
             }
             if(mode=="mounted"){Mounted(context,native,cache,step);return;}
             if(mode=="post-delivery"){PostDelivery(context,native,cache,step);return;}

@@ -48,6 +48,19 @@ namespace NativeWorldTextProbe
                 Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-combat-observation-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
                 NativeQuickItemChecks.Run(context=>{NativeCombatObservationChecks.Run(context);NativeCombatBodyChecks.Run(context);NativeCombatTerrainChecks.Run(context);NativeCombatPredictionChecks.Run(context);NativeCombatEventChecks.Run(context);NativeCombatGeometryChecks.Run(context);},processing:true,shortFeedback:true);return 0;
             }
+            if(scope=="CombatEventsCpu")
+            {
+                // Use the original geometry fixture initialization for a Release
+                // candidate, without the broad scope's Debug-only cache counters.
+                Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-combat-geometry-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
+                NativeQuickItemChecks.Run(context=>
+                {
+                    // The broad scope's terrain/body checks normally initialize
+                    // these native tables before the event oracle reaches them.
+                    Terraria.Main.tileSolid[Terraria.ID.TileID.Stone]=true;Terraria.Lighting.Mode=Terraria.Graphics.Light.LightMode.Color;
+                    NativeCombatEventChecks.Run(context);
+                },processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
+            }
             if(scope=="CombatVisual")
             {
                 Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-combat-visual-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);

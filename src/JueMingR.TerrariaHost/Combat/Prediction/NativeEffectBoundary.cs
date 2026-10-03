@@ -23,15 +23,20 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         {
             var cost=PredictionPipeProtocol.Measure?System.Diagnostics.Stopwatch.StartNew():null;
             NativeImmunitySnapshot.Install(patches);
+            Part(cost,"immunity-only-install");
             NativeLightingSnapshot.Install(patches);
+            Part(cost,"lighting-install");
             NativeNpcMotionTrace.Install(patches);
+            Part(cost,"motion-install");
             NativePredictionPurpose.Install(patches);
+            Part(cost,"purpose-install");
             NativeNpcImpact.Install(patches);
+            Part(cost,"impact-and-birth-install");
             if(!fixtureOriginal)NativeNpcEligibility.Install(patches);
 #if JMR_CONDITIONAL_RESEARCH
             ConditionalNpcQuery.Install(patches);
 #endif
-            Part(cost,"immunity-install");
+            Part(cost,"eligibility-install");
             Patch(typeof(NetMessage),"SendData","Skip");
             foreach(string name in new[]{"Broadcast","SendToServer","SendToClient"})Patch(typeof(NetManager),name,"RecyclePacket");
             Patch(typeof(WorldGen),"TransformWorldOnBackgroundThread","Block");

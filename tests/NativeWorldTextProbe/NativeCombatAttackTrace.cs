@@ -20,6 +20,8 @@ namespace NativeWorldTextProbe
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance|BindingFlags.Static;
         private static NativeCombatAttackTrace active;
         private readonly object owner;private readonly string output;private readonly Harmony patches;
+        private readonly bool fullHistory=Environment.GetEnvironmentVariable("JUEMINGR_ATTACK_FULL_HISTORY")=="1";
+        internal long RequiredCapture=-1;
         private readonly object gate=new object();
         private sealed class Packet{internal byte[] Core,Alignment;internal int Field;}
         private readonly Dictionary<object,Packet> packets=new Dictionary<object,Packet>();
@@ -28,7 +30,7 @@ namespace NativeWorldTextProbe
         private readonly SortedDictionary<long,List<object>> observedHistory=new SortedDictionary<long,List<object>>();
         private readonly List<KeyValuePair<string,byte[]>> samples=new List<KeyValuePair<string,byte[]>>();
         private readonly HashSet<string> sampled=new HashSet<string>();private int sampleBytes;
-        private readonly List<string> replies=new List<string>{"phase,frame,capture,arrive,age,requestId,retired,impact,queryChanged,outcome,kind,slot,field,error,frames,ns,ps,newNpcs,newProjectiles,chunks,continuationKind,continuationSlot,advanceMs,firstDifference,sample,capturePhase,sampleComplete"};
+        private readonly List<string> replies=new List<string>{"phase,frame,capture,arrive,age,requestId,retired,impact,queryChanged,outcome,kind,slot,field,error,frames,ns,ps,newNpcs,newProjectiles,chunks,continuationKind,continuationSlot,advanceMs,firstDifference,sample,capturePhase,sampleComplete,coreBytes,alignmentBytes,lastNpcRequired,lastProjectileRequired"};
         private readonly List<string> captures=new List<string>{"phase,frame,tick,requestId,npcs,projectiles,chunks,queryCount"};
         private readonly List<string> events=new List<string>{"phase,frame,tick,event,npcSource,projectileSource,slot,type,key,owner,value,detail"};
         private readonly List<string> differences=new List<string>{"phase,frame,where,expectedTick,actualTick,difference,expected,actual"};
@@ -39,7 +41,7 @@ namespace NativeWorldTextProbe
         [ThreadStatic]private static bool impactObservation;
         [ThreadStatic]private static int currentNpc;
         [ThreadStatic]private static int currentProjectile;
-        internal string Phase="setup",SelectedRngBefore,SelectedRngAfter;internal int Frame,Selected,CanHitTrue,CanHitFalse;internal long Received;internal Exception Fault;
+        internal string Phase="setup",SelectedRngBefore,SelectedRngAfter;internal int Frame,Selected,CanHitTrue,CanHitFalse;internal long Received,NpcUpdates,ProjectileUpdates;internal Exception Fault;
         internal NativeCombatAttackTrace(object native,string destination)
         {
             owner=native;output=destination;active=this;currentNpc=currentProjectile=-1;
@@ -47,6 +49,10 @@ namespace NativeWorldTextProbe
             Patch(native.GetType().GetMethod("Capture",Flags),null,nameof(Captured));
             Patch(native.GetType().GetMethod("Receive",Flags),nameof(Receiving),nameof(ReceivedReply));
             Patch(native.GetType().GetMethod("ObserveNpcImpact",Flags),nameof(Impact));
+            Patch(native.GetType().GetMethod("ObserveProjectileReset",Flags),nameof(ProjectileReset));
+            Patch(native.GetType().GetMethod("ObserveImpactFailure",Flags),nameof(ImpactFailure));
+            Patch(native.GetType().GetMethod("ClearTarget",Flags),nameof(Clearing));
+            Patch(typeof(Player).GetMethod("Hurt",Flags),null,nameof(PlayerHurt));
             patches.Patch(native.GetType().GetMethod("Prepare",Flags),prefix:new HarmonyMethod(typeof(NativeCombatAttackTrace).GetMethod(nameof(PrepareObservation),Flags)),finalizer:new HarmonyMethod(typeof(NativeCombatAttackTrace).GetMethod(nameof(PrepareFault),Flags)));
             Patch(host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativePredictionResult",true).GetMethod("Read",Flags),null,nameof(Decoded));
             Patch(host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativeCapturedValues",true).GetMethod("Encode",Flags),null,nameof(Encoded));
@@ -73,11 +79,13 @@ namespace NativeWorldTextProbe
         {if(__exception!=null && active!=null){active.Fault=__exception;Console.Error.WriteLine("ATTACK ORIGINAL EXCEPTION "+__exception);}}
         private static void PrepareObservation(object __instance,long tick)
         {
-            var a=active;if(a==null || !ReferenceEquals(a.owner,__instance))return;var r=Get(__instance,"pending");if(r==null)return;
+            var a=active;if(a==null || !ReferenceEquals(a.owner,__instance))return;
+            if((int)Get(__instance,"observedRelocation")!=0)a.events.Add(Csv(a.Phase,a.Frame,tick,"prepare-relocation",-1,-1,-1,-1,null,null,null,"npcs="+Join(Get(__instance,"npcs"))+" projectiles="+Join(Get(__instance,"projectiles"))));
+            var r=Get(__instance,"pending");if(r==null)return;
             List<object> history;if(!a.observedHistory.TryGetValue((long)Tick(r),out history))return;
-            // Only the guardian experiment needs a full independent history.
-            // The ordinary emitter windows retain their original observation cost.
-            if(!a.Phase.Contains("guardian"))return;
+            // Explicit investigations can retain every intervening frame even
+            // after the product retires a request. Never repair its History.
+            if(!a.fullHistory && !a.Phase.Contains("guardian"))return;
             if(history.Count>=64)throw new InvalidOperationException("Bounded independent history exhausted.");
             var alignment=__instance.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativePredictionAlignment",true);
             history.Add(alignment.GetMethod("Observe",Flags).Invoke(null,new object[]{tick,Get(r,"Npcs"),Get(r,"Projectiles"),Get(Get(r,"Identity"),"Slot")}));
@@ -110,6 +118,7 @@ namespace NativeWorldTextProbe
                 if((long)Get(m,"CaptureTick")!=(long)Tick(r))throw new InvalidOperationException("Trace did not observe this Receive's Measurement.");
                 Packet packet;lock(a.gate){a.packets.TryGetValue(result,out packet);a.packets.Remove(result);}
                 string sample="";bool complete=false;string key=a.Phase+"|"+outcome;
+                if(a.fullHistory && (int)Get(r,"Impact")!=0 || (long)Tick(r)==a.RequiredCapture)key+="|"+Tick(r);
                 if(a.sampled.Add(key) && a.sampleBytes<48*1024*1024 && a.sampled.Count<=48)
                 {
                     sample="sample-"+(long)Tick(r);byte[] request;lock(a.gate)a.encoded.TryGetValue((long)Tick(r),out request);
@@ -122,8 +131,9 @@ namespace NativeWorldTextProbe
                 string field=packet==null?"":packet.Field.ToString("X8",CultureInfo.InvariantCulture);
                 if(packet!=null && packet.Field!=0)try{field+=" "+typeof(NPC).Module.ResolveField(packet.Field);}catch(ArgumentException){}
                 string capturePhase;if(!a.capturePhases.TryGetValue((long)Tick(r),out capturePhase))capturePhase="before-trace";
-                a.replies.Add(Csv(a.Phase,a.Frame,Tick(r),tick,tick-(long)Tick(r),__state[2],Get(r,"Retired"),Get(r,"Impact"),Get(r,"QueryChanged"),outcome,Get(result,"Kind"),Get(result,"Slot"),field,Get(result,"Error"),((Array)Get(result,"Frames"))?.Length,Join(Get(r,"Npcs")),Join(Get(r,"Projectiles")),Missing(Get(result,"Npcs"),(int[])__state[3]),Missing(Get(result,"Projectiles"),(int[])__state[4]),((Array)Get(Get(r,"Terrain"),"Chunks")).Length,Get(result,"ContinuationKind"),Get(result,"ContinuationSlot"),(double)Get(result,"TotalMs")>0?Get(result,"AdvanceMs"):null,firstDifference,sample,capturePhase,sample.Length==0?null:(object)complete));
                 var frames=(Array)Get(result,"Frames");long age=tick-(long)Tick(r);
+                object last=frames!=null && frames.Length>0?frames.GetValue(frames.Length-1):null;
+                a.replies.Add(Csv(a.Phase,a.Frame,Tick(r),tick,age,__state[2],Get(r,"Retired"),Get(r,"Impact"),Get(r,"QueryChanged"),outcome,Get(result,"Kind"),Get(result,"Slot"),field,Get(result,"Error"),frames?.Length,Join(Get(r,"Npcs")),Join(Get(r,"Projectiles")),Missing(Get(result,"Npcs"),(int[])__state[3]),Missing(Get(result,"Projectiles"),(int[])__state[4]),((Array)Get(Get(r,"Terrain"),"Chunks")).Length,Get(result,"ContinuationKind"),Get(result,"ContinuationSlot"),(double)Get(result,"TotalMs")>0?Get(result,"AdvanceMs"):null,firstDifference,sample,capturePhase,sample.Length==0?null:(object)complete,packet?.Core?.Length,packet?.Alignment?.Length,Join(Get(last,"NpcRequired")),Join(Get(last,"ProjectileRequired"))));
                 if((int)Get(r,"Impact")!=0 && frames!=null && age>=0 && age<frames.Length)
                 {
                     // A read-only counterfactual, AFTER the genuine rejection:
@@ -159,9 +169,9 @@ namespace NativeWorldTextProbe
         private void Save(string name,byte[] bytes){if(bytes==null)return;if(sampleBytes+bytes.Length>64*1024*1024)throw new InvalidOperationException("Bounded trace evidence capacity.");samples.Add(new KeyValuePair<string,byte[]>(name,bytes));sampleBytes+=bytes.Length;}
         private static string Rng()
         {var random=Main.rand;if(random==null)return "null";uint hash=2166136261;foreach(int value in (int[])Get(random,"SeedArray"))unchecked{hash=(hash^(uint)value)*16777619;}return Get(random,"inext")+":"+hash.ToString("X8",CultureInfo.InvariantCulture);}
-        private static void NpcStart(NPC __instance){currentNpc=__instance.whoAmI;if(active!=null && currentNpc==active.Selected)active.SelectedRngBefore=Rng();}
+        private static void NpcStart(NPC __instance){currentNpc=__instance.whoAmI;if(active!=null){active.NpcUpdates++;if(currentNpc==active.Selected)active.SelectedRngBefore=Rng();}}
         private static void NpcEnd(){if(active!=null && currentNpc==active.Selected)active.SelectedRngAfter=Rng();currentNpc=-1;}
-        private static void ProjectileStart(Projectile __instance){currentProjectile=__instance.whoAmI;}
+        private static void ProjectileStart(Projectile __instance){currentProjectile=__instance.whoAmI;if(active!=null)active.ProjectileUpdates++;}
         private static void ProjectileEnd(){currentProjectile=-1;}
         private static void Birth(int __result)
         {var a=active;if(a==null || __result<0 || __result>=Main.maxProjectiles)return;var p=Main.projectile[__result];a.events.Add(Csv(a.Phase,a.Frame,Main.GameUpdateCount,"projectile-birth",currentNpc,currentProjectile,__result,p.type,(uint)p.key,p.owner,p.penetrate,""));}
@@ -169,6 +179,19 @@ namespace NativeWorldTextProbe
         {var a=active;if(a==null || __result<0 || __result>=Main.maxNPCs)return;var n=Main.npc[__result];a.events.Add(Csv(a.Phase,a.Frame,Main.GameUpdateCount,"npc-birth",currentNpc,currentProjectile,__result,n.type,n.generation,n.target,n.life,""));}
         private static void Impact(NPC npc)
         {var a=active;if(a==null)return;var pending=Get(a.owner,"pending");var accepted=Get(a.owner,"acceptedRequest");var source=currentProjectile>=0?Main.projectile[currentProjectile]:null;a.events.Add(Csv(a.Phase,a.Frame,Main.GameUpdateCount,"npc-impact",currentNpc,currentProjectile,npc.whoAmI,npc.type,source==null?null:(object)(uint)source.key,source?.owner,npc.life,"sourceType="+source?.type+" sourceAI="+(source==null?"":Join(source.ai))+" pending="+Tick(pending)+" accepted="+Tick(accepted)+" pendingPs="+Join(Get(pending,"Projectiles"))+" acceptedPs="+Join(Get(accepted,"Projectiles"))));}
+        private static void PlayerHurt(Player __instance,double __result)
+        {var a=active;if(a!=null && __result>0)a.events.Add(Csv(a.Phase,a.Frame,Main.GameUpdateCount,"player-hurt",currentNpc,currentProjectile,__instance.whoAmI,-1,null,null,__result,"life="+__instance.statLife+" velocity="+__instance.velocity));}
+        private static void Clearing(object __instance)
+        {var a=active;if(a!=null && ReferenceEquals(a.owner,__instance))a.events.Add(Csv(a.Phase,a.Frame,Main.GameUpdateCount,"clear-target",-1,-1,-1,-1,null,null,null,"npcs="+Join(Get(__instance,"npcs"))+" projectiles="+Join(Get(__instance,"projectiles"))+" pending="+Tick(Get(__instance,"pending"))));}
+        private static void ProjectileReset(object __instance,Projectile source)
+        {
+            var a=active;if(a==null || !ReferenceEquals(a.owner,__instance))return;
+            var pending=Get(__instance,"pending");var accepted=Get(__instance,"acceptedRequest");
+            Func<object,bool> owns=r=>r!=null && (bool)Get(r,"Impacts").GetType().GetMethod("Owns",Flags).Invoke(Get(r,"Impacts"),new object[]{source});
+            a.events.Add(Csv(a.Phase,a.Frame,Main.GameUpdateCount,"projectile-reset",currentNpc,currentProjectile,source.whoAmI,source.type,(uint)source.key,source.owner,source.active,"pending="+Tick(pending)+" pendingOwns="+owns(pending)+" accepted="+Tick(accepted)+" acceptedOwns="+owns(accepted)));
+        }
+        private static void ImpactFailure(object __instance)
+        {var a=active;if(a!=null && ReferenceEquals(a.owner,__instance))a.events.Add(Csv(a.Phase,a.Frame,Main.GameUpdateCount,"impact-observer-failure",currentNpc,currentProjectile,-1,-1,null,null,null,"pending="+Tick(Get(__instance,"pending"))));}
         private static void CanHit(bool __result)
         {var a=active;if(a==null || currentNpc!=a.Selected)return;if(__result)a.CanHitTrue++;else a.CanHitFalse++;}
         public void Dispose()

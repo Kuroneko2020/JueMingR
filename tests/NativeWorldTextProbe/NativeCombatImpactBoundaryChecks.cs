@@ -136,7 +136,8 @@ namespace NativeWorldTextProbe
         {
             Call(native,"ClearTarget");NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());
             var method=typeof(Projectile).GetMethod("Damage_PVE_Inner",Flags);var patches=Harmony.GetPatchInfo(method).Transpilers;
-            var receipt=patches.Single(p=>p.owner=="JueMingR.Combat.ProjectileReceipts");var impact=patches.Single(p=>p.owner=="JueMingR.CombatObservation");
+            var receipt=patches.Single(p=>p.owner=="JueMingR.Combat.ProjectileReceipts");var impact=patches.Single(p=>p.owner=="JueMingR.CombatObservation" && p.PatchMethod.DeclaringType.Name=="NativeNpcImpact");
+            var adjacent=patches.Where(p=>p!=receipt && p!=impact).Select(p=>p.PatchMethod).ToArray();
             Action<Patch> add=p=>new Harmony(p.owner).Patch(method,transpiler:new HarmonyMethod(p.PatchMethod){priority=p.priority,before=p.before,after=p.after});
             Action clear=()=>{new Harmony(receipt.owner).Unpatch(method,receipt.PatchMethod);new Harmony(impact.owner).Unpatch(method,impact.PatchMethod);};
             try
@@ -145,7 +146,8 @@ namespace NativeWorldTextProbe
                 {
                     clear();add(receiptFirst?receipt:impact);add(receiptFirst?impact:receipt);
                     NativeCombatLiveContextChecks.FlightWorld();NPC.ClearAll();Projectile.ClearAll();Hit(Shot(1,500),Npc(16,1500));
-                    Require(Harmony.GetPatchInfo(method).Transpilers.Count(p=>p.owner==receipt.owner || p.owner==impact.owner)==2,"Both independent native consumers survive either install order.");
+                    var actual=Harmony.GetPatchInfo(method).Transpilers;
+                    Require(actual.Count(p=>p.PatchMethod==receipt.PatchMethod || p.PatchMethod==impact.PatchMethod)==2 && adjacent.All(m=>actual.Any(p=>p.PatchMethod==m)),"Both impact consumers and adjacent birth callsites survive either install order.");
                 }
             }
             finally{clear();add(receipt);add(impact);}
