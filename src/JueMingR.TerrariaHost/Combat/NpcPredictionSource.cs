@@ -20,7 +20,7 @@ namespace JueMingR.TerrariaHost.Combat
         private readonly int[] pending=new int[NpcPredictionCache.Capacity];
         private readonly MotionRect[] playerAreas=new MotionRect[255];
         private PredictionPlayers players;
-        internal void Clear(){Native?.ClearTarget();segmented.Clear();usingSegmented=false;Cache.Clear();Terrain.Reset();Array.Clear(states,0,states.Length);}
+        internal void Clear(){Native?.ClearTarget();segmented.Clear();usingSegmented=false;Cache.Clear();Prediction.AimLightTrace.Cache(null,Native?.Worker,"source-clear");Terrain.Reset();Array.Clear(states,0,states.Length);}
         internal void Stop(){Native?.Stop();Clear();}
         internal void EndWorld(){Native?.DetachWorld();Clear();}
         internal void Prepare(NpcIdentity identity,long tick)
@@ -31,7 +31,7 @@ namespace JueMingR.TerrariaHost.Combat
             {
                 if(!usingSegmented){Native?.ClearTarget();usingSegmented=true;}
                 Native?.DiscardRetiredResult();
-                Cache.Publish(segmented.Prepare(identity,tick,Cache.Required));return;
+                var path=segmented.Prepare(identity,tick,Cache.Required);Cache.Publish(path);Prediction.AimLightTrace.Cache(path,null,"segmented");return;
             }
             if(usingSegmented){Cache.Clear();usingSegmented=false;}
             if(Native!=null){Native.Prepare(identity,tick);return;}

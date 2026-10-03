@@ -77,6 +77,8 @@ namespace NativeWorldTextProbe
                     if(Directory.Exists(prepared))foreach(string file in Directory.EnumerateFiles(prepared,"*.image"))File.Copy(file,Path.Combine(cached,Path.GetFileName(file)),true);
                 }
                 string hash;using(var input=File.OpenRead(host.Location))using(var sha=SHA256.Create())hash=BitConverter.ToString(sha.ComputeHash(input)).Replace("-","");
+                if(Environment.GetEnvironmentVariable("JUEMINGR_AIM_LIGHT_PAIR")=="on")
+                {string trace=Path.Combine(Terraria.Program.SavePath,"composition/JueMingRData/logs/aim-light");Directory.CreateDirectory(trace);File.WriteAllText(Path.Combine(trace,"arm.txt"),hash);}
                 try{NativeQuickItemChecks.Run(context=>{if(menuOnly)NativeCombatMenuPreparationChecks.Run(context,output);else NativeCombatProductionPredictionChecks.Run(context,output,content);},processing:true,shortFeedback:true,candidateAssembly:host.Location,predictionHostHash:hash);}
                 finally
                 {

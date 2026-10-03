@@ -22,6 +22,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             {
                 if(slot<=prior || slot>Main.maxProjectiles || Main.projectile[slot]==null || Main.projectile[slot].active && Main.projectile[slot].whoAmI!=slot)throw new InvalidDataException("Projectile dependency identity.");
                 prior=slot;writer.Write(slot);Projectiles.Write(writer,Main.projectile[slot]);NativeActorContext.WriteProjectile(writer,Main.projectile[slot]);
+                AimLightTrace.Guardian(Main.projectile[slot],(long)Main.GameUpdateCount);
             }
         }
         internal static int[] Read(BinaryReader reader)

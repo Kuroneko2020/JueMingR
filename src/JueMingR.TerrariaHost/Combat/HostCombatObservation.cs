@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using AimTrace = JueMingR.TerrariaHost.Combat.Prediction.AimLightTrace;
 using JueMingR.Features.Combat;
 using JueMingR.Infrastructure.Storage;
 using JueMingR.Platform.Hotkeys;
@@ -23,8 +24,11 @@ namespace JueMingR.TerrariaHost.Combat
         private bool collisionFailed,pathFailed,reportedCollision,reportedPath,wasCollision,wasPath;
         internal Rendering.WorldLayerStatus LayerStatus;
         internal HostCombatObservation(string directory,SingleFeatureRuntime runtime,HostInputState input,NativeNpcObservation npcs,Prediction.PredictionLaunchIdentity launch=null)
+            :this(directory,runtime,input,npcs,launch,null){}
+        internal HostCombatObservation(string directory,SingleFeatureRuntime runtime,HostInputState input,NativeNpcObservation npcs,Prediction.PredictionLaunchIdentity launch,string package)
         {
             this.runtime=runtime;this.input=input;
+            AimTrace.Start(directory,launch,package);
             Prediction=new NpcPredictionSource(launch);
             Settings=new ObservationSettings(new AtomicFileDocument(System.IO.Path.Combine(directory,"JueMingRData","config","features","combat-observation.json"),65536));
             Selection=new CombatSelection(npcs);World=new CombatObservationWorldLayer(this);Hooks=new CombatGeometryHooks(this);
@@ -68,6 +72,7 @@ namespace JueMingR.TerrariaHost.Combat
             // feature, sample a world, or grant input/operation ownership.
             Prediction.Native?.PollEnvironment(Hooks.Ready && (Settings.CanRun && Options.Path && !pathFailed || Prediction.Cache.Required>0),runtime.IsSessionActive);
             wasCollision=collision;wasPath=path;
+            AimTrace.Host(this,pathFailed,"poll",false);
         }
         internal void SampleMouse(){if(Path || Prediction.Cache.Required>0)Selection.SampleMouse(input);}
         internal void CollisionFailed(){collisionFailed=true;Geometry.Clear();}
@@ -77,17 +82,21 @@ namespace JueMingR.TerrariaHost.Combat
         public void FailClosed(){Clear();Prediction.Stop();collisionFailed=pathFailed=true;}
         public void Update(ulong tick)
         {
+            try
+            {
             if(!Enabled)return;
             if(!Hooks.Ready){Selection.RetireTarget();Prediction.Clear();return;}
             var player=Main.LocalPlayer;if(player==null || !player.active || player.dead || player.ghost){Selection.RetireTarget();Prediction.Clear();Geometry.BeginNpcs();return;}
             if(Collision)Geometry.BeginNpcs();
             if(Path)Prediction.Cache.Demand(0,NpcPredictionCache.Horizon);else Prediction.Cache.Release(0);
-            try{Selection.Update(Options,Session,Prediction.Cache.Required>0,Collision?Geometry:null);}catch{CollisionFailed();pathFailed=true;Selection.RetireTarget();Prediction.Clear();return;}
+            try{Selection.Update(Options,Session,Prediction.Cache.Required>0,Collision?Geometry:null);}catch(Exception error){AimTrace.Fault("host-selection",error,(long)tick);CollisionFailed();pathFailed=true;Selection.RetireTarget();Prediction.Clear();return;}
             if(!Selection.HasTarget){Prediction.Clear();return;}
             // The native worker owns ordinary prediction failure. Selection,
             // collision and the independent segmented strategy remain usable;
             // only a failure of this shared entry latches the whole path.
-            try{Prediction.Prepare(Selection.Target,Main.GameUpdateCount);}catch{pathFailed=true;Prediction.Stop();}
+            try{Prediction.Prepare(Selection.Target,Main.GameUpdateCount);}catch(Exception error){AimTrace.Fault("host-prepare",error,(long)tick);pathFailed=true;Prediction.Stop();}
+            }
+            finally{AimTrace.Host(this,pathFailed,"update-exit",true);}
         }
         internal void Register(HotkeyRegistry registry,Hotkeys.HotkeyStateFeedback feedback)
         {
@@ -108,6 +117,6 @@ namespace JueMingR.TerrariaHost.Combat
             else if(Prediction.Native!=null && Prediction.Native.Failed && Options.Path && !reportedPath)
             {reportedPath=true;show("普通敌怪预测暂不可用，分节预测仍可用；可点击开启重试。");}
         }
-        private void Exit(object sender,EventArgs e){AppDomain.CurrentDomain.ProcessExit-=Exit;Clear();Prediction.Stop();Hooks.Dispose();Settings.Stop(750);}
+        private void Exit(object sender,EventArgs e){AppDomain.CurrentDomain.ProcessExit-=Exit;Clear();Prediction.Stop();Hooks.Dispose();Settings.Stop(750);AimTrace.End("process-exit");}
     }
 }

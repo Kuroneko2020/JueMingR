@@ -92,13 +92,14 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
 #endif
                 int playerCount=0;for(int i=0;i<Main.maxPlayers;i++)if(Main.player[i]!=null && Main.player[i].active)playerCount++;
                 writer.Write(playerCount);
-                for(int i=0;i<Main.maxPlayers;i++)if(Main.player[i]!=null && Main.player[i].active){writer.Write(i);Players.Write(writer,Main.player[i]);NativeActorContext.WritePlayer(writer,Main.player[i]);NativePlayerMotion.Write(writer,Main.player[i]);}
+                for(int i=0;i<Main.maxPlayers;i++)if(Main.player[i]!=null && Main.player[i].active){writer.Write(i);Players.Write(writer,Main.player[i]);NativeActorContext.WritePlayer(writer,Main.player[i]);NativePlayerMotion.Write(writer,Main.player[i]);AimLightTrace.Player(Main.player[i],tick);}
                 writer.Write(slots.Length);int prior=-1;bool found=false;
                 foreach(int slot in slots)
                 {
                     if(slot<=prior || slot>Main.maxNPCs || Main.npc[slot]==null || slot==selected && !Main.npc[slot].active)throw new InvalidDataException("Invalid native slot set.");
                     prior=slot;found|=slot==selected;writer.Write(slot);Npcs.Write(writer,Main.npc[slot]);
                     NativeEntityContext.WriteNpc(writer,Main.npc[slot]);
+                    if(slot==selected)AimLightTrace.Actor(Main.npc[slot],tick);
                 }
                 if(!found)throw new InvalidDataException("Selected slot absent.");
                 NativeEntitySnapshot.Write(writer,projectiles);

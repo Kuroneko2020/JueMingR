@@ -67,6 +67,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             this.expectedHashes=(string[])expectedHashes.Clone();
             foreach(string hash in this.expectedHashes)if(hash==null || hash.Length!=64)throw new ArgumentException("Invalid trusted prediction payload identity.");
             this.directory=directory;this.gamePath=gamePath;this.startupMilliseconds=startupMilliseconds;this.requestMilliseconds=requestMilliseconds;
+            AimLightTrace.Session("worker-create",-1,default(NpcIdentity),this,-1,-1,0,0,0,"before transport thread");
             new Thread(Run){IsBackground=true,Name="JueMingR prediction transport"}.Start();
         }
         // Accepted arrays transfer ownership: the game-thread producer must
@@ -118,6 +119,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         }
         private void Fail(Exception error)
         {
+            AimLightTrace.Fault("transport",error,-1);
             lock(gate)
             {
                 if(stopping!=0)return;string message=error.GetType().Name+": "+error.Message;
@@ -177,6 +179,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                     StreamReader errorReader=child.StandardError;diagnostics=Task.Run(()=>Drain(errorReader));
                     PredictionPipeProtocol.VerifyReady(PredictionPipeProtocol.ReadFrame(input),nonce,parentId,parentStarted,childId,childStarted,hostHash);
                     lock(gate){deadline=0;if(stopping!=0)return;Volatile.Write(ref readySeen,1);ReadyMilliseconds=startup.Elapsed.TotalMilliseconds;Volatile.Write(ref state,worldRevision==clearedRevision?1:7);}
+                    AimLightTrace.Session("worker-ready",-1,default(NpcIdentity),this,-1,-1,0,0,0,"authenticated Ready");
                     long sequence=0;
                     while(Volatile.Read(ref stopping)==0)
                     {
@@ -186,14 +189,17 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                         Limit(requestMilliseconds);double encodeMs=0;
                         if(values!=null)
                         {
+                            AimLightTrace.Reply(this,"encode-enter",values.Identity,values.Tick,sequence+1,0,0,null);
                             var encoding=PredictionPipeProtocol.Measure?Stopwatch.StartNew():null;payload=values.Values.Encode();
                             var reusable=values.Values.ReleaseStorage();values.Values=null;
                             lock(gate){if(stopping==0)captureStorage=reusable;}
                             encodeMs=encoding?.Elapsed.TotalMilliseconds??0;
                         }
                         var exchange=PredictionPipeProtocol.Measure?Stopwatch.StartNew():null;PredictionPipeProtocol.WriteFrame(output,PredictionPipeProtocol.Envelope(payload,checked(++sequence),false));
+                        if(values!=null)AimLightTrace.Reply(this,"wire-sent",values.Identity,values.Tick,sequence,payload.Length,0,null);
                         byte[] answer=PredictionPipeProtocol.ReadFrame(input);if(answer==null)throw new EndOfStreamException("Prediction helper ended without a result.");
                         answer=PredictionPipeProtocol.OpenEnvelope(answer,sequence,true);
+                        if(values!=null)AimLightTrace.Reply(this,"wire-reply",values.Identity,values.Tick,sequence,payload.Length,answer.Length,null);
                         if(clear)
                         {
                             if(!PredictionPipeProtocol.IsClearWorld(answer))throw new InvalidDataException("Prediction world reset was not acknowledged.");
@@ -210,7 +216,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                         // Encoding and decoding do not hold the mailbox lock.
                         // World retirement can happen during either operation;
                         // that revision must never publish a late old result.
-                        lock(gate){deadline=0;if(stopping!=0)return;if(revision!=worldRevision){Volatile.Write(ref state,7);continue;}Alignment=values==null?alignment:null;MissingAsset=asset;ExchangeMilliseconds=exchangeMs;result=values==null?answer:null;decodedReply=decoded;Volatile.Write(ref state,3);}
+                        lock(gate){deadline=0;if(stopping!=0){if(values!=null)AimLightTrace.Reply(this,"reply-abandoned-stop",values.Identity,values.Tick,sequence,payload.Length,answer.Length,decoded?.Result);return;}if(revision!=worldRevision){if(values!=null)AimLightTrace.Reply(this,"reply-abandoned-world",values.Identity,values.Tick,sequence,payload.Length,answer.Length,decoded?.Result);Volatile.Write(ref state,7);continue;}Alignment=values==null?alignment:null;MissingAsset=asset;ExchangeMilliseconds=exchangeMs;result=values==null?answer:null;decodedReply=decoded;Volatile.Write(ref state,3);if(values!=null)AimLightTrace.Reply(this,"mailbox-published",values.Identity,values.Tick,sequence,payload.Length,decoded.ReplyBytes,decoded.Result);}
                     }
                 }
             }

@@ -918,7 +918,7 @@ namespace JueMingR.TerrariaHost
                     Fishing=new Fishing.HostFishing(gameDirectory,Tools,KeepFavorited);runtime.SharedRuntime.AddFeature(Fishing);
                     Combat=new Combat.HostCombat(gameDirectory,Tools);runtime.SharedRuntime.AddFeature(Combat);
                     Combat.Handoff.Attach(Processing,QuickItems);
-                    CombatObservation=new Combat.HostCombatObservation(gameDirectory,runtime.SharedRuntime,Input,nativeNpcs,predictionHostHash==null?null:new Combat.Prediction.PredictionLaunchIdentity(predictionHostHash,gameDirectory)){LayerStatus=entityLayerStatus};runtime.SharedRuntime.AddFeature(CombatObservation);
+                    CombatObservation=new Combat.HostCombatObservation(gameDirectory,runtime.SharedRuntime,Input,nativeNpcs,predictionHostHash==null?null:new Combat.Prediction.PredictionLaunchIdentity(predictionHostHash,gameDirectory),PackageId){LayerStatus=entityLayerStatus};runtime.SharedRuntime.AddFeature(CombatObservation);
                 }
                 if (entityPackage) { Labels = new EntityLabels.HostEntityLabels(gameDirectory, runtime.SharedRuntime, nativeNpcs) { LayerStatus = entityLayerStatus }; runtime.SharedRuntime.AddFeature(Labels); }
                 if (worldPackage) { worldTiles = new World.WorldTileObservation(() => runtime.SharedRuntime.IsSessionActive); WorldTargets = new WorldTargets.HostWorldTargets(gameDirectory, runtime.SharedRuntime, worldTiles) { LayerStatus = entityLayerStatus }; runtime.SharedRuntime.AddFeature(WorldTargets); }

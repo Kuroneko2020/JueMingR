@@ -85,15 +85,15 @@ namespace JueMingR.TerrariaHost.Combat
         private static bool Live(Player player)
         {return player!=null && player.active && player.whoAmI>=0 && player.whoAmI<Main.maxPlayers && ReferenceEquals(Main.player[player.whoAmI],player);}
         private static void PlayerTeleport(Player __instance,Vector2 __0)
-        {var owner=PredictionHost;if(owner!=null && Live(__instance) && __instance.position!=__0)owner.Prediction.Native?.ObservePlayerRelocation();}
+        {var owner=PredictionHost;if(owner!=null && Live(__instance) && __instance.position!=__0){Prediction.AimLightTrace.Relocation("teleport",__instance,0);owner.Prediction.Native?.ObservePlayerRelocation();}}
         private static void PlayerSpawn(Player __instance)
-        {var owner=PredictionHost;if(owner!=null && Live(__instance))owner.Prediction.Native?.ObservePlayerRelocation();}
+        {var owner=PredictionHost;if(owner!=null && Live(__instance)){Prediction.AimLightTrace.Relocation("spawn",__instance,0);owner.Prediction.Native?.ObservePlayerRelocation();}}
         private static void PlayerHurt(Player __instance,double __result)
         {
             // A successful native hit is new external input, including recoil
             // on otherwise conditional mounts. Rejected/immune hits do not
             // revoke results; ordinary immunity clocks are not exact premises.
-            var owner=PredictionHost;if(owner!=null && __result>0 && Live(__instance))owner.Prediction.Native?.ObservePlayerRelocation();
+            var owner=PredictionHost;if(owner!=null && Live(__instance)){Prediction.AimLightTrace.Relocation("hurt-result",__instance,__result);if(__result>0)owner.Prediction.Native?.ObservePlayerRelocation();}
         }
         private static void NpcReset(NPC __instance)
         {
@@ -121,7 +121,7 @@ namespace JueMingR.TerrariaHost.Combat
             int slot=data[__0+1];if(slot>=Main.maxPlayers || slot==Main.myPlayer && !Main.ServerSideCharacter)return;
             var player=Main.player[slot];if(!Live(player) || player.unacknowledgedTeleports>0 || player.position==Vector2.Zero)return;
             var incoming=new Vector2(BitConverter.ToSingle(data,__0+7),BitConverter.ToSingle(data,__0+11));
-            if((player.netOffset+player.position-incoming).Length()>Main.multiplayerNPCSmoothingRange)owner.Prediction.Native?.ObservePlayerRelocation();
+            if((player.netOffset+player.position-incoming).Length()>Main.multiplayerNPCSmoothingRange){Prediction.AimLightTrace.Relocation("network-relocation",player,0);owner.Prediction.Native?.ObservePlayerRelocation();}
         }
         private static void BeforeDamage(Projectile __instance,out DamageScope __state)
         {

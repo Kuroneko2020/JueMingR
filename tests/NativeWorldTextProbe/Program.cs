@@ -20,6 +20,7 @@ namespace NativeWorldTextProbe
                 if (args.Length == 4 && args[3] == "ExplorationRelease") ProductionConfiguration = "Release";
                 references = Path.Combine(Repository, "external", "TerrariaRefs");
                 AppDomain.CurrentDomain.AssemblyResolve += Resolve;
+                if(args.Length==4 && args[3]=="AimLightDiagnostics"){NativeAimLightChecks.Run(args[2]);return 0;}
                 if(args.Length==4 && args[3]=="NpcPresentationOriginal")return NativeCombatPrivateImageChecks.PresentationOriginal(args[2]);
                 if(args.Length==4 && args[3]=="NpcPrivateValues")return NativeCombatPrivateImageChecks.Run(args[1],args[2]);
                 if(args.Length==4 && args[3]=="NpcPrivateSafety")return NativeCombatPrivateImageChecks.Run(args[1],args[2],true);

@@ -7,6 +7,7 @@
     <RootNamespace>JueMingR.TerrariaHost</RootNamespace>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+    <DefineConstants Condition="'$(JueMingRAimLight)' == 'true'">$(DefineConstants);JMR_AIM_LIGHT</DefineConstants>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <TerrariaReferencesDirectory Condition="'$(TerrariaReferencesDirectory)' == ''">$(MSBuildThisFileDirectory)..\..\external\TerrariaRefs</TerrariaReferencesDirectory>
     <HarmonyReferencesDirectory Condition="'$(HarmonyReferencesDirectory)' == ''">$(MSBuildThisFileDirectory)..\..\external\Harmony</HarmonyReferencesDirectory>

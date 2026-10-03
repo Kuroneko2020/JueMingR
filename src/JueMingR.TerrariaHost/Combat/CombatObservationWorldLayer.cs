@@ -21,15 +21,21 @@ namespace JueMingR.TerrariaHost.Combat
         internal void Clear(){count=eventStart=eventEnd=0;eventsDrawn=false;pathText=null;legend=limited=false;}
         internal void Prepare()
         {
-            Clear();if(!host.Enabled || !host.CanDraw || !WorldPresentation.CanDraw || Main.GameViewMatrix==null)return;
-            zoom=Main.GameViewMatrix.ZoomMatrix;if(zoom.M11<=0 || zoom.M22<=0)return;inverse=Matrix.Invert(zoom);
+            Prediction.AimLightTrace.Presentation("prepare-enter",null,0,0,false);
+#if JMR_AIM_LIGHT
+            try
+            {
+#endif
+            Clear();if(!host.Enabled || !host.CanDraw || !WorldPresentation.CanDraw || Main.GameViewMatrix==null){Prediction.AimLightTrace.Presentation(!host.Enabled?"prepare-disabled":!host.CanDraw?"prepare-host-gate":!WorldPresentation.CanDraw?"prepare-world-gate":"prepare-no-matrix",null,0,0,false);return;}
+            zoom=Main.GameViewMatrix.ZoomMatrix;if(zoom.M11<=0 || zoom.M22<=0){Prediction.AimLightTrace.Presentation("prepare-invalid-zoom",null,0,0,false);return;}inverse=Matrix.Invert(zoom);
             if(host.Collision)
             {
                 host.Geometry.PrepareEvents();legend=true;limited=host.Geometry.EventOverflow;Samples(host.Geometry.Attacks,0);Samples(host.Geometry.Npcs,1);Samples(host.Geometry.Bodies,3);
                 eventStart=count;presentation++;Samples(host.Geometry.Events,2);eventEnd=count;
             }
             var path=host.Path?host.Prediction.Cache.Read(0):null;
-            if(path==null)return;
+            Prediction.AimLightTrace.Presentation("cache-consume",path,0,eventEnd,false);
+            if(path==null){Prediction.AimLightTrace.Presentation(host.Path?"prepare-cache-empty":"prepare-path-gate",null,0,eventEnd,false);return;}
             bool approximate=(path.Assumptions&(PredictionAssumption.ApproximateMechanism|PredictionAssumption.RandomRepresentative))!=0;
             var color=approximate?new Color(255,210,110):new Color(235,235,255);
             for(int i=1;i<path.Count;i++)
@@ -46,6 +52,11 @@ namespace JueMingR.TerrariaHost.Combat
             if(path.Strategy==PredictionStrategy.SegmentedTrend)
                 pathText+=path.Quality==PredictionQuality.LimitedObservation?" · 运动观察较少":" · 依据近期移动，远端仅供参考";
             else pathText+=(path.Assumptions&PredictionAssumption.HeldPlayerControls)!=0?" · 假设玩家延续当前输入":" · 假设玩家保持当前位置";
+            Prediction.AimLightTrace.Presentation("prepared",path,count-eventEnd,eventEnd,pathText!=null);
+#if JMR_AIM_LIGHT
+            }
+            catch(Exception error){Prediction.AimLightTrace.Fault("prepare",error,(long)Main.GameUpdateCount);throw;}
+#endif
         }
         private static string StopText(PredictionStop reason)
         {
@@ -166,11 +177,27 @@ namespace JueMingR.TerrariaHost.Combat
         {if(p==0)return q>=0;float r=q/p;if(p<0){if(r>hi)return false;lo=Math.Max(lo,r);}else{if(r<lo)return false;hi=Math.Min(hi,r);}return true;}
         internal bool Draw()
         {
-            if(!host.Enabled || !host.CanDraw || !WorldPresentation.CanDraw || Main.spriteBatch==null)return true;
+            Prediction.AimLightTrace.Presentation("draw-enter",null,0,0,false);
+#if JMR_AIM_LIGHT
+            int pathIssued=0,pathCompleted=0,otherIssued=0,otherCompleted=0;
+            try
+            {
+#endif
+            if(!host.Enabled || !host.CanDraw || !WorldPresentation.CanDraw || Main.spriteBatch==null){Prediction.AimLightTrace.Presentation(!host.Enabled?"draw-disabled":!host.CanDraw?"draw-host-gate":!WorldPresentation.CanDraw?"draw-world-gate":"draw-no-batch",null,0,0,false);return true;}
             var batch=Main.spriteBatch;var pixel=TextureAssets.MagicPixel.Value;
             // MagicPixel's asset is larger than one texel; a null source would
             // multiply both dimensions and turn outlines into opaque blocks.
-            for(int i=0;i<count;i++){if(eventsDrawn && i>=eventStart && i<eventEnd)continue;var s=strokes[i];var delta=s.B-s.A;batch.Draw(pixel,s.A,new Rectangle(0,0,1,1),s.Color,(float)Math.Atan2(delta.Y,delta.X),Vector2.Zero,new Vector2(delta.Length(),s.Width),SpriteEffects.None,0);}
+            for(int i=0;i<count;i++)
+            {
+                if(eventsDrawn && i>=eventStart && i<eventEnd)continue;var s=strokes[i];var delta=s.B-s.A;
+#if JMR_AIM_LIGHT
+                if(i>=eventEnd)pathIssued++;else otherIssued++;
+#endif
+                batch.Draw(pixel,s.A,new Rectangle(0,0,1,1),s.Color,(float)Math.Atan2(delta.Y,delta.X),Vector2.Zero,new Vector2(delta.Length(),s.Width),SpriteEffects.None,0);
+#if JMR_AIM_LIGHT
+                if(i>=eventEnd)pathCompleted++;else otherCompleted++;
+#endif
+            }
             if(!eventsDrawn && host.Collision){host.Geometry.PresentedEvents(presentation);eventsDrawn=true;}
             float y=Main.screenHeight-125;
             if(legend)
@@ -180,9 +207,15 @@ namespace JueMingR.TerrariaHost.Combat
             }
             if(pathText!=null){Text(pathText,y,new Color(235,220,160));y+=22;}
             if(limited)Text("显示数量已达上限，部分区域未绘出",y,Color.Orange);
+            Prediction.AimLightTrace.Presentation("draw-complete",null,count-eventEnd,eventEnd,pathText!=null);
             return true;
+#if JMR_AIM_LIGHT
+            }
+            catch(Exception error){Prediction.AimLightTrace.Fault("draw",error,(long)Main.GameUpdateCount);throw;}
+            finally{Prediction.AimLightTrace.DrawCounts(pathIssued,pathCompleted,otherIssued,otherCompleted);}
+#endif
         }
         private void Text(string value,float y,Color color)
-        {if(FontAssets.MouseText?.Value!=null)Utils.DrawBorderString(Main.spriteBatch,value,Vector2.Transform(new Vector2(16,Math.Max(16,y)),inverse),color,.72f*inverse.M11);}
+        {if(FontAssets.MouseText?.Value!=null){Prediction.AimLightTrace.Presentation("text-issued",null,0,0,ReferenceEquals(value,pathText));Utils.DrawBorderString(Main.spriteBatch,value,Vector2.Transform(new Vector2(16,Math.Max(16,y)),inverse),color,.72f*inverse.M11);Prediction.AimLightTrace.Presentation("text-completed",null,0,0,ReferenceEquals(value,pathText));}else Prediction.AimLightTrace.Presentation("text-no-font",null,0,0,ReferenceEquals(value,pathText));}
     }
 }

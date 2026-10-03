@@ -106,11 +106,14 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         }
         internal void DetachWorld()
         {
+            TraceState("detach-world",lastTick,"DetachWorld invoked; mailbox abandoned");
             ClearTarget();pending=null;acknowledgedTerrain=null;lastAttempt=-100;
             if(Worker!=null && !stopped && !Worker.Closed)Worker.ResetWorld();
         }
         internal void ClearTarget()
         {
+            TraceClear();
+            AimLightTrace.Cache(null,Worker,"ClearTarget");
             bool owned=current.Token!=null || accepted!=null;
             current=default(NpcIdentity);accepted=null;acceptedRequest=null;if(owned)cache.Publish(null);lastTick=-1;refusalStreak=0;capacityShape=-1;
             if(pending!=null)pending.Retired=true;
@@ -122,11 +125,12 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         }
         // Stopping destroys the transport mailbox. Its request can never
         // complete in a later worker; retain pending only across target swaps.
-        internal void Stop(){ClearTarget();pending=null;stopped=true;Worker?.Stop();}
-        internal void Retry(){Stop();Failed=false;Reason=null;recoveries=0;}
+        internal void Stop(){TraceState("stop",lastTick,"mailbox abandoned");ClearTarget();pending=null;stopped=true;Worker?.Stop();}
+        internal void Retry(){TraceState("retry",lastTick,"explicit retry");Stop();Failed=false;Reason=null;recoveries=0;}
         private void WorkerFailed()
         {
             Reason=Worker.Failure;
+            TraceState("worker-failed",lastTick,Reason);
             bool retry=Worker.Recoverable && recoveries==0;
             if(retry)recoveries++;
             else Failed=true;
@@ -154,6 +158,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         }
         internal void ObserveNpcImpact(NPC npc,NativeImpactProof.Hit hit)
         {
+            AimLightTrace.Hit(hit);
             // The old accepted window has no newly completed full history;
             // revoke it conservatively. Only pending can earn publication by
             // proving every intervening frame AND every successful hit.
@@ -180,6 +185,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         }
         internal void ObserveProjectileBirth(NativeImpactProof.Hit value)
         {
+            AimLightTrace.Hit(value);
             RecordBirth(acceptedRequest,value);RecordBirth(pending,value);
         }
         private static void RecordBirth(Request request,NativeImpactProof.Hit value)
@@ -205,19 +211,25 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         // already-running native request finish, then consume its mailbox
         // without sampling, retrying, or publishing to the shared cache.
         internal void DiscardRetiredResult()
-        {if(pending!=null && pending.Retired && Worker!=null && Worker.TryTakeResult()!=null)pending=null;}
+        {
+            if(pending!=null && pending.Retired && Worker!=null)
+            {
+                var reply=Worker.TryTakeResult();
+                if(reply!=null){AimLightTrace.Receive(pending.Identity,pending.Tick,lastTick,Worker,reply.Result,pending.History.Count,"discarded-retired-alternate-strategy");pending=null;}
+            }
+        }
         internal void Prepare(NpcIdentity identity,long tick)
         {
             if(Failed)return;
-            if(cache.Required==0){ClearTarget();return;}
-            if(Interlocked.Exchange(ref observedRelocation,0)!=0)ClearTarget();
-            if(!identity.Equals(current)){ClearTarget();current=identity;npcs.Add(identity.Slot);assets.Add(identity.Type);lastAttempt=-100;
+            if(cache.Required==0){TraceState("clear-reason",tick,"no demand");ClearTarget();return;}
+            if(Interlocked.Exchange(ref observedRelocation,0)!=0){TraceState("clear-reason",tick,"player relocation/hurt");ClearTarget();}
+            if(!identity.Equals(current)){TraceState("clear-reason",tick,"target identity changed");ClearTarget();current=identity;npcs.Add(identity.Slot);assets.Add(identity.Type);lastAttempt=-100;
 #if JMR_CONDITIONAL_RESEARCH
                 exactNpcs.Add(identity.Slot);
 #endif
             }
             if(tick==lastTick)return;
-            if(lastTick>=0 && tick!=lastTick+1){accepted=null;acceptedRequest=null;if(pending!=null)pending.Retired=true;cache.Publish(null);}
+            if(lastTick>=0 && tick!=lastTick+1){TraceState("retire",tick,"noncontiguous tick");AimLightTrace.Cache(null,Worker,"noncontiguous tick");accepted=null;acceptedRequest=null;if(pending!=null)pending.Retired=true;cache.Publish(null);}
             lastTick=tick;
             // Reuse only within this completed game update. History frames
             // own their arrays; none is mutated or carried as a live cache
@@ -229,19 +241,19 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             // Its affected background may have no prior route use, but the
             // new input must revoke both old publication and delayed replies.
             if(acceptedRequest!=null && (acceptedRequest.Impact!=0 || acceptedRequest.LifecycleInvalid))
-            {accepted=null;acceptedRequest=null;cache.Publish(null);Reason="captured NPC impact";}
-            if(pending!=null && (pending.Impact!=0 || pending.LifecycleInvalid))pending.Retired=true;
+            {TraceState("accepted-revoked",tick,"impact or lifecycle");AimLightTrace.Cache(null,Worker,"impact or lifecycle");accepted=null;acceptedRequest=null;cache.Publish(null);Reason="captured NPC impact";}
+            if(pending!=null && (pending.Impact!=0 || pending.LifecycleInvalid)){if(!pending.Retired)TraceState("pending-retired",tick,pending.Impact!=0?"impact":"lifecycle");pending.Retired=true;}
             // A query premise is not part of the full-page history. Latch its
             // first observed change before mailbox consumption; restoring the
             // original value must never revive a delayed reply or old window.
             if(acceptedRequest!=null && (acceptedRequest.QueryChanged!=0 || !NativeNpcEligibility.Current(acceptedRequest.Queries)))
-            {accepted=null;acceptedRequest=null;cache.Publish(null);Reason="NPC query premise changed";}
-            if(pending!=null && !pending.Retired && (pending.QueryChanged!=0 || !NativeNpcEligibility.Current(pending.Queries)))pending.Retired=true;
+            {TraceState("accepted-revoked",tick,"NPC query premise changed");AimLightTrace.Cache(null,Worker,"NPC query premise changed");accepted=null;acceptedRequest=null;cache.Publish(null);Reason="NPC query premise changed";}
+            if(pending!=null && !pending.Retired && (pending.QueryChanged!=0 || !NativeNpcEligibility.Current(pending.Queries))){TraceState("pending-retired",tick,"NPC query premise changed");pending.Retired=true;}
             long started=PredictionPipeProtocol.Measure?Stopwatch.GetTimestamp():0;
             if(pending!=null && !pending.Retired && tick>pending.Tick)
             {
                 bool exact;
-                if(tick-pending.Tick>PredictionWire.MaximumAlignmentAge || !pending.Terrain.ObserveChanges(identity.Session,pending.TerrainChanges,terrainComparison,out exact)){pending.Retired=true;Reason="in-flight age or world extent changed";}
+                if(tick-pending.Tick>PredictionWire.MaximumAlignmentAge || !pending.Terrain.ObserveChanges(identity.Session,pending.TerrainChanges,terrainComparison,out exact)){TraceState("pending-retired",tick,tick-pending.Tick>PredictionWire.MaximumAlignmentAge?"age":"world extent");pending.Retired=true;Reason="in-flight age or world extent changed";}
                 else
                 {
                     checkedTerrain=pending.Terrain;checkedTerrainCurrent=exact;
@@ -253,15 +265,15 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 long age=tick-acceptedRequest.Tick;
                 string difference=!CanReuseProof(age,accepted.Frames.Length)?"expired":!acceptedRequest.Terrain.IsCurrentRelevant(identity.Session,accepted.TerrainUsage,terrainComparison)?"relevant terrain changed":NativePredictionAlignment.Difference(accepted.Frames[(int)age],Observe(tick,acceptedRequest.Npcs,acceptedRequest.Projectiles,identity.Slot));
                 if(difference==null)difference=acceptedRequest.Impacts.Difference(accepted.Impacts,tick,acceptedRequest.Npcs);
-                if(difference!=null){Reason=difference;accepted=null;acceptedRequest=null;cache.Publish(null);}
+                if(difference!=null){TraceState("accepted-revoked",tick,difference);AimLightTrace.Cache(null,Worker,difference);Reason=difference;accepted=null;acceptedRequest=null;cache.Publish(null);}
             }
             if(PredictionPipeProtocol.Measure){double observed=Milliseconds(Stopwatch.GetTimestamp()-started);ObserveMilliseconds+=observed;ObserveMaximum=Math.Max(ObserveMaximum,observed);}Observed++;
             var response=Worker.TryTakeResult();if(response!=null)Receive(response,tick);
             if(accepted!=null)
             {
                 NpcTrajectory window;
-                if(accepted.Trajectory.TryWindow(tick,cache.Required,++version,out window)){cache.Publish(window);Published++;}
-                else{accepted=null;acceptedRequest=null;cache.Publish(null);Reason="remaining horizon exhausted";}
+                if(accepted.Trajectory.TryWindow(tick,cache.Required,++version,out window)){cache.Publish(window);Published++;AimLightTrace.Cache(window,Worker,"native accepted");}
+                else{TraceState("accepted-revoked",tick,"remaining horizon exhausted");AimLightTrace.Cache(null,Worker,"remaining horizon exhausted");accepted=null;acceptedRequest=null;cache.Publish(null);Reason="remaining horizon exhausted";}
             }
             if(Worker.State==4)
             {
@@ -275,7 +287,8 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         }
         private void Receive(PredictionWorkerClient.DecodedReply response,long tick)
         {
-            Request request=pending;pending=null;if(request==null)return;
+            Request request=pending;pending=null;if(request==null){AimLightTrace.Receive(current,-1,tick,Worker,response.Result,0,"no-pending-owner");return;}
+            AimLightTrace.Capture("receive-enter",request.Identity,request.Tick,Worker,request.Npcs.Length,request.Projectiles.Length,request.Terrain.Chunks.Length);
             var m=default(Measurement);
             if(PredictionPipeProtocol.Measure)m=new Measurement{CaptureTick=request.Tick,ArriveTick=tick,Age=(int)Math.Min(int.MaxValue,tick-request.Tick),WallAgeMs=Milliseconds(Stopwatch.GetTimestamp()-request.Wall),CaptureMs=request.CaptureMs,Bytes=response.Bytes,ReplyBytes=response.ReplyBytes,EncodeMs=response.EncodeMs,ExchangeMs=response.ExchangeMs,DecodeMs=response.DecodeMs};
             long begin=PredictionPipeProtocol.Measure?Stopwatch.GetTimestamp():0;
@@ -323,7 +336,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 if(!request.Impacts.ValidTimeline(result.Impacts)){m.Outcome="projectile lifetime timeline";Reason=m.Outcome;Rejected++;return;}
                 if(request.History.Count!=tick-request.Tick+1)throw new InvalidDataException("Missing intervening observations.");
                 for(int i=0;i<request.History.Count;i++)
-                {string difference=NativePredictionAlignment.Difference(result.Frames[i],request.History[i]);if(difference!=null){m.Outcome="history "+i+": "+difference;Reason=m.Outcome;Rejected++;return;}}
+                {string difference=NativePredictionAlignment.Difference(result.Frames[i],request.History[i]);if(difference!=null){AimLightTrace.Difference(tick,i,difference,result.Frames[i],request.History[i]);m.Outcome="history "+i+": "+difference;Reason=m.Outcome;Rejected++;return;}}
                 string impactDifference=request.Impacts.Difference(result.Impacts,tick,request.Npcs);
                 if(impactDifference!=null){m.Outcome=impactDifference;Reason=m.Outcome;Rejected++;return;}
                 result.Trajectory=result.Trajectory.BindIdentity(request.Identity);
@@ -337,14 +350,16 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             }
             catch(Exception error)
             {
+                AimLightTrace.Fault("receive",error,tick);
                 if(error is OutOfMemoryException)throw;m.Outcome="invalid result: "+error.Message;Reason=m.Outcome;Rejected++;
                 Failed=true;Stop();
             }
-            finally{if(PredictionPipeProtocol.Measure){m.AcceptMs=Milliseconds(Stopwatch.GetTimestamp()-begin);Measurements.Enqueue(m);while(Measurements.Count>256)Measurements.Dequeue();}}
+            finally{AimLightTrace.Receive(request.Identity,request.Tick,tick,Worker,response.Result,request.History.Count,m.Outcome);if(PredictionPipeProtocol.Measure){m.AcceptMs=Milliseconds(Stopwatch.GetTimestamp()-begin);Measurements.Enqueue(m);while(Measurements.Count>256)Measurements.Dequeue();}}
         }
         private void Capture(NpcIdentity identity,long tick)
         {
             lastAttempt=tick;long begin=PredictionPipeProtocol.Measure?Stopwatch.GetTimestamp():0;
+            AimLightTrace.Capture("capture-begin",identity,tick,Worker,npcs.Count,projectiles.Count,0);
             try
             {
 #if JMR_CONDITIONAL_RESEARCH
@@ -379,12 +394,16 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
 #endif
                 request.History.Add(Observe(tick,request.Npcs,ps,identity.Slot));
                 var values=PredictionWire.FillProductionValues(Worker.BeginCapture(),ns,ps,identity.Slot,tick,PredictionWire.MaximumHorizon,terrain,assets.ToArray(),ReferenceEquals(terrain,acknowledgedTerrain));
+                AimLightTrace.Capture("capture-complete",identity,tick,Worker,ns.Length,ps.Length,terrain.Chunks.Length);
                 if(PredictionPipeProtocol.Measure)request.CaptureMs=Milliseconds(Stopwatch.GetTimestamp()-begin);
                 var valueIdentity=new NpcIdentity(identity.Session,null,identity.Slot,identity.Generation,identity.Type,identity.NetId);
-                if(Worker.TrySendValues(values,valueIdentity,tick,Main.netMode==1)){pending=request;Requests++;}
+                if(Worker.TrySendValues(values,valueIdentity,tick,Main.netMode==1)){pending=request;Requests++;AimLightTrace.Capture("submitted",identity,tick,Worker,ns.Length,ps.Length,terrain.Chunks.Length);}
+                else AimLightTrace.Capture("capture-not-sent",identity,tick,Worker,ns.Length,ps.Length,terrain.Chunks.Length);
             }
             catch(Exception error)
             {
+                AimLightTrace.Fault("capture",error,tick);
+                AimLightTrace.Capture("capture-failed",identity,tick,Worker,npcs.Count,projectiles.Count,0);
                 if(error is OutOfMemoryException)throw;Reason="capture: "+error.Message;lastAttempt=tick+57;
             }
         }
@@ -482,5 +501,11 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         private static bool Covers(NativeTerrainSnapshot terrain,SortedSet<int> keys)
         {int found=0;foreach(var chunk in terrain.Chunks)if(keys.Contains(chunk.X*128+chunk.Y))found++;return found==keys.Count;}
         private static double Milliseconds(long ticks){return ticks*1000.0/Stopwatch.Frequency;}
+        [Conditional("JMR_AIM_LIGHT")]
+        private void TraceState(string stage,long tick,string reason)
+        {AimLightTrace.Session(stage,tick,current,Worker,pending?.Tick??-1,acceptedRequest?.Tick??-1,pending?.History.Count??0,npcs.Count,projectiles.Count,reason);}
+        [Conditional("JMR_AIM_LIGHT")]
+        private void TraceClear()
+        {if(current.Token!=null || accepted!=null || pending!=null && !pending.Retired || npcs.Count!=0 || projectiles.Count!=0)TraceState("clear-target",lastTick,"external or preceding clear-reason event");}
     }
 }

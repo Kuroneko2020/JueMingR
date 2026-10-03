@@ -53,12 +53,16 @@ namespace NativeWorldTextProbe
                 using(var graphics=continuousSeconds>0?null:new ProbeGraphics(content))
                 {
                     Initialize();
+                    if(Environment.GetEnvironmentVariable("JUEMINGR_AIM_LIGHT_PAIR")!=null)NativeAimLightSessionChecks.Semantics(host.GetType().Assembly,output);
+                    if(Environment.GetEnvironmentVariable("JUEMINGR_AIM_LIGHT_SEMANTICS_ONLY")=="1")return;
                     NativeCombatHistoryChecks.Start(sink,host.GetType().Assembly,output);
                     foreach(string name in new[]{"HandleSpecialEvent","HandleRunning"})Patch(sink,typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),nameof(Skip));
                     foreach(var method in new[]{typeof(WorldGen).GetMethod("saveToonWhilePlaying",Flags),typeof(Player).GetMethod("SavePlayer",Flags),typeof(NetMessage).GetMethod("SendData",Flags)})Patch(sink,method,nameof(Refuse));
                     Set(host,"LayerStatus",Enum.Parse(host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Rendering.WorldLayerStatus"),"Ready"));
                     if(continuousSeconds>0){Scene(2);Window(context,cache,samples,prepares,"baseline-off",continuousSeconds,false);Main.npc[0].active=false;}
                     NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true));
+                    if(Environment.GetEnvironmentVariable("JUEMINGR_AIM_LIGHT_PAIR")!=null)
+                    {phase="light-natural-pair";NativeAimLightSessionChecks.Run(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     phase="first-eye";Scene(2);long first=Stopwatch.GetTimestamp();int valid=0,moving=0,frames=0,pid=0,playerMoving=0;bool restartedMovement=false;
                     var waiting=Stopwatch.StartNew();
                     while(waiting.Elapsed.TotalSeconds<70 && valid<90)

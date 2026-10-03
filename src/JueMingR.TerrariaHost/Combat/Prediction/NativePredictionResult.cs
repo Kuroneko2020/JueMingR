@@ -14,6 +14,9 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         internal NpcTrajectory Trajectory;
         internal NativeTerrainUsage TerrainUsage;
         internal int Kind,Slot,TileX,TileY;
+#if JMR_AIM_LIGHT
+        internal int LightField;
+#endif
         internal int ContinuationKind,ContinuationSlot;
         internal string Error;
         internal readonly SortedSet<int> Npcs=new SortedSet<int>(),Projectiles=new SortedSet<int>();
@@ -25,7 +28,13 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             {
                 int protocol=r.ReadInt32();
                 if(protocol==-PredictionWire.Protocol)
-                {value.Error=r.ReadString()+": "+r.ReadString();value.TileX=r.ReadInt32();value.TileY=r.ReadInt32();value.Kind=r.ReadInt32();value.Slot=r.ReadInt32();r.ReadInt32();End(stream);return value;}
+                {value.Error=r.ReadString()+": "+r.ReadString();value.TileX=r.ReadInt32();value.TileY=r.ReadInt32();value.Kind=r.ReadInt32();value.Slot=r.ReadInt32();
+#if JMR_AIM_LIGHT
+                    value.LightField=r.ReadInt32();
+#else
+                    r.ReadInt32();
+#endif
+                    End(stream);return value;}
                 if(protocol!=PredictionWire.Protocol || r.ReadInt64()!=tick || r.ReadInt32()!=identity.Slot)throw new InvalidDataException("Native result identity.");
                 int count=Count(r,181);if(count<2)throw new InvalidDataException("Native result horizon.");
                 if(alignment==null)throw new InvalidDataException("Missing native alignment proof.");
