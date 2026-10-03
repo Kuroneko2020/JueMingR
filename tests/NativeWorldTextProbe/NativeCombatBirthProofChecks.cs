@@ -98,7 +98,10 @@ namespace NativeWorldTextProbe
                     Terraria.GameInput.PlayerInput.CacheOriginalScreenDimensions();
                     Action advance=()=>
                     {
-                        NativeCombatModeledImpactChecks.SampleMouse(context,target.Center);step();Require(ReferenceEquals(worker,Get(native,"Worker")) && !(bool)Get(native,"Failed"),"Same healthy worker throughout birth checks.");
+                        NativeCombatModeledImpactChecks.SampleMouse(context,target.Center);step();
+                        if(trace.Fault!=null)throw new InvalidOperationException("Birth trace observed a Prepare/observer failure.",trace.Fault);
+                        Require(!(bool)Get(Get(context,"CombatObservation"),"pathFailed"),"Host prediction path stays available during birth checks.");
+                        Require(ReferenceEquals(worker,Get(native,"Worker")) && !(bool)Get(native,"Failed"),"Same healthy worker throughout birth checks.");
                         // Explicitly observe the same pages needed by the
                         // native town-query closure. This case tests lifetime
                         // acceptance; serial discovery has separate evidence.

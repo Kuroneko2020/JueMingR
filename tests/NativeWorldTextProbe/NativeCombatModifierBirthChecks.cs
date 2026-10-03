@@ -91,6 +91,8 @@ namespace NativeWorldTextProbe
                         // slots; unscripted page discovery is tested separately.
                         ((SortedSet<int>)Get(native,"npcs")).Add(slot);for(int i=0;i<8;i++)((SortedSet<int>)Get(native,"projectiles")).Add(i);
                         NativeCombatModeledImpactChecks.SampleMouse(context,target.Center);step();
+                        if(trace.Fault!=null)throw new InvalidOperationException("Modifier trace observed a Prepare/observer failure.",trace.Fault);
+                        Require(!(bool)Get(Get(context,"CombatObservation"),"pathFailed"),"Host prediction path stays available during modifier checks.");
                         ((SortedSet<int>)Get(native,"npcs")).Add(slot);for(int i=0;i<8;i++)((SortedSet<int>)Get(native,"projectiles")).Add(i);
                         Require(ReferenceEquals(worker,Get(native,"Worker")) && !(bool)Get(native,"Failed"),"One healthy Session/worker throughout modifier proof.");
                         Require(player.statLife==100000 && !player.dead,"Modifier scenario is unhurt.");
