@@ -542,9 +542,6 @@ function Read-Phase0SPackage {
         ('about-help-feedback-' + [string] $manifest.sourceCommit)
         ('recovery-buffs-services-' + [string] $manifest.sourceCommit)
         ('continuous-processing-' + [string] $manifest.sourceCommit)
-        # #112 one-time light diagnostic delivery uses the same strict payload
-        # ownership/restore contract. This identity grants no build-gate waiver.
-        ('aim-light-diagnostic-' + [string] $manifest.sourceCommit)
     )
     if ([string] $manifest.sourceCommit -notmatch '^[0-9a-f]{40}$' -or
         $allowedPackageIds -cnotcontains [string] $manifest.packageId) {

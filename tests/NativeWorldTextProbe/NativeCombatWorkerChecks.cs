@@ -77,9 +77,20 @@ namespace NativeWorldTextProbe
                     if(Directory.Exists(prepared))foreach(string file in Directory.EnumerateFiles(prepared,"*.image"))File.Copy(file,Path.Combine(cached,Path.GetFileName(file)),true);
                 }
                 string hash;using(var input=File.OpenRead(host.Location))using(var sha=SHA256.Create())hash=BitConverter.ToString(sha.ComputeHash(input)).Replace("-","");
+                string packageId=null,manifestPath=Environment.GetEnvironmentVariable("JUEMINGR_NPC_PACKAGE_MANIFEST");
+                if(Environment.GetEnvironmentVariable("JUEMINGR_NPC_REQUIRE_PACKAGE")=="1")Require(!string.IsNullOrEmpty(manifestPath),"Actual package mode requires a manifest; synthetic identity is forbidden.");
+                if(manifestPath!=null)
+                {
+                    var lines=File.ReadAllLines(manifestPath);
+                    packageId=lines.Single(line=>line.StartsWith("packageId=",StringComparison.Ordinal)).Substring(10);
+                    Require(packageId==Environment.GetEnvironmentVariable("JUEMINGR_NPC_EXPECTED_PACKAGE_ID"),"Runtime identity must match the independently validated actual package manifest.");
+                    string source=lines.Single(line=>line.StartsWith("sourceCommit=",StringComparison.Ordinal)).Substring(13);
+                    Require(lines.Single(line=>line.StartsWith("hostAssemblySha256=",StringComparison.Ordinal)).Substring(19)==hash,"Actual manifest authenticates the loaded package Host.");
+                    Require(host.GetCustomAttribute<AssemblyInformationalVersionAttribute>().InformationalVersion=="0.0.0-dev+"+source && packageId.EndsWith("-"+source,StringComparison.Ordinal),"Actual manifest and Host share the exact source identity.");
+                }
                 if(Environment.GetEnvironmentVariable("JUEMINGR_AIM_LIGHT_PAIR")=="on")
                 {string trace=Path.Combine(Terraria.Program.SavePath,"composition/JueMingRData/logs/aim-light");Directory.CreateDirectory(trace);File.WriteAllText(Path.Combine(trace,"arm.txt"),hash);}
-                try{NativeQuickItemChecks.Run(context=>{if(menuOnly)NativeCombatMenuPreparationChecks.Run(context,output);else NativeCombatProductionPredictionChecks.Run(context,output,content);},processing:true,shortFeedback:true,candidateAssembly:host.Location,predictionHostHash:hash);}
+                try{NativeQuickItemChecks.Run(context=>{if(menuOnly)NativeCombatMenuPreparationChecks.Run(context,output);else NativeCombatProductionPredictionChecks.Run(context,output,content);},processing:true,shortFeedback:true,candidateAssembly:host.Location,predictionHostHash:hash,candidatePackageId:packageId);}
                 finally
                 {
                     string prepared=Path.Combine(layout,"prediction-materials");Directory.CreateDirectory(prepared);
