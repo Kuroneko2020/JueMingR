@@ -17,9 +17,9 @@ namespace JueMingR.Platform.Combat
         public override int GetHashCode(){return Slot^Generation^Type^Session.GetHashCode();}
     }
     [Flags]
-    public enum PredictionAssumption { None=0, TargetPlayerStationary=1, FixedTarget=2, NoNewHits=4, RandomRepresentative=8, LocalTerrain=16, NetworkObservation=32, ApproximateMechanism=64, HeldPlayerControls=128, CurrentConnection=256, ObservedLighting=512 }
+    public enum PredictionAssumption { None=0, TargetPlayerStationary=1, FixedTarget=2, NoNewHits=4, RandomRepresentative=8, LocalTerrain=16, NetworkObservation=32, ApproximateMechanism=64, HeldPlayerControls=128, CurrentConnection=256, ObservedLighting=512, UnmodeledDamageEffects=1024 }
     public enum PredictionStop { None, UnsupportedMechanism, RandomDestination, MissingDependency, TerrainUnavailable, TerrainLimit, Slope, LiquidEffect, BuffTransition, Despawn, PhaseBoundary, InvalidState, RandomDecision }
-    public enum PredictionStrategy { Model, NativeIsolated, SegmentedTrend }
+    public enum PredictionStrategy { Model, NativeIsolated, SegmentedTrend, RollingConditional }
     public enum PredictionQuality { Conditional, LimitedObservation, ObservedTrend }
     public struct MotionRect
     {
@@ -40,6 +40,8 @@ namespace JueMingR.Platform.Combat
         public bool ResetNetOffset;
         public float X,Y,Vx,Vy,OldX,OldY,OldVx,OldVy,Scale,Gravity,MaxFall,WaterSpeed,HoneySpeed,LavaSpeed,ShimmerSpeed;
         public float A0,A1,A2,A3,L0,L1,L2,L3;
+        public float ObservedAccelerationX,ObservedAccelerationY,ObservedTurn;
+        public int UnmodeledDamageTicks;
         public int Width,Height,Style,Direction,DirectionY,SpriteDirection,Target,ParentSlot,ChildSlot,TimeLeft,ConfusedTicks,Life,LifeMax,BuffFingerprint,BuffExpires;
         public bool Active,NoGravity,NoTileCollide,Wet,Honey,Lava,Shimmer,CollideX,CollideY,CanReceive,CanHarm,NewSegment,JustHit,StairFall,SpawnedFromStatue,Boss,InactivityImmune,TargetNoAggro;
         public MotionRect Bounds {get{return new MotionRect(X,Y,Width,Height);}}
@@ -109,10 +111,28 @@ namespace JueMingR.Platform.Combat
         private NpcTrajectoryPoint(int tick,NpcTrajectoryPoint source)
         {TickOffset=tick;Bounds=source.Bounds;ReceiveBounds=source.ReceiveBounds;ProjectileReceiveBounds=source.ProjectileReceiveBounds;HasProjectileExtension=source.HasProjectileExtension;Vx=source.Vx;Vy=source.Vy;Phase=source.Phase;CanReceive=source.CanReceive;CanHarm=source.CanHarm;NewSegment=source.NewSegment;}
         public NpcTrajectoryPoint AtOffset(int tick){return new NpcTrajectoryPoint(tick,this);}
+        internal NpcTrajectoryPoint(int tick,MotionRect bounds,MotionRect receive,bool extension,float vx,float vy,float phase,bool canReceive,bool canHarm,bool newSegment)
+        {TickOffset=tick;Bounds=bounds;ReceiveBounds=receive;HasProjectileExtension=extension;ProjectileReceiveBounds=extension?new MotionRect(receive.X-8,receive.Y-8,receive.Width+16,receive.Height+16):receive;Vx=vx;Vy=vy;Phase=phase;CanReceive=canReceive;CanHarm=canHarm;NewSegment=newSegment;}
     }
     public sealed class NpcTrajectory
     {
         private readonly NpcTrajectoryPoint[] points;
+        // Only the synchronous rolling route uses the compact immutable copy.
+        // Receive coordinates are copied exactly (never inferred by subtracting
+        // rounded positions); widths and the type414 extension are redundant.
+        // There is no pool or writable array shared with a previous result.
+        private struct PackedPoint
+        {
+            private readonly MotionRect bounds;
+            private readonly float receiveX,receiveY,vx,vy,phase;
+            private readonly byte flags;
+            internal PackedPoint(NpcTrajectoryPoint value)
+            {bounds=value.Bounds;receiveX=value.ReceiveBounds.X;receiveY=value.ReceiveBounds.Y;vx=value.Vx;vy=value.Vy;phase=value.Phase;flags=(byte)((value.HasProjectileExtension?1:0)|(value.CanReceive?2:0)|(value.CanHarm?4:0)|(value.NewSegment?8:0));}
+            internal NpcTrajectoryPoint AtOffset(int tick)
+            {return new NpcTrajectoryPoint(tick,bounds,new MotionRect(receiveX,receiveY,bounds.Width,bounds.Height),(flags&1)!=0,vx,vy,phase,(flags&2)!=0,(flags&4)!=0,(flags&8)!=0);}
+        }
+        private readonly PackedPoint[] compact;
+        private int StorageCount {get{return compact!=null?compact.Length:points.Length;}}
         private readonly int first,count;
         private readonly bool isWindow;
         private readonly PredictionStop sourceStop;
@@ -130,7 +150,7 @@ namespace JueMingR.Platform.Combat
         public PredictionStop Stop {get;}
         public int Count {get{return count;}}
         public NpcTrajectoryPoint this[int index]
-        {get{if((uint)index>=(uint)count)throw new IndexOutOfRangeException();return points[first+index].AtOffset(index);}}
+        {get{if((uint)index>=(uint)count)throw new IndexOutOfRangeException();return compact!=null?compact[first+index].AtOffset(index):points[first+index].AtOffset(index);}}
         public NpcTrajectory(NpcIdentity identity,long sampleTick,long version,PredictionAssumption assumptions,PredictionStop stop,NpcTrajectoryPoint[] source,int count,PredictionStrategy strategy=PredictionStrategy.Model,long relationVersion=0,PredictionQuality quality=PredictionQuality.Conditional)
         {
             if(source==null)throw new ArgumentNullException(nameof(source));
@@ -138,20 +158,23 @@ namespace JueMingR.Platform.Combat
             for(int i=0;i<count;i++)if(source[i].TickOffset!=i)throw new ArgumentException("Prediction points must cover consecutive updates.",nameof(source));
             Identity=identity;SampleTick=CaptureTick=sampleTick;Version=version;Assumptions=assumptions;Stop=sourceStop=stop;
             Strategy=strategy;RelationVersion=relationVersion;Quality=quality;
-            points=new NpcTrajectoryPoint[count];Array.Copy(source,points,count);this.count=count;
+            if(strategy==PredictionStrategy.RollingConditional)
+            {compact=new PackedPoint[count];for(int i=0;i<count;i++)compact[i]=new PackedPoint(source[i]);}
+            else{points=new NpcTrajectoryPoint[count];Array.Copy(source,points,count);}
+            this.count=count;
         }
         private NpcTrajectory(NpcTrajectory prior,long sampleTick,long version,int first,int count,bool republish)
         {
             Identity=prior.Identity;SampleTick=sampleTick;CaptureTick=republish?sampleTick:prior.CaptureTick;Version=version;Assumptions=prior.Assumptions;
             Strategy=prior.Strategy;RelationVersion=prior.RelationVersion;Quality=prior.Quality;
-            sourceStop=prior.sourceStop;points=prior.points;this.first=first;this.count=count;isWindow=!republish;
-            Stop=first+count==points.Length?sourceStop:PredictionStop.None;
+            sourceStop=prior.sourceStop;points=prior.points;compact=prior.compact;this.first=first;this.count=count;isWindow=!republish;
+            Stop=first+count==StorageCount?sourceStop:PredictionStop.None;
         }
         private NpcTrajectory(NpcTrajectory prior,NpcIdentity identity)
         {
             Identity=identity;SampleTick=prior.SampleTick;CaptureTick=prior.CaptureTick;Version=prior.Version;Assumptions=prior.Assumptions;
             Strategy=prior.Strategy;RelationVersion=prior.RelationVersion;Quality=prior.Quality;
-            Stop=prior.Stop;sourceStop=prior.sourceStop;points=prior.points;first=prior.first;count=prior.count;isWindow=prior.isWindow;
+            Stop=prior.Stop;sourceStop=prior.sourceStop;points=prior.points;compact=prior.compact;first=prior.first;count=prior.count;isWindow=prior.isWindow;
         }
         // Background decoding owns only a value identity, never the game's
         // object token. The game-thread owner binds the original token after
@@ -170,15 +193,15 @@ namespace JueMingR.Platform.Combat
         // inputs again. This is not an age waiver for an asynchronous result.
         public NpcTrajectory Republish(long sampleTick,long version)
         {
-            if(isWindow)throw new InvalidOperationException("A result window cannot be republished with a new capture time.");
+            if(isWindow || Strategy==PredictionStrategy.RollingConditional)throw new InvalidOperationException("A conditional result cannot be republished with a new capture time.");
             if(sampleTick<SampleTick)throw new ArgumentOutOfRangeException(nameof(sampleTick));
             return new NpcTrajectory(this,sampleTick,version,0,count,true);
         }
         public bool TryWindow(long currentTick,int requiredFuture,long version,out NpcTrajectory window)
         {
             window=null;if(currentTick<SampleTick || requiredFuture<0)return false;
-            long age=currentTick-CaptureTick;if(age<0 || age>=points.Length)return false;
-            int available=points.Length-(int)age;long wanted=(long)requiredFuture+1;
+            long age=currentTick-CaptureTick;if(age<0 || age>=StorageCount)return false;
+            int available=StorageCount-(int)age;long wanted=(long)requiredFuture+1;
             // Unknown/failed work cannot stand in for a shorter valid horizon.
             // Actual natural ending may terminate it without invented padding.
             if(wanted>available && sourceStop!=PredictionStop.Despawn)return false;

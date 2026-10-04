@@ -241,6 +241,8 @@ function Get-WorkloadPlan {
         if (@($modes[$mode] | Where-Object {$Groups -contains $_}).Count -gt 0) { $plan.Add(@{name='fixture-'+$mode; executable=$fixture; arguments=@($mode); project='Phase0SFixtureTerraria'}) }
     }
     $scopes = [ordered]@{
+        'NpcRollingCpu'=@('combat-host');
+        'NpcRollingSelectionNegative'=@('combat-host');
         'NpcWorkerIntegration'=@('combat-host'); 'NpcSnapshot'=@('combat-host'); 'NpcWorkerPreparation'=@('combat-host');
         'NpcDiagnosticsOff'=@('combat-host'); 'NpcPostDelivery'=@('combat-host'); 'NpcGuardianQuery'=@('combat-host'); 'NpcModeledImpact'=@('combat-host');
         'NpcLegalCoverage'=@('combat-host'); 'NpcWorkerTransport'=@('combat-host'); 'NpcMenuPreparation'=@('combat-host'); 'NpcSessionCapacity'=@('combat-host'); 'NpcProduction'=@('combat-host'); 'NpcLongCoverage'=@('combat-host');

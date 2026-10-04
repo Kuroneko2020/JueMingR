@@ -243,6 +243,9 @@ try {
     foreach($scope in @('NpcSessionCapacity','NpcFailureRecovery','NpcGuardianQuery','NpcModeledImpact')) {Assert-Route ($scopeValidation.Count -eq 1 -and $scopeValidation[0].ValidValues -contains $scope) ('native entry accepts '+$scope)}
     Assert-Route (@($combatPlan | Where-Object {$_.name -ceq 'native-NpcGuardianQuery' -and $_.arguments[-1] -ceq 'NpcGuardianQuery'}).Count -eq 1) 'guardian continuous query regression belongs to ordinary combat delivery'
     Assert-Route (@($combatPlan | Where-Object {$_.name -ceq 'native-NpcModeledImpact' -and $_.arguments[-1] -ceq 'NpcModeledImpact'}).Count -eq 1) 'modeled and unmodeled hit boundaries belong to ordinary combat delivery'
+    Assert-Route (@($combatPlan | Where-Object {$_.name -ceq 'native-NpcRollingCpu' -and $_.arguments[-1] -ceq 'NpcRollingCpu'}).Count -eq 1) 'default rolling source must have its own ordinary combat regression'
+    Assert-Route ($scopeValidation[0].ValidValues -contains 'NpcRollingCpu') 'native entry accepts the default rolling regression'
+    Assert-Route (@($combatPlan | Where-Object {$_.name -ceq 'native-NpcRollingSelectionNegative' -and $_.arguments[-1] -ceq 'NpcRollingSelectionNegative'}).Count -eq 1 -and $scopeValidation[0].ValidValues -contains 'NpcRollingSelectionNegative') 'real selection-negative regression belongs to ordinary delivery'
     foreach($expected in @('CombatChecks','native-CombatCpu','native-CombatFacingCpu','native-CombatHitsCpu','native-CombatReportCpu','native-CombatUiCpu','native-ShortFeedbackCpu')) {Assert-Route (@($combatPlan.name) -contains $expected) ('combat consumer '+$expected)}
     $plan = @(Get-WorkloadPlan $repositoryRoot (Join-Path $fixtureRoot 'checks') 'architecture.exe' $catalog @('core','pages-host','hotkeys'))
     $names = @($plan | ForEach-Object {$_.name})

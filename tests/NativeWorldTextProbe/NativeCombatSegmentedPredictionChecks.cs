@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Reflection;
-using System.Security.Cryptography;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -38,9 +37,7 @@ namespace NativeWorldTextProbe
                     Require(path.CaptureTick==Main.GameUpdateCount && path[0].Bounds.X==n.position.X && path[0].Bounds.Y==n.position.Y,"Current true origin and capture time.");
                     if(step>0)Require(n.velocity.LengthSquared()==0 && (path[1].Vx!=0 || path[1].Vy!=0),"Direct position movement is not mistaken for zero velocity.");
                 }
-                object native=type.GetField("Native",Flags).GetValue(source);
-                Require((long)native.GetType().GetField("Requests",Flags).GetValue(native)==0,"No full-chain native request or shadow computation for the segmented path.");
-                Require(native.GetType().GetProperty("Worker",Flags).GetValue(native)==null,"Cheap segmented prediction does not require IPC preparation.");
+                ZeroNative(source);
                 Console.WriteLine("PASS natural 102-segment production routing / zero native requests / zero-velocity body / current + 120 future");
             }
             finally{type.GetMethod("Stop",Flags).Invoke(source,null);}
@@ -152,12 +149,12 @@ namespace NativeWorldTextProbe
             Require(path[0].Bounds.X==n.position.X && path[0].Bounds.Y==n.position.Y && path[0].Bounds.Width==n.width && path[0].Bounds.Height==n.height && path[0].CanReceive,"Actual current geometry and eligibility.");
         }
         private static void ZeroNative(object source)
-        {object native=source.GetType().GetField("Native",Flags).GetValue(source);Require((long)native.GetType().GetField("Requests",Flags).GetValue(native)==0 && native.GetType().GetProperty("Worker",Flags).GetValue(native)==null,"Segmented work never starts native whole-chain shadow work.");}
+        {Require(source.GetType().GetField("Native",Flags).GetValue(source)==null,"The ordinary segmented route has no native owner or whole-chain shadow work.");}
         internal static object Create(Assembly host,string output)
         {
-            string hash;using(var stream=File.OpenRead(host.Location))using(var sha=SHA256.Create())hash=BitConverter.ToString(sha.ComputeHash(stream)).Replace("-","");
-            var launch=Activator.CreateInstance(host.GetType("JueMingR.TerrariaHost.Combat.Prediction.PredictionLaunchIdentity",true),Flags,null,new object[]{hash,output},null);
-            return Activator.CreateInstance(host.GetType("JueMingR.TerrariaHost.Combat.NpcPredictionSource",true),Flags,null,new[]{launch},null);
+            // Reflection does not supply optional arguments. Exercise the
+            // ordinary route explicitly; authentication never opts into exact AI.
+            return Activator.CreateInstance(host.GetType("JueMingR.TerrariaHost.Combat.NpcPredictionSource",true),Flags,null,new object[]{null,false},null);
         }
         internal static NpcIdentity Identity(NPC n){return new NpcIdentity(1,n,n.whoAmI,n.generation,n.type,n.netID);}
         internal static void Advance()

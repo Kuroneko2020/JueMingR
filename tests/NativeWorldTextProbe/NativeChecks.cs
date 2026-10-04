@@ -14,6 +14,33 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if(scope=="NpcRollingBaseline"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT","rolling-baseline");scope="NpcProduction";}
+            if(scope=="NpcRollingCandidate"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT","rolling-candidate");scope="NpcProduction";}
+            if(scope=="NpcRollingCpu")
+            {
+                // The ordinary regression exercises the default owner and its
+                // lifecycle. It is deliberately not a graphics/cost receipt.
+                Environment.SetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT","rolling-candidate");
+                Environment.SetEnvironmentVariable("JUEMINGR_ROLLING_CPU_ONLY","1");
+                Environment.SetEnvironmentVariable("JUEMINGR_ROLLING_BOUNDARIES","1");
+                Environment.SetEnvironmentVariable("JUEMINGR_ROLLING_QUALITY",null);
+                Environment.SetEnvironmentVariable("JUEMINGR_ROLLING_PHASES",null);
+                Environment.SetEnvironmentVariable("JUEMINGR_ROLLING_SELECTION_NEGATIVE",null);
+                Environment.SetEnvironmentVariable("JUEMINGR_ROLLING_EXPECT_SELECTION_REJECTION",null);
+                scope="NpcProduction";
+            }
+            if(scope=="NpcRollingSelectionNegative")
+            {
+                Environment.SetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT","rolling-candidate");
+                Environment.SetEnvironmentVariable("JUEMINGR_ROLLING_CPU_ONLY","1");
+                Environment.SetEnvironmentVariable("JUEMINGR_ROLLING_BOUNDARIES",null);
+                Environment.SetEnvironmentVariable("JUEMINGR_ROLLING_QUALITY",null);
+                Environment.SetEnvironmentVariable("JUEMINGR_ROLLING_PROFILE",null);
+                Environment.SetEnvironmentVariable("JUEMINGR_ROLLING_PHASES","stable,gun-B");
+                Environment.SetEnvironmentVariable("JUEMINGR_ROLLING_SELECTION_NEGATIVE","gun-B");
+                Environment.SetEnvironmentVariable("JUEMINGR_ROLLING_EXPECT_SELECTION_REJECTION","1");
+                scope="NpcProduction";
+            }
             if(scope=="NpcPostDelivery"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT","post-delivery-suite");scope="NpcProduction";}
             if(scope=="NpcGuardianQuery"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT","environment");Environment.SetEnvironmentVariable("JUEMINGR_NPC_ENV_AXIS","guardian-query");scope="NpcProduction";}
             if(scope=="NpcModeledImpact"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT","impact-suite");scope="NpcProduction";}

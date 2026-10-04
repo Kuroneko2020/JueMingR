@@ -22,6 +22,7 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Features.Combat.CombatOptions", "JueMingR.Features.Combat.CombatSettings", "JueMingR.Features.Combat.BattleEndLedger",
                 "JueMingR.Features.Combat.ObservationOptions", "JueMingR.Features.Combat.ObservationSettings", "JueMingR.Features.Combat.NpcMotion", "JueMingR.Features.Combat.NpcPredictionCache", "JueMingR.Features.Combat.NpcHealth",
                 "JueMingR.Features.Combat.FacingCandidate", "JueMingR.Features.Combat.FacingSelector",
+                "JueMingR.Features.Combat.RollingNpcPrediction",
                 "JueMingR.Features.Fishing.FishingCodec", "JueMingR.Features.Fishing.FishingSettings", "JueMingR.Features.Fishing.PlayerNameRules",
                 "JueMingR.Features.Fishing.FishingGear", "JueMingR.Features.Fishing.FishingGearCandidate", "JueMingR.Features.Fishing.FishingEquipmentCatalog",
                 "JueMingR.Features.Recovery.RecoveryRules", "JueMingR.Features.Recovery.RecoveryOptions", "JueMingR.Features.Recovery.RecoveryCodec", "JueMingR.Features.Recovery.RecoverySettings",

@@ -30,10 +30,15 @@ namespace NativeWorldTextProbe
             var states=new[]{capture(npc)};
             string initial=Stamp();cache.Prepare(states,1,0,100,env,terrain);Require(Stamp()==initial,"prediction preserves all native fields/arrays, tile values, RNG and Collision scratch");
             int computed=cache.Steps;var first=cache.Read(0);cache.Demand(1,30);cache.Prepare(states,1,0,100,env,terrain);
-            Require(cache.Steps==computed && ReferenceEquals(first,cache.Read(1)),"two equivalent consumers share one result");
-            cache.Demand(1,120);cache.Prepare(states,1,0,100,env,terrain);Require(cache.Builds==1 && cache.Steps<=120,"longer demand extends existing tail");
-            cache.Release(0);Require(cache.Read(0)==null && cache.Read(1)!=null,"consumer cancellation is independent");
-            cache.Release(1);Require(cache.Read(1)==null,"last release retires shared result");
+            Require(first!=null && cache.Steps==computed && ReferenceEquals(first,cache.Read(1)),"two equivalent consumers share one real result");
+            cache.Demand(1,30,120);cache.Prepare(states,1,0,100,env,terrain);Require(cache.Builds==1 && cache.Steps<=120,"longer preferred demand extends existing tail");
+            // The shark reaches the finite terrain boundary after 68 future
+            // updates. Cancellation preserves this real tail, not 120 steps.
+            var cancellationTail=cache.Read(1);cache.Demand(2,120);
+            Require(cancellationTail!=null && cancellationTail.Count==69 && cancellationTail.Stop==PredictionStop.TerrainUnavailable && cache.Read(2)==null,"short reader receives the truthful terrain-boundary tail while strict120 rejects it");
+            cache.Release(0);Require(cache.Read(0)==null && ReferenceEquals(cache.Read(1),cancellationTail) && cache.Read(2)==null,"consumer cancellation preserves the same other-reader result and strict minimum");
+            cache.Release(1);Require(cache.Read(1)==null && cache.Read(2)==null && cache.Required==120 && ReferenceEquals(Get(cache,"result"),cancellationTail),"strict consumer remains registered without accepting the short result");
+            cache.Release(2);Require(cache.Required==0 && GetOptional(cache,"result")==null,"last release retires shared result");
             foreach(int type in new[]{2,6,42,49,93,137})
             {
                 npc.SetDefaults(type);npc.active=true;npc.whoAmI=0;npc.target=0;npc.position=new Vector2(400,400);npc.velocity=Vector2.Zero;npc.timeLeft=750;
@@ -101,11 +106,23 @@ namespace NativeWorldTextProbe
             npc.SetDefaults(370);npc.active=true;npc.whoAmI=0;npc.target=0;npc.position=new Vector2(400,400);npc.ai[0]=1;npc.ai[2]=28;npc.localAI[0]=1;npc.velocity=new Vector2(16,0);npc.timeLeft=750;
             Compare(npc,capture,env,terrain,10,"Duke dash to hover",.05f);
             Rolling(npc,capture,env,terrain);
-            foreach(int phase in new[]{0,2,3,4,5,7,8,9,10,12})
+            var dukeTiles=Main.tile;int dukeHeight=Main.maxTilesY;
+            try
             {
-                npc.SetDefaults(370);npc.active=true;npc.whoAmI=0;npc.target=0;npc.position=new Vector2(400,400);npc.velocity=new Vector2(3,-2);npc.localAI[0]=1;npc.ai[0]=phase;npc.ai[2]=phase==4 || phase==9?170:phase==7?110:phase==12?13:phase==3 || phase==8?80:0;npc.ai[3]=phase==0?10:phase==5?6:0;npc.timeLeft=750;npc.direction=1;
-                Compare(npc,capture,env,terrain,120,"Duke deterministic phase "+phase,.12f);
+                // The phase-nine dash also needs known terrain beyond the
+                // small caller world's bottom scan boundary. Preserve every
+                // phase and its full oracle, with no shared Tile references.
+                Require(Main.maxTilesX==120 && dukeHeight==120,"Duke phases start with their exact 120x120 caller fixture");
+                Main.maxTilesY=160;Main.tile=new Tile[Main.maxTilesX,Main.maxTilesY];
+                for(int x=0;x<Main.maxTilesX;x++)for(int y=0;y<Main.maxTilesY;y++)
+                    Main.tile[x,y]=y<dukeHeight?(Tile)dukeTiles[x,y].Clone():new Tile();
+                foreach(int phase in new[]{0,2,3,4,5,7,8,9,10,12})
+                {
+                    npc.SetDefaults(370);npc.active=true;npc.whoAmI=0;npc.target=0;npc.position=new Vector2(400,400);npc.velocity=new Vector2(3,-2);npc.localAI[0]=1;npc.ai[0]=phase;npc.ai[2]=phase==4 || phase==9?170:phase==7?110:phase==12?13:phase==3 || phase==8?80:0;npc.ai[3]=phase==0?10:phase==5?6:0;npc.timeLeft=750;npc.direction=1;
+                    Compare(npc,capture,env,terrain,120,"Duke deterministic phase "+phase,.12f);
+                }
             }
+            finally{Main.tile=dukeTiles;Main.maxTilesY=dukeHeight;}
             npc.SetDefaults(371);npc.active=true;npc.whoAmI=0;npc.target=0;npc.position=new Vector2(400,400);npc.ai[0]=1;npc.ai[1]=4;npc.ai[3]=1;npc.timeLeft=750;
             Compare(npc,capture,env,terrain,2,"bubble explosion phase",1.0f);
             npc.SetDefaults(29);npc.active=true;npc.whoAmI=0;npc.target=0;npc.position=new Vector2(400,400);npc.ai[2]=50;npc.ai[3]=45;npc.timeLeft=750;
@@ -168,10 +185,20 @@ namespace NativeWorldTextProbe
         private static void Linked(Func<NPC,NpcMotionState> capture,PredictionEnvironment env,IPredictionTerrain terrain)
         {
             var head=Main.npc[5];var body=Main.npc[6];var tail=Main.npc[7];NPC[] native={head,body,tail};int[] types={7,8,9};
-            bool prior=Main.dedServ,priorCorrupt=Main.LocalPlayer.ZoneCorrupt;Main.dedServ=true;Main.LocalPlayer.ZoneCorrupt=true;env.Corrupt=env.AnyLivingCorrupt=true;env.WorldHeight=Main.maxTilesY;env.RockLayer=(float)Main.rockLayer;
+            bool prior=Main.dedServ,priorCorrupt=Main.LocalPlayer.ZoneCorrupt;
+            var priorTiles=Main.tile;int priorHeight=Main.maxTilesY;
             int totalRollingSteps=0,totalFullSteps=0;
             try
             {
+                // The 120-step oracle plus twelve rolling steps must stay above
+                // the native bottom-forty-tile scan boundary. Each cell is an
+                // independent copy: this temporary world cannot mutate the
+                // caller's tile objects and is always restored on failure.
+                Require(Main.maxTilesX==120 && priorHeight==120,"linked oracle starts with its exact 120x120 caller fixture");
+                Main.maxTilesY=160;Main.tile=new Tile[Main.maxTilesX,Main.maxTilesY];
+                for(int x=0;x<Main.maxTilesX;x++)for(int y=0;y<Main.maxTilesY;y++)
+                    Main.tile[x,y]=y<priorHeight?(Tile)priorTiles[x,y].Clone():new Tile();
+                Main.dedServ=true;Main.LocalPlayer.ZoneCorrupt=true;env.Corrupt=env.AnyLivingCorrupt=true;env.WorldHeight=Main.maxTilesY;env.RockLayer=(float)Main.rockLayer;
                 foreach(int headType in new[]{7,10,13,39,134})foreach(bool earth in new[]{false,true})
                 {
                     types=new[]{headType,headType+1,headType+2};
@@ -181,7 +208,7 @@ namespace NativeWorldTextProbe
                     var group=new[]{capture(head),capture(body),capture(tail)};var future=new NpcMotionState[120,3];terrain.Reset();float maximum=0;
                     for(int tick=1;tick<=120;tick++)
                     {
-                        for(int j=0;j<3;j++){var n=group[j];PredictionStop stop;Require(NpcMotion.Step(ref n,group,3,env,terrain,tick,out stop),"full worm forecast type="+headType+" tick="+tick+" stop="+stop);group[j]=n;}
+                        for(int j=0;j<3;j++){var n=group[j];PredictionStop stop;Require(NpcMotion.Step(ref n,group,3,env,terrain,tick,out stop),"full worm forecast type="+headType+" earth="+earth+" slot="+j+" tick="+tick+" stop="+stop+" bounds="+n.X+","+n.Y+","+n.Width+","+n.Height+" world="+Main.maxTilesX+","+Main.maxTilesY);group[j]=n;}
                         for(int j=0;j<3;j++)future[tick-1,j]=group[j];
                     }
                     for(int tick=1;tick<=120;tick++)
@@ -222,7 +249,7 @@ namespace NativeWorldTextProbe
                 }
                 Require(totalRollingSteps<totalFullSteps/2,"mixed native chains save more than half repeated-full work: steps="+totalRollingSteps+" full="+totalFullSteps);
             }
-            finally{Main.dedServ=prior;Main.LocalPlayer.ZoneCorrupt=priorCorrupt;foreach(var n in native)n.active=false;for(int x=15;x<85;x++)for(int y=15;y<85;y++)Main.tile[x,y].active(false);}
+            finally{Main.dedServ=prior;Main.LocalPlayer.ZoneCorrupt=priorCorrupt;foreach(var n in native)n.active=false;Main.tile=priorTiles;Main.maxTilesY=priorHeight;}
         }
         internal static void Compare(NPC npc,Func<NPC,NpcMotionState> capture,PredictionEnvironment env,IPredictionTerrain terrain,int ticks,string name,float maximum)
         {

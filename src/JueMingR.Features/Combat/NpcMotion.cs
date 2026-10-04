@@ -21,6 +21,8 @@ namespace JueMingR.Features.Combat
             return result;
         }
         public static bool Step(ref NpcMotionState n,NpcMotionState[] group,int count,PredictionEnvironment env,IPredictionTerrain terrain,int elapsed,out PredictionStop stop)
+        {return Step(ref n,group,count,env,terrain,elapsed,false,out stop);}
+        public static bool Step(ref NpcMotionState n,NpcMotionState[] group,int count,PredictionEnvironment env,IPredictionTerrain terrain,int elapsed,bool rolling,out PredictionStop stop)
         {
             stop=PredictionStop.None;n.NewSegment=false;
             if(!n.Active){stop=PredictionStop.Despawn;return false;}
@@ -137,7 +139,10 @@ namespace JueMingR.Features.Combat
                 EyeAxis(ref n.Vx,eyeDirection,sx,.1f,.1f,.05f);EyeAxis(ref n.Vy,eyeVertical,sy,damaged?.1f:.04f,damaged?.1f:.05f,damaged?.05f:.03f);
                 if(n.Wet){if(n.Vy>0)n.Vy*=.95f;n.Vy=Math.Max(-4,n.Vy-.5f);n.Direction=direction;n.DirectionY=vertical;}
             }
-            else if(n.Style==5 && FlyingType(n.Identity.Type))Flying(ref n,env,direction,vertical);
+            else if(rolling && n.Style==41 && n.Identity.Type==177)NpcRollingMotion.Derpling(ref n,env,direction);
+            else if(rolling && n.Style==39 && n.Identity.Type==153)
+            {if(!NpcRollingMotion.Tortoise(ref n,env,terrain,direction,vertical,out stop))return false;}
+            else if(n.Style==5 && (FlyingType(n.Identity.Type) || rolling && n.Identity.Type==176))Flying(ref n,env,direction,vertical);
             else if(n.Style==14 && BatType(n.Identity.Type))
             {
                 if(n.A1+1>200 && n.A1+1<=1000 && !env.PlayerWet)
@@ -145,6 +150,7 @@ namespace JueMingR.Features.Combat
                 Bat(ref n,env,direction,vertical);
             }
             else if(n.Style==17 && n.Identity.Type==61)Vulture(ref n,env,direction,vertical);
+            else if(rolling)NpcRollingMotion.Trend(ref n,elapsed);
             else if(elapsed>12){stop=PredictionStop.UnsupportedMechanism;return false;}
             if(!n.Active){stop=PredictionStop.Despawn;return false;}
             // Linked AI already attached the segment and zeroed velocity. It
@@ -213,17 +219,18 @@ namespace JueMingR.Features.Combat
         {
             n.NoGravity=true;
             bool eater=n.Identity.Type==6 || n.Identity.Type==173;
-            float speed=eater?(env.Remix?5:4):(n.Identity.Type==231?3:3.5f)*(2-n.Scale);
-            float acc=eater?(env.Remix?.06f:n.Identity.Type==6 && env.Expert?.035f:.02f):(n.Identity.Type==231?.017f:.021f)*(2-n.Scale);
+            bool moss=n.Identity.Type==176;
+            float speed=moss?4:eater?(env.Remix?5:4):(n.Identity.Type==231?3:3.5f)*(2-n.Scale);
+            float acc=moss?.017f:eater?(env.Remix?.06f:n.Identity.Type==6 && env.Expert?.035f:.02f):(n.Identity.Type==231?.017f:.021f)*(2-n.Scale);
             float targetTop=env.PlayerY-env.PlayerHeight*.5f;
-            if(!eater && n.Y/16<env.WorldSurface && (targetTop-n.Y>300 && n.Vy<0 || targetTop-n.Y<80 && n.Vy>0))n.Vy*=.97f;
+            if(!eater && !moss && n.Y/16<env.WorldSurface && (targetTop-n.Y>300 && n.Vy<0 || targetTop-n.Y<80 && n.Vy>0))n.Vy*=.97f;
             float dx=(int)(env.PlayerX/8)*8-(int)(n.Bounds.CenterX/8)*8,dy=(int)(env.PlayerY/8)*8-(int)(n.Bounds.CenterY/8)*8;
             float distance=(float)Math.Sqrt(dx*dx+dy*dy);
             if(distance==0){dx=n.Vx;dy=n.Vy;}else{dx*=speed/distance;dy*=speed/distance;}
             if(!eater || distance>100){n.A0++;n.Vy+=n.A0>0?.023f:-.023f;n.Vx+=n.A0<-100 || n.A0>100?.023f:-.023f;if(n.A0>200)n.A0=-200;}
             if(eater && distance<150){n.Vx+=dx*.007f;n.Vy+=dy*.007f;}
-            if(n.Vx<dx)n.Vx+=acc;else if(n.Vx>dx)n.Vx-=acc;
-            if(n.Vy<dy)n.Vy+=acc;else if(n.Vy>dy)n.Vy-=acc;
+            if(n.Vx<dx){n.Vx+=acc;if(moss && n.Vx<0 && dx>0)n.Vx+=acc;}else if(n.Vx>dx){n.Vx-=acc;if(moss && n.Vx>0 && dx<0)n.Vx-=acc;}
+            if(n.Vy<dy){n.Vy+=acc;if(moss && n.Vy<0 && dy>0)n.Vy+=acc;}else if(n.Vy>dy){n.Vy-=acc;if(moss && n.Vy>0 && dy<0)n.Vy-=acc;}
             Bounce(ref n,eater?.4f:.7f,1.5f,2);
             n.Direction=direction;n.DirectionY=vertical;
             if(n.Wet){if(n.Vy>0)n.Vy*=.95f;n.Vy=Math.Max(eater?-2:-4,n.Vy-(eater?.3f:.5f));}
@@ -390,7 +397,7 @@ namespace JueMingR.Features.Combat
         {float toward=v*direction;if(toward>=limit)return;toward+=acceleration;if(toward<-limit)toward+=over;else if(toward<0)toward-=reverse;v=Math.Min(limit,toward)*direction;}
         private static void Seek(ref NpcMotionState n,float x,float y,float speed,float acceleration)
         {x-=n.Bounds.CenterX;y-=n.Bounds.CenterY;Normalize(ref x,ref y,speed);n.Vx=Approach(n.Vx,x,acceleration);n.Vy=Approach(n.Vy,y,acceleration);}
-        private static float Approach(float v,float target,float amount){return v<target?Math.Min(target,v+amount):Math.Max(target,v-amount);}
+        internal static float Approach(float v,float target,float amount){return v<target?Math.Min(target,v+amount):Math.Max(target,v-amount);}
         private static float Clamp(float v,float lo,float hi){return Math.Max(lo,Math.Min(hi,v));}
         private static bool Finite(float v){return !float.IsNaN(v) && !float.IsInfinity(v);}
         private static void Normalize(ref float x,ref float y,float length){float d=(float)Math.Sqrt(x*x+y*y);if(d<.0001f){x=y=0;return;}x*=length/d;y*=length/d;}

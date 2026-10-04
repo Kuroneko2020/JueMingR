@@ -47,9 +47,10 @@ namespace JueMingR.TerrariaHost.Combat
                 {Line(b-new Vector2(3,0),b+new Vector2(3,0),color,false,2);Line(b-new Vector2(0,3),b+new Vector2(0,3),color,false,2);}
             }
             pathText=path.Stop==PredictionStop.None?(approximate?"NPC 路径：近似":"NPC 路径：条件预测"):StopText(path.Stop);
-            pathText+=" · 未来约 "+((path.Count-1)/60f).ToString("0.0",System.Globalization.CultureInfo.InvariantCulture)+" 秒";
+            pathText+=" · 未来约 "+((path.Count-1)/60f).ToString(path.Count<7?"0.00":"0.0",System.Globalization.CultureInfo.InvariantCulture)+" 秒";
             if((path.Assumptions&PredictionAssumption.RandomRepresentative)!=0)pathText+=" · 随机代表路线";
             if((path.Assumptions&PredictionAssumption.NetworkObservation)!=0)pathText+=" · 依据本机网络观察";
+            if((path.Assumptions&PredictionAssumption.UnmodeledDamageEffects)!=0)pathText+=" · 未估计部分持续伤害";
             if(path.Strategy==PredictionStrategy.SegmentedTrend)
                 pathText+=path.Quality==PredictionQuality.LimitedObservation?" · 运动观察较少":" · 依据近期移动，远端仅供参考";
             else pathText+=(path.Assumptions&PredictionAssumption.HeldPlayerControls)!=0?" · 假设玩家延续当前输入":" · 假设玩家保持当前位置";

@@ -384,7 +384,7 @@ namespace NativeWorldTextProbe
                 using(var wake=new System.Threading.AutoResetEvent(false))
                 {
                 bool natural=age==80;long now=1000+(natural?60:age);
-                var cache=new JueMingR.Features.Combat.NpcPredictionCache();cache.Demand(0,120);
+                var cache=new JueMingR.Features.Combat.NpcPredictionCache();cache.Demand(0,120);cache.Demand(1,1,120);
                 object session=Activator.CreateInstance(owner,Flags,null,new object[]{null,cache},null);
                 object worker=System.Runtime.Serialization.FormatterServices.GetUninitializedObject(workerType);
                 set(worker,"gate",new object());set(worker,"wake",wake);set(worker,"state",natural?2:3);
@@ -423,13 +423,16 @@ namespace NativeWorldTextProbe
                 else if(age==61)Require(shown==null && (long)owner.GetField("Rejected",Flags).GetValue(session)==1,"Age-61 receipt is retired before it can enter the cache.");
                 else
                 {
-                    Require(shown!=null && shown.Stop==PredictionStop.Despawn && shown.CaptureTick==1000,"A proven natural end keeps its real shorter future at age 60.");
+                    // A natural end preserves its real tail for the display,
+                    // but does not bypass another consumer's strict minimum.
+                    var prefix=cache.Read(1);
+                    Require(shown==null && prefix!=null && prefix.Count==20 && prefix.Stop==PredictionStop.Despawn && prefix.CaptureTick==1000 && prefix.SampleTick==1060 && prefix.Identity.Equals(identity),"At age 60 a proven natural end keeps exactly 19 future steps for the short-prefix reader and is rejected by strict120.");
                     owner.GetMethod("Prepare",Flags).Invoke(session,new object[]{identity,1061L});
-                    Require(cache.Read(0)==null && owner.GetField("accepted",Flags).GetValue(session)==null,"At age 61 even an already accepted natural end retires without renewing sample time or extending its tail.");
+                    Require(cache.Read(0)==null && cache.Read(1)==null && owner.GetField("accepted",Flags).GetValue(session)==null,"At age 61 even an already accepted natural end retires both readers without renewing sample time or extending its tail.");
                 }
                 }
             }
-            Console.WriteLine("PASS native session receive age60 / reject age61 / accepted natural-end expiry / original CaptureTick");
+            Console.WriteLine("PASS native session receive age60 / reject age61 / natural-end short-prefix and strict120 readers / accepted expiry / original CaptureTick");
         }
         private static void CheckLinks(Assembly host)
         {

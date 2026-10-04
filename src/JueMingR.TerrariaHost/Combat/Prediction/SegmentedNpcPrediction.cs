@@ -50,6 +50,13 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         }
         internal void Clear()
         {Array.Clear(history,0,history.Length);current=parent=child=default(NpcIdentity);relationVersion++;}
+        internal bool Reset(int slot,NPC token)
+        {
+            if(slot<0 || slot>=history.Length)return false;
+            if(token==null || ReferenceEquals(history[slot].Identity.Token,token))history[slot]=default(History);
+            bool affected=current.Slot==slot && current.Token!=null || parent.Slot==slot && parent.Token!=null || child.Slot==slot && child.Token!=null || current.Token!=null && lifeOwner==slot;
+            if(affected)relationVersion++;return affected;
+        }
         internal NpcTrajectory Prepare(NpcIdentity identity,long tick,int required)
         {
             NPC n=Main.npc[identity.Slot];int family=Family(n.type);

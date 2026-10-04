@@ -13,45 +13,111 @@ namespace JueMingR.TerrariaHost.Combat
         internal readonly Prediction.NativePredictionSession Native;
         private readonly Prediction.SegmentedNpcPrediction segmented=new Prediction.SegmentedNpcPrediction();
         private bool usingSegmented;
-        internal NpcPredictionSource(Prediction.PredictionLaunchIdentity launch=null)
-        {if(launch!=null)Native=new Prediction.NativePredictionSession(launch,Cache);}
+        private readonly RollingNpcPrediction rolling=new RollingNpcPrediction();
+        private int observedCount,targetPlayer=-1;
+        private long epoch;
+        private bool ownsState;
+        // Authentication alone never enables the expensive comparison route.
+        // Only isolated comparison fixtures explicitly opt into native proof.
+        internal NpcPredictionSource(Prediction.PredictionLaunchIdentity launch=null,bool exactComparison=false)
+        {
+            if(exactComparison){if(launch==null)throw new ArgumentNullException(nameof(launch));Native=new Prediction.NativePredictionSession(launch,Cache);}
+            else PrepareRollingCode();
+        }
+        private static void PrepareRollingCode()
+        {
+            // Code preparation belongs to feature composition, once per owner.
+            // Compile the bounded local kernels; do NOT sample Main, construct
+            // forecasts or run a hidden warmup world. Startup is measured
+            // separately; OFF world updates still do no prediction work.
+            var types=new[]{typeof(NpcPredictionSource),typeof(RollingNpcPrediction),typeof(NpcMotion),typeof(NpcHealth),typeof(PredictionTerrain),typeof(NpcTrajectory),
+                typeof(MotionRect),typeof(NpcMotionState),typeof(NpcTrajectoryPoint),typeof(NpcBuffLayout),typeof(PredictionPlayers),typeof(NpcTrajectory).GetNestedType("PackedPoint",System.Reflection.BindingFlags.NonPublic),
+                typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcRollingMotion",true),
+                typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcGroundMotion",true),
+                typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcWormMotion",true)};
+            foreach(var type in types)
+            {
+                foreach(var method in type.GetMethods(System.Reflection.BindingFlags.DeclaredOnly|System.Reflection.BindingFlags.Public|System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.Static))
+                    if(!method.IsAbstract && !method.ContainsGenericParameters)System.Runtime.CompilerServices.RuntimeHelpers.PrepareMethod(method.MethodHandle);
+                foreach(var constructor in type.GetConstructors(System.Reflection.BindingFlags.Public|System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance))
+                    System.Runtime.CompilerServices.RuntimeHelpers.PrepareMethod(constructor.MethodHandle);
+            }
+            // ReadPlayer's mode query is a leaf on the default route, even
+            // though the remaining NativePlayerMotion code is comparison-only.
+            foreach(string name in new[]{"Conditional","Mechanism","SupportedHover"})
+                System.Runtime.CompilerServices.RuntimeHelpers.PrepareMethod(typeof(Prediction.NativePlayerMotion).GetMethod(name,System.Reflection.BindingFlags.Public|System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Static).MethodHandle);
+        }
         private readonly NpcMotionState[] states=new NpcMotionState[NpcPredictionCache.Capacity];
         private readonly bool[] visited=new bool[NpcPredictionCache.Capacity];
+        private readonly bool[] motionSlots=new bool[NpcPredictionCache.Capacity],motionRoles=new bool[NpcPredictionCache.Capacity];
         private readonly int[] pending=new int[NpcPredictionCache.Capacity];
         private readonly MotionRect[] playerAreas=new MotionRect[255];
         private PredictionPlayers players;
-        internal void Clear(){Native?.ClearTarget();segmented.Clear();usingSegmented=false;Cache.Clear();Prediction.AimLightTrace.Cache(null,Native?.Worker,"source-clear");Terrain.Reset();Array.Clear(states,0,states.Length);}
+        internal void Clear()
+        {
+            Native?.ClearTarget();Cache.Clear();
+            if(!ownsState)return;
+            ownsState=false;segmented.Clear();rolling.Clear();usingSegmented=false;observedCount=0;targetPlayer=-1;epoch++;
+            Prediction.AimLightTrace.Cache(null,Native?.Worker,"source-clear");Terrain.Reset();Array.Clear(states,0,states.Length);
+        }
+        internal void ObservePlayerRelocation(Player player)
+        {
+            Native?.ObservePlayerRelocation();
+            if(player!=null && player.whoAmI==targetPlayer){rolling.Clear();Cache.Clear();epoch++;}
+        }
+        internal void ObserveNpcReset(NPC npc)
+        {
+            Native?.ObserveNpcReset(npc);
+            if(npc!=null)RetireSlot(npc.whoAmI,npc);
+        }
+        internal void ObserveNpcQueryUpdate(int slot)
+        {Native?.ObserveNpcQueryUpdate(slot);RetireSlot(slot,null);}
+        private void RetireSlot(int slot,NPC token)
+        {
+            bool affected=segmented.Reset(slot,token);
+            for(int i=0;i<observedCount;i++)if(states[i].Identity.Slot==slot && (token==null || ReferenceEquals(states[i].Identity.Token,token)))affected=true;
+            if(affected){rolling.Clear();Cache.Clear();epoch++;}
+        }
         internal void Stop(){Native?.Stop();Clear();}
         internal void EndWorld(){Native?.DetachWorld();Clear();}
         internal void Prepare(NpcIdentity identity,long tick)
         {
             if(Cache.Required==0){Clear();return;}
             if(!CombatSelection.Valid(identity,identity.Session)){Clear();return;}
+            ownsState=true;
             if(Prediction.SegmentedNpcPrediction.Family(identity.Type)!=0)
             {
-                if(!usingSegmented){Native?.ClearTarget();usingSegmented=true;}
+                if(!usingSegmented){Native?.ClearTarget();rolling.Clear();observedCount=0;targetPlayer=-1;usingSegmented=true;}
                 Native?.DiscardRetiredResult();
                 var path=segmented.Prepare(identity,tick,Cache.Required);Cache.Publish(path);Prediction.AimLightTrace.Cache(path,null,"segmented");return;
             }
-            if(usingSegmented){Cache.Clear();usingSegmented=false;}
+            if(usingSegmented){Cache.Clear();rolling.Clear();usingSegmented=false;}
             if(Native!=null){Native.Prepare(identity,tick);return;}
-            Array.Clear(visited,0,visited.Length);int count=0,queued=1;pending[0]=identity.Slot;visited[identity.Slot]=true;
+            Array.Clear(visited,0,visited.Length);Array.Clear(motionSlots,0,motionSlots.Length);int count=0,queued=1;pending[0]=identity.Slot;visited[identity.Slot]=motionSlots[identity.Slot]=true;
             for(int next=0;next<queued;next++)
             {
                 int slot=pending[next];
                 var n=Main.npc[slot];if(n==null || !n.active)continue;
                 states[count++]=Read(n,identity.Session);
                 int parent=states[count-1].ParentSlot,child=states[count-1].ChildSlot;
-                if(parent>=0 && parent<Main.maxNPCs && !visited[parent]){visited[parent]=true;pending[queued++]=parent;}
-                if(child>=0 && child<Main.maxNPCs && !visited[child]){visited[child]=true;pending[queued++]=child;}
+                if(motionSlots[slot])
+                {
+                    if(parent>=0 && parent<Main.maxNPCs){motionSlots[parent]=true;if(!visited[parent]){visited[parent]=true;pending[queued++]=parent;}}
+                    if(child>=0 && child<Main.maxNPCs){motionSlots[child]=true;if(!visited[child]){visited[child]=true;pending[queued++]=child;}}
+                }
+                int lifeOwner=states[count-1].Health.RealLife;
+                if(lifeOwner>=0 && lifeOwner<Main.maxNPCs && !visited[lifeOwner]){visited[lifeOwner]=true;pending[queued++]=lifeOwner;}
             }
             // Sort only the required dependency chain by native slot order.
             for(int i=1;i<count;i++){var value=states[i];int j=i-1;while(j>=0 && states[j].Identity.Slot>value.Identity.Slot){states[j+1]=states[j];j--;}states[j+1]=value;}
             int selected=0;for(int i=0;i<count;i++)if(states[i].Identity.Equals(identity))selected=i;
+            for(int i=0;i<count;i++)motionRoles[i]=motionSlots[states[i].Identity.Slot];
             var current=Main.npc[identity.Slot];
             if(current.aiStyle==6 || current.aiStyle==37)for(int i=0;i<count;i++)if(states[i].ParentSlot<0){current=Main.npc[states[i].Identity.Slot];break;}
             int target=current.target;if(target<0 || target>=Main.maxPlayers || Main.player[target]==null)target=Main.myPlayer;
             var player=Main.player[target];
+            if(player==null || !player.active || player.dead || player.ghost){Clear();return;}
+            targetPlayer=target;observedCount=count;
             int playerCount=0;bool samePlayers=players!=null,anyCorrupt=false;
             for(int i=0;i<Main.maxPlayers;i++)
             {
@@ -63,17 +129,38 @@ namespace JueMingR.TerrariaHost.Combat
             var env=new PredictionEnvironment{BloodMoon=Main.bloodMoon,PlayerProtected=!player.dead && !player.ghost && player.insideUnbreakableWalls,PlayerIndex=target,PlayerX=player.Center.X,PlayerY=player.Center.Y,PlayerWidth=player.width,PlayerHeight=player.height,PlayerWet=player.wet,Wind=Main.windSpeedCurrent,Expert=Main.expertMode,Day=Main.dayTime,WorldWidth=Main.maxTilesX,WorldSurface=(float)Main.worldSurface,Multiplayer=Main.netMode==1,Remix=Main.remixWorld,SlimeRain=Main.slimeRain,
                 Enraged=player.position.Y<800 || player.position.Y>Main.worldSurface*16 || player.position.X>6400 && player.position.X<Main.maxTilesX*16-6400,
                 MechQueenUp=NPC.mechQueen>=0 && NPC.mechQueen<Main.maxNPCs && Main.npc[NPC.mechQueen]!=null && Main.npc[NPC.mechQueen].active && Main.npc[NPC.mechQueen].type==127,Players=players,WorldHeight=Main.maxTilesY,RockLayer=(float)Main.rockLayer,PlayerDead=player.dead,PlayerIdleWithNegativeAggro=player.itemAnimation==0 && player.aggro<0,Corrupt=player.ZoneCorrupt,Crimson=player.ZoneCrimson,AnyLivingCorrupt=anyCorrupt,SkyblockLowTiles=WorldGen.Skyblock.lowTiles,ClearLine=false,Eclipse=Main.eclipse,Graveyard=player.ZoneGraveyard,GoodWorld=Main.getGoodWorld,InvasionType=Main.invasionType};
-            Cache.Prepare(states,count,selected,tick,env,Terrain);
+            Cache.Publish(rolling.Prepare(states,count,selected,tick,Cache.Required,epoch,env,ReadPlayer(player),Terrain,motionRoles));
+        }
+        private static PredictionPlayerMotion ReadPlayer(Player p)
+        {
+            bool hover=p.mount.Active && (p.mount.Type==MountID.WitchBroom || p.mount.Type==5) && !p.CCed && !p.pulley && !p.shimmering && !p.tongued && (p.grappling==null || p.grappling.Length==0 || p.grappling[0]<0);
+            // jumpSpeed/Height are shared native scratch, not this player's
+            // completed observation. Derive ordinary values from owned effects.
+            int jumpHeight=p.shimmerWet?23:p.wet?30:15;float jumpSpeed=p.shimmerWet?5.51f:p.wet?6.01f:5.01f;
+            if(p.jumpBoost){jumpSpeed=Math.Max(jumpSpeed,6.51f);jumpHeight=Math.Max(jumpHeight,20);}
+            if(p.wereWolf){jumpSpeed+=.2f;jumpHeight+=2;}if(p.moonLordLegs)jumpHeight++;
+            jumpSpeed+=p.jumpSpeedBoost;if(p.sticky){jumpSpeed/=5;jumpHeight/=10;}if(p.dazed){jumpSpeed/=2;jumpHeight/=5;}
+            return new PredictionPlayerMotion{X=p.position.X,Y=p.position.Y,Vx=p.velocity.X,Vy=p.velocity.Y,Width=p.width,Height=p.height,
+                Gravity=p.gravity,GravityDirection=p.gravDir,MaxFall=p.maxFallSpeed,Acceleration=hover?p.mount.Acceleration:p.runAcceleration,
+                Slowdown=hover?.2f:p.runSlowdown,MaxSpeed=hover?p.mount.RunSpeed:Math.Max(p.maxRunSpeed,p.accRunSpeed),Jump=p.jump,JumpHeight=jumpHeight,JumpSpeed=jumpSpeed,
+                Left=p.controlLeft,Right=p.controlRight,Up=p.controlUp,Down=p.controlDown,HoldJump=p.controlJump,ReleaseJump=p.releaseJump,AutoJump=p.autoJump,Hover=hover,Complex=Prediction.NativePlayerMotion.Conditional(p)};
         }
         internal static NpcMotionState Read(NPC n,long session)
         {
             var health=new NpcHealthState{Regen=n.lifeRegen,RegenCount=n.lifeRegenCount,RealLife=n.realLife,DontTakeDamage=n.dontTakeDamage,Immortal=n.immortal,Immune255=n.immune[255],Defense=n.defense,DamageMultiplier=n.takenDamageMultiplier,LavaImmune=n.lavaImmune,FireImmune=n.buffImmune[24],ShimmerImmune=n.buffImmune[353],ShimmerTransparency=n.shimmerTransparency,ShimmerAction=n.SpawnedFromStatue || NPCID.Sets.ShimmerTransformToNPC[n.type]>=0 || NPCID.Sets.ShimmerTransformToItem[n.type]>=0 || NPCID.Sets.ShimmerTownTransform[n.type]};
-            int confused=0,buffHash=0,expires=0;
+            int confused=0,buffHash=0,expires=0,attached=0;
             for(int i=0;i<n.buffType.Length;i++)if(n.buffType[i]>0 && n.buffTime[i]>0)
             {
                 int time=n.buffTime[i],type=n.buffType[i];
                 if(type==BuffID.Confused){confused=Math.Max(confused,time);continue;}
                 if(ReadTimer(ref health,type,time))continue;
+                // Locked .8 UpdateNPC_BuffApplyDOTs: attached stacks require
+                // projectile ownership; other listed DOTs still have a real
+                // damage timer. Their unmodeled future damage is a condition,
+                // while current life/known DOT settlement remains real. Stinky
+                // and tipsy are non-motion only outside AI_007 town movement.
+                if((type==120 || type==25) && n.aiStyle!=7)continue;
+                if(type==151 || type==169 || type==183 || type==186 || type==189 || type==337 || type==344 || type==362 || type==30 || type==375 || type==395 || type==397){attached=Math.Max(attached,time);continue;}
                 // Visual and defence-only effects do not change motion under
                 // the explicit NoNewHits premise; their clocks need no model.
                 if(type==119 || type==320 || type==36 || type==69 || type==72 || type==203 || type==310 || type==399 || type==400)continue;
@@ -81,7 +168,7 @@ namespace JueMingR.TerrariaHost.Combat
             }
             int child=(n.aiStyle==6 || n.aiStyle==37) && n.ai[0]>0 && n.ai[0]<Main.maxNPCs?(int)n.ai[0]:-1;var linked=child>=0?Main.npc[child]:null;
             if(health.Fire>0 || health.Fire3>0 || n.buffType[19]!=0){health.Buffs.Captured=true;for(int i=0;i<20;i++)health.Buffs.Set(i,n.buffType[i],n.buffTime[i],Main.debuff[n.buffType[i]]);}
-            return new NpcMotionState{NetOffsetX=n.netOffset.X,NetOffsetY=n.netOffset.Y,SmoothingRange=Main.multiplayerNPCSmoothingRange,ResetNetOffset=Main.netMode==2 || NPC.offSetDelayTime>0 || NPCID.Sets.NoMultiplayerSmoothingByType[n.type] || NPCID.Sets.NoMultiplayerSmoothingByAI[n.aiStyle] || n.townNPC && n.ai[0]==25,Friendly=n.friendly,ChildSlot=child,ChildIdentity=linked!=null && linked.active && linked.aiStyle==n.aiStyle?CombatSelection.Identity(linked,session):default(NpcIdentity),LavaSpeed=n.lavaMovementSpeed,ShimmerSpeed=n.shimmerMovementSpeed,Lava=n.lavaWet,Shimmer=n.shimmerWet,Health=health,Identity=CombatSelection.Identity(n,session),X=n.position.X,Y=n.position.Y,OldX=n.oldPosition.X,OldY=n.oldPosition.Y,StairFall=n.stairFall,Vx=n.velocity.X,Vy=n.velocity.Y,OldVx=n.oldVelocity.X,OldVy=n.oldVelocity.Y,Width=n.width,Height=n.height,Scale=n.scale,Style=n.aiStyle,Direction=n.direction,DirectionY=n.directionY,Target=n.target,
+            return new NpcMotionState{UnmodeledDamageTicks=attached,NetOffsetX=n.netOffset.X,NetOffsetY=n.netOffset.Y,SmoothingRange=Main.multiplayerNPCSmoothingRange,ResetNetOffset=Main.netMode==2 || NPC.offSetDelayTime>0 || NPCID.Sets.NoMultiplayerSmoothingByType[n.type] || NPCID.Sets.NoMultiplayerSmoothingByAI[n.aiStyle] || n.townNPC && n.ai[0]==25,Friendly=n.friendly,ChildSlot=child,ChildIdentity=linked!=null && linked.active && linked.aiStyle==n.aiStyle?CombatSelection.Identity(linked,session):default(NpcIdentity),LavaSpeed=n.lavaMovementSpeed,ShimmerSpeed=n.shimmerMovementSpeed,Lava=n.lavaWet,Shimmer=n.shimmerWet,Health=health,Identity=CombatSelection.Identity(n,session),X=n.position.X,Y=n.position.Y,OldX=n.oldPosition.X,OldY=n.oldPosition.Y,StairFall=n.stairFall,Vx=n.velocity.X,Vy=n.velocity.Y,OldVx=n.oldVelocity.X,OldVy=n.oldVelocity.Y,Width=n.width,Height=n.height,Scale=n.scale,Style=n.aiStyle,Direction=n.direction,DirectionY=n.directionY,Target=n.target,
                 Boss=n.boss,InactivityImmune=n.DoesntDespawnToInactivity() || n.townNPC,SpriteDirection=n.spriteDirection,SpawnedFromStatue=n.SpawnedFromStatue,ParentSlot=(n.aiStyle==6 || n.aiStyle==37) && n.ai[1]>0?(int)n.ai[1]:-1,TimeLeft=n.timeLeft,ConfusedTicks=confused,Life=n.life,LifeMax=n.lifeMax,BuffFingerprint=buffHash,BuffExpires=expires,WaterSpeed=n.waterMovementSpeed,HoneySpeed=n.honeyMovementSpeed,
                 A0=n.ai[0],A1=n.ai[1],A2=n.ai[2],A3=n.ai[3],L0=n.localAI[0],L1=n.localAI[1],L2=n.localAI[2],L3=n.localAI[3],Active=n.active,NoGravity=n.noGravity,NoTileCollide=n.noTileCollide,Wet=n.wet,Honey=n.honeyWet,CollideX=n.collideX,CollideY=n.collideY,CanReceive=CombatSelection.Receives(n,true),CanHarm=!n.friendly && n.damage>0,JustHit=n.justHit};
         }

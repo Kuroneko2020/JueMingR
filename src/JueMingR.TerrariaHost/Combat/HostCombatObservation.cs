@@ -26,10 +26,12 @@ namespace JueMingR.TerrariaHost.Combat
         internal HostCombatObservation(string directory,SingleFeatureRuntime runtime,HostInputState input,NativeNpcObservation npcs,Prediction.PredictionLaunchIdentity launch=null)
             :this(directory,runtime,input,npcs,launch,null){}
         internal HostCombatObservation(string directory,SingleFeatureRuntime runtime,HostInputState input,NativeNpcObservation npcs,Prediction.PredictionLaunchIdentity launch,string package)
+            :this(directory,runtime,input,npcs,launch,package,false){}
+        internal HostCombatObservation(string directory,SingleFeatureRuntime runtime,HostInputState input,NativeNpcObservation npcs,Prediction.PredictionLaunchIdentity launch,string package,bool exactComparison)
         {
             this.runtime=runtime;this.input=input;
             AimTrace.Start(directory,launch,package);
-            Prediction=new NpcPredictionSource(launch);
+            Prediction=new NpcPredictionSource(launch,exactComparison);
             Settings=new ObservationSettings(new AtomicFileDocument(System.IO.Path.Combine(directory,"JueMingRData","config","features","combat-observation.json"),65536));
             Selection=new CombatSelection(npcs);World=new CombatObservationWorldLayer(this);Hooks=new CombatGeometryHooks(this);
             AppDomain.CurrentDomain.ProcessExit+=Exit;
@@ -88,7 +90,10 @@ namespace JueMingR.TerrariaHost.Combat
             if(!Hooks.Ready){Selection.RetireTarget();Prediction.Clear();return;}
             var player=Main.LocalPlayer;if(player==null || !player.active || player.dead || player.ghost){Selection.RetireTarget();Prediction.Clear();Geometry.BeginNpcs();return;}
             if(Collision)Geometry.BeginNpcs();
-            if(Path)Prediction.Cache.Demand(0,30,NpcPredictionCache.Horizon);else Prediction.Cache.Release(0);
+            // The display can show any genuinely computed future, including
+            // a short known death/terrain endpoint. It still requests 120;
+            // independent strict readers retain their own minimum.
+            if(Path)Prediction.Cache.Demand(0,1,NpcPredictionCache.Horizon);else Prediction.Cache.Release(0);
             try{Selection.Update(Options,Session,Prediction.Cache.Required>0,Collision?Geometry:null);}catch(Exception error){AimTrace.Fault("host-selection",error,(long)tick);CollisionFailed();pathFailed=true;Selection.RetireTarget();Prediction.Clear();return;}
             if(!Selection.HasTarget){Prediction.Clear();return;}
             // The native worker owns ordinary prediction failure. Selection,

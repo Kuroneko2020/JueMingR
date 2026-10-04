@@ -15,11 +15,18 @@ namespace JueMingR.TerrariaHost.Combat
             public bool Equals(Cell b){return Active==b.Active && RawActive==b.RawActive && Type==b.Type && ProperPlatformFrame==b.ProperPlatformFrame && Solid==b.Solid && Platform==b.Platform && StairPlatform==b.StairPlatform && PlatformFrame==b.PlatformFrame && Half==b.Half && Slope==b.Slope && Liquid==b.Liquid && Kind==b.Kind;}
         }
         private readonly Dictionary<int,Cell> cells=new Dictionary<int,Cell>(512);
+        // Small direct hot cache for repeated liquid/contact/slope queries.
+        // The dictionary remains the authoritative distinct-cell/bounds owner.
+        // Epoch changes on every real sample, so no old tile becomes current.
+        private readonly int[] hotKeys=new int[256];
+        private readonly long[] hotEpochs=new long[256];
+        private readonly Cell[] hotCells=new Cell[256];
+        private long epoch=1;
         private int width,height;
 #if DEBUG
         internal int Reads {get;private set;}
 #endif
-        public void Reset(){cells.Clear();width=Main.maxTilesX;height=Main.maxTilesY;}
+        public void Reset(){cells.Clear();width=Main.maxTilesX;height=Main.maxTilesY;if(epoch==long.MaxValue){Array.Clear(hotEpochs,0,hotEpochs.Length);epoch=0;}epoch++;}
         public bool Unchanged
         {
             get{if(width!=Main.maxTilesX || height!=Main.maxTilesY)return false;foreach(var pair in cells){Cell current;if(!Read(pair.Key%width,pair.Key/width,out current) || !current.Equals(pair.Value))return false;}return true;}
@@ -41,18 +48,39 @@ namespace JueMingR.TerrariaHost.Combat
         {
             stop=PredictionStop.None;cell=default(Cell);
             if(x<0 || y<0 || x>=Main.maxTilesX || y>=Main.maxTilesY){stop=PredictionStop.TerrainUnavailable;return false;}
-            int key=y*Main.maxTilesX+x;if(cells.TryGetValue(key,out cell))return true;
+            int key=y*Main.maxTilesX+x,hot=(key^(key>>7)^(key>>16))&255;
+            if(hotEpochs[hot]==epoch && hotKeys[hot]==key){cell=hotCells[hot];return true;}
+            if(cells.TryGetValue(key,out cell)){Hot(hot,key,cell);return true;}
             if(cells.Count>=4096){stop=PredictionStop.TerrainLimit;return false;}
             if(!Read(x,y,out cell)){stop=PredictionStop.TerrainUnavailable;return false;}
             cells.Add(key,cell);
+            Hot(hot,key,cell);
 #if DEBUG
             Reads++;
 #endif
             return true;
         }
+        private void Hot(int index,int key,Cell cell){hotKeys[index]=key;hotCells[index]=cell;hotEpochs[index]=epoch;}
+        private static bool Area(float x,float y,float w,float h,out PredictionStop stop)
+        {
+            stop=PredictionStop.None;
+            if(!Finite(x) || !Finite(y) || !Finite(w) || !Finite(h) || w<1 || h<1 || w>1024 || h>1024){stop=PredictionStop.InvalidState;return false;}
+            if(x<0 || y<0 || x+w>Main.maxTilesX*16f || y+h>Main.maxTilesY*16f){stop=PredictionStop.TerrainUnavailable;return false;}return true;
+        }
+        private static bool QueryArea(float x,float y,float w,float h,out PredictionStop stop)
+        {
+            // Native scans clip the border and exclude forty bottom tiles.
+            // Reject the unknown portion before clipping or an empty loop can
+            // incorrectly turn it into air, including free-movement liquids.
+            if(!Area(x,y,w,h,out stop))return false;
+            if((int)(x/16)-1<0 || (int)(y/16)-1<0 || (int)((x+w)/16)+2>Main.maxTilesX-1 || (int)((y+h)/16)+2>Main.maxTilesY-40)
+            {stop=PredictionStop.TerrainUnavailable;return false;}return true;
+        }
+        private static bool Finite(float value){return !float.IsNaN(value)&&!float.IsInfinity(value);}
         public bool Solid(MotionRect box,out bool solid,out PredictionStop stop)
         {
             solid=false;stop=PredictionStop.None;
+            if(!Area(box.X,box.Y,box.Width,box.Height,out stop))return false;
             if(box.Width<1 || box.Height<1 || box.Width>1024 || box.Height>1024){stop=PredictionStop.InvalidState;return false;}
             for(int y=(int)Math.Floor(box.Y/16);y<=(int)Math.Floor((box.Y+box.Height-.001f)/16);y++)
             for(int x=(int)Math.Floor(box.X/16);x<=(int)Math.Floor((box.X+box.Width-.001f)/16);x++)
@@ -68,6 +96,7 @@ namespace JueMingR.TerrariaHost.Combat
         public bool CanHit(MotionRect source,MotionRect target,out bool clear,out PredictionStop stop)
         {
             clear=false;stop=PredictionStop.None;
+            if(!Area(source.X,source.Y,source.Width,source.Height,out stop) || !Area(target.X,target.Y,target.Width,target.Height,out stop))return false;
             int x=Math.Max(1,Math.Min(Main.maxTilesX-1,((int)source.X+(int)source.Width/2)/16)),y=Math.Max(1,Math.Min(Main.maxTilesY-40,((int)source.Y+(int)source.Height/2)/16));
             int tx=Math.Max(1,Math.Min(Main.maxTilesX-1,((int)target.X+(int)target.Width/2)/16)),ty=Math.Max(1,Math.Min(Main.maxTilesY-40,((int)target.Y+(int)target.Height/2)/16));
             // Vanilla CanHit follows the larger remaining axis, checking the
@@ -89,6 +118,7 @@ namespace JueMingR.TerrariaHost.Combat
         public bool Move(ref NpcMotionState n,PredictionEnvironment environment,out PredictionStop stop)
         {
             stop=PredictionStop.None;
+            if(!Area(n.X,n.Y,n.Width,n.Height,out stop) || !Area(n.X+n.Vx,n.Y+n.Vy,n.Width,n.Height,out stop))return false;
             // Native UpdateNPC bypasses UpdateCollision altogether here. In
             // particular Duke/Sharkron do not receive liquid movement drag.
             if(n.NoTileCollide)
@@ -141,6 +171,7 @@ namespace JueMingR.TerrariaHost.Combat
         private bool Wet(NpcMotionState n,bool lavaOnly,out bool wet,out byte kind,out PredictionStop stop)
         {
             wet=false;kind=0;stop=PredictionStop.None;
+            if(!QueryArea(n.X,n.Y,n.Width,n.Height,out stop))return false;
             int sensorWidth=lavaOnly?n.Width:Math.Min(10,n.Width),sensorHeight=lavaOnly?n.Height:n.Height/2;
             float sensorX=lavaOnly?n.X:n.X+n.Width/2-sensorWidth/2,sensorY=lavaOnly?n.Y:n.Y+n.Height/2-sensorHeight/2;
             int left=Math.Max(0,(int)(n.X/16)-1),right=Math.Min(Main.maxTilesX-1,(int)((n.X+n.Width)/16)+2);
@@ -163,6 +194,7 @@ namespace JueMingR.TerrariaHost.Combat
         private bool TileContact(float px0,float py0,float vx,float vy,int w,int h,bool fall,out float rx,out float ry,out bool up,out PredictionStop stop)
         {
             rx=vx;ry=vy;up=false;stop=PredictionStop.None;
+            if(!QueryArea(px0,py0,w,h,out stop) || !Area(px0+vx,py0+vy,w,h,out stop))return false;
             float px=px0+vx,py=py0+vy;
             int sideX=-1,sideY=-1,verticalX=-1,verticalY=-1;
             // Ordinary native rectangular contacts: projected full velocity,
@@ -191,6 +223,7 @@ namespace JueMingR.TerrariaHost.Combat
         private bool WalkDown(ref NpcMotionState n,out PredictionStop stop)
         {
             stop=PredictionStop.None;if(n.Vy!=n.Gravity)return true;
+            if(!QueryArea(n.X,n.Y,n.Width,n.Height+20,out stop))return false;
             int row=Math.Max(0,Math.Min(Main.maxTilesY-42,(int)((n.Y+n.Height+4)/16))),chosenX=-1,chosenY=-1;byte chosenSlope=0;float nearest=(row+3)*16;
             for(int x=Math.Max(0,(int)(n.X/16));x<=Math.Min(Main.maxTilesX-1,(int)((n.X+n.Width)/16));x++)for(int y=row;y<=row+1;y++)
             {
@@ -206,6 +239,7 @@ namespace JueMingR.TerrariaHost.Combat
         private bool Slopes(ref NpcMotionState n,bool fall,out PredictionStop stop)
         {
             stop=PredictionStop.None;float x=n.X,y=n.Y,w=n.Width,h=n.Height,correctX=x,correctY=y,upper=y,lower=y,vx=n.Vx,vy=n.Vy;int mask=0;bool stairFall=false;
+            if(!QueryArea(x,y,w,h,out stop))return false;
             for(int i=Math.Max(0,(int)(x/16)-1);i<Math.Min(Main.maxTilesX-1,(int)((x+w)/16)+2);i++)
             for(int j=Math.Max(0,(int)(y/16)-1);j<Math.Min(Main.maxTilesY-40,(int)((y+h)/16)+2);j++)
             {
@@ -232,6 +266,7 @@ namespace JueMingR.TerrariaHost.Combat
             float shift=correctY-y;
             if(ry>shift){float delta=shift-ry;correctY=y+ry;if((mask&2)!=0)correctX=x-delta;if((mask&4)!=0)correctX=x+delta;vx=vy=0;}
             else if(ry<shift){float delta=ry-shift;correctY=y+ry;if((mask&8)!=0)correctX=x-delta;if((mask&16)!=0)correctX=x+delta;vx=vy=0;}
+            if(!Area(correctX,correctY,w,h,out stop))return false;
             n.X=correctX;n.Y=correctY;n.Vx=vx;n.Vy=vy;if(stairFall)n.StairFall=true;else if(!fall)n.StairFall=false;return true;
         }
     }

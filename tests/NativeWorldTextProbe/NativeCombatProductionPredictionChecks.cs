@@ -25,6 +25,7 @@ namespace NativeWorldTextProbe
         private static readonly List<double> active=new List<double>(),displayAge=new List<double>();
         private static readonly List<string> updates=new List<string>();
         private static long priorStep; private static string phase;
+        internal static int LastReceived {get;private set;}
         private static int continuousSeconds;
         private static readonly List<string> measurementRows=new List<string>();
         private static Microsoft.Win32.SafeHandles.SafeWaitHandle cadenceTimer;
@@ -36,7 +37,8 @@ namespace NativeWorldTextProbe
         internal static void Run(object context,string output,string content)
         {
             var host=Get(context,"CombatObservation");var source=Get(host,"Prediction");
-            var native=GetOptional(source,"Native");Require(native!=null,"Authenticated production composition selects native owner");
+            bool rolling=Environment.GetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT")=="rolling-candidate";
+            var native=GetOptional(source,"Native");Require(rolling?native==null:native!=null,"Default composition selects rolling; isolated comparison explicitly selects native owner");
             Codec(host.GetType().Assembly);warm.Clear();cadence.Clear();priorStep=0;
             active.Clear();displayAge.Clear();updates.Clear();
             measurementRows.Clear();int.TryParse(Environment.GetEnvironmentVariable("JUEMINGR_NPC_CONTINUOUS_SECONDS"),out continuousSeconds);if(content=="--cpu" && continuousSeconds==0)continuousSeconds=1;if(continuousSeconds<0 || continuousSeconds>60)throw new InvalidOperationException("Bounded measurement window required.");
@@ -49,16 +51,18 @@ namespace NativeWorldTextProbe
             {
                 NativeCombatObservationChecks.Save(host,new ObservationOptions());
                 for(int i=0;i<60;i++){Call(context,"UpdateRuntime");Call(context,"UpdateShell");}
-                Require(GetOptional(native,"Worker")==null && (long)Get(native,"Requests")==0,"OFF entry never starts or samples helper");
-                using(var graphics=continuousSeconds>0?null:new ProbeGraphics(content))
+                Require(rolling || GetOptional(native,"Worker")==null && (long)Get(native,"Requests")==0,"OFF entry never starts or samples helper");
+                using(var graphics=rolling && Environment.GetEnvironmentVariable("JUEMINGR_ROLLING_CPU_ONLY")=="1" || continuousSeconds>0 && !rolling && Environment.GetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT")!="rolling-baseline"?null:new ProbeGraphics(content))
                 {
                     Initialize();
                     if(Environment.GetEnvironmentVariable("JUEMINGR_AIM_LIGHT_PAIR")!=null)NativeAimLightSessionChecks.Semantics(host.GetType().Assembly,output);
                     if(Environment.GetEnvironmentVariable("JUEMINGR_AIM_LIGHT_SEMANTICS_ONLY")=="1")return;
-                    NativeCombatHistoryChecks.Start(sink,host.GetType().Assembly,output);
+                    if(!rolling)NativeCombatHistoryChecks.Start(sink,host.GetType().Assembly,output);
                     foreach(string name in new[]{"HandleSpecialEvent","HandleRunning"})Patch(sink,typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),nameof(Skip));
                     foreach(var method in new[]{typeof(WorldGen).GetMethod("saveToonWhilePlaying",Flags),typeof(Player).GetMethod("SavePlayer",Flags),typeof(NetMessage).GetMethod("SendData",Flags)})Patch(sink,method,nameof(Refuse));
                     Set(host,"LayerStatus",Enum.Parse(host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Rendering.WorldLayerStatus"),"Ready"));
+                    if(rolling || Environment.GetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT")=="rolling-baseline")
+                    {NativeCombatRollingBaselineChecks.Run(context,cache,()=>{phase=NativeCombatRollingBaselineChecks.Phase;Step(context,samples,prepares,false);},output,graphics);return;}
                     if(continuousSeconds>0){Scene(2);Window(context,cache,samples,prepares,"baseline-off",continuousSeconds,false);Main.npc[0].active=false;}
                     NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true));
                     if(Environment.GetEnvironmentVariable("JUEMINGR_AIM_LIGHT_PAIR")!=null)
@@ -232,7 +236,7 @@ namespace NativeWorldTextProbe
                 object owner=null;
                 try
                 {
-                    owner=GetOptional(native,"Worker");
+                    owner=native==null?null:GetOptional(native,"Worker");
                     try{Call(host,"Exit",null,EventArgs.Empty);}
                     finally
                     {
@@ -444,8 +448,25 @@ namespace NativeWorldTextProbe
         }
         private static void Scene(int type,int slot=0)
         {var n=Main.npc[slot];n.SetDefaults(type);n.whoAmI=slot;n.active=true;n.target=0;n.position=new Vector2(650,850);n.timeLeft=750;NPC.ClearFoundActiveNPCs();NPC.mechQueen=NPC.golemBoss=-1;}
+        private static void RollingStep(object context,List<double> samples,List<double> prepares,bool right,Action sampleIntent,bool prepareHost)
+        {
+            var pace=Stopwatch.StartNew();NativeQuickItemChecks.BeginWorldStep();Main.EverLastingTicker++;NPC.UpdateProtectedSpawnSlots();NPC.ClearFoundActiveNPCs();NPC.UpdateFoundActiveNPCs();
+            NativeCombatWorkerChecks.AdvanceWeather();
+            if(right){Main.LocalPlayer.controlRight=true;Main.LocalPlayer.controlLeft=false;}
+            using(Main.SwapRandom("UpdatePlayers"))Main.LocalPlayer.Update(0);
+            if(NPC.brainOfGravity>=0 && NPC.brainOfGravity<Main.maxNPCs && (!Main.npc[NPC.brainOfGravity].active || Main.npc[NPC.brainOfGravity].type!=266))NPC.brainOfGravity=-1;
+            using(Main.SwapRandom("UpdateNPCs"))for(int i=0;i<Main.maxNPCs;i++)if(Main.npc[i].active)Main.npc[i].UpdateNPC(i);
+            using(Main.SwapRandom("UpdateProjectiles"))try{for(int i=0;i<Main.maxProjectiles;i++){Main.ProjectileUpdateLoopIndex=i;if(Main.projectile[i].active)Main.projectile[i].Update(i);}}finally{Main.ProjectileUpdateLoopIndex=-1;}
+            Main.time+=Main.dayRate;sampleIntent?.Invoke();
+            long start=Stopwatch.GetTimestamp();if(prepareHost)Call(context,"UpdateRuntime");samples.Add(prepareHost?Ms(Stopwatch.GetTimestamp()-start):0);
+            start=Stopwatch.GetTimestamp();if(prepareHost)Call(context,"UpdateShell");prepares.Add(prepareHost?Ms(Stopwatch.GetTimestamp()-start):0);LastReceived=0;
+            double remaining=1000.0/60-pace.Elapsed.TotalMilliseconds;
+            if(remaining>0){long due=-(long)(remaining*10000);if(!SetWaitableTimer(cadenceTimer,ref due,0,IntPtr.Zero,IntPtr.Zero,false) || WaitForSingleObject(cadenceTimer,1000)!=0)throw new InvalidOperationException("Fixture cadence timer failed.");}
+        }
         private static void Step(object context,List<double> samples,List<double> prepares,bool right=true,Action sampleIntent=null,bool prepareHost=true)
         {
+            if(Environment.GetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT")=="rolling-candidate")
+            {RollingStep(context,samples,prepares,right,sampleIntent,prepareHost);return;}
             long now=Stopwatch.GetTimestamp();double interval=priorStep==0?0:Ms(now-priorStep);if(priorStep!=0)cadence.Add(interval);priorStep=now;
             int gc0=GC.CollectionCount(0),gc1=GC.CollectionCount(1),gc2=GC.CollectionCount(2);
             var pace=Stopwatch.StartNew();NativeQuickItemChecks.BeginWorldStep();Main.EverLastingTicker++;NPC.UpdateProtectedSpawnSlots();NPC.ClearFoundActiveNPCs();NPC.UpdateFoundActiveNPCs();
@@ -470,7 +491,7 @@ namespace NativeWorldTextProbe
             var cache=(NpcPredictionCache)Get(Get(Get(context,"CombatObservation"),"Prediction"),"Cache");var shown=prepareHost?cache.Read(0):null;var accepted=GetOptional(native,"acceptedRequest");
             // Drain on the common step, including LiveContext. A full bounded
             // queue keeps Count==256 even when a new reply replaces an old one.
-            int received=((ICollection)Get(native,"Measurements")).Count;foreach(var m in (IEnumerable)Get(native,"Measurements"))measurementRows.Add(MeasurementRow(m));Call(Get(native,"Measurements"),"Clear");
+            int received=((ICollection)Get(native,"Measurements")).Count;LastReceived=received;foreach(var m in (IEnumerable)Get(native,"Measurements"))measurementRows.Add(MeasurementRow(m));Call(Get(native,"Measurements"),"Clear");
             bool didWork=shown!=null && shown.Strategy==PredictionStrategy.SegmentedTrend || requests!=(long)Get(native,"Requests") || observed!=(long)Get(native,"Observed") && (GetOptional(native,"pending")!=null || GetOptional(native,"accepted")!=null) || received!=0;
             if(didWork)active.Add(samples.Last());
             double age=shown!=null && accepted!=null && (long)Get(accepted,"Wall")>0?Ms(Stopwatch.GetTimestamp()-(long)Get(accepted,"Wall")):-1;
@@ -491,6 +512,7 @@ namespace NativeWorldTextProbe
         private static void Dump(object native,object worker,string output)
         {
             File.WriteAllLines(Path.Combine(output,"production-updates.csv"),new[]{"tick,wallMs,phase,ready,active,sampled,received,hostMs,displayCaptureTick,displayAgeMs,requests,gc0,gc1,gc2,originalMs,shellMs,intervalMs,strategy,workMs,waitMs,observeMs,tilesCompared,tilesCaptured,chunkHits"}.Concat(updates));
+            if(native==null){Console.WriteLine("SESSION rolling default; native owner absent, helper requests/history/background=0");return;}
             using(var csv=new StreamWriter(Path.Combine(output,"production-costs.csv"))){csv.WriteLine(string.Join(",",MeasurementFields));foreach(string row in measurementRows)csv.WriteLine(row);foreach(var m in (IEnumerable)Get(native,"Measurements"))csv.WriteLine(MeasurementRow(m));}
             Console.WriteLine("SESSION requests="+Get(native,"Requests")+" published-frames="+Get(native,"Published")+" rejected="+Get(native,"Rejected")+" refused="+Get(native,"Refused")+" observe-total-ms="+Get(native,"ObserveMilliseconds")+" observe-max-ms="+Get(native,"ObserveMaximum"));
             if(worker!=null){Console.WriteLine("READY ms="+Get(worker,"ReadyMilliseconds"));File.WriteAllText(Path.Combine(output,"production-worker.log"),(string)GetOptional(worker,"Diagnostics")??"");}

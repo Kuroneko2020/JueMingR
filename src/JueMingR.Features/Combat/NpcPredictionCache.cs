@@ -30,21 +30,21 @@ namespace JueMingR.Features.Combat
         // the full horizon. Other consumers keep their own strict minimum.
         public void Demand(int consumer,int minimum,int preferred)
         {if(consumer<0 || consumer>=demands.Length || minimum<1 || minimum>preferred || preferred>Horizon)throw new ArgumentOutOfRangeException();minimums[consumer]=minimum;demands[consumer]=preferred;}
-        public void Release(int consumer){if(consumer<0 || consumer>=demands.Length)throw new ArgumentOutOfRangeException();minimums[consumer]=demands[consumer]=0;if(Required==0)Clear();}
+        public void Release(int consumer){if(consumer<0 || consumer>=demands.Length)throw new ArgumentOutOfRangeException();if(demands[consumer]==0)return;minimums[consumer]=demands[consumer]=0;if(Required==0)Clear();}
         public int Required {get{int n=0;for(int i=0;i<demands.Length;i++)n=Math.Max(n,demands[i]);return n;}}
         public int MinimumRequired {get{int n=0;for(int i=0;i<minimums.Length;i++)if(minimums[i]>0 && (n==0 || minimums[i]<n))n=minimums[i];return n;}}
         public NpcTrajectory Read(int consumer)
         {
             if(consumer<0 || consumer>=demands.Length || demands[consumer]==0 || result==null)return null;
-            // Native async windows must cover this reader's minimum. Natural
-            // lifetime ends remain terminal; model/segmented stop markers keep
-            // their existing partial-path contract and are not tiered results.
-            return result.Strategy==PredictionStrategy.NativeIsolated && result.Stop!=PredictionStop.Despawn && result.Count<=minimums[consumer]?null:result;
+            // Minimum is a consumer contract, independent of the producer.
+            // A terminal trajectory remains truthful, but cannot satisfy a
+            // stricter reader by padding or bypassing its required future.
+            return result.Count<=minimums[consumer]?null:result;
         }
         // The native asynchronous owner validates age/identity before passing
         // an immutable window here. Readers still never sample or wait.
         public void Publish(NpcTrajectory value){result=Required>0?value:null;}
-        public void Clear(){result=null;count=length=0;tick=-1;Array.Clear(initial,0,initial.Length);Array.Clear(first,0,first.Length);Array.Clear(tail,0,tail.Length);}
+        public void Clear(){if(result==null && count==0 && length==0 && tick==-1)return;result=null;count=length=0;tick=-1;Array.Clear(initial,0,initial.Length);Array.Clear(first,0,first.Length);Array.Clear(tail,0,tail.Length);}
         public void EndSession(){Array.Clear(demands,0,demands.Length);Array.Clear(minimums,0,minimums.Length);Clear();}
         public void Prepare(NpcMotionState[] source,int sourceCount,int chosen,long sampleTick,PredictionEnvironment env,IPredictionTerrain terrain)
         {
@@ -119,6 +119,7 @@ namespace JueMingR.Features.Combat
         {for(int i=0;i<size;i++)if(!Same(a[i],b[i]))return false;return true;}
         public static bool Same(NpcMotionState a,NpcMotionState b)
         {
+            if(a.UnmodeledDamageTicks!=b.UnmodeledDamageTicks || a.ObservedAccelerationX!=b.ObservedAccelerationX || a.ObservedAccelerationY!=b.ObservedAccelerationY || a.ObservedTurn!=b.ObservedTurn)return false;
             // These random clocks only emit new attacks, which this NPC-motion
             // model never consumes. Ignoring their difference cannot hide a
             // position/phase/target change; all those fields still compare.

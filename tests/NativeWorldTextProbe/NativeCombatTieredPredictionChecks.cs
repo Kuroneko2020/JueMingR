@@ -37,9 +37,15 @@ namespace NativeWorldTextProbe
             Require(cache.Required==120 && (int)typeof(NpcPredictionCache).GetProperty("MinimumRequired").GetValue(cache)==30,"Each consumer retains its own minimum while the preferred horizon stays 120.");
             cache.Release(0);Require(cache.Read(1)==null && (int)typeof(NpcPredictionCache).GetProperty("MinimumRequired").GetValue(cache)==120,"Releasing the short consumer restores strict long demand.");
             cache.EndSession();Require(cache.Required==0 && cache.Read(1)==null,"Session end clears both demand bounds.");
-            cache.Demand(0,120);cache.Publish(new NpcTrajectory(identity,100,2,PredictionAssumption.None,PredictionStop.MissingDependency,points,20));
-            Require(cache.Read(0)!=null,"Existing model stop presentation is separate from asynchronous native coverage.");
-            Console.WriteLine("PASS native per-consumer minimum coverage; strict long demand; release/end; unchanged model stop presentation");
+            // A truthful terminal prefix remains visible to its short reader;
+            // the stop reason never exempts a strict reader from its minimum.
+            cache.Demand(0,120);cache.Demand(1,1,120);
+            var terminal=new NpcTrajectory(identity,100,2,PredictionAssumption.None,PredictionStop.MissingDependency,points,20);
+            cache.Publish(terminal);
+            Require(cache.Read(0)==null && ReferenceEquals(cache.Read(1),terminal) && terminal.Count==20 && terminal.SampleTick==100 && terminal.CaptureTick==100 && terminal.Stop==PredictionStop.MissingDependency,"The real nineteen-future terminal prefix is preserved while strict120 rejects it without padding.");
+            cache.Release(1);Require(cache.Read(0)==null && cache.Required==120 && cache.MinimumRequired==120,"Releasing the short reader leaves the strict minimum intact.");
+            cache.EndSession();Require(cache.Required==0 && cache.Read(0)==null,"Session end retires the terminal result and final reader.");
+            Console.WriteLine("PASS native per-consumer minimum coverage; strict long demand; truthful terminal prefix; release/end");
             if(Environment.GetEnvironmentVariable("JUEMINGR_TIERED_PRIVATE")=="cache")return;
             byte[] request=File.ReadAllBytes(Path.Combine(output,"fixed-request.bin"));
             Require(BitConverter.ToInt32(request,12)==180,"Fixed raw input begins with the original 180 actual steps.");

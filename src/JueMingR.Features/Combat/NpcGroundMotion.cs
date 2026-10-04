@@ -93,14 +93,14 @@ namespace JueMingR.Features.Combat
             if(type==120 && !e.Multiplayer && n.A3>=180){stop=PredictionStop.RandomDestination;return false;}
             return true;
         }
-        private static bool StepUp(ref NpcMotionState n,IPredictionTerrain t,out PredictionStop stop)
+        internal static bool StepUp(ref NpcMotionState n,IPredictionTerrain t,out PredictionStop stop,bool platforms=false)
         {
             stop=PredictionStop.None;int direction=Math.Sign(n.Vx),x=(int)((n.X+n.Vx+n.Width/2+(n.Width/2+1)*direction)/16),y=(int)((n.Y+n.Height-1)/16);
             PredictionTile c,a,b,d,f,behind;
             if(!t.Tile(x,y,out c,out stop) || !t.Tile(x,y-1,out a,out stop) || !t.Tile(x,y-2,out b,out stop) || !t.Tile(x,y-3,out d,out stop) || !t.Tile(x,y-4,out f,out stop) || !t.Tile(x-direction,y-3,out behind,out stop))return false;
             if(n.X+n.Vx+n.Width<=x*16 || n.X+n.Vx>=x*16+16 ||
-                !(c.Active && !c.TopSlope && !a.TopSlope && c.Solid && !c.SolidTop || a.Half && a.Active) ||
-                !(Pass(a) || a.Half && Pass(f)) || !Pass(b) || !Pass(d) || behind.Active && behind.Solid)return true;
+                !(c.Active && !c.TopSlope && !a.TopSlope && (c.Solid && !c.SolidTop || platforms && c.SolidTop && (!a.Solid || !a.Active) && c.Type!=16 && c.Type!=18 && c.Type!=134) || a.Half && a.Active) ||
+                !(Pass(a) || a.Half && Pass(f)) || !Pass(b) || !Pass(d) || behind.Active && behind.Solid && (!platforms || !behind.SolidTop))return true;
             float surface=y*16+(c.Half?8:0)-(a.Half?8:0),rise=n.Y+n.Height-surface;
             if(surface<n.Y+n.Height && rise<=16.1f)n.Y=surface-n.Height;
             return true;

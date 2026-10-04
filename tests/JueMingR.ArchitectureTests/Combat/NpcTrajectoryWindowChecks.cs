@@ -42,6 +42,15 @@ namespace JueMingR.ArchitectureTests
             Get(window,ended,1051,120,8,false);
             foreach(PredictionStop stop in new[]{PredictionStop.MissingDependency,PredictionStop.TerrainUnavailable,PredictionStop.InvalidState,PredictionStop.None})
                 Get(window,new NpcTrajectory(identity,1000,1,PredictionAssumption.None,stop,shortPoints,shortPoints.Length),1000,120,9,false);
+            var cache=new JueMingR.Features.Combat.NpcPredictionCache();
+            cache.Demand(0,30,120);cache.Demand(1,120);
+            foreach(PredictionStrategy strategy in Enum.GetValues(typeof(PredictionStrategy)))
+            foreach(PredictionStop shortStop in new[]{PredictionStop.TerrainUnavailable,PredictionStop.Despawn})
+            {
+                cache.Publish(new NpcTrajectory(identity,1000,1,PredictionAssumption.None,shortStop,shortPoints,shortPoints.Length,strategy));
+                Require(cache.Read(0)!=null && cache.Read(1)==null,"Each strategy respects independent consumer minima: "+strategy);
+            }
+            cache.Release(0);Require(cache.Required==120,"Releasing the path display preserves another consumer's demand.");
         }
         private static NpcTrajectory Get(MethodInfo method,NpcTrajectory source,long tick,int future,long version,bool expected)
         {object[] args={tick,future,version,null};bool accepted=(bool)method.Invoke(source,args);Require(accepted==expected && (accepted==(args[3]!=null)),"Exact current-window acceptance: tick="+tick+" future="+future);return (NpcTrajectory)args[3];}

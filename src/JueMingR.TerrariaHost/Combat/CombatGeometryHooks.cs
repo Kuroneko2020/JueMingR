@@ -51,8 +51,18 @@ namespace JueMingR.TerrariaHost.Combat
                 Patch(typeof(Player),"Teleport",nameof(PlayerTeleport),null,null);
                 Patch(typeof(Player),"Spawn",nameof(PlayerSpawn),null,null);
                 Patch(typeof(Player),"Hurt",null,nameof(PlayerHurt),null);
-                Prediction.NativeNpcImpact.Install(harmony,methods,PatchBirthCaller);
-                if(birthGeometry!=3)throw new MissingMethodException("Native birth/collision caller ABI.");
+                if(host.Prediction.Native!=null)
+                {
+                    Prediction.NativeNpcImpact.Install(harmony,methods,PatchBirthCaller);
+                    if(birthGeometry!=3)throw new MissingMethodException("Native birth/collision caller ABI.");
+                }
+                else
+                {
+                    // Collision/instant-event scopes still own these bodies;
+                    // default prediction needs no birth tickets or strike proof.
+                    Patch(typeof(Projectile),"Kill",nameof(BeforeKill),null,nameof(EndKill));
+                    Patch(typeof(Projectile),"AI",nameof(BeforeAi),null,nameof(EndTransient));
+                }
                 Patch(typeof(NPC),"SetDefaults",nameof(NpcReset),null,null);
                 Patch(typeof(MessageBuffer),"GetData",nameof(PlayerNetwork),nameof(NpcNetwork),null);
                 PlayerCollisionGeometryHooks.Install(harmony,methods);
@@ -85,28 +95,28 @@ namespace JueMingR.TerrariaHost.Combat
         private static bool Live(Player player)
         {return player!=null && player.active && player.whoAmI>=0 && player.whoAmI<Main.maxPlayers && ReferenceEquals(Main.player[player.whoAmI],player);}
         private static void PlayerTeleport(Player __instance,Vector2 __0)
-        {var owner=PredictionHost;if(owner!=null && Live(__instance) && __instance.position!=__0){Prediction.AimLightTrace.Relocation("teleport",__instance,0);owner.Prediction.Native?.ObservePlayerRelocation();}}
+        {var owner=PredictionHost;if(owner!=null && Live(__instance) && __instance.position!=__0){Prediction.AimLightTrace.Relocation("teleport",__instance,0);owner.Prediction.ObservePlayerRelocation(__instance);}}
         private static void PlayerSpawn(Player __instance)
-        {var owner=PredictionHost;if(owner!=null && Live(__instance)){Prediction.AimLightTrace.Relocation("spawn",__instance,0);owner.Prediction.Native?.ObservePlayerRelocation();}}
+        {var owner=PredictionHost;if(owner!=null && Live(__instance)){Prediction.AimLightTrace.Relocation("spawn",__instance,0);owner.Prediction.ObservePlayerRelocation(__instance);}}
         private static void PlayerHurt(Player __instance,double __result)
         {
             // A successful native hit is new external input, including recoil
             // on otherwise conditional mounts. Rejected/immune hits do not
             // revoke results; ordinary immunity clocks are not exact premises.
-            var owner=PredictionHost;if(owner!=null && Live(__instance)){Prediction.AimLightTrace.Relocation("hurt-result",__instance,__result);if(__result>0)owner.Prediction.Native?.ObservePlayerRelocation();}
+            var owner=PredictionHost;if(owner!=null && Live(__instance)){Prediction.AimLightTrace.Relocation("hurt-result",__instance,__result);if(__result>0)owner.Prediction.ObservePlayerRelocation(__instance);}
         }
         private static void NpcReset(NPC __instance)
         {
             // SetDefaults/Transform can restore the same type within one tick,
             // retaining both object and generation. Latch the reconstruction.
-            var owner=PredictionHost;if(owner!=null)owner.Prediction.Native?.ObserveNpcReset(__instance);
+            var owner=PredictionHost;if(owner!=null)owner.Prediction.ObserveNpcReset(__instance);
         }
         private static void NpcNetwork(MessageBuffer __instance,int __0,int __1)
         {
             var owner=PredictionHost;if(owner==null || Main.netMode!=1)return;
             var data=__instance.readBuffer;
             if(data==null || __0<0 || __1<3 || __0>data.Length-3 || data[__0]!=23)return;
-            int slot=data[__0+1]|data[__0+2]<<8;if(slot<Main.maxNPCs)owner.Prediction.Native?.ObserveNpcQueryUpdate(slot);
+            int slot=data[__0+1]|data[__0+2]<<8;if(slot<Main.maxNPCs)owner.Prediction.ObserveNpcQueryUpdate(slot);
         }
         private static void PlayerNetwork(MessageBuffer __instance,int __0,int __1)
         {
@@ -121,7 +131,7 @@ namespace JueMingR.TerrariaHost.Combat
             int slot=data[__0+1];if(slot>=Main.maxPlayers || slot==Main.myPlayer && !Main.ServerSideCharacter)return;
             var player=Main.player[slot];if(!Live(player) || player.unacknowledgedTeleports>0 || player.position==Vector2.Zero)return;
             var incoming=new Vector2(BitConverter.ToSingle(data,__0+7),BitConverter.ToSingle(data,__0+11));
-            if((player.netOffset+player.position-incoming).Length()>Main.multiplayerNPCSmoothingRange){Prediction.AimLightTrace.Relocation("network-relocation",player,0);owner.Prediction.Native?.ObservePlayerRelocation();}
+            if((player.netOffset+player.position-incoming).Length()>Main.multiplayerNPCSmoothingRange){Prediction.AimLightTrace.Relocation("network-relocation",player,0);owner.Prediction.ObservePlayerRelocation(player);}
         }
         private static void BeforeDamage(Projectile __instance,out DamageScope __state)
         {

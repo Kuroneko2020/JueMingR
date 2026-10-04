@@ -90,7 +90,7 @@ namespace NativeWorldTextProbe
                 }
                 if(Environment.GetEnvironmentVariable("JUEMINGR_AIM_LIGHT_PAIR")=="on")
                 {string trace=Path.Combine(Terraria.Program.SavePath,"composition/JueMingRData/logs/aim-light");Directory.CreateDirectory(trace);File.WriteAllText(Path.Combine(trace,"arm.txt"),hash);}
-                try{NativeQuickItemChecks.Run(context=>{if(menuOnly)NativeCombatMenuPreparationChecks.Run(context,output);else NativeCombatProductionPredictionChecks.Run(context,output,content);},processing:true,shortFeedback:true,candidateAssembly:host.Location,predictionHostHash:hash,candidatePackageId:packageId);}
+                try{NativeQuickItemChecks.Run(context=>{if(menuOnly)NativeCombatMenuPreparationChecks.Run(context,output);else NativeCombatProductionPredictionChecks.Run(context,output,content);},processing:true,shortFeedback:true,candidateAssembly:host.Location,predictionHostHash:hash,candidatePackageId:packageId,exactPredictionComparison:Environment.GetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT")!="rolling-candidate");}
                 finally
                 {
                     string prepared=Path.Combine(layout,"prediction-materials");Directory.CreateDirectory(prepared);
