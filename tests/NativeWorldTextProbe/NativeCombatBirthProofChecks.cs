@@ -69,6 +69,8 @@ namespace NativeWorldTextProbe
         {
             worker=Get(native,"Worker");var hooks=new Harmony("JueMingR.Tests.BirthProof");
             var rows=new List<string>{"case,capture,birth,arrive,history,events,impact,retired,accepted,worker"};
+            var waits=new List<string>{"case,capture,tickBefore,tickAfter,usedBeforeMs,remainingBeforeMs,waitMs,usedAfterMs,stateBefore,stateAfter,decodedFrames,frame0Tick,childPid,continuationKind,continuationSlot,error"};
+            var preparations=new List<string>{"case,tickBefore,tickAfter,pendingCapture,retiredBefore,retiredAfter,usedBeforeMs,remainingBeforeMs,waitMs,usedAfterMs,stateBefore,stateAfter,childPid"};
             var scalar=typeof(Projectile).GetMethods(Flags).Single(m=>m.Name=="NewProjectile" && m.GetParameters()[1].ParameterType==typeof(float));
             var trace=new NativeCombatAttackTrace(native,output);
             hooks.Patch(worker.GetType().GetMethod("TryTakeResult",Flags),prefix:Hook(nameof(Mailbox)));
@@ -116,17 +118,13 @@ namespace NativeWorldTextProbe
                     delayPreparation=scenario=="generation-wrap";
                     while(wait.Elapsed.TotalSeconds<8)
                     {
-                        if(scenario=="generation-wrap" && (Get(native,"acceptedRequest")==null || birth!=0 && (long)Main.GameUpdateCount-birth>=18))
+                        if(Get(native,"acceptedRequest")==null || birth!=0 && (long)Main.GameUpdateCount-birth>=18)
                         {
-                            // The wrap is a lifecycle test, not a throughput test.
+                            // These are lifecycle tests, not throughput tests.
                             // Finish initial warm-up and get a fresh capture in
                             // the first arrow's window using real replies. Other
                             // preparation ticks keep the normal asynchronous pace.
-                            long tick=(long)Main.GameUpdateCount;var busy=Stopwatch.StartNew();
-                            while((int)Get(worker,"State")==2 && wait.Elapsed.TotalSeconds<8)System.Threading.Thread.Sleep(1);
-                            preparationWait+=busy.Elapsed.TotalMilliseconds;
-                            int state=(int)Get(worker,"State");
-                            Require((long)Main.GameUpdateCount==tick && ReferenceEquals(worker,Get(native,"Worker")) && !(bool)Get(native,"Failed") && (state==1 || state==3),"Wrap preparation waits only for the real healthy worker; world tick is unchanged: state="+state+" elapsed-ms="+wait.ElapsedMilliseconds+" tick="+tick+"->"+Main.GameUpdateCount);
+                            preparationWait+=WaitForPreparation(native,wait,scenario,preparations);
                         }
                         advance();pending=Get(native,"pending");long since=(long)Main.GameUpdateCount-birth;
                         if(birth!=0 && since>=18 && since<=40 && pending!=null && !(bool)Get(pending,"Retired") && Main.projectile[0].active
@@ -143,6 +141,7 @@ namespace NativeWorldTextProbe
                     }
                     Require((int)Get(pending,"Horizon")==180,"The selected real birth request has the original long horizon.");
                     hold=true;long capture=(long)Get(pending,"Tick"),priorBirth=birth;int priorGeneration=generations[0];
+                    AwaitBirthReply(native,pending,cache,wait,scenario,waits);
                     trace.Phase="birth-"+scenario;trace.RequiredCapture=capture;
                     var adversary=new Harmony("JueMingR.Tests.BirthAdversary");
                     if(scenario=="prefix-borrow"){var before=Hook(nameof(Borrow));before.priority=Priority.First+100;adversary.Patch(scalar,prefix:before);}
@@ -188,7 +187,78 @@ namespace NativeWorldTextProbe
                 Require(entryReads==0 && observer.GetField("hash",Flags).GetValue(null)==null && observer.GetField("factory",Flags).GetValue(null)==null,"OFF births neither inspect patch metadata nor allocate a proof writer/factory.");
                 Console.WriteLine("BIRTH-PROOF OFF original-birth=true patch-reads=0 writer=false factory=false");
             }
-            finally{cache.Release(1);delayPreparation=false;try{trace?.Dispose();}finally{hold=inject=false;Main.NoPooling=false;worker=null;target=null;hooks.UnpatchAll(hooks.Id);new Harmony("JueMingR.Tests.BirthAdversary").UnpatchAll("JueMingR.Tests.BirthAdversary");File.WriteAllLines(Path.Combine(output,"birth-proof.csv"),rows);}}
+            finally{cache.Release(1);delayPreparation=false;try{trace?.Dispose();}finally{hold=inject=false;Main.NoPooling=false;worker=null;target=null;hooks.UnpatchAll(hooks.Id);new Harmony("JueMingR.Tests.BirthAdversary").UnpatchAll("JueMingR.Tests.BirthAdversary");File.WriteAllLines(Path.Combine(output,"birth-proof.csv"),rows);File.WriteAllLines(Path.Combine(output,"birth-ready.csv"),waits);File.WriteAllLines(Path.Combine(output,"birth-preparation.csv"),preparations);}}
+        }
+        private static double WaitForPreparation(object native,Stopwatch preparation,string scenario,List<string> rows)
+        {
+            var owner=worker;long tick=Main.GameUpdateCount;int pid=(int)Get(owner,"ChildId"),before=(int)Get(owner,"State");
+            var pending=Get(native,"pending");var accepted=Get(native,"acceptedRequest");
+            long capture=pending==null?-1:(long)Get(pending,"Tick");bool retired=pending!=null && (bool)Get(pending,"Retired");
+            double used=preparation.Elapsed.TotalMilliseconds;var waiting=Stopwatch.StartNew();
+            Action unchanged=()=>Require(Main.GameUpdateCount==tick && ReferenceEquals(owner,worker) && ReferenceEquals(owner,Get(native,"Worker"))
+                && (int)Get(owner,"ChildId")==pid && pid>0 && !(bool)Get(native,"Failed")
+                && ReferenceEquals(pending,Get(native,"pending")) && ReferenceEquals(accepted,Get(native,"acceptedRequest"))
+                && (pending==null || (long)Get(pending,"Tick")==capture && (bool)Get(pending,"Retired")==retired),"Birth preparation cannot change world, request retirement or worker ownership: "+scenario);
+            try
+            {
+                unchanged();
+                // Scene retirement may still await the original clear-world
+                // acknowledgement. Only preparation may wait for Clearing;
+                // an already selected request must keep its own Busy/Result path.
+                while(true)
+                {
+                    int current=(int)Get(owner,"State");
+                    if(current==1 || current==3)break;
+                    Require(current==2 || current==7,"Birth preparation cannot restart or retain a failed/stopped worker: state="+current+" failure="+Get(owner,"Failure"));
+                    Require(preparation.Elapsed.TotalSeconds<8,"Birth preparation exceeds the original total eight-second deadline: "+scenario);
+                    System.Threading.Thread.Sleep(1);
+                }
+                unchanged();int state=(int)Get(owner,"State");
+                Require(preparation.Elapsed.TotalSeconds<8 && (state==1 || state==3),"Birth preparation waits only for the real healthy worker within the original eight-second deadline: state="+state+" failure="+Get(owner,"Failure"));
+                return waiting.Elapsed.TotalMilliseconds;
+            }
+            finally
+            {
+                var culture=System.Globalization.CultureInfo.InvariantCulture;
+                rows.Add(string.Join(",",scenario,tick,Main.GameUpdateCount,capture,retired,pending!=null && (bool)Get(pending,"Retired"),used.ToString("F3",culture),Math.Max(0,8000-used).ToString("F3",culture),waiting.Elapsed.TotalMilliseconds.ToString("F3",culture),preparation.Elapsed.TotalMilliseconds.ToString("F3",culture),before,Get(owner,"State"),pid));
+            }
+        }
+        private static void AwaitBirthReply(object native,object pending,NpcPredictionCache cache,Stopwatch preparation,string scenario,List<string> rows)
+        {
+            // This is a birth-lifecycle proof, not a Debug throughput check.
+            // Wait before the original birth steps, within the same preparation
+            // deadline, without advancing the world or consuming the real reply.
+            var owner=worker;long tick=Main.GameUpdateCount,capture=(long)Get(pending,"Tick");
+            int pid=(int)Get(owner,"ChildId"),before=(int)Get(owner,"State"),count=-1,kind=-1,slot=-1;long first=-1;string error=null;
+            double used=preparation.Elapsed.TotalMilliseconds;var waiting=Stopwatch.StartNew();
+            Action unchanged=()=>Require(Main.GameUpdateCount==tick && ReferenceEquals(pending,Get(native,"pending")) && (long)Get(pending,"Tick")==capture
+                && ReferenceEquals(owner,worker) && ReferenceEquals(owner,Get(native,"Worker")) && (int)Get(owner,"ChildId")==pid && pid>0
+                && !(bool)Get(pending,"Retired") && !(bool)Get(native,"Failed") && (int)Get(pending,"Horizon")==180
+                && (int)Get(cache,"MinimumRequired")==120 && cache.Required==120,"Birth preparation preserves the original world/request/worker and strict demand: "+scenario);
+            try
+            {
+                unchanged();
+                while(true)
+                {
+                    unchanged();int state=(int)Get(owner,"State");
+                    Require(state==2 || state==3,"Birth worker must remain Busy until its real reply: state="+state+" failure="+Get(owner,"Failure"));
+                    if(state==3)break;
+                    Require(preparation.Elapsed.TotalMilliseconds<8000,"Birth reply exceeds the original total eight-second preparation deadline: "+scenario);
+                    System.Threading.Thread.Sleep(1);
+                }
+                unchanged();
+                Require(preparation.Elapsed.TotalMilliseconds<8000 && (int)Get(owner,"State")==3,"Birth reply completes within the original total eight-second preparation deadline: "+scenario);
+                var decoded=Get(owner,"decodedReply");Require(decoded!=null,"Birth worker publishes its actual decoded reply.");
+                var result=Get(decoded,"Result");Require(result!=null,"Birth decoded reply contains its actual result.");
+                var frames=(Array)Get(result,"Frames");count=frames?.Length??0;if(count>0)first=(long)Get(frames.GetValue(0),"Tick");
+                error=(string)Get(result,"Error");kind=(int)Get(result,"ContinuationKind");slot=(int)Get(result,"ContinuationSlot");
+                Require(error==null && count==181 && first==capture,"Birth proof requires the actual complete 180-step result for its capture: frames="+count+" first="+first+" capture="+capture+" error="+error);
+            }
+            finally
+            {
+                var culture=System.Globalization.CultureInfo.InvariantCulture;
+                rows.Add(string.Join(",",scenario,capture,tick,Main.GameUpdateCount,used.ToString("F3",culture),Math.Max(0,8000-used).ToString("F3",culture),waiting.Elapsed.TotalMilliseconds.ToString("F3",culture),preparation.Elapsed.TotalMilliseconds.ToString("F3",culture),before,Get(owner,"State"),count,first,pid,kind,slot,"\""+(error??"").Replace("\"","\"\"")+"\""));
+            }
         }
         private static void Wire(object native,object request)
         {
