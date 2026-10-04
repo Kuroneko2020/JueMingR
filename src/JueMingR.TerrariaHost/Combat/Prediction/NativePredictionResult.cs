@@ -19,6 +19,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
 #endif
         internal int ContinuationKind,ContinuationSlot;
         internal string Error;
+        internal NativeNpcDangerQuery.Source DangerSource;
         internal readonly SortedSet<int> Npcs=new SortedSet<int>(),Projectiles=new SortedSet<int>();
         internal double TotalMs,ResetMs,RestoreMs,AdvanceMs;
         internal static NativePredictionResult Read(byte[] core,byte[] alignment,NpcIdentity identity,long tick,long version,bool networkObservation)
@@ -30,10 +31,11 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 if(protocol==-PredictionWire.Protocol)
                 {value.Error=r.ReadString()+": "+r.ReadString();value.TileX=r.ReadInt32();value.TileY=r.ReadInt32();value.Kind=r.ReadInt32();value.Slot=r.ReadInt32();
 #if JMR_AIM_LIGHT
-                    value.LightField=r.ReadInt32();
+                    int missingField=r.ReadInt32();value.LightField=missingField;
 #else
-                    r.ReadInt32();
+                    int missingField=r.ReadInt32();
 #endif
+                    value.DangerSource=NativeNpcDangerQuery.ReadSource(r,value.Kind,missingField);
                     End(stream);return value;}
                 if(protocol!=PredictionWire.Protocol || r.ReadInt64()!=tick || r.ReadInt32()!=identity.Slot)throw new InvalidDataException("Native result identity.");
                 int count=Count(r,181);if(count<2)throw new InvalidDataException("Native result horizon.");

@@ -22,19 +22,25 @@ namespace NativeWorldTextProbe
             var native=Get(Get(Get(context,"CombatObservation"),"Prediction"),"Native");
             Require(native.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativePredictionDiagnostic")==null,"Ordinary product excludes the retired one-shot diagnostic.");
             if(mode=="attack-mechanism"){NativeCombatAttackMechanismChecks.Run(context,native,cache,step,output);return;}
+            if(mode=="query-repair"){NativeCombatQueryRepairChecks.Run(context,native,cache,step,output);return;}
+            if(mode=="tiered-boundaries"){NativeCombatTieredPredictionChecks.Live(context,native,cache,step,output);return;}
+            if(mode=="tiered-natural"){NativeCombatQueryRepairChecks.Run(context,native,cache,step,output,30);return;}
+            if(mode=="tiered-guardian"){NativeCombatModeledImpactChecks.Run(context,native,cache,step,output,minimumFuture:30,captureTrace:true);return;}
+            if(mode=="tiered-domain"){NativeCombatQueryDomainChecks.Live(context,native,cache,step,output);return;}
+            if(mode=="tiered-wall"){NativeCombatHurtHintChecks.Run(context,native,cache,step,output,30);return;}
             if(mode=="hostile-query"){NativeCombatHostileQueryChecks.Run(context,native,cache,step,output);return;}
             if(mode=="hostile-frozen"){NativeCombatFrozenDemandChecks.Run(context,native,output);return;}
             if(mode=="hostile-oracle"){NativeCombatHostileQueryOracle.Run(context,output);return;}
             if(mode=="hurt-hints"){NativeCombatHurtHintChecks.Run(context,native,cache,step,output);return;}
             if(mode=="birth-proof"){NativeCombatBirthProofChecks.Run(context,native,cache,step,output);return;}
             if(mode=="modifier-proof"){NativeCombatModifierBirthChecks.Run(context,native,cache,step,output);return;}
-            if(mode=="modeled-impact"){NativeCombatModeledImpactChecks.Run(context,native,cache,step,output);return;}
-            if(mode=="other-impact"){NativeCombatModeledImpactChecks.Run(context,native,cache,step,output,true);return;}
+            if(mode=="modeled-impact"){NativeCombatModeledImpactChecks.Run(context,native,cache,step,output,minimumFuture:30);return;}
+            if(mode=="other-impact"){NativeCombatModeledImpactChecks.Run(context,native,cache,step,output,true,minimumFuture:30);return;}
             if(mode=="impact-boundaries"){NativeCombatImpactBoundaryChecks.Run(context,native,cache,step,output);return;}
             if(mode=="impact-suite")
             {
-                NativeCombatModeledImpactChecks.Run(context,native,cache,step,output);
-                NativeCombatModeledImpactChecks.Run(context,native,cache,step,output,true);
+                NativeCombatModeledImpactChecks.Run(context,native,cache,step,output,minimumFuture:30);
+                NativeCombatModeledImpactChecks.Run(context,native,cache,step,output,true,minimumFuture:30);
                 NativeCombatImpactBoundaryChecks.Run(context,native,cache,step,output);
                 NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions(path:true,clearLine:false,mouseCenter:true,dummy:true,radius:25));
                 Action targetStep=()=>{NativeCombatModeledImpactChecks.SampleMouse(context,Main.npc[16].Center);step();};
@@ -78,7 +84,7 @@ namespace NativeWorldTextProbe
                     if(path==null){longest=Math.Max(longest,++blank);continue;}
                     blank=0;shown++;
                     Require(path.Identity.Slot==slot && ReferenceEquals(path.Identity.Token,Main.npc[slot]) && path.Strategy==PredictionStrategy.NativeIsolated,"Current native target owns every displayed window.");
-                    Require(path.SampleTick==Main.GameUpdateCount && path.Count==121 && Math.Abs(path[0].Bounds.X-Main.npc[slot].position.X)<.002f && Math.Abs(path[0].Bounds.Y-Main.npc[slot].position.Y)<.002f,"Current origin and complete future remain truthful.");
+                    Require(path.SampleTick==Main.GameUpdateCount && path.Count>=31 && path.Count<=121 && Math.Abs(path[0].Bounds.X-Main.npc[slot].position.X)<.002f && Math.Abs(path[0].Bounds.Y-Main.npc[slot].position.Y)<.002f,"Current origin and actual 30..120 display future remain truthful.");
                 }
                 Console.WriteLine("LIVE-CONTEXT neighbor="+neighbor+" slot="+slot+" shown="+shown+" longest-blank="+longest+" requests="+((long)Get(native,"Requests")-requests)+" rejected="+((long)Get(native,"Rejected")-rejected)+" refused="+((long)Get(native,"Refused")-refused));
                 foreach(var pair in reasons.OrderByDescending(p=>p.Value))Console.WriteLine("LIVE-REASON frames="+pair.Value+" "+pair.Key);
@@ -111,7 +117,7 @@ namespace NativeWorldTextProbe
                 if(path==null){longest=Math.Max(longest,++blank);continue;}
                 blank=0;shown++;
                 Require(path.Identity.Slot==slot && ReferenceEquals(path.Identity.Token,Main.npc[slot]) && path.Strategy==PredictionStrategy.NativeIsolated,"Mounted player keeps the selected native target.");
-                Require(path.SampleTick==Main.GameUpdateCount && path.Count==121 && Math.Abs(path[0].Bounds.X-Main.npc[slot].position.X)<.002f && Math.Abs(path[0].Bounds.Y-Main.npc[slot].position.Y)<.002f,"Mounted production has a truthful current origin and 120 future steps.");
+                Require(path.SampleTick==Main.GameUpdateCount && path.Count>=31 && path.Count<=121 && Math.Abs(path[0].Bounds.X-Main.npc[slot].position.X)<.002f && Math.Abs(path[0].Bounds.Y-Main.npc[slot].position.Y)<.002f,"Mounted production has a truthful current origin and actual 30..120 display future.");
                 if(mount>=0)Require((path.Assumptions&PredictionAssumption.ApproximateMechanism)!=0,"Mounted conditional movement remains explicitly approximate.");
             }
             Console.WriteLine("MOUNTED type="+mount+" shown="+shown+" longest-blank="+longest);
@@ -312,7 +318,7 @@ namespace NativeWorldTextProbe
                         if(path==null){longest=Math.Max(longest,++blank);if(frame>=30)stableBlanks++;if(wasShown)gaps++;wasShown=false;continue;}
                         blank=0;shown++;wasShown=true;
                         Require(path.Identity.Slot==slot && ReferenceEquals(path.Identity.Token,Main.npc[slot]),"Published result belongs to the actual selected target.");
-                        Require(path.SampleTick==Main.GameUpdateCount && path.Count==121 && path.CaptureTick<=path.SampleTick,"Production preserves source age and 120 future updates.");
+                        Require(path.SampleTick==Main.GameUpdateCount && path.Count>=31 && path.Count<=121 && path.CaptureTick<=path.SampleTick,"Production preserves source age and actual 30..120 display future.");
                     }
                     Console.WriteLine("POST-DELIVERY type="+type+" mounted="+mounted+" motion="+motion+" selected="+selected+" shown="+shown+" stable-blanks="+stableBlanks+" gaps="+gaps+" longest="+longest+" from="+begin+" to="+player.position+" minY="+minY+" maxX="+maxXSpeed+" maxY="+maxYSpeed+" velocity="+player.velocity);
                     foreach(var pair in reasons.OrderByDescending(p=>p.Value))Console.WriteLine("POST-REASON frames="+pair.Value+" "+pair.Key);

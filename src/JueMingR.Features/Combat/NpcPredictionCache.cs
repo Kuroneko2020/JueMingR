@@ -9,7 +9,7 @@ namespace JueMingR.Features.Combat
     public sealed class NpcPredictionCache
     {
         public const int Horizon=120, Capacity=200;
-        private readonly int[] demands=new int[4];
+        private readonly int[] demands=new int[4],minimums=new int[4];
         private readonly NpcMotionState[] initial=new NpcMotionState[Capacity],first=new NpcMotionState[Capacity],tail=new NpcMotionState[Capacity],work=new NpcMotionState[Capacity];
         private readonly NpcTrajectoryPoint[] points=new NpcTrajectoryPoint[Horizon+1];
         private int count,selected,length;
@@ -25,15 +25,27 @@ namespace JueMingR.Features.Combat
         public int Rolls {get;private set;}
 #endif
         public void Demand(int consumer,int ticks)
-        {if(consumer<0 || consumer>=demands.Length || ticks<1 || ticks>Horizon)throw new ArgumentOutOfRangeException();demands[consumer]=ticks;}
-        public void Release(int consumer){if(consumer<0 || consumer>=demands.Length)throw new ArgumentOutOfRangeException();demands[consumer]=0;if(Required==0)Clear();}
+        {Demand(consumer,ticks,ticks);}
+        // A display may accept a shorter real future while still preferring
+        // the full horizon. Other consumers keep their own strict minimum.
+        public void Demand(int consumer,int minimum,int preferred)
+        {if(consumer<0 || consumer>=demands.Length || minimum<1 || minimum>preferred || preferred>Horizon)throw new ArgumentOutOfRangeException();minimums[consumer]=minimum;demands[consumer]=preferred;}
+        public void Release(int consumer){if(consumer<0 || consumer>=demands.Length)throw new ArgumentOutOfRangeException();minimums[consumer]=demands[consumer]=0;if(Required==0)Clear();}
         public int Required {get{int n=0;for(int i=0;i<demands.Length;i++)n=Math.Max(n,demands[i]);return n;}}
-        public NpcTrajectory Read(int consumer){return consumer>=0 && consumer<demands.Length && demands[consumer]>0?result:null;}
+        public int MinimumRequired {get{int n=0;for(int i=0;i<minimums.Length;i++)if(minimums[i]>0 && (n==0 || minimums[i]<n))n=minimums[i];return n;}}
+        public NpcTrajectory Read(int consumer)
+        {
+            if(consumer<0 || consumer>=demands.Length || demands[consumer]==0 || result==null)return null;
+            // Native async windows must cover this reader's minimum. Natural
+            // lifetime ends remain terminal; model/segmented stop markers keep
+            // their existing partial-path contract and are not tiered results.
+            return result.Strategy==PredictionStrategy.NativeIsolated && result.Stop!=PredictionStop.Despawn && result.Count<=minimums[consumer]?null:result;
+        }
         // The native asynchronous owner validates age/identity before passing
         // an immutable window here. Readers still never sample or wait.
         public void Publish(NpcTrajectory value){result=Required>0?value:null;}
         public void Clear(){result=null;count=length=0;tick=-1;Array.Clear(initial,0,initial.Length);Array.Clear(first,0,first.Length);Array.Clear(tail,0,tail.Length);}
-        public void EndSession(){Array.Clear(demands,0,demands.Length);Clear();}
+        public void EndSession(){Array.Clear(demands,0,demands.Length);Array.Clear(minimums,0,minimums.Length);Clear();}
         public void Prepare(NpcMotionState[] source,int sourceCount,int chosen,long sampleTick,PredictionEnvironment env,IPredictionTerrain terrain)
         {
             try{PrepareCore(source,sourceCount,chosen,sampleTick,env,terrain);}

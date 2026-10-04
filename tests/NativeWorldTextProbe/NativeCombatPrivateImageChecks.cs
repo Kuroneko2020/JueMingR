@@ -44,6 +44,9 @@ namespace NativeWorldTextProbe
             var type=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.PredictionSandbox",true);
             using(var sandbox=(IDisposable)Activator.CreateInstance(type,BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic,null,new object[0],null))
             {
+                if(Environment.GetEnvironmentVariable("JUEMINGR_QUERY_DOMAIN_PRIVATE")!=null){NativeCombatQueryDomainChecks.Private(host,sandbox,output);return 0;}
+                if(Environment.GetEnvironmentVariable("JUEMINGR_TIERED_PRIVATE")!=null){NativeCombatTieredPredictionChecks.Private(host,sandbox,output);return 0;}
+                if(Environment.GetEnvironmentVariable("JUEMINGR_DIRECTORY_EXPERIMENT")!=null){NativeCombatDirectoryFastPathChecks.Run(host,sandbox,output);return 0;}
                 if(safetyOnly)
                 {
                     NativeCombatEligibilityChecks.Run(host);

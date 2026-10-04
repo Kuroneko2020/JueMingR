@@ -19,8 +19,11 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         {
             internal NpcIdentity Identity;
             internal long Tick,Wall;
+            internal int Horizon;
             internal int[] Npcs,Projectiles;
             internal NativeNpcEligibility.Premise[] Queries;
+            internal NpcIdentity[] DangerCallers;
+            internal bool DangerInvalid;
             internal NativeTerrainSnapshot Terrain;
             internal readonly List<NativePredictionAlignment.Frame> History=new List<NativePredictionAlignment.Frame>(61);
             internal readonly NativeTerrainUsage TerrainChanges=new NativeTerrainUsage();
@@ -48,13 +51,23 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
 #endif
         private NpcIdentity current;
         private Request pending,acceptedRequest;
+        private sealed class DangerTicket
+        {
+            internal Request Source;
+            internal NpcIdentity Caller;
+            internal NativeNpcEligibility.Premise[] Members;
+        }
+        private DangerTicket dangerTicket;
         private NativePredictionResult accepted;
         private NativeTerrainSnapshot terrain,acknowledgedTerrain;
         private NativeTerrainSnapshot checkedTerrain;
         private readonly NativeTerrainSnapshot.Comparison terrainComparison=new NativeTerrainSnapshot.Comparison();
         private bool checkedTerrainCurrent;
         private NativePredictionAlignment.Frame observation;
-        private long lastTick=-1,lastAttempt=-100,version;
+        private long lastTick=-1,lastAttempt=-100,version,stableSince=-1;
+        // Recovery really advances fewer original updates. The spare 30 ticks
+        // pay for transit; no missing points or failed updates are fabricated.
+        private const int RecoveryHorizon=60,RecoveryMinimum=30,StableUpdates=30,ExtensionHeadroom=45;
         private readonly SortedSet<int> extraChunks=new SortedSet<int>();
         private bool stopped;
         private int recoveries,refusalStreak;
@@ -113,9 +126,10 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         internal void ClearTarget()
         {
             TraceClear();
+            dangerTicket=null;
             AimLightTrace.Cache(null,Worker,"ClearTarget");
             bool owned=current.Token!=null || accepted!=null;
-            current=default(NpcIdentity);accepted=null;acceptedRequest=null;if(owned)cache.Publish(null);lastTick=-1;refusalStreak=0;capacityShape=-1;
+            current=default(NpcIdentity);accepted=null;acceptedRequest=null;stableSince=-1;if(owned)cache.Publish(null);lastTick=-1;refusalStreak=0;capacityShape=-1;
             if(pending!=null)pending.Retired=true;
             npcs.Clear();projectiles.Clear();assets.Clear();terrain=null;
 #if JMR_CONDITIONAL_RESEARCH
@@ -144,13 +158,14 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         // retires all results and in-flight history before its next Prepare;
         // never mutate the cache or worker mailbox from a receive callback.
         internal void ObservePlayerRelocation(){Interlocked.Exchange(ref observedRelocation,1);}
-        internal bool HasImpactDemand=>acceptedRequest!=null || pending!=null && !pending.Retired && pending.Impact==0;
+        internal bool HasImpactDemand=>acceptedRequest!=null || pending!=null && !pending.Retired && pending.Impact==0 || dangerTicket!=null;
         internal bool TracksNpcImpact(NPC npc,int shared)
-        {return OwnsImpact(acceptedRequest,npc,shared) || OwnsImpact(pending,npc,shared);}
+        {return OwnsImpact(acceptedRequest,npc,shared) || OwnsImpact(pending,npc,shared) || dangerTicket!=null && OwnsImpact(dangerTicket.Source,npc,shared);}
         private static bool OwnsImpact(Request request,NPC npc,int shared)
         {return request!=null && !request.Retired && (Array.IndexOf(request.Npcs,npc.whoAmI)>=0 || shared>=0 && Array.IndexOf(request.Npcs,shared)>=0 || NativeNpcEligibility.Owns(request.Queries,npc));}
         internal void ObserveImpactFailure()
         {
+            if(dangerTicket!=null)Interlocked.Exchange(ref dangerTicket.Source.Impact,1);
             // The observer cannot reconstruct a reliable pre-hit owner after
             // an exception. Keep native exception behavior and fail closed.
             if(acceptedRequest!=null)Interlocked.Exchange(ref acceptedRequest.Impact,1);
@@ -158,6 +173,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         }
         internal void ObserveNpcImpact(NPC npc,NativeImpactProof.Hit hit)
         {
+            if(dangerTicket!=null)MarkImpact(dangerTicket.Source,npc);
             AimLightTrace.Hit(hit);
             // The old accepted window has no newly completed full history;
             // revoke it conservatively. Only pending can earn publication by
@@ -171,6 +187,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         }
         internal void ObserveProjectileReset(Projectile source)
         {
+            if(dangerTicket!=null && dangerTicket.Source.Impacts.Owns(source))dangerTicket.Source.LifecycleInvalid=true;
             if(acceptedRequest!=null && acceptedRequest.Impacts.Owns(source))Interlocked.Exchange(ref acceptedRequest.Impact,1);
             if(pending!=null && pending.Impacts.Owns(source))Interlocked.Exchange(ref pending.Impact,1);
             ObserveUnprovenBirth(source);
@@ -180,11 +197,13 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             // Inactive reserved pages carry no old hit authority, but an
             // external reset must not borrow their next predicted lifetime.
             bool live=source.whoAmI>=0 && source.whoAmI<Main.maxProjectiles && ReferenceEquals(Main.projectile[source.whoAmI],source);
+            if(dangerTicket!=null && (dangerTicket.Source.Impacts.HasPage(source) || live && Array.IndexOf(dangerTicket.Source.Projectiles,source.whoAmI)>=0))dangerTicket.Source.LifecycleInvalid=true;
             if(acceptedRequest!=null && (acceptedRequest.Impacts.HasPage(source) || live && Array.IndexOf(acceptedRequest.Projectiles,source.whoAmI)>=0))acceptedRequest.LifecycleInvalid=true;
             if(pending!=null && (pending.Impacts.HasPage(source) || live && Array.IndexOf(pending.Projectiles,source.whoAmI)>=0))pending.LifecycleInvalid=true;
         }
         internal void ObserveProjectileBirth(NativeImpactProof.Hit value)
         {
+            if(dangerTicket!=null)RecordBirth(dangerTicket.Source,value);
             AimLightTrace.Hit(value);
             RecordBirth(acceptedRequest,value);RecordBirth(pending,value);
         }
@@ -199,13 +218,25 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 Interlocked.Exchange(ref request.Impact,1);
         }
         internal void ObserveNpcReset(NPC npc)
-        {MarkQueryReset(acceptedRequest,npc);MarkQueryReset(pending,npc);}
+        {
+            MarkQueryReset(acceptedRequest,npc);MarkQueryReset(pending,npc);
+            MarkDangerReset(pending,npc);if(dangerTicket!=null){MarkQueryReset(dangerTicket.Source,npc);MarkDangerReset(dangerTicket.Source,npc);}
+        }
+        private static void MarkDangerReset(Request request,NPC npc)
+        {if(request!=null && request.DangerCallers!=null)foreach(var caller in request.DangerCallers)if(ReferenceEquals(caller.Token,npc)){request.DangerInvalid=true;break;}}
         private static void MarkQueryReset(Request request,NPC npc)
         {if(request!=null && NativeNpcEligibility.Owns(request.Queries,npc))Interlocked.Exchange(ref request.QueryChanged,1);}
         internal void ObserveNpcQueryUpdate(int slot)
         {
             if(acceptedRequest!=null && NativeNpcEligibility.Changed(acceptedRequest.Queries,slot))Interlocked.Exchange(ref acceptedRequest.QueryChanged,1);
             if(pending!=null && NativeNpcEligibility.Changed(pending.Queries,slot))Interlocked.Exchange(ref pending.QueryChanged,1);
+            ObserveDangerLifetime(pending,slot);if(dangerTicket!=null)ObserveDangerLifetime(dangerTicket.Source,slot);
+        }
+        private static void ObserveDangerLifetime(Request request,int slot)
+        {
+            if(request==null || request.Retired || request.DangerInvalid)return;
+            foreach(var p in request.Queries)if(p.Slot==slot && !p.DangerCurrent){request.DangerInvalid=true;return;}
+            foreach(var caller in request.DangerCallers)if(caller.Slot==slot && !LiveIdentity(caller)){request.DangerInvalid=true;return;}
         }
         // An alternate synchronous strategy owns publication. Let at most the
         // already-running native request finish, then consume its mailbox
@@ -229,8 +260,9 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
 #endif
             }
             if(tick==lastTick)return;
-            if(lastTick>=0 && tick!=lastTick+1){TraceState("retire",tick,"noncontiguous tick");AimLightTrace.Cache(null,Worker,"noncontiguous tick");accepted=null;acceptedRequest=null;if(pending!=null)pending.Retired=true;cache.Publish(null);}
+            if(lastTick>=0 && tick!=lastTick+1){dangerTicket=null;TraceState("retire",tick,"noncontiguous tick");AimLightTrace.Cache(null,Worker,"noncontiguous tick");accepted=null;acceptedRequest=null;stableSince=-1;if(pending!=null)pending.Retired=true;cache.Publish(null);}
             lastTick=tick;
+            if(dangerTicket!=null && !DangerCurrent(dangerTicket,tick))dangerTicket=null;
             // Reuse only within this completed game update. History frames
             // own their arrays; none is mutated or carried as a live cache
             // into the next update, world or changed dependency page set.
@@ -241,13 +273,13 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             // Its affected background may have no prior route use, but the
             // new input must revoke both old publication and delayed replies.
             if(acceptedRequest!=null && (acceptedRequest.Impact!=0 || acceptedRequest.LifecycleInvalid))
-            {TraceState("accepted-revoked",tick,"impact or lifecycle");AimLightTrace.Cache(null,Worker,"impact or lifecycle");accepted=null;acceptedRequest=null;cache.Publish(null);Reason="captured NPC impact";}
+            {TraceState("accepted-revoked",tick,"impact or lifecycle");AimLightTrace.Cache(null,Worker,"impact or lifecycle");accepted=null;acceptedRequest=null;stableSince=-1;cache.Publish(null);Reason="captured NPC impact";}
             if(pending!=null && (pending.Impact!=0 || pending.LifecycleInvalid)){if(!pending.Retired)TraceState("pending-retired",tick,pending.Impact!=0?"impact":"lifecycle");pending.Retired=true;}
             // A query premise is not part of the full-page history. Latch its
             // first observed change before mailbox consumption; restoring the
             // original value must never revive a delayed reply or old window.
             if(acceptedRequest!=null && (acceptedRequest.QueryChanged!=0 || !NativeNpcEligibility.Current(acceptedRequest.Queries)))
-            {TraceState("accepted-revoked",tick,"NPC query premise changed");AimLightTrace.Cache(null,Worker,"NPC query premise changed");accepted=null;acceptedRequest=null;cache.Publish(null);Reason="NPC query premise changed";}
+            {TraceState("accepted-revoked",tick,"NPC query premise changed");AimLightTrace.Cache(null,Worker,"NPC query premise changed");accepted=null;acceptedRequest=null;stableSince=-1;cache.Publish(null);Reason="NPC query premise changed";}
             if(pending!=null && !pending.Retired && (pending.QueryChanged!=0 || !NativeNpcEligibility.Current(pending.Queries))){TraceState("pending-retired",tick,"NPC query premise changed");pending.Retired=true;}
             long started=PredictionPipeProtocol.Measure?Stopwatch.GetTimestamp():0;
             if(pending!=null && !pending.Retired && tick>pending.Tick)
@@ -265,15 +297,16 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 long age=tick-acceptedRequest.Tick;
                 string difference=!CanReuseProof(age,accepted.Frames.Length)?"expired":!acceptedRequest.Terrain.IsCurrentRelevant(identity.Session,accepted.TerrainUsage,terrainComparison)?"relevant terrain changed":NativePredictionAlignment.Difference(accepted.Frames[(int)age],Observe(tick,acceptedRequest.Npcs,acceptedRequest.Projectiles,identity.Slot));
                 if(difference==null)difference=acceptedRequest.Impacts.Difference(accepted.Impacts,tick,acceptedRequest.Npcs);
-                if(difference!=null){TraceState("accepted-revoked",tick,difference);AimLightTrace.Cache(null,Worker,difference);Reason=difference;accepted=null;acceptedRequest=null;cache.Publish(null);}
+                if(difference!=null){TraceState("accepted-revoked",tick,difference);AimLightTrace.Cache(null,Worker,difference);Reason=difference;accepted=null;acceptedRequest=null;stableSince=-1;cache.Publish(null);}
             }
+            if(pending!=null && pending.Retired)stableSince=-1;
             if(PredictionPipeProtocol.Measure){double observed=Milliseconds(Stopwatch.GetTimestamp()-started);ObserveMilliseconds+=observed;ObserveMaximum=Math.Max(ObserveMaximum,observed);}Observed++;
             var response=Worker.TryTakeResult();if(response!=null)Receive(response,tick);
             if(accepted!=null)
             {
                 NpcTrajectory window;
-                if(accepted.Trajectory.TryWindow(tick,cache.Required,++version,out window)){cache.Publish(window);Published++;AimLightTrace.Cache(window,Worker,"native accepted");}
-                else{TraceState("accepted-revoked",tick,"remaining horizon exhausted");AimLightTrace.Cache(null,Worker,"remaining horizon exhausted");accepted=null;acceptedRequest=null;cache.Publish(null);Reason="remaining horizon exhausted";}
+                if(TryWindow(accepted.Trajectory,tick,++version,out window)){cache.Publish(window);Published++;AimLightTrace.Cache(window,Worker,"native accepted");}
+                else{TraceState("accepted-revoked",tick,"remaining horizon exhausted");AimLightTrace.Cache(null,Worker,"remaining horizon exhausted");accepted=null;acceptedRequest=null;stableSince=-1;cache.Publish(null);Reason="remaining horizon exhausted";}
             }
             if(Worker.State==4)
             {
@@ -300,6 +333,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 if(result.Error!=null)
                 {
                     Refused++;m.Outcome=result.Error;Reason=result.Error;
+                    SignDanger(request,result,tick);
                     // Only explicit missing pages are discoverable. Unknown
                     // fields/unsupported calls never become default values.
                     bool added=result.Kind==1 && result.Slot>=0 && result.Slot<=Main.maxNPCs && npcs.Count<=Main.maxNPCs && npcs.Add(result.Slot) || result.Kind==2 && result.Slot>=0 && result.Slot<=Main.maxProjectiles && projectiles.Count<=Main.maxProjectiles && projectiles.Add(result.Slot);
@@ -335,18 +369,22 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 if(missing){m.Outcome="newborn dependency pages require fresh observation";Rejected++;return;}
                 if(!request.Impacts.ValidTimeline(result.Impacts)){m.Outcome="projectile lifetime timeline";Reason=m.Outcome;Rejected++;return;}
                 if(request.History.Count!=tick-request.Tick+1)throw new InvalidDataException("Missing intervening observations.");
+                // A short reply may arrive after its last completed frame.
+                // Reject it as stale work before indexing the full history;
+                // it is not a malformed reply or a reason to kill the owner.
+                if(result.Frames.Length<request.History.Count){m.Outcome="insufficient completed history";Reason=m.Outcome;Rejected++;return;}
                 for(int i=0;i<request.History.Count;i++)
                 {string difference=NativePredictionAlignment.Difference(result.Frames[i],request.History[i]);if(difference!=null){AimLightTrace.Difference(tick,i,difference,result.Frames[i],request.History[i]);m.Outcome="history "+i+": "+difference;Reason=m.Outcome;Rejected++;return;}}
                 string impactDifference=request.Impacts.Difference(result.Impacts,tick,request.Npcs);
                 if(impactDifference!=null){m.Outcome=impactDifference;Reason=m.Outcome;Rejected++;return;}
                 result.Trajectory=result.Trajectory.BindIdentity(request.Identity);
                 // Only a current, history-validated prefix may guide the next
-                // fresh sample. A short remaining window still cannot publish;
+                // fresh sample. An insufficient remaining window cannot publish;
                 // stale/retired replies never seed another target's pages.
                 if(result.ContinuationKind==1)npcs.Add(result.ContinuationSlot);
                 else if(result.ContinuationKind==2)projectiles.Add(result.ContinuationSlot);
-                NpcTrajectory window;if(!result.Trajectory.TryWindow(tick,cache.Required,version,out window)){m.Outcome="insufficient remaining horizon";Rejected++;return;}
-                accepted=result;acceptedRequest=request;m.Outcome="accepted";Reason=null;recoveries=refusalStreak=0;capacityShape=-1;
+                NpcTrajectory window;if(!TryWindow(result.Trajectory,tick,version,out window)){m.Outcome="insufficient remaining horizon";Rejected++;return;}
+                accepted=result;acceptedRequest=request;if(stableSince<0)stableSince=tick;m.Outcome="accepted";Reason=null;recoveries=refusalStreak=0;capacityShape=-1;
             }
             catch(Exception error)
             {
@@ -354,7 +392,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 if(error is OutOfMemoryException)throw;m.Outcome="invalid result: "+error.Message;Reason=m.Outcome;Rejected++;
                 Failed=true;Stop();
             }
-            finally{AimLightTrace.Receive(request.Identity,request.Tick,tick,Worker,response.Result,request.History.Count,m.Outcome);if(PredictionPipeProtocol.Measure){m.AcceptMs=Milliseconds(Stopwatch.GetTimestamp()-begin);Measurements.Enqueue(m);while(Measurements.Count>256)Measurements.Dequeue();}}
+            finally{if(m.Outcome!="accepted")stableSince=-1;AimLightTrace.Receive(request.Identity,request.Tick,tick,Worker,response.Result,request.History.Count,m.Outcome);if(PredictionPipeProtocol.Measure){m.AcceptMs=Milliseconds(Stopwatch.GetTimestamp()-begin);Measurements.Enqueue(m);while(Measurements.Count>256)Measurements.Dequeue();}}
         }
         private void Capture(NpcIdentity identity,long tick)
         {
@@ -373,6 +411,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 foreach(int slot in queries)npcs.Add(slot);
                 ConditionalNpcQuery.CaptureRoles=exactNpcs.ToArray();
 #else
+                ConsumeDanger(identity,tick);
                 GatherDependencies();
 #endif
                 int[] ns=npcs.ToArray(),ps=projectiles.ToArray();foreach(int slot in ns)if(Main.npc[slot].type>=0)assets.Add(Main.npc[slot].type);
@@ -388,12 +427,20 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                     )AddRegion(chunks,(int)Main.npc[slot].Center.X/16,(int)Main.npc[slot].Center.Y/16,24);
                 foreach(var player in Main.player)if(player!=null && player.active)AddRegion(chunks,(int)player.Center.X/16,(int)player.Center.Y/16,24);
                 if(terrain==null || !TerrainCurrent(terrain,identity.Session) || !Covers(terrain,chunks))terrain=NativeTerrainSnapshot.CaptureChunksObserved(identity.Session,chunks,terrainComparison);
-                var request=new Request{Identity=identity,Tick=tick,Wall=begin,Npcs=ns,Projectiles=ps,Terrain=terrain,Queries=NativeNpcEligibility.Capture(ns),Impacts=new NativeImpactProof(ps,ns)};
+                // Extend only after uninterrupted valid observations and from
+                // a fresh capture. A failed handoff resets stability; existing
+                // valid short work survives only its original proof/expiry.
+                bool extend=accepted!=null && stableSince>=0 && (acceptedRequest.Horizon>RecoveryHorizon || tick-stableSince>=StableUpdates && accepted.Trajectory.Count-(tick-acceptedRequest.Tick)-1>=ExtensionHeadroom);
+                int horizon=cache.MinimumRequired>RecoveryMinimum || extend?PredictionWire.MaximumHorizon:RecoveryHorizon;
+                var request=new Request{Identity=identity,Tick=tick,Wall=begin,Horizon=horizon,Npcs=ns,Projectiles=ps,Terrain=terrain,Queries=NativeNpcEligibility.Capture(ns),Impacts=new NativeImpactProof(ps,ns)};
+                // Only already-full AI_007 instances can authenticate a caller;
+                // this is not a second identity snapshot of the directory.
+                request.DangerCallers=ns.Where(slot=>Main.npc[slot].active && Main.npc[slot].aiStyle==7).Select(slot=>{var n=Main.npc[slot];return new NpcIdentity(identity.Session,n,slot,n.generation,n.type,n.netID);}).ToArray();
 #if JMR_CONDITIONAL_RESEARCH
                 request.Npcs=exactNpcs.ToArray();
 #endif
                 request.History.Add(Observe(tick,request.Npcs,ps,identity.Slot));
-                var values=PredictionWire.FillProductionValues(Worker.BeginCapture(),ns,ps,identity.Slot,tick,PredictionWire.MaximumHorizon,terrain,assets.ToArray(),ReferenceEquals(terrain,acknowledgedTerrain));
+                var values=PredictionWire.FillProductionValues(Worker.BeginCapture(),ns,ps,identity.Slot,tick,request.Horizon,terrain,assets.ToArray(),ReferenceEquals(terrain,acknowledgedTerrain));
                 AimLightTrace.Capture("capture-complete",identity,tick,Worker,ns.Length,ps.Length,terrain.Chunks.Length);
                 if(PredictionPipeProtocol.Measure)request.CaptureMs=Milliseconds(Stopwatch.GetTimestamp()-begin);
                 var valueIdentity=new NpcIdentity(identity.Session,null,identity.Slot,identity.Generation,identity.Type,identity.NetId);
@@ -406,6 +453,49 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 AimLightTrace.Capture("capture-failed",identity,tick,Worker,npcs.Count,projectiles.Count,0);
                 if(error is OutOfMemoryException)throw;Reason="capture: "+error.Message;lastAttempt=tick+57;
             }
+        }
+        private static bool LiveIdentity(NpcIdentity identity)
+        {
+            if(identity.Slot<0 || identity.Slot>=Main.maxNPCs)return false;var n=Main.npc[identity.Slot];
+            return ReferenceEquals(n,identity.Token) && n.whoAmI==identity.Slot && n.active && n.life>0 && n.generation==identity.Generation && n.type==identity.Type && n.netID==identity.NetId;
+        }
+        private bool DangerCurrent(DangerTicket ticket,long tick)
+        {
+            var source=ticket.Source;
+            if(source.Retired || source.Impact!=0 || source.LifecycleInvalid || source.QueryChanged!=0 || source.DangerInvalid || !source.Identity.Equals(current) || !LiveIdentity(source.Identity) || !LiveIdentity(ticket.Caller) ||
+                tick<source.Tick || tick-source.Tick>PredictionWire.MaximumAlignmentAge || !NativeNpcEligibility.Current(source.Queries))return false;
+            foreach(var member in ticket.Members)if(!member.DangerCurrent)return false;
+            return true;
+        }
+        private void SignDanger(Request request,NativePredictionResult result,long tick)
+        {
+            dangerTicket=null;
+#if !JMR_CONDITIONAL_RESEARCH
+            var source=result.DangerSource;if(source.Kind!=NativeNpcDangerQuery.Origin.TownDangerStinky || result.Kind!=1 || request.DangerCallers==null)return;
+            foreach(var caller in request.DangerCallers)
+            {
+                if(caller.Slot!=source.CallerSlot || caller.Generation!=source.Generation || caller.Type!=source.Type || caller.NetId!=source.NetId)continue;
+                var members=request.Queries.Where(p=>p.DangerMember).ToArray();
+                if(!members.Any(p=>p.Slot==result.Slot))return;
+                var ticket=new DangerTicket{Source=request,Caller=caller,Members=members};
+                if(DangerCurrent(ticket,tick))dangerTicket=ticket;return;
+            }
+#endif
+        }
+        private void ConsumeDanger(NpcIdentity identity,long tick)
+        {
+            var ticket=dangerTicket;dangerTicket=null;
+            // Receive lends only identities to the next ordinary Capture.
+            // Consume once, recheck the whole ticket, then sample all current
+            // values/AI/RNG/terrain/history through the existing full path.
+            if(ticket==null || !identity.Equals(current) || !DangerCurrent(ticket,tick))return;
+            foreach(var member in ticket.Members)npcs.Add(member.Slot);
+        }
+        private bool TryWindow(NpcTrajectory trajectory,long tick,long nextVersion,out NpcTrajectory window)
+        {
+            long remaining=trajectory.Count-(tick-trajectory.CaptureTick)-1;
+            window=null;if(remaining<0 || remaining<cache.MinimumRequired && trajectory.Stop!=PredictionStop.Despawn)return false;
+            return trajectory.TryWindow(tick,Math.Max(1,(int)Math.Min(cache.Required,remaining)),nextVersion,out window);
         }
         private void GatherDependencies()
         {

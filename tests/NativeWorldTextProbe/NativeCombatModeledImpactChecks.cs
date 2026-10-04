@@ -41,14 +41,17 @@ namespace NativeWorldTextProbe
             var frames=(Array)Get(__state[1],"Frames");
             replies.Add(Csv(capture,tick,tick-capture,frames?.Length,hadHit,Get(request,"Retired"),Get(request,"Impact"),ok,Get(owner,"Reason"),Get(__state[1],"Error")));
         }
-        internal static void Run(object context,object native,NpcPredictionCache cache,Action step,string output,bool otherSource=false)
+        internal static void Run(object context,object native,NpcPredictionCache cache,Action step,string output,bool otherSource=false,int minimumFuture=120,bool captureTrace=false)
         {
             owner=native;hits.Clear();replies.Clear();hitRows.Clear();received=accepted=matchedHits=retiredHits=0;
             replies.Add("capture,arrive,age,frames,crossesHit,retired,impact,accepted,reason,workerError");
             hitRows.Add("tick,sourceSlot,sourceType,sourceKey,sourceOwner,targetSlot,targetType,damage,life");
-            var rows=new List<string>{"phase,frame,tick,published,capture,count,pending,accepted,failed,reason"};
+            var rows=new List<string>{"phase,frame,tick,published,capture,count,pending,accepted,failed,reason,targetLife,targetActive,playerLife,playerDead"};
             var hooks=new Harmony("JueMingR.Tests.ModeledImpact");bool hard=Main.hardMode;
             object worker=Get(native,"Worker");int workerId=((System.Diagnostics.Process)Get(worker,"child")).Id;
+            // The display's minimum is independent of the strict consumer.
+            // This opt-in evidence observer never supplies a result or history.
+            using(var trace=captureTrace?new NativeCombatAttackTrace(native,output):null)
             try
             {
                 hooks.Patch(typeof(Projectile).GetMethod("Damage_PVE_Inner",Flags),prefix:Hook(nameof(Source)),finalizer:Hook(nameof(EndSource)));
@@ -78,12 +81,14 @@ namespace NativeWorldTextProbe
                 // Prediction-only proves source collection does not depend on
                 // enabling the separate collision-display consumer.
                 NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true,clearLine:false,mouseCenter:true,dummy:true,radius:25));
+                if(trace!=null){trace.Selected=target;cache.Demand(1,120);}
                 Terraria.GameInput.PlayerInput.CacheOriginalScreenDimensions();
                 long requests=(long)Get(native,"Requests"),rejected=(long)Get(native,"Rejected"),refused=(long)Get(native,"Refused");
                 int allShown=0,attackShown=0,longest=0,blank=0;
                 int duration=otherSource?600:1080;
                 for(int frame=0;frame<duration;frame++)
                 {
+                    if(trace!=null){trace.Phase=frame<360?"open":frame<720?"guardian":"return";trace.Frame=frame%360;}
                     if(!otherSource && frame==360)for(int i=0;i<3;i++)player.armor[i].SetDefaults(3381+i);
                     if(!otherSource && frame==720)for(int i=0;i<3;i++)player.armor[i].TurnToAir();
                     SampleMouse(context,npc.Center);step();
@@ -94,13 +99,15 @@ namespace NativeWorldTextProbe
                     bool shown=path!=null;
                     if(shown)
                     {
-                        Require(path.SampleTick==Main.GameUpdateCount && path.Count==121 && ReferenceEquals(path.Identity.Token,npc),"Modeled impact publishes true current+120 for the current instance.");
+                        Require(path.SampleTick==Main.GameUpdateCount && path.Count>=minimumFuture+1 && path.Count<=121 && ReferenceEquals(path.Identity.Token,npc),"Modeled impact publishes the current instance with its actual required future.");
+                        if(trace!=null)Require((cache.Read(1)!=null)==(path.Count==121),"The strict consumer never receives a short native window across real hits.");
                         allShown++;blank=0;
                     }
                     else longest=Math.Max(longest,++blank);
                     if(hits.Count>0 && Main.GameUpdateCount>=hits[0] && frame<480 && shown)attackShown++;
                     Require(ReferenceEquals(worker,Get(native,"Worker")) && ((System.Diagnostics.Process)Get(worker,"child")).Id==workerId && !(bool)Get(native,"Failed"),"One healthy worker spans all attack and recovery updates.");
-                    rows.Add(Csv(frame<360?"open":frame<720?"guardian":"return",frame%360,Main.GameUpdateCount,shown,path?.CaptureTick,path?.Count,Tick(Get(native,"pending")),Tick(Get(native,"acceptedRequest")),Get(native,"Failed"),Get(native,"Reason")));
+                    Require(trace==null || trace.Fault==null,"The observed native Prepare must succeed.");
+                    rows.Add(Csv(frame<360?"open":frame<720?"guardian":"return",frame%360,Main.GameUpdateCount,shown,path?.CaptureTick,path?.Count,Tick(Get(native,"pending")),Tick(Get(native,"acceptedRequest")),Get(native,"Failed"),Get(native,"Reason"),npc.life,npc.active,player.statLife,player.dead));
                 }
                 Console.WriteLine("MODELED-IMPACT source="+(otherSource?"119":"623")+" requests="+((long)Get(native,"Requests")-requests)+" received="+received+" accepted="+accepted+" rejected="+((long)Get(native,"Rejected")-rejected)+" refused="+((long)Get(native,"Refused")-refused)+" published="+allShown+"/"+duration+" longest="+longest+" hits="+hits.Count+" hit-crossing-accepted="+matchedHits+" hit-crossing-retired="+retiredHits+" attack-shown="+attackShown+" worker="+workerId);
                 Require(otherSource?hits.Count>0:hits.Count>=15 && hits.Zip(hits.Skip(1),(a,b)=>b-a).Count(d=>d==5)>=14,"The original configured source really attacks its target.");
@@ -108,6 +115,7 @@ namespace NativeWorldTextProbe
             }
             finally
             {
+                if(trace!=null)cache.Release(1);
                 hooks.UnpatchAll(hooks.Id);Main.hardMode=hard;owner=null;source=null;
                 string prefix=otherSource?"other-impact":"modeled-impact";
                 File.WriteAllLines(Path.Combine(output,prefix+"-updates.csv"),rows);File.WriteAllLines(Path.Combine(output,prefix+"-replies.csv"),replies);File.WriteAllLines(Path.Combine(output,prefix+"-hits.csv"),hitRows);

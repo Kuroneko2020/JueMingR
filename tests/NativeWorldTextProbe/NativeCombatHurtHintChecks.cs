@@ -17,7 +17,7 @@ namespace NativeWorldTextProbe
     internal static class NativeCombatHurtHintChecks
     {
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance|BindingFlags.Static;
-        internal static void Run(object context,object native,NpcPredictionCache cache,Action step,string output)
+        internal static void Run(object context,object native,NpcPredictionCache cache,Action step,string output,int minimumFuture=120)
         {
             int count=int.Parse(Environment.GetEnvironmentVariable("JUEMINGR_HURT_BACKGROUNDS")??"8");
             string change=Environment.GetEnvironmentVariable("JUEMINGR_HURT_CHANGE")??"useful";
@@ -94,7 +94,7 @@ namespace NativeWorldTextProbe
                         }
                         if(path!=null)
                         {
-                            Require(ReferenceEquals(path.Identity.Token,selected) && path.Identity.Slot==target && path.SampleTick==Main.GameUpdateCount && path.Count==121,"Only actual current+120 publications count.");
+                            Require(ReferenceEquals(path.Identity.Token,selected) && path.Identity.Slot==target && path.SampleTick==Main.GameUpdateCount && path.Count>=minimumFuture+1 && path.Count<=121,"Only actual current publications with the requested future count.");
                             published++;blank=0;if(first<0)first=frame;
                         }
                         else longest=Math.Max(longest,++blank);

@@ -50,7 +50,7 @@ namespace NativeWorldTextProbe
                 for(int i=0;i<12 && Get(native,"pending")==null;i++)step();
                 var pending=Get(native,"pending");Require(pending!=null && Array.IndexOf((int[])Get(pending,"Npcs"),0)>=0,"A real sealed second request also owns that background.");
                 long pendingCapture=(long)Get(pending,"Tick"),rejected=(long)Get(native,"Rejected");
-                var route=cache.Read(0);Require(route!=null && route.CaptureTick==oldCapture,"Original default consumer has a current+120 route before impact.");
+                var route=cache.Read(0);Require(route!=null && route.CaptureTick==oldCapture,"Original display consumer has a qualified route before impact.");
                 int life=background.life;Vector2 velocity=background.velocity;
                 int shot=Projectile.NewProjectile(new EntitySource_DebugCommand(),background.Center,new Vector2(12,0),1,20,3,0);
                 var arrow=Main.projectile[shot];arrow.aiStyle=0;arrow.tileCollide=false;arrow.timeLeft=100;
@@ -69,7 +69,7 @@ namespace NativeWorldTextProbe
                 while(shown<30 && watch.Elapsed.TotalSeconds<8)
                 {
                     step();Record(rows,"recovery",native,cache,background,pending);route=cache.Read(0);
-                    if(route!=null && route.CaptureTick>pendingCapture){Require(route.Count==121 && route.SampleTick==Main.GameUpdateCount,"Recovery consumes actual current plus 120.");shown++;}
+                    if(route!=null && route.CaptureTick>pendingCapture){Require(route.Count>=31 && route.Count<=121 && route.SampleTick==Main.GameUpdateCount,"Recovery consumes its actual current plus 30..120 display future.");shown++;}
                 }
                 Console.WriteLine("IMPACT result old-retired="+oldRetired+" pending-retired="+pendingRetired+" late-rejected="+lateRejected+" recovery="+shown+" same-worker="+ReferenceEquals(worker,Get(native,"Worker")));
                 Require(oldRetired && pendingRetired && lateRejected,"Real previously unobserved arrow impact retires accepted and in-flight background premises before publication.");
@@ -102,8 +102,8 @@ namespace NativeWorldTextProbe
             host.GetType().GetMethod("OnSessionStarted",Flags).Invoke(host,null);
             NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true));
             var timer=Stopwatch.StartNew();do{step();}while(cache.Read(0)==null && timer.Elapsed.TotalSeconds<8);
-            Require(cache.Read(0)!=null && cache.Read(0).Count==121 && ReferenceEquals(worker,Get(native,"Worker")) && !(bool)Get(native,"Failed"),"New world-owner entry resumes current+120 after OFF/end hits without carrying old impact facts.");
-            Console.WriteLine("IMPACT OFF/end actual-hits=2 requests-while-off=0 retained-requests=0 same-worker=true reentry-current+120=true");
+            Require(cache.Read(0)!=null && cache.Read(0).Count>=31 && cache.Read(0).Count<=121 && ReferenceEquals(worker,Get(native,"Worker")) && !(bool)Get(native,"Failed"),"New world-owner entry resumes qualified display after OFF/end hits without carrying old impact facts.");
+            Console.WriteLine("IMPACT OFF/end actual-hits=2 requests-while-off=0 retained-requests=0 same-worker=true reentry-qualified-display=true");
         }
         private static void Require(bool value,string message){if(!value)throw new InvalidOperationException(message);}
     }

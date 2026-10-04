@@ -18,7 +18,7 @@ namespace NativeWorldTextProbe
         internal static void Run(object context,object native,NpcPredictionCache cache,Action step,string output)
         {
             object host=Get(context,"CombatObservation");object before=Get(native,"Worker");
-            Require(cache.Read(0)!=null && cache.Read(0).Count==121 && cache.Read(0).SampleTick==Main.GameUpdateCount && (double)Get(before,"ReadyMilliseconds")>0,
+            Require(cache.Read(0)!=null && cache.Read(0).Count>=31 && cache.Read(0).Count<=121 && cache.Read(0).SampleTick==Main.GameUpdateCount && (double)Get(before,"ReadyMilliseconds")>0,
                 "Fault starts from an authenticated worker and an actually current Host route.");
             for(int i=0;i<20 && Get(native,"pending")==null;i++)step();
             object oldPending=Get(native,"pending");Require(oldPending!=null,"Owned interruption has a real old pending request.");
@@ -34,7 +34,7 @@ namespace NativeWorldTextProbe
                 rows.Add(string.Join(",",frame,Main.GameUpdateCount,present?1:0,(bool)Get(native,"Failed")?1:0,(bool)Get(host,"Path")?1:0,Get(worker,"State"),pid,"\""+((string)Get(native,"Reason")??"").Replace("\"","\"\"")+"\""));
                 Require(!(bool)Get(native,"Failed") && (bool)Get(host,"Path"),"A recoverable owned EOF never latches Host pathFailed.");
                 if(!ReferenceEquals(before,worker))Require(route==null || route.CaptureTick>faultTick,"A new owner cannot publish the interrupted request's old route.");
-                if(present){if(first<0)first=frame;shown++;Require(route.SampleTick==Main.GameUpdateCount && route.Count==121,"Recovered consumer reads current plus 120 future steps.");}
+                if(present){if(first<0)first=frame;shown++;Require(route.SampleTick==Main.GameUpdateCount && route.Count>=31 && route.Count<=121,"Recovered display reads its actual current plus 30..120 future steps.");}
                 frame++;
             }
             File.WriteAllLines(Path.Combine(output,"failure-recovery.csv"),rows);
@@ -67,8 +67,8 @@ namespace NativeWorldTextProbe
             // proof and exhaustion proof, never to manufacture either result.
             NPC.ClearAll();Projectile.ClearAll();typeof(NativeCombatProductionPredictionChecks).GetMethod("Scene",Flags).Invoke(null,new object[]{2,0});
             wait.Restart();do{step();}while((cache.Read(0)==null || cache.Read(0).Strategy!=JueMingR.Platform.Combat.PredictionStrategy.NativeIsolated) && wait.Elapsed.TotalSeconds<30);
-            Require(!(bool)Get(native,"Failed") && cache.Read(0)!=null && cache.Read(0).Strategy==JueMingR.Platform.Combat.PredictionStrategy.NativeIsolated && cache.Read(0).Count==121 && cache.Read(0).SampleTick==Main.GameUpdateCount && !ReferenceEquals(exhausted,Get(native,"Worker")),
-                "Explicit Retry after exhausted recovery actually restores a fresh current+120 native consumer.");
+            Require(!(bool)Get(native,"Failed") && cache.Read(0)!=null && cache.Read(0).Strategy==JueMingR.Platform.Combat.PredictionStrategy.NativeIsolated && cache.Read(0).Count>=31 && cache.Read(0).Count<=121 && cache.Read(0).SampleTick==Main.GameUpdateCount && !ReferenceEquals(exhausted,Get(native,"Worker")),
+                "Explicit Retry after exhausted recovery actually restores a fresh qualified native display.");
 
             for(int i=0;i<20 && Get(native,"pending")==null;i++)step();
             Require(Get(native,"pending")!=null,"OFF boundary has a real in-flight request.");
@@ -79,7 +79,7 @@ namespace NativeWorldTextProbe
             for(int i=0;i<120 && cache.Read(0)==null;i++)step();Require(cache.Read(0)!=null,"Actual preference return resumes normal prediction.");
             for(int i=0;i<20 && Get(native,"pending")==null;i++)step();
             Call(host,"OnSessionEnded");Require(cache.Read(0)==null && Get(native,"pending")==null,"World exit retires cache and pending ownership.");
-            Console.WriteLine("PASS real Host recovery / current+120 consumer / released old owner / OFF no sampling / late reply retirement / world cleanup");
+            Console.WriteLine("PASS real Host recovery / qualified 30..120 display / released old owner / OFF no sampling / late reply retirement / world cleanup");
         }
         private static object Get(object owner,string name){var field=owner.GetType().GetField(name,Flags);return field!=null?field.GetValue(owner):owner.GetType().GetProperty(name,Flags).GetValue(owner);}
         internal static void Capacity(object native,NpcPredictionCache cache,Action step,Action advanceWithoutConsumer,string output)
@@ -88,7 +88,7 @@ namespace NativeWorldTextProbe
             // synthetic world is paused. No ticks, identities or retirement
             // flags are edited. The next ordinary Host update consumes the
             // actual decoded reply. This is not a normal-60-Hz cost claim.
-            var replies=new List<string>{"captureTick,replyTick,age,workerWaitMs,inputBytes,replyBytes,missingAsset,kind,error"};
+            var replies=new List<string>{"captureTick,replyTick,age,horizon,workerWaitMs,inputBytes,replyBytes,missingAsset,kind,error"};
             Action effectiveStep=()=>{AwaitReply(native,replies);step();};
             try
             {
@@ -102,7 +102,7 @@ namespace NativeWorldTextProbe
             }
             long refused=(long)Get(native,"Refused");object worker=Get(native,"Worker");long start=Main.GameUpdateCount;string reason="";
             for(int i=0;i<240;i++){effectiveStep();reason=(string)Get(native,"Reason")??"";if((long)Get(native,"Refused")>refused && reason.StartsWith("PredictionCapacityException",StringComparison.Ordinal))break;}
-            object pending=Get(native,"pending");var current=cache.Read(0);
+            object pending=Get(native,"pending");var current=cache.Read(1);
             Require(reason.StartsWith("PredictionCapacityException",StringComparison.Ordinal) && !(bool)Get(native,"Failed"),
                 "Production Session receives a real combined capacity refusal without global failure. reason="+reason+
                 " failed="+Get(native,"Failed")+" requests="+Get(native,"Requests")+" refused="+Get(native,"Refused")+
@@ -124,7 +124,7 @@ namespace NativeWorldTextProbe
             foreach(var shot in Main.projectile)shot.active=false;
             long requests=(long)Get(native,"Requests");effectiveStep();
             Require((long)Get(native,"Requests")>requests,"A changed capacity-bearing page state bypasses the old target's refusal cooldown immediately.");
-            int recovery=-1;for(int i=0;i<180;i++){effectiveStep();var path=cache.Read(0);if(path!=null && path.CaptureTick>rejectedAt){recovery=i;Require(path.SampleTick==Main.GameUpdateCount && path.Count==121,"Capacity recovery is actually current+120 at consumption.");break;}}
+            int recovery=-1;for(int i=0;i<180;i++){effectiveStep();var path=cache.Read(1);if(path!=null && path.CaptureTick>rejectedAt){recovery=i;Require(path.SampleTick==Main.GameUpdateCount && path.Count==121,"Capacity recovery consumes actual current plus 120 future steps.");break;}}
             Require(recovery>=0 && ReferenceEquals(worker,Get(native,"Worker")),"Same Host/native owner/worker takes a fresh ordinary request after capacity refusal automatically.");
             File.WriteAllText(Path.Combine(output,"host-capacity.txt"),"start="+start+" refusedAt="+rejectedAt+" recoveryUpdates="+recovery+" reason="+reason+"\n");
             Console.WriteLine("CAPACITY real Host refused and freshly recovered updates="+recovery+" same-worker=true");
@@ -145,7 +145,7 @@ namespace NativeWorldTextProbe
             long capture=(long)Get(aged,"Tick"),refusedBefore=(long)Get(native,"Refused"),rejectedBefore=(long)Get(native,"Rejected");
             for(int i=0;i<61;i++)advanceWithoutConsumer();
             step();
-            Require(Main.GameUpdateCount-capture>60 && (bool)Get(aged,"Retired") && (long)Get(native,"Rejected")==rejectedBefore+1 && (long)Get(native,"Refused")==refusedBefore && cache.Read(0)==null && !(bool)Get(native,"Failed"),
+            Require(Main.GameUpdateCount-capture>60 && (bool)Get(aged,"Retired") && (long)Get(native,"Rejected")==rejectedBefore+1 && (long)Get(native,"Refused")==refusedBefore && cache.Read(1)==null && !(bool)Get(native,"Failed"),
                 "An actually expired capacity reply is retired, not counted as an effective refusal or published into the current consumer.");
             File.WriteAllText(Path.Combine(output,"capacity-expired.txt"),"captureTick="+capture+" receiveTick="+Main.GameUpdateCount+" age="+(Main.GameUpdateCount-capture)+" rejectedDelta=1 refusedDelta=0 failed=false\n");
             Console.WriteLine("PASS separate capacity Session refusal/backoff/recovery / actual expired reply rejection; paused ticks are mechanism-only");
@@ -162,6 +162,7 @@ namespace NativeWorldTextProbe
             var result=Get(reply,"Result");string error=(string)Get(result,"Error")??"";
             if(error.StartsWith("PredictionCapacityException",StringComparison.Ordinal))
             {
+                Require((int)Get(pending,"Horizon")==180,"Actual capacity refusal belongs to a real long-horizon request.");
                 var sizes=System.Text.RegularExpressions.Regex.Match(error,@"core=(\d+) alignment=(\d+) payload=(\d+) limit=(\d+)");
                 Require(sizes.Success,"Actual decoded capacity refusal contains generated complete-result sizes.");
                 long core=long.Parse(sizes.Groups[1].Value),proof=long.Parse(sizes.Groups[2].Value),payload=long.Parse(sizes.Groups[3].Value),limit=long.Parse(sizes.Groups[4].Value);
@@ -170,7 +171,7 @@ namespace NativeWorldTextProbe
                 Require((int)Get(result,"Kind")==-1 && (int)Get(reply,"MissingAsset")==-1 && (int)Get(reply,"ReplyBytes")<4096,
                     "Real capacity refusal is bounded and cannot request a stale asset/entity page.");
             }
-            rows.Add(string.Join(",",Get(pending,"Tick"),Main.GameUpdateCount,Main.GameUpdateCount-(long)Get(pending,"Tick"),wait.Elapsed.TotalMilliseconds,Get(reply,"Bytes"),Get(reply,"ReplyBytes"),Get(reply,"MissingAsset"),Get(result,"Kind"),"\""+error.Replace("\"","\"\"")+"\""));
+            rows.Add(string.Join(",",Get(pending,"Tick"),Main.GameUpdateCount,Main.GameUpdateCount-(long)Get(pending,"Tick"),Get(pending,"Horizon"),wait.Elapsed.TotalMilliseconds,Get(reply,"Bytes"),Get(reply,"ReplyBytes"),Get(reply,"MissingAsset"),Get(result,"Kind"),"\""+error.Replace("\"","\"\"")+"\""));
         }
         private static void Call(object owner,string name,params object[] args){owner.GetType().GetMethod(name,Flags).Invoke(owner,args);}
         private static void Require(bool value,string message){if(!value)throw new InvalidOperationException(message);}

@@ -90,7 +90,7 @@ namespace NativeWorldTextProbe
                     step();
                     bool selected=(bool)Get(selection,"HasTarget") && ((NpcIdentity)Get(selection,"Target")).Slot==target;
                     var path=cache.Read(0);bool published=path!=null && path.Identity.Slot==target;
-                    if(published && (path.SampleTick!=Main.GameUpdateCount || path.Count<121))throw new InvalidOperationException("Guardian result lost the current+120 contract.");
+                    if(published && (path.SampleTick!=Main.GameUpdateCount || path.Count<31 || path.Count>121))throw new InvalidOperationException("Guardian display lost its current 30..120 future contract.");
                     bool attacking=Main.projectile.Any(p=>p.active && p.type==623 && p.ai[0]==2);
                     int dependencies=(int)Get(Get(native,"npcs"),"Count");
                     if(frame>=360 && frame<1080){maximumDependencies=Math.Max(maximumDependencies,dependencies);if(attacking)attackUpdates++;if(selected)guardianSelected++;if(published)guardianPublished++;}
@@ -103,7 +103,17 @@ namespace NativeWorldTextProbe
                 if(attackUpdates==0 || guardianSelected<600)throw new InvalidOperationException("Guardian fixture did not exercise real attack/selection.");
                 if(maximumDependencies!=1 || guardianPublished<600)throw new InvalidOperationException("Guardian pure eligibility query expanded town AI or failed continuous useful publication.");
                 NativeCombatQueryRetirementChecks.Run(native,cache,()=>{SampleMouse(context,Main.npc[target].Center);step();});
-                NativeCombatPrefixSessionChecks.Run(native,cache,step,point=>SampleMouse(context,point));
+                // The prefix receipt/age proof deliberately remains strict-long;
+                // this scene's display consumer was measured separately above.
+                var prefixHost=Get(context,"CombatObservation");var prefixOptions=(ObservationOptions)Get(prefixHost,"Options");
+                cache.Demand(1,120);
+                try
+                {
+                    NativeCombatObservationChecks.Save(prefixHost,prefixOptions.Path?prefixOptions.Toggle(1):prefixOptions);
+                    if(cache.Read(0)!=null || (int)Get(cache,"MinimumRequired")!=120 || cache.Required!=120)throw new InvalidOperationException("Prefix proof owns only the strict120 consumer.");
+                    NativeCombatPrefixSessionChecks.Run(native,cache,step,point=>SampleMouse(context,point));
+                }
+                finally{cache.Release(1);NativeCombatObservationChecks.Save(prefixHost,prefixOptions);}
             }
             finally
             {

@@ -35,7 +35,7 @@ namespace NativeWorldTextProbe
                         step();Require(!player.dead,"Independent production fixture remains alive.");var n=Main.npc[slot];
                         if(n.type!=lastType){forms++;sinceForm=0;lastType=n.type;}else sinceForm++;
                         var path=cache.Read(0);bool present=path!=null;
-                        if(present){shown++;if(first<0)first=frame;Require(path.Identity.Slot==slot && ReferenceEquals(path.Identity.Token,n) && path.Identity.Type==n.type && path.Identity.NetId==n.netID && path.SampleTick==Main.GameUpdateCount && path.Count==121,"Published path keeps current real identity and complete future.");}
+                        if(present){shown++;if(first<0)first=frame;Require(path.Identity.Slot==slot && ReferenceEquals(path.Identity.Token,n) && path.Identity.Type==n.type && path.Identity.NetId==n.netID && path.SampleTick==Main.GameUpdateCount && path.Count>=31 && path.Count<=121,"Published display keeps current real identity and its actual 30..120 future.");}
                         else if(frame>=30 && sinceForm>=30)stableBlanks++;
                         if(prior && !present)gaps++;prior=present;
                         foreach(var p in Main.projectile)if(p.active && p.type==55){shots++;break;}

@@ -25,6 +25,8 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             internal bool Current=>ReferenceEquals(Main.npc[slot],actor) && actor.generation==generation && actor.type==type && actor.netID==netId && Stable(actor);
             internal bool Owns(NPC npc)=>ReferenceEquals(actor,npc);
             internal int Slot=>slot;
+            internal bool DangerMember=>type!=690;
+            internal bool DangerCurrent=>Current && actor.whoAmI==slot && actor.life>0;
         }
         private static readonly NPC[] candidates=new NPC[Main.maxNPCs+1];
         private static int allocationDepth;
@@ -62,11 +64,12 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 candidates[slot]=candidate?npc:null;
             }
         }
-        internal static void Reset(){Array.Clear(candidates,0,candidates.Length);allocationDepth=0;}
+        internal static void Reset(){Array.Clear(candidates,0,candidates.Length);allocationDepth=0;NativeNpcDangerQuery.Reset();}
         private static bool Candidate(NPC npc)=>npc!=null && npc.whoAmI>=0 && npc.whoAmI<Main.maxNPCs && ReferenceEquals(candidates[npc.whoAmI],npc) && NativeEntityDirectory.IsOpaque(npc);
         internal static bool AllocationNeedsPage(NPC npc)=>allocationDepth!=0 && Candidate(npc);
         internal static void Install(Harmony patches)
         {
+            NativeNpcDangerQuery.Install(patches);
             patches.Patch(typeof(NPC).GetMethod("CanBeChasedBy",Flags),prefix:Hook(nameof(ChaseBefore)));
             patches.Patch(typeof(Projectile).GetMethod("Damage_PVE",Flags),transpiler:Hook(nameof(DamageCandidates)));
             patches.Patch(typeof(NPC).GetMethod("GetAvailableNPCSlot",Flags),prefix:Hook(nameof(AllocationBefore)),finalizer:Hook(nameof(AllocationAfter)));

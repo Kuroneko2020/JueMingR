@@ -63,6 +63,13 @@ namespace NativeWorldTextProbe
                     NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true));
                     if(Environment.GetEnvironmentVariable("JUEMINGR_AIM_LIGHT_PAIR")!=null)
                     {phase="light-natural-pair";NativeAimLightSessionChecks.Run(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    if((Environment.GetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT")??"").StartsWith("tiered-",StringComparison.Ordinal))
+                    {
+                        phase="tiered-ready";Scene(2);var ready=Stopwatch.StartNew();
+                        while(ready.Elapsed.TotalSeconds<70){Step(context,samples,prepares,false);worker=GetOptional(native,"Worker");if(worker!=null && (double)Get(worker,"ReadyMilliseconds")>0)break;}
+                        Require(worker!=null && (double)Get(worker,"ReadyMilliseconds")>0,"The actual ordinary resident worker must finish startup.");
+                        NativeCombatLiveContextChecks.Run(context,cache,()=>Step(context,samples,prepares,false),output,graphics);return;
+                    }
                     phase="first-eye";Scene(2);long first=Stopwatch.GetTimestamp();int valid=0,moving=0,frames=0,pid=0,playerMoving=0;bool restartedMovement=false;
                     var waiting=Stopwatch.StartNew();
                     while(waiting.Elapsed.TotalSeconds<70 && valid<90)
@@ -71,13 +78,13 @@ namespace NativeWorldTextProbe
                         if(worker!=null && (double)Get(worker,"ReadyMilliseconds")>0 && !restartedMovement){restartedMovement=true;Main.LocalPlayer.position=new Vector2(640,70*16-Main.LocalPlayer.height);Main.LocalPlayer.velocity=Vector2.Zero;continue;}
                         if(worker!=null && (int)Get(worker,"ChildId")!=0){int actual=(int)Get(worker,"ChildId");if(pid==0)pid=actual;Require(pid==actual,"steady scene keeps one resident process");}
                         var path=cache.Read(0);
-                        if(path!=null){Check(path,0);valid++;if(Main.LocalPlayer.velocity.X>0)playerMoving++;if(path[120].Bounds.X!=path[0].Bounds.X || path[120].Bounds.Y!=path[0].Bounds.Y)moving++;if(valid==1){Console.WriteLine("FIRST path wall-ms="+Ms(Stopwatch.GetTimestamp()-first).ToString("F3")+" age-ticks="+(Main.GameUpdateCount-path.CaptureTick));if(graphics!=null)Image(graphics,output,"production-eye",host,draws);phase="steady-"+Main.npc[path.Identity.Slot].type;Main.LocalPlayer.position=new Vector2(640,70*16-Main.LocalPlayer.height);Main.LocalPlayer.velocity=Vector2.Zero;}}
+                        if(path!=null){Check(path,0);valid++;if(Main.LocalPlayer.velocity.X>0)playerMoving++;if(path[path.Count-1].Bounds.X!=path[0].Bounds.X || path[path.Count-1].Bounds.Y!=path[0].Bounds.Y)moving++;if(valid==1){Console.WriteLine("FIRST path wall-ms="+Ms(Stopwatch.GetTimestamp()-first).ToString("F3")+" age-ticks="+(Main.GameUpdateCount-path.CaptureTick));if(graphics!=null)Image(graphics,output,"production-eye",host,draws);phase="steady-"+Main.npc[path.Identity.Slot].type;Main.LocalPlayer.position=new Vector2(640,70*16-Main.LocalPlayer.height);Main.LocalPlayer.velocity=Vector2.Zero;}}
                         if(frames%120==0)Console.WriteLine("LIVE frames="+frames+" valid="+valid+" worker="+(worker==null?"none":Get(worker,"State").ToString())+" reason="+GetOptional(native,"Reason"));
                         if(worker!=null && (int)Get(worker,"State")==4)throw new InvalidOperationException("Production helper fault: "+GetOptional(worker,"Failure"));
                     }
-                    Require(valid>=90 && moving>0 && playerMoving>5,"continuous original NPC and player movement publishes full future windows; moving-player="+playerMoving+" reason="+GetOptional(native,"Reason"));
+                    Require(valid>=90 && moving>0 && playerMoving>5,"continuous original NPC and player movement publishes valid future windows; moving-player="+playerMoving+" reason="+GetOptional(native,"Reason"));
                     cache.Demand(1,120);NativeCombatObservationChecks.Save(host,new ObservationOptions());
-                    Require(cache.Read(1)!=null,"Path OFF cannot detach a real native timeline still requested by another consumer.");
+                    Require(cache.Read(1)!=null && cache.Read(1).Count==121,"Path OFF cannot detach the strict current+120 timeline still requested by another consumer.");
                     for(int i=0;i<6;i++)Step(context,samples,prepares);
                     Require(cache.Read(1)!=null && (bool)Get(Get(host,"Selection"),"HasTarget"),"Remaining native consumer continues through actual Host updates.");
                     cache.Release(1);Call(host,"Poll");Require(!(bool)Get(Get(host,"Selection"),"HasTarget"),"Last native consumer retires selection after path was already OFF.");
@@ -90,7 +97,17 @@ namespace NativeWorldTextProbe
                     {
                         PrepareRecoveryScene(context,cache,samples,prepares);
                         phase="capacity-session";
-                        NativeCombatFailureRecoveryChecks.Capacity(native,cache,()=>{phase="capacity-session";Step(context,samples,prepares,false);},()=>{phase="capacity-consumer-paused";Step(context,samples,prepares,false,prepareHost:false);},output);
+                        // This separate capacity proof requires the original complete
+                        // 180-step result to exceed the combined 4 MiB envelope.
+                        var capacityOptions=(ObservationOptions)Get(host,"Options");
+                        cache.Demand(1,120);
+                        try
+                        {
+                            NativeCombatObservationChecks.Save(host,capacityOptions.Path?capacityOptions.Toggle(1):capacityOptions);
+                            Require(cache.Read(0)==null && (int)Get(cache,"MinimumRequired")==120 && cache.Required==120,"Capacity proof owns only the strict120 consumer.");
+                            NativeCombatFailureRecoveryChecks.Capacity(native,cache,()=>{phase="capacity-session";Step(context,samples,prepares,false);},()=>{phase="capacity-consumer-paused";Step(context,samples,prepares,false,prepareHost:false);},output);
+                        }
+                        finally{cache.Release(1);NativeCombatObservationChecks.Save(host,capacityOptions);}
                         return;
                     }
                     if(Environment.GetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT")!=null)
@@ -158,7 +175,7 @@ namespace NativeWorldTextProbe
                         if(path!=null){Check(path,1);switchedValid++;if(switchedValid==1){Console.WriteLine("SWITCH wall-ms="+Ms(Stopwatch.GetTimestamp()-switched).ToString("F3")+" ticks="+(Main.GameUpdateCount-switchTick)+" age="+(Main.GameUpdateCount-path.CaptureTick));if(graphics!=null)Image(graphics,output,"production-harpy",host,draws);phase="steady-"+Main.npc[path.Identity.Slot].type;Main.LocalPlayer.position=new Vector2(640,70*16-Main.LocalPlayer.height);Main.LocalPlayer.velocity=Vector2.Zero;}}
                         Require((int)Get(worker,"ChildId")==pid,"target switch reuses resident worker");
                     }
-                    Require(switchedValid>=120,"formerly short Harpy reaches sustained 120-step display: "+GetOptional(native,"Reason"));
+                    Require(switchedValid>=120,"formerly short Harpy supplies at least 120 updates with qualified display: "+GetOptional(native,"Reason"));
                     if(continuousSeconds>0)Window(context,cache,samples,prepares,"continuous-harpy",continuousSeconds,true);
                     phase="harpy-draw";for(int i=0;graphics!=null && i<3;i++){Step(context,samples,prepares);long start=Stopwatch.GetTimestamp();graphics.Pixels(()=>Call(Get(host,"World"),"Draw"),Main.GameViewMatrix.ZoomMatrix);draws.Add(Ms(Stopwatch.GetTimestamp()-start));}
                     Console.WriteLine("MEMORY final-steady-private="+Private(pid)+" delta="+(Private(pid)-privateBefore));
@@ -192,7 +209,7 @@ namespace NativeWorldTextProbe
                 }
                 Print("Host-UpdateRuntime",samples);Print("Host-UpdateRuntime-after-Ready",warm);Print("existing-UpdateShell-prepare",prepares);Print("Draw-plus-GPU-readback-not-AI",draws);Print("actual-world-step-wall-interval",cadence);
                 Print("Host-active-sample-or-observe-or-accept",active);Print("displayed-result-wall-age",displayAge);
-                Console.WriteLine("PASS production entry: OFF, async native movement, capture age, 120 remaining steps, one process, switch, formerly short Harpy, World.Prepare, input invalidation, cleanup; pixel-draw="+(continuousSeconds==0?"verified":"not executed in CPU window"));
+                Console.WriteLine("PASS production entry: OFF, async native movement, capture age, qualified 30..120 display steps, separate strict120 consumer, one process, switch, formerly short Harpy, World.Prepare, input invalidation, cleanup; pixel-draw="+(continuousSeconds==0?"verified":"not executed in CPU window"));
             }
             catch
             {
@@ -409,7 +426,8 @@ namespace NativeWorldTextProbe
             // identity before the recovery fixture acquires its owned pages.
             Step(context,samples,prepares,false);
             for(int i=0;i<180 && cache.Read(0)==null;i++)Step(context,samples,prepares,false);
-            Require(cache.Read(0)!=null && cache.Read(0).SampleTick==Main.GameUpdateCount && cache.Read(0).Count==121,"Recovery preparation receives a fresh current+120 ordinary scene.");
+            Require(cache.Read(0)!=null,"Recovery preparation receives a fresh qualified ordinary display.");
+            Check(cache.Read(0),0);
         }
         private static double Cpu(int pid){if(pid==0)return 0;using(var p=Process.GetProcessById(pid))return p.TotalProcessorTime.TotalMilliseconds;}
         private static void Initialize()
@@ -466,8 +484,10 @@ namespace NativeWorldTextProbe
             var terrainCost=Get(native,"terrainComparison");
             updates.Add(row+","+work.ToString("R",System.Globalization.CultureInfo.InvariantCulture)+","+Ms(Stopwatch.GetTimestamp()-waitStart).ToString("R",System.Globalization.CultureInfo.InvariantCulture)+","+((double)Get(native,"ObserveMilliseconds")-observeBefore).ToString("R",System.Globalization.CultureInfo.InvariantCulture)+","+Get(terrainCost,"TilesRead")+","+Get(terrainCost,"TilesCaptured")+","+Get(terrainCost,"ChunkHits"));
         }
+        // Consumer zero is the real display: its qualified future is 30..120.
+        // The separate Demand(1,120) assertions retain the strict-long contract.
         private static void Check(NpcTrajectory path,int slot)
-        {Require(path.Identity.Slot==slot && ReferenceEquals(path.Identity.Token,Main.npc[slot]),"never display another target");Require(path.SampleTick==Main.GameUpdateCount && path.CaptureTick<=path.SampleTick && path.Count==121,"current window retains capture age and 120 future steps");Require(Math.Abs(path[0].Bounds.X-Main.npc[slot].position.X)<.002f && Math.Abs(path[0].Bounds.Y-Main.npc[slot].position.Y)<.002f,"visible origin is current observed position");}
+        {Require(path.Identity.Slot==slot && ReferenceEquals(path.Identity.Token,Main.npc[slot]),"never display another target");Require(path.SampleTick==Main.GameUpdateCount && path.CaptureTick<=path.SampleTick && path.Count>=31 && path.Count<=121,"current display retains capture age and its actual 30..120 future steps");Require(Math.Abs(path[0].Bounds.X-Main.npc[slot].position.X)<.002f && Math.Abs(path[0].Bounds.Y-Main.npc[slot].position.Y)<.002f,"visible origin is current observed position");}
         private static void Dump(object native,object worker,string output)
         {
             File.WriteAllLines(Path.Combine(output,"production-updates.csv"),new[]{"tick,wallMs,phase,ready,active,sampled,received,hostMs,displayCaptureTick,displayAgeMs,requests,gc0,gc1,gc2,originalMs,shellMs,intervalMs,strategy,workMs,waitMs,observeMs,tilesCompared,tilesCaptured,chunkHits"}.Concat(updates));
@@ -489,7 +509,7 @@ namespace NativeWorldTextProbe
         {
             var read=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativePredictionResult").GetMethod("Read",Flags);var identity=new NpcIdentity(1,new object(),0,0,2,2);
             using(var bytes=new MemoryStream())using(var w=new BinaryWriter(bytes))
-            {w.Write(-NativeCombatWorkerChecks.ExpectedProtocol);w.Write("InvalidDataException");w.Write("missing page");w.Write(-1);w.Write(-1);w.Write(2);w.Write(7);w.Write(0);w.Flush();var parsed=read.Invoke(null,new object[]{bytes.ToArray(),null,identity,0L,1L,false});Require((int)Get(parsed,"Kind")==2 && (int)Get(parsed,"Slot")==7,"refusal field ID is an Int32, preserving missing-page discovery");}
+            {w.Write(-NativeCombatWorkerChecks.ExpectedProtocol);w.Write("InvalidDataException");w.Write("missing page");w.Write(-1);w.Write(-1);w.Write(2);w.Write(7);w.Write(0);if(host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativeNpcDangerQuery")!=null)w.Write((byte)0);w.Flush();var parsed=read.Invoke(null,new object[]{bytes.ToArray(),null,identity,0L,1L,false});Require((int)Get(parsed,"Kind")==2 && (int)Get(parsed,"Slot")==7,"refusal field ID is an Int32, preserving missing-page discovery");}
             byte[] core,alignment;const int count=181;float key=BitConverter.ToSingle(BitConverter.GetBytes(0x7F800100U),0);
             using(var bytes=new MemoryStream())using(var w=new BinaryWriter(bytes))
             {

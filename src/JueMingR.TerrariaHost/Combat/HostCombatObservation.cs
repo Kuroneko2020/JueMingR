@@ -88,7 +88,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(!Hooks.Ready){Selection.RetireTarget();Prediction.Clear();return;}
             var player=Main.LocalPlayer;if(player==null || !player.active || player.dead || player.ghost){Selection.RetireTarget();Prediction.Clear();Geometry.BeginNpcs();return;}
             if(Collision)Geometry.BeginNpcs();
-            if(Path)Prediction.Cache.Demand(0,NpcPredictionCache.Horizon);else Prediction.Cache.Release(0);
+            if(Path)Prediction.Cache.Demand(0,30,NpcPredictionCache.Horizon);else Prediction.Cache.Release(0);
             try{Selection.Update(Options,Session,Prediction.Cache.Required>0,Collision?Geometry:null);}catch(Exception error){AimTrace.Fault("host-selection",error,(long)tick);CollisionFailed();pathFailed=true;Selection.RetireTarget();Prediction.Clear();return;}
             if(!Selection.HasTarget){Prediction.Clear();return;}
             // The native worker owns ordinary prediction failure. Selection,

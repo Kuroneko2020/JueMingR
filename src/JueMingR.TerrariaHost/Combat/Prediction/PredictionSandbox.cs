@@ -263,8 +263,10 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                         // The failing update can have partially written any
                         // record: roll all three streams back together. Never
                         // include its mutated state or invent a stop/lifetime.
-                        // Session still proves history/terrain and requires a
-                        // full current+120 window at the actual receive age.
+                        // Keep this late-prefix threshold: short recovery
+                        // failures remain refusals. Session still proves full
+                        // history/terrain and each reader's actual minimum
+                        // future at receive age; failed steps supply neither.
                         result.SetLength(pointEnd);result.Position=pointEnd;
                         proofBytes.SetLength(proofEnd);proofBytes.Position=proofEnd;
                         dependencies.Truncate(dependencyEnd);

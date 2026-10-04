@@ -48,6 +48,10 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         internal static int MissingKind {get;private set;}
         internal static int MissingSlot {get;private set;}
         internal static int MissingField {get;private set;}
+        // Newborn/replaced objects and a mutable whoAmI cannot borrow the
+        // original full page's authority to identify a danger-loop caller.
+        internal static bool IsCapturedNpc(NPC npc)
+        {Entry entry;return npc!=null && Captured.TryGetValue(npc,out entry) && entry.Kind==1 && entry.Slot>=0 && entry.Slot<Main.maxNPCs && npc.whoAmI==entry.Slot && ReferenceEquals(CapturedNpcs[entry.Slot],npc);}
         internal static void Write(BinaryWriter writer)
         {
             Npcs.WriteHeader(writer);for(int i=0;i<=Main.maxNPCs;i++)Npcs.WriteFields(writer,Main.npc[i]);
@@ -308,9 +312,16 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             // through to the original identity-based rules, including unknown
             // fields and managed-address refusal. Reset clears both indexes.
             var npc=value as NPC;
+            // A directory scalar read is already permitted for captured,
+            // opaque and newly born objects and creates no Purpose edge.
+            // Check BOTH current permissions: a schema can lose a scalar while
+            // its directory still contains it. Allocation and research retain
+            // their original gates; addresses/writes never use this shortcut.
+            if(mode==0 && npc!=null && NpcDirectoryPermissions.Contains(field) && NpcPermissions.Contains(field) && !NativeNpcEligibility.AllocationNeedsPage(npc))return;
             if(npc!=null && (uint)npc.whoAmI<(uint)CapturedNpcs.Length && ReferenceEquals(CapturedNpcs[npc.whoAmI],npc) && NpcPermissions.Contains(field))
             {NativePredictionPurpose.Access(npc,mode,NpcDirectoryPermissions.Contains(field),field);return;}
             var projectile=value as Projectile;
+            if(mode==0 && projectile!=null && ProjectileDirectoryPermissions.Contains(field) && ProjectilePermissions.Contains(field))return;
             if(projectile!=null && (uint)projectile.whoAmI<(uint)CapturedProjectiles.Length && ReferenceEquals(CapturedProjectiles[projectile.whoAmI],projectile) && ProjectilePermissions.Contains(field))
             {NativePredictionPurpose.Access(projectile,mode,ProjectileDirectoryPermissions.Contains(field),field);return;}
             if(!Opaque.TryGetValue(value,out entry))
