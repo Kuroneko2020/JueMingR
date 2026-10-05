@@ -244,6 +244,9 @@ function Get-WorkloadPlan {
         'NpcRollingCpu'=@('combat-host');
         'NpcRollingSelectionNegative'=@('combat-host');
         'NpcBasicMotion'=@('combat-host');
+        # Ordinary delivery retains the real shared selection/terrain and
+        # marker consumer seams; detailed phase matrices stay bounded probes.
+        'NpcSharedGeometry'=@('combat-host'); 'NpcTargetMarker'=@('combat-host');
         'NpcWorkerIntegration'=@('combat-host'); 'NpcSnapshot'=@('combat-host'); 'NpcWorkerPreparation'=@('combat-host');
         'NpcDiagnosticsOff'=@('combat-host'); 'NpcPostDelivery'=@('combat-host'); 'NpcGuardianQuery'=@('combat-host'); 'NpcModeledImpact'=@('combat-host');
         'NpcLegalCoverage'=@('combat-host'); 'NpcWorkerTransport'=@('combat-host'); 'NpcMenuPreparation'=@('combat-host'); 'NpcSessionCapacity'=@('combat-host'); 'NpcProduction'=@('combat-host'); 'NpcLongCoverage'=@('combat-host');

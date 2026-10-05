@@ -8,18 +8,27 @@ namespace JueMingR.Features.Combat
     // phase selection are not replayed by this private scalar continuation.
     internal static class NpcParentMotion
     {
-        internal static bool NeedsPlayer(NpcMotionState n,PredictionEnvironment e,int remaining)
+        internal static bool NeedsPlayer(NpcMotionState n,PredictionEnvironment e,int remaining,NpcMotionState parent)
         {
-            // Home-only current phases do not consume player motion. Include
-            // a known clock transition within the remaining bounded window;
-            // parent phase/position remain separately sampled dependencies.
-            // The threshold action still executes home movement. Its new
-            // phase reads player motion only on the following action, so an
-            // exact transition at the requested endpoint adds no premise.
+            // Match Step's action-before phase, including far-parent recovery.
+            // AI12/33/34 raising and horizontal setup do not read a player
+            // until their relative boundary actually enters Aim. Rolling
+            // rechecks each action and restarts the whole timeline once when
+            // that first real premise appears; a clock alone cannot predict it.
+            int phase=(int)n.A2;
+            if(n.Style==33 || n.Style==34)
+            {
+                float dx=parent.Bounds.CenterX-200*n.A0-n.Bounds.CenterX,dy=parent.Y+230-n.Bounds.CenterY;
+                float distance=(float)Math.Sqrt(dx*dx+dy*dy);
+                if(phase!=99 && distance>800 || phase==99 && distance>=400)return false;
+                if(phase==99)phase=0;
+            }
             if(n.Style==35)return n.A2==1 || n.A2==0 && n.PositionParameter==0 && n.A3+remaining>1100;
             if(n.Style==36)return n.A2==1 || (n.A2==0 || n.A2==3) && n.PositionParameter==0 && n.A3+remaining>800;
-            if(n.Style==12)return n.A2!=0 && n.A2!=3 || (n.PositionParameter==0 || n.L3==1) && n.A3+remaining*(1+(n.L3==1?1:0)+(e.Expert?.5f:0))>300;
-            return true; // AI33/34 recovery can enter player pursuit in-window.
+            if(phase==0 || phase==3)return n.Style!=12 && parent.A1!=0;
+            if(phase==1)return n.Y<parent.Y-(n.Style==34?280:200);
+            if(phase==4)return n.Style==33 || n.Bounds.CenterX<parent.Bounds.CenterX-500 || n.Bounds.CenterX>parent.Bounds.CenterX+500;
+            return phase==2 || phase==5;
         }
         internal static bool Step(ref NpcMotionState n,NpcMotionState parent,PredictionEnvironment e,out PredictionStop stop)
         {

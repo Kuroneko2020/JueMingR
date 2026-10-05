@@ -28,7 +28,7 @@ namespace JueMingR.Features.Combat
         {
             stop=PredictionStop.None;n.NewSegment=false;
             env=NpcTargeting.Player(n,env);
-            bool playerNeededThisAction=NeedsPlayerMotion(n,env,1);
+            bool playerNeededThisAction=NeedsPlayerMotion(n,env,1,group,count);
             if(!n.Active){stop=PredictionStop.Despawn;return false;}
             // Explicit structural models can continue from their observed
             // state under a qualified unknown-effect premise until expiry.
@@ -207,11 +207,16 @@ namespace JueMingR.Features.Combat
                 n.Style==13 && NpcAnchoredMotion.Known(type) || n.Style==16 && NpcAquaticMotion.Known(type) ||
                 n.Style==40 && NpcWallMotion.Wall(type) || n.Style==69 || n.Style==39 && type==153 || n.Style==41 && type==177;
         }
-        internal static bool NeedsPlayerMotion(NpcMotionState n,PredictionEnvironment e,int remaining=120)
+        internal static bool NeedsPlayerMotion(NpcMotionState n,PredictionEnvironment e,int remaining=120,NpcMotionState[] group=null,int count=0)
         {
             e=NpcTargeting.Player(n,e);
             if(n.EffectiveType==488)return false;
-            if(n.PositionRelation!=0)return n.PositionRelation==6 && NpcParentMotion.NeedsPlayer(n,e,remaining);
+            if(n.PositionRelation!=0)
+            {
+                if(n.PositionRelation!=6)return false;
+                if(group!=null)for(int i=0;i<count;i++)if(group[i].Identity.Equals(n.PositionOwner))return NpcParentMotion.NeedsPlayer(n,e,remaining,group[i]);
+                return true; // Missing necessary owner is never a player waiver.
+            }
             // AI_005/AI_014 still consume numbered-player geometry even when
             // TargetClosest faces a guardian. Facing alone cannot waive it.
             if(n.Style==2 && (n.TrackingKind>=2 || e.Day && !e.Remix && !e.Graveyard && n.Y<=e.WorldSurface*16 && !n.Wet))return false;

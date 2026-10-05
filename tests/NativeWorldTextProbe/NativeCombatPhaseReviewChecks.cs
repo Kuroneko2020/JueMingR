@@ -31,8 +31,9 @@ namespace NativeWorldTextProbe
                         var path=new RollingNpcPrediction().Prepare(new[]{(NpcMotionState)read.Invoke(null,new object[]{owner,Get(host,"Session")}),state},2,1,1,120,1,env,player,probe,new[]{true,true});
                         for(int future=1;future<=120;future++){n.AI();n.position+=n.velocity;}
                         Console.WriteLine("PARENT END type="+type+" delta="+delta+" nativePhase120="+n.ai[2]+" nativeClock="+n.ai[3]+" queries="+probe.PlayerQueries+" count="+(path==null?0:path.Count)+" stop="+(path==null?"null":path.Stop.ToString()));
-                        Require(path!=null && (delta>0?probe.PlayerQueries==1 && path.Count==1:probe.PlayerQueries==0 && path.Count==121),"Home movement at endpoint does not consume next phase's player timeline: "+type+" delta="+delta);
-                        if(delta<=0)Require(n.ai[2]==(delta==0?1:0) && Vector2.Distance(n.position,new Vector2(path[120].Bounds.X,path[120].Bounds.Y))<.025f,"Independent original 120 home actions and transition frame match endpoint.");
+                        bool needs=type!=36 && delta>0;
+                        Require(path!=null && (needs?probe.PlayerQueries==1 && path.Count==1:probe.PlayerQueries==0 && path.Count==121),"A transition adds a premise only when its new action really pursues a player: "+type+" delta="+delta);
+                        if(!needs)Require(n.ai[2]==(delta>=0?1:0) && Vector2.Distance(n.position,new Vector2(path[120].Bounds.X,path[120].Bounds.Y))<.025f,"Independent original home/raising actions match endpoint without an unrelated premise.");
                     }
                 }
                 finally{Main.netMode=mode;second.active=false;}
@@ -49,8 +50,39 @@ namespace NativeWorldTextProbe
                     var player=new PredictionPlayerMotion{X=p.position.X,Y=p.position.Y,Width=p.width,Height=p.height,GravityDirection=1,MaxFall=10};
                     var path=new RollingNpcPrediction().Prepare(new[]{(NpcMotionState)read.Invoke(null,new object[]{owner,Get(host,"Session")}),state},2,1,1,120,1,env,player,probe,new[]{true,true});
                     Console.WriteLine("PARENT CLOCK expert="+expert+" playerQueries="+probe.PlayerQueries+" count="+(path==null?0:path.Count)+" stop="+(path==null?"null":path.Stop.ToString()));
-                    Require(path!=null && (expert?probe.PlayerQueries==1 && path.Count==1:probe.PlayerQueries==0 && path.Count==121),"Normal170 ends at290 without unrelated future; Expert crosses actual300 clock and requires its player premise.");
+                    Require(path!=null && probe.PlayerQueries==0 && path.Count==121,"A clock transition alone does not consume AI12 player geometry; its rising phase has not reached Aim height.");
+                    int difficulty=Main.GameMode,mode=Main.netMode;
+                    try{Main.GameMode=expert?1:0;Main.netMode=1;n.position=new Vector2(700,1030);n.velocity=Vector2.Zero;n.ai[2]=0;n.ai[3]=170;for(int future=1;future<=120;future++){n.AI();n.position+=n.velocity;}Require(n.ai[2]==(expert?1:0) && Vector2.Distance(n.position,new Vector2(path[120].Bounds.X,path[120].Bounds.Y))<.025f,"Original actual difficulty confirms clock-only home/raising window, not Aim.");}
+                    finally{Main.GameMode=difficulty;Main.netMode=mode;}
                 }
+            }
+            else if(Environment.GetEnvironmentVariable("JUEMINGR_REVIEW_CASE")=="aim-boundary")
+            {
+                for(int i=0;i<Main.maxPlayers;i++){if(Main.player[i]==null)Main.player[i]=new Player{whoAmI=i};Main.player[i].active=false;}
+                var p=Main.LocalPlayer;p.active=true;p.dead=false;p.tankPet=-1;p.position=new Vector2(900,950);
+                int mode=Main.netMode,difficulty=Main.GameMode;Main.netMode=1;Main.GameMode=0;
+                try
+                {
+                    foreach(int type in new[]{36,129,130})foreach(int phase in new[]{1,4})foreach(int control in new[]{0,1,2})
+                    {
+                        int required=control==1?2:1;
+                        var owner=Main.npc[1]=new NPC();owner.SetDefaults(type==36?35:127);owner.whoAmI=1;owner.active=true;owner.position=new Vector2(800,800);owner.ai[1]=owner.ai[3]=0;
+                        var n=Main.npc[2]=new NPC();n.SetDefaults(type);n.whoAmI=2;n.active=true;n.target=Main.myPlayer;n.ai[0]=-1;n.ai[1]=1;n.ai[2]=phase;n.ai[3]=0;
+                        float threshold=owner.position.Y-(type==130?280:200);
+                        n.position=phase==1?new Vector2(700,threshold+(control==2?-1:1)):new Vector2(owner.Center.X+(control==2?501:499)-n.width*.5f,1030);
+                        n.velocity=phase==1?new Vector2(0,-2):new Vector2(2,0);
+                        var read=source.GetType().GetMethod("Read",Flags);var args=new object[]{n,read.Invoke(null,new object[]{n,Get(host,"Session")}),Get(host,"Session")};source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcPositionObservation").GetMethod("Capture",Flags).Invoke(null,args);var state=(NpcMotionState)args[1];
+                        var probe=new PlayerQueryBoundary((IPredictionTerrain)terrain);var env=new PredictionEnvironment{PlayerIndex=Main.myPlayer,PlayerX=p.Center.X,PlayerY=p.Center.Y,PlayerWidth=p.width,PlayerHeight=p.height,WorldWidth=Main.maxTilesX,WorldHeight=Main.maxTilesY,WorldSurface=(float)Main.worldSurface,Multiplayer=true};var player=new PredictionPlayerMotion{X=p.position.X,Y=p.position.Y,Width=p.width,Height=p.height,GravityDirection=1,MaxFall=10};
+                        var path=new RollingNpcPrediction().Prepare(new[]{(NpcMotionState)read.Invoke(null,new object[]{owner,Get(host,"Session")}),state},2,1,1,required,1,env,player,probe,new[]{true,true});
+                        for(int future=1;future<=required;future++){n.AI();n.position+=n.velocity;}
+                        bool chase=type==129 && phase==4,needs=control!=0 || chase;
+                        Console.WriteLine("PARENT AIM type="+type+" phase="+phase+" control="+control+" required="+required+" nativePhase="+n.ai[2]+" queries="+probe.PlayerQueries+" count="+(path==null?0:path.Count));
+                        Require(n.ai[2]==(needs&&!chase?(phase==1?2:5):phase),"Original Aim occurs only after its action-before relative boundary; AI33 phase4 directly pursues.");
+                        Require(path!=null && (needs?probe.PlayerQueries==1 && path.Count==1:probe.PlayerQueries==0 && path.Count==2),"Last non-Aim action publishes without an unrelated premise; first real Aim requires a consistent timeline.");
+                        if(!needs)Require(Vector2.Distance(n.position,new Vector2(path[1].Bounds.X,path[1].Bounds.Y))<.025f,"Original rising/horizontal pre-Aim action matches Rolling.");
+                    }
+                }
+                finally{Main.netMode=mode;Main.GameMode=difficulty;}
             }
             else if(Environment.GetEnvironmentVariable("JUEMINGR_REVIEW_CASE")=="confused")
             {

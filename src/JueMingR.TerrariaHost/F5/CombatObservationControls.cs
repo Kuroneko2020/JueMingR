@@ -24,21 +24,31 @@ namespace JueMingR.TerrariaHost.F5
         {
             int panel=elements.Count;float top=y;
             elements.Add(new F5Element(F5ElementKind.Panel,default(F5Rect),null,default(F5Size),0,F5Command.None));
-            var title=measure("辅助瞄准设置",.70f);y+=8;
-            float row=30,x=12;
+            y+=8;float row=30,x=12,titleScale=.70f,buttonScale=.65f;
             string[] labels={options.ClearLine?"清线优先":"最近优先",options.MouseCenter?"鼠标中心":"玩家中心",options.Dummy?"追踪人偶：开":"追踪人偶：关",options.Marker?"目标标记：开":"目标标记：关"};
             var commands=new[]{F5Command.ObservationPolicy,F5Command.ObservationCenter,F5Command.ObservationDummy,F5Command.ObservationMarker};
-            foreach(var labelText in labels)row=Math.Max(row,measure(labelText,.65f).Height+10);
-            elements.Add(new F5Element(F5ElementKind.Text,new F5Rect(12,y,title.Width,title.Height),"辅助瞄准设置",title,.70f,F5Command.None,
-                description:new F5RowDescription("combat.selection","当前设置用于 NPC寻路预测与目标标记的共享选敌；无需持有武器或开始攻击。"),hintRect:new F5Rect(10,y,title.Width+4,title.Height+4)));
-            // Owner requires these four settings on one row with no marker key.
-            // The measured title gets its own line, leaving the full row width.
-            y+=title.Height+8;
+            var title=measure("辅助瞄准设置",titleScale);var sizes=new F5Size[labels.Length];float used;
+            // Keep the actual heading plus all four options together. Tighten
+            // horizontal padding first, then scale measured text modestly;
+            // never hide the heading or borrow a second row in a short window.
+            while(true)
+            {
+                title=measure("辅助瞄准设置",titleScale);used=title.Width+8+12;
+                for(int i=0;i<labels.Length;i++){sizes[i]=measure(labels[i],buttonScale);used+=Math.Max(46,sizes[i].Width+8)+(i==0?0:4);}
+                if(used<=510)break;
+                if(buttonScale<=.501f)throw new InvalidOperationException("Combat heading/settings exceed their measured row.");
+                buttonScale-=.05f;titleScale-=.025f;
+            }
+            row=Math.Max(row,title.Height+8);foreach(var size in sizes)row=Math.Max(row,size.Height+10);
+            float titleY=y+(row-title.Height)*.5f;
+            elements.Add(new F5Element(F5ElementKind.Text,new F5Rect(12,titleY,title.Width,title.Height),"辅助瞄准设置",title,titleScale,F5Command.None,
+                description:new F5RowDescription("combat.selection","当前设置用于 NPC寻路预测与目标标记的共享选敌；无需持有武器或开始攻击。"),hintRect:new F5Rect(10,titleY,title.Width+4,title.Height+4)));
+            x+=title.Width+8;
             for(int i=0;i<labels.Length;i++)
             {
-                var size=measure(labels[i],.65f);float width=Math.Max(64,size.Width+16);
+                var size=sizes[i];float width=Math.Max(46,size.Width+8);
                 if(x+width>510)throw new InvalidOperationException("Combat selection settings exceed their measured row.");
-                elements.Add(new F5Element(F5ElementKind.Button,new F5Rect(x,y,width,row),labels[i],size,.65f,commands[i]));x+=width+8;
+                elements.Add(new F5Element(F5ElementKind.Button,new F5Rect(x,y,width,row),labels[i],size,buttonScale,commands[i]));x+=width+4;
             }
             y+=row+8;
             var label=measure("鼠标半径：50格",.70f);float fieldHeight=Math.Max(30,label.Height+10);

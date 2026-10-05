@@ -45,7 +45,8 @@ namespace NativeWorldTextProbe
             finally{Main.GameMode=difficulty;Main.netMode=savedMode;}
             var needs=typeof(NpcMotion).GetMethod("NeedsPlayerMotion",Flags);
             var home=new NpcMotionState{Style=12,PositionRelation=6,A2=0,A3=170,PositionParameter=0,L3=0};
-            Require(!(bool)needs.Invoke(null,new object[]{home,new PredictionEnvironment{Expert=false},120}) && (bool)needs.Invoke(null,new object[]{home,new PredictionEnvironment{Expert=true},120}),"Parent home 170+120 normal ticks stays before 300; expert 1.5 clock crosses the actual player-consuming phase.");
+            var ownerState=new NpcMotionState{Identity=home.PositionOwner,Y=800};
+            Require(!(bool)needs.Invoke(null,new object[]{home,new PredictionEnvironment{Expert=false},120,new[]{ownerState},1}) && !(bool)needs.Invoke(null,new object[]{home,new PredictionEnvironment{Expert=true},120,new[]{ownerState},1}),"A clock crossing alone is not the actual Aim consumer; full Rolling boundary controls cover the subsequent rising phase.");
             var second=Main.player[1];second.active=true;second.dead=false;second.position=new Vector2(900,950);second.tankPet=-1;Main.LocalPlayer.position=new Vector2(1400,950);
             var boss=Main.npc[1];boss.SetDefaults(127);boss.whoAmI=1;boss.active=true;boss.ai[1]=0;boss.position=new Vector2(800,800);
             var member=Main.npc[2];member.SetDefaults(131);member.whoAmI=2;member.active=true;member.target=Main.myPlayer;member.position=new Vector2(1000,950);member.ai[0]=1;member.ai[1]=1;member.ai[2]=0;member.ai[3]=799;

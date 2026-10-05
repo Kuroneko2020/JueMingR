@@ -43,6 +43,7 @@ namespace NativeWorldTextProbe
             Require((string)Get(Button(),"Text")=="目标标记：开","Actual same-page command refreshes ON after commit.");
             Require(!((IEnumerable)Get(layout,"Elements")).Cast<object>().Any(e=>(string)GetOptional(e,"HotkeyTarget")=="combat.target-marker"),"F5 has no marker key picker.");
             var row=((IEnumerable)Get(layout,"Elements")).Cast<object>().Where(e=>new[]{"ObservationPolicy","ObservationCenter","ObservationDummy","ObservationMarker"}.Contains(Get(e,"Command").ToString())).ToArray();Require(row.Length==4 && row.All(e=>(float)Get(Get(e,"Rect"),"Y")== (float)Get(Get(Button(),"Rect"),"Y")),"Four settings share the same measured row.");
+            RequireTitleRow(((IEnumerable)Get(layout,"Elements")).Cast<object>().ToArray(),row);
             foreach(object element in row)
             {var rect=Get(element,"Rect");Require((float)Get(rect,"X")>=0 && (float)Get(rect,"Right")<=522,"Measured marker controls stay inside their actual panel.");}
             var world=Get(host,"World");var display=Get(world,"Marker");Set(host,"LayerStatus",Enum.Parse(Get(host,"LayerStatus").GetType(),"Ready"));
@@ -69,11 +70,13 @@ namespace NativeWorldTextProbe
                 Require(Math.Abs(Main.UIScale-size[2]/100f)<.001f && Math.Abs(Main.UIScaleMatrix.M11-size[2]/100f)<.001f && Math.Abs(((Matrix)Get(shell,"matrix")).M11-size[2]/100f)<.001f,"Requested actual UI scale and sampled Shell matrix match.");
                 var elements=((IEnumerable)Get(layout,"Elements")).Cast<object>().ToArray();var button=elements.Single(e=>Get(e,"Command").ToString()=="ObservationMarker");
                 var row=elements.Where(e=>new[]{"ObservationPolicy","ObservationCenter","ObservationDummy","ObservationMarker"}.Contains(Get(e,"Command").ToString())).ToArray();Require(row.Length==4 && row.All(e=>(float)Get(Get(e,"Rect"),"Y")== (float)Get(Get(button,"Rect"),"Y")),"Original font draws all four settings on the same row.");
+                RequireTitleRow(elements,row);
                 foreach(var e in row)Require((float)Get(Get(e,"Rect"),"Right")<=510,"Original Chinese font four controls fit panel at "+Main.UIScale);
-                Call(ui,"ScrollTo",(float)Get(Get(button,"Rect"),"Y"));Require((bool)Get(ui,"Visible") && (bool)Get(ui,"Ready") && !(bool)Get(shell,"Failed"),"Real F5 draw gates ready.");
+                Call(ui,"ScrollTo",0f);Require((float)Get(ui,"Scroll")==0 && (bool)Get(ui,"Visible") && (bool)Get(ui,"Ready") && !(bool)Get(shell,"Failed"),"Real F5 draw gates ready with the full card top/title visible at scroll zero.");
                 var pixels=graphics.Pixels(()=>Call(shell,"DrawLayer"),Main.UIScaleMatrix,size[0],size[1]);Require(!(bool)Get(shell,"Failed") && pixels.Count(p=>p.A>0)>1000 && pixels.Any(p=>p.R>180 && p.G>180 && p.B>180 && p.A>0),"Actual F5 panel and text draw visible pixels, not a saved empty canvas.");
                 graphics.Image(System.IO.Path.Combine(output,"marker-f5-"+size[0]+"-"+size[1]+".png"),()=>Call(shell,"DrawLayer"),Main.UIScaleMatrix,size[0],size[1]);
             }
+            if(Environment.GetEnvironmentVariable("JUEMINGR_MARKER_F5_ONLY")=="1"){Console.WriteLine("PASS TARGET-MARKER F5 title plus four controls same row, full top at scroll0, real Chinese font and actual150%. No world Draw rerun.");return;}
             Call(ui,"Close");Main.screenWidth=960;Main.screenHeight=640;Main.UIScale=1;Terraria.GameInput.PlayerInput.CacheOriginalScreenDimensions();
             var host=Get(context,"CombatObservation");var world=Get(host,"World");var marker=Get(world,"Marker");
             foreach(var n in Main.npc)n.active=false;var target=Main.npc[2];target.SetDefaults(2);target.whoAmI=2;target.active=true;target.position=new Vector2(720,450);target.target=0;Main.LocalPlayer.position=new Vector2(640,500);Main.dayTime=false;
@@ -92,6 +95,12 @@ namespace NativeWorldTextProbe
             {Main.LocalPlayer.gravDir=gravity;Main.GameViewMatrix.Zoom=new Vector2(zoom);Call(world,"Prepare");Require((bool)Get(marker,"Visible"),"Marker survives supported gravity/zoom.");graphics.Image(System.IO.Path.Combine(output,"marker-transform-"+gravity+"-"+zoom.ToString(System.Globalization.CultureInfo.InvariantCulture)+".png"),()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);}
             Main.LocalPlayer.gravDir=1;Main.GameViewMatrix.Zoom=Vector2.One;NativeCombatMarkerCapacityChecks.Run(context,graphics,output);Main.mapFullscreen=true;Call(world,"Prepare");Require(!(bool)Get(marker,"Visible"),"Fullscreen map retires marker commands.");Main.mapFullscreen=false;
             NativeCombatObservationChecks.Save(host,new ObservationOptions());Console.WriteLine("PASS TARGET-MARKER real original atlas/Draw, resource-failure remaining path pixels, bounded retry. This is isolated XNA, not gameplay FPS/owner acceptance.");
+        }
+        private static void RequireTitleRow(object[] elements,object[] row)
+        {
+            var title=elements.Single(e=>(string)GetOptional(e,"Text")=="辅助瞄准设置");var rect=Get(title,"Rect");var first=Get(row[0],"Rect");
+            Require(Math.Abs((float)Get(rect,"Y")+(float)Get(rect,"Height")*.5f-(float)Get(first,"Y")-(float)Get(first,"Height")*.5f)<.01f && (float)Get(rect,"Right")+4<=(float)Get(first,"X"),"Visible original title shares the four-control row without overlapping buttons.");
+            for(int i=0;i<row.Length;i++){var current=Get(row[i],"Rect");Require((float)Get(current,"Height")>=30 && (float)Get(current,"Right")<=510,"Measured controls retain readable, clickable bounds.");if(i>0)Require((float)Get(Get(row[i-1],"Rect"),"Right")+4<=(float)Get(current,"X"),"Measured row has nonoverlapping control gaps.");}
         }
     }
 }
