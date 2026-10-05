@@ -15,7 +15,7 @@ namespace JueMingR.TerrariaHost.Combat
             // target until its own modeled TargetClosest call changes it.
             if(n.target>=0 && n.target<Main.maxPlayers && Main.player[n.target]!=null)
             {
-                var direct=Main.player[n.target];state.PlayerIndex=n.target;state.HasPlayer=true;state.PlayerArea=Area(direct);state.PlayerDead=direct.dead || !direct.active;state.PlayerWet=direct.wet;state.PlayerIdle=direct.itemAnimation==0 && direct.aggro<0;state.TargetNoAggro=direct.npcTypeNoAggro[n.type];
+                var direct=Main.player[n.target];state.PlayerIndex=n.target;state.HasPlayer=true;state.PlayerArea=Area(direct);state.PlayerDead=direct.dead || !direct.active;state.PlayerWet=direct.wet;state.PlayerGraveyard=direct.ZoneGraveyard;state.PlayerIdle=direct.itemAnimation==0 && direct.aggro<0;state.TargetNoAggro=direct.npcTypeNoAggro[n.type];
             }
             if(n.SupportsNPCTargets && n.HasNPCTarget)
             {
@@ -43,7 +43,7 @@ namespace JueMingR.TerrariaHost.Combat
                 else if(clear){tankSlot=pet;state.TargetChoiceUnknown=false;}
             }
             if(playerSlot<0)return;var player=Main.player[playerSlot];
-            state.ClosestPlayerIndex=playerSlot;state.HasClosestPlayer=true;state.ClosestPlayerArea=Area(player);state.ClosestPlayerDead=player.dead;state.ClosestPlayerWet=player.wet;state.ClosestPlayerIdle=player.itemAnimation==0 && player.aggro<0;state.ClosestPlayerNoAggro=player.npcTypeNoAggro[n.type];
+            state.ClosestPlayerIndex=playerSlot;state.HasClosestPlayer=true;state.ClosestPlayerArea=Area(player);state.ClosestPlayerDead=player.dead;state.ClosestPlayerWet=player.wet;state.ClosestPlayerGraveyard=player.ZoneGraveyard;state.ClosestPlayerIdle=player.itemAnimation==0 && player.aggro<0;state.ClosestPlayerNoAggro=player.npcTypeNoAggro[n.type];
             state.TrackingKind=1;state.TrackingArea=state.ClosestPlayerArea;
             if(tankSlot>=0)
             {var pet=Main.projectile[tankSlot];state.TrackingKind=2;state.TrackingArea=Area(pet);state.TrackingVx=pet.velocity.X;state.TrackingVy=pet.velocity.Y;}

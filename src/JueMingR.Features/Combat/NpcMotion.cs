@@ -56,7 +56,7 @@ namespace JueMingR.Features.Combat
             n.Gravity=gravity;n.MaxFall=fall;
             if(n.Identity.Type==488){n.Vx=n.Vy=0;return true;}
             bool eyeEscape=n.Style==2 && env.Day && !env.Remix && !env.Graveyard && n.Y<=env.WorldSurface*16;
-            int facingOldTarget=n.Target;if(n.Style==2 && !eyeEscape || n.Style==5 || n.Style==14)NpcTargeting.Retarget(ref n,ref env);
+            int facingOldTarget=n.Target;if(n.Style==2 && KnownEye(n.EffectiveType) && !eyeEscape || n.Style==5 && (FlyingType(n.EffectiveType) || rolling && n.EffectiveType==176) || n.Style==14 && BatType(n.EffectiveType))NpcTargeting.Retarget(ref n,ref env);
             bool face=NpcTargeting.CanFace(n,env,facingOldTarget);var tracking=NpcTargeting.Area(n,env,1);
             if(n.TrackingKind>=2)n.TrackingArea=tracking;
             int direction=face?(int)tracking.X+(int)tracking.Width/2<n.X+n.Width/2?-1:1:n.Direction;
@@ -133,7 +133,7 @@ namespace JueMingR.Features.Combat
                 }
             }
             else if(n.Style==1)
-            {if(n.A0==-999){stop=PredictionStop.PhaseBoundary;return false;}if(!Slime(ref n,env,terrain,direction,vertical,out stop))return false;}
+            {if(n.A0==-999){stop=PredictionStop.PhaseBoundary;return false;}if(!Slime(ref n,env,terrain,direction,vertical,confused,out stop))return false;}
             else if(n.Style==40 && NpcWallMotion.Wall(n.EffectiveType))
             {if(!NpcWallMotion.Step(ref n,env,terrain,confused,out stop))return false;}
             else if(n.Style==3 && NpcGroundMotion.Known(n.EffectiveType))
@@ -163,14 +163,14 @@ namespace JueMingR.Features.Combat
                 {bool clear;if(!terrain.CanHit(n.Bounds,new MotionRect(env.PlayerX-env.PlayerWidth/2,env.PlayerY-env.PlayerHeight/2,env.PlayerWidth,env.PlayerHeight),out clear,out stop))return false;env.ClearLine=clear;}
                 Bat(ref n,env,direction,vertical);
             }
-            else if(n.Style==17 && n.Identity.Type==61)Vulture(ref n,env,direction,vertical);
+            else if(n.Style==17 && n.Identity.Type==61)Vulture(ref n,env,direction,vertical,confused);
             // A structural AI needs its root/liquid/wall constraints. A free
             // trend would invent a long path while silently ignoring them.
             else if(n.Style==13 || n.Style==16 || n.Style==40){stop=PredictionStop.UnsupportedMechanism;return false;}
             else if(rolling)NpcRollingMotion.Trend(ref n,elapsed);
             else if(elapsed>12){stop=PredictionStop.UnsupportedMechanism;return false;}
             if(n.TargetChoiceUnavailable){stop=PredictionStop.TerrainUnavailable;return false;}
-            if(n.TargetCaptured && !n.HasPlayer && NeedsPlayerMotion(n)){stop=PredictionStop.MissingDependency;return false;}
+            if(n.TargetCaptured && !n.HasPlayer && NeedsPlayerMotion(n,env)){stop=PredictionStop.MissingDependency;return false;}
             if(!n.Active){stop=PredictionStop.Despawn;return false;}
             // Linked AI already attached the segment and zeroed velocity. It
             // still enters native free movement's water-extinguish phase.
@@ -206,19 +206,20 @@ namespace JueMingR.Features.Combat
                 n.Style==13 && NpcAnchoredMotion.Known(type) || n.Style==16 && NpcAquaticMotion.Known(type) ||
                 n.Style==40 && NpcWallMotion.Wall(type) || n.Style==69 || n.Style==39 && type==153 || n.Style==41 && type==177;
         }
-        internal static bool NeedsPlayerMotion(NpcMotionState n)
+        internal static bool NeedsPlayerMotion(NpcMotionState n,PredictionEnvironment e)
         {
+            e=NpcTargeting.Player(n,e);
             if(n.EffectiveType==488)return false;
-            if(n.PositionRelation!=0)return n.PositionRelation==6 && NpcParentMotion.NeedsPlayer(n);
+            if(n.PositionRelation!=0)return n.PositionRelation==6 && NpcParentMotion.NeedsPlayer(n,e);
             // AI_005/AI_014 still consume numbered-player geometry even when
             // TargetClosest faces a guardian. Facing alone cannot waive it.
-            if(n.TrackingKind>=2 && n.Style==2)return false;
+            if(n.Style==2 && (n.TrackingKind>=2 || e.Day && !e.Remix && !e.Graveyard && n.Y<=e.WorldSurface*16 && !n.Wet))return false;
             // Enumerate actual vector/decision consumers, never infer a
             // player future from quality or an unknown-effect policy.
             int type=n.EffectiveType;
             if(type==371 || type==372 || type==373 || n.Style==1 || n.Style==3 || n.Style==6 || n.Style==37 || n.Style==69 ||
-                n.Style==2 && (type==2 || type==133 || type>=190 && type<=194) || n.Style==5 && FlyingType(type) || n.Style==14 && BatType(type) ||
-                n.Style==17 && type==61 || n.Style==13 && NpcAnchoredMotion.Known(type) || n.Style==16 && NpcAquaticMotion.Known(type) ||
+                n.Style==2 && (type==2 || type==133 || type>=190 && type<=194) || n.Style==5 && (FlyingType(type) || type==176) || n.Style==14 && BatType(type) ||
+                n.Style==17 && type==61 || n.Style==13 && NpcAnchoredMotion.Known(type) || n.Style==16 && n.Wet && NpcAquaticMotion.Known(type) && type!=55 && type!=592 && type!=607 && type!=615 && type!=688 ||
                 n.Style==40 && NpcWallMotion.Wall(type) || n.Style==39 && type==153 || n.Style==41 && type==177)return true;
             // These native collision predicates directly read the numbered
             // player even when the AI itself is only an observed trend.
@@ -242,14 +243,32 @@ namespace JueMingR.Features.Combat
         }
         private static bool Intersects(MotionRect a,MotionRect b){return a.X<b.X+b.Width && a.X+a.Width>b.X && a.Y<b.Y+b.Height && a.Y+a.Height>b.Y;}
         private static bool FlyingType(int t){return t==6 || t==173 || t==42 || t>=231 && t<=235;}
+        private static bool KnownEye(int t){return t==2 || t==133 || t>=190 && t<=194;}
+        // The default route owns one player timeline. Choose the numbered
+        // player actually read after the first modeled TargetClosest phase;
+        // later changes to a different required player end the bounded route.
+        public static int PlayerPremiseTarget(NpcMotionState n,PredictionEnvironment e)
+        {
+            int t=n.EffectiveType;bool retarget=n.Style==13 && NpcAnchoredMotion.Known(t) ||
+                n.Style==16 && n.Wet && NpcAquaticMotion.Known(t) && t!=55 && t!=592 && t!=607 && t!=615 && t!=688 ||
+                n.Style==2 && KnownEye(t) && (!(e.Day && !e.Remix && !e.Graveyard && n.Y<=e.WorldSurface*16) || n.Wet) ||
+                n.Style==5 && (FlyingType(t) || t==176) || n.Style==14 && BatType(t) ||
+                n.Style==17 && t==61 && (n.A0==0 || !n.PlayerDead || n.Wet) ||
+                n.Style==40 && NpcWallMotion.Wall(t) && (n.Target<0 || n.Target==255 || n.PlayerDead) ||
+                n.PositionRelation==6 && n.Style==36 && (n.A2==0 || n.A2==3) ||
+                n.Style==41 && t==177 && n.A2==0 || n.Style==39 && t==153 && (n.Direction==0 || n.Target<0 || n.PlayerDead || n.JustHit || n.A0==3 && n.A1==0 || n.A0==5 && n.A1>=29) ||
+                n.Style==1 && n.A2==0 && t!=184 && t!=535 && t!=204 && t!=658 && t!=659 && t!=377 && t!=446;
+            return retarget && n.HasClosestPlayer?n.ClosestPlayerIndex:n.PlayerIndex;
+        }
         private static bool BatType(int t){return t==49 || t==51 || t==60 || t==62 || t==66 || t==93 || t==137 || t==150 || t==151 || t==152 || t==634;}
         private static bool KnownMotion(NpcMotionState n)
         {int t=n.Identity.Type;return t==488 || t>=370 && t<=373 || n.Style==1 || n.Style==3 || n.Style==6 || n.Style==8 || n.Style==37 || n.Style==17 && t==61 || n.Style==2 && (t==2 || t==133 || t>=190 && t<=194) || n.Style==5 && FlyingType(t) || n.Style==14 && BatType(t);}
-        private static void Vulture(ref NpcMotionState n,PredictionEnvironment env,int direction,int vertical)
+        private static void Vulture(ref NpcMotionState n,PredictionEnvironment env,int direction,int vertical,bool confused)
         {
             n.NoGravity=true;
             if(n.A0==0)
             {
+                NpcTargeting.Face(ref n,ref env,true,confused);direction=n.Direction;vertical=n.DirectionY;
                 // The launch update still has gravity. Pursuit starts only on
                 // the next update, after native has published the flying phase.
                 n.NoGravity=false;n.Direction=direction;n.DirectionY=vertical;
@@ -261,9 +280,9 @@ namespace JueMingR.Features.Combat
                     {n.A0=1;n.Vy-=6;}
                 }
             }
-            else
+            else if(!env.PlayerDead)
             {
-                Bounce(ref n,.5f,2,1);n.Direction=direction;n.DirectionY=vertical;
+                Bounce(ref n,.5f,2,1);NpcTargeting.Face(ref n,ref env,true,confused);direction=n.Direction;vertical=n.DirectionY;
                 float toward=n.Vx*direction;
                 if(toward<3){toward+=.1f;if(toward<-3)toward+=.1f;else if(toward<0)toward+=.05f;n.Vx=Math.Min(3,toward)*direction;}
                 float height=env.PlayerY-env.PlayerHeight/2-n.Height/2;
@@ -272,7 +291,7 @@ namespace JueMingR.Features.Combat
                 else{n.Vy-=.05f;if(n.Vy>0)n.Vy-=.01f;}
                 n.Vy=Clamp(n.Vy,-3,3);
             }
-            if(n.Wet){if(n.Vy>0)n.Vy*=.95f;n.Vy=Math.Max(-4,n.Vy-.5f);n.Direction=direction;n.DirectionY=vertical;}
+            if(n.Wet){if(n.Vy>0)n.Vy*=.95f;n.Vy=Math.Max(-4,n.Vy-.5f);NpcTargeting.Face(ref n,ref env,true,confused);}
         }
         private static void Flying(ref NpcMotionState n,PredictionEnvironment env,int direction,int vertical)
         {
@@ -314,7 +333,7 @@ namespace JueMingR.Features.Combat
                 if(n.A2>300)n.A2=-300;
             }
         }
-        private static bool Slime(ref NpcMotionState n,PredictionEnvironment env,IPredictionTerrain terrain,int direction,int vertical,out PredictionStop stop)
+        private static bool Slime(ref NpcMotionState n,PredictionEnvironment env,IPredictionTerrain terrain,int direction,int vertical,bool confused,out PredictionStop stop)
         {
             stop=PredictionStop.None;int type=n.EffectiveType;
             bool aggressive=!env.Day || n.Life!=n.LifeMax || n.Y>env.WorldSurface*16 || env.SlimeRain;
@@ -358,9 +377,9 @@ namespace JueMingR.Features.Combat
                 bool lava=n.Identity.Type==59 && !env.Remix;
                 if(n.Vy>2)n.Vy*=.9f;else if(lava && vertical<0)n.Vy-=.8f;
                 n.Vy=Math.Max(lava?-10:-4,n.Vy-.5f);
-                if(n.A2==1 && aggressive)n.Direction=direction;
+                if(n.A2==1 && aggressive)NpcTargeting.Face(ref n,ref env,true,confused);
             }
-            if(n.A2==0){n.A0=-100;n.A2=1;n.Direction=direction;}
+            if(n.A2==0){n.A0=-100;n.A2=1;NpcTargeting.Face(ref n,ref env,true,confused);}
             if(n.Vy==0)
             {
                 if(n.A3==n.X){n.Direction*=-1;n.A2=200;}n.A3=0;
@@ -372,7 +391,7 @@ namespace JueMingR.Features.Combat
                 int jump=n.A0>=0?1:n.A0>=rhythm && n.A0<=rhythm*.5f?2:n.A0>=rhythm*2 && n.A0<=rhythm*1.5f?3:0;
                 if(jump!=0)
                 {
-                    if(aggressive && n.A2==1)n.Direction=direction;n.Vy=jump==3?-8:-6;n.Vx+=(jump==3?3:2)*n.Direction;
+                    if(aggressive && n.A2==1)NpcTargeting.Face(ref n,ref env,true,confused);n.Vy=jump==3?-8:-6;n.Vx+=(jump==3?3:2)*n.Direction;
                     if(type==59 && !env.Remix){if(jump==3)n.Vy-=2;n.Vx+=(jump==3?.5f:2)*n.Direction;}
                     n.A0=jump==3?-200:-120+rhythm*(jump==1?1:2);if(jump==3)n.A3=n.X;
                     if(type==659){n.Vy*=1.6f;n.Vx*=1.2f;}if(type==141){n.Vy*=1.3f;n.Vx*=1.2f;}

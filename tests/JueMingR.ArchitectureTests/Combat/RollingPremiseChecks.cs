@@ -34,27 +34,34 @@ namespace JueMingR.ArchitectureTests
             fish.BuffFingerprint=123;fish.BuffExpires=5;
             var qualified=new RollingNpcPrediction().Prepare(new[]{fish},1,0,4,120,1,environment,player,new PremiseTerrain());
             Require(qualified.Count==5 && qualified.Stop==PredictionStop.BuffTransition && qualified.Quality==PredictionQuality.StructuredApproximation && (qualified.Assumptions&PredictionAssumption.UnmodeledStatusEffects)!=0,"Explicit effect continuation is qualified only to expiry and quality still follows the motion model.");
-            var uncertain=eye;uncertain.TargetChoiceUnknown=true;uncertain.NoTileCollide=true;
+            var uncertain=eye;uncertain.TargetChoiceUnknown=true;uncertain.NoTileCollide=true;uncertain.TargetCaptured=uncertain.HasPlayer=uncertain.HasClosestPlayer=true;uncertain.PlayerIndex=uncertain.ClosestPlayerIndex=0;uncertain.ClosestPlayerArea=new MotionRect(500,100,20,40);
             PredictionStop stop;
             Require(!NpcMotion.Step(ref uncertain,new[]{uncertain},1,environment,new PremiseTerrain(),1,true,out stop) && stop==PredictionStop.TerrainUnavailable,"An actual TargetClosest consumer cannot call unknown guardian visibility blocked.");
             var free=eye;free.Style=0;free.TargetChoiceUnknown=true;
             Require(NpcMotion.Step(ref free,new[]{free},1,environment,new PremiseTerrain(),1,true,out stop),"Unconsumed tracking choice cannot block a free trend.");
-            var escaping=eye;escaping.TargetChoiceUnknown=true;escaping.NoTileCollide=true;
+            var escaping=uncertain;escaping.TargetChoiceUnavailable=false;
             var day=environment;day.Day=true;
             Require(NpcMotion.Step(ref escaping,new[]{escaping},1,day,new PremiseTerrain(),1,true,out stop) && !escaping.TargetChoiceUnavailable,"Dry daytime eye escape skips native TargetClosest.");
+            var dayTerrain=new PremiseTerrain{FailAt=1};var dayPath=new RollingNpcPrediction().Prepare(new[]{escaping},1,0,5,120,1,day,corrupt,dayTerrain);
+            Require(dayPath.Count==121 && dayTerrain.PlayerCalls==0 && (dayPath.Assumptions&PredictionAssumption.NoPlayerMotionNeeded)!=0,"Complete daytime eye rolling ignores unrelated invalid player future.");
+            var bee=uncertain;bee.TargetChoiceUnavailable=false;bee.Identity=new NpcIdentity(1,new object(),4,1,210,210);bee.Style=5;
+            Require(NpcMotion.Step(ref bee,new[]{bee},1,environment,new PremiseTerrain(),1,true,out stop) && !bee.TargetChoiceUnavailable,"Unmodeled AI5 trend does not consume guardian TargetClosest.");
+            var anchor=uncertain;anchor.TargetChoiceUnavailable=false;anchor.Identity=new NpcIdentity(1,new object(),4,1,56,56);anchor.Style=13;anchor.A0=6;anchor.A1=6;anchor.ClosestPlayerIndex=1;
+            Require(NpcMotion.Step(ref anchor,new[]{anchor},1,environment,new PremiseTerrain{RootActive=true},1,true,out stop) && anchor.Target==1 && !anchor.TargetChoiceUnavailable,"Anchor updates known numbered player without requiring unknown guardian orientation.");
             escaping.Wet=true;
             Require(!NpcMotion.Step(ref escaping,new[]{escaping},1,day,new PremiseTerrain(),2,true,out stop) && stop==PredictionStop.TerrainUnavailable,"Later wet eye TargetClosest still consumes its visibility choice.");
         }
         private sealed class PremiseTerrain : IPredictionTerrain
         {
             internal int FailAt=int.MaxValue,PlayerCalls,Resets;
+            internal bool RootActive;
             public bool Unchanged=>true;
             public void Reset(){Resets++;}
             public bool Move(ref NpcMotionState n,PredictionEnvironment e,out PredictionStop stop)
             {stop=PredictionStop.None;if(n.Friendly){if(++PlayerCalls==FailAt){stop=PredictionStop.TerrainUnavailable;return false;}n.Wet=e.PlayerWet;}n.X+=n.Vx;n.Y+=n.Vy;return true;}
             public bool CanHit(MotionRect a,MotionRect b,out bool clear,out PredictionStop stop){clear=true;stop=PredictionStop.None;return true;}
             public bool Solid(MotionRect box,out bool solid,out PredictionStop stop){solid=false;stop=PredictionStop.None;return true;}
-            public bool Tile(int x,int y,out PredictionTile tile,out PredictionStop stop){tile=default(PredictionTile);stop=PredictionStop.None;return true;}
+            public bool Tile(int x,int y,out PredictionTile tile,out PredictionStop stop){tile=new PredictionTile{RawActive=RootActive};stop=PredictionStop.None;return true;}
         }
         private static void Require(bool value,string text){if(!value)throw new InvalidOperationException(text);}
     }

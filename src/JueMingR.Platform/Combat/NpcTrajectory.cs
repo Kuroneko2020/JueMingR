@@ -52,10 +52,10 @@ namespace JueMingR.Platform.Combat
         public MotionRect PlayerArea,TrackingArea;
         public int PlayerIndex,TrackingKind;
         public float TrackingVx,TrackingVy;
-        public bool TargetCaptured,HasPlayer,PlayerDead,PlayerWet,PlayerIdle;
+        public bool TargetCaptured,HasPlayer,PlayerDead,PlayerWet,PlayerIdle,PlayerGraveyard;
         public MotionRect ClosestPlayerArea;
         public int ClosestPlayerIndex;
-        public bool HasClosestPlayer,ClosestPlayerDead,ClosestPlayerWet,ClosestPlayerIdle,ClosestPlayerNoAggro;
+        public bool HasClosestPlayer,ClosestPlayerDead,ClosestPlayerWet,ClosestPlayerIdle,ClosestPlayerNoAggro,ClosestPlayerGraveyard;
         // Unknown guardian visibility is distinct from known obstruction. It
         // matters only when a modeled native TargetClosest consumes the choice.
         public bool TargetChoiceUnknown,TargetChoiceUnavailable;

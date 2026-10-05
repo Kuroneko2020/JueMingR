@@ -21,6 +21,7 @@ namespace JueMingR.Features.Combat
         internal static bool Step(ref NpcMotionState n,PredictionEnvironment e,IPredictionTerrain t,bool confused,out PredictionStop stop)
         {
             stop=PredictionStop.None;
+            if(n.Target<0 || n.Target==255 || e.PlayerDead)NpcTargeting.Face(ref n,ref e,true,confused);
             int type=n.EffectiveType;float speed=type==237?3:type==531?4:2,acceleration=speed*.04f;
             float dx=(int)(e.PlayerX/8)*8-(int)(n.Bounds.CenterX/8)*8,dy=(int)(e.PlayerY/8)*8-(int)(n.Bounds.CenterY/8)*8;
             if(confused){dx*=-2;dy*=-2;}float distance=(float)Math.Sqrt(dx*dx+dy*dy);

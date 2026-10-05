@@ -8,14 +8,14 @@ namespace JueMingR.Features.Combat
     // phase selection are not replayed by this private scalar continuation.
     internal static class NpcParentMotion
     {
-        internal static bool NeedsPlayer(NpcMotionState n)
+        internal static bool NeedsPlayer(NpcMotionState n,PredictionEnvironment e)
         {
             // Home-only current phases do not consume player motion. Include
             // a known clock transition within the bounded 120-step window;
             // parent phase/position remain separately sampled dependencies.
             if(n.Style==35)return n.A2==1 || n.A2==0 && n.PositionParameter==0 && n.A3+120>=1100;
             if(n.Style==36)return n.A2==1 || (n.A2==0 || n.A2==3) && n.PositionParameter==0 && n.A3+120>=800;
-            if(n.Style==12)return n.A2!=0 && n.A2!=3 || (n.PositionParameter==0 || n.L3==1) && n.A3+120*(n.L3==1?2.5f:1.5f)>=300;
+            if(n.Style==12)return n.A2!=0 && n.A2!=3 || (n.PositionParameter==0 || n.L3==1) && n.A3+120*(1+(n.L3==1?1:0)+(e.Expert?.5f:0))>=300;
             return true; // AI33/34 recovery can enter player pursuit in-window.
         }
         internal static bool Step(ref NpcMotionState n,NpcMotionState parent,PredictionEnvironment e,out PredictionStop stop)
@@ -24,7 +24,6 @@ namespace JueMingR.Features.Combat
             bool red=style==12 && parent.A3==1;
             if(style==12)n.L3=parent.A3;
             n.SpriteDirection=-(int)n.A0;
-            if(parent.A1==3)n.TimeLeft=Math.Min(n.TimeLeft,10);
             if(style==33 || style==34)
             {
                 float dx=px-200*n.A0-n.Bounds.CenterX,dy=parent.Y+230-n.Bounds.CenterY;
@@ -36,11 +35,14 @@ namespace JueMingR.Features.Combat
             bool home=style==35?n.A2==0:n.A2==0 || n.A2==3;
             if(home)
             {
+                // Native retirement encouragement belongs to the home phase;
+                // pursuit/recovery retains its own current lifetime.
+                if(parent.A1==3)n.TimeLeft=Math.Min(n.TimeLeft,10);
                 if(parent.A1!=0 && !red)
                 {
                     if(style==33 || style==34)
                     {
-                        NpcTargeting.Retarget(ref n,ref e);
+                        NpcTargeting.Retarget(ref n,ref e,false);
                         if(e.PlayerDead)n.Vy=Math.Min(16,n.Vy+.1f);
                         else if(style==34){if(Math.Abs(n.Vx)+Math.Abs(n.Vy)<2)Aim(ref n,e.PlayerX,e.PlayerY,12);else{n.Vx*=.97f;n.Vy*=.97f;}}
                         else Chase(ref n,e.PlayerX,e.PlayerY,7,.05f,.05f,.97f);
@@ -72,6 +74,7 @@ namespace JueMingR.Features.Combat
                     else
                     {Band(ref n.Vy,n.Y,parent.Y-100,parent.Y-100,.1f,.96f,3,3);Band(ref n.Vx,cx,px-180*n.A0,px-180*n.A0,.14f,.96f,8,8);}
                 }
+                if(style==36)NpcTargeting.Retarget(ref n,ref e,false);
                 return true;
             }
             if(style==35 || style==36)
@@ -80,14 +83,14 @@ namespace JueMingR.Features.Combat
                 if(++n.A3>=(style==35?300:200)){n.A2=n.A3=n.L0=0;}
                 if(style==35)Chase(ref n,px,e.PlayerY-80,6,.04f,.08f,.9f);
                 else Chase(ref n,e.PlayerX-350,e.PlayerY-20,7,.1f,.03f,.9f);
-                NpcTargeting.Retarget(ref n,ref e);return true;
+                NpcTargeting.Retarget(ref n,ref e,false);return true;
             }
             if(n.A2==1)
             {
                 if(style==34){if(n.Vy>0)n.Vy*=.9f;n.Vx=(n.Vx*5+parent.Vx)/6+.5f;n.Vy=Math.Max(-9,n.Vy-.5f);}
                 else{n.Vx*=.95f;n.Vy=Math.Max(style==12?(red?-15:e.Expert?-13:-8):-8,n.Vy-(style==12?(red?.19f:e.Expert?.16f:.1f):.1f));}
                 if(n.Y<parent.Y-(style==34?280:200))
-                {NpcTargeting.Retarget(ref n,ref e);n.A2=2;Aim(ref n,e.PlayerX,e.PlayerY,style==34?20:style==33?22:red?24:e.Expert?21:18);}
+                {NpcTargeting.Retarget(ref n,ref e,false);n.A2=2;Aim(ref n,e.PlayerX,e.PlayerY,style==34?20:style==33?22:red?24:e.Expert?21:18);}
                 return true;
             }
             if(n.A2==2)
@@ -99,12 +102,12 @@ namespace JueMingR.Features.Combat
             if(n.A2==4)
             {
                 if(style==33)
-                {NpcTargeting.Retarget(ref n,ref e);Chase(ref n,e.PlayerX,e.PlayerY,7,.05f,.05f,.97f);if(++n.A3>=600)n.A2=n.A3=0;}
+                {NpcTargeting.Retarget(ref n,ref e,false);Chase(ref n,e.PlayerX,e.PlayerY,7,.05f,.05f,.97f);if(++n.A3>=600)n.A2=n.A3=0;}
                 else
                 {
                     if(style==34){n.Vy=(n.Vy*5+parent.Vy)/6;n.Vx=Math.Min(12,n.Vx+.5f);}
                     else{n.Vy*=.95f;n.Vx=Math.Max(red?-15:e.Expert?-12:-8,Math.Min(red?15:e.Expert?12:8,n.Vx-n.A0*(red?.2f:e.Expert?.17f:.1f)));}
-                    if(cx<px-500 || cx>px+500){NpcTargeting.Retarget(ref n,ref e);n.A2=5;Aim(ref n,e.PlayerX,e.PlayerY,style==34?17:red?25:e.Expert?22:17);}
+                    if(cx<px-500 || cx>px+500){NpcTargeting.Retarget(ref n,ref e,false);n.A2=5;Aim(ref n,e.PlayerX,e.PlayerY,style==34?17:red?25:e.Expert?22:17);}
                 }
                 return true;
             }

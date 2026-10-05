@@ -45,7 +45,7 @@ namespace NativeWorldTextProbe
                 player.position=new Vector2(1200,950);player.tankPet=0;pet.active=true;pet.position=new Vector2(1000+side*90,950);pet.velocity=Vector2.Zero;
                 target.SetDefaults(6);target.whoAmI=2;target.active=true;target.target=Main.myPlayer;target.position=new Vector2(1000,950);target.velocity=Vector2.Zero;
                 var sampled=(NpcMotionState)read.Invoke(null,new object[]{target,1L});var sampledArgs=new object[]{target,sampled,terrain};terrain.Reset();capture.Invoke(null,sampledArgs);sampled=(NpcMotionState)sampledArgs[1];
-                Require(sampled.TrackingKind==2 && (bool)needs.Invoke(null,new object[]{sampled}),"Guardian flying still needs numbered-player future.");
+                Require(sampled.TrackingKind==2 && (bool)needs.Invoke(null,new object[]{sampled,default(PredictionEnvironment)}),"Guardian flying still needs numbered-player future.");
                 var flyingEnv=new PredictionEnvironment{PlayerIndex=Main.myPlayer,PlayerX=player.Center.X,PlayerY=player.Center.Y,PlayerWidth=player.width,PlayerHeight=player.height,WorldWidth=Main.maxTilesX,WorldHeight=Main.maxTilesY,WorldSurface=(float)Main.worldSurface,RockLayer=(float)Main.rockLayer};
                 for(int future=1;future<=15;future++)
                 {

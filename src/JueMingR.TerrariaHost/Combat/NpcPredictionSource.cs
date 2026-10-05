@@ -147,7 +147,10 @@ namespace JueMingR.TerrariaHost.Combat
             for(int i=0;i<count;i++){motionRoles[i]=motionSlots[states[i].Identity.Slot];if(motionRoles[i])NpcTrackingObservation.Capture(Main.npc[states[i].Identity.Slot],ref states[i],Terrain);}
             var current=Main.npc[identity.Slot];
             if(current.aiStyle==6 || current.aiStyle==37)for(int i=0;i<count;i++)if(states[i].ParentSlot<0){current=Main.npc[states[i].Identity.Slot];break;}
-            int target=states[selected].PlayerIndex;if(target<0 || target>=Main.maxPlayers || Main.player[target]==null)target=Main.myPlayer;
+            var premiseEnv=new PredictionEnvironment{Day=Main.dayTime,Remix=Main.remixWorld,WorldSurface=(float)Main.worldSurface};
+            int oldPlayer=states[selected].PlayerIndex;
+            premiseEnv.Graveyard=oldPlayer>=0 && oldPlayer<Main.maxPlayers && Main.player[oldPlayer]!=null && Main.player[oldPlayer].ZoneGraveyard;
+            int target=NpcMotion.PlayerPremiseTarget(states[selected],premiseEnv);if(target<0 || target>=Main.maxPlayers || Main.player[target]==null)target=Main.myPlayer;
             var player=Main.player[target];
             if(player==null || !player.active || player.dead || player.ghost){Clear();Outcome(identity,tick,null,PredictionFailureLayer.Source);return;}
             targetPlayer=target;observedCount=count;
@@ -177,7 +180,8 @@ namespace JueMingR.TerrariaHost.Combat
                 Gravity=p.gravity,GravityDirection=p.gravDir,MaxFall=p.maxFallSpeed,Acceleration=hover?p.mount.Acceleration:p.runAcceleration,
                 Slowdown=hover?.2f:p.runSlowdown,MaxSpeed=hover?p.mount.RunSpeed:Math.Max(p.maxRunSpeed,p.accRunSpeed),Jump=p.jump,JumpHeight=jumpHeight,JumpSpeed=jumpSpeed,
                 IgnorePlatforms=p.gravDir<0 || p.mount.Active && (p.mount.Cart || p.mount.Type==12 || p.mount.Type==7 || p.mount.Type==8 || p.mount.Type==23 || p.mount.Type==44 || p.mount.Type==48 || p.mount.Type==55 && p.slideDir!=0) || p.GoingDownWithGrapple || p.pulley,
-                IgnoreWater=p.ignoreWater,Merman=p.merman,Trident=p.trident,OnTrack=p.onTrack,Cart=p.mount.Active && p.mount.Cart,SkipSlope=p.mount.Active && p.mount.Type==48,SkipConveyor=Math.Abs(p.gfxOffY)>2 || p.grapCount>0 || p.pulley || p.shimmering || p.tongued || p.isLockedToATile,
+                IgnoreWater=p.ignoreWater,Merman=p.merman,Trident=p.trident,OnTrack=p.onTrack,Cart=p.mount.Active && p.mount.Cart,SkipSlope=p.mount.Active && p.mount.Type==48,SkipConveyor=p.grapCount>0 || p.pulley || p.shimmering || p.tongued || p.isLockedToATile,
+                RidingTracks=p.IsRidingTracks,StepMount=p.mount.Active && (p.mount.Type==7 || p.mount.Type==8 || p.mount.Type==12 || p.mount.Type==44 || p.mount.Type==49),Carpet=p.carpetFrame!=-1,Grappled=p.grappling!=null && p.grappling.Length>0 && p.grappling[0]>=0,UnsupportedGeometry=p.shimmering || p.tongued || p.pulley || p.grappling!=null && p.grappling.Length>0 && p.grappling[0]>=0,StairFall=p.stairFall,GfxOffset=p.gfxOffY,StepSpeed=p.stepSpeed,
                 Left=p.controlLeft,Right=p.controlRight,Up=p.controlUp,Down=p.controlDown,HoldJump=p.controlJump,ReleaseJump=p.releaseJump,AutoJump=p.autoJump,Hover=hover,Complex=Prediction.NativePlayerMotion.Conditional(p),WaterWalk=p.waterWalk || p.waterWalk2,LavaWalk=p.waterWalk};
         }
         internal static NpcMotionState Read(NPC n,long session)

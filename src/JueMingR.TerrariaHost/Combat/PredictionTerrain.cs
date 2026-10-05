@@ -11,8 +11,8 @@ namespace JueMingR.TerrariaHost.Combat
     {
         private struct Cell : IEquatable<Cell>
         {
-            internal bool Active,RawActive,RawSolid,Solid,Platform,StairPlatform,PlatformFrame,ProperPlatformFrame,Half;internal byte Slope,Liquid,Kind;internal ushort Type,Wall;internal int Conveyor;
-            public bool Equals(Cell b){return Active==b.Active && RawActive==b.RawActive && RawSolid==b.RawSolid && Wall==b.Wall && Type==b.Type && ProperPlatformFrame==b.ProperPlatformFrame && Solid==b.Solid && Platform==b.Platform && StairPlatform==b.StairPlatform && PlatformFrame==b.PlatformFrame && Half==b.Half && Slope==b.Slope && Liquid==b.Liquid && Kind==b.Kind && Conveyor==b.Conveyor;}
+            internal bool Active,RawActive,RawSolid,RawPlatform,Solid,Platform,StairPlatform,PlatformFrame,ProperPlatformFrame,Half;internal byte Slope,Liquid,Kind;internal ushort Type,Wall;internal int Conveyor;
+            public bool Equals(Cell b){return Active==b.Active && RawActive==b.RawActive && RawSolid==b.RawSolid && RawPlatform==b.RawPlatform && Wall==b.Wall && Type==b.Type && ProperPlatformFrame==b.ProperPlatformFrame && Solid==b.Solid && Platform==b.Platform && StairPlatform==b.StairPlatform && PlatformFrame==b.PlatformFrame && Half==b.Half && Slope==b.Slope && Liquid==b.Liquid && Kind==b.Kind && Conveyor==b.Conveyor;}
         }
         private readonly Dictionary<int,Cell> cells=new Dictionary<int,Cell>(512);
         // Small direct hot cache for repeated liquid/contact/slope queries.
@@ -37,7 +37,7 @@ namespace JueMingR.TerrariaHost.Combat
             var tile=Main.tile[x,y];if(tile==null)return false;
             bool active=tile.active() && !tile.inActive();
             int frame=tile.frameX/18;
-            value=new Cell{Active=active,RawActive=tile.active(),RawSolid=Main.tileSolid[tile.type],Wall=tile.wall,Type=tile.type,ProperPlatformFrame=frame>=0 && frame<=7 || frame>=12 && frame<=16 || frame>=25 && frame<=26,Solid=active && Main.tileSolid[tile.type],Platform=active && Main.tileSolidTop[tile.type],StairPlatform=TileID.Sets.Platforms[tile.type],PlatformFrame=tile.frameY==0,Half=tile.halfBrick(),Slope=tile.slope(),Liquid=tile.liquid,Kind=(byte)tile.liquidType(),Conveyor=TileID.Sets.ConveyorDirection[tile.type]};return true;
+            value=new Cell{Active=active,RawActive=tile.active(),RawSolid=Main.tileSolid[tile.type],RawPlatform=Main.tileSolidTop[tile.type],Wall=tile.wall,Type=tile.type,ProperPlatformFrame=frame>=0 && frame<=7 || frame>=12 && frame<=16 || frame>=25 && frame<=26,Solid=active && Main.tileSolid[tile.type],Platform=active && Main.tileSolidTop[tile.type],StairPlatform=TileID.Sets.Platforms[tile.type],PlatformFrame=tile.frameY==0,Half=tile.halfBrick(),Slope=tile.slope(),Liquid=tile.liquid,Kind=(byte)tile.liquidType(),Conveyor=TileID.Sets.ConveyorDirection[tile.type]};return true;
         }
         public bool Tile(int x,int y,out PredictionTile tile,out PredictionStop stop)
         {
@@ -154,12 +154,17 @@ namespace JueMingR.TerrariaHost.Combat
             clear=true;return true;
         }
         public bool Move(ref NpcMotionState n,PredictionEnvironment environment,out PredictionStop stop)
-        {return Move(ref n,environment,false,false,false,false,1,default(PredictionPlayerMotion),out stop);}
+        {var player=default(PredictionPlayerMotion);return Move(ref n,environment,false,false,false,false,1,ref player,out stop);}
         public bool MoveWaterWalkingPlayer(ref NpcMotionState n,PredictionEnvironment environment,bool fallThrough,bool lavaWalk,out PredictionStop stop)
-        {return Move(ref n,environment,true,true,fallThrough,lavaWalk,1,default(PredictionPlayerMotion),out stop);}
+        {var player=new PredictionPlayerMotion{GravityDirection=1};return Move(ref n,environment,true,true,fallThrough,lavaWalk,1,ref player,out stop);}
         public bool MovePlayer(ref NpcMotionState n,PredictionEnvironment environment,ref PredictionPlayerMotion player,out PredictionStop stop)
         {
-            if(!Move(ref n,environment,true,player.WaterWalk,player.Down || player.IgnorePlatforms,player.LavaWalk,(int)player.GravityDirection,player,out stop))return false;
+            if(player.UnsupportedGeometry){stop=PredictionStop.UnsupportedMechanism;return false;}
+            float gfxStep=(1+Math.Abs(n.Vx)/3)*player.StepSpeed;
+            player.GfxOffset=player.GfxOffset<0?Math.Min(0,player.GfxOffset+gfxStep):Math.Max(0,player.GfxOffset-gfxStep);
+            n.StairFall=player.StairFall;
+            if(!Move(ref n,environment,true,player.WaterWalk,player.Down || player.IgnorePlatforms,player.LavaWalk,(int)player.GravityDirection,ref player,out stop))return false;
+            player.StairFall=n.StairFall;
             // DryCollision clears normal-gravity jump at its first tile
             // contact, before later slope/belt queries overwrite collision
             // scratch. Final head contact separately owns next-tick Vy.
@@ -174,7 +179,7 @@ namespace JueMingR.TerrariaHost.Combat
             }
             return true;
         }
-        private bool Move(ref NpcMotionState n,PredictionEnvironment environment,bool playerMode,bool waterWalk,bool fallThrough,bool lavaWalk,int gravDir,PredictionPlayerMotion player,out PredictionStop stop)
+        private bool Move(ref NpcMotionState n,PredictionEnvironment environment,bool playerMode,bool waterWalk,bool fallThrough,bool lavaWalk,int gravDir,ref PredictionPlayerMotion player,out PredictionStop stop,bool playerSegment=false,bool allowSplit=true)
         {
             stop=PredictionStop.None;
             if(!Area(n.X,n.Y,n.Width,n.Height,out stop) || !Area(n.X+n.Vx,n.Y+n.Vy,n.Width,n.Height,out stop))return false;
@@ -188,7 +193,9 @@ namespace JueMingR.TerrariaHost.Combat
                 n=free;return true;
             }
             if(n.Width<1 || n.Height<1 || n.Width>1024 || n.Height>1024 || Math.Abs(n.Vx)>512 || Math.Abs(n.Vy)>512){stop=PredictionStop.InvalidState;return false;}
-            var next=n;if(!playerMode || !player.SkipSlope){next.Gravity=playerMode?player.Gravity*gravDir:next.Gravity;if(!WalkDown(ref next,out stop))return false;}
+            var next=n;
+            if(playerMode){if(!PlayerSteps(ref next,ref player,playerSegment,out stop))return false;}
+            else if(!WalkDown(ref next,out stop))return false;
             bool lava,wet;byte liquid;
             if(!Wet(next,true,out lava,out liquid,out stop) || !Wet(next,false,out wet,out liquid,out stop))return false;
             if(next.Identity.Type==441)lava=false;
@@ -218,17 +225,24 @@ namespace JueMingR.TerrariaHost.Combat
             {if(!lava)NpcHealth.Extinguish(ref next.Health);if(next.Shimmer && !next.Health.ShimmerImmune && next.Health.ShimmerTicks<=10)next.Health.ShimmerTicks=100;}
             next.OldVx=next.Vx;next.OldVy=next.Vy;
             bool fall=playerMode?fallThrough:NpcCollisionRules.FallThrough(next,environment);
+            bool wetPlayer=wet && (next.Shimmer || next.Honey && !player.IgnoreWater || !player.Merman && !player.IgnoreWater && !player.Trident);
+            if(playerMode && allowSplit && !wetPlayer && next.Vx*next.Vx+next.Vy*next.Vy>Math.Pow(Math.Min(16,Math.Min(next.Width-.5f,next.Height-.5f)),2))
+            {if(!PlayerSegments(ref next,environment,ref player,waterWalk,fall,lavaWalk,gravDir,out stop))return false;n=next;return true;}
             float rx,ry;bool up,down;
             var moveBox=playerMode?next.Bounds:NpcCollisionRules.MovementBounds(next);
             if(playerMode && player.OnTrack)moveBox.Height-=10;
-            if(!TileContact(moveBox.X,moveBox.Y,next.Vx,next.Vy,(int)moveBox.Width,(int)moveBox.Height,fall,out rx,out ry,out up,out down,out stop,playerMode?player.IgnorePlatforms:fall,gravDir))return false;
+            bool wheel=!playerMode && next.EffectiveType==72,sand=!playerMode && next.EffectiveType>=542 && next.EffectiveType<=545;
+            if(wheel)moveBox=new MotionRect(next.X+next.Width/2-6,next.Y+next.Height/2-6,12,12);
+            if(sand && environment.Remix){rx=next.Vx;ry=next.Vy;up=down=false;}
+            else if(!TileContact(moveBox.X,moveBox.Y,next.Vx,next.Vy,(int)moveBox.Width,(int)moveBox.Height,wheel || fall,out rx,out ry,out up,out down,out stop,wheel || (playerMode?player.IgnorePlatforms:fall),gravDir,wheel,sand))return false;
             next.PlayerHeadCollision=playerMode && (gravDir>0?up:down);
-            bool wetPlayer=wet && (next.Shimmer || next.Honey && !player.IgnoreWater || !player.Merman && !player.IgnoreWater && !player.Trident);
             next.PlayerDryHeadCollision=playerMode && !wetPlayer && gravDir>0 && up;
             // Native Stardust cells rebound before translating the body. The
             // contact velocity is not their resulting movement velocity.
             if(next.EffectiveType==405 || next.EffectiveType==406)
             {if(rx!=0 && rx!=next.OldVx)rx=-next.OldVx*.8f;if(ry!=0 && ry!=next.OldVy)ry=-next.OldVy*.8f;}
+            if(!playerMode && next.EffectiveType==417 && next.A0==6 && (rx!=next.OldVx || ry!=next.OldVy))
+            {next.A2--;next.A3=1;if(next.A2>0){if(rx!=0 && rx!=next.OldVx){rx=-next.OldVx*.9f;next.Direction=-next.Direction;}if(ry!=0 && ry!=next.OldVy)ry=-next.OldVy*.9f;}}
             if(waterWalk && !WaterSurface(next.Bounds,rx,ref ry,fallThrough,lavaWalk,out stop))return false;
             if(up && !playerMode)ry=.01f;next.CollideX=rx!=next.Vx;next.CollideY=ry!=next.Vy;next.Vx=rx;next.Vy=ry;
             float slowdown=wet?(next.Shimmer?next.ShimmerSpeed:next.Honey?next.HoneySpeed:next.Lava?next.LavaSpeed:next.WaterSpeed):1;
@@ -243,12 +257,13 @@ namespace JueMingR.TerrariaHost.Combat
                 // the original body dimensions/offset and receive box intact.
                 moveBox=playerMode?next.Bounds:NpcCollisionRules.MovementBounds(next);var slope=next;
                 float dx=next.X-moveBox.X,dy=next.Y-moveBox.Y;slope.X=moveBox.X;slope.Y=moveBox.Y;slope.Width=(int)moveBox.Width;slope.Height=(int)moveBox.Height;
+                if(playerMode && (player.IgnorePlatforms || player.Down || player.Grappled || gravDir<0))slope.StairFall=true;
                 if(!Slopes(ref slope,fall,out stop,playerMode,gravDir))return false;
                 next.X=slope.X+dx;next.Y=slope.Y+dy;next.Vx=slope.Vx;next.Vy=slope.Vy;next.StairFall=slope.StairFall;
                 if(playerMode)next.PlayerHeadCollision=slope.PlayerHeadCollision;
                 // Native applies belt contact after movement-box slopes have
                 // returned to body coordinates. Belt displacement never owns V.
-                if(playerMode?!player.SkipConveyor:next.Style!=67 && (next.Town || next.LifeMax==5 && next.NoContactDamage || NPCID.Sets.ConveyorBeltCollision[movingType]))
+                if(playerMode?!player.SkipConveyor && Math.Abs(player.GfxOffset)<=2:next.Style!=67 && (next.Town || next.LifeMax==5 && next.NoContactDamage || NPCID.Sets.ConveyorBeltCollision[movingType]))
                     if(!Conveyor(ref next,playerMode,player.OnTrack,gravDir,out stop))return false;
             }
             n=next;return true;
@@ -305,7 +320,7 @@ namespace JueMingR.TerrariaHost.Combat
         }
         private bool TileContact(float px0,float py0,float vx,float vy,int w,int h,bool fall,out float rx,out float ry,out bool up,out PredictionStop stop,bool fall2=true,int gravDir=1)
         {bool down;return TileContact(px0,py0,vx,vy,w,h,fall,out rx,out ry,out up,out down,out stop,fall2,gravDir);}
-        private bool TileContact(float px0,float py0,float vx,float vy,int w,int h,bool fall,out float rx,out float ry,out bool up,out bool down,out PredictionStop stop,bool fall2=true,int gravDir=1)
+        private bool TileContact(float px0,float py0,float vx,float vy,int w,int h,bool fall,out float rx,out float ry,out bool up,out bool down,out PredictionStop stop,bool fall2=true,int gravDir=1,bool noSlope=false,bool sand=false)
         {
             rx=vx;ry=vy;up=down=false;stop=PredictionStop.None;
             if(!QueryArea(px0,py0,w,h,out stop) || !Area(px0+vx,py0+vy,w,h,out stop))return false;
@@ -317,18 +332,20 @@ namespace JueMingR.TerrariaHost.Combat
             int y0=Math.Max(0,(int)(py0/16)-1),y1=Math.Min(Main.maxTilesY-40,(int)((py0+h)/16)+2);float nearest=(y1+3)*16;
             for(int x=x0;x<x1;x++)for(int y=y0;y<y1;y++)
             {
-                Cell c;if(!CellAt(x,y,out c,out stop))return false;if(!c.Solid && !(c.Platform && c.PlatformFrame))continue;
+                Cell c;if(!CellAt(x,y,out c,out stop))return false;
+                if(noSlope){if(!c.RawActive || !c.RawSolid && !(c.RawPlatform && c.PlatformFrame))continue;c.Platform=c.RawPlatform;}
+                else if(!c.Solid && !(c.Platform && c.PlatformFrame) || sand && TileID.Sets.ForAdvancedCollision.ForSandshark[c.Type])continue;
                 float tx=x*16,ty=y*16+(c.Half?8:0),height=c.Half?8:16;
                 if(px+w<=tx || px>=tx+16 || py+h<=ty || py>=ty+height)continue;
-                bool topSlope=c.Slope==1 || c.Slope==2;
-                if(c.Slope==3 && py0+Math.Abs(vx)>=ty && px0>=tx || c.Slope==4 && py0+Math.Abs(vx)>=ty && px0+w<=tx+16 ||
-                    c.Slope==1 && py0+h-Math.Abs(vx)<=ty+height && px0>=tx || c.Slope==2 && py0+h-Math.Abs(vx)<=ty+height && px0+w<=tx+16)continue;
+                bool topSlope=!noSlope && (c.Slope==1 || c.Slope==2);
+                if(!noSlope && (c.Slope==3 && py0+Math.Abs(vx)>=ty && px0>=tx || c.Slope==4 && py0+Math.Abs(vx)>=ty && px0+w<=tx+16 ||
+                    c.Slope==1 && py0+h-Math.Abs(vx)<=ty+height && px0>=tx || c.Slope==2 && py0+h-Math.Abs(vx)<=ty+height && px0+w<=tx+16))continue;
                 if(py0+h<=ty)
                 {down=true;if(!(c.Platform && fall && (vy<=1 || fall2)) && nearest>ty){verticalX=x;verticalY=y+(c.Half?1:0);if(verticalX!=sideX && !topSlope){ry=ty-(py0+h)+(gravDir<0?-.01f:0);nearest=ty;}}}
                 else if(px0+w<=tx && !c.Platform)
-                {Cell neighbor;if(x>0){if(!CellAt(x-1,y,out neighbor,out stop))return false;if(neighbor.Slope==2 || neighbor.Slope==4)continue;}sideX=x;sideY=y;if(sideY!=verticalY)rx=tx-(px0+w);if(verticalX==sideX)ry=vy;}
+                {Cell neighbor;if(!noSlope && x>0){if(!CellAt(x-1,y,out neighbor,out stop))return false;if(neighbor.Slope==2 || neighbor.Slope==4)continue;}sideX=x;sideY=y;if(sideY!=verticalY)rx=tx-(px0+w);if(verticalX==sideX)ry=vy;}
                 else if(px0>=tx+16 && !c.Platform)
-                {Cell neighbor;if(!CellAt(x+1,y,out neighbor,out stop))return false;if(neighbor.Slope==1 || neighbor.Slope==3)continue;sideX=x;sideY=y;if(sideY!=verticalY)rx=tx+16-px0;if(verticalX==sideX)ry=vy;}
+                {Cell neighbor;if(!noSlope){if(!CellAt(x+1,y,out neighbor,out stop))return false;if(neighbor.Slope==1 || neighbor.Slope==3)continue;}sideX=x;sideY=y;if(sideY!=verticalY)rx=tx+16-px0;if(verticalX==sideX)ry=vy;}
                 else if(py0>=ty+height && !c.Platform)
                 {up=true;verticalX=x;verticalY=y;ry=ty+height-py0+(gravDir==1?.01f:0);if(verticalY==sideY)rx=vx;}
             }
