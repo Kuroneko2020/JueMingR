@@ -35,6 +35,11 @@ namespace JueMingR.Platform.Combat
     {
         public NpcIdentity Identity;
         public NpcIdentity ChildIdentity;
+        // Exact direct-position dependency, distinct from Health.RealLife.
+        // Models compare the opaque full owner identity without dereferencing.
+        public NpcIdentity PositionOwner;
+        public int PositionRelation;
+        public float PositionParameter;
         // Only the predicted attachment-family body changes this value. Identity
         // remains the real starting instance; a real Transform retires it.
         public int MotionType;
@@ -59,7 +64,7 @@ namespace JueMingR.Platform.Combat
         public float ObservedAccelerationX,ObservedAccelerationY,ObservedTurn;
         public int UnmodeledDamageTicks;
         public int Width,Height,Style,Direction,DirectionY,SpriteDirection,Target,ParentSlot,ChildSlot,TimeLeft,ConfusedTicks,Life,LifeMax,BuffFingerprint,BuffExpires;
-        public bool Active,NoGravity,NoTileCollide,Wet,Honey,Lava,Shimmer,CollideX,CollideY,CanReceive,CanHarm,NewSegment,JustHit,StairFall,SpawnedFromStatue,Boss,InactivityImmune,TargetNoAggro,CritterTurns;
+        public bool Active,NoGravity,NoTileCollide,Wet,Honey,Lava,Shimmer,CollideX,CollideY,CanReceive,CanHarm,NewSegment,JustHit,StairFall,SpawnedFromStatue,Boss,InactivityImmune,TargetNoAggro,CritterTurns,NoContactDamage;
         public MotionRect Bounds {get{return new MotionRect(X,Y,Width,Height);}}
     }
     public struct NpcHealthState : IEquatable<NpcHealthState>

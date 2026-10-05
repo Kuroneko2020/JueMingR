@@ -7,12 +7,12 @@ using Terraria.ID;
 
 namespace JueMingR.TerrariaHost.Combat
 {
-    internal sealed class PredictionTerrain : IPredictionTerrain,IPredictionResizeTerrain,IPredictionWaterSurfaceTerrain,IPredictionPlayerTerrain
+    internal sealed partial class PredictionTerrain : IPredictionTerrain,IPredictionResizeTerrain,IPredictionWaterSurfaceTerrain,IPredictionPlayerTerrain
     {
         private struct Cell : IEquatable<Cell>
         {
-            internal bool Active,RawActive,RawSolid,Solid,Platform,StairPlatform,PlatformFrame,ProperPlatformFrame,Half;internal byte Slope,Liquid,Kind;internal ushort Type,Wall;
-            public bool Equals(Cell b){return Active==b.Active && RawActive==b.RawActive && RawSolid==b.RawSolid && Wall==b.Wall && Type==b.Type && ProperPlatformFrame==b.ProperPlatformFrame && Solid==b.Solid && Platform==b.Platform && StairPlatform==b.StairPlatform && PlatformFrame==b.PlatformFrame && Half==b.Half && Slope==b.Slope && Liquid==b.Liquid && Kind==b.Kind;}
+            internal bool Active,RawActive,RawSolid,Solid,Platform,StairPlatform,PlatformFrame,ProperPlatformFrame,Half;internal byte Slope,Liquid,Kind;internal ushort Type,Wall;internal int Conveyor;
+            public bool Equals(Cell b){return Active==b.Active && RawActive==b.RawActive && RawSolid==b.RawSolid && Wall==b.Wall && Type==b.Type && ProperPlatformFrame==b.ProperPlatformFrame && Solid==b.Solid && Platform==b.Platform && StairPlatform==b.StairPlatform && PlatformFrame==b.PlatformFrame && Half==b.Half && Slope==b.Slope && Liquid==b.Liquid && Kind==b.Kind && Conveyor==b.Conveyor;}
         }
         private readonly Dictionary<int,Cell> cells=new Dictionary<int,Cell>(512);
         // Small direct hot cache for repeated liquid/contact/slope queries.
@@ -37,7 +37,7 @@ namespace JueMingR.TerrariaHost.Combat
             var tile=Main.tile[x,y];if(tile==null)return false;
             bool active=tile.active() && !tile.inActive();
             int frame=tile.frameX/18;
-            value=new Cell{Active=active,RawActive=tile.active(),RawSolid=Main.tileSolid[tile.type],Wall=tile.wall,Type=tile.type,ProperPlatformFrame=frame>=0 && frame<=7 || frame>=12 && frame<=16 || frame>=25 && frame<=26,Solid=active && Main.tileSolid[tile.type],Platform=active && Main.tileSolidTop[tile.type],StairPlatform=TileID.Sets.Platforms[tile.type],PlatformFrame=tile.frameY==0,Half=tile.halfBrick(),Slope=tile.slope(),Liquid=tile.liquid,Kind=(byte)tile.liquidType()};return true;
+            value=new Cell{Active=active,RawActive=tile.active(),RawSolid=Main.tileSolid[tile.type],Wall=tile.wall,Type=tile.type,ProperPlatformFrame=frame>=0 && frame<=7 || frame>=12 && frame<=16 || frame>=25 && frame<=26,Solid=active && Main.tileSolid[tile.type],Platform=active && Main.tileSolidTop[tile.type],StairPlatform=TileID.Sets.Platforms[tile.type],PlatformFrame=tile.frameY==0,Half=tile.halfBrick(),Slope=tile.slope(),Liquid=tile.liquid,Kind=(byte)tile.liquidType(),Conveyor=TileID.Sets.ConveyorDirection[tile.type]};return true;
         }
         public bool Tile(int x,int y,out PredictionTile tile,out PredictionStop stop)
         {
@@ -240,6 +240,10 @@ namespace JueMingR.TerrariaHost.Combat
                 float dx=next.X-moveBox.X,dy=next.Y-moveBox.Y;slope.X=moveBox.X;slope.Y=moveBox.Y;slope.Width=(int)moveBox.Width;slope.Height=(int)moveBox.Height;
                 if(!Slopes(ref slope,fall,out stop))return false;
                 next.X=slope.X+dx;next.Y=slope.Y+dy;next.Vx=slope.Vx;next.Vy=slope.Vy;next.StairFall=slope.StairFall;
+                // Native applies belt contact after movement-box slopes have
+                // returned to body coordinates. Belt displacement never owns V.
+                if(playerMode?!player.SkipConveyor:next.Style!=67 && (next.Town || next.LifeMax==5 && next.NoContactDamage || NPCID.Sets.ConveyorBeltCollision[movingType]))
+                    if(!Conveyor(ref next,playerMode,player.OnTrack,gravDir,out stop))return false;
             }
             n=next;return true;
         }

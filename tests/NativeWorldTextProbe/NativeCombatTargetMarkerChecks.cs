@@ -37,12 +37,13 @@ namespace NativeWorldTextProbe
             var settings=(ObservationSettings)Get(host,"Settings");NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return !settings.Busy;});
             Call(renderer,"Prepare",state,960f,640f,1f);Require((string)Get(Button(),"Text")=="目标标记：关","Actual same-page command refreshes OFF after commit.");
             var registry=(HotkeyRegistry)Get(Get(shell,"hotkeys"),"Registry");var bindings=(HotkeyBindings)Get(Get(shell,"hotkeys"),"Bindings");
-            Require(bindings.Get("combat.target-marker")==null,"Marker public action is initially unbound.");
-            Require(registry.Find("combat.target-marker").Invoke(HotkeyContext.Gameplay),"Registered public marker command reaches same preference owner.");
+            Require(bindings.Get("combat.target-marker")==null && registry.Find("combat.target-marker")==null,"Owner requires no marker public action or binding entrance.");
+            Call(control,"Execute",Get(Button(),"Command"));
             NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return !settings.Busy;});Call(renderer,"Prepare",state,960f,640f,1f);
-            Require((string)Get(Button(),"Text")=="目标标记：开","Public command refreshes the same page ON after commit.");
-            Require(((IEnumerable)Get(layout,"Elements")).Cast<object>().Any(e=>(string)GetOptional(e,"HotkeyTarget")=="combat.target-marker"),"F5 exposes the existing unbound public key picker.");
-            foreach(object element in (IEnumerable)Get(layout,"Elements"))if(Get(element,"Command").ToString()=="ObservationMarker" || (string)GetOptional(element,"HotkeyTarget")=="combat.target-marker")
+            Require((string)Get(Button(),"Text")=="目标标记：开","Actual same-page command refreshes ON after commit.");
+            Require(!((IEnumerable)Get(layout,"Elements")).Cast<object>().Any(e=>(string)GetOptional(e,"HotkeyTarget")=="combat.target-marker"),"F5 has no marker key picker.");
+            var row=((IEnumerable)Get(layout,"Elements")).Cast<object>().Where(e=>new[]{"ObservationPolicy","ObservationCenter","ObservationDummy","ObservationMarker"}.Contains(Get(e,"Command").ToString())).ToArray();Require(row.Length==4 && row.All(e=>(float)Get(Get(e,"Rect"),"Y")== (float)Get(Get(Button(),"Rect"),"Y")),"Four settings share the same measured row.");
+            foreach(object element in row)
             {var rect=Get(element,"Rect");Require((float)Get(rect,"X")>=0 && (float)Get(rect,"Right")<=522,"Measured marker controls stay inside their actual panel.");}
             var world=Get(host,"World");var display=Get(world,"Marker");Set(host,"LayerStatus",Enum.Parse(Get(host,"LayerStatus").GetType(),"Ready"));
             Main.screenWidth=960;Main.screenHeight=640;Main.screenPosition=new Vector2(300,300);Main.GameViewMatrix.Zoom=Vector2.One;
@@ -55,7 +56,7 @@ namespace NativeWorldTextProbe
             target=new NPC();target.SetDefaults(371);target.active=true;target.whoAmI=2;target.position=new Vector2(720,450);Main.npc[2]=target;NativeCombatObservationChecks.Fresh(context,host);Call(world,"Prepare");Require(!((NpcIdentity)Get(selection,"Target")).Equals(identity) && (bool)Get(display,"Visible"),"Replacement marker uses only the new shared identity.");
             NativeCombatObservationChecks.Save(host,new ObservationOptions());
             Require(!(bool)Get(selection,"HasTarget"),"Final consumer OFF retires selection.");
-            Console.WriteLine("PASS TARGET-MARKER actual same-page/public command refresh, key picker, measured CPU layout, six native source-row pieces, current netOffset and replacement; marker-only zero prediction. No GPU Draw claim.");
+            Console.WriteLine("PASS TARGET-MARKER actual same-page command refresh, four same-row settings and no marker key, measured CPU layout, six native source-row pieces, current netOffset and replacement; marker-only zero prediction. No GPU Draw claim.");
         }
         internal static void Graphics(object context,ProbeGraphics graphics,string output)
         {
@@ -63,10 +64,14 @@ namespace NativeWorldTextProbe
             Terraria.Localization.LanguageManager.Instance.SetLanguage("zh-Hans");var shell=Get(context,"Shell");var ui=Get(shell,"State");var renderer=Get(shell,"renderer");var layout=Get(ui,"Layout");Call(renderer,"RefreshResources");Call(ui,"Navigate",8);
             foreach(var size in new[]{new[]{960,760,100},new[]{960,440,100},new[]{1440,900,150}})
             {
-                Main.screenWidth=size[0];Main.screenHeight=size[1];Main.UIScale=size[2]/100f;Terraria.GameInput.PlayerInput.CacheOriginalScreenDimensions();Call(renderer,"Prepare",ui,(float)size[0],(float)size[1],Main.UIScale);
-                var elements=((IEnumerable)Get(layout,"Elements")).Cast<object>().ToArray();var button=elements.Single(e=>Get(e,"Command").ToString()=="ObservationMarker");var key=elements.Single(e=>(string)GetOptional(e,"HotkeyTarget")=="combat.target-marker");
-                foreach(var e in new[]{button,key})Require((float)Get(Get(e,"Rect"),"Right")<=522,"Original Chinese font marker/key fit panel at "+Main.UIScale);
-                Call(ui,"RestoreVisible");Call(ui,"ScrollTo",(float)Get(Get(button,"Rect"),"Y"));graphics.Image(System.IO.Path.Combine(output,"marker-f5-"+size[0]+"-"+size[1]+".png"),()=>Call(shell,"DrawLayer"),Main.UIScaleMatrix,size[0],size[1]);
+                Main.screenWidth=size[0];Main.screenHeight=size[1];Terraria.GameInput.PlayerInput.CacheOriginalScreenDimensions();Main.UIScale=size[2]/100f;NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false);Call(ui,"RestoreVisible");NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false);
+                Require(Math.Abs(Main.UIScale-size[2]/100f)<.001f && Math.Abs(Main.UIScaleMatrix.M11-size[2]/100f)<.001f && Math.Abs(((Matrix)Get(shell,"matrix")).M11-size[2]/100f)<.001f,"Requested actual UI scale and sampled Shell matrix match.");
+                var elements=((IEnumerable)Get(layout,"Elements")).Cast<object>().ToArray();var button=elements.Single(e=>Get(e,"Command").ToString()=="ObservationMarker");
+                var row=elements.Where(e=>new[]{"ObservationPolicy","ObservationCenter","ObservationDummy","ObservationMarker"}.Contains(Get(e,"Command").ToString())).ToArray();Require(row.Length==4 && row.All(e=>(float)Get(Get(e,"Rect"),"Y")== (float)Get(Get(button,"Rect"),"Y")),"Original font draws all four settings on the same row.");
+                foreach(var e in row)Require((float)Get(Get(e,"Rect"),"Right")<=510,"Original Chinese font four controls fit panel at "+Main.UIScale);
+                Call(ui,"ScrollTo",(float)Get(Get(button,"Rect"),"Y"));Require((bool)Get(ui,"Visible") && (bool)Get(ui,"Ready") && !(bool)Get(shell,"Failed"),"Real F5 draw gates ready.");
+                var pixels=graphics.Pixels(()=>Call(shell,"DrawLayer"),Main.UIScaleMatrix,size[0],size[1]);Require(!(bool)Get(shell,"Failed") && pixels.Count(p=>p.A>0)>1000 && pixels.Any(p=>p.R>180 && p.G>180 && p.B>180 && p.A>0),"Actual F5 panel and text draw visible pixels, not a saved empty canvas.");
+                graphics.Image(System.IO.Path.Combine(output,"marker-f5-"+size[0]+"-"+size[1]+".png"),()=>Call(shell,"DrawLayer"),Main.UIScaleMatrix,size[0],size[1]);
             }
             Call(ui,"Close");Main.screenWidth=960;Main.screenHeight=640;Main.UIScale=1;Terraria.GameInput.PlayerInput.CacheOriginalScreenDimensions();
             var host=Get(context,"CombatObservation");var world=Get(host,"World");var marker=Get(world,"Marker");
@@ -80,6 +85,8 @@ namespace NativeWorldTextProbe
             Call(world,"Prepare");Require((int)Get(world,"StrokeCount")>5 && !(bool)Get(marker,"Visible"),"Local marker failure is latched without retiring prediction or path commands.");
             Terraria.GameContent.TextureAssets.LockOnCursor=atlas;Call(host,"Set",5,true);Call(world,"Prepare");Require((bool)Get(marker,"Visible"),"Explicit retry recovers marker from restored borrowed resource.");
             graphics.Image(System.IO.Path.Combine(output,"marker-recovered.png"),()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);
+            using(var disposedBatch=new Microsoft.Xna.Framework.Graphics.SpriteBatch(graphics.GraphicsDevice))
+            {disposedBatch.Dispose();bool shared=false;try{Call(marker,"Draw",disposedBatch);}catch(TargetInvocationException error){shared=error.InnerException is InvalidOperationException || error.InnerException is ObjectDisposedException;}Require(shared && !(bool)Get(marker,"Failed"),"Real disposed shared batch faults escape marker-local resource latch.");}
             foreach(int gravity in new[]{1,-1})foreach(float zoom in new[]{.8f,1.4f})
             {Main.LocalPlayer.gravDir=gravity;Main.GameViewMatrix.Zoom=new Vector2(zoom);Call(world,"Prepare");Require((bool)Get(marker,"Visible"),"Marker survives supported gravity/zoom.");graphics.Image(System.IO.Path.Combine(output,"marker-transform-"+gravity+"-"+zoom.ToString(System.Globalization.CultureInfo.InvariantCulture)+".png"),()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);}
             Main.LocalPlayer.gravDir=1;Main.GameViewMatrix.Zoom=Vector2.One;Main.mapFullscreen=true;Call(world,"Prepare");Require(!(bool)Get(marker,"Visible"),"Fullscreen map retires marker commands.");Main.mapFullscreen=false;

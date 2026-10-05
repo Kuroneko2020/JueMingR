@@ -44,10 +44,11 @@ namespace JueMingR.TerrariaHost.Combat
             // Compile the bounded local kernels; do NOT sample Main, construct
             // forecasts or run a hidden warmup world. Startup is measured
             // separately; OFF world updates still do no prediction work.
-            var types=new[]{typeof(NpcPredictionSource),typeof(NpcTrackingObservation),typeof(NpcCollisionRules),typeof(RollingNpcPrediction),typeof(NpcMotion),typeof(NpcHealth),typeof(PredictionTerrain),typeof(NpcTrajectory),
+            var types=new[]{typeof(NpcPredictionSource),typeof(NpcTrackingObservation),typeof(NpcPositionObservation),typeof(NpcCollisionRules),typeof(RollingNpcPrediction),typeof(NpcMotion),typeof(NpcHealth),typeof(PredictionTerrain),typeof(NpcTrajectory),
                 typeof(MotionRect),typeof(NpcMotionState),typeof(NpcTrajectoryPoint),typeof(NpcBuffLayout),typeof(PredictionPlayers),typeof(NpcTrajectory).GetNestedType("PackedPoint",System.Reflection.BindingFlags.NonPublic),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcRollingMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcTargeting",true),
+                typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcPositionMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcGroundMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcAquaticMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcAnchoredMotion",true),
@@ -119,10 +120,11 @@ namespace JueMingR.TerrariaHost.Combat
                 int slot=pending[next];
                 var n=Main.npc[slot];if(n==null || !n.active)continue;
                 states[count++]=Read(n,identity.Session);
-                if(motionSlots[slot])NpcTrackingObservation.Capture(n,ref states[count-1],Terrain);
+                NpcPositionObservation.Capture(n,ref states[count-1],identity.Session);
                 int parent=states[count-1].ParentSlot,child=states[count-1].ChildSlot;
                 if(motionSlots[slot])
                 {
+                    var owner=states[count-1].PositionOwner;if(owner.Token!=null){motionSlots[owner.Slot]=true;if(!visited[owner.Slot]){visited[owner.Slot]=true;pending[queued++]=owner.Slot;}}
                     if(parent>=0 && parent<Main.maxNPCs){motionSlots[parent]=true;if(!visited[parent]){visited[parent]=true;pending[queued++]=parent;}}
                     if(child>=0 && child<Main.maxNPCs){motionSlots[child]=true;if(!visited[child]){visited[child]=true;pending[queued++]=child;}}
                 }
@@ -132,7 +134,7 @@ namespace JueMingR.TerrariaHost.Combat
             // Sort only the required dependency chain by native slot order.
             for(int i=1;i<count;i++){var value=states[i];int j=i-1;while(j>=0 && states[j].Identity.Slot>value.Identity.Slot){states[j+1]=states[j];j--;}states[j+1]=value;}
             int selected=0;for(int i=0;i<count;i++)if(states[i].Identity.Equals(identity))selected=i;
-            for(int i=0;i<count;i++)motionRoles[i]=motionSlots[states[i].Identity.Slot];
+            for(int i=0;i<count;i++){motionRoles[i]=motionSlots[states[i].Identity.Slot];if(motionRoles[i])NpcTrackingObservation.Capture(Main.npc[states[i].Identity.Slot],ref states[i],Terrain);}
             var current=Main.npc[identity.Slot];
             if(current.aiStyle==6 || current.aiStyle==37)for(int i=0;i<count;i++)if(states[i].ParentSlot<0){current=Main.npc[states[i].Identity.Slot];break;}
             int target=states[selected].PlayerIndex;if(target<0 || target>=Main.maxPlayers || Main.player[target]==null)target=Main.myPlayer;
@@ -165,7 +167,7 @@ namespace JueMingR.TerrariaHost.Combat
                 Gravity=p.gravity,GravityDirection=p.gravDir,MaxFall=p.maxFallSpeed,Acceleration=hover?p.mount.Acceleration:p.runAcceleration,
                 Slowdown=hover?.2f:p.runSlowdown,MaxSpeed=hover?p.mount.RunSpeed:Math.Max(p.maxRunSpeed,p.accRunSpeed),Jump=p.jump,JumpHeight=jumpHeight,JumpSpeed=jumpSpeed,
                 IgnorePlatforms=p.gravDir<0 || p.mount.Active && (p.mount.Cart || p.mount.Type==12 || p.mount.Type==7 || p.mount.Type==8 || p.mount.Type==23 || p.mount.Type==44 || p.mount.Type==48 || p.mount.Type==55 && p.slideDir!=0) || p.GoingDownWithGrapple || p.pulley,
-                IgnoreWater=p.ignoreWater,Merman=p.merman,Trident=p.trident,OnTrack=p.onTrack,Cart=p.mount.Active && p.mount.Cart,SkipSlope=p.mount.Active && p.mount.Type==48,
+                IgnoreWater=p.ignoreWater,Merman=p.merman,Trident=p.trident,OnTrack=p.onTrack,Cart=p.mount.Active && p.mount.Cart,SkipSlope=p.mount.Active && p.mount.Type==48,SkipConveyor=Math.Abs(p.gfxOffY)>2 || p.grapCount>0 || p.pulley || p.shimmering || p.tongued || p.isLockedToATile,
                 Left=p.controlLeft,Right=p.controlRight,Up=p.controlUp,Down=p.controlDown,HoldJump=p.controlJump,ReleaseJump=p.releaseJump,AutoJump=p.autoJump,Hover=hover,Complex=Prediction.NativePlayerMotion.Conditional(p),WaterWalk=p.waterWalk || p.waterWalk2,LavaWalk=p.waterWalk};
         }
         internal static NpcMotionState Read(NPC n,long session)
@@ -196,7 +198,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(health.Fire>0 || health.Fire3>0 || n.buffType[19]!=0){health.Buffs.Captured=true;for(int i=0;i<20;i++)health.Buffs.Set(i,n.buffType[i],n.buffTime[i],Main.debuff[n.buffType[i]]);}
             return new NpcMotionState{UnmodeledDamageTicks=attached,NetOffsetX=n.netOffset.X,NetOffsetY=n.netOffset.Y,SmoothingRange=Main.multiplayerNPCSmoothingRange,ResetNetOffset=Main.netMode==2 || NPC.offSetDelayTime>0 || NPCID.Sets.NoMultiplayerSmoothingByType[n.type] || NPCID.Sets.NoMultiplayerSmoothingByAI[n.aiStyle] || n.townNPC && n.ai[0]==25,Friendly=n.friendly,ChildSlot=child,ChildIdentity=linked!=null && linked.active && linked.aiStyle==n.aiStyle?CombatSelection.Identity(linked,session):default(NpcIdentity),LavaSpeed=n.lavaMovementSpeed,ShimmerSpeed=n.shimmerMovementSpeed,Lava=n.lavaWet,Shimmer=n.shimmerWet,Health=health,Identity=CombatSelection.Identity(n,session),X=n.position.X,Y=n.position.Y,OldX=n.oldPosition.X,OldY=n.oldPosition.Y,StairFall=n.stairFall,Vx=n.velocity.X,Vy=n.velocity.Y,OldVx=n.oldVelocity.X,OldVy=n.oldVelocity.Y,Width=n.width,Height=n.height,Scale=n.scale,Style=n.aiStyle,Direction=n.direction,DirectionY=n.directionY,Target=n.target,
                 CollisionPart=HasCollisionPart(n),Town=n.townNPC,HomeTileY=n.homeTileY,CritterTurns=NPCID.Sets.CritterThatCanTurnOnPlayers[n.type],Boss=n.boss,InactivityImmune=n.DoesntDespawnToInactivity() || n.townNPC,SpriteDirection=n.spriteDirection,SpawnedFromStatue=n.SpawnedFromStatue,ParentSlot=(n.aiStyle==6 || n.aiStyle==37) && n.ai[1]>0?(int)n.ai[1]:-1,TimeLeft=n.timeLeft,ConfusedTicks=confused,Life=n.life,LifeMax=n.lifeMax,BuffFingerprint=buffHash,BuffExpires=expires,WaterSpeed=n.waterMovementSpeed,HoneySpeed=n.honeyMovementSpeed,
-                A0=n.ai[0],A1=n.ai[1],A2=n.ai[2],A3=n.ai[3],L0=n.localAI[0],L1=n.localAI[1],L2=n.localAI[2],L3=n.localAI[3],Active=n.active,NoGravity=n.noGravity,NoTileCollide=n.noTileCollide,Wet=n.wet,Honey=n.honeyWet,CollideX=n.collideX,CollideY=n.collideY,CanReceive=CombatSelection.Receives(n,true),CanHarm=!n.friendly && n.damage>0,JustHit=n.justHit};
+                A0=n.ai[0],A1=n.ai[1],A2=n.ai[2],A3=n.ai[3],L0=n.localAI[0],L1=n.localAI[1],L2=n.localAI[2],L3=n.localAI[3],Active=n.active,NoGravity=n.noGravity,NoTileCollide=n.noTileCollide,Wet=n.wet,Honey=n.honeyWet,CollideX=n.collideX,CollideY=n.collideY,CanReceive=CombatSelection.Receives(n,true),CanHarm=!n.friendly && n.damage>0,NoContactDamage=n.damage==0,JustHit=n.justHit};
         }
         private static bool HasCollisionPart(NPC n)
         {

@@ -19,6 +19,7 @@ namespace JueMingR.Features.Combat
             if(!n.NoTileCollide || n.Style==3 || n.Style==6 || n.Style==37 || n.Style==1 || !KnownMotion(n))result|=PredictionAssumption.ApproximateMechanism;
             if(n.BuffFingerprint!=0)result|=PredictionAssumption.ApproximateMechanism|PredictionAssumption.UnmodeledStatusEffects;
             if(n.TrackingKind>=2)result|=PredictionAssumption.ObservedTrackingMotion|PredictionAssumption.ApproximateMechanism;
+            if(n.PositionRelation!=0)result|=PredictionAssumption.CurrentConnection|PredictionAssumption.ApproximateMechanism;
             return result;
         }
         public static bool Step(ref NpcMotionState n,NpcMotionState[] group,int count,PredictionEnvironment env,IPredictionTerrain terrain,int elapsed,out PredictionStop stop)
@@ -61,7 +62,9 @@ namespace JueMingR.Features.Combat
             int vertical=face?(int)tracking.Y+(int)tracking.Height/2<n.Y+n.Height/2?-1:1:n.DirectionY;
             bool confused=n.ConfusedTicks>0;if(confused){direction=-direction;n.ConfusedTicks--;}
             bool linked=false;
-            if(n.Style==16 && NpcAquaticMotion.Known(n.Identity.Type))
+            if(n.PositionRelation!=0)
+            {if(!NpcPositionMotion.Step(ref n,group,count,elapsed,out stop))return false;}
+            else if(n.Style==16 && NpcAquaticMotion.Known(n.Identity.Type))
             {if(!NpcAquaticMotion.Step(ref n,env,terrain,direction,vertical,out stop))return false;}
             else if(n.Style==13 && NpcAnchoredMotion.Known(n.Identity.Type))
             {if(!NpcAnchoredMotion.Step(ref n,env,terrain,out stop))return false;}
@@ -184,11 +187,14 @@ namespace JueMingR.Features.Combat
         internal static bool AllowsUnmodeledMotionEffect(NpcMotionState n)
         {return CurrentPlayerPremise(n);}
         internal static bool StructuredModel(NpcMotionState n)
-        {return KnownMotion(n) || CurrentPlayerPremise(n) || n.Style==69 || n.Style==39 && n.EffectiveType==153 || n.Style==41 && n.EffectiveType==177;}
+        {return KnownMotion(n) || CurrentPlayerPremise(n) || NpcPositionMotion.Known(n) || n.Style==69 || n.Style==39 && n.EffectiveType==153 || n.Style==41 && n.EffectiveType==177;}
         internal static bool NeedsPlayerMotion(NpcMotionState n)
         {
             if(n.EffectiveType==488)return false;
-            if(n.TrackingKind>=2 && (n.Style==2 || n.Style==5 || n.Style==14))return false;
+            if(n.PositionRelation!=0)return false;
+            // AI_005/AI_014 still consume numbered-player geometry even when
+            // TargetClosest faces a guardian. Facing alone cannot waive it.
+            if(n.TrackingKind>=2 && n.Style==2)return false;
             if(StructuredModel(n) || n.Style==3 || n.Style==40 || n.Style==13 || n.Style==16)return true;
             // These native collision predicates directly read the numbered
             // player even when the AI itself is only an observed trend.

@@ -110,9 +110,9 @@ namespace JueMingR.TerrariaHost.Combat
         {
             for(int i=0;i<F5.CombatObservationControls.Actions.Length;i++)
             {
-                int field=i==2?5:i;string id=F5.CombatObservationControls.Actions[i],name=F5.CombatObservationControls.Names[i];
-                Action command=()=>Set(field,!(field==0?Options.Collision:field==1?Options.Path:Options.Marker));
-                if(feedback!=null)command=feedback.Committed(id,name,command,()=>field==0?(Collision?1:0):field==1?(Path?1:0):(Marker?1:0),()=>CanConfigure && Unavailable(field)==null,
+                int field=i;string id=F5.CombatObservationControls.Actions[i],name=F5.CombatObservationControls.Names[i];
+                Action command=()=>Set(field,!(field==0?Options.Collision:Options.Path));
+                if(feedback!=null)command=feedback.Committed(id,name,command,()=>field==0?(Collision?1:0):(Path?1:0),()=>CanConfigure && Unavailable(field)==null,
                     ()=>Settings.AcceptedCommandId,()=>Settings.CompletedCommandId,()=>Settings.CompletionSucceeded);
                 registry.Register(new HotkeyAction(id,name,HotkeyContext.Gameplay,()=>CanConfigure,command));
             }

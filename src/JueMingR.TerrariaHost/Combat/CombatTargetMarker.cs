@@ -74,7 +74,11 @@ namespace JueMingR.TerrariaHost.Combat
                 {var p=Pieces[i];batch.Draw(texture,p.Position,new Rectangle(0,p.SourceY,texture.Width,12),p.Color,p.Rotation,new Vector2(texture.Width/2f,6),p.Scale,SpriteEffects.None,0);}
             }
             catch(ArgumentException error){Fail(error);}
-            catch(ObjectDisposedException error){Fail(error);}
+            catch(ObjectDisposedException error)
+            {
+                if(batch.IsDisposed || batch.GraphicsDevice.IsDisposed || !texture.IsDisposed)throw;
+                Fail(error);
+            }
             // An invalid shared SpriteBatch/device remains a world-layer fault;
             // resource/marker parameter failures above cannot erase the path.
         }

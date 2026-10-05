@@ -24,7 +24,7 @@ namespace NativeWorldTextProbe
             {
                 Directory.CreateDirectory(output);
                 Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-shared-geometry-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
-                NativeQuickItemChecks.Run(context=>{if(Environment.GetEnvironmentVariable("JUEMINGR_SHARED_GEOMETRY_PHASE")=="tracking")NativeCombatTrackingChecks.Run(context);else NativeCombatSharedGeometryChecks.Run(context);},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
+                NativeQuickItemChecks.Run(context=>{string phase=Environment.GetEnvironmentVariable("JUEMINGR_SHARED_GEOMETRY_PHASE");if(phase=="tracking")NativeCombatTrackingChecks.Run(context);else if(phase=="attachment")NativeCombatAttachmentChecks.Run(context);else if(phase=="conveyor")NativeCombatConveyorChecks.Run(context);else NativeCombatSharedGeometryChecks.Run(context);},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
             }
             if(scope=="NpcBasicMotion")
             {

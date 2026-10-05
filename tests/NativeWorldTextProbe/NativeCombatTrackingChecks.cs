@@ -34,6 +34,33 @@ namespace NativeWorldTextProbe
             }
             player.tankPet=-1;pet.active=false;NativeCombatObservationChecks.Save(host,new ObservationOptions());
             var source=Get(host,"Prediction");var terrain=(IPredictionTerrain)Get(source,"Terrain");var read=source.GetType().GetMethod("Read",Flags);var capture=source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcTrackingObservation").GetMethod("Capture",Flags);
+            // AI_005 faces the guardian but GetTargetData() deliberately
+            // ignores it for its speed vector. Direction is not a dependency
+            // substitute for the numbered player's future position.
+            var needs=typeof(NpcMotion).GetMethod("NeedsPlayerMotion",Flags);
+            var flying=typeof(NPC).GetMethod("AI_005_EaterOfSouls",Flags);
+            Require(flying!=null,"Locked original AI_005 entry.");
+            for(int side=-1;side<=1;side+=2)foreach(bool moving in new[]{false,true})
+            {
+                player.position=new Vector2(1200,950);player.tankPet=0;pet.active=true;pet.position=new Vector2(1000+side*90,950);pet.velocity=Vector2.Zero;
+                target.SetDefaults(6);target.whoAmI=2;target.active=true;target.target=Main.myPlayer;target.position=new Vector2(1000,950);target.velocity=Vector2.Zero;
+                var sampled=(NpcMotionState)read.Invoke(null,new object[]{target,1L});var sampledArgs=new object[]{target,sampled,terrain};terrain.Reset();capture.Invoke(null,sampledArgs);sampled=(NpcMotionState)sampledArgs[1];
+                Require(sampled.TrackingKind==2 && (bool)needs.Invoke(null,new object[]{sampled}),"Guardian flying still needs numbered-player future.");
+                var flyingEnv=new PredictionEnvironment{PlayerIndex=Main.myPlayer,PlayerX=player.Center.X,PlayerY=player.Center.Y,PlayerWidth=player.width,PlayerHeight=player.height,WorldWidth=Main.maxTilesX,WorldHeight=Main.maxTilesY,WorldSurface=(float)Main.worldSurface,RockLayer=(float)Main.rockLayer};
+                for(int future=1;future<=15;future++)
+                {
+                    if(moving)player.position.X+=3;flyingEnv.PlayerX=player.Center.X;flyingEnv.PlayerY=player.Center.Y;
+                    var group=new[]{sampled};PredictionStop stop;Require(NpcMotion.Step(ref sampled,group,1,flyingEnv,terrain,future,true,out stop),"Flying scalar step: "+stop);
+                    flying.Invoke(target,null);
+                    // UpdateNPC's shared post-AI phase at locked line 91461
+                    // precedes UpdateCollision; the private AI alone omits it.
+                    if(Math.Abs(target.velocity.X)<.005f)target.velocity.X=0;
+                    move.Invoke(target,null);
+                    if(future==1)Console.WriteLine("FLYING side="+side+" moving="+moving+" native="+target.velocity+" model="+new Vector2(sampled.Vx,sampled.Vy)+" nativeDirection="+target.direction+" modelDirection="+sampled.Direction+" expert="+Main.expertMode);
+                    Require(sampled.Direction==target.direction && Math.Abs(sampled.Vx-target.velocity.X)<.001f && Math.Abs(sampled.Vy-target.velocity.Y)<.001f,"Guardian facing / numbered-player velocity native separation side="+side+" moving="+moving+" future="+future);
+                }
+            }
+            player.tankPet=-1;pet.active=false;
             var second=Main.player[1];second.active=true;second.dead=false;second.position=new Vector2(1000,800);second.aggro=0;second.tankPet=-1;
             target.SetDefaults(620);target.whoAmI=2;target.active=true;target.position=new Vector2(1000,900);target.target=Main.myPlayer;
             player.position=new Vector2(1300,1100);var state=(NpcMotionState)read.Invoke(null,new object[]{target,1L});var args=new object[]{target,state,terrain};terrain.Reset();capture.Invoke(null,args);state=(NpcMotionState)args[1];
