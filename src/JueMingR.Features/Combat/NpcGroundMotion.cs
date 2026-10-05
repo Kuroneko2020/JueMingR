@@ -8,7 +8,33 @@ namespace JueMingR.Features.Combat
     // native AI; rechecking it afterwards changes obstacle and pit decisions.
     internal static class NpcGroundMotion
     {
-        internal static bool Known(int type){return type==3 || type==21 || type==27 || type==77 || type==109 || type==120 || type==166 || type==236;}
+        internal static bool Known(int type){return type==3 || type==21 || type==27 || type==77 || type==109 || type==120 || type==166 || NpcWallMotion.Ground(type);}
+        internal static bool Fallback(ref NpcMotionState n,PredictionEnvironment e,bool confused,out PredictionStop stop)
+        {
+            stop=PredictionStop.None;
+            // These original actions skip the shared blocked counter. Their
+            // positive ai[3] belongs to an independent action, not recovery.
+            if(!OrdinaryCounter(n))
+            {if(n.A3>0){stop=PredictionStop.UnsupportedMechanism;return false;}Target(ref n,e,confused);}
+            else CountAndTarget(ref n,e,confused,60);
+            Accelerate(ref n,1.5f,.07f,false);
+            if(n.CollideX && n.CollideY){n.Vy=-6;n.CollideY=false;}
+            return true;
+        }
+        private static bool OrdinaryCounter(NpcMotionState n)
+        {
+            int type=n.EffectiveType;if(type==425 || type==471)return false;
+            if(n.A2<=0)return true;
+            switch(type)
+            {
+                case 110:case 111:case 206:case 214:case 215:case 216:
+                case 291:case 292:case 293:case 350:case 379:case 380:
+                case 381:case 382:case 409:case 411:case 424:case 426:
+                case 466:case 498:case 499:case 500:case 501:case 502:
+                case 503:case 504:case 505:case 506:case 520:return false;
+                default:return true;
+            }
+        }
         internal static bool Step(ref NpcMotionState n,PredictionEnvironment e,IPredictionTerrain t,bool confused,out PredictionStop stop)
         {
             stop=PredictionStop.None;int type=n.EffectiveType;
@@ -21,27 +47,12 @@ namespace JueMingR.Features.Combat
                 else{n.Vx*=.9f;if(n.Vx>-.1f && n.Vx<.1f)n.Vx=0;if(++n.A2==0)n.Vx=n.Direction*.1f;return true;}
             }
             bool wasStopped=n.Vx==0 && !n.JustHit;int limit=type==120?180:60;
-            if(type==120 && n.A3==-120){n.Vx=n.Vy=0;n.A3=0;}
-            if(n.X==n.OldX || n.A3>=limit || n.Vy==0 && (n.Vx>0 && n.Direction<0 || n.Vx<0 && n.Direction>0))n.A3++;
-            else if(Math.Abs(n.Vx)>.9f && n.A3>0)n.A3--;
-            if(n.A3>limit*10 || n.JustHit || Intersects(n,e))n.A3=0;
-            // .8's fighter despawn predicate exempts 77 on the daytime surface.
-            // The ordinary blocked-count threshold still controls turn-away.
-            bool pursue=type==77 || type==120 || e.Eclipse || !e.Day || e.Remix || n.SpawnedFromStatue || n.Y>e.WorldSurface*16 || e.Graveyard || type==27 && e.InvasionType==1;
-            if(n.A3<limit && pursue)
-            {Target(ref n,e,confused);if(n.DirectionY>0 && e.PlayerY<=n.Y+n.Height)n.DirectionY=-1;}
-            else if(!(type==166 && n.A2>0))
-            {if(e.Day && !e.Remix && n.Y/16<e.WorldSurface)n.TimeLeft=Math.Min(n.TimeLeft,10);if(n.Vx==0){if(n.Vy==0 && ++n.A0>=2){n.Direction*=-1;n.SpriteDirection=n.Direction;n.A0=0;}}else n.A0=0;if(n.Direction==0)n.Direction=1;}
+            CountAndTarget(ref n,e,confused,limit);
             // Armored skeleton shares ordinary blocked/turn/step decisions,
             // but its locked .8 speed is 2, not the later fighter default 3.
-            float speed=type==3?2-n.Scale:type==21?1.5f*(2-n.Scale):type==27 || type==77 || type==109 || type==236?2:3,acc=type==109?.04f:.07f;
-            if(n.Vx<-speed || n.Vx>speed){if(n.Vy==0){n.Vx*=.8f;n.Vy*=.8f;}}
-            else
-            {
-                if((type==120 || type==166) && n.Vy==0 && (n.Vx>0 && n.Direction<0 || n.Vx<0 && n.Direction>0))n.Vx*=.99f;
-                if(n.Direction==1)n.Vx=Math.Min(speed,n.Vx+acc);else if(n.Direction==-1)n.Vx=Math.Max(-speed,n.Vx-acc);
-            }
-            if(type==236 && !NpcWallMotion.GroundAttachment(ref n,e,t,confused,out stop))return false;
+            float speed=type==3?2-n.Scale:type==21?1.5f*(2-n.Scale):type==164 || type==239?1.5f:type==27 || type==77 || type==109 || NpcWallMotion.Ground(type)?2:3,acc=type==109?.04f:.07f;
+            Accelerate(ref n,speed,acc,type==120 || type==166);
+            if(NpcWallMotion.Ground(type) && !NpcWallMotion.GroundAttachment(ref n,e,t,confused,out stop))return false;
             if(n.Style!=3)return true;
             bool supported=false;
             if(n.Vy==0)
@@ -53,7 +64,7 @@ namespace JueMingR.Features.Combat
             if(n.Vy>=0 && !StepUp(ref n,t,out stop))return false;
             if(supported)
             {
-                int x=(int)((n.X+n.Width/2+(type==109 || type==236?n.Width/2+16:15)*n.Direction)/16),y=(int)((n.Y+n.Height-15)/16);
+                int x=(int)((n.X+n.Width/2+(type==109 || NpcWallMotion.Ground(type)?n.Width/2+16:15)*n.Direction)/16),y=(int)((n.Y+n.Height-15)/16);
                 PredictionTile cell,one,two,three;
                 if(!t.Tile(x,y,out cell,out stop) || !t.Tile(x,y-1,out one,out stop) || !t.Tile(x,y-2,out two,out stop) || !t.Tile(x,y-3,out three,out stop))return false;
                 if((type==3 || type==21 || type==27) && one.Active && (one.Type==10 || one.Type==388))
@@ -101,6 +112,49 @@ namespace JueMingR.Features.Combat
             if(type==120 && !e.Multiplayer && n.A3>=180){stop=PredictionStop.RandomDestination;return false;}
             return true;
         }
+        private static void CountAndTarget(ref NpcMotionState n,PredictionEnvironment e,bool confused,int limit)
+        {
+            int type=n.EffectiveType;
+            if(type==120 && n.A3==-120){n.Vx=n.Vy=0;n.A3=0;}
+            if(n.X==n.OldX || n.A3>=limit || n.Vy==0 && (n.Vx>0 && n.Direction<0 || n.Vx<0 && n.Direction>0))n.A3++;
+            else if(Math.Abs(n.Vx)>.9f && n.A3>0)n.A3--;
+            if(n.A3>limit*10 || n.JustHit || Intersects(n,e))n.A3=0;
+            // .8's fighter despawn predicate exempts 77 on the daytime surface.
+            // The ordinary blocked-count threshold still controls turn-away.
+            bool pursue=Pursues(n,e);
+            if(n.A3<limit && pursue)
+            {Target(ref n,e,confused);if(n.DirectionY>0 && e.PlayerY<=n.Y+n.Height)n.DirectionY=-1;}
+            else if(!(type==166 && n.A2>0))
+            {if(e.Day && !e.Remix && n.Y/16<e.WorldSurface)n.TimeLeft=Math.Min(n.TimeLeft,10);if(n.Vx==0){if(n.Vy==0 && ++n.A0>=2){n.Direction*=-1;n.SpriteDirection=n.Direction;n.A0=0;}}else n.A0=0;if(n.Direction==0)n.Direction=1;}
+        }
+        private static bool Pursues(NpcMotionState n,PredictionEnvironment e)
+        {
+            int type=n.EffectiveType;
+            if(e.Eclipse || !e.Day || e.Remix || n.SpawnedFromStatue || n.Y>e.WorldSurface*16 || e.Graveyard || e.SnowMoon && (type==343 || type==350) || e.InvasionType==1 && (type==26 || type==27 || type==28 || type==111 || type==471) || e.DontStarve && (type==163 || type==164) || e.InvasionType==3 && type>=212 && type<=216 || e.InvasionType==4 && (type==381 || type==382 || type==383 || type==385 || type==386 || type==389 || type==391 || type==520))return true;
+            switch(type)
+            {
+                case 31:case 47:case 67:case 73:case 77:case 78:case 79:case 80:
+                case 110:case 120:case 168:case 181:case 185:case 198:case 199:
+                case 206:case 217:case 218:case 219:case 220:case 239:case 243:
+                case 254:case 255:case 257:case 258:case 291:case 292:case 293:
+                case 294:case 295:case 296:case 379:case 380:case 409:case 415:
+                case 419:case 424:case 425:case 427:case 428:case 429:case 464:
+                case 470:case 508:case 524:case 525:case 526:case 527:case 528:
+                case 529:case 530:case 532:case 580:case 582:case 624:case 630:return true;
+                case 631:return n.A2>0;
+                case 411:return n.A1>=180 || n.A1<90;
+                default:return n.CritterTurns;
+            }
+        }
+        private static void Accelerate(ref NpcMotionState n,float speed,float acc,bool reverseDamping)
+        {
+            if(n.Vx<-speed || n.Vx>speed){if(n.Vy==0){n.Vx*=.8f;n.Vy*=.8f;}}
+            else
+            {
+                if(reverseDamping && n.Vy==0 && (n.Vx>0 && n.Direction<0 || n.Vx<0 && n.Direction>0))n.Vx*=.99f;
+                if(n.Direction==1)n.Vx=Math.Min(speed,n.Vx+acc);else if(n.Direction==-1)n.Vx=Math.Max(-speed,n.Vx-acc);
+            }
+        }
         internal static bool StepUp(ref NpcMotionState n,IPredictionTerrain t,out PredictionStop stop,bool platforms=false)
         {
             stop=PredictionStop.None;int direction=Math.Sign(n.Vx),x=(int)((n.X+n.Vx+n.Width/2+(n.Width/2+1)*direction)/16),y=(int)((n.Y+n.Height-1)/16);
@@ -110,7 +164,7 @@ namespace JueMingR.Features.Combat
                 !(c.Active && !c.TopSlope && !a.TopSlope && (c.Solid && !c.SolidTop || platforms && c.SolidTop && (!a.Solid || !a.Active) && c.Type!=16 && c.Type!=18 && c.Type!=134) || a.Half && a.Active) ||
                 !(Pass(a) || a.Half && Pass(f)) || !Pass(b) || !Pass(d) || behind.Active && behind.Solid && (!platforms || !behind.SolidTop))return true;
             float surface=y*16+(c.Half?8:0)-(a.Half?8:0),rise=n.Y+n.Height-surface;
-            if(surface<n.Y+n.Height && rise<=(n.EffectiveType==236?24.1f:16.1f))n.Y=surface-n.Height;
+            if(surface<n.Y+n.Height && rise<=(NpcWallMotion.Ground(n.EffectiveType)?24.1f:16.1f))n.Y=surface-n.Height;
             return true;
         }
         private static bool Pass(PredictionTile t){return !t.Active || !t.Solid || t.SolidTop;}

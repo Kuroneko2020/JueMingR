@@ -128,7 +128,7 @@ namespace JueMingR.Features.Combat
             if(a.Friendly!=b.Friendly || a.MotionType!=b.MotionType)return false;
             if(a.NetOffsetX!=b.NetOffsetX || a.NetOffsetY!=b.NetOffsetY || a.SmoothingRange!=b.SmoothingRange || a.ResetNetOffset!=b.ResetNetOffset)return false;
             if(a.ChildSlot!=b.ChildSlot || !a.ChildIdentity.Equals(b.ChildIdentity))return false;
-            if(a.Boss!=b.Boss || a.InactivityImmune!=b.InactivityImmune || a.TargetNoAggro!=b.TargetNoAggro)return false;
+            if(a.CritterTurns!=b.CritterTurns || a.Boss!=b.Boss || a.InactivityImmune!=b.InactivityImmune || a.TargetNoAggro!=b.TargetNoAggro)return false;
             if(a.LavaSpeed!=b.LavaSpeed || a.ShimmerSpeed!=b.ShimmerSpeed || a.Lava!=b.Lava || a.Shimmer!=b.Shimmer)return false;
             if(a.OldX!=b.OldX || a.OldY!=b.OldY || a.StairFall!=b.StairFall || a.SpriteDirection!=b.SpriteDirection || a.SpawnedFromStatue!=b.SpawnedFromStatue)return false;
             if(a.TimeLeft!=b.TimeLeft || a.BuffFingerprint!=b.BuffFingerprint || a.BuffExpires!=b.BuffExpires || a.WaterSpeed!=b.WaterSpeed || a.HoneySpeed!=b.HoneySpeed)return false;

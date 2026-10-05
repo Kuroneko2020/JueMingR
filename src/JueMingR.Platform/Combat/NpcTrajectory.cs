@@ -35,7 +35,7 @@ namespace JueMingR.Platform.Combat
     {
         public NpcIdentity Identity;
         public NpcIdentity ChildIdentity;
-        // Only the 236/237 predicted body form changes this value. Identity
+        // Only the predicted attachment-family body changes this value. Identity
         // remains the real starting instance; a real Transform retires it.
         public int MotionType;
         public int EffectiveType {get{return MotionType==0?Identity.Type:MotionType;}}
@@ -48,7 +48,7 @@ namespace JueMingR.Platform.Combat
         public float ObservedAccelerationX,ObservedAccelerationY,ObservedTurn;
         public int UnmodeledDamageTicks;
         public int Width,Height,Style,Direction,DirectionY,SpriteDirection,Target,ParentSlot,ChildSlot,TimeLeft,ConfusedTicks,Life,LifeMax,BuffFingerprint,BuffExpires;
-        public bool Active,NoGravity,NoTileCollide,Wet,Honey,Lava,Shimmer,CollideX,CollideY,CanReceive,CanHarm,NewSegment,JustHit,StairFall,SpawnedFromStatue,Boss,InactivityImmune,TargetNoAggro;
+        public bool Active,NoGravity,NoTileCollide,Wet,Honey,Lava,Shimmer,CollideX,CollideY,CanReceive,CanHarm,NewSegment,JustHit,StairFall,SpawnedFromStatue,Boss,InactivityImmune,TargetNoAggro,CritterTurns;
         public MotionRect Bounds {get{return new MotionRect(X,Y,Width,Height);}}
     }
     public struct NpcHealthState : IEquatable<NpcHealthState>
@@ -66,10 +66,10 @@ namespace JueMingR.Platform.Combat
         public bool BloodMoon,PlayerProtected;
         public float PlayerX,PlayerY,PlayerWidth,PlayerHeight,Wind,WorldSurface;
         public float RockLayer;
-        public bool Expert,Enraged,Day,PlayerWet,ClearLine,Multiplayer,Remix,SlimeRain,Eclipse,Graveyard,GoodWorld,PlayerDead,PlayerIdleWithNegativeAggro,Corrupt,Crimson,AnyLivingCorrupt,SkyblockLowTiles,MechQueenUp;
+        public bool Expert,Enraged,Day,PlayerWet,ClearLine,Multiplayer,Remix,SlimeRain,Eclipse,Graveyard,GoodWorld,PlayerDead,PlayerIdleWithNegativeAggro,Corrupt,Crimson,AnyLivingCorrupt,SkyblockLowTiles,MechQueenUp,SnowMoon,DontStarve;
         public int WorldWidth,WorldHeight,InvasionType,PlayerIndex;
         public bool Equals(PredictionEnvironment b)
-        {return (ReferenceEquals(Players,b.Players) || Players!=null && Players.Equals(b.Players)) && BloodMoon==b.BloodMoon && PlayerProtected==b.PlayerProtected && PlayerIndex==b.PlayerIndex && MechQueenUp==b.MechQueenUp && RockLayer==b.RockLayer && WorldHeight==b.WorldHeight && PlayerDead==b.PlayerDead && PlayerIdleWithNegativeAggro==b.PlayerIdleWithNegativeAggro && Corrupt==b.Corrupt && Crimson==b.Crimson && AnyLivingCorrupt==b.AnyLivingCorrupt && SkyblockLowTiles==b.SkyblockLowTiles && PlayerX==b.PlayerX && PlayerY==b.PlayerY && PlayerWidth==b.PlayerWidth && PlayerHeight==b.PlayerHeight && Wind==b.Wind && WorldSurface==b.WorldSurface && Expert==b.Expert && Enraged==b.Enraged && Day==b.Day && PlayerWet==b.PlayerWet && ClearLine==b.ClearLine && Multiplayer==b.Multiplayer && Remix==b.Remix && SlimeRain==b.SlimeRain && WorldWidth==b.WorldWidth && Eclipse==b.Eclipse && Graveyard==b.Graveyard && GoodWorld==b.GoodWorld && InvasionType==b.InvasionType;}
+        {return (ReferenceEquals(Players,b.Players) || Players!=null && Players.Equals(b.Players)) && BloodMoon==b.BloodMoon && PlayerProtected==b.PlayerProtected && PlayerIndex==b.PlayerIndex && MechQueenUp==b.MechQueenUp && RockLayer==b.RockLayer && WorldHeight==b.WorldHeight && PlayerDead==b.PlayerDead && PlayerIdleWithNegativeAggro==b.PlayerIdleWithNegativeAggro && Corrupt==b.Corrupt && Crimson==b.Crimson && AnyLivingCorrupt==b.AnyLivingCorrupt && SkyblockLowTiles==b.SkyblockLowTiles && PlayerX==b.PlayerX && PlayerY==b.PlayerY && PlayerWidth==b.PlayerWidth && PlayerHeight==b.PlayerHeight && Wind==b.Wind && WorldSurface==b.WorldSurface && Expert==b.Expert && Enraged==b.Enraged && Day==b.Day && PlayerWet==b.PlayerWet && ClearLine==b.ClearLine && Multiplayer==b.Multiplayer && Remix==b.Remix && SlimeRain==b.SlimeRain && WorldWidth==b.WorldWidth && Eclipse==b.Eclipse && Graveyard==b.Graveyard && GoodWorld==b.GoodWorld && InvasionType==b.InvasionType && SnowMoon==b.SnowMoon && DontStarve==b.DontStarve;}
     }
     public sealed class PredictionPlayers : IEquatable<PredictionPlayers>
     {
@@ -107,6 +107,12 @@ namespace JueMingR.Platform.Combat
         // A known obstruction is canResize=false; unavailable input is false
         // with a stop reason. Neither condition invents an adjusted rectangle.
         bool Resize(MotionRect box,int width,int height,out MotionRect adjusted,out bool canResize,out PredictionStop stop);
+    }
+    public interface IPredictionWaterSurfaceTerrain
+    {
+        // Player-owned surface support after solid contact, before translation.
+        // This capability never gives a fish a water constraint or changes AI.
+        bool MoveWaterWalkingPlayer(ref NpcMotionState body,PredictionEnvironment environment,bool fallThrough,bool lavaWalk,out PredictionStop stop);
     }
     public struct NpcTrajectoryPoint
     {

@@ -92,7 +92,7 @@ namespace NativeWorldTextProbe
             // comparing them would mislabel every genuine movement as a hit.
             // All sampled controls, motion parameters and mode flags remain
             // part of the premise, including mount activity and vertical input.
-            return a.Width==b.Width && a.Height==b.Height && a.Left==b.Left && a.Right==b.Right && a.Up==b.Up && a.Down==b.Down && a.HoldJump==b.HoldJump && a.AutoJump==b.AutoJump && a.Hover==b.Hover && a.Complex==b.Complex && a.Gravity==b.Gravity && a.GravityDirection==b.GravityDirection && a.MaxFall==b.MaxFall && a.Acceleration==b.Acceleration && a.Slowdown==b.Slowdown && a.MaxSpeed==b.MaxSpeed && a.JumpHeight==b.JumpHeight && a.JumpSpeed==b.JumpSpeed;
+            return a.WaterWalk==b.WaterWalk && a.LavaWalk==b.LavaWalk && a.Width==b.Width && a.Height==b.Height && a.Left==b.Left && a.Right==b.Right && a.Up==b.Up && a.Down==b.Down && a.HoldJump==b.HoldJump && a.AutoJump==b.AutoJump && a.Hover==b.Hover && a.Complex==b.Complex && a.Gravity==b.Gravity && a.GravityDirection==b.GravityDirection && a.MaxFall==b.MaxFall && a.Acceleration==b.Acceleration && a.Slowdown==b.Slowdown && a.MaxSpeed==b.MaxSpeed && a.JumpHeight==b.JumpHeight && a.JumpSpeed==b.JumpSpeed;
         }
         private static string Csv(params object[] values){var fields=new string[values.Length];for(int i=0;i<fields.Length;i++)fields[i]="\""+Convert.ToString(values[i],CultureInfo.InvariantCulture).Replace("\"","\"\"")+"\"";return string.Join(",",fields);}
     }

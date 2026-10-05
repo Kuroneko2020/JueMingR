@@ -8,6 +8,7 @@ namespace JueMingR.ArchitectureTests
     {
         internal static void Run()
         {
+            SameCause();
             var terrain=new LocalTerrain();var e=new PredictionEnvironment{PlayerX=1000,PlayerY=168,PlayerWidth=20,PlayerHeight=40,WorldWidth=4200,WorldHeight=1200,WorldSurface=400};
             var fish=State(157,16);fish.NoGravity=true;fish.Vy=-2;
             PredictionStop stop; if(Environment.GetEnvironmentVariable("JUEMINGR_BASIC_CASE")!="plant")Require(NpcMotion.Step(ref fish,new[]{fish},1,e,terrain,1,true,out stop) && Math.Abs(fish.Vy+1.7f)<.0001f,"Dry fish applies AI16 gravity even with NoGravity set.");
@@ -43,6 +44,81 @@ namespace JueMingR.ArchitectureTests
             Require(!NpcMotion.Step(ref plant,new[]{plant},1,e,terrain,1,true,out stop) && stop==PredictionStop.Despawn,"Actual root removal ends the plant body forecast.");
             var unsupported=State(999,13);unsupported.NoGravity=true;
             Require(!NpcMotion.Step(ref unsupported,new[]{unsupported},1,e,terrain,1,true,out stop) && stop==PredictionStop.UnsupportedMechanism,"An unmodeled structural family cannot silently use a free-flight trend.");
+        }
+        private static void SameCause()
+        {
+            string selected=Environment.GetEnvironmentVariable("JUEMINGR_SAME_CAUSE_CASE");
+            var e=new PredictionEnvironment{PlayerX=1000,PlayerY=168,PlayerWidth=20,PlayerHeight=40,WorldWidth=4200,WorldHeight=1200,WorldSurface=400,Day=true};
+            PredictionStop stop;
+            if(selected==null || selected=="wall")
+            {
+                int[] ground={163,164,236,239,530},wall={238,165,237,240,531};
+                for(int i=0;i<ground.Length;i++)
+                {
+                    var terrain=new LocalTerrain{Walls=true};var n=State(wall[i],40);n.Width=n.Height=36;n.NoGravity=true;
+                    float acceleration=wall[i]==237?.12f:wall[i]==531?.16f:.08f;
+                    Require(NpcMotion.Step(ref n,new[]{n},1,e,terrain,1,true,out stop) && Math.Abs(n.Vx-acceleration)<.0001f,"Every locked wall member enters its actual acceleration class: "+wall[i]);
+                    var identity=n.Identity;terrain.Walls=false;n.L1=0;
+                    Require(NpcMotion.Step(ref n,new[]{n},1,e,terrain,1,true,out stop) && n.EffectiveType==ground[i] && n.Style==3 && n.Width==50 && n.Height==20 && n.L1==12 && n.Identity.Equals(identity),"Wall loss preserves the family's ground form and real identity: "+wall[i]);
+                    n.Vy=0;n.L1=0;terrain.Walls=true;
+                    Require(NpcMotion.Step(ref n,new[]{n},1,e,terrain,1,true,out stop) && n.EffectiveType==wall[i] && n.Style==40 && n.L1==12,"Ground attachment returns to the same family, not jungle spider: "+ground[i]);
+                }
+            }
+            if(selected==null || selected=="fish")
+            {
+                e.PlayerWet=true;
+                foreach(int type in new[]{55,57,58,65,102,157,241,465,592,607,615,688,692})
+                {
+                    var n=State(type,16);n.Wet=n.NoGravity=true;n.A0=1;
+                    float acceleration=type==157?.25f:type==65 || type==102 || type==692?.15f:.1f;
+                    Require(NpcMotion.Step(ref n,new[]{n},1,e,new LocalTerrain(),1,true,out stop) && Math.Abs(n.Vx-acceleration)<.0001f,"Every ordinary AI16 member uses its wet parameter class: "+type);
+                    if(type==55 || type==592 || type==607 || type==615 || type==688)Require(n.A0!=0,"Non-pursuing fish do not acquire the player's wet pursuit: "+type);
+                    n.Wet=false;n.Vx=1;n.Vy=0;
+                    Require(NpcMotion.Step(ref n,new[]{n},1,e,new LocalTerrain(),1,true,out stop),"Every ordinary AI16 member has a dry route: "+type);
+                    if(type==65 || type==692)Require(Math.Abs(n.Vy-.3f)<.0001f && Math.Abs(n.Vx-.94f)<.0001f,"Dry shark has drag and gravity, not a random flop: "+type);
+                }
+                var leap=State(615,16);leap.NoGravity=leap.Wet=true;leap.A3=299;
+                Require(!NpcMotion.Step(ref leap,new[]{leap},1,e,new LocalTerrain(),1,true,out stop) && stop==PredictionStop.RandomDecision,"615 stops at the first possible native random action, not before its ordinary swim.");
+                var floatAction=State(688,16);floatAction.NoGravity=floatAction.Wet=true;floatAction.A2=1;floatAction.L0=40;
+                Require(!NpcMotion.Step(ref floatAction,new[]{floatAction},1,e,new LocalTerrain(),1,true,out stop) && stop==PredictionStop.UnsupportedMechanism,"688's actual water-line float remains a separate mechanism.");
+            }
+            if(selected==null || selected=="slime")
+            {
+                e.PlayerWet=false;e.PlayerX=100;
+                foreach(int type in new[]{183,81,304,667,244})
+                {
+                    var n=State(type,1);n.A2=1;n.A0=-1;n.A3=0;
+                    Require(NpcMotion.Step(ref n,new[]{n},1,e,new LocalTerrain(),1,true,out stop) && n.Vy<0 && n.Vx<0,"Forced-active slime selects the player before the predicted jump: "+type);
+                }
+                var passive=State(1,1);passive.A2=1;passive.A0=-1;
+                Require(NpcMotion.Step(ref passive,new[]{passive},1,e,new LocalTerrain(),1,true,out stop) && passive.Vx>0,"Daytime full-health passive slime retains its observed direction.");
+                var crimson=State(183,1);crimson.A2=1;crimson.A0=-3;
+                Require(NpcMotion.Step(ref crimson,new[]{crimson},1,e,new LocalTerrain(),1,true,out stop) && crimson.Vy<0,"Crimslime's extra clock increment changes the frozen pre-jump time.");
+            }
+            if(selected==null || selected=="ground")
+            {
+                e.Day=false;
+                foreach(int type in new[]{26,31,73,140,167})
+                {
+                    var n=State(type,3);n.A3=4;n.Vx=1;
+                    Require(NpcMotion.Step(ref n,new[]{n},1,e,new LocalTerrain(),1,true,out stop),"Positive ordinary fighter blocked count does not refuse all futures: "+type);
+                }
+                foreach(int type in new[]{110,111,206,214,215,216,291,292,293,350,379,380,381,382,409,411,424,426,466,498,499,500,501,502,503,504,505,506,520})
+                {
+                    var n=State(type,3);n.A2=1;n.A3=4;
+                    Require(!NpcMotion.Step(ref n,new[]{n},1,e,new LocalTerrain(),1,true,out stop) && stop==PredictionStop.UnsupportedMechanism,"A real action which bypasses the shared count remains separate: "+type);
+                    n.A2=0;
+                    Require(NpcMotion.Step(ref n,new[]{n},1,e,new LocalTerrain(),1,true,out stop),"The same member's ordinary positive-count fallback remains available: "+type);
+                }
+                foreach(int type in new[]{425,471}){var n=State(type,3);n.A3=4;Require(!NpcMotion.Step(ref n,new[]{n},1,e,new LocalTerrain(),1,true,out stop),"Always-independent counter exception remains separate: "+type);}
+                e.Day=true;e.Remix=true;e.PlayerX=100;var remix=State(26,3);remix.A3=4;
+                Require(NpcMotion.Step(ref remix,new[]{remix},1,e,new LocalTerrain(),1,true,out stop) && remix.Direction<0,"Main.IsItDay is false in Remix, including a daytime observed clock.");
+                var changed=remix;changed.CritterTurns=!remix.CritterTurns;Require(!NpcPredictionCache.Same(remix,changed),"The sampled fighter pursuit class participates in scalar equality.");
+                var changedEnvironment=e;changedEnvironment.DontStarve=!e.DontStarve;Require(!e.Equals(changedEnvironment),"Fighter world predicates participate in environmental equality.");
+                e.Day=false;e.Remix=false;
+                var unsafePhase=State(120,3);unsafePhase.A3=180;
+                Require(!NpcMotion.Step(ref unsafePhase,new[]{unsafePhase},1,e,new LocalTerrain(),1,true,out stop) && stop==PredictionStop.RandomDestination,"Chaos elemental's actual random destination remains a boundary.");
+            }
         }
         private static void PlayerPremise(PredictionEnvironment e)
         {

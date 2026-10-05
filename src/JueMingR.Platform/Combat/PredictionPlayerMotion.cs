@@ -6,6 +6,6 @@ namespace JueMingR.Platform.Combat
     {
         public float X,Y,Vx,Vy,Gravity,GravityDirection,MaxFall,Acceleration,Slowdown,MaxSpeed,JumpSpeed;
         public int Width,Height,Jump,JumpHeight;
-        public bool Left,Right,Up,Down,HoldJump,ReleaseJump,AutoJump,Hover,Complex;
+        public bool Left,Right,Up,Down,HoldJump,ReleaseJump,AutoJump,Hover,Complex,WaterWalk,LavaWalk;
     }
 }

@@ -7,7 +7,7 @@ using Terraria.ID;
 
 namespace JueMingR.TerrariaHost.Combat
 {
-    internal sealed class PredictionTerrain : IPredictionTerrain,IPredictionResizeTerrain
+    internal sealed class PredictionTerrain : IPredictionTerrain,IPredictionResizeTerrain,IPredictionWaterSurfaceTerrain
     {
         private struct Cell : IEquatable<Cell>
         {
@@ -154,6 +154,10 @@ namespace JueMingR.TerrariaHost.Combat
             clear=true;return true;
         }
         public bool Move(ref NpcMotionState n,PredictionEnvironment environment,out PredictionStop stop)
+        {return Move(ref n,environment,false,false,false,out stop);}
+        public bool MoveWaterWalkingPlayer(ref NpcMotionState n,PredictionEnvironment environment,bool fallThrough,bool lavaWalk,out PredictionStop stop)
+        {return Move(ref n,environment,true,fallThrough,lavaWalk,out stop);}
+        private bool Move(ref NpcMotionState n,PredictionEnvironment environment,bool waterWalk,bool fallThrough,bool lavaWalk,out PredictionStop stop)
         {
             stop=PredictionStop.None;
             if(!Area(n.X,n.Y,n.Width,n.Height,out stop) || !Area(n.X+n.Vx,n.Y+n.Vy,n.Width,n.Height,out stop))return false;
@@ -196,15 +200,35 @@ namespace JueMingR.TerrariaHost.Combat
             if(wet && !environment.Multiplayer)
             {if(!lava)NpcHealth.Extinguish(ref next.Health);if(next.Shimmer && !next.Health.ShimmerImmune && next.Health.ShimmerTicks<=10)next.Health.ShimmerTicks=100;}
             next.OldVx=next.Vx;next.OldVy=next.Vy;
-            bool fall=next.Style==2 || next.Style==5 || next.Style==14 || next.Style==3 && next.DirectionY==1;
+            bool fall=waterWalk?fallThrough:next.Style==2 || next.Style==5 || next.Style==14 || next.Style==3 && next.DirectionY==1;
             float rx,ry;bool up;
             if(!TileContact(next.X,next.Y,next.Vx,next.Vy,next.Width,next.Height,fall,out rx,out ry,out up,out stop))return false;
+            if(waterWalk && !WaterSurface(next.Bounds,rx,ref ry,fallThrough,lavaWalk,out stop))return false;
             if(up)ry=.01f;next.CollideX=rx!=next.Vx;next.CollideY=ry!=next.Vy;next.Vx=rx;next.Vy=ry;
             float slowdown=wet?(next.Shimmer?next.ShimmerSpeed:next.Honey?next.HoneySpeed:next.Lava?next.LavaSpeed:next.WaterSpeed):1;
             next.OldX=next.X;next.OldY=next.Y;next.X+=next.CollideX?rx:rx*slowdown;next.Y+=next.CollideY?ry:ry*slowdown;
             if(fall)next.StairFall=true;
             if(!Slopes(ref next,fall,out stop))return false;
             n=next;return true;
+        }
+        private bool WaterSurface(MotionRect box,float vx,ref float vy,bool fallThrough,bool lavaWalk,out PredictionStop stop)
+        {
+            stop=PredictionStop.None;if(fallThrough)return true;
+            if(!QueryArea(box.X,box.Y,box.Width,box.Height,out stop))return false;
+            // Locked WaterCollision uses the old bottom and discrete liquid
+            // height; no support while submerged or moving up through surface.
+            float x=box.X+vx,y=box.Y+vy;
+            for(int tx=(int)(box.X/16)-1;tx<(int)((box.X+box.Width)/16)+2;tx++)
+            for(int ty=(int)(box.Y/16)-1;ty<(int)((box.Y+box.Height)/16)+2;ty++)
+            {
+                Cell c,above;if(!CellAt(tx,ty,out c,out stop))return false;
+                if(c.Liquid==0 || c.Kind==1 && !lavaWalk)continue;
+                if(!CellAt(tx,ty-1,out above,out stop))return false;
+                if(above.Liquid!=0)continue;
+                int height=c.Liquid/32*2+2;float surface=ty*16+16-height;
+                if(x+box.Width>tx*16 && x<tx*16+16 && y+box.Height>surface && y<surface+height && box.Y+box.Height<=surface)vy=surface-(box.Y+box.Height);
+            }
+            return true;
         }
         private bool Wet(NpcMotionState n,bool lavaOnly,out bool wet,out byte kind,out PredictionStop stop)
         {

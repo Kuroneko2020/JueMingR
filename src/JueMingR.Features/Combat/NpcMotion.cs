@@ -12,7 +12,7 @@ namespace JueMingR.Features.Combat
         public static PredictionAssumption Assumptions(NpcMotionState n)
         {
             var result=PredictionAssumption.TargetPlayerStationary|PredictionAssumption.FixedTarget|PredictionAssumption.NoNewHits|PredictionAssumption.LocalTerrain;
-            if(n.Identity.Type==371 || n.Identity.Type==166 || n.Style==16 && NpcAquaticMotion.Known(n.Identity.Type))result|=PredictionAssumption.RandomRepresentative;
+            if(n.Identity.Type==371 || n.Identity.Type==166 || n.Identity.Type==685 || n.Style==16 && NpcAquaticMotion.Known(n.Identity.Type))result|=PredictionAssumption.RandomRepresentative;
             // Terrain contacts and unlisted variants are qualified separately
             // from the audited air-motion families. A shared aiStyle alone is
             // not evidence that every variant has the same movement formula.
@@ -125,20 +125,13 @@ namespace JueMingR.Features.Combat
                 }
             }
             else if(n.Style==1)
-            {if(n.A0==-999){stop=PredictionStop.PhaseBoundary;return false;}Slime(ref n,env,direction,vertical);}
-            else if(n.Style==40 && (n.Identity.Type==236 || n.Identity.Type==237))
+            {if(n.A0==-999){stop=PredictionStop.PhaseBoundary;return false;}if(!Slime(ref n,env,terrain,direction,vertical,out stop))return false;}
+            else if(n.Style==40 && NpcWallMotion.Wall(n.EffectiveType))
             {if(!NpcWallMotion.Step(ref n,env,terrain,confused,out stop))return false;}
             else if(n.Style==3 && NpcGroundMotion.Known(n.EffectiveType))
             {if(!NpcGroundMotion.Step(ref n,env,terrain,confused,out stop))return false;}
             else if(n.Style==3)
-            {
-                n.Direction=direction;
-                n.Vx=Approach(n.Vx,direction*1.5f,.07f);
-                if(n.CollideX && n.CollideY){n.Vy=-6;n.CollideY=false;}
-                // A3 alone is not a phase transition. Unlisted fighter
-                // recovery/type rules are unaudited here; say that honestly.
-                if(n.A3>0){stop=PredictionStop.UnsupportedMechanism;return false;}
-            }
+            {if(!NpcGroundMotion.Fallback(ref n,env,confused,out stop))return false;}
             else if(n.Style==2 && (n.Identity.Type==2 || n.Identity.Type==133 || n.Identity.Type>=190 && n.Identity.Type<=194))
             {
                 n.NoGravity=true;
@@ -182,7 +175,7 @@ namespace JueMingR.Features.Combat
             n.JustHit=false;return CheckActive(ref n,env,out stop);
         }
         internal static bool CurrentPlayerPremise(NpcMotionState n)
-        {return n.Style==13 && NpcAnchoredMotion.Known(n.Identity.Type) || n.Style==16 && NpcAquaticMotion.Known(n.Identity.Type) || n.Style==3 && (n.EffectiveType==77 || n.EffectiveType==236) || n.Style==40 && (n.Identity.Type==236 || n.Identity.Type==237);}
+        {return n.Style==13 && NpcAnchoredMotion.Known(n.EffectiveType) || n.Style==16 && NpcAquaticMotion.Known(n.EffectiveType) || n.Style==3 && (n.EffectiveType==77 || NpcWallMotion.Ground(n.EffectiveType)) || n.Style==40 && NpcWallMotion.Wall(n.EffectiveType);}
         private static bool CheckActive(ref NpcMotionState n,PredictionEnvironment e,out PredictionStop stop)
         {
             stop=PredictionStop.None;int type=n.Identity.Type;
@@ -273,9 +266,27 @@ namespace JueMingR.Features.Combat
                 if(n.A2>300)n.A2=-300;
             }
         }
-        private static void Slime(ref NpcMotionState n,PredictionEnvironment env,int direction,int vertical)
+        private static bool Slime(ref NpcMotionState n,PredictionEnvironment env,IPredictionTerrain terrain,int direction,int vertical,out PredictionStop stop)
         {
+            stop=PredictionStop.None;int type=n.EffectiveType;
             bool aggressive=!env.Day || n.Life!=n.LifeMax || n.Y>env.WorldSurface*16 || env.SlimeRain;
+            if(env.Remix && type==59 && n.Life==n.LifeMax)aggressive=false;
+            if(type==81 || type==183 || type==304 || type==667 || type==244 || type==658 || type==659)aggressive=true;
+            if((type==377 || type==446) && !env.PlayerDead && !n.Wet && (n.Bounds.CenterX-env.PlayerX)*(n.Bounds.CenterX-env.PlayerX)+(n.Bounds.CenterY-env.PlayerY)*(n.Bounds.CenterY-env.PlayerY)<=40000)aggressive=true;
+            // Crystal's pre-ground increment is independent of active pursuit.
+            if(type==244)n.A0+=2;
+            if(type==658 || type==659)
+            {
+                if(n.L0>0)n.L0--;
+                // Their attack opportunity also resets their own jump clock
+                // and damps velocity, irrespective of projectile cooldown.
+                // Retain that deterministic motion; do not create an attack.
+                if(!n.Wet && !env.PlayerDead && !n.TargetNoAggro && n.Vy==0 && Math.Abs(env.PlayerX-n.Bounds.CenterX)<500 && Math.Abs(env.PlayerY-n.Bounds.CenterY)<550)
+                {
+                    bool clear;if(!terrain.CanHit(n.Bounds,new MotionRect(env.PlayerX-env.PlayerWidth/2,env.PlayerY-env.PlayerHeight/2,env.PlayerWidth,env.PlayerHeight),out clear,out stop))return false;
+                    if(clear){n.A0=-40;n.Vx*=.9f;}
+                }
+            }
             if(n.A2>1)n.A2--;
             if(n.Wet)
             {
@@ -292,12 +303,30 @@ namespace JueMingR.Features.Combat
                 if(n.A3==n.X){n.Direction*=-1;n.A2=200;}n.A3=0;
                 n.Vx*=.8f;if(Math.Abs(n.Vx)<.1f)n.Vx=0;
                 // Ordinary slime rhythm; specials retain an approximation tag.
-                n.A0+=aggressive?2:1;if(n.Identity.Type==59 || n.Identity.Type==138)n.A0+=2;if(n.Identity.Type==71)n.A0+=3;
-                int jump=n.A0>=0?1:n.A0>=-1000 && n.A0<=-500?2:n.A0>=-2000 && n.A0<=-1500?3:0;
-                if(jump!=0){if(aggressive && n.A2==1)n.Direction=direction;n.Vy=jump==3?-8:-6;n.Vx+=(jump==3?3:2)*n.Direction;n.A0=jump==3?-200:jump==1?-1120:-2120;if(jump==3)n.A3=n.X;}
+                n.A0+=aggressive?2:1;if(type==59 && !env.Remix || type==138)n.A0+=2;if(type==71 || type==667 || type==659 || type==377 || type==446)n.A0+=3;
+                if(type==183)n.A0++;if(type==658)n.A0+=5;if(type==304)n.A0+=(1-n.Life/Math.Max(1,n.LifeMax))*10;if(type==81)n.A0+=n.Scale>=0?4:1;
+                float rhythm=type==659?-500:type==667?-400:-1000;
+                int jump=n.A0>=0?1:n.A0>=rhythm && n.A0<=rhythm*.5f?2:n.A0>=rhythm*2 && n.A0<=rhythm*1.5f?3:0;
+                if(jump!=0)
+                {
+                    if(aggressive && n.A2==1)n.Direction=direction;n.Vy=jump==3?-8:-6;n.Vx+=(jump==3?3:2)*n.Direction;
+                    if(type==59 && !env.Remix){if(jump==3)n.Vy-=2;n.Vx+=(jump==3?.5f:2)*n.Direction;}
+                    n.A0=jump==3?-200:-120+rhythm*(jump==1?1:2);if(jump==3)n.A3=n.X;
+                    if(type==659){n.Vy*=1.6f;n.Vx*=1.2f;}if(type==141){n.Vy*=1.3f;n.Vx*=1.2f;}
+                    // 685's first impulse is deterministic; retaining its
+                    // current post-jump direction is one qualified RNG branch.
+                    if(type==685){n.Vy*=.5f;n.Vx*=.2f;}
+                    if(type==377 || type==446)
+                    {
+                        n.Vy*=.9f;n.Vx*=.6f;if(aggressive){n.Direction*=-1;n.Vx*=-1;}
+                        PredictionTile ceiling;if(!terrain.Tile((int)(n.Bounds.CenterX/16),(int)(n.Bounds.CenterY/16)-1,out ceiling,out stop))return false;
+                        if(ceiling.Active && ceiling.Solid && !ceiling.SolidTop && !ceiling.Half && ceiling.Slope==0 && -n.Vy+n.Height>16)n.Vy=-(16-n.Height);
+                    }
+                }
             }
             else if(n.Direction==1 && n.Vx<3 || n.Direction==-1 && n.Vx>-3)
             {if(n.CollideX && Math.Abs(n.Vx)==.2f)n.X-=1.4f*n.Direction;if(n.Direction==-1 && n.Vx<.01f || n.Direction==1 && n.Vx>-.01f)n.Vx+=.2f*n.Direction;else n.Vx*=.93f;}
+            return true;
         }
         private static void Bubble(ref NpcMotionState n,PredictionEnvironment env)
         {
