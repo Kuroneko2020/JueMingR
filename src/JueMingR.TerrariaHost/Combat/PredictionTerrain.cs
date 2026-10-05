@@ -7,7 +7,7 @@ using Terraria.ID;
 
 namespace JueMingR.TerrariaHost.Combat
 {
-    internal sealed class PredictionTerrain : IPredictionTerrain
+    internal sealed class PredictionTerrain : IPredictionTerrain,IPredictionResizeTerrain
     {
         private struct Cell : IEquatable<Cell>
         {
@@ -61,6 +61,44 @@ namespace JueMingR.TerrariaHost.Combat
             return true;
         }
         private void Hot(int index,int key,Cell cell){hotKeys[index]=key;hotCells[index]=cell;hotEpochs[index]=epoch;}
+        public bool Resize(MotionRect box,int width,int height,out MotionRect adjusted,out bool canResize,out PredictionStop stop)
+        {
+            adjusted=new MotionRect((int)box.X,(int)box.Y,(int)box.Width,(int)box.Height);canResize=false;stop=PredictionStop.None;
+            // Locked spider growth is at most one tile per axis. Keep the
+            // original bottom-first height and symmetric-then-left width fit.
+            int dy=height-(int)box.Height,dx=width-(int)box.Width;
+            if(dy>16 || dx>16 || width<1 || height<1){stop=PredictionStop.InvalidState;return false;}
+            if(dy>0)
+            {
+                int down,up;if(!ResizeDistance(adjusted,0,1,dy,out down,out stop) || !ResizeDistance(adjusted,0,-1,dy,out up,out stop))return false;
+                if(up+down<dy)return true;
+                int rise=Math.Min(dy,up);adjusted.Y-=rise;adjusted.Height=height;
+            }
+            else{adjusted.Y-=dy;adjusted.Height=height;}
+            if(dx>0)
+            {
+                int right,left;if(!ResizeDistance(adjusted,1,0,dx,out right,out stop) || !ResizeDistance(adjusted,-1,0,dx,out left,out stop))return false;
+                if(left+right<dx)return true;
+                int a=Math.Min(dx/2,Math.Min(left,right)),b=a;a+=Math.Min(dx-a-b,left-a);b+=Math.Min(dx-a-b,right-b);
+                adjusted.X-=a;adjusted.Width=width;
+            }
+            else{adjusted.X+=dx/2;adjusted.Width=width;}
+            canResize=true;return true;
+        }
+        private bool ResizeDistance(MotionRect box,int dx,int dy,int amount,out int distance,out PredictionStop stop)
+        {
+            distance=0;stop=PredictionStop.None;
+            for(int at=0;at<=1;at++)
+            {
+                float x=box.X+1+dx*amount*at,y=box.Y+dy*amount*at;
+                var slope=new NpcMotionState{X=x,Y=y,Vx=dx*amount,Vy=dy*amount,Width=(int)box.Width-1,Height=(int)box.Height};
+                if(!Slopes(ref slope,false,out stop))return false;
+                if(slope.X!=x || slope.Y!=y || slope.Vx!=dx*amount || slope.Vy!=dy*amount)
+                {distance=(int)(at*amount-Math.Sqrt((slope.X-x)*(slope.X-x)+(slope.Y-y)*(slope.Y-y)));return true;}
+            }
+            float rx,ry;bool up;if(!TileContact(box.X,box.Y,dx*amount,dy*amount,(int)box.Width,(int)box.Height,false,out rx,out ry,out up,out stop))return false;
+            distance=(int)Math.Sqrt(rx*rx+ry*ry);return true;
+        }
         private static bool Area(float x,float y,float w,float h,out PredictionStop stop)
         {
             stop=PredictionStop.None;

@@ -1,4 +1,4 @@
-﻿# Local evidence only: a bounded record for the current executable input set.
+# Local evidence only: a bounded record for the current executable input set.
 # No timestamps, Git labels or an old PASS alone establish applicability.
 function Get-WorkloadHash {
     param([string[]] $Rows)
@@ -243,6 +243,7 @@ function Get-WorkloadPlan {
     $scopes = [ordered]@{
         'NpcRollingCpu'=@('combat-host');
         'NpcRollingSelectionNegative'=@('combat-host');
+        'NpcBasicMotion'=@('combat-host');
         'NpcWorkerIntegration'=@('combat-host'); 'NpcSnapshot'=@('combat-host'); 'NpcWorkerPreparation'=@('combat-host');
         'NpcDiagnosticsOff'=@('combat-host'); 'NpcPostDelivery'=@('combat-host'); 'NpcGuardianQuery'=@('combat-host'); 'NpcModeledImpact'=@('combat-host');
         'NpcLegalCoverage'=@('combat-host'); 'NpcWorkerTransport'=@('combat-host'); 'NpcMenuPreparation'=@('combat-host'); 'NpcSessionCapacity'=@('combat-host'); 'NpcProduction'=@('combat-host'); 'NpcLongCoverage'=@('combat-host');

@@ -125,7 +125,7 @@ namespace JueMingR.Features.Combat
             // position/phase/target change; all those fields still compare.
             if(a.Style==3 && a.Identity.Type==109)b.A2=a.A2;
             if(!a.Health.Equals(b.Health))return false;
-            if(a.Friendly!=b.Friendly)return false;
+            if(a.Friendly!=b.Friendly || a.MotionType!=b.MotionType)return false;
             if(a.NetOffsetX!=b.NetOffsetX || a.NetOffsetY!=b.NetOffsetY || a.SmoothingRange!=b.SmoothingRange || a.ResetNetOffset!=b.ResetNetOffset)return false;
             if(a.ChildSlot!=b.ChildSlot || !a.ChildIdentity.Equals(b.ChildIdentity))return false;
             if(a.Boss!=b.Boss || a.InactivityImmune!=b.InactivityImmune || a.TargetNoAggro!=b.TargetNoAggro)return false;

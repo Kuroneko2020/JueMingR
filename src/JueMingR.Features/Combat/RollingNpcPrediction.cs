@@ -40,12 +40,27 @@ namespace JueMingR.Features.Combat
             }
             previous=current;priorTick=tick;Array.Copy(source,work,count);work[selected]=current;
             terrain.Reset();playerSettled=false;points[0]=new NpcTrajectoryPoint(0,current);int length=1;PredictionStop stop=PredictionStop.None;
-            FailureLayer=PredictionFailureLayer.None;
+            FailureLayer=PredictionFailureLayer.None;bool observedPlayer=false;
             for(int future=1;future<=required;future++)
             {
-                if(!AdvancePlayer(ref player,environment,terrain,out stop)){FailureLayer=PredictionFailureLayer.PlayerPremise;break;}
-                var env=environment;env.PlayerX=player.X+player.Width*.5f;env.PlayerY=player.Y+player.Height*.5f;
-                env.PlayerWet=playerBody.Wet;
+                if(!observedPlayer && !AdvancePlayer(ref player,environment,terrain,out stop))
+                {
+                    // Only these bounded structural models can use the real
+                    // current target-player premise. Invalid numeric state
+                    // and unknown NPC/root/wall geometry remain hard stops.
+                    if(NpcMotion.CurrentPlayerPremise(current) && (stop==PredictionStop.TerrainUnavailable || stop==PredictionStop.TerrainLimit || stop==PredictionStop.LiquidEffect || stop==PredictionStop.Slope))
+                    {
+                        // Discard the conditional prefix and restart at most
+                        // once with one consistent real-observation premise.
+                        // Switching back to the real origin halfway through
+                        // a retained path would create an artificial turn.
+                        observedPlayer=true;stop=PredictionStop.None;terrain.Reset();playerSettled=false;
+                        Array.Copy(source,work,count);work[selected]=current;length=1;future=0;continue;
+                    }
+                    else{FailureLayer=PredictionFailureLayer.PlayerPremise;break;}
+                }
+                var env=environment;
+                if(!observedPlayer){env.PlayerX=player.X+player.Width*.5f;env.PlayerY=player.Y+player.Height*.5f;env.PlayerWet=playerBody.Wet;}
                 bool advanced=true;
                 for(int i=0;i<count;i++)
                 {
@@ -62,7 +77,9 @@ namespace JueMingR.Features.Combat
             var assumptions=(NpcMotion.Assumptions(current)&~PredictionAssumption.TargetPlayerStationary)|PredictionAssumption.HeldPlayerControls|PredictionAssumption.ApproximateMechanism;
             if(environment.Multiplayer)assumptions|=PredictionAssumption.NetworkObservation;
             if(current.UnmodeledDamageTicks>0)assumptions|=PredictionAssumption.UnmodeledDamageEffects;
-            return new NpcTrajectory(current.Identity,tick,++version,assumptions,stop,points,length,PredictionStrategy.RollingConditional,epoch,observed?PredictionQuality.ObservedTrend:PredictionQuality.LimitedObservation);
+            if(observedPlayer)assumptions=(assumptions&~PredictionAssumption.HeldPlayerControls)|PredictionAssumption.CurrentPlayerObservation;
+            var quality=NpcMotion.CurrentPlayerPremise(current)?PredictionQuality.StructuredApproximation:observed?PredictionQuality.ObservedTrend:PredictionQuality.LimitedObservation;
+            return new NpcTrajectory(current.Identity,tick,++version,assumptions,stop,points,length,PredictionStrategy.RollingConditional,epoch,quality);
         }
         private NpcMotionState playerBody;
         private bool playerSettled;

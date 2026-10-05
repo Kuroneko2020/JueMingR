@@ -17,7 +17,7 @@ namespace JueMingR.Features.Combat
             // from the audited air-motion families. A shared aiStyle alone is
             // not evidence that every variant has the same movement formula.
             if(!n.NoTileCollide || n.Style==3 || n.Style==6 || n.Style==37 || n.Style==1 || !KnownMotion(n))result|=PredictionAssumption.ApproximateMechanism;
-            if(n.BuffFingerprint!=0)result|=PredictionAssumption.ApproximateMechanism;
+            if(n.BuffFingerprint!=0)result|=PredictionAssumption.ApproximateMechanism|PredictionAssumption.UnmodeledStatusEffects;
             return result;
         }
         public static bool Step(ref NpcMotionState n,NpcMotionState[] group,int count,PredictionEnvironment env,IPredictionTerrain terrain,int elapsed,out PredictionStop stop)
@@ -26,7 +26,12 @@ namespace JueMingR.Features.Combat
         {
             stop=PredictionStop.None;n.NewSegment=false;
             if(!n.Active){stop=PredictionStop.Despawn;return false;}
-            if(n.BuffFingerprint!=0){stop=PredictionStop.BuffTransition;return false;}
+            // Explicit structural models can continue from their observed
+            // state under a qualified unknown-effect premise until expiry.
+            // Unmodeled families still refuse a potentially motion-changing
+            // effect; no unknown effect is silently declared harmless.
+            if(n.BuffFingerprint!=0 && (!CurrentPlayerPremise(n) || n.BuffExpires<=elapsed))
+            {stop=PredictionStop.BuffTransition;return false;}
             if(!Finite(n.X) || !Finite(n.Y) || !Finite(n.Vx) || !Finite(n.Vy)){stop=PredictionStop.InvalidState;return false;}
             // Native UpdateNPC smooths the last received offset before AI.
             // Future packets remain unknown under NetworkObservation; no
@@ -121,14 +126,18 @@ namespace JueMingR.Features.Combat
             }
             else if(n.Style==1)
             {if(n.A0==-999){stop=PredictionStop.PhaseBoundary;return false;}Slime(ref n,env,direction,vertical);}
-            else if(n.Style==3 && NpcGroundMotion.Known(n.Identity.Type))
+            else if(n.Style==40 && (n.Identity.Type==236 || n.Identity.Type==237))
+            {if(!NpcWallMotion.Step(ref n,env,terrain,confused,out stop))return false;}
+            else if(n.Style==3 && NpcGroundMotion.Known(n.EffectiveType))
             {if(!NpcGroundMotion.Step(ref n,env,terrain,confused,out stop))return false;}
             else if(n.Style==3)
             {
                 n.Direction=direction;
                 n.Vx=Approach(n.Vx,direction*1.5f,.07f);
                 if(n.CollideX && n.CollideY){n.Vy=-6;n.CollideY=false;}
-                if(n.A3>0){stop=PredictionStop.PhaseBoundary;return false;}
+                // A3 alone is not a phase transition. Unlisted fighter
+                // recovery/type rules are unaudited here; say that honestly.
+                if(n.A3>0){stop=PredictionStop.UnsupportedMechanism;return false;}
             }
             else if(n.Style==2 && (n.Identity.Type==2 || n.Identity.Type==133 || n.Identity.Type>=190 && n.Identity.Type<=194))
             {
@@ -168,10 +177,12 @@ namespace JueMingR.Features.Combat
             // bypasses that owner; changing it here would defeat rolling reuse
             // for a correctly predicted Sharkron/Duke step.
             if(!terrain.Move(ref n,env,out stop))return false;
-            if(n.Style==3 && NpcGroundMotion.Known(n.Identity.Type))NpcGroundMotion.AfterMove(ref n);
+            if(n.Style==3 && NpcGroundMotion.Known(n.EffectiveType))NpcGroundMotion.AfterMove(ref n);
             if(n.Style==69 || n.Identity.Type==371 || n.Identity.Type==372 || n.Identity.Type==373)n.Health.DontTakeDamage=!n.CanReceive;
             n.JustHit=false;return CheckActive(ref n,env,out stop);
         }
+        internal static bool CurrentPlayerPremise(NpcMotionState n)
+        {return n.Style==13 && NpcAnchoredMotion.Known(n.Identity.Type) || n.Style==16 && NpcAquaticMotion.Known(n.Identity.Type) || n.Style==3 && (n.EffectiveType==77 || n.EffectiveType==236) || n.Style==40 && (n.Identity.Type==236 || n.Identity.Type==237);}
         private static bool CheckActive(ref NpcMotionState n,PredictionEnvironment e,out PredictionStop stop)
         {
             stop=PredictionStop.None;int type=n.Identity.Type;

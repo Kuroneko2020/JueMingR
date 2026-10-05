@@ -17,10 +17,10 @@ namespace JueMingR.Platform.Combat
         public override int GetHashCode(){return Slot^Generation^Type^Session.GetHashCode();}
     }
     [Flags]
-    public enum PredictionAssumption { None=0, TargetPlayerStationary=1, FixedTarget=2, NoNewHits=4, RandomRepresentative=8, LocalTerrain=16, NetworkObservation=32, ApproximateMechanism=64, HeldPlayerControls=128, CurrentConnection=256, ObservedLighting=512, UnmodeledDamageEffects=1024 }
+    public enum PredictionAssumption { None=0, TargetPlayerStationary=1, FixedTarget=2, NoNewHits=4, RandomRepresentative=8, LocalTerrain=16, NetworkObservation=32, ApproximateMechanism=64, HeldPlayerControls=128, CurrentConnection=256, ObservedLighting=512, UnmodeledDamageEffects=1024, CurrentPlayerObservation=2048, UnmodeledStatusEffects=4096 }
     public enum PredictionStop { None, UnsupportedMechanism, RandomDestination, MissingDependency, TerrainUnavailable, TerrainLimit, Slope, LiquidEffect, BuffTransition, Despawn, PhaseBoundary, InvalidState, RandomDecision }
     public enum PredictionStrategy { Model, NativeIsolated, SegmentedTrend, RollingConditional }
-    public enum PredictionQuality { Conditional, LimitedObservation, ObservedTrend }
+    public enum PredictionQuality { Conditional, LimitedObservation, ObservedTrend, StructuredApproximation }
     public enum PredictionFailureLayer { None, Source, PlayerPremise, NpcMotion }
     public struct MotionRect
     {
@@ -35,6 +35,10 @@ namespace JueMingR.Platform.Combat
     {
         public NpcIdentity Identity;
         public NpcIdentity ChildIdentity;
+        // Only the 236/237 predicted body form changes this value. Identity
+        // remains the real starting instance; a real Transform retires it.
+        public int MotionType;
+        public int EffectiveType {get{return MotionType==0?Identity.Type:MotionType;}}
         public NpcHealthState Health;
         public bool Friendly;
         public float NetOffsetX,NetOffsetY,SmoothingRange;
@@ -97,6 +101,12 @@ namespace JueMingR.Platform.Combat
         bool Move(ref NpcMotionState state,PredictionEnvironment environment,out PredictionStop stop);
         bool Unchanged {get;}
         void Reset();
+    }
+    public interface IPredictionResizeTerrain
+    {
+        // A known obstruction is canResize=false; unavailable input is false
+        // with a stop reason. Neither condition invents an adjusted rectangle.
+        bool Resize(MotionRect box,int width,int height,out MotionRect adjusted,out bool canResize,out PredictionStop stop);
     }
     public struct NpcTrajectoryPoint
     {

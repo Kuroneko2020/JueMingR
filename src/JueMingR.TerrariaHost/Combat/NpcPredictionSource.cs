@@ -30,7 +30,7 @@ namespace JueMingR.TerrariaHost.Combat
         internal bool EmptyFutureReason(NpcIdentity identity,long tick,out PredictionStop stop,out PredictionFailureLayer layer)
         {stop=outcomeStop;layer=outcomeLayer;return outcomeTick==tick && outcomeIdentity.Equals(identity) && outcomeFuture==0 && stop!=PredictionStop.None && CombatSelection.Valid(identity,identity.Session);}
         private void Outcome(NpcIdentity identity,long tick,NpcTrajectory path,PredictionFailureLayer layer)
-        {outcomeIdentity=identity;outcomeTick=tick;outcomeStop=path?.Stop??PredictionStop.InvalidState;outcomeFuture=Math.Max(0,(path?.Count??0)-1);outcomeLayer=layer;}
+        {outcomeIdentity=identity;outcomeTick=tick;outcomeStop=path?.Stop??PredictionStop.InvalidState;outcomeFuture=Math.Max(0,(path?.Count??0)-1);outcomeLayer=layer;OutcomeStrategy=path?.Strategy??PredictionStrategy.RollingConditional;var n=Main.npc[identity.Slot];OutcomeStyle=n.aiStyle;OutcomePhase=n.ai[0];}
         // Authentication alone never enables the expensive comparison route.
         // Only isolated comparison fixtures explicitly opt into native proof.
         internal NpcPredictionSource(Prediction.PredictionLaunchIdentity launch=null,bool exactComparison=false)
@@ -48,6 +48,9 @@ namespace JueMingR.TerrariaHost.Combat
                 typeof(MotionRect),typeof(NpcMotionState),typeof(NpcTrajectoryPoint),typeof(NpcBuffLayout),typeof(PredictionPlayers),typeof(NpcTrajectory).GetNestedType("PackedPoint",System.Reflection.BindingFlags.NonPublic),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcRollingMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcGroundMotion",true),
+                typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcAquaticMotion",true),
+                typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcAnchoredMotion",true),
+                typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcWallMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcWormMotion",true)};
             foreach(var type in types)
             {
@@ -69,7 +72,7 @@ namespace JueMingR.TerrariaHost.Combat
         private PredictionPlayers players;
         internal void Clear()
         {
-            outcomeTick=-1;
+            outcomeTick=-1;OutcomeStyle=0;OutcomePhase=0;OutcomeStrategy=PredictionStrategy.Model;
             Native?.ClearTarget();Cache.Clear();
             if(!ownsState)return;
             ownsState=false;segmented.Clear();rolling.Clear();usingSegmented=false;observedCount=0;targetPlayer=-1;epoch++;
@@ -146,7 +149,6 @@ namespace JueMingR.TerrariaHost.Combat
                 Enraged=player.position.Y<800 || player.position.Y>Main.worldSurface*16 || player.position.X>6400 && player.position.X<Main.maxTilesX*16-6400,
                 MechQueenUp=NPC.mechQueen>=0 && NPC.mechQueen<Main.maxNPCs && Main.npc[NPC.mechQueen]!=null && Main.npc[NPC.mechQueen].active && Main.npc[NPC.mechQueen].type==127,Players=players,WorldHeight=Main.maxTilesY,RockLayer=(float)Main.rockLayer,PlayerDead=player.dead,PlayerIdleWithNegativeAggro=player.itemAnimation==0 && player.aggro<0,Corrupt=player.ZoneCorrupt,Crimson=player.ZoneCrimson,AnyLivingCorrupt=anyCorrupt,SkyblockLowTiles=WorldGen.Skyblock.lowTiles,ClearLine=false,Eclipse=Main.eclipse,Graveyard=player.ZoneGraveyard,GoodWorld=Main.getGoodWorld,InvasionType=Main.invasionType};
             var result=rolling.Prepare(states,count,selected,tick,Cache.Required,epoch,env,ReadPlayer(player),Terrain,motionRoles);
-            OutcomeStyle=states[selected].Style;OutcomePhase=states[selected].A0;OutcomeStrategy=PredictionStrategy.RollingConditional;
             Outcome(identity,tick,result,rolling.FailureLayer);Cache.Publish(result);
         }
         private static PredictionPlayerMotion ReadPlayer(Player p)
@@ -182,6 +184,9 @@ namespace JueMingR.TerrariaHost.Combat
                 // Visual and defence-only effects do not change motion under
                 // the explicit NoNewHits premise; their clocks need no model.
                 if(type==119 || type==320 || type==36 || type==69 || type==72 || type==203 || type==310 || type==399 || type==400)continue;
+                // Locked .8: Slow has no NPC flag/AI action; Dryad's Ward
+                // changes defence only under the NoNewHits motion premise.
+                if(type==BuffID.Slow || type==165)continue;
                 buffHash=unchecked((buffHash*397^type)*397^time);expires=expires==0?time:Math.Min(expires,time);
             }
             int child=(n.aiStyle==6 || n.aiStyle==37) && n.ai[0]>0 && n.ai[0]<Main.maxNPCs?(int)n.ai[0]:-1;var linked=child>=0?Main.npc[child]:null;

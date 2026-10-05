@@ -8,10 +8,10 @@ namespace JueMingR.Features.Combat
     // native AI; rechecking it afterwards changes obstacle and pit decisions.
     internal static class NpcGroundMotion
     {
-        internal static bool Known(int type){return type==3 || type==21 || type==27 || type==77 || type==109 || type==120 || type==166;}
+        internal static bool Known(int type){return type==3 || type==21 || type==27 || type==77 || type==109 || type==120 || type==166 || type==236;}
         internal static bool Step(ref NpcMotionState n,PredictionEnvironment e,IPredictionTerrain t,bool confused,out PredictionStop stop)
         {
-            stop=PredictionStop.None;int type=n.Identity.Type;
+            stop=PredictionStop.None;int type=n.EffectiveType;
             if(e.PlayerY+e.PlayerHeight/2==n.Y+n.Height)n.DirectionY=-1;
             if(type==166 && n.A2<0)
             {
@@ -34,13 +34,15 @@ namespace JueMingR.Features.Combat
             {if(e.Day && !e.Remix && n.Y/16<e.WorldSurface)n.TimeLeft=Math.Min(n.TimeLeft,10);if(n.Vx==0){if(n.Vy==0 && ++n.A0>=2){n.Direction*=-1;n.SpriteDirection=n.Direction;n.A0=0;}}else n.A0=0;if(n.Direction==0)n.Direction=1;}
             // Armored skeleton shares ordinary blocked/turn/step decisions,
             // but its locked .8 speed is 2, not the later fighter default 3.
-            float speed=type==3?2-n.Scale:type==21?1.5f*(2-n.Scale):type==27 || type==77 || type==109?2:3,acc=type==109?.04f:.07f;
+            float speed=type==3?2-n.Scale:type==21?1.5f*(2-n.Scale):type==27 || type==77 || type==109 || type==236?2:3,acc=type==109?.04f:.07f;
             if(n.Vx<-speed || n.Vx>speed){if(n.Vy==0){n.Vx*=.8f;n.Vy*=.8f;}}
             else
             {
                 if((type==120 || type==166) && n.Vy==0 && (n.Vx>0 && n.Direction<0 || n.Vx<0 && n.Direction>0))n.Vx*=.99f;
                 if(n.Direction==1)n.Vx=Math.Min(speed,n.Vx+acc);else if(n.Direction==-1)n.Vx=Math.Max(-speed,n.Vx-acc);
             }
+            if(type==236 && !NpcWallMotion.GroundAttachment(ref n,e,t,confused,out stop))return false;
+            if(n.Style!=3)return true;
             bool supported=false;
             if(n.Vy==0)
             {
@@ -51,7 +53,7 @@ namespace JueMingR.Features.Combat
             if(n.Vy>=0 && !StepUp(ref n,t,out stop))return false;
             if(supported)
             {
-                int x=(int)((n.X+n.Width/2+(type==109?n.Width/2+16:15)*n.Direction)/16),y=(int)((n.Y+n.Height-15)/16);
+                int x=(int)((n.X+n.Width/2+(type==109 || type==236?n.Width/2+16:15)*n.Direction)/16),y=(int)((n.Y+n.Height-15)/16);
                 PredictionTile cell,one,two,three;
                 if(!t.Tile(x,y,out cell,out stop) || !t.Tile(x,y-1,out one,out stop) || !t.Tile(x,y-2,out two,out stop) || !t.Tile(x,y-3,out three,out stop))return false;
                 if((type==3 || type==21 || type==27) && one.Active && (one.Type==10 || one.Type==388))
@@ -108,7 +110,7 @@ namespace JueMingR.Features.Combat
                 !(c.Active && !c.TopSlope && !a.TopSlope && (c.Solid && !c.SolidTop || platforms && c.SolidTop && (!a.Solid || !a.Active) && c.Type!=16 && c.Type!=18 && c.Type!=134) || a.Half && a.Active) ||
                 !(Pass(a) || a.Half && Pass(f)) || !Pass(b) || !Pass(d) || behind.Active && behind.Solid && (!platforms || !behind.SolidTop))return true;
             float surface=y*16+(c.Half?8:0)-(a.Half?8:0),rise=n.Y+n.Height-surface;
-            if(surface<n.Y+n.Height && rise<=16.1f)n.Y=surface-n.Height;
+            if(surface<n.Y+n.Height && rise<=(n.EffectiveType==236?24.1f:16.1f))n.Y=surface-n.Height;
             return true;
         }
         private static bool Pass(PredictionTile t){return !t.Active || !t.Solid || t.SolidTop;}

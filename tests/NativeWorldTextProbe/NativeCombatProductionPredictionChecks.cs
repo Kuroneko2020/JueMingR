@@ -62,7 +62,7 @@ namespace NativeWorldTextProbe
                     foreach(var method in new[]{typeof(WorldGen).GetMethod("saveToonWhilePlaying",Flags),typeof(Player).GetMethod("SavePlayer",Flags),typeof(NetMessage).GetMethod("SendData",Flags)})Patch(sink,method,nameof(Refuse));
                     Set(host,"LayerStatus",Enum.Parse(host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Rendering.WorldLayerStatus"),"Ready"));
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_BASIC_MOTION")=="1")
-                    {phase="basic-motion";NativeCombatBasicMotionChecks.Run(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase="basic-motion";NativeCombatBasicMotionChecks.Run(context,cache,()=>Step(context,samples,prepares,false),output,samples,prepares);return;}
                     if(rolling || Environment.GetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT")=="rolling-baseline")
                     {NativeCombatRollingBaselineChecks.Run(context,cache,()=>{phase=NativeCombatRollingBaselineChecks.Phase;Step(context,samples,prepares,false);},output,graphics);return;}
                     if(continuousSeconds>0){Scene(2);Window(context,cache,samples,prepares,"baseline-off",continuousSeconds,false);Main.npc[0].active=false;}

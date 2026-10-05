@@ -49,9 +49,10 @@ namespace NativeWorldTextProbe
             }
             pending.RemoveAll(s=>s.Next==Futures.Length);
         }
-        internal void Capture(string phase,int frame,NpcTrajectory path)
+        internal void Capture(string phase,int frame,NpcTrajectory path,int cadence=30)
         {
-            if(path==null || frame%30!=0)return;
+            if(cadence<1 || cadence>30)throw new ArgumentOutOfRangeException(nameof(cadence));
+            if(path==null || frame%cadence!=0)return;
             var n=Main.npc[path.Identity.Slot];var p=Main.LocalPlayer;
             var s=new Sample{Phase=phase,Frame=frame,Life=n.life,PlayerLife=p.statLife,Mount=p.mount.Type,MountActive=p.mount.Active,Wet=p.wet,Honey=p.honeyWet,Lava=p.lavaWet,Shimmer=p.shimmerWet,Player=PlayerMotion(p),Path=path,Baseline=new MotionRect[121],BaselineCount=1};
             // Simple same-sample speed/gravity/local collision comparator.

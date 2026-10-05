@@ -57,9 +57,11 @@ namespace JueMingR.TerrariaHost.Combat
             if((path.Assumptions&PredictionAssumption.RandomRepresentative)!=0)pathText+=" · 随机代表路线";
             if((path.Assumptions&PredictionAssumption.NetworkObservation)!=0)pathText+=" · 依据本机网络观察";
             if((path.Assumptions&PredictionAssumption.UnmodeledDamageEffects)!=0)pathText+=" · 未估计部分持续伤害";
+            if((path.Assumptions&PredictionAssumption.UnmodeledStatusEffects)!=0)pathText+=" · 部分状态后续影响待确认";
+            if(path.Quality==PredictionQuality.StructuredApproximation)pathText+=" · 依据运动约束";
             if(path.Strategy==PredictionStrategy.SegmentedTrend)
                 pathText+=path.Quality==PredictionQuality.LimitedObservation?" · 运动观察较少":" · 依据近期移动，远端仅供参考";
-            else pathText+=(path.Assumptions&PredictionAssumption.HeldPlayerControls)!=0?" · 假设玩家延续当前输入":" · 假设玩家保持当前位置";
+            else pathText+=(path.Assumptions&PredictionAssumption.CurrentPlayerObservation)!=0?" · 依据玩家当前位置":(path.Assumptions&PredictionAssumption.HeldPlayerControls)!=0?" · 假设玩家延续当前输入":" · 假设玩家保持当前位置";
             Prediction.AimLightTrace.Presentation("prepared",path,count-eventEnd,eventEnd,pathText!=null);
 #if JMR_AIM_LIGHT
             }
