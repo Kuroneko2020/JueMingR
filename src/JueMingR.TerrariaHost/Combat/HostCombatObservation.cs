@@ -4,6 +4,7 @@ using AimTrace = JueMingR.TerrariaHost.Combat.Prediction.AimLightTrace;
 using JueMingR.Features.Combat;
 using JueMingR.Infrastructure.Storage;
 using JueMingR.Platform.Hotkeys;
+using JueMingR.Platform.Combat;
 using JueMingR.Platform.Runtime;
 using JueMingR.TerrariaHost.Input;
 using JueMingR.TerrariaHost.Npcs;
@@ -22,6 +23,11 @@ namespace JueMingR.TerrariaHost.Combat
         private readonly SingleFeatureRuntime runtime;
         private readonly HostInputState input;
         private bool collisionFailed,pathFailed,reportedCollision,reportedPath,reportedMarker,wasCollision,wasPath;
+        private bool selectionFailed;
+        // One full identity per native slot bounds local fault retention. A
+        // different selected NPC remains usable; slot reuse never inherits it.
+        private readonly NpcIdentity[] failedTargets=new NpcIdentity[NpcPredictionCache.Capacity];
+        internal bool TargetPredictionFailed {get{return Selection.HasTarget && failedTargets[Selection.Target.Slot].Equals(Selection.Target);}}
         internal Rendering.WorldLayerStatus LayerStatus;
         internal HostCombatObservation(string directory,SingleFeatureRuntime runtime,HostInputState input,NativeNpcObservation npcs,Prediction.PredictionLaunchIdentity launch=null)
             :this(directory,runtime,input,npcs,launch,null){}
@@ -41,9 +47,10 @@ namespace JueMingR.TerrariaHost.Combat
         internal long Session {get{return runtime.IsSessionActive?runtime.Generation:-1;}}
         internal bool Collision {get{return Settings.CanRun && Options.Collision && Unavailable(0)==null;}}
         internal bool Path {get{return Settings.CanRun && Options.Path && Unavailable(1)==null;}}
-        internal bool Marker {get{return Settings.CanRun && Options.Marker && LayerStatus!=Rendering.WorldLayerStatus.Unavailable;}}
+        internal bool Marker {get{return !selectionFailed && Settings.CanRun && Options.Marker && LayerStatus!=Rendering.WorldLayerStatus.Unavailable;}}
         public string Unavailable(int field)
         {
+            if(selectionFailed)return "战斗目标观察暂不可用，设置已保留；可点击开启重试。";
             if(LayerStatus==Rendering.WorldLayerStatus.Unavailable)return "世界显示入口不可用，设置已保留；需要重新进入游戏。";
             if(field==0 && (!Hooks.Ready || collisionFailed))return "碰撞箱显示暂不可用，设置已保留；可点击开启重试。";
             if(field==1 && (!Hooks.Ready || pathFailed))return "NPC寻路预测暂不可用，设置已保留；可点击开启重试。";
@@ -52,13 +59,14 @@ namespace JueMingR.TerrariaHost.Combat
         }
         internal bool Capture {get{return Collision && runtime.IsSessionActive;}}
         internal bool CanDraw {get{return runtime.IsSessionActive && LayerStatus==Rendering.WorldLayerStatus.Ready && input.CanPrepareText;}}
-        public bool Enabled {get{return Collision || Path || Marker || Prediction.Cache.Required>0;}}
+        public bool Enabled {get{return !selectionFailed && (Collision || Path || Marker || !pathFailed && Prediction.Cache.Required>0);}}
         public void Set(int field,bool value)
         {
             if(!CanConfigure)return;
+            if(value && (field==0 || field==1 || field==5))selectionFailed=false;
             bool prior=field==0?Options.Collision:field==1?Options.Path:field==2?Options.ClearLine:field==3?Options.MouseCenter:field==4?Options.Dummy:Options.Marker;
             if(field==0 && value){collisionFailed=reportedCollision=false;Geometry.Failed=false;}
-            if(field==1 && value){pathFailed=reportedPath=false;if(Prediction.Native!=null && Prediction.Native.Failed)Prediction.Native.Retry();}
+            if(field==1 && value){pathFailed=reportedPath=false;Array.Clear(failedTargets,0,failedTargets.Length);if(Prediction.Native!=null && Prediction.Native.Failed)Prediction.Native.Retry();}
             if(field==5 && value){reportedMarker=false;World.Marker.Reset();}
             if(prior!=value)Settings.Set(Options.Toggle(field));
         }
@@ -75,16 +83,16 @@ namespace JueMingR.TerrariaHost.Combat
             // Reliable preference intent is available in the safe Main.Update
             // callback even in menus. This does not activate any Gameplay
             // feature, sample a world, or grant input/operation ownership.
-            Prediction.Native?.PollEnvironment(Hooks.Ready && (Settings.CanRun && Options.Path && !pathFailed || Prediction.Cache.Required>0),runtime.IsSessionActive);
+            Prediction.Native?.PollEnvironment(Hooks.Ready && !selectionFailed && !pathFailed && (Settings.CanRun && Options.Path || Prediction.Cache.Required>0),runtime.IsSessionActive);
             wasCollision=collision;wasPath=path;
             AimTrace.Host(this,pathFailed,"poll",false);
         }
-        internal void SampleMouse(){if(Path || Marker || Prediction.Cache.Required>0)Selection.SampleMouse(input);}
+        internal void SampleMouse(){if(!selectionFailed && (Path || Marker || !pathFailed && Prediction.Cache.Required>0))Selection.SampleMouse(input);}
         internal void CollisionFailed(){collisionFailed=true;Geometry.Clear();}
         public void OnSessionStarted(){Clear();Geometry.Session=runtime.Generation;}
         public void OnSessionEnded(){Clear();}
-        private void Clear(){Geometry.Clear();Prediction.Cache.EndSession();Prediction.EndWorld();Selection.Clear();World.Clear();World.Marker.Reset();collisionFailed=pathFailed=reportedCollision=reportedPath=reportedMarker=false;}
-        public void FailClosed(){Clear();Prediction.Stop();collisionFailed=pathFailed=true;}
+        private void Clear(){Geometry.Clear();Prediction.Cache.EndSession();Prediction.EndWorld();Selection.Clear();World.Clear();World.Marker.Reset();Array.Clear(failedTargets,0,failedTargets.Length);selectionFailed=collisionFailed=pathFailed=reportedCollision=reportedPath=reportedMarker=false;}
+        public void FailClosed(){Clear();Prediction.Stop();selectionFailed=collisionFailed=pathFailed=true;}
         public void Update(ulong tick)
         {
             try
@@ -97,12 +105,15 @@ namespace JueMingR.TerrariaHost.Combat
             // a short known death/terrain endpoint. It still requests 120;
             // independent strict readers retain their own minimum.
             if(Path)Prediction.Cache.Demand(0,1,NpcPredictionCache.Horizon);else Prediction.Cache.Release(0);
-            try{Selection.Update(Options,Session,Marker || Prediction.Cache.Required>0,Collision?Geometry:null);}catch(Exception error){AimTrace.Fault("host-selection",error,(long)tick);CollisionFailed();pathFailed=true;Selection.RetireTarget();Prediction.Clear();return;}
+            try{Selection.Update(Options,Session,Marker || !pathFailed && Prediction.Cache.Required>0,Collision?Geometry:null);}catch(Exception error){AimTrace.Fault("host-selection",error,(long)tick);selectionFailed=true;CollisionFailed();pathFailed=true;Selection.RetireTarget();Prediction.Stop();World.Clear();return;}
             if(!Selection.HasTarget){Prediction.Clear();return;}
             // Ordinary prediction is synchronous and owned by Source. Native
             // failure belongs only to the explicit comparison route; a shared
             // entry exception still latches the whole path closed.
-            if(Prediction.Cache.Required>0)try{Prediction.Prepare(Selection.Target,Main.GameUpdateCount);}catch(Exception error){AimTrace.Fault("host-prepare",error,(long)tick);pathFailed=true;Prediction.Stop();}
+            if(TargetPredictionFailed){Prediction.Clear();return;}
+            if(!pathFailed && Prediction.Cache.Required>0)try{Prediction.Prepare(Selection.Target,Main.GameUpdateCount);}
+            catch(NpcObservationFailure error){AimTrace.Fault("host-npc-observation",error,(long)tick);failedTargets[Selection.Target.Slot]=Selection.Target;Prediction.Clear();}
+            catch(Exception error){AimTrace.Fault("host-prepare",error,(long)tick);pathFailed=true;Prediction.Stop();}
             }
             finally{AimTrace.Host(this,pathFailed,"update-exit",true);}
         }

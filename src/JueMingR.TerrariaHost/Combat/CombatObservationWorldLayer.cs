@@ -45,6 +45,7 @@ namespace JueMingR.TerrariaHost.Combat
             Prediction.AimLightTrace.Presentation("cache-consume",path,0,eventEnd,false);
             if(path==null)
             {
+                if(host.Path && host.TargetPredictionFailed){pathText="NPC 路径：当前目标观察失败，可点击开启重试。";return;}
                 PredictionStop reason;PredictionFailureLayer layer;
                 if(host.Path && host.Selection.HasTarget && host.Prediction.EmptyFutureReason(host.Selection.Target,(long)Main.GameUpdateCount,out reason,out layer))
                     pathText=EmptyText(reason,layer);

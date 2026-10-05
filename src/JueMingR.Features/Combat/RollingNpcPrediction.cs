@@ -143,6 +143,6 @@ namespace JueMingR.Features.Combat
         private static bool Finite(float value){return !float.IsNaN(value)&&!float.IsInfinity(value);}
         private static float Clamp(float value,float limit){return Math.Max(-limit,Math.Min(limit,value));}
         private static bool SamePhase(NpcMotionState a,NpcMotionState b)
-        {return a.Style==b.Style && (a.A0==b.A0 || Math.Abs(a.A0)>8 && Math.Abs(b.A0)>8 && Math.Sign(a.A0)==Math.Sign(b.A0) && Math.Abs(a.A0-b.A0)<=4);}
+        {return a.Style==b.Style && a.PositionRelation==b.PositionRelation && a.PositionOwner.Equals(b.PositionOwner) && a.PositionParameter==b.PositionParameter && (a.A0==b.A0 || Math.Abs(a.A0)>8 && Math.Abs(b.A0)>8 && Math.Sign(a.A0)==Math.Sign(b.A0) && Math.Abs(a.A0-b.A0)<=4);}
     }
 }

@@ -56,6 +56,7 @@ namespace NativeWorldTextProbe
             target=new NPC();target.SetDefaults(371);target.active=true;target.whoAmI=2;target.position=new Vector2(720,450);Main.npc[2]=target;NativeCombatObservationChecks.Fresh(context,host);Call(world,"Prepare");Require(!((NpcIdentity)Get(selection,"Target")).Equals(identity) && (bool)Get(display,"Visible"),"Replacement marker uses only the new shared identity.");
             NativeCombatObservationChecks.Save(host,new ObservationOptions());
             Require(!(bool)Get(selection,"HasTarget"),"Final consumer OFF retires selection.");
+            NativeCombatMarkerDemandChecks.Run(context);
             Console.WriteLine("PASS TARGET-MARKER actual same-page command refresh, four same-row settings and no marker key, measured CPU layout, six native source-row pieces, current netOffset and replacement; marker-only zero prediction. No GPU Draw claim.");
         }
         internal static void Graphics(object context,ProbeGraphics graphics,string output)

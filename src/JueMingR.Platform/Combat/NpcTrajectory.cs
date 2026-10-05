@@ -56,7 +56,7 @@ namespace JueMingR.Platform.Combat
         public MotionRect ClosestPlayerArea;
         public int ClosestPlayerIndex;
         public bool HasClosestPlayer,ClosestPlayerDead,ClosestPlayerWet,ClosestPlayerIdle,ClosestPlayerNoAggro;
-        public bool PlayerHeadCollision;
+        public bool PlayerHeadCollision,PlayerDryHeadCollision;
         public float NetOffsetX,NetOffsetY,SmoothingRange;
         public bool ResetNetOffset;
         public float X,Y,Vx,Vy,OldX,OldY,OldVx,OldVy,Scale,Gravity,MaxFall,WaterSpeed,HoneySpeed,LavaSpeed,ShimmerSpeed;

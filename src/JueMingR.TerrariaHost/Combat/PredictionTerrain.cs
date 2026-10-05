@@ -160,14 +160,17 @@ namespace JueMingR.TerrariaHost.Combat
         public bool MovePlayer(ref NpcMotionState n,PredictionEnvironment environment,ref PredictionPlayerMotion player,out PredictionStop stop)
         {
             if(!Move(ref n,environment,true,player.WaterWalk,player.Down || player.IgnorePlatforms,player.LavaWalk,(int)player.GravityDirection,player,out stop))return false;
+            // DryCollision clears normal-gravity jump at its first tile
+            // contact, before later slope/belt queries overwrite collision
+            // scratch. Final head contact separately owns next-tick Vy.
+            if(n.PlayerDryHeadCollision)player.Jump=0;
             if(n.PlayerHeadCollision)
             {
                 // Position consumes the clipped contact displacement first.
                 // The final Player.Update head response owns next-tick velocity
                 // and jump state; a clipped displacement is not that velocity.
                 n.Vy=.01f*player.GravityDirection;
-                bool wetBranch=n.Wet && (n.Shimmer || n.Honey && !player.IgnoreWater || !player.Merman && !player.IgnoreWater && !player.Trident);
-                if(!player.Merman || player.GravityDirection>0 && !wetBranch)player.Jump=0;
+                if(!player.Merman)player.Jump=0;
             }
             return true;
         }
@@ -220,6 +223,8 @@ namespace JueMingR.TerrariaHost.Combat
             if(playerMode && player.OnTrack)moveBox.Height-=10;
             if(!TileContact(moveBox.X,moveBox.Y,next.Vx,next.Vy,(int)moveBox.Width,(int)moveBox.Height,fall,out rx,out ry,out up,out down,out stop,playerMode?player.IgnorePlatforms:fall,gravDir))return false;
             next.PlayerHeadCollision=playerMode && (gravDir>0?up:down);
+            bool wetPlayer=wet && (next.Shimmer || next.Honey && !player.IgnoreWater || !player.Merman && !player.IgnoreWater && !player.Trident);
+            next.PlayerDryHeadCollision=playerMode && !player.Cart && !wetPlayer && gravDir>0 && up;
             // Native Stardust cells rebound before translating the body. The
             // contact velocity is not their resulting movement velocity.
             if(next.EffectiveType==405 || next.EffectiveType==406)

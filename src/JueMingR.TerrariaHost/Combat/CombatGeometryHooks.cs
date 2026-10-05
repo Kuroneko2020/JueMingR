@@ -22,6 +22,7 @@ namespace JueMingR.TerrariaHost.Combat
         private struct DamageScope {internal Projectile Owner;internal bool Transient;}
         private struct KillScope {internal int Depth,Category;internal bool Capture;internal Vector2 Position,Size,OldVelocity;internal float Scale;}
         private struct MovementScope {internal int Depth;internal Projectile Owner;internal float InitialBounce;internal bool Sampled;}
+        private struct NpcSyncScope {internal bool Valid,Active,Receives;internal int Slot,Type,NetId;internal byte Generation;internal NPC Token;internal Vector2 Position;}
         [ThreadStatic] private static Projectile movementOwner;
         [ThreadStatic] private static float initialBounce;
         [ThreadStatic] private static bool movementSampled;
@@ -64,7 +65,7 @@ namespace JueMingR.TerrariaHost.Combat
                     Patch(typeof(Projectile),"AI",nameof(BeforeAi),null,nameof(EndTransient));
                 }
                 Patch(typeof(NPC),"SetDefaults",nameof(NpcReset),null,null);
-                Patch(typeof(MessageBuffer),"GetData",nameof(PlayerNetwork),nameof(NpcNetwork),null);
+                Patch(typeof(MessageBuffer),"GetData",nameof(BeforeNetwork),nameof(NpcNetwork),null);
                 PlayerCollisionGeometryHooks.Install(harmony,methods);
                 Ready=true;
             }
@@ -109,14 +110,25 @@ namespace JueMingR.TerrariaHost.Combat
         {
             // SetDefaults/Transform can restore the same type within one tick,
             // retaining both object and generation. Latch the reconstruction.
-            var owner=PredictionHost;if(owner!=null)owner.Prediction.ObserveNpcReset(__instance);
+            var owner=PredictionHost;if(owner!=null && __instance!=null && __instance.whoAmI>=0 && __instance.whoAmI<Main.maxNPCs && ReferenceEquals(Main.npc[__instance.whoAmI],__instance))owner.Prediction.ObserveNpcReset(__instance);
         }
-        private static void NpcNetwork(MessageBuffer __instance,int __0,int __1)
+        private static void BeforeNetwork(MessageBuffer __instance,int __0,int __1,out NpcSyncScope __state)
         {
+            __state=default(NpcSyncScope);PlayerNetwork(__instance,__0,__1);
             var owner=PredictionHost;if(owner==null || Main.netMode!=1)return;
             var data=__instance.readBuffer;
             if(data==null || __0<0 || __1<3 || __0>data.Length-3 || data[__0]!=23)return;
-            int slot=data[__0+1]|data[__0+2]<<8;if(slot<Main.maxNPCs)owner.Prediction.ObserveNpcQueryUpdate(slot);
+            // Locked .8 packet 23 uses two distinct bytes, not ushort slot.
+            // Sample before native mutation so a large correction is still
+            // observable after its netOffset was reset, without reading AI.
+            int slot=data[__0+1];if(slot>=Main.maxNPCs)return;var n=Main.npc[slot];if(n==null)return;
+            __state=new NpcSyncScope{Valid=true,Slot=slot,Token=n,Generation=n.generation,Type=n.type,NetId=n.netID,Position=n.position,Active=n.active,Receives=CombatSelection.Receives(n,true)};
+        }
+        private static void NpcNetwork(NpcSyncScope __state)
+        {
+            var owner=PredictionHost;if(owner==null || !__state.Valid || Main.netMode!=1)return;var n=Main.npc[__state.Slot];
+            bool discontinuity=n==null || !ReferenceEquals(n,__state.Token) || n.generation!=__state.Generation || n.type!=__state.Type || n.netID!=__state.NetId || n.active!=__state.Active || CombatSelection.Receives(n,true)!=__state.Receives || Vector2.DistanceSquared(n.position,__state.Position)>(float)Main.multiplayerNPCSmoothingRange*Main.multiplayerNPCSmoothingRange;
+            owner.Prediction.ObserveNpcQueryUpdate(__state.Slot,discontinuity);
         }
         private static void PlayerNetwork(MessageBuffer __instance,int __0,int __1)
         {

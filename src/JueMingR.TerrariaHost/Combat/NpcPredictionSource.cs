@@ -88,10 +88,20 @@ namespace JueMingR.TerrariaHost.Combat
         internal void ObserveNpcReset(NPC npc)
         {
             Native?.ObserveNpcReset(npc);
-            if(npc!=null)RetireSlot(npc.whoAmI,npc);
+            if(npc!=null)RetireSlot(npc.whoAmI,null);
         }
-        internal void ObserveNpcQueryUpdate(int slot)
-        {Native?.ObserveNpcQueryUpdate(slot);RetireSlot(slot,null);}
+        internal void ObserveNpcQueryUpdate(int slot,bool discontinuity)
+        {
+            Native?.ObserveNpcQueryUpdate(slot);
+            if(discontinuity){RetireSlot(slot,null);return;}
+            bool affected=usingSegmented && segmented.DependsOn(slot);
+            for(int i=0;i<observedCount;i++)if(states[i].Identity.Slot==slot)affected=true;
+            // A normal same-instance sync can change velocity/AI immediately;
+            // revoke publication until the next completed sample, preserving
+            // rolling/segment history and its relation identity. It is not a
+            // birth, transform, teleport or permission to resurrect old data.
+            if(affected){outcomeTick=-1;Cache.Clear();}
+        }
         private void RetireSlot(int slot,NPC token)
         {
             bool affected=segmented.Reset(slot,token);
@@ -172,6 +182,8 @@ namespace JueMingR.TerrariaHost.Combat
         }
         internal static NpcMotionState Read(NPC n,long session)
         {
+            if(n.ai==null || n.ai.Length<4 || n.localAI==null || n.localAI.Length<4 || n.immune==null || n.immune.Length<256 || n.buffType==null || n.buffType.Length!=20 || n.buffTime==null || n.buffTime.Length!=20 || n.buffImmune==null || n.buffImmune.Length<BuffID.Count)
+                throw new NpcObservationFailure(CombatSelection.Identity(n,session));
             var health=new NpcHealthState{Regen=n.lifeRegen,RegenCount=n.lifeRegenCount,RealLife=n.realLife,DontTakeDamage=n.dontTakeDamage,Immortal=n.immortal,Immune255=n.immune[255],Defense=n.defense,DamageMultiplier=n.takenDamageMultiplier,LavaImmune=n.lavaImmune,FireImmune=n.buffImmune[24],ShimmerImmune=n.buffImmune[353],ShimmerTransparency=n.shimmerTransparency,ShimmerAction=n.SpawnedFromStatue || NPCID.Sets.ShimmerTransformToNPC[n.type]>=0 || NPCID.Sets.ShimmerTransformToItem[n.type]>=0 || NPCID.Sets.ShimmerTownTransform[n.type]};
             int confused=0,buffHash=0,expires=0,attached=0;
             for(int i=0;i<n.buffType.Length;i++)if(n.buffType[i]>0 && n.buffTime[i]>0)

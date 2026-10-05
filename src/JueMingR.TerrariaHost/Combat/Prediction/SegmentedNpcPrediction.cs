@@ -57,6 +57,8 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             bool affected=current.Slot==slot && current.Token!=null || parent.Slot==slot && parent.Token!=null || child.Slot==slot && child.Token!=null || current.Token!=null && lifeOwner==slot;
             if(affected)relationVersion++;return affected;
         }
+        internal bool DependsOn(int slot)
+        {return current.Token!=null && (current.Slot==slot || parent.Token!=null && parent.Slot==slot || child.Token!=null && child.Slot==slot || lifeOwner==slot);}
         internal NpcTrajectory Prepare(NpcIdentity identity,long tick,int required)
         {
             NPC n=Main.npc[identity.Slot];int family=Family(n.type);
