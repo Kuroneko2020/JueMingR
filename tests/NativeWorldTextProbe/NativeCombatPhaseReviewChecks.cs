@@ -56,6 +56,35 @@ namespace NativeWorldTextProbe
                     finally{Main.GameMode=difficulty;Main.netMode=mode;}
                 }
             }
+            else if(Environment.GetEnvironmentVariable("JUEMINGR_REVIEW_CASE")=="owner-order")
+            {
+                for(int i=0;i<Main.maxPlayers;i++){if(Main.player[i]==null)Main.player[i]=new Player{whoAmI=i};Main.player[i].active=false;}
+                var p=Main.LocalPlayer;p.active=true;p.dead=false;p.tankPet=-1;p.position=new Vector2(900,950);
+                int mode=Main.netMode,difficulty=Main.GameMode;Main.netMode=1;Main.GameMode=0;
+                try
+                {
+                    foreach(int phase in new[]{1,4})foreach(bool entering in new[]{true,false})foreach(bool ownerFirst in new[]{true,false})foreach(int required in new[]{1,2})
+                    {
+                        if(entering && Environment.GetEnvironmentVariable("JUEMINGR_OWNER_BOUNDARY_ONLY")=="leaving")continue;
+                        int ownerSlot=ownerFirst?1:2,childSlot=ownerFirst?2:1;
+                        var owner=Main.npc[ownerSlot]=new NPC();owner.SetDefaults(35);owner.whoAmI=ownerSlot;owner.active=true;owner.position=new Vector2(800,800);owner.ai[1]=owner.ai[3]=0;owner.velocity=phase==1?new Vector2(0,entering?2:-2):new Vector2(entering?-2:2,0);
+                        var n=Main.npc[childSlot]=new NPC();n.SetDefaults(36);n.whoAmI=childSlot;n.active=true;n.target=Main.myPlayer;n.ai[0]=1;n.ai[1]=ownerSlot;n.ai[2]=phase;n.ai[3]=0;n.position=phase==1?new Vector2(700,entering?601:599):new Vector2(owner.Center.X+(entering?499:501)-n.width*.5f,1030);n.velocity=Vector2.Zero;
+                        var read=source.GetType().GetMethod("Read",Flags);var args=new object[]{n,read.Invoke(null,new object[]{n,Get(host,"Session")}),Get(host,"Session")};source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcPositionObservation").GetMethod("Capture",Flags).Invoke(null,args);var state=(NpcMotionState)args[1];var parent=(NpcMotionState)read.Invoke(null,new object[]{owner,Get(host,"Session")});
+                        var probe=new PlayerQueryBoundary((IPredictionTerrain)terrain);var env=new PredictionEnvironment{PlayerIndex=Main.myPlayer,PlayerX=p.Center.X,PlayerY=p.Center.Y,PlayerWidth=p.width,PlayerHeight=p.height,WorldWidth=Main.maxTilesX,WorldHeight=Main.maxTilesY,WorldSurface=(float)Main.worldSurface,Multiplayer=true};var player=new PredictionPlayerMotion{X=p.position.X,Y=p.position.Y,Width=p.width,Height=p.height,GravityDirection=1,MaxFall=10};
+                        var path=new RollingNpcPrediction().Prepare(ownerFirst?new[]{parent,state}:new[]{state,parent},2,ownerFirst?1:0,1,required,1,env,player,probe,new[]{true,true});
+                        // The owner has qualified observed constant motion. Apply
+                        // that movement in real slot order around the original
+                        // child's AI; this isolates propagation, not full head AI.
+                        for(int future=1;future<=required;future++){if(ownerFirst)owner.position+=owner.velocity;n.AI();n.position+=n.velocity;if(!ownerFirst)owner.position+=owner.velocity;}
+                        bool needs=entering?(ownerFirst || required==2):!ownerFirst;
+                        Console.WriteLine("PARENT ORDER phase="+phase+" entering="+entering+" ownerFirst="+ownerFirst+" required="+required+" nativePhase="+n.ai[2]+" queries="+probe.PlayerQueries+" count="+(path==null?0:path.Count)+" assumptions="+(path==null?"null":path.Assumptions.ToString()));
+                        Require(n.ai[2]==(needs?(phase==1?2:5):phase),"Original child's Aim reads the owner position at its actual slot update.");
+                        Require(path!=null && (needs?probe.PlayerQueries==1 && path.Count==1 && !path.Assumptions.HasFlag(PredictionAssumption.NoPlayerMotionNeeded):probe.PlayerQueries==0 && path.Count==required+1),"Entering and departing owner boundaries are decided before actual consumption, including the last requested action.");
+                        if(!needs)Require(Vector2.Distance(n.position,new Vector2(path[required].Bounds.X,path[required].Bounds.Y))<.025f,"Non-consuming actions match the original slot-order relative movement.");
+                    }
+                }
+                finally{Main.netMode=mode;Main.GameMode=difficulty;}
+            }
             else if(Environment.GetEnvironmentVariable("JUEMINGR_REVIEW_CASE")=="aim-boundary")
             {
                 for(int i=0;i<Main.maxPlayers;i++){if(Main.player[i]==null)Main.player[i]=new Player{whoAmI=i};Main.player[i].active=false;}
