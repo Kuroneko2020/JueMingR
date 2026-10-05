@@ -84,11 +84,12 @@ namespace JueMingR.Features.Combat
                     // own native phase actually selects the captured closest.
                     if(state.HasClosestPlayer && state.ClosestPlayerIndex==env.PlayerIndex)
                     {state.ClosestPlayerArea=new MotionRect(env.PlayerX-env.PlayerWidth*.5f,env.PlayerY-env.PlayerHeight*.5f,env.PlayerWidth,env.PlayerHeight);state.ClosestPlayerWet=env.PlayerWet;}
+                    bool playerNeededThisAction=(motionRoles==null || motionRoles[i]) && NpcMotion.NeedsPlayerMotion(state,env,1);
                     // A shared-life owner is a health dependency, not permission
                     // to replay that otherwise unrelated actor's AI/geometry.
                     bool valid=motionRoles!=null && !motionRoles[i]?NpcHealth.Step(ref state,work,count,env,out stop):NpcMotion.Step(ref state,work,count,env,terrain,future,true,out stop);
                     if(!valid || !Valid(state)){if(valid)stop=PredictionStop.InvalidState;advanced=false;break;}
-                    if((motionRoles==null || motionRoles[i]) && NpcMotion.NeedsPlayerMotion(state,env,Math.Max(1,required-future)) && state.TargetCaptured && state.PlayerIndex!=environment.PlayerIndex)
+                    if(playerNeededThisAction && state.TargetCaptured && state.PlayerIndex!=environment.PlayerIndex)
                     {stop=PredictionStop.MissingDependency;advanced=false;break;}
                     work[i]=state;
                 }

@@ -25,15 +25,16 @@ namespace NativeWorldTextProbe
             var allocation=typeof(GC).GetMethod("GetAllocatedBytesForCurrentThread",BindingFlags.Public|BindingFlags.Static);var allocated=allocation==null?null:(Func<long>)Delegate.CreateDelegate(typeof(Func<long>),allocation);
             Set(host,"LayerStatus",Enum.Parse(Get(host,"LayerStatus").GetType(),"Ready"));Main.screenWidth=960;Main.screenHeight=640;Main.screenPosition=Vector2.Zero;Main.GameViewMatrix.Zoom=Vector2.One;Main.hideUI=false;Main.mapFullscreen=false;Main.LocalPlayer.gravDir=1;Main.LocalPlayer.position=new Vector2(640,640);Main.LocalPlayer.itemAnimation=0;Main.dayTime=false;
             var rows=new List<string>{"scenario\tsamples\tdamage_p50_us\tdamage_p95_us\thost_prepare_p50_us\thost_prepare_p95_us\tdamage_bytes_per_sample\thost_prepare_bytes_per_sample\tGC_0_1_2\tdetail"};
-            foreach(string scenario in new[]{"off","idle","stable","changing","dense","toggle"})
+            foreach(string scenario in new[]{"off","idle","stable","changing","dense","toggle","marker-only","dual","marker-idle","marker-dense"})
             {
                 foreach(var n in Main.npc)n.active=false;foreach(var p in Main.projectile)p.active=false;Call(geometry,"Clear");Call(cache,"Clear");
-                bool many=scenario=="dense",none=scenario=="idle";int shots=none?0:many?Main.maxProjectiles:1,npcs=none?0:many?Main.maxNPCs:1;
+                bool marker=scenario.StartsWith("marker-") || scenario=="dual",many=scenario=="dense" || scenario=="marker-dense",none=scenario=="idle" || scenario=="marker-idle";
+                bool collision=!marker,pathEnabled=marker?scenario=="dual":!many;int shots=none?0:many?Main.maxProjectiles:1,npcs=none?0:many?Main.maxNPCs:1;
                 for(int i=0;i<npcs;i++)
                 {var n=Main.npc[i];n.SetDefaults(many?1:scenario=="changing"?370:488);n.active=true;n.whoAmI=i;n.target=0;n.damage=0;n.life=n.lifeMax=1000000;n.timeLeft=750;n.position=many?new Vector2(20+i%40*22,30+i/40*60):new Vector2(700,600);if(scenario=="changing"){n.ai[0]=1;n.localAI[0]=1;n.velocity=new Vector2(16,0);}}
                 for(int i=0;i<shots;i++)
                 {var p=Main.projectile[i];p.SetDefaults(1);p.active=true;p.whoAmI=i;p.owner=Main.myPlayer;p.damage=1;p.friendly=true;p.penetrate=p.maxPenetrate=-1;p.position=new Vector2(20+i%50*18,30+i/50*20);}
-                SetOptions(scenario=="off"?new ObservationOptions():new ObservationOptions(collision:true,path:!many,dummy:true));
+                SetOptions(scenario=="off"?new ObservationOptions():new ObservationOptions(collision:collision,path:pathEnabled,dummy:true,marker:marker));
                 void Input(int index)
                 {
                     // Advancing the fixture clock, native oracle and settings
@@ -53,8 +54,16 @@ namespace NativeWorldTextProbe
                     bytes=allocated==null?0:allocated();start=Stopwatch.GetTimestamp();update();prepare();hostTime[i]=(Stopwatch.GetTimestamp()-start)*1000000.0/Stopwatch.Frequency;if(allocated!=null)hostBytes+=allocated()-bytes;
                 }
                 int strokes=(int)Get(layer,"StrokeCount");bool limited=(bool)Get(layer,"limited");object path=Call(cache,"Read",0);
-                if(scenario=="off" || scenario=="idle")Require(strokes==0 && path==null,"cost fixture off/empty output remains empty");
-                if(many)Require(strokes==4800 && !limited && path==null,"cost comparison requires identical complete ordinary dense output, not lower work through omissions");
+                if(scenario=="off" || none)Require(strokes==0 && path==null,"cost fixture off/empty output remains empty");
+                if(scenario=="dense")Require(strokes==4800 && !limited && path==null,"cost comparison requires identical complete ordinary dense output, not lower work through omissions");
+                if(marker)
+                {
+                    var prediction=Get(host,"Prediction");Require(GetOptional(prediction,"Native")==null,"Marker costs cannot start exact worker.");
+                    Require(((NpcPredictionCache)cache).Required==(pathEnabled?120:0),"Actual marker-only/dual cache demand remains independent.");
+                    Require((bool)Get(Get(layer,"Marker"),"Visible")==!none,"Actual current marker command survives the measured update/prepare.");
+                    if(!pathEnabled)Require(strokes==0 && path==null,"Marker-only costs contain selection/commands without path work.");
+                    else Require(path!=null && (int)Get(path,"Count")==121,"Dual cost includes the full unchanged selected path.");
+                }
                 string detail="nativeDamageInputs="+shots+";activeNPC="+npcs+";strokes="+strokes+";limited="+limited+";pathCount="+(path==null?"0":Get(path,"Count").ToString())+";pathStop="+(path==null?"NA":Get(path,"Stop").ToString());
                 for(int i=0;i<before.Length;i++){var after=Counter(cache,counterNames[i]);detail+=";"+counterNames[i]+"="+(before[i].HasValue && after.HasValue?(after.Value-before[i].Value).ToString():"NA");}
                 var sampled=Counter(geometry,"ProjectileSamples");detail+=";capture="+(captured.HasValue && sampled.HasValue?(sampled.Value-captured.Value).ToString():"NA");

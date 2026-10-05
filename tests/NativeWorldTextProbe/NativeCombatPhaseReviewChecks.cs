@@ -14,7 +14,30 @@ namespace NativeWorldTextProbe
         internal static void Run(object context)
         {
             var host=Get(context,"CombatObservation");var source=Get(host,"Prediction");var terrain=(IPredictionPlayerTerrain)Get(source,"Terrain");
-            if(Environment.GetEnvironmentVariable("JUEMINGR_REVIEW_CASE")=="clock")
+            if(Environment.GetEnvironmentVariable("JUEMINGR_REVIEW_CASE")=="clock-end")
+            {
+                for(int i=0;i<Main.maxPlayers;i++){if(Main.player[i]==null)Main.player[i]=new Player{whoAmI=i};Main.player[i].active=false;}
+                var p=Main.LocalPlayer;p.position=new Vector2(1400,950);p.active=true;p.dead=false;var second=Main.player[1];second.active=true;second.dead=false;second.position=new Vector2(900,950);second.tankPet=-1;
+                int mode=Main.netMode;Main.netMode=1;
+                try
+                {
+                    foreach(int type in new[]{36,128,131})foreach(int delta in new[]{-1,0,1})
+                    {
+                        int period=type==36?300:type==128?1100:800;var owner=Main.npc[1]=new NPC();owner.SetDefaults(type==36?35:127);owner.whoAmI=1;owner.active=true;owner.position=new Vector2(800,800);owner.ai[1]=0;owner.velocity=Vector2.Zero;
+                        var n=Main.npc[2]=new NPC();n.SetDefaults(type);n.whoAmI=2;n.active=true;n.target=Main.myPlayer;n.ai[0]=n.ai[1]=1;n.ai[2]=0;n.ai[3]=period-120+delta;n.position=new Vector2(700,1030);
+                        var read=source.GetType().GetMethod("Read",Flags);var args=new object[]{n,read.Invoke(null,new object[]{n,Get(host,"Session")}),Get(host,"Session")};source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcPositionObservation").GetMethod("Capture",Flags).Invoke(null,args);var state=(NpcMotionState)args[1];
+                        var captured=new object[]{n,state,terrain};((IPredictionTerrain)terrain).Reset();source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcTrackingObservation").GetMethod("Capture",Flags).Invoke(null,captured);state=(NpcMotionState)captured[1];
+                        var probe=new PlayerQueryBoundary((IPredictionTerrain)terrain);var env=new PredictionEnvironment{PlayerIndex=Main.myPlayer,PlayerX=p.Center.X,PlayerY=p.Center.Y,PlayerWidth=p.width,PlayerHeight=p.height,WorldWidth=Main.maxTilesX,WorldHeight=Main.maxTilesY,WorldSurface=(float)Main.worldSurface,Multiplayer=true};var player=new PredictionPlayerMotion{X=p.position.X,Y=p.position.Y,Width=p.width,Height=p.height,GravityDirection=1,MaxFall=10};
+                        var path=new RollingNpcPrediction().Prepare(new[]{(NpcMotionState)read.Invoke(null,new object[]{owner,Get(host,"Session")}),state},2,1,1,120,1,env,player,probe,new[]{true,true});
+                        for(int future=1;future<=120;future++){n.AI();n.position+=n.velocity;}
+                        Console.WriteLine("PARENT END type="+type+" delta="+delta+" nativePhase120="+n.ai[2]+" nativeClock="+n.ai[3]+" queries="+probe.PlayerQueries+" count="+(path==null?0:path.Count)+" stop="+(path==null?"null":path.Stop.ToString()));
+                        Require(path!=null && (delta>0?probe.PlayerQueries==1 && path.Count==1:probe.PlayerQueries==0 && path.Count==121),"Home movement at endpoint does not consume next phase's player timeline: "+type+" delta="+delta);
+                        if(delta<=0)Require(n.ai[2]==(delta==0?1:0) && Vector2.Distance(n.position,new Vector2(path[120].Bounds.X,path[120].Bounds.Y))<.025f,"Independent original 120 home actions and transition frame match endpoint.");
+                    }
+                }
+                finally{Main.netMode=mode;second.active=false;}
+            }
+            else if(Environment.GetEnvironmentVariable("JUEMINGR_REVIEW_CASE")=="clock")
             {
                 var p=Main.LocalPlayer;p.position=new Vector2(900,950);p.active=true;p.dead=false;
                 var owner=Main.npc[1]=new NPC();owner.SetDefaults(35);owner.whoAmI=1;owner.active=true;owner.position=new Vector2(800,800);owner.ai[1]=0;owner.velocity=Vector2.Zero;

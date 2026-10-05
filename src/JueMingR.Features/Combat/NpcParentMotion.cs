@@ -13,9 +13,12 @@ namespace JueMingR.Features.Combat
             // Home-only current phases do not consume player motion. Include
             // a known clock transition within the remaining bounded window;
             // parent phase/position remain separately sampled dependencies.
-            if(n.Style==35)return n.A2==1 || n.A2==0 && n.PositionParameter==0 && n.A3+remaining>=1100;
-            if(n.Style==36)return n.A2==1 || (n.A2==0 || n.A2==3) && n.PositionParameter==0 && n.A3+remaining>=800;
-            if(n.Style==12)return n.A2!=0 && n.A2!=3 || (n.PositionParameter==0 || n.L3==1) && n.A3+remaining*(1+(n.L3==1?1:0)+(e.Expert?.5f:0))>=300;
+            // The threshold action still executes home movement. Its new
+            // phase reads player motion only on the following action, so an
+            // exact transition at the requested endpoint adds no premise.
+            if(n.Style==35)return n.A2==1 || n.A2==0 && n.PositionParameter==0 && n.A3+remaining>1100;
+            if(n.Style==36)return n.A2==1 || (n.A2==0 || n.A2==3) && n.PositionParameter==0 && n.A3+remaining>800;
+            if(n.Style==12)return n.A2!=0 && n.A2!=3 || (n.PositionParameter==0 || n.L3==1) && n.A3+remaining*(1+(n.L3==1?1:0)+(e.Expert?.5f:0))>300;
             return true; // AI33/34 recovery can enter player pursuit in-window.
         }
         internal static bool Step(ref NpcMotionState n,NpcMotionState parent,PredictionEnvironment e,out PredictionStop stop)

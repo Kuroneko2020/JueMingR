@@ -28,6 +28,7 @@ namespace JueMingR.Features.Combat
         {
             stop=PredictionStop.None;n.NewSegment=false;
             env=NpcTargeting.Player(n,env);
+            bool playerNeededThisAction=NeedsPlayerMotion(n,env,1);
             if(!n.Active){stop=PredictionStop.Despawn;return false;}
             // Explicit structural models can continue from their observed
             // state under a qualified unknown-effect premise until expiry.
@@ -170,7 +171,7 @@ namespace JueMingR.Features.Combat
             else if(rolling)NpcRollingMotion.Trend(ref n,elapsed);
             else if(elapsed>12){stop=PredictionStop.UnsupportedMechanism;return false;}
             if(n.TargetChoiceUnavailable){stop=PredictionStop.TerrainUnavailable;return false;}
-            if(n.TargetCaptured && !n.HasPlayer && NeedsPlayerMotion(n,env,1)){stop=PredictionStop.MissingDependency;return false;}
+            if(n.TargetCaptured && !n.HasPlayer && playerNeededThisAction){stop=PredictionStop.MissingDependency;return false;}
             if(!n.Active){stop=PredictionStop.Despawn;return false;}
             // Linked AI already attached the segment and zeroed velocity. It
             // still enters native free movement's water-extinguish phase.
