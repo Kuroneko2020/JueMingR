@@ -12,9 +12,11 @@ namespace JueMingR.Features.Combat
         private readonly NpcTrajectoryPoint[] points=new NpcTrajectoryPoint[NpcPredictionCache.Horizon+1];
         private NpcMotionState previous;
         private long priorTick=-1,version;
+        public PredictionFailureLayer FailureLayer {get;private set;}
         public void Clear(){previous=default(NpcMotionState);priorTick=-1;Array.Clear(work,0,work.Length);}
         public NpcTrajectory Prepare(NpcMotionState[] source,int count,int selected,long tick,int required,long epoch,PredictionEnvironment environment,PredictionPlayerMotion player,IPredictionTerrain terrain,bool[] motionRoles=null)
         {
+            FailureLayer=PredictionFailureLayer.Source;
             if(source==null || count<1 || count>work.Length || selected<0 || selected>=count || required<1 || required>NpcPredictionCache.Horizon)return null;
             var current=source[selected];
             if(!current.Active || !current.CanReceive || current.Life<=0 || !Valid(current) || !Valid(player) || !Finite(environment.Wind) || !Finite(environment.WorldSurface) || !Finite(environment.RockLayer) || motionRoles!=null && motionRoles.Length<count){Clear();return null;}
@@ -38,9 +40,10 @@ namespace JueMingR.Features.Combat
             }
             previous=current;priorTick=tick;Array.Copy(source,work,count);work[selected]=current;
             terrain.Reset();playerSettled=false;points[0]=new NpcTrajectoryPoint(0,current);int length=1;PredictionStop stop=PredictionStop.None;
+            FailureLayer=PredictionFailureLayer.None;
             for(int future=1;future<=required;future++)
             {
-                if(!AdvancePlayer(ref player,environment,terrain,out stop))break;
+                if(!AdvancePlayer(ref player,environment,terrain,out stop)){FailureLayer=PredictionFailureLayer.PlayerPremise;break;}
                 var env=environment;env.PlayerX=player.X+player.Width*.5f;env.PlayerY=player.Y+player.Height*.5f;
                 env.PlayerWet=playerBody.Wet;
                 bool advanced=true;
@@ -53,7 +56,7 @@ namespace JueMingR.Features.Combat
                     if(!valid || !Valid(state)){if(valid)stop=PredictionStop.InvalidState;advanced=false;break;}
                     work[i]=state;
                 }
-                if(!advanced)break;
+                if(!advanced){FailureLayer=PredictionFailureLayer.NpcMotion;break;}
                 points[length++]=new NpcTrajectoryPoint(future,work[selected]);
             }
             var assumptions=(NpcMotion.Assumptions(current)&~PredictionAssumption.TargetPlayerStationary)|PredictionAssumption.HeldPlayerControls|PredictionAssumption.ApproximateMechanism;

@@ -8,7 +8,7 @@ namespace JueMingR.Features.Combat
     // native AI; rechecking it afterwards changes obstacle and pit decisions.
     internal static class NpcGroundMotion
     {
-        internal static bool Known(int type){return type==3 || type==21 || type==27 || type==109 || type==120 || type==166;}
+        internal static bool Known(int type){return type==3 || type==21 || type==27 || type==77 || type==109 || type==120 || type==166;}
         internal static bool Step(ref NpcMotionState n,PredictionEnvironment e,IPredictionTerrain t,bool confused,out PredictionStop stop)
         {
             stop=PredictionStop.None;int type=n.Identity.Type;
@@ -25,12 +25,16 @@ namespace JueMingR.Features.Combat
             if(n.X==n.OldX || n.A3>=limit || n.Vy==0 && (n.Vx>0 && n.Direction<0 || n.Vx<0 && n.Direction>0))n.A3++;
             else if(Math.Abs(n.Vx)>.9f && n.A3>0)n.A3--;
             if(n.A3>limit*10 || n.JustHit || Intersects(n,e))n.A3=0;
-            bool pursue=type==120 || e.Eclipse || !e.Day || e.Remix || n.SpawnedFromStatue || n.Y>e.WorldSurface*16 || e.Graveyard || type==27 && e.InvasionType==1;
+            // .8's fighter despawn predicate exempts 77 on the daytime surface.
+            // The ordinary blocked-count threshold still controls turn-away.
+            bool pursue=type==77 || type==120 || e.Eclipse || !e.Day || e.Remix || n.SpawnedFromStatue || n.Y>e.WorldSurface*16 || e.Graveyard || type==27 && e.InvasionType==1;
             if(n.A3<limit && pursue)
             {Target(ref n,e,confused);if(n.DirectionY>0 && e.PlayerY<=n.Y+n.Height)n.DirectionY=-1;}
             else if(!(type==166 && n.A2>0))
             {if(e.Day && !e.Remix && n.Y/16<e.WorldSurface)n.TimeLeft=Math.Min(n.TimeLeft,10);if(n.Vx==0){if(n.Vy==0 && ++n.A0>=2){n.Direction*=-1;n.SpriteDirection=n.Direction;n.A0=0;}}else n.A0=0;if(n.Direction==0)n.Direction=1;}
-            float speed=type==3?2-n.Scale:type==21?1.5f*(2-n.Scale):type==27 || type==109?2:3,acc=type==109?.04f:.07f;
+            // Armored skeleton shares ordinary blocked/turn/step decisions,
+            // but its locked .8 speed is 2, not the later fighter default 3.
+            float speed=type==3?2-n.Scale:type==21?1.5f*(2-n.Scale):type==27 || type==77 || type==109?2:3,acc=type==109?.04f:.07f;
             if(n.Vx<-speed || n.Vx>speed){if(n.Vy==0){n.Vx*=.8f;n.Vy*=.8f;}}
             else
             {
@@ -86,6 +90,8 @@ namespace JueMingR.Features.Combat
                         }
                     }
                     }
+                    if(type==77 && n.Vy==0 && Math.Abs(n.Bounds.CenterX-e.PlayerX)<100 && Math.Abs(n.Bounds.CenterY-e.PlayerY)<50 && n.Vx*n.Direction>=1)
+                    {n.Vx=Math.Max(-3,Math.Min(3,n.Vx*2));n.Vy=-4;}
                     if(type==120 && n.Vy<0)n.Vy*=1.1f;
                 }
             }

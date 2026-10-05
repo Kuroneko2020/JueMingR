@@ -12,7 +12,7 @@ namespace JueMingR.Features.Combat
         public static PredictionAssumption Assumptions(NpcMotionState n)
         {
             var result=PredictionAssumption.TargetPlayerStationary|PredictionAssumption.FixedTarget|PredictionAssumption.NoNewHits|PredictionAssumption.LocalTerrain;
-            if(n.Identity.Type==371 || n.Identity.Type==166)result|=PredictionAssumption.RandomRepresentative;
+            if(n.Identity.Type==371 || n.Identity.Type==166 || n.Style==16 && NpcAquaticMotion.Known(n.Identity.Type))result|=PredictionAssumption.RandomRepresentative;
             // Terrain contacts and unlisted variants are qualified separately
             // from the audited air-motion families. A shared aiStyle alone is
             // not evidence that every variant has the same movement formula.
@@ -52,7 +52,11 @@ namespace JueMingR.Features.Combat
             int vertical=face?(int)(env.PlayerY-env.PlayerHeight/2)+(int)env.PlayerHeight/2<n.Y+n.Height/2?-1:1:n.DirectionY;
             bool confused=n.ConfusedTicks>0;if(confused){direction=-direction;n.ConfusedTicks--;}
             bool linked=false;
-            if(n.Identity.Type==371)Bubble(ref n,env);
+            if(n.Style==16 && NpcAquaticMotion.Known(n.Identity.Type))
+            {if(!NpcAquaticMotion.Step(ref n,env,terrain,direction,vertical,out stop))return false;}
+            else if(n.Style==13 && NpcAnchoredMotion.Known(n.Identity.Type))
+            {if(!NpcAnchoredMotion.Step(ref n,env,terrain,out stop))return false;}
+            else if(n.Identity.Type==371)Bubble(ref n,env);
             else if(n.Identity.Type==372 || n.Identity.Type==373)
             {if(!Shark(ref n,env,terrain,out stop))return false;}
             else if(n.Style==69)
@@ -150,6 +154,9 @@ namespace JueMingR.Features.Combat
                 Bat(ref n,env,direction,vertical);
             }
             else if(n.Style==17 && n.Identity.Type==61)Vulture(ref n,env,direction,vertical);
+            // A structural AI needs its root/liquid/wall constraints. A free
+            // trend would invent a long path while silently ignoring them.
+            else if(n.Style==13 || n.Style==16 || n.Style==40){stop=PredictionStop.UnsupportedMechanism;return false;}
             else if(rolling)NpcRollingMotion.Trend(ref n,elapsed);
             else if(elapsed>12){stop=PredictionStop.UnsupportedMechanism;return false;}
             if(!n.Active){stop=PredictionStop.Despawn;return false;}

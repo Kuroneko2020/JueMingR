@@ -14,6 +14,12 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if(scope=="NpcBasicMotion")
+            {
+                Environment.SetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT","rolling-candidate");
+                Environment.SetEnvironmentVariable("JUEMINGR_ROLLING_CPU_ONLY","1");
+                Environment.SetEnvironmentVariable("JUEMINGR_BASIC_MOTION","1");scope="NpcProduction";
+            }
             if(scope=="NpcRollingBaseline"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT","rolling-baseline");scope="NpcProduction";}
             if(scope=="NpcRollingCandidate"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT","rolling-candidate");scope="NpcProduction";}
             if(scope=="NpcRollingCpu")

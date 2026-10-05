@@ -9,6 +9,7 @@ namespace JueMingR.ArchitectureTests
         internal static void Run()
         {
             ImmutableGeometry();
+            ArmoredDayPursuit();
             var terrain=new EmptyTerrain();var model=new RollingNpcPrediction();
             var state=new NpcMotionState{Identity=new NpcIdentity(1,new object(),4,2,999,999),X=100,Y=100,Vx=1,Vy=-1,Width=20,Height=20,Life=100,LifeMax=100,TimeLeft=750,Active=true,CanReceive=true,NoGravity=true,NoTileCollide=true,Health=new NpcHealthState{RealLife=-1}};
             var player=new PredictionPlayerMotion{X=150,Y=150,Width=20,Height=40,GravityDirection=1,Gravity=.4f,MaxFall=10,MaxSpeed=3,Acceleration=.08f,Slowdown=.2f};
@@ -65,6 +66,14 @@ namespace JueMingR.ArchitectureTests
             public bool CanHit(MotionRect a,MotionRect b,out bool clear,out PredictionStop stop){clear=true;stop=PredictionStop.None;return true;}
             public bool Tile(int x,int y,out PredictionTile tile,out PredictionStop stop)
             {tile=default(PredictionTile);stop=PredictionStop.None;if(x==9 && y==10){if(UnknownCliff){stop=PredictionStop.TerrainUnavailable;return false;}tile.Active=tile.Solid=CliffSupport;}return true;}
+        }
+        private static void ArmoredDayPursuit()
+        {
+            var n=new NpcMotionState{Identity=new NpcIdentity(1,new object(),1,1,77,77),X=100,Y=100,OldX=99,Vx=-1,Style=3,Width=30,Height=44,Life=100,LifeMax=100,TimeLeft=750,Active=true,CanReceive=true,Direction=-1,Scale=1,Health=new NpcHealthState{RealLife=-1}};
+            var p=new PredictionPlayerMotion{X=400,Y=100,Width=20,Height=40,GravityDirection=1};
+            var e=new PredictionEnvironment{PlayerX=410,PlayerY=120,PlayerWidth=20,PlayerHeight=40,WorldWidth=4200,WorldHeight=1200,WorldSurface=400,Day=true};
+            var path=new RollingNpcPrediction().Prepare(new[]{n},1,0,1,1,1,e,p,new EmptyTerrain());
+            Require(path.Count==2 && path[1].Vx>-1,"Armored skeleton with blocked count below sixty still pursues the player on a daytime surface.");
         }
         private static void Require(bool value,string text){if(!value)throw new InvalidOperationException(text);}
         private static void ImmutableGeometry()

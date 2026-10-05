@@ -35,7 +35,13 @@ namespace JueMingR.TerrariaHost.Combat
             }
             var path=host.Path?host.Prediction.Cache.Read(0):null;
             Prediction.AimLightTrace.Presentation("cache-consume",path,0,eventEnd,false);
-            if(path==null){Prediction.AimLightTrace.Presentation(host.Path?"prepare-cache-empty":"prepare-path-gate",null,0,eventEnd,false);return;}
+            if(path==null)
+            {
+                PredictionStop reason;PredictionFailureLayer layer;
+                if(host.Path && host.Selection.HasTarget && host.Prediction.EmptyFutureReason(host.Selection.Target,(long)Main.GameUpdateCount,out reason,out layer))
+                    pathText=EmptyText(reason,layer);
+                Prediction.AimLightTrace.Presentation(host.Path?"prepare-cache-empty":"prepare-path-gate",null,0,eventEnd,pathText!=null);return;
+            }
             bool approximate=(path.Assumptions&(PredictionAssumption.ApproximateMechanism|PredictionAssumption.RandomRepresentative))!=0;
             var color=approximate?new Color(255,210,110):new Color(235,235,255);
             for(int i=1;i<path.Count;i++)
@@ -74,6 +80,20 @@ namespace JueMingR.TerrariaHost.Combat
                 case PredictionStop.PhaseBoundary:return "NPC 路径：已截断 · 后续阶段待确认";
                 case PredictionStop.BuffTransition:return "NPC 路径：已截断 · 状态变化待确认";
                 default:return "NPC 路径：已截断 · 局部信息不足";
+            }
+        }
+        private static string EmptyText(PredictionStop reason,PredictionFailureLayer layer)
+        {
+            if(layer==PredictionFailureLayer.PlayerPremise)return reason==PredictionStop.TerrainUnavailable || reason==PredictionStop.TerrainLimit?"NPC 路径：暂无法预测 · 玩家附近信息不足":"NPC 路径：暂无法预测 · 玩家移动状态待确认";
+            switch(reason)
+            {
+                case PredictionStop.BuffTransition:return "NPC 路径：暂无法预测 · 目标状态变化待确认";
+                case PredictionStop.TerrainUnavailable:case PredictionStop.TerrainLimit:return "NPC 路径：暂无法预测 · 目标附近信息不足";
+                case PredictionStop.RandomDecision:case PredictionStop.RandomDestination:return "NPC 路径：暂无法预测 · 目标随机行为待确认";
+                case PredictionStop.MissingDependency:return "NPC 路径：暂无法预测 · 关联部位缺失";
+                case PredictionStop.UnsupportedMechanism:case PredictionStop.PhaseBoundary:return "NPC 路径：暂无法预测 · 目标后续行为待确认";
+                case PredictionStop.LiquidEffect:return "NPC 路径：暂无法预测 · 特殊液体反应待确认";
+                default:return "NPC 路径：暂无法预测 · 当前信息不足";
             }
         }
         private void Samples(CombatShapeSample[] samples,int kind)

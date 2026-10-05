@@ -21,6 +21,7 @@ namespace JueMingR.Platform.Combat
     public enum PredictionStop { None, UnsupportedMechanism, RandomDestination, MissingDependency, TerrainUnavailable, TerrainLimit, Slope, LiquidEffect, BuffTransition, Despawn, PhaseBoundary, InvalidState, RandomDecision }
     public enum PredictionStrategy { Model, NativeIsolated, SegmentedTrend, RollingConditional }
     public enum PredictionQuality { Conditional, LimitedObservation, ObservedTrend }
+    public enum PredictionFailureLayer { None, Source, PlayerPremise, NpcMotion }
     public struct MotionRect
     {
         public float X,Y,Width,Height;
@@ -77,9 +78,11 @@ namespace JueMingR.Platform.Combat
     }
     public struct PredictionTile
     {
-        public bool Active,Solid,SolidTop,Platform,Half,ProperPlatformFrame,SurfacePlatform;
+        // Root and background-wall AI use raw active(), including actuated
+        // tiles. Collision continues to use Active/Solid (native nactive()).
+        public bool Active,RawActive,RawSolid,Solid,SolidTop,Platform,Half,ProperPlatformFrame,SurfacePlatform;
         public byte Slope,Liquid;
-        public ushort Type;
+        public ushort Type,Wall;
         public bool TopSlope {get{return Slope==1 || Slope==2;}}
         public bool SolidNoPlatform {get{return Active && !Platform && (Solid || SolidTop);}}
         public bool SolidBottomSlope {get{return Active && (Solid || SolidTop) && !Half && (!TopSlope || Platform && ProperPlatformFrame);}}

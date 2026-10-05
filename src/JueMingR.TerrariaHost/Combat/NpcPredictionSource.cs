@@ -17,6 +17,20 @@ namespace JueMingR.TerrariaHost.Combat
         private int observedCount,targetPlayer=-1;
         private long epoch;
         private bool ownsState;
+        // Only the current synchronous sample's scalar outcome is retained.
+        // This is not a second trajectory/cache and cannot turn point0 into a future.
+        private NpcIdentity outcomeIdentity;
+        private long outcomeTick=-1;
+        private PredictionStop outcomeStop;
+        private PredictionFailureLayer outcomeLayer;
+        private int outcomeFuture;
+        internal int OutcomeStyle {get;private set;}
+        internal float OutcomePhase {get;private set;}
+        internal PredictionStrategy OutcomeStrategy {get;private set;}
+        internal bool EmptyFutureReason(NpcIdentity identity,long tick,out PredictionStop stop,out PredictionFailureLayer layer)
+        {stop=outcomeStop;layer=outcomeLayer;return outcomeTick==tick && outcomeIdentity.Equals(identity) && outcomeFuture==0 && stop!=PredictionStop.None && CombatSelection.Valid(identity,identity.Session);}
+        private void Outcome(NpcIdentity identity,long tick,NpcTrajectory path,PredictionFailureLayer layer)
+        {outcomeIdentity=identity;outcomeTick=tick;outcomeStop=path?.Stop??PredictionStop.InvalidState;outcomeFuture=Math.Max(0,(path?.Count??0)-1);outcomeLayer=layer;}
         // Authentication alone never enables the expensive comparison route.
         // Only isolated comparison fixtures explicitly opt into native proof.
         internal NpcPredictionSource(Prediction.PredictionLaunchIdentity launch=null,bool exactComparison=false)
@@ -55,6 +69,7 @@ namespace JueMingR.TerrariaHost.Combat
         private PredictionPlayers players;
         internal void Clear()
         {
+            outcomeTick=-1;
             Native?.ClearTarget();Cache.Clear();
             if(!ownsState)return;
             ownsState=false;segmented.Clear();rolling.Clear();usingSegmented=false;observedCount=0;targetPlayer=-1;epoch++;
@@ -63,7 +78,7 @@ namespace JueMingR.TerrariaHost.Combat
         internal void ObservePlayerRelocation(Player player)
         {
             Native?.ObservePlayerRelocation();
-            if(player!=null && player.whoAmI==targetPlayer){rolling.Clear();Cache.Clear();epoch++;}
+            if(player!=null && player.whoAmI==targetPlayer){outcomeTick=-1;rolling.Clear();Cache.Clear();epoch++;}
         }
         internal void ObserveNpcReset(NPC npc)
         {
@@ -76,12 +91,13 @@ namespace JueMingR.TerrariaHost.Combat
         {
             bool affected=segmented.Reset(slot,token);
             for(int i=0;i<observedCount;i++)if(states[i].Identity.Slot==slot && (token==null || ReferenceEquals(states[i].Identity.Token,token)))affected=true;
-            if(affected){rolling.Clear();Cache.Clear();epoch++;}
+            if(affected){outcomeTick=-1;rolling.Clear();Cache.Clear();epoch++;}
         }
         internal void Stop(){Native?.Stop();Clear();}
         internal void EndWorld(){Native?.DetachWorld();Clear();}
         internal void Prepare(NpcIdentity identity,long tick)
         {
+            outcomeTick=-1;
             if(Cache.Required==0){Clear();return;}
             if(!CombatSelection.Valid(identity,identity.Session)){Clear();return;}
             ownsState=true;
@@ -89,7 +105,7 @@ namespace JueMingR.TerrariaHost.Combat
             {
                 if(!usingSegmented){Native?.ClearTarget();rolling.Clear();observedCount=0;targetPlayer=-1;usingSegmented=true;}
                 Native?.DiscardRetiredResult();
-                var path=segmented.Prepare(identity,tick,Cache.Required);Cache.Publish(path);Prediction.AimLightTrace.Cache(path,null,"segmented");return;
+                var path=segmented.Prepare(identity,tick,Cache.Required);Outcome(identity,tick,path,PredictionFailureLayer.NpcMotion);Cache.Publish(path);Prediction.AimLightTrace.Cache(path,null,"segmented");return;
             }
             if(usingSegmented){Cache.Clear();rolling.Clear();usingSegmented=false;}
             if(Native!=null){Native.Prepare(identity,tick);return;}
@@ -116,7 +132,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(current.aiStyle==6 || current.aiStyle==37)for(int i=0;i<count;i++)if(states[i].ParentSlot<0){current=Main.npc[states[i].Identity.Slot];break;}
             int target=current.target;if(target<0 || target>=Main.maxPlayers || Main.player[target]==null)target=Main.myPlayer;
             var player=Main.player[target];
-            if(player==null || !player.active || player.dead || player.ghost){Clear();return;}
+            if(player==null || !player.active || player.dead || player.ghost){Clear();Outcome(identity,tick,null,PredictionFailureLayer.Source);return;}
             targetPlayer=target;observedCount=count;
             int playerCount=0;bool samePlayers=players!=null,anyCorrupt=false;
             for(int i=0;i<Main.maxPlayers;i++)
@@ -129,7 +145,9 @@ namespace JueMingR.TerrariaHost.Combat
             var env=new PredictionEnvironment{BloodMoon=Main.bloodMoon,PlayerProtected=!player.dead && !player.ghost && player.insideUnbreakableWalls,PlayerIndex=target,PlayerX=player.Center.X,PlayerY=player.Center.Y,PlayerWidth=player.width,PlayerHeight=player.height,PlayerWet=player.wet,Wind=Main.windSpeedCurrent,Expert=Main.expertMode,Day=Main.dayTime,WorldWidth=Main.maxTilesX,WorldSurface=(float)Main.worldSurface,Multiplayer=Main.netMode==1,Remix=Main.remixWorld,SlimeRain=Main.slimeRain,
                 Enraged=player.position.Y<800 || player.position.Y>Main.worldSurface*16 || player.position.X>6400 && player.position.X<Main.maxTilesX*16-6400,
                 MechQueenUp=NPC.mechQueen>=0 && NPC.mechQueen<Main.maxNPCs && Main.npc[NPC.mechQueen]!=null && Main.npc[NPC.mechQueen].active && Main.npc[NPC.mechQueen].type==127,Players=players,WorldHeight=Main.maxTilesY,RockLayer=(float)Main.rockLayer,PlayerDead=player.dead,PlayerIdleWithNegativeAggro=player.itemAnimation==0 && player.aggro<0,Corrupt=player.ZoneCorrupt,Crimson=player.ZoneCrimson,AnyLivingCorrupt=anyCorrupt,SkyblockLowTiles=WorldGen.Skyblock.lowTiles,ClearLine=false,Eclipse=Main.eclipse,Graveyard=player.ZoneGraveyard,GoodWorld=Main.getGoodWorld,InvasionType=Main.invasionType};
-            Cache.Publish(rolling.Prepare(states,count,selected,tick,Cache.Required,epoch,env,ReadPlayer(player),Terrain,motionRoles));
+            var result=rolling.Prepare(states,count,selected,tick,Cache.Required,epoch,env,ReadPlayer(player),Terrain,motionRoles);
+            OutcomeStyle=states[selected].Style;OutcomePhase=states[selected].A0;OutcomeStrategy=PredictionStrategy.RollingConditional;
+            Outcome(identity,tick,result,rolling.FailureLayer);Cache.Publish(result);
         }
         private static PredictionPlayerMotion ReadPlayer(Player p)
         {
