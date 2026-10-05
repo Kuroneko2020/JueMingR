@@ -14,6 +14,18 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if(scope=="NpcTargetMarker")
+            {
+                Directory.CreateDirectory(output);
+                Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-marker-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
+                NativeQuickItemChecks.Run(context=>NativeCombatTargetMarkerChecks.Run(context),processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
+            }
+            if(scope=="NpcSharedGeometry")
+            {
+                Directory.CreateDirectory(output);
+                Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-shared-geometry-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
+                NativeQuickItemChecks.Run(context=>NativeCombatSharedGeometryChecks.Run(context),processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
+            }
             if(scope=="NpcBasicMotion")
             {
                 Environment.SetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT","rolling-candidate");

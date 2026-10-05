@@ -15,8 +15,8 @@ namespace JueMingR.TerrariaHost.F5
     }
     internal sealed class CombatObservationControls
     {
-        internal static readonly string[] Names={"碰撞箱显示","NPC寻路预测"};
-        internal static readonly string[] Actions={"combat.collision-display","combat.npc-path"};
+        internal static readonly string[] Names={"碰撞箱显示","NPC寻路预测","目标标记"};
+        internal static readonly string[] Actions={"combat.collision-display","combat.npc-path","combat.target-marker"};
         private readonly ICombatObservationControls host;
         internal ObservationOptions Options {get{return host.Options;}}
         internal CombatObservationControls(ICombatObservationControls host){this.host=host;}
@@ -26,18 +26,16 @@ namespace JueMingR.TerrariaHost.F5
             elements.Add(new F5Element(F5ElementKind.Panel,default(F5Rect),null,default(F5Size),0,F5Command.None));
             var title=measure("辅助瞄准设置",.70f);y+=8;
             float row=Math.Max(30,title.Height+10),x=12+title.Width+12;
-            string[] labels={options.ClearLine?"清线优先":"最近优先",options.MouseCenter?"鼠标中心":"玩家中心",options.Dummy?"追踪人偶：开":"追踪人偶：关"};
-            var commands=new[]{F5Command.ObservationPolicy,F5Command.ObservationCenter,F5Command.ObservationDummy};
+            string[] labels={options.ClearLine?"清线优先":"最近优先",options.MouseCenter?"鼠标中心":"玩家中心",options.Dummy?"追踪人偶：开":"追踪人偶：关",options.Marker?"目标标记：开":"目标标记：关"};
+            var commands=new[]{F5Command.ObservationPolicy,F5Command.ObservationCenter,F5Command.ObservationDummy,F5Command.ObservationMarker};
             foreach(var labelText in labels)row=Math.Max(row,measure(labelText,.65f).Height+10);
             elements.Add(new F5Element(F5ElementKind.Text,new F5Rect(12,y+(row-title.Height)/2,title.Width,title.Height),"辅助瞄准设置",title,.70f,F5Command.None,
-                description:new F5RowDescription("combat.selection","当前设置用于 NPC寻路预测的选敌；无需持有武器或开始攻击。"),hintRect:new F5Rect(10,y,title.Width+4,row)));
+                description:new F5RowDescription("combat.selection","当前设置用于 NPC寻路预测与目标标记的共享选敌；无需持有武器或开始攻击。"),hintRect:new F5Rect(10,y,title.Width+4,row)));
             for(int i=0;i<labels.Length;i++)
             {
                 var size=measure(labels[i],.65f);float width=Math.Max(64,size.Width+16);
                 elements.Add(new F5Element(F5ElementKind.Button,new F5Rect(x,y,width,row),labels[i],size,.65f,commands[i]));x+=width+8;
             }
-            // Keep the remaining first-row width available for the later real
-            // marker control; no inactive placeholder enters layout or input.
             y+=row+8;
             var label=measure("鼠标半径：50格",.70f);float fieldHeight=Math.Max(30,label.Height+10);
             elements.Add(new F5Element(F5ElementKind.Field,new F5Rect(12,y,498,fieldHeight),null,label,.70f,F5Command.ObservationRadius));y+=fieldHeight+8;
@@ -50,11 +48,12 @@ namespace JueMingR.TerrariaHost.F5
                 var key=elements[elements.Count-1];elements[elements.Count-1]=new F5Element(key.Kind,key.Rect,key.Text,key.TextSize,key.TextScale,key.Command,Actions[i]);
             }
         }
-        internal static bool Owns(F5Command c){return c>=F5Command.ObservationPolicy && c<=F5Command.ObservationPathOff;}
+        internal static bool Owns(F5Command c){return c>=F5Command.ObservationPolicy && c<=F5Command.ObservationMarker;}
         internal bool Available(F5Command c){return Owns(c) && host.CanConfigure;}
         internal Color? Selected(F5Command c)
         {
             var o=host.Options;if(c==F5Command.ObservationDummy)return o.Dummy?Color.LightGreen:Color.IndianRed;
+            if(c==F5Command.ObservationMarker)return o.Marker?Color.LightGreen:Color.IndianRed;
             bool selected=c==F5Command.ObservationPolicy || c==F5Command.ObservationCenter || (c==F5Command.ObservationCollisionOn?o.Collision:c==F5Command.ObservationCollisionOff?!o.Collision:c==F5Command.ObservationPathOn?o.Path:c==F5Command.ObservationPathOff?!o.Path:false);
             if(c==F5Command.ObservationCollisionOn && host.Unavailable(0)!=null || c==F5Command.ObservationPathOn && host.Unavailable(1)!=null)return selected?(Color?)Color.Goldenrod:null;
             return selected?(Color?)(c==F5Command.ObservationCollisionOff || c==F5Command.ObservationPathOff?Color.IndianRed:Color.LightGreen):null;
@@ -65,11 +64,13 @@ namespace JueMingR.TerrariaHost.F5
             if(c==F5Command.ObservationPolicy)host.Set(2,!host.Options.ClearLine);
             else if(c==F5Command.ObservationCenter)host.Set(3,!host.Options.MouseCenter);
             else if(c==F5Command.ObservationDummy)host.Set(4,!host.Options.Dummy);
+            else if(c==F5Command.ObservationMarker)host.Set(5,!host.Options.Marker);
             else if(c>=F5Command.ObservationCollisionOn)host.Set(((int)c-(int)F5Command.ObservationCollisionOn)/2,((int)c-(int)F5Command.ObservationCollisionOn)%2==0);
         }
         internal string Hint(F5Command c)
         {
             if(!Owns(c))return null;
+            if(c==F5Command.ObservationMarker)return host.Unavailable(5)??"围绕当前共享选中的可攻击部位显示标记；没有预测路线也可显示。";
             if(c>=F5Command.ObservationCollisionOn){var reason=host.Unavailable(((int)c-(int)F5Command.ObservationCollisionOn)/2);if(reason!=null)return reason;}
             if(c==F5Command.ObservationRadius)return host.Options.MouseCenter?"鼠标范围：0—50 格。0 只选择受击区域触及光标的目标；不关闭显示。":"玩家中心使用屏幕范围；切换鼠标中心后可调半径。";
             if(c==F5Command.ObservationPolicy)return host.Options.ClearLine?"点击切换最近优先。当前先选视线通畅的目标；遮挡只降低排序，不代表武器无法命中。":"点击切换清线优先。当前优先选择距离范围中心最近的可攻击目标。";

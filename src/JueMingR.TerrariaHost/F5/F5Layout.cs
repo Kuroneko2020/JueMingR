@@ -38,7 +38,7 @@ namespace JueMingR.TerrariaHost.F5
         CombatRevolverOn, CombatRevolverOff, CombatStringOn, CombatStringOff, CombatFacingOn, CombatFacingOff,
         CombatReportOn, CombatReportOff, CombatGoblinOn, CombatGoblinOff, CombatInterval,
         ObservationPolicy,ObservationCenter,ObservationDummy,ObservationRadius,
-        ObservationCollisionOn,ObservationCollisionOff,ObservationPathOn,ObservationPathOff }
+        ObservationCollisionOn,ObservationCollisionOff,ObservationPathOn,ObservationPathOff,ObservationMarker }
 
     internal sealed class F5Element
     {

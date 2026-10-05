@@ -15,10 +15,12 @@ namespace JueMingR.TerrariaHost.Combat
         private readonly Stroke[] strokes=new Stroke[16384];
         private static readonly Color[] colors={new Color(90,205,250),new Color(145,230,120),new Color(245,185,65),new Color(245,100,120),new Color(215,140,255)};
         private readonly HostCombatObservation host;
+        internal readonly CombatTargetMarker Marker;
+        private int strokeLimit=16384;
         private int count,eventStart,eventEnd;private long presentation;private bool eventsDrawn;private Matrix zoom,inverse;private string pathText;private bool legend,limited;
-        internal CombatObservationWorldLayer(HostCombatObservation host){this.host=host;}
+        internal CombatObservationWorldLayer(HostCombatObservation host){this.host=host;Marker=new CombatTargetMarker(host);}
         internal int StrokeCount {get{return count;}}
-        internal void Clear(){count=eventStart=eventEnd=0;eventsDrawn=false;pathText=null;legend=limited=false;}
+        internal void Clear(){count=eventStart=eventEnd=0;eventsDrawn=false;pathText=null;legend=limited=false;Marker.Clear();}
         internal void Prepare()
         {
             Prediction.AimLightTrace.Presentation("prepare-enter",null,0,0,false);
@@ -28,11 +30,17 @@ namespace JueMingR.TerrariaHost.Combat
 #endif
             Clear();if(!host.Enabled || !host.CanDraw || !WorldPresentation.CanDraw || Main.GameViewMatrix==null){Prediction.AimLightTrace.Presentation(!host.Enabled?"prepare-disabled":!host.CanDraw?"prepare-host-gate":!WorldPresentation.CanDraw?"prepare-world-gate":"prepare-no-matrix",null,0,0,false);return;}
             zoom=Main.GameViewMatrix.ZoomMatrix;if(zoom.M11<=0 || zoom.M22<=0){Prediction.AimLightTrace.Presentation("prepare-invalid-zoom",null,0,0,false);return;}inverse=Matrix.Invert(zoom);
+            Marker.Prepare(zoom,inverse);
+            // Reserve a bounded half for the sole selected path. Dense combat
+            // shapes can reach their own cap without starving that display;
+            // the constant marker never consumes this stroke pool at all.
+            strokeLimit=host.Path?strokes.Length/2:strokes.Length;
             if(host.Collision)
             {
                 host.Geometry.PrepareEvents();legend=true;limited=host.Geometry.EventOverflow;Samples(host.Geometry.Attacks,0);Samples(host.Geometry.Npcs,1);Samples(host.Geometry.Bodies,3);
                 eventStart=count;presentation++;Samples(host.Geometry.Events,2);eventEnd=count;
             }
+            strokeLimit=strokes.Length;
             var path=host.Path?host.Prediction.Cache.Read(0):null;
             Prediction.AimLightTrace.Presentation("cache-consume",path,0,eventEnd,false);
             if(path==null)
@@ -116,7 +124,7 @@ namespace JueMingR.TerrariaHost.Combat
                 limited|=sample.Overflow;
                 for(int j=0;j<sample.Count;j++)
                 {
-                    if(count==strokes.Length){limited=true;return;}
+                    if(count==strokeLimit){limited=true;return;}
                     var shape=sample.Shapes[j];var color=colors[shape.Category];
                     bool dashed=shape.Approximate || shape.Condition!=0 || shape.Kind==3 || shape.Kind==4 || shape.HasBounds;
                     if(shape.Kind==5)
@@ -126,7 +134,7 @@ namespace JueMingR.TerrariaHost.Combat
                         var pairBounds=sample.PointBounds;pairBounds.Inflate(sample.PointSize.X/2,sample.PointSize.Y/2);
                         if(!Visible(pairBounds.TopLeft(),pairBounds.BottomRight()))continue;
                         for(int k=0;k<sample.PointCount;k++)
-                        {if(count==strokes.Length){limited=true;return;}var p=sample.Points[k].ToPoint();var box=new Rectangle(p.X-sample.PointSize.X/2,p.Y-sample.PointSize.Y/2,sample.PointSize.X/2*2+1,sample.PointSize.Y/2*2+1);box=Rectangle.Intersect(box,pairBounds);if(box.Width>0 && box.Height>0 && Visible(box.TopLeft(),box.BottomRight()))Box(box.TopLeft(),box.BottomRight(),color,dashed);}
+                        {if(count==strokeLimit){limited=true;return;}var p=sample.Points[k].ToPoint();var box=new Rectangle(p.X-sample.PointSize.X/2,p.Y-sample.PointSize.Y/2,sample.PointSize.X/2*2+1,sample.PointSize.Y/2*2+1);box=Rectangle.Intersect(box,pairBounds);if(box.Width>0 && box.Height>0 && Visible(box.TopLeft(),box.BottomRight()))Box(box.TopLeft(),box.BottomRight(),color,dashed);}
                         continue;
                     }
                     if(shape.Kind==7)
@@ -188,7 +196,7 @@ namespace JueMingR.TerrariaHost.Combat
             else Add(a,b,color,width);
         }
         private void Add(Vector2 a,Vector2 b,Color color,float width)
-        {if(!Finite(a) || !Finite(b))return;if(count==strokes.Length){limited=true;return;}strokes[count++]=new Stroke{A=Vector2.Transform(a,inverse),B=Vector2.Transform(b,inverse),Color=color,Width=width*inverse.M11};}
+        {if(!Finite(a) || !Finite(b))return;if(count==strokeLimit){limited=true;return;}strokes[count++]=new Stroke{A=Vector2.Transform(a,inverse),B=Vector2.Transform(b,inverse),Color=color,Width=width*inverse.M11};}
         private static bool Finite(Vector2 p){return !float.IsNaN(p.X) && !float.IsNaN(p.Y) && !float.IsInfinity(p.X) && !float.IsInfinity(p.Y);}
         private static bool Clip(ref Vector2 a,ref Vector2 b)
         {
@@ -209,6 +217,7 @@ namespace JueMingR.TerrariaHost.Combat
 #endif
             if(!host.Enabled || !host.CanDraw || !WorldPresentation.CanDraw || Main.spriteBatch==null){Prediction.AimLightTrace.Presentation(!host.Enabled?"draw-disabled":!host.CanDraw?"draw-host-gate":!WorldPresentation.CanDraw?"draw-world-gate":"draw-no-batch",null,0,0,false);return true;}
             var batch=Main.spriteBatch;var pixel=TextureAssets.MagicPixel.Value;
+            Marker.Draw(batch);
             // MagicPixel's asset is larger than one texel; a null source would
             // multiply both dimensions and turn outlines into opaque blocks.
             for(int i=0;i<count;i++)

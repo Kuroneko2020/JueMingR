@@ -119,7 +119,10 @@ namespace JueMingR.Features.Combat
             // an explicit approximation corrected by the next real observation.
             playerBody=new NpcMotionState{X=p.X,Y=p.Y,Vx=p.Vx,Vy=p.Vy,Width=p.Width,Height=p.Height,Active=true,Friendly=true,
                 Health=new NpcHealthState{Immortal=true,DontTakeDamage=true,LavaImmune=true,ShimmerImmune=true},WaterSpeed=1,HoneySpeed=1,LavaSpeed=1,ShimmerSpeed=1};
-            if(p.WaterWalk)
+            var playerTerrain=terrain as IPredictionPlayerTerrain;
+            if(playerTerrain!=null)
+            {if(!playerTerrain.MovePlayer(ref playerBody,e,p,out stop))return false;}
+            else if(p.WaterWalk)
             {
                 var surface=terrain as IPredictionWaterSurfaceTerrain;
                 if(surface==null){stop=PredictionStop.TerrainUnavailable;return false;}

@@ -40,7 +40,8 @@ namespace JueMingR.Platform.Combat
         public int MotionType;
         public int EffectiveType {get{return MotionType==0?Identity.Type:MotionType;}}
         public NpcHealthState Health;
-        public bool Friendly;
+        public bool Friendly,Town,CollisionPart;
+        public int HomeTileY;
         public float NetOffsetX,NetOffsetY,SmoothingRange;
         public bool ResetNetOffset;
         public float X,Y,Vx,Vy,OldX,OldY,OldVx,OldVy,Scale,Gravity,MaxFall,WaterSpeed,HoneySpeed,LavaSpeed,ShimmerSpeed;
@@ -113,6 +114,12 @@ namespace JueMingR.Platform.Combat
         // Player-owned surface support after solid contact, before translation.
         // This capability never gives a fish a water constraint or changes AI.
         bool MoveWaterWalkingPlayer(ref NpcMotionState body,PredictionEnvironment environment,bool fallThrough,bool lavaWalk,out PredictionStop stop);
+    }
+    public interface IPredictionPlayerTerrain
+    {
+        // Player-owned platform, gravity and equipment semantics. Shared tile
+        // acquisition does not make a player an NPC with synthetic aiStyle.
+        bool MovePlayer(ref NpcMotionState body,PredictionEnvironment environment,PredictionPlayerMotion player,out PredictionStop stop);
     }
     public struct NpcTrajectoryPoint
     {

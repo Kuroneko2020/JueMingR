@@ -12,17 +12,20 @@ namespace JueMingR.Features.Combat
         public bool ClearLine {get;}
         public bool MouseCenter {get;}
         public bool Dummy {get;}
+        public bool Marker {get;}
         public int Radius {get;}
-        public ObservationOptions(bool collision=false,bool path=false,bool clearLine=false,bool mouseCenter=false,bool dummy=false,int radius=25)
+        public ObservationOptions(bool collision,bool path,bool clearLine,bool mouseCenter,bool dummy,int radius)
+            :this(collision,path,clearLine,mouseCenter,dummy,radius,false){}
+        public ObservationOptions(bool collision=false,bool path=false,bool clearLine=false,bool mouseCenter=false,bool dummy=false,int radius=25,bool marker=false)
         {
             if(radius<0 || radius>50)throw new ArgumentOutOfRangeException(nameof(radius));
-            Collision=collision;Path=path;ClearLine=clearLine;MouseCenter=mouseCenter;Dummy=dummy;Radius=radius;
+            Collision=collision;Path=path;ClearLine=clearLine;MouseCenter=mouseCenter;Dummy=dummy;Radius=radius;Marker=marker;
         }
         public ObservationOptions Toggle(int field)
         {
-            if(field<0 || field>4)throw new ArgumentOutOfRangeException(nameof(field));
-            return new ObservationOptions(Collision^(field==0),Path^(field==1),ClearLine^(field==2),MouseCenter^(field==3),Dummy^(field==4),Radius);
+            if(field<0 || field>5)throw new ArgumentOutOfRangeException(nameof(field));
+            return new ObservationOptions(Collision^(field==0),Path^(field==1),ClearLine^(field==2),MouseCenter^(field==3),Dummy^(field==4),Radius,Marker^(field==5));
         }
-        public ObservationOptions WithRadius(int value){return new ObservationOptions(Collision,Path,ClearLine,MouseCenter,Dummy,value);}
+        public ObservationOptions WithRadius(int value){return new ObservationOptions(Collision,Path,ClearLine,MouseCenter,Dummy,value,Marker);}
     }
 }

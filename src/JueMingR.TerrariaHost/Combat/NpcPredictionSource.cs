@@ -163,6 +163,8 @@ namespace JueMingR.TerrariaHost.Combat
             return new PredictionPlayerMotion{X=p.position.X,Y=p.position.Y,Vx=p.velocity.X,Vy=p.velocity.Y,Width=p.width,Height=p.height,
                 Gravity=p.gravity,GravityDirection=p.gravDir,MaxFall=p.maxFallSpeed,Acceleration=hover?p.mount.Acceleration:p.runAcceleration,
                 Slowdown=hover?.2f:p.runSlowdown,MaxSpeed=hover?p.mount.RunSpeed:Math.Max(p.maxRunSpeed,p.accRunSpeed),Jump=p.jump,JumpHeight=jumpHeight,JumpSpeed=jumpSpeed,
+                IgnorePlatforms=p.gravDir<0 || p.mount.Active && (p.mount.Cart || p.mount.Type==12 || p.mount.Type==7 || p.mount.Type==8 || p.mount.Type==23 || p.mount.Type==44 || p.mount.Type==48 || p.mount.Type==55 && p.slideDir!=0) || p.GoingDownWithGrapple || p.pulley,
+                IgnoreWater=p.ignoreWater,Merman=p.merman,Trident=p.trident,OnTrack=p.onTrack,Cart=p.mount.Active && p.mount.Cart,SkipSlope=p.mount.Active && p.mount.Type==48,
                 Left=p.controlLeft,Right=p.controlRight,Up=p.controlUp,Down=p.controlDown,HoldJump=p.controlJump,ReleaseJump=p.releaseJump,AutoJump=p.autoJump,Hover=hover,Complex=Prediction.NativePlayerMotion.Conditional(p),WaterWalk=p.waterWalk || p.waterWalk2,LavaWalk=p.waterWalk};
         }
         internal static NpcMotionState Read(NPC n,long session)
@@ -192,8 +194,17 @@ namespace JueMingR.TerrariaHost.Combat
             int child=(n.aiStyle==6 || n.aiStyle==37) && n.ai[0]>0 && n.ai[0]<Main.maxNPCs?(int)n.ai[0]:-1;var linked=child>=0?Main.npc[child]:null;
             if(health.Fire>0 || health.Fire3>0 || n.buffType[19]!=0){health.Buffs.Captured=true;for(int i=0;i<20;i++)health.Buffs.Set(i,n.buffType[i],n.buffTime[i],Main.debuff[n.buffType[i]]);}
             return new NpcMotionState{UnmodeledDamageTicks=attached,NetOffsetX=n.netOffset.X,NetOffsetY=n.netOffset.Y,SmoothingRange=Main.multiplayerNPCSmoothingRange,ResetNetOffset=Main.netMode==2 || NPC.offSetDelayTime>0 || NPCID.Sets.NoMultiplayerSmoothingByType[n.type] || NPCID.Sets.NoMultiplayerSmoothingByAI[n.aiStyle] || n.townNPC && n.ai[0]==25,Friendly=n.friendly,ChildSlot=child,ChildIdentity=linked!=null && linked.active && linked.aiStyle==n.aiStyle?CombatSelection.Identity(linked,session):default(NpcIdentity),LavaSpeed=n.lavaMovementSpeed,ShimmerSpeed=n.shimmerMovementSpeed,Lava=n.lavaWet,Shimmer=n.shimmerWet,Health=health,Identity=CombatSelection.Identity(n,session),X=n.position.X,Y=n.position.Y,OldX=n.oldPosition.X,OldY=n.oldPosition.Y,StairFall=n.stairFall,Vx=n.velocity.X,Vy=n.velocity.Y,OldVx=n.oldVelocity.X,OldVy=n.oldVelocity.Y,Width=n.width,Height=n.height,Scale=n.scale,Style=n.aiStyle,Direction=n.direction,DirectionY=n.directionY,Target=n.target,
-                CritterTurns=NPCID.Sets.CritterThatCanTurnOnPlayers[n.type],Boss=n.boss,InactivityImmune=n.DoesntDespawnToInactivity() || n.townNPC,SpriteDirection=n.spriteDirection,SpawnedFromStatue=n.SpawnedFromStatue,ParentSlot=(n.aiStyle==6 || n.aiStyle==37) && n.ai[1]>0?(int)n.ai[1]:-1,TimeLeft=n.timeLeft,ConfusedTicks=confused,Life=n.life,LifeMax=n.lifeMax,BuffFingerprint=buffHash,BuffExpires=expires,WaterSpeed=n.waterMovementSpeed,HoneySpeed=n.honeyMovementSpeed,
+                CollisionPart=HasCollisionPart(n),Town=n.townNPC,HomeTileY=n.homeTileY,CritterTurns=NPCID.Sets.CritterThatCanTurnOnPlayers[n.type],Boss=n.boss,InactivityImmune=n.DoesntDespawnToInactivity() || n.townNPC,SpriteDirection=n.spriteDirection,SpawnedFromStatue=n.SpawnedFromStatue,ParentSlot=(n.aiStyle==6 || n.aiStyle==37) && n.ai[1]>0?(int)n.ai[1]:-1,TimeLeft=n.timeLeft,ConfusedTicks=confused,Life=n.life,LifeMax=n.lifeMax,BuffFingerprint=buffHash,BuffExpires=expires,WaterSpeed=n.waterMovementSpeed,HoneySpeed=n.honeyMovementSpeed,
                 A0=n.ai[0],A1=n.ai[1],A2=n.ai[2],A3=n.ai[3],L0=n.localAI[0],L1=n.localAI[1],L2=n.localAI[2],L3=n.localAI[3],Active=n.active,NoGravity=n.noGravity,NoTileCollide=n.noTileCollide,Wet=n.wet,Honey=n.honeyWet,CollideX=n.collideX,CollideY=n.collideY,CanReceive=CombatSelection.Receives(n,true),CanHarm=!n.friendly && n.damage>0,JustHit=n.justHit};
+        }
+        private static bool HasCollisionPart(NPC n)
+        {
+            int part=n.type==391?390:n.type==415?416:-1;if(part<0)return false;
+            // Only these two native movement boxes depend on an attached live
+            // part. Sample once on the game thread, never rescan for 120 steps.
+            for(int i=0;i<Main.maxNPCs;i++)
+            {var other=Main.npc[i];if(other!=null && other.active && other.type==part && other.ai[0]==n.whoAmI)return true;}
+            return false;
         }
         private static bool ReadTimer(ref NpcHealthState h,int type,int time)
         {

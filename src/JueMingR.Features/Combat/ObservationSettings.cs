@@ -56,15 +56,15 @@ namespace JueMingR.Features.Combat
         }
         private static ObservationOptions Decode(byte[] bytes)
         {
-            var root=PreferenceJson.Read(bytes,"JueMingR.CombatObservation",new[]{"format","version","collision","path","clearLine","mouseCenter","dummy","radius"});
+            var root=PreferenceJson.ReadOptional(bytes,"JueMingR.CombatObservation","marker",new[]{"format","version","collision","path","clearLine","mouseCenter","dummy","radius"});
             Func<string,bool> flag=name=>{var node=PreferenceJson.Required(root,name,"boolean");bool value;if(node.HasElements || !bool.TryParse(node.Value,out value))throw PreferenceJson.Invalid();return value;};
             var radius=PreferenceJson.Required(root,"radius","number");int amount;
             if(radius.HasElements || !int.TryParse(radius.Value,NumberStyles.None,CultureInfo.InvariantCulture,out amount))throw PreferenceJson.Invalid();
-            try{return new ObservationOptions(flag("collision"),flag("path"),flag("clearLine"),flag("mouseCenter"),flag("dummy"),amount);}catch(ArgumentException){throw PreferenceJson.Invalid();}
+            try{return new ObservationOptions(flag("collision"),flag("path"),flag("clearLine"),flag("mouseCenter"),flag("dummy"),amount,root.Element("marker")!=null && flag("marker"));}catch(ArgumentException){throw PreferenceJson.Invalid();}
         }
         private static byte[] Encode(ObservationOptions value)
         {
-            return new UTF8Encoding(false,true).GetBytes("{\"format\":\"JueMingR.CombatObservation\",\"version\":1,\"collision\":"+B(value.Collision)+",\"path\":"+B(value.Path)+",\"clearLine\":"+B(value.ClearLine)+",\"mouseCenter\":"+B(value.MouseCenter)+",\"dummy\":"+B(value.Dummy)+",\"radius\":"+value.Radius.ToString(CultureInfo.InvariantCulture)+"}\n");
+            return new UTF8Encoding(false,true).GetBytes("{\"format\":\"JueMingR.CombatObservation\",\"version\":1,\"collision\":"+B(value.Collision)+",\"path\":"+B(value.Path)+",\"clearLine\":"+B(value.ClearLine)+",\"mouseCenter\":"+B(value.MouseCenter)+",\"dummy\":"+B(value.Dummy)+",\"radius\":"+value.Radius.ToString(CultureInfo.InvariantCulture)+",\"marker\":"+B(value.Marker)+"}\n");
         }
         private static string B(bool value){return value?"true":"false";}
     }
