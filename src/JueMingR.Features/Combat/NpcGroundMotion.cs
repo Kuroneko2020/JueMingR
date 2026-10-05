@@ -15,8 +15,8 @@ namespace JueMingR.Features.Combat
             // These original actions skip the shared blocked counter. Their
             // positive ai[3] belongs to an independent action, not recovery.
             if(!OrdinaryCounter(n))
-            {if(n.A3>0){stop=PredictionStop.UnsupportedMechanism;return false;}Target(ref n,e,confused);}
-            else CountAndTarget(ref n,e,confused,60);
+            {if(n.A3>0){stop=PredictionStop.UnsupportedMechanism;return false;}Target(ref n,ref e,confused);}
+            else CountAndTarget(ref n,ref e,confused,60);
             Accelerate(ref n,1.5f,.07f,false);
             if(n.CollideX && n.CollideY){n.Vy=-6;n.CollideY=false;}
             return true;
@@ -41,13 +41,13 @@ namespace JueMingR.Features.Combat
             if(e.PlayerY+e.PlayerHeight/2==n.Y+n.Height)n.DirectionY=-1;
             if(type==166 && n.A2<0)
             {
-                Target(ref n,e,confused);bool clear;
+                Target(ref n,ref e,confused);bool clear;
                 if(!t.CanHit(new MotionRect(n.Bounds.CenterX,n.Bounds.CenterY,1,1),new MotionRect(e.PlayerX,e.PlayerY,1,1),out clear,out stop))return false;
                 if(n.JustHit || clear)n.A2=0;
                 else{n.Vx*=.9f;if(n.Vx>-.1f && n.Vx<.1f)n.Vx=0;if(++n.A2==0)n.Vx=n.Direction*.1f;return true;}
             }
             bool wasStopped=n.Vx==0 && !n.JustHit;int limit=type==120?180:60;
-            CountAndTarget(ref n,e,confused,limit);
+            CountAndTarget(ref n,ref e,confused,limit);
             // Armored skeleton shares ordinary blocked/turn/step decisions,
             // but its locked .8 speed is 2, not the later fighter default 3.
             float speed=type==3?2-n.Scale:type==21?1.5f*(2-n.Scale):type==164 || type==239?1.5f:type==27 || type==77 || type==109 || NpcWallMotion.Ground(type)?2:3,acc=type==109?.04f:.07f;
@@ -112,7 +112,7 @@ namespace JueMingR.Features.Combat
             if(type==120 && !e.Multiplayer && n.A3>=180){stop=PredictionStop.RandomDestination;return false;}
             return true;
         }
-        private static void CountAndTarget(ref NpcMotionState n,PredictionEnvironment e,bool confused,int limit)
+        private static void CountAndTarget(ref NpcMotionState n,ref PredictionEnvironment e,bool confused,int limit)
         {
             int type=n.EffectiveType;
             if(type==120 && n.A3==-120){n.Vx=n.Vy=0;n.A3=0;}
@@ -123,7 +123,7 @@ namespace JueMingR.Features.Combat
             // The ordinary blocked-count threshold still controls turn-away.
             bool pursue=Pursues(n,e);
             if(n.A3<limit && pursue)
-            {Target(ref n,e,confused);if(n.DirectionY>0 && e.PlayerY<=n.Y+n.Height)n.DirectionY=-1;}
+            {Target(ref n,ref e,confused);if(n.DirectionY>0 && e.PlayerY<=n.Y+n.Height)n.DirectionY=-1;}
             else if(!(type==166 && n.A2>0))
             {if(e.Day && !e.Remix && n.Y/16<e.WorldSurface)n.TimeLeft=Math.Min(n.TimeLeft,10);if(n.Vx==0){if(n.Vy==0 && ++n.A0>=2){n.Direction*=-1;n.SpriteDirection=n.Direction;n.A0=0;}}else n.A0=0;if(n.Direction==0)n.Direction=1;}
         }
@@ -170,8 +170,8 @@ namespace JueMingR.Features.Combat
         private static bool Pass(PredictionTile t){return !t.Active || !t.Solid || t.SolidTop;}
         private static bool Intersects(NpcMotionState n,PredictionEnvironment e)
         {return (int)n.X<(int)(e.PlayerX-e.PlayerWidth/2)+(int)e.PlayerWidth && (int)n.X+n.Width>(int)(e.PlayerX-e.PlayerWidth/2) && (int)n.Y<(int)(e.PlayerY-e.PlayerHeight/2)+(int)e.PlayerHeight && (int)n.Y+n.Height>(int)(e.PlayerY-e.PlayerHeight/2);}
-        private static void Target(ref NpcMotionState n,PredictionEnvironment e,bool confused)
-        {if(!e.PlayerDead && !(n.TargetNoAggro && n.Direction!=0) && !(e.PlayerIdleWithNegativeAggro && n.Target>=0 && n.Target<255 && !n.Boss)){n.Direction=(int)(e.PlayerX-e.PlayerWidth/2)+(int)e.PlayerWidth/2<n.X+n.Width/2?-1:1;n.DirectionY=(int)(e.PlayerY-e.PlayerHeight/2)+(int)e.PlayerHeight<=n.Y+n.Height?-1:1;}if(confused)n.Direction=-n.Direction;}
+        private static void Target(ref NpcMotionState n,ref PredictionEnvironment e,bool confused)
+        {int oldTarget=n.Target;NpcTargeting.Retarget(ref n,ref e);var target=NpcTargeting.Area(n,e);if(NpcTargeting.CanFace(n,e,oldTarget)){n.Direction=(int)target.X+(int)target.Width/2<n.X+n.Width/2?-1:1;n.DirectionY=n.TrackingKind==2?(int)target.Y+(int)target.Height/2<n.Y+n.Height/2?-1:1:(int)target.Y+(int)target.Height<=n.Y+n.Height?-1:1;}if(confused)n.Direction=-n.Direction;}
         internal static void AfterMove(ref NpcMotionState n)
         {if(n.Vy==0 && (n.Direction==-1 || n.Direction==1) && (n.Identity.Type!=109 || n.Vx==0 || n.Vx*n.Direction>0))n.SpriteDirection=n.Direction;}
     }

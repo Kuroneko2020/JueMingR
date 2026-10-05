@@ -44,9 +44,10 @@ namespace JueMingR.TerrariaHost.Combat
             // Compile the bounded local kernels; do NOT sample Main, construct
             // forecasts or run a hidden warmup world. Startup is measured
             // separately; OFF world updates still do no prediction work.
-            var types=new[]{typeof(NpcPredictionSource),typeof(RollingNpcPrediction),typeof(NpcMotion),typeof(NpcHealth),typeof(PredictionTerrain),typeof(NpcTrajectory),
+            var types=new[]{typeof(NpcPredictionSource),typeof(NpcTrackingObservation),typeof(NpcCollisionRules),typeof(RollingNpcPrediction),typeof(NpcMotion),typeof(NpcHealth),typeof(PredictionTerrain),typeof(NpcTrajectory),
                 typeof(MotionRect),typeof(NpcMotionState),typeof(NpcTrajectoryPoint),typeof(NpcBuffLayout),typeof(PredictionPlayers),typeof(NpcTrajectory).GetNestedType("PackedPoint",System.Reflection.BindingFlags.NonPublic),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcRollingMotion",true),
+                typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcTargeting",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcGroundMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcAquaticMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcAnchoredMotion",true),
@@ -112,12 +113,13 @@ namespace JueMingR.TerrariaHost.Combat
             }
             if(usingSegmented){Cache.Clear();rolling.Clear();usingSegmented=false;}
             if(Native!=null){Native.Prepare(identity,tick);return;}
-            Array.Clear(visited,0,visited.Length);Array.Clear(motionSlots,0,motionSlots.Length);int count=0,queued=1;pending[0]=identity.Slot;visited[identity.Slot]=motionSlots[identity.Slot]=true;
+            Terrain.Reset();Array.Clear(visited,0,visited.Length);Array.Clear(motionSlots,0,motionSlots.Length);int count=0,queued=1;pending[0]=identity.Slot;visited[identity.Slot]=motionSlots[identity.Slot]=true;
             for(int next=0;next<queued;next++)
             {
                 int slot=pending[next];
                 var n=Main.npc[slot];if(n==null || !n.active)continue;
                 states[count++]=Read(n,identity.Session);
+                if(motionSlots[slot])NpcTrackingObservation.Capture(n,ref states[count-1],Terrain);
                 int parent=states[count-1].ParentSlot,child=states[count-1].ChildSlot;
                 if(motionSlots[slot])
                 {
@@ -133,7 +135,7 @@ namespace JueMingR.TerrariaHost.Combat
             for(int i=0;i<count;i++)motionRoles[i]=motionSlots[states[i].Identity.Slot];
             var current=Main.npc[identity.Slot];
             if(current.aiStyle==6 || current.aiStyle==37)for(int i=0;i<count;i++)if(states[i].ParentSlot<0){current=Main.npc[states[i].Identity.Slot];break;}
-            int target=current.target;if(target<0 || target>=Main.maxPlayers || Main.player[target]==null)target=Main.myPlayer;
+            int target=states[selected].PlayerIndex;if(target<0 || target>=Main.maxPlayers || Main.player[target]==null)target=Main.myPlayer;
             var player=Main.player[target];
             if(player==null || !player.active || player.dead || player.ghost){Clear();Outcome(identity,tick,null,PredictionFailureLayer.Source);return;}
             targetPlayer=target;observedCount=count;
@@ -144,7 +146,6 @@ namespace JueMingR.TerrariaHost.Combat
                 samePlayers&=players!=null && playerCount<players.Count && PredictionPlayers.Same(area,players[playerCount]);playerAreas[playerCount++]=area;anyCorrupt|=!p.dead && p.ZoneCorrupt;
             }
             if(!samePlayers || players.Count!=playerCount)players=new PredictionPlayers(playerAreas,playerCount);
-            for(int i=0;i<count;i++)states[i].TargetNoAggro=player.npcTypeNoAggro[states[i].Identity.Type];
             var env=new PredictionEnvironment{BloodMoon=Main.bloodMoon,PlayerProtected=!player.dead && !player.ghost && player.insideUnbreakableWalls,PlayerIndex=target,PlayerX=player.Center.X,PlayerY=player.Center.Y,PlayerWidth=player.width,PlayerHeight=player.height,PlayerWet=player.wet,Wind=Main.windSpeedCurrent,Expert=Main.expertMode,Day=Main.dayTime,WorldWidth=Main.maxTilesX,WorldSurface=(float)Main.worldSurface,Multiplayer=Main.netMode==1,Remix=Main.remixWorld,SlimeRain=Main.slimeRain,
                 Enraged=player.position.Y<800 || player.position.Y>Main.worldSurface*16 || player.position.X>6400 && player.position.X<Main.maxTilesX*16-6400,
                 MechQueenUp=NPC.mechQueen>=0 && NPC.mechQueen<Main.maxNPCs && Main.npc[NPC.mechQueen]!=null && Main.npc[NPC.mechQueen].active && Main.npc[NPC.mechQueen].type==127,Players=players,WorldHeight=Main.maxTilesY,RockLayer=(float)Main.rockLayer,PlayerDead=player.dead,PlayerIdleWithNegativeAggro=player.itemAnimation==0 && player.aggro<0,Corrupt=player.ZoneCorrupt,Crimson=player.ZoneCrimson,AnyLivingCorrupt=anyCorrupt,SkyblockLowTiles=WorldGen.Skyblock.lowTiles,ClearLine=false,Eclipse=Main.eclipse,Graveyard=player.ZoneGraveyard,GoodWorld=Main.getGoodWorld,InvasionType=Main.invasionType,SnowMoon=Main.snowMoon,DontStarve=Main.dontStarveWorld};

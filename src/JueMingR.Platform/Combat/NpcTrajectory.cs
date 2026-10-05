@@ -17,7 +17,7 @@ namespace JueMingR.Platform.Combat
         public override int GetHashCode(){return Slot^Generation^Type^Session.GetHashCode();}
     }
     [Flags]
-    public enum PredictionAssumption { None=0, TargetPlayerStationary=1, FixedTarget=2, NoNewHits=4, RandomRepresentative=8, LocalTerrain=16, NetworkObservation=32, ApproximateMechanism=64, HeldPlayerControls=128, CurrentConnection=256, ObservedLighting=512, UnmodeledDamageEffects=1024, CurrentPlayerObservation=2048, UnmodeledStatusEffects=4096 }
+    public enum PredictionAssumption { None=0, TargetPlayerStationary=1, FixedTarget=2, NoNewHits=4, RandomRepresentative=8, LocalTerrain=16, NetworkObservation=32, ApproximateMechanism=64, HeldPlayerControls=128, CurrentConnection=256, ObservedLighting=512, UnmodeledDamageEffects=1024, CurrentPlayerObservation=2048, UnmodeledStatusEffects=4096, ObservedTrackingMotion=8192, NoPlayerMotionNeeded=16384 }
     public enum PredictionStop { None, UnsupportedMechanism, RandomDestination, MissingDependency, TerrainUnavailable, TerrainLimit, Slope, LiquidEffect, BuffTransition, Despawn, PhaseBoundary, InvalidState, RandomDecision }
     public enum PredictionStrategy { Model, NativeIsolated, SegmentedTrend, RollingConditional }
     public enum PredictionQuality { Conditional, LimitedObservation, ObservedTrend, StructuredApproximation }
@@ -42,6 +42,16 @@ namespace JueMingR.Platform.Combat
         public NpcHealthState Health;
         public bool Friendly,Town,CollisionPart;
         public int HomeTileY;
+        // The numbered player supplies environmental/direct-player predicates.
+        // Tracking geometry may instead belong to a guardian or encoded NPC.
+        public MotionRect PlayerArea,TrackingArea;
+        public int PlayerIndex,TrackingKind;
+        public float TrackingVx,TrackingVy;
+        public bool TargetCaptured,HasPlayer,PlayerDead,PlayerWet,PlayerIdle;
+        public MotionRect ClosestPlayerArea;
+        public int ClosestPlayerIndex;
+        public bool HasClosestPlayer,ClosestPlayerDead,ClosestPlayerWet,ClosestPlayerIdle,ClosestPlayerNoAggro;
+        public bool PlayerHeadCollision;
         public float NetOffsetX,NetOffsetY,SmoothingRange;
         public bool ResetNetOffset;
         public float X,Y,Vx,Vy,OldX,OldY,OldVx,OldVy,Scale,Gravity,MaxFall,WaterSpeed,HoneySpeed,LavaSpeed,ShimmerSpeed;
@@ -119,7 +129,7 @@ namespace JueMingR.Platform.Combat
     {
         // Player-owned platform, gravity and equipment semantics. Shared tile
         // acquisition does not make a player an NPC with synthetic aiStyle.
-        bool MovePlayer(ref NpcMotionState body,PredictionEnvironment environment,PredictionPlayerMotion player,out PredictionStop stop);
+        bool MovePlayer(ref NpcMotionState body,PredictionEnvironment environment,ref PredictionPlayerMotion player,out PredictionStop stop);
     }
     public struct NpcTrajectoryPoint
     {

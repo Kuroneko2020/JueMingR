@@ -21,7 +21,7 @@ namespace JueMingR.TerrariaHost.Combat
         internal readonly CombatObservationWorldLayer World;
         private readonly SingleFeatureRuntime runtime;
         private readonly HostInputState input;
-        private bool collisionFailed,pathFailed,reportedCollision,reportedPath,wasCollision,wasPath;
+        private bool collisionFailed,pathFailed,reportedCollision,reportedPath,reportedMarker,wasCollision,wasPath;
         internal Rendering.WorldLayerStatus LayerStatus;
         internal HostCombatObservation(string directory,SingleFeatureRuntime runtime,HostInputState input,NativeNpcObservation npcs,Prediction.PredictionLaunchIdentity launch=null)
             :this(directory,runtime,input,npcs,launch,null){}
@@ -41,12 +41,13 @@ namespace JueMingR.TerrariaHost.Combat
         internal long Session {get{return runtime.IsSessionActive?runtime.Generation:-1;}}
         internal bool Collision {get{return Settings.CanRun && Options.Collision && Unavailable(0)==null;}}
         internal bool Path {get{return Settings.CanRun && Options.Path && Unavailable(1)==null;}}
-        internal bool Marker {get{return Settings.CanRun && Options.Marker && Unavailable(5)==null;}}
+        internal bool Marker {get{return Settings.CanRun && Options.Marker && LayerStatus!=Rendering.WorldLayerStatus.Unavailable;}}
         public string Unavailable(int field)
         {
             if(LayerStatus==Rendering.WorldLayerStatus.Unavailable)return "世界显示入口不可用，设置已保留；需要重新进入游戏。";
             if(field==0 && (!Hooks.Ready || collisionFailed))return "碰撞箱显示暂不可用，设置已保留；可点击开启重试。";
             if(field==1 && (!Hooks.Ready || pathFailed))return "NPC寻路预测暂不可用，设置已保留；可点击开启重试。";
+            if(field==5 && World.Marker.Failed)return "目标标记暂不可用，设置已保留；可点击开启重试。";
             return null;
         }
         internal bool Capture {get{return Collision && runtime.IsSessionActive;}}
@@ -58,6 +59,7 @@ namespace JueMingR.TerrariaHost.Combat
             bool prior=field==0?Options.Collision:field==1?Options.Path:field==2?Options.ClearLine:field==3?Options.MouseCenter:field==4?Options.Dummy:Options.Marker;
             if(field==0 && value){collisionFailed=reportedCollision=false;Geometry.Failed=false;}
             if(field==1 && value){pathFailed=reportedPath=false;if(Prediction.Native!=null && Prediction.Native.Failed)Prediction.Native.Retry();}
+            if(field==5 && value){reportedMarker=false;World.Marker.Reset();}
             if(prior!=value)Settings.Set(Options.Toggle(field));
         }
         public void Radius(int value){if(CanConfigure && Options.Radius!=value)Settings.Set(Options.WithRadius(value));}
@@ -81,7 +83,7 @@ namespace JueMingR.TerrariaHost.Combat
         internal void CollisionFailed(){collisionFailed=true;Geometry.Clear();}
         public void OnSessionStarted(){Clear();Geometry.Session=runtime.Generation;}
         public void OnSessionEnded(){Clear();}
-        private void Clear(){Geometry.Clear();Prediction.Cache.EndSession();Prediction.EndWorld();Selection.Clear();World.Clear();collisionFailed=pathFailed=reportedCollision=reportedPath=false;}
+        private void Clear(){Geometry.Clear();Prediction.Cache.EndSession();Prediction.EndWorld();Selection.Clear();World.Clear();World.Marker.Reset();collisionFailed=pathFailed=reportedCollision=reportedPath=reportedMarker=false;}
         public void FailClosed(){Clear();Prediction.Stop();collisionFailed=pathFailed=true;}
         public void Update(ulong tick)
         {
@@ -118,6 +120,7 @@ namespace JueMingR.TerrariaHost.Combat
         internal void TakeFeedback(Action<string> show)
         {
             Settings.TakeFeedback(show);
+            if(Unavailable(5)!=null && Options.Marker && !reportedMarker){reportedMarker=true;show(Unavailable(5));}
             if(Unavailable(0)!=null && Options.Collision && !reportedCollision){reportedCollision=true;show(Unavailable(0));}
             if(Unavailable(1)!=null && Options.Path && !reportedPath){reportedPath=true;show(Unavailable(1));}
             else if(Prediction.Native!=null && Prediction.Native.Failed && Options.Path && !reportedPath)

@@ -157,8 +157,20 @@ namespace JueMingR.TerrariaHost.Combat
         {return Move(ref n,environment,false,false,false,false,1,default(PredictionPlayerMotion),out stop);}
         public bool MoveWaterWalkingPlayer(ref NpcMotionState n,PredictionEnvironment environment,bool fallThrough,bool lavaWalk,out PredictionStop stop)
         {return Move(ref n,environment,true,true,fallThrough,lavaWalk,1,default(PredictionPlayerMotion),out stop);}
-        public bool MovePlayer(ref NpcMotionState n,PredictionEnvironment environment,PredictionPlayerMotion player,out PredictionStop stop)
-        {return Move(ref n,environment,true,player.WaterWalk,player.Down || player.IgnorePlatforms,player.LavaWalk,(int)player.GravityDirection,player,out stop);}
+        public bool MovePlayer(ref NpcMotionState n,PredictionEnvironment environment,ref PredictionPlayerMotion player,out PredictionStop stop)
+        {
+            if(!Move(ref n,environment,true,player.WaterWalk,player.Down || player.IgnorePlatforms,player.LavaWalk,(int)player.GravityDirection,player,out stop))return false;
+            if(n.PlayerHeadCollision)
+            {
+                // Position consumes the clipped contact displacement first.
+                // The final Player.Update head response owns next-tick velocity
+                // and jump state; a clipped displacement is not that velocity.
+                n.Vy=.01f*player.GravityDirection;
+                bool wetBranch=n.Wet && (n.Shimmer || n.Honey && !player.IgnoreWater || !player.Merman && !player.IgnoreWater && !player.Trident);
+                if(!player.Merman || player.GravityDirection>0 && !wetBranch)player.Jump=0;
+            }
+            return true;
+        }
         private bool Move(ref NpcMotionState n,PredictionEnvironment environment,bool playerMode,bool waterWalk,bool fallThrough,bool lavaWalk,int gravDir,PredictionPlayerMotion player,out PredictionStop stop)
         {
             stop=PredictionStop.None;
@@ -203,10 +215,11 @@ namespace JueMingR.TerrariaHost.Combat
             {if(!lava)NpcHealth.Extinguish(ref next.Health);if(next.Shimmer && !next.Health.ShimmerImmune && next.Health.ShimmerTicks<=10)next.Health.ShimmerTicks=100;}
             next.OldVx=next.Vx;next.OldVy=next.Vy;
             bool fall=playerMode?fallThrough:NpcCollisionRules.FallThrough(next,environment);
-            float rx,ry;bool up;
+            float rx,ry;bool up,down;
             var moveBox=playerMode?next.Bounds:NpcCollisionRules.MovementBounds(next);
             if(playerMode && player.OnTrack)moveBox.Height-=10;
-            if(!TileContact(moveBox.X,moveBox.Y,next.Vx,next.Vy,(int)moveBox.Width,(int)moveBox.Height,fall,out rx,out ry,out up,out stop,playerMode?player.IgnorePlatforms:fall,gravDir))return false;
+            if(!TileContact(moveBox.X,moveBox.Y,next.Vx,next.Vy,(int)moveBox.Width,(int)moveBox.Height,fall,out rx,out ry,out up,out down,out stop,playerMode?player.IgnorePlatforms:fall,gravDir))return false;
+            next.PlayerHeadCollision=playerMode && (gravDir>0?up:down);
             // Native Stardust cells rebound before translating the body. The
             // contact velocity is not their resulting movement velocity.
             if(next.EffectiveType==405 || next.EffectiveType==406)
@@ -281,8 +294,10 @@ namespace JueMingR.TerrariaHost.Combat
             return true;
         }
         private bool TileContact(float px0,float py0,float vx,float vy,int w,int h,bool fall,out float rx,out float ry,out bool up,out PredictionStop stop,bool fall2=true,int gravDir=1)
+        {bool down;return TileContact(px0,py0,vx,vy,w,h,fall,out rx,out ry,out up,out down,out stop,fall2,gravDir);}
+        private bool TileContact(float px0,float py0,float vx,float vy,int w,int h,bool fall,out float rx,out float ry,out bool up,out bool down,out PredictionStop stop,bool fall2=true,int gravDir=1)
         {
-            rx=vx;ry=vy;up=false;stop=PredictionStop.None;
+            rx=vx;ry=vy;up=down=false;stop=PredictionStop.None;
             if(!QueryArea(px0,py0,w,h,out stop) || !Area(px0+vx,py0+vy,w,h,out stop))return false;
             float px=px0+vx,py=py0+vy;
             int sideX=-1,sideY=-1,verticalX=-1,verticalY=-1;
@@ -299,7 +314,7 @@ namespace JueMingR.TerrariaHost.Combat
                 if(c.Slope==3 && py0+Math.Abs(vx)>=ty && px0>=tx || c.Slope==4 && py0+Math.Abs(vx)>=ty && px0+w<=tx+16 ||
                     c.Slope==1 && py0+h-Math.Abs(vx)<=ty+height && px0>=tx || c.Slope==2 && py0+h-Math.Abs(vx)<=ty+height && px0+w<=tx+16)continue;
                 if(py0+h<=ty)
-                {if(!(c.Platform && fall && (vy<=1 || fall2)) && nearest>ty){verticalX=x;verticalY=y+(c.Half?1:0);if(verticalX!=sideX && !topSlope){ry=ty-(py0+h)+(gravDir<0?-.01f:0);nearest=ty;}}}
+                {down=true;if(!(c.Platform && fall && (vy<=1 || fall2)) && nearest>ty){verticalX=x;verticalY=y+(c.Half?1:0);if(verticalX!=sideX && !topSlope){ry=ty-(py0+h)+(gravDir<0?-.01f:0);nearest=ty;}}}
                 else if(px0+w<=tx && !c.Platform)
                 {Cell neighbor;if(x>0){if(!CellAt(x-1,y,out neighbor,out stop))return false;if(neighbor.Slope==2 || neighbor.Slope==4)continue;}sideX=x;sideY=y;if(sideY!=verticalY)rx=tx-(px0+w);if(verticalX==sideX)ry=vy;}
                 else if(px0>=tx+16 && !c.Platform)

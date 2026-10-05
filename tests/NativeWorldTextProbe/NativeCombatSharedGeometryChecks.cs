@@ -27,6 +27,30 @@ namespace NativeWorldTextProbe
             int cases=0;var tile=Main.tile[60,60];var saved=new Tile();saved.CopyFrom(tile);
             try
             {
+                if(Environment.GetEnvironmentVariable("JUEMINGR_SHARED_GEOMETRY_PHASE")=="head")
+                {
+                    tile.active(true);tile.type=TileID.Stone;tile.slope(0);tile.halfBrick(false);
+                    var mover=(IPredictionPlayerTerrain)terrain;
+                    foreach(int direction in new[]{1,-1})foreach(bool merman in new[]{false,true})foreach(bool honey in new[]{false,true})
+                    {
+                        player.position=new Vector2(961,direction>0?980:924);player.width=20;player.height=32;player.gravDir=direction;
+                        // Honey is the native wet branch even for a merman;
+                        // ordinary water/air takes DryCollision for a merman.
+                        for(int tx=59;tx<=62;tx++)for(int ty=57;ty<=63;ty++)if(ty!=60){Main.tile[tx,ty].liquid=(byte)(honey?255:0);Main.tile[tx,ty].liquidType(honey?2:0);}
+                        var p=new PredictionPlayerMotion{X=player.position.X,Y=player.position.Y,Vy=-8*direction,Width=20,Height=32,GravityDirection=direction,Jump=9,Merman=merman};
+                        var expected=player.TileCollision(player.position,new Vector2(0,p.Vy),false,false);
+                        bool hit=direction>0?Collision.up:Collision.down;
+                        Require(hit,"Independent original player collision reports head contact.");
+                        var body=new NpcMotionState{X=p.X,Y=p.Y,Vy=p.Vy,Width=20,Height=32,Life=1,LifeMax=1};terrain.Reset();PredictionStop stop;
+                        Require(mover.MovePlayer(ref body,env,ref p,out stop),"Player head response available: "+stop);
+                        Require(Math.Abs(body.Y-player.position.Y-expected.Y)<.015f,"Position consumes original clipped displacement before head response.");
+                        Require(Math.Abs(body.Vy-.01f*direction)<.0001f,"Head response stores original next-tick velocity.");
+                        int jump=!merman || direction>0 && !honey?0:9;
+                        Require(p.Jump==jump,"Native dry/merman jump control: gravity="+direction+" honey="+honey+" jump="+p.Jump);cases++;
+                    }
+                    for(int tx=59;tx<=62;tx++)for(int ty=57;ty<=63;ty++)Main.tile[tx,ty].liquid=0;
+                    Console.WriteLine("PASS SHARED-PLAYER-HEAD independent cases="+cases);return;
+                }
                 if(Environment.GetEnvironmentVariable("JUEMINGR_SHARED_GEOMETRY_PHASE")=="predicates")
                 {
                     var rules=source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcCollisionRules");var candidate=rules.GetMethod("FallThrough",Flags);

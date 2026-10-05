@@ -6,15 +6,15 @@ namespace JueMingR.Features.Combat
     internal static class NpcWormMotion
     {
         internal static bool KnownHead(int type){return type==7 || type==10 || type==13 || type==39 || type==95 || type==98;}
-        internal static void Target(ref NpcMotionState n,PredictionEnvironment e,int oldTarget,bool confused)
+        internal static void Target(ref NpcMotionState n,ref PredictionEnvironment e,int oldTarget,bool confused)
         {
             // FixedTarget is an explicit forecast premise. Match native facing
             // only where this AI actually calls TargetClosest; body segments
             // with a valid target must retain their prior facing. Negative
             // aggro uses the target from before AI, not the newly chosen one.
-            n.Target=e.PlayerIndex;
-            if(!e.PlayerDead && !(n.TargetNoAggro && n.Direction!=0) && !(e.PlayerIdleWithNegativeAggro && oldTarget>=0 && oldTarget<255 && !n.Boss))
-            {n.Direction=(int)(e.PlayerX-e.PlayerWidth/2)+(int)e.PlayerWidth/2<n.X+n.Width/2?-1:1;n.DirectionY=(int)(e.PlayerY-e.PlayerHeight/2)+(int)e.PlayerHeight/2<n.Y+n.Height/2?-1:1;}
+            NpcTargeting.Retarget(ref n,ref e);if(!n.TargetCaptured)n.Target=e.PlayerIndex;var target=NpcTargeting.Area(n,e);
+            if(n.TrackingKind>=2 || !e.PlayerDead && !(n.TargetNoAggro && n.Direction!=0) && !(e.PlayerIdleWithNegativeAggro && oldTarget>=0 && oldTarget<255 && !n.Boss))
+            {n.Direction=(int)target.X+(int)target.Width/2<n.X+n.Width/2?-1:1;n.DirectionY=(int)target.Y+(int)target.Height/2<n.Y+n.Height/2?-1:1;}
             if(confused)n.Direction=-n.Direction;
         }
         internal static bool Head(ref NpcMotionState n,PredictionEnvironment e,IPredictionTerrain terrain,int oldTarget,bool confused,out PredictionStop stop)
@@ -53,7 +53,7 @@ namespace JueMingR.Features.Combat
             float dx=(int)(e.PlayerX/16)*16-(int)(n.Bounds.CenterX/16)*16,dy=(int)(e.PlayerY/16)*16-(int)(n.Bounds.CenterY/16)*16;
             if(!earth)
             {
-                Target(ref n,e,oldTarget,confused);
+                Target(ref n,ref e,oldTarget,confused);
                 n.Vy+=destroyer?.15f:type==39 && n.Vy<0?.08f:.11f;n.Vy=Math.Min(speed,n.Vy);
                 if(Math.Abs(n.Vx)+Math.Abs(n.Vy)<speed*.4)n.Vx+=n.Vx<0?-acceleration*1.1f:acceleration*1.1f;
                 else if(n.Vy==speed)Toward(ref n.Vx,dx,acceleration);

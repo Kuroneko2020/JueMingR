@@ -26,8 +26,8 @@ namespace JueMingR.TerrariaHost.F5
             elements.Add(new F5Element(F5ElementKind.Panel,default(F5Rect),null,default(F5Size),0,F5Command.None));
             var title=measure("辅助瞄准设置",.70f);y+=8;
             float row=Math.Max(30,title.Height+10),x=12+title.Width+12;
-            string[] labels={options.ClearLine?"清线优先":"最近优先",options.MouseCenter?"鼠标中心":"玩家中心",options.Dummy?"追踪人偶：开":"追踪人偶：关",options.Marker?"目标标记：开":"目标标记：关"};
-            var commands=new[]{F5Command.ObservationPolicy,F5Command.ObservationCenter,F5Command.ObservationDummy,F5Command.ObservationMarker};
+            string[] labels={options.ClearLine?"清线优先":"最近优先",options.MouseCenter?"鼠标中心":"玩家中心",options.Dummy?"追踪人偶：开":"追踪人偶：关"};
+            var commands=new[]{F5Command.ObservationPolicy,F5Command.ObservationCenter,F5Command.ObservationDummy};
             foreach(var labelText in labels)row=Math.Max(row,measure(labelText,.65f).Height+10);
             elements.Add(new F5Element(F5ElementKind.Text,new F5Rect(12,y+(row-title.Height)/2,title.Width,title.Height),"辅助瞄准设置",title,.70f,F5Command.None,
                 description:new F5RowDescription("combat.selection","当前设置用于 NPC寻路预测与目标标记的共享选敌；无需持有武器或开始攻击。"),hintRect:new F5Rect(10,y,title.Width+4,row)));
@@ -37,6 +37,12 @@ namespace JueMingR.TerrariaHost.F5
                 elements.Add(new F5Element(F5ElementKind.Button,new F5Rect(x,y,width,row),labels[i],size,.65f,commands[i]));x+=width+8;
             }
             y+=row+8;
+            // Keep the marker and its unbound public key on a second measured
+            // row; adding a fourth button to the old row exceeded its panel.
+            var markerRows=new F5RowLayout(elements,measure);
+            markerRows.Buttons(ref y,12,498,new[]{options.Marker?"目标标记：开":"目标标记：关","键"},labelText=>labelText=="键"?F5Command.None:F5Command.ObservationMarker);
+            var markerKey=elements[elements.Count-1];elements[elements.Count-1]=new F5Element(markerKey.Kind,markerKey.Rect,markerKey.Text,markerKey.TextSize,markerKey.TextScale,markerKey.Command,Actions[2]);
+            y+=4;
             var label=measure("鼠标半径：50格",.70f);float fieldHeight=Math.Max(30,label.Height+10);
             elements.Add(new F5Element(F5ElementKind.Field,new F5Rect(12,y,498,fieldHeight),null,label,.70f,F5Command.ObservationRadius));y+=fieldHeight+8;
             elements[panel]=new F5Element(F5ElementKind.Panel,new F5Rect(0,top,522,y-top),null,default(F5Size),0,F5Command.None);y+=6;

@@ -19,7 +19,8 @@ namespace JueMingR.Features.Combat
             FailureLayer=PredictionFailureLayer.Source;
             if(source==null || count<1 || count>work.Length || selected<0 || selected>=count || required<1 || required>NpcPredictionCache.Horizon)return null;
             var current=source[selected];
-            if(!current.Active || !current.CanReceive || current.Life<=0 || !Valid(current) || !Valid(player) || !Finite(environment.Wind) || !Finite(environment.WorldSurface) || !Finite(environment.RockLayer) || motionRoles!=null && motionRoles.Length<count){Clear();return null;}
+            bool needsPlayer=false;for(int i=0;i<count;i++)if((motionRoles==null || i<motionRoles.Length && motionRoles[i]) && NpcMotion.NeedsPlayerMotion(source[i]))needsPlayer=true;
+            if(!current.Active || !current.CanReceive || current.Life<=0 || !Valid(current) || needsPlayer && !Valid(player) || !Finite(environment.Wind) || !Finite(environment.WorldSurface) || !Finite(environment.RockLayer) || motionRoles!=null && motionRoles.Length<count){Clear();return null;}
             bool observed=priorTick+1==tick && previous.Identity.Equals(current.Identity) && SamePhase(previous,current) && !current.JustHit &&
                 Math.Abs(current.X-previous.X)<512 && Math.Abs(current.Y-previous.Y)<512;
             if(observed)
@@ -43,7 +44,7 @@ namespace JueMingR.Features.Combat
             FailureLayer=PredictionFailureLayer.None;bool observedPlayer=false;
             for(int future=1;future<=required;future++)
             {
-                if(!observedPlayer && !AdvancePlayer(ref player,environment,terrain,out stop))
+                if(needsPlayer && !observedPlayer && !AdvancePlayer(ref player,environment,terrain,out stop))
                 {
                     // Only these bounded structural models can use the real
                     // current target-player premise. Invalid numeric state
@@ -60,7 +61,7 @@ namespace JueMingR.Features.Combat
                     else{FailureLayer=PredictionFailureLayer.PlayerPremise;break;}
                 }
                 var env=environment;
-                if(!observedPlayer){env.PlayerX=player.X+player.Width*.5f;env.PlayerY=player.Y+player.Height*.5f;env.PlayerWet=playerBody.Wet;}
+                if(needsPlayer && !observedPlayer){env.PlayerX=player.X+player.Width*.5f;env.PlayerY=player.Y+player.Height*.5f;env.PlayerWet=playerBody.Wet;}
                 bool advanced=true;
                 for(int i=0;i<count;i++)
                 {
@@ -78,7 +79,8 @@ namespace JueMingR.Features.Combat
             if(environment.Multiplayer)assumptions|=PredictionAssumption.NetworkObservation;
             if(current.UnmodeledDamageTicks>0)assumptions|=PredictionAssumption.UnmodeledDamageEffects;
             if(observedPlayer)assumptions=(assumptions&~PredictionAssumption.HeldPlayerControls)|PredictionAssumption.CurrentPlayerObservation;
-            var quality=NpcMotion.CurrentPlayerPremise(current)?PredictionQuality.StructuredApproximation:observed?PredictionQuality.ObservedTrend:PredictionQuality.LimitedObservation;
+            if(!needsPlayer)assumptions=(assumptions&~PredictionAssumption.HeldPlayerControls)|PredictionAssumption.NoPlayerMotionNeeded;
+            var quality=NpcMotion.StructuredModel(current)?PredictionQuality.StructuredApproximation:observed?PredictionQuality.ObservedTrend:PredictionQuality.LimitedObservation;
             return new NpcTrajectory(current.Identity,tick,++version,assumptions,stop,points,length,PredictionStrategy.RollingConditional,epoch,quality);
         }
         private NpcMotionState playerBody;
@@ -121,7 +123,7 @@ namespace JueMingR.Features.Combat
                 Health=new NpcHealthState{Immortal=true,DontTakeDamage=true,LavaImmune=true,ShimmerImmune=true},WaterSpeed=1,HoneySpeed=1,LavaSpeed=1,ShimmerSpeed=1};
             var playerTerrain=terrain as IPredictionPlayerTerrain;
             if(playerTerrain!=null)
-            {if(!playerTerrain.MovePlayer(ref playerBody,e,p,out stop))return false;}
+            {if(!playerTerrain.MovePlayer(ref playerBody,e,ref p,out stop))return false;}
             else if(p.WaterWalk)
             {
                 var surface=terrain as IPredictionWaterSurfaceTerrain;

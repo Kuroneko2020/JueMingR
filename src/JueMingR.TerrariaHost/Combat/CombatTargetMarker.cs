@@ -16,12 +16,26 @@ namespace JueMingR.TerrariaHost.Combat
         internal readonly Piece[] Pieces=new Piece[6];
         private readonly HostCombatObservation host;
         private NpcIdentity identity;
+        internal bool Failed {get;private set;}
         internal bool Visible {get;private set;}
         internal CombatTargetMarker(HostCombatObservation host){this.host=host;}
         internal void Clear(){Visible=false;identity=default(NpcIdentity);}
+        internal void Reset(){Clear();Failed=false;}
+        private void Fail(Exception error)
+        {
+            Clear();if(Failed)return;Failed=true;
+            Prediction.AimLightTrace.Fault("target-marker",error,(long)Main.GameUpdateCount);
+        }
         private bool Current()
         {return host.Marker && host.Selection.HasTarget && host.Selection.Target.Equals(identity) && CombatSelection.Valid(identity,host.Session) && CombatSelection.Receives(Main.npc[identity.Slot],host.Options.Dummy);}
         internal void Prepare(Matrix zoom,Matrix inverse)
+        {
+            Clear();if(!host.Marker){Failed=false;return;}if(Failed)return;
+            try{PrepareCore(zoom,inverse);}
+            catch(ArgumentException error){Fail(error);}
+            catch(OverflowException error){Fail(error);}
+        }
+        private void PrepareCore(Matrix zoom,Matrix inverse)
         {
             Clear();if(!host.Marker || !host.Selection.HasTarget)return;identity=host.Selection.Target;if(!Current())return;
             var box=CombatSelection.ReceiveBounds(Main.npc[identity.Slot]);if(box.Width<=0 || box.Height<=0)return;
@@ -45,12 +59,24 @@ namespace JueMingR.TerrariaHost.Combat
         }
         internal void Draw(SpriteBatch batch)
         {
-            if(!Visible || !Current())return;
+            if(Failed || !Visible || !Current())return;
             // Borrow the game's loaded atlas on its graphics thread. Clearing
             // this display must never dispose or replace the game's asset.
-            var texture=TextureAssets.LockOnCursor?.Value;if(texture==null || texture.IsDisposed || texture.Height<28)return;
-            for(int i=0;i<Pieces.Length;i++)
-            {var p=Pieces[i];batch.Draw(texture,p.Position,new Rectangle(0,p.SourceY,texture.Width,12),p.Color,p.Rotation,new Vector2(texture.Width/2f,6),p.Scale,SpriteEffects.None,0);}
+            Texture2D texture;
+            try{texture=TextureAssets.LockOnCursor?.Value;}
+            catch(InvalidOperationException error){Fail(error);return;}
+            catch(ArgumentException error){Fail(error);return;}
+            catch(System.IO.IOException error){Fail(error);return;}
+            if(texture==null || texture.IsDisposed || texture.Height<28){Fail(new InvalidOperationException("Target marker atlas unavailable."));return;}
+            try
+            {
+                for(int i=0;i<Pieces.Length;i++)
+                {var p=Pieces[i];batch.Draw(texture,p.Position,new Rectangle(0,p.SourceY,texture.Width,12),p.Color,p.Rotation,new Vector2(texture.Width/2f,6),p.Scale,SpriteEffects.None,0);}
+            }
+            catch(ArgumentException error){Fail(error);}
+            catch(ObjectDisposedException error){Fail(error);}
+            // An invalid shared SpriteBatch/device remains a world-layer fault;
+            // resource/marker parameter failures above cannot erase the path.
         }
         private static bool Finite(Vector2 p){return !float.IsNaN(p.X) && !float.IsNaN(p.Y) && !float.IsInfinity(p.X) && !float.IsInfinity(p.Y);}
     }

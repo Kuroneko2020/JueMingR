@@ -78,7 +78,7 @@ namespace JueMingR.TerrariaHost.F5
         private int observationRevision,builtObservationRevision;
         internal void SetObservationOptions(Features.Combat.ObservationOptions value)
         {
-            if(observation.ClearLine!=value.ClearLine || observation.MouseCenter!=value.MouseCenter || observation.Dummy!=value.Dummy)observationRevision++;
+            if(observation.ClearLine!=value.ClearLine || observation.MouseCenter!=value.MouseCenter || observation.Dummy!=value.Dummy || observation.Marker!=value.Marker)observationRevision++;
             observation=value;
         }
         private Features.WorldObjectText.WorldObjectSettings objectSettings = Features.WorldObjectText.WorldObjectSettings.Default;

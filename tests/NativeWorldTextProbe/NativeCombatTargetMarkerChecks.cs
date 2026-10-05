@@ -1,5 +1,8 @@
 using System;
 using System.Reflection;
+using System.Collections;
+using System.Linq;
+using JueMingR.Platform.Hotkeys;
 using JueMingR.Features.Combat;
 using JueMingR.Platform.Combat;
 using Microsoft.Xna.Framework;
@@ -26,9 +29,61 @@ namespace NativeWorldTextProbe
             Require(cache.Required==0 && GetOptional(cache,"result")==null,"Marker-only has zero future demand or fabricated cache result.");
             Require(GetOptional(source,"Native")==null,"Marker-only does not start the exact comparison helper.");
             Call(host,"Poll");Require((bool)Get(selection,"HasTarget"),"Poll keeps marker-only target alive.");
+            var shell=Get(context,"Shell");var state=Get(shell,"State");var renderer=Get(shell,"renderer");var layout=Get(state,"Layout");
+            Call(renderer,"RefreshResources");Call(state,"Navigate",8);Call(renderer,"Prepare",state,960f,640f,1f);
+            object Button()=>((IEnumerable)Get(layout,"Elements")).Cast<object>().Single(e=>Get(e,"Command").ToString()=="ObservationMarker");
+            Require((string)Get(Button(),"Text")=="目标标记：开","Same-page initial marker text is committed ON.");
+            var control=Get(renderer,"CombatObservationControls");Call(control,"Execute",Get(Button(),"Command"));
+            var settings=(ObservationSettings)Get(host,"Settings");NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return !settings.Busy;});
+            Call(renderer,"Prepare",state,960f,640f,1f);Require((string)Get(Button(),"Text")=="目标标记：关","Actual same-page command refreshes OFF after commit.");
+            var registry=(HotkeyRegistry)Get(Get(shell,"hotkeys"),"Registry");var bindings=(HotkeyBindings)Get(Get(shell,"hotkeys"),"Bindings");
+            Require(bindings.Get("combat.target-marker")==null,"Marker public action is initially unbound.");
+            Require(registry.Find("combat.target-marker").Invoke(HotkeyContext.Gameplay),"Registered public marker command reaches same preference owner.");
+            NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return !settings.Busy;});Call(renderer,"Prepare",state,960f,640f,1f);
+            Require((string)Get(Button(),"Text")=="目标标记：开","Public command refreshes the same page ON after commit.");
+            Require(((IEnumerable)Get(layout,"Elements")).Cast<object>().Any(e=>(string)GetOptional(e,"HotkeyTarget")=="combat.target-marker"),"F5 exposes the existing unbound public key picker.");
+            foreach(object element in (IEnumerable)Get(layout,"Elements"))if(Get(element,"Command").ToString()=="ObservationMarker" || (string)GetOptional(element,"HotkeyTarget")=="combat.target-marker")
+            {var rect=Get(element,"Rect");Require((float)Get(rect,"X")>=0 && (float)Get(rect,"Right")<=522,"Measured marker controls stay inside their actual panel.");}
+            var world=Get(host,"World");var display=Get(world,"Marker");Set(host,"LayerStatus",Enum.Parse(Get(host,"LayerStatus").GetType(),"Ready"));
+            Main.screenWidth=960;Main.screenHeight=640;Main.screenPosition=new Vector2(300,300);Main.GameViewMatrix.Zoom=Vector2.One;
+            target.position=new Vector2(720,450);target.netOffset=new Vector2(8,6);NativeCombatObservationChecks.Fresh(context,host);Call(world,"Prepare");
+            Require((bool)Get(display,"Visible"),"Marker prepares actual current selected region without a path.");var pieces=(Array)Get(display,"Pieces");Require(pieces.Length==6,"Native marker style emits exactly six pieces.");
+            for(int i=0;i<6;i++)Require((int)Get(pieces.GetValue(i),"SourceY")==i%2*16,"Native atlas source rows alternate 0 and 16.");
+            var positions=Enumerable.Range(0,6).Select(i=>(Vector2)Get(pieces.GetValue(i),"Position")).ToArray();
+            Require(Math.Abs(positions.Average(p=>p.X)-(target.Center.X+8-300))<1 && Math.Abs(positions.Average(p=>p.Y)-(target.Center.Y+6-300))<1,"Native pieces surround current netOffset body after one coordinate transform.");
+            var identity=(NpcIdentity)Get(selection,"Target");target.active=false;NativeCombatObservationChecks.Fresh(context,host);Call(world,"Prepare");Require(!(bool)Get(display,"Visible"),"Death clears marker promptly without Draw.");
+            target=new NPC();target.SetDefaults(371);target.active=true;target.whoAmI=2;target.position=new Vector2(720,450);Main.npc[2]=target;NativeCombatObservationChecks.Fresh(context,host);Call(world,"Prepare");Require(!((NpcIdentity)Get(selection,"Target")).Equals(identity) && (bool)Get(display,"Visible"),"Replacement marker uses only the new shared identity.");
             NativeCombatObservationChecks.Save(host,new ObservationOptions());
             Require(!(bool)Get(selection,"HasTarget"),"Final consumer OFF retires selection.");
-            Console.WriteLine("PASS TARGET-MARKER default/off, marker-only shared identity and zero prediction demand.");
+            Console.WriteLine("PASS TARGET-MARKER actual same-page/public command refresh, key picker, measured CPU layout, six native source-row pieces, current netOffset and replacement; marker-only zero prediction. No GPU Draw claim.");
+        }
+        internal static void Graphics(object context,ProbeGraphics graphics,string output)
+        {
+            graphics.LoadTexture("LockOnCursor","Images/UI/LockOn_Cursor");var atlas=Terraria.GameContent.TextureAssets.LockOnCursor;
+            Terraria.Localization.LanguageManager.Instance.SetLanguage("zh-Hans");var shell=Get(context,"Shell");var ui=Get(shell,"State");var renderer=Get(shell,"renderer");var layout=Get(ui,"Layout");Call(renderer,"RefreshResources");Call(ui,"Navigate",8);
+            foreach(var size in new[]{new[]{960,760,100},new[]{960,440,100},new[]{1440,900,150}})
+            {
+                Main.screenWidth=size[0];Main.screenHeight=size[1];Main.UIScale=size[2]/100f;Terraria.GameInput.PlayerInput.CacheOriginalScreenDimensions();Call(renderer,"Prepare",ui,(float)size[0],(float)size[1],Main.UIScale);
+                var elements=((IEnumerable)Get(layout,"Elements")).Cast<object>().ToArray();var button=elements.Single(e=>Get(e,"Command").ToString()=="ObservationMarker");var key=elements.Single(e=>(string)GetOptional(e,"HotkeyTarget")=="combat.target-marker");
+                foreach(var e in new[]{button,key})Require((float)Get(Get(e,"Rect"),"Right")<=522,"Original Chinese font marker/key fit panel at "+Main.UIScale);
+                Call(ui,"RestoreVisible");Call(ui,"ScrollTo",(float)Get(Get(button,"Rect"),"Y"));graphics.Image(System.IO.Path.Combine(output,"marker-f5-"+size[0]+"-"+size[1]+".png"),()=>Call(shell,"DrawLayer"),Main.UIScaleMatrix,size[0],size[1]);
+            }
+            Call(ui,"Close");Main.screenWidth=960;Main.screenHeight=640;Main.UIScale=1;Terraria.GameInput.PlayerInput.CacheOriginalScreenDimensions();
+            var host=Get(context,"CombatObservation");var world=Get(host,"World");var marker=Get(world,"Marker");
+            foreach(var n in Main.npc)n.active=false;var target=Main.npc[2];target.SetDefaults(2);target.whoAmI=2;target.active=true;target.position=new Vector2(720,450);target.target=0;Main.LocalPlayer.position=new Vector2(640,500);Main.dayTime=false;
+            NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true,marker:true));NativeCombatObservationChecks.Fresh(context,host);Call(world,"Prepare");Require((bool)Get(marker,"Visible") && (int)Get(world,"StrokeCount")>5,"Marker and real path both prepared.");
+            graphics.Image(System.IO.Path.Combine(output,"marker-path.png"),()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);
+            Require(!atlas.Value.IsDisposed,"Drawing only borrows original atlas.");
+            Terraria.GameContent.TextureAssets.LockOnCursor=null;
+            var survived=graphics.Pixels(()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);
+            Require((bool)Get(marker,"Failed") && survived.Take(960*450).Any(p=>p.A>0),"Controlled marker resource failure still executes remaining path pixels above the label on real XNA device.");
+            Call(world,"Prepare");Require((int)Get(world,"StrokeCount")>5 && !(bool)Get(marker,"Visible"),"Local marker failure is latched without retiring prediction or path commands.");
+            Terraria.GameContent.TextureAssets.LockOnCursor=atlas;Call(host,"Set",5,true);Call(world,"Prepare");Require((bool)Get(marker,"Visible"),"Explicit retry recovers marker from restored borrowed resource.");
+            graphics.Image(System.IO.Path.Combine(output,"marker-recovered.png"),()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);
+            foreach(int gravity in new[]{1,-1})foreach(float zoom in new[]{.8f,1.4f})
+            {Main.LocalPlayer.gravDir=gravity;Main.GameViewMatrix.Zoom=new Vector2(zoom);Call(world,"Prepare");Require((bool)Get(marker,"Visible"),"Marker survives supported gravity/zoom.");graphics.Image(System.IO.Path.Combine(output,"marker-transform-"+gravity+"-"+zoom.ToString(System.Globalization.CultureInfo.InvariantCulture)+".png"),()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);}
+            Main.LocalPlayer.gravDir=1;Main.GameViewMatrix.Zoom=Vector2.One;Main.mapFullscreen=true;Call(world,"Prepare");Require(!(bool)Get(marker,"Visible"),"Fullscreen map retires marker commands.");Main.mapFullscreen=false;
+            NativeCombatObservationChecks.Save(host,new ObservationOptions());Console.WriteLine("PASS TARGET-MARKER real original atlas/Draw, resource-failure remaining path pixels, bounded retry. This is isolated XNA, not gameplay FPS/owner acceptance.");
         }
     }
 }

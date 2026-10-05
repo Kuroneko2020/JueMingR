@@ -18,6 +18,7 @@ namespace JueMingR.Features.Combat
             // not evidence that every variant has the same movement formula.
             if(!n.NoTileCollide || n.Style==3 || n.Style==6 || n.Style==37 || n.Style==1 || !KnownMotion(n))result|=PredictionAssumption.ApproximateMechanism;
             if(n.BuffFingerprint!=0)result|=PredictionAssumption.ApproximateMechanism|PredictionAssumption.UnmodeledStatusEffects;
+            if(n.TrackingKind>=2)result|=PredictionAssumption.ObservedTrackingMotion|PredictionAssumption.ApproximateMechanism;
             return result;
         }
         public static bool Step(ref NpcMotionState n,NpcMotionState[] group,int count,PredictionEnvironment env,IPredictionTerrain terrain,int elapsed,out PredictionStop stop)
@@ -25,12 +26,13 @@ namespace JueMingR.Features.Combat
         public static bool Step(ref NpcMotionState n,NpcMotionState[] group,int count,PredictionEnvironment env,IPredictionTerrain terrain,int elapsed,bool rolling,out PredictionStop stop)
         {
             stop=PredictionStop.None;n.NewSegment=false;
+            env=NpcTargeting.Player(n,env);
             if(!n.Active){stop=PredictionStop.Despawn;return false;}
             // Explicit structural models can continue from their observed
             // state under a qualified unknown-effect premise until expiry.
             // Unmodeled families still refuse a potentially motion-changing
             // effect; no unknown effect is silently declared harmless.
-            if(n.BuffFingerprint!=0 && (!CurrentPlayerPremise(n) || n.BuffExpires<=elapsed))
+            if(n.BuffFingerprint!=0 && (!AllowsUnmodeledMotionEffect(n) || n.BuffExpires<=elapsed))
             {stop=PredictionStop.BuffTransition;return false;}
             if(!Finite(n.X) || !Finite(n.Y) || !Finite(n.Vx) || !Finite(n.Vy)){stop=PredictionStop.InvalidState;return false;}
             // Native UpdateNPC smooths the last received offset before AI.
@@ -52,9 +54,11 @@ namespace JueMingR.Features.Combat
             if(n.Wet){gravity=n.Shimmer?.15f:n.Honey?.1f:.2f;fall=n.Shimmer?5.5f:n.Honey?4:7;}
             n.Gravity=gravity;n.MaxFall=fall;
             if(n.Identity.Type==488){n.Vx=n.Vy=0;return true;}
-            bool face=!env.PlayerDead && !(n.TargetNoAggro && n.Direction!=0) && !(env.PlayerIdleWithNegativeAggro && n.Target>=0 && n.Target<255 && !n.Boss);
-            int direction=face?(int)(env.PlayerX-env.PlayerWidth/2)+(int)env.PlayerWidth/2<n.X+n.Width/2?-1:1:n.Direction;
-            int vertical=face?(int)(env.PlayerY-env.PlayerHeight/2)+(int)env.PlayerHeight/2<n.Y+n.Height/2?-1:1:n.DirectionY;
+            int facingOldTarget=n.Target;if(n.Style==2 || n.Style==5 || n.Style==14)NpcTargeting.Retarget(ref n,ref env);
+            bool face=NpcTargeting.CanFace(n,env,facingOldTarget);var tracking=NpcTargeting.Area(n,env,1);
+            if(n.TrackingKind>=2)n.TrackingArea=tracking;
+            int direction=face?(int)tracking.X+(int)tracking.Width/2<n.X+n.Width/2?-1:1:n.Direction;
+            int vertical=face?(int)tracking.Y+(int)tracking.Height/2<n.Y+n.Height/2?-1:1:n.DirectionY;
             bool confused=n.ConfusedTicks>0;if(confused){direction=-direction;n.ConfusedTicks--;}
             bool linked=false;
             if(n.Style==16 && NpcAquaticMotion.Known(n.Identity.Type))
@@ -85,7 +89,7 @@ namespace JueMingR.Features.Combat
                 if(n.Style==6 && wormType>=13 && wormType<=15)n.Health.RealLife=-1;
                 else if(n.A3>0)n.Health.RealLife=(int)n.A3;
                 if(n.Target<0 || n.Target>=255 || env.PlayerDead || n.Style==6 && (wormType==10 || wormType==39 || wormType==95) && env.PlayerY-env.PlayerHeight/2<env.WorldSurface*16)
-                    NpcWormMotion.Target(ref n,env,oldTarget,confused);
+                    NpcWormMotion.Target(ref n,ref env,oldTarget,confused);
                 if(n.Style==37 && !NpcWormMotion.Head(ref n,env,terrain,oldTarget,confused,out stop))return false;
                 if(!env.Multiplayer && (wormType==7 || wormType==8 || wormType==10 || wormType==11 || wormType==13 || wormType==14 || wormType==39 || wormType==40 || wormType==95 || wormType==96 || wormType==98 || wormType==99 || n.Style==37 && wormType!=136))
                 {
@@ -169,6 +173,7 @@ namespace JueMingR.Features.Combat
             // oldVelocity belongs to native UpdateCollision. NoTileCollide
             // bypasses that owner; changing it here would defeat rolling reuse
             // for a correctly predicted Sharkron/Duke step.
+            env=NpcTargeting.Player(n,env);
             if(!terrain.Move(ref n,env,out stop))return false;
             if(n.Style==3 && NpcGroundMotion.Known(n.EffectiveType))NpcGroundMotion.AfterMove(ref n);
             if(n.Style==69 || n.Identity.Type==371 || n.Identity.Type==372 || n.Identity.Type==373)n.Health.DontTakeDamage=!n.CanReceive;
@@ -176,6 +181,19 @@ namespace JueMingR.Features.Combat
         }
         internal static bool CurrentPlayerPremise(NpcMotionState n)
         {return n.Style==13 && NpcAnchoredMotion.Known(n.EffectiveType) || n.Style==16 && NpcAquaticMotion.Known(n.EffectiveType) || n.Style==3 && (n.EffectiveType==77 || NpcWallMotion.Ground(n.EffectiveType)) || n.Style==40 && NpcWallMotion.Wall(n.EffectiveType);}
+        internal static bool AllowsUnmodeledMotionEffect(NpcMotionState n)
+        {return CurrentPlayerPremise(n);}
+        internal static bool StructuredModel(NpcMotionState n)
+        {return KnownMotion(n) || CurrentPlayerPremise(n) || n.Style==69 || n.Style==39 && n.EffectiveType==153 || n.Style==41 && n.EffectiveType==177;}
+        internal static bool NeedsPlayerMotion(NpcMotionState n)
+        {
+            if(n.EffectiveType==488)return false;
+            if(n.TrackingKind>=2 && (n.Style==2 || n.Style==5 || n.Style==14))return false;
+            if(StructuredModel(n) || n.Style==3 || n.Style==40 || n.Style==13 || n.Style==16)return true;
+            // These native collision predicates directly read the numbered
+            // player even when the AI itself is only an observed trend.
+            int type=n.EffectiveType;return type==50 || type==657 || type==245 || type==620 || n.Style==26 || n.Style==87;
+        }
         private static bool CheckActive(ref NpcMotionState n,PredictionEnvironment e,out PredictionStop stop)
         {
             stop=PredictionStop.None;int type=n.Identity.Type;
