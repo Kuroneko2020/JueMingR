@@ -224,7 +224,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(!TileContact(moveBox.X,moveBox.Y,next.Vx,next.Vy,(int)moveBox.Width,(int)moveBox.Height,fall,out rx,out ry,out up,out down,out stop,playerMode?player.IgnorePlatforms:fall,gravDir))return false;
             next.PlayerHeadCollision=playerMode && (gravDir>0?up:down);
             bool wetPlayer=wet && (next.Shimmer || next.Honey && !player.IgnoreWater || !player.Merman && !player.IgnoreWater && !player.Trident);
-            next.PlayerDryHeadCollision=playerMode && !player.Cart && !wetPlayer && gravDir>0 && up;
+            next.PlayerDryHeadCollision=playerMode && !wetPlayer && gravDir>0 && up;
             // Native Stardust cells rebound before translating the body. The
             // contact velocity is not their resulting movement velocity.
             if(next.EffectiveType==405 || next.EffectiveType==406)
@@ -243,8 +243,9 @@ namespace JueMingR.TerrariaHost.Combat
                 // the original body dimensions/offset and receive box intact.
                 moveBox=playerMode?next.Bounds:NpcCollisionRules.MovementBounds(next);var slope=next;
                 float dx=next.X-moveBox.X,dy=next.Y-moveBox.Y;slope.X=moveBox.X;slope.Y=moveBox.Y;slope.Width=(int)moveBox.Width;slope.Height=(int)moveBox.Height;
-                if(!Slopes(ref slope,fall,out stop))return false;
+                if(!Slopes(ref slope,fall,out stop,playerMode,gravDir))return false;
                 next.X=slope.X+dx;next.Y=slope.Y+dy;next.Vx=slope.Vx;next.Vy=slope.Vy;next.StairFall=slope.StairFall;
+                if(playerMode)next.PlayerHeadCollision=slope.PlayerHeadCollision;
                 // Native applies belt contact after movement-box slopes have
                 // returned to body coordinates. Belt displacement never owns V.
                 if(playerMode?!player.SkipConveyor:next.Style!=67 && (next.Town || next.LifeMax==5 && next.NoContactDamage || NPCID.Sets.ConveyorBeltCollision[movingType]))
@@ -349,7 +350,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(chosenSlope==1 && n.Vx>0 && n.Y+n.Height>=chosenY*16+n.X-chosenX*16 || chosenSlope==2 && n.Vx<0 && n.Y+n.Height>=chosenY*16+chosenX*16+16-(n.X+n.Width))n.Vy+=Math.Abs(n.Vx);
             return true;
         }
-        private bool Slopes(ref NpcMotionState n,bool fall,out PredictionStop stop)
+        private bool Slopes(ref NpcMotionState n,bool fall,out PredictionStop stop,bool playerMode=false,int gravDir=1)
         {
             stop=PredictionStop.None;float x=n.X,y=n.Y,w=n.Width,h=n.Height,correctX=x,correctY=y,upper=y,lower=y,vx=n.Vx,vy=n.Vy;int mask=0;bool stairFall=false;
             if(!QueryArea(x,y,w,h,out stop))return false;
@@ -375,12 +376,15 @@ namespace JueMingR.TerrariaHost.Combat
                     {if(c.StairPlatform && y+h-4-Math.Abs(n.Vx)>ty){if(pass)stairFall=true;continue;}float candidate=ty-h;if(correctY<=candidate)continue;if(pass){stairFall=true;continue;}correctY=candidate;vy=Math.Min(vy,0);}
                 }
             }
-            float rx,ry;bool up;if(!TileContact(x,y,correctX-x,correctY-y,n.Width,n.Height,false,out rx,out ry,out up,out stop))return false;
+            float rx,ry;bool up,down;if(!TileContact(x,y,correctX-x,correctY-y,n.Width,n.Height,false,out rx,out ry,out up,out down,out stop))return false;
             float shift=correctY-y;
-            if(ry>shift){float delta=shift-ry;correctY=y+ry;if((mask&2)!=0)correctX=x-delta;if((mask&4)!=0)correctX=x+delta;vx=vy=0;}
+            if(ry>shift){float delta=shift-ry;correctY=y+ry;if((mask&2)!=0)correctX=x-delta;if((mask&4)!=0)correctX=x+delta;vx=vy=0;up=false;}
             else if(ry<shift){float delta=ry-shift;correctY=y+ry;if((mask&8)!=0)correctX=x-delta;if((mask&16)!=0)correctX=x+delta;vx=vy=0;}
             if(!Area(correctX,correctY,w,h,out stop))return false;
-            n.X=correctX;n.Y=correctY;n.Vx=vx;n.Vy=vy;if(stairFall)n.StairFall=true;else if(!fall)n.StairFall=false;return true;
+            // Native SlopeCollision's final TileCollision replaces the shared
+            // flags even for zero correction. Early Dry Jump remains separate.
+            if(playerMode)n.PlayerHeadCollision=gravDir>0?up:down;
+            n.X=correctX;n.Y=correctY;n.Vx=vx;n.Vy=playerMode && gravDir<0 && vy==.0101f?0:vy;if(stairFall)n.StairFall=true;else if(!fall)n.StairFall=false;return true;
         }
     }
 }

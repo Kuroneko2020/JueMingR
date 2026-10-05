@@ -90,7 +90,7 @@ namespace NativeWorldTextProbe
             {disposedBatch.Dispose();bool shared=false;try{Call(marker,"Draw",disposedBatch);}catch(TargetInvocationException error){shared=error.InnerException is InvalidOperationException || error.InnerException is ObjectDisposedException;}Require(shared && !(bool)Get(marker,"Failed"),"Real disposed shared batch faults escape marker-local resource latch.");}
             foreach(int gravity in new[]{1,-1})foreach(float zoom in new[]{.8f,1.4f})
             {Main.LocalPlayer.gravDir=gravity;Main.GameViewMatrix.Zoom=new Vector2(zoom);Call(world,"Prepare");Require((bool)Get(marker,"Visible"),"Marker survives supported gravity/zoom.");graphics.Image(System.IO.Path.Combine(output,"marker-transform-"+gravity+"-"+zoom.ToString(System.Globalization.CultureInfo.InvariantCulture)+".png"),()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);}
-            Main.LocalPlayer.gravDir=1;Main.GameViewMatrix.Zoom=Vector2.One;Main.mapFullscreen=true;Call(world,"Prepare");Require(!(bool)Get(marker,"Visible"),"Fullscreen map retires marker commands.");Main.mapFullscreen=false;
+            Main.LocalPlayer.gravDir=1;Main.GameViewMatrix.Zoom=Vector2.One;NativeCombatMarkerCapacityChecks.Run(context,graphics,output);Main.mapFullscreen=true;Call(world,"Prepare");Require(!(bool)Get(marker,"Visible"),"Fullscreen map retires marker commands.");Main.mapFullscreen=false;
             NativeCombatObservationChecks.Save(host,new ObservationOptions());Console.WriteLine("PASS TARGET-MARKER real original atlas/Draw, resource-failure remaining path pixels, bounded retry. This is isolated XNA, not gameplay FPS/owner acceptance.");
         }
     }

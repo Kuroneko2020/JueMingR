@@ -14,6 +14,7 @@ namespace JueMingR.Features.Combat
             if(x<5 || y<5 || x>=e.WorldWidth-5 || y>=e.WorldHeight-5){stop=PredictionStop.InvalidState;return false;}
             PredictionTile root;if(!t.Tile(x,y,out root,out stop))return false;
             if(!root.RawActive){n.Active=false;n.Life=-1;stop=PredictionStop.Despawn;return false;}
+            NpcTargeting.Retarget(ref n,ref e);
             int type=n.Identity.Type;float range=type==43?(e.GoodWorld?350:250):type==101?175:type==259?100:type==175?500:type==260?350:150;
             float acc=type==175?.05f:type==260?.15f:.035f;
             if(++n.A2>300){range=(int)(range*1.3);if(n.A2>450)n.A2=0;}

@@ -19,7 +19,7 @@ namespace JueMingR.Features.Combat
             FailureLayer=PredictionFailureLayer.Source;
             if(source==null || count<1 || count>work.Length || selected<0 || selected>=count || required<1 || required>NpcPredictionCache.Horizon)return null;
             var current=source[selected];
-            bool needsPlayer=false;for(int i=0;i<count;i++)if((motionRoles==null || i<motionRoles.Length && motionRoles[i]) && NpcMotion.NeedsPlayerMotion(source[i]))needsPlayer=true;
+            bool needsPlayer=false,canObservePlayer=true;for(int i=0;i<count;i++)if((motionRoles==null || i<motionRoles.Length && motionRoles[i]) && NpcMotion.NeedsPlayerMotion(source[i])){needsPlayer=true;canObservePlayer&=NpcMotion.CurrentPlayerPremise(source[i]);}
             if(!current.Active || !current.CanReceive || current.Life<=0 || !Valid(current) || needsPlayer && !Valid(player) || !Finite(environment.Wind) || !Finite(environment.WorldSurface) || !Finite(environment.RockLayer) || motionRoles!=null && motionRoles.Length<count){Clear();return null;}
             bool observed=priorTick+1==tick && previous.Identity.Equals(current.Identity) && SamePhase(previous,current) && !current.JustHit &&
                 Math.Abs(current.X-previous.X)<512 && Math.Abs(current.Y-previous.Y)<512;
@@ -41,21 +41,32 @@ namespace JueMingR.Features.Combat
             }
             previous=current;priorTick=tick;Array.Copy(source,work,count);work[selected]=current;
             terrain.Reset();playerSettled=false;points[0]=new NpcTrajectoryPoint(0,current);int length=1;PredictionStop stop=PredictionStop.None;
-            FailureLayer=PredictionFailureLayer.None;bool observedPlayer=false;
+            FailureLayer=PredictionFailureLayer.None;bool observedPlayer=false,restarted=false;var initialPlayer=player;
             for(int future=1;future<=required;future++)
             {
+                bool futureNeeds=false;canObservePlayer=true;
+                for(int i=0;i<count;i++)if((motionRoles==null || motionRoles[i]) && NpcMotion.NeedsPlayerMotion(work[i])){futureNeeds=true;canObservePlayer&=NpcMotion.CurrentPlayerPremise(work[i]);}
+                if(futureNeeds && !needsPlayer)
+                {
+                    // A modeled phase acquired a new necessary premise. Start
+                    // its whole player timeline at point zero, once; never
+                    // begin simulating that player halfway through the path.
+                    if(restarted || !Valid(initialPlayer)){stop=PredictionStop.PhaseBoundary;FailureLayer=PredictionFailureLayer.PlayerPremise;break;}
+                    needsPlayer=true;restarted=true;player=initialPlayer;terrain.Reset();playerSettled=false;
+                    Array.Copy(source,work,count);work[selected]=current;length=1;future=0;continue;
+                }
                 if(needsPlayer && !observedPlayer && !AdvancePlayer(ref player,environment,terrain,out stop))
                 {
                     // Only these bounded structural models can use the real
                     // current target-player premise. Invalid numeric state
                     // and unknown NPC/root/wall geometry remain hard stops.
-                    if(NpcMotion.CurrentPlayerPremise(current) && (stop==PredictionStop.TerrainUnavailable || stop==PredictionStop.TerrainLimit || stop==PredictionStop.LiquidEffect || stop==PredictionStop.Slope))
+                    if(!restarted && canObservePlayer && (stop==PredictionStop.TerrainUnavailable || stop==PredictionStop.TerrainLimit || stop==PredictionStop.LiquidEffect || stop==PredictionStop.Slope))
                     {
                         // Discard the conditional prefix and restart at most
                         // once with one consistent real-observation premise.
                         // Switching back to the real origin halfway through
                         // a retained path would create an artificial turn.
-                        observedPlayer=true;stop=PredictionStop.None;terrain.Reset();playerSettled=false;
+                        observedPlayer=restarted=true;stop=PredictionStop.None;terrain.Reset();playerSettled=false;
                         Array.Copy(source,work,count);work[selected]=current;length=1;future=0;continue;
                     }
                     else{FailureLayer=PredictionFailureLayer.PlayerPremise;break;}

@@ -55,7 +55,8 @@ namespace JueMingR.Features.Combat
             if(n.Wet){gravity=n.Shimmer?.15f:n.Honey?.1f:.2f;fall=n.Shimmer?5.5f:n.Honey?4:7;}
             n.Gravity=gravity;n.MaxFall=fall;
             if(n.Identity.Type==488){n.Vx=n.Vy=0;return true;}
-            int facingOldTarget=n.Target;if(n.Style==2 || n.Style==5 || n.Style==14)NpcTargeting.Retarget(ref n,ref env);
+            bool eyeEscape=n.Style==2 && env.Day && !env.Remix && !env.Graveyard && n.Y<=env.WorldSurface*16;
+            int facingOldTarget=n.Target;if(n.Style==2 && !eyeEscape || n.Style==5 || n.Style==14)NpcTargeting.Retarget(ref n,ref env);
             bool face=NpcTargeting.CanFace(n,env,facingOldTarget);var tracking=NpcTargeting.Area(n,env,1);
             if(n.TrackingKind>=2)n.TrackingArea=tracking;
             int direction=face?(int)tracking.X+(int)tracking.Width/2<n.X+n.Width/2?-1:1:n.Direction;
@@ -63,7 +64,7 @@ namespace JueMingR.Features.Combat
             bool confused=n.ConfusedTicks>0;if(confused){direction=-direction;n.ConfusedTicks--;}
             bool linked=false;
             if(n.PositionRelation!=0)
-            {if(!NpcPositionMotion.Step(ref n,group,count,elapsed,out stop))return false;}
+            {if(!NpcPositionMotion.Step(ref n,group,count,elapsed,env,out stop))return false;}
             else if(n.Style==16 && NpcAquaticMotion.Known(n.Identity.Type))
             {if(!NpcAquaticMotion.Step(ref n,env,terrain,direction,vertical,out stop))return false;}
             else if(n.Style==13 && NpcAnchoredMotion.Known(n.Identity.Type))
@@ -150,7 +151,7 @@ namespace JueMingR.Features.Combat
                 bool wandering=n.Identity.Type==133,damaged=wandering && n.Life<n.LifeMax*.5f;
                 float sx=wandering?(damaged?6:4):4*(2-n.Scale),sy=wandering?(damaged?4:1.5f):1.5f*(2-n.Scale);
                 EyeAxis(ref n.Vx,eyeDirection,sx,.1f,.1f,.05f);EyeAxis(ref n.Vy,eyeVertical,sy,damaged?.1f:.04f,damaged?.1f:.05f,damaged?.05f:.03f);
-                if(n.Wet){if(n.Vy>0)n.Vy*=.95f;n.Vy=Math.Max(-4,n.Vy-.5f);n.Direction=direction;n.DirectionY=vertical;}
+                if(n.Wet){if(n.Vy>0)n.Vy*=.95f;n.Vy=Math.Max(-4,n.Vy-.5f);NpcTargeting.Retarget(ref n,ref env);var wetTarget=NpcTargeting.Area(n,env);if(NpcTargeting.CanFace(n,env,facingOldTarget)){n.Direction=wetTarget.CenterX<n.Bounds.CenterX?-1:1;n.DirectionY=wetTarget.CenterY<n.Bounds.CenterY?-1:1;}}
             }
             else if(rolling && n.Style==41 && n.Identity.Type==177)NpcRollingMotion.Derpling(ref n,env,direction);
             else if(rolling && n.Style==39 && n.Identity.Type==153)
@@ -168,6 +169,8 @@ namespace JueMingR.Features.Combat
             else if(n.Style==13 || n.Style==16 || n.Style==40){stop=PredictionStop.UnsupportedMechanism;return false;}
             else if(rolling)NpcRollingMotion.Trend(ref n,elapsed);
             else if(elapsed>12){stop=PredictionStop.UnsupportedMechanism;return false;}
+            if(n.TargetChoiceUnavailable){stop=PredictionStop.TerrainUnavailable;return false;}
+            if(n.TargetCaptured && !n.HasPlayer && NeedsPlayerMotion(n)){stop=PredictionStop.MissingDependency;return false;}
             if(!n.Active){stop=PredictionStop.Despawn;return false;}
             // Linked AI already attached the segment and zeroed velocity. It
             // still enters native free movement's water-extinguish phase.
@@ -185,20 +188,41 @@ namespace JueMingR.Features.Combat
         internal static bool CurrentPlayerPremise(NpcMotionState n)
         {return n.Style==13 && NpcAnchoredMotion.Known(n.EffectiveType) || n.Style==16 && NpcAquaticMotion.Known(n.EffectiveType) || n.Style==3 && (n.EffectiveType==77 || NpcWallMotion.Ground(n.EffectiveType)) || n.Style==40 && NpcWallMotion.Wall(n.EffectiveType);}
         internal static bool AllowsUnmodeledMotionEffect(NpcMotionState n)
-        {return CurrentPlayerPremise(n);}
+        {
+            // Unknown effect continuation is a qualified resilience policy,
+            // independent of player-geometry fallback and reported quality.
+            // Other models stop at this unknown effect rather than asserting
+            // that its future motion impact is harmless.
+            int type=n.EffectiveType;
+            return n.Style==13 && NpcAnchoredMotion.Known(type) || n.Style==16 && NpcAquaticMotion.Known(type) ||
+                n.Style==40 && NpcWallMotion.Wall(type) || n.Style==3 && (type==77 || NpcWallMotion.Ground(type));
+        }
         internal static bool StructuredModel(NpcMotionState n)
-        {return KnownMotion(n) || CurrentPlayerPremise(n) || NpcPositionMotion.Known(n) || n.Style==69 || n.Style==39 && n.EffectiveType==153 || n.Style==41 && n.EffectiveType==177;}
+        {
+            // Generic fighters still use an approximate default speed; their
+            // phase name alone is not evidence of a specific motion model.
+            int type=n.EffectiveType;
+            return n.Style==3?NpcGroundMotion.Known(type):KnownMotion(n) || NpcPositionMotion.Known(n) || n.PositionRelation==6 ||
+                n.Style==13 && NpcAnchoredMotion.Known(type) || n.Style==16 && NpcAquaticMotion.Known(type) ||
+                n.Style==40 && NpcWallMotion.Wall(type) || n.Style==69 || n.Style==39 && type==153 || n.Style==41 && type==177;
+        }
         internal static bool NeedsPlayerMotion(NpcMotionState n)
         {
             if(n.EffectiveType==488)return false;
-            if(n.PositionRelation!=0)return false;
+            if(n.PositionRelation!=0)return n.PositionRelation==6 && NpcParentMotion.NeedsPlayer(n);
             // AI_005/AI_014 still consume numbered-player geometry even when
             // TargetClosest faces a guardian. Facing alone cannot waive it.
             if(n.TrackingKind>=2 && n.Style==2)return false;
-            if(StructuredModel(n) || n.Style==3 || n.Style==40 || n.Style==13 || n.Style==16)return true;
+            // Enumerate actual vector/decision consumers, never infer a
+            // player future from quality or an unknown-effect policy.
+            int type=n.EffectiveType;
+            if(type==371 || type==372 || type==373 || n.Style==1 || n.Style==3 || n.Style==6 || n.Style==37 || n.Style==69 ||
+                n.Style==2 && (type==2 || type==133 || type>=190 && type<=194) || n.Style==5 && FlyingType(type) || n.Style==14 && BatType(type) ||
+                n.Style==17 && type==61 || n.Style==13 && NpcAnchoredMotion.Known(type) || n.Style==16 && NpcAquaticMotion.Known(type) ||
+                n.Style==40 && NpcWallMotion.Wall(type) || n.Style==39 && type==153 || n.Style==41 && type==177)return true;
             // These native collision predicates directly read the numbered
             // player even when the AI itself is only an observed trend.
-            int type=n.EffectiveType;return type==50 || type==657 || type==245 || type==620 || n.Style==26 || n.Style==87;
+            return type==50 || type==657 || type==245 || type==620 || n.Style==26 || n.Style==87;
         }
         private static bool CheckActive(ref NpcMotionState n,PredictionEnvironment e,out PredictionStop stop)
         {

@@ -38,15 +38,20 @@ namespace NativeWorldTextProbe
                         // ordinary water/air takes DryCollision for a merman.
                         for(int tx=59;tx<=62;tx++)for(int ty=57;ty<=63;ty++)if(ty!=60){Main.tile[tx,ty].liquid=(byte)(honey?255:0);Main.tile[tx,ty].liquidType(honey?2:0);}
                         var p=new PredictionPlayerMotion{X=player.position.X,Y=player.position.Y,Vy=-8*direction,Width=20,Height=32,GravityDirection=direction,Jump=9,Merman=merman};
-                        var expected=player.TileCollision(player.position,new Vector2(0,p.Vy),false,false);
+                        player.velocity=new Vector2(0,p.Vy);player.jump=9;player.merman=merman;player.wet=honey;player.honeyWet=honey;player.waterWalk=player.waterWalk2=false;
+                        if(honey)player.WetCollision(false,false,.25f);else player.DryCollision(false,false);
                         bool hit=direction>0?Collision.up:Collision.down;
                         Require(hit,"Independent original player collision reports head contact.");
+                        int earlyJump=player.jump;
+                        player.SlopingCollision(false,false);Collision.StepConveyorBelt(player,direction);
+                        bool finalHead=direction>0?Collision.up:Collision.down;
+                        if(finalHead){player.velocity.Y=.01f*direction;if(!merman)player.jump=0;}
                         var body=new NpcMotionState{X=p.X,Y=p.Y,Vy=p.Vy,Width=20,Height=32,Life=1,LifeMax=1};terrain.Reset();PredictionStop stop;
                         Require(mover.MovePlayer(ref body,env,ref p,out stop),"Player head response available: "+stop);
-                        Require(Math.Abs(body.Y-player.position.Y-expected.Y)<.015f,"Position consumes original clipped displacement before head response.");
-                        Require(Math.Abs(body.Vy-.01f*direction)<.0001f,"Head response stores original next-tick velocity.");
-                        int jump=!merman || direction>0 && !honey?0:9;
-                        Require(p.Jump==jump,"Native dry/merman jump control: gravity="+direction+" honey="+honey+" jump="+p.Jump);cases++;
+                        Console.WriteLine("HEAD PHASE grav="+direction+" merman="+merman+" honey="+honey+" earlyJump="+earlyJump+" finalHead="+finalHead+" nativeVy="+player.velocity.Y+" modelVy="+body.Vy);
+                        Require(Math.Abs(body.Y-player.position.Y)<.015f,"Full original collision pipeline position.");
+                        Require(Math.Abs(body.Vy-player.velocity.Y)<.015f,"Final slope/belt flag owns next-tick velocity independently of first contact.");
+                        Require(p.Jump==player.jump,"Native phased dry/merman jump control: gravity="+direction+" honey="+honey+" jump="+p.Jump);cases++;
                     }
                     for(int tx=59;tx<=62;tx++)for(int ty=57;ty<=63;ty++)Main.tile[tx,ty].liquid=0;
                     Console.WriteLine("PASS SHARED-PLAYER-HEAD independent cases="+cases);return;

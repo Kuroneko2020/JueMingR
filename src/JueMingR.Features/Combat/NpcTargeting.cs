@@ -13,6 +13,7 @@ namespace JueMingR.Features.Combat
         {if(oldTarget==-2)oldTarget=n.Target;return n.TrackingKind>=2 || !e.PlayerDead && !(n.TargetNoAggro && n.Direction!=0) && !(e.PlayerIdleWithNegativeAggro && oldTarget>=0 && oldTarget<255 && !n.Boss);}
         internal static void Retarget(ref NpcMotionState n,ref PredictionEnvironment e)
         {
+            if(n.TargetChoiceUnknown){n.TargetChoiceUnavailable=true;return;}
             if(!n.TargetCaptured || !n.HasClosestPlayer || n.TrackingKind==3)return;
             n.Target=n.ClosestPlayerIndex;
             if(n.PlayerIndex!=n.ClosestPlayerIndex)

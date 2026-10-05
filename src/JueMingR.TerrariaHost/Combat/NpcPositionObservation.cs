@@ -19,7 +19,11 @@ namespace JueMingR.TerrariaHost.Combat
             else if(n.aiStyle==12 && n.type==36){state.PositionRelation=6;slot=(int)n.ai[1];type=35;}
             else if(n.type>=128 && n.type<=131 && n.aiStyle>=33 && n.aiStyle<=36){state.PositionRelation=6;slot=(int)n.ai[1];type=127;}
             if(slot<0 || slot>=Main.maxNPCs)return;var owner=Main.npc[slot];
-            if(owner!=null && owner.active && owner.type==type && owner.life>0)state.PositionOwner=CombatSelection.Identity(owner,session);
+            if(owner!=null && owner.active && owner.type==type && owner.life>0)
+            {
+                state.PositionOwner=CombatSelection.Identity(owner,session);
+                if(state.PositionRelation==6){state.PositionParameter=owner.ai[1];if(state.Style==12)state.L3=owner.ai[3];}
+            }
         }
     }
 }

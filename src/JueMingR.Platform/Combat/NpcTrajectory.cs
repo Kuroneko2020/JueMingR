@@ -56,6 +56,9 @@ namespace JueMingR.Platform.Combat
         public MotionRect ClosestPlayerArea;
         public int ClosestPlayerIndex;
         public bool HasClosestPlayer,ClosestPlayerDead,ClosestPlayerWet,ClosestPlayerIdle,ClosestPlayerNoAggro;
+        // Unknown guardian visibility is distinct from known obstruction. It
+        // matters only when a modeled native TargetClosest consumes the choice.
+        public bool TargetChoiceUnknown,TargetChoiceUnavailable;
         public bool PlayerHeadCollision,PlayerDryHeadCollision;
         public float NetOffsetX,NetOffsetY,SmoothingRange;
         public bool ResetNetOffset;

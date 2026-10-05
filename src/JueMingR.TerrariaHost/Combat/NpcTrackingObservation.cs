@@ -33,13 +33,14 @@ namespace JueMingR.TerrariaHost.Combat
                 var p=Main.player[i];if(p==null || !p.active || p.dead || p.ghost)continue;
                 float real=Math.Abs(p.Center.X-n.Center.X)+Math.Abs(p.Center.Y-n.Center.Y),score=real-p.aggro;
                 if(p.npcTypeNoAggro[n.type] && n.direction!=0)score+=1000;
-                if(!found || score<distance){found=true;playerSlot=i;tankSlot=-1;distance=score;}
+                if(!found || score<distance){found=true;playerSlot=i;tankSlot=-1;state.TargetChoiceUnknown=false;distance=score;}
                 int pet=p.tankPet;if(pet<0 || pet>=Main.maxProjectiles || p.npcTypeNoAggro[n.type])continue;
                 var guardian=Main.projectile[pet];if(guardian==null || !guardian.active || guardian.owner!=i)continue;
                 float petDistance=Math.Abs(guardian.Center.X-n.Center.X)+Math.Abs(guardian.Center.Y-n.Center.Y)-200;
                 if(petDistance>=distance || petDistance>=200)continue;
                 bool clear;PredictionStop stop;
-                if(terrain.CanHit(new MotionRect(n.Center.X,n.Center.Y,1,1),new MotionRect(guardian.Center.X,guardian.Center.Y,1,1),out clear,out stop) && clear)tankSlot=pet;
+                if(!terrain.CanHit(new MotionRect(n.Center.X,n.Center.Y,1,1),new MotionRect(guardian.Center.X,guardian.Center.Y,1,1),out clear,out stop))state.TargetChoiceUnknown=true;
+                else if(clear){tankSlot=pet;state.TargetChoiceUnknown=false;}
             }
             if(playerSlot<0)return;var player=Main.player[playerSlot];
             state.ClosestPlayerIndex=playerSlot;state.HasClosestPlayer=true;state.ClosestPlayerArea=Area(player);state.ClosestPlayerDead=player.dead;state.ClosestPlayerWet=player.wet;state.ClosestPlayerIdle=player.itemAnimation==0 && player.aggro<0;state.ClosestPlayerNoAggro=player.npcTypeNoAggro[n.type];

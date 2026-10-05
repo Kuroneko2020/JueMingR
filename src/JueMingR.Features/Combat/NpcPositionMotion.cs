@@ -6,7 +6,7 @@ namespace JueMingR.Features.Combat
     internal static class NpcPositionMotion
     {
         internal static bool Known(NpcMotionState n){return n.PositionRelation>=1 && n.PositionRelation<=4;}
-        internal static bool Step(ref NpcMotionState n,NpcMotionState[] group,int count,int elapsed,out PredictionStop stop)
+        internal static bool Step(ref NpcMotionState n,NpcMotionState[] group,int count,int elapsed,PredictionEnvironment environment,out PredictionStop stop)
         {
             stop=PredictionStop.None;int index=-1;
             for(int i=0;i<count;i++)if(group[i].Identity.Equals(n.PositionOwner)){index=i;break;}
@@ -38,7 +38,7 @@ namespace JueMingR.Features.Combat
                     // not only to this head. We do not fabricate that projectile
                     // timeline or treat the owner alone as sufficient evidence.
                     stop=PredictionStop.UnsupportedMechanism;return false;
-                case 6:NpcRollingMotion.Trend(ref n,elapsed);break;
+                case 6:return NpcParentMotion.Step(ref n,owner,environment,out stop);
             }
             return true;
         }

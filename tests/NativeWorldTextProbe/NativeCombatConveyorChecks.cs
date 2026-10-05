@@ -42,7 +42,27 @@ namespace NativeWorldTextProbe
                 Console.WriteLine("BELT shape="+shape+" contact="+contact+" type="+belt+" native="+n.position+" model="+new Vector2(sampled.X,sampled.Y));
                 Require(error<.015f && Math.Abs(n.velocity.X-sampled.Vx)<.015f && Math.Abs(n.velocity.Y-sampled.Vy)<.015f,"Original left/right, top/bottom/off-surface, half and four slopes: "+shape+"/"+contact);cases++;
             }
-            tile.active(false);tile.slope(0);tile.halfBrick(false);Console.WriteLine("PASS CONVEYOR independent original eligibility/body contact cases="+cases);
+            tile.slope(0);tile.halfBrick(false);tile.active(true);tile.type=421;
+            var adjacent=Main.tile[61,60];adjacent.active(true);adjacent.type=422;adjacent.slope(0);adjacent.halfBrick(false);
+            n.SetDefaults(1);n.position=new Vector2(961,928);n.width=30;n.height=32;n.velocity=Vector2.Zero;n.noGravity=true;n.target=Main.myPlayer;
+            Check("opposite belt faces cancel");Require(n.position.X==961,"Native opposite faces contribute zero net carry.");adjacent.active(false);
+            var wall=Main.tile[62,59];wall.active(true);wall.type=1;Main.tileSolid[1]=true;
+            n.SetDefaults(1);n.position=new Vector2(971,928);n.width=20;n.height=32;n.velocity=Vector2.Zero;n.noGravity=true;n.target=Main.myPlayer;
+            Check("body carry clipped by wall");Require(n.position.X<973.5f,"Belt carry cannot cross adjacent body wall.");wall.active(false);
+            foreach(int type in new[]{72,247,248,542,543,544,545,359})
+            {
+                n.SetDefaults(type);n.position=new Vector2(961,928);n.width=20;n.height=32;n.velocity=Vector2.Zero;n.noGravity=true;n.target=Main.myPlayer;
+                Check("native separate collision branch "+type);Require(n.position.X==961,"Skipped slope/conveyor route receives no carry: "+type);
+            }
+            tile.active(false);var low=Main.tile[60,64];low.active(true);low.type=421;low.slope(0);low.halfBrick(false);
+            n.SetDefaults(686);n.position=new Vector2(961,928);n.width=20;n.height=32;n.velocity=Vector2.Zero;n.noGravity=true;n.target=Main.myPlayer;
+            Check("686 extended movement contact while body misses belt");Require(n.position.X==961,"Movement rectangle cannot substitute body conveyor contact.");low.active(false);
+            Console.WriteLine("PASS CONVEYOR independent original eligibility/body contact cases="+cases);
+            void Check(string label)
+            {
+                var sampled=(NpcMotionState)read.Invoke(null,new object[]{n,1L});terrain.Reset();Require(terrain.Move(ref sampled,default(PredictionEnvironment),out stop),"Additional belt geometry available: "+label+" / "+stop);original.Invoke(n,null);
+                Require(Vector2.Distance(n.position,new Vector2(sampled.X,sampled.Y))<.015f && Math.Abs(n.velocity.X-sampled.Vx)<.015f && Math.Abs(n.velocity.Y-sampled.Vy)<.015f,"Independent original belt consumer: "+label);Console.WriteLine("BELT CONTROL "+label+" native="+n.position);cases++;
+            }
         }
         internal static void Player(object context)
         {

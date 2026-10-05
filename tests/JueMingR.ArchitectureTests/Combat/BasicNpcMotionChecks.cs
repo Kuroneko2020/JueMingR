@@ -164,7 +164,7 @@ namespace JueMingR.ArchitectureTests
             Require(c.Count==1 && c.Stop==PredictionStop.TerrainUnavailable,"Fallback never substitutes air for an unknown root.");
             var other=State(999,0);other.NoGravity=true;
             var d=new RollingNpcPrediction().Prepare(new[]{other},1,0,10,120,1,e,player,new LocalTerrain{FailPlayerAt=1});
-            Require(d.Count==1 && d.Stop==PredictionStop.TerrainUnavailable,"Unknown free-trend families retain the required player geometry boundary.");
+            Require(d.Count==121 && (d.Assumptions&PredictionAssumption.NoPlayerMotionNeeded)!=0,"A free trend with no player consumer does not request unrelated player geometry.");
         }
         internal static NpcMotionState State(int type,int style)
         {return new NpcMotionState{Identity=new NpcIdentity(1,new object(),1,1,type,type),Style=style,X=168,Y=168,OldX=168,OldY=168,Width=30,Height=30,Scale=1,Direction=1,DirectionY=1,Life=100,LifeMax=100,TimeLeft=750,Active=true,CanReceive=true,WaterSpeed=1,HoneySpeed=1,LavaSpeed=1,ShimmerSpeed=1,Health=new NpcHealthState{RealLife=-1}};}

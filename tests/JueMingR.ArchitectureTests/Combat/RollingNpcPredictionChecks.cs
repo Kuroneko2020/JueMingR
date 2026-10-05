@@ -16,9 +16,10 @@ namespace JueMingR.ArchitectureTests
             var env=new PredictionEnvironment{PlayerX=160,PlayerY=170,PlayerWidth=20,PlayerHeight=40,WorldWidth=4200,WorldHeight=1200,WorldSurface=400};
             var source=new[]{state};
             var brokenPlayer=player;brokenPlayer.MaxFall=float.NaN;
-            Require(model.Prepare(source,1,0,99,120,1,env,brokenPlayer,terrain)==null,"NaN player fall limit is rejected before any forecast.");
+            var playerDependent=state;playerDependent.Identity=new NpcIdentity(1,new object(),4,2,2,2);playerDependent.Style=2;
+            Require(model.Prepare(new[]{playerDependent},1,0,99,120,1,env,brokenPlayer,terrain)==null,"NaN necessary player fall limit is rejected before any forecast.");
             brokenPlayer=player;brokenPlayer.JumpSpeed=float.NaN;
-            Require(model.Prepare(source,1,0,99,120,1,env,brokenPlayer,terrain)==null,"NaN player jump speed is rejected before any forecast.");
+            Require(model.Prepare(new[]{playerDependent},1,0,99,120,1,env,brokenPlayer,terrain)==null,"NaN necessary player jump speed is rejected before any forecast.");
             var first=model.Prepare(source,1,0,100,120,1,env,player,terrain);
             Require(first!=null && first.Count==121 && first.Strategy==PredictionStrategy.RollingConditional,"Unknown airborne mechanisms can provide a bounded trend beyond twelve ticks.");
             var second=model.Prepare(source,1,0,101,120,1,env,player,terrain);
@@ -39,7 +40,7 @@ namespace JueMingR.ArchitectureTests
                 Require(model.Prepare(source,1,0,106,120,2,env,player,terrain)==null,"All participating liquid coefficients must be finite: "+liquid);
             }
             source[0]=state;terrain.Limit=int.MaxValue;terrain.BadPlayer=true;
-            var badFuture=model.Prepare(source,1,0,107,120,2,env,player,terrain);
+            var badFuture=model.Prepare(new[]{playerDependent},1,0,107,120,2,env,player,terrain);
             Require(badFuture.Count==1 && badFuture.Stop==PredictionStop.InvalidState,"A nonfinite advanced player cannot supply any future point.");
             terrain.BadPlayer=false;source[0]=state;
             source[0].Identity=new NpcIdentity(1,new object(),4,2,153,153);source[0].Style=39;
