@@ -36,7 +36,7 @@ namespace NativeWorldTextProbe
         }
         private static void Slimes(object context,object host,NpcPredictionCache cache,Action step,List<string> rows)
         {
-            foreach(int caseKey in new[]{183,81,304,667,244,1,59,138,71,659,658,141,377,446,685,-1,-183,-1001,-1183,-1304,-2183})
+            foreach(int caseKey in new[]{184,535,204,183,81,304,667,244,1,59,138,71,659,658,141,377,446,685,-1,-183,-1001,-1183,-1304,-2183})
             {
                 int type=Math.Abs(caseKey)%1000;bool injured=caseKey<-1000 && caseKey>-2000,night=caseKey<0 && caseKey>-1000,blocked=caseKey<-2000;
                 Scene(!night);Main.worldSurface=160;int slot=NPC.NewNPC(NPC.GetSpawnSourceForNaturalSpawn(),2800,2400,type,Start:16,Target:Main.myPlayer,ai0:injured && type==304?-50:-20,ai2:blocked?200:1);
@@ -73,9 +73,33 @@ namespace NativeWorldTextProbe
                 }
                 Console.WriteLine("SAME-SLIME case="+caseKey+" type="+type+" consumer="+(friendly?"direct-friendly":"Source/Cache")+" frozenTick="+frozen.CaptureTick+" expectedJump="+expected+" actualJump="+actual+" predictedVx="+expectedVx+" actualVx="+actualVx+" comparable="+comparable+"/24 maxError="+maxError+" error15="+error15+" error24="+error24);
                 Require(actual>0 && actual==expected && Math.Sign(actualVx)==Math.Sign(expectedVx),"Frozen pre-jump direction and timing match original, without refreshing the captured route: "+type);
-                bool toward=!blocked && (night || injured || type==183 || type==81 || type==304 || type==667 || type==244 || type==658 || type==659);
+                bool toward=!blocked && (night || injured || type==183 || type==81 || type==304 || type==667 || type==244 || type==184 || type==535 || type==204 || type==658 || type==659);
                 Require(toward?actualVx<0:actualVx>0,"Passive/forced-active/turn-away/blocked counterexample has its actual direction: "+caseKey);
-                if(type==183 || type==1 || type==81)Require(comparable==24 && maxError<.1,"The frozen near route agrees through 24 comparable original updates: "+caseKey);
+                if(type==183 || type==1 || type==81 || type==184 || type==535 || type==204)Require(comparable==24 && maxError<.1,"The frozen near route agrees through 24 comparable original updates: "+caseKey);
+            }
+            SlimeShots(context,host,cache,step,rows);
+        }
+        private static void SlimeShots(object context,object host,NpcPredictionCache cache,Action step,List<string> rows)
+        {
+            foreach(int type in new[]{184,535,204})for(int expert=0;expert<2;expert++)
+            {
+                Scene(true);Main.worldSurface=160;Main.GameMode=expert;
+                int slot=NPC.NewNPC(NPC.GetSpawnSourceForNaturalSpawn(),2800,2400,type,Start:16,Target:Main.myPlayer,ai0:-1,ai2:1);
+                var n=Main.npc[slot];n.direction=n.spriteDirection=1;n.velocity.X=1;n.localAI[0]=60;
+                Main.LocalPlayer.position.X=n.Center.X-90-Main.LocalPlayer.width/2;
+                NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true,mouseCenter:true,clearLine:false,radius:25));
+                for(int warm=0;warm<2;warm++){NativeCombatModeledImpactChecks.SampleMouse(context,n.Center);step();}
+                var frozen=cache.Read(0);Require(frozen!=null && frozen.Identity.Type==type,"Near shooter keeps its real Source/Cache route.");
+                double maxError=0;int life=Main.LocalPlayer.statLife;
+                for(int future=1;future<=12;future++)
+                {
+                    NativeCombatModeledImpactChecks.SampleMouse(context,n.Center);step();Require(future<frozen.Count,"Near shooting covers its frozen comparison.");
+                    var point=frozen[future];double error=Math.Sqrt((point.Bounds.X-n.position.X)*(point.Bounds.X-n.position.X)+(point.Bounds.Y-n.position.Y)*(point.Bounds.Y-n.position.Y));maxError=Math.Max(maxError,error);
+                    rows.Add(Csv("shot-"+type+"-expert-"+expert,future,Main.GameUpdateCount,type,n.position.X,n.position.Y,n.velocity.X,n.velocity.Y,n.ai[0],n.direction,-1,0,-1,0,point.Bounds.X,point.Bounds.Y,error,n.life,Main.LocalPlayer.statLife,Main.LocalPlayer.statLife==life));
+                    Require(n.velocity.Y==0 && n.ai[0]==(type==204?-78:-38),"Original near attack keeps its own clock grounded: "+type);
+                }
+                Console.WriteLine("SAME-SLIME-SHOT type="+type+" expert="+expert+" frozenTick="+frozen.CaptureTick+" comparable=12/12 maxError="+maxError+" cooldown="+n.localAI[0]);
+                Require(maxError<.1 && Main.LocalPlayer.statLife==life,"Near attack's frozen own motion matches before any new projectile hit: "+type);
             }
         }
         private static void Shore(object context,object host,NpcPredictionCache cache,Action step,List<string> rows)

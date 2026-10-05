@@ -271,20 +271,35 @@ namespace JueMingR.Features.Combat
             stop=PredictionStop.None;int type=n.EffectiveType;
             bool aggressive=!env.Day || n.Life!=n.LifeMax || n.Y>env.WorldSurface*16 || env.SlimeRain;
             if(env.Remix && type==59 && n.Life==n.LifeMax)aggressive=false;
-            if(type==81 || type==183 || type==304 || type==667 || type==244 || type==658 || type==659)aggressive=true;
+            if(type==81 || type==183 || type==304 || type==667 || type==244 || type==184 || type==535 || type==204 || type==658 || type==659)aggressive=true;
             if((type==377 || type==446) && !env.PlayerDead && !n.Wet && (n.Bounds.CenterX-env.PlayerX)*(n.Bounds.CenterX-env.PlayerX)+(n.Bounds.CenterY-env.PlayerY)*(n.Bounds.CenterY-env.PlayerY)<=40000)aggressive=true;
             // Crystal's pre-ground increment is independent of active pursuit.
             if(type==244)n.A0+=2;
-            if(type==658 || type==659)
+            if(type==184 || type==535 || type==204 || type==658 || type==659)
             {
                 if(n.L0>0)n.L0--;
                 // Their attack opportunity also resets their own jump clock
                 // and damps velocity, irrespective of projectile cooldown.
                 // Retain that deterministic motion; do not create an attack.
-                if(!n.Wet && !env.PlayerDead && !n.TargetNoAggro && n.Vy==0 && Math.Abs(env.PlayerX-n.Bounds.CenterX)<500 && Math.Abs(env.PlayerY-n.Bounds.CenterY)<550)
+                float dx=env.PlayerX-n.Bounds.CenterX,dy=env.PlayerY-n.Bounds.CenterY;
+                bool rectangular=type==658 || type==659;
+                // The older shooters measure to the player's top, while
+                // 658/659 use a center-to-center rectangular opportunity.
+                if(!rectangular)dy-=env.PlayerHeight/2;
+                float distanceSquared=dx*dx+dy*dy;
+                bool inRange=rectangular?Math.Abs(dx)<500 && Math.Abs(dy)<550:distanceSquared<(type==204?160000:40000);
+                if(!n.Wet && !env.PlayerDead && !n.TargetNoAggro && n.Vy==0 && inRange)
                 {
-                    bool clear;if(!terrain.CanHit(n.Bounds,new MotionRect(env.PlayerX-env.PlayerWidth/2,env.PlayerY-env.PlayerHeight/2,env.PlayerWidth,env.PlayerHeight),out clear,out stop))return false;
-                    if(clear){n.A0=-40;n.Vx*=.9f;}
+                    var origin=type==204?new MotionRect(n.X,n.Y-20,n.Width,n.Height+20):n.Bounds;
+                    bool clear;if(!terrain.CanHit(origin,new MotionRect(env.PlayerX-env.PlayerWidth/2,env.PlayerY-env.PlayerHeight/2,env.PlayerWidth,env.PlayerHeight),out clear,out stop))return false;
+                    if(clear)
+                    {
+                        // 204's expert close attack and ordinary attack are
+                        // two independent native ifs: both damp velocity, and
+                        // the latter owns the final -80 jump clock.
+                        if(type==204 && env.Expert && distanceSquared<40000)n.Vx*=.9f;
+                        n.A0=type==204?-80:-40;n.Vx*=.9f;
+                    }
                 }
             }
             if(n.A2>1)n.A2--;

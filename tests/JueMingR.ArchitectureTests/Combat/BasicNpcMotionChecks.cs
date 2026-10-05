@@ -84,9 +84,11 @@ namespace JueMingR.ArchitectureTests
             }
             if(selected==null || selected=="slime")
             {
-                e.PlayerWet=false;e.PlayerX=100;
-                foreach(int type in new[]{183,81,304,667,244})
+                e.PlayerWet=false;e.PlayerX=-1000;
+                string member=Environment.GetEnvironmentVariable("JUEMINGR_SAME_CAUSE_MEMBER");
+                foreach(int type in new[]{183,81,304,667,244,184,535,204})
                 {
+                    if(member!=null && member!=type.ToString())continue;
                     var n=State(type,1);n.A2=1;n.A0=-1;n.A3=0;
                     Require(NpcMotion.Step(ref n,new[]{n},1,e,new LocalTerrain(),1,true,out stop) && n.Vy<0 && n.Vx<0,"Forced-active slime selects the player before the predicted jump: "+type);
                 }
@@ -119,6 +121,34 @@ namespace JueMingR.ArchitectureTests
                 var unsafePhase=State(120,3);unsafePhase.A3=180;
                 Require(!NpcMotion.Step(ref unsafePhase,new[]{unsafePhase},1,e,new LocalTerrain(),1,true,out stop) && stop==PredictionStop.RandomDestination,"Chaos elemental's actual random destination remains a boundary.");
             }
+            if(selected==null || selected=="slime-shot")
+            {
+                e.PlayerWet=false;e.PlayerDead=false;e.Day=true;e.Remix=false;e.PlayerX=100;e.PlayerY=183+e.PlayerHeight/2;
+                foreach(int type in new[]{184,535,204,658,659})
+                {
+                    for(int expert=0;expert<2;expert++)
+                    {
+                        e.Expert=expert!=0;var n=State(type,1);n.A2=1;n.A0=-1;n.Vx=1;n.L0=20;
+                        float clock=type==204?-78:type==658?-33:type==659?-35:-38;
+                        float speed=type==204 && e.Expert?.648f:.72f;
+                        bool stepped=NpcMotion.Step(ref n,new[]{n},1,e,new LocalTerrain(),1,true,out stop);
+                        Require(stepped && n.Vy>=0 && Math.Abs(n.A0-clock)<.0001f && Math.Abs(n.Vx-speed)<.0001f && n.L0==19,"Near shooting changes its own clock and damping despite projectile cooldown: "+type+" expert="+e.Expert+" step="+stepped+" ai0="+n.A0+" vx="+n.Vx+" vy="+n.Vy+" local0="+n.L0);
+                    }
+                    var blocked=State(type,1);blocked.A2=1;blocked.A0=-1;
+                    Require(NpcMotion.Step(ref blocked,new[]{blocked},1,e,new LocalTerrain{BlockedLine=true},1,true,out stop) && blocked.Vy<0,"Blocked shooting keeps ordinary forced-active jump: "+type);
+                    var ignored=State(type,1);ignored.A2=1;ignored.A0=-1;ignored.TargetNoAggro=true;
+                    Require(NpcMotion.Step(ref ignored,new[]{ignored},1,e,new LocalTerrain(),1,true,out stop) && ignored.Vy<0,"No-aggro blocks shooting clock independently from ordinary jump: "+type);
+                }
+                foreach(int type in new[]{184,535,204})foreach(int distance in new[]{199,200,399,400})for(int expert=0;expert<2;expert++)
+                {
+                    e.Expert=expert!=0;e.PlayerX=183;e.PlayerY=183+distance+e.PlayerHeight/2;
+                    var n=State(type,1);n.A2=1;n.A0=-1;n.Vx=1;
+                    bool shooting=distance<(type==204?400:200);
+                    Require(NpcMotion.Step(ref n,new[]{n},1,e,new LocalTerrain(),1,true,out stop),"Shooting boundary has a valid ordinary route.");
+                    float speed=type==204 && e.Expert && distance<200?.648f:.72f;
+                    Require(shooting?n.Vy>=0 && n.A0==(type==204?-78:-38) && Math.Abs(n.Vx-speed)<.0001f:n.Vy<0,"Strict distance to player top preserves shooting/jump boundary: "+type+" distance="+distance+" expert="+e.Expert);
+                }
+            }
         }
         private static void PlayerPremise(PredictionEnvironment e)
         {
@@ -140,14 +170,14 @@ namespace JueMingR.ArchitectureTests
         {return new NpcMotionState{Identity=new NpcIdentity(1,new object(),1,1,type,type),Style=style,X=168,Y=168,OldX=168,OldY=168,Width=30,Height=30,Scale=1,Direction=1,DirectionY=1,Life=100,LifeMax=100,TimeLeft=750,Active=true,CanReceive=true,WaterSpeed=1,HoneySpeed=1,LavaSpeed=1,ShimmerSpeed=1,Health=new NpcHealthState{RealLife=-1}};}
         internal sealed class LocalTerrain : IPredictionTerrain,IPredictionResizeTerrain
         {
-            internal bool Walls,Unknown,WallSolid,ActuatedRoot,Root=true;internal int WallCells=9,FailPlayerAt,PlayerMoves;
+            internal bool Walls,Unknown,WallSolid,ActuatedRoot,Root=true,BlockedLine;internal int WallCells=9,FailPlayerAt,PlayerMoves;
             public bool Unchanged=>true;
             public void Reset(){PlayerMoves=0;}
             public bool Resize(MotionRect box,int width,int height,out MotionRect adjusted,out bool canResize,out PredictionStop stop)
             {adjusted=new MotionRect((int)box.X+(width-(int)box.Width)/2,(int)box.Y+(int)box.Height-height,width,height);canResize=true;stop=PredictionStop.None;return true;}
             public bool Move(ref NpcMotionState n,PredictionEnvironment e,out PredictionStop stop){stop=PredictionStop.None;if(n.Friendly && FailPlayerAt>0 && ++PlayerMoves>=FailPlayerAt){stop=PredictionStop.TerrainUnavailable;return false;}n.X+=n.Vx;n.Y+=n.Vy;return true;}
             public bool Solid(MotionRect a,out bool solid,out PredictionStop stop){solid=false;stop=PredictionStop.None;return true;}
-            public bool CanHit(MotionRect a,MotionRect b,out bool clear,out PredictionStop stop){clear=true;stop=PredictionStop.None;return true;}
+            public bool CanHit(MotionRect a,MotionRect b,out bool clear,out PredictionStop stop){clear=!BlockedLine;stop=PredictionStop.None;return true;}
             public bool Tile(int x,int y,out PredictionTile tile,out PredictionStop stop){int cell=(x-10)*3+y-10;bool wall=Walls && cell>=0 && cell<WallCells;tile=new PredictionTile{Active=x==10 && y==10 && Root && !ActuatedRoot,RawActive=x==10 && y==10 && Root || wall && WallSolid,RawSolid=wall && WallSolid,Wall=(ushort)(wall?1:0)};stop=Unknown?PredictionStop.TerrainUnavailable:PredictionStop.None;return !Unknown;}
         }
         internal static void Require(bool value,string text){if(!value)throw new InvalidOperationException(text);}
