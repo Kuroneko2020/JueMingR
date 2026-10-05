@@ -90,6 +90,9 @@ namespace NativeWorldTextProbe
                     // target-local acquisition must not discover a full world.
                     for(int x=210;x<220;x++)for(int y=143;y<150;y++)Main.tile[x,y].liquid=255;
                 }
+                // Scene placement is a legal initial condition, not a fall
+                // carried from the preceding mounted encounter.
+                player.fallStart=player.fallStart2=(int)(player.position.Y/16);
             }
         }
         private static void LightHit(NPC victim,int damage)

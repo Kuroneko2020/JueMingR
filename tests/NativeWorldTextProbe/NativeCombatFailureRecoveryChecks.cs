@@ -24,12 +24,19 @@ namespace NativeWorldTextProbe
             object oldPending=Get(native,"pending");Require(oldPending!=null,"Owned interruption has a real old pending request.");
             Process owned=(Process)Get(before,"child");int oldPid=owned.Id;
             Require(oldPid==(int)Get(before,"ChildId") && oldPid!=Process.GetCurrentProcess().Id,"Only the exact authenticated owned child can be interrupted.");
-            long faultTick=Main.GameUpdateCount;owned.Kill();
+            long faultTick=Main.GameUpdateCount;
+            Console.WriteLine("RECOVERY-FAULT tick="+faultTick+" workerState="+Get(before,"State")+" pendingRetired="+Get(oldPending,"Retired")+" pendingTick="+Get(oldPending,"Tick")+" requestNull="+(Get(before,"request")==null)+" resultNull="+(Get(before,"result")==null)+" valueRequestNull="+(Get(before,"valueRequest")==null)+" decodedReplyNull="+(Get(before,"decodedReply")==null));
+            owned.Kill();
             var rows=new List<string>{"frame,tick,shown,failed,path,workerState,childId,reason"};
-            var wait=Stopwatch.StartNew();int first=-1,shown=0,frame=0;
+            var wait=Stopwatch.StartNew();int first=-1,shown=0,frame=0;bool completedByOldOwner=false;
             while(wait.Elapsed.TotalSeconds<45 && shown<120)
             {
                 step();object worker=Get(native,"Worker");var route=cache.Read(0);
+                // A reply already in State=3 may be normally consumed before
+                // the old owner observes EOF. It is completed, not interrupted;
+                // neither terminal form may survive into the new owner.
+                if(!completedByOldOwner && ReferenceEquals(before,worker) && ReferenceEquals(oldPending,Get(native,"acceptedRequest")))completedByOldOwner=true;
+                if(frame==0)Console.WriteLine("RECOVERY-FIRST-STEP pendingRetired="+Get(oldPending,"Retired")+" stillPending="+ReferenceEquals(oldPending,Get(native,"pending"))+" acceptedRequest="+ReferenceEquals(oldPending,Get(native,"acceptedRequest"))+" oldWorkerState="+Get(before,"State"));
                 int pid=(int)Get(worker,"ChildId");bool present=route!=null && pid!=oldPid;
                 rows.Add(string.Join(",",frame,Main.GameUpdateCount,present?1:0,(bool)Get(native,"Failed")?1:0,(bool)Get(host,"Path")?1:0,Get(worker,"State"),pid,"\""+((string)Get(native,"Reason")??"").Replace("\"","\"\"")+"\""));
                 Require(!(bool)Get(native,"Failed") && (bool)Get(host,"Path"),"A recoverable owned EOF never latches Host pathFailed.");
@@ -40,8 +47,9 @@ namespace NativeWorldTextProbe
             File.WriteAllLines(Path.Combine(output,"failure-recovery.csv"),rows);
             Require(first>=0 && shown==120 && !ReferenceEquals(before,Get(native,"Worker")),"One automatic owned replacement restores a sustained route in the same Host/Session.");
             Require((bool)Get(before,"Closed") && Get(before,"child")==null,"Old process/pipes/leases are fully released before replacement.");
-            Require((bool)Get(oldPending,"Retired") && Get(before,"request")==null && Get(before,"result")==null && Get(before,"valueRequest")==null && Get(before,"decodedReply")==null,
-                "Interrupted request and both old mailbox forms retire before the new consumer is accepted.");
+            Console.WriteLine("RECOVERY-RELEASE pendingRetired="+Get(oldPending,"Retired")+" completedByOldOwner="+completedByOldOwner+" requestNull="+(Get(before,"request")==null)+" resultNull="+(Get(before,"result")==null)+" valueRequestNull="+(Get(before,"valueRequest")==null)+" decodedReplyNull="+(Get(before,"decodedReply")==null));
+            Require(((bool)Get(oldPending,"Retired") || completedByOldOwner) && !ReferenceEquals(oldPending,Get(native,"pending")) && !ReferenceEquals(oldPending,Get(native,"acceptedRequest")) && Get(before,"request")==null && Get(before,"result")==null && Get(before,"valueRequest")==null && Get(before,"decodedReply")==null,
+                "Old request is actually retired or completed by the old owner, and neither it nor either old mailbox form belongs to the new consumer.");
             Console.WriteLine("RECOVERY owned-pid="+oldPid+" -> "+Get(Get(native,"Worker"),"ChildId")+" first-updates="+first+" shown="+shown+" elapsed-ms="+wait.Elapsed.TotalMilliseconds);
 
             // A replacement which dies before proving any accepted request

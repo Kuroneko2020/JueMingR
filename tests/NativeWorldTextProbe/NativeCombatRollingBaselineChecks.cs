@@ -82,7 +82,7 @@ namespace NativeWorldTextProbe
             NpcTrajectory fixedPath=null;Vector2 fixedCamera=Vector2.Zero;
             var fixedCosts=new List<string>{"repetition,frame,count,strokes,text,prepareMs,layerDrawMs,renderWrapperMs,prepareBytes,drawBytes"};
             var helperCosts=new List<string>{"phase,cpuMs,executed"};
-            bool evidenceComplete=false;int sceneCount=0;
+            bool evidenceComplete=false,requireHornetBirth=false;int sceneCount=0;
             using(var timing=new NativeCombatRollingTimingChecks(source,output))
             using(var quality=candidate && Environment.GetEnvironmentVariable("JUEMINGR_ROLLING_QUALITY")=="1"?new NativeCombatRollingQualityChecks(source,output):null)
             using(var observer=new HarmonyScope())
@@ -138,6 +138,7 @@ namespace NativeWorldTextProbe
                         string filter=Environment.GetEnvironmentVariable("JUEMINGR_ROLLING_PHASES");
                         if(!string.IsNullOrWhiteSpace(filter) && !filter.Split(',').Select(value=>value.Trim()).Contains(phase))continue;
                         sceneCount++;
+                        if(light && (phase=="hornet-open" || phase=="hornet-wall" || phase=="broom-dense"))requireHornetBirth=true;
                         quality?.ChangeScene(phase,axis==7);
                         bool restart=player.dead || !Main.npc[bSlot].active;
                         if(light && !Matches(bActor,Main.npc[bSlot]))restart=true;
@@ -231,7 +232,7 @@ namespace NativeWorldTextProbe
                     }
                     if(sceneCount==0)throw new InvalidOperationException("Rolling phase filter selected no known scene; zero-world-update evidence is invalid.");
                     Console.WriteLine("ROLLING scenes="+sceneCount+" completed-updates="+(light?lightRowCount:rows.Count-1));
-                    if(light){if(lightHornetBirths==0)throw new InvalidOperationException("Light scenes require actual selected hornet projectile55 birth.");LightEnd(host,cache,step);evidenceComplete=true;}
+                    if(light){if(requireHornetBirth && lightHornetBirths==0)throw new InvalidOperationException("Selected hornet scenes require actual selected hornet projectile55 birth.");LightEnd(host,cache,step);evidenceComplete=true;}
                     else
                     {
                     // Presentation-only replay of an actual immutable 121-point
