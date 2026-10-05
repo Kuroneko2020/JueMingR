@@ -27,7 +27,9 @@ namespace JueMingR.Features.Combat
             // faceTarget is false. Numbered-player selection respects that flag.
             if(n.TrackingKind>=2 || faceTarget && CanFace(n,e,old))
             {var area=Area(n,e);n.Direction=area.CenterX<n.Bounds.CenterX?-1:1;n.DirectionY=area.CenterY<n.Bounds.CenterY?-1:1;}
-            if(confused && faceTarget)n.Direction=-n.Direction;
+            // Native applies confusion after either selection branch, even
+            // when faceTarget suppressed numbered-player facing.
+            if(confused)n.Direction=-n.Direction;
         }
         internal static PredictionEnvironment Player(NpcMotionState n,PredictionEnvironment e)
         {

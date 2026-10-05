@@ -8,14 +8,14 @@ namespace JueMingR.Features.Combat
     // phase selection are not replayed by this private scalar continuation.
     internal static class NpcParentMotion
     {
-        internal static bool NeedsPlayer(NpcMotionState n,PredictionEnvironment e)
+        internal static bool NeedsPlayer(NpcMotionState n,PredictionEnvironment e,int remaining)
         {
             // Home-only current phases do not consume player motion. Include
-            // a known clock transition within the bounded 120-step window;
+            // a known clock transition within the remaining bounded window;
             // parent phase/position remain separately sampled dependencies.
-            if(n.Style==35)return n.A2==1 || n.A2==0 && n.PositionParameter==0 && n.A3+120>=1100;
-            if(n.Style==36)return n.A2==1 || (n.A2==0 || n.A2==3) && n.PositionParameter==0 && n.A3+120>=800;
-            if(n.Style==12)return n.A2!=0 && n.A2!=3 || (n.PositionParameter==0 || n.L3==1) && n.A3+120*(1+(n.L3==1?1:0)+(e.Expert?.5f:0))>=300;
+            if(n.Style==35)return n.A2==1 || n.A2==0 && n.PositionParameter==0 && n.A3+remaining>=1100;
+            if(n.Style==36)return n.A2==1 || (n.A2==0 || n.A2==3) && n.PositionParameter==0 && n.A3+remaining>=800;
+            if(n.Style==12)return n.A2!=0 && n.A2!=3 || (n.PositionParameter==0 || n.L3==1) && n.A3+remaining*(1+(n.L3==1?1:0)+(e.Expert?.5f:0))>=300;
             return true; // AI33/34 recovery can enter player pursuit in-window.
         }
         internal static bool Step(ref NpcMotionState n,NpcMotionState parent,PredictionEnvironment e,out PredictionStop stop)

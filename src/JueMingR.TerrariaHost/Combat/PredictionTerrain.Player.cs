@@ -62,6 +62,15 @@ namespace JueMingR.TerrariaHost.Combat
             return true;
         }
         private static bool PlayerPass(Cell c){return !c.Active || !c.RawSolid || c.RawPlatform;}
+        private bool PlayerTail(ref NpcMotionState n,ref PredictionPlayerMotion p,bool fall,int grav,out PredictionStop stop)
+        {
+            // DryCollision owns slope/belt per segment. Player.Update still
+            // performs this separate final pair after the summed velocity is
+            // restored; it also owns the last up/down collision scratch.
+            if(p.IgnorePlatforms || p.Down || p.Grappled || grav<0)n.StairFall=true;
+            if(!Slopes(ref n,fall,out stop,true,grav))return false;
+            return p.SkipConveyor || Math.Abs(p.GfxOffset)>2 || Conveyor(ref n,true,p.OnTrack,grav,out stop);
+        }
         private static bool Rectangles(float x,float y,float w,float h,float tx,float ty,float tw,float th)
         {return x<tx+tw && x+w>tx && y<ty+th && y+h>ty;}
         private bool PlayerSegments(ref NpcMotionState n,PredictionEnvironment e,ref PredictionPlayerMotion p,bool waterWalk,bool fall,bool lavaWalk,int grav,out PredictionStop stop)

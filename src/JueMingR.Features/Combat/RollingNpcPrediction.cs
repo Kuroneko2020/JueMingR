@@ -19,7 +19,7 @@ namespace JueMingR.Features.Combat
             FailureLayer=PredictionFailureLayer.Source;
             if(source==null || count<1 || count>work.Length || selected<0 || selected>=count || required<1 || required>NpcPredictionCache.Horizon)return null;
             var current=source[selected];
-            bool needsPlayer=false,canObservePlayer=true;for(int i=0;i<count;i++)if((motionRoles==null || i<motionRoles.Length && motionRoles[i]) && NpcMotion.NeedsPlayerMotion(source[i],environment)){needsPlayer=true;canObservePlayer&=NpcMotion.CurrentPlayerPremise(source[i]);}
+            bool needsPlayer=false,canObservePlayer=true;for(int i=0;i<count;i++)if((motionRoles==null || i<motionRoles.Length && motionRoles[i]) && NpcMotion.NeedsPlayerMotion(source[i],environment,required)){needsPlayer=true;canObservePlayer&=NpcMotion.CurrentPlayerPremise(source[i]);}
             if(!current.Active || !current.CanReceive || current.Life<=0 || !Valid(current) || needsPlayer && !Valid(player) || !Finite(environment.Wind) || !Finite(environment.WorldSurface) || !Finite(environment.RockLayer) || motionRoles!=null && motionRoles.Length<count){Clear();return null;}
             bool observed=priorTick+1==tick && previous.Identity.Equals(current.Identity) && SamePhase(previous,current) && !current.JustHit &&
                 Math.Abs(current.X-previous.X)<512 && Math.Abs(current.Y-previous.Y)<512;
@@ -45,7 +45,9 @@ namespace JueMingR.Features.Combat
             for(int future=1;future<=required;future++)
             {
                 bool futureNeeds=false;canObservePlayer=true;
-                for(int i=0;i<count;i++)if((motionRoles==null || motionRoles[i]) && NpcMotion.NeedsPlayerMotion(work[i],environment)){futureNeeds=true;canObservePlayer&=NpcMotion.CurrentPlayerPremise(work[i]);}
+                // Rechecking a future phase must not move the horizon forward:
+                // a home clock beyond the requested endpoint is irrelevant.
+                for(int i=0;i<count;i++)if((motionRoles==null || motionRoles[i]) && NpcMotion.NeedsPlayerMotion(work[i],environment,required-future+1)){futureNeeds=true;canObservePlayer&=NpcMotion.CurrentPlayerPremise(work[i]);}
                 if(futureNeeds && !needsPlayer)
                 {
                     // A modeled phase acquired a new necessary premise. Start
@@ -86,7 +88,7 @@ namespace JueMingR.Features.Combat
                     // to replay that otherwise unrelated actor's AI/geometry.
                     bool valid=motionRoles!=null && !motionRoles[i]?NpcHealth.Step(ref state,work,count,env,out stop):NpcMotion.Step(ref state,work,count,env,terrain,future,true,out stop);
                     if(!valid || !Valid(state)){if(valid)stop=PredictionStop.InvalidState;advanced=false;break;}
-                    if((motionRoles==null || motionRoles[i]) && NpcMotion.NeedsPlayerMotion(state,env) && state.TargetCaptured && state.PlayerIndex!=environment.PlayerIndex)
+                    if((motionRoles==null || motionRoles[i]) && NpcMotion.NeedsPlayerMotion(state,env,Math.Max(1,required-future)) && state.TargetCaptured && state.PlayerIndex!=environment.PlayerIndex)
                     {stop=PredictionStop.MissingDependency;advanced=false;break;}
                     work[i]=state;
                 }

@@ -45,7 +45,7 @@ namespace NativeWorldTextProbe
                 player.position=new Vector2(1200,950);player.tankPet=0;pet.active=true;pet.position=new Vector2(1000+side*90,950);pet.velocity=Vector2.Zero;
                 target.SetDefaults(6);target.whoAmI=2;target.active=true;target.target=Main.myPlayer;target.position=new Vector2(1000,950);target.velocity=Vector2.Zero;
                 var sampled=(NpcMotionState)read.Invoke(null,new object[]{target,1L});var sampledArgs=new object[]{target,sampled,terrain};terrain.Reset();capture.Invoke(null,sampledArgs);sampled=(NpcMotionState)sampledArgs[1];
-                Require(sampled.TrackingKind==2 && (bool)needs.Invoke(null,new object[]{sampled,default(PredictionEnvironment)}),"Guardian flying still needs numbered-player future.");
+                Require(sampled.TrackingKind==2 && (bool)needs.Invoke(null,new object[]{sampled,default(PredictionEnvironment),120}),"Guardian flying still needs numbered-player future.");
                 var flyingEnv=new PredictionEnvironment{PlayerIndex=Main.myPlayer,PlayerX=player.Center.X,PlayerY=player.Center.Y,PlayerWidth=player.width,PlayerHeight=player.height,WorldWidth=Main.maxTilesX,WorldHeight=Main.maxTilesY,WorldSurface=(float)Main.worldSurface,RockLayer=(float)Main.rockLayer};
                 for(int future=1;future<=15;future++)
                 {
@@ -80,7 +80,7 @@ namespace NativeWorldTextProbe
                 e=new PredictionEnvironment{PlayerIndex=Main.myPlayer,PlayerX=player.Center.X,PlayerY=player.Center.Y,PlayerWidth=player.width,PlayerHeight=player.height,PlayerWet=player.wet,WorldWidth=Main.maxTilesX,WorldHeight=Main.maxTilesY,Multiplayer=true};
                 int oldMode=Main.netMode;Main.netMode=1;try{target.AI();}finally{Main.netMode=oldMode;}
                 var leaf=typeof(NpcMotion).Assembly.GetType(type==56?"JueMingR.Features.Combat.NpcAnchoredMotion":"JueMingR.Features.Combat.NpcAquaticMotion").GetMethod("Step",Flags);
-                var parameters=type==56?new object[]{state,e,terrain,PredictionStop.None}:new object[]{state,e,terrain,state.Direction,state.DirectionY,PredictionStop.None};
+                var parameters=type==56?new object[]{state,e,terrain,PredictionStop.None}:new object[]{state,e,terrain,state.Direction,state.DirectionY,PredictionStop.None,false};
                 Require((bool)leaf.Invoke(null,parameters),"Native AI13/16 numbered-player consumer available.");var modeled=(NpcMotionState)parameters[0];
                 Console.WriteLine("RETARGET type="+type+" nativeTarget="+target.target+" modelTarget="+modeled.Target+" nativeV="+target.velocity+" modelV="+new Vector2(modeled.Vx,modeled.Vy));
                 Require(target.target==1 && modeled.Target==1 && Vector2.Distance(target.velocity,new Vector2(modeled.Vx,modeled.Vy))<.001f,"AI13 root vector / AI16 wet pursuit consumes new numbered player.");root.active(false);

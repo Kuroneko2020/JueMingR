@@ -8,10 +8,10 @@ namespace JueMingR.Features.Combat
     // with real gravity/contact instead of claiming deterministic native AI.
     internal static class NpcRollingMotion
     {
-        internal static void Derpling(ref NpcMotionState n,PredictionEnvironment e,int direction)
+        internal static void Derpling(ref NpcMotionState n,PredictionEnvironment e,int direction,bool confused=false)
         {
             if(n.A2>1)n.A2--;
-            if(n.A2==0){n.A0=-100;n.A2=1;NpcTargeting.Face(ref n,ref e);direction=n.Direction;}
+            if(n.A2==0){n.A0=-100;n.A2=1;NpcTargeting.Face(ref n,ref e,true,confused);direction=n.Direction;}
             if(n.Vy==0)
             {
                 if(n.A3==n.X){n.Direction=-n.Direction;n.A2=300;}n.A3=0;
@@ -21,7 +21,7 @@ namespace JueMingR.Features.Combat
                 n.A0+=2+(int)Math.Min(30,2000/Math.Max(.001f,distance));
                 if(n.A0>=0)
                 {
-                    if(n.A2==1){NpcTargeting.Face(ref n,ref e);direction=n.Direction;}
+                    if(n.A2==1){NpcTargeting.Face(ref n,ref e,true,confused);direction=n.Direction;}
                     bool big=n.A1==2;n.Vy=big?-11.5f:-7.5f;n.Vx+=(big?2:4)*n.Direction;
                     if(distance>200 && distance<350)n.Vx+=n.Direction;
                     n.A0=big?-200:-120;n.A1=big?0:n.A1+1;if(big)n.A3=n.X;
@@ -35,12 +35,12 @@ namespace JueMingR.Features.Combat
                 {if(n.Direction==-1 && n.Vx<.1f || n.Direction==1 && n.Vx>-.1f)n.Vx+=.2f*n.Direction;else n.Vx*=.93f;}
             }
         }
-        internal static bool Tortoise(ref NpcMotionState n,PredictionEnvironment e,IPredictionTerrain terrain,int direction,int vertical,out PredictionStop stop)
+        internal static bool Tortoise(ref NpcMotionState n,PredictionEnvironment e,IPredictionTerrain terrain,int direction,int vertical,out PredictionStop stop,bool confused=false)
         {
             stop=PredictionStop.None;
             if(!NpcGroundMotion.StepUp(ref n,terrain,out stop,true))return false;
-            if(n.Direction==0 || n.Target<0 || e.PlayerDead){NpcTargeting.Face(ref n,ref e);direction=n.Direction;vertical=n.DirectionY;}
-            if(n.JustHit){n.A0=n.A1=0;NpcTargeting.Face(ref n,ref e);direction=n.Direction;vertical=n.DirectionY;}
+            if(n.Direction==0 || n.Target<0 || e.PlayerDead){NpcTargeting.Face(ref n,ref e,true,confused);direction=n.Direction;vertical=n.DirectionY;}
+            if(n.JustHit){n.A0=n.A1=0;NpcTargeting.Face(ref n,ref e,true,confused);direction=n.Direction;vertical=n.DirectionY;}
             float dx=e.PlayerX-n.Bounds.CenterX,dy=e.PlayerY-e.PlayerHeight/2-n.Bounds.CenterY;
             float distance=(float)Math.Sqrt(dx*dx+dy*dy);
             if(n.A0==0)
@@ -73,7 +73,7 @@ namespace JueMingR.Features.Combat
             {
                 if(++n.A1==1)
                 {
-                    NpcTargeting.Face(ref n,ref e);direction=n.Direction;vertical=n.DirectionY;
+                    NpcTargeting.Face(ref n,ref e,true,confused);direction=n.Direction;vertical=n.DirectionY;
                     dx=e.PlayerX-n.Bounds.CenterX;dy=e.PlayerY-e.PlayerHeight/2-n.Bounds.CenterY;
                     n.A1++;n.A2+=.3f;
                     bool clear;if(!terrain.CanHit(n.Bounds,new MotionRect(e.PlayerX-e.PlayerWidth/2,e.PlayerY-e.PlayerHeight/2,e.PlayerWidth,e.PlayerHeight),out clear,out stop))return false;
@@ -96,7 +96,7 @@ namespace JueMingR.Features.Combat
                 if(n.A2>0)n.A2-=.01f;
                 if(n.A2<=0 && (n.Vy==0 || n.Wet)){n.A0=5;n.A1=n.A2=0;}
             }
-            else if(n.A0==5){n.Vx=0;if(++n.A1>=30){NpcTargeting.Face(ref n,ref e);n.A0=n.A1=0;}if(n.Wet){n.A0=3;n.A1=0;}}
+            else if(n.A0==5){n.Vx=0;if(++n.A1>=30){NpcTargeting.Face(ref n,ref e,true,confused);n.A0=n.A1=0;}if(n.Wet){n.A0=3;n.A1=0;}}
             return true;
         }
         internal static void Trend(ref NpcMotionState n,int elapsed)

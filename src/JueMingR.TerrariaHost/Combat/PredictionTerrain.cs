@@ -189,7 +189,7 @@ namespace JueMingR.TerrariaHost.Combat
             {
                 var free=n;free.OldX=free.X;free.OldY=free.Y;free.X+=free.Vx;free.Y+=free.Vy;
                 bool wetContact;byte kind;if(!Wet(free,false,out wetContact,out kind,out stop))return false;
-                if(wetContact && !environment.Multiplayer)NpcHealth.Extinguish(ref free.Health);
+                if(!playerMode && wetContact && !environment.Multiplayer)NpcHealth.Extinguish(ref free.Health);
                 n=free;return true;
             }
             if(n.Width<1 || n.Height<1 || n.Width>1024 || n.Height>1024 || Math.Abs(n.Vx)>512 || Math.Abs(n.Vy)>512){stop=PredictionStop.InvalidState;return false;}
@@ -198,11 +198,15 @@ namespace JueMingR.TerrariaHost.Combat
             else if(!WalkDown(ref next,out stop))return false;
             bool lava,wet;byte liquid;
             if(!Wet(next,true,out lava,out liquid,out stop) || !Wet(next,false,out wet,out liquid,out stop))return false;
+            // Floating fluid motion has its own native constraint. A dry
+            // float-equipped player can still move; acquiring wet contact
+            // cannot silently become ordinary wet translation.
+            if(playerMode && wet && player.FloatInWater){stop=PredictionStop.UnsupportedMechanism;return false;}
             if(next.Identity.Type==441)lava=false;
             if(lava)
             {
                 next.Lava=true;
-                if(!next.Health.LavaImmune && !next.Health.DontTakeDamage && !environment.Multiplayer && next.Health.Immune255==0)
+                if(!playerMode && !next.Health.LavaImmune && !next.Health.DontTakeDamage && !environment.Multiplayer && next.Health.Immune255==0)
                 {
                     bool onlyFire=environment.Remix && !next.Friendly;
                     // Strike has additional ownership/AI side effects in these
@@ -221,13 +225,16 @@ namespace JueMingR.TerrariaHost.Combat
             }
             if(!playerMode && next.Wet && !wet)next.Vx*=.5f;
             next.Wet=wet;next.Honey=wet && (liquid==2 || next.Honey);next.Shimmer=wet && (liquid==3 || next.Shimmer);next.Lava=wet && next.Lava;
-            if(wet && !environment.Multiplayer)
+            if(!playerMode && wet && !environment.Multiplayer)
             {if(!lava)NpcHealth.Extinguish(ref next.Health);if(next.Shimmer && !next.Health.ShimmerImmune && next.Health.ShimmerTicks<=10)next.Health.ShimmerTicks=100;}
             next.OldVx=next.Vx;next.OldVy=next.Vy;
             bool fall=playerMode?fallThrough:NpcCollisionRules.FallThrough(next,environment);
             bool wetPlayer=wet && (next.Shimmer || next.Honey && !player.IgnoreWater || !player.Merman && !player.IgnoreWater && !player.Trident);
             if(playerMode && allowSplit && !wetPlayer && next.Vx*next.Vx+next.Vy*next.Vy>Math.Pow(Math.Min(16,Math.Min(next.Width-.5f,next.Height-.5f)),2))
-            {if(!PlayerSegments(ref next,environment,ref player,waterWalk,fall,lavaWalk,gravDir,out stop))return false;n=next;return true;}
+            {
+                if(!PlayerSegments(ref next,environment,ref player,waterWalk,fall,lavaWalk,gravDir,out stop) || !PlayerTail(ref next,ref player,fall,gravDir,out stop))return false;
+                n=next;return true;
+            }
             float rx,ry;bool up,down;
             var moveBox=playerMode?next.Bounds:NpcCollisionRules.MovementBounds(next);
             if(playerMode && player.OnTrack)moveBox.Height-=10;

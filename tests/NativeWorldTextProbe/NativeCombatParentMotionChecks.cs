@@ -30,9 +30,22 @@ namespace NativeWorldTextProbe
                 }
             }
             finally{Main.netMode=savedMode;}
+            int difficulty=Main.GameMode;Main.netMode=1;
+            try
+            {
+                foreach(int mode in new[]{0,1})foreach(int red in new[]{0,1})foreach(int phase in new[]{0,1,2,4,5})foreach(int side in new[]{-1,1})
+                {
+                    Main.GameMode=mode;var owner=Main.npc[1];owner.SetDefaults(35);owner.whoAmI=1;owner.active=true;owner.position=new Vector2(800,800);owner.ai[1]=0;owner.ai[3]=red;
+                    var child=Main.npc[2];child.SetDefaults(36);child.active=true;child.whoAmI=2;child.ai[0]=1;child.ai[1]=1;child.ai[2]=phase;child.ai[3]=20;child.target=Main.myPlayer;child.position=owner.Center+new Vector2(side*350,side*350);child.velocity=new Vector2(side*2,side);
+                    var args=new object[]{child,read.Invoke(null,new object[]{child,Get(host,"Session")}),Get(host,"Session")};capture.Invoke(null,args);var before=(NpcMotionState)args[1];child.AI();
+                    var environment=new PredictionEnvironment{PlayerIndex=Main.myPlayer,PlayerX=Main.LocalPlayer.Center.X,PlayerY=Main.LocalPlayer.Center.Y,PlayerWidth=Main.LocalPlayer.width,PlayerHeight=Main.LocalPlayer.height,Expert=Main.expertMode,Multiplayer=true};var parameters=new object[]{before,new[]{(NpcMotionState)read.Invoke(null,new object[]{owner,Get(host,"Session")})},1,1,environment,PredictionStop.None};Require((bool)step.Invoke(null,parameters),"Red/expert parent scalar phase.");var after=(NpcMotionState)parameters[0];
+                    Require(Vector2.Distance(child.velocity,new Vector2(after.Vx,after.Vy))<.001f && child.ai[2]==after.A2 && child.ai[3]==after.A3,"Original normal/expert and red-head current clock/relative constraints: mode="+mode+" red="+red+" phase="+phase);cases++;
+                }
+            }
+            finally{Main.GameMode=difficulty;Main.netMode=savedMode;}
             var needs=typeof(NpcMotion).GetMethod("NeedsPlayerMotion",Flags);
             var home=new NpcMotionState{Style=12,PositionRelation=6,A2=0,A3=170,PositionParameter=0,L3=0};
-            Require(!(bool)needs.Invoke(null,new object[]{home,new PredictionEnvironment{Expert=false}}) && (bool)needs.Invoke(null,new object[]{home,new PredictionEnvironment{Expert=true}}),"Parent home 170+120 normal ticks stays before 300; expert 1.5 clock crosses the actual player-consuming phase.");
+            Require(!(bool)needs.Invoke(null,new object[]{home,new PredictionEnvironment{Expert=false},120}) && (bool)needs.Invoke(null,new object[]{home,new PredictionEnvironment{Expert=true},120}),"Parent home 170+120 normal ticks stays before 300; expert 1.5 clock crosses the actual player-consuming phase.");
             var second=Main.player[1];second.active=true;second.dead=false;second.position=new Vector2(900,950);second.tankPet=-1;Main.LocalPlayer.position=new Vector2(1400,950);
             var boss=Main.npc[1];boss.SetDefaults(127);boss.whoAmI=1;boss.active=true;boss.ai[1]=0;boss.position=new Vector2(800,800);
             var member=Main.npc[2];member.SetDefaults(131);member.whoAmI=2;member.active=true;member.target=Main.myPlayer;member.position=new Vector2(1000,950);member.ai[0]=1;member.ai[1]=1;member.ai[2]=0;member.ai[3]=799;

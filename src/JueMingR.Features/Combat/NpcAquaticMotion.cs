@@ -8,7 +8,7 @@ namespace JueMingR.Features.Combat
         // All locked AI16 defaults enter here. Special action phases stop at
         // their own boundary, rather than refusing a member's ordinary swim.
         internal static bool Known(int type){return type==55 || type==57 || type==58 || type==65 || type==102 || type==157 || type==241 || type==465 || type==592 || type==607 || type==615 || type==688 || type==692;}
-        internal static bool Step(ref NpcMotionState n,PredictionEnvironment e,IPredictionTerrain t,int direction,int vertical,out PredictionStop stop)
+        internal static bool Step(ref NpcMotionState n,PredictionEnvironment e,IPredictionTerrain t,int direction,int vertical,out PredictionStop stop,bool confused=false)
         {
             stop=PredictionStop.None;int type=n.EffectiveType;bool large=type==157,shark=type==65 || type==692,fast=shark || type==102;
             if(type==615)
@@ -35,7 +35,7 @@ namespace JueMingR.Features.Combat
             if(!n.Wet)
             {if(n.Vy==0){if(shark){n.Vx*=.94f;if(Math.Abs(n.Vx)<.2f)n.Vx=0;}else if(!e.Multiplayer){n.Direction=n.Direction<0?-1:1;n.Vy=-3.6f;n.Vx=n.Direction*.8f;}}n.Vy=Math.Min(10,n.Vy+.3f);n.A0=1;return true;}
             bool pursue=false;
-            if(type!=55 && type!=592 && type!=607 && type!=615 && type!=688)NpcTargeting.Face(ref n,ref e,false);
+            if(type!=55 && type!=592 && type!=607 && type!=615 && type!=688)NpcTargeting.Face(ref n,ref e,false,confused);
             if(type!=55 && type!=592 && type!=607 && type!=615 && type!=688 && e.PlayerWet && !e.PlayerDead && !t.CanHit(n.Bounds,new MotionRect(e.PlayerX-e.PlayerWidth/2,e.PlayerY-e.PlayerHeight/2,e.PlayerWidth,e.PlayerHeight),out pursue,out stop))return false;
             int cx=(int)n.Bounds.CenterX/16,foot=(int)(n.Y+n.Height)/16;
             PredictionTile bottom,below;if(!t.Tile(cx,foot,out bottom,out stop) || !t.Tile(cx,foot+1,out below,out stop))return false;

@@ -66,7 +66,7 @@ namespace JueMingR.Features.Combat
             if(n.PositionRelation!=0)
             {if(!NpcPositionMotion.Step(ref n,group,count,elapsed,env,out stop))return false;}
             else if(n.Style==16 && NpcAquaticMotion.Known(n.Identity.Type))
-            {if(!NpcAquaticMotion.Step(ref n,env,terrain,direction,vertical,out stop))return false;}
+            {if(!NpcAquaticMotion.Step(ref n,env,terrain,direction,vertical,out stop,confused))return false;}
             else if(n.Style==13 && NpcAnchoredMotion.Known(n.Identity.Type))
             {if(!NpcAnchoredMotion.Step(ref n,env,terrain,out stop))return false;}
             else if(n.Identity.Type==371)Bubble(ref n,env);
@@ -153,9 +153,9 @@ namespace JueMingR.Features.Combat
                 EyeAxis(ref n.Vx,eyeDirection,sx,.1f,.1f,.05f);EyeAxis(ref n.Vy,eyeVertical,sy,damaged?.1f:.04f,damaged?.1f:.05f,damaged?.05f:.03f);
                 if(n.Wet){if(n.Vy>0)n.Vy*=.95f;n.Vy=Math.Max(-4,n.Vy-.5f);NpcTargeting.Retarget(ref n,ref env);var wetTarget=NpcTargeting.Area(n,env);if(NpcTargeting.CanFace(n,env,facingOldTarget)){n.Direction=wetTarget.CenterX<n.Bounds.CenterX?-1:1;n.DirectionY=wetTarget.CenterY<n.Bounds.CenterY?-1:1;}}
             }
-            else if(rolling && n.Style==41 && n.Identity.Type==177)NpcRollingMotion.Derpling(ref n,env,direction);
+            else if(rolling && n.Style==41 && n.Identity.Type==177)NpcRollingMotion.Derpling(ref n,env,direction,confused);
             else if(rolling && n.Style==39 && n.Identity.Type==153)
-            {if(!NpcRollingMotion.Tortoise(ref n,env,terrain,direction,vertical,out stop))return false;}
+            {if(!NpcRollingMotion.Tortoise(ref n,env,terrain,direction,vertical,out stop,confused))return false;}
             else if(n.Style==5 && (FlyingType(n.Identity.Type) || rolling && n.Identity.Type==176))Flying(ref n,env,direction,vertical);
             else if(n.Style==14 && BatType(n.Identity.Type))
             {
@@ -170,7 +170,7 @@ namespace JueMingR.Features.Combat
             else if(rolling)NpcRollingMotion.Trend(ref n,elapsed);
             else if(elapsed>12){stop=PredictionStop.UnsupportedMechanism;return false;}
             if(n.TargetChoiceUnavailable){stop=PredictionStop.TerrainUnavailable;return false;}
-            if(n.TargetCaptured && !n.HasPlayer && NeedsPlayerMotion(n,env)){stop=PredictionStop.MissingDependency;return false;}
+            if(n.TargetCaptured && !n.HasPlayer && NeedsPlayerMotion(n,env,1)){stop=PredictionStop.MissingDependency;return false;}
             if(!n.Active){stop=PredictionStop.Despawn;return false;}
             // Linked AI already attached the segment and zeroed velocity. It
             // still enters native free movement's water-extinguish phase.
@@ -206,11 +206,11 @@ namespace JueMingR.Features.Combat
                 n.Style==13 && NpcAnchoredMotion.Known(type) || n.Style==16 && NpcAquaticMotion.Known(type) ||
                 n.Style==40 && NpcWallMotion.Wall(type) || n.Style==69 || n.Style==39 && type==153 || n.Style==41 && type==177;
         }
-        internal static bool NeedsPlayerMotion(NpcMotionState n,PredictionEnvironment e)
+        internal static bool NeedsPlayerMotion(NpcMotionState n,PredictionEnvironment e,int remaining=120)
         {
             e=NpcTargeting.Player(n,e);
             if(n.EffectiveType==488)return false;
-            if(n.PositionRelation!=0)return n.PositionRelation==6 && NpcParentMotion.NeedsPlayer(n,e);
+            if(n.PositionRelation!=0)return n.PositionRelation==6 && NpcParentMotion.NeedsPlayer(n,e,remaining);
             // AI_005/AI_014 still consume numbered-player geometry even when
             // TargetClosest faces a guardian. Facing alone cannot waive it.
             if(n.Style==2 && (n.TrackingKind>=2 || e.Day && !e.Remix && !e.Graveyard && n.Y<=e.WorldSurface*16 && !n.Wet))return false;

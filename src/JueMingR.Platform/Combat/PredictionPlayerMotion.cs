@@ -8,7 +8,7 @@ namespace JueMingR.Platform.Combat
         public int Width,Height,Jump,JumpHeight;
         public bool Left,Right,Up,Down,HoldJump,ReleaseJump,AutoJump,Hover,Complex,WaterWalk,LavaWalk;
         public bool IgnorePlatforms,IgnoreWater,Merman,Trident,OnTrack,Cart,SkipSlope,SkipConveyor;
-        public bool RidingTracks,StepMount,Carpet,Grappled,UnsupportedGeometry,StairFall;
+        public bool RidingTracks,StepMount,Carpet,Grappled,UnsupportedGeometry,StairFall,FloatInWater;
         public float GfxOffset,StepSpeed;
     }
 }
