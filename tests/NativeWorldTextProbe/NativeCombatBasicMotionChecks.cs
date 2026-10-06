@@ -47,7 +47,7 @@ namespace NativeWorldTextProbe
                 if(frame==60)for(int x=119;x<=120;x++)for(int y=137;y<150;y++)Main.tile[x,y].active(false);
                 NativeCombatModeledImpactChecks.SampleMouse(context,n.Center);step();
                 var selection=Get(host,"Selection");var key=(NpcIdentity)Get(selection,"Target");bool selected=(bool)Get(selection,"HasTarget") && ReferenceEquals(key.Token,n);
-                var path=cache.Read(0);var layer=Get(host,"World");
+                var path=cache.Read(0);var layer=Get(host,"World");NativeCombatPresentationChecks.Project(layer);
                 if(selected){selectedCount++;if(path!=null)shown++;if(n.ai[3]>0){positive++;if(path==null)missing++;}}
                 if(path!=null && (!selected || !path.Identity.Equals(key) || path.CaptureTick!=Main.GameUpdateCount))throw new InvalidOperationException("Basic motion consumed a stale or different instance.");
                 rows.Add(Csv("armored-block-recover",frame,Main.GameUpdateCount,slot,n.generation,n.type,n.netID,n.position.X,n.position.Y,n.velocity.X,n.velocity.Y,n.ai[0],n.ai[1],n.ai[2],n.ai[3],n.wet,selected,path!=null,path?.Count??0,path?.Stop.ToString()??"none",Get(layer,"StrokeCount"),Get(layer,"pathText")));

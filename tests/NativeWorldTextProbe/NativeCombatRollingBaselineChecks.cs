@@ -191,6 +191,8 @@ namespace NativeWorldTextProbe
                             var key=light?lightTarget():(NpcIdentity)Get(selection,"Target");bool valid=light?lightHasTarget():(bool)Get(selection,"HasTarget");bool picked=valid && Matches(expected,key);
                             var path=cache.Read(0);bool identity=path==null || valid && path.Identity.Equals(key) && path.SampleTick==Main.GameUpdateCount;
                             if(!identity)throw new InvalidOperationException("Baseline consumer has stale/wrong identity.");
+                            // CPU telemetry must consume the current projection after Update/Prepare; it is not a GPU Draw.
+                            if(graphics==null)NativeCombatPresentationChecks.Project(layer);
                             bool published=path!=null;int strokes=light?lightStrokes():(int)Get(layer,"StrokeCount"),events=light?lightEvents():(int)Get(layer,"eventEnd");
                             var a=aSlot<0?null:Main.npc[aSlot];
                             if(!light)actors.Add(Csv(phase,frame,Main.GameUpdateCount,Token(aActor.Token),aActor.Slot,aActor.Generation,aActor.Type,aActor.NetId,Matches(aActor,a),a?.active,a?.life,

@@ -66,8 +66,8 @@ namespace NativeWorldTextProbe
                 Require(n.active && path!=null && path.Count>1 && path.Count<=30 && path.Stop==PredictionStop.Despawn,"A still-living target can have a known short terminal future.");
                 rows.Add("known-DOT-death,"+n.life+","+n.active+","+path.Count+","+path.Stop+","+cache.MinimumRequired+","+(cache.Read(0)!=null)+","+(cache.Read(1)!=null));
                 Require(cache.Read(0)==path && cache.Read(1)==null,"Display consumes the true short endpoint; strict120 still refuses it.");
-                Main.screenPosition=n.Center-new Vector2(Main.screenWidth/2,Main.screenHeight/2);Call(Get(host,"World"),"Prepare");
-                Require((int)Get(Get(host,"World"),"StrokeCount")>0 && ((string)Get(Get(host,"World"),"pathText")).Contains("0.2 秒"),"WorldLayer actually prepares the short endpoint and its real duration.");
+                Main.screenPosition=n.Center-new Vector2(Main.screenWidth/2,Main.screenHeight/2);Call(Get(host,"World"),"Prepare");NativeCombatPresentationChecks.Project(Get(host,"World"));
+                Require((int)Get(Get(host,"World"),"StrokeCount")>0 && ((string)Get(Get(host,"World"),"pathText")).Contains("0.2 秒"),"WorldLayer actually projects the short endpoint and its real duration.");
                 n.life=life;n.lifeRegenCount=regen;for(int i=0;i<n.buffType.Length;i++)if(n.buffType[i]==BuffID.OnFire)n.DelBuff(i);
                 n.position.X=15;n.velocity.X=-4;
                 Call(source,"Prepare",identity,(long)Main.GameUpdateCount+1);path=(NpcTrajectory)Get(cache,"result");

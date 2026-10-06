@@ -187,7 +187,8 @@ namespace NativeWorldTextProbe
                     if(continuousSeconds>0)Window(context,cache,samples,prepares,"continuous-harpy",continuousSeconds,true);
                     phase="harpy-draw";for(int i=0;graphics!=null && i<3;i++){Step(context,samples,prepares);long start=Stopwatch.GetTimestamp();graphics.Pixels(()=>Call(Get(host,"World"),"Draw"),Main.GameViewMatrix.ZoomMatrix);draws.Add(Ms(Stopwatch.GetTimestamp()-start));}
                     Console.WriteLine("MEMORY final-steady-private="+Private(pid)+" delta="+(Private(pid)-privateBefore));
-                    Require((int)Get(Get(host,"World"),"StrokeCount")>0,"actual world layer has rendered path strokes");
+                    if(graphics==null)NativeCombatPresentationChecks.Project(Get(host,"World"));
+                    Require((int)Get(Get(host,"World"),"StrokeCount")>0,"actual world layer has projected path strokes");
                     string shown=(string)Get(Get(host,"World"),"pathText");Require(shown.Contains("延续当前输入") && shown.Contains("随机代表路线"),"rendered premise matches continuation");
                     if(continuousSeconds>0)
                     {
