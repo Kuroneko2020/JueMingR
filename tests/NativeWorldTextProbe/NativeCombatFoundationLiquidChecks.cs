@@ -49,6 +49,28 @@ namespace NativeWorldTextProbe
                     p.active=false;other.active=false;
                 }
                 Console.WriteLine("PASS C locked full liquid collision families/old flags and620 true target water consumer cases="+cases);
+                Main.netMode=0;
+                foreach(int fire in new[]{24,323})
+                {
+                    var n=new NPC();n.SetDefaults(1);n.whoAmI=199;n.position=new Vector2(400,400);n.velocity=Vector2.Zero;n.width=20;n.height=40;n.wet=n.lavaWet=true;n.wetCount=1;n.buffType[0]=fire;n.buffTime[0]=120;n.onFire=fire==24;n.onFire3=fire==323;
+                    var state=(NpcMotionState)read.Invoke(null,new object[]{n,1L});
+                    foreach(int phase in new[]{0,1,2})
+                    {
+                        for(int x=23;x<30;x++)for(int y=23;y<30;y++){Main.tile[x,y].liquid=(byte)(phase==1?0:255);Main.tile[x,y].liquidType(0);}
+                        terrain.Reset();PredictionStop stop;collision.Invoke(n,null);Require(terrain.Move(ref state,default(PredictionEnvironment),out stop),"C singleplayer continuous lava flag/health transition: "+stop);
+                        bool expected=n.FindBuffIndex(fire)>=0,actual=fire==24?state.Health.Fire>0:state.Health.Fire3>0;
+                        Require(expected==actual && state.Lava==n.lavaWet,"C lava→water preserves burning until fully dry then next water removes it; fire="+fire+" phase="+phase+" expected="+expected+"/"+n.lavaWet+" actual="+actual+"/"+state.Lava);cases++;
+                    }
+                }
+                Console.WriteLine("PASS C singleplayer lava/water/dry/water health handoff cases=6");
+                foreach(int liquid in new[]{0,3})
+                {
+                    for(int x=23;x<30;x++)for(int y=23;y<30;y++){Main.tile[x,y].liquid=255;Main.tile[x,y].liquidType(liquid);}
+                    var n=new NPC();n.SetDefaults(1);n.whoAmI=199;n.position=new Vector2(400,400);n.width=20;n.height=40;n.wet=n.shimmerWet=true;n.wetCount=1;n.buffImmune[353]=false;n.buffType[0]=353;n.buffTime[0]=5;
+                    var state=(NpcMotionState)read.Invoke(null,new object[]{n,1L});terrain.Reset();PredictionStop stop;collision.Invoke(n,null);Require(terrain.Move(ref state,default(PredictionEnvironment),out stop),"C current shimmer contact/old qualification: "+stop);
+                    int expected=n.buffTime[n.FindBuffIndex(353)];Require(state.Shimmer==n.shimmerWet && state.Health.ShimmerTicks==expected,"C sticky shimmerWet supplies motion, current shimmer contact alone refreshes353; liquid="+liquid+" expected="+expected+" actual="+state.Health.ShimmerTicks);cases++;
+                }
+                Console.WriteLine("PASS C singleplayer shimmer→water preserves low buff time / true contact refresh cases=2");
             }
             finally{Main.dedServ=server;Main.netMode=network;for(int x=23;x<30;x++)for(int y=23;y<30;y++)Main.tile[x,y].liquid=0;}
         }

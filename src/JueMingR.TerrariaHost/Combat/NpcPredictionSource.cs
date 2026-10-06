@@ -212,7 +212,7 @@ namespace JueMingR.TerrariaHost.Combat
             // premise. These samples still report their owned current jump.
             return motion;
         }
-        private static bool MerfolkEquipment(Player p)
+        internal static bool MerfolkEquipment(Player p)
         {
             // accMerman is cleared by Player.Update before the completed
             // observation. Read the finite owning accessories without running
@@ -221,7 +221,7 @@ namespace JueMingR.TerrariaHost.Combat
             {var item=p.GetEffectiveArmor(slot);if(!p.IsItemSlotUnlockedAndUsable(slot) || item.expertOnly && !Main.expertMode)continue;if(item.type==497 || item.type==861 || item.type==3110)return true;}
             return false;
         }
-        private static bool IndependentFlipper(Player p)
+        internal static bool IndependentFlipper(Player p)
         {
             if(p.accFlipper && !p.merman && !(p.wet && p.ShouldFloatInWater))return true;
             // These are the finite native non-merfolk producers. Distinguish

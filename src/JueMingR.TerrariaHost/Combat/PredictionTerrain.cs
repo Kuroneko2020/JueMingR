@@ -234,7 +234,7 @@ namespace JueMingR.TerrariaHost.Combat
             next.Wet=wet;next.Honey=wet && (liquid==2 || !playerMode && next.Honey);next.Shimmer=wet && (liquid==3 || !playerMode && next.Shimmer);next.Lava=wet && next.Lava;
             if(!playerMode && next.WetCount>0)next.WetCount--;
             if(!playerMode && wet && !environment.Multiplayer)
-            {if(!lava)NpcHealth.Extinguish(ref next.Health);if(next.Shimmer && !next.Health.ShimmerImmune && next.Health.ShimmerTicks<=10)next.Health.ShimmerTicks=100;}
+            {if(!next.Lava)NpcHealth.Extinguish(ref next.Health);if(liquid==3 && !next.Health.ShimmerImmune && next.Health.ShimmerTicks<=10)next.Health.ShimmerTicks=100;}
             next.OldVx=next.Vx;next.OldVy=next.Vy;
             bool fall=playerMode?fallThrough:NpcCollisionRules.FallThrough(next,environment);
             bool wetPlayer=wet && (next.Shimmer || next.Honey && !player.IgnoreWater || !player.Merman && !player.IgnoreWater && !player.Trident);

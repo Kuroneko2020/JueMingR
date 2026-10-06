@@ -81,6 +81,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             bool hover=SupportedHover(p),broom=hover && p.mount.Type==Terraria.ID.MountID.WitchBroom;
             if(hover && p.velocity.Y==0)p.mount.FatigueRecovery();
             if(profile.Complex)Quality|=2;
+            int appliedJumpHeight=0;
             if(!profile.Complex || hover)
             {
                 int jumpHeight;float jumpSpeed=MovementParameters(p,profile.DefaultGravity,out jumpHeight);
@@ -129,11 +130,19 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                     if(p.controlUp && p.releaseUp && p.velocity.Y==0)p.velocity.Y=-(p.mount.Acceleration+p.gravity+.001f);
                     p.releaseUp=!p.controlUp;
                 }
+                appliedJumpHeight=jumpHeight;
+                // The base above consumes old merfolk/fluid, then equipment
+                // rebuilds swimming qualification before JumpMovement. Share
+                // finite owning producers with the live scalar Source.
+                bool flipper=NpcPredictionSource.IndependentFlipper(p);
+                p.merman=NpcPredictionSource.MerfolkEquipment(p) && p.wet && !p.lavaWet && (!p.mount.Active || !p.mount.IsConsideredASlimeMount);
+                p.accFlipper=flipper || p.merman || p.wet && p.ShouldFloatInWater;
+                if(p.merman)p.releaseJump=true;
                 bool justJumped=false;
                 if(p.controlJump)
                 {
-                    if(p.jump>0){if(p.velocity.Y==0)p.jump=0;else{p.velocity.Y=-jumpSpeed*p.gravDir;if(hover && p.merman){if(p.swimTime<=10)p.swimTime=30;}else p.jump--;}}
-                    else if((p.velocity.Y==0 || hover && p.wet && p.accFlipper) && (p.releaseJump || p.autoJump && p.velocity.Y==0)){p.velocity.Y=-jumpSpeed*p.gravDir;p.jump=jumpHeight;justJumped=true;if(hover && p.wet && p.accFlipper && p.swimTime==0)p.swimTime=30;}
+                    if(p.jump>0){if(p.velocity.Y==0)p.jump=0;else{p.velocity.Y=-jumpSpeed*p.gravDir;if(p.merman && !cart){if(p.swimTime<=10)p.swimTime=30;}else p.jump--;}}
+                    else if((p.velocity.Y==0 || p.wet && p.accFlipper && !cart) && (p.releaseJump || p.autoJump && p.velocity.Y==0)){p.velocity.Y=-jumpSpeed*p.gravDir;p.jump=jumpHeight;justJumped=true;if(p.wet && p.accFlipper && p.swimTime==0)p.swimTime=30;}
                     p.releaseJump=false;
                 }
                 else{p.jump=0;p.releaseJump=true;}
@@ -141,9 +150,10 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 // occurs before horizontal parameters. Reordering these loses
                 // the bee's real fatigue-driven speed and landing lifecycle.
                 if(hover && ((p.velocity.Y==0 || p.sliding) && p.releaseJump || p.autoJump && justJumped))p.mount.ResetFlightTime(p);
-                if(hover)p.mount.Hover(p);else p.velocity.Y+=p.gravity*p.gravDir;
+                if(hover)p.mount.Hover(p);
+                else{float gravity=p.gravity;if(p.slowFall && !p.TryingToHoverDown && !p.isPerformingJump_DownDash)gravity/=p.TryingToHoverUp?10:3;p.velocity.Y+=gravity*p.gravDir;}
                 if(p.velocity.Y*p.gravDir>p.maxFallSpeed)p.velocity.Y=p.maxFallSpeed*p.gravDir;
-                if(hover && p.slowFall)
+                if(p.slowFall)
                 {if(p.velocity.Y*p.gravDir>p.maxFallSpeed/3f && !p.TryingToHoverDown)p.velocity.Y=p.maxFallSpeed/3f*p.gravDir;if(p.velocity.Y*p.gravDir>p.maxFallSpeed/5f && p.TryingToHoverUp)p.velocity.Y=p.maxFallSpeed/10f*p.gravDir;}
             }
             // Liquid transitions use original occupancy tests. Holding sampled
@@ -151,7 +161,9 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             bool oldWet=p.wet;
             p.wet=Collision.WetCollision(p.position,p.width,p.height);p.honeyWet=Collision.honey;p.shimmerWet=Collision.shimmer;
             p.lavaWet=p.wet && Collision.LavaCollision(p.position,p.width,p.height);
-            if(hover && oldWet && !p.wet && p.wetSlime==0){int height=p.mount.JumpHeight(p.velocity.X);if(p.sticky)height/=10;if(p.dazed)height/=5;if(p.jump>height/5)p.jump=height/5;}
+            if(appliedJumpHeight>0 && oldWet && !p.wet && p.wetSlime==0 && p.jump>appliedJumpHeight/5)p.jump=appliedJumpHeight/5;
+            if(p.wetSlime>0)p.wetSlime--;
+            if(p.swimTime>0){p.swimTime--;if(!p.wet)p.swimTime=0;}
             if(p.wet || oldWet!=p.wet)Quality|=4;
             bool ignorePlatforms=broom || p.gravDir==-1f,fallThrough=broom || p.controlDown || ignorePlatforms;
             float movement=p.shimmerWet?0.375f:p.honeyWet && !p.ignoreWater?0.25f:p.wet && !p.ignoreWater && !p.merman && !p.trident?0.5f:1f;

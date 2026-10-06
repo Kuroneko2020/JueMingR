@@ -20,6 +20,9 @@ namespace JueMingR.Features.Combat
             {if(n.A3<=0)Target(ref n,ref e,false);}
             else if(n.EffectiveType==166 && n.A2<0)Target(ref n,ref e,false);
             else CountAndTarget(ref n,ref e,false,n.EffectiveType==120?180:60);
+            //258 retargets again in its airborne action AFTER the common
+            // counter/motor, including a blocked counter's turn-away phase.
+            if(n.EffectiveType==258 && n.Vy!=0)NpcTargeting.Retarget(ref n,ref e);
             return n.PlayerIndex;
         }
         internal static bool Fallback(ref NpcMotionState n,PredictionEnvironment e,IPredictionTerrain t,bool confused,int elapsed,out PredictionStop stop)
@@ -40,9 +43,25 @@ namespace JueMingR.Features.Combat
             // that action is modeled, continue the finite observed trend;
             // common ground parameters are not permission to invent a jump.
             int type=n.EffectiveType;
-            bool aerial=n.Vy!=0 && (type==258 || (type==425 || type==427) && n.A2==1);
+            bool aerial=n.Vy!=0 && (type==425 || type==427) && n.A2==1;
             if(aerial || !FighterHorizontalMotion.Step(ref n,e))NpcRollingMotion.Trend(ref n,elapsed);
-            return Common(ref n,e,t,wasStopped,out stop);
+            bool support=false;
+            if(type==258)
+            {
+                if(n.Vy!=0)
+                {
+                    NpcTargeting.Face(ref n,ref e,true,confused);n.SpriteDirection=n.Direction;
+                    if(e.PlayerX<n.X && n.Vx>0 || e.PlayerX>n.X+n.Width && n.Vx<0)n.Vx*=.95f;
+                    if(e.PlayerX<n.X && n.Vx>-5)n.Vx-=.1f;
+                    else if(e.PlayerX>n.X+n.Width && n.Vx<5)n.Vx+=.1f;
+                }
+                else if(e.PlayerY+50<n.Y)
+                {
+                    bool clear;if(!t.CanHit(n.Bounds,new MotionRect(e.PlayerX-e.PlayerWidth/2,e.PlayerY-e.PlayerHeight/2,e.PlayerWidth,e.PlayerHeight),out clear,out stop))return false;
+                    if(clear){n.Vy=-7;support=true;}
+                }
+            }
+            return Common(ref n,e,t,wasStopped,out stop,support);
         }
         private static bool OrdinaryCounter(NpcMotionState n)
         {
@@ -78,18 +97,19 @@ namespace JueMingR.Features.Combat
             if(n.Style!=3)return true;
             return Common(ref n,e,t,wasStopped,out stop);
         }
-        private static bool Common(ref NpcMotionState n,PredictionEnvironment e,IPredictionTerrain t,bool wasStopped,out PredictionStop stop)
+        private static bool Common(ref NpcMotionState n,PredictionEnvironment e,IPredictionTerrain t,bool wasStopped,out PredictionStop stop,bool preMotorSupport=false)
         {
             stop=PredictionStop.None;int type=n.EffectiveType;bool door=Door(n);
             bool supported=false;
             // Native's additional support flag is produced by independent
             // pre-motor jump/attack phases. The ordinary entry has no such
             // flag; an airborne trend must not be declared grounded.
-            if(n.Vy==0)
+            if(n.Vy==0 || preMotorSupport)
             {
                 int row=(int)(n.Y+n.Height+7)/16,head=(int)(n.Y-9)/16;
                 for(int x=(int)(n.X+8)/16;x<=(int)(n.X+n.Width-8)/16;x++)
                 {PredictionTile foot,ceiling;if(!t.Tile(x,row,out foot,out stop) || !t.Tile(x,head,out ceiling,out stop))return false;if(ceiling.SolidNoPlatform){supported=false;break;}if(foot.Active && foot.Solid)supported=true;}
+                if(!supported && n.Vy<0)n.Vy=0;
             }
             if(type==428)supported=false;
             if(n.Vy>=0 && (type!=580 || n.DirectionY!=1) && !StepUp(ref n,t,out stop))return false;

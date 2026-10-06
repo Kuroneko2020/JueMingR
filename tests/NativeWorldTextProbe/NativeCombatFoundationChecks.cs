@@ -91,6 +91,38 @@ namespace NativeWorldTextProbe
             }
             finally{Main.dedServ=oldServer;Main.worldSurface=oldSurface;Main.maxTilesX=oldWidth;}
         }
+        internal static void NativeVertical(object source)
+        {
+            var type=source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativePlayerMotion");
+            var profileType=type.GetNestedType("Profile",Flags);var method=type.GetMethod("Step",Flags);object profile=Activator.CreateInstance(profileType);profileType.GetField("DefaultGravity",Flags).SetValue(profile,Player.defaultGravity);
+            int slot=Main.myPlayer;var saved=Main.player[slot];bool server=Main.dedServ;double surface=Main.worldSurface;int network=Main.netMode,cases=0;
+            Main.dedServ=true;Main.netMode=0;Main.worldSurface=140;
+            try
+            {
+                foreach(int mode in new[]{0,1,2})
+                {
+                    for(int x=50;x<75;x++)for(int y=146;y<150;y++){Main.tile[x,y].active(false);Main.tile[x,y].liquid=(byte)(mode==0?0:255);Main.tile[x,y].liquidType(0);}
+                    var pair=new Player[2];
+                    for(int i=0;i<2;i++)
+                    {
+                        var p=pair[i]=new Player{whoAmI=slot,active=true,isControlledByFilm=true,position=new Vector2(900,2340),velocity=new Vector2(0,1),releaseJump=true,gravDir=1,statLife=400,statLifeMax=400,statLifeMax2=400};
+                        if(mode==0){p.buffType[0]=8;p.buffTime[0]=100;}else p.armor[3].SetDefaults(mode==1?497:187);
+                        p.fallStart=p.fallStart2=(int)p.position.Y/16;Main.player[slot]=p;p.Update(slot);
+                        p.velocity=new Vector2(0,mode==0?1:-2);p.controlJump=mode!=0;p.jump=mode==1?4:0;p.releaseJump=true;
+                    }
+                    var motion=Activator.CreateInstance(type,true);
+                    for(int frame=0;frame<4;frame++)
+                    {
+                        if(frame==2 && mode!=0)for(int x=50;x<75;x++)for(int y=146;y<150;y++)Main.tile[x,y].liquid=0;
+                        Main.player[slot]=pair[0];pair[0].Update(slot);
+                        Main.player[slot]=pair[1];method.Invoke(motion,new[]{(object)pair[1],profile});
+                        Require(Math.Abs(pair[0].velocity.Y-pair[1].velocity.Y)<.0001 && pair[0].jump==pair[1].jump && pair[0].swimTime==pair[1].swimTime && pair[0].merman==pair[1].merman,"A existing Native vertical consumer/full original Update mode="+mode+" frame="+frame+" expected="+pair[0].velocity.Y+"/"+pair[0].jump+"/"+pair[0].swimTime+"/"+pair[0].merman+" actual="+pair[1].velocity.Y+"/"+pair[1].jump+"/"+pair[1].swimTime+"/"+pair[1].merman);cases++;
+                    }
+                }
+                Console.WriteLine("PASS A existing Native ordinary slowfall/merfolk/flipper/dry exit full original Update cases="+cases);
+            }
+            finally{Main.player[slot]=saved;Main.dedServ=server;Main.worldSurface=surface;Main.netMode=network;for(int x=50;x<75;x++)for(int y=146;y<150;y++)Main.tile[x,y].liquid=0;}
+        }
         private static void Gravity(object source)
         {
             var native=typeof(NPC).GetMethod("UpdateNPC_UpdateGravity",Flags);
