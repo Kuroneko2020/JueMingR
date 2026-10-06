@@ -33,8 +33,16 @@ namespace NativeWorldTextProbe
             // must refresh action facts before any risky automatic action.
             var loan=Main.projectile[0];loan.SetDefaults(p.inventory[17].shoot);loan.owner=p.whoAmI;loan.active=true;loan.ai[0]=0;
             long staleToken=(long)Call(fish,"Prepare",p);Require(staleToken>0 && !(bool)Call(capture,"Boss"),"prime legal no-Boss loan before same-tick network-like correction");
-            boss.SetDefaults(4);boss.active=true;boss.life=100;Call(context,"UpdateRuntime");
-            Require(!(bool)Get(fish,"RecastAttempted"),"same-tick outer without fresh action sample cannot submit recast");
+            object borrowedSelection=p.selectedItemState;
+            borrowedSelection.GetType().GetMethod("OverrideSelection",BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic).Invoke(borrowedSelection,new object[]{12});p.selectedItemState=(Player.SelectedItemState)borrowedSelection;
+            Call(loan,"AI_061_FishingBobber");Require(!loan.active,"native borrowed net selection ends original bobber");
+            borrowedSelection=p.selectedItemState;borrowedSelection.GetType().GetMethod("OverrideSelection",BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic).Invoke(borrowedSelection,new object[]{17});p.selectedItemState=(Player.SelectedItemState)borrowedSelection;
+            Call(fish,"NetFinished",staleToken,false,false);
+            NativeToolExecutionChecks.Sample(context,input,new Microsoft.Xna.Framework.Vector2(480,540),false);NativeQuickItemChecks.BeginWorldStep();Call(context,"UpdateRuntime");
+            Require(Get(fish,"Phase").ToString()=="Returning" && (bool)Get(input,"CanRunAutomaticActions") && Call(fish,"Choose",p)!=null,"same-tick safety begins with a genuinely ready legal recast candidate");
+            boss.SetDefaults(4);boss.active=true;boss.life=100;NativeToolExecutionChecks.Outer(context,input,1);
+            Console.WriteLine("G09 same-tick Boss outer phase="+Get(fish,"Phase")+" automatic="+Get(input,"CanRunAutomaticActions")+" attempted="+Get(fish,"RecastAttempted"));
+            Require(Get(fish,"Phase").ToString()=="Returning" && !(bool)Get(input,"CanRunAutomaticActions") && !(bool)Get(fish,"RecastAttempted"),"unsampled outer revokes action permission for otherwise ready recast");
             NativeQuickItemChecks.Sample(input,new Keys[0]);Call(Get(context,"Shell"),"ProcessInput");NativeQuickItemChecks.NativeFrame(p);Call(context,"UpdateRuntime");
             Require((bool)Get(capture,"boss") && Get(fish,"Phase").ToString()=="Cancelled" && !(bool)Get(fish,"RecastAttempted"),"next real selection refreshes danger and cancels borrowed recast");
             boss.active=false;loan.active=false;NativeToolsChecks.Frame(context,input);Require(!(bool)Call(capture,"Boss"),"same-tick danger test recovers through completed sample");
