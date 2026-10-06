@@ -104,8 +104,8 @@ namespace JueMingR.Features.Combat
         private static bool Independent(int t)
         {return t==110 || t==111 || t==206 || t==214 || t==215 || t==216 || t==290 || t==291 || t==292 || t==293 || t==350 || t==379 || t==380 || t==381 || t==382 || t>=449 && t<=452 || t==468 || t==481 || t==411 || t==409 || t>=498 && t<=506 || t==424 || t==426 || t==520;}
         internal static bool IndependentEntry(NpcMotionState n)
-        {return n.EffectiveType==466 && n.A2<=0 || n.EffectiveType==586 && (n.Alpha==255 || n.Wet || n.A3==-.10101f);}
+        {return n.EffectiveType==466 && n.A2<=0 || n.EffectiveType==586 && n.Alpha==255 || (n.EffectiveType==461 || n.EffectiveType==586) && (n.Wet || n.A3==-.10101f);}
         internal static bool RetargetOnEntry(NpcMotionState n)
-        {return n.EffectiveType==466 && n.A2==0 || n.EffectiveType==586 && (n.Alpha==255 || n.Wet);}
+        {return n.EffectiveType==466 && n.A2==0 || n.EffectiveType==586 && n.Alpha==255 || (n.EffectiveType==461 || n.EffectiveType==586) && n.Wet;}
     }
 }

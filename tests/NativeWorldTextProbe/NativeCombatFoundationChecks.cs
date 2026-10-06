@@ -100,6 +100,15 @@ namespace NativeWorldTextProbe
                 var n=new NPC();n.SetDefaults(586);n.whoAmI=199;n.position=new Vector2(500,400);n.target=p.whoAmI;n.direction=1;n.velocity=new Vector2(-2,0);n.alpha=entry==0?255:0;n.wet=entry==1;n.ai[3]=entry==2?-.10101f:0;
                 var state=(NpcMotionState)read.Invoke(null,new object[]{n,1L});var args=new object[]{state,env};Require(!(bool)kernel.Invoke(null,args),"A586 spawn/fluid vector entry is independent of common motor.");cases++;
             }
+            foreach(int entry in new[]{0,1,2})
+            {
+                var n=new NPC();n.SetDefaults(461);n.whoAmI=199;n.position=new Vector2(500,400);n.target=p.whoAmI;n.direction=1;n.velocity=new Vector2(2,0);n.wet=entry==1;n.ai[3]=entry==2?-.10101f:0;
+                var state=(NpcMotionState)read.Invoke(null,new object[]{n,1L});state.Gravity=.3f;var args=new object[]{state,env};bool common=(bool)kernel.Invoke(null,args);
+                Require(common==(entry==0),"A461 only ordinary dry action enters common speed2.");ai.Invoke(n,null);
+                if(entry==0)Require(n.velocity.X==((NpcMotionState)args[0]).Vx && n.velocity.X==2,"A original461 dry common speed2 remains.");
+                else if(entry==1)Require(n.noGravity && n.width==34 && n.height==24 && n.ai[3]==-.10101f,"A original461 wet pre-motor vector branch owns shape/gravity phase.");
+                else Require(!n.noGravity && n.ai[3]!=-.10101f,"A original461 exits its fluid vector before common dry movement.");cases++;
+            }
             // Public clipping is observable BEFORE the independent aerial AI
             // branch: with a lower target, vy<6 permits +.15 only after clip.
             float clipped=0,unclipped=0;
@@ -178,14 +187,19 @@ namespace NativeWorldTextProbe
         {
             var p=Main.LocalPlayer;var other=Main.player[(p.whoAmI+1)%Main.maxPlayers];var n=Main.npc[2];var cache=(NpcPredictionCache)Get(source,"Cache");int cases=0;
             p.active=true;p.dead=false;p.position=new Vector2(800,900);p.velocity=Vector2.Zero;other.active=true;other.position=new Vector2(1600,900);
-            foreach(bool dead in new[]{false,true})foreach(int type in new[]{466,586})
+            foreach(bool dead in new[]{false,true})foreach(int type in new[]{466,586,461})
             {
-                other.dead=dead;n.SetDefaults(type);n.whoAmI=2;n.active=true;n.target=other.whoAmI;n.position=new Vector2(500,900);n.velocity=new Vector2(1,0);n.ai[3]=0;
+                other.dead=dead;n.SetDefaults(type);n.whoAmI=2;n.active=true;n.target=other.whoAmI;n.position=new Vector2(500,900);n.velocity=new Vector2(1,0);n.ai[3]=0;n.wet=type==461;
                 NativeCombatObservationChecks.Fresh(context,host);var path=cache.Read(0);Console.WriteLine("B FIGHTER entry type="+type+" oldDead="+dead+" future="+(path==null?0:path.Count-1)+" stop="+path?.Stop);
                 Require(path!=null && path.Count>1 && path.Stop!=PredictionStop.MissingDependency,"B fighter action-entry TargetClosest shares the real Source prerequisite.");cases++;
             }
             other.dead=true;n.SetDefaults(466);n.whoAmI=2;n.active=true;n.target=other.whoAmI;n.position=new Vector2(500,900);n.ai[2]=-8;n.ai[3]=0;
             NativeCombatObservationChecks.Fresh(context,host);Require(cache.Read(0)!=null && cache.Read(0).Count==121 && (cache.Read(0).Assumptions&PredictionAssumption.NoPlayerMotionNeeded)!=0,"B revealing466 trend consumes no old numbered player and must not acquire a dead prerequisite.");cases++;
+            foreach(int type in new[]{461,586})
+            {
+                n.SetDefaults(type);n.whoAmI=2;n.active=true;n.target=other.whoAmI;n.position=new Vector2(500,900);n.alpha=0;n.ai[3]=-.10101f;n.wet=false;
+                NativeCombatObservationChecks.Fresh(context,host);Require(cache.Read(0)!=null && cache.Read(0).Count==121 && (cache.Read(0).Assumptions&PredictionAssumption.NoPlayerMotionNeeded)!=0,"B fluid-exit trend does not read the dead old player or invent a local replacement.");cases++;
+            }
             other.active=false;other.dead=false;n.SetDefaults(2);n.whoAmI=2;n.active=true;n.target=p.whoAmI;n.position=new Vector2(500,600);
             Console.WriteLine("PASS B FIGHTER bounded action-entry prerequisites cases="+cases);
         }
