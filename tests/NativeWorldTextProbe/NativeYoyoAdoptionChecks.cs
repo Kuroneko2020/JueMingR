@@ -14,6 +14,9 @@ namespace NativeWorldTextProbe
         internal static void Run(object context,object combat,object tools,object input)
         {
             var use=Get(combat,"Use");int cases=0;
+            var configuration=(System.Reflection.AssemblyConfigurationAttribute)Attribute.GetCustomAttribute(use.GetType().Assembly,typeof(System.Reflection.AssemblyConfigurationAttribute));Require(configuration!=null && (configuration.Configuration=="Debug" || configuration.Configuration=="Release"),"Actual candidate declares Debug or Release configuration.");bool releaseBuild=configuration.Configuration=="Release";
+            Require(!releaseBuild || GetOptional(use,"ProjectileDiscoveryReads")==null,"Ordinary Release has no DEBUG discovery counter.");
+            if(releaseBuild)Console.WriteLine("RELEASE ADOPTION: functional native takeover/cadence/identity checks execute; discovery workload observation unavailable, authenticated Debug evidence remains separate.");
             foreach(int empty in new[]{0,1,3})
             {
                 int[] original=null;
@@ -27,7 +30,7 @@ namespace NativeWorldTextProbe
                     p.armor[3].SetDefaults(ItemID.MagicString);
                     NativeCombatCadenceChecks.Save(combat,new CombatOptions(managed?16:0));
                     var known=new HashSet<int>();var births=new List<int>();int split=0,release=0;
-                    int scans=(int)Get(use,"ProjectileDiscoveryReads"),adoptedReads=-1;Projectile first=null;
+                    int? scans=releaseBuild?(int?)null:(int)Get(use,"ProjectileDiscoveryReads"),adoptedReads=null;Projectile first=null;
                     for(int t=0;t<40;t++)
                     {
                         bool live=Main.projectile.Any(q=>q.active && q.owner==p.whoAmI && q.type==p.HeldItem.shoot && q.ai[0]!=-2);
@@ -43,17 +46,17 @@ namespace NativeWorldTextProbe
                         if(t==1)
                         {
                             Require(first.ai[0]==-3 && split==1 && (!managed || !(bool)Get(use,"press")),"takeover releases on the first post-birth native action without an extra hold");
-                            adoptedReads=(int)Get(use,"ProjectileDiscoveryReads");
+                            if(!releaseBuild)adoptedReads=(int)Get(use,"ProjectileDiscoveryReads");
                         }
                     }
                     Require(births.Count>=3 && split>=3,"first-effect native/managed chain keeps repeating");
-                    Console.WriteLine("YOYO ADOPTION empty="+empty+" managed="+managed+" births="+string.Join(",",births)+" splits="+split+" discovery="+((int)Get(use,"ProjectileDiscoveryReads")-scans));
+                    Console.WriteLine("YOYO ADOPTION empty="+empty+" managed="+managed+" births="+string.Join(",",births)+" splits="+split+" discovery="+(releaseBuild?"NA_RELEASE":((int)Get(use,"ProjectileDiscoveryReads")-scans).ToString()));
                     if(!managed)original=births.ToArray();
                     else
                     {
                         Require(births.SequenceEqual(original),"takeover preserves the actual native emission cadence");
-                        int reads=(int)Get(use,"ProjectileDiscoveryReads")-scans;
-                        Require(reads>0 && reads<=Main.maxProjectiles && (int)Get(use,"ProjectileDiscoveryReads")==adoptedReads,"one bounded takeover scan; every later native action adds zero discovery reads");
+                        if(!releaseBuild)
+                        {int reads=(int)Get(use,"ProjectileDiscoveryReads")-scans.Value;Require(reads>0 && reads<=Main.maxProjectiles && (int)Get(use,"ProjectileDiscoveryReads")==adoptedReads,"one bounded takeover scan; every later native action adds zero discovery reads");}
                     }
                     cases++;
                 }

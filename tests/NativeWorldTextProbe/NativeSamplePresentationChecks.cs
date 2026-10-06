@@ -13,6 +13,9 @@ namespace NativeWorldTextProbe
         internal static void Run(object context)
         {
             var host=Get(context,"CombatObservation");var source=Get(host,"Prediction");var cache=(NpcPredictionCache)Get(source,"Cache");var world=Get(host,"World");var npcs=Get(context,"nativeNpcs");
+            var configuration=(System.Reflection.AssemblyConfigurationAttribute)Attribute.GetCustomAttribute(npcs.GetType().Assembly,typeof(System.Reflection.AssemblyConfigurationAttribute));Require(configuration!=null && (configuration.Configuration=="Debug" || configuration.Configuration=="Release"),"Actual candidate declares Debug or Release configuration.");bool release=configuration.Configuration=="Release";
+            Require(!release || GetOptional(npcs,"DirectionReads")==null,"Ordinary Release has no DEBUG direction counter.");
+            if(release)Console.WriteLine("RELEASE SAMPLE: cache/world/camera/correction/event functional checks execute; direction-read workload observation unavailable, authenticated Debug evidence remains separate.");
             foreach(var npc in Main.npc)npc.active=false;
             Main.LocalPlayer.position=new Vector2(640,640);Main.screenPosition=new Vector2(300,300);Main.screenWidth=960;Main.screenHeight=640;Main.GameViewMatrix.Zoom=Vector2.One;
             var n=Main.npc[2];n.SetDefaults(34);n.whoAmI=2;n.active=true;n.dontTakeDamage=false;n.immortal=false;n.friendly=false;n.aiStyle=0;n.noGravity=true;n.noTileCollide=false;n.position=new Vector2(720,650);n.velocity=new Vector2(4,0);n.target=0;
@@ -27,7 +30,7 @@ namespace NativeWorldTextProbe
             Require(changed!=null && !ReferenceEquals(changed,curved),"Same tick cell edit invalidates Source before Reset erases its evidence.");wall.CopyFrom(saved);
             n.position.X+=20;Call(host,"Update",Main.GameUpdateCount);Require(cache.Read(0)[0].Bounds.X==n.position.X,"Same tick network position correction is immediately captured.");
             Call(npcs,"BeginCompleted",(long)Main.GameUpdateCount);object[] readArgs={2,NpcDemand.Direction,null};var read=npcs.GetType().GetMethod("TryRead");read.Invoke(npcs,readArgs);var f=(GuidanceNpc)readArgs[2];
-            int reads=(int)Get(npcs,"DirectionReads");Call(npcs,"BeginCompleted",(long)Main.GameUpdateCount);read.Invoke(npcs,readArgs);Require((int)Get(npcs,"DirectionReads")==reads,"Completed phase repeats do not re-expand shared direction facts.");n.position.X+=3;read.Invoke(npcs,readArgs);Require(((GuidanceNpc)readArgs[2]).X==n.Center.X,"Same tick shared observation correction updates demanded fact.");
+            int? reads=release?(int?)null:(int)Get(npcs,"DirectionReads");Call(npcs,"BeginCompleted",(long)Main.GameUpdateCount);read.Invoke(npcs,readArgs);if(!release)Require((int)Get(npcs,"DirectionReads")==reads,"Completed phase repeats do not re-expand shared direction facts.");n.position.X+=3;read.Invoke(npcs,readArgs);Require(((GuidanceNpc)readArgs[2]).X==n.Center.X,"Same tick shared observation correction updates demanded fact.");
             Set(host,"LayerStatus",Enum.Parse(Get(host,"LayerStatus").GetType(),"Ready"));Call(world,"Prepare");Main.screenPosition=new Vector2(500,400);Main.GameViewMatrix.Zoom=new Vector2(1.4f);NativeCombatPresentationChecks.Project(world);
             var marker=Get(world,"Marker");Require((bool)Get(marker,"Visible") && (int)Get(world,"StrokeCount")>0,"Current final camera projects marker and retained forecast.");
             var zoom=Main.GameViewMatrix.ZoomMatrix;var pieces=(Array)Get(marker,"Pieces");var mean=Vector2.Zero;foreach(var piece in pieces)mean+=Vector2.Transform((Vector2)Get(piece,"Position"),zoom);mean/=6;
