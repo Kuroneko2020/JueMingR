@@ -28,6 +28,16 @@ namespace NativeWorldTextProbe
             Require((long)Get(capture,"BossEvaluations")==scans+1 && (int)Get(npcs,"BasicReads")>raw && (bool)Get(capture,"boss"),"actual native selection refreshes danger before action");
             long visits=(long)Get(capture,"BossSlotVisits");Require((bool)Call(capture,"Boss") && (long)Get(capture,"BossSlotVisits")==visits,"same action observation reused");
             boss.active=false;NativeToolsChecks.Frame(context,input);Require(!(bool)Call(capture,"Boss"),"real completed update sees removed Boss");
+            // An outer callback can receive a Boss without a new completed
+            // sample. It owns no recast permission. The next native selection
+            // must refresh action facts before any risky automatic action.
+            var loan=Main.projectile[0];loan.SetDefaults(p.inventory[17].shoot);loan.owner=p.whoAmI;loan.active=true;loan.ai[0]=0;
+            long staleToken=(long)Call(fish,"Prepare",p);Require(staleToken>0 && !(bool)Call(capture,"Boss"),"prime legal no-Boss loan before same-tick network-like correction");
+            boss.SetDefaults(4);boss.active=true;boss.life=100;Call(context,"UpdateRuntime");
+            Require(!(bool)Get(fish,"RecastAttempted"),"same-tick outer without fresh action sample cannot submit recast");
+            NativeQuickItemChecks.Sample(input,new Keys[0]);Call(Get(context,"Shell"),"ProcessInput");NativeQuickItemChecks.NativeFrame(p);Call(context,"UpdateRuntime");
+            Require((bool)Get(capture,"boss") && Get(fish,"Phase").ToString()=="Cancelled" && !(bool)Get(fish,"RecastAttempted"),"next real selection refreshes danger and cancels borrowed recast");
+            boss.active=false;loan.active=false;NativeToolsChecks.Frame(context,input);Require(!(bool)Call(capture,"Boss"),"same-tick danger test recovers through completed sample");
             foreach(int type in new[]{4,13})
             {
                 var b=Main.projectile[0];b.SetDefaults(p.inventory[17].shoot);b.owner=p.whoAmI;b.active=true;b.ai[0]=0;
@@ -36,7 +46,7 @@ namespace NativeWorldTextProbe
                 boss.SetDefaults(type);boss.active=true;boss.life=100;if(type==13)boss.boss=false;
                 // Runtime owns post-NPC freshness and Fishing.Update consumes
                 // it. No direct Boss/BeginTick call precedes this assertion.
-                Call(context,"UpdateRuntime");
+                NativeQuickItemChecks.BeginWorldStep();Call(context,"UpdateRuntime");
                 Require(Get(fish,"Phase").ToString()=="Cancelled" && (long)Get(fish,"Token")==token && !(bool)Get(fish,"RecastAttempted"),"post-NPC Boss change cancels borrowed responsibility before recast: "+type);
                 boss.active=false;b.active=false;NativeToolsChecks.Frame(context,input);Require(!(bool)Call(capture,"Boss"),"danger removal recovers after type "+type);
             }

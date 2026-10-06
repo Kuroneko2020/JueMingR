@@ -247,7 +247,11 @@ namespace NativeWorldTextProbe
             n0.SetDefaults(2);n0.whoAmI=2;n0.active=true;n0.target=p.whoAmI;n0.position=new Vector2(float.NaN,600);NativeCombatObservationChecks.Fresh(context,host);Require(cache.Read(0)==null,"B bounded player never waives nonfinite selected NPC physical state.");cases++;
             n0.position=new Vector2(500,600);p.grapCount=0;NativeCombatObservationChecks.Fresh(context,host);Require(cache.Read(0)==null,"B inconsistent active grapple count remains an invalid premise.");cases++;
             p.grappling[0]=-1;Main.projectile[4].active=false;n0.SetDefaults(34);n0.whoAmI=2;n0.active=true;n0.target=255;n0.position=new Vector2(500,600);p.velocity=new Vector2(float.NaN,0);NativeCombatObservationChecks.Fresh(context,host);
-            Require(cache.Read(0)!=null && cache.Read(0).Count==121 && (cache.Read(0).Assumptions&PredictionAssumption.NoPlayerMotionNeeded)!=0,"B independent default Source trend does not require missing numbered player or unrelated local velocity.");cases++;
+            Require(cache.Read(0)==null && (bool)Get(Get(host,"Selection"),"HasTarget"),"B finite AI10 preserves a legal selected target but refuses missing necessary player motion.");cases++;
+            // AI10 now consumes the numbered player. Keep the independent
+            // trend contract on the original player-independent AI9 sphere.
+            n0.SetDefaults(25);n0.whoAmI=2;n0.active=true;n0.target=255;n0.position=new Vector2(500,600);NativeCombatObservationChecks.Fresh(context,host);
+            Require(cache.Read(0)!=null && cache.Read(0).Count==121 && (cache.Read(0).Assumptions&PredictionAssumption.NoPlayerMotionNeeded)!=0,"B independent AI9 default Source trend does not require missing numbered player or unrelated local velocity.");cases++;
             p.velocity=Vector2.Zero;n0.SetDefaults(2);n0.whoAmI=2;n0.active=true;n0.target=p.whoAmI;n0.position=new Vector2(500,600);
             n0.dontTakeDamage=true;NativeCombatObservationChecks.Fresh(context,host);Require(cache.Read(0)==null && !(bool)Get(Get(host,"Selection"),"HasTarget"),"B invalid receiver identity never becomes a conditional target.");cases++;
             NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatObservationChecks.Fresh(context,host);Require(cache.Required==0 && cache.Read(0)==null,"B OFF retires the shared demand.");cases++;

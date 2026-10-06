@@ -76,10 +76,15 @@ namespace NativeWorldTextProbe
                 Require(rare.Visible && merchant.Visible && warning.Alpha == 1, "ordinary local client mode " + mode + " consumes real new observations");
                 int before = (int)Get(npcs, "BasicReads"), show = warning.Notifications, layouts = (int)Get(Get(world, "MerchantText"), "Layouts");
                 long revision = (long)Get(Get(host, "Preferences"), "Revision");
-                for (int i = 0; i < 60; i++) { Call(context, "UpdateRuntime"); Call(world, "Prepare"); }
-                Require((int)Get(npcs, "BasicReads") - before == 60 * Main.maxNPCs, "three consumers share at most one native slot read per Update at full capacity");
+                // Advance the existing adapter world clock, not the outer callback.
+                // This does not claim to execute native NPC AI or a whole world.
+                for (int i = 0; i < 60; i++) { NativeQuickItemChecks.BeginWorldStep(); Call(context, "UpdateRuntime"); Call(world, "Prepare"); }
+                Require((int)Get(npcs, "BasicReads") - before == 60 * Main.maxNPCs, "three consumers share one native slot read per real world sample at full capacity");
                 Require(warning.Notifications == show && (int)Get(Get(world, "MerchantText"), "Layouts") == layouts && (long)Get(Get(host, "Preferences"), "Revision") == revision,
                     "stable state does not re-Show/re-layout/re-save");
+                int sameSampleReads = (int)Get(npcs, "BasicReads");
+                for (int i = 0; i < 16; i++) { Call(context, "UpdateRuntime"); Call(world, "Prepare"); }
+                Require((int)Get(npcs, "BasicReads") == sameSampleReads, "same world sample outer repeats reuse native guidance facts");
                 p.armor[3] = NativeGuidanceEquipmentChecks.Accessory(ItemID.TreasureMagnet); Call(context, "UpdateRuntime"); Require(warning.Notifications == show + 1, "same danger still detects changed effective equipment");
                 p.armor[3].TurnToAir(); Call(context, "UpdateRuntime"); Require(warning.Alpha == 0, "correction immediately removes warning");
                 p.armor[3] = NativeGuidanceEquipmentChecks.Accessory(ItemID.Toolbelt);
