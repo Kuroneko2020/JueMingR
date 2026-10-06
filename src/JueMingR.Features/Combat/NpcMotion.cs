@@ -162,6 +162,8 @@ namespace JueMingR.Features.Combat
                 {bool clear;if(!terrain.CanHit(n.Bounds,new MotionRect(env.PlayerX-env.PlayerWidth/2,env.PlayerY-env.PlayerHeight/2,env.PlayerWidth,env.PlayerHeight),out clear,out stop))return false;env.ClearLine=clear;}
                 Bat(ref n,env,direction,vertical);
             }
+            else if(NpcFiniteFlightMotion.Known(n))
+            {if(!NpcFiniteFlightMotion.Step(ref n,env,terrain,confused,out stop))return false;}
             else if(n.Style==17 && n.Identity.Type==61)Vulture(ref n,env,direction,vertical,confused);
             // A structural AI needs its root/liquid/wall constraints. A free
             // trend would invent a long path while silently ignoring them.
@@ -225,6 +227,7 @@ namespace JueMingR.Features.Combat
             // phases as a trend. Only an entry which actually retargets reads
             // a player; a dormant reveal/exit must not acquire a dead old one.
             if(n.Style==3 && FighterHorizontalMotion.IndependentEntry(n))return FighterHorizontalMotion.RetargetOnEntry(n);
+            if(NpcFiniteFlightMotion.Known(n))return NpcFiniteFlightMotion.NeedsPlayer(n,e);
             if(type==371 || type==372 || type==373 || n.Style==1 || n.Style==3 || n.Style==6 || n.Style==37 || n.Style==69 ||
                 n.Style==2 && (type==2 || type==133 || type>=190 && type<=194) || n.Style==5 && (FlyingType(type) || type==176) || n.Style==14 && BatType(type) ||
                 n.Style==17 && type==61 || n.Style==13 && NpcAnchoredMotion.Known(type) || n.Style==16 && n.Wet && NpcAquaticMotion.Known(type) && type!=55 && type!=592 && type!=607 && type!=615 && type!=688 ||
@@ -260,7 +263,7 @@ namespace JueMingR.Features.Combat
             e=NpcTargeting.Player(n,e);
             if(n.Style==3 && n.PositionRelation==0)return NpcGroundMotion.PlayerPremiseTarget(n,e);
             if(n.Style==1 && n.PositionRelation==0)return NpcSlimeControl.PlayerPremiseTarget(n,e);
-            int t=n.EffectiveType;bool retarget=n.Style==13 && NpcAnchoredMotion.Known(t) ||
+            int t=n.EffectiveType;bool retarget=NpcFiniteFlightMotion.Known(n) && NpcFiniteFlightMotion.Retargets(n,e) ||n.Style==13 && NpcAnchoredMotion.Known(t) ||
                 n.Style==16 && n.Wet && NpcAquaticMotion.Known(t) && t!=55 && t!=592 && t!=607 && t!=615 && t!=688 ||
                 n.Style==2 && KnownEye(t) && (!(e.Day && !e.Remix && !e.Graveyard && n.Y<=e.WorldSurface*16) || n.Wet) ||
                 n.Style==5 && (FlyingType(t) || t==176) || n.Style==14 && BatType(t) ||
@@ -272,7 +275,7 @@ namespace JueMingR.Features.Combat
         }
         private static bool BatType(int t){return t==49 || t==51 || t==60 || t==62 || t==66 || t==93 || t==137 || t==150 || t==151 || t==152 || t==634;}
         private static bool KnownMotion(NpcMotionState n)
-        {int t=n.Identity.Type;return t==488 || t>=370 && t<=373 || n.Style==1 || n.Style==3 || n.Style==6 || n.Style==8 || n.Style==37 || n.Style==17 && t==61 || n.Style==2 && (t==2 || t==133 || t>=190 && t<=194) || n.Style==5 && FlyingType(t) || n.Style==14 && BatType(t);}
+        {int t=n.Identity.Type;return NpcFiniteFlightMotion.Known(n) || t==488 || t>=370 && t<=373 || n.Style==1 || n.Style==3 || n.Style==6 || n.Style==8 || n.Style==37 || n.Style==17 && t==61 || n.Style==2 && (t==2 || t==133 || t>=190 && t<=194) || n.Style==5 && FlyingType(t) || n.Style==14 && BatType(t);}
         private static void Vulture(ref NpcMotionState n,PredictionEnvironment env,int direction,int vertical,bool confused)
         {
             n.NoGravity=true;

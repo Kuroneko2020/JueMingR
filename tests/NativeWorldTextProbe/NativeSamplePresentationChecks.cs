@@ -34,7 +34,7 @@ namespace NativeWorldTextProbe
             var center=new Vector2(n.Hitbox.Center.X,n.Hitbox.Center.Y);
             var project=world.GetType().Assembly.GetType("JueMingR.TerrariaHost.Guidance.GuidanceWorldLayer").GetMethod("Project",System.Reflection.BindingFlags.Static|System.Reflection.BindingFlags.NonPublic);
             var expected=(Vector2)project.Invoke(null,new object[]{center,zoom});Require(Vector2.Distance(mean,expected)<2,"Marker consumes final camera after Update.");
-            Call(source,"ObserveNpcQueryUpdate",2,false);NativeCombatPresentationChecks.Project(world);Require((int)Get(world,"StrokeCount")==0,"Cache retirement without another Prepare suppresses retained path immediately.");
+            Call(source,"ObserveNpcQueryUpdate",2,false);NativeCombatPresentationChecks.Project(world);Require((int)Get(world,"StrokeCount")==(int)Get(world,"eventEnd") && GetOptional(world,"pathText")==null,"Cache retirement without another Prepare suppresses retained path immediately.");
             var geometry=Get(host,"Geometry");Call(geometry,"Clear");var sample=Call(geometry,"Event");Call(sample,"Rectangle",new Rectangle(750,650,30,30),0,false);
             for(int i=0;i<6;i++){NativeQuickItemChecks.BeginWorldStep();Call(geometry,"PrepareEvents");}
             Require((int)Get(geometry,"EventCount")==1 && !(bool)Get(sample,"Presented"),"Six genuine updates without Draw preserve unpresented event.");

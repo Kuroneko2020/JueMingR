@@ -20,7 +20,7 @@ namespace JueMingR.TerrariaHost.Combat
         internal bool Failed {get;private set;}
         internal bool Visible {get;private set;}
         internal CombatTargetMarker(HostCombatObservation host){this.host=host;}
-        internal void Clear(){Visible=false;identity=default(NpcIdentity);}
+        internal void Clear(){Visible=false;identity=default(NpcIdentity);receiveBox=default(Rectangle);}
         internal void Reset(){Clear();Failed=false;}
         private void Fail(Exception error)
         {

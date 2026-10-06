@@ -67,12 +67,13 @@ namespace JueMingR.TerrariaHost.Combat
             // Only bounded geometry from completed observations is traversed.
             // The final camera decides visibility before the physical-stroke
             // cap, so offscreen facts cannot starve later visible strokes.
-            count=eventStart=eventEnd=0;eventsDrawn=false;
+            count=eventStart=eventEnd=0;eventsDrawn=false;limited=host.Collision && host.Geometry.EventOverflow;
             strokeLimit=host.Path?strokes.Length/2:strokes.Length;
             if(host.Collision)
             {Samples(host.Geometry.Attacks,0);Samples(host.Geometry.Npcs,1);Samples(host.Geometry.Bodies,3);eventStart=count;presentation++;Samples(host.Geometry.Events,2);eventEnd=count;}
             projectedEvent=null;strokeLimit=strokes.Length;var path=preparedPath;
-            if(!host.Path || path==null || !host.Selection.HasTarget || !host.Selection.Target.Equals(path.Identity) || !ReferenceEquals(host.Prediction.Cache.Read(0),path) || !CombatSelection.Valid(path.Identity,host.Session))return;
+            if(path==null)return;
+            if(!host.Path || !host.Selection.HasTarget || !host.Selection.Target.Equals(path.Identity) || !ReferenceEquals(host.Prediction.Cache.Read(0),path) || !CombatSelection.Valid(path.Identity,host.Session)){pathText=null;return;}
             bool approximate=(path.Assumptions&(PredictionAssumption.ApproximateMechanism|PredictionAssumption.RandomRepresentative))!=0;
             var color=approximate?new Color(255,210,110):new Color(235,235,255);
             for(int i=1;i<path.Count;i++)

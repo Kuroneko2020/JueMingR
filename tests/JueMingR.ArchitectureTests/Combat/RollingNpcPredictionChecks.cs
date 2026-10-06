@@ -9,6 +9,7 @@ namespace JueMingR.ArchitectureTests
         internal static void Run()
         {
             SampleReentry();
+            FiniteFlight();
             ImmutableGeometry();
             ArmoredDayPursuit();
             var terrain=new EmptyTerrain();var model=new RollingNpcPrediction();
@@ -43,6 +44,9 @@ namespace JueMingR.ArchitectureTests
             source[0]=state;terrain.Limit=int.MaxValue;terrain.BadPlayer=true;
             var badFuture=model.Prepare(new[]{playerDependent},1,0,107,120,2,env,player,terrain);
             Require(badFuture.Count==1 && badFuture.Stop==PredictionStop.InvalidState,"A nonfinite advanced player cannot supply any future point.");
+            Require(model.FailureLayer==PredictionFailureLayer.PlayerPremise,"First failed player future keeps its cause layer.");
+            var repeatedFailure=model.Prepare(new[]{playerDependent},1,0,107,120,2,env,player,terrain);
+            Require(ReferenceEquals(badFuture,repeatedFailure) && model.FailureLayer==PredictionFailureLayer.PlayerPremise,"Same sample failure reuse preserves its player premise layer.");
             terrain.BadPlayer=false;source[0]=state;
             source[0].Identity=new NpcIdentity(1,new object(),4,2,153,153);source[0].Style=39;
             source[0].NoGravity=false;source[0].Vx=source[0].OldVx=.2f;source[0].Vy=0;source[0].Direction=1;
@@ -55,6 +59,13 @@ namespace JueMingR.ArchitectureTests
             terrain.UnknownCliff=true;
             var missing=model.Prepare(source,1,0,110,1,2,env,player,terrain);
             Require(missing.Count==1 && missing.Stop==PredictionStop.TerrainUnavailable,"Unknown forward support cannot be treated as an empty cliff.");
+        }
+        private static void FiniteFlight()
+        {
+            var n=new NpcMotionState{Identity=new NpcIdentity(1,new object(),4,2,261,261),Style=50,X=100,Y=100,Vx=-4,Width=20,Height=20,Life=100,LifeMax=100,TimeLeft=750,Active=true,CanReceive=true,NoGravity=true,NoTileCollide=true,Health=new NpcHealthState{RealLife=-1}};
+            var e=new PredictionEnvironment{PlayerX=300,PlayerY=200,PlayerWidth=20,PlayerHeight=40,WorldWidth=4200,WorldHeight=1200,WorldSurface=400};
+            var terrain=new EmptyTerrain();PredictionStop stop;var group=new[]{n};
+            Require(NpcMotion.Step(ref n,group,1,e,terrain,1,true,out stop) && Math.Abs(n.Vx+3.82f)<.0001f && Math.Abs(n.Vy-.02f)<.0001f && !n.NoTileCollide,"AI50 first sample uses pursuit damping, acceleration and 261 collision policy.");
         }
         private static void SampleReentry()
         {

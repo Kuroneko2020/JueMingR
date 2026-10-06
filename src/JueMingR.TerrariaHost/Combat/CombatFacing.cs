@@ -56,7 +56,9 @@ namespace JueMingR.TerrariaHost.Combat
             if(!host.IsEnabled(5)){Reset();return;}
             if(!host.Left && !host.Right && p.itemAnimation<=0 && p.itemTime<=0 || !Weapon(p) || !host.Admitted(p) ||
                 host.Tools.Items.Ownership.HasUse && !host.Use.Active){Reset();return;}
-            if(p.controlLeft!=p.controlRight)
+            // A legal managed yoyo attack keeps its trusted attack intent.
+            // Movement remains the direction owner outside that admitted use.
+            if(p.controlLeft!=p.controlRight && !host.Use.ManagedAttackIntent(p))
             {Reset();Change(p,p.controlLeft?-1:1);return;}
             uint now=Main.GameUpdateCount;
             bool identity=ReferenceEquals(weapon,p.HeldItem) && weaponType==p.HeldItem.type && slot==p.selectedItem;

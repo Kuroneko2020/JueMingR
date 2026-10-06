@@ -101,19 +101,16 @@ namespace JueMingR.Features.Combat
         }
         internal static void Trend(ref NpcMotionState n,int elapsed)
         {
-            // Limit observed curvature to a short extension. A collision ends
-            // that velocity premise; never accelerate through a wall/landing.
-            if(n.NoGravity && !n.CollideX && !n.CollideY && elapsed<=12)
-            {
-                float angle=n.ObservedTurn*(13-elapsed)/12f,c=(float)Math.Cos(angle),s=(float)Math.Sin(angle);
-                float x=n.Vx;n.Vx=x*c-n.Vy*s;n.Vy=x*s+n.Vy*c;
-            }
-            if(elapsed<=8)
-            {
-                float weight=(9-elapsed)/8f;
-                if(!n.CollideX)n.Vx+=n.ObservedAccelerationX*weight;
-                if(n.NoGravity && !n.CollideY)n.Vy+=n.ObservedAccelerationY*weight;
-            }
+            // Recent correction is a bounded displacement, not a permanent
+            // added speed/heading extrapolated for the remaining two seconds.
+            // Contacts revoke it and retain the collision owner's velocity.
+            if(elapsed==1){n.TrendBaseVx=n.Vx;n.TrendBaseVy=n.Vy;}
+            if(n.CollideX || n.CollideY){n.ObservedTurn=n.ObservedAccelerationX=n.ObservedAccelerationY=0;n.TrendBaseVx=n.Vx;n.TrendBaseVy=n.Vy;}
+            float curve=elapsed<=12?elapsed*(13-elapsed)/12f:0;
+            float boost=elapsed<=8?elapsed*(9-elapsed)/8f:0;
+            float angle=n.NoGravity?n.ObservedTurn*curve:0,c=(float)Math.Cos(angle),sin=(float)Math.Sin(angle);
+            n.Vx=n.TrendBaseVx*c-n.TrendBaseVy*sin+n.ObservedAccelerationX*boost;
+            if(n.NoGravity)n.Vy=n.TrendBaseVx*sin+n.TrendBaseVy*c+n.ObservedAccelerationY*boost;
         }
     }
 }

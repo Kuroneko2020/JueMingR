@@ -47,6 +47,7 @@ namespace NativeWorldTextProbe
             audit.Patch(typeof(Player).GetNestedType("SelectedItemState",Flags).GetMethod("Update",Flags),postfix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),nameof(Selected)));
             try
             {
+                if(Environment.GetEnvironmentVariable("JUEMINGR_YOYO_CAUSAL")=="1"){NativeYoyoCausalChecks.Run(context);return;}
                 foreach(int empty in new[]{0,1,3})
                 {
                     Save(combat,new CombatOptions());var p=NativeToolExecutionChecks.Reset(context,tools,input,ItemID.CopperShortsword,0,0);starts.Clear();shots.Clear();
@@ -128,7 +129,11 @@ namespace NativeWorldTextProbe
             Vector2 pixel=Vector2.Transform((point??new Vector2(830,654))-Main.screenPosition,Main.GameViewMatrix.ZoomMatrix);
             PlayerInput.MouseInfo=new MouseState((int)pixel.X,(int)pixel.Y,0,left?ButtonState.Pressed:ButtonState.Released,ButtonState.Released,right?ButtonState.Pressed:ButtonState.Released,ButtonState.Released,ButtonState.Released);
             var tokens=new List<string>();if(left)tokens.Add("Mouse1");if(right)tokens.Add("Mouse2");PlayerInput.Triggers.Reset();Call(input,"AfterNativeMouse",tokens);
+            if(keys!=null)foreach(var key in keys)tokens.Add(key.ToString());
             foreach(string name in tokens)PlayerInput.CurrentProfile.InputModes[InputMode.Keyboard].Processkey(PlayerInput.Triggers.Current,name,InputMode.Keyboard);
+            // The isolated native movement consumer follows the same explicit
+            // trigger setup as NativeQuickItemChecks.Sample (no desktop keys).
+            if(keys!=null){PlayerInput.Triggers.Current.Left=keys.Contains(Keys.A);PlayerInput.Triggers.Current.Right=keys.Contains(Keys.D);}
             PlayerInput.Triggers.Update();Main.mouseLeft=PlayerInput.Triggers.Current.MouseLeft;Main.mouseRight=PlayerInput.Triggers.Current.MouseRight;
             PlayerInput.MouseX=(int)pixel.X;PlayerInput.MouseY=(int)pixel.Y;PlayerInput.UpdateMainMouse();PlayerInput.CacheZoomableValues();
             Main.oldKeyState=Main.keyState;Main.keyState=new KeyboardState(keys??new Keys[0]);Call(input,"AfterMapping");Call(input,"AfterKeyboardRefresh");Call(Get(context,"Shell"),"ProcessInput");Call(Get(context,"Combat"),"Sample");PlayerInput.SetZoom_World();

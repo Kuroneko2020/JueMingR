@@ -21,7 +21,8 @@ namespace NativeWorldTextProbe
             Directory.CreateDirectory(output);var host=Get(context,"CombatObservation");var layer=Get(host,"World");var geometry=Get(host,"Geometry");var cache=Get(Get(host,"Prediction"),"Cache");var settings=(ObservationSettings)Get(host,"Settings");
             for(int i=0;i<Main.maxPlayers;i++)if(Main.player[i]==null)Main.player[i]=new Player{whoAmI=i};
             var update=(Action)Delegate.CreateDelegate(typeof(Action),context,context.GetType().GetMethod("UpdateRuntime",Flags));
-            var prepare=(Action)Delegate.CreateDelegate(typeof(Action),layer,layer.GetType().GetMethod("Prepare",Flags));
+            var prepareWorld=(Action)Delegate.CreateDelegate(typeof(Action),layer,layer.GetType().GetMethod("Prepare",Flags));
+            Action prepare=()=>{prepareWorld();if((bool)Get(host,"Enabled") && (bool)Get(host,"CanDraw"))NativeCombatPresentationChecks.Project(layer);};
             var allocation=typeof(GC).GetMethod("GetAllocatedBytesForCurrentThread",BindingFlags.Public|BindingFlags.Static);var allocated=allocation==null?null:(Func<long>)Delegate.CreateDelegate(typeof(Func<long>),allocation);
             Set(host,"LayerStatus",Enum.Parse(Get(host,"LayerStatus").GetType(),"Ready"));Main.screenWidth=960;Main.screenHeight=640;Main.screenPosition=Vector2.Zero;Main.GameViewMatrix.Zoom=Vector2.One;Main.hideUI=false;Main.mapFullscreen=false;Main.LocalPlayer.gravDir=1;Main.LocalPlayer.position=new Vector2(640,640);Main.LocalPlayer.itemAnimation=0;Main.dayTime=false;
             var rows=new List<string>{"scenario\tsamples\tdamage_p50_us\tdamage_p95_us\thost_prepare_p50_us\thost_prepare_p95_us\tdamage_bytes_per_sample\thost_prepare_bytes_per_sample\tGC_0_1_2\tdetail"};
