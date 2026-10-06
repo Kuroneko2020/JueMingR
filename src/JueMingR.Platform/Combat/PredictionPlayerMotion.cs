@@ -18,5 +18,6 @@ namespace JueMingR.Platform.Combat
         public bool Rope,InvalidMechanism;
         public float WindSpeed,TrackBoost;
         public bool WindPushed;
+        public bool FloatingNow,FloatMount37,ShimmerImmune;
     }
 }

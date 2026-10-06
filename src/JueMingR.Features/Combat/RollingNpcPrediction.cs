@@ -70,16 +70,17 @@ namespace JueMingR.Features.Combat
                 }
                 if(needsPlayer && !observedPlayer && !AdvancePlayer(ref player,environment,terrain,out stop))
                 {
+                    bool floatingFailure=player.FloatInWater && player.FloatingNow && (stop==PredictionStop.UnsupportedMechanism || stop==PredictionStop.TerrainUnavailable || stop==PredictionStop.TerrainLimit);
                     // Only these bounded structural models can use the real
                     // current target-player premise. Invalid numeric state
                     // and unknown NPC/root/wall geometry remain hard stops.
-                    if(!restarted && canObservePlayer && (stop==PredictionStop.TerrainUnavailable || stop==PredictionStop.TerrainLimit || stop==PredictionStop.LiquidEffect || stop==PredictionStop.Slope))
+                    if(!restarted && (floatingFailure || canObservePlayer && (stop==PredictionStop.TerrainUnavailable || stop==PredictionStop.TerrainLimit || stop==PredictionStop.LiquidEffect || stop==PredictionStop.Slope)))
                     {
                         // Discard the conditional prefix and restart at most
                         // once with one consistent real-observation premise.
                         // Switching back to the real origin halfway through
                         // a retained path would create an artificial turn.
-                        observedPlayer=restarted=true;stop=PredictionStop.None;terrain.Reset();playerSettled=false;
+                        observedPlayer=restarted=true;boundedPlayer=floatingFailure;stop=PredictionStop.None;terrain.Reset();playerSettled=false;
                         Array.Copy(source,work,count);work[selected]=current;length=1;future=0;continue;
                     }
                     else{FailureLayer=PredictionFailureLayer.PlayerPremise;break;}
@@ -185,7 +186,7 @@ namespace JueMingR.Features.Combat
         private static bool Valid(NpcMotionState n)
         {return Finite(n.X)&&Finite(n.Y)&&Finite(n.Vx)&&Finite(n.Vy)&&Finite(n.A0)&&Finite(n.A1)&&Finite(n.A2)&&Finite(n.A3)&&Finite(n.L0)&&Finite(n.L1)&&Finite(n.L2)&&Finite(n.L3)&&Finite(n.Scale)&&Finite(n.NetOffsetX)&&Finite(n.NetOffsetY)&&Finite(n.Health.DamageMultiplier)&&Finite(n.Health.ShimmerTransparency)&&Finite(n.WaterSpeed)&&Finite(n.HoneySpeed)&&Finite(n.LavaSpeed)&&Finite(n.ShimmerSpeed)&&n.WaterSpeed>=0&&n.HoneySpeed>=0&&n.LavaSpeed>=0&&n.ShimmerSpeed>=0&&n.Width>0&&n.Width<=1024&&n.Height>0&&n.Height<=1024&&Math.Abs(n.Vx)<=512&&Math.Abs(n.Vy)<=512;}
         private static bool BoundedPlayer(PredictionPlayerMotion p)
-        {return !p.InvalidMechanism && (p.Grappled || p.Rope || p.FloatInWater || p.ObservationMechanism!=0 && !p.Hover);}
+        {return !p.InvalidMechanism && (p.Grappled || p.Rope || p.FloatingNow || p.ObservationMechanism!=0 && !p.Hover);}
         private static bool Valid(PredictionPlayerMotion p)
         {return !p.InvalidMechanism&&Finite(p.WindSpeed)&&Finite(p.TrackBoost)&&Finite(p.X)&&Finite(p.Y)&&Finite(p.Vx)&&Finite(p.Vy)&&Finite(p.Gravity)&&Finite(p.Acceleration)&&Finite(p.Slowdown)&&Finite(p.MaxSpeed)&&Finite(p.FastMaxSpeed)&&Finite(p.MaxFall)&&Finite(p.JumpSpeed)&&p.MaxFall>=0&&p.JumpSpeed>=0&&Math.Abs(p.Vx)<=512&&Math.Abs(p.Vy)<=512&&p.GravityDirection*p.GravityDirection==1&&p.Width>0&&p.Height>0&&p.Width<=512&&p.Height<=512&&p.Acceleration>=0&&p.Slowdown>=0&&p.MaxSpeed>=0&&p.FastMaxSpeed>=0;}
         private static bool Finite(float value){return !float.IsNaN(value)&&!float.IsInfinity(value);}

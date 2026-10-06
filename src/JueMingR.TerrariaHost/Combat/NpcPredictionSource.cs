@@ -50,6 +50,7 @@ namespace JueMingR.TerrariaHost.Combat
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcTargeting",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcPositionMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcGroundMotion",true),
+                typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcSlimeControl",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.PlayerHorizontalMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcGravityMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.FighterHorizontalMotion",true),
@@ -150,7 +151,7 @@ namespace JueMingR.TerrariaHost.Combat
             for(int i=0;i<count;i++){motionRoles[i]=motionSlots[states[i].Identity.Slot];if(motionRoles[i])NpcTrackingObservation.Capture(Main.npc[states[i].Identity.Slot],ref states[i],Terrain);}
             var current=Main.npc[identity.Slot];
             if(current.aiStyle==6 || current.aiStyle==37)for(int i=0;i<count;i++)if(states[i].ParentSlot<0){current=Main.npc[states[i].Identity.Slot];break;}
-            var premiseEnv=new PredictionEnvironment{PlayerIndex=-1,Day=Main.dayTime,Remix=Main.remixWorld,WorldSurface=(float)Main.worldSurface};
+            var premiseEnv=new PredictionEnvironment{PlayerIndex=-1,SlimeRain=Main.slimeRain,Day=Main.dayTime,Remix=Main.remixWorld,WorldSurface=(float)Main.worldSurface};
             int oldPlayer=states[selected].PlayerIndex;
             premiseEnv.Graveyard=oldPlayer>=0 && oldPlayer<Main.maxPlayers && Main.player[oldPlayer]!=null && Main.player[oldPlayer].ZoneGraveyard;
             int target=NpcMotion.PlayerPremiseTarget(states[selected],premiseEnv);bool needsPlayer=false;
@@ -187,6 +188,7 @@ namespace JueMingR.TerrariaHost.Combat
                 {int slot=p.grappling[i];var hook=slot>=0 && slot<Main.maxProjectiles?Main.projectile[slot]:null;if(hook==null || !hook.active || hook.owner!=p.whoAmI || hook.aiStyle!=7 || hook.ai==null || hook.ai.Length<1 || hook.ai[0]!=2)badHook=true;}
             }
             bool hover=p.mount.Active && (p.mount.Type==MountID.WitchBroom || p.mount.Type==5) && !p.CCed && !p.pulley && !p.shimmering && !p.tongued && (p.grappling==null || p.grappling.Length==0 || p.grappling[0]<0);
+            bool floating=PredictionTerrain.FloatingObserved(p);
             // jumpSpeed/Height are shared native scratch, not this player's
             // completed observation. Derive ordinary values from owned effects.
             int jumpHeight=p.shimmerWet?23:p.wet?30:15;float jumpSpeed=p.shimmerWet?5.51f:p.wet?6.01f:5.01f;
@@ -194,7 +196,8 @@ namespace JueMingR.TerrariaHost.Combat
             if(p.wereWolf){jumpSpeed+=.2f;jumpHeight+=2;}if(p.moonLordLegs)jumpHeight++;
             jumpSpeed+=p.jumpSpeedBoost;if(p.sticky){jumpSpeed/=5;jumpHeight/=10;}if(p.dazed){jumpSpeed/=2;jumpHeight/=5;}
             return new PredictionPlayerMotion{X=p.position.X,Y=p.position.Y,Vx=p.velocity.X,Vy=p.velocity.Y,Width=p.width,Height=p.height,
-                PlayerToken=p,PlayerIndex=p.whoAmI,ObservationMechanism=Prediction.NativePlayerMotion.Mechanism(p)|(p.ShouldFloatInWater?256:0)|(p.isLockedToATile?512:0),Rope=p.pulley,InvalidMechanism=badHook,
+                PlayerToken=p,PlayerIndex=p.whoAmI,ObservationMechanism=Prediction.NativePlayerMotion.Mechanism(p)|(floating?256:0)|(p.isLockedToATile?512:0),Rope=p.pulley,InvalidMechanism=badHook,
+                FloatingNow=floating,FloatMount37=p.mount.Active && p.mount.Type==37,ShimmerImmune=PredictionTerrain.PlayerShimmerImmune(p),
                 Gravity=p.gravity,GravityDirection=p.gravDir,MaxFall=p.maxFallSpeed,Acceleration=hover?p.mount.Acceleration:p.runAcceleration,
                 Slowdown=hover?.2f:p.runSlowdown,MaxSpeed=hover?p.mount.RunSpeed:p.maxRunSpeed,FastMaxSpeed=hover?p.mount.DashSpeed:p.chilled && p.oldStyleParkour?p.maxRunSpeed:p.accRunSpeed,
                 WindSpeed=Main.windSpeedCurrent,WindPushed=p.windPushed && p.CanBePushedByWind(),TrackBoost=p.trackBoost,

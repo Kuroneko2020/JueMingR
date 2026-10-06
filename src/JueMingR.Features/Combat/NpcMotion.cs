@@ -255,6 +255,7 @@ namespace JueMingR.Features.Combat
         {
             e=NpcTargeting.Player(n,e);
             if(n.Style==3 && n.PositionRelation==0)return NpcGroundMotion.PlayerPremiseTarget(n,e);
+            if(n.Style==1 && n.PositionRelation==0)return NpcSlimeControl.PlayerPremiseTarget(n,e);
             int t=n.EffectiveType;bool retarget=n.Style==13 && NpcAnchoredMotion.Known(t) ||
                 n.Style==16 && n.Wet && NpcAquaticMotion.Known(t) && t!=55 && t!=592 && t!=607 && t!=615 && t!=688 ||
                 n.Style==2 && KnownEye(t) && (!(e.Day && !e.Remix && !e.Graveyard && n.Y<=e.WorldSurface*16) || n.Wet) ||
@@ -262,8 +263,7 @@ namespace JueMingR.Features.Combat
                 n.Style==17 && t==61 && (n.A0==0 || !n.PlayerDead || n.Wet) ||
                 n.Style==40 && NpcWallMotion.Wall(t) && (n.Target<0 || n.Target==255 || n.PlayerDead) ||
                 n.PositionRelation==6 && n.Style==36 && (n.A2==0 || n.A2==3) ||
-                n.Style==41 && t==177 && n.A2==0 || n.Style==39 && t==153 && (n.Direction==0 || n.Target<0 || n.PlayerDead || n.JustHit || n.A0==3 && n.A1==0 || n.A0==5 && n.A1>=29) ||
-                n.Style==1 && n.A2==0 && t!=184 && t!=535 && t!=204 && t!=658 && t!=659 && t!=377 && t!=446;
+                n.Style==41 && t==177 && n.A2==0 || n.Style==39 && t==153 && (n.Direction==0 || n.Target<0 || n.PlayerDead || n.JustHit || n.A0==3 && n.A1==0 || n.A0==5 && n.A1>=29);
             return retarget && n.HasClosestPlayer?n.ClosestPlayerIndex:n.PlayerIndex;
         }
         private static bool BatType(int t){return t==49 || t==51 || t==60 || t==62 || t==66 || t==93 || t==137 || t==150 || t==151 || t==152 || t==634;}
@@ -342,10 +342,7 @@ namespace JueMingR.Features.Combat
         private static bool Slime(ref NpcMotionState n,PredictionEnvironment env,IPredictionTerrain terrain,int direction,int vertical,bool confused,out PredictionStop stop)
         {
             stop=PredictionStop.None;int type=n.EffectiveType;
-            bool aggressive=!env.Day || n.Life!=n.LifeMax || n.Y>env.WorldSurface*16 || env.SlimeRain;
-            if(env.Remix && type==59 && n.Life==n.LifeMax)aggressive=false;
-            if(type==81 || type==183 || type==304 || type==667 || type==244 || type==184 || type==535 || type==204 || type==658 || type==659)aggressive=true;
-            if((type==377 || type==446) && !env.PlayerDead && !n.Wet && (n.Bounds.CenterX-env.PlayerX)*(n.Bounds.CenterX-env.PlayerX)+(n.Bounds.CenterY-env.PlayerY)*(n.Bounds.CenterY-env.PlayerY)<=40000)aggressive=true;
+            bool aggressive=NpcSlimeControl.Aggressive(n,env);
             // Crystal's pre-ground increment is independent of active pursuit.
             if(type==244)n.A0+=2;
             if(type==184 || type==535 || type==204 || type==658 || type==659)
@@ -375,29 +372,14 @@ namespace JueMingR.Features.Combat
                     }
                 }
             }
-            if(n.A2>1)n.A2--;
-            if(n.Wet)
-            {
-                if(n.CollideY)n.Vy=-2;
-                if(n.Vy<0 && n.A3==n.X){n.Direction*=-1;n.A2=200;}if(n.Vy>0)n.A3=n.X;
-                bool lava=n.Identity.Type==59 && !env.Remix;
-                if(n.Vy>2)n.Vy*=.9f;else if(lava && vertical<0)n.Vy-=.8f;
-                n.Vy=Math.Max(lava?-10:-4,n.Vy-.5f);
-                if(n.A2==1 && aggressive)NpcTargeting.Face(ref n,ref env,true,confused);
-            }
-            if(n.A2==0){n.A0=-100;n.A2=1;NpcTargeting.Face(ref n,ref env,true,confused);}
+            NpcSlimeControl.BeforeGround(ref n,ref env,aggressive,vertical,confused);
             if(n.Vy==0)
             {
-                if(n.A3==n.X){n.Direction*=-1;n.A2=200;}n.A3=0;
-                n.Vx*=.8f;if(Math.Abs(n.Vx)<.1f)n.Vx=0;
-                // Ordinary slime rhythm; specials retain an approximation tag.
-                n.A0+=aggressive?2:1;if(type==59 && !env.Remix || type==138)n.A0+=2;if(type==71 || type==667 || type==659 || type==377 || type==446)n.A0+=3;
-                if(type==183)n.A0++;if(type==658)n.A0+=5;if(type==304)n.A0+=(1-n.Life/Math.Max(1,n.LifeMax))*10;if(type==81)n.A0+=n.Scale>=0?4:1;
                 float rhythm=type==659?-500:type==667?-400:-1000;
-                int jump=n.A0>=0?1:n.A0>=rhythm && n.A0<=rhythm*.5f?2:n.A0>=rhythm*2 && n.A0<=rhythm*1.5f?3:0;
+                int jump=NpcSlimeControl.GroundDecision(ref n,ref env,aggressive,confused);
                 if(jump!=0)
                 {
-                    if(aggressive && n.A2==1)NpcTargeting.Face(ref n,ref env,true,confused);n.Vy=jump==3?-8:-6;n.Vx+=(jump==3?3:2)*n.Direction;
+                    n.Vy=jump==3?-8:-6;n.Vx+=(jump==3?3:2)*n.Direction;
                     if(type==59 && !env.Remix){if(jump==3)n.Vy-=2;n.Vx+=(jump==3?.5f:2)*n.Direction;}
                     n.A0=jump==3?-200:-120+rhythm*(jump==1?1:2);if(jump==3)n.A3=n.X;
                     if(type==659){n.Vy*=1.6f;n.Vx*=1.2f;}if(type==141){n.Vy*=1.3f;n.Vx*=1.2f;}

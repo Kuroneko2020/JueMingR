@@ -40,16 +40,18 @@ namespace JueMingR.ArchitectureTests
             player.Grappled=false;player.Rope=true;player.Vx=0;
             boundary=new PlayerBoundaryTerrain();conditional=new RollingNpcPrediction().Prepare(new[]{dependent},1,0,1,120,1,e,player,boundary);
             Require(conditional.Count==121 && boundary.LastPlayerX==player.X+player.Width*.5f,"Idle rope has an explicit stationary observed premise.");
-            player.Rope=false;player.FloatInWater=true;player.Vy=-.4f;
+            player.Rope=false;player.FloatInWater=true;player.FloatingNow=true;player.Vy=-.4f;
             boundary=new PlayerBoundaryTerrain();conditional=new RollingNpcPrediction().Prepare(new[]{dependent},1,0,1,120,1,e,player,boundary);
             Require(conditional.Count==121 && boundary.PlayerMoves==0,"Qualified floating is not forced through ordinary wet player collision.");
-            player.FloatInWater=false;player.Vx=float.NaN;
+            player.FloatInWater=player.FloatingNow=false;player.Vx=float.NaN;
             Require(new RollingNpcPrediction().Prepare(new[]{dependent},1,0,1,120,1,e,player,new OpenTerrain())==null,"A complex player premise never waives invalid numeric state.");
             player.Vx=0;player.Grappled=true;player.InvalidMechanism=true;
             Require(new RollingNpcPrediction().Prepare(new[]{dependent},1,0,1,120,1,e,player,new OpenTerrain())==null,"Bad grapple ownership remains a player boundary.");
             var free=State(999,99);free.NoGravity=true;
             conditional=new RollingNpcPrediction().Prepare(new[]{free},1,0,1,120,1,e,default(PredictionPlayerMotion),new OpenTerrain());
             Require(conditional.Count==121 && (conditional.Assumptions&PredictionAssumption.NoPlayerMotionNeeded)!=0,"Independent trend does not acquire an irrelevant invalid player prerequisite.");
+            var slime=State(1,1);slime.A0=-1;slime.A2=1;slime.Vy=0;slime.TargetCaptured=true;slime.PlayerIndex=0;slime.PlayerDead=true;slime.HasClosestPlayer=true;slime.ClosestPlayerIndex=1;slime.ClosestPlayerArea=new MotionRect(1200,5000,20,40);
+            Require(NpcMotion.PlayerPremiseTarget(slime,new PredictionEnvironment{PlayerIndex=-1,WorldSurface=400})==1,"Ordinary slime acquires the live first-jump target before Source rejects the old dead player.");
         }
         private static NpcMotionState State(int type,int style)
         {return new NpcMotionState{Identity=new NpcIdentity(1,new object(),1,1,type,type),X=1000,Y=5000,Width=20,Height=20,Scale=1,Style=style,Direction=1,DirectionY=1,SpriteDirection=1,Life=100,LifeMax=100,TimeLeft=750,Active=true,CanReceive=true,NoTileCollide=true,Health=new NpcHealthState{RealLife=-1}};}

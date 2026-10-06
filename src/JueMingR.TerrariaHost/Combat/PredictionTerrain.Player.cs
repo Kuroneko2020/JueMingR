@@ -6,6 +6,44 @@ namespace JueMingR.TerrariaHost.Combat
 {
     internal sealed partial class PredictionTerrain
     {
+        // Fixed .8 private scalar, cached once. This accessor is read-only at
+        // every call site; it must never be used to modify the live player.
+        private static readonly HarmonyLib.AccessTools.FieldRef<Player,bool> shimmerImmunity=HarmonyLib.AccessTools.FieldRefAccess<Player,bool>("shimmerImmune");
+        internal static bool PlayerShimmerImmune(Player p){return shimmerImmunity(p);}
+        internal static bool FloatingObserved(Player p)
+        {
+            if(!p.ShouldFloatInWater || !p.wet || p.shimmerWet && !PlayerShimmerImmune(p) || !(p.shimmerWet || p.honeyWet && !p.ignoreWater || !p.merman && !p.ignoreWater && !p.trident))return false;
+            int x=(int)(p.Center.X/16),y=(int)(p.Center.Y/16);float line=0;bool exists=false;
+            if(FloatLineInWorld(x,y))
+            {
+                Cell a,b,c,d;
+                // Original GetWaterLine allocates missing real Tiles. Never
+                // call it from observation. Unknown player-only line input
+                // instead chooses the explicit finite observed premise.
+                if(!Read(x,y-2,out a) || !Read(x,y-1,out b) || !Read(x,y,out c) || !Read(x,y+1,out d))return true;
+                exists=FloatLine(y,a.Liquid,b.Liquid,c.Liquid,d.Liquid,out line);
+            }
+            return !exists || p.Center.Y-(p.mount.Active && p.mount.Type==37?6:0)+8+p.velocity.Y>=line;
+        }
+        private bool FloatingConstraint(NpcMotionState n,bool mount37,out bool constrained,out PredictionStop stop)
+        {
+            stop=PredictionStop.None;constrained=true;int x=(int)(n.Bounds.CenterX/16),y=(int)(n.Bounds.CenterY/16);float line;
+            if(!FloatLineInWorld(x,y))return true;
+            Cell a,b,c,d;
+            if(!CellAt(x,y-2,out a,out stop) || !CellAt(x,y-1,out b,out stop) || !CellAt(x,y,out c,out stop) || !CellAt(x,y+1,out d,out stop))return false;
+            if(FloatLine(y,a.Liquid,b.Liquid,c.Liquid,d.Liquid,out line))constrained=n.Bounds.CenterY-(mount37?6:0)+8+n.Vy>=line;
+            return true;
+        }
+        private static bool FloatLineInWorld(int x,int y)
+        {return x>=10 && y>=10 && x<Main.maxTilesX-10 && y<Main.maxTilesY-10;}
+        private static bool FloatLine(int y,byte aboveTwo,byte above,byte at,byte below,out float line)
+        {
+            line=0;if(aboveTwo>0)return false;
+            if(above>0){line=y*16-above/16;return true;}
+            if(at>0){line=(y+1)*16-at/16;return true;}
+            if(below>0){line=(y+2)*16-below/16;return true;}
+            return false;
+        }
         // Player geometry has its own phase order and predicates. Tile values
         // join the same bounded snapshot, but NPC body/AI helpers are not used.
         private bool PlayerSteps(ref NpcMotionState n,ref PredictionPlayerMotion p,bool segment,out PredictionStop stop)

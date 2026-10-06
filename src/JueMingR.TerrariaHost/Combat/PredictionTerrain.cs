@@ -198,10 +198,6 @@ namespace JueMingR.TerrariaHost.Combat
             else if(!WalkDown(ref next,out stop))return false;
             bool lava,wet;byte liquid;
             if(!Wet(next,true,out lava,out liquid,out stop) || !Wet(next,false,out wet,out liquid,out stop))return false;
-            // Floating fluid motion has its own native constraint. A dry
-            // float-equipped player can still move; acquiring wet contact
-            // cannot silently become ordinary wet translation.
-            if(playerMode && wet && player.FloatInWater){stop=PredictionStop.UnsupportedMechanism;return false;}
             if(next.Identity.Type==441)lava=false;
             if(lava)
             {
@@ -255,6 +251,16 @@ namespace JueMingR.TerrariaHost.Combat
             float slowdown=wet?(next.Shimmer?next.ShimmerSpeed:next.Honey?next.HoneySpeed:next.Lava?next.LavaSpeed:next.WaterSpeed):1;
             if(playerMode)slowdown=wet?(next.Shimmer?.375f:next.Honey && !player.IgnoreWater?.25f:!player.Merman && !player.IgnoreWater && !player.Trident?.5f:1):1;
             next.OldX=next.X;next.OldY=next.Y;next.X+=next.CollideX?rx:rx*slowdown;next.Y+=next.CollideY?ry:ry*slowdown;
+            // Native WetCollision translates before TryFloatingInFluid, then
+            // Player.Update runs slope/belt. Capability alone is not action;
+            // dry movement and above-line ascent keep ordinary geometry.
+            if(playerMode && wetPlayer && player.FloatInWater && (!next.Shimmer || player.ShimmerImmune))
+            {
+                bool constrained;player.FloatingNow=true;
+                if(!FloatingConstraint(next,player.FloatMount37,out constrained,out stop))return false;
+                player.FloatingNow=constrained;
+                if(constrained){stop=PredictionStop.UnsupportedMechanism;return false;}
+            }
             if(fall)next.StairFall=true;
             int movingType=next.EffectiveType;
             if(playerMode || movingType!=72 && movingType!=247 && movingType!=248 && (movingType<542 || movingType>545) && (!NPCID.Sets.BelongsToInvasionOldOnesArmy[movingType] || !next.NoGravity))
