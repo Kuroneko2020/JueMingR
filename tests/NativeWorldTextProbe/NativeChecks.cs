@@ -20,6 +20,8 @@ namespace NativeWorldTextProbe
                 Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-marker-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
                 NativeQuickItemChecks.Run(context=>{NativeCombatTargetMarkerChecks.Run(context);if(Environment.GetEnvironmentVariable("JUEMINGR_MARKER_GRAPHICS")=="1")using(var graphics=new ProbeGraphics(content))NativeCombatTargetMarkerChecks.Graphics(context,graphics,output);},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
             }
+            if(scope=="NpcFiniteFlight"){Environment.SetEnvironmentVariable("JUEMINGR_SHARED_GEOMETRY_PHASE","finite-flight");scope="NpcSharedGeometry";}
+            if(scope=="NpcSamplePresentation"){Environment.SetEnvironmentVariable("JUEMINGR_SHARED_GEOMETRY_PHASE","sample-presentation");scope="NpcSharedGeometry";}
             if(scope=="NpcFoundationRules"){Environment.SetEnvironmentVariable("JUEMINGR_SHARED_GEOMETRY_PHASE","foundation");scope="NpcSharedGeometry";}
             if(scope=="NpcPlayerPolicy"){Environment.SetEnvironmentVariable("JUEMINGR_SHARED_GEOMETRY_PHASE","player-policy");scope="NpcSharedGeometry";}
             if(scope=="NpcSharedGeometry")
@@ -119,7 +121,7 @@ namespace NativeWorldTextProbe
                 Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-combat-visual-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
                 NativeQuickItemChecks.Run(context=>{using(var graphics=new ProbeGraphics(content))NativeCombatVisualChecks.Run(context,graphics,output);},processing:true,shortFeedback:true);return 0;
             }
-            if(scope=="CombatYoyoCausal"){Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-yoyo-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);Environment.SetEnvironmentVariable("JUEMINGR_YOYO_CAUSAL","1");NativeQuickItemChecks.Run(NativeCombatCadenceChecks.Run,processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;}
+            if(scope=="CombatYoyoCausal"){Directory.CreateDirectory(output);Environment.SetEnvironmentVariable("JUEMINGR_YOYO_EVIDENCE",output);Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-yoyo-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);Environment.SetEnvironmentVariable("JUEMINGR_YOYO_CAUSAL","1");NativeQuickItemChecks.Run(NativeCombatCadenceChecks.Run,processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;}
             if(scope=="CombatCpu" || scope=="CombatRelease" || scope=="CombatFacingCpu" || scope=="CombatHitsCpu" || scope=="CombatReportCpu" || scope=="CombatUiCpu")
             {
                 Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-combat-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);

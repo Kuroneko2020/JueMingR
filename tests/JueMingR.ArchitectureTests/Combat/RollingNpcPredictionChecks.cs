@@ -80,6 +80,7 @@ namespace JueMingR.ArchitectureTests
             Require(repeat.Version==first.Version && repeat[30].Bounds.X==first[30].Bounds.X && repeat[30].Bounds.Y==first[30].Bounds.Y && terrain.Resets==resets,"The same real sample keeps its nonzero trend and does not calculate again.");
             var grown=model.Prepare(new[]{n},1,0,101,120,1,e,p,terrain);
             Require(grown[30].Bounds.X==first[30].Bounds.X && grown[30].Bounds.Y==first[30].Bounds.Y && grown.Count==121,"Same-tick demand growth retains the confirmed trend premise.");
+            Require(Math.Abs(grown[1].Vx-n.Vx)>.000001f && Math.Abs(grown[30].Vx-n.Vx)<.000001f && Math.Abs(grown[120].Vy-n.Vy)<.000001f,"Recent observed turn remains visible but does not permanently compound far velocity.");
             n.X+=20;n.Vx=-2;n.JustHit=true;
             var corrected=model.Prepare(new[]{n},1,0,101,120,1,e,p,terrain);
             Require(corrected[0].Bounds.X==n.X && corrected[1].Vx==-2 && corrected.Version>grown.Version,"Same-tick correction is a new result, not a second motion observation.");

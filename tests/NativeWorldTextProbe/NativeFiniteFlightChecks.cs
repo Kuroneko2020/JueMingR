@@ -21,7 +21,7 @@ namespace NativeWorldTextProbe
             for(int x=1;x<Main.maxTilesX-1;x++){Main.tile[x,60].active(true);Main.tile[x,60].type=TileID.Stone;}
             Lighting.Mode=Terraria.Graphics.Light.LightMode.Color;
             int cases=0;
-            foreach(int type in new[]{261,265,34,289,694,250,75,82,122,169,182,268,316,330,490,253})foreach(int sign in new[]{-1,1})foreach(float vx in new[]{-4f,0f,4f})foreach(int branch in new[]{0,1,2})
+            foreach(int type in Environment.GetEnvironmentVariable("JUEMINGR_FLIGHT_BOUNDARY_ONLY")=="1"?new int[0]:new[]{261,265,34,289,694,250,75,82,122,169,182,268,316,330,490,253})foreach(int sign in new[]{-1,1})foreach(float vx in new[]{-4f,0f,4f})foreach(int branch in new[]{0,1,2})
             {
                 var n=new NPC();n.SetDefaults(type);n.whoAmI=199;n.active=true;n.position=new Vector2(sign>0?600:1100,800);n.velocity=new Vector2(vx,branch==2?-2:1);n.target=p.whoAmI;n.direction=sign;n.directionY=1;n.timeLeft=750;n.ai[0]=n.position.X;n.ai[1]=n.position.Y;
                 if(n.aiStyle==10){n.ai[0]=branch==1?199:-99;n.ai[1]=branch==2?601:5;n.ai[2]=10;n.ai[3]=type==694?branch==0?0:branch==1?3:2:0;}
@@ -33,10 +33,12 @@ namespace NativeWorldTextProbe
             }
             Console.WriteLine("PASS FINITE-FLIGHT independent whole-original movement actions="+cases);
             Main.netMode=0;var cache=(NpcPredictionCache)Get(source,"Cache");NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true,marker:true));Set(host,"LayerStatus",Enum.Parse(Get(host,"LayerStatus").GetType(),"Ready"));
-            foreach(int type in new[]{261,265,34,289,694,250,75,82,122,169,182,268,316,330,490,253})
+            foreach(int type in Environment.GetEnvironmentVariable("JUEMINGR_FLIGHT_BOUNDARY_ONLY")=="1"?new int[0]:new[]{261,265,34,289,694,250,75,82,122,169,182,268,316,330,490,253})
             {
                 foreach(var npc in Main.npc)npc.active=false;var n=Main.npc[2];n.SetDefaults(type);n.whoAmI=2;n.active=true;n.dontTakeDamage=false;n.immortal=false;n.friendly=false;n.position=new Vector2(650,700);n.velocity=new Vector2(1,-.2f);n.target=p.whoAmI;n.timeLeft=750;
-                if(type==694){n.ai[2]=-300;n.ai[3]=0;}n.ai[0]=n.aiStyle==22?n.position.X:0;n.ai[1]=n.aiStyle==22?n.position.Y:0;
+                if(type==34){n.position=new Vector2(870,800);n.ai[0]=199;n.ai[1]=649;}
+                if(type==250 || type==253){n.position=new Vector2(870,700);n.velocity=new Vector2(4,-.2f);}
+                if(type==694){n.ai[2]=-300;n.ai[3]=0;}if(type!=34){n.ai[0]=n.aiStyle==22?n.position.X:0;n.ai[1]=n.aiStyle==22?n.position.Y:0;}
                 NativeCombatObservationChecks.Fresh(context,host);var frozen=cache.Read(0);Require(frozen!=null && frozen.Count==121 && frozen.Quality==PredictionQuality.StructuredApproximation,"Default Host Source first sample owns full finite route type="+type+" count="+frozen?.Count+" stop="+frozen?.Stop);
                 var world=Get(host,"World");Call(world,"Prepare");Main.screenPosition=new Vector2(300,400);NativeCombatPresentationChecks.Project(world);Require((int)Get(world,"StrokeCount")>(int)Get(world,"eventEnd"),"Production cache route reaches final camera consumer type="+type);
                 if(type!=694)
@@ -51,6 +53,9 @@ namespace NativeWorldTextProbe
                     Console.WriteLine("FINITE WINDOW type="+type+" legal=120 selected="+selected+" published="+published+" frozen120=.3px alignedFutureMax="+maxAligned+" crossed="+crossed+" turned="+turned+" finalV="+n.velocity);
                 }
             }
+            foreach(var npc in Main.npc)npc.active=false;var spirit=Main.npc[2];spirit.SetDefaults(694);spirit.whoAmI=2;spirit.active=true;spirit.dontTakeDamage=spirit.immortal=spirit.friendly=false;spirit.position=new Vector2(780,800);spirit.velocity=Vector2.UnitX;spirit.target=p.whoAmI;spirit.ai[2]=119;spirit.ai[3]=0;
+            NativeCombatObservationChecks.Fresh(context,host);var beforeChoice=cache.Read(0);Require(beforeChoice!=null && beforeChoice.Count==2 && beforeChoice.Stop==PredictionStop.RandomDecision,"694 Source keeps its known first action and stops before native random dash/shot choice.");
+            spirit.ai[2]=10;spirit.ai[3]=2;NativeCombatObservationChecks.Fresh(context,host);var resumed=cache.Read(0);Require(resumed!=null && resumed.Count>50 && resumed[1].Vx>10,"694 known dash stage resumes a real published prefix.");Console.WriteLine("FINITE694 choice-prefix="+beforeChoice.Count+" stop="+beforeChoice.Stop+" dash-prefix="+resumed.Count+" stop="+resumed.Stop);
             // Two live numbered players distinguish native pursuit/escape
             // phases from the nearest-player assumption. This is isolated
             // targeting evidence, not a network topology or multiplayer test.
@@ -63,10 +68,12 @@ namespace NativeWorldTextProbe
                 var states=(NpcMotionState[])Get(source,"states");int expected=type==253 || type==330?Main.myPlayer:1;Require((int)Get(source,"targetPlayer")==expected && states[0].PlayerIndex==1,"Player premise identity matches native phase type="+type);
                 if(type==169)Require(path[1].Vx>1,"169 rewrites horizontal direction after fixing its scan column.");
             }
-            foreach(var npc in Main.npc)npc.active=false;var faded=Main.npc[2];faded.SetDefaults(316);faded.whoAmI=2;faded.active=true;faded.dontTakeDamage=faded.immortal=faded.friendly=false;faded.position=new Vector2(650,700);faded.velocity=Vector2.UnitX;faded.target=1;faded.ai[3]=1;faded.alpha=0;remote.dead=true;
-            NativeCombatObservationChecks.Fresh(context,host);Require(cache.Read(0)!=null && cache.Read(0).Count>1 && cache.Read(0).Stop==PredictionStop.Despawn,"Source retains316 independently fading departure when old player is dead.");
+            foreach(var npc in Main.npc)npc.active=false;var faded=Main.npc[2];faded.SetDefaults(316);faded.whoAmI=2;faded.active=true;faded.dontTakeDamage=faded.immortal=faded.friendly=false;faded.position=new Vector2(650,700);faded.velocity=Vector2.UnitX;faded.direction=faded.directionY=1;faded.target=1;faded.ai[3]=1;faded.alpha=0;remote.dead=true;
+            faded.direction=-1;NativeCombatObservationChecks.Fresh(context,host);var leavingRandom=cache.Read(0);Require(leavingRandom!=null && leavingRandom.Count==20 && leavingRandom.Stop==PredictionStop.RandomDecision,"316 negative-facing positive velocity keeps nineteen known departure actions then stops at zero-speed native random direction.");Console.WriteLine("FINITE316 departure direction=-1 vx=1 count="+leavingRandom.Count+" stop="+leavingRandom.Stop);faded.direction=1;
+            NativeCombatObservationChecks.Fresh(context,host);Console.WriteLine("FINITE316 selected="+Get(Get(host,"Selection"),"HasTarget")+" path="+cache.Read(0)?.Count+" stop="+cache.Read(0)?.Stop+" failure="+Get(Get(source,"rolling"),"FailureLayer")+" state="+((NpcMotionState[])Get(source,"states"))[0].PlayerDead+"/"+((NpcMotionState[])Get(source,"states"))[0].A3+"/"+((NpcMotionState[])Get(source,"states"))[0].Alpha);Require(cache.Read(0)!=null && cache.Read(0).Count>1 && cache.Read(0).Stop==PredictionStop.Despawn,"Source retains316 independently fading departure when old player is dead.");
             faded.SetDefaults(82);faded.whoAmI=2;faded.active=true;faded.dontTakeDamage=faded.immortal=faded.friendly=false;faded.position=new Vector2(650,700);faded.target=1;faded.ai[2]=-20;NativeCombatObservationChecks.Fresh(context,host);Require(cache.Read(0)==null,"A necessary dead numbered player in82 escape is not replaced by the local player.");remote.active=false;
-            Console.WriteLine("PASS FINITE-FLIGHT default first-sample Host Source Cache WorldLayer16 direct members; frozen120 actual AI actions15 deterministic members; no future RNG/world replay.");
+            typeof(NativeCombatFoundationContinuousChecks).GetMethod("GateControls",BindingFlags.Static|BindingFlags.NonPublic).Invoke(null,null);
+            Console.WriteLine("PASS FINITE-FLIGHT "+(cases>0?"whole-original288 default-consumers16 frozen120/continuous15":"boundary-only")+" plus numbered-player escape/event/fade boundaries; no future RNG/world replay.");
         }
     }
 }

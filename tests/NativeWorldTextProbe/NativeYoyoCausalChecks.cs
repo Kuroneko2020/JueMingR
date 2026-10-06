@@ -30,28 +30,26 @@ namespace NativeWorldTextProbe
             var output=Environment.GetEnvironmentVariable("JUEMINGR_YOYO_EVIDENCE");Directory.CreateDirectory(output);trace.Clear();trace.Add("case,tick,consumer,event,values");
             try
             {
-                // Real BordersMovement reserves640 pixels at each edge. Keep
-                // every220-action case inside a wide symmetric original world.
-                Main.maxTilesX=384;Main.rightWorld=6144;Main.tile=new Tile[384,120];
-                for(int x=0;x<384;x++)for(int y=0;y<120;y++){Main.tile[x,y]=new Tile();if(y==43){Main.tile[x,y].active(true);Main.tile[x,y].type=1;}}
+                // 80 real actions fit both sides of the existing120-tile
+                // isolated world. BordersMovement remains the original method.
                 int executed=0;
                 foreach(int move in Environment.GetEnvironmentVariable("JUEMINGR_YOYO_MOVE_ONLY")=="-1"?new[]{-1}:new[]{0,1,-1})foreach(int mirror in new[]{1,-1})foreach(bool facing in new[]{false,true})
                 {
                     int[] original=null;foreach(bool managed in new[]{false,true})
                     {
-                        checkFacing=false;NativeCombatCadenceChecks.Save(combat,new CombatOptions());var p=NativeToolExecutionChecks.Reset(context,tools,input,3262,0,0);p.position=new Vector2(3000,646);foreach(var item in p.armor)item.TurnToAir();p.armor[3].SetDefaults(ItemID.MagicString);
+                        checkFacing=false;NativeCombatCadenceChecks.Save(combat,new CombatOptions());var p=NativeToolExecutionChecks.Reset(context,tools,input,3262,0,0);p.position=new Vector2(950,646);foreach(var item in p.armor)item.TurnToAir();p.armor[3].SetDefaults(ItemID.MagicString);
                         NativeCombatCadenceChecks.Save(combat,new CombatOptions((managed?16:0)|(facing?32:0)));origin=Main.GameUpdateCount;births.Clear();splits.Clear();known.Clear();label=(managed?"R":"original")+"-move"+move+"-mirror"+mirror+"-face"+facing;
                         checkFacing=managed && facing;expectedFacing=mirror;float startX=p.position.X;
                         bool previousOriginal=false;int release=0;int deadTick=-1,readyTick=-1;
-                        for(int t=0;t<220;t++)
+                        for(int t=0;t<80;t++)
                         {
                             bool live=Main.projectile.Any(s=>s.active && s.owner==p.whoAmI && s.type==p.HeldItem.shoot && s.ai[0]!=-2);
                             bool ready=p.itemAnimation<=0 && p.itemTime<=0 && p.reuseDelay<=0 && !p.delayUseItem;
                             bool left=managed || !live && ready || t<release;
                             Main.screenPosition=p.Center-new Vector2(400,300);var point=p.Center+new Vector2(mirror*180,-30);
                             NativeCombatCadenceChecks.Step(context,left,false,0,move==0?new Keys[0]:new[]{move>0?Keys.D:Keys.A},point);
-                            if(move!=0 && t>20)Require(p.velocity.X*move>0 && p.position.X>700 && p.position.X<Main.rightWorld-700,"Native continuous movement stays inside both real borders.");
-                            if(t==0 || t==219)Console.WriteLine("YOYO MOVEMENT "+label+" tick="+t+" controls="+p.controlLeft+"/"+p.controlRight+" velocity="+p.velocity+" position="+p.position+" startX="+startX);
+                            if(move!=0 && t>20)Require(p.velocity.X*move>0 && p.position.X>640 && p.position.X<Main.maxTilesX*16-640,"Native continuous movement stays inside both real borders.");
+                            if(t==0 || t==79)Console.WriteLine("YOYO MOVEMENT "+label+" tick="+t+" controls="+p.controlLeft+"/"+p.controlRight+" velocity="+p.velocity+" position="+p.position+" startX="+startX);
                             foreach(var shot in Main.projectile.Where(s=>s.active && s.owner==p.whoAmI && s.aiStyle==99))if(known.Add((int)shot.key))
                             {if(shot.ai[0]==-2){splits.Add(t);trace.Add(label+","+t+",world,split,"+shot.key);}else{births.Add(t);release=t+1;trace.Add(label+","+t+",world,birth,"+shot.key);}}
                             bool current=Main.projectile.Any(s=>s.active && s.owner==p.whoAmI && s.type==p.HeldItem.shoot && s.ai[0]!=-2);
@@ -65,6 +63,7 @@ namespace NativeWorldTextProbe
                         if(!managed)original=births.ToArray();else Require(births[1]<=original[1],"R removes additional wait at actual second emission: "+label+" original="+original[1]+" R="+births[1]);
                     }
                 }
+                NativeYoyoBoundaryHitChecks.Run(context,output);
                 Console.WriteLine("PASS YOYO CAUSAL cases="+executed+"; actual movement/emission/split/return/Ready and real ItemCheck/AI99 ChangeDir consumers.");
             }
             finally{checkFacing=false;File.WriteAllLines(Path.Combine(output,"event-chain.csv"),trace.Select(row=>string.Join(",",row.Split(new[]{','},5).Select(value=>"\""+value.Replace("\"","\"\"")+"\""))));foreach(var method in recorder.GetPatchedMethods().ToArray())recorder.Unpatch(method,HarmonyPatchType.All,recorder.Id);NativeCombatCadenceChecks.Save(combat,new CombatOptions());}
