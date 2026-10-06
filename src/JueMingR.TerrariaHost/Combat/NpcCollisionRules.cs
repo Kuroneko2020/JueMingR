@@ -6,6 +6,11 @@ namespace JueMingR.TerrariaHost.Combat
     // the immutable selection identity. Player collision has a separate entry.
     internal static class NpcCollisionRules
     {
+        internal static bool LiquidEligible(NpcMotionState n)
+        {
+            int t=n.EffectiveType;
+            return !(t==690 && n.A0==0 || t==72 || n.Style==21 || n.Style==67 || t==376 || t==579 || t==541 || n.Style==7 && n.A0==25);
+        }
         internal static MotionRect MovementBounds(NpcMotionState n)
         {
             int w=n.Width,h=n.Height,type=n.EffectiveType;float x=n.X,y=n.Y;

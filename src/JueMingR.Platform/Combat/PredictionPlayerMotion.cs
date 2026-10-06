@@ -19,5 +19,14 @@ namespace JueMingR.Platform.Combat
         public float WindSpeed,TrackBoost;
         public bool WindPushed;
         public bool FloatingNow,FloatMount37,ShimmerImmune;
+        // Completed owned effects, not Player.jumpSpeed/jumpHeight scratch.
+        // Previous fluid flags travel through each collision into the NEXT
+        // movement parameter selection; geometry does not own current gravity.
+        public bool VerticalProfile,Wet,Honey,Lava,Shimmer,JumpBoost,WereWolf,MoonLordLegs,Sticky,Dazed,SlowFall,Vortex,DownDash,Flipper;
+        public float DefaultGravity,JumpSpeedBoost;
+        public int SwimTime,WetSlime;
+        public bool Mounted,MountAdditive,MerfolkEquipment,BaseFlipper,HoverUp,HoverDown;
+        public int MountJumpHeight,JumpHeightExtra;
+        public float MountJumpSpeed;
     }
 }

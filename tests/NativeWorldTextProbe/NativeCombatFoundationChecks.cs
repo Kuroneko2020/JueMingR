@@ -18,11 +18,78 @@ namespace NativeWorldTextProbe
         {
             var host=Get(context,"CombatObservation");var source=Get(host,"Prediction");
             var readPlayer=source.GetType().GetMethod("ReadPlayer",Flags);
-            if(Environment.GetEnvironmentVariable("JUEMINGR_FOUNDATION_ONLY")!="source"){Gravity(source);Horizontal(readPlayer);FighterRules(source);}
+            if(Environment.GetEnvironmentVariable("JUEMINGR_FOUNDATION_ONLY")!="source"){Vertical(readPlayer);VerticalSteps(readPlayer);Gravity(source);Horizontal(readPlayer);FighterRules(source);}
             DefaultSource(context,host,source);
+            if(Environment.GetEnvironmentVariable("JUEMINGR_FOUNDATION_ONLY")!="source")
+            {
+                if(Environment.GetEnvironmentVariable("JUEMINGR_FOUNDATION_ONLY")!="ground")NativeCombatFoundationLiquidChecks.Run(source);
+                if(Environment.GetEnvironmentVariable("JUEMINGR_FOUNDATION_ONLY")!="liquid")NativeCombatFoundationGroundChecks.Run(source);
+            }
             SlimeSource(context,host,source);
             FighterEntrySource(context,host,source);
             FloatingSource(context,host,source,readPlayer);
+        }
+        private static void Vertical(MethodInfo readPlayer)
+        {
+            // Set the original base from its documented liquid branch, then
+            // execute ORIGINAL UpdateJumpHeight. ReadPlayer must consume this
+            // player's completed aggregate, never the static last-player scratch.
+            var height=typeof(Player).GetField("jumpHeight",Flags);var speed=typeof(Player).GetField("jumpSpeed",Flags);int cases=0;
+            NativeCombatLiveContextChecks.InitializeMount();
+            foreach(int fluid in new[]{0,1,2,3,4,5,6})foreach(int effect in new[]{0,1,2,3,4,5})foreach(bool sticky in new[]{false,true})foreach(bool dazed in new[]{false,true})
+            {
+                var p=new Player{whoAmI=1,active=true,wet=fluid!=0,honeyWet=fluid==2,shimmerWet=fluid==3,merman=fluid==4,trident=fluid==5 || fluid==6,lavaWet=fluid==6,jumpBoost=effect==1,frogLegJumpBoost=effect==2,empressBrooch=effect==3,moonLordLegs=effect==4,wereWolf=effect==5,sticky=sticky,dazed=dazed};
+                height.SetValue(null,fluid==3?23:fluid==5?25:fluid==1 || fluid==6?30:15);speed.SetValue(null,fluid==3 || fluid==5?5.51f:fluid==1 || fluid==6?6.01f:5.01f);
+                p.UpdateJumpHeight();float expectedSpeed=(float)speed.GetValue(null);int expectedHeight=(int)height.GetValue(null);
+                // Poison shared scratch AFTER the completed own effects.
+                height.SetValue(null,999);speed.SetValue(null,999f);
+                var model=(PredictionPlayerMotion)readPlayer.Invoke(null,new object[]{p});
+                Require(model.JumpHeight==expectedHeight && Math.Abs(model.JumpSpeed-expectedSpeed)<.00001f,"A actual ReadPlayer owned vertical liquid/effects fluid="+fluid+" effect="+effect+" native="+expectedHeight+"/"+expectedSpeed+" sampled="+model.JumpHeight+"/"+model.JumpSpeed);cases++;
+            }
+            Console.WriteLine("PASS A actual vertical Source / original effect ordering cases="+cases);
+        }
+        private static void VerticalSteps(MethodInfo readPlayer)
+        {
+            var height=typeof(Player).GetField("jumpHeight",Flags);var speed=typeof(Player).GetField("jumpSpeed",Flags);
+            int cases=0;bool oldServer=Main.dedServ;double oldSurface=Main.worldSurface;int oldWidth=Main.maxTilesX;Main.dedServ=true;Main.worldSurface=140;Main.maxTilesX=120;
+            try
+            {
+                foreach(bool merfolk in new[]{false,true})foreach(int jump in new[]{0,1,4})foreach(float vy in new[]{0f,-2f,1f})
+                foreach(bool held in new[]{false,true})foreach(bool release in new[]{false,true})foreach(float dir in new[]{-1f,1f})
+                foreach(bool slow in new[]{false,true})foreach(bool up in new[]{false,true})foreach(bool down in new[]{false,true})
+                {
+                    var p=new Player{whoAmI=1,active=true,position=new Vector2(400,880),wet=merfolk,merman=merfolk,accFlipper=merfolk,jump=jump,velocity=new Vector2(0,vy),controlJump=held,releaseJump=release,gravDir=dir,slowFall=slow};
+                    typeof(Player).GetField("tryKeepingHoveringUp",Flags).SetValue(p,up);typeof(Player).GetField("tryKeepingHoveringDown",Flags).SetValue(p,down);
+                    if(merfolk)p.armor[3].SetDefaults(497);
+                    var model=(PredictionPlayerMotion)readPlayer.Invoke(null,new object[]{p});
+                    // Locked Player24554/24856 bases and altitude formula,
+                    // independent of the production Parameters result.
+                    float world=(float)Main.maxTilesX/4200;world*=world;
+                    float altitude=(float)((double)(p.position.Y/16-(60+10*world))/(Main.worldSurface/(Main.remixWorld?1.0:6.0)));
+                    float gravity=(merfolk?.3f:Player.defaultGravity)*Math.Max(Main.remixWorld?.1f:.25f,Math.Min(1,altitude));
+                    Require(Math.Abs(model.Gravity-gravity)<.000001,"A owned gravity follows locked base/altitude, not sampled scratch.");
+                    height.SetValue(null,15);speed.SetValue(null,5.01f);
+                    if(merfolk)p.releaseJump=true; // native equip refresh25772
+                    p.JumpMovement();
+                    float acceleration=gravity;if(slow && !down)acceleration/=up?10:3;
+                    float expected=p.velocity.Y+acceleration*dir,fall=(merfolk?7:10)+.01f;
+                    if(expected*dir>fall)expected=fall*dir;
+                    if(slow && !down && expected*dir>fall/3)expected=fall/3*dir;
+                    if(slow && up && expected*dir>fall/5)expected=fall/10*dir;
+                    PlayerVerticalMotion.Step(ref model,new PredictionEnvironment{WorldWidth=Main.maxTilesX,GravityWorldSurface=Main.worldSurface,Remix=Main.remixWorld});
+                    Require(Math.Abs(model.Vy-expected)<.00001 && model.Jump==p.jump && model.ReleaseJump==p.releaseJump && model.SwimTime==p.swimTime,"A original JumpMovement plus ordinary gravity/hover direction/hold phase: "+merfolk+"/"+jump+"/"+vy+"/"+held+"/"+release+"/"+dir+"/"+slow+"/"+up+"/"+down+" expected="+expected+" actual="+model.Vy);cases++;
+                }
+                foreach(bool independent in new[]{false,true})foreach(bool lava in new[]{false,true})foreach(int slime in new[]{0,1})
+                {
+                    var m=new PredictionPlayerMotion{VerticalProfile=true,DefaultGravity=.4f,GravityDirection=1,Wet=true,Merman=true,MerfolkEquipment=true,BaseFlipper=independent,Flipper=true,Jump=15,JumpHeight=15,SwimTime=10,WetSlime=slime};
+                    PlayerVerticalMotion.AfterFluid(ref m,lava,false,lava,false);
+                    Require(m.Jump==(lava || slime>0?15:3) && m.SwimTime==(lava?9:0) && m.WetSlime==0,"A liquid exit consumes old slime before decrement and native frame clears dry swim.");
+                    m.HoldJump=true;m.ReleaseJump=true;m.Vy=1;m.Jump=0;PlayerVerticalMotion.Step(ref m,default(PredictionEnvironment));
+                    Require(m.Merman==false && m.Flipper==independent && (m.Vy<0)==(lava && independent),"A merfolk exits dry/lava without retaining derived flipper; independent flippers remain legal. independent="+independent+" lava="+lava+" slime="+slime+" merman="+m.Merman+" flipper="+m.Flipper+" vy="+m.Vy+" jump="+m.Jump);cases++;
+                }
+                Console.WriteLine("PASS A native jump / hover acceleration / fluid timers and equipment provenance cases="+cases);
+            }
+            finally{Main.dedServ=oldServer;Main.worldSurface=oldSurface;Main.maxTilesX=oldWidth;}
         }
         private static void Gravity(object source)
         {
@@ -239,7 +306,12 @@ namespace NativeWorldTextProbe
                 // Ordinary source initially, then the modeled player enters
                 // the surface. The published whole trajectory must carry the
                 // bounded premise flag, without retaining an ordinary prefix.
+                // This is a vertical first-contact scenario. The native low
+                // altitude gravity is .1 here; inherited Right input would
+                // leave the one-column pool before contact under that gravity.
+                p.controlLeft=p.controlRight=false;
                 NativeCombatObservationChecks.Fresh(context,host);var entering=cache.Read(0);
+                Console.WriteLine("B FLOAT future-entry count="+(entering?.Count??0)+" stop="+entering?.Stop+" assumptions="+entering?.Assumptions+" player="+p.position+" gravity="+p.gravity+" wet="+p.wet+" sampled="+((PredictionPlayerMotion)read.Invoke(null,new object[]{p})).Gravity);
                 Require(entering!=null && entering.Count==121 && (entering.Assumptions&PredictionAssumption.CurrentPlayerObservation)!=0,"B future first water contact restarts the whole player premise once.");cases++;
                 p.position=new Vector2(801,916);var saved=Main.tile[x,y-2];Main.tile[x,y-2]=null;
                 Require(((PredictionPlayerMotion)read.Invoke(null,new object[]{p})).FloatingNow==false && Main.tile[x,y-2]==null,"B dry capability does not read or allocate missing water-line cell.");

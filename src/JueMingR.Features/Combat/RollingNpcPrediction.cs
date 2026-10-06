@@ -152,21 +152,14 @@ namespace JueMingR.Features.Combat
                 }
                 else
                 {
-                    if(p.HoldJump)
-                    {
-                        if(p.Jump>0){p.Vy=-p.JumpSpeed*p.GravityDirection;p.Jump--;}
-                        else if(p.Vy==0 && (p.ReleaseJump || p.AutoJump)){p.Vy=-p.JumpSpeed*p.GravityDirection;p.Jump=p.JumpHeight;}
-                    }
-                    else p.Jump=0;
-                    p.ReleaseJump=!p.HoldJump;
-                    p.Vy+=p.Gravity*p.GravityDirection;
-                    if(p.Vy*p.GravityDirection>p.MaxFall)p.Vy=p.MaxFall*p.GravityDirection;
+                    PlayerVerticalMotion.Step(ref p,e);
                 }
             }
             // Geometry is shared with NPC local acquisition, but player health
             // and AI are never simulated. Liquid/complex mount motion remains
             // an explicit approximation corrected by the next real observation.
             playerBody=new NpcMotionState{X=p.X,Y=p.Y,Vx=p.Vx,Vy=p.Vy,Width=p.Width,Height=p.Height,Active=true,Friendly=true,
+                Wet=p.Wet,Honey=p.Honey,Lava=p.Lava,Shimmer=p.Shimmer,
                 Health=new NpcHealthState{Immortal=true,DontTakeDamage=true,LavaImmune=true,ShimmerImmune=true},WaterSpeed=1,HoneySpeed=1,LavaSpeed=1,ShimmerSpeed=1};
             var playerTerrain=terrain as IPredictionPlayerTerrain;
             if(playerTerrain!=null)
@@ -180,6 +173,7 @@ namespace JueMingR.Features.Combat
             else if(!terrain.Move(ref playerBody,e,out stop))return false;
             if(!Valid(playerBody)){stop=PredictionStop.InvalidState;return false;}
             p.X=playerBody.X;p.Y=playerBody.Y;p.Vx=playerBody.Vx;p.Vy=playerBody.Vy;
+            PlayerVerticalMotion.AfterFluid(ref p,playerBody.Wet,playerBody.Honey,playerBody.Lava,playerBody.Shimmer);
             playerSettled=!p.Complex && !p.Hover && !p.Left && !p.Right && !p.Up && !p.Down && !p.HoldJump && p.Vx==0 && p.Vy==0 && p.X==oldX && p.Y==oldY;
             return true;
         }

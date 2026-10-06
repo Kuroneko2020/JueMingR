@@ -11,6 +11,15 @@ namespace JueMingR.TerrariaHost.Combat
         internal static void Capture(NPC n,ref NpcMotionState state,IPredictionTerrain terrain)
         {
             state.TargetCaptured=true;state.PlayerIndex=state.ClosestPlayerIndex=-1;
+            if(n.type==620)
+            {
+                var aimed=n.GetTargetData(true);state.LiquidTargetY=aimed.Center.Y;state.LiquidTargetPlayer=-1;
+                if(n.HasValidTarget)
+                {
+                    if(n.SupportsNPCTargets && n.HasNPCTarget){state.LiquidTargetKind=3;state.LiquidTargetVy=Main.npc[n.TranslatedTargetIndex].velocity.Y;}
+                    else{state.LiquidTargetKind=1;state.LiquidTargetPlayer=n.target;}
+                }
+            }
             // Collision/direct-player reads keep this NPC's current numbered
             // target until its own modeled TargetClosest call changes it.
             if(n.target>=0 && n.target<Main.maxPlayers && Main.player[n.target]!=null)

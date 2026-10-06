@@ -52,6 +52,7 @@ namespace JueMingR.TerrariaHost.Combat
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcGroundMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcSlimeControl",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.PlayerHorizontalMotion",true),
+                typeof(PlayerVerticalMotion),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcGravityMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.FighterHorizontalMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcAquaticMotion",true),
@@ -191,21 +192,48 @@ namespace JueMingR.TerrariaHost.Combat
             bool floating=PredictionTerrain.FloatingObserved(p);
             // jumpSpeed/Height are shared native scratch, not this player's
             // completed observation. Derive ordinary values from owned effects.
-            int jumpHeight=p.shimmerWet?23:p.wet?30:15;float jumpSpeed=p.shimmerWet?5.51f:p.wet?6.01f:5.01f;
-            if(p.jumpBoost){jumpSpeed=Math.Max(jumpSpeed,6.51f);jumpHeight=Math.Max(jumpHeight,20);}
-            if(p.wereWolf){jumpSpeed+=.2f;jumpHeight+=2;}if(p.moonLordLegs)jumpHeight++;
-            jumpSpeed+=p.jumpSpeedBoost;if(p.sticky){jumpSpeed/=5;jumpHeight/=10;}if(p.dazed){jumpSpeed/=2;jumpHeight/=5;}
-            return new PredictionPlayerMotion{X=p.position.X,Y=p.position.Y,Vx=p.velocity.X,Vy=p.velocity.Y,Width=p.width,Height=p.height,
-                PlayerToken=p,PlayerIndex=p.whoAmI,ObservationMechanism=Prediction.NativePlayerMotion.Mechanism(p)|(floating?256:0)|(p.isLockedToATile?512:0),Rope=p.pulley,InvalidMechanism=badHook,
+            bool stool=p.portableStoolInfo.IsInUse;
+            var motion=new PredictionPlayerMotion{X=p.position.X,Y=p.position.Y,Vx=p.velocity.X,Vy=p.velocity.Y,Width=p.width,Height=p.height,
+                PlayerToken=p,PlayerIndex=p.whoAmI,ObservationMechanism=Prediction.NativePlayerMotion.Mechanism(p)|(floating?256:0)|(p.isLockedToATile?512:0)|(stool?1024:0),Rope=p.pulley,InvalidMechanism=badHook,
                 FloatingNow=floating,FloatMount37=p.mount.Active && p.mount.Type==37,ShimmerImmune=PredictionTerrain.PlayerShimmerImmune(p),
                 Gravity=p.gravity,GravityDirection=p.gravDir,MaxFall=p.maxFallSpeed,Acceleration=hover?p.mount.Acceleration:p.runAcceleration,
                 Slowdown=hover?.2f:p.runSlowdown,MaxSpeed=hover?p.mount.RunSpeed:p.maxRunSpeed,FastMaxSpeed=hover?p.mount.DashSpeed:p.chilled && p.oldStyleParkour?p.maxRunSpeed:p.accRunSpeed,
                 WindSpeed=Main.windSpeedCurrent,WindPushed=p.windPushed && p.CanBePushedByWind(),TrackBoost=p.trackBoost,
-                DashDelay=p.dashDelay,Wings=p.wingsLogic>0,CanFly=p.mount.CanFly(p),OnWrongGround=p.onWrongGround,PortalPhysics=p.PortalPhysicsEnabled,Jump=p.jump,JumpHeight=jumpHeight,JumpSpeed=jumpSpeed,
+                DashDelay=p.dashDelay,Wings=p.wingsLogic>0,CanFly=p.mount.CanFly(p),OnWrongGround=p.onWrongGround,PortalPhysics=p.PortalPhysicsEnabled,Jump=p.jump,
+                VerticalProfile=true,Wet=p.wet,Honey=p.honeyWet,Lava=p.lavaWet,Shimmer=p.shimmerWet,DefaultGravity=Player.defaultGravity,JumpSpeedBoost=p.jumpSpeedBoost,
+                Mounted=p.mount.Active,MountAdditive=p.mount.Active && p.mount.MovementStatsAreAdditive,MountJumpHeight=p.mount.Active?p.mount.JumpHeight(p.velocity.X):0,MountJumpSpeed=p.mount.Active?p.mount.JumpSpeed(p.velocity.X):0,JumpHeightExtra=stool?5:0,MerfolkEquipment=MerfolkEquipment(p),
+                JumpBoost=p.jumpBoost,WereWolf=p.wereWolf,MoonLordLegs=p.moonLordLegs,Sticky=p.sticky,Dazed=p.dazed,SlowFall=p.slowFall,Vortex=p.vortexDebuff,DownDash=p.isPerformingJump_DownDash,Flipper=p.accFlipper,BaseFlipper=IndependentFlipper(p),HoverUp=p.TryingToHoverUp,HoverDown=p.TryingToHoverDown,SwimTime=p.swimTime,WetSlime=p.wetSlime,
                 IgnorePlatforms=p.gravDir<0 || p.mount.Active && (p.mount.Cart || p.mount.Type==12 || p.mount.Type==7 || p.mount.Type==8 || p.mount.Type==23 || p.mount.Type==44 || p.mount.Type==48 || p.mount.Type==55 && p.slideDir!=0) || p.GoingDownWithGrapple || p.pulley,
                 IgnoreWater=p.ignoreWater,Merman=p.merman,Trident=p.trident,OnTrack=p.onTrack,Cart=p.mount.Active && p.mount.Cart,SkipSlope=p.mount.Active && p.mount.Type==48,SkipConveyor=p.grapCount>0 || p.pulley || p.shimmering || p.tongued || p.isLockedToATile,
                 RidingTracks=p.IsRidingTracks,StepMount=p.mount.Active && (p.mount.Type==7 || p.mount.Type==8 || p.mount.Type==12 || p.mount.Type==44 || p.mount.Type==49),Carpet=p.carpetFrame!=-1,Grappled=p.grappling!=null && p.grappling.Length>0 && p.grappling[0]>=0,UnsupportedGeometry=p.shimmering || p.tongued || p.pulley || p.grappling!=null && p.grappling.Length>0 && p.grappling[0]>=0,FloatInWater=p.ShouldFloatInWater,StairFall=p.stairFall,GfxOffset=p.gfxOffY,StepSpeed=p.stepSpeed,
-                Left=p.controlLeft,Right=p.controlRight,Up=p.controlUp,Down=p.controlDown,HoldJump=p.controlJump,ReleaseJump=p.releaseJump,AutoJump=p.autoJump,Hover=hover,Complex=Prediction.NativePlayerMotion.Conditional(p),WaterWalk=p.waterWalk || p.waterWalk2,LavaWalk=p.waterWalk};
+                Left=p.controlLeft,Right=p.controlRight,Up=p.controlUp,Down=p.controlDown,HoldJump=p.controlJump,ReleaseJump=p.releaseJump,AutoJump=p.autoJump,Hover=hover,Complex=stool || Prediction.NativePlayerMotion.Conditional(p),WaterWalk=p.waterWalk || p.waterWalk2,LavaWalk=p.waterWalk};
+            PlayerVerticalMotion.Parameters(ref motion,new PredictionEnvironment{WorldWidth=Main.maxTilesX,GravityWorldSurface=Main.worldSurface,Remix=Main.remixWorld});
+            // Non-hover mounts/stool retain the established finite observation
+            // premise. These samples still report their owned current jump.
+            return motion;
+        }
+        private static bool MerfolkEquipment(Player p)
+        {
+            // accMerman is cleared by Player.Update before the completed
+            // observation. Read the finite owning accessories without running
+            // equipment updates or using another player's static scratch.
+            for(int slot=3;slot<10;slot++)
+            {var item=p.GetEffectiveArmor(slot);if(!p.IsItemSlotUnlockedAndUsable(slot) || item.expertOnly && !Main.expertMode)continue;if(item.type==497 || item.type==861 || item.type==3110)return true;}
+            return false;
+        }
+        private static bool IndependentFlipper(Player p)
+        {
+            if(p.accFlipper && !p.merman && !(p.wet && p.ShouldFloatInWater))return true;
+            // These are the finite native non-merfolk producers. Distinguish
+            // them even when the completed aggregate also includes merfolk.
+            for(int i=0;i<p.buffType.Length;i++)if(p.buffTime[i]>0)
+            {int b=p.buffType[i];if(b==109 || b==131 || b==168 || b==265 || b==279 || b==305)return true;}
+            for(int slot=3;slot<10;slot++)
+            {
+                var item=p.GetEffectiveArmor(slot);if(!p.IsItemSlotUnlockedAndUsable(slot) || item.expertOnly && !Main.expertMode)continue;
+                int t=item.type;if(t==187 || t==394 || t==1860 || t==1861 || t==3994 || t==3995)return true;
+            }
+            return false;
         }
         internal static NpcMotionState Read(NPC n,long session)
         {
@@ -237,7 +265,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(health.Fire>0 || health.Fire3>0 || n.buffType[19]!=0){health.Buffs.Captured=true;for(int i=0;i<20;i++)health.Buffs.Set(i,n.buffType[i],n.buffTime[i],Main.debuff[n.buffType[i]]);}
             return new NpcMotionState{Alpha=n.alpha,UnmodeledDamageTicks=attached,NetOffsetX=n.netOffset.X,NetOffsetY=n.netOffset.Y,SmoothingRange=Main.multiplayerNPCSmoothingRange,ResetNetOffset=Main.netMode==2 || NPC.offSetDelayTime>0 || NPCID.Sets.NoMultiplayerSmoothingByType[n.type] || NPCID.Sets.NoMultiplayerSmoothingByAI[n.aiStyle] || n.townNPC && n.ai[0]==25,Friendly=n.friendly,ChildSlot=child,ChildIdentity=linked!=null && linked.active && linked.aiStyle==n.aiStyle?CombatSelection.Identity(linked,session):default(NpcIdentity),LavaSpeed=n.lavaMovementSpeed,ShimmerSpeed=n.shimmerMovementSpeed,Lava=n.lavaWet,Shimmer=n.shimmerWet,Health=health,Identity=CombatSelection.Identity(n,session),X=n.position.X,Y=n.position.Y,OldX=n.oldPosition.X,OldY=n.oldPosition.Y,StairFall=n.stairFall,Vx=n.velocity.X,Vy=n.velocity.Y,OldVx=n.oldVelocity.X,OldVy=n.oldVelocity.Y,Width=n.width,Height=n.height,Scale=n.scale,Style=n.aiStyle,Direction=n.direction,DirectionY=n.directionY,Target=n.target,
                 CollisionPart=HasCollisionPart(n),Town=n.townNPC,HomeTileY=n.homeTileY,CritterTurns=NPCID.Sets.CritterThatCanTurnOnPlayers[n.type],Boss=n.boss,InactivityImmune=n.DoesntDespawnToInactivity() || n.townNPC,SpriteDirection=n.spriteDirection,SpawnedFromStatue=n.SpawnedFromStatue,ParentSlot=(n.aiStyle==6 || n.aiStyle==37) && n.ai[1]>0?(int)n.ai[1]:-1,TimeLeft=n.timeLeft,ConfusedTicks=confused,Life=n.life,LifeMax=n.lifeMax,BuffFingerprint=buffHash,BuffExpires=expires,WaterSpeed=n.waterMovementSpeed,HoneySpeed=n.honeyMovementSpeed,
-                A0=n.ai[0],A1=n.ai[1],A2=n.ai[2],A3=n.ai[3],L0=n.localAI[0],L1=n.localAI[1],L2=n.localAI[2],L3=n.localAI[3],Active=n.active,NoGravity=n.noGravity,NoTileCollide=n.noTileCollide,Wet=n.wet,Honey=n.honeyWet,CollideX=n.collideX,CollideY=n.collideY,CanReceive=CombatSelection.Receives(n,true),CanHarm=!n.friendly && n.damage>0,NoContactDamage=n.damage==0,JustHit=n.justHit};
+                A0=n.ai[0],A1=n.ai[1],A2=n.ai[2],A3=n.ai[3],L0=n.localAI[0],L1=n.localAI[1],L2=n.localAI[2],L3=n.localAI[3],Active=n.active,NoGravity=n.noGravity,NoTileCollide=n.noTileCollide,Wet=n.wet,WetCount=n.wetCount,Honey=n.honeyWet,CollideX=n.collideX,CollideY=n.collideY,CanReceive=CombatSelection.Receives(n,true),CanHarm=!n.friendly && n.damage>0,NoContactDamage=n.damage==0,JustHit=n.justHit};
         }
         private static bool HasCollisionPart(NPC n)
         {

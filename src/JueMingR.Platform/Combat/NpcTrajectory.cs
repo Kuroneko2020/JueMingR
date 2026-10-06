@@ -53,6 +53,10 @@ namespace JueMingR.Platform.Combat
         // Tracking geometry may instead belong to a guardian or encoded NPC.
         public MotionRect PlayerArea,TrackingArea;
         public int PlayerIndex,TrackingKind;
+        // GetTargetData(true), distinct from TargetClosest's candidate and
+        // the numbered-player platform predicate. Invalid data has center0.
+        public int LiquidTargetKind,LiquidTargetPlayer,WetCount;
+        public float LiquidTargetY,LiquidTargetVy;
         public float TrackingVx,TrackingVy;
         public bool TargetCaptured,HasPlayer,PlayerDead,PlayerWet,PlayerIdle,PlayerGraveyard;
         public MotionRect ClosestPlayerArea;

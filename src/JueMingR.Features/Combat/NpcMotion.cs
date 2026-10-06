@@ -138,7 +138,7 @@ namespace JueMingR.Features.Combat
             else if(n.Style==3 && NpcGroundMotion.Known(n.EffectiveType))
             {if(!NpcGroundMotion.Step(ref n,env,terrain,confused,out stop))return false;}
             else if(n.Style==3)
-            {if(!NpcGroundMotion.Fallback(ref n,env,confused,elapsed,out stop))return false;}
+            {if(!NpcGroundMotion.Fallback(ref n,env,terrain,confused,elapsed,out stop))return false;}
             else if(n.Style==2 && (n.Identity.Type==2 || n.Identity.Type==133 || n.Identity.Type>=190 && n.Identity.Type<=194))
             {
                 n.NoGravity=true;

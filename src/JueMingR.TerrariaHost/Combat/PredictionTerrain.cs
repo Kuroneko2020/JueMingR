@@ -219,8 +219,20 @@ namespace JueMingR.TerrariaHost.Combat
                     }
                 }
             }
-            if(!playerMode && next.Wet && !wet)next.Vx*=.5f;
-            next.Wet=wet;next.Honey=wet && (liquid==2 || next.Honey);next.Shimmer=wet && (liquid==3 || next.Shimmer);next.Lava=wet && next.Lava;
+            // Native lava damage/effects precede water eligibility. A family
+            // opting out of wetness must not erase that already-consumed lava.
+            if(!playerMode && !NpcCollisionRules.LiquidEligible(next)){wet=lava=false;next.WetCount=0;}
+            if(!playerMode && next.Style==116)next.WetCount=10;
+            if(!playerMode && wet!=next.Wet && next.WetCount==0)next.WetCount=10;
+            if(!playerMode && next.LiquidTargetKind==3)next.LiquidTargetY+=next.LiquidTargetVy;
+            if(!playerMode && next.Wet && !wet)
+            {
+                next.Vx*=.5f;
+                float targetY=next.LiquidTargetKind==1 && next.LiquidTargetPlayer==environment.PlayerIndex?environment.PlayerY:next.LiquidTargetY;
+                if(next.EffectiveType==620 && targetY<next.Bounds.CenterY)next.Vy-=8;
+            }
+            next.Wet=wet;next.Honey=wet && (liquid==2 || !playerMode && next.Honey);next.Shimmer=wet && (liquid==3 || !playerMode && next.Shimmer);next.Lava=wet && next.Lava;
+            if(!playerMode && next.WetCount>0)next.WetCount--;
             if(!playerMode && wet && !environment.Multiplayer)
             {if(!lava)NpcHealth.Extinguish(ref next.Health);if(next.Shimmer && !next.Health.ShimmerImmune && next.Health.ShimmerTicks<=10)next.Health.ShimmerTicks=100;}
             next.OldVx=next.Vx;next.OldVy=next.Vy;
