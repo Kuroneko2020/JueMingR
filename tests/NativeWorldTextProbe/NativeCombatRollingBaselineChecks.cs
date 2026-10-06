@@ -119,7 +119,7 @@ namespace NativeWorldTextProbe
                     // r1/r2 preserve the cold-start interruption evidence.
                     phase="startup-idle";NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true,mouseCenter:true,radius:0));
                     if(candidate && Environment.GetEnvironmentVariable("JUEMINGR_ROLLING_BOUNDARIES")=="1")
-                        NativeCombatRollingBoundaryChecks.Run(host,cache,step,output);
+                        NativeCombatRollingBoundaryChecks.Run(context,host,cache,step,output);
                     var startup=Stopwatch.StartNew();int startupUpdates=0;
                     while(!candidate && startup.Elapsed.TotalSeconds<70)
                     {

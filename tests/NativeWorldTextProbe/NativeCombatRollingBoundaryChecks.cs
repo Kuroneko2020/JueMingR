@@ -11,12 +11,18 @@ namespace NativeWorldTextProbe
 {
     internal static class NativeCombatRollingBoundaryChecks
     {
-        internal static void Run(object host,NpcPredictionCache cache,Action step,string output)
+        internal static void Run(object context,object host,NpcPredictionCache cache,Action step,string output)
         {
             var source=Get(host,"Prediction");
             Require(Get(source,"Native")==null,"Default production composition has no native owner.");
             int slot=NPC.NewNPC(NPC.GetSpawnSourceForNaturalSpawn(),1600,2400,NPCID.Derpling,Start:16,Target:Main.myPlayer);
-            var n=Main.npc[slot];step();cache.Demand(0,1,120);cache.Demand(1,120);
+            var n=Main.npc[slot];step();
+            // The first runtime update enters the isolated world and clears old input; sample after that real lifecycle boundary.
+            NativeCombatModeledImpactChecks.SampleMouse(context,n.Center);Call(context,"UpdateRuntime");Call(context,"UpdateShell");
+            var selected=(NpcIdentity)Get(Get(host,"Selection"),"Target");
+            Console.WriteLine("SHORT-SELECTION has="+Get(Get(host,"Selection"),"HasTarget")+" mouse="+Get(Get(host,"Selection"),"RealMouse")+" hasMouse="+Get(Get(host,"Selection"),"HasMouse")+" npc="+n.position+" size="+n.Size+" active="+n.active+" life="+n.life+" expected="+slot+" actual="+selected.Slot+" options="+((ObservationOptions)Get(host,"Options")).Radius);
+            Require((bool)Get(Get(host,"Selection"),"HasTarget") && ReferenceEquals(selected.Token,n) && selected.Slot==slot,"Short-prefix fixture enters through the actual unique target consumer.");
+            cache.Demand(0,1,120);cache.Demand(1,120);
             TerrainBounds(source,n);
             var identity=new NpcIdentity((long)Get(host,"Session"),n,n.whoAmI,n.generation,n.type,n.netID);
             foreach(int effect in new[]{120,151,169,183,186,189,337,344,362,30,375,395,397})
@@ -67,6 +73,7 @@ namespace NativeWorldTextProbe
                 rows.Add("known-DOT-death,"+n.life+","+n.active+","+path.Count+","+path.Stop+","+cache.MinimumRequired+","+(cache.Read(0)!=null)+","+(cache.Read(1)!=null));
                 Require(cache.Read(0)==path && cache.Read(1)==null,"Display consumes the true short endpoint; strict120 still refuses it.");
                 Main.screenPosition=n.Center-new Vector2(Main.screenWidth/2,Main.screenHeight/2);Call(Get(host,"World"),"Prepare");NativeCombatPresentationChecks.Project(Get(host,"World"));
+                Console.WriteLine("SHORT-PRESENT identity="+identity.Equals((NpcIdentity)Get(Get(host,"Selection"),"Target"))+" strokes="+Get(Get(host,"World"),"StrokeCount")+" text="+Get(Get(host,"World"),"pathText"));
                 Require((int)Get(Get(host,"World"),"StrokeCount")>0 && ((string)Get(Get(host,"World"),"pathText")).Contains("0.2 秒"),"WorldLayer actually projects the short endpoint and its real duration.");
                 n.life=life;n.lifeRegenCount=regen;for(int i=0;i<n.buffType.Length;i++)if(n.buffType[i]==BuffID.OnFire)n.DelBuff(i);
                 n.position.X=15;n.velocity.X=-4;
@@ -120,3 +127,5 @@ namespace NativeWorldTextProbe
         {value.GetType().GetMethod(name,System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.Public|System.Reflection.BindingFlags.NonPublic).Invoke(value,args);}
     }
 }
+
+
