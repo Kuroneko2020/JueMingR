@@ -4,6 +4,7 @@ using JueMingR.Features.Combat;
 using JueMingR.Platform.Combat;
 using Microsoft.Xna.Framework;
 using Terraria;
+using Terraria.ID;
 using static NativeWorldTextProbe.NativeInformationChecks;
 
 namespace NativeWorldTextProbe
@@ -17,9 +18,10 @@ namespace NativeWorldTextProbe
         {
             var host=Get(context,"CombatObservation");var source=Get(host,"Prediction");
             var readPlayer=source.GetType().GetMethod("ReadPlayer",Flags);
-            if(Environment.GetEnvironmentVariable("JUEMINGR_FOUNDATION_ONLY")!="source"){Gravity(source);Horizontal(readPlayer);}
+            if(Environment.GetEnvironmentVariable("JUEMINGR_FOUNDATION_ONLY")!="source"){Gravity(source);Horizontal(readPlayer);FighterRules(source);}
             DefaultSource(context,host,source);
             SlimeSource(context,host,source);
+            FighterEntrySource(context,host,source);
             FloatingSource(context,host,source,readPlayer);
         }
         private static void Gravity(object source)
@@ -74,6 +76,41 @@ namespace NativeWorldTextProbe
             }
             finally{Main.dedServ=oldServer;Main.windSpeedCurrent=oldWind;}
         }
+        private static void FighterRules(object source)
+        {
+            var kernel=typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.FighterHorizontalMotion").GetMethod("Step",Flags);var read=source.GetType().GetMethod("Read",Flags);var ai=typeof(NPC).GetMethod("AI_003_Fighters",Flags);var nativeGravity=typeof(NPC).GetMethod("UpdateNPC_UpdateGravity",Flags);int cases=0;
+            var p=Main.LocalPlayer;p.active=true;p.dead=false;p.position=new Vector2(1100,500);Main.dayTime=false;Main.netMode=1;
+            for(int i=0;i<Main.maxPlayers;i++)if(Main.player[i]==null)Main.player[i]=new Player{whoAmI=i};typeof(NPC).GetField("gravity",Flags).SetValue(null,.3f);
+            var env=new PredictionEnvironment{PlayerIndex=p.whoAmI,PlayerX=p.Center.X,PlayerY=p.Center.Y,PlayerWidth=p.width,PlayerHeight=p.height,WorldSurface=20,WorldWidth=120};
+            foreach(int type in new[]{3,21,27,104,109,67,78,79,287,243,251,270,310,508,580,582,159,199,120,386,460,419,518,532,430,425,489,466,586,480,462,463})foreach(float vx in new[]{-2f,0f,.8f,2f,7f})foreach(float vy in new[]{0f,1f})foreach(int life in new[]{49,50,100})foreach(float scale in new[]{.8f,1f,1.2f})
+            {
+                var n=new NPC();n.SetDefaults(type);n.whoAmI=199;n.position=new Vector2(500,400);n.target=p.whoAmI;n.direction=n.spriteDirection=1;n.velocity=new Vector2(vx,vy);n.lifeMax=100;n.life=life;n.scale=scale;n.ai[3]=type==466?0:1;n.ai[2]=type==466?1:0;n.noTileCollide=true;
+                if(type==586)n.alpha=0;
+                var state=(NpcMotionState)read.Invoke(null,new object[]{n,1L});state.Gravity=.3f;var args=new object[]{state,env};Require((bool)kernel.Invoke(null,args),"A direct common fighter family modeled.");state=(NpcMotionState)args[0];ai.Invoke(n,null);
+                Require(Math.Abs(n.velocity.X-state.Vx)<.00001f,"A original common fighter horizontal type="+type+" life="+life+" vx="+vx+" vy="+vy+" native="+n.velocity.X+" model="+state.Vx);cases++;
+            }
+            foreach(float phase in new[]{0f,-16f,-1f})
+            {
+                var n=new NPC();n.SetDefaults(466);n.whoAmI=199;n.position=new Vector2(500,400);n.target=p.whoAmI;n.direction=1;n.velocity=new Vector2(-2,0);n.ai[2]=phase;
+                var state=(NpcMotionState)read.Invoke(null,new object[]{n,1L});var args=new object[]{state,env};Require(!(bool)kernel.Invoke(null,args),"A dormant/revealing466 cannot enter common motor.");ai.Invoke(n,null);
+                Require(n.velocity.X==(phase==-1?2:-2),"A original466 reveal returns before horizontal motor.");cases++;
+            }
+            foreach(int entry in new[]{0,1,2})
+            {
+                var n=new NPC();n.SetDefaults(586);n.whoAmI=199;n.position=new Vector2(500,400);n.target=p.whoAmI;n.direction=1;n.velocity=new Vector2(-2,0);n.alpha=entry==0?255:0;n.wet=entry==1;n.ai[3]=entry==2?-.10101f:0;
+                var state=(NpcMotionState)read.Invoke(null,new object[]{n,1L});var args=new object[]{state,env};Require(!(bool)kernel.Invoke(null,args),"A586 spawn/fluid vector entry is independent of common motor.");cases++;
+            }
+            // Public clipping is observable BEFORE the independent aerial AI
+            // branch: with a lower target, vy<6 permits +.15 only after clip.
+            float clipped=0,unclipped=0;
+            foreach(bool apply in new[]{false,true})
+            {
+                var n=new NPC();n.SetDefaults(427);n.whoAmI=199;n.position=new Vector2(500,300);n.target=p.whoAmI;n.direction=1;n.velocity=new Vector2(1,40);n.ai[2]=1;n.noTileCollide=true;
+                if(apply)nativeGravity.Invoke(n,new object[]{0f});ai.Invoke(n,null);if(apply)clipped=n.velocity.Y;else unclipped=n.velocity.Y;
+            }
+            Require(Math.Abs(clipped-4.15f)<.00001f && unclipped==40,"A original AI branch entrance changes when public gravity clips first.");
+            Main.netMode=0;Console.WriteLine("PASS A original common fighter local AI cases="+cases+"; public pre-AI clip discriminator clipped="+clipped+" unclipped="+unclipped);
+        }
         private static void DefaultSource(object context,object host,object source)
         {
             foreach(var n in Main.npc)n.active=false;
@@ -96,6 +133,14 @@ namespace NativeWorldTextProbe
             NativeCombatObservationChecks.Fresh(context,host);Require(cache.Read(0)==null && (bool)Get(Get(host,"Selection"),"HasTarget") && (bool)Get(host,"Marker"),"B bad grapple owner rejects future while independent selected marker remains.");cases++;
             p.grappling[0]=-1;p.grapCount=0;p.velocity=new Vector2(float.NaN,0);NativeCombatObservationChecks.Fresh(context,host);Require(cache.Read(0)==null,"B real source invalid player numeric remains rejected.");cases++;
             p.velocity=Vector2.Zero;NativeCombatObservationChecks.Fresh(context,host);Require(cache.Read(0)!=null,"B restoring valid ordinary numeric state recovers automatically.");cases++;
+            p.grappling[0]=4;p.grapCount=1;Main.projectile[4].owner=p.whoAmI;n0.SetDefaults(43);n0.whoAmI=2;n0.active=true;n0.target=p.whoAmI;n0.position=new Vector2(500,600);n0.ai[0]=n0.ai[1]=30;
+            var root=Main.tile[30,30];Main.tile[30,30]=null;NativeCombatObservationChecks.Fresh(context,host);
+            Require(cache.Read(0)==null && (bool)Get(Get(host,"Selection"),"HasTarget") && Main.tile[30,30]==null,"B legal grapple player premise never waives missing necessary NPC root geometry or creates a Tile.");Main.tile[30,30]=root;cases++;
+            n0.SetDefaults(2);n0.whoAmI=2;n0.active=true;n0.target=p.whoAmI;n0.position=new Vector2(float.NaN,600);NativeCombatObservationChecks.Fresh(context,host);Require(cache.Read(0)==null,"B bounded player never waives nonfinite selected NPC physical state.");cases++;
+            n0.position=new Vector2(500,600);p.grapCount=0;NativeCombatObservationChecks.Fresh(context,host);Require(cache.Read(0)==null,"B inconsistent active grapple count remains an invalid premise.");cases++;
+            p.grappling[0]=-1;Main.projectile[4].active=false;n0.SetDefaults(34);n0.whoAmI=2;n0.active=true;n0.target=255;n0.position=new Vector2(500,600);p.velocity=new Vector2(float.NaN,0);NativeCombatObservationChecks.Fresh(context,host);
+            Require(cache.Read(0)!=null && cache.Read(0).Count==121 && (cache.Read(0).Assumptions&PredictionAssumption.NoPlayerMotionNeeded)!=0,"B independent default Source trend does not require missing numbered player or unrelated local velocity.");cases++;
+            p.velocity=Vector2.Zero;n0.SetDefaults(2);n0.whoAmI=2;n0.active=true;n0.target=p.whoAmI;n0.position=new Vector2(500,600);
             n0.dontTakeDamage=true;NativeCombatObservationChecks.Fresh(context,host);Require(cache.Read(0)==null && !(bool)Get(Get(host,"Selection"),"HasTarget"),"B invalid receiver identity never becomes a conditional target.");cases++;
             NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatObservationChecks.Fresh(context,host);Require(cache.Required==0 && cache.Read(0)==null,"B OFF retires the shared demand.");cases++;
             Console.WriteLine("PASS B DEFAULT SOURCE original Host selection + ReadPlayer + rolling + actual Cache cases="+cases);
@@ -118,8 +163,31 @@ namespace NativeWorldTextProbe
             // must not be replaced by an unrelated local-player observation.
             n.SetDefaults(59);n.whoAmI=2;n.active=true;n.target=other.whoAmI;n.position=new Vector2(500,900);n.wet=true;n.velocity.Y=-1;n.ai[2]=1;other.dead=true;
             NativeCombatObservationChecks.Fresh(context,host);Require(cache.Read(0)==null,"B lava vertical old-target prerequisite remains a hard Source refusal.");cases++;
+            foreach(bool oldDead in new[]{false,true})
+            {
+                Main.dayTime=true;Main.worldSurface=140;other.dead=oldDead;n.SetDefaults(1);n.whoAmI=2;n.active=true;n.target=other.whoAmI;n.position=new Vector2(500,900);n.velocity=Vector2.Zero;n.ai[0]=-1;n.ai[2]=1;n.ai[3]=-1;n.lifeRegenCount=-112;n.AddBuff(BuffID.OnFire,60);
+                Require(n.life==n.lifeMax && n.buffTime[0]>0,"B legal full-health burning slime observation precedes the next DOT action.");
+                NativeCombatObservationChecks.Fresh(context,host);var path=cache.Read(0);Console.WriteLine("B SLIME health-before-AI oldDead="+oldDead+" future="+(path==null?0:path.Count-1)+" stop="+path?.Stop);
+                Require(path!=null && path.Count>1 && path.Stop!=PredictionStop.MissingDependency,"B real Source must use AI-entry life after DOT when selecting a first jumping player's prerequisite.");cases++;
+            }
+            Main.dayTime=false;Main.worldSurface=20;
             other.active=false;other.dead=false;n.SetDefaults(2);n.whoAmI=2;n.active=true;n.target=p.whoAmI;n.position=new Vector2(500,600);
             Console.WriteLine("PASS B SLIME actual default Source first-action prerequisite cases="+cases);
+        }
+        private static void FighterEntrySource(object context,object host,object source)
+        {
+            var p=Main.LocalPlayer;var other=Main.player[(p.whoAmI+1)%Main.maxPlayers];var n=Main.npc[2];var cache=(NpcPredictionCache)Get(source,"Cache");int cases=0;
+            p.active=true;p.dead=false;p.position=new Vector2(800,900);p.velocity=Vector2.Zero;other.active=true;other.position=new Vector2(1600,900);
+            foreach(bool dead in new[]{false,true})foreach(int type in new[]{466,586})
+            {
+                other.dead=dead;n.SetDefaults(type);n.whoAmI=2;n.active=true;n.target=other.whoAmI;n.position=new Vector2(500,900);n.velocity=new Vector2(1,0);n.ai[3]=0;
+                NativeCombatObservationChecks.Fresh(context,host);var path=cache.Read(0);Console.WriteLine("B FIGHTER entry type="+type+" oldDead="+dead+" future="+(path==null?0:path.Count-1)+" stop="+path?.Stop);
+                Require(path!=null && path.Count>1 && path.Stop!=PredictionStop.MissingDependency,"B fighter action-entry TargetClosest shares the real Source prerequisite.");cases++;
+            }
+            other.dead=true;n.SetDefaults(466);n.whoAmI=2;n.active=true;n.target=other.whoAmI;n.position=new Vector2(500,900);n.ai[2]=-8;n.ai[3]=0;
+            NativeCombatObservationChecks.Fresh(context,host);Require(cache.Read(0)!=null && cache.Read(0).Count==121 && (cache.Read(0).Assumptions&PredictionAssumption.NoPlayerMotionNeeded)!=0,"B revealing466 trend consumes no old numbered player and must not acquire a dead prerequisite.");cases++;
+            other.active=false;other.dead=false;n.SetDefaults(2);n.whoAmI=2;n.active=true;n.target=p.whoAmI;n.position=new Vector2(500,600);
+            Console.WriteLine("PASS B FIGHTER bounded action-entry prerequisites cases="+cases);
         }
         private static void FloatingSource(object context,object host,object source,MethodInfo read)
         {
@@ -135,6 +203,16 @@ namespace NativeWorldTextProbe
                     var sampled=(PredictionPlayerMotion)read.Invoke(null,new object[]{p});
                     Require(sampled.FloatInWater==p.ShouldFloatInWater && !sampled.FloatingNow,"B dry floating ability and native mount/Down qualification never imply current floating.");cases++;
                 }
+                int lineCases=0;var immune=typeof(Player).GetField("shimmerImmune",Flags);
+                foreach(int mount in new[]{-1,37,5})foreach(bool down in new[]{false,true})foreach(bool shimmer in new[]{false,true})foreach(bool immunity in new[]{false,true})foreach(int pattern in new[]{-1,0,1,2,3})foreach(float vy in new[]{-2f,0f,8f})
+                {
+                    if(p.mount.Active)p.mount.Dismount(p);if(mount>=0)p.mount.SetMount(mount,p);p.width=20;p.height=42;p.position=new Vector2(801,916);p.velocity=new Vector2(0,vy);p.wet=true;p.shimmerWet=shimmer;p.honeyWet=false;p.ignoreWater=p.merman=p.trident=false;p.canFloatInWater=true;p.controlDown=down;immune.SetValue(p,immunity);
+                    int xx=(int)(p.Center.X/16),yy=(int)(p.Center.Y/16);for(int row=-2;row<=1;row++){Main.tile[xx,yy+row].active(false);Main.tile[xx,yy+row].liquid=(byte)(pattern==row+2?255:0);}
+                    float line;bool exists=Collision.GetWaterLine(xx,yy,out line);
+                    bool expected=p.ShouldFloatInWater && (!shimmer || immunity) && (!exists || p.Center.Y-(mount==37?6:0)+8+vy>=line);
+                    Require(((PredictionPlayerMotion)read.Invoke(null,new object[]{p})).FloatingNow==expected,"B original readonly line branches / mount37 offset / Down / shimmer immunity: mount="+mount+" pattern="+pattern+" vy="+vy+" shimmer="+shimmer+" immunity="+immunity);lineCases++;
+                }
+                Console.WriteLine("PASS B FLOAT original water-line/action qualification matrix="+lineCases);immune.SetValue(p,false);p.shimmerWet=false;
                 if(p.mount.Active)p.mount.Dismount(p);p.width=20;p.height=42;p.position=new Vector2(801,916);p.velocity=Vector2.Zero;p.controlDown=false;p.wet=true;p.ignoreWater=p.merman=p.trident=false;
                 int x=(int)(p.Center.X/16),y=(int)(p.Center.Y/16);
                 for(int yy=y-2;yy<=y+1;yy++){Main.tile[x,yy].active(false);Main.tile[x,yy].liquid=0;}

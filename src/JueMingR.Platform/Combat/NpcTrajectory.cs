@@ -47,6 +47,8 @@ namespace JueMingR.Platform.Combat
         public NpcHealthState Health;
         public bool Friendly,Town,CollisionPart;
         public int HomeTileY;
+        // AI_003's spawn/reveal action can precede its common motor.
+        public int Alpha;
         // The numbered player supplies environmental/direct-player predicates.
         // Tracking geometry may instead belong to a guardian or encoded NPC.
         public MotionRect PlayerArea,TrackingArea;

@@ -8,7 +8,12 @@ namespace JueMingR.Features.Combat
     // extra damage. This state is private to the bounded forecast.
     public static class NpcHealth
     {
-        internal static bool Step(ref NpcMotionState n,NpcMotionState[] group,int count,PredictionEnvironment e,out PredictionStop stop)
+        // A first-action target prerequisite needs this actor's AI-entry life.
+        // Shared-owner DOT settlement cannot change that life and must never
+        // write the captured group during this read-only value projection.
+        internal static bool ProjectForTargetChoice(ref NpcMotionState n,PredictionEnvironment e)
+        {PredictionStop stop;return Step(ref n,null,0,e,out stop,true);}
+        internal static bool Step(ref NpcMotionState n,NpcMotionState[] group,int count,PredictionEnvironment e,out PredictionStop stop,bool targetChoiceOnly=false)
         {
             stop=PredictionStop.None;var h=n.Health;
             bool poison=Tick(ref h.Poison),fire=Tick(ref h.Fire),cursed=Tick(ref h.Cursed),venom=Tick(ref h.Venom),frost=Tick(ref h.Frost),fire3=Tick(ref h.Fire3),frost2=Tick(ref h.Frost2);
@@ -49,6 +54,7 @@ namespace JueMingR.Features.Combat
                     h.RegenCount+=120*damage;
                     if(h.RealLife>=0 && h.RealLife!=n.Identity.Slot)
                     {
+                        if(targetChoiceOnly)continue;
                         int root=-1;for(int i=0;i<count;i++)if(group[i].Identity.Slot==h.RealLife && group[i].Active){root=i;break;}
                         if(root<0){stop=PredictionStop.MissingDependency;return false;}
                         var owner=group[root];if(!Hurt(ref owner,damage,e.Multiplayer,out stop))return false;group[root]=owner;

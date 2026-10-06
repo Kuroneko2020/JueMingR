@@ -10,7 +10,12 @@ namespace JueMingR.Features.Combat
         private static readonly float[] zombieSpeeds={2,1,1.5f,3,1.25f,3,3.25f,2,2.75f,1.8f,1.3f,2.5f};
         internal static bool Step(ref NpcMotionState n,PredictionEnvironment e)
         {
-            int t=n.EffectiveType;float speed=1,acc=.07f,overspeed=.8f,reverse=1;
+            int t=n.EffectiveType;
+            // AI_003 returns during the dormant/revealing action before its
+            // shared motor. Only the active form may consume these parameters;
+            // the unmodeled reveal remains a finite observed trend.
+            if(IndependentEntry(n))return false;
+            float speed=1,acc=.07f,overspeed=.8f,reverse=1;
             bool reverseInAir=false;float threshold=0;
             if(t==159 || t==349){speed=6;reverse=.99f;if(t==159 && n.Vx*n.Direction<0)n.Vx*=.95f;}
             else if(n.CritterTurns)
@@ -98,5 +103,9 @@ namespace JueMingR.Features.Combat
         }
         private static bool Independent(int t)
         {return t==110 || t==111 || t==206 || t==214 || t==215 || t==216 || t==290 || t==291 || t==292 || t==293 || t==350 || t==379 || t==380 || t==381 || t==382 || t>=449 && t<=452 || t==468 || t==481 || t==411 || t==409 || t>=498 && t<=506 || t==424 || t==426 || t==520;}
+        internal static bool IndependentEntry(NpcMotionState n)
+        {return n.EffectiveType==466 && n.A2<=0 || n.EffectiveType==586 && (n.Alpha==255 || n.Wet || n.A3==-.10101f);}
+        internal static bool RetargetOnEntry(NpcMotionState n)
+        {return n.EffectiveType==466 && n.A2==0 || n.EffectiveType==586 && (n.Alpha==255 || n.Wet);}
     }
 }

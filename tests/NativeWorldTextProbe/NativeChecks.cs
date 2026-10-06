@@ -20,6 +20,8 @@ namespace NativeWorldTextProbe
                 Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-marker-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
                 NativeQuickItemChecks.Run(context=>{NativeCombatTargetMarkerChecks.Run(context);if(Environment.GetEnvironmentVariable("JUEMINGR_MARKER_GRAPHICS")=="1")using(var graphics=new ProbeGraphics(content))NativeCombatTargetMarkerChecks.Graphics(context,graphics,output);},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
             }
+            if(scope=="NpcFoundationRules"){Environment.SetEnvironmentVariable("JUEMINGR_SHARED_GEOMETRY_PHASE","foundation");scope="NpcSharedGeometry";}
+            if(scope=="NpcPlayerPolicy"){Environment.SetEnvironmentVariable("JUEMINGR_SHARED_GEOMETRY_PHASE","player-policy");scope="NpcSharedGeometry";}
             if(scope=="NpcSharedGeometry")
             {
                 Directory.CreateDirectory(output);

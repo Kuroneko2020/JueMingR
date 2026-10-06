@@ -52,6 +52,10 @@ namespace JueMingR.ArchitectureTests
             Require(conditional.Count==121 && (conditional.Assumptions&PredictionAssumption.NoPlayerMotionNeeded)!=0,"Independent trend does not acquire an irrelevant invalid player prerequisite.");
             var slime=State(1,1);slime.A0=-1;slime.A2=1;slime.Vy=0;slime.TargetCaptured=true;slime.PlayerIndex=0;slime.PlayerDead=true;slime.HasClosestPlayer=true;slime.ClosestPlayerIndex=1;slime.ClosestPlayerArea=new MotionRect(1200,5000,20,40);
             Require(NpcMotion.PlayerPremiseTarget(slime,new PredictionEnvironment{PlayerIndex=-1,WorldSurface=400})==1,"Ordinary slime acquires the live first-jump target before Source rejects the old dead player.");
+            slime.Y=900;slime.Health.Fire=60;slime.Health.RegenCount=-112;slime.A3=-1;
+            Require(NpcMotion.PlayerPremiseTarget(slime,new PredictionEnvironment{PlayerIndex=-1,WorldSurface=140,Day=true})==1 && slime.Life==slime.LifeMax && slime.Health.RegenCount==-112,"First target choice shares AI-entry DOT life while the captured actor remains immutable.");
+            slime.Health.RealLife=2;
+            Require(NpcMotion.PlayerPremiseTarget(slime,new PredictionEnvironment{PlayerIndex=-1,WorldSurface=140,Day=true})==0,"Shared-owner DOT does not falsely damage this actor or alter its target-choice life.");
         }
         private static NpcMotionState State(int type,int style)
         {return new NpcMotionState{Identity=new NpcIdentity(1,new object(),1,1,type,type),X=1000,Y=5000,Width=20,Height=20,Scale=1,Style=style,Direction=1,DirectionY=1,SpriteDirection=1,Life=100,LifeMax=100,TimeLeft=750,Active=true,CanReceive=true,NoTileCollide=true,Health=new NpcHealthState{RealLife=-1}};}

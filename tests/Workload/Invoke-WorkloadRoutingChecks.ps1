@@ -246,7 +246,7 @@ try {
     Assert-Route (@($combatPlan | Where-Object {$_.name -ceq 'native-NpcRollingCpu' -and $_.arguments[-1] -ceq 'NpcRollingCpu'}).Count -eq 1) 'default rolling source must have its own ordinary combat regression'
     Assert-Route ($scopeValidation[0].ValidValues -contains 'NpcRollingCpu') 'native entry accepts the default rolling regression'
     Assert-Route (@($combatPlan | Where-Object {$_.name -ceq 'native-NpcRollingSelectionNegative' -and $_.arguments[-1] -ceq 'NpcRollingSelectionNegative'}).Count -eq 1 -and $scopeValidation[0].ValidValues -contains 'NpcRollingSelectionNegative') 'real selection-negative regression belongs to ordinary delivery'
-    foreach($scope in @('NpcSharedGeometry','NpcTargetMarker')) {
+    foreach($scope in @('NpcSharedGeometry','NpcTargetMarker','NpcFoundationRules','NpcFoundationContinuous','NpcPlayerPolicy')) {
         Assert-Route (@($combatPlan | Where-Object {$_.name -ceq ('native-'+$scope) -and $_.arguments[-1] -ceq $scope}).Count -eq 1 -and $scopeValidation[0].ValidValues -contains $scope) ('shared observation consumer in ordinary delivery '+$scope)
     }
     foreach($expected in @('CombatChecks','native-CombatCpu','native-CombatFacingCpu','native-CombatHitsCpu','native-CombatReportCpu','native-CombatUiCpu','native-ShortFeedbackCpu')) {Assert-Route (@($combatPlan.name) -contains $expected) ('combat consumer '+$expected)}

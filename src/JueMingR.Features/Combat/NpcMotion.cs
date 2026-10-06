@@ -221,6 +221,10 @@ namespace JueMingR.Features.Combat
             // Enumerate actual vector/decision consumers, never infer a
             // player future from quality or an unknown-effect policy.
             int type=n.EffectiveType;
+            // The finite fallback deliberately holds these independent entry
+            // phases as a trend. Only an entry which actually retargets reads
+            // a player; a dormant reveal/exit must not acquire a dead old one.
+            if(n.Style==3 && FighterHorizontalMotion.IndependentEntry(n))return FighterHorizontalMotion.RetargetOnEntry(n);
             if(type==371 || type==372 || type==373 || n.Style==1 || n.Style==3 || n.Style==6 || n.Style==37 || n.Style==69 ||
                 n.Style==2 && (type==2 || type==133 || type>=190 && type<=194) || n.Style==5 && (FlyingType(type) || type==176) || n.Style==14 && BatType(type) ||
                 n.Style==17 && type==61 || n.Style==13 && NpcAnchoredMotion.Known(type) || n.Style==16 && n.Wet && NpcAquaticMotion.Known(type) && type!=55 && type!=592 && type!=607 && type!=615 && type!=688 ||

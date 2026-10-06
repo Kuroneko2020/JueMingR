@@ -18,6 +18,10 @@ namespace JueMingR.Features.Combat
         }
         internal static int PlayerPremiseTarget(NpcMotionState n,PredictionEnvironment env)
         {
+            // Original DOT settlement precedes slime aggression and jump
+            // clocks. Project the same health rules on this value copy only;
+            // the real Step still owns health advancement and group damage.
+            if(!NpcHealth.ProjectForTargetChoice(ref n,env))return n.PlayerIndex;
             int type=n.EffectiveType;
             // Preserve old-number consumers before any possible Retarget.
             // Shooting/range and ceiling-controlled special actions are not

@@ -14,7 +14,9 @@ namespace JueMingR.Features.Combat
             // Compute only the first real targeting decision on a value copy.
             // This shares the blocked-count/pursuit rule with movement instead
             // of assuming every fighter always keeps its old numbered target.
-            if(!Known(n.EffectiveType) && !OrdinaryCounter(n))
+            if(FighterHorizontalMotion.IndependentEntry(n))
+            {if(FighterHorizontalMotion.RetargetOnEntry(n))Target(ref n,ref e,false);}
+            else if(!Known(n.EffectiveType) && !OrdinaryCounter(n))
             {if(n.A3<=0)Target(ref n,ref e,false);}
             else if(n.EffectiveType==166 && n.A2<0)Target(ref n,ref e,false);
             else CountAndTarget(ref n,ref e,false,n.EffectiveType==120?180:60);
@@ -23,6 +25,11 @@ namespace JueMingR.Features.Combat
         internal static bool Fallback(ref NpcMotionState n,PredictionEnvironment e,bool confused,int elapsed,out PredictionStop stop)
         {
             stop=PredictionStop.None;
+            // Dormant/reveal and spawn/fluid actions run before the blocked
+            // counter and common motor. Their future action remains a trend,
+            // but an actual entry TargetClosest must share Source's premise.
+            if(FighterHorizontalMotion.IndependentEntry(n))
+            {if(FighterHorizontalMotion.RetargetOnEntry(n))Target(ref n,ref e,confused);NpcRollingMotion.Trend(ref n,elapsed);return true;}
             // These original actions skip the shared blocked counter. Their
             // positive ai[3] belongs to an independent action, not recovery.
             if(!OrdinaryCounter(n))

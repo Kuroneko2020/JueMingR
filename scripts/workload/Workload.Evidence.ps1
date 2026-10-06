@@ -57,6 +57,8 @@ function Get-WorkloadCheckFingerprint {
         'tests/NativeWorldTextProbe/NativeBackgroundAutomationChecks.cs'=@('native-BackgroundCpu','native-F5AutomationCpu')
         'tests/NativeWorldTextProbe/NativeToolCadenceChecks.cs'=@('native-ToolsCadence')
         'tests/NativeWorldTextProbe/NativeToolsWorkloadChecks.cs'=@('native-ToolsWorkload')
+        'tests/NativeWorldTextProbe/NativeCombatFoundationChecks.cs'=@('native-NpcFoundationRules')
+        'tests/NativeWorldTextProbe/NativeCombatFoundationContinuousChecks.cs'=@('native-NpcFoundationContinuous')
         'tests/Workload/Invoke-WorkloadRoutingChecks.ps1'=@('workload-Routing')
         'tests/Workload/Invoke-WorkloadEvidenceChecks.ps1'=@('workload-Evidence')
     }
@@ -244,6 +246,7 @@ function Get-WorkloadPlan {
         'NpcRollingCpu'=@('combat-host');
         'NpcRollingSelectionNegative'=@('combat-host');
         'NpcBasicMotion'=@('combat-host');
+        'NpcFoundationRules'=@('combat-host'); 'NpcFoundationContinuous'=@('combat-host'); 'NpcPlayerPolicy'=@('combat-host');
         # Ordinary delivery retains the real shared selection/terrain and
         # marker consumer seams; detailed phase matrices stay bounded probes.
         'NpcSharedGeometry'=@('combat-host'); 'NpcTargetMarker'=@('combat-host');
