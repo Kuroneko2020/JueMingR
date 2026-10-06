@@ -193,12 +193,13 @@ namespace NativeWorldTextProbe
                             if(!identity)throw new InvalidOperationException("Baseline consumer has stale/wrong identity.");
                             // CPU telemetry must consume the current projection after Update/Prepare; it is not a GPU Draw.
                             if(graphics==null)NativeCombatPresentationChecks.Project(layer);
+                            // GPU counts are read after the actual Draw which projects and consumes events.
+                            bytes=allocated==null?0:allocated();begin=Stopwatch.GetTimestamp();if(graphics!=null)graphics.Render(light?lightDraw:()=>Call(layer,"Draw"),Main.GameViewMatrix.ZoomMatrix);double drawMs=graphics==null?double.NaN:Ms(Stopwatch.GetTimestamp()-begin);long drawBytes=allocated==null?0:allocated()-bytes;
                             bool published=path!=null;int strokes=light?lightStrokes():(int)Get(layer,"StrokeCount"),events=light?lightEvents():(int)Get(layer,"eventEnd");
                             var a=aSlot<0?null:Main.npc[aSlot];
                             if(!light)actors.Add(Csv(phase,frame,Main.GameUpdateCount,Token(aActor.Token),aActor.Slot,aActor.Generation,aActor.Type,aActor.NetId,Matches(aActor,a),a?.active,a?.life,
                                 Token(bActor.Token),bActor.Slot,bActor.Generation,bActor.Type,bActor.NetId,Matches(bActor,target),target.active,target.life,Token(key.Token),key.Slot,key.Generation,key.Type,key.NetId,picked,published,path?.CaptureTick??-1,path?.Count??0,Get(layer,"pathText")!=null,strokes-events,Calls[1],Calls[4]));
                             if(fixedPath==null && picked && path!=null && path.Count==121){fixedPath=path;fixedCamera=Main.screenPosition;}
-                            bytes=allocated==null?0:allocated();begin=Stopwatch.GetTimestamp();if(graphics!=null)graphics.Render(light?lightDraw:()=>Call(layer,"Draw"),Main.GameViewMatrix.ZoomMatrix);double drawMs=graphics==null?double.NaN:Ms(Stopwatch.GetTimestamp()-begin);long drawBytes=allocated==null?0:allocated()-bytes;
                             executed++;if(eligible)
                             {
                                 legal++;if(firstLegal<0)firstLegal=frame;if(picked)selected++;

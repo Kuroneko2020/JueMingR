@@ -113,7 +113,7 @@ namespace NativeWorldTextProbe
                     quality?.ChangeScene(scene,false);
                     for(int frame=0;frame<records.Length;frame++)
                     {
-                        NativeCombatModeledImpactChecks.SampleMouse(context,n.Center);step();
+                        NativeCombatModeledImpactChecks.SampleMouse(context,n.Center);step();NativeCombatPresentationChecks.Project(layer);
                         long watch=Stopwatch.GetTimestamp();quality?.Observe();
                         var key=readTarget();bool chosen=readChosen() && ReferenceEquals(key.Token,n);
                         var path=cache.Read(0);
