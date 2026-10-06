@@ -13,6 +13,7 @@ namespace NativeWorldTextProbe
         internal static void Run(object context,ProbeGraphics graphics,string output)
         {
             var host=Get(context,"Guidance");var world=Get(host,"World");var npcs=Get(context,"nativeNpcs");var clock=(System.Diagnostics.Stopwatch)Get(host,"clock");clock.Stop();
+            var configuration=(System.Reflection.AssemblyConfigurationAttribute)Attribute.GetCustomAttribute(npcs.GetType().Assembly,typeof(System.Reflection.AssemblyConfigurationAttribute));Require(configuration!=null && (configuration.Configuration=="Debug" || configuration.Configuration=="Release"),"Actual candidate declares Debug or Release configuration.");bool release=configuration.Configuration=="Release";
             try
             {
                 NativeQuickItemChecks.Until(()=>{Call(context,"UpdateRuntime");return (bool)Get(host,"ControlsEnabled");});
@@ -20,8 +21,8 @@ namespace NativeWorldTextProbe
                 Main.npc[1]=NativeGuidanceChecks.Npc(1,NPCID.Tim,4,1600);Main.npc[1].GivenName="稀有相机检验";Main.npc[2]=NativeGuidanceChecks.Npc(2,NPCID.TravellingMerchant,0,1700);Main.npc[3]=NativeGuidanceChecks.Npc(3,4,0,200);Main.npc[3].boss=true;
                 Set(host,"LayerStatus",Enum.Parse(Get(host,"LayerStatus").GetType(),"Ready"));foreach(GuidanceKind kind in Enum.GetValues(typeof(GuidanceKind)))Call(host,"SetEnabled",kind,true);
                 NativeQuickItemChecks.BeginWorldStep();Call(npcs,"BeginCompleted",(long)Main.GameUpdateCount);Call(host,"Update",(ulong)Main.GameUpdateCount);
-                var rare=(RareCreatureDirection)Get(host,"Rare");Require(rare.Visible,"Actual rare direction world fact is selected.");int discoveries=rare.Discoveries;for(int i=0;i<30;i++)Call(host,"Update",(ulong)Main.GameUpdateCount);Require(rare.Discoveries==discoveries,"Outer updates do not spend the rare15-world-action discovery clock.");
-                var occupancy=Get(world,"Occupancy");var configuration=(System.Reflection.AssemblyConfigurationAttribute)Attribute.GetCustomAttribute(npcs.GetType().Assembly,typeof(System.Reflection.AssemblyConfigurationAttribute));Require(configuration!=null && (configuration.Configuration=="Debug" || configuration.Configuration=="Release"),"Actual candidate declares Debug or Release configuration.");bool release=configuration.Configuration=="Release";
+                var rare=(RareCreatureDirection)Get(host,"Rare");Require(rare.Visible,"Actual rare direction world fact is selected.");var featureConfiguration=(System.Reflection.AssemblyConfigurationAttribute)Attribute.GetCustomAttribute(rare.GetType().Assembly,typeof(System.Reflection.AssemblyConfigurationAttribute));Require(featureConfiguration!=null && featureConfiguration.Configuration==configuration.Configuration,"Actual rare feature and Host use the same configuration.");Require(!release || GetOptional(rare,"Discoveries")==null,"Ordinary Release has no DEBUG rare discovery counter.");int? discoveries=release?(int?)null:(int)Get(rare,"Discoveries");for(int i=0;i<30;i++)Call(host,"Update",(ulong)Main.GameUpdateCount);if(!release)Require((int)Get(rare,"Discoveries")==discoveries,"Outer updates do not spend the rare15-world-action discovery clock.");Require(rare.Visible,"Rare world fact remains visible after actual outer reentry.");
+                var occupancy=Get(world,"Occupancy");
                 Require(!release || GetOptional(npcs,"DirectionReads")==null && GetOptional(occupancy,"PoolPasses")==null && GetOptional(occupancy,"Measurements")==null,"Ordinary Release has no DEBUG guidance counters.");
                 if(release)Console.WriteLine("RELEASE GUIDANCE CAMERA: actual pixels/anchors/occupancy oracle execute; pool/read workload observations unavailable, authenticated Debug evidence remains separate.");Main.combatText[0].active=true;Main.combatText[0].text="实际占位";Main.combatText[0].position=Main.LocalPlayer.Top-new Vector2(20,26);Main.combatText[0].scale=1;
                 foreach(int gravity in new[]{1,-1})foreach(float zoom in new[]{.8f,1.4f})
@@ -31,7 +32,7 @@ namespace NativeWorldTextProbe
                     if(!release)Require((int)Get(occupancy,"PoolPasses")==passes && (int)Get(occupancy,"Measurements")==measured && (int)Get(npcs,"DirectionReads")==reads,"Real Draw projects captured occupancy and identity without scanning native pools or NPC discovery.");
                     Call(world,"Prepare");var oracle=graphics.Pixels(()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);Require(actual.SequenceEqual(oracle),"Prepare-before-camera-change matches a fresh final-camera rendering for rare/merchant/equipment.");graphics.Image(Path.Combine(output,"guidance-final-camera-"+gravity+"-"+zoom.ToString(System.Globalization.CultureInfo.InvariantCulture)+".png"),()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);
                 }
-                Console.WriteLine("PASS GUIDANCE final-camera real XNA rare-arrow/text merchant/equipment occupancy; gravity2 zoom2; repeated30 outer updates preserve rare discovery clock.");
+                Console.WriteLine("PASS GUIDANCE final-camera real XNA rare-arrow/text merchant/equipment occupancy; gravity2 zoom2; repeated30 outer calls execute; DEBUG discovery/work counters measured only when available.");
             }
             finally{Main.combatText[0].active=false;Main.LocalPlayer.gravDir=1;Main.GameViewMatrix.Zoom=Vector2.One;foreach(GuidanceKind kind in Enum.GetValues(typeof(GuidanceKind)))Call(host,"SetEnabled",kind,false);clock.Start();}
         }
