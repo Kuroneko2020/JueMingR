@@ -99,14 +99,22 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 }
                 // Fixed sampled ordinary controls; retain reversal braking and
                 // the native distinction between ground and air deceleration.
+                bool cart=p.mount.Active && p.mount.Cart;
+                if(p.chilled && p.oldStyleParkour)p.accRunSpeed=p.maxRunSpeed;
+                float wind=0;
+                if(p.windPushed && p.CanBePushedByWind())
+                {wind=Math.Sign(Main.windSpeedCurrent)*.06f;if(Math.Abs(Main.windSpeedCurrent)>.5f)wind*=1.37f;if(p.velocity.Y!=0)wind*=1.5f;if(p.controlLeft || p.controlRight)wind=Math.Max(-.072f,Math.Min(.072f,wind*.8f));}
+                if(p.trackBoost!=0){p.velocity.X=Math.Max(-p.maxRunSpeed,Math.Min(p.maxRunSpeed,p.velocity.X+p.trackBoost));p.trackBoost=0;}
                 if(p.controlLeft && p.velocity.X>-p.maxRunSpeed)
-                {if(p.velocity.X>p.runSlowdown)p.velocity.X-=p.runSlowdown;p.velocity.X-=p.runAcceleration;}
+                {if(!cart || p.velocity.Y==0){if(p.velocity.X>p.runSlowdown)p.velocity.X-=p.runSlowdown;p.velocity.X-=p.runAcceleration;}if(p.onWrongGround)p.velocity.X=p.velocity.X< -p.runSlowdown?p.velocity.X+p.runSlowdown:0;}
                 else if(p.controlRight && p.velocity.X<p.maxRunSpeed)
-                {if(p.velocity.X< -p.runSlowdown)p.velocity.X+=p.runSlowdown;p.velocity.X+=p.runAcceleration;}
+                {if(!cart || p.velocity.Y==0){if(p.velocity.X< -p.runSlowdown)p.velocity.X+=p.runSlowdown;p.velocity.X+=p.runAcceleration;}if(p.onWrongGround)p.velocity.X=p.velocity.X>p.runSlowdown?p.velocity.X-p.runSlowdown:0;}
                 else if(p.controlLeft && p.velocity.X> -p.accRunSpeed && p.dashDelay>=0)
-                {if(p.velocity.Y==0 || p.wingsLogic>0){if(p.velocity.X>p.runSlowdown)p.velocity.X-=p.runSlowdown;p.velocity.X-=p.runAcceleration*0.2f;if(p.wingsLogic>0)p.velocity.X-=p.runAcceleration*0.2f;}}
+                {if(p.velocity.Y==0 || p.wingsLogic>0 || p.mount.CanFly(p)){if(p.velocity.X>p.runSlowdown)p.velocity.X-=p.runSlowdown;p.velocity.X-=p.runAcceleration*0.2f;if(p.wingsLogic>0)p.velocity.X-=p.runAcceleration*0.2f;}if(p.onWrongGround)p.velocity.X=p.velocity.X<p.runSlowdown?p.velocity.X+p.runSlowdown:0;}
                 else if(p.controlRight && p.velocity.X<p.accRunSpeed && p.dashDelay>=0)
-                {if(p.velocity.Y==0 || p.wingsLogic>0){if(p.velocity.X< -p.runSlowdown)p.velocity.X+=p.runSlowdown;p.velocity.X+=p.runAcceleration*0.2f;if(p.wingsLogic>0)p.velocity.X+=p.runAcceleration*0.2f;}}
+                {if(p.velocity.Y==0 || p.wingsLogic>0 || p.mount.CanFly(p)){if(p.velocity.X< -p.runSlowdown)p.velocity.X+=p.runSlowdown;p.velocity.X+=p.runAcceleration*0.2f;if(p.wingsLogic>0)p.velocity.X+=p.runAcceleration*0.2f;}if(p.onWrongGround)p.velocity.X=p.velocity.X>p.runSlowdown?p.velocity.X-p.runSlowdown:0;}
+                else if(cart && Math.Abs(p.velocity.X)>=1)
+                {if(p.onWrongGround)p.velocity.X=p.velocity.X>p.runSlowdown?p.velocity.X-p.runSlowdown:p.velocity.X< -p.runSlowdown?p.velocity.X+p.runSlowdown:0;p.velocity.X=Math.Max(-p.maxRunSpeed,Math.Min(p.maxRunSpeed,p.velocity.X));}
                 // Native friction also runs when held input has reached the
                 // running limit; omitting it changes the speed-limit cycle.
                 else if(p.velocity.Y==0 || !p.PortalPhysicsEnabled)
@@ -114,6 +122,8 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                     float slowdown=p.velocity.Y==0?p.runSlowdown:p.runSlowdown*0.5f;
                     p.velocity.X=p.velocity.X>slowdown?p.velocity.X-slowdown:p.velocity.X< -slowdown?p.velocity.X+slowdown:0;
                 }
+                if(wind<0 && p.velocity.X>wind)p.velocity.X=Math.Max(wind,p.velocity.X+wind);
+                if(wind>0 && p.velocity.X<wind)p.velocity.X=Math.Min(wind,p.velocity.X+wind);
                 if(hover)
                 {
                     if(p.controlUp && p.releaseUp && p.velocity.Y==0)p.velocity.Y=-(p.mount.Acceleration+p.gravity+.001f);

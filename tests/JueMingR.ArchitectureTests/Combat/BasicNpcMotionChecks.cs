@@ -8,6 +8,7 @@ namespace JueMingR.ArchitectureTests
     {
         internal static void Run()
         {
+            FoundationMotionChecks.Run();
             SameCause();
             var terrain=new LocalTerrain();var e=new PredictionEnvironment{PlayerX=1000,PlayerY=168,PlayerWidth=20,PlayerHeight=40,WorldWidth=4200,WorldHeight=1200,WorldSurface=400};
             var fish=State(157,16);fish.NoGravity=true;fish.Vy=-2;

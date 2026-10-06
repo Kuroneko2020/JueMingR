@@ -11,9 +11,10 @@ namespace JueMingR.Features.Combat
         private readonly NpcMotionState[] work=new NpcMotionState[NpcPredictionCache.Capacity];
         private readonly NpcTrajectoryPoint[] points=new NpcTrajectoryPoint[NpcPredictionCache.Horizon+1];
         private NpcMotionState previous;
+        private PredictionPlayerMotion previousPlayer;
         private long priorTick=-1,version;
         public PredictionFailureLayer FailureLayer {get;private set;}
-        public void Clear(){previous=default(NpcMotionState);priorTick=-1;Array.Clear(work,0,work.Length);}
+        public void Clear(){previous=default(NpcMotionState);previousPlayer=default(PredictionPlayerMotion);priorTick=-1;Array.Clear(work,0,work.Length);}
         public NpcTrajectory Prepare(NpcMotionState[] source,int count,int selected,long tick,int required,long epoch,PredictionEnvironment environment,PredictionPlayerMotion player,IPredictionTerrain terrain,bool[] motionRoles=null)
         {
             FailureLayer=PredictionFailureLayer.Source;
@@ -23,7 +24,7 @@ namespace JueMingR.Features.Combat
             // slot, after earlier owners moved. A frame-start predicate can
             // both miss an entering boundary and invent a departing one.
             bool needsPlayer=false,canObservePlayer=true;for(int i=0;i<count;i++)if(source[i].PositionRelation!=6 && (motionRoles==null || i<motionRoles.Length && motionRoles[i]) && NpcMotion.NeedsPlayerMotion(source[i],environment,required,source,count)){needsPlayer=true;canObservePlayer&=NpcMotion.CurrentPlayerPremise(source[i]);}
-            if(!current.Active || !current.CanReceive || current.Life<=0 || !Valid(current) || needsPlayer && !Valid(player) || !Finite(environment.Wind) || !Finite(environment.WorldSurface) || !Finite(environment.RockLayer) || motionRoles!=null && motionRoles.Length<count){Clear();return null;}
+            if(!current.Active || !current.CanReceive || current.Life<=0 || !Valid(current) || needsPlayer && !Valid(player) || double.IsNaN(environment.GravityWorldSurface) || double.IsInfinity(environment.GravityWorldSurface) || !Finite(environment.Wind) || !Finite(environment.WorldSurface) || !Finite(environment.RockLayer) || motionRoles!=null && motionRoles.Length<count){Clear();return null;}
             bool observed=priorTick+1==tick && previous.Identity.Equals(current.Identity) && SamePhase(previous,current) && !current.JustHit &&
                 Math.Abs(current.X-previous.X)<512 && Math.Abs(current.Y-previous.Y)<512;
             if(observed)
@@ -42,9 +43,16 @@ namespace JueMingR.Features.Combat
                     }
                 }
             }
-            previous=current;priorTick=tick;Array.Copy(source,work,count);work[selected]=current;
+            bool boundedPlayer=BoundedPlayer(player);
+            float observedVx=player.Vx,observedVy=player.Vy;
+            // Consecutive samples of the same real player and mechanism can
+            // correct sampled velocity (rope uses instant position changes).
+            // A switch, teleport or generation replacement resets this input.
+            if(priorTick+1==tick && player.PlayerToken!=null && ReferenceEquals(previousPlayer.PlayerToken,player.PlayerToken) && previousPlayer.PlayerIndex==player.PlayerIndex && previousPlayer.ObservationMechanism==player.ObservationMechanism && Math.Abs(player.X-previousPlayer.X)<=32 && Math.Abs(player.Y-previousPlayer.Y)<=32)
+            {observedVx=player.X-previousPlayer.X;observedVy=player.Y-previousPlayer.Y;}
+            previousPlayer=player;previous=current;priorTick=tick;Array.Copy(source,work,count);work[selected]=current;
             terrain.Reset();playerSettled=false;points[0]=new NpcTrajectoryPoint(0,current);int length=1;PredictionStop stop=PredictionStop.None;
-            FailureLayer=PredictionFailureLayer.None;bool observedPlayer=false,restarted=false;var initialPlayer=player;
+            FailureLayer=PredictionFailureLayer.None;bool observedPlayer=needsPlayer && boundedPlayer,restarted=false;var initialPlayer=player;
             for(int future=1;future<=required;future++)
             {
                 bool futureNeeds=false;canObservePlayer=true;
@@ -57,7 +65,7 @@ namespace JueMingR.Features.Combat
                     // its whole player timeline at point zero, once; never
                     // begin simulating that player halfway through the path.
                     if(restarted || !Valid(initialPlayer)){stop=PredictionStop.PhaseBoundary;FailureLayer=PredictionFailureLayer.PlayerPremise;break;}
-                    needsPlayer=true;restarted=true;player=initialPlayer;terrain.Reset();playerSettled=false;
+                    needsPlayer=true;observedPlayer=boundedPlayer;restarted=true;player=initialPlayer;terrain.Reset();playerSettled=false;
                     Array.Copy(source,work,count);work[selected]=current;length=1;future=0;continue;
                 }
                 if(needsPlayer && !observedPlayer && !AdvancePlayer(ref player,environment,terrain,out stop))
@@ -78,6 +86,15 @@ namespace JueMingR.Features.Combat
                 }
                 var env=environment;
                 if(needsPlayer && !observedPlayer){env.PlayerX=player.X+player.Width*.5f;env.PlayerY=player.Y+player.Height*.5f;env.PlayerWet=playerBody.Wet;}
+                else if(needsPlayer && boundedPlayer)
+                {
+                    // Twelve observed updates, then hold the reached premise.
+                    // This is a finite target estimate, never grapple/rope AI
+                    // or a claim that special geometry is safe to replay.
+                    int span=Math.Min(future,12);
+                    env.PlayerX=initialPlayer.X+initialPlayer.Width*.5f+Clamp(observedVx,16)*span;
+                    env.PlayerY=initialPlayer.Y+initialPlayer.Height*.5f+Clamp(observedVy,16)*span;
+                }
                 bool advanced=true,actorRestart=false;
                 for(int i=0;i<count;i++)
                 {
@@ -91,7 +108,7 @@ namespace JueMingR.Features.Combat
                     if(playerNeededThisAction && !needsPlayer)
                     {
                         if(restarted || !Valid(initialPlayer)){stop=PredictionStop.PhaseBoundary;FailureLayer=PredictionFailureLayer.PlayerPremise;advanced=false;break;}
-                        needsPlayer=restarted=true;player=initialPlayer;terrain.Reset();playerSettled=false;
+                        needsPlayer=restarted=true;observedPlayer=boundedPlayer;player=initialPlayer;terrain.Reset();playerSettled=false;
                         Array.Copy(source,work,count);work[selected]=current;length=1;future=0;actorRestart=true;break;
                     }
                     // A shared-life owner is a health dependency, not permission
@@ -126,9 +143,7 @@ namespace JueMingR.Features.Combat
             float oldX=p.X,oldY=p.Y;
             if(!p.Complex || p.Hover)
             {
-                if(p.Left && p.Vx>-p.MaxSpeed){if(p.Vx>p.Slowdown)p.Vx-=p.Slowdown;p.Vx-=p.Acceleration;}
-                else if(p.Right && p.Vx<p.MaxSpeed){if(p.Vx< -p.Slowdown)p.Vx+=p.Slowdown;p.Vx+=p.Acceleration;}
-                else p.Vx=NpcMotion.Approach(p.Vx,0,p.Vy==0?p.Slowdown:p.Slowdown*.5f);
+                PlayerHorizontalMotion.Step(ref p);
                 if(p.Hover)
                 {
                     float target=p.Up || p.HoldJump?-p.MaxSpeed:p.Down?p.MaxSpeed:0;
@@ -169,8 +184,10 @@ namespace JueMingR.Features.Combat
         }
         private static bool Valid(NpcMotionState n)
         {return Finite(n.X)&&Finite(n.Y)&&Finite(n.Vx)&&Finite(n.Vy)&&Finite(n.A0)&&Finite(n.A1)&&Finite(n.A2)&&Finite(n.A3)&&Finite(n.L0)&&Finite(n.L1)&&Finite(n.L2)&&Finite(n.L3)&&Finite(n.Scale)&&Finite(n.NetOffsetX)&&Finite(n.NetOffsetY)&&Finite(n.Health.DamageMultiplier)&&Finite(n.Health.ShimmerTransparency)&&Finite(n.WaterSpeed)&&Finite(n.HoneySpeed)&&Finite(n.LavaSpeed)&&Finite(n.ShimmerSpeed)&&n.WaterSpeed>=0&&n.HoneySpeed>=0&&n.LavaSpeed>=0&&n.ShimmerSpeed>=0&&n.Width>0&&n.Width<=1024&&n.Height>0&&n.Height<=1024&&Math.Abs(n.Vx)<=512&&Math.Abs(n.Vy)<=512;}
+        private static bool BoundedPlayer(PredictionPlayerMotion p)
+        {return !p.InvalidMechanism && (p.Grappled || p.Rope || p.FloatInWater || p.ObservationMechanism!=0 && !p.Hover);}
         private static bool Valid(PredictionPlayerMotion p)
-        {return Finite(p.X)&&Finite(p.Y)&&Finite(p.Vx)&&Finite(p.Vy)&&Finite(p.Gravity)&&Finite(p.Acceleration)&&Finite(p.Slowdown)&&Finite(p.MaxSpeed)&&Finite(p.MaxFall)&&Finite(p.JumpSpeed)&&p.MaxFall>=0&&p.JumpSpeed>=0&&Math.Abs(p.Vx)<=512&&Math.Abs(p.Vy)<=512&&p.GravityDirection*p.GravityDirection==1&&p.Width>0&&p.Height>0&&p.Width<=512&&p.Height<=512&&p.Acceleration>=0&&p.Slowdown>=0&&p.MaxSpeed>=0;}
+        {return !p.InvalidMechanism&&Finite(p.WindSpeed)&&Finite(p.TrackBoost)&&Finite(p.X)&&Finite(p.Y)&&Finite(p.Vx)&&Finite(p.Vy)&&Finite(p.Gravity)&&Finite(p.Acceleration)&&Finite(p.Slowdown)&&Finite(p.MaxSpeed)&&Finite(p.FastMaxSpeed)&&Finite(p.MaxFall)&&Finite(p.JumpSpeed)&&p.MaxFall>=0&&p.JumpSpeed>=0&&Math.Abs(p.Vx)<=512&&Math.Abs(p.Vy)<=512&&p.GravityDirection*p.GravityDirection==1&&p.Width>0&&p.Height>0&&p.Width<=512&&p.Height<=512&&p.Acceleration>=0&&p.Slowdown>=0&&p.MaxSpeed>=0&&p.FastMaxSpeed>=0;}
         private static bool Finite(float value){return !float.IsNaN(value)&&!float.IsInfinity(value);}
         private static float Clamp(float value,float limit){return Math.Max(-limit,Math.Min(limit,value));}
         private static bool SamePhase(NpcMotionState a,NpcMotionState b)

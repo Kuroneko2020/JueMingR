@@ -51,10 +51,8 @@ namespace JueMingR.Features.Combat
             if(!NpcHealth.Step(ref n,group,count,env,out stop))return false;
             // Native fixes gravity from the pre-AI position and old wet state.
             // A teleport or liquid entry later in this update cannot alter it.
-            float gravity=.3f,fall=10,worldScale=env.WorldWidth/4200f;worldScale*=worldScale;
-            gravity*=Clamp((n.Y/16-(60+10*worldScale))/Math.Max(1,env.WorldSurface/6),.25f,1);
-            if(n.Wet){gravity=n.Shimmer?.15f:n.Honey?.1f:.2f;fall=n.Shimmer?5.5f:n.Honey?4:7;}
-            n.Gravity=gravity;n.MaxFall=fall;
+            NpcGravityMotion.BeforeAi(ref n,env);
+            float gravity=n.Gravity,fall=n.MaxFall;
             if(n.Identity.Type==488){n.Vx=n.Vy=0;return true;}
             bool eyeEscape=n.Style==2 && env.Day && !env.Remix && !env.Graveyard && n.Y<=env.WorldSurface*16;
             int facingOldTarget=n.Target;if(n.Style==2 && KnownEye(n.EffectiveType) && !eyeEscape || n.Style==5 && (FlyingType(n.EffectiveType) || rolling && n.EffectiveType==176) || n.Style==14 && BatType(n.EffectiveType))NpcTargeting.Retarget(ref n,ref env);
@@ -140,7 +138,7 @@ namespace JueMingR.Features.Combat
             else if(n.Style==3 && NpcGroundMotion.Known(n.EffectiveType))
             {if(!NpcGroundMotion.Step(ref n,env,terrain,confused,out stop))return false;}
             else if(n.Style==3)
-            {if(!NpcGroundMotion.Fallback(ref n,env,confused,out stop))return false;}
+            {if(!NpcGroundMotion.Fallback(ref n,env,confused,elapsed,out stop))return false;}
             else if(n.Style==2 && (n.Identity.Type==2 || n.Identity.Type==133 || n.Identity.Type>=190 && n.Identity.Type<=194))
             {
                 n.NoGravity=true;
@@ -200,14 +198,14 @@ namespace JueMingR.Features.Combat
         }
         internal static bool StructuredModel(NpcMotionState n)
         {
-            // Generic fighters still use an approximate default speed; their
-            // phase name alone is not evidence of a specific motion model.
+            // Correct shared speed alone does not model every independent
+            // fighter action; the full structural branch still owns quality.
             int type=n.EffectiveType;
             return n.Style==3?NpcGroundMotion.Known(type):KnownMotion(n) || NpcPositionMotion.Known(n) || n.PositionRelation==6 ||
                 n.Style==13 && NpcAnchoredMotion.Known(type) || n.Style==16 && NpcAquaticMotion.Known(type) ||
                 n.Style==40 && NpcWallMotion.Wall(type) || n.Style==69 || n.Style==39 && type==153 || n.Style==41 && type==177;
         }
-        internal static bool NeedsPlayerMotion(NpcMotionState n,PredictionEnvironment e,int remaining=120,NpcMotionState[] group=null,int count=0)
+        public static bool NeedsPlayerMotion(NpcMotionState n,PredictionEnvironment e,int remaining=120,NpcMotionState[] group=null,int count=0)
         {
             e=NpcTargeting.Player(n,e);
             if(n.EffectiveType==488)return false;
@@ -255,6 +253,8 @@ namespace JueMingR.Features.Combat
         // later changes to a different required player end the bounded route.
         public static int PlayerPremiseTarget(NpcMotionState n,PredictionEnvironment e)
         {
+            e=NpcTargeting.Player(n,e);
+            if(n.Style==3 && n.PositionRelation==0)return NpcGroundMotion.PlayerPremiseTarget(n,e);
             int t=n.EffectiveType;bool retarget=n.Style==13 && NpcAnchoredMotion.Known(t) ||
                 n.Style==16 && n.Wet && NpcAquaticMotion.Known(t) && t!=55 && t!=592 && t!=607 && t!=615 && t!=688 ||
                 n.Style==2 && KnownEye(t) && (!(e.Day && !e.Remix && !e.Graveyard && n.Y<=e.WorldSurface*16) || n.Wet) ||

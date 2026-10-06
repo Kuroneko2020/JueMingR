@@ -9,7 +9,18 @@ namespace JueMingR.Features.Combat
     internal static class NpcGroundMotion
     {
         internal static bool Known(int type){return type==3 || type==21 || type==27 || type==77 || type==109 || type==120 || type==166 || NpcWallMotion.Ground(type);}
-        internal static bool Fallback(ref NpcMotionState n,PredictionEnvironment e,bool confused,out PredictionStop stop)
+        internal static int PlayerPremiseTarget(NpcMotionState n,PredictionEnvironment e)
+        {
+            // Compute only the first real targeting decision on a value copy.
+            // This shares the blocked-count/pursuit rule with movement instead
+            // of assuming every fighter always keeps its old numbered target.
+            if(!Known(n.EffectiveType) && !OrdinaryCounter(n))
+            {if(n.A3<=0)Target(ref n,ref e,false);}
+            else if(n.EffectiveType==166 && n.A2<0)Target(ref n,ref e,false);
+            else CountAndTarget(ref n,ref e,false,n.EffectiveType==120?180:60);
+            return n.PlayerIndex;
+        }
+        internal static bool Fallback(ref NpcMotionState n,PredictionEnvironment e,bool confused,int elapsed,out PredictionStop stop)
         {
             stop=PredictionStop.None;
             // These original actions skip the shared blocked counter. Their
@@ -17,8 +28,12 @@ namespace JueMingR.Features.Combat
             if(!OrdinaryCounter(n))
             {if(n.A3>0){stop=PredictionStop.UnsupportedMechanism;return false;}Target(ref n,ref e,confused);}
             else CountAndTarget(ref n,ref e,confused,60);
-            Accelerate(ref n,1.5f,.07f,false);
-            if(n.CollideX && n.CollideY){n.Vy=-6;n.CollideY=false;}
+            // Aerial target steering is an independent vector action. Until
+            // that action is modeled, continue the finite observed trend;
+            // common ground parameters are not permission to invent a jump.
+            int type=n.EffectiveType;
+            bool aerial=n.Vy!=0 && (type==258 || (type==425 || type==427) && n.A2==1);
+            if(aerial || !FighterHorizontalMotion.Step(ref n,e))NpcRollingMotion.Trend(ref n,elapsed);
             return true;
         }
         private static bool OrdinaryCounter(NpcMotionState n)
@@ -50,8 +65,7 @@ namespace JueMingR.Features.Combat
             CountAndTarget(ref n,ref e,confused,limit);
             // Armored skeleton shares ordinary blocked/turn/step decisions,
             // but its locked .8 speed is 2, not the later fighter default 3.
-            float speed=type==3?2-n.Scale:type==21?1.5f*(2-n.Scale):type==164 || type==239?1.5f:type==27 || type==77 || type==109 || NpcWallMotion.Ground(type)?2:3,acc=type==109?.04f:.07f;
-            Accelerate(ref n,speed,acc,type==120 || type==166);
+            FighterHorizontalMotion.Step(ref n,e);
             if(NpcWallMotion.Ground(type) && !NpcWallMotion.GroundAttachment(ref n,e,t,confused,out stop))return false;
             if(n.Style!=3)return true;
             bool supported=false;
@@ -144,15 +158,6 @@ namespace JueMingR.Features.Combat
                 case 631:return n.A2>0;
                 case 411:return n.A1>=180 || n.A1<90;
                 default:return n.CritterTurns;
-            }
-        }
-        private static void Accelerate(ref NpcMotionState n,float speed,float acc,bool reverseDamping)
-        {
-            if(n.Vx<-speed || n.Vx>speed){if(n.Vy==0){n.Vx*=.8f;n.Vy*=.8f;}}
-            else
-            {
-                if(reverseDamping && n.Vy==0 && (n.Vx>0 && n.Direction<0 || n.Vx<0 && n.Direction>0))n.Vx*=.99f;
-                if(n.Direction==1)n.Vx=Math.Min(speed,n.Vx+acc);else if(n.Direction==-1)n.Vx=Math.Max(-speed,n.Vx-acc);
             }
         }
         internal static bool StepUp(ref NpcMotionState n,IPredictionTerrain t,out PredictionStop stop,bool platforms=false)

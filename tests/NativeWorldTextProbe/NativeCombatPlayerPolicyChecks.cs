@@ -17,6 +17,9 @@ namespace NativeWorldTextProbe
             var cell=Main.tile[60,60];var saved=new Tile();saved.CopyFrom(cell);Main.tileSolid[1]=true;Main.tileSolid[19]=Main.tileSolidTop[19]=true;float bottom=Main.bottomWorld;Main.bottomWorld=Main.maxTilesY*16;int cases=0;
             try
             {
+                var runner=new Player{whoAmI=1,active=true,maxRunSpeed=3,accRunSpeed=6,runAcceleration=.08f,runSlowdown=.2f};
+                var sampledRunner=(PredictionPlayerMotion)read.Invoke(null,new object[]{runner});
+                Require(sampledRunner.MaxSpeed==3,"Source retains the ordinary run threshold separately from fast-running cap.");
                 foreach(bool down in new[]{false,true})foreach(float vy in new[]{.3f,8f})foreach(bool brick in new[]{false,true})
                 {cell.active(true);cell.type=(ushort)(brick?1:19);cell.frameY=0;cell.liquid=0;Compare(new Player{whoAmI=1,active=true,width=20,height=32,position=new Vector2(961,923),velocity=new Vector2(0,vy),gravDir=1,controlDown=down},"platform down="+down+" vy="+vy+" brick="+brick,read,terrain,ref cases);}
                 NativeCombatLiveContextChecks.InitializeMount();

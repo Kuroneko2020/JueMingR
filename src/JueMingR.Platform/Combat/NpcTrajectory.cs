@@ -85,10 +85,13 @@ namespace JueMingR.Platform.Combat
         public bool BloodMoon,PlayerProtected;
         public float PlayerX,PlayerY,PlayerWidth,PlayerHeight,Wind,WorldSurface;
         public float RockLayer;
+        // Original public gravity divides a float altitude by Main's double
+        // surface. Preserve that operand without changing other AI premises.
+        public double GravityWorldSurface;
         public bool Expert,Enraged,Day,PlayerWet,ClearLine,Multiplayer,Remix,SlimeRain,Eclipse,Graveyard,GoodWorld,PlayerDead,PlayerIdleWithNegativeAggro,Corrupt,Crimson,AnyLivingCorrupt,SkyblockLowTiles,MechQueenUp,SnowMoon,DontStarve;
         public int WorldWidth,WorldHeight,InvasionType,PlayerIndex;
         public bool Equals(PredictionEnvironment b)
-        {return (ReferenceEquals(Players,b.Players) || Players!=null && Players.Equals(b.Players)) && BloodMoon==b.BloodMoon && PlayerProtected==b.PlayerProtected && PlayerIndex==b.PlayerIndex && MechQueenUp==b.MechQueenUp && RockLayer==b.RockLayer && WorldHeight==b.WorldHeight && PlayerDead==b.PlayerDead && PlayerIdleWithNegativeAggro==b.PlayerIdleWithNegativeAggro && Corrupt==b.Corrupt && Crimson==b.Crimson && AnyLivingCorrupt==b.AnyLivingCorrupt && SkyblockLowTiles==b.SkyblockLowTiles && PlayerX==b.PlayerX && PlayerY==b.PlayerY && PlayerWidth==b.PlayerWidth && PlayerHeight==b.PlayerHeight && Wind==b.Wind && WorldSurface==b.WorldSurface && Expert==b.Expert && Enraged==b.Enraged && Day==b.Day && PlayerWet==b.PlayerWet && ClearLine==b.ClearLine && Multiplayer==b.Multiplayer && Remix==b.Remix && SlimeRain==b.SlimeRain && WorldWidth==b.WorldWidth && Eclipse==b.Eclipse && Graveyard==b.Graveyard && GoodWorld==b.GoodWorld && InvasionType==b.InvasionType && SnowMoon==b.SnowMoon && DontStarve==b.DontStarve;}
+        {return (ReferenceEquals(Players,b.Players) || Players!=null && Players.Equals(b.Players)) && BloodMoon==b.BloodMoon && PlayerProtected==b.PlayerProtected && PlayerIndex==b.PlayerIndex && MechQueenUp==b.MechQueenUp && RockLayer==b.RockLayer && WorldHeight==b.WorldHeight && PlayerDead==b.PlayerDead && PlayerIdleWithNegativeAggro==b.PlayerIdleWithNegativeAggro && Corrupt==b.Corrupt && Crimson==b.Crimson && AnyLivingCorrupt==b.AnyLivingCorrupt && SkyblockLowTiles==b.SkyblockLowTiles && PlayerX==b.PlayerX && PlayerY==b.PlayerY && PlayerWidth==b.PlayerWidth && PlayerHeight==b.PlayerHeight && Wind==b.Wind && GravityWorldSurface==b.GravityWorldSurface && WorldSurface==b.WorldSurface && Expert==b.Expert && Enraged==b.Enraged && Day==b.Day && PlayerWet==b.PlayerWet && ClearLine==b.ClearLine && Multiplayer==b.Multiplayer && Remix==b.Remix && SlimeRain==b.SlimeRain && WorldWidth==b.WorldWidth && Eclipse==b.Eclipse && Graveyard==b.Graveyard && GoodWorld==b.GoodWorld && InvasionType==b.InvasionType && SnowMoon==b.SnowMoon && DontStarve==b.DontStarve;}
     }
     public sealed class PredictionPlayers : IEquatable<PredictionPlayers>
     {

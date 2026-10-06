@@ -50,6 +50,9 @@ namespace JueMingR.TerrariaHost.Combat
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcTargeting",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcPositionMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcGroundMotion",true),
+                typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.PlayerHorizontalMotion",true),
+                typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcGravityMotion",true),
+                typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.FighterHorizontalMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcAquaticMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcAnchoredMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcWallMotion",true),
@@ -147,12 +150,17 @@ namespace JueMingR.TerrariaHost.Combat
             for(int i=0;i<count;i++){motionRoles[i]=motionSlots[states[i].Identity.Slot];if(motionRoles[i])NpcTrackingObservation.Capture(Main.npc[states[i].Identity.Slot],ref states[i],Terrain);}
             var current=Main.npc[identity.Slot];
             if(current.aiStyle==6 || current.aiStyle==37)for(int i=0;i<count;i++)if(states[i].ParentSlot<0){current=Main.npc[states[i].Identity.Slot];break;}
-            var premiseEnv=new PredictionEnvironment{Day=Main.dayTime,Remix=Main.remixWorld,WorldSurface=(float)Main.worldSurface};
+            var premiseEnv=new PredictionEnvironment{PlayerIndex=-1,Day=Main.dayTime,Remix=Main.remixWorld,WorldSurface=(float)Main.worldSurface};
             int oldPlayer=states[selected].PlayerIndex;
             premiseEnv.Graveyard=oldPlayer>=0 && oldPlayer<Main.maxPlayers && Main.player[oldPlayer]!=null && Main.player[oldPlayer].ZoneGraveyard;
-            int target=NpcMotion.PlayerPremiseTarget(states[selected],premiseEnv);if(target<0 || target>=Main.maxPlayers || Main.player[target]==null)target=Main.myPlayer;
-            var player=Main.player[target];
-            if(player==null || !player.active || player.dead || player.ghost){Clear();Outcome(identity,tick,null,PredictionFailureLayer.Source);return;}
+            int target=NpcMotion.PlayerPremiseTarget(states[selected],premiseEnv);bool needsPlayer=false;
+            // Only real movement consumers acquire a future-player prerequisite.
+            // A required numbered target is never replaced by the local player.
+            for(int i=0;i<count;i++)if(motionRoles[i] && NpcMotion.NeedsPlayerMotion(states[i],premiseEnv,Cache.Required,states,count))
+            {if(!needsPlayer)target=NpcMotion.PlayerPremiseTarget(states[i],premiseEnv);needsPlayer=true;}
+            var player=target>=0 && target<Main.maxPlayers?Main.player[target]:null;
+            bool playerAlive=player!=null && player.active && !player.dead && !player.ghost;
+            if(needsPlayer && !playerAlive){rolling.Clear();Outcome(identity,tick,null,PredictionFailureLayer.PlayerPremise);Cache.Publish(null);return;}
             targetPlayer=target;observedCount=count;
             int playerCount=0;bool samePlayers=players!=null,anyCorrupt=false;
             for(int i=0;i<Main.maxPlayers;i++)
@@ -161,14 +169,23 @@ namespace JueMingR.TerrariaHost.Combat
                 samePlayers&=players!=null && playerCount<players.Count && PredictionPlayers.Same(area,players[playerCount]);playerAreas[playerCount++]=area;anyCorrupt|=!p.dead && p.ZoneCorrupt;
             }
             if(!samePlayers || players.Count!=playerCount)players=new PredictionPlayers(playerAreas,playerCount);
-            var env=new PredictionEnvironment{BloodMoon=Main.bloodMoon,PlayerProtected=!player.dead && !player.ghost && player.insideUnbreakableWalls,PlayerIndex=target,PlayerX=player.Center.X,PlayerY=player.Center.Y,PlayerWidth=player.width,PlayerHeight=player.height,PlayerWet=player.wet,Wind=Main.windSpeedCurrent,Expert=Main.expertMode,Day=Main.dayTime,WorldWidth=Main.maxTilesX,WorldSurface=(float)Main.worldSurface,Multiplayer=Main.netMode==1,Remix=Main.remixWorld,SlimeRain=Main.slimeRain,
-                Enraged=player.position.Y<800 || player.position.Y>Main.worldSurface*16 || player.position.X>6400 && player.position.X<Main.maxTilesX*16-6400,
-                MechQueenUp=NPC.mechQueen>=0 && NPC.mechQueen<Main.maxNPCs && Main.npc[NPC.mechQueen]!=null && Main.npc[NPC.mechQueen].active && Main.npc[NPC.mechQueen].type==127,Players=players,WorldHeight=Main.maxTilesY,RockLayer=(float)Main.rockLayer,PlayerDead=player.dead,PlayerIdleWithNegativeAggro=player.itemAnimation==0 && player.aggro<0,Corrupt=player.ZoneCorrupt,Crimson=player.ZoneCrimson,AnyLivingCorrupt=anyCorrupt,SkyblockLowTiles=WorldGen.Skyblock.lowTiles,ClearLine=false,Eclipse=Main.eclipse,Graveyard=player.ZoneGraveyard,GoodWorld=Main.getGoodWorld,InvasionType=Main.invasionType,SnowMoon=Main.snowMoon,DontStarve=Main.dontStarveWorld};
-            var result=rolling.Prepare(states,count,selected,tick,Cache.Required,epoch,env,ReadPlayer(player),Terrain,motionRoles);
+            var env=new PredictionEnvironment{BloodMoon=Main.bloodMoon,PlayerProtected=playerAlive && player.insideUnbreakableWalls,PlayerIndex=target,PlayerX=player==null?0:player.Center.X,PlayerY=player==null?0:player.Center.Y,PlayerWidth=player==null?0:player.width,PlayerHeight=player==null?0:player.height,PlayerWet=player!=null && player.wet,Wind=Main.windSpeedCurrent,Expert=Main.expertMode,Day=Main.dayTime,WorldWidth=Main.maxTilesX,GravityWorldSurface=Main.worldSurface,WorldSurface=(float)Main.worldSurface,Multiplayer=Main.netMode==1,Remix=Main.remixWorld,SlimeRain=Main.slimeRain,
+                Enraged=player!=null && (player.position.Y<800 || player.position.Y>Main.worldSurface*16 || player.position.X>6400 && player.position.X<Main.maxTilesX*16-6400),
+                MechQueenUp=NPC.mechQueen>=0 && NPC.mechQueen<Main.maxNPCs && Main.npc[NPC.mechQueen]!=null && Main.npc[NPC.mechQueen].active && Main.npc[NPC.mechQueen].type==127,Players=players,WorldHeight=Main.maxTilesY,RockLayer=(float)Main.rockLayer,PlayerDead=!playerAlive,PlayerIdleWithNegativeAggro=player!=null && player.itemAnimation==0 && player.aggro<0,Corrupt=player!=null && player.ZoneCorrupt,Crimson=player!=null && player.ZoneCrimson,AnyLivingCorrupt=anyCorrupt,SkyblockLowTiles=WorldGen.Skyblock.lowTiles,ClearLine=false,Eclipse=Main.eclipse,Graveyard=player!=null && player.ZoneGraveyard,GoodWorld=Main.getGoodWorld,InvasionType=Main.invasionType,SnowMoon=Main.snowMoon,DontStarve=Main.dontStarveWorld};
+            var result=rolling.Prepare(states,count,selected,tick,Cache.Required,epoch,env,player==null?default(PredictionPlayerMotion):ReadPlayer(player),Terrain,motionRoles);
             Outcome(identity,tick,result,rolling.FailureLayer);Cache.Publish(result);
         }
         private static PredictionPlayerMotion ReadPlayer(Player p)
         {
+            bool badHook=false;
+            if(p.grappling!=null && p.grappling.Length>0 && p.grappling[0]>=0)
+            {
+                // Original forces consume grapCount, not unused array capacity
+                // (whose trailing zero does not attach projectile slot zero).
+                badHook=p.grapCount<1 || p.grapCount>p.grappling.Length;
+                for(int i=0;i<Math.Min(p.grapCount,p.grappling.Length);i++)
+                {int slot=p.grappling[i];var hook=slot>=0 && slot<Main.maxProjectiles?Main.projectile[slot]:null;if(hook==null || !hook.active || hook.owner!=p.whoAmI || hook.aiStyle!=7 || hook.ai==null || hook.ai.Length<1 || hook.ai[0]!=2)badHook=true;}
+            }
             bool hover=p.mount.Active && (p.mount.Type==MountID.WitchBroom || p.mount.Type==5) && !p.CCed && !p.pulley && !p.shimmering && !p.tongued && (p.grappling==null || p.grappling.Length==0 || p.grappling[0]<0);
             // jumpSpeed/Height are shared native scratch, not this player's
             // completed observation. Derive ordinary values from owned effects.
@@ -177,8 +194,11 @@ namespace JueMingR.TerrariaHost.Combat
             if(p.wereWolf){jumpSpeed+=.2f;jumpHeight+=2;}if(p.moonLordLegs)jumpHeight++;
             jumpSpeed+=p.jumpSpeedBoost;if(p.sticky){jumpSpeed/=5;jumpHeight/=10;}if(p.dazed){jumpSpeed/=2;jumpHeight/=5;}
             return new PredictionPlayerMotion{X=p.position.X,Y=p.position.Y,Vx=p.velocity.X,Vy=p.velocity.Y,Width=p.width,Height=p.height,
+                PlayerToken=p,PlayerIndex=p.whoAmI,ObservationMechanism=Prediction.NativePlayerMotion.Mechanism(p)|(p.ShouldFloatInWater?256:0)|(p.isLockedToATile?512:0),Rope=p.pulley,InvalidMechanism=badHook,
                 Gravity=p.gravity,GravityDirection=p.gravDir,MaxFall=p.maxFallSpeed,Acceleration=hover?p.mount.Acceleration:p.runAcceleration,
-                Slowdown=hover?.2f:p.runSlowdown,MaxSpeed=hover?p.mount.RunSpeed:Math.Max(p.maxRunSpeed,p.accRunSpeed),Jump=p.jump,JumpHeight=jumpHeight,JumpSpeed=jumpSpeed,
+                Slowdown=hover?.2f:p.runSlowdown,MaxSpeed=hover?p.mount.RunSpeed:p.maxRunSpeed,FastMaxSpeed=hover?p.mount.DashSpeed:p.chilled && p.oldStyleParkour?p.maxRunSpeed:p.accRunSpeed,
+                WindSpeed=Main.windSpeedCurrent,WindPushed=p.windPushed && p.CanBePushedByWind(),TrackBoost=p.trackBoost,
+                DashDelay=p.dashDelay,Wings=p.wingsLogic>0,CanFly=p.mount.CanFly(p),OnWrongGround=p.onWrongGround,PortalPhysics=p.PortalPhysicsEnabled,Jump=p.jump,JumpHeight=jumpHeight,JumpSpeed=jumpSpeed,
                 IgnorePlatforms=p.gravDir<0 || p.mount.Active && (p.mount.Cart || p.mount.Type==12 || p.mount.Type==7 || p.mount.Type==8 || p.mount.Type==23 || p.mount.Type==44 || p.mount.Type==48 || p.mount.Type==55 && p.slideDir!=0) || p.GoingDownWithGrapple || p.pulley,
                 IgnoreWater=p.ignoreWater,Merman=p.merman,Trident=p.trident,OnTrack=p.onTrack,Cart=p.mount.Active && p.mount.Cart,SkipSlope=p.mount.Active && p.mount.Type==48,SkipConveyor=p.grapCount>0 || p.pulley || p.shimmering || p.tongued || p.isLockedToATile,
                 RidingTracks=p.IsRidingTracks,StepMount=p.mount.Active && (p.mount.Type==7 || p.mount.Type==8 || p.mount.Type==12 || p.mount.Type==44 || p.mount.Type==49),Carpet=p.carpetFrame!=-1,Grappled=p.grappling!=null && p.grappling.Length>0 && p.grappling[0]>=0,UnsupportedGeometry=p.shimmering || p.tongued || p.pulley || p.grappling!=null && p.grappling.Length>0 && p.grappling[0]>=0,FloatInWater=p.ShouldFloatInWater,StairFall=p.stairFall,GfxOffset=p.gfxOffY,StepSpeed=p.stepSpeed,
