@@ -47,7 +47,7 @@ namespace NativeWorldTextProbe
             FrameEvidence Observe(string phase,bool acquiring,int frame,NpcTrajectory frozen,bool exact)
             {
                 var path=cache.Read(0);var selection=Get(host,"Selection");var expected=expectedWindow;bool has=(bool)Get(selection,"HasTarget");
-                var evidence=new FrameEvidence{Phase=phase,Acquiring=acquiring,Frame=frame,Expected=expected,Selected=has,Selection=has?(NpcIdentity)Get(selection,"Target"):default(NpcIdentity),Published=path!=null,Publication=path?.Identity??default(NpcIdentity),Tick=(long)Main.GameUpdateCount,SampleTick=path?.SampleTick??-1,CaptureTick=path?.CaptureTick??-1,Legal=n.active && n.life>0 && !n.friendly && !n.immortal && !n.dontTakeDamage && p.active && !p.dead,Size=Math.Min(n.width,n.height),Exact=exact};
+                var evidence=new FrameEvidence{Phase=phase,Acquiring=acquiring,Frame=frame,Expected=expected,Selected=has,Selection=has?(NpcIdentity)Get(selection,"Target"):default(NpcIdentity),Published=path!=null,Publication=path?.Identity??default(NpcIdentity),Tick=(long)Main.GameUpdateCount,SampleTick=path?.SampleTick??-1,CaptureTick=path?.CaptureTick??-1,Legal=n.active && n.life>0 && !n.friendly && !n.immortal && !n.dontTakeDamage && p.active && !p.dead,Size=Math.Min(n.width,n.height),Exact=exact,CurrentCount=path?.Count??0,CurrentStop=path?.Stop??PredictionStop.None,RequiredFuture=phase=="fighter104-speed2" || phase=="dry-float-boots-fast-run"?120:0};
                 if(frozen!=null && frame>0 && frame<frozen.Count)
                 {var point=frozen[frame];double dx=point.Bounds.X-n.position.X,dy=point.Bounds.Y-n.position.Y;evidence.Error=Math.Sqrt(dx*dx+dy*dy);evidence.ErrorY=Math.Abs(dy);evidence.HasFrozen=true;evidence.PredictedVx=point.Vx;evidence.PredictedVy=point.Vy;evidence.ActualVx=n.velocity.X;evidence.ActualVy=n.velocity.Y;}
                 availability.Add(evidence);return evidence;
@@ -194,7 +194,7 @@ namespace NativeWorldTextProbe
                 if(fighterOnly || full)
                 {
                     n.SetDefaults(104);n.whoAmI=slot;n.active=true;n.target=p.whoAmI;n.position=new Vector2(700,2400-n.height);n.oldPosition=n.position-new Vector2(2,0);n.velocity=new Vector2(2,0);n.direction=n.spriteDirection=1;n.ai[3]=0;
-                    Window("fighter104-speed2",120);Require(n.velocity.X==2,"C original ordinary fighter retains its legal speed above old invented1.5.");
+                    Window("fighter104-speed2",120,false,true);Require(n.velocity.X==2,"C original ordinary fighter retains its legal speed above old invented1.5.");
                     p.position.X=400;Window("fighter104-reverse",30);Require(n.direction==-1 && n.velocity.X<0,"C original fighter reverses under the new actual numbered-player position.");
                     n.velocity=new Vector2(-7,0);n.oldVelocity=n.velocity;Window("fighter104-overspeed-brake",30);Require(n.velocity.X==-2,"C original true ground overspeed brake converges to the real speed2 threshold.");
                     n.position=new Vector2(p.position.X-70,2400-n.height);n.oldPosition=n.position-new Vector2(2,0);n.velocity=new Vector2(2,0);n.oldVelocity=n.velocity;n.direction=n.spriteDirection=1;n.ai[3]=0;
@@ -222,8 +222,8 @@ namespace NativeWorldTextProbe
             finally
             {
                 File.WriteAllLines(Path.Combine(output,"foundation-continuous.csv"),rows);File.WriteAllLines(Path.Combine(output,"foundation-continuous-summary.csv"),summary);
-                var coverage=new List<string>{"phase,snapshot,legal,selected,published,acquiring,frame,tick,sampleTick,captureTick,expectedSession,expectedSlot,expectedGeneration,expectedType,expectedNetId,frozenError,errorY,predictedVx,predictedVy,actualVx,actualVy,checkActions,predictedJump,actualJump,predictedTurn,actualTurn,predictedStep,actualStep"};
-                foreach(var item in availability)coverage.Add(string.Join(",",item.Phase,item.Snapshot,item.Legal,item.Selected,item.Published,item.Acquiring,item.Frame,item.Tick,item.SampleTick,item.CaptureTick,item.Expected.Session,item.Expected.Slot,item.Expected.Generation,item.Expected.Type,item.Expected.NetId,F(item.Error),F(item.ErrorY),F(item.PredictedVx),F(item.PredictedVy),F(item.ActualVx),F(item.ActualVy),item.CheckActions,item.PredictedJump,item.ActualJump,item.PredictedTurn,item.ActualTurn,item.PredictedStep,item.ActualStep));
+                var coverage=new List<string>{"phase,snapshot,legal,selected,published,acquiring,frame,tick,sampleTick,captureTick,expectedSession,expectedSlot,expectedGeneration,expectedType,expectedNetId,frozenError,errorY,predictedVx,predictedVy,actualVx,actualVy,checkActions,predictedJump,actualJump,predictedTurn,actualTurn,predictedStep,actualStep,currentCount,currentStop,requiredFuture"};
+                foreach(var item in availability)coverage.Add(string.Join(",",item.Phase,item.Snapshot,item.Legal,item.Selected,item.Published,item.Acquiring,item.Frame,item.Tick,item.SampleTick,item.CaptureTick,item.Expected.Session,item.Expected.Slot,item.Expected.Generation,item.Expected.Type,item.Expected.NetId,F(item.Error),F(item.ErrorY),F(item.PredictedVx),F(item.PredictedVy),F(item.ActualVx),F(item.ActualVy),item.CheckActions,item.PredictedJump,item.ActualJump,item.PredictedTurn,item.ActualTurn,item.PredictedStep,item.ActualStep,item.CurrentCount,item.CurrentStop,item.RequiredFuture));
                 File.WriteAllLines(Path.Combine(output,"foundation-availability.csv"),coverage);
                 int legal=0,selected=0,published=0,blank=0,longest=0,first=-1;
                 foreach(var item in availability){if(item.Snapshot)continue;if(item.Legal)legal++;if(item.Selected)selected++;if(item.Published)published++;bool usable=item.Selected && item.Published && item.SampleTick==item.Tick;blank=usable?0:blank+1;longest=Math.Max(longest,blank);if(first<0 && usable)first=legal;}
@@ -237,7 +237,8 @@ namespace NativeWorldTextProbe
             internal NpcIdentity Expected,Selection,Publication;
             internal bool Legal,Selected,Published,Acquiring,HasFrozen,Exact,ExactY,Snapshot,CheckActions,PredictedJump,ActualJump,PredictedTurn,ActualTurn,PredictedStep,ActualStep;
             internal long Tick,SampleTick,CaptureTick;
-            internal int Frame,Size;
+            internal int Frame,Size,CurrentCount,RequiredFuture;
+            internal PredictionStop CurrentStop;
             internal double Error,ErrorY;
             internal float PredictedVx,PredictedVy,ActualVx,ActualVy;
         }
@@ -259,6 +260,9 @@ namespace NativeWorldTextProbe
                     // completed Host.Update; Fresh uses that same current tick.
                     // Capture may retain rolling history, Sample must be NOW.
                     if(f.SampleTick!=f.Tick || f.CaptureTick>f.SampleTick)return f.Phase+": stale publication tick";
+                    // These declared stable windows have no stopping boundary.
+                    // A good old frozen path cannot hide a shrinking CURRENT path.
+                    if(f.RequiredFuture>0 && (f.CurrentCount<=f.RequiredFuture || f.CurrentStop!=PredictionStop.None))return f.Phase+": current publication lacks declared future span count="+f.CurrentCount+" stop="+f.CurrentStop+" required="+f.RequiredFuture;
                 }
                 if(f.Snapshot && (!f.Selected || !f.Published))return f.Phase+": missing pre-action snapshot";
                 bool usable=f.Selected && f.Published;
@@ -284,8 +288,9 @@ namespace NativeWorldTextProbe
         {
             object token=new object();var expected=new NpcIdentity(7,token,2,9,104,104);
             var good=new List<FrameEvidence>();
-            for(int i=1;i<=30;i++)good.Add(new FrameEvidence{Phase="gate-control",Legal=true,Selected=true,Published=true,Expected=expected,Selection=expected,Publication=expected,HasFrozen=true,Frame=i,Size=40,Error=i<=15?19:39});
+            for(int i=1;i<=30;i++)good.Add(new FrameEvidence{Phase="gate-control",Legal=true,Selected=true,Published=true,Expected=expected,Selection=expected,Publication=expected,HasFrozen=true,Frame=i,Size=40,Error=i<=15?19:39,CurrentCount=121,RequiredFuture=120,CurrentStop=PredictionStop.None});
             Require(Evaluate(good)==null,"T01 bounded useful approximation must pass the real acceptance outlet.");
+            var shortPath=new List<FrameEvidence>(good);for(int i=1;i<shortPath.Count;i++){var f=shortPath[i];f.CurrentCount=2;shortPath[i]=f;}Require(Evaluate(shortPath)!=null,"T01 later short current publications must fail despite a full initial frozen path.");
             var empty=new List<FrameEvidence>(good);for(int i=1;i<empty.Count;i++){var f=empty[i];f.Selected=f.Published=false;empty[i]=f;}
             Require(Evaluate(empty)!=null,"T01 almost-all-blank must fail the same outlet.");
             foreach(var wrong in new[]{new NpcIdentity(7,new object(),2,9,104,104),new NpcIdentity(7,token,2,10,104,104)})
@@ -293,7 +298,7 @@ namespace NativeWorldTextProbe
             var stale=new List<FrameEvidence>(good);var old=stale[5];old.Tick=8;old.SampleTick=7;old.CaptureTick=7;stale[5]=old;Require(Evaluate(stale)!=null,"T01 same-identity old tick must fail the same outlet.");
             var direction=new List<FrameEvidence>(good);var d=direction[0];d.Error=0;d.CheckActions=true;d.ActualTurn=true;direction[0]=d;Require(Evaluate(direction)!=null,"T01 wrong action direction fails even at zero positional error in a conditional trend.");
             var jump=new List<FrameEvidence>(good);d=jump[0];d.Error=0;d.CheckActions=true;d.ActualJump=true;jump[0]=d;Require(Evaluate(jump)!=null,"T01 missed jump fails before position error reaches a body width in a conditional trend.");
-            Console.WriteLine("PASS T01 same-outlet blank/full-identity/action negative controls and bounded approximation positive control.");
+            Console.WriteLine("PASS T01 same-outlet blank/full-identity/action/short-current-path negative controls and bounded approximation positive control.");
         }
         private static string F(double value){return value.ToString("R",CultureInfo.InvariantCulture);}
         private static void Actions(ref FrameEvidence f,float py,float pxv,float pyv,float y,float xv,float yv,float ay,float axv,float ayv,float actualY,float actualXv,float actualYv)
