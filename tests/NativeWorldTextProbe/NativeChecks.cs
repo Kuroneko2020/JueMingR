@@ -125,7 +125,7 @@ namespace NativeWorldTextProbe
             if(scope=="CombatCpu" || scope=="CombatRelease" || scope=="CombatFacingCpu" || scope=="CombatHitsCpu" || scope=="CombatReportCpu" || scope=="CombatUiCpu")
             {
                 Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-combat-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
-                NativeQuickItemChecks.Run(scope=="CombatRelease"?(Action<object>)CombatRelease:scope=="CombatUiCpu"?(Action<object>)NativeCombatUiChecks.Run:scope=="CombatReportCpu"?(Action<object>)NativeCombatReportChecks.Run:scope=="CombatHitsCpu"?(Action<object>)NativeCombatHitChecks.Run:scope=="CombatFacingCpu"?(Action<object>)NativeCombatFacingChecks.Run:NativeCombatChecks.Run,processing:true,shortFeedback:true,candidateAssembly:scope=="CombatRelease"?Path.Combine(Program.Repository,"artifacts/build/Release/work/bin/JueMingR.TerrariaHost/x86/Release/net472/JueMingR.TerrariaHost.dll"):null);return 0;
+                NativeQuickItemChecks.Run(scope=="CombatRelease"?(Action<object>)CombatRelease:scope=="CombatUiCpu"?(Action<object>)NativeCombatUiChecks.Run:scope=="CombatReportCpu"?(Action<object>)NativeCombatReportChecks.Run:scope=="CombatHitsCpu"?(Action<object>)NativeCombatHitChecks.Run:scope=="CombatFacingCpu"?(Action<object>)NativeCombatFacingChecks.Run:NativeCombatChecks.Run,processing:true,shortFeedback:true,candidateAssembly:scope=="CombatRelease"?Path.Combine(Program.Repository,"artifacts/build/Release/work/bin/JueMingR.TerrariaHost/x86/Release/net472/JueMingR.TerrariaHost.dll"):Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
             }
             if(scope=="PageCompositionCpu")
             {

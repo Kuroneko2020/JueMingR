@@ -180,7 +180,10 @@ namespace JueMingR.TerrariaHost.Combat
                     // recovery. With no original left, present a press to native
                     // ItemCheck: its own timers decide the first legal emission.
                     // A pre-ItemCheck Ready snapshot would add an empty action.
-                    press=Valid(primary,primaryKey)?primary.ai[0]>=0 && now==cycleTick:true;
+                    // Only Started proves a birth owned by this lease. A real
+                    // original discovered during takeover is already past its
+                    // birth action and must release on this action.
+                    press=Valid(primary,primaryKey)?primary.ai[0]>=0 && used && now==cycleTick:true;
                     break;
                 case 1:DecideFlail(now);break;
                 case 2:
@@ -235,7 +238,12 @@ namespace JueMingR.TerrariaHost.Combat
         }
         private void Discover()
         {
-            if(kind==0 || kind==3 || source.shoot<=0 || player.ownedProjectileCounts[source.shoot]<=0)return;
+            if(kind==0 || kind==3 || source.shoot<=0)return;
+            // BeforeSync precedes vanilla's projectile-count rebuild. A ball
+            // born on the previous native action may still have count zero.
+            // Yoyo takeover performs this bounded scan once per lease; ongoing
+            // use owns complete-key birth receipts and never scans each action.
+            if(kind!=4 && player.ownedProjectileCounts[source.shoot]<=0)return;
             for(int i=0;i<Main.maxProjectiles;i++)
             {
 #if DEBUG

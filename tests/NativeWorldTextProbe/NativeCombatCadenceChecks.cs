@@ -47,7 +47,7 @@ namespace NativeWorldTextProbe
             audit.Patch(typeof(Player).GetNestedType("SelectedItemState",Flags).GetMethod("Update",Flags),postfix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),nameof(Selected)));
             try
             {
-                if(Environment.GetEnvironmentVariable("JUEMINGR_YOYO_CAUSAL")=="1"){NativeYoyoCausalChecks.Run(context);return;}
+                if(Environment.GetEnvironmentVariable("JUEMINGR_YOYO_CAUSAL")=="1"){NativeYoyoCausalChecks.Run(context);NativeYoyoAdoptionChecks.Run(context,combat,tools,input);return;}
                 foreach(int empty in new[]{0,1,3})
                 {
                     Save(combat,new CombatOptions());var p=NativeToolExecutionChecks.Reset(context,tools,input,ItemID.CopperShortsword,0,0);starts.Clear();shots.Clear();
@@ -69,6 +69,7 @@ namespace NativeWorldTextProbe
                 NativeCombatReleaseChecks.Run(context);
                 NativeCombatInteractionChecks.Run(context);
                 Dedicated(context,combat,tools,input);
+                NativeYoyoAdoptionChecks.Run(context,combat,tools,input);
                 NativeCombatHitChecks.FlailReceipts(context);
                 Cursor(context,combat,tools,input);
                 NativeCombatBoundaryChecks.Run(context);
