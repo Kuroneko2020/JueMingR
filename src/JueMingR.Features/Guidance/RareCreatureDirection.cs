@@ -7,6 +7,7 @@ namespace JueMingR.Features.Guidance
     {
         private readonly IGuidanceNpcSource source;
         private int untilDiscovery;
+        private long discoveryTick=-1;
         private float previousX, previousY;
         private bool observed;
         public RareCreatureDirection(IGuidanceNpcSource source) { this.source = source; }
@@ -15,20 +16,22 @@ namespace JueMingR.Features.Guidance
 #if DEBUG
         public int Discoveries { get; private set; }
 #endif
-        public void Clear() { Visible = observed = false; Target = default(GuidanceNpc); untilDiscovery = 0; }
-        public void Update(bool qualified, float x, float y)
+        public void Clear() { Visible = observed = false; Target = default(GuidanceNpc); untilDiscovery = 0; discoveryTick=-1; }
+        public void Update(bool qualified, float x, float y,long worldTick=-1)
         {
             // accCritterGuide/hideInfo are completed vanilla ability facts; no
             // item list, metal-detector or UI exception is reimplemented here.
             if (!qualified || !Finite(x) || !Finite(y)) { Clear(); return; }
-            if (observed && Distance(x, y, previousX, previousY) > 1300 * 1300) { Visible = false; untilDiscovery = 0; }
+            if (observed && Distance(x, y, previousX, previousY) > 1300 * 1300) { Visible = false; untilDiscovery = 0; discoveryTick=-1; }
             observed = true; previousX = x; previousY = y;
             GuidanceNpc tracked = default(GuidanceNpc);
             if (Visible && (!source.TryRead(Target.Slot, NpcDemand.Direction, out tracked) || !tracked.SameIdentity(Target) || !Eligible(tracked, x, y)))
-            { Visible = false; untilDiscovery = 0; }
+            { Visible = false; untilDiscovery = 0; discoveryTick=-1; }
             else if (Visible) Target = tracked;
-            if (untilDiscovery-- > 0) return;
-            untilDiscovery = 14;
+            bool advance=worldTick<0 || worldTick!=discoveryTick;
+            discoveryTick=worldTick;
+            if(untilDiscovery>0 && (!advance || --untilDiscovery>0))return;
+            untilDiscovery = 15;
 #if DEBUG
             Discoveries++;
 #endif

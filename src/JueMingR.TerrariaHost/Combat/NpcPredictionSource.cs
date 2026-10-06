@@ -15,7 +15,7 @@ namespace JueMingR.TerrariaHost.Combat
         private bool usingSegmented;
         private readonly RollingNpcPrediction rolling=new RollingNpcPrediction();
         private int observedCount,targetPlayer=-1;
-        private long epoch;
+        private long epoch,geometryTick=-1;
         private bool ownsState;
         // Only the current synchronous sample's scalar outcome is retained.
         // This is not a second trajectory/cache and cannot turn point0 into a future.
@@ -105,7 +105,7 @@ namespace JueMingR.TerrariaHost.Combat
             // revoke publication until the next completed sample, preserving
             // rolling/segment history and its relation identity. It is not a
             // birth, transform, teleport or permission to resurrect old data.
-            if(affected){outcomeTick=-1;Cache.Clear();}
+            if(affected){outcomeTick=-1;Cache.Clear();epoch++;}
         }
         private void RetireSlot(int slot,NPC token)
         {
@@ -129,7 +129,10 @@ namespace JueMingR.TerrariaHost.Combat
             }
             if(usingSegmented){Cache.Clear();rolling.Clear();usingSegmented=false;}
             if(Native!=null){Native.Prepare(identity,tick);return;}
-            Terrain.Reset();Array.Clear(visited,0,visited.Length);Array.Clear(motionSlots,0,motionSlots.Length);int count=0,queued=1;pending[0]=identity.Slot;visited[identity.Slot]=motionSlots[identity.Slot]=true;
+            // Keep the last forecast cells only across an unchanged real step.
+            // Revalidate this bounded set before reuse, including same-tick edits.
+            if(geometryTick!=tick)Terrain.Reset();else if(!Terrain.Unchanged){epoch++;Terrain.Reset();}geometryTick=tick;
+            Array.Clear(visited,0,visited.Length);Array.Clear(motionSlots,0,motionSlots.Length);int count=0,queued=1;pending[0]=identity.Slot;visited[identity.Slot]=motionSlots[identity.Slot]=true;
             for(int next=0;next<queued;next++)
             {
                 int slot=pending[next];

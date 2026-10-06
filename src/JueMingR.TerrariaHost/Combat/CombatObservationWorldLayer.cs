@@ -13,14 +13,15 @@ namespace JueMingR.TerrariaHost.Combat
     {
         private struct Stroke {internal Vector2 A,B;internal Color Color;internal float Width;}
         private readonly Stroke[] strokes=new Stroke[16384];
+        private CombatShapeSample projectedEvent;
         private static readonly Color[] colors={new Color(90,205,250),new Color(145,230,120),new Color(245,185,65),new Color(245,100,120),new Color(215,140,255)};
         private readonly HostCombatObservation host;
         internal readonly CombatTargetMarker Marker;
         private int strokeLimit=16384;
-        private int count,eventStart,eventEnd;private long presentation;private bool eventsDrawn;private Matrix zoom,inverse;private string pathText;private bool legend,limited;
+        private int count,eventStart,eventEnd;private long presentation;private bool eventsDrawn;private Matrix zoom,inverse;private NpcTrajectory preparedPath;private string pathText;private bool legend,limited;
         internal CombatObservationWorldLayer(HostCombatObservation host){this.host=host;Marker=new CombatTargetMarker(host);}
         internal int StrokeCount {get{return count;}}
-        internal void Clear(){count=eventStart=eventEnd=0;eventsDrawn=false;pathText=null;legend=limited=false;Marker.Clear();}
+        internal void Clear(){count=eventStart=eventEnd=0;eventsDrawn=false;preparedPath=null;pathText=null;legend=limited=false;Marker.Clear();}
         internal void Prepare()
         {
             Prediction.AimLightTrace.Presentation("prepare-enter",null,0,0,false);
@@ -29,18 +30,8 @@ namespace JueMingR.TerrariaHost.Combat
             {
 #endif
             Clear();if(!host.Enabled || !host.CanDraw || !WorldPresentation.CanDraw || Main.GameViewMatrix==null){Prediction.AimLightTrace.Presentation(!host.Enabled?"prepare-disabled":!host.CanDraw?"prepare-host-gate":!WorldPresentation.CanDraw?"prepare-world-gate":"prepare-no-matrix",null,0,0,false);return;}
-            zoom=Main.GameViewMatrix.ZoomMatrix;if(zoom.M11<=0 || zoom.M22<=0){Prediction.AimLightTrace.Presentation("prepare-invalid-zoom",null,0,0,false);return;}inverse=Matrix.Invert(zoom);
-            Marker.Prepare(zoom,inverse);
-            // Reserve a bounded half for the sole selected path. Dense combat
-            // shapes can reach their own cap without starving that display;
-            // the constant marker never consumes this stroke pool at all.
-            strokeLimit=host.Path?strokes.Length/2:strokes.Length;
-            if(host.Collision)
-            {
-                host.Geometry.PrepareEvents();legend=true;limited=host.Geometry.EventOverflow;Samples(host.Geometry.Attacks,0);Samples(host.Geometry.Npcs,1);Samples(host.Geometry.Bodies,3);
-                eventStart=count;presentation++;Samples(host.Geometry.Events,2);eventEnd=count;
-            }
-            strokeLimit=strokes.Length;
+            Marker.Capture();
+            if(host.Collision){host.Geometry.PrepareEvents();legend=true;limited=host.Geometry.EventOverflow;}
             var path=host.Path?host.Prediction.Cache.Read(0):null;
             Prediction.AimLightTrace.Presentation("cache-consume",path,0,eventEnd,false);
             if(path==null)
@@ -51,16 +42,9 @@ namespace JueMingR.TerrariaHost.Combat
                     pathText=EmptyText(reason,layer);
                 Prediction.AimLightTrace.Presentation(host.Path?"prepare-cache-empty":"prepare-path-gate",null,0,eventEnd,pathText!=null);return;
             }
+            preparedPath=path;
             bool approximate=(path.Assumptions&(PredictionAssumption.ApproximateMechanism|PredictionAssumption.RandomRepresentative))!=0;
             var color=approximate?new Color(255,210,110):new Color(235,235,255);
-            for(int i=1;i<path.Count;i++)
-            {
-                var point=path[i];var prior=path[i-1];
-                var b=new Vector2(point.Bounds.CenterX,point.Bounds.CenterY);
-                if(!point.NewSegment)Line(new Vector2(prior.Bounds.CenterX,prior.Bounds.CenterY),b,color,approximate,1.5f);
-                if(point.NewSegment || i%30==0 || i==path.Count-1)
-                {Line(b-new Vector2(3,0),b+new Vector2(3,0),color,false,2);Line(b-new Vector2(0,3),b+new Vector2(0,3),color,false,2);}
-            }
             pathText=path.Stop==PredictionStop.None?(approximate?"NPC 路径：近似":"NPC 路径：条件预测"):StopText(path.Stop);
             pathText+=" · 未来约 "+((path.Count-1)/60f).ToString(path.Count<7?"0.00":"0.0",System.Globalization.CultureInfo.InvariantCulture)+" 秒";
             if((path.Assumptions&PredictionAssumption.RandomRepresentative)!=0)pathText+=" · 随机代表路线";
@@ -77,6 +61,27 @@ namespace JueMingR.TerrariaHost.Combat
             }
             catch(Exception error){Prediction.AimLightTrace.Fault("prepare",error,(long)Main.GameUpdateCount);throw;}
 #endif
+        }
+        private void ProjectPresentation()
+        {
+            // Only bounded geometry from completed observations is traversed.
+            // The final camera decides visibility before the physical-stroke
+            // cap, so offscreen facts cannot starve later visible strokes.
+            count=eventStart=eventEnd=0;eventsDrawn=false;
+            strokeLimit=host.Path?strokes.Length/2:strokes.Length;
+            if(host.Collision)
+            {Samples(host.Geometry.Attacks,0);Samples(host.Geometry.Npcs,1);Samples(host.Geometry.Bodies,3);eventStart=count;presentation++;Samples(host.Geometry.Events,2);eventEnd=count;}
+            projectedEvent=null;strokeLimit=strokes.Length;var path=preparedPath;
+            if(!host.Path || path==null || !host.Selection.HasTarget || !host.Selection.Target.Equals(path.Identity) || !ReferenceEquals(host.Prediction.Cache.Read(0),path) || !CombatSelection.Valid(path.Identity,host.Session))return;
+            bool approximate=(path.Assumptions&(PredictionAssumption.ApproximateMechanism|PredictionAssumption.RandomRepresentative))!=0;
+            var color=approximate?new Color(255,210,110):new Color(235,235,255);
+            for(int i=1;i<path.Count;i++)
+            {
+                var point=path[i];var prior=path[i-1];var b=new Vector2(point.Bounds.CenterX,point.Bounds.CenterY);
+                if(!point.NewSegment)Line(new Vector2(prior.Bounds.CenterX,prior.Bounds.CenterY),b,color,approximate,1.5f);
+                if(point.NewSegment || i%30==0 || i==path.Count-1)
+                {Line(b-new Vector2(3,0),b+new Vector2(3,0),color,false,2);Line(b-new Vector2(0,3),b+new Vector2(0,3),color,false,2);}
+            }
         }
         private static string StopText(PredictionStop reason)
         {
@@ -113,7 +118,7 @@ namespace JueMingR.TerrariaHost.Combat
             for(int i=0;i<samples.Length;i++)
             {
                 var sample=samples[i];if(sample==null || sample.Session!=host.Session)continue;
-                if(kind==2){if(i>=host.Geometry.EventCount || sample.Presented || unchecked(Main.GameUpdateCount-sample.Tick)>4)continue;sample.Presentation=presentation;}
+                if(kind==2){if(i>=host.Geometry.EventCount || sample.Presented)continue;}
                 else if(sample.Tick!=Main.GameUpdateCount)continue;
                 if(kind==0 && i<Main.maxProjectiles)
                 {var p=Main.projectile[i];if(p==null || !p.active || !ReferenceEquals(p,sample.Token) || (int)p.key!=sample.Identity || p.type!=sample.Type || p.owner!=sample.Owner)continue;}
@@ -123,7 +128,7 @@ namespace JueMingR.TerrariaHost.Combat
                 {var n=Main.npc[i];if(n==null || !n.active || !ReferenceEquals(n,sample.Token) || n.type!=sample.Type || n.generation!=sample.Identity)continue;}
                 else if(kind==3)
                 {var p=Main.player[i];if(p==null || !p.active || p.dead || !ReferenceEquals(p,sample.Token))continue;}
-                limited|=sample.Overflow;
+                projectedEvent=kind==2?sample:null;limited|=sample.Overflow;
                 for(int j=0;j<sample.Count;j++)
                 {
                     if(count==strokeLimit){limited=true;return;}
@@ -198,7 +203,7 @@ namespace JueMingR.TerrariaHost.Combat
             else Add(a,b,color,width);
         }
         private void Add(Vector2 a,Vector2 b,Color color,float width)
-        {if(!Finite(a) || !Finite(b))return;if(count==strokeLimit){limited=true;return;}strokes[count++]=new Stroke{A=Vector2.Transform(a,inverse),B=Vector2.Transform(b,inverse),Color=color,Width=width*inverse.M11};}
+        {if(!Finite(a) || !Finite(b))return;if(count==strokeLimit){limited=true;return;}if(projectedEvent!=null)projectedEvent.Presentation=presentation;strokes[count++]=new Stroke{A=Vector2.Transform(a,inverse),B=Vector2.Transform(b,inverse),Color=color,Width=width*inverse.M11};}
         private static bool Finite(Vector2 p){return !float.IsNaN(p.X) && !float.IsNaN(p.Y) && !float.IsInfinity(p.X) && !float.IsInfinity(p.Y);}
         private static bool Clip(ref Vector2 a,ref Vector2 b)
         {
@@ -218,8 +223,10 @@ namespace JueMingR.TerrariaHost.Combat
             {
 #endif
             if(!host.Enabled || !host.CanDraw || !WorldPresentation.CanDraw || Main.spriteBatch==null){Prediction.AimLightTrace.Presentation(!host.Enabled?"draw-disabled":!host.CanDraw?"draw-host-gate":!WorldPresentation.CanDraw?"draw-world-gate":"draw-no-batch",null,0,0,false);return true;}
+            if(Main.GameViewMatrix==null)return true;zoom=Main.GameViewMatrix.ZoomMatrix;if(zoom.M11<=0 || zoom.M22<=0)return true;inverse=Matrix.Invert(zoom);
+            ProjectPresentation();
             var batch=Main.spriteBatch;var pixel=TextureAssets.MagicPixel.Value;
-            Marker.Draw(batch);
+            Marker.Project(zoom,inverse);Marker.Draw(batch);
             // MagicPixel's asset is larger than one texel; a null source would
             // multiply both dimensions and turn outlines into opaque blocks.
             for(int i=0;i<count;i++)

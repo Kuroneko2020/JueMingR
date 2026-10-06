@@ -48,13 +48,13 @@ namespace NativeWorldTextProbe
             {var rect=Get(element,"Rect");Require((float)Get(rect,"X")>=0 && (float)Get(rect,"Right")<=522,"Measured marker controls stay inside their actual panel.");}
             var world=Get(host,"World");var display=Get(world,"Marker");Set(host,"LayerStatus",Enum.Parse(Get(host,"LayerStatus").GetType(),"Ready"));
             Main.screenWidth=960;Main.screenHeight=640;Main.screenPosition=new Vector2(300,300);Main.GameViewMatrix.Zoom=Vector2.One;
-            target.position=new Vector2(720,450);target.netOffset=new Vector2(8,6);NativeCombatObservationChecks.Fresh(context,host);Call(world,"Prepare");
+            target.position=new Vector2(720,450);target.netOffset=new Vector2(8,6);NativeCombatObservationChecks.Fresh(context,host);Call(world,"Prepare");NativeCombatPresentationChecks.Project(world);
             Require((bool)Get(display,"Visible"),"Marker prepares actual current selected region without a path.");var pieces=(Array)Get(display,"Pieces");Require(pieces.Length==6,"Native marker style emits exactly six pieces.");
             for(int i=0;i<6;i++)Require((int)Get(pieces.GetValue(i),"SourceY")==i%2*16,"Native atlas source rows alternate 0 and 16.");
             var positions=Enumerable.Range(0,6).Select(i=>(Vector2)Get(pieces.GetValue(i),"Position")).ToArray();
             Require(Math.Abs(positions.Average(p=>p.X)-(target.Center.X+8-300))<1 && Math.Abs(positions.Average(p=>p.Y)-(target.Center.Y+6-300))<1,"Native pieces surround current netOffset body after one coordinate transform.");
-            var identity=(NpcIdentity)Get(selection,"Target");target.active=false;NativeCombatObservationChecks.Fresh(context,host);Call(world,"Prepare");Require(!(bool)Get(display,"Visible"),"Death clears marker promptly without Draw.");
-            target=new NPC();target.SetDefaults(371);target.active=true;target.whoAmI=2;target.position=new Vector2(720,450);Main.npc[2]=target;NativeCombatObservationChecks.Fresh(context,host);Call(world,"Prepare");Require(!((NpcIdentity)Get(selection,"Target")).Equals(identity) && (bool)Get(display,"Visible"),"Replacement marker uses only the new shared identity.");
+            var identity=(NpcIdentity)Get(selection,"Target");target.active=false;NativeCombatObservationChecks.Fresh(context,host);Call(world,"Prepare");NativeCombatPresentationChecks.Project(world);Require(!(bool)Get(display,"Visible"),"Death clears marker promptly without Draw.");
+            target=new NPC();target.SetDefaults(371);target.active=true;target.whoAmI=2;target.position=new Vector2(720,450);Main.npc[2]=target;NativeCombatObservationChecks.Fresh(context,host);Call(world,"Prepare");NativeCombatPresentationChecks.Project(world);Require(!((NpcIdentity)Get(selection,"Target")).Equals(identity) && (bool)Get(display,"Visible"),"Replacement marker uses only the new shared identity.");
             NativeCombatObservationChecks.Save(host,new ObservationOptions());
             Require(!(bool)Get(selection,"HasTarget"),"Final consumer OFF retires selection.");
             NativeCombatMarkerDemandChecks.Run(context);
@@ -80,20 +80,20 @@ namespace NativeWorldTextProbe
             Call(ui,"Close");Main.screenWidth=960;Main.screenHeight=640;Main.UIScale=1;Terraria.GameInput.PlayerInput.CacheOriginalScreenDimensions();
             var host=Get(context,"CombatObservation");var world=Get(host,"World");var marker=Get(world,"Marker");
             foreach(var n in Main.npc)n.active=false;var target=Main.npc[2];target.SetDefaults(2);target.whoAmI=2;target.active=true;target.position=new Vector2(720,450);target.target=0;Main.LocalPlayer.position=new Vector2(640,500);Main.dayTime=false;
-            NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true,marker:true));NativeCombatObservationChecks.Fresh(context,host);Call(world,"Prepare");Require((bool)Get(marker,"Visible") && (int)Get(world,"StrokeCount")>5,"Marker and real path both prepared.");
+            NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true,marker:true));NativeCombatObservationChecks.Fresh(context,host);Call(world,"Prepare");NativeCombatPresentationChecks.Project(world);Require((bool)Get(marker,"Visible") && (int)Get(world,"StrokeCount")>5,"Marker and real path both prepared.");
             graphics.Image(System.IO.Path.Combine(output,"marker-path.png"),()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);
             Require(!atlas.Value.IsDisposed,"Drawing only borrows original atlas.");
             Terraria.GameContent.TextureAssets.LockOnCursor=null;
             var survived=graphics.Pixels(()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);
             Require((bool)Get(marker,"Failed") && survived.Take(960*450).Any(p=>p.A>0),"Controlled marker resource failure still executes remaining path pixels above the label on real XNA device.");
-            Call(world,"Prepare");Require((int)Get(world,"StrokeCount")>5 && !(bool)Get(marker,"Visible"),"Local marker failure is latched without retiring prediction or path commands.");
-            Terraria.GameContent.TextureAssets.LockOnCursor=atlas;Call(host,"Set",5,true);Call(world,"Prepare");Require((bool)Get(marker,"Visible"),"Explicit retry recovers marker from restored borrowed resource.");
+            Call(world,"Prepare");NativeCombatPresentationChecks.Project(world);Require((int)Get(world,"StrokeCount")>5 && !(bool)Get(marker,"Visible"),"Local marker failure is latched without retiring prediction or path commands.");
+            Terraria.GameContent.TextureAssets.LockOnCursor=atlas;Call(host,"Set",5,true);Call(world,"Prepare");NativeCombatPresentationChecks.Project(world);Require((bool)Get(marker,"Visible"),"Explicit retry recovers marker from restored borrowed resource.");
             graphics.Image(System.IO.Path.Combine(output,"marker-recovered.png"),()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);
             using(var disposedBatch=new Microsoft.Xna.Framework.Graphics.SpriteBatch(graphics.GraphicsDevice))
             {disposedBatch.Dispose();bool shared=false;try{Call(marker,"Draw",disposedBatch);}catch(TargetInvocationException error){shared=error.InnerException is InvalidOperationException || error.InnerException is ObjectDisposedException;}Require(shared && !(bool)Get(marker,"Failed"),"Real disposed shared batch faults escape marker-local resource latch.");}
             foreach(int gravity in new[]{1,-1})foreach(float zoom in new[]{.8f,1.4f})
-            {Main.LocalPlayer.gravDir=gravity;Main.GameViewMatrix.Zoom=new Vector2(zoom);Call(world,"Prepare");Require((bool)Get(marker,"Visible"),"Marker survives supported gravity/zoom.");graphics.Image(System.IO.Path.Combine(output,"marker-transform-"+gravity+"-"+zoom.ToString(System.Globalization.CultureInfo.InvariantCulture)+".png"),()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);}
-            Main.LocalPlayer.gravDir=1;Main.GameViewMatrix.Zoom=Vector2.One;NativeCombatMarkerCapacityChecks.Run(context,graphics,output);Main.mapFullscreen=true;Call(world,"Prepare");Require(!(bool)Get(marker,"Visible"),"Fullscreen map retires marker commands.");Main.mapFullscreen=false;
+            {Main.LocalPlayer.gravDir=gravity;Main.GameViewMatrix.Zoom=new Vector2(zoom);Call(world,"Prepare");NativeCombatPresentationChecks.Project(world);Require((bool)Get(marker,"Visible"),"Marker survives supported gravity/zoom.");graphics.Image(System.IO.Path.Combine(output,"marker-transform-"+gravity+"-"+zoom.ToString(System.Globalization.CultureInfo.InvariantCulture)+".png"),()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);}
+            Main.LocalPlayer.gravDir=1;Main.GameViewMatrix.Zoom=Vector2.One;NativeCombatMarkerCapacityChecks.Run(context,graphics,output);Main.mapFullscreen=true;Call(world,"Prepare");NativeCombatPresentationChecks.Project(world);Require(!(bool)Get(marker,"Visible"),"Fullscreen map retires marker commands.");Main.mapFullscreen=false;
             NativeCombatObservationChecks.Save(host,new ObservationOptions());Console.WriteLine("PASS TARGET-MARKER real original atlas/Draw, resource-failure remaining path pixels, bounded retry. This is isolated XNA, not gameplay FPS/owner acceptance.");
         }
         private static void RequireTitleRow(object[] elements,object[] row)

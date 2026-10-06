@@ -42,6 +42,13 @@ namespace JueMingR.TerrariaHost.Guidance
         }
         internal void Prepare()
         {
+            if(host.CanDraw && host.Equipment.Alpha>0)Occupancy.Capture();else Occupancy.Clear();
+            ProjectPresentation();
+        }
+        // No discovery or future calculation here. Reproject the prepared
+        // facts and cached text against this Draw's final camera/matrices.
+        private void ProjectPresentation()
+        {
             if (System.Threading.Interlocked.Exchange(ref resourcesChanged, 0) != 0)
             { RareText.Invalidate(); MerchantText.Invalidate(); EquipmentText.Invalidate(); }
             rareVisible = rareOutside = merchantVisible = equipmentVisible = false;
@@ -59,7 +66,7 @@ namespace JueMingR.TerrariaHost.Guidance
             var font = FontAssets.MouseText?.Value;
             try
             {
-                if ((failed & 1) == 0 && host.Rare.Visible)
+                if ((failed & 1) == 0 && host.Rare.Visible && Current(host.Rare.Target))
                 {
                     var style = host.Preferences.Value.Style(GuidanceKind.Rare); rareColor = ColorFrom(style.Rgb);
                     var target = host.Rare.Target; Vector2 point = Project(new Vector2(target.DrawX, target.DrawY), zoom);
@@ -90,7 +97,7 @@ namespace JueMingR.TerrariaHost.Guidance
             catch { failed |= 1; rareVisible = rareOutside = false; }
             try
             {
-                if ((failed & 2) == 0 && host.Merchant.Visible && font != null)
+                if ((failed & 2) == 0 && host.Merchant.Visible && Current(host.Merchant.Target) && font != null)
                 {
                     var style = host.Preferences.Value.Style(GuidanceKind.Merchant); merchantColor = ColorFrom(style.Rgb);
                     var target = host.Merchant.Target; Vector2 point = Project(new Vector2(target.DrawX, target.DrawY), zoom);
@@ -127,6 +134,7 @@ namespace JueMingR.TerrariaHost.Guidance
         internal bool Draw()
         {
             if (!host.CanDraw || !WorldPresentation.CanDraw || Main.spriteBatch == null) return true;
+            ProjectPresentation();
             SpriteBatch batch = Main.spriteBatch; var gold = new Color(255, 224, 96);
             try
             {
@@ -143,6 +151,8 @@ namespace JueMingR.TerrariaHost.Guidance
             try { if (equipmentVisible) EquipmentText.Draw(batch, equipmentLabel, inverse, gold * alpha); } catch { failed |= 4; equipmentVisible = false; }
             return true;
         }
+        private static bool Current(JueMingR.Platform.Guidance.GuidanceNpc target)
+        {var n=target.Slot>=0 && Main.npc!=null && target.Slot<Main.npc.Length?Main.npc[target.Slot]:null;return n!=null && n.active && n.life>0 && ReferenceEquals(n,target.Identity) && n.generation==target.Generation && n.type==target.Type && n.netID==target.NetId;}
         private static Color ColorFrom(int rgb) { return new Color((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb); }
     }
 }

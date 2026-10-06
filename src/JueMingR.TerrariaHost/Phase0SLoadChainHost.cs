@@ -991,7 +991,7 @@ namespace JueMingR.TerrariaHost
                 DeathRecords?.PollPreferences(); MapFeatures?.PollPreferences(); Footprints?.PollPreferences();
                 current.SetFeatureEnabled(preferences.BiomeLoaded && preferences.BiomeEnabled);
                 worldTiles?.BeginTick();
-                nativeNpcs?.BeginTick();
+                nativeNpcs?.BeginCompleted((long)Terraria.Main.GameUpdateCount);
                 current.Update(updateTick);
                 Browser?.Update(unchecked((long)updateTick));
                 hotkeyFeedback?.Poll();

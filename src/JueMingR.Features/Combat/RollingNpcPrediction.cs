@@ -4,8 +4,9 @@ using JueMingR.Platform.Combat;
 namespace JueMingR.Features.Combat
 {
     // One bounded synchronous calculation from a completed world observation.
-    // Cache owns only demand/publication on this route. No timestamp-only reuse
-    // and no retained future can survive hits, terrain edits or player motion.
+    // Cache owns demand/publication. A result may be consumed repeatedly only
+    // for its exact sample, dependencies, revisions and verified local cells.
+    // Its capture time is never advanced to imitate a fresh world observation.
     public sealed class RollingNpcPrediction
     {
         private readonly NpcMotionState[] work=new NpcMotionState[NpcPredictionCache.Capacity];
@@ -13,8 +14,20 @@ namespace JueMingR.Features.Combat
         private NpcMotionState previous;
         private PredictionPlayerMotion previousPlayer;
         private long priorTick=-1,version;
+        private NpcMotionState trend;
+        private float samplePlayerVx,samplePlayerVy;
+        private readonly NpcMotionState[] resultSample=new NpcMotionState[NpcPredictionCache.Capacity];
+        private readonly bool[] resultRoles=new bool[NpcPredictionCache.Capacity];
+        private NpcTrajectory result;
+        private PredictionEnvironment resultEnvironment;
+        private PredictionPlayerMotion resultPlayer;
+        private int resultCount,resultSelected,resultRequired;
+        private long resultTick=-1,resultEpoch;
+        private IPredictionTerrain resultTerrain;
+        private bool resultObserved;
+        private PredictionFailureLayer resultFailure;
         public PredictionFailureLayer FailureLayer {get;private set;}
-        public void Clear(){previous=default(NpcMotionState);previousPlayer=default(PredictionPlayerMotion);priorTick=-1;Array.Clear(work,0,work.Length);}
+        public void Clear(){previous=default(NpcMotionState);previousPlayer=default(PredictionPlayerMotion);priorTick=resultTick=-1;result=null;resultTerrain=null;Array.Clear(work,0,work.Length);}
         public NpcTrajectory Prepare(NpcMotionState[] source,int count,int selected,long tick,int required,long epoch,PredictionEnvironment environment,PredictionPlayerMotion player,IPredictionTerrain terrain,bool[] motionRoles=null)
         {
             FailureLayer=PredictionFailureLayer.Source;
@@ -25,6 +38,10 @@ namespace JueMingR.Features.Combat
             // both miss an entering boundary and invent a departing one.
             bool needsPlayer=false,canObservePlayer=true;for(int i=0;i<count;i++)if(source[i].PositionRelation!=6 && (motionRoles==null || i<motionRoles.Length && motionRoles[i]) && NpcMotion.NeedsPlayerMotion(source[i],environment,required,source,count)){needsPlayer=true;canObservePlayer&=NpcMotion.CurrentPlayerPremise(source[i]);}
             if(!current.Active || !current.CanReceive || current.Life<=0 || !Valid(current) || needsPlayer && !Valid(player) || double.IsNaN(environment.GravityWorldSurface) || double.IsInfinity(environment.GravityWorldSurface) || !Finite(environment.Wind) || !Finite(environment.WorldSurface) || !Finite(environment.RockLayer) || motionRoles!=null && motionRoles.Length<count){Clear();return null;}
+            bool sameObservation=priorTick==tick && previous.SameSample(current);
+            bool sameResult=result!=null && resultTick==tick && resultEpoch==epoch && resultCount==count && resultSelected==selected && resultRequired>=required && resultEnvironment.Equals(environment) && resultPlayer.SameSample(player) && ReferenceEquals(resultTerrain,terrain);
+            if(sameResult)for(int i=0;i<count;i++)if(!resultSample[i].SameSample(source[i]) || resultRoles[i]!=(motionRoles==null || motionRoles[i])){sameResult=false;break;}
+            if(sameResult && terrain.Unchanged){FailureLayer=resultFailure;return result;}
             bool observed=priorTick+1==tick && previous.Identity.Equals(current.Identity) && SamePhase(previous,current) && !current.JustHit &&
                 Math.Abs(current.X-previous.X)<512 && Math.Abs(current.Y-previous.Y)<512;
             if(observed)
@@ -43,6 +60,9 @@ namespace JueMingR.Features.Combat
                     }
                 }
             }
+            // A second solve (larger demand/environment correction) cannot
+            // consume the same position twice or erase its confirmed trend.
+            if(sameObservation){current=trend;observed=resultObserved;}
             bool boundedPlayer=BoundedPlayer(player);
             float observedVx=player.Vx,observedVy=player.Vy;
             // Consecutive samples of the same real player and mechanism can
@@ -50,7 +70,11 @@ namespace JueMingR.Features.Combat
             // A switch, teleport or generation replacement resets this input.
             if(priorTick+1==tick && player.PlayerToken!=null && ReferenceEquals(previousPlayer.PlayerToken,player.PlayerToken) && previousPlayer.PlayerIndex==player.PlayerIndex && previousPlayer.ObservationMechanism==player.ObservationMechanism && Math.Abs(player.X-previousPlayer.X)<=32 && Math.Abs(player.Y-previousPlayer.Y)<=32)
             {observedVx=player.X-previousPlayer.X;observedVy=player.Y-previousPlayer.Y;}
-            previousPlayer=player;previous=current;priorTick=tick;Array.Copy(source,work,count);work[selected]=current;
+            if(priorTick==tick && previousPlayer.SameSample(player)){observedVx=samplePlayerVx;observedVy=samplePlayerVy;}
+            previousPlayer=player;previous=source[selected];trend=current;priorTick=tick;samplePlayerVx=observedVx;samplePlayerVy=observedVy;
+            Array.Copy(source,resultSample,count);for(int i=0;i<count;i++)resultRoles[i]=motionRoles==null || motionRoles[i];
+            resultEnvironment=environment;resultPlayer=player;resultCount=count;resultSelected=selected;resultRequired=required;resultTick=tick;resultEpoch=epoch;resultTerrain=terrain;resultObserved=observed;
+            Array.Copy(source,work,count);work[selected]=current;
             terrain.Reset();playerSettled=false;points[0]=new NpcTrajectoryPoint(0,current);int length=1;PredictionStop stop=PredictionStop.None;
             FailureLayer=PredictionFailureLayer.None;bool observedPlayer=needsPlayer && boundedPlayer,restarted=false;var initialPlayer=player;
             for(int future=1;future<=required;future++)
@@ -130,7 +154,7 @@ namespace JueMingR.Features.Combat
             if(observedPlayer)assumptions=(assumptions&~PredictionAssumption.HeldPlayerControls)|PredictionAssumption.CurrentPlayerObservation;
             if(!needsPlayer)assumptions=(assumptions&~PredictionAssumption.HeldPlayerControls)|PredictionAssumption.NoPlayerMotionNeeded;
             var quality=NpcMotion.StructuredModel(current)?PredictionQuality.StructuredApproximation:observed?PredictionQuality.ObservedTrend:PredictionQuality.LimitedObservation;
-            return new NpcTrajectory(current.Identity,tick,++version,assumptions,stop,points,length,PredictionStrategy.RollingConditional,epoch,quality);
+            result=new NpcTrajectory(current.Identity,tick,++version,assumptions,stop,points,length,PredictionStrategy.RollingConditional,epoch,quality);resultFailure=FailureLayer;return result;
         }
         private NpcMotionState playerBody;
         private bool playerSettled;

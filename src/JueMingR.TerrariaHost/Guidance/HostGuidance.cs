@@ -98,7 +98,7 @@ namespace JueMingR.TerrariaHost.Guidance
             if (pending) { npcs.BeginTick(); Merchant.InvalidateDiscovery(); }
             if (!valid) { Rare.Clear(); Merchant.Clear(); Location.Clear(); Equipment.Clear(); return; }
             var player = Main.LocalPlayer;
-            try { Rare.Update((failures & 1) == 0 && IsEnabled(GuidanceKind.Rare) && GuidanceObservationReader.RareQualified, player.Center.X, player.Center.Y); }
+            try { Rare.Update((failures & 1) == 0 && IsEnabled(GuidanceKind.Rare) && GuidanceObservationReader.RareQualified, player.Center.X, player.Center.Y,(long)Main.GameUpdateCount); }
             catch { failures |= 1; Rare.Clear(); }
             try
             {

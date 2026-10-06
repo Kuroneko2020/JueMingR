@@ -8,6 +8,7 @@ namespace JueMingR.ArchitectureTests
     {
         internal static void Run()
         {
+            SampleReentry();
             ImmutableGeometry();
             ArmoredDayPursuit();
             var terrain=new EmptyTerrain();var model=new RollingNpcPrediction();
@@ -54,6 +55,27 @@ namespace JueMingR.ArchitectureTests
             terrain.UnknownCliff=true;
             var missing=model.Prepare(source,1,0,110,1,2,env,player,terrain);
             Require(missing.Count==1 && missing.Stop==PredictionStop.TerrainUnavailable,"Unknown forward support cannot be treated as an empty cliff.");
+        }
+        private static void SampleReentry()
+        {
+            var terrain=new EmptyTerrain();var model=new RollingNpcPrediction();
+            var n=new NpcMotionState{Identity=new NpcIdentity(1,new object(),4,2,999,999),X=100,Y=100,Vx=4,Width=20,Height=20,Life=100,LifeMax=100,TimeLeft=750,Active=true,CanReceive=true,NoGravity=true,NoTileCollide=true,Health=new NpcHealthState{RealLife=-1}};
+            var p=new PredictionPlayerMotion{Width=20,Height=40,GravityDirection=1};
+            var e=new PredictionEnvironment{WorldWidth=4200,WorldHeight=1200,WorldSurface=400};
+            model.Prepare(new[]{n},1,0,100,120,1,e,p,terrain);
+            n.X+=4;n.Vx=3.9992f;n.Vy=.079995f;
+            var first=model.Prepare(new[]{n},1,0,101,30,1,e,p,terrain);int resets=terrain.Resets;
+            var repeat=model.Prepare(new[]{n},1,0,101,30,1,e,p,terrain);
+            Require(repeat.Version==first.Version && repeat[30].Bounds.X==first[30].Bounds.X && repeat[30].Bounds.Y==first[30].Bounds.Y && terrain.Resets==resets,"The same real sample keeps its nonzero trend and does not calculate again.");
+            var grown=model.Prepare(new[]{n},1,0,101,120,1,e,p,terrain);
+            Require(grown[30].Bounds.X==first[30].Bounds.X && grown[30].Bounds.Y==first[30].Bounds.Y && grown.Count==121,"Same-tick demand growth retains the confirmed trend premise.");
+            n.X+=20;n.Vx=-2;n.JustHit=true;
+            var corrected=model.Prepare(new[]{n},1,0,101,120,1,e,p,terrain);
+            Require(corrected[0].Bounds.X==n.X && corrected[1].Vx==-2 && corrected.Version>grown.Version,"Same-tick correction is a new result, not a second motion observation.");
+            n.JustHit=false;n.X-=2;
+            var next=model.Prepare(new[]{n},1,0,102,120,1,e,p,terrain);
+            Require(next.CaptureTick==102 && next.Version>corrected.Version,"A new world step advances the sample clock.");
+            n.Active=false;Require(model.Prepare(new[]{n},1,0,102,120,1,e,p,terrain)==null,"Same-tick death immediately retires the publication.");
         }
         private sealed class EmptyTerrain : IPredictionTerrain
         {

@@ -16,6 +16,7 @@ namespace JueMingR.TerrariaHost.Combat
         internal readonly Piece[] Pieces=new Piece[6];
         private readonly HostCombatObservation host;
         private NpcIdentity identity;
+        private Rectangle receiveBox;
         internal bool Failed {get;private set;}
         internal bool Visible {get;private set;}
         internal CombatTargetMarker(HostCombatObservation host){this.host=host;}
@@ -28,17 +29,20 @@ namespace JueMingR.TerrariaHost.Combat
         }
         private bool Current()
         {return host.Marker && host.Selection.HasTarget && host.Selection.Target.Equals(identity) && CombatSelection.Valid(identity,host.Session) && CombatSelection.Receives(Main.npc[identity.Slot],host.Options.Dummy);}
-        internal void Prepare(Matrix zoom,Matrix inverse)
+        internal void Capture()
+        {Clear();if(!host.Marker){Failed=false;return;}if(Failed || !host.Selection.HasTarget)return;identity=host.Selection.Target;if(Current())receiveBox=CombatSelection.ReceiveBounds(Main.npc[identity.Slot]);}
+        internal void Prepare(Matrix zoom,Matrix inverse){Capture();Project(zoom,inverse);}
+        internal void Project(Matrix zoom,Matrix inverse)
         {
-            Clear();if(!host.Marker){Failed=false;return;}if(Failed)return;
+            Visible=false;if(!host.Marker){Failed=false;return;}if(Failed)return;
             try{PrepareCore(zoom,inverse);}
             catch(ArgumentException error){Fail(error);}
             catch(OverflowException error){Fail(error);}
         }
         private void PrepareCore(Matrix zoom,Matrix inverse)
         {
-            Clear();if(!host.Marker || !host.Selection.HasTarget)return;identity=host.Selection.Target;if(!Current())return;
-            var box=CombatSelection.ReceiveBounds(Main.npc[identity.Slot]);if(box.Width<=0 || box.Height<=0)return;
+            Visible=false;if(!Current())return;
+            var box=receiveBox;if(box.Width<=0 || box.Height<=0)return;
             var center=new Vector2(box.Center.X,box.Center.Y);var screen=GuidanceWorldLayer.Project(center,zoom);
             float diameter=Math.Max(box.Width,box.Height)+20,radius=(int)diameter/2;
             if(!Finite(screen) || screen.X+radius*zoom.M11<0 || screen.X-radius*zoom.M11>Main.screenWidth || screen.Y+radius*zoom.M22<0 || screen.Y-radius*zoom.M22>Main.screenHeight)return;

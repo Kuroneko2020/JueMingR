@@ -26,10 +26,10 @@ namespace NativeWorldTextProbe
                     for(int shape=0;shape<160;shape++)Call(sample,"Rectangle",new Rectangle(320+shape%20*5,400+shape/20*5,4,4),0,false);
                     Require(!(bool)Get(sample,"Overflow") && (int)Get(sample,"Count")==160,"Every dense current sample remains inside its own shape capacity.");attacks.SetValue(sample,slot);
                 }
-                Call(world,"Prepare");int collision=(int)Get(world,"eventEnd"),total=(int)Get(world,"StrokeCount");
+                Call(world,"Prepare");NativeCombatPresentationChecks.Project(world);int collision=(int)Get(world,"eventEnd"),total=(int)Get(world,"StrokeCount");
                 Require((bool)Get(marker,"Visible") && collision==(path?8192:16384) && total<=16384 && (!path || total>collision),"Full collision presentation cannot consume selected path reservation or constant marker.");
                 var visible=graphics.Pixels(()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);
-                Set(marker,"Visible",false);var withoutMarker=graphics.Pixels(()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);Call(world,"Prepare");
+                NativeCombatObservationChecks.Save(host,new ObservationOptions(collision:true,path:path,marker:false));var withoutMarker=graphics.Pixels(()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);NativeCombatObservationChecks.Save(host,new ObservationOptions(collision:true,path:path,marker:true));Call(world,"Prepare");NativeCombatPresentationChecks.Project(world);
                 var pieces=(Array)Get(marker,"Pieces");var center=Vector2.Zero;foreach(var piece in pieces)center+=(Vector2)Get(piece,"Position");center/=pieces.Length;
                 int changed=0;for(int y=Math.Max(0,(int)center.Y-60);y<Math.Min(640,(int)center.Y+60);y++)for(int x=Math.Max(0,(int)center.X-60);x<Math.Min(960,(int)center.X+60);x++)if(visible[y*960+x]!=withoutMarker[y*960+x])changed++;
                 Require(changed>20,"Actual marker pixels remain visible when the collision stroke pool is saturated.");

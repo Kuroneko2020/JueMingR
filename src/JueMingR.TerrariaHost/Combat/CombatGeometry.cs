@@ -125,9 +125,10 @@ namespace JueMingR.TerrariaHost.Combat
             if(eventTick==Main.GameUpdateCount)return;eventTick=Main.GameUpdateCount;
             for(int i=eventCount-1;i>=0;i--)
             {
-                var value=Events[i];bool expired=unchecked(Main.GameUpdateCount-value.Tick)>4;
-                if(!value.Presented && !expired)continue;
-                if(expired && !value.Presented)eventOverflow=true;
+                var value=Events[i];
+                // An event owns one actual presentation opportunity, not four
+                // world steps. Capacity replacement remains bounded and explicit.
+                if(!value.Presented && value.Session==Session)continue;
                 Events[i]=Events[--eventCount];Events[eventCount]=value;
             }
         }
