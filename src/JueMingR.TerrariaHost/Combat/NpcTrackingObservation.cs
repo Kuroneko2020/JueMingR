@@ -35,6 +35,9 @@ namespace JueMingR.TerrariaHost.Combat
                 {state.TrackingKind=3;state.TrackingArea=Area(target);state.TrackingVx=target.velocity.X;state.TrackingVy=target.velocity.Y;}
                 return;
             }
+            // AI25's known birth displacement precedes its first real query.
+            // Sample that scalar query point without moving the live actor.
+            float queryX=n.Center.X+(n.aiStyle==25 && n.ai[3]==0?8:0),queryY=n.Center.Y;
             float distance=0;bool found=false;int playerSlot=-1,tankSlot=-1;
             // Locked TryTrackingTarget order is significant: a later nearer
             // player clears an earlier guardian candidate, rather than globally
@@ -42,15 +45,15 @@ namespace JueMingR.TerrariaHost.Combat
             for(int i=0;i<Main.maxPlayers;i++)
             {
                 var p=Main.player[i];if(p==null || !p.active || p.dead || p.ghost)continue;
-                float real=Math.Abs(p.Center.X-n.Center.X)+Math.Abs(p.Center.Y-n.Center.Y),score=real-p.aggro;
+                float real=Math.Abs(p.Center.X-queryX)+Math.Abs(p.Center.Y-queryY),score=real-p.aggro;
                 if(p.npcTypeNoAggro[n.type] && n.direction!=0)score+=1000;
                 if(!found || score<distance){found=true;playerSlot=i;tankSlot=-1;state.TargetChoiceUnknown=false;distance=score;}
                 int pet=p.tankPet;if(pet<0 || pet>=Main.maxProjectiles || p.npcTypeNoAggro[n.type])continue;
                 var guardian=Main.projectile[pet];if(guardian==null || !guardian.active || guardian.owner!=i)continue;
-                float petDistance=Math.Abs(guardian.Center.X-n.Center.X)+Math.Abs(guardian.Center.Y-n.Center.Y)-200;
+                float petDistance=Math.Abs(guardian.Center.X-queryX)+Math.Abs(guardian.Center.Y-queryY)-200;
                 if(petDistance>=distance || petDistance>=200)continue;
                 bool clear;PredictionStop stop;
-                if(!terrain.CanHit(new MotionRect(n.Center.X,n.Center.Y,1,1),new MotionRect(guardian.Center.X,guardian.Center.Y,1,1),out clear,out stop))state.TargetChoiceUnknown=true;
+                if(!terrain.CanHit(new MotionRect(queryX,queryY,1,1),new MotionRect(guardian.Center.X,guardian.Center.Y,1,1),out clear,out stop))state.TargetChoiceUnknown=true;
                 else if(clear){tankSlot=pet;state.TargetChoiceUnknown=false;}
             }
             if(playerSlot<0)return;var player=Main.player[playerSlot];

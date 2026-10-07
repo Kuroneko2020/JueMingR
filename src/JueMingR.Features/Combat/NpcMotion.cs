@@ -54,7 +54,7 @@ namespace JueMingR.Features.Combat
             NpcGravityMotion.BeforeAi(ref n,env);
             float gravity=n.Gravity,fall=n.MaxFall;
             if(n.Identity.Type==488){n.Vx=n.Vy=0;return true;}
-            int facingOldTarget=n.Target;if(n.Style==14 && BatType(n.EffectiveType))NpcTargeting.Retarget(ref n,ref env);
+            int facingOldTarget=n.Target;
             bool face=NpcTargeting.CanFace(n,env,facingOldTarget);var tracking=NpcTargeting.Area(n,env,1);
             if(n.TrackingKind>=2 && !NpcFlyingMotion.Bee(n.EffectiveType))n.TrackingArea=tracking;
             int direction=face?(int)tracking.X+(int)tracking.Width/2<n.X+n.Width/2?-1:1:n.Direction;
@@ -140,20 +140,19 @@ namespace JueMingR.Features.Combat
             {if(!NpcGroundMotion.Fallback(ref n,env,terrain,confused,elapsed,out stop))return false;}
             else if(n.Style==2 && NpcEyeMotion.Known(n.EffectiveType))
             {if(!NpcEyeMotion.Step(ref n,env,terrain,confused,out stop))return false;}
-            else if(rolling && n.Style==41 && n.Identity.Type==177)NpcRollingMotion.Derpling(ref n,env,direction,confused);
-            else if(rolling && n.Style==39 && n.Identity.Type==153)
+            else if(n.Style==41 && NpcRollingMotion.Hopper(n.EffectiveType))NpcRollingMotion.Derpling(ref n,env,direction,confused);
+            else if(n.Style==39 && NpcRollingMotion.TortoiseType(n.EffectiveType))
             {if(!NpcRollingMotion.Tortoise(ref n,env,terrain,direction,vertical,out stop,confused))return false;}
             else if(n.Style==5 && FlyingType(n.EffectiveType))
             {if(!NpcFlyingMotion.Step(ref n,env,terrain,elapsed,out stop,confused))return false;}
-            else if(n.Style==14 && BatType(n.Identity.Type))
-            {
-                if(n.A1+1>200 && n.A1+1<=1000 && !env.PlayerWet)
-                {bool clear;if(!terrain.CanHit(n.Bounds,new MotionRect(env.PlayerX-env.PlayerWidth/2,env.PlayerY-env.PlayerHeight/2,env.PlayerWidth,env.PlayerHeight),out clear,out stop))return false;env.ClearLine=clear;}
-                Bat(ref n,env,direction,vertical);
-            }
+            else if(n.Style==14 && BatType(n.EffectiveType))
+            {if(!NpcBatMotion.Step(ref n,env,terrain,confused,out stop))return false;}
+            else if(n.Style==23 && NpcChargeMotion.Known(n.EffectiveType))
+            {if(!NpcChargeMotion.Step(ref n,env,confused,out stop))return false;}
+            else if(n.Style==25 && NpcMimicMotion.Known(n.EffectiveType))NpcMimicMotion.Step(ref n,env,confused);
             else if(NpcFiniteFlightMotion.Known(n))
             {if(!NpcFiniteFlightMotion.Step(ref n,env,terrain,confused,out stop))return false;}
-            else if(n.Style==17 && n.Identity.Type==61)Vulture(ref n,env,direction,vertical,confused);
+            else if(n.Style==17 && VultureType(n.EffectiveType))Vulture(ref n,env,direction,vertical,confused);
             // A structural AI needs its root/liquid/wall constraints. A free
             // trend would invent a long path while silently ignoring them.
             else if(n.Style==13 || n.Style==16 || n.Style==40){stop=PredictionStop.UnsupportedMechanism;return false;}
@@ -195,7 +194,7 @@ namespace JueMingR.Features.Combat
             int type=n.EffectiveType;
             return n.Style==3?NpcGroundMotion.Known(type):KnownMotion(n) || NpcPositionMotion.Known(n) || n.PositionRelation==6 ||
                 n.Style==13 && NpcAnchoredMotion.Known(type) || n.Style==16 && NpcAquaticMotion.Known(type) ||
-                n.Style==40 && NpcWallMotion.Wall(type) || n.Style==69 || n.Style==39 && type==153 || n.Style==41 && type==177;
+                n.Style==40 && NpcWallMotion.Wall(type) || n.Style==69 || n.Style==39 && NpcRollingMotion.TortoiseType(type) || n.Style==41 && NpcRollingMotion.Hopper(type);
         }
         public static bool NeedsPlayerMotion(NpcMotionState n,PredictionEnvironment e,int remaining=120,NpcMotionState[] group=null,int count=0)
         {
@@ -222,10 +221,13 @@ namespace JueMingR.Features.Combat
             // a player; a dormant reveal/exit must not acquire a dead old one.
             if(n.Style==3 && FighterHorizontalMotion.IndependentEntry(n))return FighterHorizontalMotion.RetargetOnEntry(n);
             if(NpcFiniteFlightMotion.Known(n))return NpcFiniteFlightMotion.NeedsPlayer(n,e);
+            if(n.Style==23 && NpcChargeMotion.Known(type))return NpcChargeMotion.NeedsPlayer(n,remaining);
+            if(n.Style==25 && NpcMimicMotion.Known(type))return NpcMimicMotion.NeedsPlayer(n,e,remaining);
+            if(n.Style==41 && type==378 && n.A1==5)return false;
             if(type==371 || type==372 || type==373 || n.Style==1 || n.Style==3 || n.Style==6 || n.Style==37 || n.Style==69 ||
                 n.Style==2 && KnownEye(type) || n.Style==5 && (FlyingType(type) || type==176) || n.Style==14 && BatType(type) ||
-                n.Style==17 && type==61 || n.Style==13 && NpcAnchoredMotion.Known(type) || n.Style==16 && n.Wet && NpcAquaticMotion.Known(type) && type!=55 && type!=592 && type!=607 && type!=615 && type!=688 ||
-                n.Style==40 && NpcWallMotion.Wall(type) || n.Style==39 && type==153 || n.Style==41 && type==177)return true;
+                n.Style==17 && VultureType(type) || n.Style==13 && NpcAnchoredMotion.Known(type) || n.Style==16 && n.Wet && NpcAquaticMotion.Known(type) && type!=55 && type!=592 && type!=607 && type!=615 && type!=688 ||
+                n.Style==40 && NpcWallMotion.Wall(type) || n.Style==39 && NpcRollingMotion.TortoiseType(type) || n.Style==41 && NpcRollingMotion.Hopper(type))return true;
             // These native collision predicates directly read the numbered
             // player even when the AI itself is only an observed trend.
             return type==50 || type==657 || type==245 || type==620 || n.Style==26 || n.Style==87;
@@ -257,19 +259,20 @@ namespace JueMingR.Features.Combat
             e=NpcTargeting.Player(n,e);
             if(n.Style==3 && n.PositionRelation==0)return NpcGroundMotion.PlayerPremiseTarget(n,e);
             if(n.Style==1 && n.PositionRelation==0)return NpcSlimeControl.PlayerPremiseTarget(n,e);
-            int t=n.EffectiveType;bool retarget=NpcFiniteFlightMotion.Known(n) && NpcFiniteFlightMotion.Retargets(n,e) ||n.Style==13 && NpcAnchoredMotion.Known(t) ||
+            int t=n.EffectiveType;bool retarget=n.Style==25 && NpcMimicMotion.Known(t) && NpcMimicMotion.Retargets(n,e) || n.Style==23 && NpcChargeMotion.Known(t) && NpcChargeMotion.Retargets(n) || NpcFiniteFlightMotion.Known(n) && NpcFiniteFlightMotion.Retargets(n,e) ||n.Style==13 && NpcAnchoredMotion.Known(t) ||
                 n.Style==16 && n.Wet && NpcAquaticMotion.Known(t) && t!=55 && t!=592 && t!=607 && t!=615 && t!=688 ||
                 n.Style==2 && KnownEye(t) && (!NpcEyeMotion.Escape(n,e) || n.Wet) ||
                 n.Style==5 && (FlyingType(t) || t==176) || n.Style==14 && BatType(t) ||
-                n.Style==17 && t==61 && (n.A0==0 || !n.PlayerDead || n.Wet) ||
+                n.Style==17 && VultureType(t) && (n.A0==0 || !n.PlayerDead || n.Wet) ||
                 n.Style==40 && NpcWallMotion.Wall(t) && (n.Target<0 || n.Target==255 || n.PlayerDead) ||
                 n.PositionRelation==6 && n.Style==36 && (n.A2==0 || n.A2==3) ||
-                n.Style==41 && t==177 && n.A2==0 || n.Style==39 && t==153 && (n.Direction==0 || n.Target<0 || n.PlayerDead || n.JustHit || n.A0==3 && n.A1==0 || n.A0==5 && n.A1>=29);
+                n.Style==41 && NpcRollingMotion.Hopper(t) && NpcRollingMotion.HopperRetargets(n,e) || n.Style==39 && NpcRollingMotion.TortoiseType(t) && (n.Direction==0 || n.Target<0 || n.PlayerDead || n.JustHit && t!=417 || (n.A0==3 || n.A0==6) && n.A1==0 || n.A0==1 && n.A1+(t==496 || t==497?.5f:1)>=30 || n.A0==5 && n.A1+(t==496 || t==497?.5f:1)>=30);
             return retarget && n.HasClosestPlayer?n.ClosestPlayerIndex:n.PlayerIndex;
         }
-        private static bool BatType(int t){return t==49 || t==51 || t==60 || t==62 || t==66 || t==93 || t==137 || t==150 || t==151 || t==152 || t==634;}
+        private static bool VultureType(int t){return t==61 || t==301;}
+        private static bool BatType(int t){return NpcBatMotion.Known(t);}
         private static bool KnownMotion(NpcMotionState n)
-        {int t=n.Identity.Type;return NpcFiniteFlightMotion.Known(n) || t==488 || t>=370 && t<=373 || n.Style==1 || n.Style==3 || n.Style==6 || n.Style==8 || n.Style==37 || n.Style==17 && t==61 || n.Style==2 && KnownEye(t) || n.Style==5 && FlyingType(t) || n.Style==14 && BatType(t);}
+        {int t=n.EffectiveType;return NpcFiniteFlightMotion.Known(n) || t==488 || t>=370 && t<=373 || n.Style==1 || n.Style==3 || n.Style==6 || n.Style==8 || n.Style==37 || n.Style==23 && NpcChargeMotion.Known(t) || n.Style==25 && NpcMimicMotion.Known(t) || n.Style==39 && NpcRollingMotion.TortoiseType(t) || n.Style==41 && NpcRollingMotion.Hopper(t) || n.Style==17 && VultureType(t) || n.Style==2 && KnownEye(t) || n.Style==5 && FlyingType(t) || n.Style==14 && BatType(t);}
         private static void Vulture(ref NpcMotionState n,PredictionEnvironment env,int direction,int vertical,bool confused)
         {
             n.NoGravity=true;
@@ -299,26 +302,6 @@ namespace JueMingR.Features.Combat
                 n.Vy=Clamp(n.Vy,-3,3);
             }
             if(n.Wet){if(n.Vy>0)n.Vy*=.95f;n.Vy=Math.Max(-4,n.Vy-.5f);NpcTargeting.Face(ref n,ref env,true,confused);}
-        }
-        private static void Bat(ref NpcMotionState n,PredictionEnvironment env,int direction,int vertical)
-        {
-            n.NoGravity=true;Bounce(ref n,.5f,1,1);n.Direction=direction;n.DirectionY=vertical;
-            EyeAxis(ref n.Vx,direction,4,.1f,.1f,.05f);EyeAxis(ref n.Vy,vertical,1.5f,.04f,.05f,.03f);
-            if(n.Wet){if(n.Vy>0)n.Vy*=.95f;n.Vy=Math.Max(-4,n.Vy-.5f);}
-            // Vanilla deliberately applies the second axis pass in the same AI
-            // update. The periodic block still runs after it resets its timer.
-            bool hell=n.Identity.Type==60;
-            EyeAxis(ref n.Vx,direction,4,.1f,hell?.07f:.1f,hell?.03f:.05f);
-            EyeAxis(ref n.Vy,vertical,1.5f,.04f,hell?.03f:.05f,hell?.02f:.03f);
-            if(++n.A1>200)
-            {
-                if(!env.PlayerWet && env.ClearLine || n.A1>1000)n.A1=0;
-                bool slow=n.Identity.Type==62 || n.Identity.Type==66;
-                float limitX=slow?3:4,limitY=slow?1.25f:1.5f,ax=slow?.12f:.2f,ay=slow?.07f:.1f;
-                n.A2++;if(n.A2>0){if(n.Vy<limitY)n.Vy+=ay;}else if(n.Vy>-limitY)n.Vy-=ay;
-                if(n.A2<-150 || n.A2>150){if(n.Vx<limitX)n.Vx+=ax;}else if(n.Vx>-limitX)n.Vx-=ax;
-                if(n.A2>300)n.A2=-300;
-            }
         }
         private static bool Slime(ref NpcMotionState n,PredictionEnvironment env,IPredictionTerrain terrain,int direction,int vertical,bool confused,out PredictionStop stop)
         {
@@ -491,8 +474,6 @@ namespace JueMingR.Features.Combat
         private static void Bounce(ref NpcMotionState n,float scale=.5f,float yMin=1,float ySpeed=1)
         {if(n.CollideX){n.Vx=-n.OldVx*scale;if(n.Direction==-1 && n.Vx>0 && n.Vx<2)n.Vx=2;if(n.Direction==1 && n.Vx<0 && n.Vx>-2)n.Vx=-2;}if(n.CollideY){n.Vy=-n.OldVy*scale;if(n.Vy>0 && n.Vy<yMin)n.Vy=ySpeed;if(n.Vy<0 && n.Vy>-yMin)n.Vy=-ySpeed;}}
         private static void FlyAxis(ref float v,float target,float a){if(v<target){v+=a;if(v<0 && target>0)v+=a;}else if(v>target){v-=a;if(v>0 && target<0)v-=a;}}
-        private static void EyeAxis(ref float v,int direction,float limit,float acceleration,float over,float reverse)
-        {float toward=v*direction;if(toward>=limit)return;toward+=acceleration;if(toward<-limit)toward+=over;else if(toward<0)toward-=reverse;v=Math.Min(limit,toward)*direction;}
         private static void Seek(ref NpcMotionState n,float x,float y,float speed,float acceleration)
         {x-=n.Bounds.CenterX;y-=n.Bounds.CenterY;Normalize(ref x,ref y,speed);n.Vx=Approach(n.Vx,x,acceleration);n.Vy=Approach(n.Vy,y,acceleration);}
         internal static float Approach(float v,float target,float amount){return v<target?Math.Min(target,v+amount):Math.Max(target,v-amount);}

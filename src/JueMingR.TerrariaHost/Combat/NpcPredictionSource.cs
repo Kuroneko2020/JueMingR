@@ -50,6 +50,9 @@ namespace JueMingR.TerrariaHost.Combat
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcFiniteFlightMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcFlyingMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcEyeMotion",true),
+                typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcBatMotion",true),
+                typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcChargeMotion",true),
+                typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcMimicMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcTargeting",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcPositionMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcGroundMotion",true),
@@ -158,7 +161,7 @@ namespace JueMingR.TerrariaHost.Combat
             for(int i=0;i<count;i++){motionRoles[i]=motionSlots[states[i].Identity.Slot];if(motionRoles[i])NpcTrackingObservation.Capture(Main.npc[states[i].Identity.Slot],ref states[i],Terrain);}
             var current=Main.npc[identity.Slot];
             if(current.aiStyle==6 || current.aiStyle==37)for(int i=0;i<count;i++)if(states[i].ParentSlot<0){current=Main.npc[states[i].Identity.Slot];break;}
-            var premiseEnv=new PredictionEnvironment{PlayerIndex=-1,Eclipse=Main.eclipse,PumpkinMoon=Main.pumpkinMoon,SlimeRain=Main.slimeRain,Day=Main.dayTime,Remix=Main.remixWorld,WorldSurface=(float)Main.worldSurface,Multiplayer=Main.netMode==1,GoodWorld=Main.getGoodWorld};
+            var premiseEnv=new PredictionEnvironment{PlayerIndex=-1,SnowMoon=Main.snowMoon,WorldHeight=Main.maxTilesY,Eclipse=Main.eclipse,PumpkinMoon=Main.pumpkinMoon,SlimeRain=Main.slimeRain,Day=Main.dayTime,Remix=Main.remixWorld,WorldSurface=(float)Main.worldSurface,Multiplayer=Main.netMode==1,GoodWorld=Main.getGoodWorld};
             int oldPlayer=states[selected].PlayerIndex;
             premiseEnv.Graveyard=oldPlayer>=0 && oldPlayer<Main.maxPlayers && Main.player[oldPlayer]!=null && Main.player[oldPlayer].ZoneGraveyard;
             int target=NpcMotion.PlayerPremiseTarget(states[selected],premiseEnv);bool needsPlayer=false;

@@ -29,6 +29,18 @@ namespace NativeWorldTextProbe
             if(only=="switchface"){SwitchFacing(source,p);return;}
             if(only=="eyes"){NativeCombatFamilyControlChecks.Eyes(context);return;}
             if(only=="bats"){NativeCombatFamilyControlChecks.Bats(context);return;}
+            if(only=="batform"){NativeCombatFamilyControlChecks.BatForms(context);return;}
+            if(only=="vultures"){NativeCombatFamilyControlChecks.Vultures(context);return;}
+            if(only=="hoppers" || only=="tortoises"){NativeCombatRollingControlChecks.Run(context,only=="hoppers");return;}
+            if(only=="swords"){NativeCombatFiniteControlChecks.Swords(context);return;}
+            if(only=="mimics"){NativeCombatFiniteControlChecks.Mimics(context);return;}
+            if(only=="swordpremise"){NativeCombatFiniteControlChecks.SwordPremise(context);return;}
+            if(only=="mimicpremise"){NativeCombatFiniteControlChecks.MimicPremise(context);return;}
+            if(only=="jellyfish"){NativeCombatFiniteControlChecks.Jellyfish(context);return;}
+            if(only=="mimicbirth"){NativeCombatFiniteControlChecks.MimicBirth(context);return;}
+            if(only=="mimicair"){NativeCombatFiniteControlChecks.MimicAir(context);return;}
+            if(only=="rollchoice" || only=="rollchoice39"){NativeCombatRollingControlChecks.Choices(context);return;}
+            if(only=="roll417"){NativeCombatRollingControlChecks.UnknownBounce(context);return;}
             if(only!="bee")
             {
                 var n=Main.npc[2];n.SetDefaults(25);n.whoAmI=2;n.active=true;n.dontTakeDamage=n.immortal=n.friendly=false;n.position=new Vector2(650,700);n.velocity=new Vector2(4,0);n.target=p.whoAmI;n.wet=true;n.wetCount=1;n.noTileCollide=false;n.timeLeft=750;

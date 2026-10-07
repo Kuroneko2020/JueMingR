@@ -257,7 +257,12 @@ namespace JueMingR.TerrariaHost.Combat
             if(next.EffectiveType==405 || next.EffectiveType==406)
             {if(rx!=0 && rx!=next.OldVx)rx=-next.OldVx*.8f;if(ry!=0 && ry!=next.OldVy)ry=-next.OldVy*.8f;}
             if(!playerMode && next.EffectiveType==417 && next.A0==6 && (rx!=next.OldVx || ry!=next.OldVy))
-            {next.A2--;next.A3=1;if(next.A2>0){if(rx!=0 && rx!=next.OldVx){rx=-next.OldVx*.9f;next.Direction=-next.Direction;}if(ry!=0 && ry!=next.OldVy)ry=-next.OldVy*.9f;}}
+            {
+                // 2/3/4 all rebound at contact one; contact two may exhaust
+                // only the lower branch. Stop before publishing that choice.
+                if(next.UncertainBounceCount && next.A2<=1){stop=PredictionStop.RandomDecision;return false;}
+                next.A2--;next.A3=1;if(next.A2>0){if(rx!=0 && rx!=next.OldVx){rx=-next.OldVx*.9f;next.Direction=-next.Direction;}if(ry!=0 && ry!=next.OldVy)ry=-next.OldVy*.9f;}
+            }
             if(waterWalk && !WaterSurface(next.Bounds,rx,ref ry,fallThrough,lavaWalk,out stop))return false;
             if(up && !playerMode)ry=.01f;next.CollideX=rx!=next.Vx;next.CollideY=ry!=next.Vy;next.Vx=rx;next.Vy=ry;
             float slowdown=wet?(next.Shimmer?next.ShimmerSpeed:next.Honey?next.HoneySpeed:next.Lava?next.LavaSpeed:next.WaterSpeed):1;

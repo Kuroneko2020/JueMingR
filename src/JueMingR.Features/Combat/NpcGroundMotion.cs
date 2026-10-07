@@ -46,6 +46,11 @@ namespace JueMingR.Features.Combat
             bool aerial=n.Vy!=0 && (type==425 || type==427) && n.A2==1;
             if(aerial || !FighterHorizontalMotion.Step(ref n,e))NpcRollingMotion.Trend(ref n,elapsed);
             bool support=false;
+            if(type==159 && !e.Multiplayer)
+            {
+                float dx=e.PlayerX-n.Bounds.CenterX,dy=e.PlayerY-n.Bounds.CenterY;
+                if(dx*dx+dy*dy>90000)NpcBatMotion.Transform(ref n,158,ref e,confused);
+            }
             if(type==258)
             {
                 if(n.Vy!=0)
