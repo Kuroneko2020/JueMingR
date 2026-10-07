@@ -248,10 +248,12 @@ namespace NativeWorldTextProbe
             n0.position=new Vector2(500,600);p.grapCount=0;NativeCombatObservationChecks.Fresh(context,host);Require(cache.Read(0)==null,"B inconsistent active grapple count remains an invalid premise.");cases++;
             p.grappling[0]=-1;Main.projectile[4].active=false;n0.SetDefaults(34);n0.whoAmI=2;n0.active=true;n0.target=255;n0.position=new Vector2(500,600);p.velocity=new Vector2(float.NaN,0);NativeCombatObservationChecks.Fresh(context,host);
             Require(cache.Read(0)==null && (bool)Get(Get(host,"Selection"),"HasTarget"),"B finite AI10 preserves a legal selected target but refuses missing necessary player motion.");cases++;
-            // AI10 now consumes the numbered player. Keep the independent
-            // trend contract on the original player-independent AI9 sphere.
+            // AI9 target255 initializes its vector from a real player. Only
+            // an already initialized sphere is independent of player motion.
             n0.SetDefaults(25);n0.whoAmI=2;n0.active=true;n0.target=255;n0.position=new Vector2(500,600);NativeCombatObservationChecks.Fresh(context,host);
-            Require(cache.Read(0)!=null && cache.Read(0).Count==121 && (cache.Read(0).Assumptions&PredictionAssumption.NoPlayerMotionNeeded)!=0,"B independent AI9 default Source trend does not require missing numbered player or unrelated local velocity.");cases++;
+            Require(cache.Read(0)==null && (bool)Get(Get(host,"Selection"),"HasTarget"),"B AI9 initialization does not waive its necessary invalid player motion.");cases++;
+            n0.target=p.whoAmI;n0.velocity=new Vector2(1,0);NativeCombatObservationChecks.Fresh(context,host);
+            Require(cache.Read(0)!=null && cache.Read(0).Count==121 && (cache.Read(0).Assumptions&PredictionAssumption.NoPlayerMotionNeeded)!=0,"B initialized AI9 straight motor ignores unrelated invalid player velocity.");cases++;
             p.velocity=Vector2.Zero;n0.SetDefaults(2);n0.whoAmI=2;n0.active=true;n0.target=p.whoAmI;n0.position=new Vector2(500,600);
             n0.dontTakeDamage=true;NativeCombatObservationChecks.Fresh(context,host);Require(cache.Read(0)==null && !(bool)Get(Get(host,"Selection"),"HasTarget"),"B invalid receiver identity never becomes a conditional target.");cases++;
             NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatObservationChecks.Fresh(context,host);Require(cache.Required==0 && cache.Read(0)==null,"B OFF retires the shared demand.");cases++;
@@ -296,12 +298,16 @@ namespace NativeWorldTextProbe
                 NativeCombatObservationChecks.Fresh(context,host);var path=cache.Read(0);Console.WriteLine("B FIGHTER entry type="+type+" oldDead="+dead+" future="+(path==null?0:path.Count-1)+" stop="+path?.Stop);
                 Require(path!=null && path.Count>1 && path.Stop!=PredictionStop.MissingDependency,"B fighter action-entry TargetClosest shares the real Source prerequisite.");cases++;
             }
-            other.dead=true;n.SetDefaults(466);n.whoAmI=2;n.active=true;n.target=other.whoAmI;n.position=new Vector2(500,900);n.ai[2]=-8;n.ai[3]=0;
-            NativeCombatObservationChecks.Fresh(context,host);Require(cache.Read(0)!=null && cache.Read(0).Count==121 && (cache.Read(0).Assumptions&PredictionAssumption.NoPlayerMotionNeeded)!=0,"B revealing466 trend consumes no old numbered player and must not acquire a dead prerequisite.");cases++;
+            other.dead=true;n.SetDefaults(466);n.whoAmI=2;n.active=true;n.target=other.whoAmI;n.position=new Vector2(500,900);n.ai[2]=-8;n.ai[3]=0;n.wet=false;n.direction=1;
+            NativeCombatObservationChecks.Fresh(context,host);var reveal=cache.Read(0);
+            Console.WriteLine("B REVEAL466 future="+(reveal==null?0:reveal.Count-1)+" stop="+reveal?.Stop+" assumptions="+reveal?.Assumptions+" direction="+n.direction+" releaseVx="+(reveal!=null && reveal.Count>8?reveal[8].Vx:float.NaN));
+            Require(reveal!=null && reveal.Count>=9 && Math.Abs(reveal[8].Vx-n.direction*2)<.0001f,"B 466 retains its eight known reveal actions and release velocity before a later actual player dependency.");cases++;
             foreach(int type in new[]{461,586})
             {
-                n.SetDefaults(type);n.whoAmI=2;n.active=true;n.target=other.whoAmI;n.position=new Vector2(500,900);n.alpha=0;n.ai[3]=-.10101f;n.wet=false;
-                NativeCombatObservationChecks.Fresh(context,host);Require(cache.Read(0)!=null && cache.Read(0).Count==121 && (cache.Read(0).Assumptions&PredictionAssumption.NoPlayerMotionNeeded)!=0,"B fluid-exit trend does not read the dead old player or invent a local replacement.");cases++;
+                n.SetDefaults(type);n.whoAmI=2;n.active=true;n.target=other.whoAmI;n.position=new Vector2(500,900);n.alpha=0;n.ai[3]=-.10101f;n.wet=false;n.velocity=Vector2.Zero;
+                NativeCombatObservationChecks.Fresh(context,host);Require(cache.Read(0)==null,"B native zero-vector fluid exit remains invalid, not invented Trend motion.");cases++;
+                n.velocity=new Vector2(1,-1);
+                NativeCombatObservationChecks.Fresh(context,host);Require(cache.Read(0)!=null && cache.Read(0).Count==121 && (cache.Read(0).Assumptions&PredictionAssumption.HeldPlayerControls)!=0,"B nonzero fluid exit reaches the actual subsequent ground control with its living chosen player.");cases++;
             }
             other.active=false;other.dead=false;n.SetDefaults(2);n.whoAmI=2;n.active=true;n.target=p.whoAmI;n.position=new Vector2(500,600);
             Console.WriteLine("PASS B FIGHTER bounded action-entry prerequisites cases="+cases);
