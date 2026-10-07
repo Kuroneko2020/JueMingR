@@ -94,14 +94,23 @@ namespace NativeWorldTextProbe
         internal static void DeadTail(object context)
         {
             var source=Get(Get(context,"CombatObservation"),"Prediction");var p=Main.LocalPlayer;var terrain=(IPredictionTerrain)Get(source,"Terrain");var read=source.GetType().GetMethod("Read",Flags);var capture=source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcTrackingObservation").GetMethod("Capture",Flags);var kernel=typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcFlyingMotion").GetMethod("Step",Flags);
-            foreach(bool day in new[]{false,true})
+            foreach(int type in new[]{619,252,42})foreach(bool day in new[]{false,true})
             {
-                foreach(var npc in Main.npc)npc.active=false;p.dead=true;Main.dayTime=day;Main.remixWorld=true;Main.netMode=0;var n=Main.npc[2]=new NPC();n.SetDefaults(619);n.whoAmI=2;n.position=new Vector2(650,700);n.velocity=new Vector2(1,2);n.target=0;n.direction=1;n.alpha=0;n.localAI[0]=119;
-                terrain.Reset();var state=(NpcMotionState)read.Invoke(null,new object[]{n,1L});object[] observation={n,state,terrain};capture.Invoke(null,observation);state=(NpcMotionState)observation[1];var env=new PredictionEnvironment{PlayerIndex=0,PlayerX=p.Center.X,PlayerY=p.Center.Y,PlayerWidth=p.width,PlayerHeight=p.height,PlayerDead=true,Day=day,Remix=true};object[] action={state,env,terrain,1,PredictionStop.None,false};Require((bool)kernel.Invoke(null,action),"619 dead finite common motion available");state=(NpcMotionState)action[0];n.oldTarget=n.target;n.AI();
-                Console.WriteLine("DEAD619 day="+day+" actual="+n.velocity+" model="+state.Vx+","+state.Vy+" time="+n.timeLeft+" target="+n.target+" kind="+n.GetTargetData().Type);
-                Require(Math.Abs(state.Vx-n.velocity.X)<.0001f && Math.Abs(state.Vy-n.velocity.Y)<.0001f && state.TimeLeft==10 && n.timeLeft==10 && state.L0==119 && n.localAI[0]==119,"619 dead common10 tail overrides initial raw-day60, shooting clock stays untouched");
+                foreach(var npc in Main.npc)npc.active=false;p.dead=true;p.position=new Vector2(850,1100);Main.worldSurface=80;Main.dayTime=day;Main.remixWorld=true;Main.netMode=0;var n=Main.npc[2]=new NPC();n.SetDefaults(type);n.whoAmI=2;n.position=new Vector2(650,700);n.velocity=new Vector2(1,type==42?-2:2);n.target=0;n.direction=1;n.alpha=0;n.localAI[0]=119;
+                var oldTile=Main.tile[42,44];if(type==252)Main.tile[42,44]=null;
+                terrain.Reset();var state=(NpcMotionState)read.Invoke(null,new object[]{n,1L});object[] observation={n,state,terrain};capture.Invoke(null,observation);state=(NpcMotionState)observation[1];var env=new PredictionEnvironment{PlayerIndex=0,PlayerX=p.Center.X,PlayerY=p.Center.Y,PlayerWidth=p.width,PlayerHeight=p.height,PlayerDead=true,Day=day,Remix=true,WorldSurface=80};object[] action={state,env,terrain,1,PredictionStop.None,false};
+                try{Require((bool)kernel.Invoke(null,action),"None finite common motion available without fabricated LOS, including missing irrelevant LOS cell");state=(NpcMotionState)action[0];}finally{Main.tile[42,44]=oldTile;}
+                n.oldTarget=n.target;n.AI();
+                Console.WriteLine("NONE type="+type+" day="+day+" actual="+n.velocity+" model="+state.Vx+","+state.Vy+" time="+n.timeLeft+" target="+n.target+" kind="+n.GetTargetData().Type);
+                Require(n.GetTargetData().Type==Terraria.Enums.NPCTargetType.None,"Dead numbered player is actual GetTargetData None, not Player/dead");
+                Require(Math.Abs(state.Vx-n.velocity.X)<.0001f && Math.Abs(state.Vy-n.velocity.Y)<.0001f && state.TimeLeft==n.timeLeft && n.timeLeft==(day && type==619?60:750),"None uses zero motor geometry, separate numbered-slot hornet height, no dead common10 tail");
+                if(type==619)Require(state.L0==50 && n.localAI[0]==50,"None invalid firing target resets clock50");
+                // The public Source does not publish a fabricated player
+                // future for this all-dead component input.
+                var host=Get(context,"CombatObservation");Aim(context,host,n);NativeCombatObservationChecks.Fresh(context,host);
+                Require(((NpcPredictionCache)Get(source,"Cache")).Read(0)==null,"All-dead necessary-player input cannot publish through actual default Source");
             }
-            p.dead=false;Main.dayTime=Main.remixWorld=false;Main.netMode=1;Console.WriteLine("PASS619 dead common tail2 pure captured first-action native AI; not Source alive-player acceptance");
+            p.dead=false;Main.dayTime=Main.remixWorld=false;Main.netMode=1;Console.WriteLine("PASS AI5 actual None6 pure captured first-action native AI, 252 no irrelevant LOS, hornet numbered-slot height, default Source necessary-player refusal; legal Player/NPC/guardian positives are separate scopes");
         }
     }
 }

@@ -14,6 +14,16 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if(scope=="NpcEventRetirement")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-events-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
+                NativeQuickItemChecks.Run(context=>{using(var graphics=new ProbeGraphics(content))NativeCombatEventRetirementChecks.Run(context,graphics);},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
+            }
+            if(scope=="NpcEventRetirementCpu")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-events-cpu-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
+                NativeQuickItemChecks.Run(NativeCombatEventRetirementChecks.Cpu,processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
+            }
             if(scope=="NpcTargetMarker")
             {
                 Directory.CreateDirectory(output);
@@ -31,6 +41,7 @@ namespace NativeWorldTextProbe
                 Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-shared-geometry-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
                 NativeQuickItemChecks.Run(context=>{string phase=Environment.GetEnvironmentVariable("JUEMINGR_SHARED_GEOMETRY_PHASE");if(phase=="strategy")NativeCombatStrategyChecks.Run(context);else if(phase=="finite-flight")NativeFiniteFlightChecks.Run(context);else if(phase=="sample-presentation")NativeSamplePresentationChecks.Run(context);else if(phase=="foundation")NativeCombatFoundationChecks.Run(context);else if(phase=="hand-constraint")NativeCombatHandConstraintChecks.Run(context);else if(phase=="regions")NativeCombatMovementRegionChecks.Run(context);else if(phase=="phase-review")NativeCombatPhaseReviewChecks.Run(context);else if(phase=="player-policy")NativeCombatPlayerPolicyChecks.Run(context);else if(phase=="retarget-phases")NativeCombatRetargetPhaseChecks.Run(context);else if(phase=="player-geometry")NativeCombatPlayerGeometryChecks.Run(context);else if(phase=="dispatch")NativeCombatCollisionDispatchChecks.Run(context);else if(phase=="tracking")NativeCombatTrackingChecks.Run(context);else if(phase=="attachment")NativeCombatAttachmentChecks.Run(context);else if(phase=="relations")NativeCombatPositionRelationChecks.Run(context);else if(phase=="parent")NativeCombatParentMotionChecks.Run(context);else if(phase=="conveyor")NativeCombatConveyorChecks.Run(context);else if(phase=="player-conveyor")NativeCombatConveyorChecks.Player(context);else if(phase=="sync")NativeCombatSyncChecks.Run(context);else if(phase=="failure")NativeCombatLocalFailureChecks.Run(context);else NativeCombatSharedGeometryChecks.Run(context);},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
             }
+            if(scope=="NpcStrategyContinuous"){Environment.SetEnvironmentVariable("JUEMINGR_FOUNDATION_STRATEGY_ONLY","1");scope="NpcFoundationContinuous";}
             if(scope=="NpcFoundationContinuous")
             {
                 Environment.SetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT","rolling-candidate");

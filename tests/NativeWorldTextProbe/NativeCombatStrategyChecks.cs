@@ -23,6 +23,7 @@ namespace NativeWorldTextProbe
             Lighting.Mode=Terraria.Graphics.Light.LightMode.Color;
             NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true,marker:true));Set(host,"LayerStatus",Enum.Parse(Get(host,"LayerStatus").GetType(),"Ready"));
             string only=Environment.GetEnvironmentVariable("JUEMINGR_STRATEGY_ONLY");
+            if(!string.IsNullOrEmpty(only))NativeStrategyScopes.Require(only);
             if(only=="facing"){Facing(source,p);return;}
             if(only=="moving"){cache.Demand(0,120);MovingCompetition(source,cache,p);return;}
             if(only=="retarget"){NativeCombatRetargetChecks.Run(context);return;}

@@ -80,6 +80,10 @@ namespace NativeWorldTextProbe
             Call(ui,"Close");Main.screenWidth=960;Main.screenHeight=640;Main.UIScale=1;Terraria.GameInput.PlayerInput.CacheOriginalScreenDimensions();
             var host=Get(context,"CombatObservation");var world=Get(host,"World");var marker=Get(world,"Marker");
             foreach(var n in Main.npc)n.active=false;var target=Main.npc[2];target.SetDefaults(2);target.whoAmI=2;target.active=true;target.position=new Vector2(720,450);target.target=0;Main.LocalPlayer.position=new Vector2(640,500);Main.dayTime=false;
+            NativeCombatObservationChecks.Save(host,new ObservationOptions(marker:true));NativeCombatObservationChecks.Fresh(context,host);Call(world,"Prepare");var markerOnlyPixels=graphics.Pixels(()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);
+            Require((bool)Get(marker,"Visible") && (int)Get(world,"StrokeCount")==0 && ((NpcPredictionCache)Get(Get(host,"Prediction"),"Cache")).Required==0 && markerOnlyPixels.Any(pixel=>pixel.A>0),"Actual marker-only Draw has pixels without future path work");
+            NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true));NativeCombatObservationChecks.Fresh(context,host);Call(world,"Prepare");var pathOnlyPixels=graphics.Pixels(()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);
+            Require(!(bool)Get(marker,"Visible") && (int)Get(world,"StrokeCount")>5 && pathOnlyPixels.Count(pixel=>pixel.A>0 && pixel.R>pixel.G+10 && pixel.G>pixel.B+20)>20,"Actual path-only Draw has gold route pixels without marker commands");
             NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true,marker:true));NativeCombatObservationChecks.Fresh(context,host);Call(world,"Prepare");NativeCombatPresentationChecks.Project(world);Require((bool)Get(marker,"Visible") && (int)Get(world,"StrokeCount")>5,"Marker and real path both prepared.");
             graphics.Image(System.IO.Path.Combine(output,"marker-path.png"),()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);
             // Prepare world content under a different camera. Only the real

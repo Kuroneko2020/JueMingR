@@ -35,14 +35,20 @@ namespace JueMingR.Features.Combat
                 target=new MotionRect(n.TrackingArea.X+n.TrackingVx*span,n.TrackingArea.Y+n.TrackingVy*span,n.TrackingArea.Width,n.TrackingArea.Height);
             }
             else target=new MotionRect(e.PlayerX-e.PlayerWidth*.5f,e.PlayerY-e.PlayerHeight*.5f,e.PlayerWidth,e.PlayerHeight);
-            bool dead=e.PlayerDead && (!bee || n.TrackingKind!=3);
+            // GetTargetData runs AFTER this action's query. HasValidTarget
+            // rejects dead/inactive/ghost players, returning the zero-sized
+            // None value rather than a dead player's geometry. The native
+            // Player/dead flag cannot be inferred from a stale numbered slot.
+            bool targetValid=bee?n.BeeTargetValid:!n.TargetCaptured?!e.PlayerDead:n.HasClosestPlayer;
+            if(!targetValid)target=default(MotionRect);
+            bool dead=targetValid && e.PlayerDead && (!bee || n.TrackingKind!=3);
             float speed=6,acc=.05f;
             if(eater){speed=e.Remix?5:4;acc=e.Remix?.06f:type==6 && e.Expert?.035f:.02f;}
             else if(type==94){speed=4.2f;acc=.022f;}
             else if(type==619){speed=6;acc=.1f;if(e.Day){n.Vy-=.3f;n.TimeLeft=Math.Min(n.TimeLeft,60);}if(n.Alpha==255)n.Vy=-6;n.Alpha=Math.Max(0,n.Alpha-15);}
             else if(type==252)
-            {bool clear;if(!terrain.CanHit(n.Bounds,target,out clear,out stop))return false;speed=clear?6:2;acc=clear?.1f:.01f;}
-            else if(hornet){speed=(type==231?3:3.5f)*(2-n.Scale);acc=(type==231?.017f:.021f)*(2-n.Scale);if(n.Y/16<e.WorldSurface && (target.Y-n.Y>300 && n.Vy<0 || target.Y-n.Y<80 && n.Vy>0))n.Vy*=.97f;}
+            {bool clear=false;if(targetValid && !terrain.CanHit(n.Bounds,target,out clear,out stop))return false;speed=clear?6:2;acc=clear?.1f:.01f;}
+            else if(hornet){speed=(type==231?3:3.5f)*(2-n.Scale);acc=(type==231?.017f:.021f)*(2-n.Scale);float playerY=e.PlayerY-e.PlayerHeight*.5f;if(n.Y/16<e.WorldSurface && (playerY-n.Y>300 && n.Vy<0 || playerY-n.Y<80 && n.Vy>0))n.Vy*=.97f;}
             else if(type==205){speed=3.25f;acc=.018f;}
             else if(type==176){speed=4;acc=.017f;}
             else if(type==23){speed=1;acc=.03f;}
@@ -63,7 +69,7 @@ namespace JueMingR.Features.Combat
             bool always=type==94 || type==619 || type==176 || hornet || bee;
             if(periodic && (distance>100 || always)){n.A0++;n.Vy+=n.A0>0?.023f:-.023f;n.Vx+=n.A0<-100 || n.A0>100?.023f:-.023f;if(n.A0>200)n.A0=-200;}
             if((eater || type==94 || type==619) && distance<150){n.Vx+=dx*.007f;n.Vy+=dy*.007f;}
-            if(!bee && e.PlayerDead){dx=n.Direction*speed/2;dy=-speed/2;}else if(type==619 && n.Bounds.CenterY>target.CenterY-200)n.Vy-=.3f;
+            if(dead){dx=n.Direction*speed/2;dy=-speed/2;}else if(type==619 && n.Bounds.CenterY>target.CenterY-200)n.Vy-=.3f;
             bool reverse=type!=173 && type!=6 && type!=42 && !hornet && type!=94 && type!=139 && type!=619;
             // Native enters this outer attachment branch using the old A3.
             // A known missing owner detaches, but never also runs Axis in the
@@ -95,7 +101,7 @@ namespace JueMingR.Features.Combat
             if(type==139 && distance>600){if(n.Vx*dx>0){if(Math.Abs(n.Vx)<(e.MechQueenUp?5:12))n.Vx*=1.05f;}else n.Vx*=.9f;}
             if(type==139 && e.MechQueenUp && n.A2==0)
             {float x=target.CenterX-n.Bounds.CenterX,y=target.CenterY-n.Bounds.CenterY,length=(float)Math.Sqrt(x*x+y*y);if(length<120){if(length==0){x=0;y=1;}else{x/=length;y/=length;}n.X=target.CenterX-x*120-n.Width*.5f;n.Y=target.CenterY-y*120-n.Height*.5f;}}
-            if(type==619 && !e.Multiplayer && !e.PlayerDead)
+            if(type==619 && !e.Multiplayer && !dead)
             {
                 if(n.JustHit)n.L0+=10;n.L0++;
                 if(n.L0>=120)
@@ -103,7 +109,7 @@ namespace JueMingR.Features.Combat
                     // At <400 the locked 1920x1200 firing rectangle (50px
                     // inset) is necessarily satisfied. The projectile's RNG
                     // happens after this deterministic body recoil.
-                    if(Distance(n.Bounds,target)<400)
+                    if(targetValid && Distance(n.Bounds,target)<400)
                     {bool clear;if(!terrain.CanHit(n.Bounds,target,out clear,out stop))return false;if(clear){float x=target.CenterX-n.Bounds.CenterX,y=target.Y-n.Bounds.CenterY,length=(float)Math.Sqrt(x*x+y*y);if(length==0){stop=PredictionStop.InvalidState;return false;}n.Vx=-x/length*5;n.Vy=-y/length*5;n.L0=0;}else n.L0=50;}
                     else n.L0=50;
                 }

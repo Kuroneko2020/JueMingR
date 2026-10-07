@@ -23,6 +23,20 @@ foreach ($path in @('scripts/phase0s/Install-Phase0S.ps1','scripts/phase0s/Resto
     $old = [pscustomobject]@{inputs=@($path+':A')}; $new = [pscustomobject]@{inputs=@($path+':B')}
     Assert-Evidence ((Get-WorkloadCheckFingerprint $old 'native-FishingCpu') -cne (Get-WorkloadCheckFingerprint $new 'native-FishingCpu')) ('shared inputs remain strict: ' + $path)
 }
+$combatPlan=@(Get-WorkloadPlan $root 'checks' 'architecture.exe' @() @('combat-host') | ForEach-Object {$_.name})
+foreach($name in @('native-NpcStrategy','native-NpcStrategyContinuous','native-NpcFoundationContinuous','native-NpcEventRetirementCpu')) {
+    Assert-Evidence ($combatPlan -contains $name) ('actual combat obligations include '+$name)
+    $missing=@($combatPlan | Where-Object {$_ -cne $name})
+    $partial=[pscustomobject]@{mode='Related';inputFingerprint='input';requiredChecks=$combatPlan;checkCount=$missing.Count;results=@($missing | ForEach-Object {[pscustomobject]@{name=$_;result='PASS';disposition='EXECUTED'}})}
+    Assert-Evidence (-not (Test-WorkloadCoverage $partial $combatPlan 'input')) ('missing actual scope cannot inherit completion: '+$name)
+}
+$unrelatedPlan=@(Get-WorkloadPlan $root 'checks' 'architecture.exe' @() @('fishing-host') | ForEach-Object {$_.name})
+Assert-Evidence ($unrelatedPlan -notcontains 'native-NpcStrategy' -and $unrelatedPlan -notcontains 'native-NpcStrategyContinuous') 'unrelated fishing does not run strategy scopes'
+foreach($path in @('tests/NativeWorldTextProbe/NativeCombatFlyingTailChecks.cs','tests/NativeWorldTextProbe/NativeCombatFiniteControlChecks.cs')) {
+    $old=[pscustomobject]@{inputs=@($path+':A')};$new=[pscustomobject]@{inputs=@($path+':B')}
+    Assert-Evidence ((Get-WorkloadCheckFingerprint $old 'native-NpcStrategy') -cne (Get-WorkloadCheckFingerprint $new 'native-NpcStrategy')) 'family test invalidates actual strategy obligation'
+    Assert-Evidence ((Get-WorkloadCheckFingerprint $old 'native-FishingCpu') -ceq (Get-WorkloadCheckFingerprint $new 'native-FishingCpu')) 'family-only test does not invalidate fishing'
+}
 # The page-only provider owns arrangement, not the automation execution chain.
 $page = Get-WorkloadRoute @('src/JueMingR.TerrariaHost/F5/MiscAutomationPanel.cs')
 Assert-Evidence ($page.groups -contains 'pages-host') 'page arrangement must select actual page composition/input checks'
@@ -113,7 +127,13 @@ throw 'Incorrectly returned from a failed process.'
     # Match the formal package entry's parent 2>&1 capture with a native
     # receiver, rather than PowerShell's different stderr forwarding behavior.
     $stderrExe=Join-Path $fixture 'stderr-receiver.exe'
-    Add-Type -TypeDefinition 'using System; public static class WorkloadStderrReceiver { public static int Main(string[] args) { Console.Error.WriteLine("ordinary native information"); return int.Parse(args[0]); } }' -OutputAssembly $stderrExe -OutputType ConsoleApplication
+    Add-Type -TypeDefinition 'using System; public static class WorkloadStderrReceiver { public static int Main(string[] args) { if(args[0]=="only") { if(Environment.GetEnvironmentVariable("JUEMINGR_STRATEGY_ONLY")!=null || Environment.GetEnvironmentVariable("JUEMINGR_FOUNDATION_STRATEGY_ONLY")!=null) return 9; Console.WriteLine("only-cleared"); return 0; } Console.Error.WriteLine("ordinary native information"); return int.Parse(args[0]); } }' -OutputAssembly $stderrExe -OutputType ConsoleApplication
+    $priorStrategy=$env:JUEMINGR_STRATEGY_ONLY;$priorFoundation=$env:JUEMINGR_FOUNDATION_STRATEGY_ONLY
+    try {
+        $env:JUEMINGR_STRATEGY_ONLY='facing';$env:JUEMINGR_FOUNDATION_STRATEGY_ONLY='1'
+        $cleared=@(Invoke-WorkloadProcess 'only-contamination' $stderrExe @('only'))
+        Assert-Evidence ($LASTEXITCODE -eq 0 -and $env:JUEMINGR_STRATEGY_ONLY -ceq 'facing' -and $env:JUEMINGR_FOUNDATION_STRATEGY_ONLY -ceq '1') 'formal child clears only pollution and restores parent environment'
+    } finally {$env:JUEMINGR_STRATEGY_ONLY=$priorStrategy;$env:JUEMINGR_FOUNDATION_STRATEGY_ONLY=$priorFoundation}
     $captured=@(& { Invoke-WorkloadProcess 'stderr-success' $stderrExe @('0') } 2>&1)
     Assert-Evidence (($captured | Out-String).Contains('ordinary native information')) 'successful native stderr is retained under package capture'
     Assert-Evidence ($ErrorActionPreference -ceq 'Stop') 'success restores caller error preference'

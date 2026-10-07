@@ -82,12 +82,14 @@ namespace NativeWorldTextProbe
                     playerFuture=new List<PredictionPlayerMotion>{sampled};
                     for(int i=1;i<=frames;i++){var args=new object[]{sampled,environment,terrain,PredictionStop.None};Require((bool)advance.Invoke(rolling,args),"A actual rolling player consumer freezes all declared actions, stop="+args[3]);sampled=(PredictionPlayerMotion)args[0];playerFuture.Add(sampled);}
                 }
-                int selected=0,published=0,full=0,complex=0;double maxError=0;
+                int selected=0,published=0,full=0,complex=0,npcTargetActions=0;double maxError=0;int initialSide=Math.Sign(p.Center.X-n.Center.X);bool crossed=false;
                 for(int frame=1;frame<=frames;frame++)
                 {
                     float beforeY=n.position.Y,beforeVx=n.velocity.X,beforeVy=n.velocity.Y;
                     float playerBeforeY=p.position.Y,playerBeforeVx=p.velocity.X,playerBeforeVy=p.velocity.Y;
                     NativeCombatModeledImpactChecks.SampleMouse(context,n.Center);step();actions++;var path=cache.Read(0);bool has=(bool)Get(Get(host,"Selection"),"HasTarget");if(has)selected++;if(path!=null){published++;if(path.Count==121)full++;if((path.Assumptions&PredictionAssumption.CurrentPlayerObservation)!=0)complex++;}
+                    crossed|=Math.Sign(p.Center.X-n.Center.X)!=initialSide;
+                    if(n.HasNPCTarget)npcTargetActions++;
                     var evidence=Observe(name,false,frame,frozen,name.StartsWith("fighter104-",StringComparison.Ordinal));
                     evidence.ExactY=name.StartsWith("gravity258-",StringComparison.Ordinal);availability[availability.Count-1]=evidence;
                     if(events)
@@ -113,12 +115,74 @@ namespace NativeWorldTextProbe
                 summary.Add(string.Join(",",name,frames,selected,published,full,complex,F(maxError),F(p.position.X),F(p.position.Y)));
                 Console.WriteLine("C FROZEN "+summary[summary.Count-1]);
                 Require(Evaluate(availability)==null,"C actual continuous acceptance: "+Evaluate(availability));
+                if(name.StartsWith("strategy-bee",StringComparison.Ordinal))
+                {Console.WriteLine("C BEE crossed="+crossed+" actualTurn="+availability.Exists(f=>f.Phase==name && f.ActualTurn)+" predictedTurn="+availability.Exists(f=>f.Phase==name && f.PredictedTurn));Require(crossed && availability.Exists(f=>f.Phase==name && f.ActualTurn && f.PredictedTurn),"Actual full-update bee crosses its player and frozen prediction anticipates the return turn");}
+                if(name=="strategy-mimic-wait-jump")Require(availability.Exists(f=>f.Phase==name && f.ActualJump && f.PredictedJump),"Actual waiting mimic launches in the frozen action phase");
+                if(name.StartsWith("strategy-newborn-npc-competition",StringComparison.Ordinal)){Console.WriteLine("C BEE real-NPC-target-actions="+npcTargetActions);Require(npcTargetActions>0,"Newborn bee window actually contains a non-bee NPC query winner, without forcing the final winner");}
                 if(name=="fighter104-near-pounce")Require(availability.Exists(f=>f.Phase==name && f.ActualJump && f.PredictedJump),"B declared near-pounce positive window must contain a real and same-phase predicted takeoff.");
                 if(name=="fighter104-stepup")Require(availability.Exists(f=>f.Phase==name && f.ActualStep && f.PredictedStep),"B declared step positive window must contain a real and same-phase predicted step.");
                 if(name=="fighter104-speed2")Require(!availability.Exists(f=>f.Phase==name && (f.ActualJump || f.PredictedJump)),"B declared far target without obstacle must not activate a near pounce.");
             }
             try
             {
+                if(Environment.GetEnvironmentVariable("JUEMINGR_FOUNDATION_STRATEGY_ONLY")=="1")
+                {
+                    p.armor[3].TurnToAir();p.armor[4].TurnToAir();p.controlLeft=p.controlRight=p.controlJump=false;
+                    foreach(int type in new[]{210,211,85})
+                    {
+                        foreach(var npc in Main.npc)npc.active=false;
+                        n=Main.npc[slot];n.SetDefaults(type);n.whoAmI=slot;n.active=true;n.target=p.whoAmI;n.position=new Vector2(650,type==85?2400-n.height:2300);n.velocity=type==85?Vector2.Zero:new Vector2(6,-1);n.oldVelocity=n.velocity;n.direction=1;n.timeLeft=750;
+                        p.position=new Vector2(900,2400-p.height);p.velocity=Vector2.Zero;p.fallStart=p.fallStart2=(int)(p.position.Y/16);
+                        if(type==85){n.ai[0]=1;n.ai[2]=10;n.ai[3]=1;}else{n.ai[0]=99;n.ai[1]=59;}
+                        Window(type==85?"strategy-mimic-wait-jump":"strategy-bee"+type,type==85?95:120,events:true);
+                        if(type==85)
+                        {
+                            Require(p.velocity.X!=0,"The declared contact boundary really includes normal player knockback, not disabled damage");
+                            Window("strategy-mimic-contact-observation",30);
+                        }
+                    }
+                    foreach(int type in new[]{210,211})
+                    {
+                        foreach(var npc in Main.npc)npc.active=false;
+                        var competitor=Main.npc[3];competitor.SetDefaults(1);competitor.whoAmI=3;competitor.position=new Vector2(700,2400-competitor.height);competitor.velocity=Vector2.Zero;competitor.target=p.whoAmI;competitor.ai[0]=-1000;Require(competitor.CanBeChasedBy(),"Actual NPC competitor is eligible under original SearchForTarget, not a lifeMax1 projectile NPC");
+                        n=Main.npc[slot];n.SetDefaults(type);n.whoAmI=slot;n.position=new Vector2(650,2300);n.velocity=new Vector2(6,-1);n.target=p.whoAmI;n.ai[0]=99;n.ai[1]=0;n.timeLeft=750;
+                        p.position=new Vector2(900,2400-p.height);p.velocity=Vector2.Zero;p.fallStart=p.fallStart2=(int)(p.position.Y/16);
+                        Window("strategy-newborn-npc-competition"+type,120);
+                    }
+                    foreach(var npc in Main.npc)npc.active=false;
+                    n=Main.npc[slot];n.SetDefaults(83);n.whoAmI=slot;n.position=new Vector2(650,2300);n.velocity=Vector2.Zero;n.target=p.whoAmI;n.ai[0]=2;n.ai[1]=118;n.timeLeft=750;
+                    p.position=new Vector2(900,2400-p.height);p.velocity=Vector2.Zero;p.fallStart=p.fallStart2=(int)(p.position.Y/16);
+                    Window("strategy83-prepare-launch-coast",120);
+                    Require(availability.Exists(f=>f.Phase=="strategy83-prepare-launch-coast" && f.Frame==3 && Math.Abs(Math.Sqrt(f.ActualVx*f.ActualVx+f.ActualVy*f.ActualVy)-9)<.01 && Math.Abs(f.PredictedVx-f.ActualVx)<.01),"Sword's known preparation produces an actual, prospectively frozen 9-speed launch");
+                    p.position=new Vector2(500,2400-p.height);p.velocity=Vector2.Zero;p.fallStart=p.fallStart2=(int)(p.position.Y/16);int relaunch=(int)(120-n.ai[1])+1;
+                    Window("strategy83-stop-redirect",relaunch);Require(n.velocity.X<0,"Sword really re-launches toward the newly completed opposite-side observation");
+                    // These are complete original updates of newly repaired
+                    // model families, through the same selection/publication
+                    // gate. They supplement, rather than replace, the frozen
+                    // bee/Mimic denominator and its recorded contact boundary.
+                    foreach(var npc in Main.npc)npc.active=false;
+                    var oldPlayer=Main.player[1];oldPlayer.active=true;oldPlayer.dead=true;
+                    n=Main.npc[slot];n.SetDefaults(82);n.whoAmI=slot;n.position=new Vector2(650,2200);n.velocity=Vector2.UnitX;n.target=1;n.ai[0]=n.position.X;n.ai[1]=n.position.Y;n.ai[2]=-20;n.justHit=true;n.timeLeft=750;
+                    p.position=new Vector2(900,2400-p.height);p.velocity=Vector2.Zero;p.fallStart=p.fallStart2=(int)(p.position.Y/16);
+                    Window("strategy82-hit-old-dead-new-winner",12);Require(n.target==p.whoAmI,"R03 completed original first query selects the real alive winner");oldPlayer.active=false;
+                    foreach(var npc in Main.npc)npc.active=false;
+                    n=Main.npc[slot];n.SetDefaults(619);n.whoAmI=slot;n.position=new Vector2(650,2300);n.velocity=new Vector2(1,0);n.target=p.whoAmI;n.direction=1;n.alpha=0;n.localAI[0]=119;n.timeLeft=750;
+                    Window("strategy619-shot-body-recoil",20);Require(n.localAI[0]<119,"619 real update crosses its actual firing clock");
+                    foreach(var npc in Main.npc)npc.active=false;
+                    var parent=Main.npc[1];parent.SetDefaults(398);parent.whoAmI=1;parent.position=new Vector2(900,2100);parent.velocity=new Vector2(.5f,0);parent.localAI[3]=1;parent.ai[0]=-1;parent.ai[1]=1;
+                    n=Main.npc[slot];n.SetDefaults(397);n.whoAmI=slot;n.Center=parent.Center+new Vector2(350,-100);n.velocity=new Vector2(1,0);n.target=p.whoAmI;n.ai[3]=1;n.ai[2]=1;n.timeLeft=750;
+                    Window("strategy397-current-relation4",12);
+                    var relationPath=cache.Read(0);Require(relationPath!=null && (relationPath.Assumptions&(PredictionAssumption.CurrentConnection|PredictionAssumption.ApproximateMechanism))==(PredictionAssumption.CurrentConnection|PredictionAssumption.ApproximateMechanism),"Current hand uses actual Relation4 Trend/constraint with explicit incomplete Boss condition");
+                    var source=Get(host,"Prediction");var sameTickCosts=new List<double>();uint fixedTick=Main.GameUpdateCount;
+                    for(int repeat=-5;repeat<120;repeat++)
+                    {
+                        long begin=System.Diagnostics.Stopwatch.GetTimestamp();Call(source,"Prepare",relationPath.Identity,(long)fixedTick);double ms=(System.Diagnostics.Stopwatch.GetTimestamp()-begin)*1000.0/System.Diagnostics.Stopwatch.Frequency;
+                        Require(Main.GameUpdateCount==fixedTick && ReferenceEquals(relationPath,cache.Read(0)),"Repeated complete Source at same observation never advances or replaces immutable output");if(repeat>=0)sameTickCosts.Add(ms);
+                    }
+                    double sameTickTotal=0;foreach(double ms in sameTickCosts)sameTickTotal+=ms;sameTickCosts.Sort();Console.WriteLine("COST Source-complete-same-tick-Prepare n=120 mean-ms="+(sameTickTotal/120).ToString("F3")+" p95-ms="+sameTickCosts[113].ToString("F3")+" p99-ms="+sameTickCosts[118].ToString("F3")+" max-ms="+sameTickCosts[119].ToString("F3"));
+                    Console.WriteLine("PASS strategy actual full Player.Update/NPC.UpdateNPC/shared Host windows actions="+actions);
+                    return;
+                }
                 bool fighterOnly=Environment.GetEnvironmentVariable("JUEMINGR_FOUNDATION_FIGHTER_ONLY")=="1";
                 bool liquidOnly=Environment.GetEnvironmentVariable("JUEMINGR_FOUNDATION_PLAYER_LIQUID_ONLY")=="1";
                 bool npcLiquidOnly=Environment.GetEnvironmentVariable("JUEMINGR_FOUNDATION_NPC_LIQUID_ONLY")=="1";

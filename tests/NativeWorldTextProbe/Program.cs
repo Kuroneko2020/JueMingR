@@ -16,6 +16,25 @@ namespace NativeWorldTextProbe
             try
             {
                 if (args.Length < 3 || args.Length > 4) throw new ArgumentException("repository Content output [Full|SelectionCpuCosts|SelectionCpuChecks|WorkloadCpu|InformationCpu|GuidanceCpu|GuidanceVisual|DeathCpu|DeathVisual|ExplorationCpu|ExplorationRelease|MapVisual] required");
+                // A formal whole-strategy request owns its scope. Inherited
+                // debug-only variables cannot silently reduce the obligation.
+                // Explicit subscopes retain the original fresh-process boundary.
+                if(args.Length==4 && args[3]=="NpcStrategy")return NativeStrategyScopes.RunAll(args);
+                if(args.Length==4 && (args[3]=="NpcFoundationContinuous" || args[3]=="NpcStrategyContinuous"))
+                {
+                    // A whole default-chain obligation is not the implicit
+                    // debug subset left in its caller's environment. This is
+                    // only the controlled child process, never the user's
+                    // machine environment or an explicit strategy scope.
+                    foreach(System.Collections.DictionaryEntry entry in Environment.GetEnvironmentVariables())
+                    {string key=(string)entry.Key;if(key=="JUEMINGR_FOUNDATION_SINGLE" || key.StartsWith("JUEMINGR_FOUNDATION_",StringComparison.Ordinal) && key.EndsWith("ONLY",StringComparison.Ordinal))Environment.SetEnvironmentVariable(key,null);}
+                    Environment.SetEnvironmentVariable("JUEMINGR_BASIC_MOTION",null);
+                    Environment.SetEnvironmentVariable("JUEMINGR_AIM_LIGHT_SEMANTICS_ONLY",null);
+                    Environment.SetEnvironmentVariable("JUEMINGR_AIM_LIGHT_PAIR",null);
+                    Console.WriteLine("FOUNDATION requested="+args[3]+" inherited-only-and-prior-shortcuts=cleared");
+                }
+                if(args.Length==4 && args[3].StartsWith("NpcStrategy:",StringComparison.Ordinal))
+                {string part=args[3].Substring("NpcStrategy:".Length);NativeStrategyScopes.Require(part);Environment.SetEnvironmentVariable("JUEMINGR_STRATEGY_ONLY",part);args[3]="NpcStrategy";}
                 Repository = Path.GetFullPath(args[0]);
                 if (args.Length == 4 && args[3] == "ExplorationRelease") ProductionConfiguration = "Release";
                 references = Path.Combine(Repository, "external", "TerrariaRefs");

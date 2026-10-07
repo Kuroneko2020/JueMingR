@@ -59,7 +59,18 @@ function Get-WorkloadCheckFingerprint {
         'tests/NativeWorldTextProbe/NativeToolsWorkloadChecks.cs'=@('native-ToolsWorkload')
         'tests/NativeWorldTextProbe/NativeYoyoAdoptionChecks.cs'=@('native-CombatCpu','native-CombatYoyoCausal')
         'tests/NativeWorldTextProbe/NativeCombatFoundationChecks.cs'=@('native-NpcFoundationRules')
-        'tests/NativeWorldTextProbe/NativeCombatFoundationContinuousChecks.cs'=@('native-NpcFoundationContinuous')
+        'tests/NativeWorldTextProbe/NativeCombatFoundationContinuousChecks.cs'=@('native-NpcFoundationContinuous','native-NpcStrategyContinuous')
+        'tests/NativeWorldTextProbe/NativeCombatStrategyChecks.cs'=@('native-NpcStrategy')
+        'tests/NativeWorldTextProbe/NativeCombatFamilyControlChecks.cs'=@('native-NpcStrategy')
+        'tests/NativeWorldTextProbe/NativeCombatFiniteControlChecks.cs'=@('native-NpcStrategy')
+        'tests/NativeWorldTextProbe/NativeCombatRetargetChecks.cs'=@('native-NpcStrategy')
+        'tests/NativeWorldTextProbe/NativeCombatRollingControlChecks.cs'=@('native-NpcStrategy')
+        'tests/NativeWorldTextProbe/NativeCombatRunningControlChecks.cs'=@('native-NpcStrategy')
+        'tests/NativeWorldTextProbe/NativeCombatStructuralControlChecks.cs'=@('native-NpcStrategy')
+        'tests/NativeWorldTextProbe/NativeCombatFighterControlChecks.cs'=@('native-NpcStrategy')
+        'tests/NativeWorldTextProbe/NativeCombatPositionControlChecks.cs'=@('native-NpcStrategy')
+        'tests/NativeWorldTextProbe/NativeCombatFlyingTailChecks.cs'=@('native-NpcStrategy')
+        'tests/NativeWorldTextProbe/NativeCombatEventRetirementChecks.cs'=@('native-NpcEventRetirementCpu','native-NpcEventRetirement')
         'tests/Workload/Invoke-WorkloadRoutingChecks.ps1'=@('workload-Routing')
         'tests/Workload/Invoke-WorkloadEvidenceChecks.ps1'=@('workload-Evidence')
     }
@@ -118,7 +129,9 @@ function Invoke-WorkloadProcess {
     if (-not [IO.File]::Exists($Executable)) { throw ('Missing check executable: ' + $Name) }
     $previousPreference = $ErrorActionPreference
     $exitCode = $null
+    $onlyVariables = @(Get-ChildItem Env: | Where-Object {$_.Name -match '^JUEMINGR_(STRATEGY_ONLY|FOUNDATION_.*ONLY|FOUNDATION_SINGLE|SHARED_GEOMETRY_PHASE)$'})
     try {
+        foreach ($variable in $onlyVariables) { Remove-Item -LiteralPath ('Env:'+$variable.Name) }
         # Windows PowerShell can promote ordinary native stderr to an error
         # under the package entry's 2>&1 capture. Keep that output, but decide
         # success only from this invocation's exit, never a stale prior value.
@@ -126,7 +139,7 @@ function Invoke-WorkloadProcess {
         $global:LASTEXITCODE = $null
         & $Executable @Arguments | Out-Host
         $exitCode = $global:LASTEXITCODE
-    } finally { $ErrorActionPreference = $previousPreference }
+    } finally { foreach ($variable in $onlyVariables) { Set-Item -LiteralPath ('Env:'+$variable.Name) -Value $variable.Value }; $ErrorActionPreference = $previousPreference }
     if ($null -eq $exitCode) { throw ("Workload check $Name did not produce a process exit code.") }
     if ($exitCode -ne 0) { throw ("Workload check $Name failed with exit $exitCode.") }
 }
@@ -247,7 +260,7 @@ function Get-WorkloadPlan {
         'NpcRollingCpu'=@('combat-host');
         'NpcRollingSelectionNegative'=@('combat-host');
         'NpcBasicMotion'=@('combat-host');
-        'NpcFoundationRules'=@('combat-host'); 'NpcFoundationContinuous'=@('combat-host'); 'NpcPlayerPolicy'=@('combat-host');
+        'NpcFoundationRules'=@('combat-host'); 'NpcFoundationContinuous'=@('combat-host'); 'NpcPlayerPolicy'=@('combat-host'); 'NpcStrategy'=@('combat-host'); 'NpcStrategyContinuous'=@('combat-host'); 'NpcEventRetirementCpu'=@('combat-host');
         # Ordinary delivery retains the real shared selection/terrain and
         # marker consumer seams; detailed phase matrices stay bounded probes.
         'NpcSharedGeometry'=@('combat-host'); 'NpcTargetMarker'=@('combat-host');

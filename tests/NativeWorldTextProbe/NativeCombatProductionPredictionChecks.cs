@@ -23,6 +23,7 @@ namespace NativeWorldTextProbe
         private static readonly List<double> warm=new List<double>();
         private static readonly List<double> cadence=new List<double>();
         private static readonly List<double> active=new List<double>(),displayAge=new List<double>();
+        private static readonly List<double> sourcePrepare=new List<double>();
         private static readonly List<string> updates=new List<string>();
         private static long priorStep; private static string phase;
         internal static int LastReceived {get;private set;}
@@ -64,7 +65,16 @@ namespace NativeWorldTextProbe
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_BASIC_MOTION")=="1")
                     {phase="basic-motion";NativeCombatBasicMotionChecks.Run(context,cache,()=>Step(context,samples,prepares,false),output,samples,prepares);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_FOUNDATION_CONTINUOUS")=="1")
-                    {phase="foundation-continuous";NativeCombatFoundationContinuousChecks.Run(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {
+                        phase="foundation-continuous";sourcePrepare.Clear();
+                        // Test-only low-burden timing surrounds the entire real
+                        // Source entry. No sampling/relations/model work moves
+                        // outside the measured boundary; normal diagnostics stay off.
+                        sink.Patch(source.GetType().GetMethod("Prepare",Flags),prefix:new HarmonyMethod(typeof(NativeCombatProductionPredictionChecks).GetMethod(nameof(SourceStart),Flags)),postfix:new HarmonyMethod(typeof(NativeCombatProductionPredictionChecks).GetMethod(nameof(SourceEnd),Flags)));
+                        try{NativeCombatFoundationContinuousChecks.Run(context,cache,()=>Step(context,samples,prepares,false),output);}
+                        finally{File.WriteAllLines(Path.Combine(output,"default-source-host-costs.csv"),new[]{"scope,milliseconds"}.Concat(sourcePrepare.Select(v=>"Source,"+v.ToString("R",System.Globalization.CultureInfo.InvariantCulture))).Concat(samples.Select(v=>"HostRuntime,"+v.ToString("R",System.Globalization.CultureInfo.InvariantCulture))).Concat(prepares.Select(v=>"HostShell,"+v.ToString("R",System.Globalization.CultureInfo.InvariantCulture))));if(sourcePrepare.Count>0)Console.WriteLine("COST Source-first-legal-call-ms="+sourcePrepare[0].ToString("F3")+" subsequent-count="+(sourcePrepare.Count-1));Print("Source-complete-Prepare",new List<double>(sourcePrepare));Print("Source-after-first-Prepare",sourcePrepare.Skip(1).ToList());Print("Host-complete-UpdateRuntime",new List<double>(samples));Print("Host-complete-UpdateShell",new List<double>(prepares));}
+                        return;
+                    }
                     if(rolling || Environment.GetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT")=="rolling-baseline")
                     {NativeCombatRollingBaselineChecks.Run(context,cache,()=>{phase=NativeCombatRollingBaselineChecks.Phase;Step(context,samples,prepares,false);},output,graphics);return;}
                     if(continuousSeconds>0){Scene(2);Window(context,cache,samples,prepares,"baseline-off",continuousSeconds,false);Main.npc[0].active=false;}
@@ -525,6 +535,8 @@ namespace NativeWorldTextProbe
         private static readonly string[] MeasurementFields={"CaptureTick","ArriveTick","Age","WallAgeMs","CaptureMs","EncodeMs","ExchangeMs","DecodeMs","AcceptMs","TotalMs","ResetMs","RestoreMs","AdvanceMs","Bytes","ReplyBytes","Outcome"};
         private static string MeasurementRow(object value){return string.Join(",",MeasurementFields.Select(f=>"\""+Convert.ToString(Get(value,f),System.Globalization.CultureInfo.InvariantCulture).Replace("\"","\"\"")+"\""));}
         private static void Print(string name,List<double> values){if(values.Count==0)return;values.Sort();Console.WriteLine("COST "+name+" n="+values.Count+" mean-ms="+values.Average().ToString("F3")+" p95-ms="+values[(int)((values.Count-1)*.95)].ToString("F3")+" p99-ms="+values[(int)((values.Count-1)*.99)].ToString("F3")+" max-ms="+values.Last().ToString("F3"));}
+        private static void SourceStart(ref long __state){__state=Stopwatch.GetTimestamp();}
+        private static void SourceEnd(long __state){sourcePrepare.Add(Ms(Stopwatch.GetTimestamp()-__state));}
         private static void WaitClosed(object worker){var timer=Stopwatch.StartNew();while(!(bool)Get(worker,"Closed") && timer.ElapsedMilliseconds<5000)Thread.Sleep(10);Require((bool)Get(worker,"Closed"),"bounded owned-process cleanup");}
         private static bool Alive(int pid){try{using(var p=Process.GetProcessById(pid))return !p.HasExited;}catch(ArgumentException){return false;}}
         private static long Private(int pid){using(var p=Process.GetProcessById(pid))return p.PrivateMemorySize64;}

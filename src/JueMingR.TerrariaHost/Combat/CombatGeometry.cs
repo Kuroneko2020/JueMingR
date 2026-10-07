@@ -28,7 +28,7 @@ namespace JueMingR.TerrariaHost.Combat
         internal CombatShape[] Shapes=new CombatShape[8];
         internal int Count,Owner,Identity,Type,Sequence;internal uint Tick;internal long Session;internal bool Overflow;
         internal object Token;
-        internal bool Presented;internal long Presentation;
+        internal bool Presented,Retired;internal long Presentation,Opportunity,CreatedAt;
         internal Vector2[] Points;internal int PointCount;internal Point PointSize;internal Rectangle PointBounds;
         internal void Rectangle(Rectangle box,int category,bool approximate=false)
         {Add(new CombatShape{A=new Vector2(box.X,box.Y),B=new Vector2(box.Right,box.Bottom),Category=category,Approximate=approximate});}
@@ -51,7 +51,7 @@ namespace JueMingR.TerrariaHost.Combat
             Add(new CombatShape{Kind=5,Category=category});
         }
         private void Add(CombatShape value){if(Count==Shapes.Length){if(Count==160){Overflow=true;return;}Array.Resize(ref Shapes,Math.Min(160,Shapes.Length*2));}Shapes[Count++]=value;}
-        internal void Reset(uint tick,long session){Count=PointCount=0;Overflow=Presented=false;Presentation=0;Tick=tick;Session=session;Sequence++;}
+        internal void Reset(uint tick,long session){Count=PointCount=0;Overflow=Presented=Retired=false;Presentation=Opportunity=CreatedAt=0;Tick=tick;Session=session;Sequence++;}
     }
     // Samples are current native damage windows, not speculative hit tests.
     // Per-projectile replacement keeps extraUpdates distinct: only the last
@@ -66,7 +66,7 @@ namespace JueMingR.TerrariaHost.Combat
         internal readonly CombatShapeSample[] Npcs=new CombatShapeSample[Main.maxNPCs];
         internal readonly CombatShapeSample[] Bodies=new CombatShapeSample[Main.maxPlayers];
         private readonly List<Vector2> whipNow=new List<Vector2>(64),whipBefore=new List<Vector2>(64);
-        private int eventCount,eventReplacement;private uint eventTick;private bool eventOverflow;
+        private int eventCount,eventReplacement;private uint eventTick;private bool eventOverflow;private long eventNow;
         internal int EventCount {get{return eventCount;}}
         internal bool EventOverflow {get{return eventOverflow;}}
         internal long Session;
@@ -74,7 +74,7 @@ namespace JueMingR.TerrariaHost.Combat
 #if DEBUG
         internal int ProjectileSamples,NpcSamples,MeleeSamples;
 #endif
-        internal void Clear(){Array.Clear(Attacks,0,Attacks.Length);Array.Clear(Events,0,Events.Length);Array.Clear(Npcs,0,Npcs.Length);Array.Clear(Bodies,0,Bodies.Length);eventCount=eventReplacement=0;eventOverflow=false;Failed=false;}
+        internal void Clear(){Array.Clear(Attacks,0,Attacks.Length);Array.Clear(Events,0,Events.Length);Array.Clear(Npcs,0,Npcs.Length);Array.Clear(Bodies,0,Bodies.Length);eventCount=eventReplacement=0;eventNow=0;eventOverflow=false;Failed=false;}
         internal void BeginNpcs(){for(int i=0;i<Npcs.Length;i++)if(Npcs[i]!=null)Npcs[i].Count=0;}
         internal void BeginDamage(Projectile shot)
         {
@@ -121,26 +121,39 @@ namespace JueMingR.TerrariaHost.Combat
             sample.Rectangle(Utils.CenteredRectangle(shot.Center,new Vector2(side)),category);
         }
         internal void PrepareEvents()
+        {MaintainEvents(false);}
+        internal void PrepareEventsForDraw()
+        {MaintainEvents(true);}
+        private void MaintainEvents(bool drawing)
         {
-            if(eventTick==Main.GameUpdateCount)return;eventTick=Main.GameUpdateCount;
+            // Damage callbacks in one update share one clock read and sweep.
+            // Draw recovery must also expire a paused/hidden same-tick event.
+            if(!drawing && eventNow!=0 && eventTick==Main.GameUpdateCount)return;eventTick=Main.GameUpdateCount;eventNow=System.Diagnostics.Stopwatch.GetTimestamp();
             for(int i=eventCount-1;i>=0;i--)
             {
                 var value=Events[i];
-                // An event owns one actual presentation opportunity, not four
-                // world steps. Capacity replacement remains bounded and explicit.
-                if(!value.Presented && value.Session==Session)continue;
+                // Two seconds / 120 world updates preserve short six-update
+                // gaps without making stale danger wait forever for a camera.
+                bool expired=unchecked(Main.GameUpdateCount-value.Tick)>120 || eventNow-value.CreatedAt>2*System.Diagnostics.Stopwatch.Frequency;
+                if(!value.Presented && !value.Retired && value.Session==Session && !expired)continue;
+                if(expired || value.Session!=Session)value.Retired=true;
                 Events[i]=Events[--eventCount];Events[eventCount]=value;
             }
         }
         internal void PresentedEvents(long presentation)
-        {for(int i=0;i<eventCount;i++)if(Events[i].Presentation==presentation)Events[i].Presented=true;eventOverflow=false;}
+        {
+            // Commit only after the actual whole layer Draw succeeds. A fully
+            // examined invisible event retires, rather than claiming shown.
+            for(int i=0;i<eventCount;i++){var value=Events[i];if(value.Presentation==presentation)value.Presented=true;else if(value.Opportunity==presentation)value.Retired=true;}eventOverflow=false;
+        }
         private CombatShapeSample Event()
         {
-            PrepareEvents();if(eventCount<Events.Length)return Sample(Events,eventCount++);
+            PrepareEvents();if(eventCount<Events.Length)return EventSample(eventCount++);
             // Exceptional overload rotates replacement; it does not reserve
             // the first events forever while suppressing every later attack.
-            eventOverflow=true;int replacement=eventReplacement;eventReplacement=(eventReplacement+1)%Events.Length;return Sample(Events,replacement);
+            eventOverflow=true;int replacement=eventReplacement;eventReplacement=(eventReplacement+1)%Events.Length;return EventSample(replacement);
         }
+        private CombatShapeSample EventSample(int slot){var value=Sample(Events,slot);value.CreatedAt=eventNow;return value;}
         private static void Stamp(CombatShapeSample sample,Projectile shot){sample.Owner=shot.owner;sample.Identity=(int)shot.key;sample.Type=shot.type;sample.Token=shot;}
         private CombatShapeSample Sample(CombatShapeSample[] array,int slot)
         {var sample=array[slot]??(array[slot]=new CombatShapeSample());sample.Reset(Main.GameUpdateCount,Session);return sample;}

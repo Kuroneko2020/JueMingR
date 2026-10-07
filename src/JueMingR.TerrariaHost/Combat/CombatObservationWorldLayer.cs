@@ -119,7 +119,7 @@ namespace JueMingR.TerrariaHost.Combat
             for(int i=0;i<samples.Length;i++)
             {
                 var sample=samples[i];if(sample==null || sample.Session!=host.Session)continue;
-                if(kind==2){if(i>=host.Geometry.EventCount || sample.Presented)continue;}
+                if(kind==2){if(i>=host.Geometry.EventCount || sample.Presented || sample.Retired)continue;}
                 else if(sample.Tick!=Main.GameUpdateCount)continue;
                 if(kind==0 && i<Main.maxProjectiles)
                 {var p=Main.projectile[i];if(p==null || !p.active || !ReferenceEquals(p,sample.Token) || (int)p.key!=sample.Identity || p.type!=sample.Type || p.owner!=sample.Owner)continue;}
@@ -175,6 +175,10 @@ namespace JueMingR.TerrariaHost.Combat
                         Box(shape.A,shape.B,color,dashed);
                     }
                 }
+                // A projection can stage a receipt, never commit retirement.
+                // Reaching this end below the budget proves every shape was
+                // considered under the final camera, including crossing lines.
+                if(kind==2 && count<strokeLimit)sample.Opportunity=presentation;
             }
         }
         private static Vector2 CurvePoint(CombatShape shape,float angle)
@@ -223,6 +227,7 @@ namespace JueMingR.TerrariaHost.Combat
             try
             {
 #endif
+            if(host.Enabled && host.Collision)host.Geometry.PrepareEventsForDraw();
             if(!host.Enabled || !host.CanDraw || !WorldPresentation.CanDraw || Main.spriteBatch==null){Prediction.AimLightTrace.Presentation(!host.Enabled?"draw-disabled":!host.CanDraw?"draw-host-gate":!WorldPresentation.CanDraw?"draw-world-gate":"draw-no-batch",null,0,0,false);return true;}
             if(Main.GameViewMatrix==null)return true;zoom=Main.GameViewMatrix.ZoomMatrix;if(zoom.M11<=0 || zoom.M22<=0)return true;inverse=Matrix.Invert(zoom);
             ProjectPresentation();
@@ -241,7 +246,6 @@ namespace JueMingR.TerrariaHost.Combat
                 if(i>=eventEnd)pathCompleted++;else otherCompleted++;
 #endif
             }
-            if(!eventsDrawn && host.Collision){host.Geometry.PresentedEvents(presentation);eventsDrawn=true;}
             float y=Main.screenHeight-125;
             if(legend)
             {
@@ -250,6 +254,7 @@ namespace JueMingR.TerrariaHost.Combat
             }
             if(pathText!=null){Text(pathText,y,new Color(235,220,160));y+=22;}
             if(limited)Text("显示数量已达上限，部分区域未绘出",y,Color.Orange);
+            if(!eventsDrawn && host.Collision){host.Geometry.PresentedEvents(presentation);eventsDrawn=true;}
             Prediction.AimLightTrace.Presentation("draw-complete",null,count-eventEnd,eventEnd,pathText!=null);
             return true;
 #if JMR_AIM_LIGHT

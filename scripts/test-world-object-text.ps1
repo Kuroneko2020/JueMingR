@@ -2,7 +2,7 @@
 param(
     [Parameter(Mandatory = $true)][string] $ContentDirectory,
     [Parameter(Mandatory = $true)][string] $OutputDirectory,
-    [ValidateSet('Full', 'NpcWorkerIntegration', 'NpcWorkerCatalogue', 'NpcLegalCoverage', 'NpcWorkerLinked', 'NpcWorkerLifetime', 'NpcWorkerAssets', 'NpcWorkerRandom', 'NpcWorkerPlayer', 'NpcWorkerEntity', 'NpcWorkerBirth', 'NpcWorkerContext', 'NpcWorkerImmunity', 'NpcWorkerLifecycle', 'NpcWorkerFields', 'NpcWorkerTransport', 'NpcWorkerPreparation', 'NpcMenuPreparation', 'NpcSnapshot', 'NpcPostDelivery', 'NpcGuardianQuery', 'NpcModeledImpact', 'NpcNameDraw', 'NpcDiagnosticsOff', 'NpcSessionCapacity', 'NpcFailureRecovery', 'NpcProduction', 'NpcRollingCpu', 'NpcRollingSelectionNegative', 'NpcBasicMotion', 'NpcFoundationRules', 'NpcFoundationContinuous', 'NpcPlayerPolicy', 'NpcSharedGeometry', 'NpcTargetMarker', 'NpcLongCoverage', 'NpcTileManifest', 'CombatCosts', 'CombatObservationCpu', 'CombatCpu', 'CombatFacingCpu', 'CombatHitsCpu', 'CombatReportCpu', 'CombatUiCpu', 'CombatVisual', 'CombatRelease', 'SelectionCpuCosts', 'SelectionCpuChecks', 'FootprintsVisual', 'QuickItemsVisual', 'CoinDepositCpu', 'CoinDepositVisual', 'AboutCpu', 'AboutVisual', 'ProcessingCpu', 'ProcessingVisual', 'ShortFeedbackCpu', 'ShortFeedbackVisual', 'ToolsCpu', 'ToolsVisual', 'ToolsTiming', 'ToolsBindings', 'ToolsExecution', 'FishingCpu', 'FishingVisual', 'BackgroundCpu', 'F5AutomationCpu')][string] $Scope = 'Full',
+    [ValidateSet('NpcStrategy', 'NpcStrategyContinuous', 'NpcEventRetirement', 'NpcEventRetirementCpu', 'Full', 'NpcWorkerIntegration', 'NpcWorkerCatalogue', 'NpcLegalCoverage', 'NpcWorkerLinked', 'NpcWorkerLifetime', 'NpcWorkerAssets', 'NpcWorkerRandom', 'NpcWorkerPlayer', 'NpcWorkerEntity', 'NpcWorkerBirth', 'NpcWorkerContext', 'NpcWorkerImmunity', 'NpcWorkerLifecycle', 'NpcWorkerFields', 'NpcWorkerTransport', 'NpcWorkerPreparation', 'NpcMenuPreparation', 'NpcSnapshot', 'NpcPostDelivery', 'NpcGuardianQuery', 'NpcModeledImpact', 'NpcNameDraw', 'NpcDiagnosticsOff', 'NpcSessionCapacity', 'NpcFailureRecovery', 'NpcProduction', 'NpcRollingCpu', 'NpcRollingSelectionNegative', 'NpcBasicMotion', 'NpcFoundationRules', 'NpcFoundationContinuous', 'NpcPlayerPolicy', 'NpcSharedGeometry', 'NpcTargetMarker', 'NpcLongCoverage', 'NpcTileManifest', 'CombatCosts', 'CombatObservationCpu', 'CombatCpu', 'CombatFacingCpu', 'CombatHitsCpu', 'CombatReportCpu', 'CombatUiCpu', 'CombatVisual', 'CombatRelease', 'SelectionCpuCosts', 'SelectionCpuChecks', 'FootprintsVisual', 'QuickItemsVisual', 'CoinDepositCpu', 'CoinDepositVisual', 'AboutCpu', 'AboutVisual', 'ProcessingCpu', 'ProcessingVisual', 'ShortFeedbackCpu', 'ShortFeedbackVisual', 'ToolsCpu', 'ToolsVisual', 'ToolsTiming', 'ToolsBindings', 'ToolsExecution', 'FishingCpu', 'FishingVisual', 'BackgroundCpu', 'F5AutomationCpu')][string] $Scope = 'Full',
     [string] $WorkloadBaseline
 )
 $ErrorActionPreference = 'Stop'
@@ -16,7 +16,11 @@ if (-not (Test-Path -LiteralPath (Join-Path $ContentDirectory 'Fonts\Mouse_Text.
 if ($LASTEXITCODE -ne 0) { throw 'Debug build failed.' }
 & dotnet.exe build (Join-Path $repositoryRoot 'tests\NativeWorldTextProbe\NativeWorldTextProbe.csproj') --configuration Debug --nologo -p:Platform=x86
 if ($LASTEXITCODE -ne 0) { throw 'Native probe build failed.' }
-& (Join-Path $repositoryRoot 'tests\NativeWorldTextProbe\bin\x86\Debug\net472\NativeWorldTextProbe.exe') $repositoryRoot $ContentDirectory $OutputDirectory $Scope
+$previousOnly = [Environment]::GetEnvironmentVariable('JUEMINGR_STRATEGY_ONLY')
+try {
+    if ($Scope -eq 'NpcStrategy') { [Environment]::SetEnvironmentVariable('JUEMINGR_STRATEGY_ONLY',$null) }
+    & (Join-Path $repositoryRoot 'tests\NativeWorldTextProbe\bin\x86\Debug\net472\NativeWorldTextProbe.exe') $repositoryRoot $ContentDirectory $OutputDirectory $Scope
+} finally { [Environment]::SetEnvironmentVariable('JUEMINGR_STRATEGY_ONLY',$previousOnly) }
 if ($LASTEXITCODE -ne 0) { throw 'Native world text check failed. A draw/layout failure is not an environment deferral.' }
 if ($Scope -ceq 'ToolsBindings') {
     & (Join-Path $repositoryRoot 'tests\NativeWorldTextProbe\bin\x86\Debug\net472\NativeWorldTextProbe.exe') $repositoryRoot $ContentDirectory $OutputDirectory 'ToolsBindingsReload'
