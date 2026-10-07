@@ -16,13 +16,23 @@ namespace JueMingR.Features.Combat
         {
             if(n.Style==10)return n.EffectiveType!=694 || !n.HasPlayer || n.PlayerDead;
             if(n.Style!=22)return true;
+            if(n.JustHit)n.A2=0; // Native clears stuck/escape clock before choice.
             int t=n.EffectiveType;bool far=n.PlayerDead || Length(e.PlayerX-n.Bounds.CenterX,e.PlayerY-n.Bounds.CenterY)>3000;
             if(t==316 && far)return n.A3!=1;
             if(t==330 && !e.PumpkinMoon || t==253 && !e.Eclipse || t==490 && e.Day)return false;
             return n.A2>=0 || t==253 || t==330;
         }
         internal static bool NeedsPlayer(NpcMotionState n,PredictionEnvironment e)
-        {if(n.Style==22 && n.EffectiveType==316 && n.A3==1 && (n.PlayerDead || Length(e.PlayerX-n.Bounds.CenterX,e.PlayerY-n.Bounds.CenterY)>3000))return false;return n.Style!=10 || n.EffectiveType!=694 || n.A3!=3 && n.A3!=4;}
+        {
+            if(n.Style==22 && n.EffectiveType==316 && Far(n,e))
+            {
+                // The non-fade action first replaces an invalid old target,
+                // then decides whether pursuit or independent departure wins.
+                if(n.A3!=1)NpcTargeting.Retarget(ref n,ref e);
+                if(Far(n,e))return false;
+            }
+            return n.Style!=10 || n.EffectiveType!=694 || n.A3!=3 && n.A3!=4;
+        }
         internal static bool SamePhase(NpcMotionState a,NpcMotionState b)
         {
             if(a.Style==10)return a.EffectiveType!=694 || a.A3==b.A3;
@@ -92,7 +102,8 @@ namespace JueMingR.Features.Combat
         {
             stop=PredictionStop.None;int t=n.EffectiveType;bool descending=false,leaving=t==330 && !e.PumpkinMoon || t==253 && !e.Eclipse || t==490 && e.Day;
             if(n.JustHit)n.A2=0;
-            if(t==316 && (e.PlayerDead || Length(e.PlayerX-n.Bounds.CenterX,e.PlayerY-n.Bounds.CenterY)>3000))
+            if(t==316 && n.A3!=1 && Far(n,e))NpcTargeting.Face(ref n,ref e,true,confused);
+            if(t==316 && Far(n,e))
             {leaving=true;descending=n.A3!=1;if(n.A3==1){n.Alpha=Math.Min(255,n.Alpha+6);if(n.Alpha>=255){stop=PredictionStop.Despawn;return false;}}else n.TimeLeft=Math.Min(n.TimeLeft,10);}
             if(leaving && n.Vx==0){stop=PredictionStop.RandomDecision;return false;}
             if(!leaving)
@@ -126,6 +137,7 @@ namespace JueMingR.Features.Combat
             else if(n.DirectionY==1 && n.Vy<sy){n.Vy+=.04f;if(n.Vy< -sy)n.Vy+=.05f;else if(n.Vy<0)n.Vy-=.03f;n.Vy=Math.Min(sy,n.Vy);}return true;
         }
         private static float Length(float x,float y){return (float)Math.Sqrt(x*x+y*y);}
+        private static bool Far(NpcMotionState n,PredictionEnvironment e){return e.PlayerDead || Length(e.PlayerX-n.Bounds.CenterX,e.PlayerY-n.Bounds.CenterY)>3000;}
         private static void Axis(ref float v,float target,float acceleration){if(v<target)v+=acceleration;else if(v>target)v-=acceleration;}
         private static void ReverseAxis(ref float v,float target,float acceleration){if(v<target){v+=acceleration;if(v<0 && target>0)v+=2*acceleration;}else if(v>target){v-=acceleration;if(v>0 && target<0)v-=2*acceleration;}}
     }

@@ -104,13 +104,27 @@ namespace JueMingR.Features.Combat
             // Recent correction is a bounded displacement, not a permanent
             // added speed/heading extrapolated for the remaining two seconds.
             // Contacts revoke it and retain the collision owner's velocity.
-            if(elapsed==1){n.TrendBaseVx=n.Vx;n.TrendBaseVy=n.Vy;}
+            if(!n.TrendInitialized){n.TrendBaseVx=n.Vx;n.TrendBaseVy=n.Vy;n.TrendInitialized=true;}
             if(n.CollideX || n.CollideY){n.ObservedTurn=n.ObservedAccelerationX=n.ObservedAccelerationY=0;n.TrendBaseVx=n.Vx;n.TrendBaseVy=n.Vy;}
             float curve=elapsed<=12?elapsed*(13-elapsed)/12f:0;
             float boost=elapsed<=8?elapsed*(9-elapsed)/8f:0;
             float angle=n.NoGravity?n.ObservedTurn*curve:0,c=(float)Math.Cos(angle),sin=(float)Math.Sin(angle);
             n.Vx=n.TrendBaseVx*c-n.TrendBaseVy*sin+n.ObservedAccelerationX*boost;
             if(n.NoGravity)n.Vy=n.TrendBaseVx*sin+n.TrendBaseVy*c+n.ObservedAccelerationY*boost;
+            n.TrendApplied=true;n.TrendOutputVx=n.Vx;n.TrendOutputVy=n.Vy;
+        }
+        internal static void Complete(ref NpcMotionState n)
+        {
+            // A trend's temporary correction must not feed its own baseline.
+            // A real motor/contact/liquid result does own the next baseline,
+            // including dry exits without CollideX/Y. Retire the correction
+            // once so later steps cannot resurrect the pre-physics velocity.
+            // Ordinary gravity remains an independent vertical integrator.
+            if(n.TrendInitialized && (!n.TrendApplied || n.Vx!=n.TrendOutputVx || n.NoGravity && n.Vy!=n.TrendOutputVy || n.CollideX || n.CollideY))
+            {
+                n.TrendBaseVx=n.Vx;n.TrendBaseVy=n.Vy;
+                n.ObservedTurn=n.ObservedAccelerationX=n.ObservedAccelerationY=0;
+            }
         }
     }
 }

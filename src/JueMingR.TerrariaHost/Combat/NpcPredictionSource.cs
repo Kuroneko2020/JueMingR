@@ -48,6 +48,8 @@ namespace JueMingR.TerrariaHost.Combat
                 typeof(MotionRect),typeof(NpcMotionState),typeof(NpcTrajectoryPoint),typeof(NpcBuffLayout),typeof(PredictionPlayers),typeof(NpcTrajectory).GetNestedType("PackedPoint",System.Reflection.BindingFlags.NonPublic),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcRollingMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcFiniteFlightMotion",true),
+                typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcFlyingMotion",true),
+                typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcEyeMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcTargeting",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcPositionMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcGroundMotion",true),
@@ -101,7 +103,7 @@ namespace JueMingR.TerrariaHost.Combat
             Native?.ObserveNpcQueryUpdate(slot);
             if(discontinuity){RetireSlot(slot,null);return;}
             bool affected=usingSegmented && segmented.DependsOn(slot);
-            for(int i=0;i<observedCount;i++)if(states[i].Identity.Slot==slot)affected=true;
+            for(int i=0;i<observedCount;i++)if(states[i].Identity.Slot==slot || states[i].TrackingIdentity.Token!=null && states[i].TrackingIdentity.Slot==slot)affected=true;
             // A normal same-instance sync can change velocity/AI immediately;
             // revoke publication until the next completed sample, preserving
             // rolling/segment history and its relation identity. It is not a
@@ -111,7 +113,7 @@ namespace JueMingR.TerrariaHost.Combat
         private void RetireSlot(int slot,NPC token)
         {
             bool affected=segmented.Reset(slot,token);
-            for(int i=0;i<observedCount;i++)if(states[i].Identity.Slot==slot && (token==null || ReferenceEquals(states[i].Identity.Token,token)))affected=true;
+            for(int i=0;i<observedCount;i++)if(states[i].Identity.Slot==slot && (token==null || ReferenceEquals(states[i].Identity.Token,token)) || states[i].TrackingIdentity.Token!=null && states[i].TrackingIdentity.Slot==slot && (token==null || ReferenceEquals(states[i].TrackingIdentity.Token,token)))affected=true;
             if(affected){outcomeTick=-1;rolling.Clear();Cache.Clear();epoch++;}
         }
         internal void Stop(){Native?.Stop();Clear();}
