@@ -45,7 +45,10 @@ namespace JueMingR.ArchitectureTests
             var dayTerrain=new PremiseTerrain{FailAt=1};var dayPath=new RollingNpcPrediction().Prepare(new[]{escaping},1,0,5,120,1,day,corrupt,dayTerrain);
             Require(dayPath.Count==121 && dayTerrain.PlayerCalls==0 && (dayPath.Assumptions&PredictionAssumption.NoPlayerMotionNeeded)!=0,"Complete daytime eye rolling ignores unrelated invalid player future.");
             var bee=uncertain;bee.TargetChoiceUnavailable=false;bee.Identity=new NpcIdentity(1,new object(),4,1,210,210);bee.Style=5;
-            Require(NpcMotion.Step(ref bee,new[]{bee},1,environment,new PremiseTerrain(),1,true,out stop) && !bee.TargetChoiceUnavailable,"Unmodeled AI5 trend does not consume guardian TargetClosest.");
+            bee.BeeTargetValid=bee.BeeFoundTarget=bee.BeeTankPet=true;bee.BeeFacingArea=new MotionRect(120,100,20,40);bee.BeeOldTarget=bee.Target=0;
+            Require(NpcMotion.Step(ref bee,new[]{bee},1,environment,new PremiseTerrain(),1,true,out stop) && bee.BeeFaceForced && !bee.TargetChoiceUnavailable,"AI5 bee uses its captured finite guardian choice, not the ordinary closest-player query.");
+            var missingBee=bee;
+            Require(!NpcMotion.Step(ref missingBee,new[]{missingBee},1,environment,new PremiseTerrain{MissingHit=true},2,true,out stop) && stop==PredictionStop.TerrainUnavailable,"AI5 bee cannot treat necessary guardian LOS as blocked when it is unavailable.");
             var anchor=uncertain;anchor.TargetChoiceUnavailable=false;anchor.Identity=new NpcIdentity(1,new object(),4,1,56,56);anchor.Style=13;anchor.A0=6;anchor.A1=6;anchor.ClosestPlayerIndex=1;
             Require(NpcMotion.Step(ref anchor,new[]{anchor},1,environment,new PremiseTerrain{RootActive=true},1,true,out stop) && anchor.Target==1 && !anchor.TargetChoiceUnavailable,"Anchor updates known numbered player without requiring unknown guardian orientation.");
             escaping.Wet=true;
@@ -54,12 +57,12 @@ namespace JueMingR.ArchitectureTests
         private sealed class PremiseTerrain : IPredictionTerrain
         {
             internal int FailAt=int.MaxValue,PlayerCalls,Resets;
-            internal bool RootActive;
+            internal bool RootActive,MissingHit;
             public bool Unchanged=>true;
             public void Reset(){Resets++;}
             public bool Move(ref NpcMotionState n,PredictionEnvironment e,out PredictionStop stop)
             {stop=PredictionStop.None;if(n.Friendly){if(++PlayerCalls==FailAt){stop=PredictionStop.TerrainUnavailable;return false;}n.Wet=e.PlayerWet;}n.X+=n.Vx;n.Y+=n.Vy;return true;}
-            public bool CanHit(MotionRect a,MotionRect b,out bool clear,out PredictionStop stop){clear=true;stop=PredictionStop.None;return true;}
+            public bool CanHit(MotionRect a,MotionRect b,out bool clear,out PredictionStop stop){clear=!MissingHit;stop=MissingHit?PredictionStop.TerrainUnavailable:PredictionStop.None;return !MissingHit;}
             public bool Solid(MotionRect box,out bool solid,out PredictionStop stop){solid=false;stop=PredictionStop.None;return true;}
             public bool Tile(int x,int y,out PredictionTile tile,out PredictionStop stop){tile=new PredictionTile{RawActive=RootActive};stop=PredictionStop.None;return true;}
         }

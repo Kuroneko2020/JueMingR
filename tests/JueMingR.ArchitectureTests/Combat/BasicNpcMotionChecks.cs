@@ -106,14 +106,19 @@ namespace JueMingR.ArchitectureTests
                     var n=State(type,3);n.A3=4;n.Vx=1;
                     Require(NpcMotion.Step(ref n,new[]{n},1,e,new LocalTerrain(),1,true,out stop),"Positive ordinary fighter blocked count does not refuse all futures: "+type);
                 }
-                foreach(int type in new[]{110,111,206,214,215,216,291,292,293,350,379,380,381,382,409,411,424,426,466,498,499,500,501,502,503,504,505,506,520})
+                foreach(int type in new[]{110,111,206,214,215,216,291,292,293,350,379,380,381,382,409,411,424,426,498,499,500,501,502,503,504,505,506,520})
                 {
-                    var n=State(type,3);n.A2=1;n.A3=4;
-                    Require(!NpcMotion.Step(ref n,new[]{n},1,e,new LocalTerrain(),1,true,out stop) && stop==PredictionStop.UnsupportedMechanism,"A real action which bypasses the shared count remains separate: "+type);
+                    var n=State(type,3);n.A1=10;n.A2=1;n.A3=4;n.Vx=1;
+                    Require(NpcMotion.Step(ref n,new[]{n},1,e,new LocalTerrain(),1,true,out stop),"Known shooter cooldown retains its finite body motor: "+type);
+                    if(type==110)Require(n.A1==9 && Math.Abs(n.Vx-.9f)<.0001f,"A known shooting lock damps the body while advancing the observed cooldown.");
                     n.A2=0;
                     Require(NpcMotion.Step(ref n,new[]{n},1,e,new LocalTerrain(),1,true,out stop),"The same member's ordinary positive-count fallback remains available: "+type);
                 }
-                foreach(int type in new[]{425,471}){var n=State(type,3);n.A3=4;Require(!NpcMotion.Step(ref n,new[]{n},1,e,new LocalTerrain(),1,true,out stop),"Always-independent counter exception remains separate: "+type);}
+                var flying=State(425,3);flying.A3=4;
+                Require(NpcMotion.Step(ref flying,new[]{flying},1,e,new LocalTerrain(),1,true,out stop),"425's finite ground entry is available despite its independent blocked count.");
+                var preparing=State(471,3);preparing.A3=1;preparing.A2=58;preparing.Vx=1;
+                Require(NpcMotion.Step(ref preparing,new[]{preparing},1,e,new LocalTerrain(),1,true,out stop) && preparing.A2==59 && Math.Abs(preparing.Vx-.8f)<.0001f,"471's observed preparation advances before the later independent phase.");
+                foreach(int type in new[]{466,471}){var n=State(type,3);n.A3=4;n.A2=1;Require(!NpcMotion.Step(ref n,new[]{n},1,e,new LocalTerrain(),1,true,out stop),"An unmodeled independent positive action remains separate: "+type);}
                 e.Day=true;e.Remix=true;e.PlayerX=100;var remix=State(26,3);remix.A3=4;
                 Require(NpcMotion.Step(ref remix,new[]{remix},1,e,new LocalTerrain(),1,true,out stop) && remix.Direction<0,"Main.IsItDay is false in Remix, including a daytime observed clock.");
                 var changed=remix;changed.CritterTurns=!remix.CritterTurns;Require(!NpcPredictionCache.Same(remix,changed),"The sampled fighter pursuit class participates in scalar equality.");
