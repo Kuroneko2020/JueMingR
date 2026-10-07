@@ -13,7 +13,7 @@ namespace JueMingR.Features.Combat
             int t=n.EffectiveType;
             // AI_003 returns during the dormant/revealing action before its
             // shared motor. Only the active form may consume these parameters;
-            // the unmodeled reveal remains a finite observed trend.
+            // NpcFighterEntryMotion owns the finite reveal before this motor.
             if(IndependentEntry(n))return false;
             float speed=1,acc=.07f,overspeed=.8f,reverse=1;
             bool reverseInAir=false;float threshold=0;

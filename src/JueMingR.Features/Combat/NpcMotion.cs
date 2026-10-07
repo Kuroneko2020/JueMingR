@@ -62,6 +62,7 @@ namespace JueMingR.Features.Combat
             int vertical=face?(int)tracking.Y+(int)tracking.Height/2<n.Y+n.Height/2?-1:1:n.DirectionY;
             bool confused=n.ConfusedTicks>0;if(confused){direction=-direction;n.ConfusedTicks--;}
             bool linked=false;
+            NpcPositionMotion.ReleaseFollow(ref n,ref env,confused);
             if(n.PositionRelation!=0)
             {if(!NpcPositionMotion.Step(ref n,group,count,elapsed,env,confused,out stop))return false;}
             else if(n.Style==16 && NpcAquaticMotion.Known(n.Identity.Type))
@@ -212,6 +213,7 @@ namespace JueMingR.Features.Combat
             if(n.EffectiveType==488)return false;
             if(n.PositionRelation!=0)
             {
+                if(n.PositionRelation==8)return true;
                 if(n.PositionRelation==7)return n.ParentSlot!=-2 && NpcHungryMotion.NeedsPlayer(n);
                 if(n.PositionRelation!=6)return false;
                 if(group!=null)for(int i=0;i<count;i++)if(group[i].Identity.Equals(n.PositionOwner))return NpcParentMotion.NeedsPlayer(n,e,remaining,group[i]);
@@ -271,6 +273,7 @@ namespace JueMingR.Features.Combat
         // later changes to a different required player end the bounded route.
         public static int PlayerPremiseTarget(NpcMotionState n,PredictionEnvironment e)
         {
+            if(n.PositionRelation==8)return n.HasClosestPlayer?n.ClosestPlayerIndex:n.PlayerIndex;
             e=NpcTargeting.Player(n,e);
             if(n.Style==3 && n.PositionRelation==0)return NpcGroundMotion.PlayerPremiseTarget(n,e);
             if(n.Style==1 && n.PositionRelation==0)return NpcSlimeControl.PlayerPremiseTarget(n,e);
@@ -280,7 +283,7 @@ namespace JueMingR.Features.Combat
                 n.Style==5 && (FlyingType(t) || t==176) || n.Style==14 && BatType(t) ||
                 n.Style==17 && VultureType(t) && (n.A0==0 || !n.PlayerDead || n.Wet) ||
                 n.Style==40 && NpcWallMotion.Wall(t) && (n.Target<0 || n.Target==255 || n.PlayerDead) ||
-                n.PositionRelation==6 && n.Style==36 && (n.A2==0 || n.A2==3) ||
+                n.PositionRelation==6 && NpcParentMotion.QueriesBeforeVector(n) ||
                 n.Style==41 && NpcRollingMotion.Hopper(t) && NpcRollingMotion.HopperRetargets(n,e) || n.Style==39 && NpcRollingMotion.TortoiseType(t) && (n.Direction==0 || n.Target<0 || n.PlayerDead || n.JustHit && t!=417 || (n.A0==3 || n.A0==6) && n.A1==0 || n.A0==1 && n.A1+(t==496 || t==497?.5f:1)>=30 || n.A0==5 && n.A1+(t==496 || t==497?.5f:1)>=30);
             return retarget && n.HasClosestPlayer?n.ClosestPlayerIndex:n.PlayerIndex;
         }

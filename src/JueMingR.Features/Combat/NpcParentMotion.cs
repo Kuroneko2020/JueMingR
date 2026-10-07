@@ -8,6 +8,13 @@ namespace JueMingR.Features.Combat
     // phase selection are not replayed by this private scalar continuation.
     internal static class NpcParentMotion
     {
+        // These phases select the captured closest player before their first
+        // vector read. Raising/horizontal only consume it when the actual
+        // parent-relative gate crosses; preparing a candidate is not a claim
+        // that the current action needs it. Chase/coast phases retain the old
+        // numbered target until their own modeled query.
+        internal static bool QueriesBeforeVector(NpcMotionState n)
+        {return n.Style==36 && (n.A2==0 || n.A2==3) || (n.Style==12 || n.Style==33 || n.Style==34) && (n.A2==1 || n.A2==4 || n.Style!=12 && (n.A2==0 || n.A2==3 || n.A2==99));}
         internal static bool NeedsPlayer(NpcMotionState n,PredictionEnvironment e,int remaining,NpcMotionState parent)
         {
             // Match Step's action-before phase, including far-parent recovery.

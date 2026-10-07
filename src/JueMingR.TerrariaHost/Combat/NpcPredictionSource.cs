@@ -152,6 +152,9 @@ namespace JueMingR.TerrariaHost.Combat
                 int slot=pending[next];
                 var n=Main.npc[slot];if(n==null || !n.active)continue;
                 states[count++]=Read(n,identity.Session);
+                // AI111 chooses before its owner-follow gate. Observe that
+                // first query before deciding whether an owner is necessary.
+                if(n.type==111 && n.aiStyle==3 && n.ai[3]<0)NpcTrackingObservation.Capture(n,ref states[count-1],Terrain);
                 NpcPositionObservation.Capture(n,ref states[count-1],identity.Session);
                 int parent=states[count-1].ParentSlot,child=states[count-1].ChildSlot;
                 if(motionSlots[slot])
@@ -173,10 +176,22 @@ namespace JueMingR.TerrariaHost.Combat
             int oldPlayer=states[selected].PlayerIndex;
             premiseEnv.Graveyard=oldPlayer>=0 && oldPlayer<Main.maxPlayers && Main.player[oldPlayer]!=null && Main.player[oldPlayer].ZoneGraveyard;
             int target=NpcMotion.PlayerPremiseTarget(states[selected],premiseEnv);bool needsPlayer=false;
+            bool followPremise=states[selected].EffectiveType==111 && states[selected].A3<0;
             // Only real movement consumers acquire a future-player prerequisite.
             // A required numbered target is never replaced by the local player.
-            for(int i=0;i<count;i++)if(motionRoles[i] && NpcMotion.NeedsPlayerMotion(states[i],premiseEnv,Cache.Required,states,count,Terrain))
-            {if(!needsPlayer)target=NpcMotion.PlayerPremiseTarget(states[i],premiseEnv);needsPlayer=true;}
+            // Relation6 acquires the premise at its native actor slot, after
+            // earlier owners move. Frame-start geometry can invent Aim as
+            // well as miss it; merely observing its potential player must not
+            // reject an otherwise independent raising/home action here.
+            for(int i=0;i<count;i++)if(motionRoles[i] && states[i].PositionRelation!=6 && NpcMotion.NeedsPlayerMotion(states[i],premiseEnv,Cache.Required,states,count,Terrain))
+            {
+                // AI111 consumes the first player's next position to decide
+                // whether this potential owner is needed at all. Prepare that
+                // query's winner first; an unused owner's different player
+                // cannot replace it. A still-needed owner's distinct future
+                // remains an honest actor-time MissingDependency boundary.
+                if(!needsPlayer && !followPremise)target=NpcMotion.PlayerPremiseTarget(states[i],premiseEnv);needsPlayer=true;
+            }
             var player=target>=0 && target<Main.maxPlayers?Main.player[target]:null;
             bool playerAlive=player!=null && player.active && !player.dead && !player.ghost;
             if(needsPlayer && !playerAlive){rolling.Clear();Outcome(identity,tick,null,PredictionFailureLayer.PlayerPremise);Cache.Publish(null);return;}
@@ -191,7 +206,7 @@ namespace JueMingR.TerrariaHost.Combat
             var env=new PredictionEnvironment{BloodMoon=Main.bloodMoon,SkeletronUp=Main.getGoodWorld && current.aiStyle==9 && current.type==33 && NPC.AnyNPCs(35),WallBossUp=Main.getGoodWorld && current.aiStyle==9 && current.type==25 && NPC.AnyNPCs(113),PlayerProtected=playerAlive && player.insideUnbreakableWalls,PlayerIndex=target,PlayerX=player==null?0:player.Center.X,PlayerY=player==null?0:player.Center.Y,PlayerWidth=player==null?0:player.width,PlayerHeight=player==null?0:player.height,PlayerWet=player!=null && player.wet,Wind=Main.windSpeedCurrent,WindTarget=Main.windSpeedTarget,Expert=Main.expertMode,Day=Main.dayTime,WorldWidth=Main.maxTilesX,GravityWorldSurface=Main.worldSurface,WorldSurface=(float)Main.worldSurface,Multiplayer=Main.netMode==1,Remix=Main.remixWorld,SlimeRain=Main.slimeRain,
                 Enraged=player!=null && (player.position.Y<800 || player.position.Y>Main.worldSurface*16 || player.position.X>6400 && player.position.X<Main.maxTilesX*16-6400),
                 MechQueenUp=NPC.mechQueen>=0 && NPC.mechQueen<Main.maxNPCs && Main.npc[NPC.mechQueen]!=null && Main.npc[NPC.mechQueen].active && Main.npc[NPC.mechQueen].type==127,Players=players,WorldHeight=Main.maxTilesY,RockLayer=(float)Main.rockLayer,PlayerDead=!playerAlive,PlayerIdleWithNegativeAggro=player!=null && player.itemAnimation==0 && player.aggro<0,Corrupt=player!=null && player.ZoneCorrupt,Crimson=player!=null && player.ZoneCrimson,AnyLivingCorrupt=anyCorrupt,SkyblockLowTiles=WorldGen.Skyblock.lowTiles,ClearLine=false,Eclipse=Main.eclipse,Graveyard=player!=null && player.ZoneGraveyard,GoodWorld=Main.getGoodWorld,InvasionType=Main.invasionType,SnowMoon=Main.snowMoon,PumpkinMoon=Main.pumpkinMoon,DontStarve=Main.dontStarveWorld};
-            var result=rolling.Prepare(states,count,selected,tick,Cache.Required,epoch,env,player==null?default(PredictionPlayerMotion):ReadPlayer(player),Terrain,motionRoles);
+            var result=rolling.Prepare(states,count,selected,tick,Cache.Required,epoch,env,!playerAlive?default(PredictionPlayerMotion):ReadPlayer(player),Terrain,motionRoles);
             Outcome(identity,tick,result,rolling.FailureLayer);Cache.Publish(result);
         }
         private static PredictionPlayerMotion ReadPlayer(Player p)

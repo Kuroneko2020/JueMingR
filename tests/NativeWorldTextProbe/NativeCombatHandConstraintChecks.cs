@@ -31,7 +31,7 @@ namespace NativeWorldTextProbe
                     // This checks only the parent-relative positional kernel.
                     // Feed its actual pre-translation velocity; future attack
                     // velocity remains the explicitly qualified near trend.
-                    sample.Vx=n.velocity.X;sample.Vy=n.velocity.Y;var parameters=new object[]{sample,new[]{(NpcMotionState)read.Invoke(null,new object[]{owner,Get(host,"Session")})},1,20,default(PredictionEnvironment),PredictionStop.None};Require((bool)step.Invoke(null,parameters),"Hand parent identity and scalar range are available.");sample=(NpcMotionState)parameters[0];
+                    sample.Vx=n.velocity.X;sample.Vy=n.velocity.Y;var parameters=new object[]{sample,new[]{(NpcMotionState)read.Invoke(null,new object[]{owner,Get(host,"Session")})},1,20,default(PredictionEnvironment),false,PredictionStop.None};Require((bool)step.Invoke(null,parameters),"Hand parent identity and scalar range are available.");sample=(NpcMotionState)parameters[0];
                     Require(Vector2.Distance(n.position,new Vector2(sample.X,sample.Y))<.003f && n.velocity.X==sample.Vx && n.velocity.Y==sample.Vy,"Original hand clamp subtracts velocity instead of hard attaching to parent: side="+side+" phase="+phase+" x="+x+" y="+y);cases++;
                     if(x==-10 && y==-220)Console.WriteLine("HAND CONSTRAINT side="+side+" phase="+phase+" initial="+initial+" native="+n.position+" model="+new Vector2(sample.X,sample.Y)+" v="+n.velocity);
                 }

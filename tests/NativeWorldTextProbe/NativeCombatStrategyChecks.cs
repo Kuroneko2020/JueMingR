@@ -47,6 +47,13 @@ namespace NativeWorldTextProbe
             if(only=="fighterentry"){NativeCombatFighterControlChecks.Entry(context);return;}
             if(only=="fighterflight"){NativeCombatFighterControlChecks.Flight(context);return;}
             if(only=="fighterform"){NativeCombatFighterControlChecks.Form(context);return;}
+            if(only=="fighterfollow"){NativeCombatPositionControlChecks.Follow(context);return;}
+            if(only=="followmoving"){NativeCombatPositionControlChecks.MovingFollow(context);return;}
+            if(only=="parentboundary"){NativeCombatPositionControlChecks.ParentBoundary(context);return;}
+            if(only=="parentdepart"){NativeCombatPositionControlChecks.ParentDeparting(context);return;}
+            if(only=="parentrecovery"){NativeCombatPositionControlChecks.ParentRecovery(context);return;}
+            if(only=="flytail"){NativeCombatFlyingTailChecks.Tail(context);return;}
+            if(only=="beepet"){NativeCombatFlyingTailChecks.Pet(context);return;}
             if(only=="fighterpit"){NativeCombatFighterControlChecks.FacingPit(context);return;}
             if(only=="fighterformface"){NativeCombatFighterControlChecks.FormFacing(context);return;}
             if(only=="fighterpremise"){NativeCombatFighterControlChecks.Premise(context);return;}
@@ -56,21 +63,7 @@ namespace NativeWorldTextProbe
             if(only=="hungrydefense"){NativeCombatStructuralControlChecks.HungryDefense(context);return;}
             if(only=="rollchoice" || only=="rollchoice39"){NativeCombatRollingControlChecks.Choices(context);return;}
             if(only=="roll417"){NativeCombatRollingControlChecks.UnknownBounce(context);return;}
-            if(only!="bee")
-            {
-                var n=Main.npc[2];n.SetDefaults(25);n.whoAmI=2;n.active=true;n.dontTakeDamage=n.immortal=n.friendly=false;n.position=new Vector2(650,700);n.velocity=new Vector2(4,0);n.target=p.whoAmI;n.wet=true;n.wetCount=1;n.noTileCollide=false;n.timeLeft=750;
-                NativeCombatObservationChecks.Fresh(context,host);var frozen=cache.Read(0);
-                Require(frozen!=null && frozen.Count>13,"TR01 actual Source publishes the dry-exit future");
-                Require(Math.Abs(frozen[1].Vx-2)<.00001 && Math.Abs(frozen[2].Vx-2)<.00001 && Math.Abs(frozen[13].Vx-2)<.00001,"TR01 no-contact Wet→Dry must retain physical final velocity, first="+frozen[1].Vx+" second="+frozen[2].Vx+" late="+frozen[13].Vx);
-                Call(source,"Prepare",frozen.Identity,frozen.CaptureTick);Require(ReferenceEquals(frozen,cache.Read(0)),"TR01 repeated identical Source sample retains immutable result");
-                n.wet=false;n.velocity=new Vector2(4,0);NativeCombatObservationChecks.Fresh(context,host);var dry=cache.Read(0);
-                Require(dry!=null && Math.Abs(dry[120].Vx-4)<.00001,"TR01 unchanged environment keeps base velocity");
-                n.position+=n.velocity;n.velocity=new Vector2(3.8f,0);NativeCombatObservationChecks.Fresh(context,host);var transient=cache.Read(0);
-                Require(transient!=null && Math.Abs(transient[13].Vx-3.8f)<.00001 && transient[3].Vx<3.8f,"TR01 observed acceleration stays transient and never feeds back into base");
-                for(int i=0;i<3;i++)Call(host,"Update",Main.GameUpdateCount);Require(ReferenceEquals(transient,cache.Read(0)),"TR01 identical observed trend sample never advances itself");
-                n.velocity.X=5;Call(host,"Update",Main.GameUpdateCount);Require(cache.Read(0)[0].Vx==5 && cache.Read(0).CaptureTick==transient.CaptureTick,"TR01 same tick real velocity correction recomputes without re-marking capture time");
-                Console.WriteLine("PASS TR01 Source liquid exit, dry positive, transient/no feedback, repeated sample and same tick correction");n.active=false;
-            }
+            if(only!="bee")NativeCombatPositionControlChecks.Trend(context);
             if(only!="trend")foreach(int type in new[]{210,211})foreach(float birth in new[]{0f,59f,120f})foreach(bool npcTarget in new[]{false,true})
             {
                 foreach(var npc in Main.npc)npc.active=false;

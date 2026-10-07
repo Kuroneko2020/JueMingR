@@ -47,7 +47,7 @@ namespace NativeWorldTextProbe
                         if(ownerSlot<2)owner.position+=owner.velocity;
                         if(type==384)
                         {
-                            bool paused=Main.gamePaused;Main.gamePaused=true;try{child.AI();}finally{Main.gamePaused=paused;}var group=new[]{(NpcMotionState)read.Invoke(null,new object[]{owner,Get(host,"Session")})};var args=new object[]{childModel,group,1,future,default(PredictionEnvironment),PredictionStop.None};Require((bool)relationStep.Invoke(null,args),"Current complete scalar owner permits exact assignment.");childModel=(NpcMotionState)args[0];
+                            bool paused=Main.gamePaused;Main.gamePaused=true;try{child.AI();}finally{Main.gamePaused=paused;}var group=new[]{(NpcMotionState)read.Invoke(null,new object[]{owner,Get(host,"Session")})};var args=new object[]{childModel,group,1,future,default(PredictionEnvironment),false,PredictionStop.None};Require((bool)relationStep.Invoke(null,args),"Current complete scalar owner permits exact assignment.");childModel=(NpcMotionState)args[0];
                         }
                         else{typeof(NPC).GetMethod("AI_079_MoonLordHead",Flags).Invoke(child,null);child.position+=child.velocity;}
                         if(ownerSlot>2)owner.position+=owner.velocity;

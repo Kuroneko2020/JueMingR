@@ -4,6 +4,7 @@ using JueMingR.Features.Combat;
 using JueMingR.Platform.Combat;
 using Microsoft.Xna.Framework;
 using Terraria;
+using Terraria.Utilities;
 using static NativeWorldTextProbe.NativeInformationChecks;
 
 namespace NativeWorldTextProbe
@@ -45,7 +46,7 @@ namespace NativeWorldTextProbe
                 player.position=new Vector2(1200,950);player.tankPet=0;pet.active=true;pet.position=new Vector2(1000+side*90,950);pet.velocity=Vector2.Zero;
                 target.SetDefaults(6);target.whoAmI=2;target.active=true;target.target=Main.myPlayer;target.position=new Vector2(1000,950);target.velocity=Vector2.Zero;
                 var sampled=(NpcMotionState)read.Invoke(null,new object[]{target,1L});var sampledArgs=new object[]{target,sampled,terrain};terrain.Reset();capture.Invoke(null,sampledArgs);sampled=(NpcMotionState)sampledArgs[1];
-                Require(sampled.TrackingKind==2 && (bool)needs.Invoke(null,new object[]{sampled,default(PredictionEnvironment),120,new[]{sampled},1}),"Guardian flying still needs numbered-player future.");
+                Require(sampled.TrackingKind==2 && (bool)needs.Invoke(null,new object[]{sampled,default(PredictionEnvironment),120,new[]{sampled},1,terrain}),"Guardian flying still needs numbered-player future.");
                 var flyingEnv=new PredictionEnvironment{PlayerIndex=Main.myPlayer,PlayerX=player.Center.X,PlayerY=player.Center.Y,PlayerWidth=player.width,PlayerHeight=player.height,WorldWidth=Main.maxTilesX,WorldHeight=Main.maxTilesY,WorldSurface=(float)Main.worldSurface,RockLayer=(float)Main.rockLayer};
                 for(int future=1;future<=15;future++)
                 {
@@ -68,9 +69,18 @@ namespace NativeWorldTextProbe
             var e=new PredictionEnvironment{PlayerIndex=state.PlayerIndex,PlayerX=state.PlayerArea.CenterX,PlayerY=state.PlayerArea.CenterY,PlayerWidth=state.PlayerArea.Width,PlayerHeight=state.PlayerArea.Height};
             bool original=(bool)typeof(NPC).GetMethod("Collision_DecideFallThroughPlatforms",Flags).Invoke(target,null),model=(bool)source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcCollisionRules").GetMethod("FallThrough",Flags).Invoke(null,new object[]{state,e});
             Require(original && model,"620 collision reads its current numbered lower player, not nearest upper player or guardian.");
-            var other=Main.npc[1];other.SetDefaults(3);other.active=true;other.position=new Vector2(700,800);other.velocity=new Vector2(-1,2);target.SetDefaults(210);target.target=301;var native=target.GetTargetData();state=(NpcMotionState)read.Invoke(null,new object[]{target,1L});args=new object[]{target,state,terrain};capture.Invoke(null,args);state=(NpcMotionState)args[1];
-            Require(state.TrackingKind==3 && state.PlayerIndex<0 && state.TrackingArea.X==native.Position.X && state.TrackingArea.Y==native.Position.Y && state.TrackingVx==native.Velocity.X,"Legal encoded NPC supplies its own actual target geometry, never a player substitution.");
-            other.active=false;args=new object[]{target,(NpcMotionState)read.Invoke(null,new object[]{target,1L}),terrain};capture.Invoke(null,args);Require(((NpcMotionState)args[1]).TrackingKind==0,"Inactive encoded target is not fabricated from a nearby player.");
+            var other=Main.npc[1];other.SetDefaults(3);other.whoAmI=1;other.active=true;other.position=new Vector2(980,860);other.velocity=new Vector2(-1,2);target.SetDefaults(210);target.target=301;
+            var choice=NPCUtils.SearchForTarget(target,NPCUtils.TargetSearchFlag.All,null,NPCUtils.SearchFilters.NonBeeNPCs);
+            Require(choice.FoundTarget && choice.NearestTargetIndex==301,"Original bee query actually selects the nearer legal NPC.");
+            var native=target.GetTargetData();state=(NpcMotionState)read.Invoke(null,new object[]{target,1L});args=new object[]{target,state,terrain};capture.Invoke(null,args);state=(NpcMotionState)args[1];
+            Require(state.TrackingKind==3 && state.TrackingIdentity.Slot==1 && ReferenceEquals(state.TrackingIdentity.Token,other) && state.TrackingArea.X==native.Position.X && state.TrackingArea.Y==native.Position.Y && state.TrackingVx==native.Velocity.X,"Original bee NPC winner supplies complete identity and exact own geometry.");
+            foreach(bool inactive in new[]{false,true})
+            {
+                other.position=new Vector2(700,800);other.active=!inactive;choice=NPCUtils.SearchForTarget(target,NPCUtils.TargetSearchFlag.All,null,NPCUtils.SearchFilters.NonBeeNPCs);
+                Require(choice.FoundTarget && choice.NearestTargetIndex==1,"Original bee query chooses nearer player after NPC distance/qualification changes.");
+                args=new object[]{target,(NpcMotionState)read.Invoke(null,new object[]{target,1L}),terrain};capture.Invoke(null,args);state=(NpcMotionState)args[1];
+                Require(state.TrackingKind==1 && state.PlayerIndex==1 && ReferenceEquals(state.TrackingPlayerToken,second),"Bee actual re-selection never retains the old encoded NPC or substitutes local player inactive="+inactive);
+            }
             player.position=new Vector2(1400,950);player.wet=false;second.position=new Vector2(900,950);second.wet=true;second.active=true;second.dead=false;
             foreach(int type in new[]{56,58})
             {

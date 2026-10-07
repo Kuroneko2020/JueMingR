@@ -11,6 +11,7 @@ namespace JueMingR.Features.Combat
         internal static bool Known(int type){return type==3 || type==21 || type==27 || type==77 || type==109 || type==120 || type==166 || NpcWallMotion.Ground(type);}
         internal static int PlayerPremiseTarget(NpcMotionState n,PredictionEnvironment e)
         {
+            if(n.EffectiveType==111 && n.A3<0)NpcTargeting.Retarget(ref n,ref e);
             if(n.EffectiveType==427 && n.FighterFormReady){NpcTargeting.Retarget(ref n,ref e);return n.PlayerIndex;}
             if(NpcFighterClockMotion.Preparing(n))return n.PlayerIndex;
             if(NpcFighterEntryMotion.Known(n.EffectiveType) && NpcFighterEntryMotion.Prelude(ref n,ref e,false))return n.PlayerIndex;
@@ -34,6 +35,13 @@ namespace JueMingR.Features.Combat
         internal static bool Fallback(ref NpcMotionState n,PredictionEnvironment e,IPredictionTerrain t,bool confused,int elapsed,out PredictionStop stop)
         {
             stop=PredictionStop.None;
+            if(n.EffectiveType==111 && n.A3<0)
+            {
+                NpcTargeting.Retarget(ref n,ref e);e=NpcTargeting.Player(n,e);
+                float dx=e.PlayerX-n.Bounds.CenterX,dy=e.PlayerY-n.Bounds.CenterY;
+                if(n.JustHit || dx*dx+dy*dy<40000)n.A3=n.A0=0;
+                else{stop=PredictionStop.MissingDependency;return false;}
+            }
             bool changed;if(!NpcFighterFlightMotion.Form(ref n,ref e,t,out changed,out stop))return false;if(changed)return true;
             if(NpcFighterClockMotion.Preparing(n))return NpcFighterClockMotion.Step(ref n,e,t,confused,out stop);
             if(n.EffectiveType==471 && n.A3<0){stop=PredictionStop.UnsupportedMechanism;return false;}

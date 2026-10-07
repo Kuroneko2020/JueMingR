@@ -43,8 +43,28 @@ namespace JueMingR.Features.Combat
                     stop=PredictionStop.UnsupportedMechanism;return false;
                 case 6:return NpcParentMotion.Step(ref n,owner,environment,out stop);
                 case 7:return NpcHungryMotion.Step(ref n,owner,environment,confused,out stop);
+                case 8:
+                    n.DirectionY=-1;n.Vx*=.93f;if(n.Vx>-.1f && n.Vx<.1f)n.Vx=0;
+                    int direction=Math.Sign(owner.Bounds.CenterX-n.Bounds.CenterX);if(direction!=n.Direction){n.Vx=0;n.Direction=direction;}
+                    if(n.A0<1000)n.A0=1000;if(++n.A0>=1300)n.A0=1000;break;
             }
             return true;
+        }
+        internal static bool Follows(NpcMotionState n,PredictionEnvironment environment)
+        {
+            NpcTargeting.Retarget(ref n,ref environment);environment=NpcTargeting.Player(n,environment);
+            float dx=environment.PlayerX-n.Bounds.CenterX,dy=environment.PlayerY-n.Bounds.CenterY;
+            return !n.JustHit && dx*dx+dy*dy>=40000;
+        }
+        internal static void ReleaseFollow(ref NpcMotionState n,ref PredictionEnvironment environment,bool confused)
+        {
+            if(n.EffectiveType!=111 || n.A3>=0)return;
+            // TargetClosest(false) still faces a guardian and applies confused
+            // once. The owner sign compares against that resulting direction.
+            NpcTargeting.Face(ref n,ref environment,false,confused);environment=NpcTargeting.Player(n,environment);
+            // The original release precedes every owner read. A hit/near new
+            // winner must not inherit the old owner's missing fact.
+            if(!Follows(n,environment)){n.A3=n.A0=0;n.PositionRelation=0;}
         }
     }
 }

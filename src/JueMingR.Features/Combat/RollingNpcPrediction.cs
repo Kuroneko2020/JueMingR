@@ -133,6 +133,16 @@ namespace JueMingR.Features.Combat
                 for(int i=0;i<count;i++)
                 {
                     var state=work[i];
+                    // AI111's potential owner is observed before the player's
+                    // next update is known. Once this actual action releases,
+                    // that owner must not contribute an unrelated failing AI.
+                    // Other position/life/link consumers still keep their role.
+                    if(i!=selected && current.EffectiveType==111 && state.Identity.Equals(current.PositionOwner))
+                    {
+                        var follower=work[selected];bool needed=follower.PositionRelation==8 && NpcPositionMotion.Follows(follower,env) || follower.Health.RealLife==state.Identity.Slot || follower.ParentSlot==state.Identity.Slot || follower.ChildSlot==state.Identity.Slot;
+                        for(int other=0;!needed && other<count;other++)if(other!=selected && other!=i && (work[other].PositionRelation!=0 && work[other].PositionOwner.Equals(state.Identity) || work[other].Health.RealLife==state.Identity.Slot || work[other].ParentSlot==state.Identity.Slot || work[other].ChildSlot==state.Identity.Slot))needed=true;
+                        if(!needed)continue;
+                    }
                     // Supply the same bounded timeline to a known first
                     // retarget. Preserve the old numbered target until its
                     // own native phase actually selects the captured closest.
