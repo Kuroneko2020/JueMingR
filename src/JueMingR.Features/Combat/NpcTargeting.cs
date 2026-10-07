@@ -18,6 +18,7 @@ namespace JueMingR.Features.Combat
             if(n.PlayerIndex!=n.ClosestPlayerIndex)
             {n.PlayerIndex=n.ClosestPlayerIndex;n.PlayerArea=n.ClosestPlayerArea;n.HasPlayer=true;n.PlayerDead=n.ClosestPlayerDead;n.PlayerWet=n.ClosestPlayerWet;n.PlayerIdle=n.ClosestPlayerIdle;n.PlayerGraveyard=n.ClosestPlayerGraveyard;}
             n.TargetNoAggro=n.ClosestPlayerNoAggro;e=Player(n,e);
+            n.PlayerAttackHidden=n.ClosestPlayerAttackHidden;
             n.PlayerDesert=n.ClosestPlayerDesert;n.PlayerSandstorm=n.ClosestPlayerSandstorm;
             if(requiresArea && n.TargetChoiceUnknown)n.TargetChoiceUnavailable=true;
         }
@@ -27,7 +28,18 @@ namespace JueMingR.Features.Combat
             // Native guardian selection writes both directions even when
             // faceTarget is false. Numbered-player selection respects that flag.
             if(n.TrackingKind>=2 || faceTarget && CanFace(n,e,old))
-            {var area=Area(n,e);n.Direction=area.CenterX<n.Bounds.CenterX?-1:1;n.DirectionY=area.CenterY<n.Bounds.CenterY?-1:1;}
+            {
+                var area=Area(n,e);
+                if(n.Style==3 && n.TrackingKind!=2)
+                {
+                    // Native AI3 compares integer targetRect Bottom, including
+                    // equality. This direction controls the next pit jump;
+                    // guardian selection still uses its separate Center rule.
+                    n.Direction=(int)area.X+(int)area.Width/2<n.X+n.Width/2?-1:1;
+                    n.DirectionY=(int)area.Y+(int)area.Height<=n.Y+n.Height?-1:1;
+                }
+                else{n.Direction=area.CenterX<n.Bounds.CenterX?-1:1;n.DirectionY=area.CenterY<n.Bounds.CenterY?-1:1;}
+            }
             // Native applies confusion after either selection branch, even
             // when faceTarget suppressed numbered-player facing.
             if(confused)n.Direction=-n.Direction;

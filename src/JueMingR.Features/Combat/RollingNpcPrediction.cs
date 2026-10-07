@@ -36,7 +36,15 @@ namespace JueMingR.Features.Combat
             // Parent-relative consumers must be decided at their actual actor
             // slot, after earlier owners moved. A frame-start predicate can
             // both miss an entering boundary and invent a departing one.
-            bool needsPlayer=false,canObservePlayer=true;for(int i=0;i<count;i++)if(source[i].PositionRelation!=6 && (motionRoles==null || i<motionRoles.Length && motionRoles[i]) && NpcMotion.NeedsPlayerMotion(source[i],environment,required,source,count)){needsPlayer=true;canObservePlayer&=NpcMotion.CurrentPlayerPremise(source[i]);}
+            bool needsPlayer=false,canObservePlayer=true;for(int i=0;i<count;i++)if(source[i].PositionRelation!=6 && (motionRoles==null || i<motionRoles.Length && motionRoles[i]) && NpcMotion.NeedsPlayerMotion(source[i],environment,required,source,count,terrain)){needsPlayer=true;canObservePlayer&=NpcMotion.CurrentPlayerPremise(source[i]);}
+            // Wet patrol does not read a target vector while currently blocked,
+            // but later visibility still reads the player. Use a trustworthy
+            // timeline whenever available, including held movement around a
+            // wall. Missing future facts allow only a declared fixed-target
+            // observation prefix, never a claim of player independence.
+            bool conditionalVisibility=false;
+            for(int i=0;i<count;i++)if((motionRoles==null || i<motionRoles.Length && motionRoles[i]) && source[i].Style==3 && (source[i].EffectiveType==461 || source[i].EffectiveType==586) && source[i].Wet)
+            {if(!environment.PlayerDead && Valid(player)){needsPlayer=true;canObservePlayer=false;}else conditionalVisibility=true;}
             if(!current.Active || !current.CanReceive || current.Life<=0 || !Valid(current) || needsPlayer && !Valid(player) || double.IsNaN(environment.GravityWorldSurface) || double.IsInfinity(environment.GravityWorldSurface) || !Finite(environment.Wind) || !Finite(environment.WindTarget) || !Finite(environment.WorldSurface) || !Finite(environment.RockLayer) || motionRoles!=null && motionRoles.Length<count){Clear();return null;}
             bool sameObservation=priorTick==tick && previous.SameSample(current);
             bool sameResult=result!=null && resultTick==tick && resultEpoch==epoch && resultCount==count && resultSelected==selected && resultRequired>=required && resultEnvironment.Equals(environment) && resultPlayer.SameSample(player) && ReferenceEquals(resultTerrain,terrain);
@@ -82,7 +90,7 @@ namespace JueMingR.Features.Combat
                 bool futureNeeds=false;canObservePlayer=true;
                 // Rechecking a future phase must not move the horizon forward:
                 // a home clock beyond the requested endpoint is irrelevant.
-                for(int i=0;i<count;i++)if(work[i].PositionRelation!=6 && (motionRoles==null || motionRoles[i]) && NpcMotion.NeedsPlayerMotion(work[i],environment,required-future+1,work,count)){futureNeeds=true;canObservePlayer&=NpcMotion.CurrentPlayerPremise(work[i]);}
+                for(int i=0;i<count;i++)if(work[i].PositionRelation!=6 && (motionRoles==null || motionRoles[i]) && NpcMotion.NeedsPlayerMotion(work[i],environment,required-future+1,work,count,terrain)){futureNeeds=true;canObservePlayer&=NpcMotion.CurrentPlayerPremise(work[i]);}
                 if(futureNeeds && !needsPlayer)
                 {
                     // A modeled phase acquired a new necessary premise. Start
@@ -130,7 +138,7 @@ namespace JueMingR.Features.Combat
                     // own native phase actually selects the captured closest.
                     if(state.HasClosestPlayer && state.ClosestPlayerIndex==env.PlayerIndex)
                     {state.ClosestPlayerArea=new MotionRect(env.PlayerX-env.PlayerWidth*.5f,env.PlayerY-env.PlayerHeight*.5f,env.PlayerWidth,env.PlayerHeight);state.ClosestPlayerWet=env.PlayerWet;}
-                    bool playerNeededThisAction=(motionRoles==null || motionRoles[i]) && NpcMotion.NeedsPlayerMotion(state,env,1,work,count);
+                    bool playerNeededThisAction=(motionRoles==null || motionRoles[i]) && NpcMotion.NeedsPlayerMotion(state,env,1,work,count,terrain);
                     if(playerNeededThisAction && !needsPlayer)
                     {
                         if(restarted || !Valid(initialPlayer)){stop=PredictionStop.PhaseBoundary;FailureLayer=PredictionFailureLayer.PlayerPremise;advanced=false;break;}
@@ -154,7 +162,9 @@ namespace JueMingR.Features.Combat
             if(current.UnmodeledDamageTicks>0)assumptions|=PredictionAssumption.UnmodeledDamageEffects;
             if(observedPlayer)assumptions=(assumptions&~PredictionAssumption.HeldPlayerControls)|PredictionAssumption.CurrentPlayerObservation;
             if(!needsPlayer)assumptions=(assumptions&~PredictionAssumption.HeldPlayerControls)|PredictionAssumption.NoPlayerMotionNeeded;
+            if(conditionalVisibility && !needsPlayer)assumptions=(assumptions&~PredictionAssumption.NoPlayerMotionNeeded)|PredictionAssumption.TargetPlayerStationary|PredictionAssumption.CurrentPlayerObservation;
             var quality=NpcMotion.StructuredModel(current)?PredictionQuality.StructuredApproximation:observed?PredictionQuality.ObservedTrend:PredictionQuality.LimitedObservation;
+            if(conditionalVisibility && !needsPlayer)quality=PredictionQuality.LimitedObservation;
             result=new NpcTrajectory(current.Identity,tick,++version,assumptions,stop,points,length,PredictionStrategy.RollingConditional,epoch,quality);resultFailure=FailureLayer;return result;
         }
         private NpcMotionState playerBody;

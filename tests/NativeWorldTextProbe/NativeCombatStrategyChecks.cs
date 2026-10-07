@@ -44,6 +44,16 @@ namespace NativeWorldTextProbe
             if(only=="support"){NativeCombatStructuralControlChecks.Support(context);return;}
             if(only=="hungry"){NativeCombatStructuralControlChecks.Hungry(context);return;}
             if(only=="straight"){NativeCombatStructuralControlChecks.Straight(context);return;}
+            if(only=="fighterentry"){NativeCombatFighterControlChecks.Entry(context);return;}
+            if(only=="fighterflight"){NativeCombatFighterControlChecks.Flight(context);return;}
+            if(only=="fighterform"){NativeCombatFighterControlChecks.Form(context);return;}
+            if(only=="fighterpit"){NativeCombatFighterControlChecks.FacingPit(context);return;}
+            if(only=="fighterformface"){NativeCombatFighterControlChecks.FormFacing(context);return;}
+            if(only=="fighterpremise"){NativeCombatFighterControlChecks.Premise(context);return;}
+            if(only=="fighterclocks"){NativeCombatFighterControlChecks.Clocks(context);return;}
+            if(only=="fightermoving"){NativeCombatFighterControlChecks.MovingVisibility(context);return;}
+            if(only=="supportmissing"){NativeCombatStructuralControlChecks.MissingSupport(context);return;}
+            if(only=="hungrydefense"){NativeCombatStructuralControlChecks.HungryDefense(context);return;}
             if(only=="rollchoice" || only=="rollchoice39"){NativeCombatRollingControlChecks.Choices(context);return;}
             if(only=="roll417"){NativeCombatRollingControlChecks.UnknownBounce(context);return;}
             if(only!="bee")

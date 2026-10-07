@@ -11,41 +11,54 @@ namespace JueMingR.Features.Combat
         internal static bool Known(int type){return type==3 || type==21 || type==27 || type==77 || type==109 || type==120 || type==166 || NpcWallMotion.Ground(type);}
         internal static int PlayerPremiseTarget(NpcMotionState n,PredictionEnvironment e)
         {
+            if(n.EffectiveType==427 && n.FighterFormReady){NpcTargeting.Retarget(ref n,ref e);return n.PlayerIndex;}
+            if(NpcFighterClockMotion.Preparing(n))return n.PlayerIndex;
+            if(NpcFighterEntryMotion.Known(n.EffectiveType) && NpcFighterEntryMotion.Prelude(ref n,ref e,false))return n.PlayerIndex;
             // Compute only the first real targeting decision on a value copy.
             // This shares the blocked-count/pursuit rule with movement instead
             // of assuming every fighter always keeps its old numbered target.
             if(FighterHorizontalMotion.IndependentEntry(n))
             {if(FighterHorizontalMotion.RetargetOnEntry(n))Target(ref n,ref e,false);}
+            else if(n.EffectiveType==425)CountAndTarget(ref n,ref e,false,60,false);
             else if(!Known(n.EffectiveType) && !OrdinaryCounter(n))
-            {if(n.A3<=0)Target(ref n,ref e,false);}
+            {CountAndTarget(ref n,ref e,false,60,false);}
             else if(n.EffectiveType==166 && n.A2<0)Target(ref n,ref e,false);
             else CountAndTarget(ref n,ref e,false,n.EffectiveType==120?180:60);
             //258 retargets again in its airborne action AFTER the common
             // counter/motor, including a blocked counter's turn-away phase.
             if(n.EffectiveType==258 && n.Vy!=0)NpcTargeting.Retarget(ref n,ref e);
+            if(NpcFighterFlightMotion.Known(n.EffectiveType) && NpcFighterFlightMotion.Retargets(n,n.ConfusedTicks>0))NpcTargeting.Retarget(ref n,ref e);
+            if(NpcFighterClockMotion.Retargets(n,n.ConfusedTicks>0))NpcTargeting.Retarget(ref n,ref e);
             return n.PlayerIndex;
         }
         internal static bool Fallback(ref NpcMotionState n,PredictionEnvironment e,IPredictionTerrain t,bool confused,int elapsed,out PredictionStop stop)
         {
             stop=PredictionStop.None;
-            // Dormant/reveal and spawn/fluid actions run before the blocked
-            // counter and common motor. Their future action remains a trend,
-            // but an actual entry TargetClosest must share Source's premise.
+            bool changed;if(!NpcFighterFlightMotion.Form(ref n,ref e,t,out changed,out stop))return false;if(changed)return true;
+            if(NpcFighterClockMotion.Preparing(n))return NpcFighterClockMotion.Step(ref n,e,t,confused,out stop);
+            if(n.EffectiveType==471 && n.A3<0){stop=PredictionStop.UnsupportedMechanism;return false;}
+            if(NpcFighterEntryMotion.Known(n.EffectiveType))
+            {bool handled;if(!NpcFighterEntryMotion.Step(ref n,e,t,confused,out handled,out stop))return false;if(handled)return true;}
+            // Any remaining independent entry is explicitly a qualified
+            // observed trend. Known reveal/spawn/fluid actions above own their
+            // concrete control and actual entry query before this fallback.
             if(FighterHorizontalMotion.IndependentEntry(n))
             {if(FighterHorizontalMotion.RetargetOnEntry(n))Target(ref n,ref e,confused);NpcRollingMotion.Trend(ref n,elapsed);return true;}
             // These original actions skip the shared blocked counter. Their
             // positive ai[3] belongs to an independent action, not recovery.
             bool wasStopped=n.Vx==0 && !n.JustHit;
-            if(!OrdinaryCounter(n))
-            {if(n.A3>0){stop=PredictionStop.UnsupportedMechanism;return false;}Target(ref n,ref e,confused);}
+            if(n.EffectiveType==425)CountAndTarget(ref n,ref e,confused,60,false);
+            else if(!OrdinaryCounter(n))
+            {if(n.A3>0 && !NpcFighterClockMotion.Shooter(n.EffectiveType)){stop=PredictionStop.UnsupportedMechanism;return false;}CountAndTarget(ref n,ref e,confused,60,false);}
             else CountAndTarget(ref n,ref e,confused,60);
-            // Aerial target steering is an independent vector action. Until
-            // that action is modeled, continue the finite observed trend;
-            // common ground parameters are not permission to invent a jump.
+            // A failed horizontal branch is an observed trend only when no
+            // finite clock/vector action owns it. Known independent motors
+            // below retain their phase rather than silently becoming linear.
             int type=n.EffectiveType;
-            bool aerial=n.Vy!=0 && (type==425 || type==427) && n.A2==1;
-            if(aerial || !FighterHorizontalMotion.Step(ref n,e))NpcRollingMotion.Trend(ref n,elapsed);
+            if(!NpcFighterClockMotion.Shooter(type) && !NpcFighterClockMotion.Waiting(type) && !FighterHorizontalMotion.Step(ref n,e))NpcRollingMotion.Trend(ref n,elapsed);
             bool support=false;
+            if(NpcFighterFlightMotion.Known(type) && !NpcFighterFlightMotion.Step(ref n,e,t,confused,elapsed,out support,out stop))return false;
+            if((NpcFighterClockMotion.Shooter(type) || NpcFighterClockMotion.Waiting(type)) && !NpcFighterClockMotion.Step(ref n,e,t,confused,out stop))return false;
             if(type==159 && !e.Multiplayer)
             {
                 float dx=e.PlayerX-n.Bounds.CenterX,dy=e.PlayerY-n.Bounds.CenterY;
@@ -188,20 +201,33 @@ namespace JueMingR.Features.Combat
             switch(t){case 343:case 47:case 67:case 109:case 110:case 111:case 120:case 163:case 164:case 239:case 168:case 199:case 206:case 214:case 215:case 216:case 217:case 218:case 219:case 220:case 226:case 243:case 251:case 257:case 258:case 290:case 291:case 292:case 293:case 305:case 306:case 307:case 308:case 309:case 348:case 349:case 350:case 351:case 379:case 591:case 380:case 381:case 382:case 383:case 386:case 391:case 466:case 464:case 166:case 469:case 468:case 471:case 470:case 480:case 481:case 482:case 411:case 424:case 409:case 425:case 427:case 426:case 428:case 580:case 508:case 415:case 419:case 520:case 528:case 529:case 530:case 532:case 582:case 624:case 631:return false;default:return true;}
         }
         private static bool ResetsDoor(int t){switch(t){case 3:case 691:case 430:case 590:case 331:case 332:case 132:case 161:case 186:case 187:case 188:case 189:case 200:case 223:case 320:case 321:case 319:case 21:case 324:case 323:case 322:case 44:case 196:case 167:case 77:case 197:case 202:case 203:case 449:case 450:case 451:case 452:case 481:case 201:case 635:return true;default:return false;}}
-        private static void CountAndTarget(ref NpcMotionState n,ref PredictionEnvironment e,bool confused,int limit)
+        private static void CountAndTarget(ref NpcMotionState n,ref PredictionEnvironment e,bool confused,int limit,bool counter=true)
         {
             int type=n.EffectiveType;
-            if(type==120 && n.A3==-120){n.Vx=n.Vy=0;n.A3=0;}
-            if(n.X==n.OldX || n.A3>=limit || n.Vy==0 && (n.Vx>0 && n.Direction<0 || n.Vx<0 && n.Direction>0))n.A3++;
-            else if(Math.Abs(n.Vx)>.9f && n.A3>0)n.A3--;
-            if(n.A3>limit*10 || n.JustHit || Intersects(n,e))n.A3=0;
+            if(counter)
+            {
+                if(type==120 && n.A3==-120){n.Vx=n.Vy=0;n.A3=0;}
+                if(n.X==n.OldX || n.A3>=limit || n.Vy==0 && (n.Vx>0 && n.Direction<0 || n.Vx<0 && n.Direction>0))n.A3++;
+                else if(Math.Abs(n.Vx)>.9f && n.A3>0)n.A3--;
+                if(n.A3>limit*10 || n.JustHit || Intersects(n,e))n.A3=0;
+            }
             // .8's fighter despawn predicate exempts 77 on the daytime surface.
             // The ordinary blocked-count threshold still controls turn-away.
             bool pursue=Pursues(n,e);
             if(n.A3<limit && pursue)
             {Target(ref n,ref e,confused);if(n.DirectionY>0 && e.PlayerY<=n.Y+n.Height)n.DirectionY=-1;}
-            else if(!(type==166 && n.A2>0))
+            else if(!(n.A2>0 && Busy(type)))
             {if(e.Day && !e.Remix && n.Y/16<e.WorldSurface)n.TimeLeft=Math.Min(n.TimeLeft,10);if(n.Vx==0){if(n.Vy==0 && ++n.A0>=2){n.Direction*=-1;n.SpriteDirection=n.Direction;n.A0=0;}}else n.A0=0;if(n.Direction==0)n.Direction=1;}
+        }
+        private static bool Busy(int type)
+        {
+            switch(type)
+            {
+                case 110:case 111:case 206:case 216:case 214:case 215:case 291:case 292:case 293:case 350:
+                case 381:case 382:case 383:case 385:case 386:case 389:case 391:case 469:case 166:case 466:
+                case 471:case 411:case 409:case 424:case 425:case 426:case 415:case 419:case 520:return true;
+                default:return false;
+            }
         }
         private static bool Pursues(NpcMotionState n,PredictionEnvironment e)
         {

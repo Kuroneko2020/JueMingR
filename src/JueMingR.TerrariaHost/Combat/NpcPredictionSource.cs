@@ -61,6 +61,9 @@ namespace JueMingR.TerrariaHost.Combat
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcTargeting",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcPositionMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcGroundMotion",true),
+                typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcFighterEntryMotion",true),
+                typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcFighterFlightMotion",true),
+                typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcFighterClockMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcSlimeControl",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.PlayerHorizontalMotion",true),
                 typeof(PlayerVerticalMotion),
@@ -172,7 +175,7 @@ namespace JueMingR.TerrariaHost.Combat
             int target=NpcMotion.PlayerPremiseTarget(states[selected],premiseEnv);bool needsPlayer=false;
             // Only real movement consumers acquire a future-player prerequisite.
             // A required numbered target is never replaced by the local player.
-            for(int i=0;i<count;i++)if(motionRoles[i] && NpcMotion.NeedsPlayerMotion(states[i],premiseEnv,Cache.Required,states,count))
+            for(int i=0;i<count;i++)if(motionRoles[i] && NpcMotion.NeedsPlayerMotion(states[i],premiseEnv,Cache.Required,states,count,Terrain))
             {if(!needsPlayer)target=NpcMotion.PlayerPremiseTarget(states[i],premiseEnv);needsPlayer=true;}
             var player=target>=0 && target<Main.maxPlayers?Main.player[target]:null;
             bool playerAlive=player!=null && player.active && !player.dead && !player.ghost;
@@ -277,7 +280,7 @@ namespace JueMingR.TerrariaHost.Combat
             }
             int child=(n.aiStyle==6 || n.aiStyle==37) && n.ai[0]>0 && n.ai[0]<Main.maxNPCs?(int)n.ai[0]:-1;var linked=child>=0?Main.npc[child]:null;
             if(health.Fire>0 || health.Fire3>0 || n.buffType[19]!=0){health.Buffs.Captured=true;for(int i=0;i<20;i++)health.Buffs.Set(i,n.buffType[i],n.buffTime[i],Main.debuff[n.buffType[i]]);}
-            return new NpcMotionState{Alpha=n.alpha,UnmodeledDamageTicks=attached,NetOffsetX=n.netOffset.X,NetOffsetY=n.netOffset.Y,SmoothingRange=Main.multiplayerNPCSmoothingRange,ResetNetOffset=Main.netMode==2 || NPC.offSetDelayTime>0 || NPCID.Sets.NoMultiplayerSmoothingByType[n.type] || NPCID.Sets.NoMultiplayerSmoothingByAI[n.aiStyle] || n.townNPC && n.ai[0]==25,Friendly=n.friendly,ChildSlot=child,ChildIdentity=linked!=null && linked.active && linked.aiStyle==n.aiStyle?CombatSelection.Identity(linked,session):default(NpcIdentity),LavaSpeed=n.lavaMovementSpeed,ShimmerSpeed=n.shimmerMovementSpeed,Lava=n.lavaWet,Shimmer=n.shimmerWet,Health=health,Identity=CombatSelection.Identity(n,session),X=n.position.X,Y=n.position.Y,OldX=n.oldPosition.X,OldY=n.oldPosition.Y,StairFall=n.stairFall,Vx=n.velocity.X,Vy=n.velocity.Y,OldVx=n.oldVelocity.X,OldVy=n.oldVelocity.Y,Width=n.width,Height=n.height,Scale=n.scale,Style=n.aiStyle,Direction=n.direction,DirectionY=n.directionY,Target=n.target,
+            return new NpcMotionState{FighterFormLifeMax=n.type==427?(int)(1000f*Terraria.DataStructures.GameDifficultyData.EnemyMaxLifeMultiplier.Sample(Main.Difficulty)):0,Alpha=n.alpha,UnmodeledDamageTicks=attached,NetOffsetX=n.netOffset.X,NetOffsetY=n.netOffset.Y,SmoothingRange=Main.multiplayerNPCSmoothingRange,ResetNetOffset=Main.netMode==2 || NPC.offSetDelayTime>0 || NPCID.Sets.NoMultiplayerSmoothingByType[n.type] || NPCID.Sets.NoMultiplayerSmoothingByAI[n.aiStyle] || n.townNPC && n.ai[0]==25,Friendly=n.friendly,ChildSlot=child,ChildIdentity=linked!=null && linked.active && linked.aiStyle==n.aiStyle?CombatSelection.Identity(linked,session):default(NpcIdentity),LavaSpeed=n.lavaMovementSpeed,ShimmerSpeed=n.shimmerMovementSpeed,Lava=n.lavaWet,Shimmer=n.shimmerWet,Health=health,Identity=CombatSelection.Identity(n,session),X=n.position.X,Y=n.position.Y,OldX=n.oldPosition.X,OldY=n.oldPosition.Y,StairFall=n.stairFall,Vx=n.velocity.X,Vy=n.velocity.Y,OldVx=n.oldVelocity.X,OldVy=n.oldVelocity.Y,Width=n.width,Height=n.height,Scale=n.scale,Style=n.aiStyle,Direction=n.direction,DirectionY=n.directionY,Target=n.target,
                 CollisionPart=HasCollisionPart(n),Town=n.townNPC,HomeTileY=n.homeTileY,CritterTurns=NPCID.Sets.CritterThatCanTurnOnPlayers[n.type],Boss=n.boss,InactivityImmune=n.DoesntDespawnToInactivity() || n.townNPC,SpriteDirection=n.spriteDirection,SpawnedFromStatue=n.SpawnedFromStatue,ParentSlot=(n.aiStyle==6 || n.aiStyle==37) && n.ai[1]>0?(int)n.ai[1]:-1,TimeLeft=n.timeLeft,ConfusedTicks=confused,Life=n.life,LifeMax=n.lifeMax,BuffFingerprint=buffHash,BuffExpires=expires,WaterSpeed=n.waterMovementSpeed,HoneySpeed=n.honeyMovementSpeed,
                 A0=n.ai[0],A1=n.ai[1],A2=n.ai[2],A3=n.ai[3],L0=n.localAI[0],L1=n.localAI[1],L2=n.localAI[2],L3=n.localAI[3],Active=n.active,NoGravity=n.noGravity,NoTileCollide=n.noTileCollide,Wet=n.wet,WetCount=n.wetCount,Honey=n.honeyWet,CollideX=n.collideX,CollideY=n.collideY,CanReceive=CombatSelection.Receives(n,true),CanHarm=!n.friendly && n.damage>0,NoContactDamage=n.damage==0,JustHit=n.justHit};
         }

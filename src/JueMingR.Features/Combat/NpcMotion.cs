@@ -29,7 +29,7 @@ namespace JueMingR.Features.Combat
             stop=PredictionStop.None;n.NewSegment=false;n.TrendApplied=false;
             env.PlayerTimelineActive&=!n.TargetCaptured || n.PlayerIndex==env.PlayerIndex;
             env=NpcTargeting.Player(n,env);
-            bool playerNeededThisAction=NeedsPlayerMotion(n,env,1,group,count);
+            bool playerNeededThisAction=NeedsPlayerMotion(n,env,1,group,count,terrain);
             if(!n.Active){stop=PredictionStop.Despawn;return false;}
             // Explicit structural models can continue from their observed
             // state under a qualified unknown-effect premise until expiry.
@@ -206,7 +206,7 @@ namespace JueMingR.Features.Combat
                 n.Style==13 && NpcAnchoredMotion.Known(type) || n.Style==16 && NpcAquaticMotion.Known(type) ||
                 n.Style==40 && NpcWallMotion.Wall(type) || n.Style==69 || n.Style==39 && NpcRollingMotion.TortoiseType(type) || n.Style==41 && NpcRollingMotion.Hopper(type);
         }
-        public static bool NeedsPlayerMotion(NpcMotionState n,PredictionEnvironment e,int remaining=120,NpcMotionState[] group=null,int count=0)
+        public static bool NeedsPlayerMotion(NpcMotionState n,PredictionEnvironment e,int remaining=120,NpcMotionState[] group=null,int count=0,IPredictionTerrain terrain=null)
         {
             e=NpcTargeting.Player(n,e);
             if(n.EffectiveType==488)return false;
@@ -223,14 +223,15 @@ namespace JueMingR.Features.Combat
             // Enumerate actual vector/decision consumers, never infer a
             // player future from quality or an unknown-effect policy.
             int type=n.EffectiveType;
+            if(n.Style==3 && NpcFighterClockMotion.Preparing(n))return false;
             // A captured competitor reads the same numbered-player timeline
             // even while the NPC wins. No legal player candidate means no
             // player prerequisite; never interpret an encoded NPC as a player.
             if(n.Style==5 && NpcFlyingMotion.Bee(type))return n.HasClosestPlayer || n.TrackingKind!=3 && n.HasPlayer;
-            // The finite fallback deliberately holds these independent entry
-            // phases as a trend. Only an entry which actually retargets reads
-            // a player; a dormant reveal/exit must not acquire a dead old one.
-            if(n.Style==3 && FighterHorizontalMotion.IndependentEntry(n))return FighterHorizontalMotion.RetargetOnEntry(n);
+            // Known reveal has no player vector; wet visibility may acquire
+            // a trustworthy timeline without discarding its observed patrol
+            // prefix when future facts are missing. It is qualified separately.
+            if(n.Style==3 && NpcFighterEntryMotion.Known(type))return NpcFighterEntryMotion.NeedsPlayer(n,e,terrain);
             if(NpcFiniteFlightMotion.Known(n))return NpcFiniteFlightMotion.NeedsPlayer(n,e);
             if(n.Style==23 && NpcChargeMotion.Known(type))return NpcChargeMotion.NeedsPlayer(n,remaining);
             if(n.Style==25 && NpcMimicMotion.Known(type))return NpcMimicMotion.NeedsPlayer(n,e,remaining);

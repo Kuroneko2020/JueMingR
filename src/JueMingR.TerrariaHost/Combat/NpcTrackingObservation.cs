@@ -12,7 +12,7 @@ namespace JueMingR.TerrariaHost.Combat
         internal static void Capture(NPC n,ref NpcMotionState state,IPredictionTerrain terrain)
         {
             state.TargetCaptured=true;state.PlayerIndex=state.ClosestPlayerIndex=-1;
-            if(n.type==546)for(int i=0;i<Main.maxNPCs;i++){var other=Main.npc[i];if(i!=n.whoAmI && other!=null && other.active && other.type==546 && Math.Abs(n.position.X-other.position.X)+Math.Abs(n.position.Y-other.position.Y)<n.width){state.RunPushX+=n.position.X<other.position.X?-.05f:.05f;state.RunPushY+=n.position.Y<other.position.Y?-.05f:.05f;}}
+            if(n.type==546 || n.type==425 || n.type==427 || n.type==426)for(int i=0;i<Main.maxNPCs;i++){var other=Main.npc[i];if(i!=n.whoAmI && other!=null && other.active && other.type==n.type && Math.Abs(n.position.X-other.position.X)+Math.Abs(n.position.Y-other.position.Y)<n.width){float push=n.type==425?.15f:n.type==426?.1f:.05f;state.RunPushX+=n.position.X<other.position.X?-push:push;state.RunPushY+=n.position.Y<other.position.Y?-push:push;}}
             if(n.type==410)for(int i=0;i<Main.maxPlayers;i++){var p=Main.player[i];if(p!=null && p.active && !p.dead && p.Distance(n.Center)<800 && p.Center.Y<n.Center.Y && Math.Abs(p.Center.X-n.Center.X)<20){state.RunRetirePlayer=true;break;}}
             if(n.type==210 || n.type==211){Bee(n,ref state);return;}
             if(n.type==620)
@@ -28,7 +28,7 @@ namespace JueMingR.TerrariaHost.Combat
             // target until its own modeled TargetClosest call changes it.
             if(n.target>=0 && n.target<Main.maxPlayers && Main.player[n.target]!=null)
             {
-                var direct=Main.player[n.target];state.PlayerIndex=n.target;state.HasPlayer=true;state.PlayerArea=Area(direct);state.PlayerDead=direct.dead || !direct.active;state.PlayerWet=direct.wet;state.PlayerGraveyard=direct.ZoneGraveyard;state.PlayerDesert=direct.ZoneDesert;state.PlayerSandstorm=direct.ZoneSandstorm;state.PlayerIdle=direct.itemAnimation==0 && direct.aggro<0;state.TargetNoAggro=direct.npcTypeNoAggro[n.type];
+                var direct=Main.player[n.target];state.PlayerIndex=n.target;state.HasPlayer=true;state.PlayerArea=Area(direct);state.PlayerDead=direct.dead || !direct.active;state.PlayerWet=direct.wet;state.PlayerGraveyard=direct.ZoneGraveyard;state.PlayerDesert=direct.ZoneDesert;state.PlayerSandstorm=direct.ZoneSandstorm;state.PlayerIdle=direct.itemAnimation==0 && direct.aggro<0;state.PlayerAttackHidden=direct.stealth==0 && direct.itemAnimation==0;state.TargetNoAggro=direct.npcTypeNoAggro[n.type];
             }
             if(n.SupportsNPCTargets && n.HasNPCTarget)
             {
@@ -40,6 +40,14 @@ namespace JueMingR.TerrariaHost.Combat
             // AI25's known birth displacement precedes its first real query.
             // Sample that scalar query point without moving the live actor.
             float queryX=n.Center.X+(n.aiStyle==25 && n.ai[3]==0?8:0),queryY=n.Center.Y;
+            if(n.type==427 && n.localAI[0]+1+Math.Abs(n.velocity.X)/2>=1200 && Main.netMode!=1 && !Main.getGoodWorld)
+            {
+                int x=(int)n.Center.X/16-2,y=(int)n.Center.Y/16-3;bool empty=x>=0 && y>=0 && x+4<Main.maxTilesX && y+4<Main.maxTilesY-40;
+                for(int tx=x;empty && tx<=x+4;tx++)for(int ty=y;empty && ty<=y+4;ty++){PredictionTile tile;PredictionStop stop;if(!terrain.Tile(tx,ty,out tile,out stop) || tile.Active && tile.Solid && !tile.SolidTop)empty=false;}
+                // Transform keeps X/Bottom and chooses after the new size.
+                // Its SetDefaults clears confused for this query's facing.
+                if(empty){state.FighterFormReady=true;queryX+=5;queryY-=17;}
+            }
             float distance=0;bool found=false;int playerSlot=-1,tankSlot=-1;
             // Locked TryTrackingTarget order is significant: a later nearer
             // player clears an earlier guardian candidate, rather than globally
@@ -59,7 +67,7 @@ namespace JueMingR.TerrariaHost.Combat
                 else if(clear){tankSlot=pet;state.TargetChoiceUnknown=false;}
             }
             if(playerSlot<0)return;var player=Main.player[playerSlot];
-            state.ClosestPlayerIndex=playerSlot;state.HasClosestPlayer=true;state.ClosestPlayerArea=Area(player);state.ClosestPlayerDead=player.dead;state.ClosestPlayerWet=player.wet;state.ClosestPlayerGraveyard=player.ZoneGraveyard;state.ClosestPlayerDesert=player.ZoneDesert;state.ClosestPlayerSandstorm=player.ZoneSandstorm;state.ClosestPlayerIdle=player.itemAnimation==0 && player.aggro<0;state.ClosestPlayerNoAggro=player.npcTypeNoAggro[n.type];
+            state.ClosestPlayerIndex=playerSlot;state.HasClosestPlayer=true;state.ClosestPlayerArea=Area(player);state.ClosestPlayerDead=player.dead;state.ClosestPlayerWet=player.wet;state.ClosestPlayerGraveyard=player.ZoneGraveyard;state.ClosestPlayerDesert=player.ZoneDesert;state.ClosestPlayerSandstorm=player.ZoneSandstorm;state.ClosestPlayerIdle=player.itemAnimation==0 && player.aggro<0;state.ClosestPlayerAttackHidden=player.stealth==0 && player.itemAnimation==0;state.ClosestPlayerNoAggro=player.npcTypeNoAggro[n.type];
             state.TrackingKind=1;state.TrackingArea=state.ClosestPlayerArea;
             if(tankSlot>=0)
             {var pet=Main.projectile[tankSlot];state.TrackingKind=2;state.TrackingArea=Area(pet);state.TrackingVx=pet.velocity.X;state.TrackingVy=pet.velocity.Y;}
