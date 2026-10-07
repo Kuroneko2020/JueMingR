@@ -27,6 +27,7 @@ namespace JueMingR.Features.Combat
         public static bool Step(ref NpcMotionState n,NpcMotionState[] group,int count,PredictionEnvironment env,IPredictionTerrain terrain,int elapsed,bool rolling,out PredictionStop stop)
         {
             stop=PredictionStop.None;n.NewSegment=false;n.TrendApplied=false;
+            env.PlayerTimelineActive&=!n.TargetCaptured || n.PlayerIndex==env.PlayerIndex;
             env=NpcTargeting.Player(n,env);
             bool playerNeededThisAction=NeedsPlayerMotion(n,env,1,group,count);
             if(!n.Active){stop=PredictionStop.Despawn;return false;}
@@ -62,7 +63,7 @@ namespace JueMingR.Features.Combat
             bool confused=n.ConfusedTicks>0;if(confused){direction=-direction;n.ConfusedTicks--;}
             bool linked=false;
             if(n.PositionRelation!=0)
-            {if(!NpcPositionMotion.Step(ref n,group,count,elapsed,env,out stop))return false;}
+            {if(!NpcPositionMotion.Step(ref n,group,count,elapsed,env,confused,out stop))return false;}
             else if(n.Style==16 && NpcAquaticMotion.Known(n.Identity.Type))
             {if(!NpcAquaticMotion.Step(ref n,env,terrain,direction,vertical,out stop,confused))return false;}
             else if(n.Style==13 && NpcAnchoredMotion.Known(n.Identity.Type))
@@ -150,6 +151,14 @@ namespace JueMingR.Features.Combat
             else if(n.Style==23 && NpcChargeMotion.Known(n.EffectiveType))
             {if(!NpcChargeMotion.Step(ref n,env,confused,out stop))return false;}
             else if(n.Style==25 && NpcMimicMotion.Known(n.EffectiveType))NpcMimicMotion.Step(ref n,env,confused);
+            else if(n.Style==18 && NpcJellyfishMotion.Known(n.EffectiveType))
+            {if(!NpcJellyfishMotion.Step(ref n,env,terrain,confused,out stop))return false;}
+            else if(n.Style==26 && NpcRunningMotion.Known(n.EffectiveType))
+            {if(!NpcRunningMotion.Step(ref n,env,terrain,confused,elapsed,out stop))return false;}
+            else if(n.Style==19 && NpcSupportMotion.Known(n.EffectiveType))
+            {if(!NpcSupportMotion.Step(ref n,env,terrain,confused,out stop))return false;}
+            else if(n.Style==9 && NpcStraightMotion.Known(n.EffectiveType))
+            {if(!NpcStraightMotion.Step(ref n,env,terrain,confused,out stop))return false;}
             else if(NpcFiniteFlightMotion.Known(n))
             {if(!NpcFiniteFlightMotion.Step(ref n,env,terrain,confused,out stop))return false;}
             else if(n.Style==17 && VultureType(n.EffectiveType))Vulture(ref n,env,direction,vertical,confused);
@@ -171,6 +180,7 @@ namespace JueMingR.Features.Combat
             env=NpcTargeting.Player(n,env);
             if(!terrain.Move(ref n,env,out stop))return false;
             if(n.Style==3 && NpcGroundMotion.Known(n.EffectiveType))NpcGroundMotion.AfterMove(ref n);
+            if(n.Style==26 && NpcRunningMotion.Known(n.EffectiveType))NpcRunningMotion.AfterMove(ref n);
             NpcRollingMotion.Complete(ref n);
             if(n.Style==69 || n.Identity.Type==371 || n.Identity.Type==372 || n.Identity.Type==373)n.Health.DontTakeDamage=!n.CanReceive;
             n.JustHit=false;return CheckActive(ref n,env,out stop);
@@ -202,6 +212,7 @@ namespace JueMingR.Features.Combat
             if(n.EffectiveType==488)return false;
             if(n.PositionRelation!=0)
             {
+                if(n.PositionRelation==7)return n.ParentSlot!=-2 && NpcHungryMotion.NeedsPlayer(n);
                 if(n.PositionRelation!=6)return false;
                 if(group!=null)for(int i=0;i<count;i++)if(group[i].Identity.Equals(n.PositionOwner))return NpcParentMotion.NeedsPlayer(n,e,remaining,group[i]);
                 return true; // Missing necessary owner is never a player waiver.
@@ -223,6 +234,9 @@ namespace JueMingR.Features.Combat
             if(NpcFiniteFlightMotion.Known(n))return NpcFiniteFlightMotion.NeedsPlayer(n,e);
             if(n.Style==23 && NpcChargeMotion.Known(type))return NpcChargeMotion.NeedsPlayer(n,remaining);
             if(n.Style==25 && NpcMimicMotion.Known(type))return NpcMimicMotion.NeedsPlayer(n,e,remaining);
+            if(n.Style==18 && NpcJellyfishMotion.Known(type))return NpcJellyfishMotion.NeedsPlayer(n,e);
+            if(n.Style==19 && NpcSupportMotion.Known(type))return NpcSupportMotion.NeedsPlayer(n);
+            if(n.Style==9 && NpcStraightMotion.Known(type))return NpcStraightMotion.NeedsPlayer(n);
             if(n.Style==41 && type==378 && n.A1==5)return false;
             if(type==371 || type==372 || type==373 || n.Style==1 || n.Style==3 || n.Style==6 || n.Style==37 || n.Style==69 ||
                 n.Style==2 && KnownEye(type) || n.Style==5 && (FlyingType(type) || type==176) || n.Style==14 && BatType(type) ||
@@ -259,7 +273,7 @@ namespace JueMingR.Features.Combat
             e=NpcTargeting.Player(n,e);
             if(n.Style==3 && n.PositionRelation==0)return NpcGroundMotion.PlayerPremiseTarget(n,e);
             if(n.Style==1 && n.PositionRelation==0)return NpcSlimeControl.PlayerPremiseTarget(n,e);
-            int t=n.EffectiveType;bool retarget=n.Style==25 && NpcMimicMotion.Known(t) && NpcMimicMotion.Retargets(n,e) || n.Style==23 && NpcChargeMotion.Known(t) && NpcChargeMotion.Retargets(n) || NpcFiniteFlightMotion.Known(n) && NpcFiniteFlightMotion.Retargets(n,e) ||n.Style==13 && NpcAnchoredMotion.Known(t) ||
+            int t=n.EffectiveType;bool retarget=n.Style==9 && NpcStraightMotion.Known(t) && n.Target==255 ||n.PositionRelation==7 ||n.Style==19 && NpcSupportMotion.Known(t) ||n.Style==26 && NpcRunningMotion.Known(t) && NpcRunningMotion.Retargets(n,e) || n.Style==18 && NpcJellyfishMotion.Known(t) && NpcJellyfishMotion.Retargets(n) || n.Style==25 && NpcMimicMotion.Known(t) && NpcMimicMotion.Retargets(n,e) || n.Style==23 && NpcChargeMotion.Known(t) && NpcChargeMotion.Retargets(n) || NpcFiniteFlightMotion.Known(n) && NpcFiniteFlightMotion.Retargets(n,e) ||n.Style==13 && NpcAnchoredMotion.Known(t) ||
                 n.Style==16 && n.Wet && NpcAquaticMotion.Known(t) && t!=55 && t!=592 && t!=607 && t!=615 && t!=688 ||
                 n.Style==2 && KnownEye(t) && (!NpcEyeMotion.Escape(n,e) || n.Wet) ||
                 n.Style==5 && (FlyingType(t) || t==176) || n.Style==14 && BatType(t) ||
@@ -272,7 +286,7 @@ namespace JueMingR.Features.Combat
         private static bool VultureType(int t){return t==61 || t==301;}
         private static bool BatType(int t){return NpcBatMotion.Known(t);}
         private static bool KnownMotion(NpcMotionState n)
-        {int t=n.EffectiveType;return NpcFiniteFlightMotion.Known(n) || t==488 || t>=370 && t<=373 || n.Style==1 || n.Style==3 || n.Style==6 || n.Style==8 || n.Style==37 || n.Style==23 && NpcChargeMotion.Known(t) || n.Style==25 && NpcMimicMotion.Known(t) || n.Style==39 && NpcRollingMotion.TortoiseType(t) || n.Style==41 && NpcRollingMotion.Hopper(t) || n.Style==17 && VultureType(t) || n.Style==2 && KnownEye(t) || n.Style==5 && FlyingType(t) || n.Style==14 && BatType(t);}
+        {int t=n.EffectiveType;return NpcFiniteFlightMotion.Known(n) || t==488 || t>=370 && t<=373 || n.Style==1 || n.Style==3 || n.Style==6 || n.Style==8 || n.Style==37 || n.Style==23 && NpcChargeMotion.Known(t) || n.Style==25 && NpcMimicMotion.Known(t) || n.Style==18 && NpcJellyfishMotion.Known(t) || n.Style==26 && NpcRunningMotion.Known(t) || n.Style==19 && NpcSupportMotion.Known(t) || n.PositionRelation==7 || n.Style==9 && NpcStraightMotion.Known(t) || n.Style==39 && NpcRollingMotion.TortoiseType(t) || n.Style==41 && NpcRollingMotion.Hopper(t) || n.Style==17 && VultureType(t) || n.Style==2 && KnownEye(t) || n.Style==5 && FlyingType(t) || n.Style==14 && BatType(t);}
         private static void Vulture(ref NpcMotionState n,PredictionEnvironment env,int direction,int vertical,bool confused)
         {
             n.NoGravity=true;

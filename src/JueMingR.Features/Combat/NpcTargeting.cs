@@ -18,6 +18,7 @@ namespace JueMingR.Features.Combat
             if(n.PlayerIndex!=n.ClosestPlayerIndex)
             {n.PlayerIndex=n.ClosestPlayerIndex;n.PlayerArea=n.ClosestPlayerArea;n.HasPlayer=true;n.PlayerDead=n.ClosestPlayerDead;n.PlayerWet=n.ClosestPlayerWet;n.PlayerIdle=n.ClosestPlayerIdle;n.PlayerGraveyard=n.ClosestPlayerGraveyard;}
             n.TargetNoAggro=n.ClosestPlayerNoAggro;e=Player(n,e);
+            n.PlayerDesert=n.ClosestPlayerDesert;n.PlayerSandstorm=n.ClosestPlayerSandstorm;
             if(requiresArea && n.TargetChoiceUnknown)n.TargetChoiceUnavailable=true;
         }
         internal static void Face(ref NpcMotionState n,ref PredictionEnvironment e,bool faceTarget=true,bool confused=false)

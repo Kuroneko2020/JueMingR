@@ -9,6 +9,19 @@ namespace NativeWorldTextProbe
 {
     internal static class NativeCombatFiniteControlChecks
     {
+        internal static void JellyfishPremise(object context)
+        {
+            var host=Get(context,"CombatObservation");var source=Get(host,"Prediction");var cache=(NpcPredictionCache)Get(source,"Cache");var p=Main.LocalPlayer;int oldHook=p.grappling[0],oldCount=p.grapCount,oldMode=Main.GameMode;p.grappling[0]=0;p.grapCount=0;Main.GameMode=1;
+            foreach(int branch in new[]{0,1,2})
+            {
+                for(int x=39;x<=45;x++)for(int y=42;y<=47;y++)Main.tile[x,y].liquid=(byte)(branch==0?0:255);
+                foreach(var npc in Main.npc)npc.active=false;var n=Main.npc[2];n.SetDefaults(63);n.whoAmI=2;n.active=true;n.dontTakeDamage=n.immortal=n.friendly=false;n.position=new Vector2(650,700);n.velocity=new Vector2(2,.2f);n.oldVelocity=n.velocity;n.target=p.whoAmI;n.direction=n.directionY=1;n.wet=branch!=0;n.wetCount=(byte)(n.wet?1:0);n.ai[1]=branch==1?1:0;n.ai[2]=branch==1?119:0;n.timeLeft=750;cache.Demand(0,1,120);NativeCombatObservationChecks.Fresh(context,host);var path=cache.Read(0);
+                if(branch==0)Require(path!=null && path.Count==121 && (path.Assumptions&PredictionAssumption.NoPlayerMotionNeeded)!=0,"AI18 dry physics survives untrusted player future");
+                else if(branch==1){Require(path!=null && path.Count==2 && path.Stop==PredictionStop.PhaseBoundary,"AI18 current frozen gate retains independent action before uncertain pursuit");n.oldTarget=n.target;n.AI();Call(n,"UpdateCollision");Require(Math.Abs(n.position.X-path[1].Bounds.X)<.01f && Math.Abs(n.position.Y-path[1].Bounds.Y)<.01f,"AI18 frozen first original action retained");}
+                else Require(path==null || path.Count<=1,"AI18 actual wet pursuit requires unavailable player future");
+            }
+            for(int x=39;x<=45;x++)for(int y=42;y<=47;y++)Main.tile[x,y].liquid=0;p.grappling[0]=oldHook;p.grapCount=oldCount;Main.GameMode=oldMode;Console.WriteLine("PASS AI18 dry/frozen independent vs actual pursuit necessary player future");
+        }
         internal static void MimicAir(object context)
         {
             var host=Get(context,"CombatObservation");var source=Get(host,"Prediction");var cache=(NpcPredictionCache)Get(source,"Cache");var p=Main.LocalPlayer;int oldHook=p.grappling[0],oldCount=p.grapCount;p.grappling[0]=0;p.grapCount=0;
@@ -31,11 +44,39 @@ namespace NativeWorldTextProbe
             var host=Get(context,"CombatObservation");var source=Get(host,"Prediction");var cache=(NpcPredictionCache)Get(source,"Cache");var p=Main.LocalPlayer;bool priorWet=p.wet;int priorMode=Main.GameMode,cases=0;
             foreach(int type in new[]{63,64,103,221,242,256})foreach(int branch in new[]{0,1,2,3,4,5})
             {
+                for(int x=54;x<=60;x++)for(int y=56;y<60;y++)Main.tile[x,y].liquid=(byte)(branch<4?255:0);
                 foreach(var npc in Main.npc)npc.active=false;var n=Main.npc[2];n.SetDefaults(type);n.whoAmI=2;n.active=true;n.dontTakeDamage=n.immortal=n.friendly=false;n.position=new Vector2(650,700);n.velocity=branch==1?Vector2.Zero:branch==4?new Vector2(4,0):new Vector2(2,.2f);n.oldVelocity=n.velocity;n.target=p.whoAmI;n.direction=1;n.directionY=1;n.wet=branch!=4;n.wetCount=(byte)(n.wet?1:0);n.ai[0]=-1;n.ai[1]=branch==2?1:0;n.ai[2]=branch==2?119:branch==3?419:0;n.timeLeft=750;p.wet=branch<4;Main.GameMode=branch==2 || branch==3?1:0;if(branch==5)n.collideX=n.collideY=true;
                 NativeCombatObservationChecks.Fresh(context,host);var path=cache.Read(0);Require(path!=null && path.Count>1,"AI18 real Source known phase type="+type+" branch="+branch);
                 n.oldTarget=n.target;n.AI();if(Math.Abs(n.velocity.X)<.005f)n.velocity.X=0;Call(n,"UpdateCollision");Require(Math.Abs(n.position.X-path[1].Bounds.X)<.01f && Math.Abs(n.position.Y-path[1].Bounds.Y)<.01f && Math.Abs(n.velocity.X-path[1].Vx)<.01f && Math.Abs(n.velocity.Y-path[1].Vy)<.01f,"AI18 swim/charge/frozen-clock/dry/contact first action type="+type+" branch="+branch+" native="+n.position+" V="+n.velocity+" model="+path[1].Bounds.X+","+path[1].Bounds.Y+" V="+path[1].Vx+","+path[1].Vy);cases++;
             }
-            p.wet=priorWet;Main.GameMode=priorMode;Console.WriteLine("PASS AI18 six members wet chase/launch/expert clocks/dry/old contact first actions="+cases);
+            for(int x=54;x<=60;x++)for(int y=56;y<60;y++)Main.tile[x,y].liquid=0;p.wet=priorWet;Main.GameMode=priorMode;Console.WriteLine("PASS AI18 six members wet chase/launch/expert clocks/dry/old contact first actions="+cases);JellyfishFrozen(context);JellyfishChoice(context);
+        }
+        private static void JellyfishChoice(object context)
+        {
+            var host=Get(context,"CombatObservation");var source=Get(host,"Prediction");var cache=(NpcPredictionCache)Get(source,"Cache");var p=Main.LocalPlayer;var old=Main.player[1];var position=p.position;bool wet=p.wet;int mode=Main.GameMode;Main.GameMode=1;
+            var remote=new Player{active=true,whoAmI=1,width=p.width,height=p.height,tankPet=-1,carpetFrame=-1,gravity=.4f,maxFallSpeed=10,maxRunSpeed=3,accRunSpeed=6,runAcceleration=.08f,runSlowdown=.2f};Main.player[1]=remote;
+            foreach(bool oldWet in new[]{true,false})
+            {
+                foreach(var npc in Main.npc)npc.active=false;var n=Main.npc[2];n.SetDefaults(63);n.whoAmI=2;n.active=true;n.dontTakeDamage=n.immortal=n.friendly=false;n.position=new Vector2(650,700);n.velocity=new Vector2(1,.3f);n.oldVelocity=n.velocity;n.target=1;n.direction=1;n.wet=true;n.wetCount=1;n.ai[2]=417;n.timeLeft=750;
+                p.position=new Vector2(n.Center.X+30-p.width/2,n.Center.Y-p.height/2);remote.position=new Vector2(n.Center.X+100-remote.width/2,n.Center.Y-remote.height/2);p.wet=!oldWet;remote.wet=oldWet;
+                for(int x=41;x<=45;x++)for(int y=41;y<=48;y++)Main.tile[x,y].liquid=(byte)(p.wet?255:0);
+                NativeCombatObservationChecks.Fresh(context,host);var path=cache.Read(0);Require(path!=null && path.Count>1 && (int)Get(source,"targetPlayer")==p.whoAmI,"AI18 actual later winner supplies pursuit premise");n.oldTarget=n.target;n.AI();if(Math.Abs(n.velocity.X)<.005f)n.velocity.X=0;Call(n,"UpdateCollision");Require(n.target==p.whoAmI && n.ai[1]==(oldWet?1:0) && Math.Abs(n.position.X-path[1].Bounds.X)<.01f && Math.Abs(n.position.Y-path[1].Bounds.Y)<.01f && Math.Abs(n.velocity.X-path[1].Vx)<.01f && Math.Abs(n.velocity.Y-path[1].Vy)<.01f,"AI18 old-target expert wet clock before new-winner wet motor oldWet="+oldWet+" native="+n.velocity+" model="+path[1].Vx+","+path[1].Vy);
+            }
+            for(int x=41;x<=45;x++)for(int y=41;y<=48;y++)Main.tile[x,y].liquid=0;p.position=position;p.wet=wet;Main.player[1]=old;Main.GameMode=mode;Console.WriteLine("PASS AI18 old expert target wet eligibility vs new pursuit winner wet opposite controls");
+            foreach(var npc in Main.npc)npc.active=false;var missing=Main.npc[2];missing.SetDefaults(63);missing.whoAmI=2;missing.active=true;missing.dontTakeDamage=missing.immortal=missing.friendly=false;missing.position=new Vector2(650,700);missing.velocity=Vector2.UnitX;missing.target=p.whoAmI;missing.wet=true;missing.wetCount=1;missing.timeLeft=750;
+            int cx=(int)missing.Center.X/16,cy=(int)missing.Bottom.Y/16+1;var savedTile=Main.tile[cx,cy];Main.tile[cx,cy]=null;NativeCombatObservationChecks.Fresh(context,host);var absent=cache.Read(0);Require((absent==null || absent.Count<=1) && (PredictionStop)Get(source,"outcomeStop")==PredictionStop.TerrainUnavailable && Main.tile[cx,cy]==null,"AI18 missing necessary slope/liquid cell stops without fabricating tile");Main.tile[cx,cy]=savedTile;Console.WriteLine("PASS AI18 necessary local cell missing TerrainUnavailable; no tile writes");
+        }
+        private static void JellyfishFrozen(object context)
+        {
+            var host=Get(context,"CombatObservation");var source=Get(host,"Prediction");var cache=(NpcPredictionCache)Get(source,"Cache");var p=Main.LocalPlayer;int priorMode=Main.GameMode;bool priorWet=p.wet;Main.GameMode=1;
+            foreach(int branch in new[]{0,1,2,3})
+            {
+                for(int x=35;x<=60;x++)for(int y=40;y<60;y++)Main.tile[x,y].liquid=(byte)(branch==2?0:255);p.wet=branch!=2;
+                foreach(var npc in Main.npc)npc.active=false;var n=Main.npc[2];n.SetDefaults(63);n.whoAmI=2;n.active=true;n.dontTakeDamage=n.immortal=n.friendly=false;n.position=new Vector2(650,700);n.velocity=branch==2?new Vector2(4,0):new Vector2(2,.2f);n.oldVelocity=n.velocity;n.target=p.whoAmI;n.direction=n.directionY=1;n.wet=branch!=2;n.wetCount=(byte)(n.wet?1:0);n.ai[0]=-1;n.ai[1]=branch==1 || branch==3?1:0;n.ai[2]=branch==1 || branch==3?118:branch==0?419:0;n.timeLeft=750;if(branch==3)n.position=new Vector2(p.Center.X-100-n.width/2,900);cache.Demand(0,1,120);NativeCombatObservationChecks.Fresh(context,host);var path=cache.Read(0);Require(path!=null && path.Count==121,"AI18 known phase frozen120 branch="+branch);
+                bool entered=false,resumed=false;for(int step=1;step<path.Count;step++){n.oldTarget=n.target;n.AI();entered|=n.ai[1]==1;resumed|=branch==1 && step>2 && !n.dontTakeDamage;if(branch==0 && step==1)Require(n.ai[1]==1 && !n.dontTakeDamage,"AI18 entering action uses old swim gate");if(branch==3 && step==2)Require(n.ai[1]==1 && n.dontTakeDamage,"AI18 near-player slower clock survives replay from capture origin");if(branch==1 && step==2)Require(n.ai[1]==0 && n.dontTakeDamage,"AI18 leaving action uses old frozen gate");if(Math.Abs(n.velocity.X)<.005f)n.velocity.X=0;Call(n,"UpdateCollision");Require(Math.Abs(n.position.X-path[step].Bounds.X)<.01f && Math.Abs(n.position.Y-path[step].Bounds.Y)<.01f && Math.Abs(n.velocity.X-path[step].Vx)<.01f && Math.Abs(n.velocity.Y-path[step].Vy)<.01f,"AI18 frozen clock/motor/dry120 branch="+branch+" step="+step+" native="+n.position+" V="+n.velocity+" model="+path[step].Bounds.X+","+path[step].Bounds.Y+" V="+path[step].Vx+","+path[step].Vy);}
+                Require(branch!=0 || entered,"AI18 actual immune entry exists");Require(branch!=1 || resumed,"AI18 actual swim resumes after finite immune clock");Console.WriteLine("PASS AI18 Source frozen120 phaseEntry/phaseExit/dry branch="+branch);
+            }
+            for(int x=35;x<=60;x++)for(int y=40;y<60;y++)Main.tile[x,y].liquid=0;p.wet=priorWet;Main.GameMode=priorMode;
         }
         internal static void MimicPremise(object context)
         {

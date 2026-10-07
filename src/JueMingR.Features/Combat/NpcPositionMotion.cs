@@ -6,9 +6,12 @@ namespace JueMingR.Features.Combat
     internal static class NpcPositionMotion
     {
         internal static bool Known(NpcMotionState n){return n.PositionRelation>=1 && n.PositionRelation<=4;}
-        internal static bool Step(ref NpcMotionState n,NpcMotionState[] group,int count,int elapsed,PredictionEnvironment environment,out PredictionStop stop)
+        internal static bool Step(ref NpcMotionState n,NpcMotionState[] group,int count,int elapsed,PredictionEnvironment environment,bool confused,out PredictionStop stop)
         {
             stop=PredictionStop.None;int index=-1;
+            // Negative vanilla wof index is an explicit retirement, distinct
+            // from an unavailable/stale necessary owner identity.
+            if(n.PositionRelation==7 && n.ParentSlot==-2){n.Active=false;stop=PredictionStop.Despawn;return false;}
             for(int i=0;i<count;i++)if(group[i].Identity.Equals(n.PositionOwner)){index=i;break;}
             if(index<0 || !group[index].Active || group[index].Life<=0){stop=PredictionStop.MissingDependency;return false;}
             var owner=group[index];
@@ -39,6 +42,7 @@ namespace JueMingR.Features.Combat
                     // timeline or treat the owner alone as sufficient evidence.
                     stop=PredictionStop.UnsupportedMechanism;return false;
                 case 6:return NpcParentMotion.Step(ref n,owner,environment,out stop);
+                case 7:return NpcHungryMotion.Step(ref n,owner,environment,confused,out stop);
             }
             return true;
         }

@@ -39,6 +39,11 @@ namespace NativeWorldTextProbe
             if(only=="jellyfish"){NativeCombatFiniteControlChecks.Jellyfish(context);return;}
             if(only=="mimicbirth"){NativeCombatFiniteControlChecks.MimicBirth(context);return;}
             if(only=="mimicair"){NativeCombatFiniteControlChecks.MimicAir(context);return;}
+            if(only=="jellypremise"){NativeCombatFiniteControlChecks.JellyfishPremise(context);return;}
+            if(only=="runners"){NativeCombatRunningControlChecks.Run(context);return;}
+            if(only=="support"){NativeCombatStructuralControlChecks.Support(context);return;}
+            if(only=="hungry"){NativeCombatStructuralControlChecks.Hungry(context);return;}
+            if(only=="straight"){NativeCombatStructuralControlChecks.Straight(context);return;}
             if(only=="rollchoice" || only=="rollchoice39"){NativeCombatRollingControlChecks.Choices(context);return;}
             if(only=="roll417"){NativeCombatRollingControlChecks.UnknownBounce(context);return;}
             if(only!="bee")

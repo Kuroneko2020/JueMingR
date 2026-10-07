@@ -14,6 +14,8 @@ namespace JueMingR.TerrariaHost.Combat
             else if(n.type==396 && n.aiStyle==79){state.PositionRelation=3;slot=(int)n.ai[3];type=398;}
             else if(n.type==397 && n.aiStyle==78){state.PositionRelation=4;slot=(int)n.ai[3];type=398;state.PositionParameter=n.ai[2]==0?-1:1;}
             else if(n.type==401 && n.aiStyle==82){state.PositionRelation=5;slot=(int)System.Math.Abs(n.ai[0])-1;type=396;}
+            else if(n.type==115 && n.aiStyle==29)
+            {state.PositionRelation=7;slot=Main.wofNPCIndex;type=113;state.PositionParameter=Main.wofDrawAreaTop+(Main.wofDrawAreaBottom-Main.wofDrawAreaTop)*n.ai[0];if(slot<0)state.ParentSlot=-2;}
             // These controllers use their parent's position/phase to choose
             // velocity; they must never be hard-attached like the four above.
             else if(n.aiStyle==12 && n.type==36){state.PositionRelation=6;slot=(int)n.ai[1];type=35;}
