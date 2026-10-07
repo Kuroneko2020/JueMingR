@@ -19,7 +19,7 @@ namespace JueMingR.Features.Combat
             if(!n.NoTileCollide || n.Style==3 || n.Style==6 || n.Style==37 || n.Style==1 || !KnownMotion(n))result|=PredictionAssumption.ApproximateMechanism;
             if(n.BuffFingerprint!=0)result|=PredictionAssumption.ApproximateMechanism|PredictionAssumption.UnmodeledStatusEffects;
             if(n.TrackingKind>=2)result|=PredictionAssumption.ObservedTrackingMotion|PredictionAssumption.ApproximateMechanism;
-            if(n.PositionRelation!=0)result|=PredictionAssumption.CurrentConnection|PredictionAssumption.ApproximateMechanism;
+            if(n.PositionRelation!=0 || n.MechQueenIdentity.Token!=null)result|=PredictionAssumption.CurrentConnection|PredictionAssumption.ApproximateMechanism;
             return result;
         }
         public static bool Step(ref NpcMotionState n,NpcMotionState[] group,int count,PredictionEnvironment env,IPredictionTerrain terrain,int elapsed,out PredictionStop stop)

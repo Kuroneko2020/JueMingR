@@ -54,6 +54,9 @@ namespace NativeWorldTextProbe
             if(only=="parentrecovery"){NativeCombatPositionControlChecks.ParentRecovery(context);return;}
             if(only=="flytail"){NativeCombatFlyingTailChecks.Tail(context);return;}
             if(only=="beepet"){NativeCombatFlyingTailChecks.Pet(context);return;}
+            if(only=="flymech"){NativeCombatFlyingTailChecks.Mech(context);return;}
+            if(only=="flyrecoil"){NativeCombatFlyingTailChecks.Recoil(context);return;}
+            if(only=="flydead"){NativeCombatFlyingTailChecks.DeadTail(context);return;}
             if(only=="fighterpit"){NativeCombatFighterControlChecks.FacingPit(context);return;}
             if(only=="fighterformface"){NativeCombatFighterControlChecks.FormFacing(context);return;}
             if(only=="fighterpremise"){NativeCombatFighterControlChecks.Premise(context);return;}

@@ -35,6 +35,7 @@ namespace JueMingR.Features.Combat
                 target=new MotionRect(n.TrackingArea.X+n.TrackingVx*span,n.TrackingArea.Y+n.TrackingVy*span,n.TrackingArea.Width,n.TrackingArea.Height);
             }
             else target=new MotionRect(e.PlayerX-e.PlayerWidth*.5f,e.PlayerY-e.PlayerHeight*.5f,e.PlayerWidth,e.PlayerHeight);
+            bool dead=e.PlayerDead && (!bee || n.TrackingKind!=3);
             float speed=6,acc=.05f;
             if(eater){speed=e.Remix?5:4;acc=e.Remix?.06f:type==6 && e.Expert?.035f:.02f;}
             else if(type==94){speed=4.2f;acc=.022f;}
@@ -46,6 +47,7 @@ namespace JueMingR.Features.Combat
             else if(type==176){speed=4;acc=.017f;}
             else if(type==23){speed=1;acc=.03f;}
             else if(type==5){speed=5;acc=.03f;}
+            else if(type==139 && e.Zenith)speed=3;
             else if(bee)
             {
                 n.A1++;float birth=(n.A1-60)/60;
@@ -62,18 +64,57 @@ namespace JueMingR.Features.Combat
             if(periodic && (distance>100 || always)){n.A0++;n.Vy+=n.A0>0?.023f:-.023f;n.Vx+=n.A0<-100 || n.A0>100?.023f:-.023f;if(n.A0>200)n.A0=-200;}
             if((eater || type==94 || type==619) && distance<150){n.Vx+=dx*.007f;n.Vy+=dy*.007f;}
             if(!bee && e.PlayerDead){dx=n.Direction*speed/2;dy=-speed/2;}else if(type==619 && n.Bounds.CenterY>target.CenterY-200)n.Vy-=.3f;
-            if(type==139 && n.A3!=0 && e.MechQueenUp){stop=PredictionStop.MissingDependency;return false;}
-            if(type==139 && n.A3!=0)n.A3=0;
             bool reverse=type!=173 && type!=6 && type!=42 && !hornet && type!=94 && type!=139 && type!=619;
-            Axis(ref n.Vx,dx,acc,reverse);Axis(ref n.Vy,dy,acc,reverse);
+            // Native enters this outer attachment branch using the old A3.
+            // A known missing owner detaches, but never also runs Axis in the
+            // same action. Its free motor begins on the following action.
+            if(type==139 && n.A3!=0)
+            {
+                if(e.MechQueenUp && !n.MechFactsCaptured){stop=PredictionStop.MissingDependency;return false;}
+                if(e.MechQueenUp && (n.A2<0 || n.A2>=NpcPredictionCache.Capacity))n.A2=n.MechLinkSlot;
+                if(e.MechQueenUp && n.MechQueenIdentity.Token!=null && n.MechLinkIdentity.Token!=null)
+                {
+                    if(!Finite(n.MechLinkRotation) || !Finite(n.MechQueenVx) || !Finite(n.MechQueenVy) || !Finite(n.MechLinkArea.X) || !Finite(n.MechLinkArea.Y) || !Finite(n.MechLinkVx) || !Finite(n.MechLinkVy)){stop=PredictionStop.InvalidState;return false;}
+                    int span=Math.Min(Math.Max(0,elapsed-1+(n.MechLinkIdentity.Slot<n.Identity.Slot?1:0)),12);
+                    n.X=n.MechLinkArea.CenterX+n.MechLinkVx*span+(float)Math.Cos(n.MechLinkRotation)*26*n.A3-n.Width*.5f;
+                    n.Y=n.MechLinkArea.CenterY+n.MechLinkVy*span+(float)Math.Sin(n.MechLinkRotation)*26*n.A3-n.Height*.5f;
+                    n.Vx=n.MechQueenVx;n.Vy=n.MechQueenVy;n.Health.DontTakeDamage=true;n.CanReceive=false;
+                }
+                else{n.A3=0;n.Health.DontTakeDamage=false;n.CanReceive=n.Active && n.Life>0 && !n.Friendly && !n.Health.Immortal;}
+            }
+            else
+            {
+                if(type==139){n.Health.DontTakeDamage=false;n.CanReceive=n.Active && n.Life>0 && !n.Friendly && !n.Health.Immortal;}
+                Axis(ref n.Vx,dx,acc,reverse);Axis(ref n.Vy,dy,acc,reverse);
+            }
             bool bounce=eater || type==23 || type==42 || type==94 || type==139 || type==176 || type==205 || bee || type==619 || hornet;
             if(bounce)
             {float factor=eater?.4f:.7f;if(n.CollideX){n.Vx=-n.OldVx*factor;if(n.Direction==-1 && n.Vx>0 && n.Vx<2)n.Vx=2;if(n.Direction==1 && n.Vx<0 && n.Vx>-2)n.Vx=-2;}if(n.CollideY){n.Vy=-n.OldVy*factor;if(n.Vy>0 && n.Vy<1.5f)n.Vy=2;if(n.Vy<0 && n.Vy>-1.5f)n.Vy=-2;}}
             if(n.Wet && (eater || type==94 || type==619 || type==205 || type==176 || hornet))
             {if(n.Vy>0)n.Vy*=.95f;bool small=eater || type==94 || type==619;n.Vy=Math.Max(small?-2:-4,n.Vy-(small?.3f:.5f));if(!small)NpcTargeting.Retarget(ref n,ref e);}
             if(type==139 && distance>600){if(n.Vx*dx>0){if(Math.Abs(n.Vx)<(e.MechQueenUp?5:12))n.Vx*=1.05f;}else n.Vx*=.9f;}
+            if(type==139 && e.MechQueenUp && n.A2==0)
+            {float x=target.CenterX-n.Bounds.CenterX,y=target.CenterY-n.Bounds.CenterY,length=(float)Math.Sqrt(x*x+y*y);if(length<120){if(length==0){x=0;y=1;}else{x/=length;y/=length;}n.X=target.CenterX-x*120-n.Width*.5f;n.Y=target.CenterY-y*120-n.Height*.5f;}}
+            if(type==619 && !e.Multiplayer && !e.PlayerDead)
+            {
+                if(n.JustHit)n.L0+=10;n.L0++;
+                if(n.L0>=120)
+                {
+                    // At <400 the locked 1920x1200 firing rectangle (50px
+                    // inset) is necessarily satisfied. The projectile's RNG
+                    // happens after this deterministic body recoil.
+                    if(Distance(n.Bounds,target)<400)
+                    {bool clear;if(!terrain.CanHit(n.Bounds,target,out clear,out stop))return false;if(clear){float x=target.CenterX-n.Bounds.CenterX,y=target.Y-n.Bounds.CenterY,length=(float)Math.Sqrt(x*x+y*y);if(length==0){stop=PredictionStop.InvalidState;return false;}n.Vx=-x/length*5;n.Vy=-y/length*5;n.L0=0;}else n.L0=50;}
+                    else n.L0=50;
+                }
+            }
+            // IsItDay deliberately differs from 619's initial raw dayTime:
+            // Remix suppresses only this common flee/despawn tail.
+            if(dead || e.Day && !e.Remix && (type==5 || type==139))
+            {n.Vy-=acc*2;n.TimeLeft=Math.Min(n.TimeLeft,10);}
             return true;
         }
+        private static bool Finite(float value){return !float.IsNaN(value) && !float.IsInfinity(value);}
         private static void Axis(ref float value,float desired,float amount,bool reverse)
         {if(value<desired){value+=amount;if(reverse && value<0 && desired>0)value+=amount;}else if(value>desired){value-=amount;if(reverse && value>0 && desired<0)value-=amount;}}
         private static MotionRect Pet(NpcMotionState n,int elapsed)
@@ -89,7 +130,7 @@ namespace JueMingR.Features.Combat
             if(n.BeeTankPet && !n.ClosestPlayerNoAggro)
             {
                 var facing=Pet(n,elapsed);float score=Distance(n.Bounds,facing)-200;
-                if(score<tank && score<200){bool clear;if(!terrain.CanHit(new MotionRect(n.Bounds.CenterX,n.Bounds.CenterY,0,0),new MotionRect(facing.CenterX,facing.CenterY,0,0),out clear,out stop))return false;if(clear){tank=score;pet=true;}}
+                if(score<tank && score<200){bool clear;if(!terrain.CanHit(new MotionRect(n.Bounds.CenterX,n.Bounds.CenterY,1,1),new MotionRect(facing.CenterX,facing.CenterY,1,1),out clear,out stop))return false;if(clear){tank=score;pet=true;}}
             }
             float npc=n.BeeHasNpcCandidate?Distance(n.Bounds,NpcTargeting.Area(new NpcMotionState{TrackingKind=3,TrackingArea=n.TrackingArea,TrackingVx=n.TrackingVx,TrackingVy=n.TrackingVy},e,Math.Min(Math.Max(0,elapsed-1),12))):float.MaxValue;
             if(npc<tank){n.Target=n.TrackingIdentity.Slot+300;n.TrackingKind=3;n.BeeFaceForced=true;}

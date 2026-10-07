@@ -12,6 +12,21 @@ namespace JueMingR.TerrariaHost.Combat
         internal static void Capture(NPC n,ref NpcMotionState state,IPredictionTerrain terrain)
         {
             state.TargetCaptured=true;state.PlayerIndex=state.ClosestPlayerIndex=-1;
+            if(n.type==139)
+            {
+                state.MechFactsCaptured=true;state.MechLinkSlot=(int)n.ai[2];
+                int queen=NPC.mechQueen;
+                // Do not call IsMechQueenUp: its failure path writes the global
+                // slot. Only current pure facts are solidified on this thread.
+                if(queen>=0 && queen<Main.maxNPCs && Main.npc[queen]!=null && Main.npc[queen].active && Main.npc[queen].type==127)
+                {
+                    var owner=Main.npc[queen];state.MechQueenIdentity=CombatSelection.Identity(owner,state.Identity.Session);state.MechQueenVx=owner.velocity.X;state.MechQueenVy=owner.velocity.Y;
+                    int link=state.MechLinkSlot;if(link<0 || link>=Main.maxNPCs){link=-1;for(int i=0;i<Main.maxNPCs;i++)if(Main.npc[i]!=null && Main.npc[i].active && Main.npc[i].type==134){link=i;break;}}
+                    state.MechLinkSlot=link;
+                    if(link>=0 && link<Main.maxNPCs && Main.npc[link]!=null && Main.npc[link].active && Main.npc[link].type==134)
+                    {var anchor=Main.npc[link];state.MechLinkIdentity=CombatSelection.Identity(anchor,state.Identity.Session);state.MechLinkArea=ExactArea(anchor);state.MechLinkVx=anchor.velocity.X;state.MechLinkVy=anchor.velocity.Y;state.MechLinkRotation=anchor.rotation;}
+                }
+            }
             if(n.type==546 || n.type==425 || n.type==427 || n.type==426)for(int i=0;i<Main.maxNPCs;i++){var other=Main.npc[i];if(i!=n.whoAmI && other!=null && other.active && other.type==n.type && Math.Abs(n.position.X-other.position.X)+Math.Abs(n.position.Y-other.position.Y)<n.width){float push=n.type==425?.15f:n.type==426?.1f:.05f;state.RunPushX+=n.position.X<other.position.X?-push:push;state.RunPushY+=n.position.Y<other.position.Y?-push:push;}}
             if(n.type==410)for(int i=0;i<Main.maxPlayers;i++){var p=Main.player[i];if(p!=null && p.active && !p.dead && p.Distance(n.Center)<800 && p.Center.Y<n.Center.Y && Math.Abs(p.Center.X-n.Center.X)<20){state.RunRetirePlayer=true;break;}}
             if(n.type==210 || n.type==211){Bee(n,ref state);return;}
