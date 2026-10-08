@@ -140,10 +140,15 @@ namespace JueMingR.Platform.Combat
     public sealed class PredictionPlayers : IEquatable<PredictionPlayers>
     {
         private readonly MotionRect[] areas;
-        public PredictionPlayers(MotionRect[] source,int count){if(source==null || count<0 || count>255 || count>source.Length)throw new ArgumentOutOfRangeException();areas=new MotionRect[count];Array.Copy(source,areas,count);}
+        private readonly int[] slots;
+        public PredictionPlayers(MotionRect[] source,int count):this(source,count,null){}
+        public PredictionPlayers(MotionRect[] source,int count,int[] playerSlots){if(source==null || count<0 || count>255 || count>source.Length || playerSlots!=null && count>playerSlots.Length)throw new ArgumentOutOfRangeException();areas=new MotionRect[count];Array.Copy(source,areas,count);if(playerSlots!=null){slots=new int[count];Array.Copy(playerSlots,slots,count);}}
         public int Count {get{return areas.Length;}}
         public MotionRect this[int index] {get{return areas[index];}}
-        public bool Equals(PredictionPlayers b){if(b==null || b.Count!=Count)return false;for(int i=0;i<Count;i++)if(!Same(areas[i],b.areas[i]))return false;return true;}
+        // Active-player arrays are compacted. An unnumbered observation must
+        // never be mistaken for the rolling owner's numbered player timeline.
+        public int SlotAt(int index){return slots==null?-1:slots[index];}
+        public bool Equals(PredictionPlayers b){if(b==null || b.Count!=Count)return false;for(int i=0;i<Count;i++)if(SlotAt(i)!=b.SlotAt(i) || !Same(areas[i],b.areas[i]))return false;return true;}
         public static bool Same(MotionRect a,MotionRect b){return a.X==b.X && a.Y==b.Y && a.Width==b.Width && a.Height==b.Height;}
     }
     public struct PredictionTile

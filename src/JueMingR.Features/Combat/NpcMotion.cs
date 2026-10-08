@@ -27,6 +27,10 @@ namespace JueMingR.Features.Combat
         public static bool Step(ref NpcMotionState n,NpcMotionState[] group,int count,PredictionEnvironment env,IPredictionTerrain terrain,int elapsed,bool rolling,out PredictionStop stop)
         {
             stop=PredictionStop.None;n.NewSegment=false;n.TrendApplied=false;
+            // Inactivity reads all active players after their world update,
+            // independently of this actor's target. Preserve the rolling
+            // owner's timeline before target-specific AI rewrites its premise.
+            var lifetimeEnvironment=env;
             env.PlayerTimelineActive&=!n.TargetCaptured || n.PlayerIndex==env.PlayerIndex;
             env=NpcTargeting.Player(n,env);
             bool playerNeededThisAction=NeedsPlayerMotion(n,env,1,group,count,terrain);
@@ -184,7 +188,7 @@ namespace JueMingR.Features.Combat
             if(n.Style==26 && NpcRunningMotion.Known(n.EffectiveType))NpcRunningMotion.AfterMove(ref n);
             NpcRollingMotion.Complete(ref n);
             if(n.Style==69 || n.Identity.Type==371 || n.Identity.Type==372 || n.Identity.Type==373)n.Health.DontTakeDamage=!n.CanReceive;
-            n.JustHit=false;return CheckActive(ref n,env,out stop);
+            n.JustHit=false;return CheckActive(ref n,lifetimeEnvironment,out stop);
         }
         internal static bool CurrentPlayerPremise(NpcMotionState n)
         {return n.Style==13 && NpcAnchoredMotion.Known(n.EffectiveType) || n.Style==16 && NpcAquaticMotion.Known(n.EffectiveType) || n.Style==3 && (n.EffectiveType==77 || NpcWallMotion.Ground(n.EffectiveType)) || n.Style==40 && NpcWallMotion.Wall(n.EffectiveType);}
@@ -259,6 +263,8 @@ namespace JueMingR.Features.Combat
             for(int i=0;i<count;i++)
             {
                 var player=e.Players==null?new MotionRect((int)(e.PlayerX-e.PlayerWidth/2),(int)(e.PlayerY-e.PlayerHeight/2),e.PlayerWidth,e.PlayerHeight):e.Players[i];
+                if(e.Players!=null && e.PlayerTimelineActive && e.PlayerIndex>=0 && e.Players.SlotAt(i)==e.PlayerIndex)
+                    player=new MotionRect((int)(e.PlayerX-e.PlayerWidth/2),(int)(e.PlayerY-e.PlayerHeight/2),e.PlayerWidth,e.PlayerHeight);
                 if(Intersects(far,player) || n.Boss || type==7 || type==10 || type==13 || type==39 || type==87)keep=true;
                 if(Intersects(near,player))n.TimeLeft=750;
             }

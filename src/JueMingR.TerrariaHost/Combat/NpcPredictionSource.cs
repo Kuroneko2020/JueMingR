@@ -90,6 +90,7 @@ namespace JueMingR.TerrariaHost.Combat
         private readonly bool[] motionSlots=new bool[NpcPredictionCache.Capacity],motionRoles=new bool[NpcPredictionCache.Capacity];
         private readonly int[] pending=new int[NpcPredictionCache.Capacity];
         private readonly MotionRect[] playerAreas=new MotionRect[255];
+        private readonly int[] playerSlots=new int[255];
         private PredictionPlayers players;
         internal void Clear()
         {
@@ -200,9 +201,9 @@ namespace JueMingR.TerrariaHost.Combat
             for(int i=0;i<Main.maxPlayers;i++)
             {
                 var p=Main.player[i];if(p==null || !p.active)continue;var area=new MotionRect((int)p.position.X,(int)p.position.Y,p.width,p.height);
-                samePlayers&=players!=null && playerCount<players.Count && PredictionPlayers.Same(area,players[playerCount]);playerAreas[playerCount++]=area;anyCorrupt|=!p.dead && p.ZoneCorrupt;
+                samePlayers&=players!=null && playerCount<players.Count && players.SlotAt(playerCount)==i && PredictionPlayers.Same(area,players[playerCount]);playerSlots[playerCount]=i;playerAreas[playerCount++]=area;anyCorrupt|=!p.dead && p.ZoneCorrupt;
             }
-            if(!samePlayers || players.Count!=playerCount)players=new PredictionPlayers(playerAreas,playerCount);
+            if(!samePlayers || players.Count!=playerCount)players=new PredictionPlayers(playerAreas,playerCount,playerSlots);
             var env=new PredictionEnvironment{BloodMoon=Main.bloodMoon,SkeletronUp=Main.getGoodWorld && current.aiStyle==9 && current.type==33 && NPC.AnyNPCs(35),WallBossUp=Main.getGoodWorld && current.aiStyle==9 && current.type==25 && NPC.AnyNPCs(113),PlayerProtected=playerAlive && player.insideUnbreakableWalls,PlayerIndex=target,PlayerX=player==null?0:player.Center.X,PlayerY=player==null?0:player.Center.Y,PlayerWidth=player==null?0:player.width,PlayerHeight=player==null?0:player.height,PlayerWet=player!=null && player.wet,Wind=Main.windSpeedCurrent,WindTarget=Main.windSpeedTarget,Expert=Main.expertMode,Day=Main.dayTime,WorldWidth=Main.maxTilesX,GravityWorldSurface=Main.worldSurface,WorldSurface=(float)Main.worldSurface,Multiplayer=Main.netMode==1,Remix=Main.remixWorld,SlimeRain=Main.slimeRain,
                 Enraged=player!=null && (player.position.Y<800 || player.position.Y>Main.worldSurface*16 || player.position.X>6400 && player.position.X<Main.maxTilesX*16-6400),
                 MechQueenUp=NPC.mechQueen>=0 && NPC.mechQueen<Main.maxNPCs && Main.npc[NPC.mechQueen]!=null && Main.npc[NPC.mechQueen].active && Main.npc[NPC.mechQueen].type==127,Players=players,WorldHeight=Main.maxTilesY,RockLayer=(float)Main.rockLayer,PlayerDead=!playerAlive,PlayerIdleWithNegativeAggro=player!=null && player.itemAnimation==0 && player.aggro<0,Corrupt=player!=null && player.ZoneCorrupt,Crimson=player!=null && player.ZoneCrimson,AnyLivingCorrupt=anyCorrupt,SkyblockLowTiles=WorldGen.Skyblock.lowTiles,ClearLine=false,Eclipse=Main.eclipse,Graveyard=player!=null && player.ZoneGraveyard,GoodWorld=Main.getGoodWorld,Zenith=Main.zenithWorld,InvasionType=Main.invasionType,SnowMoon=Main.snowMoon,PumpkinMoon=Main.pumpkinMoon,DontStarve=Main.dontStarveWorld};

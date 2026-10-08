@@ -484,6 +484,9 @@ namespace JueMingR.TerrariaHost
             PostfixContext context = postfixContext;
             if (Volatile.Read(ref hookCommitted) == 1 && context != null)
             { context.Input.AfterKeyboardRefresh(); context.Browser?.Targets.ProcessInput(); context.Footprints?.Layer.ProcessInput(); if (context.Shell != null) context.Shell.ProcessInput(); context.MapFeatures?.Layer.ProcessInput(); context.Combat?.Sample(); context.CombatObservation?.SampleMouse(); }
+#if JMR_INPUT_DIAGNOSTIC
+            if (Volatile.Read(ref hookCommitted) == 1 && context != null) context.Input.ObserveDiagnostics(3);
+#endif
         }
 
         private static bool NpcHoverPrefix()
