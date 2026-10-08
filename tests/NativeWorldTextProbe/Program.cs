@@ -39,6 +39,7 @@ namespace NativeWorldTextProbe
                 if (args.Length == 4 && args[3] == "ExplorationRelease") ProductionConfiguration = "Release";
                 references = Path.Combine(Repository, "external", "TerrariaRefs");
                 AppDomain.CurrentDomain.AssemblyResolve += Resolve;
+                if(args.Length==4 && args[3]=="InputBoundary")PreloadInputCandidate();
                 if(args.Length==4 && args[3]=="AimLightDiagnostics"){NativeAimLightChecks.Run(args[2]);return 0;}
                 if(args.Length==4 && args[3]=="NpcPresentationOriginal")return NativeCombatPrivateImageChecks.PresentationOriginal(args[2]);
                 if(args.Length==4 && args[3]=="NpcPrivateValues")return NativeCombatPrivateImageChecks.Run(args[1],args[2]);
@@ -60,6 +61,31 @@ namespace NativeWorldTextProbe
                         using (var stream = game.GetManifestResourceStream(resource)) using (var bytes = new MemoryStream())
                         { stream.CopyTo(bytes); return Assembly.Load(bytes.ToArray()); }
             return null;
+        }
+        private static void PreloadInputCandidate()
+        {
+            // Before NativeChecks JIT: a candidate Host alone does not prevent
+            // adjacent old Features/Platform from binding this shared probe.
+            string host=Environment.GetEnvironmentVariable("JUEMINGR_INPUT_BOUNDARY_CANDIDATE");
+            if(String.IsNullOrEmpty(host))host=Path.Combine(Repository,"artifacts/build/Debug/work/bin/JueMingR.TerrariaHost/x86/Debug/net472/JueMingR.TerrariaHost.dll");
+            string directory=Path.GetDirectoryName(Path.GetFullPath(host));
+            foreach(string name in new[]{"JueMingR.Platform","JueMingR.Features","JueMingR.Infrastructure","JueMingR.TerrariaHost"})
+            {
+                string path=Path.Combine(directory,name+".dll");
+                if(!File.Exists(path))throw new FileNotFoundException("Incomplete input candidate",path);
+                // Probe's compile references bind in Default. Authenticate its
+                // ordinary adjacent copies against the candidate before Host
+                // LoadFrom, so Host reuses that same default type identity.
+                Assembly loaded=name=="JueMingR.TerrariaHost"?Assembly.LoadFrom(path):Assembly.Load(AssemblyName.GetAssemblyName(path));
+                Assembly disk=Assembly.ReflectionOnlyLoadFrom(path);
+                if(loaded.ManifestModule.ModuleVersionId!=disk.ManifestModule.ModuleVersionId || InputAssemblyHash(loaded.Location)!=InputAssemblyHash(path) ||
+                    name=="JueMingR.TerrariaHost" && !String.Equals(loaded.Location,path,StringComparison.OrdinalIgnoreCase))throw new InvalidOperationException("Input candidate identity mismatch: "+name+" at "+loaded.Location);
+                Console.WriteLine("INPUT-CANDIDATE "+name+" "+loaded.ManifestModule.ModuleVersionId+" "+loaded.Location);
+            }
+        }
+        private static string InputAssemblyHash(string path)
+        {
+            using(var stream=File.OpenRead(path))using(var sha=System.Security.Cryptography.SHA256.Create())return BitConverter.ToString(sha.ComputeHash(stream));
         }
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static int Run(string content, string output, string scope) { return NativeChecks.Run(content, output, scope); }

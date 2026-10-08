@@ -32,6 +32,7 @@ namespace NativeWorldTextProbe
                 Require(Console.InputEncoding.CodePage==encoding.CodePage && Equal(Console.InputEncoding.GetPreamble(),encoding.GetPreamble()),"Live pipe startup preserves the parent's console encoding and preamble.");
                 int pid=(int)type.GetProperty("ChildId",Flags).GetValue(client);
                 Require(pid>0 && pid!=Process.GetCurrentProcess().Id,"Ready binds a distinct owned child.");
+                PrivateImageIdentity(host,type,client,hashes,output);
                 foreach(string name in names)
                 {
                     bool locked=false;try{using(var candidate=new FileStream(Path.Combine(layout,name),FileMode.Open,FileAccess.Write,FileShare.ReadWrite)){} }
@@ -67,6 +68,28 @@ namespace NativeWorldTextProbe
                 Console.WriteLine("PASS raw anonymous pipes / Ready before capture / parent console preserved / one in-flight / native frozen 120 / refusal-repeat / cold and busy Stop / config rejected before Start / bounded framing and wrong identities");
             }
             finally{type.GetMethod("Stop",Flags).Invoke(client,null);}
+        }
+        private static void PrivateImageIdentity(Assembly host,Type clientType,object client,string[] hashes,string output)
+        {
+            // This is the production Program's material-v1 tuple, evaluated
+            // once after its authenticated child actually reached Ready.
+            string gameHash;using(var stream=File.OpenRead(Path.Combine(Program.Repository,"external/TerrariaRefs/Terraria.exe")))using(var sha=SHA256.Create())gameHash=BitConverter.ToString(sha.ComputeHash(stream)).Replace("-","");
+            int protocol=(int)host.GetType("JueMingR.TerrariaHost.Combat.Prediction.PredictionPipeProtocol",true).GetField("Protocol",Flags).GetRawConstantValue();
+            string key;using(var sha=SHA256.Create())key=BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes("material-v1|"+gameHash+"|"+hashes[2]+"|"+hashes[0]+"|"+hashes[1]+"|"+hashes[6]+"|protocol"+protocol+"|x86|"+Environment.Version))).Replace("-","");
+            string expected=(string)host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativeMaterialIdentity",true).GetMethod("Expected",Flags).Invoke(null,null);
+            Require(expected!=null && expected.Length==64,"Current authenticated Host approves the private material digest.");
+            string directory=(string)clientType.GetField("cacheDirectory",Flags).GetValue(client);
+            string path=Path.Combine(Path.GetFullPath(directory),key+".image");
+            string digest;
+            using(var stream=File.OpenRead(path))using(var reader=new BinaryReader(stream))
+            {
+                Require(reader.ReadInt32()==0x504D4331 && Encoding.ASCII.GetString(reader.ReadBytes(64))==key,"Actual production private image stores the candidate-specific material key.");
+                int length=reader.ReadInt32();Require(length>0 && length<=64*1024*1024 && stream.Length-stream.Position==length,"Actual private material envelope is complete.");
+                byte[] image=reader.ReadBytes(length);using(var sha=SHA256.Create())digest=BitConverter.ToString(sha.ComputeHash(image)).Replace("-","");
+                Require(digest==expected,"Actual material bytes match the authenticated Host's approved digest.");
+            }
+            File.WriteAllLines(Path.Combine(output,"transport-private-image-identity.txt"),new[]{"key="+key,"path="+path,"digest="+digest,"hostHash="+hashes[2],"workerHash="+hashes[0],"configHash="+hashes[1],"harmonyHash="+hashes[6],"gameHash="+gameHash,"protocol="+protocol,"runtime="+Environment.Version});
+            Console.WriteLine("PASS production private-image key="+key+" digest="+digest+" path="+path);
         }
         private static object Create(Type type,string layout,string[] hashes){return Activator.CreateInstance(type,Flags,null,new object[]{layout,Path.Combine(Program.Repository,"external/TerrariaRefs/Terraria.exe"),hashes,60000,10000},null);}
         private static void ShootingClockProof(Assembly host)

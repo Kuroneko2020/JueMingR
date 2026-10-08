@@ -175,11 +175,12 @@ namespace JueMingR.TerrariaHost.Input
 #endif
         }
 #if JMR_INPUT_DIAGNOSTIC
+        internal bool DiagnosticGameplayActive {get;set;}
         internal void ObserveDiagnostics(int point)
         {
             try
             {
-                if(!InputDiagnosticTrace.Active)return;
+                if(!InputDiagnosticTrace.ShouldObserve(point,DiagnosticGameplayActive,IsFocused))return;
                 int state=(IsFocused?1:0)|(nativePermission?2:0)|(mapped?4:0)|(finalized?8:0)|(rearming?16:0)|(quarantine?32:0)|
                     (HotkeyCapture?64:0)|(Hotkeys.HasSuppressedKeys?128:0)|(hotkeyTailSample?256:0)|(Main.blockInput?512:0)|
                     (PlayerInput.WritingText?1024:0)|(CanUseInput?2048:0)|(Main.gameMenu?4096:0)|(Main.CurrentInputTextTakerOverride!=null?8192:0)|(MapPointerOwned?16384:0);

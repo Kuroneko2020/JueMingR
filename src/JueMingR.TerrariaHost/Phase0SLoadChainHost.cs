@@ -468,6 +468,9 @@ namespace JueMingR.TerrariaHost
         {
             PostfixContext context = postfixContext;
             if (Volatile.Read(ref hookCommitted) != 1 || context == null) return;
+#if JMR_INPUT_DIAGNOSTIC
+            context.Input.DiagnosticGameplayActive=context.DiagnosticGameplayActive;
+#endif
             context.Input.BeginUpdate();
             if (!context.Input.IsFocused && context.Shell != null) context.Shell.CancelForFocusLoss();
         }
@@ -789,6 +792,11 @@ namespace JueMingR.TerrariaHost
         {
             internal readonly Input.HostInputState Input = new Input.HostInputState();
             private Phase0TBiomeRuntime runtime;
+#if JMR_INPUT_DIAGNOSTIC
+            // A settled Runtime Session plus the native gameplay gate excludes
+            // menu/loading edges; gameMenu=false alone is not a late-window arm.
+            internal bool DiagnosticGameplayActive {get{return runtime!=null && runtime.SharedRuntime.IsSessionActive && !Terraria.Main.gameMenu && Terraria.Main.CanUpdateGameplay;}}
+#endif
             private ulong updateTick;
             private readonly string gameDirectory;
             private readonly string predictionHostHash;

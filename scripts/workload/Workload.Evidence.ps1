@@ -66,6 +66,7 @@ function Get-WorkloadCheckFingerprint {
         'tests/NativeWorldTextProbe/NativeCombatRetargetChecks.cs'=@('native-NpcStrategy')
         'tests/NativeWorldTextProbe/NativeCombatRollingControlChecks.cs'=@('native-NpcStrategy')
         'tests/NativeWorldTextProbe/NativeNpcLifetimeChecks.cs'=@('native-NpcStrategy')
+        'tests/NativeWorldTextProbe/NativeOuterInputBoundaryChecks.cs'=@('native-InputBoundary')
         'tests/NativeWorldTextProbe/NativeCombatRunningControlChecks.cs'=@('native-NpcStrategy')
         'tests/NativeWorldTextProbe/NativeCombatStructuralControlChecks.cs'=@('native-NpcStrategy')
         'tests/NativeWorldTextProbe/NativeCombatFighterControlChecks.cs'=@('native-NpcStrategy')
@@ -95,6 +96,122 @@ function Read-WorkloadJson {
     try { return Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json }
     catch { return $null }
 }
+function Get-WorkloadClearedEnvironment {
+    # These are fixture selectors, never inherited proof of a full scope.
+    $known='^JUEMINGR_(STRATEGY_ONLY|FOUNDATION_(ONLY|STRATEGY_ONLY|FIGHTER_ONLY|GRAVITY_ONLY|NPC_LIQUID_ONLY|PLAYER_LIQUID_ONLY|SINGLE)|SHARED_GEOMETRY_PHASE|ROLLING_CPU_ONLY|ROLLING_PHASES|AIM_LIGHT_SEMANTICS_ONLY)$'
+    $selectors=@(Get-ChildItem Env: | Where-Object {$_.Name -match '^JUEMINGR_.*(ONLY|SCOPE|PHASES?|SINGLE)$'})
+    foreach ($item in $selectors) { if ($item.Name -notmatch $known) {throw ('Unknown inherited workload selector: '+$item.Name)} }
+    if ($env:JMR_INPUT_DIAGNOSTIC -or $env:JMR_INPUT_DIAGNOSTIC_WINDOW) {throw 'Diagnostic process switches are not ordinary workload inputs.'}
+    return $selectors
+}
+function Get-WorkloadFixtureInputFingerprint {
+    param([string] $Root, [string] $Project, $InputIdentity)
+    # The two existing SDK fixtures use default local .cs plus literal linked
+    # files / single-directory globs. Unknown imports/property-based includes
+    # require review, rather than pretending this is an MSBuild dependency graph.
+    $relative='tests/'+$Project+'/'+$Project+'.csproj'
+    $projectPath=Join-Path $Root $relative;$directory=Split-Path -Parent $projectPath
+    [xml]$xml=Get-Content -LiteralPath $projectPath -Raw -Encoding UTF8
+    if ($xml.SelectNodes('//Import|//ProjectReference').Count -gt 0) {throw 'Unreviewed fixture input propagation.'}
+    $files=@($projectPath)
+    $patterns=@(('^tests/'+[regex]::Escape($Project)+'/.*\.cs$'),('^'+[regex]::Escape($relative)+'$'))
+    $files+=@(Get-ChildItem -LiteralPath $directory -Recurse -File -Filter '*.cs' | Where-Object {$_.FullName -notmatch '[\\/](bin|obj)[\\/]'} | ForEach-Object {$_.FullName})
+    foreach ($node in $xml.SelectNodes('//Compile[@Include]|//EmbeddedResource[@Include]')) {
+        $include=[string]$node.Include
+        if ($include.Contains('$') -or $include.Contains('**')) {throw 'Unreviewed fixture input expression.'}
+        $parent=Split-Path -Parent $include
+        if ($parent.Contains('*') -or $include.Contains('?')) {throw 'Unreviewed fixture input glob.'}
+        $resolvedParent=if ($parent) {[IO.Path]::GetFullPath((Join-Path $directory $parent))} else {$directory}
+        $full=Join-Path $resolvedParent (Split-Path -Leaf $include)
+        $base=[IO.Path]::GetFullPath($Root).TrimEnd('\')+'\'
+        if (-not $full.StartsWith($base,[StringComparison]::OrdinalIgnoreCase)) {throw 'Fixture input escapes repository.'}
+        $linked=$full.Substring($base.Length).Replace('\','/')
+        $patterns+='^'+[regex]::Escape($linked).Replace('\*','[^/]*')+'$'
+        $files+=@(Get-ChildItem -Path $full -File -ErrorAction Stop | ForEach-Object {$_.FullName})
+    }
+    foreach ($name in @('Directory.Build.props','Directory.Build.targets','global.json')) {
+        if ([IO.File]::Exists((Join-Path $Root $name))) {$files+=Join-Path $Root $name;$patterns+='^'+[regex]::Escape($name)+'$'}
+    }
+    $rows=@($files | Sort-Object -Unique | ForEach-Object {([IO.Path]::GetFullPath($_).Substring([IO.Path]::GetFullPath($Root).TrimEnd('\').Length+1).Replace('\','/'))+':'+(Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash})
+    $expected=@($InputIdentity.inputs | Where-Object {($_ -split ':',2)[0] -match ($patterns -join '|')})
+    if ((@($rows | Sort-Object) -join '|') -cne (@($expected | Sort-Object) -join '|')) {throw 'Fixture compile inputs differ from the locked batch.'}
+    return Get-WorkloadHash @($rows | Sort-Object)
+}
+function New-WorkloadCheckpointBatch {
+    param([string] $Root, $Identity, $InputIdentity, [string[]] $Required, $Applicability=$null)
+    $id=[Guid]::NewGuid().ToString('N')
+    $path=Join-Path $Root ('artifacts/build/workload-checkpoints/'+$id+'/batch.json')
+    $value=[ordered]@{batchId=$id;startedUtc=[DateTime]::UtcNow.ToString('o');sourceCommit=$Identity.commit;sourceFingerprint=$Identity.fingerprint;inputFingerprint=$InputIdentity.fingerprint;inputs=$InputIdentity.inputs;required=$Required}
+    if ($null -ne $Applicability) {$value.applicabilityRecord=$Applicability.path;$value.applicabilitySha256=$Applicability.sha256}
+    Write-WorkloadJson $path $value
+    return [pscustomobject]@{id=$id;path=$path;sha256=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash}
+}
+function Start-WorkloadCheckpoint {
+    param([string] $Root, $Batch, $Check, [string] $Signature)
+    if ($Check.name -notmatch '^[A-Za-z0-9_-]+$') {throw 'Invalid checkpoint check name.'}
+    $cleared=@(Get-WorkloadClearedEnvironment)
+    $environment=@(Get-ChildItem Env: | Where-Object {$_.Name -match '^(DOTNET_|MSBUILD|COMPlus_|JUEMINGR|Configuration$|Platform$|DefineConstants$|TargetFramework$)' -and $_.Name -notmatch '^JUEMINGR_.*(ONLY|SCOPE|PHASES?|SINGLE)$'} | Sort-Object Name | ForEach-Object {$_.Name+':'+(Get-WorkloadHash @($_.Value))})
+    $id=[Guid]::NewGuid().ToString('N')
+    $path=Join-Path (Split-Path -Parent $Batch.path) ($id+'.json')
+    $attempt=[pscustomobject][ordered]@{executionId=$id;name=$Check.name;status='PREPARING';signature=$Signature;executable=$Check.executable;arguments=@($Check.arguments);effectiveEnvironment=$environment;clearedSelectors=@($cleared | ForEach-Object {$_.Name} | Sort-Object);batchPath=$Batch.path;batchSha256=$Batch.sha256;path=$path;startedUtc=$null;endedUtc=$null;exitCode=$null;outputPath=($path+'.log');outputSha256=$null;beforeOutputs=@();outputs=@();milliseconds=0}
+    Write-WorkloadJson $path $attempt
+    # A tiny per-name retirement marker, not a rewrite of all historical cache.
+    # Publish before compilation/launch so cancellation cannot revive old PASS.
+    Write-WorkloadJson (Join-Path $Root ('artifacts/build/workload-checkpoints/latest-'+$Check.name+'.json')) ([ordered]@{executionId=$id;path=$path})
+    return $attempt
+}
+function Complete-WorkloadCheckpointQualification {
+    param([string] $Root, $Completed, $Batch)
+    # Caller must first perform the real batch source/build/live stability check.
+    # The completion receipt remains AWAITING; qualification is separate evidence
+    # of that later check, never an invented execution or an aggregate PASS.
+    if ((Get-FileHash -LiteralPath $Batch.path -Algorithm SHA256).Hash -cne $Batch.sha256) {throw 'Checkpoint batch changed.'}
+    foreach ($item in $Completed) {
+        $receipt=Read-WorkloadJson $item.path
+        if ($null -eq $receipt -or $receipt.status -cne 'EXECUTED_AWAITING_STABILITY' -or $receipt.exitCode -ne 0 -or -not (Test-WorkloadEvidenceOutputs $Root $receipt.outputs) -or
+            -not [IO.File]::Exists($receipt.outputPath) -or (Get-FileHash -LiteralPath $receipt.outputPath -Algorithm SHA256).Hash -cne $receipt.outputSha256) {throw 'Incomplete checkpoint cannot qualify.'}
+        Write-WorkloadJson ($item.path+'.qualification.json') ([ordered]@{status='STABLE';executionId=$item.executionId;receiptSha256=(Get-FileHash -LiteralPath $item.path -Algorithm SHA256).Hash;batchSha256=$Batch.sha256;qualifiedUtc=[DateTime]::UtcNow.ToString('o')})
+    }
+}
+function Test-WorkloadCheckpointQualified {
+    param([string] $Root, $Receipt)
+    try {
+    if ($null -eq $Receipt -or $null -eq $Receipt.PSObject.Properties['path']) {return $false}
+    $latest=Read-WorkloadJson (Join-Path $Root ('artifacts/build/workload-checkpoints/latest-'+$Receipt.name+'.json'))
+    $qualified=Read-WorkloadJson ($Receipt.path+'.qualification.json')
+    if ($null -eq $latest -or $null -eq $qualified -or $latest.executionId -cne $Receipt.executionId -or $latest.path -cne $Receipt.path -or
+        $Receipt.status -cne 'EXECUTED_AWAITING_STABILITY' -or $Receipt.exitCode -ne 0 -or -not $Receipt.startedUtc -or -not $Receipt.endedUtc -or
+        $qualified.status -cne 'STABLE' -or $qualified.executionId -cne $Receipt.executionId -or $qualified.batchSha256 -cne $Receipt.batchSha256 -or
+        -not [IO.File]::Exists($Receipt.path) -or (Get-FileHash -LiteralPath $Receipt.path -Algorithm SHA256).Hash -cne $qualified.receiptSha256 -or
+        -not [IO.File]::Exists($Receipt.batchPath) -or (Get-FileHash -LiteralPath $Receipt.batchPath -Algorithm SHA256).Hash -cne $Receipt.batchSha256 -or
+        -not [IO.File]::Exists($Receipt.outputPath) -or (Get-FileHash -LiteralPath $Receipt.outputPath -Algorithm SHA256).Hash -cne $Receipt.outputSha256) {return $false}
+    return Test-WorkloadEvidenceOutputs $Root $Receipt.outputs
+    } catch {return $false}
+}
+function Restore-WorkloadCheckpointEvidence {
+    param([string] $Root, $Identity, $InputIdentity, [string] $Name, [string] $Signature, [string] $DetectionCommit)
+    # The ordinary runner calls this only after its current source/build lock
+    # check. A previous completed sibling can then gain a new qualification;
+    # its original execution ID, command, times and receipt remain unchanged.
+    try {
+        $latest=Read-WorkloadJson (Join-Path $Root ('artifacts/build/workload-checkpoints/latest-'+$Name+'.json'))
+        if ($null -eq $latest) {return $null}
+        $receipt=Read-WorkloadJson $latest.path
+        if ($null -eq $receipt -or $receipt.status -cne 'EXECUTED_AWAITING_STABILITY' -or $receipt.executionId -cne $latest.executionId -or
+            $receipt.name -cne $Name -or $receipt.signature -cne $Signature -or $receipt.exitCode -ne 0 -or -not $receipt.startedUtc -or -not $receipt.endedUtc) {return $null}
+        $originalBatch=Read-WorkloadJson $receipt.batchPath
+        if ($null -eq $originalBatch -or $originalBatch.sourceCommit -cne $Identity.commit -or $originalBatch.sourceFingerprint -cne $Identity.fingerprint -or
+            $originalBatch.inputFingerprint -cne $InputIdentity.fingerprint -or (Get-WorkloadHash @($originalBatch.inputs)) -cne $InputIdentity.fingerprint -or
+            -not (Test-WorkloadLiveArtifacts $receipt.outputs $true) -or @($receipt.beforeOutputs).Count -ne @($receipt.outputs).Count) {return $null}
+        foreach ($output in $receipt.outputs) {
+            $before=@($receipt.beforeOutputs | Where-Object {$_.livePath -ceq $output.livePath -and $_.sha256 -ceq $output.sha256 -and $_.length -eq $output.length})
+            if ($before.Count -ne 1) {return $null}
+        }
+        Complete-WorkloadCheckpointQualification $Root @($receipt) ([pscustomobject]@{path=$receipt.batchPath;sha256=$receipt.batchSha256})
+        if (-not (Test-WorkloadCheckpointQualified $Root $receipt)) {return $null}
+        return [pscustomobject][ordered]@{schemaVersion=2;name=$Name;status='PASS';inputFingerprint=(Get-WorkloadCheckFingerprint $InputIdentity $Name);signature=$Signature;allInputFingerprint=$InputIdentity.fingerprint;inputs=$originalBatch.inputs;executionId=$receipt.executionId;executedUtc=$receipt.endedUtc;startedUtc=$receipt.startedUtc;checkpointPath=$receipt.path;sourceCommit=$originalBatch.sourceCommit;sourceFingerprint=$originalBatch.sourceFingerprint;detectionCommit=$DetectionCommit;outputs=$receipt.outputs;milliseconds=$receipt.milliseconds}
+    } catch {return $null}
+}
 function Test-WorkloadOutputs {
     param([string] $WorkRoot, $Outputs)
     if (@($Outputs).Count -eq 0) { return $false }
@@ -120,17 +237,118 @@ function Test-WorkloadCoverage {
     if ($names.Count -ne @($names | Sort-Object -Unique).Count -or $Workload.checkCount -ne $names.Count) { return $false }
     if ((@($Required | Sort-Object) -join '|') -cne (@($Workload.requiredChecks | Sort-Object) -join '|')) { return $false }
     foreach ($name in $Required) {
-        $found = @($Workload.results | Where-Object { $_.name -ceq $name -and $_.result -ceq 'PASS' -and $_.disposition -in @('EXECUTED','REUSED') })
+        $found = @($Workload.results | Where-Object { $_.name -ceq $name -and $_.result -ceq 'PASS' -and $_.disposition -in @('EXECUTED','REUSED','QUALIFIED') })
         if ($found.Count -ne 1) { return $false }
+        if ($found[0].disposition -ceq 'QUALIFIED' -and ($null -eq $found[0].PSObject.Properties['qualificationId'] -or $found[0].qualificationId -notmatch '^[0-9a-f]{32}$')) {return $false}
     }
     return $names.Count -eq $Required.Count
 }
+function Get-WorkloadInputDifferences {
+    param($OldInputs, $NewInputs)
+    $old=@{};$new=@{}
+    foreach ($pair in @(@{rows=$OldInputs;map=$old},@{rows=$NewInputs;map=$new})) {
+        foreach ($row in $pair.rows) {
+            $index=if ($row.StartsWith('environment:')) {$row.LastIndexOf(':')} else {$row.IndexOf(':')}
+            if ($index -le 0) {throw 'Malformed executable input row.'}
+            $key=$row.Substring(0,$index)
+            if ($pair.map.ContainsKey($key)) {throw 'Duplicate executable input key.'}
+            $pair.map[$key]=$row.Substring($index+1)
+        }
+    }
+    foreach ($key in @(@($old.Keys)+@($new.Keys) | Sort-Object -Unique)) {
+        $before=if ($old.ContainsKey($key)) {$old[$key]} else {'<absent>'}
+        $after=if ($new.ContainsKey($key)) {$new[$key]} else {'<absent>'}
+        if ($before -cne $after) {$key+'|'+$before+'|'+$after}
+    }
+}
+function Read-WorkloadApplicability {
+    param([string] $Root, [string] $Path, $Identity, $InputIdentity, [string[]] $Required)
+    $record=Read-WorkloadJson $Path
+    if ($null -eq $record -or $record.schema -cne 'fixed-workload-applicability-1' -or $record.qualificationId -notmatch '^[0-9a-f]{32}$' -or
+        $record.commit -cne $Identity.commit -or $record.sourceFingerprint -cne $Identity.fingerprint -or $record.inputFingerprint -cne $InputIdentity.fingerprint) {throw 'Applicability candidate/input lock mismatch.'}
+    if ((@($record.requiredChecks | Sort-Object) -join '|') -cne (@($Required | Sort-Object) -join '|') -or
+        (@($record.decisions.name | Sort-Object) -join '|') -cne (@($Required | Sort-Object) -join '|')) {throw 'Applicability does not cover the actual cumulative plan.'}
+    if (-not [IO.File]::Exists($record.legacyCachePath) -or (Get-FileHash -LiteralPath $record.legacyCachePath).Hash -cne $record.legacyCacheSha256) {throw 'Original applicability cache changed.'}
+    $legacy=Read-WorkloadJson $record.legacyCachePath
+    if ($null -eq $legacy -or $legacy.schemaVersion -ne 2) {throw 'Original applicability cache invalid.'}
+    foreach ($set in $record.inputSets) {
+        $sources=@($legacy.results | Where-Object {$_.allInputFingerprint -ceq $set.fingerprint})
+        if ($sources.Count -eq 0 -or (Get-WorkloadHash @($sources[0].inputs)) -cne $set.fingerprint -or
+            (@(Get-WorkloadInputDifferences $sources[0].inputs $InputIdentity.inputs) -join "`n") -cne (@($set.differences) -join "`n")) {throw 'Unexplained original-to-candidate input difference.'}
+        if (@($set.differences | Where-Object {$_ -match '^(environment:|os\||sdk\||framework-x86/|external/)'}).Count -gt 0) {throw 'Changed environment/dependency/symbol inputs are outside fixed source qualification.'}
+    }
+    $mustExecute=@('workload-Routing','workload-Evidence','workload-PackageVerification','native-InputBoundary','native-NpcRollingCpu','native-NpcRollingSelectionNegative','native-ToolsExecutionCpu','native-NpcWorkerTransport','native-NpcStrategyContinuous')
+    foreach ($decision in $record.decisions) {
+        if ($decision.action -cnotin @('EXECUTE','QUALIFIED') -or ($mustExecute -contains $decision.name -and $decision.action -cne 'EXECUTE')) {throw 'Invalid fixed applicability action.'}
+        if ($decision.action -ceq 'QUALIFIED' -and (-not $decision.reason -or $decision.originalExecutionId -notmatch '^[0-9a-f]{32}$')) {throw 'Qualification requires the original execution and reviewed reason.'}
+    }
+    $additional=@()
+    if ($Required -contains 'native-NpcStrategy') {
+        if ((@($record.additionalChecks) -join '|') -cne 'native-NpcStrategy-rollchoice') {throw 'Strategy lifetime delta obligation missing.'}
+        $checks=Join-Path $Root 'artifacts/build/Debug/checks'
+        $additional=@([pscustomobject]@{name='native-NpcStrategy-rollchoice';executable=(Join-Path $checks 'bin/NativeWorldTextProbe/x86/Debug/net472/NativeWorldTextProbe.exe');arguments=@($Root,'--cpu',(Join-Path $checks 'NpcStrategy-rollchoice'),'NpcStrategy:rollchoice');project='NativeWorldTextProbe'})
+    } elseif (@($record.additionalChecks).Count -gt 0) {throw 'Unknown additional applicability scope.'}
+    $known=@($Required)+@($additional | ForEach-Object {$_.name})
+    foreach ($decision in $record.decisions) {
+        foreach ($dependency in $decision.requiresCurrent) {if ($known -notcontains $dependency -or $dependency -ceq $decision.name) {throw 'Unknown/circular current qualification proof.'}}
+        if ($decision.name -ceq 'native-NpcStrategy' -and $decision.action -ceq 'QUALIFIED') {
+            foreach ($requiredProof in @('native-NpcStrategy-rollchoice','native-NpcStrategyContinuous','native-NpcRollingCpu','native-NpcRollingSelectionNegative')) {
+                if ($decision.requiresCurrent -notcontains $requiredProof) {throw 'Full strategy qualification omits its current lifetime delta proof.'}
+            }
+        }
+    }
+    return [pscustomobject]@{record=$record;path=[IO.Path]::GetFullPath($Path);sha256=(Get-FileHash -LiteralPath $Path).Hash;legacy=$legacy;additional=$additional}
+}
+# A single pointer preserves an explicitly adopted finite lock outside the
+# Debug root that build owns and replaces. It is not historical qualification.
+function Read-WorkloadApplicabilityPointer {
+    param([string] $Root,$Identity,$InputIdentity)
+    $path=Join-Path $Root 'artifacts/build/workload-checkpoints/current-applicability.json'
+    if (-not [IO.File]::Exists($path)) {return $null}
+    $value=Read-WorkloadJson $path
+    if ($null -eq $value -or $value.commit -cne $Identity.commit -or $value.sourceFingerprint -cne $Identity.fingerprint -or
+        $value.inputFingerprint -cne $InputIdentity.fingerprint -or -not [IO.File]::Exists($value.path) -or
+        (Get-FileHash -LiteralPath $value.path).Hash -cne $value.sha256) {throw 'Saved finite applicability pointer is damaged/changed; review bounded obligations.'}
+    return $value.path
+}
+function Save-WorkloadApplicabilityPointer {
+    param([string] $Root,$Identity,$InputIdentity,[string] $Path)
+    Write-WorkloadJson (Join-Path $Root 'artifacts/build/workload-checkpoints/current-applicability.json') ([ordered]@{
+        path=[IO.Path]::GetFullPath($Path);sha256=(Get-FileHash -LiteralPath $Path).Hash;commit=$Identity.commit;sourceFingerprint=$Identity.fingerprint;inputFingerprint=$InputIdentity.fingerprint
+    })
+}
+function Get-WorkloadQualifiedOriginal {
+    param([string] $Root, $Applicability, $Check, $InputIdentity)
+    try {
+        $decision=@($Applicability.record.decisions | Where-Object {$_.name -ceq $Check.name -and $_.action -ceq 'QUALIFIED'})
+        if ($decision.Count -ne 1) {return $null}
+        $found=@($Applicability.legacy.results | Where-Object {$_.name -ceq $Check.name -and $_.executionId -ceq $decision[0].originalExecutionId})
+        if ($found.Count -ne 1) {return $null};$original=$found[0]
+        $signature=Get-WorkloadHash (@($Check.executable)+@($Check.arguments))
+        if (-not (Test-WorkloadEvidence $original $original.inputFingerprint $Check.name $signature) -or
+            (Get-WorkloadCheckFingerprint $original $Check.name) -cne $original.inputFingerprint -or
+            @($Applicability.record.inputSets | Where-Object {$_.fingerprint -ceq $original.allInputFingerprint}).Count -ne 1 -or
+            [IO.File]::Exists((Join-Path $Root ('artifacts/build/workload-checkpoints/latest-'+$Check.name+'.json'))) -or
+            -not (Test-WorkloadEvidenceOutputs $Root $original.outputs)) {return $null}
+        $absent=@($original.outputs | ForEach-Object {Split-Path -Parent $_.livePath} | Sort-Object -Unique | Where-Object {-not [IO.Directory]::Exists($_)})
+        if (-not (Test-WorkloadLiveArtifacts $original.outputs $false $absent)) {return $null}
+        return $original
+    } catch {return $null}
+}
 function Invoke-WorkloadProcess {
-    param([string] $Name, [string] $Executable, [string[]] $Arguments)
+    param([string] $Name, [string] $Executable, [string[]] $Arguments, $Checkpoint=$null)
     if (-not [IO.File]::Exists($Executable)) { throw ('Missing check executable: ' + $Name) }
     $previousPreference = $ErrorActionPreference
     $exitCode = $null
-    $onlyVariables = @(Get-ChildItem Env: | Where-Object {$_.Name -match '^JUEMINGR_(STRATEGY_ONLY|FOUNDATION_.*ONLY|FOUNDATION_SINGLE|SHARED_GEOMETRY_PHASE)$'})
+    $onlyVariables = @(Get-WorkloadClearedEnvironment)
+    $writer=$null
+    if ($null -ne $Checkpoint) {
+        $Checkpoint.clearedSelectors=@($onlyVariables | ForEach-Object {$_.Name} | Sort-Object)
+        $Checkpoint.effectiveEnvironment=@(Get-ChildItem Env: | Where-Object {$_.Name -match '^(DOTNET_|MSBUILD|COMPlus_|JUEMINGR|Configuration$|Platform$|DefineConstants$|TargetFramework$)' -and $_.Name -notmatch '^JUEMINGR_.*(ONLY|SCOPE|PHASES?|SINGLE)$'} | Sort-Object Name | ForEach-Object {$_.Name+':'+(Get-WorkloadHash @($_.Value))})
+        $Checkpoint.status='RUNNING';$Checkpoint.startedUtc=[DateTime]::UtcNow.ToString('o')
+        Write-WorkloadJson $Checkpoint.path $Checkpoint
+        $writer=New-Object IO.StreamWriter($Checkpoint.outputPath,$false,(New-Object Text.UTF8Encoding($false)))
+    }
     try {
         foreach ($variable in $onlyVariables) { Remove-Item -LiteralPath ('Env:'+$variable.Name) }
         # Windows PowerShell can promote ordinary native stderr to an error
@@ -138,16 +356,26 @@ function Invoke-WorkloadProcess {
         # success only from this invocation's exit, never a stale prior value.
         $ErrorActionPreference = 'Continue'
         $global:LASTEXITCODE = $null
-        & $Executable @Arguments | Out-Host
+        & $Executable @Arguments 2>&1 | ForEach-Object {
+            if ($null -ne $writer) {$writer.WriteLine([string]$_);$writer.Flush()}
+            if ($_ -is [Management.Automation.ErrorRecord]) {Write-Error -ErrorRecord $_ -ErrorAction Continue} else {$_ | Out-Host}
+        }
         $exitCode = $global:LASTEXITCODE
-    } finally { foreach ($variable in $onlyVariables) { Set-Item -LiteralPath ('Env:'+$variable.Name) -Value $variable.Value }; $ErrorActionPreference = $previousPreference }
+    } finally { if ($null -ne $writer) {$writer.Dispose()};foreach ($variable in $onlyVariables) { Set-Item -LiteralPath ('Env:'+$variable.Name) -Value $variable.Value }; $ErrorActionPreference = $previousPreference }
+    if ($null -ne $Checkpoint) {
+        $Checkpoint.endedUtc=[DateTime]::UtcNow.ToString('o');$Checkpoint.exitCode=$exitCode
+        $Checkpoint.status=if ($null -ne $exitCode -and $exitCode -eq 0) {'EXECUTED_AWAITING_STABILITY'} else {'FAILED'}
+        $Checkpoint.outputSha256=(Get-FileHash -LiteralPath $Checkpoint.outputPath -Algorithm SHA256).Hash
+        Write-WorkloadJson $Checkpoint.path $Checkpoint
+    }
     if ($null -eq $exitCode) { throw ("Workload check $Name did not produce a process exit code.") }
     if ($exitCode -ne 0) { throw ("Workload check $Name failed with exit $exitCode.") }
 }
 function Get-WorkloadEvidenceOutputs {
-    param([string] $Root, $Record, [string] $Executable)
+    param([string] $Root, $Record, [string] $Executable, [string[]] $Arguments=@())
     $paths = @($Record.outputs | ForEach-Object { Join-Path (Join-Path $Root 'artifacts/build/Debug/work') $_.path })
     $paths += $Executable
+    $paths += @($Arguments | Where-Object {[IO.File]::Exists($_)})
     if ($Executable.StartsWith((Join-Path $Root 'artifacts/build/Debug/checks'), [StringComparison]::OrdinalIgnoreCase)) {
         $paths += @(Get-ChildItem -LiteralPath (Split-Path -Parent $Executable) -File | ForEach-Object {$_.FullName})
     }
@@ -181,6 +409,9 @@ function Remove-UnusedWorkloadArtifacts {
     param([string] $Root, $Entries)
     $base=[IO.Path]::GetFullPath((Join-Path $Root 'artifacts/build/evidence-artifacts')).TrimEnd('\')+'\'
     if (-not [IO.Directory]::Exists($base)) { return }
+    # Completion/qualification records and task recovery can cite older bytes
+    # absent from the latest cache. Do not collect them as unreferenced cache.
+    if ([IO.Directory]::Exists((Join-Path $Root 'artifacts/build/workload-checkpoints'))) {return}
     $used=@($Entries | ForEach-Object {$_.outputs} | ForEach-Object {Split-Path -Parent $_.path} | Sort-Object -Unique)
     foreach ($directory in @(Get-ChildItem -LiteralPath $base -Directory)) {
         if ($directory.Name -notmatch '^[0-9A-F]{64}$' -or -not $directory.FullName.StartsWith($base,[StringComparison]::OrdinalIgnoreCase)) { throw 'Unexpected evidence archive path.' }
@@ -217,6 +448,15 @@ function Test-WorkloadLiveArtifacts {
 function Test-WorkloadReusable {
     param([string] $Root, $Evidence, $InputIdentity, [string] $Name, [string] $Signature)
     if (-not (Test-WorkloadEvidence $Evidence (Get-WorkloadCheckFingerprint $InputIdentity $Name) $Name $Signature)) {return $false}
+    $latestPath=Join-Path $Root ('artifacts/build/workload-checkpoints/latest-'+$Name+'.json')
+    $latest=Read-WorkloadJson $latestPath
+    if ($null -ne $Evidence.PSObject.Properties['checkpointPath'] -and
+        (-not [IO.File]::Exists($latestPath) -or $null -eq $latest -or $null -eq $latest.PSObject.Properties['path'] -or $latest.path -cne $Evidence.checkpointPath)) {return $false}
+    if ([IO.File]::Exists($latestPath)) {
+        if ($null -eq $latest -or $null -eq $latest.PSObject.Properties['path'] -or $null -eq $latest.PSObject.Properties['executionId']) {return $false}
+        $receipt=Read-WorkloadJson $latest.path
+        if ($latest.executionId -cne $Evidence.executionId -or -not (Test-WorkloadCheckpointQualified $Root $receipt) -or $receipt.name -cne $Name -or $receipt.signature -cne $Signature) {return $false}
+    }
     if ($null -eq $Evidence.PSObject.Properties['allInputFingerprint'] -or $null -eq $Evidence.PSObject.Properties['inputs'] -or
         (Get-WorkloadHash @($Evidence.inputs)) -cne $Evidence.allInputFingerprint -or
         (Get-WorkloadCheckFingerprint $Evidence $Name) -cne $Evidence.inputFingerprint) {return $false}
@@ -272,6 +512,7 @@ function Get-WorkloadPlan {
         'WorkloadCpu'=@('world-host','shared-host'); 'InformationCpu'=@('information','shared-host'); 'GuidanceCpu'=@('guidance','shared-host');
         'ShortFeedbackCpu'=@('shared-host','storage-host','quick-items-host','coin-deposit-host','recovery-host','processing-host','about-host','tools-host','fishing-host','combat-host');
         'CombatCpu'=@('combat-host'); 'CombatFacingCpu'=@('combat-host'); 'CombatHitsCpu'=@('combat-host'); 'CombatReportCpu'=@('combat-host'); 'CombatUiCpu'=@('combat-host'); 'CombatObservationCpu'=@('combat-host'); 'CombatCosts'=@('combat-host');
+        'InputBoundary'=@('input-boundary','shared-host');
         'ToolsCpu'=@('tools-host'); 'ToolsCadence'=@('tools-host'); 'ToolsExecutionCpu'=@('tools-host'); 'ToolsWorkload'=@('tools-host');
         'PageCompositionCpu'=@('pages-host'); 'FishingCpu'=@('fishing-host'); 'BackgroundCpu'=@('fishing-host','shared-host'); 'F5AutomationCpu'=@('fishing-host','shared-host');
         'AboutCpu'=@('about-host'); 'BrowserCpu'=@('browser-host'); 'QuickItemsCpu'=@('quick-items-host'); 'CoinDepositCpu'=@('coin-deposit-host');
@@ -318,6 +559,12 @@ function Test-WorkloadDelivery {
         $catalog = @(& $architecture --list-checks)
         if ($LASTEXITCODE -ne 0 -or $catalog.Count -eq 0) { return $false }
         $plan = @(Get-WorkloadPlan $Root (Join-Path $Root 'artifacts/build/Debug/checks') $architecture $catalog $route.groups)
+        $applicability=$null
+        if ($Record.workload.PSObject.Properties.Name -contains 'applicabilityRecord') {
+            if (-not [IO.File]::Exists($Record.workload.applicabilityRecord) -or (Get-FileHash -LiteralPath $Record.workload.applicabilityRecord).Hash -cne $Record.workload.applicabilitySha256) {return $false}
+            $applicability=Read-WorkloadApplicability $Root $Record.workload.applicabilityRecord $identity $inputIdentity @($plan | ForEach-Object {$_.name})
+            $plan+=@($applicability.additional)
+        } elseif (@($Record.workload.results | Where-Object {$_.disposition -ceq 'QUALIFIED'}).Count -gt 0) {return $false}
         $required = @($plan | ForEach-Object {$_.name})
         if (-not (Test-WorkloadCoverage $Record.workload $required $inputIdentity.fingerprint)) { return $false }
         $cache = Read-WorkloadJson (Join-Path $Root 'artifacts/build/workload-evidence.json')
@@ -325,6 +572,22 @@ function Test-WorkloadDelivery {
         foreach ($check in $plan) {
             $found = @($cache.results | Where-Object {$_.name -ceq $check.name})
             $receipt = @($Record.workload.results | Where-Object {$_.name -ceq $check.name})
+            if ($receipt.Count -eq 1 -and $receipt[0].disposition -ceq 'QUALIFIED') {
+                if ($null -eq $applicability -or $receipt[0].qualificationId -cne $applicability.record.qualificationId) {return $false}
+                $original=Get-WorkloadQualifiedOriginal $Root $applicability $check $inputIdentity
+                if ($null -eq $original -or $found.Count -ne 1 -or $receipt[0].executionId -cne $original.executionId -or $found[0].executionId -cne $original.executionId -or
+                    $receipt[0].sourceCommit -cne $original.sourceCommit -or $found[0].sourceCommit -cne $original.sourceCommit -or
+                    $found[0].sourceFingerprint -cne $original.sourceFingerprint -or $found[0].status -cne $original.status -or
+                    (Get-WorkloadHash @($found[0].inputs)) -cne $original.allInputFingerprint -or
+                    $found[0].inputFingerprint -cne $original.inputFingerprint -or $found[0].allInputFingerprint -cne $original.allInputFingerprint -or
+                    $found[0].signature -cne $original.signature -or $found[0].executedUtc -cne $original.executedUtc -or
+                    ($found[0].outputs | ConvertTo-Json -Depth 5 -Compress) -cne ($original.outputs | ConvertTo-Json -Depth 5 -Compress)) {return $false}
+                $decision=@($applicability.record.decisions | Where-Object {$_.name -ceq $check.name})[0]
+                foreach ($dependency in $decision.requiresCurrent) {
+                    if (@($Record.workload.results | Where-Object {$_.name -ceq $dependency -and $_.result -ceq 'PASS' -and $_.disposition -in @('EXECUTED','REUSED')}).Count -ne 1) {return $false}
+                }
+                continue
+            }
             if ($found.Count -ne 1 -or $receipt.Count -ne 1 -or $receipt[0].executionId -cne $found[0].executionId -or
                 -not (Test-WorkloadReusable $Root $found[0] $inputIdentity $check.name (Get-WorkloadHash (@($check.executable)+@($check.arguments))))) { return $false }
         }
