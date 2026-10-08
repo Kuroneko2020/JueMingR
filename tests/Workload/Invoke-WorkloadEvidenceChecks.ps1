@@ -41,6 +41,10 @@ foreach ($pair in @(@{path='tests/NativeWorldTextProbe/NativeNpcLifetimeChecks.c
     $leafPlan=@(Get-WorkloadPlan $root 'checks' 'architecture.exe' @() @($pair.group) | ForEach-Object {$_.name})
     Assert-Evidence ($leafPlan -contains $pair.consumer) 'leaf route actually invokes its permanent consumer'
 }
+foreach ($path in @('tests/NativeWorldTextProbe/NativeCombatStrategyChecks.cs','tests/NativeWorldTextProbe/NativeCombatRollingControlChecks.cs','tests/NativeWorldTextProbe/NativeNpcLifetimeChecks.cs')) {
+    $old=[pscustomobject]@{inputs=@($path+':A')};$new=[pscustomobject]@{inputs=@($path+':B')}
+    Assert-Evidence ((Get-WorkloadCheckFingerprint $old 'native-NpcStrategy-rollchoice') -cne (Get-WorkloadCheckFingerprint $new 'native-NpcStrategy-rollchoice')) 'explicit rollchoice scope binds its real dispatch/rolling/lifetime leaf'
+}
 foreach($path in @('tests/NativeWorldTextProbe/NativeCombatFlyingTailChecks.cs','tests/NativeWorldTextProbe/NativeCombatFiniteControlChecks.cs')) {
     $old=[pscustomobject]@{inputs=@($path+':A')};$new=[pscustomobject]@{inputs=@($path+':B')}
     Assert-Evidence ((Get-WorkloadCheckFingerprint $old 'native-NpcStrategy') -cne (Get-WorkloadCheckFingerprint $new 'native-NpcStrategy')) 'family test invalidates actual strategy obligation'
