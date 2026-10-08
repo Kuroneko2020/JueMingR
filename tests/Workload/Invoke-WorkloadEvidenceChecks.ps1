@@ -373,7 +373,7 @@ throw 'Incorrectly returned from a failed process.'
         $externalArchive=if($suffix){Join-Path $external $suffix}else{$external}
         $witness=Join-Path (Join-Path $externalArchive ('A'*64)) 'outside.bin'
         foreach($path in @($link,$external,$witness)){Assert-Evidence ([IO.Path]::GetFullPath($path).StartsWith($fixture+'\',[StringComparison]::OrdinalIgnoreCase)) 'junction sample paths remain in owned fixture'}
-        New-Item -ItemType Directory -Path (Split-Path -Parent $witness),(Split-Path -Parent $link)|Out-Null
+        foreach($parent in @((Split-Path -Parent $witness),(Split-Path -Parent $link))){[IO.Directory]::CreateDirectory($parent)|Out-Null}
         [IO.File]::WriteAllText($witness,'owned external witness')
         New-Item -ItemType Junction -Path $link -Target $external|Out-Null
         Remove-UnusedWorkloadArtifacts $local @() -Collect -RetainedRecords @()
