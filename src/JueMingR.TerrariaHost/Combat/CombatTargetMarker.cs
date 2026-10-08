@@ -18,23 +18,25 @@ namespace JueMingR.TerrariaHost.Combat
         private NpcIdentity identity;
         private Rectangle receiveBox;
         internal bool Failed {get;private set;}
+        private object failedAtlas;
         internal bool Visible {get;private set;}
         internal CombatTargetMarker(HostCombatObservation host){this.host=host;}
         internal void Clear(){Visible=false;identity=default(NpcIdentity);receiveBox=default(Rectangle);}
-        internal void Reset(){Clear();Failed=false;}
+        internal void Reset(){Clear();Failed=false;failedAtlas=null;}
+        internal void PollResources(){if(Failed && !ReferenceEquals(failedAtlas,TextureAssets.LockOnCursor))Reset();}
         private void Fail(Exception error)
         {
-            Clear();if(Failed)return;Failed=true;
+            Clear();if(Failed)return;Failed=true;failedAtlas=TextureAssets.LockOnCursor;
             Prediction.AimLightTrace.Fault("target-marker",error,(long)Main.GameUpdateCount);
         }
         private bool Current()
         {return host.Marker && host.Selection.HasTarget && host.Selection.Target.Equals(identity) && CombatSelection.Valid(identity,host.Session) && CombatSelection.Receives(Main.npc[identity.Slot],host.Options.Dummy);}
         internal void Capture()
-        {Clear();if(!host.Marker){Failed=false;return;}if(Failed || !host.Selection.HasTarget)return;identity=host.Selection.Target;if(Current())receiveBox=CombatSelection.ReceiveBounds(Main.npc[identity.Slot]);}
+        {Clear();if(!host.Marker || Failed || !host.Selection.HasTarget)return;identity=host.Selection.Target;if(Current())receiveBox=CombatSelection.ReceiveBounds(Main.npc[identity.Slot]);}
         internal void Prepare(Matrix zoom,Matrix inverse){Capture();Project(zoom,inverse);}
         internal void Project(Matrix zoom,Matrix inverse)
         {
-            Visible=false;if(!host.Marker){Failed=false;return;}if(Failed)return;
+            Visible=false;if(!host.Marker || Failed)return;
             try{PrepareCore(zoom,inverse);}
             catch(ArgumentException error){Fail(error);}
             catch(OverflowException error){Fail(error);}

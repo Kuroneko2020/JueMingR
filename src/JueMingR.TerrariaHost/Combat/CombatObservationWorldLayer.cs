@@ -21,8 +21,27 @@ namespace JueMingR.TerrariaHost.Combat
         private int count,eventStart,eventEnd;private long presentation;private bool eventsDrawn;private Matrix zoom,inverse;private NpcTrajectory preparedPath;private string pathText;private bool legend,limited;
         internal CombatObservationWorldLayer(HostCombatObservation host){this.host=host;Marker=new CombatTargetMarker(host);}
         internal int StrokeCount {get{return count;}}
+        internal bool Failed {get;private set;}
+        private object failedPixel,failedFont,failedBatch;
+        // Presentation owns its latch, never prediction/operation state. Only
+        // an explicit retry, replaced borrowed resources or a new session
+        // clears it; clearing a frame does not. Never read Asset.Value to retry.
+        internal void DisplayFailed(){Clear();Failed=true;failedPixel=TextureAssets.MagicPixel;failedFont=FontAssets.MouseText;failedBatch=Main.spriteBatch;}
+        internal void Recover(){Clear();Failed=false;failedPixel=failedFont=failedBatch=null;}
+        internal void PollResources()
+        {
+            if(Failed && (!ReferenceEquals(failedPixel,TextureAssets.MagicPixel) || !ReferenceEquals(failedFont,FontAssets.MouseText) || !ReferenceEquals(failedBatch,Main.spriteBatch)))Recover();
+            Marker.PollResources();
+        }
         internal void Clear(){count=eventStart=eventEnd=0;eventsDrawn=false;preparedPath=null;pathText=null;legend=limited=false;Marker.Clear();}
         internal void Prepare()
+        {
+            if(Failed){Clear();return;}
+            try{PrepareCore();}
+            catch(Exception error) when (!(error is OutOfMemoryException) && !(error is AccessViolationException))
+            {DisplayFailed();}
+        }
+        private void PrepareCore()
         {
             Prediction.AimLightTrace.Presentation("prepare-enter",null,0,0,false);
 #if JMR_AIM_LIGHT
@@ -221,6 +240,7 @@ namespace JueMingR.TerrariaHost.Combat
         {if(p==0)return q>=0;float r=q/p;if(p<0){if(r>hi)return false;lo=Math.Max(lo,r);}else{if(r<lo)return false;hi=Math.Min(hi,r);}return true;}
         internal bool Draw()
         {
+            if(Failed)return true;
             Prediction.AimLightTrace.Presentation("draw-enter",null,0,0,false);
 #if JMR_AIM_LIGHT
             int pathIssued=0,pathCompleted=0,otherIssued=0,otherCompleted=0;

@@ -29,9 +29,11 @@ namespace JueMingR.TerrariaHost.Guidance
         internal int Failures { get { return failed; } }
         internal void Recover(GuidanceKind kind)
         { failed &= ~(1 << (int)kind); if (kind == GuidanceKind.Rare) RareText.Invalidate(); else if (kind == GuidanceKind.Merchant) MerchantText.Invalidate(); else EquipmentText.Invalidate(); }
+        internal void DisplayFailed(){Clear();failed=7;}
+        internal void Reset(){Clear();failed=0;}
         internal void Clear()
         {
-            rareVisible = rareOutside = merchantVisible = equipmentVisible = false; Occupancy.Clear(); failed = 0;
+            rareVisible = rareOutside = merchantVisible = equipmentVisible = false; Occupancy.Clear();
             if (arrow != null) { try { arrow.Dispose(); } catch { } arrow = null; }
         }
         internal static Vector2 Project(Vector2 world, Matrix zoom)
@@ -42,6 +44,16 @@ namespace JueMingR.TerrariaHost.Guidance
         }
         internal void Prepare()
         {
+            try{PrepareCore();}
+            catch(Exception error) when (!(error is OutOfMemoryException) && !(error is AccessViolationException)){DisplayFailed();}
+        }
+        private void PrepareCore()
+        {
+            // Resource replacement is an explicit lifetime event, even while
+            // no failed display currently has observation demand.
+            if(System.Threading.Interlocked.Exchange(ref resourcesChanged,0)!=0)
+            {failed=0;RareText.Invalidate();MerchantText.Invalidate();EquipmentText.Invalidate();}
+            if(failed==7){Clear();return;}
             if(host.CanDraw && host.Equipment.Alpha>0)Occupancy.Capture();else Occupancy.Clear();
             ProjectPresentation();
         }
@@ -50,7 +62,7 @@ namespace JueMingR.TerrariaHost.Guidance
         private void ProjectPresentation()
         {
             if (System.Threading.Interlocked.Exchange(ref resourcesChanged, 0) != 0)
-            { RareText.Invalidate(); MerchantText.Invalidate(); EquipmentText.Invalidate(); }
+            { failed=0;RareText.Invalidate(); MerchantText.Invalidate(); EquipmentText.Invalidate(); }
             rareVisible = rareOutside = merchantVisible = equipmentVisible = false;
             if (!host.CanDraw || !WorldPresentation.CanDraw || Main.GameViewMatrix == null) return;
             if (!host.Rare.Visible && !host.Merchant.Visible && host.Equipment.Alpha <= 0) { Occupancy.Clear(); return; }
@@ -133,6 +145,7 @@ namespace JueMingR.TerrariaHost.Guidance
         }
         internal bool Draw()
         {
+            if(failed==7)return true;
             if (!host.CanDraw || !WorldPresentation.CanDraw || Main.spriteBatch == null) return true;
             ProjectPresentation();
             SpriteBatch batch = Main.spriteBatch; var gold = new Color(255, 224, 96);

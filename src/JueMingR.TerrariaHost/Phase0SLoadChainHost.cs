@@ -618,9 +618,9 @@ namespace JueMingR.TerrariaHost
             try { postfixContext?.Labels?.World.Draw(); } catch { postfixContext?.Labels?.FailClosed(); }
             try { postfixContext?.WorldTargets?.World.Draw(); } catch { postfixContext?.WorldTargets?.FailClosed(); }
             try { postfixContext?.WorldObjects?.World.Draw(); } catch { postfixContext?.WorldObjects?.FailClosed(); }
-            try { postfixContext?.Guidance?.World.Draw(); } catch { postfixContext?.Guidance?.World.Clear(); }
-            try { postfixContext?.CombatObservation?.World.Draw(); } catch { postfixContext?.CombatObservation?.World.Clear(); }
-            try { if(entityLayerStatus==Rendering.WorldLayerStatus.Ready)postfixContext?.Tools?.Mining.Draw(); } catch { postfixContext?.Tools?.Mining.Clear(); }
+            try { postfixContext?.Guidance?.World.Draw(); } catch { postfixContext?.Guidance?.World.DisplayFailed(); }
+            try { postfixContext?.CombatObservation?.World.Draw(); } catch { postfixContext?.CombatObservation?.World.DisplayFailed(); }
+            try { if(entityLayerStatus==Rendering.WorldLayerStatus.Ready)postfixContext?.Tools?.Mining.Draw(); } catch { postfixContext?.Tools?.Mining.DisplayFailed(); }
             try { if (entityLayerStatus == Rendering.WorldLayerStatus.Ready) postfixContext?.Browser?.Locator.Draw(); } catch { postfixContext?.Browser?.Locator.Clear(); }
             return true;
         }

@@ -73,6 +73,10 @@ function Get-WorkloadCheckFingerprint {
         'tests/NativeWorldTextProbe/NativeCombatPositionControlChecks.cs'=@('native-NpcStrategy')
         'tests/NativeWorldTextProbe/NativeCombatFlyingTailChecks.cs'=@('native-NpcStrategy')
         'tests/NativeWorldTextProbe/NativeCombatEventRetirementChecks.cs'=@('native-NpcEventRetirementCpu','native-NpcEventRetirement')
+        'tests/NativeWorldTextProbe/NativeCombatSyncChecks.cs'=@('native-NpcSync')
+        'tests/NativeWorldTextProbe/NativeDisplayResponsibilityChecks.cs'=@('native-NpcDisplayIsolation')
+        'tests/NativeWorldTextProbe/NativeCombatCloseoutTerrainChecks.cs'=@('native-NpcCloseoutTerrain')
+        'tests/NativeWorldTextProbe/NativeToolExecutionChecks.cs'=@('native-ToolsExecutionCpu','native-NpcDisplayIsolation')
         'tests/Workload/Invoke-WorkloadRoutingChecks.ps1'=@('workload-Routing')
         'tests/Workload/Invoke-WorkloadEvidenceChecks.ps1'=@('workload-Evidence')
     }
@@ -328,12 +332,29 @@ function Get-WorkloadQualifiedOriginal {
         if (-not (Test-WorkloadEvidence $original $original.inputFingerprint $Check.name $signature) -or
             (Get-WorkloadCheckFingerprint $original $Check.name) -cne $original.inputFingerprint -or
             @($Applicability.record.inputSets | Where-Object {$_.fingerprint -ceq $original.allInputFingerprint}).Count -ne 1 -or
-            [IO.File]::Exists((Join-Path $Root ('artifacts/build/workload-checkpoints/latest-'+$Check.name+'.json'))) -or
+            -not (Test-WorkloadLatestAttempt $Root $original $Check.name $signature) -or
             -not (Test-WorkloadEvidenceOutputs $Root $original.outputs)) {return $null}
         $absent=@($original.outputs | ForEach-Object {Split-Path -Parent $_.livePath} | Sort-Object -Unique | Where-Object {-not [IO.Directory]::Exists($_)})
         if (-not (Test-WorkloadLiveArtifacts $original.outputs $false $absent)) {return $null}
         return $original
     } catch {return $null}
+}
+function Test-WorkloadLatestAttempt {
+    param([string] $Root,$Evidence,[string] $Name,[string] $Signature)
+    # Both direct reuse and cross-candidate qualification honor the same
+    # retirement marker. A matching stable success is not a blanket veto;
+    # later incomplete/failed/corrupt/different attempts still retire old PASS.
+    try {
+        $latestPath=Join-Path $Root ('artifacts/build/workload-checkpoints/latest-'+$Name+'.json')
+        $hasCheckpoint=$null -ne $Evidence.PSObject.Properties['checkpointPath']
+        if (-not [IO.File]::Exists($latestPath)) {return -not $hasCheckpoint}
+        $latest=Read-WorkloadJson $latestPath
+        if ($null -eq $latest -or $null -eq $latest.PSObject.Properties['path'] -or $null -eq $latest.PSObject.Properties['executionId']) {return $false}
+        if ($hasCheckpoint -and $latest.path -cne $Evidence.checkpointPath) {return $false}
+        $receipt=Read-WorkloadJson $latest.path
+        return $latest.executionId -ceq $Evidence.executionId -and (Test-WorkloadCheckpointQualified $Root $receipt) -and
+            $receipt.name -ceq $Name -and $receipt.signature -ceq $Signature
+    } catch {return $false}
 }
 function Invoke-WorkloadProcess {
     param([string] $Name, [string] $Executable, [string[]] $Arguments, $Checkpoint=$null)
@@ -406,16 +427,56 @@ function Save-WorkloadArtifacts {
     }
 }
 function Remove-UnusedWorkloadArtifacts {
-    param([string] $Root, $Entries)
+    param([string] $Root, $Entries, [switch] $Collect, [string[]] $RetainedRecords=@())
+    # A regular build lacks the external task-retention list. It neither
+    # deletes archives nor scans all historical recovery records each time.
+    if(-not $Collect){return}
+    $repository=[IO.Path]::GetFullPath($Root).TrimEnd('\')+'\'
     $base=[IO.Path]::GetFullPath((Join-Path $Root 'artifacts/build/evidence-artifacts')).TrimEnd('\')+'\'
     if (-not [IO.Directory]::Exists($base)) { return }
-    # Completion/qualification records and task recovery can cite older bytes
-    # absent from the latest cache. Do not collect them as unreferenced cache.
-    if ([IO.Directory]::Exists((Join-Path $Root 'artifacts/build/workload-checkpoints'))) {return}
-    $used=@($Entries | ForEach-Object {$_.outputs} | ForEach-Object {Split-Path -Parent $_.path} | Sort-Object -Unique)
+    $used=New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    foreach($entry in $Entries){foreach($output in $entry.outputs){[void]$used.Add([IO.Path]::GetFullPath((Split-Path -Parent $output.path)))}}
+    $queue=New-Object 'System.Collections.Generic.Queue[string]'
+    $seen=New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    $records=@($RetainedRecords)+@(Join-Path $Root 'artifacts/build/workload-evidence.json')+@(Join-Path $Root 'artifacts/build/Debug/build-record.json')+@(Join-Path $Root 'artifacts/build/Release/build-record.json')
+    $checkpoints=Join-Path $Root 'artifacts/build/workload-checkpoints'
+    if([IO.Directory]::Exists($checkpoints)){
+        $records+=@(Get-ChildItem -LiteralPath $checkpoints -Recurse -File | Where-Object {$_.Extension -eq '.json' -or $_.Name -like '*.pending'} | ForEach-Object {$_.FullName})
+    }
+    foreach($record in $records){$queue.Enqueue($record)}
+    while($queue.Count){
+        $path=[IO.Path]::GetFullPath($queue.Dequeue())
+        if(-not $path.StartsWith($repository,[StringComparison]::OrdinalIgnoreCase) -or -not $seen.Add($path) -or -not [IO.File]::Exists($path)){continue}
+        $file=Get-Item -LiteralPath $path
+        if($file.Attributes -band [IO.FileAttributes]::ReparsePoint){continue}
+        $raw=[IO.File]::ReadAllText($path)
+        # Corrupt/incomplete recovery records still protect each named archive.
+        # Unknown associations protect that object, not every archive forever.
+        foreach($match in [regex]::Matches($raw,'(?i)evidence-artifacts[\\/]+([0-9a-f]{64})')){[void]$used.Add((Join-Path $base $match.Groups[1].Value))}
+        $value=Read-WorkloadJson $path
+        if($null -eq $value){continue}
+        $nodes=New-Object 'System.Collections.Generic.Queue[object]';$nodes.Enqueue($value)
+        while($nodes.Count){
+            $node=$nodes.Dequeue()
+            if($node -is [string]){
+                if([IO.Path]::IsPathRooted($node) -and $node -match '\.json(?:\.pending)?$'){$queue.Enqueue($node)}
+            } elseif($node -is [System.Collections.IEnumerable] -and $node -isnot [pscustomobject]){
+                foreach($item in $node){if($null -ne $item){$nodes.Enqueue($item)}}
+            } elseif($node -is [pscustomobject]) {foreach($property in $node.PSObject.Properties){if($null -ne $property.Value){$nodes.Enqueue($property.Value)}}}
+        }
+    }
     foreach ($directory in @(Get-ChildItem -LiteralPath $base -Directory)) {
-        if ($directory.Name -notmatch '^[0-9A-F]{64}$' -or -not $directory.FullName.StartsWith($base,[StringComparison]::OrdinalIgnoreCase)) { throw 'Unexpected evidence archive path.' }
-        if ($used -notcontains $directory.FullName) { Remove-Item -LiteralPath $directory.FullName -Recurse -Force }
+        if ($directory.Name -notmatch '^[0-9A-F]{64}$' -or -not $directory.FullName.StartsWith($base,[StringComparison]::OrdinalIgnoreCase) -or
+            $directory.Attributes -band [IO.FileAttributes]::ReparsePoint) {continue}
+        # Normal build does not own private retained task records. Explicit
+        # collection supplies those references; no automatic historical purge.
+        if (-not $used.Contains($directory.FullName)) {
+            # Owned snapshots are flat files. Unknown nested/reparse content
+            # is not ours to follow or recursively delete.
+            $members=@(Get-ChildItem -LiteralPath $directory.FullName -Force)
+            if(@($members | Where-Object {$_.PSIsContainer -or $_.Attributes -band [IO.FileAttributes]::ReparsePoint}).Count){continue}
+            Remove-Item -LiteralPath $directory.FullName -Recurse -Force
+        }
     }
 }
 function Test-WorkloadLiveArtifacts {
@@ -448,15 +509,7 @@ function Test-WorkloadLiveArtifacts {
 function Test-WorkloadReusable {
     param([string] $Root, $Evidence, $InputIdentity, [string] $Name, [string] $Signature)
     if (-not (Test-WorkloadEvidence $Evidence (Get-WorkloadCheckFingerprint $InputIdentity $Name) $Name $Signature)) {return $false}
-    $latestPath=Join-Path $Root ('artifacts/build/workload-checkpoints/latest-'+$Name+'.json')
-    $latest=Read-WorkloadJson $latestPath
-    if ($null -ne $Evidence.PSObject.Properties['checkpointPath'] -and
-        (-not [IO.File]::Exists($latestPath) -or $null -eq $latest -or $null -eq $latest.PSObject.Properties['path'] -or $latest.path -cne $Evidence.checkpointPath)) {return $false}
-    if ([IO.File]::Exists($latestPath)) {
-        if ($null -eq $latest -or $null -eq $latest.PSObject.Properties['path'] -or $null -eq $latest.PSObject.Properties['executionId']) {return $false}
-        $receipt=Read-WorkloadJson $latest.path
-        if ($latest.executionId -cne $Evidence.executionId -or -not (Test-WorkloadCheckpointQualified $Root $receipt) -or $receipt.name -cne $Name -or $receipt.signature -cne $Signature) {return $false}
-    }
+    if (-not (Test-WorkloadLatestAttempt $Root $Evidence $Name $Signature)) {return $false}
     if ($null -eq $Evidence.PSObject.Properties['allInputFingerprint'] -or $null -eq $Evidence.PSObject.Properties['inputs'] -or
         (Get-WorkloadHash @($Evidence.inputs)) -cne $Evidence.allInputFingerprint -or
         (Get-WorkloadCheckFingerprint $Evidence $Name) -cne $Evidence.inputFingerprint) {return $false}
@@ -504,6 +557,7 @@ function Get-WorkloadPlan {
         'NpcFoundationRules'=@('combat-host'); 'NpcFoundationContinuous'=@('combat-host'); 'NpcPlayerPolicy'=@('combat-host'); 'NpcStrategy'=@('combat-host'); 'NpcStrategyContinuous'=@('combat-host'); 'NpcEventRetirementCpu'=@('combat-host');
         # Ordinary delivery retains the real shared selection/terrain and
         # marker consumer seams; detailed phase matrices stay bounded probes.
+        'NpcSync'=@('combat-host'); 'NpcLocalFailure'=@('combat-host'); 'NpcDisplayIsolation'=@('combat-host'); 'NpcCloseoutTerrain'=@('combat-host');
         'NpcSharedGeometry'=@('combat-host'); 'NpcTargetMarker'=@('combat-host');
         'NpcSamplePresentation'=@('combat-host'); 'NpcFiniteFlight'=@('combat-host'); 'CombatYoyoCausal'=@('combat-host');
         'NpcWorkerIntegration'=@('combat-host'); 'NpcSnapshot'=@('combat-host'); 'NpcWorkerPreparation'=@('combat-host');

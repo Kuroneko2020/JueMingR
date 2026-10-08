@@ -71,6 +71,9 @@ namespace JueMingR.TerrariaHost.Guidance
         // quarantine independently; never retain the old action permission.
         internal bool CanDraw { get { return runtime.IsSessionActive && LayerStatus == Rendering.WorldLayerStatus.Ready && presentationAllowed() && GuidanceObservationReader.ValidPlayer; } }
         internal bool IsEnabled(GuidanceKind kind) { return Preferences.Value.Enabled(kind); }
+        // Saved intent stays visible in F5. A failed display has no discovery
+        // consumer until explicit retry/resource recovery/session replacement.
+        private bool Required(GuidanceKind kind){return IsEnabled(kind) && ((failures|World.Failures)&(1<<(int)kind))==0;}
         internal bool SetEnabled(GuidanceKind kind, bool enabled)
         {
             if (!ControlsEnabled) return false;
@@ -86,8 +89,8 @@ namespace JueMingR.TerrariaHost.Guidance
         // each closed display exits before any NPC/equipment/pylon observation.
         public bool Enabled { get { return true; } }
         internal void PollPreferences() { if (!Preferences.IsLoaded && clock.ElapsedMilliseconds >= 2000) preferences.AbandonSlowLoad(); }
-        public void OnSessionStarted() { failures = reportedFailures = 0; Clear(); }
-        public void OnSessionEnded() { Clear(); }
+        public void OnSessionStarted() { failures = reportedFailures = 0; Clear();World.Reset(); }
+        public void OnSessionEnded() { Clear();World.Reset(); }
         private void Clear() { Rare.Clear(); Merchant.Clear(); Location.Clear(); Equipment.Clear(); MerchantTest.Cancel(); World.Clear(); }
         public void FailClosed() { failures = 7; Clear(); }
         public void Update(ulong tick)
@@ -98,17 +101,17 @@ namespace JueMingR.TerrariaHost.Guidance
             if (pending) { npcs.BeginTick(); Merchant.InvalidateDiscovery(); }
             if (!valid) { Rare.Clear(); Merchant.Clear(); Location.Clear(); Equipment.Clear(); return; }
             var player = Main.LocalPlayer;
-            try { Rare.Update((failures & 1) == 0 && IsEnabled(GuidanceKind.Rare) && GuidanceObservationReader.RareQualified, player.Center.X, player.Center.Y,(long)Main.GameUpdateCount); }
+            try { Rare.Update(Required(GuidanceKind.Rare) && GuidanceObservationReader.RareQualified, player.Center.X, player.Center.Y,(long)Main.GameUpdateCount); }
             catch { failures |= 1; Rare.Clear(); }
             try
             {
-                Merchant.Update((failures & 2) == 0 && IsEnabled(GuidanceKind.Merchant));
+                Merchant.Update(Required(GuidanceKind.Merchant));
                 if (Merchant.Visible) Location.Update(Merchant.Target, npcs, source); else Location.Clear();
             }
             catch { failures |= 2; Merchant.Clear(); Location.Clear(); }
             try
             {
-                if ((failures & 4) != 0 || !IsEnabled(GuidanceKind.Equipment)) { Equipment.Clear(); return; }
+                if (!Required(GuidanceKind.Equipment)) { Equipment.Clear(); return; }
                 int events; bool known = source.ReadDanger(out events);
                 bool danger = events != 0 || source.BossCount > 0;
                 if (known && danger) known = source.Equipment.Read(player);

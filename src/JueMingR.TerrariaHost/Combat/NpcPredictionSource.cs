@@ -114,6 +114,7 @@ namespace JueMingR.TerrariaHost.Combat
         {
             Native?.ObserveNpcQueryUpdate(slot);
             if(discontinuity){RetireSlot(slot,null);return;}
+            segmented.CorrectAnchor(slot);
             bool affected=usingSegmented && segmented.DependsOn(slot);
             for(int i=0;i<observedCount;i++)if(states[i].Identity.Slot==slot || states[i].TrackingIdentity.Token!=null && states[i].TrackingIdentity.Slot==slot || states[i].MechQueenIdentity.Token!=null && states[i].MechQueenIdentity.Slot==slot || states[i].MechLinkIdentity.Token!=null && states[i].MechLinkIdentity.Slot==slot)affected=true;
             // A normal same-instance sync can change velocity/AI immediately;
@@ -124,7 +125,8 @@ namespace JueMingR.TerrariaHost.Combat
         }
         private void RetireSlot(int slot,NPC token)
         {
-            bool affected=segmented.Reset(slot,token);
+            bool segmentedAffected=segmented.Reset(slot,token);
+            bool affected=usingSegmented && segmentedAffected;
             for(int i=0;i<observedCount;i++)if(states[i].Identity.Slot==slot && (token==null || ReferenceEquals(states[i].Identity.Token,token)) || states[i].TrackingIdentity.Token!=null && states[i].TrackingIdentity.Slot==slot && (token==null || ReferenceEquals(states[i].TrackingIdentity.Token,token)) || states[i].MechQueenIdentity.Token!=null && states[i].MechQueenIdentity.Slot==slot && (token==null || ReferenceEquals(states[i].MechQueenIdentity.Token,token)) || states[i].MechLinkIdentity.Token!=null && states[i].MechLinkIdentity.Slot==slot && (token==null || ReferenceEquals(states[i].MechLinkIdentity.Token,token)))affected=true;
             if(affected){outcomeTick=-1;rolling.Clear();Cache.Clear();epoch++;}
         }
@@ -142,7 +144,7 @@ namespace JueMingR.TerrariaHost.Combat
                 Native?.DiscardRetiredResult();
                 var path=segmented.Prepare(identity,tick,Cache.Required);Outcome(identity,tick,path,PredictionFailureLayer.NpcMotion);Cache.Publish(path);Prediction.AimLightTrace.Cache(path,null,"segmented");return;
             }
-            if(usingSegmented){Cache.Clear();rolling.Clear();usingSegmented=false;}
+            if(usingSegmented){Cache.Clear();rolling.Clear();segmented.ReleaseTarget();usingSegmented=false;}
             if(Native!=null){Native.Prepare(identity,tick);return;}
             // Keep the last forecast cells only across an unchanged real step.
             // Revalidate this bounded set before reuse, including same-tick edits.

@@ -231,6 +231,26 @@ throw 'Incorrectly returned from a failed process.'
     $legacyCheck=[pscustomobject]@{name='legacy-one';executable=$stderrExe;arguments=@('0')}
     $original=Get-WorkloadQualifiedOriginal $fixture $admitted $legacyCheck $locked
     Assert-Evidence ($null -ne $original -and $original.executionId -ceq $legacy.executionId -and $original.sourceCommit -ceq $legacy.sourceCommit) 'finite qualification retains original execution/source identity'
+    $legacyReceipt=$completed | ConvertTo-Json -Depth 12 | ConvertFrom-Json
+    $legacyReceipt.name=$legacy.name;$legacyReceipt.signature=$legacy.signature
+    $legacyReceipt.path=Join-Path (Split-Path -Parent $completed.path) 'stable-legacy.json'
+    Write-WorkloadJson $legacyReceipt.path $legacyReceipt
+    $legacyLatest=Join-Path $fixture 'artifacts/build/workload-checkpoints/latest-legacy-one.json'
+    Write-WorkloadJson $legacyLatest ([ordered]@{executionId=$legacyReceipt.executionId;path=$legacyReceipt.path})
+    Complete-WorkloadCheckpointQualification $fixture @($legacyReceipt) $batch
+    Assert-Evidence ($null -ne (Get-WorkloadQualifiedOriginal $fixture $admitted $legacyCheck $locked)) 'matching stable latest permits reviewed cross-candidate original'
+    Assert-Evidence (Test-WorkloadReusable $fixture $legacy $locked $legacy.name $legacy.signature) 'matching stable latest has identical direct reuse semantics'
+    foreach($status in @('FAILED','RUNNING','PREPARING','EXECUTED_AWAITING_STABILITY')) {
+        $badLatest=Join-Path (Split-Path -Parent $completed.path) 'bad-latest.json'
+        $badReceipt=$legacyReceipt | ConvertTo-Json -Depth 12 | ConvertFrom-Json
+        $badReceipt.path=$badLatest;$badReceipt.executionId=[Guid]::NewGuid().ToString('N');$badReceipt.status=$status
+        Write-WorkloadJson $badLatest $badReceipt
+        Write-WorkloadJson $legacyLatest ([ordered]@{executionId=$badReceipt.executionId;path=$badLatest})
+        Assert-Evidence ($null -eq (Get-WorkloadQualifiedOriginal $fixture $admitted $legacyCheck $locked) -and -not (Test-WorkloadReusable $fixture $legacy $locked $legacy.name $legacy.signature)) ('later '+$status+' retires both direct and cross-candidate reuse')
+    }
+    [IO.File]::WriteAllText($legacyLatest,'{corrupt')
+    Assert-Evidence ($null -eq (Get-WorkloadQualifiedOriginal $fixture $admitted $legacyCheck $locked)) 'corrupt latest never revives qualified old PASS'
+    Write-WorkloadJson $legacyLatest ([ordered]@{executionId=$legacyReceipt.executionId;path=$legacyReceipt.path})
     $rejected=$false;try{$null=Read-WorkloadApplicability $fixture $appPath $sourceLock $locked @('legacy-one','missing')}catch{$rejected=$true}
     Assert-Evidence $rejected 'JSON cannot shrink actual cumulative obligations'
     $otherScope=[pscustomobject]@{name='legacy-one';executable=$stderrExe;arguments=@('7')}
@@ -322,6 +342,16 @@ throw 'Incorrectly returned from a failed process.'
     Assert-Evidence (-not (Test-WorkloadCheckpointQualified $fixture $completed)) 'partial or corrupt qualification fails closed'
     Remove-UnusedWorkloadArtifacts $fixture @()
     Assert-Evidence (Test-WorkloadEvidenceOutputs $fixture $archived) 'checkpoint-referenced historical artifacts survive cache garbage collection'
+    $archiveBase=Join-Path $fixture 'artifacts/build/evidence-artifacts'
+    $unused=Join-Path $archiveBase ('F'*64);$unknown=Join-Path $archiveBase ('E'*64)
+    [IO.Directory]::CreateDirectory($unused)|Out-Null;[IO.Directory]::CreateDirectory($unknown)|Out-Null
+    [IO.File]::WriteAllText((Join-Path $unused 'owned.bin'),'discardable sample')
+    [IO.File]::WriteAllText((Join-Path $unknown 'owned.bin'),'uncertain sample')
+    $unknownRecord=Join-Path $fixture 'artifacts/build/workload-checkpoints/unknown.pending'
+    [IO.File]::WriteAllText($unknownRecord,('{"outputs":["'+$unknown.Replace('\','\\')+'\\owned.bin"'))
+    Write-WorkloadJson (Join-Path $fixture 'artifacts/build/workload-checkpoints/historical-archive.json') ([ordered]@{outputs=$archived;status='RETAINED_ORIGINAL'})
+    Remove-UnusedWorkloadArtifacts $fixture @() -Collect -RetainedRecords @($appPath)
+    Assert-Evidence (-not [IO.Directory]::Exists($unused) -and [IO.Directory]::Exists($unknown) -and (Test-WorkloadEvidenceOutputs $fixture $archived)) ('explicit collection: unused='+[IO.Directory]::Exists($unused)+' unknown='+[IO.Directory]::Exists($unknown)+' historical='+(Test-WorkloadEvidenceOutputs $fixture $archived))
     $priorStrategy=$env:JUEMINGR_STRATEGY_ONLY;$priorFoundation=$env:JUEMINGR_FOUNDATION_STRATEGY_ONLY
     try {
         $env:JUEMINGR_STRATEGY_ONLY='facing';$env:JUEMINGR_FOUNDATION_STRATEGY_ONLY='1'

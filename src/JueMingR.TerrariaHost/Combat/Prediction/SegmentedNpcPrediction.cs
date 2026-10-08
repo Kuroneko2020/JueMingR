@@ -24,6 +24,8 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         private float parentLink,childLink;
         private int lifeOwner;
         private long version,relationVersion;
+        private NpcTrajectory prepared;
+        private NpcMotionState preparedState;
 
         // Locked .8: AI_006_Worms / AI_037_Destroyer create these explicit
         // multi-hit families. aiStyle and realLife alone are insufficient:
@@ -49,16 +51,30 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             }
         }
         internal void Clear()
-        {Array.Clear(history,0,history.Length);current=parent=child=default(NpcIdentity);relationVersion++;}
+        {Array.Clear(history,0,history.Length);ReleaseTarget();}
+        // Keep useful observations, but a dormant strategy cannot revoke a
+        // new ordinary target when a former worm dependency later changes.
+        internal void ReleaseTarget(){current=parent=child=default(NpcIdentity);prepared=null;relationVersion++;}
         internal bool Reset(int slot,NPC token)
         {
             if(slot<0 || slot>=history.Length)return false;
             if(token==null || ReferenceEquals(history[slot].Identity.Token,token))history[slot]=default(History);
             bool affected=current.Slot==slot && current.Token!=null || parent.Slot==slot && parent.Token!=null || child.Slot==slot && child.Token!=null || current.Token!=null && lifeOwner==slot;
-            if(affected)relationVersion++;return affected;
+            if(affected){relationVersion++;prepared=null;}return affected;
         }
         internal bool DependsOn(int slot)
         {return current.Token!=null && (current.Slot==slot || parent.Token!=null && parent.Slot==slot || child.Token!=null && child.Slot==slot || lifeOwner==slot);}
+        internal void CorrectAnchor(int slot)
+        {
+            if(slot<0 || slot>=history.Length)return;
+            NPC n=Main.npc[slot];if(n==null)return;History prior=history[slot];
+            if(prior.Identity.Equals(CombatSelection.Identity(n,prior.Identity.Session)))
+            {
+                long tick=(long)Main.GameUpdateCount;
+                if(tick-prior.Tick>4){prior.Observed=false;prior.Velocity=Finite(n.velocity)?n.velocity:Vector2.Zero;}
+                prior.Center=n.Center;prior.Tick=tick;history[slot]=prior;prepared=null;
+            }
+        }
         internal NpcTrajectory Prepare(NpcIdentity identity,long tick,int required)
         {
             NPC n=Main.npc[identity.Slot];int family=Family(n.type);
@@ -85,6 +101,15 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             var state=new NpcMotionState{Identity=identity,X=n.position.X,Y=n.position.Y,Width=n.width,Height=n.height,
                 Vx=velocity.X,Vy=velocity.Y,A0=n.ai[0],Active=true,CanReceive=true,CanHarm=!n.friendly && n.damage>0,
                 NetOffsetX=n.netOffset.X,NetOffsetY=n.netOffset.Y};
+            var assumptions=PredictionAssumption.ApproximateMechanism|PredictionAssumption.NoNewHits|PredictionAssumption.CurrentConnection;
+            if(Main.netMode==1)assumptions|=PredictionAssumption.NetworkObservation;
+            // The immutable published trajectory is the only result cache.
+            // Equality covers every sampled fact used below, including the
+            // neighbour-derived velocity and mutable same-tick presentation.
+            if(!changed && prepared!=null && prepared.CaptureTick==tick && prepared.Count==required+1 && prepared.Assumptions==assumptions && prepared.Quality==quality &&
+                preparedState.X==state.X && preparedState.Y==state.Y && preparedState.Width==state.Width && preparedState.Height==state.Height &&
+                preparedState.Vx==state.Vx && preparedState.Vy==state.Vy && preparedState.A0==state.A0 && preparedState.CanHarm==state.CanHarm &&
+                preparedState.NetOffsetX==state.NetOffsetX && preparedState.NetOffsetY==state.NetOffsetY)return prepared;
             points[0]=new NpcTrajectoryPoint(0,state);
             // Measured position-difference baseline. No unvalidated curvature
             // is accumulated into repeated circles or accelerating motion.
@@ -96,14 +121,23 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 if(!Finite(new Vector2(state.X,state.Y)))return null;
                 points[i]=new NpcTrajectoryPoint(i,state);
             }
-            var assumptions=PredictionAssumption.ApproximateMechanism|PredictionAssumption.NoNewHits|PredictionAssumption.CurrentConnection;
-            if(Main.netMode==1)assumptions|=PredictionAssumption.NetworkObservation;
-            return new NpcTrajectory(identity,tick,++version,assumptions,PredictionStop.None,points,required+1,PredictionStrategy.SegmentedTrend,relationVersion,quality);
+            preparedState=state;preparedState.X=n.position.X;preparedState.Y=n.position.Y;
+            prepared=new NpcTrajectory(identity,tick,++version,assumptions,PredictionStop.None,points,required+1,PredictionStrategy.SegmentedTrend,relationVersion,quality);return prepared;
         }
         private History Observe(NPC n,long session,long tick)
         {
             var identity=CombatSelection.Identity(n,session);History prior=history[n.whoAmI];
-            if(prior.Identity.Equals(identity) && prior.Tick==tick)return prior;
+            if(prior.Identity.Equals(identity) && prior.Tick==tick)
+            {
+                // A network correction is a new anchor at the same completed
+                // time, not elapsed movement. Preserve measured trend and make
+                // the next true step start from the corrected centre.
+                prior.Center=n.Center;
+                // Without a measured interval the native velocity remains the
+                // actual fallback input, including a same-time velocity change.
+                if(!prior.Observed){prior.Velocity=n.velocity;if(!Finite(prior.Velocity) || prior.Velocity.LengthSquared()>256f*256f)prior.Velocity=Vector2.Zero;}
+                history[n.whoAmI]=prior;return prior;
+            }
             long elapsed=tick-prior.Tick;
             // Type changes retire results, but native Transform keeps the
             // instance. Center history survives a size change without turning
