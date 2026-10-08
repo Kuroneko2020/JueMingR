@@ -73,7 +73,6 @@ function Get-WorkloadCheckFingerprint {
         'tests/NativeWorldTextProbe/NativeCombatPositionControlChecks.cs'=@('native-NpcStrategy')
         'tests/NativeWorldTextProbe/NativeCombatFlyingTailChecks.cs'=@('native-NpcStrategy')
         'tests/NativeWorldTextProbe/NativeCombatEventRetirementChecks.cs'=@('native-NpcEventRetirementCpu','native-NpcEventRetirement')
-        'tests/NativeWorldTextProbe/NativeCombatSyncChecks.cs'=@('native-NpcSync')
         'tests/NativeWorldTextProbe/NativeDisplayResponsibilityChecks.cs'=@('native-NpcDisplayIsolation')
         'tests/NativeWorldTextProbe/NativeCombatCloseoutTerrainChecks.cs'=@('native-NpcCloseoutTerrain')
         'tests/Workload/Invoke-WorkloadRoutingChecks.ps1'=@('workload-Routing')
