@@ -38,8 +38,13 @@ namespace JueMingR.TerrariaHost.Combat
         {
             if(Failed){Clear();return;}
             try{PrepareCore();}
-            catch(Exception error) when (!(error is OutOfMemoryException) && !(error is AccessViolationException))
-            {DisplayFailed();}
+            catch(Exception error)
+            {
+                // Ordinary catch/rethrow preserves fatal propagation and the
+                // existing Harmony observation seam (its emitter lacks filters).
+                if(error is OutOfMemoryException || error is AccessViolationException)throw;
+                DisplayFailed();
+            }
         }
         private void PrepareCore()
         {

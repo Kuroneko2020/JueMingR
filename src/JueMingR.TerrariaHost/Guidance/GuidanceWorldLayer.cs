@@ -45,7 +45,11 @@ namespace JueMingR.TerrariaHost.Guidance
         internal void Prepare()
         {
             try{PrepareCore();}
-            catch(Exception error) when (!(error is OutOfMemoryException) && !(error is AccessViolationException)){DisplayFailed();}
+            catch(Exception error)
+            {
+                if(error is OutOfMemoryException || error is AccessViolationException)throw;
+                DisplayFailed();
+            }
         }
         private void PrepareCore()
         {
