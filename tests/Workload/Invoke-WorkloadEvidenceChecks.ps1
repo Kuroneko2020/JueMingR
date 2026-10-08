@@ -19,9 +19,14 @@ foreach ($path in @('scripts/verify-existing-package.ps1','scripts/phase0s/Packa
         Assert-Evidence ((Get-WorkloadCheckFingerprint $old $name) -ceq (Get-WorkloadCheckFingerprint $new $name)) 'unrelated CPU inputs remain equal'
     }
 }
-foreach ($path in @('scripts/phase0s/Install-Phase0S.ps1','scripts/phase0s/Restore-Phase0S.ps1','scripts/phase0s/Phase0S.ScriptSupport.ps1','scripts/workload/Workload.Support.ps1','scripts/workload/Workload.Evidence.ps1','scripts/test-workload-regressions.ps1','tests/NativeWorldTextProbe/NativeChecks.cs','environment:runtime')) {
+foreach ($path in @('scripts/phase0s/Install-Phase0S.ps1','scripts/phase0s/Restore-Phase0S.ps1','scripts/phase0s/Phase0S.ScriptSupport.ps1','scripts/workload/Workload.Support.ps1','scripts/workload/Workload.Evidence.ps1','scripts/test-workload-regressions.ps1','tests/NativeWorldTextProbe/NativeChecks.cs','tests/NativeWorldTextProbe/NativeToolExecutionChecks.cs','environment:runtime')) {
     $old = [pscustomobject]@{inputs=@($path+':A')}; $new = [pscustomobject]@{inputs=@($path+':B')}
     Assert-Evidence ((Get-WorkloadCheckFingerprint $old 'native-FishingCpu') -cne (Get-WorkloadCheckFingerprint $new 'native-FishingCpu')) ('shared inputs remain strict: ' + $path)
+}
+$sharedTools='tests/NativeWorldTextProbe/NativeToolExecutionChecks.cs'
+$old=[pscustomobject]@{inputs=@($sharedTools+':A')};$new=[pscustomobject]@{inputs=@($sharedTools+':B')}
+foreach($name in @('native-CombatCadence','native-CombatBoundary','native-CombatFacing','native-CombatHit','native-CombatProjectile','native-ToolsWait','native-ToolsSeed','native-ToolsCaptureWorkload','native-NpcDisplayIsolation')){
+ Assert-Evidence ((Get-WorkloadCheckFingerprint $old $name) -cne (Get-WorkloadCheckFingerprint $new $name)) ('shared Sample/Reset remains input: '+$name)
 }
 $combatPlan=@(Get-WorkloadPlan $root 'checks' 'architecture.exe' @() @('combat-host') | ForEach-Object {$_.name})
 foreach($name in @('native-NpcStrategy','native-NpcStrategyContinuous','native-NpcFoundationContinuous','native-NpcEventRetirementCpu')) {
@@ -350,8 +355,30 @@ throw 'Incorrectly returned from a failed process.'
     $unknownRecord=Join-Path $fixture 'artifacts/build/workload-checkpoints/unknown.pending'
     [IO.File]::WriteAllText($unknownRecord,('{"outputs":["'+$unknown.Replace('\','\\')+'\\owned.bin"'))
     Write-WorkloadJson (Join-Path $fixture 'artifacts/build/workload-checkpoints/historical-archive.json') ([ordered]@{outputs=$archived;status='RETAINED_ORIGINAL'})
+    foreach($kind in @('undeclared','missing','outside')){
+        $rejected=$false
+        try{switch($kind){
+            'undeclared'{Remove-UnusedWorkloadArtifacts $fixture @() -Collect}
+            'missing'{Remove-UnusedWorkloadArtifacts $fixture @() -Collect -RetainedRecords (Join-Path $fixture 'missing.json')}
+            'outside'{Remove-UnusedWorkloadArtifacts $fixture @() -Collect -RetainedRecords (Join-Path $root 'eng/TerrariaReferences.baseline.json')}
+        }}catch{$rejected=$true}
+        Assert-Evidence ($rejected -and [IO.Directory]::Exists($unused)) ('retention declaration refuses before deletion: '+$kind)
+    }
     Remove-UnusedWorkloadArtifacts $fixture @() -Collect -RetainedRecords @($appPath)
     Assert-Evidence (-not [IO.Directory]::Exists($unused) -and [IO.Directory]::Exists($unknown) -and (Test-WorkloadEvidenceOutputs $fixture $archived)) ('explicit collection: unused='+[IO.Directory]::Exists($unused)+' unknown='+[IO.Directory]::Exists($unknown)+' historical='+(Test-WorkloadEvidenceOutputs $fixture $archived))
+    foreach($redirect in @('root','artifacts','artifacts/build','artifacts/build/evidence-artifacts')){
+        $case=Join-Path $fixture ('junction-'+$redirect.Replace('/','-'));$external=Join-Path $case 'outside';$local=Join-Path $case 'repository'
+        $link=if($redirect -eq 'root'){$local}else{Join-Path $local $redirect}
+        $suffix=if($redirect -eq 'root'){'artifacts/build/evidence-artifacts'}elseif($redirect -eq 'artifacts'){'build/evidence-artifacts'}elseif($redirect -eq 'artifacts/build'){'evidence-artifacts'}else{''}
+        $externalArchive=if($suffix){Join-Path $external $suffix}else{$external}
+        $witness=Join-Path (Join-Path $externalArchive ('A'*64)) 'outside.bin'
+        foreach($path in @($link,$external,$witness)){Assert-Evidence ([IO.Path]::GetFullPath($path).StartsWith($fixture+'\',[StringComparison]::OrdinalIgnoreCase)) 'junction sample paths remain in owned fixture'}
+        New-Item -ItemType Directory -Path (Split-Path -Parent $witness),(Split-Path -Parent $link)|Out-Null
+        [IO.File]::WriteAllText($witness,'owned external witness')
+        New-Item -ItemType Junction -Path $link -Target $external|Out-Null
+        Remove-UnusedWorkloadArtifacts $local @() -Collect -RetainedRecords @()
+        Assert-Evidence ([IO.File]::Exists($witness)) ('reparse ancestor refuses external deletion: '+$redirect)
+    }
     $priorStrategy=$env:JUEMINGR_STRATEGY_ONLY;$priorFoundation=$env:JUEMINGR_FOUNDATION_STRATEGY_ONLY
     try {
         $env:JUEMINGR_STRATEGY_ONLY='facing';$env:JUEMINGR_FOUNDATION_STRATEGY_ONLY='1'

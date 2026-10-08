@@ -73,6 +73,15 @@ namespace NativeWorldTextProbe
             target.SetDefaults(14);target.whoAmI=2;target.active=true;target.target=Main.myPlayer;target.position=new Vector2(810,900);target.velocity=new Vector2(2,0);NativeCombatObservationChecks.Fresh(context,host);var fallback=cache.Read(0);
             target.velocity=new Vector2(4,0);Call(host,"Update",Main.GameUpdateCount);var changedFallback=cache.Read(0);
             Require(fallback.Quality==JueMingR.Platform.Combat.PredictionQuality.LimitedObservation && changedFallback[1].Vx==4 && !ReferenceEquals(fallback,changedFallback),"Fresh limited observation rechecks actual same-time native velocity.");
+            var selected=Main.npc[4];selected.SetDefaults(14);selected.whoAmI=4;selected.active=true;selected.target=Main.myPlayer;selected.position=new Vector2(720,800);selected.velocity=Vector2.Zero;
+            NativeCombatObservationChecks.Fresh(context,host);var unrelated=cache.Read(0);Require(ReferenceEquals(unrelated.Identity.Token,selected),"Current segmented A replaces previously observed unrelated B.");
+            before=target.position;target.position.X+=2;packet=CombatNetworkFixture.Serialize(23,2);target.position=before;CombatNetworkFixture.Receive(packet);
+            Require(ReferenceEquals(cache.Read(0),unrelated),"Unrelated old B sync does not revoke current A publication.");Call(host,"Update",Main.GameUpdateCount);
+            Require(ReferenceEquals(cache.Read(0),unrelated),"Unrelated old B history correction cannot invalidate equivalent A result reuse.");
+            selected.ai[1]=2;Call(host,"Update",Main.GameUpdateCount);var related=cache.Read(0);
+            before=target.position;target.position.X+=2;packet=CombatNetworkFixture.Serialize(23,2);target.position=before;CombatNetworkFixture.Receive(packet);
+            Require(cache.Read(0)==null,"True current parent B sync still retires A publication.");Call(host,"Update",Main.GameUpdateCount);
+            Require(cache.Read(0)!=null && !ReferenceEquals(cache.Read(0),related),"True current dependency correction rebuilds A.");selected.active=false;
             var worm=target;worm.active=false;var ordinary=Main.npc[3];ordinary.SetDefaults(2);ordinary.whoAmI=3;ordinary.active=true;ordinary.target=Main.myPlayer;ordinary.position=new Vector2(810,900);ordinary.velocity=new Vector2(1,0);
             NativeCombatObservationChecks.Fresh(context,host);var normal=cache.Read(0);Require(normal!=null && ReferenceEquals(normal.Identity.Token,ordinary),"Segmented to ordinary directly selects current Source target.");
             Call(source,"ObserveNpcReset",worm);Require(ReferenceEquals(cache.Read(0),normal),"Dormant worm reset cannot revoke new ordinary publication.");

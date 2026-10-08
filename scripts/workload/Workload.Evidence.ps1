@@ -76,7 +76,6 @@ function Get-WorkloadCheckFingerprint {
         'tests/NativeWorldTextProbe/NativeCombatSyncChecks.cs'=@('native-NpcSync')
         'tests/NativeWorldTextProbe/NativeDisplayResponsibilityChecks.cs'=@('native-NpcDisplayIsolation')
         'tests/NativeWorldTextProbe/NativeCombatCloseoutTerrainChecks.cs'=@('native-NpcCloseoutTerrain')
-        'tests/NativeWorldTextProbe/NativeToolExecutionChecks.cs'=@('native-ToolsExecutionCpu','native-NpcDisplayIsolation')
         'tests/Workload/Invoke-WorkloadRoutingChecks.ps1'=@('workload-Routing')
         'tests/Workload/Invoke-WorkloadEvidenceChecks.ps1'=@('workload-Evidence')
     }
@@ -427,13 +426,31 @@ function Save-WorkloadArtifacts {
     }
 }
 function Remove-UnusedWorkloadArtifacts {
-    param([string] $Root, $Entries, [switch] $Collect, [string[]] $RetainedRecords=@())
+    param([string] $Root, $Entries, [switch] $Collect, [AllowEmptyCollection()][string[]] $RetainedRecords=@())
     # A regular build lacks the external task-retention list. It neither
     # deletes archives nor scans all historical recovery records each time.
     if(-not $Collect){return}
+    if(-not $PSBoundParameters.ContainsKey('RetainedRecords')){throw 'Explicit collection requires a declared retention list (including an explicitly empty list).'}
     $repository=[IO.Path]::GetFullPath($Root).TrimEnd('\')+'\'
     $base=[IO.Path]::GetFullPath((Join-Path $Root 'artifacts/build/evidence-artifacts')).TrimEnd('\')+'\'
     if (-not [IO.Directory]::Exists($base)) { return }
+    # FullName is lexical on Windows: a junction above a hash directory can
+    # otherwise make an apparently local deletion affect external files.
+    $rootPath=$repository.TrimEnd('\')
+    for($ancestor=Get-Item -LiteralPath $base;$null -ne $ancestor -and $ancestor.FullName.Length -ge $rootPath.Length;$ancestor=$ancestor.Parent){
+        if($ancestor.Attributes -band [IO.FileAttributes]::ReparsePoint){return}
+    }
+    foreach($record in $RetainedRecords){
+        if(-not $record){throw 'Empty retention record path.'}
+        $path=[IO.Path]::GetFullPath($record)
+        if(-not $path.StartsWith($repository,[StringComparison]::OrdinalIgnoreCase) -or -not [IO.File]::Exists($path)){throw ('Missing/outside retention record: '+$record)}
+        $file=Get-Item -LiteralPath $path
+        for($ancestor=$file;$null -ne $ancestor -and $ancestor.FullName.Length -ge $rootPath.Length;$ancestor=$(if($ancestor -is [IO.FileInfo]){$ancestor.Directory}else{$ancestor.Parent})){
+            if($ancestor.Attributes -band [IO.FileAttributes]::ReparsePoint){throw ('Reparse retention record: '+$record)}
+        }
+        # Prove readability before any deletion, even if JSON is incomplete.
+        $null=[IO.File]::ReadAllText($path)
+    }
     $used=New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
     foreach($entry in $Entries){foreach($output in $entry.outputs){[void]$used.Add([IO.Path]::GetFullPath((Split-Path -Parent $output.path)))}}
     $queue=New-Object 'System.Collections.Generic.Queue[string]'

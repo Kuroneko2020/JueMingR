@@ -72,7 +72,8 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             {
                 long tick=(long)Main.GameUpdateCount;
                 if(tick-prior.Tick>4){prior.Observed=false;prior.Velocity=Finite(n.velocity)?n.velocity:Vector2.Zero;}
-                prior.Center=n.Center;prior.Tick=tick;history[slot]=prior;prepared=null;
+                prior.Center=n.Center;prior.Tick=tick;history[slot]=prior;
+                if(DependsOn(slot))prepared=null;
             }
         }
         internal NpcTrajectory Prepare(NpcIdentity identity,long tick,int required)
