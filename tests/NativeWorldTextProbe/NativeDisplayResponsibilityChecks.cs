@@ -45,8 +45,13 @@ namespace NativeWorldTextProbe
             finally{Terraria.GameContent.TextureAssets.MagicPixel=pixel;}
             Call(host,"Set",1,true);NativeCombatObservationChecks.Fresh(context,host);Call(context,"UpdateShell");Require(!(bool)Get(world,"Failed") && cache.Read(0)!=null,"Explicit retry restores preparation without lost intent.");cache.Release(1);
             Set(marker,"Failed",true);NativeCombatObservationChecks.Save(host,new ObservationOptions(marker:true));
-            int candidates=(int)Get(Get(host,"Selection"),"Candidates");for(int i=0;i<3;i++){NativeCombatObservationChecks.Fresh(context,host);Call(context,"UpdateShell");}
-            Require((bool)Get(marker,"Failed") && !(bool)Get(host,"Marker") && (int)Get(Get(host,"Selection"),"Candidates")==candidates,"Failed-only marker has no selection work and clear-frame cannot unlock it.");
+            var selection=Get(host,"Selection");var candidatesProperty=selection.GetType().GetProperty("Candidates",Flags);
+            // Candidates is DEBUG observation only. Release still exercises the
+            // same updates and checks real demand/selection and failure lifetime.
+            int candidates=candidatesProperty==null?0:(int)candidatesProperty.GetValue(selection,null);
+            for(int i=0;i<3;i++){NativeCombatObservationChecks.Fresh(context,host);Call(context,"UpdateShell");}
+            Require((bool)Get(marker,"Failed") && !(bool)Get(host,"Marker") && !(bool)Get(selection,"HasTarget"),"Failed-only marker has no selection demand and clear-frame cannot unlock it.");
+            if(candidatesProperty!=null)Require((int)candidatesProperty.GetValue(selection,null)==candidates,"DEBUG failed-only marker performs no candidate search.");
             Call(host,"Set",5,true);NativeCombatObservationChecks.Fresh(context,host);Require((bool)Get(host,"Marker"),"Existing explicit marker retry remains reachable.");
             var guidance=Get(context,"Guidance");var guidanceWorld=Get(guidance,"World");
             Call(guidance,"SetEnabled",GuidanceKind.Rare,true);
