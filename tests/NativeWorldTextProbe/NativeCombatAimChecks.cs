@@ -37,10 +37,9 @@ namespace NativeWorldTextProbe
             NativeCombatAmmoChecks.Run(context);
             NativeCombatSkyChecks.Run(context);
             NativeCombatScatterChecks.Run(context);
-            NativeCombatEffectChecks.Run(context);
-            NativeCombatMeleeChecks.Run(context);
-            NativeCombatControlChecks.Run(context);
-            NativeCombatIntegrationChecks.Run(context);
+            // Cumulative routing owns Effects, Mechanics, Control and
+            // Integration independently. Aim covers its ordinary/ammo/sky/
+            // scatter chain once; a specialist Aim PASS is not those scopes.
             foreach(int weaponType in new[]{ItemID.FlintlockPistol,ItemID.WoodenBow})foreach(float targetSpeed in new[]{0f,1f})
             {
                 NativeCombatObservationChecks.Save(host,new ObservationOptions());

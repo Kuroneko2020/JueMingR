@@ -41,6 +41,7 @@ namespace NativeWorldTextProbe
                 NativeCombatCadenceAimChecks.Run(context);
                 NativeCombatResourceChecks.Run(context);
                 NativeCombatCandidateDemandChecks.Run(context);
+                NativeCombatNeighborChecks.Run(context);
             }
             finally{harmony.UnpatchAll(harmony.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());}
         }

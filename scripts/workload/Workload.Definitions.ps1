@@ -10,32 +10,33 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeToolCadenceChecks.cs'=@('native-ToolsCadence')
         'tests/NativeWorldTextProbe/NativeToolsWorkloadChecks.cs'=@('native-ToolsWorkload')
         'tests/NativeWorldTextProbe/NativeYoyoAdoptionChecks.cs'=@('native-CombatCpu','native-CombatYoyoCausal')
-        'tests/NativeWorldTextProbe/NativeCombatAimChecks.cs'=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatNavigationCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatImpactVisual','native-CombatAimUi','native-CombatVisual')
+        'tests/NativeWorldTextProbe/NativeCombatAimChecks.cs'=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatNavigationCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatImpactVisual','native-CombatAimUi','native-CombatVisual')
         'tests/NativeWorldTextProbe/NativeCombatAimUiChecks.cs'=@('native-CombatAimUi','native-CombatVisual')
-        'tests/NativeWorldTextProbe/NativeCombatImpactVisualChecks.cs'=@('native-CombatImpactVisual','native-CombatAimUi','native-CombatVisual')
-        'tests/NativeWorldTextProbe/NativeCombatIntegrationChecks.cs'=@('native-CombatIntegrationCpu','native-CombatAimCpu')
-        'tests/NativeWorldTextProbe/NativeCombatCadenceAimChecks.cs'=@('native-CombatIntegrationCpu','native-CombatAimCpu')
-        'tests/NativeWorldTextProbe/NativeCombatResourceChecks.cs'=@('native-CombatIntegrationCpu','native-CombatAimCpu')
-        'tests/NativeWorldTextProbe/NativeCombatCandidateDemandChecks.cs'=@('native-CombatIntegrationCpu','native-CombatAimCpu')
-        'tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.cs'=@('native-CombatAttackCosts','native-CombatCosts','native-CombatImpactVisual','native-CombatVisual')
-        'tests/NativeWorldTextProbe/NativeCombatEffectChecks.cs'=@('native-CombatAimCpu','native-CombatEffectsCpu')
-        'tests/NativeWorldTextProbe/NativeCombatProjectileEnvironmentChecks.cs'=@('native-CombatAimCpu','native-CombatEffectsCpu')
-        'tests/NativeWorldTextProbe/NativeCombatObstacleChecks.cs'=@('native-CombatAimCpu','native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatImpactVisualChecks.cs'=@('native-CombatImpactVisual','native-CombatVisual')
+        'tests/NativeWorldTextProbe/NativeCombatIntegrationChecks.cs'=@('native-CombatIntegrationCpu')
+        'tests/NativeWorldTextProbe/NativeCombatCadenceAimChecks.cs'=@('native-CombatIntegrationCpu')
+        'tests/NativeWorldTextProbe/NativeCombatResourceChecks.cs'=@('native-CombatIntegrationCpu')
+        'tests/NativeWorldTextProbe/NativeCombatCandidateDemandChecks.cs'=@('native-CombatIntegrationCpu')
+        'tests/NativeWorldTextProbe/NativeCombatNeighborChecks.cs'=@('native-CombatIntegrationCpu')
+        'tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.cs'=@('native-CombatCosts','native-CombatAttackCosts','native-CombatImpactVisual','native-CombatVisual')
+        'tests/NativeWorldTextProbe/NativeCombatEffectChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatProjectileEnvironmentChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatObstacleChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatAmmoChecks.cs'=@('native-CombatAimCpu')
         'tests/NativeWorldTextProbe/NativeCombatSkyChecks.cs'=@('native-CombatAimCpu')
         'tests/NativeWorldTextProbe/NativeCombatScatterChecks.cs'=@('native-CombatAimCpu')
-        'tests/NativeWorldTextProbe/NativeCombatHeldSequenceChecks.cs'=@('native-CombatControlCpu','native-CombatAimCpu')
-        'tests/NativeWorldTextProbe/NativeCombatAttackFailureChecks.cs'=@('native-CombatControlCpu','native-CombatAimCpu')
-        'tests/NativeWorldTextProbe/NativeCombatControlChecks.cs'=@('native-CombatControlCpu','native-CombatAimCpu')
-        'tests/NativeWorldTextProbe/NativeCombatBeamChecks.cs'=@('native-CombatControlCpu','native-CombatAimCpu')
-        'tests/NativeWorldTextProbe/NativeCombatYoyoNavigationChecks.cs'=@('native-CombatControlCpu','native-CombatNavigationCpu','native-CombatAimCpu')
-        'tests/NativeWorldTextProbe/NativeCombatYoyoChecks.cs'=@('native-CombatControlCpu','native-CombatAimCpu')
-        'tests/NativeWorldTextProbe/NativeCombatReceiveChecks.cs'=@('native-CombatControlCpu','native-CombatAimCpu')
-        'tests/NativeWorldTextProbe/NativeCombatMeleeChecks.cs'=@('native-CombatMechanicsCpu','native-CombatAimCpu')
-        'tests/NativeWorldTextProbe/NativeCombatPhaseChecks.cs'=@('native-CombatMechanicsCpu','native-CombatAimCpu','native-CombatControlCpu')
-        'tests/NativeWorldTextProbe/NativeCombatSwingChecks.cs'=@('native-CombatMechanicsCpu','native-CombatAimCpu')
-        'tests/NativeWorldTextProbe/NativeCombatWhipChecks.cs'=@('native-CombatMechanicsCpu','native-CombatAimCpu')
-        'tests/NativeWorldTextProbe/NativeCombatReturnChecks.cs'=@('native-CombatMechanicsCpu','native-CombatAimCpu')
+        'tests/NativeWorldTextProbe/NativeCombatHeldSequenceChecks.cs'=@('native-CombatControlCpu')
+        'tests/NativeWorldTextProbe/NativeCombatAttackFailureChecks.cs'=@('native-CombatControlCpu')
+        'tests/NativeWorldTextProbe/NativeCombatControlChecks.cs'=@('native-CombatControlCpu')
+        'tests/NativeWorldTextProbe/NativeCombatBeamChecks.cs'=@('native-CombatControlCpu')
+        'tests/NativeWorldTextProbe/NativeCombatYoyoNavigationChecks.cs'=@('native-CombatControlCpu','native-CombatNavigationCpu')
+        'tests/NativeWorldTextProbe/NativeCombatYoyoChecks.cs'=@('native-CombatControlCpu')
+        'tests/NativeWorldTextProbe/NativeCombatReceiveChecks.cs'=@('native-CombatControlCpu')
+        'tests/NativeWorldTextProbe/NativeCombatMeleeChecks.cs'=@('native-CombatMechanicsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatPhaseChecks.cs'=@('native-CombatMechanicsCpu','native-CombatControlCpu')
+        'tests/NativeWorldTextProbe/NativeCombatSwingChecks.cs'=@('native-CombatMechanicsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatWhipChecks.cs'=@('native-CombatMechanicsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatReturnChecks.cs'=@('native-CombatMechanicsCpu')
         'tests/NativeWorldTextProbe/NativeCombatFoundationChecks.cs'=@('native-NpcFoundationRules','native-NpcFoundationContinuous','native-NpcStrategyContinuous')
         'tests/NativeWorldTextProbe/NativeCombatFoundationContinuousChecks.cs'=@('native-NpcFoundationContinuous','native-NpcStrategyContinuous','native-NpcFiniteFlight')
         'tests/NativeWorldTextProbe/NativeCombatStrategyChecks.cs'=@('native-NpcStrategy','native-NpcStrategy-rollchoice')
@@ -59,17 +60,17 @@ function Get-WorkloadLeafChecks {
     return $leaves
 }
 function Get-WorkloadNativeScopes {
+    # CPU cumulative entries own Navigation through Control and AttackCosts
+    # through CombatCosts. Their independent specialist flags remain available
+    # in test-world-object-text. Impact/AimUi/Visual need matching real Content
+    # and GPU: they are explicit graphical obligations, never --cpu children.
     $scopes = [ordered]@{
         'NpcRollingCpu'=@('combat-host');
         'CombatAimCpu'=@('combat-host');
         'CombatControlCpu'=@('combat-host');
-        'CombatNavigationCpu'=@('combat-host');
         'CombatMechanicsCpu'=@('combat-host');
         'CombatEffectsCpu'=@('combat-host');
-        'CombatImpactVisual'=@('combat-host');
         'CombatIntegrationCpu'=@('combat-host');
-        'CombatAttackCosts'=@('combat-host');
-        'CombatAimUi'=@('combat-host','shared-host');
         'NpcRollingSelectionNegative'=@('combat-host');
         'NpcBasicMotion'=@('combat-host');
         'NpcFoundationRules'=@('combat-host'); 'NpcFoundationContinuous'=@('combat-host'); 'NpcPlayerPolicy'=@('combat-host'); 'NpcStrategy'=@('combat-host'); 'NpcStrategyContinuous'=@('combat-host'); 'NpcEventRetirementCpu'=@('combat-host');
