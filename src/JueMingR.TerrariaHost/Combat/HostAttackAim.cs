@@ -24,12 +24,30 @@ namespace JueMingR.TerrariaHost.Combat
         private HostAttackObstacles obstacles;
         private readonly PredictionTerrain terrain=new PredictionTerrain();
         private readonly HostSwingAttack swing=new HostSwingAttack();
+        private readonly HostCadenceAim cadence;
+        private int preferred=4,expansion;
+        private Item demandWeapon;private NpcIdentity demandTarget;
         internal bool Failed {get;private set;}
         internal AttackContact ExpectedImpact {get{return Valid(false)?(Main.GameUpdateCount==prepared?current:next):Control.ExpectedImpact;}}
         internal HostAttackAim(HostCombat combat,HostCombatObservation observation)
         {
             this.combat=combat;this.observation=observation;Control=new HostAttackControl(combat,observation);
+            cadence=new HostCadenceAim(combat,observation);combat.Aim.Provider=cadence.Read;
             combat.Facing.TargetProvider=SharedFacing;combat.Facing.SharedTargetRequired=()=>Permission;
+            observation.Selection.CandidateAllowed=CandidateSuitable;
+        }
+        private bool CandidateSuitable(NPC npc)
+        {
+            if(!Permission)return true;var player=combat.Player;var item=player.HeldItem;float range;
+            if(HostYoyoNavigation.Weapon(item))
+            {range=ProjectileID.Sets.YoyosMaximumRange[item.shoot];if(player.yoyoString)range=range*1.25f+30;range/=(1+player.meleeSpeed*3)/4;}
+            else if(HostSwingAttack.Handles(item))range=Math.Max(item.width,item.height)*player.GetAdjustedItemScale(item)+player.width+60;
+            else return true;
+            // Current cheap reachability uses the receiver's legal edge, never
+            // requires its centre. Navigation/contact still proves its own
+            // future motor/shape; candidates get no separate world prediction.
+            var b=CombatSelection.ReceiveBounds(npc);Vector2 nearest=new Vector2(MathHelper.Clamp(player.Center.X,b.Left,b.Right),MathHelper.Clamp(player.Center.Y,b.Top,b.Bottom));
+            return Vector2.DistanceSquared(player.Center,nearest)<=range*range;
         }
         private FacingTarget SharedFacing(Player player)
         {
@@ -39,8 +57,31 @@ namespace JueMingR.TerrariaHost.Combat
         internal bool Permission {get{return !Failed && observation.Settings.CanRun && observation.Options.Aim && combat.Player!=null && combat.Admitted(combat.Player) &&
             (combat.Left || combat.Player.controlUseItem || combat.Player.channel || combat.Use.Active || Control.Pending);}}
         internal void Demand()
-        {if(Permission && Eligible(combat.Player.HeldItem) && HostAttackWindow.NextAction(combat,combat.Player,combat.Player.HeldItem))observation.Prediction.Cache.Demand(1,1,NpcPredictionCache.Horizon);else{observation.Prediction.Cache.Release(1);Clear();}}
-        internal void Clear(){weapon=null;ammo=null;current=next=null;environment=null;obstacles=null;Control.Clear();}
+        {
+            if(Permission && Eligible(combat.Player.HeldItem) && HostAttackWindow.NextAction(combat,combat.Player,combat.Player.HeldItem))
+            {preferred=Preferred();observation.Prediction.Cache.Demand(1,1,preferred);}
+            else{observation.Prediction.Cache.Release(1);expansion=0;Clear();}
+        }
+        private int Preferred()
+        {
+            var player=combat.Player;var item=player.HeldItem;var target=observation.Selection.Target;
+            if(!ReferenceEquals(item,demandWeapon) || !target.Equals(demandTarget)){expansion=0;demandWeapon=item;demandTarget=target;}
+            if(!observation.Selection.HasTarget)return 4;
+            if(HostSwingAttack.Handles(item))return Math.Min(120,Math.Max(4,player.itemAnimation>0?player.itemAnimation+1:item.useAnimation+1));
+            if(item.type==3541)return 32;
+            if(HostAttackWindow.Ordinary(item))
+            {
+                var captured=AttackAmmoSnapshot.Capture(player,item);AttackMotion motion;
+                if(captured!=null && HostAttackModels.TryRead(captured,out motion) && motion.Gravity==0 && motion.Acceleration==1)
+                {
+                    var npc=Main.npc[target.Slot];float distance=Vector2.Distance(player.MountedCenter,npc.Center+npc.netOffset);
+                    float closing=Math.Max(1,motion.Speed*motion.Updates-npc.velocity.Length());
+                    return Math.Min(120,Math.Max(16,(int)Math.Ceiling(distance/closing)+8+expansion));
+                }
+            }
+            return NpcPredictionCache.Horizon;
+        }
+        internal void Clear(){weapon=null;ammo=null;current=next=null;environment=null;obstacles=null;cadence.Clear();Control.Clear();}
         internal void Reset(){Clear();swing.Clear();Control.Reset();Failed=false;}
         internal void ObserveSwing(Player player,Item item,Rectangle frame,float offset)
         {
@@ -76,11 +117,17 @@ namespace JueMingR.TerrariaHost.Combat
             if(HostSwingAttack.Handles(item)){PrepareSwing(player,item,timeline,phase,false);return;}
             Control.Prepare(timeline,phase);
             var captured=AttackAmmoSnapshot.Capture(player,item);if(captured==null)return;
+            cadence.Prepare(player,item,captured,timeline,phase,null);
             if(HostHeldAttack.Weapon(item.type) || HostYoyoNavigation.Weapon(item) || HostWhipAttack.Weapon(item))return; // Controller birth is not its later ordinary/beam damage phase.
             Projectile sample;bool melee=ContentSamples.ProjectilesByType.TryGetValue(captured.Projectile,out sample) && HostMeleeAttack.Handles(sample);
             AttackMotion motion;bool sky=HostSkyAttack.Handles(item.type);if(!sky && !melee && !HostEffectAttack.Handles(captured.Projectile) && !HostAttackModels.TryRead(captured,out motion))return;
             origin=player.RotatedRelativePoint(player.MountedCenter);int age=(int)((long)Main.GameUpdateCount-timeline.SampleTick)-(beforeNpc?1:0);if(age<0 || age>1)return;
             current=Solve(player,item,captured,timeline,origin,age,beforeNpc);
+            // A finite preferred prefix can yield no contact. Expand only on
+            // later preparation, bounded by the accepted horizon; consumers
+            // never pad the future or start another prediction to force a hit.
+            if(current==null && preferred<120 && timeline.Count<=preferred+1)expansion=Math.Min(120,expansion+preferred);else if(current!=null)expansion=0;
+            cadence.Prepare(player,item,captured,timeline,phase,current);
             var movement=NpcPredictionSource.ReadPlayer(player);PredictionStop stop;
             if(!beforeNpc && PlayerMotionContinuation.Advance(ref movement,new PredictionEnvironment{WorldWidth=Main.maxTilesX,WorldHeight=Main.maxTilesY,GravityWorldSurface=Main.worldSurface,Remix=Main.remixWorld},terrain,out stop))
             {
@@ -133,6 +180,9 @@ namespace JueMingR.TerrariaHost.Combat
                 Vector2 point;terrain.Reset();return HostWhipAttack.TryExtraPoint(player,timeline,new HostAttackClock(timeline,HostAttackPhase.BeforeNpc),terrain,out point)?CombatCursorScope.Begin(point):null;
             }
             if(HostHeldAttack.Weapon(item.type) || HostYoyoNavigation.Weapon(item) || HostWhipAttack.Weapon(item))return Control.BeginOpening(player,item);
+            // These native births establish G11A's real charge controller.
+            // Their Shoot does not consume its later AI direction packet.
+            if(item.type==5462 || item.type==6153)return null;
             if(!ReferenceEquals(item,weapon) || !Valid(true)){Clear();return null;}
             var result=Main.GameUpdateCount==prepared?current:next;
             // One prepared ordinary attack is a capability, not a reusable

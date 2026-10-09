@@ -136,6 +136,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(Path)Prediction.Cache.Demand(0,1,NpcPredictionCache.Horizon);else Prediction.Cache.Release(0);
             try{Selection.Update(Options,Session,Marker || !pathFailed && Prediction.Cache.Required>0,Collision?Geometry:null);}catch(Exception error){AimTrace.Fault("host-selection",error,(long)tick);selectionFailed=true;CollisionFailed();pathFailed=true;Selection.RetireTarget();Prediction.Stop();World.Clear();return;}
             if(!Selection.HasTarget){Prediction.Clear();return;}
+            Attack?.Demand(); // The newly selected identity supplies this attack's preferred window.
             // Ordinary prediction is synchronous and owned by Source. Native
             // failure belongs only to the explicit comparison route; a shared
             // entry exception still latches the whole path closed.

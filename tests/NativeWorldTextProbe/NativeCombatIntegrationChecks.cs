@@ -38,6 +38,9 @@ namespace NativeWorldTextProbe
                 }
                 p.autoReuseAllWeapons=false;Console.WriteLine("PASS native ordinary entry time1 animation1/2; attachment release and item auto-reuse remain distinct");
                 FacingSelection(context,combat,host,attack,input);
+                NativeCombatCadenceAimChecks.Run(context);
+                NativeCombatResourceChecks.Run(context);
+                NativeCombatCandidateDemandChecks.Run(context);
             }
             finally{harmony.UnpatchAll(harmony.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());}
         }

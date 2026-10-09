@@ -24,6 +24,7 @@ namespace JueMingR.TerrariaHost.Combat
             Vector2 direction=parent.velocity.SafeNormalize(Vector2.UnitY),mounted=player.RotatedRelativePoint(player.MountedCenter),armOffset=player.GetArmPosition()-mounted;
             var motion=NpcPredictionSource.ReadPlayer(player);var environment=new PredictionEnvironment{WorldWidth=Main.maxTilesX,WorldHeight=Main.maxTilesY,GravityWorldSurface=Main.worldSurface,Remix=Main.remixWorld};
             var lengths=new float[children.Count];for(int i=0;i<lengths.Length;i++)lengths[i]=children[i].Shot.localAI[1];
+            var fees=new HostAttackResources.FeeClock(player,parent);
             for(int step=0;step<24 && age+step+1<timeline.Count;step++)
             {
                 // The player's movement is already complete at action sampling;
@@ -31,9 +32,9 @@ namespace JueMingR.TerrariaHost.Combat
                 if(clock.MovePlayer(step)){PredictionStop stop;if(!PlayerMotionContinuation.Advance(ref motion,environment,terrain,out stop))return null;}
                 Vector2 origin=mounted+new Vector2(motion.X-player.position.X,motion.Y-player.position.Y);
                 Vector2 requested=(aim-origin).SafeNormalize(Vector2.UnitY);
-                float phase=parent.ai[0]+(step+1)*(parent.type==460?player.GetSlowMagicUseRate():1);
+                float phase;bool readsDirection;if(!fees.Advance(out phase,out readsDirection))return null;
                 if(parent.type==633)direction=Vector2.Lerp(requested,direction,.92f).SafeNormalize(Vector2.UnitY);
-                else if(phase<180?parent.ai[1]+step+1>=5:(int)phase%5==0)direction=requested;
+                else if(readsDirection)direction=requested;
                 Vector2 parentCenter=parent.type==460?origin+armOffset-direction*(player.HeldItem.shootSpeed*parent.scale):origin;
                 for(int i=0;i<children.Count;i++)
                 {

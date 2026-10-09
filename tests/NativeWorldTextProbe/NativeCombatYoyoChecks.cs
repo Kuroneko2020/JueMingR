@@ -103,8 +103,12 @@ namespace NativeWorldTextProbe
             var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var attack=Get(combat,"Attack");var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),Get(context,"Input"),3278,0,0);p.position=new Vector2(700,646);p.channel=p.controlUseItem=true;Main.screenPosition=new Vector2(600,400);
             var n=Main.npc[2];n.SetDefaults(3);n.whoAmI=2;n.active=true;n.position=new Vector2(outside?950:800,646);n.life=n.lifeMax=10000;n.target=0;Array.Clear(n.immune,0,n.immune.Length);
             if(!outside)for(int y=5;y<=42;y++){Main.tile[48,y].active(true);Main.tile[48,y].type=1;}
-            NativeToolExecutionChecks.Sample(context,Get(context,"Input"),new Vector2(650,450),true);Call(combat,"Sample");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,false,true));NativeCombatAimChecks.Prepare(host,attack,n,0,true);
-            typeof(Player).GetMethod("ItemCheck_Shoot",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),false});var shot=Main.projectile.Single(q=>q.active && q.type==541);NativeCombatAimChecks.Prepare(host,attack,n,0,true);shot.AI();
+            NativeToolExecutionChecks.Sample(context,Get(context,"Input"),new Vector2(650,450),true);Call(combat,"Sample");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,false,true));Action prepare=()=>
+            {
+                if(!outside){NativeCombatAimChecks.Prepare(host,attack,n,0,true);return;}
+                var selection=Get(host,"Selection");Call(selection,"Update",((ObservationSettings)Get(host,"Settings")).Value,(long)Get(host,"Session"),true,null);Require(!(bool)Get(selection,"HasTarget"),"current weapon excludes this physically out-of-range receiver");Call(Get(Get(host,"Prediction"),"Cache"),"Clear");Call(attack,"PrepareProjectiles");
+            };prepare();
+            typeof(Player).GetMethod("ItemCheck_Shoot",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),false});var shot=Main.projectile.Single(q=>q.active && q.type==541);prepare();shot.AI();
             Vector2 manual=new Vector2(650,450)-p.Center;float radius=Terraria.ID.ProjectileID.Sets.YoyosMaximumRange[shot.type]/((1+p.meleeSpeed*3)/4);if(p.yoyoString)radius=(Terraria.ID.ProjectileID.Sets.YoyosMaximumRange[shot.type]*1.25f+30)/((1+p.meleeSpeed*3)/4);if(manual.Length()>radius-1)manual=manual.SafeNormalize(Vector2.Zero)*(radius-1);manual+=p.Center;
             Require(Vector2.DistanceSquared(new Vector2(shot.ai[0],shot.ai[1]),manual)<.01f && GetOptional(attack,"ExpectedImpact")==null,"no path/outside target radius restores real manual cursor and native radial clip: "+shot.ai[0]+","+shot.ai[1]+" expected="+manual);
             Console.WriteLine("PASS yoyo navigation rejection/manual: outside="+outside);

@@ -23,7 +23,7 @@ namespace JueMingR.TerrariaHost.Combat
             // Starting a use is tested BEFORE the decrement. A held ordinary
             // non-autoreuse item does not become fresh just because timers hit
             // zero. This is a read-only planning gate, never a native Shoot veto.
-            return pressed && (player.releaseUseItem || repeat) && player.reuseDelay<=0 && player.itemTime<=1;
+            return pressed && (player.releaseUseItem || repeat) && player.reuseDelay<=0 && player.itemTime<=1 && HostAttackResources.Initial(player,item);
         }
     }
 }

@@ -18,6 +18,7 @@ namespace JueMingR.TerrariaHost.Combat
         internal bool HasMouse {get;private set;}
         internal bool HasTarget {get;private set;}
         internal bool ClearLine {get;private set;}
+        internal Func<NPC,bool> CandidateAllowed {get;set;}
         internal CombatSelection(NativeNpcObservation npcs){this.npcs=npcs;}
 #if DEBUG
         internal int Candidates {get;private set;}
@@ -75,6 +76,7 @@ namespace JueMingR.TerrariaHost.Combat
                 var box=ReceiveBounds(n);
                 float dx=center.X-MathHelper.Clamp(center.X,box.Left,box.Right),dy=center.Y-MathHelper.Clamp(center.Y,box.Top,box.Bottom),distance=dx*dx+dy*dy;
                 if(distance>radius*radius)continue;
+                if(CandidateAllowed!=null && !CandidateAllowed(n))continue;
                 bool clear=false;
                 if(options.ClearLine)
                 {

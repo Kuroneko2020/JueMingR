@@ -81,7 +81,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(HostYoyoNavigation.Handles(shot) && shot.ai[0]<0)return;
             shots[(int)shot.key]=new Controlled{Shot=shot,Key=(int)shot.key,Type=shot.type,Source=owner.Source,BirthOrdinal=++birthOrdinal,Born=Main.GameUpdateCount,BornNext=Main.ProjectileUpdateLoopIndex>=0 && shot.whoAmI<=Main.ProjectileUpdateLoopIndex,Navigation=HostYoyoNavigation.Handles(shot)?new HostYoyoNavigation():null};
         }
-        internal void Clear(){opening=null;openingNavigation=null;openingUsable=false;foreach(var entry in shots.Values){entry.Contact=entry.NextKillContact=null;entry.HasPoint=false;entry.ContactChild=null;entry.Obstacles=null;}}
+        internal void Clear(){preparedTimeline=null;opening=null;openingNavigation=null;openingUsable=false;foreach(var entry in shots.Values){entry.Contact=entry.NextKillContact=null;entry.HasPoint=false;entry.ContactChild=null;entry.Obstacles=null;}}
         internal void Reset(){Clear();shots.Clear();preparedTimeline=null;opening=null;birthOrdinal=0;}
         internal void Prepare(NpcTrajectory timeline,HostAttackPhase phase)
         {
@@ -195,25 +195,29 @@ namespace JueMingR.TerrariaHost.Combat
             }
         }
         internal CombatCursorScope BeginAI(Projectile shot)
+        {Vector2 point;return TryPoint(shot,out point)?CombatCursorScope.Begin(point):null;}
+        // G11A can read this same prepared capability before entering its
+        // outer cursor scope. Reading never advances cadence or solves again.
+        internal bool TryPoint(Projectile shot,out Vector2 point)
         {
-            Controlled entry;if(!shots.TryGetValue((int)shot.key,out entry) || !ReferenceEquals(entry.Shot,shot))return null;
+            point=default(Vector2);Controlled entry;if(!shots.TryGetValue((int)shot.key,out entry) || !ReferenceEquals(entry.Shot,shot))return false;
             // Bubble AI never reads the cursor. Its separate Kill receipt must
             // survive these natural AI calls, including a stationary bubble
             // whose current and expiry origins are exactly the same.
-            if(entry.Type==444)return null;
+            if(entry.Type==444)return false;
             if(!environmentState.Current || !Valid(entry) || entry.Obstacles!=null && !entry.Obstacles.Unchanged || entry.Prepared!=Main.GameUpdateCount || entry.Contact==null && !entry.HasPoint || !observation.Selection.HasTarget || !entry.Target.Equals(observation.Selection.Target) || !ReferenceEquals(preparedTimeline,observation.Prediction.Cache.Read(1)) || !terrain.Unchanged)
-            {entry.Contact=null;return null;}
-            if(entry.Type==1035)return HostWhipAttack.Consumes(shot)?CombatCursorScope.Begin(entry.Point):null;
+            {entry.Contact=null;return false;}
+            if(entry.Type==1035){point=entry.Point;return HostWhipAttack.Consumes(shot);}
             if(HostHeldAttack.Handles(entry.Type))
             {
-                if(!HostHeldAttack.Consumes(combat.Player,shot))return null;
-                if(entry.Ammo!=null && !entry.Ammo.IdentityMatches(combat.Player,combat.Player.HeldItem)){entry.Contact=null;entry.HasPoint=false;return null;}
-                return CombatCursorScope.Begin(entry.Point);
+                if(!HostHeldAttack.Consumes(combat.Player,shot))return false;
+                if(entry.Ammo!=null && !entry.Ammo.IdentityMatches(combat.Player,combat.Player.HeldItem)){entry.Contact=null;entry.HasPoint=false;return false;}
+                point=entry.Point;return true;
             }
             if(entry.Navigation!=null)
-            {if(!entry.HasPoint || !combat.Player.channel || shot.ai[0]<0 || !entry.Navigation.Current(combat.Player)){entry.Contact=null;entry.HasPoint=false;return null;}return CombatCursorScope.Begin(entry.Point);}
-            if(!HostGuidedAttack.Handles(entry.Type) || shot.ai[0]<0 || !combat.Player.channel || combat.Player.HeldItem.shoot!=entry.Type){entry.Contact=null;return null;}
-            return CombatCursorScope.Begin(new Microsoft.Xna.Framework.Vector2(entry.Contact.AimX,entry.Contact.AimY));
+            {if(!entry.HasPoint || !combat.Player.channel || shot.ai[0]<0 || !entry.Navigation.Current(combat.Player)){entry.Contact=null;entry.HasPoint=false;return false;}point=entry.Point;return true;}
+            if(!HostGuidedAttack.Handles(entry.Type) || shot.ai[0]<0 || !combat.Player.channel || combat.Player.HeldItem.shoot!=entry.Type){entry.Contact=null;return false;}
+            point=new Vector2(entry.Contact.AimX,entry.Contact.AimY);return true;
         }
     }
 }
