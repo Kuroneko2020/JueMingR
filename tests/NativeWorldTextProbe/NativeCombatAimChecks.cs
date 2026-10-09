@@ -22,11 +22,18 @@ namespace NativeWorldTextProbe
             typeof(Main).GetMethod("Initialize_TileAndNPCData1",Flags).Invoke(null,null);typeof(Main).GetMethod("Initialize_TileAndNPCData2",Flags).Invoke(null,null);
             Terraria.ObjectData.TileObjectData.Initialize();Lighting.Mode=Terraria.Graphics.Light.LightMode.Color;
             NativeCombatWorkerAssetChecks.Initialize();
+            // Main's real entity initialization also fills its static gore
+            // array. These components execute original Kill/explosion paths,
+            // so supply normal original Gore instances, not a fake ABI type.
+            for(int i=0;i<Main.gore.Length;i++)Main.gore[i]=new Gore();
             Terraria.GameContent.Creative.CreativePowerManager.Initialize();Terraria.DataStructures.ArmorSetBonuses.Initialize();Terraria.DataStructures.ArmorSetBonuses.BuildLookup();
             if(Main.instance==null){Main.instance=(Main)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(Main));GC.SuppressFinalize(Main.instance);}
             PopupText.popupText=new PopupText[20];for(int i=0;i<20;i++)PopupText.popupText[i]=new PopupText();
             foreach(var item in Main.item)item.whoAmI=Array.IndexOf(Main.item,item);
             for(int i=1;i<Main.player.Length;i++)if(Main.player[i]==null)Main.player[i]=new Player{whoAmI=i};
+            NativeCombatAmmoChecks.Run(context);
+            NativeCombatSkyChecks.Run(context);
+            NativeCombatScatterChecks.Run(context);
             foreach(int weaponType in new[]{ItemID.FlintlockPistol,ItemID.WoodenBow})foreach(float targetSpeed in new[]{0f,1f})
             {
                 NativeCombatObservationChecks.Save(host,new ObservationOptions());
@@ -48,6 +55,7 @@ namespace NativeWorldTextProbe
                 var rngFields=typeof(Terraria.Utilities.UnifiedRandom).GetFields(Flags).Where(f=>!f.IsStatic).ToArray();
                 var before=rngFields.Select(f=>Clone(f.GetValue(rng))).ToArray();int cycling=player.ammoCyclingOffset;
                 Call(attack,"Prepare");
+                int immuneAtBirth=body.immune[0];
                 Require(stack==player.inventory[54].stack && cycling==player.ammoCyclingOffset && ReferenceEquals(rng,Main.rand) && rngFields.Select((f,i)=>Equal(before[i],f.GetValue(rng))).All(b=>b),"prepare does not consume inventory/RNG/cycling");
                 typeof(Player).GetMethod("ItemCheck_Shoot",Flags).Invoke(player,new object[]{0,player.HeldItem,50,false});
                 var born=Main.projectile.Where(p=>p.active && p.owner==0).ToArray();Require(born.Length==1,"aim creates exactly the vanilla single shot");
@@ -63,7 +71,7 @@ namespace NativeWorldTextProbe
                     shot.Update(shot.whoAmI);
                     if(shot.active)Require(Vector2.DistanceSquared(shot.Center,new Vector2(x,y))<.02f,"native AI-before-move matches prepared subupdate motion");
                 }
-                Require(body.life<10000,"actual native projectile damage reaches fixed/moving target: "+weaponType+"/"+targetSpeed);
+                Require(body.life<10000,"actual native projectile damage reaches fixed/moving target: "+weaponType+"/"+targetSpeed+" immuneAtBirth="+immuneAtBirth+" immuneNow="+body.immune[0]+" position="+shot.position+" target="+body.Hitbox+" active="+shot.active+" tick="+contact.Tick);
                 Console.WriteLine("PASS actual ItemCheck_Shoot -> Projectile.Update/Damage: weapon="+weaponType+" targetVx="+targetSpeed+" aim="+contact.AimX+","+contact.AimY+" expected="+contact.ImpactX+","+contact.ImpactY+" tick="+contact.Tick);
                 // A changed ammo stack or slot identity rejects the old plan;
                 // no virtual input is left installed on a skipped consumer.
@@ -146,10 +154,10 @@ namespace NativeWorldTextProbe
         {
             var scope=combat.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.CombatCursorScope");var begin=scope.GetMethod("Begin",Flags);
             Main.mouseX=21;Main.mouseY=22;var point=Main.screenPosition+new Vector2(100,110);
-            var outer=begin.Invoke(null,new object[]{point});var inner=begin.Invoke(null,new object[]{point});int ownedX=Main.mouseX,ownedY=Main.mouseY;
+            var outer=begin.Invoke(null,new object[]{point,true});var inner=begin.Invoke(null,new object[]{point,true});int ownedX=Main.mouseX,ownedY=Main.mouseY;
             Call(outer,"End");Require(Main.mouseX==ownedX && Main.mouseY==ownedY,"late outer receipt cannot revoke same-coordinate successor");
             Call(inner,"End");Call(outer,"End");Require(Main.mouseX==21 && Main.mouseY==22,"innermost completion retires deferred outer cursor once");
-            outer=begin.Invoke(null,new object[]{point});Main.mouseX=333;Call(outer,"End");Require(Main.mouseX==333 && Main.mouseY==22,"unrelated cursor coordinate ownership is preserved");
+            outer=begin.Invoke(null,new object[]{point,true});Main.mouseX=333;Call(outer,"End");Require(Main.mouseX==333 && Main.mouseY==22,"unrelated cursor coordinate ownership is preserved");
             Console.WriteLine("PASS cursor receipts: successor identity, repeated finalizer, independent coordinate ownership.");
         }
         private static void CompletedWorldTiming(object context,object combat,object host,object input,object tools,object attack)
@@ -219,7 +227,7 @@ namespace NativeWorldTextProbe
             Console.WriteLine("PASS preparation isolation: native up/down, read-only terrain, exception-local path survival, finite latch/recovery.");
         }
         private static bool Equal(object a,object b){if(a is Array && b is Array)return ((Array)a).Cast<object>().SequenceEqual(((Array)b).Cast<object>());return Equals(a,b);}
-        private static void Prepare(object host,object attack,NPC body,float vx)
+        internal static void Prepare(object host,object attack,NPC body,float vx)
         {
             var selection=Get(host,"Selection");Call(selection,"Update",((ObservationSettings)Get(host,"Settings")).Value,(long)Get(host,"Session"),true,null);
             var id=(NpcIdentity)Get(selection,"Target");Require(id.Slot==body.whoAmI,"single shared final target is selected");

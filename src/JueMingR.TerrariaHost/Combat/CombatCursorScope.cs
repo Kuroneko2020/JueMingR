@@ -14,9 +14,9 @@ namespace JueMingR.TerrariaHost.Combat
         private readonly CombatCursorScope previous;
         private bool ended;
         private CombatCursorScope(int x,int y){oldX=Main.mouseX;oldY=Main.mouseY;ownX=x;ownY=y;previous=owner;owner=this;Main.mouseX=x;Main.mouseY=y;}
-        internal static CombatCursorScope Begin(Vector2 world)
+        internal static CombatCursorScope Begin(Vector2 world,bool reverseGravity=true)
         {
-            var screen=Main.ReverseGravitySupport(world-Main.screenPosition);
+            var screen=world-Main.screenPosition;if(reverseGravity)screen=Main.ReverseGravitySupport(screen);
             if(float.IsNaN(screen.X) || float.IsInfinity(screen.X) || float.IsNaN(screen.Y) || float.IsInfinity(screen.Y) ||
                 screen.X<int.MinValue || screen.X>int.MaxValue || screen.Y<int.MinValue || screen.Y>int.MaxValue)return null;
             return new CombatCursorScope((int)screen.X,(int)screen.Y);

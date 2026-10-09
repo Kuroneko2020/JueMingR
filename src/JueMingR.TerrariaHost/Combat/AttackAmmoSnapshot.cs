@@ -11,13 +11,13 @@ namespace JueMingR.TerrariaHost.Combat
         private delegate bool Specific(Player player,int launcher,int ammo,out int projectile);
         private static readonly Specific specific=(Specific)Delegate.CreateDelegate(typeof(Specific),typeof(Player).GetMethod("PickAmmo_TryFindingSpecificMatches",BindingFlags.Instance|BindingFlags.NonPublic));
         internal readonly Item Ammo;
-        internal readonly int Type,Stack,Projectile,Mode,Offset;
+        internal readonly int Type,Stack,Projectile,Mode,Offset,WeaponType;
         internal readonly float Speed;
         private readonly float weaponSpeed,meleeSpeed,ammoSpeed;
         private readonly int weaponShoot,ammoShoot,ammoPrefix;
         private readonly bool quiver,archery,molten;
         private AttackAmmoSnapshot(Player player,Item weapon,Item ammo,int projectile,float speed)
-        {Ammo=ammo;Type=ammo?.type??0;Stack=ammo?.stack??0;Projectile=projectile;Speed=speed;Mode=(int)player.ammoCyclingMode;Offset=player.ammoCyclingOffset;
+        {Ammo=ammo;Type=ammo?.type??0;Stack=ammo?.stack??0;Projectile=projectile;Speed=speed;Mode=(int)player.ammoCyclingMode;Offset=player.ammoCyclingOffset;WeaponType=weapon.type;
             weaponSpeed=weapon.shootSpeed;weaponShoot=weapon.shoot;meleeSpeed=player.meleeSpeed;ammoSpeed=ammo?.shootSpeed??0;ammoShoot=ammo?.shoot??0;ammoPrefix=ammo?.prefix??0;quiver=player.magicQuiver;archery=player.archery;molten=player.hasMoltenQuiver;}
         internal static AttackAmmoSnapshot Capture(Player player,Item weapon)
         {
@@ -47,6 +47,14 @@ namespace JueMingR.TerrariaHost.Combat
                 if(AmmoID.Sets.IsArrow[ammo.ammo] && player.archery && speed<20)speed=Math.Min(20,speed*1.2f);
             }
             if(weapon.type==1254 || weapon.type==1255 || weapon.type==1265){if(projectile==14)projectile=242;}
+            // These ItemCheck_Shoot conversions occur AFTER PickAmmo, unlike
+            // quiver/BeesKnees. Retain the selected ammunition's speed addition.
+            if(weapon.type==120 && projectile==1)projectile=2;
+            if(weapon.type==682)projectile=117;
+            if(weapon.type==725)projectile=120;
+            if(weapon.type==2796)projectile=442;
+            if(weapon.type==2223)projectile=357;
+            if(weapon.type==5117)projectile=968;
             return speed>0 && projectile>0?new AttackAmmoSnapshot(player,weapon,ammo,projectile,speed):null;
         }
         internal bool IdentityMatches(Player player,Item weapon)

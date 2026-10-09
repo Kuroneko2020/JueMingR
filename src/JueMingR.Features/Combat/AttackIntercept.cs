@@ -15,13 +15,31 @@ namespace JueMingR.Features.Combat
     }
     public static class AttackIntercept
     {
+        // A specialized consumer may have a cursor-dependent birth position.
+        // Replay its explicit launch without reinterpreting the cursor as a
+        // muzzle ray. The exact same timeline/time and discrete boxes apply.
+        public static AttackContact Replay(float aimX,float aimY,float x,float y,float vx,float vy,AttackMotion motion,NpcTrajectory timeline,int age,AttackPassage passage=null)
+        {
+            if(timeline==null || age<0 || age>=timeline.Count-1)return null;
+            motion.Launch(ref vx,ref vy);int limit=Math.Min(motion.Lifetime,(timeline.Count-age-1)*motion.Updates);
+            for(int k=1;k<=limit;k++)
+            {
+                float oldX=x,oldY=y;motion.Advance(ref x,ref y,ref vx,ref vy,k);
+                if(passage!=null && !passage(oldX,oldY,x,y,motion.Width,motion.Height))return null;
+                int t=age+(k-1)/motion.Updates+1;var sample=timeline[t];
+                if(sample.CanReceive && Intersects(x,y,motion.Width,motion.Height,sample.ProjectileReceiveBounds))
+                {var b=sample.ProjectileReceiveBounds;return new AttackContact(timeline,aimX,aimY,Math.Max(b.X,Math.Min(b.X+b.Width,x)),Math.Max(b.Y,Math.Min(b.Y+b.Height,y)),t,(k-1)%motion.Updates,0,motion.Confidence);}
+            }
+            return null;
+        }
         // One selected timeline and a finite <=120*16 candidate search. No NPC
         // sampling, native AI, resource consumption or random calls occur here.
         public static AttackContact Solve(float originX,float originY,AttackMotion motion,NpcTrajectory timeline,int age,int delay,AttackPassage passage=null)
         {
             if(timeline==null || age<0 || delay<0 || age+delay>=timeline.Count || !Finite(originX) || !Finite(originY))return null;
             int limit=Math.Min(motion.Lifetime,(timeline.Count-age-delay-1)*motion.Updates);
-            float gx=0,gy=0,gvx=0,gvy=0,ax=0,ay=0,avx=1,avy=0;
+            float basis=motion.Acceleration==1?1:motion.Speed;
+            float gx=0,gy=0,gvx=0,gvy=0,ax=0,ay=0,avx=basis,avy=0;
             for(int step=1;step<=limit;step++)
             {
                 motion.Advance(ref gx,ref gy,ref gvx,ref gvy,step);motion.Advance(ref ax,ref ay,ref avx,ref avy,step);
@@ -30,14 +48,16 @@ namespace JueMingR.Features.Combat
                 // Linear velocity response permits an exact direction seed for
                 // delayed constant gravity. Acceleration is verified by replay;
                 // a nonlinear/clamped miss never fabricates a contact.
-                float response=ax-gx;if(response<=0)continue;
+                float response=(ax-gx)/basis;if(response<=0)continue;
                 float dx=(target.ProjectileReceiveBounds.CenterX-originX-gx)/response;
                 float dy=(target.ProjectileReceiveBounds.CenterY-originY-gy)/response;
                 float length=(float)Math.Sqrt(dx*dx+dy*dy);if(length<=0 || !Finite(length))continue;
                 var rectangle=target.ProjectileReceiveBounds;
                 float extent=(float)Math.Sqrt((rectangle.Width+motion.Width)*(rectangle.Width+motion.Width)+(rectangle.Height+motion.Height)*(rectangle.Height+motion.Height))*.5f;
-                if(Math.Abs(length-motion.Speed)*response>extent)continue;
-                float radius=motion.Speed*response;
+                float launchX=dx/length*motion.Speed,launchY=dy/length*motion.Speed;motion.Launch(ref launchX,ref launchY);
+                float launchSpeed=(float)Math.Sqrt(launchX*launchX+launchY*launchY);
+                if(Math.Abs(length-launchSpeed)*response>extent)continue;
+                float radius=launchSpeed*response;
                 // A centre ray can miss a small translated receive rectangle
                 // even when the fixed-speed circle crosses one of its edges.
                 // Use at most eight circle/inner-edge intersections as well;
@@ -60,6 +80,7 @@ namespace JueMingR.Features.Combat
                     // A long direction point keeps that rounding below the
                     // inner-edge margin without changing projectile speed.
                     float aimX=originX+vx*1000,aimY=originY+vy*1000;
+                    motion.Launch(ref vx,ref vy);
                 for(int k=1;k<=step;k++)
                 {
                     float oldX=x,oldY=y;motion.Advance(ref x,ref y,ref vx,ref vy,k);

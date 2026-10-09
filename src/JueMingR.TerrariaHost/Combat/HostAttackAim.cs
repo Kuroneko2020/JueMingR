@@ -45,9 +45,9 @@ namespace JueMingR.TerrariaHost.Combat
             var player=combat.Player;var item=player.HeldItem;if(!Eligible(item))return;
             var timeline=observation.Prediction.Cache.Read(1);if(timeline==null || !timeline.Identity.Equals(observation.Selection.Target))return;
             var captured=AttackAmmoSnapshot.Capture(player,item);if(captured==null)return;
-            AttackMotion motion;if(!Model(captured,out motion))return;
+            AttackMotion motion;bool sky=HostSkyAttack.Handles(item.type);if(!sky && !HostAttackModels.TryRead(captured,out motion))return;
             origin=player.RotatedRelativePoint(player.MountedCenter);int age=(int)((long)Main.GameUpdateCount-timeline.SampleTick)-(beforeNpc?1:0);if(age<0 || age>1)return;
-            current=AttackIntercept.Solve(origin.X,origin.Y,motion,timeline,age,0,Passage);
+            current=Solve(player,item,captured,timeline,origin,age);
             var movement=NpcPredictionSource.ReadPlayer(player);PredictionStop stop;
             if(!beforeNpc && PlayerMotionContinuation.Advance(ref movement,new PredictionEnvironment{WorldWidth=Main.maxTilesX,WorldHeight=Main.maxTilesY,GravityWorldSurface=Main.worldSurface,Remix=Main.remixWorld},terrain,out stop))
             {
@@ -56,26 +56,16 @@ namespace JueMingR.TerrariaHost.Combat
                 // movement T+1, then projectile AI/move/damage T+1. Solve's
                 // first subupdate already reads NPC point age+1. Advancing age
                 // here as well would consume point 2 in that first phase.
-                next=AttackIntercept.Solve(nextOrigin.X,nextOrigin.Y,motion,timeline,age,0,Passage);
+                next=Solve(player,item,captured,timeline,nextOrigin,age);
             }
             weapon=item;slot=player.selectedItem;type=item.type;prefix=item.prefix;session=observation.Session;prepared=Main.GameUpdateCount;ammo=captured;
         }
-        private static bool Eligible(Item item){return item!=null && !item.IsAir && item.shoot>0 && item.damage>0 && item.pick==0 && item.axe==0 && item.hammer==0 && !item.summon && !item.sentry;}
-        private static bool Model(AttackAmmoSnapshot ammo,out AttackMotion motion)
+        private static bool Eligible(Item item){return item!=null && !item.IsAir && item.shoot>0 && (item.damage>0 || item.type==905) && item.pick==0 && item.axe==0 && item.hammer==0 && !item.summon && !item.sentry;}
+        private AttackContact Solve(Player player,Item item,AttackAmmoSnapshot captured,NpcTrajectory timeline,Vector2 start,int age)
         {
-            motion=default(AttackMotion);Projectile sample;
-            if(!ContentSamples.ProjectilesByType.TryGetValue(ammo.Projectile,out sample))return false;
-            float gravity=0;int start=0;
-            // Explicit vanilla mechanism members. A new type isn't admitted
-            // merely because it shares AI style; homing/derived behavior needs
-            // its own confidence and stage adapter.
-            switch(ammo.Projectile)
-            {
-                case 1:case 2:case 4:case 41:gravity=.1f;start=15;break;
-                case 14:case 5:case 89:case 100:case 110:case 242:case 257:case 279:case 283:case 284:case 285:case 286:break;
-                default:return false;
-            }
-            motion=new AttackMotion(ammo.Speed,gravity,start,sample.extraUpdates+1,sample.width,sample.height,sample.timeLeft);return true;
+            if(HostSkyAttack.Handles(item.type))return HostSkyAttack.Solve(player,item,captured,timeline,start,age,terrain);
+            if(item.type==2624){var b=timeline[Math.Min(age+1,timeline.Count-1)].ProjectileReceiveBounds;start+=(new Vector2(b.CenterX,b.CenterY)-start).SafeNormalize(Vector2.UnitX)*40;}
+            AttackMotion motion;return HostAttackModels.TryRead(captured,out motion)?AttackIntercept.Solve(start.X,start.Y,motion,timeline,age,0,Passage):null;
         }
         private bool Passage(float x,float y,float nx,float ny,float width,float height)
         {
@@ -91,7 +81,7 @@ namespace JueMingR.TerrariaHost.Combat
             var result=Main.GameUpdateCount==prepared?current:next;
             if(result==null || !result.Timeline.Identity.Equals(observation.Selection.Target) || !ReferenceEquals(result.Timeline,observation.Prediction.Cache.Read(1)) ||
                 Vector2.DistanceSquared(player.RotatedRelativePoint(player.MountedCenter),Main.GameUpdateCount==prepared?origin:nextOrigin)>4)return false;
-            return !checkAmmo || ammo.Matches(player,weapon);
+            return !checkAmmo || terrain.Unchanged && ammo.Matches(player,weapon);
         }
         internal CombatCursorScope BeginShot(Player player,Item item)
         {
@@ -102,7 +92,7 @@ namespace JueMingR.TerrariaHost.Combat
             // cursor value. Native consumption retires it even if a later
             // refill happens to recreate the same ammo bytes in this step.
             current=next=null;
-            return CombatCursorScope.Begin(new Vector2(result.AimX,result.AimY));
+            return CombatCursorScope.Begin(new Vector2(result.AimX,result.AimY),!HostSkyAttack.RawCursor(type));
         }
     }
 }
