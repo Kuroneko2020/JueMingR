@@ -14,10 +14,10 @@ namespace JueMingR.TerrariaHost.Combat
         internal static AttackContact Solve(Player player,Projectile shot,NpcTrajectory timeline,HostAttackClock clock,PredictionTerrain terrain,out Vector2 aim)
         {
             int age=clock.Age;aim=HostHeldAttack.DirectionPoint(player,timeline,clock.FirstTick);
-            float speed=24,returnSpeed=16,returnAcceleration=3;int outbound=10;
-            switch(shot.type){case 25:speed=14;outbound=15;returnSpeed=10;break;case 154:speed=15;outbound=15;returnSpeed=11;break;case 26:speed=16;outbound=15;returnSpeed=13;break;case 35:speed=17;outbound=15;returnSpeed=14;break;case 63:speed=21;outbound=13;returnSpeed=20;break;case 757:speed=22;outbound=13;returnSpeed=22;break;case 247:speed=23;outbound=13;break;case 947:case 948:speed=12;outbound=13;returnSpeed=8;break;case 1058:speed=23;outbound=16;break;}
-            speed/=player.meleeSpeed;returnSpeed/=player.meleeSpeed;returnAcceleration/=player.meleeSpeed;
-            int state=(int)shot.ai[0];if(state!=0 && state!=1 && state!=2)return null;
+            float speed=24,returnSpeed=16,returnAcceleration=3,fastSpeed=48,fastAcceleration=6;int outbound=10;
+            switch(shot.type){case 25:speed=14;outbound=15;returnSpeed=10;fastSpeed=15;break;case 154:speed=15;outbound=15;returnSpeed=11;fastSpeed=16;break;case 26:speed=16;outbound=15;returnSpeed=13;fastSpeed=17;break;case 35:speed=17;outbound=15;returnSpeed=14;fastSpeed=18;break;case 63:speed=21;outbound=13;returnSpeed=20;fastSpeed=24;break;case 757:speed=22;outbound=13;returnSpeed=22;fastSpeed=26;break;case 247:speed=23;outbound=13;break;case 947:case 948:speed=12;outbound=13;returnSpeed=8;fastSpeed=13;break;case 1058:speed=23;outbound=16;break;}
+            speed/=player.meleeSpeed;returnSpeed/=player.meleeSpeed;returnAcceleration/=player.meleeSpeed;fastSpeed/=player.meleeSpeed;fastAcceleration/=player.meleeSpeed;
+            int state=(int)shot.ai[0];if(state!=0 && state!=1 && state!=2 && state!=4)return null;
             bool release=state==0 && !player.channel;Vector2 center=shot.Center,velocity=shot.velocity;float throwClock=shot.ai[1];
             // Native release resets this projectile's local array. Model that
             // known future gate privately, without resetting the actual shot.
@@ -45,9 +45,18 @@ namespace JueMingR.TerrariaHost.Combat
                 }
                 else if(state==1)
                 {if(player.controlUseItem)return null;if(throwClock++>=outbound || Vector2.Distance(center,mounted)>=800){state=2;throwClock=0;velocity*=.3f;}}
-                else
+                else if(state==2)
                 {if(player.controlUseItem || Vector2.Distance(center,mounted)<=returnSpeed)return null;velocity*=.98f;velocity=velocity.MoveTowards((mounted-center).SafeNormalize(Vector2.Zero)*returnSpeed,returnAcceleration);}
-                center+=velocity;if(!terrain.ProjectilePassage(old.X,old.Y,center.X,center.Y,shot.width,shot.height))return null;
+                else
+                {
+                    // Fast return remains damaging, but old-distance or
+                    // next-step overshoot kills in AI before any Movement or
+                    // Damage. It neither reads the cursor nor hits a chain line.
+                    var direction=(mounted-center).SafeNormalize(Vector2.Zero);if(Vector2.Distance(center,mounted)<=fastSpeed)return null;
+                    velocity*=.98f;velocity=velocity.MoveTowards(direction*fastSpeed,fastAcceleration);
+                    if(Vector2.Dot(direction,(mounted-(center+velocity)).SafeNormalize(Vector2.Zero))<0)return null;
+                }
+                center+=velocity;if(state!=4 && !terrain.ProjectilePassage(old.X,old.Y,center.X,center.Y,shot.width,shot.height))return null;
                 if(!receive.Allows(step+1))continue;
                 var contact=AttackIntercept.BodyContact(timeline,tick,0,aim.X,aim.Y,center.X,center.Y,shot.width,shot.height,AttackConfidence.Conditional);if(contact!=null)return contact;
             }

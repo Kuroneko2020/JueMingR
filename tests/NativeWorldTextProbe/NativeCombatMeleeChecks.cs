@@ -21,6 +21,7 @@ namespace NativeWorldTextProbe
             OwnerOffsetOracle(context,combat,host,input);
             Starlight(context,combat,host,attack,input);
             Flail(context,combat,host,attack,input);
+            NativeCombatReturnChecks.Run(context);
             foreach(var row in new[]{new[]{277,780,0},new[]{4911,800,0},new[]{284,1100,0},new[]{284,870,0},new[]{3473,900,0},new[]{277,780,1},new[]{277,780,2}})
             {
             NativeCombatObservationChecks.Save(host,new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,row[0],0,0);p.position=new Vector2(700,646);p.itemAnimationMax=p.itemAnimation=p.HeldItem.useAnimation;p.direction=1;

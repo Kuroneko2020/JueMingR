@@ -64,10 +64,7 @@ namespace JueMingR.TerrariaHost.Combat
                         }
                         else
                         {
-                            // Ordinary boomerang's outbound phase ends at its
-                            // native return clock. Return/hit/wall effects stay
-                            // native; no infinite straight-flight claim.
-                            if(k>=(sample.type==106?45:30))break;shadow.Center+=shadow.velocity;
+                            if(!HostBoomerangAttack.Step(shadow,body))break;
                         }
                         if(shadow.tileCollide && !terrain.ProjectilePassage(old.X,old.Y,shadow.Center.X,shadow.Center.Y,shadow.width,shadow.height))break;
                         int tick=age+step+1;if(!receive.Allows(step+1) || !OwnerAllows(body,shadow,timeline[tick].OwnerBounds,Main.npc[timeline.Identity.Slot].noTileCollide,terrain))continue;
