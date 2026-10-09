@@ -149,7 +149,8 @@ namespace JueMingR.TerrariaHost.Combat
                     return null;}
                 while(at<path.Count-1 && Vector2.Distance(center,path[at])<=dead)at++;
                 if(step==0)input=path[at];velocity=Step(center,velocity,path[at],playerCenter,range,speed,secondary);
-                Vector2 old=center;center+=velocity;if(!terrain.ProjectilePassage(old.X,old.Y,center.X,center.Y,shot.width,shot.height)){
+                Vector2 old=center;if(!HostProjectileEnvironment.Dry(shot,terrain,center.X,center.Y,velocity.X))return null;
+                center+=velocity;if(!terrain.ProjectilePassage(old.X,old.Y,center.X,center.Y,shot.width,shot.height)){
 #if DEBUG
                     ReplayStop="BallTerrain";
 #endif

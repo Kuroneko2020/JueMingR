@@ -80,7 +80,7 @@ namespace JueMingR.Features.Combat
         // A specialized consumer may have a cursor-dependent birth position.
         // Replay its explicit launch without reinterpreting the cursor as a
         // muzzle ray. The exact same timeline/time and discrete boxes apply.
-        public static AttackContact Replay(float aimX,float aimY,float x,float y,float vx,float vy,AttackMotion motion,NpcTrajectory timeline,int age,AttackPassage passage=null,Func<int,bool> receive=null)
+        public static AttackContact Replay(float aimX,float aimY,float x,float y,float vx,float vy,AttackMotion motion,NpcTrajectory timeline,int age,AttackPassage passage=null,Func<int,bool> receive=null,Func<int,int,float,float,bool> damagePassage=null)
         {
             if(timeline==null || age<0 || age>=timeline.Count-1)return null;
             motion.Launch(ref vx,ref vy);int limit=Math.Min(motion.Lifetime,(timeline.Count-age-1)*motion.Updates);
@@ -89,6 +89,7 @@ namespace JueMingR.Features.Combat
                 float oldX=x,oldY=y;motion.Advance(ref x,ref y,ref vx,ref vy,k);
                 if(passage!=null && !passage(oldX,oldY,x,y,motion.Width,motion.Height))return null;
                 int t=age+(k-1)/motion.Updates+1;var sample=timeline[t];
+                if(damagePassage!=null && !damagePassage(k,t,x,y))return null;
                 if(sample.CanReceive && (receive==null || receive((k-1)/motion.Updates+1)) && Intersects(x,y,motion.Width,motion.Height,sample.ProjectileReceiveBounds))
                 {var b=sample.ProjectileReceiveBounds;return new AttackContact(timeline,aimX,aimY,Math.Max(b.X,Math.Min(b.X+b.Width,x)),Math.Max(b.Y,Math.Min(b.Y+b.Height,y)),t,(k-1)%motion.Updates,0,motion.Confidence);}
             }
@@ -96,7 +97,7 @@ namespace JueMingR.Features.Combat
         }
         // One selected timeline and a finite <=120*16 candidate search. No NPC
         // sampling, native AI, resource consumption or random calls occur here.
-        public static AttackContact Solve(float originX,float originY,AttackMotion motion,NpcTrajectory timeline,int age,int delay,AttackPassage passage=null,int firstTickOffset=1,Func<int,bool> receive=null)
+        public static AttackContact Solve(float originX,float originY,AttackMotion motion,NpcTrajectory timeline,int age,int delay,AttackPassage passage=null,int firstTickOffset=1,Func<int,bool> receive=null,Func<int,int,float,float,bool> damagePassage=null)
         {
             if(timeline==null || age<0 || delay<0 || firstTickOffset<0 || firstTickOffset>1 || age+delay>=timeline.Count || !Finite(originX) || !Finite(originY))return null;
             int limit=Math.Min(motion.Lifetime,(timeline.Count-age-delay-firstTickOffset)*motion.Updates);
@@ -148,6 +149,10 @@ namespace JueMingR.Features.Combat
                     float oldX=x,oldY=y;motion.Advance(ref x,ref y,ref vx,ref vy,k);
                     if(passage!=null && !passage(oldX,oldY,x,y,motion.Width,motion.Height))break;
                     int t=age+delay+(k-1)/motion.Updates+firstTickOffset;var sample=timeline[t];
+                    // The host may reject a native damage endpoint consumed
+                    // by an earlier qualified NPC. k==1 begins a new candidate;
+                    // this callback neither samples nor advances an NPC world.
+                    if(damagePassage!=null && !damagePassage(k,t,x,y))break;
                     // Native ordinary projectiles hit with their translated
                     // rectangle at each subupdate, not an infinite swept ray.
                     if(sample.CanReceive && (receive==null || receive(delay+(k-1)/motion.Updates+1)) && Intersects(x,y,motion.Width,motion.Height,sample.ProjectileReceiveBounds))

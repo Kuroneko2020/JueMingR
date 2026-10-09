@@ -26,6 +26,7 @@ namespace JueMingR.TerrariaHost.Combat
                     Vector2 old=center,delta=aim-center;
                     if(delta.Length()>=64)velocity=delta.SafeNormalize(Vector2.Zero)*Math.Min(32,delta.Length());
                     else velocity=velocity*.3f+delta*.3f;
+                    if(!HostProjectileEnvironment.Dry(shot,terrain,center.X,center.Y,velocity.X))break;
                     center+=velocity;
                     if(!terrain.ProjectilePassage(old.X,old.Y,center.X,center.Y,shot.width,shot.height))break;
                     int tick=clock.FirstTick+(k-1)/updates;

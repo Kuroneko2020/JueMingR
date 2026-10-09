@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -82,7 +82,7 @@ namespace NativeWorldTextProbe
                 // A changed ammo stack or slot identity rejects the old plan;
                 // no virtual input is left installed on a skipped consumer.
                 foreach(var p in Main.projectile)p.active=false;
-                player.inventory[54].stack++;Require(Call(attack,"BeginShot",player,player.HeldItem)==null,"ammo mutation rejects prepared ownership");
+                player.inventory[54].stack++;Require(Call(attack,"BeginShot",player,player.HeldItem,true)==null,"ammo mutation rejects prepared ownership");
             }
             FirstClick(context,combat,host,input,tools,attack);
             ActionPhase(context,combat,host,input,tools,attack);

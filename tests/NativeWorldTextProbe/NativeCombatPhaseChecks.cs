@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Reflection;
 using HarmonyLib;
@@ -26,7 +26,7 @@ namespace NativeWorldTextProbe
             // The original phase owns this named RNG stream after Main's
             // normal initialization; preserve the calling probe's old stream.
             randomField.SetValue(null,new System.Collections.Generic.Dictionary<string,Terraria.Utilities.UnifiedRandom>{{"UpdateProjectiles",new Terraria.Utilities.UnifiedRandom(702)}});
-            try{RunCore(context);Bubble(context,0);Bubble(context,5);Bubble(context,0,true);UnknownSlot(context);NativeCombatSwingChecks.Run(context);NativeCombatWhipChecks.Run(context);}finally{randomField.SetValue(null,previousRandom);captureBirth=false;audit.Unpatch(birth,HarmonyPatchType.All,audit.Id);foreach(var method in methods)audit.Unpatch(method,HarmonyPatchType.All,audit.Id);}
+            try{RunCore(context);Bubble(context,0,true,true);Bubble(context,0);Bubble(context,5);Bubble(context,0,true);UnknownSlot(context);NativeCombatSwingChecks.Run(context);NativeCombatWhipChecks.Run(context);}finally{randomField.SetValue(null,previousRandom);captureBirth=false;audit.Unpatch(birth,HarmonyPatchType.All,audit.Id);foreach(var method in methods)audit.Unpatch(method,HarmonyPatchType.All,audit.Id);}
         }
         private static void RunCore(object context)
         {
@@ -48,17 +48,32 @@ namespace NativeWorldTextProbe
             Console.WriteLine("PASS natural component Player/NPC/Projectile order and completed-world contact");
         }
         private static void Birth(Projectile __0){if(captureBirth && __0.type==14)born=__0;}
-        private static void Bubble(object context,int slot,bool stationary=false)
+        private static void Bubble(object context,int slot,bool stationary=false,bool shortFuture=false)
         {
             var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var attack=Get(combat,"Attack");var input=Get(context,"Input");
             NativeCombatObservationChecks.Save(host,new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,2797,0,0);p.position=new Vector2(700,646);p.ResetEffects();p.inventory[54].SetDefaults(97);p.inventory[54].stack=999;Main.screenPosition=new Vector2(600,500);Main.rand=new Terraria.Utilities.UnifiedRandom(7123);
             for(int i=0;i<slot;i++)Require(Projectile.NewProjectile(new EntitySource_DebugCommand(),new Vector2(300,300),Vector2.Zero,1,0,0,0)==i,"native filler preserves default sequential slots");
-            var n=Main.npc[2];n.SetDefaults(3);n.whoAmI=2;n.active=true;n.position=new Vector2(1100,646);n.life=n.lifeMax=10000;n.target=0;Array.Clear(n.immune,0,n.immune.Length);n.UpdateNPC(2);
+            var n=Main.npc[2];n.SetDefaults(3);n.whoAmI=2;n.active=true;n.position=new Vector2(1100,646);n.life=n.lifeMax=10000;n.target=0;Array.Clear(n.immune,0,n.immune.Length);
+            // SetDefaults preserves buff timers and shimmer transparency on a
+            // reused NPC. Independent dry scenes must not inherit the earlier
+            // real liquid scene; the short-future row deliberately retains a
+            // known native transformation boundary instead.
+            Array.Clear(n.buffType,0,n.buffType.Length);Array.Clear(n.buffTime,0,n.buffTime.Length);n.shimmerTransparency=0;n.lifeRegen=n.lifeRegenCount=0;
+            if(shortFuture){n.buffType[0]=353;n.buffTime[0]=18;n.shimmerTransparency=.82f;}
+            n.UpdateNPC(2);
             NativeToolExecutionChecks.Sample(context,input,new Vector2(650,550),true);Call(combat,"Sample");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,false,true));Call(context,"UpdateRuntime");
             typeof(Player).GetMethod("ItemCheck_Shoot",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),false});var bubble=Main.projectile[slot];Require(bubble.type==444 && bubble.active,"native Xeno parent in requested slot");for(int i=0;i<slot;i++)Main.projectile[i].Kill();bubble.timeLeft=2;
             Vector2 initial=bubble.Center,velocity=bubble.velocity;double difference=bubble.ai[0].ToRotationVector2().ToRotation()-velocity.ToRotation();if(difference>Math.PI)difference-=Math.PI*2;if(difference<-Math.PI)difference+=Math.PI*2;Require(Math.Abs(difference)>.001 && velocity!=Vector2.Zero,"actual Shot retains nonzero random bubble angle for steering counterexample");
             if(stationary)bubble.velocity=Vector2.Zero;
-            NativeToolExecutionChecks.Sample(context,input,new Vector2(650,550),false);Call(combat,"Sample");p.channel=p.controlUseItem=false;Call(context,"UpdateRuntime");var contact=(AttackContact)GetOptional(attack,"ExpectedImpact");Require(contact!=null,"natural expiry has a finite prepared child contact");long expected=contact.Timeline.SampleTick+contact.Tick,first=-1;int life=n.life;born=null;captureBirth=true;
+            NativeToolExecutionChecks.Sample(context,input,new Vector2(650,550),false);Call(combat,"Sample");p.channel=p.controlUseItem=false;Call(context,"UpdateRuntime");var contact=(AttackContact)GetOptional(attack,"ExpectedImpact");
+            if(shortFuture)
+            {
+                var timeline=(JueMingR.Platform.Combat.NpcTrajectory)Get(Get(attack,"Control"),"preparedTimeline");
+                Console.WriteLine("PHASE short native future: samples="+timeline.Count+" stop="+timeline.Stop+" shimmer="+n.shimmerTransparency+" buff="+n.buffTime[0]+" contact="+contact?.Tick);
+                Require(timeline.Stop==JueMingR.Platform.Combat.PredictionStop.PhaseBoundary && timeline.Count>1 && timeline.Count<12 && contact==null,"real shared future stops before native shimmer transformation and cannot invent a later child contact");
+                return;
+            }
+            Require(contact!=null,"natural expiry has a finite prepared child contact");long expected=contact.Timeline.SampleTick+contact.Tick,first=-1;int life=n.life;born=null;captureBirth=true;
             for(int k=0;k<40 && first<0;k++)
             {
                 NativeQuickItemChecks.BeginWorldStep();NativeToolExecutionChecks.Sample(context,input,new Vector2(650,550),false);Call(combat,"Sample");p.Update(0);n.UpdateNPC(2);ProjectilePhase();

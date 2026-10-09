@@ -12,6 +12,8 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeYoyoAdoptionChecks.cs'=@('native-CombatCpu','native-CombatYoyoCausal')
         'tests/NativeWorldTextProbe/NativeCombatAimChecks.cs'=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatEffectChecks.cs'=@('native-CombatAimCpu','native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatProjectileEnvironmentChecks.cs'=@('native-CombatAimCpu','native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatObstacleChecks.cs'=@('native-CombatAimCpu','native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatAmmoChecks.cs'=@('native-CombatAimCpu')
         'tests/NativeWorldTextProbe/NativeCombatSkyChecks.cs'=@('native-CombatAimCpu')
         'tests/NativeWorldTextProbe/NativeCombatScatterChecks.cs'=@('native-CombatAimCpu')

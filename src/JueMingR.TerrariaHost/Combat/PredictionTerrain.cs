@@ -359,6 +359,10 @@ namespace JueMingR.TerrariaHost.Combat
             }
             return true;
         }
+        internal bool ProjectileWet(float x,float y,int width,int height,out bool wet,out byte kind)
+        {
+            PredictionStop stop;return Wet(new NpcMotionState{X=x-width*.5f,Y=y-height*.5f,Width=width,Height=height},false,out wet,out kind,out stop);
+        }
         internal bool ProjectilePassage(float x,float y,float nx,float ny,int width,int height)
         {
             float rx,ry;bool up;PredictionStop stop;float vx=nx-x,vy=ny-y;

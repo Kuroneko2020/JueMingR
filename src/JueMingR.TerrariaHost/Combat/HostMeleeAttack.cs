@@ -66,7 +66,7 @@ namespace JueMingR.TerrariaHost.Combat
                         {
                             if(!HostBoomerangAttack.Step(shadow,body))break;
                         }
-                        if(shadow.tileCollide && !terrain.ProjectilePassage(old.X,old.Y,shadow.Center.X,shadow.Center.Y,shadow.width,shadow.height))break;
+                        if(!HostProjectileEnvironment.Dry(sample,terrain,old.X,old.Y,shadow.velocity.X) || shadow.tileCollide && !terrain.ProjectilePassage(old.X,old.Y,shadow.Center.X,shadow.Center.Y,shadow.width,shadow.height)){step=limit;break;}
                         int tick=age+step+1;if(!receive.Allows(step+1) || !OwnerAllows(body,shadow,timeline[tick].OwnerBounds,Main.npc[timeline.Identity.Slot].noTileCollide,terrain))continue;
                         var box=new Rectangle((int)shadow.position.X,(int)shadow.position.Y,shadow.width,shadow.height);shape.Count=0;
                         if(ProjectileID.Sets.IsAWhip[sample.type])

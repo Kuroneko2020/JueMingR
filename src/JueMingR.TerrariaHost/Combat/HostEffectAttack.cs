@@ -9,10 +9,10 @@ namespace JueMingR.TerrariaHost.Combat
     internal static class HostEffectAttack
     {
         internal static bool Handles(int type){return type==207 || type==36 || type==134 || type==137 || type==140 || type==143;}
-        internal static AttackContact Solve(Player player,AttackAmmoSnapshot ammo,NpcTrajectory timeline,Vector2 origin,int age,bool beforeNpc,PredictionTerrain terrain)
+        internal static AttackContact Solve(Player player,AttackAmmoSnapshot ammo,NpcTrajectory timeline,Vector2 origin,int age,bool beforeNpc,PredictionTerrain terrain,HostAttackObstacles obstacles)
         {
-            if(ammo.Projectile==36)return Bounce(player,ammo,timeline,origin,age,beforeNpc,terrain);
-            if(ammo.Projectile!=207)return Rocket(player,ammo,timeline,origin,age,beforeNpc,terrain);
+            if(ammo.Projectile==36)return Bounce(player,ammo,timeline,origin,age,beforeNpc,terrain,obstacles);
+            if(ammo.Projectile!=207)return Rocket(player,ammo,timeline,origin,age,beforeNpc,terrain,obstacles);
             var sample=Terraria.ID.ContentSamples.ProjectilesByType[ammo.Projectile];var receive=HostAttackReceive.Capture(player,sample,timeline.Identity.Slot,beforeNpc,!beforeNpc);
             // A player bullet may directly hit an admitted target that native
             // homing does not chase (notably an immortal training dummy).
@@ -45,7 +45,9 @@ namespace JueMingR.TerrariaHost.Combat
                         if(!npc.active || !npc.CanBeChasedBy(null,true) || npc.dontTakeDamage)locked=-1;
                         else if(Math.Abs(delta.X)+Math.Abs(delta.Y)<1000)velocity=(velocity*7+delta.SafeNormalize(Vector2.UnitX)*initialSpeed)/8;
                     }
-                    Vector2 old=center;center+=velocity;if(!terrain.ProjectilePassage(old.X,old.Y,center.X,center.Y,sample.width,sample.height)){step=limit;break;}
+                    Vector2 old=center;if(!HostProjectileEnvironment.Dry(sample,terrain,old.X,old.Y,velocity.X)){step=limit;break;}
+                    center+=velocity;if(!terrain.ProjectilePassage(old.X,old.Y,center.X,center.Y,sample.width,sample.height)){step=limit;break;}
+                    if(!obstacles.Pass(step*updates+sub+1,tick,center.X,center.Y)){step=limit;break;}
                     if(receive.Allows(step+1))
                     {
                         var contact=AttackIntercept.BodyContact(timeline,tick,sub,aim.X,aim.Y,center.X,center.Y,sample.width,sample.height,AttackConfidence.Representative);if(contact!=null)return contact;
@@ -54,11 +56,11 @@ namespace JueMingR.TerrariaHost.Combat
             }
             return null;
         }
-        private static AttackContact Rocket(Player player,AttackAmmoSnapshot ammo,NpcTrajectory timeline,Vector2 origin,int age,bool beforeNpc,PredictionTerrain terrain)
+        private static AttackContact Rocket(Player player,AttackAmmoSnapshot ammo,NpcTrajectory timeline,Vector2 origin,int age,bool beforeNpc,PredictionTerrain terrain,HostAttackObstacles obstacles)
         {
             var sample=Terraria.ID.ContentSamples.ProjectilesByType[ammo.Projectile];var receive=HostAttackReceive.Capture(player,sample,timeline.Identity.Slot,beforeNpc,!beforeNpc);AttackMotion motion;if(!HostAttackModels.TryRead(ammo,out motion))return null;
-            AttackPassage passage=(x,y,nx,ny,w,h)=>terrain.ProjectilePassage(x,y,nx,ny,(int)w,(int)h);
-            var ordinary=AttackIntercept.Solve(origin.X,origin.Y,motion,timeline,age,0,passage,1,receive.Allows);if(ordinary!=null)return ordinary;
+            AttackPassage passage=(x,y,nx,ny,w,h)=>HostProjectileEnvironment.Dry(sample,terrain,x,y,nx-x) && terrain.ProjectilePassage(x,y,nx,ny,(int)w,(int)h);
+            var ordinary=AttackIntercept.Solve(origin.X,origin.Y,motion,timeline,age,0,passage,1,receive.Allows,obstacles.Pass);if(ordinary!=null)return ordinary;
             int limit=Math.Min(motion.Lifetime,Math.Min(120*motion.Updates,(timeline.Count-age-1)*motion.Updates));
             // Solid contact stops these rockets and sets timeLeft=3. Their
             // next AI_016 sees <=3 and Kill/Resize/Damage occurs at that stopped
@@ -71,7 +73,7 @@ namespace JueMingR.TerrariaHost.Combat
                 for(int k=1;k<=limit;k++)
                 {
                     float oldX=x,oldY=y;motion.Advance(ref x,ref y,ref vx,ref vy,k);int step=(k-1)/motion.Updates,tick=age+step+1;
-                    float rx,ry;if(!terrain.ProjectileCollision(oldX,oldY,vx,vy,(int)motion.Width,(int)motion.Height,out rx,out ry))break;
+                    float rx,ry;if(!HostProjectileEnvironment.Dry(sample,terrain,oldX,oldY,vx) || !terrain.ProjectileCollision(oldX,oldY,vx,vy,(int)motion.Width,(int)motion.Height,out rx,out ry))break;
                     if(rx!=vx || ry!=vy)
                     {
                         int killStep=k/motion.Updates,killTick=age+killStep+1;
@@ -79,11 +81,12 @@ namespace JueMingR.TerrariaHost.Combat
                         {int side=ammo.Projectile==134 || ammo.Projectile==137?128:200;var contact=AttackIntercept.BodyContact(timeline,killTick,k%motion.Updates,aim.X,aim.Y,oldX,oldY,side,side,AttackConfidence.Conditional);if(contact!=null)return contact;}
                         break;
                     }
+                    if(!obstacles.Pass(k,tick,x,y))break;
                 }
             }
             return null;
         }
-        private static AttackContact Bounce(Player player,AttackAmmoSnapshot ammo,NpcTrajectory timeline,Vector2 origin,int age,bool beforeNpc,PredictionTerrain terrain)
+        private static AttackContact Bounce(Player player,AttackAmmoSnapshot ammo,NpcTrajectory timeline,Vector2 origin,int age,bool beforeNpc,PredictionTerrain terrain,HostAttackObstacles obstacles)
         {
             var sample=Terraria.ID.ContentSamples.ProjectilesByType[36];var receive=HostAttackReceive.Capture(player,sample,timeline.Identity.Slot,beforeNpc,!beforeNpc);int updates=sample.extraUpdates+1,limit=Math.Min(sample.timeLeft,(timeline.Count-age-1)*updates);
             // One ordinary MeteorShot reflection consumes one penetration.
@@ -95,10 +98,12 @@ namespace JueMingR.TerrariaHost.Combat
                 while(velocity.X>=16 || velocity.X<=-16 || velocity.Y>=16 || velocity.Y< -16)velocity*=.97f;int remaining=sample.penetrate;
                 for(int k=1;k<=limit;k++)
                 {
-                    float rx,ry;if(!terrain.ProjectileCollision(center.X,center.Y,velocity.X,velocity.Y,sample.width,sample.height,out rx,out ry))break;
+                    float rx,ry;if(!HostProjectileEnvironment.Dry(sample,terrain,center.X,center.Y,velocity.X) || !terrain.ProjectileCollision(center.X,center.Y,velocity.X,velocity.Y,sample.width,sample.height,out rx,out ry))break;
                     bool horizontal=Math.Abs(rx-velocity.X)>.0001f,vertical=Math.Abs(ry-velocity.Y)>.0001f;
                     if(horizontal || vertical){if(remaining<=1)break;remaining--;if(horizontal)velocity.X=-velocity.X;if(vertical)velocity.Y=-velocity.Y;}
-                    center+=velocity;int step=(k-1)/updates,tick=age+step+1;if(!receive.Allows(step+1))continue;
+                    center+=velocity;int step=(k-1)/updates,tick=age+step+1;
+                    if(!obstacles.Pass(k,tick,center.X,center.Y,remaining))break;remaining=obstacles.Remaining;
+                    if(!receive.Allows(step+1))continue;
                     var contact=AttackIntercept.BodyContact(timeline,tick,(k-1)%updates,aim.X,aim.Y,center.X,center.Y,sample.width,sample.height,AttackConfidence.Conditional);if(contact!=null)return contact;
                 }
             }

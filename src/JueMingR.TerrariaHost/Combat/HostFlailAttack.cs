@@ -56,6 +56,7 @@ namespace JueMingR.TerrariaHost.Combat
                     velocity*=.98f;velocity=velocity.MoveTowards(direction*fastSpeed,fastAcceleration);
                     if(Vector2.Dot(direction,(mounted-(center+velocity)).SafeNormalize(Vector2.Zero))<0)return null;
                 }
+                if(!HostProjectileEnvironment.Dry(shot,terrain,center.X,center.Y,velocity.X))return null;
                 center+=velocity;if(state!=4 && !terrain.ProjectilePassage(old.X,old.Y,center.X,center.Y,shot.width,shot.height))return null;
                 if(!receive.Allows(step+1))continue;
                 var contact=AttackIntercept.BodyContact(timeline,tick,0,aim.X,aim.Y,center.X,center.Y,shot.width,shot.height,AttackConfidence.Conditional);if(contact!=null)return contact;

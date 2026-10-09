@@ -50,9 +50,11 @@ namespace NativeWorldTextProbe
                 Console.WriteLine("EFFECT result: primary="+row[2]+" expected="+plan.Tick+" first="+primaryFirst+" children="+children+" derivedDamage="+derivedFirst+" life="+n.life);
                 Require(primaryFirst>0,"natural primary has a useful result");Require(plan.Confidence==AttackConfidence.Representative || primaryFirst==plan.Tick,"deterministic primary first Damage matches Contact.Tick");if(row[3]!=0)Require(children>0,"natural death emits its real derived stage");
             }
+            NativeCombatProjectileEnvironmentChecks.Run(context);
             Explosion(context,combat,host,attack,input);Explosion(context,combat,host,attack,input,true);
             Bounce(context,combat,host,attack,input);Bounce(context,combat,host,attack,input,true);
             HomingCases(context,combat,host,attack,input);
+            NativeCombatObstacleChecks.Run(context);
             NativeCombatObservationChecks.Save(host,new ObservationOptions());
         }
         private static void HomingCases(object context,object combat,object host,object attack,object input)
