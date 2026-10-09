@@ -20,8 +20,10 @@ namespace JueMingR.TerrariaHost.Combat
         internal readonly CombatGeometry Geometry=new CombatGeometry();
         internal readonly CombatGeometryHooks Hooks;
         internal readonly CombatObservationWorldLayer World;
+        internal HostAttackAim Attack;
         private readonly SingleFeatureRuntime runtime;
         private readonly HostInputState input;
+        private readonly NativeNpcObservation npcs;
         private bool collisionFailed,pathFailed,reportedCollision,reportedPath,reportedMarker,wasCollision,wasPath;
         private bool selectionFailed;
         // One full identity per native slot bounds local fault retention. A
@@ -35,7 +37,7 @@ namespace JueMingR.TerrariaHost.Combat
             :this(directory,runtime,input,npcs,launch,package,false){}
         internal HostCombatObservation(string directory,SingleFeatureRuntime runtime,HostInputState input,NativeNpcObservation npcs,Prediction.PredictionLaunchIdentity launch,string package,bool exactComparison)
         {
-            this.runtime=runtime;this.input=input;
+            this.runtime=runtime;this.input=input;this.npcs=npcs;
             AimTrace.Start(directory,launch,package);
             Prediction=new NpcPredictionSource(launch,exactComparison);
             Settings=new ObservationSettings(new AtomicFileDocument(System.IO.Path.Combine(directory,"JueMingRData","config","features","combat-observation.json"),65536));
@@ -51,6 +53,7 @@ namespace JueMingR.TerrariaHost.Combat
         public string Unavailable(int field)
         {
             if(selectionFailed)return "战斗目标观察暂不可用，设置已保留；可点击开启重试。";
+            if(field==6)return pathFailed || Attack?.Failed==true?"辅助瞄准暂不可用，设置已保留；可点击开启重试。":null;
             if(LayerStatus==Rendering.WorldLayerStatus.Unavailable)return "世界显示入口不可用，设置已保留；需要重新进入游戏。";
             if(World.Failed && (field==0 || field==1 || field==5))return "战斗显示暂不可用，设置已保留；可点击开启重试。";
             if(field==0 && (!Hooks.Ready || collisionFailed))return "碰撞箱显示暂不可用，设置已保留；可点击开启重试。";
@@ -64,18 +67,20 @@ namespace JueMingR.TerrariaHost.Combat
         public void Set(int field,bool value)
         {
             if(!CanConfigure)return;
+            if(field==6 && value){selectionFailed=pathFailed=reportedPath=false;Array.Clear(failedTargets,0,failedTargets.Length);Attack?.Reset();}
             if(value && (field==0 || field==1 || field==5))selectionFailed=false;
             if(value && (field==0 || field==1 || field==5))World.Recover();
-            bool prior=field==0?Options.Collision:field==1?Options.Path:field==2?Options.ClearLine:field==3?Options.MouseCenter:field==4?Options.Dummy:Options.Marker;
+            bool prior=field==0?Options.Collision:field==1?Options.Path:field==2?Options.ClearLine:field==3?Options.MouseCenter:field==4?Options.Dummy:field==5?Options.Marker:Options.Aim;
             if(field==0 && value){collisionFailed=reportedCollision=false;Geometry.Failed=false;}
             if(field==1 && value){pathFailed=reportedPath=false;Array.Clear(failedTargets,0,failedTargets.Length);if(Prediction.Native!=null && Prediction.Native.Failed)Prediction.Native.Retry();}
             if(field==5 && value){reportedMarker=false;World.Marker.Reset();}
             if(prior!=value)Settings.Set(Options.Toggle(field));
+            if(field==6 && !value)Attack?.Clear();
         }
         public void Radius(int value){if(CanConfigure && Options.Radius!=value)Settings.Set(Options.WithRadius(value));}
         internal void Poll()
         {
-            Settings.Poll();World.PollResources();bool collision=Collision,path=Path;
+            Settings.Poll();Attack?.Demand();World.PollResources();bool collision=Collision,path=Path;
             if(wasCollision && !collision)Geometry.Clear();
             if(wasPath && !path)Prediction.Cache.Release(0);
             // Other registered consumers can outlive the path toggle. Retire
@@ -93,12 +98,27 @@ namespace JueMingR.TerrariaHost.Combat
         internal void CollisionFailed(){collisionFailed=true;Geometry.Clear();}
         public void OnSessionStarted(){Clear();Geometry.Session=runtime.Generation;}
         public void OnSessionEnded(){Clear();}
-        private void Clear(){Geometry.Clear();Prediction.Cache.EndSession();Prediction.EndWorld();Selection.Clear();World.Recover();World.Marker.Reset();Array.Clear(failedTargets,0,failedTargets.Length);selectionFailed=collisionFailed=pathFailed=reportedCollision=reportedPath=reportedMarker=false;}
+        private void Clear(){actionFrame=-1;Attack?.Reset();Geometry.Clear();Prediction.Cache.EndSession();Prediction.EndWorld();Selection.Clear();World.Recover();World.Marker.Reset();Array.Clear(failedTargets,0,failedTargets.Length);selectionFailed=collisionFailed=pathFailed=reportedCollision=reportedPath=reportedMarker=false;}
         public void FailClosed(){Clear();Prediction.Stop();selectionFailed=collisionFailed=pathFailed=true;}
         public void Update(ulong tick)
+        {UpdateSample(Main.GameUpdateCount,false,tick);}
+        private long actionFrame=-1;
+        internal void PrepareAction()
+        {
+            if(Attack==null || !Attack.Permission || actionFrame==input.Frame)return;
+            actionFrame=input.Frame;
+            npcs.BeginActions(input.Frame);
+            // ItemCheck runs after this player's movement/selection, before
+            // NPCs and projectiles advance. Their live sample is still T-1.
+            // One preparation per native input epoch also covers first clicks;
+            // individual Shoot/AI consumers only validate/borrow the result.
+            UpdateSample((long)Main.GameUpdateCount-1,true,Main.GameUpdateCount);
+        }
+        private void UpdateSample(long sampleTick,bool beforeNpc,ulong tick)
         {
             try
             {
+            Attack?.Demand();
             if(!Enabled)return;
             if(!Hooks.Ready && !Marker){Selection.RetireTarget();Prediction.Clear();return;}
             var player=Main.LocalPlayer;if(player==null || !player.active || player.dead || player.ghost){Selection.RetireTarget();Prediction.Clear();Geometry.BeginNpcs();return;}
@@ -113,14 +133,18 @@ namespace JueMingR.TerrariaHost.Combat
             // failure belongs only to the explicit comparison route; a shared
             // entry exception still latches the whole path closed.
             if(TargetPredictionFailed){Prediction.Clear();return;}
-            if(!pathFailed && Prediction.Cache.Required>0)try{Prediction.Prepare(Selection.Target,Main.GameUpdateCount);}
+            if(!pathFailed && Prediction.Cache.Required>0)try{if(beforeNpc)Prediction.PrepareAction(Selection.Target,sampleTick);else Prediction.Prepare(Selection.Target,sampleTick);}
             catch(NpcObservationFailure error){AimTrace.Fault("host-npc-observation",error,(long)tick);failedTargets[Selection.Target.Slot]=Selection.Target;Prediction.Clear();}
             catch(Exception error){AimTrace.Fault("host-prepare",error,(long)tick);pathFailed=true;Prediction.Stop();}
             }
-            finally{AimTrace.Host(this,pathFailed,"update-exit",true);}
+            finally{if(beforeNpc)Attack?.PrepareAction();else Attack?.Prepare();AimTrace.Host(this,pathFailed,"update-exit",true);}
         }
         internal void Register(HotkeyRegistry registry,Hotkeys.HotkeyStateFeedback feedback)
         {
+            Action aimCommand=()=>Set(6,!Options.Aim);
+            if(feedback!=null)aimCommand=feedback.Committed("combat.aim","辅助瞄准",aimCommand,()=>Settings.CanRun && Options.Aim?1:0,()=>CanConfigure && Unavailable(6)==null,
+                ()=>Settings.AcceptedCommandId,()=>Settings.CompletedCommandId,()=>Settings.CompletionSucceeded);
+            registry.Register(new HotkeyAction("combat.aim","辅助瞄准",HotkeyContext.Gameplay,()=>CanConfigure,aimCommand));
             for(int i=0;i<F5.CombatObservationControls.Actions.Length;i++)
             {
                 int field=i;string id=F5.CombatObservationControls.Actions[i],name=F5.CombatObservationControls.Names[i];

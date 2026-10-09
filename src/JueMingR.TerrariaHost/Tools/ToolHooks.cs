@@ -25,6 +25,7 @@ namespace JueMingR.TerrariaHost.Tools
             Patch(typeof(Player),"TrySyncingInput",Type.EmptyTypes,nameof(Sync));
             Patch(typeof(Player),"LookForTileInteractions",Type.EmptyTypes,null,nameof(Interactions),nameof(InteractionsFinal));
             Patch(typeof(Player),"ItemCheck",Type.EmptyTypes,nameof(Before),nameof(After),nameof(Final));
+            Patch(typeof(Player),"ItemCheck_Shoot",new[]{typeof(int),typeof(Item),typeof(int),typeof(bool)},nameof(ShotBefore),nameof(ShotAfter),nameof(ShotFinal));
             Patch(typeof(Player),"ItemCheck_StartActualUse",new[]{typeof(Item)},null,nameof(Started));
             Patch(typeof(Player),"ItemCheck_AutoReuseLogic",new[]{typeof(Item)},null,nameof(AfterReuse));
             Patch(typeof(Player),"DropItems",new[]{typeof(bool)},nameof(Boundary));
@@ -47,6 +48,10 @@ namespace JueMingR.TerrariaHost.Tools
             harmony.Patch(m,Hook(prefix),Hook(postfix),null,Hook(finalizer));
         }
         private static HarmonyMethod Hook(string name){return name==null?null:new HarmonyMethod(typeof(ToolHooks).GetMethod(name,BindingFlags.Static|BindingFlags.NonPublic));}
+        private static void ShotBefore(Player __instance,Item __1,out Combat.CombatCursorScope __state)
+        {__state=null;try{__state=host?.Combat?.Attack?.BeginShot(__instance,__1);}catch{host?.Combat?.Attack?.Clear();}}
+        private static void ShotAfter(Combat.CombatCursorScope __state){__state?.End();}
+        private static Exception ShotFinal(Combat.CombatCursorScope __state,Exception __exception){__state?.End();return __exception;}
         internal static void Uninstall(){foreach(var m in harmony.GetPatchedMethods().ToArray())harmony.Unpatch(m,HarmonyPatchType.All,harmony.Id);host=null;deferredSync=null;}
         private static void Pick(Player __instance,ref int __0,ref bool __result){host?.Use.Pick(__instance,ref __0,ref __result);}
         [HarmonyPriority(Priority.First)]
@@ -103,7 +108,7 @@ namespace JueMingR.TerrariaHost.Tools
         // through temporary input borrowing reaches the same idempotent cleanup.
         private sealed class Lease {internal long Token;internal Combat.CombatInputScope Combat;}
         private static void SeedBoundary(Player player){if(ReferenceEquals(player,host?.Player))host.Herbs.InvalidateSeeds();}
-        private static void Before(Player __instance,out Lease __state){__state=null;SeedBoundary(__instance);if(host==null)return;if(ReferenceEquals(__instance,host.Player))host.Combat?.Facing.Apply(__instance);if(host.Combat?.Use.Active??false){__state=new Lease();__state.Combat=host.Combat.Use.Begin(__instance);return;}if(!host.Use.Active)return;__state=new Lease{Token=host.Use.Operation};host.Use.Begin(__instance);}
+        private static void Before(Player __instance,out Lease __state){__state=null;SeedBoundary(__instance);if(host==null)return;if(ReferenceEquals(__instance,host.Player)){host.Combat?.Facing.Apply(__instance);host.Combat?.Attack?.PrepareNatural();}if(host.Combat?.Use.Active??false){__state=new Lease();__state.Combat=host.Combat.Use.Begin(__instance);return;}if(!host.Use.Active)return;__state=new Lease{Token=host.Use.Operation};host.Use.Begin(__instance);}
         private static void After(Player __instance,Lease __state){SeedBoundary(__instance);host?.Use.End(__instance,__state?.Token??0,null);host?.Combat?.Use.End(__state?.Combat,null);if(ReferenceEquals(__instance,host?.Player))host.Combat?.Facing.Apply(__instance);}
         private static Exception Final(Player __instance,Lease __state,Exception __exception){if(__exception!=null){SeedBoundary(__instance);host?.Use.End(__instance,__state?.Token??0,__exception);host?.Combat?.Use.End(__state?.Combat,__exception);}return __exception;}
         private static void Select(Player ___player){if(host!=null && (host.Enabled || host.Combat?.Enabled==true) && ReferenceEquals(___player,host.Player) && !host.Use.Returning && !host.Items.ReturningSelection && !(host.Combat?.Use.Selecting??false)){manualBuffered=true;host.ManualSelection();}}

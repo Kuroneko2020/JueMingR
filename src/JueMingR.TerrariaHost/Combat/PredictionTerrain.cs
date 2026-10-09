@@ -348,6 +348,14 @@ namespace JueMingR.TerrariaHost.Combat
             }
             return true;
         }
+        internal bool ProjectilePassage(float x,float y,float nx,float ny,int width,int height)
+        {
+            float rx,ry;bool up;PredictionStop stop;float vx=nx-x,vy=ny-y;
+            // Same pure rectangular contact rules already used by the first
+            // batch. Native TileCollision also writes up/down and fills null
+            // neighboring live tiles; a preparation query must do neither.
+            return TileContact(x-width*.5f,y-height*.5f,vx,vy,width,height,true,out rx,out ry,out up,out stop) && Math.Abs(rx-vx)<.0001f && Math.Abs(ry-vy)<.0001f;
+        }
         private bool TileContact(float px0,float py0,float vx,float vy,int w,int h,bool fall,out float rx,out float ry,out bool up,out PredictionStop stop,bool fall2=true,int gravDir=1)
         {bool down;return TileContact(px0,py0,vx,vy,w,h,fall,out rx,out ry,out up,out down,out stop,fall2,gravDir);}
         private bool TileContact(float px0,float py0,float vx,float vy,int w,int h,bool fall,out float rx,out float ry,out bool up,out bool down,out PredictionStop stop,bool fall2=true,int gravDir=1,bool noSlope=false,bool sand=false)

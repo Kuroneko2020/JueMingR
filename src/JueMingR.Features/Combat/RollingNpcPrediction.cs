@@ -25,10 +25,11 @@ namespace JueMingR.Features.Combat
         private long resultTick=-1,resultEpoch;
         private IPredictionTerrain resultTerrain;
         private bool resultObserved;
+        private bool resultPlayerAdvanced,previousPlayerAdvanced;
         private PredictionFailureLayer resultFailure;
         public PredictionFailureLayer FailureLayer {get;private set;}
-        public void Clear(){previous=default(NpcMotionState);previousPlayer=default(PredictionPlayerMotion);priorTick=resultTick=-1;result=null;resultTerrain=null;Array.Clear(work,0,work.Length);}
-        public NpcTrajectory Prepare(NpcMotionState[] source,int count,int selected,long tick,int required,long epoch,PredictionEnvironment environment,PredictionPlayerMotion player,IPredictionTerrain terrain,bool[] motionRoles=null)
+        public void Clear(){previous=default(NpcMotionState);previousPlayer=default(PredictionPlayerMotion);previousPlayerAdvanced=resultPlayerAdvanced=false;priorTick=resultTick=-1;result=null;resultTerrain=null;Array.Clear(work,0,work.Length);}
+        public NpcTrajectory Prepare(NpcMotionState[] source,int count,int selected,long tick,int required,long epoch,PredictionEnvironment environment,PredictionPlayerMotion player,IPredictionTerrain terrain,bool[] motionRoles=null,bool firstPlayerStepCompleted=false)
         {
             FailureLayer=PredictionFailureLayer.Source;
             if(source==null || count<1 || count>work.Length || selected<0 || selected>=count || required<1 || required>NpcPredictionCache.Horizon)return null;
@@ -47,7 +48,7 @@ namespace JueMingR.Features.Combat
             {if(!environment.PlayerDead && Valid(player)){needsPlayer=true;canObservePlayer=false;}else conditionalVisibility=true;}
             if(!current.Active || !current.CanReceive || current.Life<=0 || !Valid(current) || needsPlayer && !Valid(player) || double.IsNaN(environment.GravityWorldSurface) || double.IsInfinity(environment.GravityWorldSurface) || !Finite(environment.Wind) || !Finite(environment.WindTarget) || !Finite(environment.WorldSurface) || !Finite(environment.RockLayer) || motionRoles!=null && motionRoles.Length<count){Clear();return null;}
             bool sameObservation=priorTick==tick && previous.SameSample(current);
-            bool sameResult=result!=null && resultTick==tick && resultEpoch==epoch && resultCount==count && resultSelected==selected && resultRequired>=required && resultEnvironment.Equals(environment) && resultPlayer.SameSample(player) && ReferenceEquals(resultTerrain,terrain);
+            bool sameResult=result!=null && resultPlayerAdvanced==firstPlayerStepCompleted && resultTick==tick && resultEpoch==epoch && resultCount==count && resultSelected==selected && resultRequired>=required && resultEnvironment.Equals(environment) && resultPlayer.SameSample(player) && ReferenceEquals(resultTerrain,terrain);
             if(sameResult)for(int i=0;i<count;i++)if(!resultSample[i].SameSample(source[i]) || resultRoles[i]!=(motionRoles==null || motionRoles[i])){sameResult=false;break;}
             if(sameResult && terrain.Unchanged){FailureLayer=resultFailure;return result;}
             bool observed=priorTick+1==tick && previous.Identity.Equals(current.Identity) && SamePhase(previous,current) && !current.JustHit &&
@@ -76,10 +77,11 @@ namespace JueMingR.Features.Combat
             // Consecutive samples of the same real player and mechanism can
             // correct sampled velocity (rope uses instant position changes).
             // A switch, teleport or generation replacement resets this input.
-            if(priorTick+1==tick && player.PlayerToken!=null && ReferenceEquals(previousPlayer.PlayerToken,player.PlayerToken) && previousPlayer.PlayerIndex==player.PlayerIndex && previousPlayer.ObservationMechanism==player.ObservationMechanism && Math.Abs(player.X-previousPlayer.X)<=32 && Math.Abs(player.Y-previousPlayer.Y)<=32)
+            if(!previousPlayerAdvanced && priorTick+1==tick && player.PlayerToken!=null && ReferenceEquals(previousPlayer.PlayerToken,player.PlayerToken) && previousPlayer.PlayerIndex==player.PlayerIndex && previousPlayer.ObservationMechanism==player.ObservationMechanism && Math.Abs(player.X-previousPlayer.X)<=32 && Math.Abs(player.Y-previousPlayer.Y)<=32)
             {observedVx=player.X-previousPlayer.X;observedVy=player.Y-previousPlayer.Y;}
             if(priorTick==tick && previousPlayer.SameSample(player)){observedVx=samplePlayerVx;observedVy=samplePlayerVy;}
             previousPlayer=player;previous=source[selected];trend=current;priorTick=tick;samplePlayerVx=observedVx;samplePlayerVy=observedVy;
+            previousPlayerAdvanced=resultPlayerAdvanced=firstPlayerStepCompleted;
             Array.Copy(source,resultSample,count);for(int i=0;i<count;i++)resultRoles[i]=motionRoles==null || motionRoles[i];
             resultEnvironment=environment;resultPlayer=player;resultCount=count;resultSelected=selected;resultRequired=required;resultTick=tick;resultEpoch=epoch;resultTerrain=terrain;resultObserved=observed;
             Array.Copy(source,work,count);work[selected]=current;
@@ -100,7 +102,11 @@ namespace JueMingR.Features.Combat
                     needsPlayer=true;observedPlayer=boundedPlayer;restarted=true;player=initialPlayer;terrain.Reset();playerSettled=false;
                     Array.Copy(source,work,count);work[selected]=current;length=1;future=0;continue;
                 }
-                if(needsPlayer && !observedPlayer && !AdvancePlayer(ref player,environment,terrain,out stop))
+                // Natural ItemCheck sees this player's completed move but the
+                // NPC's previous completed position. First NPC action consumes
+                // that player as-is; later steps retain normal player-before-
+                // NPC ordering. This phase is part of cache reuse identity.
+                if(needsPlayer && !observedPlayer && !(firstPlayerStepCompleted && future==1) && !AdvancePlayer(ref player,environment,terrain,out stop))
                 {
                     bool floatingFailure=player.FloatInWater && player.FloatingNow && (stop==PredictionStop.UnsupportedMechanism || stop==PredictionStop.TerrainUnavailable || stop==PredictionStop.TerrainLimit);
                     // Only these bounded structural models can use the real
@@ -125,7 +131,7 @@ namespace JueMingR.Features.Combat
                     // Twelve observed updates, then hold the reached premise.
                     // This is a finite target estimate, never grapple/rope AI
                     // or a claim that special geometry is safe to replay.
-                    int span=Math.Min(future,12);
+                    int span=Math.Min(future-(firstPlayerStepCompleted?1:0),12);
                     env.PlayerX=initialPlayer.X+initialPlayer.Width*.5f+Clamp(observedVx,16)*span;
                     env.PlayerY=initialPlayer.Y+initialPlayer.Height*.5f+Clamp(observedVy,16)*span;
                 }

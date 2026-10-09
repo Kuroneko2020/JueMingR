@@ -18,6 +18,7 @@ namespace JueMingR.TerrariaHost.Combat
         internal readonly HostTools Tools;
         internal readonly CombatUse Use;
         internal readonly CombatAim Aim=new CombatAim();
+        internal HostAttackAim Attack;
         internal readonly CombatFacing Facing;
         internal readonly GoblinHitHooks Goblin;
         internal readonly CombatProjectileReceipts Receipts;

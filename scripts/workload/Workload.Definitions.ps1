@@ -10,6 +10,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeToolCadenceChecks.cs'=@('native-ToolsCadence')
         'tests/NativeWorldTextProbe/NativeToolsWorkloadChecks.cs'=@('native-ToolsWorkload')
         'tests/NativeWorldTextProbe/NativeYoyoAdoptionChecks.cs'=@('native-CombatCpu','native-CombatYoyoCausal')
+        'tests/NativeWorldTextProbe/NativeCombatAimChecks.cs'=@('native-CombatAimCpu')
         'tests/NativeWorldTextProbe/NativeCombatFoundationChecks.cs'=@('native-NpcFoundationRules','native-NpcFoundationContinuous','native-NpcStrategyContinuous')
         'tests/NativeWorldTextProbe/NativeCombatFoundationContinuousChecks.cs'=@('native-NpcFoundationContinuous','native-NpcStrategyContinuous','native-NpcFiniteFlight')
         'tests/NativeWorldTextProbe/NativeCombatStrategyChecks.cs'=@('native-NpcStrategy','native-NpcStrategy-rollchoice')
@@ -35,6 +36,7 @@ function Get-WorkloadLeafChecks {
 function Get-WorkloadNativeScopes {
     $scopes = [ordered]@{
         'NpcRollingCpu'=@('combat-host');
+        'CombatAimCpu'=@('combat-host');
         'NpcRollingSelectionNegative'=@('combat-host');
         'NpcBasicMotion'=@('combat-host');
         'NpcFoundationRules'=@('combat-host'); 'NpcFoundationContinuous'=@('combat-host'); 'NpcPlayerPolicy'=@('combat-host'); 'NpcStrategy'=@('combat-host'); 'NpcStrategyContinuous'=@('combat-host'); 'NpcEventRetirementCpu'=@('combat-host');

@@ -124,6 +124,8 @@ namespace NativeWorldTextProbe
             object Find(string command){return ((IEnumerable)Get(Get(state,"Layout"),"Elements")).Cast<object>().Single(e=>Get(e,"Command").ToString()==command);}
             Vector2 Position(object e){ScrollTo(context,state,e);var v=Get(Get(state,"Layout"),"Viewport");return (Point(Get(e,"Rect"))+new Vector2((float)Get(state,"X")+(float)Get(v,"X"),(float)Get(state,"Y")+(float)Get(v,"Y")-(float)Get(state,"Scroll")))*Main.UIScale;}
             void Apply(string command){Click(context,Position(Find(command)));NativeQuickItemChecks.Until(()=>{UiFrame(context,Vector2.Zero,false);return settings.Ready;});Require(settings.CompletionSucceeded,"actual observation command saved: "+command);}
+            Apply("ObservationAimOff");Require(!((IEnumerable)Get(Get(state,"Layout"),"Elements")).Cast<object>().Any(e=>Get(e,"Command").ToString()=="ObservationRadius"),"OFF removes settings geometry");
+            Apply("ObservationAimOn");elements=((IEnumerable)Get(Get(state,"Layout"),"Elements")).Cast<object>().ToArray();
             Require(elements.Count(e=>(string)GetOptional(e,"Text")=="辅助瞄准设置")==1,"one real shared card");
             var title=elements.Single(e=>(string)GetOptional(e,"Text")=="辅助瞄准设置");var policy=Get(Find("ObservationPolicy"),"Rect");var dummy=Get(Find("ObservationDummy"),"Rect");
             Require(Math.Abs(CenterY(title)-CenterY(Find("ObservationPolicy")))<1 && (float)Get(dummy,"Y")== (float)Get(policy,"Y"),"title and all three cycling controls share one compact row");
@@ -157,7 +159,7 @@ namespace NativeWorldTextProbe
                     NativeQuickItemChecks.Until(()=>{UiFrame(context,Vector2.Zero,false);return !bindings.Busy;});Require(bindings.CompletionSucceeded && bindings.Get(id).MainKey==(int)(k++==0?Keys.F7:Keys.F8),"independent observation binding saved");PopupClick(context,popup,"Close");
                 }
             }
-            NativeCombatObservationChecks.Save(host,new ObservationOptions());UiFrame(context,Vector2.Zero,false);Position(Find("ObservationPolicy"));
+            NativeCombatObservationChecks.Save(host,new ObservationOptions(false,false,false,false,false,25,false,true));UiFrame(context,Vector2.Zero,false);Position(Find("ObservationPolicy"));
             Require((string)Get(Find("ObservationPolicy"),"Text")=="最近优先" && (string)Get(Find("ObservationCenter"),"Text")=="玩家中心" && (string)Get(Find("ObservationDummy"),"Text")=="追踪人偶：关","actual cycle labels reflect committed values after reset");
             graphics.Image(Path.Combine(output,"observation-card-"+size[0]+"-"+size[1]+"-"+size[2]+".png"),()=>Call(shell,"DrawLayer"),Main.UIScaleMatrix,size[0],size[1]);
         }
