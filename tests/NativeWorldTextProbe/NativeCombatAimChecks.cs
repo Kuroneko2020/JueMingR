@@ -232,12 +232,14 @@ namespace NativeWorldTextProbe
             Console.WriteLine("PASS preparation isolation: native up/down, read-only terrain, exception-local path survival, finite latch/recovery.");
         }
         private static bool Equal(object a,object b){if(a is Array && b is Array)return ((Array)a).Cast<object>().SequenceEqual(((Array)b).Cast<object>());return Equals(a,b);}
-        internal static void Prepare(object host,object attack,NPC body,float vx)
+        internal static void Prepare(object host,object attack,NPC body,float vx,bool projectilePhase=false)
         {
             var selection=Get(host,"Selection");Call(selection,"Update",((ObservationSettings)Get(host,"Settings")).Value,(long)Get(host,"Session"),true,null);
             var id=(NpcIdentity)Get(selection,"Target");Require(id.Slot==body.whoAmI,"single shared final target is selected");
             var points=new NpcTrajectoryPoint[121];for(int i=0;i<points.Length;i++)points[i]=new NpcTrajectoryPoint(i,new NpcMotionState{Identity=id,X=body.position.X+vx*i,Y=body.position.Y,Width=body.width,Height=body.height,Vx=vx,CanReceive=true,Active=true});
-            var cache=(NpcPredictionCache)Get(Get(host,"Prediction"),"Cache");cache.Demand(0,1,120);cache.Demand(1,1,120);cache.Publish(new NpcTrajectory(id,Main.GameUpdateCount,1,PredictionAssumption.None,PredictionStop.None,points,points.Length));Call(attack,"Prepare");
+            var cache=(NpcPredictionCache)Get(Get(host,"Prediction"),"Cache");cache.Demand(0,1,120);cache.Demand(1,1,120);cache.Publish(new NpcTrajectory(id,Main.GameUpdateCount,1,PredictionAssumption.None,PredictionStop.None,points,points.Length));Call(attack,projectilePhase?"PrepareProjectiles":"Prepare");
         }
+        internal static object PhaseClock(object attack,NpcTrajectory timeline,string phase)
+        {var assembly=attack.GetType().Assembly;var stage=assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase",true);var type=assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackClock",true);return Activator.CreateInstance(type,Flags,null,new object[]{timeline,Enum.Parse(stage,phase)},null);}
     }
 }

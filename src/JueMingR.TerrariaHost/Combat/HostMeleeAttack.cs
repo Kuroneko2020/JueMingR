@@ -92,10 +92,10 @@ namespace JueMingR.TerrariaHost.Combat
             }
             return null;
         }
-        internal static AttackContact Starlight(Player player,Projectile shot,NpcTrajectory timeline,int age,bool beforeNpc,PredictionTerrain terrain,out Vector2 aim)
+        internal static AttackContact Starlight(Player player,Projectile shot,NpcTrajectory timeline,HostAttackClock clock,PredictionTerrain terrain,out Vector2 aim)
         {
-            aim=HostHeldAttack.DirectionPoint(player,timeline,age+1);
-            var receive=HostAttackReceive.Capture(player,shot,timeline.Identity.Slot,beforeNpc);
+            int age=clock.Age;aim=HostHeldAttack.DirectionPoint(player,timeline,clock.FirstTick);
+            var receive=HostAttackReceive.Capture(player,shot,timeline.Identity.Slot,clock.BeforeNpc,clock.NextWorld);
             var body=(Player)copy.Invoke(player,null);var shadow=(Projectile)copy.Invoke(shot,null);
             var motion=NpcPredictionSource.ReadPlayer(player);var environment=new PredictionEnvironment{WorldWidth=Main.maxTilesX,WorldHeight=Main.maxTilesY,GravityWorldSurface=Main.worldSurface,Remix=Main.remixWorld};var shape=new CombatShapeSample();
             // AI_075 resets this role to MountedCenter each update. Random
@@ -103,10 +103,10 @@ namespace JueMingR.TerrariaHost.Combat
             // The native normal movement then adds that velocity once.
             for(int step=0;step<24 && age+step+1<timeline.Count;step++)
             {
-                if(!beforeNpc || step>0){PredictionStop stop;if(!PlayerMotionContinuation.Advance(ref motion,environment,terrain,out stop))return null;}
+                if(clock.MovePlayer(step)){PredictionStop stop;if(!PlayerMotionContinuation.Advance(ref motion,environment,terrain,out stop))return null;}
                 body.position=new Vector2(motion.X,motion.Y);Vector2 mounted=body.RotatedRelativePoint(body.MountedCenter);
                 shadow.velocity=(aim-mounted).SafeNormalize(Vector2.UnitX*body.direction)*(player.HeldItem.shoot==927?player.HeldItem.shootSpeed:1);shadow.scale=shot.ai[1];shadow.Center=mounted+shadow.velocity;
-                int tick=age+step+(beforeNpc?1:0);if(!receive.Allows(step+1) || !OwnerAllows(body,shadow,timeline[tick].Bounds,Main.npc[timeline.Identity.Slot].noTileCollide,terrain))continue;
+                int tick=clock.FirstTick+step;if(!receive.Allows(step+1) || !OwnerAllows(body,shadow,timeline[tick].Bounds,Main.npc[timeline.Identity.Slot].noTileCollide,terrain))continue;
                 var box=new Rectangle((int)shadow.position.X,(int)shadow.position.Y,shadow.width,shadow.height);shape.Count=0;ProjectileCollisionGeometry.TryCapture(shadow,box,0,shape);
                 for(int i=0;i<shape.Count;i++){var s=shape.Shapes[i];var contact=AttackIntercept.BodyContact(timeline,tick,0,aim.X,aim.Y,(s.A.X+s.B.X)/2,(s.A.Y+s.B.Y)/2,s.B.X-s.A.X,s.B.Y-s.A.Y,AttackConfidence.Conditional);if(contact!=null)return contact;}
             }

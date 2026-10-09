@@ -60,6 +60,16 @@ namespace JueMingR.Features.Combat
             return new AttackContact(timeline,aimX,aimY,Math.Max(b.X,Math.Min(b.X+b.Width,worldX)),Math.Max(b.Y,Math.Min(b.Y+b.Height,worldY)),tick,0,0,confidence);
         }
         // Specialized native motors can supply their own finite replayed body.
+        // Player melee damages before NPC movement. Its receive sample and
+        // absolute damage tick therefore differ by one; never substitute the
+        // next NPC position merely to align the display's damage clock.
+        public static AttackContact MeleeContact(NpcTrajectory timeline,int receiveTick,float x,float y,float width,float height,float aimX,float aimY)
+        {
+            if(timeline==null || receiveTick<0 || receiveTick>=timeline.Count || width<=0 || height<=0 || !Finite(x) || !Finite(y) || !Finite(width) || !Finite(height) || !Finite(aimX) || !Finite(aimY))return null;
+            var sample=timeline[receiveTick];var b=sample.ReceiveBounds;
+            if(!sample.CanReceive || x>=b.X+b.Width || x+width<=b.X || y>=b.Y+b.Height || y+height<=b.Y)return null;
+            return new AttackContact(timeline,aimX,aimY,Math.Max(b.X,Math.Min(b.X+b.Width,x+width/2)),Math.Max(b.Y,Math.Min(b.Y+b.Height,y+height/2)),receiveTick+1,0,0,AttackConfidence.Conditional);
+        }
         // Contact creation still enforces the SAME timeline, receive phase
         // and native integer rectangle; an arbitrary aim point is insufficient.
         public static AttackContact BodyContact(NpcTrajectory timeline,int tick,int subupdate,float aimX,float aimY,float x,float y,float width,float height,AttackConfidence confidence)

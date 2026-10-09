@@ -225,9 +225,13 @@ namespace JueMingR.TerrariaHost.Combat
             // same swing; both phases share the always-active capsule.
             try{if(!self.volcanoPending(__instance))self.host.Geometry.Melee(__instance,__0,__1,__2,false);}catch{self.host.CollisionFailed();}
         }
-        private static void RemoteMelee(Player __instance,Item __1,Rectangle __result)
+        private static void RemoteMelee(Player __instance,float __0,Item __1,Rectangle __result)
         {
-            var self=current;if(self==null || !self.Ready || !self.host.Capture || __instance.whoAmI==Main.myPlayer || !ReferenceEquals(itemOwner,__instance) || __instance.whoAmI<0 || __instance.whoAmI>=Main.maxPlayers || !ReferenceEquals(Main.player[__instance.whoAmI],__instance))return;
+            var self=current;if(self==null || !self.Ready)return;
+            // This natural pose receipt is independently needed by Aim even
+            // when the collision overlay is OFF. It grants no attack input.
+            if(__instance.whoAmI==Main.myPlayer)self.host.Attack?.ObserveSwing(__instance,__1,__result,__0);
+            if(!self.host.Capture || __instance.whoAmI==Main.myPlayer || !ReferenceEquals(itemOwner,__instance) || __instance.whoAmI<0 || __instance.whoAmI>=Main.maxPlayers || !ReferenceEquals(Main.player[__instance.whoAmI],__instance))return;
             try
             {
                 // The owner-only damage entry never runs for a remote player.

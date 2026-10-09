@@ -16,11 +16,11 @@ namespace JueMingR.TerrariaHost.Combat
             internal Child(Projectile shot){Shot=shot;Key=shot.key;Parent=(ProjectileKey)shot.ai[1];}
             internal bool Valid(Projectile parent){return Shot.active && Shot.key.Equals(Key) && Parent.Equals(parent.key) && ((ProjectileKey)Shot.ai[1]).Equals(parent.key) && Shot.owner==parent.owner;}
         }
-        internal static AttackContact Solve(Player player,Projectile parent,List<Child> children,Vector2 aim,NpcTrajectory timeline,int age,bool beforeNpc,PredictionTerrain terrain,out Child receipt)
+        internal static AttackContact Solve(Player player,Projectile parent,List<Child> children,Vector2 aim,NpcTrajectory timeline,HostAttackClock clock,PredictionTerrain terrain,out Child receipt)
         {
-            receipt=null;
+            int age=clock.Age;receipt=null;
             if(children.Count==0 || !player.channel)return null;
-            var receives=new HostAttackReceive[children.Count];for(int i=0;i<receives.Length;i++)receives[i]=HostAttackReceive.Capture(player,children[i].Shot,timeline.Identity.Slot,beforeNpc,!beforeNpc);
+            var receives=new HostAttackReceive[children.Count];for(int i=0;i<receives.Length;i++)receives[i]=HostAttackReceive.Capture(player,children[i].Shot,timeline.Identity.Slot,clock.BeforeNpc,clock.NextWorld);
             Vector2 direction=parent.velocity.SafeNormalize(Vector2.UnitY),mounted=player.RotatedRelativePoint(player.MountedCenter),armOffset=player.GetArmPosition()-mounted;
             var motion=NpcPredictionSource.ReadPlayer(player);var environment=new PredictionEnvironment{WorldWidth=Main.maxTilesX,WorldHeight=Main.maxTilesY,GravityWorldSurface=Main.worldSurface,Remix=Main.remixWorld};
             var lengths=new float[children.Count];for(int i=0;i<lengths.Length;i++)lengths[i]=children[i].Shot.localAI[1];
@@ -28,7 +28,7 @@ namespace JueMingR.TerrariaHost.Combat
             {
                 // The player's movement is already complete at action sampling;
                 // a completed-world preparation predicts the next player's step.
-                if(!beforeNpc || step>0){PredictionStop stop;if(!PlayerMotionContinuation.Advance(ref motion,environment,terrain,out stop))return null;}
+                if(clock.MovePlayer(step)){PredictionStop stop;if(!PlayerMotionContinuation.Advance(ref motion,environment,terrain,out stop))return null;}
                 Vector2 origin=mounted+new Vector2(motion.X-player.position.X,motion.Y-player.position.Y);
                 Vector2 requested=(aim-origin).SafeNormalize(Vector2.UnitY);
                 float phase=parent.ai[0]+(step+1)*(parent.type==460?player.GetSlowMagicUseRate():1);
@@ -38,7 +38,7 @@ namespace JueMingR.TerrariaHost.Combat
                 for(int i=0;i<children.Count;i++)
                 {
                     var child=children[i];if(!child.Valid(parent))continue;
-                    Vector2 center,unit;float scale;int nativeAge=age+step+1;
+                    Vector2 center,unit;float scale;int nativeAge=clock.FirstTick+step;
                     if(parent.type==633)
                     {
                         if(phase<=30)continue;

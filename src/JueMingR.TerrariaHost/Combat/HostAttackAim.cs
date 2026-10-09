@@ -20,6 +20,7 @@ namespace JueMingR.TerrariaHost.Combat
         private AttackAmmoSnapshot ammo;
         private AttackContact current,next;
         private readonly PredictionTerrain terrain=new PredictionTerrain();
+        private readonly HostSwingAttack swing=new HostSwingAttack();
         internal bool Failed {get;private set;}
         internal AttackContact ExpectedImpact {get{return Valid(false)?(Main.GameUpdateCount==prepared?current:next):Control.ExpectedImpact;}}
         internal HostAttackAim(HostCombat combat,HostCombatObservation observation){this.combat=combat;this.observation=observation;Control=new HostAttackControl(combat,observation);}
@@ -28,25 +29,39 @@ namespace JueMingR.TerrariaHost.Combat
         internal void Demand()
         {if(Permission && Eligible(combat.Player.HeldItem))observation.Prediction.Cache.Demand(1,1,NpcPredictionCache.Horizon);else{observation.Prediction.Cache.Release(1);Clear();}}
         internal void Clear(){weapon=null;ammo=null;current=next=null;Control.Clear();}
-        internal void Reset(){Clear();Control.Reset();Failed=false;}
+        internal void Reset(){Clear();swing.Clear();Control.Reset();Failed=false;}
+        internal void ObserveSwing(Player player,Item item,Rectangle frame,float offset)
+        {
+            if(!ReferenceEquals(player,combat.Player) || !HostSwingAttack.Handles(item) || !Permission)return;
+            try{swing.Observe(item,frame,offset);PrepareSwing(player,item,observation.Prediction.Cache.Read(1),HostAttackPhase.BeforeNpc,true);}catch(Exception error){FailLocal(error);}
+        }
+        private void PrepareSwing(Player player,Item item,NpcTrajectory timeline,HostAttackPhase phase,bool naturalPose)
+        {
+            if(timeline==null || !timeline.Identity.Equals(observation.Selection.Target))return;
+            current=swing.Solve(player,item,timeline,new HostAttackClock(timeline,phase),terrain,naturalPose);next=null;ammo=null;
+            weapon=item;slot=player.selectedItem;type=item.type;prefix=item.prefix;session=observation.Session;prepared=Main.GameUpdateCount;origin=player.RotatedRelativePoint(player.MountedCenter);
+        }
         internal void PrepareNatural(){observation.PrepareAction();}
         internal void Prepare()
-        {PreparePhase(false);}
+        {PreparePhase(HostAttackPhase.CompletedWorld);}
         internal void PrepareAction()
-        {PreparePhase(true);}
-        private void PreparePhase(bool beforeNpc)
+        {PreparePhase(HostAttackPhase.BeforeNpc);}
+        internal void PrepareProjectiles()
+        {PreparePhase(HostAttackPhase.Projectiles);}
+        private void PreparePhase(HostAttackPhase phase)
         {
-            try{PrepareCore(beforeNpc);}
+            try{PrepareCore(phase);}
             catch(Exception error){FailLocal(error);}
         }
         internal void FailLocal(Exception error){Clear();if(error is OutOfMemoryException || error is AccessViolationException)throw error;Failed=true;}
-        private void PrepareCore(bool beforeNpc)
+        private void PrepareCore(HostAttackPhase phase)
         {
-            Clear();if(!Permission || !observation.Selection.HasTarget)return;
+            bool beforeNpc=phase==HostAttackPhase.BeforeNpc;Clear();if(!Permission || !observation.Selection.HasTarget)return;
             terrain.Reset();
             var player=combat.Player;var item=player.HeldItem;if(!Eligible(item))return;
             var timeline=observation.Prediction.Cache.Read(1);if(timeline==null || !timeline.Identity.Equals(observation.Selection.Target))return;
-            Control.Prepare(timeline,beforeNpc);
+            if(HostSwingAttack.Handles(item)){PrepareSwing(player,item,timeline,phase,false);return;}
+            Control.Prepare(timeline,phase);
             var captured=AttackAmmoSnapshot.Capture(player,item);if(captured==null)return;
             if(HostHeldAttack.Weapon(item.type) || HostYoyoNavigation.Weapon(item))return; // Controller birth is not its later ordinary/beam damage phase.
             Projectile sample;bool melee=ContentSamples.ProjectilesByType.TryGetValue(captured.Projectile,out sample) && HostMeleeAttack.Handles(sample);
@@ -65,7 +80,7 @@ namespace JueMingR.TerrariaHost.Combat
             }
             weapon=item;slot=player.selectedItem;type=item.type;prefix=item.prefix;session=observation.Session;prepared=Main.GameUpdateCount;ammo=captured;
         }
-        private static bool Eligible(Item item){return item!=null && !item.IsAir && item.shoot>0 && (item.damage>0 || item.type==905) && item.pick==0 && item.axe==0 && item.hammer==0 && (!item.summon || ProjectileID.Sets.IsAWhip[item.shoot]) && !item.sentry;}
+        private static bool Eligible(Item item){return HostSwingAttack.Handles(item) || item!=null && !item.IsAir && item.shoot>0 && (item.damage>0 || item.type==905) && item.pick==0 && item.axe==0 && item.hammer==0 && (!item.summon || ProjectileID.Sets.IsAWhip[item.shoot]) && !item.sentry;}
         private AttackContact Solve(Player player,Item item,AttackAmmoSnapshot captured,NpcTrajectory timeline,Vector2 start,int age,bool beforeNpc)
         {
             if(HostSkyAttack.Handles(item.type))return HostSkyAttack.Solve(player,item,captured,timeline,start,age,terrain,beforeNpc);
@@ -85,11 +100,11 @@ namespace JueMingR.TerrariaHost.Combat
             if(weapon==null || !Permission || session!=observation.Session || Main.GameUpdateCount<prepared || Main.GameUpdateCount-prepared>1 ||
                 player.selectedItem!=slot || !ReferenceEquals(player.HeldItem,weapon) || weapon.type!=type || weapon.prefix!=prefix ||
                 !observation.Selection.HasTarget || !CombatSelection.Valid(observation.Selection.Target,session))return false;
-            if(!ammo.IdentityMatches(player,weapon))return false;
+            if(ammo==null?!HostSwingAttack.Handles(weapon):!ammo.IdentityMatches(player,weapon))return false;
             var result=Main.GameUpdateCount==prepared?current:next;
             if(result==null || !result.Timeline.Identity.Equals(observation.Selection.Target) || !ReferenceEquals(result.Timeline,observation.Prediction.Cache.Read(1)) ||
                 Vector2.DistanceSquared(player.RotatedRelativePoint(player.MountedCenter),Main.GameUpdateCount==prepared?origin:nextOrigin)>4)return false;
-            return !checkAmmo || terrain.Unchanged && ammo.Matches(player,weapon);
+            return !checkAmmo || terrain.Unchanged && ammo!=null && ammo.Matches(player,weapon);
         }
         internal CombatCursorScope BeginShot(Player player,Item item)
         {

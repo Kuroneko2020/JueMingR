@@ -32,12 +32,12 @@ namespace JueMingR.TerrariaHost.Combat
             else if(item.useAmmo>0)lead=(int)Math.Ceiling(distance/Math.Max(1,ammo.Speed));
             return DirectionPoint(player,timeline,lead);
         }
-        internal static AttackContact Solve(Player player,Projectile shot,NpcTrajectory timeline,int age,bool beforeNpc,PredictionTerrain terrain,out Vector2 point,out AttackAmmoSnapshot ammo)
+        internal static AttackContact Solve(Player player,Projectile shot,NpcTrajectory timeline,HostAttackClock clock,PredictionTerrain terrain,out Vector2 point,out AttackAmmoSnapshot ammo)
         {
-            ammo=null;point=DirectionPoint(player,timeline,age+1);
-            if(HostFlailAttack.Handles(shot.type))return HostFlailAttack.Solve(player,shot,timeline,age,beforeNpc,terrain,out point);
+            int age=clock.Age;ammo=null;point=DirectionPoint(player,timeline,clock.FirstTick);
+            if(HostFlailAttack.Handles(shot.type))return HostFlailAttack.Solve(player,shot,timeline,clock,terrain,out point);
             if(shot.type==633){point=DirectionPoint(player,timeline,age+12);return null;}
-            if(shot.type==927)return HostMeleeAttack.Starlight(player,shot,timeline,age,beforeNpc,terrain,out point);
+            if(shot.type==927)return HostMeleeAttack.Starlight(player,shot,timeline,clock,terrain,out point);
             if(shot.type==460)return null;
             float baseSpeed=shot.type==705?12:shot.type==714?8:14;
             ammo=AttackAmmoSnapshot.CaptureController(player,player.HeldItem,baseSpeed);if(ammo==null)return null;
@@ -47,8 +47,8 @@ namespace JueMingR.TerrariaHost.Combat
             motion=new AttackMotion(motion.Speed,motion.Gravity,motion.GravityStart,motion.Updates,motion.Width,motion.Height,motion.Lifetime,AttackConfidence.Representative,motion.Acceleration,motion.MaxSpeed,motion.ComponentBirthLimit,motion.ComponentAccelerationLimit,motion.DragAfterGravity,motion.StopSmallVelocity);
             Vector2 origin=player.RotatedRelativePoint(player.MountedCenter);int delay=Math.Max(0,(int)Math.Ceiling(shot.ai[1])-1);
             Projectile sample;if(!ContentSamples.ProjectilesByType.TryGetValue(projectile,out sample))return null;
-            var receive=HostAttackReceive.Capture(player,sample,timeline.Identity.Slot,beforeNpc);
-            var contact=AttackIntercept.Solve(origin.X,origin.Y,motion,timeline,age,delay,(x,y,nx,ny,w,h)=>terrain.ProjectilePassage(x,y,nx,ny,(int)w,(int)h),beforeNpc?1:0,receive.Allows);
+            var receive=HostAttackReceive.Capture(player,sample,timeline.Identity.Slot,clock.BeforeNpc,clock.NextWorld);
+            var contact=AttackIntercept.Solve(origin.X,origin.Y,motion,timeline,age,delay,(x,y,nx,ny,w,h)=>terrain.ProjectilePassage(x,y,nx,ny,(int)w,(int)h),clock.FirstTick-age,receive.Allows);
             if(contact!=null)point=new Vector2(contact.AimX,contact.AimY);return contact;
         }
     }

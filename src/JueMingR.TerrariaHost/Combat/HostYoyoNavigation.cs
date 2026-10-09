@@ -69,9 +69,9 @@ namespace JueMingR.TerrariaHost.Combat
             point=new Vector2(MathHelper.Clamp(player.X,box.X+insetX,box.X+box.Width-insetX),MathHelper.Clamp(player.Y,box.Y+insetY,box.Y+box.Height-insetY));
             return Vector2.Distance(point,player)<=range-1;
         }
-        internal AttackContact Prepare(Player player,Projectile shot,NpcTrajectory timeline,int age,bool beforeNpc,out Vector2 point,out bool usable)
+        internal AttackContact Prepare(Player player,Projectile shot,NpcTrajectory timeline,HostAttackClock clock,out Vector2 point,out bool usable)
         {
-            point=Vector2.Zero;usable=false;if(!player.channel || player.CCed || shot.ai[0]<0)return null;
+            int age=clock.Age;point=Vector2.Zero;usable=false;if(!player.channel || player.CCed || shot.ai[0]<0)return null;
             bool secondary=Secondary(shot);float range,speed;Parameters(player,shot,secondary,out range,out speed);
             if(Remaining(player,shot,secondary)==0){path.Clear();return null;}
             if(range<=1 || speed<=0 || Vector2.Distance(shot.Center,player.Center)>range*1.3f)return null;
@@ -90,7 +90,7 @@ namespace JueMingR.TerrariaHost.Combat
             // cannot make its corner. Rejection restores the physical cursor.
             float dead=5+speed/2+(secondary?20:0);
             while(path.Count>1 && Vector2.Distance(shot.Center,path[0])<=dead)path.RemoveAt(0);
-            var contact=Replay(player,shot,timeline,age,beforeNpc,secondary,range,speed,out point);
+            var contact=Replay(player,shot,timeline,clock,secondary,range,speed,out point);
             usable=contact!=null;
             if(!usable){path.Clear();retryStep=Main.GameUpdateCount+5;}
             return contact;
@@ -121,19 +121,19 @@ namespace JueMingR.TerrariaHost.Combat
             }
             return false;
         }
-        private AttackContact Replay(Player player,Projectile shot,NpcTrajectory timeline,int age,bool beforeNpc,bool secondary,float range,float speed,out Vector2 input)
+        private AttackContact Replay(Player player,Projectile shot,NpcTrajectory timeline,HostAttackClock clock,bool secondary,float range,float speed,out Vector2 input)
         {
 #if DEBUG
             ReplayStop="NoContact";ReplayStep=0;
 #endif
-            int at=0;float dead=5+speed/2+(secondary?20:0);Vector2 center=shot.Center,velocity=shot.velocity;input=path[0];var receive=HostAttackReceive.Capture(player,shot,timeline.Identity.Slot,beforeNpc);
+            int age=clock.Age,at=0;float dead=5+speed/2+(secondary?20:0);Vector2 center=shot.Center,velocity=shot.velocity;input=path[0];var receive=HostAttackReceive.Capture(player,shot,timeline.Identity.Slot,clock.BeforeNpc,clock.NextWorld);
             var playerMotion=NpcPredictionSource.ReadPlayer(player);var environment=new PredictionEnvironment{WorldWidth=Main.maxTilesX,WorldHeight=Main.maxTilesY,GravityWorldSurface=Main.worldSurface,Remix=Main.remixWorld};
             for(int step=0;step<Math.Min(Remaining(player,shot,secondary),timeline.Count-age-1);step++)
             {
 #if DEBUG
                 ReplayStep=step;
 #endif
-                if(!beforeNpc || step>0){PredictionStop stop;if(!PlayerMotionContinuation.Advance(ref playerMotion,environment,terrain,out stop)){
+                if(clock.MovePlayer(step)){PredictionStop stop;if(!PlayerMotionContinuation.Advance(ref playerMotion,environment,terrain,out stop)){
 #if DEBUG
                     ReplayStop="Player:"+stop;
 #endif
@@ -154,7 +154,7 @@ namespace JueMingR.TerrariaHost.Combat
                     ReplayStop="BallTerrain";
 #endif
                     return null;}
-                var contact=receive.Allows(step+1)?AttackIntercept.BodyContact(timeline,age+step+(beforeNpc?1:0),0,input.X,input.Y,center.X,center.Y,shot.width,shot.height,AttackConfidence.Conditional):null;
+                var contact=receive.Allows(step+1)?AttackIntercept.BodyContact(timeline,clock.FirstTick+step,0,input.X,input.Y,center.X,center.Y,shot.width,shot.height,AttackConfidence.Conditional):null;
                 if(contact!=null){
 #if DEBUG
                     ReplayStop="Contact";
