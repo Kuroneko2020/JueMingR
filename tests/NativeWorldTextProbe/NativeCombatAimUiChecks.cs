@@ -17,7 +17,15 @@ namespace NativeWorldTextProbe
 {
     internal static class NativeCombatAimUiChecks
     {
-        private static object traceHost,traceShell;private static HotkeyBindings traceBindings;
+        private static object traceHost,traceShell,tracePopup;private static HotkeyBindings traceBindings;
+        // Exercise completion at the real later AfterUpdate Poll while leaving
+        // the actual storage worker/compile active. This fixture defers only
+        // the earlier Poll inside this popup; no product timing is changed.
+        private static bool deferPopupPoll;private static int popupPollDepth;
+        private static void EnterPopup(object __instance,out bool __state){__state=ReferenceEquals(__instance,tracePopup);if(__state)popupPollDepth++;}
+        private static Exception LeavePopup(Exception __exception,bool __state){if(__state)popupPollDepth--;return __exception;}
+        private static bool PollBoundary(HotkeyBindings __instance)
+        {return !deferPopupPoll || popupPollDepth==0 || !ReferenceEquals(__instance,traceBindings);}
         private static void Dispatch(HotkeyBindings __instance,HotkeyInput __0,bool __2,string __3)
         {
             if(!ReferenceEquals(__instance,traceBindings) || __3!=null || !__0.IsDown((int)Keys.F11))return;
@@ -44,6 +52,7 @@ namespace NativeWorldTextProbe
             Terraria.Localization.LanguageManager.Instance.SetLanguage("zh-Hans");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,true,false,25,true,false));
             Main.screenWidth=960;Main.screenHeight=440;Main.UIScale=1;PlayerInput.CacheOriginalScreenDimensions();UiFrame(context,Vector2.Zero,false);UiFrame(context,Vector2.Zero,false,Keys.F5);UiFrame(context,Vector2.Zero,false);Nav(context,8);
             var audit=new Harmony("JueMingR.Tests.AimUiDispatch");traceHost=host;traceShell=shell;traceBindings=(HotkeyBindings)Get(Get(shell,"hotkeys"),"Bindings");audit.Patch(typeof(HotkeyBindings).GetMethod("Dispatch"),prefix:new HarmonyMethod(typeof(NativeCombatAimUiChecks).GetMethod("Dispatch",BindingFlags.Static|BindingFlags.NonPublic)));
+            tracePopup=Get(shell,"HotkeyPopup");audit.Patch(typeof(HotkeyBindings).GetMethod("Poll"),prefix:new HarmonyMethod(typeof(NativeCombatAimUiChecks),"PollBoundary"));audit.Patch(tracePopup.GetType().GetMethod("Process",BindingFlags.Instance|BindingFlags.NonPublic),prefix:new HarmonyMethod(typeof(NativeCombatAimUiChecks),"EnterPopup"),finalizer:new HarmonyMethod(typeof(NativeCombatAimUiChecks),"LeavePopup"));
             try
             {
                 var renderer=Get(shell,"renderer");var controls=Get(renderer,"CombatObservationControls");var aimOn=Find("ObservationAimOn");var aimOff=Find("ObservationAimOff");
@@ -53,9 +62,16 @@ namespace NativeWorldTextProbe
                 var attack=Get(host,"Attack");Call(attack,"FailLocal",new InvalidOperationException("Aim UI fault oracle"));try{string reason=(string)Call(host,"Unavailable",6);Require(reason!=null && (string)Call(controls,"Hint",Get(aimOn,"Command"))==reason && (string)Call(controls,"Hint",Get(aimOff,"Command"))==reason,"both Aim buttons retain the real unavailable reason");UiFrame(context,Position(aimOff),false);graphics.Pixels(()=>Call(shell,"DrawLayer"),Main.UIScaleMatrix);hint=Get(renderer,"HintLayout");Require((bool)Get(hint,"Visible") && string.Concat(((IEnumerable)Get(hint,"Lines")).Cast<object>().Select(e=>(string)Get(e,"Text")))==reason,"actual faulty OFF hover retains unavailable feedback");}finally{Call(attack,"Reset");}
                 Apply("ObservationAimOn");Require(settings.Value.Aim && Elements().Any(e=>Get(e,"Command").ToString()=="ObservationRadius"),"natural ON button commits before showing the conditional card");
                 var bindings=(HotkeyBindings)Get(Get(shell,"hotkeys"),"Bindings");var key=Elements().Single(e=>(string)GetOptional(e,"HotkeyTarget")=="combat.aim");var keyPoint=Position(key);Click(context,keyPoint);Click(context,keyPoint);var popup=Get(shell,"HotkeyPopup");Require((bool)Get(popup,"Visible") && (string)Get(popup,"Target")=="combat.aim","real Aim binding button opens its own public action");
-                PopupClick(context,popup,"Record");UiFrame(context,Vector2.Zero,false,Keys.LeftControl);UiFrame(context,Vector2.Zero,false,Keys.LeftControl,Keys.F11);UiFrame(context,Vector2.Zero,false);
+                PopupClick(context,popup,"Record");deferPopupPoll=true;UiFrame(context,Vector2.Zero,false,Keys.LeftControl);UiFrame(context,Vector2.Zero,false,Keys.LeftControl,Keys.F11);UiFrame(context,Vector2.Zero,false);
                 NativeQuickItemChecks.Until(()=>{UiFrame(context,Vector2.Zero,false);return !bindings.Busy;});Require(bindings.CompletionSucceeded && bindings.CompletionAction=="combat.aim" && bindings.Get("combat.aim").MainKey==(int)Keys.F11 && bindings.Get("combat.aim").Modifiers==HotkeyModifiers.LeftControl,"real recording commits complete Aim chord through the shared worker");
-                Console.WriteLine("BIND committed="+bindings.CompletionId+" chord="+bindings.Get("combat.aim").Text+" popup="+Get(popup,"Visible"));PopupClick(context,popup,"Close");Console.WriteLine("BIND close visible="+Get(popup,"Visible"));Require(!(bool)Get(popup,"Visible"),"actual close click must retire the binding popup before gameplay dispatch");
+                Require((long)Get(popup,"pendingCommand")==bindings.CompletionId && Get(Get(popup,"Feedback"),"Kind").ToString()=="Saving","actual AfterUpdate Poll completion precedes this popup's pending feedback consumption");deferPopupPoll=false;
+                long boundCommand=bindings.CompletionId;int savedGeneration=(int)Get(Get(popup,"Layout"),"Generation");
+                // Storage completion is not layout completion. Consume this
+                // command's popup feedback on trusted neutral frames before
+                // reading the Close location, then send exactly one gesture.
+                NativeQuickItemChecks.Until(()=>{UiFrame(context,Vector2.Zero,false);return bindings.CompletionId==boundCommand && (long)Get(popup,"pendingCommand")==0 && ReferenceEquals(Get(popup,"Feedback"),bindings.Feedback);});
+                Require((int)Get(Get(popup,"Layout"),"Generation")>savedGeneration,"saved popup view is composed before reading its current Close button");Console.WriteLine("BIND popup-consumed command="+boundCommand+" generation="+savedGeneration+"->"+Get(Get(popup,"Layout"),"Generation"));
+                Console.WriteLine("BIND committed="+bindings.CompletionId+" chord="+bindings.Get("combat.aim").Text+" popup="+Get(popup,"Visible"));CloseObserved(popup,bindings);Console.WriteLine("BIND close visible="+Get(popup,"Visible"));Require(!(bool)Get(popup,"Visible"),"actual close click must retire the binding popup before gameplay dispatch");
                 Call(shell,"CloseAndSubmitPosition");Neutral(context,shell,settings,bindings);long accepted=settings.AcceptedCommandId;
                 UiFrame(context,Vector2.Zero,false,Keys.LeftControl,Keys.F11);for(int i=0;i<4;i++)UiFrame(context,Vector2.Zero,false,Keys.LeftControl,Keys.F11);UiFrame(context,Vector2.Zero,false);Wait();Console.WriteLine("KEY accepted="+accepted+"->"+settings.AcceptedCommandId+" aim="+settings.Value.Aim+" path="+settings.Value.Path+" marker="+settings.Value.Marker+" visible="+Get(state,"Visible")+" input="+Get(Get(context,"Input"),"CanStartActions"));Require(!settings.Value.Aim && settings.AcceptedCommandId==accepted+1 && settings.Value.Path && settings.Value.Marker,"fresh actual binding toggles once; held samples preserve independent display preferences");
                 UiFrame(context,Vector2.Zero,false,Keys.LeftControl,Keys.F11);UiFrame(context,Vector2.Zero,false);Wait();Require(settings.Value.Aim,"second fresh edge restores Aim through the same reliable setting owner");
@@ -68,9 +84,16 @@ namespace NativeWorldTextProbe
                 Call(shell,"CloseAndSubmitPosition");UiFrame(context,Vector2.Zero,false);IndependentWorld(context,graphics,host);
                 Console.WriteLine("PASS Aim real ON/OFF card, recording/worker binding/fresh dispatch, drag hotkey exclusion and held/release input tail; OFF keeps actual path and target marker.");
             }
-            finally{audit.UnpatchAll(audit.Id);traceHost=traceShell=null;traceBindings=null;Call(shell,"CloseAndSubmitPosition");NativeCombatObservationChecks.Save(host,new ObservationOptions());}
+            finally{deferPopupPoll=false;popupPollDepth=0;audit.UnpatchAll(audit.Id);traceHost=traceShell=tracePopup=null;traceBindings=null;Call(shell,"CloseAndSubmitPosition");NativeCombatObservationChecks.Save(host,new ObservationOptions());}
 
             object[] Elements(){return ((IEnumerable)Get(Get(state,"Layout"),"Elements")).Cast<object>().ToArray();}
+            void CloseObserved(object popup,HotkeyBindings bindings)
+            {
+                var layout=Get(popup,"Layout");var commands=((IEnumerable)Get(layout,"Commands")).Cast<object>().ToArray();var buttons=((IEnumerable)Get(layout,"Buttons")).Cast<object>().ToArray();int index=Array.FindIndex(commands,c=>c.ToString()=="Close");Require(index>=0,"popup close exists");var panel=Get(layout,"Panel");var point=(Point(Get(buttons[index],"Rect"))+new Vector2((float)Get(panel,"X"),(float)Get(panel,"Y")))*Main.UIScale;
+                var snapshots=new System.Collections.Generic.List<string>(4);Snapshot("before");UiFrame(context,point,false);Snapshot("neutral");UiFrame(context,point,true);Snapshot("press");UiFrame(context,point,false);Snapshot("release");foreach(string snapshot in snapshots)Console.WriteLine(snapshot);
+                void Snapshot(string phase)
+                {var input=Get(context,"Input");var keys=(HotkeyInput)Get(input,"Hotkeys");var nowPanel=Get(layout,"Panel");var nowCommands=((IEnumerable)Get(layout,"Commands")).Cast<object>().ToArray();var nowButtons=((IEnumerable)Get(layout,"Buttons")).Cast<object>().ToArray();var nowPoint=(Point(Get(nowButtons[Array.FindIndex(nowCommands,c=>c.ToString()=="Close")],"Rect"))+new Vector2((float)Get(nowPanel,"X"),(float)Get(nowPanel,"Y")))*Main.UIScale;snapshots.Add("BIND CLOSE "+phase+" point="+point+" currentClose="+nowPoint+" generation="+Get(layout,"Generation")+" panel="+Get(nowPanel,"X")+","+Get(nowPanel,"Y")+","+Get(nowPanel,"Width")+","+Get(nowPanel,"Height")+" hit="+Call(layout,"Hit",point.X/Main.UIScale,point.Y/Main.UIScale,(int)Get(popup,"DetailOffset"))+" hovered="+Get(popup,"Hovered")+" armed="+Get(popup,"Pressed")+" armedGeneration="+Get(popup,"armedGeneration")+" feedback="+Get(Get(popup,"Feedback"),"Kind")+" pending="+Get(popup,"pendingCommand")+" completion="+bindings.CompletionId+" busy="+bindings.Busy+" focused="+Get(input,"SampleFocused")+" reliable="+keys.Reliable+" down="+keys.IsDown(256)+" new="+keys.IsNew(256)+" suppressed="+keys.IsSuppressed(256)+" tail="+Get(input,"HotkeyPointerOwned"));}
+            }
             object Find(string command){return Elements().Single(e=>Get(e,"Command").ToString()==command);}
             void Wait(){long command=settings.AcceptedCommandId;NativeQuickItemChecks.Until(()=>{UiFrame(context,Vector2.Zero,false);return settings.Ready && settings.CompletedCommandId==command;});Require(settings.CompletionSucceeded,"this accepted preference command actually completes successfully");}
             void Apply(string command){long prior=settings.AcceptedCommandId;var at=Position(Find(command));Click(context,at);Wait();Console.WriteLine("UI command="+command+" accepted="+prior+"->"+settings.AcceptedCommandId+" aim="+settings.Value.Aim+" pointer="+Get(drag,"OwnsPointer")+" at="+at);Require(settings.AcceptedCommandId==prior+1,"actual button accepts its own new reliable command: "+command);}
