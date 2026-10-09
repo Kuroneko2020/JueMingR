@@ -83,6 +83,11 @@ namespace JueMingR.TerrariaHost.Combat
             shots[(int)shot.key]=new Controlled{Shot=shot,Key=(int)shot.key,Type=shot.type,Source=owner.Source,BirthOrdinal=++birthOrdinal,Born=Main.GameUpdateCount,BornNext=Main.ProjectileUpdateLoopIndex>=0 && shot.whoAmI<=Main.ProjectileUpdateLoopIndex,Navigation=HostYoyoNavigation.Handles(shot)?new HostYoyoNavigation():null};
         }
         internal void Clear(){presentation=null;preparedTimeline=null;opening=null;openingNavigation=null;openingUsable=false;foreach(var entry in shots.Values){entry.Contact=entry.NextKillContact=null;entry.HasPoint=false;entry.ContactChild=null;entry.Obstacles=null;}}
+        // An individual natural consumer can revoke only its own prepared
+        // capability. Source/registry lifetime belongs to Prepare/Reset; an
+        // unrelated or repeated projectile callback must never walk that pool.
+        private static void Retire(Controlled entry)
+        {entry.Contact=entry.NextKillContact=null;entry.HasPoint=false;entry.ContactChild=null;entry.Obstacles=null;}
         internal void Reset(){Clear();shots.Clear();preparedTimeline=null;opening=null;birthOrdinal=0;}
         internal void Prepare(NpcTrajectory timeline,HostAttackPhase phase)
         {
@@ -161,7 +166,8 @@ namespace JueMingR.TerrariaHost.Combat
         private bool Passage(float x,float y,float nx,float ny,float width,float height){return terrain.ProjectilePassage(x,y,nx,ny,(int)width,(int)height);}
         internal CombatCursorScope BeginOpening(Player player,Item item)
         {
-            if(!combat.Attack.CurrentReceiver){Clear();return null;}
+            if(!openingUsable || opening==null)return null;
+            if(!combat.Attack.CurrentReceiver){openingUsable=false;return null;}
             if(!environmentState.Current || !terrain.Unchanged || !openingUsable || opening==null || openingNavigation!=null && !openingNavigation.Current(player) || !combat.Attack.Permission || !ReferenceEquals(player,opening.Player) || !ReferenceEquals(item,opening.Weapon) || !Allowed(opening) || openingStep!=Main.GameUpdateCount || openingAmmo==null || !openingAmmo.IdentityMatches(player,item) || !ReferenceEquals(preparedTimeline,observation.Prediction.Cache.Read(1)) || !preparedTimeline.Identity.Equals(observation.Selection.Target))return null;
             return CombatCursorScope.Begin(openingPoint);
         }
@@ -169,11 +175,11 @@ namespace JueMingR.TerrariaHost.Combat
         {later=false;if(Terraria.Testing.DebugOptions.Shared_RandomizeProjectileSlots)return false;for(int i=0;i<Main.maxProjectiles;i++)if(!Main.projectile[i].active){later=i>parent.whoAmI;return true;}return false;}
         internal CombatCursorScope BeginKill(Projectile shot)
         {
-            if(!combat.Attack.CurrentReceiver){Clear();return null;}
             Controlled entry;if(shot.type!=444 || !shots.TryGetValue((int)shot.key,out entry) || !ReferenceEquals(entry.Shot,shot))return null;
+            if(!combat.Attack.CurrentReceiver){Retire(entry);return null;}
             bool later;
             if(!environmentState.Current || !Valid(entry) || entry.Obstacles!=null && !entry.Obstacles.Unchanged || Main.GameUpdateCount<entry.Prepared || Main.GameUpdateCount-entry.Prepared>1 || !entry.Target.Equals(observation.Selection.Target) || !terrain.Unchanged || !TryChildLaterSlot(shot,out later) || entry.ChildLaterSlot!=later)
-            {entry.Contact=entry.NextKillContact=null;return null;}
+            {Retire(entry);return null;}
             var result=Vector2.DistanceSquared(shot.Center,entry.KillOrigin)<.01f?entry.Contact:Vector2.DistanceSquared(shot.Center,entry.NextKillOrigin)<.01f?entry.NextKillContact:null;
             entry.Contact=entry.NextKillContact=null;
             if(result==null || !ReferenceEquals(result.Timeline,observation.Prediction.Cache.Read(1)))return null;
@@ -218,13 +224,14 @@ namespace JueMingR.TerrariaHost.Combat
         // outer cursor scope. Reading never advances cadence or solves again.
         internal bool TryPoint(Projectile shot,out Vector2 point)
         {
-            point=default(Vector2);if(!combat.Attack.CurrentReceiver){Clear();return false;}Controlled entry;if(!shots.TryGetValue((int)shot.key,out entry) || !ReferenceEquals(entry.Shot,shot))return false;
+            point=default(Vector2);Controlled entry;if(!shots.TryGetValue((int)shot.key,out entry) || !ReferenceEquals(entry.Shot,shot))return false;
             // Bubble AI never reads the cursor. Its separate Kill receipt must
             // survive these natural AI calls, including a stationary bubble
             // whose current and expiry origins are exactly the same.
             if(entry.Type==444)return false;
+            if(!combat.Attack.CurrentReceiver){Retire(entry);return false;}
             if(!environmentState.Current || !Valid(entry) || entry.Obstacles!=null && !entry.Obstacles.Unchanged || entry.Prepared!=Main.GameUpdateCount || entry.Contact==null && !entry.HasPoint || !observation.Selection.HasTarget || !entry.Target.Equals(observation.Selection.Target) || !ReferenceEquals(preparedTimeline,observation.Prediction.Cache.Read(1)) || !terrain.Unchanged)
-            {entry.Contact=null;return false;}
+            {Retire(entry);return false;}
             if(entry.Type==1035){point=entry.Point;return HostWhipAttack.Consumes(shot);}
             if(HostHeldAttack.Handles(entry.Type))
             {
