@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using JueMingR.Features.Combat;
 using JueMingR.Platform.Hotkeys;
+using JueMingR.Platform.Combat;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 using Terraria;
@@ -33,7 +34,13 @@ namespace NativeWorldTextProbe
                 Require((float)Get(Get(field,"Rect"),"Width")-66==108,"owner-requested track doubles from 54 to 108 logical pixels");
                 Require(Math.Abs(CenterY(field)-CenterY(labels[2]))<.01f,"interval remains vertically centered in quick-switch row");
                 Image("page");
+                int priorGeneration=(int)Get(layout,"Generation");float priorRowY=(float)Get(Get(labels[0],"Rect"),"Y");
                 Observation(context,graphics,output,size);
+                // Observation performs real OFF/ON/condition commits and thus
+                // replaces layout elements. Coordinates must come from the
+                // current generation, exactly as the UI release gate requires.
+                layout=Get(state,"Layout");elements=((IEnumerable)Get(layout,"Elements")).Cast<object>().ToArray();labels=names.Select(n=>elements.Single(e=>(string)GetOptional(e,"Text")==n)).ToArray();field=elements.Single(e=>Get(e,"Command").ToString()=="CombatInterval");
+                Console.WriteLine("VISUAL layout before="+priorGeneration+" current="+Get(layout,"Generation")+" autoClickY old="+priorRowY+" current="+Get(Get(labels[0],"Rect"),"Y"));
                 if(size[1]==760)
                 {
                     string[] descriptions={"补全原版不支持连点的物品","长按右键触发连击","按住右键快切快捷栏的光剑","按住左键最大程度发挥左轮威力","装备魔法绳后长按左键实现连点效果","固定方向的武器可以随时转头了","还得是穿渔夫套打boss","boss战结束后自动汇报","rnm 还钱！！"};
@@ -104,7 +111,11 @@ namespace NativeWorldTextProbe
             graphics.Image(Path.Combine(output,"observation-world.png"),()=>Call(layer,"Draw"),Main.GameViewMatrix.ZoomMatrix);
             Main.LocalPlayer.gravDir=-1;Main.screenPosition+=new Vector2(70,30);Call(layer,"Prepare");graphics.Image(Path.Combine(output,"observation-world-inverted.png"),()=>Call(layer,"Draw"),Main.GameViewMatrix.ZoomMatrix);Main.LocalPlayer.gravDir=1;
             npc.SetDefaults(371);npc.whoAmI=0;npc.active=true;npc.position=new Vector2(700,650);npc.target=0;npc.ai[3]=1;
-            int priorMode=Main.netMode;try{Main.netMode=1;NativeCombatObservationChecks.Fresh(context,host);Call(layer,"Prepare");string shown=(string)Get(layer,"pathText");Require(shown.Contains("随机代表路线") && shown.Contains("依据本机网络观察") && shown.Contains("玩家保持当前位置"),"actual rendered path text retains random, network and player assumptions");}finally{Main.netMode=priorMode;}
+            int priorMode=Main.netMode;try{Main.netMode=1;NativeCombatObservationChecks.Fresh(context,host);Call(layer,"Prepare");string shown=(string)Get(layer,"pathText");var path=cache.Read(0);Console.WriteLine("VISUAL world text="+shown+" target="+Get(Get(host,"Selection"),"HasTarget")+" path="+Get(host,"Path")+" sample="+path?.SampleTick+" assumptions="+path?.Assumptions+" strategy="+path?.Strategy+" count="+path?.Count+" npc="+npc.type+" camera="+Main.screenPosition+" mouse="+Main.MouseWorld+" player="+Main.LocalPlayer.position);
+                // Fresh uses the production continuation model, not a fixed
+                // player fixture. Assert the published assumption's real text;
+                // substituting the old stationary phrase would mislabel it.
+                Require(path!=null && (path.Assumptions&PredictionAssumption.HeldPlayerControls)!=0 && shown.Contains("随机代表路线") && shown.Contains("依据本机网络观察") && shown.Contains("假设玩家延续当前输入"),"actual rendered path text retains random, network and published player-continuation assumptions");}finally{Main.netMode=priorMode;}
             NativeCombatObservationChecks.Save(host,new ObservationOptions());Call(layer,"Prepare");Require((int)Get(layer,"StrokeCount")==0,"display off retires prepared geometry");
         }
         private static void ScrollTo(object context,object state,object element)

@@ -88,7 +88,7 @@ namespace JueMingR.TerrariaHost.F5
         internal string Hint(F5Command c)
         {
             if(!Owns(c))return null;
-            if(c==F5Command.ObservationAimOn || c==F5Command.ObservationAimOff)return host.Unavailable(6)??"开启后显示下方设置；普通攻击仍由你或已开启的连点发起。";
+            if(c==F5Command.ObservationAimOn || c==F5Command.ObservationAimOff)return host.Unavailable(6);
             if(c==F5Command.ObservationMarker)return host.Unavailable(5)??"围绕当前共享选中的可攻击部位显示标记；没有预测路线也可显示。";
             if(c>=F5Command.ObservationCollisionOn){var reason=host.Unavailable(((int)c-(int)F5Command.ObservationCollisionOn)/2);if(reason!=null)return reason;}
             if(c==F5Command.ObservationRadius)return host.Options.MouseCenter?"鼠标范围：0—50 格。0 只选择受击区域触及光标的目标；不关闭显示。":"玩家中心使用屏幕范围；切换鼠标中心后可调半径。";

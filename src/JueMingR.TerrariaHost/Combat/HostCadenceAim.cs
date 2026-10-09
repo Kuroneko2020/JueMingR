@@ -48,6 +48,7 @@ namespace JueMingR.TerrariaHost.Combat
         {weapon=item;ammo=captured;timeline=future;operation=combat.Use.Operation;step=Main.GameUpdateCount;}
         internal CombatAimPoint Read(CombatAimRequest request)
         {
+            if(!combat.Attack.CurrentReceiver){Clear();return null;}
             if(!combat.Attack.Permission || !combat.Use.MatchesAimRequest(request))return null;
             if(request.Stage==CombatAimStage.FlailRelease)
             {Vector2 flail;return combat.Attack.Control.TryPoint(request.Projectile,out flail)?new CombatAimPoint(request,flail):null;}

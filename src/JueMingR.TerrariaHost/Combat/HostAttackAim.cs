@@ -30,7 +30,11 @@ namespace JueMingR.TerrariaHost.Combat
         private int preferred=4,expansion;
         private Item demandWeapon;private NpcIdentity demandTarget;
         internal bool Failed {get;private set;}
-        internal AttackContact ExpectedImpact {get{return Valid(false)?(Main.GameUpdateCount==prepared?current:next):Control.ExpectedImpact;}}
+        // Identity continuity alone is not permission to receive an attack.
+        // Read only the already selected live receiver; phase displacement
+        // never revokes it, but current damage/friendly/death gates do.
+        internal bool CurrentReceiver {get{return observation.Selection.HasTarget && CombatSelection.Valid(observation.Selection.Target,observation.Session) && CombatSelection.Receives(Main.npc[observation.Selection.Target.Slot],observation.Options.Dummy);}}
+        internal AttackContact ExpectedImpact {get{if(!CurrentReceiver){Clear();return null;}return Valid(false)?(Main.GameUpdateCount==prepared?current:next):Control.ExpectedImpact;}}
         internal void BindPresentation(AttackContact result)
         {presentation=result;presentationStep=Main.GameUpdateCount;presentationOrdinary=ReferenceEquals(result,current) || ReferenceEquals(result,next);if(!presentationOrdinary)Control.BindPresentation(result);}
         // Capture already performed full dependency checks during Prepare.
@@ -39,6 +43,7 @@ namespace JueMingR.TerrariaHost.Combat
         // native consumers still revalidate terrain/qualification before borrowing.
         internal bool PresentationCurrent(AttackContact result)
         {
+            if(!CurrentReceiver)return false;
             var player=combat.Player;
             if(result==null || !ReferenceEquals(presentation,result) || presentationStep!=Main.GameUpdateCount || Failed || !observation.Options.Aim || !observation.Settings.CanRun || player==null || !combat.Admitted(player) || !observation.Selection.HasTarget || !result.Timeline.Identity.Equals(observation.Selection.Target) || !CombatSelection.Valid(observation.Selection.Target,observation.Session) || !ReferenceEquals(result.Timeline,observation.Prediction.Cache.Read(1)))return false;
             if(!presentationOrdinary)return Control.PresentationCurrent(result);
@@ -133,7 +138,7 @@ namespace JueMingR.TerrariaHost.Combat
         internal void FailLocal(Exception error){Clear();if(error is OutOfMemoryException || error is AccessViolationException)throw error;Failed=true;}
         private void PrepareCore(HostAttackPhase phase)
         {
-            bool beforeNpc=phase==HostAttackPhase.BeforeNpc;Clear();if(!Permission || !observation.Selection.HasTarget)return;
+            bool beforeNpc=phase==HostAttackPhase.BeforeNpc;Clear();if(!Permission || !CurrentReceiver)return;
             terrain.Reset();environmentState=new HostProjectileEnvironment.State(true);
             var player=combat.Player;var item=player.HeldItem;if(!Eligible(item) || !HostAttackWindow.NextAction(combat,player,item))return;
             var timeline=observation.Prediction.Cache.Read(1);if(timeline==null || !timeline.Identity.Equals(observation.Selection.Target))return;
@@ -182,7 +187,7 @@ namespace JueMingR.TerrariaHost.Combat
             var player=combat.Player;
             if(weapon==null || !Permission || session!=observation.Session || Main.GameUpdateCount<prepared || Main.GameUpdateCount-prepared>1 ||
                 player.selectedItem!=slot || !ReferenceEquals(player.HeldItem,weapon) || weapon.type!=type || weapon.prefix!=prefix ||
-                !observation.Selection.HasTarget || !CombatSelection.Valid(observation.Selection.Target,session))return false;
+                !CurrentReceiver)return false;
             if(ammo==null?!HostSwingAttack.Handles(weapon):!ammo.IdentityMatches(player,weapon))return false;
             var result=Main.GameUpdateCount==prepared?current:next;
             if(!checkAmmo && !HostAttackWindow.NextAction(combat,player,weapon))return false;
@@ -193,6 +198,7 @@ namespace JueMingR.TerrariaHost.Combat
         internal CombatCursorScope BeginShot(Player player,Item item,bool regular)
         {
             if(!ReferenceEquals(player,combat.Player))return null;
+            if(!CurrentReceiver){Clear();return null;}
             if(!regular && item!=null && ProjectileID.Sets.IsAWhip[item.shoot])
             {
                 // Snake-band extra swings are real consumers, with random
