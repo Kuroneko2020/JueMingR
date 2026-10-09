@@ -101,142 +101,52 @@ function Get-WorkloadQualificationPolicy {
     return $null
 }
 $script:WorkloadBehaviorRecipeCache=@{}
-function Assert-WorkloadRecipeWrites {
-    param($Ast,[string[]] $Owners)
-    # This finite owner model supports direct variable assignments only. PS
-    # variable identity ignores case; scoped/index/member/indirect mutation is
-    # not a proof of equivalent argv and must require current validation.
-    foreach($node in $Ast.FindAll({param($child) $child -is [Management.Automation.Language.AssignmentStatementAst] -or $child -is [Management.Automation.Language.UnaryExpressionAst] -or $child -is [Management.Automation.Language.InvokeMemberExpressionAst]},$true)){
-        $target=if($node -is [Management.Automation.Language.AssignmentStatementAst]){$node.Left}elseif($node -is [Management.Automation.Language.InvokeMemberExpressionAst]){$node.Expression}else{$node}
-        $variables=@($target.FindAll({param($child) $child -is [Management.Automation.Language.VariableExpressionAst]},$true))
-        foreach($variable in $variables){
-            $identity=$variable.VariablePath.UserPath
-            if($Owners -inotcontains ($identity -replace '^.*:','')){continue}
-            if($node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left -is [Management.Automation.Language.VariableExpressionAst] -and $Owners -icontains $identity){continue}
-            if($node -is [Management.Automation.Language.InvokeMemberExpressionAst] -and $node.Member.Extent.Text -iin @('Trim','TrimEnd','StartsWith')){continue}
-            if($node -is [Management.Automation.Language.UnaryExpressionAst] -and $node.TokenKind -notin @('PlusPlus','MinusMinus','PostfixPlusPlus','PostfixMinusMinus')){continue}
-            throw 'Unsupported behavior parameter mutation requires current validation.'
-        }
-    }
-    foreach($call in $Ast.FindAll({param($child) $child -is [Management.Automation.Language.CommandAst]},$true)){
-        if($call.GetCommandName() -iin @('Set-Variable','New-Variable','Remove-Variable','Clear-Variable','sv','nv','rv','cv','Invoke-Expression','iex')){throw 'Indirect behavior parameter mutation requires current validation.'}
-    }
-}
 function Get-WorkloadBehaviorRecipeProjection {
     param([string] $Path,[string] $Text)
-    # This is the existing three command owners, not an MSBuild analyser.
-    # Keep parameter-producing assignments and their known fixed path sources;
-    # unknown argument sources are not an equivalence proof.
+    # Bind the complete three compile/launch owners, including control flow,
+    # helpers and executable bookkeeping. Unknown executable changes require
+    # current validation; this is a token boundary, not a script interpreter.
+    if($Path -inotin @('scripts/build.ps1','scripts/workload/Workload.Evidence.ps1','scripts/test-workload-regressions.ps1')){throw 'Unregistered behavior recipe.'}
     $tokens=$null;$errors=$null
     $ast=[Management.Automation.Language.Parser]::ParseInput($Text,[ref]$tokens,[ref]$errors)
     if($errors.Count){throw ('Unparseable behavior recipe: '+$Path)}
-    $selected=New-Object 'System.Collections.Generic.List[object]'
-    if($Path -ieq 'scripts/build.ps1') {
-        $owners=@('buildArguments','solutionPath','repositoryRoot','referencesDirectory','harmonyReferencesDirectory','buildRoot','workRoot','dotnetCommand','debugRoot','debugWork')
-        Assert-WorkloadRecipeWrites $ast ($owners+@('Configuration'))
-        foreach($name in $owners){
-            $assignments=@($ast.FindAll({param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left -is [Management.Automation.Language.VariableExpressionAst] -and $node.Left.VariablePath.UserPath -ieq $name},$true))
-            if($assignments.Count -ne 1){throw ('Unknown compile parameter owner: '+$name)}
-            foreach($call in $assignments[0].Right.FindAll({param($node) $node -is [Management.Automation.Language.CommandAst]},$true)){
-                $allowedCall=if($name -ieq 'dotnetCommand'){'Get-Command'}else{'Join-Path'}
-                if($call.GetCommandName() -ine $allowedCall){throw 'Unknown compile parameter helper requires current validation.'}
-            }
-            if($name -ine 'buildArguments'){foreach($variable in $assignments[0].Right.FindAll({param($node) $node -is [Management.Automation.Language.VariableExpressionAst]},$true)){
-                if(@('PSScriptRoot','repositoryRoot','Configuration','buildRoot','debugRoot') -inotcontains $variable.VariablePath.UserPath){throw 'Unknown compile path/tool source.'}
-            }}
-            $selected.Add($assignments[0])
-        }
-        $allowed=@('solutionPath','Configuration','workRoot','referencesDirectory','harmonyReferencesDirectory','commit')
-        $arguments=$selected[0]
-        foreach($variable in $arguments.Right.FindAll({param($node) $node -is [Management.Automation.Language.VariableExpressionAst]},$true)){
-            if($allowed -inotcontains $variable.VariablePath.UserPath){throw 'Unknown compile argument source requires current validation.'}
-        }
-        foreach($assignment in $ast.FindAll({param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left -is [Management.Automation.Language.VariableExpressionAst] -and $node.Left.VariablePath.UserPath -ieq 'Configuration'},$true)){$selected.Add($assignment)}
-        $calls=@($ast.FindAll({param($node) $node -is [Management.Automation.Language.CommandAst] -and ($node.CommandElements[0].Extent.Text -ieq '$dotnetCommand.Source' -or $node.GetCommandName() -iin @('dotnet','dotnet.exe'))},$true))
-        $main=0;$detection=0;$version=0
-        foreach($call in $calls){
-            if($call.CommandElements[0].Extent.Text -ine '$dotnetCommand.Source'){throw 'Unregistered solution compile invocation.'}
-            if($call.CommandElements.Count -eq 2 -and $call.CommandElements[1].Extent.Text -ieq '@buildArguments'){$main++}
-            elseif($call.CommandElements[1].Extent.Text -ieq 'build'){
-                $detection++
-                foreach($variable in $call.FindAll({param($node) $node -is [Management.Automation.Language.VariableExpressionAst]},$true)){
-                    if(($allowed+@('dotnetCommand','debugWork')) -inotcontains $variable.VariablePath.UserPath){throw 'Unknown detection compile argument source.'}
-                }
-                if($call.FindAll({param($node) $node -is [Management.Automation.Language.CommandAst]},$true).Count -ne 1){throw 'Unknown detection compile argument helper.'}
-            }elseif($call.CommandElements.Count -eq 2 -and $call.CommandElements[1].Extent.Text -ieq '--version'){$version++;continue}
-            else{throw 'Unregistered solution compile invocation.'}
-            $selected.Add($call)
-        }
-        if($main -ne 1 -or $detection -ne 1 -or $version -ne 1){throw 'Unknown solution/detection compile inventory.'}
-    } elseif($Path -ieq 'scripts/workload/Workload.Evidence.ps1') {
-        foreach($name in @('Get-WorkloadClearedEnvironment','Get-WorkloadFixtureInputFingerprint')){
-            $functions=@($ast.FindAll({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ieq $name},$true))
-            if($functions.Count -ne 1){throw ('Unknown execution/input owner: '+$name)};$selected.Add($functions[0])
-        }
-        $fixture=@($ast.FindAll({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ieq 'Ensure-WorkloadFixture'},$true))
-        $process=@($ast.FindAll({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ieq 'Invoke-WorkloadProcess'},$true))
-        if($fixture.Count -ne 1 -or $process.Count -ne 1){throw 'Unknown fixture/process owner.'}
-        Assert-WorkloadRecipeWrites $fixture[0] @('Root','Project','checks')
-        foreach($assignment in $fixture[0].FindAll({param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left -is [Management.Automation.Language.VariableExpressionAst] -and $node.Left.VariablePath.UserPath -iin @('Root','Project')},$true)){
-            if($assignment.Right.FindAll({param($node) $node -is [Management.Automation.Language.CommandAst] -or $node -is [Management.Automation.Language.VariableExpressionAst]},$true).Count){throw 'Unknown fixture parameter source.'}
-            $selected.Add($assignment)
-        }
-        $calls=@($fixture[0].FindAll({param($node) $node -is [Management.Automation.Language.CommandAst] -and $node.GetCommandName() -ieq 'dotnet.exe'},$true))
-        if($calls.Count -ne 1){throw 'Unknown fixture compile invocation.'}
-        foreach($variable in $calls[0].FindAll({param($node) $node -is [Management.Automation.Language.VariableExpressionAst]},$true)){
-            if(@('Root','Project','checks') -inotcontains $variable.VariablePath.UserPath){throw 'Unknown fixture compile argument source.'}
-        }
-        $selected.Add($calls[0])
-        foreach($call in $calls[0].FindAll({param($node) $node -is [Management.Automation.Language.CommandAst]},$true)){
-            if($call.GetCommandName() -inotin @('dotnet.exe','Join-Path')){throw 'Unknown fixture compile parameter helper.'}
-        }
-        $paths=@($fixture[0].FindAll({param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left.Extent.Text -ieq '$checks'},$true))
-        if($paths.Count -ne 1){throw 'Unknown fixture output/path owner.'}
-        foreach($call in $paths[0].Right.FindAll({param($node) $node -is [Management.Automation.Language.CommandAst]},$true)){if($call.GetCommandName() -ine 'Join-Path'){throw 'Unknown fixture path helper.'}}
-        foreach($variable in $paths[0].Right.FindAll({param($node) $node -is [Management.Automation.Language.VariableExpressionAst]},$true)){if($variable.VariablePath.UserPath -ine 'Root'){throw 'Unknown fixture path source.'}}
-        $selected.Add($paths[0])
-        # Receipt/log writes do not change what the native process consumes.
-        # The actual executable/argv, environment removal/restoration and any
-        # reassignment of those inputs remain bound to the old conclusion.
-        Assert-WorkloadRecipeWrites $process[0] @('Executable','Arguments','onlyVariables')
-        $calls=@($process[0].FindAll({param($node) $node -is [Management.Automation.Language.CommandAst] -and $node.CommandElements[0].Extent.Text -ieq '$Executable'},$true))
-        if($calls.Count -ne 1){throw 'Unknown native process invocation.'}
-        foreach($variable in $calls[0].FindAll({param($node) $node -is [Management.Automation.Language.VariableExpressionAst]},$true)){
-            if(@('Executable','Arguments') -inotcontains $variable.VariablePath.UserPath){throw 'Unknown native execution argument source.'}
-        }
-        $selected.Add($calls[0])
-        foreach($node in $process[0].FindAll({param($node)
-            ($node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left.Extent.Text -imatch '^\$(Executable|Arguments|onlyVariables)(\W|$)') -or
-            ($node -is [Management.Automation.Language.CommandAst] -and $node.GetCommandName() -iin @('Remove-Item','Set-Item'))
-        },$true)){$selected.Add($node)}
-        foreach($assignment in $process[0].FindAll({param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left.Extent.Text -imatch '^\$(Executable|Arguments|onlyVariables)(\W|$)'},$true)){
-            foreach($call in $assignment.Right.FindAll({param($node) $node -is [Management.Automation.Language.CommandAst]},$true)){if($call.GetCommandName() -ine 'Get-WorkloadClearedEnvironment'){throw 'Unknown process parameter helper.'}}
-            foreach($variable in $assignment.Right.FindAll({param($node) $node -is [Management.Automation.Language.VariableExpressionAst]},$true)){if(@('Executable','Arguments') -inotcontains $variable.VariablePath.UserPath){throw 'Unknown process parameter source.'}}
-        }
-    } elseif($Path -ieq 'scripts/test-workload-regressions.ps1') {
-        $calls=@($ast.FindAll({param($node) $node -is [Management.Automation.Language.CommandAst] -and $node.GetCommandName() -ieq 'Invoke-WorkloadProcess'},$true))
-        if($calls.Count -ne 1){throw 'Unknown workload process dispatcher.'};$selected.Add($calls[0])
-        foreach($variable in $calls[0].FindAll({param($node) $node -is [Management.Automation.Language.VariableExpressionAst]},$true)){
-            if(@('check','attempt') -inotcontains $variable.VariablePath.UserPath){throw 'Unknown dispatch argument source.'}
-        }
-        $functions=@($ast.FindAll({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ieq 'Ensure-Fixture'},$true))
-        if($functions.Count -ne 1){throw 'Unknown fixture dispatcher.'};$selected.Add($functions[0])
-        foreach($node in $ast.FindAll({param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left.Extent.Text -imatch '^\$check(\.(arguments|executable|project))?(\W|$)'},$true)){
-            if($node.Right.FindAll({param($child) $child -is [Management.Automation.Language.CommandAst]},$true).Count){throw 'Unknown dispatch parameter helper.'}
-            foreach($variable in $node.Right.FindAll({param($child) $child -is [Management.Automation.Language.VariableExpressionAst]},$true)){if($variable.VariablePath.UserPath -ine 'check'){throw 'Unknown dispatch parameter source.'}}
-            $selected.Add($node)
-        }
-    } else {throw 'Unregistered behavior recipe.'}
-    # Explicit environment writes anywhere in these scripts are consumers too.
-    foreach($node in $ast.FindAll({param($node)
-        ($node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left.Extent.Text -match '^\$env:') -or
-        ($node -is [Management.Automation.Language.InvokeMemberExpressionAst] -and $node.Member.Extent.Text -ieq 'SetEnvironmentVariable')
-    },$true)){$selected.Add($node)}
-    $rows=@($selected|ForEach-Object {
-        $start=$_.Extent.StartOffset;$end=$_.Extent.EndOffset
-        @($tokens|Where-Object {$_.Extent.StartOffset -ge $start -and $_.Extent.EndOffset -le $end -and $_.Kind -notin @('Comment','NewLine','LineContinuation','EndOfInput')}|ForEach-Object {$_.Kind.ToString()+':'+$_.Text}) -join '|'
-    })
-    return Get-WorkloadHash $rows
+    $ignored=New-Object 'System.Collections.Generic.List[object]'
+    # Even literal Write-Host resets $?. Only build's appended, top-level
+    # reports after its existing final successful record output are exempt;
+    # there is no later executable statement to consume their status. Other
+    # reporting stays bound, without trying to interpret status data flow.
+    $statements=@(if($Path -ieq 'scripts/build.ps1' -and $null -ne $ast.EndBlock){$ast.EndBlock.Statements})
+    for($index=$statements.Count-1;$index -ge 0;$index--){
+        $pipeline=$statements[$index]
+        if($pipeline -isnot [Management.Automation.Language.PipelineAst] -or $pipeline.PipelineElements.Count -ne 1){break}
+        $call=$pipeline.PipelineElements[0]
+        if($call -isnot [Management.Automation.Language.CommandAst] -or $call.InvocationOperator -ne [Management.Automation.Language.TokenKind]::Unknown -or $call.Redirections.Count -ne 0 -or $call.GetCommandName() -ine 'Write-Host'){break}
+        $constants=@($call.CommandElements | Select-Object -Skip 1)
+        if($constants.Count -eq 0 -or @($constants | Where-Object {$_ -isnot [Management.Automation.Language.StringConstantExpressionAst] -and $_ -isnot [Management.Automation.Language.ConstantExpressionAst]}).Count){break}
+        $ignored.Add($pipeline.Extent)
+    }
+    if($index -lt 0 -or $statements[$index].Extent.Text -cne 'Write-Output ("Build record: {0}" -f $recordPath)'){$ignored.Clear()}
+    $events=New-Object 'System.Collections.Generic.List[object]'
+    foreach($token in $tokens){
+        if($token.Kind -in @('NewLine','LineContinuation','Semi','EndOfInput')){continue}
+        # #requires is lexed as a comment but constrains script execution.
+        if($token.Kind -eq 'Comment' -and $token.Text -inotmatch '^#requires\b'){continue}
+        $skip=$false
+        foreach($range in $ignored){if($token.Extent.StartOffset -ge $range.StartOffset -and $token.Extent.EndOffset -le $range.EndOffset){$skip=$true;break}}
+        if($skip){continue}
+        $events.Add([pscustomobject]@{offset=$token.Extent.StartOffset;edge=1;value=$token.Kind.ToString()+':'+$token.Text})
+    }
+    # Newlines/semicolons can change statements without changing other tokens.
+    # Keep parser statement/command boundaries while permitting mere layout.
+    foreach($node in $ast.FindAll({param($child) $child -is [Management.Automation.Language.StatementAst] -or $child -is [Management.Automation.Language.CommandAst]},$true)){
+        $skip=$false
+        foreach($range in $ignored){if($node.Extent.StartOffset -ge $range.StartOffset -and $node.Extent.EndOffset -le $range.EndOffset){$skip=$true;break}}
+        if($skip){continue}
+        $kind=$node.GetType().Name
+        $events.Add([pscustomobject]@{offset=$node.Extent.StartOffset;edge=0;value='begin:'+ $kind})
+        $events.Add([pscustomobject]@{offset=$node.Extent.EndOffset;edge=2;value='end:'+ $kind})
+    }
+    return Get-WorkloadHash @($events | Sort-Object offset,edge,value | ForEach-Object {$_.value})
 }
 function Read-WorkloadOriginalRecipe {
     param([string] $Root,$Evidence,[string] $Path,[string] $Hash)

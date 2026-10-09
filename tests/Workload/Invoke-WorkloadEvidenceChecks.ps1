@@ -8,6 +8,24 @@ function Assert-Evidence([bool] $Condition, [string] $Message) {
     if (-not $Condition) { throw ('Evidence contract: ' + $Message) }
 }
 Assert-Evidence (-not (Test-WorkloadReusable $root $null ([pscustomobject]@{inputs=@()}) 'workload-Routing' 'signature')) 'missing retired evidence allows new independent execution without claiming reuse'
+# Prove the chosen boundary, rather than enumerate a PowerShell interpreter.
+$projectionPath='scripts/build.ps1'
+$statusResults=@()
+foreach($report in @('',"Write-Host 'literal report'`n")){
+    $statusResults+=& ([scriptblock]::Create('& $env:COMSPEC /c exit 9'+"`n"+$report+'$succeeded=$?; [pscustomobject]@{succeeded=$succeeded;exitCode=$LASTEXITCODE}'))
+}
+Assert-Evidence (-not $statusResults[0].succeeded -and $statusResults[1].succeeded -and $statusResults[0].exitCode -eq 9 -and $statusResults[1].exitCode -eq 9) 'literal host reporting changes automatic success state after the same failed native process'
+$statusBuild=[IO.File]::ReadAllText((Join-Path $root $projectionPath))
+$statusAssignment='$sdkCommandSucceeded = $?'
+Assert-Evidence ([regex]::Matches($statusBuild,[regex]::Escape($statusAssignment)).Count -eq 1) 'automatic SDK status has one actual owner'
+Assert-Evidence ((Get-WorkloadBehaviorRecipeProjection $projectionPath $statusBuild) -cne (Get-WorkloadBehaviorRecipeProjection $projectionPath $statusBuild.Replace($statusAssignment,("Write-Host 'literal report'`n"+$statusAssignment)))) 'intermediate host reporting is executable before automatic status consumers'
+Assert-Evidence ((Get-WorkloadBehaviorRecipeProjection $projectionPath "Get-Date`nGet-Date") -cne (Get-WorkloadBehaviorRecipeProjection $projectionPath 'Get-Date Get-Date')) 'statement separators remain behavior even when remaining tokens match'
+$safeReportAnchor='Write-Output ("Build record: {0}" -f $recordPath)'
+Assert-Evidence ((Get-WorkloadBehaviorRecipeProjection $projectionPath ($safeReportAnchor+"`n# report comment`nWrite-Host 'literal report'")) -ceq (Get-WorkloadBehaviorRecipeProjection $projectionPath $safeReportAnchor)) 'constant trailing report after final build record has no later status consumer'
+foreach($unsafeOutput in @('Write-Output ''return-stream''','Write-Host $(Get-Date)','Write-Host "$([Environment]::SetEnvironmentVariable(''JUEMINGR_TEST'', ''changed''))"','Write-Host ''report'' | Out-Null','$value=Write-Output ''report''','Write-Host ''report'' > ''report.txt''')) {
+    Assert-Evidence ((Get-WorkloadBehaviorRecipeProjection $projectionPath ('Get-Date'+"`n"+$unsafeOutput)) -cne (Get-WorkloadBehaviorRecipeProjection $projectionPath 'Get-Date')) 'output with side effects, consumers or redirection stays executable'
+}
+Assert-Evidence ((Get-WorkloadBehaviorRecipeProjection $projectionPath "#requires -Version 5.0`nGet-Date") -cne (Get-WorkloadBehaviorRecipeProjection $projectionPath "#requires -Version 5.1`nGet-Date")) 'requires directives are execution conditions even though lexed as comments'
 # Standalone archive verification never calls a product CPU check. Its bytes
 # remain recorded, but only its own evidence projection may depend on them.
 foreach ($path in @('scripts/verify-existing-package.ps1','scripts/phase0s/PackageVerification.Support.ps1','tests/Phase0S/Invoke-PackageVerificationChecks.ps1')) {
@@ -561,23 +579,56 @@ throw 'Incorrectly returned from a failed process.'
         $oldEntry=[pscustomobject]@{schemaVersion=2;status='PASS';name=$oldCheck.name;signature=(Get-WorkloadHash @($recipeExe));inputFingerprint=(Get-WorkloadCheckFingerprint $oldInput $oldCheck.name);allInputFingerprint=$oldInput.fingerprint;inputs=$oldInput.inputs;executionId=[Guid]::NewGuid().ToString('N');sourceCommit=$originalSource.commit;sourceFingerprint=$originalSource.fingerprint;detectionCommit=$originalSource.commit;milliseconds=1;executedUtc=[DateTime]::UtcNow.ToString('o');outputs=@(Save-WorkloadArtifacts $recipeRoot @(Get-WorkloadEvidenceOutputs $recipeRoot ([pscustomobject]@{outputs=@()}) $recipeExe))}
         $originalBuild=[IO.File]::ReadAllText((Join-Path $recipeRoot 'scripts/build.ps1'))
         $originalEvidence=[IO.File]::ReadAllText((Join-Path $recipeRoot 'scripts/workload/Workload.Evidence.ps1'))
+        $selectorLoop='foreach ($variable in $onlyVariables) { Remove-Item -LiteralPath (''Env:''+$variable.Name) }'
+        $emptySelectorLoop='foreach ($variable in @()) { Remove-Item -LiteralPath (''Env:''+$variable.Name) }'
+        Assert-Evidence ([regex]::Matches($originalEvidence,[regex]::Escape($selectorLoop)).Count -eq 1) 'selector counterexample changes exactly one execution condition'
+        Assert-Evidence ((Get-WorkloadBehaviorRecipeProjection 'scripts/workload/Workload.Evidence.ps1' $originalEvidence) -cne (Get-WorkloadBehaviorRecipeProjection 'scripts/workload/Workload.Evidence.ps1' $originalEvidence.Replace($selectorLoop,$emptySelectorLoop))) 'complete execution conditions include the selector loop traversal'
+        # Reuse the existing real selector receiver, with the same executable,
+        # argv and initial environment for both complete process owners.
+        $selectorCheck=[pscustomobject]@{name=$oldCheck.name;executable=$stderrExe;arguments=@('only')}
+        $selectorEntry=$oldEntry | ConvertTo-Json -Depth 12 | ConvertFrom-Json
+        $selectorEntry.signature=Get-WorkloadHash @($stderrExe,'only')
+        $selectorEntry.executionId=[Guid]::NewGuid().ToString('N')
+        $selectorEntry.outputs=@(Save-WorkloadArtifacts $recipeRoot @(Get-WorkloadEvidenceOutputs $recipeRoot ([pscustomobject]@{outputs=@()}) $stderrExe))
+        $selectorResults=@()
+        foreach($processText in @($originalEvidence,$originalEvidence.Replace($selectorLoop,$emptySelectorLoop))){
+            $selectorResults+=& {
+                $tokens=$null;$errors=$null;$processAst=[Management.Automation.Language.Parser]::ParseInput($processText,[ref]$tokens,[ref]$errors)
+                $owner=@($processAst.FindAll({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Invoke-WorkloadProcess'},$true))
+                Assert-Evidence ($errors.Count -eq 0 -and $owner.Count -eq 1) 'complete process owner is available'
+                . ([scriptblock]::Create($owner[0].Extent.Text))
+                $prior=[Environment]::GetEnvironmentVariable('JUEMINGR_STRATEGY_ONLY')
+                try {
+                    $env:JUEMINGR_STRATEGY_ONLY='same-initial-selector'
+                    $reason=''
+                    try{Invoke-WorkloadProcess $selectorCheck.name $selectorCheck.executable $selectorCheck.arguments}catch{$reason=$_.Exception.Message}
+                    [pscustomobject]@{exitCode=$LASTEXITCODE;reason=$reason;restoredSelector=$env:JUEMINGR_STRATEGY_ONLY}
+                } finally {[Environment]::SetEnvironmentVariable('JUEMINGR_STRATEGY_ONLY',$prior)}
+            }
+        }
+        Assert-Evidence ($selectorResults[0].exitCode -eq 0 -and $selectorResults[0].reason -ceq '') 'original cleanup gives real only-cleared success'
+        Assert-Evidence ($selectorResults[1].exitCode -eq 9 -and $selectorResults[1].reason -match 'failed with exit 9') 'empty traversal really inherits selectors and fails the same receiver'
+        Assert-Evidence ($selectorResults[0].restoredSelector -ceq 'same-initial-selector' -and $selectorResults[1].restoredSelector -ceq 'same-initial-selector') 'both owners restore the same initial selector'
+        $compileEntry=$oldEntry;$compileCheck=$oldCheck
         foreach($unsupported in @("`$BuildArguments[0]='build'","`$BuildArguments.SetValue('build',0)","Set-Variable -Name BuildArguments -Value @('build')")){
-            $rejected=$false
-            try{$null=Get-WorkloadBehaviorRecipeProjection 'scripts/build.ps1' $originalBuild.Replace('& $dotnetCommand.Source @buildArguments',($unsupported+"`n& `$dotnetCommand.Source @buildArguments"))}catch{$rejected=$true}
-            Assert-Evidence $rejected 'finite owner refuses index/member/indirect mutation instead of claiming equivalence'
+            Assert-Evidence ((Get-WorkloadBehaviorRecipeProjection 'scripts/build.ps1' $originalBuild) -cne (Get-WorkloadBehaviorRecipeProjection 'scripts/build.ps1' $originalBuild.Replace('& $dotnetCommand.Source @buildArguments',($unsupported+"`n& `$dotnetCommand.Source @buildArguments")))) 'complete owner binds index/member/indirect mutation instead of claiming equivalence'
         }
         $extraCompile=$originalBuild+"`n& `$dotnetCommand.Source build `$solutionPath`n"
-        $rejected=$false;try{$null=Get-WorkloadBehaviorRecipeProjection 'scripts/build.ps1' $extraCompile}catch{$rejected=$true}
-        Assert-Evidence $rejected 'unregistered additional compile cannot claim equivalence'
-        foreach($case in @('output-only','release-debug-option','case-append','fixture-project','compiler-option','indirect-option','fixture-option','execution-scope')) {
+        Assert-Evidence ((Get-WorkloadBehaviorRecipeProjection 'scripts/build.ps1' $originalBuild) -cne (Get-WorkloadBehaviorRecipeProjection 'scripts/build.ps1' $extraCompile)) 'additional compile cannot claim equivalence'
+        foreach($case in @('unchanged','output-only','release-debug-option','case-append','fixture-project','compiler-option','indirect-option','fixture-option','execution-scope','execution-condition','unknown-executable','status-report')) {
+            $oldEntry=$compileEntry;$oldCheck=$compileCheck
+            if($case -ceq 'execution-condition'){$oldEntry=$selectorEntry;$oldCheck=$selectorCheck}
             $candidateBuild=$originalBuild
             if($case -ceq 'output-only'){$candidateBuild+="`nWrite-Host 'unrelated tool report wording'`n"}
+            if($case -ceq 'status-report'){$candidateBuild=$candidateBuild.Replace('$sdkCommandSucceeded = $?',"Write-Host 'literal report'`n"+'$sdkCommandSucceeded = $?')}
             if($case -ceq 'compiler-option'){$candidateBuild=$candidateBuild.Replace("'-p:Platform=x86',","'-p:Platform=x86', '-p:DefineConstants=BEHAVIOR_CHANGED',")}
             if($case -ceq 'release-debug-option'){$candidateBuild=$candidateBuild.Replace('-p:Platform=x86 "-p:JueMingRBuildRoot=$debugWork"','-p:Platform=x86 -p:DefineConstants=BEHAVIOR_CHANGED "-p:JueMingRBuildRoot=$debugWork"')}
             if($case -ceq 'case-append'){$candidateBuild=$candidateBuild.Replace('& $dotnetCommand.Source @buildArguments',"`$BuildArguments += '-p:DefineConstants=BEHAVIOR_CHANGED'`n& `$dotnetCommand.Source @buildArguments")}
             if($case -ceq 'indirect-option'){$candidateBuild=$candidateBuild.Replace('$buildArguments = @(',"`$extraOption='-p:DefineConstants=BEHAVIOR_CHANGED'`n`$buildArguments = @(").Replace("'-p:Platform=x86',","'-p:Platform=x86', `$extraOption,")}
             [IO.File]::WriteAllText((Join-Path $recipeRoot 'scripts/build.ps1'),$candidateBuild,(New-Object Text.UTF8Encoding($false)))
             $candidateEvidence=if($case -ceq 'fixture-option'){$originalEvidence.Replace(' --configuration Debug --nologo -p:Platform=x86',' --configuration Debug --nologo -p:Platform=x86 -p:DefineConstants=BEHAVIOR_CHANGED')}elseif($case -ceq 'fixture-project'){$originalEvidence.Replace('param([string] $Root,[string] $Project,$InputIdentity)',"param([string] `$Root,[string] `$Project,`$InputIdentity)`n    `$Project='DifferentFixture'")}else{$originalEvidence}
+            if($case -ceq 'execution-condition'){$candidateEvidence=$originalEvidence.Replace($selectorLoop,$emptySelectorLoop)}
+            if($case -ceq 'unknown-executable'){$candidateEvidence+="`n[Environment]::SetEnvironmentVariable('JUEMINGR_UNRECOGNIZED','changed')`n"}
             [IO.File]::WriteAllText((Join-Path $recipeRoot 'scripts/workload/Workload.Evidence.ps1'),$candidateEvidence,(New-Object Text.UTF8Encoding($false)))
             $runner=Join-Path $recipeRoot 'scripts/test-workload-regressions.ps1'
             $originalRunner=[IO.File]::ReadAllText((Join-Path $root 'scripts/test-workload-regressions.ps1'))
@@ -586,19 +637,25 @@ throw 'Incorrectly returned from a failed process.'
             Assert-Evidence ($observed -ceq $(if($case -in @('release-debug-option','case-append','fixture-project','compiler-option','indirect-option','fixture-option')){'CHANGED'}else{'BASE'})) ('real compiled behavior: '+$case)
             $currentSource=Get-WorkloadIdentity $recipeRoot
             $inputLock=[pscustomobject]@{inputs=$currentSource.inputs;fingerprint=(Get-WorkloadHash $currentSource.inputs)}
-            $expected=$case -ceq 'output-only'
+            $expected=$case -in @('unchanged','output-only')
+            Assert-Evidence ((Test-WorkloadBehaviorRecipes $recipeRoot $oldEntry $inputLock $oldCheck.name) -eq $expected) ('actual recipe admission: '+$case)
             Assert-Evidence ((Test-WorkloadReusable $recipeRoot $oldEntry $inputLock $oldCheck.name $oldEntry.signature) -eq $expected) ('real REUSED boundary: '+$case)
             $legacyPath=Join-Path $recipeRoot 'legacy.json';Write-WorkloadJson $legacyPath ([ordered]@{schemaVersion=2;results=@($oldEntry)})
             $recordPath=Join-Path $recipeRoot 'applicability.json'
             $recordValue=[ordered]@{schema='fixed-workload-applicability-1';qualificationId=[Guid]::NewGuid().ToString('N');commit=$currentSource.commit;sourceFingerprint=$currentSource.fingerprint;inputFingerprint=$inputLock.fingerprint;requiredChecks=@($oldCheck.name);additionalChecks=@();legacyCachePath=$legacyPath;legacyCacheSha256=(Get-FileHash $legacyPath).Hash;inputSets=@([ordered]@{fingerprint=$oldInput.fingerprint;differences=@(Get-WorkloadInputDifferences $oldInput.inputs $inputLock.inputs)});decisions=@([ordered]@{name=$oldCheck.name;action='QUALIFIED';originalExecutionId=$oldEntry.executionId;requiresCurrent=@();reason='controlled original recipe'})}
             Write-WorkloadJson $recordPath $recordValue
-            $qualified=$null;try{$qualified=Read-WorkloadApplicability $recipeRoot $recordPath $currentSource $inputLock @($oldCheck.name)}catch{}
+            $qualified=$null;$qualificationReason=''
+            try{$qualified=Read-WorkloadApplicability $recipeRoot $recordPath $currentSource $inputLock @($oldCheck.name)}catch{$qualificationReason=$_.Exception.Message}
             Assert-Evidence (($null -ne $qualified) -eq $expected) ('real QUALIFIED reader boundary: '+$case)
+            if(-not $expected){Assert-Evidence ($qualificationReason -ceq ('Changed/unknown behavior recipe requires current validation: '+$oldCheck.name)) ('recipe rejection is not an unrelated missing fixture: '+$case)}
             $controlled=[pscustomobject]@{record=($recordValue|ConvertTo-Json -Depth 12|ConvertFrom-Json);legacy=[pscustomobject]@{results=@($oldEntry)}}
             $qualifiedOriginal=Get-WorkloadQualifiedOriginal $recipeRoot $controlled $oldCheck $inputLock
             Assert-Evidence (($null -ne $qualifiedOriginal) -eq $expected) ('direct qualified consumer cannot bypass recipe admission: '+$case)
             if($expected){Assert-Evidence ($qualifiedOriginal.executionId -ceq $oldEntry.executionId) 'unrelated output keeps original executionId'}
             & {
+            # Only surrounding build/catalogue setup is controlled here. The
+            # Delivery body, reusable/qualified consumers and recipe check are
+            # real; this does not establish a complete package/build validation.
             function Get-WorkloadIdentity {param($Root) return $currentSource}
             function Get-WorkloadEvidenceInput {param($Root,$Identity) return $inputLock}
             function Get-WorkloadChanges {param($Root,$Baseline) return [pscustomobject]@{reason='';paths=@()}}
