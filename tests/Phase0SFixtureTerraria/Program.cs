@@ -93,6 +93,9 @@ namespace Terraria
             }
 
             FixtureInputUpdate();
+            // A loaded Host admits automatic work only after a gameplay tick
+            // advances past its input prefix; menu/paused callbacks do not.
+            if (!gameMenu && CanUpdateGameplay && !gamePaused) GameUpdateCount++;
             FixtureUpdateCount++;
             Console.WriteLine("FIXTURE_MAIN_UPDATE_ORIGINAL");
         }

@@ -101,6 +101,9 @@ namespace JueMingR.TerrariaHost.Input
                 Main.keyState = default(KeyboardState);
                 ClearTextActions();
             }
+#if JMR_INPUT_DIAGNOSTIC
+            ObserveDiagnostics(0);
+#endif
         }
         private void RefreshFocus()
         {
@@ -131,6 +134,9 @@ namespace JueMingR.TerrariaHost.Input
             quarantine |= !IsFocused || rearming;
             if (quarantine) { ConsumeMappedInput(); ClearTextActions(); }
             else if (HotkeyCapture || Hotkeys.HasSuppressedKeys || ClaimsHotkeyPointer != null && ClaimsHotkeyPointer()) ConsumeHotkeyActions();
+#if JMR_INPUT_DIAGNOSTIC
+            ObserveDiagnostics(1);
+#endif
         }
         internal void AfterKeyboardRefresh()
         {
@@ -147,7 +153,13 @@ namespace JueMingR.TerrariaHost.Input
             if (UseGesture.HasTail) UseGesture.AfterSample(physical, SampleFocused,
                 CanUseInput && !HotkeyPointerOwned && (ClaimsHotkeyPointer == null || !ClaimsHotkeyPointer()));
             if (HotkeyCapture || Hotkeys.HasSuppressedKeys) ConsumeHotkeyActions();
-            if (!quarantine) return;
+            if (!quarantine)
+            {
+#if JMR_INPUT_DIAGNOSTIC
+                ObserveDiagnostics(2);
+#endif
+                return;
+            }
             KeyboardState sample = KeyboardSample;
             Main.keyState = default(KeyboardState);
             // A native synthesized release is never neutral proof. The complete
@@ -158,7 +170,31 @@ namespace JueMingR.TerrariaHost.Input
                 sample.GetPressedKeys().Length == 0) rearming = false;
             // The neutral/activation sample itself remains consumed. Next fresh
             // input can act, without replaying a key, wheel delta or old target.
+#if JMR_INPUT_DIAGNOSTIC
+            ObserveDiagnostics(2);
+#endif
         }
+#if JMR_INPUT_DIAGNOSTIC
+        internal bool DiagnosticGameplayActive {get;set;}
+        internal void ObserveDiagnostics(int point)
+        {
+            try
+            {
+                if(!InputDiagnosticTrace.ShouldObserve(point,DiagnosticGameplayActive,IsFocused))return;
+                int state=(IsFocused?1:0)|(nativePermission?2:0)|(mapped?4:0)|(finalized?8:0)|(rearming?16:0)|(quarantine?32:0)|
+                    (HotkeyCapture?64:0)|(Hotkeys.HasSuppressedKeys?128:0)|(hotkeyTailSample?256:0)|(Main.blockInput?512:0)|
+                    (PlayerInput.WritingText?1024:0)|(CanUseInput?2048:0)|(Main.gameMenu?4096:0)|(Main.CurrentInputTextTakerOverride!=null?8192:0)|(MapPointerOwned?16384:0);
+                int held=-1,mouse=-1;
+                // Only Final/Consumers contain a current, trusted sample.
+                // Background/native-synthetic zeros are unknown, never release.
+                if(point>=2 && SampleFocused && FocusHelper.IsSelectedApplication)
+                {held=0;mouse=0;for(int k=0;k<256;k++)if(physical[k]){held=1;break;}for(int k=0;k<5;k++)if(physical[256+k])mouse|=1<<k;}
+                int actions=point<2?-1:(Main.mouseLeft?1:0)|(Main.mouseRight?2:0)|(Main.mouseLeftRelease?4:0)|(Main.mouseRightRelease?8:0);
+                InputDiagnosticTrace.Observe(point,Frame,state,held,mouse,actions);
+            }
+            catch { InputDiagnosticTrace.Fail(); }
+        }
+#endif
         private void ConsumeMappedInput()
         {
             ConsumeHotkeyActions();

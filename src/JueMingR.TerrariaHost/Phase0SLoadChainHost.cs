@@ -260,7 +260,7 @@ namespace JueMingR.TerrariaHost
                 manifest.EvidenceFileName);
             // Install has already verified the exact target assembly and path.
             postfixContext = new PostfixContext(manifest.PackageId, evidencePath,
-                Path.GetDirectoryName(Path.GetFullPath(targetAssembly.Location)));
+                Path.GetDirectoryName(Path.GetFullPath(targetAssembly.Location)),manifest.HostAssemblySha256);
 
             Harmony harmony = new Harmony(manifest.PatchOwner);
             bool patchAttempted = false;
@@ -468,6 +468,9 @@ namespace JueMingR.TerrariaHost
         {
             PostfixContext context = postfixContext;
             if (Volatile.Read(ref hookCommitted) != 1 || context == null) return;
+#if JMR_INPUT_DIAGNOSTIC
+            context.Input.DiagnosticGameplayActive=context.DiagnosticGameplayActive;
+#endif
             context.Input.BeginUpdate();
             if (!context.Input.IsFocused && context.Shell != null) context.Shell.CancelForFocusLoss();
         }
@@ -483,7 +486,10 @@ namespace JueMingR.TerrariaHost
         {
             PostfixContext context = postfixContext;
             if (Volatile.Read(ref hookCommitted) == 1 && context != null)
-            { context.Input.AfterKeyboardRefresh(); context.Browser?.Targets.ProcessInput(); context.Footprints?.Layer.ProcessInput(); if (context.Shell != null) context.Shell.ProcessInput(); context.MapFeatures?.Layer.ProcessInput(); context.Combat?.Sample(); }
+            { context.Input.AfterKeyboardRefresh(); context.Browser?.Targets.ProcessInput(); context.Footprints?.Layer.ProcessInput(); if (context.Shell != null) context.Shell.ProcessInput(); context.MapFeatures?.Layer.ProcessInput(); context.Combat?.Sample(); context.CombatObservation?.SampleMouse(); }
+#if JMR_INPUT_DIAGNOSTIC
+            if (Volatile.Read(ref hookCommitted) == 1 && context != null) context.Input.ObserveDiagnostics(3);
+#endif
         }
 
         private static bool NpcHoverPrefix()
@@ -603,6 +609,7 @@ namespace JueMingR.TerrariaHost
             if (context.WorldTargets != null) context.WorldTargets.LayerStatus = entityLayerStatus;
             if (context.WorldObjects != null) context.WorldObjects.LayerStatus = entityLayerStatus;
             if (context.Guidance != null) context.Guidance.LayerStatus = entityLayerStatus;
+            if(context.CombatObservation!=null)context.CombatObservation.LayerStatus=entityLayerStatus;
         }
 
         private static bool DrawEntityLabels()
@@ -611,8 +618,9 @@ namespace JueMingR.TerrariaHost
             try { postfixContext?.Labels?.World.Draw(); } catch { postfixContext?.Labels?.FailClosed(); }
             try { postfixContext?.WorldTargets?.World.Draw(); } catch { postfixContext?.WorldTargets?.FailClosed(); }
             try { postfixContext?.WorldObjects?.World.Draw(); } catch { postfixContext?.WorldObjects?.FailClosed(); }
-            try { postfixContext?.Guidance?.World.Draw(); } catch { postfixContext?.Guidance?.World.Clear(); }
-            try { if(entityLayerStatus==Rendering.WorldLayerStatus.Ready)postfixContext?.Tools?.Mining.Draw(); } catch { postfixContext?.Tools?.Mining.Clear(); }
+            try { postfixContext?.Guidance?.World.Draw(); } catch { postfixContext?.Guidance?.World.DisplayFailed(); }
+            try { postfixContext?.CombatObservation?.World.Draw(); } catch { postfixContext?.CombatObservation?.World.DisplayFailed(); }
+            try { if(entityLayerStatus==Rendering.WorldLayerStatus.Ready)postfixContext?.Tools?.Mining.Draw(); } catch { postfixContext?.Tools?.Mining.DisplayFailed(); }
             try { if (entityLayerStatus == Rendering.WorldLayerStatus.Ready) postfixContext?.Browser?.Locator.Draw(); } catch { postfixContext?.Browser?.Locator.Clear(); }
             return true;
         }
@@ -784,8 +792,15 @@ namespace JueMingR.TerrariaHost
         {
             internal readonly Input.HostInputState Input = new Input.HostInputState();
             private Phase0TBiomeRuntime runtime;
+#if JMR_INPUT_DIAGNOSTIC
+            // A settled Runtime Session plus the native gameplay gate excludes
+            // menu/loading edges; gameMenu=false alone is not a late-window arm.
+            internal bool DiagnosticGameplayActive {get{return runtime!=null && runtime.SharedRuntime.IsSessionActive && !Terraria.Main.gameMenu && Terraria.Main.CanUpdateGameplay;}}
+#endif
             private ulong updateTick;
             private readonly string gameDirectory;
+            private readonly string predictionHostHash;
+            private readonly bool exactPredictionComparison;
             private HostPreferences preferences;
             private Notes.HostNotes notes;
             private Onboarding.HostOnboarding onboarding;
@@ -795,10 +810,16 @@ namespace JueMingR.TerrariaHost
             private Exception pendingBiomeError;
 
             internal PostfixContext(string packageId, string evidencePath, string gameDirectory)
+                :this(packageId,evidencePath,gameDirectory,null){}
+            internal PostfixContext(string packageId, string evidencePath, string gameDirectory,string predictionHostHash)
+                :this(packageId,evidencePath,gameDirectory,predictionHostHash,false){}
+            internal PostfixContext(string packageId, string evidencePath, string gameDirectory,string predictionHostHash,bool exactPredictionComparison)
             {
                 PackageId = packageId;
                 EvidencePath = evidencePath;
                 this.gameDirectory = gameDirectory;
+                this.predictionHostHash=predictionHostHash;
+                this.exactPredictionComparison=exactPredictionComparison;
             }
 
             internal string PackageId { get; private set; }
@@ -828,6 +849,7 @@ namespace JueMingR.TerrariaHost
             internal Tools.HostTools Tools {get;private set;}
             internal Fishing.HostFishing Fishing {get;private set;}
             internal Combat.HostCombat Combat {get;private set;}
+            internal Combat.HostCombatObservation CombatObservation {get;private set;}
             internal Feedback.LocalShortFeedback ShortFeedback { get; private set; }
             private Hotkeys.HotkeyStateFeedback hotkeyFeedback;
             private Npcs.NativeNpcObservation nativeNpcs;
@@ -911,6 +933,7 @@ namespace JueMingR.TerrariaHost
                     Fishing=new Fishing.HostFishing(gameDirectory,Tools,KeepFavorited);runtime.SharedRuntime.AddFeature(Fishing);
                     Combat=new Combat.HostCombat(gameDirectory,Tools);runtime.SharedRuntime.AddFeature(Combat);
                     Combat.Handoff.Attach(Processing,QuickItems);
+                    CombatObservation=new Combat.HostCombatObservation(gameDirectory,runtime.SharedRuntime,Input,nativeNpcs,predictionHostHash==null?null:new Combat.Prediction.PredictionLaunchIdentity(predictionHostHash,gameDirectory),PackageId,exactPredictionComparison){LayerStatus=entityLayerStatus};runtime.SharedRuntime.AddFeature(CombatObservation);
                 }
                 if (entityPackage) { Labels = new EntityLabels.HostEntityLabels(gameDirectory, runtime.SharedRuntime, nativeNpcs) { LayerStatus = entityLayerStatus }; runtime.SharedRuntime.AddFeature(Labels); }
                 if (worldPackage) { worldTiles = new World.WorldTileObservation(() => runtime.SharedRuntime.IsSessionActive); WorldTargets = new WorldTargets.HostWorldTargets(gameDirectory, runtime.SharedRuntime, worldTiles) { LayerStatus = entityLayerStatus }; runtime.SharedRuntime.AddFeature(WorldTargets); }
@@ -928,12 +951,13 @@ namespace JueMingR.TerrariaHost
                 if (PackageId.StartsWith("item-browser-", StringComparison.Ordinal) || quickPackage) Browser = new ItemBrowser.HostItemBrowser(gameDirectory, worldTiles, Input);
                 if (hotkeyPackage) ShortFeedback = new Feedback.LocalShortFeedback(runtime.SharedRuntime, Input);
                 var hotkeys = hotkeyPackage ? new Hotkeys.HostHotkeys(gameDirectory, runtime, preferences, items, Labels, WorldTargets, WorldObjects,
-                    informationPackage ? Information : null, () => Shell != null && Shell.CanAdjustInformation, () => Shell?.RequestInformationAdjustment(), Guidance, DeathRecords, MapFeatures, Footprints, Browser == null ? (Func<bool>)null : Browser.CanAnnounce, Browser == null ? (Action)null : Browser.Announce, Browser == null ? (Func<bool>)null : Browser.CanQuery, Browser == null ? (Action)null : Browser.Query, Browser?.Announcements, QuickItems, CoinDeposit, Recovery, Processing, ShortFeedback, Tools, Fishing, Combat) : null;
+                    informationPackage ? Information : null, () => Shell != null && Shell.CanAdjustInformation, () => Shell?.RequestInformationAdjustment(), Guidance, DeathRecords, MapFeatures, Footprints, Browser == null ? (Func<bool>)null : Browser.CanAnnounce, Browser == null ? (Action)null : Browser.Announce, Browser == null ? (Func<bool>)null : Browser.CanQuery, Browser == null ? (Action)null : Browser.Query, Browser?.Announcements, QuickItems, CoinDeposit, Recovery, Processing, ShortFeedback, Tools, Fishing, Combat, CombatObservation) : null;
                 hotkeyFeedback = hotkeys?.Feedback;
                 Shell = new F5Shell(runtime, preferences, notes, items, Input, hotkeys, Labels, WorldTargets, WorldObjects, Information, Guidance, DeathRecords, MapFeatures, Footprints, Browser?.Announcements) { LayersReady = f5LayersReady };
                 Browser?.Attach(Shell, hotkeys);
                 if(Tools!=null){Shell.AttachTools(Tools);Tools.CanInterface=()=>Shell.CanAutomaticProcessingInput;Tools.CanMouseInterface=()=>Shell.CanAutomaticMouseInterface;Tools.Feedback=ShortFeedback;}
                 if(Combat!=null){Shell.AttachCombat(Combat);Combat.CanInterface=()=>Shell.CanTargetInput && !Shell.OwnsPointer && Shell.CanAutomaticMouseInterface;}
+                if(CombatObservation!=null)Shell.AttachCombatObservation(CombatObservation);
                 if(Fishing!=null)Shell.AttachFishing(Fishing);
                 if(Processing!=null){Shell.AttachProcessing(Processing);Processing.CanInterface=()=>Shell.CanProcessingInput;Processing.CanAutomaticInterface=()=>Shell.CanAutomaticProcessingInput;Processing.BankGuardsReady=()=>Recovery!=null && Recovery.Available;}
                 if(Recovery!=null){Shell.AttachRecovery(Recovery);Recovery.CanGameplay=()=>Shell.CanAutomaticTargetInput && !Terraria.Main.mapFullscreen;Recovery.CanMouseInterface=()=>Shell.CanAutomaticMouseInterface;Recovery.CanBuffInterface=()=>Shell.CanAutomaticBuff;Recovery.IsQuickUse=()=>QuickItems!=null && (QuickItems.Use.Active || QuickItems.Use.InNativeUse);}
@@ -969,6 +993,7 @@ namespace JueMingR.TerrariaHost
                 Tools?.Poll();
                 Fishing?.Poll();
                 Combat?.Poll();
+                CombatObservation?.Poll();
                 Labels?.PollPreferences();
                 WorldTargets?.PollPreferences();
                 WorldObjects?.PollPreferences();
@@ -977,7 +1002,7 @@ namespace JueMingR.TerrariaHost
                 DeathRecords?.PollPreferences(); MapFeatures?.PollPreferences(); Footprints?.PollPreferences();
                 current.SetFeatureEnabled(preferences.BiomeLoaded && preferences.BiomeEnabled);
                 worldTiles?.BeginTick();
-                nativeNpcs?.BeginTick();
+                nativeNpcs?.BeginCompleted((long)Terraria.Main.GameUpdateCount);
                 current.Update(updateTick);
                 Browser?.Update(unchecked((long)updateTick));
                 hotkeyFeedback?.Poll();
@@ -1001,6 +1026,7 @@ namespace JueMingR.TerrariaHost
                 Tools?.FailClosed();
                 Fishing?.FailClosed();
                 Combat?.FailClosed();
+                CombatObservation?.FailClosed();
                 KeepFavorited?.FailClosed();
                 onboarding?.FailClosed();
                 hotkeyFeedback?.Clear();
@@ -1012,7 +1038,7 @@ namespace JueMingR.TerrariaHost
                 }
             }
 
-            internal void UpdateShell() { if (Shell != null) Shell.AfterUpdate(); Information?.PrepareHud(); Guidance?.World.Prepare(); }
+            internal void UpdateShell() { if (Shell != null) Shell.AfterUpdate(); Information?.PrepareHud(); Guidance?.World.Prepare(); CombatObservation?.World.Prepare(); }
         }
     }
 

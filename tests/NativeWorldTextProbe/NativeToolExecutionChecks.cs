@@ -22,7 +22,7 @@ namespace NativeWorldTextProbe
         private static int consumers,catchCalls,catchSkipped,catchHits;
         private static NPC watched;
         private static ProbeGraphics textures;
-        internal static void Run(object context,ProbeGraphics graphics,bool release=false)
+        internal static void Initialize(object context,ProbeGraphics graphics)
         {
             textures=graphics;
             object host=Get(context,"Tools"),input=Get(context,"Input");
@@ -39,6 +39,11 @@ namespace NativeWorldTextProbe
                 graphics.LoadItemTextures(new[]{0,ItemID.StaffofRegrowth,ItemID.AcornAxe,ItemID.ShroomiteDiggingClaw,ItemID.CopperPickaxe,ItemID.AdamantiteDrill,ItemID.Drax,1991,3183,4821});graphics.LoadTexture("Npc","Images/NPC_46",46);
                 new Harmony("JueMingR.Tests.QuickItemOutlets").Unpatch(typeof(Item).GetMethod("GetDrawHitbox"),HarmonyPatchType.Prefix,"JueMingR.Tests.QuickItemOutlets");
             }
+        }
+        internal static void Run(object context,ProbeGraphics graphics,bool release=false)
+        {
+            Initialize(context,graphics);
+            object host=Get(context,"Tools"),input=Get(context,"Input");
             var watch=new Harmony("JueMingR.Tests.G09Execution");
             foreach(string name in new[]{"HandleSpecialEvent","HandleMining","HandleRunning"})watch.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeToolExecutionChecks),nameof(SkipOutlet)));
             foreach(string name in new[]{"ItemCheck_UseMiningTools","PlaceThing_Tiles","ItemCheck_CatchCritters"})watch.Patch(typeof(Player).GetMethod(name,Flags),postfix:new HarmonyMethod(typeof(NativeToolExecutionChecks),nameof(Consumed)));

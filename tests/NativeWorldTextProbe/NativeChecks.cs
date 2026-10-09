@@ -14,15 +14,137 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if(scope=="InputBoundary")return NativeOuterInputBoundaryChecks.Check(output);
+            if(scope=="NpcEventRetirement")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-events-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
+                NativeQuickItemChecks.Run(context=>{using(var graphics=new ProbeGraphics(content))NativeCombatEventRetirementChecks.Run(context,graphics);},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
+            }
+            if(scope=="NpcEventRetirementCpu")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-events-cpu-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
+                NativeQuickItemChecks.Run(NativeCombatEventRetirementChecks.Cpu,processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
+            }
+            if(scope=="NpcTargetMarker")
+            {
+                Directory.CreateDirectory(output);
+                Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-marker-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
+                NativeQuickItemChecks.Run(context=>{NativeCombatTargetMarkerChecks.Run(context);if(Environment.GetEnvironmentVariable("JUEMINGR_MARKER_GRAPHICS")=="1")using(var graphics=new ProbeGraphics(content))NativeCombatTargetMarkerChecks.Graphics(context,graphics,output);},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
+            }
+            if(scope=="NpcSync"){Environment.SetEnvironmentVariable("JUEMINGR_SHARED_GEOMETRY_PHASE","sync");scope="NpcSharedGeometry";}
+            if(scope=="NpcLocalFailure"){Environment.SetEnvironmentVariable("JUEMINGR_SHARED_GEOMETRY_PHASE","failure");scope="NpcSharedGeometry";}
+            if(scope=="NpcDisplayIsolation"){Environment.SetEnvironmentVariable("JUEMINGR_SHARED_GEOMETRY_PHASE","display-isolation");scope="NpcSharedGeometry";}
+            if(scope=="NpcCloseoutTerrain"){Environment.SetEnvironmentVariable("JUEMINGR_SHARED_GEOMETRY_PHASE","closeout-terrain");scope="NpcSharedGeometry";}
+            if(scope=="NpcStrategy"){Environment.SetEnvironmentVariable("JUEMINGR_SHARED_GEOMETRY_PHASE","strategy");scope="NpcSharedGeometry";}
+            if(scope=="NpcFiniteFlight"){Environment.SetEnvironmentVariable("JUEMINGR_SHARED_GEOMETRY_PHASE","finite-flight");scope="NpcSharedGeometry";}
+            if(scope=="NpcSamplePresentation"){Environment.SetEnvironmentVariable("JUEMINGR_SHARED_GEOMETRY_PHASE","sample-presentation");scope="NpcSharedGeometry";}
+            if(scope=="NpcFoundationRules"){Environment.SetEnvironmentVariable("JUEMINGR_SHARED_GEOMETRY_PHASE","foundation");scope="NpcSharedGeometry";}
+            if(scope=="NpcPlayerPolicy"){Environment.SetEnvironmentVariable("JUEMINGR_SHARED_GEOMETRY_PHASE","player-policy");scope="NpcSharedGeometry";}
+            if(scope=="NpcSharedGeometry")
+            {
+                string selectedPhase=Environment.GetEnvironmentVariable("JUEMINGR_SHARED_GEOMETRY_PHASE");
+                if(!String.IsNullOrEmpty(selectedPhase) && Array.IndexOf(new[]{"strategy","finite-flight","sample-presentation","foundation","hand-constraint","regions","phase-review","player-policy","retarget-phases","player-geometry","dispatch","tracking","attachment","relations","parent","conveyor","player-conveyor","sync","failure","display-isolation","closeout-terrain"},selectedPhase)<0)throw new ArgumentException("Unknown shared geometry phase: "+selectedPhase);
+                Directory.CreateDirectory(output);
+                Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-shared-geometry-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
+                NativeQuickItemChecks.Run(context=>{string phase=Environment.GetEnvironmentVariable("JUEMINGR_SHARED_GEOMETRY_PHASE");if(phase=="strategy")NativeCombatStrategyChecks.Run(context);else if(phase=="finite-flight")NativeFiniteFlightChecks.Run(context);else if(phase=="sample-presentation")NativeSamplePresentationChecks.Run(context);else if(phase=="foundation")NativeCombatFoundationChecks.Run(context);else if(phase=="hand-constraint")NativeCombatHandConstraintChecks.Run(context);else if(phase=="regions")NativeCombatMovementRegionChecks.Run(context);else if(phase=="phase-review")NativeCombatPhaseReviewChecks.Run(context);else if(phase=="player-policy")NativeCombatPlayerPolicyChecks.Run(context);else if(phase=="retarget-phases")NativeCombatRetargetPhaseChecks.Run(context);else if(phase=="player-geometry")NativeCombatPlayerGeometryChecks.Run(context);else if(phase=="dispatch")NativeCombatCollisionDispatchChecks.Run(context);else if(phase=="tracking")NativeCombatTrackingChecks.Run(context);else if(phase=="attachment")NativeCombatAttachmentChecks.Run(context);else if(phase=="relations")NativeCombatPositionRelationChecks.Run(context);else if(phase=="parent")NativeCombatParentMotionChecks.Run(context);else if(phase=="conveyor")NativeCombatConveyorChecks.Run(context);else if(phase=="player-conveyor")NativeCombatConveyorChecks.Player(context);else if(phase=="sync")NativeCombatSyncChecks.Run(context);else if(phase=="failure")NativeCombatLocalFailureChecks.Run(context);else if(phase=="display-isolation")NativeDisplayResponsibilityChecks.Run(context);else if(phase=="closeout-terrain")NativeCombatCloseoutTerrainChecks.Run(context);else NativeCombatSharedGeometryChecks.Run(context);},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
+            }
+            if(scope=="NpcStrategyContinuous"){Environment.SetEnvironmentVariable("JUEMINGR_FOUNDATION_STRATEGY_ONLY","1");scope="NpcFoundationContinuous";}
+            if(scope=="NpcFoundationContinuous")
+            {
+                Environment.SetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT","rolling-candidate");
+                Environment.SetEnvironmentVariable("JUEMINGR_ROLLING_CPU_ONLY","1");
+                Environment.SetEnvironmentVariable("JUEMINGR_FOUNDATION_CONTINUOUS","1");scope="NpcProduction";
+            }
+            if(scope=="NpcBasicMotion")
+            {
+                Environment.SetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT","rolling-candidate");
+                Environment.SetEnvironmentVariable("JUEMINGR_ROLLING_CPU_ONLY","1");
+                Environment.SetEnvironmentVariable("JUEMINGR_BASIC_MOTION","1");scope="NpcProduction";
+            }
+            if(scope=="NpcRollingBaseline"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT","rolling-baseline");scope="NpcProduction";}
+            if(scope=="NpcRollingCandidate"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT","rolling-candidate");scope="NpcProduction";}
+            if(scope=="NpcRollingCpu")
+            {
+                // The ordinary regression exercises the default owner and its
+                // lifecycle. It is deliberately not a graphics/cost receipt.
+                Environment.SetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT","rolling-candidate");
+                Environment.SetEnvironmentVariable("JUEMINGR_ROLLING_CPU_ONLY","1");
+                Environment.SetEnvironmentVariable("JUEMINGR_ROLLING_BOUNDARIES","1");
+                Environment.SetEnvironmentVariable("JUEMINGR_ROLLING_QUALITY",null);
+                Environment.SetEnvironmentVariable("JUEMINGR_ROLLING_PHASES",null);
+                Environment.SetEnvironmentVariable("JUEMINGR_ROLLING_SELECTION_NEGATIVE",null);
+                Environment.SetEnvironmentVariable("JUEMINGR_ROLLING_EXPECT_SELECTION_REJECTION",null);
+                scope="NpcProduction";
+            }
+            if(scope=="NpcRollingSelectionNegative")
+            {
+                Environment.SetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT","rolling-candidate");
+                Environment.SetEnvironmentVariable("JUEMINGR_ROLLING_CPU_ONLY","1");
+                Environment.SetEnvironmentVariable("JUEMINGR_ROLLING_BOUNDARIES",null);
+                Environment.SetEnvironmentVariable("JUEMINGR_ROLLING_QUALITY",null);
+                Environment.SetEnvironmentVariable("JUEMINGR_ROLLING_PROFILE",null);
+                Environment.SetEnvironmentVariable("JUEMINGR_ROLLING_PHASES","stable,gun-B");
+                Environment.SetEnvironmentVariable("JUEMINGR_ROLLING_SELECTION_NEGATIVE","gun-B");
+                Environment.SetEnvironmentVariable("JUEMINGR_ROLLING_EXPECT_SELECTION_REJECTION","1");
+                scope="NpcProduction";
+            }
+            if(scope=="NpcPostDelivery"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT","post-delivery-suite");scope="NpcProduction";}
+            if(scope=="NpcGuardianQuery"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT","environment");Environment.SetEnvironmentVariable("JUEMINGR_NPC_ENV_AXIS","guardian-query");scope="NpcProduction";}
+            if(scope=="NpcModeledImpact"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT","impact-suite");scope="NpcProduction";}
+            if(scope=="NpcNameDraw"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT","name-draw");scope="NpcProduction";}
+            if(scope=="NpcDiagnosticsOff"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_MEASURE_OFF","1");scope="NpcProduction";}
+            if(scope=="NpcSessionCapacity"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_SESSION_CAPACITY","1");scope="NpcProduction";}
+            if(scope=="NpcFailureRecovery"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_RECOVERY_CHECK","1");scope="NpcProduction";}
+            if(scope=="NpcMaterialCache"){NativeCombatMaterialCacheChecks.Run(output);return 0;}
+            if(scope=="NpcMaterialPrepare"){NativeCombatMaterialCacheChecks.Prepare(output);return 0;}
+            if(scope=="NpcInstructionInventory"){NativeCombatMaterialCacheChecks.Inventory();return 0;}
+            if(scope=="NpcWorkerParentExit")
+            {NativeCombatWorkerBoundaryChecks.ParentProbe(output);return 0;}
+            if(scope=="NpcTileManifest" || scope=="NpcTileManifestGenerate")
+            {NativeCombatTileManifestChecks.Run(output,scope=="NpcTileManifestGenerate");return 0;}
+            if(scope=="NpcWorkerIntegration" || scope=="NpcLegalCoverage" || scope=="NpcWorkerCatalogue" || scope=="NpcWorkerLinked" || scope=="NpcWorkerLifetime" || scope=="NpcWorkerAssets" || scope=="NpcWorkerRandom" || scope=="NpcWorkerPlayer" || scope=="NpcWorkerEntity" || scope=="NpcWorkerBirth" || scope=="NpcWorkerContext" || scope=="NpcWorkerImmunity" || scope=="NpcWorkerLifecycle" || scope=="NpcWorkerFields" || scope=="NpcWorkerTransport" || scope=="NpcProduction" || scope=="NpcWorkerPreparation" || scope=="NpcMenuPreparation" || scope=="NpcSnapshot" || scope=="NpcLongCoverage")
+            {
+                Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-worker-oracle-"+Guid.NewGuid().ToString("N"));
+                NativeCombatWorkerChecks.Run(output,scope=="NpcWorkerCatalogue",scope=="NpcWorkerLinked",scope=="NpcWorkerLifetime",scope=="NpcWorkerAssets",scope=="NpcWorkerRandom",scope=="NpcWorkerPlayer",scope=="NpcWorkerEntity",scope=="NpcWorkerBirth",scope=="NpcWorkerContext",scope=="NpcWorkerImmunity",scope=="NpcWorkerLifecycle",scope=="NpcWorkerFields",scope=="NpcWorkerTransport",scope=="NpcProduction",content,scope=="NpcWorkerPreparation",scope=="NpcMenuPreparation",scope=="NpcSnapshot",scope=="NpcLongCoverage",scope=="NpcLegalCoverage");return 0;
+            }
+            if(scope=="NpcCoverageBaseline" || scope=="NpcLongPrediction")
+            {
+                Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-npc-coverage-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
+                NativeQuickItemChecks.Run(context=>NativeCombatNpcCoverageChecks.Baseline(context,output,scope=="NpcLongPrediction"),processing:true,shortFeedback:true);return 0;
+            }
+            if(scope=="CombatCosts")
+            {
+                Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-combat-costs-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
+                NativeQuickItemChecks.Run(context=>NativeCombatCostChecks.Run(context,output),processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_COST_CANDIDATE"));return 0;
+            }
+            if(scope=="CombatObservationCpu")
+            {
+                Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-combat-observation-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
+                NativeQuickItemChecks.Run(context=>{NativeCombatObservationChecks.Run(context);NativeCombatBodyChecks.Run(context);NativeCombatTerrainChecks.Run(context);NativeCombatPredictionChecks.Run(context);NativeCombatEventChecks.Run(context);NativeCombatGeometryChecks.Run(context);},processing:true,shortFeedback:true);return 0;
+            }
+            if(scope=="CombatEventsCpu")
+            {
+                // Use the original geometry fixture initialization for a Release
+                // candidate, without the broad scope's Debug-only cache counters.
+                Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-combat-geometry-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
+                NativeQuickItemChecks.Run(context=>
+                {
+                    // The broad scope's terrain/body checks normally initialize
+                    // these native tables before the event oracle reaches them.
+                    Terraria.Main.tileSolid[Terraria.ID.TileID.Stone]=true;Terraria.Lighting.Mode=Terraria.Graphics.Light.LightMode.Color;
+                    NativeCombatEventChecks.Run(context);
+                },processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
+            }
             if(scope=="CombatVisual")
             {
                 Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-combat-visual-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
                 NativeQuickItemChecks.Run(context=>{using(var graphics=new ProbeGraphics(content))NativeCombatVisualChecks.Run(context,graphics,output);},processing:true,shortFeedback:true);return 0;
             }
+            if(scope=="CombatYoyoCausal"){Directory.CreateDirectory(output);Environment.SetEnvironmentVariable("JUEMINGR_YOYO_EVIDENCE",output);Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-yoyo-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);Environment.SetEnvironmentVariable("JUEMINGR_YOYO_CAUSAL","1");NativeQuickItemChecks.Run(NativeCombatCadenceChecks.Run,processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;}
             if(scope=="CombatCpu" || scope=="CombatRelease" || scope=="CombatFacingCpu" || scope=="CombatHitsCpu" || scope=="CombatReportCpu" || scope=="CombatUiCpu")
             {
                 Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-combat-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
-                NativeQuickItemChecks.Run(scope=="CombatRelease"?(Action<object>)CombatRelease:scope=="CombatUiCpu"?(Action<object>)NativeCombatUiChecks.Run:scope=="CombatReportCpu"?(Action<object>)NativeCombatReportChecks.Run:scope=="CombatHitsCpu"?(Action<object>)NativeCombatHitChecks.Run:scope=="CombatFacingCpu"?(Action<object>)NativeCombatFacingChecks.Run:NativeCombatChecks.Run,processing:true,shortFeedback:true,candidateAssembly:scope=="CombatRelease"?Path.Combine(Program.Repository,"artifacts/build/Release/work/bin/JueMingR.TerrariaHost/x86/Release/net472/JueMingR.TerrariaHost.dll"):null);return 0;
+                NativeQuickItemChecks.Run(scope=="CombatRelease"?(Action<object>)CombatRelease:scope=="CombatUiCpu"?(Action<object>)NativeCombatUiChecks.Run:scope=="CombatReportCpu"?(Action<object>)NativeCombatReportChecks.Run:scope=="CombatHitsCpu"?(Action<object>)NativeCombatHitChecks.Run:scope=="CombatFacingCpu"?(Action<object>)NativeCombatFacingChecks.Run:NativeCombatChecks.Run,processing:true,shortFeedback:true,candidateAssembly:scope=="CombatRelease"?Path.Combine(Program.Repository,"artifacts/build/Release/work/bin/JueMingR.TerrariaHost/x86/Release/net472/JueMingR.TerrariaHost.dll"):Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
             }
             if(scope=="PageCompositionCpu")
             {
@@ -140,7 +262,7 @@ namespace NativeWorldTextProbe
             return Check(content, output, scope);
         }
         private static void CombatRelease(object context)
-        {NativeCombatChecks.Run(context);NativeCombatFacingChecks.Run(context);NativeCombatHitChecks.Run(context);NativeCombatReportChecks.Run(context);NativeCombatUiChecks.Run(context);}
+        {NativeCombatChecks.Run(context);NativeCombatFacingChecks.Run(context);NativeCombatHitChecks.Run(context);NativeCombatReportChecks.Run(context);NativeCombatUiChecks.Run(context);NativeCombatObservationChecks.Release(context);NativeCombatBodyChecks.Run(context);}
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static int Check(string content, string output, string scope)
         {

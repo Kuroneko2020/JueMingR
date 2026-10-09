@@ -71,6 +71,8 @@
     <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\GuidanceControls.cs" Link="Production\GuidanceControls.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\CombatControls.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\CombatIntervalDrag.cs" />
+    <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\CombatObservationControls.cs" />
+    <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\CombatRadiusDrag.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\DeathControls.cs" Link="Production\DeathControls.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\DeathHistoryPopup.cs" Link="Production\DeathHistoryPopup.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\MapControls.cs" />

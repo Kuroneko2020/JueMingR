@@ -12,6 +12,12 @@ namespace JueMingR.ArchitectureTests
             try
             {
                 CombatDomainChecks.Run();
+                CombatObservationChecks.Run();
+                ObservationMarkerSettingsChecks.Run();
+                NpcTrajectoryWindowChecks.Run();
+                RollingNpcPredictionChecks.Run();
+                RollingPremiseChecks.Run();
+                BasicNpcMotionChecks.Run();
                 var assembly=typeof(JueMingR.Features.Tools.ToolOptions).Assembly;
                 Type options=assembly.GetType("JueMingR.Features.Combat.CombatOptions");
                 Require(options!=null,"Combat preferences are absent");

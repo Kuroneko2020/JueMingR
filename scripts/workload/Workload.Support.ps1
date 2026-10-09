@@ -1,3 +1,5 @@
+. (Join-Path $PSScriptRoot 'Workload.Definitions.ps1')
+. (Join-Path $PSScriptRoot 'Workload.ReadWindow.ps1')
 # Shared by the existing build and its thin CPU runner. No build/test recursion.
 function Invoke-WorkloadGit {
     param([string] $Root, [string[]] $Arguments)
@@ -28,7 +30,7 @@ function Get-WorkloadIdentity {
     try {
         $rows = foreach ($path in $paths) {
             $file = Join-Path $Root $path
-            $hash = if ([IO.File]::Exists($file)) { (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash } else { 'MISSING' }
+            $hash = if ([IO.File]::Exists($file)) { (Get-WorkloadFileHash -LiteralPath $file -Algorithm SHA256).Hash } else { 'MISSING' }
             [string]$path + ':' + $hash
         }
         $bytes = [Text.Encoding]::UTF8.GetBytes(($rows -join "`n"))
@@ -55,10 +57,31 @@ function Get-WorkloadRoute {
     param([string[]] $Paths)
     $groups = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
     [void]$groups.Add('core')
+    if ($Paths -contains '@full') {
+        $Paths=@($Paths | Where-Object {$_ -cne '@full'})+@('src/JueMingR.TerrariaHost/Input/HostInputState.cs')
+        foreach($group in @('legacy-worker','workload-tools','package-tools','input-boundary')){[void]$groups.Add($group)}
+    }
     $unknown = @()
     foreach ($path in $Paths) {
-        switch -Regex ($path.Replace('\', '/')) {
-            '^src/[^/]+/Combat/|^src/JueMingR.TerrariaHost/F5/Combat(Controls|IntervalDrag)\.cs$|^tests/JueMingR.ArchitectureTests/Combat/|^tests/NativeWorldTextProbe/(NativeCombat|CombatNetworkFixture)' { [void]$groups.Add('combat-host'); continue }
+        $path=$path.Replace('\','/')
+        $leaves=@(Get-WorkloadPathChecks $path)
+        if ($leaves.Count) {
+            if(($leaves -join '|') -ceq 'workload-PackageVerification'){[void]$groups.Add('package-tools')}
+            else{foreach($name in $leaves){[void]$groups.Add('check:'+$name)}}
+            continue
+        }
+        switch -Regex ($path) {
+            '^scripts/(build-phase0s-validation-package|test-phase0s)\.ps1$' { [void]$groups.Add('workload-tools');[void]$groups.Add('package-tools');continue }
+            '^scripts/workload/|^scripts/(build|test-workload-regressions|test-world-object-text)\.ps1$|^tests/Workload/' { [void]$groups.Add('workload-tools'); continue }
+            '^src/JueMingR.TerrariaHost/Combat/Prediction/(SegmentedNpcPrediction|NativePlayerMotion)\.cs$|^src/JueMingR.TerrariaHost/Combat/NpcPredictionSource\.cs$|^src/JueMingR.Platform/Combat/' { [void]$groups.Add('combat-host');[void]$groups.Add('legacy-worker');continue }
+            '^src/JueMingR.PredictionWorker/|^src/JueMingR.TerrariaHost/Combat/Prediction/' { [void]$groups.Add('legacy-worker'); continue }
+            '^tests/NativeWorldTextProbe/NativeCombat(Worker|Private|Snapshot|Production|History|Preparation|Legal|Dd2|EventBirth|TileManifest)' { [void]$groups.Add('legacy-worker'); continue }
+
+            '^tests/NativeWorldTextProbe/NativeOuterInputBoundaryChecks\.cs$' { [void]$groups.Add('input-boundary'); continue }
+            '^tests/NativeWorldTextProbe/NativeNpcLifetimeChecks\.cs$' { [void]$groups.Add('combat-host'); continue }
+            '^scripts/verify-existing-package\.ps1$|^scripts/phase0s/PackageVerification\.Support\.ps1$|^tests/Phase0S/Invoke-PackageVerificationChecks\.ps1$' { [void]$groups.Add('package-tools'); continue }
+            '^src/JueMingR.PredictionWorker/' { [void]$groups.Add('combat-host'); continue }
+            '^src/[^/]+/Combat/|^src/JueMingR.TerrariaHost/F5/Combat(Controls|IntervalDrag)\.cs$|^tests/JueMingR.ArchitectureTests/Combat/|^tests/NativeWorldTextProbe/(NativeCombat|NativeSamplePresentation|NativeFiniteFlight|NativeYoyo|CombatNetworkFixture)' { [void]$groups.Add('combat-host'); continue }
             '^src/JueMingR.TerrariaHost/F5/MiscAutomationPanel\.cs$|^tests/NativeWorldTextProbe/NativePageComposition' { [void]$groups.Add('pages-host'); continue }
             '^src/[^/]+/Tools/|^tests/JueMingR.ArchitectureTests/Tools/|^tests/NativeWorldTextProbe/Native(Tools|ToolCadence|ToolExecution|ToolWait|SeedDiscovery|Capture|Herb|Mining|FishingBorrow)' { [void]$groups.Add('tools-host'); continue }
             '^src/[^/]+/Fishing/|^tests/JueMingR.ArchitectureTests/Fishing/|^tests/NativeWorldTextProbe/Native(Fishing|PlayerRename|BackgroundAutomation|F5Automation)' { [void]$groups.Add('fishing-host'); continue }
@@ -95,7 +118,7 @@ function Get-WorkloadRoute {
             '^src/JueMingR.TerrariaHost/World/WorldTileObservation\.cs$|^src/JueMingR.Platform/WorldTargets/WorldTargetObservation\.cs$' { [void]$groups.Add('tools-host'); [void]$groups.Add('world-host'); [void]$groups.Add('recovery-host'); [void]$groups.Add('processing-host'); continue }
             '^src/[^/]+/(WorldObjectText|WorldTargets|World|Rendering)/|^tests/(WorldObjectText|WorldTargets)/' { [void]$groups.Add('world-host'); continue }
             '^src/[^/]+/(EntityLabels|Hotkeys|Items|Settings|Biomes)/|^tests/(EntityLabels|Hotkeys|Items|Phase0U|Phase0V)/' { [void]$groups.Add('shared-host'); continue }
-            '^scripts/|^tests/|^eng/|^src/.*\.(csproj|props|targets)$|^Directory\.Build\.|^global\.json$|^JueMingR\.sln$|^NuGet\.Config$|^\.github/' { [void]$groups.Add('shared-host'); [void]$groups.Add('storage-host'); continue }
+            '^tests/NativeWorldTextProbe/(NativeChecks|Program|CheckCatalog|NativeStrategyScopes)\.cs$|^tests/NativeWorldTextProbe/.*\.csproj$|^scripts/phase0s/|^scripts/prepare-|^scripts/build-phase0|^scripts/test-phase0|^tests/Phase0|^tests/JueMingR.ArchitectureTests/|^eng/|^src/.*\.(csproj|props|targets)$|^Directory\.Build\.|^global\.json$|^JueMingR\.sln$|^NuGet\.Config$|^\.github/' { [void]$groups.Add('shared-host'); [void]$groups.Add('storage-host'); continue }
             default { $unknown += $path }
         }
     }
@@ -111,7 +134,7 @@ function Get-WorkloadRoute {
     # paths even when no ItemBrowser file itself changed in the current diff.
     if ($groups.Contains('shared-host') -or $groups.Contains('storage-host') -or $groups.Contains('world-host')) { [void]$groups.Add('browser-host') }
     if ($groups.Contains('shared-host') -or $groups.Contains('storage-host')) {
-        foreach ($group in @('notes-host','records','style-host','world-host','hotkeys','preferences','information','guidance','entity','items','biomes','pages-host')) { [void]$groups.Add($group) }
+        foreach ($group in @('notes-host','records','style-host','world-host','hotkeys','preferences','information','guidance','entity','items','biomes','pages-host','legacy-worker')) { [void]$groups.Add($group) }
     }
     if ($groups.Contains('fishing-host')) { [void]$groups.Add('information') }
     if ($groups.Contains('quick-items-host') -or $groups.Contains('notes-host') -or $groups.Contains('pages-host')) { [void]$groups.Add('hotkeys') }
@@ -122,14 +145,20 @@ function Get-WorkloadRoute {
     return [ordered]@{ groups = @($groups | Sort-Object); unknown = $unknown; slowGraphics = $false }
 }
 function Test-WorkloadBuildMatch {
-    param([string] $Root, $Record, $Identity)
+    param([string] $Root, $Record, $Identity, $InputIdentity=$null)
     if ($null -eq $Record) { return $false }
     foreach ($key in @('schemaVersion','inputFingerprint','outputs','configuration','sdk')) {
         if ($null -eq $Record.PSObject.Properties[$key]) { return $false }
     }
-    if ($Record.schemaVersion -ne 4 -or $Record.configuration -cne 'Debug' -or $Record.sdk -cne '10.0.203' -or
-        $Record.inputFingerprint -cne (Get-WorkloadEvidenceInput $Root $Identity).fingerprint) { return $false }
+    if ($null -eq $InputIdentity) {$InputIdentity=Get-WorkloadEvidenceInput $Root $Identity}
+    $matches=$Record.inputFingerprint -ceq $InputIdentity.fingerprint
+    if ($null -ne $Record.PSObject.Properties['compileInputs']) {
+        $matches=$Record.compileFingerprint -ceq (Get-WorkloadHash @($Record.compileInputs)) -and $Record.compileFingerprint -ceq (Get-WorkloadCompileFingerprint $InputIdentity)
+    }
+    if ($Record.schemaVersion -ne 4 -or $Record.configuration -cne 'Debug' -or $Record.sdk -cne '10.0.203' -or -not $matches) { return $false }
     return Test-WorkloadOutputs (Join-Path $Root 'artifacts/build/Debug/work') $Record.outputs
 }
 
 . (Join-Path $PSScriptRoot 'Workload.Evidence.ps1')
+. (Join-Path $PSScriptRoot 'Workload.Workspace.ps1')
+. (Join-Path $PSScriptRoot 'Workload.Cleanup.ps1')

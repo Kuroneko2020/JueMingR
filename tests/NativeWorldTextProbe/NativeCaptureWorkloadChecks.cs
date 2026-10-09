@@ -28,6 +28,24 @@ namespace NativeWorldTextProbe
             Require((long)Get(capture,"BossEvaluations")==scans+1 && (int)Get(npcs,"BasicReads")>raw && (bool)Get(capture,"boss"),"actual native selection refreshes danger before action");
             long visits=(long)Get(capture,"BossSlotVisits");Require((bool)Call(capture,"Boss") && (long)Get(capture,"BossSlotVisits")==visits,"same action observation reused");
             boss.active=false;NativeToolsChecks.Frame(context,input);Require(!(bool)Call(capture,"Boss"),"real completed update sees removed Boss");
+            // An outer callback can receive a Boss without a new completed
+            // sample. It owns no recast permission. The next native selection
+            // must refresh action facts before any risky automatic action.
+            var loan=Main.projectile[0];loan.SetDefaults(p.inventory[17].shoot);loan.owner=p.whoAmI;loan.active=true;loan.ai[0]=0;
+            long staleToken=(long)Call(fish,"Prepare",p);Require(staleToken>0 && !(bool)Call(capture,"Boss"),"prime legal no-Boss loan before same-tick network-like correction");
+            object borrowedSelection=p.selectedItemState;
+            borrowedSelection.GetType().GetMethod("OverrideSelection",BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic).Invoke(borrowedSelection,new object[]{12});p.selectedItemState=(Player.SelectedItemState)borrowedSelection;
+            Call(loan,"AI_061_FishingBobber");Require(!loan.active,"native borrowed net selection ends original bobber");
+            borrowedSelection=p.selectedItemState;borrowedSelection.GetType().GetMethod("OverrideSelection",BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic).Invoke(borrowedSelection,new object[]{17});p.selectedItemState=(Player.SelectedItemState)borrowedSelection;
+            Call(fish,"NetFinished",staleToken,false,false);
+            NativeToolExecutionChecks.Sample(context,input,new Microsoft.Xna.Framework.Vector2(480,540),false);NativeQuickItemChecks.BeginWorldStep();Call(context,"UpdateRuntime");
+            Require(Get(fish,"Phase").ToString()=="Returning" && (bool)Get(input,"CanRunAutomaticActions") && Call(fish,"Choose",p)!=null,"same-tick safety begins with a genuinely ready legal recast candidate");
+            boss.SetDefaults(4);boss.active=true;boss.life=100;NativeToolExecutionChecks.Outer(context,input,1);
+            Console.WriteLine("G09 same-tick Boss outer phase="+Get(fish,"Phase")+" automatic="+Get(input,"CanRunAutomaticActions")+" attempted="+Get(fish,"RecastAttempted"));
+            Require(Get(fish,"Phase").ToString()=="Returning" && !(bool)Get(input,"CanRunAutomaticActions") && !(bool)Get(fish,"RecastAttempted"),"unsampled outer revokes action permission for otherwise ready recast");
+            NativeQuickItemChecks.Sample(input,new Keys[0]);Call(Get(context,"Shell"),"ProcessInput");NativeQuickItemChecks.NativeFrame(p);Call(context,"UpdateRuntime");
+            Require((bool)Get(capture,"boss") && Get(fish,"Phase").ToString()=="Cancelled" && !(bool)Get(fish,"RecastAttempted"),"next real selection refreshes danger and cancels borrowed recast");
+            boss.active=false;loan.active=false;NativeToolsChecks.Frame(context,input);Require(!(bool)Call(capture,"Boss"),"same-tick danger test recovers through completed sample");
             foreach(int type in new[]{4,13})
             {
                 var b=Main.projectile[0];b.SetDefaults(p.inventory[17].shoot);b.owner=p.whoAmI;b.active=true;b.ai[0]=0;
@@ -36,7 +54,7 @@ namespace NativeWorldTextProbe
                 boss.SetDefaults(type);boss.active=true;boss.life=100;if(type==13)boss.boss=false;
                 // Runtime owns post-NPC freshness and Fishing.Update consumes
                 // it. No direct Boss/BeginTick call precedes this assertion.
-                Call(context,"UpdateRuntime");
+                NativeQuickItemChecks.BeginWorldStep();Call(context,"UpdateRuntime");
                 Require(Get(fish,"Phase").ToString()=="Cancelled" && (long)Get(fish,"Token")==token && !(bool)Get(fish,"RecastAttempted"),"post-NPC Boss change cancels borrowed responsibility before recast: "+type);
                 boss.active=false;b.active=false;NativeToolsChecks.Frame(context,input);Require(!(bool)Call(capture,"Boss"),"danger removal recovers after type "+type);
             }

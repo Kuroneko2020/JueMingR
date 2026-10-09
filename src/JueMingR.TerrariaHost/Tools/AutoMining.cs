@@ -34,6 +34,13 @@ namespace JueMingR.TerrariaHost.Tools
         }
         internal readonly MiningOverlay Coverage=new MiningOverlay();
         private int drawn;
+        private bool displayFailed;
+        private object failedPixel,failedBatch;
+        // Pure drawing failure cannot retire the vein or its finite falling
+        // witnesses. Coverage still accelerates candidate discovery; real hits
+        // continue to pass MiningEligibility independently of these colours.
+        internal void DisplayFailed(){displayFailed=true;failedPixel=TextureAssets.MagicPixel;failedBatch=Main.spriteBatch;}
+        private void RecoverDisplay(){displayFailed=false;failedPixel=failedBatch=null;}
 #if DEBUG
         internal long OverlayChecks {get{return Coverage.Checks;}}
         internal long IntentCreations {get;private set;}
@@ -54,6 +61,7 @@ namespace JueMingR.TerrariaHost.Tools
         {
             Region=candidate;tool=p.HeldItem;slot=p.selectedItem;type=tool.type;session=host.Runtime.Generation;selection=host.SelectionIntent;cursor=falls=drawn=fallCursor=0;
             Coverage.Clear();
+            RecoverDisplay();
             gravityBaseline.Clear();foreach(var pair in baseline)gravityBaseline.Add(pair.Key,pair.Value);
         }
         private static long Key(int x,int y){return ((long)x<<32)|(uint)y;}
@@ -186,6 +194,7 @@ namespace JueMingR.TerrariaHost.Tools
         }
         internal void Draw()
         {
+            if(displayFailed){if(ReferenceEquals(failedPixel,TextureAssets.MagicPixel) && ReferenceEquals(failedBatch,Main.spriteBatch))return;RecoverDisplay();}
             if(drawn==0 || host.Mode(2)==0 || !WorldPresentation.CanDraw || Main.spriteBatch==null)return;
             Matrix zoom=Main.GameViewMatrix.ZoomMatrix;
             for(int i=0;i<drawn;i++)
@@ -199,6 +208,6 @@ namespace JueMingR.TerrariaHost.Tools
         // Completion does not manufacture a new physical press. Keep gesture
         // ownership while retiring all region-specific temporary references.
         private void RetireRegion(){Region.Clear();gravityBaseline.Clear();vacated.Clear();Coverage.Clear();tool=null;falls=drawn=cursor=fallCursor=0;}
-        internal void Clear(){RetireRegion();manualHeld=false;}
+        internal void Clear(){RetireRegion();manualHeld=false;RecoverDisplay();}
     }
 }

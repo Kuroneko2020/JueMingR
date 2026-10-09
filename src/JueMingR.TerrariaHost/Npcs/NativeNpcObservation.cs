@@ -12,11 +12,15 @@ namespace JueMingR.TerrariaHost.Npcs
         private readonly NpcDemand[] demands = new NpcDemand[Main.maxNPCs];
         private readonly int[] epochs = new int[Main.maxNPCs];
         private int epoch = 1;
-        private long actionFrame=-1;
+        private long actionFrame=-1,completedTick=-1;
+        private bool completed;
         internal int Epoch {get{return epoch;}}
         // Player consumers precede NPC updates. Their facts must not reuse a
         // post-world observation from the previous game update.
-        internal void BeginActions(long frame){if(actionFrame==frame)return;actionFrame=frame;BeginTick();}
+        internal void BeginActions(long frame){if(!completed && actionFrame==frame)return;actionFrame=frame;completed=false;BeginTick();}
+        // Pre-action and completed-world facts are separate phases. Reentry of
+        // the latter retains demanded facts; TryRead still detects corrections.
+        internal void BeginCompleted(long tick){if(completed && completedTick==tick)return;completed=true;completedTick=tick;BeginTick();}
 #if DEBUG
         internal int BasicReads { get; private set; }
         internal int DirectionReads { get; private set; }
@@ -29,14 +33,19 @@ namespace JueMingR.TerrariaHost.Npcs
         {
             if (epoch == int.MaxValue) { Array.Clear(epochs, 0, epochs.Length); epoch = 1; } else epoch++;
         }
-        internal void Clear() { Array.Clear(facts, 0, facts.Length); BeginTick(); }
+        internal void Clear() { Array.Clear(facts, 0, facts.Length); completed=false;completedTick=actionFrame=-1;BeginTick(); }
         internal NPC Active(int slot)
         { GuidanceNpc n; return TryRead(slot, NpcDemand.Basic, out n) && n.Active ? n.Identity as NPC : null; }
         public bool TryRead(int slot, NpcDemand demand, out GuidanceNpc value)
         {
             value = default(GuidanceNpc);
             if (slot < 0 || slot >= Count) return false;
-            if (epochs[slot] != epoch)
+            var current=Main.npc[slot];var cached=facts[slot];var priorDemand=demands[slot];
+            bool changed=!ReferenceEquals(current,cached.Identity) || (current!=null && (current.active!=cached.Active || current.type!=cached.Type ||
+                (priorDemand & NpcDemand.Direction)!=0 && (current.netID!=cached.NetId || current.generation!=cached.Generation || current.whoAmI!=cached.StableIndex || current.hide!=cached.Hidden || current.rarity!=cached.Rarity || current.life!=cached.Life || current.Center.X!=cached.X || current.Center.Y!=cached.Y || current.Center.X+current.netOffset.X!=cached.DrawX || current.Center.Y+current.netOffset.Y!=cached.DrawY) ||
+                (priorDemand & NpcDemand.Danger)!=0 && (current.boss!=cached.Boss || current.life!=cached.Life) ||
+                (priorDemand & NpcDemand.Housing)!=0 && (current.townNPC!=cached.Town || current.homeless!=cached.Homeless || current.homeTileX!=cached.HomeX || current.homeTileY!=cached.HomeY || current.Center.X!=cached.X || current.Center.Y!=cached.Y)));
+            if (epochs[slot] != epoch || changed)
             {
                 NPC npc = Main.npc[slot];
                 facts[slot] = new GuidanceNpc { Slot = slot, Identity = npc, Active = npc != null && npc.active, Type = npc == null ? 0 : npc.type };

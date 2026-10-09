@@ -35,6 +35,14 @@ namespace JueMingR.TerrariaHost.F5
         private Tools.HostTools tools;
         private Fishing.HostFishing fishing;
         private Combat.HostCombat combat;
+        private Combat.HostCombatObservation combatObservation;
+        internal CombatRadiusDrag CombatRadius {get;private set;}
+        internal void AttachCombatObservation(Combat.HostCombatObservation owner)
+        {
+            combatObservation=owner;renderer.CombatObservationControls=new CombatObservationControls(owner);
+            CombatRadius=new CombatRadiusDrag(owner,State);renderer.CombatRadius=CombatRadius;
+            var prior=State.BeforeLeave;State.BeforeLeave=page=>{if(prior!=null && !prior(page))return false;CombatRadius.Cancel();return true;};
+        }
         internal CombatIntervalDrag CombatInterval {get;private set;}
         internal void AttachCombat(Combat.HostCombat owner)
         {
@@ -177,7 +185,7 @@ namespace JueMingR.TerrariaHost.F5
         private bool CanTargetActions(bool requireFocus)
         { return !failed && LayersReady && biome.SharedRuntime.IsSessionActive && CanPresent(false,requireFocus) && !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest && Main.CurrentInputTextTakerOverride == null && !PlayerInput.WritingText && !inputState.HotkeyCapture && Main.LocalPlayer != null && Main.LocalPlayer.talkNPC < 0 && Main.LocalPlayer.sign < 0 && Main.npcShop == 0 && string.IsNullOrEmpty(Main.npcChatText) && !Main.clothesWindow && !Main.hairWindow && !(information != null && information.Adjustment.Active) && !adjustmentPending; }
         internal bool BlocksMapInput { get { return failed || State.Visible || notes.OwnsPointer || HotkeyPopup != null && HotkeyPopup.Visible || StylePopup != null && StylePopup.Visible || MapPopup != null && MapPopup.Visible; } }
-        internal void CloseForMapLocate() { CombatInterval?.Cancel(); MiscUi?.Suspend(); FishingUi?.Suspend(); CaptureUi?.Close(); MiningUi?.Suspend(); MapPopup?.Suspend(); State.Close(); notes.Suspend(); items?.Suspend(); RecoveryUi?.Suspend(); ReforgeUi?.Suspend(); Browser?.Suspend(); }
+        internal void CloseForMapLocate() { CombatInterval?.Cancel(); CombatRadius?.Cancel(); MiscUi?.Suspend(); FishingUi?.Suspend(); CaptureUi?.Close(); MiningUi?.Suspend(); MapPopup?.Suspend(); State.Close(); notes.Suspend(); items?.Suspend(); RecoveryUi?.Suspend(); ReforgeUi?.Suspend(); Browser?.Suspend(); }
         internal void OpenHotkey(string id, F5Rect rect)
         { HotkeyPopup?.Click(id, rect, State.Layout.Generation, State.Page, clickClock.ElapsedMilliseconds); if (HotkeyPopup != null && HotkeyPopup.Visible) { FishingUi?.CloseOverlay(); CaptureUi?.Close(); RecoveryUi?.PotionPopup.Close(); StylePopup?.Close(); DeathPopup?.Close(); FootprintPopup?.Close(); } }
         private bool ClaimsPopupPointer()
@@ -190,9 +198,9 @@ namespace JueMingR.TerrariaHost.F5
             MouseState mouse = PlayerInput.MouseInfo;
             Vector2 raw = new Vector2(mouse.X * PlayerInput.RawMouseScale.X, mouse.Y * PlayerInput.RawMouseScale.Y);
             Vector2 point = Vector2.Transform(raw, Matrix.Invert(Main.UIScaleMatrix));
-            return CombatInterval?.OwnsPointer==true || FishingUi != null && (FishingUi.Captured || FishingUi.Contains(point.X,point.Y)) || CaptureUi != null && (CaptureUi.Captured || CaptureUi.Contains(point.X,point.Y)) || RecoveryUi != null && (RecoveryUi.PotionPopup.Captured || RecoveryUi.PotionPopup.Contains(point.X,point.Y)) || StylePopup != null && (StylePopup.HasCapture || StylePopup.ContainsPointer(point.X, point.Y)) || HotkeyPopup != null && HotkeyPopup.ContainsPointer(point.X, point.Y) || DeathPopup != null && (DeathPopup.Pressed >= 0 || DeathPopup.ContainsPointer(point.X, point.Y)) || MapPopup != null && (MapPopup.Pressed >= 0 || MapPopup.ContainsPointer(point.X, point.Y)) || FootprintPopup != null && (FootprintPopup.Pressed >= 0 || FootprintPopup.ContainsPointer(point.X, point.Y));
+            return (CombatInterval?.OwnsPointer==true || CombatRadius?.OwnsPointer==true) || FishingUi != null && (FishingUi.Captured || FishingUi.Contains(point.X,point.Y)) || CaptureUi != null && (CaptureUi.Captured || CaptureUi.Contains(point.X,point.Y)) || RecoveryUi != null && (RecoveryUi.PotionPopup.Captured || RecoveryUi.PotionPopup.Contains(point.X,point.Y)) || StylePopup != null && (StylePopup.HasCapture || StylePopup.ContainsPointer(point.X, point.Y)) || HotkeyPopup != null && HotkeyPopup.ContainsPointer(point.X, point.Y) || DeathPopup != null && (DeathPopup.Pressed >= 0 || DeathPopup.ContainsPointer(point.X, point.Y)) || MapPopup != null && (MapPopup.Pressed >= 0 || MapPopup.ContainsPointer(point.X, point.Y)) || FootprintPopup != null && (FootprintPopup.Pressed >= 0 || FootprintPopup.ContainsPointer(point.X, point.Y));
         }
-        internal bool OwnsPointer { get { return !failed && CanPresentNow && (information != null && information.Adjustment.Dragging || inputState.HotkeyPointerOwned || CombatInterval?.OwnsPointer==true || FishingUi != null && FishingUi.OwnsPointer || CaptureUi != null && CaptureUi.OwnsPointer || MiningUi != null && MiningUi.OwnsPointer || MiscUi != null && MiscUi.OwnsPointer || State.OwnsPointer || Browser != null && Browser.OwnsPointer || notes.OwnsPointer || ReforgeUi != null && ReforgeUi.OwnsPointer || RecoveryUi != null && RecoveryUi.OwnsPointer || items != null && items.OwnsPointer || HotkeyPopup != null && HotkeyPopup.OwnsPointer || StylePopup != null && StylePopup.OwnsPointer || DeathPopup != null && DeathPopup.OwnsPointer || MapPopup != null && MapPopup.OwnsPointer || FootprintPopup != null && FootprintPopup.OwnsPointer); } }
+        internal bool OwnsPointer { get { return !failed && CanPresentNow && (information != null && information.Adjustment.Dragging || inputState.HotkeyPointerOwned || (CombatInterval?.OwnsPointer==true || CombatRadius?.OwnsPointer==true) || FishingUi != null && FishingUi.OwnsPointer || CaptureUi != null && CaptureUi.OwnsPointer || MiningUi != null && MiningUi.OwnsPointer || MiscUi != null && MiscUi.OwnsPointer || State.OwnsPointer || Browser != null && Browser.OwnsPointer || notes.OwnsPointer || ReforgeUi != null && ReforgeUi.OwnsPointer || RecoveryUi != null && RecoveryUi.OwnsPointer || items != null && items.OwnsPointer || HotkeyPopup != null && HotkeyPopup.OwnsPointer || StylePopup != null && StylePopup.OwnsPointer || DeathPopup != null && DeathPopup.OwnsPointer || MapPopup != null && MapPopup.OwnsPointer || FootprintPopup != null && FootprintPopup.OwnsPointer); } }
 
         internal bool CanAdjustInformation { get { return information != null && information.PositionReady && biome.SharedRuntime.IsSessionActive && !failed && CanPresentNow && inputState.CanUseInput; } }
         internal void RequestInformationAdjustment()
@@ -328,10 +336,11 @@ namespace JueMingR.TerrariaHost.F5
                 bool higherPointer = FishingUi!=null && FishingUi.BlockPointer || CaptureUi!=null && (CaptureUi.OwnsPointer || CaptureUi.ConsumeLeft || CaptureUi.ConsumeRight) || RecoveryUi != null && RecoveryUi.PotionPopup.OwnsPointer || HotkeyPopup != null && HotkeyPopup.BlockPointer || StylePopup != null && StylePopup.BlockPointer || DeathPopup != null && DeathPopup.BlockPointer || MapPopup != null && MapPopup.BlockPointer || FootprintPopup != null && FootprintPopup.BlockPointer;
                 bool popupPointer=higherPointer || inputState.HotkeyPointerOwned;
                 bool cancelCombat=inputState.Hotkeys.IsNew((int)Keys.Escape);
-                if(inputActive && CombatInterval?.Captured==true && cancelCombat)
+                if(inputActive && (CombatInterval?.Captured==true || CombatRadius?.Captured==true) && cancelCombat)
                 {inputState.Hotkeys.SuppressKey((int)Keys.Escape);inputState.ConsumeHotkeyActions();}
                 CombatInterval?.Process(inputActive && !higherPointer,inputState.SampleFocused,PlayerInput.MouseInfo.LeftButton==ButtonState.Pressed,inputState.Hotkeys.IsNew(256),f5 || cancelCombat,pointer.X,pointer.Y,matrix,renderer.FontIdentity,renderer.SkinGeneration);
-                popupPointer|=CombatInterval?.OwnsPointer==true;
+                CombatRadius?.Process(inputActive && !higherPointer,inputState.SampleFocused,PlayerInput.MouseInfo.LeftButton==ButtonState.Pressed,inputState.Hotkeys.IsNew(256),f5 || cancelCombat,pointer.X,pointer.Y,matrix,renderer.FontIdentity,renderer.SkinGeneration);
+                popupPointer|=(CombatInterval?.OwnsPointer==true || CombatRadius?.OwnsPointer==true);
                 State.Update(new F5Input
                 {
                     Width = screen.X, Height = screen.Y, Scale = matrix.M11, X = pointer.X, Y = pointer.Y,
@@ -342,7 +351,7 @@ namespace JueMingR.TerrariaHost.F5
                     Right = PlayerInput.MouseInfo.RightButton == ButtonState.Pressed,
                     BlockPointer = popupPointer,
                     Wheel = PlayerInput.ScrollWheelDeltaForUI,
-                    PageWheelHandled = CombatInterval?.ConsumeWheel==true || FishingUi!=null && FishingUi.BlocksPageWheel || CaptureUi != null && CaptureUi.OwnsPointer || RecoveryUi != null && RecoveryUi.ConsumeWheel || HotkeyPopup != null && HotkeyPopup.ConsumeWheel || StylePopup != null && StylePopup.ConsumeWheel || DeathPopup != null && DeathPopup.Visible || MapPopup != null && MapPopup.Visible || FootprintPopup != null && FootprintPopup.Visible || inputActive && (notes.Wheel(pointer.X, pointer.Y, PlayerInput.ScrollWheelDeltaForUI) || Browser != null && Browser.Wheel(pointer.X, pointer.Y, PlayerInput.ScrollWheelDeltaForUI))
+                    PageWheelHandled = (CombatInterval?.ConsumeWheel==true || CombatRadius?.ConsumeWheel==true) || FishingUi!=null && FishingUi.BlocksPageWheel || CaptureUi != null && CaptureUi.OwnsPointer || RecoveryUi != null && RecoveryUi.ConsumeWheel || HotkeyPopup != null && HotkeyPopup.ConsumeWheel || StylePopup != null && StylePopup.ConsumeWheel || DeathPopup != null && DeathPopup.Visible || MapPopup != null && MapPopup.Visible || FootprintPopup != null && FootprintPopup.Visible || inputActive && (notes.Wheel(pointer.X, pointer.Y, PlayerInput.ScrollWheelDeltaForUI) || Browser != null && Browser.Wheel(pointer.X, pointer.Y, PlayerInput.ScrollWheelDeltaForUI))
                 });
                 if (!State.Visible) { MiscUi?.Suspend(); FishingUi?.Suspend(); CaptureUi?.Close(); MiningUi?.Suspend(); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup?.Close(); }
                 notes.ProcessInput(inputActive, matrix, screen, raw, inputState.SampleFocused, popupPointer, keySample);
@@ -420,6 +429,7 @@ namespace JueMingR.TerrariaHost.F5
                 else { renderer.EntityControls?.Execute(State.Command); renderer.WorldControls?.Execute(State.Command); renderer.ObjectControls?.Execute(State.Command);
                     renderer.GuidanceControls?.Execute(State.Command);
                     renderer.CombatControls?.Execute(State.Command);
+                    renderer.CombatObservationControls?.Execute(State.Command);
                     State.Layout.About.Execute(State.Command);
                     renderer.DeathControls?.Execute(State.Command); renderer.MapControls?.Execute(State.Command); renderer.FootprintControls?.Execute(State.Command); renderer.AnnouncementControls?.Execute(State.Command);
                     if (State.Command != F5Command.EnableBiome && State.Command != F5Command.DisableBiome) renderer.InformationControls?.Execute(State.Command); }
@@ -449,7 +459,7 @@ namespace JueMingR.TerrariaHost.F5
 
         private void ConsumeSample()
         {
-            if (CombatInterval?.ConsumeLeft==true || FishingUi != null && FishingUi.ConsumeLeft || CaptureUi != null && CaptureUi.ConsumeLeft || MiningUi != null && MiningUi.ConsumeLeft || MiscUi != null && MiscUi.ConsumeLeft || State.ConsumeLeft || Browser != null && Browser.ConsumeLeft || notes.ConsumeLeft || ReforgeUi != null && ReforgeUi.ConsumeLeft || RecoveryUi != null && RecoveryUi.ConsumeLeft || items != null && items.ConsumeLeft || information != null && information.Adjustment.ConsumeLeft)
+            if ((CombatInterval?.ConsumeLeft==true || CombatRadius?.ConsumeLeft==true) || FishingUi != null && FishingUi.ConsumeLeft || CaptureUi != null && CaptureUi.ConsumeLeft || MiningUi != null && MiningUi.ConsumeLeft || MiscUi != null && MiscUi.ConsumeLeft || State.ConsumeLeft || Browser != null && Browser.ConsumeLeft || notes.ConsumeLeft || ReforgeUi != null && ReforgeUi.ConsumeLeft || RecoveryUi != null && RecoveryUi.ConsumeLeft || items != null && items.ConsumeLeft || information != null && information.Adjustment.ConsumeLeft)
             {
                 PlayerInput.Triggers.Current.MouseLeft = false;
                 PlayerInput.Triggers.JustPressed.MouseLeft = false;
@@ -463,7 +473,7 @@ namespace JueMingR.TerrariaHost.F5
                 PlayerInput.Triggers.JustReleased.MouseRight = false;
                 Main.mouseRight = false;
             }
-            if (CombatInterval?.ConsumeWheel==true || FishingUi != null && FishingUi.ConsumeWheel || CaptureUi != null && CaptureUi.OwnsPointer || State.ConsumeWheel || Browser != null && Browser.ConsumeWheel || notes.ConsumeWheel || RecoveryUi != null && RecoveryUi.ConsumeWheel || items != null && items.ConsumeWheel || HotkeyPopup != null && HotkeyPopup.ConsumeWheel || StylePopup != null && StylePopup.ConsumeWheel || DeathPopup != null && DeathPopup.ConsumeWheel || MapPopup != null && MapPopup.ConsumeWheel || FootprintPopup != null && FootprintPopup.OwnsPointer)
+            if ((CombatInterval?.ConsumeWheel==true || CombatRadius?.ConsumeWheel==true) || FishingUi != null && FishingUi.ConsumeWheel || CaptureUi != null && CaptureUi.OwnsPointer || State.ConsumeWheel || Browser != null && Browser.ConsumeWheel || notes.ConsumeWheel || RecoveryUi != null && RecoveryUi.ConsumeWheel || items != null && items.ConsumeWheel || HotkeyPopup != null && HotkeyPopup.ConsumeWheel || StylePopup != null && StylePopup.ConsumeWheel || DeathPopup != null && DeathPopup.ConsumeWheel || MapPopup != null && MapPopup.ConsumeWheel || FootprintPopup != null && FootprintPopup.OwnsPointer)
             { PlayerInput.ScrollWheelDelta = 0; PlayerInput.ScrollWheelDeltaForUI = 0; }
             // Absolute wheel and physical MouseInfo are never changed. Consumed
             // button transitions/deltas are never restored or replayed later.
@@ -492,6 +502,7 @@ namespace JueMingR.TerrariaHost.F5
                     tools?.TakeFeedback(displayPreferenceFeedback);
                     fishing?.TakeFeedback(displayPreferenceFeedback);
                     combat?.Settings.TakeFeedback(displayPreferenceFeedback);
+                    combatObservation?.TakeFeedback(displayPreferenceFeedback);
                     Onboarding?.State.TakeFeedback(displayPreferenceFeedback);
                     if (StylePopup?.Failure != null && StylePopup.FailureKey != reportedStyleFailure)
                     { reportedStyleFailure = StylePopup.FailureKey; displayPreferenceFeedback(StylePopup.Failure); }
@@ -717,10 +728,10 @@ namespace JueMingR.TerrariaHost.F5
             MiscUi?.PrepareLayout(matrix,miscStart);RecoveryUi?.PrepareLayout(matrix);
             if(CaptureUi!=null && MiscUi!=null){CaptureUi.MoveAnchor(MiscUi.ConfigurationAnchor,State.Layout.Generation);CaptureUi.Prepare(matrix,screen,resources);}
         }
-        internal void CloseAndSubmitPosition() { CombatInterval?.Cancel(); MiscUi?.Suspend(); FishingUi?.Suspend(); CaptureUi?.Close(); MiningUi?.Suspend(); CancelInformationAdjustment(false); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup?.Close(); State.Close(); notes.Suspend(); items?.Suspend(); RecoveryUi?.Suspend(); ReforgeUi?.Suspend(); Browser?.Suspend(); SubmitPosition(); }
+        internal void CloseAndSubmitPosition() { CombatInterval?.Cancel(); CombatRadius?.Cancel(); MiscUi?.Suspend(); FishingUi?.Suspend(); CaptureUi?.Close(); MiningUi?.Suspend(); CancelInformationAdjustment(false); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup?.Close(); State.Close(); notes.Suspend(); items?.Suspend(); RecoveryUi?.Suspend(); ReforgeUi?.Suspend(); Browser?.Suspend(); SubmitPosition(); }
 
         internal void CancelForFocusLoss()
-        { CombatInterval?.Cancel(); MiscUi?.Suspend(); FishingUi?.Suspend(); CaptureUi?.Close(); MiningUi?.Suspend(); CancelInformationAdjustment(false); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup?.Close(); State.CancelForFocusLoss(); notes.Suspend(true); items?.Suspend(); RecoveryUi?.Suspend(); ReforgeUi?.Suspend(); Browser?.Suspend(); RestoreLeases(); }
+        { CombatInterval?.Cancel(); CombatRadius?.Cancel(); MiscUi?.Suspend(); FishingUi?.Suspend(); CaptureUi?.Close(); MiningUi?.Suspend(); CancelInformationAdjustment(false); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup?.Close(); State.CancelForFocusLoss(); notes.Suspend(true); items?.Suspend(); RecoveryUi?.Suspend(); ReforgeUi?.Suspend(); Browser?.Suspend(); RestoreLeases(); }
 
         internal void FailClosed()
         { failed = true; State.Ready = false; CloseAndSubmitPosition(); RestoreLeases(); notes.FailClosed(); renderer.Dispose(); }

@@ -34,6 +34,7 @@ namespace JueMingR.TerrariaHost.Combat
 #endif
         internal bool Active {get{return player!=null;}}
         internal bool FeatureEnabled {get{return kind>=0 && host.IsEnabled(kind);}}
+        internal bool ManagedAttackIntent(Player p){return kind==4 && ReferenceEquals(p,player) && Identity() && FeatureEnabled && host.Left && host.Admitted(p);}
         internal bool DeferSync
         {
             get
@@ -173,10 +174,16 @@ namespace JueMingR.TerrariaHost.Combat
                     {if(pressTick==now)press=true;else pressTick=unchecked(now+1);}
                     break;
                 case 4:
-                    // A release is retained for the entire simulation step so
-                    // the native yoyo AI can create its magic-string split.
-                    press=Valid(primary,primaryKey) && primary.ai[0]>=0 ? unchecked(now-cycleTick)<2 : WeaponCatalog.Ready(player);
-                    if(press && !Valid(primary,primaryKey))cycleTick=now;
+                    // The birth action is held; the first following real action is
+                    // released for native magic-string split/recovery. An extra
+                    // held action makes the original travel farther and delays
+                    // recovery. With no original left, present a press to native
+                    // ItemCheck: its own timers decide the first legal emission.
+                    // A pre-ItemCheck Ready snapshot would add an empty action.
+                    // Only Started proves a birth owned by this lease. A real
+                    // original discovered during takeover is already past its
+                    // birth action and must release on this action.
+                    press=Valid(primary,primaryKey)?primary.ai[0]>=0 && used && now==cycleTick:true;
                     break;
                 case 1:DecideFlail(now);break;
                 case 2:
@@ -231,7 +238,12 @@ namespace JueMingR.TerrariaHost.Combat
         }
         private void Discover()
         {
-            if(kind==0 || kind==3 || source.shoot<=0 || player.ownedProjectileCounts[source.shoot]<=0)return;
+            if(kind==0 || kind==3 || source.shoot<=0)return;
+            // BeforeSync precedes vanilla's projectile-count rebuild. A ball
+            // born on the previous native action may still have count zero.
+            // Yoyo takeover performs this bounded scan once per lease; ongoing
+            // use owns complete-key birth receipts and never scans each action.
+            if(kind!=4 && player.ownedProjectileCounts[source.shoot]<=0)return;
             for(int i=0;i<Main.maxProjectiles;i++)
             {
 #if DEBUG

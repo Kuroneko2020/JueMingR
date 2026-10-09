@@ -35,6 +35,11 @@ namespace JueMingR.ArchitectureTests
         {
             var expected = new HashSet<string>(StringComparer.Ordinal)
             {
+                "JueMingR.Platform.Combat.NpcIdentity", "JueMingR.Platform.Combat.PredictionAssumption", "JueMingR.Platform.Combat.PredictionStop",
+                "JueMingR.Platform.Combat.PredictionStrategy", "JueMingR.Platform.Combat.PredictionQuality", "JueMingR.Platform.Combat.PredictionFailureLayer",
+                "JueMingR.Platform.Combat.PredictionPlayerMotion",
+                "JueMingR.Platform.Combat.MotionRect", "JueMingR.Platform.Combat.NpcMotionState", "JueMingR.Platform.Combat.NpcHealthState", "JueMingR.Platform.Combat.NpcBuffLayout", "JueMingR.Platform.Combat.PredictionEnvironment", "JueMingR.Platform.Combat.PredictionTile", "JueMingR.Platform.Combat.PredictionPlayers",
+                "JueMingR.Platform.Combat.IPredictionTerrain", "JueMingR.Platform.Combat.IPredictionResizeTerrain", "JueMingR.Platform.Combat.IPredictionWaterSurfaceTerrain", "JueMingR.Platform.Combat.IPredictionPlayerTerrain", "JueMingR.Platform.Combat.NpcTrajectoryPoint", "JueMingR.Platform.Combat.NpcTrajectory",
                 "JueMingR.Platform.ItemCatalog.ItemCategory", "JueMingR.Platform.ItemCatalog.CatalogItem",
                 "JueMingR.Platform.ItemCatalog.RelationKind", "JueMingR.Platform.ItemCatalog.RelationIngredient", "JueMingR.Platform.ItemCatalog.ItemRelation",
                 "JueMingR.Platform.Footprints.FootprintPosition", "JueMingR.Platform.Footprints.FootprintSample",
@@ -99,9 +104,10 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Platform.Persistence.DocumentWorker`1",
                 "JueMingR.Platform.Persistence.DocumentResult`1"
             };
-            if (!expected.SetEquals(assembly.GetExportedTypes().Select(type => type.FullName)))
+            var actual = new HashSet<string>(assembly.GetExportedTypes().Select(type => type.FullName), StringComparer.Ordinal);
+            if (!expected.SetEquals(actual))
             {
-                failures.Add("Platform must export exactly the approved operation and Phase 0-T biome/runtime contracts.");
+                failures.Add("Platform must export exactly the approved contracts. Unexpected: " + string.Join(", ", actual.Except(expected).OrderBy(name => name)) + "; missing: " + string.Join(", ", expected.Except(actual).OrderBy(name => name)));
             }
         }
 

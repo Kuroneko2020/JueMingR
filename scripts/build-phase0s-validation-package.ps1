@@ -1,10 +1,11 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
     [string] $OutputDirectory,
     [ValidateSet('Phase0S', 'Phase0TBiome', 'Phase0UF5UI', 'Phase0VSettings', 'Phase0WNotes', 'ItemAutomation', 'UnifiedHotkeys', 'EntityLabels', 'WorldTargets', 'WorldObjectText', 'InformationSummary', 'DirectionEquipment', 'DeathHistory', 'MapMarkersExploration', 'Footprints', 'ItemBrowser', 'KeepFavoritedQuickItems', 'CoinDeposit', 'AboutHelpFeedback', 'RecoveryBuffsServices', 'ContinuousProcessing')]
     [string] $Profile = 'Phase0S',
     [string] $WorkloadBaseline,
+    [string] $ApprovedRetainedAssets,
     [switch] $Rebuild
 )
 
@@ -14,7 +15,7 @@ Set-StrictMode -Version 2.0
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..')).TrimEnd('\')
 . (Join-Path $PSScriptRoot 'phase0s\Phase0S.ScriptSupport.ps1')
 . (Join-Path $PSScriptRoot 'workload/Workload.Support.ps1')
-$ownerTestCardName = if ($Profile -eq 'ContinuousProcessing') { 'Fishing-And-Loadouts-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'RecoveryBuffsServices') { 'Recovery-Buffs-Services-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'AboutHelpFeedback') { 'About-Help-Feedback-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'CoinDeposit') { 'Coin-Deposit-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'KeepFavoritedQuickItems') { 'Keep-Favorited-Quick-Items-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'ItemBrowser') { 'Item-Browser-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'Footprints') { 'Footprints-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'MapMarkersExploration') { 'Map-Markers-Exploration-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'DeathHistory') {
+$ownerTestCardName = if ($Profile -eq 'ContinuousProcessing') { 'Continuous-Processing-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'RecoveryBuffsServices') { 'Recovery-Buffs-Services-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'AboutHelpFeedback') { 'About-Help-Feedback-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'CoinDeposit') { 'Coin-Deposit-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'KeepFavoritedQuickItems') { 'Keep-Favorited-Quick-Items-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'ItemBrowser') { 'Item-Browser-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'Footprints') { 'Footprints-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'MapMarkersExploration') { 'Map-Markers-Exploration-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'DeathHistory') {
     'Death-History-Owner-Test-Card.zh-CN.md'
 } elseif ($Profile -eq 'DirectionEquipment') {
     'Direction-Equipment-Owner-Test-Card.zh-CN.md'
@@ -167,6 +168,8 @@ function Assert-Phase0SFixedPackageTree {
         'payload/JueMingR.Validation/JueMingR.Features.dll',
         'payload/JueMingR.Validation/JueMingR.Infrastructure.dll',
         'payload/JueMingR.Validation/JueMingR.Platform.dll',
+        'payload/JueMingR.Validation/JueMingR.PredictionWorker.exe',
+        'payload/JueMingR.Validation/JueMingR.PredictionWorker.exe.config',
         'payload/JueMingR.Validation/JueMingR.TerrariaHost.dll',
         'payload/JueMingR.Validation/phase-0-s-runtime.manifest',
         'payload/Terraria.exe.config',
@@ -192,6 +195,22 @@ function Assert-Phase0SFixedPackageTree {
     return $records
 }
 
+function Read-Phase0SPackageTextForPathScan {
+    param([string] $Path, [int] $MaximumLength)
+
+    # These fixed script/card sources retain their BOM for Windows PowerShell 5.1.
+    # This affects only the path scan; manifest/receipt canonical UTF-8 stays strict,
+    # and the archive continues to contain the exact source bytes.
+    if ([IO.Path]::GetFileName($Path) -notin @('Phase0S.ScriptSupport.ps1')) {
+        return Get-Phase0SStrictUtf8Text -Path $Path -MaximumLength $MaximumLength
+    }
+    $bytes = [IO.File]::ReadAllBytes($Path)
+    if ($bytes.Length -gt $MaximumLength) { throw 'Package text length exceeds limit.' }
+    $offset = 0
+    if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) { $offset = 3 }
+    return (New-Object Text.UTF8Encoding($false, $true)).GetString($bytes, $offset, $bytes.Length - $offset)
+}
+
 function Assert-Phase0SPackageHasNoPrivatePath {
     param([Parameter(Mandatory = $true)][string] $PackageRoot)
 
@@ -208,7 +227,7 @@ function Assert-Phase0SPackageHasNoPrivatePath {
         if ($textExtensions -notcontains $file.Extension) {
             continue
         }
-        $text = Get-Phase0SStrictUtf8Text -Path $file.FullName -MaximumLength 1048576
+        $text = Read-Phase0SPackageTextForPathScan -Path $file.FullName -MaximumLength 1048576
         foreach ($value in $sensitiveValues) {
             if ($text.IndexOf($value, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
                 throw 'A package text file contains a private absolute path.'
@@ -314,7 +333,9 @@ if ([System.IO.Path]::GetFullPath($gitRoot.Trim()).TrimEnd('\') -cne $repository
     throw 'The script directory is not the active Git repository root.'
 }
 $status = @(Invoke-Phase0SGit -Arguments @('status', '--porcelain=v1', '--untracked-files=all'))
-if ($status.Count -ne 0) {
+$admission=Initialize-WorkloadWorkspace $repositoryRoot $ApprovedRetainedAssets -RequireCommitted
+$sourceIdentity=Get-WorkloadIdentity $repositoryRoot
+if ($status.Count -ne 0 -and $null -eq $admission) {
     throw 'Phase 0-S owner package requires a clean commit.'
 }
 $sourceCommit = ([string] (Invoke-Phase0SGit -Arguments @('rev-parse', 'HEAD') | Select-Object -First 1)).Trim()
@@ -341,30 +362,38 @@ if ($outputRoot.StartsWith($repositoryPrefix, [System.StringComparison]::Ordinal
     }
 }
 
+# One bounded phase shares parsed records and digests; rebuild and promotion
+# each cross a fresh verification boundary. Leases forbid in-phase replacement.
+Start-WorkloadReadWindow
+try {
 $buildRecordPath = Join-Path $repositoryRoot 'artifacts\build\Release\build-record.json'
 $existingBuild = Read-WorkloadJson $buildRecordPath
 $buildOutput = @()
-if (-not $Rebuild -and -not $WorkloadBaseline -and (Test-WorkloadDelivery $repositoryRoot $existingBuild)) {
+if (-not $Rebuild -and (Test-WorkloadDelivery $repositoryRoot $existingBuild $WorkloadBaseline -RetainedAssets $admission)) {
     Write-Host 'REUSED verified Release build and complete applicable check evidence.'
 } else {
-    $buildOutput = @(& (Join-Path $PSScriptRoot 'build.ps1') -Configuration Release -RequireClean -WorkloadBaseline $WorkloadBaseline 2>&1)
+    Stop-WorkloadReadWindow
+    $buildArguments=@{Configuration='Release';WorkloadBaseline=$WorkloadBaseline}
+    if($null -eq $admission){$buildArguments.RequireClean=$true}else{$buildArguments.ApprovedRetainedAssets=$ApprovedRetainedAssets}
+    $buildOutput = @(& (Join-Path $PSScriptRoot 'build.ps1') @buildArguments 2>&1)
     if (-not $?) { throw 'The locked Release build failed.' }
+    Start-WorkloadReadWindow
 }
 $statusAfterBuild = @(Invoke-Phase0SGit -Arguments @('status', '--porcelain=v1', '--untracked-files=all'))
 # Bind packaging to the same clean commit across the build, not merely its earlier HEAD label.
 $headAfterBuild = ([string] (Invoke-Phase0SGit -Arguments @('rev-parse', 'HEAD') | Select-Object -First 1)).Trim()
-if ($statusAfterBuild.Count -ne 0 -or $headAfterBuild -cne $sourceCommit) {
+if (($null -eq $admission -and $statusAfterBuild.Count -ne 0) -or $headAfterBuild -cne $sourceCommit -or $sourceIdentity.fingerprint -cne (Get-WorkloadIdentity $repositoryRoot).fingerprint) {
     throw 'The source tree changed during the Release build.'
 }
 
 $buildRecordPath = Join-Path $repositoryRoot 'artifacts\build\Release\build-record.json'
-$buildRecord = (Get-Phase0SStrictUtf8Text -Path $buildRecordPath -MaximumLength 1048576) | ConvertFrom-Json
+$buildRecord = Read-WorkloadJson $buildRecordPath
 if ([int] $buildRecord.schemaVersion -ne 4 -or [string] $buildRecord.commit -cne $sourceCommit -or
-    -not [bool] $buildRecord.clean -or [string] $buildRecord.sdk -cne '10.0.203' -or
+    (-not [bool] $buildRecord.clean -and -not (Test-WorkloadRestrictedRecord $buildRecord $admission)) -or [string] $buildRecord.sdk -cne '10.0.203' -or
     [string] $buildRecord.configuration -cne 'Release') {
     throw 'The Release build record does not describe the clean source commit.'
 }
-if (-not (Test-WorkloadDelivery $repositoryRoot $buildRecord)) {
+if (-not (Test-WorkloadDelivery $repositoryRoot $buildRecord -RetainedAssets $admission)) {
     throw 'The Release package requires the completed matching automatic workload gate.'
 }
 if (@($buildRecord.outputs | Where-Object { [string] $_.path -match '(?i)(^|\\)0Harmony\.dll$' }).Count -ne 0) {
@@ -376,6 +405,8 @@ $hostOutput = Get-Phase0SBuildOutputPath -ProjectName 'JueMingR.TerrariaHost' -F
 $platformOutput = Get-Phase0SBuildOutputPath -ProjectName 'JueMingR.Platform' -FileName 'JueMingR.Platform.dll'
 $featuresOutput = Get-Phase0SBuildOutputPath -ProjectName 'JueMingR.Features' -FileName 'JueMingR.Features.dll'
 $infrastructureOutput = Get-Phase0SBuildOutputPath -ProjectName 'JueMingR.Infrastructure' -FileName 'JueMingR.Infrastructure.dll'
+$workerOutput = Get-Phase0SBuildOutputPath -ProjectName 'JueMingR.PredictionWorker' -FileName 'JueMingR.PredictionWorker.exe'
+$workerConfigOutput = Get-Phase0SBuildOutputPath -ProjectName 'JueMingR.PredictionWorker' -FileName 'JueMingR.PredictionWorker.exe.config'
 $hostIdentity = Get-Phase0SAssemblyFileIdentity -Path $hostOutput
 if ($hostIdentity.simpleName -cne 'JueMingR.TerrariaHost' -or $hostIdentity.version -cne '0.0.0.0') {
     throw 'The Host Release output identity is invalid.'
@@ -431,6 +462,8 @@ try {
     Copy-Phase0SBuilderFileCreateNew -SourcePath $platformOutput -DestinationPath (Join-Path $sidecarPayloadRoot 'JueMingR.Platform.dll')
     Copy-Phase0SBuilderFileCreateNew -SourcePath $featuresOutput -DestinationPath (Join-Path $sidecarPayloadRoot 'JueMingR.Features.dll')
     Copy-Phase0SBuilderFileCreateNew -SourcePath $infrastructureOutput -DestinationPath (Join-Path $sidecarPayloadRoot 'JueMingR.Infrastructure.dll')
+    Copy-Phase0SBuilderFileCreateNew -SourcePath $workerOutput -DestinationPath (Join-Path $sidecarPayloadRoot 'JueMingR.PredictionWorker.exe')
+    Copy-Phase0SBuilderFileCreateNew -SourcePath $workerConfigOutput -DestinationPath (Join-Path $sidecarPayloadRoot 'JueMingR.PredictionWorker.exe.config')
     Copy-Phase0SBuilderFileCreateNew -SourcePath $harmonyPath -DestinationPath (Join-Path $sidecarPayloadRoot '0Harmony.dll')
 
     $runtimeLines = @(
@@ -530,7 +563,11 @@ try {
     $externalBuildRecord = [ordered]@{
         schemaVersion = 1
         sourceCommit = $sourceCommit
-        clean = $true
+        clean = ($null -eq $admission)
+        workspaceDirty = ($null -ne $admission)
+        committedProductSourceClean = $true
+        releaseEligible = ($null -eq $admission)
+        workspace = $admission
         packageId = $packageId
         sdk = '10.0.203'
         configuration = 'Release'
@@ -583,8 +620,12 @@ try {
     }
     # Recheck live inputs, exact Release bytes and every required evidence item
     # before promoting a staged package. A parseable old PASS cannot authorize it.
-    if (@(Invoke-Phase0SGit -Arguments @('status','--porcelain=v1','--untracked-files=all')).Count -ne 0 -or
-        -not (Test-WorkloadDelivery $repositoryRoot $buildRecord)) { throw 'Package inputs or evidence changed before promotion.' }
+    Start-WorkloadReadWindow
+    $promotionAdmission=Initialize-WorkloadWorkspace $repositoryRoot $ApprovedRetainedAssets -RequireCommitted
+    if ($sourceIdentity.fingerprint -cne (Get-WorkloadIdentity $repositoryRoot).fingerprint -or
+        ($null -eq $admission -and @(Invoke-Phase0SGit -Arguments @('status','--porcelain=v1','--untracked-files=all')).Count -ne 0) -or
+        ($admission|ConvertTo-Json -Depth 8 -Compress) -cne ($promotionAdmission|ConvertTo-Json -Depth 8 -Compress) -or
+        -not (Test-WorkloadDelivery $repositoryRoot $buildRecord -RetainedAssets $admission)) { throw 'Package inputs or evidence changed before promotion.' }
     [System.IO.File]::Delete($markerPath)
     $markerRemoved = $true
     if ((Get-Phase0SPathState -Path $outputRoot).exists) {
@@ -617,3 +658,5 @@ finally {
         }
     }
 }
+
+} finally { Stop-WorkloadReadWindow }

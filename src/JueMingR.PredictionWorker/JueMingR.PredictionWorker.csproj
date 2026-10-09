@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <PlatformTarget>x86</PlatformTarget>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>JueMingR.PredictionWorker</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\JueMingR.TerrariaHost\Combat\Prediction\PredictionPipeProtocol.cs" Link="PredictionPipeProtocol.cs" />
+  </ItemGroup>
+</Project>

@@ -39,7 +39,8 @@ namespace NativeWorldTextProbe
             Require((int)Get(display,"Count")==0,"F5/domain setter does not manufacture hotkey success");
             string[] once={"information-window.adjust","announcement.send","item-browser.query","tools.mining.select"};
             var actions=registry.Actions.Where(a=>!once.Contains(a.Id) && !a.Id.StartsWith("items.quick-use.",StringComparison.Ordinal)).ToArray();
-            Require(actions.Length==55 && once.All(id=>registry.Find(id)!=null),"55 registered switches plus four distinct once-actions");
+            Require(actions.Length==57 && once.All(id=>registry.Find(id)!=null),"57 registered switches plus four distinct once-actions");
+            Require(new[]{"combat.collision-display","combat.npc-path"}.All(id=>actions.Count(a=>a.Id==id)==1),"both observation toggles participate in actual committed feedback checks");
             string[] fishing={"fishing.auto-fish.toggle","fishing.auto-loadout.toggle","fishing.auto-equipment.toggle","fishing.auto-store.toggle","fishing.cut-rod.toggle","information.full-fish.toggle","information.filtered-fish.toggle"};
             Require(fishing.All(id=>actions.Count(a=>a.Id==id)==1) && registry.Find("fishing.filter.toggle")==null,"seven distinct fishing switches are exercised; filter mode has no binding");
             foreach(var action in actions)
@@ -107,7 +108,7 @@ namespace NativeWorldTextProbe
             Require((int)Get(display,"Count")==0 && (int)Get(feedback,"PendingCount")==0,"session end releases all requests synchronously");
             Call(context,"UpdateRuntime");
             MapFailure(context,registry,display);
-            Console.WriteLine("PASS: 55 registered switch consumers, runtime/commit separation, modes, owner tokens, bounded replacement, native ownership, fallback, no network and idle/session cleanup.");
+            Console.WriteLine("PASS: 57 registered switch consumers, runtime/commit separation, modes, owner tokens, bounded replacement, native ownership, fallback, no network and idle/session cleanup.");
         }
         private static void AsyncFailures(object context,HotkeyRegistry registry,object display,object feedback)
         {

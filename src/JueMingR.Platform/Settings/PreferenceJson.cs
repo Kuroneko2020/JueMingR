@@ -13,6 +13,12 @@ namespace JueMingR.Platform.Settings
     {
         public const int MaximumBytes = 65536;
         public static XElement Read(byte[] contents, string identity, params string[] fields)
+        {return ReadDocument(contents,identity,null,fields);}
+        // One additive v1 preference may be absent in an old document. Unknown
+        // and duplicate members still protect the original bytes from rewriting.
+        public static XElement ReadOptional(byte[] contents,string identity,string optional,params string[] fields)
+        {return ReadDocument(contents,identity,optional,fields);}
+        private static XElement ReadDocument(byte[] contents,string identity,string optional,string[] fields)
         {
             try
             {
@@ -35,7 +41,7 @@ namespace JueMingR.Platform.Settings
                     if (format.Value != identity) throw Invalid();
                     int version = Integer(Required(root, "version", "number"));
                     if (version != 1) throw new PreferenceFormatException(PreferenceStatus.UnsupportedVersion, "Unsupported preference version.");
-                    ExactFields(root, fields);
+                    ExactFields(root,optional!=null && root.Elements(optional).Any()?fields.Concat(new[]{optional}).ToArray():fields);
                     return root;
                 }
             }

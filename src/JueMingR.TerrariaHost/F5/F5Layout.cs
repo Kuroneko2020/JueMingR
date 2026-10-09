@@ -36,7 +36,9 @@ namespace JueMingR.TerrariaHost.F5
         AboutCopyGroup,
         CombatAutoClickOn, CombatAutoClickOff, CombatFlailOn, CombatFlailOff, CombatSwitchOn, CombatSwitchOff,
         CombatRevolverOn, CombatRevolverOff, CombatStringOn, CombatStringOff, CombatFacingOn, CombatFacingOff,
-        CombatReportOn, CombatReportOff, CombatGoblinOn, CombatGoblinOff, CombatInterval }
+        CombatReportOn, CombatReportOff, CombatGoblinOn, CombatGoblinOff, CombatInterval,
+        ObservationPolicy,ObservationCenter,ObservationDummy,ObservationRadius,
+        ObservationCollisionOn,ObservationCollisionOff,ObservationPathOn,ObservationPathOff,ObservationMarker }
 
     internal sealed class F5Element
     {
@@ -72,6 +74,13 @@ namespace JueMingR.TerrariaHost.F5
         private int page = -1;
         internal readonly About.AboutPage About = new About.AboutPage();
         private int builtAboutRevision;
+        private Features.Combat.ObservationOptions observation=new Features.Combat.ObservationOptions();
+        private int observationRevision,builtObservationRevision;
+        internal void SetObservationOptions(Features.Combat.ObservationOptions value)
+        {
+            if(observation.ClearLine!=value.ClearLine || observation.MouseCenter!=value.MouseCenter || observation.Dummy!=value.Dummy || observation.Marker!=value.Marker)observationRevision++;
+            observation=value;
+        }
         private Features.WorldObjectText.WorldObjectSettings objectSettings = Features.WorldObjectText.WorldObjectSettings.Default;
         private long informationRevision, builtInformationRevision;
         private string deathCount = "正在读取…", worldDays = "正在读取…";
@@ -127,7 +136,7 @@ namespace JueMingR.TerrariaHost.F5
         }
 
         internal bool Matches(float width, float height, float scale, int currentPage)
-        { return Generation > 0 && width == screenWidth && height == screenHeight && scale == uiScale && page == currentPage && (currentPage != 9 || builtInformationRevision == informationRevision) && (currentPage != 2 || builtDeathRevision == deathRevision) && (currentPage != 5 || builtAboutRevision == About.Revision); }
+        { return Generation > 0 && width == screenWidth && height == screenHeight && scale == uiScale && page == currentPage && (currentPage != 8 || builtObservationRevision == observationRevision) && (currentPage != 9 || builtInformationRevision == informationRevision) && (currentPage != 2 || builtDeathRevision == deathRevision) && (currentPage != 5 || builtAboutRevision == About.Revision); }
 
         internal void Ensure(float width, float height, float scale, int currentPage,
             object font, Func<string, F5Size> measureText)
@@ -177,7 +186,7 @@ namespace JueMingR.TerrariaHost.F5
             else if (currentPage == 5) About.Build(elements, DynamicTextSize, Viewport.Height, ref y);
             else if (currentPage == 7 && !FishingAttached) BuildFishing(ref y);
             else if (currentPage == 8)
-            {CombatControls.AddRows(elements,TextSize,ref y,0,6);GuidanceControls.AddRows(elements,TextSize,ref y,8);CombatControls.AddRows(elements,TextSize,ref y,6,2);}
+            {CombatObservationControls.AddRows(elements,TextSize,observation,ref y);CombatControls.AddRows(elements,TextSize,ref y,0,6);GuidanceControls.AddRows(elements,TextSize,ref y,8);CombatControls.AddRows(elements,TextSize,ref y,6,2);}
             else if (currentPage == 1 || currentPage == 2) GuidanceControls.AddRows(elements, TextSize, ref y, currentPage);
             if (currentPage == 2) DeathControls.AddRows(elements, DynamicTextSize, ref y, deathCount, worldDays);
             if (currentPage == 2) MapControls.AddRows(elements, TextSize, ref y);
@@ -188,6 +197,7 @@ namespace JueMingR.TerrariaHost.F5
             builtInformationRevision = informationRevision;
             builtDeathRevision = deathRevision;
             builtAboutRevision = About.Revision;
+            builtObservationRevision=observationRevision;
             Generation++;
         }
 
