@@ -86,6 +86,7 @@ namespace NativeWorldTextProbe
             World(context,graphics,output);
             NativeCombatAimChecks.Initialize();NativeCombatImpactVisualChecks.Run(context,graphics,output);
             NativeCombatShapeVisualChecks.Run(context,graphics,output);
+            NativeCombatAimUiChecks.Run(context,graphics,output);
             Console.WriteLine("PASS G11A actual F5 rows/buttons, interval release/cancel/geometry, binding capture/save, original fonts and scroll at 100/150 percent.");
         }
         private static float CenterY(object element){var rect=Get(element,"Rect");return (float)Get(rect,"Y")+(float)Get(rect,"Height")/2;}

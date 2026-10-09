@@ -29,7 +29,7 @@ namespace JueMingR.TerrariaHost.Combat
             try
             {
                 var prepared=host.Attack?.ExpectedImpact;
-                if(prepared!=null && ReferenceEquals(prepared.Timeline,host.Prediction.Cache.Read(0)))contact=prepared;
+                if(prepared!=null && ReferenceEquals(prepared.Timeline,host.Prediction.Cache.Read(0))){host.Attack.BindPresentation(prepared);contact=prepared;}
             }
             catch(Exception error){Fail(error,false);}
         }
@@ -38,7 +38,7 @@ namespace JueMingR.TerrariaHost.Combat
             Visible=false;if(Failed || contact==null || !host.Path || !host.Options.Aim)return;
             try
             {
-                if(!ReferenceEquals(contact,host.Attack?.ExpectedImpact) || !ReferenceEquals(contact.Timeline,host.Prediction.Cache.Read(0)))return;
+                if(host.Attack==null || !host.Attack.PresentationCurrent(contact) || !ReferenceEquals(contact.Timeline,host.Prediction.Cache.Read(0)))return;
                 center=GuidanceWorldLayer.Project(new Vector2(contact.ImpactX,contact.ImpactY),zoom);this.inverse=inverse;
                 Visible=!float.IsNaN(center.X) && !float.IsNaN(center.Y) && !float.IsInfinity(center.X) && !float.IsInfinity(center.Y) && center.X>=-4 && center.Y>=-4 && center.X<=Main.screenWidth+4 && center.Y<=Main.screenHeight+4;
             }

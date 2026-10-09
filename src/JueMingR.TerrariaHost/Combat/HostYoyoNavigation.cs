@@ -24,7 +24,9 @@ namespace JueMingR.TerrariaHost.Combat
         // controller's launch/beam terrain. Consumption only validates them;
         // it must not turn Draw or an AI callback into another route search.
         internal bool Current(Player player)
-        {return preparedUsable && terrain.Unchanged && preparedMeleeSpeed==player.meleeSpeed && preparedString==player.yoyoString && preparedPlayer.SameSample(NpcPredictionSource.ReadPlayer(player));}
+        {return terrain.Unchanged && PresentationCurrent(player);}
+        internal bool PresentationCurrent(Player player)
+        {return preparedUsable && preparedMeleeSpeed==player.meleeSpeed && preparedString==player.yoyoString && preparedPlayer.SameSample(NpcPredictionSource.ReadPlayer(player));}
 #if DEBUG
         internal string ReplayStop {get;private set;}
         internal int ReplayStep {get;private set;}

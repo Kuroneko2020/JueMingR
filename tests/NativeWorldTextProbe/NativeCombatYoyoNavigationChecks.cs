@@ -36,7 +36,42 @@ namespace NativeWorldTextProbe
             for(int tick=1;tick<=40 && first<0;tick++)
             {NativeQuickItemChecks.BeginWorldStep();NativeToolExecutionChecks.Sample(context,input,n.Center,true);Call(combat,"Sample");n.UpdateNPC(2);NativeCombatAimChecks.Prepare(host,attack,n,0,true);var plan=(AttackContact)GetOptional(entry,"Contact");if(plan!=null)expected=plan.Timeline.SampleTick+plan.Tick;int life=n.life;shot.Update(shot.whoAmI);if(n.life<life)first=Main.GameUpdateCount;}
             Console.WriteLine("YOYO navigation changes: stableSearches="+searches+" closedRetries="+retries+" first="+first+" expected="+expected+" center="+shot.Center);Require(first>0 && first==expected,"reopened local route resumes useful input and the real native first Damage clock");
-            Gap(context,false);Gap(context,true);
+            Gap(context,false);Gap(context,true);Progress(context);
+        }
+        internal static void RunIsolated(object context)
+        {
+            // Same narrowly scoped original achievement outlet as YoyoChecks;
+            // this CPU entry has no achievement host. AI/movement/Damage and
+            // progress remain original; remove only this probe's patch finally.
+            var audit=new HarmonyLib.Harmony("JueMingR.Tests.YoyoNavigationAchievement");var method=typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod("HandleSpecialEvent",BindingFlags.Static|BindingFlags.Public);
+            audit.Patch(method,prefix:new HarmonyLib.HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
+            try{Run(context);}finally{audit.Unpatch(method,HarmonyLib.HarmonyPatchType.All,audit.Id);}
+        }
+        private static void Progress(object context)
+        {
+            var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var attack=Get(combat,"Attack");var input=Get(context,"Input");
+            NativeCombatObservationChecks.Save(host,new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,3278,0,0);p.position=new Vector2(700,646);p.ResetEffects();p.channel=p.controlUseItem=true;p.yoyoGlove=p.magicString=false;p.counterWeight=0;Main.screenPosition=new Vector2(600,400);
+            var n=Main.npc[2];n.SetDefaults(3);n.whoAmI=2;n.active=true;n.position=new Vector2(780,646);n.velocity=n.netOffset=Vector2.Zero;n.aiStyle=-1;n.noGravity=true;n.life=n.lifeMax=10000;n.target=0;n.knockBackResist=0;n.shimmerTransparency=0;Array.Clear(n.immune,0,n.immune.Length);Array.Clear(n.buffType,0,n.buffType.Length);Array.Clear(n.buffTime,0,n.buffTime.Length);
+            NativeToolExecutionChecks.Sample(context,input,n.Center,true);Call(combat,"Sample");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,false,true));NativeCombatAimChecks.Prepare(host,attack,n,0,true);
+            typeof(Player).GetMethod("ItemCheck_Shoot",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),true});var shot=Main.projectile.Single(q=>q.active && q.type==541);int key=(int)shot.key;n.immune[0]=200;
+            // Observed finite owner immunity (naturally decremented below)
+            // prevents hit rebound; 541 does not use its local immunity array.
+            // the native motor itself still approaches and brakes near the goal.
+            // Do not freeze/move the ball or write the private progress clock.
+            var control=Get(attack,"Control");var entries=(System.Collections.IDictionary)Get(control,"shots");var entry=entries[key];var nav=Get(entry,"Navigation");bool expired=false;uint retired=0;int searches=0;
+            for(int i=0;i<120 && shot.active;i++)
+            {
+                NativeQuickItemChecks.BeginWorldStep();NativeToolExecutionChecks.Sample(context,input,n.Center,true);Call(combat,"Sample");n.UpdateNPC(2);NativeCombatAimChecks.Prepare(host,attack,n,0,true);
+                int count=((System.Collections.IList)Get(nav,"path")).Count;uint age=Main.GameUpdateCount-(uint)Get(nav,"progressStep");bool point=(bool)Get(entry,"HasPoint");int work=(int)Get(nav,"Searches");
+                if(i%10==0 || age>=13 || expired)Console.WriteLine("YOYO progress tick="+Main.GameUpdateCount+" age="+age+" path="+count+" point="+point+" searches="+work+" immune="+n.immune[0]+" center="+shot.Center+" velocity="+shot.velocity);
+                if(!expired && count==0 && (uint)Get(nav,"retryStep")==Main.GameUpdateCount+5 && age==15)
+                {expired=true;retired=Main.GameUpdateCount;searches=work;Require(!point && GetOptional(attack,"ExpectedImpact")==null && Call(control,"BeginAI",shot)==null,"natural fifteen-frame low movement retires only the navigation capability and red marker");}
+                else if(expired && Main.GameUpdateCount<retired+5)Require(!point && work==searches,"retired route waits its bounded five-frame retry without searching");
+                else if(expired && Main.GameUpdateCount==retired+5)
+                {Require(point && work==searches+1 && shot.active && (int)shot.key==key,"same real live ball recovers the valid route once at the retry boundary");Console.WriteLine("PASS natural valid-route progress>14 retirement and +5 recovery; native low-movement braking, not an obstacle deadlock claim");return;}
+                shot.Update(shot.whoAmI);
+            }
+            Require(false,"native live ball must naturally reach the valid-route low-progress branch before recall");
         }
         private static void Gap(object context,bool thin)
         {

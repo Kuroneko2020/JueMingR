@@ -10,12 +10,14 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeToolCadenceChecks.cs'=@('native-ToolsCadence')
         'tests/NativeWorldTextProbe/NativeToolsWorkloadChecks.cs'=@('native-ToolsWorkload')
         'tests/NativeWorldTextProbe/NativeYoyoAdoptionChecks.cs'=@('native-CombatCpu','native-CombatYoyoCausal')
-        'tests/NativeWorldTextProbe/NativeCombatAimChecks.cs'=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatImpactVisual','native-CombatVisual')
-        'tests/NativeWorldTextProbe/NativeCombatImpactVisualChecks.cs'=@('native-CombatImpactVisual','native-CombatVisual')
+        'tests/NativeWorldTextProbe/NativeCombatAimChecks.cs'=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatNavigationCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatImpactVisual','native-CombatAimUi','native-CombatVisual')
+        'tests/NativeWorldTextProbe/NativeCombatAimUiChecks.cs'=@('native-CombatAimUi','native-CombatVisual')
+        'tests/NativeWorldTextProbe/NativeCombatImpactVisualChecks.cs'=@('native-CombatImpactVisual','native-CombatAimUi','native-CombatVisual')
         'tests/NativeWorldTextProbe/NativeCombatIntegrationChecks.cs'=@('native-CombatIntegrationCpu','native-CombatAimCpu')
         'tests/NativeWorldTextProbe/NativeCombatCadenceAimChecks.cs'=@('native-CombatIntegrationCpu','native-CombatAimCpu')
         'tests/NativeWorldTextProbe/NativeCombatResourceChecks.cs'=@('native-CombatIntegrationCpu','native-CombatAimCpu')
         'tests/NativeWorldTextProbe/NativeCombatCandidateDemandChecks.cs'=@('native-CombatIntegrationCpu','native-CombatAimCpu')
+        'tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.cs'=@('native-CombatAttackCosts','native-CombatCosts','native-CombatImpactVisual','native-CombatVisual')
         'tests/NativeWorldTextProbe/NativeCombatEffectChecks.cs'=@('native-CombatAimCpu','native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatProjectileEnvironmentChecks.cs'=@('native-CombatAimCpu','native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatObstacleChecks.cs'=@('native-CombatAimCpu','native-CombatEffectsCpu')
@@ -26,7 +28,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCombatAttackFailureChecks.cs'=@('native-CombatControlCpu','native-CombatAimCpu')
         'tests/NativeWorldTextProbe/NativeCombatControlChecks.cs'=@('native-CombatControlCpu','native-CombatAimCpu')
         'tests/NativeWorldTextProbe/NativeCombatBeamChecks.cs'=@('native-CombatControlCpu','native-CombatAimCpu')
-        'tests/NativeWorldTextProbe/NativeCombatYoyoNavigationChecks.cs'=@('native-CombatControlCpu','native-CombatAimCpu')
+        'tests/NativeWorldTextProbe/NativeCombatYoyoNavigationChecks.cs'=@('native-CombatControlCpu','native-CombatNavigationCpu','native-CombatAimCpu')
         'tests/NativeWorldTextProbe/NativeCombatYoyoChecks.cs'=@('native-CombatControlCpu','native-CombatAimCpu')
         'tests/NativeWorldTextProbe/NativeCombatReceiveChecks.cs'=@('native-CombatControlCpu','native-CombatAimCpu')
         'tests/NativeWorldTextProbe/NativeCombatMeleeChecks.cs'=@('native-CombatMechanicsCpu','native-CombatAimCpu')
@@ -61,10 +63,13 @@ function Get-WorkloadNativeScopes {
         'NpcRollingCpu'=@('combat-host');
         'CombatAimCpu'=@('combat-host');
         'CombatControlCpu'=@('combat-host');
+        'CombatNavigationCpu'=@('combat-host');
         'CombatMechanicsCpu'=@('combat-host');
         'CombatEffectsCpu'=@('combat-host');
         'CombatImpactVisual'=@('combat-host');
         'CombatIntegrationCpu'=@('combat-host');
+        'CombatAttackCosts'=@('combat-host');
+        'CombatAimUi'=@('combat-host','shared-host');
         'NpcRollingSelectionNegative'=@('combat-host');
         'NpcBasicMotion'=@('combat-host');
         'NpcFoundationRules'=@('combat-host'); 'NpcFoundationContinuous'=@('combat-host'); 'NpcPlayerPolicy'=@('combat-host'); 'NpcStrategy'=@('combat-host'); 'NpcStrategyContinuous'=@('combat-host'); 'NpcEventRetirementCpu'=@('combat-host');

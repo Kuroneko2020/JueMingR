@@ -16,9 +16,11 @@ namespace JueMingR.TerrariaHost.Combat
         private readonly float weaponSpeed,meleeSpeed,ammoSpeed;
         private readonly int weaponShoot,ammoShoot,ammoPrefix;
         private readonly bool quiver,archery,molten;
+        private readonly int ammoSlot=-1;
         private AttackAmmoSnapshot(Player player,Item weapon,Item ammo,int projectile,float speed)
         {Ammo=ammo;Type=ammo?.type??0;Stack=ammo?.stack??0;Projectile=projectile;Speed=speed;Mode=(int)player.ammoCyclingMode;Offset=player.ammoCyclingOffset;WeaponType=weapon.type;
-            weaponSpeed=weapon.shootSpeed;weaponShoot=weapon.shoot;meleeSpeed=player.meleeSpeed;ammoSpeed=ammo?.shootSpeed??0;ammoShoot=ammo?.shoot??0;ammoPrefix=ammo?.prefix??0;quiver=player.magicQuiver;archery=player.archery;molten=player.hasMoltenQuiver;}
+            weaponSpeed=weapon.shootSpeed;weaponShoot=weapon.shoot;meleeSpeed=player.meleeSpeed;ammoSpeed=ammo?.shootSpeed??0;ammoShoot=ammo?.shoot??0;ammoPrefix=ammo?.prefix??0;quiver=player.magicQuiver;archery=player.archery;molten=player.hasMoltenQuiver;
+            if(ammo!=null)for(int i=0;i<player.inventory.Length;i++)if(ReferenceEquals(player.inventory[i],ammo)){ammoSlot=i;break;}}
         internal static AttackAmmoSnapshot Capture(Player player,Item weapon)
         {return CaptureCore(player,weapon,weapon.shootSpeed,weapon.shoot);}
         internal static AttackAmmoSnapshot CaptureController(Player player,Item weapon,float baseSpeed)
@@ -62,7 +64,13 @@ namespace JueMingR.TerrariaHost.Combat
             return speed>0 && projectile>0?new AttackAmmoSnapshot(player,weapon,ammo,projectile,speed):null;
         }
         internal bool IdentityMatches(Player player,Item weapon)
-        {return ReferenceEquals(weapon.useAmmo>0?select(player,weapon):null,Ammo) && (Ammo==null || Ammo.type==Type && Ammo.stack==Stack && Ammo.prefix==ammoPrefix && Ammo.shoot==ammoShoot && Ammo.shootSpeed==ammoSpeed) &&
+        {return ReferenceEquals(weapon.useAmmo>0?select(player,weapon):null,Ammo) && MembersMatch(player,weapon);}
+        // Draw never reruns native ammunition selection. These constant reads
+        // only retire the prepared presentation when its already selected slot
+        // or known fields change. New higher-priority ammo is observed by the
+        // next prepare/real consumer's full IdentityMatches, not inferred here.
+        internal bool MembersMatch(Player player,Item weapon)
+        {return (Ammo==null || ammoSlot>=0 && ammoSlot<player.inventory.Length && ReferenceEquals(player.inventory[ammoSlot],Ammo) && Ammo.type==Type && Ammo.stack==Stack && Ammo.prefix==ammoPrefix && Ammo.shoot==ammoShoot && Ammo.shootSpeed==ammoSpeed) &&
             weapon.shoot==weaponShoot && weapon.shootSpeed==weaponSpeed && player.meleeSpeed==meleeSpeed && player.magicQuiver==quiver && player.archery==archery && player.hasMoltenQuiver==molten && (int)player.ammoCyclingMode==Mode && player.ammoCyclingOffset==Offset;}
         internal bool Matches(Player player,Item weapon)
         {var now=Capture(player,weapon);return now!=null && ReferenceEquals(now.Ammo,Ammo) && now.Type==Type && now.Stack==Stack && now.Projectile==Projectile && now.Speed==Speed && now.Mode==Mode && now.Offset==Offset;}

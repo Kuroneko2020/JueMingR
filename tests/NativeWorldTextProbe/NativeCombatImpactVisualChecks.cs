@@ -24,6 +24,7 @@ namespace NativeWorldTextProbe
             Directory.CreateDirectory(output);var host=Get(context,"CombatObservation");var combat=Get(context,"Combat");var attack=Get(combat,"Attack");var world=Get(host,"World");var impact=Get(world,"Impact");var input=Get(context,"Input");
             var harmony=new Harmony("JueMingR.Tests.ImpactVisual");
             harmony.Patch(attack.GetType().GetProperty("ExpectedImpact",Flags).GetGetMethod(true),prefix:new HarmonyMethod(typeof(NativeCombatImpactVisualChecks).GetMethod("ReadFault",Flags)));
+            harmony.Patch(attack.GetType().GetMethod("PresentationCurrent",Flags),prefix:new HarmonyMethod(typeof(NativeCombatImpactVisualChecks).GetMethod("ReadFault",Flags)));
             harmony.Patch(impact.GetType().GetMethod("Segment",Flags),prefix:new HarmonyMethod(typeof(NativeCombatImpactVisualChecks).GetMethod("DrawFault",Flags)));
             try
             {
@@ -67,6 +68,7 @@ namespace NativeWorldTextProbe
                 p.inventory[0].SetDefaults(39);p.inventory[54].SetDefaults(40);p.inventory[54].stack=999;p.releaseUseItem=true;n.position=new Vector2(1060,646);NativeToolExecutionChecks.Sample(context,input,n.Center,true);Call(combat,"Sample");NativeCombatAimChecks.Prepare(host,attack,n,0);var arc=(AttackContact)Get(attack,"ExpectedImpact");Require(arc!=null && Math.Abs(arc.AimY-arc.ImpactY)>12,"bow render fixture separates elevated AimInput from ExpectedImpact");Call(world,"Prepare");var arcPixels=graphics.Pixels(()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);var arcCenter=Vector2.Transform(new Vector2(arc.ImpactX,arc.ImpactY)-Main.screenPosition,Main.GameViewMatrix.ZoomMatrix);Require(arcPixels.Select((c,i)=>new{c,i}).Where(v=>Red(v.c)).All(v=>Math.Abs(v.i%960-arcCenter.X)<=6 && Math.Abs(v.i/960-arcCenter.Y)<=6) && arcPixels.Any(Red),"actual bow red pixels mark contact rather than elevated input");graphics.Image(Path.Combine(output,"impact-bow.png"),()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);
                 NativeCombatAimChecks.Prepare(host,attack,n,0);Call(world,"Prepare");typeof(Player).GetMethod("ItemCheck_Shoot",Flags).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),true});var consumed=graphics.Pixels(()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);Require(!consumed.Any(Red) && consumed.Any(PathInk),"real Shot consumption retires red pixels in the same frame while path survives");
                 Console.WriteLine("PASS impact actual World.Draw pixels, final camera, toggles, consumption and Capture/Project/Draw local latch/recovery. Render fixture, not Main/game execution.");
+                NativeCombatAttackCostChecks.Draw(context,graphics);
             }
             finally{readFault=drawFault=false;harmony.UnpatchAll(harmony.Id);Main.LocalPlayer.gravDir=1;Main.GameViewMatrix.Zoom=Vector2.One;NativeCombatObservationChecks.Save(host,new ObservationOptions());Call(world,"Recover");}
         }

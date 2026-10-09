@@ -25,6 +25,7 @@ namespace JueMingR.TerrariaHost.Combat
             var motion=NpcPredictionSource.ReadPlayer(player);var environment=new PredictionEnvironment{WorldWidth=Main.maxTilesX,WorldHeight=Main.maxTilesY,GravityWorldSurface=Main.worldSurface,Remix=Main.remixWorld};
             var lengths=new float[children.Count];for(int i=0;i<lengths.Length;i++)lengths[i]=children[i].Shot.localAI[1];
             var fees=new HostAttackResources.FeeClock(player,parent);
+            bool scannedRay=false;Vector2 scannedOrigin=default(Vector2),scannedUnit=default(Vector2);float scannedLength=0;
             for(int step=0;step<24 && age+step+1<timeline.Count;step++)
             {
                 // The player's movement is already complete at action sampling;
@@ -61,7 +62,14 @@ namespace JueMingR.TerrariaHost.Combat
                     // trace subtracts two tiles on obstruction; this is a safe
                     // lower bound, not a claim to reproduce every slope scan.
                     Vector2 scan=parent.type==633 && phase>=180?parentCenter:center;
-                    float scanned=Length(scan,unit,terrain);lengths[i]=MathHelper.Lerp(lengths[i],scanned,parent.type==633?.75f:.5f);
+                    // Full-charge prism children share the exact scan ray,
+                    // despite separate visible lateral positions and smoothed
+                    // lengths. Reuse only exact origin/direction in this one
+                    // immutable solve; changing rays or the next prepare scan
+                    // afresh. Each child's native length smoothing stays independent.
+                    if(!scannedRay || scan!=scannedOrigin || unit!=scannedUnit)
+                    {scannedLength=Length(scan,unit,terrain);scannedOrigin=scan;scannedUnit=unit;scannedRay=true;}
+                    lengths[i]=MathHelper.Lerp(lengths[i],scannedLength,parent.type==633?.75f:.5f);
                     if(!receives[i].Allows(step+1))continue;
                     var contact=AttackIntercept.LineContact(timeline,nativeAge,aim.X,aim.Y,center.X,center.Y,center.X+unit.X*lengths[i],center.Y+unit.Y*lengths[i],22*scale);
                     if(contact!=null){receipt=child;return contact;}

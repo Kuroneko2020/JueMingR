@@ -25,17 +25,40 @@ namespace JueMingR.TerrariaHost.Combat
         private readonly PredictionTerrain terrain=new PredictionTerrain();
         private readonly HostSwingAttack swing=new HostSwingAttack();
         private readonly HostCadenceAim cadence;
+        private readonly HostAttackCandidates candidates=new HostAttackCandidates();
+        private AttackContact presentation;private uint presentationStep;private bool presentationOrdinary;
         private int preferred=4,expansion;
         private Item demandWeapon;private NpcIdentity demandTarget;
         internal bool Failed {get;private set;}
         internal AttackContact ExpectedImpact {get{return Valid(false)?(Main.GameUpdateCount==prepared?current:next):Control.ExpectedImpact;}}
+        internal void BindPresentation(AttackContact result)
+        {presentation=result;presentationStep=Main.GameUpdateCount;presentationOrdinary=ReferenceEquals(result,current) || ReferenceEquals(result,next);if(!presentationOrdinary)Control.BindPresentation(result);}
+        // Capture already performed full dependency checks during Prepare.
+        // Draw reads that same-frame lease and known identity/consumption fields
+        // only. Arbitrary unobserved world changes wait for the next preparation;
+        // native consumers still revalidate terrain/qualification before borrowing.
+        internal bool PresentationCurrent(AttackContact result)
+        {
+            var player=combat.Player;
+            if(result==null || !ReferenceEquals(presentation,result) || presentationStep!=Main.GameUpdateCount || Failed || !observation.Options.Aim || !observation.Settings.CanRun || player==null || !combat.Admitted(player) || !observation.Selection.HasTarget || !result.Timeline.Identity.Equals(observation.Selection.Target) || !CombatSelection.Valid(observation.Selection.Target,observation.Session) || !ReferenceEquals(result.Timeline,observation.Prediction.Cache.Read(1)))return false;
+            if(!presentationOrdinary)return Control.PresentationCurrent(result);
+            return (combat.Left || player.controlUseItem || player.channel || combat.Use.Active) && session==observation.Session && player.selectedItem==slot && ReferenceEquals(player.HeldItem,weapon) && weapon.type==type && weapon.prefix==prefix &&
+                ReferenceEquals(result,Main.GameUpdateCount==prepared?current:next) && HostAttackWindow.NextAction(combat,player,weapon) && (ammo==null?HostSwingAttack.Handles(weapon):ammo.MembersMatch(player,weapon)) &&
+                Vector2.DistanceSquared(player.RotatedRelativePoint(player.MountedCenter),Main.GameUpdateCount==prepared?origin:nextOrigin)<=4 && environmentState.Current && (environment==null || environment.Unchanged);
+        }
         internal HostAttackAim(HostCombat combat,HostCombatObservation observation)
         {
             this.combat=combat;this.observation=observation;Control=new HostAttackControl(combat,observation);
             cadence=new HostCadenceAim(combat,observation);combat.Aim.Provider=cadence.Read;
             combat.Facing.TargetProvider=SharedFacing;combat.Facing.SharedTargetRequired=()=>Permission;
             observation.Selection.CandidateAllowed=CandidateSuitable;
+            observation.Selection.BeginCandidates=BeginCandidates;
+            observation.Selection.CandidatePriority=CandidatePriority;
         }
+        private void BeginCandidates()
+        {try{candidates.Begin(combat.Player,Permission && Eligible(combat.Player.HeldItem));}catch(Exception error){FailLocal(error);}}
+        private int CandidatePriority(NPC npc)
+        {if(!Permission)return 0;try{return candidates.Priority(npc);}catch(Exception error){FailLocal(error);return 0;}}
         private bool CandidateSuitable(NPC npc)
         {
             if(!Permission)return true;var player=combat.Player;var item=player.HeldItem;float range;
@@ -81,7 +104,7 @@ namespace JueMingR.TerrariaHost.Combat
             }
             return NpcPredictionCache.Horizon;
         }
-        internal void Clear(){weapon=null;ammo=null;current=next=null;environment=null;obstacles=null;cadence.Clear();Control.Clear();}
+        internal void Clear(){presentation=null;weapon=null;ammo=null;current=next=null;environment=null;obstacles=null;cadence.Clear();Control.Clear();}
         internal void Reset(){Clear();swing.Clear();Control.Reset();Failed=false;}
         internal void ObserveSwing(Player player,Item item,Rectangle frame,float offset)
         {

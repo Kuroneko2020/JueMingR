@@ -19,6 +19,8 @@ namespace JueMingR.TerrariaHost.Combat
         internal bool HasTarget {get;private set;}
         internal bool ClearLine {get;private set;}
         internal Func<NPC,bool> CandidateAllowed {get;set;}
+        internal Action BeginCandidates {get;set;}
+        internal Func<NPC,int> CandidatePriority {get;set;}
         internal CombatSelection(NativeNpcObservation npcs){this.npcs=npcs;}
 #if DEBUG
         internal int Candidates {get;private set;}
@@ -64,7 +66,8 @@ namespace JueMingR.TerrariaHost.Combat
             Vector2 center=options.MouseCenter?RealMouse:player.Center;
             bool canSelect=select && (!options.MouseCenter || HasMouse);
             float radius=options.MouseCenter?options.Radius*16:PlayerRadius(player.Center);
-            float best=float.MaxValue;bool bestClear=false;int bestSlot=int.MaxValue;
+            float best=float.MaxValue;bool bestClear=false;int bestSlot=int.MaxValue,bestPriority=int.MinValue;
+            if(canSelect)BeginCandidates?.Invoke();
             for(int i=0;i<npcs.Count;i++)
             {
                 var n=npcs.Active(i);if(n==null)continue;
@@ -77,6 +80,7 @@ namespace JueMingR.TerrariaHost.Combat
                 float dx=center.X-MathHelper.Clamp(center.X,box.Left,box.Right),dy=center.Y-MathHelper.Clamp(center.Y,box.Top,box.Bottom),distance=dx*dx+dy*dy;
                 if(distance>radius*radius)continue;
                 if(CandidateAllowed!=null && !CandidateAllowed(n))continue;
+                int priority=CandidatePriority==null?0:CandidatePriority(n);
                 bool clear=false;
                 if(options.ClearLine)
                 {
@@ -88,9 +92,10 @@ namespace JueMingR.TerrariaHost.Combat
                     clear=Collision.CanHitLine(player.position,player.width,player.height,n.position,n.width,n.height);
                 }
                 var identity=Identity(n,session);
-                bool preferred=!HasTarget || options.ClearLine && clear && !bestClear || (!options.ClearLine || clear==bestClear) &&
-                    (distance<best || distance==best && (identity.Equals(prior) || !Target.Equals(prior) && i<bestSlot));
-                if(preferred){HasTarget=true;Target=identity;best=distance;bestClear=clear;bestSlot=i;}
+                bool preferred=!HasTarget || priority>bestPriority || priority==bestPriority &&
+                    (options.ClearLine && clear && !bestClear || (!options.ClearLine || clear==bestClear) &&
+                    (distance<best || distance==best && (identity.Equals(prior) || !Target.Equals(prior) && i<bestSlot)));
+                if(preferred){HasTarget=true;Target=identity;best=distance;bestClear=clear;bestSlot=i;bestPriority=priority;}
             }
             ClearLine=bestClear;
         }

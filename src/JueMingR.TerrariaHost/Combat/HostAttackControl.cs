@@ -37,6 +37,7 @@ namespace JueMingR.TerrariaHost.Combat
         private NpcTrajectory preparedTimeline;private HostAttackPhase preparedPhase;
         private Source opening;private AttackAmmoSnapshot openingAmmo;private Vector2 openingPoint;private uint openingStep;private bool openingUsable;
         private HostYoyoNavigation openingNavigation;
+        private Controlled presentation;
         internal HostAttackControl(HostCombat combat,HostCombatObservation observation){this.combat=combat;this.observation=observation;}
         private bool Allowed(Source source)
         {return !combat.Attack.Failed && observation.Settings.CanRun && observation.Options.Aim && combat.Admitted(combat.Player) && ReferenceEquals(source.Player,combat.Player) && source.Session==observation.Session && source.Selection==combat.Tools.SelectionIntent && source.Slot==combat.Player.selectedItem && ReferenceEquals(combat.Player.HeldItem,source.Weapon) && source.Weapon.type==source.Type && source.Weapon.prefix==source.Prefix;}
@@ -81,7 +82,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(HostYoyoNavigation.Handles(shot) && shot.ai[0]<0)return;
             shots[(int)shot.key]=new Controlled{Shot=shot,Key=(int)shot.key,Type=shot.type,Source=owner.Source,BirthOrdinal=++birthOrdinal,Born=Main.GameUpdateCount,BornNext=Main.ProjectileUpdateLoopIndex>=0 && shot.whoAmI<=Main.ProjectileUpdateLoopIndex,Navigation=HostYoyoNavigation.Handles(shot)?new HostYoyoNavigation():null};
         }
-        internal void Clear(){preparedTimeline=null;opening=null;openingNavigation=null;openingUsable=false;foreach(var entry in shots.Values){entry.Contact=entry.NextKillContact=null;entry.HasPoint=false;entry.ContactChild=null;entry.Obstacles=null;}}
+        internal void Clear(){presentation=null;preparedTimeline=null;opening=null;openingNavigation=null;openingUsable=false;foreach(var entry in shots.Values){entry.Contact=entry.NextKillContact=null;entry.HasPoint=false;entry.ContactChild=null;entry.Obstacles=null;}}
         internal void Reset(){Clear();shots.Clear();preparedTimeline=null;opening=null;birthOrdinal=0;}
         internal void Prepare(NpcTrajectory timeline,HostAttackPhase phase)
         {
@@ -193,6 +194,19 @@ namespace JueMingR.TerrariaHost.Combat
                 }
                 return null;
             }
+        }
+        internal void BindPresentation(AttackContact result)
+        {presentation=null;if(result!=null)foreach(var entry in shots.Values)if(ReferenceEquals(result,entry.Type==444?entry.NextKillContact:entry.Contact)){presentation=entry;break;}}
+        internal bool PresentationCurrent(AttackContact result)
+        {
+            // The entry reference was bound once at Capture. No registry lookup,
+            // projectile pool, terrain or candidate-set scan is allowed in Draw.
+            var entry=presentation;
+            if(entry==null || !environmentState.Current || !Valid(entry) || entry.Prepared!=Main.GameUpdateCount || !ReferenceEquals(result,entry.Type==444?entry.NextKillContact:entry.Contact) || !entry.Target.Equals(observation.Selection.Target) || entry.Ammo!=null && !entry.Ammo.MembersMatch(combat.Player,combat.Player.HeldItem))return false;
+            if(HostGuidedAttack.Handles(entry.Type) && (!combat.Player.channel || entry.Shot.ai[0]<0 || combat.Player.HeldItem.shoot!=entry.Type))return false;
+            if(HostHeldAttack.Handles(entry.Type) && !HostFlailAttack.Handles(entry.Type) && !combat.Player.channel)return false;
+            if(entry.Navigation!=null && (!combat.Player.channel || entry.Shot.ai[0]<0 || !entry.Navigation.PresentationCurrent(combat.Player)))return false;
+            return entry.ContactChild==null || entry.ContactChild.Valid(entry.Shot);
         }
         internal CombatCursorScope BeginAI(Projectile shot)
         {Vector2 point;return TryPoint(shot,out point)?CombatCursorScope.Begin(point):null;}

@@ -117,6 +117,11 @@ namespace NativeWorldTextProbe
                 Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-combat-costs-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
                 NativeQuickItemChecks.Run(context=>NativeCombatCostChecks.Run(context,output),processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_COST_CANDIDATE"));return 0;
             }
+            if(scope=="CombatAttackCosts")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-attack-costs-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
+                NativeQuickItemChecks.Run(context=>{NativeCombatAimChecks.Initialize();NativeCombatAttackCostChecks.Run(context);},processing:true,shortFeedback:true);return 0;
+            }
             if(scope=="CombatObservationCpu")
             {
                 Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-combat-observation-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
@@ -139,6 +144,16 @@ namespace NativeWorldTextProbe
             {
                 Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-integration-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
                 NativeQuickItemChecks.Run(context=>{NativeCombatAimChecks.Initialize();NativeCombatIntegrationChecks.Run(context);},processing:true,shortFeedback:true);return 0;
+            }
+            if(scope=="CombatNavigationCpu")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-navigation-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
+                NativeQuickItemChecks.Run(context=>{NativeCombatAimChecks.Initialize();NativeCombatYoyoNavigationChecks.RunIsolated(context);},processing:true,shortFeedback:true);return 0;
+            }
+            if(scope=="CombatAimUi" || scope=="CombatAimUiReload")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);
+                NativeQuickItemChecks.Run(context=>{if(scope=="CombatAimUiReload")NativeCombatAimUiChecks.Reload(context);else using(var graphics=new ProbeGraphics(content)){NativeCombatAimChecks.Initialize();NativeCombatAimUiChecks.Run(context,graphics,output);}},processing:true,shortFeedback:true);return 0;
             }
             if(scope=="CombatImpactVisual")
             {
