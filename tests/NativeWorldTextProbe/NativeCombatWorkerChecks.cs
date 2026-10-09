@@ -66,7 +66,14 @@ namespace NativeWorldTextProbe
             }
             if(productionOnly || menuOnly)
             {
-                Terraria.Program.SavePath=Path.Combine(output,"isolated-user");
+                // Formal scopes can revisit the same output directory. Fresh
+                // user preferences are part of the initial OFF premise; only
+                // authenticated prediction materials may cross executions.
+                // Keep this root for the whole Run (menu/toggle lifecycle).
+                // A short unique segment also leaves room for the worker's
+                // authenticated hash filenames under .NET Framework MAX_PATH.
+                Terraria.Program.SavePath=Path.Combine(output,"u-"+Guid.NewGuid().ToString("N").Substring(0,12));
+                Require(!Directory.Exists(Terraria.Program.SavePath),"Fresh user directory must not reuse existing preferences.");
                 string cached=Path.Combine(Terraria.Program.SavePath,"composition/JueMingRData/cache/npc-prediction");Directory.CreateDirectory(cached);
                 // Repeat measurements may reuse exact authenticated prepared
                 // materials. Product still selects its normal gameDirectory

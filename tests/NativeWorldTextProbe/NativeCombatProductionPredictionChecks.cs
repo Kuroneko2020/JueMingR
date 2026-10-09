@@ -50,8 +50,10 @@ namespace NativeWorldTextProbe
             var samples=new List<double>();var prepares=new List<double>();var draws=new List<double>();
             try
             {
+                Console.WriteLine("OFF ENTRY before user="+Terraria.Program.SavePath+" loaded="+((ObservationSettings)Get(host,"Settings")).Loaded+" path="+((ObservationOptions)Get(host,"Options")).Path+" worker="+(native==null?"rolling":GetOptional(native,"Worker")?.GetType().Name??"null")+" requests="+(native==null?0:Get(native,"Requests")));
                 NativeCombatObservationChecks.Save(host,new ObservationOptions());
                 for(int i=0;i<60;i++){Call(context,"UpdateRuntime");Call(context,"UpdateShell");}
+                Console.WriteLine("OFF ENTRY after loaded="+((ObservationSettings)Get(host,"Settings")).Loaded+" path="+((ObservationOptions)Get(host,"Options")).Path+" worker="+(native==null?"rolling":GetOptional(native,"Worker")?.GetType().Name??"null")+" requests="+(native==null?0:Get(native,"Requests")));
                 Require(rolling || GetOptional(native,"Worker")==null && (long)Get(native,"Requests")==0,"OFF entry never starts or samples helper");
                 using(var graphics=rolling && Environment.GetEnvironmentVariable("JUEMINGR_ROLLING_CPU_ONLY")=="1" || continuousSeconds>0 && !rolling && Environment.GetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT")!="rolling-baseline"?null:new ProbeGraphics(content))
                 {
