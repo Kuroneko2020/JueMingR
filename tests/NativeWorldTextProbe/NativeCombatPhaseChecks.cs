@@ -96,7 +96,7 @@ namespace NativeWorldTextProbe
             finally{Terraria.Testing.DebugOptions.Shared_RandomizeProjectileSlots=random;for(int i=0;i<active.Length;i++)Main.projectile[i].active=active[i];}
             Console.WriteLine("PASS full/random slot unknown and known deterministic phase boundary");
         }
-        private static void ProjectilePhase()
+        internal static void ProjectilePhase()
         {
             var receiver=Main.instance;var oldSpelunker=receiver.SpelunkerProjectileHelper;var oldChum=receiver.ChumBucketProjectileHelper;
             receiver.SpelunkerProjectileHelper=new Terraria.GameContent.SpelunkerProjectileHelper();receiver.ChumBucketProjectileHelper=new Terraria.GameContent.ChumBucketProjectileHelper();

@@ -1,4 +1,4 @@
-# One maintained definition supplies both selection and evidence projection.
+﻿# One maintained definition supplies both selection and evidence projection.
 # Unknown/shared inputs stay conservative; compile identity is separate.
 function Get-WorkloadLeafChecks {
     $leaves = @{
@@ -17,12 +17,14 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCombatAmmoChecks.cs'=@('native-CombatAimCpu')
         'tests/NativeWorldTextProbe/NativeCombatSkyChecks.cs'=@('native-CombatAimCpu')
         'tests/NativeWorldTextProbe/NativeCombatScatterChecks.cs'=@('native-CombatAimCpu')
+        'tests/NativeWorldTextProbe/NativeCombatHeldSequenceChecks.cs'=@('native-CombatControlCpu','native-CombatAimCpu')
         'tests/NativeWorldTextProbe/NativeCombatControlChecks.cs'=@('native-CombatControlCpu','native-CombatAimCpu')
         'tests/NativeWorldTextProbe/NativeCombatBeamChecks.cs'=@('native-CombatControlCpu','native-CombatAimCpu')
+        'tests/NativeWorldTextProbe/NativeCombatYoyoNavigationChecks.cs'=@('native-CombatControlCpu','native-CombatAimCpu')
         'tests/NativeWorldTextProbe/NativeCombatYoyoChecks.cs'=@('native-CombatControlCpu','native-CombatAimCpu')
         'tests/NativeWorldTextProbe/NativeCombatReceiveChecks.cs'=@('native-CombatControlCpu','native-CombatAimCpu')
         'tests/NativeWorldTextProbe/NativeCombatMeleeChecks.cs'=@('native-CombatMechanicsCpu','native-CombatAimCpu')
-        'tests/NativeWorldTextProbe/NativeCombatPhaseChecks.cs'=@('native-CombatMechanicsCpu','native-CombatAimCpu')
+        'tests/NativeWorldTextProbe/NativeCombatPhaseChecks.cs'=@('native-CombatMechanicsCpu','native-CombatAimCpu','native-CombatControlCpu')
         'tests/NativeWorldTextProbe/NativeCombatSwingChecks.cs'=@('native-CombatMechanicsCpu','native-CombatAimCpu')
         'tests/NativeWorldTextProbe/NativeCombatWhipChecks.cs'=@('native-CombatMechanicsCpu','native-CombatAimCpu')
         'tests/NativeWorldTextProbe/NativeCombatReturnChecks.cs'=@('native-CombatMechanicsCpu','native-CombatAimCpu')

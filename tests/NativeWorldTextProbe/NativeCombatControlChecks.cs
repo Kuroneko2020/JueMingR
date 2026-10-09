@@ -46,6 +46,7 @@ namespace NativeWorldTextProbe
             }
             Bubble(context,combat,host,attack,tools,input);
             Held(context,combat,host,attack,tools,input);
+            NativeCombatHeldSequenceChecks.Run(context);
             NativeCombatBeamChecks.Run(context);
             NativeCombatObservationChecks.Save(host,new ObservationOptions());
         }

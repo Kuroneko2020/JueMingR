@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Reflection;
 using HarmonyLib;
@@ -11,13 +11,16 @@ namespace NativeWorldTextProbe
 {
     internal static class NativeCombatYoyoChecks
     {
+        private static NPC watchedTarget;private static string watchedChild;private static long childFirst=-1;
+        private static void Strike(NPC __instance,int __result){int slot=Main.ProjectileUpdateLoopIndex;if(__result>0 && ReferenceEquals(__instance,watchedTarget) && slot>=0 && Main.projectile[slot].key.ToString()==watchedChild && childFirst<0)childFirst=Main.GameUpdateCount;}
         internal static void Run(object context)
         {
             // Existing isolated achievement outlet: native Shoot/AI/Damage
             // remain intact; this CPU component has no achievement service.
             var audit=new Harmony("JueMingR.Tests.YoyoAimAchievement");var method=typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod("HandleSpecialEvent",BindingFlags.Static|BindingFlags.Public);
             audit.Patch(method,prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
-            try{RunCore(context);}finally{audit.Unpatch(method,HarmonyPatchType.All,audit.Id);}
+            var strike=AccessTools.Method(typeof(NPC),"StrikeNPC",new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)});audit.Patch(strike,postfix:new HarmonyMethod(typeof(NativeCombatYoyoChecks),nameof(Strike)));
+            try{RunCore(context);}finally{watchedTarget=null;watchedChild=null;audit.Unpatch(strike,HarmonyPatchType.All,audit.Id);audit.Unpatch(method,HarmonyPatchType.All,audit.Id);}
         }
         private static void RunCore(object context)
         {
@@ -44,7 +47,37 @@ namespace NativeWorldTextProbe
             Console.WriteLine("PASS yoyo natural input/contact and magic-string release");
             Route(context,false);Route(context,true);Route(context,false,false);
             Blocked(context,false);Blocked(context,true);
-            Lifetime(context,3278);Lifetime(context,3389);LargeEdge(context);
+            GlovePhase(context,0);GlovePhase(context,5);
+            Lifetime(context,3278);Lifetime(context,3389);LargeEdge(context);NativeCombatYoyoNavigationChecks.Run(context);
+        }
+        private static void GlovePhase(object context,int parentSlot)
+        {
+            var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var attack=Get(combat,"Attack");var input=Get(context,"Input");
+            NativeCombatObservationChecks.Save(host,new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,3278,0,0);p.position=new Vector2(700,646);p.ResetEffects();p.channel=p.controlUseItem=p.yoyoGlove=true;p.counterWeight=0;Main.screenPosition=new Vector2(600,400);
+            for(int i=0;i<parentSlot;i++)Require(Projectile.NewProjectile(new Terraria.DataStructures.EntitySource_DebugCommand(),new Vector2(300,300),Vector2.Zero,1,0,0,0)==i,"native filler reserves parent slot");
+            var n=Main.npc[2];n.SetDefaults(3);n.whoAmI=2;n.active=true;n.position=new Vector2(800,646);n.velocity=n.netOffset=Vector2.Zero;n.aiStyle=-1;n.noGravity=true;n.life=n.lifeMax=10000;n.target=0;n.knockBackResist=0;Array.Clear(n.immune,0,n.immune.Length);Array.Clear(n.buffType,0,n.buffType.Length);Array.Clear(n.buffTime,0,n.buffTime.Length);n.shimmerTransparency=0;
+            NativeQuickItemChecks.BeginWorldStep();NativeToolExecutionChecks.Sample(context,input,new Vector2(650,450),true);Call(combat,"Sample");n.UpdateNPC(2);NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,false,true));NativeCombatAimChecks.Prepare(host,attack,n,0,true);
+            typeof(Player).GetMethod("ItemCheck_Shoot",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),true});var parent=Main.projectile[parentSlot];Require(parent.type==541,"native yoyo parent in reserved slot");for(int i=0;i<parentSlot;i++)Main.projectile[i].Kill();parent.Center=new Vector2(799,666);parent.velocity=new Vector2(10,0);NativeCombatAimChecks.Prepare(host,attack,n,0,true);
+            var rng=typeof(Main).GetField("_rngs",BindingFlags.Static|BindingFlags.NonPublic);object old=rng.GetValue(null);rng.SetValue(null,new System.Collections.Generic.Dictionary<string,Terraria.Utilities.UnifiedRandom>{{"UpdateProjectiles",new Terraria.Utilities.UnifiedRandom(702)}});
+            try
+            {
+                int life=n.life;NativeCombatPhaseChecks.ProjectilePhase();Require(n.life<life,"original parent Damage naturally triggers glove birth");var child=Main.projectile.Single(q=>q.active && q.type==541 && !ReferenceEquals(q,parent));var control=Get(attack,"Control");var entries=(System.Collections.IDictionary)Get(control,"shots");var entry=entries[(int)child.key];bool later=child.whoAmI>parentSlot;
+                Require(entry!=null && (bool)Get(entry,"BornNext")==!later,"causal newborn phase preserves passed versus later slot");Require((child.localAI[0]>0)==later,"only later-slot second ball runs AI in its birth phase");
+                var nav=Get(entry,"Navigation");var secondary=nav.GetType().GetMethod("Secondary",BindingFlags.Static|BindingFlags.NonPublic);Require((bool)secondary.Invoke(null,new object[]{child})==later && (bool)secondary.Invoke(null,new object[]{parent})==!later,"native low-slot order decides both current roles, not ai0 birth tag");
+                Vector2 parentEnd=parent.Center;var plan=(AttackContact)GetOptional(entry,"Contact");Console.WriteLine("YOYO natural glove phase: parent="+parentSlot+" child="+child.whoAmI+" bornNext="+Get(entry,"BornNext")+" clock="+child.localAI[0]+" contact="+plan?.Tick+" sample="+plan?.Timeline.SampleTick+" nativeStep="+Main.GameUpdateCount);
+                Require(parentEnd.X>799,"newborn preparation did not rewind/re-advance the parent's natural AI/movement");Require(plan!=null,"natural newborn has a legal finite body contact in this open fixture");long expected=plan.Timeline.SampleTick+plan.Tick;watchedTarget=n;watchedChild=child.key.ToString();childFirst=-1;
+                for(int tick=1;tick<=35 && childFirst<0;tick++)
+                {NativeQuickItemChecks.BeginWorldStep();NativeToolExecutionChecks.Sample(context,input,new Vector2(650,450),true);Call(combat,"Sample");n.UpdateNPC(2);NativeCombatAimChecks.Prepare(host,attack,n,0,true);NativeCombatPhaseChecks.ProjectilePhase();if(tick==1 && !later)Require(child.localAI[0]>0,"passed child begins at next original projectile phase");}
+                Console.WriteLine("YOYO natural glove child Damage: key="+watchedChild+" expected="+expected+" actual="+childFirst+" later="+later+" center="+child.Center+" velocity="+child.velocity);Require(childFirst==expected,"early/late newborn first real StrikeNPC uses the same absolute contact tick");watchedTarget=null;watchedChild=null;
+                // A different live same-owner ball owns native group recall.
+                // Freeze only this new lifetime premise; keep the real births,
+                // source references, body sizes and control parameters.
+                child.Center=p.Center;child.velocity=new Vector2(4,0);child.ai[0]=1;child.localAI[0]=0;Array.Clear(child.localNPCImmunity,0,child.localNPCImmunity.Length);Array.Clear(n.immune,0,n.immune.Length);
+                parent.ai[0]=1;parent.localAI[0]=Terraria.ID.ProjectileID.Sets.YoyosLifeTimeMultiplier[parent.type]*60*((1+p.meleeSpeed)/2)-.5f;
+                NativeCombatAimChecks.Prepare(host,attack,n,0,true);var latePlan=(AttackContact)GetOptional(entries[(int)child.key],"Contact");NativeCombatPhaseChecks.ProjectilePhase();
+                Console.WriteLine("YOYO associated native recall: parent="+parentSlot+" childContact="+latePlan?.Tick+" ownClock="+child.localAI[0]+" parentState="+parent.ai[0]+" childState="+child.ai[0]);Require(parent.ai[0]<0 && child.ai[0]<0,"other original ball expiry recalls the whole native owner group");Require(latePlan==null,"a healthy ball cannot promise future Damage past the other known native group lifetime");
+            }
+            finally{rng.SetValue(null,old);}
         }
         private static void Lifetime(object context,int weapon)
         {

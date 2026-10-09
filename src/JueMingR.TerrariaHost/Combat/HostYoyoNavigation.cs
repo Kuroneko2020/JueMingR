@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using JueMingR.Features.Combat;
 using JueMingR.Platform.Combat;
@@ -16,8 +16,15 @@ namespace JueMingR.TerrariaHost.Combat
         private readonly PredictionTerrain terrain=new PredictionTerrain();
         private readonly List<Vector2> path=new List<Vector2>();
         private Vector2 playerAnchor,targetAnchor,progressAnchor;
+        private PredictionPlayerMotion preparedPlayer;
+        private float preparedMeleeSpeed;private bool preparedString,preparedUsable;
         private uint progressStep,retryStep;
         internal int Searches {get;private set;}
+        // This navigation owns terrain/player dependencies separate from the
+        // controller's launch/beam terrain. Consumption only validates them;
+        // it must not turn Draw or an AI callback into another route search.
+        internal bool Current(Player player)
+        {return preparedUsable && terrain.Unchanged && preparedMeleeSpeed==player.meleeSpeed && preparedString==player.yoyoString && preparedPlayer.SameSample(NpcPredictionSource.ReadPlayer(player));}
 #if DEBUG
         internal string ReplayStop {get;private set;}
         internal int ReplayStep {get;private set;}
@@ -28,6 +35,16 @@ namespace JueMingR.TerrariaHost.Combat
         internal static bool Secondary(Projectile shot)
         {for(int i=0;i<shot.whoAmI;i++){var other=Main.projectile[i];if(other.active && other.owner==shot.owner && other.type==shot.type && other.ai[0]>=-1)return true;}return false;}
         internal static int Remaining(Player player,Projectile shot,bool secondary)
+        {
+            int safe=OwnRemaining(player,shot,secondary);
+            // Any non-detached same-owner AI99 ball can trigger native recall
+            // of the whole owner group, including a ball not registered here.
+            // Read that existing group once per preparation, not per replay step.
+            for(int slot=0;slot<Main.maxProjectiles && safe>0;slot++)
+            {var other=Main.projectile[slot];if(other!=null && other.active && !ReferenceEquals(other,shot) && other.owner==shot.owner && Handles(other) && other.ai[0]>=-1)safe=Math.Min(safe,OwnRemaining(player,other,Secondary(other)));}
+            return safe;
+        }
+        private static int OwnRemaining(Player player,Projectile shot,bool secondary)
         {
             float lifetime=ProjectileID.Sets.YoyosLifeTimeMultiplier[shot.type];if(lifetime==-1)return 120;
             if(player.yoyoString && lifetime>0)lifetime*=1.5f;
@@ -48,15 +65,15 @@ namespace JueMingR.TerrariaHost.Combat
             if(player.yoyoString)range=range*1.25f+30;
             float multiplier=(1+player.meleeSpeed*3)/4;range/=multiplier;speed/=multiplier;
         }
-        internal static bool OpeningPoint(Player player,Item item,NpcTrajectory timeline,out Vector2 point)
+        internal static bool OpeningPoint(Player player,Item item,NpcTrajectory timeline,out Vector2 point,out HostYoyoNavigation navigation)
         {
-            var target=timeline[0].ProjectileReceiveBounds;Vector2 goal;Projectile sample;point=Vector2.Zero;
+            navigation=new HostYoyoNavigation();var target=timeline[0].ProjectileReceiveBounds;Vector2 goal;Projectile sample;point=Vector2.Zero;
             if(!ContentSamples.ProjectilesByType.TryGetValue(item.shoot,out sample))return false;
-            float range,speed;Parameters(player,item.shoot,false,out range,out speed);var navigation=new HostYoyoNavigation();navigation.terrain.Reset();
+            float range,speed;Parameters(player,item.shoot,false,out range,out speed);navigation.terrain.Reset();
             // The real launch must face the first gap, otherwise its native
             // initial 16px velocity can hit the wall before steering can turn.
             // This opening point carries no Contact or damage guarantee.
-            if(Goal(target,player.Center,range,out goal) && navigation.Find(player.RotatedRelativePoint(player.MountedCenter),goal,player.Center,range,sample.width,sample.height)){point=navigation.path[0];return true;}
+            if(Goal(target,player.Center,range,out goal) && navigation.Find(player.RotatedRelativePoint(player.MountedCenter),goal,player.Center,range,sample.width,sample.height)){point=navigation.path[0];navigation.preparedPlayer=NpcPredictionSource.ReadPlayer(player);navigation.preparedMeleeSpeed=player.meleeSpeed;navigation.preparedString=player.yoyoString;navigation.preparedUsable=true;return true;}
             return false;
         }
         private static bool Goal(MotionRect box,Vector2 player,float range,out Vector2 point)
@@ -71,9 +88,9 @@ namespace JueMingR.TerrariaHost.Combat
         }
         internal AttackContact Prepare(Player player,Projectile shot,NpcTrajectory timeline,HostAttackClock clock,out Vector2 point,out bool usable)
         {
-            int age=clock.Age;point=Vector2.Zero;usable=false;if(!player.channel || player.CCed || shot.ai[0]<0)return null;
+            preparedUsable=false;int age=clock.Age;point=Vector2.Zero;usable=false;if(!player.channel || player.CCed || shot.ai[0]<0)return null;
             bool secondary=Secondary(shot);float range,speed;Parameters(player,shot,secondary,out range,out speed);
-            if(Remaining(player,shot,secondary)==0){path.Clear();return null;}
+            int remaining=Remaining(player,shot,secondary);if(remaining==0){path.Clear();return null;}
             if(range<=1 || speed<=0 || Vector2.Distance(shot.Center,player.Center)>range*1.3f)return null;
             var bounds=timeline[Math.Min(timeline.Count-1,age+Math.Max(1,(int)(Vector2.Distance(shot.Center,new Vector2(timeline[age].Bounds.CenterX,timeline[age].Bounds.CenterY))/speed)))].ProjectileReceiveBounds;
             Vector2 goal;if(!Goal(bounds,player.Center,range,out goal))return null;
@@ -90,8 +107,8 @@ namespace JueMingR.TerrariaHost.Combat
             // cannot make its corner. Rejection restores the physical cursor.
             float dead=5+speed/2+(secondary?20:0);
             while(path.Count>1 && Vector2.Distance(shot.Center,path[0])<=dead)path.RemoveAt(0);
-            var contact=Replay(player,shot,timeline,clock,secondary,range,speed,out point);
-            usable=contact!=null;
+            var contact=Replay(player,shot,timeline,clock,secondary,range,speed,remaining,out point,out usable);
+            if(usable){preparedPlayer=NpcPredictionSource.ReadPlayer(player);preparedMeleeSpeed=player.meleeSpeed;preparedString=player.yoyoString;preparedUsable=true;}
             if(!usable){path.Clear();retryStep=Main.GameUpdateCount+5;}
             return contact;
         }
@@ -110,9 +127,14 @@ namespace JueMingR.TerrariaHost.Combat
             for(int at=0;at<nodes.Count && at<512;at++)
             {
                 if(Clear(nodes[at],goal,width,height))
-                {path.Add(goal);for(int i=at;i>0;i=previous[i])path.Add(nodes[i]);path.Reverse();return true;}
-                for(int dx=-1;dx<=1;dx++)for(int dy=-1;dy<=1;dy++)
+                {path.Add(goal);for(int i=at;i>0;i=previous[i])path.Add(nodes[i]);path.Reverse();Compress(start,width,height);return true;}
+                // Equal-depth routes prefer progress toward the goal. The old
+                // fixed -1-first order chose a backwards launch for a forward
+                // opening before an equally short forward entrance was tried.
+                int sx=goal.X>=nodes[at].X?1:-1,sy=goal.Y>=nodes[at].Y?1:-1;
+                for(int ix=0;ix<3;ix++)for(int iy=0;iy<3;iy++)
                 {
+                    int dx=ix==0?sx:ix==1?0:-sx,dy=iy==0?0:iy==1?sy:-sy;
                     if(dx==0 && dy==0)continue;int x=xs[at]+dx,y=ys[at]+dy;long key=((long)x<<32)|(uint)y;
                     if(seen.Contains(key) || seen.Count>=1024)continue;seen.Add(key);var next=start+new Vector2(x*16,y*16);
                     if(Vector2.Distance(next,player)>range-1 || !Clear(nodes[at],next,width,height))continue;
@@ -121,14 +143,23 @@ namespace JueMingR.TerrariaHost.Combat
             }
             return false;
         }
-        private AttackContact Replay(Player player,Projectile shot,NpcTrajectory timeline,HostAttackClock clock,bool secondary,float range,float speed,out Vector2 input)
+        private void Compress(Vector2 start,int width,int height)
+        {
+            // BFS's first grid vertex may point backwards even when a later
+            // entrance is visible. Borrow the furthest whole-ball-clear vertex
+            // on each segment, then still reject any motor/inertia collision.
+            var compressed=new List<Vector2>();int at=0;
+            while(at<path.Count){int next=path.Count-1;while(next>at && !Clear(start,path[next],width,height))next--;compressed.Add(path[next]);start=path[next];at=next+1;}
+            path.Clear();path.AddRange(compressed);
+        }
+        private AttackContact Replay(Player player,Projectile shot,NpcTrajectory timeline,HostAttackClock clock,bool secondary,float range,float speed,int remaining,out Vector2 input,out bool usable)
         {
 #if DEBUG
             ReplayStop="NoContact";ReplayStep=0;
 #endif
-            int age=clock.Age,at=0;float dead=5+speed/2+(secondary?20:0);Vector2 center=shot.Center,velocity=shot.velocity;input=path[0];var receive=HostAttackReceive.Capture(player,shot,timeline.Identity.Slot,clock.BeforeNpc,clock.NextWorld);
+            usable=false;int age=clock.Age,at=0;float dead=5+speed/2+(secondary?20:0);Vector2 center=shot.Center,velocity=shot.velocity;input=path[0];var receive=HostAttackReceive.Capture(player,shot,timeline.Identity.Slot,clock.BeforeNpc,clock.NextWorld);
             var playerMotion=NpcPredictionSource.ReadPlayer(player);var environment=new PredictionEnvironment{WorldWidth=Main.maxTilesX,WorldHeight=Main.maxTilesY,GravityWorldSurface=Main.worldSurface,Remix=Main.remixWorld};
-            for(int step=0;step<Math.Min(Remaining(player,shot,secondary),timeline.Count-age-1);step++)
+            for(int step=0;step<Math.Min(remaining,timeline.Count-age-1);step++)
             {
 #if DEBUG
                 ReplayStep=step;
@@ -155,12 +186,17 @@ namespace JueMingR.TerrariaHost.Combat
                     ReplayStop="BallTerrain";
 #endif
                     return null;}
+                // A verified short motor prefix can guide this natural AI
+                // without claiming final arrival. A later uncertain corner
+                // removes Contact, not that bounded input capability; actual
+                // progress/terrain changes still revise or retire the route.
+                if(step>=2)usable=true;
                 var contact=receive.Allows(step+1)?AttackIntercept.BodyContact(timeline,clock.FirstTick+step,0,input.X,input.Y,center.X,center.Y,shot.width,shot.height,AttackConfidence.Conditional):null;
                 if(contact!=null){
 #if DEBUG
                     ReplayStop="Contact";
 #endif
-                    return contact;}
+                    usable=true;return contact;}
             }
             return null;
         }

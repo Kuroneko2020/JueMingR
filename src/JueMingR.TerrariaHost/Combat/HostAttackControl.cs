@@ -36,6 +36,7 @@ namespace JueMingR.TerrariaHost.Combat
         private ulong birthOrdinal;
         private NpcTrajectory preparedTimeline;private HostAttackPhase preparedPhase;
         private Source opening;private AttackAmmoSnapshot openingAmmo;private Vector2 openingPoint;private uint openingStep;private bool openingUsable;
+        private HostYoyoNavigation openingNavigation;
         internal HostAttackControl(HostCombat combat,HostCombatObservation observation){this.combat=combat;this.observation=observation;}
         private bool Allowed(Source source)
         {return !combat.Attack.Failed && observation.Settings.CanRun && observation.Options.Aim && combat.Admitted(combat.Player) && ReferenceEquals(source.Player,combat.Player) && source.Session==observation.Session && source.Selection==combat.Tools.SelectionIntent && source.Slot==combat.Player.selectedItem && ReferenceEquals(combat.Player.HeldItem,source.Weapon) && source.Weapon.type==source.Type && source.Weapon.prefix==source.Prefix;}
@@ -80,7 +81,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(HostYoyoNavigation.Handles(shot) && shot.ai[0]<0)return;
             shots[(int)shot.key]=new Controlled{Shot=shot,Key=(int)shot.key,Type=shot.type,Source=owner.Source,BirthOrdinal=++birthOrdinal,Born=Main.GameUpdateCount,BornNext=Main.ProjectileUpdateLoopIndex>=0 && shot.whoAmI<=Main.ProjectileUpdateLoopIndex,Navigation=HostYoyoNavigation.Handles(shot)?new HostYoyoNavigation():null};
         }
-        internal void Clear(){opening=null;openingUsable=false;foreach(var entry in shots.Values){entry.Contact=entry.NextKillContact=null;entry.HasPoint=false;entry.ContactChild=null;entry.Obstacles=null;}}
+        internal void Clear(){opening=null;openingNavigation=null;openingUsable=false;foreach(var entry in shots.Values){entry.Contact=entry.NextKillContact=null;entry.HasPoint=false;entry.ContactChild=null;entry.Obstacles=null;}}
         internal void Reset(){Clear();shots.Clear();preparedTimeline=null;opening=null;birthOrdinal=0;}
         internal void Prepare(NpcTrajectory timeline,HostAttackPhase phase)
         {
@@ -90,7 +91,7 @@ namespace JueMingR.TerrariaHost.Combat
             {
                 opening=new Source(combat,observation,combat.Player.HeldItem);openingAmmo=AttackAmmoSnapshot.Capture(combat.Player,opening.Weapon);openingStep=Main.GameUpdateCount;
                 if(openingAmmo!=null)
-                {if(HostYoyoNavigation.Weapon(opening.Weapon))openingUsable=HostYoyoNavigation.OpeningPoint(combat.Player,opening.Weapon,timeline,out openingPoint);else if(HostWhipAttack.Weapon(opening.Weapon))openingUsable=HostWhipAttack.TryPoint(combat.Player,null,timeline,new HostAttackClock(timeline,phase),terrain,out openingPoint);else{openingPoint=HostHeldAttack.OpeningPoint(combat.Player,opening.Weapon,openingAmmo,timeline);openingUsable=true;}}
+                {if(HostYoyoNavigation.Weapon(opening.Weapon))openingUsable=HostYoyoNavigation.OpeningPoint(combat.Player,opening.Weapon,timeline,out openingPoint,out openingNavigation);else if(HostWhipAttack.Weapon(opening.Weapon))openingUsable=HostWhipAttack.TryPoint(combat.Player,null,timeline,new HostAttackClock(timeline,phase),terrain,out openingPoint);else{openingPoint=HostHeldAttack.OpeningPoint(combat.Player,opening.Weapon,openingAmmo,timeline);openingUsable=true;}}
             }
             foreach(var pair in shots)
             {
@@ -159,7 +160,7 @@ namespace JueMingR.TerrariaHost.Combat
         private bool Passage(float x,float y,float nx,float ny,float width,float height){return terrain.ProjectilePassage(x,y,nx,ny,(int)width,(int)height);}
         internal CombatCursorScope BeginOpening(Player player,Item item)
         {
-            if(!environmentState.Current || !terrain.Unchanged || !openingUsable || opening==null || !combat.Attack.Permission || !ReferenceEquals(player,opening.Player) || !ReferenceEquals(item,opening.Weapon) || !Allowed(opening) || openingStep!=Main.GameUpdateCount || openingAmmo==null || !openingAmmo.IdentityMatches(player,item) || !ReferenceEquals(preparedTimeline,observation.Prediction.Cache.Read(1)) || !preparedTimeline.Identity.Equals(observation.Selection.Target))return null;
+            if(!environmentState.Current || !terrain.Unchanged || !openingUsable || opening==null || openingNavigation!=null && !openingNavigation.Current(player) || !combat.Attack.Permission || !ReferenceEquals(player,opening.Player) || !ReferenceEquals(item,opening.Weapon) || !Allowed(opening) || openingStep!=Main.GameUpdateCount || openingAmmo==null || !openingAmmo.IdentityMatches(player,item) || !ReferenceEquals(preparedTimeline,observation.Prediction.Cache.Read(1)) || !preparedTimeline.Identity.Equals(observation.Selection.Target))return null;
             return CombatCursorScope.Begin(openingPoint);
         }
         private static bool TryChildLaterSlot(Projectile parent,out bool later)
@@ -186,7 +187,7 @@ namespace JueMingR.TerrariaHost.Combat
                     if(!Valid(entry) || entry.Obstacles!=null && !entry.Obstacles.Unchanged || entry.Prepared!=Main.GameUpdateCount || result==null || !entry.Target.Equals(observation.Selection.Target) || !ReferenceEquals(result.Timeline,observation.Prediction.Cache.Read(1)))continue;
                     if(HostGuidedAttack.Handles(entry.Type) && (!combat.Player.channel || entry.Shot.ai[0]<0 || combat.Player.HeldItem.shoot!=entry.Type))continue;
                     if(HostHeldAttack.Handles(entry.Type) && !HostFlailAttack.Handles(entry.Type) && !combat.Player.channel)continue;
-                    if(entry.Navigation!=null && (!combat.Player.channel || entry.Shot.ai[0]<0))continue;
+                    if(entry.Navigation!=null && (!combat.Player.channel || entry.Shot.ai[0]<0 || !entry.Navigation.Current(combat.Player))){entry.Contact=null;entry.HasPoint=false;continue;}
                     if(entry.ContactChild!=null && !entry.ContactChild.Valid(entry.Shot))continue;
                     return result;
                 }
@@ -210,7 +211,7 @@ namespace JueMingR.TerrariaHost.Combat
                 return CombatCursorScope.Begin(entry.Point);
             }
             if(entry.Navigation!=null)
-            {if(!entry.HasPoint || !combat.Player.channel || shot.ai[0]<0){entry.Contact=null;return null;}return CombatCursorScope.Begin(entry.Point);}
+            {if(!entry.HasPoint || !combat.Player.channel || shot.ai[0]<0 || !entry.Navigation.Current(combat.Player)){entry.Contact=null;entry.HasPoint=false;return null;}return CombatCursorScope.Begin(entry.Point);}
             if(!HostGuidedAttack.Handles(entry.Type) || shot.ai[0]<0 || !combat.Player.channel || combat.Player.HeldItem.shoot!=entry.Type){entry.Contact=null;return null;}
             return CombatCursorScope.Begin(new Microsoft.Xna.Framework.Vector2(entry.Contact.AimX,entry.Contact.AimY));
         }
