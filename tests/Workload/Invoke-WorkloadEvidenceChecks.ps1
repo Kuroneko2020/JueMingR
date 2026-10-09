@@ -154,6 +154,39 @@ try {
     }
     Remove-UnusedWorkloadArtifacts $pointerRoot @() -Collect -RetainedRecords @()
     Assert-Evidence ([IO.Directory]::Exists($retainedArchive) -and -not [IO.Directory]::Exists($unusedArchive)) 'actual current-applicability pointer to qualification to original cache retains archive and allows independent unused sample'
+    foreach($edgeName in @('applicabilityRecord','batchPath')) {
+        $edgeRoot=Join-Path $fixture ('declared-'+$edgeName)
+        $edgeBase=Join-Path $edgeRoot 'artifacts/build/evidence-artifacts'
+        $keep=Join-Path $edgeBase ('C'*64);$unused=Join-Path $edgeBase ('D'*64)
+        $child=Join-Path $edgeRoot 'child.json';$parent=Join-Path $edgeRoot 'parent.json'
+        $digestName=if($edgeName -ceq 'batchPath'){'batchSha256'}else{'applicabilitySha256'}
+        $childValue=[ordered]@{outputs=@([ordered]@{path=(Join-Path $keep '0-owned.bin');length=6})}
+        foreach($bad in @('replaced-json','null','empty','number','malformed','second-edge')) {
+            foreach($dir in @($keep,$unused)){[IO.Directory]::CreateDirectory($dir)|Out-Null;[IO.File]::WriteAllText((Join-Path $dir '0-owned.bin'),'sample')}
+            Write-WorkloadJson $child $childValue
+            $declared=[ordered]@{};$declared[$edgeName]=$child;$declared[$digestName]=(Get-FileHash $child).Hash
+            if($bad -ceq 'replaced-json'){Write-WorkloadJson $child ([ordered]@{outputs=@()})}
+            elseif($bad -ceq 'null'){$declared[$digestName]=$null}
+            elseif($bad -ceq 'empty'){$declared[$digestName]=''}
+            elseif($bad -ceq 'number'){$declared[$digestName]=42}
+            elseif($bad -ceq 'malformed'){$declared[$digestName]='not-a-sha'}
+            if($bad -ceq 'second-edge') {
+                $invalid=[ordered]@{};$invalid[$edgeName]=$child;$invalid[$digestName]=('0'*64)
+                Write-WorkloadJson $parent ([ordered]@{edges=@($declared,$invalid)})
+            } else {Write-WorkloadJson $parent $declared}
+            $blocked=$false;try{Remove-UnusedWorkloadArtifacts $edgeRoot @() -Collect -RetainedRecords @($parent)}catch{$blocked=$true}
+            Assert-Evidence ($blocked -and [IO.Directory]::Exists($keep) -and [IO.Directory]::Exists($unused)) ($edgeName+' declared '+$bad+' refuses all deletion')
+        }
+        Write-WorkloadJson $child $childValue
+        $declared=[ordered]@{};$declared[$edgeName]=$child;$declared[$digestName]=(Get-FileHash $child).Hash
+        Write-WorkloadJson $parent $declared
+        Remove-UnusedWorkloadArtifacts $edgeRoot @() -Collect -RetainedRecords @($parent)
+        Assert-Evidence ([IO.Directory]::Exists($keep) -and -not [IO.Directory]::Exists($unused)) ($edgeName+' valid declaration retains child archive and collects independent sample')
+        # Missing digest is a genuine old-format contract, unlike declared null.
+        $declared.Remove($digestName);Write-WorkloadJson $parent $declared
+        Remove-UnusedWorkloadArtifacts $edgeRoot @() -Collect -RetainedRecords @($parent)
+        Assert-Evidence ([IO.Directory]::Exists($keep)) ($edgeName+' absent old-format digest remains legal')
+    }
     $readPath=Join-Path $fixture 'read-window.json';Write-WorkloadJson $readPath ([ordered]@{value=1})
     Start-WorkloadReadWindow
     try {
@@ -476,6 +509,116 @@ throw 'Incorrectly returned from a failed process.'
         Assert-Evidence (-not (Test-WorkloadDelivery $testRoot $delivery)) 'Release refuses missing or changed finite record identity'
     } $fixture $sourceLock $locked $legacyCheck $legacy $appPath $application
     Write-WorkloadJson $appPath $application
+    # A real compiler option changes the executable's observable conclusion,
+    # while receipt/cache/applicability and Release consumption stay real.
+    & {
+        $recipeRoot=Join-Path $fixture 'behavior-recipe';[IO.Directory]::CreateDirectory($recipeRoot)|Out-Null
+        $recipePaths=@('scripts/build.ps1','scripts/workload/Workload.Evidence.ps1','scripts/test-workload-regressions.ps1','scripts/test-world-object-text.ps1')
+        foreach($relative in $recipePaths){$target=Join-Path $recipeRoot $relative;[IO.Directory]::CreateDirectory((Split-Path -Parent $target))|Out-Null;[IO.File]::Copy((Join-Path $root $relative),$target)}
+        $project=Join-Path $recipeRoot 'Tiny.csproj';$tinySource=Join-Path $recipeRoot 'Tiny.cs'
+        [IO.File]::WriteAllText($project,'<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net472</TargetFramework><EnableDefaultCompileItems>false</EnableDefaultCompileItems><AutomaticallyUseReferenceAssemblyPackages>false</AutomaticallyUseReferenceAssemblyPackages></PropertyGroup><ItemGroup><Compile Include="Tiny.cs" /></ItemGroup></Project>')
+        [IO.File]::WriteAllText($tinySource,"using System; class Tiny { static void Main() {`n#if BEHAVIOR_CHANGED`nConsole.WriteLine(`"CHANGED`");`n#else`nConsole.WriteLine(`"BASE`");`n#endif`n} }")
+        $fixtureProject=Join-Path $recipeRoot 'tests/Tiny';[IO.Directory]::CreateDirectory($fixtureProject)|Out-Null
+        [IO.File]::Copy($project,(Join-Path $fixtureProject 'Tiny.csproj'));[IO.File]::Copy($tinySource,(Join-Path $fixtureProject 'Tiny.cs'))
+        $differentProject=Join-Path $recipeRoot 'tests/DifferentFixture';[IO.Directory]::CreateDirectory($differentProject)|Out-Null
+        [IO.File]::WriteAllText((Join-Path $differentProject 'DifferentFixture.csproj'),[IO.File]::ReadAllText($project).Replace('<OutputType>','<AssemblyName>Tiny</AssemblyName><DefineConstants>BEHAVIOR_CHANGED</DefineConstants><OutputType>'))
+        [IO.File]::Copy($tinySource,(Join-Path $differentProject 'Tiny.cs'))
+        [IO.File]::WriteAllText((Join-Path $recipeRoot '.gitignore'),"artifacts/`nobj/`nbin/`nlegacy.json`napplicability.json`n")
+        & git -C $recipeRoot init --quiet
+        & git -C $recipeRoot -c core.autocrlf=false add scripts tests Tiny.cs Tiny.csproj .gitignore
+        & git -C $recipeRoot -c user.name=WorkloadFixture -c user.email=fixture@example.invalid commit --quiet -m 'disposable original recipe'
+        if($LASTEXITCODE -ne 0){throw 'Disposable recipe history could not be recorded.'}
+        $recipeExe=Join-Path $recipeRoot 'artifacts/build/Debug/checks/tiny/Tiny.exe'
+        function Invoke-TinyRecipe {
+            # Evaluate the actual production parameter owner, then let MSBuild
+            # consume that vector against this small isolated project.
+            $tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $recipeRoot 'scripts/build.ps1'),[ref]$tokens,[ref]$errors)
+            $owner=@($ast.FindAll({param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left.Extent.Text -ieq '$buildArguments'},$true))
+            if($errors.Count -or $owner.Count -lt 1){throw 'Tiny recipe parameter owner is ambiguous.'}
+            $solutionPath=$project;$Configuration='Debug';$workRoot=Join-Path $recipeRoot 'artifacts/build/Debug/work';$referencesDirectory='unused';$harmonyReferencesDirectory='unused';$commit='fixture'
+            $extra=@($ast.FindAll({param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left.Extent.Text -ceq '$extraOption'},$true))
+            if($extra.Count -eq 1){. ([scriptblock]::Create($extra[0].Extent.Text))}
+            foreach($assignment in $owner){. ([scriptblock]::Create($assignment.Extent.Text))}
+            if($case -in @('fixture-option','fixture-project')){
+                $recipeAst=[Management.Automation.Language.Parser]::ParseFile((Join-Path $recipeRoot 'scripts/workload/Workload.Evidence.ps1'),[ref]$tokens,[ref]$errors)
+                $fixtureOwner=@($recipeAst.FindAll({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Ensure-WorkloadFixture'},$true))[0]
+                $compileCall=@($fixtureOwner.FindAll({param($node) $node -is [Management.Automation.Language.CommandAst] -and $node.GetCommandName() -ceq 'dotnet.exe'},$true))[0]
+                $Root=$recipeRoot;$Project='Tiny';$checks=$workRoot
+                foreach($assignment in $fixtureOwner.FindAll({param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left.Extent.Text -ieq '$Project'},$true)){. ([scriptblock]::Create($assignment.Extent.Text))}
+                . ([scriptblock]::Create($compileCall.Extent.Text+' -p:OutputPath="'+[IO.Path]::GetDirectoryName($recipeExe)+'\" | Out-Host'))
+            }elseif($case -ceq 'release-debug-option'){
+                $debugWork=$workRoot;$dotnetCommand=Get-Command dotnet.exe
+                $compileCall=@($ast.FindAll({param($node) $node -is [Management.Automation.Language.CommandAst] -and $node.CommandElements[0].Extent.Text -ieq '$dotnetCommand.Source' -and $node.CommandElements[1].Extent.Text -ieq 'build'},$true))[0]
+                . ([scriptblock]::Create($compileCall.Extent.Text+' -p:OutputPath="'+[IO.Path]::GetDirectoryName($recipeExe)+'\" | Out-Host'))
+            }else{& dotnet.exe @buildArguments ('-p:OutputPath='+[IO.Path]::GetDirectoryName($recipeExe)+'\') | Out-Host}
+            if($LASTEXITCODE -ne 0){throw 'Actual small recipe compilation failed.'}
+            return @(& $recipeExe)[0]
+        }
+        $case='original';Assert-Evidence ((Invoke-TinyRecipe) -ceq 'BASE') 'original real compile has the baseline behavior'
+        $originalSource=Get-WorkloadIdentity $recipeRoot
+        $oldInput=[pscustomobject]@{inputs=$originalSource.inputs;fingerprint=(Get-WorkloadHash $originalSource.inputs)}
+        $oldCheck=[pscustomobject]@{name='native-FishingCpu';executable=$recipeExe;arguments=@()}
+        $oldEntry=[pscustomobject]@{schemaVersion=2;status='PASS';name=$oldCheck.name;signature=(Get-WorkloadHash @($recipeExe));inputFingerprint=(Get-WorkloadCheckFingerprint $oldInput $oldCheck.name);allInputFingerprint=$oldInput.fingerprint;inputs=$oldInput.inputs;executionId=[Guid]::NewGuid().ToString('N');sourceCommit=$originalSource.commit;sourceFingerprint=$originalSource.fingerprint;detectionCommit=$originalSource.commit;milliseconds=1;executedUtc=[DateTime]::UtcNow.ToString('o');outputs=@(Save-WorkloadArtifacts $recipeRoot @(Get-WorkloadEvidenceOutputs $recipeRoot ([pscustomobject]@{outputs=@()}) $recipeExe))}
+        $originalBuild=[IO.File]::ReadAllText((Join-Path $recipeRoot 'scripts/build.ps1'))
+        $originalEvidence=[IO.File]::ReadAllText((Join-Path $recipeRoot 'scripts/workload/Workload.Evidence.ps1'))
+        foreach($unsupported in @("`$BuildArguments[0]='build'","`$BuildArguments.SetValue('build',0)","Set-Variable -Name BuildArguments -Value @('build')")){
+            $rejected=$false
+            try{$null=Get-WorkloadBehaviorRecipeProjection 'scripts/build.ps1' $originalBuild.Replace('& $dotnetCommand.Source @buildArguments',($unsupported+"`n& `$dotnetCommand.Source @buildArguments"))}catch{$rejected=$true}
+            Assert-Evidence $rejected 'finite owner refuses index/member/indirect mutation instead of claiming equivalence'
+        }
+        $extraCompile=$originalBuild+"`n& `$dotnetCommand.Source build `$solutionPath`n"
+        $rejected=$false;try{$null=Get-WorkloadBehaviorRecipeProjection 'scripts/build.ps1' $extraCompile}catch{$rejected=$true}
+        Assert-Evidence $rejected 'unregistered additional compile cannot claim equivalence'
+        foreach($case in @('output-only','release-debug-option','case-append','fixture-project','compiler-option','indirect-option','fixture-option','execution-scope')) {
+            $candidateBuild=$originalBuild
+            if($case -ceq 'output-only'){$candidateBuild+="`nWrite-Host 'unrelated tool report wording'`n"}
+            if($case -ceq 'compiler-option'){$candidateBuild=$candidateBuild.Replace("'-p:Platform=x86',","'-p:Platform=x86', '-p:DefineConstants=BEHAVIOR_CHANGED',")}
+            if($case -ceq 'release-debug-option'){$candidateBuild=$candidateBuild.Replace('-p:Platform=x86 "-p:JueMingRBuildRoot=$debugWork"','-p:Platform=x86 -p:DefineConstants=BEHAVIOR_CHANGED "-p:JueMingRBuildRoot=$debugWork"')}
+            if($case -ceq 'case-append'){$candidateBuild=$candidateBuild.Replace('& $dotnetCommand.Source @buildArguments',"`$BuildArguments += '-p:DefineConstants=BEHAVIOR_CHANGED'`n& `$dotnetCommand.Source @buildArguments")}
+            if($case -ceq 'indirect-option'){$candidateBuild=$candidateBuild.Replace('$buildArguments = @(',"`$extraOption='-p:DefineConstants=BEHAVIOR_CHANGED'`n`$buildArguments = @(").Replace("'-p:Platform=x86',","'-p:Platform=x86', `$extraOption,")}
+            [IO.File]::WriteAllText((Join-Path $recipeRoot 'scripts/build.ps1'),$candidateBuild,(New-Object Text.UTF8Encoding($false)))
+            $candidateEvidence=if($case -ceq 'fixture-option'){$originalEvidence.Replace(' --configuration Debug --nologo -p:Platform=x86',' --configuration Debug --nologo -p:Platform=x86 -p:DefineConstants=BEHAVIOR_CHANGED')}elseif($case -ceq 'fixture-project'){$originalEvidence.Replace('param([string] $Root,[string] $Project,$InputIdentity)',"param([string] `$Root,[string] `$Project,`$InputIdentity)`n    `$Project='DifferentFixture'")}else{$originalEvidence}
+            [IO.File]::WriteAllText((Join-Path $recipeRoot 'scripts/workload/Workload.Evidence.ps1'),$candidateEvidence,(New-Object Text.UTF8Encoding($false)))
+            $runner=Join-Path $recipeRoot 'scripts/test-workload-regressions.ps1'
+            $originalRunner=[IO.File]::ReadAllText((Join-Path $root 'scripts/test-workload-regressions.ps1'))
+            [IO.File]::WriteAllText($runner,$(if($case -ceq 'execution-scope'){$originalRunner.Replace('Invoke-WorkloadProcess $check.name $check.executable $check.arguments -Checkpoint $attempt',"Invoke-WorkloadProcess `$check.name `$check.executable @('changed-scope') -Checkpoint `$attempt")}else{$originalRunner}),(New-Object Text.UTF8Encoding($false)))
+            $observed=Invoke-TinyRecipe
+            Assert-Evidence ($observed -ceq $(if($case -in @('release-debug-option','case-append','fixture-project','compiler-option','indirect-option','fixture-option')){'CHANGED'}else{'BASE'})) ('real compiled behavior: '+$case)
+            $currentSource=Get-WorkloadIdentity $recipeRoot
+            $inputLock=[pscustomobject]@{inputs=$currentSource.inputs;fingerprint=(Get-WorkloadHash $currentSource.inputs)}
+            $expected=$case -ceq 'output-only'
+            Assert-Evidence ((Test-WorkloadReusable $recipeRoot $oldEntry $inputLock $oldCheck.name $oldEntry.signature) -eq $expected) ('real REUSED boundary: '+$case)
+            $legacyPath=Join-Path $recipeRoot 'legacy.json';Write-WorkloadJson $legacyPath ([ordered]@{schemaVersion=2;results=@($oldEntry)})
+            $recordPath=Join-Path $recipeRoot 'applicability.json'
+            $recordValue=[ordered]@{schema='fixed-workload-applicability-1';qualificationId=[Guid]::NewGuid().ToString('N');commit=$currentSource.commit;sourceFingerprint=$currentSource.fingerprint;inputFingerprint=$inputLock.fingerprint;requiredChecks=@($oldCheck.name);additionalChecks=@();legacyCachePath=$legacyPath;legacyCacheSha256=(Get-FileHash $legacyPath).Hash;inputSets=@([ordered]@{fingerprint=$oldInput.fingerprint;differences=@(Get-WorkloadInputDifferences $oldInput.inputs $inputLock.inputs)});decisions=@([ordered]@{name=$oldCheck.name;action='QUALIFIED';originalExecutionId=$oldEntry.executionId;requiresCurrent=@();reason='controlled original recipe'})}
+            Write-WorkloadJson $recordPath $recordValue
+            $qualified=$null;try{$qualified=Read-WorkloadApplicability $recipeRoot $recordPath $currentSource $inputLock @($oldCheck.name)}catch{}
+            Assert-Evidence (($null -ne $qualified) -eq $expected) ('real QUALIFIED reader boundary: '+$case)
+            $controlled=[pscustomobject]@{record=($recordValue|ConvertTo-Json -Depth 12|ConvertFrom-Json);legacy=[pscustomobject]@{results=@($oldEntry)}}
+            $qualifiedOriginal=Get-WorkloadQualifiedOriginal $recipeRoot $controlled $oldCheck $inputLock
+            Assert-Evidence (($null -ne $qualifiedOriginal) -eq $expected) ('direct qualified consumer cannot bypass recipe admission: '+$case)
+            if($expected){Assert-Evidence ($qualifiedOriginal.executionId -ceq $oldEntry.executionId) 'unrelated output keeps original executionId'}
+            & {
+            function Get-WorkloadIdentity {param($Root) return $currentSource}
+            function Get-WorkloadEvidenceInput {param($Root,$Identity) return $inputLock}
+            function Get-WorkloadChanges {param($Root,$Baseline) return [pscustomobject]@{reason='';paths=@()}}
+            function Get-WorkloadRoute {param($Paths) return [pscustomobject]@{groups=@('controlled');unknown=@()}}
+            function Get-WorkloadPlan {param($Root,$ChecksRoot,$Architecture,$Catalog,$Groups) return $oldCheck}
+            function Test-WorkloadBuildMatch {param($Root,$Record,$Identity) return $true}
+            function Test-WorkloadOutputs {param($Root,$Outputs) return $true}
+            $catalogPath=Join-Path $recipeRoot 'artifacts/build/Debug/work/bin/JueMingR.ArchitectureTests/x86/Debug/net472/JueMingR.ArchitectureTests.exe';[IO.Directory]::CreateDirectory((Split-Path -Parent $catalogPath))|Out-Null;[IO.File]::Copy($recipeExe,$catalogPath,$true)
+            Write-WorkloadJson (Join-Path $recipeRoot 'artifacts/build/Debug/build-record.json') ([ordered]@{configuration='Debug';commit=$currentSource.commit})
+            Write-WorkloadJson (Join-Path $recipeRoot 'artifacts/build/workload-evidence.json') ([ordered]@{schemaVersion=2;results=@($oldEntry)})
+            foreach($disposition in @('REUSED','QUALIFIED')) {
+                $receipt=[ordered]@{name=$oldCheck.name;result='PASS';disposition=$disposition;executionId=$oldEntry.executionId;sourceCommit=$oldEntry.sourceCommit;qualificationId=$recordValue.qualificationId}
+                $workload=[ordered]@{status='PASS';mode='Related';requestedBaseline='';inputFingerprint=$inputLock.fingerprint;requiredChecks=@($oldCheck.name);checkCount=1;results=@($receipt)}
+                if($disposition -ceq 'QUALIFIED'){$workload.applicabilityRecord=$recordPath;$workload.applicabilitySha256=(Get-FileHash $recordPath).Hash}
+                $delivery=[ordered]@{schemaVersion=4;clean=$true;configuration='Release';sdk='10.0.203';commit=$currentSource.commit;sourceFingerprint=$currentSource.fingerprint;inputFingerprint=$inputLock.fingerprint;outputs=@();workload=$workload}
+                Assert-Evidence ((Test-WorkloadDelivery $recipeRoot ($delivery|ConvertTo-Json -Depth 12|ConvertFrom-Json)) -eq $expected) ('real Delivery '+$disposition+' boundary: '+$case)
+            }
+            }
+        }
+    }
     $latestPath=Join-Path $fixture ('artifacts/build/workload-checkpoints/latest-'+$check.name+'.json')
     Remove-Item -LiteralPath $latestPath
     Assert-Evidence (-not (Test-WorkloadReusable $fixture $qualifiedEntry $locked $check.name 'signature')) 'deleted latest cannot downgrade a new checkpoint row to legacy PASS'

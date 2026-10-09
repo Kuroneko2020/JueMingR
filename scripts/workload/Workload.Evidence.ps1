@@ -332,6 +332,7 @@ function Read-WorkloadApplicability {
         if($decision.action -ceq 'QUALIFIED'){
             $original=@($legacy.results | Where-Object {$_.name -ceq $decision.name -and $_.executionId -ceq $decision.originalExecutionId})
             if($original.Count -ne 1){throw 'Qualification original execution is missing/ambiguous.'}
+            if(-not (Test-WorkloadBehaviorRecipes $Root $original[0] $InputIdentity $decision.name)){throw ('Changed/unknown behavior recipe requires current validation: '+$decision.name)}
             $profile=if($record.PSObject.Properties['qualificationProfile']){[string]$record.qualificationProfile}else{''}
             # This task profile owns only Strategy's reviewed delta. Other
             # unchanged decisions retain ordinary projection qualification.
@@ -380,6 +381,7 @@ function Get-WorkloadQualifiedOriginal {
         $signature=Get-WorkloadHash (@($Check.executable)+@($Check.arguments))
         if (-not (Test-WorkloadEvidence $original $original.inputFingerprint $Check.name $signature) -or
             -not (Test-WorkloadOriginalProjection $original $Check.name) -or
+            -not (Test-WorkloadBehaviorRecipes $Root $original $InputIdentity $Check.name) -or
             @($Applicability.record.inputSets | Where-Object {$_.fingerprint -ceq $original.allInputFingerprint}).Count -ne 1 -or
             -not (Test-WorkloadLatestAttempt $Root $original $Check.name $signature) -or
             -not (Test-WorkloadEvidenceOutputs $Root $original.outputs)) {return $null}
@@ -575,8 +577,16 @@ function Remove-UnusedWorkloadArtifacts {
                     @('sha256','commit','sourceFingerprint','inputFingerprint'|Where-Object {$null -eq $node.PSObject.Properties[$_]}).Count -eq 0))
                 if($recordEdge){
                     if($null -eq $property.Value -or @($property.Value).Count -eq 0){throw 'Empty required retention edge.'}
-                    $digestProperty=if($property.Name -ceq 'legacyCachePath'){$node.PSObject.Properties['legacyCacheSha256']}
-                        elseif($property.Name -ceq 'path'){$node.PSObject.Properties['sha256']}else{$null}
+                    # The declaration belongs to this incoming edge, never the
+                    # deduplicated target. Absent old-format fields remain legal;
+                    # declared null/empty/bad digests must fail before deletion.
+                    $digestName=switch -CaseSensitive ($property.Name) {
+                        'legacyCachePath' {'legacyCacheSha256'}
+                        'applicabilityRecord' {'applicabilitySha256'}
+                        'batchPath' {'batchSha256'}
+                        'path' {'sha256'}
+                    }
+                    $digestProperty=if($digestName){$node.PSObject.Properties[$digestName]}else{$null}
                     $digest=$null
                     if($null -ne $digestProperty){
                         if($digestProperty.Value -isnot [string] -or $digestProperty.Value -cnotmatch '^[0-9A-Fa-f]{64}$'){throw 'Invalid required retention edge digest.'}
@@ -654,6 +664,7 @@ function Test-WorkloadReusable {
         if($null -eq $Evidence.PSObject.Properties[$key]){return $false}
     }
     if (-not (Test-WorkloadEvidence $Evidence $Evidence.inputFingerprint $Name $Signature) -or
+        -not (Test-WorkloadBehaviorRecipes $Root $Evidence $InputIdentity $Name) -or
         (Get-WorkloadCheckFingerprint $Evidence $Name) -cne (Get-WorkloadCheckFingerprint $InputIdentity $Name)) {return $false}
     if (-not (Test-WorkloadLatestAttempt $Root $Evidence $Name $Signature)) {return $false}
     if ($null -eq $Evidence.PSObject.Properties['allInputFingerprint'] -or $null -eq $Evidence.PSObject.Properties['inputs'] -or
