@@ -40,6 +40,7 @@ namespace NativeWorldTextProbe
             NativeCombatEffectChecks.Run(context);
             NativeCombatMeleeChecks.Run(context);
             NativeCombatControlChecks.Run(context);
+            NativeCombatIntegrationChecks.Run(context);
             foreach(int weaponType in new[]{ItemID.FlintlockPistol,ItemID.WoodenBow})foreach(float targetSpeed in new[]{0f,1f})
             {
                 NativeCombatObservationChecks.Save(host,new ObservationOptions());

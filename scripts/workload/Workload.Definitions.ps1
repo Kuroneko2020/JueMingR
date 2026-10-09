@@ -1,4 +1,4 @@
-﻿# One maintained definition supplies both selection and evidence projection.
+# One maintained definition supplies both selection and evidence projection.
 # Unknown/shared inputs stay conservative; compile identity is separate.
 function Get-WorkloadLeafChecks {
     $leaves = @{
@@ -10,7 +10,9 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeToolCadenceChecks.cs'=@('native-ToolsCadence')
         'tests/NativeWorldTextProbe/NativeToolsWorkloadChecks.cs'=@('native-ToolsWorkload')
         'tests/NativeWorldTextProbe/NativeYoyoAdoptionChecks.cs'=@('native-CombatCpu','native-CombatYoyoCausal')
-        'tests/NativeWorldTextProbe/NativeCombatAimChecks.cs'=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatAimChecks.cs'=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatImpactVisual','native-CombatVisual')
+        'tests/NativeWorldTextProbe/NativeCombatImpactVisualChecks.cs'=@('native-CombatImpactVisual','native-CombatVisual')
+        'tests/NativeWorldTextProbe/NativeCombatIntegrationChecks.cs'=@('native-CombatIntegrationCpu','native-CombatAimCpu')
         'tests/NativeWorldTextProbe/NativeCombatEffectChecks.cs'=@('native-CombatAimCpu','native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatProjectileEnvironmentChecks.cs'=@('native-CombatAimCpu','native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatObstacleChecks.cs'=@('native-CombatAimCpu','native-CombatEffectsCpu')
@@ -18,6 +20,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCombatSkyChecks.cs'=@('native-CombatAimCpu')
         'tests/NativeWorldTextProbe/NativeCombatScatterChecks.cs'=@('native-CombatAimCpu')
         'tests/NativeWorldTextProbe/NativeCombatHeldSequenceChecks.cs'=@('native-CombatControlCpu','native-CombatAimCpu')
+        'tests/NativeWorldTextProbe/NativeCombatAttackFailureChecks.cs'=@('native-CombatControlCpu','native-CombatAimCpu')
         'tests/NativeWorldTextProbe/NativeCombatControlChecks.cs'=@('native-CombatControlCpu','native-CombatAimCpu')
         'tests/NativeWorldTextProbe/NativeCombatBeamChecks.cs'=@('native-CombatControlCpu','native-CombatAimCpu')
         'tests/NativeWorldTextProbe/NativeCombatYoyoNavigationChecks.cs'=@('native-CombatControlCpu','native-CombatAimCpu')
@@ -57,6 +60,8 @@ function Get-WorkloadNativeScopes {
         'CombatControlCpu'=@('combat-host');
         'CombatMechanicsCpu'=@('combat-host');
         'CombatEffectsCpu'=@('combat-host');
+        'CombatImpactVisual'=@('combat-host');
+        'CombatIntegrationCpu'=@('combat-host');
         'NpcRollingSelectionNegative'=@('combat-host');
         'NpcBasicMotion'=@('combat-host');
         'NpcFoundationRules'=@('combat-host'); 'NpcFoundationContinuous'=@('combat-host'); 'NpcPlayerPolicy'=@('combat-host'); 'NpcStrategy'=@('combat-host'); 'NpcStrategyContinuous'=@('combat-host'); 'NpcEventRetirementCpu'=@('combat-host');

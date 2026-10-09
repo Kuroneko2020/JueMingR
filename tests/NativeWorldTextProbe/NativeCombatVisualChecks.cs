@@ -84,6 +84,7 @@ namespace NativeWorldTextProbe
                 void Image(string name){graphics.Image(Path.Combine(output,"combat-"+name+"-"+size[0]+"-"+size[1]+"-"+size[2]+".png"),()=>Call(shell,"DrawLayer"),Main.UIScaleMatrix,size[0],size[1]);}
             }
             World(context,graphics,output);
+            NativeCombatAimChecks.Initialize();NativeCombatImpactVisualChecks.Run(context,graphics,output);
             NativeCombatShapeVisualChecks.Run(context,graphics,output);
             Console.WriteLine("PASS G11A actual F5 rows/buttons, interval release/cancel/geometry, binding capture/save, original fonts and scroll at 100/150 percent.");
         }

@@ -26,11 +26,20 @@ namespace JueMingR.TerrariaHost.Combat
         private readonly HostSwingAttack swing=new HostSwingAttack();
         internal bool Failed {get;private set;}
         internal AttackContact ExpectedImpact {get{return Valid(false)?(Main.GameUpdateCount==prepared?current:next):Control.ExpectedImpact;}}
-        internal HostAttackAim(HostCombat combat,HostCombatObservation observation){this.combat=combat;this.observation=observation;Control=new HostAttackControl(combat,observation);}
+        internal HostAttackAim(HostCombat combat,HostCombatObservation observation)
+        {
+            this.combat=combat;this.observation=observation;Control=new HostAttackControl(combat,observation);
+            combat.Facing.TargetProvider=SharedFacing;combat.Facing.SharedTargetRequired=()=>Permission;
+        }
+        private FacingTarget SharedFacing(Player player)
+        {
+            if(!ReferenceEquals(player,combat.Player) || !Permission || !observation.Selection.HasTarget || !CombatSelection.Valid(observation.Selection.Target,observation.Session))return null;
+            var npc=Main.npc[observation.Selection.Target.Slot];return CombatSelection.Receives(npc,observation.Options.Dummy)?new FacingTarget(npc,observation.Session,true):null;
+        }
         internal bool Permission {get{return !Failed && observation.Settings.CanRun && observation.Options.Aim && combat.Player!=null && combat.Admitted(combat.Player) &&
             (combat.Left || combat.Player.controlUseItem || combat.Player.channel || combat.Use.Active || Control.Pending);}}
         internal void Demand()
-        {if(Permission && Eligible(combat.Player.HeldItem))observation.Prediction.Cache.Demand(1,1,NpcPredictionCache.Horizon);else{observation.Prediction.Cache.Release(1);Clear();}}
+        {if(Permission && Eligible(combat.Player.HeldItem) && HostAttackWindow.NextAction(combat,combat.Player,combat.Player.HeldItem))observation.Prediction.Cache.Demand(1,1,NpcPredictionCache.Horizon);else{observation.Prediction.Cache.Release(1);Clear();}}
         internal void Clear(){weapon=null;ammo=null;current=next=null;environment=null;obstacles=null;Control.Clear();}
         internal void Reset(){Clear();swing.Clear();Control.Reset();Failed=false;}
         internal void ObserveSwing(Player player,Item item,Rectangle frame,float offset)
@@ -62,7 +71,7 @@ namespace JueMingR.TerrariaHost.Combat
         {
             bool beforeNpc=phase==HostAttackPhase.BeforeNpc;Clear();if(!Permission || !observation.Selection.HasTarget)return;
             terrain.Reset();environmentState=new HostProjectileEnvironment.State(true);
-            var player=combat.Player;var item=player.HeldItem;if(!Eligible(item))return;
+            var player=combat.Player;var item=player.HeldItem;if(!Eligible(item) || !HostAttackWindow.NextAction(combat,player,item))return;
             var timeline=observation.Prediction.Cache.Read(1);if(timeline==null || !timeline.Identity.Equals(observation.Selection.Target))return;
             if(HostSwingAttack.Handles(item)){PrepareSwing(player,item,timeline,phase,false);return;}
             Control.Prepare(timeline,phase);
@@ -106,6 +115,7 @@ namespace JueMingR.TerrariaHost.Combat
                 !observation.Selection.HasTarget || !CombatSelection.Valid(observation.Selection.Target,session))return false;
             if(ammo==null?!HostSwingAttack.Handles(weapon):!ammo.IdentityMatches(player,weapon))return false;
             var result=Main.GameUpdateCount==prepared?current:next;
+            if(!checkAmmo && !HostAttackWindow.NextAction(combat,player,weapon))return false;
             if(result==null || !result.Timeline.Identity.Equals(observation.Selection.Target) || !ReferenceEquals(result.Timeline,observation.Prediction.Cache.Read(1)) ||
                 Vector2.DistanceSquared(player.RotatedRelativePoint(player.MountedCenter),Main.GameUpdateCount==prepared?origin:nextOrigin)>4)return false;
             return environmentState.Current && terrain.Unchanged && (environment==null || environment.Unchanged) && (obstacles==null || obstacles.Unchanged) && (!checkAmmo || ammo!=null && ammo.Matches(player,weapon));

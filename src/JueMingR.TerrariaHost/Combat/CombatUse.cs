@@ -33,6 +33,7 @@ namespace JueMingR.TerrariaHost.Combat
         internal int SwitchCandidateReads {get;private set;}
 #endif
         internal bool Active {get{return player!=null;}}
+        internal bool OrdinaryPress {get{return kind==0 && Identity() && FeatureEnabled && host.Left && host.Admitted(player);}}
         internal bool FeatureEnabled {get{return kind>=0 && host.IsEnabled(kind);}}
         internal bool ManagedAttackIntent(Player p){return kind==4 && ReferenceEquals(p,player) && Identity() && FeatureEnabled && host.Left && host.Admitted(p);}
         internal bool DeferSync

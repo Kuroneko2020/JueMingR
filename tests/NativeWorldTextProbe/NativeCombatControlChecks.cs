@@ -48,6 +48,7 @@ namespace NativeWorldTextProbe
             Held(context,combat,host,attack,tools,input);
             NativeCombatHeldSequenceChecks.Run(context);
             NativeCombatBeamChecks.Run(context);
+            NativeCombatAttackFailureChecks.Run(context);
             NativeCombatObservationChecks.Save(host,new ObservationOptions());
         }
         private static void Bubble(object context,object combat,object host,object attack,object tools,object input)
@@ -72,7 +73,7 @@ namespace NativeWorldTextProbe
         }
         private static void Held(object context,object combat,object host,object attack,object tools,object input)
         {
-            foreach(var row in new[]{new[]{3475,97,615},new[]{3540,40,630},new[]{3854,40,705},new[]{3541,0,633},new[]{2882,0,460},new[]{4923,0,927}})
+            foreach(var row in new[]{new[]{3475,97,615},new[]{3540,40,630},new[]{3854,40,705},new[]{3930,771,714},new[]{3541,0,633},new[]{2882,0,460},new[]{4923,0,927}})
             {
                 NativeCombatObservationChecks.Save(host,new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,tools,input,row[0],0,0);p.position=new Vector2(700,646);p.channel=p.controlUseItem=true;p.statMana=p.statManaMax2=1000;p.slowMagicUse=false;Main.screenPosition=new Vector2(600,500);p.itemAnimationMax=p.HeldItem.useAnimation;
                 if(row[1]>0){p.inventory[54].SetDefaults(row[1]);p.inventory[54].stack=999;}

@@ -53,7 +53,7 @@ namespace JueMingR.TerrariaHost.Combat
         public string Unavailable(int field)
         {
             if(selectionFailed)return "战斗目标观察暂不可用，设置已保留；可点击开启重试。";
-            if(field==6)return pathFailed || Attack?.Failed==true?"辅助瞄准暂不可用，设置已保留；可点击开启重试。":null;
+            if(field==6)return pathFailed || Attack?.Failed==true?"辅助瞄准暂不可用，设置已保留；可点击开启重试。":World.Impact.Failed?"预计命中位置显示暂不可用，辅助瞄准仍可运行；可点击开启重试显示。":null;
             if(LayerStatus==Rendering.WorldLayerStatus.Unavailable)return "世界显示入口不可用，设置已保留；需要重新进入游戏。";
             if(World.Failed && (field==0 || field==1 || field==5))return "战斗显示暂不可用，设置已保留；可点击开启重试。";
             if(field==0 && (!Hooks.Ready || collisionFailed))return "碰撞箱显示暂不可用，设置已保留；可点击开启重试。";
@@ -67,7 +67,14 @@ namespace JueMingR.TerrariaHost.Combat
         public void Set(int field,bool value)
         {
             if(!CanConfigure)return;
-            if(field==6 && value){selectionFailed=pathFailed=reportedPath=false;Array.Clear(failedTargets,0,failedTargets.Length);Attack?.Reset();}
+            if(field==6 && value)
+            {
+                bool displayOnly=Options.Aim && World.Impact.Failed && !selectionFailed && !pathFailed && Attack?.Failed!=true;
+                World.Impact.Reset();
+                // Retrying an optional red display must not revoke a healthy
+                // in-flight source capability (including a released bubble).
+                if(!displayOnly){selectionFailed=pathFailed=reportedPath=false;Array.Clear(failedTargets,0,failedTargets.Length);Attack?.Reset();}
+            }
             if(value && (field==0 || field==1 || field==5))selectionFailed=false;
             if(value && (field==0 || field==1 || field==5))World.Recover();
             bool prior=field==0?Options.Collision:field==1?Options.Path:field==2?Options.ClearLine:field==3?Options.MouseCenter:field==4?Options.Dummy:field==5?Options.Marker:Options.Aim;
