@@ -153,6 +153,17 @@ namespace JueMingR.TerrariaHost.Combat
             }
             clear=true;return true;
         }
+        internal bool MeleeLine(float x,float y,float nx,float ny)
+        {
+            // Locked CanHitLine only reads tiles/local variables. Record its
+            // finite melee rectangle including side neighbours first, so the
+            // native pure query cannot escape this preparation's terrain lease.
+            int left=Math.Max(1,(int)(Math.Min(x,nx)/16)-1),right=Math.Min(Main.maxTilesX-2,(int)(Math.Max(x,nx)/16)+1);
+            int top=Math.Max(1,(int)(Math.Min(y,ny)/16)-1),bottom=Math.Min(Main.maxTilesY-41,(int)(Math.Max(y,ny)/16)+1);
+            if(right-left>64 || bottom-top>64)return false;
+            for(int tx=left;tx<=right;tx++)for(int ty=top;ty<=bottom;ty++){Cell cell;PredictionStop stop;if(!CellAt(tx,ty,out cell,out stop))return false;}
+            return Collision.CanHitLine(new Microsoft.Xna.Framework.Vector2(x,y),0,0,new Microsoft.Xna.Framework.Vector2(nx,ny),0,0);
+        }
         public bool Move(ref NpcMotionState n,PredictionEnvironment environment,out PredictionStop stop)
         {var player=default(PredictionPlayerMotion);return Move(ref n,environment,false,false,false,false,1,ref player,out stop);}
         public bool MoveWaterWalkingPlayer(ref NpcMotionState n,PredictionEnvironment environment,bool fallThrough,bool lavaWalk,out PredictionStop stop)

@@ -44,6 +44,26 @@ namespace NativeWorldTextProbe
             Console.WriteLine("PASS yoyo natural input/contact and magic-string release");
             Route(context,false);Route(context,true);Route(context,false,false);
             Blocked(context,false);Blocked(context,true);
+            Lifetime(context,3278);Lifetime(context,3389);LargeEdge(context);
+        }
+        private static void Lifetime(object context,int weapon)
+        {
+            var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var attack=Get(combat,"Attack");var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),Get(context,"Input"),weapon,0,0);p.position=new Vector2(700,646);p.channel=p.controlUseItem=true;p.yoyoString=p.magicString=p.yoyoGlove=false;Main.screenPosition=new Vector2(600,400);
+            var n=Main.npc[2];n.SetDefaults(3);n.whoAmI=2;n.active=true;n.position=new Vector2(800,646);n.life=n.lifeMax=10000;n.target=0;Array.Clear(n.immune,0,n.immune.Length);
+            NativeToolExecutionChecks.Sample(context,Get(context,"Input"),new Vector2(650,450),true);Call(combat,"Sample");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,false,true));NativeCombatAimChecks.Prepare(host,attack,n,0);
+            typeof(Player).GetMethod("ItemCheck_Shoot",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),false});var shot=Main.projectile.Single(q=>q.active && q.type==p.HeldItem.shoot);float native=Terraria.ID.ProjectileID.Sets.YoyosLifeTimeMultiplier[shot.type];
+            shot.localAI[0]=native<0?100000:native*60*((1+p.meleeSpeed)/2)-.5f;NativeCombatAimChecks.Prepare(host,attack,n,0);
+            Require((GetOptional(attack,"ExpectedImpact")!=null)==(native<0),"yoyo contact cannot outlive known native control window: "+weapon);shot.AI();Require((shot.ai[0]>=0)==(native<0),"native finite/infinite lifetime agrees with control retirement");
+            var registry=(System.Collections.IDictionary)Get(Get(attack,"Control"),"shots");if(native>0){shot.localAI[0]=native*60*((1+p.meleeSpeed)/2)-4;var nav=Get(registry[(int)shot.key],"Navigation");var remaining=nav.GetType().GetMethod("Remaining",BindingFlags.Static|BindingFlags.NonPublic);Require((int)remaining.Invoke(null,new object[]{p,shot,false})==4 && (int)remaining.Invoke(null,new object[]{p,shot,true})==1,"second-ball random clock uses conservative four increments without RNG");}
+            Console.WriteLine("PASS native yoyo lifetime: weapon="+weapon+" infinite="+(native<0));
+        }
+        private static void LargeEdge(object context)
+        {
+            var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var attack=Get(combat,"Attack");var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),Get(context,"Input"),3278,0,0);p.position=new Vector2(700,646);p.channel=p.controlUseItem=true;Main.screenPosition=new Vector2(600,400);
+            var n=Main.npc[2];n.SetDefaults(3);n.whoAmI=2;n.active=true;n.position=new Vector2(800,646);n.width=200;n.life=n.lifeMax=10000;n.target=0;Array.Clear(n.immune,0,n.immune.Length);
+            NativeToolExecutionChecks.Sample(context,Get(context,"Input"),new Vector2(650,450),true);Call(combat,"Sample");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,false,true));NativeCombatAimChecks.Prepare(host,attack,n,0);
+            typeof(Player).GetMethod("ItemCheck_Shoot",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),false});var shot=Main.projectile.Single(q=>q.active && q.type==541);NativeCombatAimChecks.Prepare(host,attack,n,0);Require(GetOptional(attack,"ExpectedImpact")!=null,"large receive edge inside radius stays reachable when centre is outside");
+            int before=n.life;for(int i=0;i<40 && n.life==before;i++)shot.Update(shot.whoAmI);Require(n.life<before,"large receive edge plan reaches genuine native Damage");Console.WriteLine("PASS yoyo large receive edge/centre-outside radius");
         }
         private static void Blocked(object context,bool outside)
         {

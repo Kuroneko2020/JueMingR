@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using JueMingR.Features.Combat;
 using JueMingR.Platform.Combat;
 using Terraria;
+using Terraria.ID;
 using Microsoft.Xna.Framework;
 
 namespace JueMingR.TerrariaHost.Combat
@@ -37,7 +38,7 @@ namespace JueMingR.TerrariaHost.Combat
         private bool Allowed(Source source)
         {return !combat.Attack.Failed && observation.Settings.CanRun && observation.Options.Aim && combat.Admitted(combat.Player) && ReferenceEquals(source.Player,combat.Player) && source.Session==observation.Session && source.Selection==combat.Tools.SelectionIntent && source.Slot==combat.Player.selectedItem && ReferenceEquals(combat.Player.HeldItem,source.Weapon) && source.Weapon.type==source.Type && source.Weapon.prefix==source.Prefix;}
         internal bool Pending
-        {get{foreach(var entry in shots.Values)if(entry.Type==444 && Valid(entry))return true;return false;}}
+        {get{foreach(var entry in shots.Values)if((entry.Type==444 || HostFlailAttack.Handles(entry.Type)) && Valid(entry))return true;return false;}}
         private bool Valid(Controlled entry)
         {return entry.Shot.active && entry.Shot.owner==combat.Player?.whoAmI && (int)entry.Shot.key==entry.Key && entry.Shot.type==entry.Type && Allowed(entry.Source);}
         internal ShotReceipt BeginShot(Player player,Item item,CombatCursorScope cursor)
@@ -104,9 +105,9 @@ namespace JueMingR.TerrariaHost.Combat
             if(entry.Navigation!=null)entry.Contact=entry.Navigation.Prepare(combat.Player,entry.Shot,timeline,age,beforeNpc,out entry.Point,out entry.HasPoint);
             if(HostGuidedAttack.Handles(entry.Type) && combat.Player.channel && entry.Shot.ai[0]>=0 && combat.Player.HeldItem.shoot==entry.Type)
                 entry.Contact=HostGuidedAttack.Solve(combat.Player,entry.Shot,timeline,age,beforeNpc,terrain);
-            if(HostHeldAttack.Handles(entry.Type) && combat.Player.channel)
+            if(HostHeldAttack.Handles(entry.Type) && (combat.Player.channel || HostFlailAttack.Handles(entry.Type)))
             {
-                entry.Contact=HostHeldAttack.Solve(combat.Player,entry.Shot,timeline,age,beforeNpc,terrain,out entry.Point,out entry.Ammo);entry.HasPoint=true;
+                entry.Contact=HostHeldAttack.Solve(combat.Player,entry.Shot,timeline,age,beforeNpc,terrain,out entry.Point,out entry.Ammo);entry.HasPoint=!HostFlailAttack.Handles(entry.Type) || combat.Player.channel || entry.Contact!=null;
                 if(entry.Type==633 || entry.Type==460)entry.Contact=HostBeamAttack.Solve(combat.Player,entry.Shot,entry.Children,entry.Point,timeline,age,beforeNpc,terrain,out entry.ContactChild);
             }
             if(entry.Type==444)
@@ -116,14 +117,16 @@ namespace JueMingR.TerrariaHost.Combat
                     entry.ChildLaterSlot=ChildLaterSlot(entry.Shot);entry.KillOrigin=entry.Shot.Center;
                     // Kill runs after NPCs. A child in an earlier slot first
                     // updates next tick; a later slot updates in this pass.
-                    int childAge=age+(entry.ChildLaterSlot?0:1);
-                    entry.Contact=AttackIntercept.Solve(entry.KillOrigin.X,entry.KillOrigin.Y,motion,timeline,childAge,0,Passage,beforeNpc?1:0);
+                    int childAge=age+(entry.ChildLaterSlot?0:1);Projectile sample;
+                    if(!ContentSamples.ProjectilesByType.TryGetValue((int)entry.Shot.localAI[0],out sample))return;
+                    var receive=HostAttackReceive.Capture(combat.Player,sample,timeline.Identity.Slot,beforeNpc,!entry.ChildLaterSlot);
+                    entry.Contact=AttackIntercept.Solve(entry.KillOrigin.X,entry.KillOrigin.Y,motion,timeline,childAge,0,Passage,beforeNpc?1:0,receive.Allows);
                     if(entry.Shot.timeLeft<=entry.Shot.extraUpdates+1)
                     {
                         Vector2 center=entry.Shot.Center,velocity=entry.Shot.velocity;bool clear=true;
                         for(int step=0;step<entry.Shot.timeLeft;step++){var old=center;velocity*=.96f;center+=velocity;if(!Passage(old.X,old.Y,center.X,center.Y,entry.Shot.width,entry.Shot.height)){clear=false;break;}}
                         entry.NextKillOrigin=center;
-                        if(clear)entry.NextKillContact=AttackIntercept.Solve(center.X,center.Y,motion,timeline,childAge,0,Passage,1);
+                        if(clear)entry.NextKillContact=AttackIntercept.Solve(center.X,center.Y,motion,timeline,childAge,0,Passage,1,receive.Allows);
                     }
                 }
             }
@@ -156,7 +159,7 @@ namespace JueMingR.TerrariaHost.Combat
                     var result=entry.Type==444?entry.NextKillContact:entry.Contact;
                     if(!Valid(entry) || entry.Prepared!=Main.GameUpdateCount || result==null || !entry.Target.Equals(observation.Selection.Target) || !ReferenceEquals(result.Timeline,observation.Prediction.Cache.Read(1)))continue;
                     if(HostGuidedAttack.Handles(entry.Type) && (!combat.Player.channel || entry.Shot.ai[0]<0 || combat.Player.HeldItem.shoot!=entry.Type))continue;
-                    if(HostHeldAttack.Handles(entry.Type) && !combat.Player.channel)continue;
+                    if(HostHeldAttack.Handles(entry.Type) && !HostFlailAttack.Handles(entry.Type) && !combat.Player.channel)continue;
                     if(entry.Navigation!=null && (!combat.Player.channel || entry.Shot.ai[0]<0))continue;
                     if(entry.ContactChild!=null && !entry.ContactChild.Valid(entry.Shot))continue;
                     return result;

@@ -11,9 +11,10 @@ namespace JueMingR.TerrariaHost.Combat
     {
         internal static bool Handles(int type){return type==3029 || type==4381 || type==2750 || type==65 || type==3065 || type==3570;}
         internal static bool RawCursor(int type){return type==3029 || type==4381 || type==3065 || type==3570;}
-        internal static AttackContact Solve(Player player,Item item,AttackAmmoSnapshot ammo,NpcTrajectory timeline,Vector2 mounted,int age,PredictionTerrain terrain)
+        internal static AttackContact Solve(Player player,Item item,AttackAmmoSnapshot ammo,NpcTrajectory timeline,Vector2 mounted,int age,PredictionTerrain terrain,bool beforeNpc=true)
         {
             Projectile sample;if(!ContentSamples.ProjectilesByType.TryGetValue(ammo.Projectile,out sample))return null;
+            var receive=HostAttackReceive.Capture(player,sample,timeline.Identity.Slot,beforeNpc,!beforeNpc);
             AttackMotion ordinary;float gravity=0;int start=0;
             if(HostAttackModels.TryRead(ammo,out ordinary)){gravity=ordinary.Gravity;start=ordinary.GravityStart;}
             else if(item.type==4381){gravity=.1f;start=15;}
@@ -54,7 +55,7 @@ namespace JueMingR.TerrariaHost.Combat
                     else if(item.type==3570)collides|=y-h/2>gate;
                     return !collides || terrain.ProjectilePassage(x,y,nx,ny,(int)w,(int)h);
                 };
-                var contact=AttackIntercept.Replay(aim.X,aim.Y,birth.X,birth.Y,velocity.X,velocity.Y,motion,timeline,age,passage);
+                var contact=AttackIntercept.Replay(aim.X,aim.Y,birth.X,birth.Y,velocity.X,velocity.Y,motion,timeline,age,passage,receive.Allows);
                 if(contact!=null)return contact;
             }
             return null;

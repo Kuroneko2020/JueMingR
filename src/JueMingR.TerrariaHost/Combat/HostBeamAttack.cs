@@ -20,7 +20,7 @@ namespace JueMingR.TerrariaHost.Combat
         {
             receipt=null;
             if(children.Count==0 || !player.channel)return null;
-            var npc=Main.npc[timeline.Identity.Slot];int immune=npc.immune[parent.owner];
+            var receives=new HostAttackReceive[children.Count];for(int i=0;i<receives.Length;i++)receives[i]=HostAttackReceive.Capture(player,children[i].Shot,timeline.Identity.Slot,beforeNpc,!beforeNpc);
             Vector2 direction=parent.velocity.SafeNormalize(Vector2.UnitY),mounted=player.RotatedRelativePoint(player.MountedCenter),armOffset=player.GetArmPosition()-mounted;
             var motion=NpcPredictionSource.ReadPlayer(player);var environment=new PredictionEnvironment{WorldWidth=Main.maxTilesX,WorldHeight=Main.maxTilesY,GravityWorldSurface=Main.worldSurface,Remix=Main.remixWorld};
             var lengths=new float[children.Count];for(int i=0;i<lengths.Length;i++)lengths[i]=children[i].Shot.localAI[1];
@@ -61,7 +61,7 @@ namespace JueMingR.TerrariaHost.Combat
                     // lower bound, not a claim to reproduce every slope scan.
                     Vector2 scan=parent.type==633 && phase>=180?parentCenter:center;
                     float scanned=Length(scan,unit,terrain);lengths[i]=MathHelper.Lerp(lengths[i],scanned,parent.type==633?.75f:.5f);
-                    if(immune>step+1 || child.Shot.usesLocalNPCImmunity && child.Shot.localNPCImmunity[npc.whoAmI]>step+1)continue;
+                    if(!receives[i].Allows(step+1))continue;
                     var contact=AttackIntercept.LineContact(timeline,nativeAge,aim.X,aim.Y,center.X,center.Y,center.X+unit.X*lengths[i],center.Y+unit.Y*lengths[i],22*scale);
                     if(contact!=null){receipt=child;return contact;}
                 }

@@ -49,9 +49,10 @@ namespace JueMingR.TerrariaHost.Combat
             Control.Prepare(timeline,beforeNpc);
             var captured=AttackAmmoSnapshot.Capture(player,item);if(captured==null)return;
             if(HostHeldAttack.Weapon(item.type) || HostYoyoNavigation.Weapon(item))return; // Controller birth is not its later ordinary/beam damage phase.
-            AttackMotion motion;bool sky=HostSkyAttack.Handles(item.type);if(!sky && !HostAttackModels.TryRead(captured,out motion))return;
+            Projectile sample;bool melee=ContentSamples.ProjectilesByType.TryGetValue(captured.Projectile,out sample) && HostMeleeAttack.Handles(sample);
+            AttackMotion motion;bool sky=HostSkyAttack.Handles(item.type);if(!sky && !melee && !HostAttackModels.TryRead(captured,out motion))return;
             origin=player.RotatedRelativePoint(player.MountedCenter);int age=(int)((long)Main.GameUpdateCount-timeline.SampleTick)-(beforeNpc?1:0);if(age<0 || age>1)return;
-            current=Solve(player,item,captured,timeline,origin,age);
+            current=Solve(player,item,captured,timeline,origin,age,beforeNpc);
             var movement=NpcPredictionSource.ReadPlayer(player);PredictionStop stop;
             if(!beforeNpc && PlayerMotionContinuation.Advance(ref movement,new PredictionEnvironment{WorldWidth=Main.maxTilesX,WorldHeight=Main.maxTilesY,GravityWorldSurface=Main.worldSurface,Remix=Main.remixWorld},terrain,out stop))
             {
@@ -60,16 +61,19 @@ namespace JueMingR.TerrariaHost.Combat
                 // movement T+1, then projectile AI/move/damage T+1. Solve's
                 // first subupdate already reads NPC point age+1. Advancing age
                 // here as well would consume point 2 in that first phase.
-                next=Solve(player,item,captured,timeline,nextOrigin,age);
+                next=Solve(player,item,captured,timeline,nextOrigin,age,false);
             }
             weapon=item;slot=player.selectedItem;type=item.type;prefix=item.prefix;session=observation.Session;prepared=Main.GameUpdateCount;ammo=captured;
         }
-        private static bool Eligible(Item item){return item!=null && !item.IsAir && item.shoot>0 && (item.damage>0 || item.type==905) && item.pick==0 && item.axe==0 && item.hammer==0 && !item.summon && !item.sentry;}
-        private AttackContact Solve(Player player,Item item,AttackAmmoSnapshot captured,NpcTrajectory timeline,Vector2 start,int age)
+        private static bool Eligible(Item item){return item!=null && !item.IsAir && item.shoot>0 && (item.damage>0 || item.type==905) && item.pick==0 && item.axe==0 && item.hammer==0 && (!item.summon || ProjectileID.Sets.IsAWhip[item.shoot]) && !item.sentry;}
+        private AttackContact Solve(Player player,Item item,AttackAmmoSnapshot captured,NpcTrajectory timeline,Vector2 start,int age,bool beforeNpc)
         {
-            if(HostSkyAttack.Handles(item.type))return HostSkyAttack.Solve(player,item,captured,timeline,start,age,terrain);
+            if(HostSkyAttack.Handles(item.type))return HostSkyAttack.Solve(player,item,captured,timeline,start,age,terrain,beforeNpc);
+            Projectile melee;if(ContentSamples.ProjectilesByType.TryGetValue(captured.Projectile,out melee) && HostMeleeAttack.Handles(melee))return HostMeleeAttack.Solve(player,item,captured,timeline,age,beforeNpc,terrain);
             if(item.type==2624){var b=timeline[Math.Min(age+1,timeline.Count-1)].ProjectileReceiveBounds;start+=(new Vector2(b.CenterX,b.CenterY)-start).SafeNormalize(Vector2.UnitX)*40;}
-            AttackMotion motion;return HostAttackModels.TryRead(captured,out motion)?AttackIntercept.Solve(start.X,start.Y,motion,timeline,age,0,Passage):null;
+            Projectile sample;if(!ContentSamples.ProjectilesByType.TryGetValue(captured.Projectile,out sample))return null;
+            var receive=HostAttackReceive.Capture(player,sample,timeline.Identity.Slot,beforeNpc,!beforeNpc);
+            AttackMotion motion;return HostAttackModels.TryRead(captured,out motion)?AttackIntercept.Solve(start.X,start.Y,motion,timeline,age,0,Passage,1,receive.Allows):null;
         }
         private bool Passage(float x,float y,float nx,float ny,float width,float height)
         {

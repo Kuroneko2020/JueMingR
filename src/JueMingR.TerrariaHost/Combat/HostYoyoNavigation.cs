@@ -27,6 +27,18 @@ namespace JueMingR.TerrariaHost.Combat
         internal static bool Weapon(Item item){return item!=null && item.type>0 && ItemID.Sets.Yoyo[item.type];}
         internal static bool Secondary(Projectile shot)
         {for(int i=0;i<shot.whoAmI;i++){var other=Main.projectile[i];if(other.active && other.owner==shot.owner && other.type==shot.type && other.ai[0]>=-1)return true;}return false;}
+        internal static int Remaining(Player player,Projectile shot,bool secondary)
+        {
+            float lifetime=ProjectileID.Sets.YoyosLifeTimeMultiplier[shot.type];if(lifetime==-1)return 120;
+            if(player.yoyoString && lifetime>0)lifetime*=1.5f;
+            float clock=shot.localAI[0],rate=(1+player.meleeSpeed)/2;
+            if(float.IsNaN(clock) || float.IsInfinity(clock) || rate<=0)return 0;
+            // Native second-ball clock adds a random 1..3 on top of +1.
+            // Use its maximum +4 to promise only the known safe prefix;
+            // preparation never advances vanilla RNG to pick a nicer lifetime.
+            for(int i=1;i<=120;i++){clock+=secondary?4:1;if(clock/60/rate>lifetime)return i-1;}
+            return 120;
+        }
         private static void Parameters(Player player,Projectile shot,bool secondary,out float range,out float speed)
         {Parameters(player,shot.type,secondary,out range,out speed);}
         private static void Parameters(Player player,int type,bool secondary,out float range,out float speed)
@@ -38,23 +50,33 @@ namespace JueMingR.TerrariaHost.Combat
         }
         internal static bool OpeningPoint(Player player,Item item,NpcTrajectory timeline,out Vector2 point)
         {
-            var target=timeline[0].ProjectileReceiveBounds;Vector2 goal=new Vector2(target.CenterX,target.CenterY);Projectile sample;point=Vector2.Zero;
+            var target=timeline[0].ProjectileReceiveBounds;Vector2 goal;Projectile sample;point=Vector2.Zero;
             if(!ContentSamples.ProjectilesByType.TryGetValue(item.shoot,out sample))return false;
             float range,speed;Parameters(player,item.shoot,false,out range,out speed);var navigation=new HostYoyoNavigation();navigation.terrain.Reset();
             // The real launch must face the first gap, otherwise its native
             // initial 16px velocity can hit the wall before steering can turn.
             // This opening point carries no Contact or damage guarantee.
-            if(Vector2.Distance(goal,player.Center)<range-1 && navigation.Find(player.RotatedRelativePoint(player.MountedCenter),goal,player.Center,range,sample.width,sample.height)){point=navigation.path[0];return true;}
+            if(Goal(target,player.Center,range,out goal) && navigation.Find(player.RotatedRelativePoint(player.MountedCenter),goal,player.Center,range,sample.width,sample.height)){point=navigation.path[0];return true;}
             return false;
+        }
+        private static bool Goal(MotionRect box,Vector2 player,float range,out Vector2 point)
+        {
+            point=new Vector2(box.CenterX,box.CenterY);if(Vector2.Distance(point,player)<=range-1)return true;
+            // A large receive shape can have a reachable edge while its centre
+            // is outside. Choose a point strictly inside that existing shape;
+            // do not enlarge the input radius or the native damage rectangle.
+            float insetX=Math.Min(1,box.Width/4),insetY=Math.Min(1,box.Height/4);
+            point=new Vector2(MathHelper.Clamp(player.X,box.X+insetX,box.X+box.Width-insetX),MathHelper.Clamp(player.Y,box.Y+insetY,box.Y+box.Height-insetY));
+            return Vector2.Distance(point,player)<=range-1;
         }
         internal AttackContact Prepare(Player player,Projectile shot,NpcTrajectory timeline,int age,bool beforeNpc,out Vector2 point,out bool usable)
         {
             point=Vector2.Zero;usable=false;if(!player.channel || player.CCed || shot.ai[0]<0)return null;
             bool secondary=Secondary(shot);float range,speed;Parameters(player,shot,secondary,out range,out speed);
+            if(Remaining(player,shot,secondary)==0){path.Clear();return null;}
             if(range<=1 || speed<=0 || Vector2.Distance(shot.Center,player.Center)>range*1.3f)return null;
             var bounds=timeline[Math.Min(timeline.Count-1,age+Math.Max(1,(int)(Vector2.Distance(shot.Center,new Vector2(timeline[age].Bounds.CenterX,timeline[age].Bounds.CenterY))/speed)))].ProjectileReceiveBounds;
-            Vector2 goal=new Vector2(bounds.CenterX,bounds.CenterY);
-            if(Vector2.Distance(goal,player.Center)>range-1)return null;
+            Vector2 goal;if(!Goal(bounds,player.Center,range,out goal))return null;
             bool reuse=path.Count>0 && terrain.Unchanged && Vector2.DistanceSquared(playerAnchor,player.Center)<64 && Vector2.DistanceSquared(targetAnchor,goal)<144;
             if(reuse && Vector2.DistanceSquared(progressAnchor,shot.Center)>4){progressAnchor=shot.Center;progressStep=Main.GameUpdateCount;}
             if(reuse && Main.GameUpdateCount-progressStep>14){reuse=false;path.Clear();retryStep=Main.GameUpdateCount+5;}
@@ -104,9 +126,9 @@ namespace JueMingR.TerrariaHost.Combat
 #if DEBUG
             ReplayStop="NoContact";ReplayStep=0;
 #endif
-            int at=0;float dead=5+speed/2+(secondary?20:0);Vector2 center=shot.Center,velocity=shot.velocity;input=path[0];
+            int at=0;float dead=5+speed/2+(secondary?20:0);Vector2 center=shot.Center,velocity=shot.velocity;input=path[0];var receive=HostAttackReceive.Capture(player,shot,timeline.Identity.Slot,beforeNpc);
             var playerMotion=NpcPredictionSource.ReadPlayer(player);var environment=new PredictionEnvironment{WorldWidth=Main.maxTilesX,WorldHeight=Main.maxTilesY,GravityWorldSurface=Main.worldSurface,Remix=Main.remixWorld};
-            for(int step=0;step<Math.Min(120,timeline.Count-age-1);step++)
+            for(int step=0;step<Math.Min(Remaining(player,shot,secondary),timeline.Count-age-1);step++)
             {
 #if DEBUG
                 ReplayStep=step;
@@ -132,7 +154,7 @@ namespace JueMingR.TerrariaHost.Combat
                     ReplayStop="BallTerrain";
 #endif
                     return null;}
-                var contact=AttackIntercept.BodyContact(timeline,age+step+(beforeNpc?1:0),0,input.X,input.Y,center.X,center.Y,shot.width,shot.height,AttackConfidence.Conditional);
+                var contact=receive.Allows(step+1)?AttackIntercept.BodyContact(timeline,age+step+(beforeNpc?1:0),0,input.X,input.Y,center.X,center.Y,shot.width,shot.height,AttackConfidence.Conditional):null;
                 if(contact!=null){
 #if DEBUG
                     ReplayStop="Contact";

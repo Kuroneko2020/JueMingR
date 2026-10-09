@@ -14,6 +14,7 @@ namespace NativeWorldTextProbe
         internal static void Run(object context)
         {
             NativeCombatYoyoChecks.Run(context);
+            NativeCombatReceiveChecks.Run(context);
             var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var attack=Get(combat,"Attack");var tools=Get(context,"Tools");var input=Get(context,"Input");
             foreach(int type in new[]{113,218,495})
             {

@@ -10,10 +10,15 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeToolCadenceChecks.cs'=@('native-ToolsCadence')
         'tests/NativeWorldTextProbe/NativeToolsWorkloadChecks.cs'=@('native-ToolsWorkload')
         'tests/NativeWorldTextProbe/NativeYoyoAdoptionChecks.cs'=@('native-CombatCpu','native-CombatYoyoCausal')
-        'tests/NativeWorldTextProbe/NativeCombatAimChecks.cs'=@('native-CombatAimCpu')
-        'tests/NativeWorldTextProbe/NativeCombatControlChecks.cs'=@('native-CombatControlCpu')
-        'tests/NativeWorldTextProbe/NativeCombatBeamChecks.cs'=@('native-CombatControlCpu')
-        'tests/NativeWorldTextProbe/NativeCombatYoyoChecks.cs'=@('native-CombatControlCpu')
+        'tests/NativeWorldTextProbe/NativeCombatAimChecks.cs'=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatMechanicsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatAmmoChecks.cs'=@('native-CombatAimCpu')
+        'tests/NativeWorldTextProbe/NativeCombatSkyChecks.cs'=@('native-CombatAimCpu')
+        'tests/NativeWorldTextProbe/NativeCombatScatterChecks.cs'=@('native-CombatAimCpu')
+        'tests/NativeWorldTextProbe/NativeCombatControlChecks.cs'=@('native-CombatControlCpu','native-CombatAimCpu')
+        'tests/NativeWorldTextProbe/NativeCombatBeamChecks.cs'=@('native-CombatControlCpu','native-CombatAimCpu')
+        'tests/NativeWorldTextProbe/NativeCombatYoyoChecks.cs'=@('native-CombatControlCpu','native-CombatAimCpu')
+        'tests/NativeWorldTextProbe/NativeCombatReceiveChecks.cs'=@('native-CombatControlCpu','native-CombatAimCpu')
+        'tests/NativeWorldTextProbe/NativeCombatMeleeChecks.cs'=@('native-CombatMechanicsCpu','native-CombatAimCpu')
         'tests/NativeWorldTextProbe/NativeCombatFoundationChecks.cs'=@('native-NpcFoundationRules','native-NpcFoundationContinuous','native-NpcStrategyContinuous')
         'tests/NativeWorldTextProbe/NativeCombatFoundationContinuousChecks.cs'=@('native-NpcFoundationContinuous','native-NpcStrategyContinuous','native-NpcFiniteFlight')
         'tests/NativeWorldTextProbe/NativeCombatStrategyChecks.cs'=@('native-NpcStrategy','native-NpcStrategy-rollchoice')
@@ -41,6 +46,7 @@ function Get-WorkloadNativeScopes {
         'NpcRollingCpu'=@('combat-host');
         'CombatAimCpu'=@('combat-host');
         'CombatControlCpu'=@('combat-host');
+        'CombatMechanicsCpu'=@('combat-host');
         'NpcRollingSelectionNegative'=@('combat-host');
         'NpcBasicMotion'=@('combat-host');
         'NpcFoundationRules'=@('combat-host'); 'NpcFoundationContinuous'=@('combat-host'); 'NpcPlayerPolicy'=@('combat-host'); 'NpcStrategy'=@('combat-host'); 'NpcStrategyContinuous'=@('combat-host'); 'NpcEventRetirementCpu'=@('combat-host');
