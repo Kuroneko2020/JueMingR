@@ -86,7 +86,7 @@ namespace NativeWorldTextProbe
                     // This proof holds a long request across original births; the
                     // display minimum30 is covered by separate production scenes.
                     NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions(path:false,clearLine:false,mouseCenter:true,dummy:true,radius:25));
-                    cache.Demand(1,120);
+                    cache.Demand(NativeCombatObservationChecks.IndependentReader,120);
                     Require(cache.Read(0)==null && (int)Get(cache,"MinimumRequired")==120 && cache.Required==120,"Birth proof owns only the strict120 consumer.");
                     Terraria.GameInput.PlayerInput.CacheOriginalScreenDimensions();
                     Action advance=()=>
@@ -145,7 +145,7 @@ namespace NativeWorldTextProbe
                     {
                         Require(!(bool)Get(pending,"Retired") && !(bool)Get(pending,"LifecycleInvalid") && (int)Get(pending,"Impact")==0,"Original modifier birth preserves the pending lifecycle: "+mode);
                         Require(((IList)Get(pending,"History")).Count==Main.GameUpdateCount-capture+1,"Every intervening original history frame reaches Receive.");
-                        Require(accepted && cache.Read(1)!=null && cache.Read(1).SampleTick==Main.GameUpdateCount && cache.Read(1).Count==121,"Real Receive accepts modifier lineage and publishes current+120: "+mode+" reason="+Get(native,"Reason"));
+                        Require(accepted && cache.Read(NativeCombatObservationChecks.IndependentReader)!=null && cache.Read(NativeCombatObservationChecks.IndependentReader).SampleTick==Main.GameUpdateCount && cache.Read(NativeCombatObservationChecks.IndependentReader).Count==121,"Real Receive accepts modifier lineage and publishes current+120: "+mode+" reason="+Get(native,"Reason"));
                         var events=(IList)Get(Get(pending,"Impacts"),"hits");Require(events.Count>=born.Count,"All actual births have ordered proof events.");
                     }
                     else Require(!accepted && (bool)Get(pending,"Retired") && ((bool)Get(pending,"LifecycleInvalid") || (int)Get(pending,"Impact")!=0),"External or replaced modifier cannot borrow native birth authority: "+mode);
@@ -153,7 +153,7 @@ namespace NativeWorldTextProbe
                 }
                 // Native modifier bodies must still run while observation is
                 // OFF, without patch-metadata reads or a proof allocation.
-                cache.Release(1);Call(native,"ClearTarget");NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());
+                cache.Release(NativeCombatObservationChecks.IndependentReader);Call(native,"ClearTarget");NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());
                 NPC.ClearAll();Projectile.ClearAll();
                 int npc=NPC.NewNPC(NPC.GetSpawnSourceForNaturalSpawn(),1400,2400,285,Start:16,Target:0);
                 Main.npc[npc].life=Main.npc[npc].lifeMax=100000;
@@ -165,10 +165,10 @@ namespace NativeWorldTextProbe
                 for(int i=0;i<150;i++)step();
                 Require(offDungeon>0 && offIchor>=2,"Both original modifier mechanisms still execute with prediction OFF.");
                 Require(patchReads==0 && observer.GetField("hash",Flags).GetValue(null)==null && observer.GetField("factory",Flags).GetValue(null)==null,"OFF native modifier births do not inspect patches or create proof writers/factories.");
-                Require((long)Get(native,"Requests")==requests && Get(native,"pending")==null && Get(native,"acceptedRequest")==null && cache.Read(0)==null && cache.Read(1)==null && cache.Required==0,"OFF native modifier births cannot start or retain prediction.");
+                Require((long)Get(native,"Requests")==requests && Get(native,"pending")==null && Get(native,"acceptedRequest")==null && cache.Read(0)==null && cache.Read(NativeCombatObservationChecks.IndependentReader)==null && cache.Required==0,"OFF native modifier births cannot start or retain prediction.");
                 Console.WriteLine("MODIFIER-OFF dungeon="+offDungeon+" ichor-children="+offIchor+" patch-reads="+patchReads+" requests=0 writer=false factory=false");
             }
-            finally{cache.Release(1);try{trace.Dispose();}finally{hold=inject=off=false;worker=null;hooks.UnpatchAll(hooks.Id);new Harmony("JueMingR.Tests.ModifierAdversary").UnpatchAll("JueMingR.Tests.ModifierAdversary");File.WriteAllLines(Path.Combine(output,"modifier-proof.csv"),rows);File.WriteAllLines(Path.Combine(output,"modifier-births.csv"),births);}}
+            finally{cache.Release(NativeCombatObservationChecks.IndependentReader);try{trace.Dispose();}finally{hold=inject=off=false;worker=null;hooks.UnpatchAll(hooks.Id);new Harmony("JueMingR.Tests.ModifierAdversary").UnpatchAll("JueMingR.Tests.ModifierAdversary");File.WriteAllLines(Path.Combine(output,"modifier-proof.csv"),rows);File.WriteAllLines(Path.Combine(output,"modifier-births.csv"),births);}}
         }
         private static HarmonyMethod Hook(string name)=>new HarmonyMethod(typeof(NativeCombatModifierBirthChecks).GetMethod(name,Flags));
         private static object Get(object value,string name){if(value==null)return null;var field=value.GetType().GetField(name,Flags);return field!=null?field.GetValue(value):value.GetType().GetProperty(name,Flags).GetValue(value);}

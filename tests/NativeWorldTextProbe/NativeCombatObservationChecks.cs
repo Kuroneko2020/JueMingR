@@ -13,6 +13,9 @@ namespace NativeWorldTextProbe
 {
     internal static class NativeCombatObservationChecks
     {
+        // Host lifecycles own 0 (path) and 1 (aim), including OFF releases.
+        // Independent forecast fixtures use the two existing unowned slots.
+        internal const int IndependentReader=2,StrictReader=3;
         internal static void Save(object host,ObservationOptions value)
         {var settings=(ObservationSettings)Get(host,"Settings");NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return settings.Loaded;});Require(settings.Set(value),"observation preference accepted");NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return !settings.Busy;});Require(settings.CompletionSucceeded,"observation preference actually committed");}
         internal static void Run(object context)
@@ -33,16 +36,18 @@ namespace NativeWorldTextProbe
             int existing=cache.Steps;for(int i=0;i<2000;i++)Require(ReferenceEquals(cache.Read(0),result),"cached reads preserve result identity");Require(cache.Steps==existing,"reading never advances NPC simulation");
             // This bubble is already in its short terminal phase. Preserving
             // demand cannot turn its real tail into sixty future updates.
-            cache.Demand(1,1,60);cache.Demand(2,60);
-            Require(result.Stop==PredictionStop.Despawn && result.Count<=60 && ReferenceEquals(cache.Read(1),result) && cache.Read(2)==null,"before OFF the short reader accepts the terminal tail and strict60 rejects it");
+            // Production owns slots 0 (path) and 1 (aim); independent readers
+            // must survive both owners' natural OFF retirement.
+            cache.Demand(IndependentReader,1,60);cache.Demand(StrictReader,60);
+            Require(result.Stop==PredictionStop.Despawn && result.Count<=60 && ReferenceEquals(cache.Read(IndependentReader),result) && cache.Read(StrictReader)==null,"before OFF the short reader accepts the terminal tail and strict60 rejects it");
             Save(host,new ObservationOptions());
-            Require(cache.Read(0)==null && ReferenceEquals(cache.Read(1),result) && cache.Read(2)==null && cache.Required==60 && cache.MinimumRequired==1,"turning path OFF releases only its reader and preserves the same terminal result and both other demands");
-            Fresh(context,host);var remaining=cache.Read(1);
-            Require((bool)Get(selection,"HasTarget") && remaining!=null && remaining.SampleTick==(long)Main.GameUpdateCount && remaining.Stop==PredictionStop.Despawn && remaining.Count<=60 && cache.Read(2)==null,"remaining consumers still prepare a fresh truthful tail through Host without a strict60 exemption");
-            cache.Release(1);Call(host,"Poll");Fresh(context,host);
+            Require(cache.Read(0)==null && ReferenceEquals(cache.Read(IndependentReader),result) && cache.Read(StrictReader)==null && cache.Required==60 && cache.MinimumRequired==1,"turning path OFF releases only its reader and preserves the same terminal result and both other demands");
+            Fresh(context,host);var remaining=cache.Read(IndependentReader);
+            Require((bool)Get(selection,"HasTarget") && remaining!=null && remaining.SampleTick==(long)Main.GameUpdateCount && remaining.Stop==PredictionStop.Despawn && remaining.Count<=60 && cache.Read(StrictReader)==null,"remaining consumers still prepare a fresh truthful tail through Host without a strict60 exemption");
+            cache.Release(IndependentReader);Call(host,"Poll");Fresh(context,host);
             var strictTail=(NpcTrajectory)Get(cache,"result");
-            Require((bool)Get(selection,"HasTarget") && cache.Required==60 && cache.MinimumRequired==60 && strictTail!=null && strictTail.SampleTick==(long)Main.GameUpdateCount && strictTail.Count<=60 && cache.Read(2)==null,"the strict consumer keeps Host preparation and selection alive while rejecting the short result");
-            cache.Release(2);Call(host,"Poll");Require(cache.Required==0 && !(bool)Get(selection,"HasTarget") && GetOptional(cache,"result")==null,"last consumer retirement clears shared selection and result");Save(host,new ObservationOptions(path:true,radius:0));Fresh(context,host);
+            Require((bool)Get(selection,"HasTarget") && cache.Required==60 && cache.MinimumRequired==60 && strictTail!=null && strictTail.SampleTick==(long)Main.GameUpdateCount && strictTail.Count<=60 && cache.Read(StrictReader)==null,"the strict consumer keeps Host preparation and selection alive while rejecting the short result");
+            cache.Release(StrictReader);Call(host,"Poll");Require(cache.Required==0 && !(bool)Get(selection,"HasTarget") && GetOptional(cache,"result")==null,"last consumer retirement clears shared selection and result");Save(host,new ObservationOptions(path:true,radius:0));Fresh(context,host);
             var old=(NpcIdentity)Get(selection,"Target");var replacement=new NPC();replacement.SetDefaults(371);replacement.whoAmI=0;replacement.active=true;replacement.position=bubble.position;replacement.target=0;replacement.ai[3]=1;Main.npc[0]=bubble=replacement;Fresh(context,host);Require(!((NpcIdentity)Get(selection,"Target")).Equals(old),"slot object replacement retires old identity");
             bubble.dontTakeDamage=true;Fresh(context,host);Require(!(bool)Get(selection,"HasTarget") && cache.Read(0)==null,"invulnerability retires target without Draw or a boss lock");
             bubble.active=false;var dummy=Main.npc[1];dummy.SetDefaults(NPCID.TargetDummy);dummy.whoAmI=1;dummy.active=true;dummy.position=new Vector2(680,650);
