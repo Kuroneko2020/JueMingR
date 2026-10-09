@@ -141,11 +141,11 @@ namespace NativeWorldTextProbe
                 NativeQuickItemChecks.Run(context=>{using(var graphics=new ProbeGraphics(content))NativeCombatVisualChecks.Run(context,graphics,output);},processing:true,shortFeedback:true);return 0;
             }
             if(scope=="CombatYoyoCausal"){Directory.CreateDirectory(output);Environment.SetEnvironmentVariable("JUEMINGR_YOYO_EVIDENCE",output);Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-yoyo-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);Environment.SetEnvironmentVariable("JUEMINGR_YOYO_CAUSAL","1");NativeQuickItemChecks.Run(NativeCombatCadenceChecks.Run,processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;}
-            if(scope=="CombatAimCpu")
+            if(scope=="CombatAimCpu" || scope=="CombatControlCpu")
             {
                 Directory.CreateDirectory(output);
                 Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-aim-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
-                NativeQuickItemChecks.Run(NativeCombatAimChecks.Run,processing:true,shortFeedback:true);return 0;
+                NativeQuickItemChecks.Run(scope=="CombatAimCpu"?(Action<object>)NativeCombatAimChecks.Run:context=>{NativeCombatAimChecks.Initialize();NativeCombatControlChecks.Run(context);},processing:true,shortFeedback:true);return 0;
             }
             if(scope=="CombatCpu" || scope=="CombatRelease" || scope=="CombatFacingCpu" || scope=="CombatHitsCpu" || scope=="CombatReportCpu" || scope=="CombatUiCpu")
             {

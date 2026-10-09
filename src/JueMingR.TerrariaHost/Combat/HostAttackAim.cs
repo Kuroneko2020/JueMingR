@@ -11,6 +11,7 @@ namespace JueMingR.TerrariaHost.Combat
     {
         private readonly HostCombat combat;
         private readonly HostCombatObservation observation;
+        internal readonly HostAttackControl Control;
         private Item weapon;
         private int slot,type,prefix;
         private long session;
@@ -20,14 +21,14 @@ namespace JueMingR.TerrariaHost.Combat
         private AttackContact current,next;
         private readonly PredictionTerrain terrain=new PredictionTerrain();
         internal bool Failed {get;private set;}
-        internal AttackContact ExpectedImpact {get{return Valid(false)?(Main.GameUpdateCount==prepared?current:next):null;}}
-        internal HostAttackAim(HostCombat combat,HostCombatObservation observation){this.combat=combat;this.observation=observation;}
+        internal AttackContact ExpectedImpact {get{return Valid(false)?(Main.GameUpdateCount==prepared?current:next):Control.ExpectedImpact;}}
+        internal HostAttackAim(HostCombat combat,HostCombatObservation observation){this.combat=combat;this.observation=observation;Control=new HostAttackControl(combat,observation);}
         internal bool Permission {get{return !Failed && observation.Settings.CanRun && observation.Options.Aim && combat.Player!=null && combat.Admitted(combat.Player) &&
-            (combat.Left || combat.Player.controlUseItem || combat.Player.channel || combat.Use.Active);}}
+            (combat.Left || combat.Player.controlUseItem || combat.Player.channel || combat.Use.Active || Control.Pending);}}
         internal void Demand()
         {if(Permission && Eligible(combat.Player.HeldItem))observation.Prediction.Cache.Demand(1,1,NpcPredictionCache.Horizon);else{observation.Prediction.Cache.Release(1);Clear();}}
-        internal void Clear(){weapon=null;ammo=null;current=next=null;}
-        internal void Reset(){Clear();Failed=false;}
+        internal void Clear(){weapon=null;ammo=null;current=next=null;Control.Clear();}
+        internal void Reset(){Clear();Control.Reset();Failed=false;}
         internal void PrepareNatural(){observation.PrepareAction();}
         internal void Prepare()
         {PreparePhase(false);}
@@ -36,15 +37,18 @@ namespace JueMingR.TerrariaHost.Combat
         private void PreparePhase(bool beforeNpc)
         {
             try{PrepareCore(beforeNpc);}
-            catch(Exception error){Clear();if(error is OutOfMemoryException || error is AccessViolationException)throw;Failed=true;}
+            catch(Exception error){FailLocal(error);}
         }
+        internal void FailLocal(Exception error){Clear();if(error is OutOfMemoryException || error is AccessViolationException)throw error;Failed=true;}
         private void PrepareCore(bool beforeNpc)
         {
             Clear();if(!Permission || !observation.Selection.HasTarget)return;
             terrain.Reset();
             var player=combat.Player;var item=player.HeldItem;if(!Eligible(item))return;
             var timeline=observation.Prediction.Cache.Read(1);if(timeline==null || !timeline.Identity.Equals(observation.Selection.Target))return;
+            Control.Prepare(timeline,beforeNpc);
             var captured=AttackAmmoSnapshot.Capture(player,item);if(captured==null)return;
+            if(HostHeldAttack.Weapon(item.type) || HostYoyoNavigation.Weapon(item))return; // Controller birth is not its later ordinary/beam damage phase.
             AttackMotion motion;bool sky=HostSkyAttack.Handles(item.type);if(!sky && !HostAttackModels.TryRead(captured,out motion))return;
             origin=player.RotatedRelativePoint(player.MountedCenter);int age=(int)((long)Main.GameUpdateCount-timeline.SampleTick)-(beforeNpc?1:0);if(age<0 || age>1)return;
             current=Solve(player,item,captured,timeline,origin,age);
@@ -86,6 +90,7 @@ namespace JueMingR.TerrariaHost.Combat
         internal CombatCursorScope BeginShot(Player player,Item item)
         {
             if(!ReferenceEquals(player,combat.Player))return null;
+            if(HostHeldAttack.Weapon(item.type) || HostYoyoNavigation.Weapon(item))return Control.BeginOpening(player,item);
             if(!ReferenceEquals(item,weapon) || !Valid(true)){Clear();return null;}
             var result=Main.GameUpdateCount==prepared?current:next;
             // One prepared ordinary attack is a capability, not a reusable

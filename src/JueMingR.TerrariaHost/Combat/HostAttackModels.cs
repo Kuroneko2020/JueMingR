@@ -9,11 +9,13 @@ namespace JueMingR.TerrariaHost.Combat
     internal static class HostAttackModels
     {
         internal static bool TryRead(AttackAmmoSnapshot ammo,out AttackMotion motion)
+        {return TryResolved(ammo.Projectile,ammo.Speed,ammo.WeaponType,out motion);}
+        internal static bool TryResolved(int projectile,float speed,int weaponType,out AttackMotion motion)
         {
             motion=default(AttackMotion);Projectile sample;
-            if(!ContentSamples.ProjectilesByType.TryGetValue(ammo.Projectile,out sample))return false;
+            if(!ContentSamples.ProjectilesByType.TryGetValue(projectile,out sample))return false;
             float gravity=0,acceleration=1,max=0;int start=0;bool componentAcceleration=false,drag=false,snap=false;
-            switch(ammo.Projectile)
+            switch(projectile)
             {
                 case 1:case 2:case 4:case 41:gravity=.1f;start=15;break;
                 case 117:gravity=.06f;start=35;break;
@@ -27,8 +29,8 @@ namespace JueMingR.TerrariaHost.Combat
                 case 981:case 158:case 159:case 160:case 161:case 357:case 638:break;
                 default:return false;
             }
-            bool spread=ammo.WeaponType==534 || ammo.WeaponType==964 || ammo.WeaponType==4703 || ammo.WeaponType==3788 || ammo.WeaponType==2624 || ammo.WeaponType==1229;
-            motion=new AttackMotion(ammo.Speed,gravity,start,sample.extraUpdates+1,sample.width,sample.height,sample.timeLeft,
+            bool spread=weaponType==534 || weaponType==964 || weaponType==4703 || weaponType==3788 || weaponType==2624 || weaponType==1229;
+            motion=new AttackMotion(speed,gravity,start,sample.extraUpdates+1,sample.width,sample.height,sample.timeLeft,
                 spread?AttackConfidence.Representative:AttackConfidence.Conditional,acceleration,max,sample.aiStyle==1,componentAcceleration,drag,snap);return true;
         }
     }

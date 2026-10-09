@@ -15,10 +15,8 @@ namespace NativeWorldTextProbe
     internal static class NativeCombatAimChecks
     {
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance|BindingFlags.Static;
-        internal static void Run(object context)
+        internal static void Initialize()
         {
-            var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var input=Get(context,"Input");var tools=Get(context,"Tools");
-            var attack=GetOptional(combat,"Attack");Require(attack!=null,"ordinary aim owner must be composed");
             typeof(Main).GetMethod("Initialize_TileAndNPCData1",Flags).Invoke(null,null);typeof(Main).GetMethod("Initialize_TileAndNPCData2",Flags).Invoke(null,null);
             Terraria.ObjectData.TileObjectData.Initialize();Lighting.Mode=Terraria.Graphics.Light.LightMode.Color;
             NativeCombatWorkerAssetChecks.Initialize();
@@ -31,9 +29,15 @@ namespace NativeWorldTextProbe
             PopupText.popupText=new PopupText[20];for(int i=0;i<20;i++)PopupText.popupText[i]=new PopupText();
             foreach(var item in Main.item)item.whoAmI=Array.IndexOf(Main.item,item);
             for(int i=1;i<Main.player.Length;i++)if(Main.player[i]==null)Main.player[i]=new Player{whoAmI=i};
+        }
+        internal static void Run(object context)
+        {
+            var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var input=Get(context,"Input");var tools=Get(context,"Tools");
+            var attack=GetOptional(combat,"Attack");Require(attack!=null,"ordinary aim owner must be composed");Initialize();
             NativeCombatAmmoChecks.Run(context);
             NativeCombatSkyChecks.Run(context);
             NativeCombatScatterChecks.Run(context);
+            NativeCombatControlChecks.Run(context);
             foreach(int weaponType in new[]{ItemID.FlintlockPistol,ItemID.WoodenBow})foreach(float targetSpeed in new[]{0f,1f})
             {
                 NativeCombatObservationChecks.Save(host,new ObservationOptions());

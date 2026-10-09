@@ -20,8 +20,12 @@ namespace JueMingR.TerrariaHost.Combat
         {Ammo=ammo;Type=ammo?.type??0;Stack=ammo?.stack??0;Projectile=projectile;Speed=speed;Mode=(int)player.ammoCyclingMode;Offset=player.ammoCyclingOffset;WeaponType=weapon.type;
             weaponSpeed=weapon.shootSpeed;weaponShoot=weapon.shoot;meleeSpeed=player.meleeSpeed;ammoSpeed=ammo?.shootSpeed??0;ammoShoot=ammo?.shoot??0;ammoPrefix=ammo?.prefix??0;quiver=player.magicQuiver;archery=player.archery;molten=player.hasMoltenQuiver;}
         internal static AttackAmmoSnapshot Capture(Player player,Item weapon)
+        {return CaptureCore(player,weapon,weapon.shootSpeed,weapon.shoot);}
+        internal static AttackAmmoSnapshot CaptureController(Player player,Item weapon,float baseSpeed)
+        {return CaptureCore(player,weapon,baseSpeed,14);}
+        private static AttackAmmoSnapshot CaptureCore(Player player,Item weapon,float baseSpeed,int baseProjectile)
         {
-            int projectile=weapon.shoot;float speed=weapon.shootSpeed;Item ammo=null;
+            int projectile=baseProjectile;float speed=baseSpeed;Item ammo=null;
             if(weapon.melee && !ProjectileID.Sets.NoMeleeSpeedVelocityScaling[projectile])speed/=player.meleeSpeed;
             if(weapon.useAmmo>0)
             {
