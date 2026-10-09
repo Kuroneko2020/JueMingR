@@ -7,6 +7,7 @@ $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 function Assert-Evidence([bool] $Condition, [string] $Message) {
     if (-not $Condition) { throw ('Evidence contract: ' + $Message) }
 }
+Assert-Evidence (-not (Test-WorkloadReusable $root $null ([pscustomobject]@{inputs=@()}) 'workload-Routing' 'signature')) 'missing retired evidence allows new independent execution without claiming reuse'
 # Standalone archive verification never calls a product CPU check. Its bytes
 # remain recorded, but only its own evidence projection may depend on them.
 foreach ($path in @('scripts/verify-existing-package.ps1','scripts/phase0s/PackageVerification.Support.ps1','tests/Phase0S/Invoke-PackageVerificationChecks.ps1')) {
@@ -19,7 +20,7 @@ foreach ($path in @('scripts/verify-existing-package.ps1','scripts/phase0s/Packa
         Assert-Evidence ((Get-WorkloadCheckFingerprint $old $name) -ceq (Get-WorkloadCheckFingerprint $new $name)) 'unrelated CPU inputs remain equal'
     }
 }
-foreach ($path in @('scripts/phase0s/Install-Phase0S.ps1','scripts/phase0s/Restore-Phase0S.ps1','scripts/phase0s/Phase0S.ScriptSupport.ps1','scripts/workload/Workload.Support.ps1','scripts/workload/Workload.Evidence.ps1','scripts/test-workload-regressions.ps1','tests/NativeWorldTextProbe/NativeChecks.cs','tests/NativeWorldTextProbe/NativeToolExecutionChecks.cs','environment:runtime')) {
+foreach ($path in @('scripts/phase0s/Install-Phase0S.ps1','scripts/phase0s/Restore-Phase0S.ps1','scripts/phase0s/Phase0S.ScriptSupport.ps1','tests/NativeWorldTextProbe/NativeChecks.cs','tests/NativeWorldTextProbe/NativeToolExecutionChecks.cs','environment:runtime')) {
     $old = [pscustomobject]@{inputs=@($path+':A')}; $new = [pscustomobject]@{inputs=@($path+':B')}
     Assert-Evidence ((Get-WorkloadCheckFingerprint $old 'native-FishingCpu') -cne (Get-WorkloadCheckFingerprint $new 'native-FishingCpu')) ('shared inputs remain strict: ' + $path)
 }
@@ -39,11 +40,11 @@ $unrelatedPlan=@(Get-WorkloadPlan $root 'checks' 'architecture.exe' @() @('fishi
 Assert-Evidence ($unrelatedPlan -notcontains 'native-NpcStrategy' -and $unrelatedPlan -notcontains 'native-NpcStrategyContinuous') 'unrelated fishing does not run strategy scopes'
 foreach ($pair in @(@{path='tests/NativeWorldTextProbe/NativeNpcLifetimeChecks.cs';consumer='native-NpcStrategy';group='combat-host'},@{path='tests/NativeWorldTextProbe/NativeOuterInputBoundaryChecks.cs';consumer='native-InputBoundary';group='input-boundary'})) {
     $leafRoute=Get-WorkloadRoute @($pair.path)
-    Assert-Evidence ($leafRoute.groups -contains $pair.group -and $leafRoute.groups -notcontains 'shared-host') ('precise leaf route: '+$pair.path)
+    Assert-Evidence ($leafRoute.groups -contains ('check:'+$pair.consumer) -and $leafRoute.groups -notcontains 'shared-host') ('precise leaf route: '+$pair.path)
     $old=[pscustomobject]@{inputs=@($pair.path+':A')};$new=[pscustomobject]@{inputs=@($pair.path+':B')}
     Assert-Evidence ((Get-WorkloadCheckFingerprint $old $pair.consumer) -cne (Get-WorkloadCheckFingerprint $new $pair.consumer)) 'new leaf invalidates actual consumer'
     Assert-Evidence ((Get-WorkloadCheckFingerprint $old 'native-FishingCpu') -ceq (Get-WorkloadCheckFingerprint $new 'native-FishingCpu')) 'new leaf does not claim unrelated fishing dependency'
-    $leafPlan=@(Get-WorkloadPlan $root 'checks' 'architecture.exe' @() @($pair.group) | ForEach-Object {$_.name})
+    $leafPlan=@(Get-WorkloadPlan $root 'checks' 'architecture.exe' @() $leafRoute.groups | ForEach-Object {$_.name})
     Assert-Evidence ($leafPlan -contains $pair.consumer) 'leaf route actually invokes its permanent consumer'
 }
 foreach ($path in @('tests/NativeWorldTextProbe/NativeCombatStrategyChecks.cs','tests/NativeWorldTextProbe/NativeCombatRollingControlChecks.cs','tests/NativeWorldTextProbe/NativeNpcLifetimeChecks.cs')) {
@@ -55,6 +56,41 @@ foreach($path in @('tests/NativeWorldTextProbe/NativeCombatFlyingTailChecks.cs',
     Assert-Evidence ((Get-WorkloadCheckFingerprint $old 'native-NpcStrategy') -cne (Get-WorkloadCheckFingerprint $new 'native-NpcStrategy')) 'family test invalidates actual strategy obligation'
     Assert-Evidence ((Get-WorkloadCheckFingerprint $old 'native-FishingCpu') -ceq (Get-WorkloadCheckFingerprint $new 'native-FishingCpu')) 'family-only test does not invalidate fishing'
 }
+# Real shared consumers and source families use the same projection as routing.
+foreach($case in @(
+    @{path='tests/NativeWorldTextProbe/NativeCombatFoundationChecks.cs';names=@('native-NpcFoundationRules','native-NpcFoundationContinuous','native-NpcStrategyContinuous')},
+    @{path='src/JueMingR.Platform/Items/ItemOperationOwnership.cs';names=@('native-FishingCpu','native-CombatCpu','native-ToolsCpu')},
+    @{path='src/JueMingR.TerrariaHost/Combat/Prediction/SegmentedNpcPrediction.cs';names=@('native-NpcSync','native-NpcWorkerIntegration')}
+)){
+    $old=[pscustomobject]@{inputs=@($case.path+':A')};$new=[pscustomobject]@{inputs=@($case.path+':B')}
+    foreach($name in $case.names){Assert-Evidence ((Get-WorkloadCheckFingerprint $old $name) -cne (Get-WorkloadCheckFingerprint $new $name)) ('shared actual consumer invalidated: '+$name)}
+}
+foreach($path in @('tests/NativeWorldTextProbe/NativeChecks.cs','tests/NativeWorldTextProbe/NativeWorldTextProbe.csproj','src/JueMingR.TerrariaHost/JueMingR.TerrariaHost.csproj')){
+    $route=Get-WorkloadRoute @($path)
+    Assert-Evidence ($route.groups -contains 'legacy-worker') ('shared dispatch/compile input selects old chain: '+$path)
+    $names=@(Get-WorkloadPlan $root 'checks' 'architecture.exe' @() $route.groups|ForEach-Object {$_.name})
+    Assert-Evidence ($names -contains 'native-NpcWorkerIntegration') 'actual worker check remains in shared-input plan'
+    $old=[pscustomobject]@{inputs=@($path+':A')};$new=[pscustomobject]@{inputs=@($path+':B')}
+    Assert-Evidence ((Get-WorkloadCheckFingerprint $old 'native-NpcWorkerIntegration') -cne (Get-WorkloadCheckFingerprint $new 'native-NpcWorkerIntegration')) 'shared compile/dispatch bytes invalidate worker conclusion'
+}
+$path='tests/NativeWorldTextProbe/NativeCombatFoundationContinuousChecks.cs'
+$old=[pscustomobject]@{inputs=@($path+':A')};$new=[pscustomobject]@{inputs=@($path+':B')}
+$route=Get-WorkloadRoute @($path)
+Assert-Evidence (@(Get-WorkloadPlan $root 'checks' 'architecture.exe' @() $route.groups|ForEach-Object {$_.name}) -contains 'native-NpcFiniteFlight') 'finite-flight reflected GateControls consumer selected'
+Assert-Evidence ((Get-WorkloadCheckFingerprint $old 'native-NpcFiniteFlight') -cne (Get-WorkloadCheckFingerprint $new 'native-NpcFiniteFlight')) 'finite-flight reflected GateControls changes invalidate'
+Assert-Evidence ((Get-WorkloadCheckFingerprint $old 'native-FishingCpu') -ceq (Get-WorkloadCheckFingerprint $new 'native-FishingCpu') -and (Get-WorkloadCheckFingerprint $old 'native-NpcWorkerIntegration') -ceq (Get-WorkloadCheckFingerprint $new 'native-NpcWorkerIntegration')) 'ordinary foundation leaf does not invalidate fishing/old worker'
+$old=[pscustomobject]@{inputs=@('src/Provider.cs:A','scripts/build.ps1:A','docs/guide.md:A')}
+$new=[pscustomobject]@{inputs=@('src/Provider.cs:A','scripts/build.ps1:B','docs/guide.md:A')}
+Assert-Evidence ((Get-WorkloadCompileFingerprint $old) -cne (Get-WorkloadCompileFingerprint $new)) 'actual solution compile recipe change retires preparation'
+Assert-Evidence ((Get-WorkloadCheckFingerprint $old 'native-FishingCpu') -ceq (Get-WorkloadCheckFingerprint $new 'native-FishingCpu')) 'compile recipe does not mechanically resign unrelated business'
+$new.inputs[1]='scripts/build.ps1:A';$new.inputs[2]='docs/guide.md:B'
+Assert-Evidence ((Get-WorkloadCompileFingerprint $old) -ceq (Get-WorkloadCompileFingerprint $new)) 'documentation does not alter preparation identity'
+$worker='src/JueMingR.TerrariaHost/Combat/Prediction/NativeNpcEligibility.cs'
+$old=[pscustomobject]@{inputs=@($worker+':A')};$new=[pscustomobject]@{inputs=@($worker+':B')}
+Assert-Evidence ((Get-WorkloadCheckFingerprint $old 'native-NpcSync') -ceq (Get-WorkloadCheckFingerprint $new 'native-NpcSync')) 'dormant worker-only source does not invalidate default correction'
+Assert-Evidence ((Get-WorkloadCheckFingerprint $old 'native-NpcWorkerIntegration') -cne (Get-WorkloadCheckFingerprint $new 'native-NpcWorkerIntegration')) 'worker-only source invalidates its actual old-chain consumer'
+Assert-Evidence ((Get-WorkloadRoute @('tests/NativeWorldTextProbe/NewUnreviewedChecks.cs')).unknown.Count -eq 1) 'new unknown assertions require classification'
+
 # The page-only provider owns arrangement, not the automation execution chain.
 $page = Get-WorkloadRoute @('src/JueMingR.TerrariaHost/F5/MiscAutomationPanel.cs')
 Assert-Evidence ($page.groups -contains 'pages-host') 'page arrangement must select actual page composition/input checks'
@@ -73,6 +109,91 @@ Assert-Evidence ((Get-WorkloadCheckFingerprint $before 'native-FishingCpu') -cne
 $fixture = Join-Path ([IO.Path]::GetTempPath()) ('JueMingR-evidence-' + [Guid]::NewGuid().ToString('N'))
 [IO.Directory]::CreateDirectory($fixture) | Out-Null
 try {
+    $recipeRoot=Join-Path $fixture 'recipe';$recipeFile=Join-Path $recipeRoot 'scripts/workload/Workload.Evidence.ps1'
+    [IO.Directory]::CreateDirectory((Split-Path -Parent $recipeFile))|Out-Null
+    [IO.File]::WriteAllText($recipeFile,'dotnet build -p:Option=A');$recipeBefore=Get-WorkloadFixtureRecipeFingerprint $recipeRoot
+    [IO.File]::WriteAllText($recipeFile,'dotnet build -p:Option=B')
+    Assert-Evidence ($recipeBefore -cne (Get-WorkloadFixtureRecipeFingerprint $recipeRoot)) 'fixture actual compile argument owner changes preparation identity'
+    $preparedFile=Join-Path $fixture 'artifacts/build/Debug/work/bin/prepared.bin'
+    [IO.Directory]::CreateDirectory((Split-Path -Parent $preparedFile))|Out-Null;[IO.File]::WriteAllText($preparedFile,'inert recorded compile output')
+    $compileBefore=[pscustomobject]@{inputs=@('src/Provider.cs:A','scripts/build.ps1:A','docs/guide.md:A');fingerprint='unused-global-lock'}
+    $compileAfter=[pscustomobject]@{inputs=@('src/Provider.cs:A','scripts/build.ps1:B','docs/guide.md:A');fingerprint='unused-global-lock'}
+    $preparedRecord=[pscustomobject]@{schemaVersion=4;configuration='Debug';sdk='10.0.203';inputFingerprint='unused-global-lock';compileInputs=@(Get-WorkloadCompileInputs $compileBefore);compileFingerprint=(Get-WorkloadCompileFingerprint $compileBefore);outputs=@([pscustomobject]@{path='bin/prepared.bin';length=(Get-Item $preparedFile).Length;sha256=(Get-FileHash $preparedFile).Hash})}
+    Assert-Evidence (Test-WorkloadBuildMatch $fixture $preparedRecord $null $compileBefore) 'complete matching prepared record is usable'
+    Assert-Evidence (-not (Test-WorkloadBuildMatch $fixture $preparedRecord $null $compileAfter)) 'compile recipe change rejects actual preparation match even if global lock text is unchanged'
+    $compileAfter.inputs[1]='scripts/build.ps1:A';$compileAfter.inputs[2]='docs/guide.md:B'
+    Assert-Evidence (Test-WorkloadBuildMatch $fixture $preparedRecord $null $compileAfter) 'pure documentation can reuse preparation'
+    $pointerRoot=Join-Path $fixture 'pointer-chain';$archiveRoot=Join-Path $pointerRoot 'artifacts/build/evidence-artifacts'
+    $retainedArchive=Join-Path $archiveRoot ('C'*64);$unusedArchive=Join-Path $archiveRoot ('B'*64)
+    foreach($directory in @($retainedArchive,$unusedArchive)){[IO.Directory]::CreateDirectory($directory)|Out-Null;[IO.File]::WriteAllText((Join-Path $directory '0-owned.bin'),'self-owned pointer sample')}
+    $pointerB=Join-Path $pointerRoot 'qualification.json';$pointerCache=Join-Path $pointerRoot 'original-cache.json'
+    $originalCache=[ordered]@{outputs=@([ordered]@{path=(Join-Path $retainedArchive '0-owned.bin');length=25})}
+    Write-WorkloadJson $pointerCache $originalCache
+    $originalB=[ordered]@{legacyCachePath=$pointerCache;legacyCacheSha256=(Get-FileHash $pointerCache).Hash}
+    Write-WorkloadJson $pointerB $originalB
+    Save-WorkloadApplicabilityPointer $pointerRoot ([pscustomobject]@{commit=('a'*40);fingerprint=('B'*64)}) ([pscustomobject]@{fingerprint=('C'*64)}) $pointerB
+    $pointer=Join-Path $pointerRoot 'artifacts/build/workload-checkpoints/current-applicability.json';$originalPointer=Read-WorkloadJson $pointer
+    foreach($bad in @('missing','damaged','type','path','valid-json-sha','legacy-cache-sha','cycle-sha')){
+        if($bad -eq 'missing'){Remove-Item -LiteralPath $pointerB}
+        if($bad -eq 'damaged'){[IO.File]::WriteAllText($pointerB,'{broken')}
+        if($bad -eq 'type'){$invalid=$originalPointer|ConvertTo-Json|ConvertFrom-Json;$invalid.path=42;Write-WorkloadJson $pointer $invalid}
+        if($bad -eq 'path'){$invalid=$originalPointer|ConvertTo-Json|ConvertFrom-Json;$invalid.path='not-a-record.txt';Write-WorkloadJson $pointer $invalid}
+        if($bad -eq 'valid-json-sha'){[IO.File]::WriteAllText($pointerB,'{}')}
+        if($bad -eq 'legacy-cache-sha'){[IO.File]::WriteAllText($pointerCache,'{}')}
+        if($bad -eq 'cycle-sha'){
+            # The pointer root was already parsed. A false digest on its
+            # incoming cycle must still block deletion instead of deduping it.
+            $cycle=[ordered]@{legacyCachePath=$pointerCache;legacyCacheSha256=$originalB.legacyCacheSha256;path=$pointer;executionId=('a'*32);sha256=('0'*64)}
+            Write-WorkloadJson $pointerB $cycle
+            $invalid=$originalPointer|ConvertTo-Json|ConvertFrom-Json;$invalid.sha256=(Get-FileHash $pointerB).Hash;Write-WorkloadJson $pointer $invalid
+        }
+        $blocked=$false;$failure='';try{Remove-UnusedWorkloadArtifacts $pointerRoot @() -Collect -RetainedRecords @()}catch{$blocked=$true;$failure=$_.Exception.Message}
+        Assert-Evidence ($blocked -and [IO.Directory]::Exists($retainedArchive) -and [IO.Directory]::Exists($unusedArchive)) ('formal pointer mandatory '+$bad+' blocks deletion')
+        if($bad -in @('valid-json-sha','legacy-cache-sha','cycle-sha')){Assert-Evidence ($failure -like 'Required retention edge digest mismatch:*') ('declared edge digest is the rejecting boundary: '+$bad)}
+        Write-WorkloadJson $pointer $originalPointer;Write-WorkloadJson $pointerB $originalB;Write-WorkloadJson $pointerCache $originalCache
+    }
+    Remove-UnusedWorkloadArtifacts $pointerRoot @() -Collect -RetainedRecords @()
+    Assert-Evidence ([IO.Directory]::Exists($retainedArchive) -and -not [IO.Directory]::Exists($unusedArchive)) 'actual current-applicability pointer to qualification to original cache retains archive and allows independent unused sample'
+    $readPath=Join-Path $fixture 'read-window.json';Write-WorkloadJson $readPath ([ordered]@{value=1})
+    Start-WorkloadReadWindow
+    try {
+        $first=Read-WorkloadJson $readPath;$firstHash=(Get-WorkloadFileHash $readPath).Hash
+        Assert-Evidence ([object]::ReferenceEquals($first,(Read-WorkloadJson $readPath))) 'one phase parses a record once'
+        Assert-Evidence ($script:WorkloadReadWindow.Count -eq 1 -and (Get-WorkloadFileHash $readPath).Hash -ceq $firstHash) 'hash and parsed JSON share one stable read lease'
+        $blocked=$false;try{[IO.File]::WriteAllText($readPath,'{"value":2}')}catch{$blocked=$true}
+        Assert-Evidence $blocked 'same-phase replacement is refused rather than silently consumed'
+    }finally{Stop-WorkloadReadWindow}
+    [IO.File]::WriteAllText($readPath,'{"value":2}')
+    Start-WorkloadReadWindow
+    try{Assert-Evidence ((Read-WorkloadJson $readPath).value -eq 2 -and (Get-WorkloadFileHash $readPath).Hash -cne $firstHash) 'a new boundary rereads actual changed content'}finally{Stop-WorkloadReadWindow}
+    # This miniature Git repository contains only self-owned reference notes.
+    $workspace=Join-Path $fixture 'workspace';[IO.Directory]::CreateDirectory($workspace)|Out-Null
+    $null=Invoke-WorkloadGit $workspace @('init','-q')
+    $null=Invoke-WorkloadGit $workspace @('-c','user.name=Fixture','-c','user.email=fixture@example.invalid','commit','--allow-empty','-m','fixture')
+    $note=Join-Path $workspace 'note.txt';[IO.File]::WriteAllText($note,'retained note')
+    $declaration=Join-Path $fixture 'retained.json'
+    $decl=[ordered]@{schema='retained-workspace-assets-1';authorization='self-owned test fixture';files=@([ordered]@{path='note.txt';sha256=(Get-FileHash $note).Hash;length=(Get-Item $note).Length;tracked=$false})}
+    Write-WorkloadJson $declaration $decl
+    $retained=Read-WorkloadRetainedAssets $workspace $declaration -RequireCommitted
+    Assert-Evidence (-not $retained.clean -and -not $retained.releaseEligible -and $retained.workspaceDirty) 'explicit admission remains dirty and non-release'
+    Start-WorkloadReadWindow
+    try{
+        $null=Read-WorkloadRetainedAssets $workspace $declaration -RequireCommitted
+        $blocked=$false;try{[IO.File]::WriteAllText($note,'in-phase replacement')}catch{$blocked=$true}
+        Assert-Evidence $blocked 'restricted assets are bound by the same phase lease as their declaration'
+    }finally{Stop-WorkloadReadWindow}
+    foreach($forbidden in @('global.json','src/Hidden.cs','../outside.txt')){
+        $decl.files[0].path=$forbidden;Write-WorkloadJson $declaration $decl
+        $rejected=$false;try{$null=Read-WorkloadRetainedAssets $workspace $declaration}catch{$rejected=$true}
+        Assert-Evidence $rejected ('executable or escaping retained declaration rejected: '+$forbidden)
+    }
+    $decl.files[0].path='note.txt';Write-WorkloadJson $declaration $decl
+    [IO.File]::WriteAllText((Join-Path $workspace 'unknown.txt'),'undeclared')
+    $rejected=$false;try{$null=Read-WorkloadRetainedAssets $workspace $declaration -RequireCommitted}catch{$rejected=$true}
+    Assert-Evidence $rejected 'new undeclared dirt cannot enter a restricted package candidate'
+    [IO.File]::WriteAllText($note,'changed bytes')
+    $rejected=$false;try{$null=Read-WorkloadRetainedAssets $workspace $declaration}catch{$rejected=$true}
+    Assert-Evidence $rejected 'retained asset identity is never a path-only exclusion'
     $tiny=Join-Path $fixture 'tests/Tiny';[IO.Directory]::CreateDirectory($tiny) | Out-Null
     [IO.File]::WriteAllText((Join-Path $tiny 'Tiny.csproj'),'<Project><ItemGroup><Compile Include="../Linked.cs" /></ItemGroup></Project>')
     [IO.File]::WriteAllText((Join-Path $tiny 'Local.cs'),'local locked source')
@@ -101,7 +222,8 @@ try {
     [IO.File]::WriteAllText($archived[0].path,'damaged original')
     Assert-Evidence (-not (Test-WorkloadEvidenceOutputs $fixture $archived)) 'damaged archived execution cannot supply evidence'
     $repaired=@(Save-WorkloadArtifacts $fixture $captured)
-    Assert-Evidence (Test-WorkloadEvidenceOutputs $fixture $repaired) 'fresh matching execution repairs a damaged archive slot'
+    Assert-Evidence ((Test-WorkloadEvidenceOutputs $fixture $repaired) -and $repaired[0].path -cne $archived[0].path -and [IO.File]::ReadAllText($archived[0].path) -ceq 'damaged original') 'fresh execution uses distinct archive and preserves damaged original'
+    $archived=$repaired
     $artifact = Join-Path $fixture 'check.bin'
     [IO.File]::WriteAllText($artifact, 'original')
     $output = [pscustomobject]@{path=$artifact; length=8; sha256=(Get-FileHash -LiteralPath $artifact -Algorithm SHA256).Hash}
@@ -134,7 +256,7 @@ try {
     Assert-Evidence (-not (Test-WorkloadCoverage $result @('one','two') 'input')) 'a narrowed baseline cannot erase earlier obligations'
     Assert-Evidence (-not (Test-WorkloadDelivery $fixture ([pscustomobject]@{schemaVersion=3}))) 'old build records cannot be upgraded to trusted delivery'
     $failure=Join-Path $fixture 'failure.ps1'
-    $support=Join-Path $root 'scripts/workload/Workload.Evidence.ps1'
+    $support=Join-Path $root 'scripts/workload/Workload.Support.ps1'
     $body = @'
 param([string] $Support)
 $ErrorActionPreference='Stop'
@@ -220,6 +342,45 @@ throw 'Incorrectly returned from a failed process.'
     $application=[ordered]@{schema='fixed-workload-applicability-1';qualificationId=[Guid]::NewGuid().ToString('N');commit=$sourceLock.commit;sourceFingerprint=$sourceLock.fingerprint;inputFingerprint=$locked.fingerprint;requiredChecks=@('legacy-one');additionalChecks=@();legacyCachePath=$legacyPath;legacyCacheSha256=(Get-FileHash -LiteralPath $legacyPath).Hash;inputSets=@([ordered]@{fingerprint=$locked.fingerprint;differences=@()});decisions=@([ordered]@{name='legacy-one';action='QUALIFIED';originalExecutionId=$legacy.executionId;requiresCurrent=@();reason='controlled unchanged byte/command proof'})}
     Write-WorkloadJson $appPath $application
     $admitted=Read-WorkloadApplicability $fixture $appPath $sourceLock $locked @('legacy-one')
+    # The reader consumes real approved assertion byte deltas; this inert
+    # receipt exercises admission only, never claims Strategy was executed.
+    $rolling='tests/NativeWorldTextProbe/NativeCombatRollingControlChecks.cs'
+    $lifetime='tests/NativeWorldTextProbe/NativeNpcLifetimeChecks.cs'
+    $oldRows=@($rolling+':85DEEE19205C8243CE39DDE9E187468820BFB98E537719B38A77E9BE8D90C828')
+    $newRows=@(($rolling+':16ECAAD59329232199E93D157D1E63473F4455331F72C614AF4EC0C51C130EE0'),($lifetime+':5E15817C5FD2E9FC1ADB3BFC6587CE6BE0FF173FE59C84A81B54283111DE069E'))
+    $nativeLegacy=$legacy|ConvertTo-Json -Depth 10|ConvertFrom-Json;$nativeLegacy.name='native-NpcStrategy';$nativeLegacy.inputs=$oldRows
+    $nativeLegacy.allInputFingerprint=Get-WorkloadHash $oldRows;$nativeLegacy.inputFingerprint=Get-WorkloadCheckFingerprint $nativeLegacy $nativeLegacy.name
+    $profileCache=Join-Path $fixture 'profile-original.json';Write-WorkloadJson $profileCache ([ordered]@{schemaVersion=2;results=@($nativeLegacy)})
+    $proofs=@('native-NpcStrategy-rollchoice','native-NpcStrategyContinuous','native-NpcRollingCpu','native-NpcRollingSelectionNegative')
+    $required=@('native-NpcStrategy')+@($proofs|Where-Object {$_ -cne 'native-NpcStrategy-rollchoice'})
+    $profileRecord=[ordered]@{schema='fixed-workload-applicability-1';qualificationId=[Guid]::NewGuid().ToString('N');qualificationProfile='issue112-lifetime-delta-20261008';commit=$sourceLock.commit;sourceFingerprint=$sourceLock.fingerprint;inputFingerprint=(Get-WorkloadHash $newRows);requiredChecks=$required;additionalChecks=@('native-NpcStrategy-rollchoice');legacyCachePath=$profileCache;legacyCacheSha256=(Get-FileHash $profileCache).Hash;inputSets=@([ordered]@{fingerprint=$nativeLegacy.allInputFingerprint;differences=@(Get-WorkloadInputDifferences $oldRows $newRows)});decisions=@([ordered]@{name='native-NpcStrategy';action='QUALIFIED';originalExecutionId=$nativeLegacy.executionId;requiresCurrent=$proofs;reason='explicit reviewed lifetime assertion delta'})+@($required|Where-Object {$_ -cne 'native-NpcStrategy'}|ForEach-Object {[ordered]@{name=$_;action='EXECUTE';requiresCurrent=@()}})}
+    $profilePath=Join-Path $fixture 'profile.json';Write-WorkloadJson $profilePath $profileRecord
+    $profileInputs=[pscustomobject]@{inputs=$newRows;fingerprint=(Get-WorkloadHash $newRows)}
+    $null=Read-WorkloadApplicability $fixture $profilePath $sourceLock $profileInputs $required
+    $fishingLegacy=$nativeLegacy|ConvertTo-Json -Depth 10|ConvertFrom-Json;$fishingLegacy.name='native-FishingCpu'
+    $fishingLegacy.inputFingerprint=Get-WorkloadCheckFingerprint $fishingLegacy $fishingLegacy.name
+    Write-WorkloadJson $profileCache ([ordered]@{schemaVersion=2;results=@($nativeLegacy,$fishingLegacy)})
+    $profileRecord.legacyCacheSha256=(Get-FileHash $profileCache).Hash
+    $required+=@('native-FishingCpu');$profileRecord.requiredChecks=$required
+    $profileRecord.decisions+=@([ordered]@{name='native-FishingCpu';action='QUALIFIED';originalExecutionId=$fishingLegacy.executionId;requiresCurrent=@();reason='unchanged related projection'})
+    Write-WorkloadJson $profilePath $profileRecord
+    $mixed=Read-WorkloadApplicability $fixture $profilePath $sourceLock $profileInputs $required
+    Assert-Evidence (@($mixed.record.decisions|Where-Object {$_.action -ceq 'QUALIFIED'}).Count -eq 2) 'Strategy reviewed lifetime delta and unchanged Fishing qualify together'
+    # Strategy is explicitly executed here so only the unreviewed Fishing
+    # qualification can cause rejection of the changed fishing leaf.
+    $fishingChanged=$profileRecord|ConvertTo-Json -Depth 20|ConvertFrom-Json
+    @($fishingChanged.decisions|Where-Object name -CEQ 'native-NpcStrategy')[0].action='EXECUTE'
+    $changed=$newRows+@('tests/NativeWorldTextProbe/NativeFishingChecks.cs:'+('F'*64))
+    $fishingChanged.inputFingerprint=Get-WorkloadHash $changed;$fishingChanged.inputSets[0].differences=@(Get-WorkloadInputDifferences $oldRows $changed)
+    Write-WorkloadJson $profilePath $fishingChanged
+    $blocked=$false;$failure='';try{$null=Read-WorkloadApplicability $fixture $profilePath $sourceLock ([pscustomobject]@{inputs=$changed;fingerprint=(Get-WorkloadHash $changed)}) $required}catch{$blocked=$true;$failure=$_.Exception.Message}
+    Assert-Evidence ($blocked -and $failure -like '*explicit reviewed task proof: native-FishingCpu') 'lifetime profile cannot qualify changed Fishing inputs'
+    foreach($extra in @('tests/NativeWorldTextProbe/NativeCombatFamilyControlChecks.cs','tests/NativeWorldTextProbe/NativeCombatFlyingTailChecks.cs','src/JueMingR.TerrariaHost/Combat/NpcPredictionSource.cs','scripts/verify-existing-package.ps1',$lifetime)){
+        $changed=if($extra -ceq $lifetime){@($newRows[0],($extra+':'+('F'*64)))}else{$newRows+@($extra+':'+('F'*64))};$profileRecord.inputFingerprint=Get-WorkloadHash $changed
+        $profileRecord.inputSets[0].differences=@(Get-WorkloadInputDifferences $oldRows $changed);Write-WorkloadJson $profilePath $profileRecord
+        $blocked=$false;try{$null=Read-WorkloadApplicability $fixture $profilePath $sourceLock ([pscustomobject]@{inputs=$changed;fingerprint=(Get-WorkloadHash $changed)}) $required}catch{$blocked=$true}
+        Assert-Evidence $blocked ('lifetime profile rejects unreviewed delta/assertion bytes: '+$extra)
+    }
     Save-WorkloadApplicabilityPointer $fixture $sourceLock $locked $appPath
     Assert-Evidence ((Read-WorkloadApplicabilityPointer $fixture $sourceLock $locked) -ceq $appPath) 'finite pointer survives absence of a Debug build record before compilation'
     $pointerPath=Join-Path $fixture 'artifacts/build/workload-checkpoints/current-applicability.json'
@@ -228,8 +389,8 @@ throw 'Incorrectly returned from a failed process.'
     $rejected=$false;try{$null=Read-WorkloadApplicabilityPointer $fixture $sourceLock $locked}catch{$rejected=$true}
     Assert-Evidence $rejected 'damaged adopted pointer cannot silently revert to full execution'
     [IO.File]::WriteAllText($pointerPath,$pointerOriginal,(New-Object Text.UTF8Encoding($false)))
-    $rejected=$false;try{$null=Read-WorkloadApplicabilityPointer $fixture $sourceLock $different}catch{$rejected=$true}
-    Assert-Evidence $rejected 'changed candidate inputs require bounded qualification review'
+    Assert-Evidence ($null -eq (Read-WorkloadApplicabilityPointer $fixture $sourceLock $different)) 'normal stale pointer is preserved but cannot qualify the current candidate'
+    Assert-Evidence ([IO.File]::ReadAllText($pointerPath) -ceq $pointerOriginal) 'stale pointer original is not re-signed'
     $pointerBatch=New-WorkloadCheckpointBatch $fixture $sourceLock $locked @('legacy-one') $admitted
     $savedBatch=Read-WorkloadJson $pointerBatch.path
     Assert-Evidence ($savedBatch.applicabilityRecord -ceq $appPath -and $savedBatch.applicabilitySha256 -ceq $admitted.sha256) 'immutable checkpoint batch retains finite record identity'
@@ -350,10 +511,10 @@ throw 'Incorrectly returned from a failed process.'
     $archiveBase=Join-Path $fixture 'artifacts/build/evidence-artifacts'
     $unused=Join-Path $archiveBase ('F'*64);$unknown=Join-Path $archiveBase ('E'*64)
     [IO.Directory]::CreateDirectory($unused)|Out-Null;[IO.Directory]::CreateDirectory($unknown)|Out-Null
-    [IO.File]::WriteAllText((Join-Path $unused 'owned.bin'),'discardable sample')
-    [IO.File]::WriteAllText((Join-Path $unknown 'owned.bin'),'uncertain sample')
+    [IO.File]::WriteAllText((Join-Path $unused '0-owned.bin'),'discardable sample')
+    [IO.File]::WriteAllText((Join-Path $unknown '0-owned.bin'),'uncertain sample')
     $unknownRecord=Join-Path $fixture 'artifacts/build/workload-checkpoints/unknown.pending'
-    [IO.File]::WriteAllText($unknownRecord,('{"outputs":["'+$unknown.Replace('\','\\')+'\\owned.bin"'))
+    [IO.File]::WriteAllText($unknownRecord,('{"outputs":["'+$unknown.Replace('\','\\')+'\\0-owned.bin"'))
     Write-WorkloadJson (Join-Path $fixture 'artifacts/build/workload-checkpoints/historical-archive.json') ([ordered]@{outputs=$archived;status='RETAINED_ORIGINAL'})
     foreach($kind in @('undeclared','missing','outside')){
         $rejected=$false
@@ -364,7 +525,27 @@ throw 'Incorrectly returned from a failed process.'
         }}catch{$rejected=$true}
         Assert-Evidence ($rejected -and [IO.Directory]::Exists($unused)) ('retention declaration refuses before deletion: '+$kind)
     }
-    Remove-UnusedWorkloadArtifacts $fixture @() -Collect -RetainedRecords @($appPath)
+    # A required indirect edge must be resolved before deciding that a real
+    # archive is unused. Exercise the current PowerShell collector, not a model.
+    $chainArchive=Join-Path $archiveBase ('D'*64)
+    [IO.Directory]::CreateDirectory($chainArchive)|Out-Null
+    [IO.File]::WriteAllText((Join-Path $chainArchive '0-owned.bin'),'indirect sample')
+    $a=Join-Path $fixture 'retained-A.json';$b=Join-Path $fixture 'retained-B.json'
+    Write-WorkloadJson $a ([ordered]@{applicabilityRecord=$b;description='optional missing.json is prose'})
+    foreach($kind in @('missing','damaged','outside')) {
+        if($kind -eq 'damaged'){[IO.File]::WriteAllText($b,'{bad')}
+        if($kind -eq 'outside'){Write-WorkloadJson $a ([ordered]@{applicabilityRecord=(Join-Path (Split-Path -Parent $fixture) 'outside.json')})}
+        $rejected=$false;try{Remove-UnusedWorkloadArtifacts $fixture @() -Collect -RetainedRecords @($a)}catch{$rejected=$true}
+        Assert-Evidence ($rejected -and [IO.Directory]::Exists($chainArchive) -and [IO.Directory]::Exists($unused)) ('indirect '+$kind+' prevents deletion of uncertain archives')
+    }
+    Write-WorkloadJson $a ([ordered]@{applicabilityRecord=$b;description=(Join-Path $fixture 'optional-prose.json')})
+    Write-WorkloadJson $b ([ordered]@{outputs=@([ordered]@{path=(Join-Path $chainArchive '0-owned.bin')});batchPath=$a})
+    # Incomplete recovery JSON is itself an uncertainty, not an archive index.
+    $rejected=$false;try{Remove-UnusedWorkloadArtifacts $fixture @() -Collect -RetainedRecords @($a)}catch{$rejected=$true}
+    Assert-Evidence ($rejected -and [IO.Directory]::Exists($unused)) 'damaged recovery record blocks the selected archive root'
+    Write-WorkloadJson $unknownRecord ([ordered]@{outputs=@([ordered]@{path=(Join-Path $unknown '0-owned.bin')})})
+    Remove-UnusedWorkloadArtifacts $fixture @() -Collect -RetainedRecords @($appPath,$a)
+    Assert-Evidence ([IO.Directory]::Exists($chainArchive)) 'A to B to actual archive survives; circular record edge is deduplicated'
     Assert-Evidence (-not [IO.Directory]::Exists($unused) -and [IO.Directory]::Exists($unknown) -and (Test-WorkloadEvidenceOutputs $fixture $archived)) ('explicit collection: unused='+[IO.Directory]::Exists($unused)+' unknown='+[IO.Directory]::Exists($unknown)+' historical='+(Test-WorkloadEvidenceOutputs $fixture $archived))
     foreach($redirect in @('root','artifacts','artifacts/build','artifacts/build/evidence-artifacts')){
         $case=Join-Path $fixture ('junction-'+$redirect.Replace('/','-'));$external=Join-Path $case 'outside';$local=Join-Path $case 'repository'
@@ -398,6 +579,7 @@ throw 'Incorrectly returned from a failed process.'
     Assert-Evidence ($failed -and $ErrorActionPreference -ceq 'Stop') 'launch failure cannot reuse an earlier zero exit and restores preference'
     Write-Output 'PASS: real child checkpoint/retirement/qualification boundaries; evidence identity, changed bytes/options, missing/failed/partial/feedback receipts, old schema, stderr capture, real nonzero exit and launch failure.'
 } finally {
+    Stop-WorkloadReadWindow
     $resolved=[IO.Path]::GetFullPath($fixture);$temp=[IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\')+'\'
     if (-not $resolved.StartsWith($temp,[StringComparison]::OrdinalIgnoreCase) -or -not [IO.Path]::GetFileName($resolved).StartsWith('JueMingR-evidence-',[StringComparison]::Ordinal)) {throw 'Unsafe fixture cleanup.'}
     Remove-Item -LiteralPath $resolved -Recurse -Force

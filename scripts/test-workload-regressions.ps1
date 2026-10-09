@@ -3,20 +3,20 @@ param(
     [string] $Baseline,
     [ValidateSet('Related','Full','Feedback')][string] $Mode = 'Related',
     [switch] $Rerun,
-    [string] $ApplicabilityRecord
+    [string] $ApplicabilityRecord,
+    [switch] $ClosureOnly,
+    [string] $ApprovedRetainedAssets,
+    [switch] $PlanOnly
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 . (Join-Path $PSScriptRoot 'workload/Workload.Support.ps1')
-& (Join-Path $PSScriptRoot 'prepare-terraria-references.ps1') -VerifyOnly | Out-Host
-& (Join-Path $PSScriptRoot 'prepare-harmony.ps1') -VerifyOnly | Out-Host
-if ((& dotnet.exe --version).Trim() -cne '10.0.203' -or $LASTEXITCODE -ne 0) { throw 'Locked SDK unavailable.' }
+$admission=Initialize-WorkloadWorkspace $repositoryRoot $ApprovedRetainedAssets
 $identity = Get-WorkloadIdentity $repositoryRoot
 $inputIdentity = Get-WorkloadEvidenceInput $repositoryRoot $identity
 $recordPath = Join-Path $repositoryRoot 'artifacts/build/Debug/build-record.json'
 $record = Read-WorkloadJson $recordPath
-if (-not (Test-WorkloadBuildMatch $repositoryRoot $record $identity)) { throw 'Debug detection binaries do not match current executable inputs/SDK/output hashes.' }
 # A supplied baseline is useful for feedback, but cannot shrink final obligations.
 $changes = Get-WorkloadChanges $repositoryRoot $(if ($Mode -ceq 'Feedback') { $Baseline } else { '' })
 if ($Mode -ceq 'Feedback' -and [string]::IsNullOrWhiteSpace($Baseline)) { throw 'Feedback requires an explicit comparison baseline; it cannot authorize delivery.' }
@@ -25,22 +25,45 @@ if ($Mode -cne 'Feedback' -and $Baseline) {
     if ($extra.reason) { throw $extra.reason }
     $changes.paths = @($changes.paths + $extra.paths | Sort-Object -Unique)
 }
-$route = Get-WorkloadRoute $changes.paths
+$selectedPaths=@($changes.paths)
+if($null -ne $admission){$selectedPaths=@($selectedPaths | Where-Object {$_ -cnotin @($admission.files.path)})}
+$route = Get-WorkloadRoute $selectedPaths
 if ($changes.reason -or $route.unknown.Count -gt 0) { throw ($changes.reason + ' Unclassified paths: ' + ($route.unknown -join ', ')) }
-if ($Mode -ceq 'Full') { $route = Get-WorkloadRoute @('scripts/build.ps1') }
+if ($Mode -ceq 'Full') { $route = Get-WorkloadRoute @('@full') }
 $checksRoot = Join-Path $repositoryRoot 'artifacts/build/Debug/checks'
 $architecture = Join-Path $repositoryRoot 'artifacts/build/Debug/work/bin/JueMingR.ArchitectureTests/x86/Debug/net472/JueMingR.ArchitectureTests.exe'
-$catalog = @(& $architecture --list-checks)
-if ($LASTEXITCODE -ne 0 -or $catalog.Count -eq 0) { throw 'The business check catalogue is unavailable.' }
+$toolOnly=@($route.groups | Where-Object {$_ -notmatch '^(core|workload-tools|package-tools|check:workload-.*)$'}).Count -eq 0
+if($toolOnly){
+    $catalog=@();$record=[pscustomobject]@{schemaVersion=4;commit=$identity.commit;outputs=@();workload=[pscustomobject]@{status='PENDING'}}
+    Write-Host 'TOOL SCOPE: no product compilation or business process required; product delivery NOT_EVALUATED.'
+} else {
+    & (Join-Path $PSScriptRoot 'prepare-terraria-references.ps1') -VerifyOnly | Out-Host
+    & (Join-Path $PSScriptRoot 'prepare-harmony.ps1') -VerifyOnly | Out-Host
+    if ((& dotnet.exe --version).Trim() -cne '10.0.203' -or $LASTEXITCODE -ne 0) { throw 'Locked SDK unavailable.' }
+    if (-not (Test-WorkloadBuildMatch $repositoryRoot $record $identity $inputIdentity)) {throw 'Debug detection binaries do not match current compile inputs/SDK/output hashes.'}
+    $catalog=@(& $architecture --list-checks)
+    if($LASTEXITCODE -ne 0 -or $catalog.Count -eq 0){throw 'The business check catalogue is unavailable.'}
+}
+$recordPath=if($toolOnly){Join-Path $repositoryRoot 'artifacts/build/tool-workload-record.json'}else{$recordPath}
 $plan = @(Get-WorkloadPlan $repositoryRoot $checksRoot $architecture $catalog $route.groups)
 $required = @($plan | ForEach-Object { $_.name })
+if($PlanOnly){
+    [ordered]@{status='PLAN_ONLY';mode=$Mode;baseline=$changes.baseline;paths=$selectedPaths;groups=$route.groups;required=$required;productDelivery='NOT_EVALUATED'} | ConvertTo-Json -Depth 6
+    return
+}
 # The ordinary Release/package path may consume the same already locked Debug
 # qualification. A missing or changed record must not silently trigger a full
 # fallback run or erase the remaining cumulative responsibilities.
-if (-not $ApplicabilityRecord) {$ApplicabilityRecord=Read-WorkloadApplicabilityPointer $repositoryRoot $identity $inputIdentity}
+if (-not $ApplicabilityRecord) {try{$ApplicabilityRecord=Read-WorkloadApplicabilityPointer $repositoryRoot $identity $inputIdentity}catch{
+    if($Mode -cne 'Feedback'){throw}
+    Write-Host ('UNAVAILABLE qualification: '+$_.Exception.Message+'; independent new feedback only; delivery blocked.')
+}}
 if (-not $ApplicabilityRecord -and $record.workload.PSObject.Properties.Name -contains 'applicabilityRecord') {
-    $ApplicabilityRecord=$record.workload.applicabilityRecord
-    if (-not [IO.File]::Exists($ApplicabilityRecord) -or (Get-FileHash -LiteralPath $ApplicabilityRecord).Hash -cne $record.workload.applicabilitySha256) {throw 'Saved applicability record changed.'}
+    $oldPath=$record.workload.applicabilityRecord
+    if (-not [IO.File]::Exists($oldPath) -or (Get-FileHash -LiteralPath $oldPath).Hash -cne $record.workload.applicabilitySha256) {throw 'Saved applicability record changed.'}
+    $old=Read-WorkloadJson $oldPath
+    if($null -eq $old){throw 'Saved applicability record damaged.'}
+    if($old.commit -ceq $identity.commit -and $old.sourceFingerprint -ceq $identity.fingerprint -and $old.inputFingerprint -ceq $inputIdentity.fingerprint){$ApplicabilityRecord=$oldPath}else{Write-Host ('STALE build qualification preserved: '+$oldPath+'; not used for current candidate.')}
 }
 $applicability=$null
 if ($ApplicabilityRecord) {
@@ -48,14 +71,22 @@ if ($ApplicabilityRecord) {
     Save-WorkloadApplicabilityPointer $repositoryRoot $identity $inputIdentity $ApplicabilityRecord
     $plan+=@($applicability.additional);$required=@($plan | ForEach-Object {$_.name})
 }
-$knownNames = @((Get-WorkloadPlan $repositoryRoot $checksRoot $architecture $catalog (Get-WorkloadRoute @('scripts/build.ps1')).groups) | ForEach-Object {$_.name})
+$knownNames = @((Get-WorkloadPlan $repositoryRoot $checksRoot $architecture $catalog (Get-WorkloadRoute @('@full')).groups) | ForEach-Object {$_.name})
 if ($null -ne $applicability) {$knownNames+=@($applicability.additional | ForEach-Object {$_.name})}
 if (@($required | Sort-Object -Unique).Count -ne $required.Count) { throw 'Duplicate check identity in plan.' }
 $cachePath = Join-Path $repositoryRoot 'artifacts/build/workload-evidence.json'
+# Reuse shared records/archive hashes once inside a controlled read phase.
+# Source and live process inputs are freshly confirmed at phase boundaries.
+Start-WorkloadReadWindow
 $cache = Read-WorkloadJson $cachePath
 $entries = @{}
 if ($null -ne $cache -and $null -ne $cache.PSObject.Properties['schemaVersion'] -and $cache.schemaVersion -eq 2) {
-    foreach ($entry in $cache.results) { if ($knownNames -contains $entry.name) {$entries[$entry.name] = $entry} }
+    foreach ($entry in $cache.results) {
+        if($entries.ContainsKey($entry.name)){throw 'Duplicate saved check identity.'}
+        # A tooling-only invocation has no product catalogue to retire IDs.
+        # Preserve originals outside this plan; never turn NOT_SELECTED into PASS.
+        $entries[$entry.name] = $entry
+    }
 } elseif ($null -ne $cache) { Write-Host 'INVALIDATED: executable input/dependency/environment set changed or old evidence schema.' }
 $results = New-Object 'System.Collections.Generic.List[object]'
 $pending = @{}
@@ -71,7 +102,8 @@ function Assert-StableInputs {
     $now = Get-WorkloadIdentity $repositoryRoot
     if ($now.commit -cne $identity.commit -or $now.fingerprint -cne $identity.fingerprint -or
         (Get-WorkloadEvidenceInput $repositoryRoot $now).fingerprint -cne $inputIdentity.fingerprint -or
-        -not (Test-WorkloadBuildMatch $repositoryRoot $record $now)) { throw 'Inputs or detection outputs changed during validation.' }
+        (-not $toolOnly -and -not (Test-WorkloadBuildMatch $repositoryRoot $record $now $inputIdentity))) { throw 'Inputs or detection outputs changed during validation.' }
+    if($null -ne $admission){$current=Read-WorkloadRetainedAssets $repositoryRoot $ApprovedRetainedAssets;if(($current|ConvertTo-Json -Depth 8 -Compress) -cne ($admission|ConvertTo-Json -Depth 8 -Compress)){throw 'Retained workspace declaration changed.'}}
     if ($null -ne $applicability -and ((Get-FileHash -LiteralPath $applicability.path).Hash -cne $applicability.sha256 -or
         (Get-FileHash -LiteralPath $applicability.record.legacyCachePath).Hash -cne $applicability.record.legacyCacheSha256)) {throw 'Fixed applicability/original cache changed during validation.'}
     foreach ($live in $liveChecks.Values) {
@@ -81,8 +113,7 @@ function Assert-StableInputs {
 function Ensure-Fixture([string] $Project) {
     if (-not $Project -or $built.ContainsKey($Project)) { return }
     $before=Get-WorkloadFixtureInputFingerprint $repositoryRoot $Project $inputIdentity
-    & dotnet.exe build (Join-Path $repositoryRoot ('tests/' + $Project + '/' + $Project + '.csproj')) --configuration Debug --nologo -p:Platform=x86 "-p:JueMingRBuildRoot=$checksRoot" | Out-Host
-    if ($LASTEXITCODE -ne 0) { throw ('Workload fixture build failed: ' + $Project) }
+    $null=Ensure-WorkloadFixture $repositoryRoot $Project $inputIdentity
     $after=Get-WorkloadFixtureInputFingerprint $repositoryRoot $Project $inputIdentity
     if ($after -cne $before) {throw ('Fixture inputs changed during compilation: '+$Project)}
     $built[$Project] = $after
@@ -129,9 +160,12 @@ try {
         if ($null -ne $old) { Write-Host ('INVALIDATED ' + $check.name + ': result/signature/artifact mismatch or explicit rerun.') }
         # Retire an old success before starting; failure/cancellation cannot fall
         # back to it on the next invocation. Other valid successes stay usable.
+        if($ClosureOnly){throw ('Closure refuses execution fallback; missing current evidence: '+$check.name)}
         $attempt=Start-WorkloadCheckpoint $repositoryRoot $batch $check $signature
         $entries.Remove($check.name)
+        Stop-WorkloadReadWindow
         Ensure-Fixture $check.project
+        Start-WorkloadReadWindow
         $attempt | Add-Member -MemberType NoteProperty -Name fixtureInputFingerprint -Value $(if ($check.project) {$built[$check.project]} else {'prebuilt detection outputs locked by build record'})
         # Capture the actual inputs to the process before launch, then require
         # the same bytes/configuration/set after it and at the whole-run exit.
@@ -154,6 +188,8 @@ try {
         $results.Add([ordered]@{name=$check.name; result='AWAITING_STABILITY'; disposition='EXECUTED'; milliseconds=$entry.milliseconds; originalMilliseconds=$entry.milliseconds; executionId=$entry.executionId; sourceCommit=$identity.commit})
         Write-Host ('EXECUTED ' + $check.name + ' ms=' + $entry.milliseconds)
     }
+    Stop-WorkloadReadWindow
+    Start-WorkloadReadWindow
     Assert-StableInputs
     Complete-WorkloadCheckpointQualification $repositoryRoot @($completedReceipts.ToArray()) $batch
     foreach ($item in $results) {if ($item.disposition -ceq 'EXECUTED') {$item.result='PASS'}}
@@ -175,7 +211,7 @@ try {
     $result = [ordered]@{ status=$(if ($Mode -ceq 'Feedback') {'FEEDBACK'} else {'PASS'}); mode=$Mode; commit=$identity.commit; sourceFingerprint=$identity.fingerprint;
         inputFingerprint=$inputIdentity.fingerprint; baseline=$changes.baseline; requestedBaseline=$Baseline; changedPaths=$changes.paths; groups=$route.groups;
         runtime='.NET Framework 4.7.2 target / x86'; requiredChecks=$required; checkCount=$results.Count; results=@($results.ToArray());
-        notSelected=@((Get-WorkloadPlan $repositoryRoot $checksRoot $architecture $catalog (Get-WorkloadRoute @('scripts/build.ps1')).groups) | Where-Object { $required -notcontains $_.name } | ForEach-Object {$_.name});
+        notSelected=@(@($knownNames)+@($entries.Keys) | Sort-Object -Unique | Where-Object {$required -notcontains $_});
         evidenceFile='artifacts/build/workload-evidence.json'; evidenceSha256=(Get-FileHash -LiteralPath $cachePath -Algorithm SHA256).Hash;
         slowGraphics='separate-risk-triggered-entry' }
     if ($null -ne $applicability) {$result.applicabilityRecord=$applicability.path;$result.applicabilitySha256=$applicability.sha256;$result.qualificationId=$applicability.record.qualificationId}
@@ -192,4 +228,4 @@ try {
     $record.workload=$failure; Write-WorkloadJson $recordPath $record
     $_.Exception.Data['workload']=$failure
     throw
-}
+} finally {Stop-WorkloadReadWindow}

@@ -6,6 +6,7 @@ param(
     [string] $BuildRecordPath,
     [string] $ExpectedSourceCommit,
     [string] $ExpectedZipSha256,
+    [string] $ApprovedRetainedAssets,
     [switch] $DeferGraphics,
     [string] $GraphicsDeferralReason
 )
@@ -17,10 +18,12 @@ Set-StrictMode -Version 2.0
 # does not enter build.ps1 or the historical full-product synthetic receiver.
 if ($Scope -eq 'PackageIntegrity') {
     if ($DeferGraphics -or $GraphicsDeferralReason) { throw 'PackageIntegrity does not run graphical checks.' }
-    & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'verify-existing-package.ps1') -ZipPath $ZipPath -BuildRecordPath $BuildRecordPath -ExpectedSourceCommit $ExpectedSourceCommit -ExpectedZipSha256 $ExpectedZipSha256
+    $arguments=@('-ZipPath',$ZipPath,'-BuildRecordPath',$BuildRecordPath,'-ExpectedSourceCommit',$ExpectedSourceCommit,'-ExpectedZipSha256',$ExpectedZipSha256)
+    if($ApprovedRetainedAssets){$arguments+=@('-ApprovedRetainedAssets',$ApprovedRetainedAssets)}
+    & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'verify-existing-package.ps1') @arguments
     exit $LASTEXITCODE
 }
-if ($ZipPath -or $BuildRecordPath -or $ExpectedSourceCommit -or $ExpectedZipSha256) {throw 'Package arguments require -Scope PackageIntegrity.'}
+if ($ZipPath -or $BuildRecordPath -or $ExpectedSourceCommit -or $ExpectedZipSha256 -or $ApprovedRetainedAssets) {throw 'Package arguments require -Scope PackageIntegrity.'}
 if ($Scope -eq 'InstallRecovery' -and ($DeferGraphics -or $GraphicsDeferralReason)) {throw 'InstallRecovery does not run graphical checks.'}
 
 if ($DeferGraphics -and [string]::IsNullOrWhiteSpace($GraphicsDeferralReason)) {

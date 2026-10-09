@@ -154,6 +154,7 @@ try {
         $expected = @($exactGroups[$path])
         if ($expected -contains 'shared-host' -or $expected -contains 'storage-host' -or $expected -contains 'tools-host') { $expected += 'combat-host' }
         if ($expected -contains 'shared-host' -or $expected -contains 'storage-host') {
+            $expected += 'legacy-worker'
             $expected += @('notes-host','records','style-host','world-host','hotkeys','preferences','information','guidance','entity','items','biomes','pages-host')
         }
         if ($expected -contains 'fishing-host') { $expected += 'information' }
@@ -174,6 +175,12 @@ try {
     foreach ($path in $cases.Keys) {
         Write-Fixture $path "changed`n"
         $changes = Get-WorkloadChanges $fixtureRoot $baseline; $route = Get-WorkloadRoute $changes.paths
+        $leaf=@(Get-WorkloadPathChecks $path)
+        if($leaf.Count){
+            $actual=@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() $route.groups | ForEach-Object {$_.name})
+            Assert-Route ((($actual|Sort-Object)-join '|') -ceq (($leaf|Sort-Object)-join '|')) ('leaf dispatch exact consumers '+$path)
+            Write-Fixture $path "baseline`n";continue
+        }
         Assert-Route ($changes.paths.Count -eq 1 -and $changes.paths[0] -ceq $path -and $route.groups -contains $cases[$path]) ('actual unstaged route ' + $path)
         Assert-Route (-not $route.slowGraphics -and $route.unknown.Count -eq 0) 'known local/document edits never automatically launch slow graphics'
         if ($exactGroups.ContainsKey($path)) {
@@ -232,18 +239,20 @@ try {
     Assert-Route ($null -ne (Get-WorkloadChanges $fixtureRoot 'missing-baseline').reason) 'missing baseline is an explicit unresolved risk'
     # Exercise the actual executable plan, not script text or a duplicate dispatcher.
     $catalog = @('FishingChecks|fishing-host','ProcessingChecks|processing-host','HotkeyCoreChecks|hotkeys','OnboardingChecks|about-host','CombatChecks|combat-host')
-    foreach($path in @('src/JueMingR.Features/Combat/CombatSettings.cs','src/JueMingR.TerrariaHost/Combat/CombatUse.cs','src/JueMingR.TerrariaHost/Combat/Prediction/NativeNpcEligibility.cs','src/JueMingR.TerrariaHost/F5/CombatIntervalDrag.cs','tests/NativeWorldTextProbe/CombatNetworkFixture.cs','tests/NativeWorldTextProbe/NativeCombatGuardianQueryChecks.cs')) {
+    foreach($path in @('src/JueMingR.Features/Combat/CombatSettings.cs','src/JueMingR.TerrariaHost/Combat/CombatUse.cs','src/JueMingR.TerrariaHost/F5/CombatIntervalDrag.cs','tests/NativeWorldTextProbe/CombatNetworkFixture.cs')) {
         $local = Get-WorkloadRoute @($path)
         Assert-Route ((@($local.groups) -join ',') -ceq 'combat-host,core') ('combat leaf classification: '+$path)
     }
     $combatPlan=@(Get-WorkloadPlan $repositoryRoot (Join-Path $fixtureRoot 'checks') 'architecture.exe' $catalog @('core','combat-host'))
-    $capacityPlan=@($combatPlan | Where-Object {$_.name -ceq 'native-NpcSessionCapacity'})
+    $workerPlan=@(Get-WorkloadPlan $repositoryRoot (Join-Path $fixtureRoot 'checks') 'architecture.exe' $catalog @('legacy-worker'))
+    Assert-Route ($combatPlan.name -notcontains 'native-NpcWorkerIntegration' -and $combatPlan.name -notcontains 'native-NpcSessionCapacity') 'ordinary prediction does not hide exact worker suites'
+    $capacityPlan=@($workerPlan | Where-Object {$_.name -ceq 'native-NpcSessionCapacity'})
     Assert-Route ($capacityPlan.Count -eq 1 -and $capacityPlan[0].arguments[-1] -ceq 'NpcSessionCapacity') 'independent capacity consumer is present once with its actual probe scope'
     $scopeValidation=@((Get-Command (Join-Path $repositoryRoot 'scripts/test-world-object-text.ps1')).Parameters['Scope'].Attributes | Where-Object {$_ -is [System.Management.Automation.ValidateSetAttribute]})
     foreach($scope in @('NpcSessionCapacity','NpcFailureRecovery','NpcGuardianQuery','NpcModeledImpact','NpcSync','NpcLocalFailure','NpcDisplayIsolation','NpcCloseoutTerrain')) {Assert-Route ($scopeValidation.Count -eq 1 -and $scopeValidation[0].ValidValues -contains $scope) ('native entry accepts '+$scope)}
     foreach($scope in @('NpcSync','NpcLocalFailure','NpcDisplayIsolation','NpcCloseoutTerrain')){Assert-Route (@($combatPlan | Where-Object {$_.name -ceq ('native-'+$scope) -and $_.arguments[-1] -ceq $scope}).Count -eq 1) ('explicit closeout responsibility in formal combat route '+$scope)}
-    Assert-Route (@($combatPlan | Where-Object {$_.name -ceq 'native-NpcGuardianQuery' -and $_.arguments[-1] -ceq 'NpcGuardianQuery'}).Count -eq 1) 'guardian continuous query regression belongs to ordinary combat delivery'
-    Assert-Route (@($combatPlan | Where-Object {$_.name -ceq 'native-NpcModeledImpact' -and $_.arguments[-1] -ceq 'NpcModeledImpact'}).Count -eq 1) 'modeled and unmodeled hit boundaries belong to ordinary combat delivery'
+    Assert-Route (@($workerPlan | Where-Object {$_.name -ceq 'native-NpcGuardianQuery' -and $_.arguments[-1] -ceq 'NpcGuardianQuery'}).Count -eq 1) 'guardian continuous query regression belongs to explicit exact comparison coverage'
+    Assert-Route (@($workerPlan | Where-Object {$_.name -ceq 'native-NpcModeledImpact' -and $_.arguments[-1] -ceq 'NpcModeledImpact'}).Count -eq 1) 'modeled and unmodeled hit boundaries belong to ordinary combat delivery'
     Assert-Route (@($combatPlan | Where-Object {$_.name -ceq 'native-NpcRollingCpu' -and $_.arguments[-1] -ceq 'NpcRollingCpu'}).Count -eq 1) 'default rolling source must have its own ordinary combat regression'
     Assert-Route ($scopeValidation[0].ValidValues -contains 'NpcRollingCpu') 'native entry accepts the default rolling regression'
     Assert-Route (@($combatPlan | Where-Object {$_.name -ceq 'native-NpcRollingSelectionNegative' -and $_.arguments[-1] -ceq 'NpcRollingSelectionNegative'}).Count -eq 1 -and $scopeValidation[0].ValidValues -contains 'NpcRollingSelectionNegative') 'real selection-negative regression belongs to ordinary delivery'
@@ -255,7 +264,7 @@ try {
     $names = @($plan | ForEach-Object {$_.name})
     foreach ($expected in @('native-PageCompositionCpu','fixture-focus-input','fixture-hotkeys-popup','HotkeyCoreChecks')) { Assert-Route ($names -contains $expected) ('page actual consumer ' + $expected) }
     foreach ($excluded in @('native-FishingCpu','native-ToolsCpu','native-ProcessingCpu','FishingChecks')) { Assert-Route ($names -notcontains $excluded) ('page excludes unrelated execution ' + $excluded) }
-    $all = @(Get-WorkloadPlan $repositoryRoot (Join-Path $fixtureRoot 'checks') 'architecture.exe' $catalog (Get-WorkloadRoute @('scripts/build.ps1')).groups)
+    $all = @(Get-WorkloadPlan $repositoryRoot (Join-Path $fixtureRoot 'checks') 'architecture.exe' $catalog (Get-WorkloadRoute @('@full')).groups)
     $packageRoute = Get-WorkloadRoute @('scripts/verify-existing-package.ps1')
     $packagePlan = @(Get-WorkloadPlan $repositoryRoot (Join-Path $fixtureRoot 'checks') 'architecture.exe' $catalog $packageRoute.groups)
     Assert-Route ($packagePlan.Count -eq 1 -and $packagePlan[0].name -ceq 'workload-PackageVerification' -and $packagePlan[0].project -ceq '' -and $packagePlan[0].arguments[-1] -ceq (Join-Path $repositoryRoot 'tests/Phase0S/Invoke-PackageVerificationChecks.ps1')) 'standalone package tool has exactly its actual PowerShell check'

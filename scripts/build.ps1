@@ -6,7 +6,9 @@ param(
     [string] $WorkloadBaseline,
     [ValidateSet('Related','Full','Feedback')][string] $WorkloadMode = 'Related',
     [switch] $RerunChecks,
-    [string] $ApplicabilityRecord
+    [string] $ApplicabilityRecord,
+    [switch] $PrepareOnly,
+    [string] $ApprovedRetainedAssets
 )
 
 $ErrorActionPreference = 'Stop'
@@ -108,15 +110,26 @@ if ($RequireClean -and -not $isClean) {
 $commit = [string] (Invoke-Git -Arguments @('rev-parse', 'HEAD') | Select-Object -First 1)
 $commit = $commit.Trim()
 $sourceIdentity = Get-WorkloadIdentity $repositoryRoot
+$admission=Initialize-WorkloadWorkspace $repositoryRoot $ApprovedRetainedAssets
 $inputIdentity = Get-WorkloadEvidenceInput $repositoryRoot $sourceIdentity
+if($PrepareOnly -and ($WorkloadBaseline -or $ApplicabilityRecord -or $RerunChecks -or $WorkloadMode -cne 'Related')){throw 'PrepareOnly prepares compile/structure only; workload arguments belong to the runner.'}
+$existing=Read-WorkloadJson $recordPath
+if($PrepareOnly -and $Configuration -ceq 'Debug' -and (Test-WorkloadBuildMatch $repositoryRoot $existing $sourceIdentity $inputIdentity)){
+    Write-Output ('PREPARED: reused matching Debug compilation/structure from '+$existing.commit+'; product checks NOT_EXECUTED; no delivery qualification.')
+    return
+}
 # Read a saved finite lock before the owned build-root cleanup. In-progress or
 # failed validation retains this identity too; no default full-plan fallback.
-if (-not $ApplicabilityRecord) {$ApplicabilityRecord=Read-WorkloadApplicabilityPointer $repositoryRoot $sourceIdentity $inputIdentity}
-if (-not $ApplicabilityRecord) {
+if (-not $PrepareOnly -and -not $ApplicabilityRecord) {$ApplicabilityRecord=Read-WorkloadApplicabilityPointer $repositoryRoot $sourceIdentity $inputIdentity}
+if (-not $PrepareOnly -and -not $ApplicabilityRecord) {
     $previousDebug=Read-WorkloadJson (Join-Path $repositoryRoot 'artifacts/build/Debug/build-record.json')
     if ($null -ne $previousDebug -and $previousDebug.workload.PSObject.Properties.Name -contains 'applicabilityRecord') {
-        $ApplicabilityRecord=$previousDebug.workload.applicabilityRecord
-        if (-not [IO.File]::Exists($ApplicabilityRecord) -or (Get-FileHash -LiteralPath $ApplicabilityRecord).Hash -cne $previousDebug.workload.applicabilitySha256) {throw 'Saved finite applicability identity is missing/changed.'}
+        $previousPath=$previousDebug.workload.applicabilityRecord
+        if (-not [IO.File]::Exists($previousPath) -or (Get-FileHash -LiteralPath $previousPath).Hash -cne $previousDebug.workload.applicabilitySha256) {throw 'Saved finite applicability identity is missing/changed.'}
+        $old=Read-WorkloadJson $previousPath
+        if($null -eq $old){throw 'Saved finite applicability record damaged.'}
+        if($old.commit -ceq $sourceIdentity.commit -and $old.sourceFingerprint -ceq $sourceIdentity.fingerprint -and $old.inputFingerprint -ceq $inputIdentity.fingerprint){$ApplicabilityRecord=$previousPath}
+        else {Write-Host ('STALE build qualification preserved: '+$previousPath+'; not used for current candidate.')}
     }
 }
 $applicabilityHash=$null
@@ -209,12 +222,15 @@ $record = [ordered]@{
     configuration = $Configuration
     sourceFingerprint = $sourceIdentity.fingerprint
     inputFingerprint = $inputIdentity.fingerprint
+    compileFingerprint = Get-WorkloadCompileFingerprint $inputIdentity
+    compileInputs = @(Get-WorkloadCompileInputs $inputIdentity)
     baselineSha256 = (Get-FileHash -LiteralPath $baselinePath -Algorithm SHA256).Hash.ToUpperInvariant()
     harmonyBaselineSha256 = (Get-FileHash -LiteralPath $harmonyBaselinePath -Algorithm SHA256).Hash.ToUpperInvariant()
     references = $referenceRecords
     outputs = $outputRecords
     workload = [ordered]@{ status = 'PENDING' }
 }
+if($null -ne $admission){$record.workspace=$admission}
 if ($ApplicabilityRecord) {$record.workload.applicabilityRecord=[IO.Path]::GetFullPath($ApplicabilityRecord);$record.workload.applicabilitySha256=$applicabilityHash}
 # A Release package needs observable Debug assertions from exactly this source.
 # Reuse only hash-matching outputs; otherwise compile that variant once here.
@@ -242,7 +258,14 @@ if ($Configuration -ceq 'Release') {
 }
 $json = ($record | ConvertTo-Json -Depth 8) + [Environment]::NewLine
 [IO.File]::WriteAllText($recordPath, $json, (New-Object Text.UTF8Encoding($false)))
-try { $workload = & (Join-Path $PSScriptRoot 'test-workload-regressions.ps1') -Baseline $WorkloadBaseline -Mode $WorkloadMode -Rerun:$RerunChecks -ApplicabilityRecord $ApplicabilityRecord }
+if($PrepareOnly){
+    if($sourceIdentity.fingerprint -cne (Get-WorkloadIdentity $repositoryRoot).fingerprint -or -not (Test-WorkloadOutputs $workRoot $record.outputs)){throw 'Preparation inputs/outputs changed.'}
+    $record.workload=[ordered]@{status='PREPARED';mode='PrepareOnly';productChecks='NOT_EXECUTED';deliveryEligible=$false}
+    Write-WorkloadJson $recordPath $record
+    Write-Output 'PREPARED: Debug compilation + structure only; product checks NOT_EXECUTED; no delivery qualification.'
+    return
+}
+try { $workload = & (Join-Path $PSScriptRoot 'test-workload-regressions.ps1') -Baseline $WorkloadBaseline -Mode $WorkloadMode -Rerun:$RerunChecks -ApplicabilityRecord $ApplicabilityRecord -ApprovedRetainedAssets $ApprovedRetainedAssets }
 catch {
     $failure = $_.Exception.Data['workload']
     if ($null -eq $failure) { $failure = [ordered]@{ status = 'FAILED'; failedCheck = 'workload-entry'; reason = $_.Exception.Message; checkCount = 0 } }
