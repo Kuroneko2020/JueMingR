@@ -22,6 +22,7 @@ namespace JueMingR.TerrariaHost.Combat
                 case 120:gravity=.05f;start=30;break;
                 case 495:gravity=.04f;start=30;break;
                 case 639:gravity=.1f;start=15;break;
+                case 91:gravity=.07f;start=20;break;
                 case 134:case 137:case 140:case 143:acceleration=1.1f;max=15;componentAcceleration=true;break;
                 case 133:case 136:case 139:case 142:gravity=.2f;start=16;break;
                 case 135:case 138:case 141:case 144:gravity=.2f;start=1;acceleration=.97f;drag=true;snap=true;break;

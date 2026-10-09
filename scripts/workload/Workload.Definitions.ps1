@@ -10,7 +10,8 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeToolCadenceChecks.cs'=@('native-ToolsCadence')
         'tests/NativeWorldTextProbe/NativeToolsWorkloadChecks.cs'=@('native-ToolsWorkload')
         'tests/NativeWorldTextProbe/NativeYoyoAdoptionChecks.cs'=@('native-CombatCpu','native-CombatYoyoCausal')
-        'tests/NativeWorldTextProbe/NativeCombatAimChecks.cs'=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatMechanicsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatAimChecks.cs'=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatEffectChecks.cs'=@('native-CombatAimCpu','native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatAmmoChecks.cs'=@('native-CombatAimCpu')
         'tests/NativeWorldTextProbe/NativeCombatSkyChecks.cs'=@('native-CombatAimCpu')
         'tests/NativeWorldTextProbe/NativeCombatScatterChecks.cs'=@('native-CombatAimCpu')
@@ -51,6 +52,7 @@ function Get-WorkloadNativeScopes {
         'CombatAimCpu'=@('combat-host');
         'CombatControlCpu'=@('combat-host');
         'CombatMechanicsCpu'=@('combat-host');
+        'CombatEffectsCpu'=@('combat-host');
         'NpcRollingSelectionNegative'=@('combat-host');
         'NpcBasicMotion'=@('combat-host');
         'NpcFoundationRules'=@('combat-host'); 'NpcFoundationContinuous'=@('combat-host'); 'NpcPlayerPolicy'=@('combat-host'); 'NpcStrategy'=@('combat-host'); 'NpcStrategyContinuous'=@('combat-host'); 'NpcEventRetirementCpu'=@('combat-host');
