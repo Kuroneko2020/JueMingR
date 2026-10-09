@@ -39,7 +39,7 @@ namespace JueMingR.TerrariaHost.Combat
                         // The real spin collision is an owner-centred ellipse,
                         // independent of the ball's displayed orbit angle.
                         var spin=AttackIntercept.EllipseContact(timeline,tick,aim.X,aim.Y,mounted.X,mounted.Y,55,.8f,player.gravDir>0?.4f:.8f);
-                        if(spin!=null && HostMeleeAttack.OwnerAllows(player,shot,timeline[tick].Bounds,Main.npc[timeline.Identity.Slot].noTileCollide,terrain))return spin;
+                        if(spin!=null && HostMeleeAttack.OwnerAllows(player,shot,timeline[tick].OwnerBounds,Main.npc[timeline.Identity.Slot].noTileCollide,terrain))return spin;
                         continue;
                     }
                 }

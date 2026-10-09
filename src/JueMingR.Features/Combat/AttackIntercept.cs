@@ -15,14 +15,13 @@ namespace JueMingR.Features.Combat
     }
     public static class AttackIntercept
     {
-        // Native flail spin tests the closest point in the actual NPC body
-        // against an owner-centred asymmetric ellipse. It has no projectile
-        // integer-box conversion; wrapping this edge in a one-pixel rectangle
-        // would lose a legal edge after integer truncation.
+        // Native flail Colliding receives the integer NPC projectile rectangle,
+        // including netOffset and type414's extension. Its closest-point ellipse
+        // is separate from owner-hit-check's floating body and melee's body box.
         public static AttackContact EllipseContact(NpcTrajectory timeline,int tick,float aimX,float aimY,float x,float y,float radius,float upperScale,float lowerScale)
         {
             if(timeline==null || tick<0 || tick>=timeline.Count || radius<=0 || upperScale<=0 || lowerScale<=0 || !Finite(x) || !Finite(y) || !Finite(aimX) || !Finite(aimY))return null;
-            var sample=timeline[tick];if(!sample.CanReceive)return null;var b=sample.Bounds;float px=Math.Max(b.X,Math.Min(b.X+b.Width,x)),py=Math.Max(b.Y,Math.Min(b.Y+b.Height,y));float dx=px-x,dy=(py-y)/(py>y?lowerScale:upperScale);
+            var sample=timeline[tick];if(!sample.CanReceive)return null;var b=sample.ProjectileReceiveBounds;float px=Math.Max(b.X,Math.Min(b.X+b.Width,x)),py=Math.Max(b.Y,Math.Min(b.Y+b.Height,y));float dx=px-x,dy=(py-y)/(py>y?lowerScale:upperScale);
             return dx*dx+dy*dy<=radius*radius?new AttackContact(timeline,aimX,aimY,px,py,tick,0,0,AttackConfidence.Conditional):null;
         }
         // Locked native finite strip/rectangle mathematics. A target's edge

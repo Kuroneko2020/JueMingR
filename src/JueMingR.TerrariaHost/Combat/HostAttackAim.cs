@@ -63,7 +63,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(HostSwingAttack.Handles(item)){PrepareSwing(player,item,timeline,phase,false);return;}
             Control.Prepare(timeline,phase);
             var captured=AttackAmmoSnapshot.Capture(player,item);if(captured==null)return;
-            if(HostHeldAttack.Weapon(item.type) || HostYoyoNavigation.Weapon(item))return; // Controller birth is not its later ordinary/beam damage phase.
+            if(HostHeldAttack.Weapon(item.type) || HostYoyoNavigation.Weapon(item) || HostWhipAttack.Weapon(item))return; // Controller birth is not its later ordinary/beam damage phase.
             Projectile sample;bool melee=ContentSamples.ProjectilesByType.TryGetValue(captured.Projectile,out sample) && HostMeleeAttack.Handles(sample);
             AttackMotion motion;bool sky=HostSkyAttack.Handles(item.type);if(!sky && !melee && !HostAttackModels.TryRead(captured,out motion))return;
             origin=player.RotatedRelativePoint(player.MountedCenter);int age=(int)((long)Main.GameUpdateCount-timeline.SampleTick)-(beforeNpc?1:0);if(age<0 || age>1)return;
@@ -106,10 +106,19 @@ namespace JueMingR.TerrariaHost.Combat
                 Vector2.DistanceSquared(player.RotatedRelativePoint(player.MountedCenter),Main.GameUpdateCount==prepared?origin:nextOrigin)>4)return false;
             return !checkAmmo || terrain.Unchanged && ammo!=null && ammo.Matches(player,weapon);
         }
-        internal CombatCursorScope BeginShot(Player player,Item item)
+        internal CombatCursorScope BeginShot(Player player,Item item,bool regular)
         {
             if(!ReferenceEquals(player,combat.Player))return null;
-            if(HostHeldAttack.Weapon(item.type) || HostYoyoNavigation.Weapon(item))return Control.BeginOpening(player,item);
+            if(!regular && item!=null && ProjectileID.Sets.IsAWhip[item.shoot])
+            {
+                // Snake-band extra swings are real consumers, with random
+                // direction and a different duration/role. They may borrow a
+                // representative input, never a primary's precise contact.
+                current=next=null;var timeline=observation.Prediction.Cache.Read(1);
+                if(!Permission || !ReferenceEquals(item,player.HeldItem) || timeline==null || !timeline.Identity.Equals(observation.Selection.Target))return null;
+                Vector2 point;terrain.Reset();return HostWhipAttack.TryExtraPoint(player,timeline,new HostAttackClock(timeline,HostAttackPhase.BeforeNpc),terrain,out point)?CombatCursorScope.Begin(point):null;
+            }
+            if(HostHeldAttack.Weapon(item.type) || HostYoyoNavigation.Weapon(item) || HostWhipAttack.Weapon(item))return Control.BeginOpening(player,item);
             if(!ReferenceEquals(item,weapon) || !Valid(true)){Clear();return null;}
             var result=Main.GameUpdateCount==prepared?current:next;
             // One prepared ordinary attack is a capability, not a reusable

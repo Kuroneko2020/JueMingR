@@ -13,7 +13,7 @@ namespace JueMingR.TerrariaHost.Combat
     {
         private static readonly MethodInfo copy=typeof(object).GetMethod("MemberwiseClone",BindingFlags.Instance|BindingFlags.NonPublic);
         private static readonly MethodInfo spearOffset=typeof(Projectile).GetMethod("AI_019_Spears_GetSpearOffsetRelativeToPlayer",BindingFlags.Instance|BindingFlags.NonPublic);
-        internal static bool Handles(Projectile sample){return sample.aiStyle==19 || ProjectileID.Sets.IsAWhip[sample.type] || sample.type==13 || sample.type==19 || sample.type==33 || sample.type==52 || sample.type==106 || sample.type==611;}
+        internal static bool Handles(Projectile sample){return sample.aiStyle==19 || ProjectileID.Sets.IsAWhip[sample.type] && sample.type!=1035 || sample.type==13 || sample.type==19 || sample.type==33 || sample.type==52 || sample.type==106 || sample.type==611;}
         internal static AttackContact Solve(Player player,Item item,AttackAmmoSnapshot ammo,NpcTrajectory timeline,int age,bool beforeNpc,PredictionTerrain terrain)
         {
             Projectile sample;if(!ContentSamples.ProjectilesByType.TryGetValue(ammo.Projectile,out sample) || !Handles(sample))return null;
@@ -70,7 +70,7 @@ namespace JueMingR.TerrariaHost.Combat
                             if(k>=(sample.type==106?45:30))break;shadow.Center+=shadow.velocity;
                         }
                         if(shadow.tileCollide && !terrain.ProjectilePassage(old.X,old.Y,shadow.Center.X,shadow.Center.Y,shadow.width,shadow.height))break;
-                        int tick=age+step+1;if(!receive.Allows(step+1) || !OwnerAllows(body,shadow,timeline[tick].Bounds,Main.npc[timeline.Identity.Slot].noTileCollide,terrain))continue;
+                        int tick=age+step+1;if(!receive.Allows(step+1) || !OwnerAllows(body,shadow,timeline[tick].OwnerBounds,Main.npc[timeline.Identity.Slot].noTileCollide,terrain))continue;
                         var box=new Rectangle((int)shadow.position.X,(int)shadow.position.Y,shadow.width,shadow.height);shape.Count=0;
                         if(ProjectileID.Sets.IsAWhip[sample.type])
                         {
@@ -106,7 +106,7 @@ namespace JueMingR.TerrariaHost.Combat
                 if(clock.MovePlayer(step)){PredictionStop stop;if(!PlayerMotionContinuation.Advance(ref motion,environment,terrain,out stop))return null;}
                 body.position=new Vector2(motion.X,motion.Y);Vector2 mounted=body.RotatedRelativePoint(body.MountedCenter);
                 shadow.velocity=(aim-mounted).SafeNormalize(Vector2.UnitX*body.direction)*(player.HeldItem.shoot==927?player.HeldItem.shootSpeed:1);shadow.scale=shot.ai[1];shadow.Center=mounted+shadow.velocity;
-                int tick=clock.FirstTick+step;if(!receive.Allows(step+1) || !OwnerAllows(body,shadow,timeline[tick].Bounds,Main.npc[timeline.Identity.Slot].noTileCollide,terrain))continue;
+                int tick=clock.FirstTick+step;if(!receive.Allows(step+1) || !OwnerAllows(body,shadow,timeline[tick].OwnerBounds,Main.npc[timeline.Identity.Slot].noTileCollide,terrain))continue;
                 var box=new Rectangle((int)shadow.position.X,(int)shadow.position.Y,shadow.width,shadow.height);shape.Count=0;ProjectileCollisionGeometry.TryCapture(shadow,box,0,shape);
                 for(int i=0;i<shape.Count;i++){var s=shape.Shapes[i];var contact=AttackIntercept.BodyContact(timeline,tick,0,aim.X,aim.Y,(s.A.X+s.B.X)/2,(s.A.Y+s.B.Y)/2,s.B.X-s.A.X,s.B.Y-s.A.Y,AttackConfidence.Conditional);if(contact!=null)return contact;}
             }
@@ -119,6 +119,16 @@ namespace JueMingR.TerrariaHost.Combat
             bool clear;PredictionStop stop;if(!terrain.CanHit(new MotionRect(player.position.X,player.position.Y,player.width,player.height),target,out clear,out stop))return false;if(clear)return true;
             Vector2 upper=player.Center+new Vector2(player.direction*player.width/2,player.gravDir*-player.height/3f),side=player.Center+new Vector2(player.direction*player.width/2,0);
             return terrain.MeleeLine(upper.X,upper.Y,center.X,center.Y-(int)target.Height/3) || terrain.MeleeLine(upper.X,upper.Y,center.X,center.Y) || terrain.MeleeLine(side.X,side.Y,center.X,center.Y+(int)target.Height/3);
+        }
+        internal static AttackContact WhipContact(Player player,Projectile shot,List<Vector2> now,List<Vector2> prior,NpcTrajectory timeline,int tick,int sub,Vector2 aim)
+        {
+            now.Clear();prior.Clear();Projectile.FillWhipControlPoints(shot,now,player,true,0);Projectile.FillWhipControlPoints(shot,prior,player,true,-1);
+            for(int i=0;i<Math.Min(now.Count,prior.Count);i++)
+            {
+                var a=new Rectangle((int)now[i].X-shot.width/2,(int)now[i].Y-shot.height/2,shot.width,shot.height);var b=new Rectangle((int)prior[i].X-shot.width/2,(int)prior[i].Y-shot.height/2,shot.width,shot.height);var box=Rectangle.Union(a,b);
+                var contact=AttackIntercept.BodyContact(timeline,tick,sub,aim.X,aim.Y,box.X+box.Width/2f,box.Y+box.Height/2f,box.Width,box.Height,AttackConfidence.Representative);if(contact!=null)return contact;
+            }
+            return null;
         }
     }
 }

@@ -26,7 +26,7 @@ namespace NativeWorldTextProbe
             // The original phase owns this named RNG stream after Main's
             // normal initialization; preserve the calling probe's old stream.
             randomField.SetValue(null,new System.Collections.Generic.Dictionary<string,Terraria.Utilities.UnifiedRandom>{{"UpdateProjectiles",new Terraria.Utilities.UnifiedRandom(702)}});
-            try{RunCore(context);Bubble(context,0);Bubble(context,5);Bubble(context,0,true);UnknownSlot(context);NativeCombatSwingChecks.Run(context);}finally{randomField.SetValue(null,previousRandom);captureBirth=false;audit.Unpatch(birth,HarmonyPatchType.All,audit.Id);foreach(var method in methods)audit.Unpatch(method,HarmonyPatchType.All,audit.Id);}
+            try{RunCore(context);Bubble(context,0);Bubble(context,5);Bubble(context,0,true);UnknownSlot(context);NativeCombatSwingChecks.Run(context);NativeCombatWhipChecks.Run(context);}finally{randomField.SetValue(null,previousRandom);captureBirth=false;audit.Unpatch(birth,HarmonyPatchType.All,audit.Id);foreach(var method in methods)audit.Unpatch(method,HarmonyPatchType.All,audit.Id);}
         }
         private static void RunCore(object context)
         {

@@ -18,6 +18,7 @@ namespace NativeWorldTextProbe
             var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var attack=Get(combat,"Attack");var input=Get(context,"Input");
             LineOracle();
             NativeCombatPhaseChecks.Run(context);
+            OwnerOffsetOracle(context,combat,host,input);
             Starlight(context,combat,host,attack,input);
             Flail(context,combat,host,attack,input);
             foreach(var row in new[]{new[]{277,780,0},new[]{4911,800,0},new[]{284,1100,0},new[]{284,870,0},new[]{3473,900,0},new[]{277,780,1},new[]{277,780,2}})
@@ -45,6 +46,13 @@ namespace NativeWorldTextProbe
         }
         private static void LineOracle()
         {
+            foreach(int type in new[]{3,414})
+            {
+                var key=new NpcIdentity(1,new object(),2,1,type,type);var state=new NpcMotionState{Identity=key,X=170.9f,Y=100.4f,NetOffsetX=-10.6f,NetOffsetY=-.5f,Width=18,Height=12,CanReceive=true};var timeline=new NpcTrajectory(key,0,1,PredictionAssumption.None,PredictionStop.None,new[]{new NpcTrajectoryPoint(0,state)},1,PredictionStrategy.RollingConditional);
+                var b=timeline[0].ProjectileReceiveBounds;var rectangle=new Rectangle((int)b.X,(int)b.Y,(int)b.Width,(int)b.Height);var delta=rectangle.ClosestPointInRect(new Vector2(100,100))-new Vector2(100,100);delta.Y/=.8f;bool expected=delta.Length()<=55;
+                Require(BitConverter.ToInt32(BitConverter.GetBytes(timeline[0].OwnerBounds.X),0)==BitConverter.ToInt32(BitConverter.GetBytes(state.X+state.NetOffsetX),0) && BitConverter.ToInt32(BitConverter.GetBytes(timeline[0].OwnerBounds.Y),0)==BitConverter.ToInt32(BitConverter.GetBytes(state.Y+state.NetOffsetY),0),"compact timeline retains floating offset body distinct from integer damage rectangle");
+                Require((AttackIntercept.EllipseContact(timeline,0,900,900,100,100,55,.8f,.4f)!=null)==expected,"flail ellipse uses original integer offset/type414 projectile receive frame: "+type);
+            }
             int comparisons=0;
             foreach(float angle in new[]{0f,.2f,-.7f,1.57f})foreach(float length in new[]{5f,100f,700f})foreach(float offset in new[]{-22f,-8f,0f,7.9f,8f,16f,35f})
             {
@@ -53,6 +61,20 @@ namespace NativeWorldTextProbe
                 var contact=AttackIntercept.LineContact(timeline,0,900,900,origin.X,origin.Y,end.X,end.Y,16);Require((contact!=null)==expected,"finite strip matches original pure geometry at rectangle edge: "+angle+"/"+length+"/"+offset);comparisons++;
             }
             Console.WriteLine("PASS original pure finite-strip geometry: comparisons="+comparisons);
+        }
+        private static void OwnerOffsetOracle(object context,object combat,object host,object input)
+        {
+            NativeCombatObservationChecks.Save(host,new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,277,0,0);p.position=new Vector2(700,646);p.ResetEffects();
+            var n=new NPC();n.SetDefaults(3);n.position=new Vector2(780.9f,646.4f);n.netOffset=new Vector2(-10.6f,-.5f);var q=new Projectile();q.SetDefaults(47);q.owner=0;q.Center=p.MountedCenter;q.ownerHitCheck=true;
+            var key=new NpcIdentity(1,n,2,1,3,3);var point=new NpcTrajectoryPoint(0,new NpcMotionState{Identity=key,X=n.position.X,Y=n.position.Y,NetOffsetX=n.netOffset.X,NetOffsetY=n.netOffset.Y,Width=n.width,Height=n.height,CanReceive=true});
+            var terrain=Activator.CreateInstance(combat.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.PredictionTerrain"),true);var allows=combat.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostMeleeAttack").GetMethod("OwnerAllows",BindingFlags.Static|BindingFlags.NonPublic);
+            float distance=Vector2.Distance(q.Center,n.Center+n.netOffset);
+            foreach(float margin in new[]{-.05f,.05f})
+            {
+                q.ownerHitCheckDistance=distance+margin;var position=n.position;bool native;try{n.position+=n.netOffset;native=q.CanHitWithMeleeWeapon(n);}finally{n.position=position;}
+                Require((bool)allows.Invoke(null,new object[]{p,q,point.OwnerBounds,false,terrain})==native,"owner gate preserves exact floating offset body at distance boundary: "+margin);
+            }
+            Require(!(bool)allows.Invoke(null,new object[]{p,q,point.Bounds,false,terrain}),"unshifted motion body is a distinct incorrect owner-distance premise");Console.WriteLine("PASS original owner gate floating netOffset/distance, distinct from integer Colliding");
         }
         private static void Starlight(object context,object combat,object host,object attack,object input)
         {

@@ -21,6 +21,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCombatMeleeChecks.cs'=@('native-CombatMechanicsCpu','native-CombatAimCpu')
         'tests/NativeWorldTextProbe/NativeCombatPhaseChecks.cs'=@('native-CombatMechanicsCpu','native-CombatAimCpu')
         'tests/NativeWorldTextProbe/NativeCombatSwingChecks.cs'=@('native-CombatMechanicsCpu','native-CombatAimCpu')
+        'tests/NativeWorldTextProbe/NativeCombatWhipChecks.cs'=@('native-CombatMechanicsCpu','native-CombatAimCpu')
         'tests/NativeWorldTextProbe/NativeCombatFoundationChecks.cs'=@('native-NpcFoundationRules','native-NpcFoundationContinuous','native-NpcStrategyContinuous')
         'tests/NativeWorldTextProbe/NativeCombatFoundationContinuousChecks.cs'=@('native-NpcFoundationContinuous','native-NpcStrategyContinuous','native-NpcFiniteFlight')
         'tests/NativeWorldTextProbe/NativeCombatStrategyChecks.cs'=@('native-NpcStrategy','native-NpcStrategy-rollchoice')

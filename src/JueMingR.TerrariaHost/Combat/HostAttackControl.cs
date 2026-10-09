@@ -23,27 +23,28 @@ namespace JueMingR.TerrariaHost.Combat
         }
         internal sealed class ShotReceipt
         {
-            internal HostAttackControl Owner;internal Source Source;internal ShotReceipt Previous;internal CombatCursorScope Cursor;internal bool Ended;internal HostAttackPhase Phase;
+            internal HostAttackControl Owner;internal Source Source;internal ShotReceipt Previous;internal CombatCursorScope Cursor;internal bool Ended;internal HostAttackPhase Phase;internal ulong BirthCutoff;
         }
         private sealed class Controlled
-        {internal Projectile Shot;internal int Key,Type;internal Source Source;internal AttackContact Contact,NextKillContact;internal Vector2 KillOrigin,NextKillOrigin,Point;internal bool ChildLaterSlot,HasPoint;internal AttackAmmoSnapshot Ammo;internal uint Prepared;internal NpcIdentity Target;internal HostYoyoNavigation Navigation;internal HostBeamAttack.Child ContactChild;internal readonly List<HostBeamAttack.Child> Children=new List<HostBeamAttack.Child>(6);}
+        {internal Projectile Shot;internal int Key,Type;internal Source Source;internal AttackContact Contact,NextKillContact;internal Vector2 KillOrigin,NextKillOrigin,Point;internal bool ChildLaterSlot,HasPoint,BornNext;internal AttackAmmoSnapshot Ammo;internal uint Prepared,Born;internal ulong BirthOrdinal;internal NpcIdentity Target;internal HostYoyoNavigation Navigation;internal HostBeamAttack.Child ContactChild;internal readonly List<HostBeamAttack.Child> Children=new List<HostBeamAttack.Child>(6);}
         private readonly HostCombat combat;private readonly HostCombatObservation observation;
         private readonly Dictionary<int,Controlled> shots=new Dictionary<int,Controlled>();
         private readonly List<int> retired=new List<int>(64);
         private readonly PredictionTerrain terrain=new PredictionTerrain();
         private ShotReceipt owner;
+        private ulong birthOrdinal;
         private NpcTrajectory preparedTimeline;private HostAttackPhase preparedPhase;
         private Source opening;private AttackAmmoSnapshot openingAmmo;private Vector2 openingPoint;private uint openingStep;private bool openingUsable;
         internal HostAttackControl(HostCombat combat,HostCombatObservation observation){this.combat=combat;this.observation=observation;}
         private bool Allowed(Source source)
         {return !combat.Attack.Failed && observation.Settings.CanRun && observation.Options.Aim && combat.Admitted(combat.Player) && ReferenceEquals(source.Player,combat.Player) && source.Session==observation.Session && source.Selection==combat.Tools.SelectionIntent && source.Slot==combat.Player.selectedItem && ReferenceEquals(combat.Player.HeldItem,source.Weapon) && source.Weapon.type==source.Type && source.Weapon.prefix==source.Prefix;}
         internal bool Pending
-        {get{foreach(var entry in shots.Values)if((entry.Type==444 || HostFlailAttack.Handles(entry.Type)) && Valid(entry))return true;return false;}}
+        {get{foreach(var entry in shots.Values)if((entry.Type==444 || HostWhipAttack.Pending(entry.Shot) || HostFlailAttack.Handles(entry.Type)) && Valid(entry))return true;return false;}}
         private bool Valid(Controlled entry)
         {return entry.Shot.active && entry.Shot.owner==combat.Player?.whoAmI && (int)entry.Shot.key==entry.Key && entry.Shot.type==entry.Type && Allowed(entry.Source);}
         internal ShotReceipt BeginShot(Player player,Item item,CombatCursorScope cursor)
         {
-            var receipt=new ShotReceipt{Owner=this,Cursor=cursor,Previous=owner,Phase=preparedPhase};owner=receipt;
+            var receipt=new ShotReceipt{Owner=this,Cursor=cursor,Previous=owner,Phase=preparedPhase,BirthCutoff=birthOrdinal};owner=receipt;
             if(ReferenceEquals(player,combat.Player) && observation.Options.Aim && combat.Attack.Permission && item!=null && !item.IsAir)receipt.Source=new Source(combat,observation,item);
             return receipt;
         }
@@ -53,7 +54,7 @@ namespace JueMingR.TerrariaHost.Combat
             // Only a naturally executing registered ball Damage can lend its
             // source to a glove's real second-ball birth. Matching type/owner
             // in an arbitrary current array is not causal authorization.
-            var receipt=new ShotReceipt{Owner=this,Source=entry.Source,Previous=owner,Phase=HostAttackPhase.Projectiles};owner=receipt;return receipt;
+            var receipt=new ShotReceipt{Owner=this,Source=entry.Source,Previous=owner,Phase=HostAttackPhase.Projectiles,BirthCutoff=birthOrdinal};owner=receipt;return receipt;
         }
         internal void EndShot(ShotReceipt receipt)
         {
@@ -62,7 +63,7 @@ namespace JueMingR.TerrariaHost.Combat
             // Newly born controllers can get their first AI in the SAME native
             // projectile pass. Reuse the already captured shared future at the
             // real birth boundary; never recapture/select inside each AI call.
-            if(receipt.Source!=null && preparedTimeline!=null)try{PrepareBorn(receipt.Source,receipt.Phase);}catch(Exception error){combat.Attack.FailLocal(error);}
+            if(receipt.Source!=null && preparedTimeline!=null)try{PrepareBorn(receipt.Source,receipt.Phase,receipt.BirthCutoff);}catch(Exception error){combat.Attack.FailLocal(error);}
         }
         internal void Created(Player player,Projectile shot)
         {
@@ -73,21 +74,22 @@ namespace JueMingR.TerrariaHost.Combat
                 return;
             }
             if(owner?.Source==null || !ReferenceEquals(player,combat.Player) || !Allowed(owner.Source) || shots.Count>=64)return;
-            if(!HostGuidedAttack.Handles(shot.type) && shot.type!=444 && !HostHeldAttack.Handles(shot.type) && !HostYoyoNavigation.Handles(shot))return;
+            if(shot.type==1035 && !HostWhipAttack.Primary(shot))return;
+            if(!HostGuidedAttack.Handles(shot.type) && shot.type!=444 && shot.type!=1035 && !HostHeldAttack.Handles(shot.type) && !HostYoyoNavigation.Handles(shot))return;
             if(HostYoyoNavigation.Handles(shot) && shot.ai[0]<0)return;
-            shots[(int)shot.key]=new Controlled{Shot=shot,Key=(int)shot.key,Type=shot.type,Source=owner.Source,Navigation=HostYoyoNavigation.Handles(shot)?new HostYoyoNavigation():null};
+            shots[(int)shot.key]=new Controlled{Shot=shot,Key=(int)shot.key,Type=shot.type,Source=owner.Source,BirthOrdinal=++birthOrdinal,Born=Main.GameUpdateCount,BornNext=Main.ProjectileUpdateLoopIndex>=0 && shot.whoAmI<=Main.ProjectileUpdateLoopIndex,Navigation=HostYoyoNavigation.Handles(shot)?new HostYoyoNavigation():null};
         }
         internal void Clear(){opening=null;openingUsable=false;foreach(var entry in shots.Values){entry.Contact=entry.NextKillContact=null;entry.HasPoint=false;entry.ContactChild=null;}}
-        internal void Reset(){Clear();shots.Clear();preparedTimeline=null;opening=null;}
+        internal void Reset(){Clear();shots.Clear();preparedTimeline=null;opening=null;birthOrdinal=0;}
         internal void Prepare(NpcTrajectory timeline,HostAttackPhase phase)
         {
             Clear();retired.Clear();terrain.Reset();preparedTimeline=timeline;preparedPhase=phase;
             opening=null;
-            if(timeline!=null && (HostHeldAttack.Weapon(combat.Player.HeldItem.type) || HostYoyoNavigation.Weapon(combat.Player.HeldItem)))
+            if(timeline!=null && (HostHeldAttack.Weapon(combat.Player.HeldItem.type) || HostYoyoNavigation.Weapon(combat.Player.HeldItem) || HostWhipAttack.Weapon(combat.Player.HeldItem)))
             {
                 opening=new Source(combat,observation,combat.Player.HeldItem);openingAmmo=AttackAmmoSnapshot.Capture(combat.Player,opening.Weapon);openingStep=Main.GameUpdateCount;
                 if(openingAmmo!=null)
-                {if(HostYoyoNavigation.Weapon(opening.Weapon))openingUsable=HostYoyoNavigation.OpeningPoint(combat.Player,opening.Weapon,timeline,out openingPoint);else{openingPoint=HostHeldAttack.OpeningPoint(combat.Player,opening.Weapon,openingAmmo,timeline);openingUsable=true;}}
+                {if(HostYoyoNavigation.Weapon(opening.Weapon))openingUsable=HostYoyoNavigation.OpeningPoint(combat.Player,opening.Weapon,timeline,out openingPoint);else if(HostWhipAttack.Weapon(opening.Weapon))openingUsable=HostWhipAttack.TryPoint(combat.Player,null,timeline,new HostAttackClock(timeline,phase),terrain,out openingPoint);else{openingPoint=HostHeldAttack.OpeningPoint(combat.Player,opening.Weapon,openingAmmo,timeline);openingUsable=true;}}
             }
             foreach(var pair in shots)
             {
@@ -97,11 +99,16 @@ namespace JueMingR.TerrariaHost.Combat
             }
             foreach(int key in retired)shots.Remove(key);
         }
-        private void PrepareBorn(Source source,HostAttackPhase phase)
-        {foreach(var entry in shots.Values)if(ReferenceEquals(entry.Source,source) && Valid(entry))PrepareEntry(entry,preparedTimeline,phase);}
+        // A reused parent source is causal authority, not a request to replay
+        // that parent between its AI and Movement/Damage. Only births inside
+        // this receipt receive same-pass preparation; siblings keep their phase.
+        private void PrepareBorn(Source source,HostAttackPhase phase,ulong cutoff)
+        {foreach(var entry in shots.Values)if(entry.BirthOrdinal>cutoff && ReferenceEquals(entry.Source,source) && Valid(entry))PrepareEntry(entry,preparedTimeline,phase);}
         private void PrepareEntry(Controlled entry,NpcTrajectory timeline,HostAttackPhase phase)
         {
+            if(entry.BornNext && entry.Born==Main.GameUpdateCount && phase==HostAttackPhase.Projectiles)phase=HostAttackPhase.CompletedWorld;
             var clock=new HostAttackClock(timeline,phase);int age=clock.Age;if(age<0 || age>1)return;
+            if(entry.Type==1035){entry.HasPoint=HostWhipAttack.Pending(entry.Shot) && HostWhipAttack.TryPoint(combat.Player,entry.Shot,timeline,clock,terrain,out entry.Point);entry.Contact=null;}
             if(entry.Navigation!=null)entry.Contact=entry.Navigation.Prepare(combat.Player,entry.Shot,timeline,clock,out entry.Point,out entry.HasPoint);
             if(HostGuidedAttack.Handles(entry.Type) && combat.Player.channel && entry.Shot.ai[0]>=0 && combat.Player.HeldItem.shoot==entry.Type)
                 entry.Contact=HostGuidedAttack.Solve(combat.Player,entry.Shot,timeline,clock,terrain);
@@ -191,6 +198,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(entry.Type==444)return null;
             if(!Valid(entry) || entry.Prepared!=Main.GameUpdateCount || entry.Contact==null && !entry.HasPoint || !observation.Selection.HasTarget || !entry.Target.Equals(observation.Selection.Target) || !ReferenceEquals(preparedTimeline,observation.Prediction.Cache.Read(1)) || !terrain.Unchanged)
             {entry.Contact=null;return null;}
+            if(entry.Type==1035)return HostWhipAttack.Consumes(shot)?CombatCursorScope.Begin(entry.Point):null;
             if(HostHeldAttack.Handles(entry.Type))
             {
                 if(!HostHeldAttack.Consumes(combat.Player,shot))return null;

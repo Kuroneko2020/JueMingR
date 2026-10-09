@@ -50,8 +50,8 @@ namespace JueMingR.TerrariaHost.Tools
             harmony.Patch(m,Hook(prefix),Hook(postfix),null,Hook(finalizer));
         }
         private static HarmonyMethod Hook(string name){return name==null?null:new HarmonyMethod(typeof(ToolHooks).GetMethod(name,BindingFlags.Static|BindingFlags.NonPublic));}
-        private static void ShotBefore(Player __instance,Item __1,out Combat.HostAttackControl.ShotReceipt __state)
-        {__state=null;var attack=host?.Combat?.Attack;if(attack==null)return;Combat.CombatCursorScope cursor=null;try{cursor=attack.BeginShot(__instance,__1);__state=attack.Control.BeginShot(__instance,__1,cursor);}catch(Exception error){cursor?.End();attack.FailLocal(error);}}
+        private static void ShotBefore(Player __instance,Item __1,bool __3,out Combat.HostAttackControl.ShotReceipt __state)
+        {__state=null;var attack=host?.Combat?.Attack;if(attack==null)return;Combat.CombatCursorScope cursor=null;try{cursor=attack.BeginShot(__instance,__1,__3);__state=attack.Control.BeginShot(__instance,__1,cursor);}catch(Exception error){cursor?.End();attack.FailLocal(error);}}
         private static void ShotAfter(Combat.HostAttackControl.ShotReceipt __state){__state?.Owner.EndShot(__state);}
         private static Exception ShotFinal(Combat.HostAttackControl.ShotReceipt __state,Exception __exception){__state?.Owner.EndShot(__state);return __exception;}
         private static void KillBefore(Projectile __instance,out Combat.CombatCursorScope __state)
