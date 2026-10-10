@@ -1,0 +1,113 @@
+{
+  "note": "File timestamps bound recorded log activity, not exact coding time. Original process durations are in test-identities.json. Overlapping work must not be added.",
+  "records": [
+    {
+      "file": "build-debug-r01.log",
+      "createdLocal": "2026-10-10T17:42:15.930444+08:00",
+      "lastWriteLocal": "2026-10-10T17:42:35.384154+08:00",
+      "sha256": "41F5437C698E98878880AD508E5ABE3769CAD443B9548D4824D98D15D6DC1C7A"
+    },
+    {
+      "file": "integration-r03.log",
+      "createdLocal": "2026-10-10T18:16:19.569551+08:00",
+      "lastWriteLocal": "2026-10-10T18:16:51.532412+08:00",
+      "sha256": "A67DBDD2359BEAD03C324C14DA72BBBEDF25DACB41F9B5E75C8A55B8C6375EE1"
+    },
+    {
+      "file": "integration-r04.log",
+      "createdLocal": "2026-10-10T18:35:25.704910+08:00",
+      "lastWriteLocal": "2026-10-10T18:35:54.269360+08:00",
+      "sha256": "4842E3AF2BAB555FFCCDF67B3C3E6D49FDEE039FC177BA8F260124ED925BB4DE"
+    },
+    {
+      "file": "navigation-r04.log",
+      "createdLocal": "2026-10-10T18:35:25.588448+08:00",
+      "lastWriteLocal": "2026-10-10T18:35:44.428982+08:00",
+      "sha256": "54D929A6346C4332C59AEB164A977D624AB2B88E55D11A956F4E21B6A319A08F"
+    },
+    {
+      "file": "costs-r07.log",
+      "createdLocal": "2026-10-10T19:49:29.575343+08:00",
+      "lastWriteLocal": "2026-10-10T19:49:42.455369+08:00",
+      "sha256": "F3B65B238ECFC68D610F0483E65D6AB8050AD899D147D4F91CBAFC5FD9BB5DFD"
+    },
+    {
+      "file": "integration-r08.log",
+      "createdLocal": "2026-10-10T20:28:08.040536+08:00",
+      "lastWriteLocal": "2026-10-10T20:28:46.677349+08:00",
+      "sha256": "2684829EE60C0D2FD425AE175551B038BDC89901C6400D30FB3F1D2D38E0C2FE"
+    },
+    {
+      "file": "weapons-r10.log",
+      "createdLocal": "2026-10-10T21:23:28.898194+08:00",
+      "lastWriteLocal": "2026-10-10T21:23:54.028563+08:00",
+      "sha256": "4BFC26BA745A95CA9DC7EB5A3E143A896DF80C93DD50E85261941E779B4E7F2A"
+    },
+    {
+      "file": "build-debug-r12.log",
+      "createdLocal": "2026-10-10T22:03:31.027741+08:00",
+      "lastWriteLocal": "2026-10-10T22:03:42.023977+08:00",
+      "sha256": "98D492252BDA7FF461032B0AEE9C78259754620A1974F90D50CEEA7F9F46ED00"
+    },
+    {
+      "file": "build-debug-r18b.log",
+      "createdLocal": "2026-10-11T01:18:19.501084+08:00",
+      "lastWriteLocal": "2026-10-11T01:18:22.602087+08:00",
+      "sha256": "56A5DFF45F610921D7A4539A66CFC77E6E02F12F84F166B2277FDA06F433F163"
+    },
+    {
+      "file": "attack-costs-r19.log",
+      "createdLocal": "2026-10-11T02:00:23.037581+08:00",
+      "lastWriteLocal": "2026-10-11T02:00:35.200554+08:00",
+      "sha256": "86F604E00F6D3DC4E5E8722776F5A8A119B7226F73351EFDDE8EEDB5F400382C"
+    },
+    {
+      "file": "queen-bee-r22.log",
+      "createdLocal": "2026-10-11T03:08:04.151327+08:00",
+      "lastWriteLocal": "2026-10-11T03:15:10.559933+08:00",
+      "sha256": "0FD0254A82BC872D4C25FD815909FE1328FD0418A37E9A774E043E1F22C6434C"
+    },
+    {
+      "file": "wall-boss-r22.log",
+      "createdLocal": "2026-10-11T03:05:32.902663+08:00",
+      "lastWriteLocal": "2026-10-11T03:07:18.147725+08:00",
+      "sha256": "6380DBB7E353A6AB9069231C6D20B5702464ACD32FDA8C787957AC34E298287F"
+    },
+    {
+      "file": "build-debug-r23.log",
+      "createdLocal": "2026-10-11T03:54:26.916583+08:00",
+      "lastWriteLocal": "2026-10-11T03:54:36.680943+08:00",
+      "sha256": "01AE0298362695F1024F8700DC397487B682821F9B023486286DB2AF2403D7F0"
+    },
+    {
+      "file": "build-debug-r23b.log",
+      "createdLocal": "2026-10-11T03:56:35.456609+08:00",
+      "lastWriteLocal": "2026-10-11T03:56:44.057498+08:00",
+      "sha256": "E3EC793189EED7A6C1F9425245031B2FEE4C047654C2114FFBAAF269EA59F536"
+    },
+    {
+      "file": "gem-motor-r23b.log",
+      "createdLocal": "2026-10-11T03:57:43.894896+08:00",
+      "lastWriteLocal": "2026-10-11T03:59:04.676497+08:00",
+      "sha256": "0C3D700536F013A6D644AB19F8346C796E8AA3575EBDCE43CF8E086F962030FB"
+    },
+    {
+      "file": "reflection-r23b.log",
+      "createdLocal": "2026-10-11T03:57:43.929413+08:00",
+      "lastWriteLocal": "2026-10-11T03:58:22.218362+08:00",
+      "sha256": "916E890602F651AA105E072DF2CF5C856831D83ADA1EA55DE565CC963A55D379"
+    },
+    {
+      "file": "flame-r23b.log",
+      "createdLocal": "2026-10-11T03:57:43.931416+08:00",
+      "lastWriteLocal": "2026-10-11T03:58:18.866622+08:00",
+      "sha256": "754751EC28AEC2195AD69F1505DE4E23D287C5001FD2BEE644E14C67833956D3"
+    },
+    {
+      "file": "tree-r23b.log",
+      "createdLocal": "2026-10-11T03:57:43.967252+08:00",
+      "lastWriteLocal": "2026-10-11T03:58:54.912141+08:00",
+      "sha256": "716F63B1D21AE7570686D17A86BD5A47672BF34B5C2F62D8256E99C2EF6359E1"
+    }
+  ]
+}

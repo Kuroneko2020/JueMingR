@@ -1,0 +1,102 @@
+[
+  {
+    "path": "agent-creation-facts.json",
+    "length": 2604,
+    "sha256": "E54F1D60B2816836F759B73717CB38AF1556B31E93C1BA4EB9EA087BE8AC45C9"
+  },
+  {
+    "path": "agent-model-facts.json",
+    "length": 2041,
+    "sha256": "7C70283487C3A911EB5387FD3CE9A5435E8B3587B12680415AE00C936F7BD6CE"
+  },
+  {
+    "path": "agent-notes.md",
+    "length": 3131,
+    "sha256": "57712A013F71325CED5E7E20A37EC11ABDE226D5F5B0A34D08D4CA868ED7D9CB"
+  },
+  {
+    "path": "commands/build-round.ps1.txt",
+    "length": 1831,
+    "sha256": "BFCE4028634D65D9F1EFE2CBD35688DE2DB67F503B8CE475990DEB24AEF79CB6"
+  },
+  {
+    "path": "commands/run-round.ps1.txt",
+    "length": 1065,
+    "sha256": "660965DE6DC74109D9BEFC73C561B94730DDB2969A7D1E30DD92F8F3400F1D28"
+  },
+  {
+    "path": "copied-materials.json",
+    "length": 3112,
+    "sha256": "C481C377786A7CBE87D2973A217B5D11023070EF28EB3B7BB969F427AEC066AD"
+  },
+  {
+    "path": "coverage/npc-initial-dispatch.csv",
+    "length": 17669,
+    "sha256": "8193590208FC02A836AE471FA983BEA131407E3240B1DCEDBEF7BC63ED441B46"
+  },
+  {
+    "path": "coverage/npc-r15-static.csv",
+    "length": 27678,
+    "sha256": "4FB0DF1EB7DD2D0817CF32070E5B7426C6873313BF7374BE45D38377CD4769F9"
+  },
+  {
+    "path": "coverage/weapon-r08-gaps.json",
+    "length": 22916,
+    "sha256": "23561E7A7A903E9B0D756F34FB76CF1B33EDB843683B4A1F6E4538C86309940D"
+  },
+  {
+    "path": "evidence.md",
+    "length": 116687,
+    "sha256": "FC70BC1F367266256E23D6BB89E4B4F19DA7231A0A2FED3084453858BD299486"
+  },
+  {
+    "path": "git-facts.txt",
+    "length": 1690,
+    "sha256": "BC4D1DF8872E8EDF50C2AC8B982ABB6F5968067B5E6D8C7F108A686B2D0A9124"
+  },
+  {
+    "path": "independent-review.txt",
+    "length": 1022,
+    "sha256": "6360D2D39C045990ED954DA135AAC5F5DFA4C15DFF7B8A159271E66A01B271F5"
+  },
+  {
+    "path": "README.md",
+    "length": 36725,
+    "sha256": "E6F33E17ED587C55EAECC307F6EE8520189302A1C5608624A510FE4292F44436"
+  },
+  {
+    "path": "snapshot.json",
+    "length": 64690,
+    "sha256": "D0ACD672F32E7760D4BBCC929708D6AF97D4BD7C9AB75B5C3A52B95560B04E79"
+  },
+  {
+    "path": "status-before.txt",
+    "length": 12425,
+    "sha256": "04306A49AD67A1F84215F4E94F2201A744DEB4F6C8195A30E58FD5B8D646E40D"
+  },
+  {
+    "path": "test-identities.json",
+    "length": 42783,
+    "sha256": "0F7C57A7A118CF3EBE1337C5A07FBE46DC7C09929A9794B0401CF715CDD9FC41"
+  },
+  {
+    "path": "timeline-records.json",
+    "length": 4802,
+    "sha256": "BD59644BCEFEB680A1A9A526D955C5B8B9543EA7C82996C1D3AFA4C61AD8317C"
+  },
+  {
+    "path": "unintegrated/foreign-bee-oracle-draft.cs.txt",
+    "length": 3790,
+    "sha256": "C5BF0434C7B73BD6E517E93F75E58DEFB8817775586FBD6DDBF3742918F00B66"
+  },
+  {
+    "path": "unintegrated/NativeCombatLineChecks.cs.txt",
+    "length": 5461,
+    "sha256": "8EF10AE83A41EDCE3640E769636C65C6E6B2BCD8E62260812AA1EC0EE618358B"
+  },
+  {
+    "path": "unintegrated/PredictionTerrain.Line.cs.txt",
+    "length": 4582,
+    "sha256": "0182989694297E06847EFCE3FA23A32A0A8006A50B68AB5954F645F4A9EE4B01"
+  }
+]

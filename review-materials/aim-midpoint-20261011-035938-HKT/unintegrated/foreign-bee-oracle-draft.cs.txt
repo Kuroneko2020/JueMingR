@@ -1,0 +1,53 @@
+// R24 read-only native oracle draft. Not compiled/not in tests.
+// Intended insertion into NativeCombatBeeChecks, after root opens R24.
+// Uses existing Reset/Target/Require helpers. Preserve original source gate.
+private static void ForeignOwnerGate(object context)
+{
+    var foreignPlayer=Main.player[254];bool oldActive=foreignPlayer.active;
+    try
+    {
+        foreignPlayer.active=true;
+        foreach(int type in new[]{181,566})
+        foreach(bool localFirst in new[]{false,true})
+        {
+            var p=Reset(context);foreignPlayer.active=true;
+            var target=Target(2,new Vector2(940,320));target.width=100;target.height=100;
+            Array.Clear(target.buffType,0,target.buffType.Length);Array.Clear(target.buffTime,0,target.buffTime.Length);
+            target.immune[p.whoAmI]=0;target.immune[254]=0;
+            Projectile.perIDStaticNPCImmunity[181,2]=0;
+            Func<int,Projectile> born=owner=>
+            {
+                int slot=Projectile.NewProjectile(p.GetProjectileSource_Item(p.HeldItem),target.Center,Vector2.Zero,type,40,0,owner);
+                var shot=Main.projectile[slot];shot.tileCollide=false;return shot;
+            };
+            var foreign=born(254);var local=born(p.whoAmI);
+            int localInitialPen=local.penetrate;int foreignInitialAlpha=foreign.alpha;
+            int life=target.life;
+            if(localFirst)
+            {
+                local.Update(local.whoAmI);
+                Require(target.life<life && local.penetrate==localInitialPen-1,"same overlapping local Bee is a real Update/Damage positive");
+            }
+            int stableLife=target.life,localImmune=target.immune[p.whoAmI],foreignImmune=target.immune[254];
+            ulong stableStatic=Projectile.perIDStaticNPCImmunity[181,2];
+            foreign.Damage();
+            Require(target.life==stableLife && target.immune[p.whoAmI]==localImmune && target.immune[254]==foreignImmune && Projectile.perIDStaticNPCImmunity[181,2]==stableStatic,"foreign Damage cannot write PVE/static181 despite body overlap and unblocked foreign owner");
+            int oldLeft=foreign.timeLeft;
+            foreign.Update(foreign.whoAmI);
+            Require(foreign.active && foreign.alpha<foreignInitialAlpha && foreign.timeLeft<oldLeft,"foreign owner remains active and its real AI036/subcycle actually advances");
+            Require(target.life==stableLife && target.immune[p.whoAmI]==localImmune && target.immune[254]==foreignImmune && Projectile.perIDStaticNPCImmunity[181,2]==stableStatic,"foreign real Update/Damage preserves local and foreign owner history plus shared181");
+            if(!localFirst)
+            {
+                life=target.life;local.Update(local.whoAmI);
+                Require(target.life<life && local.penetrate==localInitialPen-1 && target.immune[254]==foreignImmune,"local positive after foreign Update receives real Damage, foreign owner immunity stays separate");
+            }
+            Require(Projectile.perIDStaticNPCImmunity[181,2]==Main.GameUpdateCount+(ulong)local.idStaticNPCHitCooldown,"actual local static181 expiry follows native owner Damage gate");
+            Console.WriteLine("BEE ownerGate type="+type+" localFirst="+localFirst+" life="+target.life+" static="+Projectile.perIDStaticNPCImmunity[181,2]+" localPen="+local.penetrate+" foreignActive="+foreign.active);
+        }
+    }
+    finally{foreignPlayer.active=oldActive;}
+}
+// Model-positive paired scene is separately required in Harpy BeeWorkload:
+// remove ForeignBeeCompetition refusal only alongside real local useful-Damage
+// comparison with/without active foreign181, and preserve occupied pool slots.
+// Do not translate foreign arrows/bees into local ForkForSpawn receivers.

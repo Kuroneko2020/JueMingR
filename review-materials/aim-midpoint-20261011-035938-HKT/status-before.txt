@@ -1,0 +1,211 @@
+ M AGENTS.md
+ M docs/功能介绍/战斗辅助行为合同.md
+ M docs/规范/工程治理规则.md
+ M docs/计划/辅助瞄准阶段文档.md
+ M docs/设计/战斗辅助实现设计.md
+ M docs/设计/本地参考资料使用说明.md
+ M scripts/test-world-object-text.ps1
+ M scripts/workload/Workload.Definitions.ps1
+ M src/JueMingR.Features/Combat/AttackIntercept.cs
+ M src/JueMingR.Features/Combat/AttackMotion.cs
+ M src/JueMingR.Features/Combat/NpcAquaticMotion.cs
+ M src/JueMingR.Features/Combat/NpcFighterClockMotion.cs
+ M src/JueMingR.Features/Combat/NpcHungryMotion.cs
+ M src/JueMingR.Features/Combat/NpcMotion.cs
+ M src/JueMingR.Features/Combat/NpcParentMotion.cs
+ M src/JueMingR.Features/Combat/NpcPositionMotion.cs
+ M src/JueMingR.Features/Combat/NpcStraightMotion.cs
+ M src/JueMingR.Features/Combat/NpcTargeting.cs
+ M src/JueMingR.Features/Combat/NpcWormMotion.cs
+ M src/JueMingR.Features/Combat/PlayerMotionContinuation.cs
+ M src/JueMingR.Features/Combat/RollingNpcPrediction.cs
+ M src/JueMingR.Platform/Combat/NpcTrajectory.cs
+ M src/JueMingR.Platform/Combat/PredictionPlayerMotion.cs
+ M src/JueMingR.TerrariaHost/Combat/AttackAmmoSnapshot.cs
+ M src/JueMingR.TerrariaHost/Combat/CombatImpactMarker.cs
+ M src/JueMingR.TerrariaHost/Combat/CombatSelection.cs
+ M src/JueMingR.TerrariaHost/Combat/HostAttackAim.cs
+ M src/JueMingR.TerrariaHost/Combat/HostAttackCandidates.cs
+ M src/JueMingR.TerrariaHost/Combat/HostAttackClock.cs
+ M src/JueMingR.TerrariaHost/Combat/HostAttackControl.cs
+ M src/JueMingR.TerrariaHost/Combat/HostAttackModels.cs
+ M src/JueMingR.TerrariaHost/Combat/HostAttackObstacles.cs
+ M src/JueMingR.TerrariaHost/Combat/HostAttackReceive.cs
+ M src/JueMingR.TerrariaHost/Combat/HostAttackResources.cs
+ M src/JueMingR.TerrariaHost/Combat/HostAttackWindow.cs
+ M src/JueMingR.TerrariaHost/Combat/HostBeamAttack.cs
+ M src/JueMingR.TerrariaHost/Combat/HostBoomerangAttack.cs
+ M src/JueMingR.TerrariaHost/Combat/HostCadenceAim.cs
+ M src/JueMingR.TerrariaHost/Combat/HostCombatObservation.cs
+ M src/JueMingR.TerrariaHost/Combat/HostEffectAttack.cs
+ M src/JueMingR.TerrariaHost/Combat/HostFlailAttack.cs
+ M src/JueMingR.TerrariaHost/Combat/HostGuidedAttack.cs
+ M src/JueMingR.TerrariaHost/Combat/HostHeldAttack.cs
+ M src/JueMingR.TerrariaHost/Combat/HostMeleeAttack.cs
+ M src/JueMingR.TerrariaHost/Combat/HostProjectileEnvironment.cs
+ M src/JueMingR.TerrariaHost/Combat/HostSkyAttack.cs
+ M src/JueMingR.TerrariaHost/Combat/HostSwingAttack.cs
+ M src/JueMingR.TerrariaHost/Combat/HostWhipAttack.cs
+ M src/JueMingR.TerrariaHost/Combat/HostYoyoNavigation.cs
+ M src/JueMingR.TerrariaHost/Combat/NpcPositionObservation.cs
+ M src/JueMingR.TerrariaHost/Combat/NpcPredictionSource.cs
+ M src/JueMingR.TerrariaHost/Combat/NpcTrackingObservation.cs
+ M src/JueMingR.TerrariaHost/Combat/Prediction/NativePredictionAlignment.cs
+ M src/JueMingR.TerrariaHost/Combat/Prediction/NativePredictionResult.cs
+ M src/JueMingR.TerrariaHost/Combat/Prediction/PredictionPipeProtocol.cs
+ M src/JueMingR.TerrariaHost/Combat/Prediction/SegmentedNpcPrediction.cs
+ M src/JueMingR.TerrariaHost/Combat/PredictionTerrain.cs
+ M src/JueMingR.TerrariaHost/Tools/ToolHooks.cs
+ M tests/JueMingR.ArchitectureTests/OperationContractChecks.cs
+ M tests/NativeWorldTextProbe/NativeChecks.cs
+ M tests/NativeWorldTextProbe/NativeCombatAimChecks.cs
+ M tests/NativeWorldTextProbe/NativeCombatAmmoChecks.cs
+ M tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.cs
+ M tests/NativeWorldTextProbe/NativeCombatCandidateDemandChecks.cs
+ M tests/NativeWorldTextProbe/NativeCombatControlChecks.cs
+ M tests/NativeWorldTextProbe/NativeCombatDd2CoverageChecks.cs
+ M tests/NativeWorldTextProbe/NativeCombatEffectChecks.cs
+ M tests/NativeWorldTextProbe/NativeCombatImpactVisualChecks.cs
+ M tests/NativeWorldTextProbe/NativeCombatIntegrationChecks.cs
+ M tests/NativeWorldTextProbe/NativeCombatMeleeChecks.cs
+ M tests/NativeWorldTextProbe/NativeCombatObservationChecks.cs
+ M tests/NativeWorldTextProbe/NativeCombatPredictionChecks.cs
+ M tests/NativeWorldTextProbe/NativeCombatProductionPredictionChecks.cs
+ M tests/NativeWorldTextProbe/NativeCombatProjectileEnvironmentChecks.cs
+ M tests/NativeWorldTextProbe/NativeCombatScatterChecks.cs
+ M tests/NativeWorldTextProbe/NativeCombatSwingChecks.cs
+ M tests/NativeWorldTextProbe/NativeCombatTerrainChecks.cs
+ M tests/NativeWorldTextProbe/NativeCombatWorkerChecks.cs
+ M tests/NativeWorldTextProbe/NativeCombatYoyoChecks.cs
+ M tests/NativeWorldTextProbe/NativeCombatYoyoNavigationChecks.cs
+ M tests/NativeWorldTextProbe/ProbeGraphics.cs
+ M tests/Workload/Invoke-WorkloadRoutingChecks.ps1
+?? .workbuddy/memory/2026-10-03.md
+?? docs/决策/ADR-0019-受控并行协作与模型分工.md
+?? issue112.txt
+?? pr113.json
+?? src/JueMingR.Features/Combat/NpcAmbientFlightMotion.cs
+?? src/JueMingR.Features/Combat/NpcAquaticActionMotion.cs
+?? src/JueMingR.Features/Combat/NpcAttachedWeaponMotion.cs
+?? src/JueMingR.Features/Combat/NpcBetsyMotion.cs
+?? src/JueMingR.Features/Combat/NpcBigMimicMotion.cs
+?? src/JueMingR.Features/Combat/NpcBloodNautilusMotion.cs
+?? src/JueMingR.Features/Combat/NpcBrainSwarmMotion.cs
+?? src/JueMingR.Features/Combat/NpcCelestialTowerMotion.cs
+?? src/JueMingR.Features/Combat/NpcDarkMageMotion.cs
+?? src/JueMingR.Features/Combat/NpcDiveFlightMotion.cs
+?? src/JueMingR.Features/Combat/NpcEyeBossMotion.cs
+?? src/JueMingR.Features/Combat/NpcGolemMotion.cs
+?? src/JueMingR.Features/Combat/NpcInvasionCrystalMotion.cs
+?? src/JueMingR.Features/Combat/NpcInvasionFlightMotion.cs
+?? src/JueMingR.Features/Combat/NpcInvasionGroundMotion.cs
+?? src/JueMingR.Features/Combat/NpcInvasionLightningMotion.cs
+?? src/JueMingR.Features/Combat/NpcInvasionTargeting.cs
+?? src/JueMingR.Features/Combat/NpcKingSlimeMotion.cs
+?? src/JueMingR.Features/Combat/NpcMechanicalBossMotion.cs
+?? src/JueMingR.Features/Combat/NpcPhasedFlightMotion.cs
+?? src/JueMingR.Features/Combat/NpcPlanteraMotion.cs
+?? src/JueMingR.Features/Combat/NpcPumpkingMotion.cs
+?? src/JueMingR.Features/Combat/NpcQueenBeeMotion.cs
+?? src/JueMingR.Features/Combat/NpcRelatedMotion.cs
+?? src/JueMingR.Features/Combat/NpcSantaTankMotion.cs
+?? src/JueMingR.Features/Combat/NpcSkeletonBossMotion.cs
+?? src/JueMingR.Features/Combat/NpcSnowmanMotion.cs
+?? src/JueMingR.Features/Combat/NpcTerrainFlightMotion.cs
+?? src/JueMingR.Features/Combat/NpcTownCritterMotion.cs
+?? src/JueMingR.Features/Combat/NpcTreeBossMotion.cs
+?? src/JueMingR.Features/Combat/NpcWallBossMotion.cs
+?? src/JueMingR.TerrariaHost/Combat/HostAttackAim.Faults.cs
+?? src/JueMingR.TerrariaHost/Combat/HostAttackAim.FlightPreview.cs
+?? src/JueMingR.TerrariaHost/Combat/HostAttackAim.Phaseblade.cs
+?? src/JueMingR.TerrariaHost/Combat/HostAttackAim.Placement.cs
+?? src/JueMingR.TerrariaHost/Combat/HostAttackAim.Preview.cs
+?? src/JueMingR.TerrariaHost/Combat/HostAttackAim.Selection.cs
+?? src/JueMingR.TerrariaHost/Combat/HostAttackAim.SwingPreview.cs
+?? src/JueMingR.TerrariaHost/Combat/HostAttackControl.Preview.cs
+?? src/JueMingR.TerrariaHost/Combat/HostAttackPlayerFrame.cs
+?? src/JueMingR.TerrariaHost/Combat/HostBeeAttack.cs
+?? src/JueMingR.TerrariaHost/Combat/HostBoomerangVariants.cs
+?? src/JueMingR.TerrariaHost/Combat/HostBubbleAttack.cs
+?? src/JueMingR.TerrariaHost/Combat/HostCelebrationAttack.cs
+?? src/JueMingR.TerrariaHost/Combat/HostClusterAttack.cs
+?? src/JueMingR.TerrariaHost/Combat/HostCrystalAttack.cs
+?? src/JueMingR.TerrariaHost/Combat/HostExplosiveAttack.cs
+?? src/JueMingR.TerrariaHost/Combat/HostFiniteShotAttack.cs
+?? src/JueMingR.TerrariaHost/Combat/HostFiniteThrowAttack.cs
+?? src/JueMingR.TerrariaHost/Combat/HostFlameAttack.cs
+?? src/JueMingR.TerrariaHost/Combat/HostFlyingKnifeAttack.cs
+?? src/JueMingR.TerrariaHost/Combat/HostGemStaffAttack.cs
+?? src/JueMingR.TerrariaHost/Combat/HostHarpoonAttack.cs
+?? src/JueMingR.TerrariaHost/Combat/HostHarpyAttack.cs
+?? src/JueMingR.TerrariaHost/Combat/HostLaserAttack.cs
+?? src/JueMingR.TerrariaHost/Combat/HostMagicBounceAttack.cs
+?? src/JueMingR.TerrariaHost/Combat/HostPhasebladeAttack.cs
+?? src/JueMingR.TerrariaHost/Combat/HostPlacementAttack.cs
+?? src/JueMingR.TerrariaHost/Combat/HostPoisonCloudAttack.cs
+?? src/JueMingR.TerrariaHost/Combat/HostProjectileBirthSlots.cs
+?? src/JueMingR.TerrariaHost/Combat/HostProjectileFamilyLease.cs
+?? src/JueMingR.TerrariaHost/Combat/HostProjectileTargets.cs
+?? src/JueMingR.TerrariaHost/Combat/HostPulseAttack.cs
+?? src/JueMingR.TerrariaHost/Combat/HostScourgeAttack.cs
+?? src/JueMingR.TerrariaHost/Combat/HostSpecialArrowAttack.cs
+?? src/JueMingR.TerrariaHost/Combat/PredictionTerrain.PlayerTongue.cs
+?? src/JueMingR.TerrariaHost/Combat/PredictionTerrain.Projectile.cs
+?? tests/NativeWorldTextProbe/NativeCombatAmbientFlightChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatAquaticActionChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatAttachedWeaponChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.Natural.cs
+?? tests/NativeWorldTextProbe/NativeCombatBeeChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatBetsyChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatBigMimicChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatBloodNautilusChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatBoomerangCommonChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatBoomerangVariantChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatBrainSwarmChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatBubbleChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatCelebrationChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatCelestialTowerChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatClusterChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatColdBoltChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatControlPreviewChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatDarkMageChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatDiveFlightChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatExplosiveChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatEyeBossChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatFiniteShotChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatFiniteThrowChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatFlameChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatFlyingKnifeChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatFreeFlightBoundsChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatGemStaffChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatGolemChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatHarpoonChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatHarpyChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatInvasionFlightChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatInvasionGroundChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatInvasionLightningChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatKingSlimeChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatLaserChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatMixedSwingChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatPhasebladeChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatPhasedFlightChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatPlacementChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatPlanteraChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatPlayerBorderChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatPoisonCloudChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatQueenBeeChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatReflectionChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatRelatedChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatSantaTankChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatScourgeChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatScytheChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatSelectionPreviewChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatSkeletonBossChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatSnowmanChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatSpecialArrowChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatSwingSpecialChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatTerrainFlightChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatTownCritterChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatTreeBossChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatWallBossChecks.cs
+?? tests/NativeWorldTextProbe/NativeCombatYoyoGapChecks.cs

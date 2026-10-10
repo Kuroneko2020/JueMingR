@@ -1,0 +1,1986 @@
+{
+  "pausedAt": "2026-10-11T03:59:38.3612303+08:00",
+  "timezone": "Asia/Hong_Kong",
+  "root": "C:\\Users\\kongd\\Desktop\\JueMingR",
+  "entryHead": "f470072446d4879da838748d06e214bf63813943",
+  "aimBranchBase": "80c0fdde7d1451aa9d3ae844c20387611bb36dcd",
+  "productRepairBase": "223c121dd3ff3a62eb5640edaae8d26add9495f3",
+  "head": "223c121dd3ff3a62eb5640edaae8d26add9495f3",
+  "branch": "codex/aim-attack-modeling-and-integration",
+  "remoteObservedHead": "80c0fdde7d1451aa9d3ae844c20387611bb36dcd",
+  "stagedAtPause": [],
+  "groups": {
+    "docs": {
+      "files": 6,
+      "modified": 5,
+      "untracked": 1,
+      "added": 118,
+      "deleted": 7
+    },
+    "tools": {
+      "files": 2,
+      "modified": 2,
+      "untracked": 0,
+      "added": 69,
+      "deleted": 1
+    },
+    "product": {
+      "files": 117,
+      "modified": 50,
+      "untracked": 67,
+      "added": 12377,
+      "deleted": 586
+    },
+    "tests": {
+      "files": 82,
+      "modified": 24,
+      "untracked": 58,
+      "added": 10020,
+      "deleted": 53
+    }
+  },
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "49926563C286E62CFD521B1115FBB3DFC7E4464BE715BEF5C873DD16AE1B1732",
+      "length": 15013,
+      "untracked": false,
+      "category": "docs",
+      "added": 8,
+      "deleted": 0
+    },
+    {
+      "path": "docs/决策/ADR-0019-受控并行协作与模型分工.md",
+      "sha256": "19E17F7941E64B7E60039CE3C5C0AA78D1E19D7F92CCABDCAE7420E38769D10E",
+      "length": 3232,
+      "untracked": true,
+      "category": "docs",
+      "added": 28,
+      "deleted": 0
+    },
+    {
+      "path": "docs/功能介绍/战斗辅助行为合同.md",
+      "sha256": "8AB90F4A952FA8600BE7988704241FD96BA5A1EDB8D69E802136575F8E01DAC7",
+      "length": 27487,
+      "untracked": false,
+      "category": "docs",
+      "added": 7,
+      "deleted": 3
+    },
+    {
+      "path": "docs/规范/工程治理规则.md",
+      "sha256": "106694336C2E7341BAEAD12A17015EFDE772738BA45FC4F17A38A798C48B84AC",
+      "length": 43456,
+      "untracked": false,
+      "category": "docs",
+      "added": 7,
+      "deleted": 3
+    },
+    {
+      "path": "docs/计划/辅助瞄准阶段文档.md",
+      "sha256": "D8F49C1816FC3475A7135799B4D80432ADA2C47B7A22D49195542944D815702E",
+      "length": 459959,
+      "untracked": false,
+      "category": "docs",
+      "added": 48,
+      "deleted": 1
+    },
+    {
+      "path": "docs/设计/战斗辅助实现设计.md",
+      "sha256": "4D4BE197C142721816527A7696E04525DF3C120F0047123CE56C130FDFC9F8B7",
+      "length": 146526,
+      "untracked": false,
+      "category": "docs",
+      "added": 20,
+      "deleted": 0
+    },
+    {
+      "path": "scripts/test-world-object-text.ps1",
+      "sha256": "0673B691A446543BB538C6CD569BC07500DFEF356F41068D355ECB5C41EDB0E7",
+      "length": 5541,
+      "untracked": false,
+      "category": "tools",
+      "added": 1,
+      "deleted": 1
+    },
+    {
+      "path": "scripts/workload/Workload.Definitions.ps1",
+      "sha256": "F5110BFE9E7DB6D51ECD4C6F0D0979F7F6B8BB3D67E145721891B52184728F53",
+      "length": 31316,
+      "untracked": false,
+      "category": "tools",
+      "added": 68,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/AttackIntercept.cs",
+      "sha256": "F37BCE216F75F11F6B8D3D644E1F6044F3D634C5417B7E37712B25041EE558DA",
+      "length": 20717,
+      "untracked": false,
+      "category": "product",
+      "added": 89,
+      "deleted": 21
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/AttackMotion.cs",
+      "sha256": "80D2F4B557D66A21A42C5830AA66C8664ED5EEFD0A408FD05504EFCEF625276A",
+      "length": 7722,
+      "untracked": false,
+      "category": "product",
+      "added": 43,
+      "deleted": 12
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcAmbientFlightMotion.cs",
+      "sha256": "F8E634E3842862398FB6EDDDB3BCCEA29950C8F0624FFD3B4771DDBBB0498E4B",
+      "length": 11733,
+      "untracked": true,
+      "category": "product",
+      "added": 199,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcAquaticActionMotion.cs",
+      "sha256": "672055BD75BCAE77F96EDA860E5F00EE7BA9CEB0C19DBA7F50F5C53EEB83DA07",
+      "length": 4332,
+      "untracked": true,
+      "category": "product",
+      "added": 87,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcAquaticMotion.cs",
+      "sha256": "E8FA1106978B26A587308E78A35DBBB4538D60790D032237181AF260A658FA54",
+      "length": 4185,
+      "untracked": false,
+      "category": "product",
+      "added": 2,
+      "deleted": 18
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcAttachedWeaponMotion.cs",
+      "sha256": "DA196DD83796BAA59829EC01C9019B63F77E6AFB03B37BE3243DB84290D399C2",
+      "length": 17782,
+      "untracked": true,
+      "category": "product",
+      "added": 227,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcBetsyMotion.cs",
+      "sha256": "FF63E2445AA10B745780B7888AD767AC77468D77DF0F03D8EB4E53398A2DD3B0",
+      "length": 7985,
+      "untracked": true,
+      "category": "product",
+      "added": 128,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcBigMimicMotion.cs",
+      "sha256": "C90A9FFEF41CBD32BF0305E5222E337177AC064EB17F1F6DFD8D8DEA68C2321F",
+      "length": 7471,
+      "untracked": true,
+      "category": "product",
+      "added": 115,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcBloodNautilusMotion.cs",
+      "sha256": "F140B2156EF503A7044D76264D9D09BD751F09C2B0BF54EBDAABE3C7F281088B",
+      "length": 9026,
+      "untracked": true,
+      "category": "product",
+      "added": 104,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcBrainSwarmMotion.cs",
+      "sha256": "5F2685436F8F313DA68EBC4C1B62EEA549BAD7CCFC1DAA2146286698F495D13B",
+      "length": 9858,
+      "untracked": true,
+      "category": "product",
+      "added": 144,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcCelestialTowerMotion.cs",
+      "sha256": "816BEB5209CA5C9248044CAB92C4733676A8C23A4AC6683B3BE819DD7DDCD23E",
+      "length": 12903,
+      "untracked": true,
+      "category": "product",
+      "added": 202,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcDarkMageMotion.cs",
+      "sha256": "8577A1E1D4E9B5324703B728F9626E7E8DE797A946C709292DBB1275BE4168F0",
+      "length": 10228,
+      "untracked": true,
+      "category": "product",
+      "added": 141,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcDiveFlightMotion.cs",
+      "sha256": "A1D5E911E8299780035ED71C860A2CA5F17531DD826EF305561930F77C3A1103",
+      "length": 7167,
+      "untracked": true,
+      "category": "product",
+      "added": 99,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcEyeBossMotion.cs",
+      "sha256": "71C01342C6B48B189D950E2A3A46F8FC19821EF922583CA990890DC1A78B9672",
+      "length": 20493,
+      "untracked": true,
+      "category": "product",
+      "added": 303,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcFighterClockMotion.cs",
+      "sha256": "A730F4583994BFFB628455588482A6FD0F194F22A10077D01020FEB17C41D5BC",
+      "length": 9000,
+      "untracked": false,
+      "category": "product",
+      "added": 9,
+      "deleted": 3
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcGolemMotion.cs",
+      "sha256": "5CF3B3E70EBD01B1937C8D17F0A22FAEE0160738DB5B79D85EC821D1E56B2E15",
+      "length": 16787,
+      "untracked": true,
+      "category": "product",
+      "added": 229,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcHungryMotion.cs",
+      "sha256": "C287E6B63B79D7164896A932707D529168E015FB6E18E3F38ED31E7546BB65D0",
+      "length": 3439,
+      "untracked": false,
+      "category": "product",
+      "added": 6,
+      "deleted": 3
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcInvasionCrystalMotion.cs",
+      "sha256": "67326F4484690038AAFD8468625D5BAD8F630616E7239CD925288909B7902885",
+      "length": 2237,
+      "untracked": true,
+      "category": "product",
+      "added": 44,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcInvasionFlightMotion.cs",
+      "sha256": "1A69F3A2BA7DA0CB59039A483689150BDFEA6E26F68D795E3A9EAD093A441446",
+      "length": 5809,
+      "untracked": true,
+      "category": "product",
+      "added": 99,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcInvasionGroundMotion.cs",
+      "sha256": "A2BC861AF3A5B68FA57B2ADDE21EB353E0C8AAD50CA2915B5D30A093D974E4C4",
+      "length": 22859,
+      "untracked": true,
+      "category": "product",
+      "added": 281,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcInvasionLightningMotion.cs",
+      "sha256": "D9C37A52D7E06ED5C52771DF4F14FFBE9781B11190B82AFA0CF1243D237CE569",
+      "length": 4775,
+      "untracked": true,
+      "category": "product",
+      "added": 75,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcInvasionTargeting.cs",
+      "sha256": "ED09C13EB973A17C3807A2DF185BC1E0FC06C9FDFC06903D6C48B6B54ACECF6B",
+      "length": 9164,
+      "untracked": true,
+      "category": "product",
+      "added": 130,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcKingSlimeMotion.cs",
+      "sha256": "C9EAA2965250955B6DED23EACC96AFA447345D9885DB1B3DF488CE39B209ED92",
+      "length": 9566,
+      "untracked": true,
+      "category": "product",
+      "added": 152,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcMechanicalBossMotion.cs",
+      "sha256": "A51F9F37A077402CA2364C09A93F5FA67CCA54D0028F38A3892E51A0DE54F31D",
+      "length": 7522,
+      "untracked": true,
+      "category": "product",
+      "added": 121,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcMotion.cs",
+      "sha256": "7DBC09D267CDCF8DCDC5B22FB4D821600D91CCCF223133608A331D1B77653D3D",
+      "length": 55789,
+      "untracked": false,
+      "category": "product",
+      "added": 164,
+      "deleted": 11
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcParentMotion.cs",
+      "sha256": "4762F04EC689EF2ADEF310917025218F12A83F12CE40F345AA05F9C5ACBA09A5",
+      "length": 10417,
+      "untracked": false,
+      "category": "product",
+      "added": 15,
+      "deleted": 3
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcPhasedFlightMotion.cs",
+      "sha256": "8AF73A526C1E8723FE64FFBE03BC62BD6E6B0249DAFD2DBCAB9FFA415E8852D2",
+      "length": 27767,
+      "untracked": true,
+      "category": "product",
+      "added": 420,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcPlanteraMotion.cs",
+      "sha256": "7893BA3AA70A8500A0A4D170B34FD89C2919C6666A9ABD26B424366EC6F63DAE",
+      "length": 9870,
+      "untracked": true,
+      "category": "product",
+      "added": 141,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcPositionMotion.cs",
+      "sha256": "55A8CDAF6FF771055F2302E610155D81B2515117DE1A5ED4FE63E389CC55CFE9",
+      "length": 5324,
+      "untracked": false,
+      "category": "product",
+      "added": 15,
+      "deleted": 2
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcPumpkingMotion.cs",
+      "sha256": "44DE495668BF1E004AEE606230A103B28FFE8155DAF12F86A5763C51CA2B85D2",
+      "length": 7445,
+      "untracked": true,
+      "category": "product",
+      "added": 109,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcQueenBeeMotion.cs",
+      "sha256": "4D44AC49E5F116ECC0FFA0BA4515AF183C6DB46242B2D37E82661889B47CDA3A",
+      "length": 13920,
+      "untracked": true,
+      "category": "product",
+      "added": 200,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcRelatedMotion.cs",
+      "sha256": "1B1FD0501274DCA2B328A736B8713612F01BC6D62FDD6BA191C0E4D9D6B224A1",
+      "length": 17016,
+      "untracked": true,
+      "category": "product",
+      "added": 288,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcSantaTankMotion.cs",
+      "sha256": "4FF8FF7ED0E989019A9F4D879B65F604EF44514467A2D83F414047467ACE5E67",
+      "length": 2894,
+      "untracked": true,
+      "category": "product",
+      "added": 53,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcSkeletonBossMotion.cs",
+      "sha256": "2AFE37DA33439594ABDB4EEFAC9D48C0E0D2B6DC90C1F39E49BF169789DB63C7",
+      "length": 5634,
+      "untracked": true,
+      "category": "product",
+      "added": 81,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcSnowmanMotion.cs",
+      "sha256": "77B55C6104E13164A3AADA278606087C369C2EC423B4595C8446E87629CA2046",
+      "length": 4380,
+      "untracked": true,
+      "category": "product",
+      "added": 87,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcStraightMotion.cs",
+      "sha256": "E09E3E72AD538A05B205D22E28808AE9A1EF9FD48718D4DA61A7080E72C4E015",
+      "length": 3602,
+      "untracked": false,
+      "category": "product",
+      "added": 9,
+      "deleted": 5
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcTargeting.cs",
+      "sha256": "6AC3D91BCFC1DC0DFF177A21056E3DC95C3F37B6B9B670BC67CC0C23FDC8CE81",
+      "length": 4797,
+      "untracked": false,
+      "category": "product",
+      "added": 12,
+      "deleted": 5
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcTerrainFlightMotion.cs",
+      "sha256": "DDAB50EC344133A0EBD27DBDEC02A2AACB127C6E41B89664EF6611B1871E57E3",
+      "length": 8811,
+      "untracked": true,
+      "category": "product",
+      "added": 152,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcTownCritterMotion.cs",
+      "sha256": "3B13B4511FF9646C5E4BB48E8373C823285760BBABFDEFB35A1F8AB3849A7D98",
+      "length": 22943,
+      "untracked": true,
+      "category": "product",
+      "added": 263,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcTreeBossMotion.cs",
+      "sha256": "327D135EA48DE6700169D7F372DB69E8C73E334D005F3DDBF5746CFC2126EDD4",
+      "length": 3460,
+      "untracked": true,
+      "category": "product",
+      "added": 65,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcWallBossMotion.cs",
+      "sha256": "A43F2CCEC3D33F7A868B5D145B40BF009977AFA72D9E6C11F193DBBE49AFED9F",
+      "length": 23207,
+      "untracked": true,
+      "category": "product",
+      "added": 336,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/NpcWormMotion.cs",
+      "sha256": "EC7BA90F6576CF4D865775AF214E146EE6113C3155DCD6C6F91D7EA520827CBD",
+      "length": 11383,
+      "untracked": false,
+      "category": "product",
+      "added": 75,
+      "deleted": 1
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/PlayerMotionContinuation.cs",
+      "sha256": "CD925EF6B1E809EB2C7D77F9BF02D03C08F965FDB83329B37C7A47A2B5CC84B8",
+      "length": 9021,
+      "untracked": false,
+      "category": "product",
+      "added": 107,
+      "deleted": 1
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/RollingNpcPrediction.cs",
+      "sha256": "9F0557E543316605FF18C8DD8365D25E4EF74F35989A24ED677B867A351D639F",
+      "length": 34488,
+      "untracked": false,
+      "category": "product",
+      "added": 112,
+      "deleted": 21
+    },
+    {
+      "path": "src/JueMingR.Platform/Combat/NpcTrajectory.cs",
+      "sha256": "89E7FA19A67BCD37CDC7D2549C28E1996B5F88427DD4A8BEF06571EF76495851",
+      "length": 63452,
+      "untracked": false,
+      "category": "product",
+      "added": 333,
+      "deleted": 19
+    },
+    {
+      "path": "src/JueMingR.Platform/Combat/PredictionPlayerMotion.cs",
+      "sha256": "67D37107385114FC44669D44AC962BCB1E52836D2E0554AAFF94BF6CAD9E3A39",
+      "length": 7916,
+      "untracked": false,
+      "category": "product",
+      "added": 23,
+      "deleted": 2
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/AttackAmmoSnapshot.cs",
+      "sha256": "847C6DAAD231D6DE3C31D13AD2ED66D1D1B49D556911C976C05AD4E26E15E844",
+      "length": 8985,
+      "untracked": false,
+      "category": "product",
+      "added": 33,
+      "deleted": 5
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/CombatImpactMarker.cs",
+      "sha256": "737F21BFFDE00D15D65CFDD5195ED628DF7982D75833BA8CABE1E9F9A71ED7B0",
+      "length": 4377,
+      "untracked": false,
+      "category": "product",
+      "added": 11,
+      "deleted": 6
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/CombatSelection.cs",
+      "sha256": "91A14F8F7D67B7EA15B71AD0C6427F91FE3477ACCE785CAF632DD82E6EAC131F",
+      "length": 6126,
+      "untracked": false,
+      "category": "product",
+      "added": 16,
+      "deleted": 25
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostAttackAim.Faults.cs",
+      "sha256": "959DEA03A5FB1A9A98A4EF5C5323F239EADF5E7EE7480C3592F2FC582CEB5DB8",
+      "length": 2600,
+      "untracked": true,
+      "category": "product",
+      "added": 48,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostAttackAim.FlightPreview.cs",
+      "sha256": "3935B83D50E0D2E32F12B6114E2312498E55643D14D3347113D105156D28FAFC",
+      "length": 3847,
+      "untracked": true,
+      "category": "product",
+      "added": 51,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostAttackAim.Phaseblade.cs",
+      "sha256": "8FDF7FE82C7F633F46B4625EFF0F77C665594EC59FC37A64DB8B3DD4A9799C38",
+      "length": 4052,
+      "untracked": true,
+      "category": "product",
+      "added": 62,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostAttackAim.Placement.cs",
+      "sha256": "8DEBB2A4C8511BA559570D4C721FD99BC216A8ED86E47D1E9C8F9904EF26E346",
+      "length": 2743,
+      "untracked": true,
+      "category": "product",
+      "added": 45,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostAttackAim.Preview.cs",
+      "sha256": "E84920CB25E07BFBB45377709C8E53B220D85068A34BA790B5487DE0A79DCAB1",
+      "length": 12927,
+      "untracked": true,
+      "category": "product",
+      "added": 137,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostAttackAim.Selection.cs",
+      "sha256": "3504815E1397D508A87997BB6850E90A0652540D1B3C3AE39CDCC9B1B4408ACE",
+      "length": 3299,
+      "untracked": true,
+      "category": "product",
+      "added": 57,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostAttackAim.SwingPreview.cs",
+      "sha256": "10AF35D4B88A7F6AA2C21D4EE9A70EEE36BA0709E9EC3D774B214734E7AEAC70",
+      "length": 2845,
+      "untracked": true,
+      "category": "product",
+      "added": 38,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostAttackAim.cs",
+      "sha256": "7BA5CF3AAFEEF33CEDF726C656B86587EE95DF93EF849731C6F258AAA26B655A",
+      "length": 23141,
+      "untracked": false,
+      "category": "product",
+      "added": 82,
+      "deleted": 49
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostAttackCandidates.cs",
+      "sha256": "E30BCD06E0420AC541DCDC8BD679A968AF4BB5FEF524656D249D5994737F93BE",
+      "length": 1102,
+      "untracked": false,
+      "category": "product",
+      "added": 17,
+      "deleted": 63
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostAttackClock.cs",
+      "sha256": "C103F84245170EBBBEAEFD7766529EB9476DA7C1AE2DE2655554DFFBE93C68E5",
+      "length": 1178,
+      "untracked": false,
+      "category": "product",
+      "added": 4,
+      "deleted": 3
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostAttackControl.Preview.cs",
+      "sha256": "328E0B95E32D58200B96FFAE262FCDB3F5F4EE7D61C350AA2080BF7263E9BB55",
+      "length": 17007,
+      "untracked": true,
+      "category": "product",
+      "added": 197,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostAttackControl.cs",
+      "sha256": "289834D94DB2C264D8C8A8772765A376DF56A146B5A36283B39A3F10B8298C25",
+      "length": 25682,
+      "untracked": false,
+      "category": "product",
+      "added": 59,
+      "deleted": 35
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostAttackModels.cs",
+      "sha256": "1E217BC047511B30DAD68040F2EF6C8D8DC26CCA96590E475617EFF6EA077B96",
+      "length": 6814,
+      "untracked": false,
+      "category": "product",
+      "added": 59,
+      "deleted": 7
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostAttackObstacles.cs",
+      "sha256": "A11F9EC7D8B9B6DFD6B619E20C716B7D988537D436710B7C53A08D4E352A93E2",
+      "length": 25895,
+      "untracked": false,
+      "category": "product",
+      "added": 261,
+      "deleted": 24
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostAttackPlayerFrame.cs",
+      "sha256": "F188FFB8AB3707EF4C438CBD4FADBA6550403E9EA7366B3D22E678F5B7AA448D",
+      "length": 2134,
+      "untracked": true,
+      "category": "product",
+      "added": 34,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostAttackReceive.cs",
+      "sha256": "BD5A220977E3D19CA448B7758EA142E6B1C5244AA9A2B81A86651C7AA3FF0F13",
+      "length": 2826,
+      "untracked": false,
+      "category": "product",
+      "added": 11,
+      "deleted": 5
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostAttackResources.cs",
+      "sha256": "D53465B089D6AB59511891EFF9885EC88BCF71CBB3076FD2E7203237CDB298A0",
+      "length": 3083,
+      "untracked": false,
+      "category": "product",
+      "added": 3,
+      "deleted": 1
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostAttackWindow.cs",
+      "sha256": "7348A4E8F76D1CA724E6D8432784DC81124B468C0A9DA1E9D2CB6BE9B8C2DC59",
+      "length": 3696,
+      "untracked": false,
+      "category": "product",
+      "added": 14,
+      "deleted": 1
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostBeamAttack.cs",
+      "sha256": "94351493EA3961E99FE139963D100DFB6F7EE327ADE76699F2756E162E44D209",
+      "length": 6831,
+      "untracked": false,
+      "category": "product",
+      "added": 7,
+      "deleted": 4
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostBeeAttack.cs",
+      "sha256": "F71161FBFF5148202E1EB63939C2FC9E8D4ED01B9ED660115A3612B2FC1D46C0",
+      "length": 13785,
+      "untracked": true,
+      "category": "product",
+      "added": 194,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostBoomerangAttack.cs",
+      "sha256": "49C4C210A01FE5AAC49CF142314335923086B16E545896E5AFD0034565ACB3AE",
+      "length": 7234,
+      "untracked": false,
+      "category": "product",
+      "added": 77,
+      "deleted": 4
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostBoomerangVariants.cs",
+      "sha256": "E84BB1384DF3382ECA4E6BF9272C4E4A6E56D28CB97A44F0CA83D07D1C0061F7",
+      "length": 10923,
+      "untracked": true,
+      "category": "product",
+      "added": 171,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostBubbleAttack.cs",
+      "sha256": "855012CDA5684A121B5FDF0EBD81055F80428EC59D6F31E680E67B0C46FDBFA5",
+      "length": 1561,
+      "untracked": true,
+      "category": "product",
+      "added": 29,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostCadenceAim.cs",
+      "sha256": "F9D56ED87CAED9619C41FD3EF84BDA26FF8044AAAA75D91F6D4565424B5DD9E6",
+      "length": 4706,
+      "untracked": false,
+      "category": "product",
+      "added": 4,
+      "deleted": 1
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostCelebrationAttack.cs",
+      "sha256": "9F190339AECD540DD7D1E013082B3AF3B6C6F18D65A6B39F08DA46CF4CC18DEF",
+      "length": 10527,
+      "untracked": true,
+      "category": "product",
+      "added": 133,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostClusterAttack.cs",
+      "sha256": "D3AAE2BD82DC5F3B7962D356CFEBB9C4642A7E89DD1790C65B18592EDFBAC612",
+      "length": 8257,
+      "untracked": true,
+      "category": "product",
+      "added": 123,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostCombatObservation.cs",
+      "sha256": "1BB0D6CC5D89DEDFA5F60C9B01BA2A1D5A76CD3712A3B46EFD3E387FAD0DE462",
+      "length": 14188,
+      "untracked": false,
+      "category": "product",
+      "added": 3,
+      "deleted": 2
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostCrystalAttack.cs",
+      "sha256": "75761B1B729A73C8C91155C001EF07AD6F8B0952C9A96123FF568FE2B21CAA2E",
+      "length": 5991,
+      "untracked": true,
+      "category": "product",
+      "added": 75,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostEffectAttack.cs",
+      "sha256": "86B6234A9A6305AB6F67E55B7747F7E5983B8D0C42963BA968033388C74BD80D",
+      "length": 11190,
+      "untracked": false,
+      "category": "product",
+      "added": 53,
+      "deleted": 49
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostExplosiveAttack.cs",
+      "sha256": "6E5F5D78CDE6711624232E8F6EBA341ED4F5CDDC2D761AF3592CBFC0A4292134",
+      "length": 13073,
+      "untracked": true,
+      "category": "product",
+      "added": 181,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostFiniteShotAttack.cs",
+      "sha256": "12EACE9B9BBFA3BD0AA1130CA96CF49E27ECD419D4A3A3949C4EF82C7CC7F2F2",
+      "length": 11897,
+      "untracked": true,
+      "category": "product",
+      "added": 162,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostFiniteThrowAttack.cs",
+      "sha256": "F8499B4C7F76A0E421E9DBB5750CDE1559685A2C2329CAE9935C3A78124A6684",
+      "length": 9080,
+      "untracked": true,
+      "category": "product",
+      "added": 107,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostFlailAttack.cs",
+      "sha256": "65C29703B3C65EE4F919AD6CF9E0EF78630F85EE03004F5AE3196F185551ABF3",
+      "length": 5941,
+      "untracked": false,
+      "category": "product",
+      "added": 9,
+      "deleted": 7
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostFlameAttack.cs",
+      "sha256": "C0007199DD5CC71F1A03118B8B793F2131BB26218577B958AEE13FF13A7F0023",
+      "length": 7924,
+      "untracked": true,
+      "category": "product",
+      "added": 115,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostFlyingKnifeAttack.cs",
+      "sha256": "44DC45ED21D34519F9DA7130BB7AE47005B6C1666798549060091B543FA45872",
+      "length": 5932,
+      "untracked": true,
+      "category": "product",
+      "added": 84,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostGemStaffAttack.cs",
+      "sha256": "D5C474F1B3B796C1A0918B8FE193F65A6FBA803DE6250CB3152B24B0DB614E73",
+      "length": 16539,
+      "untracked": true,
+      "category": "product",
+      "added": 230,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostGuidedAttack.cs",
+      "sha256": "6F18338167D2A27F6EBC713C103EDB4B02BC80BD298A66E60DE99A41DCE42556",
+      "length": 3128,
+      "untracked": false,
+      "category": "product",
+      "added": 7,
+      "deleted": 2
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostHarpoonAttack.cs",
+      "sha256": "628148B8F85A66D0AFAD49B67D358F105219183376B5AE7CD0B44B06632E5AC5",
+      "length": 10219,
+      "untracked": true,
+      "category": "product",
+      "added": 152,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostHarpyAttack.cs",
+      "sha256": "EAA64A83BC4542D47CBD43DE05276DCE16BBA6CF5E95FBE6C2148D61E8441547",
+      "length": 36544,
+      "untracked": true,
+      "category": "product",
+      "added": 380,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostHeldAttack.cs",
+      "sha256": "B5B5035F6BFE0252AB734B1B1FACB8DF95F26E3731A0E9DD61A31C0D33D81114",
+      "length": 6557,
+      "untracked": false,
+      "category": "product",
+      "added": 21,
+      "deleted": 7
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostLaserAttack.cs",
+      "sha256": "7C759C0344511467A3EDAF87AFF5827597964E92EF16C53520AFE3B1559FC4AB",
+      "length": 5053,
+      "untracked": true,
+      "category": "product",
+      "added": 70,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostMagicBounceAttack.cs",
+      "sha256": "E74DC0C84DFBC193A5DEA70291CCA7CE7F95285DBAE4ABB79B120BC08BCF82D3",
+      "length": 7725,
+      "untracked": true,
+      "category": "product",
+      "added": 105,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostMeleeAttack.cs",
+      "sha256": "995D3BCAD6807B950F5D8060D734DD37FBE87D345E0E7A423CCABDC7B93A9931",
+      "length": 28049,
+      "untracked": false,
+      "category": "product",
+      "added": 205,
+      "deleted": 22
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostPhasebladeAttack.cs",
+      "sha256": "C04E2272B2D418DF9B16E04DBF90775CFFFF28DF09ABF613A07AE133F848E6EB",
+      "length": 11025,
+      "untracked": true,
+      "category": "product",
+      "added": 143,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostPlacementAttack.cs",
+      "sha256": "00E5E7FF14E8DD1DDBBEFE17D484EAAFB0A8D109DD8E8FABD8F30A865FE7DD03",
+      "length": 2147,
+      "untracked": true,
+      "category": "product",
+      "added": 42,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostPoisonCloudAttack.cs",
+      "sha256": "C4C2B0B101B7F9D1924DF477B4C2C0B8D6EBF1DD056FCC3A2546F8C0D3370B6B",
+      "length": 14697,
+      "untracked": true,
+      "category": "product",
+      "added": 176,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostProjectileBirthSlots.cs",
+      "sha256": "5AB10392BEFD683E280906A269296C0AA7DD16E74CABCF6AD89AD58057D88FB9",
+      "length": 2281,
+      "untracked": true,
+      "category": "product",
+      "added": 44,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostProjectileEnvironment.cs",
+      "sha256": "3DA64988AABCFFB008F49DA44F6221AAEA616B34D497505CE093E68B90510FCB",
+      "length": 6659,
+      "untracked": false,
+      "category": "product",
+      "added": 27,
+      "deleted": 11
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostProjectileFamilyLease.cs",
+      "sha256": "4BDF998CF1717CFF31D3B0818EA667D22E5679C32E12986E124B3F1EAC534C9E",
+      "length": 4756,
+      "untracked": true,
+      "category": "product",
+      "added": 60,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostProjectileTargets.cs",
+      "sha256": "B4B109BEA4887317FDFFB9E676469166CF1967F61E4CEA319F4BA1DDCD2FF038",
+      "length": 3951,
+      "untracked": true,
+      "category": "product",
+      "added": 64,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostPulseAttack.cs",
+      "sha256": "C937BFE3FBFFAB35B37593082ACD9F060285F87A3F65719B478C0357E52D0AA3",
+      "length": 5658,
+      "untracked": true,
+      "category": "product",
+      "added": 81,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostScourgeAttack.cs",
+      "sha256": "B1E2862EE8C35EA3996BB9BD546DCB50796C540AEA1586B301107D91D84E009C",
+      "length": 17214,
+      "untracked": true,
+      "category": "product",
+      "added": 266,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostSkyAttack.cs",
+      "sha256": "5B953112D7999A34C439A69B914B2ACF11501F92A60373CC3FAEE3BE0BC199DC",
+      "length": 5327,
+      "untracked": false,
+      "category": "product",
+      "added": 5,
+      "deleted": 4
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostSpecialArrowAttack.cs",
+      "sha256": "A51D7A1F6B8FD1A5FC4F94298CF45F4AC911025BC4F4E09E6B087190AA4F78FA",
+      "length": 24550,
+      "untracked": true,
+      "category": "product",
+      "added": 267,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostSwingAttack.cs",
+      "sha256": "01B8D145CD8B1A8FC6AAD08EEF685CD985452F775D9FA8FCF151A08B1B8AF569",
+      "length": 10520,
+      "untracked": false,
+      "category": "product",
+      "added": 75,
+      "deleted": 16
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostWhipAttack.cs",
+      "sha256": "436DCDB8B2FB3732D62EC7FA8A72578623CBB016B3CF24E45221648667323051",
+      "length": 6435,
+      "untracked": false,
+      "category": "product",
+      "added": 18,
+      "deleted": 10
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostYoyoNavigation.cs",
+      "sha256": "39DC229E903FCBB894E7E68434E2EB01748E2F9941821012938208E1B4535292",
+      "length": 17562,
+      "untracked": false,
+      "category": "product",
+      "added": 29,
+      "deleted": 14
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/NpcPositionObservation.cs",
+      "sha256": "D40D41647EBD20C6DF482CFCCB375DAE141382CEF54454BE926481529AF953D9",
+      "length": 4516,
+      "untracked": false,
+      "category": "product",
+      "added": 31,
+      "deleted": 2
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/NpcPredictionSource.cs",
+      "sha256": "37DA6731FF478AD38DB66F39A12F034EA0523FE152CF46714777E75E519A071E",
+      "length": 91754,
+      "untracked": false,
+      "category": "product",
+      "added": 632,
+      "deleted": 21
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/NpcTrackingObservation.cs",
+      "sha256": "E01FF83F02B2A6A5C961A8AB7D47666663FC4B2F9CA57D2CEF3FE13E1EF4721E",
+      "length": 17151,
+      "untracked": false,
+      "category": "product",
+      "added": 34,
+      "deleted": 9
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/Prediction/NativePredictionAlignment.cs",
+      "sha256": "8F74C0CF57FC90837725045D7D91B74A7AF29E44300E646B2109831A460F4B32",
+      "length": 30789,
+      "untracked": false,
+      "category": "product",
+      "added": 9,
+      "deleted": 5
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/Prediction/NativePredictionResult.cs",
+      "sha256": "73CDBD706E07A8A927D6280549A6DAE514BA35EDA43F5E78C905981AE20B4A40",
+      "length": 10234,
+      "untracked": false,
+      "category": "product",
+      "added": 1,
+      "deleted": 1
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/Prediction/PredictionPipeProtocol.cs",
+      "sha256": "9C28159C3474F5EA256D703A60CC6DE12BABC95E1DB7372268AF4B1F5B3FBFD5",
+      "length": 7303,
+      "untracked": false,
+      "category": "product",
+      "added": 2,
+      "deleted": 2
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/Prediction/SegmentedNpcPrediction.cs",
+      "sha256": "8788C1188D8B2885AD0A6E2DEB8C7A04764F386011BE6B00C2D0C1649DF168F7",
+      "length": 11666,
+      "untracked": false,
+      "category": "product",
+      "added": 2,
+      "deleted": 2
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/PredictionTerrain.PlayerTongue.cs",
+      "sha256": "77657F85154A06A001A5BDB8194A11D1574EAC005A5691E7F2BF18D31F427010",
+      "length": 6525,
+      "untracked": true,
+      "category": "product",
+      "added": 100,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/PredictionTerrain.Projectile.cs",
+      "sha256": "34DD674D3192C3986FA6BE750C09AD056B28123C4889B9F6B7B1D6436E5101A2",
+      "length": 9303,
+      "untracked": true,
+      "category": "product",
+      "added": 136,
+      "deleted": 0
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/PredictionTerrain.cs",
+      "sha256": "6E5DE2C67FE0D7BEBFE3164CFB22117941FFE3C5FBB968056989AF60399FE04E",
+      "length": 41504,
+      "untracked": false,
+      "category": "product",
+      "added": 83,
+      "deleted": 34
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Tools/ToolHooks.cs",
+      "sha256": "A39BAA85050D6F57E3E5F4F0B86349B6DCAE37E675E0AAB1F8289C691DE3E649",
+      "length": 16602,
+      "untracked": false,
+      "category": "product",
+      "added": 25,
+      "deleted": 6
+    },
+    {
+      "path": "tests/JueMingR.ArchitectureTests/OperationContractChecks.cs",
+      "sha256": "CF763927A21F946288455283BA4BEA5C0C8AECD676541AB2367A34520D16C9E0",
+      "length": 13069,
+      "untracked": false,
+      "category": "tests",
+      "added": 7,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeChecks.cs",
+      "sha256": "E5AF7B0E10AA4411E723B00080A83632A0B8F577B657E48E0D8351BC53A659F3",
+      "length": 46454,
+      "untracked": false,
+      "category": "tests",
+      "added": 27,
+      "deleted": 1
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatAimChecks.cs",
+      "sha256": "7C105425258566C81C05C8DBEDA0E69A10972804A21FFA431683B82F2AC102AB",
+      "length": 29440,
+      "untracked": false,
+      "category": "tests",
+      "added": 13,
+      "deleted": 3
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatAmbientFlightChecks.cs",
+      "sha256": "33E4FA96913A7B163D278B42C725A542F24213DB0F0C9DD06CAAF273B08FD076",
+      "length": 21009,
+      "untracked": true,
+      "category": "tests",
+      "added": 239,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatAmmoChecks.cs",
+      "sha256": "E223637811AC02332C0E6AAC6EAEAD30DC18606AF5551B5355E062BD35ECD37D",
+      "length": 37080,
+      "untracked": false,
+      "category": "tests",
+      "added": 217,
+      "deleted": 3
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatAquaticActionChecks.cs",
+      "sha256": "419B745348FF717E560FD39AF7E0BF045FEA923244B1B71898789A831895CE5E",
+      "length": 12153,
+      "untracked": true,
+      "category": "tests",
+      "added": 111,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatAttachedWeaponChecks.cs",
+      "sha256": "B355449E920741524313DC12B0D92D6F9082E061E4C57B42F28793C555E12478",
+      "length": 27175,
+      "untracked": true,
+      "category": "tests",
+      "added": 219,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.Natural.cs",
+      "sha256": "4E1E74489F73C61837A1B9374F0FC7FCC5068045634B597E4227317A8CAE1F38",
+      "length": 9036,
+      "untracked": true,
+      "category": "tests",
+      "added": 77,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.cs",
+      "sha256": "2D7CF4FDCAB842AD294BB69CA45C6976D5F048ED0932F23CFE8A82D7909EA529",
+      "length": 40678,
+      "untracked": false,
+      "category": "tests",
+      "added": 34,
+      "deleted": 5
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatBeeChecks.cs",
+      "sha256": "8F8BDAC2DF797DA9AAAFA298D8F1C7B6A1D66780C05F39761DF8E0D701A92165",
+      "length": 14133,
+      "untracked": true,
+      "category": "tests",
+      "added": 112,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatBetsyChecks.cs",
+      "sha256": "25B2C4B27E88708B444E823FFDF1ACCA9DFFA1AD9D0A1AF4D9FC971392C938DF",
+      "length": 23125,
+      "untracked": true,
+      "category": "tests",
+      "added": 185,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatBigMimicChecks.cs",
+      "sha256": "9292B56CEB996F4A4EBD66AA09A18938F23C6D7435C67DDD7D3CF0B7C75365EF",
+      "length": 16072,
+      "untracked": true,
+      "category": "tests",
+      "added": 142,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatBloodNautilusChecks.cs",
+      "sha256": "761CD8369A7BB8A2675015B5A7F2D3F64AAA0D69B080F6675505B6259120BBE6",
+      "length": 15027,
+      "untracked": true,
+      "category": "tests",
+      "added": 101,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatBoomerangCommonChecks.cs",
+      "sha256": "DA2A04998DA231A501A544D3D50C843712B3E04A6890ADF5DAFBD979277BC4BF",
+      "length": 13426,
+      "untracked": true,
+      "category": "tests",
+      "added": 114,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatBoomerangVariantChecks.cs",
+      "sha256": "3A8077D942CF82CBC4935D56D148E5A8B9D9D9B62A83A91A9ABE62F7EC2564BC",
+      "length": 18663,
+      "untracked": true,
+      "category": "tests",
+      "added": 170,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatBrainSwarmChecks.cs",
+      "sha256": "C490486EAE4AC2934CAA417D80B78650A238B879D40C3A569CA99C1EB21ED457",
+      "length": 27813,
+      "untracked": true,
+      "category": "tests",
+      "added": 206,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatBubbleChecks.cs",
+      "sha256": "FE8BEA54BD81FCD1C4072D07C31300ABDCEC6F7A9099C8070B4AF44B2D7D07E0",
+      "length": 14023,
+      "untracked": true,
+      "category": "tests",
+      "added": 118,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatCandidateDemandChecks.cs",
+      "sha256": "958FA2A706633B3B0F7C72045F629AA2197B6F5BD9006F0CF6D28B374AA6DAAC",
+      "length": 10659,
+      "untracked": false,
+      "category": "tests",
+      "added": 5,
+      "deleted": 5
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatCelebrationChecks.cs",
+      "sha256": "543C585476F7B47DDFC2D01E9FEC57C5540AC04A6A9BD9DD733F779EEF7C3EAD",
+      "length": 5693,
+      "untracked": true,
+      "category": "tests",
+      "added": 65,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatCelestialTowerChecks.cs",
+      "sha256": "E6490EAFC9DF7FD9266BFA327867838A0A68FF4B01A9C9BA97352AE67BE64478",
+      "length": 28501,
+      "untracked": true,
+      "category": "tests",
+      "added": 197,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatClusterChecks.cs",
+      "sha256": "B25FCAA1B1BDC9111D46625EA0CB0DD93D5355DA104D0A58A3D9A6CED80F9D91",
+      "length": 6407,
+      "untracked": true,
+      "category": "tests",
+      "added": 73,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatColdBoltChecks.cs",
+      "sha256": "A5A3F040E0107FECEC1900B6773CFE33D3727EFC7CA020372742B8AC38850D0A",
+      "length": 5840,
+      "untracked": true,
+      "category": "tests",
+      "added": 69,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatControlChecks.cs",
+      "sha256": "B464ED8B76321552E5C68CD9438A4C970E6278C3430609BB1129FC155F8D0A59",
+      "length": 11376,
+      "untracked": false,
+      "category": "tests",
+      "added": 6,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatControlPreviewChecks.cs",
+      "sha256": "7F7F5534F7B412DB2C3BEF666EE27FF032F5AD85C3DA1DBB099F1C9B969EC850",
+      "length": 4718,
+      "untracked": true,
+      "category": "tests",
+      "added": 63,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatDarkMageChecks.cs",
+      "sha256": "1AB03C28BCEC425FDD8BE2059EE1FDC3E5FE4DCA33C59FCC46C12B45FE516339",
+      "length": 27075,
+      "untracked": true,
+      "category": "tests",
+      "added": 201,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatDd2CoverageChecks.cs",
+      "sha256": "69C39F8E1D6568698C4B72DFB272D58C1CE377489A35D92A27478355C5B10DBA",
+      "length": 8154,
+      "untracked": false,
+      "category": "tests",
+      "added": 15,
+      "deleted": 1
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatDiveFlightChecks.cs",
+      "sha256": "1E0929AFCA6843FE766FD8E589F76839BCF8D402DF2805F4C974B703AB7047A1",
+      "length": 13992,
+      "untracked": true,
+      "category": "tests",
+      "added": 104,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatEffectChecks.cs",
+      "sha256": "27C29B92BACF5EA14288E86C55B77F1C74BBBB5B59B34A135CC44D50A293D28E",
+      "length": 37696,
+      "untracked": false,
+      "category": "tests",
+      "added": 155,
+      "deleted": 1
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatExplosiveChecks.cs",
+      "sha256": "2D3D61EFEAE4536CFF921A7F5828F39005BF06A0A0666DD609C2763E72F030A0",
+      "length": 12684,
+      "untracked": true,
+      "category": "tests",
+      "added": 134,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatEyeBossChecks.cs",
+      "sha256": "4F4E3306C652B84714EC393526D353F84426C45019B7FA20D72ACD42C4B72D2E",
+      "length": 43583,
+      "untracked": true,
+      "category": "tests",
+      "added": 334,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatFiniteShotChecks.cs",
+      "sha256": "C4961EB9788ED308ECCBE88B6C3AC8DC3A3BEBB6C5A20CF8DD71BE9D78F37ECA",
+      "length": 10212,
+      "untracked": true,
+      "category": "tests",
+      "added": 94,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatFiniteThrowChecks.cs",
+      "sha256": "0810B3BFB206608F0730D5BC7121D6FD6E7A495D6B6554C6060E2A15328BEFDE",
+      "length": 25641,
+      "untracked": true,
+      "category": "tests",
+      "added": 155,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatFlameChecks.cs",
+      "sha256": "3DC975A626B92DC263A34156993BED83E758A42AC2B2847034520FD8AE38F80F",
+      "length": 15445,
+      "untracked": true,
+      "category": "tests",
+      "added": 128,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatFlyingKnifeChecks.cs",
+      "sha256": "71DB32A94A3E77C874E96436BE513994AAAAF4C1D42A4C994B686EA766B2DC12",
+      "length": 12621,
+      "untracked": true,
+      "category": "tests",
+      "added": 103,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatFreeFlightBoundsChecks.cs",
+      "sha256": "3317D9D142BD5C92375F48CCB39CA77BD3BBE91FCC66BE2CB8DB4489BD08B25D",
+      "length": 2474,
+      "untracked": true,
+      "category": "tests",
+      "added": 33,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatGemStaffChecks.cs",
+      "sha256": "04E3E277BABC8D1451C8C35CD93D3D0C5947411D099CDF4593F5BDB6C89CD781",
+      "length": 19003,
+      "untracked": true,
+      "category": "tests",
+      "added": 161,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatGolemChecks.cs",
+      "sha256": "6AA7F40940F831A16D632D69BEDE90571FD3631DF7E318E01E771B5D34C3BC7F",
+      "length": 26112,
+      "untracked": true,
+      "category": "tests",
+      "added": 210,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatHarpoonChecks.cs",
+      "sha256": "B00D4AD7A10C063CB74ED7FC8CD99727D1EBAF3A8B2642E5A109FA5D4A6C8136",
+      "length": 15602,
+      "untracked": true,
+      "category": "tests",
+      "added": 167,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatHarpyChecks.cs",
+      "sha256": "AB49D513B03C1EC6C23C7584C39B56D37210350C2DAEEBEAC52168184ACCF541",
+      "length": 46737,
+      "untracked": true,
+      "category": "tests",
+      "added": 321,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatImpactVisualChecks.cs",
+      "sha256": "6DC825D561BEB195E50787E7640664D75612FB3E9A42CBA9BF0FD46DB7D75D91",
+      "length": 10059,
+      "untracked": false,
+      "category": "tests",
+      "added": 7,
+      "deleted": 7
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatIntegrationChecks.cs",
+      "sha256": "C92EC89414512855A42109FA11F2C77A2AED984F8CEE280E3A5787223AC09CED",
+      "length": 7477,
+      "untracked": false,
+      "category": "tests",
+      "added": 3,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatInvasionFlightChecks.cs",
+      "sha256": "3E6BA6B68BD6041A0D48B0B97A5C495E6130BCC8E29A70D48856DEDCD47EABF8",
+      "length": 26069,
+      "untracked": true,
+      "category": "tests",
+      "added": 220,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatInvasionGroundChecks.cs",
+      "sha256": "902F588FD494E9FC0B708041E30ACFE882E6A8ABC258060AF206904F6A6AFF80",
+      "length": 24237,
+      "untracked": true,
+      "category": "tests",
+      "added": 203,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatInvasionLightningChecks.cs",
+      "sha256": "746BD00FFFF80C47C9E3ED1F43C555ADAD5D19604B2454FAC1699A4AB4F4497C",
+      "length": 16090,
+      "untracked": true,
+      "category": "tests",
+      "added": 134,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatKingSlimeChecks.cs",
+      "sha256": "13B43F22498FF08F866E4D2A64924B56A2E7298226FC6634724519C7D6FC8DC4",
+      "length": 20474,
+      "untracked": true,
+      "category": "tests",
+      "added": 167,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatLaserChecks.cs",
+      "sha256": "A0229CF793F968BE8C3EFD40ACC83242A2088722451BE5F05115803815BCF794",
+      "length": 10633,
+      "untracked": true,
+      "category": "tests",
+      "added": 91,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatMeleeChecks.cs",
+      "sha256": "27E0BD87EA73DB50049146121B4246781B43B64A0DF56DF1C40C2A01BF1FF1DD",
+      "length": 34288,
+      "untracked": false,
+      "category": "tests",
+      "added": 133,
+      "deleted": 4
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatMixedSwingChecks.cs",
+      "sha256": "AAAC8CCD4ABC6F9821CA0B10E264B05945B9B4A520AF45E3392AEB4417B42B2E",
+      "length": 7434,
+      "untracked": true,
+      "category": "tests",
+      "added": 83,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatObservationChecks.cs",
+      "sha256": "09C2F09D7DBC4AB20DB2A215ED5BD072D3445CD9C3347B9239D087130ECC82E7",
+      "length": 13862,
+      "untracked": false,
+      "category": "tests",
+      "added": 5,
+      "deleted": 1
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatPhasebladeChecks.cs",
+      "sha256": "8E0D81EE197E90EE355CAC84B9310186B3F7A8BAD3A1D2EC6611F9B32B2D2248",
+      "length": 27104,
+      "untracked": true,
+      "category": "tests",
+      "added": 222,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatPhasedFlightChecks.cs",
+      "sha256": "8B9D6B206595B6935932A9A989324BD611D88D5EF8F50BC04C36E2D1843D21A5",
+      "length": 23364,
+      "untracked": true,
+      "category": "tests",
+      "added": 227,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatPlacementChecks.cs",
+      "sha256": "17E413585C06BF8F4D4915FB1D24EFCFB15505856129303F6D6BED8B9D923D83",
+      "length": 8195,
+      "untracked": true,
+      "category": "tests",
+      "added": 103,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatPlanteraChecks.cs",
+      "sha256": "AC0248786B8A4E1A68496F133E38C79EA57B52F35FE9EB31ED03CE2383CF137D",
+      "length": 25079,
+      "untracked": true,
+      "category": "tests",
+      "added": 206,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatPlayerBorderChecks.cs",
+      "sha256": "33E6751A1A3E6071EBD955D1AFFE1389720139ABF2294BC8D35183C34FEF4142",
+      "length": 9796,
+      "untracked": true,
+      "category": "tests",
+      "added": 110,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatPoisonCloudChecks.cs",
+      "sha256": "EEA63235B325AC54DA330473061C30F409FCB427EF8D2DAA6F4909C1DB5A5BB9",
+      "length": 17817,
+      "untracked": true,
+      "category": "tests",
+      "added": 131,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatPredictionChecks.cs",
+      "sha256": "C4AAAA1F0C188EC2E330C3A47034DBF7E0654C2773104964E8DAA52FFD9BDAB3",
+      "length": 32691,
+      "untracked": false,
+      "category": "tests",
+      "added": 21,
+      "deleted": 6
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatProductionPredictionChecks.cs",
+      "sha256": "45988A123A46567D0531C5C003C44BF72CEA1528FC09210BAE42EA01E1F6F701",
+      "length": 76126,
+      "untracked": false,
+      "category": "tests",
+      "added": 60,
+      "deleted": 1
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatProjectileEnvironmentChecks.cs",
+      "sha256": "164C0CDBCBC852E6051BC5EAA0A13A1DB0F5ECF2A71D6515C51B1F82F5E99C09",
+      "length": 15047,
+      "untracked": false,
+      "category": "tests",
+      "added": 31,
+      "deleted": 7
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatQueenBeeChecks.cs",
+      "sha256": "60C0564D026020CA9508FF5B86613C1814950B131F35CBDE4DD535AC240B19F0",
+      "length": 19283,
+      "untracked": true,
+      "category": "tests",
+      "added": 150,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatReflectionChecks.cs",
+      "sha256": "119F6B4F5C95089348AAECBB2C78B22DAB999DD515466EAAE4FFFFCD2956A987",
+      "length": 14207,
+      "untracked": true,
+      "category": "tests",
+      "added": 147,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatRelatedChecks.cs",
+      "sha256": "CB454B7FDD24145941ABE4FC3F6CCDB81F206C49456F0A3F4883E5C827B7FFA9",
+      "length": 39662,
+      "untracked": true,
+      "category": "tests",
+      "added": 413,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatSantaTankChecks.cs",
+      "sha256": "A41C83D8A5D76FF01F0CCA2014C910C221B9A281D66FE575BD4B042442C537E1",
+      "length": 17462,
+      "untracked": true,
+      "category": "tests",
+      "added": 137,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatScatterChecks.cs",
+      "sha256": "70C8768D28CF3B85BA37AA1734B0AF6BAC9C4619A47C957819C2C35341A0FF00",
+      "length": 6595,
+      "untracked": false,
+      "category": "tests",
+      "added": 21,
+      "deleted": 1
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatScourgeChecks.cs",
+      "sha256": "8D4748D49551683EC9D71A71384CE93661AFA1B3482764AB6227D6303967B9D1",
+      "length": 22005,
+      "untracked": true,
+      "category": "tests",
+      "added": 245,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatScytheChecks.cs",
+      "sha256": "91BBBB38AA32DB2216E4EA374EB0CAC8DA8919A73A32621BEB1D0E09EC7B9E7D",
+      "length": 12595,
+      "untracked": true,
+      "category": "tests",
+      "added": 117,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatSelectionPreviewChecks.cs",
+      "sha256": "9E31BCB04303BB8CAF90DA29636A823833EC84A021653454413A56FBB5FF8228",
+      "length": 13896,
+      "untracked": true,
+      "category": "tests",
+      "added": 132,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatSkeletonBossChecks.cs",
+      "sha256": "9F0167BD7BC510A3859D26B6A12F83F45EA316DD9DFBD7303E0D2B082F84B076",
+      "length": 21798,
+      "untracked": true,
+      "category": "tests",
+      "added": 174,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatSnowmanChecks.cs",
+      "sha256": "0783370930B63563D2D1DD6F10E889CDFE8783B0484DCA9899F65191750F5F0C",
+      "length": 24603,
+      "untracked": true,
+      "category": "tests",
+      "added": 196,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatSpecialArrowChecks.cs",
+      "sha256": "1AA1FEC532E3A74492686418C5551C1CF0F5851D6F04224616B4398946848441",
+      "length": 18011,
+      "untracked": true,
+      "category": "tests",
+      "added": 108,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatSwingChecks.cs",
+      "sha256": "3AE847C37B24D348206EC70FB14030ECC586DCC766619F64B27C7019C1542DEA",
+      "length": 12670,
+      "untracked": false,
+      "category": "tests",
+      "added": 62,
+      "deleted": 1
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatSwingSpecialChecks.cs",
+      "sha256": "5816486C7F1960BF4B5279148B7BB69FECF7338623F4A9FB43D00C7F40F2424F",
+      "length": 4716,
+      "untracked": true,
+      "category": "tests",
+      "added": 56,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatTerrainChecks.cs",
+      "sha256": "07F4527E843A16B80B8D20900DEE6C36F7967AF8B03260EA72DCB6DEF73257B4",
+      "length": 15800,
+      "untracked": false,
+      "category": "tests",
+      "added": 91,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatTerrainFlightChecks.cs",
+      "sha256": "BDE8D11A1CDCBA8B3FB5CDF812353AC5D6C051A8CDFCCEB48FCCA46357F9A312",
+      "length": 21922,
+      "untracked": true,
+      "category": "tests",
+      "added": 214,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatTownCritterChecks.cs",
+      "sha256": "C8F5698EA63AC7347E86E3B489B2788BCA4459042566DB75CD18BFFB59AB6280",
+      "length": 22877,
+      "untracked": true,
+      "category": "tests",
+      "added": 188,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatTreeBossChecks.cs",
+      "sha256": "ACA7DE3564E056645B7696F9550AEC57729DCEED9BB8F4B97FDBE7F0A9C853E1",
+      "length": 19537,
+      "untracked": true,
+      "category": "tests",
+      "added": 149,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatWallBossChecks.cs",
+      "sha256": "DF8BB98D157895C4979649770D6DD5EE7425FA47C96E4AF35EF3B25E0535D606",
+      "length": 42041,
+      "untracked": true,
+      "category": "tests",
+      "added": 277,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatWorkerChecks.cs",
+      "sha256": "422ACE492CCD618E3438BD4383F5482D01851BEFD8E01265EF5EFF0ACE903AF2",
+      "length": 37748,
+      "untracked": false,
+      "category": "tests",
+      "added": 2,
+      "deleted": 2
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatYoyoChecks.cs",
+      "sha256": "78754D1AC7F35D63CD799E748517143112365113BB13B5C3A119E5B15B52C5FC",
+      "length": 23168,
+      "untracked": false,
+      "category": "tests",
+      "added": 1,
+      "deleted": 1
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatYoyoGapChecks.cs",
+      "sha256": "3A37E5E770BB7617294219D9714C4AD954C7EF24376DAE9E1BE7ED4FC0454D7D",
+      "length": 4899,
+      "untracked": true,
+      "category": "tests",
+      "added": 60,
+      "deleted": 0
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatYoyoNavigationChecks.cs",
+      "sha256": "E76F1BE6732D4923D4616967F9F91032010D65EEE5E72F7449CF7FDCD440FC4B",
+      "length": 19484,
+      "untracked": false,
+      "category": "tests",
+      "added": 2,
+      "deleted": 2
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/ProbeGraphics.cs",
+      "sha256": "0DFFF8C092CCB414ADD9C79CD8DA09BC414E878788A8276FE40C2A6306C6C91A",
+      "length": 18980,
+      "untracked": false,
+      "category": "tests",
+      "added": 33,
+      "deleted": 1
+    },
+    {
+      "path": "tests/Workload/Invoke-WorkloadRoutingChecks.ps1",
+      "sha256": "4894EBF4CECCB49CB3AD07D77DAF48ABAA07753159BBDF0A8E1758D261C9FD34",
+      "length": 32747,
+      "untracked": false,
+      "category": "tests",
+      "added": 3,
+      "deleted": 0
+    }
+  ],
+  "retained": [
+    {
+      "path": "docs/设计/本地参考资料使用说明.md",
+      "length": 12677,
+      "sha256": "D8878ED52EFB98DE5741E28680D866439A232F126B871B175548BDEA9E3440ED",
+      "currentSha256": "D8878ED52EFB98DE5741E28680D866439A232F126B871B175548BDEA9E3440ED",
+      "unchanged": true
+    },
+    {
+      "path": ".workbuddy/memory/2026-10-03.md",
+      "length": 1874,
+      "sha256": "329D9917D098917781945A999F104F9C622B23693C14B3FE1A5424DE6677BB31",
+      "currentSha256": "329D9917D098917781945A999F104F9C622B23693C14B3FE1A5424DE6677BB31",
+      "unchanged": true
+    },
+    {
+      "path": "issue112.txt",
+      "length": 139872,
+      "sha256": "765ECEC1CBB6F9854568B1ACAD2376963A6DF3A3C52B24169E94804C2BFE41BD",
+      "currentSha256": "765ECEC1CBB6F9854568B1ACAD2376963A6DF3A3C52B24169E94804C2BFE41BD",
+      "unchanged": true
+    },
+    {
+      "path": "pr113.json",
+      "length": 3828,
+      "sha256": "420FC1AFF4CE2FFFE5C9574AA7E571F824024F86DF3DF18B231D68A17BA63DA8",
+      "currentSha256": "420FC1AFF4CE2FFFE5C9574AA7E571F824024F86DF3DF18B231D68A17BA63DA8",
+      "unchanged": true
+    }
+  ],
+  "fixedR23b": [
+    {
+      "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.Features.dll",
+      "length": 659456,
+      "sha256": "FA4AE486AB94DE01ACE118FBC1E3C5D5FCA7279D7BB29844FA4C8ECDEF5751F4",
+      "unchangedAtPause": true
+    },
+    {
+      "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.Infrastructure.dll",
+      "length": 20992,
+      "sha256": "71750B5F26B3A057ADF13E153BF2EEB0FD021F159704A31FB1D5496B0C572CCE",
+      "unchangedAtPause": true
+    },
+    {
+      "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.Platform.dll",
+      "length": 117760,
+      "sha256": "CD3D08950296083802A69C95C5F9402E5D2687952FFFBD5AE31E2C28CA879090",
+      "unchangedAtPause": true
+    },
+    {
+      "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.TerrariaHost.dll",
+      "length": 2097152,
+      "sha256": "4D003E82AEBE3DF405B06C504E440D019296B26661F6328AC42580BEC2A943C3",
+      "unchangedAtPause": true
+    }
+  ],
+  "cancelled": [
+    {
+      "name": "gem-collision",
+      "session": 31798,
+      "pid": 20700,
+      "status": "CANCELLED_BY_OWNER_PAUSE",
+      "backendExit": 1
+    },
+    {
+      "name": "gem-natural",
+      "session": 62639,
+      "pid": 58720,
+      "status": "CANCELLED_BY_OWNER_PAUSE",
+      "backendExit": 1
+    },
+    {
+      "name": "tree",
+      "session": 56183,
+      "pid": 3800,
+      "status": "CANCELLED_BY_OWNER_PAUSE",
+      "backendExit": 1
+    }
+  ]
+}

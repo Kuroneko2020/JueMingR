@@ -1,0 +1,69 @@
+{
+  "files": [
+    {
+      "material": "commands/build-round.ps1.txt",
+      "original": ".local/aim-comprehensive-repair-20261010/build-round.ps1",
+      "originalSha256": "9FF6BB0F4D12C0F52C0B52AA3DD4D704AE894917B35DCB452028C0731991E723",
+      "originalLines": 22,
+      "encoding": "UTF-8",
+      "status": "Historical task material; not current completion certification"
+    },
+    {
+      "material": "commands/run-round.ps1.txt",
+      "original": ".local/aim-comprehensive-repair-20261010/run-round.ps1",
+      "originalSha256": "92417B86E226F6F283F187F105270DE2120CFD562D2AD664C25B9920B717D780",
+      "originalLines": 13,
+      "encoding": "UTF-8",
+      "status": "Historical task material; not current completion certification"
+    },
+    {
+      "material": "coverage/npc-initial-dispatch.csv",
+      "original": ".local/aim-comprehensive-repair-20261010/npc/mechanism-dispatch-audit.csv",
+      "originalSha256": "0306F8C429AF39841036014F583BDC037A13C8A0F0212DCB5120CCAC438F5553",
+      "originalLines": 102,
+      "encoding": "UTF-8",
+      "status": "Historical task material; not current completion certification"
+    },
+    {
+      "material": "coverage/npc-r15-static.csv",
+      "original": ".local/aim-comprehensive-repair-20261010/npc/mechanism-current-r15-static.csv",
+      "originalSha256": "A7C640AF7011656DA89A224A1F1BE43711A3029F2FB8799DD551F70978DF0708",
+      "originalLines": 102,
+      "encoding": "UTF-8",
+      "status": "Historical task material; not current completion certification"
+    },
+    {
+      "material": "coverage/weapon-r08-gaps.json",
+      "original": ".local/aim-comprehensive-repair-20261010/weapons/r08-runtime-gap-groups.json",
+      "originalSha256": "5246669C52656F833AB33EDA0028F9C5B7AFC78572A1E299D0E0F7C5EA066C49",
+      "originalLines": 1255,
+      "encoding": "UTF-8",
+      "status": "Historical task material; not current completion certification"
+    },
+    {
+      "material": "unintegrated/PredictionTerrain.Line.cs.txt",
+      "original": ".local/aim-comprehensive-repair-20261010/r24-staged/PredictionTerrain.Line.cs",
+      "originalSha256": "E89C312F2449EC2F2D8C6D9365BDB67E840B974D1A1963297765CD6CA5C36CB7",
+      "originalLines": 77,
+      "encoding": "UTF-8",
+      "status": "UNINTEGRATED / NOT TESTED"
+    },
+    {
+      "material": "unintegrated/NativeCombatLineChecks.cs.txt",
+      "original": ".local/aim-comprehensive-repair-20261010/r24-staged/NativeCombatLineChecks.cs",
+      "originalSha256": "54FA45A837795CBB6D9A496BEF52DC53E9A158469922CF059951BB6C238CD2AA",
+      "originalLines": 61,
+      "encoding": "UTF-8",
+      "status": "UNINTEGRATED / NOT TESTED"
+    },
+    {
+      "material": "unintegrated/foreign-bee-oracle-draft.cs.txt",
+      "original": ".local/aim-comprehensive-repair-20261010/weapons/r24-foreign-bee-oracle-draft.cs",
+      "originalSha256": "DC9E847E4FDBE5B7C60D7FC7C1FCD8F67F62A52412C28880EB31CF783572F96A",
+      "originalLines": 53,
+      "encoding": "UTF-8",
+      "status": "UNINTEGRATED / NOT TESTED"
+    }
+  ],
+  "missing": []
+}
