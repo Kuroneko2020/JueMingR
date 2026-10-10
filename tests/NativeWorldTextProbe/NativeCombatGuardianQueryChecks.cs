@@ -106,14 +106,14 @@ namespace NativeWorldTextProbe
                 // The prefix receipt/age proof deliberately remains strict-long;
                 // this scene's display consumer was measured separately above.
                 var prefixHost=Get(context,"CombatObservation");var prefixOptions=(ObservationOptions)Get(prefixHost,"Options");
-                cache.Demand(1,120);
+                cache.Demand(NativeCombatObservationChecks.IndependentReader,120);
                 try
                 {
                     NativeCombatObservationChecks.Save(prefixHost,prefixOptions.Path?prefixOptions.Toggle(1):prefixOptions);
                     if(cache.Read(0)!=null || (int)Get(cache,"MinimumRequired")!=120 || cache.Required!=120)throw new InvalidOperationException("Prefix proof owns only the strict120 consumer.");
                     NativeCombatPrefixSessionChecks.Run(native,cache,step,point=>SampleMouse(context,point));
                 }
-                finally{cache.Release(1);NativeCombatObservationChecks.Save(prefixHost,prefixOptions);}
+                finally{cache.Release(NativeCombatObservationChecks.IndependentReader);NativeCombatObservationChecks.Save(prefixHost,prefixOptions);}
             }
             finally
             {

@@ -50,8 +50,10 @@ namespace NativeWorldTextProbe
             var samples=new List<double>();var prepares=new List<double>();var draws=new List<double>();
             try
             {
+                Console.WriteLine("OFF ENTRY before user="+Terraria.Program.SavePath+" loaded="+((ObservationSettings)Get(host,"Settings")).Loaded+" path="+((ObservationOptions)Get(host,"Options")).Path+" worker="+(native==null?"rolling":GetOptional(native,"Worker")?.GetType().Name??"null")+" requests="+(native==null?0:Get(native,"Requests")));
                 NativeCombatObservationChecks.Save(host,new ObservationOptions());
                 for(int i=0;i<60;i++){Call(context,"UpdateRuntime");Call(context,"UpdateShell");}
+                Console.WriteLine("OFF ENTRY after loaded="+((ObservationSettings)Get(host,"Settings")).Loaded+" path="+((ObservationOptions)Get(host,"Options")).Path+" worker="+(native==null?"rolling":GetOptional(native,"Worker")?.GetType().Name??"null")+" requests="+(native==null?0:Get(native,"Requests")));
                 Require(rolling || GetOptional(native,"Worker")==null && (long)Get(native,"Requests")==0,"OFF entry never starts or samples helper");
                 using(var graphics=rolling && Environment.GetEnvironmentVariable("JUEMINGR_ROLLING_CPU_ONLY")=="1" || continuousSeconds>0 && !rolling && Environment.GetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT")!="rolling-baseline"?null:new ProbeGraphics(content))
                 {
@@ -101,11 +103,11 @@ namespace NativeWorldTextProbe
                         if(worker!=null && (int)Get(worker,"State")==4)throw new InvalidOperationException("Production helper fault: "+GetOptional(worker,"Failure"));
                     }
                     Require(valid>=90 && moving>0 && playerMoving>5,"continuous original NPC and player movement publishes valid future windows; moving-player="+playerMoving+" reason="+GetOptional(native,"Reason"));
-                    cache.Demand(1,120);NativeCombatObservationChecks.Save(host,new ObservationOptions());
-                    Require(cache.Read(1)!=null && cache.Read(1).Count==121,"Path OFF cannot detach the strict current+120 timeline still requested by another consumer.");
+                    cache.Demand(NativeCombatObservationChecks.IndependentReader,120);NativeCombatObservationChecks.Save(host,new ObservationOptions());
+                    Require(cache.Read(NativeCombatObservationChecks.IndependentReader)!=null && cache.Read(NativeCombatObservationChecks.IndependentReader).Count==121,"Path OFF cannot detach the strict current+120 timeline still requested by another consumer.");
                     for(int i=0;i<6;i++)Step(context,samples,prepares);
-                    Require(cache.Read(1)!=null && (bool)Get(Get(host,"Selection"),"HasTarget"),"Remaining native consumer continues through actual Host updates.");
-                    cache.Release(1);Call(host,"Poll");Require(!(bool)Get(Get(host,"Selection"),"HasTarget"),"Last native consumer retires selection after path was already OFF.");
+                    Require(cache.Read(NativeCombatObservationChecks.IndependentReader)!=null && (bool)Get(Get(host,"Selection"),"HasTarget"),"Remaining native consumer continues through actual Host updates.");
+                    cache.Release(NativeCombatObservationChecks.IndependentReader);Call(host,"Poll");Require(!(bool)Get(Get(host,"Selection"),"HasTarget"),"Last native consumer retires selection after path was already OFF.");
                     long retiredRequests=(long)Get(native,"Requests");for(int i=0;i<6;i++)Step(context,samples,prepares);
                     Require((long)Get(native,"Requests")==retiredRequests && cache.Required==0,"No native requests follow final consumer retirement.");
                     NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true));WaitPath(context,cache,samples,prepares,0,"shared-consumer-return");
@@ -118,14 +120,14 @@ namespace NativeWorldTextProbe
                         // This separate capacity proof requires the original complete
                         // 180-step result to exceed the combined 4 MiB envelope.
                         var capacityOptions=(ObservationOptions)Get(host,"Options");
-                        cache.Demand(1,120);
+                        cache.Demand(NativeCombatObservationChecks.IndependentReader,120);
                         try
                         {
                             NativeCombatObservationChecks.Save(host,capacityOptions.Path?capacityOptions.Toggle(1):capacityOptions);
                             Require(cache.Read(0)==null && (int)Get(cache,"MinimumRequired")==120 && cache.Required==120,"Capacity proof owns only the strict120 consumer.");
                             NativeCombatFailureRecoveryChecks.Capacity(native,cache,()=>{phase="capacity-session";Step(context,samples,prepares,false);},()=>{phase="capacity-consumer-paused";Step(context,samples,prepares,false,prepareHost:false);},output);
                         }
-                        finally{cache.Release(1);NativeCombatObservationChecks.Save(host,capacityOptions);}
+                        finally{cache.Release(NativeCombatObservationChecks.IndependentReader);NativeCombatObservationChecks.Save(host,capacityOptions);}
                         return;
                     }
                     if(Environment.GetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT")!=null)

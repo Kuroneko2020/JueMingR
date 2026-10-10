@@ -153,6 +153,17 @@ namespace JueMingR.TerrariaHost.Combat
             }
             clear=true;return true;
         }
+        internal bool MeleeLine(float x,float y,float nx,float ny)
+        {
+            // Locked CanHitLine only reads tiles/local variables. Record its
+            // finite melee rectangle including side neighbours first, so the
+            // native pure query cannot escape this preparation's terrain lease.
+            int left=Math.Max(1,(int)(Math.Min(x,nx)/16)-1),right=Math.Min(Main.maxTilesX-2,(int)(Math.Max(x,nx)/16)+1);
+            int top=Math.Max(1,(int)(Math.Min(y,ny)/16)-1),bottom=Math.Min(Main.maxTilesY-41,(int)(Math.Max(y,ny)/16)+1);
+            if(right-left>64 || bottom-top>64)return false;
+            for(int tx=left;tx<=right;tx++)for(int ty=top;ty<=bottom;ty++){Cell cell;PredictionStop stop;if(!CellAt(tx,ty,out cell,out stop))return false;}
+            return Collision.CanHitLine(new Microsoft.Xna.Framework.Vector2(x,y),0,0,new Microsoft.Xna.Framework.Vector2(nx,ny),0,0);
+        }
         public bool Move(ref NpcMotionState n,PredictionEnvironment environment,out PredictionStop stop)
         {var player=default(PredictionPlayerMotion);return Move(ref n,environment,false,false,false,false,1,ref player,out stop);}
         public bool MoveWaterWalkingPlayer(ref NpcMotionState n,PredictionEnvironment environment,bool fallThrough,bool lavaWalk,out PredictionStop stop)
@@ -347,6 +358,24 @@ namespace JueMingR.TerrariaHost.Combat
                 {wet=true;kind=liquidKind;return true;}
             }
             return true;
+        }
+        internal bool ProjectileWet(float x,float y,int width,int height,out bool wet,out byte kind)
+        {
+            PredictionStop stop;return Wet(new NpcMotionState{X=x-width*.5f,Y=y-height*.5f,Width=width,Height=height},false,out wet,out kind,out stop);
+        }
+        internal bool ProjectilePassage(float x,float y,float nx,float ny,int width,int height)
+        {
+            float rx,ry;bool up;PredictionStop stop;float vx=nx-x,vy=ny-y;
+            // Same pure rectangular contact rules already used by the first
+            // batch. Native TileCollision also writes up/down and fills null
+            // neighboring live tiles; a preparation query must do neither.
+            return TileContact(x-width*.5f,y-height*.5f,vx,vy,width,height,true,out rx,out ry,out up,out stop) && Math.Abs(rx-vx)<.0001f && Math.Abs(ry-vy)<.0001f;
+        }
+        internal bool ProjectileCollision(float x,float y,float vx,float vy,int width,int height,out float rx,out float ry)
+        {
+            // A failed terrain acquisition is not a known impact trigger.
+            // Callers receive native contact components only on success.
+            bool up;PredictionStop stop;return TileContact(x-width*.5f,y-height*.5f,vx,vy,width,height,true,out rx,out ry,out up,out stop);
         }
         private bool TileContact(float px0,float py0,float vx,float vy,int w,int h,bool fall,out float rx,out float ry,out bool up,out PredictionStop stop,bool fall2=true,int gravDir=1)
         {bool down;return TileContact(px0,py0,vx,vy,w,h,fall,out rx,out ry,out up,out down,out stop,fall2,gravDir);}

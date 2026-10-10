@@ -110,7 +110,7 @@ namespace NativeWorldTextProbe
             }
             long refused=(long)Get(native,"Refused");object worker=Get(native,"Worker");long start=Main.GameUpdateCount;string reason="";
             for(int i=0;i<240;i++){effectiveStep();reason=(string)Get(native,"Reason")??"";if((long)Get(native,"Refused")>refused && reason.StartsWith("PredictionCapacityException",StringComparison.Ordinal))break;}
-            object pending=Get(native,"pending");var current=cache.Read(1);
+            object pending=Get(native,"pending");var current=cache.Read(NativeCombatObservationChecks.IndependentReader);
             Require(reason.StartsWith("PredictionCapacityException",StringComparison.Ordinal) && !(bool)Get(native,"Failed"),
                 "Production Session receives a real combined capacity refusal without global failure. reason="+reason+
                 " failed="+Get(native,"Failed")+" requests="+Get(native,"Requests")+" refused="+Get(native,"Refused")+
@@ -132,7 +132,7 @@ namespace NativeWorldTextProbe
             foreach(var shot in Main.projectile)shot.active=false;
             long requests=(long)Get(native,"Requests");effectiveStep();
             Require((long)Get(native,"Requests")>requests,"A changed capacity-bearing page state bypasses the old target's refusal cooldown immediately.");
-            int recovery=-1;for(int i=0;i<180;i++){effectiveStep();var path=cache.Read(1);if(path!=null && path.CaptureTick>rejectedAt){recovery=i;Require(path.SampleTick==Main.GameUpdateCount && path.Count==121,"Capacity recovery consumes actual current plus 120 future steps.");break;}}
+            int recovery=-1;for(int i=0;i<180;i++){effectiveStep();var path=cache.Read(NativeCombatObservationChecks.IndependentReader);if(path!=null && path.CaptureTick>rejectedAt){recovery=i;Require(path.SampleTick==Main.GameUpdateCount && path.Count==121,"Capacity recovery consumes actual current plus 120 future steps.");break;}}
             Require(recovery>=0 && ReferenceEquals(worker,Get(native,"Worker")),"Same Host/native owner/worker takes a fresh ordinary request after capacity refusal automatically.");
             File.WriteAllText(Path.Combine(output,"host-capacity.txt"),"start="+start+" refusedAt="+rejectedAt+" recoveryUpdates="+recovery+" reason="+reason+"\n");
             Console.WriteLine("CAPACITY real Host refused and freshly recovered updates="+recovery+" same-worker=true");
@@ -153,7 +153,7 @@ namespace NativeWorldTextProbe
             long capture=(long)Get(aged,"Tick"),refusedBefore=(long)Get(native,"Refused"),rejectedBefore=(long)Get(native,"Rejected");
             for(int i=0;i<61;i++)advanceWithoutConsumer();
             step();
-            Require(Main.GameUpdateCount-capture>60 && (bool)Get(aged,"Retired") && (long)Get(native,"Rejected")==rejectedBefore+1 && (long)Get(native,"Refused")==refusedBefore && cache.Read(1)==null && !(bool)Get(native,"Failed"),
+            Require(Main.GameUpdateCount-capture>60 && (bool)Get(aged,"Retired") && (long)Get(native,"Rejected")==rejectedBefore+1 && (long)Get(native,"Refused")==refusedBefore && cache.Read(NativeCombatObservationChecks.IndependentReader)==null && !(bool)Get(native,"Failed"),
                 "An actually expired capacity reply is retired, not counted as an effective refusal or published into the current consumer.");
             File.WriteAllText(Path.Combine(output,"capacity-expired.txt"),"captureTick="+capture+" receiveTick="+Main.GameUpdateCount+" age="+(Main.GameUpdateCount-capture)+" rejectedDelta=1 refusedDelta=0 failed=false\n");
             Console.WriteLine("PASS separate capacity Session refusal/backoff/recovery / actual expired reply rejection; paused ticks are mechanism-only");

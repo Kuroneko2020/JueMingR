@@ -73,6 +73,7 @@ namespace NativeWorldTextProbe
             foreach(var row in rows)Console.WriteLine(row);File.WriteAllLines(Path.Combine(output,"combat-costs.tsv"),rows);
             Console.WriteLine("COST IDENTITY "+host.GetType().Assembly.Location+" MVID="+host.GetType().Assembly.ManifestModule.ModuleVersionId+"; CPU natural Damage and actual Host update/prepare; no GPU/readback, gameplay FPS or long-run claim. Release-only counters are NA.");
             SetOptions(new ObservationOptions());update();prepare();
+            NativeCombatAimChecks.Initialize();NativeCombatAttackCostChecks.Run(context);
             void SetOptions(ObservationOptions value){NativeQuickItemChecks.Until(()=>{settings.Poll();return settings.Ready;});Require(settings.Set(value),"cost setting accepted");NativeQuickItemChecks.Until(()=>{settings.Poll();return !settings.Busy;});Require(settings.CompletionSucceeded,"cost setting committed");}
         }
         private static int? Counter(object owner,string name){var value=GetOptional(owner,name);return value is int?(int?)value:null;}

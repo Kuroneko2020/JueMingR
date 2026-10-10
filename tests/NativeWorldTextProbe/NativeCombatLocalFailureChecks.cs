@@ -10,6 +10,9 @@ namespace NativeWorldTextProbe
 {
     internal static class NativeCombatLocalFailureChecks
     {
+        // Production owns 0 (path) and 1 (aim). This independent fault reader
+        // keeps its existing horizon in an otherwise unowned cache slot.
+        private const int IndependentReader=2;
         private static int prepares,selections;
         private static int readFaults;private static NPC faultNpc;private static string faultType;
         private static bool failPrepare,failSelection;
@@ -43,14 +46,14 @@ namespace NativeWorldTextProbe
             {
                 // This fault check accepts any genuine future; strict horizon
                 // refusal is a different contract, not evidence of failed retry.
-                cache.Demand(1,1,120);prepares=0;failPrepare=true;NativeCombatObservationChecks.Fresh(context,host);
+                cache.Demand(IndependentReader,1,120);prepares=0;failPrepare=true;NativeCombatObservationChecks.Fresh(context,host);
                 for(int i=0;i<4;i++)NativeCombatObservationChecks.Fresh(context,host);
-                Require(prepares==1 && cache.Required==120 && cache.Read(1)==null && (bool)Get(host,"Marker"),"Unknown shared Prepare fault blocks independent demand without repeated work, retaining separate selection marker.");
-                failPrepare=false;Call(host,"Set",1,true);NativeCombatObservationChecks.Fresh(context,host);Require(cache.Read(1)!=null,"Explicit retry restores all valid shared prediction demand.");
+                Require(prepares==1 && cache.Required==120 && cache.Read(IndependentReader)==null && (bool)Get(host,"Marker"),"Unknown shared Prepare fault blocks independent demand without repeated work, retaining separate selection marker.");
+                failPrepare=false;Call(host,"Set",1,true);NativeCombatObservationChecks.Fresh(context,host);Require(cache.Read(IndependentReader)!=null,"Explicit retry restores all valid shared prediction demand.");
                 selections=0;failSelection=true;NativeCombatObservationChecks.Fresh(context,host);for(int i=0;i<4;i++)NativeCombatObservationChecks.Fresh(context,host);
-                Require(selections==1 && !(bool)Get(host,"Enabled") && !(bool)Get(host,"Marker") && cache.Read(1)==null,"Untrusted shared selection stops marker and all prediction readers with one failure.");
-                failSelection=false;Call(host,"Set",1,true);NativeCombatObservationChecks.Fresh(context,host);Require(cache.Read(1)!=null && (bool)Get(host,"Marker"),"Explicit retry restores unique selection after shared fault.");
-                cache.Release(1);NativeCombatObservationChecks.Save(host,new ObservationOptions(marker:true));prepares=0;failPrepare=true;NativeCombatObservationChecks.Fresh(context,host);
+                Require(selections==1 && !(bool)Get(host,"Enabled") && !(bool)Get(host,"Marker") && cache.Read(IndependentReader)==null,"Untrusted shared selection stops marker and all prediction readers with one failure.");
+                failSelection=false;Call(host,"Set",1,true);NativeCombatObservationChecks.Fresh(context,host);Require(cache.Read(IndependentReader)!=null && (bool)Get(host,"Marker"),"Explicit retry restores unique selection after shared fault.");
+                cache.Release(IndependentReader);NativeCombatObservationChecks.Save(host,new ObservationOptions(marker:true));prepares=0;failPrepare=true;NativeCombatObservationChecks.Fresh(context,host);
                 Require(prepares==0 && cache.Required==0 && (bool)Get(Get(host,"Selection"),"HasTarget"),"Marker-only has no Source failure surface or forecast demand.");
                 NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatObservationChecks.Fresh(context,host);Require(prepares==0 && !(bool)Get(Get(host,"Selection"),"HasTarget"),"All consumers OFF retire without fault retries.");
             }

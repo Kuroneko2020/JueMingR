@@ -33,6 +33,7 @@ namespace JueMingR.TerrariaHost.Combat
         internal int SwitchCandidateReads {get;private set;}
 #endif
         internal bool Active {get{return player!=null;}}
+        internal bool OrdinaryPress {get{return kind==0 && Identity() && FeatureEnabled && host.Left && host.Admitted(player);}}
         internal bool FeatureEnabled {get{return kind>=0 && host.IsEnabled(kind);}}
         internal bool ManagedAttackIntent(Player p){return kind==4 && ReferenceEquals(p,player) && Identity() && FeatureEnabled && host.Left && host.Admitted(p);}
         internal bool DeferSync
@@ -51,6 +52,19 @@ namespace JueMingR.TerrariaHost.Combat
         internal void RequestYield(){yielding=true;decided=false;}
         internal void CancelYield(){yielding=false;decided=false;}
         internal long Operation {get{return token;}}
+        internal Projectile AimPrimary {get{return Identity() && Valid(primary,primaryKey)?primary:null;}}
+        internal bool MatchesAimRequest(CombatAimRequest request)
+        {
+            if(request==null || !Identity() || !FeatureEnabled || !host.Admitted(player,slot==58) || request.Step!=Main.GameUpdateCount ||
+                !ReferenceEquals(request.Player,player) || !ReferenceEquals(request.Weapon,source) || request.Session!=session || request.Selection!=selection || request.Operation!=token ||
+                request.Slot!=slot || request.Type!=type || request.Prefix!=prefix)return false;
+            var shot=request.Projectile;
+            if(request.Stage==CombatAimStage.ItemRelease)return kind==2 && released && shot==null && WeaponCatalog.Release(source)==ReleaseMechanism.ItemRelease;
+            if(!(ReferenceEquals(shot,primary) || ReferenceEquals(shot,paired)) || !Valid(shot,request.ProjectileKey))return false;
+            if(request.Stage==CombatAimStage.FlailRelease)return kind==1 && shot.ai[0]==0 && !player.channel;
+            if(request.Stage==CombatAimStage.FlintCharge)return kind==2 && type==5462 && shot.ai[0]==0 && player.channel;
+            return request.Stage==CombatAimStage.GlacierCharge && kind==2 && type==6153 && player.channel && shot.ai[1]==0 && (int)shot.ai[0]%3==0;
+        }
         internal CombatUse(HostCombat host){this.host=host;}
         private bool Identity()
         {
@@ -275,7 +289,7 @@ namespace JueMingR.TerrariaHost.Combat
             // Glacier retain native direction/velocity after charge; no aim
             // override is lent to a returning projectile or a future Kill.
             if(kind==1 && shot.ai[0]==0 && !player.channel)BorrowAim(scope,CombatAimStage.FlailRelease,shot);
-            else if(kind==2 && type==5462 && shot.ai[0]==0)BorrowAim(scope,CombatAimStage.FlintCharge,shot);
+            else if(kind==2 && type==5462 && shot.ai[0]==0 && player.channel)BorrowAim(scope,CombatAimStage.FlintCharge,shot);
             else if(kind==2 && type==6153 && player.channel && shot.ai[1]==0 && (int)shot.ai[0]%3==0)BorrowAim(scope,CombatAimStage.GlacierCharge,shot);
         }
         private void BorrowAim(CombatInputScope scope,CombatAimStage stage,Projectile projectile)

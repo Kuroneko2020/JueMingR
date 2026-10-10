@@ -133,6 +133,10 @@ namespace JueMingR.TerrariaHost.Combat
         internal void Stop(){Native?.Stop();Clear();}
         internal void EndWorld(){Native?.DetachWorld();Clear();}
         internal void Prepare(NpcIdentity identity,long tick)
+        {PrepareSample(identity,tick,false);}
+        internal void PrepareAction(NpcIdentity identity,long tick)
+        {PrepareSample(identity,tick,true);}
+        private void PrepareSample(NpcIdentity identity,long tick,bool firstPlayerStepCompleted)
         {
             outcomeTick=-1;
             if(Cache.Required==0){Clear();return;}
@@ -209,10 +213,12 @@ namespace JueMingR.TerrariaHost.Combat
             var env=new PredictionEnvironment{BloodMoon=Main.bloodMoon,SkeletronUp=Main.getGoodWorld && current.aiStyle==9 && current.type==33 && NPC.AnyNPCs(35),WallBossUp=Main.getGoodWorld && current.aiStyle==9 && current.type==25 && NPC.AnyNPCs(113),PlayerProtected=playerAlive && player.insideUnbreakableWalls,PlayerIndex=target,PlayerX=player==null?0:player.Center.X,PlayerY=player==null?0:player.Center.Y,PlayerWidth=player==null?0:player.width,PlayerHeight=player==null?0:player.height,PlayerWet=player!=null && player.wet,Wind=Main.windSpeedCurrent,WindTarget=Main.windSpeedTarget,Expert=Main.expertMode,Day=Main.dayTime,WorldWidth=Main.maxTilesX,GravityWorldSurface=Main.worldSurface,WorldSurface=(float)Main.worldSurface,Multiplayer=Main.netMode==1,Remix=Main.remixWorld,SlimeRain=Main.slimeRain,
                 Enraged=player!=null && (player.position.Y<800 || player.position.Y>Main.worldSurface*16 || player.position.X>6400 && player.position.X<Main.maxTilesX*16-6400),
                 MechQueenUp=NPC.mechQueen>=0 && NPC.mechQueen<Main.maxNPCs && Main.npc[NPC.mechQueen]!=null && Main.npc[NPC.mechQueen].active && Main.npc[NPC.mechQueen].type==127,Players=players,WorldHeight=Main.maxTilesY,RockLayer=(float)Main.rockLayer,PlayerDead=!playerAlive,PlayerIdleWithNegativeAggro=player!=null && player.itemAnimation==0 && player.aggro<0,Corrupt=player!=null && player.ZoneCorrupt,Crimson=player!=null && player.ZoneCrimson,AnyLivingCorrupt=anyCorrupt,SkyblockLowTiles=WorldGen.Skyblock.lowTiles,ClearLine=false,Eclipse=Main.eclipse,Graveyard=player!=null && player.ZoneGraveyard,GoodWorld=Main.getGoodWorld,Zenith=Main.zenithWorld,InvasionType=Main.invasionType,SnowMoon=Main.snowMoon,PumpkinMoon=Main.pumpkinMoon,DontStarve=Main.dontStarveWorld};
-            var result=rolling.Prepare(states,count,selected,tick,Cache.Required,epoch,env,!playerAlive?default(PredictionPlayerMotion):ReadPlayer(player),Terrain,motionRoles);
+            // Main updates players by slot before NPCs. At local ItemCheck,
+            // later numbered players have not naturally moved yet.
+            var result=rolling.Prepare(states,count,selected,tick,Cache.Required,epoch,env,!playerAlive?default(PredictionPlayerMotion):ReadPlayer(player),Terrain,motionRoles,firstPlayerStepCompleted && target<=Main.myPlayer);
             Outcome(identity,tick,result,rolling.FailureLayer);Cache.Publish(result);
         }
-        private static PredictionPlayerMotion ReadPlayer(Player p)
+        internal static PredictionPlayerMotion ReadPlayer(Player p)
         {
             bool badHook=false;
             if(p.grappling!=null && p.grappling.Length>0 && p.grappling[0]>=0)

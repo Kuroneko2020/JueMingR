@@ -46,11 +46,11 @@ namespace NativeWorldTextProbe
                     if(retired)Call(native,"ClearTarget");
                     for(int i=1;i<=age;i++){hold=i!=age;mouse(npc.Center);step();}
                     Require(((IList)Get(request,"History")).Count==(retired?1:age+1),"Only current requests retain every intervening original observation.");
-                    var shown=cache.Read(1);
+                    var shown=cache.Read(NativeCombatObservationChecks.IndependentReader);
                     Require(count==133 && !retired?shown!=null && shown.CaptureTick==tick && shown.SampleTick==tick+age && shown.Count==121:shown==null,"Actual receipt keeps the exact current+120 age and retirement boundaries: "+Get(native,"Reason"));
                     var next=Get(native,"pending");
                     Require(next!=null && (int)Get(next,"Horizon")==180 && (long)Get(next,"Tick")>tick && (Array.IndexOf((int[])Get(next,"Projectiles"),hint)>=0)!=retired,"Only a current accepted history can seed the next fresh Capture.");
-                    long nextTick=(long)Get(next,"Tick");Ready();mouse(npc.Center);step();shown=cache.Read(1);
+                    long nextTick=(long)Get(next,"Tick");Ready();mouse(npc.Center);step();shown=cache.Read(NativeCombatObservationChecks.IndependentReader);
                     Require(shown!=null && shown.CaptureTick==nextTick && shown.SampleTick==Main.GameUpdateCount && shown.Count==121,"The next real reply extends current+120 without reusing the old capture: "+Get(native,"Reason"));
                     Require(ReferenceEquals(worker,Get(native,"Worker")) && (int)Get(worker,"ChildId")==pid,"Prefix renewal retains the same worker.");
                     Console.WriteLine("PASS Session prefix="+count+" age="+age+" retired="+retired+" old="+tick+" fresh="+nextTick+" hint="+hint+" published="+shown.Count);

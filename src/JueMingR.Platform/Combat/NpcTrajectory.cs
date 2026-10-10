@@ -195,6 +195,10 @@ namespace JueMingR.Platform.Combat
     {
         public readonly int TickOffset;
         public readonly MotionRect Bounds;
+        // Owner-hit-check reads the floating body after netOffset; native
+        // Colliding instead receives the independently truncated rectangle.
+        private readonly float ownerX,ownerY;
+        public MotionRect OwnerBounds {get{return new MotionRect(ownerX,ownerY,Bounds.Width,Bounds.Height);}}
         // Bounds is physical motion. These integer rectangles follow native
         // hit testing after its observed network offset. Only projectile hits
         // use the extra eight-pixel margin on NPC 414; melee uses ReceiveBounds.
@@ -203,29 +207,30 @@ namespace JueMingR.Platform.Combat
         public readonly float Vx,Vy,Phase;
         public readonly bool CanReceive,CanHarm,NewSegment;
         public NpcTrajectoryPoint(int tick,NpcMotionState state)
-        {TickOffset=tick;Bounds=state.Bounds;Vx=state.Vx;Vy=state.Vy;Phase=state.A0;CanReceive=state.CanReceive;CanHarm=state.CanHarm;NewSegment=state.NewSegment;ReceiveBounds=new MotionRect((int)(state.X+state.NetOffsetX),(int)(state.Y+state.NetOffsetY),state.Width,state.Height);HasProjectileExtension=state.Identity.Type==414;ProjectileReceiveBounds=HasProjectileExtension?new MotionRect(ReceiveBounds.X-8,ReceiveBounds.Y-8,ReceiveBounds.Width+16,ReceiveBounds.Height+16):ReceiveBounds;}
+        {TickOffset=tick;Bounds=state.Bounds;ownerX=state.X+state.NetOffsetX;ownerY=state.Y+state.NetOffsetY;Vx=state.Vx;Vy=state.Vy;Phase=state.A0;CanReceive=state.CanReceive;CanHarm=state.CanHarm;NewSegment=state.NewSegment;ReceiveBounds=new MotionRect((int)ownerX,(int)ownerY,state.Width,state.Height);HasProjectileExtension=state.Identity.Type==414;ProjectileReceiveBounds=HasProjectileExtension?new MotionRect(ReceiveBounds.X-8,ReceiveBounds.Y-8,ReceiveBounds.Width+16,ReceiveBounds.Height+16):ReceiveBounds;}
         private NpcTrajectoryPoint(int tick,NpcTrajectoryPoint source)
-        {TickOffset=tick;Bounds=source.Bounds;ReceiveBounds=source.ReceiveBounds;ProjectileReceiveBounds=source.ProjectileReceiveBounds;HasProjectileExtension=source.HasProjectileExtension;Vx=source.Vx;Vy=source.Vy;Phase=source.Phase;CanReceive=source.CanReceive;CanHarm=source.CanHarm;NewSegment=source.NewSegment;}
+        {TickOffset=tick;Bounds=source.Bounds;ownerX=source.ownerX;ownerY=source.ownerY;ReceiveBounds=source.ReceiveBounds;ProjectileReceiveBounds=source.ProjectileReceiveBounds;HasProjectileExtension=source.HasProjectileExtension;Vx=source.Vx;Vy=source.Vy;Phase=source.Phase;CanReceive=source.CanReceive;CanHarm=source.CanHarm;NewSegment=source.NewSegment;}
         public NpcTrajectoryPoint AtOffset(int tick){return new NpcTrajectoryPoint(tick,this);}
-        internal NpcTrajectoryPoint(int tick,MotionRect bounds,MotionRect receive,bool extension,float vx,float vy,float phase,bool canReceive,bool canHarm,bool newSegment)
-        {TickOffset=tick;Bounds=bounds;ReceiveBounds=receive;HasProjectileExtension=extension;ProjectileReceiveBounds=extension?new MotionRect(receive.X-8,receive.Y-8,receive.Width+16,receive.Height+16):receive;Vx=vx;Vy=vy;Phase=phase;CanReceive=canReceive;CanHarm=canHarm;NewSegment=newSegment;}
+        internal NpcTrajectoryPoint(int tick,MotionRect bounds,float ownerX,float ownerY,bool extension,float vx,float vy,float phase,bool canReceive,bool canHarm,bool newSegment)
+        {TickOffset=tick;Bounds=bounds;this.ownerX=ownerX;this.ownerY=ownerY;ReceiveBounds=new MotionRect((int)ownerX,(int)ownerY,bounds.Width,bounds.Height);HasProjectileExtension=extension;ProjectileReceiveBounds=extension?new MotionRect(ReceiveBounds.X-8,ReceiveBounds.Y-8,ReceiveBounds.Width+16,ReceiveBounds.Height+16):ReceiveBounds;Vx=vx;Vy=vy;Phase=phase;CanReceive=canReceive;CanHarm=canHarm;NewSegment=newSegment;}
     }
     public sealed class NpcTrajectory
     {
         private readonly NpcTrajectoryPoint[] points;
         // Only the synchronous rolling route uses the compact immutable copy.
-        // Receive coordinates are copied exactly (never inferred by subtracting
-        // rounded positions); widths and the type414 extension are redundant.
+        // Copy the exact floating receive body, then apply native truncation;
+        // never infer netOffset from rounded positions. This reuses the same
+        // two coordinate fields; compact storage does not grow for owner gates.
         // There is no pool or writable array shared with a previous result.
         private struct PackedPoint
         {
             private readonly MotionRect bounds;
-            private readonly float receiveX,receiveY,vx,vy,phase;
+            private readonly float ownerX,ownerY,vx,vy,phase;
             private readonly byte flags;
             internal PackedPoint(NpcTrajectoryPoint value)
-            {bounds=value.Bounds;receiveX=value.ReceiveBounds.X;receiveY=value.ReceiveBounds.Y;vx=value.Vx;vy=value.Vy;phase=value.Phase;flags=(byte)((value.HasProjectileExtension?1:0)|(value.CanReceive?2:0)|(value.CanHarm?4:0)|(value.NewSegment?8:0));}
+            {bounds=value.Bounds;ownerX=value.OwnerBounds.X;ownerY=value.OwnerBounds.Y;vx=value.Vx;vy=value.Vy;phase=value.Phase;flags=(byte)((value.HasProjectileExtension?1:0)|(value.CanReceive?2:0)|(value.CanHarm?4:0)|(value.NewSegment?8:0));}
             internal NpcTrajectoryPoint AtOffset(int tick)
-            {return new NpcTrajectoryPoint(tick,bounds,new MotionRect(receiveX,receiveY,bounds.Width,bounds.Height),(flags&1)!=0,vx,vy,phase,(flags&2)!=0,(flags&4)!=0,(flags&8)!=0);}
+            {return new NpcTrajectoryPoint(tick,bounds,ownerX,ownerY,(flags&1)!=0,vx,vy,phase,(flags&2)!=0,(flags&4)!=0,(flags&8)!=0);}
         }
         private readonly PackedPoint[] compact;
         private int StorageCount {get{return compact!=null?compact.Length:points.Length;}}

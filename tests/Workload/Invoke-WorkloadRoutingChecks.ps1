@@ -18,6 +18,16 @@ function Assert-Route {
     param([bool] $Pass, [string] $Reason)
     if (-not $Pass) { throw ('Workload route: ' + $Reason) }
 }
+$attackConsumers=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatNavigationCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatCpu','native-CombatYoyoCausal','native-CombatAimUi','native-CombatImpactVisual','native-CombatVisual')
+foreach($path in @('src/JueMingR.TerrariaHost/Combat/HostAttackControl.cs','src/JueMingR.TerrariaHost/Combat/HostAttackWindow.cs','src/JueMingR.TerrariaHost/Combat/HostYoyoNavigation.cs')){
+    $consumers=@(Get-WorkloadPathChecks $path)
+    Assert-Route ((($consumers|Sort-Object)-join '|') -ceq (($attackConsumers|Sort-Object)-join '|')) ('three attack owners bind all direct consumers '+$path)
+    $route=Get-WorkloadRoute @($path)
+    Assert-Route ($route.unknown.Count -eq 0 -and $route.groups -notcontains 'combat-host' -and $route.groups -notcontains 'legacy-worker') 'attack owners do not select unrelated NPC families'
+    $plan=@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() $route.groups|ForEach-Object {$_.name})
+    foreach($name in @('native-CombatControlCpu','native-CombatCosts','native-CombatCpu','native-CombatYoyoCausal')){Assert-Route ($plan -contains $name) ('actual attack parent consumer selected '+$name)}
+    Assert-Route ($plan -notcontains 'native-CombatNavigationCpu' -and $plan -notcontains 'native-CombatAttackCosts' -and $plan -notcontains 'native-NpcBasicMotion') 'parent plan neither duplicates specialist children nor selects NPC motion'
+}
 try {
     Invoke-WorkloadGit $fixtureRoot @('init', '--quiet') | Out-Null
     Invoke-WorkloadGit $fixtureRoot @('config', 'core.autocrlf', 'false') | Out-Null

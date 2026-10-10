@@ -15,12 +15,14 @@ namespace JueMingR.TerrariaHost.Combat
         internal readonly int Slot,Type,NetId,Generation;
         internal readonly long Session;
         internal readonly uint Step;
-        internal FacingTarget(NPC npc,long session)
-        {Npc=npc;Slot=npc.whoAmI;Type=npc.type;NetId=npc.netID;Generation=npc.generation;Session=session;Step=Main.GameUpdateCount;}
+        private readonly bool shared;
+        internal FacingTarget(NPC npc,long session):this(npc,session,false){}
+        internal FacingTarget(NPC npc,long session,bool shared)
+        {Npc=npc;Slot=npc.whoAmI;Type=npc.type;NetId=npc.netID;Generation=npc.generation;Session=session;Step=Main.GameUpdateCount;this.shared=shared;}
         internal bool Valid(long session)
         {
             return Session==session && Slot>=0 && Slot<Main.maxNPCs && ReferenceEquals(Main.npc[Slot],Npc) && Npc.whoAmI==Slot &&
-                Npc.type==Type && Npc.netID==NetId && Npc.generation==Generation && CombatFacing.Targetable(Npc);
+                Npc.type==Type && Npc.netID==NetId && Npc.generation==Generation && (shared?CombatSelection.Receives(Npc,true):CombatFacing.Targetable(Npc));
         }
     }
     internal sealed class CombatFacing
@@ -33,6 +35,7 @@ namespace JueMingR.TerrariaHost.Combat
         private uint nextDecision,lastSearch;
         private bool searched,hasDecision,fromProvider;
         internal Func<Player,FacingTarget> TargetProvider {get;set;}
+        internal Func<bool> SharedTargetRequired {get;set;}
         internal bool LastChangeObserved {get;private set;}
 #if DEBUG
         internal int Searches {get;private set;}
@@ -68,6 +71,9 @@ namespace JueMingR.TerrariaHost.Combat
             FacingTarget provided=null;
             try{provided=TargetProvider?.Invoke(p);}catch{ /* An optional failed result grants no direction authority. */ }
             bool validProvider=provided!=null && provided.Valid(host.Runtime.Generation) && unchecked(now-provided.Step)<=1;
+            // When aim owns a final selection, do not silently substitute the
+            // independent Facing selector's different NPC or old eligibility.
+            if(SharedTargetRequired?.Invoke()==true && !validProvider){ClearDecision();return;}
             if(!fromProvider && validProvider)ClearDecision();
             if(fromProvider && (!validProvider || !SameTarget(target,provided)))ClearDecision();
             if(!hasDecision || unchecked((int)(now-nextDecision))>=0)

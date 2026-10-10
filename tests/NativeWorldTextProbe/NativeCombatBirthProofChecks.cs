@@ -99,7 +99,7 @@ namespace NativeWorldTextProbe
                     // This proof holds a long request across original births; the
                     // display minimum30 is covered by separate production scenes.
                     NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions(path:false,clearLine:false,mouseCenter:true,dummy:true,radius:25));
-                    cache.Demand(1,120);
+                    cache.Demand(NativeCombatObservationChecks.IndependentReader,120);
                     Require(cache.Read(0)==null && (int)Get(cache,"MinimumRequired")==120 && cache.Required==120,"Birth proof owns only the strict120 consumer.");
                     Terraria.GameInput.PlayerInput.CacheOriginalScreenDimensions();
                     Action advance=()=>
@@ -173,21 +173,21 @@ namespace NativeWorldTextProbe
                     bool accepted=ReferenceEquals(pending,Get(native,"acceptedRequest"));
                     rows.Add(string.Join(",",scenario,capture,birth,Main.GameUpdateCount,((IList)Get(pending,"History")).Count,((IList)Get(Get(pending,"Impacts"),"hits")).Count,Get(pending,"Impact"),Get(pending,"Retired"),accepted,Get(worker,"State")));
                     Require(accepted==positive,"Actual received proof accepts only the original modeled birth: "+scenario+" reason="+Get(native,"Reason"));
-                    if(positive)Require(cache.Read(1)!=null && cache.Read(1).SampleTick==Main.GameUpdateCount && cache.Read(1).Count==121,"Birth-crossing reply publishes real current+120.");
+                    if(positive)Require(cache.Read(NativeCombatObservationChecks.IndependentReader)!=null && cache.Read(NativeCombatObservationChecks.IndependentReader).SampleTick==Main.GameUpdateCount && cache.Read(NativeCombatObservationChecks.IndependentReader).Count==121,"Birth-crossing reply publishes real current+120.");
                     Console.WriteLine("BIRTH-PROOF "+scenario+" capture="+capture+" birth="+birth+" history="+((IList)Get(pending,"History")).Count+" accepted="+accepted);
                 }
                 trace.Dispose();trace=null;
-                cache.Release(1);Call(native,"ClearTarget");NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());
+                cache.Release(NativeCombatObservationChecks.IndependentReader);Call(native,"ClearTarget");NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());
                 var observer=native.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativeProjectileBirth",true);
                 observer.GetField("hash",Flags).SetValue(null,null);
                 hooks.Patch(typeof(Harmony).GetMethod("GetPatchInfo",Flags),prefix:Hook(nameof(ReadPatches)));entryReads=0;long prior=birth;
                 for(int i=0;i<150;i++)step();
-                Require(cache.Required==0 && cache.Read(0)==null && cache.Read(1)==null,"OFF birth proof releases every consumer.");
+                Require(cache.Required==0 && cache.Read(0)==null && cache.Read(NativeCombatObservationChecks.IndependentReader)==null,"OFF birth proof releases every consumer.");
                 Require(birth>prior,"OFF fixture still performs original projectile births.");
                 Require(entryReads==0 && observer.GetField("hash",Flags).GetValue(null)==null && observer.GetField("factory",Flags).GetValue(null)==null,"OFF births neither inspect patch metadata nor allocate a proof writer/factory.");
                 Console.WriteLine("BIRTH-PROOF OFF original-birth=true patch-reads=0 writer=false factory=false");
             }
-            finally{cache.Release(1);delayPreparation=false;try{trace?.Dispose();}finally{hold=inject=false;Main.NoPooling=false;worker=null;target=null;hooks.UnpatchAll(hooks.Id);new Harmony("JueMingR.Tests.BirthAdversary").UnpatchAll("JueMingR.Tests.BirthAdversary");File.WriteAllLines(Path.Combine(output,"birth-proof.csv"),rows);File.WriteAllLines(Path.Combine(output,"birth-ready.csv"),waits);File.WriteAllLines(Path.Combine(output,"birth-preparation.csv"),preparations);}}
+            finally{cache.Release(NativeCombatObservationChecks.IndependentReader);delayPreparation=false;try{trace?.Dispose();}finally{hold=inject=false;Main.NoPooling=false;worker=null;target=null;hooks.UnpatchAll(hooks.Id);new Harmony("JueMingR.Tests.BirthAdversary").UnpatchAll("JueMingR.Tests.BirthAdversary");File.WriteAllLines(Path.Combine(output,"birth-proof.csv"),rows);File.WriteAllLines(Path.Combine(output,"birth-ready.csv"),waits);File.WriteAllLines(Path.Combine(output,"birth-preparation.csv"),preparations);}}
         }
         private static double WaitForPreparation(object native,Stopwatch preparation,string scenario,List<string> rows)
         {

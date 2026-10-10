@@ -13,6 +13,8 @@ namespace JueMingR.ArchitectureTests
             {
                 CombatDomainChecks.Run();
                 CombatObservationChecks.Run();
+                ObservationAimSettingsChecks.Run();
+                AttackInterceptChecks.Run();
                 ObservationMarkerSettingsChecks.Run();
                 NpcTrajectoryWindowChecks.Run();
                 RollingNpcPredictionChecks.Run();

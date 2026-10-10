@@ -17,9 +17,10 @@ namespace JueMingR.TerrariaHost.Combat
         private static readonly Color[] colors={new Color(90,205,250),new Color(145,230,120),new Color(245,185,65),new Color(245,100,120),new Color(215,140,255)};
         private readonly HostCombatObservation host;
         internal readonly CombatTargetMarker Marker;
+        internal readonly CombatImpactMarker Impact;
         private int strokeLimit=16384;
         private int count,eventStart,eventEnd;private long presentation;private bool eventsDrawn;private Matrix zoom,inverse;private NpcTrajectory preparedPath;private string pathText;private bool legend,limited;
-        internal CombatObservationWorldLayer(HostCombatObservation host){this.host=host;Marker=new CombatTargetMarker(host);}
+        internal CombatObservationWorldLayer(HostCombatObservation host){this.host=host;Marker=new CombatTargetMarker(host);Impact=new CombatImpactMarker(host);}
         internal int StrokeCount {get{return count;}}
         internal bool Failed {get;private set;}
         private object failedPixel,failedFont,failedBatch;
@@ -27,13 +28,14 @@ namespace JueMingR.TerrariaHost.Combat
         // an explicit retry, replaced borrowed resources or a new session
         // clears it; clearing a frame does not. Never read Asset.Value to retry.
         internal void DisplayFailed(){Clear();Failed=true;failedPixel=TextureAssets.MagicPixel;failedFont=FontAssets.MouseText;failedBatch=Main.spriteBatch;}
-        internal void Recover(){Clear();Failed=false;failedPixel=failedFont=failedBatch=null;}
+        internal void Recover(){Clear();Failed=false;failedPixel=failedFont=failedBatch=null;Impact.Reset();}
         internal void PollResources()
         {
             if(Failed && (!ReferenceEquals(failedPixel,TextureAssets.MagicPixel) || !ReferenceEquals(failedFont,FontAssets.MouseText) || !ReferenceEquals(failedBatch,Main.spriteBatch)))Recover();
             Marker.PollResources();
+            Impact.PollResources();
         }
-        internal void Clear(){count=eventStart=eventEnd=0;eventsDrawn=false;preparedPath=null;pathText=null;legend=limited=false;Marker.Clear();}
+        internal void Clear(){count=eventStart=eventEnd=0;eventsDrawn=false;preparedPath=null;pathText=null;legend=limited=false;Marker.Clear();Impact.Clear();}
         internal void Prepare()
         {
             if(Failed){Clear();return;}
@@ -55,6 +57,7 @@ namespace JueMingR.TerrariaHost.Combat
 #endif
             Clear();if(!host.Enabled || !host.CanDraw || !WorldPresentation.CanDraw || Main.GameViewMatrix==null){Prediction.AimLightTrace.Presentation(!host.Enabled?"prepare-disabled":!host.CanDraw?"prepare-host-gate":!WorldPresentation.CanDraw?"prepare-world-gate":"prepare-no-matrix",null,0,0,false);return;}
             Marker.Capture();
+            Impact.Capture();
             if(host.Collision){host.Geometry.PrepareEvents();legend=true;limited=host.Geometry.EventOverflow;}
             var path=host.Path?host.Prediction.Cache.Read(0):null;
             Prediction.AimLightTrace.Presentation("cache-consume",path,0,eventEnd,false);
@@ -258,6 +261,7 @@ namespace JueMingR.TerrariaHost.Combat
             ProjectPresentation();
             var batch=Main.spriteBatch;var pixel=TextureAssets.MagicPixel.Value;
             Marker.Project(zoom,inverse);Marker.Draw(batch);
+            Impact.Project(zoom,inverse);Impact.Draw(batch);
             // MagicPixel's asset is larger than one texel; a null source would
             // multiply both dimensions and turn outlines into opaque blocks.
             for(int i=0;i<count;i++)
