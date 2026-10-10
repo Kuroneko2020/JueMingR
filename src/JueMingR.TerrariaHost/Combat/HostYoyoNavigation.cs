@@ -138,8 +138,12 @@ namespace JueMingR.TerrariaHost.Combat
                 {
                     int dx=ix==0?sx:ix==1?0:-sx,dy=iy==0?0:iy==1?sy:-sy;
                     if(dx==0 && dy==0)continue;int x=xs[at]+dx,y=ys[at]+dy;long key=((long)x<<32)|(uint)y;
-                    if(seen.Contains(key) || seen.Count>=1024)continue;seen.Add(key);var next=start+new Vector2(x*16,y*16);
+                    if(seen.Contains(key) || seen.Count>=1024)continue;var next=start+new Vector2(x*16,y*16);
                     if(Vector2.Distance(next,player)>range-1 || !Clear(nodes[at],next,width,height))continue;
+                    // A blocked incoming edge says nothing about another
+                    // approach to this vertex. Visit only acquired nodes;
+                    // accepted vertices still join the same finite BFS once.
+                    seen.Add(key);
                     nodes.Add(next);previous.Add(at);xs.Add(x);ys.Add(y);
                 }
             }

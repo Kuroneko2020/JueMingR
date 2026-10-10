@@ -18,13 +18,21 @@ namespace NativeWorldTextProbe
     {
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance|BindingFlags.Static;
         private static readonly Dictionary<string,int> calls=new Dictionary<string,int>();
+        private static Player watchedYoyoPlayer;private static int primaryBirths,detachedBirths,overlappingBirths;private static bool forwardBirths;
+        private static void YoyoBorn(Player __instance,Projectile __0)
+        {
+            if(!ReferenceEquals(__instance,watchedYoyoPlayer) || __0.owner!=__instance.whoAmI || __0.type!=__instance.HeldItem.shoot || __0.aiStyle!=99)return;
+            if(__0.ai[0]==-2){detachedBirths++;return;}
+            primaryBirths++;forwardBirths&=__0.velocity.X>0;
+            if(Main.projectile.Any(q=>q.active && q.owner==__instance.whoAmI && q.aiStyle==99 && q.ai[0]==-2))overlappingBirths++;
+        }
         private static void Count(MethodBase __originalMethod)
         {string key=__originalMethod.DeclaringType.Name+"."+__originalMethod.Name;int value;calls.TryGetValue(key,out value);calls[key]=value+1;}
         private static int Total(string key){int value;return calls.TryGetValue(key,out value)?value:0;}
         private static Harmony Audit(object attack)
         {
             var audit=new Harmony("JueMingR.Tests.AttackCosts");var assembly=attack.GetType().Assembly;
-            foreach(string entry in new[]{"HostAttackAim.Clear","HostAttackControl.Clear","HostAttackAim.PrepareCore","HostAttackAim.Valid","HostAttackAim.PresentationCurrent","HostAttackControl.PresentationCurrent","HostBeamAttack.Solve","HostBeamAttack.Length","PredictionTerrain.Read","PredictionTerrain.ProjectilePassage","PredictionTerrain.get_Unchanged","HostAttackObstacles.Eligible","HostAttackObstacles.get_Unchanged","AttackAmmoSnapshot.CaptureCore","AttackAmmoSnapshot.MembersMatch","HostAttackCandidates.Priority","HostYoyoNavigation.Remaining","HostYoyoNavigation.Current","HostYoyoNavigation.Prepare"})
+            foreach(string entry in new[]{"HostAttackAim.Clear","HostAttackControl.Clear","HostAttackAim.PrepareCore","HostAttackAim.Valid","HostAttackAim.PresentationCurrent","HostAttackControl.PresentationCurrent","HostBeamAttack.Solve","HostBeamAttack.Length","PredictionTerrain.Read","PredictionTerrain.ProjectilePassage","PredictionTerrain.get_Unchanged","HostAttackObstacles.Eligible","HostAttackObstacles.get_Unchanged","AttackAmmoSnapshot.CaptureCore","AttackAmmoSnapshot.MembersMatch","HostAttackCandidates.Priority","HostYoyoNavigation.Remaining","HostYoyoNavigation.Current","HostYoyoNavigation.Prepare","HostYoyoNavigation.OpeningPoint","HostYoyoNavigation.Find"})
             {var split=entry.Split('.');var type=assembly.GetType("JueMingR.TerrariaHost.Combat."+split[0],true);audit.Patch(type.GetMethod(split[1],Flags),prefix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks).GetMethod("Count",Flags)));}
             audit.Patch(typeof(AttackIntercept).GetMethod("Solve",Flags),prefix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks).GetMethod("Count",Flags)));
             return audit;
@@ -36,6 +44,7 @@ namespace NativeWorldTextProbe
             var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var attack=Get(combat,"Attack");var input=Get(context,"Input");var audit=Audit(attack);
             try
             {
+                YoyoOpening(context,combat,host,attack,input);YoyoMagicOpening(context,combat,host,attack,input);
                 foreach(string scenario in new[]{"off","idle","no-target","stable","changing","dense","blocked","inapplicable","same-sample","switching"})
                 {
                     NativeCombatObservationChecks.Save(host,new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,scenario=="inapplicable"?3509:95,0,0);p.position=new Vector2(700,646);p.inventory[54].SetDefaults(97);p.inventory[54].stack=999;Main.screenPosition=new Vector2(600,400);
@@ -58,6 +67,75 @@ namespace NativeWorldTextProbe
                 Console.WriteLine("PASS attack costs: real finite preparation/qualification/retirement/navigation and beam scans; component calls, not game FPS.");
             }
             finally{audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());}
+        }
+        // The full natural preparation entry and original ItemCheck/AI run on
+        // distinct real update/input epochs. Opening Find was absent from the
+        // old costs hook and from the flying navigator's Searches property.
+        // These test-side method hooks also work against Release consumers.
+        internal static void RunYoyoOpening(object context)
+        {
+            var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var attack=Get(combat,"Attack");var input=Get(context,"Input");var audit=Audit(attack);
+            try{YoyoOpening(context,combat,host,attack,input);YoyoMagicOpening(context,combat,host,attack,input);}finally{audit.UnpatchAll(audit.Id);}
+        }
+        internal static void YoyoOpening(object context,object combat,object host,object attack,object input)
+        {
+            var outlet=new Harmony("JueMingR.Tests.YoyoOpeningAchievement");foreach(string name in new[]{"HandleSpecialEvent","HandleMining","HandleRunning"})outlet.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
+            try
+            {
+                NativeCombatObservationChecks.Save(host,new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,3278,0,0);p.position=new Vector2(700,646);p.ResetEffects();p.releaseUseItem=true;p.yoyoGlove=p.magicString=false;p.counterWeight=0;Main.screenPosition=new Vector2(600,400);
+                var n=Main.npc[2];n.SetDefaults(3);n.whoAmI=2;n.active=true;n.target=0;n.aiStyle=-1;n.noGravity=true;n.Center=new Vector2(830,667);n.velocity=n.netOffset=Vector2.Zero;n.life=n.lifeMax=10000;n.knockBackResist=0;n.shimmerTransparency=0;Array.Clear(n.immune,0,n.immune.Length);Array.Clear(n.buffType,0,n.buffType.Length);Array.Clear(n.buffTime,0,n.buffTime.Length);
+                NativeCombatObservationChecks.Save(host,new ObservationOptions().Toggle(6));NativeQuickItemChecks.BeginWorldStep();NativeToolExecutionChecks.Sample(context,input,new Vector2(600,667),true);Call(combat,"Sample");Call(host,"SampleMouse");calls.Clear();
+                // The native ItemCheck prefix prepares AFTER Player.Update's
+                // movement/equipment reset. Do not pre-prepare in that epoch
+                // and thereby suppress the real post-movement first-click seam.
+                var control=Get(attack,"Control");int mx=Main.mouseX,my=Main.mouseY;p.Update(0);
+                var shot=Main.projectile.Single(q=>q.active && q.type==541);Report("yoyo-first-natural-opening");Console.WriteLine("YOYO first state: opening="+Get(control,"openingUsable")+" permission="+Get(attack,"Permission")+" failed="+Get(attack,"Failed")+" target="+Get(Get(host,"Selection"),"HasTarget")+" timeline="+(((NpcPredictionCache)Get(Get(host,"Prediction"),"Cache")).Read(1)?.Count)+" timers="+p.itemAnimation+"/"+p.itemTime+" velocity="+shot.velocity+" mouseBefore="+mx+","+my+" mouseAfter="+Main.mouseX+","+Main.mouseY);
+                Require((bool)Get(control,"openingUsable") && Total("HostYoyoNavigation.OpeningPoint")==1 && Total("HostYoyoNavigation.Find")<=2,"real first click prepares one timely opening; same-pass newborn may prepare its own flight route");Require(shot.velocity.X>0,"first natural Player.Update Shoot faces the prepared target without waiting another epoch");Require(Main.mouseX==mx && Main.mouseY==my,"first natural Shoot returns the physical cursor");
+                n.immune[0]=200;
+                for(int tick=0;tick<20 && shot.Center.X<=790;tick++)
+                {NativeQuickItemChecks.BeginWorldStep();NativeToolExecutionChecks.Sample(context,input,n.Center,true);Call(combat,"Sample");Call(attack,"PrepareNatural");p.ItemCheck();n.UpdateNPC(2);shot.Update(shot.whoAmI);}
+                Require(shot.active && shot.Center.X>790,"original ball naturally clears the future hand-side wall before the measured continuous window");
+                for(int y=5;y<=42;y++)NativeToolsChecks.Tile(48,y,1);
+                float before=Vector2.Distance(shot.Center,n.Center);int key=(int)shot.key;calls.Clear();int points=0;
+                for(int tick=0;tick<8;tick++)
+                {
+                    NativeQuickItemChecks.BeginWorldStep();NativeToolExecutionChecks.Sample(context,input,n.Center,true);Call(combat,"Sample");Call(host,"SampleMouse");Call(attack,"PrepareNatural");
+                    var entries=(IDictionary)Get(control,"shots");Require(entries.Contains(key),"continuous control retains the real causal ball source");if((bool)Get(entries[key],"HasPoint"))points++;
+                    Require(p.itemAnimation==2 && p.itemTime==2,"original AI99 dummy timers prove no new ItemCheck firing window before this action");
+                    mx=Main.mouseX;my=Main.mouseY;p.ItemCheck();n.UpdateNPC(2);shot.Update(shot.whoAmI);Require(shot.active && (int)shot.key==key && Main.mouseX==mx && Main.mouseY==my,"each original continuous action preserves ball identity and returns borrowed cursor");
+                }
+                float after=Vector2.Distance(shot.Center,n.Center);Report("yoyo-continuous-hand-wall8");Console.WriteLine("YOYO opening progress: before="+before+" after="+after+" points="+points+" sameKey="+key);
+                Require(points==8 && after<before,"all eight existing-ball preparations remain useful and the original motor approaches the target beyond the blocked hand");
+                Require(Total("HostYoyoNavigation.OpeningPoint")==0 && Total("HostYoyoNavigation.Find")<=2 && Total("HostYoyoNavigation.Prepare")==8,"no new native firing opportunity performs no opening search while each real flying ball still prepares");
+                for(int y=5;y<=42;y++)Main.tile[48,y].active(false);
+                // Let native release/return end the primary; never kill it to
+                // manufacture a fresh window or alter its lifetime/recall.
+                for(int tick=0;tick<90 && shot.active;tick++)
+                {NativeQuickItemChecks.BeginWorldStep();NativeToolExecutionChecks.Sample(context,input,n.Center,false);Call(combat,"Sample");p.controlUseItem=false;p.ItemCheck();n.UpdateNPC(2);shot.Update(shot.whoAmI);}
+                Require(!shot.active,"original released primary completes its own native recall");
+                for(int tick=0;tick<4 && (p.itemAnimation>0 || p.itemTime>0);tick++){NativeQuickItemChecks.BeginWorldStep();NativeToolExecutionChecks.Sample(context,input,n.Center,false);Call(combat,"Sample");p.controlUseItem=false;p.ItemCheck();}
+                NativeQuickItemChecks.BeginWorldStep();NativeToolExecutionChecks.Sample(context,input,new Vector2(600,667),true);Call(combat,"Sample");Call(host,"SampleMouse");calls.Clear();Call(attack,"PrepareNatural");Require((bool)Get(control,"openingUsable") && Total("HostYoyoNavigation.OpeningPoint")==1,"fresh click after native recall prepares a new useful opening");p.controlUseItem=true;p.ItemCheck();var again=Main.projectile.Single(q=>q.active && q.type==541);Require((int)again.key!=key && again.velocity.X>0,"next legal original ItemCheck emits immediately with the new opening direction");Report("yoyo-native-recall-reopen");
+                mx=Main.mouseX;my=Main.mouseY;calls.Clear();NativeCombatObservationChecks.Save(host,new ObservationOptions());Require(Call(control,"BeginOpening",p,p.HeldItem)==null && Call(control,"BeginAI",again)==null && again.active && Main.mouseX==mx && Main.mouseY==my,"Aim OFF returns temporary inputs and preserves the real surviving ball");
+                NativeCombatObservationChecks.Save(host,new ObservationOptions().Toggle(6));NativeCombatAimChecks.Prepare(host,attack,n,0,true);p.inventory[0]=p.HeldItem.Clone();Require(Call(control,"BeginOpening",p,p.HeldItem)==null && Call(control,"BeginAI",again)==null && again.active,"same-type source replacement cannot borrow old opening or flying input");Call(attack,"Reset");Require(((IDictionary)Get(control,"shots")).Count==0 && !(bool)Get(control,"openingUsable") && again.active && Main.mouseX==mx && Main.mouseY==my,"session reset removes all routes/leases while preserving native ball lifetime");
+            }
+            finally{outlet.UnpatchAll(outlet.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());}
+        }
+        private static void YoyoMagicOpening(object context,object combat,object host,object attack,object input)
+        {
+            NativeCombatCadenceChecks.Save(combat,new CombatOptions());NativeCombatObservationChecks.Save(host,new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,3278,0,0);p.position=new Vector2(700,646);p.releaseUseItem=true;foreach(var item in p.armor)item.TurnToAir();p.armor[3].SetDefaults(Terraria.ID.ItemID.MagicString);
+            var n=Main.npc[2];n.SetDefaults(3);n.whoAmI=2;n.active=true;n.target=0;n.Center=new Vector2(810,667);n.velocity=n.netOffset=Vector2.Zero;n.aiStyle=-1;n.noGravity=true;n.life=n.lifeMax=10000;n.shimmerTransparency=0;Array.Clear(n.immune,0,n.immune.Length);Array.Clear(n.buffType,0,n.buffType.Length);Array.Clear(n.buffTime,0,n.buffTime.Length);
+            NativeCombatObservationChecks.Save(host,new ObservationOptions().Toggle(6));NativeCombatCadenceChecks.Save(combat,new CombatOptions(16));
+            var audit=new Harmony("JueMingR.Tests.YoyoOpeningMagic");foreach(string name in new[]{"HandleSpecialEvent","HandleMining","HandleRunning"})audit.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));audit.Patch(typeof(Player).GetMethod("TryUpdateChannel",Flags),postfix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks),nameof(YoyoBorn)));
+            try
+            {
+                watchedYoyoPlayer=p;primaryBirths=detachedBirths=overlappingBirths=0;forwardBirths=true;calls.Clear();
+                for(int tick=0;tick<32;tick++){NativeCombatCadenceChecks.Step(context,true,false,0,point:new Vector2(600,667));Require(Main.mouseX==NativeCombatCadenceChecks.ManualMouseX && Main.mouseY==NativeCombatCadenceChecks.ManualMouseY,"managed magic-string native windows return every borrowed cursor");}
+                Report("yoyo-magic-string-natural32");Console.WriteLine("YOYO magic openings: primary="+primaryBirths+" detached="+detachedBirths+" withLiveDetached="+overlappingBirths+" forward="+forwardBirths);
+                Require(p.magicString && primaryBirths>=3 && detachedBirths>=2 && overlappingBirths>0 && forwardBirths,"legitimate native magic-string re-emission remains aimed even with an existing detached ball");
+                Require(Total("HostYoyoNavigation.OpeningPoint")>=primaryBirths && Total("HostYoyoNavigation.OpeningPoint")<32,"real re-emissions prepare openings, while continuous/recall actions do not rebuild one each epoch");
+                var entries=(IDictionary)Get(Get(attack,"Control"),"shots");foreach(var q in Main.projectile.Where(q=>q.active && q.aiStyle==99 && q.ai[0]==-2))Require(!entries.Contains((int)q.key),"native detached balls do not become registered aim control sources");
+            }
+            finally{watchedYoyoPlayer=null;audit.UnpatchAll(audit.Id);NativeCombatCadenceChecks.Save(combat,new CombatOptions());NativeCombatObservationChecks.Save(host,new ObservationOptions());}
         }
         private static void SameEpoch(object context,object combat,object host,object attack,object input)
         {

@@ -1,7 +1,14 @@
 # One maintained definition supplies both selection and evidence projection.
 # Unknown/shared inputs stay conservative; compile identity is separate.
 function Get-WorkloadLeafChecks {
+    # Hand-opening/navigation owners are consumed by the attack preparation,
+    # G11 yoyo and presentation chains, not by NPC motion models. Parent CPU
+    # entries still own Navigation/AttackCosts; the children remain specialists.
+    $attackConsumers=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatNavigationCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatCpu','native-CombatYoyoCausal','native-CombatAimUi','native-CombatImpactVisual','native-CombatVisual')
     $leaves = @{
+        'src/JueMingR.TerrariaHost/Combat/HostAttackControl.cs'=$attackConsumers
+        'src/JueMingR.TerrariaHost/Combat/HostAttackWindow.cs'=$attackConsumers
+        'src/JueMingR.TerrariaHost/Combat/HostYoyoNavigation.cs'=$attackConsumers
         'scripts/verify-existing-package.ps1'=@('workload-PackageVerification')
         'scripts/phase0s/PackageVerification.Support.ps1'=@('workload-PackageVerification')
         'tests/Phase0S/Invoke-PackageVerificationChecks.ps1'=@('workload-PackageVerification')
@@ -232,12 +239,38 @@ function Test-WorkloadBehaviorRecipes {
 }
 function Get-WorkloadLegacyCheckFingerprint {
     param($InputIdentity, [string] $Name)
+    # Before the three attack owners became leaves they were combat-host
+    # grouped inputs. Verify that immutable original projection only against
+    # its recorded fingerprint; current candidate comparison always uses the
+    # precise map in Get-WorkloadCheckFingerprint. Never rewrite old receipts
+    # or use this compatibility projection to exempt another changed input.
+    if($null -ne $InputIdentity.PSObject.Properties['inputFingerprint']){
+        $groups=@(Get-WorkloadCheckGroups $Name)
+        $groupedLeaves=Get-WorkloadLeafChecks
+        foreach($path in @('src/JueMingR.TerrariaHost/Combat/HostAttackControl.cs','src/JueMingR.TerrariaHost/Combat/HostAttackWindow.cs','src/JueMingR.TerrariaHost/Combat/HostYoyoNavigation.cs')){$groupedLeaves.Remove($path)}
+        $groupedRows=@($InputIdentity.inputs | Where-Object {
+            $path=($_ -split ':',2)[0]
+            if($groupedLeaves.ContainsKey($path)){$groupedLeaves[$path] -contains $Name}
+            elseif($path -in @('src/JueMingR.TerrariaHost/Combat/HostAttackControl.cs','src/JueMingR.TerrariaHost/Combat/HostAttackWindow.cs','src/JueMingR.TerrariaHost/Combat/HostYoyoNavigation.cs')){$groups -contains '*' -or $groups -contains 'combat-host'}
+            elseif($path -match '^scripts/workload/|^scripts/(build|test-workload-regressions|test-world-object-text)\.ps1$|^tests/Workload/'){$Name.StartsWith('workload-')}
+            elseif($groups -contains '*' -or $path -notmatch '^(src/|tests/|scripts/)'){$true}
+            else{
+                $route=Get-WorkloadRoute @($path)
+                $route.unknown.Count -gt 0 -or @($route.groups | Where-Object {$_ -ne 'core' -and $groups -contains $_}).Count -gt 0
+            }
+        })
+        $groupedFingerprint=Get-WorkloadHash $groupedRows
+        if($InputIdentity.inputFingerprint -ceq $groupedFingerprint){return $groupedFingerprint}
+    }
+    # Immutable pre-DT common projection included all production, including
+    # the three owners now mapped above. Keep those original bytes bound here.
     # Only reviewed leaf assertion files may be omitted from another CPU check.
     # NativeChecks/CheckCatalog, shared helpers, projects, all production and all
     # recipes remain common inputs. New consumers must update this map in the
     # same change (the dispatcher change itself invalidates all old evidence).
     # Page composition is also used by ToolsVisual, outside this CPU cache.
     $leaves=Get-WorkloadLeafChecks
+    foreach($path in @('src/JueMingR.TerrariaHost/Combat/HostAttackControl.cs','src/JueMingR.TerrariaHost/Combat/HostAttackWindow.cs','src/JueMingR.TerrariaHost/Combat/HostYoyoNavigation.cs')){$leaves.Remove($path)}
     # Immutable pre-DT projection compatibility: this helper used to omit the
     # vertical assertion shared by the continuous scopes. This does not grant
     # reuse across that input changing; current projection still binds it.

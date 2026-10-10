@@ -10,8 +10,54 @@ namespace NativeWorldTextProbe
 {
     internal static class NativeCombatYoyoNavigationChecks
     {
+        private static object watchedNavigation;private static int goalChecks,edgeChecks;private static bool failedEntry,legalEntry;
+        private static void Edge(object __instance,Vector2 a,Vector2 b,bool __result)
+        {
+            if(!ReferenceEquals(__instance,watchedNavigation))return;edgeChecks++;
+            if(b==new Vector2(1144,1144))goalChecks++;
+            if(a==new Vector2(1080,1080) && b==new Vector2(1064,1096) && !__result)failedEntry=true;
+            if(a==new Vector2(1064,1080) && b==new Vector2(1064,1096) && __result)legalEntry=true;
+        }
+        private static void EdgeDiscovery(object context)
+        {
+            var host=Get(context,"CombatObservation");NativeCombatObservationChecks.Save(host,new ObservationOptions());
+            NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),Get(context,"Input"),3278,0,0);
+            var type=Get(Get(context,"Combat"),"Attack").GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostYoyoNavigation",true);
+            Vector2 start=new Vector2(1048,1048),goal=new Vector2(1144,1144);var flags=BindingFlags.Instance|BindingFlags.NonPublic;
+            var audit=new HarmonyLib.Harmony("JueMingR.Tests.YoyoEdgeDiscovery");audit.Patch(type.GetMethod("Clear",flags),postfix:new HarmonyLib.HarmonyMethod(typeof(NativeCombatYoyoNavigationChecks),nameof(Edge)));
+            try
+            {
+                foreach(string scenario in new[]{"open","sealed","alternate-entry"})
+                {
+                    for(int x=63;x<=73;x++)for(int y=63;y<=73;y++)Main.tile[x,y].ClearEverything();
+                    if(scenario!="open")
+                    {
+                        foreach(var cell in new[]{new Point(1,4),new Point(3,4),new Point(5,4),new Point(6,1),new Point(7,3)})NativeToolsChecks.Tile(64+cell.X,64+cell.Y,1);
+                        for(int x=-1;x<=9;x++)for(int y=-1;y<=9;y++)if(x==-1 || x==9 || y==-1 || y==9)NativeToolsChecks.Tile(64+x,64+y,1);
+                        if(scenario=="sealed")for(int y=0;y<=8;y++)NativeToolsChecks.Tile(68,64+y,1);
+                    }
+                    var navigation=Activator.CreateInstance(type,true);Call(Get(navigation,"terrain"),"Reset");
+                    if(scenario=="alternate-entry")
+                    {
+                        Require(!(bool)Call(navigation,"Clear",new Vector2(1080,1080),new Vector2(1064,1096),16,16),"real whole-ball diagonal entry is blocked");
+                        Require((bool)Call(navigation,"Clear",new Vector2(1064,1080),new Vector2(1064,1096),16,16),"same destination has a legal whole-ball vertical entry");
+                    }
+                    watchedNavigation=navigation;goalChecks=edgeChecks=0;failedEntry=legalEntry=false;
+                    bool found=(bool)Call(navigation,"Find",start,goal,start,300f,16,16);watchedNavigation=null;
+                    Console.WriteLine("YOYO edge discovery "+scenario+": found="+found+" goalChecks="+goalChecks+" clearCalls="+edgeChecks+" failedEntry="+failedEntry+" legalEntry="+legalEntry+" path="+string.Join(";",((System.Collections.IEnumerable)Get(navigation,"path")).Cast<object>()));
+                    Require(goalChecks<=513 && edgeChecks<=4609,"original finite expansion budget remains bounded after entry rejection");
+                    Require(found==(scenario!="sealed"),"failed entry must leave its destination discoverable from another legal direction: "+scenario);
+                    if(scenario=="alternate-entry")Require(failedEntry && legalEntry,"actual search rejects the diagonal and later accepts the same destination's legal entry");
+                    var path=((System.Collections.IEnumerable)Get(navigation,"path")).Cast<Vector2>().ToArray();Vector2 previous=start;
+                    foreach(var point in path){Require(Vector2.Distance(point,start)<=299 && (bool)Call(navigation,"Clear",previous,point,16,16),"every compressed search segment preserves range and the real sixteen-pixel ball passage");previous=point;}
+                    if(found)Require(path.Length>0 && path[path.Length-1]==goal,"real Find reaches the requested geometric endpoint");
+                }
+            }
+            finally{watchedNavigation=null;audit.UnpatchAll(audit.Id);}
+        }
         internal static void Run(object context)
         {
+            EdgeDiscovery(context);
             var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var attack=Get(combat,"Attack");var input=Get(context,"Input");
             NativeCombatObservationChecks.Save(host,new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,3278,0,0);p.position=new Vector2(700,646);p.ResetEffects();p.channel=p.controlUseItem=true;p.yoyoGlove=p.magicString=false;p.counterWeight=0;Main.screenPosition=new Vector2(600,400);
             var n=Main.npc[2];n.SetDefaults(3);n.whoAmI=2;n.active=true;n.position=new Vector2(800,646);n.velocity=n.netOffset=Vector2.Zero;n.aiStyle=-1;n.noGravity=true;n.life=n.lifeMax=10000;n.target=0;n.knockBackResist=0;n.shimmerTransparency=0;Array.Clear(n.immune,0,n.immune.Length);Array.Clear(n.buffType,0,n.buffType.Length);Array.Clear(n.buffTime,0,n.buffTime.Length);

@@ -93,7 +93,11 @@ namespace JueMingR.TerrariaHost.Combat
         {
             Clear();retired.Clear();terrain.Reset();environmentState=new HostProjectileEnvironment.State(true);preparedTimeline=timeline;preparedPhase=phase;
             opening=null;
-            if(timeline!=null && (HostHeldAttack.Weapon(combat.Player.HeldItem.type) || HostYoyoNavigation.Weapon(combat.Player.HeldItem) || HostWhipAttack.Weapon(combat.Player.HeldItem)))
+            // Native AI99 primary/paired control refreshes dummy timers to 2;
+            // those actions cannot emit from the hand. Detached magic-string
+            // balls do not own that timing. Gate only new yoyo openings, never
+            // the shared demand, live-entry preparation or 1035's later windows.
+            if(timeline!=null && (HostHeldAttack.Weapon(combat.Player.HeldItem.type) || HostYoyoNavigation.Weapon(combat.Player.HeldItem) && HostAttackWindow.Opening(combat,combat.Player,combat.Player.HeldItem) || HostWhipAttack.Weapon(combat.Player.HeldItem)))
             {
                 opening=new Source(combat,observation,combat.Player.HeldItem);openingAmmo=AttackAmmoSnapshot.Capture(combat.Player,opening.Weapon);openingStep=Main.GameUpdateCount;
                 if(openingAmmo!=null)
