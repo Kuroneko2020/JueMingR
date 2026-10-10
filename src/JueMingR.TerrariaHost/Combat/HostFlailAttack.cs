@@ -12,6 +12,8 @@ namespace JueMingR.TerrariaHost.Combat
         internal static bool Handles(int type){return type==25 || type==26 || type==35 || type==63 || type==154 || type==247 || type==757 || type==947 || type==948 || type==1058;}
         internal static bool Weapon(Item item){return item!=null && Handles(item.shoot);}
         internal static AttackContact Solve(Player player,Projectile shot,NpcTrajectory timeline,HostAttackClock clock,PredictionTerrain terrain,out Vector2 aim)
+        {return SolvePrepared(player,shot,timeline,clock,terrain,out aim,HostAttackPlayerFrame.Capture(player,timeline));}
+        internal static AttackContact SolvePrepared(Player player,Projectile shot,NpcTrajectory timeline,HostAttackClock clock,PredictionTerrain terrain,out Vector2 aim,HostAttackPlayerFrame frame)
         {
             int age=clock.Age;aim=HostHeldAttack.DirectionPoint(player,timeline,clock.FirstTick);
             float speed=24,returnSpeed=16,returnAcceleration=3,fastSpeed=48,fastAcceleration=6;int outbound=10;
@@ -24,22 +26,22 @@ namespace JueMingR.TerrariaHost.Combat
             var immunity=shot;
             if(release){immunity=(Projectile)copy.Invoke(shot,null);immunity.localNPCImmunity=new int[shot.localNPCImmunity.Length];}
             var receive=HostAttackReceive.Capture(player,immunity,timeline.Identity.Slot,clock.BeforeNpc,clock.NextWorld);
-            var motion=NpcPredictionSource.ReadPlayer(player);var env=new PredictionEnvironment{WorldWidth=Main.maxTilesX,WorldHeight=Main.maxTilesY,GravityWorldSurface=Main.worldSurface,Remix=Main.remixWorld};
+            var motion=frame.Motion;var env=frame.Environment;var body=(Player)copy.Invoke(player,null);
             Vector2 mounted=player.MountedCenter;
             for(int step=0;step<60 && age+step+1<timeline.Count;step++)
             {
                 if(clock.MovePlayer(step)){PredictionStop stop;if(!PlayerMotionContinuation.Advance(ref motion,env,terrain,out stop))return null;}
-                mounted=player.MountedCenter+new Vector2(motion.X-player.position.X,motion.Y-player.position.Y);int tick=clock.FirstTick+step;Vector2 old=center;
+                HostAttackPlayerFrame.ApplyPose(body,motion);mounted=body.MountedCenter;int tick=clock.FirstTick+step;Vector2 old=center;
                 if(state==0)
                 {
-                    if(release){velocity=(aim-mounted).SafeNormalize(Vector2.UnitX*player.direction)*speed+player.velocity;center=mounted;state=1;throwClock=0;}
+                    if(release){velocity=(aim-mounted).SafeNormalize(Vector2.UnitX*player.direction)*speed+body.velocity;center=mounted;state=1;throwClock=0;}
                     else
                     {
-                        if(shot.localAI[1]+step+1<=12 || !receive.Allows(step+1))continue;
+                        if(shot.localAI[1]+step+1<=12 || !receive.Allows(clock.LaunchDelay+step+1))continue;
                         // The real spin collision is an owner-centred ellipse,
                         // independent of the ball's displayed orbit angle.
-                        var spin=AttackIntercept.EllipseContact(timeline,tick,aim.X,aim.Y,mounted.X,mounted.Y,55,.8f,player.gravDir>0?.4f:.8f);
-                        if(spin!=null && HostMeleeAttack.OwnerAllows(player,shot,timeline[tick].OwnerBounds,Main.npc[timeline.Identity.Slot].noTileCollide,terrain))return spin;
+                        var spin=AttackIntercept.EllipseContact(timeline,tick,aim.X,aim.Y,mounted.X,mounted.Y,55,.8f,body.gravDir>0?.4f:.8f);
+                        if(spin!=null && HostMeleeAttack.OwnerAllows(body,shot,timeline[tick].OwnerBounds,timeline[tick].NoTileCollide,terrain))return spin;
                         continue;
                     }
                 }
@@ -58,7 +60,7 @@ namespace JueMingR.TerrariaHost.Combat
                 }
                 if(!HostProjectileEnvironment.Dry(shot,terrain,center.X,center.Y,velocity.X))return null;
                 center+=velocity;if(state!=4 && !terrain.ProjectilePassage(old.X,old.Y,center.X,center.Y,shot.width,shot.height))return null;
-                if(!receive.Allows(step+1))continue;
+                if(!receive.Allows(clock.LaunchDelay+step+1))continue;
                 var contact=AttackIntercept.BodyContact(timeline,tick,0,aim.X,aim.Y,center.X,center.Y,shot.width,shot.height,AttackConfidence.Conditional);if(contact!=null)return contact;
             }
             return null;

@@ -13,6 +13,9 @@ namespace NativeWorldTextProbe
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance;
         internal static void Run(object context)
         {
+            if(Environment.GetEnvironmentVariable("JMR_CONTROL_ORACLE_ONLY")=="knife"){NativeCombatFlyingKnifeChecks.Run(context);return;}
+            if(Environment.GetEnvironmentVariable("JMR_CONTROL_ORACLE_ONLY")=="bubble"){NativeCombatBubbleChecks.Run(context);return;}
+            if(Environment.GetEnvironmentVariable("JMR_CONTROL_ORACLE_ONLY")=="laser"){NativeCombatLaserChecks.Run(context);return;}
             NativeCombatYoyoChecks.Run(context);
             NativeCombatReceiveChecks.Run(context);
             var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var attack=Get(combat,"Attack");var tools=Get(context,"Tools");var input=Get(context,"Input");
@@ -45,6 +48,9 @@ namespace NativeWorldTextProbe
                 Console.WriteLine("PASS actual guided contact: weapon="+type+" firstDamage="+first+" impact="+plan.ImpactX+","+plan.ImpactY);
             }
             Bubble(context,combat,host,attack,tools,input);
+            NativeCombatBubbleChecks.Run(context);
+            NativeCombatFlyingKnifeChecks.Run(context);
+            NativeCombatLaserChecks.Run(context);
             Held(context,combat,host,attack,tools,input);
             NativeCombatHeldSequenceChecks.Run(context);
             NativeCombatBeamChecks.Run(context);

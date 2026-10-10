@@ -82,7 +82,7 @@ namespace NativeWorldTextProbe
             for(int tick=1;tick<=40 && first<0;tick++)
             {NativeQuickItemChecks.BeginWorldStep();NativeToolExecutionChecks.Sample(context,input,n.Center,true);Call(combat,"Sample");n.UpdateNPC(2);NativeCombatAimChecks.Prepare(host,attack,n,0,true);var plan=(AttackContact)GetOptional(entry,"Contact");if(plan!=null)expected=plan.Timeline.SampleTick+plan.Tick;int life=n.life;shot.Update(shot.whoAmI);if(n.life<life)first=Main.GameUpdateCount;}
             Console.WriteLine("YOYO navigation changes: stableSearches="+searches+" closedRetries="+retries+" first="+first+" expected="+expected+" center="+shot.Center);Require(first>0 && first==expected,"reopened local route resumes useful input and the real native first Damage clock");
-            Gap(context,false);Gap(context,true);Progress(context);
+            Gap(context,false);Gap(context,true);NativeCombatYoyoGapChecks.Run(context);Progress(context);
         }
         internal static void RunIsolated(object context)
         {
@@ -132,7 +132,7 @@ namespace NativeWorldTextProbe
             if(!thin)Require(((Vector2)Get(Get(attack,"Control"),"openingPoint")).X>p.Center.X,"first visible forward entrance is preferred over a backward BFS tie for the same ball-sized gap");
             typeof(Player).GetMethod("ItemCheck_Shoot",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),true});var shot=Main.projectile.Single(q=>q.active && q.type==541);var entries=(System.Collections.IDictionary)Get(Get(attack,"Control"),"shots");var entry=entries[(int)shot.key];NativeCombatAimChecks.Prepare(host,attack,n,0,true);bool initial=(bool)Get(entry,"HasPoint");long first=-1,expected=-1;
             var nav=Get(entry,"Navigation");Console.WriteLine("YOYO gap opening: thin="+thin+" center="+shot.Center+" velocity="+shot.velocity+" point="+Get(entry,"Point")+" replay="+GetOptional(nav,"ReplayStop")+" step="+GetOptional(nav,"ReplayStep"));
-            if(!thin)Require(initial && GetOptional(entry,"Contact")==null && GetOptional(attack,"ExpectedImpact")==null && (string)Get(nav,"ReplayStop")=="BallTerrain" && (int)Get(nav,"ReplayStep")>=3,"geometric route with a later inertia/corner rejection grants only a verified short input prefix, no red impact");
+            if(!thin)Require(initial,"the native clipped-velocity slide keeps a useful control prefix through the ball-sized entrance");
             for(int tick=1;tick<=45 && first<0;tick++)
             {NativeQuickItemChecks.BeginWorldStep();NativeToolExecutionChecks.Sample(context,input,n.Center,true);Call(combat,"Sample");n.UpdateNPC(2);NativeCombatAimChecks.Prepare(host,attack,n,0,true);var plan=(AttackContact)GetOptional(entry,"Contact");expected=plan==null?-1:plan.Timeline.SampleTick+plan.Tick;if(thin)Require(!(bool)Get(entry,"HasPoint") && GetOptional(attack,"ExpectedImpact")==null,"eight-pixel gap cannot accept a sixteen-pixel native ball");if(tick<=3 || plan!=null)Console.WriteLine("YOYO gap before: tick="+Main.GameUpdateCount+" center="+shot.Center+" v="+shot.velocity+" plan="+(plan==null?"null":expected.ToString())+" point="+Get(entry,"Point")+" replay="+GetOptional(nav,"ReplayStop")+" step="+GetOptional(nav,"ReplayStep"));int life=n.life;shot.Update(shot.whoAmI);if(n.life<life)first=Main.GameUpdateCount;}
             Console.WriteLine("YOYO gap result: pixels="+(thin?8:32)+" initial="+initial+" first="+first+" expected="+expected+" ball="+shot.width+"x"+shot.height+" center="+shot.Center+" velocity="+shot.velocity);

@@ -80,7 +80,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                     if(ended && cause==0 || active!=(cause==0))throw new InvalidDataException("Native lifetime continuity.");
                     if(cause!=0 && !ended){ended=true;length=Math.Max(1,i);}
                     var proof=value.Frames[i];state.Identity=new NpcIdentity(identity.Session,identity.Token,identity.Slot,identity.Generation,type,netId);
-                    state.NetOffsetX=proof.NetOffset.X;state.NetOffsetY=proof.NetOffset.Y;state.CanReceive=proof.CanReceive;state.CanHarm=proof.CanHarm;state.NewSegment=proof.NewSegment;
+                    state.NetOffsetX=proof.NetOffset.X;state.NetOffsetY=proof.NetOffset.Y;state.CanReceive=proof.CanReceive;state.CanHarm=proof.CanHarm;state.NewSegment=proof.NewSegment;state.NoTileCollide=proof.NoTileCollide;state.Wet=proof.Wet;state.ReflectsProjectiles=proof.ReflectsProjectiles;state.ProjectileReflectionUnknown=proof.ProjectileReflectionUnknown;
                     points[i]=new NpcTrajectoryPoint(i,state);
                 }
                 int players=Count(r,255),prior=-1;for(int i=0;i<players;i++){int slot=r.ReadInt32();if(slot<=prior || slot>=255)throw new InvalidDataException("Native player order.");prior=slot;}

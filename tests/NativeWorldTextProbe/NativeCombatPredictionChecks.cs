@@ -22,18 +22,21 @@ namespace NativeWorldTextProbe
             for(int i=0;i<Main.maxPlayers;i++)if(Main.player[i]==null)Main.player[i]=new Player();
             foreach(var n in Main.npc)n.active=false;
             var player=Main.LocalPlayer;player.position=new Vector2(640,640);
-            var env=new PredictionEnvironment{PlayerX=player.Center.X,PlayerY=player.Center.Y,PlayerWidth=player.width,PlayerHeight=player.height,WorldWidth=Main.maxTilesX,WorldSurface=(float)Main.worldSurface,Enraged=true,ClearLine=true};
+            var env=new PredictionEnvironment{PlayerX=player.Center.X,PlayerY=player.Center.Y,PlayerWidth=player.width,PlayerHeight=player.height,WorldWidth=Main.maxTilesX,WorldHeight=Main.maxTilesY,WorldSurface=(float)Main.worldSurface,GravityWorldSurface=Main.worldSurface,Multiplayer=Main.netMode==1,Enraged=true,ClearLine=true};
             Func<NPC,NpcMotionState> capture=n=>(NpcMotionState)read.Invoke(null,new object[]{n,session});
             ReceiveShapes(capture,env,terrain);
             var cache=new NpcPredictionCache();cache.Demand(0,60);
             var npc=Main.npc[0];npc.SetDefaults(372);npc.active=true;npc.whoAmI=0;npc.target=0;npc.position=new Vector2(400,400);npc.ai[0]=0;npc.ai[1]=88;npc.ai[3]=-2;npc.direction=1;
             var states=new[]{capture(npc)};
-            string initial=Stamp();cache.Prepare(states,1,0,100,env,terrain);Require(Stamp()==initial,"prediction preserves all native fields/arrays, tile values, RNG and Collision scratch");
-            int computed=cache.Steps;var first=cache.Read(0);cache.Demand(1,30);cache.Prepare(states,1,0,100,env,terrain);
+            // Exercise an acquisition stop explicitly. Native NPC queries
+            // clip world edges, so crossing the bottom scan margin is no
+            // longer (and was never natively) evidence of missing terrain.
+            var limited=new LimitedTerrain(terrain,68);
+            string initial=Stamp();cache.Prepare(states,1,0,100,env,limited);Require(Stamp()==initial,"prediction preserves all native fields/arrays, tile values, RNG and Collision scratch");
+            int computed=cache.Steps;var first=cache.Read(0);cache.Demand(1,30);cache.Prepare(states,1,0,100,env,limited);
             Require(first!=null && cache.Steps==computed && ReferenceEquals(first,cache.Read(1)),"two equivalent consumers share one real result");
-            cache.Demand(1,30,120);cache.Prepare(states,1,0,100,env,terrain);Require(cache.Builds==1 && cache.Steps<=120,"longer preferred demand extends existing tail");
-            // The shark reaches the finite terrain boundary after 68 future
-            // updates. Cancellation preserves this real tail, not 120 steps.
+            cache.Demand(1,30,120);cache.Prepare(states,1,0,100,env,limited);Require(cache.Builds==1 && cache.Steps<=120,"longer preferred demand extends existing tail");
+            // Cancellation retains only the successfully acquired 68 updates.
             var cancellationTail=cache.Read(1);cache.Demand(2,120);
             Require(cancellationTail!=null && cancellationTail.Count==69 && cancellationTail.Stop==PredictionStop.TerrainUnavailable && cache.Read(2)==null,"short reader receives the truthful terrain-boundary tail while strict120 rejects it");
             cache.Release(0);Require(cache.Read(0)==null && ReferenceEquals(cache.Read(1),cancellationTail) && cache.Read(2)==null,"consumer cancellation preserves the same other-reader result and strict minimum");
@@ -138,6 +141,18 @@ namespace NativeWorldTextProbe
         }
         private sealed class FailedTerrain : IPredictionTerrain
         {public bool Unchanged {get{throw new InvalidOperationException("isolated terrain failure");}}public void Reset(){throw new InvalidOperationException("isolated terrain failure");}public bool Move(ref NpcMotionState n,PredictionEnvironment environment,out PredictionStop stop){stop=PredictionStop.None;throw new InvalidOperationException();}public bool Solid(MotionRect b,out bool value,out PredictionStop stop){value=false;stop=PredictionStop.None;throw new InvalidOperationException();}public bool CanHit(MotionRect a,MotionRect b,out bool value,out PredictionStop stop){value=false;stop=PredictionStop.None;throw new InvalidOperationException();}public bool Tile(int x,int y,out PredictionTile tile,out PredictionStop stop){tile=default(PredictionTile);stop=PredictionStop.None;throw new InvalidOperationException();}}
+        private sealed class LimitedTerrain : IPredictionTerrain
+        {
+            private readonly IPredictionTerrain source;private readonly int limit;private int moves;
+            internal LimitedTerrain(IPredictionTerrain source,int limit){this.source=source;this.limit=limit;}
+            public bool Unchanged {get{return source.Unchanged;}}
+            public void Reset(){moves=0;source.Reset();}
+            public bool Move(ref NpcMotionState n,PredictionEnvironment environment,out PredictionStop stop)
+            {if(moves++>=limit){stop=PredictionStop.TerrainUnavailable;return false;}return source.Move(ref n,environment,out stop);}
+            public bool Solid(MotionRect b,out bool value,out PredictionStop stop){return source.Solid(b,out value,out stop);}
+            public bool CanHit(MotionRect a,MotionRect b,out bool value,out PredictionStop stop){return source.CanHit(a,b,out value,out stop);}
+            public bool Tile(int x,int y,out PredictionTile tile,out PredictionStop stop){return source.Tile(x,y,out tile,out stop);}
+        }
         private static void ReceiveShapes(Func<NPC,NpcMotionState> capture,PredictionEnvironment env,IPredictionTerrain terrain)
         {
             var npc=Main.npc[0];bool server=Main.dedServ;int delay=NPC.offSetDelayTime,smoothing=Main.multiplayerNPCSmoothingRange;

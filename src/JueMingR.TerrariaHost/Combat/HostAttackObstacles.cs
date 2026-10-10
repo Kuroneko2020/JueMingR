@@ -14,64 +14,301 @@ namespace JueMingR.TerrariaHost.Combat
     {
         private sealed class Receiver
         {
-            internal NPC Npc;internal NpcIdentity Identity;internal Rectangle Box;internal Vector2 Position,Offset;internal HostAttackReceive Receive;
-            internal int OwnerImmune,LocalImmune,Next;internal uint StaticExpiry;internal bool Unknown;
+            internal NPC Npc;internal NpcIdentity Identity;internal Rectangle Box,RawBox;internal Vector2 Position,Offset;internal HostAttackReceive Receive;
+            internal int OwnerImmune,LocalImmune;internal uint StaticExpiry;internal bool Unknown,Chaseable,Reflects;
+        }
+        private sealed class HitHistory
+        {
+            internal int[] OwnerNext;
+            internal Dictionary<int,int[]> StaticNext;
+        }
+        private sealed class AiReflector
+        {
+            internal NPC Npc;internal NpcIdentity Identity;internal Rectangle Box;internal float Phase,Clock;
         }
         private readonly List<Receiver> receivers=new List<Receiver>();
+        private readonly List<AiReflector> aiReflectors=new List<AiReflector>();
         private readonly Player player;private readonly Projectile shot;private readonly NpcTrajectory timeline;private readonly HostAttackReceive selected;
-        private readonly int delay;private int remaining;
+        private readonly int delay;private readonly bool beforeNpc,nextWorld,selectedChaseable,selectedReflects,goodWorld,expert,multiplayer;private int remaining;
+        private readonly HitHistory history;private readonly bool ownsHistory;
+        private readonly int[] initialLocal,localNext;private readonly List<int> otherHitSlots=new List<int>();
+        private HostProjectileBirthSlots birthSlots;
+        private bool? beeOwnerStrong;
+        private bool localCleared;
+        private readonly List<HostProjectileTargets> targetLeases=new List<HostProjectileTargets>();
+        private readonly List<HostProjectileFamilyLease> familyLeases=new List<HostProjectileFamilyLease>();
+        private readonly List<HostAttackObstacles> receiveLeases=new List<HostAttackObstacles>();
         internal int Remaining {get{return remaining;}}
+        internal int OtherHits {get;private set;}
+        internal int SelectedHits {get;private set;}
+        internal int OtherHitSlot(int index){return otherHitSlots[index];}
+        internal void MakeUnlimited(){remaining=-1;}
+        internal void BeginCandidate()
+        {
+            remaining=shot.penetrate;OtherHits=SelectedHits=0;otherHitSlots.Clear();localCleared=false;
+            // Children share writes made by earlier native slot updates. Only
+            // the root candidate owns the reset; a child's first Pass must not
+            // erase an already received sibling hit.
+            if(ownsHistory){if(history.OwnerNext!=null)Array.Clear(history.OwnerNext,0,history.OwnerNext.Length);if(history.StaticNext!=null)history.StaticNext.Clear();if(localNext!=null)Array.Copy(initialLocal,localNext,localNext.Length);}
+        }
         internal HostAttackObstacles(Player player,Projectile shot,NpcTrajectory timeline,int delay,bool beforeNpc,bool nextWorld)
         {
-            this.player=player;this.shot=shot;this.timeline=timeline;this.delay=delay;selected=HostAttackReceive.Capture(player,shot,timeline.Identity.Slot,beforeNpc,nextWorld);
+            selectedReflects=Main.npc[timeline.Identity.Slot].reflectsProjectiles;goodWorld=Main.getGoodWorld;expert=Main.expertMode;multiplayer=Main.netMode==1;
+            history=new HitHistory();ownsHistory=true;
+            // Ordinary owner-only attacks keep no 200-entry private arrays
+            // until a real preceding receive actually writes shared immunity.
+            if(shot.usesLocalNPCImmunity){initialLocal=new int[Main.maxNPCs];localNext=new int[Main.maxNPCs];for(int slot=0;slot<initialLocal.Length;slot++){int value=shot.localNPCImmunity[slot];initialLocal[slot]=value<0?int.MaxValue:value;localNext[slot]=initialLocal[slot];}}
+            this.player=player;this.shot=shot;this.timeline=timeline;this.delay=delay;this.beforeNpc=beforeNpc;this.nextWorld=nextWorld;selected=HostAttackReceive.Capture(player,shot,timeline.Identity.Slot,beforeNpc,nextWorld);selectedChaseable=Main.npc[timeline.Identity.Slot].CanBeChasedBy(shot);
             for(int slot=0;slot<Main.maxNPCs;slot++)
             {
-                var npc=Main.npc[slot];if(slot==timeline.Identity.Slot || !Eligible(player,shot,npc))continue;
-                receivers.Add(new Receiver{Npc=npc,Identity=CombatSelection.Identity(npc,timeline.Identity.Session),Box=CombatSelection.ReceiveBounds(npc),Position=npc.position,Offset=npc.netOffset,OwnerImmune=npc.immune[player.whoAmI],LocalImmune=shot.localNPCImmunity[slot],StaticExpiry=shot.usesIDStaticNPCImmunity?Projectile.perIDStaticNPCImmunity[shot.immunityIdentity,slot]:0,Receive=HostAttackReceive.Capture(player,shot,slot,beforeNpc,nextWorld),Unknown=NPCID.Sets.ZappingJellyfish[npc.type]});
+                var npc=Main.npc[slot];if(slot==timeline.Identity.Slot)continue;
+                // AI87 scans shots before its own movement even while it is
+                // invulnerable. It is not a Damage receiver qualification.
+                if(expert && AiReflectorEligible(npc))aiReflectors.Add(new AiReflector{Npc=npc,Identity=CombatSelection.Identity(npc,timeline.Identity.Session),Box=npc.Hitbox,Phase=npc.ai[0],Clock=npc.ai[1]});
+                if(!Eligible(player,shot,npc))continue;
+                receivers.Add(new Receiver{Npc=npc,Identity=CombatSelection.Identity(npc,timeline.Identity.Session),Box=CombatSelection.ReceiveBounds(npc),RawBox=ReflectionBounds(npc),Reflects=npc.reflectsProjectiles,Position=npc.position,Offset=npc.netOffset,OwnerImmune=npc.immune[player.whoAmI],LocalImmune=shot.localNPCImmunity[slot],StaticExpiry=shot.usesIDStaticNPCImmunity?Projectile.perIDStaticNPCImmunity[shot.immunityIdentity,slot]:0,Receive=HostAttackReceive.Capture(player,shot,slot,beforeNpc,nextWorld),Unknown=NPCID.Sets.ZappingJellyfish[npc.type],Chaseable=npc.CanBeChasedBy(shot)});
             }
         }
+        private HostAttackObstacles(HostAttackObstacles parent,Projectile spawned,bool copyLocal)
+        {
+            selectedReflects=parent.selectedReflects;goodWorld=parent.goodWorld;expert=parent.expert;multiplayer=parent.multiplayer;aiReflectors=parent.aiReflectors;
+            targetLeases=parent.targetLeases;
+            familyLeases=parent.familyLeases;
+            receiveLeases=parent.receiveLeases;
+            player=parent.player;shot=spawned;timeline=parent.timeline;delay=parent.delay;beforeNpc=parent.beforeNpc;nextWorld=parent.nextWorld;history=parent.history;ownsHistory=false;
+            selected=HostAttackReceive.Capture(player,spawned,timeline.Identity.Slot,beforeNpc,nextWorld);selectedChaseable=Main.npc[timeline.Identity.Slot].CanBeChasedBy(spawned);
+            if(spawned.usesLocalNPCImmunity){localNext=copyLocal && parent.localNext!=null?(int[])parent.localNext.Clone():new int[Main.maxNPCs];if(!copyLocal)for(int slot=0;slot<localNext.Length;slot++){int value=spawned.localNPCImmunity[slot];localNext[slot]=value<0?int.MaxValue:value;}initialLocal=localNext;}
+            foreach(var prior in parent.receivers)
+            {
+                if(!Eligible(player,spawned,prior.Npc))continue;
+                receivers.Add(new Receiver{Npc=prior.Npc,Identity=prior.Identity,Box=prior.Box,RawBox=prior.RawBox,Reflects=prior.Reflects,Position=prior.Position,Offset=prior.Offset,OwnerImmune=prior.OwnerImmune,LocalImmune=spawned.localNPCImmunity[prior.Identity.Slot],StaticExpiry=spawned.usesIDStaticNPCImmunity?Projectile.perIDStaticNPCImmunity[spawned.immunityIdentity,prior.Identity.Slot]:0,Receive=HostAttackReceive.Capture(player,spawned,prior.Identity.Slot,beforeNpc,nextWorld),Unknown=prior.Unknown,Chaseable=prior.Npc.CanBeChasedBy(spawned)});
+            }
+            remaining=spawned.penetrate;
+            // A child's native immunity identity can differ from its parent's
+            // (e.g. bottle510 -> shared cloud511, arrow183 -> bee181). Keep
+            // each distinct captured receive policy in the root consume
+            // lease. Repeated search directions must not retain duplicates.
+            if(!SameReceivePolicy(parent))
+            {bool found=false;foreach(var lease in receiveLeases)if(SameReceivePolicy(lease)){found=true;break;}if(!found)receiveLeases.Add(this);}
+        }
+        private bool SameReceivePolicy(HostAttackObstacles other)
+        {
+            if(shot.type!=other.shot.type || shot.maxPenetrate!=other.shot.maxPenetrate || shot.usesLocalNPCImmunity!=other.shot.usesLocalNPCImmunity || shot.usesIDStaticNPCImmunity!=other.shot.usesIDStaticNPCImmunity || shot.immunityIdentity!=other.shot.immunityIdentity || shot.usesOwnerMeleeHitCD!=other.shot.usesOwnerMeleeHitCD || shot.trap!=other.shot.trap || shot.npcProj!=other.shot.npcProj || selectedChaseable!=other.selectedChaseable || !selected.Same(other.selected) || receivers.Count!=other.receivers.Count)return false;
+            for(int i=0;i<receivers.Count;i++)
+            {var a=receivers[i];var b=other.receivers[i];if(!a.Identity.Equals(b.Identity) || a.LocalImmune!=b.LocalImmune || a.StaticExpiry!=b.StaticExpiry || a.Chaseable!=b.Chaseable || !a.Receive.Same(b.Receive))return false;}
+            return true;
+        }
+        // owner/static writes belong to this finite attack family. Local
+        // writes belong to one projectile and copy only where native spawn
+        // explicitly calls CopyLocalNPCImmunityTo (710), never by default.
+        internal HostAttackObstacles ForkForSpawn(Projectile privateShot,bool copyLocal=false)
+        {return new HostAttackObstacles(this,privateShot,copyLocal);}
+        internal HostProjectileBirthSlots CaptureBirthSlots()
+        {return birthSlots??(birthSlots=HostProjectileBirthSlots.Capture());}
+        internal bool CaptureBeeOwner()
+        {if(!beeOwnerStrong.HasValue)beeOwnerStrong=player.strongBees;return beeOwnerStrong.Value;}
+        internal void CaptureProjectileFamily(Projectile[] members,int firstSceneType=0,int lastSceneType=0)
+        {familyLeases.Add(new HostProjectileFamilyLease(members,firstSceneType,lastSceneType));CaptureBirthSlots();}
+        // Chase permission is a separate native query from Damage permission.
+        // Each finite stage captures it once at Prepare; all candidate replays
+        // and spawned siblings share immutable rows and this consume lease.
+        // Draw uses the existing presentation lease and never runs Current.
+        internal HostProjectileTargets CaptureChaseTargets(Projectile privateShot)
+        {var lease=HostProjectileTargets.Capture(privateShot,timeline.Identity.Session);targetLeases.Add(lease);return lease;}
+        internal HostProjectileTargets CaptureWetChaseTargets(Projectile privateShot)
+        {var lease=HostProjectileTargets.CaptureWetChase(privateShot,timeline.Identity.Session);targetLeases.Add(lease);return lease;}
+        internal HostProjectileTargets CaptureTownBodies(Projectile privateShot)
+        {var lease=HostProjectileTargets.CaptureTownBodies(privateShot,timeline.Identity.Session);targetLeases.Add(lease);return lease;}
+        private bool DynamicAllows(int slot,int outer)
+        {
+            if(!(shot.maxPenetrate==1 && !shot.usesLocalNPCImmunity && !shot.usesIDStaticNPCImmunity) && history.OwnerNext!=null && outer<history.OwnerNext[slot])return false;
+            if(!shot.usesLocalNPCImmunity && !shot.usesIDStaticNPCImmunity)return true;
+            int local=shot.usesLocalNPCImmunity?localNext[slot]:int.MaxValue,shared=int.MaxValue;int[] values;
+            if(shot.usesIDStaticNPCImmunity)shared=history.StaticNext!=null && history.StaticNext.TryGetValue(shot.immunityIdentity,out values)?values[slot]:0;
+            return outer>=Math.Min(local,shared);
+        }
+        internal bool SelectedAllows(int outer){return (localCleared?selected.WithoutLocal():selected).Allows(outer) && DynamicAllows(timeline.Identity.Slot,outer);}
+        internal void ClearLocalExceptFresh(int outer)
+        {
+            // Native gem Kill preserves only hits whose local counter still
+            // equals its full cooldown. All other old local entries clear.
+            // Private absolute deadlines preserve that same outer boundary.
+            if(!shot.usesLocalNPCImmunity || shot.usesIDStaticNPCImmunity)return;
+            localCleared=true;for(int i=0;i<localNext.Length;i++)if(localNext[i]!=outer+shot.localNPCHitCooldown)localNext[i]=0;
+        }
+        // FindTargetWithLineOfSight excludes local immunity only; owner and
+        // static Damage gates must not silently remove an autonomous target.
+        internal bool LocalTargetAllowed(int slot,int outer)
+        {return localNext==null || outer>=localNext[slot];}
         private static bool Eligible(Player player,Projectile shot,NPC npc)
         {
-            return npc!=null && npc.active && !npc.dontTakeDamage && shot.friendly && (!npc.friendly || npc.type==22 && player.killGuide || npc.type==54 && player.killClothier || NPCID.Sets.ZappingJellyfish[npc.type]) && player.CanNPCBeHitByPlayerOrPlayerProjectile(npc,shot);
+            return npc!=null && npc.active && !npc.dontTakeDamage && shot.friendly && (!npc.friendly || shot.type==318 || npc.type==22 && player.killGuide || npc.type==54 && player.killClothier || NPCID.Sets.ZappingJellyfish[npc.type]) && player.CanNPCBeHitByPlayerOrPlayerProjectile(npc,shot);
         }
         internal bool Unchanged
         {
             get
             {
-                int at=0;
+                // Native chase permission is distinct from Damage permission.
+                // The selected body is excluded from the other receiver rows,
+                // so its autonomous-targeting dependency needs its own lease.
+                if(goodWorld!=Main.getGoodWorld || expert!=Main.expertMode || multiplayer!=(Main.netMode==1) || selectedReflects!=Main.npc[timeline.Identity.Slot].reflectsProjectiles || beeOwnerStrong.HasValue && beeOwnerStrong.Value!=player.strongBees || birthSlots!=null && !birthSlots.Current)return false;
+                foreach(var targets in targetLeases)if(!targets.Current)return false;
+                foreach(var family in familyLeases)if(!family.Current)return false;
+                if(!ReceiveUnchanged())return false;
+                foreach(var lease in receiveLeases)if(!ReferenceEquals(lease,this) && !lease.ReceiveUnchanged())return false;
+                return true;
+            }
+        }
+        private bool ReceiveUnchanged()
+        {
+                if(selectedChaseable!=Main.npc[timeline.Identity.Slot].CanBeChasedBy(shot) || !selected.Same(HostAttackReceive.Capture(player,shot,timeline.Identity.Slot,beforeNpc,nextWorld)))return false;
+                int at=0,reflectAt=0;
                 // Recheck the qualification set too: an inactive slot or an
                 // invulnerable/friendly body can become a new receiver between
                 // preparation and consumption without changing a stored row.
                 for(int slot=0;slot<Main.maxNPCs;slot++)
                 {
-                    if(slot==timeline.Identity.Slot || !Eligible(player,shot,Main.npc[slot]))continue;
+                    if(slot==timeline.Identity.Slot)continue;
+                    if(ownsHistory && expert && AiReflectorEligible(Main.npc[slot]))
+                    {
+                        if(reflectAt>=aiReflectors.Count || aiReflectors[reflectAt].Identity.Slot!=slot)return false;
+                        var reflector=aiReflectors[reflectAt++];var npc=Main.npc[slot];
+                        if(!CombatSelection.Valid(reflector.Identity,timeline.Identity.Session) || reflector.Box!=npc.Hitbox || reflector.Phase!=npc.ai[0] || reflector.Clock!=npc.ai[1])return false;
+                    }
+                    if(!Eligible(player,shot,Main.npc[slot]))continue;
                     if(at>=receivers.Count || receivers[at].Identity.Slot!=slot)return false;var r=receivers[at++];
-                    if(!CombatSelection.Valid(r.Identity,timeline.Identity.Session) || r.Npc.position!=r.Position || r.Npc.netOffset!=r.Offset || CombatSelection.ReceiveBounds(r.Npc)!=r.Box || r.Npc.immune[player.whoAmI]!=r.OwnerImmune || shot.localNPCImmunity[r.Identity.Slot]!=r.LocalImmune || shot.usesIDStaticNPCImmunity && Projectile.perIDStaticNPCImmunity[shot.immunityIdentity,r.Identity.Slot]!=r.StaticExpiry)return false;
+                    if(r.Reflects!=r.Npc.reflectsProjectiles || r.RawBox!=ReflectionBounds(r.Npc) || r.Chaseable!=r.Npc.CanBeChasedBy(shot) || !CombatSelection.Valid(r.Identity,timeline.Identity.Session) || r.Npc.position!=r.Position || r.Npc.netOffset!=r.Offset || CombatSelection.ReceiveBounds(r.Npc)!=r.Box || r.Npc.immune[player.whoAmI]!=r.OwnerImmune || shot.localNPCImmunity[r.Identity.Slot]!=r.LocalImmune || shot.usesIDStaticNPCImmunity && Projectile.perIDStaticNPCImmunity[shot.immunityIdentity,r.Identity.Slot]!=r.StaticExpiry || !r.Receive.Same(HostAttackReceive.Capture(player,shot,slot,beforeNpc,nextWorld)))return false;
                 }
-                return at==receivers.Count;
+                return at==receivers.Count && (!ownsHistory || reflectAt==aiReflectors.Count);
+        }
+        private static bool AiReflectorEligible(NPC npc)
+        {return npc!=null && npc.active && npc.aiStyle==87;}
+        // Called once before the FIRST projectile subupdate of an outer.
+        // AI87 reflects the pre-AI raw Hitbox, before NPC movement and without
+        // damage/immunity gates. A shot born later in Projectiles has already
+        // missed that action's NPC scan; derived callers skip their birth outer.
+        internal bool BeforeNpc(int tick,int outer,float x,float y,int width=0,int height=0)
+        {
+            if(!expert || !Reflectable(shot) || !beforeNpc && !nextWorld && outer<=1)return true;
+            if(width==0)width=shot.width;if(height==0)height=shot.height;
+            var body=new Rectangle((int)(x-width*.5f),(int)(y-height*.5f),width,height);
+            if(timeline.Identity.Type>=473 && timeline.Identity.Type<=476)
+            {
+                if(tick<1 || tick>=timeline.Count)return false;
+                var prior=timeline[tick-1].Bounds;var next=timeline[tick];
+                if((next.ReflectsProjectiles || next.ProjectileReflectionUnknown) && body.Intersects(new Rectangle((int)prior.X,(int)prior.Y,(int)prior.Width,(int)prior.Height)))return false;
             }
+            int actions=outer-(!beforeNpc && !nextWorld?1:0);
+            foreach(var reflector in aiReflectors)
+            {
+                // Other bodies retain the same explicit stationary-observer
+                // condition as Damage obstacles. Advance the observed guard's
+                // finite clock; never invent a future random action choice.
+                if(reflector.Phase==3 && (multiplayer || actions<=Math.Max(1,(int)Math.Ceiling(180-reflector.Clock))) && body.Intersects(reflector.Box))return false;
+            }
+            return true;
         }
         internal bool Pass(int k,int tick,float x,float y)
         {return Pass(k,tick,x,y,0);}
         internal bool Pass(int k,int tick,float x,float y,int maximumRemaining)
+        {return PassOuter(k,tick,delay+(k-1)/(shot.extraUpdates+1)+1,x,y,maximumRemaining);}
+        internal bool PassOuter(int k,int tick,int outer,float x,float y,int maximumRemaining=0)
+        {return PassShapeOuter(k,tick,outer,x,y,shot.width,shot.height,false,maximumRemaining);}
+        internal bool PassShapeOuter(int k,int tick,int outer,float x,float y,int width,int height,bool unlimited=false,int maximumRemaining=0,Func<int,int,bool> onOtherHit=null)
+        {return PassCore(k,tick,outer,x,y,width,height,unlimited,maximumRemaining,onOtherHit,null,false);}
+        // A native custom collider (e.g. gem trails) is one NPC-array pass,
+        // not separate damage passes per rectangle. Reflection still tests
+        // the real current projectile body supplied by width/height.
+        internal bool PassCustomOuter(int k,int tick,int outer,float x,float y,int width,int height,Func<MotionRect,bool> collision,bool unlimited=false,int maximumRemaining=0,bool consumeSelected=false,Func<int,int,bool> onHit=null)
+        {return PassCore(k,tick,outer,x,y,width,height,unlimited,maximumRemaining,onHit,collision,consumeSelected);}
+        private bool PassCore(int k,int tick,int outer,float x,float y,int width,int height,bool unlimited,int maximumRemaining,Func<int,int,bool> onOtherHit,Func<MotionRect,bool> collision,bool consumeSelected)
         {
-            if(k==1){remaining=shot.penetrate;foreach(var r in receivers)r.Next=0;}
+            if(k==1)BeginCandidate();
             if(maximumRemaining>0 && remaining>maximumRemaining)remaining=maximumRemaining;
-            if(remaining==0)return false;
-            int outer=delay+(k-1)/(shot.extraUpdates+1)+1;var body=new Rectangle((int)(x-shot.width*.5f),(int)(y-shot.height*.5f),shot.width,shot.height);
-            var target=timeline[tick];var b=target.ProjectileReceiveBounds;bool hitsTarget=target.CanReceive && selected.Allows(outer) && body.Intersects(new Rectangle((int)b.X,(int)b.Y,(int)b.Width,(int)b.Height));
-            foreach(var r in receivers)
+            if(remaining==0 && !unlimited)return false;
+            // Only an actual nonpositive-penetration Damage stage bypasses
+            // consumption (e.g. Meowmere's temporary -1, or 710 Kill after
+            // body penetration reached zero). A positive tile-death 710
+            // still consumes its budget. Candidate history never resets here.
+            var body=new Rectangle((int)(x-width*.5f),(int)(y-height*.5f),width,height);
+            var target=timeline[tick];var b=target.ProjectileReceiveBounds;bool hitsTarget=target.CanReceive && SelectedAllows(outer) && (collision==null?body.Intersects(new Rectangle((int)b.X,(int)b.Y,(int)b.Width,(int)b.Height)):collision(b));
+            // Reflection happens after receive permission and before Strike,
+            // at the native body after Damage_StartIteratingNPC adds netOffset.
+            // Unknown reflection affects this attack's proof, not the path
+            // or ordinary hand melee's independent receive permission.
+            var raw=target.ReceiveBounds;
+            bool reflectedTarget=hitsTarget && Reflectable(shot) && (target.ReflectsProjectiles || target.ProjectileReflectionUnknown || StarReflects(timeline.Identity.Type)) && body.Intersects(new Rectangle((int)raw.X,(int)raw.Y,(int)raw.Width,(int)raw.Height));
+            bool selectedVisited=false;
+            for(int at=0;at<=receivers.Count;at++)
             {
-                if(hitsTarget && r.Identity.Slot>timeline.Identity.Slot)return true;
-                if(outer<r.Next || !r.Receive.Allows(outer) || !body.Intersects(r.Box))continue;
+                if(hitsTarget && !selectedVisited && (at==receivers.Count || receivers[at].Identity.Slot>timeline.Identity.Slot))
+                {
+                    if(reflectedTarget)return false;
+                    if(!consumeSelected)return true;
+                    // An observed ambient family can consume the same local
+                    // owner's static immunity before this weapon's member.
+                    // It contributes no Contact, but remains a real ordered
+                    // Damage event, including later slots in the same pass.
+                    selectedVisited=true;SelectedHits++;
+                    RecordHit(timeline.Identity.Slot,outer,unlimited?-1:remaining);
+                    if(onOtherHit!=null && !onOtherHit(timeline.Identity.Slot,remaining))return false;
+                    if(!unlimited && remaining>0 && --remaining==0)return false;
+                }
+                if(at==receivers.Count)break;var r=receivers[at];
+                if(!DynamicAllows(r.Identity.Slot,outer) || !(localCleared?r.Receive.WithoutLocal():r.Receive).Allows(outer) || !(collision==null?body.Intersects(r.Box):collision(new MotionRect(r.Box.X,r.Box.Y,r.Box.Width,r.Box.Height))))continue;
+                if(Reflectable(shot) && (r.Reflects || StarReflects(r.Identity.Type)) && body.Intersects(r.RawBox))return false;
                 if(r.Unknown)return false; // Native reflection/damage special cases are not ordinary consumption.
-                if(remaining>0 && --remaining==0)return false;
-                int cooldown=10;
-                if(shot.usesLocalNPCImmunity && shot.localNPCHitCooldown!=-2)cooldown=shot.localNPCHitCooldown<0?int.MaxValue:shot.localNPCHitCooldown;
-                if(shot.usesIDStaticNPCImmunity)cooldown=shot.idStaticNPCHitCooldown<0?int.MaxValue:shot.usesLocalNPCImmunity?Math.Min(cooldown,shot.idStaticNPCHitCooldown):shot.idStaticNPCHitCooldown;
-                r.Next=cooldown==int.MaxValue?int.MaxValue:outer+cooldown;
+                // Only a receiver that passes the native permission, immunity
+                // and array-order gates is an OnHit event. Specialized motors
+                // may advance their own copied clock after this real event.
+                OtherHits++;otherHitSlots.Add(r.Identity.Slot);
+                RecordHit(r.Identity.Slot,outer,unlimited?-1:remaining);
+                // Specialized native OnHit may retarget immediately. It sees
+                // this slot's written immunity but not a later slot's future
+                // hit, and runs before native penetration is spent.
+                if(onOtherHit!=null && !onOtherHit(r.Identity.Slot,remaining))return false;
+                // Native writes immunity and executes OnHit before spending
+                // the final penetration. A Kill burst and copied child local
+                // immunity must see that last qualified receiver too.
+                if(!unlimited && remaining>0 && --remaining==0)return false;
             }
-            return true;
+            return !reflectedTarget;
+        }
+        private bool StarReflects(int type)
+        {return goodWorld && (shot.type==955 || shot.type==728) && NPCID.Sets.ReflectStarShotsInForTheWorthy[type];}
+        private static Rectangle ReflectionBounds(NPC npc)
+        {return new Rectangle((int)(npc.position.X+npc.netOffset.X),(int)(npc.position.Y+npc.netOffset.Y),npc.width,npc.height);}
+        private static bool Reflectable(Projectile p)
+        {
+            // Templates have no assigned damage yet. Every caller already
+            // admits a damaging stage; this is the native finite role gate.
+            return p.friendly && !p.hostile && (p.type==728 || p.type==955 || p.aiStyle==1 || p.aiStyle==2 || p.aiStyle==8 || p.aiStyle==21 || p.aiStyle==24 || p.aiStyle==28 || p.aiStyle==29 || p.aiStyle==131);
+        }
+        private void RecordHit(int slot,int outer,int penetration)
+        {
+            if(shot.usesIDStaticNPCImmunity)
+            {
+                if(penetration!=1 || shot.appliesImmunityTimeOnSingleHits)
+                {WriteOwner(slot,0);int[] values;if(history.StaticNext==null)history.StaticNext=new Dictionary<int,int[]>();if(!history.StaticNext.TryGetValue(shot.immunityIdentity,out values)){values=new int[Main.maxNPCs];history.StaticNext.Add(shot.immunityIdentity,values);}values[slot]=shot.idStaticNPCHitCooldown<0?int.MaxValue:outer+shot.idStaticNPCHitCooldown;}
+                return;
+            }
+            int ownerCooldown=OwnerCooldown(shot.type);
+            if(ownerCooldown!=0){WriteOwner(slot,outer+ownerCooldown);return;}
+            if(shot.usesLocalNPCImmunity && shot.localNPCHitCooldown!=-2)
+            {WriteOwner(slot,0);localNext[slot]=shot.localNPCHitCooldown<0?int.MaxValue:outer+shot.localNPCHitCooldown;}
+            else if(penetration!=1 || shot.appliesImmunityTimeOnSingleHits)WriteOwner(slot,outer+10);
+        }
+        private void WriteOwner(int slot,int next)
+        {if(history.OwnerNext==null){if(next==0)return;history.OwnerNext=new int[Main.maxNPCs];}history.OwnerNext[slot]=next;}
+        private static int OwnerCooldown(int type)
+        {
+            switch(type)
+            {
+                case 514:return 1;case 927:return 4;
+                case 595:case 735:case 424:case 425:case 426:case 634:case 635:case 659:return 5;
+                case 409:return 6;case 246:case 249:case 582:case 902:return 7;
+                case 16:case 443:case 1110:return 8;default:return 0;
+            }
         }
     }
 }

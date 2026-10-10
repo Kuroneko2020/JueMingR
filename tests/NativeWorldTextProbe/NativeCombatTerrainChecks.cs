@@ -86,8 +86,99 @@ namespace NativeWorldTextProbe
                     }
                 }
                 Require(contacts>0,"slope corpus really makes contact");Console.WriteLine("TERRAIN native UpdateCollision slope cases="+cases+" contacts="+contacts);
+                SolidBoundaries(terrain);
+                CanHitBoundaries(terrain);
+                Borders(terrain,read,nativeMove);
             }
             finally{Main.tile[60,60]=saved;nativeGravity.SetValue(null,savedGravity);}
+        }
+        private static void SolidBoundaries(IPredictionTerrain terrain)
+        {
+            var tiles=Main.tile;int width=Main.maxTilesX,height=Main.maxTilesY,cases=0,positive=0;
+            try
+            {
+                Main.maxTilesX=Main.maxTilesY=120;Main.tile=new Tile[120,120];
+                for(int x=0;x<120;x++)for(int y=0;y<120;y++)Main.tile[x,y]=new Tile();
+                var cell=Main.tile[60,60];
+                foreach(int kind in new[]{0,1,2,3,4,5})
+                {
+                    cell.ClearEverything();cell.active(true);cell.type=(ushort)(kind==3?TileID.Platforms:TileID.Stone);cell.halfBrick(kind==1);cell.slope((byte)(kind==2?1:0));cell.inActive(kind==4);if(kind==5)cell.active(false);
+                    foreach(int size in new[]{1,20,80})
+                    foreach(float x in new[]{-30.25f,0f,960-size-.000244140625f,960-size,960-size+.000244140625f,960f,976-.000244140625f,976f,1920f})
+                    foreach(float y in new[]{-30.25f,0f,960-size-.000244140625f,960-size,960-size+.000244140625f,968-size,968-size+.000244140625f,960f,976-.000244140625f,976f,1920f})
+                    {
+                        terrain.Reset();bool actual=Collision.SolidCollision(new Vector2(x,y),size,size),model;PredictionStop stop;
+                        Require(terrain.Solid(new MotionRect(x,y,size,size),out model,out stop) && actual==model,"Original SolidCollision strict boundary: kind="+kind+" size="+size+" origin="+x.ToString("R")+","+y.ToString("R")+" original="+actual+" model="+model+" stop="+stop);
+                        if(actual)positive++;cases++;
+                    }
+                }
+                Require(positive>0,"strict support corpus includes real original solid overlap");
+                Console.WriteLine("PASS native SolidCollision strict ULP / half / slope / platform / inactive / clipped queries="+cases+" positive="+positive);
+            }
+            finally{Main.tile=tiles;Main.maxTilesX=width;Main.maxTilesY=height;terrain.Reset();}
+        }
+        private static void CanHitBoundaries(IPredictionTerrain terrain)
+        {
+            var tiles=Main.tile;int width=Main.maxTilesX,height=Main.maxTilesY,cases=0,clearCount=0,blockedCount=0;
+            try
+            {
+                Main.maxTilesX=Main.maxTilesY=120;Main.tile=new Tile[120,120];
+                for(int x=0;x<120;x++)for(int y=0;y<120;y++)Main.tile[x,y]=new Tile();
+                foreach(bool wall in new[]{false,true})
+                {
+                    for(int y=0;y<120;y++){var tile=Main.tile[60,y];tile.active(wall);tile.type=TileID.Stone;}
+                    foreach(int size in new[]{0,1,20,80})
+                    foreach(float x in new[]{-300.25f,-.25f,0f,950.75f,1890.25f,1280.25f,1920.25f,2100.25f})
+                    foreach(float y in new[]{-300.25f,-.25f,0f,1260.25f,1280.25f,1920.25f,2100.25f})
+                    foreach(var end in new[]{new Vector2(800.25f,1000.75f),new Vector2(1100.25f,1000.75f),new Vector2(x,y),new Vector2(x,y+80)})
+                    {
+                        terrain.Reset();bool actual=Collision.CanHit(new Vector2(x,y),size,size,end,20,42),predicted;PredictionStop stop;
+                        Require(terrain.CanHit(new MotionRect(x,y,size,size),new MotionRect(end.X,end.Y,20,42),out predicted,out stop) && actual==predicted,
+                            "Original CanHit clipped centers: wall="+wall+" size="+size+" start="+x+","+y+" end="+end+" native="+actual+" model="+predicted+" stop="+stop);
+                        cases++;if(actual)clearCount++;else blockedCount++;
+                    }
+                }
+                // A real absent in-world cell stays unknown. Border clipping
+                // must not convert a lost snapshot dependency into clear air.
+                Main.tile[51,50]=null;terrain.Reset();bool clear;PredictionStop unavailable;
+                Require(!terrain.CanHit(new MotionRect(50*16,50*16,1,1),new MotionRect(54*16,50*16,1,1),out clear,out unavailable) && unavailable==PredictionStop.TerrainUnavailable,"CanHit keeps missing in-world terrain distinct from a defined clipped border.");
+                Require(clearCount>0 && blockedCount>0,"CanHit edge corpus includes original clear and blocked results.");
+                Console.WriteLine("PASS original CanHit clipped center cases="+cases+" clear="+clearCount+" blocked="+blockedCount+" missing-cell=unknown");
+            }
+            finally{Main.tile=tiles;Main.maxTilesX=width;Main.maxTilesY=height;terrain.Reset();}
+        }
+        private static void Borders(IPredictionTerrain terrain,MethodInfo read,MethodInfo nativeMove)
+        {
+            var tiles=Main.tile;int width=Main.maxTilesX,height=Main.maxTilesY,cases=0;
+            try
+            {
+                Main.maxTilesX=Main.maxTilesY=120;Main.tile=new Tile[120,120];
+                for(int x=0;x<120;x++)for(int y=0;y<120;y++)Main.tile[x,y]=new Tile();
+                foreach(int type in new[]{3,50})foreach(int liquid in new[]{-1,0,2})
+                {
+                    foreach(var tile in Main.tile)tile.ClearEverything();
+                    // Border collision includes actual solids/slopes/liquid;
+                    // empty beyond-world scans alone are not enough coverage.
+                    for(int x=0;x<120;x++)
+                    {
+                        var floor=Main.tile[x,79];floor.active(true);floor.type=TileID.Stone;floor.slope((byte)(x%5));
+                        if(liquid>=0)for(int y=70;y<80;y++){Main.tile[x,y].liquid=255;Main.tile[x,y].liquidType(liquid);}
+                    }
+                    foreach(float x in new[]{-30.25f,-.25f,0f,18.25f,1860.25f,1900.25f,1920.25f})
+                    foreach(float y in new[]{-50.25f,0f,1200.25f,1260.25f,1280.25f,1880.25f,1920.25f})
+                    foreach(var velocity in new[]{new Vector2(-4,.3f),new Vector2(4,10),new Vector2(0,-4)})
+                    {
+                        var npc=new NPC();npc.SetDefaults(type);npc.active=true;npc.whoAmI=199;npc.target=Main.myPlayer;npc.position=new Vector2(x,y);npc.velocity=velocity;npc.directionY=-1;
+                        var state=(NpcMotionState)read.Invoke(null,new object[]{npc,1L});state.Gravity=.3f;terrain.Reset();PredictionStop stop;
+                        Require(terrain.Move(ref state,default(PredictionEnvironment),out stop),"NPC native clipped terrain remains defined: type="+type+" origin="+npc.position+" stop="+stop);
+                        nativeMove.Invoke(npc,null);
+                        Require(Vector2.DistanceSquared(npc.position,new Vector2(state.X,state.Y))<.00001f && Vector2.DistanceSquared(npc.velocity,new Vector2(state.Vx,state.Vy))<.00001f && npc.collideX==state.CollideX && npc.collideY==state.CollideY && npc.wet==state.Wet,
+                            "NPC original clipped collision: type="+type+" liquid="+liquid+" start="+x+","+y+" v="+velocity+" native="+npc.position+"/"+npc.velocity+" model="+state.X+","+state.Y+"/"+state.Vx+","+state.Vy);cases++;
+                    }
+                }
+                Console.WriteLine("PASS native NPC clipped edge collision cases="+cases);
+            }
+            finally{Main.tile=tiles;Main.maxTilesX=width;Main.maxTilesY=height;terrain.Reset();}
         }
     }
 }

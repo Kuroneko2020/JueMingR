@@ -13,14 +13,15 @@ namespace JueMingR.TerrariaHost.Combat
     internal sealed class CombatSelection
     {
         private readonly NativeNpcObservation npcs;
+        private readonly NPC[] ordered=new NPC[NpcPredictionCache.Capacity];
+        private readonly float[] distances=new float[NpcPredictionCache.Capacity];
+        internal int CandidateCount {get;private set;}
+        internal NPC Candidate(int index){return index>=0 && index<CandidateCount?ordered[index]:null;}
         internal NpcIdentity Target {get;private set;}
         internal Vector2 RealMouse {get;private set;}
         internal bool HasMouse {get;private set;}
         internal bool HasTarget {get;private set;}
         internal bool ClearLine {get;private set;}
-        internal Func<NPC,bool> CandidateAllowed {get;set;}
-        internal Action BeginCandidates {get;set;}
-        internal Func<NPC,int> CandidatePriority {get;set;}
         internal CombatSelection(NativeNpcObservation npcs){this.npcs=npcs;}
 #if DEBUG
         internal int Candidates {get;private set;}
@@ -57,17 +58,17 @@ namespace JueMingR.TerrariaHost.Combat
         internal static NpcIdentity Identity(NPC n,long session){return new NpcIdentity(session,n,n.whoAmI,n.generation,n.type,n.netID);}
         internal static bool Valid(NpcIdentity key,long session)
         {return key.Session==session && Main.npc!=null && key.Slot>=0 && key.Slot<Main.npc.Length && Main.npc[key.Slot]!=null && Main.npc[key.Slot].active && Identity(Main.npc[key.Slot],session).Equals(key);}
-        internal void Clear(){HasTarget=HasMouse=false;Target=default(NpcIdentity);}
+        internal void Clear(){HasTarget=HasMouse=false;Target=default(NpcIdentity);CandidateCount=0;Array.Clear(ordered,0,ordered.Length);}
+        internal void Choose(NPC npc,long session,bool reachable)
+        {if(npc==null){RetireTarget();return;}HasTarget=true;Target=Identity(npc,session);ClearLine=reachable;}
         internal void RetireTarget(){HasTarget=false;Target=default(NpcIdentity);}
         internal void Update(ObservationOptions options,long session,bool select,CombatGeometry geometry)
         {
-            var player=Main.LocalPlayer;NpcIdentity prior=Target;RetireTarget();
+            var player=Main.LocalPlayer;RetireTarget();CandidateCount=0;
             if(player==null || !player.active || player.dead)return;
             Vector2 center=options.MouseCenter?RealMouse:player.Center;
             bool canSelect=select && (!options.MouseCenter || HasMouse);
             float radius=options.MouseCenter?options.Radius*16:PlayerRadius(player.Center);
-            float best=float.MaxValue;bool bestClear=false;int bestSlot=int.MaxValue,bestPriority=int.MinValue;
-            if(canSelect)BeginCandidates?.Invoke();
             for(int i=0;i<npcs.Count;i++)
             {
                 var n=npcs.Active(i);if(n==null)continue;
@@ -79,25 +80,15 @@ namespace JueMingR.TerrariaHost.Combat
                 var box=ReceiveBounds(n);
                 float dx=center.X-MathHelper.Clamp(center.X,box.Left,box.Right),dy=center.Y-MathHelper.Clamp(center.Y,box.Top,box.Bottom),distance=dx*dx+dy*dy;
                 if(distance>radius*radius)continue;
-                if(CandidateAllowed!=null && !CandidateAllowed(n))continue;
-                int priority=CandidatePriority==null?0:CandidatePriority(n);
-                bool clear=false;
-                if(options.ClearLine)
-                {
-#if DEBUG
-                    LineQueries++;
-#endif
-                    // This is a finite current visibility preference. It never
-                    // removes a blocked target or claims weapon reachability.
-                    clear=Collision.CanHitLine(player.position,player.width,player.height,n.position,n.width,n.height);
-                }
-                var identity=Identity(n,session);
-                bool preferred=!HasTarget || priority>bestPriority || priority==bestPriority &&
-                    (options.ClearLine && clear && !bestClear || (!options.ClearLine || clear==bestClear) &&
-                    (distance<best || distance==best && (identity.Equals(prior) || !Target.Equals(prior) && i<bestSlot)));
-                if(preferred){HasTarget=true;Target=identity;best=distance;bestClear=clear;bestSlot=i;bestPriority=priority;}
+                int at=CandidateCount;
+                if(at>=ordered.Length)continue;
+                while(at>0 && (distances[at-1]>distance || distances[at-1]==distance && ordered[at-1].whoAmI>n.whoAmI))
+                {ordered[at]=ordered[at-1];distances[at]=distances[at-1];at--;}
+                ordered[at]=n;distances[at]=distance;CandidateCount++;
             }
-            ClearLine=bestClear;
+            // The unproved fallback is always the nearest receiver. Clear-line
+            // mode may replace it only after a bounded actual attack proof.
+            if(CandidateCount>0)Choose(ordered[0],session,false);else ClearLine=false;
         }
         internal static float PlayerRadius(Vector2 center)
         {

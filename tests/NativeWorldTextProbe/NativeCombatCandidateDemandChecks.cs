@@ -21,9 +21,9 @@ namespace NativeWorldTextProbe
             var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,3278,0,0);p.position=new Vector2(700,646);p.releaseUseItem=true;Main.screenPosition=new Vector2(600,400);
             float range=ProjectileID.Sets.YoyosMaximumRange[p.HeldItem.shoot];var far=Scene(2,p.Center+new Vector2(range+90,0));var near=Scene(3,p.Center+new Vector2(range/2,0));
             NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,true,false,25,true,true));NativeToolExecutionChecks.Sample(context,input,far.Center,true);Call(combat,"Sample");Call(host,"SampleMouse");NativeQuickItemChecks.BeginWorldStep();p.Update(0);
-            var selected=(JueMingR.Platform.Combat.NpcIdentity)Get(Get(host,"Selection"),"Target");Console.WriteLine("CANDIDATE yoyo range="+range+" target="+selected.Slot+" near="+near.Center+" far="+far.Center);Require(selected.Slot==3,"one shared target rejects clearly out-of-range yoyo receiver instead of letting unreachable mouse-nearest target mask reachable target");
+            var selected=(JueMingR.Platform.Combat.NpcIdentity)Get(Get(host,"Selection"),"Target");Console.WriteLine("CANDIDATE yoyo range="+range+" target="+selected.Slot+" near="+near.Center+" far="+far.Center);Require(selected.Slot==2,"nearest mode retains the actual mouse-nearest target even outside yoyo attack reach");
             near.active=false;far.width=80;far.height=40;far.Center=p.Center+new Vector2(range+10,0);NativeToolExecutionChecks.Sample(context,input,far.Center,true);Call(combat,"Sample");Call(host,"SampleMouse");NativeQuickItemChecks.BeginWorldStep();p.Update(0);selected=(JueMingR.Platform.Combat.NpcIdentity)Get(Get(host,"Selection"),"Target");Require(selected.Slot==2,"large receiver edge remains in range even when its centre is outside");
-            Console.WriteLine("PASS shared yoyo reach candidate and legal large receiver edge; single identity still supplies all consumers");
+            Console.WriteLine("PASS strict nearest yoyo target and legal large receiver edge; attack reach does not change receiver qualification");
             NativeCombatObservationChecks.Save(host,new ObservationOptions());
             SameObstacle(context,combat,host,input);ShortDemand(context,combat,host,input);
         }
@@ -36,7 +36,7 @@ namespace NativeWorldTextProbe
                 for(int y=40;y<=42;y++){Main.tile[48,y].active(true);Main.tile[48,y].type=1;}
                 NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,true,false,25,true,true));NativeToolExecutionChecks.Sample(context,input,blocked.Center,true);Call(combat,"Sample");Call(host,"SampleMouse");Call(Get(host,"Selection"),"Update",((ObservationSettings)Get(host,"Settings")).Value,Get(host,"Session"),true,null);
                 var identity=(JueMingR.Platform.Combat.NpcIdentity)Get(Get(host,"Selection"),"Target");Console.WriteLine("WALL CANDIDATE weapon="+weapon+" selected="+identity.Slot+" solidColumn=48:y40..42 player="+p.Center+" A="+blocked.Center+" B="+open.Center);
-                Require(identity.Slot==(weapon==95?3:2),"same full-body solid column changes current straight-shot passage preference, while arc/sky/navigation unknown or non-straight routes preserve physical nearest intent");
+                Require(identity.Slot==2,"nearest mode remains strictly physical distance across straight/arc/sky/navigation attack mechanisms");
                 if(weapon==95)
                 {
                     // Preference never deletes the only blocked receiver; its
@@ -54,8 +54,8 @@ namespace NativeWorldTextProbe
                 for(int tick=1;tick<=120 && first<0;tick++)
                 {NativeQuickItemChecks.BeginWorldStep();NativeToolExecutionChecks.Sample(context,input,blocked.Center,true);Call(combat,"Sample");blocked.UpdateNPC(2);open.UpdateNPC(3);if(weapon==3278)NativeCombatAimChecks.Prepare(host,attack,target,0,true);int life=target.life;for(int slot=0;slot<Main.maxProjectiles;slot++)if(Main.projectile[slot].active){Main.ProjectileUpdateLoopIndex=slot;Main.projectile[slot].Update(slot);}Main.ProjectileUpdateLoopIndex=-1;if(target.life<life)first=tick;}
                 Console.WriteLine("WALL RESULT weapon="+weapon+" selected="+identity.Slot+" openingContact="+(plan!=null)+" firstDamage="+first+" lifeA="+blocked.life+" lifeB="+open.life);
-                Require(weapon!=95 || first>0 && blocked.life==100000,"current blocked straight target cannot mask the useful open native shot");
-                Require(weapon==39?plan==null && first<0:first>0,"same obstacle preserves finite unknown arc and actual useful sky/navigation outcomes without claiming every mechanism reachable");
+                Require(weapon!=95 || plan==null && first<0,"nearest blocked straight target remains selected without fabricating a contact or redirecting to the farther receiver");
+                Require(weapon==95 || (weapon==39?plan==null && first<0:first>0),"same obstacle preserves finite unknown arc and actual useful sky/navigation outcomes without claiming every mechanism reachable");
             }
             Console.WriteLine("PASS same-obstacle shared identity matrix; current passage preference is conditional, finite no-Contact is not a physical-impossibility claim.");
         }

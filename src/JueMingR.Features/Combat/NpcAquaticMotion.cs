@@ -11,24 +11,8 @@ namespace JueMingR.Features.Combat
         internal static bool Step(ref NpcMotionState n,PredictionEnvironment e,IPredictionTerrain t,int direction,int vertical,out PredictionStop stop,bool confused=false)
         {
             stop=PredictionStop.None;int type=n.EffectiveType;bool large=type==157,shark=type==65 || type==692,fast=shark || type==102;
-            if(type==615)
-            {
-                if(n.A2!=0){stop=PredictionStop.UnsupportedMechanism;return false;}
-                // The native threshold is drawn in [300,1200) each update.
-                // Below 300 no draw can choose an action; stop before the
-                // first possible independent leap/bob, never invent its RNG.
-                if(++n.A3>=300){stop=PredictionStop.RandomDecision;return false;}
-            }
-            if(type==688)
-            {
-                if(!e.Multiplayer)
-                {
-                    if(n.JustHit && n.A2==0){stop=PredictionStop.PhaseBoundary;return false;}
-                    if(--n.L0<=0){n.L0=120;if(n.A2==1)n.A2=0;if(n.JustHit){stop=PredictionStop.PhaseBoundary;return false;}}
-                }
-                if(n.A2==1){stop=PredictionStop.UnsupportedMechanism;return false;}
-            }
-            if(n.Direction==0){n.Direction=direction;n.DirectionY=vertical;}
+            if(n.Direction==0)NpcTargeting.Face(ref n,ref e,true,confused);
+            bool handled;if(!NpcAquaticActionMotion.Step(ref n,e,t,out handled,out stop))return false;if(handled)return true;
             // AI16 owns dry gravity even though these NPCs set NoGravity.
             // The original dry flop draws from discrete [-5,-2.1]/[-2,1.9]
             // ranges. Use a qualified interior representative, never live RNG.

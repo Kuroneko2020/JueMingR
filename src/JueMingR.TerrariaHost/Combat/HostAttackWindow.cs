@@ -1,3 +1,4 @@
+using System;
 using Terraria;
 using Terraria.ID;
 
@@ -6,11 +7,23 @@ namespace JueMingR.TerrariaHost.Combat
     internal static class HostAttackWindow
     {
         internal static bool Ordinary(Item item)
-        {return item!=null && !HostSwingAttack.Handles(item) && !HostHeldAttack.Weapon(item.type) && !HostYoyoNavigation.Weapon(item) && !HostWhipAttack.Weapon(item) && !item.channel && !ItemID.Sets.ShootsOnUseRelease[item.type];}
+        {return item!=null && (!HostSwingAttack.Handles(item) || HostSwingAttack.Mixed(item)) && !HostHeldAttack.Weapon(item.type) && !HostYoyoNavigation.Weapon(item) && !HostWhipAttack.Weapon(item) && !item.channel && !ItemID.Sets.ShootsOnUseRelease[item.type];}
         internal static bool NextAction(HostCombat combat,Player player,Item item)
         {
             if(!Ordinary(item))return true;
             return Opening(combat,player,item);
+        }
+        // This is a hypothetical use time, never permission to press Use or
+        // alter native clocks. Ordinary cooldown survives between real shots;
+        // controllers resolve their current charge/release stage separately.
+        internal static int PreviewDelay(Player player,Item item)
+        {
+            if(player==null || item==null || item.IsAir || player.noItems || player.CCed || player.delayUseItem || player.selectedItemState.HasBufferedChange)return -1;
+            if(HostHeldAttack.Weapon(item.type) || HostYoyoNavigation.Weapon(item) || item.channel)return 0;
+            if(HostSwingAttack.Handles(item) && !HostSwingAttack.Mixed(item) && player.itemAnimation>0)return 0;
+            if(!HostAttackResources.Initial(player,item))return -1;
+            if(player.itemAnimation>1 && !item.shootsEveryUse)return Math.Max(0,player.itemTime-1);
+            return Math.Max(Math.Max(0,player.itemTime-1),Math.Max(player.reuseDelay,Math.Max(0,player.itemAnimation-1)));
         }
         // Controllers still need continuous preparation between item uses.
         // This narrower read asks only whether the next native ItemCheck can

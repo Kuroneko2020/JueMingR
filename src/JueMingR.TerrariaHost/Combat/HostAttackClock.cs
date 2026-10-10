@@ -9,9 +9,10 @@ namespace JueMingR.TerrariaHost.Combat
     internal readonly struct HostAttackClock
     {
         internal readonly HostAttackPhase Phase;
-        internal readonly int Age;
-        internal HostAttackClock(NpcTrajectory timeline,HostAttackPhase phase)
-        {Phase=phase;Age=(int)((long)Main.GameUpdateCount-timeline.SampleTick)-(phase==HostAttackPhase.BeforeNpc?1:0);}
+        internal readonly int Age,LaunchDelay;
+        internal HostAttackClock(NpcTrajectory timeline,HostAttackPhase phase):this(timeline,phase,0){}
+        internal HostAttackClock(NpcTrajectory timeline,HostAttackPhase phase,int launchDelay)
+        {Phase=phase;LaunchDelay=launchDelay;Age=(int)((long)Main.GameUpdateCount-timeline.SampleTick)-(phase==HostAttackPhase.BeforeNpc?1:0)+launchDelay;}
         internal bool BeforeNpc {get{return Phase==HostAttackPhase.BeforeNpc;}}
         internal bool NextWorld {get{return Phase==HostAttackPhase.CompletedWorld;}}
         internal int FirstTick {get{return Age+(Phase==HostAttackPhase.Projectiles?0:1);}}

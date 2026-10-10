@@ -8,9 +8,15 @@ namespace JueMingR.TerrariaHost.Combat
     // damage/terrain qualification. Outer updates, not extraUpdates, count.
     internal readonly struct HostAttackReceive
     {
-        private readonly int earliest;
-        private HostAttackReceive(int earliest){this.earliest=earliest;}
+        private readonly int earliest,ownerEarliest;
+        private HostAttackReceive(int earliest,int ownerEarliest=0){this.earliest=earliest;this.ownerEarliest=ownerEarliest;}
         internal bool Allows(int outerUpdates){return outerUpdates>=earliest;}
+        // Static immunity is an absolute native expiry. Its effective wait
+        // changes with world time even when the stored expiry does not.
+        internal bool Same(HostAttackReceive other){return earliest==other.earliest && ownerEarliest==other.ownerEarliest;}
+        // A gem's actual Kill clears old local immunity before its burst.
+        // Owner permission survives that local-only native operation.
+        internal HostAttackReceive WithoutLocal(){return new HostAttackReceive(ownerEarliest,ownerEarliest);}
         internal static HostAttackReceive Capture(Player player,Projectile shot,int npcSlot,bool beforeNpc,bool nextWorld=false)
         {
             var npc=Main.npc[npcSlot];int owner=0;
@@ -27,9 +33,9 @@ namespace JueMingR.TerrariaHost.Combat
                 // applies the separate owner gate. Negative local is blocked.
                 specific=Math.Min(local,shared);
             }
-            if(shot.usesOwnerMeleeHitCD && shot.OwnedBySomeone && !player.CanHitNPCWithMeleeHit(npcSlot))return new HostAttackReceive(int.MaxValue);
-            if(npc.trapImmune && shot.trap || npc.immortal && shot.npcProj || !player.CanNPCBeHitByPlayerOrPlayerProjectile(npc))return new HostAttackReceive(int.MaxValue);
-            return new HostAttackReceive(Math.Max(owner,specific));
+            if(shot.usesOwnerMeleeHitCD && shot.OwnedBySomeone && !player.CanHitNPCWithMeleeHit(npcSlot))return new HostAttackReceive(int.MaxValue,int.MaxValue);
+            if(npc.trapImmune && shot.trap || npc.immortal && shot.npcProj || !player.CanNPCBeHitByPlayerOrPlayerProjectile(npc))return new HostAttackReceive(int.MaxValue,int.MaxValue);
+            return new HostAttackReceive(Math.Max(owner,specific),owner);
         }
     }
 }

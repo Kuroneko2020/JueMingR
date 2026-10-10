@@ -53,20 +53,22 @@ namespace NativeWorldTextProbe
                 var contact=(AttackContact)GetOptional(attack,"ExpectedImpact");Require(contact!=null,"prepared real weapon contact: "+weaponType+"/"+targetSpeed);
                 var impact=Get(Get(host,"World"),"Impact");Call(impact,"Capture");var zoom=Main.GameViewMatrix.ZoomMatrix;Call(impact,"Project",zoom,Matrix.Invert(zoom));
                 Require((bool)Get(impact,"Visible"),"only legal matching prepared contact displays red");
-                var projected=(Vector2)Get(impact,"Position");var expected=Vector2.Transform(new Vector2(contact.ImpactX,contact.ImpactY)-Main.screenPosition,zoom);
-                Require(Vector2.DistanceSquared(projected,expected)<.001f,"red projects ExpectedImpact rather than elevated AimInput using final camera");
+                var projected=(Vector2)Get(impact,"Position");var preview=(AttackContact)Get(attack,"ExpectedPreview");var previewBox=preview.Timeline[preview.ReceiveTick].Bounds;
+                var expected=Vector2.Transform(new Vector2(previewBox.CenterX,previewBox.CenterY)-Main.screenPosition,zoom);
+                Require(Vector2.DistanceSquared(projected,expected)<.001f,"red projects the receive-time NPC path centre rather than the collision edge or elevated AimInput");
                 int oldX=Main.mouseX,oldY=Main.mouseY,stack=player.inventory[54].stack;var rng=Main.rand;
                 // Preparation must be genuinely read-only even for native
                 // ammo-cycling and conservation policies, not dontConsume.
                 var rngFields=typeof(Terraria.Utilities.UnifiedRandom).GetFields(Flags).Where(f=>!f.IsStatic).ToArray();
                 var before=rngFields.Select(f=>Clone(f.GetValue(rng))).ToArray();int cycling=player.ammoCyclingOffset;
                 Call(attack,"Prepare");
+                preview=(AttackContact)Get(Get(attack,"preview"),"Contact");
                 int immuneAtBirth=body.immune[0];
                 Require(stack==player.inventory[54].stack && cycling==player.ammoCyclingOffset && ReferenceEquals(rng,Main.rand) && rngFields.Select((f,i)=>Equal(before[i],f.GetValue(rng))).All(b=>b),"prepare does not consume inventory/RNG/cycling");
                 typeof(Player).GetMethod("ItemCheck_Shoot",Flags).Invoke(player,new object[]{0,player.HeldItem,50,false});
                 var born=Main.projectile.Where(p=>p.active && p.owner==0).ToArray();Require(born.Length==1,"aim creates exactly the vanilla single shot");
                 Require(Main.mouseX==oldX && Main.mouseY==oldY,"real Shoot postfix/finalizer restores physical cursor");
-                Call(impact,"Project",zoom,Matrix.Invert(zoom));Require(!(bool)Get(impact,"Visible"),"consumed ordinary capability cannot leave stale red");
+                Call(impact,"Project",zoom,Matrix.Invert(zoom));Require(ReferenceEquals(preview,GetOptional(Get(attack,"preview"),"Contact")) && GetOptional(attack,"ExpectedImpact")==null,"native consumption retires execution without clearing its independent observation; the new before-NPC timeline requires normal completed-world publication before display");
                 var shot=born[0];Require(shot.type==(weaponType==ItemID.WoodenBow?1:14),"native selected projectile type is preserved");
                 var model=weaponType==ItemID.WoodenBow?new AttackMotion(player.HeldItem.shootSpeed+player.inventory[54].shootSpeed,.1f,15,shot.extraUpdates+1,shot.width,shot.height,shot.timeLeft):new AttackMotion(player.HeldItem.shootSpeed+player.inventory[54].shootSpeed,0,0,shot.extraUpdates+1,shot.width,shot.height,shot.timeLeft);
                 var native=shot.Center;float x=native.X,y=native.Y,vx=shot.velocity.X,vy=shot.velocity.Y;
@@ -226,7 +228,15 @@ namespace NativeWorldTextProbe
             finally{Main.tileSolid=solid;}
             Require(Collision.up && Collision.down && (bool)Get(attack,"Failed") && ReferenceEquals(cache.Read(0),healthy),"preparation exception preserves native flags and healthy shared path, latching only aim");
             Call(attack,"Prepare");Require((bool)Get(attack,"Failed") && GetOptional(attack,"ExpectedImpact")==null,"persistent failure does not retry work each update");
+            p.inventory[0].SetDefaults(ItemID.Musket);Prepare(host,attack,n,0);Require(!(bool)Get(attack,"Failed") && GetOptional(attack,"ExpectedImpact")!=null,"a healthy weapon type in the same slot recovers without explicit reset");
+            p.inventory[0].SetDefaults(ItemID.FlintlockPistol);Prepare(host,attack,n,0);Require((bool)Get(attack,"Failed"),"returning to the retained bad weapon/target context does not retry it");
+            p.inventory[0]=new Item();p.inventory[0].SetDefaults(ItemID.FlintlockPistol);Prepare(host,attack,n,0);Require(!(bool)Get(attack,"Failed") && GetOptional(attack,"ExpectedImpact")!=null,"a new weapon instance does not inherit the previous instance fault");
+            Call(attack,"FailLocal",new InvalidOperationException("isolated target fault"));Require((bool)Get(attack,"Failed"),"injected execution error records the current full identity");
+            var oldPosition=n.position;n=(NPC)typeof(NPC).GetMethod("NewNPCInstanceInSlot",Flags).Invoke(null,new object[]{2,(byte)0});n.SetDefaults(3);n.whoAmI=2;n.active=true;n.position=oldPosition;
+            Prepare(host,attack,n,0);Require(!(bool)Get(attack,"Failed") && GetOptional(attack,"ExpectedImpact")!=null,"native slot reuse with a new NPC generation restores healthy execution");
             Call(attack,"Reset");Prepare(host,attack,n,0);Require(GetOptional(attack,"ExpectedImpact")!=null,"explicit aim recovery restores valid preparation");
+            bool fatal=false;try{Call(attack,"FailLocal",new InvalidOperationException("reflection wrapper",new OutOfMemoryException("fatal oracle")));}catch(TargetInvocationException error){fatal=error.InnerException is OutOfMemoryException;}
+            Require(fatal && !(bool)Get(attack,"Failed"),"wrapped fatal exceptions propagate without becoming a recoverable aim latch");
             var tile=Main.tile[60,40];Main.tile[60,40]=null;
             try{Call(attack,"Prepare");Require(Main.tile[60,40]==null,"finite geometry acquisition never fills a missing live tile");}
             finally{Main.tile[60,40]=tile;}

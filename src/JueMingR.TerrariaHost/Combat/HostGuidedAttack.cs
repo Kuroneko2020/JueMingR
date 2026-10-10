@@ -8,9 +8,14 @@ namespace JueMingR.TerrariaHost.Combat
 {
     internal static class HostGuidedAttack
     {
-        internal static bool Handles(int type){return type==16 || type==34 || type==79;}
+        internal static bool Handles(int type){return type==16 || type==34 || type==79 || type==491;}
+        internal static bool Consumes(Player player,Projectile shot)
+        {return player.channel && player.HeldItem.shoot==shot.type && (shot.type==491?shot.ai[0]<=0:shot.ai[0]>=0);}
         internal static AttackContact Solve(Player player,Projectile shot,NpcTrajectory timeline,HostAttackClock clock,PredictionTerrain terrain)
+        {return SolvePrepared(player,shot,timeline,clock,terrain,HostAttackPlayerFrame.Capture(player,timeline));}
+        internal static AttackContact SolvePrepared(Player player,Projectile shot,NpcTrajectory timeline,HostAttackClock clock,PredictionTerrain terrain,HostAttackPlayerFrame playerFrame)
         {
+            if(shot.type==491)return HostFlyingKnifeAttack.SolvePrepared(player,shot,timeline,clock,terrain,playerFrame);
             int age=clock.Age,updates=shot.extraUpdates+1;var receive=HostAttackReceive.Capture(player,shot,timeline.Identity.Slot,clock.BeforeNpc,clock.NextWorld);
             int estimate=Math.Max(1,(int)(Vector2.Distance(shot.Center,new Vector2(timeline[Math.Min(age+1,timeline.Count-1)].Bounds.CenterX,timeline[Math.Min(age+1,timeline.Count-1)].Bounds.CenterY))/32/updates));
             // Four bounded representative future control points, each replayed
@@ -30,7 +35,7 @@ namespace JueMingR.TerrariaHost.Combat
                     center+=velocity;
                     if(!terrain.ProjectilePassage(old.X,old.Y,center.X,center.Y,shot.width,shot.height))break;
                     int tick=clock.FirstTick+(k-1)/updates;
-                    var contact=receive.Allows((k-1)/updates+1)?AttackIntercept.BodyContact(timeline,tick,(k-1)%updates,aim.X,aim.Y,center.X,center.Y,shot.width,shot.height,AttackConfidence.Conditional):null;
+                    var contact=receive.Allows(clock.LaunchDelay+(k-1)/updates+1)?AttackIntercept.BodyContact(timeline,tick,(k-1)%updates,aim.X,aim.Y,center.X,center.Y,shot.width,shot.height,AttackConfidence.Conditional):null;
                     if(contact!=null)return contact;
                 }
             }

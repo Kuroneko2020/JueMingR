@@ -11,7 +11,7 @@ namespace JueMingR.TerrariaHost.Combat
     {
         internal static bool Handles(int type){return type==3029 || type==4381 || type==2750 || type==65 || type==3065 || type==3570;}
         internal static bool RawCursor(int type){return type==3029 || type==4381 || type==3065 || type==3570;}
-        internal static AttackContact Solve(Player player,Item item,AttackAmmoSnapshot ammo,NpcTrajectory timeline,Vector2 mounted,int age,PredictionTerrain terrain,bool beforeNpc,HostAttackObstacles obstacles)
+        internal static AttackContact Solve(Player player,Item item,AttackAmmoSnapshot ammo,NpcTrajectory timeline,Vector2 mounted,int age,PredictionTerrain terrain,bool beforeNpc,HostAttackObstacles obstacles,int delay=0)
         {
             Projectile sample;if(!ContentSamples.ProjectilesByType.TryGetValue(ammo.Projectile,out sample))return null;
             var receive=HostAttackReceive.Capture(player,sample,timeline.Identity.Slot,beforeNpc,!beforeNpc);
@@ -19,7 +19,8 @@ namespace JueMingR.TerrariaHost.Combat
             if(HostAttackModels.TryRead(ammo,out ordinary)){gravity=ordinary.Gravity;start=ordinary.GravityStart;}
             else if(item.type==4381){gravity=.1f;start=15;}
             float speed=ammo.Speed*(item.type==2750?.75f:item.type==3570?.5f:1);
-            var motion=new AttackMotion(speed,gravity,start,sample.extraUpdates+1,sample.width,sample.height,sample.timeLeft,AttackConfidence.Representative,componentBirthLimit:sample.aiStyle==1);
+            var motion=new AttackMotion(speed,gravity,start,sample.extraUpdates+1,sample.width,sample.height,sample.timeLeft,AttackConfidence.Representative,componentBirthLimit:sample.aiStyle==1,maxFallSpeed:sample.aiStyle==1?16:0);
+            if(player.magicQuiver && sample.arrow && sample.extraUpdates<1)motion=motion.WithUpdates(2,1);
             // Random birth X, spread, count and type/scale cannot be known
             // without consuming game RNG. One middle member is a representative
             // trajectory; no native random stream or ContentSamples is changed.
@@ -33,7 +34,7 @@ namespace JueMingR.TerrariaHost.Combat
                 for(int adjust=0;adjust<3;adjust++)
                 {
                     float x=birth.X,y=birth.Y,vx=velocity.X,vy=velocity.Y;motion.Launch(ref vx,ref vy);
-                    int steps=(tick-age)*motion.Updates;
+                    int steps=motion.SubupdatesForOuters(tick-age);
                     for(int k=1;k<=steps;k++)motion.Advance(ref x,ref y,ref vx,ref vy,k);
                     aim.X+=b.CenterX-x;Launch(player,item.type,mounted,aim,speed,out birth,out velocity);
                 }
@@ -55,7 +56,7 @@ namespace JueMingR.TerrariaHost.Combat
                     else if(item.type==3570)collides|=y-h/2>gate;
                     return HostProjectileEnvironment.Dry(sample,terrain,x,y,nx-x) && (!collides || terrain.ProjectilePassage(x,y,nx,ny,(int)w,(int)h));
                 };
-                var contact=AttackIntercept.Replay(aim.X,aim.Y,birth.X,birth.Y,velocity.X,velocity.Y,motion,timeline,age,passage,receive.Allows,obstacles.Pass);
+                var contact=AttackIntercept.Replay(aim.X,aim.Y,birth.X,birth.Y,velocity.X,velocity.Y,motion,timeline,age,passage,t=>receive.Allows(t+delay),(k,t,x,y)=>obstacles.PassOuter(k,t,delay+motion.OuterAtSubupdate(k),x,y),(k,t,x,y)=>motion.SubupdateInOuter(k)!=0 || obstacles.BeforeNpc(t,delay+motion.OuterAtSubupdate(k),x,y));
                 if(contact!=null)return contact;
             }
             return null;

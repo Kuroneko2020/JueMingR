@@ -106,7 +106,7 @@ namespace NativeWorldTextProbe
             NativeToolExecutionChecks.Sample(context,Get(context,"Input"),new Vector2(650,450),true);Call(combat,"Sample");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,false,true));Action prepare=()=>
             {
                 if(!outside){NativeCombatAimChecks.Prepare(host,attack,n,0,true);return;}
-                var selection=Get(host,"Selection");Call(selection,"Update",((ObservationSettings)Get(host,"Settings")).Value,(long)Get(host,"Session"),true,null);Require(!(bool)Get(selection,"HasTarget"),"current weapon excludes this physically out-of-range receiver");Call(Get(Get(host,"Prediction"),"Cache"),"Clear");Call(attack,"PrepareProjectiles");
+                var selection=Get(host,"Selection");Call(selection,"Update",((ObservationSettings)Get(host,"Settings")).Value,(long)Get(host,"Session"),true,null);Require((bool)Get(selection,"HasTarget"),"nearest selection retains the receiver outside this weapon's physical range");NativeCombatAimChecks.Prepare(host,attack,n,0,true);
             };prepare();
             typeof(Player).GetMethod("ItemCheck_Shoot",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),false});var shot=Main.projectile.Single(q=>q.active && q.type==541);prepare();shot.AI();
             Vector2 manual=new Vector2(650,450)-p.Center;float radius=Terraria.ID.ProjectileID.Sets.YoyosMaximumRange[shot.type]/((1+p.meleeSpeed*3)/4);if(p.yoyoString)radius=(Terraria.ID.ProjectileID.Sets.YoyosMaximumRange[shot.type]*1.25f+30)/((1+p.meleeSpeed*3)/4);if(manual.Length()>radius-1)manual=manual.SafeNormalize(Vector2.Zero)*(radius-1);manual+=p.Center;

@@ -25,21 +25,26 @@ namespace JueMingR.TerrariaHost.Combat
         internal void PollResources(){if(Failed && resourceFailure && (!ReferenceEquals(failedPixel,TextureAssets.MagicPixel) || !ReferenceEquals(failedBatch,Main.spriteBatch)))Reset();}
         internal void Capture()
         {
-            Clear();if(Failed || !host.Path || !host.Options.Aim)return;
+            Clear();if(Failed || !host.Path)return;
             try
             {
-                var prepared=host.Attack?.ExpectedImpact;
-                if(prepared!=null && ReferenceEquals(prepared.Timeline,host.Prediction.Cache.Read(0))){host.Attack.BindPresentation(prepared);contact=prepared;}
+                var prepared=host.Attack?.ExpectedPreview;
+                if(prepared!=null && prepared.ReceiveTick>=0 && prepared.ReceiveTick<prepared.Timeline.Count && ReferenceEquals(prepared.Timeline,host.Prediction.Cache.Read(0))){host.Attack.BindPreview(prepared);contact=prepared;}
             }
             catch(Exception error){Fail(error,false);}
         }
         internal void Project(Matrix zoom,Matrix inverse)
         {
-            Visible=false;if(Failed || contact==null || !host.Path || !host.Options.Aim)return;
+            Visible=false;if(Failed || contact==null || !host.Path)return;
             try
             {
-                if(host.Attack==null || !host.Attack.PresentationCurrent(contact) || !ReferenceEquals(contact.Timeline,host.Prediction.Cache.Read(0)))return;
-                center=GuidanceWorldLayer.Project(new Vector2(contact.ImpactX,contact.ImpactY),zoom);this.inverse=inverse;
+                if(host.Attack==null || !host.Attack.PreviewCurrent(contact) || !ReferenceEquals(contact.Timeline,host.Prediction.Cache.Read(0)))return;
+                // NPCs do not move between a projectile's subupdates. The
+                // contact's explicit receive sample is therefore the same
+                // physical centre drawn by the path, including melee's earlier
+                // NPC phase; the attack's hitbox edge is a different fact.
+                var point=contact.Timeline[contact.ReceiveTick].Bounds;
+                center=GuidanceWorldLayer.Project(new Vector2(point.CenterX,point.CenterY),zoom);this.inverse=inverse;
                 Visible=!float.IsNaN(center.X) && !float.IsNaN(center.Y) && !float.IsInfinity(center.X) && !float.IsInfinity(center.Y) && center.X>=-4 && center.Y>=-4 && center.X<=Main.screenWidth+4 && center.Y<=Main.screenHeight+4;
             }
             catch(Exception error){Fail(error,false);}

@@ -1,0 +1,132 @@
+using System;
+using System.Linq;
+using System.Reflection;
+using HarmonyLib;
+using JueMingR.Features.Combat;
+using JueMingR.Platform.Combat;
+using Microsoft.Xna.Framework;
+using Terraria;
+using Terraria.ID;
+using static NativeWorldTextProbe.NativeInformationChecks;
+
+namespace NativeWorldTextProbe
+{
+    // These isolated stationary receivers test selection and the actual outer
+    // preparation/display boundary. NPC family motion has separate original
+    // oracles; no synthetic contact or private Solve is inserted here.
+    internal static class NativeCombatSelectionPreviewChecks
+    {
+        private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance|BindingFlags.Static;
+        private static bool injectPreviewFault;private static int previewFaults;
+        internal static void Run(object context)
+        {
+            var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var input=Get(context,"Input");var attack=Get(combat,"Attack");
+            try
+            {
+                NativeCombatCadenceChecks.Save(combat,new CombatOptions());
+                foreach(bool mouse in new[]{false,true})foreach(bool clear in new[]{false,true})
+                {
+                    NativeCombatObservationChecks.Save(host,new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,95,0,0);p.position=new Vector2(700,646);p.releaseUseItem=true;p.inventory[54].SetDefaults(97);p.inventory[54].stack=999;Main.screenPosition=new Vector2(550,400);
+                    var a=Scene(2,new Vector2(800,667));var b=Scene(3,new Vector2(600,667));
+                    for(int y=0;y<Main.maxTilesY;y++){Main.tile[47,y].active(true);Main.tile[47,y].type=1;}
+                    NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,clear,mouse,false,50,true,true));
+                    for(int i=0;i<3;i++)Step(context,a.Center,false);
+                    Require(Selected(host)==(clear?3:2),"near blocked A/far actual reachable B respects centre and mode before attacking: mouse="+mouse+" clear="+clear);
+                    int selected=Selected(host);Step(context,a.Center,true);Require(Selected(host)==selected,"attack input does not change the selection contract");
+                    Require(((NpcPredictionCache)Get(Get(host,"Prediction"),"Cache")).Read(0).Identity.Slot==selected,"visible path uses the final shared selection");
+                    Console.WriteLine("PASS finite actual candidate selection mouse="+mouse+" clear="+clear+" selected="+selected);
+                }
+                foreach(int weapon in new[]{3278,5669})
+                {
+                    NativeCombatObservationChecks.Save(host,new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,weapon,0,0);p.position=new Vector2(700,646);Main.screenPosition=new Vector2(550,400);
+                    var a=Scene(2,new Vector2(1250,667));Scene(3,new Vector2(780,667));
+                    NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,true,false,50,true,true));Step(context,a.Center,false);
+                    Require(Selected(host)==2,"nearest mouse target remains selected outside current yoyo/melee reach: "+weapon);
+                }
+                Idle(context,combat,host,input,attack);
+                StaticImmunity(context,combat,host,input,attack);
+                PreviewFaultIsolation(context,combat,host,input,attack);
+            }
+            finally{NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());}
+        }
+        private static void Idle(object context,object combat,object host,object input,object attack)
+        {
+            NativeCombatObservationChecks.Save(host,new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,95,0,0);p.position=new Vector2(700,646);p.releaseUseItem=true;p.inventory[54].SetDefaults(97);p.inventory[54].stack=999;Main.screenPosition=new Vector2(600,400);var n=Scene(2,new Vector2(910,667));
+            NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,true,false));
+            int stack=p.inventory[54].stack,cycling=p.ammoCyclingOffset;
+            for(int i=0;i<4;i++)
+            {
+                Step(context,new Vector2(650,550),false,true);var result=(AttackContact)GetOptional(attack,"ExpectedPreview");
+                Require(result!=null && result.ReceiveTick>=0 && result.ReceiveTick<result.Timeline.Count,"idle held weapon creates a real read-only preview with Aim OFF");
+                var impact=Get(Get(host,"World"),"Impact");Call(impact,"Capture");var zoom=Main.GameViewMatrix.ZoomMatrix;Call(impact,"Project",zoom,Matrix.Invert(zoom));
+                var point=result.Timeline[result.ReceiveTick].Bounds;var expected=Vector2.Transform(new Vector2(point.CenterX,point.CenterY)-Main.screenPosition,zoom);
+                Require((bool)Get(impact,"Visible") && Vector2.DistanceSquared((Vector2)Get(impact,"Position"),expected)<.001f,"red marks the receive-time NPC path centre");
+                Require(GetOptional(attack,"ExpectedImpact")==null && !p.controlUseItem && !p.channel && !Main.projectile.Any(q=>q.active),"preview has no native input capability or projectile birth");
+            }
+            Require(stack==p.inventory[54].stack && cycling==p.ammoCyclingOffset,"idle preview preserves resources and ammunition cycling across natural updates");
+            NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,true,true));Step(context,new Vector2(650,550),false);var preview=(AttackContact)Get(attack,"ExpectedPreview");Call(Get(Get(host,"World"),"Impact"),"Capture");
+            Step(context,new Vector2(650,550),true);Require(GetOptional(attack,"ExpectedPreview")!=null,"ordinary cooldown retains a legal delayed preview after a natural shot");
+            Require(((AttackContact)Get(attack,"ExpectedPreview")).Delay>0,"ordinary cooldown is represented as an actual future launch delay");
+            Console.WriteLine("PASS natural idle path-only preview, centre/time mapping, pure observation and post-shot delayed preview");
+        }
+        private static void StaticImmunity(object context,object combat,object host,object input,object attack)
+        {
+            NativeCombatObservationChecks.Save(host,new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,1446,0,0);p.position=new Vector2(700,646);p.ResetEffects();p.statMana=p.statManaMax=p.statManaMax2=200;Main.screenPosition=new Vector2(600,400);var n=NativeCombatControlPreviewChecks.Dummy(2,52,40);
+            var shot=ContentSamples.ProjectilesByType[297];uint old=Projectile.perIDStaticNPCImmunity[shot.immunityIdentity,2];
+            try
+            {
+                Projectile.perIDStaticNPCImmunity[shot.immunityIdentity,2]=0;
+                NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,true,25,true,false));
+                for(int i=0;i<3;i++)Step(context,n.Center,false,true);
+                Require(GetOptional(attack,"ExpectedPreview")!=null,"idle Spectre preview reaches the native placed dummy before a foreign static-immunity wait");
+                // Arrange an already-observed foreign hit wait, then let the
+                // actual outer clock expire it without rewriting its timestamp.
+                uint expiry=Main.GameUpdateCount+130;Projectile.perIDStaticNPCImmunity[shot.immunityIdentity,2]=expiry;
+                Step(context,n.Center,false,true);Require(GetOptional(attack,"ExpectedPreview")==null,"a changed selected static immunity invalidates the old contact");
+                int recovered=-1;
+                for(int i=0;i<132;i++)
+                {Step(context,n.Center,false,true);if(recovered<0 && GetOptional(attack,"ExpectedPreview")!=null)recovered=i;Require(Projectile.perIDStaticNPCImmunity[shot.immunityIdentity,2]==expiry,"natural time advances independently of the stored static expiry");}
+                Require(recovered>=0 && GetOptional(attack,"ExpectedPreview")!=null,"the same static expiry becomes a usable receive window again without stale null reuse");
+                Console.WriteLine("PASS natural preview static-immunity dependency/expiry recovery: item=1446 projectile=297 recovered="+recovered);
+            }
+            finally{Projectile.perIDStaticNPCImmunity[shot.immunityIdentity,2]=old;}
+        }
+        private static void PreviewFaultIsolation(object context,object combat,object host,object input,object attack)
+        {
+            var audit=new Harmony("JueMingR.Tests.SelectionPreviewFault");
+            audit.Patch(attack.GetType().GetMethod("PreparePlan",Flags),prefix:new HarmonyMethod(typeof(NativeCombatSelectionPreviewChecks).GetMethod("PreviewFault",Flags)));
+            try
+            {
+                NativeCombatObservationChecks.Save(host,new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,95,0,0);p.position=new Vector2(700,646);p.inventory[54].SetDefaults(97);p.inventory[54].stack=999;Main.screenPosition=new Vector2(600,400);var n=Scene(2,new Vector2(910,667));
+                NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,true,false));injectPreviewFault=true;previewFaults=0;
+                for(int i=0;i<4;i++)Step(context,n.Center,false,true);
+                Require(previewFaults==1 && !(bool)Get(attack,"Failed") && GetOptional(attack,"ExpectedPreview")==null && ((NpcPredictionCache)Get(Get(host,"Prediction"),"Cache")).Read(0)!=null,"same preview fault is tried once, leaving execution and the shared path healthy");
+                injectPreviewFault=false;p.inventory[0]=new Item();p.inventory[0].SetDefaults(95);Step(context,n.Center,false,true);
+                Require(GetOptional(attack,"ExpectedPreview")!=null && !(bool)Get(attack,"Failed"),"new healthy held instance recovers preview automatically");
+                injectPreviewFault=true;Step(context,n.Center,false);Require(previewFaults==2,"new concrete context gets one bounded preview attempt");injectPreviewFault=false;
+                var oldCenter=n.Center;typeof(NPC).GetMethod("NewNPCInstanceInSlot",Flags).Invoke(null,new object[]{2,(byte)0});n=Scene(2,oldCenter);
+                Step(context,n.Center,false,true);Require(GetOptional(attack,"ExpectedPreview")!=null,"new full target identity recovers preview without resetting the path");
+                NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,true,true));Step(context,n.Center,true);Require(Main.projectile.Any(q=>q.active && q.owner==0),"a recovered preview fault does not revoke the later real shot capability");
+                Console.WriteLine("PASS natural preview fault isolation: bounded retry, healthy path/execution, new weapon and NPC identity recovery");
+            }
+            finally{injectPreviewFault=false;foreach(var method in audit.GetPatchedMethods().ToArray())audit.Unpatch(method,HarmonyPatchType.All,audit.Id);}
+        }
+        private static void PreviewFault(){if(injectPreviewFault){previewFaults++;throw new InvalidOperationException("isolated preview preparation fault");}}
+        internal static void Step(object context,Vector2 mouse,bool left,bool pureObservation=false)
+        {
+            var host=Get(context,"CombatObservation");var combat=Get(context,"Combat");var input=Get(context,"Input");NativeToolExecutionChecks.Sample(context,input,mouse,left);Call(combat,"Sample");Call(host,"SampleMouse");int x=Main.mouseX,y=Main.mouseY;
+            NativeQuickItemChecks.BeginWorldStep();Main.LocalPlayer.Update(0);
+            foreach(var n in Main.npc)if(n.active)n.UpdateNPC(n.whoAmI);
+            for(int i=0;i<Main.maxProjectiles;i++)if(Main.projectile[i].active){Main.ProjectileUpdateLoopIndex=i;Main.projectile[i].Update(i);}Main.ProjectileUpdateLoopIndex=-1;
+            var p=Main.LocalPlayer;int direction=p.direction,animation=p.itemAnimation,time=p.itemTime,mana=p.statMana,stack=p.inventory[54].stack,cycling=p.ammoCyclingOffset;bool use=p.controlUseItem,channel=p.channel;var random=Main.rand;
+            var fields=typeof(Terraria.Utilities.UnifiedRandom).GetFields(Flags).Where(f=>!f.IsStatic).ToArray();var before=fields.Select(f=>Copy(f.GetValue(random))).ToArray();
+            Call(context,"UpdateRuntime");Call(context,"UpdateShell");Require(Main.mouseX==x && Main.mouseY==y,"physical cursor survives Update/ItemCheck/NPC/Projectile/presentation");
+            if(pureObservation)Require(p.direction==direction && p.itemAnimation==animation && p.itemTime==time && p.statMana==mana && p.inventory[54].stack==stack && p.ammoCyclingOffset==cycling && p.controlUseItem==use && p.channel==channel && ReferenceEquals(random,Main.rand) && fields.Select((f,i)=>Equal(before[i],f.GetValue(random))).All(v=>v),"natural completed preview stage is read-only for input, facing, timers, resources and RNG");
+        }
+        private static NPC Scene(int slot,Vector2 centre)
+        {var n=Main.npc[slot];n.SetDefaults(3);n.whoAmI=slot;n.active=true;n.Center=centre;n.velocity=n.netOffset=Vector2.Zero;n.aiStyle=-1;n.noGravity=true;n.life=n.lifeMax=100000;n.knockBackResist=0;Array.Clear(n.immune,0,n.immune.Length);return n;}
+        private static int Selected(object host){return ((NpcIdentity)Get(Get(host,"Selection"),"Target")).Slot;}
+        private static object Copy(object value){var a=value as Array;return a==null?value:a.Clone();}
+        private static bool Equal(object a,object b){var x=a as Array;var y=b as Array;return x==null?Equals(a,b):y!=null && x.Cast<object>().SequenceEqual(y.Cast<object>());}
+    }
+}

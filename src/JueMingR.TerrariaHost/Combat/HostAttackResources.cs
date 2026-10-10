@@ -29,7 +29,9 @@ namespace JueMingR.TerrariaHost.Combat
             internal bool Advance(out float charge,out bool readsDirection)
             {
                 bool fee;
-                if(type==633)
+                if(type==439)
+                {phase++;int tier=(phase>=40?1:0)+(phase>=80?1:0)+(phase>=120?1:0);counter+=slow?.4f:1;readsDirection=counter>=24-6*tier;if(readsDirection)counter=0;fee=readsDirection;}
+                else if(type==633)
                 {float interval=phase>120?5:phase>90?15:30;phase++;counter++;readsDirection=counter>=1;if(readsDirection)counter=0;fee=phase%interval==0;}
                 else
                 {

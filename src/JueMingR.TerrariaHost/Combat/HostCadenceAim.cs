@@ -39,7 +39,10 @@ namespace JueMingR.TerrariaHost.Combat
                 stage=CombatAimStage.ItemRelease;
                 if(contact!=null){point=new Vector2(contact.AimX,contact.AimY);Stamp(item,captured,future);return;}
                 var b=future[Math.Min(future.Count-1,tick)].ProjectileReceiveBounds;Projectile sample=ContentSamples.ProjectilesByType[captured.Projectile];
-                tick+=(int)Math.Ceiling(Vector2.Distance(origin,new Vector2(b.CenterX,b.CenterY))/Math.Max(1,captured.Speed*(sample.extraUpdates+1)));
+                int substeps=Math.Max(1,(int)Math.Ceiling(Vector2.Distance(origin,new Vector2(b.CenterX,b.CenterY))/Math.Max(1,captured.Speed)));
+                AttackMotion motion;
+                if(HostAttackModels.TryRead(captured,out motion))tick+=motion.OuterAtSubupdate(substeps);
+                else tick+=player.magicQuiver && sample.arrow && sample.extraUpdates<1?(substeps==1?1:2+(substeps-2)/2):(substeps-1)/(sample.extraUpdates+1)+1;
             }
             if(tick<0 || tick>=future.Count)return; // A short real future is not extended by copying its tail.
             point=HostHeldAttack.DirectionPoint(player,future,tick);Stamp(item,captured,future);

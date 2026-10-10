@@ -79,10 +79,10 @@ namespace JueMingR.TerrariaHost.Combat
             if(value && (field==0 || field==1 || field==5))World.Recover();
             bool prior=field==0?Options.Collision:field==1?Options.Path:field==2?Options.ClearLine:field==3?Options.MouseCenter:field==4?Options.Dummy:field==5?Options.Marker:Options.Aim;
             if(field==0 && value){collisionFailed=reportedCollision=false;Geometry.Failed=false;}
-            if(field==1 && value){pathFailed=reportedPath=false;Array.Clear(failedTargets,0,failedTargets.Length);if(Prediction.Native!=null && Prediction.Native.Failed)Prediction.Native.Retry();}
+            if(field==1 && value){pathFailed=reportedPath=false;Array.Clear(failedTargets,0,failedTargets.Length);Attack?.RetryFaults();if(Prediction.Native!=null && Prediction.Native.Failed)Prediction.Native.Retry();}
             if(field==5 && value){reportedMarker=false;World.Marker.Reset();}
             if(prior!=value)Settings.Set(Options.Toggle(field));
-            if(field==6 && !value)Attack?.Clear();
+            if(field==6 && !value)Attack?.ClearExecution();
         }
         public void Radius(int value){if(CanConfigure && Options.Radius!=value)Settings.Set(Options.WithRadius(value));}
         internal void Poll()
@@ -136,6 +136,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(Path)Prediction.Cache.Demand(0,1,NpcPredictionCache.Horizon);else Prediction.Cache.Release(0);
             try{Selection.Update(Options,Session,Marker || !pathFailed && Prediction.Cache.Required>0,Collision?Geometry:null);}catch(Exception error){AimTrace.Fault("host-selection",error,(long)tick);selectionFailed=true;CollisionFailed();pathFailed=true;Selection.RetireTarget();Prediction.Stop();World.Clear();return;}
             if(!Selection.HasTarget){Prediction.Clear();return;}
+            Attack?.ResolveSelection(sampleTick,beforeNpc);
             Attack?.Demand(); // The newly selected identity supplies this attack's preferred window.
             // Ordinary prediction is synchronous and owned by Source. Native
             // failure belongs only to the explicit comparison route; a shared

@@ -59,7 +59,11 @@ namespace NativeWorldTextProbe
             var far=Main.npc[3];far.SetDefaults(2);far.active=true;far.whoAmI=3;far.target=0;far.position=new Vector2(640,880);
             Main.tileSolid[TileID.Stone]=true;for(int y=36;y<49;y++){Main.tile[45,y].active(true);Main.tile[45,y].type=TileID.Stone;}
             Save(host,new ObservationOptions(path:true));Fresh(context,host);Require(((NpcIdentity)Get(selection,"Target")).Slot==2,"nearest ranks hitbox distance regardless of current occlusion");
-            Save(host,new ObservationOptions(path:true,clearLine:true));Fresh(context,host);Require(((NpcIdentity)Get(selection,"Target")).Slot==3,"clear-line preference can choose a farther unblocked target");
+            // The held pickaxe has no admitted attack model. Clear-line now
+            // ranks actual attack feasibility, so this observation-only case
+            // retains nearest. Real farther reachable attacks are covered by
+            // NativeCombatSelectionPreviewChecks with their native weapons.
+            Save(host,new ObservationOptions(path:true,clearLine:true));Fresh(context,host);Require(((NpcIdentity)Get(selection,"Target")).Slot==2,"without an eligible attack, clear-line does not invent a straight-ray veto");
             far.active=false;Fresh(context,host);Require(((NpcIdentity)Get(selection,"Target")).Slot==2,"occlusion never hard-removes the remaining candidate");
             for(int y=36;y<49;y++)Main.tile[45,y].active(false);
             Main.screenPosition=Vector2.Zero;Main.LocalPlayer.gravDir=1;PlayerInput.CacheOriginalScreenDimensions();

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using JueMingR.Features.Combat;
 using JueMingR.Platform.Combat;
@@ -89,6 +89,8 @@ namespace JueMingR.TerrariaHost.Combat
             return Vector2.Distance(point,player)<=range-1;
         }
         internal AttackContact Prepare(Player player,Projectile shot,NpcTrajectory timeline,HostAttackClock clock,out Vector2 point,out bool usable)
+        {return PrepareWithPlayer(player,shot,timeline,clock,out point,out usable,HostAttackPlayerFrame.Capture(player,timeline));}
+        internal AttackContact PrepareWithPlayer(Player player,Projectile shot,NpcTrajectory timeline,HostAttackClock clock,out Vector2 point,out bool usable,HostAttackPlayerFrame playerFrame)
         {
             preparedUsable=false;int age=clock.Age;point=Vector2.Zero;usable=false;if(!player.channel || player.CCed || shot.ai[0]<0)return null;
             bool secondary=Secondary(shot);float range,speed;Parameters(player,shot,secondary,out range,out speed);
@@ -109,7 +111,7 @@ namespace JueMingR.TerrariaHost.Combat
             // cannot make its corner. Rejection restores the physical cursor.
             float dead=5+speed/2+(secondary?20:0);
             while(path.Count>1 && Vector2.Distance(shot.Center,path[0])<=dead)path.RemoveAt(0);
-            var contact=Replay(player,shot,timeline,clock,secondary,range,speed,remaining,out point,out usable);
+            var contact=Replay(player,shot,timeline,clock,secondary,range,speed,remaining,out point,out usable,playerFrame);
             if(usable){preparedPlayer=NpcPredictionSource.ReadPlayer(player);preparedMeleeSpeed=player.meleeSpeed;preparedString=player.yoyoString;preparedUsable=true;}
             if(!usable){path.Clear();retryStep=Main.GameUpdateCount+5;}
             return contact;
@@ -122,10 +124,14 @@ namespace JueMingR.TerrariaHost.Combat
         private bool Find(Vector2 start,Vector2 goal,Vector2 player,float range,int width,int height)
         {
             if(Clear(start,goal,width,height)){path.Add(goal);return true;}
-            // 16px local grid, at most 1024 visited cells and 512 expansions.
-            // Grid vertices use the actual ball's origin; no snapped origin
-            // is silently assumed clear. Whole ball dimensions join each edge.
-            var nodes=new List<Vector2>{start};var previous=new List<int>{-1};var xs=new List<int>{0};var ys=new List<int>{0};var seen=new HashSet<long>{0};
+            // Tile-centre vertices retain the centre line of a one-tile gap
+            // regardless of the ball's sub-tile launch position. The actual
+            // start remains its own node: every connection into this lattice
+            // still checks the full native ball, including its first edge.
+            // Keep the original 1024 acquired nodes / 512 expansion bounds.
+            int startX=(int)Math.Floor(start.X/16),startY=(int)Math.Floor(start.Y/16);
+            var nodes=new List<Vector2>{start};var previous=new List<int>{-1};var xs=new List<int>{startX};var ys=new List<int>{startY};var seen=new HashSet<long>();
+            if(start==new Vector2(startX*16+8,startY*16+8))seen.Add(((long)startX<<32)|(uint)startY);
             for(int at=0;at<nodes.Count && at<512;at++)
             {
                 if(Clear(nodes[at],goal,width,height))
@@ -137,8 +143,11 @@ namespace JueMingR.TerrariaHost.Combat
                 for(int ix=0;ix<3;ix++)for(int iy=0;iy<3;iy++)
                 {
                     int dx=ix==0?sx:ix==1?0:-sx,dy=iy==0?0:iy==1?sy:-sy;
-                    if(dx==0 && dy==0)continue;int x=xs[at]+dx,y=ys[at]+dy;long key=((long)x<<32)|(uint)y;
-                    if(seen.Contains(key) || seen.Count>=1024)continue;var next=start+new Vector2(x*16,y*16);
+                    // Only the unsnapped start may connect to the centre of
+                    // its own tile; ordinary lattice nodes have eight edges.
+                    if(dx==0 && dy==0 && at!=0)continue;int x=xs[at]+dx,y=ys[at]+dy;long key=((long)x<<32)|(uint)y;
+                    if(seen.Contains(key) || nodes.Count>=1024)continue;var next=new Vector2(x*16+8,y*16+8);
+                    if(next==nodes[at])continue;
                     if(Vector2.Distance(next,player)>range-1 || !Clear(nodes[at],next,width,height))continue;
                     // A blocked incoming edge says nothing about another
                     // approach to this vertex. Visit only acquired nodes;
@@ -158,13 +167,13 @@ namespace JueMingR.TerrariaHost.Combat
             while(at<path.Count){int next=path.Count-1;while(next>at && !Clear(start,path[next],width,height))next--;compressed.Add(path[next]);start=path[next];at=next+1;}
             path.Clear();path.AddRange(compressed);
         }
-        private AttackContact Replay(Player player,Projectile shot,NpcTrajectory timeline,HostAttackClock clock,bool secondary,float range,float speed,int remaining,out Vector2 input,out bool usable)
+        private AttackContact Replay(Player player,Projectile shot,NpcTrajectory timeline,HostAttackClock clock,bool secondary,float range,float speed,int remaining,out Vector2 input,out bool usable,HostAttackPlayerFrame playerFrame)
         {
 #if DEBUG
             ReplayStop="NoContact";ReplayStep=0;
 #endif
             usable=false;int age=clock.Age,at=0;float dead=5+speed/2+(secondary?20:0);Vector2 center=shot.Center,velocity=shot.velocity;input=path[0];var receive=HostAttackReceive.Capture(player,shot,timeline.Identity.Slot,clock.BeforeNpc,clock.NextWorld);
-            var playerMotion=NpcPredictionSource.ReadPlayer(player);var environment=new PredictionEnvironment{WorldWidth=Main.maxTilesX,WorldHeight=Main.maxTilesY,GravityWorldSurface=Main.worldSurface,Remix=Main.remixWorld};
+            var playerMotion=playerFrame.Motion;var environment=playerFrame.Environment;
             for(int step=0;step<Math.Min(remaining,timeline.Count-age-1);step++)
             {
 #if DEBUG
@@ -186,18 +195,24 @@ namespace JueMingR.TerrariaHost.Combat
                     return null;}
                 while(at<path.Count-1 && Vector2.Distance(center,path[at])<=dead)at++;
                 if(step==0)input=path[at];velocity=Step(center,velocity,path[at],playerCenter,range,speed,secondary);
-                Vector2 old=center;if(!HostProjectileEnvironment.Dry(shot,terrain,center.X,center.Y,velocity.X))return null;
-                center+=velocity;if(!terrain.ProjectilePassage(old.X,old.Y,center.X,center.Y,shot.width,shot.height)){
+                if(!HostProjectileEnvironment.Dry(shot,terrain,center.X,center.Y,velocity.X))return null;
+                // AI99 primary/paired balls keep TileCollision's clipped
+                // velocity and then move; hitting a wall does not kill or
+                // bounce them. Replaying that slide is essential at a narrow
+                // entrance. Geometric edges still require the full ball; this
+                // does not make a blocked route traversable or shrink it.
+                float vx,vy;if(!terrain.ProjectileCollision(center.X,center.Y,velocity.X,velocity.Y,shot.width,shot.height,out vx,out vy)){
 #if DEBUG
-                    ReplayStop="BallTerrain";
+                    ReplayStop="TerrainUnavailable";
 #endif
                     return null;}
+                velocity=new Vector2(vx,vy);center+=velocity;
                 // A verified short motor prefix can guide this natural AI
                 // without claiming final arrival. A later uncertain corner
                 // removes Contact, not that bounded input capability; actual
                 // progress/terrain changes still revise or retire the route.
                 if(step>=2)usable=true;
-                var contact=receive.Allows(step+1)?AttackIntercept.BodyContact(timeline,clock.FirstTick+step,0,input.X,input.Y,center.X,center.Y,shot.width,shot.height,AttackConfidence.Conditional):null;
+                var contact=receive.Allows(clock.LaunchDelay+step+1)?AttackIntercept.BodyContact(timeline,clock.FirstTick+step,0,input.X,input.Y,center.X,center.Y,shot.width,shot.height,AttackConfidence.Conditional):null;
                 if(contact!=null){
 #if DEBUG
                     ReplayStop="Contact";

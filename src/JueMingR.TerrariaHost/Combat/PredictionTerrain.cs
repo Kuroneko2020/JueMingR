@@ -11,8 +11,8 @@ namespace JueMingR.TerrariaHost.Combat
     {
         private struct Cell : IEquatable<Cell>
         {
-            internal bool Active,RawActive,RawSolid,RawPlatform,Solid,Platform,StairPlatform,PlatformFrame,ProperPlatformFrame,Half;internal byte Slope,Liquid,Kind;internal ushort Type,Wall;internal int Conveyor;
-            public bool Equals(Cell b){return Active==b.Active && RawActive==b.RawActive && RawSolid==b.RawSolid && RawPlatform==b.RawPlatform && Wall==b.Wall && Type==b.Type && ProperPlatformFrame==b.ProperPlatformFrame && Solid==b.Solid && Platform==b.Platform && StairPlatform==b.StairPlatform && PlatformFrame==b.PlatformFrame && Half==b.Half && Slope==b.Slope && Liquid==b.Liquid && Kind==b.Kind && Conveyor==b.Conveyor;}
+            internal bool Active,RawActive,RawSolid,RawPlatform,Solid,Platform,StairPlatform,PlatformFrame,ProperPlatformFrame,CuttableFrame,Half,CanSit,Bouncy,DetonatorArmed;internal byte Slope,Liquid,Kind;internal ushort Type,Wall;internal short FrameX,FrameY;internal int Conveyor;
+            public bool Equals(Cell b){return Active==b.Active && RawActive==b.RawActive && RawSolid==b.RawSolid && RawPlatform==b.RawPlatform && Wall==b.Wall && Type==b.Type && ProperPlatformFrame==b.ProperPlatformFrame && CuttableFrame==b.CuttableFrame && Solid==b.Solid && Platform==b.Platform && StairPlatform==b.StairPlatform && PlatformFrame==b.PlatformFrame && Half==b.Half && Slope==b.Slope && Liquid==b.Liquid && Kind==b.Kind && Conveyor==b.Conveyor && CanSit==b.CanSit && Bouncy==b.Bouncy && DetonatorArmed==b.DetonatorArmed && FrameX==b.FrameX && FrameY==b.FrameY;}
         }
         private readonly Dictionary<int,Cell> cells=new Dictionary<int,Cell>(512);
         // Small direct hot cache for repeated liquid/contact/slope queries.
@@ -37,12 +37,15 @@ namespace JueMingR.TerrariaHost.Combat
             var tile=Main.tile[x,y];if(tile==null)return false;
             bool active=tile.active() && !tile.inActive();
             int frame=tile.frameX/18;
-            value=new Cell{Active=active,RawActive=tile.active(),RawSolid=Main.tileSolid[tile.type],RawPlatform=Main.tileSolidTop[tile.type],Wall=tile.wall,Type=tile.type,ProperPlatformFrame=frame>=0 && frame<=7 || frame>=12 && frame<=16 || frame>=25 && frame<=26,Solid=active && Main.tileSolid[tile.type],Platform=active && Main.tileSolidTop[tile.type],StairPlatform=TileID.Sets.Platforms[tile.type],PlatformFrame=tile.frameY==0,Half=tile.halfBrick(),Slope=tile.slope(),Liquid=tile.liquid,Kind=(byte)tile.liquidType(),Conveyor=TileID.Sets.ConveyorDirection[tile.type]};return true;
+            // AI007 uses full furniture frames. Unrelated animated frames
+            // must not invalidate every collision-only terrain dependency.
+            bool canSit=TileID.Sets.CanBeSatOnForNPCs[tile.type];
+            value=new Cell{Active=active,RawActive=tile.active(),RawSolid=Main.tileSolid[tile.type],RawPlatform=Main.tileSolidTop[tile.type],Wall=tile.wall,Type=tile.type,ProperPlatformFrame=frame>=0 && frame<=7 || frame>=12 && frame<=16 || frame>=25 && frame<=26,CuttableFrame=tile.type!=254 || tile.frameX>=144,Solid=active && Main.tileSolid[tile.type],Platform=active && Main.tileSolidTop[tile.type],StairPlatform=TileID.Sets.Platforms[tile.type],PlatformFrame=tile.frameY==0,Half=tile.halfBrick(),Slope=tile.slope(),Liquid=tile.liquid,Kind=(byte)tile.liquidType(),Conveyor=TileID.Sets.ConveyorDirection[tile.type],CanSit=canSit,Bouncy=Main.tileBouncy[tile.type],DetonatorArmed=tile.type==411 && tile.frameY==0 && tile.frameX<36,FrameX=canSit?tile.frameX:(short)0,FrameY=canSit?tile.frameY:(short)0};return true;
         }
         public bool Tile(int x,int y,out PredictionTile tile,out PredictionStop stop)
         {
             Cell c;tile=default(PredictionTile);if(!CellAt(x,y,out c,out stop))return false;
-            tile=new PredictionTile{Active=c.Active,RawActive=c.RawActive,RawSolid=c.RawSolid,Wall=c.Wall,Solid=c.Solid,SolidTop=c.Platform,Platform=c.StairPlatform,Half=c.Half,Slope=c.Slope,Liquid=c.Liquid,Type=c.Type,ProperPlatformFrame=c.ProperPlatformFrame,SurfacePlatform=c.PlatformFrame};return true;
+            tile=new PredictionTile{Active=c.Active,RawActive=c.RawActive,RawSolid=c.RawSolid,Wall=c.Wall,Solid=c.Solid,SolidTop=c.Platform,Platform=c.StairPlatform,Half=c.Half,Slope=c.Slope,Liquid=c.Liquid,Lava=c.Kind==1,ShimmerLiquid=c.Kind==3,Type=c.Type,ProperPlatformFrame=c.ProperPlatformFrame,SurfacePlatform=c.PlatformFrame,CanSit=c.CanSit,FrameX=c.FrameX,FrameY=c.FrameY};return true;
         }
         private bool CellAt(int x,int y,out Cell cell,out PredictionStop stop)
         {
@@ -118,23 +121,31 @@ namespace JueMingR.TerrariaHost.Combat
         public bool Solid(MotionRect box,out bool solid,out PredictionStop stop)
         {
             solid=false;stop=PredictionStop.None;
-            if(!Area(box.X,box.Y,box.Width,box.Height,out stop))return false;
-            if(box.Width<1 || box.Height<1 || box.Width>1024 || box.Height>1024){stop=PredictionStop.InvalidState;return false;}
-            for(int y=(int)Math.Floor(box.Y/16);y<=(int)Math.Floor((box.Y+box.Height-.001f)/16);y++)
-            for(int x=(int)Math.Floor(box.X/16);x<=(int)Math.Floor((box.X+box.Width-.001f)/16);x++)
+            if(!FreeBody(box.X,box.Y,box.Width,box.Height,out stop))return false;
+            int w=(int)box.Width,h=(int)box.Height;
+            int left=Math.Max(0,Math.Min(Main.maxTilesX-1,(int)(box.X/16)-1)),right=Math.Max(0,Math.Min(Main.maxTilesX-1,(int)((box.X+w)/16)+2));
+            int top=Math.Max(0,Math.Min(Main.maxTilesY-40,(int)(box.Y/16)-1)),bottom=Math.Max(0,Math.Min(Main.maxTilesY-40,(int)((box.Y+h)/16)+2));
+            for(int x=left;x<right;x++)for(int y=top;y<bottom;y++)
             {
                 Cell c;if(!CellAt(x,y,out c,out stop))return false;
-                // SolidCollision treats slopes as solid and never queries
-                // liquid; callers such as Sharkron use precisely that meaning.
+                // Original SolidCollision clips the scan and uses strict
+                // positive overlap, including a single float ULP. Subtracting
+                // an epsilon can change Santa-NK1's support/velocity branch.
+                // Slopes count as full solids; platforms and liquid do not.
                 if(!c.Solid || c.Platform)continue;
-                if(!c.Half || box.Y+box.Height>y*16+8)solid=true;
+                float surface=y*16+(c.Half?8:0);
+                if(box.X+w>x*16 && box.X<x*16+16 && box.Y+h>surface && box.Y<y*16+16){solid=true;return true;}
             }
             return true;
         }
         public bool CanHit(MotionRect source,MotionRect target,out bool clear,out PredictionStop stop)
         {
             clear=false;stop=PredictionStop.None;
-            if(!Area(source.X,source.Y,source.Width,source.Height,out stop) || !Area(target.X,target.Y,target.Width,target.Height,out stop))return false;
+            // Original CanHit truncates each position and clamps its center
+            // before tracing. A body outside the world is not missing terrain:
+            // retreating actors still receive this defined border query. Keep
+            // finite state validation and fail on genuinely missing cells.
+            if(!FreeBody(source.X,source.Y,source.Width,source.Height,out stop,true) || !FreeBody(target.X,target.Y,target.Width,target.Height,out stop,true))return false;
             int x=Math.Max(1,Math.Min(Main.maxTilesX-1,((int)source.X+(int)source.Width/2)/16)),y=Math.Max(1,Math.Min(Main.maxTilesY-40,((int)source.Y+(int)source.Height/2)/16));
             int tx=Math.Max(1,Math.Min(Main.maxTilesX-1,((int)target.X+(int)target.Width/2)/16)),ty=Math.Max(1,Math.Min(Main.maxTilesY-40,((int)target.Y+(int)target.Height/2)/16));
             // Vanilla CanHit follows the larger remaining axis, checking the
@@ -174,7 +185,9 @@ namespace JueMingR.TerrariaHost.Combat
             float gfxStep=(1+Math.Abs(n.Vx)/3)*player.StepSpeed;
             player.GfxOffset=player.GfxOffset<0?Math.Min(0,player.GfxOffset+gfxStep):Math.Max(0,player.GfxOffset-gfxStep);
             n.StairFall=player.StairFall;
-            if(!Move(ref n,environment,true,player.WaterWalk,player.Down || player.IgnorePlatforms,player.LavaWalk,(int)player.GravityDirection,ref player,out stop))return false;
+            if(player.WallFactsCaptured && player.WallTongued)
+            {if(!PlayerTongueMove(ref n,ref player,out stop))return false;}
+            else if(!Move(ref n,environment,true,player.WaterWalk,player.Down || player.IgnorePlatforms,player.LavaWalk,(int)player.GravityDirection,ref player,out stop))return false;
             player.StairFall=n.StairFall;
             // DryCollision clears normal-gravity jump at its first tile
             // contact, before later slope/belt queries overwrite collision
@@ -193,22 +206,33 @@ namespace JueMingR.TerrariaHost.Combat
         private bool Move(ref NpcMotionState n,PredictionEnvironment environment,bool playerMode,bool waterWalk,bool fallThrough,bool lavaWalk,int gravDir,ref PredictionPlayerMotion player,out PredictionStop stop,bool playerSegment=false,bool allowSplit=true)
         {
             stop=PredictionStop.None;
-            if(!Area(n.X,n.Y,n.Width,n.Height,out stop) || !Area(n.X+n.Vx,n.Y+n.Vy,n.Width,n.Height,out stop))return false;
             // Native UpdateNPC bypasses UpdateCollision altogether here. In
             // particular Duke/Sharkron do not receive liquid movement drag.
             if(n.NoTileCollide)
             {
+                // Native free flight may cross the world edge before its own
+                // later AI/lifetime exit. Its only geometry query is the native
+                // clipped WetCollision scan; an empty clipped scan is known.
+                // Other NPC collision scans use the same clipping below;
+                // projectile/player acquisition keeps its separate boundary.
+                if(!FreeBody(n.X,n.Y,n.Width,n.Height,out stop) || !Finite(n.Vx) || !Finite(n.Vy) || Math.Abs(n.Vx)>512 || Math.Abs(n.Vy)>512){stop=PredictionStop.InvalidState;return false;}
                 var free=n;free.OldX=free.X;free.OldY=free.Y;free.X+=free.Vx;free.Y+=free.Vy;
-                bool wetContact;byte kind;if(!Wet(free,false,out wetContact,out kind,out stop))return false;
+                bool wetContact;byte kind;if(!Wet(free,false,out wetContact,out kind,out stop,true))return false;
                 if(!playerMode && wetContact && !environment.Multiplayer)NpcHealth.Extinguish(ref free.Health);
                 n=free;return true;
             }
+            // NPCs can legitimately teleport/retreat through a world edge.
+            // The original collision helpers clip each query, including an
+            // empty known scan beyond the bottom forty tiles. This does not
+            // invent missing in-world cells or relax player/projectile leases.
+            bool nativeClip=!playerMode;
+            if(nativeClip?(!FreeBody(n.X,n.Y,n.Width,n.Height,out stop) || !FreeBody(n.X+n.Vx,n.Y+n.Vy,n.Width,n.Height,out stop)):(!Area(n.X,n.Y,n.Width,n.Height,out stop) || !Area(n.X+n.Vx,n.Y+n.Vy,n.Width,n.Height,out stop)))return false;
             if(n.Width<1 || n.Height<1 || n.Width>1024 || n.Height>1024 || Math.Abs(n.Vx)>512 || Math.Abs(n.Vy)>512){stop=PredictionStop.InvalidState;return false;}
             var next=n;
             if(playerMode){if(!PlayerSteps(ref next,ref player,playerSegment,out stop))return false;}
-            else if(!WalkDown(ref next,out stop))return false;
+            else if(!WalkDown(ref next,out stop,true))return false;
             bool lava,wet;byte liquid;
-            if(!Wet(next,true,out lava,out liquid,out stop) || !Wet(next,false,out wet,out liquid,out stop))return false;
+            if(!Wet(next,true,out lava,out liquid,out stop,nativeClip) || !Wet(next,false,out wet,out liquid,out stop,nativeClip))return false;
             if(next.Identity.Type==441)lava=false;
             if(lava)
             {
@@ -260,7 +284,7 @@ namespace JueMingR.TerrariaHost.Combat
             bool wheel=!playerMode && next.EffectiveType==72,sand=!playerMode && next.EffectiveType>=542 && next.EffectiveType<=545;
             if(wheel)moveBox=new MotionRect(next.X+next.Width/2-6,next.Y+next.Height/2-6,12,12);
             if(sand && environment.Remix){rx=next.Vx;ry=next.Vy;up=down=false;}
-            else if(!TileContact(moveBox.X,moveBox.Y,next.Vx,next.Vy,(int)moveBox.Width,(int)moveBox.Height,wheel || fall,out rx,out ry,out up,out down,out stop,wheel || (playerMode?player.IgnorePlatforms:fall),gravDir,wheel,sand))return false;
+            else if(!TileContact(moveBox.X,moveBox.Y,next.Vx,next.Vy,(int)moveBox.Width,(int)moveBox.Height,wheel || fall,out rx,out ry,out up,out down,out stop,wheel || (playerMode?player.IgnorePlatforms:fall),gravDir,wheel,sand,nativeClip))return false;
             next.PlayerHeadCollision=playerMode && (gravDir>0?up:down);
             next.PlayerDryHeadCollision=playerMode && !wetPlayer && gravDir>0 && up;
             // Native Stardust cells rebound before translating the body. The
@@ -299,7 +323,7 @@ namespace JueMingR.TerrariaHost.Combat
                 moveBox=playerMode?next.Bounds:NpcCollisionRules.MovementBounds(next);var slope=next;
                 float dx=next.X-moveBox.X,dy=next.Y-moveBox.Y;slope.X=moveBox.X;slope.Y=moveBox.Y;slope.Width=(int)moveBox.Width;slope.Height=(int)moveBox.Height;
                 if(playerMode && (player.IgnorePlatforms || player.Down || player.Grappled || gravDir<0))slope.StairFall=true;
-                if(!Slopes(ref slope,fall,out stop,playerMode,gravDir))return false;
+                if(!Slopes(ref slope,fall,out stop,playerMode,gravDir,nativeClip))return false;
                 next.X=slope.X+dx;next.Y=slope.Y+dy;next.Vx=slope.Vx;next.Vy=slope.Vy;next.StairFall=slope.StairFall;
                 if(playerMode)next.PlayerHeadCollision=slope.PlayerHeadCollision;
                 // Native applies belt contact after movement-box slopes have
@@ -336,10 +360,15 @@ namespace JueMingR.TerrariaHost.Combat
             }
             return true;
         }
-        private bool Wet(NpcMotionState n,bool lavaOnly,out bool wet,out byte kind,out PredictionStop stop)
+        private static bool FreeBody(float x,float y,float w,float h,out PredictionStop stop,bool allowPoint=false)
+        {
+            stop=PredictionStop.None;
+            if(!Finite(x) || !Finite(y) || !Finite(w) || !Finite(h) || w<(allowPoint?0:1) || h<(allowPoint?0:1) || w>1024 || h>1024 || Math.Abs(x)>int.MaxValue-4096f || Math.Abs(y)>int.MaxValue-4096f){stop=PredictionStop.InvalidState;return false;}return true;
+        }
+        private bool Wet(NpcMotionState n,bool lavaOnly,out bool wet,out byte kind,out PredictionStop stop,bool nativeClip=false)
         {
             wet=false;kind=0;stop=PredictionStop.None;
-            if(!QueryArea(n.X,n.Y,n.Width,n.Height,out stop))return false;
+            if(nativeClip?!FreeBody(n.X,n.Y,n.Width,n.Height,out stop):!QueryArea(n.X,n.Y,n.Width,n.Height,out stop))return false;
             int sensorWidth=lavaOnly?n.Width:Math.Min(10,n.Width),sensorHeight=lavaOnly?n.Height:n.Height/2;
             float sensorX=lavaOnly?n.X:n.X+n.Width/2-sensorWidth/2,sensorY=lavaOnly?n.Y:n.Y+n.Height/2-sensorHeight/2;
             int left=Math.Max(0,(int)(n.X/16)-1),right=Math.Min(Main.maxTilesX-1,(int)((n.X+n.Width)/16)+2);
@@ -359,9 +388,21 @@ namespace JueMingR.TerrariaHost.Combat
             }
             return true;
         }
-        internal bool ProjectileWet(float x,float y,int width,int height,out bool wet,out byte kind)
+        internal bool ProjectileWet(float x,float y,int width,int height,out bool wet,out byte kind,bool nativeClip=false)
         {
-            PredictionStop stop;return Wet(new NpcMotionState{X=x-width*.5f,Y=y-height*.5f,Width=width,Height=height},false,out wet,out kind,out stop);
+            PredictionStop stop;return Wet(new NpcMotionState{X=x-width*.5f,Y=y-height*.5f,Width=width,Height=height},false,out wet,out kind,out stop,nativeClip);
+        }
+        internal bool ProjectileLava(float x,float y,int width,int height,out bool lava,bool nativeClip=false)
+        {
+            byte kind;PredictionStop stop;return Wet(new NpcMotionState{X=x-width*.5f,Y=y-height*.5f,Width=width,Height=height},true,out lava,out kind,out stop,nativeClip);
+        }
+        internal bool ProjectileCenterLava(float x,float y,out bool lava)
+        {
+            lava=false;if(!Finite(x) || !Finite(y) || x<0 || y<0)return false;
+            // WaterBolt AI_008 tests the centre tile's lava bit, including
+            // a retained liquid kind when its amount is zero. Keep this read
+            // in the same dependency lease as collision and liquid queries.
+            Cell cell;PredictionStop stop;if(!CellAt((int)x/16,(int)y/16,out cell,out stop))return false;lava=cell.Kind==1;return true;
         }
         internal bool ProjectilePassage(float x,float y,float nx,float ny,int width,int height)
         {
@@ -371,18 +412,26 @@ namespace JueMingR.TerrariaHost.Combat
             // neighboring live tiles; a preparation query must do neither.
             return TileContact(x-width*.5f,y-height*.5f,vx,vy,width,height,true,out rx,out ry,out up,out stop) && Math.Abs(rx-vx)<.0001f && Math.Abs(ry-vy)<.0001f;
         }
-        internal bool ProjectileCollision(float x,float y,float vx,float vy,int width,int height,out float rx,out float ry)
+        internal bool ProjectileCollision(float x,float y,float vx,float vy,int width,int height,out float rx,out float ry,bool fallThrough=true)
         {
             // A failed terrain acquisition is not a known impact trigger.
             // Callers receive native contact components only on success.
-            bool up;PredictionStop stop;return TileContact(x-width*.5f,y-height*.5f,vx,vy,width,height,true,out rx,out ry,out up,out stop);
+            bool up;PredictionStop stop;return TileContact(x-width*.5f,y-height*.5f,vx,vy,width,height,fallThrough,out rx,out ry,out up,out stop);
+        }
+        internal bool ProjectileSlope(ref float x,ref float y,ref float vx,ref float vy,int width,int height)
+        {
+            // Native ordinary projectile movement applies SlopeCollision with
+            // gravity zero before its type-specific reflection. Reuse the
+            // private terrain rules and dependency reads, never live Collision.
+            var state=new NpcMotionState{X=x-width*.5f,Y=y-height*.5f,Vx=vx,Vy=vy,Width=width,Height=height};PredictionStop stop;
+            if(!Slopes(ref state,true,out stop))return false;x=state.X+width*.5f;y=state.Y+height*.5f;vx=state.Vx;vy=state.Vy;return true;
         }
         private bool TileContact(float px0,float py0,float vx,float vy,int w,int h,bool fall,out float rx,out float ry,out bool up,out PredictionStop stop,bool fall2=true,int gravDir=1)
         {bool down;return TileContact(px0,py0,vx,vy,w,h,fall,out rx,out ry,out up,out down,out stop,fall2,gravDir);}
-        private bool TileContact(float px0,float py0,float vx,float vy,int w,int h,bool fall,out float rx,out float ry,out bool up,out bool down,out PredictionStop stop,bool fall2=true,int gravDir=1,bool noSlope=false,bool sand=false)
+        private bool TileContact(float px0,float py0,float vx,float vy,int w,int h,bool fall,out float rx,out float ry,out bool up,out bool down,out PredictionStop stop,bool fall2=true,int gravDir=1,bool noSlope=false,bool sand=false,bool nativeClip=false,bool signedProjectile=false)
         {
             rx=vx;ry=vy;up=down=false;stop=PredictionStop.None;
-            if(!QueryArea(px0,py0,w,h,out stop) || !Area(px0+vx,py0+vy,w,h,out stop))return false;
+            if(signedProjectile?(!SignedProjectileArea(px0,py0,w,h,true,out stop,nativeClip) || !SignedProjectileArea(px0+vx,py0+vy,w,h,false,out stop,nativeClip)):nativeClip?(!FreeBody(px0,py0,w,h,out stop) || !FreeBody(px0+vx,py0+vy,w,h,out stop)):(!QueryArea(px0,py0,w,h,out stop) || !Area(px0+vx,py0+vy,w,h,out stop)))return false;
             float px=px0+vx,py=py0+vy;
             int sideX=-1,sideY=-1,verticalX=-1,verticalY=-1;
             // Ordinary native rectangular contacts: projected full velocity,
@@ -410,10 +459,10 @@ namespace JueMingR.TerrariaHost.Combat
             }
             return true;
         }
-        private bool WalkDown(ref NpcMotionState n,out PredictionStop stop)
+        private bool WalkDown(ref NpcMotionState n,out PredictionStop stop,bool nativeClip=false)
         {
             stop=PredictionStop.None;if(n.Vy!=n.Gravity)return true;
-            if(!QueryArea(n.X,n.Y,n.Width,n.Height+20,out stop))return false;
+            if(nativeClip?!FreeBody(n.X,n.Y,n.Width,n.Height+20,out stop):!QueryArea(n.X,n.Y,n.Width,n.Height+20,out stop))return false;
             int row=Math.Max(0,Math.Min(Main.maxTilesY-42,(int)((n.Y+n.Height+4)/16))),chosenX=-1,chosenY=-1;byte chosenSlope=0;float nearest=(row+3)*16;
             for(int x=Math.Max(0,(int)(n.X/16));x<=Math.Min(Main.maxTilesX-1,(int)((n.X+n.Width)/16));x++)for(int y=row;y<=row+1;y++)
             {
@@ -426,10 +475,10 @@ namespace JueMingR.TerrariaHost.Combat
             if(chosenSlope==1 && n.Vx>0 && n.Y+n.Height>=chosenY*16+n.X-chosenX*16 || chosenSlope==2 && n.Vx<0 && n.Y+n.Height>=chosenY*16+chosenX*16+16-(n.X+n.Width))n.Vy+=Math.Abs(n.Vx);
             return true;
         }
-        private bool Slopes(ref NpcMotionState n,bool fall,out PredictionStop stop,bool playerMode=false,int gravDir=1)
+        private bool Slopes(ref NpcMotionState n,bool fall,out PredictionStop stop,bool playerMode=false,int gravDir=1,bool nativeClip=false,bool signedProjectile=false,bool rawPlayerProbe=false)
         {
             stop=PredictionStop.None;float x=n.X,y=n.Y,w=n.Width,h=n.Height,correctX=x,correctY=y,upper=y,lower=y,vx=n.Vx,vy=n.Vy;int mask=0;bool stairFall=false;
-            if(!QueryArea(x,y,w,h,out stop))return false;
+            if(signedProjectile?!SignedProjectileArea(x,y,w,h,true,out stop,nativeClip):nativeClip?!FreeBody(x,y,w,h,out stop):!QueryArea(x,y,w,h,out stop))return false;
             for(int i=Math.Max(0,(int)(x/16)-1);i<Math.Min(Main.maxTilesX-1,(int)((x+w)/16)+2);i++)
             for(int j=Math.Max(0,(int)(y/16)-1);j<Math.Min(Main.maxTilesY-40,(int)((y+h)/16)+2);j++)
             {
@@ -452,15 +501,15 @@ namespace JueMingR.TerrariaHost.Combat
                     {if(c.StairPlatform && y+h-4-Math.Abs(n.Vx)>ty){if(pass)stairFall=true;continue;}float candidate=ty-h;if(correctY<=candidate)continue;if(pass){stairFall=true;continue;}correctY=candidate;vy=Math.Min(vy,0);}
                 }
             }
-            float rx,ry;bool up,down;if(!TileContact(x,y,correctX-x,correctY-y,n.Width,n.Height,false,out rx,out ry,out up,out down,out stop))return false;
+            float rx,ry;bool up,down;if(!TileContact(x,y,correctX-x,correctY-y,n.Width,n.Height,false,out rx,out ry,out up,out down,out stop,true,1,false,false,nativeClip,signedProjectile))return false;
             float shift=correctY-y;
             if(ry>shift){float delta=shift-ry;correctY=y+ry;if((mask&2)!=0)correctX=x-delta;if((mask&4)!=0)correctX=x+delta;vx=vy=0;up=false;}
             else if(ry<shift){float delta=ry-shift;correctY=y+ry;if((mask&8)!=0)correctX=x-delta;if((mask&16)!=0)correctX=x+delta;vx=vy=0;}
-            if(!Area(correctX,correctY,w,h,out stop))return false;
+            if(signedProjectile?!SignedProjectileArea(correctX,correctY,w,h,false,out stop,nativeClip):nativeClip?!FreeBody(correctX,correctY,w,h,out stop):!Area(correctX,correctY,w,h,out stop))return false;
             // Native SlopeCollision's final TileCollision replaces the shared
             // flags even for zero correction. Early Dry Jump remains separate.
             if(playerMode)n.PlayerHeadCollision=gravDir>0?up:down;
-            n.X=correctX;n.Y=correctY;n.Vx=vx;n.Vy=playerMode && gravDir<0 && vy==.0101f?0:vy;if(stairFall)n.StairFall=true;else if(!fall)n.StairFall=false;return true;
+            n.X=correctX;n.Y=correctY;n.Vx=vx;n.Vy=playerMode && !rawPlayerProbe && gravDir<0 && vy==.0101f?0:vy;if(stairFall)n.StairFall=true;else if(!fall)n.StairFall=false;return true;
         }
     }
 }

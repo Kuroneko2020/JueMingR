@@ -26,6 +26,7 @@ namespace JueMingR.TerrariaHost.Tools
             Patch(typeof(Player),"LookForTileInteractions",Type.EmptyTypes,null,nameof(Interactions),nameof(InteractionsFinal));
             Patch(typeof(Player),"ItemCheck",Type.EmptyTypes,nameof(Before),nameof(After),nameof(Final));
             Patch(typeof(Player),"ItemCheck_Shoot",new[]{typeof(int),typeof(Item),typeof(int),typeof(bool)},nameof(ShotBefore),nameof(ShotAfter),nameof(ShotFinal));
+            Patch(typeof(Player),"ItemCheck_CheckCanUse_Inner",new[]{typeof(Item),typeof(bool)},nameof(PlacementCheckBefore),nameof(PlacementCheckAfter),nameof(PlacementCheckFinal));
             Patch(typeof(Player),"ItemCheck_StartActualUse",new[]{typeof(Item)},null,nameof(Started));
             Patch(typeof(Player),"ItemCheck_AutoReuseLogic",new[]{typeof(Item)},null,nameof(AfterReuse));
             Patch(typeof(Player),"DropItems",new[]{typeof(bool)},nameof(Boundary));
@@ -54,6 +55,10 @@ namespace JueMingR.TerrariaHost.Tools
         {__state=null;var attack=host?.Combat?.Attack;if(attack==null)return;Combat.CombatCursorScope cursor=null;try{cursor=attack.BeginShot(__instance,__1,__3);__state=attack.Control.BeginShot(__instance,__1,cursor);}catch(Exception error){cursor?.End();attack.FailLocal(error);}}
         private static void ShotAfter(Combat.HostAttackControl.ShotReceipt __state){__state?.Owner.EndShot(__state);}
         private static Exception ShotFinal(Combat.HostAttackControl.ShotReceipt __state,Exception __exception){__state?.Owner.EndShot(__state);return __exception;}
+        private static void PlacementCheckBefore(Player __instance,Item __0,out Combat.CombatCursorScope __state)
+        {__state=null;try{__state=host?.Combat?.Attack?.BeginPlacement(__instance,__0,false);}catch(Exception error){host?.Combat?.Attack?.FailLocal(error);}}
+        private static void PlacementCheckAfter(Combat.CombatCursorScope __state){__state?.End();}
+        private static Exception PlacementCheckFinal(Combat.CombatCursorScope __state,Exception __exception){__state?.End();return __exception;}
         private static void KillBefore(Projectile __instance,out Combat.CombatCursorScope __state)
         {__state=null;try{__state=host?.Combat?.Attack?.Control.BeginKill(__instance);}catch(Exception error){host?.Combat?.Attack?.FailLocal(error);}}
         private static void KillAfter(Combat.CombatCursorScope __state){__state?.End();}
@@ -92,13 +97,13 @@ namespace JueMingR.TerrariaHost.Tools
         // This call's receipt chooses its owner, even if that action has since
         // stopped or another one began. A value receipt adds no idle allocation;
         // the out scope is published before Combat borrows any input.
-        private struct ProjectileLease {internal long Token;internal ToolUse Tool;internal Combat.CombatUse Combat;internal Combat.CombatInputScope Scope;internal Combat.CombatCursorScope Attack;}
+        private struct ProjectileLease {internal long Token;internal ToolUse Tool;internal Combat.CombatUse Combat;internal Combat.CombatInputScope Scope;internal Combat.CombatCursorScope Attack;internal Combat.HostAttackControl.ShotReceipt Derived;}
         private static void ProjectileBefore(Projectile __instance,out ProjectileLease __state)
         {
             __state=default(ProjectileLease);var current=host;if(current==null)return;
             __state.Combat=current.Combat?.Use;
             __state.Combat?.BeginProjectile(__instance,out __state.Scope);
-            try{__state.Attack=current.Combat?.Attack?.Control.BeginAI(__instance);}catch(Exception error){current.Combat?.Attack?.FailLocal(error);}
+            try{__state.Attack=current.Combat?.Attack?.Control.BeginAI(__instance);__state.Derived=current.Combat?.Attack?.Control.BeginDerived(__instance);}catch(Exception error){current.Combat?.Attack?.FailLocal(error);}
             if(__state.Scope!=null || !current.Use.OwnsProjectile(__instance))return;
             __state.Tool=current.Use;__state.Token=current.Use.Operation;current.Use.BeginProjectile();
         }
@@ -108,6 +113,7 @@ namespace JueMingR.TerrariaHost.Tools
             // Finalizer must not notify/return twice or touch a successor.
             var receipt=state;state=default(ProjectileLease);
             receipt.Attack?.End();
+            receipt.Derived?.Owner.EndShot(receipt.Derived);
             if(receipt.Scope!=null)receipt.Combat.EndProjectile(shot,receipt.Scope,error);
             else if(receipt.Token>0)receipt.Tool.EndProjectile(receipt.Token,error);
         }
@@ -116,13 +122,26 @@ namespace JueMingR.TerrariaHost.Tools
         private static void Boundary(Player __instance){if(ReferenceEquals(__instance,host?.Player))host.Use.Retire();}
         // Reference state exists before Begin; even a Prefix exception midway
         // through temporary input borrowing reaches the same idempotent cleanup.
-        private sealed class Lease {internal long Token;internal Combat.CombatInputScope Combat;}
+        private sealed class Lease {internal long Token;internal Combat.CombatInputScope Combat;internal Combat.HostAttackAim.PlacementUse Placement;}
         private static void SeedBoundary(Player player){if(ReferenceEquals(player,host?.Player))host.Herbs.InvalidateSeeds();}
         // Select from the captured physical sample before optional Facing and
         // before vanilla builds this action's pose; input leases follow it.
-        private static void Before(Player __instance,out Lease __state){__state=null;SeedBoundary(__instance);if(host==null)return;if(ReferenceEquals(__instance,host.Player)){host.Combat?.Attack?.PrepareNatural();host.Combat?.Facing.Apply(__instance);}if(host.Combat?.Use.Active??false){__state=new Lease();__state.Combat=host.Combat.Use.Begin(__instance);return;}if(!host.Use.Active)return;__state=new Lease{Token=host.Use.Operation};host.Use.Begin(__instance);}
-        private static void After(Player __instance,Lease __state){SeedBoundary(__instance);host?.Use.End(__instance,__state?.Token??0,null);host?.Combat?.Use.End(__state?.Combat,null);if(ReferenceEquals(__instance,host?.Player))host.Combat?.Facing.Apply(__instance);}
-        private static Exception Final(Player __instance,Lease __state,Exception __exception){if(__exception!=null){SeedBoundary(__instance);host?.Use.End(__instance,__state?.Token??0,__exception);host?.Combat?.Use.End(__state?.Combat,__exception);}return __exception;}
+        private static void Before(Player __instance,out Lease __state)
+        {
+            __state=null;SeedBoundary(__instance);if(host==null)return;
+            if(ReferenceEquals(__instance,host.Player))
+            {
+                host.Combat?.Attack?.PrepareNatural();host.Combat?.Facing.Apply(__instance);
+                if(Combat.HostPlacementAttack.Handles(__instance.HeldItem))
+                {var placement=host.Combat?.Attack?.EnterPlacementUse(__instance);if(placement!=null)__state=new Lease{Placement=placement};}
+            }
+            if(host.Combat?.Use.Active??false){if(__state==null)__state=new Lease();__state.Combat=host.Combat.Use.Begin(__instance);return;}
+            if(!host.Use.Active)return;if(__state==null)__state=new Lease();__state.Token=host.Use.Operation;host.Use.Begin(__instance);
+        }
+        private static void After(Player __instance,Lease __state)
+        {try{SeedBoundary(__instance);host?.Use.End(__instance,__state?.Token??0,null);host?.Combat?.Use.End(__state?.Combat,null);if(ReferenceEquals(__instance,host?.Player))host.Combat?.Facing.Apply(__instance);}finally{__state?.Placement?.End();}}
+        private static Exception Final(Player __instance,Lease __state,Exception __exception)
+        {try{if(__exception!=null){SeedBoundary(__instance);host?.Use.End(__instance,__state?.Token??0,__exception);host?.Combat?.Use.End(__state?.Combat,__exception);}}finally{__state?.Placement?.End();}return __exception;}
         private static void Select(Player ___player){if(host!=null && (host.Enabled || host.Combat?.Enabled==true) && ReferenceEquals(___player,host.Player) && !host.Use.Returning && !host.Items.ReturningSelection && !(host.Combat?.Use.Selecting??false)){manualBuffered=true;host.ManualSelection();}}
         private static void SelectionUpdate(Player ___player)
         {

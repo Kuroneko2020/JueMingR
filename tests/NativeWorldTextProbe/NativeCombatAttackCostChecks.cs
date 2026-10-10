@@ -14,7 +14,7 @@ namespace NativeWorldTextProbe
 {
     // Probe-only counters count real entry calls. No production counters/logs,
     // AI skips, timing manipulation, synthetic benchmark solver or FPS claim.
-    internal static class NativeCombatAttackCostChecks
+    internal static partial class NativeCombatAttackCostChecks
     {
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance|BindingFlags.Static;
         private static readonly Dictionary<string,int> calls=new Dictionary<string,int>();
@@ -32,9 +32,13 @@ namespace NativeWorldTextProbe
         private static Harmony Audit(object attack)
         {
             var audit=new Harmony("JueMingR.Tests.AttackCosts");var assembly=attack.GetType().Assembly;
-            foreach(string entry in new[]{"HostAttackAim.Clear","HostAttackControl.Clear","HostAttackAim.PrepareCore","HostAttackAim.Valid","HostAttackAim.PresentationCurrent","HostAttackControl.PresentationCurrent","HostBeamAttack.Solve","HostBeamAttack.Length","PredictionTerrain.Read","PredictionTerrain.ProjectilePassage","PredictionTerrain.get_Unchanged","HostAttackObstacles.Eligible","HostAttackObstacles.get_Unchanged","AttackAmmoSnapshot.CaptureCore","AttackAmmoSnapshot.MembersMatch","HostAttackCandidates.Priority","HostYoyoNavigation.Remaining","HostYoyoNavigation.Current","HostYoyoNavigation.Prepare","HostYoyoNavigation.OpeningPoint","HostYoyoNavigation.Find"})
+            foreach(string entry in new[]{"HostAttackAim.Clear","HostAttackControl.Clear","HostAttackAim.PrepareCore","HostAttackAim.Valid","HostAttackAim.PresentationCurrent","HostAttackControl.PresentationCurrent","HostBeamAttack.Solve","HostBeamAttack.Length","PredictionTerrain.Read","PredictionTerrain.ProjectilePassage","PredictionTerrain.get_Unchanged","HostAttackObstacles.Eligible","HostAttackObstacles.get_Unchanged","AttackAmmoSnapshot.CaptureCore","AttackAmmoSnapshot.MembersMatch","HostAttackAim.ResolveSelection","HostMeleeAttack.Solve","HostMeleeAttack.SolarPose","HostMeleeAttack.SpearDerived","HostBoomerangAttack.Step","HostEffectAttack.CaptureCandidates","HostYoyoNavigation.Remaining","HostYoyoNavigation.Current","HostYoyoNavigation.Prepare","HostYoyoNavigation.OpeningPoint","HostYoyoNavigation.Find"})
             {var split=entry.Split('.');var type=assembly.GetType("JueMingR.TerrariaHost.Combat."+split[0],true);audit.Patch(type.GetMethod(split[1],Flags),prefix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks).GetMethod("Count",Flags)));}
             audit.Patch(typeof(AttackIntercept).GetMethod("Solve",Flags),prefix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks).GetMethod("Count",Flags)));
+            foreach(string entry in new[]{"HostMeleeAttack.KnownSolar","HostHeldAttack.Solve","HostAttackControl.BubblePreview","HostFiniteThrowAttack.Solve"})
+            {var split=entry.Split('.');audit.Patch(assembly.GetType("JueMingR.TerrariaHost.Combat."+split[0],true).GetMethod(split[1],Flags),prefix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks).GetMethod("Count",Flags)));}
+            var harpy=assembly.GetType("JueMingR.TerrariaHost.Combat.HostHarpyAttack",true);audit.Patch(harpy.GetMethod("Solve",Flags),prefix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks).GetMethod("Count",Flags)));
+            foreach(string getter in new[]{"get_Current","get_MembersCurrent"})audit.Patch(harpy.GetNestedType("State",Flags).GetMethod(getter,Flags),prefix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks).GetMethod("Count",Flags)));
             return audit;
         }
         private static void Report(string scenario)
@@ -44,7 +48,8 @@ namespace NativeWorldTextProbe
             var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var attack=Get(combat,"Attack");var input=Get(context,"Input");var audit=Audit(attack);
             try
             {
-                YoyoOpening(context,combat,host,attack,input);YoyoMagicOpening(context,combat,host,attack,input);
+                YoyoOpening(context,combat,host,attack,input);YoyoMagicOpening(context,combat,host,attack,input);Solar(context,combat,host,attack,input);
+                NaturalCosts(context,combat,host,attack,input);
                 foreach(string scenario in new[]{"off","idle","no-target","stable","changing","dense","blocked","inapplicable","same-sample","switching"})
                 {
                     NativeCombatObservationChecks.Save(host,new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,scenario=="inapplicable"?3509:95,0,0);p.position=new Vector2(700,646);p.inventory[54].SetDefaults(97);p.inventory[54].stack=999;Main.screenPosition=new Vector2(600,400);
@@ -56,8 +61,9 @@ namespace NativeWorldTextProbe
                     for(int i=0;i<8;i++)
                     {if(scenario=="switching"){p.inventory[0].SetDefaults(i%2==0?95:39);p.inventory[54].SetDefaults(i%2==0?97:40);p.inventory[54].stack=999;Main.npc[1].Center=new Vector2(1100,620);}NativeToolExecutionChecks.Sample(context,input,scenario=="switching"?Main.npc[i%2].Center:new Vector2(850,667),active);Call(combat,"Sample");Call(host,"SampleMouse");if(scenario!="same-sample" || i==0)NativeQuickItemChecks.BeginWorldStep();if(scenario=="changing")Main.npc[0].position.X+=1;Call(host,"Update",(ulong)Main.GameUpdateCount);var contact=GetOptional(attack,"ExpectedImpact");if(i==0)afterFirst=cache.Steps;if(scenario=="switching")Require(contact!=null,"rapid observed weapon/ammo/physical target replacement keeps a useful prepared contact");}
                     Report(scenario);
-                    if(!active || count==0 || scenario=="inapplicable")Require(Total("AttackIntercept.Solve")==0 && cache.Steps==steps,"off/idle/no-target/inapplicable produce no attack solver or future work");
-                    Require(Total("HostAttackCandidates.Priority")<=8*Main.maxNPCs && Total("AttackAmmoSnapshot.CaptureCore")<=48,"candidate qualification captures once per selection, not once per dense receiver");
+                    if(scenario=="off" || count==0 || scenario=="inapplicable")Require(Total("AttackIntercept.Solve")==0 && cache.Steps==steps,"off/no-target/inapplicable produce no attack solver or future work");
+                    if(scenario=="idle")Require(GetOptional(attack,"ExpectedPreview")!=null && GetOptional(attack,"ExpectedImpact")==null,"held-weapon idle preparation has a useful read-only preview without an execution capability");
+                    Require(Total("HostAttackAim.ResolveSelection")<=24 && Total("AttackAmmoSnapshot.CaptureCore")<=96,"candidate resolution is bounded per phase, not a full solve per dense receiver");
                     if(scenario=="stable" || scenario=="changing")Require(GetOptional(attack,"ExpectedImpact")!=null,"measured ordinary solve keeps useful contact");
                     if(scenario=="blocked")Require(GetOptional(attack,"ExpectedImpact")==null,"measured stable wall does not invent contact");
                     if(scenario=="same-sample")Require(cache.Steps==afterFirst && GetOptional(attack,"ExpectedImpact")!=null && Total("AttackIntercept.Solve")<=16,"same sample repeats reuse the one future while bounded preparation remains useful");
@@ -67,6 +73,29 @@ namespace NativeWorldTextProbe
                 Console.WriteLine("PASS attack costs: real finite preparation/qualification/retirement/navigation and beam scans; component calls, not game FPS.");
             }
             finally{audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());}
+        }
+        private static void Solar(object context,object combat,object host,object attack,object input)
+        {
+            foreach(string scene in new[]{"preview","attack","unreachable","no-target","switch-away"})
+            {
+                NativeCombatObservationChecks.Save(host,new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,3473,0,0);p.position=new Vector2(700,646);p.velocity=Vector2.Zero;p.ResetEffects();Main.screenPosition=new Vector2(600,400);
+                var n=Main.npc[2];n.SetDefaults(488);n.whoAmI=2;n.active=scene!="no-target";n.position=new Vector2(scene=="unreachable"?1450:900,646);n.target=0;n.netOffset=n.velocity=Vector2.Zero;Array.Clear(n.immune,0,n.immune.Length);
+                NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));calls.Clear();
+                for(int i=0;i<4;i++)
+                {
+                    NativeQuickItemChecks.BeginWorldStep();NativeToolExecutionChecks.Sample(context,input,new Vector2(600,650),scene=="attack");Call(combat,"Sample");Call(host,"SampleMouse");Call(host,"Update",(ulong)Main.GameUpdateCount);
+                }
+                Report("solar-"+scene);int solves=Total("HostMeleeAttack.Solve"),poses=Total("HostMeleeAttack.SolarPose");
+                Require(poses<=29*solves,"stationary target has one unique seed and no solar pose after native effective lifetime: "+scene);
+                if(scene=="no-target")Require(solves==0 && poses==0,"no receiver leaves no solar solve work");
+                else if(scene=="unreachable")Require(solves>0 && poses>0 && GetOptional(attack,"ExpectedPreview")==null,"measured solar miss still attempts the full finite effective period");
+                else Require(solves>0 && poses>0 && GetOptional(attack,"ExpectedPreview")!=null,"solar cost scenario retains useful held-weapon preview: "+scene);
+                if(scene=="switch-away")
+                {
+                    p.inventory[0].SetDefaults(3509);calls.Clear();NativeQuickItemChecks.BeginWorldStep();NativeToolExecutionChecks.Sample(context,input,n.Center,false);Call(combat,"Sample");Call(host,"Update",(ulong)Main.GameUpdateCount);
+                    Require(Total("HostMeleeAttack.Solve")==0 && Total("HostMeleeAttack.SolarPose")==0 && GetOptional(attack,"ExpectedPreview")==null,"switching away retires solar demand and result");
+                }
+            }
         }
         // The full natural preparation entry and original ItemCheck/AI run on
         // distinct real update/input epochs. Opening Find was absent from the

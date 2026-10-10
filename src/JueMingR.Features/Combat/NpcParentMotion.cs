@@ -3,9 +3,9 @@ using JueMingR.Platform.Combat;
 
 namespace JueMingR.Features.Combat
 {
-    // Current native parent phase and relative speed constraints. The parent
-    // itself remains a qualified observed motion; attacks, RNG and full boss
-    // phase selection are not replayed by this private scalar continuation.
+    // Native child motor reads the slot-ordered parent copy. Acquiring that
+    // copy never runs live boss AI, attacks or RNG; unsupported parent motors
+    // remain an explicit dependency boundary rather than a frozen anchor.
     internal static class NpcParentMotion
     {
         // These phases select the captured closest player before their first
@@ -17,6 +17,7 @@ namespace JueMingR.Features.Combat
         {return n.Style==36 && (n.A2==0 || n.A2==3) || (n.Style==12 || n.Style==33 || n.Style==34) && (n.A2==1 || n.A2==4 || n.Style!=12 && (n.A2==0 || n.A2==3 || n.A2==99));}
         internal static bool NeedsPlayer(NpcMotionState n,PredictionEnvironment e,int remaining,NpcMotionState parent)
         {
+            if(n.Style==12 && (!parent.Active || parent.Style!=11))return false;
             // Match Step's action-before phase, including far-parent recovery.
             // AI12/33/34 raising and horizontal setup do not read a player
             // until their relative boundary actually enters Aim. Rolling
@@ -36,6 +37,17 @@ namespace JueMingR.Features.Combat
             if(phase==1)return n.Y<parent.Y-(n.Style==34?280:200);
             if(phase==4)return n.Style==33 || n.Bounds.CenterX<parent.Bounds.CenterX-500 || n.Bounds.CenterX>parent.Bounds.CenterX+500;
             return phase==2 || phase==5;
+        }
+        internal static bool Orphan(ref NpcMotionState n,out PredictionStop stop)
+        {
+            stop=PredictionStop.None;n.SpriteDirection=-(int)n.A0;n.PositionOwnerValid=false;
+            // Natural AI12 phases are 0..5; after +10 no surviving server
+            // phase branch reads the invalid owner's geometry. Preserve L3.
+            float previous=n.A2;n.A2+=10;
+            if(n.A2>50 || n.PositionInvalidRetireImmediately)
+            {n.Life=-1;n.Active=false;stop=PredictionStop.Despawn;return false;}
+            if(previous<0){stop=PredictionStop.InvalidState;return false;}
+            return true;
         }
         internal static bool Step(ref NpcMotionState n,NpcMotionState parent,PredictionEnvironment e,out PredictionStop stop)
         {
