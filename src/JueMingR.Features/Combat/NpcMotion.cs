@@ -19,7 +19,7 @@ namespace JueMingR.Features.Combat
             if(!n.NoTileCollide || n.Style==3 || n.Style==6 || n.Style==37 || n.Style==1 || !KnownMotion(n))result|=PredictionAssumption.ApproximateMechanism;
             if(n.BuffFingerprint!=0)result|=PredictionAssumption.ApproximateMechanism|PredictionAssumption.UnmodeledStatusEffects;
             if(n.TrackingKind>=2)result|=PredictionAssumption.ObservedTrackingMotion|PredictionAssumption.ApproximateMechanism;
-            if(n.PositionRelation!=0 || n.MechQueenIdentity.Token!=null || n.CrowdCaptured || n.PlantRelationsCaptured || n.EyeRelationsCaptured || n.SkeletonRelationsCaptured || n.WeaponRelationsCaptured || n.MageRelationsCaptured || n.GolemRelationsCaptured || n.BrainRelationsCaptured || n.WallRelationsCaptured || n.TowerRelationsCaptured || n.TownRelationsCaptured || n.DD2TargetFactsCaptured)result|=PredictionAssumption.CurrentConnection|PredictionAssumption.ApproximateMechanism;
+            if(n.PositionRelation!=0 || n.MechQueenIdentity.Token!=null || n.CrowdCaptured || n.PlantRelationsCaptured || n.EyeRelationsCaptured || n.SkeletonRelationsCaptured || n.WeaponRelationsCaptured || n.MageRelationsCaptured || n.GolemRelationsCaptured || n.BrainRelationsCaptured || n.WallRelationsCaptured || n.TowerRelationsCaptured || n.CultistRelationsCaptured || n.MoonRelationsCaptured || n.RitualRelationsCaptured || n.TownRelationsCaptured || n.DD2TargetFactsCaptured)result|=PredictionAssumption.CurrentConnection|PredictionAssumption.ApproximateMechanism;
             return result;
         }
         public static bool Step(ref NpcMotionState n,NpcMotionState[] group,int count,PredictionEnvironment env,IPredictionTerrain terrain,int elapsed,out PredictionStop stop)
@@ -31,7 +31,9 @@ namespace JueMingR.Features.Combat
             // independently of this actor's target. Preserve the rolling
             // owner's timeline before target-specific AI rewrites its premise.
             var lifetimeEnvironment=env;
-            bool euclideanSearch=NpcWallBossMotion.Known(n) || NpcTownCritterMotion.Known(n) || n.EffectiveType==399 && n.Style==80 || NpcDarkMageMotion.Known(n) || NpcBetsyMotion.Known(n) || NpcInvasionLightningMotion.Known(n) || NpcInvasionFlightMotion.Known(n) || NpcInvasionGroundMotion.Known(n);
+            // AI83's tablet releases other raw-slot actors and retargets those
+            // actors. Its own target255 must not replace their player timeline.
+            bool euclideanSearch=NpcMoonLeechMotion.Known(n) || n.EffectiveType==437 && n.Style==83 || NpcWallBossMotion.Known(n) || NpcTownCritterMotion.Known(n) || n.EffectiveType==399 && n.Style==80 || NpcDarkMageMotion.Known(n) || NpcBetsyMotion.Known(n) || NpcInvasionLightningMotion.Known(n) || NpcInvasionFlightMotion.Known(n) || NpcInvasionGroundMotion.Known(n);
             if(!euclideanSearch){env.PlayerTimelineActive&=!n.TargetCaptured || n.PlayerIndex==env.PlayerIndex;env=NpcTargeting.Player(n,env);}
             bool playerNeededThisAction=NeedsPlayerMotion(n,env,1,group,count,terrain);
             if(!n.Active){stop=PredictionStop.Despawn;return false;}
@@ -67,7 +69,7 @@ namespace JueMingR.Features.Combat
             if(n.TrackingKind>=2 && !NpcFlyingMotion.Bee(n.EffectiveType))n.TrackingArea=tracking;
             int direction=face?(int)tracking.X+(int)tracking.Width/2<n.X+n.Width/2?-1:1:n.Direction;
             int vertical=face?(int)tracking.Y+(int)tracking.Height/2<n.Y+n.Height/2?-1:1:n.DirectionY;
-            bool confused=n.ConfusedTicks>0;if(confused){direction=-direction;n.ConfusedTicks--;}
+            bool confused=n.ConfusedTicks>0;n.RitualConfused=confused;if(confused){direction=-direction;n.ConfusedTicks--;}
             bool linked=false;
             NpcPositionMotion.ReleaseFollow(ref n,ref env,confused);
             if(n.DD2TargetFactsCaptured)n.DD2OldTarget=n.Target;
@@ -104,6 +106,14 @@ namespace JueMingR.Features.Combat
             {if(!NpcPumpkingMotion.Step(ref n,env,terrain,elapsed,out stop,group,count,confused:confused))return false;}
             else if(NpcIceQueenMotion.Known(n))
             {if(!NpcIceQueenMotion.Step(ref n,env,terrain,elapsed,out stop,group,count,confused:confused))return false;}
+            else if(NpcCultistBossMotion.Known(n))
+            {if(!NpcCultistBossMotion.Step(ref n,env,terrain,elapsed,out stop,group,count,confused:confused))return false;}
+            else if(NpcCultistRitualMotion.Known(n))
+            {if(!NpcCultistRitualMotion.Step(ref n,env,terrain,elapsed,out stop,group,count,confused:confused))return false;}
+            else if(NpcMoonLeechMotion.Known(n))
+            {if(!NpcMoonLeechMotion.Step(ref n,env,terrain,elapsed,out stop,group,count,confused:confused))return false;}
+            else if(NpcMoonLordMotion.Known(n))
+            {if(!NpcMoonLordMotion.Step(ref n,env,terrain,elapsed,out stop,group,count,confused:confused))return false;}
             else if(NpcTreeBossMotion.Known(n))
             {if(!NpcTreeBossMotion.Step(ref n,env,terrain,elapsed,out stop,group,count,confused:confused))return false;}
             else if(NpcSantaTankMotion.Known(n))
@@ -138,9 +148,9 @@ namespace JueMingR.Features.Combat
             {if(!NpcAnchoredMotion.Step(ref n,env,terrain,out stop))return false;}
             else if(n.Identity.Type==371)Bubble(ref n,env);
             else if(n.Identity.Type==372 || n.Identity.Type==373)
-            {if(!Shark(ref n,env,terrain,out stop))return false;}
+            {if(!Shark(ref n,env,terrain,out stop,confused))return false;}
             else if(n.Style==69)
-            {if(!Duke(ref n,env,out stop))return false;}
+            {if(!Duke(ref n,env,out stop,confused))return false;}
             else if(n.Style==8)
             {
                 // A destination already sent by vanilla is a known jump. A
@@ -312,6 +322,10 @@ namespace JueMingR.Features.Combat
             if(NpcCelestialTowerMotion.Known(n))return NpcCelestialTowerMotion.NeedsPlayer(n,e);
             if(NpcPumpkingMotion.Known(n))return NpcPumpkingMotion.NeedsPlayer(n,e,group,count,remaining);
             if(NpcIceQueenMotion.Known(n))return NpcIceQueenMotion.NeedsPlayer(n,e);
+            if(NpcCultistBossMotion.Known(n))return NpcCultistBossMotion.NeedsPlayer(n,e);
+            if(NpcCultistRitualMotion.Known(n))return NpcCultistRitualMotion.NeedsPlayer(n,e);
+            if(NpcMoonLeechMotion.Known(n))return NpcMoonLeechMotion.NeedsPlayer(n,e);
+            if(NpcMoonLordMotion.Known(n))return NpcMoonLordMotion.NeedsPlayer(n,e);
             if(NpcTreeBossMotion.Known(n))return NpcTreeBossMotion.NeedsPlayer(n);
             if(NpcSantaTankMotion.Known(n))return NpcSantaTankMotion.NeedsPlayer(n);
             if(NpcKingSlimeMotion.Known(n))return NpcKingSlimeMotion.NeedsPlayer(n,e);
@@ -403,6 +417,8 @@ namespace JueMingR.Features.Combat
         // Host role acquisition follows the same bounded deterministic clocks
         // as the kernel, without a duplicate approximation or live AI action.
         public static int TowerNewConsumerAction(NpcMotionState n,PredictionEnvironment e,int maximum,NpcMotionState[] group,int count){return NpcCelestialTowerMotion.FirstNewConsumerAction(n,e,maximum,group,count);}
+        public static int CultistDoomCountAction(NpcMotionState n,PredictionEnvironment e,int maximum,NpcMotionState[] group,int count){return NpcCultistBossMotion.FirstNecessaryDoomCountAction(n,e,maximum,group,count);}
+        public static int CultistDoomBirthAction(NpcMotionState n,PredictionEnvironment e,int maximum,NpcMotionState[] group,int count){return NpcCultistBossMotion.FirstPotentialDoomBirthAction(n,e,maximum,group,count);}
         public static int MageReadyAction(NpcMotionState n,int maximum){return NpcDarkMageMotion.FirstReadyAction(n,maximum);}
         public static int PlayerPremiseTarget(NpcMotionState n,PredictionEnvironment e,IPredictionTerrain terrain=null,NpcMotionState[] group=null,int count=0)
         {
@@ -418,6 +434,10 @@ namespace JueMingR.Features.Combat
             if(NpcCelestialTowerMotion.Known(n))return NpcCelestialTowerMotion.Retargets(n,e) && n.HasClosestPlayer?n.ClosestPlayerIndex:n.PlayerIndex;
             if(NpcPumpkingMotion.Known(n))return NpcPumpkingMotion.PlayerPremise(n,e,group,count);
             if(NpcIceQueenMotion.Known(n))return NpcIceQueenMotion.PlayerPremise(n,e);
+            if(NpcCultistBossMotion.Known(n))return NpcCultistBossMotion.PlayerPremise(n,e,group,count);
+            if(NpcCultistRitualMotion.Known(n))return NpcCultistRitualMotion.PlayerPremise(n,e,group,count);
+            if(NpcMoonLeechMotion.Known(n))return NpcMoonLeechMotion.PlayerPremise(n,e);
+            if(NpcMoonLordMotion.Known(n))return NpcMoonLordMotion.PlayerPremise(n,e);
             if(NpcTreeBossMotion.Known(n))return NpcTreeBossMotion.Retargets(n,e) && n.HasClosestPlayer?n.ClosestPlayerIndex:n.PlayerIndex;
             if(NpcSantaTankMotion.Known(n))return NpcSantaTankMotion.Retargets(n,e) && n.HasClosestPlayer?n.ClosestPlayerIndex:n.PlayerIndex;
             if(NpcKingSlimeMotion.Known(n))return NpcKingSlimeMotion.Retargets(n,e) && n.HasClosestPlayer?n.ClosestPlayerIndex:n.PlayerIndex;
@@ -429,6 +449,8 @@ namespace JueMingR.Features.Combat
             if(n.EffectiveType==399 && n.Style==80)return n.SearchPlayerCaptured?n.SearchPlayerIndex:-1;
             if(n.PositionRelation==8)return n.HasClosestPlayer?n.ClosestPlayerIndex:n.PlayerIndex;
             e=NpcTargeting.Player(n,e);
+            if(n.Style==69 && n.EffectiveType==370)return DukeRetargets(n,e) && n.HasClosestPlayer?n.ClosestPlayerIndex:n.PlayerIndex;
+            if(n.Style==71 && (n.EffectiveType==372 || n.EffectiveType==373))return (n.Target<0 || n.Target==255 || n.PlayerNativeDead || n.A0==0 && n.A1+1>=90) && n.HasClosestPlayer?n.ClosestPlayerIndex:n.PlayerIndex;
             if(n.Style==16 && NpcAquaticMotion.Known(n.EffectiveType) && n.Direction==0)return n.HasClosestPlayer?n.ClosestPlayerIndex:n.PlayerIndex;
             if(n.Style==3 && n.PositionRelation==0)return NpcGroundMotion.PlayerPremiseTarget(n,e);
             if(n.Style==1 && n.PositionRelation==0)return NpcSlimeControl.PlayerPremiseTarget(n,e);
@@ -457,7 +479,7 @@ namespace JueMingR.Features.Combat
         private static bool VultureType(int t){return t==61 || t==301;}
         private static bool BatType(int t){return NpcBatMotion.Known(t);}
         private static bool KnownMotion(NpcMotionState n)
-        {int t=n.EffectiveType;return NpcIceQueenMotion.Known(n) || NpcPumpkingMotion.Known(n) || NpcWallBossMotion.Known(n) || NpcQueenBeeMotion.Known(n) || NpcBrainSwarmMotion.Known(n) || NpcGolemMotion.Known(n) || NpcBloodNautilusMotion.Known(n) || NpcDarkMageMotion.Known(n) || NpcAttachedWeaponMotion.Known(n) || NpcTownCritterMotion.Known(n) || NpcDiveFlightMotion.Known(n) || NpcBetsyMotion.Known(n) || NpcSkeletonBossMotion.Known(n) || NpcCelestialTowerMotion.Known(n) || NpcTreeBossMotion.Known(n) || NpcSantaTankMotion.Known(n) || NpcKingSlimeMotion.Known(n) || NpcSnowmanMotion.Known(n) || NpcEyeBossMotion.Known(n) || NpcMechanicalBossMotion.Known(n) || NpcInvasionGroundMotion.Known(n) || NpcInvasionLightningMotion.Known(n) || NpcInvasionFlightMotion.Known(n) || NpcInvasionCrystalMotion.Known(n) || NpcBigMimicMotion.Known(n) || NpcPlanteraMotion.Known(n) || NpcTerrainFlightMotion.Known(n) || NpcRelatedMotion.Known(n) || NpcAmbientFlightMotion.Known(n) || NpcPhasedFlightMotion.Known(n) || NpcFiniteFlightMotion.Known(n) || t==488 || t>=370 && t<=373 || n.Style==1 || n.Style==3 || n.Style==6 || n.Style==8 || n.Style==37 || n.Style==23 && NpcChargeMotion.Known(t) || n.Style==25 && NpcMimicMotion.Known(t) || n.Style==18 && NpcJellyfishMotion.Known(t) || n.Style==26 && NpcRunningMotion.Known(t) || n.Style==19 && NpcSupportMotion.Known(t) || n.PositionRelation==7 || n.Style==9 && NpcStraightMotion.Known(t) || n.Style==39 && NpcRollingMotion.TortoiseType(t) || n.Style==41 && NpcRollingMotion.Hopper(t) || n.Style==17 && VultureType(t) || n.Style==2 && KnownEye(t) || n.Style==5 && FlyingType(t) || n.Style==14 && BatType(t);}
+        {int t=n.EffectiveType;return NpcMoonLeechMotion.Known(n) || NpcMoonLordMotion.Known(n) || NpcCultistRitualMotion.Known(n) || NpcCultistBossMotion.Known(n) || NpcIceQueenMotion.Known(n) || NpcPumpkingMotion.Known(n) || NpcWallBossMotion.Known(n) || NpcQueenBeeMotion.Known(n) || NpcBrainSwarmMotion.Known(n) || NpcGolemMotion.Known(n) || NpcBloodNautilusMotion.Known(n) || NpcDarkMageMotion.Known(n) || NpcAttachedWeaponMotion.Known(n) || NpcTownCritterMotion.Known(n) || NpcDiveFlightMotion.Known(n) || NpcBetsyMotion.Known(n) || NpcSkeletonBossMotion.Known(n) || NpcCelestialTowerMotion.Known(n) || NpcTreeBossMotion.Known(n) || NpcSantaTankMotion.Known(n) || NpcKingSlimeMotion.Known(n) || NpcSnowmanMotion.Known(n) || NpcEyeBossMotion.Known(n) || NpcMechanicalBossMotion.Known(n) || NpcInvasionGroundMotion.Known(n) || NpcInvasionLightningMotion.Known(n) || NpcInvasionFlightMotion.Known(n) || NpcInvasionCrystalMotion.Known(n) || NpcBigMimicMotion.Known(n) || NpcPlanteraMotion.Known(n) || NpcTerrainFlightMotion.Known(n) || NpcRelatedMotion.Known(n) || NpcAmbientFlightMotion.Known(n) || NpcPhasedFlightMotion.Known(n) || NpcFiniteFlightMotion.Known(n) || t==488 || t>=370 && t<=373 || n.Style==1 || n.Style==3 || n.Style==6 || n.Style==8 || n.Style==37 || n.Style==23 && NpcChargeMotion.Known(t) || n.Style==25 && NpcMimicMotion.Known(t) || n.Style==18 && NpcJellyfishMotion.Known(t) || n.Style==26 && NpcRunningMotion.Known(t) || n.Style==19 && NpcSupportMotion.Known(t) || n.PositionRelation==7 || n.Style==9 && NpcStraightMotion.Known(t) || n.Style==39 && NpcRollingMotion.TortoiseType(t) || n.Style==41 && NpcRollingMotion.Hopper(t) || n.Style==17 && VultureType(t) || n.Style==2 && KnownEye(t) || n.Style==5 && FlyingType(t) || n.Style==14 && BatType(t);}
         private static void Vulture(ref NpcMotionState n,PredictionEnvironment env,int direction,int vertical,bool confused)
         {
             n.NoGravity=true;
@@ -560,24 +582,39 @@ namespace JueMingR.Features.Combat
             if(n.JustHit || n.A0==1){n.CanReceive=false;float x=n.Bounds.CenterX,y=n.Bounds.CenterY;n.Width=n.Height=100;n.X=x-50;n.Y=y-50;}
             n.JustHit=false;
         }
-        private static bool Shark(ref NpcMotionState n,PredictionEnvironment env,IPredictionTerrain terrain,out PredictionStop stop)
+        private static bool Shark(ref NpcMotionState n,PredictionEnvironment env,IPredictionTerrain terrain,out PredictionStop stop,bool confused)
         {
             stop=PredictionStop.None;n.NoTileCollide=true;n.NoGravity=true;
-            bool solid;if(!terrain.Solid(n.Bounds,out solid,out stop))return false;
+            if(n.Target<0 || n.Target==255 || n.PlayerNativeDead){NpcTargeting.Face(ref n,ref env,false,confused);n.Direction=1;}
             if(n.A0==0)
             {
                 n.A1++;n.CanReceive=false;n.Vy=n.A3;
-                if(n.Identity.Type==373){double angle=Math.PI/30;float before=(float)(Math.Cos(angle*n.L1)-.5)*n.A2;n.L1++;float after=(float)(Math.Cos(angle*n.L1)-.5)*n.A2;n.X+=(after-before)*-n.Direction;}
-                if(n.A1>=90){n.A0=1;n.A1=solid?0:1;float dx=env.PlayerX-n.Bounds.CenterX,dy=env.PlayerY-n.Bounds.CenterY;Normalize(ref dx,ref dy,16);n.Vx=dx;n.Vy=dy;}
+                if(n.Identity.Type==373){float angle=(float)Math.PI/30;float before=(float)(Math.Cos(angle*n.L1)-.5)*n.A2;n.X-=before*-n.Direction;n.L1++;float after=(float)(Math.Cos(angle*n.L1)-.5)*n.A2;n.X+=after*-n.Direction;}
+                if(n.A1>=90)
+                {
+                    // Native queries solidity and TargetClosest after the
+                    // Sharkron2 cosine displacement, not at its old position.
+                    bool solid;if(!terrain.Solid(n.Bounds,out solid,out stop))return false;
+                    n.A0=1;n.A1=solid?0:1;NpcTargeting.Face(ref n,ref env,true,confused);n.SpriteDirection=n.Direction;
+                    float dx=env.PlayerX-n.Bounds.CenterX,dy=env.PlayerY-n.Bounds.CenterY;Normalize(ref dx,ref dy,16);n.Vx=dx;n.Vy=dy;
+                }
             }
             else if(n.A0==1)
-            {if(!solid && n.A1<1)n.A1=1;if(n.A1>=1){n.CanReceive=true;n.A1++;if(solid){n.Active=false;stop=PredictionStop.Despawn;return false;}}if(n.A1>=60)n.NoGravity=false;}
+            {bool solid;if(!terrain.Solid(n.Bounds,out solid,out stop))return false;if(!solid && n.A1<1)n.A1=1;if(n.A1>=1){n.CanReceive=true;n.A1++;if(solid){n.Active=false;stop=PredictionStop.Despawn;return false;}}if(n.A1>=60)n.NoGravity=false;}
             else{stop=PredictionStop.PhaseBoundary;return false;}
             return true;
         }
-        private static bool Duke(ref NpcMotionState n,PredictionEnvironment env,out PredictionStop stop)
+        private static bool DukeRetargets(NpcMotionState n,PredictionEnvironment env)
+        {float dx=env.PlayerX-n.Bounds.CenterX,dy=env.PlayerY-n.Bounds.CenterY;return n.Target<0 || n.Target==255 || n.TargetCaptured && (!n.HasPlayer || !n.PlayerActive || n.PlayerNativeDead) || (float)Math.Sqrt((double)dx*dx+(double)dy*dy)>5600;}
+        private static bool Duke(ref NpcMotionState n,PredictionEnvironment env,out PredictionStop stop,bool confused)
         {
             stop=PredictionStop.None;bool phase2=n.A0>4,phase3=n.A0>9,early=n.A3<(phase2?6:10);
+            if(DukeRetargets(n,env))NpcTargeting.Face(ref n,ref env,true,confused);
+            // Enrage reads the selected player's current native top-left on
+            // every action. A future ocean/surface crossing cannot keep the
+            // boolean sampled at the beginning of this forecast.
+            var playerArea=n.PlayerPreciseAreaCaptured?n.PlayerPreciseArea:new MotionRect(env.PlayerX-env.PlayerWidth*.5f,env.PlayerY-env.PlayerHeight*.5f,env.PlayerWidth,env.PlayerHeight);
+            if(n.TargetCaptured)env.Enraged=playerArea.Y<800 || (double)playerArea.Y>env.GravityWorldSurface*16 || playerArea.X>6400 && playerArea.X<env.WorldWidth*16-6400;
             n.CanReceive=true;
             float distanceX=env.PlayerX-n.Bounds.CenterX,distanceY=env.PlayerY-n.Bounds.CenterY;
             if(env.PlayerDead || distanceX*distanceX+distanceY*distanceY>5600*5600)
@@ -600,7 +637,7 @@ namespace JueMingR.Features.Combat
                     {
                         if(stage<6)next=6;else if(stage==6){next=7;n.A3=1;}else if(stage==7){next=8;n.A3=0;}
                         if(env.Enraged && next==7)next=8;
-                        if(env.Expert && n.Life<=n.LifeMax*.15f)next=9;
+                        if(env.Expert && (double)n.Life<=n.LifeMax*.15)next=9;
                     }
                     else
                     {
@@ -629,8 +666,8 @@ namespace JueMingR.Features.Combat
             }
             else if(n.A0==7 || n.A0==13)
             {
-                float angle=-(float)Math.PI*2/(120/2)*n.Direction,c=(float)Math.Cos(angle),s=(float)Math.Sin(angle),x=n.Vx,y=n.Vy;
-                n.Vx=x*c-y*s;n.Vy=x*s+y*c;
+                float angle=-(float)Math.PI*2/(120/2)*n.Direction,x=n.Vx,y=n.Vy;double c=Math.Cos(angle),s=Math.Sin(angle);
+                n.Vx=(float)(x*c-y*s);n.Vy=(float)(x*s+y*c);
                 if(++n.A2>=120){bool last=n.A0==13;n.A0=last?10:5;n.A1=n.A2=0;if(last)n.A3++;}
             }
             else if(n.A0==12)

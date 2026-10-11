@@ -30,11 +30,17 @@ namespace JueMingR.TerrariaHost.Combat
         private static float Approach(float value,float desired,float acceleration)
         {if(value<desired){value+=acceleration;if(value<0 && desired>0)value+=acceleration*2;}else if(value>desired){value-=acceleration;if(value>0 && desired<0)value-=acceleration*2;}return value;}
         internal static bool Step(Projectile sample,HostProjectileTargets targets,NpcTrajectory timeline,int tick,PredictionTerrain terrain,ref State s)
+        {return Handles(sample.type) && StepCore(sample,targets,timeline,tick,terrain,ref s);}
+        // These two hand-born AI036 roles share the native motor, not Bee's
+        // birth factory or immunity identity. Keep their dispatch explicit.
+        internal static bool StepWaspBat(Projectile sample,HostProjectileTargets targets,NpcTrajectory timeline,int tick,PredictionTerrain terrain,ref State s)
+        {return (sample.type==189 || sample.type==316) && StepCore(sample,targets,timeline,tick,terrain,ref s);}
+        private static bool StepCore(Projectile sample,HostProjectileTargets targets,NpcTrajectory timeline,int tick,PredictionTerrain terrain,ref State s)
         {
 #if DEBUG
             MotorSteps++;
 #endif
-            if(!Handles(sample.type))return false;s.Stopped=false;
+            s.Stopped=false;
             if(s.Position.X<=Main.leftWorld || s.Position.X+sample.width>=Main.rightWorld || s.Position.Y<=Main.topWorld || s.Position.Y+sample.height>=Main.bottomWorld || float.IsNaN(s.Position.X) || float.IsNaN(s.Position.Y))
             {s.Alive=false;s.Stopped=true;return true;}
             Vector2 half=new Vector2(sample.width,sample.height)*.5f,wetVelocity=s.Velocity;
@@ -66,6 +72,8 @@ namespace JueMingR.TerrariaHost.Combat
                 }
             }
             Vector2 desired=point-center;float length=(float)Math.Sqrt(desired.X*desired.X+desired.Y*desired.Y),speed=sample.type==566?6.8f:6,acceleration=sample.type==566?.14f:.1f;
+            if(sample.type==189){speed=9;acceleration=.2f;}
+            if(sample.type==316){speed=s.TargetSlot>=0?13:10;acceleration=s.TargetSlot>=0?.325f:.25f;}
             float factor=speed/length;desired.X*=factor;desired.Y*=factor;
             // Native zero-vector comparisons leave the velocity unchanged;
             // SafeNormalize(UnitX) would invent motion and an eventual hit.
@@ -79,13 +87,32 @@ namespace JueMingR.TerrariaHost.Combat
                 bool wet,lava;byte kind;if(!terrain.ProjectileWet(center.X,center.Y,sample.width,sample.height,out wet,out kind,true) || !terrain.ProjectileLava(center.X,center.Y,sample.width,sample.height,out lava,true))return false;
                 if(lava)s.Lava=true;if(wet && kind==2)s.Honey=true;if(wet && kind==3)s.Shimmer=true;s.Wet=wet;if(!wet)s.Honey=s.Lava=s.Shimmer=false;
             }
-            if(s.Shimmer)s.Velocity.Y-=.2f;
+            if(s.Shimmer)
+            {
+                // Shimmer dispatches Bee181/566 by type before AI036. Wasp
+                // and Bat instead use the AI-style column Kill/reversal; a
+                // Kill still moves once, then skips Damage and remaining subs.
+                if(sample.type==181 || sample.type==566)s.Velocity.Y-=.2f;
+                else
+                {
+                    int x=(int)(center.X/16f),y=(int)(s.Position.Y/16f);bool full=false;
+                    if(WorldGen.InWorld(x,y) && WorldGen.InWorld(x,y-1))
+                    {
+                        PredictionTile tile,above;PredictionStop stop;
+                        if(!terrain.Tile(x,y,out tile,out stop))return false;
+                        if(tile.Liquid==255 && tile.ShimmerLiquid)
+                        {if(!terrain.Tile(x,y-1,out above,out stop))return false;full=above.Liquid>0 && above.ShimmerLiquid;}
+                    }
+                    if(full)Kill(ref s);
+                    else if(s.Velocity.Y>0){s.Velocity.Y*=-1;s.Shimmer=s.Wet=false;}
+                }
+            }
             Vector2 position=s.Position,velocity=s.Velocity,last=velocity;bool hit=false;
             if(sample.tileCollide && !terrain.ProjectileTileMotion(sample,ref position,ref velocity,s.Wet,s.Honey,out wetVelocity,out hit,true,s.Shimmer,true))return false;
             s.Position=position;
             if(hit)
             {
-                if(s.Penetration>0){s.Penetration--;if(velocity.X!=last.X)velocity.X=-last.X;if(velocity.Y!=last.Y)velocity.Y=-last.Y;}
+                if(sample.type!=316 && s.Penetration>0){s.Penetration--;if(velocity.X!=last.X)velocity.X=-last.X;if(velocity.Y!=last.Y)velocity.Y=-last.Y;}
                 else {s.Position+=velocity;Kill(ref s);}
             }
             s.Velocity=velocity;s.Position+=s.Wet?wetVelocity:velocity;s.Stopped=!s.Alive;return true;

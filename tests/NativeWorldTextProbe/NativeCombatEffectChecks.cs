@@ -40,6 +40,9 @@ namespace NativeWorldTextProbe
             if(finiteOracle=="flame"){NativeCombatFlameChecks.Run(context);return;}
             if(finiteOracle=="bee"){NativeCombatBeeChecks.Run(context);return;}
             if(finiteOracle=="bee-gun"){NativeCombatBeeGunChecks.Run(context);return;}
+            if(finiteOracle=="dart"){NativeCombatDartChecks.Run(context);return;}
+            if(finiteOracle=="line"){NativeCombatLineChecks.Run(context);return;}
+            if(finiteOracle=="wasp-bat"){NativeCombatWaspBatChecks.Run(context);return;}
             if(finiteOracle=="reflection"){NativeCombatReflectionChecks.Run(context);return;}
             if(finiteOracle=="scourge"){NativeCombatScourgeChecks.Run(context);return;}
             if(finiteOracle=="phaseblade"){NativeCombatPhasebladeChecks.Run(context);return;}
@@ -82,6 +85,9 @@ namespace NativeWorldTextProbe
             NativeCombatFlameChecks.Run(context);
             NativeCombatBeeChecks.Run(context);
             NativeCombatBeeGunChecks.Run(context);
+            NativeCombatWaspBatChecks.Run(context);
+            NativeCombatLineChecks.Run(context);
+            NativeCombatDartChecks.Run(context);
             NativeCombatMixedSwingChecks.Run(context);
             NativeCombatReflectionChecks.Run(context);
             NativeCombatScourgeChecks.Run(context);

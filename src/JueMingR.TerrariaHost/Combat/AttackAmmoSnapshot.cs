@@ -22,7 +22,7 @@ namespace JueMingR.TerrariaHost.Combat
         private AttackAmmoSnapshot(Player player,Item weapon,Item ammo,int projectile,float speed)
         {Ammo=ammo;Type=ammo?.type??0;Stack=ammo?.stack??0;Projectile=projectile;Speed=speed;Mode=(int)player.ammoCyclingMode;Offset=player.ammoCyclingOffset;WeaponType=weapon.type;
             weaponSpeed=weapon.shootSpeed;weaponShoot=weapon.shoot;meleeSpeed=player.meleeSpeed;ammoSpeed=ammo?.shootSpeed??0;ammoShoot=ammo?.shoot??0;ammoPrefix=ammo?.prefix??0;quiver=player.magicQuiver;archery=player.archery;molten=player.hasMoltenQuiver;harpy=player.accHarpyCharm;seraph=player.accSeraphNecklace;phoenix=player.hasPhoenixQuiver;
-            if(projectile==183 || projectile==510 || weapon.type==1121)Damage=player.GetWeaponDamage(weapon);
+            if(projectile==183 || projectile==510 || weapon.type==1121 || weapon.type==1155 || weapon.type==1801)Damage=player.GetWeaponDamage(weapon);
             if(projectile==304)
             {
                 // VampireKnives have no ammo damage addition. Native AI002
@@ -31,12 +31,12 @@ namespace JueMingR.TerrariaHost.Combat
                 Damage=player.GetWeaponDamage(weapon);DamageLifetime=Damage>0?54:0;int value=Damage;
                 for(int k=30;k<=54 && value>0;k++){value=(int)(value*.9f);if(value==0)DamageLifetime=k-1;}
             }
-            if(projectile==469)Damage=BeeArrowDamage(player,weapon,ammo);
+            if(projectile==469 || projectile>=477 && projectile<=479)Damage=SelectedAmmoDamage(player,weapon,ammo);
             if(HostGemStaffAttack.Handles(projectile)){GemFeatures=HostGemStaffAttack.Features(player,projectile);Speed=HostGemStaffAttack.Speed(speed,GemFeatures);Damage=HostGemStaffAttack.Damage(player,weapon,GemFeatures);}
             if(ammo!=null)for(int i=0;i<player.inventory.Length;i++)if(ReferenceEquals(player.inventory[i],ammo)){ammoSlot=i;break;}}
         internal static AttackAmmoSnapshot Capture(Player player,Item weapon)
         {return CaptureCore(player,weapon,weapon.shootSpeed,weapon.shoot);}
-        private static int BeeArrowDamage(Player player,Item weapon,Item ammo)
+        private static int SelectedAmmoDamage(Player player,Item weapon,Item ammo)
         {
             int value=player.GetWeaponDamage(weapon);
             // Locked PickAmmo54187..54198 adds SharpBarb before applying the
@@ -99,7 +99,7 @@ namespace JueMingR.TerrariaHost.Combat
         // next prepare/real consumer's full IdentityMatches, not inferred here.
         internal bool MembersMatch(Player player,Item weapon)
         {return (Ammo==null || ammoSlot>=0 && ammoSlot<player.inventory.Length && ReferenceEquals(player.inventory[ammoSlot],Ammo) && Ammo.type==Type && Ammo.stack==Stack && Ammo.prefix==ammoPrefix && Ammo.shoot==ammoShoot && Ammo.shootSpeed==ammoSpeed) &&
-            weapon.shoot==weaponShoot && weapon.shootSpeed==weaponSpeed && player.meleeSpeed==meleeSpeed && player.magicQuiver==quiver && player.archery==archery && player.hasMoltenQuiver==molten && player.accHarpyCharm==harpy && player.accSeraphNecklace==seraph && player.hasPhoenixQuiver==phoenix && (Projectile!=304 && Projectile!=183 && Projectile!=510 && WeaponType!=1121 || player.GetWeaponDamage(weapon)==Damage) && (Projectile!=469 || BeeArrowDamage(player,weapon,Ammo)==Damage) && GemMatches(player,weapon) && (int)player.ammoCyclingMode==Mode && player.ammoCyclingOffset==Offset;}
+            weapon.shoot==weaponShoot && weapon.shootSpeed==weaponSpeed && player.meleeSpeed==meleeSpeed && player.magicQuiver==quiver && player.archery==archery && player.hasMoltenQuiver==molten && player.accHarpyCharm==harpy && player.accSeraphNecklace==seraph && player.hasPhoenixQuiver==phoenix && (Projectile!=304 && Projectile!=183 && Projectile!=510 && WeaponType!=1121 && WeaponType!=1155 && WeaponType!=1801 || player.GetWeaponDamage(weapon)==Damage) && (Projectile!=469 && (Projectile<477 || Projectile>479) || SelectedAmmoDamage(player,weapon,Ammo)==Damage) && GemMatches(player,weapon) && (int)player.ammoCyclingMode==Mode && player.ammoCyclingOffset==Offset;}
         internal bool Matches(Player player,Item weapon)
         {if(!MembersMatch(player,weapon))return false;var now=Capture(player,weapon);return now!=null && ReferenceEquals(now.Ammo,Ammo) && now.Type==Type && now.Stack==Stack && now.Projectile==Projectile && now.Speed==Speed && now.Damage==Damage && now.Mode==Mode && now.Offset==Offset;}
     }

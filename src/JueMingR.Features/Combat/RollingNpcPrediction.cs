@@ -98,6 +98,7 @@ namespace JueMingR.Features.Combat
             Array.Copy(source,work,count);work[selected]=current;
             terrain.Reset();playerSettled=false;points[0]=new NpcTrajectoryPoint(0,current);int length=1;PredictionStop stop=PredictionStop.None;
             var towerConsumers=NpcCelestialTowerMotion.CreateConsumers(environment);
+            var moonLeeches=NpcMoonLeechMotion.CreateLeeches(environment);
             var gravityEnvironment=environment;bool gravityNeeded=player.GravitySourceExpected || player.ForcedGravityTicks>0;
             for(int i=0;i<count;i++)if(work[i].EffectiveType==266 && environment.GoodWorld)gravityNeeded=true;
             bool wallNeeded=player.WallSourceExpected || environment.WallPlayers!=null || player.WallGross || player.WallTongued || player.WallHorrifiedTicks>0 || player.WallTonguedTicks>0;
@@ -127,7 +128,7 @@ namespace JueMingR.Features.Combat
                     // begin simulating that player halfway through the path.
                     if(restarted || !Valid(initialPlayer)){stop=PredictionStop.PhaseBoundary;FailureLayer=PredictionFailureLayer.PlayerPremise;break;}
                     needsPlayer=true;observedPlayer=boundedPlayer;restarted=true;player=initialPlayer;terrain.Reset();playerSettled=false;
-                    Array.Copy(source,work,count);work[selected]=current;towerConsumers=NpcCelestialTowerMotion.CreateConsumers(environment);gravityEnvironment=environment;gravityPoints[0]=GravityPoint(gravityEnvironment);wallPoints[0]=WallPoint(work,count);length=1;future=0;continue;
+                    Array.Copy(source,work,count);work[selected]=current;towerConsumers=NpcCelestialTowerMotion.CreateConsumers(environment);moonLeeches=NpcMoonLeechMotion.CreateLeeches(environment);gravityEnvironment=environment;gravityPoints[0]=GravityPoint(gravityEnvironment);wallPoints[0]=WallPoint(work,count);length=1;future=0;continue;
                 }
                 // Natural ItemCheck sees this player's completed move but the
                 // NPC's previous completed position. First NPC action consumes
@@ -148,7 +149,7 @@ namespace JueMingR.Features.Combat
                         // Switching back to the real origin halfway through
                         // a retained path would create an artificial turn.
                         observedPlayer=restarted=true;boundedPlayer=floatingFailure;stop=PredictionStop.None;terrain.Reset();playerSettled=false;
-                        Array.Copy(source,work,count);work[selected]=current;towerConsumers=NpcCelestialTowerMotion.CreateConsumers(environment);gravityEnvironment=environment;gravityPoints[0]=GravityPoint(gravityEnvironment);wallPoints[0]=WallPoint(work,count);length=1;future=0;continue;
+                        Array.Copy(source,work,count);work[selected]=current;towerConsumers=NpcCelestialTowerMotion.CreateConsumers(environment);moonLeeches=NpcMoonLeechMotion.CreateLeeches(environment);gravityEnvironment=environment;gravityPoints[0]=GravityPoint(gravityEnvironment);wallPoints[0]=WallPoint(work,count);length=1;future=0;continue;
                     }
                     else{FailureLayer=PredictionFailureLayer.PlayerPremise;break;}
                 }
@@ -193,9 +194,10 @@ namespace JueMingR.Features.Combat
                 for(int i=0;i<count;i++)
                 {
                     var state=work[i];
-                    // An inactive captured global has no native actor action.
-                    // Golem BeginFrame already consumed its true validity.
-                    if(!state.Active && i!=selected && (work[selected].TowerRelationsCaptured || work[selected].GolemRelationsCaptured || work[selected].BrainRelationsCaptured || wallNeeded || gravityNeeded) && motionRoles!=null && !motionRoles[i])continue;
+                    // Inactive raw dependencies have no native actor action.
+                    // Keep their identity/status for later original-slot reads,
+                    // including Moon Lord's raw part slots and global owners.
+                    if(!state.Active && i!=selected && (work[selected].RitualRelationsCaptured || work[selected].MoonRelationsCaptured || work[selected].TowerRelationsCaptured || work[selected].GolemRelationsCaptured || work[selected].BrainRelationsCaptured || wallNeeded || gravityNeeded) && motionRoles!=null && !motionRoles[i])continue;
                     // AI111's potential owner is observed before the player's
                     // next update is known. Once this actual action releases,
                     // that owner must not contribute an unrelated failing AI.
@@ -212,7 +214,7 @@ namespace JueMingR.Features.Combat
                     {
                         if(restarted || !Valid(initialPlayer)){stop=PredictionStop.PhaseBoundary;FailureLayer=PredictionFailureLayer.PlayerPremise;advanced=false;break;}
                         needsPlayer=restarted=true;observedPlayer=boundedPlayer;player=initialPlayer;terrain.Reset();playerSettled=false;
-                        Array.Copy(source,work,count);work[selected]=current;towerConsumers=NpcCelestialTowerMotion.CreateConsumers(environment);gravityEnvironment=environment;gravityPoints[0]=GravityPoint(gravityEnvironment);wallPoints[0]=WallPoint(work,count);length=1;future=0;actorRestart=true;break;
+                        Array.Copy(source,work,count);work[selected]=current;towerConsumers=NpcCelestialTowerMotion.CreateConsumers(environment);moonLeeches=NpcMoonLeechMotion.CreateLeeches(environment);gravityEnvironment=environment;gravityPoints[0]=GravityPoint(gravityEnvironment);wallPoints[0]=WallPoint(work,count);length=1;future=0;actorRestart=true;break;
                     }
                     // A shared-life owner is a health dependency, not permission
                     // to replay that otherwise unrelated actor's AI/geometry.
@@ -227,14 +229,16 @@ namespace JueMingR.Features.Combat
                         // that necessary owner's retirement is not actor death.
                         // AI7 similarly stops considering a dangerous actor
                         // after its known retirement, without retiring itself.
-                        if(!valid && stop==PredictionStop.Despawn && i!=selected && (NpcPumpkingMotion.Known(state) || state.SkeletonRelationsCaptured || state.GolemRelationsCaptured || state.BrainRelationsCaptured || state.WallRelationsCaptured || work[selected].TowerRelationsCaptured || work[selected].TownRelationsCaptured))
+                        if(!valid && stop==PredictionStop.Despawn && i!=selected && (work[selected].RitualRelationsCaptured || work[selected].MoonRelationsCaptured || work[selected].CultistRelationsCaptured || NpcPumpkingMotion.Known(state) || state.SkeletonRelationsCaptured || state.GolemRelationsCaptured || state.BrainRelationsCaptured || state.WallRelationsCaptured || work[selected].TowerRelationsCaptured || work[selected].TownRelationsCaptured))
                         {state.Active=false;work[i]=state;stop=PredictionStop.None;continue;}
                         if(valid)stop=PredictionStop.InvalidState;advanced=false;break;
                     }
                     // FindClosestPlayer does not write NPC.target. Its kernel
                     // verifies the separate Euclidean winner's timeline, while
                     // standard numbered-target motors retain this old gate.
-                    if(playerNeededThisAction && !(NpcWallBossMotion.Known(state) || NpcTownCritterMotion.Known(state) || state.EffectiveType==399 && state.Style==80 || NpcDarkMageMotion.Known(state) || NpcBetsyMotion.Known(state) || NpcInvasionLightningMotion.Known(state) || NpcInvasionFlightMotion.Known(state) || NpcInvasionGroundMotion.Known(state)) && state.TargetCaptured && state.PlayerIndex!=environment.PlayerIndex)
+                    // AI83 release validates each actual raw-slot winner in
+                    // its model; the tablet's own target is not that consumer.
+                    if(playerNeededThisAction && !(NpcMoonLeechMotion.Known(state) || state.EffectiveType==437 && state.Style==83 || NpcWallBossMotion.Known(state) || NpcTownCritterMotion.Known(state) || state.EffectiveType==399 && state.Style==80 || NpcDarkMageMotion.Known(state) || NpcBetsyMotion.Known(state) || NpcInvasionLightningMotion.Known(state) || NpcInvasionFlightMotion.Known(state) || NpcInvasionGroundMotion.Known(state)) && state.TargetCaptured && state.PlayerIndex!=environment.PlayerIndex)
                     {stop=PredictionStop.MissingDependency;advanced=false;break;}
                     work[i]=state;
                     if(writesGravity){gravityEnvironment.GravitySourceCaptured=true;gravityEnvironment.GravitySourceValid=true;gravityEnvironment.GravitySourceIdentity=state.Identity;}
@@ -245,6 +249,10 @@ namespace JueMingR.Features.Combat
                 // writes affect the next actor action; current CanReceive is
                 // retained exactly until that action recomputes the shield.
                 if(!NpcCelestialTowerMotion.EndFrame(towerConsumers,work,count,environment,out stop)){FailureLayer=PredictionFailureLayer.NpcMotion;break;}
+                // AI82 reads the preceding projectile anchor. Native 456 moves
+                // after all NPC slots and writes only the next NPC action's
+                // input, using this frame's unique completed player timeline.
+                if(!NpcMoonLeechMotion.EndFrame(moonLeeches,work,count,env,player,firstPlayerStepCompleted,observedPlayer,future,terrain,out stop)){FailureLayer=PredictionFailureLayer.NpcMotion;break;}
                 if(gravityNeeded && !RefreshGravity(ref gravityEnvironment,work,count,out stop)){FailureLayer=PredictionFailureLayer.PlayerPremise;break;}
                 wallPoints[length]=WallPoint(work,count);gravityPoints[length]=GravityPoint(gravityEnvironment);points[length++]=new NpcTrajectoryPoint(future,work[selected]);
                 if(retain && future==1){firstState=work[0];firstPlayer=player;}
@@ -340,7 +348,7 @@ namespace JueMingR.Features.Combat
             return true;
         }
         private static bool Valid(NpcMotionState n)
-        {return Finite(n.X)&&Finite(n.Y)&&Finite(n.Vx)&&Finite(n.Vy)&&Finite(n.A0)&&Finite(n.A1)&&Finite(n.A2)&&Finite(n.A3)&&Finite(n.L0)&&Finite(n.L1)&&Finite(n.L2)&&Finite(n.L3)&&Finite(n.Scale)&&Finite(n.NetOffsetX)&&Finite(n.NetOffsetY)&&Finite(n.Health.DamageMultiplier)&&Finite(n.Health.ShimmerTransparency)&&Finite(n.WaterSpeed)&&Finite(n.HoneySpeed)&&Finite(n.LavaSpeed)&&Finite(n.ShimmerSpeed)&&n.WaterSpeed>=0&&n.HoneySpeed>=0&&n.LavaSpeed>=0&&n.ShimmerSpeed>=0&&n.Width>0&&n.Width<=1024&&n.Height>0&&n.Height<=1024&&Math.Abs(n.Vx)<=512&&Math.Abs(n.Vy)<=512;}
+        {return Finite(n.X)&&Finite(n.Y)&&Finite(n.Vx)&&Finite(n.Vy)&&Finite(n.A0)&&(Finite(n.A1) || NpcMoonLeechMotion.Known(n) && n.MoonLeechAnchorCaptured)&&Finite(n.A2)&&Finite(n.A3)&&Finite(n.L0)&&Finite(n.L1)&&Finite(n.L2)&&Finite(n.L3)&&Finite(n.Scale)&&Finite(n.NetOffsetX)&&Finite(n.NetOffsetY)&&Finite(n.Health.DamageMultiplier)&&Finite(n.Health.ShimmerTransparency)&&Finite(n.WaterSpeed)&&Finite(n.HoneySpeed)&&Finite(n.LavaSpeed)&&Finite(n.ShimmerSpeed)&&n.WaterSpeed>=0&&n.HoneySpeed>=0&&n.LavaSpeed>=0&&n.ShimmerSpeed>=0&&n.Width>0&&n.Width<=1024&&n.Height>0&&n.Height<=1024&&Math.Abs(n.Vx)<=512&&Math.Abs(n.Vy)<=512;}
         private static bool BoundedPlayer(PredictionPlayerMotion p)
         {return !p.InvalidMechanism && !(p.WallFactsCaptured && p.ObservationMechanism==128) && (p.Grappled || p.Rope || p.FloatingNow || p.ObservationMechanism!=0 && !p.Hover);}
         private static bool Valid(PredictionPlayerMotion p)
@@ -348,6 +356,6 @@ namespace JueMingR.Features.Combat
         private static bool Finite(float value){return !float.IsNaN(value)&&!float.IsInfinity(value);}
         private static float Clamp(float value,float limit){return Math.Max(-limit,Math.Min(limit,value));}
         private static bool SamePhase(NpcMotionState a,NpcMotionState b)
-        {return a.Style==b.Style && a.PositionRelation==b.PositionRelation && a.PositionOwner.Equals(b.PositionOwner) && a.PositionParameter==b.PositionParameter && (NpcWallBossMotion.Known(a)?NpcWallBossMotion.SamePhase(a,b):NpcQueenBeeMotion.Known(a)?NpcQueenBeeMotion.SamePhase(a,b):NpcBrainSwarmMotion.Known(a)?NpcBrainSwarmMotion.SamePhase(a,b):NpcGolemMotion.Known(a)?NpcGolemMotion.SamePhase(a,b):NpcBloodNautilusMotion.Known(a)?NpcBloodNautilusMotion.SamePhase(a,b):NpcDarkMageMotion.Known(a)?NpcDarkMageMotion.SamePhase(a,b):NpcAttachedWeaponMotion.Known(a)?NpcAttachedWeaponMotion.SamePhase(a,b):NpcTownCritterMotion.Known(a)?NpcTownCritterMotion.SamePhase(a,b):NpcDiveFlightMotion.Known(a)?NpcDiveFlightMotion.SamePhase(a,b):NpcBetsyMotion.Known(a)?NpcBetsyMotion.SamePhase(a,b):NpcSkeletonBossMotion.Known(a)?NpcSkeletonBossMotion.SamePhase(a,b):NpcCelestialTowerMotion.Known(a)?NpcCelestialTowerMotion.SamePhase(a,b):NpcIceQueenMotion.Known(a)?NpcIceQueenMotion.SamePhase(a,b):NpcPumpkingMotion.Known(a)?NpcPumpkingMotion.SamePhase(a,b):NpcTreeBossMotion.Known(a)?NpcTreeBossMotion.SamePhase(a,b):NpcSantaTankMotion.Known(a)?NpcSantaTankMotion.SamePhase(a,b):NpcKingSlimeMotion.Known(a)?NpcKingSlimeMotion.SamePhase(a,b):NpcSnowmanMotion.Known(a)?NpcSnowmanMotion.SamePhase(a,b):NpcEyeBossMotion.Known(a)?NpcEyeBossMotion.SamePhase(a,b):NpcMechanicalBossMotion.Known(a)?NpcMechanicalBossMotion.SamePhase(a,b):NpcInvasionGroundMotion.Known(a)?NpcInvasionGroundMotion.SamePhase(a,b):NpcInvasionLightningMotion.Known(a)?NpcInvasionLightningMotion.SamePhase(a,b):NpcInvasionFlightMotion.Known(a)?NpcInvasionFlightMotion.SamePhase(a,b):NpcInvasionCrystalMotion.Known(a)?NpcInvasionCrystalMotion.SamePhase(a,b):NpcBigMimicMotion.Known(a)?NpcBigMimicMotion.SamePhase(a,b):NpcPlanteraMotion.Known(a)?NpcPlanteraMotion.SamePhase(a,b):NpcTerrainFlightMotion.Known(a)?NpcTerrainFlightMotion.SamePhase(a,b):NpcRelatedMotion.Known(a)?NpcRelatedMotion.SamePhase(a,b):NpcPhasedFlightMotion.Known(a)?NpcPhasedFlightMotion.SamePhase(a,b):NpcAmbientFlightMotion.Known(a)?NpcAmbientFlightMotion.SamePhase(a,b):NpcFiniteFlightMotion.Known(a)?NpcFiniteFlightMotion.SamePhase(a,b):(a.A0==b.A0 || Math.Abs(a.A0)>8 && Math.Abs(b.A0)>8 && Math.Sign(a.A0)==Math.Sign(b.A0) && Math.Abs(a.A0-b.A0)<=4));}
+        {return a.Style==b.Style && a.PositionRelation==b.PositionRelation && a.PositionOwner.Equals(b.PositionOwner) && a.PositionParameter==b.PositionParameter && (NpcMoonLeechMotion.Known(a)?NpcMoonLeechMotion.SamePhase(a,b):NpcCultistRitualMotion.Known(a)?NpcCultistRitualMotion.SamePhase(a,b):NpcMoonLordMotion.Known(a)?NpcMoonLordMotion.SamePhase(a,b):NpcCultistBossMotion.Known(a)?NpcCultistBossMotion.SamePhase(a,b):NpcWallBossMotion.Known(a)?NpcWallBossMotion.SamePhase(a,b):NpcQueenBeeMotion.Known(a)?NpcQueenBeeMotion.SamePhase(a,b):NpcBrainSwarmMotion.Known(a)?NpcBrainSwarmMotion.SamePhase(a,b):NpcGolemMotion.Known(a)?NpcGolemMotion.SamePhase(a,b):NpcBloodNautilusMotion.Known(a)?NpcBloodNautilusMotion.SamePhase(a,b):NpcDarkMageMotion.Known(a)?NpcDarkMageMotion.SamePhase(a,b):NpcAttachedWeaponMotion.Known(a)?NpcAttachedWeaponMotion.SamePhase(a,b):NpcTownCritterMotion.Known(a)?NpcTownCritterMotion.SamePhase(a,b):NpcDiveFlightMotion.Known(a)?NpcDiveFlightMotion.SamePhase(a,b):NpcBetsyMotion.Known(a)?NpcBetsyMotion.SamePhase(a,b):NpcSkeletonBossMotion.Known(a)?NpcSkeletonBossMotion.SamePhase(a,b):NpcCelestialTowerMotion.Known(a)?NpcCelestialTowerMotion.SamePhase(a,b):NpcIceQueenMotion.Known(a)?NpcIceQueenMotion.SamePhase(a,b):NpcPumpkingMotion.Known(a)?NpcPumpkingMotion.SamePhase(a,b):NpcTreeBossMotion.Known(a)?NpcTreeBossMotion.SamePhase(a,b):NpcSantaTankMotion.Known(a)?NpcSantaTankMotion.SamePhase(a,b):NpcKingSlimeMotion.Known(a)?NpcKingSlimeMotion.SamePhase(a,b):NpcSnowmanMotion.Known(a)?NpcSnowmanMotion.SamePhase(a,b):NpcEyeBossMotion.Known(a)?NpcEyeBossMotion.SamePhase(a,b):NpcMechanicalBossMotion.Known(a)?NpcMechanicalBossMotion.SamePhase(a,b):NpcInvasionGroundMotion.Known(a)?NpcInvasionGroundMotion.SamePhase(a,b):NpcInvasionLightningMotion.Known(a)?NpcInvasionLightningMotion.SamePhase(a,b):NpcInvasionFlightMotion.Known(a)?NpcInvasionFlightMotion.SamePhase(a,b):NpcInvasionCrystalMotion.Known(a)?NpcInvasionCrystalMotion.SamePhase(a,b):NpcBigMimicMotion.Known(a)?NpcBigMimicMotion.SamePhase(a,b):NpcPlanteraMotion.Known(a)?NpcPlanteraMotion.SamePhase(a,b):NpcTerrainFlightMotion.Known(a)?NpcTerrainFlightMotion.SamePhase(a,b):NpcRelatedMotion.Known(a)?NpcRelatedMotion.SamePhase(a,b):NpcPhasedFlightMotion.Known(a)?NpcPhasedFlightMotion.SamePhase(a,b):NpcAmbientFlightMotion.Known(a)?NpcAmbientFlightMotion.SamePhase(a,b):NpcFiniteFlightMotion.Known(a)?NpcFiniteFlightMotion.SamePhase(a,b):(a.A0==b.A0 || Math.Abs(a.A0)>8 && Math.Abs(b.A0)>8 && Math.Sign(a.A0)==Math.Sign(b.A0) && Math.Abs(a.A0-b.A0)<=4));}
     }
 }

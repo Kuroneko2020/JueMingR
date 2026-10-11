@@ -8,9 +8,11 @@ namespace JueMingR.TerrariaHost.Combat
 {
     internal static class HostEffectAttack
     {
-        internal static bool Handles(int type){return HostBeeGunAttack.Handles(type) || HostFlameAttack.Handles(type) || HostPoisonCloudAttack.Handles(type) || HostGemStaffAttack.Handles(type) || HostFiniteShotAttack.Handles(type) || HostHarpoonAttack.Handles(type) || HostExplosiveAttack.Handles(type) || HostSpecialArrowAttack.Handles(type) || HostPulseAttack.Handles(type) || HostFiniteThrowAttack.Handles(type) || HostCrystalAttack.Handles(type) || HostMagicBounceAttack.Handles(type) || type==207 || type==297 || type==36;}
+        internal static bool Handles(int type){return HostDartAttack.Handles(type) || HostWaspBatAttack.Handles(type) || HostBeeGunAttack.Handles(type) || HostFlameAttack.Handles(type) || HostPoisonCloudAttack.Handles(type) || HostGemStaffAttack.Handles(type) || HostFiniteShotAttack.Handles(type) || HostHarpoonAttack.Handles(type) || HostExplosiveAttack.Handles(type) || HostSpecialArrowAttack.Handles(type) || HostPulseAttack.Handles(type) || HostFiniteThrowAttack.Handles(type) || HostCrystalAttack.Handles(type) || HostMagicBounceAttack.Handles(type) || type==207 || type==297 || type==36;}
         internal static AttackContact Solve(Player player,AttackAmmoSnapshot ammo,NpcTrajectory timeline,Vector2 origin,int age,bool beforeNpc,PredictionTerrain terrain,HostAttackObstacles obstacles,int delay=0)
         {
+            if(HostDartAttack.Handles(ammo.Projectile))return HostDartAttack.Solve(player,ammo,timeline,origin,age,beforeNpc,terrain,obstacles,delay);
+            if(HostWaspBatAttack.Handles(ammo.Projectile))return HostWaspBatAttack.Solve(player,ammo,timeline,origin,age,beforeNpc,terrain,obstacles,delay);
             if(HostBeeGunAttack.Handles(ammo.Projectile))return HostBeeGunAttack.Solve(player,ammo,timeline,origin,age,beforeNpc,terrain,obstacles,delay);
             if(HostFlameAttack.Handles(ammo.Projectile))return HostFlameAttack.Solve(player,ammo,timeline,origin,age,beforeNpc,terrain,obstacles,delay);
             if(HostPoisonCloudAttack.Handles(ammo.Projectile))return HostPoisonCloudAttack.Solve(player,ammo,timeline,origin,age,beforeNpc,terrain,obstacles,delay);

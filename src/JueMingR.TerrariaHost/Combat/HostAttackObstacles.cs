@@ -34,6 +34,8 @@ namespace JueMingR.TerrariaHost.Combat
         private readonly int[] initialLocal,localNext;private readonly List<int> otherHitSlots=new List<int>();
         private HostProjectileBirthSlots birthSlots;
         private bool? beeOwnerStrong;
+        private Player beeOwner;
+        private int beeOwnerSlot=-1;
         private bool localCleared;
         private readonly List<HostProjectileTargets> targetLeases=new List<HostProjectileTargets>();
         private readonly List<HostProjectileFamilyLease> familyLeases=new List<HostProjectileFamilyLease>();
@@ -106,7 +108,21 @@ namespace JueMingR.TerrariaHost.Combat
         internal HostProjectileBirthSlots CaptureBirthSlots()
         {return birthSlots??(birthSlots=HostProjectileBirthSlots.Capture());}
         internal bool CaptureBeeOwner()
-        {if(!beeOwnerStrong.HasValue)beeOwnerStrong=player.strongBees;return beeOwnerStrong.Value;}
+        {
+            if(!beeOwnerStrong.HasValue)
+            {
+                // Idle/cooldown previews advance a private Player pose. Its
+                // equipment value is the calculation premise, but changes
+                // must be checked against the actual numbered owner later.
+                beeOwnerStrong=player.strongBees;beeOwnerSlot=player.whoAmI;
+                if(beeOwnerSlot>=0 && beeOwnerSlot<Main.player.Length)beeOwner=Main.player[beeOwnerSlot];
+            }
+            return beeOwnerStrong.Value;
+        }
+        // O(1) member identity check is also safe for presentation. The full
+        // Unchanged scene/terrain lease remains a preparation/consume check.
+        internal bool BeeOwnerCurrent
+        {get{return !beeOwnerStrong.HasValue || beeOwner!=null && beeOwnerSlot>=0 && beeOwnerSlot<Main.player.Length && ReferenceEquals(Main.player[beeOwnerSlot],beeOwner) && beeOwnerStrong.Value==beeOwner.strongBees;}}
         internal void CaptureProjectileFamily(Projectile[] members,int firstSceneType=0,int lastSceneType=0)
         {familyLeases.Add(new HostProjectileFamilyLease(members,firstSceneType,lastSceneType));CaptureBirthSlots();}
         // Chase permission is a separate native query from Damage permission.
@@ -151,7 +167,7 @@ namespace JueMingR.TerrariaHost.Combat
                 // Native chase permission is distinct from Damage permission.
                 // The selected body is excluded from the other receiver rows,
                 // so its autonomous-targeting dependency needs its own lease.
-                if(goodWorld!=Main.getGoodWorld || expert!=Main.expertMode || multiplayer!=(Main.netMode==1) || selectedReflects!=Main.npc[timeline.Identity.Slot].reflectsProjectiles || beeOwnerStrong.HasValue && beeOwnerStrong.Value!=player.strongBees || birthSlots!=null && !birthSlots.Current)return false;
+                if(goodWorld!=Main.getGoodWorld || expert!=Main.expertMode || multiplayer!=(Main.netMode==1) || selectedReflects!=Main.npc[timeline.Identity.Slot].reflectsProjectiles || !BeeOwnerCurrent || birthSlots!=null && !birthSlots.Current)return false;
                 foreach(var targets in targetLeases)if(!targets.Current)return false;
                 foreach(var family in familyLeases)if(!family.Current)return false;
                 if(!ReceiveUnchanged())return false;

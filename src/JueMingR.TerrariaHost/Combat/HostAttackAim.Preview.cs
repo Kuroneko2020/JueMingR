@@ -164,7 +164,7 @@ namespace JueMingR.TerrariaHost.Combat
             internal int Direction;internal long SwingRevision;internal float MeleeSpeed;internal bool Prepared,Controlled,CapsuleOnly,Using;private Item item;private int slot,type,prefix;private float scale;
             internal void SetMembers(Player player,Item weapon){item=weapon;slot=player.selectedItem;type=weapon.type;prefix=weapon.prefix;scale=player.GetAdjustedItemScale(weapon);Direction=player.direction;}
             internal bool WeaponCurrent(Player player){return player!=null && item!=null && player.selectedItem==slot && ReferenceEquals(player.HeldItem,item) && item.type==type && item.prefix==prefix && player.GetAdjustedItemScale(item)==scale;}
-            internal bool MembersCurrent(Player player){return WeaponCurrent(player) && Direction==player.direction && (Ammo==null || Ammo.MembersMatch(player,item)) && (HarpyState==null || HarpyState.MembersCurrent) && (Flight==null || Flight.Current);}
+            internal bool MembersCurrent(Player player){return WeaponCurrent(player) && Direction==player.direction && (Ammo==null || Ammo.MembersMatch(player,item)) && (Obstacles==null || Obstacles.BeeOwnerCurrent) && (HarpyState==null || HarpyState.MembersCurrent) && (Flight==null || Flight.Current);}
             internal void Clear(){Contact=null;Timeline=null;Ammo=null;Environment=null;Obstacles=null;HarpyState=null;Flight=null;item=null;Prepared=Controlled=false;}
         }
     }

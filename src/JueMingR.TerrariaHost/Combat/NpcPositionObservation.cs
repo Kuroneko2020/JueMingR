@@ -32,9 +32,35 @@ namespace JueMingR.TerrariaHost.Combat
                 {var parent=Main.npc[slot];state.PositionOwnerValid=parent!=null && parent.active && parent.aiStyle==58;if(state.PositionOwnerValid)state.PositionOwner=CombatSelection.Identity(parent,session);}
                 return;
             }
-            else if(n.type==396 && n.aiStyle==79){state.PositionRelation=3;slot=(int)n.ai[3];type=398;}
-            else if(n.type==397 && n.aiStyle==78){state.PositionRelation=4;slot=(int)n.ai[3];type=398;state.PositionParameter=n.ai[2]==0?-1:1;}
+            else if(n.type==396 && n.aiStyle==79 || n.type==397 && n.aiStyle==78)
+            {
+                state.PositionRelation=n.type==396?3:4;slot=(int)n.ai[3];state.PositionOwnerCaptured=true;
+                if(n.type==397)state.PositionParameter=n.ai[2]==0?-1:1;
+                // Both Moon parts test the raw core's activity and type;
+                // its scheduled zero-life retirement has not necessarily run.
+                if(slot>=0 && slot<Main.maxNPCs && slot<Main.npc.Length)
+                {var parent=Main.npc[slot];state.PositionOwnerValid=parent!=null && parent.active && parent.type==398;if(state.PositionOwnerValid)state.PositionOwner=CombatSelection.Identity(parent,session);}
+                return;
+            }
+            else if(n.type==440 && n.aiStyle==84)
+            {
+                // The clone follows an active type439 owner, including a
+                // zero-life row before that owner's own native update.
+                state.PositionRelation=12;state.PositionOwnerCaptured=true;slot=(int)n.ai[3];
+                if(slot>=0 && slot<Main.maxNPCs && slot<Main.npc.Length)
+                {var parent=Main.npc[slot];state.PositionOwnerValid=parent!=null && parent.active && parent.type==439;if(state.PositionOwnerValid)state.PositionOwner=CombatSelection.Identity(parent,session);}
+                return;
+            }
             else if(n.type==401 && n.aiStyle==82){state.PositionRelation=5;slot=(int)System.Math.Abs(n.ai[0])-1;type=396;}
+            else if(n.type==438 && n.aiStyle==83 || (n.type==379 || n.type==380) && n.aiStyle==3 && n.ai[3]<0)
+            {
+                // The ritual prelude reads its encoded raw slot without an
+                // active/type/life gate. Invalid indices remain missing input.
+                state.PositionRelation=13;state.PositionOwnerCaptured=true;slot=(int)(0f-n.ai[3]-1f);
+                if(slot>=0 && slot<Main.maxNPCs && slot<Main.npc.Length)
+                {var parent=Main.npc[slot];state.PositionOwnerValid=parent!=null;if(parent!=null)state.PositionOwner=CombatSelection.Identity(parent,session);}
+                return;
+            }
             else if(n.type==115 && n.aiStyle==29)
             {state.PositionRelation=7;slot=Main.wofNPCIndex;type=113;state.PositionParameter=Main.wofDrawAreaTop+(Main.wofDrawAreaBottom-Main.wofDrawAreaTop)*n.ai[0];if(slot<0)state.ParentSlot=-2;}
             // These controllers use their parent's position/phase to choose
