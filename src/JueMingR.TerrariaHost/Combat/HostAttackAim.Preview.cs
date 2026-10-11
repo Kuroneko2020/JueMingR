@@ -51,7 +51,7 @@ namespace JueMingR.TerrariaHost.Combat
             // All AI013 hand roles except GolemFist refresh native dummy use
             // timers until catch. Their current flight owns the preview even
             // when it was born before observation was enabled.
-            if(hasFlight && item.shoot!=481 && !HostGemStaffAttack.Handles(item.shoot) && !HostAttachedShotAttack.Handles(item.shoot) && !HostArcSwingAttack.Weapon(item.type) && !HostIceRodAttack.Handles(item.shoot))return OnlyFlight(plan,player,timeline,flight);
+            if(hasFlight && item.shoot!=481 && !HostGemStaffAttack.Handles(item.shoot) && !HostAttachedShotAttack.Handles(item.shoot) && !HostArcSwingAttack.Weapon(item.type) && !HostIceRodAttack.Handles(item.shoot) && !HostPaperAirplaneAttack.Handles(item.shoot))return OnlyFlight(plan,player,timeline,flight);
             if(delay<0 || clock.Age+delay>=timeline.Count-1)
             {if(!HostSwingAttack.Mixed(item))return OnlyFlight(plan,player,timeline,flight);delay=-1;}
             if(HostHeldAttack.Weapon(item.type) || HostYoyoNavigation.Weapon(item) || HostWhipAttack.Weapon(item))

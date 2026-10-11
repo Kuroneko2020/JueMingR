@@ -26,6 +26,7 @@ namespace JueMingR.TerrariaHost.Combat
             internal int[] ArcMelee;
             internal bool ArcHandReset;
             internal IcePlacementLease IcePlacement;
+            internal HostPaperAirplaneAttack.State? PaperClock;
         }
         private sealed class AiReflector
         {
@@ -163,8 +164,11 @@ namespace JueMingR.TerrariaHost.Combat
         // terrain and receive scene scans stay in preparation/real consumption.
         internal bool BirthInputsCurrent
         {get{return BirthInputsMatch(false);}}
+        // All candidate forks share this one preparation's observed wind and
+        // visual clock. Resetting private hit history must not recapture time.
+        internal void CapturePaperClock(HostPaperAirplaneAttack.State value){history.PaperClock=value;}
         private bool BirthInputsMatch(bool afterHandStart)
-        {return BeeOwnerCurrent && CursorMappingCurrent && PhoenixOwnerCurrent && (history.ArcOwner==null || (afterHandStart?history.ArcOwner.MembersAfterHandStart:history.ArcOwner.MembersCurrent)) && (!shotFacingCaptured || cursorPlayer.fullRotation==shotRotation);}
+        {return BeeOwnerCurrent && CursorMappingCurrent && PhoenixOwnerCurrent && (!history.PaperClock.HasValue || history.PaperClock.Value.Current) && (history.ArcOwner==null || (afterHandStart?history.ArcOwner.MembersAfterHandStart:history.ArcOwner.MembersCurrent)) && (!shotFacingCaptured || cursorPlayer.fullRotation==shotRotation);}
         internal void CaptureProjectileFamily(Projectile[] members,int firstSceneType=0,int lastSceneType=0)
         {familyLeases.Add(new HostProjectileFamilyLease(members,firstSceneType,lastSceneType));CaptureBirthSlots();}
         internal void CaptureOwnedProjectileFamily(Projectile[] members,int owner,int[] sceneTypes)

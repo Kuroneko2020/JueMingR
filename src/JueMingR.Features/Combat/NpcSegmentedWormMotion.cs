@@ -4,17 +4,17 @@ using JueMingR.Platform.Combat;
 namespace JueMingR.Features.Combat
 {
     // Locked NPC.cs AI_006_Worms 51489–52810. This bounded route covers the
-    // six missing chains; existing ordinary worms/AI37 keep their own solver.
+    // six bounded chains plus375/402; ordinary worms/AI37 retain their solver.
     // Birth is stopped at its actual consumer, then a real post-birth capture
     // supplies identities. Dust/sound RNG does not choose this actor's motor.
     internal static class NpcSegmentedWormMotion
     {
-        internal static bool Head(int type){return type==87 || type==117 || type==454 || type==510 || type==513 || type==621;}
+        internal static bool Head(int type){return type==87 || type==117 || type==375 || type==402 || type==454 || type==510 || type==513 || type==621;}
         internal static bool Known(NpcMotionState n)
-        {int t=n.EffectiveType;return n.Style==6 && (t>=87 && t<=92 || t>=117 && t<=119 || t>=454 && t<=459 || t>=510 && t<=515 || t>=621 && t<=623);}
+        {int t=n.EffectiveType;return n.Style==6 && (t>=87 && t<=92 || t>=117 && t<=119 || t==375 || t==402 || t>=454 && t<=459 || t>=510 && t<=515 || t>=621 && t<=623);}
         internal static bool SamePhase(NpcMotionState a,NpcMotionState b){return Known(a) && Known(b) && a.EffectiveType==b.EffectiveType;}
         internal static bool BirthPending(NpcMotionState n,PredictionEnvironment e)
-        {return !e.Multiplayer && n.A0==0 && (Head(n.EffectiveType) || n.EffectiveType==118);}
+        {return !e.Multiplayer && n.A0==0 && (Head(n.EffectiveType) && !Solitary(n.EffectiveType) || n.EffectiveType==118);}
         internal static bool Retargets(NpcMotionState n,PredictionEnvironment e)
         {return n.Target<0 || n.Target==255 || n.PlayerNativeDead || SurfaceFlag(n) && (double)PlayerArea(n,e).Y<e.GravityWorldSurface*16d;}
         internal static bool NeedsPlayer(NpcMotionState n,PredictionEnvironment e)
@@ -29,6 +29,7 @@ namespace JueMingR.Features.Combat
             stop=PredictionStop.None;if(!Known(n)){stop=PredictionStop.UnsupportedMechanism;return false;}
             if(!n.WormRelationsCaptured || !n.WormLinkFactsCaptured){stop=PredictionStop.MissingDependency;return false;}
             int type=n.EffectiveType,parent=-1;bool head=Head(type),fade=type>=454 && type<=459 || type>=621 && type<=623;
+            if(type==402)StardustPrelude(ref n,e);
             if(type==117 && n.L1==0)n.L1=1;
             if(type==454 && n.L3==0)n.L3=1;
             if(!head && (fade || !e.Multiplayer || n.A1>0))
@@ -53,7 +54,7 @@ namespace JueMingR.Features.Combat
             {n.TimeLeft=Math.Min(n.TimeLeft,300);if(surface)n.Vy+=type==513?.1f:.2f;}
             if(type==621 && e.Day){n.TimeLeft=Math.Min(n.TimeLeft,60);n.Vy+=1;}
             if(BirthPending(n,e)){stop=PredictionStop.PhaseBoundary;return false;}
-            if(!e.Multiplayer)
+            if(!e.Multiplayer && !Solitary(type))
             {
                 // Raw guards read index0 and accept any active style6, even
                 // life0 or a foreign worm. Geometry later has a different gate.
@@ -68,7 +69,7 @@ namespace JueMingR.Features.Combat
             // cannot certify active foreign style6 using generic Known(style6)
             // or a static snapshot when its required motor is unclosed.
             if(elapsed>0 && !n.WormRelationsComplete){stop=PredictionStop.MissingDependency;return false;}
-            bool earth=Flight(type);
+            bool earth=Flight(type) || type==402;
             if(!earth && !Sense(n,e,terrain,out earth,out stop))return false;
             if(!earth && head)
             {
@@ -109,6 +110,7 @@ namespace JueMingR.Features.Combat
             float speed,acceleration;if(!Speed(n,group,count,out speed,out acceleration,out stop))return false;
             float pcx=player.CenterX,pcy=player.CenterY;
             float dx=(int)(pcx/16f)*16-(int)(n.Bounds.CenterX/16f)*16,dy=(int)(pcy/16f)*16-(int)(n.Bounds.CenterY/16f)*16;
+            if(type==375){dx*=-1;dy*=-1;}
             if(!earth)
             {
                 NpcWormMotion.Target(ref n,ref e,oldTarget,confused);
@@ -162,7 +164,7 @@ namespace JueMingR.Features.Combat
         private static bool Speed(NpcMotionState n,NpcMotionState[] group,int count,out float speed,out float acceleration,out PredictionStop stop)
         {
             stop=PredictionStop.None;int t=n.EffectiveType;speed=8;acceleration=.07f;
-            if(t==87){speed=11;acceleration=.25f;}else if(t==454){speed=20;acceleration=.55f;}
+            if(t==375){speed=6;acceleration=.15f;}else if(t==402){speed=9;acceleration=.3f;}else if(t==87){speed=11;acceleration=.25f;}else if(t==454){speed=20;acceleration=.55f;}
             else if(t==621){speed=15;acceleration=.45f;}else if(t==513){speed=7;acceleration=.1f;}
             else if(t==510){speed=!n.PlayerNativeDead && n.PlayerSandstorm?16:10;acceleration=!n.PlayerNativeDead && n.PlayerSandstorm?.35f:.25f;}
             if(t==117)
@@ -219,6 +221,32 @@ namespace JueMingR.Features.Combat
         private static bool Retire(ref NpcMotionState n,out PredictionStop stop){n.Life=0;n.Active=false;stop=PredictionStop.Despawn;return false;}
         private static int Find(NpcIdentity identity,NpcMotionState[] group,int count)
         {if(identity.Token==null || group==null)return -1;for(int i=0;i<count;i++)if(group[i].Identity.Equals(identity))return i;return -1;}
+        private static void StardustPrelude(ref NpcMotionState n,PredictionEnvironment e)
+        {
+            n.A2++;
+            float length=(float)Math.Sqrt((double)n.Vx*n.Vx+(double)n.Vy*n.Vy);
+            if(length>=1 && n.A2<=570)
+            {
+                // Original Utils.GetLerpValue returns a float to MathHelper.Lerp.
+                // Below285 its clamped value is0;570 produces the .5 factor.
+                float t=n.A2<285?0:(n.A2-285)/285;
+                float factor=(float)(1d-.5d*t);n.Vx*=factor;n.Vy*=factor;
+            }
+            if(n.A2==570 && !e.Multiplayer)
+            {
+                // The original random540 marks only choose external spawns.
+                // No mark/count/RNG return feeds this actor's motor/receiving.
+                // Keep SafeNormalize(Vector2.Zero)*6, including its zero case.
+                if(float.IsNaN(n.Vx) || float.IsNaN(n.Vy) || n.Vx==0 && n.Vy==0)n.Vx=n.Vy=0;
+                else
+                {
+                    length=(float)Math.Sqrt((double)n.Vx*n.Vx+(double)n.Vy*n.Vy);
+                    double inverse=1d/length;n.Vx=(float)(n.Vx*inverse);n.Vy=(float)(n.Vy*inverse);n.Vx*=6;n.Vy*=6;
+                }
+            }
+            if(n.A2>=600 && !e.Multiplayer)n.A2=0;
+        }
+        private static bool Solitary(int type){return type==375 || type==402;}
         private static bool Flight(int type){return type>=87 && type<=92 || type>=454 && type<=459 || type>=621 && type<=623;}
         private static bool Tail(int type){return type==92 || type==119 || type==459 || type==512 || type==515 || type==623;}
         private static bool SameSign(float a,float b){return a>0 && b>0 || a<0 && b<0;}

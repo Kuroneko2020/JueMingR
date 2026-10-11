@@ -19,7 +19,8 @@ namespace JueMingR.TerrariaHost.Combat
             bool attached=HostAttachedShotAttack.Handles(player.HeldItem.shoot);
             bool arc=HostArcSwingAttack.Weapon(player.HeldItem.type);
             bool ice=HostIceRodAttack.Handles(player.HeldItem.shoot);
-            if(!phaseblade && !gem && !attached && !arc && !ice && !HostHarpoonAttack.Handles(player.HeldItem.shoot))return null;
+            bool paper=HostPaperAirplaneAttack.Handles(player.HeldItem.shoot);
+            if(!phaseblade && !gem && !attached && !arc && !ice && !paper && !HostHarpoonAttack.Handles(player.HeldItem.shoot))return null;
             FlightPreview best=null;flightPreviewTerrain.Reset();var clock=new HostAttackClock(timeline,phase);
             if(ice)
             {
@@ -81,10 +82,12 @@ namespace JueMingR.TerrariaHost.Combat
                 var shot=Main.projectile[i];if(shot==null || !shot.active || shot.owner!=player.whoAmI || shot.type!=player.HeldItem.shoot)continue;
                 live=true;HostAttackObstacles receivers;
                 AttackContact contact;
-                if(phaseblade)
+                if(paper)
+                {receivers=new HostAttackObstacles(player,shot,timeline,0,clock.BeforeNpc,clock.NextWorld);contact=HostPaperAirplaneAttack.Known(player,shot,timeline,clock,flightPreviewTerrain,receivers);}
+                else if(phaseblade)
                 {receivers=new HostAttackObstacles(player,shot,timeline,0,clock.BeforeNpc,clock.NextWorld);contact=HostPhasebladeAttack.Known(player,shot,timeline,clock,flightPreviewTerrain,receivers);}
                 else contact=HostHarpoonAttack.Known(player,shot,timeline,clock,flightPreviewTerrain,out receivers);
-                if(contact!=null && Earlier(contact,best?.Contact))best=new FlightPreview(player,shot,contact);
+                if(contact!=null && Earlier(contact,best?.Contact))best=new FlightPreview(player,shot,contact,arc:paper?receivers:null);
                 if(best!=null && best.Contact.Tick==clock.FirstTick && best.Contact.Subupdate==0)break;
             }
             return best;

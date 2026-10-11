@@ -51,6 +51,8 @@ namespace NativeWorldTextProbe
             if(finiteOracle=="ai29-spells"){NativeCombatAi29SpellChecks.Run(context);return;}
             if(finiteOracle=="flare"){NativeCombatFlareChecks.Run(context);return;}
             if(finiteOracle=="blizzard"){NativeCombatBlizzardChecks.Run(context);return;}
+            if(finiteOracle=="ray-spells"){NativeCombatRaySpellChecks.Run(context);return;}
+            if(finiteOracle=="paper-airplane"){NativeCombatPaperAirplaneChecks.Run(context);return;}
             if(finiteOracle=="arc-swing"){NativeCombatArcSwingChecks.Run(context);return;}
             if(finiteOracle=="attached-shot"){NativeCombatAttachedShotChecks.Run(context);return;}
             if(finiteOracle=="betsy-flame"){NativeCombatBetsyFlameChecks.Run(context);return;}
@@ -118,6 +120,8 @@ namespace NativeWorldTextProbe
             NativeCombatAi29SpellChecks.Run(context);
             NativeCombatFlareChecks.Run(context);
             NativeCombatBlizzardChecks.Run(context);
+            NativeCombatRaySpellChecks.Run(context);
+            NativeCombatPaperAirplaneChecks.Run(context);
             NativeCombatArcSwingChecks.Run(context);
             NativeCombatAttachedShotChecks.Run(context);
             NativeCombatBetsyFlameChecks.Run(context);

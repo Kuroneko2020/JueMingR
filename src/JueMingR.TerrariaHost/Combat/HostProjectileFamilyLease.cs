@@ -17,7 +17,7 @@ namespace JueMingR.TerrariaHost.Combat
             internal bool Active,Friendly,Hostile,Tile,IgnoreWater,Wet,Honey,Lava,Shimmer,LocalImmunity,StaticImmunity,SingleImmunity,CorrectSlope;
             internal float[] Ai,Local;
             internal Vector2[] DamageTrail;
-            private readonly bool arc;
+            private readonly bool arc,paper;
             private readonly Vector2 oldPosition;
             private readonly float rotation,scale,ownerDistance;
             private readonly int direction,wetCount;
@@ -32,6 +32,8 @@ namespace JueMingR.TerrariaHost.Combat
                 if(p.type==521)oldPosition=p.oldPosition;
                 arc=p.type==972 || p.type==973 || p.type>=982 && p.type<=985 || p.type==1126 || p.type==1128 || p.type==1129;
                 if(arc){rotation=p.rotation;scale=p.scale;direction=p.direction;wetCount=p.wetCount;ownerDistance=p.ownerHitCheckDistance;ownerCheck=p.ownerHitCheck;ownerMelee=p.usesOwnerMeleeHitCD;stopDamage=p.stopsDealingDamageAfterPenetrateHits;manualDirection=p.manualDirectionChange;}
+                paper=HostPaperAirplaneAttack.Handles(p.type);
+                if(paper){rotation=p.rotation;direction=p.direction;wetCount=p.wetCount;manualDirection=p.manualDirectionChange;}
             }
             internal bool Current
             {
@@ -44,6 +46,9 @@ namespace JueMingR.TerrariaHost.Combat
                     // Arc geometry consumes these values directly. Scope the
                     // lease to that family; unrelated visual trails stay out.
                     if(arc && (p.rotation!=rotation || p.scale!=scale || p.direction!=direction || p.wetCount!=wetCount || p.ownerHitCheckDistance!=ownerDistance || p.ownerHitCheck!=ownerCheck || p.usesOwnerMeleeHitCD!=ownerMelee || p.stopsDealingDamageAfterPenetrateHits!=stopDamage || p.manualDirectionChange!=manualDirection))return false;
+                    // AI159 rotation feeds its next motor; these are not just
+                    // drawing fields. Unrelated families keep their own lease.
+                    if(paper && (p.rotation!=rotation || p.direction!=direction || p.wetCount!=wetCount || p.manualDirectionChange!=manualDirection))return false;
                     return true;
                 }
             }

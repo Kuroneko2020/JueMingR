@@ -540,8 +540,8 @@ namespace JueMingR.TerrariaHost.Combat
                 if(motionSlots[slot])
                 {
                     var owner=states[count-1].PositionOwner;if(owner.Token!=null){if(states[count-1].PositionRelation!=9)motionSlots[owner.Slot]=true;if(!visited[owner.Slot]){visited[owner.Slot]=true;pending[queued++]=owner.Slot;}}
-                    if(!(wormCaptured && SegmentedWormRequired(slot)) && parent>=0 && parent<Main.maxNPCs){motionSlots[parent]=true;if(!visited[parent]){visited[parent]=true;pending[queued++]=parent;}}
-                    if(!(wormCaptured && SegmentedWormRequired(slot)) && child>=0 && child<Main.maxNPCs){motionSlots[child]=true;if(!visited[child]){visited[child]=true;pending[queued++]=child;}}
+                    if(!(n.aiStyle==6 && wormCaptured && SegmentedWormRequired(slot)) && parent>=0 && parent<Main.maxNPCs){motionSlots[parent]=true;if(!visited[parent]){visited[parent]=true;pending[queued++]=parent;}}
+                    if(!(n.aiStyle==6 && wormCaptured && SegmentedWormRequired(slot)) && child>=0 && child<Main.maxNPCs){motionSlots[child]=true;if(!visited[child]){visited[child]=true;pending[queued++]=child;}}
                 }
                 int lifeOwner=states[count-1].Health.RealLife;
                 if(lifeOwner>=0 && lifeOwner<Main.maxNPCs && !visited[lifeOwner]){visited[lifeOwner]=true;pending[queued++]=lifeOwner;}
