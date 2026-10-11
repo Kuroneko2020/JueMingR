@@ -228,6 +228,8 @@ namespace NativeWorldTextProbe
         private static void SourceClosure(object context)
         {
             Setup(context);Main.dayTime=false;var selected=Birth(611,16,new Vector2(1650,2200));var peer=Birth(611,20,new Vector2(1700,2200));var town=Birth(17,0,new Vector2(1650,2390));var unrelated=Birth(689,30,new Vector2(3000,2200));
+            // Observed flying peer cannot override the necessary unknown Town consumer.
+            peer.ai[0]=1;peer.localAI[0]=1;
             var source=Get(Get(context,"CombatObservation"),"Prediction");var type=source.GetType();var owner=Activator.CreateInstance(type,Flags,null,new object[]{null,false},CultureInfo.InvariantCulture);
             try
             {

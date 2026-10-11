@@ -36,6 +36,9 @@ namespace JueMingR.TerrariaHost.Combat
                 if(paper){rotation=p.rotation;direction=p.direction;wetCount=p.wetCount;manualDirection=p.manualDirectionChange;}
                 ornament=HostOrnamentAttack.Family(p.type);
                 if(ornament){aiStyle=p.aiStyle;ownerCheck=p.ownerHitCheck;ownerMelee=p.usesOwnerMeleeHitCD;manualDirection=p.manualDirectionChange;}
+                // Sonic's receiving line consumes scale even when its raw
+                // 16px body is unchanged. Include ambient members too.
+                if(p.type==684)scale=p.scale;
             }
             internal bool Current
             {
@@ -54,6 +57,7 @@ namespace JueMingR.TerrariaHost.Combat
                     // AI30 children share the captured receiving policy. A
                     // same-update policy/style edit retires that finite family.
                     if(ornament && (p.aiStyle!=aiStyle || p.ownerHitCheck!=ownerCheck || p.usesOwnerMeleeHitCD!=ownerMelee || p.manualDirectionChange!=manualDirection))return false;
+                    if(Type==684 && p.scale!=scale)return false;
                     return true;
                 }
             }

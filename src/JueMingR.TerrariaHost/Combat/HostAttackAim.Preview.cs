@@ -51,7 +51,7 @@ namespace JueMingR.TerrariaHost.Combat
             // All AI013 hand roles except GolemFist refresh native dummy use
             // timers until catch. Their current flight owns the preview even
             // when it was born before observation was enabled.
-            if(hasFlight && item.shoot!=481 && !HostGemStaffAttack.Handles(item.shoot) && !HostAttachedShotAttack.Handles(item.shoot) && !HostArcSwingAttack.Weapon(item.type) && !HostIceRodAttack.Handles(item.shoot) && !HostPaperAirplaneAttack.Handles(item.shoot) && !HostOrnamentAttack.Handles(item.shoot) && !HostInfernoAttack.Handles(item.shoot))return OnlyFlight(plan,player,timeline,flight);
+            if(hasFlight && item.shoot!=481 && !HostGemStaffAttack.Handles(item.shoot) && !HostAttachedShotAttack.Handles(item.shoot) && !HostArcSwingAttack.Weapon(item.type) && !HostIceRodAttack.Handles(item.shoot) && !HostPaperAirplaneAttack.Handles(item.shoot) && !HostOrnamentAttack.Handles(item.shoot) && !HostInfernoAttack.Handles(item.shoot) && !HostSonicBoomAttack.Handles(item.shoot))return OnlyFlight(plan,player,timeline,flight);
             // Inferno's first possible new-body receive is age+delay+1.
             // An earlier live-family contact already wins this read-only
             // comparison; searching every new hand direction cannot improve

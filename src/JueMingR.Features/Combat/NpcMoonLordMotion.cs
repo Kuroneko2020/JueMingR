@@ -91,6 +91,12 @@ namespace JueMingR.Features.Combat
             else if(n.A0==2 || n.A0==3)
             {
                 Receive(ref n,false);V mixed=Lerp(Store(n.Vx,n.Vy),Store(n.A0==2?0:n.Direction,-.5f),.98f);n.Vx=mixed.X;n.Vy=mixed.Y;n.A1++;
+                // Native clears every existing type456 at these exact stored
+                // clocks, before later NPC slots read the packed anchor key.
+                // Earlier clots retain this action's pose; the projectile tail
+                // sees the same invalidation and cannot revive that key.
+                if(n.A0==2 && n.A1==60 || n.A0==3 && n.A1==40)
+                    NpcMoonLeechMotion.ClearAnchors(group,count);
                 if(n.A0==2 && n.A1>=600 || n.A0==3 && n.A1>=60)
                 {if(n.A0==3)RetireParts(group,count);n.Life=n.A0==2?0:n.Life;n.Active=false;stop=PredictionStop.Despawn;return false;}
             }

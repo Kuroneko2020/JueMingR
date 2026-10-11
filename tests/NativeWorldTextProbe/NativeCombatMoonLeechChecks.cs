@@ -19,13 +19,19 @@ namespace NativeWorldTextProbe
     {
         private const BindingFlags Flags=BindingFlags.Static|BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic;
         private static Type Model {get{return typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcMoonLeechMotion",true);}}
-        private static Action<NPC> before,after;
+        private static Action<NPC> before,after; private static Type moonSource;
         private static Action<Projectile> projectileBefore,projectileAfter;
         private static void Before(NPC __instance){before?.Invoke(__instance);}
         private static void After(NPC __instance){after?.Invoke(__instance);}
         private static void ProjectileBefore(Projectile __instance){projectileBefore?.Invoke(__instance);}
         private static void ProjectileAfter(Projectile __instance){projectileAfter?.Invoke(__instance);}
-        private static bool Network(int msgType,int number){return msgType!=27 && msgType!=29 && !(msgType==113 && number==1);}
+        private static readonly List<string> clearExports=new List<string>();
+        private static bool Network(int msgType,int remoteClient,int ignoreClient,Terraria.Localization.NetworkText text,int number,float number2,float number3,float number4,int number5,int number6,int number7)
+        {
+            if(System.Environment.GetEnvironmentVariable("JUEMINGR_MOON_LEECH_CLEAR_ONLY")=="1" && msgType==23 && number>=0 && number<Main.maxNPCs && Main.npc[number].type>=396 && Main.npc[number].type<=401)
+            {clearExports.Add(string.Join("/",msgType,remoteClient,ignoreClient,text,number,number2,number3,number4,number5,number6,number7));return false;}
+            return msgType!=27 && msgType!=29 && !(msgType==113 && number==1);
+        }
         private sealed class Outlets:IDisposable
         {
             private readonly Harmony patch=new Harmony("JueMingR.Probe.MoonLeechOutlets");
@@ -57,6 +63,7 @@ namespace NativeWorldTextProbe
         }
         internal static void Lifecycle(object context)
         {
+            if(System.Environment.GetEnvironmentVariable("JUEMINGR_MOON_LEECH_CLEAR_ONLY")=="1"){ClearLifecycle(context);return;}
             var io=new Inputs(context);int clotActions=0,projectileActions=0;
             using(var outlets=new Outlets())
             {
@@ -108,8 +115,14 @@ namespace NativeWorldTextProbe
             Setup();Console.WriteLine("PASS MoonLeech original AI82 actions="+clotActions+" full456Update actions="+projectileActions+"; no repeated controller69/3000 matrix");
         }
         private sealed class Frozen {internal NpcTrajectory Path;internal NPC Actor;internal Frozen(NpcTrajectory path,NPC actor){Path=path;Actor=actor;}}
-        internal static void Continuous(object context,NpcPredictionCache cache,Action step,string output)
+        internal static void Continuous(object context,NpcPredictionCache cache,Action step,string output,ProbeGraphics graphics=null)
         {
+            if(System.Environment.GetEnvironmentVariable("JUEMINGR_MOON_LEECH_CLEAR_ONLY")=="1")
+            {
+                Require(graphics!=null,"Actual AI77 death explosions require original texture assets and a real graphics device.");
+                graphics.LoadMoonDeathAssets();
+                ClearContinuous(context,cache,step,output);return;
+            }
             Setup();var io=new Inputs(context);var p=Main.LocalPlayer;p.position=new Vector2(2400,2400-p.height);p.ResetFallDamage();
             int coreSlot=NPC.NewNPC(NPC.GetSpawnSourceForNaturalSpawn(),2200,1850,398,Start:16,Target:Main.myPlayer);var core=Main.npc[coreSlot];
             NativeCombatObservationChecks.Save(io.Host,new ObservationOptions(path:true,mouseCenter:true,clearLine:false,radius:50));
@@ -138,17 +151,122 @@ namespace NativeWorldTextProbe
             }
             finally{before=after=null;projectileBefore=projectileAfter=null;observer.UnpatchAll(observer.Id);Directory.CreateDirectory(output);File.WriteAllLines(Path.Combine(output,"moon-leech-continuous.csv"),rows);}
         }
+        private static int ClearDeadline(Inputs io,out int writer)
+        {
+            object[] args={120,-1};int result=(int)io.Source.GetType().GetMethod("FirstMoonAnchorClear",Flags).Invoke(null,args);writer=(int)args[1];return result;
+        }
+        private static int Index(NpcMotionState[] group,NPC actor)
+        {for(int i=0;i<group.Length;i++)if(ReferenceEquals(group[i].Identity.Token,actor))return i;return -1;}
+        private static void ClearLifecycle(object context)
+        {
+            clearExports.Clear();
+            int cases=0,clears=0,negative=0;
+            var coreModel=typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcMoonLordMotion",true);
+            using(var outlets=new Outlets())foreach(int phase in new[]{2,3})foreach(int coreSlot in new[]{8,30})foreach(int variant in new[]{0,1,2,3})
+            {
+                Setup();var io=new Inputs(context);float mark=phase==2?60:40;
+                var core=Actor(coreSlot,398,new Vector2(1800,1900));core.localAI[3]=1;core.ai[0]=phase;
+                core.ai[1]=variant==0?mark-1:variant==1?mark:variant==2?mark+.01f:mark-.5f;
+                var head=Actor(20,396,new Vector2(1800,1500));head.ai[3]=coreSlot;
+                var clot=Actor(25,401,new Vector2(2000.625f,2100.875f));clot.ai[0]=head.whoAmI+1;clot.ai[2]=10;
+                var q=ProjectileBirth(head,new Vector2(2250.125f,2150.875f));clot.ai[1]=q.key;
+                int writer,deadline=ClearDeadline(io,out writer);
+                Require(deadline==(variant==0?1:int.MaxValue) && writer==(variant==0?coreSlot:-1),"Actual exact clear clock, not >= or truncated fractional clock phase="+phase+" variant="+variant);
+                var group=io.Group(clot);var e=Environment();e.PlayerTimelineActive=true;e.MoonLeeches=Snapshot(q,group);
+                object work=Model.GetMethod("CreateLeeches",Flags).Invoke(null,new object[]{e});
+                Action coreAction=()=>
+                {
+                    int index=Index(group,core);object[] args={group[index],e,io.Terrain,1,PredictionStop.None,group,group.Length,false};
+                    Require((bool)coreModel.GetMethod("Step",Flags).Invoke(null,args),"Core exact current NPC write is known.");group[index]=(NpcMotionState)args[0];core.AI();
+                    Require(group[index].A1==core.ai[1] && group[index].Vx==core.velocity.X && group[index].Vy==core.velocity.Y,"Original core clock/motor agrees at global clear.");
+                };
+                if(coreSlot<clot.whoAmI)coreAction();
+                int clotIndex=Index(group,clot);var value=group[clotIndex];PredictionStop stop;
+                Require(Step(ref value,group,e,io.Terrain,out stop),"Known clear never truncates live401 before its original heal.");group[clotIndex]=value;clot.AI();
+                Require(value.Active==clot.active && value.X==clot.position.X && value.Y==clot.position.Y && value.Vx==0 && value.Vy==0 && value.A2==clot.ai[2],"Original401 same-frame packed-key consumer respects writer slot.");
+                if(coreSlot>clot.whoAmI)coreAction();
+                object[] end={work,group,group.Length,e,io.Player(),true,false,1,io.Terrain,PredictionStop.None};
+                Require((bool)Model.GetMethod("EndFrame",Flags).Invoke(null,end),"Known NPC clear synchronizes private worker.");if(q.active)q.Update(q.whoAmI);
+                Require((bool)Get(((Array)work).GetValue(0),"Active")==q.active && q.active==(variant!=0),"Original456 survives only when exact clear did not execute.");
+                if(variant==0)
+                {
+                    var fresh=io.Capture(clot);var position=clot.position;Require(!fresh.MoonLeechAnchorValid,"Actual postclear source observes absent packed key.");
+                    Require(Step(ref fresh,io.Group(clot),Environment(),io.Terrain,out stop),"Fresh absent-key sample preserves original static motion.");clot.AI();
+                    Require(fresh.X==clot.position.X && fresh.Y==clot.position.Y && clot.position==position && fresh.Vx==0 && fresh.Vy==0 && fresh.A2==clot.ai[2],"New real sample resumes zero-V/static while its heal clock continues.");clears++;
+                }
+                else negative++;
+                cases++;
+            }
+            Setup();Console.WriteLine("PASS MoonLeech clear exact-clock/native slot cases="+cases+" clear="+clears+" skipped="+negative);
+        }
+        private static void ClearContinuous(object context,NpcPredictionCache cache,Action step,string output)
+        {
+            clearExports.Clear();
+            var records=new List<string>{"phase,writer,frame,clotActions,selected,matched,staticRestored,cleared,expired,error"};
+            using(var outlets=new Outlets())try
+            {
+                foreach(int phase in new[]{2,3})foreach(int writerSlot in new[]{8,30})
+                {
+                    Setup();var io=new Inputs(context);
+                    var core=Actor(16,398,new Vector2(1900,2000));core.localAI[3]=1;core.ai[0]=1;
+                    var left=Actor(18,397,new Vector2(1500,1800));left.ai[3]=16;left.ai[2]=0;
+                    var right=Actor(19,397,new Vector2(2300,1800));right.ai[3]=16;right.ai[2]=1;
+                    var head=Actor(20,396,new Vector2(1900,1600));head.ai[3]=16;
+                    var writer=Actor(writerSlot,398,new Vector2(1100,1700));writer.localAI[3]=1;writer.ai[0]=phase;writer.ai[1]=(phase==2?60:40)-4;
+                    var q=ProjectileBirth(head,new Vector2(2350,2300));
+                    var clot=Actor(25,401,new Vector2(2000,2100));clot.ai[0]=head.whoAmI+1;clot.ai[1]=q.key;
+                    NativeCombatObservationChecks.Save(io.Host,new ObservationOptions(path:true,mouseCenter:true,clearLine:false,radius:50));
+                    var paths=new List<NpcTrajectory>();NpcTrajectory beforeClear=null;long clearTick=-1;int selected=0,matched=0,restored=0,expired=0,actions=0;double maximum=0;
+                    for(int frame=0;frame<95 && clot.active;frame++)
+                    {
+                        NativeCombatModeledImpactChecks.SampleMouse(context,clot.Center);step();actions++;
+                        if(!q.active && clearTick<0){clearTick=(long)Main.GameUpdateCount;Require(frame==3,"Actual known foreign core reaches exact global clear on fourth frame.");}
+                        var path=cache.Read(0);bool own=path!=null && ReferenceEquals(path.Identity.Token,clot);
+                        if(own)
+                        {
+                            selected++;if(beforeClear==null && clearTick<0)
+                            {
+                                beforeClear=path;var sourceRows=(NpcMotionState[])Get(io.Source,"states");var roles=(bool[])Get(io.Source,"motionRoles");int count=(int)Get(io.Source,"observedCount");
+                                for(int i=0;i<count;i++)if(ReferenceEquals(sourceRows[i].Identity.Token,writer))Require(!roles[i],"Foreign finite clear writer does not acquire full unrelated AI.");
+                                Require(path.Count>4,"Known clear keeps useful401 lifecycle beyond its real consumer.");
+                            }
+                            if(!paths.Contains(path))paths.Add(path);
+                        }
+                        if(clearTick>=0 && Main.GameUpdateCount>clearTick)
+                        {
+                            Require(!ReferenceEquals(path,beforeClear),"Real anchor retirement replaces the old production input publication.");
+                            var prepared=GetOptional(Get(io.Host,"World"),"preparedPath") as NpcTrajectory;Require(prepared==null || !ReferenceEquals(prepared,beforeClear),"Prepared consumer cannot retain preclear input.");expired++;
+                        }
+                        foreach(var old in paths)
+                        {
+                            int age=(int)((long)Main.GameUpdateCount-old.CaptureTick);if(age<1 || age>=old.Count || !clot.active)continue;
+                            var point=old[age];double error=Vector2.Distance(clot.position,new Vector2(point.Bounds.X,point.Bounds.Y));maximum=Math.Max(maximum,error);
+                            Require(error<=.08 && point.Vx==clot.velocity.X && point.Vy==clot.velocity.Y && point.CanReceive==(!clot.dontTakeDamage && !clot.immortal),"Known global clear frozen401 phase="+phase+" writer="+writerSlot+" frame="+frame+" age="+age+" error="+error+" stop="+old.Stop);
+                            matched++;if(clearTick>=0 && old.CaptureTick>clearTick && age>=8 && !io.Capture(clot).MoonLeechAnchorValid){Require(point.Vx==0 && point.Vy==0,"Postclear restoration is genuinely static.");restored++;}
+                        }
+                        records.Add(string.Join(",",phase,writerSlot,frame,actions,selected,matched,restored,clearTick>=0,expired,maximum.ToString("R",System.Globalization.CultureInfo.InvariantCulture)));
+                    }
+                    Require(clearTick>=0 && selected>8 && beforeClear!=null && expired>0 && matched>8 && restored>=8,"Actual finite foreign clear has matched prefix, publication retirement and fresh static restoration.");
+                    if(phase==2)Require(!clot.active && clot.ai[2]>=90,"Known clear retains the full90-action original healing/retirement consumer.");
+                    else Require(!clot.active && clot.ai[2]<90,"Actual foreign withdrawal subsequently retires the live head; this is distinct from clearing456.");
+                    Console.WriteLine("PASS MoonLeech finiteclear phase="+phase+" writer="+writerSlot+" actions="+actions+" selected="+selected+" matched="+matched+" staticRestored="+restored+" expired="+expired+" max="+maximum);
+                }
+                Require(clearExports.Count>0,"Actual global withdrawal really emits its isolated23 exports with original parameters.");
+                Console.WriteLine("MoonLeech finiteclear originalNetwork23="+clearExports.Count);
+            }
+            finally{NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());Directory.CreateDirectory(output);File.WriteAllLines(Path.Combine(output,"moon-leech-clear.csv"),records);File.WriteAllLines(Path.Combine(output,"moon-leech-clear-network.csv"),clearExports);}
+        }
         private static int CountClots(){int n=0;foreach(var row in Main.npc)if(row.active && row.type==401)n++;return n;}
         private static NPC Actor(int slot,int type,Vector2 position){var n=Main.npc[slot]=new NPC{whoAmI=slot};n.SetDefaults(type);n.active=true;n.target=Main.myPlayer;n.position=position;return n;}
         private static Projectile ProjectileBirth(NPC head,Vector2 center){int slot=Projectile.NewProjectile(head.GetSpawnSource_ForProjectile(),center,Vector2.Zero,456,0,0,Main.myPlayer,head.whoAmI+1,Main.myPlayer);return Main.projectile[slot];}
         private static void Setup(){NativeCombatLiveContextChecks.FlightWorld();NPC.ClearAll();Projectile.ClearAll();Main.netMode=0;Main.dayTime=false;Main.getGoodWorld=false;Main.remixWorld=false;Main.Map=new Terraria.Map.WorldMap(Main.maxTilesX,Main.maxTilesY);for(int i=0;i<255;i++)Main.player[i].active=false;var p=Main.player[Main.myPlayer]=new Player{whoAmI=Main.myPlayer,active=true,isControlledByFilm=true,releaseJump=true};p.position=new Vector2(2400.125f,2400-p.height);p.ResetFallDamage();p.statLife=p.statLifeMax=p.statLifeMax2=5000;p.immune=true;p.immuneTime=1000000;for(int i=0;i<p.hurtCooldowns.Length;i++)p.hurtCooldowns[i]=1000000;}
         private static PredictionEnvironment Environment(){var p=Main.LocalPlayer;return new PredictionEnvironment{PlayerIndex=p.whoAmI,PlayerX=p.Center.X,PlayerY=p.Center.Y,PlayerWidth=p.width,PlayerHeight=p.height,PlayerVx=p.velocity.X,PlayerVy=p.velocity.Y,WorldWidth=Main.maxTilesX,WorldHeight=Main.maxTilesY,WorldSurface=(float)Main.worldSurface,GravityWorldSurface=Main.worldSurface,Multiplayer=Main.netMode==1,Expert=Main.expertMode};}
         private static PredictionMoonLeeches Snapshot(Projectile q,NpcMotionState[] group)
-        {int slot=(int)Math.Abs(q.ai[0])-1;NpcIdentity id=default(NpcIdentity);foreach(var row in group)if(row.Identity.Slot==slot){id=row.Identity;break;}var p=Main.player[(int)q.ai[1]];var f=new PredictionMoonLeech(q,q.whoAmI,(int)q.key,q.owner,q.timeLeft,q.extraUpdates,q.penetrate,true,id,true,p,p.whoAmI,new MotionRect(p.position.X,p.position.Y,p.width,p.height),p.active,p.dead,p.creativeGodMode,q.owner==255 || Main.player[q.owner].active,new MotionRect(q.position.X,q.position.Y,q.width,q.height),q.velocity.X,q.velocity.Y,q.ai[0],q.localAI[0],q.localAI[1],true,q.ignoreWater,q.wet);return new PredictionMoonLeeches(new[]{f},1,Main.leftWorld,Main.rightWorld,Main.topWorld,Main.bottomWorld);}
+        {int slot=(int)Math.Abs(q.ai[0])-1;NpcIdentity id=default(NpcIdentity);foreach(var row in group)if(row.Identity.Slot==slot){id=row.Identity;break;}var p=Main.player[(int)q.ai[1]];object[] clearArgs={120,-1};int clearAt=(int)moonSource.GetMethod("FirstMoonAnchorClear",Flags).Invoke(null,clearArgs),clearWriter=(int)clearArgs[1];var f=new PredictionMoonLeech(q,q.whoAmI,(int)q.key,q.owner,q.timeLeft,q.extraUpdates,q.penetrate,true,id,true,p,p.whoAmI,new MotionRect(p.position.X,p.position.Y,p.width,p.height),p.active,p.dead,p.creativeGodMode,q.owner==255 || Main.player[q.owner].active,new MotionRect(q.position.X,q.position.Y,q.width,q.height),q.velocity.X,q.velocity.Y,q.ai[0],q.localAI[0],q.localAI[1],true,q.ignoreWater,q.wet,clearAt,clearWriter);return new PredictionMoonLeeches(new[]{f},1,Main.leftWorld,Main.rightWorld,Main.topWorld,Main.bottomWorld);}
         private sealed class Inputs
         {
             internal readonly object Host,Source;internal readonly IPredictionTerrain Terrain;private readonly long session;private readonly MethodInfo read,tracking,player;
-            internal Inputs(object context){Host=Get(context,"CombatObservation");Source=Get(Host,"Prediction");Terrain=(IPredictionTerrain)Get(Source,"Terrain");session=(long)Get(Host,"Session");read=Source.GetType().GetMethod("Read",Flags);tracking=Source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcTrackingObservation",true).GetMethod("Capture",Flags);player=Source.GetType().GetMethod("ReadPlayer",Flags);}
+            internal Inputs(object context){Host=Get(context,"CombatObservation");Source=Get(Host,"Prediction");moonSource=Source.GetType();Terrain=(IPredictionTerrain)Get(Source,"Terrain");session=(long)Get(Host,"Session");read=Source.GetType().GetMethod("Read",Flags);tracking=Source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcTrackingObservation",true).GetMethod("Capture",Flags);player=Source.GetType().GetMethod("ReadPlayer",Flags);}
             internal NpcMotionState Capture(NPC n){var s=(NpcMotionState)read.Invoke(null,new object[]{n,session});object[] args={n,s,Terrain};tracking.Invoke(null,args);s=(NpcMotionState)args[1];s.MoonRelationsCaptured=s.MoonRelationsComplete=s.MoonEffectsCaptured=true;s.MoonExternalEffectAt=s.MoonGlobalRetireAt=int.MaxValue;return s;}
             internal PredictionPlayerMotion Player(){return (PredictionPlayerMotion)player.Invoke(null,new object[]{Main.LocalPlayer});}
             internal NpcMotionState[] Group(NPC clot){var values=new List<NpcMotionState>();int raw=-1,head=(int)Math.Abs(clot.ai[0])-1;if(head>=0 && head<Main.maxNPCs)raw=(int)Main.npc[head].ai[3];for(int i=0;i<Main.maxNPCs;i++){var n=Main.npc[i];if(n!=null && (n.active && (n.type==398 || n.type==397 || n.type==396 || n.type==401) || i==raw))values.Add(Capture(n));}return values.ToArray();}

@@ -524,9 +524,10 @@ namespace JueMingR.TerrariaHost.Combat
                 }
                 if(n.type==523 && n.aiStyle==101)
                 {
-                    // AI101 reads only its current Cultist owner's life clock.
-                    // Invalid active/type is an observed retirement condition;
-                    // a valid owner is sampled without acquiring its whole AI.
+                    // AI101 reads its Cultist owner's Active/type and life.
+                    // A selected Doom needs that exact owner's real AI84
+                    // lifetime; owners acquired only for other Doom count
+                    // rows remain health dependencies, not world-wide motors.
                     states[count-1].PositionRelation=9;states[count-1].PositionParameter=-1;
                     int ownerSlot=(int)n.ai[0];
                     if(ownerSlot>=0 && ownerSlot<Main.maxNPCs)
@@ -539,7 +540,7 @@ namespace JueMingR.TerrariaHost.Combat
                 int parent=states[count-1].ParentSlot,child=states[count-1].ChildSlot;
                 if(motionSlots[slot])
                 {
-                    var owner=states[count-1].PositionOwner;if(owner.Token!=null){if(states[count-1].PositionRelation!=9)motionSlots[owner.Slot]=true;if(!visited[owner.Slot]){visited[owner.Slot]=true;pending[queued++]=owner.Slot;}}
+                    var owner=states[count-1].PositionOwner;if(owner.Token!=null){if(states[count-1].PositionRelation!=9 || slot==identity.Slot && n.type==523 && n.aiStyle==101)motionSlots[owner.Slot]=true;if(!visited[owner.Slot]){visited[owner.Slot]=true;pending[queued++]=owner.Slot;}}
                     if(!(n.aiStyle==6 && wormCaptured && SegmentedWormRequired(slot)) && parent>=0 && parent<Main.maxNPCs){motionSlots[parent]=true;if(!visited[parent]){visited[parent]=true;pending[queued++]=parent;}}
                     if(!(n.aiStyle==6 && wormCaptured && SegmentedWormRequired(slot)) && child>=0 && child<Main.maxNPCs){motionSlots[child]=true;if(!visited[child]){visited[child]=true;pending[queued++]=child;}}
                 }

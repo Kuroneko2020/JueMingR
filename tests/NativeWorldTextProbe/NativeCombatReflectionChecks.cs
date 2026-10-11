@@ -16,6 +16,7 @@ namespace NativeWorldTextProbe
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance|BindingFlags.Static;
         internal static void Run(object context)
         {
+            if(Environment.GetEnvironmentVariable("JMR_REFLECTION_ORACLE_ONLY")=="foreign-ai53"){ForeignRandomReflection(context);return;}
             var assembly=Get(context,"Combat").GetType().Assembly;var obstacleType=assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackObstacles",true);int cases=0,reflected=0,received=0;
             foreach(int type in new[]{14,1,3,15,94,118,121,955,114,24})foreach(bool reflecting in new[]{false,true})foreach(bool offset in new[]{false,true})
             {
@@ -47,6 +48,69 @@ namespace NativeWorldTextProbe
             Console.WriteLine("PASS original projectile reflection receive cases="+cases+" reflected="+reflected+" actualDamage="+received);
             DerivedReceiveLeases(context,assembly,obstacleType);
             BeforeNpcReflection(context,assembly,obstacleType);
+            ForeignRandomReflection(context);
+        }
+        private static void ForeignRandomReflection(object context)
+        {
+            var assembly=Get(context,"Combat").GetType().Assembly;var obstacleType=assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackObstacles",true);
+            int mode=Main.GameMode,net=Main.netMode,plant=NPC.plantBoss;bool good=Main.getGoodWorld;var random=Main.rand;
+            int reflections=0,receives=0,controls=0;
+            try
+            {
+                // Original AI53 chooses this receive flag afresh. Its motion
+                // is deliberately outside this stationary-foreign-body slice;
+                // one real AI action changes velocity, not this body position.
+                Main.rand=new Terraria.Utilities.UnifiedRandom(23303);
+                for(int sample=0;sample<64;sample++)
+                {
+                    NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());
+                    var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),Get(context,"Input"),95,0,0);Main.getGoodWorld=true;Main.GameMode=0;Main.netMode=0;
+                    foreach(var n in Main.npc)n.active=false;
+                    var body=Main.npc[50]=new NPC{whoAmI=50};body.SetDefaults(262);body.active=true;body.position=new Vector2(1600,900);NPC.plantBoss=50;
+                    var front=Main.npc[1]=new NPC{whoAmI=1};front.SetDefaults(264);front.active=true;front.position=new Vector2(900,580);front.localAI[0]=100;front.ai[0]=10;front.ai[1]=20;front.target=p.whoAmI;front.defense=0;front.life=front.lifeMax=10000;
+                    var target=Main.npc[2]=new NPC{whoAmI=2};target.SetDefaults(618);target.active=true;target.Center=front.Center;target.life=target.lifeMax=10000;target.defense=0;
+                    var id=(NpcIdentity)assembly.GetType("JueMingR.TerrariaHost.Combat.CombatSelection",true).GetMethod("Identity",Flags).Invoke(null,new object[]{target,1L});
+                    var path=Path(id,new NpcMotionState{Identity=id,X=target.position.X,Y=target.position.Y,Width=target.width,Height=target.height,CanReceive=true});
+                    int slot=Projectile.NewProjectile(p.GetProjectileSource_Item(p.HeldItem),front.Center,new Vector2(4,0),36,80,0,p.whoAmI);var shot=Main.projectile[slot];shot.oldVelocity=shot.velocity;
+                    Func<bool,bool,object> capture=(before,next)=>Activator.CreateInstance(obstacleType,Flags,null,new object[]{p,shot,path,0,before,next},null);
+                    Func<object,int,bool> pass=(lease,outer)=>(bool)obstacleType.GetMethod("PassOuter",Flags).Invoke(lease,new object[]{1,outer,outer,shot.Center.X,shot.Center.Y,0});
+                    var beforeLease=capture(true,false);bool predicted=pass(beforeLease,1),completed=pass(capture(false,true),1),later=pass(capture(false,false),2);
+                    Vector2 position=front.position;front.AI();Require(front.position==position && front.active,"one original AI53 action supplies the actual flag without moving this foreign body");
+                    bool current=pass(capture(false,false),1);int life=target.life;shot.Damage();bool hit=target.life<life;
+                    Require(current==hit && hit!=shot.reflected,"post-NPC projectile birth consumes the observed flag exactly");
+                    if(shot.reflected)
+                    {
+                        reflections++;Console.WriteLine("AI53 FOREIGN actualReflection sample="+sample+" future="+predicted+" completed="+completed+" later="+later+" current="+current+" actualSelected="+hit);
+                        Require(!predicted && !completed && !later,"an earlier foreign AI53 can reflect before selected Damage; current false is no proof for any next NPC action");
+                    }
+                    else receives++;
+                    if(reflections>0 && receives>0)
+                    {
+                        // The uncertainty applies only to a qualified earlier
+                        // reflection event. Preserve nonreflectable shots,
+                        // immunity, non-overlap, and selected-first slot order.
+                        foreach(int control in new[]{0,1,2,3})
+                        {
+                            Projectile.ClearAll();Array.Clear(front.immune,0,front.immune.Length);Array.Clear(target.immune,0,target.immune.Length);front.position=position;front.reflectsProjectiles=true;
+                            if(control==1)front.immune[p.whoAmI]=200;
+                            if(control==2)front.position.X+=400;
+                            if(control==3){Main.npc[1]=new NPC{whoAmI=1};Main.npc[3]=front;front.whoAmI=3;front.active=true;}
+                            slot=Projectile.NewProjectile(p.GetProjectileSource_Item(p.HeldItem),target.Center,new Vector2(4,0),control==0?24:36,80,0,p.whoAmI);shot=Main.projectile[slot];shot.oldVelocity=shot.velocity;
+                            bool allowed=pass(capture(true,false),1);life=target.life;shot.Damage();Require(allowed && target.life<life,"foreign reflection preserves actual receive control "+control);controls++;
+                        }
+                        // The preceding selected-first control may reflect
+                        // after the selected hit. Use a genuinely new friendly
+                        // shot so this lease still has a qualified receiver.
+                        Projectile.ClearAll();shot=Main.projectile[Projectile.NewProjectile(p.GetProjectileSource_Item(p.HeldItem),target.Center,new Vector2(4,0),36,80,0,p.whoAmI)];
+                        var roleLease=capture(false,false);Require((bool)Get(roleLease,"Unchanged") && ((System.Collections.ICollection)Get(roleLease,"receivers")).Count>0,"current foreign reflection role starts with a real captured receiver");
+                        front.aiStyle=52;Require(!(bool)Get(roleLease,"Unchanged"),"same identity reflection producer role is a receive dependency");
+                        break;
+                    }
+                }
+                Require(reflections>0 && receives>0 && controls==4,"original AI53 supplies both flags and all receive boundaries");
+                Console.WriteLine("PASS foreign AI53 reflection nativeReflect="+reflections+" nativeReceive="+receives+" controls="+controls+" futureRandomNotGuessed=True");
+            }
+            finally{Main.GameMode=mode;Main.netMode=net;Main.getGoodWorld=good;NPC.plantBoss=plant;Main.rand=random;}
         }
         private static void BeforeNpcReflection(object context,Assembly assembly,Type obstacleType)
         {

@@ -21,7 +21,7 @@ namespace JueMingR.Features.Combat
         internal static bool Retargets(NpcMotionState n,PredictionEnvironment e){return false;}
         internal static bool NeedsPlayer(NpcMotionState n,PredictionEnvironment e)
         {
-            if(!Known(n) || n.A2>=89 || e.MoonLeeches==null)return false;
+            if(!Known(n) || n.A2>=89 || n.MoonLeechAnchorCaptured && !n.MoonLeechAnchorValid || e.MoonLeeches==null)return false;
             for(int i=0;i<e.MoonLeeches.Count;i++)
             {var q=e.MoonLeeches[i];if(q.Key==n.MoonLeechKey && q.A0>0 && (e.Multiplayer || q.L0<329 && q.PlayerActive && !q.PlayerDead))return true;}
             return false;
@@ -37,6 +37,16 @@ namespace JueMingR.Features.Combat
             if(!n.PositionOwnerValid || !group[head].Active || group[head].EffectiveType!=396)
             {n.Life=0;n.Active=false;stop=PredictionStop.Despawn;return false;}
             if(!Finite(n.A2)){stop=PredictionStop.InvalidState;return false;}
+            // Captured withdrawing/dead foreign cores have a finite global
+            // write, not an unknown motor. Preserve native writer/reader slot
+            // order; clearing the key does not retire the clot or its clock.
+            if(e.MoonLeeches!=null)for(int i=0;i<e.MoonLeeches.Count;i++)
+            {
+                var fact=e.MoonLeeches[i];if(fact.Key!=n.MoonLeechKey)continue;
+                if(elapsed>fact.ClearAt || elapsed==fact.ClearAt && fact.ClearWriterSlot<n.Identity.Slot)n.MoonLeechAnchorValid=false;
+                break;
+            }
+            if(n.MoonLeechAnchorValid && n.A2<89 && elapsed>=n.MoonGlobalRetireAt){stop=PredictionStop.PhaseBoundary;return false;}
             n.A2++;
             if(n.A2>=90)
             {
@@ -74,6 +84,12 @@ namespace JueMingR.Features.Combat
         {if(group!=null)for(int i=0;i<count;i++)if(group[i].Identity.Equals(identity))return i;return -1;}
         internal struct LeechWork
         {internal PredictionMoonLeech Fact;internal bool Active,Wet;internal float X,Y,Vx,Vy,A0,L0,L1;internal int TimeLeft;}
+        internal static void ClearAnchors(NpcMotionState[] group,int count)
+        {
+            if(group==null)return;
+            for(int i=0;i<count;i++)if(Known(group[i]) && group[i].MoonLeechAnchorCaptured)
+            {var row=group[i];row.MoonLeechAnchorValid=false;group[i]=row;}
+        }
         internal static LeechWork[] CreateLeeches(PredictionEnvironment e)
         {
             if(e.MoonLeeches==null)return null;var work=new LeechWork[e.MoonLeeches.Count];for(int i=0;i<work.Length;i++)
@@ -85,10 +101,16 @@ namespace JueMingR.Features.Combat
             for(int i=0;i<work.Length;i++)
             {
                 var p=work[i];var f=p.Fact;bool consumed=false;for(int j=0;j<count;j++)if(Known(group[j]) && group[j].Active && group[j].MoonLeechKey==f.Key){consumed=true;break;}
+                // The core NPC write precedes ALL projectile Update actions.
+                // Mirror it in the worker even for an earlier-slot clot whose
+                // last completed action legitimately read the old anchor.
+                bool cleared=elapsed>=f.ClearAt;
+                for(int j=0;!cleared && j<count;j++)if(Known(group[j]) && group[j].MoonLeechKey==f.Key && group[j].MoonLeechAnchorCaptured && !group[j].MoonLeechAnchorValid)cleared=true;
+                if(cleared)p.Active=false;
                 // No active forecast clot will read this anchor again. Newborn
                 // slots remain an independently bounded controller effect.
-                if(!consumed)continue;
-                if(f.ExtraUpdates<0 || f.ExtraUpdates>15){stop=PredictionStop.MissingDependency;return false;}
+                if(!consumed){work[i]=p;continue;}
+                if(p.Active && (f.ExtraUpdates<0 || f.ExtraUpdates>15)){stop=PredictionStop.MissingDependency;return false;}
                 for(int sub=0;sub<=f.ExtraUpdates && p.Active;sub++)
                 {
                     var bounds=e.MoonLeeches;

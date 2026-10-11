@@ -15,7 +15,7 @@ namespace JueMingR.TerrariaHost.Combat
         private sealed class Receiver
         {
             internal NPC Npc;internal NpcIdentity Identity;internal Rectangle Box,RawBox;internal Vector2 Position,Offset;internal HostAttackReceive Receive,ArcReceive;
-            internal int OwnerImmune,LocalImmune;internal uint StaticExpiry;internal bool Unknown,Chaseable,Reflects,NoTileCollide;
+            internal int OwnerImmune,LocalImmune;internal uint StaticExpiry;internal bool Unknown,Chaseable,Reflects,RandomReflection,NoTileCollide;
         }
         private sealed class HitHistory
         {
@@ -84,7 +84,7 @@ namespace JueMingR.TerrariaHost.Combat
                 // invulnerable. It is not a Damage receiver qualification.
                 if(expert && AiReflectorEligible(npc))aiReflectors.Add(new AiReflector{Npc=npc,Identity=CombatSelection.Identity(npc,timeline.Identity.Session),Box=npc.Hitbox,Phase=npc.ai[0],Clock=npc.ai[1]});
                 if(!Eligible(player,shot,npc))continue;
-                var receive=HostAttackReceive.Capture(player,shot,slot,beforeNpc,nextWorld);receivers.Add(new Receiver{Npc=npc,Identity=CombatSelection.Identity(npc,timeline.Identity.Session),Box=CombatSelection.ReceiveBounds(npc),RawBox=ReflectionBounds(npc),Reflects=npc.reflectsProjectiles,Position=npc.position,Offset=npc.netOffset,OwnerImmune=npc.immune[player.whoAmI],LocalImmune=shot.localNPCImmunity[slot],StaticExpiry=shot.usesIDStaticNPCImmunity?Projectile.perIDStaticNPCImmunity[shot.immunityIdentity,slot]:0,Receive=receive,ArcReceive=shot.usesOwnerMeleeHitCD?HostAttackReceive.CaptureIgnoringMelee(player,shot,slot,beforeNpc,nextWorld):receive,NoTileCollide=npc.noTileCollide,Unknown=NPCID.Sets.ZappingJellyfish[npc.type],Chaseable=npc.CanBeChasedBy(shot)});
+                var receive=HostAttackReceive.Capture(player,shot,slot,beforeNpc,nextWorld);receivers.Add(new Receiver{Npc=npc,Identity=CombatSelection.Identity(npc,timeline.Identity.Session),Box=CombatSelection.ReceiveBounds(npc),RawBox=ReflectionBounds(npc),Reflects=npc.reflectsProjectiles,RandomReflection=goodWorld && npc.aiStyle==53,Position=npc.position,Offset=npc.netOffset,OwnerImmune=npc.immune[player.whoAmI],LocalImmune=shot.localNPCImmunity[slot],StaticExpiry=shot.usesIDStaticNPCImmunity?Projectile.perIDStaticNPCImmunity[shot.immunityIdentity,slot]:0,Receive=receive,ArcReceive=shot.usesOwnerMeleeHitCD?HostAttackReceive.CaptureIgnoringMelee(player,shot,slot,beforeNpc,nextWorld):receive,NoTileCollide=npc.noTileCollide,Unknown=NPCID.Sets.ZappingJellyfish[npc.type],Chaseable=npc.CanBeChasedBy(shot)});
             }
         }
         private HostAttackObstacles(HostAttackObstacles parent,Projectile spawned,bool copyLocal)
@@ -99,7 +99,7 @@ namespace JueMingR.TerrariaHost.Combat
             foreach(var prior in parent.receivers)
             {
                 if(!Eligible(player,spawned,prior.Npc))continue;
-                var receive=HostAttackReceive.Capture(player,spawned,prior.Identity.Slot,beforeNpc,nextWorld);receivers.Add(new Receiver{Npc=prior.Npc,Identity=prior.Identity,Box=prior.Box,RawBox=prior.RawBox,Reflects=prior.Reflects,Position=prior.Position,Offset=prior.Offset,OwnerImmune=prior.OwnerImmune,LocalImmune=spawned.localNPCImmunity[prior.Identity.Slot],StaticExpiry=spawned.usesIDStaticNPCImmunity?Projectile.perIDStaticNPCImmunity[spawned.immunityIdentity,prior.Identity.Slot]:0,Receive=receive,ArcReceive=spawned.usesOwnerMeleeHitCD?HostAttackReceive.CaptureIgnoringMelee(player,spawned,prior.Identity.Slot,beforeNpc,nextWorld):receive,NoTileCollide=prior.NoTileCollide,Unknown=prior.Unknown,Chaseable=prior.Npc.CanBeChasedBy(spawned)});
+                var receive=HostAttackReceive.Capture(player,spawned,prior.Identity.Slot,beforeNpc,nextWorld);receivers.Add(new Receiver{Npc=prior.Npc,Identity=prior.Identity,Box=prior.Box,RawBox=prior.RawBox,Reflects=prior.Reflects,RandomReflection=prior.RandomReflection,Position=prior.Position,Offset=prior.Offset,OwnerImmune=prior.OwnerImmune,LocalImmune=spawned.localNPCImmunity[prior.Identity.Slot],StaticExpiry=spawned.usesIDStaticNPCImmunity?Projectile.perIDStaticNPCImmunity[spawned.immunityIdentity,prior.Identity.Slot]:0,Receive=receive,ArcReceive=spawned.usesOwnerMeleeHitCD?HostAttackReceive.CaptureIgnoringMelee(player,spawned,prior.Identity.Slot,beforeNpc,nextWorld):receive,NoTileCollide=prior.NoTileCollide,Unknown=prior.Unknown,Chaseable=prior.Npc.CanBeChasedBy(spawned)});
             }
             remaining=spawned.penetrate;
             // A child's native immunity identity can differ from its parent's
@@ -266,7 +266,7 @@ namespace JueMingR.TerrariaHost.Combat
                     }
                     if(!Eligible(player,shot,Main.npc[slot]))continue;
                     if(at>=receivers.Count || receivers[at].Identity.Slot!=slot)return false;var r=receivers[at++];
-                    if(history.ArcOwner!=null && r.Npc.noTileCollide!=r.NoTileCollide || r.Reflects!=r.Npc.reflectsProjectiles || r.RawBox!=ReflectionBounds(r.Npc) || r.Chaseable!=r.Npc.CanBeChasedBy(shot) || !CombatSelection.Valid(r.Identity,timeline.Identity.Session) || r.Npc.position!=r.Position || r.Npc.netOffset!=r.Offset || CombatSelection.ReceiveBounds(r.Npc)!=r.Box || r.Npc.immune[player.whoAmI]!=r.OwnerImmune || shot.localNPCImmunity[r.Identity.Slot]!=r.LocalImmune || shot.usesIDStaticNPCImmunity && Projectile.perIDStaticNPCImmunity[shot.immunityIdentity,r.Identity.Slot]!=r.StaticExpiry || !SameCapturedReceive(r.Receive,r.ArcReceive,slot))return false;
+                    if(history.ArcOwner!=null && r.Npc.noTileCollide!=r.NoTileCollide || r.Reflects!=r.Npc.reflectsProjectiles || r.RandomReflection!=(goodWorld && r.Npc.aiStyle==53) || r.RawBox!=ReflectionBounds(r.Npc) || r.Chaseable!=r.Npc.CanBeChasedBy(shot) || !CombatSelection.Valid(r.Identity,timeline.Identity.Session) || r.Npc.position!=r.Position || r.Npc.netOffset!=r.Offset || CombatSelection.ReceiveBounds(r.Npc)!=r.Box || r.Npc.immune[player.whoAmI]!=r.OwnerImmune || shot.localNPCImmunity[r.Identity.Slot]!=r.LocalImmune || shot.usesIDStaticNPCImmunity && Projectile.perIDStaticNPCImmunity[shot.immunityIdentity,r.Identity.Slot]!=r.StaticExpiry || !SameCapturedReceive(r.Receive,r.ArcReceive,slot))return false;
                 }
                 return at==receivers.Count && (!ownsHistory || reflectAt==aiReflectors.Count);
         }
@@ -350,7 +350,10 @@ namespace JueMingR.TerrariaHost.Combat
                 }
                 if(at==receivers.Count)break;var r=receivers[at];
                 if(!(arc?ArcAllows(r.ArcReceive,r.Identity.Slot,outer):DynamicAllows(r.Identity.Slot,outer) && CapturedAllows(r.Receive,r.Identity.Slot,outer)) || ownerQualification!=null && !ownerQualification(new MotionRect(r.Position.X+r.Offset.X,r.Position.Y+r.Offset.Y,r.RawBox.Width,r.RawBox.Height),r.NoTileCollide) || !(collision==null?body.Intersects(r.Box):collision(new MotionRect(r.Box.X,r.Box.Y,r.Box.Width,r.Box.Height))))continue;
-                if(Reflectable(shot) && (r.Reflects || StarReflects(r.Identity.Type)) && body.Intersects(r.RawBox))return false;
+                // A stationary foreign body's geometry does not freeze its
+                // AI53 random reflection flag. Only a post-NPC birth's first
+                // outer may use the observed flag before another NPC action.
+                if(Reflectable(shot) && (r.Reflects || r.RandomReflection && (beforeNpc || nextWorld || outer>1) || StarReflects(r.Identity.Type)) && body.Intersects(r.RawBox))return false;
                 if(r.Unknown)return false; // Native reflection/damage special cases are not ordinary consumption.
                 if(beforeHitPenetration!=null && !unlimited)remaining=beforeHitPenetration(r.Identity.Slot,remaining);
                 // Only a receiver that passes the native permission, immunity

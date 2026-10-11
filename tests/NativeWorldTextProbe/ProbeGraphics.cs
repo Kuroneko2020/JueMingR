@@ -46,7 +46,7 @@ namespace NativeWorldTextProbe
                 if(index<0)target.SetValue(null,asset);else ((Array)target.GetValue(null)).SetValue(asset,index);
             }
         }
-        internal void LoadScreenEffects()
+        private void EnsureNativeAssets()
         {
             if(screenEffectsRepository!=null)return;
             // Original asset services/XNB decoding read the supplied content
@@ -60,6 +60,19 @@ namespace NativeWorldTextProbe
             screenEffectsRepository.SetSources(new IContentSource[]{new FileSystemContentSource(contentDirectory)});
             previousAssets=Terraria.Main.Assets;previousScreenShader=Terraria.Main.ScreenShaderRef;
             Terraria.Main.Assets=screenEffectsRepository;
+        }
+        internal void LoadMoonDeathAssets()
+        {
+            // AI77's death explosion is a real visual outlet. Keep its native
+            // object creation and RNG; load only its original XNB dependency.
+            EnsureNativeAssets();
+            var explosion=screenEffectsRepository.Request<Texture2D>("Images/Misc/MoonExplosion/Explosion",AssetRequestMode.ImmediateLoad);
+            if(!explosion.IsLoaded || explosion.Value==null)throw new InvalidOperationException("original-moon-explosion-content-not-loaded");
+        }
+        internal void LoadScreenEffects()
+        {
+            if(previousFilters!=null)return;
+            EnsureNativeAssets();
             Terraria.Main.ScreenShaderRef=screenEffectsRepository.Request<Effect>("ScreenShader",AssetRequestMode.ImmediateLoad);
             var noise=screenEffectsRepository.Request<Texture2D>("Images/Misc/noise",AssetRequestMode.ImmediateLoad);
             if(!Terraria.Main.ScreenShaderRef.IsLoaded || !noise.IsLoaded)throw new InvalidOperationException("original-screen-effect-content-not-loaded");

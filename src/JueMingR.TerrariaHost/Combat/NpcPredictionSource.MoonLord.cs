@@ -158,6 +158,7 @@ namespace JueMingR.TerrariaHost.Combat
         private PredictionMoonLeeches CaptureMoonLeechInputs(long session,int count)
         {
             int used=0;
+            int clearWriter;int clearAt=FirstMoonAnchorClear(Cache.Required,out clearWriter);
             for(int row=0;row<count;row++)
             {
                 if(!motionSlots[states[row].Identity.Slot] || !MoonLeechMotor(MoonRaw(states[row].Identity.Slot)))continue;
@@ -169,7 +170,7 @@ namespace JueMingR.TerrariaHost.Combat
                 var head=MoonRaw(headSlot);var p=playerSlot>=0 && playerSlot<Main.player.Length?Main.player[playerSlot]:null;
                 bool ownerActive=q.owner==255 || q.owner>=0 && q.owner<Main.player.Length && Main.player[q.owner]!=null && Main.player[q.owner].active;
                 bool settings=q.aiStyle==85 && q.damage==0 && q.hostile && !q.friendly && !q.tileCollide && !q.minion && !q.sentry && q.extraUpdates>=0 && q.extraUpdates<=15 && q.owner>=0 && q.owner<=255 && Finite(q.ai[0]) && q.ai[0]!=0 && Finite(q.ai[1]);
-                moonLeechValues[used++]=new PredictionMoonLeech(q,q.whoAmI,(int)q.key,q.owner,q.timeLeft,q.extraUpdates,q.penetrate,head!=null,head==null?default(NpcIdentity):CombatSelection.Identity(head,session),p!=null,p,playerSlot,p==null?default(MotionRect):new MotionRect(p.position.X,p.position.Y,p.width,p.height),p!=null && p.active,p!=null && p.dead,p!=null && p.creativeGodMode,ownerActive,new MotionRect(q.position.X,q.position.Y,q.width,q.height),q.velocity.X,q.velocity.Y,q.ai[0],q.localAI[0],q.localAI[1],settings,q.ignoreWater,q.wet);
+                moonLeechValues[used++]=new PredictionMoonLeech(q,q.whoAmI,(int)q.key,q.owner,q.timeLeft,q.extraUpdates,q.penetrate,head!=null,head==null?default(NpcIdentity):CombatSelection.Identity(head,session),p!=null,p,playerSlot,p==null?default(MotionRect):new MotionRect(p.position.X,p.position.Y,p.width,p.height),p!=null && p.active,p!=null && p.dead,p!=null && p.creativeGodMode,ownerActive,new MotionRect(q.position.X,q.position.Y,q.width,q.height),q.velocity.X,q.velocity.Y,q.ai[0],q.localAI[0],q.localAI[1],settings,q.ignoreWater,q.wet,clearAt,clearWriter);
             }
             Array.Sort(moonLeechValues,0,used,MoonLeechSlotComparer.Instance);
             bool same=moonLeeches!=null && moonLeeches.Count==used && moonLeeches.Left==Main.leftWorld && moonLeeches.Right==Main.rightWorld && moonLeeches.Top==Main.topWorld && moonLeeches.Bottom==Main.bottomWorld;
@@ -233,6 +234,28 @@ namespace JueMingR.TerrariaHost.Combat
             return first;
         }
 
+        private static int FirstMoonAnchorClear(int maximum,out int writerSlot)
+        {
+            int first=int.MaxValue;writerSlot=-1;
+            for(int slot=0;slot<Main.maxNPCs && slot<Main.npc.Length;slot++)
+            {
+                var core=Main.npc[slot];
+                if(core==null || !core.active || core.type!=398 || core.aiStyle!=77 || core.localAI[3]==0 || core.ai[0]!=2 && core.ai[0]!=3)continue;
+                float clock=core.ai[1],goal=core.ai[0]==2?60:40;
+                // This exact finite field write clears all existing456.
+                // Clocks already beyond, or fractionally skipping the mark,
+                // do not imply another clear. No foreign AI is simulated.
+                if(!Finite(clock))continue;
+                for(int action=1;action<=maximum && action<=first;action++)
+                {
+                    clock=MoonStore(clock+1);
+                    if(clock==goal){if(action<first || action==first && (writerSlot<0 || slot<writerSlot)){first=action;writerSlot=slot;}break;}
+                    if(clock>goal)break;
+                }
+            }
+            return first;
+        }
+
         private int FirstMoonForeignRetire(NPC actor,int maximum)
         {
             if(actor.type==398 && actor.ai[0]==1)return int.MaxValue;
@@ -240,6 +263,14 @@ namespace JueMingR.TerrariaHost.Combat
             for(int slot=0;slot<Main.maxNPCs && slot<Main.npc.Length;slot++)
             {
                 var core=Main.npc[slot];if(core==null || !core.active || core.type!=398 || core.aiStyle!=77 || motionSlots[slot])continue;
+                if(actor.type==401)
+                {
+                    // Observed2/3 clearing is an exact captured event. A
+                    // normal foreign core may enter withdrawal at its tail;
+                    // bound only that still-unknown future key consumer.
+                    if(core.localAI[3]!=0 && (core.ai[0]==0 || core.ai[0]==1))first=Math.Min(first,41+(slot>actor.whoAmI?1:0));
+                    continue;
+                }
                 // A foreign core that is already withdrawing is a real global
                 // writer. Normal phases can enter withdrawal only at this
                 // action's tail, hence cannot clear parts before action61.

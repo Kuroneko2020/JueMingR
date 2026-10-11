@@ -66,26 +66,38 @@ namespace JueMingR.Features.Combat
                 else if(n.A0==1 && e.BirdCloudAlpha==0 && !e.Day)
                 {
                     if(!n.BirdRelationsCaptured || !n.BirdRelationsComplete || group==null){stop=PredictionStop.MissingDependency;return false;}
-                    // Source sorts actual full identities by native slot.
-                    // A later same-type awake bird can undo an earlier town
-                    // landing choice and terminate this original scan.
-                    for(int i=0;i<count;i++)
+                    // The native scan only writes A0. A proven nearby,
+                    // nonflying same-type peer writes1 and breaks regardless
+                    // of any earlier town's Center/CanHit result. CanHit is
+                    // read-only; its overwritten landing choice has no other
+                    // motor/lifecycle effect. This is not a frozen town box.
+                    // Recheck the actual slot-time peer every action; if its
+                    // proof ends, the ordinary unavailable-geometry gate below
+                    // remains in force before the first necessary town read.
+                    if(ResetsCensus(n,group,count))n.A0=1;
+                    else
                     {
-                        var row=group[i];if(!row.Active || row.Identity.Slot==n.Identity.Slot)continue;
-                        if(row.Town)
+                        // Source sorts actual full identities by native slot.
+                        // A later same-type awake bird can undo an earlier town
+                        // landing choice and terminate this original scan.
+                        for(int i=0;i<count;i++)
                         {
-                            if(!row.BirdRelationsCaptured || !row.BirdRelationsComplete){stop=PredictionStop.MissingDependency;return false;}
-                            if(Math.Abs(n.Bounds.CenterX-row.Bounds.CenterX)<96)
+                            var row=group[i];if(!row.Active || row.Identity.Slot==n.Identity.Slot)continue;
+                            if(row.Town)
                             {
-                                float dy=row.Bounds.CenterY-n.Bounds.CenterY;
-                                if(dy>32 && dy<320)
-                                {if(t==null){stop=PredictionStop.MissingDependency;return false;}bool clear;if(!t.CanHit(n.Bounds,row.Bounds,out clear,out stop))return false;if(!clear)n.A0=2;}
+                                if(!row.BirdRelationsCaptured || !row.BirdRelationsComplete){stop=PredictionStop.MissingDependency;return false;}
+                                if(Math.Abs(n.Bounds.CenterX-row.Bounds.CenterX)<96)
+                                {
+                                    float dy=row.Bounds.CenterY-n.Bounds.CenterY;
+                                    if(dy>32 && dy<320)
+                                    {if(t==null){stop=PredictionStop.MissingDependency;return false;}bool clear;if(!t.CanHit(n.Bounds,row.Bounds,out clear,out stop))return false;if(!clear)n.A0=2;}
+                                }
                             }
-                        }
-                        else if(row.EffectiveType==n.EffectiveType)
-                        {
-                            if(!row.BirdRelationsCaptured || !row.BirdRelationsComplete){stop=PredictionStop.MissingDependency;return false;}
-                            if(row.A0!=1 && Math.Abs(n.Bounds.CenterX-row.Bounds.CenterX)<320){n.A0=1;break;}
+                            else if(row.EffectiveType==n.EffectiveType)
+                            {
+                                if(!row.BirdRelationsCaptured || !row.BirdRelationsComplete){stop=PredictionStop.MissingDependency;return false;}
+                                if(row.A0!=1 && Math.Abs(n.Bounds.CenterX-row.Bounds.CenterX)<320){n.A0=1;break;}
+                            }
                         }
                     }
                 }
@@ -166,6 +178,15 @@ namespace JueMingR.Features.Combat
                 e=NpcTargeting.Player(n,e);
             }
             n.BirdRawTargetCaptured=true;n.BirdRawTargetDead=n.PlayerNativeDead;return true;
+        }
+        private static bool ResetsCensus(NpcMotionState n,NpcMotionState[] group,int count)
+        {
+            for(int i=0;i<count;i++)
+            {
+                var peer=group[i];
+                if(peer.Active && !peer.Town && peer.Identity.Slot!=n.Identity.Slot && peer.EffectiveType==n.EffectiveType && Known(peer) && peer.BirdRelationsCaptured && peer.BirdRelationsComplete && peer.A0!=1 && Math.Abs(n.Bounds.CenterX-peer.Bounds.CenterX)<320)return true;
+            }
+            return false;
         }
         internal static bool Nearest(NpcMotionState n,PredictionEnvironment e,int elapsed,out int slot,out MotionRect area,out PredictionStop stop)
         {
