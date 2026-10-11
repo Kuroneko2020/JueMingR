@@ -132,6 +132,8 @@ namespace NativeWorldTextProbe
                     {phase="deerclops";NativeCombatDeerclopsChecks.Boundaries(context);NativeCombatDeerclopsChecks.Lifecycle(context);NativeCombatDeerclopsChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_BIRD")=="1")
                     {phase="bird";NativeCombatBirdChecks.Boundaries();NativeCombatBirdChecks.Lifecycle(context);NativeCombatBirdChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_MARTIAN_TURRET")=="1")
+                    {phase="martian-turret";NativeCombatMartianTurretChecks.Boundaries();NativeCombatMartianTurretChecks.Lifecycle(context);NativeCombatMartianTurretChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_WINDY_BALLOON")=="1")
                     {phase="windy-balloon";NativeCombatWindyBalloonChecks.Boundaries();NativeCombatWindyBalloonChecks.Lifecycle(context);NativeCombatWindyBalloonChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_QUEEN_SLIME")=="1")

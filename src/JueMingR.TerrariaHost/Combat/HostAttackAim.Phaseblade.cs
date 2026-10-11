@@ -21,6 +21,10 @@ namespace JueMingR.TerrariaHost.Combat
             obstacles=new HostAttackObstacles(player,sample,timeline,0,clock.BeforeNpc,clock.NextWorld);
             origin=HostAttackModels.LaunchOrigin(player,item);
             current=HostPhasebladeAttack.ReleaseSolve(player,captured,timeline,origin,clock,terrain,obstacles);next=null;
+            // This dedicated hand/release branch bypasses ordinary preparation.
+            // G11A still consumes its own same-operation ItemRelease packet;
+            // a successful Shoot cursor scope does not replace that consumer.
+            cadence.Prepare(player,item,captured,timeline,phase,current);
             weapon=item;slot=player.selectedItem;type=item.type;prefix=item.prefix;session=observation.Session;prepared=Main.GameUpdateCount;ammo=captured;
         }
         private AttackContact PreparePhasebladePreview(PreviewPlan plan,Player player,Item item,NpcTrajectory timeline,HostAttackPhase phase,int delay)

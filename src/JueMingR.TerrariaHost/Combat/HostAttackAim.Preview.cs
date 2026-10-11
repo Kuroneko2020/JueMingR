@@ -51,7 +51,7 @@ namespace JueMingR.TerrariaHost.Combat
             // All AI013 hand roles except GolemFist refresh native dummy use
             // timers until catch. Their current flight owns the preview even
             // when it was born before observation was enabled.
-            if(hasFlight && item.shoot!=481 && !HostGemStaffAttack.Handles(item.shoot))return OnlyFlight(plan,player,timeline,flight);
+            if(hasFlight && item.shoot!=481 && !HostGemStaffAttack.Handles(item.shoot) && !HostAttachedShotAttack.Handles(item.shoot) && !HostArcSwingAttack.Weapon(item.type))return OnlyFlight(plan,player,timeline,flight);
             if(delay<0 || clock.Age+delay>=timeline.Count-1)
             {if(!HostSwingAttack.Mixed(item))return OnlyFlight(plan,player,timeline,flight);delay=-1;}
             if(HostHeldAttack.Weapon(item.type) || HostYoyoNavigation.Weapon(item) || HostWhipAttack.Weapon(item))
@@ -140,7 +140,7 @@ namespace JueMingR.TerrariaHost.Combat
             // New independent flights are a changed premise even without a
             // new use or inventory change. Their own observation path checks
             // the pool; do not turn an old opening miss into a flight miss.
-            if(HostHarpoonAttack.Handles(item.shoot) || HostGemStaffAttack.Handles(item.shoot) || HostPhasebladeAttack.Handles(item.shoot) || Control.HasObservedPulse || item.type==3473 && Control.HasObservedSolar)return false;
+            if(HostArcSwingAttack.Weapon(item.type) || HostHarpoonAttack.Handles(item.shoot) || HostGemStaffAttack.Handles(item.shoot) || HostAttachedShotAttack.Handles(item.shoot) || HostPhasebladeAttack.Handles(item.shoot) || Control.HasObservedPulse || item.type==3473 && Control.HasObservedSolar)return false;
             var captured=AttackAmmoSnapshot.Capture(player,item);Projectile sample=null;
             if(captured!=null && !ContentSamples.ProjectilesByType.TryGetValue(captured.Projectile,out sample))return false;
             int age=(int)((long)Main.GameUpdateCount-sampleTick)-(phase==HostAttackPhase.BeforeNpc?1:0);
@@ -148,7 +148,7 @@ namespace JueMingR.TerrariaHost.Combat
             return PlanInputsCurrent(plan,player,item,target.Slot,phase,age,HostAttackWindow.PreviewDelay(player,item),captured,NpcPredictionSource.ReadPlayer(player),receive,Main.npc[target.Slot].immune[player.whoAmI]);
         }
         internal static bool SameAmmo(AttackAmmoSnapshot a,AttackAmmoSnapshot b)
-        {return a==null?b==null:b!=null && ReferenceEquals(a.Ammo,b.Ammo) && a.Type==b.Type && a.Stack==b.Stack && a.Projectile==b.Projectile && a.Speed==b.Speed && a.Damage==b.Damage && a.GemFeatures==b.GemFeatures && a.Mode==b.Mode && a.Offset==b.Offset;}
+        {return a==null?b==null:b!=null && ReferenceEquals(a.Ammo,b.Ammo) && a.Type==b.Type && a.Stack==b.Stack && a.Projectile==b.Projectile && a.Speed==b.Speed && a.Damage==b.Damage && a.GemFeatures==b.GemFeatures && a.Mode==b.Mode && a.Offset==b.Offset && a.CardFireType==b.CardFireType && a.NoteViewAxis==b.NoteViewAxis;}
         private sealed class PreviewPlan
         {
             // Clear retires a fact, not its bounded fault history. Only a new

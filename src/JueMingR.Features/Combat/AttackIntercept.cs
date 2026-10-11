@@ -105,6 +105,14 @@ namespace JueMingR.Features.Combat
             var sample=timeline[receiveTick];if(!sample.CanReceive)return null;var b=sample.ReceiveBounds;
             return new AttackContact(timeline,aimX,aimY,Math.Max(b.X,Math.Min(b.X+b.Width,impactX)),Math.Max(b.Y,Math.Min(b.Y+b.Height,impactY)),receiveTick+1,0,0,AttackConfidence.Conditional,receiveTick);
         }
+        // A specialized projectile collider has already qualified its shape.
+        // Unlike hand melee, its receive sample and damage tick are the same.
+        public static AttackContact ProjectileShapeContact(NpcTrajectory timeline,int tick,int subupdate,bool overlaps,float aimX,float aimY,float impactX,float impactY,AttackConfidence confidence)
+        {
+            if(!overlaps || timeline==null || tick<0 || tick>=timeline.Count || subupdate<0 || !Finite(aimX) || !Finite(aimY) || !Finite(impactX) || !Finite(impactY))return null;
+            var sample=timeline[tick];if(!sample.CanReceive)return null;var b=sample.ProjectileReceiveBounds;
+            return new AttackContact(timeline,aimX,aimY,Math.Max(b.X,Math.Min(b.X+b.Width,impactX)),Math.Max(b.Y,Math.Min(b.Y+b.Height,impactY)),tick,subupdate,0,confidence);
+        }
         // Contact creation still enforces the SAME timeline, receive phase
         // and native integer rectangle; an arbitrary aim point is insufficient.
         public static AttackContact BodyContact(NpcTrajectory timeline,int tick,int subupdate,float aimX,float aimY,float x,float y,float width,float height,AttackConfidence confidence)

@@ -16,7 +16,7 @@ namespace NativeWorldTextProbe
     {
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static|BindingFlags.Instance;
         private static Assembly assembly;private static Type model;private static NPC target;private static Projectile receiving,motor,controller,phoenix;
-        private static bool natural;private static int births,arrows,solves,steps,kills;private static long first,birthTick;private static AttackContact known;private static Vector2 raw,killCenter;
+        private static bool natural,lowerCase;private static int births,arrows,solves,steps,kills;private static long first,birthTick;private static AttackContact known;private static Vector2 raw,killCenter;
         private static readonly List<int> hits=new List<int>();
         private static object Static(Type type,string method,params object[] args){return type.GetMethod(method,Flags).Invoke(null,args);}
         private static void SolveWork(){solves++;}private static void StepWork(){steps++;}
@@ -53,7 +53,7 @@ namespace NativeWorldTextProbe
             phoenix=q;births++;birthTick=Main.GameUpdateCount;var p=Main.LocalPlayer;var origin=p.RotatedRelativePoint(p.MountedCenter);var cursor=new Vector2(Main.mouseX,Main.mouseY)+Main.screenPosition;
             var expected=(Vector2)Static(model,"BirthVelocity",p,controller,origin,cursor);var ammo=Static(assembly.GetType("JueMingR.TerrariaHost.Combat.AttackAmmoSnapshot",true),"CaptureController",p,p.HeldItem,12f);
             Require(arrows==4 && p.phantomPhoneixCounter==0 && q.damage==2*(int)Get(ammo,"Damage") && q.timeLeft==120 && q.owner==p.whoAmI && Vector2.DistanceSquared(q.Center,origin)<.0001f && Vector2.DistanceSquared(q.velocity,expected)<.0001f && Vector2.Dot(q.velocity,raw-origin)<0,"actual third controller use emits doubled phoenix from the borrowed cursor after four original ammo arrows");
-            var path=Timeline(target);bool later=q.whoAmI>controller.whoAmI;known=(AttackContact)Static(model,"Known",p,q,path,Clock(path,later?"Projectiles":"CompletedWorld"),Terrain(),Obstacles(p,q,path,false,!later));
+            var path=Timeline(target);bool later=q.whoAmI>controller.whoAmI;Require(later!=lowerCase,"native pool yields the intended child slot before/after its live controller");known=(AttackContact)Static(model,"Known",p,q,path,Clock(path,later?"Projectiles":"CompletedWorld"),Terrain(),Obstacles(p,q,path,false,!later));
             Console.WriteLine("PHOENIX birth parent="+controller.whoAmI+" slot="+q.whoAmI+" later="+later+" center="+q.Center+" V="+q.velocity+" damage="+q.damage+" actualAmmo="+arrows+" cursor="+cursor+" raw="+raw+" known="+known?.Tick);
         }
         internal static void Run(object context)
@@ -64,7 +64,7 @@ namespace NativeWorldTextProbe
             audit.Patch(typeof(Projectile).GetMethod("AI",Flags),prefix:new HarmonyMethod(typeof(NativeCombatPhoenixChecks),nameof(BeforeAI)),postfix:new HarmonyMethod(typeof(NativeCombatPhoenixChecks),nameof(AfterAI)));
             audit.Patch(typeof(Projectile).GetMethods(Flags).Single(m=>m.Name=="NewProjectile" && m.GetParameters().Length==13 && m.GetParameters()[1].ParameterType==typeof(float)),postfix:new HarmonyMethod(typeof(NativeCombatPhoenixChecks),nameof(Born)));
             audit.Patch(typeof(Projectile).GetMethod("Kill",Flags),prefix:new HarmonyMethod(typeof(NativeCombatPhoenixChecks),nameof(BeforeKill)));audit.Patch(typeof(Projectile).GetMethod("Damage",Flags),prefix:new HarmonyMethod(typeof(NativeCombatPhoenixChecks),nameof(BeforeDamage)),postfix:new HarmonyMethod(typeof(NativeCombatPhoenixChecks),nameof(AfterDamage)));audit.Patch(AccessTools.Method(typeof(NPC),"StrikeNPC",new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)}),postfix:new HarmonyMethod(typeof(NativeCombatPhoenixChecks),nameof(Strike)));
-            try{string only=Environment.GetEnvironmentVariable("JMR_PHOENIX_ORACLE_ONLY");if(string.IsNullOrEmpty(only) || only=="motor")Motors(context);if(string.IsNullOrEmpty(only) || only=="receive")Receives(context);if(string.IsNullOrEmpty(only) || only=="natural")Natural(context);Require(string.IsNullOrEmpty(only) || only=="motor" || only=="receive" || only=="natural","native phoenix narrow leaf");}
+            try{string only=Environment.GetEnvironmentVariable("JMR_PHOENIX_ORACLE_ONLY");if(string.IsNullOrEmpty(only) || only=="motor")Motors(context);if(string.IsNullOrEmpty(only) || only=="receive")Receives(context);if(string.IsNullOrEmpty(only) || only=="natural")Natural(context);if(string.IsNullOrEmpty(only) || only=="lower")Natural(context,true);Require(string.IsNullOrEmpty(only) || only=="motor" || only=="receive" || only=="natural" || only=="lower","native phoenix narrow leaf");}
             finally{natural=false;controller=null;audit.UnpatchAll(audit.Id);Main.windPhysics=wind;Main.LocalPlayer.setApprenticeT3=false;NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());NativeCombatCadenceChecks.Save(Get(context,"Combat"),new CombatOptions());}
         }
         private static void Motors(object context)
@@ -105,11 +105,15 @@ namespace NativeWorldTextProbe
             }
             Console.WriteLine("PASS PHOENIX receive=10");
         }
-        private static void Natural(object context)
+        private static void Natural(object context,bool lower=false)
         {
             var p=Reset(context);p.position=new Vector2(650,646);p.releaseUseItem=true;Main.screenPosition=new Vector2(500,400);for(int x=5;x<115;x++)NativeToolsChecks.Tile(x,43,1);target=NativeCombatControlPreviewChecks.Dummy(2,48,40);raw=target.Center-new Vector2(490,0);var host=Get(context,"CombatObservation");var attack=Get(Get(context,"Combat"),"Attack");solves=steps=0;
             NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,false));for(int i=0;i<3;i++){NativeCombatSelectionPreviewChecks.Step(context,raw,false,true);Require(GetOptional(attack,"ExpectedPreview")!=null && !Main.projectile.Any(q=>q.active),"idle Phoenix bow previews its original first ammo stage without firing");}
-            natural=true;NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));int thirdWindows=0,thirdVisible=0;
+            // Real one-tick projectiles occupy the low slots while the held
+            // controller is born. Their normal expiry frees those slots before
+            // the third shot; no parent phase or child slot is injected.
+            if(lower)for(int i=0;i<8;i++){int slot=Projectile.NewProjectile(p.GetProjectileSource_Item(p.HeldItem),new Vector2(500,350),Vector2.Zero,14,0,0,p.whoAmI);Main.projectile[slot].timeLeft=1;}
+            lowerCase=lower;natural=true;NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));int thirdWindows=0,thirdVisible=0;
             for(int i=0;i<100 && first<0;i++)
             {
                 NativeCombatSelectionPreviewChecks.Step(context,raw,true);

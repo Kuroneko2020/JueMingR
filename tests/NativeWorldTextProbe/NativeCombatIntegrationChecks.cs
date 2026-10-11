@@ -21,6 +21,7 @@ namespace NativeWorldTextProbe
             try
             {
                 string leaf=Environment.GetEnvironmentVariable("JMR_COMBAT_INTEGRATION_ONLY");
+                if(leaf=="cadence"){NativeCombatCadenceAimChecks.Run(context);return;}
                 if(leaf=="usage"){NativeCombatUsageChecks.Run(context);return;}
                 if(leaf=="phases"){NativeCombatPhaseChecks.Run(context);return;}
                 if(leaf=="swing-special"){NativeCombatSwingSpecialChecks.Run(context);return;}

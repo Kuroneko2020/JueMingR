@@ -194,6 +194,8 @@ namespace JueMingR.TerrariaHost.Combat
             environment=null;obstacles=null;
             if(HostSkyAttack.Handles(item.type))
             {var sky=ContentSamples.ProjectilesByType[captured.Projectile];obstacles=new HostAttackObstacles(player,sky,timeline,delay,beforeNpc,!beforeNpc);return HostSkyAttack.Solve(player,item,captured,timeline,start,age,terrain,beforeNpc,obstacles,delay);}
+            if(HostAttachedShotAttack.Handles(captured.Projectile))
+            {var attached=ContentSamples.ProjectilesByType[captured.Projectile];obstacles=new HostAttackObstacles(player,attached,timeline,delay,beforeNpc,!beforeNpc);return HostAttachedShotAttack.Solve(player,captured,timeline,start,age,beforeNpc,terrain,obstacles,delay,preparedPlayer);}
             if(HostEffectAttack.Handles(captured.Projectile))
             {var effect=ContentSamples.ProjectilesByType[captured.Projectile];obstacles=new HostAttackObstacles(player,effect,timeline,delay,beforeNpc,!beforeNpc);return HostEffectAttack.Solve(player,captured,timeline,start,age,beforeNpc,terrain,obstacles,delay);}
             Projectile melee;if(ContentSamples.ProjectilesByType.TryGetValue(captured.Projectile,out melee) && HostMeleeAttack.Handles(melee))
@@ -201,7 +203,7 @@ namespace JueMingR.TerrariaHost.Combat
                 // A real intervening boomerang hit can enter its return phase.
                 // Lease those receivers with both execution and idle preview;
                 // anchored sword/spear poses do not need this extra scan.
-                if(HostBoomerangAttack.Handles(melee.type))obstacles=new HostAttackObstacles(player,melee,timeline,delay,beforeNpc,!beforeNpc);
+                if(HostBoomerangAttack.Handles(melee.type) || HostArcSwingAttack.Weapon(item.type))obstacles=new HostAttackObstacles(player,melee,timeline,delay,beforeNpc,!beforeNpc);
                 return HostMeleeAttack.SolvePrepared(player,item,captured,timeline,age,beforeNpc,terrain,delay,obstacles,preparedPlayer??HostAttackPlayerFrame.Capture(player,timeline));
             }
             if(item.type==2624){var b=timeline[Math.Min(age+1,timeline.Count-1)].ProjectileReceiveBounds;start+=(new Vector2(b.CenterX,b.CenterY)-start).SafeNormalize(Vector2.UnitX)*40;}
@@ -225,7 +227,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(!checkAmmo && !HostAttackWindow.NextAction(combat,player,weapon))return false;
             if(result==null || !result.Timeline.Identity.Equals(observation.Selection.Target) || !ReferenceEquals(result.Timeline,observation.Prediction.Cache.Read(1)) ||
                 Vector2.DistanceSquared(HostAttackModels.LaunchOrigin(player,weapon),Main.GameUpdateCount==prepared?origin:nextOrigin)>4)return false;
-            return environmentState.Current && terrain.Unchanged && (environment==null || environment.Unchanged) && (obstacles==null || obstacles.Unchanged) && (harpyState==null || harpyState.Current) && (!checkAmmo || ammo!=null && ammo.Matches(player,weapon));
+            return environmentState.Current && terrain.Unchanged && (environment==null || environment.Unchanged) && (obstacles==null || (checkAmmo?obstacles.UnchangedForHandStart:obstacles.Unchanged)) && (harpyState==null || harpyState.Current) && (!checkAmmo || ammo!=null && ammo.Matches(player,weapon));
         }
         internal CombatCursorScope BeginShot(Player player,Item item,bool regular)
         {

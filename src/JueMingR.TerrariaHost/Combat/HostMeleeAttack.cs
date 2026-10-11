@@ -14,7 +14,7 @@ namespace JueMingR.TerrariaHost.Combat
         private static readonly MethodInfo copy=typeof(object).GetMethod("MemberwiseClone",BindingFlags.Instance|BindingFlags.NonPublic);
         private static readonly MethodInfo spearOffset=typeof(Projectile).GetMethod("AI_019_Spears_GetSpearOffsetRelativeToPlayer",BindingFlags.Instance|BindingFlags.NonPublic);
         internal static bool RawCursor(int weaponType){return weaponType==4956 || weaponType==5669;}
-        internal static bool Handles(Projectile sample){return sample.type>=938 && sample.type<=945 || sample.aiStyle==19 || ProjectileID.Sets.IsAWhip[sample.type] && sample.type!=1035 || HostBoomerangAttack.Handles(sample.type) || sample.type==611 || sample.type==933 || sample.type==1100;}
+        internal static bool Handles(Projectile sample){return HostArcSwingAttack.Handles(sample.type) || sample.type>=938 && sample.type<=945 || sample.aiStyle==19 || ProjectileID.Sets.IsAWhip[sample.type] && sample.type!=1035 || HostBoomerangAttack.Handles(sample.type) || sample.type==611 || sample.type==933 || sample.type==1100;}
         internal static int AnimationDuration(Player player,Item item)
         {
             // ApplyItemAnimation multiplies by native speed factors. Faster
@@ -29,6 +29,7 @@ namespace JueMingR.TerrariaHost.Combat
         internal static AttackContact SolvePrepared(Player player,Item item,AttackAmmoSnapshot ammo,NpcTrajectory timeline,int age,bool beforeNpc,PredictionTerrain terrain,int delay,HostAttackObstacles obstacles,HostAttackPlayerFrame frame)
         {
             Projectile sample;if(!ContentSamples.ProjectilesByType.TryGetValue(ammo.Projectile,out sample) || !Handles(sample))return null;
+            if(HostArcSwingAttack.Weapon(item.type))return HostArcSwingAttack.SolvePrepared(player,item,ammo,timeline,age,beforeNpc,terrain,delay,obstacles,frame);
             int retargetDamage=sample.type==866?player.GetWeaponDamage(item):0;
             if(sample.type==866 && retargetDamage<=0)return null;
             var receive=HostAttackReceive.Capture(player,sample,timeline.Identity.Slot,beforeNpc,!beforeNpc);

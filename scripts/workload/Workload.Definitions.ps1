@@ -59,6 +59,12 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCombatJavelinChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatPhoenixChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatThornChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatStreamChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatBottleChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatNoteChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatNebulaBlazeChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatArcSwingChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatAttachedShotChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatBetsyFlameChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatElectrosphereChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatBarrelChecks.cs'=@('native-CombatEffectsCpu')
@@ -125,6 +131,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCombatQueenSlimeChecks.cs'=@('native-NpcQueenSlime')
         'tests/NativeWorldTextProbe/NativeCombatWindyBalloonChecks.cs'=@('native-NpcWindyBalloon')
         'tests/NativeWorldTextProbe/NativeCombatBirdChecks.cs'=@('native-NpcBird')
+        'tests/NativeWorldTextProbe/NativeCombatMartianTurretChecks.cs'=@('native-NpcMartianTurret')
         'tests/NativeWorldTextProbe/NativeCombatEmpressChecks.cs'=@('native-NpcEmpress')
         'tests/NativeWorldTextProbe/NativeCombatDeerclopsChecks.cs'=@('native-NpcDeerclops')
         'tests/NativeWorldTextProbe/NativeCombatFishronChecks.cs'=@('native-NpcFishron')
@@ -185,6 +192,7 @@ function Get-WorkloadNativeScopes {
         'NpcQueenSlime'=@('combat-host');
         'NpcWindyBalloon'=@('combat-host');
         'NpcBird'=@('combat-host');
+        'NpcMartianTurret'=@('combat-host');
         'NpcEmpress'=@('combat-host');
         'NpcDeerclops'=@('combat-host');
         'NpcFishron'=@('combat-host');

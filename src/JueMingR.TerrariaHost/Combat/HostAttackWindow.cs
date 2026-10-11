@@ -27,7 +27,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(HostSwingAttack.Handles(item) && !HostSwingAttack.Mixed(item) && player.itemAnimation>0)return 0;
             if(!HostAttackResources.Initial(player,item))return -1;
             if(player.itemAnimation>1 && !item.shootsEveryUse)return Math.Max(0,player.itemTime-1);
-            return Math.Max(Math.Max(0,player.itemTime-1),Math.Max(player.reuseDelay,Math.Max(0,player.itemAnimation-1)));
+            return Math.Max(item.shootsEveryUse?0:Math.Max(0,player.itemTime-1),Math.Max(player.reuseDelay,Math.Max(0,player.itemAnimation-1)));
         }
         // Controllers still need continuous preparation between item uses.
         // This narrower read asks only whether the next native ItemCheck can
@@ -50,7 +50,10 @@ namespace JueMingR.TerrariaHost.Combat
             // Starting a use is tested BEFORE the decrement. A held ordinary
             // non-autoreuse item does not become fresh just because timers hit
             // zero. This is a read-only planning gate, never a native Shoot veto.
-            return pressed && (player.releaseUseItem || repeat) && player.reuseDelay<=0 && player.itemTime<=1 && HostAttackResources.Initial(player,item);
+            // shootsEveryUse replaces the native ItemTimeIsZero shoot gate
+            // with ItemAnimationJustStarted. On automatic reuse the previous
+            // item's time may still be 2 while this action starts a real shot.
+            return pressed && (player.releaseUseItem || repeat) && player.reuseDelay<=0 && (item.shootsEveryUse || player.itemTime<=1) && HostAttackResources.Initial(player,item);
         }
     }
 }

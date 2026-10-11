@@ -14,6 +14,7 @@ namespace NativeWorldTextProbe
         internal static void Run(object context)
         {
             if(Environment.GetEnvironmentVariable("JMR_CONTROL_ORACLE_ONLY")=="knife"){NativeCombatFlyingKnifeChecks.Run(context);return;}
+            if(Environment.GetEnvironmentVariable("JMR_CONTROL_ORACLE_ONLY")=="receive"){NativeCombatReceiveChecks.Run(context);return;}
             if(Environment.GetEnvironmentVariable("JMR_CONTROL_ORACLE_ONLY")=="bubble"){NativeCombatBubbleChecks.Run(context);return;}
             if(Environment.GetEnvironmentVariable("JMR_CONTROL_ORACLE_ONLY")=="laser"){NativeCombatLaserChecks.Run(context);return;}
             NativeCombatYoyoChecks.Run(context);

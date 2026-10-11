@@ -42,6 +42,12 @@ namespace NativeWorldTextProbe
             if(finiteOracle=="bee-gun"){NativeCombatBeeGunChecks.Run(context);return;}
             if(finiteOracle=="phoenix"){NativeCombatPhoenixChecks.Run(context);return;}
             if(finiteOracle=="thorn"){NativeCombatThornChecks.Run(context);return;}
+            if(finiteOracle=="stream"){NativeCombatStreamChecks.Run(context);return;}
+            if(finiteOracle=="bottle"){NativeCombatBottleChecks.Run(context);return;}
+            if(finiteOracle=="note"){NativeCombatNoteChecks.Run(context);return;}
+            if(finiteOracle=="nebula-blaze"){NativeCombatNebulaBlazeChecks.Run(context);return;}
+            if(finiteOracle=="arc-swing"){NativeCombatArcSwingChecks.Run(context);return;}
+            if(finiteOracle=="attached-shot"){NativeCombatAttachedShotChecks.Run(context);return;}
             if(finiteOracle=="betsy-flame"){NativeCombatBetsyFlameChecks.Run(context);return;}
             if(finiteOracle=="electrosphere"){NativeCombatElectrosphereChecks.Run(context);return;}
             if(finiteOracle=="barrel"){NativeCombatBarrelChecks.Run(context);return;}
@@ -98,6 +104,12 @@ namespace NativeWorldTextProbe
             NativeCombatJavelinChecks.Run(context);
             NativeCombatPhoenixChecks.Run(context);
             NativeCombatThornChecks.Run(context);
+            NativeCombatStreamChecks.Run(context);
+            NativeCombatBottleChecks.Run(context);
+            NativeCombatNoteChecks.Run(context);
+            NativeCombatNebulaBlazeChecks.Run(context);
+            NativeCombatArcSwingChecks.Run(context);
+            NativeCombatAttachedShotChecks.Run(context);
             NativeCombatBetsyFlameChecks.Run(context);
             NativeCombatElectrosphereChecks.Run(context);
             NativeCombatBarrelChecks.Run(context);

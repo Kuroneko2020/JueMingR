@@ -10,17 +10,21 @@ namespace JueMingR.TerrariaHost.Combat
     // Only currently observed other receivers are held stationary. Their
     // future motion/other attacks remain conditions, not a second prediction
     // world. Damage uses endpoint rectangles and NPC array order, not distance.
-    internal sealed class HostAttackObstacles
+    internal sealed partial class HostAttackObstacles
     {
         private sealed class Receiver
         {
-            internal NPC Npc;internal NpcIdentity Identity;internal Rectangle Box,RawBox;internal Vector2 Position,Offset;internal HostAttackReceive Receive;
-            internal int OwnerImmune,LocalImmune;internal uint StaticExpiry;internal bool Unknown,Chaseable,Reflects;
+            internal NPC Npc;internal NpcIdentity Identity;internal Rectangle Box,RawBox;internal Vector2 Position,Offset;internal HostAttackReceive Receive,ArcReceive;
+            internal int OwnerImmune,LocalImmune;internal uint StaticExpiry;internal bool Unknown,Chaseable,Reflects,NoTileCollide;
         }
         private sealed class HitHistory
         {
             internal int[] OwnerNext;
+            internal bool[] OwnerWritten;
             internal Dictionary<int,int[]> StaticNext;
+            internal ArcOwnerLease ArcOwner;
+            internal int[] ArcMelee;
+            internal bool ArcHandReset;
         }
         private sealed class AiReflector
         {
@@ -29,6 +33,7 @@ namespace JueMingR.TerrariaHost.Combat
         private readonly List<Receiver> receivers=new List<Receiver>();
         private readonly List<AiReflector> aiReflectors=new List<AiReflector>();
         private readonly Player player;private readonly Projectile shot;private readonly NpcTrajectory timeline;private readonly HostAttackReceive selected;
+        private readonly HostAttackReceive arcSelected;
         private readonly int delay;private readonly bool beforeNpc,nextWorld,selectedChaseable,selectedReflects,goodWorld,expert,multiplayer;private int remaining;
         private readonly HitHistory history;private readonly bool ownsHistory;
         private readonly int[] initialLocal,localNext;private readonly List<int> otherHitSlots=new List<int>();
@@ -60,7 +65,7 @@ namespace JueMingR.TerrariaHost.Combat
             // Children share writes made by earlier native slot updates. Only
             // the root candidate owns the reset; a child's first Pass must not
             // erase an already received sibling hit.
-            if(ownsHistory){if(history.OwnerNext!=null)Array.Clear(history.OwnerNext,0,history.OwnerNext.Length);if(history.StaticNext!=null)history.StaticNext.Clear();if(localNext!=null)Array.Copy(initialLocal,localNext,localNext.Length);}
+            if(ownsHistory){history.ArcHandReset=false;if(history.OwnerNext!=null){Array.Clear(history.OwnerNext,0,history.OwnerNext.Length);Array.Clear(history.OwnerWritten,0,history.OwnerWritten.Length);}if(history.StaticNext!=null)history.StaticNext.Clear();if(localNext!=null)Array.Copy(initialLocal,localNext,localNext.Length);if(history.ArcOwner!=null)Array.Copy(history.ArcOwner.Melee,history.ArcMelee,history.ArcMelee.Length);}
         }
         internal HostAttackObstacles(Player player,Projectile shot,NpcTrajectory timeline,int delay,bool beforeNpc,bool nextWorld)
         {
@@ -69,7 +74,7 @@ namespace JueMingR.TerrariaHost.Combat
             // Ordinary owner-only attacks keep no 200-entry private arrays
             // until a real preceding receive actually writes shared immunity.
             if(shot.usesLocalNPCImmunity){initialLocal=new int[Main.maxNPCs];localNext=new int[Main.maxNPCs];for(int slot=0;slot<initialLocal.Length;slot++){int value=shot.localNPCImmunity[slot];initialLocal[slot]=value<0?int.MaxValue:value;localNext[slot]=initialLocal[slot];}}
-            this.player=player;this.shot=shot;this.timeline=timeline;this.delay=delay;this.beforeNpc=beforeNpc;this.nextWorld=nextWorld;selected=HostAttackReceive.Capture(player,shot,timeline.Identity.Slot,beforeNpc,nextWorld);selectedChaseable=Main.npc[timeline.Identity.Slot].CanBeChasedBy(shot);
+            this.player=player;this.shot=shot;this.timeline=timeline;this.delay=delay;this.beforeNpc=beforeNpc;this.nextWorld=nextWorld;selected=HostAttackReceive.Capture(player,shot,timeline.Identity.Slot,beforeNpc,nextWorld);selectedChaseable=Main.npc[timeline.Identity.Slot].CanBeChasedBy(shot);arcSelected=shot.usesOwnerMeleeHitCD?HostAttackReceive.CaptureIgnoringMelee(player,shot,timeline.Identity.Slot,beforeNpc,nextWorld):selected;
             for(int slot=0;slot<Main.maxNPCs;slot++)
             {
                 var npc=Main.npc[slot];if(slot==timeline.Identity.Slot)continue;
@@ -77,7 +82,7 @@ namespace JueMingR.TerrariaHost.Combat
                 // invulnerable. It is not a Damage receiver qualification.
                 if(expert && AiReflectorEligible(npc))aiReflectors.Add(new AiReflector{Npc=npc,Identity=CombatSelection.Identity(npc,timeline.Identity.Session),Box=npc.Hitbox,Phase=npc.ai[0],Clock=npc.ai[1]});
                 if(!Eligible(player,shot,npc))continue;
-                receivers.Add(new Receiver{Npc=npc,Identity=CombatSelection.Identity(npc,timeline.Identity.Session),Box=CombatSelection.ReceiveBounds(npc),RawBox=ReflectionBounds(npc),Reflects=npc.reflectsProjectiles,Position=npc.position,Offset=npc.netOffset,OwnerImmune=npc.immune[player.whoAmI],LocalImmune=shot.localNPCImmunity[slot],StaticExpiry=shot.usesIDStaticNPCImmunity?Projectile.perIDStaticNPCImmunity[shot.immunityIdentity,slot]:0,Receive=HostAttackReceive.Capture(player,shot,slot,beforeNpc,nextWorld),Unknown=NPCID.Sets.ZappingJellyfish[npc.type],Chaseable=npc.CanBeChasedBy(shot)});
+                var receive=HostAttackReceive.Capture(player,shot,slot,beforeNpc,nextWorld);receivers.Add(new Receiver{Npc=npc,Identity=CombatSelection.Identity(npc,timeline.Identity.Session),Box=CombatSelection.ReceiveBounds(npc),RawBox=ReflectionBounds(npc),Reflects=npc.reflectsProjectiles,Position=npc.position,Offset=npc.netOffset,OwnerImmune=npc.immune[player.whoAmI],LocalImmune=shot.localNPCImmunity[slot],StaticExpiry=shot.usesIDStaticNPCImmunity?Projectile.perIDStaticNPCImmunity[shot.immunityIdentity,slot]:0,Receive=receive,ArcReceive=shot.usesOwnerMeleeHitCD?HostAttackReceive.CaptureIgnoringMelee(player,shot,slot,beforeNpc,nextWorld):receive,NoTileCollide=npc.noTileCollide,Unknown=NPCID.Sets.ZappingJellyfish[npc.type],Chaseable=npc.CanBeChasedBy(shot)});
             }
         }
         private HostAttackObstacles(HostAttackObstacles parent,Projectile spawned,bool copyLocal)
@@ -87,12 +92,12 @@ namespace JueMingR.TerrariaHost.Combat
             familyLeases=parent.familyLeases;
             receiveLeases=parent.receiveLeases;
             player=parent.player;shot=spawned;timeline=parent.timeline;delay=parent.delay;beforeNpc=parent.beforeNpc;nextWorld=parent.nextWorld;history=parent.history;ownsHistory=false;
-            selected=HostAttackReceive.Capture(player,spawned,timeline.Identity.Slot,beforeNpc,nextWorld);selectedChaseable=Main.npc[timeline.Identity.Slot].CanBeChasedBy(spawned);
+            selected=HostAttackReceive.Capture(player,spawned,timeline.Identity.Slot,beforeNpc,nextWorld);selectedChaseable=Main.npc[timeline.Identity.Slot].CanBeChasedBy(spawned);arcSelected=spawned.usesOwnerMeleeHitCD?HostAttackReceive.CaptureIgnoringMelee(player,spawned,timeline.Identity.Slot,beforeNpc,nextWorld):selected;
             if(spawned.usesLocalNPCImmunity){localNext=copyLocal && parent.localNext!=null?(int[])parent.localNext.Clone():new int[Main.maxNPCs];if(!copyLocal)for(int slot=0;slot<localNext.Length;slot++){int value=spawned.localNPCImmunity[slot];localNext[slot]=value<0?int.MaxValue:value;}initialLocal=localNext;}
             foreach(var prior in parent.receivers)
             {
                 if(!Eligible(player,spawned,prior.Npc))continue;
-                receivers.Add(new Receiver{Npc=prior.Npc,Identity=prior.Identity,Box=prior.Box,RawBox=prior.RawBox,Reflects=prior.Reflects,Position=prior.Position,Offset=prior.Offset,OwnerImmune=prior.OwnerImmune,LocalImmune=spawned.localNPCImmunity[prior.Identity.Slot],StaticExpiry=spawned.usesIDStaticNPCImmunity?Projectile.perIDStaticNPCImmunity[spawned.immunityIdentity,prior.Identity.Slot]:0,Receive=HostAttackReceive.Capture(player,spawned,prior.Identity.Slot,beforeNpc,nextWorld),Unknown=prior.Unknown,Chaseable=prior.Npc.CanBeChasedBy(spawned)});
+                var receive=HostAttackReceive.Capture(player,spawned,prior.Identity.Slot,beforeNpc,nextWorld);receivers.Add(new Receiver{Npc=prior.Npc,Identity=prior.Identity,Box=prior.Box,RawBox=prior.RawBox,Reflects=prior.Reflects,Position=prior.Position,Offset=prior.Offset,OwnerImmune=prior.OwnerImmune,LocalImmune=spawned.localNPCImmunity[prior.Identity.Slot],StaticExpiry=spawned.usesIDStaticNPCImmunity?Projectile.perIDStaticNPCImmunity[spawned.immunityIdentity,prior.Identity.Slot]:0,Receive=receive,ArcReceive=spawned.usesOwnerMeleeHitCD?HostAttackReceive.CaptureIgnoringMelee(player,spawned,prior.Identity.Slot,beforeNpc,nextWorld):receive,NoTileCollide=prior.NoTileCollide,Unknown=prior.Unknown,Chaseable=prior.Npc.CanBeChasedBy(spawned)});
             }
             remaining=spawned.penetrate;
             // A child's native immunity identity can differ from its parent's
@@ -156,9 +161,15 @@ namespace JueMingR.TerrariaHost.Combat
         // Constant-time owner inputs are safe during presentation. The family,
         // terrain and receive scene scans stay in preparation/real consumption.
         internal bool BirthInputsCurrent
-        {get{return BeeOwnerCurrent && CursorMappingCurrent && PhoenixOwnerCurrent && (!shotFacingCaptured || cursorPlayer.fullRotation==shotRotation);}}
+        {get{return BirthInputsMatch(false);}}
+        private bool BirthInputsMatch(bool afterHandStart)
+        {return BeeOwnerCurrent && CursorMappingCurrent && PhoenixOwnerCurrent && (history.ArcOwner==null || (afterHandStart?history.ArcOwner.MembersAfterHandStart:history.ArcOwner.MembersCurrent)) && (!shotFacingCaptured || cursorPlayer.fullRotation==shotRotation);}
         internal void CaptureProjectileFamily(Projectile[] members,int firstSceneType=0,int lastSceneType=0)
         {familyLeases.Add(new HostProjectileFamilyLease(members,firstSceneType,lastSceneType));CaptureBirthSlots();}
+        internal void CaptureOwnedProjectileFamily(Projectile[] members,int owner,int[] sceneTypes)
+        {familyLeases.Add(new HostProjectileFamilyLease(members,owner,sceneTypes));CaptureBirthSlots();}
+        internal bool FamilyMembersCurrent
+        {get{if(!BirthInputsCurrent)return false;foreach(var family in familyLeases)if(!family.MembersCurrent)return false;return true;}}
         // Chase permission is a separate native query from Damage permission.
         // Each finite stage captures it once at Prepare; all candidate replays
         // and spawned siblings share immutable rows and this consume lease.
@@ -179,7 +190,13 @@ namespace JueMingR.TerrariaHost.Combat
             if(shot.usesIDStaticNPCImmunity)shared=history.StaticNext!=null && history.StaticNext.TryGetValue(shot.immunityIdentity,out values)?values[slot]:0;
             return outer>=Math.Min(local,shared);
         }
-        internal bool SelectedAllows(int outer){return (localCleared?selected.WithoutLocal():selected).Allows(outer) && DynamicAllows(timeline.Identity.Slot,outer);}
+        private bool CapturedAllows(HostAttackReceive receive,int slot,int outer)
+        {
+            if(localCleared)receive=receive.WithoutLocal();
+            if(history.OwnerWritten!=null && history.OwnerWritten[slot])receive=receive.WithoutOwner();
+            return receive.Allows(outer);
+        }
+        internal bool SelectedAllows(int outer){return CapturedAllows(selected,timeline.Identity.Slot,outer) && DynamicAllows(timeline.Identity.Slot,outer);}
         internal void ClearLocalExceptFresh(int outer)
         {
             // Native gem Kill preserves only hits whose local counter still
@@ -204,23 +221,30 @@ namespace JueMingR.TerrariaHost.Combat
             return npc!=null && npc.active && !npc.dontTakeDamage && shot.friendly && (!npc.friendly || shot.type==318 || npc.type==22 && player.killGuide || npc.type==54 && player.killClothier || NPCID.Sets.ZappingJellyfish[npc.type]) && player.CanNPCBeHitByPlayerOrPlayerProjectile(npc,shot);
         }
         internal bool Unchanged
+        {get{return ReadUnchanged(false);}}
+        // Only the real hand consumer may recognize the exact native changes
+        // already simulated by SolvePrepared: new-animation melee reset and
+        // the once-per-ItemCheck chlorophyte counter decrement. An observed
+        // flight or ordinary preview never borrows this transition allowance.
+        internal bool UnchangedForHandStart
+        {get{return ReadUnchanged(false) || history.ArcHandReset && ReadUnchanged(true);}}
+        private bool ReadUnchanged(bool afterHandStart)
         {
-            get
-            {
                 // Native chase permission is distinct from Damage permission.
                 // The selected body is excluded from the other receiver rows,
                 // so its autonomous-targeting dependency needs its own lease.
-                if(goodWorld!=Main.getGoodWorld || expert!=Main.expertMode || multiplayer!=(Main.netMode==1) || selectedReflects!=Main.npc[timeline.Identity.Slot].reflectsProjectiles || !BirthInputsCurrent || birthSlots!=null && !birthSlots.Current)return false;
+                if(goodWorld!=Main.getGoodWorld || expert!=Main.expertMode || multiplayer!=(Main.netMode==1) || selectedReflects!=Main.npc[timeline.Identity.Slot].reflectsProjectiles || !BirthInputsMatch(afterHandStart) || history.ArcOwner!=null && !(afterHandStart?history.ArcOwner.CurrentAfterHandStart:history.ArcOwner.Current) || birthSlots!=null && !birthSlots.Current)return false;
                 foreach(var targets in targetLeases)if(!targets.Current)return false;
                 foreach(var family in familyLeases)if(!family.Current)return false;
                 if(!ReceiveUnchanged())return false;
                 foreach(var lease in receiveLeases)if(!ReferenceEquals(lease,this) && !lease.ReceiveUnchanged())return false;
                 return true;
-            }
         }
+        private bool SameCapturedReceive(HostAttackReceive normal,HostAttackReceive arc,int slot)
+        {return history.ArcOwner==null?normal.Same(HostAttackReceive.Capture(player,shot,slot,beforeNpc,nextWorld)):arc.Same(HostAttackReceive.CaptureIgnoringMelee(player,shot,slot,beforeNpc,nextWorld));}
         private bool ReceiveUnchanged()
         {
-                if(selectedChaseable!=Main.npc[timeline.Identity.Slot].CanBeChasedBy(shot) || !selected.Same(HostAttackReceive.Capture(player,shot,timeline.Identity.Slot,beforeNpc,nextWorld)))return false;
+                if(selectedChaseable!=Main.npc[timeline.Identity.Slot].CanBeChasedBy(shot) || !SameCapturedReceive(selected,arcSelected,timeline.Identity.Slot))return false;
                 int at=0,reflectAt=0;
                 // Recheck the qualification set too: an inactive slot or an
                 // invulnerable/friendly body can become a new receiver between
@@ -236,7 +260,7 @@ namespace JueMingR.TerrariaHost.Combat
                     }
                     if(!Eligible(player,shot,Main.npc[slot]))continue;
                     if(at>=receivers.Count || receivers[at].Identity.Slot!=slot)return false;var r=receivers[at++];
-                    if(r.Reflects!=r.Npc.reflectsProjectiles || r.RawBox!=ReflectionBounds(r.Npc) || r.Chaseable!=r.Npc.CanBeChasedBy(shot) || !CombatSelection.Valid(r.Identity,timeline.Identity.Session) || r.Npc.position!=r.Position || r.Npc.netOffset!=r.Offset || CombatSelection.ReceiveBounds(r.Npc)!=r.Box || r.Npc.immune[player.whoAmI]!=r.OwnerImmune || shot.localNPCImmunity[r.Identity.Slot]!=r.LocalImmune || shot.usesIDStaticNPCImmunity && Projectile.perIDStaticNPCImmunity[shot.immunityIdentity,r.Identity.Slot]!=r.StaticExpiry || !r.Receive.Same(HostAttackReceive.Capture(player,shot,slot,beforeNpc,nextWorld)))return false;
+                    if(history.ArcOwner!=null && r.Npc.noTileCollide!=r.NoTileCollide || r.Reflects!=r.Npc.reflectsProjectiles || r.RawBox!=ReflectionBounds(r.Npc) || r.Chaseable!=r.Npc.CanBeChasedBy(shot) || !CombatSelection.Valid(r.Identity,timeline.Identity.Session) || r.Npc.position!=r.Position || r.Npc.netOffset!=r.Offset || CombatSelection.ReceiveBounds(r.Npc)!=r.Box || r.Npc.immune[player.whoAmI]!=r.OwnerImmune || shot.localNPCImmunity[r.Identity.Slot]!=r.LocalImmune || shot.usesIDStaticNPCImmunity && Projectile.perIDStaticNPCImmunity[shot.immunityIdentity,r.Identity.Slot]!=r.StaticExpiry || !SameCapturedReceive(r.Receive,r.ArcReceive,slot))return false;
                 }
                 return at==receivers.Count && (!ownsHistory || reflectAt==aiReflectors.Count);
         }
@@ -280,7 +304,7 @@ namespace JueMingR.TerrariaHost.Combat
         // the real current projectile body supplied by width/height.
         internal bool PassCustomOuter(int k,int tick,int outer,float x,float y,int width,int height,Func<MotionRect,bool> collision,bool unlimited=false,int maximumRemaining=0,bool consumeSelected=false,Func<int,int,bool> onHit=null,Func<int,int,int> beforeHitPenetration=null)
         {return PassCore(k,tick,outer,x,y,width,height,unlimited,maximumRemaining,onHit,collision,consumeSelected,beforeHitPenetration);}
-        private bool PassCore(int k,int tick,int outer,float x,float y,int width,int height,bool unlimited,int maximumRemaining,Func<int,int,bool> onOtherHit,Func<MotionRect,bool> collision,bool consumeSelected,Func<int,int,int> beforeHitPenetration=null)
+        private bool PassCore(int k,int tick,int outer,float x,float y,int width,int height,bool unlimited,int maximumRemaining,Func<int,int,bool> onOtherHit,Func<MotionRect,bool> collision,bool consumeSelected,Func<int,int,int> beforeHitPenetration=null,Func<MotionRect,bool,bool> ownerQualification=null,int meleeCooldown=0,bool arc=false)
         {
             if(k==1)BeginCandidate();
             if(maximumRemaining>0 && remaining>maximumRemaining)remaining=maximumRemaining;
@@ -290,7 +314,7 @@ namespace JueMingR.TerrariaHost.Combat
             // body penetration reached zero). A positive tile-death 710
             // still consumes its budget. Candidate history never resets here.
             var body=new Rectangle((int)(x-width*.5f),(int)(y-height*.5f),width,height);
-            var target=timeline[tick];var b=target.ProjectileReceiveBounds;bool hitsTarget=target.CanReceive && SelectedAllows(outer) && (collision==null?body.Intersects(new Rectangle((int)b.X,(int)b.Y,(int)b.Width,(int)b.Height)):collision(b));
+            var target=timeline[tick];var b=target.ProjectileReceiveBounds;bool hitsTarget=target.CanReceive && (arc?ArcAllows(arcSelected,timeline.Identity.Slot,outer):SelectedAllows(outer)) && (ownerQualification==null || ownerQualification(target.OwnerBounds,target.NoTileCollide)) && (collision==null?body.Intersects(new Rectangle((int)b.X,(int)b.Y,(int)b.Width,(int)b.Height)):collision(b));
             // Reflection happens after receive permission and before Strike,
             // at the native body after Damage_StartIteratingNPC adds netOffset.
             // Unknown reflection affects this attack's proof, not the path
@@ -314,11 +338,12 @@ namespace JueMingR.TerrariaHost.Combat
                     // Damage event, including later slots in the same pass.
                     selectedVisited=true;SelectedHits++;
                     RecordHit(timeline.Identity.Slot,outer,unlimited?-1:remaining);
+                    if(arc)RecordArcMelee(timeline.Identity.Slot,meleeCooldown);
                     if(onOtherHit!=null && !onOtherHit(timeline.Identity.Slot,remaining))return false;
                     if(!unlimited && remaining>0 && --remaining==0)return false;
                 }
                 if(at==receivers.Count)break;var r=receivers[at];
-                if(!DynamicAllows(r.Identity.Slot,outer) || !(localCleared?r.Receive.WithoutLocal():r.Receive).Allows(outer) || !(collision==null?body.Intersects(r.Box):collision(new MotionRect(r.Box.X,r.Box.Y,r.Box.Width,r.Box.Height))))continue;
+                if(!(arc?ArcAllows(r.ArcReceive,r.Identity.Slot,outer):DynamicAllows(r.Identity.Slot,outer) && CapturedAllows(r.Receive,r.Identity.Slot,outer)) || ownerQualification!=null && !ownerQualification(new MotionRect(r.Position.X+r.Offset.X,r.Position.Y+r.Offset.Y,r.RawBox.Width,r.RawBox.Height),r.NoTileCollide) || !(collision==null?body.Intersects(r.Box):collision(new MotionRect(r.Box.X,r.Box.Y,r.Box.Width,r.Box.Height))))continue;
                 if(Reflectable(shot) && (r.Reflects || StarReflects(r.Identity.Type)) && body.Intersects(r.RawBox))return false;
                 if(r.Unknown)return false; // Native reflection/damage special cases are not ordinary consumption.
                 if(beforeHitPenetration!=null && !unlimited)remaining=beforeHitPenetration(r.Identity.Slot,remaining);
@@ -327,6 +352,7 @@ namespace JueMingR.TerrariaHost.Combat
                 // may advance their own copied clock after this real event.
                 OtherHits++;otherHitSlots.Add(r.Identity.Slot);
                 RecordHit(r.Identity.Slot,outer,unlimited?-1:remaining);
+                if(arc)RecordArcMelee(r.Identity.Slot,meleeCooldown);
                 // Specialized native OnHit may retarget immediately. It sees
                 // this slot's written immunity but not a later slot's future
                 // hit, and runs before native penetration is spent.
@@ -356,6 +382,10 @@ namespace JueMingR.TerrariaHost.Combat
                 {WriteOwner(slot,0);int[] values;if(history.StaticNext==null)history.StaticNext=new Dictionary<int,int[]>();if(!history.StaticNext.TryGetValue(shot.immunityIdentity,out values)){values=new int[Main.maxNPCs];history.StaticNext.Add(shot.immunityIdentity,values);}values[slot]=shot.idStaticNPCHitCooldown<0?int.MaxValue:outer+shot.idStaticNPCHitCooldown;}
                 return;
             }
+            // These attached hand shots take native KillOldestJavelin's
+            // branch instead of the ordinary immunity-write chain. Their
+            // family model owns that cap; this hit preserves owner history.
+            if(shot.type==598 || shot.type==636)return;
             int ownerCooldown=OwnerCooldown(shot.type);
             if(ownerCooldown!=0){WriteOwner(slot,outer+ownerCooldown);return;}
             if(shot.usesLocalNPCImmunity && shot.localNPCHitCooldown!=-2)
@@ -363,7 +393,12 @@ namespace JueMingR.TerrariaHost.Combat
             else if(penetration!=1 || shot.appliesImmunityTimeOnSingleHits)WriteOwner(slot,outer+10);
         }
         private void WriteOwner(int slot,int next)
-        {if(history.OwnerNext==null){if(next==0)return;history.OwnerNext=new int[Main.maxNPCs];}history.OwnerNext[slot]=next;}
+        {
+            // Zero is a real native assignment, distinct from an untouched
+            // slot. Children share the latest write, not max(old,new).
+            if(history.OwnerNext==null){history.OwnerNext=new int[Main.maxNPCs];history.OwnerWritten=new bool[Main.maxNPCs];}
+            history.OwnerNext[slot]=next;history.OwnerWritten[slot]=true;
+        }
         private static int OwnerCooldown(int type)
         {
             switch(type)

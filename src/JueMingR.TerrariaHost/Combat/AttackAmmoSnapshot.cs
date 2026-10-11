@@ -8,11 +8,12 @@ namespace JueMingR.TerrariaHost.Combat
     internal sealed class AttackAmmoSnapshot
     {
         private static readonly Func<Player,Item,Item> select=(Func<Player,Item,Item>)Delegate.CreateDelegate(typeof(Func<Player,Item,Item>),typeof(Player).GetMethod("PickAmmo_PickAmmoItem",BindingFlags.Instance|BindingFlags.NonPublic));
+        private static readonly HarmonyLib.AccessTools.FieldRef<Player,int> cardFire=HarmonyLib.AccessTools.FieldRefAccess<Player,int>("killingCardFireType");
         private delegate bool Specific(Player player,int launcher,int ammo,out int projectile);
         private static readonly Specific specific=(Specific)Delegate.CreateDelegate(typeof(Specific),typeof(Player).GetMethod("PickAmmo_TryFindingSpecificMatches",BindingFlags.Instance|BindingFlags.NonPublic));
         internal readonly Item Ammo;
-        internal readonly int Type,Stack,Projectile,Mode,Offset,WeaponType;
-        internal readonly float Speed,GemFeatures;
+        internal readonly int Type,Stack,Projectile,Mode,Offset,WeaponType,CardFireType;
+        internal readonly float Speed,GemFeatures,NoteViewAxis;
         internal readonly int Damage,DamageLifetime;
         private readonly float weaponSpeed,meleeSpeed,ammoSpeed;
         private readonly int weaponShoot,ammoShoot,ammoPrefix;
@@ -21,8 +22,12 @@ namespace JueMingR.TerrariaHost.Combat
         private readonly int ammoSlot=-1;
         private AttackAmmoSnapshot(Player player,Item weapon,Item ammo,int projectile,float speed)
         {Ammo=ammo;Type=ammo?.type??0;Stack=ammo?.stack??0;Projectile=projectile;Speed=speed;Mode=(int)player.ammoCyclingMode;Offset=player.ammoCyclingOffset;WeaponType=weapon.type;
+            CardFireType=weapon.type==5461?cardFire(player):0;
+            // Harp pitch uses the scaled viewport at the real Shoot entry.
+            // Capture it once so zoom changes retire a prepared note preview.
+            NoteViewAxis=weapon.type==494?Main.Camera.SmallerScaledAxis:0;
             weaponSpeed=weapon.shootSpeed;weaponShoot=weapon.shoot;meleeSpeed=player.meleeSpeed;ammoSpeed=ammo?.shootSpeed??0;ammoShoot=ammo?.shoot??0;ammoPrefix=ammo?.prefix??0;quiver=player.magicQuiver;archery=player.archery;molten=player.hasMoltenQuiver;harpy=player.accHarpyCharm;seraph=player.accSeraphNecklace;phoenix=player.hasPhoenixQuiver;
-            if(HostThornAttack.Handles(projectile) || projectile==711 || projectile==183 || projectile==510 || weapon.type==1121 || weapon.type==1155 || weapon.type==1801 || weapon.type==514 || weapon.type==3350 || weapon.type==3094 || weapon.type==5460)Damage=player.GetWeaponDamage(weapon);
+            if(weapon.type==494 || projectile==634 || HostArcSwingAttack.Weapon(weapon.type) || HostAttachedShotAttack.Handles(projectile) || projectile==399 || HostStreamAttack.Handles(projectile) || HostThornAttack.Handles(projectile) || projectile==711 || projectile==183 || projectile==510 || weapon.type==1121 || weapon.type==1155 || weapon.type==1801 || weapon.type==514 || weapon.type==3350 || weapon.type==3094 || weapon.type==5460)Damage=player.GetWeaponDamage(weapon);
             if(projectile==304)
             {
                 // VampireKnives have no ammo damage addition. Native AI002
@@ -31,7 +36,7 @@ namespace JueMingR.TerrariaHost.Combat
                 Damage=player.GetWeaponDamage(weapon);DamageLifetime=Damage>0?54:0;int value=Damage;
                 for(int k=30;k<=54 && value>0;k++){value=(int)(value*.9f);if(value==0)DamageLifetime=k-1;}
             }
-            if(weapon.type==3854 || projectile==442 || projectile==469 || projectile>=477 && projectile<=479)Damage=SelectedAmmoDamage(player,weapon,ammo);
+            if(projectile==669 || weapon.type==3854 || projectile==442 || projectile==469 || projectile>=477 && projectile<=479)Damage=SelectedAmmoDamage(player,weapon,ammo);
             if(HostGemStaffAttack.Handles(projectile)){GemFeatures=HostGemStaffAttack.Features(player,projectile);Speed=HostGemStaffAttack.Speed(speed,GemFeatures);Damage=HostGemStaffAttack.Damage(player,weapon,GemFeatures);}
             if(ammo!=null)for(int i=0;i<player.inventory.Length;i++)if(ReferenceEquals(player.inventory[i],ammo)){ammoSlot=i;break;}}
         internal static AttackAmmoSnapshot Capture(Player player,Item weapon)
@@ -99,7 +104,7 @@ namespace JueMingR.TerrariaHost.Combat
         // next prepare/real consumer's full IdentityMatches, not inferred here.
         internal bool MembersMatch(Player player,Item weapon)
         {return (Ammo==null || ammoSlot>=0 && ammoSlot<player.inventory.Length && ReferenceEquals(player.inventory[ammoSlot],Ammo) && Ammo.type==Type && Ammo.stack==Stack && Ammo.prefix==ammoPrefix && Ammo.shoot==ammoShoot && Ammo.shootSpeed==ammoSpeed) &&
-            weapon.shoot==weaponShoot && weapon.shootSpeed==weaponSpeed && player.meleeSpeed==meleeSpeed && player.magicQuiver==quiver && player.archery==archery && player.hasMoltenQuiver==molten && player.accHarpyCharm==harpy && player.accSeraphNecklace==seraph && player.hasPhoenixQuiver==phoenix && (!HostThornAttack.Handles(Projectile) && Projectile!=711 && Projectile!=304 && Projectile!=183 && Projectile!=510 && WeaponType!=1121 && WeaponType!=1155 && WeaponType!=1801 && WeaponType!=514 && WeaponType!=3350 && WeaponType!=3094 && WeaponType!=5460 || player.GetWeaponDamage(weapon)==Damage) && (WeaponType!=3854 && Projectile!=442 && Projectile!=469 && (Projectile<477 || Projectile>479) || SelectedAmmoDamage(player,weapon,Ammo)==Damage) && GemMatches(player,weapon) && (int)player.ammoCyclingMode==Mode && player.ammoCyclingOffset==Offset;}
+            weapon.shoot==weaponShoot && weapon.shootSpeed==weaponSpeed && player.meleeSpeed==meleeSpeed && player.magicQuiver==quiver && player.archery==archery && player.hasMoltenQuiver==molten && player.accHarpyCharm==harpy && player.accSeraphNecklace==seraph && player.hasPhoenixQuiver==phoenix && (WeaponType!=494 && Projectile!=634 && !HostArcSwingAttack.Weapon(WeaponType) && !HostAttachedShotAttack.Handles(Projectile) && Projectile!=399 && !HostStreamAttack.Handles(Projectile) && !HostThornAttack.Handles(Projectile) && Projectile!=711 && Projectile!=304 && Projectile!=183 && Projectile!=510 && WeaponType!=1121 && WeaponType!=1155 && WeaponType!=1801 && WeaponType!=514 && WeaponType!=3350 && WeaponType!=3094 && WeaponType!=5460 || player.GetWeaponDamage(weapon)==Damage) && (Projectile!=669 && WeaponType!=3854 && Projectile!=442 && Projectile!=469 && (Projectile<477 || Projectile>479) || SelectedAmmoDamage(player,weapon,Ammo)==Damage) && (WeaponType!=5461 || cardFire(player)==CardFireType) && (WeaponType!=494 || Main.Camera.SmallerScaledAxis==NoteViewAxis) && GemMatches(player,weapon) && (int)player.ammoCyclingMode==Mode && player.ammoCyclingOffset==Offset;}
         internal bool Matches(Player player,Item weapon)
         {if(!MembersMatch(player,weapon))return false;var now=Capture(player,weapon);return now!=null && ReferenceEquals(now.Ammo,Ammo) && now.Type==Type && now.Stack==Stack && now.Projectile==Projectile && now.Speed==Speed && now.Damage==Damage && now.Mode==Mode && now.Offset==Offset;}
     }

@@ -16,7 +16,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(ammo.Projectile==304){if(ammo.DamageLifetime<=0)return false;motion=motion.WithLifetime(System.Math.Min(motion.Lifetime,ammo.DamageLifetime));}return true;
         }
         internal static Vector2 LaunchOrigin(Player player,Item item)
-        {var origin=player.RotatedRelativePoint(player.MountedCenter);if(item.type==5117 || item.type==3094)origin.Y=player.position.Y+player.height/3;if(item.type==281 || item.type==986){origin.X+=6*player.direction;origin.Y-=6*player.gravDir;}if(item.type==3007){origin.X-=4*player.direction;origin.Y-=2*player.gravDir;}return origin;}
+        {var origin=player.RotatedRelativePoint(player.MountedCenter);if(item.type==5117 || item.type==3094 || item.type==3378 || item.type==3543)origin.Y=player.position.Y+player.height/3;if(item.type==281 || item.type==986){origin.X+=6*player.direction;origin.Y-=6*player.gravDir;}if(item.type==3007){origin.X-=4*player.direction;origin.Y-=2*player.gravDir;}return origin;}
         internal static bool TryResolved(int projectile,float speed,int weaponType,out AttackMotion motion)
         {
             motion=default(AttackMotion);Projectile sample;
