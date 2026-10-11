@@ -14,18 +14,18 @@ namespace JueMingR.TerrariaHost.Combat
         {
             internal NPC Npc;internal NpcIdentity Identity;internal MotionRect Bounds;internal Vector2 Offset;internal bool Wet;
         }
-        private readonly Projectile shot;private readonly long session;private readonly bool townBodies,trackWet,ignoreDontTakeDamage;
+        private readonly Projectile shot;private readonly long session;private readonly bool townBodies,trackWet,ignoreDontTakeDamage,attachments;
         private readonly List<Target> targets=new List<Target>();
-        private HostProjectileTargets(Projectile shot,long session,bool townBodies,bool trackWet,bool ignoreDontTakeDamage=false)
+        private HostProjectileTargets(Projectile shot,long session,bool townBodies,bool trackWet,bool ignoreDontTakeDamage=false,bool attachments=false)
         {
-            this.shot=shot;this.session=session;this.townBodies=townBodies;this.trackWet=trackWet;this.ignoreDontTakeDamage=ignoreDontTakeDamage;
+            this.shot=shot;this.session=session;this.townBodies=townBodies;this.trackWet=trackWet;this.ignoreDontTakeDamage=ignoreDontTakeDamage;this.attachments=attachments;
             for(int slot=0;slot<Main.maxNPCs;slot++)
             {
                 var npc=Main.npc[slot];if(!Qualifies(npc))continue;
                 targets.Add(new Target{Npc=npc,Identity=CombatSelection.Identity(npc,session),Bounds=new MotionRect(npc.position.X,npc.position.Y,npc.width,npc.height),Offset=npc.netOffset,Wet=npc.wet});
             }
         }
-        private bool Qualifies(NPC npc){return npc!=null && (townBodies?npc.active && npc.townNPC:npc.CanBeChasedBy(shot,ignoreDontTakeDamage));}
+        private bool Qualifies(NPC npc){return npc!=null && (attachments?npc.active && !npc.dontTakeDamage:townBodies?npc.active && npc.townNPC:npc.CanBeChasedBy(shot,ignoreDontTakeDamage));}
         internal static HostProjectileTargets Capture(Projectile shot,long session)
         {return new HostProjectileTargets(shot,session,false,false);}
         // Seedler's Kill query explicitly includes invulnerable chase bodies.
@@ -39,6 +39,10 @@ namespace JueMingR.TerrariaHost.Combat
         // these are neither ordinary receivers nor chaseable hostile targets.
         internal static HostProjectileTargets CaptureTownBodies(Projectile shot,long session)
         {return new HostProjectileTargets(shot,session,true,false);}
+        // AI113 keeps an existing attachment on any active damageable NPC,
+        // including training dummies that CanBeChasedBy deliberately rejects.
+        internal static HostProjectileTargets CaptureAttachments(Projectile shot,long session)
+        {return new HostProjectileTargets(shot,session,false,false,attachments:true);}
         internal int Count {get{return targets.Count;}}
         internal int Slot(int index){return targets[index].Identity.Slot;}
         internal int Type(int index){return targets[index].Identity.Type;}

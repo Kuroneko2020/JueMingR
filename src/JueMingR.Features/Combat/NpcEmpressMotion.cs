@@ -23,6 +23,15 @@ namespace JueMingR.Features.Combat
         internal static bool SamePhase(NpcMotionState a,NpcMotionState b){return Known(a) && Known(b);}
         private static bool Phase2(NpcMotionState n){return n.A3==1 || n.A3==3;}
         private static bool Genuine(NpcMotionState n){return n.A3==2 || n.A3==3;}
+        private static int IntroAlpha(float clock)
+        {
+            // Native Clamp and the Opacity setter each receive a stored float.
+            // A direct x86 float-to-int expression can retain extended precision
+            // and truncate an otherwise integral alpha one unit too early.
+            float opacity=Store(clock/180f,0).X;
+            float alpha=Store((1f-Math.Max(0f,Math.Min(1f,opacity)))*255f,0).X;
+            return (int)Math.Max(0f,Math.Min(255f,alpha));
+        }
         internal static bool Retargets(NpcMotionState n,PredictionEnvironment e)
         {return n.A0==13 || n.A0==0 && n.A1+1>=180 || n.A0==1;}
         internal static int PlayerPremise(NpcMotionState n,PredictionEnvironment e)
@@ -74,7 +83,7 @@ namespace JueMingR.Features.Combat
             {
                 case 0:
                     if(n.A1==0){n.Vx=0;n.Vy=5;}n.Vx*=.95f;n.Vy*=.95f;n.A1++;
-                    fade=receives=false;n.Alpha=(int)(255f*(1f-Math.Max(0,Math.Min(1,n.A1/180f))));
+                    fade=receives=false;n.Alpha=IntroAlpha(n.A1);
                     if(n.A1>=180){if(enraged && !Genuine(n))n.A3+=2;n.A0=1;n.A1=0;if(!Query(ref n,ref e,confused,out stop))return false;}
                     break;
                 case 1:

@@ -40,6 +40,11 @@ namespace JueMingR.TerrariaHost.Combat
         private Player cursorPlayer;
         private int cursorSlot,cursorScreenHeight,cursorWorldWidth,cursorWorldHeight;
         private float cursorGravity;
+        private float shotRotation;
+        private bool shotFacingCaptured;
+        private Player phoenixOwner;
+        private int phoenixOwnerSlot,phoenixCounter;
+        private bool phoenixApprentice;
         private Vector2 cursorScreen;
         private readonly List<HostProjectileTargets> targetLeases=new List<HostProjectileTargets>();
         private readonly List<HostProjectileFamilyLease> familyLeases=new List<HostProjectileFamilyLease>();
@@ -127,13 +132,31 @@ namespace JueMingR.TerrariaHost.Combat
         // Unchanged scene/terrain lease remains a preparation/consume check.
         internal bool BeeOwnerCurrent
         {get{return !beeOwnerStrong.HasValue || beeOwner!=null && beeOwnerSlot>=0 && beeOwnerSlot<Main.player.Length && ReferenceEquals(Main.player[beeOwnerSlot],beeOwner) && beeOwnerStrong.Value==beeOwner.strongBees;}}
-        // Only tile-target births depend on the screen-to-world round trip.
+        // Only births using screen-to-world conversion capture this premise.
         // Keep that lease local to their prepare/consume path; no scene scan
         // or unrelated camera dependency is added to other attack families.
         internal void CaptureCursorMapping(Player value)
-        {cursorPlayer=value;cursorSlot=value.whoAmI;cursorGravity=value.gravDir;cursorScreen=Main.screenPosition;cursorScreenHeight=Main.screenHeight;cursorWorldWidth=Main.maxTilesX;cursorWorldHeight=Main.maxTilesY;}
+        {
+            // Prediction may pass a private future pose. Validate against its
+            // numbered live owner, as with the equipment premise above.
+            cursorSlot=value.whoAmI;cursorPlayer=cursorSlot>=0 && cursorSlot<Main.player.Length?Main.player[cursorSlot]??value:value;
+            cursorGravity=value.gravDir;cursorScreen=Main.screenPosition;cursorScreenHeight=Main.screenHeight;cursorWorldWidth=Main.maxTilesX;cursorWorldHeight=Main.maxTilesY;
+        }
         private bool CursorMappingCurrent
         {get{return cursorPlayer==null || cursorSlot>=0 && cursorSlot<Main.player.Length && ReferenceEquals(Main.player[cursorSlot],cursorPlayer) && cursorPlayer.gravDir==cursorGravity && Main.screenPosition==cursorScreen && Main.screenHeight==cursorScreenHeight && Main.maxTilesX==cursorWorldWidth && Main.maxTilesY==cursorWorldHeight;}}
+        internal void CaptureShotFacing(Player value)
+        {CaptureCursorMapping(value);shotRotation=value.fullRotation;shotFacingCaptured=true;}
+        internal bool CapturePhoenixOwner(Player value)
+        {
+            phoenixOwnerSlot=value.whoAmI;phoenixOwner=phoenixOwnerSlot>=0 && phoenixOwnerSlot<Main.player.Length?Main.player[phoenixOwnerSlot]??value:value;
+            phoenixCounter=value.phantomPhoneixCounter;phoenixApprentice=value.setApprenticeT3;return phoenixApprentice;
+        }
+        private bool PhoenixOwnerCurrent
+        {get{return phoenixOwner==null || phoenixOwnerSlot>=0 && phoenixOwnerSlot<Main.player.Length && ReferenceEquals(Main.player[phoenixOwnerSlot],phoenixOwner) && phoenixOwner.phantomPhoneixCounter==phoenixCounter && phoenixOwner.setApprenticeT3==phoenixApprentice;}}
+        // Constant-time owner inputs are safe during presentation. The family,
+        // terrain and receive scene scans stay in preparation/real consumption.
+        internal bool BirthInputsCurrent
+        {get{return BeeOwnerCurrent && CursorMappingCurrent && PhoenixOwnerCurrent && (!shotFacingCaptured || cursorPlayer.fullRotation==shotRotation);}}
         internal void CaptureProjectileFamily(Projectile[] members,int firstSceneType=0,int lastSceneType=0)
         {familyLeases.Add(new HostProjectileFamilyLease(members,firstSceneType,lastSceneType));CaptureBirthSlots();}
         // Chase permission is a separate native query from Damage permission.
@@ -146,6 +169,8 @@ namespace JueMingR.TerrariaHost.Combat
         {var lease=HostProjectileTargets.CaptureWetChase(privateShot,timeline.Identity.Session);targetLeases.Add(lease);return lease;}
         internal HostProjectileTargets CaptureTownBodies(Projectile privateShot)
         {var lease=HostProjectileTargets.CaptureTownBodies(privateShot,timeline.Identity.Session);targetLeases.Add(lease);return lease;}
+        internal HostProjectileTargets CaptureAttachmentTargets(Projectile privateShot)
+        {var lease=HostProjectileTargets.CaptureAttachments(privateShot,timeline.Identity.Session);targetLeases.Add(lease);return lease;}
         private bool DynamicAllows(int slot,int outer)
         {
             if(!(shot.maxPenetrate==1 && !shot.usesLocalNPCImmunity && !shot.usesIDStaticNPCImmunity) && history.OwnerNext!=null && outer<history.OwnerNext[slot])return false;
@@ -163,6 +188,13 @@ namespace JueMingR.TerrariaHost.Combat
             if(!shot.usesLocalNPCImmunity || shot.usesIDStaticNPCImmunity)return;
             localCleared=true;for(int i=0;i<localNext.Length;i++)if(localNext[i]!=outer+shot.localNPCHitCooldown)localNext[i]=0;
         }
+        internal void ResetLocalHitHistory()
+        {
+            // Attached-shot release/recall calls ResetLocalNPCImmunity before
+            // its immediate Damage pass. Only this projectile's local history
+            // clears; owner and shared static deadlines retain their order.
+            localCleared=true;if(localNext!=null)Array.Clear(localNext,0,localNext.Length);
+        }
         // FindTargetWithLineOfSight excludes local immunity only; owner and
         // static Damage gates must not silently remove an autonomous target.
         internal bool LocalTargetAllowed(int slot,int outer)
@@ -178,7 +210,7 @@ namespace JueMingR.TerrariaHost.Combat
                 // Native chase permission is distinct from Damage permission.
                 // The selected body is excluded from the other receiver rows,
                 // so its autonomous-targeting dependency needs its own lease.
-                if(goodWorld!=Main.getGoodWorld || expert!=Main.expertMode || multiplayer!=(Main.netMode==1) || selectedReflects!=Main.npc[timeline.Identity.Slot].reflectsProjectiles || !BeeOwnerCurrent || !CursorMappingCurrent || birthSlots!=null && !birthSlots.Current)return false;
+                if(goodWorld!=Main.getGoodWorld || expert!=Main.expertMode || multiplayer!=(Main.netMode==1) || selectedReflects!=Main.npc[timeline.Identity.Slot].reflectsProjectiles || !BirthInputsCurrent || birthSlots!=null && !birthSlots.Current)return false;
                 foreach(var targets in targetLeases)if(!targets.Current)return false;
                 foreach(var family in familyLeases)if(!family.Current)return false;
                 if(!ReceiveUnchanged())return false;
@@ -246,9 +278,9 @@ namespace JueMingR.TerrariaHost.Combat
         // A native custom collider (e.g. gem trails) is one NPC-array pass,
         // not separate damage passes per rectangle. Reflection still tests
         // the real current projectile body supplied by width/height.
-        internal bool PassCustomOuter(int k,int tick,int outer,float x,float y,int width,int height,Func<MotionRect,bool> collision,bool unlimited=false,int maximumRemaining=0,bool consumeSelected=false,Func<int,int,bool> onHit=null)
-        {return PassCore(k,tick,outer,x,y,width,height,unlimited,maximumRemaining,onHit,collision,consumeSelected);}
-        private bool PassCore(int k,int tick,int outer,float x,float y,int width,int height,bool unlimited,int maximumRemaining,Func<int,int,bool> onOtherHit,Func<MotionRect,bool> collision,bool consumeSelected)
+        internal bool PassCustomOuter(int k,int tick,int outer,float x,float y,int width,int height,Func<MotionRect,bool> collision,bool unlimited=false,int maximumRemaining=0,bool consumeSelected=false,Func<int,int,bool> onHit=null,Func<int,int,int> beforeHitPenetration=null)
+        {return PassCore(k,tick,outer,x,y,width,height,unlimited,maximumRemaining,onHit,collision,consumeSelected,beforeHitPenetration);}
+        private bool PassCore(int k,int tick,int outer,float x,float y,int width,int height,bool unlimited,int maximumRemaining,Func<int,int,bool> onOtherHit,Func<MotionRect,bool> collision,bool consumeSelected,Func<int,int,int> beforeHitPenetration=null)
         {
             if(k==1)BeginCandidate();
             if(maximumRemaining>0 && remaining>maximumRemaining)remaining=maximumRemaining;
@@ -272,6 +304,10 @@ namespace JueMingR.TerrariaHost.Combat
                 {
                     if(reflectedTarget)return false;
                     if(!consumeSelected)return true;
+                    // A native pre-Strike exception may spend penetration
+                    // before immunity is written (Molotov flame vs Eater).
+                    // Keep it distinct from the later OnHit/normal decrement.
+                    if(beforeHitPenetration!=null && !unlimited)remaining=beforeHitPenetration(timeline.Identity.Slot,remaining);
                     // An observed ambient family can consume the same local
                     // owner's static immunity before this weapon's member.
                     // It contributes no Contact, but remains a real ordered
@@ -285,6 +321,7 @@ namespace JueMingR.TerrariaHost.Combat
                 if(!DynamicAllows(r.Identity.Slot,outer) || !(localCleared?r.Receive.WithoutLocal():r.Receive).Allows(outer) || !(collision==null?body.Intersects(r.Box):collision(new MotionRect(r.Box.X,r.Box.Y,r.Box.Width,r.Box.Height))))continue;
                 if(Reflectable(shot) && (r.Reflects || StarReflects(r.Identity.Type)) && body.Intersects(r.RawBox))return false;
                 if(r.Unknown)return false; // Native reflection/damage special cases are not ordinary consumption.
+                if(beforeHitPenetration!=null && !unlimited)remaining=beforeHitPenetration(r.Identity.Slot,remaining);
                 // Only a receiver that passes the native permission, immunity
                 // and array-order gates is an OnHit event. Specialized motors
                 // may advance their own copied clock after this real event.

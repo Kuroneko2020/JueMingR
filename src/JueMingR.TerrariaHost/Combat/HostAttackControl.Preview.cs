@@ -180,7 +180,7 @@ namespace JueMingR.TerrariaHost.Combat
         internal bool PreviewCurrent(AttackContact contact)
         {
             var player=combat.Player;
-            if(contact==null || !ReferenceEquals(contact,previewContact) || player==null || previewTick!=Main.GameUpdateCount || previewSession!=observation.Session || previewSelection!=combat.Tools.SelectionIntent || !previewEnvironment.Current || player.selectedItem!=previewSlot || !ReferenceEquals(player.HeldItem,previewWeapon) || previewWeapon.type!=previewType || previewWeapon.prefix!=previewPrefix || previewAmmo!=null && !previewAmmo.MembersMatch(player,previewWeapon))return false;
+            if(contact==null || !ReferenceEquals(contact,previewContact) || player==null || previewTick!=Main.GameUpdateCount || previewSession!=observation.Session || previewSelection!=combat.Tools.SelectionIntent || !previewEnvironment.Current || player.selectedItem!=previewSlot || !ReferenceEquals(player.HeldItem,previewWeapon) || previewWeapon.type!=previewType || previewWeapon.prefix!=previewPrefix || previewAmmo!=null && !previewAmmo.MembersMatch(player,previewWeapon) || previewObstacles!=null && !previewObstacles.BirthInputsCurrent)return false;
             if(previewSource==null)return true;
             var shot=previewSource.Shot;
             return Observed(previewSource) && shot.Center==previewCenter && shot.velocity==previewVelocity && shot.ai[0]==previewAi0 && shot.ai[1]==previewAi1 && shot.ai[2]==previewAi2 && (previewChild==null || previewChild.Valid(shot));

@@ -73,7 +73,7 @@ namespace NativeWorldTextProbe
             using(var outlets=new Outlets())for(int profile=0;profile<4;profile++)
             {
                 bool second=profile!=0,expert=profile!=0;int faster=(second?15:0)+(expert?5:0);float wait=second?20:45;if(profile==2)wait/=2;
-                var phases=new[]{new[]{0,0},new[]{0,10},new[]{0,149},new[]{0,179},new[]{1,0},new[]{1,10},new[]{1,11},new[]{1,(int)Math.Ceiling(wait)-1},
+                var phases=new[]{new[]{0,0},new[]{0,10},new[]{0,11},new[]{0,149},new[]{0,179},new[]{1,0},new[]{1,10},new[]{1,11},new[]{1,(int)Math.Ceiling(wait)-1},
                     new[]{2,0},new[]{2,59},new[]{2,149-faster},new[]{3,0},new[]{3,119},new[]{4,5},new[]{4,53},new[]{4,119-faster},
                     new[]{5,0},new[]{5,41},new[]{5,71-faster},new[]{6,0},new[]{6,179},new[]{6,299-faster},new[]{7,0},new[]{7,expert?40:60},new[]{7,239+(expert?40:20)-faster},
                     new[]{8,5},new[]{8,6},new[]{8,40},new[]{8,41},new[]{8,90},new[]{8,91},new[]{8,109-faster},new[]{9,5},new[]{9,6},new[]{9,40},new[]{9,41},new[]{9,90},new[]{9,91},new[]{9,109-faster},

@@ -270,7 +270,7 @@ namespace JueMingR.TerrariaHost.Combat
             // The entry reference was bound once at Capture. No registry lookup,
             // projectile pool, terrain or candidate-set scan is allowed in Draw.
             var entry=presentation;
-            if(entry==null || !environmentState.Current || !Valid(entry) || entry.Prepared!=Main.GameUpdateCount || !ReferenceEquals(result,entry.Type==444?entry.NextKillContact:entry.Contact) || !entry.Target.Equals(observation.Selection.Target) || entry.Ammo!=null && !entry.Ammo.MembersMatch(combat.Player,combat.Player.HeldItem))return false;
+            if(entry==null || !environmentState.Current || !Valid(entry) || entry.Prepared!=Main.GameUpdateCount || !ReferenceEquals(result,entry.Type==444?entry.NextKillContact:entry.Contact) || !entry.Target.Equals(observation.Selection.Target) || entry.Ammo!=null && !entry.Ammo.MembersMatch(combat.Player,combat.Player.HeldItem) || entry.Obstacles!=null && !entry.Obstacles.BirthInputsCurrent)return false;
             if(HostGuidedAttack.Handles(entry.Type) && !HostGuidedAttack.Consumes(combat.Player,entry.Shot))return false;
             if(HostHeldAttack.Handles(entry.Type) && !HostFlailAttack.Handles(entry.Type) && !combat.Player.channel)return false;
             if(entry.Navigation!=null && (!combat.Player.channel || entry.Shot.ai[0]<0 || !entry.Navigation.PresentationCurrent(combat.Player)))return false;

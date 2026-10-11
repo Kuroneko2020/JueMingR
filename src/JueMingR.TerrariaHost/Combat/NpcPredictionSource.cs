@@ -126,6 +126,7 @@ namespace JueMingR.TerrariaHost.Combat
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcCultistRitualMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcMoonLordMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcMoonLeechMotion",true),
+                typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcBirdMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcEmpressMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcDeerclopsMotion",true),
                 typeof(PredictionDeerclopsPlayer),typeof(PredictionDeerclopsPlayers),
@@ -286,6 +287,7 @@ namespace JueMingR.TerrariaHost.Combat
             bool moonCaptured=false,moonComplete=true;
             bool ritualCaptured=false,ritualComplete=true;
             bool windyCaptured=false,windyComplete=true,empressComplete=true;
+            bool birdCaptured=false,birdComplete=true;
             for(int next=0;next<queued;next++)
             {
                 int slot=pending[next];
@@ -484,6 +486,7 @@ namespace JueMingR.TerrariaHost.Combat
                 if(motionSlots[slot] && CultistRitualMotor(n))CaptureCultistRitualDependencies(n,identity.Session,ref queued,ref ritualCaptured,ref ritualComplete);
                 if(motionSlots[slot] && EmpressMotor(n))CaptureEmpressDependencies(n,identity.Session,ref queued,ref empressComplete);
                 if(motionSlots[slot] && WindyBalloonMotor(n))CaptureWindyBalloonDependencies(n,identity.Session,ref queued,ref windyCaptured,ref windyComplete);
+                if(motionSlots[slot] && BirdMotor(n))CaptureBirdDependencies(n,identity.Session,ref queued,ref birdCaptured,ref birdComplete);
                 if(motionSlots[slot] && CultistMotor(n) && !cultistCaptured)
                     CaptureCultistDependencies(n,identity.Session,ref queued,ref cultistCaptured,ref cultistComplete,ref cultistDooms,ref cultistDoomsComplete);
                 if(motionSlots[slot] && SkeletonMotor(n) && !skeletonCaptured && !(n.type==36 && states[count-1].PositionOwnerCaptured && !states[count-1].PositionOwnerValid))
@@ -612,6 +615,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(moonCaptured)FinishMoonLordDependencies(identity.Session,ref count,moonCaptured,moonComplete);
             if(ritualCaptured)FinishCultistRitualDependencies(identity.Session,ref count,ritualCaptured,ritualComplete);
             if(windyCaptured)FinishWindyBalloonDependencies(identity.Session,ref count,windyCaptured,windyComplete);
+            if(birdCaptured)FinishBirdDependencies(identity.Session,ref count,birdCaptured,birdComplete);
             for(int i=0;i<count;i++)if(states[i].EmpressFactsCaptured)states[i].EmpressRelationsComplete=empressComplete;
             // Sort only the required dependency chain by native slot order.
             for(int i=1;i<count;i++){var value=states[i];int j=i-1;while(j>=0 && states[j].Identity.Slot>value.Identity.Slot){states[j+1]=states[j];j--;}states[j+1]=value;}
@@ -620,7 +624,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(invasionCaptured)for(int i=0;i<count;i++)if(InvasionTarget(Main.npc[states[i].Identity.Slot])){states[i].DD2TargetFactsCaptured=true;states[i].DD2TargetFactsComplete=invasionComplete;}
             if(eyeCaptured)for(int i=0;i<count;i++)if(EyeMotor(Main.npc[states[i].Identity.Slot]))
             {states[i].EyeRelationsCaptured=true;states[i].EyeRelationsComplete=eyeComplete;states[i].MechDestroyerCaptured=true;states[i].MechDestroyerPresent=NPC.npcsFoundForCheckActive[135];}
-            bool searchNeeded=townCaptured;for(int i=0;i<count;i++)if(motionRoles[i] && (states[i].EffectiveType==657 && states[i].Style==121 || states[i].EffectiveType==371 && states[i].Style==70 || states[i].EffectiveType==398 && states[i].Style==77 || states[i].EffectiveType==399 && states[i].Style==80 || states[i].EffectiveType==50 && states[i].Style==15 || states[i].EffectiveType==222 && states[i].Style==43))searchNeeded=true;
+            bool searchNeeded=townCaptured;for(int i=0;i<count;i++)if(motionRoles[i] && (states[i].EffectiveType==657 && states[i].Style==121 || states[i].EffectiveType==371 && states[i].Style==70 || states[i].EffectiveType==398 && states[i].Style==77 || states[i].EffectiveType==399 && states[i].Style==80 || states[i].EffectiveType==50 && states[i].Style==15 || states[i].EffectiveType==222 && states[i].Style==43 || states[i].EffectiveType==689 && states[i].Style==24 && states[i].BirdNetMode!=1 && !Main.dayTime))searchNeeded=true;
             int playerCount=0;bool samePlayers=players!=null && players.SearchCaptured==searchNeeded && players.TownCaptured==townCaptured,anyCorrupt=false;
             for(int i=0;i<Main.maxPlayers;i++)
             {
@@ -671,7 +675,7 @@ namespace JueMingR.TerrariaHost.Combat
             var current=Main.npc[identity.Slot];
             if(current.aiStyle==6 || current.aiStyle==37)for(int i=0;i<count;i++)if(states[i].ParentSlot<0){current=Main.npc[states[i].Identity.Slot];break;}
             if(moonCaptured)CaptureMoonLeechInputs(identity.Session,count);
-            var premiseEnv=new PredictionEnvironment{MoonLeeches=moonCaptured?moonLeeches:null,TowerConsumers=towerCaptured?towerConsumers:null,WallPlayers=wallCaptured?wallPlayers:null,WallViewWidth=Main.MaxWorldViewSize.X,BloodMoon=Main.bloodMoon,Players=players,TownWeatherCaptured=townCaptured,Raining=townCaptured && Main.raining,Storming=townCaptured && Main.IsItStorming,MageCorpses=mageCaptured?mageCorpses:null,InvasionPlayers=invasionCaptured?invasionPlayers:null,PlayerIndex=-1,Expert=Main.expertMode,SnowMoon=Main.snowMoon,WorldHeight=Main.maxTilesY,Eclipse=Main.eclipse,PumpkinMoon=Main.pumpkinMoon,SlimeRain=Main.slimeRain,Day=Main.dayTime,Remix=Main.remixWorld,WorldSurface=(float)Main.worldSurface,Multiplayer=Main.netMode==1,GoodWorld=Main.getGoodWorld,Anniversary=Main.tenthAnniversaryWorld};
+            var premiseEnv=new PredictionEnvironment{BirdWeatherCaptured=birdCaptured,BirdCloudAlpha=birdCaptured?Main.cloudAlpha:0,BirdInactiveZeroCaptured=birdCaptured && playerCount==0 && Main.player[0]!=null && !Main.player[0].active,BirdInactiveZero=birdCaptured && playerCount==0 && Main.player[0]!=null && !Main.player[0].active?new MotionRect(Main.player[0].position.X,Main.player[0].position.Y,Main.player[0].width,Main.player[0].height):default(MotionRect),MoonLeeches=moonCaptured?moonLeeches:null,TowerConsumers=towerCaptured?towerConsumers:null,WallPlayers=wallCaptured?wallPlayers:null,WallViewWidth=Main.MaxWorldViewSize.X,BloodMoon=Main.bloodMoon,Players=players,TownWeatherCaptured=townCaptured,Raining=townCaptured && Main.raining,Storming=townCaptured && Main.IsItStorming,MageCorpses=mageCaptured?mageCorpses:null,InvasionPlayers=invasionCaptured?invasionPlayers:null,PlayerIndex=-1,Expert=Main.expertMode,SnowMoon=Main.snowMoon,WorldHeight=Main.maxTilesY,Eclipse=Main.eclipse,PumpkinMoon=Main.pumpkinMoon,SlimeRain=Main.slimeRain,Day=Main.dayTime,Remix=Main.remixWorld,WorldSurface=(float)Main.worldSurface,Multiplayer=Main.netMode==1,GoodWorld=Main.getGoodWorld,Anniversary=Main.tenthAnniversaryWorld};
             int oldPlayer=states[selected].PlayerIndex;
             premiseEnv.Graveyard=oldPlayer>=0 && oldPlayer<Main.maxPlayers && Main.player[oldPlayer]!=null && Main.player[oldPlayer].ZoneGraveyard;
             int target=NpcMotion.PlayerPremiseTarget(states[selected],premiseEnv,Terrain,states,count);bool needsPlayer=false;
@@ -695,7 +699,7 @@ namespace JueMingR.TerrariaHost.Combat
             bool playerAlive=player!=null && player.active && !player.dead && !player.ghost;
             if(needsPlayer && !playerAlive){rolling.Clear();Outcome(identity,tick,null,PredictionFailureLayer.PlayerPremise);Cache.Publish(null);return;}
             targetPlayer=target;observedCount=count;
-            var env=new PredictionEnvironment{MoonLeeches=moonCaptured?moonLeeches:null,WallPlayers=wallCaptured?wallPlayers:null,WallViewWidth=Main.MaxWorldViewSize.X,PlayerGross=player!=null && player.gross,WallTimelineCaptured=wallCaptured && player!=null,WallTimelineIndex=target,WallTimelineArea=player==null?default(MotionRect):new MotionRect(player.position.X,player.position.Y,player.width,player.height),WallTimelineGross=player!=null && player.gross,GravitySourceCaptured=!gravityWanted || brainComplete,GravitySourceValid=gravityValid,GravitySourceIdentity=gravityIdentity,GravitySourceX=gravityValid?Main.npc[gravitySlot].Center.X:0,GravitySourceY=gravityValid?Main.npc[gravitySlot].Center.Y:0,TownWeatherCaptured=townCaptured,Raining=townCaptured && Main.raining,Storming=townCaptured && Main.IsItStorming,BloodMoon=Main.bloodMoon,SkeletronUp=Main.getGoodWorld && current.aiStyle==9 && current.type==33 && NPC.AnyNPCs(35),WallBossUp=Main.getGoodWorld && current.aiStyle==9 && current.type==25 && NPC.AnyNPCs(113),PlayerProtected=playerAlive && player.insideUnbreakableWalls,PlayerVelocityCaptured=player!=null,PlayerVx=player==null?0:player.velocity.X,PlayerVy=player==null?0:player.velocity.Y,HappyWindyCaptured=true,HappyWindy=Main.IsItAHappyWindyDay,PlayerIndex=target,PlayerX=player==null?0:player.Center.X,PlayerY=player==null?0:player.Center.Y,PlayerWidth=player==null?0:player.width,PlayerHeight=player==null?0:player.height,PlayerWet=player!=null && player.wet,Wind=Main.windSpeedCurrent,WindTarget=Main.windSpeedTarget,Expert=Main.expertMode,Day=Main.dayTime,WorldWidth=Main.maxTilesX,GravityWorldSurface=Main.worldSurface,WorldSurface=(float)Main.worldSurface,Multiplayer=Main.netMode==1,Remix=Main.remixWorld,SlimeRain=Main.slimeRain,
+            var env=new PredictionEnvironment{BirdWeatherCaptured=birdCaptured,BirdCloudAlpha=birdCaptured?Main.cloudAlpha:0,BirdInactiveZeroCaptured=birdCaptured && playerCount==0 && Main.player[0]!=null && !Main.player[0].active,BirdInactiveZero=birdCaptured && playerCount==0 && Main.player[0]!=null && !Main.player[0].active?new MotionRect(Main.player[0].position.X,Main.player[0].position.Y,Main.player[0].width,Main.player[0].height):default(MotionRect),MoonLeeches=moonCaptured?moonLeeches:null,WallPlayers=wallCaptured?wallPlayers:null,WallViewWidth=Main.MaxWorldViewSize.X,PlayerGross=player!=null && player.gross,WallTimelineCaptured=wallCaptured && player!=null,WallTimelineIndex=target,WallTimelineArea=player==null?default(MotionRect):new MotionRect(player.position.X,player.position.Y,player.width,player.height),WallTimelineGross=player!=null && player.gross,GravitySourceCaptured=!gravityWanted || brainComplete,GravitySourceValid=gravityValid,GravitySourceIdentity=gravityIdentity,GravitySourceX=gravityValid?Main.npc[gravitySlot].Center.X:0,GravitySourceY=gravityValid?Main.npc[gravitySlot].Center.Y:0,TownWeatherCaptured=townCaptured,Raining=townCaptured && Main.raining,Storming=townCaptured && Main.IsItStorming,BloodMoon=Main.bloodMoon,SkeletronUp=Main.getGoodWorld && current.aiStyle==9 && current.type==33 && NPC.AnyNPCs(35),WallBossUp=Main.getGoodWorld && current.aiStyle==9 && current.type==25 && NPC.AnyNPCs(113),PlayerProtected=playerAlive && player.insideUnbreakableWalls,PlayerVelocityCaptured=player!=null,PlayerVx=player==null?0:player.velocity.X,PlayerVy=player==null?0:player.velocity.Y,HappyWindyCaptured=true,HappyWindy=Main.IsItAHappyWindyDay,PlayerIndex=target,PlayerX=player==null?0:player.Center.X,PlayerY=player==null?0:player.Center.Y,PlayerWidth=player==null?0:player.width,PlayerHeight=player==null?0:player.height,PlayerWet=player!=null && player.wet,Wind=Main.windSpeedCurrent,WindTarget=Main.windSpeedTarget,Expert=Main.expertMode,Day=Main.dayTime,WorldWidth=Main.maxTilesX,GravityWorldSurface=Main.worldSurface,WorldSurface=(float)Main.worldSurface,Multiplayer=Main.netMode==1,Remix=Main.remixWorld,SlimeRain=Main.slimeRain,
                 Enraged=player!=null && (player.position.Y<800 || player.position.Y>Main.worldSurface*16 || player.position.X>6400 && player.position.X<Main.maxTilesX*16-6400),
                 TowerConsumers=towerCaptured?towerConsumers:null,DD2OngoingCaptured=true,DD2Ongoing=Terraria.GameContent.Events.DD2Event.Ongoing,MageCorpses=mageCaptured?mageCorpses:null,InvasionPlayers=invasionCaptured?invasionPlayers:null,MechQueenUp=NPC.mechQueen>=0 && NPC.mechQueen<Main.maxNPCs && Main.npc[NPC.mechQueen]!=null && Main.npc[NPC.mechQueen].active && Main.npc[NPC.mechQueen].type==127,Players=players,WorldHeight=Main.maxTilesY,RockLayer=(float)Main.rockLayer,PlayerDead=!playerAlive,PlayerIdleWithNegativeAggro=player!=null && player.itemAnimation==0 && player.aggro<0,Corrupt=player!=null && player.ZoneCorrupt,Crimson=player!=null && player.ZoneCrimson,Jungle=player!=null && player.ZoneJungle,Temple=player!=null && player.ZoneLihzhardTemple,AnyLivingCorrupt=anyCorrupt,SkyblockLowTiles=WorldGen.Skyblock.lowTiles,ClearLine=false,Eclipse=Main.eclipse,Graveyard=player!=null && player.ZoneGraveyard,GoodWorld=Main.getGoodWorld,Zenith=Main.zenithWorld,Anniversary=Main.tenthAnniversaryWorld,InvasionType=Main.invasionType,SnowMoon=Main.snowMoon,PumpkinMoon=Main.pumpkinMoon,DontStarve=Main.dontStarveWorld};
             // Main updates players by slot before NPCs. At local ItemCheck,
@@ -860,7 +864,7 @@ namespace JueMingR.TerrariaHost.Combat
             return winner;
         }
         internal static int KnownFormType(int type)
-        {return type==390?382:type==416?518:type==230?55:type==55?230:type==195?196:type==406?405:type==478?479:0;}
+        {return type==390?382:type==416?518:type==230?55:type==55?230:type==195?196:type==406?405:type==478?479:type==689?317:0;}
         internal static PredictionPlayerMotion ReadPlayer(Player p)
         {
             bool badHook=false;
@@ -983,6 +987,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(MoonLordMotor(n))CaptureMoonLordSample(n,ref state,session);
             if(CultistRitualMotor(n))CaptureCultistRitualSample(n,ref state,session);
             if(n.type==594 && n.aiStyle==113 || n.type==1 && n.aiStyle==1)CaptureWindyBalloonSample(n,ref state,session);
+            if(BirdMotor(n))CaptureBirdSample(n,ref state,session);
             return state;
         }
         private static bool MotorRotationNeeded(NPC n){return n.type==618 && n.aiStyle==117 || n.type==126 && n.aiStyle==31 || n.type==395 && n.aiStyle==76 || n.type==491 && n.aiStyle==93 || n.aiStyle==75 && (n.type==392 || n.type==393 || n.type==394 || n.type==492);}

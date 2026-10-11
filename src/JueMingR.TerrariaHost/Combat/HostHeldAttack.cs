@@ -48,8 +48,9 @@ namespace JueMingR.TerrariaHost.Combat
             if(shot.type==460)return null;
             float baseSpeed=shot.type==705?12:shot.type==714?8:14;
             ammo=AttackAmmoSnapshot.CaptureController(player,player.HeldItem,baseSpeed);if(ammo==null)return null;
+            if(shot.type==705 && player.phantomPhoneixCounter+1>=3)return HostPhoenixAttack.SolvePrepared(player,shot,ammo,timeline,clock,terrain,frame,out point,out obstacles);
             int projectile=ammo.Projectile;float speed=ammo.Speed;
-            if(shot.type==705){if(projectile==1)projectile=2;if(player.phantomPhoneixCounter+1>=3){projectile=706;speed=16;}}
+            if(shot.type==705 && projectile==1)projectile=2;
             AttackMotion motion;if(!HostAttackModels.TryResolved(projectile,speed,player.HeldItem.type,out motion))return null;
             motion=motion.WithConfidence(AttackConfidence.Representative);
             Vector2 origin=player.RotatedRelativePoint(player.MountedCenter);int delay=Math.Max(0,(int)Math.Ceiling(shot.ai[1])-1);

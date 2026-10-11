@@ -16,14 +16,21 @@ namespace JueMingR.TerrariaHost.Combat
             internal int Slot,Type,Owner,Width,Height,Damage,Penetration,Maximum,Left,Extra,Alpha,ImmunityIdentity,LocalCooldown,StaticCooldown;
             internal bool Active,Friendly,Hostile,Tile,IgnoreWater,Wet,Honey,Lava,Shimmer,LocalImmunity,StaticImmunity,SingleImmunity,CorrectSlope;
             internal float[] Ai,Local;
+            internal Vector2[] DamageTrail;
             internal Member(Projectile p)
-            {Body=p;Key=p.key;Slot=p.whoAmI;Position=p.position;Velocity=p.velocity;Type=p.type;Owner=p.owner;Width=p.width;Height=p.height;Damage=p.damage;Penetration=p.penetrate;Maximum=p.maxPenetrate;Left=p.timeLeft;Extra=p.extraUpdates;Alpha=p.alpha;Active=p.active;Friendly=p.friendly;Hostile=p.hostile;Tile=p.tileCollide;IgnoreWater=p.ignoreWater;Wet=p.wet;Honey=p.honeyWet;Lava=p.lavaWet;Shimmer=p.shimmerWet;ImmunityIdentity=p.immunityIdentity;LocalCooldown=p.localNPCHitCooldown;StaticCooldown=p.idStaticNPCHitCooldown;LocalImmunity=p.usesLocalNPCImmunity;StaticImmunity=p.usesIDStaticNPCImmunity;SingleImmunity=p.appliesImmunityTimeOnSingleHits;CorrectSlope=p.correctSlopeCollision;Ai=(float[])p.ai.Clone();Local=(float[])p.localAI.Clone();}
+            {Body=p;Key=p.key;Slot=p.whoAmI;Position=p.position;Velocity=p.velocity;Type=p.type;Owner=p.owner;Width=p.width;Height=p.height;Damage=p.damage;Penetration=p.penetrate;Maximum=p.maxPenetrate;Left=p.timeLeft;Extra=p.extraUpdates;Alpha=p.alpha;Active=p.active;Friendly=p.friendly;Hostile=p.hostile;Tile=p.tileCollide;IgnoreWater=p.ignoreWater;Wet=p.wet;Honey=p.honeyWet;Lava=p.lavaWet;Shimmer=p.shimmerWet;ImmunityIdentity=p.immunityIdentity;LocalCooldown=p.localNPCHitCooldown;StaticCooldown=p.idStaticNPCHitCooldown;LocalImmunity=p.usesLocalNPCImmunity;StaticImmunity=p.usesIDStaticNPCImmunity;SingleImmunity=p.appliesImmunityTimeOnSingleHits;CorrectSlope=p.correctSlopeCollision;Ai=(float[])p.ai.Clone();Local=(float[])p.localAI.Clone();
+                // AI001/711 receives against its actual stored trail. Other
+                // families keep their existing scalar lease and allocation cost.
+                if(p.type==711 && p.oldPos!=null)DamageTrail=(Vector2[])p.oldPos.Clone();
+            }
             internal bool Current
             {
                 get
                 {
                     var p=Body;if(p.whoAmI!=Slot || Slot<0 || Slot>=Main.projectile.Length || !ReferenceEquals(Main.projectile[Slot],p) || !p.key.Equals(Key) || p.position!=Position || p.velocity!=Velocity || p.type!=Type || p.owner!=Owner || p.width!=Width || p.height!=Height || p.damage!=Damage || p.penetrate!=Penetration || p.maxPenetrate!=Maximum || p.timeLeft!=Left || p.extraUpdates!=Extra || p.alpha!=Alpha || p.active!=Active || p.friendly!=Friendly || p.hostile!=Hostile || p.tileCollide!=Tile || p.ignoreWater!=IgnoreWater || p.wet!=Wet || p.honeyWet!=Honey || p.lavaWet!=Lava || p.shimmerWet!=Shimmer || p.immunityIdentity!=ImmunityIdentity || p.localNPCHitCooldown!=LocalCooldown || p.idStaticNPCHitCooldown!=StaticCooldown || p.usesLocalNPCImmunity!=LocalImmunity || p.usesIDStaticNPCImmunity!=StaticImmunity || p.appliesImmunityTimeOnSingleHits!=SingleImmunity || p.correctSlopeCollision!=CorrectSlope || p.ai.Length!=Ai.Length || p.localAI.Length!=Local.Length)return false;
-                    for(int i=0;i<Ai.Length;i++)if(p.ai[i]!=Ai[i])return false;for(int i=0;i<Local.Length;i++)if(p.localAI[i]!=Local[i])return false;return true;
+                    for(int i=0;i<Ai.Length;i++)if(p.ai[i]!=Ai[i])return false;for(int i=0;i<Local.Length;i++)if(p.localAI[i]!=Local[i])return false;
+                    if(DamageTrail!=null){if(p.oldPos==null || p.oldPos.Length!=DamageTrail.Length)return false;for(int i=0;i<DamageTrail.Length;i++)if(p.oldPos[i]!=DamageTrail[i])return false;}
+                    return true;
                 }
             }
         }

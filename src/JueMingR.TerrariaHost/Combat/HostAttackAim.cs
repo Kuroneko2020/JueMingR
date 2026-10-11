@@ -57,7 +57,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(!presentationOrdinary)return Control.PresentationCurrent(result);
             return (combat.Left || player.controlUseItem || player.channel || combat.Use.Active) && session==observation.Session && player.selectedItem==slot && ReferenceEquals(player.HeldItem,weapon) && weapon.type==type && weapon.prefix==prefix &&
                 ReferenceEquals(result,Main.GameUpdateCount==prepared?current:next) && HostAttackWindow.NextAction(combat,player,weapon) && (ammo==null?HostSwingAttack.Handles(weapon):ammo.MembersMatch(player,weapon)) &&
-                Vector2.DistanceSquared(HostAttackModels.LaunchOrigin(player,weapon),Main.GameUpdateCount==prepared?origin:nextOrigin)<=4 && environmentState.Current && (environment==null || environment.Unchanged) && (obstacles==null || obstacles.BeeOwnerCurrent) && (harpyState==null || harpyState.MembersCurrent);
+                Vector2.DistanceSquared(HostAttackModels.LaunchOrigin(player,weapon),Main.GameUpdateCount==prepared?origin:nextOrigin)<=4 && environmentState.Current && (environment==null || environment.Unchanged) && (obstacles==null || obstacles.BirthInputsCurrent) && (harpyState==null || harpyState.MembersCurrent);
         }
         internal HostAttackAim(HostCombat combat,HostCombatObservation observation)
         {
