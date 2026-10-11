@@ -13,6 +13,19 @@ namespace JueMingR.TerrariaHost.Combat
     {
         private static readonly MethodInfo copy=typeof(object).GetMethod("MemberwiseClone",BindingFlags.Instance|BindingFlags.NonPublic);
         private static readonly MethodInfo spearOffset=typeof(Projectile).GetMethod("AI_019_Spears_GetSpearOffsetRelativeToPlayer",BindingFlags.Instance|BindingFlags.NonPublic);
+        internal static int DerivedSpearChild(int parent){return parent==222?228:parent==730?732:parent==130?131:parent==342?343:0;}
+        internal static bool KnownSpearParent(int type)
+        {
+            // AI019's other ordinary parents share the sealed pose. 367
+            // emits unknown random children; 877-879 own channel/dummy clocks
+            // and additional damage stages. Those are not this finite family.
+            Projectile sample;return type!=367 && (type<877 || type>879) && ContentSamples.ProjectilesByType.TryGetValue(type,out sample) && sample.aiStyle==19;
+        }
+        internal static bool KnownWhipParent(int type)
+        {return type!=1035 && type>=0 && type<ProjectileID.Sets.IsAWhip.Length && ProjectileID.Sets.IsAWhip[type];}
+#if DEBUG
+        internal static int SpearFlightPoolScans,SpearFlightMemberSteps;
+#endif
         internal static bool RawCursor(int weaponType){return weaponType==4956 || weaponType==5669;}
         internal static bool Handles(Projectile sample){return HostArcSwingAttack.Handles(sample.type) || sample.type>=938 && sample.type<=945 || sample.aiStyle==19 || ProjectileID.Sets.IsAWhip[sample.type] && sample.type!=1035 || HostBoomerangAttack.Handles(sample.type) || sample.type==611 || sample.type==933 || sample.type==1100;}
         internal static int AnimationDuration(Player player,Item item)
@@ -35,6 +48,9 @@ namespace JueMingR.TerrariaHost.Combat
             var receive=HostAttackReceive.Capture(player,sample,timeline.Identity.Slot,beforeNpc,!beforeNpc);
             int animationMax=player.itemAnimation>0 && player.itemAnimationMax>0?player.itemAnimationMax:AnimationDuration(player,item);
             int animation=player.itemAnimation>0?player.itemAnimation:animationMax;
+            bool whip=KnownWhipParent(sample.type);
+            if(whip && ammo.Damage<=0)return null;
+            if(whip && obstacles!=null && sample.usesOwnerMeleeHitCD){obstacles.CaptureArcOwner(player,item);if(player.itemAnimation==0)obstacles.ResetArcMeleeHistory();}
             var chase=(sample.type==182 || sample.type==866) && obstacles!=null?obstacles.CaptureChaseTargets(sample):null;
             Vector2 origin=player.RotatedRelativePoint(player.MountedCenter);
             var initialMotion=frame.Motion;var environment=frame.Environment;
@@ -57,6 +73,7 @@ namespace JueMingR.TerrariaHost.Combat
                 var shadow=(Projectile)copy.Invoke(sample,null);shadow.ai=(float[])sample.ai.Clone();shadow.localAI=(float[])sample.localAI.Clone();shadow.owner=player.whoAmI;shadow.velocity=unit*ammo.Speed;shadow.Center=origin;shadow.ai[0]=shadow.ai[1]=0;
                 shadow.oldPos=(Vector2[])sample.oldPos.Clone();shadow.oldRot=(float[])sample.oldRot.Clone();
                 if(sample.type==866)shadow.damage=retargetDamage;
+                if(whip)shadow.damage=ammo.Damage;
                 int receiveTick=0,receiveOuter=0;Func<int,int,bool> retarget=null;
                 // One bounded delegate per 866 direction candidate. OnHit
                 // runs within the native slot order, after that slot's local
@@ -70,13 +87,14 @@ namespace JueMingR.TerrariaHost.Combat
                 // preview's existing duration field for a first-click model.
                 if(ProjectileID.Sets.IsAWhip[sample.type])shadow.ai[2]=1000+animationMax*(sample.extraUpdates+1);
                 var motion=initialMotion;
-                var shape=new CombatShapeSample();var now=new List<Vector2>();var prior=new List<Vector2>();
+                var shape=new CombatShapeSample();var now=new List<Vector2>();var prior=new List<Vector2>();var spearBoxes=new List<Rectangle>();
                 int updates=sample.extraUpdates+1,limit=Math.Min(120,timeline.Count-age-1);bool active=true;
                 for(int step=0;step<limit && active;step++)
                 {
                     if(sample.aiStyle==19 && animation-step<=0 || sample.type==611 && step*updates+1>=30)break;
                     if(!beforeNpc || step>0){PredictionStop stop;if(!PlayerMotionContinuation.Advance(ref motion,environment,terrain,out stop))break;}
-                    HostAttackPlayerFrame.ApplyPose(body,motion);body.itemAnimation=animation-step;
+                    HostAttackPlayerFrame.ApplyPose(body,motion);body.itemAnimation=animation-step-(whip && player.itemAnimation==0?1:0);
+                    if(whip)WhipFrame(body);
                     for(int sub=0;sub<updates && active;sub++)
                     {
                         int k=step*updates+sub+1;Vector2 old=shadow.Center;
@@ -123,6 +141,21 @@ namespace JueMingR.TerrariaHost.Combat
                         int tick=age+step+1;
                         if(shadow.type==866 && shadow.damage<=0)continue;
                         var box=HostBoomerangVariants.Handles(shadow.type)?HostBoomerangVariants.DamageBox(shadow):new Rectangle((int)shadow.position.X,(int)shadow.position.Y,shadow.width,shadow.height);
+                        if(whip && obstacles!=null)
+                        {
+                            if(shadow.damage<=0){active=false;break;}
+                            WhipBoxes(shadow,body,now,prior,spearBoxes);int selectedHits=obstacles.SelectedHits;bool unknownHit=false;
+                            bool pass=obstacles.PassArcOuter(k,tick,delay+step+1,shadow.Center.X,shadow.Center.Y,shadow.width,shadow.height,
+                                bounds=>spearBoxes.Exists(r=>r.Intersects(new Rectangle((int)bounds.X,(int)bounds.Y,(int)bounds.Width,(int)bounds.Height))),
+                                (bounds,noTile)=>OwnerAllows(body,shadow,bounds,noTile,terrain),0,true,(slot,remaining)=>{if(PlainWhipHit(shadow) || slot==timeline.Identity.Slot)return true;unknownHit=true;return false;});
+                            if(obstacles.SelectedHits>selectedHits)
+                            {
+                                var selectedBounds=timeline[tick].ProjectileReceiveBounds;var targetBox=new Rectangle((int)selectedBounds.X,(int)selectedBounds.Y,(int)selectedBounds.Width,(int)selectedBounds.Height);var hit=spearBoxes.Find(r=>r.Intersects(targetBox));
+                                return AttackIntercept.BodyContact(timeline,tick,sub,aim.X,aim.Y,hit.X+hit.Width*.5f,hit.Y+hit.Height*.5f,hit.Width,hit.Height,AttackConfidence.Conditional);
+                            }
+                            if(unknownHit || !pass){active=false;break;}
+                            continue;
+                        }
                         if(obstacles!=null)
                         {
                             int priorHits=obstacles.OtherHits;
@@ -142,7 +175,7 @@ namespace JueMingR.TerrariaHost.Combat
                             for(int i=0;i<Math.Min(now.Count,prior.Count);i++){var a=box;var c=box;a.X=(int)now[i].X-a.Width/2;a.Y=(int)now[i].Y-a.Height/2;c.X=(int)prior[i].X-c.Width/2;c.Y=(int)prior[i].Y-c.Height/2;shape.Rectangle(Rectangle.Union(a,c),0);}
                         }
                         else if(sample.aiStyle==19)
-                        {shape.Rectangle(box,0);Rectangle extension;if(shadow.AI_019_Spears_GetExtensionHitbox(body,out extension))shape.Rectangle(extension,0);}
+                        {SpearBoxes(shadow,body,spearBoxes);foreach(var spearBox in spearBoxes)shape.Rectangle(spearBox,0);}
                         else if(!ProjectileCollisionGeometry.TryCapture(shadow,box,0,shape))shape.Rectangle(box,0);
                         for(int i=0;i<shape.Count;i++)
                         {
@@ -208,13 +241,215 @@ namespace JueMingR.TerrariaHost.Combat
             }
             return null;
         }
+        internal sealed class SpearFlightState
+        {
+            private readonly Player owner;private readonly int animation,maximum,direction;
+            private readonly Projectile[] sources;private readonly Vector2 position,velocity,mounted,rotationOrigin,arm;
+            private readonly float rotation,gravity,meleeSpeed,whipRange;private readonly int width,height;
+            private readonly bool left,right,jump,down,up,wet,honey,lava,shimmer,whip,sandStorm;
+            private readonly float[] scales,distances;private readonly bool[] ownerChecks;
+            internal SpearFlightState(Player player,Projectile[] members)
+            {owner=player;sandStorm=player.sandStorm;whip=KnownWhipParent(player.HeldItem.shoot);animation=player.itemAnimation;maximum=player.itemAnimationMax;direction=player.direction;arm=player.GetArmPosition();whipRange=player.whipRangeMultiplier;position=player.position;velocity=player.velocity;mounted=player.RotatedRelativePoint(player.MountedCenter);rotationOrigin=player.fullRotationOrigin;rotation=player.fullRotation;gravity=player.gravDir;meleeSpeed=player.meleeSpeed;width=player.width;height=player.height;left=player.controlLeft;right=player.controlRight;jump=player.controlJump;down=player.controlDown;up=player.controlUp;wet=player.wet;honey=player.honeyWet;lava=player.lavaWet;shimmer=player.shimmerWet;sources=members;scales=new float[members.Length];distances=new float[members.Length];ownerChecks=new bool[members.Length];for(int i=0;i<members.Length;i++){scales[i]=members[i].scale;distances[i]=members[i].ownerHitCheckDistance;ownerChecks[i]=members[i].ownerHitCheck;}}
+            internal bool Current
+            {get{
+                // Presentation validates only this captured scalar/member
+                // lease. ReadPlayer's floating premise queries terrain and
+                // belongs exclusively to preparation, never to Draw.
+                if(owner.itemAnimation!=animation || owner.itemAnimationMax!=maximum || owner.direction!=direction || owner.position!=position || owner.velocity!=velocity || owner.RotatedRelativePoint(owner.MountedCenter)!=mounted || whip && (owner.GetArmPosition()!=arm || owner.whipRangeMultiplier!=whipRange || owner.sandStorm!=sandStorm) || owner.fullRotationOrigin!=rotationOrigin || owner.fullRotation!=rotation || owner.gravDir!=gravity || owner.meleeSpeed!=meleeSpeed || owner.width!=width || owner.height!=height || owner.controlLeft!=left || owner.controlRight!=right || owner.controlJump!=jump || owner.controlDown!=down || owner.controlUp!=up || owner.wet!=wet || owner.honeyWet!=honey || owner.lavaWet!=lava || owner.shimmerWet!=shimmer)return false;
+                for(int i=0;i<sources.Length;i++)if(sources[i].scale!=scales[i] || sources[i].ownerHitCheckDistance!=distances[i] || sources[i].ownerHitCheck!=ownerChecks[i])return false;return true;}}
+        }
+        private sealed class KnownSpearMember
+        {internal Projectile Shot;internal HostAttackObstacles Receive;internal int Steps,BirthOuter;}
+        private static Projectile SpearCopy(Projectile source)
+        {var p=(Projectile)copy.Invoke(source,null);p.ai=(float[])source.ai.Clone();p.localAI=(float[])source.localAI.Clone();p.localNPCImmunity=(int[])source.localNPCImmunity.Clone();return p;}
+        private static void WhipFrame(Player body)
+        {
+            if(body.itemAnimation>0 && body.HeldItem.useStyle==1 && !body.sandStorm)
+                body.bodyFrame.Y=body.bodyFrame.Height*(body.itemAnimation<body.itemAnimationMax*.333?3:body.itemAnimation<body.itemAnimationMax*.666?2:1);
+        }
+        private static void WhipBoxes(Projectile shot,Player body,List<Vector2> now,List<Vector2> prior,List<Rectangle> boxes)
+        {
+            now.Clear();prior.Clear();boxes.Clear();Projectile.FillWhipControlPoints(shot,now,body,true,0);Projectile.FillWhipControlPoints(shot,prior,body,true,-1);
+            for(int i=0;i<Math.Min(now.Count,prior.Count);i++){var a=shot.Hitbox;var b=a;a.X=(int)now[i].X-a.Width/2;a.Y=(int)now[i].Y-a.Height/2;b.X=(int)prior[i].X-b.Width/2;b.Y=(int)prior[i].Y-b.Height/2;boxes.Add(Rectangle.Union(a,b));}
+        }
+        private static void SpearBoxes(Projectile shot,Player body,List<Rectangle> boxes)
+        {
+            boxes.Clear();boxes.Add(shot.Hitbox);Rectangle extension;
+            if(!shot.AI_019_Spears_GetExtensionHitbox(body,out extension))return;
+            // Native AI019 collision tiles the bridge to the extension for
+            // 46/105/153. Both an observed body and a hypothetical hand use
+            // the explicit private owner, never Main.player's future pose.
+            var to=extension.Center.ToVector2();float length=Vector2.Distance(to,shot.Center),spacing=Math.Max(12,Math.Max(extension.Width,extension.Height));
+            for(float offset=spacing;offset<length;offset+=spacing)boxes.Add(Utils.CenteredRectangle(Vector2.Lerp(shot.Center,to,offset/length),new Vector2(extension.Width,extension.Height)));
+            boxes.Add(extension);
+        }
+        private static bool PlainWhipHit(Projectile shot)
+        {
+            // This sealed body's receive needs only these OnHit branches'
+            // damage continuation. Ordinary tags and owner speed buffs for
+            // later hands remain native responsibilities. Other whips can
+            // spawn an independent attack or activate a proc: their later
+            // receive is not proved by replaying the captured primary body.
+            double factor;
+            switch(shot.type)
+            {
+                case 841:factor=.5;break;
+                case 1104:factor=.4;break;
+                case 1029:case 1030:case 914:factor=.6;break;
+                case 952:case 849:factor=.9;break;
+                case 848:factor=.95;break;
+                case 915:factor=.8;break;
+                default:return false;
+            }
+            shot.damage=(int)(shot.damage*factor);return true;
+        }
+        // Existing sources retain native aim, AI clocks and ordered immunity.
+        // This is observation only: private copies never invoke live AI,
+        // borrow the cursor, spawn into Main.projectile or consume RNG.
+        internal static AttackContact KnownSpearFamily(Player player,Projectile[] sources,int parentType,NpcTrajectory path,HostAttackClock clock,PredictionTerrain terrain,HostAttackObstacles root,out SpearFlightState state)
+        {
+            state=new SpearFlightState(player,sources);int childType=DerivedSpearChild(parentType);
+            bool whip=KnownWhipParent(parentType);
+            if(sources.Length==0 || !KnownSpearParent(parentType) && !whip || clock.Phase==HostAttackPhase.Projectiles || clock.LaunchDelay!=0)return null;
+            root.CaptureOwnedProjectileFamily(sources,player.whoAmI,childType==0?new[]{parentType}:new[]{parentType,childType});var slots=root.CaptureBirthSlots().Copy();root.BeginCandidate();
+            var rows=new List<KnownSpearMember>(sources.Length+7);
+            foreach(var source in sources){if(source.usesOwnerMeleeHitCD)root.CaptureArcOwner(player,player.HeldItem);var p=SpearCopy(source);rows.Add(new KnownSpearMember{Shot=p,Receive=root.ForkForSpawn(p)});}
+            rows.Sort((a,b)=>a.Shot.whoAmI.CompareTo(b.Shot.whoAmI));
+            var body=(Player)copy.Invoke(player,null);var frame=HostAttackPlayerFrame.Capture(player,path);var motion=frame.Motion;
+            var now=whip?new List<Vector2>():null;var prior=whip?new List<Vector2>():null;var bodyBoxes=new List<Rectangle>();
+            Vector2 aim=sources[0].Center+sources[0].velocity*1000;
+            for(int action=0;action<Math.Min(120,path.Count-clock.FirstTick);action++)
+            {
+                // A zero-damage ordinary whip has no later Damage action.
+                // It still occupies its native slot until retirement, but
+                // cannot justify more player/terrain receive continuation.
+                if(!rows.Exists(member=>member.Shot.active && (!whip || member.Shot.damage>0)))break;
+                if(clock.MovePlayer(action)){PredictionStop stop;if(!PlayerMotionContinuation.Advance(ref motion,frame.Environment,terrain,out stop)){
+                    return null;}}
+                HostAttackPlayerFrame.ApplyPose(body,motion);body.itemAnimation=Math.Max(0,player.itemAnimation-action-(clock.NextWorld?1:0));
+                // Player.Update frames the active useStyle=1 hand after
+                // ItemCheck and before projectile damage. Whip geometry
+                // reads that arm anchor, so the captured first frame cannot
+                // remain frozen through the middle/end of the native hand.
+                if(whip && clock.MovePlayer(action))WhipFrame(body);
+                int tick=clock.FirstTick+action,outer=action+1;
+                for(int memberIndex=0;memberIndex<rows.Count;memberIndex++)
+                {
+                    // Birth can use a lower released slot. A monotonic native
+                    // loop cursor then defers that new member to next action.
+                    // Sort once, walk once; only a genuine birth inserts or
+                    // replaces its allocated slot, rather than searching the
+                    // entire family for every visited member on every action.
+                    var member=rows[memberIndex];var p=member.Shot;if(!p.active || whip && p.damage<=0)continue;
+                    // A high-slot child born in this projectile pass has
+                    // already missed this action's NPC/AI87 scan. A lower
+                    // slot waits for the next action and is then scanned.
+                    if(outer!=member.BirthOuter && !member.Receive.BeforeNpc(tick,outer,p.Center.X,p.Center.Y,p.width,p.height)){p.active=false;slots.Release(p.whoAmI);continue;}
+                    for(int sub=0;sub<p.extraUpdates+1 && p.active;sub++)
+                    {
+                        // The previous NPC slot loop is complete before this
+                        // gate. Do not end that loop at the reducing OnHit or
+                        // falsely release the still living zero-damage body.
+                        if(whip && p.damage<=0)break;
+#if DEBUG
+                        SpearFlightMemberSteps++;
+#endif
+                        Vector2 old=p.Center;
+                        if(whip)
+                        {
+                            // Existing primary AI165 retains its real AI age
+                            // and sealed velocity. >=1000 secondary bodies do
+                            // not match the primary hand clock, but their own
+                            // native duration field remains observable here.
+                            p.rotation=p.velocity.ToRotation()+MathHelper.PiOver2;p.ai[0]++;
+                            float duration;int segments;float multiplier;Projectile.GetWhipSettings(p,out duration,out segments,out multiplier);
+                            if(p.ai[0]>=duration){p.active=false;slots.Release(p.whoAmI);break;}
+                            p.Center=body.GetArmPosition()+p.velocity*(p.ai[0]-1);p.spriteDirection=p.velocity.X<0?-1:1;
+                        }
+                        else if(p.type==parentType)
+                        {
+                            float offset=(float)spearOffset.Invoke(p,new object[]{body,body.itemAnimation,body.itemAnimationMax});p.Center+=p.velocity*offset;
+                            bool late=body.itemAnimation<body.itemAnimationMax/3;
+                            bool birth=childType!=0 && (parentType==130?p.localAI[0]<=24 && p.localAI[0]%4==0:parentType==730?p.localAI[0]==0:late && p.localAI[0]==0);
+                            if(parentType==130)p.localAI[0]++;else if(birth)p.localAI[0]=1;
+                            if(birth)
+                            {
+                                bool clear=true;PredictionStop stop;
+                                if(parentType==342 && (!terrain.CanHit(new MotionRect(body.position.X,body.position.Y,body.width,body.height),new MotionRect(p.position.X,p.position.Y,p.width,p.height),out clear,out stop)))return null;
+                                if(clear)
+                                {
+                                    int slot;if(!slots.TryAllocate(out slot))return null;var child=SpearCopy(ContentSamples.ProjectilesByType[childType]);child.active=true;child.owner=player.whoAmI;child.whoAmI=slot;child.Center=p.Center;child.velocity=p.velocity*(parentType==730?4:parentType==342?2.4f:1);child.damage=parentType==130?p.damage/3:parentType==730?(int)(p.damage*1.6):p.damage;
+                                    var born=new KnownSpearMember{Shot=child,Receive=root.ForkForSpawn(child),BirthOuter=outer};
+                                    int lo=0,hi=rows.Count;while(lo<hi){int mid=lo+(hi-lo)/2;if(rows[mid].Shot.whoAmI<slot)lo=mid+1;else hi=mid;}
+                                    if(lo<rows.Count && rows[lo].Shot.whoAmI==slot)rows[lo]=born;
+                                    else{rows.Insert(lo,born);if(lo<=memberIndex)memberIndex++;}
+                                }
+                            }
+                            p.ai[0]++;if(p.ai[0]>=body.itemAnimationMax){p.active=false;slots.Release(p.whoAmI);break;}
+                            p.rotation=p.velocity.ToRotation()+MathHelper.PiOver2+MathHelper.PiOver4;p.spriteDirection=-body.direction;if(p.spriteDirection==-1)p.rotation-=MathHelper.PiOver2;
+                        }
+                        else if(p.type==228){p.velocity*=.96f;p.alpha+=2;if(p.alpha>200)p.active=false;}
+                        else if(p.type==732){p.alpha+=12;if(p.alpha>255)p.active=false;}
+                        else if(p.type==131){p.velocity*=.8f;p.alpha+=4;if(p.alpha>=255)p.active=false;}
+                        else
+                        {
+                            // AI057's random snowflake is a separate role.
+                            // Stop before its first unmodeled emission instead
+                            // of manufacturing RNG or ignoring an immunity write.
+                            int nextSpawn=p.localAI[1]>0?8+(int)p.localAI[1]:8;
+                            if(p.localAI[0]+1>=nextSpawn)return null;
+                            p.localAI[0]++;p.ai[0]++;if(p.ai[0]>30){p.ai[0]=30;p.velocity.Y=Math.Min(16,p.velocity.Y+.25f);p.velocity.X*=.995f;}p.alpha=Math.Max(0,p.alpha-50);
+                        }
+                        if(!p.active){slots.Release(p.whoAmI);break;}
+                        if(!HostProjectileEnvironment.Dry(p,terrain,old.X,old.Y,p.velocity.X) || p.tileCollide && !terrain.ProjectilePassage(old.X,old.Y,p.Center.X+p.velocity.X,p.Center.Y+p.velocity.Y,p.width,p.height)){
+                            return null;}
+                        p.Center+=p.velocity;int k=++member.Steps;var box=p.Hitbox;
+                        if(whip)
+                        {
+                            WhipBoxes(p,body,now,prior,bodyBoxes);
+                        }
+                        else if(p.type==parentType)SpearBoxes(p,body,bodyBoxes);
+                        if(p.damage>0 && p.friendly && !p.hostile)
+                        {
+                            int priorHits=member.Receive.SelectedHits;
+                            Func<MotionRect,bool> collision=b=>p.type==parentType?bodyBoxes.Exists(r=>r.Intersects(new Rectangle((int)b.X,(int)b.Y,(int)b.Width,(int)b.Height))):box.Intersects(new Rectangle((int)b.X,(int)b.Y,(int)b.Width,(int)b.Height));
+                            bool unknownWhipHit=false;
+                            Func<int,int,bool> onHit=whip?(Func<int,int,bool>)((slot,remaining)=>
+                            {
+                                if(PlainWhipHit(p) || slot==path.Identity.Slot)return true;
+                                unknownWhipHit=true;return false;
+                            }):null;
+                            // Damage_PVE checks damage>0 once before its NPC
+                            // loop, not after each OnHit. Reaching zero here
+                            // still visits later slots in this same damage
+                            // action; the next sub/action has no damage stage.
+                            bool pass=p.type==parentType?member.Receive.PassArcOuter(k,tick,outer,p.Center.X,p.Center.Y,p.width,p.height,collision,(b,noTile)=>OwnerAllows(body,p,b,noTile,terrain),0,true,onHit):member.Receive.PassCustomOuter(k,tick,outer,p.Center.X,p.Center.Y,p.width,p.height,collision,consumeSelected:true);
+                            p.penetrate=member.Receive.Remaining;
+                            if(member.Receive.SelectedHits>priorHits)
+                            {var b=path[tick].ProjectileReceiveBounds;var targetBox=new Rectangle((int)b.X,(int)b.Y,(int)b.Width,(int)b.Height);
+                                if(p.type==parentType)box=bodyBoxes.Find(r=>r.Intersects(targetBox));
+                                // Rectangle.Center truncates odd dimensions.
+                                // BodyContact independently reconstructs the
+                                // integer top-left: preserve the half pixel
+                                // so a genuine one-pixel first overlap stays
+                                // exactly the same rectangle after receiving.
+                                return AttackIntercept.BodyContact(path,tick,sub,aim.X,aim.Y,box.X+box.Width*.5f,box.Y+box.Height*.5f,box.Width,box.Height,AttackConfidence.Conditional);}
+                            if(unknownWhipHit)return null;
+                            if(!pass){p.active=false;slots.Release(p.whoAmI);break;}
+                        }
+                        if(--p.timeLeft<=0 || p.penetrate==0){p.active=false;slots.Release(p.whoAmI);}
+                    }
+                }
+            }
+            return null;
+        }
         private sealed class SpearChild
         {
             internal Projectile Shot;internal HostAttackReceive Receive;internal int Steps;
         }
         private static AttackContact SpearDerived(Player player,Projectile parent,Vector2 unit,Vector2 aim,float speed,NpcTrajectory timeline,int age,bool beforeNpc,PredictionTerrain terrain,int animation,int animationMax,int delay,HostAttackPlayerFrame frame)
         {
-            int childType=parent.type==222?228:parent.type==730?732:parent.type==130?131:parent.type==342?343:0;
+            int childType=DerivedSpearChild(parent.type);
             if(childType==0)return null;
             var sample=ContentSamples.ProjectilesByType[childType];var children=new List<SpearChild>(parent.type==130?7:1);
             var body=(Player)copy.Invoke(player,null);var spear=(Projectile)copy.Invoke(parent,null);spear.velocity=unit*speed;

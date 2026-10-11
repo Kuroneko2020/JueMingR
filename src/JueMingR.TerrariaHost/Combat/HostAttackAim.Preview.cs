@@ -51,7 +51,7 @@ namespace JueMingR.TerrariaHost.Combat
             // All AI013 hand roles except GolemFist refresh native dummy use
             // timers until catch. Their current flight owns the preview even
             // when it was born before observation was enabled.
-            if(hasFlight && item.shoot!=481 && !HostGemStaffAttack.Handles(item.shoot) && !HostAttachedShotAttack.Handles(item.shoot) && !HostArcSwingAttack.Weapon(item.type) && !HostIceRodAttack.Handles(item.shoot) && !HostPaperAirplaneAttack.Handles(item.shoot) && !HostOrnamentAttack.Handles(item.shoot) && !HostInfernoAttack.Handles(item.shoot) && !HostSonicBoomAttack.Handles(item.shoot) && !HostBookStaffAttack.Handles(item.shoot) && !HostSkullAttack.Handles(item.shoot))return OnlyFlight(plan,player,timeline,flight);
+            if(hasFlight && item.shoot!=481 && !HostMeleeAttack.KnownSpearParent(item.shoot) && !HostMeleeAttack.KnownWhipParent(item.shoot) && !HostGemStaffAttack.Handles(item.shoot) && !HostAttachedShotAttack.Handles(item.shoot) && !HostArcSwingAttack.Weapon(item.type) && !HostIceRodAttack.Handles(item.shoot) && !HostPaperAirplaneAttack.Handles(item.shoot) && !HostOrnamentAttack.Handles(item.shoot) && !HostInfernoAttack.Handles(item.shoot) && !HostSonicBoomAttack.Handles(item.shoot) && !HostBookStaffAttack.Handles(item.shoot) && !HostSkullAttack.Handles(item.shoot))return OnlyFlight(plan,player,timeline,flight);
             // Inferno's first possible new-body receive is age+delay+1.
             // An earlier live-family contact already wins this read-only
             // comparison; searching every new hand direction cannot improve
@@ -161,7 +161,7 @@ namespace JueMingR.TerrariaHost.Combat
             // New independent flights are a changed premise even without a
             // new use or inventory change. Their own observation path checks
             // the pool; do not turn an old opening miss into a flight miss.
-            if(HostArcSwingAttack.Weapon(item.type) || HostHarpoonAttack.Handles(item.shoot) || HostGemStaffAttack.Handles(item.shoot) || HostAttachedShotAttack.Handles(item.shoot) || HostPhasebladeAttack.Handles(item.shoot) || Control.HasObservedPulse || item.type==3473 && Control.HasObservedSolar)return false;
+            if(HostMeleeAttack.KnownSpearParent(item.shoot) || HostMeleeAttack.KnownWhipParent(item.shoot) || HostArcSwingAttack.Weapon(item.type) || HostHarpoonAttack.Handles(item.shoot) || HostGemStaffAttack.Handles(item.shoot) || HostAttachedShotAttack.Handles(item.shoot) || HostPhasebladeAttack.Handles(item.shoot) || Control.HasObservedPulse || item.type==3473 && Control.HasObservedSolar)return false;
             var captured=AttackAmmoSnapshot.Capture(player,item);Projectile sample=null;
             if(captured!=null && !ContentSamples.ProjectilesByType.TryGetValue(captured.Projectile,out sample))return false;
             int age=(int)((long)Main.GameUpdateCount-sampleTick)-(phase==HostAttackPhase.BeforeNpc?1:0);
@@ -180,15 +180,16 @@ namespace JueMingR.TerrariaHost.Combat
             internal HostProjectileEnvironment Environment;internal HostProjectileEnvironment.State EnvironmentState;internal HostAttackObstacles Obstacles;
             internal HostHarpyAttack.State HarpyState;
             internal FlightPreview Flight;
+            internal HostMeleeAttack.SpearFlightState WhipOwner;
             internal HostAttackReceive Receive;
             internal PredictionPlayerMotion PlayerMotion;internal HostAttackPhase Phase;internal int Age,Delay,Immune,AttackCooldown,MeleeCooldown,Animation,AnimationMax;
             internal int Direction;internal long SwingRevision;internal float MeleeSpeed;internal bool Prepared,Controlled,CapsuleOnly,Using;private Item item;private int slot,type,prefix;private float scale;
             // Every plan kind, including controlled and existing-flight previews,
             // binds the environment used by its solve. Draw only validates it.
-            internal void SetMembers(Player player,Item weapon){item=weapon;slot=player.selectedItem;type=weapon.type;prefix=weapon.prefix;scale=player.GetAdjustedItemScale(weapon);Direction=player.direction;EnvironmentState=new HostProjectileEnvironment.State(true);}
+            internal void SetMembers(Player player,Item weapon){item=weapon;slot=player.selectedItem;type=weapon.type;prefix=weapon.prefix;scale=player.GetAdjustedItemScale(weapon);Direction=player.direction;EnvironmentState=new HostProjectileEnvironment.State(true);WhipOwner=HostMeleeAttack.KnownWhipParent(weapon.shoot)?new HostMeleeAttack.SpearFlightState(player,System.Array.Empty<Projectile>()):null;}
             internal bool WeaponCurrent(Player player){return player!=null && item!=null && player.selectedItem==slot && ReferenceEquals(player.HeldItem,item) && item.type==type && item.prefix==prefix && player.GetAdjustedItemScale(item)==scale;}
-            internal bool MembersCurrent(Player player){return WeaponCurrent(player) && Direction==player.direction && EnvironmentState.Current && (Ammo==null || Ammo.MembersMatch(player,item)) && (Obstacles==null || Obstacles.BirthInputsCurrent) && (HarpyState==null || HarpyState.MembersCurrent) && (Flight==null || Flight.Current);}
-            internal void Clear(){Contact=null;Timeline=null;Ammo=null;Environment=null;Obstacles=null;HarpyState=null;Flight=null;item=null;Prepared=Controlled=false;}
+            internal bool MembersCurrent(Player player){return WeaponCurrent(player) && Direction==player.direction && EnvironmentState.Current && (WhipOwner==null || WhipOwner.Current) && (Ammo==null || Ammo.MembersMatch(player,item)) && (Obstacles==null || Obstacles.BirthInputsCurrent) && (HarpyState==null || HarpyState.MembersCurrent) && (Flight==null || Flight.Current);}
+            internal void Clear(){Contact=null;Timeline=null;Ammo=null;Environment=null;Obstacles=null;HarpyState=null;Flight=null;WhipOwner=null;item=null;Prepared=Controlled=false;}
         }
     }
 }

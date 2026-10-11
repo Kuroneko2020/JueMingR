@@ -72,6 +72,9 @@ namespace NativeWorldTextProbe
                 NativeCombatAttackCostChecks.Draw(context,graphics);
             }
             finally{readFault=drawFault=false;harmony.UnpatchAll(harmony.Id);Main.LocalPlayer.gravDir=1;Main.GameViewMatrix.Zoom=Vector2.One;NativeCombatObservationChecks.Save(host,new ObservationOptions());Call(world,"Recover");}
+            // The default scope owns the natural source/presentation chain
+            // too; selectors only shorten local runs, never define coverage.
+            NativeCombatUsageChecks.Run(context,graphics,Path.Combine(output,"natural-usage"));
         }
     }
 }

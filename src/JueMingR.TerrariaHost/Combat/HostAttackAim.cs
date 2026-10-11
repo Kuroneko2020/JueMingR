@@ -202,8 +202,9 @@ namespace JueMingR.TerrariaHost.Combat
             {
                 // A real intervening boomerang hit can enter its return phase.
                 // Lease those receivers with both execution and idle preview;
-                // anchored sword/spear poses do not need this extra scan.
-                if(HostBoomerangAttack.Handles(melee.type) || HostArcSwingAttack.Weapon(item.type))obstacles=new HostAttackObstacles(player,melee,timeline,delay,beforeNpc,!beforeNpc);
+                // Ordinary whips also have ordered rope receivers: an earlier
+                // qualified OnHit can exhaust this body's future damage.
+                if(HostBoomerangAttack.Handles(melee.type) || HostArcSwingAttack.Weapon(item.type) || HostMeleeAttack.KnownWhipParent(melee.type))obstacles=new HostAttackObstacles(player,melee,timeline,delay,beforeNpc,!beforeNpc);
                 return HostMeleeAttack.SolvePrepared(player,item,captured,timeline,age,beforeNpc,terrain,delay,obstacles,preparedPlayer??HostAttackPlayerFrame.Capture(player,timeline));
             }
             if(item.type==2624){var b=timeline[Math.Min(age+1,timeline.Count-1)].ProjectileReceiveBounds;start+=(new Vector2(b.CenterX,b.CenterY)-start).SafeNormalize(Vector2.UnitX)*40;}

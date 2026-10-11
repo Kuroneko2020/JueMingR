@@ -25,8 +25,26 @@ namespace JueMingR.TerrariaHost.Combat
             bool sonic=player.HeldItem.type==3827 && player.HeldItem.shoot==684;
             bool book=player.HeldItem.type==3852 && player.HeldItem.shoot==712;
             bool skull=player.HeldItem.type==1313 && player.HeldItem.shoot==837;
-            if(!phaseblade && !gem && !attached && !arc && !ice && !paper && !ornament && !inferno && !sonic && !book && !skull && !HostHarpoonAttack.Handles(player.HeldItem.shoot))return null;
+            int spearChild=HostMeleeAttack.DerivedSpearChild(player.HeldItem.shoot);
+            bool spear=HostMeleeAttack.KnownSpearParent(player.HeldItem.shoot) || HostMeleeAttack.KnownWhipParent(player.HeldItem.shoot);
+            if(!phaseblade && !gem && !attached && !arc && !ice && !paper && !ornament && !inferno && !sonic && !book && !skull && !spear && !HostHarpoonAttack.Handles(player.HeldItem.shoot))return null;
             FlightPreview best=null;flightPreviewTerrain.Reset();var clock=new HostAttackClock(timeline,phase);
+            if(spear)
+            {
+                // One captured finite family follows the actual pool order.
+                // Sealed parent/child sources grant no new cursor authority;
+                // the next hypothetical hand remains a separate candidate.
+#if DEBUG
+                HostMeleeAttack.SpearFlightPoolScans++;
+#endif
+                var sources=new List<Projectile>();bool snowflake=false;
+                foreach(var shot in Main.projectile)
+                {if(shot==null || !shot.active || shot.owner!=player.whoAmI)continue;if(player.HeldItem.shoot==342 && shot.type==344)snowflake=true;if((shot.type==player.HeldItem.shoot || shot.type==spearChild) && shot.damage>0 && shot.friendly && !shot.hostile)sources.Add(shot);}
+                live=sources.Count>0;if(!live || snowflake)return null;var primary=sources[0];
+                var receivers=new HostAttackObstacles(player,primary,timeline,0,clock.BeforeNpc,clock.NextWorld);HostMeleeAttack.SpearFlightState state;
+                var contact=HostMeleeAttack.KnownSpearFamily(player,sources.ToArray(),player.HeldItem.shoot,timeline,clock,flightPreviewTerrain,receivers,out state);
+                return contact==null?null:new FlightPreview(player,primary,contact,arc:receivers,spear:state);
+            }
             if(ornament || inferno || sonic || book || skull)
             {
                 // Existing bodies keep their genuine birth/AI clocks. In
@@ -126,13 +144,14 @@ namespace JueMingR.TerrariaHost.Combat
             private readonly HostGemStaffAttack.FlightState gem;
             private readonly HostAttachedShotAttack.FlightState attached;
             private readonly HostAttackObstacles arc;
-            internal FlightPreview(Player player,Projectile shot,AttackContact contact,HostGemStaffAttack.FlightState gem=null,HostAttachedShotAttack.FlightState attached=null,HostAttackObstacles arc=null)
+            private readonly HostMeleeAttack.SpearFlightState spear;
+            internal FlightPreview(Player player,Projectile shot,AttackContact contact,HostGemStaffAttack.FlightState gem=null,HostAttachedShotAttack.FlightState attached=null,HostAttackObstacles arc=null,HostMeleeAttack.SpearFlightState spear=null)
             {
-                this.player=player;this.shot=shot;this.gem=gem;this.attached=attached;this.arc=arc;Contact=contact;key=(int)shot.key;type=shot.type;owner=shot.owner;time=shot.timeLeft;extra=shot.extraUpdates;penetration=shot.penetrate;
+                this.player=player;this.shot=shot;this.gem=gem;this.attached=attached;this.arc=arc;this.spear=spear;Contact=contact;key=(int)shot.key;type=shot.type;owner=shot.owner;time=shot.timeLeft;extra=shot.extraUpdates;penetration=shot.penetrate;
                 position=shot.position;velocity=shot.velocity;ai0=shot.ai[0];ai1=shot.ai[1];local0=shot.localAI[0];use=player.controlUseItem;wet=shot.wet;honey=shot.honeyWet;lava=shot.lavaWet;shimmer=shot.shimmerWet;tile=shot.tileCollide;
             }
             // Draw checks the bound member, never scans the projectile pool.
-            internal bool Current {get{return (gem==null || gem.MembersCurrent) && (attached==null || attached.MembersCurrent) && (arc==null || arc.FamilyMembersCurrent) && shot.active && (int)shot.key==key && shot.type==type && shot.owner==owner && shot.timeLeft==time && shot.extraUpdates==extra && shot.penetrate==penetration && shot.position==position && shot.velocity==velocity && shot.ai[0]==ai0 && shot.ai[1]==ai1 && shot.localAI[0]==local0 && player.controlUseItem==use && shot.wet==wet && shot.honeyWet==honey && shot.lavaWet==lava && shot.shimmerWet==shimmer && shot.tileCollide==tile;}}
+            internal bool Current {get{return (gem==null || gem.MembersCurrent) && (attached==null || attached.MembersCurrent) && (arc==null || arc.FamilyMembersCurrent) && (spear==null || spear.Current) && shot.active && (int)shot.key==key && shot.type==type && shot.owner==owner && shot.timeLeft==time && shot.extraUpdates==extra && shot.penetrate==penetration && shot.position==position && shot.velocity==velocity && shot.ai[0]==ai0 && shot.ai[1]==ai1 && shot.localAI[0]==local0 && player.controlUseItem==use && shot.wet==wet && shot.honeyWet==honey && shot.lavaWet==lava && shot.shimmerWet==shimmer && shot.tileCollide==tile;}}
         }
     }
 }

@@ -16,11 +16,11 @@ namespace NativeWorldTextProbe
     internal static class NativeCombatUsageChecks
     {
         private const BindingFlags Flags=BindingFlags.Instance|BindingFlags.Static|BindingFlags.Public|BindingFlags.NonPublic;
-        private static Player player;private static NPC receiver;private static int births,hits,aimedBirths,ordinaryChildren,useFrame,bubbleOrderChanges,bubbleAssistedChanges;private static Vector2 physical;private static uint? solarDue;private static bool solarWaitVerified;
+        private static Player player;private static NPC receiver;private static int births,hits,aimedBirths,ordinaryChildren,useFrame,bubbleOrderChanges,bubbleAssistedChanges;private static Vector2 physical;private static uint? solarDue;private static bool solarWaitVerified,observeUse;
         private sealed class KillWitness {internal bool Changed;internal string Details;}
         private static void Born(Player __instance,Projectile __0)
         {
-            if(!ReferenceEquals(__instance,player) || __0.owner!=player.whoAmI)return;
+            if(!observeUse || !ReferenceEquals(__instance,player) || __0.owner!=player.whoAmI)return;
             births++;
             if(__0.type==611 && solarDue.HasValue)
             {Require(Main.GameUpdateCount==solarDue.Value,"late Solar preview waits until the original next source actually appears: expected="+solarDue+" actual="+Main.GameUpdateCount);solarDue=null;solarWaitVerified=true;}
@@ -48,6 +48,15 @@ namespace NativeWorldTextProbe
         {if(__state==null)return;if(__state.Changed){bubbleOrderChanges++;if(__result!=null)bubbleAssistedChanges++;}if(__result==null)Console.WriteLine("USAGE bubble unassisted Kill "+__state.Details);}
         internal static void Run(object context,ProbeGraphics graphics=null,string output=null)
         {
+            if(output!=null)Directory.CreateDirectory(output);
+            var usageHost=Get(context,"CombatObservation");
+            Console.WriteLine("USAGE fixture initialLayer="+Get(usageHost,"LayerStatus")+" actualDraw="+(graphics!=null));
+            Set(usageHost,"LayerStatus",Enum.Parse(Get(usageHost,"LayerStatus").GetType(),"Ready"));Main.screenWidth=960;Main.screenHeight=640;Main.UIScale=1;
+            if(Environment.GetEnvironmentVariable("JMR_USAGE_ORIGINAL_FEEDBACK")=="spears"){NativeCombatOriginalFeedbackChecks.RunSpears(context,graphics,output);return;}
+            if(Environment.GetEnvironmentVariable("JMR_USAGE_ORIGINAL_FEEDBACK")=="hand"){NativeCombatOriginalFeedbackChecks.RunHand(context,graphics,output);return;}
+            if(Environment.GetEnvironmentVariable("JMR_USAGE_ORIGINAL_FEEDBACK")=="ranged"){NativeCombatOriginalRangedChecks.Run(context,graphics,output);return;}
+            if(Environment.GetEnvironmentVariable("JMR_USAGE_ORIGINAL_FEEDBACK")=="seams"){NativeCombatOriginalFeedbackChecks.RunSeams(context,graphics,output);return;}
+            if(Environment.GetEnvironmentVariable("JMR_USAGE_ORIGINAL_FEEDBACK")=="whip-next"){NativeCombatOriginalFeedbackChecks.RunSpears(context,graphics,output);return;}
             var host=Get(context,"CombatObservation");var combat=Get(context,"Combat");var attack=Get(combat,"Attack");var input=Get(context,"Input");var world=Get(host,"World");
             var audit=new Harmony("JueMingR.Tests.ActualAttackUsage");
             foreach(string name in new[]{"HandleSpecialEvent","HandleRunning","HandleMining"})audit.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
@@ -57,7 +66,6 @@ namespace NativeWorldTextProbe
             var failures=new System.Collections.Generic.List<string>();
             try
             {
-                Set(host,"LayerStatus",Enum.Parse(Get(host,"LayerStatus").GetType(),"Ready"));Main.screenWidth=960;Main.screenHeight=640;Main.UIScale=1;
                 var types=new[]{95,1201,3475,2797,3473};string selected=Environment.GetEnvironmentVariable("JMR_USAGE_ITEM");
                 if(!string.IsNullOrEmpty(selected))
                 {int type;if(!int.TryParse(selected,out type) || !types.Contains(type))throw new ArgumentException("Unknown actual usage item: "+selected);types=new[]{type};}
@@ -70,7 +78,7 @@ namespace NativeWorldTextProbe
                         player=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,type,0,0);player.position=new Vector2(700,646);player.ResetEffects();player.ResetFallDamage();player.releaseUseItem=true;player.statMana=player.statManaMax=player.statManaMax2=200;
                         player.inventory[54].SetDefaults(player.HeldItem.useAmmo==40?1334:3104);player.inventory[54].stack=player.HeldItem.useAmmo==40?999:1;
                         Main.screenPosition=new Vector2(480,400);Main.GameViewMatrix.Zoom=Vector2.One;Main.rand=new Terraria.Utilities.UnifiedRandom(7193);
-                        receiver=NativeCombatControlPreviewChecks.Dummy(2,55,40);physical=new Vector2(650,430);births=hits=aimedBirths=ordinaryChildren=bubbleOrderChanges=bubbleAssistedChanges=0;solarDue=null;solarWaitVerified=false;
+                        receiver=NativeCombatControlPreviewChecks.Dummy(2,55,40);physical=new Vector2(650,430);births=hits=aimedBirths=ordinaryChildren=bubbleOrderChanges=bubbleAssistedChanges=0;solarDue=null;solarWaitVerified=false;observeUse=true;
                         NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,false));
                         for(int i=0;i<4;i++)
                         {
@@ -102,9 +110,31 @@ namespace NativeWorldTextProbe
                         if(type==95 || type==1201)Require(delayed>0,"normal cooldown retains a future launch preview: "+type);
                         if(type==3473)Require(solarWaitVerified && delayed>0,"late sealed Solar arc previews its actual delayed next use and verifies the next native birth");
                         for(int i=0;i<4;i++)NativeCombatSelectionPreviewChecks.Step(context,physical,false);
-                        player.inventory[0].SetDefaults(3509);NativeCombatSelectionPreviewChecks.Step(context,physical,false);
+                        if(type==2797 || type==3475)
+                        {observeUse=false;player.inventory[1].SetDefaults(3509);player.selectedItemState.Select(1);}
+                        else player.inventory[0].SetDefaults(3509);
+                        NativeCombatSelectionPreviewChecks.Step(context,physical,false);
                         Present(host,attack,world,graphics,output,"switch-away-"+type,false,true);
                         Require(!player.controlUseItem && !player.channel,"release and item switch preserve native input state: "+type);
+                        if(type==2797 || type==3475)
+                        {
+                            // Keep the actual original item and use vanilla's
+                            // buffered slot-selection boundary. Returning to
+                            // it must acquire new natural consumer receipts.
+                            for(int i=0;i<35;i++)NativeCombatSelectionPreviewChecks.Step(context,physical,false);
+                            player.selectedItemState.Select(0);
+                            for(int i=0;i<4;i++)NativeCombatSelectionPreviewChecks.Step(context,physical,false);
+                            Require(ReferenceEquals(player.HeldItem,player.inventory[0]) && player.HeldItem.type==type,"native switch returns to the original controller weapon");
+                            int returned=aimedBirths,returnedAmmo=ordinaryChildren;observeUse=true;
+                            for(int i=0;i<45;i++){useFrame=duration+40+i;NativeCombatSelectionPreviewChecks.Step(context,physical,true);}
+                            Require(aimedBirths>returned && ordinaryChildren>returnedAmmo,"switch-back fresh press reaches real directed controller and ammunition consumers: "+type);
+                            int repeated=aimedBirths;
+                            for(int i=0;i<4;i++)NativeCombatSelectionPreviewChecks.Step(context,physical,false);
+                            for(int i=0;i<45;i++){useFrame=duration+89+i;NativeCombatSelectionPreviewChecks.Step(context,physical,true);}
+                            Require(aimedBirths>repeated,"natural release/repress after normal cooldown reacquires assisted input: "+type);
+                            Present(host,attack,world,graphics,output,"restored-use-"+type,true,true);
+                            Console.WriteLine("PASS actual controller recovery item="+type+" switchBackDirected="+(aimedBirths-returned)+" repressedDirected="+(aimedBirths-repeated)+" actualAmmo="+(ordinaryChildren-returnedAmmo));
+                        }
                         Console.WriteLine("PASS actual use item="+type+" idle=4/4 use="+shown+"/"+duration+" delayed="+delayed+" live="+live+" directedBirths="+aimedBirths+" childAmmo="+ordinaryChildren+" actualDamage="+hits+" bubbleOrderChanges="+bubbleAssistedChanges+"/"+bubbleOrderChanges+" draw="+(graphics!=null));
                     }
                     catch(Exception error){failures.Add(type+": "+error.Message);Console.WriteLine("FAIL actual use item="+type+": "+error);}
@@ -112,14 +142,22 @@ namespace NativeWorldTextProbe
                 Require(failures.Count==0,"actual usage failures: "+string.Join(" | ",failures));
             }
             finally{player=null;receiver=null;audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());}
+            // Default CPU integration consumes every original-feedback leaf.
+            // Explicit item/subset entries remain the narrow diagnosis path;
+            // actual GPU leaves are dispatched separately to limit repetition.
+            if(graphics==null && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("JMR_USAGE_ITEM")))
+            {NativeCombatOriginalFeedbackChecks.RunHand(context);NativeCombatOriginalFeedbackChecks.RunSpears(context);NativeCombatOriginalRangedChecks.Run(context);}
+            else if(graphics!=null && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("JMR_USAGE_ITEM")))NativeCombatOriginalFeedbackChecks.RunSpears(context,graphics,output);
         }
         private static bool Red(Color value){return value.A>100 && value.R>190 && value.G<110 && value.B<110;}
         private static void Present(object host,object attack,object world,ProbeGraphics graphics,string output,string name,bool expected,bool save)
+        {PresentNative(host,attack,world,player,receiver,graphics,output,name,expected,save);}
+        internal static void PresentNative(object host,object attack,object world,Player observedPlayer,NPC observedReceiver,ProbeGraphics graphics,string output,string name,bool expected,bool save)
         {
             var contact=(AttackContact)GetOptional(attack,"ExpectedPreview");
-            Require((contact!=null)==expected,"finite stable preview/revocation at "+name+" timers="+player.itemAnimation+"/"+player.itemTime+" direction="+player.direction+" sources="+Main.projectile.Count(q=>q.active)+" receiver="+receiver.active+"/"+receiver.dontTakeDamage);
+            Require((contact!=null)==expected,"finite stable preview/revocation at "+name+" timers="+observedPlayer.itemAnimation+"/"+observedPlayer.itemTime+" direction="+observedPlayer.direction+" sources="+Main.projectile.Count(q=>q.active)+" receiver="+observedReceiver.active+"/"+observedReceiver.dontTakeDamage);
             var cache=(NpcPredictionCache)Get(Get(host,"Prediction"),"Cache");
-            if(expected)Require(ReferenceEquals(contact.Timeline,cache.Read(0)) && contact.Timeline.Identity.Slot==receiver.whoAmI,"preview and selected path share the actual published timeline: "+name);
+            if(expected)Require(ReferenceEquals(contact.Timeline,cache.Read(0)) && contact.Timeline.Identity.Slot==observedReceiver.whoAmI,"preview and selected path share the actual published timeline: "+name);
             Call(world,"Prepare");var zoom=Main.GameViewMatrix.ZoomMatrix;var impact=Get(world,"Impact");
             if(graphics==null){Call(impact,"Project",zoom,Matrix.Invert(zoom));Require((bool)Get(impact,"Visible")==expected,"natural capture/project at "+name);return;}
             int steps=cache.Steps;var pixels=graphics.Pixels(()=>Call(world,"Draw"),zoom);var red=pixels.Select((v,i)=>new{v,i}).Where(p=>Red(p.v)).Select(p=>new Vector2(p.i%960,p.i/960)).ToArray();

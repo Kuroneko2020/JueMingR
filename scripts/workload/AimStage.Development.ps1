@@ -1,4 +1,4 @@
-# One explicitly authorized #114 stage candidate. This does not write the
+# Explicitly authorized #114 stage candidates. This does not write the
 # formal workload cache, grant release qualification, or authorize installation.
 function Read-AimStageArtifact {
     param([string] $Root,$Entry)
@@ -23,16 +23,21 @@ function Read-AimStageDevelopment {
     $relative=$full.Substring($repository.Length).Replace('\','/')
     $null=Read-AimStageArtifact $Root ([pscustomobject]@{path=$relative;length=(Get-Item -LiteralPath $full).Length;sha256=(Get-WorkloadFileHash -LiteralPath $full).Hash})
     $record=Read-WorkloadJson $Path
-    $base='472dea0955b6c9274d8c55fc48dbc7fc44ba108e'
-    if($null -eq $record -or $record.schema -cne 'aim-stage-development-20261011-1' -or
-        $record.authorization -cne 'owner-issue114-stage-package-20261011' -or $record.productBase -cne $base -or
+    # Each owner-authorized successor has its own base and evidence contract;
+    # the old qualification cannot be relabelled as a new candidate record.
+    $successor=$null -ne $record -and $record.schema -ceq 'aim-root-fix-development-20261012-1'
+    $base=if($successor){'3504c963949d87d6a88ada5a3f5cd9c189f1f0c2'}else{'472dea0955b6c9274d8c55fc48dbc7fc44ba108e'}
+    $schema=if($successor){'aim-root-fix-development-20261012-1'}else{'aim-stage-development-20261011-1'}
+    $authorization=if($successor){'owner-issue114-root-fix-20261012'}else{'owner-issue114-stage-package-20261011'}
+    if($null -eq $record -or $record.schema -cne $schema -or
+        $record.authorization -cne $authorization -or $record.productBase -cne $base -or
         $record.candidateCommit -cne $Identity.commit -or $record.sourceFingerprint -cne $Identity.fingerprint -or
         $record.inputFingerprint -cne $InputIdentity.fingerprint -or $record.fullQualification -cne 'INCOMPLETE' -or
         $record.releaseEligible -ne $false -or $null -eq $record.PSObject.Properties['openFailures'] -or @($record.openFailures).Count -ne 0) {throw 'Stage candidate/evidence lock mismatch or unresolved failure.'}
     $retainedPaths=if($null -ne $script:WorkloadRetainedAssets){@($script:WorkloadRetainedAssets.files.path)}else{@()}
     if(@((Get-WorkloadChanges $Root 'HEAD').paths | Where-Object {$_ -cnotin $retainedPaths}).Count){throw 'Stage candidate has uncommitted or unknown changes.'}
     & git -C $Root merge-base --is-ancestor $base $Identity.commit
-    if($LASTEXITCODE -ne 0){throw 'Stage candidate must retain the fixed 472dea0 product.'}
+    if($LASTEXITCODE -ne 0){throw 'Stage candidate must retain its authorized fixed product base.'}
     # Exact authorized closing delta, rather than a new general skip/profile.
     $allowed=@(
         'AGENTS.md','docs/规范/工程治理规则.md','docs/决策/ADR-0019-受控并行协作与模型分工.md',
@@ -48,6 +53,21 @@ function Read-AimStageDevelopment {
         'scripts/build.ps1','scripts/build-phase0s-validation-package.ps1','scripts/verify-existing-package.ps1',
         'scripts/workload/Workload.Support.ps1',
         'scripts/workload/AimStage.Development.ps1')
+    if($successor){
+        $allowed=@('docs/计划/辅助瞄准阶段文档.md','docs/设计/可重复构建与项目骨架.md',
+            'src/JueMingR.TerrariaHost/Combat/HostAttackWindow.cs',
+            'src/JueMingR.TerrariaHost/Combat/HostMeleeAttack.cs',
+            'src/JueMingR.TerrariaHost/Combat/HostAttackAim.FlightPreview.cs',
+            'src/JueMingR.TerrariaHost/Combat/HostAttackAim.Preview.cs',
+            'src/JueMingR.TerrariaHost/Combat/HostAttackAim.cs',
+            'src/JueMingR.TerrariaHost/Combat/AttackAmmoSnapshot.cs',
+            'tests/NativeWorldTextProbe/NativeCombatUsageChecks.cs',
+            'tests/NativeWorldTextProbe/NativeCombatOriginalFeedbackChecks.cs',
+            'tests/NativeWorldTextProbe/NativeCombatOriginalRangedChecks.cs',
+            'tests/NativeWorldTextProbe/NativeCombatImpactVisualChecks.cs',
+            'scripts/workload/Workload.Definitions.ps1',
+            'scripts/workload/AimStage.Development.ps1')
+    }
     $changed=@(Invoke-WorkloadGit $Root @('diff','--name-only','--no-renames',$base,$Identity.commit,'--') | Sort-Object)
     if(@($changed | Where-Object {$allowed -cnotcontains $_}).Count -ne 0 -or
         (@($record.revisions | ForEach-Object {$_.path} | Sort-Object) -join '|') -cne ($changed -join '|')) {throw 'Stage revision scope differs from the approved closing delta.'}
@@ -58,6 +78,7 @@ function Read-AimStageDevelopment {
     # formal schema-2 PASS/QUALIFIED rows. The independent review binds all
     # of them plus the real failure dispositions to this precise source tree.
     $required=@('integration','attack-costs','navigation','impact-draw','whip-terrain')
+    if($successor){$required+='original-feedback'}
     if((@($record.checks | ForEach-Object {$_.name} | Sort-Object) -join '|') -cne (@($required | Sort-Object) -join '|')) {throw 'Stage necessary checks are incomplete/duplicated.'}
     foreach($check in $record.checks){
         if($check.exit -ne 0 -or $check.disposition -cnotin @('CURRENT','REVIEWED_REUSE') -or
@@ -95,7 +116,7 @@ function Read-AimStageDevelopment {
             [string]$assembly.path -match '(^|/)\.\.(/|$)|[\\:]' -or
             (Get-WorkloadFileHash -LiteralPath (Join-Path $Root $assembly.path)).Hash -cne $assembly.sha256){throw 'Stage detection consumer changed.'}
     }
-    return [ordered]@{status='STAGE_DEVELOPMENT';mode='ExplicitAimStage20261011';fullQualification='INCOMPLETE';releaseEligible=$false;
+    return [ordered]@{status='STAGE_DEVELOPMENT';mode=$(if($successor){'ExplicitAimRootFix20261012'}else{'ExplicitAimStage20261011'});fullQualification='INCOMPLETE';releaseEligible=$false;
         productBase=$base;recordPath=$relative;recordSha256=(Get-WorkloadFileHash -LiteralPath $Path).Hash;
         necessaryScopes=$required;limits=@($record.limits);checkCount=$required.Count}
 }
