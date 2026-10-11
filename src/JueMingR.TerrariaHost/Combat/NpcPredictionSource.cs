@@ -6,7 +6,7 @@ using Terraria.ID;
 
 namespace JueMingR.TerrariaHost.Combat
 {
-    internal sealed class NpcPredictionSource
+    internal sealed partial class NpcPredictionSource
     {
         internal readonly NpcPredictionCache Cache=new NpcPredictionCache();
         internal readonly PredictionTerrain Terrain=new PredictionTerrain();
@@ -23,12 +23,19 @@ namespace JueMingR.TerrariaHost.Combat
         // consecutive observation, especially the curvature fallback. This
         // owner never publishes to the selected Cache or outcome diagnostics.
         internal NpcTrajectory TryCandidate(NpcIdentity identity,long tick,bool beforeNpc,int required)
+        {return TryCandidateReuse(identity,tick,beforeNpc,required,false);}
+        // reuseMiss is permission from the attack owner only after its own
+        // prior no-contact result and ALL attack premises still match. Source
+        // independently resamples the whole NPC/player input before skipping.
+        internal NpcTrajectory TryCandidateReuse(NpcIdentity identity,long tick,bool beforeNpc,int required,bool reuseMiss)
         {
             if(required<=0 || !CombatSelection.Valid(identity,identity.Session))return null;
             if(candidateSource==null)candidateSource=new NpcPredictionSource{candidateOnly=true};
             candidateSource.Cache.Demand(0,1,Math.Min(required,NpcPredictionCache.Horizon));
+            candidateSource.candidateReuseMiss=reuseMiss;
             try{if(beforeNpc)candidateSource.PrepareAction(identity,tick);else candidateSource.Prepare(identity,tick);}
             catch(NpcObservationFailure){candidateSource.Clear();return null;}
+            finally{candidateSource.candidateReuseMiss=false;}
             var path=candidateSource.Cache.Read(0);
             return path!=null && path.Identity.Equals(identity) && path.CaptureTick==tick?path:null;
         }
@@ -187,6 +194,7 @@ namespace JueMingR.TerrariaHost.Combat
         private static readonly System.Reflection.FieldInfo mageCorpseField=typeof(Terraria.GameContent.Events.DD2Event).GetField("_deadGoblinSpots",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Static);
         internal void Clear()
         {
+            ClearCandidateProofs();
             candidateSource?.Clear();
             outcomeTick=-1;OutcomeStyle=0;OutcomePhase=0;OutcomeStrategy=PredictionStrategy.Model;
             Native?.ClearTarget();Cache.Clear();invasionPlayers=null;wallPlayers=null;Array.Clear(wallPlayerValues,0,wallPlayerValues.Length);mageCorpses=null;towerConsumers=null;towerConsumerValues=null;Array.Clear(invasionPlayerValues,0,invasionPlayerValues.Length);
@@ -196,18 +204,21 @@ namespace JueMingR.TerrariaHost.Combat
         }
         internal void ObservePlayerRelocation(Player player)
         {
+            ClearCandidateProofs();
             candidateSource?.ObservePlayerRelocation(player);
             Native?.ObservePlayerRelocation();
             if(player!=null && player.whoAmI==targetPlayer){outcomeTick=-1;rolling.Clear();Cache.Clear();epoch++;}
         }
         internal void ObserveNpcReset(NPC npc)
         {
+            ClearCandidateProofs();
             candidateSource?.ObserveNpcReset(npc);
             Native?.ObserveNpcReset(npc);
             if(npc!=null)RetireSlot(npc.whoAmI,null);
         }
         internal void ObserveNpcQueryUpdate(int slot,bool discontinuity)
         {
+            ClearCandidateProofs();
             candidateSource?.ObserveNpcQueryUpdate(slot,discontinuity);
             Native?.ObserveNpcQueryUpdate(slot);
             if(discontinuity){RetireSlot(slot,null);return;}
@@ -660,7 +671,17 @@ namespace JueMingR.TerrariaHost.Combat
                 TowerConsumers=towerCaptured?towerConsumers:null,DD2OngoingCaptured=true,DD2Ongoing=Terraria.GameContent.Events.DD2Event.Ongoing,MageCorpses=mageCaptured?mageCorpses:null,InvasionPlayers=invasionCaptured?invasionPlayers:null,MechQueenUp=NPC.mechQueen>=0 && NPC.mechQueen<Main.maxNPCs && Main.npc[NPC.mechQueen]!=null && Main.npc[NPC.mechQueen].active && Main.npc[NPC.mechQueen].type==127,Players=players,WorldHeight=Main.maxTilesY,RockLayer=(float)Main.rockLayer,PlayerDead=!playerAlive,PlayerIdleWithNegativeAggro=player!=null && player.itemAnimation==0 && player.aggro<0,Corrupt=player!=null && player.ZoneCorrupt,Crimson=player!=null && player.ZoneCrimson,Jungle=player!=null && player.ZoneJungle,Temple=player!=null && player.ZoneLihzhardTemple,AnyLivingCorrupt=anyCorrupt,SkyblockLowTiles=WorldGen.Skyblock.lowTiles,ClearLine=false,Eclipse=Main.eclipse,Graveyard=player!=null && player.ZoneGraveyard,GoodWorld=Main.getGoodWorld,Zenith=Main.zenithWorld,Anniversary=Main.tenthAnniversaryWorld,InvasionType=Main.invasionType,SnowMoon=Main.snowMoon,PumpkinMoon=Main.pumpkinMoon,DontStarve=Main.dontStarveWorld};
             // Main updates players by slot before NPCs. At local ItemCheck,
             // later numbered players have not naturally moved yet.
-            var result=rolling.Prepare(states,count,selected,tick,Cache.Required,epoch,env,!playerAlive?default(PredictionPlayerMotion):ReadPlayer(player),Terrain,motionRoles,firstPlayerStepCompleted && target<=Main.myPlayer);
+            var playerMotion=!playerAlive?default(PredictionPlayerMotion):ReadPlayer(player);
+            bool playerAdvanced=firstPlayerStepCompleted && target<=Main.myPlayer;
+            if(candidateOnly && candidateReuseMiss && ReuseCandidateInputs(identity,firstPlayerStepCompleted,playerAdvanced,count,selected,Cache.Required,env,playerMotion))
+            {
+                // This is the caller's still-valid no-contact verdict, not a
+                // newly published future. Keep conditional capture time intact.
+                Cache.Publish(null);return;
+            }
+            var result=rolling.Prepare(states,count,selected,tick,Cache.Required,epoch,env,playerMotion,Terrain,motionRoles,playerAdvanced);
+            if(candidateOnly && result!=null && result.Stop==PredictionStop.None && result.Count==Cache.Required+1 && rolling.FixedInputResult)
+                RememberCandidateInputs(identity,firstPlayerStepCompleted,playerAdvanced,count,selected,Cache.Required,env,playerMotion);
             Outcome(identity,tick,result,rolling.FailureLayer);Cache.Publish(result);
         }
         private static bool WeaponMotor(NPC n){return n.aiStyle==75 && (n.type==390 || n.type==392 || n.type==393 || n.type==394 || n.type==416 || n.type==492) || n.type==395 && n.aiStyle==76 || n.type==491 && n.aiStyle==93 || (n.type==391 || n.type==415) && n.aiStyle==3;}
@@ -730,6 +751,17 @@ namespace JueMingR.TerrariaHost.Combat
             for(int i=0;i<p.armor.Length;i++)if(p.armor[i]!=null && p.armor[i].type!=0)return false;
             for(int i=0;i<p.buffType.Length;i++)if(p.buffTime[i]>0 && p.buffType[i]!=37 && p.buffType[i]!=38)return false;
             return !p.sitting.isSitting && !p.sleeping.isSleeping && !p.usedAegisCrystal && !p.crimsonRegen && !p.rabid && !p.bleed && !p.wellFed && !p.honey && !p.shinyStone && !p.heartyMeal && !p.palladiumRegen && p.soulDrain==0 && !Player.SceneMetrics.HasCampfire && !Player.SceneMetrics.HasHeartLantern;
+        }
+        private static bool WallFallKnown(Player p)
+        {
+            // Canonical equipment/buffs prove the old completed fall modifiers
+            // can clear at ResetEffects. Do not reject their current values:
+            // noFallDmg, hasWings and extraFall are consumed BEFORE that reset.
+            // Mounts, stone, rockets and alternate movement need their own fall
+            // consumers; uncertainty is stopped only when Wall needs this step.
+            return WallHealthKnown(p) && !p.CCed && !p.mount.Active && !p.stoned && p.rocketDelay==0 && !p.isPerformingJump_DownDash &&
+                !p.pulley && p.grapCount==0 && (p.grappling==null || p.grappling.Length==0 || p.grappling[0]<0) &&
+                !p.GoingDownWithGrapple && !p.onTrack && !p.IsRidingTracks && !p.gravControl && !p.gravControl2;
         }
         private void CaptureMageCorpses()
         {
@@ -821,7 +853,7 @@ namespace JueMingR.TerrariaHost.Combat
             bool umbrellaUse=umbrella && !p.selectedItemState.HasBufferedChange && (!p.noItems || p.mount.Active && p.mount.DismountOnItemUse && p.mount.CanDismount(p) && !p.cursed) &&
                 (p.whoAmI!=Main.myPlayer || !Main.LocalPlayerHasPendingInventoryActions()) && (p.whoAmI==Main.myPlayer || p.lastItemUseAttemptSuccess);
             var motion=new PredictionPlayerMotion{X=p.position.X,Y=p.position.Y,Vx=p.velocity.X,Vy=p.velocity.Y,Width=p.width,Height=p.height,
-                WallFactsCaptured=true,WallSourceExpected=Main.wofNPCIndex>=0,WallHorrifiedTicks=p.FindBuffIndex(37)<0?0:p.buffTime[p.FindBuffIndex(37)],WallTonguedTicks=p.FindBuffIndex(38)<0?0:p.buffTime[p.FindBuffIndex(38)],WallGross=p.gross,WallTongued=p.tongued,WallLocal=p.whoAmI==Main.myPlayer,WallImmunityCaptured=true,WallImmune=p.immune,WallImmuneTime=p.immuneTime,WallHealthCaptured=true,WallHealthKnown=WallHealthKnown(p),WallLife=p.statLife,WallLifeMax=p.statLifeMax2,WallRegenCount=p.lifeRegenCount,WallRegenTime=p.lifeRegenTime,
+                WallFactsCaptured=true,WallSourceExpected=Main.wofNPCIndex>=0,WallHorrifiedTicks=p.FindBuffIndex(37)<0?0:p.buffTime[p.FindBuffIndex(37)],WallTonguedTicks=p.FindBuffIndex(38)<0?0:p.buffTime[p.FindBuffIndex(38)],WallGross=p.gross,WallTongued=p.tongued,WallLocal=p.whoAmI==Main.myPlayer,WallImmunityCaptured=true,WallImmune=p.immune,WallImmuneTime=p.immuneTime,WallHealthCaptured=true,WallHealthKnown=WallHealthKnown(p),WallLife=p.statLife,WallLifeMax=p.statLifeMax2,WallRegenCount=p.lifeRegenCount,WallRegenTime=p.lifeRegenTime,WallFallCaptured=true,WallFallKnown=WallFallKnown(p),WallFallStart=p.fallStart,WallExtraFall=p.extraFall,WallNoFallDamage=p.noFallDmg,WallHasWings=p.hasWings,
                 GravityControlCaptured=true,ForcedGravityTicks=p.forcedGravity,GravityControl=p.gravControl,GravityControl2=p.gravControl2,GravityReleaseUp=p.releaseUp,GravitySourceExpected=p.forcedGravity>0 || NPC.brainOfGravity>=0 && NPC.brainOfGravity<Main.maxNPCs,
                 IndependentIgnorePlatforms=p.mount.Active && (p.mount.Cart || p.mount.Type==12 || p.mount.Type==7 || p.mount.Type==8 || p.mount.Type==23 || p.mount.Type==44 || p.mount.Type==48 || p.mount.Type==55 && p.slideDir!=0) || p.GoingDownWithGrapple || p.pulley,
                 BordersCaptured=true,BordersNoLimits=Terraria.Testing.DebugOptions.noLimits,BordersRemix=Main.remixWorld,BordersSkyblock=Main.skyblockWorld,BordersDead=p.dead,BordersGodMode=p.creativeGodMode,BordersForcedGravity=p.forcedGravity>0,

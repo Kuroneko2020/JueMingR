@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using HarmonyLib;
 using JueMingR.Features.Combat;
+using JueMingR.Platform.Combat;
 using Microsoft.Xna.Framework;
 using Terraria;
 using static NativeWorldTextProbe.NativeInformationChecks;
@@ -10,8 +11,47 @@ namespace NativeWorldTextProbe
 {
     internal static partial class NativeCombatAttackCostChecks
     {
-        private static NPC solarReceiver;private static int solarDamage;
-        private static void SolarDamage(NPC __instance,int __result){if(ReferenceEquals(__instance,solarReceiver) && __result>0)solarDamage++;}
+        private static NPC solarReceiver;private static int solarDamage;private static NPC[] solarOtherReceivers;
+        private static void SolarDamage(NPC __instance,int __result){if(__result>0 && (ReferenceEquals(__instance,solarReceiver) || solarOtherReceivers!=null && solarOtherReceivers.Contains(__instance)))solarDamage++;}
+        private static void SolarComparable(object context,object combat,object host,object attack,object input)
+        {
+            var outlet=new Harmony("JueMingR.Tests.SolarComparable");
+            foreach(string name in new[]{"HandleSpecialEvent","HandleMining","HandleRunning"})outlet.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
+            outlet.Patch(AccessTools.Method(typeof(NPC),"StrikeNPC",new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)}),postfix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks).GetMethod(nameof(SolarDamage),Flags)));
+            try
+            {
+                foreach(string scene in new[]{"idle","continuous","unreachable","multiple"})
+                {
+                    NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());
+                    var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,3473,0,0);p.position=new Vector2(700,646);p.ResetEffects();p.ResetFallDamage();p.releaseUseItem=true;Main.screenPosition=new Vector2(480,400);Main.rand=new Terraria.Utilities.UnifiedRandom(7193);
+                    bool use=scene=="continuous" || scene=="multiple";int duration=use?45:12;
+                    solarOtherReceivers=null;solarReceiver=NativeCombatControlPreviewChecks.Dummy(2,scene=="unreachable"?90:55,40);
+                    if(scene=="multiple")
+                    {
+                        solarReceiver.active=false;solarReceiver=NativeCombatControlPreviewChecks.Dummy(2,52,40);solarOtherReceivers=new[]{NativeCombatControlPreviewChecks.Dummy(3,54,40),NativeCombatControlPreviewChecks.Dummy(4,57,40)};
+                    }
+                    NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,50,true,true));
+                    for(int i=0;i<4;i++)NativeCombatSelectionPreviewChecks.Step(context,new Vector2(560,580),false,true);
+                    calls.Clear();solarDamage=0;int preview=0,live=0;var selectedSlots=new System.Collections.Generic.SortedSet<int>();var watch=System.Diagnostics.Stopwatch.StartNew();
+                    for(int i=0;i<duration;i++)
+                    {
+                        NativeCombatSelectionPreviewChecks.Step(context,new Vector2(560,580),use);
+                        // Historical selection keeps an old reachable member
+                        // after another becomes nearer. Count actual useful
+                        // damage across this same three-receiver scene and
+                        // expose selected slots; correctness has its own leaf.
+                        selectedSlots.Add(((NpcIdentity)Get(Get(host,"Selection"),"Target")).Slot);
+                        if(GetOptional(attack,"ExpectedPreview")!=null)preview++;
+                        if(Main.projectile.Any(q=>q.active && q.type==611 && q.owner==0))live++;
+                    }
+                    watch.Stop();Report("solar-comparable-"+scene);
+                    if(use)Require(solarDamage>0 && live>0 && preview>0,"same-scene Solar workload retains the real useful attack: "+scene);
+                    else Require(solarDamage==0 && live==0 && (scene=="idle"?preview==duration:preview==0),"finite Solar idle/miss work preserves actual outcome: "+scene);
+                    Console.WriteLine("SOLAR COMPARE scene="+scene+" frames="+duration+" nativeDamage="+solarDamage+" nativeLive="+live+" preview="+preview+" selectedSlots="+string.Join(",",selectedSlots)+" modelCalls="+(Total("HostMeleeAttack.SolvePrepared")+Total("HostMeleeAttack.KnownSolar"))+" poses="+Total("HostMeleeAttack.SolarPose")+" elapsedMs="+watch.Elapsed.TotalMilliseconds.ToString("R",System.Globalization.CultureInfo.InvariantCulture)+"; original Player/NPC/projectile/preparation component, not FPS");
+                }
+            }
+            finally{solarReceiver=null;solarOtherReceivers=null;outlet.UnpatchAll(outlet.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());}
+        }
         private static void NaturalCosts(object context,object combat,object host,object attack,object input)
         {
             var outlet=new Harmony("JueMingR.Tests.NaturalAttackCosts");
@@ -27,10 +67,10 @@ namespace NativeWorldTextProbe
                     for(int i=0;i<4;i++)NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,500),false,true);
                     calls.Clear();int visible=0;
                     for(int i=0;i<8;i++){NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,500),false,true);if(GetOptional(attack,"ExpectedPreview")!=null)visible++;}
-                    Report("natural-idle-controller-"+type);int solves=Total("HostHeldAttack.Solve")+Total("HostAttackControl.BubblePreview");
+                    Report("natural-idle-controller-"+type);int solves=Total("HostHeldAttack.SolvePrepared")+Total("HostAttackControl.BubblePreview");
                     Require(visible==8 && solves<=2 && !Main.projectile.Any(q=>q.active),"equivalent natural idle updates reuse a useful private opening, not native sources: "+type+" solves="+solves);
                     calls.Clear();target.active=false;NativeCombatControlPreviewChecks.Dummy(3,54,40);NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,500),false,true);
-                    Require(Total("HostHeldAttack.Solve")+Total("HostAttackControl.BubblePreview")>0,"different real target identity invalidates the idle opening: "+type);
+                    Require(Total("HostHeldAttack.SolvePrepared")+Total("HostAttackControl.BubblePreview")>0,"different real target identity invalidates the idle opening: "+type);
                     var result=(AttackContact)GetOptional(attack,"ExpectedPreview");Require(result!=null && result.Timeline.Identity.Slot==3,"idle result rebind never retains the former selected target: "+type);
                 }
                 NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());
@@ -40,11 +80,11 @@ namespace NativeWorldTextProbe
                 calls.Clear();int previews=0,born=0;
                 for(int i=0;i<45;i++)
                 {NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,500),true);if(GetOptional(attack,"ExpectedPreview")!=null)previews++;if(Main.projectile.Any(q=>q.active && q.type==611))born++;}
-                Report("solar-natural-player-npc-projectile45");int poses=Total("HostMeleeAttack.SolarPose"),solvesSolar=Total("HostMeleeAttack.Solve")+Total("HostMeleeAttack.KnownSolar");
+                Report("solar-natural-player-npc-projectile45");int poses=Total("HostMeleeAttack.SolarPose"),solvesSolar=Total("HostMeleeAttack.SolvePrepared")+Total("HostMeleeAttack.KnownSolar");
                 Require(born>0 && solarDamage>0 && previews>0 && poses>0 && poses<=29*solvesSolar,"whole natural Solar cycle retains native births, Damage and preview with deduplicated finite poses");
                 Console.WriteLine("SOLAR natural actions=45 live="+born+" actualDamage="+solarDamage+" preview="+previews+" poses="+poses+" modelCalls="+solvesSolar+"; component workload, not FPS");
                 player.inventory[0].SetDefaults(3509);calls.Clear();for(int i=0;i<4;i++)NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,500),false);
-                Require(Total("HostMeleeAttack.Solve")==0 && Total("HostMeleeAttack.KnownSolar")==0 && Total("HostMeleeAttack.SolarPose")==0 && GetOptional(attack,"ExpectedPreview")==null,"natural switch-away ends Solar solving and preview even while an old native arc finishes");
+                Require(Total("HostMeleeAttack.SolvePrepared")==0 && Total("HostMeleeAttack.KnownSolar")==0 && Total("HostMeleeAttack.SolarPose")==0 && GetOptional(attack,"ExpectedPreview")==null,"natural switch-away ends Solar solving and preview even while an old native arc finishes");
                 HarpyCosts(context,combat,host,attack,input);
             }
             finally{solarReceiver=null;outlet.UnpatchAll(outlet.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());}

@@ -24,6 +24,7 @@ namespace NativeWorldTextProbe
             try
             {
                 NativeCombatCadenceChecks.Save(combat,new CombatOptions());
+                RankedChanges(context,host,input);
                 foreach(bool mouse in new[]{false,true})foreach(bool clear in new[]{false,true})
                 {
                     NativeCombatObservationChecks.Save(host,new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,95,0,0);p.position=new Vector2(700,646);p.releaseUseItem=true;p.inventory[54].SetDefaults(97);p.inventory[54].stack=999;Main.screenPosition=new Vector2(550,400);
@@ -48,6 +49,34 @@ namespace NativeWorldTextProbe
                 PreviewFaultIsolation(context,combat,host,input,attack);
             }
             finally{NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());}
+        }
+        private static void RankedChanges(object context,object host,object input)
+        {
+            foreach(bool mouse in new[]{false,true})
+            {
+                NativeCombatObservationChecks.Save(host,new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,95,0,0);
+                p.position=new Vector2(700,646);p.releaseUseItem=true;p.inventory[54].SetDefaults(3104);p.inventory[54].stack=1;Main.screenPosition=new Vector2(350,400);
+                var near=Scene(2,new Vector2(810,667));var middle=Scene(3,new Vector2(870,667));var far=Scene(4,new Vector2(460,667));var cursor=new Vector2(725,667);
+                for(int y=0;y<Main.maxTilesY;y++)NativeToolsChecks.Tile(47,y,1);
+                NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,mouse,false,50,true,false));
+                for(int i=0;i<3;i++)Step(context,cursor,false,true);
+                Require(Selected(host)==4,"three candidates: blocked near/middle do not deny the actual farther solution: mouse="+mouse);
+                for(int y=0;y<Main.maxTilesY;y++)Main.tile[47,y].ClearEverything();
+                Step(context,cursor,false,true);Require(Selected(host)==2,"near target wins immediately when its wall opens even while old far target stays reachable: mouse="+mouse);
+                for(int y=0;y<Main.maxTilesY;y++)NativeToolsChecks.Tile(47,y,1);
+                Step(context,cursor,false,true);Require(Selected(host)==4,"closing the same wall revokes the nearer proof: mouse="+mouse);
+                var attack=Get(Get(context,"Combat"),"Attack");var ordinary=(AttackContact)Get(attack,"ExpectedPreview");
+                p.inventory[54].SetDefaults(1302);p.inventory[54].stack=999;
+                Step(context,cursor,false,true);var fast=(AttackContact)Get(attack,"ExpectedPreview");
+                Require(Selected(host)==4 && fast!=null && ordinary!=null && fast.Tick<ordinary.Tick,"actual high-velocity ammunition preserves wall tiers but replaces the receive time: mouse="+mouse);
+                p.inventory[54].TurnToAir();Step(context,cursor,false,true);Require(Selected(host)==2 && GetOptional(attack,"ExpectedPreview")==null,"no usable ammunition leaves nearest fallback without retaining old proof: mouse="+mouse);
+                p.inventory[54].SetDefaults(3104);p.inventory[54].stack=1;Step(context,cursor,false,true);Require(Selected(host)==4,"ordinary Endless Pouch restores the actual far solution: mouse="+mouse);
+                middle.Center=new Vector2(600,667);Step(context,cursor,false,true);Require(Selected(host)==3,"a moved formerly blocked middle candidate outranks old reachable far: mouse="+mouse);
+                near.Center=new Vector2(660,667);Step(context,cursor,false,true);Require(Selected(host)==2,"nearer movement is re-ranked within the reachable tier: mouse="+mouse);
+                near.Center=new Vector2(810,667);NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,mouse,false,50,true,false));
+                Step(context,cursor,false,true);Require(Selected(host)==2,"nearest mode ignores the existing wall and usable farther attack: mouse="+mouse);
+                Console.WriteLine("PASS three-candidate ranking/open-close wall/real ammo/movement/nearest: mouse="+mouse+" farStillActive="+far.active);
+            }
         }
         private static void Idle(object context,object combat,object host,object input,object attack)
         {

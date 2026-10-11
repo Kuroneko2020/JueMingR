@@ -13,22 +13,16 @@ namespace JueMingR.TerrariaHost.Combat
             var selection=observation.Selection;var phase=beforeNpc?HostAttackPhase.BeforeNpc:HostAttackPhase.CompletedWorld;
             if(!observation.Options.ClearLine || !PreviewDemand || selection.CandidateCount==0 || HostPlacementAttack.Handles(combat.Player.HeldItem))
             {candidates.Clear();return;}
-            // One natural phase has a finite endpoint even if every model is
-            // unknown. A later phase has different origins and damage timing.
-            int known=-1;
-            for(int i=0;i<selection.CandidateCount;i++)if(CombatSelection.Identity(selection.Candidate(i),observation.Session).Equals(candidates.Reachable)){known=i;break;}
-            if(!candidates.Begin(sampleTick,phase))
-            {if(known>=0)selection.Choose(selection.Candidate(known),observation.Session,true);return;}
-            int best=-1,tried=-1;
-            for(int attempt=0;attempt<2;attempt++)
+            // Selection already sorts by the chosen centre's receive-box
+            // distance. Prove that prefix in order, stopping at its first
+            // feasible attack. An old farther success has no priority over a
+            // nearer candidate whose wall, ammunition or motion has changed.
+            // Unknown models do not veto later candidates; exact per-candidate
+            // preparation premises retain both solved and unsolved results.
+            candidates.Clear();
+            for(int index=0;index<selection.CandidateCount;index++)
             {
-                int index;
-                if(attempt==0 && known>=0)index=known;
-                else
-                {
-                    index=candidates.Next(selection.CandidateCount,tried);if(index<0)break;
-                }
-                tried=index;var npc=selection.Candidate(index);var identity=CombatSelection.Identity(npc,observation.Session);
+                var npc=selection.Candidate(index);var identity=CombatSelection.Identity(npc,observation.Session);
                 // Distinct native phases keep distinct exact premises. This
                 // avoids invalidating a reusable completed-world answer merely
                 // because a before-NPC action was prepared between two frames.
@@ -37,19 +31,17 @@ namespace JueMingR.TerrariaHost.Combat
                 var context=FaultContextFor(identity);if(plan.Faults.Blocks(context))continue;
                 try
                 {
-                    var timeline=observation.Prediction.TryCandidate(identity,sampleTick,beforeNpc,NpcPredictionCache.Horizon);
+                    var timeline=observation.Prediction.TryCandidateReuse(identity,sampleTick,beforeNpc,NpcPredictionCache.Horizon,CandidateMissCurrent(plan,identity,sampleTick,phase));
                     if(timeline==null || timeline.Count<2)continue;
                     var contact=PreparePlan(plan,timeline,phase);
-                    if(contact!=null && (best<0 || index<best))best=index;
+                    if(contact!=null)
+                    {candidates.Reachable=identity;selection.Choose(npc,observation.Session,true);return;}
                 }
                 catch(Exception error){PropagateFatal(error);plan.Faults.Record(context);plan.Clear();}
             }
-            if(best>=0)
-            {var npc=selection.Candidate(best);candidates.Reachable=CombatSelection.Identity(npc,observation.Session);selection.Choose(npc,observation.Session,true);}
-            else candidates.Reachable=default(NpcIdentity);
             // No proof leaves the deterministic nearest receiver and normal
-            // manual attack intact. The traversal cursor still advances, so
-            // an unresolved A cannot permanently deny a solvable B a turn.
+            // manual attack intact. No retained success or round-robin cursor
+            // can silently replace the user's distance order.
         }
         private void ClearCandidatePlans()
         {for(int i=0;i<candidatePlans.Length;i++)candidatePlans[i]?.Clear();candidates.Clear();}

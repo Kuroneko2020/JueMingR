@@ -21,6 +21,7 @@ namespace NativeWorldTextProbe
         private static bool PathInk(Color p){return p.A>100 && p.R>180 && p.G>150 && p.B>150;}
         internal static void Run(object context,ProbeGraphics graphics,string output)
         {
+            if(Environment.GetEnvironmentVariable("JMR_IMPACT_VISUAL_ONLY")=="usage"){NativeCombatUsageChecks.Run(context,graphics,output);return;}
             Directory.CreateDirectory(output);var host=Get(context,"CombatObservation");var combat=Get(context,"Combat");var attack=Get(combat,"Attack");var world=Get(host,"World");var impact=Get(world,"Impact");var input=Get(context,"Input");
             var harmony=new Harmony("JueMingR.Tests.ImpactVisual");
             harmony.Patch(attack.GetType().GetProperty("ExpectedPreview",Flags).GetGetMethod(true),prefix:new HarmonyMethod(typeof(NativeCombatImpactVisualChecks).GetMethod("ReadFault",Flags)));

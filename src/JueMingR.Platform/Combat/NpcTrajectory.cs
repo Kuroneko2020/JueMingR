@@ -462,6 +462,9 @@ namespace JueMingR.Platform.Combat
         // the amount is zero. Preserve that fact independently of Liquid.
         public bool Lava,ShimmerLiquid;
         public bool CanSit;
+        // Raw-active cloud/special-platform protection, including actuated
+        // tiles. This is independent of collision solidity and furniture frames.
+        public bool FallSafe;
         public short FrameX,FrameY;
         public byte Slope,Liquid;
         public ushort Type,Wall;

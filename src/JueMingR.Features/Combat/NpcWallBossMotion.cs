@@ -223,6 +223,48 @@ namespace JueMingR.Features.Combat
             {var row=group[i];row.WallBossCaptured=true;row.WallBossValid=n.WallBossValid;row.WallBossIdentity=n.WallBossIdentity;row.WallTop=n.WallTop;row.WallBottom=n.WallBottom;group[i]=row;}
         }
 
+        // Native fall consumes completed gravDir/tongued before immunity,
+        // ResetEffects and buffs. Both player continuations call this once,
+        // before their shared gravity prefix; movement never reapplies it.
+        internal static bool AdvanceFall(ref PredictionPlayerMotion p,PredictionEnvironment e,IPredictionTerrain terrain,out PredictionStop stop)
+        {
+            stop=PredictionStop.None;
+            if(!p.WallLocal || p.BordersDead)return true;
+            if(!p.WallFallCaptured || !p.WallFallKnown){stop=PredictionStop.MissingDependency;return false;}
+            if(!Finite(p.Y) || !Finite(p.Vy) || (p.GravityDirection!=1 && p.GravityDirection!=-1) || e.GravityWorldSurface<=0)
+            {stop=PredictionStop.InvalidState;return false;}
+            int row=(int)(p.Y/16f);
+            if(p.Vy==0)
+            {
+                int fall=row-p.WallFallStart;
+                bool harmful=(p.GravityDirection==1 && fall>25+p.WallExtraFall || p.GravityDirection==-1 && fall<-(25+p.WallExtraFall)) && !p.WallNoFallDamage && !p.WallHasWings;
+                if(harmful)
+                {
+                    bool safe=false;int bottom=p.GravityDirection>0?(int)((p.Y+p.Height+1)/16f):(int)((p.Y-1)/16f);
+                    for(int x=(int)(p.X/16f);x<=(int)((p.X+p.Width)/16f);x++)
+                    {PredictionTile tile;if(!terrain.Tile(x,bottom,out tile,out stop))return false;if(tile.FallSafe){safe=true;break;}}
+                    if(!safe)
+                    {
+                        // Player.Update deliberately clears immune before Hurt.
+                        // NoNewHits ends before damage/dodge/knockback consumers,
+                        // regardless of the observed immunity timer. A fresh real
+                        // sample supplies their results and resumes known health.
+                        if(!p.BordersGodMode){stop=PredictionStop.PhaseBoundary;return false;}
+                        p.WallImmune=false;
+                    }
+                }
+                p.WallFallStart=row;
+            }
+            float world=(float)e.WorldWidth/4200f;world*=world;
+            float altitude=(float)((double)(p.Y/16f-(60f+10f*world))/(e.GravityWorldSurface/(e.Remix?1.0:6.0)));
+            altitude=Math.Max(e.Remix?.1f:.25f,Math.Min(1f,altitude));
+            if(p.Jump>0 || p.Wet || p.SlowFall || (double)altitude<.8 || p.WallTongued)p.WallFallStart=row;
+            // Source certifies absence of equipment/non-Wall buff producers.
+            // Consume their OLD completed flags first, then model ResetEffects.
+            p.WallNoFallDamage=p.WallHasWings=false;p.WallExtraFall=0;
+            return true;
+        }
+
         // Called after the shared gravity prefix, before ordinary movement or
         // the settled fast path. Buff fields and pending buff slots are distinct:
         // WOFTongue adds a buff for the NEXT action; snap removes its slot but

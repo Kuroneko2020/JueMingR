@@ -32,10 +32,10 @@ namespace NativeWorldTextProbe
         private static Harmony Audit(object attack)
         {
             var audit=new Harmony("JueMingR.Tests.AttackCosts");var assembly=attack.GetType().Assembly;
-            foreach(string entry in new[]{"HostAttackAim.Clear","HostAttackControl.Clear","HostAttackAim.PrepareCore","HostAttackAim.Valid","HostAttackAim.PresentationCurrent","HostAttackControl.PresentationCurrent","HostBeamAttack.Solve","HostBeamAttack.Length","PredictionTerrain.Read","PredictionTerrain.ProjectilePassage","PredictionTerrain.get_Unchanged","HostAttackObstacles.Eligible","HostAttackObstacles.get_Unchanged","AttackAmmoSnapshot.CaptureCore","AttackAmmoSnapshot.MembersMatch","HostAttackAim.ResolveSelection","HostMeleeAttack.Solve","HostMeleeAttack.SolarPose","HostMeleeAttack.SpearDerived","HostBoomerangAttack.Step","HostEffectAttack.CaptureCandidates","HostYoyoNavigation.Remaining","HostYoyoNavigation.Current","HostYoyoNavigation.Prepare","HostYoyoNavigation.OpeningPoint","HostYoyoNavigation.Find"})
+            foreach(string entry in new[]{"HostAttackAim.Clear","HostAttackControl.Clear","HostAttackAim.PrepareCore","HostAttackAim.Valid","HostAttackAim.PresentationCurrent","HostAttackControl.PresentationCurrent","HostBeamAttack.Solve","HostBeamAttack.Length","PredictionTerrain.Read","PredictionTerrain.ProjectilePassage","PredictionTerrain.get_Unchanged","HostAttackObstacles.Eligible","HostAttackObstacles.get_Unchanged","AttackAmmoSnapshot.CaptureCore","AttackAmmoSnapshot.MembersMatch","HostAttackAim.ResolveSelection","HostMeleeAttack.Solve","HostMeleeAttack.SolvePrepared","HostMeleeAttack.SolarPose","HostMeleeAttack.SpearDerived","HostBoomerangAttack.Step","HostEffectAttack.CaptureCandidates","HostYoyoNavigation.Remaining","HostYoyoNavigation.Current","HostYoyoNavigation.Prepare","HostYoyoNavigation.OpeningPoint","HostYoyoNavigation.Find"})
             {var split=entry.Split('.');var type=assembly.GetType("JueMingR.TerrariaHost.Combat."+split[0],true);audit.Patch(type.GetMethod(split[1],Flags),prefix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks).GetMethod("Count",Flags)));}
             audit.Patch(typeof(AttackIntercept).GetMethod("Solve",Flags),prefix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks).GetMethod("Count",Flags)));
-            foreach(string entry in new[]{"HostMeleeAttack.KnownSolar","HostHeldAttack.Solve","HostAttackControl.BubblePreview","HostFiniteThrowAttack.Solve"})
+            foreach(string entry in new[]{"HostMeleeAttack.KnownSolar","HostHeldAttack.Solve","HostHeldAttack.SolvePrepared","HostAttackControl.BubblePreview","HostFiniteThrowAttack.Solve"})
             {var split=entry.Split('.');audit.Patch(assembly.GetType("JueMingR.TerrariaHost.Combat."+split[0],true).GetMethod(split[1],Flags),prefix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks).GetMethod("Count",Flags)));}
             var harpy=assembly.GetType("JueMingR.TerrariaHost.Combat.HostHarpyAttack",true);audit.Patch(harpy.GetMethod("Solve",Flags),prefix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks).GetMethod("Count",Flags)));
             foreach(string getter in new[]{"get_Current","get_MembersCurrent"})audit.Patch(harpy.GetNestedType("State",Flags).GetMethod(getter,Flags),prefix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks).GetMethod("Count",Flags)));
@@ -48,6 +48,7 @@ namespace NativeWorldTextProbe
             var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var attack=Get(combat,"Attack");var input=Get(context,"Input");var audit=Audit(attack);
             try
             {
+                if(Environment.GetEnvironmentVariable("JMR_ATTACK_COSTS_ONLY")=="solar-natural"){SolarComparable(context,combat,host,attack,input);return;}
                 YoyoOpening(context,combat,host,attack,input);YoyoMagicOpening(context,combat,host,attack,input);Solar(context,combat,host,attack,input);
                 NaturalCosts(context,combat,host,attack,input);
                 foreach(string scenario in new[]{"off","idle","no-target","stable","changing","dense","blocked","inapplicable","same-sample","switching"})
@@ -85,7 +86,7 @@ namespace NativeWorldTextProbe
                 {
                     NativeQuickItemChecks.BeginWorldStep();NativeToolExecutionChecks.Sample(context,input,new Vector2(600,650),scene=="attack");Call(combat,"Sample");Call(host,"SampleMouse");Call(host,"Update",(ulong)Main.GameUpdateCount);
                 }
-                Report("solar-"+scene);int solves=Total("HostMeleeAttack.Solve"),poses=Total("HostMeleeAttack.SolarPose");
+                Report("solar-"+scene);int solves=Total("HostMeleeAttack.SolvePrepared"),poses=Total("HostMeleeAttack.SolarPose");
                 Require(poses<=29*solves,"stationary target has one unique seed and no solar pose after native effective lifetime: "+scene);
                 if(scene=="no-target")Require(solves==0 && poses==0,"no receiver leaves no solar solve work");
                 else if(scene=="unreachable")Require(solves>0 && poses>0 && GetOptional(attack,"ExpectedPreview")==null,"measured solar miss still attempts the full finite effective period");
@@ -93,7 +94,7 @@ namespace NativeWorldTextProbe
                 if(scene=="switch-away")
                 {
                     p.inventory[0].SetDefaults(3509);calls.Clear();NativeQuickItemChecks.BeginWorldStep();NativeToolExecutionChecks.Sample(context,input,n.Center,false);Call(combat,"Sample");Call(host,"Update",(ulong)Main.GameUpdateCount);
-                    Require(Total("HostMeleeAttack.Solve")==0 && Total("HostMeleeAttack.SolarPose")==0 && GetOptional(attack,"ExpectedPreview")==null,"switching away retires solar demand and result");
+                    Require(Total("HostMeleeAttack.SolvePrepared")==0 && Total("HostMeleeAttack.SolarPose")==0 && GetOptional(attack,"ExpectedPreview")==null,"switching away retires solar demand and result");
                 }
             }
         }

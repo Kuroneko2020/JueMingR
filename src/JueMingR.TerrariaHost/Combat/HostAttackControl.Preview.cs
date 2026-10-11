@@ -77,7 +77,7 @@ namespace JueMingR.TerrariaHost.Combat
             // An unobserved already-live controller is not an idle opening.
             // Native counts may deny this hypothesis; they never authorize
             // adopting a projectile whose causal source we did not observe.
-            if(type>=0 && type<player.ownedProjectileCounts.Length && player.ownedProjectileCounts[type]>0)return null;
+            if(OpeningBlocked(player,type))return null;
             Projectile shot=CopyProjectile(type,player.whoAmI);if(shot==null)return null;
             var aim=HostHeldAttack.OpeningPoint(body,previewWeapon,previewAmmo,timeline);
             Vector2 mounted=body.RotatedRelativePoint(body.MountedCenter),unit=(aim-mounted).SafeNormalize(Vector2.UnitX*body.direction);
@@ -138,6 +138,18 @@ namespace JueMingR.TerrariaHost.Combat
             bool known=projectile==439 || projectile==615 || projectile==630 || projectile==705 || projectile==714 || projectile==444 || projectile==633 || projectile==460;
             return known && delay==0 && p.itemAnimation==0 && p.itemTime==0 && p.reuseDelay==0 && p.ownedProjectileCounts[projectile]==0;
         }
+        private static bool OpeningBlocked(Player player,int type)
+        {
+            if(type<0 || type>=player.ownedProjectileCounts.Length || player.ownedProjectileCounts[type]<=0)return false;
+            // Player.Update counts the pool before the projectile pass. A
+            // missile killed later in that pass still contributes to this
+            // counter, but cannot block a hypothetical next legal use. Only
+            // check the pool at this stale-positive opening boundary; never
+            // register or control an unobserved surviving source.
+            for(int i=0;i<Main.maxProjectiles;i++)
+            {var shot=Main.projectile[i];if(shot.active && shot.owner==player.whoAmI && shot.type==type)return true;}
+            return false;
+        }
         private sealed class IdlePreview
         {
             internal readonly int Projectile,Age;internal readonly HostAttackPhase Phase;internal NpcTrajectory Timeline;
@@ -151,7 +163,7 @@ namespace JueMingR.TerrariaHost.Combat
             }
             internal bool Current(Player p,NpcTrajectory timeline)
             {
-                return Timeline.Identity.Equals(timeline.Identity) && motion.SameSample(NpcPredictionSource.ReadPlayer(p)) && mounted==p.RotatedRelativePoint(p.MountedCenter) && direction==p.direction && phoenix==p.phantomPhoneixCounter && mana==p.statMana && manaCost==p.manaCost && slow==p.slowMagicUse && manaV2==Terraria.Testing.DebugOptions.ManaV2 && scale==p.GetAdjustedItemScale(p.HeldItem) && meleeSpeed==p.meleeSpeed && rotation==p.fullRotation && attackCd==p.attackCD && meleeCd==p.meleeNPCHitCooldown[timeline.Identity.Slot] && receive.Same(HostAttackReceive.Capture(p,receiver,timeline.Identity.Slot,Phase==HostAttackPhase.BeforeNpc,Phase==HostAttackPhase.CompletedWorld));
+                return Timeline.Identity.Equals(timeline.Identity) && PlayerMotionContinuation.SameFixedInput(motion,NpcPredictionSource.ReadPlayer(p),timeline.WallSources!=null) && mounted==p.RotatedRelativePoint(p.MountedCenter) && direction==p.direction && phoenix==p.phantomPhoneixCounter && mana==p.statMana && manaCost==p.manaCost && slow==p.slowMagicUse && manaV2==Terraria.Testing.DebugOptions.ManaV2 && scale==p.GetAdjustedItemScale(p.HeldItem) && meleeSpeed==p.meleeSpeed && rotation==p.fullRotation && attackCd==p.attackCD && meleeCd==p.meleeNPCHitCooldown[timeline.Identity.Slot] && receive.Same(HostAttackReceive.Capture(p,receiver,timeline.Identity.Slot,Phase==HostAttackPhase.BeforeNpc,Phase==HostAttackPhase.CompletedWorld));
             }
         }
 

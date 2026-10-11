@@ -38,6 +38,8 @@ namespace NativeWorldTextProbe
             audit.Patch(typeof(Projectile).GetMethod("NewProjectile",Flags,null,new[]{typeof(IEntitySource),typeof(float),typeof(float),typeof(float),typeof(float),typeof(int),typeof(int),typeof(float),typeof(int),typeof(float),typeof(float),typeof(float),typeof(NewProjectileModifier)},null),postfix:new HarmonyMethod(typeof(NativeCombatHarpyChecks).GetMethod("BeeBorn",Flags)));
             try
             {
+                BeeForeignSource(context,assembly,model,terrainType,clockType,phaseType);
+                if(Environment.GetEnvironmentVariable("JMR_HARPY_ORACLE_ONLY")=="bee-owner")return;
                 if(Environment.GetEnvironmentVariable("JMR_HARPY_ORACLE_ONLY")=="bee"){BeeFamilies(context,assembly,model,terrainType,clockType,phaseType,snapshots,obstacleType);return;}
                 // Real player accessory routine chooses among real owned
                 // arrows. Its cooldown=1 branch only decrements; equal owner
@@ -293,6 +295,29 @@ namespace NativeWorldTextProbe
                 Console.WriteLine("HARPY BEE hand accessory="+accessory+" deathOuter="+deathOuter+" children="+actualBees.Count+" useful="+first);
             }
         }
+        private static void BeeForeignSource(object context,Assembly assembly,Type model,Type terrainType,Type clockType,Type phaseType)
+        {
+            var foreignOwner=Main.player[254];bool oldActive=foreignOwner.active;
+            try
+            {
+                foreach(int type in new[]{181,566})foreach(bool withForeign in new[]{false,true})
+                {
+                    var p=BeeReset(context,6166);foreignOwner.active=true;p.accHarpyCharmCooldown=200;
+                    var selected=Target(2,new Vector2(1040,330));selected.noTileCollide=true;
+                    int slot=Projectile.NewProjectile(p.GetProjectileSource_Item(p.HeldItem),selected.Center,Vector2.Zero,type,40,0,p.whoAmI);var source=Main.projectile[slot];
+                    if(withForeign)Projectile.NewProjectile(p.GetProjectileSource_Item(p.HeldItem),selected.Center,Vector2.Zero,type,40,0,254);
+                    var timeline=Timeline(assembly,selected,Main.GameUpdateCount);var terrain=Activator.CreateInstance(terrainType,true);Call(terrain,"Reset");var clock=Activator.CreateInstance(clockType,Flags,null,new object[]{timeline,Enum.Parse(phaseType,"CompletedWorld"),0},null);
+                    var plan=(AttackContact)model.GetMethod("KnownFamily",Flags).Invoke(null,new object[]{p,new[]{source},timeline,clock,terrain});
+                    NativeToolExecutionChecks.Sample(context,Get(context,"Input"),selected.Center,false);NativeQuickItemChecks.BeginWorldStep();p.controlUseItem=false;p.Update(p.whoAmI);selected.UpdateNPC(2);
+                    int first=-1;
+                    for(int index=0;index<Main.maxProjectiles;index++)
+                    {var shot=Main.projectile[index];if(!shot.active)continue;int life=selected.life;shot.Update(index);if(ReferenceEquals(shot,source) && selected.life<life)first=1;else Require(selected.life==life,"foreign Bee is not a local causal Damage source");}
+                    Require(first==1 && plan!=null && plan.Tick==first,"Harpy local Bee retains its exact useful native contact with or without an active foreign Bee: "+type+" foreign="+withForeign+" model="+plan?.Tick);
+                    Console.WriteLine("HARPY BEE ownerGate source="+type+" foreign="+withForeign+" native="+first+" model="+plan.Tick);
+                }
+            }
+            finally{foreignOwner.active=oldActive;}
+        }
         private static void BeeWorkload(object context,Assembly assembly,Type model,Type terrainType,Type clockType,Type phaseType,Type snapshots,Type obstacleType)
         {
             var p=BeeReset(context,6166);p.accHarpyCharmCooldown=200;var selected=Target(2,new Vector2(1040,330));selected.dontTakeDamage=true;selected.noTileCollide=true;
@@ -307,7 +332,7 @@ namespace NativeWorldTextProbe
             int slot=Projectile.NewProjectile(p.GetProjectileSource_Item(p.HeldItem),950,350,2,0,181,30,0,p.whoAmI);Require(!(bool)Get(lease,"Current") && (bool)Get(lease,"MembersCurrent"),"new real Bee invalidates full consume capture while Draw's identity lease does not scan the scene");Main.projectile[slot].active=false;
             var foreign=Main.projectile[slot];foreign.SetDefaults(181);foreign.whoAmI=slot;foreign.owner=254;foreign.active=true;foreign.Center=new Vector2(950,350);foreign.damage=30;
             var nextTerrain=Activator.CreateInstance(terrainType,true);Call(nextTerrain,"Reset");var nextObstacle=Activator.CreateInstance(obstacleType,Flags,null,new object[]{p,ContentSamples.ProjectilesByType[469],timeline,0,false,true},null);var pending=new object[]{p,ammo,timeline,p.RotatedRelativePoint(p.MountedCenter),clock,nextTerrain,nextObstacle,null};
-            Require(model.GetMethod("Solve",Flags).Invoke(null,pending)==null && (bool)Get(pending[7],"ForeignBeeCompetition") && (PredictionStop)Get(pending[7],"Stop")==PredictionStop.UnsupportedMechanism,"cross-owner static181 competition remains explicitly pending instead of writing foreign hits into local owner history");foreign.active=false;
+            Require(model.GetMethod("Solve",Flags).Invoke(null,pending)==null && (int)Get(pending[7],"CandidateCount")>0 && (PredictionStop)Get(pending[7],"Stop")!=PredictionStop.UnsupportedMechanism,"active foreign Bee occupies its slot but does not reject the local hard-miss preparation");foreign.active=false;
             Console.WriteLine("HARPY BEE WORKLOAD captures="+captures+" candidates="+candidates+" births="+births+" motors="+motors+" beeSteps="+beeSteps+" receive="+Get(lease,"ReceivePasses"));
         }
         private static void Equip(Player p,int accessory)

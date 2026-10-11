@@ -24,20 +24,27 @@ namespace NativeWorldTextProbe
                 var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,type,0,0);p.position=new Vector2(700,646);p.ResetEffects();p.releaseUseItem=true;p.statMana=p.statManaMax=p.statManaMax2=200;
                 p.inventory[54].SetDefaults(p.HeldItem.useAmmo==40?1334:p.HeldItem.useAmmo==771?771:3104);p.inventory[54].stack=999;Main.screenPosition=new Vector2(600,400);
                 var n=Dummy(2,type==3278?51:52,40);
-                NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,true,25,true,false));
+                NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,false));
                 for(int i=0;i<3;i++)
                 {
                     NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,500),false,true);
                     Require(GetOptional(attack,"ExpectedPreview")!=null,"idle native controlled-family preview appears before any attack: "+type);
                     Require(!Main.projectile.Any(q=>q.active) && !p.controlUseItem && !p.channel,"controlled preview cannot create its own live source: "+type);
                 }
-                NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,true,25,true,true));
+                NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));
                 NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,500),true);
                 Require(Main.projectile.Any(q=>q.active && q.owner==0),"first actual click creates original source without needing an earlier hit: "+type);
                 var registry=(System.Collections.IDictionary)Get(Get(attack,"Control"),"shots");Require(registry.Count>0,"first natural source is registered for later legal consumers: "+type);
-                int visible=GetOptional(attack,"ExpectedPreview")!=null?1:0;
-                for(int i=0;i<8;i++){NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,500),true);if(GetOptional(attack,"ExpectedPreview")!=null)visible++;}
-                Require(visible>0,"current live controller stage retains useful preview through natural updates: "+type);
+                int visible=GetOptional(attack,"ExpectedPreview")!=null?1:0;bool retiredMissile=false;
+                if(visible==0)Missing(type,0,p,n);
+                for(int i=0;i<8;i++)
+                {
+                    NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,500),true);var result=(AttackContact)GetOptional(attack,"ExpectedPreview");if(result!=null)visible++;else Missing(type,i+1,p,n);
+                    if(type==113 && p.ownedProjectileCounts[p.HeldItem.shoot]>0 && !Main.projectile.Any(q=>q.active && q.owner==p.whoAmI && q.type==p.HeldItem.shoot))
+                    {retiredMissile=true;Require(result!=null && result.Delay>=p.itemTime-1,"naturally retired missile's stale native count cannot hide the delayed next-use preview");}
+                }
+                if(type==113)Require(retiredMissile,"natural missile fixture actually crosses the projectile-pass retirement after Player's cached count");
+                Require(visible==9,"fixed in-range receiver and supplied first nine controller updates retain a feasible current/future stage on every sample: "+type+" visible="+visible+"/9");
                 Console.WriteLine("PASS natural controlled preview/first birth item="+type+" visible="+visible+"/9 sources="+registry.Count);
                 }
                 catch(Exception error){failures.Add(type+": "+error.Message);Console.WriteLine("FAIL natural controlled preview/first birth item="+type+": "+error);}
@@ -46,6 +53,8 @@ namespace NativeWorldTextProbe
             Require(failures.Count==0,"natural controller family failures: "+string.Join(" | ",failures));
             NativeCombatCelebrationChecks.Run(context);
         }
+        private static void Missing(int type,int frame,Player p,NPC n)
+        {Console.WriteLine("CONTROL preview missing item="+type+" frame="+frame+" timers="+p.itemAnimation+"/"+p.itemTime+" channel="+p.channel+" npcImmune="+n.immune[p.whoAmI]+" source="+string.Join(";",Main.projectile.Where(q=>q.active && q.owner==p.whoAmI).Select(q=>q.type+"/"+q.position+"/"+q.velocity+"/ai="+string.Join(",",q.ai)+"/left="+q.timeLeft)));}
         internal static NPC Dummy(int slot,int x,int y)
         {
             // Native AI92 retires a dummy without its real placed tile. Keep

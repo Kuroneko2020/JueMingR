@@ -26,7 +26,7 @@ namespace JueMingR.TerrariaHost.Combat
             internal HostAttackControl Owner;internal Source Source;internal ShotReceipt Previous;internal CombatCursorScope Cursor;internal bool Ended;internal HostAttackPhase Phase;internal ulong BirthCutoff;
         }
         private sealed class Controlled
-        {internal Projectile Shot;internal int Key,Type;internal Source Source;internal AttackContact Contact,NextKillContact;internal Vector2 KillOrigin,NextKillOrigin,Point;internal bool ChildLaterSlot,HasPoint,BornNext;internal AttackAmmoSnapshot Ammo;internal HostAttackObstacles Obstacles;internal uint Prepared,Born;internal ulong BirthOrdinal;internal NpcIdentity Target;internal HostYoyoNavigation Navigation,PreviewNavigation;internal HostBeamAttack.Child ContactChild;internal List<HostBeamAttack.Child> Children=new List<HostBeamAttack.Child>(6);}
+        {internal Projectile Shot;internal int Key,Type;internal Source Source;internal AttackContact Contact,NextKillContact,AlternateKillContact,AlternateNextKillContact;internal Vector2 KillOrigin,NextKillOrigin,Point;internal bool ChildLaterSlot,HasPoint,BornNext;internal AttackAmmoSnapshot Ammo;internal HostAttackObstacles Obstacles,AlternateKillObstacles;internal uint Prepared,Born;internal ulong BirthOrdinal;internal NpcIdentity Target;internal HostYoyoNavigation Navigation,PreviewNavigation;internal HostBeamAttack.Child ContactChild;internal List<HostBeamAttack.Child> Children=new List<HostBeamAttack.Child>(6);}
         private readonly HostCombat combat;private readonly HostCombatObservation observation;
         private readonly Dictionary<int,Controlled> shots=new Dictionary<int,Controlled>();
         private readonly List<int> retired=new List<int>(64);
@@ -50,6 +50,22 @@ namespace JueMingR.TerrariaHost.Combat
         {get{foreach(var entry in shots.Values)if((entry.Type==444 || HostWhipAttack.Pending(entry.Shot) || HostFlailAttack.Handles(entry.Type)) && Valid(entry))return true;return false;}}
         internal bool HasObservedSolar
         {get{foreach(var entry in shots.Values)if(entry.Type==611 && Observed(entry))return true;return false;}}
+        internal int SolarOpeningDelay
+        {
+            get
+            {
+                int delay=0;
+                foreach(var entry in shots.Values)if(entry.Type==611 && Observed(entry))
+                {
+                    // AI75 kills at ai0=30 and still calls SetDummyItemTime(2)
+                    // on that action. The following player update spends its
+                    // tail; only the next update can emit a fresh arc.
+                    var shot=entry.Shot;int remaining=Math.Max(0,(int)Math.Ceiling((30-shot.ai[0])/shot.MaxUpdates));
+                    delay=Math.Max(delay,remaining+1);
+                }
+                return delay;
+            }
+        }
         internal bool HasObservedPulse
         {get{foreach(var entry in shots.Values)if(HostPulseAttack.Handles(entry.Type) && Observed(entry))return true;return false;}}
         private bool Valid(Controlled entry)
@@ -103,12 +119,12 @@ namespace JueMingR.TerrariaHost.Combat
             if(HostYoyoNavigation.Handles(shot) && shot.ai[0]<0)return;
             shots[(int)shot.key]=new Controlled{Shot=shot,Key=(int)shot.key,Type=shot.type,Source=owner.Source,BirthOrdinal=++birthOrdinal,Born=Main.GameUpdateCount,BornNext=Main.ProjectileUpdateLoopIndex>=0 && shot.whoAmI<=Main.ProjectileUpdateLoopIndex,Navigation=HostYoyoNavigation.Handles(shot)?new HostYoyoNavigation():null};
         }
-        internal void Clear(){presentation=null;preparedTimeline=null;opening=null;openingNavigation=null;openingUsable=false;foreach(var entry in shots.Values){entry.Contact=entry.NextKillContact=null;entry.HasPoint=false;entry.ContactChild=null;entry.Obstacles=null;}}
+        internal void Clear(){presentation=null;preparedTimeline=null;opening=null;openingNavigation=null;openingUsable=false;foreach(var entry in shots.Values)Retire(entry);}
         // An individual natural consumer can revoke only its own prepared
         // capability. Source/registry lifetime belongs to Prepare/Reset; an
         // unrelated or repeated projectile callback must never walk that pool.
         private static void Retire(Controlled entry)
-        {entry.Contact=entry.NextKillContact=null;entry.HasPoint=false;entry.ContactChild=null;entry.Obstacles=null;}
+        {entry.Contact=entry.NextKillContact=entry.AlternateKillContact=entry.AlternateNextKillContact=null;entry.HasPoint=false;entry.ContactChild=null;entry.Obstacles=entry.AlternateKillObstacles=null;}
         internal void Reset(){Clear();ClearPreview();shots.Clear();preparedTimeline=null;opening=null;birthOrdinal=0;}
         internal void Prepare(NpcTrajectory timeline,HostAttackPhase phase)
         {
@@ -164,15 +180,10 @@ namespace JueMingR.TerrariaHost.Combat
                     // deterministic phase. Neither is an early-slot receipt.
                     bool later;if(!TryChildLaterSlot(entry.Shot,out later))return;
                     entry.ChildLaterSlot=later;entry.KillOrigin=entry.Shot.Center;
-                    // Kill runs after NPCs. A child in an earlier slot first
-                    // updates next tick; a later slot updates in this pass.
-                    int childAge=age+(entry.ChildLaterSlot?0:1);Projectile sample;
+                    Projectile sample;
                     if(!ContentSamples.ProjectilesByType.TryGetValue((int)entry.Shot.localAI[0],out sample))return;
                     if(player.magicQuiver && sample.arrow && sample.extraUpdates<1)motion=motion.WithUpdates(2,1);
-                    var receive=HostAttackReceive.Capture(player,sample,timeline.Identity.Slot,clock.BeforeNpc,clock.NextWorld || !entry.ChildLaterSlot);
-                    AttackPassage childPassage=(x,y,nx,ny,w,h)=>HostProjectileEnvironment.Dry(sample,terrain,x,y,nx-x) && terrain.ProjectilePassage(x,y,nx,ny,(int)w,(int)h);
-                    entry.Obstacles=new HostAttackObstacles(player,sample,timeline,0,clock.BeforeNpc,clock.NextWorld || !entry.ChildLaterSlot);
-                    entry.Contact=AttackIntercept.Solve(entry.KillOrigin.X,entry.KillOrigin.Y,motion,timeline,childAge,0,childPassage,clock.FirstTick-age,receive.Allows,(k,t,x,y)=>entry.Obstacles.PassOuter(k,t,motion.OuterAtSubupdate(k),x,y),(k,t,x,y)=>motion.SubupdateInOuter(k)!=0 || entry.ChildLaterSlot && motion.OuterAtSubupdate(k)==1 || entry.Obstacles.BeforeNpc(t,motion.OuterAtSubupdate(k),x,y));
+                    bool expiry=false;
                     if(entry.Shot.timeLeft<=entry.Shot.extraUpdates+1)
                     {
                         Vector2 center=entry.Shot.Center,velocity=entry.Shot.velocity;float sealedAngle=entry.Shot.ai[0];bool clear=true;
@@ -185,11 +196,28 @@ namespace JueMingR.TerrariaHost.Combat
                             if(!HostBubbleAttack.Advance(entry.Shot,terrain,ref center,ref velocity,ref sealedAngle)){clear=false;break;}
                         }
                         entry.NextKillOrigin=center;
-                        if(clear)entry.NextKillContact=AttackIntercept.Solve(center.X,center.Y,motion,timeline,childAge,0,childPassage,clock.FirstTick-age,receive.Allows,(k,t,x,y)=>entry.Obstacles.PassOuter(k,t,motion.OuterAtSubupdate(k),x,y),(k,t,x,y)=>motion.SubupdateInOuter(k)!=0 || entry.ChildLaterSlot && motion.OuterAtSubupdate(k)==1 || entry.Obstacles.BeforeNpc(t,motion.OuterAtSubupdate(k),x,y));
+                        expiry=clear;
                     }
+                    PrepareBubbleOrder(entry,player,sample,motion,timeline,clock,terrain,later,expiry,out entry.Contact,out entry.NextKillContact,out entry.Obstacles);
+                    // A preceding native sibling may free an earlier slot in
+                    // this same pass. Prepare both finite receive schedules;
+                    // Kill only chooses the actual order, never solves again.
+                    if(later?entry.Shot.whoAmI>0:entry.Shot.whoAmI<Main.maxProjectiles-1)
+                        PrepareBubbleOrder(entry,player,sample,motion,timeline,clock,terrain,!later,expiry,out entry.AlternateKillContact,out entry.AlternateNextKillContact,out entry.AlternateKillObstacles);
                 }
             }
             entry.Prepared=Main.GameUpdateCount;entry.Target=timeline.Identity;
+        }
+        private static void PrepareBubbleOrder(Controlled entry,Player player,Projectile sample,AttackMotion motion,NpcTrajectory timeline,HostAttackClock clock,PredictionTerrain terrain,bool later,bool expiry,out AttackContact current,out AttackContact next,out HostAttackObstacles obstacles)
+        {
+            // Kill runs after NPCs. A lower-slot child first updates next
+            // world tick, so its target sample and immunity clock both shift.
+            int childAge=clock.Age+(later?0:1);
+            var receive=HostAttackReceive.Capture(player,sample,timeline.Identity.Slot,clock.BeforeNpc,clock.NextWorld || !later);
+            var lease=new HostAttackObstacles(player,sample,timeline,0,clock.BeforeNpc,clock.NextWorld || !later);obstacles=lease;
+            AttackPassage passage=(x,y,nx,ny,w,h)=>HostProjectileEnvironment.Dry(sample,terrain,x,y,nx-x) && terrain.ProjectilePassage(x,y,nx,ny,(int)w,(int)h);
+            Func<Vector2,AttackContact> solve=origin=>AttackIntercept.Solve(origin.X,origin.Y,motion,timeline,childAge,0,passage,clock.FirstTick-clock.Age,receive.Allows,(k,t,x,y)=>lease.PassOuter(k,t,motion.OuterAtSubupdate(k),x,y),(k,t,x,y)=>motion.SubupdateInOuter(k)!=0 || later && motion.OuterAtSubupdate(k)==1 || lease.BeforeNpc(t,motion.OuterAtSubupdate(k),x,y));
+            current=solve(entry.KillOrigin);next=expiry?solve(entry.NextKillOrigin):null;
         }
         private bool Passage(float x,float y,float nx,float ny,float width,float height){return terrain.ProjectilePassage(x,y,nx,ny,(int)width,(int)height);}
         internal CombatCursorScope BeginOpening(Player player,Item item)
@@ -206,10 +234,12 @@ namespace JueMingR.TerrariaHost.Combat
             Controlled entry;if(shot.type!=444 || !shots.TryGetValue((int)shot.key,out entry) || !ReferenceEquals(entry.Shot,shot))return null;
             if(!combat.Attack.CurrentReceiver){Retire(entry);return null;}
             bool later;
-            if(!environmentState.Current || !Valid(entry) || entry.Obstacles!=null && !entry.Obstacles.Unchanged || Main.GameUpdateCount<entry.Prepared || Main.GameUpdateCount-entry.Prepared>1 || !entry.Target.Equals(observation.Selection.Target) || !terrain.Unchanged || !TryChildLaterSlot(shot,out later) || entry.ChildLaterSlot!=later)
+            if(!environmentState.Current || !Valid(entry) || Main.GameUpdateCount<entry.Prepared || Main.GameUpdateCount-entry.Prepared>1 || !entry.Target.Equals(observation.Selection.Target) || !terrain.Unchanged || !TryChildLaterSlot(shot,out later))
             {Retire(entry);return null;}
-            var result=Vector2.DistanceSquared(shot.Center,entry.KillOrigin)<.01f?entry.Contact:Vector2.DistanceSquared(shot.Center,entry.NextKillOrigin)<.01f?entry.NextKillContact:null;
-            entry.Contact=entry.NextKillContact=null;
+            bool alternate=later!=entry.ChildLaterSlot;var lease=alternate?entry.AlternateKillObstacles:entry.Obstacles;
+            if(lease==null || !lease.Unchanged){Retire(entry);return null;}
+            var result=Vector2.DistanceSquared(shot.Center,entry.KillOrigin)<.01f?(alternate?entry.AlternateKillContact:entry.Contact):Vector2.DistanceSquared(shot.Center,entry.NextKillOrigin)<.01f?(alternate?entry.AlternateNextKillContact:entry.NextKillContact):null;
+            Retire(entry);
             if(result==null || !ReferenceEquals(result.Timeline,observation.Prediction.Cache.Read(1)))return null;
             return CombatCursorScope.Begin(new Vector2(result.AimX,result.AimY));
         }

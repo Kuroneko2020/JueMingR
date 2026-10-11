@@ -7,7 +7,7 @@ namespace JueMingR.TerrariaHost.Combat
     internal static class HostAttackWindow
     {
         internal static bool Ordinary(Item item)
-        {return item!=null && (!HostSwingAttack.Handles(item) || HostSwingAttack.Mixed(item)) && !HostHeldAttack.Weapon(item.type) && !HostYoyoNavigation.Weapon(item) && !HostWhipAttack.Weapon(item) && !item.channel && !ItemID.Sets.ShootsOnUseRelease[item.type];}
+        {return item!=null && (!HostSwingAttack.Handles(item) || HostSwingAttack.Mixed(item)) && !HostHeldAttack.Weapon(item.type) && !HostYoyoNavigation.Weapon(item) && !HostWhipAttack.Weapon(item) && (!item.channel || item.type==3473) && !ItemID.Sets.ShootsOnUseRelease[item.type];}
         internal static bool NextAction(HostCombat combat,Player player,Item item)
         {
             if(!Ordinary(item))return true;
@@ -19,7 +19,11 @@ namespace JueMingR.TerrariaHost.Combat
         internal static int PreviewDelay(Player player,Item item)
         {
             if(player==null || item==null || item.IsAir || player.noItems || player.CCed || player.delayUseItem || player.selectedItemState.HasBufferedChange)return -1;
-            if(HostHeldAttack.Weapon(item.type) || HostYoyoNavigation.Weapon(item) || item.channel)return 0;
+            // Solar's channel flag sustains native dummy timers, but its
+            // sealed arc never consumes later aim input. Only a new legal
+            // hand use needs an execution plan; preview adds the live arc's
+            // remaining timer ownership before hypothesizing that new use.
+            if(HostHeldAttack.Weapon(item.type) || HostYoyoNavigation.Weapon(item) || item.channel && item.type!=3473)return 0;
             if(HostSwingAttack.Handles(item) && !HostSwingAttack.Mixed(item) && player.itemAnimation>0)return 0;
             if(!HostAttackResources.Initial(player,item))return -1;
             if(player.itemAnimation>1 && !item.shootsEveryUse)return Math.Max(0,player.itemTime-1);

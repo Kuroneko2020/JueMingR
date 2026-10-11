@@ -26,7 +26,7 @@ namespace NativeWorldTextProbe
             // The original phase owns this named RNG stream after Main's
             // normal initialization; preserve the calling probe's old stream.
             randomField.SetValue(null,new System.Collections.Generic.Dictionary<string,Terraria.Utilities.UnifiedRandom>{{"UpdateProjectiles",new Terraria.Utilities.UnifiedRandom(702)}});
-            try{RunCore(context);Bubble(context,0,true,true);Bubble(context,0);Bubble(context,5);Bubble(context,0,true);UnknownSlot(context);NativeCombatSwingChecks.Run(context);NativeCombatWhipChecks.Run(context);}finally{randomField.SetValue(null,previousRandom);captureBirth=false;audit.Unpatch(birth,HarmonyPatchType.All,audit.Id);foreach(var method in methods)audit.Unpatch(method,HarmonyPatchType.All,audit.Id);}
+            try{RunCore(context);Bubble(context,0,true,true);Bubble(context,0);Bubble(context,5);Bubble(context,0,true);Bubble(context,1,false,false,true);UnknownSlot(context);NativeCombatSwingChecks.Run(context);NativeCombatWhipChecks.Run(context);}finally{randomField.SetValue(null,previousRandom);captureBirth=false;audit.Unpatch(birth,HarmonyPatchType.All,audit.Id);foreach(var method in methods)audit.Unpatch(method,HarmonyPatchType.All,audit.Id);}
         }
         private static void RunCore(object context)
         {
@@ -48,7 +48,7 @@ namespace NativeWorldTextProbe
             Console.WriteLine("PASS natural component Player/NPC/Projectile order and completed-world contact");
         }
         private static void Birth(Projectile __0){if(captureBirth && __0.type==14)born=__0;}
-        private static void Bubble(object context,int slot,bool stationary=false,bool shortFuture=false)
+        private static void Bubble(object context,int slot,bool stationary=false,bool shortFuture=false,bool releaseDuringPass=false)
         {
             var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var attack=Get(combat,"Attack");var input=Get(context,"Input");
             NativeCombatObservationChecks.Save(host,new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,2797,0,0);p.position=new Vector2(700,646);p.ResetEffects();p.inventory[54].SetDefaults(97);p.inventory[54].stack=999;Main.screenPosition=new Vector2(600,500);Main.rand=new Terraria.Utilities.UnifiedRandom(7123);
@@ -62,10 +62,17 @@ namespace NativeWorldTextProbe
             if(shortFuture){n.buffType[0]=353;n.buffTime[0]=18;n.shimmerTransparency=.82f;}
             n.UpdateNPC(2);
             NativeToolExecutionChecks.Sample(context,input,new Vector2(650,550),true);Call(combat,"Sample");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,false,true));Call(context,"UpdateRuntime");
-            typeof(Player).GetMethod("ItemCheck_Shoot",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),false});var bubble=Main.projectile[slot];Require(bubble.type==444 && bubble.active,"native Xeno parent in requested slot");for(int i=0;i<slot;i++)Main.projectile[i].Kill();bubble.timeLeft=2;
+            typeof(Player).GetMethod("ItemCheck_Shoot",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),false});var bubble=Main.projectile[slot];Require(bubble.type==444 && bubble.active,"native Xeno parent in requested slot");for(int i=0;i<slot;i++){if(releaseDuringPass)Main.projectile[i].timeLeft=1;else Main.projectile[i].Kill();}bubble.timeLeft=2;
             Vector2 initial=bubble.Center,velocity=bubble.velocity;double difference=bubble.ai[0].ToRotationVector2().ToRotation()-velocity.ToRotation();if(difference>Math.PI)difference-=Math.PI*2;if(difference<-Math.PI)difference+=Math.PI*2;Require(Math.Abs(difference)>.001 && velocity!=Vector2.Zero,"actual Shot retains nonzero random bubble angle for steering counterexample");
             if(stationary)bubble.velocity=Vector2.Zero;
             NativeToolExecutionChecks.Sample(context,input,new Vector2(650,550),false);Call(combat,"Sample");p.channel=p.controlUseItem=false;Call(context,"UpdateRuntime");var contact=(AttackContact)GetOptional(attack,"ExpectedImpact");
+            if(releaseDuringPass)
+            {
+                var entries=(System.Collections.IDictionary)Get(Get(attack,"Control"),"shots");var entry=entries[(int)bubble.key];
+                Require((bool)Get(entry,"ChildLaterSlot") && Main.projectile[0].active,"preparation observes a later free slot before the real preceding death");
+                contact=(AttackContact)GetOptional(entry,"AlternateNextKillContact");
+                Require(contact!=null,"same preparation retains the earlier-slot receive timeline without solving inside Kill");
+            }
             if(shortFuture)
             {
                 var timeline=(JueMingR.Platform.Combat.NpcTrajectory)Get(Get(attack,"Control"),"preparedTimeline");
@@ -81,7 +88,7 @@ namespace NativeWorldTextProbe
                 {Require(born!=null && born.active && born.velocity.X>0,"natural expiry Kill borrows future after actual bubble steering: slot="+slot+" initial="+initial+" velocity="+velocity+" now="+bubble.Center+" child="+born?.velocity);Require(slot==0?born.whoAmI>slot && born.timeLeft<600:born.whoAmI<slot && born.timeLeft==600,"later child runs in birth phase; earlier child waits for next phase");Console.WriteLine("PHASE bubble birth: parentSlot="+slot+" childSlot="+born.whoAmI+" childKey="+born.key+" birthPhase="+Main.GameUpdateCount+" timeLeft="+born.timeLeft+" childVelocity="+born.velocity);}
                 if(n.life<life)first=Main.GameUpdateCount;Call(context,"UpdateRuntime");
             }
-            captureBirth=false;Console.WriteLine("PHASE bubble contact: slot="+slot+" stationary="+stationary+" sample="+contact.Timeline.SampleTick+" tick="+contact.Tick+" expected="+expected+" actual="+first);Require(first==expected,"same shared timeline predicts real high/low child first Damage tick");
+            captureBirth=false;Console.WriteLine("PHASE bubble contact: slot="+slot+" stationary="+stationary+" releaseDuringPass="+releaseDuringPass+" sample="+contact.Timeline.SampleTick+" tick="+contact.Tick+" expected="+expected+" actual="+first);Require(first==expected,"same shared timeline predicts real high/low child first Damage tick");
         }
         private static void UnknownSlot(object context)
         {

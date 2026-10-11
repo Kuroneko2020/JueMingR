@@ -209,7 +209,7 @@ namespace NativeWorldTextProbe
             Func<string,Type> type=name=>assembly.GetType("JueMingR.TerrariaHost.Combat."+name,true);
             var eligible=type("HostAttackAim").GetMethod("Eligible",Flags);var capture=type("AttackAmmoSnapshot").GetMethod("Capture",Flags);var model=type("HostAttackModels").GetMethod("TryRead",Flags);
             var ammoGroups=ContentSamples.ItemsByType.Values.Where(a=>a.type>0 && a.ammo>0).GroupBy(a=>a.ammo).ToDictionary(g=>g.Key,g=>g.Select(a=>a.type).Distinct().OrderBy(a=>a).ToArray());
-            int weapons=0,resolved=0,unknown=0,missingAmmo=0,excludedHandStages=0;
+            int weapons=0,resolved=0,unknown=0,missingAmmo=0,excludedHandStages=0,mixedPairs=0,scourgePairs=0;
             foreach(var weapon in ContentSamples.ItemsByType.Values.Where(w=>w.type>0).OrderBy(w=>w.type))
             {
                 // The full native inventory is the starting set. Eligibility
@@ -231,28 +231,35 @@ namespace NativeWorldTextProbe
                 }
                 weapons++;p.inventory[0].SetDefaults(weapon.type);
                 if((bool)type("HostPlacementAttack").GetMethod("Handles",Flags).Invoke(null,new object[]{p.HeldItem})){resolved++;Console.WriteLine("WEAPON CATALOG item="+weapon.type+" ammo=0 projectile="+weapon.shoot+" stage="+(weapon.type==6161?"DIRECTED_BIRTH_INPUT":"PLACEMENT_INPUT")+" boundary=hand-input-only; no-contact; autonomous-future-outside-aim");continue;}
-                if((bool)type("HostSwingAttack").GetMethod("Handles",Flags).Invoke(null,new object[]{p.HeldItem})){resolved++;Console.WriteLine("WEAPON CATALOG item="+weapon.type+" ammo=0 projectile=0 stage=MELEE_POSE");continue;}
+                bool melee=(bool)type("HostSwingAttack").GetMethod("Handles",Flags).Invoke(null,new object[]{p.HeldItem});
+                bool nativeMelee=(p.HeldItem.useStyle==1 || p.HeldItem.useStyle==3) && !p.HeldItem.noMelee && p.HeldItem.damage>0 && !p.HeldItem.summon;
+                // A mixed weapon's hand pose does not classify its projectile,
+                // ammo conversion or later release. Only a genuinely shotless
+                // item can end here; the shot stage is audited independently.
+                if(melee && p.HeldItem.shoot<=0){resolved++;Console.WriteLine("WEAPON CATALOG item="+weapon.type+" ammo=0 projectile=0 stage=MELEE_POSE");continue;}
                 int[] ammunition;if(weapon.useAmmo==0)ammunition=new[]{0};else if(!ammoGroups.TryGetValue(weapon.useAmmo,out ammunition)){missingAmmo++;Console.WriteLine("WEAPON CATALOG item="+weapon.type+" status=NO_AMMO_DEFINITION");continue;}
                 foreach(int ammoType in ammunition)
                 {
                     for(int slot=54;slot<=57;slot++)p.inventory[slot].SetDefaults(0);p.inventory[54].SetDefaults(ammoType);if(ammoType!=0)p.inventory[54].stack=999;
                     var snapshot=capture.Invoke(null,new object[]{p,p.HeldItem});if(snapshot==null){unknown++;Console.WriteLine("WEAPON CATALOG item="+weapon.type+" ammo="+ammoType+" status=UNRESOLVED_SNAPSHOT");continue;}
                     int projectile=(int)Get(snapshot,"Projectile");Projectile sample;string kind="UNKNOWN";
-                    if((bool)type("HostSwingAttack").GetMethod("Handles",Flags).Invoke(null,new object[]{p.HeldItem}))kind="MELEE_POSE";
+                    if((bool)type("HostPhasebladeAttack").GetMethod("Handles",Flags).Invoke(null,new object[]{projectile}))kind="PRESS_MELEE_RELEASE_FLIGHT";
                     else if((bool)type("HostHeldAttack").GetMethod("Weapon",Flags).Invoke(null,new object[]{weapon.type}))kind="CONTROLLER_STAGE";
                     else if((bool)type("HostYoyoNavigation").GetMethod("Weapon",Flags).Invoke(null,new object[]{p.HeldItem}))kind="YOYO_NAVIGATION";
                     else if((bool)type("HostWhipAttack").GetMethod("Weapon",Flags).Invoke(null,new object[]{p.HeldItem}))kind="WHIP_DERIVED";
                     else if((bool)type("HostSkyAttack").GetMethod("Handles",Flags).Invoke(null,new object[]{weapon.type}))kind="SKY_REPRESENTATIVE";
                     else if(ContentSamples.ProjectilesByType.TryGetValue(projectile,out sample) && (bool)type("HostMeleeAttack").GetMethod("Handles",Flags).Invoke(null,new object[]{sample}))kind="MELEE_OR_DERIVED_POSE";
                     else if(projectile==93)kind="FINITE_RANDOM_GRAVITY_WINDOW_REPRESENTATIVE";
-                    else if(projectile==306)kind="PRIMARY_CONTACT_CHILD307_UNMODELED";
+                    else if((bool)type("HostScourgeAttack").GetMethod("Handles",Flags).Invoke(null,new object[]{projectile})){kind="PRIMARY_CONTACT_AND_CHILD307_REPRESENTATIVE";scourgePairs++;}
                     else if((bool)type("HostEffectAttack").GetMethod("Handles",Flags).Invoke(null,new object[]{projectile}))kind="EFFECT_REPRESENTATIVE";
                     else{var args=new object[]{snapshot,default(AttackMotion)};if((bool)model.Invoke(null,args))kind=((AttackMotion)args[1]).Confidence==AttackConfidence.Representative?"BALLISTIC_REPRESENTATIVE":"BALLISTIC_CONDITIONAL";}
                     if(kind=="UNKNOWN")unknown++;else resolved++;
-                    ContentSamples.ProjectilesByType.TryGetValue(projectile,out sample);Console.WriteLine("WEAPON CATALOG item="+weapon.type+" ammo="+ammoType+" projectile="+projectile+" aiStyle="+(sample==null?-1:sample.aiStyle)+" stage="+kind);
+                    if(melee)mixedPairs++;
+                    ContentSamples.ProjectilesByType.TryGetValue(projectile,out sample);Console.WriteLine("WEAPON CATALOG item="+weapon.type+" ammo="+ammoType+" projectile="+projectile+" aiStyle="+(sample==null?-1:sample.aiStyle)+" handStage="+(melee?"MELEE_POSE":nativeMelee?"UNMODELED_MELEE_POSE":"NONE")+" stage="+kind);
                 }
             }
             Require(weapons>100 && resolved>0,"coverage catalog starts from the actual full locked native item collection");
+            Require(mixedPairs>0 && scourgePairs>0,"mixed hand poses retain their real shot classification and native 306 death family is registered independently");
             Console.WriteLine("WEAPON CATALOG SUMMARY eligibleWeapons="+weapons+" resolvedWeaponAmmoPairs="+resolved+" unknownPairs="+unknown+" missingAmmoGroups="+missingAmmo+" excludedTrueWeaponHandStages="+excludedHandStages+" boundary=model-registration-only; UNKNOWN-is-unfinished-not-PASS");
         }
     }

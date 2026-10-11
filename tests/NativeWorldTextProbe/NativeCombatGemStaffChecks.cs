@@ -19,14 +19,15 @@ namespace NativeWorldTextProbe
         // eighth staff; never enable it just to manufacture a birth oracle.
         private static readonly int[] weapons={739,740,741,742,743,744,3377};
         private static readonly int[] robes={0,1282,1283,1284,1285,1286,1287,4256};
-        private static NPC target;private static long firstHit;private static int damageDepth;
+        private static NPC target;private static long firstHit;private static int damageDepth,receiveType;
         private static Projectile receiving;private static bool recordBirth;private static string actualBirth,actualReceive;
+        private static Vector2 firstBirthCenter,firstBirthVelocity;
         private static bool Gem(int t){return t>=121 && t<=126 || t==597;}
         private static void Born(int __result)
-        {if(recordBirth && __result>=0 && __result<Main.maxProjectiles){var q=Main.projectile[__result];if(Gem(q.type))actualBirth+=(actualBirth==null?"":";")+q.type+"/"+q.position+"/"+q.velocity+"/"+q.ai[0]+"/"+q.ai[1];}}
+        {if(recordBirth && __result>=0 && __result<Main.maxProjectiles){var q=Main.projectile[__result];if(Gem(q.type)){if(actualBirth==null){firstBirthCenter=q.Center;firstBirthVelocity=q.velocity;}actualBirth+=(actualBirth==null?"":";")+q.type+"/"+q.position+"/"+q.velocity+"/"+q.ai[0]+"/"+q.ai[1];}}}
         private static void BeforeDamage(Projectile __instance){if(Gem(__instance.type)){damageDepth++;receiving=__instance;}}
         private static void AfterDamage(Projectile __instance){if(Gem(__instance.type))damageDepth--;}
-        private static void Strike(NPC __instance,int __result){if(damageDepth>0 && ReferenceEquals(__instance,target) && __result>0 && firstHit<0){firstHit=Main.GameUpdateCount;actualReceive=receiving.type+"/"+receiving.position+"/"+receiving.velocity+"/"+receiving.width+"x"+receiving.height;}}
+        private static void Strike(NPC __instance,int __result){if(damageDepth>0 && ReferenceEquals(__instance,target) && __result>0 && firstHit<0 && (receiveType==0 || receiving.type==receiveType)){firstHit=Main.GameUpdateCount;actualReceive=receiving.type+"/"+receiving.position+"/"+receiving.velocity+"/"+receiving.width+"x"+receiving.height;}}
         internal static void Run(object context)
         {
             var host=Get(context,"CombatObservation");var combat=Get(context,"Combat");var audit=new Harmony("JueMingR.Tests.GemStaff");bool wind=Main.windPhysics;
@@ -41,8 +42,9 @@ namespace NativeWorldTextProbe
                 if(leaf==null || leaf=="motor")Motor(context,assembly);
                 if(leaf==null || leaf=="collision")Collisions(context,assembly);
                 if(leaf==null || leaf=="natural")Natural(context,host,combat);
+                if(leaf==null || leaf=="flight"){KnownFlights(context,assembly);ObservedFlight(context,host,combat);}
             }
-            finally{target=null;recordBirth=false;receiving=null;damageDepth=0;Main.windPhysics=wind;audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());}
+            finally{target=null;recordBirth=false;receiving=null;damageDepth=receiveType=0;Main.windPhysics=wind;audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());}
         }
         private static Player Reset(object context,int weapon,int robe)
         {
@@ -120,19 +122,85 @@ namespace NativeWorldTextProbe
         private static void Collisions(object context,Assembly a)
         {
             var model=a.GetType("JueMingR.TerrariaHost.Combat.HostGemStaffAttack",true);var st=model.GetNestedType("State",BindingFlags.NonPublic);var terrainType=a.GetType("JueMingR.TerrariaHost.Combat.PredictionTerrain",true);int cases=0,trailOnly=0,bursts=0,damageMargins=0;
+            string slice=Environment.GetEnvironmentVariable("JMR_GEM_COLLISION_SLICE");Require(string.IsNullOrEmpty(slice) || slice=="core","known gem collision slice: "+slice);
             foreach(int weapon in weapons)foreach(int robe in robes)foreach(bool burst in new[]{false,true})foreach(int offset in new[]{-95,-35,-26,0,8,35,95})
             {
+                if(slice=="core" && !(weapon==740 && robe==0 || weapon==742 && robe==1285 || weapon==744 && robe==0))continue;
                 var p=Reset(context,weapon,robe);var shot=NativeBirth(context,p,p.Center+Vector2.UnitX*400)[0];shot.Center=new Vector2(950.25f,350.5f);for(int i=0;i<shot.oldPos.Length;i++)shot.oldPos[i]=shot.position-new Vector2(i*35,0);
                 var state=Activator.CreateInstance(st,Flags,null,new object[]{shot},null);Set(state,"DeathCenter",shot.Center);var terrain=Activator.CreateInstance(terrainType,true);Call(terrain,"Reset");var box=new Rectangle(950+offset,345,20,20);var original=shot.Hitbox;if(burst)shot.Resize(160,160);
                 bool native=shot.Colliding(shot.Damage_GetHitbox(),box);object[] args={shot,state,terrain,new MotionRect(box.X,box.Y,box.Width,box.Height),burst,Rectangle.Empty,false};Require((bool)model.GetMethod("CollisionShape",Flags).Invoke(null,args),"gem collider geometry is captured");bool predicted=(bool)args[6];Require(predicted==native,"original gem custom current/trail/bigger/burst shape "+weapon+"/"+robe+"/"+burst+"/"+offset);if(native && !shot.Colliding(shot.Hitbox,box))damageMargins++;if(native && !original.Intersects(box) && offset<0)trailOnly++;if(burst && native)bursts++;cases++;
             }
-            Require(cases==784 && trailOnly>0 && bursts>0 && damageMargins>0,"native custom collision includes non-body trails, native enlarged burst boxes and counterexamples to omitting Damage_GetHitbox");Console.WriteLine("PASS original gem colliders="+cases+" outsideBody="+trailOnly+" bursts="+bursts+" damageMarginControls="+damageMargins);
+            Require(cases==(slice=="core"?42:784) && trailOnly>0 && bursts>0 && damageMargins>0,"native custom collision includes non-body trails, native enlarged burst boxes and counterexamples to omitting Damage_GetHitbox");Console.WriteLine("PASS original gem colliders="+cases+" slice="+(slice??"all")+" outsideBody="+trailOnly+" bursts="+bursts+" damageMarginControls="+damageMargins);
+        }
+        private static int Counter(Type model,string name){return (int)model.GetField(name,Flags).GetValue(null);}
+        private static void KnownFlights(object context,Assembly a)
+        {
+            var model=a.GetType("JueMingR.TerrariaHost.Combat.HostGemStaffAttack",true);var terrainType=a.GetType("JueMingR.TerrariaHost.Combat.PredictionTerrain",true);var phaseType=a.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase",true);var clockType=a.GetType("JueMingR.TerrariaHost.Combat.HostAttackClock",true);int contacts=0,misses=0,ambientHits=0;
+            for(int scene=0;scene<4;scene++)
+            {
+                var p=Reset(context,scene==1 || scene==2?740:743,0);foreach(var npc in Main.npc)npc.active=false;
+                target=Main.npc[2];target.SetDefaults(3);target.active=true;target.whoAmI=2;target.width=target.height=20;target.Center=new Vector2(1020.25f,scene==3?550.5f:350.5f);target.velocity=target.netOffset=Vector2.Zero;target.aiStyle=-1;target.noGravity=target.noTileCollide=true;target.knockBackResist=0;target.life=target.lifeMax=100000;Array.Clear(target.immune,0,target.immune.Length);
+                Projectile ambient=null;
+                if(scene==2)
+                {
+                    int slot=Projectile.NewProjectile(new Terraria.DataStructures.EntitySource_DebugCommand(),target.Center-new Vector2(12,0),new Vector2(12,0),121,20,0,p.whoAmI);ambient=Main.projectile[slot];
+                }
+                var members=NativeBirth(context,p,p.Center+Vector2.UnitX*400);var source=members.Single(member=>member.type==p.HeldItem.shoot);source.Center=new Vector2(950.25f,350.5f);source.velocity=new Vector2(12,0);if(scene==1 || scene==2)source.timeLeft=1;
+                var path=Path(a,target);var terrain=Activator.CreateInstance(terrainType,true);Call(terrain,"Reset");var clock=Activator.CreateInstance(clockType,Flags,null,new object[]{path,Enum.Parse(phaseType,"CompletedWorld")},null);
+                var position=source.position;var local=(int[])source.localNPCImmunity.Clone();var old=(Vector2[])source.oldPos.Clone();model.GetMethod("ResetCounters",Flags).Invoke(null,null);
+                object[] args={p,members,path,clock,terrain,null};var contact=(AttackContact)model.GetMethod("KnownFamily",Flags).Invoke(null,args);var lease=args[5];
+                Require(lease!=null && source.position==position && local.SequenceEqual(source.localNPCImmunity) && old.SequenceEqual(source.oldPos),"known gem family preserves every real born member");
+                Require((bool)Get(lease,"Current"),"fresh full born-family lease matches its captured environment and members");
+                int scans=Counter(model,"FlightPoolScans"),steps=Counter(model,"MotorSteps");
+                for(int check=0;check<20;check++)Require((bool)Get(lease,"MembersCurrent"),"unchanged gem presentation member lease");
+                Require(Counter(model,"FlightPoolScans")==scans && Counter(model,"MotorSteps")==steps && Counter(model,"FlightCaptures")==1,"twenty gem presentation checks do not scan or replay the captured family");
+                source.localNPCImmunity[2]++;Require((bool)Get(lease,"MembersCurrent") && !(bool)Get(lease,"Current"),"full local-immunity revalidation stays out of presentation");source.localNPCImmunity[2]--;
+                source.oldPos[0]+=Vector2.UnitX;Require((bool)Get(lease,"MembersCurrent") && !(bool)Get(lease,"Current"),"full trail-array revalidation stays out of presentation");source.oldPos[0]-=Vector2.UnitX;
+                source.friendly=false;source.hostile=true;Require(!(bool)Get(lease,"MembersCurrent"),"a real reflected member immediately retires its presentation lease");source.friendly=true;source.hostile=false;
+                int extra=Projectile.NewProjectile(new Terraria.DataStructures.EntitySource_DebugCommand(),new Vector2(400,300),Vector2.Zero,126,10,0,p.whoAmI);Require((bool)Get(lease,"MembersCurrent") && !(bool)Get(lease,"Current"),"new local gem invalidates preparation without a Draw pool scan");Main.projectile[extra].active=false;
+                firstHit=-1;receiveType=source.type;actualReceive=null;long start=Main.GameUpdateCount;
+                for(int outer=1;outer<=120 && firstHit<0;outer++)
+                {
+                    NativeQuickItemChecks.BeginWorldStep();if(target.immune[p.whoAmI]>0)target.immune[p.whoAmI]--;
+                    foreach(var member in members)if(member.active)member.Update(member.whoAmI);
+                    if(ambient!=null && ambient.localNPCImmunity[2]>0)ambientHits++;
+                }
+                Require(contact==null?firstHit<0:firstHit==path.SampleTick+contact.Tick,"known held-gem first Strike matches actual slot-ordered Update, including Kill burst: scene="+scene+" native="+(firstHit<0?-1:firstHit-start)+" model="+contact?.Tick+" receive="+actualReceive);
+                if(scene==3){Require(contact==null && firstHit<0,"a born wrong-height ray does not create a future held contact");misses++;}
+                else{Require(contact!=null && firstHit>=0,"positive born source actually damages its selected receiver: scene="+scene);contacts++;}
+                if(scene==2)Require(ambient.localNPCImmunity[2]>0 && contact.Tick==1 && actualReceive.StartsWith(source.type+"/",StringComparison.Ordinal),"lower-slot other gem receives first but only held-role source contributes its burst contact");
+            }
+            receiveType=0;Require(contacts==3 && misses==1 && ambientHits>0,"bounded known gem source, burst, ambient and actual miss controls");Console.WriteLine("PASS known gem flights cases=4 heldContacts="+contacts+" misses="+misses+" ambientReceives="+ambientHits+" presentationChecks=80");
+        }
+        private static void ObservedFlight(object context,object host,object combat)
+        {
+            var p=Reset(context,740,0);var attack=Get(combat,"Attack");var model=combat.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostGemStaffAttack",true);target=NativeCombatControlPreviewChecks.Dummy(2,62,40);firstHit=-1;receiveType=p.HeldItem.shoot;
+            // Original use happens with all observation disabled. The later
+            // path toggle cannot manufacture a receipt or alter this birth.
+            NativeCombatSelectionPreviewChecks.Step(context,target.Center,true);
+            var born=Main.projectile.Single(member=>member.active && member.owner==p.whoAmI && member.type==p.HeldItem.shoot);int key=(int)born.key;
+            var receipts=(System.Collections.IDictionary)Get(Get(attack,"Control"),"shots");Require(!receipts.Contains(key) && firstHit<0,"original OFF-state gem birth precedes the selected receive and has no control receipt");
+            NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,true,true,25,true,false));
+            NativeCombatSelectionPreviewChecks.Step(context,target.Center,false,true);var contact=(AttackContact)GetOptional(attack,"ExpectedPreview");var plan=Get(attack,"preview");
+            Require(contact!=null && GetOptional(plan,"Flight")!=null,"enabling Path after birth selects the earlier real gem flight with Aim OFF");
+            var impact=Get(Get(host,"World"),"Impact");Call(impact,"Capture");var zoom=Main.GameViewMatrix.ZoomMatrix;Call(impact,"Project",zoom,Matrix.Invert(zoom));var receive=contact.Timeline[contact.ReceiveTick].Bounds;
+            Require((bool)Get(impact,"Visible") && Vector2.DistanceSquared((Vector2)Get(impact,"Position"),Vector2.Transform(new Vector2(receive.CenterX,receive.CenterY)-Main.screenPosition,zoom))<.001f,"born gem marker maps the same receive-time NPC path centre");
+            int scans=Counter(model,"FlightPoolScans"),steps=Counter(model,"MotorSteps"),captures=Counter(model,"FlightCaptures");
+            for(int check=0;check<20;check++){Call(impact,"Capture");Call(impact,"Project",zoom,Matrix.Invert(zoom));Require((bool)Call(attack,"PreviewCurrent",contact),"born gem same-update presentation remains valid");}
+            Require(Counter(model,"FlightPoolScans")==scans && Counter(model,"MotorSteps")==steps && Counter(model,"FlightCaptures")==captures,"born gem presentation performs no pool recapture or motor replay");
+            int weapon=p.HeldItem.type;p.HeldItem.SetDefaults(95);Require(!(bool)Call(attack,"PreviewCurrent",contact),"switching held weapon retires the old born-gem presentation");p.HeldItem.SetDefaults(weapon);
+            long predicted=contact.Timeline.SampleTick+contact.Tick;int keys=Main.projectile.Count(member=>member.active && member.owner==p.whoAmI && Gem(member.type));
+            for(int frame=0;frame<90 && firstHit<0;frame++)NativeCombatSelectionPreviewChecks.Step(context,target.Center,false,true);
+            Require(firstHit==predicted && !receipts.Contains(key) && !Main.projectile.Any(member=>member.active && member.owner==p.whoAmI && Gem(member.type) && (int)member.key!=key),"observed original gem flight keeps its actual first Strike without a new use, source receipt or input control: predicted="+predicted+" actual="+firstHit+" originalMembers="+keys);
+            receiveType=0;Console.WriteLine("PASS gem natural OFF birth -> released Path/AimOFF -> same-update presentation -> switch -> actual original Strike "+firstHit);
         }
         private static void Natural(object context,object host,object combat)
         {
             var attack=Get(combat,"Attack");int cases=0,hits=0,negative=0,wallHits=0;var failures=new List<string>();
+            string only=Environment.GetEnvironmentVariable("JMR_GEM_NATURAL_CASE");
             foreach(int weapon in weapons)foreach(int robe in robes)foreach(bool blocked in new[]{false,true})
             {
+                if(!string.IsNullOrEmpty(only) && !string.Equals(only,weapon+"/"+robe+"/"+blocked,StringComparison.OrdinalIgnoreCase))continue;
                 try
                 {
                     var p=Reset(context,weapon,robe);target=NativeCombatControlPreviewChecks.Dummy(2,62,40);firstHit=-1;damageDepth=0;if(blocked)for(int y=0;y<Main.maxTilesY;y++)NativeToolsChecks.Tile(46,y,1);
@@ -140,8 +208,14 @@ namespace NativeWorldTextProbe
                     for(int frame=0;frame<3;frame++){NativeCombatSelectionPreviewChecks.Step(context,target.Center,false,true);preview=(AttackContact)GetOptional(attack,"ExpectedPreview");Require(!Main.projectile.Any(q=>q.active),"idle gem observation creates no projectile");}
                     Require(blocked || preview!=null,"full gem idle preview with Aim OFF "+weapon+"/"+robe+"/"+blocked);
                     if(preview!=null){var impact=Get(Get(host,"World"),"Impact");Call(impact,"Capture");var zoom=Main.GameViewMatrix.ZoomMatrix;Call(impact,"Project",zoom,Matrix.Invert(zoom));var b=preview.Timeline[preview.ReceiveTick].Bounds;Require((bool)Get(impact,"Visible") && Vector2.DistanceSquared((Vector2)Get(impact,"Position"),Vector2.Transform(new Vector2(b.CenterX,b.CenterY)-Main.screenPosition,zoom))<.001f,"gem preview stays on the same receive-time NPC path");}
-                    NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,true,true,25,true,true));long start=Main.GameUpdateCount;bool born=false;actualBirth=actualReceive=null;recordBirth=true;
-                    for(int frame=1;frame<=120 && firstHit<0;frame++){NativeCombatSelectionPreviewChecks.Step(context,target.Center,frame==1);born|=Main.projectile.Any(q=>q.active && q.owner==p.whoAmI && Gem(q.type));}
+                    // Keep the same mouse-centered selection premise as the
+                    // idle case while making the physical ray point away.
+                    // The one target remains within the existing 25-tile
+                    // radius of this point; its direction cannot explain the
+                    // assisted birth or useful damage by coincidence.
+                    var rawMouse=target.Center-new Vector2(390,0);
+                    NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,true,true,25,true,true));long start=Main.GameUpdateCount;bool born=false;actualBirth=actualReceive=null;firstBirthCenter=firstBirthVelocity=Vector2.Zero;recordBirth=true;
+                    for(int frame=1;frame<=120 && firstHit<0;frame++){NativeCombatSelectionPreviewChecks.Step(context,rawMouse,frame==1);born|=Main.projectile.Any(q=>q.active && q.owner==p.whoAmI && Gem(q.type));}
                     recordBirth=false;
                     // Contact.Tick is relative to its NPC sample, which can
                     // precede this completed frame by one. Compare absolute
@@ -150,12 +224,22 @@ namespace NativeWorldTextProbe
                     // native AI can move a twin's position before collision.
                     // Keep that original positive as a counterexample, and
                     // require both contact presence and the exact first hit.
-                    Require(born,"original gem manual action births even without an input solution");Require(preview==null?firstHit<0:firstHit>=start && (preview.Confidence==AttackConfidence.Representative || firstHit==preview.Timeline.SampleTick+preview.Tick),"native first gem Damage agrees with unpressed preview "+weapon+"/"+robe+"/"+blocked+" actual="+(firstHit<0?-1:firstHit-start)+" preview="+preview?.Tick+" sampleAge="+(preview==null?-1:start-preview.Timeline.SampleTick)+" aim="+preview?.AimX+","+preview?.AimY+" birth="+actualBirth+" received="+actualReceive+" player="+p.position);
+                    Require(born,"original gem manual action births even without an input solution");
+                    if(preview!=null)
+                    {
+                        var actual=firstBirthVelocity.SafeNormalize(Vector2.Zero);var planned=(new Vector2(preview.AimX,preview.AimY)-firstBirthCenter).SafeNormalize(Vector2.Zero);var physical=(rawMouse-firstBirthCenter).SafeNormalize(Vector2.Zero);
+                        Require(actualBirth!=null && Vector2.Dot(actual,planned)>.99f && Vector2.Dot(actual,physical)<0,"native gem Shoot consumes the assisted direction rather than the opposite physical mouse ray: "+weapon+"/"+robe+"/"+blocked+" raw="+rawMouse+" birth="+actualBirth+" aim="+preview.AimX+","+preview.AimY);
+                    }
+                    Require(preview==null?firstHit<0:firstHit>=start && (preview.Confidence==AttackConfidence.Representative || firstHit==preview.Timeline.SampleTick+preview.Tick),"native first gem Damage agrees with unpressed preview "+weapon+"/"+robe+"/"+blocked+" actual="+(firstHit<0?-1:firstHit-start)+" preview="+preview?.Tick+" sampleAge="+(preview==null?-1:start-preview.Timeline.SampleTick)+" aim="+preview?.AimX+","+preview?.AimY+" birth="+actualBirth+" received="+actualReceive+" player="+p.position);
+                    if(weapon==741 && robe==0 && blocked)Require(preview!=null && firstHit>=start,"native bare twin staff crosses this thin-wall fixture before tile movement: keep its actual positive, not an assumed wall negative");
                     if(firstHit<0)negative++;else{hits++;if(blocked)wallHits++;}cases++;
                 }
                 catch(Exception e){failures.Add(weapon+"/"+robe+"/"+blocked+": "+e.Message);Console.WriteLine("GEM NATURAL FAIL "+e);}
             }
-            Require(failures.Count==0,"all natural gem/robe members: "+string.Join(" | ",failures));Require(cases==112 && hits>=56 && negative>0 && wallHits>0,"every real gem/robe natural first-use and wall case, including native twins that remain able to hit");Console.WriteLine("PASS natural gem/robe cases="+cases+" actualHits="+hits+" blocked="+negative+" nativeWallHits="+wallHits);
+            Require(failures.Count==0,"all executed natural gem/robe members: "+string.Join(" | ",failures));
+            if(string.IsNullOrEmpty(only))Require(cases==112 && hits>=56 && negative>0 && wallHits>0,"every real gem/robe natural first-use and wall case, including native twins that remain able to hit");
+            else Require(cases==1,"the explicit natural gem leaf executes exactly its requested case: "+only);
+            Console.WriteLine("PASS natural gem/robe filter="+(only??"all")+" cases="+cases+" actualHits="+hits+" blocked="+negative+" nativeWallHits="+wallHits);
         }
     }
 }

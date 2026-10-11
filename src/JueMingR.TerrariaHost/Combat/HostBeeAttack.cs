@@ -8,8 +8,10 @@ using Terraria;
 namespace JueMingR.TerrariaHost.Combat
 {
     // AI036 bees are independent native children. Their common static181
-    // immunity and slot order matter even when they have different owners or
-    // body sizes. Unborn random choices remain explicitly representatives.
+    // immunity and slot order matter across local children of different body
+    // sizes. Native Damage gates PVE to Main.myPlayer: a foreign bee still
+    // occupies a birth slot but its local AI cannot write static181. Unborn
+    // random choices remain explicitly representatives.
     internal static class HostBeeAttack
     {
         internal static bool Handles(int type){return type==181 || type==566;}

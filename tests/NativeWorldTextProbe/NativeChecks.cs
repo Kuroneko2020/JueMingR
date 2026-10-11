@@ -141,7 +141,7 @@ namespace NativeWorldTextProbe
             if(scope=="CombatAttackCosts")
             {
                 Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-attack-costs-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);
-                NativeQuickItemChecks.Run(context=>{NativeCombatAimChecks.Initialize();NativeCombatAttackCostChecks.Run(context);},processing:true,shortFeedback:true);return 0;
+                NativeQuickItemChecks.Run(context=>{NativeCombatAimChecks.Initialize();NativeCombatAttackCostChecks.Run(context);},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
             }
             if(scope=="CombatTerrainCpu")
             {

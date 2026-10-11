@@ -30,7 +30,12 @@ namespace JueMingR.Features.Combat
         private bool resultPlayerAdvanced,previousPlayerAdvanced;
         private PredictionFailureLayer resultFailure;
         public PredictionFailureLayer FailureLayer {get;private set;}
-        public void Clear(){previous=default(NpcMotionState);previousPlayer=default(PredictionPlayerMotion);previousPlayerAdvanced=resultPlayerAdvanced=false;priorTick=resultTick=-1;result=null;resultTerrain=null;Array.Clear(work,0,work.Length);}
+        // The host may avoid repeating a candidate miss only after resampling
+        // ALL inputs and checking its independent terrain lease. This marker
+        // excludes trend/history, observation fallback and timed source payloads;
+        // it never permits retimestamping a conditional trajectory.
+        public bool FixedInputResult {get;private set;}
+        public void Clear(){FixedInputResult=false;previous=default(NpcMotionState);previousPlayer=default(PredictionPlayerMotion);previousPlayerAdvanced=resultPlayerAdvanced=false;priorTick=resultTick=-1;result=null;resultTerrain=null;Array.Clear(work,0,work.Length);}
         public NpcTrajectory Prepare(NpcMotionState[] source,int count,int selected,long tick,int required,long epoch,PredictionEnvironment environment,PredictionPlayerMotion player,IPredictionTerrain terrain,bool[] motionRoles=null,bool firstPlayerStepCompleted=false)
         {
             FailureLayer=PredictionFailureLayer.Source;
@@ -53,6 +58,7 @@ namespace JueMingR.Features.Combat
             bool sameResult=result!=null && resultPlayerAdvanced==firstPlayerStepCompleted && resultTick==tick && resultEpoch==epoch && resultCount==count && resultSelected==selected && resultRequired>=required && resultEnvironment.Equals(environment) && resultPlayer.SameSample(player) && ReferenceEquals(resultTerrain,terrain);
             if(sameResult)for(int i=0;i<count;i++)if(!resultSample[i].SameSample(source[i]) || resultRoles[i]!=(motionRoles==null || motionRoles[i])){sameResult=false;break;}
             if(sameResult && terrain.Unchanged){FailureLayer=resultFailure;return result;}
+            FixedInputResult=false;
             bool observed=priorTick+1==tick && previous.Identity.Equals(current.Identity) && SamePhase(previous,current) && !current.JustHit &&
                 Math.Abs(current.X-previous.X)<512 && Math.Abs(current.Y-previous.Y)<512;
             if(observed)
@@ -95,6 +101,7 @@ namespace JueMingR.Features.Combat
             wallPoints[0]=WallPoint(work,count);
             gravityPoints[0]=GravityPoint(gravityEnvironment);
             FailureLayer=PredictionFailureLayer.None;bool observedPlayer=needsPlayer && boundedPlayer,restarted=false;var initialPlayer=player;
+            bool fixedInputs=!gravityNeeded && !wallNeeded;
             for(int future=1;future<=required;future++)
             {
                 // CheckBossIndexes precedes the player action. Keep its full
@@ -205,7 +212,9 @@ namespace JueMingR.Features.Combat
                     }
                     // A shared-life owner is a health dependency, not permission
                     // to replay that otherwise unrelated actor's AI/geometry.
+                    if((motionRoles==null || motionRoles[i]) && !NpcMotion.StructuredModel(state))fixedInputs=false;
                     bool valid=motionRoles!=null && !motionRoles[i]?NpcHealth.Step(ref state,work,count,env,out stop):NpcMotion.Step(ref state,work,count,env,terrain,future,true,out stop);
+                    if(state.TrendApplied)fixedInputs=false;
                     if(valid && motionRoles!=null && !motionRoles[i] && NpcBrainSwarmMotion.Creeper(state))valid=NpcBrainSwarmMotion.LifeOnly(ref state,out stop);
                     if(!valid || !Valid(state))
                     {
@@ -243,6 +252,8 @@ namespace JueMingR.Features.Combat
             if(conditionalVisibility && !needsPlayer)assumptions=(assumptions&~PredictionAssumption.NoPlayerMotionNeeded)|PredictionAssumption.TargetPlayerStationary|PredictionAssumption.CurrentPlayerObservation;
             var quality=NpcMotion.StructuredModel(current)?PredictionQuality.StructuredApproximation:observed?PredictionQuality.ObservedTrend:PredictionQuality.LimitedObservation;
             if(conditionalVisibility && !needsPlayer)quality=PredictionQuality.LimitedObservation;
+            FixedInputResult=fixedInputs && !observedPlayer && quality==PredictionQuality.StructuredApproximation && stop==PredictionStop.None && length==required+1 &&
+                (assumptions&(PredictionAssumption.RandomRepresentative|PredictionAssumption.CurrentPlayerObservation|PredictionAssumption.UnmodeledDamageEffects|PredictionAssumption.UnmodeledStatusEffects))==0;
             result=new NpcTrajectory(current.Identity,tick,++version,assumptions,stop,points,length,PredictionStrategy.RollingConditional,epoch,quality,gravityNeeded && initialPlayer.PlayerToken!=null?new PredictionGravitySources(gravityPoints,length,initialPlayer.PlayerToken,initialPlayer.PlayerIndex,firstPlayerStepCompleted,current.Identity,tick):null,wallNeeded && initialPlayer.PlayerToken!=null?new PredictionWallSources(wallPoints,length,initialPlayer.PlayerToken,initialPlayer.PlayerIndex,current.Identity,tick):null);resultFailure=FailureLayer;return result;
         }
         private static PredictionWallSource WallPoint(NpcMotionState[] group,int count)
@@ -273,6 +284,7 @@ namespace JueMingR.Features.Combat
         private bool AdvancePlayer(ref PredictionPlayerMotion p,PredictionEnvironment e,IPredictionTerrain terrain,out PredictionStop stop)
         {
             stop=PredictionStop.None;float priorGravity=p.GravityDirection;
+            if(!PlayerMotionContinuation.BeginWallFall(ref p,e,terrain,out stop))return false;
             if(!PlayerMotionContinuation.BeginGravity(ref p,e,out stop))return false;
             if(priorGravity!=p.GravityDirection)playerSettled=false;
             bool wallHandled;if(!PlayerMotionContinuation.BeginWall(ref p,e,terrain,out wallHandled,out stop))return false;

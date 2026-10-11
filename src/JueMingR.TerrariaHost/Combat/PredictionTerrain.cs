@@ -11,8 +11,8 @@ namespace JueMingR.TerrariaHost.Combat
     {
         private struct Cell : IEquatable<Cell>
         {
-            internal bool Active,RawActive,RawSolid,RawPlatform,Solid,Platform,StairPlatform,PlatformFrame,ProperPlatformFrame,CuttableFrame,Half,CanSit,Bouncy,DetonatorArmed;internal byte Slope,Liquid,Kind;internal ushort Type,Wall;internal short FrameX,FrameY;internal int Conveyor;
-            public bool Equals(Cell b){return Active==b.Active && RawActive==b.RawActive && RawSolid==b.RawSolid && RawPlatform==b.RawPlatform && Wall==b.Wall && Type==b.Type && ProperPlatformFrame==b.ProperPlatformFrame && CuttableFrame==b.CuttableFrame && Solid==b.Solid && Platform==b.Platform && StairPlatform==b.StairPlatform && PlatformFrame==b.PlatformFrame && Half==b.Half && Slope==b.Slope && Liquid==b.Liquid && Kind==b.Kind && Conveyor==b.Conveyor && CanSit==b.CanSit && Bouncy==b.Bouncy && DetonatorArmed==b.DetonatorArmed && FrameX==b.FrameX && FrameY==b.FrameY;}
+            internal bool Active,RawActive,RawSolid,RawPlatform,Solid,Platform,StairPlatform,PlatformFrame,ProperPlatformFrame,CuttableFrame,Half,CanSit,FallSafe,Bouncy,DetonatorArmed;internal byte Slope,Liquid,Kind;internal ushort Type,Wall;internal short FrameX,FrameY;internal int Conveyor;
+            public bool Equals(Cell b){return Active==b.Active && RawActive==b.RawActive && RawSolid==b.RawSolid && RawPlatform==b.RawPlatform && Wall==b.Wall && Type==b.Type && ProperPlatformFrame==b.ProperPlatformFrame && CuttableFrame==b.CuttableFrame && Solid==b.Solid && Platform==b.Platform && StairPlatform==b.StairPlatform && PlatformFrame==b.PlatformFrame && Half==b.Half && Slope==b.Slope && Liquid==b.Liquid && Kind==b.Kind && Conveyor==b.Conveyor && CanSit==b.CanSit && FallSafe==b.FallSafe && Bouncy==b.Bouncy && DetonatorArmed==b.DetonatorArmed && FrameX==b.FrameX && FrameY==b.FrameY;}
         }
         private readonly Dictionary<int,Cell> cells=new Dictionary<int,Cell>(512);
         // Small direct hot cache for repeated liquid/contact/slope queries.
@@ -31,6 +31,29 @@ namespace JueMingR.TerrariaHost.Combat
         {
             get{if(width!=Main.maxTilesX || height!=Main.maxTilesY)return false;foreach(var pair in cells){Cell current;if(!Read(pair.Key%width,pair.Key/width,out current) || !current.Equals(pair.Value))return false;}return true;}
         }
+        // A candidate can leave this owner before it is considered again.
+        // Freeze only the bounded cells actually read, never a second world.
+        // Reset/candidate switching cannot erase this independent read lease.
+        internal sealed class CellLease
+        {
+            private readonly int width,height;
+            private readonly KeyValuePair<int,Cell>[] values;
+            internal int Count {get{return values.Length;}}
+            private CellLease(int width,int height,Dictionary<int,Cell> cells)
+            {this.width=width;this.height=height;values=new KeyValuePair<int,Cell>[cells.Count];int at=0;foreach(var pair in cells)values[at++]=pair;}
+            internal bool Current
+            {
+                get
+                {
+                    if(width<=0 || width!=Main.maxTilesX || height!=Main.maxTilesY)return false;
+                    foreach(var pair in values){Cell current;if(!Read(pair.Key%width,pair.Key/width,out current) || !current.Equals(pair.Value))return false;}
+                    return true;
+                }
+            }
+            internal static CellLease Capture(PredictionTerrain terrain)
+            {return new CellLease(terrain.width,terrain.height,terrain.cells);}
+        }
+        internal CellLease FreezeCells(){return CellLease.Capture(this);}
         private static bool Read(int x,int y,out Cell value)
         {
             value=default(Cell);if(Main.tile==null || x<0 || y<0 || x>=Main.maxTilesX || y>=Main.maxTilesY)return false;
@@ -40,12 +63,12 @@ namespace JueMingR.TerrariaHost.Combat
             // AI007 uses full furniture frames. Unrelated animated frames
             // must not invalidate every collision-only terrain dependency.
             bool canSit=TileID.Sets.CanBeSatOnForNPCs[tile.type];
-            value=new Cell{Active=active,RawActive=tile.active(),RawSolid=Main.tileSolid[tile.type],RawPlatform=Main.tileSolidTop[tile.type],Wall=tile.wall,Type=tile.type,ProperPlatformFrame=frame>=0 && frame<=7 || frame>=12 && frame<=16 || frame>=25 && frame<=26,CuttableFrame=tile.type!=254 || tile.frameX>=144,Solid=active && Main.tileSolid[tile.type],Platform=active && Main.tileSolidTop[tile.type],StairPlatform=TileID.Sets.Platforms[tile.type],PlatformFrame=tile.frameY==0,Half=tile.halfBrick(),Slope=tile.slope(),Liquid=tile.liquid,Kind=(byte)tile.liquidType(),Conveyor=TileID.Sets.ConveyorDirection[tile.type],CanSit=canSit,Bouncy=Main.tileBouncy[tile.type],DetonatorArmed=tile.type==411 && tile.frameY==0 && tile.frameX<36,FrameX=canSit?tile.frameX:(short)0,FrameY=canSit?tile.frameY:(short)0};return true;
+            value=new Cell{Active=active,RawActive=tile.active(),RawSolid=Main.tileSolid[tile.type],RawPlatform=Main.tileSolidTop[tile.type],Wall=tile.wall,Type=tile.type,ProperPlatformFrame=frame>=0 && frame<=7 || frame>=12 && frame<=16 || frame>=25 && frame<=26,CuttableFrame=tile.type!=254 || tile.frameX>=144,Solid=active && Main.tileSolid[tile.type],Platform=active && Main.tileSolidTop[tile.type],StairPlatform=TileID.Sets.Platforms[tile.type],PlatformFrame=tile.frameY==0,Half=tile.halfBrick(),Slope=tile.slope(),Liquid=tile.liquid,Kind=(byte)tile.liquidType(),Conveyor=TileID.Sets.ConveyorDirection[tile.type],CanSit=canSit,FallSafe=tile.active() && (TileID.Sets.Clouds[tile.type] || tile.type==666 || tile.type==19 && tile.frameY/18==49),Bouncy=Main.tileBouncy[tile.type],DetonatorArmed=tile.type==411 && tile.frameY==0 && tile.frameX<36,FrameX=canSit?tile.frameX:(short)0,FrameY=canSit?tile.frameY:(short)0};return true;
         }
         public bool Tile(int x,int y,out PredictionTile tile,out PredictionStop stop)
         {
             Cell c;tile=default(PredictionTile);if(!CellAt(x,y,out c,out stop))return false;
-            tile=new PredictionTile{Active=c.Active,RawActive=c.RawActive,RawSolid=c.RawSolid,Wall=c.Wall,Solid=c.Solid,SolidTop=c.Platform,Platform=c.StairPlatform,Half=c.Half,Slope=c.Slope,Liquid=c.Liquid,Lava=c.Kind==1,ShimmerLiquid=c.Kind==3,Type=c.Type,ProperPlatformFrame=c.ProperPlatformFrame,SurfacePlatform=c.PlatformFrame,CanSit=c.CanSit,FrameX=c.FrameX,FrameY=c.FrameY};return true;
+            tile=new PredictionTile{Active=c.Active,RawActive=c.RawActive,RawSolid=c.RawSolid,Wall=c.Wall,Solid=c.Solid,SolidTop=c.Platform,Platform=c.StairPlatform,Half=c.Half,Slope=c.Slope,Liquid=c.Liquid,Lava=c.Kind==1,ShimmerLiquid=c.Kind==3,Type=c.Type,ProperPlatformFrame=c.ProperPlatformFrame,SurfacePlatform=c.PlatformFrame,CanSit=c.CanSit,FallSafe=c.FallSafe,FrameX=c.FrameX,FrameY=c.FrameY};return true;
         }
         private bool CellAt(int x,int y,out Cell cell,out PredictionStop stop)
         {

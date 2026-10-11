@@ -7,9 +7,23 @@ namespace JueMingR.Features.Combat
     // forecasts and attack-origin preparation. Never Player.Update or item AI.
     public static class PlayerMotionContinuation
     {
+        // Only the Wall helper consumes these two player regen clocks. A
+        // completed fixed-input candidate with no Wall source/buff/flag can
+        // compare their value copies without invalidating on every native
+        // Player.Update. Keep HP, immunity, controls and every other fact exact.
+        // The caller must report any timeline/environment Wall source; this
+        // helper does not weaken the general observation SameSample contract.
+        public static bool SameFixedInput(PredictionPlayerMotion a,PredictionPlayerMotion b,bool wallSourcePresent)
+        {
+            if(!wallSourcePresent && !a.WallSourceExpected && !b.WallSourceExpected && !a.WallGross && !b.WallGross && !a.WallTongued && !b.WallTongued &&
+                a.WallHorrifiedTicks==0 && b.WallHorrifiedTicks==0 && a.WallTonguedTicks==0 && b.WallTonguedTicks==0)
+            {b.WallRegenTime=a.WallRegenTime;b.WallRegenCount=a.WallRegenCount;}
+            return a.SameSample(b);
+        }
         public static bool Advance(ref PredictionPlayerMotion p,PredictionEnvironment e,IPredictionTerrain terrain,out PredictionStop stop)
         {
             stop=PredictionStop.None;
+            if(!BeginWallFall(ref p,e,terrain,out stop))return false;
             if(!BeginGravity(ref p,e,out stop))return false;
             bool wallHandled;if(!BeginWall(ref p,e,terrain,out wallHandled,out stop))return false;if(wallHandled)return true;
             if(!p.Complex || p.Hover)
@@ -30,6 +44,15 @@ namespace JueMingR.Features.Combat
             p.X=body.X;p.Y=body.Y;p.Vx=body.Vx;p.Vy=body.Vy;
             PlayerVerticalMotion.AfterFluid(ref p,body.Wet,body.Honey,body.Lava,body.Shimmer);
             if(!ClampBorders(ref p,out stop))return false;CompleteItemCheck(ref p);return true;
+        }
+        // Fall reads the previous completed tongue/gravity/effects before the
+        // native immunity, ResetEffects and buff stages. BeforeNpc's completed
+        // player action never calls Advance, so this consumer is not replayed.
+        public static bool BeginWallFall(ref PredictionPlayerMotion p,PredictionEnvironment e,IPredictionTerrain terrain,out PredictionStop stop)
+        {
+            stop=PredictionStop.None;
+            bool needed=p.WallSourceExpected || e.WallSources!=null || e.WallSource.Captured || p.WallGross || p.WallTongued || p.WallHorrifiedTicks>0 || p.WallTonguedTicks>0;
+            return !needed || NpcWallBossMotion.AdvanceFall(ref p,e,terrain,out stop);
         }
         // Called after the one gravity clock, before any ordinary controls or
         // settled shortcut. Tongue owns its complete native movement branch.

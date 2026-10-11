@@ -32,7 +32,7 @@ namespace JueMingR.TerrariaHost.Combat
             var pose=(Player)copy.Invoke(player,null);HostAttackPlayerFrame.ApplyPose(pose,motion);Vector2 origin=pose.RotatedRelativePoint(pose.MountedCenter);
             var receive=HostAttackReceive.Capture(player,sample,timeline.Identity.Slot,clock.BeforeNpc,clock.NextWorld);
             var targets=new List<Target>();if(stage==3)for(int i=0;i<Main.maxNPCs;i++)if(Main.npc[i].active)targets.Add(new Target(Main.npc[i]));
-            var directions=new Vector2[9];int used=0,first=clock.FirstTick+delay;
+            var directions=new Vector2[stage==4?15:9];int used=0,first=clock.FirstTick+delay;
             var initialObstacles=new HostAttackObstacles(player,sample,timeline,clock.LaunchDelay+delay,clock.BeforeNpc,clock.NextWorld);
             HostAttackObstacles unlimitedObstacles=null;var unlimitedReceive=receive;
             if(stage==0)
@@ -46,14 +46,31 @@ namespace JueMingR.TerrariaHost.Combat
                 unlimitedReceive=HostAttackReceive.Capture(player,unlimited,timeline.Identity.Slot,clock.BeforeNpc,clock.NextWorld);
             }
             obstacles=initialObstacles;
-            for(int seed=0;seed<9 && first<timeline.Count;seed++)
+            for(int seed=0;seed<directions.Length && first<timeline.Count;seed++)
             {
-                var b=timeline[Math.Min(timeline.Count-1,first+seed*4)].ProjectileReceiveBounds;var delta=new Vector2(b.CenterX,b.CenterY)-origin;
-                int travel=Math.Min(360,Math.Max(1,(int)Math.Ceiling(delta.Length()/ammo.Speed)));
-                // A finite gravity/impulse seed is checked by the full motor;
-                // random muzzle spread stays a representative, never an RNG draw.
-                float drift=0,vy=0;for(int k=1;k<=travel;k++){Gravity(stage,k,ref vy);drift+=vy;}
-                Vector2 unit=new Vector2(delta.X,delta.Y-drift).SafeNormalize(Vector2.UnitX*player.direction);
+                Vector2 unit;
+                if(seed<9)
+                {
+                    var b=timeline[Math.Min(timeline.Count-1,first+seed*4)].ProjectileReceiveBounds;var delta=new Vector2(b.CenterX,b.CenterY)-origin;
+                    int travel=Math.Min(360,Math.Max(1,(int)Math.Ceiling(delta.Length()/ammo.Speed)));
+                    // A finite gravity/impulse seed is checked by the full motor;
+                    // random muzzle spread stays a representative, never an RNG draw.
+                    float drift=0,vy=0;for(int k=1;k<=travel;k++){Gravity(stage,k,ref vy);drift+=vy;}
+                    unit=new Vector2(delta.X,delta.Y-drift).SafeNormalize(Vector2.UnitX*player.direction);
+                }
+                else
+                {
+                    // The native helix changes position before movement. A
+                    // stationary target makes all nine gravity-only seeds
+                    // identical, and both siblings can pass above/below it.
+                    // Six bounded seeds invert the actual stage4 motor, with
+                    // the second sibling's initial localAI=46 included. They
+                    // still need the full terrain/receiver replay below.
+                    var b=timeline[first].ProjectileReceiveBounds;var delta=new Vector2(b.CenterX,b.CenterY)-origin;
+                    int travel=Math.Min(360,Math.Max(1,(int)Math.Ceiling(delta.Length()/ammo.Speed)+(seed-9)%3-1));
+                    b=timeline[Math.Min(timeline.Count-1,first+(travel-1)/sample.MaxUpdates)].ProjectileReceiveBounds;
+                    unit=HelixDirection(sample,origin,new Vector2(b.CenterX,b.CenterY),ammo.Speed,travel,(seed-9)/3);
+                }
                 bool duplicate=false;for(int i=0;i<used;i++)if(directions[i]==unit){duplicate=true;break;}if(duplicate)continue;directions[used++]=unit;
                 int members=stage==4?2:stage==5?3:1;
                 for(int member=0;member<members;member++)
@@ -85,6 +102,23 @@ namespace JueMingR.TerrariaHost.Combat
                 }
             }
             return null;
+        }
+        private static Vector2 HelixDirection(Projectile sample,Vector2 origin,Vector2 target,float speed,int steps,int sibling)
+        {
+            Vector2 delta=target-origin,unit=delta.SafeNormalize(Vector2.UnitX);
+            var shot=(Projectile)copy.Invoke(sample,null);shot.ai=new float[3];shot.localAI=new float[3];shot.ai[0]=4;shot.ai[1]=sibling;
+            for(int refinement=0;refinement<3;refinement++)
+            {
+                shot.Center=origin;shot.velocity=unit*speed;shot.localAI[0]=0;
+                for(int step=0;step<steps;step++)
+                {
+                    Advance(shot,null,0,null,null);shot.position+=shot.velocity;
+                }
+                Vector2 displacement=shot.Center-origin;
+                if(displacement.LengthSquared()==0 || delta.LengthSquared()==0)break;
+                unit=unit.RotatedBy(MathHelper.WrapAngle(delta.ToRotation()-displacement.ToRotation()));
+            }
+            return unit;
         }
         private static AttackContact Explosion(NpcTrajectory timeline,int tick,Vector2 aim,Vector2 center,int type)
         {int side=type==717 || type==718?240:128;return AttackIntercept.BodyContact(timeline,tick,0,aim.X,aim.Y,center.X,center.Y,side,side,AttackConfidence.Representative);}

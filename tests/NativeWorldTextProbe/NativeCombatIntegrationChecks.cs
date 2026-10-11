@@ -20,6 +20,14 @@ namespace NativeWorldTextProbe
             harmony.Patch(typeof(Player).GetMethod("TryUpdateChannel",Flags),postfix:new HarmonyMethod(typeof(NativeCombatIntegrationChecks).GetMethod("Born",Flags)));
             try
             {
+                string leaf=Environment.GetEnvironmentVariable("JMR_COMBAT_INTEGRATION_ONLY");
+                if(leaf=="usage"){NativeCombatUsageChecks.Run(context);return;}
+                if(leaf=="phases"){NativeCombatPhaseChecks.Run(context);return;}
+                if(leaf=="celebration"){NativeCombatCelebrationChecks.Run(context);return;}
+                if(leaf=="selection"){NativeCombatSelectionPreviewChecks.Run(context);return;}
+                if(leaf=="control-preview"){NativeCombatControlPreviewChecks.Run(context);return;}
+                if(leaf=="candidate-reuse"){NativeCombatCandidateReuseChecks.Run(context);return;}
+                if(!string.IsNullOrEmpty(leaf))throw new ArgumentException("Unknown combat integration leaf: "+leaf);
                 NativeCombatAimQualificationChecks.Run(context);
                 NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,95,0,0);p.position=new Vector2(700,646);p.inventory[54].SetDefaults(97);p.inventory[54].stack=999;p.releaseUseItem=true;Main.screenPosition=new Vector2(600,400);
                 var n=Main.npc[2];n.SetDefaults(3);n.whoAmI=2;n.active=true;n.position=new Vector2(1020,646);n.velocity=Vector2.Zero;n.aiStyle=-1;n.noGravity=true;n.life=n.lifeMax=10000;n.shimmerTransparency=0;Array.Clear(n.buffType,0,n.buffType.Length);Array.Clear(n.buffTime,0,n.buffTime.Length);Array.Clear(n.immune,0,n.immune.Length);
@@ -42,10 +50,12 @@ namespace NativeWorldTextProbe
                 NativeCombatCadenceAimChecks.Run(context);
                 NativeCombatResourceChecks.Run(context);
                 NativeCombatCandidateDemandChecks.Run(context);
+                NativeCombatCandidateReuseChecks.Run(context);
                 NativeCombatSelectionPreviewChecks.Run(context);
                 NativeCombatControlPreviewChecks.Run(context);
                 NativeCombatPlacementChecks.Run(context);
                 NativeCombatNeighborChecks.Run(context);
+                NativeCombatUsageChecks.Run(context);
             }
             finally{harmony.UnpatchAll(harmony.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());}
         }

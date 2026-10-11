@@ -66,6 +66,10 @@ namespace NativeWorldTextProbe
         }
         internal static void Continuous(object context,NpcPredictionCache cache,Action step,string output)
         {
+            string selectedStart=System.Environment.GetEnvironmentVariable("JMR_TREE_NATURAL_START");int sceneStart=0;
+            if(!string.IsNullOrEmpty(selectedStart))Require(int.TryParse(selectedStart,NumberStyles.Integer,CultureInfo.InvariantCulture,out sceneStart) && sceneStart>=0 && sceneStart<=7,"Tree natural scene start must be 0 through 7.");
+            var scenes=new List<int>();for(int scene=sceneStart;scene<8;scene++)scenes.Add(scene);
+            Console.WriteLine("TREE57 NATURAL start="+sceneStart+" scenes="+string.Join("/",scenes)+" framesPerScene=3000");
             object host=Get(context,"CombatObservation"),source=Get(host,"Prediction");Require(GetOptional(source,"Native")==null,"AI57 default prediction is the synchronous scalar producer.");
             var read=source.GetType().GetMethod("Read",Flags);var tracking=source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcTrackingObservation",true).GetMethod("Capture",Flags);long session=(long)Get(host,"Session");var terrain=(IPredictionTerrain)Get(source,"Terrain");
             var oracle=new Harmony("JueMingR.Tests.TreeBossNativeSlotAction");oracle.Patch(typeof(NPC).GetMethod("UpdateNPC",Flags),prefix:new HarmonyMethod(typeof(NativeCombatTreeBossChecks),nameof(Before)),postfix:new HarmonyMethod(typeof(NativeCombatTreeBossChecks),nameof(After)));
@@ -73,7 +77,7 @@ namespace NativeWorldTextProbe
             try
             {
             var rows=new List<string>{"scene,frame,life,a0,a1,x,y,vx,vy,selected,published,count,stop,matched,longMatched,cross"};var failures=new List<string>();int total=0,totalLong=0,totalCross=0;var familyPhases=new Dictionary<int,HashSet<int>>{{325,new HashSet<int>()},{344,new HashSet<int>()}};
-            foreach(int scene in new[]{0,1,2,3,4,5,6,7})
+            foreach(int scene in scenes)
             {
                 try
                 {
@@ -134,8 +138,13 @@ namespace NativeWorldTextProbe
                 catch(Exception error){failures.Add("scene"+scene+":"+error.Message);Console.WriteLine("FAIL original AI57 natural scene="+scene+" "+error);}
                 finally{before=after=null;hurt=null;}
             }
-            Require(familyPhases[325].Contains(1) && familyPhases[325].Contains(2) && familyPhases[325].Contains(3) && familyPhases[325].Contains(4) && familyPhases[344].Contains(1) && familyPhases[344].Contains(2),"Actual natural phase choices cover both members and the low-life 325 branches.");
-            Directory.CreateDirectory(output);File.WriteAllLines(Path.Combine(output,"tree-boss-scenes.csv"),rows);Require(failures.Count==0,"AI57 complete natural matrix: "+string.Join(" | ",failures));Console.WriteLine("PASS AI57 complete eight-scene coverage matched="+total+" long="+totalLong+" cross="+totalCross);
+            // A resumed leaf only certifies its executed scenes. Low-life 325
+            // choices are required when scene1/2 ran; skipped member/health
+            // bands cannot acquire a coverage claim from an empty aggregate.
+            if(sceneStart<=3)Require(familyPhases[325].Contains(1) && familyPhases[325].Contains(2),"Executed 325 scenes observe their normal natural phase choices.");
+            if(sceneStart<=2)Require(familyPhases[325].Contains(3) && familyPhases[325].Contains(4),"Executed low-life 325 scenes observe both additional natural choices.");
+            Require(familyPhases[344].Contains(1) && familyPhases[344].Contains(2),"Executed 344 scenes observe both natural phase choices.");
+            Directory.CreateDirectory(output);File.WriteAllLines(Path.Combine(output,"tree-boss-scenes.csv"),rows);Require(failures.Count==0,"AI57 executed natural scenes="+string.Join("/",scenes)+": "+string.Join(" | ",failures));Console.WriteLine("PASS AI57 executed natural scenes="+string.Join("/",scenes)+" sceneCount="+scenes.Count+" matched="+total+" long="+totalLong+" cross="+totalCross);
             }
             finally{before=after=null;hurt=null;oracle.UnpatchAll(oracle.Id);}
         }

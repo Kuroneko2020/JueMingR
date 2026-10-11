@@ -30,6 +30,8 @@ namespace NativeWorldTextProbe
             audit.Patch(typeof(Projectile).GetMethod("Kill",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBeeChecks).GetMethod("BeforeKill",Flags)));
             try
             {
+                ForeignOwnerGate(context);
+                if(Environment.GetEnvironmentVariable("JMR_BEE_ORACLE_ONLY")=="owner")return;
                 int cases=0,actions=0,bounces=0;
                 foreach(int type in new[]{181,566})foreach(int scene in Enumerable.Range(0,12))
                 {
@@ -56,6 +58,40 @@ namespace NativeWorldTextProbe
                 Workload(context,a,model);
             }
             finally{watchKill=false;audit.UnpatchAll(audit.Id);Main.windPhysics=wind;Main.rand=random;}
+        }
+        private static void ForeignOwnerGate(object context)
+        {
+            var foreignPlayer=Main.player[254];bool oldActive=foreignPlayer.active;
+            try
+            {
+                foreach(int type in new[]{181,566})foreach(bool localFirst in new[]{false,true})
+                {
+                    var p=Reset(context);foreignPlayer.active=true;
+                    var target=Target(2,new Vector2(940,320));target.width=target.height=100;
+                    Array.Clear(target.buffType,0,target.buffType.Length);Array.Clear(target.buffTime,0,target.buffTime.Length);
+                    target.immune[254]=0;Projectile.perIDStaticNPCImmunity[181,2]=0;
+                    Func<int,Projectile> born=owner=>
+                    {
+                        int slot=Projectile.NewProjectile(p.GetProjectileSource_Item(p.HeldItem),target.Center,Vector2.Zero,type,40,0,owner);
+                        var shot=Main.projectile[slot];shot.tileCollide=false;return shot;
+                    };
+                    var foreign=born(254);var local=born(p.whoAmI);int initialPen=local.penetrate,initialAlpha=foreign.alpha,life=target.life;
+                    if(localFirst){local.Update(local.whoAmI);Require(target.life<life && local.penetrate==initialPen-1,"overlapping local Bee has real native Update/Damage");}
+                    int stableLife=target.life,localImmune=target.immune[p.whoAmI],foreignImmune=target.immune[254];uint stableStatic=Projectile.perIDStaticNPCImmunity[181,2];
+                    // Both actors have exactly the same qualifying body. The
+                    // active foreign owner rules out Update's inactive-owner
+                    // Kill; no owner immunity or miss can explain this gate.
+                    foreign.Damage();
+                    Require(target.life==stableLife && target.immune[p.whoAmI]==localImmune && target.immune[254]==foreignImmune && Projectile.perIDStaticNPCImmunity[181,2]==stableStatic,"foreign Damage cannot write PVE/static181 despite an overlapping unblocked body");
+                    int left=foreign.timeLeft;foreign.Update(foreign.whoAmI);
+                    Require(foreign.active && foreign.alpha<initialAlpha && foreign.timeLeft<left,"foreign Bee's original AI/subcycle actually advances with its owner active");
+                    Require(target.life==stableLife && target.immune[p.whoAmI]==localImmune && target.immune[254]==foreignImmune && Projectile.perIDStaticNPCImmunity[181,2]==stableStatic,"foreign Update preserves shared181 and both owner histories");
+                    if(!localFirst){life=target.life;local.Update(local.whoAmI);Require(target.life<life && local.penetrate==initialPen-1 && target.immune[254]==foreignImmune,"local Bee after foreign Update still deals actual damage through its own owner policy");}
+                    Require(Projectile.perIDStaticNPCImmunity[181,2]==Main.GameUpdateCount+(uint)local.idStaticNPCHitCooldown,"local Damage alone writes the native shared181 expiry");
+                    Console.WriteLine("BEE ownerGate type="+type+" localFirst="+localFirst+" life="+target.life+" expiry="+Projectile.perIDStaticNPCImmunity[181,2]+" foreignActive="+foreign.active);
+                }
+            }
+            finally{foreignPlayer.active=oldActive;}
         }
         private static void Births(object context,Assembly a,Type model)
         {

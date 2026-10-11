@@ -38,7 +38,13 @@ namespace NativeWorldTextProbe
                 Require((bool)action.Invoke(null,args),"Observed negative Brain fade advances its actual native mode.");var result=(NpcMotionState)args[0];
                 Require(result.A3==(mode==0?255:245) && (mode!=0 || result.X==1520 && result.Y==1865),"Singleplayer25/client-server15 fade and integer half teleport are distinct.");
             }
-            foreach(bool good in new[]{false,true})for(int sample=0;sample<8192;sample++)
+            // R22 sample2 is the actual x86 regression. The earlier private
+            // 16384-case probe already distinguished native field stores from
+            // the wrong float reciprocal. Recheck that failure, sign changes
+            // and modulo boundaries here; useful coverage is the native
+            // multi-step phase/path check below, not another unchanged sweep.
+            int mathCases=0;
+            foreach(bool good in new[]{false,true})foreach(int sample in new[]{0,1,2,5,6,7,39,51,78,79,96,97,102,103,112,113,1023,4095,8191})
             {
                 child.BrainBossValid=true;child.BrainNetMode=0;child.A0=1;child.JustHit=false;child.Vx=(sample%103-51)*.0713f;child.Vy=(sample%79-39)*.0317f;
                 float px=child.Bounds.CenterX+sample%113+1.125f,py=child.Bounds.CenterY-sample%97-.375f;
@@ -47,7 +53,9 @@ namespace NativeWorldTextProbe
                 args=new object[]{child,new PredictionEnvironment{Expert=true,GoodWorld=good,PlayerX=px,PlayerY=py},null,1,PredictionStop.None,new[]{owner,child},2,false};
                 Require((bool)action.Invoke(null,args),"Known observed Expert Creeper charge.");var result=(NpcMotionState)args[0];
                 Require(result.Vx==velocity.X && result.Vy==velocity.Y,"Original XNA Creeper inertia/division field stores sample="+sample+" good="+good+" input="+child.Vx.ToString("R")+","+child.Vy.ToString("R")+" delta="+(px-child.Bounds.CenterX).ToString("R")+","+(py-child.Bounds.CenterY).ToString("R")+" nativeAim="+desired.X.ToString("R")+","+desired.Y.ToString("R")+" predicted="+result.Vx.ToString("R")+","+result.Vy.ToString("R")+" actual="+velocity.X.ToString("R")+","+velocity.Y.ToString("R"));
+                mathCases++;
             }
+            Console.WriteLine("PASS original x86 Creeper regression/field-store equivalents cases="+mathCases+" originalFailure=sample2-goodFalse");
             GravityBoundaries();
             Console.WriteLine("PASS Brain/Creeper exact relation, native random consumer, three network fade modes and integer teleport boundaries");
         }
@@ -132,12 +140,16 @@ namespace NativeWorldTextProbe
         }
         internal static void Continuous(object context,NpcPredictionCache cache,Action step,string output)
         {
+            string selectedMode=System.Environment.GetEnvironmentVariable("JMR_BRAIN_NATURAL_MODE");int modeFilter=-1;
+            if(!string.IsNullOrEmpty(selectedMode))Require(int.TryParse(selectedMode,out modeFilter) && modeFilter>=0 && modeFilter<=2,"Brain natural leaf mode must be 0 Classic, 1 Expert or 2 GoodWorld.");
+            Console.WriteLine("BRAIN NATURAL filter="+(modeFilter<0?"all3":modeFilter.ToString(CultureInfo.InvariantCulture))+" framesPerMode=2600 originalSample2Checked=true");
             var io=new Inputs(context);var observer=new Harmony("jmr.brain.swarm.native");observer.Patch(typeof(NPC).GetMethod("UpdateNPC",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBrainSwarmChecks),nameof(Before)),postfix:new HarmonyMethod(typeof(NativeCombatBrainSwarmChecks),nameof(After)));
             var failures=new List<string>();var rows=new List<string>{"mode,frame,selected,type,phase,clock,count,stop,matched,long,current,random,cross"};long total=0,totalLong=0;
             try
             {
                 foreach(int mode in new[]{0,1,2})
                 {
+                    if(modeFilter>=0 && mode!=modeFilter)continue;
                     try
                     {
                         World(mode);var p=Main.LocalPlayer;p.isControlledByFilm=true;p.releaseJump=true;p.statLife=p.statLifeMax=p.statLifeMax2=5000;p.immune=true;p.immuneTime=1000000;
@@ -177,7 +189,7 @@ namespace NativeWorldTextProbe
                 }
             }
             finally{before=after=null;observer.UnpatchAll(observer.Id);Directory.CreateDirectory(output);File.WriteAllLines(Path.Combine(output,"brain-swarm-scenes.csv"),rows);}
-            Require(failures.Count==0,"Complete Brain/swarm natural matrix: "+string.Join(" | ",failures));Console.WriteLine("PASS Brain/swarm natural matched="+total+" long="+totalLong);
+            Require(failures.Count==0,"Brain/swarm executed natural modes filter="+(modeFilter<0?"all3":modeFilter.ToString(CultureInfo.InvariantCulture))+": "+string.Join(" | ",failures));Console.WriteLine("PASS Brain/swarm natural filter="+(modeFilter<0?"all3":modeFilter.ToString(CultureInfo.InvariantCulture))+" matched="+total+" long="+totalLong);
         }
         private static int Index(NpcMotionState[] group,int slot){for(int i=0;i<group.Length;i++)if(group[i].Identity.Slot==slot)return i;throw new InvalidOperationException("Missing original Brain/swarm slot="+slot);}
         private static NPC Actor(int slot,int type,Vector2 position){var n=Main.npc[slot]=new NPC{whoAmI=slot};n.SetDefaults(type);n.active=true;n.target=Main.myPlayer;n.position=position;return n;}

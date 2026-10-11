@@ -23,7 +23,7 @@ namespace NativeWorldTextProbe
             foreach(string name in new[]{"HandleSpecialEvent","HandleRunning","HandleMining"})audit.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
             audit.Patch(typeof(Projectile).GetMethod("Damage",Flags),prefix:new HarmonyMethod(typeof(NativeCombatFlameChecks),nameof(BeforeDamage)),postfix:new HarmonyMethod(typeof(NativeCombatFlameChecks),nameof(AfterDamage)));
             audit.Patch(AccessTools.Method(typeof(NPC),"StrikeNPC",new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)}),postfix:new HarmonyMethod(typeof(NativeCombatFlameChecks),nameof(Strike)));
-            try{Births(context,a);Motor(context,a);Shapes(context,a);DamageWindow(context);Natural(context,host,combat);}
+            try{if(Environment.GetEnvironmentVariable("JMR_FLAME_ONLY")!="natural"){Births(context,a);Motor(context,a);Shapes(context,a);DamageWindow(context);}Natural(context,host,combat);}
             finally{target=null;damageDepth=0;Main.windPhysics=wind;audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());}
         }
         private static Player Reset(object context,int weapon)
@@ -96,7 +96,21 @@ namespace NativeWorldTextProbe
                 for(int i=0;i<3;i++){NativeCombatSelectionPreviewChecks.Step(context,target.Center,false,true);preview=(AttackContact)GetOptional(attack,"ExpectedPreview");Require(!Main.projectile.Any(q=>q.active),"idle flame preview creates no native shot");}
                 Require(wall || preview!=null,"unpressed native flamethrower has a useful preview "+weapon+"/"+direction+"/"+distance);
                 if(weapon==506 && direction==1 && distance==20 && !wall)Workload(combat.GetType().Assembly,p,preview);
-                if(preview!=null){var impact=Get(Get(host,"World"),"Impact");Call(impact,"Capture");var zoom=Main.GameViewMatrix.ZoomMatrix;Call(impact,"Project",zoom,Matrix.Invert(zoom));var b=preview.Timeline[preview.ReceiveTick].Bounds;Require((bool)Get(impact,"Visible") && Vector2.DistanceSquared((Vector2)Get(impact,"Position"),Vector2.Transform(new Vector2(b.CenterX,b.CenterY)-Main.screenPosition,zoom))<.001f,"flame marker uses the same target path and receive epoch");}
+                if(preview!=null)
+                {
+                    var impact=Get(Get(host,"World"),"Impact");Call(impact,"Capture");var zoom=Main.GameViewMatrix.ZoomMatrix;Call(impact,"Project",zoom,Matrix.Invert(zoom));var b=preview.Timeline[preview.ReceiveTick].Bounds;
+                    var center=new Vector2(b.CenterX,b.CenterY);var projected=Vector2.Transform(center-Main.screenPosition,zoom);
+                    bool inView=projected.X>=-4 && projected.Y>=-4 && projected.X<=Main.screenWidth+4 && projected.Y<=Main.screenHeight+4;
+                    Require((bool)Get(impact,"Visible")==inView && Vector2.DistanceSquared((Vector2)Get(impact,"Position"),projected)<.001f,"flame receive-time path centre is projected exactly and hidden when outside the viewport");
+                    // The original left/far case projected to (-185,255). Its
+                    // invisible marker was correct. Pan only the camera, then
+                    // project the very same captured contact; do not re-solve.
+                    if(!inView)
+                    {
+                        Main.screenPosition=center-new Vector2(Main.screenWidth/2,Main.screenHeight/2);Call(impact,"Project",zoom,Matrix.Invert(zoom));
+                        Require((bool)Get(impact,"Visible") && Vector2.DistanceSquared((Vector2)Get(impact,"Position"),Vector2.Transform(center-Main.screenPosition,zoom))<.001f,"same flame contact returns on screen without a new preparation");
+                    }
+                }
                 NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,true,true,30,true,true));long start=Main.GameUpdateCount;bool born=false;
                 for(int frame=1;frame<=60 && firstHit<0;frame++){NativeCombatSelectionPreviewChecks.Step(context,target.Center,frame==1);born|=Main.projectile.Any(q=>q.active && q.type==85 && q.owner==p.whoAmI);}
                 Require(born && (preview==null?firstHit<0:firstHit==preview.Timeline.SampleTick+preview.Tick),"original first flame Damage agrees with idle preview "+weapon+"/"+direction+"/"+distance+"/"+wall+" actual="+(firstHit<0?-1:firstHit-start)+" preview="+preview?.Tick);

@@ -99,14 +99,19 @@ namespace NativeWorldTextProbe
                 var points=new NpcTrajectoryPoint[5];
                 for(int i=0;i<points.Length;i++)points[i]=new NpcTrajectoryPoint(i,new NpcMotionState{Identity=id,X=n.position.X,Y=n.position.Y,Width=n.width,Height=n.height,CanReceive=i>=3,ReflectsProjectiles=i>0 && i<3});
                 var path=new NpcTrajectory(id,(long)Main.GameUpdateCount,1,PredictionAssumption.NoNewHits,PredictionStop.None,points,points.Length,PredictionStrategy.RollingConditional);
-                var origin=n.Center-new Vector2(20,0);int slot=Projectile.NewProjectile(p.GetProjectileSource_Item(p.HeldItem),origin,Vector2.UnitX,14,80,0,p.whoAmI);var q=Main.projectile[slot];q.oldVelocity=q.velocity;
+                // The guard is only 28px wide: Center-20 leaves the 4px
+                // bullet outside even after this four-step horizon. Use an
+                // actual overlap but retain a nonzero inverse-solver ray.
+                var origin=n.Center-new Vector2(5,0);int slot=Projectile.NewProjectile(p.GetProjectileSource_Item(p.HeldItem),origin,Vector2.UnitX,14,80,0,p.whoAmI);var q=Main.projectile[slot];q.oldVelocity=q.velocity;
+                Require(q.Hitbox.Intersects(n.Hitbox),"guard-to-receive counterexample starts with a real original pre-NPC body overlap");
                 var obstacles=Activator.CreateInstance(obstacleType,Flags,null,new object[]{p,q,path,0,true,false},null);var pass=obstacleType.GetMethod("PassOuter",Flags);var before=obstacleType.GetMethod("BeforeNpc",Flags);
                 Func<int,int,float,float,bool> damage=(k,t,x,y)=>(bool)pass.Invoke(obstacles,new object[]{k,t,k,x,y,0});
                 Func<int,int,float,float,bool> first=(k,t,x,y)=>(bool)before.Invoke(obstacles,new object[]{t,k,x,y,0,0});
                 var motion=new AttackMotion(1,0,0,1,q.width,q.height,4);
                 var old=AttackIntercept.Solve(origin.X,origin.Y,motion,path,0,0,damagePassage:damage);
                 var corrected=AttackIntercept.Solve(origin.X,origin.Y,motion,path,0,0,damagePassage:damage,beforeMotion:first);
-                Require(old!=null && old.Tick==3 && corrected==null,"damage-only reflection falsely survives an invulnerable guard into its later receive window");
+                Require(old!=null && old.Tick==3,"omitting NPC reflection reaches the unchanged later receive window at contact3");
+                Require(corrected==null,"pre-NPC reflection retires this shot before the later receive window");
                 n.UpdateNPC(2);Require(q.reflected && !q.friendly && n.dontTakeDamage,"the original NPC scan has already reflected this shot before any possible selected Damage");
                 Console.WriteLine("PASS native guard-to-receive counterexample: omittedNpcPhase=contact3 actualReflectedBeforeDamage corrected=noContact");
             }

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using JueMingR.Features.Combat;
 using JueMingR.Platform.Combat;
 using Microsoft.Xna.Framework;
@@ -14,8 +15,24 @@ namespace JueMingR.TerrariaHost.Combat
         private FlightPreview ReadFlight(Player player,NpcTrajectory timeline,HostAttackPhase phase,out bool live)
         {
             live=false;bool phaseblade=HostPhasebladeAttack.Handles(player.HeldItem.shoot);
-            if(!phaseblade && !HostHarpoonAttack.Handles(player.HeldItem.shoot))return null;
+            bool gem=HostGemStaffAttack.Handles(player.HeldItem.shoot);
+            if(!phaseblade && !gem && !HostHarpoonAttack.Handles(player.HeldItem.shoot))return null;
             FlightPreview best=null;flightPreviewTerrain.Reset();var clock=new HostAttackClock(timeline,phase);
+            if(gem)
+            {
+                // One real pool scan captures local gem competition. Only
+                // the held role contributes a mark; other local gem roles
+                // remain ordered owner-immunity dependencies, not inputs.
+#if DEBUG
+                HostGemStaffAttack.FlightPoolScans++;
+#endif
+                var observed=new List<Projectile>();Projectile primary=null;
+                for(int slot=0;slot<Main.maxProjectiles;slot++)
+                {var shot=Main.projectile[slot];if(shot==null || !shot.active || shot.owner!=player.whoAmI || !HostGemStaffAttack.Handles(shot.type))continue;observed.Add(shot);if(shot.type==player.HeldItem.shoot && shot.friendly && !shot.hostile && primary==null)primary=shot;}
+                live=primary!=null;if(!live)return null;
+                HostGemStaffAttack.FlightState state;var contact=HostGemStaffAttack.KnownFamily(player,observed.ToArray(),timeline,clock,flightPreviewTerrain,out state);
+                return contact==null?null:new FlightPreview(player,primary,contact,state);
+            }
             for(int i=0;i<Main.maxProjectiles;i++)
             {
                 var shot=Main.projectile[i];if(shot==null || !shot.active || shot.owner!=player.whoAmI || shot.type!=player.HeldItem.shoot)continue;
@@ -39,13 +56,14 @@ namespace JueMingR.TerrariaHost.Combat
             private readonly Player player;private readonly Projectile shot;private readonly int key,type,owner,time,extra,penetration;
             private readonly Vector2 position,velocity;private readonly float ai0,ai1,local0;
             private readonly bool use,wet,honey,lava,shimmer,tile;
-            internal FlightPreview(Player player,Projectile shot,AttackContact contact)
+            private readonly HostGemStaffAttack.FlightState gem;
+            internal FlightPreview(Player player,Projectile shot,AttackContact contact,HostGemStaffAttack.FlightState gem=null)
             {
-                this.player=player;this.shot=shot;Contact=contact;key=(int)shot.key;type=shot.type;owner=shot.owner;time=shot.timeLeft;extra=shot.extraUpdates;penetration=shot.penetrate;
+                this.player=player;this.shot=shot;this.gem=gem;Contact=contact;key=(int)shot.key;type=shot.type;owner=shot.owner;time=shot.timeLeft;extra=shot.extraUpdates;penetration=shot.penetrate;
                 position=shot.position;velocity=shot.velocity;ai0=shot.ai[0];ai1=shot.ai[1];local0=shot.localAI[0];use=player.controlUseItem;wet=shot.wet;honey=shot.honeyWet;lava=shot.lavaWet;shimmer=shot.shimmerWet;tile=shot.tileCollide;
             }
             // Draw checks the bound member, never scans the projectile pool.
-            internal bool Current {get{return shot.active && (int)shot.key==key && shot.type==type && shot.owner==owner && shot.timeLeft==time && shot.extraUpdates==extra && shot.penetrate==penetration && shot.position==position && shot.velocity==velocity && shot.ai[0]==ai0 && shot.ai[1]==ai1 && shot.localAI[0]==local0 && player.controlUseItem==use && shot.wet==wet && shot.honeyWet==honey && shot.lavaWet==lava && shot.shimmerWet==shimmer && shot.tileCollide==tile;}}
+            internal bool Current {get{return (gem==null || gem.MembersCurrent) && shot.active && (int)shot.key==key && shot.type==type && shot.owner==owner && shot.timeLeft==time && shot.extraUpdates==extra && shot.penetrate==penetration && shot.position==position && shot.velocity==velocity && shot.ai[0]==ai0 && shot.ai[1]==ai1 && shot.localAI[0]==local0 && player.controlUseItem==use && shot.wet==wet && shot.honeyWet==honey && shot.lavaWet==lava && shot.shimmerWet==shimmer && shot.tileCollide==tile;}}
         }
     }
 }

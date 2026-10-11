@@ -1,9 +1,11 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using JueMingR.Features.Combat;
 using JueMingR.Platform.Combat;
 using Microsoft.Xna.Framework;
 using Terraria;
+using Terraria.DataStructures;
 
 namespace JueMingR.TerrariaHost.Combat
 {
@@ -25,9 +27,52 @@ namespace JueMingR.TerrariaHost.Combat
         internal static int Damage(Player player,Item item,float bits)
         {var f=new Projectile.GemStaffFeatures(bits);return (int)(player.GetWeaponDamage(item)*f.GetDamageMultiplier())+(f.RepeatsGem?4:0);}
 #if DEBUG
-        internal static int Candidates,MotorSteps,TargetQueries;
-        internal static void ResetCounters(){Candidates=MotorSteps=TargetQueries=0;}
+        internal static int Candidates,MotorSteps,TargetQueries,FlightCaptures,FlightPoolScans;
+        internal static void ResetCounters(){Candidates=MotorSteps=TargetQueries=FlightCaptures=FlightPoolScans=0;}
 #endif
+        // Observation of already born gems has no input receipt. All local
+        // gem roles can clear shared owner immunity; only the held role may
+        // contribute a Contact. Full scene/terrain checks belong to Prepare
+        // or Consume, while Draw uses the captured scalar member lease.
+        internal sealed class FlightState
+        {
+            private sealed class Row
+            {
+                private readonly Projectile shot;private readonly ProjectileKey key;
+                private readonly Vector2 position,velocity;private readonly int slot,type,owner,left,extra,damage,penetration,maximum,width,height,localCooldown,staticCooldown,immunityIdentity;
+                private readonly float bits,twin,target,swirl,scale;private readonly bool wet,honey,lava,shimmer,tile,friendly,hostile,ignoreWater,correctSlope,localImmunity,staticImmunity,singleImmunity;
+                private readonly int[] local;private readonly Vector2[] old;
+                internal Row(Projectile p)
+                {shot=p;key=p.key;slot=p.whoAmI;type=p.type;owner=p.owner;position=p.position;velocity=p.velocity;left=p.timeLeft;extra=p.extraUpdates;damage=p.damage;penetration=p.penetrate;maximum=p.maxPenetrate;width=p.width;height=p.height;bits=p.ai[0];twin=p.ai[1];target=p.ai[2];swirl=p.localAI[0];scale=p.scale;wet=p.wet;honey=p.honeyWet;lava=p.lavaWet;shimmer=p.shimmerWet;tile=p.tileCollide;friendly=p.friendly;hostile=p.hostile;ignoreWater=p.ignoreWater;correctSlope=p.correctSlopeCollision;localImmunity=p.usesLocalNPCImmunity;staticImmunity=p.usesIDStaticNPCImmunity;singleImmunity=p.appliesImmunityTimeOnSingleHits;localCooldown=p.localNPCHitCooldown;staticCooldown=p.idStaticNPCHitCooldown;immunityIdentity=p.immunityIdentity;local=(int[])p.localNPCImmunity.Clone();old=(Vector2[])p.oldPos.Clone();}
+                internal bool MembersCurrent
+                {get{return shot.active && ReferenceEquals(shot,Main.projectile[slot]) && key.Equals(shot.key) && shot.type==type && shot.owner==owner && shot.position==position && shot.velocity==velocity && shot.timeLeft==left && shot.extraUpdates==extra && shot.damage==damage && shot.penetrate==penetration && shot.maxPenetrate==maximum && shot.width==width && shot.height==height && shot.ai[0]==bits && shot.ai[1]==twin && shot.ai[2]==target && shot.localAI[0]==swirl && shot.scale==scale && shot.wet==wet && shot.honeyWet==honey && shot.lavaWet==lava && shot.shimmerWet==shimmer && shot.tileCollide==tile && shot.friendly==friendly && shot.hostile==hostile && shot.ignoreWater==ignoreWater && shot.correctSlopeCollision==correctSlope && shot.usesLocalNPCImmunity==localImmunity && shot.usesIDStaticNPCImmunity==staticImmunity && shot.appliesImmunityTimeOnSingleHits==singleImmunity && shot.localNPCHitCooldown==localCooldown && shot.idStaticNPCHitCooldown==staticCooldown && shot.immunityIdentity==immunityIdentity;}}
+                internal bool Current
+                {get{if(!MembersCurrent || shot.localNPCImmunity.Length!=local.Length || shot.oldPos.Length!=old.Length)return false;for(int i=0;i<local.Length;i++)if(shot.localNPCImmunity[i]!=local[i])return false;for(int i=0;i<old.Length;i++)if(shot.oldPos[i]!=old[i])return false;return true;}}
+            }
+            private readonly Player player;private readonly int heldType;private readonly Row[] rows;private readonly bool[] captured;
+            private readonly HostAttackObstacles receivers;private readonly PredictionTerrain terrain;private readonly HostProjectileEnvironment.State environment;
+            internal FlightState(Player player,Projectile[] members,HostAttackObstacles receivers,PredictionTerrain terrain)
+            {
+                this.player=player;heldType=player.HeldItem.shoot;this.receivers=receivers;this.terrain=terrain;environment=new HostProjectileEnvironment.State(true);rows=new Row[members.Length];captured=new bool[Main.maxProjectiles];
+                for(int i=0;i<members.Length;i++){rows[i]=new Row(members[i]);captured[members[i].whoAmI]=true;}
+#if DEBUG
+                FlightCaptures++;
+#endif
+            }
+            internal bool MembersCurrent
+            {get{if(player.HeldItem.shoot!=heldType)return false;foreach(var row in rows)if(!row.MembersCurrent)return false;return true;}}
+            internal bool Current
+            {
+                get
+                {
+                    if(!MembersCurrent || !environment.Current || !terrain.Unchanged || !receivers.Unchanged)return false;foreach(var row in rows)if(!row.Current)return false;
+#if DEBUG
+                    FlightPoolScans++;
+#endif
+                    for(int slot=0;slot<Main.maxProjectiles;slot++){var p=Main.projectile[slot];if(p!=null && p.active && p.owner==player.whoAmI && Handles(p.type) && !captured[slot])return false;}return true;
+                }
+            }
+        }
         internal sealed class State
         {
             internal Vector2 Position,Velocity,DeathCenter;internal readonly Vector2[] Old;
@@ -39,7 +84,7 @@ namespace JueMingR.TerrariaHost.Combat
         private sealed class Member
         {
             internal Projectile Shot;internal State State;internal HostAttackObstacles Receivers;
-            internal PredictionTerrain Terrain;internal Projectile.GemStaffFeatures Flags;internal bool Burst,GeometryKnown=true;
+            internal PredictionTerrain Terrain;internal Projectile.GemStaffFeatures Flags;internal bool Burst,GeometryKnown=true,Primary=true;
             internal Rectangle Witness;internal Func<MotionRect,bool> Collision;
             internal bool Collides(MotionRect target)
             {
@@ -166,14 +211,21 @@ namespace JueMingR.TerrariaHost.Combat
             if(!terrain.CanHit(new MotionRect(center.X,center.Y,0,0),new MotionRect(other.Center.X,other.Center.Y,0,0),out clear,out stop))return false;
             hit=clear;witness=current;return true;
         }
-        private static AttackContact Contact(Member m,NpcTrajectory timeline,int tick,int outer,Vector2 aim,AttackConfidence confidence)
+        private static AttackContact Contact(Member m,NpcTrajectory timeline,int tick,int outer,int sub,Vector2 aim,AttackConfidence confidence)
         {
             int side=m.Burst?160:m.Shot.width;Vector2 center=m.Burst?m.State.DeathCenter:m.State.Position+new Vector2(m.Shot.width,m.Shot.height)*.5f;
-            bool allowed=m.Receivers.PassCustomOuter(2,tick,outer,center.X,center.Y,side,m.Burst?160:m.Shot.height,m.Collision,m.Burst,m.State.Penetration);
+            AttackContact contact=null;
+            bool allowed=m.Receivers.PassCustomOuter(2,tick,outer,center.X,center.Y,side,m.Burst?160:m.Shot.height,m.Collision,m.Burst,m.State.Penetration,true,(slot,remaining)=>
+            {
+                if(m.Primary && slot==timeline.Identity.Slot && m.Collides(timeline[tick].ProjectileReceiveBounds))
+                {var b=m.Witness;contact=AttackIntercept.BodyContact(timeline,tick,sub,aim.X,aim.Y,b.X+b.Width*.5f,b.Y+b.Height*.5f,b.Width,b.Height,confidence);}return true;
+            });
+            // A later slot's dependency cannot undo the already received
+            // selected source event. Ambient selected receives still write
+            // shared history and consume penetration without making a mark.
+            if(contact!=null)return contact;
             if(!m.GeometryKnown)return null;
             if(!allowed){if(m.Receivers.Remaining==0)Kill(m.Shot,m.State);else m.State.Alive=false;return null;}
-            if(m.Receivers.SelectedAllows(outer) && m.Collides(timeline[tick].ProjectileReceiveBounds))
-            {var b=m.Witness;return AttackIntercept.BodyContact(timeline,tick,0,aim.X,aim.Y,b.X+b.Width*.5f,b.Y+b.Height*.5f,b.Width,b.Height,confidence);}
             if(!m.Burst)m.State.Penetration=m.Receivers.Remaining;return null;
         }
         private static AttackContact Family(Member[] members,HostProjectileTargets targets,NpcTrajectory timeline,int age,int delay,Vector2 aim,AttackConfidence confidence)
@@ -187,19 +239,44 @@ namespace JueMingR.TerrariaHost.Combat
                     if(!m.State.Alive)continue;live=true;
                     Vector2 before=m.State.Position+new Vector2(m.Shot.width,m.Shot.height)*.5f;
                     if(!m.Receivers.BeforeNpc(tick,delay+outer,before.X,before.Y)){m.State.Alive=false;continue;}
-                    if(!Step(m.Shot,m.State,targets,m.Receivers,timeline,tick,delay+outer,m.Terrain))return null;
-                    if(m.State.Alive)
-                    {var body=Contact(m,timeline,tick,delay+outer,aim,confidence);if(!m.GeometryKnown)return null;if(body!=null)return body;}
-                    Tail(m.Shot,m.State);
-                    if(m.State.Killed && m.Flags.AoeExplosion && (int)(m.Shot.damage*(.35f/m.Flags.GetDamageMultiplier()))>0)
+                    int updates=m.Shot.extraUpdates+1;
+                    for(int sub=0;sub<updates && m.State.Alive;sub++)
                     {
-                        m.Burst=true;m.Receivers.MakeUnlimited();m.Receivers.ClearLocalExceptFresh(delay+outer);
-                        var burst=Contact(m,timeline,tick,delay+outer,aim,confidence);if(!m.GeometryKnown)return null;if(burst!=null)return burst;
+                        if(!Step(m.Shot,m.State,targets,m.Receivers,timeline,tick,delay+outer,m.Terrain))return null;
+                        if(m.State.Alive && m.Shot.friendly && !m.Shot.hostile && m.Shot.damage>0)
+                        {var body=Contact(m,timeline,tick,delay+outer,sub,aim,confidence);if(body!=null)return body;if(!m.GeometryKnown)return null;}
+                        Tail(m.Shot,m.State);
+                        if(m.State.Killed && m.Shot.friendly && !m.Shot.hostile && m.Flags.AoeExplosion && (int)(m.Shot.damage*(.35f/m.Flags.GetDamageMultiplier()))>0)
+                        {
+                            m.Burst=true;m.Receivers.MakeUnlimited();m.Receivers.ClearLocalExceptFresh(delay+outer);
+                            var burst=Contact(m,timeline,tick,delay+outer,sub,aim,confidence);if(burst!=null)return burst;if(!m.GeometryKnown)return null;
+                        }
                     }
                 }
                 if(!live)break;
             }
             return null;
+        }
+        private static Projectile Copy(Projectile p)
+        {
+            var q=new Projectile();q.SetDefaults(p.type);q.active=true;q.owner=p.owner;q.whoAmI=p.whoAmI;q.position=p.position;q.velocity=p.velocity;q.damage=p.damage;q.knockBack=p.knockBack;q.width=p.width;q.height=p.height;
+            q.ai[0]=p.ai[0];q.ai[1]=p.ai[1];q.ai[2]=p.ai[2];q.localAI[0]=p.localAI[0];q.scale=p.scale;q.timeLeft=p.timeLeft;q.extraUpdates=p.extraUpdates;q.penetrate=p.penetrate;q.maxPenetrate=p.maxPenetrate;q.friendly=p.friendly;q.hostile=p.hostile;q.tileCollide=p.tileCollide;q.ignoreWater=p.ignoreWater;q.correctSlopeCollision=p.correctSlopeCollision;
+            q.usesLocalNPCImmunity=p.usesLocalNPCImmunity;q.usesIDStaticNPCImmunity=p.usesIDStaticNPCImmunity;q.immunityIdentity=p.immunityIdentity;q.localNPCHitCooldown=p.localNPCHitCooldown;q.idStaticNPCHitCooldown=p.idStaticNPCHitCooldown;q.appliesImmunityTimeOnSingleHits=p.appliesImmunityTimeOnSingleHits;q.trap=p.trap;q.npcProj=p.npcProj;q.usesOwnerMeleeHitCD=p.usesOwnerMeleeHitCD;
+            Array.Copy(p.localNPCImmunity,q.localNPCImmunity,p.localNPCImmunity.Length);return q;
+        }
+        internal static AttackContact KnownFamily(Player player,Projectile[] observed,NpcTrajectory timeline,HostAttackClock clock,PredictionTerrain terrain,out FlightState state)
+        {
+            state=null;if(observed==null || observed.Length==0 || !Handles(player.HeldItem.shoot) || clock.LaunchDelay!=0 || clock.FirstTick<0 || clock.FirstTick>=timeline.Count)return null;
+            var members=new Member[observed.Length];HostAttackObstacles receivers=null;bool source=false;int after=-1;
+            for(int i=0;i<observed.Length;i++)
+            {
+                var p=observed[i];if(p==null || !p.active || p.owner!=player.whoAmI || !Handles(p.type) || p.whoAmI<=after || p.extraUpdates<0 || p.extraUpdates>15)return null;after=p.whoAmI;
+                var copy=Copy(p);if(receivers==null){receivers=new HostAttackObstacles(player,copy,timeline,0,clock.BeforeNpc,clock.NextWorld);receivers.BeginCandidate();}
+                var m=new Member{Shot=copy,State=new State(p),Receivers=receivers.ForkForSpawn(copy),Terrain=terrain,Flags=new Projectile.GemStaffFeatures(p.ai[0]),Primary=p.type==player.HeldItem.shoot && p.friendly && !p.hostile};if(!p.friendly || p.hostile)m.State.Alive=false;m.Collision=m.Collides;members[i]=m;source|=m.Primary;
+            }
+            if(!source)return null;var targets=receivers.CaptureChaseTargets(members[0].Shot);state=new FlightState(player,observed,receivers,terrain);
+            var aim=observed[0].Center+observed[0].velocity*1000;
+            return Family(members,targets,timeline,clock.FirstTick-1,0,aim,AttackConfidence.Conditional);
         }
         internal static AttackContact Solve(Player player,AttackAmmoSnapshot ammo,NpcTrajectory timeline,Vector2 origin,int age,bool beforeNpc,PredictionTerrain terrain,HostAttackObstacles obstacles,int delay=0)
         {
