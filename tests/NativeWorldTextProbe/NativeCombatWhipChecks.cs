@@ -41,6 +41,7 @@ namespace NativeWorldTextProbe
             var old=p.HeldItem;p.inventory[0]=old.Clone();NativeCombatAimChecks.Prepare(host,attack,n,0,true);Require(GetOptional(attack,"ExpectedImpact")==null,"same-type weapon instance replacement retires old main/child/extra capability without native removal");Require(extra.active,"permission retirement does not destroy original extra whip");
             Console.WriteLine("PASS native 1035 actual child Damage, duration/extra role and same-type source exit");
             Moving(context,combat,host,attack,input);
+            NativeCombatWhipTerrainChecks.Run(context);
         }
         private static void Moving(object context,object combat,object host,object attack,object input)
         {

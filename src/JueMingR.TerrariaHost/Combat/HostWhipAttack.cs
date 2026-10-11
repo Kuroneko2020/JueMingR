@@ -62,7 +62,9 @@ namespace JueMingR.TerrariaHost.Combat
                     for(int sub=0;sub<shadow.MaxUpdates;sub++)
                     {
                         shadow.ai[0]=(step-delay)*shadow.MaxUpdates+sub+1;if(shadow.ai[0]>=duration)break;shadow.Center=body.GetArmPosition()+shadow.velocity*shadow.ai[0];int tick=clock.FirstTick+step;
-                        if(!receive.Allows(clock.LaunchDelay+step+1) || !HostMeleeAttack.OwnerAllows(body,shadow,timeline[tick].OwnerBounds,Main.npc[timeline.Identity.Slot].noTileCollide,terrain))continue;
+                        // Owner LOS belongs to this future NPC point, just as
+                        // its receive body does; the live flag can change later.
+                        if(!receive.Allows(clock.LaunchDelay+step+1) || !HostMeleeAttack.OwnerAllows(body,shadow,timeline[tick].OwnerBounds,timeline[tick].NoTileCollide,terrain))continue;
                         var contact=HostMeleeAttack.WhipContact(body,shadow,now,prior,timeline,tick,sub,packet);
                         if(contact!=null){point=packet;return contact;}
                     }

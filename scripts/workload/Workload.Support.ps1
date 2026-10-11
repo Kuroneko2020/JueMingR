@@ -71,6 +71,15 @@ function Get-WorkloadRoute {
             continue
         }
         switch -Regex ($path) {
+            # Frozen review originals are read-only evidence, never compile
+            # inputs. Keep this exact archive boundary, not a generic exemption.
+            '^review-materials/aim-midpoint-20261011-035938-HKT/' { continue }
+            # Shared graphics/asset fixture is consumed by the native host
+            # scopes; its changes do not confer graphical execution evidence.
+            '^tests/NativeWorldTextProbe/ProbeGraphics\.cs$' { [void]$groups.Add('shared-host'); continue }
+            # The stage reader is loaded by build, package and original-ZIP
+            # verification; retain both tool consumer groups when it changes.
+            '^scripts/workload/AimStage\.Development\.ps1$' { [void]$groups.Add('workload-tools');[void]$groups.Add('package-tools');continue }
             '^scripts/(build-phase0s-validation-package|test-phase0s)\.ps1$' { [void]$groups.Add('workload-tools');[void]$groups.Add('package-tools');continue }
             '^scripts/workload/|^scripts/(build|test-workload-regressions|test-world-object-text)\.ps1$|^tests/Workload/' { [void]$groups.Add('workload-tools'); continue }
             '^src/JueMingR.TerrariaHost/Combat/Prediction/(SegmentedNpcPrediction|NativePlayerMotion)\.cs$|^src/JueMingR.TerrariaHost/Combat/NpcPredictionSource\.cs$|^src/JueMingR.Platform/Combat/' { [void]$groups.Add('combat-host');[void]$groups.Add('legacy-worker');continue }
@@ -162,3 +171,4 @@ function Test-WorkloadBuildMatch {
 . (Join-Path $PSScriptRoot 'Workload.Evidence.ps1')
 . (Join-Path $PSScriptRoot 'Workload.Workspace.ps1')
 . (Join-Path $PSScriptRoot 'Workload.Cleanup.ps1')
+. (Join-Path $PSScriptRoot 'AimStage.Development.ps1')

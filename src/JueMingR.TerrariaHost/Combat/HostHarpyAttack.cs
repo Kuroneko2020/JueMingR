@@ -58,13 +58,13 @@ namespace JueMingR.TerrariaHost.Combat
         internal sealed class State
         {
             private readonly Player owner;private readonly AttackAmmoSnapshot ammo;internal readonly PredictionPlayerMotion motion;
-            private readonly bool harpy,strong;internal readonly bool seraph,phoenix,randomSlots,quiver;internal readonly int cooldown;private readonly long session;
+            private readonly bool harpy,strong,wallSourcePresent;internal readonly bool seraph,phoenix,randomSlots,quiver;internal readonly int cooldown;private readonly long session;
             internal readonly Arrow[] arrows;internal readonly Target[] targets;internal readonly bool[] occupied;
             internal readonly HostAttackObstacles obstacles;internal readonly HostProjectileTargets beeTargets;private readonly HostProjectileEnvironment.State environment;
             internal int CandidateCount,MotorSteps,CharmChecks,CapturedArrowSlots,CapturedNpcSlots,BeeBirths,BeeSteps,ReceivePasses;internal PredictionStop Stop;
             internal State(Player owner,AttackAmmoSnapshot ammo,NpcTrajectory timeline,HostAttackObstacles obstacles)
             {
-                this.owner=owner;this.ammo=ammo;this.obstacles=obstacles;session=timeline.Identity.Session;motion=NpcPredictionSource.ReadPlayer(owner);harpy=owner.accHarpyCharm;strong=owner.strongBees;seraph=owner.accSeraphNecklace;phoenix=owner.hasPhoenixQuiver;quiver=owner.magicQuiver;randomSlots=DebugOptions.Shared_RandomizeProjectileSlots;cooldown=owner.accHarpyCharmCooldown;environment=new HostProjectileEnvironment.State(true);
+                this.owner=owner;this.ammo=ammo;this.obstacles=obstacles;session=timeline.Identity.Session;wallSourcePresent=timeline.WallSources!=null;motion=NpcPredictionSource.ReadPlayer(owner);harpy=owner.accHarpyCharm;strong=owner.strongBees;seraph=owner.accSeraphNecklace;phoenix=owner.hasPhoenixQuiver;quiver=owner.magicQuiver;randomSlots=DebugOptions.Shared_RandomizeProjectileSlots;cooldown=owner.accHarpyCharmCooldown;environment=new HostProjectileEnvironment.State(true);
                 var list=new List<Arrow>();bool bees=ammo!=null && ammo.Projectile==469;occupied=new bool[Main.maxProjectiles];for(int i=0;i<occupied.Length;i++){CapturedArrowSlots++;var p=Main.projectile[i];occupied[i]=p!=null && p.active;if(Owned(owner,p) || OwnedBee(owner,p)){list.Add(new Arrow(p,i));bees|=p.type==469 || HostBeeAttack.Handles(p.type);}}arrows=list.ToArray();
                 // Native Damage_PVE is gated by owner==Main.myPlayer. Foreign
                 // bees still occupy captured birth slots, but their local AI
@@ -78,7 +78,9 @@ namespace JueMingR.TerrariaHost.Combat
             internal bool MembersCurrent
             {get{if(owner.accHarpyCharm!=harpy || beeTargets!=null && owner.strongBees!=strong || owner.accSeraphNecklace!=seraph || owner.hasPhoenixQuiver!=phoenix || randomSlots!=DebugOptions.Shared_RandomizeProjectileSlots || owner.accHarpyCharmCooldown!=cooldown || owner.position.X!=motion.X || owner.position.Y!=motion.Y || owner.velocity.X!=motion.Vx || owner.velocity.Y!=motion.Vy || !ammo.MembersMatch(owner,owner.HeldItem) || !environment.Current)return false;foreach(var a in arrows)if(!a.MemberSame(Main.projectile[a.Slot]))return false;return true;}}
             internal bool Current
-            {get{if(!MembersCurrent || !motion.SameSample(NpcPredictionSource.ReadPlayer(owner)) || !obstacles.Unchanged)return false;int a=0,n=0;for(int i=0;i<occupied.Length;i++){var p=Main.projectile[i];if(occupied[i]!=(p!=null && p.active))return false;if(Owned(owner,p) || OwnedBee(owner,p)){if(a>=arrows.Length || arrows[a].Slot!=i || !arrows[a++].Same(p))return false;}}for(int i=0;i<Main.maxNPCs;i++)if(Main.npc[i]!=null && Main.npc[i].active){if(n>=targets.Length || targets[n].Identity.Slot!=i || !targets[n++].Same(owner,session))return false;}return a==arrows.Length && n==targets.Length;}}
+            // Match the enclosing fixed-input plan: only the unused no-Wall
+            // regen clocks may advance. Wall, health and immunity stay exact.
+            {get{if(!MembersCurrent || !PlayerMotionContinuation.SameFixedInput(motion,NpcPredictionSource.ReadPlayer(owner),wallSourcePresent) || !obstacles.Unchanged)return false;int a=0,n=0;for(int i=0;i<occupied.Length;i++){var p=Main.projectile[i];if(occupied[i]!=(p!=null && p.active))return false;if(Owned(owner,p) || OwnedBee(owner,p)){if(a>=arrows.Length || arrows[a].Slot!=i || !arrows[a++].Same(p))return false;}}for(int i=0;i<Main.maxNPCs;i++)if(Main.npc[i]!=null && Main.npc[i].active){if(n>=targets.Length || targets[n].Identity.Slot!=i || !targets[n++].Same(owner,session))return false;}return a==arrows.Length && n==targets.Length;}}
         }
         private static bool HasPrimary(List<Arrow> arrows)
         {foreach(var arrow in arrows)if(arrow.Primary && arrow.Alive)return true;return false;}

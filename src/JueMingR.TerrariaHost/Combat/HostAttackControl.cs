@@ -125,6 +125,11 @@ namespace JueMingR.TerrariaHost.Combat
         // unrelated or repeated projectile callback must never walk that pool.
         private static void Retire(Controlled entry)
         {entry.Contact=entry.NextKillContact=entry.AlternateKillContact=entry.AlternateNextKillContact=null;entry.HasPoint=false;entry.ContactChild=null;entry.Obstacles=entry.AlternateKillObstacles=null;}
+        // Execution retirement alone leaves a read-only fact intact. Only an
+        // actual consumer's failed dependency check revokes its bound fact;
+        // no other source is searched and Draw never checks terrain here.
+        private void RejectDependencies(Controlled entry)
+        {Retire(entry);if(ReferenceEquals(previewSource,entry))ClearPreview();}
         internal void Reset(){Clear();ClearPreview();shots.Clear();preparedTimeline=null;opening=null;birthOrdinal=0;}
         internal void Prepare(NpcTrajectory timeline,HostAttackPhase phase)
         {
@@ -234,10 +239,13 @@ namespace JueMingR.TerrariaHost.Combat
             Controlled entry;if(shot.type!=444 || !shots.TryGetValue((int)shot.key,out entry) || !ReferenceEquals(entry.Shot,shot))return null;
             if(!combat.Attack.CurrentReceiver){Retire(entry);return null;}
             bool later;
-            if(!environmentState.Current || !Valid(entry) || Main.GameUpdateCount<entry.Prepared || Main.GameUpdateCount-entry.Prepared>1 || !entry.Target.Equals(observation.Selection.Target) || !terrain.Unchanged || !TryChildLaterSlot(shot,out later))
+            if(!Valid(entry) || Main.GameUpdateCount<entry.Prepared || Main.GameUpdateCount-entry.Prepared>1 || !entry.Target.Equals(observation.Selection.Target))
             {Retire(entry);return null;}
+            if(!environmentState.Current || !terrain.Unchanged){RejectDependencies(entry);return null;}
+            if(!TryChildLaterSlot(shot,out later)){Retire(entry);return null;}
             bool alternate=later!=entry.ChildLaterSlot;var lease=alternate?entry.AlternateKillObstacles:entry.Obstacles;
-            if(lease==null || !lease.Unchanged){Retire(entry);return null;}
+            if(lease==null){Retire(entry);return null;}
+            if(!lease.Unchanged){RejectDependencies(entry);return null;}
             var result=Vector2.DistanceSquared(shot.Center,entry.KillOrigin)<.01f?(alternate?entry.AlternateKillContact:entry.Contact):Vector2.DistanceSquared(shot.Center,entry.NextKillOrigin)<.01f?(alternate?entry.AlternateNextKillContact:entry.NextKillContact):null;
             Retire(entry);
             if(result==null || !ReferenceEquals(result.Timeline,observation.Prediction.Cache.Read(1)))return null;
@@ -288,8 +296,10 @@ namespace JueMingR.TerrariaHost.Combat
             // whose current and expiry origins are exactly the same.
             if(entry.Type==444 || HostPulseAttack.Handles(entry.Type))return false;
             if(!combat.Attack.CurrentReceiver){Retire(entry);return false;}
-            if(!environmentState.Current || !Valid(entry) || entry.Obstacles!=null && !entry.Obstacles.Unchanged || entry.Prepared!=Main.GameUpdateCount || entry.Contact==null && !entry.HasPoint || !observation.Selection.HasTarget || !entry.Target.Equals(observation.Selection.Target) || !ReferenceEquals(preparedTimeline,observation.Prediction.Cache.Read(1)) || !terrain.Unchanged)
+            if(!Valid(entry) || entry.Prepared!=Main.GameUpdateCount || entry.Contact==null && !entry.HasPoint || !observation.Selection.HasTarget || !entry.Target.Equals(observation.Selection.Target) || !ReferenceEquals(preparedTimeline,observation.Prediction.Cache.Read(1)))
             {Retire(entry);return false;}
+            if(!environmentState.Current || entry.Obstacles!=null && !entry.Obstacles.Unchanged || !terrain.Unchanged)
+            {RejectDependencies(entry);return false;}
             if(entry.Type==1035){point=entry.Point;return HostWhipAttack.Consumes(shot);}
             if(HostHeldAttack.Handles(entry.Type))
             {
@@ -298,7 +308,11 @@ namespace JueMingR.TerrariaHost.Combat
                 point=entry.Point;return true;
             }
             if(entry.Navigation!=null)
-            {if(!entry.HasPoint || !combat.Player.channel || shot.ai[0]<0 || !entry.Navigation.Current(combat.Player)){entry.Contact=null;entry.HasPoint=false;return false;}point=entry.Point;return true;}
+            {
+                if(!entry.HasPoint || !combat.Player.channel || shot.ai[0]<0){entry.Contact=null;entry.HasPoint=false;return false;}
+                if(!entry.Navigation.Current(combat.Player)){RejectDependencies(entry);return false;}
+                point=entry.Point;return true;
+            }
             if(!HostGuidedAttack.Handles(entry.Type) || !HostGuidedAttack.Consumes(combat.Player,shot)){entry.Contact=null;return false;}
             point=new Vector2(entry.Contact.AimX,entry.Contact.AimY);return true;
         }

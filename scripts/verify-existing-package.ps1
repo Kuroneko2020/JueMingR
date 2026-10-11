@@ -24,6 +24,8 @@ try {
     $recordHash=(Get-WorkloadFileHash -LiteralPath $recordPath -Algorithm SHA256).Hash
     $record=Read-WorkloadJson $recordPath
     if($null -eq $record){throw 'BUILD_RECORD_DAMAGED'}
+    $stage=$null -ne $record.PSObject.Properties['workload'] -and $record.workload.status -ceq 'STAGE_DEVELOPMENT'
+    if($stage -and ($record.workload.fullQualification -cne 'INCOMPLETE' -or $record.workload.releaseEligible -ne $false -or $record.releaseEligible -ne $false)){throw 'STAGE_QUALIFICATION_MISMATCH'}
     $workspaceValid=$record.clean -eq $true
     if(-not $workspaceValid -and $null -ne $retained){$workspaceValid=(Test-WorkloadHistoricalPackageWorkspace $record $retained) -or
         ($record.committedProductSourceClean -eq $true -and $record.workspaceDirty -eq $true -and $record.releaseEligible -eq $false -and (Test-WorkloadRestrictedRecord $record $retained))}
@@ -39,13 +41,14 @@ try {
     # Guard the evidence window; metadata-only checks never turn this into a
     # current-HEAD build, a synthetic load PASS or an owner gameplay result.
     if ((Get-WorkloadFileHash -LiteralPath $zip).Hash -cne $zipHash -or (Get-WorkloadFileHash -LiteralPath $recordPath).Hash -cne $recordHash) {throw 'INPUT_CHANGED_DURING_VERIFICATION'}
-    $tools=@('verify-existing-package.ps1','phase0s/PackageVerification.Support.ps1','phase0s/Phase0S.ScriptSupport.ps1','workload/Workload.Support.ps1','workload/Workload.Evidence.ps1','workload/Workload.Definitions.ps1','workload/Workload.ReadWindow.ps1','workload/Workload.Workspace.ps1','workload/Workload.Cleanup.ps1') | ForEach-Object {
+    $tools=@('verify-existing-package.ps1','phase0s/PackageVerification.Support.ps1','phase0s/Phase0S.ScriptSupport.ps1','workload/Workload.Support.ps1','workload/Workload.Evidence.ps1','workload/Workload.Definitions.ps1','workload/Workload.ReadWindow.ps1','workload/Workload.Workspace.ps1','workload/Workload.Cleanup.ps1','workload/AimStage.Development.ps1') | ForEach-Object {
         [ordered]@{path=$_;sha256=(Get-WorkloadFileHash -LiteralPath (Join-Path $PSScriptRoot $_)).Hash}
     }
     [ordered]@{status='PASS';scope='archive-and-package-identity';sourceCommit=$package.sourceCommit;packageId=$package.packageId;
         zipSha256=$zipHash;zipBytes=(Get-Item -LiteralPath $zip).Length;buildRecordSha256=$recordHash;fileCount=$count;
         payloadCount=@($package.payload).Count;tools=@($tools);milliseconds=$watch.ElapsedMilliseconds;
-        clean=$record.clean;releaseEligible=($record.clean -eq $true);workspace=$(if($record.clean){'clean-source-artifact'}else{'explicit-restricted-development-artifact'});
+        clean=$record.clean;releaseEligible=($record.clean -eq $true -and -not $stage);workspace=$(if($stage){'explicit-stage-development-artifact'}elseif($record.clean){'clean-source-artifact'}else{'explicit-restricted-development-artifact'});
+        fullQualification=$(if($stage){'INCOMPLETE'}else{'UNCHANGED_ORIGINAL_RECORD'});
         realGameLoad='NOT_EXECUTED';productChecks='NOT_RERUN'} | ConvertTo-Json -Depth 5
 } catch {
     [Console]::Out.WriteLine(([ordered]@{status='FAIL';scope='archive-and-package-identity';error=$_.Exception.Message;milliseconds=$watch.ElapsedMilliseconds}|ConvertTo-Json -Compress))

@@ -144,6 +144,14 @@ namespace NativeWorldTextProbe
                     NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());
                     var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,type,0,0);p.position=new Vector2(700,646);p.ResetEffects();p.statMana=p.statManaMax=p.statManaMax2=200;p.inventory[54].SetDefaults(3104);p.inventory[54].stack=1;Main.screenPosition=new Vector2(600,400);
                     var target=NativeCombatControlPreviewChecks.Dummy(2,52,40);NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,true,25,true,false));
+                    // The preceding natural scene may leave native player
+                    // immunity. Its remaining ticks are different inputs, so
+                    // let real Player.Update finish them before equal-input
+                    // idle costs are counted; never clear that state by hand.
+                    int immunityWait=0;
+                    while((p.immune || p.immuneTime>0) && immunityWait<120){NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,500),false,true);immunityWait++;}
+                    Require(!p.immune && p.immuneTime<=0,"natural idle workload starts after the prior native immunity has ended: "+type);
+                    Console.WriteLine("NATURAL IDLE premise item="+type+" immunityWait="+immunityWait+" immune="+p.immune+" immuneTime="+p.immuneTime);
                     for(int i=0;i<4;i++)NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,500),false,true);
                     calls.Clear();int visible=0;
                     for(int i=0;i<8;i++){NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,500),false,true);if(GetOptional(attack,"ExpectedPreview")!=null)visible++;}
@@ -181,6 +189,7 @@ namespace NativeWorldTextProbe
                 Report("harpy-natural-idle8");Require(previews==8 && Total("HostHarpyAttack.Solve")<=2 && !Main.projectile.Any(q=>q.active),"equivalent complete updates retain useful Harpy preview without repeating finite replay");
                 var contact=(AttackContact)GetOptional(attack,"ExpectedPreview");Call(attack,"BindPreview",contact);calls.Clear();for(int i=0;i<20;i++)Require((bool)CallResult(attack,"PreviewCurrent",contact),"same-update Harpy presentation lease remains visible");
                 Report("harpy-presentation20");Require(Total("HostHarpyAttack.Solve")==0 && Total("State.get_Current")==0 && Total("PredictionTerrain.Read")==0 && Total("HostAttackObstacles.Eligible")==0,"Harpy presentation cannot replay, scan scene or read terrain");
+                HarpyWallLeaseBoundary(context,host,attack,p);
                 NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,true,25,true,true));calls.Clear();previews=0;
                 for(int i=0;i<40;i++){NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,500),true);if(GetOptional(attack,"ExpectedPreview")!=null)previews++;}
                 Report("harpy-natural-first-use40");Require(solarDamage>0 && previews>0 && Total("HostHarpyAttack.Solve")>0 && Total("HostHarpyAttack.Solve")<=40*6,"Harpy complete preparation keeps natural damage and preview within finite phase/candidate work");
@@ -191,6 +200,24 @@ namespace NativeWorldTextProbe
             // equipment reset. Remove this fixture's scalar charm effects as
             // well as its item, so their original no-accessory premise holds.
             finally{p.armor[3].TurnToAir();p.ResetEffects();solarReceiver=null;}
+        }
+        // Two real Harpy State consumers differ only in the declared Wall
+        // source dependency. This is a dependency-guard oracle, not a replay
+        // of a Wall NPC's stages or a new enemy-family coverage claim.
+        private static void HarpyWallLeaseBoundary(object context,object host,object attack,Player p)
+        {
+            var prior=Get(Get(attack,"preview"),"HarpyState");var timeline=((NpcPredictionCache)Get(Get(host,"Prediction"),"Cache")).Read(1);var points=Enumerable.Range(0,timeline.Count).Select(t=>timeline[t]).ToArray();
+            var declared=new PredictionWallSource(true,true,new NpcIdentity(timeline.Identity.Session,new object(),1,1,113,113),new MotionRect(900,500,80,300),-1,0,0);
+            var sources=new PredictionWallSources(Enumerable.Repeat(declared,timeline.Count).ToArray(),timeline.Count,p,p.whoAmI,timeline.Identity,timeline.SampleTick);
+            var plain=new NpcTrajectory(timeline.Identity,timeline.SampleTick,timeline.Version,timeline.Assumptions,timeline.Stop,points,points.Length,PredictionStrategy.RollingConditional);
+            var withWall=new NpcTrajectory(timeline.Identity,timeline.SampleTick,timeline.Version,timeline.Assumptions,timeline.Stop,points,points.Length,PredictionStrategy.RollingConditional,wallSources:sources);
+            object[] input={p,Get(prior,"ammo"),plain,Get(prior,"obstacles")};var noWallState=Activator.CreateInstance(prior.GetType(),Flags,null,input,null);input[2]=withWall;var wallState=Activator.CreateInstance(prior.GetType(),Flags,null,input,null);
+            Require((bool)Get(noWallState,"Current") && (bool)Get(wallState,"Current"),"same native inputs establish both declared Harpy dependency leases");
+            var before=(PredictionPlayerMotion)Get(noWallState,"motion");NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,500),false,true);
+            var read=attack.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcPredictionSource",true).GetMethod("ReadPlayer",Flags);var after=(PredictionPlayerMotion)read.Invoke(null,new object[]{p});
+            Require(!before.SameSample(after) && PlayerMotionContinuation.SameFixedInput(before,after,false) && !PlayerMotionContinuation.SameFixedInput(before,after,true),"real Update changes only irrelevant no-Wall regen clocks; declared Wall dependencies keep them exact");
+            bool plainCurrent=(bool)Get(noWallState,"Current"),wallCurrent=(bool)Get(wallState,"Current");Console.WriteLine("HARPY WALL LEASE nativeRegen="+before.WallRegenTime+"->"+after.WallRegenTime+" noWallCurrent="+plainCurrent+" declaredWallCurrent="+wallCurrent);
+            Require(plainCurrent && !wallCurrent,"real Harpy State consumer retains no-Wall reuse and rejects changed declared Wall inputs");
         }
         private static object CallResult(object instance,string name,params object[] args){return instance.GetType().GetMethod(name,Flags).Invoke(instance,args);}
     }

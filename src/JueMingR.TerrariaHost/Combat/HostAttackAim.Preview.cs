@@ -94,7 +94,7 @@ namespace JueMingR.TerrariaHost.Combat
                 plan.Contact=AttackIntercept.Rebind(plan.Contact,timeline);plan.Timeline=timeline;return plan.Contact;
             }
             plan.Clear();plan.SetMembers(player,item);plan.Prepared=true;plan.Phase=phase;plan.Age=clock.Age;plan.Delay=delay;plan.PlayerMotion=motion;plan.Immune=immune;plan.AttackCooldown=player.attackCD;plan.MeleeCooldown=player.meleeNPCHitCooldown[timeline.Identity.Slot];plan.Animation=player.itemAnimation;plan.AnimationMax=player.itemAnimationMax;plan.SwingRevision=swing.Revision;plan.MeleeSpeed=player.meleeSpeed;plan.Direction=player.direction;plan.Ammo=captured;plan.Timeline=timeline;
-            plan.Receive=receive;plan.Terrain.Reset();plan.EnvironmentState=new HostProjectileEnvironment.State(true);
+            plan.Receive=receive;plan.Terrain.Reset();
             plan.Using=combat.Left || player.controlUseItem;
             plan.CapsuleOnly=HostSwingAttack.CapsuleOnly(player,item);
             if(HostPhasebladeAttack.Handles(item.shoot))return PreparePhasebladePreview(plan,player,item,timeline,phase,delay);
@@ -183,9 +183,11 @@ namespace JueMingR.TerrariaHost.Combat
             internal HostAttackReceive Receive;
             internal PredictionPlayerMotion PlayerMotion;internal HostAttackPhase Phase;internal int Age,Delay,Immune,AttackCooldown,MeleeCooldown,Animation,AnimationMax;
             internal int Direction;internal long SwingRevision;internal float MeleeSpeed;internal bool Prepared,Controlled,CapsuleOnly,Using;private Item item;private int slot,type,prefix;private float scale;
-            internal void SetMembers(Player player,Item weapon){item=weapon;slot=player.selectedItem;type=weapon.type;prefix=weapon.prefix;scale=player.GetAdjustedItemScale(weapon);Direction=player.direction;}
+            // Every plan kind, including controlled and existing-flight previews,
+            // binds the environment used by its solve. Draw only validates it.
+            internal void SetMembers(Player player,Item weapon){item=weapon;slot=player.selectedItem;type=weapon.type;prefix=weapon.prefix;scale=player.GetAdjustedItemScale(weapon);Direction=player.direction;EnvironmentState=new HostProjectileEnvironment.State(true);}
             internal bool WeaponCurrent(Player player){return player!=null && item!=null && player.selectedItem==slot && ReferenceEquals(player.HeldItem,item) && item.type==type && item.prefix==prefix && player.GetAdjustedItemScale(item)==scale;}
-            internal bool MembersCurrent(Player player){return WeaponCurrent(player) && Direction==player.direction && (Ammo==null || Ammo.MembersMatch(player,item)) && (Obstacles==null || Obstacles.BirthInputsCurrent) && (HarpyState==null || HarpyState.MembersCurrent) && (Flight==null || Flight.Current);}
+            internal bool MembersCurrent(Player player){return WeaponCurrent(player) && Direction==player.direction && EnvironmentState.Current && (Ammo==null || Ammo.MembersMatch(player,item)) && (Obstacles==null || Obstacles.BirthInputsCurrent) && (HarpyState==null || HarpyState.MembersCurrent) && (Flight==null || Flight.Current);}
             internal void Clear(){Contact=null;Timeline=null;Ammo=null;Environment=null;Obstacles=null;HarpyState=null;Flight=null;item=null;Prepared=Controlled=false;}
         }
     }
