@@ -29,6 +29,15 @@ namespace JueMingR.TerrariaHost.Combat
             if(player.itemAnimation>1 && !item.shootsEveryUse)
             {
                 int delay=Math.Max(0,player.itemTime-1);
+                // AI019 and ordinary primary AI165 bodies match itemTime to
+                // itemAnimation (1035 uses its own current-stage controller;
+                // AI165's >=1000 secondary bodies do not own this hand clock).
+                // Equal clocks reach 1/1 together, so there is no ordinary
+                // burst left inside that old hand. Its full remaining
+                // animation must end before a non-autoreuse new hand starts.
+                Projectile sample;
+                if(!item.autoReuse && player.itemTime>=player.itemAnimation && ContentSamples.ProjectilesByType.TryGetValue(item.shoot,out sample) && (sample.aiStyle==19 || ProjectileID.Sets.IsAWhip[sample.type] && !HostWhipAttack.Weapon(item)))
+                    return Math.Max(player.reuseDelay,player.itemAnimation);
                 // Book's four-birth gate (one for alternate use) can close
                 // while itemTime is ready. The next useful hand then belongs
                 // to the next animation, not an invented fifth burst member.
@@ -36,7 +45,13 @@ namespace JueMingR.TerrariaHost.Combat
                     return Math.Max(delay,Math.Max(player.reuseDelay,player.itemAnimation-1));
                 return delay;
             }
-            return Math.Max(item.shootsEveryUse?0:Math.Max(0,player.itemTime-1),Math.Max(player.reuseDelay,Math.Max(0,player.itemAnimation-1)));
+            // Native StartActualUse checks animation==0 before decrementing
+            // it. A non-autoreuse 1/1 hand therefore needs one action to end
+            // before a hypothetical fresh press can start a full animation.
+            // Item autoReuse clears that tail earlier in AutoReuseLogic;
+            // attachment reuse only supplies release and does not clear it.
+            int animationDelay=player.itemAnimation==1 && !item.autoReuse?1:Math.Max(0,player.itemAnimation-1);
+            return Math.Max(item.shootsEveryUse?0:Math.Max(0,player.itemTime-1),Math.Max(player.reuseDelay,animationDelay));
         }
         // Controllers still need continuous preparation between item uses.
         // This narrower read asks only whether the next native ItemCheck can
