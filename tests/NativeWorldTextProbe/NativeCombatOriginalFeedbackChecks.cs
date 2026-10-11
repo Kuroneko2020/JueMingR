@@ -294,6 +294,8 @@ namespace NativeWorldTextProbe
             if(weapon==4672)
             {
                 var world=Get(host,"World");Present(host,attack,world,player,receiver,graphics,output,"original-whip-current",true,graphics!=null);
+                bool canFloat=player.canFloatInWater,shouldFloat=player.ShouldFloatInWater;player.canFloatInWater=!canFloat;Require(player.ShouldFloatInWater!=shouldFloat,"the native floating capability changes without another world action");RejectPresentation(world,graphics,"ordinary whip floating capability changed");player.canFloatInWater=canFloat;
+                Present(host,attack,world,player,receiver,graphics,output,"original-whip-float-restored",true,false);
                 float range=player.whipRangeMultiplier;player.whipRangeMultiplier+=.25f;RejectPresentation(world,graphics,"ordinary whip range changed");player.whipRangeMultiplier=range;
                 Present(host,attack,world,player,receiver,graphics,output,"original-whip-range-restored",true,false);
                 var frame=player.bodyFrame;var arm=player.GetArmPosition();bool changed=false;
@@ -360,8 +362,10 @@ namespace NativeWorldTextProbe
                 Require(changed,"idle whip has a distinct native arm anchor for its same-update negative lease");RejectPresentation(world,graphics,"idle whip arm changed");player.bodyFrame=frame;Present(host,attack,world,player,receiver,graphics,output,"original-whip-idle-arm-restored",true,false);
                 bool storm=player.sandStorm;player.sandStorm=!storm;RejectPresentation(world,graphics,"idle whip sandStorm changed");player.sandStorm=storm;Present(host,attack,world,player,receiver,graphics,output,"original-whip-idle-storm-restored",true,false);
                 int damage=player.HeldItem.damage,nativeDamage=player.GetWeaponDamage(player.HeldItem);player.HeldItem.damage+=5;Require(player.GetWeaponDamage(player.HeldItem)!=nativeDamage,"native future whip damage premise changed");RejectPresentation(world,graphics,"idle whip damage changed");player.HeldItem.damage=damage;Present(host,attack,world,player,receiver,graphics,output,"original-whip-idle-damage-restored",true,false);
+                float summoner=player.summonerWeaponSpeedBonus;player.summonerWeaponSpeedBonus+=.25f;RejectPresentation(world,graphics,"idle whip native summoner speed changed");player.summonerWeaponSpeedBonus=summoner;Present(host,attack,world,player,receiver,graphics,output,"original-whip-idle-summoner-restored",true,false);
+                float useTime=player.whipUseTimeMultiplier;player.whipUseTimeMultiplier+=.25f;RejectPresentation(world,graphics,"idle whip native use-time multiplier changed");player.whipUseTimeMultiplier=useTime;Present(host,attack,world,player,receiver,graphics,output,"original-whip-idle-time-restored",true,false);
                 Require(ReferenceEquals(saved,GetOptional(attack,"ExpectedPreview")),"same-update ordinary whip owner/damage restoration reuses the exact independently prepared idle hypothesis");
-                Console.WriteLine("PASS ORIGINAL idle whip arm/range/sandStorm/damage lease actualDraw="+(graphics!=null));
+                Console.WriteLine("PASS ORIGINAL idle whip arm/range/sandStorm/damage/duration lease actualDraw="+(graphics!=null));
             }
             naturalPress=true;NativeCombatSelectionPreviewChecks.Step(context,physical,true);naturalPress=false;
             for(int i=0;i<40;i++)NativeCombatSelectionPreviewChecks.Step(context,physical,false);
@@ -385,9 +389,7 @@ namespace NativeWorldTextProbe
         }
         private static void RunFloatingDraw(object context,object host,object combat,object input,object attack,ProbeGraphics graphics,string output)
         {
-            int totalQualified=0;
-            foreach(int targetY in new[]{40})
-            {
+            const int targetY=40;
             NativeCombatObservationChecks.Save(host,new JueMingR.Features.Combat.ObservationOptions());NativeCombatCadenceChecks.Save(combat,new JueMingR.Features.Combat.CombatOptions());
             player=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,1228,0,0);player.position=new Vector2(700,646);player.ResetFallDamage();player.releaseUseItem=true;player.armor[4].SetDefaults(4404);
             // Native floating equipment and a local water surface, followed
@@ -400,7 +402,7 @@ namespace NativeWorldTextProbe
             NativeCombatObservationChecks.Save(host,new JueMingR.Features.Combat.ObservationOptions(false,true,true,false,true,25,true,false));
             var terrain=attack.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.PredictionTerrain",true);var floating=terrain.GetMethod("FloatingObserved",Flags);int qualified=0;bool gatesLogged=false;
             var dry=attack.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostProjectileEnvironment",true).GetMethod("Dry",Flags);var observedTerrain=Activator.CreateInstance(terrain,true);
-            int initialFlights=flightReads,initialFamilies=familyCalls,published=0;tracingFloating=true;floatingReports=floatingMotionRefusals=0;
+            int initialFlights=flightReads,initialFamilies=familyCalls,published=0;bool bodyDraw=false,childDraw=false,memberChecked=false;tracingFloating=true;floatingReports=floatingMotionRefusals=0;
             for(int i=0;i<70;i++)
             {
                 naturalPress=i==4;NativeCombatSelectionPreviewChecks.Step(context,physical,naturalPress);if(i==4)physical=new Vector2(550,430);
@@ -409,15 +411,37 @@ namespace NativeWorldTextProbe
                 {gatesLogged=true;Console.WriteLine("ORIGINAL floating current gate targetY="+targetY+" nativeWet="+player.wet+" mounted="+player.MountedCenter+" sources=["+string.Join(";",Main.projectile.Where(p=>p.active && p.owner==player.whoAmI).Select(p=>p.type+" center="+p.Center+" ignoreWater="+p.ignoreWater+" tile="+p.tileCollide+" dry="+dry.Invoke(null,new object[]{p,observedTerrain,p.Center.X,p.Center.Y,p.velocity.X})))+"]");}
                 var plan=Get(attack,"preview");var flight=GetOptional(plan,"Flight");var contact=(JueMingR.Features.Combat.AttackContact)GetOptional(attack,"ExpectedPreview");
                 if(Call(Get(Get(host,"Prediction"),"Cache"),"Read",1)!=null)published++;
-                if(!floats || flight==null || GetOptional(flight,"spear")==null || contact==null)continue;
-                Require(player.wet && player.ShouldFloatInWater && Main.projectile.Any(p=>p.active && p.owner==player.whoAmI && (bool)dry.Invoke(null,new object[]{p,observedTerrain,p.Center.X,p.Center.Y,p.velocity.X})),"native wet floating owner has an actually dry captured attack before actual Draw");
-                Present(host,attack,Get(host,"World"),player,receiver,graphics,output,"original-floating-spear",true,true);
-                Console.WriteLine("PASS ORIGINAL floating actual World.Draw nativeWet="+player.wet+" shouldFloat="+player.ShouldFloatInWater+" qualified="+qualified+" memberTypes="+string.Join(",",Main.projectile.Where(p=>p.active && p.owner==player.whoAmI).Select(p=>p.type))+" terrainReads="+drawTerrainReads);return;
+                if(!floats)continue;
+                Require(contact==null && flight==null,"this naturally constrained floating continuation retains its existing Unsupported boundary instead of promising a receive");
+                var members=Main.projectile.Where(p=>p.active && p.owner==player.whoAmI && (p.type==222 || p.type==228)).ToArray();
+                if(members.Length>0 && !memberChecked)
+                {
+                    // This validates a pure member lease on real observed
+                    // members; it is not a fabricated Contact or wet forecast.
+                    var stateType=attack.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostMeleeAttack+SpearFlightState",true);
+                    var state=stateType.GetConstructor(Flags,null,new[]{typeof(Player),typeof(Projectile[])},null).Invoke(new object[]{player,members});
+                    int reads=flightReads,families=familyCalls;drawTerrainReads=0;presenting=true;
+                    try
+                    {
+                        Require((bool)Get(state,"Current"),"real constrained floating owner/member scalar lease is current");
+                        bool canFloat=player.canFloatInWater;player.canFloatInWater=false;Require(!player.ShouldFloatInWater && !(bool)Get(state,"Current"),"floating capability change immediately retires the member lease");player.canFloatInWater=canFloat;
+                        Require((bool)Get(state,"Current"),"restoring native floating capability restores the same pure member lease");
+                    }
+                    finally{presenting=false;}
+                    Require(drawTerrainReads==0 && flightReads==reads && familyCalls==families,"floating member Current performs no terrain, discovery or replay");memberChecked=true;
+                    Console.WriteLine("PASS ORIGINAL constrained floating owner/member Current pure zeroTerrain; this is member validation, not wet prediction support");
+                }
+                bool hasBody=members.Any(p=>p.type==222),hasChild=members.Any(p=>p.type==228);
+                if(hasBody && !bodyDraw || hasChild && !hasBody && !childDraw)
+                {
+                    Require(player.wet && player.ShouldFloatInWater,"actual constrained floating owner remains native wet for withdrawal Draw");
+                    Present(host,attack,Get(host,"World"),player,receiver,graphics,output,"original-floating-withdrawal-"+(hasBody?"body":"child"),false,true);
+                    if(hasBody)bodyDraw=true;else childDraw=true;
+                }
             }
             Console.WriteLine("ORIGINAL floating route qualified="+qualified+" publishedSelected="+published+" previewTimeline="+(GetOptional(Get(attack,"preview"),"Timeline")!=null)+" flightReads="+(flightReads-initialFlights)+" familyCalls="+(familyCalls-initialFamilies)+" floatingMotionRefusals="+floatingMotionRefusals+" nativeParentDamage="+parentHits+" nativeChildDamage="+childHits);tracingFloating=false;
-            totalQualified+=qualified;
-            }
-            throw new InvalidOperationException("natural floating fixture requires a captured useful spear flight before testing actual Draw: qualified="+totalQualified+" sources="+parentBirths+"/"+childBirths);
+            Require(qualified==70 && published==70 && floatingMotionRefusals>0 && familyCalls>initialFamilies && parentBirths==1 && childBirths==1 && childHits>0 && bodyDraw && childDraw && memberChecked,"natural constrained floating preserves published NPC paths and real derived damage while withdrawing the unsupported attack preview");
+            Console.WriteLine("PASS ORIGINAL constrained floating actual World.Draw withdrawal body/child; zero extra terrain/discovery/replay; no wet prediction support claimed");
         }
         private static void RunClockCounterexamples(object context,object host,object combat,object input,object attack)
         {
