@@ -22,7 +22,7 @@ namespace JueMingR.Features.Combat
             {n.PlayerPreciseAreaCaptured=n.ClosestPlayerPreciseAreaCaptured;n.PlayerPreciseArea=n.ClosestPlayerPreciseArea;n.PlayerActive=n.ClosestPlayerActive;n.PlayerNativeDead=n.ClosestPlayerNativeDead;n.PlayerGhost=n.ClosestPlayerGhost;n.PlayerIndex=n.ClosestPlayerIndex;n.PlayerArea=n.ClosestPlayerArea;n.HasPlayer=true;n.PlayerDead=n.ClosestPlayerDead;n.PlayerWet=n.ClosestPlayerWet;n.PlayerIdle=n.ClosestPlayerIdle;n.PlayerGraveyard=n.ClosestPlayerGraveyard;n.PlayerCrimson=n.ClosestPlayerCrimson;n.PlayerJungle=n.ClosestPlayerJungle;n.PlayerTemple=n.ClosestPlayerTemple;n.PlayerGross=n.ClosestPlayerGross;n.PlayerCenterX=n.ClosestPlayerCenterX;n.PlayerCenterY=n.ClosestPlayerCenterY;n.PlayerVelocityCaptured=n.ClosestPlayerVelocityCaptured;n.PlayerVx=n.ClosestPlayerVx;n.PlayerVy=n.ClosestPlayerVy;n.PlayerDirection=n.ClosestPlayerDirection;n.PlayerGravityDirection=n.ClosestPlayerGravityDirection;}
             n.TargetNoAggro=n.ClosestPlayerNoAggro;n.FormTargetNoAggro=n.FormClosestNoAggro;e=Player(n,e);
             n.PlayerAttackHidden=n.ClosestPlayerAttackHidden;
-            n.PlayerDesert=n.ClosestPlayerDesert;n.PlayerSandstorm=n.ClosestPlayerSandstorm;
+            n.PlayerDesert=n.ClosestPlayerDesert;n.PlayerSandstorm=n.ClosestPlayerSandstorm;n.PlayerUndergroundDesert=n.ClosestPlayerUndergroundDesert;
             if(requiresArea && n.TargetChoiceUnknown)n.TargetChoiceUnavailable=true;
         }
         internal static void Face(ref NpcMotionState n,ref PredictionEnvironment e,bool faceTarget=true,bool confused=false)

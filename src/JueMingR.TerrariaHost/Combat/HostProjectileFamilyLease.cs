@@ -18,6 +18,7 @@ namespace JueMingR.TerrariaHost.Combat
             internal float[] Ai,Local;
             internal Vector2[] DamageTrail;
             private readonly bool arc;
+            private readonly Vector2 oldPosition;
             private readonly float rotation,scale,ownerDistance;
             private readonly int direction,wetCount;
             private readonly bool ownerCheck,ownerMelee,stopDamage,manualDirection;
@@ -26,6 +27,9 @@ namespace JueMingR.TerrariaHost.Combat
                 // AI001/711 receives against its actual stored trail. Other
                 // families keep their existing scalar lease and allocation cost.
                 if(p.type==711 && p.oldPos!=null)DamageTrail=(Vector2[])p.oldPos.Clone();
+                // AI29/521 can die before Update assigns oldPosition. Its
+                // Kill children use that saved origin, even at unchanged X/Y.
+                if(p.type==521)oldPosition=p.oldPosition;
                 arc=p.type==972 || p.type==973 || p.type>=982 && p.type<=985 || p.type==1126 || p.type==1128 || p.type==1129;
                 if(arc){rotation=p.rotation;scale=p.scale;direction=p.direction;wetCount=p.wetCount;ownerDistance=p.ownerHitCheckDistance;ownerCheck=p.ownerHitCheck;ownerMelee=p.usesOwnerMeleeHitCD;stopDamage=p.stopsDealingDamageAfterPenetrateHits;manualDirection=p.manualDirectionChange;}
             }
@@ -36,6 +40,7 @@ namespace JueMingR.TerrariaHost.Combat
                     var p=Body;if(p.whoAmI!=Slot || Slot<0 || Slot>=Main.projectile.Length || !ReferenceEquals(Main.projectile[Slot],p) || !p.key.Equals(Key) || p.position!=Position || p.velocity!=Velocity || p.type!=Type || p.owner!=Owner || p.width!=Width || p.height!=Height || p.damage!=Damage || p.penetrate!=Penetration || p.maxPenetrate!=Maximum || p.timeLeft!=Left || p.extraUpdates!=Extra || p.alpha!=Alpha || p.active!=Active || p.friendly!=Friendly || p.hostile!=Hostile || p.tileCollide!=Tile || p.ignoreWater!=IgnoreWater || p.wet!=Wet || p.honeyWet!=Honey || p.lavaWet!=Lava || p.shimmerWet!=Shimmer || p.immunityIdentity!=ImmunityIdentity || p.localNPCHitCooldown!=LocalCooldown || p.idStaticNPCHitCooldown!=StaticCooldown || p.usesLocalNPCImmunity!=LocalImmunity || p.usesIDStaticNPCImmunity!=StaticImmunity || p.appliesImmunityTimeOnSingleHits!=SingleImmunity || p.correctSlopeCollision!=CorrectSlope || p.ai.Length!=Ai.Length || p.localAI.Length!=Local.Length)return false;
                     for(int i=0;i<Ai.Length;i++)if(p.ai[i]!=Ai[i])return false;for(int i=0;i<Local.Length;i++)if(p.localAI[i]!=Local[i])return false;
                     if(DamageTrail!=null){if(p.oldPos==null || p.oldPos.Length!=DamageTrail.Length)return false;for(int i=0;i<DamageTrail.Length;i++)if(p.oldPos[i]!=DamageTrail[i])return false;}
+                    if(Type==521 && p.oldPosition!=oldPosition)return false;
                     // Arc geometry consumes these values directly. Scope the
                     // lease to that family; unrelated visual trails stay out.
                     if(arc && (p.rotation!=rotation || p.scale!=scale || p.direction!=direction || p.wetCount!=wetCount || p.ownerHitCheckDistance!=ownerDistance || p.ownerHitCheck!=ownerCheck || p.usesOwnerMeleeHitCD!=ownerMelee || p.stopsDealingDamageAfterPenetrateHits!=stopDamage || p.manualDirectionChange!=manualDirection))return false;

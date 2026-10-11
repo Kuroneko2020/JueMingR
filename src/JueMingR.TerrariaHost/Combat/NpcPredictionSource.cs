@@ -118,6 +118,7 @@ namespace JueMingR.TerrariaHost.Combat
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcEyeBossMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcMechanicalBossMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcSnowmanMotion",true),
+                typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcSegmentedWormMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcMartianTurretMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcKingSlimeMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcCelestialTowerMotion",true),
@@ -256,16 +257,16 @@ namespace JueMingR.TerrariaHost.Combat
         internal void Stop(){Native?.Stop();Clear();}
         internal void EndWorld(){Native?.DetachWorld();Clear();}
         internal void Prepare(NpcIdentity identity,long tick)
-        {PrepareSample(identity,tick,false);}
+        {PrepareWithIceLease(identity,tick,false);}
         internal void PrepareAction(NpcIdentity identity,long tick)
-        {PrepareSample(identity,tick,true);}
+        {PrepareWithIceLease(identity,tick,true);}
         private void PrepareSample(NpcIdentity identity,long tick,bool firstPlayerStepCompleted)
         {
             outcomeTick=-1;
             if(Cache.Required==0){Clear();return;}
             if(!CombatSelection.Valid(identity,identity.Session)){Clear();return;}
             ownsState=true;
-            if(Prediction.SegmentedNpcPrediction.Family(identity.Type)!=0)
+            if(!SegmentedWormMotor(Main.npc[identity.Slot]) && Prediction.SegmentedNpcPrediction.Family(identity.Type)!=0)
             {
                 if(!usingSegmented){Native?.ClearTarget();rolling.Clear();observedCount=0;targetPlayer=-1;usingSegmented=true;}
                 Native?.DiscardRetiredResult();
@@ -279,7 +280,7 @@ namespace JueMingR.TerrariaHost.Combat
             Array.Clear(visited,0,visited.Length);Array.Clear(motionSlots,0,motionSlots.Length);int count=0,queued=1;pending[0]=identity.Slot;visited[identity.Slot]=motionSlots[identity.Slot]=true;
             int wallSlot=Main.wofNPCIndex;
             var directPlayer=Main.npc[identity.Slot].target>=0 && Main.npc[identity.Slot].target<Main.maxPlayers?Main.player[Main.npc[identity.Slot].target]:null;
-            bool wallWanted=WallFamily(Main.npc[identity.Slot]) || wallSlot>=0 || directPlayer!=null && (directPlayer.gross || directPlayer.tongued || directPlayer.FindBuffIndex(37)>=0 || directPlayer.FindBuffIndex(38)>=0);
+            bool wallWanted=SegmentedWormMotor(Main.npc[identity.Slot]) && identity.Type==117 || WallFamily(Main.npc[identity.Slot]) || wallSlot>=0 || directPlayer!=null && (directPlayer.gross || directPlayer.tongued || directPlayer.FindBuffIndex(37)>=0 || directPlayer.FindBuffIndex(38)>=0);
             bool wallCaptured=false,wallComplete=true;
             int gravitySlot=NPC.brainOfGravity;bool gravityWanted=gravitySlot>=0 && gravitySlot<Main.maxNPCs && gravitySlot<Main.npc.Length && Main.npc[gravitySlot]!=null;
             bool plantCaptured=false,plantComplete=true,invasionCaptured=false,invasionComplete=true,eyeCaptured=false,eyeComplete=true,skeletonCaptured=false,skeletonComplete=true,townCaptured=false,townComplete=true,brainCaptured=false,brainComplete=true,golemCaptured=false,golemComplete=true,weaponCaptured=false,weaponComplete=true,mageCaptured=false,mageComplete=false,towerCaptured=false,towerComplete=true;
@@ -289,12 +290,14 @@ namespace JueMingR.TerrariaHost.Combat
             bool ritualCaptured=false,ritualComplete=true;
             bool windyCaptured=false,windyComplete=true,empressComplete=true;
             bool birdCaptured=false,birdComplete=true;
+            bool wormCaptured=false,wormComplete=true;
             for(int next=0;next<queued;next++)
             {
                 int slot=pending[next];
                 var n=Main.npc[slot];if(n==null || !n.active)continue;
                 states[count++]=Read(n,identity.Session);
-                if(!wallCaptured && (motionSlots[slot] && WallFamily(n) || wallWanted && next==0))
+                if(motionSlots[slot] && (SegmentedWormMotor(n) || wormCaptured && SegmentedWormRequired(slot)))CaptureSegmentedWormDependencies(n,identity.Session,count-1,ref queued,ref wormCaptured,ref wormComplete);
+                if(!wallCaptured && (motionSlots[slot] && (WallFamily(n) || n.type==117 && SegmentedWormMotor(n)) || wallWanted && next==0))
                 {
                     wallCaptured=true;
                     // Only bodies write this global. Eyes/hungry never feed
@@ -537,12 +540,13 @@ namespace JueMingR.TerrariaHost.Combat
                 if(motionSlots[slot])
                 {
                     var owner=states[count-1].PositionOwner;if(owner.Token!=null){if(states[count-1].PositionRelation!=9)motionSlots[owner.Slot]=true;if(!visited[owner.Slot]){visited[owner.Slot]=true;pending[queued++]=owner.Slot;}}
-                    if(parent>=0 && parent<Main.maxNPCs){motionSlots[parent]=true;if(!visited[parent]){visited[parent]=true;pending[queued++]=parent;}}
-                    if(child>=0 && child<Main.maxNPCs){motionSlots[child]=true;if(!visited[child]){visited[child]=true;pending[queued++]=child;}}
+                    if(!(wormCaptured && SegmentedWormRequired(slot)) && parent>=0 && parent<Main.maxNPCs){motionSlots[parent]=true;if(!visited[parent]){visited[parent]=true;pending[queued++]=parent;}}
+                    if(!(wormCaptured && SegmentedWormRequired(slot)) && child>=0 && child<Main.maxNPCs){motionSlots[child]=true;if(!visited[child]){visited[child]=true;pending[queued++]=child;}}
                 }
                 int lifeOwner=states[count-1].Health.RealLife;
                 if(lifeOwner>=0 && lifeOwner<Main.maxNPCs && !visited[lifeOwner]){visited[lifeOwner]=true;pending[queued++]=lifeOwner;}
             }
+            if(wormCaptured)FinishSegmentedWormDependencies(identity.Session,ref count,wormCaptured,wormComplete);
             if(towerCaptured)
             {
                 for(int consumer=0;consumer<towerConsumers.Count;consumer++)
@@ -621,7 +625,7 @@ namespace JueMingR.TerrariaHost.Combat
             // Sort only the required dependency chain by native slot order.
             for(int i=1;i<count;i++){var value=states[i];int j=i-1;while(j>=0 && states[j].Identity.Slot>value.Identity.Slot){states[j+1]=states[j];j--;}states[j+1]=value;}
             int selected=0;for(int i=0;i<count;i++)if(states[i].Identity.Equals(identity))selected=i;
-            for(int i=0;i<count;i++){motionRoles[i]=motionSlots[states[i].Identity.Slot];if(motionRoles[i]){var actor=Main.npc[states[i].Identity.Slot];NpcTrackingObservation.Capture(actor,ref states[i],Terrain);if(DeerclopsMotor(actor))CaptureDeerclopsInputs(actor,ref states[i],firstPlayerStepCompleted);}}
+            for(int i=0;i<count;i++){motionRoles[i]=states[i].Identity.Slot<motionSlots.Length && motionSlots[states[i].Identity.Slot];if(motionRoles[i]){var actor=Main.npc[states[i].Identity.Slot];NpcTrackingObservation.Capture(actor,ref states[i],Terrain);if(DeerclopsMotor(actor))CaptureDeerclopsInputs(actor,ref states[i],firstPlayerStepCompleted);}}
             if(invasionCaptured)for(int i=0;i<count;i++)if(InvasionTarget(Main.npc[states[i].Identity.Slot])){states[i].DD2TargetFactsCaptured=true;states[i].DD2TargetFactsComplete=invasionComplete;}
             if(eyeCaptured)for(int i=0;i<count;i++)if(EyeMotor(Main.npc[states[i].Identity.Slot]))
             {states[i].EyeRelationsCaptured=true;states[i].EyeRelationsComplete=eyeComplete;states[i].MechDestroyerCaptured=true;states[i].MechDestroyerPresent=NPC.npcsFoundForCheckActive[135];}
@@ -674,9 +678,9 @@ namespace JueMingR.TerrariaHost.Combat
                 states[i].SearchPlayerIndex=winner<0?-1:players.SlotAt(winner);states[i].SearchPlayerAlive=winner>=0 && players.SearchAliveAt(winner);states[i].SearchPlayerDead=winner>=0 && players.SearchDeadAt(winner);
             }
             var current=Main.npc[identity.Slot];
-            if(current.aiStyle==6 || current.aiStyle==37)for(int i=0;i<count;i++)if(states[i].ParentSlot<0){current=Main.npc[states[i].Identity.Slot];break;}
+            if(!wormCaptured && (current.aiStyle==6 || current.aiStyle==37))for(int i=0;i<count;i++)if(states[i].ParentSlot<0){current=Main.npc[states[i].Identity.Slot];break;}
             if(moonCaptured)CaptureMoonLeechInputs(identity.Session,count);
-            var premiseEnv=new PredictionEnvironment{BirdWeatherCaptured=birdCaptured,BirdCloudAlpha=birdCaptured?Main.cloudAlpha:0,BirdInactiveZeroCaptured=birdCaptured && playerCount==0 && Main.player[0]!=null && !Main.player[0].active,BirdInactiveZero=birdCaptured && playerCount==0 && Main.player[0]!=null && !Main.player[0].active?new MotionRect(Main.player[0].position.X,Main.player[0].position.Y,Main.player[0].width,Main.player[0].height):default(MotionRect),MoonLeeches=moonCaptured?moonLeeches:null,TowerConsumers=towerCaptured?towerConsumers:null,WallPlayers=wallCaptured?wallPlayers:null,WallViewWidth=Main.MaxWorldViewSize.X,BloodMoon=Main.bloodMoon,Players=players,TownWeatherCaptured=townCaptured,Raining=townCaptured && Main.raining,Storming=townCaptured && Main.IsItStorming,MageCorpses=mageCaptured?mageCorpses:null,InvasionPlayers=invasionCaptured?invasionPlayers:null,PlayerIndex=-1,Expert=Main.expertMode,SnowMoon=Main.snowMoon,WorldHeight=Main.maxTilesY,Eclipse=Main.eclipse,PumpkinMoon=Main.pumpkinMoon,SlimeRain=Main.slimeRain,Day=Main.dayTime,Remix=Main.remixWorld,WorldSurface=(float)Main.worldSurface,Multiplayer=Main.netMode==1,GoodWorld=Main.getGoodWorld,Anniversary=Main.tenthAnniversaryWorld};
+            var premiseEnv=new PredictionEnvironment{BirdWeatherCaptured=birdCaptured,BirdCloudAlpha=birdCaptured?Main.cloudAlpha:0,BirdInactiveZeroCaptured=birdCaptured && playerCount==0 && Main.player[0]!=null && !Main.player[0].active,BirdInactiveZero=birdCaptured && playerCount==0 && Main.player[0]!=null && !Main.player[0].active?new MotionRect(Main.player[0].position.X,Main.player[0].position.Y,Main.player[0].width,Main.player[0].height):default(MotionRect),MoonLeeches=moonCaptured?moonLeeches:null,TowerConsumers=towerCaptured?towerConsumers:null,WallPlayers=wallCaptured?wallPlayers:null,WallViewWidth=Main.MaxWorldViewSize.X,BloodMoon=Main.bloodMoon,Players=players,TownWeatherCaptured=townCaptured,Raining=townCaptured && Main.raining,Storming=townCaptured && Main.IsItStorming,MageCorpses=mageCaptured?mageCorpses:null,InvasionPlayers=invasionCaptured?invasionPlayers:null,PlayerIndex=-1,Expert=Main.expertMode,SnowMoon=Main.snowMoon,WorldHeight=Main.maxTilesY,Eclipse=Main.eclipse,PumpkinMoon=Main.pumpkinMoon,SlimeRain=Main.slimeRain,Day=Main.dayTime,Remix=Main.remixWorld,GravityWorldSurface=Main.worldSurface,GravityRockLayer=Main.rockLayer,WorldSurface=(float)Main.worldSurface,Multiplayer=Main.netMode==1,GoodWorld=Main.getGoodWorld,Anniversary=Main.tenthAnniversaryWorld};
             int oldPlayer=states[selected].PlayerIndex;
             premiseEnv.Graveyard=oldPlayer>=0 && oldPlayer<Main.maxPlayers && Main.player[oldPlayer]!=null && Main.player[oldPlayer].ZoneGraveyard;
             int target=NpcMotion.PlayerPremiseTarget(states[selected],premiseEnv,Terrain,states,count);bool needsPlayer=false;
@@ -702,7 +706,7 @@ namespace JueMingR.TerrariaHost.Combat
             targetPlayer=target;observedCount=count;
             var env=new PredictionEnvironment{BirdWeatherCaptured=birdCaptured,BirdCloudAlpha=birdCaptured?Main.cloudAlpha:0,BirdInactiveZeroCaptured=birdCaptured && playerCount==0 && Main.player[0]!=null && !Main.player[0].active,BirdInactiveZero=birdCaptured && playerCount==0 && Main.player[0]!=null && !Main.player[0].active?new MotionRect(Main.player[0].position.X,Main.player[0].position.Y,Main.player[0].width,Main.player[0].height):default(MotionRect),MoonLeeches=moonCaptured?moonLeeches:null,WallPlayers=wallCaptured?wallPlayers:null,WallViewWidth=Main.MaxWorldViewSize.X,PlayerGross=player!=null && player.gross,WallTimelineCaptured=wallCaptured && player!=null,WallTimelineIndex=target,WallTimelineArea=player==null?default(MotionRect):new MotionRect(player.position.X,player.position.Y,player.width,player.height),WallTimelineGross=player!=null && player.gross,GravitySourceCaptured=!gravityWanted || brainComplete,GravitySourceValid=gravityValid,GravitySourceIdentity=gravityIdentity,GravitySourceX=gravityValid?Main.npc[gravitySlot].Center.X:0,GravitySourceY=gravityValid?Main.npc[gravitySlot].Center.Y:0,TownWeatherCaptured=townCaptured,Raining=townCaptured && Main.raining,Storming=townCaptured && Main.IsItStorming,BloodMoon=Main.bloodMoon,SkeletronUp=Main.getGoodWorld && current.aiStyle==9 && current.type==33 && NPC.AnyNPCs(35),WallBossUp=Main.getGoodWorld && current.aiStyle==9 && current.type==25 && NPC.AnyNPCs(113),PlayerProtected=playerAlive && player.insideUnbreakableWalls,PlayerVelocityCaptured=player!=null,PlayerVx=player==null?0:player.velocity.X,PlayerVy=player==null?0:player.velocity.Y,HappyWindyCaptured=true,HappyWindy=Main.IsItAHappyWindyDay,PlayerIndex=target,PlayerX=player==null?0:player.Center.X,PlayerY=player==null?0:player.Center.Y,PlayerWidth=player==null?0:player.width,PlayerHeight=player==null?0:player.height,PlayerWet=player!=null && player.wet,Wind=Main.windSpeedCurrent,WindTarget=Main.windSpeedTarget,Expert=Main.expertMode,Day=Main.dayTime,WorldWidth=Main.maxTilesX,GravityWorldSurface=Main.worldSurface,WorldSurface=(float)Main.worldSurface,Multiplayer=Main.netMode==1,Remix=Main.remixWorld,SlimeRain=Main.slimeRain,
                 Enraged=player!=null && (player.position.Y<800 || player.position.Y>Main.worldSurface*16 || player.position.X>6400 && player.position.X<Main.maxTilesX*16-6400),
-                TowerConsumers=towerCaptured?towerConsumers:null,DD2OngoingCaptured=true,DD2Ongoing=Terraria.GameContent.Events.DD2Event.Ongoing,MageCorpses=mageCaptured?mageCorpses:null,InvasionPlayers=invasionCaptured?invasionPlayers:null,MechQueenUp=NPC.mechQueen>=0 && NPC.mechQueen<Main.maxNPCs && Main.npc[NPC.mechQueen]!=null && Main.npc[NPC.mechQueen].active && Main.npc[NPC.mechQueen].type==127,Players=players,WorldHeight=Main.maxTilesY,RockLayer=(float)Main.rockLayer,PlayerDead=!playerAlive,PlayerIdleWithNegativeAggro=player!=null && player.itemAnimation==0 && player.aggro<0,Corrupt=player!=null && player.ZoneCorrupt,Crimson=player!=null && player.ZoneCrimson,Jungle=player!=null && player.ZoneJungle,Temple=player!=null && player.ZoneLihzhardTemple,AnyLivingCorrupt=anyCorrupt,SkyblockLowTiles=WorldGen.Skyblock.lowTiles,ClearLine=false,Eclipse=Main.eclipse,Graveyard=player!=null && player.ZoneGraveyard,GoodWorld=Main.getGoodWorld,Zenith=Main.zenithWorld,Anniversary=Main.tenthAnniversaryWorld,InvasionType=Main.invasionType,SnowMoon=Main.snowMoon,PumpkinMoon=Main.pumpkinMoon,DontStarve=Main.dontStarveWorld};
+                TowerConsumers=towerCaptured?towerConsumers:null,DD2OngoingCaptured=true,DD2Ongoing=Terraria.GameContent.Events.DD2Event.Ongoing,MageCorpses=mageCaptured?mageCorpses:null,InvasionPlayers=invasionCaptured?invasionPlayers:null,MechQueenUp=NPC.mechQueen>=0 && NPC.mechQueen<Main.maxNPCs && Main.npc[NPC.mechQueen]!=null && Main.npc[NPC.mechQueen].active && Main.npc[NPC.mechQueen].type==127,Players=players,WorldHeight=Main.maxTilesY,GravityRockLayer=Main.rockLayer,RockLayer=(float)Main.rockLayer,PlayerDead=!playerAlive,PlayerIdleWithNegativeAggro=player!=null && player.itemAnimation==0 && player.aggro<0,Corrupt=player!=null && player.ZoneCorrupt,Crimson=player!=null && player.ZoneCrimson,Jungle=player!=null && player.ZoneJungle,Temple=player!=null && player.ZoneLihzhardTemple,AnyLivingCorrupt=anyCorrupt,SkyblockLowTiles=WorldGen.Skyblock.lowTiles,ClearLine=false,Eclipse=Main.eclipse,Graveyard=player!=null && player.ZoneGraveyard,GoodWorld=Main.getGoodWorld,Zenith=Main.zenithWorld,Anniversary=Main.tenthAnniversaryWorld,InvasionType=Main.invasionType,SnowMoon=Main.snowMoon,PumpkinMoon=Main.pumpkinMoon,DontStarve=Main.dontStarveWorld};
             // Main updates players by slot before NPCs. At local ItemCheck,
             // later numbered players have not naturally moved yet.
             var playerMotion=!playerAlive?default(PredictionPlayerMotion):ReadPlayer(player);
@@ -989,6 +993,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(CultistRitualMotor(n))CaptureCultistRitualSample(n,ref state,session);
             if(n.type==594 && n.aiStyle==113 || n.type==1 && n.aiStyle==1)CaptureWindyBalloonSample(n,ref state,session);
             if(BirdMotor(n))CaptureBirdSample(n,ref state,session);
+            if(SegmentedWormMotor(n))CaptureSegmentedWormSample(n,ref state,session);
             return state;
         }
         private static bool MotorRotationNeeded(NPC n){return n.type==618 && n.aiStyle==117 || n.type==126 && n.aiStyle==31 || n.type==395 && n.aiStyle==76 || n.type==491 && n.aiStyle==93 || n.aiStyle==75 && (n.type==392 || n.type==393 || n.type==394 || n.type==492);}

@@ -47,6 +47,10 @@ namespace NativeWorldTextProbe
             if(finiteOracle=="note"){NativeCombatNoteChecks.Run(context);return;}
             if(finiteOracle=="nebula-blaze"){NativeCombatNebulaBlazeChecks.Run(context);return;}
             if(finiteOracle=="sky-fracture"){NativeCombatSkyFractureChecks.Run(context);return;}
+            if(finiteOracle=="ice-rod"){NativeCombatIceRodChecks.Run(context);return;}
+            if(finiteOracle=="ai29-spells"){NativeCombatAi29SpellChecks.Run(context);return;}
+            if(finiteOracle=="flare"){NativeCombatFlareChecks.Run(context);return;}
+            if(finiteOracle=="blizzard"){NativeCombatBlizzardChecks.Run(context);return;}
             if(finiteOracle=="arc-swing"){NativeCombatArcSwingChecks.Run(context);return;}
             if(finiteOracle=="attached-shot"){NativeCombatAttachedShotChecks.Run(context);return;}
             if(finiteOracle=="betsy-flame"){NativeCombatBetsyFlameChecks.Run(context);return;}
@@ -110,6 +114,10 @@ namespace NativeWorldTextProbe
             NativeCombatNoteChecks.Run(context);
             NativeCombatNebulaBlazeChecks.Run(context);
             NativeCombatSkyFractureChecks.Run(context);
+            NativeCombatIceRodChecks.Run(context);
+            NativeCombatAi29SpellChecks.Run(context);
+            NativeCombatFlareChecks.Run(context);
+            NativeCombatBlizzardChecks.Run(context);
             NativeCombatArcSwingChecks.Run(context);
             NativeCombatAttachedShotChecks.Run(context);
             NativeCombatBetsyFlameChecks.Run(context);

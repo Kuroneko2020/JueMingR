@@ -64,6 +64,10 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCombatNoteChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatNebulaBlazeChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatSkyFractureChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatIceRodChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatAi29SpellChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatFlareChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatBlizzardChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatArcSwingChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatAttachedShotChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatBetsyFlameChecks.cs'=@('native-CombatEffectsCpu')
@@ -133,6 +137,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCombatWindyBalloonChecks.cs'=@('native-NpcWindyBalloon')
         'tests/NativeWorldTextProbe/NativeCombatBirdChecks.cs'=@('native-NpcBird')
         'tests/NativeWorldTextProbe/NativeCombatMartianTurretChecks.cs'=@('native-NpcMartianTurret')
+        'tests/NativeWorldTextProbe/NativeCombatSegmentedWormChecks.cs'=@('native-NpcSegmentedWorm')
         'tests/NativeWorldTextProbe/NativeCombatEmpressChecks.cs'=@('native-NpcEmpress')
         'tests/NativeWorldTextProbe/NativeCombatDeerclopsChecks.cs'=@('native-NpcDeerclops')
         'tests/NativeWorldTextProbe/NativeCombatFishronChecks.cs'=@('native-NpcFishron')
@@ -194,6 +199,7 @@ function Get-WorkloadNativeScopes {
         'NpcWindyBalloon'=@('combat-host');
         'NpcBird'=@('combat-host');
         'NpcMartianTurret'=@('combat-host');
+        'NpcSegmentedWorm'=@('combat-host');
         'NpcEmpress'=@('combat-host');
         'NpcDeerclops'=@('combat-host');
         'NpcFishron'=@('combat-host');

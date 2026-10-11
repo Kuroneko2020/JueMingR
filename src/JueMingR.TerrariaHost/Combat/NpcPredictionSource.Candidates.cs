@@ -71,7 +71,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(count!=1 || selected!=0 || !motionRoles[0] || candidateInputs==null)return null;
             int key=CandidateKey(identity,beforeNpc);if(key<0 || key>=candidateInputs.Length)return null;
             var prior=candidateInputs[key];var continuation=prior?.Continuation;
-            if(continuation==null || !continuation.Matches(states[0],tick,required,environment,player,playerAdvanced) || !Terrain.BeginContinuation(prior.Terrain))return null;
+            if(continuation==null || !continuation.Matches(states[0],tick,required,environment,player,playerAdvanced) || !IncludeIceContinuation(continuation) || !Terrain.BeginContinuation(prior.Terrain))return null;
             try
             {
                 var path=continuation.Advance(rolling,states[0],tick,required,epoch,environment,player,Terrain,playerAdvanced);

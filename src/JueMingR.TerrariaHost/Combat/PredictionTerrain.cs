@@ -88,6 +88,10 @@ namespace JueMingR.TerrariaHost.Combat
             stop=PredictionStop.None;cell=default(Cell);
             if(x<0 || y<0 || x>=Main.maxTilesX || y>=Main.maxTilesY){stop=PredictionStop.TerrainUnavailable;return false;}
             int key=y*Main.maxTilesX+x,hot=(key^(key>>7)^(key>>16))&255;
+            // Ice changes are private forecast values. Check before either
+            // cache so a player cannot silently consume the old world cell.
+            if(icePlayerGuard!=null && icePlayerGuard.Contains(key)){stop=PredictionStop.TerrainUnavailable;return false;}
+            if(icePathReads!=null)icePathReads.Record(x,y);
             if(hotEpochs[hot]==epoch && hotKeys[hot]==key){cell=hotCells[hot];return true;}
             if(cells.TryGetValue(key,out cell)){Hot(hot,key,cell);return true;}
             if(cells.Count>=4096){stop=PredictionStop.TerrainLimit;return false;}

@@ -197,7 +197,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(HostAttachedShotAttack.Handles(captured.Projectile))
             {var attached=ContentSamples.ProjectilesByType[captured.Projectile];obstacles=new HostAttackObstacles(player,attached,timeline,delay,beforeNpc,!beforeNpc);return HostAttachedShotAttack.Solve(player,captured,timeline,start,age,beforeNpc,terrain,obstacles,delay,preparedPlayer);}
             if(HostEffectAttack.Handles(captured.Projectile))
-            {var effect=ContentSamples.ProjectilesByType[captured.Projectile];obstacles=new HostAttackObstacles(player,effect,timeline,delay,beforeNpc,!beforeNpc);return HostEffectAttack.Solve(player,captured,timeline,start,age,beforeNpc,terrain,obstacles,delay);}
+            {var effect=ContentSamples.ProjectilesByType[captured.Projectile];obstacles=new HostAttackObstacles(player,effect,timeline,delay,beforeNpc,!beforeNpc);return HostEffectAttack.Solve(player,captured,timeline,start,age,beforeNpc,terrain,obstacles,delay,preparedPlayer);}
             Projectile melee;if(ContentSamples.ProjectilesByType.TryGetValue(captured.Projectile,out melee) && HostMeleeAttack.Handles(melee))
             {
                 // A real intervening boomerang hit can enter its return phase.
@@ -254,7 +254,7 @@ namespace JueMingR.TerrariaHost.Combat
             // refill happens to recreate the same ammo bytes in this step.
             current=next=null;
             var aimPoint=new Vector2(result.AimX,result.AimY);bool reverse=!HostSkyAttack.RawCursor(type) && !HostMeleeAttack.RawCursor(type);
-            return ammo!=null && ammo.Projectile==442?CombatCursorScope.BeginTileTarget(aimPoint,reverse):CombatCursorScope.Begin(aimPoint,reverse);
+            return ammo!=null && (ammo.Projectile==442 || ammo.Projectile==80)?CombatCursorScope.BeginTileTarget(aimPoint,reverse):CombatCursorScope.Begin(aimPoint,reverse);
         }
     }
 }

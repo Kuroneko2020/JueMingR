@@ -18,8 +18,22 @@ namespace JueMingR.TerrariaHost.Combat
             bool gem=HostGemStaffAttack.Handles(player.HeldItem.shoot);
             bool attached=HostAttachedShotAttack.Handles(player.HeldItem.shoot);
             bool arc=HostArcSwingAttack.Weapon(player.HeldItem.type);
-            if(!phaseblade && !gem && !attached && !arc && !HostHarpoonAttack.Handles(player.HeldItem.shoot))return null;
+            bool ice=HostIceRodAttack.Handles(player.HeldItem.shoot);
+            if(!phaseblade && !gem && !attached && !arc && !ice && !HostHarpoonAttack.Handles(player.HeldItem.shoot))return null;
             FlightPreview best=null;flightPreviewTerrain.Reset();var clock=new HostAttackClock(timeline,phase);
+            if(ice)
+            {
+                // A failed placement retains a damaging autonomous tail. The
+                // finite family supplies its actual clock and placement state;
+                // observation grants no cursor control to an existing bolt.
+                var sources=new List<Projectile>();
+                for(int slot=0;slot<Main.maxProjectiles;slot++)
+                {var shot=Main.projectile[slot];if(shot!=null && shot.active && shot.owner==player.whoAmI && shot.type==80 && shot.damage>0 && shot.friendly && !shot.hostile)sources.Add(shot);}
+                live=sources.Count>0;if(!live)return null;var primary=sources[0];
+                var receivers=new HostAttackObstacles(player,primary,timeline,0,clock.BeforeNpc,clock.NextWorld);
+                var contact=HostIceRodAttack.Known(player,sources.ToArray(),timeline,clock,flightPreviewTerrain,receivers,HostAttackPlayerFrame.Capture(player,timeline));
+                return contact==null?null:new FlightPreview(player,primary,contact,arc:receivers);
+            }
             if(arc)
             {
                 var sources=new List<Projectile>();

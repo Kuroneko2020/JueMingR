@@ -25,6 +25,7 @@ namespace JueMingR.TerrariaHost.Combat
             internal ArcOwnerLease ArcOwner;
             internal int[] ArcMelee;
             internal bool ArcHandReset;
+            internal IcePlacementLease IcePlacement;
         }
         private sealed class AiReflector
         {
@@ -235,6 +236,7 @@ namespace JueMingR.TerrariaHost.Combat
                 // so its autonomous-targeting dependency needs its own lease.
                 if(goodWorld!=Main.getGoodWorld || expert!=Main.expertMode || multiplayer!=(Main.netMode==1) || selectedReflects!=Main.npc[timeline.Identity.Slot].reflectsProjectiles || !BirthInputsMatch(afterHandStart) || history.ArcOwner!=null && !(afterHandStart?history.ArcOwner.CurrentAfterHandStart:history.ArcOwner.Current) || birthSlots!=null && !birthSlots.Current)return false;
                 foreach(var targets in targetLeases)if(!targets.Current)return false;
+                if(history.IcePlacement!=null && !history.IcePlacement.Current)return false;
                 foreach(var family in familyLeases)if(!family.Current)return false;
                 if(!ReceiveUnchanged())return false;
                 foreach(var lease in receiveLeases)if(!ReferenceEquals(lease,this) && !lease.ReceiveUnchanged())return false;
