@@ -119,6 +119,7 @@ namespace JueMingR.TerrariaHost.Combat
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcMechanicalBossMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcSnowmanMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcSegmentedWormMotion",true),
+                typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcCasterMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcMartianTurretMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcKingSlimeMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcCelestialTowerMotion",true),
@@ -290,12 +291,14 @@ namespace JueMingR.TerrariaHost.Combat
             bool ritualCaptured=false,ritualComplete=true;
             bool windyCaptured=false,windyComplete=true,empressComplete=true;
             bool birdCaptured=false,birdComplete=true;
+            bool casterSkeletonQueried=false,casterSkeletonComplete=true,casterWallQueried=false,casterWallComplete=true;
             bool wormCaptured=false,wormComplete=true,solarCaptured=false;
             for(int next=0;next<queued;next++)
             {
                 int slot=pending[next];
                 var n=Main.npc[slot];if(n==null || !n.active)continue;
                 states[count++]=Read(n,identity.Session);
+                if(motionSlots[slot] && CasterMotor(n))CaptureCasterDependencies(n,ref queued,ref casterSkeletonQueried,ref casterSkeletonComplete,ref casterWallQueried,ref casterWallComplete);
                 if(motionSlots[slot] && (SegmentedWormMotor(n) || wormCaptured && SegmentedWormRequired(slot)))CaptureSegmentedWormDependencies(n,identity.Session,count-1,ref queued,ref wormCaptured,ref wormComplete,ref solarCaptured);
                 if(!wallCaptured && (motionSlots[slot] && (WallFamily(n) || n.type==117 && SegmentedWormMotor(n)) || wallWanted && next==0))
                 {
@@ -623,6 +626,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(windyCaptured)FinishWindyBalloonDependencies(identity.Session,ref count,windyCaptured,windyComplete);
             if(birdCaptured)FinishBirdDependencies(identity.Session,ref count,birdCaptured,birdComplete);
             for(int i=0;i<count;i++)if(states[i].EmpressFactsCaptured)states[i].EmpressRelationsComplete=empressComplete;
+            FinishCasterDependencies(count,casterSkeletonQueried,casterSkeletonComplete,casterWallQueried,casterWallComplete);
             // Sort only the required dependency chain by native slot order.
             for(int i=1;i<count;i++){var value=states[i];int j=i-1;while(j>=0 && states[j].Identity.Slot>value.Identity.Slot){states[j+1]=states[j];j--;}states[j+1]=value;}
             int selected=0;for(int i=0;i<count;i++)if(states[i].Identity.Equals(identity))selected=i;

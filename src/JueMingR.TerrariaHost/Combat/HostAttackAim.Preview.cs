@@ -51,7 +51,7 @@ namespace JueMingR.TerrariaHost.Combat
             // All AI013 hand roles except GolemFist refresh native dummy use
             // timers until catch. Their current flight owns the preview even
             // when it was born before observation was enabled.
-            if(hasFlight && item.shoot!=481 && !HostGemStaffAttack.Handles(item.shoot) && !HostAttachedShotAttack.Handles(item.shoot) && !HostArcSwingAttack.Weapon(item.type) && !HostIceRodAttack.Handles(item.shoot) && !HostPaperAirplaneAttack.Handles(item.shoot) && !HostOrnamentAttack.Handles(item.shoot) && !HostInfernoAttack.Handles(item.shoot) && !HostSonicBoomAttack.Handles(item.shoot))return OnlyFlight(plan,player,timeline,flight);
+            if(hasFlight && item.shoot!=481 && !HostGemStaffAttack.Handles(item.shoot) && !HostAttachedShotAttack.Handles(item.shoot) && !HostArcSwingAttack.Weapon(item.type) && !HostIceRodAttack.Handles(item.shoot) && !HostPaperAirplaneAttack.Handles(item.shoot) && !HostOrnamentAttack.Handles(item.shoot) && !HostInfernoAttack.Handles(item.shoot) && !HostSonicBoomAttack.Handles(item.shoot) && !HostBookStaffAttack.Handles(item.shoot) && !HostSkullAttack.Handles(item.shoot))return OnlyFlight(plan,player,timeline,flight);
             // Inferno's first possible new-body receive is age+delay+1.
             // An earlier live-family contact already wins this read-only
             // comparison; searching every new hand direction cannot improve
@@ -125,6 +125,14 @@ namespace JueMingR.TerrariaHost.Combat
             {
                 for(int i=0;i<delay;i++){PredictionStop stop;if(!PlayerMotionContinuation.Advance(ref motion,playerWorld,plan.Terrain,out stop))return OnlyFlight(plan,player,timeline,flight);}
                 body=(Player)previewCopy.Invoke(player,null);HostAttackPlayerFrame.ApplyPose(body,motion);body.itemTime=0;body.itemAnimation=0;body.reuseDelay=0;
+            }
+            if(item.type==3852)
+            {
+                // A delayed burst still owns its stored direction and current
+                // animation. Account for the next ItemCheck decrement once;
+                // the model subtracts the remaining launch delay itself.
+                if(ReferenceEquals(body,player))body=(Player)previewCopy.Invoke(player,null);
+                body.itemAnimation=delay<player.itemAnimation-1?player.itemAnimation-1:0;
             }
             int age=clock.Age+delay;Vector2 start=HostAttackModels.LaunchOrigin(body,item);
             if(HostSwingAttack.Handles(item))

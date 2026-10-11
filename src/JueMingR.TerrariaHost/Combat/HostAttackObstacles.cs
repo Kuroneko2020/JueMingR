@@ -168,7 +168,7 @@ namespace JueMingR.TerrariaHost.Combat
         // visual clock. Resetting private hit history must not recapture time.
         internal void CapturePaperClock(HostPaperAirplaneAttack.State value){history.PaperClock=value;}
         private bool BirthInputsMatch(bool afterHandStart)
-        {return BeeOwnerCurrent && CursorMappingCurrent && PhoenixOwnerCurrent && (!history.PaperClock.HasValue || history.PaperClock.Value.Current) && (history.ArcOwner==null || (afterHandStart?history.ArcOwner.MembersAfterHandStart:history.ArcOwner.MembersCurrent)) && (!shotFacingCaptured || cursorPlayer.fullRotation==shotRotation);}
+        {return BookHandCurrent && BeeOwnerCurrent && CursorMappingCurrent && PhoenixOwnerCurrent && (!history.PaperClock.HasValue || history.PaperClock.Value.Current) && (history.ArcOwner==null || (afterHandStart?history.ArcOwner.MembersAfterHandStart:history.ArcOwner.MembersCurrent)) && (!shotFacingCaptured || cursorPlayer.fullRotation==shotRotation);}
         internal void CaptureProjectileFamily(Projectile[] members,int firstSceneType=0,int lastSceneType=0)
         {familyLeases.Add(new HostProjectileFamilyLease(members,firstSceneType,lastSceneType));CaptureBirthSlots();}
         internal void CaptureOwnedProjectileFamily(Projectile[] members,int owner,int[] sceneTypes)

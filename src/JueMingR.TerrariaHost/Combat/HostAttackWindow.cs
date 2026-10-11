@@ -26,7 +26,16 @@ namespace JueMingR.TerrariaHost.Combat
             if(HostHeldAttack.Weapon(item.type) || HostYoyoNavigation.Weapon(item) || item.channel && item.type!=3473)return 0;
             if(HostSwingAttack.Handles(item) && !HostSwingAttack.Mixed(item) && player.itemAnimation>0)return 0;
             if(!HostAttackResources.Initial(player,item))return -1;
-            if(player.itemAnimation>1 && !item.shootsEveryUse)return Math.Max(0,player.itemTime-1);
+            if(player.itemAnimation>1 && !item.shootsEveryUse)
+            {
+                int delay=Math.Max(0,player.itemTime-1);
+                // Book's four-birth gate (one for alternate use) can close
+                // while itemTime is ready. The next useful hand then belongs
+                // to the next animation, not an invented fifth burst member.
+                if(item.type==3852 && !HostBookStaffAttack.CanBirth(player.itemAnimation-delay-1,player.itemAnimationMax,HostBookStaffAttack.UseTime(player),player.altFunctionUse==2))
+                    return Math.Max(delay,Math.Max(player.reuseDelay,player.itemAnimation-1));
+                return delay;
+            }
             return Math.Max(item.shootsEveryUse?0:Math.Max(0,player.itemTime-1),Math.Max(player.reuseDelay,Math.Max(0,player.itemAnimation-1)));
         }
         // Controllers still need continuous preparation between item uses.

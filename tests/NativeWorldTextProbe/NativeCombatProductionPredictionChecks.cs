@@ -132,6 +132,8 @@ namespace NativeWorldTextProbe
                     {phase="deerclops";NativeCombatDeerclopsChecks.Boundaries(context);NativeCombatDeerclopsChecks.Lifecycle(context);NativeCombatDeerclopsChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_BIRD")=="1")
                     {phase="bird";if(Environment.GetEnvironmentVariable("JUEMINGR_BIRD_TOWN_CENSUS")=="1"){NativeCombatBirdTownChecks.Run(context,()=>Step(context,samples,prepares,false),output);return;}NativeCombatBirdChecks.Boundaries();NativeCombatBirdChecks.Lifecycle(context);NativeCombatBirdChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_CASTER")=="1")
+                    {phase="caster";NativeCombatCasterChecks.Boundaries();NativeCombatCasterChecks.Lifecycle(context);NativeCombatCasterChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_MARTIAN_TURRET")=="1")
                     {phase="martian-turret";NativeCombatMartianTurretChecks.Boundaries();NativeCombatMartianTurretChecks.Lifecycle(context);NativeCombatMartianTurretChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_SEGMENTED_WORM")=="1")

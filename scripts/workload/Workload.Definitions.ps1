@@ -73,6 +73,8 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCombatInfernoChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatOrnamentChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatSonicBoomChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatBookStaffChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatSkullChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatArcSwingChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatAttachedShotChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatBetsyFlameChecks.cs'=@('native-CombatEffectsCpu')
@@ -143,6 +145,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCombatWindyBalloonChecks.cs'=@('native-NpcWindyBalloon')
         'tests/NativeWorldTextProbe/NativeCombatBirdChecks.cs'=@('native-NpcBird')
         'tests/NativeWorldTextProbe/NativeCombatBirdTownChecks.cs'=@('native-NpcBird')
+        'tests/NativeWorldTextProbe/NativeCombatCasterChecks.cs'=@('native-NpcCaster')
         'tests/NativeWorldTextProbe/NativeCombatMartianTurretChecks.cs'=@('native-NpcMartianTurret')
         'tests/NativeWorldTextProbe/NativeCombatSegmentedWormChecks.cs'=@('native-NpcSegmentedWorm')
         'tests/NativeWorldTextProbe/NativeCombatSolitaryWormChecks.cs'=@('native-NpcSolitaryWorm')
@@ -207,6 +210,7 @@ function Get-WorkloadNativeScopes {
         'NpcQueenSlime'=@('combat-host');
         'NpcWindyBalloon'=@('combat-host');
         'NpcBird'=@('combat-host');
+        'NpcCaster'=@('combat-host');
         'NpcMartianTurret'=@('combat-host');
         'NpcSegmentedWorm'=@('combat-host');
         'NpcSolitaryWorm'=@('combat-host');

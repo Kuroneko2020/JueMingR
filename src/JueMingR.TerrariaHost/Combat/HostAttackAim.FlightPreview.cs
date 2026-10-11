@@ -23,9 +23,11 @@ namespace JueMingR.TerrariaHost.Combat
             bool ornament=HostOrnamentAttack.Handles(player.HeldItem.shoot);
             bool inferno=player.HeldItem.type==1445 && player.HeldItem.shoot==295;
             bool sonic=player.HeldItem.type==3827 && player.HeldItem.shoot==684;
-            if(!phaseblade && !gem && !attached && !arc && !ice && !paper && !ornament && !inferno && !sonic && !HostHarpoonAttack.Handles(player.HeldItem.shoot))return null;
+            bool book=player.HeldItem.type==3852 && player.HeldItem.shoot==712;
+            bool skull=player.HeldItem.type==1313 && player.HeldItem.shoot==837;
+            if(!phaseblade && !gem && !attached && !arc && !ice && !paper && !ornament && !inferno && !sonic && !book && !skull && !HostHarpoonAttack.Handles(player.HeldItem.shoot))return null;
             FlightPreview best=null;flightPreviewTerrain.Reset();var clock=new HostAttackClock(timeline,phase);
-            if(ornament || inferno || sonic)
+            if(ornament || inferno || sonic || book || skull)
             {
                 // Existing bodies keep their genuine birth/AI clocks. In
                 // particular, Inferno's current child can consume the owner
@@ -33,10 +35,10 @@ namespace JueMingR.TerrariaHost.Combat
                 // Observe that live contact separately, without input control.
                 var sources=new List<Projectile>();
                 for(int slot=0;slot<Main.maxProjectiles;slot++)
-                {var shot=Main.projectile[slot];if(shot!=null && shot.active && shot.owner==player.whoAmI && (ornament?HostOrnamentAttack.Family(shot.type):sonic?HostSonicBoomAttack.Handles(shot.type):HostInfernoAttack.Handles(shot.type)) && shot.damage>0 && shot.friendly && !shot.hostile)sources.Add(shot);}
+                {var shot=Main.projectile[slot];if(shot!=null && shot.active && shot.owner==player.whoAmI && (ornament?HostOrnamentAttack.Family(shot.type):skull?HostSkullAttack.Handles(shot.type):book?HostBookStaffAttack.Handles(shot.type):sonic?HostSonicBoomAttack.Handles(shot.type):HostInfernoAttack.Handles(shot.type)) && shot.damage>0 && shot.friendly && !shot.hostile)sources.Add(shot);}
                 live=sources.Count>0;if(!live)return null;var primary=sources[0];
                 var receivers=new HostAttackObstacles(player,primary,timeline,0,clock.BeforeNpc,clock.NextWorld);
-                var contact=ornament?HostOrnamentAttack.KnownFamily(player,sources.ToArray(),timeline,clock,flightPreviewTerrain,receivers):sonic?HostSonicBoomAttack.KnownFamily(player,sources.ToArray(),timeline,clock,flightPreviewTerrain,receivers):HostInfernoAttack.KnownFamily(player,sources.ToArray(),timeline,clock,flightPreviewTerrain,receivers);
+                var contact=ornament?HostOrnamentAttack.KnownFamily(player,sources.ToArray(),timeline,clock,flightPreviewTerrain,receivers):skull?HostSkullAttack.KnownFamily(player,sources.ToArray(),timeline,clock,flightPreviewTerrain,receivers):book?HostBookStaffAttack.KnownFamily(player,sources.ToArray(),timeline,clock,flightPreviewTerrain,receivers):sonic?HostSonicBoomAttack.KnownFamily(player,sources.ToArray(),timeline,clock,flightPreviewTerrain,receivers):HostInfernoAttack.KnownFamily(player,sources.ToArray(),timeline,clock,flightPreviewTerrain,receivers);
                 return contact==null?null:new FlightPreview(player,primary,contact,arc:receivers);
             }
             if(ice)

@@ -233,6 +233,17 @@ namespace JueMingR.TerrariaHost.Combat
         {
             if(!ReferenceEquals(player,combat.Player))return null;
             if(!CurrentReceiver){ClearExecution();return null;}
+            if(item!=null && item.type==3852)
+            {
+                // Native ItemCheck has now resolved alt1->2 and slow-mana
+                // timing. Only this actual cursor-consuming birth may borrow
+                // input; ordinary later burst members retain stored direction.
+                if(!regular || !HostBookStaffAttack.CursorInput(player,0)){ClearExecution();return null;}
+                // Selection/NPC preparation already ran at ItemCheck entry.
+                // Its one-per-input-frame gate must not hide this native
+                // animation/mode transition from the actual Shoot consumer.
+                PrepareAction();
+            }
             if(HostPlacementAttack.Handles(item))return regular?BeginPlacement(player,item,true):null;
             if(!regular && item!=null && ProjectileID.Sets.IsAWhip[item.shoot])
             {
