@@ -60,7 +60,7 @@ namespace NativeWorldTextProbe
             try
             {
                 if(Environment.GetEnvironmentVariable("JMR_MIXED_SWING_STAR_ORACLE")=="birth"){StarLegalBirths(context,attack,host);return;}
-                foreach(int item in new[]{723,989,65,3063,3065,5382})
+                foreach(int item in new[]{723,989,65,3063,3065,5382,1928})
                 {
                     if(!string.IsNullOrEmpty(only) && !only.StartsWith(item+"/",StringComparison.Ordinal))continue;
                     weapon=item;var p=Reset(context,item);target=NativeCombatControlPreviewChecks.Dummy(2,52,40);
@@ -109,7 +109,7 @@ namespace NativeWorldTextProbe
                         Console.WriteLine("MIXED HAND item="+item+" near="+near+" first="+(first<0?-1:first-start)+" damageType="+firstType+" preview="+preview.Tick+" actualBirths="+births);
                     }
                 }
-                Require(string.IsNullOrEmpty(only)?cases==12 && handHits==6 && shotStages==6:cases==1,"mixed stage oracle executes every requested real hand/shot stage");
+                Require(string.IsNullOrEmpty(only)?cases==14 && handHits==7 && shotStages==7:cases==1,"mixed stage oracle executes every requested real hand/shot stage");
                 Console.WriteLine("PASS native mixed sword preview: deterministic first Damage and observed representative Star Wrath outcomes, idle Aim-off readonly; randomMisses="+randomMisses);
             }
             finally{calibrating=recordBirth=false;target=null;projectile=0;damageShot=null;starTimeline=null;stars.Clear();audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());}

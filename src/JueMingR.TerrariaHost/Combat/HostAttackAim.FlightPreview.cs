@@ -20,8 +20,24 @@ namespace JueMingR.TerrariaHost.Combat
             bool arc=HostArcSwingAttack.Weapon(player.HeldItem.type);
             bool ice=HostIceRodAttack.Handles(player.HeldItem.shoot);
             bool paper=HostPaperAirplaneAttack.Handles(player.HeldItem.shoot);
-            if(!phaseblade && !gem && !attached && !arc && !ice && !paper && !HostHarpoonAttack.Handles(player.HeldItem.shoot))return null;
+            bool ornament=HostOrnamentAttack.Handles(player.HeldItem.shoot);
+            bool inferno=player.HeldItem.type==1445 && player.HeldItem.shoot==295;
+            if(!phaseblade && !gem && !attached && !arc && !ice && !paper && !ornament && !inferno && !HostHarpoonAttack.Handles(player.HeldItem.shoot))return null;
             FlightPreview best=null;flightPreviewTerrain.Reset();var clock=new HostAttackClock(timeline,phase);
+            if(ornament || inferno)
+            {
+                // Existing bodies keep their genuine birth/AI clocks. In
+                // particular, Inferno's current child can consume the owner
+                // receive window that makes the next hand unproductive.
+                // Observe that live contact separately, without input control.
+                var sources=new List<Projectile>();
+                for(int slot=0;slot<Main.maxProjectiles;slot++)
+                {var shot=Main.projectile[slot];if(shot!=null && shot.active && shot.owner==player.whoAmI && (ornament?HostOrnamentAttack.Family(shot.type):HostInfernoAttack.Handles(shot.type)) && shot.damage>0 && shot.friendly && !shot.hostile)sources.Add(shot);}
+                live=sources.Count>0;if(!live)return null;var primary=sources[0];
+                var receivers=new HostAttackObstacles(player,primary,timeline,0,clock.BeforeNpc,clock.NextWorld);
+                var contact=ornament?HostOrnamentAttack.KnownFamily(player,sources.ToArray(),timeline,clock,flightPreviewTerrain,receivers):HostInfernoAttack.KnownFamily(player,sources.ToArray(),timeline,clock,flightPreviewTerrain,receivers);
+                return contact==null?null:new FlightPreview(player,primary,contact,arc:receivers);
+            }
             if(ice)
             {
                 // A failed placement retains a damaging autonomous tail. The

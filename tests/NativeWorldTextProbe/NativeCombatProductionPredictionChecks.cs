@@ -136,6 +136,8 @@ namespace NativeWorldTextProbe
                     {phase="martian-turret";NativeCombatMartianTurretChecks.Boundaries();NativeCombatMartianTurretChecks.Lifecycle(context);NativeCombatMartianTurretChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_SEGMENTED_WORM")=="1")
                     {phase="segmented-worm";NativeCombatSegmentedWormChecks.Boundaries();NativeCombatSegmentedWormChecks.Lifecycle(context);NativeCombatSegmentedWormChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_SOLAR_WORM")=="1")
+                    {phase="solar-worm";NativeCombatSolarWormChecks.Boundaries();NativeCombatSolarWormChecks.Lifecycle(context);NativeCombatSolarWormChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_SOLITARY_WORM")=="1")
                     {phase="solitary-worm";NativeCombatSolitaryWormChecks.Boundaries();NativeCombatSolitaryWormChecks.Lifecycle(context);NativeCombatSolitaryWormChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_WINDY_BALLOON")=="1")

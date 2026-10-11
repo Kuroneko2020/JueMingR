@@ -290,13 +290,13 @@ namespace JueMingR.TerrariaHost.Combat
             bool ritualCaptured=false,ritualComplete=true;
             bool windyCaptured=false,windyComplete=true,empressComplete=true;
             bool birdCaptured=false,birdComplete=true;
-            bool wormCaptured=false,wormComplete=true;
+            bool wormCaptured=false,wormComplete=true,solarCaptured=false;
             for(int next=0;next<queued;next++)
             {
                 int slot=pending[next];
                 var n=Main.npc[slot];if(n==null || !n.active)continue;
                 states[count++]=Read(n,identity.Session);
-                if(motionSlots[slot] && (SegmentedWormMotor(n) || wormCaptured && SegmentedWormRequired(slot)))CaptureSegmentedWormDependencies(n,identity.Session,count-1,ref queued,ref wormCaptured,ref wormComplete);
+                if(motionSlots[slot] && (SegmentedWormMotor(n) || wormCaptured && SegmentedWormRequired(slot)))CaptureSegmentedWormDependencies(n,identity.Session,count-1,ref queued,ref wormCaptured,ref wormComplete,ref solarCaptured);
                 if(!wallCaptured && (motionSlots[slot] && (WallFamily(n) || n.type==117 && SegmentedWormMotor(n)) || wallWanted && next==0))
                 {
                     wallCaptured=true;

@@ -17,10 +17,10 @@ namespace JueMingR.TerrariaHost.Combat
             internal bool Active,Friendly,Hostile,Tile,IgnoreWater,Wet,Honey,Lava,Shimmer,LocalImmunity,StaticImmunity,SingleImmunity,CorrectSlope;
             internal float[] Ai,Local;
             internal Vector2[] DamageTrail;
-            private readonly bool arc,paper;
+            private readonly bool arc,paper,ornament;
             private readonly Vector2 oldPosition;
             private readonly float rotation,scale,ownerDistance;
-            private readonly int direction,wetCount;
+            private readonly int direction,wetCount,aiStyle;
             private readonly bool ownerCheck,ownerMelee,stopDamage,manualDirection;
             internal Member(Projectile p)
             {Body=p;Key=p.key;Slot=p.whoAmI;Position=p.position;Velocity=p.velocity;Type=p.type;Owner=p.owner;Width=p.width;Height=p.height;Damage=p.damage;Penetration=p.penetrate;Maximum=p.maxPenetrate;Left=p.timeLeft;Extra=p.extraUpdates;Alpha=p.alpha;Active=p.active;Friendly=p.friendly;Hostile=p.hostile;Tile=p.tileCollide;IgnoreWater=p.ignoreWater;Wet=p.wet;Honey=p.honeyWet;Lava=p.lavaWet;Shimmer=p.shimmerWet;ImmunityIdentity=p.immunityIdentity;LocalCooldown=p.localNPCHitCooldown;StaticCooldown=p.idStaticNPCHitCooldown;LocalImmunity=p.usesLocalNPCImmunity;StaticImmunity=p.usesIDStaticNPCImmunity;SingleImmunity=p.appliesImmunityTimeOnSingleHits;CorrectSlope=p.correctSlopeCollision;Ai=(float[])p.ai.Clone();Local=(float[])p.localAI.Clone();
@@ -34,6 +34,8 @@ namespace JueMingR.TerrariaHost.Combat
                 if(arc){rotation=p.rotation;scale=p.scale;direction=p.direction;wetCount=p.wetCount;ownerDistance=p.ownerHitCheckDistance;ownerCheck=p.ownerHitCheck;ownerMelee=p.usesOwnerMeleeHitCD;stopDamage=p.stopsDealingDamageAfterPenetrateHits;manualDirection=p.manualDirectionChange;}
                 paper=HostPaperAirplaneAttack.Handles(p.type);
                 if(paper){rotation=p.rotation;direction=p.direction;wetCount=p.wetCount;manualDirection=p.manualDirectionChange;}
+                ornament=HostOrnamentAttack.Family(p.type);
+                if(ornament){aiStyle=p.aiStyle;ownerCheck=p.ownerHitCheck;ownerMelee=p.usesOwnerMeleeHitCD;manualDirection=p.manualDirectionChange;}
             }
             internal bool Current
             {
@@ -49,6 +51,9 @@ namespace JueMingR.TerrariaHost.Combat
                     // AI159 rotation feeds its next motor; these are not just
                     // drawing fields. Unrelated families keep their own lease.
                     if(paper && (p.rotation!=rotation || p.direction!=direction || p.wetCount!=wetCount || p.manualDirectionChange!=manualDirection))return false;
+                    // AI30 children share the captured receiving policy. A
+                    // same-update policy/style edit retires that finite family.
+                    if(ornament && (p.aiStyle!=aiStyle || p.ownerHitCheck!=ownerCheck || p.usesOwnerMeleeHitCD!=ownerMelee || p.manualDirectionChange!=manualDirection))return false;
                     return true;
                 }
             }

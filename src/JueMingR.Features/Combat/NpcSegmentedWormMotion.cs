@@ -4,14 +4,15 @@ using JueMingR.Platform.Combat;
 namespace JueMingR.Features.Combat
 {
     // Locked NPC.cs AI_006_Worms 51489–52810. This bounded route covers the
-    // six bounded chains plus375/402; ordinary worms/AI37 retain their solver.
+    // bounded chains plus375/402 and Solar412..414; ordinary worms/AI37 keep
+    // their existing solver.
     // Birth is stopped at its actual consumer, then a real post-birth capture
     // supplies identities. Dust/sound RNG does not choose this actor's motor.
     internal static class NpcSegmentedWormMotion
     {
-        internal static bool Head(int type){return type==87 || type==117 || type==375 || type==402 || type==454 || type==510 || type==513 || type==621;}
+        internal static bool Head(int type){return type==87 || type==117 || type==375 || type==402 || type==412 || type==454 || type==510 || type==513 || type==621;}
         internal static bool Known(NpcMotionState n)
-        {int t=n.EffectiveType;return n.Style==6 && (t>=87 && t<=92 || t>=117 && t<=119 || t==375 || t==402 || t>=454 && t<=459 || t>=510 && t<=515 || t>=621 && t<=623);}
+        {int t=n.EffectiveType;return n.Style==6 && (t>=87 && t<=92 || t>=117 && t<=119 || t==375 || t==402 || t>=412 && t<=414 || t>=454 && t<=459 || t>=510 && t<=515 || t>=621 && t<=623);}
         internal static bool SamePhase(NpcMotionState a,NpcMotionState b){return Known(a) && Known(b) && a.EffectiveType==b.EffectiveType;}
         internal static bool BirthPending(NpcMotionState n,PredictionEnvironment e)
         {return !e.Multiplayer && n.A0==0 && (Head(n.EffectiveType) && !Solitary(n.EffectiveType) || n.EffectiveType==118);}
@@ -69,7 +70,7 @@ namespace JueMingR.Features.Combat
             // cannot certify active foreign style6 using generic Known(style6)
             // or a static snapshot when its required motor is unclosed.
             if(elapsed>0 && !n.WormRelationsComplete){stop=PredictionStop.MissingDependency;return false;}
-            bool earth=Flight(type) || type==402;
+            bool earth=Flight(type) || type==402 || type>=412 && type<=414;
             if(!earth && !Sense(n,e,terrain,out earth,out stop))return false;
             if(!earth && head)
             {
@@ -109,6 +110,7 @@ namespace JueMingR.Features.Combat
             {stop=PredictionStop.MissingDependency;return false;}
             float speed,acceleration;if(!Speed(n,group,count,out speed,out acceleration,out stop))return false;
             float pcx=player.CenterX,pcy=player.CenterY;
+            if(type==412 && !SolarGoal(ref n,e,terrain,player,group,count,ref pcx,ref pcy,out speed,out acceleration,out stop))return false;
             float dx=(int)(pcx/16f)*16-(int)(n.Bounds.CenterX/16f)*16,dy=(int)(pcy/16f)*16-(int)(n.Bounds.CenterY/16f)*16;
             if(type==375){dx*=-1;dy*=-1;}
             if(!earth)
@@ -183,7 +185,7 @@ namespace JueMingR.Features.Combat
         {
             stop=PredictionStop.None;float dx=parent.Bounds.CenterX-n.Bounds.CenterX,dy=parent.Bounds.CenterY-n.Bounds.CenterY;
             float length=(float)Math.Sqrt((double)dx*dx+(double)dy*dy),spacing=n.Width;int type=n.EffectiveType;
-            if(type>=87 && type<=92)spacing=42;else if(type>=454 && type<=459)spacing=36;else if(type>=513 && type<=515)spacing-=6;else if(type>=621 && type<=623)spacing=24;
+            if(type>=87 && type<=92)spacing=42;else if(type>=454 && type<=459)spacing=36;else if(type>=513 && type<=515)spacing-=6;else if(type>=412 && type<=414)spacing+=6;else if(type>=621 && type<=623)spacing=24;
             if(length==0){stop=PredictionStop.InvalidState;return false;} // Original writes NaN; never invent a direction.
             float amount=(length-spacing)/length;dx*=amount;dy*=amount;n.Vx=n.Vy=0;n.X+=dx;n.Y+=dy;
             if(Flight(type))Sprite(ref n,dx);return true;
@@ -247,8 +249,63 @@ namespace JueMingR.Features.Combat
             if(n.A2>=600 && !e.Multiplayer)n.A2=0;
         }
         private static bool Solitary(int type){return type==375 || type==402;}
+        private static bool SolarGoal(ref NpcMotionState n,PredictionEnvironment e,IPredictionTerrain terrain,MotionRect player,NpcMotionState[] group,int count,ref float goalX,ref float goalY,out float speed,out float acceleration,out PredictionStop stop)
+        {
+            speed=10;acceleration=.3f;stop=PredictionStop.None;
+            int px=(int)(player.CenterX/16f),py=(int)(player.CenterY/16f),ground=-1;
+            // WorldGen.SolidTile2 scans columns first and stops at a positive
+            // row. Its slope/platform rule is not ordinary rectangle Solid.
+            for(int x=px-2;x<=px+2;x++)
+            {
+                for(int y=py;y<=py+15;y++)
+                {
+                    if(x<0 || y<0 || x>=e.WorldWidth || y>=e.WorldHeight)continue; // Native catch is false.
+                    PredictionTile tile;if(!terrain.Tile(x,y,out tile,out stop))return false;
+                    // Known native null is solid to SolidTile2. Existing Tile
+                    // cannot express it and honestly remains unavailable; it
+                    // must never be silently substituted with an empty cell.
+                    if(tile.Active && tile.RawSolid && !tile.Half && (tile.Slope==0 || tile.Platform && tile.TopSlope)){ground=y;break;}
+                }
+                if(ground>0)break;
+            }
+            if(ground>0)
+            {
+                int hover=ground*16-800;
+                if(player.Y>hover)
+                {
+                    goalY=hover;
+                    if(Math.Abs(n.Bounds.CenterX-player.CenterX)<500)goalX=player.CenterX+(n.Vx>0?600:-600);
+                }
+            }
+            else{speed=14;acceleration=.5f;}
+            float length=NativeLength(n.Vx,n.Vy),upper=speed*1.3f,lower=speed*.7f;
+            if(length>0 && (length>upper || length<lower))
+            {NativeNormalize(ref n.Vx,ref n.Vy,length);float scale=length>upper?upper:lower;n.Vx*=scale;n.Vy*=scale;}
+            int radius=ground>0?400:60;float push=ground>0?1000:200;
+            // Complete means Source captured every active412 motor and its
+            // required chain, in native slot order. Other types never enter
+            // this census. Later slots still expose their pre-action center.
+            if(group==null){stop=PredictionStop.MissingDependency;return false;}
+            // Raw ai1 permits dummy200, while native crowd stops before200.
+            // A captured raw value must not become an extra crowd actor.
+            for(int i=0;i<count;i++)
+            {
+                var other=group[i];if(!other.Active || other.EffectiveType!=412 || other.Identity.Equals(n.Identity) || other.Identity.Slot<0 || other.Identity.Slot>=NpcPredictionCache.Capacity)continue;
+                float dx=other.Bounds.CenterX-n.Bounds.CenterX,dy=other.Bounds.CenterY-n.Bounds.CenterY;length=NativeLength(dx,dy);
+                if(length<radius)
+                {
+                    // Zero-vector Normalize has the original NaN local
+                    // behavior; do not invent a direction or drop a neighbor.
+                    NativeNormalize(ref dx,ref dy,length);dx*=push;dy*=push;goalX-=dx;goalY-=dy;
+                }
+            }
+            return true;
+        }
+        private static float NativeLength(float x,float y){return (float)Math.Sqrt((double)x*x+(double)y*y);}
+        private static void NativeNormalize(ref float x,ref float y,float length)
+        {double inverse=1d/length;x=(float)(x*inverse);y=(float)(y*inverse);}
         private static bool Flight(int type){return type>=87 && type<=92 || type>=454 && type<=459 || type>=621 && type<=623;}
-        private static bool Tail(int type){return type==92 || type==119 || type==459 || type==512 || type==515 || type==623;}
+        private static bool Tail(int type){return type==92 || type==119 || type==414 || type==459 || type==512 || type==515 || type==623;}
         private static bool SameSign(float a,float b){return a>0 && b>0 || a<0 && b<0;}
         private static bool Opposite(float a,float b){return a>0 && b<0 || a<0 && b>0;}
         private static void Sprite(ref NpcMotionState n,float dx){if(dx<0)n.SpriteDirection=1;else if(dx>0)n.SpriteDirection=-1;}

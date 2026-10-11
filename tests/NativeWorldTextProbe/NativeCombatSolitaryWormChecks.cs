@@ -72,8 +72,8 @@ namespace NativeWorldTextProbe
         internal static void Continuous(object context,NpcPredictionCache cache,Action step,string output)
         {
             int leaf=-1;string selector=System.Environment.GetEnvironmentVariable("JUEMINGR_SOLITARY_WORM_SCENE");
-            if(!string.IsNullOrEmpty(selector) && (!int.TryParse(selector,out leaf) || leaf<0 || leaf>4))throw new ArgumentException("JUEMINGR_SOLITARY_WORM_SCENE must be0..4 or unset.");
-            Console.WriteLine("SOLITARY actualLeaves="+(leaf<0?"0,1,2,3,4":leaf.ToString(CultureInfo.InvariantCulture)));
+            if(!string.IsNullOrEmpty(selector) && (!int.TryParse(selector,out leaf) || leaf<0 || leaf>5))throw new ArgumentException("JUEMINGR_SOLITARY_WORM_SCENE must be0..5 or unset.");
+            Console.WriteLine("SOLITARY actualLeaves="+(leaf<0?"0,1,2,3,4,5":leaf.ToString(CultureInfo.InvariantCulture)));
             var host=Get(context,"CombatObservation");var network=Network();var hooks=new Harmony("JueMingR.Probe.SolitaryWormSlots");
             hooks.Patch(typeof(NPC).GetMethod("UpdateNPC",Flags),prefix:new HarmonyMethod(typeof(NativeCombatSolitaryWormChecks),nameof(Before)),postfix:new HarmonyMethod(typeof(NativeCombatSolitaryWormChecks),nameof(After)));
             var csv=new List<string>{"scene,frame,type,slot,clock,selected,actions,matched,long,marks,resets,hit,fresh,restored,error"};
@@ -114,6 +114,7 @@ namespace NativeWorldTextProbe
                     Console.WriteLine("PASS Solitary natural scene="+scene+" type="+actor.type+" selected="+selected+" actions="+actions+" matched="+matched+" long="+longMatches+" marks="+marks+" resets="+resets+" fresh="+fresh+" restored="+restored+" max="+maximum.ToString("R",CultureInfo.InvariantCulture));before=after=null;
                 }
                 for(int scene=2;scene<=4;scene++)if(leaf<0 || leaf==scene)RelationScene(context,cache,step,scene,csv);
+                if(leaf<0 || leaf==5)ClientForeignTail(context,cache,step,csv);
             }
             finally{before=after=null;Main.netMode=0;hooks.UnpatchAll(hooks.Id);network.UnpatchAll(network.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());Directory.CreateDirectory(output);File.WriteAllLines(Path.Combine(output,"solitary-worm-scenes.csv"),csv);}
         }
@@ -190,6 +191,72 @@ namespace NativeWorldTextProbe
                 Console.WriteLine("PASS Solitary relation scene="+scene+" variant="+variant+" type="+type+" slot="+actor.whoAmI+" parent="+(parent==null?-1:parent.whoAmI)+" parentActions="+parentActions+" selected="+selected+" actions="+actions+" matched="+matched+" long="+longMatches+" closures="+closures+" cross570="+cross570+" cross600="+cross600+" max="+maximum.ToString("R",CultureInfo.InvariantCulture));
                 before=after=null;Main.netMode=0;
             }
+        }
+        private static void ClientForeignTail(object context,NpcPredictionCache cache,Action step,List<string> csv)
+        {
+            // This is a genuine non-solitary chain birth, then an explicit
+            // legal raw-parent boundary input. Client AI skips the server's
+            // style guard and still consumes positive ai1's raw future center.
+            // Reuse the certified full-slot birth and actual network outlets.
+            before=after=null;Setup(context);var host=Get(context,"CombatObservation");var source=Get(host,"Prediction");var terrain=Terrain(context);
+            var network=(Harmony)typeof(NativeCombatSegmentedWormChecks).GetMethod("Network",Flags).Invoke(null,null);
+            try
+            {
+                var head=Main.npc[NPC.NewNPC(NPC.GetSpawnSourceForNaturalSpawn(),1800,2200,87,Start:8)];
+                typeof(NativeCombatSegmentedWormChecks).GetMethod("SpawnChain",Flags).Invoke(null,new object[]{head});
+                NPC actor=null;foreach(var n in Main.npc)if(n.active && n.type==92 && n.realLife==head.whoAmI){actor=n;break;}
+                Require(actor!=null && actor.active && !actor.dontTakeDamage,"Actual original Wyvern chain supplies a damageable non-solitary92 tail.");
+                var parent=Main.npc[NPC.NewNPC(NPC.GetSpawnSourceForNaturalSpawn(),1800,2200,25,Start:64)];
+                NativeQuickItemChecks.BeginWorldStep();Main.EverLastingTicker++;NPC.UpdateProtectedSpawnSlots();parent.UpdateNPC(parent.whoAmI);
+                Require(parent.active && parent.aiStyle==9 && parent.velocity.Length()>0 && parent.whoAmI>actor.whoAmI,"Original later-slot type25 initializes its real moving foreign motor.");
+                actor.ai[1]=parent.whoAmI;Main.netMode=1;Vector2 originalParent=parent.position;
+                var predictions=new Dictionary<NPC,NpcMotionState>();var frozen=new List<NpcTrajectory>();
+                int actions=0,parentActions=0,selected=0,matched=0,longMatches=0,closures=0;double maximum=0;
+                before=n=>
+                {
+                    if(!n.active || !ReferenceEquals(n,actor) && !ReferenceEquals(n,parent))return;
+                    var rows=Capture(context);var value=rows[Index(rows,n)];terrain.Reset();PredictionStop stop;
+                    Require(NpcMotion.Step(ref value,rows,rows.Length,EnvironmentFor(n),terrain,1,true,out stop),"Current client foreign-parent original action type="+n.type+" slot="+n.whoAmI+" stop="+stop);
+                    predictions[n]=value;
+                };
+                after=n=>
+                {
+                    NpcMotionState value;if(!predictions.TryGetValue(n,out value))return;Compare(value,n,"client raw-parent scene5 slot="+n.whoAmI);predictions.Remove(n);
+                    if(ReferenceEquals(n,actor))actions++;else parentActions++;
+                };
+                NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true,mouseCenter:true,clearLine:false,radius:50));
+                for(int frame=0;frame<120;frame++)
+                {
+                    Require(actor.active && parent.active,"Client raw-parent leaf preserves both actual actors throughout its finite window.");
+                    NativeCombatModeledImpactChecks.SampleMouse(context,actor.Center);step();
+                    bool chosen=(bool)Get(Get(host,"Selection"),"HasTarget") && ReferenceEquals(((NpcIdentity)Get(Get(host,"Selection"),"Target")).Token,actor);if(chosen)selected++;
+                    var path=cache.Read(0);
+                    if(path!=null && ReferenceEquals(path.Identity.Token,actor) && !frozen.Contains(path))
+                    {
+                        var rows=(NpcMotionState[])Get(source,"states");var roles=(bool[])Get(source,"motionRoles");int count=(int)Get(source,"observedCount"),index=-1;
+                        var identity=new NpcIdentity((long)Get(host,"Session"),parent,parent.whoAmI,parent.generation,parent.type,parent.netID);
+                        for(int i=0;i<count;i++)if(rows[i].Identity.Equals(identity)){index=i;break;}
+                        Require(index>=0 && rows[index].Active && roles[index],"Production client positive-ai1 active foreign center requires its full-identity MOTOR, never health-only frozen geometry.");
+                        closures++;frozen.Add(path);
+                    }
+                    foreach(var old in frozen)
+                    {
+                        int age=(int)((long)Main.GameUpdateCount-old.CaptureTick);if(age<1 || age>=old.Count)continue;var point=old[age];double error=Vector2.Distance(new Vector2(point.Bounds.X,point.Bounds.Y),actor.position);maximum=Math.Max(maximum,error);
+                        Require(error<=.08 && Math.Abs(point.Vx-actor.velocity.X)<=.0001 && Math.Abs(point.Vy-actor.velocity.Y)<=.0001 && point.CanReceive==(!actor.dontTakeDamage && !actor.immortal && !actor.friendly),"Frozen client non-solitary scene5 frame="+frame+" age="+age+" error="+error.ToString("R")+" parent="+parent.whoAmI+" parentPosition="+parent.position+" predicted="+point.Bounds.X+","+point.Bounds.Y+" actual="+actor.position+" stop="+old.Stop);
+                        matched++;if(age>=30)longMatches++;
+                    }
+                    csv.Add(string.Join(",",5,frame,actor.type,actor.whoAmI,actor.ai[2],chosen,actions,matched,longMatches,0,0,false,0,0,maximum.ToString("R",CultureInfo.InvariantCulture)));
+                }
+                Require(actions==120 && parentActions==120 && selected>30 && closures>0 && longMatches>=30 && Vector2.Distance(parent.position,originalParent)>30,"Actual client moving foreign-parent consumer retains useful120-action production futures.");
+                // The exact same observed foreign parent is a server orphan:
+                // original active/style guard happens before geometric linking.
+                // Keep this distinction instead of weakening the native gate.
+                before=after=null;Main.netMode=0;var serverRows=Capture(context);var server=serverRows[Index(serverRows,actor)];terrain.Reset();PredictionStop serverStop;
+                Require(!NpcMotion.Step(ref server,serverRows,serverRows.Length,EnvironmentFor(actor),terrain,1,true,out serverStop) && serverStop==PredictionStop.Despawn,"Server active wrong-style parent takes the actual orphan branch before Center consumption.");
+                actor.UpdateNPC(actor.whoAmI);Require(!actor.active,"Original server UpdateNPC really retires the same wrong-style tail; AI/checkDead is not skipped.");
+                Console.WriteLine("PASS client non-solitary scene5 type92 parent25 actions="+actions+" parentActions="+parentActions+" selected="+selected+" closures="+closures+" matched="+matched+" long="+longMatches+" serverRetired=1 max="+maximum.ToString("R",CultureInfo.InvariantCulture));
+            }
+            finally{before=after=null;Main.netMode=0;network.UnpatchAll(network.Id);}
         }
         private static void Setup(object context){typeof(NativeCombatSegmentedWormChecks).GetMethod("Setup",Flags).Invoke(null,new object[]{context});}
         private static IPredictionTerrain Terrain(object context){return (IPredictionTerrain)Get(Get(Get(context,"CombatObservation"),"Prediction"),"Terrain");}
