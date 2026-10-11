@@ -31,7 +31,7 @@ namespace JueMingR.Features.Combat
             if(n.A1==0)
             {
                 float distance=(float)Math.Sqrt(dx*dx+dy*dy);if(distance>radius){float scale=radius/distance;dx*=scale;dy*=scale;}
-                Axis(ref n.Vx,n.X,anchorX+dx,dx,acc);Axis(ref n.Vy,n.Y,anchorY+dy,dy,acc);
+                Axis(ref n.Vx,n.X,anchorX,dx,acc);Axis(ref n.Vy,n.Y,anchorY,dy,acc);
                 float max=4;
                 if(e.Expert)
                 {
@@ -47,7 +47,14 @@ namespace JueMingR.Features.Combat
             else if(n.A1>0)n.A1--;else n.A1=0;
             if(dx>0)n.SpriteDirection=1;else if(dx<0)n.SpriteDirection=-1;return true;
         }
-        private static void Axis(ref float velocity,float position,float goal,float offset,float acceleration)
-        {if(position<goal){velocity+=acceleration;if(velocity<0 && offset>0)velocity+=acceleration*2.5f;}else if(position>goal){velocity-=acceleration;if(velocity>0 && offset<0)velocity-=acceleration*2.5f;}}
+        private static void Axis(ref float velocity,float position,float anchor,float offset,float acceleration)
+        {
+            // Native compares the inline sum, without storing a float goal.
+            // On x86 that sum can lie just below a position whose float-rounded
+            // goal is equal: rounding it at the call boundary skips acceleration.
+            double goal=(double)anchor+offset;
+            if(position<goal){velocity+=acceleration;if(velocity<0 && offset>0)velocity+=acceleration*2.5f;}
+            else if(position>goal){velocity-=acceleration;if(velocity>0 && offset<0)velocity-=acceleration*2.5f;}
+        }
     }
 }

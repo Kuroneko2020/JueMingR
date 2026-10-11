@@ -86,6 +86,8 @@ namespace NativeWorldTextProbe
             Binding(source);
             FallReceiving(source,terrain,context);
             TouchingTiles(context,terrain);
+            TongueCenters(source,terrain,context);
+            HungryGoal();
             Setup(context,0);var body=Birth(1600,16);body.UpdateNPC(body.whoAmI);var eye=Part(114,true);Require(eye!=null && Count(114)==2 && Count(115)==11,"Original first Wall action creates its complete eyes/Hungry family.");
             var net=new Harmony("JueMingR.Probe.WallOriginalNetwork");var observed=new Harmony("JueMingR.Probe.WallActiveZero");var send=typeof(NetMessage).GetMethod("SendData",Flags);var checkDead=typeof(NPC).GetMethod("checkDead",Flags);outlets.Clear();
             net.Patch(send,prefix:new HarmonyMethod(typeof(NativeCombatWallBossChecks).GetMethod(nameof(IsolateNetwork),Flags)){priority=Priority.First+100});bool activeZero=false;
@@ -102,6 +104,38 @@ namespace NativeWorldTextProbe
                 Require(outlets.Count>0,"Original lethal strike network outlet remains observed.");Console.WriteLine("PASS Wall real birth/activezero/death/rawglobal/nextframe/orphan outlets="+outlets.Count+" parameters="+string.Join(";",outlets));
             }
             finally{death=null;observed.Unpatch(checkDead,HarmonyPatchType.Prefix,observed.Id);net.Unpatch(send,HarmonyPatchType.Prefix,net.Id);}
+        }
+        private static void TongueCenters(object source,IPredictionTerrain terrain,object context)
+        {
+            var readPlayer=source.GetType().GetMethod("ReadPlayer",Flags);
+            // The original failing velocity is below the pull speed (snap).
+            // Exercise the returned Entity.Center field at both sides of the
+            // x4096 precision boundary, then consume the full native Update.
+            float[] xs={4086.318603515625f,4086.318359375f,4085.999755859375f,4086f};
+            foreach(float x in xs)
+            {
+                Setup(context,1);var p=Main.LocalPlayer;p.position=new Vector2(x,3899.25f);p.velocity=Vector2.Zero;p.ResetFallDamage();p.AddBuff(37,10);p.AddBuff(38,10);p.gross=p.tongued=true;
+                var body=new NPC();body.SetDefaults(113);body.whoAmI=16;body.active=true;body.target=p.whoAmI;body.direction=1;body.position=new Vector2(3905.5f-body.width/2f,3914.863525390625f-body.height/2f);body.velocity=new Vector2(1.5f,0);Main.npc[16]=body;Main.wofNPCIndex=16;
+                terrain.Reset();var predicted=(PredictionPlayerMotion)readPlayer.Invoke(null,new object[]{p});PredictionStop stop;
+                Require(PlayerMotionContinuation.Advance(ref predicted,EnvironmentFor(body),terrain,out stop),"Known current native Tongue center input remains determined: "+stop);
+                p.Update(p.whoAmI);
+                Require(predicted.Vx==p.velocity.X && predicted.Vy==p.velocity.Y,"Original full player Tongue float center writeback x="+x.ToString("R",CultureInfo.InvariantCulture)+" predictedV="+predicted.Vx.ToString("R",CultureInfo.InvariantCulture)+","+predicted.Vy.ToString("R",CultureInfo.InvariantCulture)+" actualV="+p.velocity);
+                Require(Vector2.Distance(new Vector2(predicted.X,predicted.Y),p.position)<=.08,"Original Tongue movement follows its exact current velocity.");
+            }
+            Console.WriteLine("PASS Wall original full player Tongue center writeback four current inputs");
+        }
+        private static void HungryGoal()
+        {
+            // R34 scene7/frame1467 records this same-action native input and
+            // Vy=-7.338743 after AI. The direct native anchor+offset comparison
+            // stays below position even though its float-rounded value is equal.
+            float position=3810.225341796875f,anchor=3304f,offset=506.22528076171875f;
+            Require((float)((double)anchor+offset)==position && (double)anchor+offset<position,"Captured Hungry goal lies below its rounded position boundary.");
+            var hungry=typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcHungryMotion",true);
+            object[] args={-7.23874331f,position,anchor,offset,.1f};
+            hungry.GetMethod("Axis",Flags).Invoke(null,args);
+            Require((float)args[0]==-7.338743f,"Captured native Hungry velocity decrements strictly at the extended goal boundary.");
+            Console.WriteLine("PASS Wall Hungry captured R34 strict scalar goal/velocity boundary");
         }
         private static void Binding(object source)
         {
@@ -197,10 +231,23 @@ namespace NativeWorldTextProbe
         {
             string leafText=Environment.GetEnvironmentVariable("JUEMINGR_WALL_HEALTH_SCENE");int leaf=-1;
             if(!string.IsNullOrEmpty(leafText))Require(int.TryParse(leafText,NumberStyles.Integer,CultureInfo.InvariantCulture,out leaf) && leaf>=0 && leaf<13,"JUEMINGR_WALL_HEALTH_SCENE must name an existing natural scene0..12.");
-            string actualLeaf=leaf<0?"all13":"scene"+leaf;int firstScene=leaf<0?0:leaf,lastScene=leaf<0?13:leaf+1;
+            string leavesText=Environment.GetEnvironmentVariable("JUEMINGR_WALL_HEALTH_SCENES");var sceneIds=new List<int>();
+            Require(string.IsNullOrEmpty(leafText) || string.IsNullOrEmpty(leavesText),"Wall single-scene and explicit group selectors cannot both be set.");
+            if(!string.IsNullOrEmpty(leavesText))
+            {
+                foreach(string item in leavesText.Split(','))
+                {
+                    int selectedScene;
+                    Require(int.TryParse(item,NumberStyles.Integer,CultureInfo.InvariantCulture,out selectedScene) && selectedScene>=0 && selectedScene<13 && !sceneIds.Contains(selectedScene),"JUEMINGR_WALL_HEALTH_SCENES must list unique existing scene0..12 identifiers.");
+                    sceneIds.Add(selectedScene);
+                }
+            }
+            else if(leaf>=0)sceneIds.Add(leaf);
+            else for(int i=0;i<13;i++)sceneIds.Add(i);
+            string actualLeaf=!string.IsNullOrEmpty(leavesText)?"scenes["+string.Join(",",sceneIds)+"]":leaf<0?"all13":"scene"+leaf;
             // This process-only selector narrows execution, never its original
             // inputs, duration, health oracle or per-scene coverage criteria.
-            Console.WriteLine("WALL actualLeaf="+actualLeaf+" environment=JUEMINGR_WALL_HEALTH_SCENE="+(leafText??"<unset>"));
+            Console.WriteLine("WALL actualLeaf="+actualLeaf+" environment=JUEMINGR_WALL_HEALTH_SCENE="+(leafText??"<unset>")+" JUEMINGR_WALL_HEALTH_SCENES="+(leavesText??"<unset>"));
             object host=Get(context,"CombatObservation"),source=Get(host,"Prediction");long session=(long)Get(host,"Session");var read=source.GetType().GetMethod("Read",Flags);var readPlayer=source.GetType().GetMethod("ReadPlayer",Flags);var tracking=source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcTrackingObservation",true).GetMethod("Capture",Flags);var terrain=(IPredictionTerrain)Get(source,"Terrain");
             var update=typeof(NPC).GetMethod("UpdateNPC",Flags);var playerUpdate=typeof(Player).GetMethod("Update",Flags);var healthUpdate=typeof(Player).GetMethod("UpdateLifeRegen",Flags);var healthStep=Model.GetMethod("AdvanceHealth",Flags);var send=typeof(NetMessage).GetMethod("SendData",Flags);var hooks=new Harmony("JueMingR.Probe.WallNaturalSlots");
             var hurt=typeof(Player).GetMethod("Hurt",Flags,null,new[]{typeof(Terraria.DataStructures.PlayerDeathReason),typeof(int),typeof(int),typeof(bool),typeof(bool),typeof(bool),typeof(int),typeof(bool)},null);
@@ -214,22 +261,26 @@ namespace NativeWorldTextProbe
             var records=new List<string>{"scene,frame,type,target,global,top,bottom,selected,published,count,stop,matched,long,cross,body,eyes,hungry,pc,tongue,gross,pending37,pending38,error,fallReceived,fallRestored,fallExpiredWindows,fallFreshPublished,fallRecoveryLong"};var failures=new List<string>();bool oldGood=Main.getGoodWorld;int totalMatched=0,totalBody=0,totalEyes=0,totalHungry=0,totalPc=0,totalTongue=0;
             try
             {
-                for(int scene=firstScene;scene<lastScene;scene++)
+                foreach(int scene in sceneIds)
                 {
                     try
                     {
                         Setup(context,scene);var body=Birth(scene==11?5600:1600,16);NPC actor=body;int frameNow=0,bodyActions=0,eyes=0,hungry=0,pcActions=0,tongue=0,gross=0,birth=0,retired=0,matched=0,longMatches=0,cross=0,published=0,selected=0,pause=0,receiving=0,snap=0,restored=0;double maxError=0;var targets=new HashSet<int>();
                         var frozen=new List<NpcTrajectory>();var phases=new Dictionary<NpcTrajectory,float>();var freezesHealth=new Dictionary<NpcTrajectory,int>();NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true,mouseCenter:true,clearLine:false,radius:50));
-                        NPC pending=null;NpcMotionState predicted=default(NpcMotionState);bool valid=false;PredictionStop stop=PredictionStop.None;
+                        NPC pending=null;NpcMotionState predicted=default(NpcMotionState),initial=default(NpcMotionState),initialOwner=default(NpcMotionState);PredictionEnvironment initialEnvironment=default(PredictionEnvironment);string initialPlayer="not captured";bool valid=false;PredictionStop stop=PredictionStop.None;
                         before=n=>
                         {
-                            pending=n;valid=false;if(!n.active || !Family(n))return;var rows=Capture(read,tracking,terrain,session,n);int index=Index(rows,n);Require(index>=0,"Current real Wall slot has captured complete raw-global roles.");predicted=rows[index];terrain.Reset();valid=NpcMotion.Step(ref predicted,rows,rows.Length,EnvironmentFor(n),terrain,1,true,out stop);
+                            pending=n;valid=false;if(!n.active || !Family(n))return;var rows=Capture(read,tracking,terrain,session,n);int index=Index(rows,n);Require(index>=0,"Current real Wall slot has captured complete raw-global roles.");predicted=initial=rows[index];initialOwner=default(NpcMotionState);for(int i=0;i<rows.Length;i++)if(rows[i].Identity.Equals(initial.WallBossIdentity)){initialOwner=rows[i];break;}initialEnvironment=EnvironmentFor(n);
+                            var direct=Main.player[n.target>=0 && n.target<Main.player.Length?n.target:255];initialPlayer="slot="+direct.whoAmI+" position="+Precise(direct.position.X)+","+Precise(direct.position.Y)+" center="+Precise(direct.Center.X)+","+Precise(direct.Center.Y)+" V="+Precise(direct.velocity.X)+","+Precise(direct.velocity.Y)+" size="+direct.width+","+direct.height;
+                            terrain.Reset();valid=NpcMotion.Step(ref predicted,rows,rows.Length,initialEnvironment,terrain,1,true,out stop);
                             if(!valid)Require(stop==PredictionStop.Despawn || stop==PredictionStop.MissingDependency,"Real Wall actor ends only at its exact dependencies/lifecycle: "+stop+" type="+n.type+" target="+n.target+" global="+Main.wofNPCIndex);
                         };
                         after=n=>
                         {
                             if(!ReferenceEquals(n,pending) || !Family(n))return;if(!valid){if(stop==PredictionStop.Despawn && !n.active)retired++;return;}
                             double error=Vector2.Distance(new Vector2(predicted.X,predicted.Y),n.position);
+                            if(error>.08 || Math.Abs(predicted.Vx-n.velocity.X)>.0001 || Math.Abs(predicted.Vy-n.velocity.Y)>.0001)
+                                Console.WriteLine("WALL FIRST-ACTION-INPUT scene="+scene+" frame="+frameNow+" actor="+ActorFacts(initial)+" owner="+ActorFacts(initialOwner)+" rawPlayer="+initialPlayer+" observedPlayerArea="+Precise(initial.PlayerArea.X)+","+Precise(initial.PlayerArea.Y)+","+Precise(initial.PlayerArea.Width)+","+Precise(initial.PlayerArea.Height)+" capturedCenter="+Precise(initial.PlayerCenterX)+","+Precise(initial.PlayerCenterY)+" closest="+initial.ClosestPlayerIndex+"/"+Precise(initial.ClosestPlayerCenterX)+","+Precise(initial.ClosestPlayerCenterY)+" envPC="+initialEnvironment.PlayerIndex+"/"+Precise(initialEnvironment.PlayerX)+","+Precise(initialEnvironment.PlayerY)+" size="+Precise(initialEnvironment.PlayerWidth)+","+Precise(initialEnvironment.PlayerHeight)+" expert="+initialEnvironment.Expert+" good="+initialEnvironment.GoodWorld+" global="+Main.wofNPCIndex+" band="+initial.WallTop+","+initial.WallBottom+" predicted="+ActorFacts(predicted)+" native="+Precise(n.position.X)+","+Precise(n.position.Y)+" V="+Precise(n.velocity.X)+","+Precise(n.velocity.Y));
                             Require(error<=.08 && Math.Abs(predicted.Vx-n.velocity.X)<=.0001 && Math.Abs(predicted.Vy-n.velocity.Y)<=.0001 && predicted.A1==n.ai[1] && predicted.A2==n.ai[2] && predicted.Direction==n.direction && predicted.SpriteDirection==n.spriteDirection && predicted.CanReceive==(!n.dontTakeDamage && !n.immortal),"Original Wall slot scene="+scene+" frame="+frameNow+" type="+n.type+" slot="+n.whoAmI+" error="+error+" predictedV="+predicted.Vx+","+predicted.Vy+" actualV="+n.velocity+" clocks="+predicted.A1+"/"+predicted.A2+" native="+string.Join("/",n.ai)+" target="+n.target+" global="+Main.wofNPCIndex+" band="+Main.wofDrawAreaTop+"/"+Main.wofDrawAreaBottom);
                             if(n.type==113){bodyActions++;Require(predicted.WallTop==Main.wofDrawAreaTop && predicted.WallBottom==Main.wofDrawAreaBottom,"Original body writes exact global scan/easing band.");}else if(n.type==114)eyes++;else{hungry++;if(n.ai[1]>0)pause++;}targets.Add(n.target);
                         };
@@ -237,8 +288,9 @@ namespace NativeWorldTextProbe
                         bool enteredHealth=false;string playerPrefixFacts="not observed",actualHurt="none";
                         bool fallReceivedThisAction=false,waitingFallRestore=false;int fallReceived=0,fallRestored=0,fallExpiredWindows=0;
                         bool waitingFallPublication=false;long lastFallTick=-1;int fallFreshPublished=0,fallRecoveryLong=0;
-                        var contactChanged=new HashSet<NpcTrajectory>();var contactReported=new HashSet<NpcTrajectory>();
-                        bool contactThisAction=false,contactPublicationPending=false,waitingContactRestore=false,waitingContactPublication=false;
+                        var contactChanged=new HashSet<NpcTrajectory>();var contactReported=new HashSet<NpcTrajectory>();var contactInvalidFrom=new Dictionary<NpcTrajectory,long>();
+                        bool contactThisAction=false,contactPublicationPending=false,waitingContactRestore=false,waitingContactPublication=false,playerCompleted=false;
+                        int projectileReceived=0,projectilePlayerNegative=0;
                         int contactReceived=0,contactPlayerNegative=0,contactInvalidated=0,contactPublication=0,contactRestored=0,contactFreshPublished=0,contactRecoveryLong=0,contactFrozenNegative=0;
                         long lastContactTick=-1;double contactNegativeMax=0;NpcTrajectory publicationBeforeContact=null;
                         PredictionPlayerMotion healthCompleted=default(PredictionPlayerMotion);
@@ -246,9 +298,9 @@ namespace NativeWorldTextProbe
                         {
                             if(!completed || !contactPublicationPending)return;
                             var current=cache.Read(0);var prepared=GetOptional(world,"preparedPath") as NpcTrajectory;
-                            Require(current==null || current.CaptureTick==Main.GameUpdateCount && !ReferenceEquals(current,publicationBeforeContact),"Actual NPC receiving retires the pre-hit production publication before completed World.Prepare.");
+                            Require(current==null || current.CaptureTick==Main.GameUpdateCount && !ReferenceEquals(current,publicationBeforeContact),"Actual receiving retires the pre-hit production publication before completed World.Prepare.");
                             Require(prepared==null || ReferenceEquals(prepared,current),"Actual presentation consumes only the current post-hit Wall publication.");
-                            if(scene==0 && current!=null)
+                            if((scene==0 || scene==5 || scene==6) && current!=null)
                             {
                                 var actual=Main.LocalPlayer;var input=(PredictionPlayerMotion)Get(Get(source,"rolling"),"previousPlayer");
                                 Require(ReferenceEquals(input.PlayerToken,actual) && input.PlayerIndex==actual.whoAmI && input.X==actual.position.X && input.Y==actual.position.Y && input.Vx==actual.velocity.X && input.Vy==actual.velocity.Y && input.WallLife==actual.statLife && input.WallRegenCount==actual.lifeRegenCount && input.WallRegenTime==actual.lifeRegenTime && input.WallImmune==actual.immune && input.WallImmuneTime==actual.immuneTime,"Post-contact production input uses the real current pose, health and immunity instead of the preceding player lease.");
@@ -264,18 +316,36 @@ namespace NativeWorldTextProbe
                             if(!ReferenceEquals(p,Main.LocalPlayer))return;Entity cause;reason.TryGetCausingEntity(out cause);
                             actualHurt="reasonOther="+reason.SourceOtherIndex+" reasonProjectile="+reason.SourceProjectileType+" cause="+(cause==null?"none":cause.GetType().Name+":"+cause.whoAmI)+" requested="+damage+" result="+result+" direction="+direction+" beforeRegen="+!enteredHealth+" before="+sample.Facts+" after="+HealthFacts(p);
                             Console.WriteLine("WALL ORIGINAL-HURT scene="+scene+" frame="+frameNow+" playerPrefix="+playerPrefixFacts+" "+actualHurt+" caller="+System.Environment.StackTrace);
-                            if(cause is NPC contact)
+                            if(cause is NPC || cause is Projectile)
                             {
-                                Require(Family(contact),"New NPC receiving in this Wall-only scene must retain its actual Wall actor source, not hide an unrelated injury.");
-                                var actual=(NpcMotionState)read.Invoke(null,new object[]{contact,session});var identity=actual.Identity;
-                                Console.WriteLine("WALL CONTACT-IDENTITY scene="+scene+" frame="+frameNow+" slot="+identity.Slot+" type="+identity.Type+" netId="+identity.NetId+" generation="+identity.Generation+" session="+identity.Session+" active="+contact.active+" position="+contact.position+" V="+contact.velocity+" pcBefore="+sample.Facts+" pcAfter="+HealthFacts(p));
-                                Require(enteredHealth,"Observed Wall NPC contact consumes the real post-regen player action.");
+                                if(cause is NPC contact)
+                                {
+                                    Require(Family(contact),"New NPC receiving in this Wall-only scene must retain its actual Wall actor source, not hide an unrelated injury.");
+                                    var actual=(NpcMotionState)read.Invoke(null,new object[]{contact,session});var identity=actual.Identity;
+                                    Console.WriteLine("WALL CONTACT-IDENTITY scene="+scene+" frame="+frameNow+" slot="+identity.Slot+" type="+identity.Type+" netId="+identity.NetId+" generation="+identity.Generation+" session="+identity.Session+" active="+contact.active+" position="+contact.position+" V="+contact.velocity+" pcBefore="+sample.Facts+" pcAfter="+HealthFacts(p));
+                                }
+                                else
+                                {
+                                    var shot=(Projectile)cause;
+                                    Require(shot.type==83 && shot.hostile && !shot.friendly && playerCompleted,"Actual Wall eye projectile83 receiving follows the completed player/NPC actions; retain unrelated injuries as failures.");
+                                    Console.WriteLine("WALL SHOT-IDENTITY scene="+scene+" frame="+frameNow+" slot="+shot.whoAmI+" key="+shot.key+" type="+shot.type+" owner="+shot.owner+" active="+shot.active+" position="+shot.position+" V="+shot.velocity+" pcBefore="+sample.Facts+" pcAfter="+HealthFacts(p));
+                                    projectileReceived++;
+                                    if(pcValid)
+                                    {
+                                        double changedError=Vector2.Distance(new Vector2(pc.X,pc.Y),p.position);contactNegativeMax=Math.Max(contactNegativeMax,changedError);
+                                        if(changedError>.08 || Math.Abs(pc.Vx-p.velocity.X)>.0001 || Math.Abs(pc.Vy-p.velocity.Y)>.0001){contactPlayerNegative++;projectilePlayerNegative++;}
+                                        Console.WriteLine("WALL SHOT-PLAYER-NEGATIVE scene="+scene+" frame="+frameNow+" error="+changedError+" predictedV="+pc.Vx+","+pc.Vy+" actualV="+p.velocity);
+                                    }
+                                }
+                                Require(enteredHealth,"Observed Wall receiving consumes the real post-regen player action.");
+                                long invalidFrom=(long)Main.GameUpdateCount+(playerCompleted?1:0);
                                 foreach(var old in frozen)
                                 {
                                     Require((old.Assumptions&PredictionAssumption.NoNewHits)!=0,"Retained pre-contact paths explicitly carry the no-new-hits premise.");
                                     if(contactChanged.Add(old))contactInvalidated++;
+                                    long prior;if(!contactInvalidFrom.TryGetValue(old,out prior) || invalidFrom<prior)contactInvalidFrom[old]=invalidFrom;
                                 }
-                                publicationBeforeContact=cache.Read(0);contactThisAction=true;contactPublicationPending=true;
+                                publicationBeforeContact=cache.Read(0);contactThisAction=!playerCompleted;contactPublicationPending=true;
                                 waitingContactRestore=waitingContactPublication=!p.dead;lastContactTick=(long)Main.GameUpdateCount;contactReceived++;
                             }
                             if(reason.SourceOtherIndex==0)
@@ -285,7 +355,7 @@ namespace NativeWorldTextProbe
                                 {if(contactChanged.Contains(old))continue;int offset=(int)(Main.GameUpdateCount-old.CaptureTick);Require(offset>=old.Count,"A retained no-new-hits frozen Wall window cannot include the actual fall-hit NPC action. capture="+old.CaptureTick+" offset="+offset+" count="+old.Count+" stop="+old.Stop);fallExpiredWindows++;}
                                 // Receiving is real, not injected. Prior windows
                                 // have ended; fresh post-Hurt facts own recovery.
-                                frozen.Clear();phases.Clear();freezesHealth.Clear();contactChanged.Clear();contactReported.Clear();fallReceivedThisAction=true;waitingFallRestore=!p.dead;waitingFallPublication=!p.dead;lastFallTick=(long)Main.GameUpdateCount;fallReceived++;
+                                frozen.Clear();phases.Clear();freezesHealth.Clear();contactChanged.Clear();contactReported.Clear();contactInvalidFrom.Clear();fallReceivedThisAction=true;waitingFallRestore=!p.dead;waitingFallPublication=!p.dead;lastFallTick=(long)Main.GameUpdateCount;fallReceived++;
                             }
                         };
                         // Observe the real regen consumer's inputs separately
@@ -301,13 +371,13 @@ namespace NativeWorldTextProbe
                         healthAfter=p=>{if(ReferenceEquals(p,Main.LocalPlayer)){nativeHealthAfter=HealthFacts(p);healthCompleted=new PredictionPlayerMotion{WallLife=p.statLife,WallRegenCount=p.lifeRegenCount,WallRegenTime=p.lifeRegenTime};}};
                         playerBefore=p=>
                         {
-                            if(ReferenceEquals(p,Main.LocalPlayer)){enteredHealth=false;fallReceivedThisAction=contactThisAction=false;playerPrefixFacts=HealthFacts(p);actualHurt="none";}
+                            if(ReferenceEquals(p,Main.LocalPlayer)){enteredHealth=playerCompleted=false;fallReceivedThisAction=contactThisAction=false;playerPrefixFacts=HealthFacts(p);actualHurt="none";}
                             pcValid=false;pcStop=PredictionStop.None;if(frameNow==0 || !ReferenceEquals(p,Main.LocalPlayer) || !p.active || p.dead)return;pc=pcInitial=(PredictionPlayerMotion)readPlayer.Invoke(null,new object[]{p});nativeHealthBefore=nativeHealthAfter="not observed";beforeTongue=p.tongued;beforeBuff=pc.WallTonguedTicks;terrain.Reset();pcValid=PlayerMotionContinuation.Advance(ref pc,EnvironmentFor(body),terrain,out pcStop);
                             if(!pcValid)Require(pcStop==PredictionStop.Despawn || pcStop==PredictionStop.MissingDependency || pcStop==PredictionStop.PhaseBoundary,"Exact actual Wall PC consumer boundary "+pcStop);
                         };
                         playerAfter=p=>
                         {
-                            if(!ReferenceEquals(p,Main.LocalPlayer) || !p.active)return;
+                            if(!ReferenceEquals(p,Main.LocalPlayer) || !p.active)return;playerCompleted=true;
                             if(contactThisAction)
                             {
                                 // The genuine Hurt changes the conditional input,
@@ -358,9 +428,12 @@ namespace NativeWorldTextProbe
                             if(waitingContactPublication && path!=null && ReferenceEquals(path.Identity.Token,actor) && path.CaptureTick>=lastContactTick && path.Count>1){contactFreshPublished++;waitingContactPublication=false;}
                             for(int i=frozen.Count-1;i>=0;i--)
                             {
-                                var old=frozen[i];int offset=(int)(Main.GameUpdateCount-old.CaptureTick);if(offset>=old.Count || !ReferenceEquals(old.Identity.Token,actor)){frozen.RemoveAt(i);phases.Remove(old);freezesHealth.Remove(old);contactChanged.Remove(old);contactReported.Remove(old);continue;}if(offset<1)continue;
+                                var old=frozen[i];int offset=(int)(Main.GameUpdateCount-old.CaptureTick);if(offset>=old.Count || !ReferenceEquals(old.Identity.Token,actor)){frozen.RemoveAt(i);phases.Remove(old);freezesHealth.Remove(old);contactChanged.Remove(old);contactReported.Remove(old);contactInvalidFrom.Remove(old);continue;}if(offset<1)continue;
                                 var point=old[offset];double error=Vector2.Distance(new Vector2(point.Bounds.X,point.Bounds.Y),actor.position);
-                                if(contactChanged.Contains(old))
+                                // A projectile hits after this frame's NPC actions.
+                                // Their completed prefix remains exact; only later
+                                // points consume the changed player facts.
+                                if(contactChanged.Contains(old) && (long)Main.GameUpdateCount>=contactInvalidFrom[old])
                                 {
                                     if(error>.08 && contactReported.Add(old)){contactFrozenNegative++;Console.WriteLine("WALL CONTACT-FROZEN-NEGATIVE scene="+scene+" frame="+frame+" capture="+old.CaptureTick+" offset="+offset+" error="+error+" contactTick="+lastContactTick);}
                                     continue;
@@ -381,17 +454,22 @@ namespace NativeWorldTextProbe
                         if(scene==7)Require(Count(113)>=2,"Natural second body retains all global writers in the slot closure.");if(scene==12)Require(targets.Count>1,"Actual two-player gross eligibility changes numbered targets.");
                         if(scene==0)Require(fallReceived>0 && fallRestored>0 && fallFreshPublished>0 && fallRecoveryLong>=30,"Unmodified natural Tongue fall keeps its real Hurt boundary, fresh publication and long health/motion recovery.");
                         if(scene==0)Require(contactReceived>0 && contactPlayerNegative>0 && contactInvalidated>0 && contactPublication>0 && !contactPublicationPending && contactRestored>0 && contactFreshPublished>0 && contactRecoveryLong>=30,"Actual Wall NPC contact keeps its conditional negative, production withdrawal, genuine sample and long recovery.");
+                        if(scene==5 || scene==6)Require(projectileReceived>0 && projectilePlayerNegative>0 && contactFrozenNegative>0 && contactInvalidated>0 && contactPublication>0 && !contactPublicationPending && contactRestored>0 && contactFreshPublished>0 && contactRecoveryLong>=30,"Actual original Wall eye projectile injury keeps the completed prefix, old frozen negative, production withdrawal and fresh long recovery.");
+                        Console.WriteLine("WALL SHOT-RECOVERY scene="+scene+" received="+projectileReceived+" playerNegative="+projectilePlayerNegative);
                         Console.WriteLine("WALL CONTACT-RECOVERY scene="+scene+" received="+contactReceived+" playerNegative="+contactPlayerNegative+" negativeMax="+contactNegativeMax+" invalidated="+contactInvalidated+" publication="+contactPublication+" restored="+contactRestored+" freshPublished="+contactFreshPublished+" recoveryLong="+contactRecoveryLong+" frozenNegative="+contactFrozenNegative);
                         totalMatched+=matched;totalBody+=bodyActions;totalEyes+=eyes;totalHungry+=hungry;totalPc+=pcActions;totalTongue+=tongue;Console.WriteLine("WALL scene="+scene+" body="+bodyActions+" eyes="+eyes+" hungry="+hungry+" pc="+pcActions+" tongue="+tongue+" gross="+gross+" snap="+snap+" restored="+restored+" matched="+matched+" long="+longMatches+" cross="+cross+" selected="+selected+" published="+published+" retired="+retired+" fallReceived="+fallReceived+" fallRestored="+fallRestored+" fallExpiredWindows="+fallExpiredWindows+" fallFreshPublished="+fallFreshPublished+" fallRecoveryLong="+fallRecoveryLong+" error="+maxError);
                     }
                     catch(Exception failure) when(!(failure is OutOfMemoryException)){before=after=null;playerBefore=playerAfter=healthBefore=healthAfter=null;receivedHit=null;worldPrepare=null;failures.Add(scene+": "+failure.Message);Console.WriteLine("WALL FAIL scene="+scene+": "+failure);}
                 }
-                Require(failures.Count==0,"Wall original natural expectations remain required for actualLeaf="+actualLeaf+": "+string.Join(" | ",failures));Console.WriteLine("PASS Wall natural actualLeaf="+actualLeaf+" scenes="+(lastScene-firstScene)+" matched="+totalMatched+" body="+totalBody+" eyes="+totalEyes+" hungry="+totalHungry+" player="+totalPc+" tongue="+totalTongue);
+                Require(failures.Count==0,"Wall original natural expectations remain required for actualLeaf="+actualLeaf+": "+string.Join(" | ",failures));Console.WriteLine("PASS Wall natural actualLeaf="+actualLeaf+" scenes="+sceneIds.Count+" matched="+totalMatched+" body="+totalBody+" eyes="+totalEyes+" hungry="+totalHungry+" player="+totalPc+" tongue="+totalTongue);
             }
             finally{before=after=death=null;playerBefore=playerAfter=healthBefore=healthAfter=null;receivedHit=null;worldPrepare=null;Main.getGoodWorld=oldGood;hooks.Unpatch(update,HarmonyPatchType.All,hooks.Id);hooks.Unpatch(playerUpdate,HarmonyPatchType.All,hooks.Id);hooks.Unpatch(healthUpdate,HarmonyPatchType.All,hooks.Id);hooks.Unpatch(hurt,HarmonyPatchType.All,hooks.Id);hooks.Unpatch(prepareWorld,HarmonyPatchType.All,hooks.Id);hooks.Unpatch(send,HarmonyPatchType.Prefix,hooks.Id);Directory.CreateDirectory(output);File.WriteAllLines(Path.Combine(output,"wall-boss-continuous.csv"),records);}
         }
         private static string HealthFacts(Player p)
         {return p.statLife+"/"+p.statLifeMax2+"/"+p.lifeRegenCount+"/"+p.lifeRegenTime+" regen="+p.lifeRegen+" position="+p.position+" V="+p.velocity+" fall="+p.fallStart+","+p.fallStart2+" grav="+p.gravDir+" extraFall="+p.extraFall+" noFall="+p.noFallDmg+" wings="+p.hasWings+" immune="+p.immune+","+p.immuneTime+" tongue="+p.tongued+" pending="+Buff(p,38)+" grapple="+p.grappling[0]+" god="+p.creativeGodMode+" wellFed="+p.wellFed+" honey="+p.honey+" suffocating="+p.suffocating+" bleed="+p.bleed+" burning="+p.onFire+"/"+p.burned+" regenModifiers="+p.crimsonRegen+"/"+p.shinyStone+"/"+p.nebulaLevelLife+" scene="+Player.SceneMetrics.HasCampfire+"/"+Player.SceneMetrics.HasHeartLantern;}
+        private static string Precise(float value){return value.ToString("R",CultureInfo.InvariantCulture);}
+        private static string ActorFacts(NpcMotionState n)
+        {return "slot="+n.Identity.Slot+" type="+n.EffectiveType+" position="+Precise(n.X)+","+Precise(n.Y)+" V="+Precise(n.Vx)+","+Precise(n.Vy)+" size="+n.Width+","+n.Height+" life="+n.Life+"/"+n.LifeMax+" ai="+Precise(n.A0)+","+Precise(n.A1)+","+Precise(n.A2)+","+Precise(n.A3)+" local="+Precise(n.L0)+","+Precise(n.L1)+","+Precise(n.L2)+","+Precise(n.L3)+" face="+n.Direction+","+n.DirectionY+","+n.SpriteDirection+" target="+n.Target+" player="+n.PlayerIndex+" justHit="+n.JustHit+" collide="+n.CollideX+","+n.CollideY+" parameter="+Precise(n.PositionParameter);}
         private static NpcMotionState Basic(NPC n,int type,int style)
         {var p=Main.player[n.target>=0 && n.target<255?n.target:0];return new NpcMotionState{Identity=new NpcIdentity(1,n,n.whoAmI,1,type,type),Style=style,Active=true,X=n.position.X,Y=n.position.Y,Vx=n.velocity.X,Vy=n.velocity.Y,Width=n.width,Height=n.height,Life=n.life,LifeMax=Math.Max(1,n.lifeMax),Target=n.target,Direction=n.direction,DirectionY=n.directionY,SpriteDirection=n.spriteDirection,Boss=n.boss,TargetCaptured=true,HasPlayer=true,PlayerIndex=p.whoAmI,PlayerActive=p.active,PlayerNativeDead=p.dead,PlayerGross=p.gross,PlayerArea=new MotionRect((int)p.position.X,(int)p.position.Y,p.width,p.height),PlayerCenterX=p.Center.X,PlayerCenterY=p.Center.Y,PlayerVelocityCaptured=true,WallRelationsCaptured=true,WallRelationsComplete=true,WallBossCaptured=true};}
         private static NpcMotionState[] Capture(MethodInfo read,MethodInfo tracking,IPredictionTerrain terrain,long session,NPC selected)

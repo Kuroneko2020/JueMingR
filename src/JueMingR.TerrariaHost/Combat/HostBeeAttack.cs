@@ -98,6 +98,7 @@ namespace JueMingR.TerrariaHost.Combat
         {
             var q=new Projectile();q.SetDefaults(p.type);q.active=p.active;q.whoAmI=p.whoAmI;q.owner=p.owner;q.position=p.position;q.velocity=p.velocity;q.damage=p.damage;q.knockBack=p.knockBack;
             q.width=p.width;q.height=p.height;q.penetrate=p.penetrate;q.maxPenetrate=p.maxPenetrate;q.tileCollide=p.tileCollide;q.ignoreWater=p.ignoreWater;q.correctSlopeCollision=p.correctSlopeCollision;q.friendly=p.friendly;
+            q.magic=p.magic;q.ranged=p.ranged;q.melee=p.melee;
             q.usesLocalNPCImmunity=p.usesLocalNPCImmunity;q.usesIDStaticNPCImmunity=p.usesIDStaticNPCImmunity;q.immunityIdentity=p.immunityIdentity;q.localNPCHitCooldown=p.localNPCHitCooldown;q.idStaticNPCHitCooldown=p.idStaticNPCHitCooldown;q.appliesImmunityTimeOnSingleHits=p.appliesImmunityTimeOnSingleHits;
             Array.Copy(p.localNPCImmunity,q.localNPCImmunity,p.localNPCImmunity.Length);return q;
         }
@@ -148,6 +149,11 @@ namespace JueMingR.TerrariaHost.Combat
             obstacles.CaptureProjectileFamily(children);
             obstacles.BeginCandidate();return Family(children,timeline,terrain,obstacles,clock.FirstTick,1,-1,false);
         }
+        // A held Bee Gun creates all members before the projectile slot loop,
+        // unlike a Kill birth's firstAfterSlot boundary. The caller owns the
+        // candidate reset and passes its one captured chase snapshot.
+        internal static AttackContact NewbornRepresentative(Projectile[] children,NpcTrajectory timeline,int firstTick,int firstOuter,PredictionTerrain terrain,HostAttackObstacles obstacles,HostProjectileTargets preparedTargets)
+        {return Family(children,timeline,terrain,obstacles,firstTick,firstOuter,-1,true,preparedTargets);}
         // Native chase permission depends on the bee role, not the arrow or
         // grenade parent. Capture once before candidate replay and retain it
         // in the ordinary receiver consume lease; Draw never recaptures it.

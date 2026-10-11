@@ -23,10 +23,11 @@ namespace JueMingR.TerrariaHost.Combat
         private readonly Cell[] hotCells=new Cell[256];
         private long epoch=1;
         private int width,height;
+        private bool continuing;
 #if DEBUG
         internal int Reads {get;private set;}
 #endif
-        public void Reset(){cells.Clear();width=Main.maxTilesX;height=Main.maxTilesY;if(epoch==long.MaxValue){Array.Clear(hotEpochs,0,hotEpochs.Length);epoch=0;}epoch++;}
+        public void Reset(){if(continuing)return;cells.Clear();width=Main.maxTilesX;height=Main.maxTilesY;if(epoch==long.MaxValue){Array.Clear(hotEpochs,0,hotEpochs.Length);epoch=0;}epoch++;}
         public bool Unchanged
         {
             get{if(width!=Main.maxTilesX || height!=Main.maxTilesY)return false;foreach(var pair in cells){Cell current;if(!Read(pair.Key%width,pair.Key/width,out current) || !current.Equals(pair.Value))return false;}return true;}
@@ -52,8 +53,20 @@ namespace JueMingR.TerrariaHost.Combat
             }
             internal static CellLease Capture(PredictionTerrain terrain)
             {return new CellLease(terrain.width,terrain.height,terrain.cells);}
+            internal void Restore(PredictionTerrain terrain)
+            {foreach(var pair in values)terrain.cells.Add(pair.Key,pair.Value);}
         }
         internal CellLease FreezeCells(){return CellLease.Capture(this);}
+        // A verified deterministic suffix still depends on every old cell.
+        // Keep that bounded lease while the two new endpoint actions acquire
+        // additional cells. The ordinary 4096-cell limit forces a fresh full
+        // calculation if a travelling window accumulates too much history.
+        internal bool BeginContinuation(CellLease lease)
+        {
+            if(continuing || lease==null || !lease.Current)return false;
+            Reset();lease.Restore(this);continuing=true;return true;
+        }
+        internal void EndContinuation(){continuing=false;}
         private static bool Read(int x,int y,out Cell value)
         {
             value=default(Cell);if(Main.tile==null || x<0 || y<0 || x>=Main.maxTilesX || y>=Main.maxTilesY)return false;

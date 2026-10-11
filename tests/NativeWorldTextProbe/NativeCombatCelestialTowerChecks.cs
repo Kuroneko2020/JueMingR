@@ -84,7 +84,14 @@ namespace NativeWorldTextProbe
                 }
                 for(int family=0;family<Types.Length;family++)
                 {
-                    var actor=Find(Types[family]);actor.UpdateNPC(actor.whoAmI);int life=actor.life;actor.StrikeNPCNoInteraction(100,0,0);Require(actor.life==life,"Actual shield rejects the original receiving hit.");
+                    var actor=Find(Types[family]);actor.UpdateNPC(actor.whoAmI);int life=actor.life,priorOutlets=outlets.Count;
+                    Require(Shield(actor.type)>0 && actor.dontTakeDamage,"Real tower shield sets the native player attack admission gate.");
+                    // StrikeNPCNoInteraction is the internal forced-strike
+                    // path and deliberately has no dontTakeDamage gate.
+                    // Exercise the actual player attack admission instead.
+                    Main.LocalPlayer.TryHittingNPC(actor,100,0);
+                    Require(actor.life==life && outlets.Count==priorOutlets,"Actual shield rejects the original player attack before StrikeNPC/network export.");
+                    Console.WriteLine("TOWER SHIELD-REJECT type="+actor.type+" shield="+Shield(actor.type)+" dontTakeDamage="+actor.dontTakeDamage+" life="+life+"/"+actor.life+" strikeExports="+(outlets.Count-priorOutlets));
                     for(int mode=0;mode<5;mode++)
                     {
                         var p=BirthSoul(actor,Producers[family],mode==0?actor.Center:actor.Center+new Vector2(120,40));actualSouls++;
@@ -170,7 +177,21 @@ namespace NativeWorldTextProbe
         private static PredictionEnvironment EnvironmentFor(NPC n)
         {var p=Main.player[n.target>=0 && n.target<Main.player.Length?n.target:255];return new PredictionEnvironment{PlayerIndex=p.whoAmI,PlayerX=p.Center.X,PlayerY=p.Center.Y,PlayerWidth=p.width,PlayerHeight=p.height,PlayerDead=!p.active || p.dead,PlayerTimelineActive=p.active && !p.dead && !p.ghost,WorldWidth=Main.maxTilesX,WorldHeight=Main.maxTilesY,GravityWorldSurface=Main.worldSurface,WorldSurface=(float)Main.worldSurface,RockLayer=(float)Main.rockLayer,Expert=Main.expertMode,GoodWorld=Main.getGoodWorld,Remix=Main.remixWorld,Multiplayer=Main.netMode==1,TowerConsumers=Empty()};}
         private static Projectile BirthSoul(NPC tower,int type,Vector2 center)
-        {int slot=NPC.NewNPC(NPC.GetSpawnSourceForNaturalSpawn(),(int)center.X,(int)center.Y,type,Start:16,Target:Main.myPlayer);var minion=Main.npc[slot];minion.Center=center;int before=CountSouls();minion.StrikeNPCNoInteraction(minion.life+minion.defense+10000,0,0);Require(!minion.active && CountSouls()>before,"Real producer death creates a629 shield soul.");foreach(var p in Main.projectile)if(p.active && p.type==629 && p.ai[0]==tower.whoAmI)return p;throw new InvalidOperationException("Actual soul target missing type="+tower.type);}
+        {
+            // This lifecycle slice supplies only the real frame-entry pool
+            // consumer. A dead slot stays protected for two entries; hundreds
+            // of births in one entry cannot stand in for natural depletion.
+            // Do not clear protection or run unrelated player/tower AI here.
+            NativeQuickItemChecks.BeginWorldStep();Main.EverLastingTicker++;NPC.UpdateProtectedSpawnSlots();
+            int protectedSlots=0;for(int i=16;i<Main.maxNPCs;i++)if(!Main.npc[i].active && NPC.spawnSlotProtected[i]>0)protectedSlots++;
+            int slot=NPC.NewNPC(NPC.GetSpawnSourceForNaturalSpawn(),(int)center.X,(int)center.Y,type,Start:16,Target:Main.myPlayer);
+            Require(slot>=0 && slot<Main.maxNPCs,"Actual producer allocation has a native slot: requestedType="+type+" result="+slot+" protectedInactive="+protectedSlots+" tick="+Main.GameUpdateCount+" shield="+Shield(tower.type));
+            var minion=Main.npc[slot];minion.Center=center;int before=CountSouls();
+            minion.StrikeNPCNoInteraction(minion.life+minion.defense+10000,0,0);
+            Require(!minion.active && CountSouls()>before,"Real producer death creates a629 shield soul: requestedType="+type+" actualType="+minion.type+" slot="+slot+" generation="+minion.generation+" protected="+NPC.spawnSlotProtected[slot]+" protectedInactive="+protectedSlots+" souls="+before+"/"+CountSouls()+" shield="+Shield(tower.type)+" active="+minion.active+" life="+minion.life);
+            foreach(var p in Main.projectile)if(p.active && p.type==629 && p.ai[0]==tower.whoAmI)return p;
+            throw new InvalidOperationException("Actual soul target missing type="+tower.type);
+        }
         private static int CountSouls(){int count=0;foreach(var p in Main.projectile)if(p.active && p.type==629)count++;return count;}
         private static bool Family(NPC n){return n!=null && (n.type==517 || n.type==422 || n.type==507 || n.type==493);}
         private static bool Producer(int type){return type==518 || type==425 || type==424 || type==411;}

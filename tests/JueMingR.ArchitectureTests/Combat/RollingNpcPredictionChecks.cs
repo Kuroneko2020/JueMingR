@@ -12,6 +12,7 @@ namespace JueMingR.ArchitectureTests
             FiniteFlight();
             ImmutableGeometry();
             ArmoredDayPursuit();
+            ContinuationPlayerPremise();
             var terrain=new EmptyTerrain();var model=new RollingNpcPrediction();
             var state=new NpcMotionState{Identity=new NpcIdentity(1,new object(),4,2,999,999),X=100,Y=100,Vx=1,Vy=-1,Width=20,Height=20,Life=100,LifeMax=100,TimeLeft=750,Active=true,CanReceive=true,NoGravity=true,NoTileCollide=true,Health=new NpcHealthState{RealLife=-1}};
             var player=new PredictionPlayerMotion{X=150,Y=150,Width=20,Height=40,GravityDirection=1,Gravity=.4f,MaxFall=10,MaxSpeed=3,Acceleration=.08f,Slowdown=.2f};
@@ -92,11 +93,11 @@ namespace JueMingR.ArchitectureTests
         private sealed class EmptyTerrain : IPredictionTerrain
         {
             internal int Resets,Moves,Limit=int.MaxValue;
-            internal bool BadPlayer,CliffSupport,UnknownCliff;
+            internal bool BadPlayer,CliffSupport,UnknownCliff,PeriodicPlayer;private int playerMoves;
             public bool Unchanged=>true;
-            public void Reset(){Resets++;Moves=0;}
+            public void Reset(){Resets++;Moves=0;playerMoves=0;}
             public bool Move(ref NpcMotionState n,PredictionEnvironment e,out PredictionStop stop)
-            {stop=PredictionStop.None;if(++Moves>Limit){stop=PredictionStop.TerrainUnavailable;return false;}n.X+=n.Vx;n.Y+=n.Vy;if(BadPlayer && n.Friendly)n.Y=float.NaN;return true;}
+            {stop=PredictionStop.None;if(++Moves>Limit){stop=PredictionStop.TerrainUnavailable;return false;}n.X+=n.Vx;n.Y+=n.Vy;if(BadPlayer && n.Friendly)n.Y=float.NaN;if(PeriodicPlayer && n.Friendly)n.X+=(++playerMoves%7==0?-6:1);return true;}
             public bool Solid(MotionRect area,out bool solid,out PredictionStop stop){solid=false;stop=PredictionStop.None;return true;}
             public bool CanHit(MotionRect a,MotionRect b,out bool clear,out PredictionStop stop){clear=true;stop=PredictionStop.None;return true;}
             public bool Tile(int x,int y,out PredictionTile tile,out PredictionStop stop)
@@ -109,6 +110,20 @@ namespace JueMingR.ArchitectureTests
             var e=new PredictionEnvironment{PlayerX=410,PlayerY=120,PlayerWidth=20,PlayerHeight=40,WorldWidth=4200,WorldHeight=1200,WorldSurface=400,Day=true};
             var path=new RollingNpcPrediction().Prepare(new[]{n},1,0,1,1,1,e,p,new EmptyTerrain());
             Require(path.Count==2 && path[1].Vx>-1,"Armored skeleton with blocked count below sixty still pursues the player on a daytime surface.");
+        }
+        private static void ContinuationPlayerPremise()
+        {
+            var n=new NpcMotionState{Identity=new NpcIdentity(1,new object(),1,1,2,2),X=100,Y=100,Vx=1,Style=2,Width=30,Height=30,Life=100,LifeMax=100,TimeLeft=750,Active=true,CanReceive=true,NoGravity=true,NoTileCollide=true,Scale=1,Health=new NpcHealthState{RealLife=-1}};
+            var p=new PredictionPlayerMotion{X=500,Y=100,Width=20,Height=40,GravityDirection=1,MaxFall=10,ReleaseJump=true};
+            var e=new PredictionEnvironment{PlayerX=510,PlayerY=120,PlayerWidth=20,PlayerHeight=40,WorldWidth=4200,WorldHeight=1200,WorldSurface=400};
+            var model=new RollingNpcPrediction{CaptureContinuation=true};
+            var stable=model.Prepare(new[]{n},1,0,1,120,1,e,p,new EmptyTerrain(),null,true);
+            Require(stable.Count==121 && model.Continuation!=null,"An independent known motor with a genuinely fixed player can retain a continuation proof.");
+            model.Clear();var periodic=model.Prepare(new[]{n},1,0,2,120,1,e,p,new EmptyTerrain{PeriodicPlayer=true},null,true);
+            // BeforeNpc skips the first player move. The remaining 119 moves
+            // contain exactly seventeen seven-action cycles: both endpoints
+            // equal the initial position while every cycle moves in between.
+            Require(periodic.Count==121 && model.Continuation==null,"Equal BeforeNpc player endpoints do not prove a stationary premise across the complete window.");
         }
         private static void Require(bool value,string text){if(!value)throw new InvalidOperationException(text);}
         private static void ImmutableGeometry()

@@ -7,7 +7,7 @@ namespace JueMingR.Features.Combat
     // Cache owns demand/publication. A result may be consumed repeatedly only
     // for its exact sample, dependencies, revisions and verified local cells.
     // Its capture time is never advanced to imitate a fresh world observation.
-    public sealed class RollingNpcPrediction
+    public sealed partial class RollingNpcPrediction
     {
         private readonly NpcMotionState[] work=new NpcMotionState[NpcPredictionCache.Capacity];
         private readonly NpcTrajectoryPoint[] points=new NpcTrajectoryPoint[NpcPredictionCache.Horizon+1];
@@ -35,7 +35,7 @@ namespace JueMingR.Features.Combat
         // excludes trend/history, observation fallback and timed source payloads;
         // it never permits retimestamping a conditional trajectory.
         public bool FixedInputResult {get;private set;}
-        public void Clear(){FixedInputResult=false;previous=default(NpcMotionState);previousPlayer=default(PredictionPlayerMotion);previousPlayerAdvanced=resultPlayerAdvanced=false;priorTick=resultTick=-1;result=null;resultTerrain=null;Array.Clear(work,0,work.Length);}
+        public void Clear(){Continuation=null;FixedInputResult=false;previous=default(NpcMotionState);previousPlayer=default(PredictionPlayerMotion);previousPlayerAdvanced=resultPlayerAdvanced=false;priorTick=resultTick=-1;result=null;resultTerrain=null;Array.Clear(work,0,work.Length);}
         public NpcTrajectory Prepare(NpcMotionState[] source,int count,int selected,long tick,int required,long epoch,PredictionEnvironment environment,PredictionPlayerMotion player,IPredictionTerrain terrain,bool[] motionRoles=null,bool firstPlayerStepCompleted=false)
         {
             FailureLayer=PredictionFailureLayer.Source;
@@ -58,6 +58,9 @@ namespace JueMingR.Features.Combat
             bool sameResult=result!=null && resultPlayerAdvanced==firstPlayerStepCompleted && resultTick==tick && resultEpoch==epoch && resultCount==count && resultSelected==selected && resultRequired>=required && resultEnvironment.Equals(environment) && resultPlayer.SameSample(player) && ReferenceEquals(resultTerrain,terrain);
             if(sameResult)for(int i=0;i<count;i++)if(!resultSample[i].SameSample(source[i]) || resultRoles[i]!=(motionRoles==null || motionRoles[i])){sameResult=false;break;}
             if(sameResult && terrain.Unchanged){FailureLayer=resultFailure;return result;}
+            Continuation=null;
+            bool retain=CaptureContinuation && count==1 && IndependentContinuation(source[0],environment,player);
+            var firstState=default(NpcMotionState);var firstPlayer=default(PredictionPlayerMotion);
             FixedInputResult=false;
             bool observed=priorTick+1==tick && previous.Identity.Equals(current.Identity) && SamePhase(previous,current) && !current.JustHit &&
                 Math.Abs(current.X-previous.X)<512 && Math.Abs(current.Y-previous.Y)<512;
@@ -149,6 +152,7 @@ namespace JueMingR.Features.Combat
                     }
                     else{FailureLayer=PredictionFailureLayer.PlayerPremise;break;}
                 }
+                if(retain && !SameContinuationPlayer(initialPlayer,player))retain=false;
                 var env=environment;
                 if(wallNeeded && needsPlayer && !observedPlayer)
                 {env.PlayerGross=player.WallGross;env.WallTimelineCaptured=true;env.WallTimelineIndex=player.PlayerIndex;env.WallTimelineArea=new MotionRect(player.X,player.Y,player.Width,player.Height);env.WallTimelineGross=player.WallGross;}
@@ -174,9 +178,9 @@ namespace JueMingR.Features.Combat
                 for(int i=0;i<count;i++)
                 {
                     if(work[i].HasPlayer && work[i].PlayerIndex==env.PlayerIndex)
-                    {work[i].PlayerGross=needsPlayer && !observedPlayer?player.WallGross:work[i].PlayerGross;work[i].PlayerGravityDirection=needsPlayer && !observedPlayer?player.GravityDirection:work[i].PlayerGravityDirection;work[i].PlayerCenterX=env.PlayerX;work[i].PlayerCenterY=env.PlayerY;work[i].PlayerVx=env.PlayerVx;work[i].PlayerVy=env.PlayerVy;work[i].PlayerVelocityCaptured=env.PlayerVelocityCaptured;}
+                    {if(work[i].PlayerPreciseAreaCaptured)work[i].PlayerPreciseArea=needsPlayer && !observedPlayer?new MotionRect(player.X,player.Y,player.Width,player.Height):new MotionRect(env.PlayerX-env.PlayerWidth*.5f,env.PlayerY-env.PlayerHeight*.5f,env.PlayerWidth,env.PlayerHeight);work[i].PlayerGross=needsPlayer && !observedPlayer?player.WallGross:work[i].PlayerGross;work[i].PlayerGravityDirection=needsPlayer && !observedPlayer?player.GravityDirection:work[i].PlayerGravityDirection;work[i].PlayerCenterX=env.PlayerX;work[i].PlayerCenterY=env.PlayerY;work[i].PlayerVx=env.PlayerVx;work[i].PlayerVy=env.PlayerVy;work[i].PlayerVelocityCaptured=env.PlayerVelocityCaptured;}
                     if(work[i].HasClosestPlayer && work[i].ClosestPlayerIndex==env.PlayerIndex)
-                    {work[i].ClosestPlayerGross=needsPlayer && !observedPlayer?player.WallGross:work[i].ClosestPlayerGross;work[i].ClosestPlayerGravityDirection=needsPlayer && !observedPlayer?player.GravityDirection:work[i].ClosestPlayerGravityDirection;work[i].ClosestPlayerArea=new MotionRect(env.PlayerX-env.PlayerWidth*.5f,env.PlayerY-env.PlayerHeight*.5f,env.PlayerWidth,env.PlayerHeight);work[i].ClosestPlayerWet=env.PlayerWet;work[i].ClosestPlayerCenterX=env.PlayerX;work[i].ClosestPlayerCenterY=env.PlayerY;work[i].ClosestPlayerVx=env.PlayerVx;work[i].ClosestPlayerVy=env.PlayerVy;work[i].ClosestPlayerVelocityCaptured=env.PlayerVelocityCaptured;}
+                    {if(work[i].ClosestPlayerPreciseAreaCaptured)work[i].ClosestPlayerPreciseArea=needsPlayer && !observedPlayer?new MotionRect(player.X,player.Y,player.Width,player.Height):new MotionRect(env.PlayerX-env.PlayerWidth*.5f,env.PlayerY-env.PlayerHeight*.5f,env.PlayerWidth,env.PlayerHeight);work[i].ClosestPlayerGross=needsPlayer && !observedPlayer?player.WallGross:work[i].ClosestPlayerGross;work[i].ClosestPlayerGravityDirection=needsPlayer && !observedPlayer?player.GravityDirection:work[i].ClosestPlayerGravityDirection;work[i].ClosestPlayerArea=new MotionRect(env.PlayerX-env.PlayerWidth*.5f,env.PlayerY-env.PlayerHeight*.5f,env.PlayerWidth,env.PlayerHeight);work[i].ClosestPlayerWet=env.PlayerWet;work[i].ClosestPlayerCenterX=env.PlayerX;work[i].ClosestPlayerCenterY=env.PlayerY;work[i].ClosestPlayerVx=env.PlayerVx;work[i].ClosestPlayerVy=env.PlayerVy;work[i].ClosestPlayerVelocityCaptured=env.PlayerVelocityCaptured;}
                 }
                 // BuildActiveNPCs establishes the Destroyer flag before the
                 // native actor loop. Retirement in an earlier slot cannot alter
@@ -223,7 +227,7 @@ namespace JueMingR.Features.Combat
                         // that necessary owner's retirement is not actor death.
                         // AI7 similarly stops considering a dangerous actor
                         // after its known retirement, without retiring itself.
-                        if(!valid && stop==PredictionStop.Despawn && i!=selected && (state.SkeletonRelationsCaptured || state.GolemRelationsCaptured || state.BrainRelationsCaptured || state.WallRelationsCaptured || work[selected].TowerRelationsCaptured || work[selected].TownRelationsCaptured))
+                        if(!valid && stop==PredictionStop.Despawn && i!=selected && (NpcPumpkingMotion.Known(state) || state.SkeletonRelationsCaptured || state.GolemRelationsCaptured || state.BrainRelationsCaptured || state.WallRelationsCaptured || work[selected].TowerRelationsCaptured || work[selected].TownRelationsCaptured))
                         {state.Active=false;work[i]=state;stop=PredictionStop.None;continue;}
                         if(valid)stop=PredictionStop.InvalidState;advanced=false;break;
                     }
@@ -243,6 +247,7 @@ namespace JueMingR.Features.Combat
                 if(!NpcCelestialTowerMotion.EndFrame(towerConsumers,work,count,environment,out stop)){FailureLayer=PredictionFailureLayer.NpcMotion;break;}
                 if(gravityNeeded && !RefreshGravity(ref gravityEnvironment,work,count,out stop)){FailureLayer=PredictionFailureLayer.PlayerPremise;break;}
                 wallPoints[length]=WallPoint(work,count);gravityPoints[length]=GravityPoint(gravityEnvironment);points[length++]=new NpcTrajectoryPoint(future,work[selected]);
+                if(retain && future==1){firstState=work[0];firstPlayer=player;}
             }
             var assumptions=(NpcMotion.Assumptions(current)&~PredictionAssumption.TargetPlayerStationary)|PredictionAssumption.HeldPlayerControls|PredictionAssumption.ApproximateMechanism;
             if(environment.Multiplayer)assumptions|=PredictionAssumption.NetworkObservation;
@@ -254,7 +259,10 @@ namespace JueMingR.Features.Combat
             if(conditionalVisibility && !needsPlayer)quality=PredictionQuality.LimitedObservation;
             FixedInputResult=fixedInputs && !observedPlayer && quality==PredictionQuality.StructuredApproximation && stop==PredictionStop.None && length==required+1 &&
                 (assumptions&(PredictionAssumption.RandomRepresentative|PredictionAssumption.CurrentPlayerObservation|PredictionAssumption.UnmodeledDamageEffects|PredictionAssumption.UnmodeledStatusEffects))==0;
-            result=new NpcTrajectory(current.Identity,tick,++version,assumptions,stop,points,length,PredictionStrategy.RollingConditional,epoch,quality,gravityNeeded && initialPlayer.PlayerToken!=null?new PredictionGravitySources(gravityPoints,length,initialPlayer.PlayerToken,initialPlayer.PlayerIndex,firstPlayerStepCompleted,current.Identity,tick):null,wallNeeded && initialPlayer.PlayerToken!=null?new PredictionWallSources(wallPoints,length,initialPlayer.PlayerToken,initialPlayer.PlayerIndex,current.Identity,tick):null);resultFailure=FailureLayer;return result;
+            result=new NpcTrajectory(current.Identity,tick,++version,assumptions,stop,points,length,PredictionStrategy.RollingConditional,epoch,quality,gravityNeeded && initialPlayer.PlayerToken!=null?new PredictionGravitySources(gravityPoints,length,initialPlayer.PlayerToken,initialPlayer.PlayerIndex,firstPlayerStepCompleted,current.Identity,tick):null,wallNeeded && initialPlayer.PlayerToken!=null?new PredictionWallSources(wallPoints,length,initialPlayer.PlayerToken,initialPlayer.PlayerIndex,current.Identity,tick):null);resultFailure=FailureLayer;
+            if(retain && FixedInputResult && SameContinuationPlayer(initialPlayer,firstPlayer) && SameContinuationPlayer(initialPlayer,player))
+                Continuation=new CandidateContinuation(firstState,work[0],environment,initialPlayer,firstPlayerStepCompleted,result);
+            return result;
         }
         private static PredictionWallSource WallPoint(NpcMotionState[] group,int count)
         {
@@ -340,6 +348,6 @@ namespace JueMingR.Features.Combat
         private static bool Finite(float value){return !float.IsNaN(value)&&!float.IsInfinity(value);}
         private static float Clamp(float value,float limit){return Math.Max(-limit,Math.Min(limit,value));}
         private static bool SamePhase(NpcMotionState a,NpcMotionState b)
-        {return a.Style==b.Style && a.PositionRelation==b.PositionRelation && a.PositionOwner.Equals(b.PositionOwner) && a.PositionParameter==b.PositionParameter && (NpcWallBossMotion.Known(a)?NpcWallBossMotion.SamePhase(a,b):NpcQueenBeeMotion.Known(a)?NpcQueenBeeMotion.SamePhase(a,b):NpcBrainSwarmMotion.Known(a)?NpcBrainSwarmMotion.SamePhase(a,b):NpcGolemMotion.Known(a)?NpcGolemMotion.SamePhase(a,b):NpcBloodNautilusMotion.Known(a)?NpcBloodNautilusMotion.SamePhase(a,b):NpcDarkMageMotion.Known(a)?NpcDarkMageMotion.SamePhase(a,b):NpcAttachedWeaponMotion.Known(a)?NpcAttachedWeaponMotion.SamePhase(a,b):NpcTownCritterMotion.Known(a)?NpcTownCritterMotion.SamePhase(a,b):NpcDiveFlightMotion.Known(a)?NpcDiveFlightMotion.SamePhase(a,b):NpcBetsyMotion.Known(a)?NpcBetsyMotion.SamePhase(a,b):NpcSkeletonBossMotion.Known(a)?NpcSkeletonBossMotion.SamePhase(a,b):NpcCelestialTowerMotion.Known(a)?NpcCelestialTowerMotion.SamePhase(a,b):NpcTreeBossMotion.Known(a)?NpcTreeBossMotion.SamePhase(a,b):NpcSantaTankMotion.Known(a)?NpcSantaTankMotion.SamePhase(a,b):NpcKingSlimeMotion.Known(a)?NpcKingSlimeMotion.SamePhase(a,b):NpcSnowmanMotion.Known(a)?NpcSnowmanMotion.SamePhase(a,b):NpcEyeBossMotion.Known(a)?NpcEyeBossMotion.SamePhase(a,b):NpcMechanicalBossMotion.Known(a)?NpcMechanicalBossMotion.SamePhase(a,b):NpcInvasionGroundMotion.Known(a)?NpcInvasionGroundMotion.SamePhase(a,b):NpcInvasionLightningMotion.Known(a)?NpcInvasionLightningMotion.SamePhase(a,b):NpcInvasionFlightMotion.Known(a)?NpcInvasionFlightMotion.SamePhase(a,b):NpcInvasionCrystalMotion.Known(a)?NpcInvasionCrystalMotion.SamePhase(a,b):NpcBigMimicMotion.Known(a)?NpcBigMimicMotion.SamePhase(a,b):NpcPlanteraMotion.Known(a)?NpcPlanteraMotion.SamePhase(a,b):NpcTerrainFlightMotion.Known(a)?NpcTerrainFlightMotion.SamePhase(a,b):NpcRelatedMotion.Known(a)?NpcRelatedMotion.SamePhase(a,b):NpcPhasedFlightMotion.Known(a)?NpcPhasedFlightMotion.SamePhase(a,b):NpcAmbientFlightMotion.Known(a)?NpcAmbientFlightMotion.SamePhase(a,b):NpcFiniteFlightMotion.Known(a)?NpcFiniteFlightMotion.SamePhase(a,b):(a.A0==b.A0 || Math.Abs(a.A0)>8 && Math.Abs(b.A0)>8 && Math.Sign(a.A0)==Math.Sign(b.A0) && Math.Abs(a.A0-b.A0)<=4));}
+        {return a.Style==b.Style && a.PositionRelation==b.PositionRelation && a.PositionOwner.Equals(b.PositionOwner) && a.PositionParameter==b.PositionParameter && (NpcWallBossMotion.Known(a)?NpcWallBossMotion.SamePhase(a,b):NpcQueenBeeMotion.Known(a)?NpcQueenBeeMotion.SamePhase(a,b):NpcBrainSwarmMotion.Known(a)?NpcBrainSwarmMotion.SamePhase(a,b):NpcGolemMotion.Known(a)?NpcGolemMotion.SamePhase(a,b):NpcBloodNautilusMotion.Known(a)?NpcBloodNautilusMotion.SamePhase(a,b):NpcDarkMageMotion.Known(a)?NpcDarkMageMotion.SamePhase(a,b):NpcAttachedWeaponMotion.Known(a)?NpcAttachedWeaponMotion.SamePhase(a,b):NpcTownCritterMotion.Known(a)?NpcTownCritterMotion.SamePhase(a,b):NpcDiveFlightMotion.Known(a)?NpcDiveFlightMotion.SamePhase(a,b):NpcBetsyMotion.Known(a)?NpcBetsyMotion.SamePhase(a,b):NpcSkeletonBossMotion.Known(a)?NpcSkeletonBossMotion.SamePhase(a,b):NpcCelestialTowerMotion.Known(a)?NpcCelestialTowerMotion.SamePhase(a,b):NpcIceQueenMotion.Known(a)?NpcIceQueenMotion.SamePhase(a,b):NpcPumpkingMotion.Known(a)?NpcPumpkingMotion.SamePhase(a,b):NpcTreeBossMotion.Known(a)?NpcTreeBossMotion.SamePhase(a,b):NpcSantaTankMotion.Known(a)?NpcSantaTankMotion.SamePhase(a,b):NpcKingSlimeMotion.Known(a)?NpcKingSlimeMotion.SamePhase(a,b):NpcSnowmanMotion.Known(a)?NpcSnowmanMotion.SamePhase(a,b):NpcEyeBossMotion.Known(a)?NpcEyeBossMotion.SamePhase(a,b):NpcMechanicalBossMotion.Known(a)?NpcMechanicalBossMotion.SamePhase(a,b):NpcInvasionGroundMotion.Known(a)?NpcInvasionGroundMotion.SamePhase(a,b):NpcInvasionLightningMotion.Known(a)?NpcInvasionLightningMotion.SamePhase(a,b):NpcInvasionFlightMotion.Known(a)?NpcInvasionFlightMotion.SamePhase(a,b):NpcInvasionCrystalMotion.Known(a)?NpcInvasionCrystalMotion.SamePhase(a,b):NpcBigMimicMotion.Known(a)?NpcBigMimicMotion.SamePhase(a,b):NpcPlanteraMotion.Known(a)?NpcPlanteraMotion.SamePhase(a,b):NpcTerrainFlightMotion.Known(a)?NpcTerrainFlightMotion.SamePhase(a,b):NpcRelatedMotion.Known(a)?NpcRelatedMotion.SamePhase(a,b):NpcPhasedFlightMotion.Known(a)?NpcPhasedFlightMotion.SamePhase(a,b):NpcAmbientFlightMotion.Known(a)?NpcAmbientFlightMotion.SamePhase(a,b):NpcFiniteFlightMotion.Known(a)?NpcFiniteFlightMotion.SamePhase(a,b):(a.A0==b.A0 || Math.Abs(a.A0)>8 && Math.Abs(b.A0)>8 && Math.Sign(a.A0)==Math.Sign(b.A0) && Math.Abs(a.A0-b.A0)<=4));}
     }
 }

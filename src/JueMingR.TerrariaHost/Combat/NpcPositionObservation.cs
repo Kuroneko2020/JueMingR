@@ -22,6 +22,16 @@ namespace JueMingR.TerrariaHost.Combat
                 if(state.PositionOwnerValid)state.PositionOwner=CombatSelection.Identity(parent,session);
                 return;
             }
+            else if(n.type==328 && n.aiStyle==59)
+            {
+                // AI59 clamps its numeric parent slot, then checks only active
+                // and AI58. Life zero remains valid; generations stay distinct.
+                state.PositionRelation=10;state.PositionOwnerCaptured=true;
+                slot=(int)System.Math.Max(0,System.Math.Min(n.ai[1],Main.maxNPCs-1));
+                if(slot<Main.npc.Length)
+                {var parent=Main.npc[slot];state.PositionOwnerValid=parent!=null && parent.active && parent.aiStyle==58;if(state.PositionOwnerValid)state.PositionOwner=CombatSelection.Identity(parent,session);}
+                return;
+            }
             else if(n.type==396 && n.aiStyle==79){state.PositionRelation=3;slot=(int)n.ai[3];type=398;}
             else if(n.type==397 && n.aiStyle==78){state.PositionRelation=4;slot=(int)n.ai[3];type=398;state.PositionParameter=n.ai[2]==0?-1:1;}
             else if(n.type==401 && n.aiStyle==82){state.PositionRelation=5;slot=(int)System.Math.Abs(n.ai[0])-1;type=396;}

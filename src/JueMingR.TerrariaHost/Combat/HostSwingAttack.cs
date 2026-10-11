@@ -18,7 +18,10 @@ namespace JueMingR.TerrariaHost.Combat
         private static readonly FieldInfo volcano=typeof(Player).GetField("_spawnVolcanoExplosion",BindingFlags.Instance|BindingFlags.NonPublic);
         private Item weapon;private Rectangle frame;private float mountOffset;
         internal long Revision {get;private set;}
-        internal static bool Handles(Item item){return item!=null && !item.IsAir && (item.useStyle==1 || item.useStyle==3) && (item.shoot<=0 || HostPhasebladeAttack.Handles(item.shoot) || HostFiniteShotAttack.Handles(item.shoot)) && item.damage>0 && !item.noMelee && item.pick==0 && item.axe==0 && item.hammer==0 && !item.summon;}
+        // A native hand pose can coexist with these already modeled shots.
+        // Admit its hand stage without inventing a launch for unknown shots;
+        // Mixed preview compares both, while only Source owns shot input.
+        internal static bool Handles(Item item){return item!=null && !item.IsAir && (item.useStyle==1 || item.useStyle==3) && (item.shoot<=0 || HostPhasebladeAttack.Handles(item.shoot) || HostFiniteShotAttack.Handles(item.shoot) || HostSkyAttack.Handles(item.type) || HostMagicBounceAttack.Handles(item.shoot) || item.shoot==1012) && item.damage>0 && !item.noMelee && item.pick==0 && item.axe==0 && item.hammer==0 && !item.summon;}
         internal static bool Mixed(Item item){return Handles(item) && item.shoot>0 && !HostPhasebladeAttack.Handles(item.shoot);}
         // OwnerOnlyCode arms the capsule at the start of a real Volcano use.
         // An idle preview hypothesizes that start on a private body. Later

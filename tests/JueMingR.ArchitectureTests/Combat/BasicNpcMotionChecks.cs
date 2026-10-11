@@ -75,13 +75,20 @@ namespace JueMingR.ArchitectureTests
                     Require(NpcMotion.Step(ref n,new[]{n},1,e,new LocalTerrain(),1,true,out stop) && Math.Abs(n.Vx-acceleration)<.0001f,"Every ordinary AI16 member uses its wet parameter class: "+type);
                     if(type==55 || type==592 || type==607 || type==615 || type==688)Require(n.A0!=0,"Non-pursuing fish do not acquire the player's wet pursuit: "+type);
                     n.Wet=false;n.Vx=1;n.Vy=0;
+                    if(type==615 || type==688)
+                    {
+                        Require(!NpcMotion.Step(ref n,new[]{n},1,e,new LocalTerrain(),1,true,out stop) && stop==PredictionStop.RandomDecision,"Repaired aquatic actions stop before a new random grounded flop: "+type);
+                        // Once observed airborne, the dry continuation has no
+                        // new random velocity choice on this native action.
+                        n.Vy=1;
+                    }
                     Require(NpcMotion.Step(ref n,new[]{n},1,e,new LocalTerrain(),1,true,out stop),"Every ordinary AI16 member has a dry route: "+type);
                     if(type==65 || type==692)Require(Math.Abs(n.Vy-.3f)<.0001f && Math.Abs(n.Vx-.94f)<.0001f,"Dry shark has drag and gravity, not a random flop: "+type);
                 }
                 var leap=State(615,16);leap.NoGravity=leap.Wet=true;leap.A3=299;
                 Require(!NpcMotion.Step(ref leap,new[]{leap},1,e,new LocalTerrain(),1,true,out stop) && stop==PredictionStop.RandomDecision,"615 stops at the first possible native random action, not before its ordinary swim.");
                 var floatAction=State(688,16);floatAction.NoGravity=floatAction.Wet=true;floatAction.A2=1;floatAction.L0=40;
-                Require(!NpcMotion.Step(ref floatAction,new[]{floatAction},1,e,new LocalTerrain(),1,true,out stop) && stop==PredictionStop.UnsupportedMechanism,"688's actual water-line float remains a separate mechanism.");
+                Require(NpcMotion.Step(ref floatAction,new[]{floatAction},1,e,new LocalTerrain(),1,true,out stop) && Math.Abs(floatAction.Vy+.3f)<.0001f && floatAction.L0==39,"688's observed float continues its native wet acceleration when local tiles prove no waterline.");
             }
             if(selected==null || selected=="slime")
             {

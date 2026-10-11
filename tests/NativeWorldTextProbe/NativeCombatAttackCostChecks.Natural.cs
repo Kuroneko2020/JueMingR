@@ -11,6 +11,86 @@ namespace NativeWorldTextProbe
 {
     internal static partial class NativeCombatAttackCostChecks
     {
+        private static readonly System.Collections.Generic.Dictionary<int,int> movingNpcSteps=new System.Collections.Generic.Dictionary<int,int>();
+        private static void MovingNpcStep(System.Reflection.MethodBase __originalMethod,NpcMotionState n)
+        {Count(__originalMethod);int value;movingNpcSteps.TryGetValue(n.Identity.Slot,out value);movingNpcSteps[n.Identity.Slot]=value+1;}
+        private static float MovingDistance(NPC n,Vector2 center)
+        {var area=n.getRect();return Vector2.DistanceSquared(center,Vector2.Clamp(center,new Vector2(area.Left,area.Top),new Vector2(area.Right,area.Bottom)));}
+        private static void MovingCandidates(object context,object combat,object host,object attack,object input)
+        {
+            int movingType=Environment.GetEnvironmentVariable("JMR_MOVING_CANDIDATE_TYPE")=="49"?49:2;
+            bool use=Environment.GetEnvironmentVariable("JMR_MOVING_CANDIDATE_USE")=="1";int frames=use?24:12;
+            var outlet=new Harmony("JueMingR.Tests.MovingCandidateCosts");
+            foreach(string name in new[]{"HandleSpecialEvent","HandleMining","HandleRunning"})outlet.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
+            foreach(var method in typeof(NpcMotion).GetMethods(Flags).Where(m=>m.Name=="Step" && m.GetParameters().Length==8))outlet.Patch(method,prefix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks).GetMethod(nameof(MovingNpcStep),Flags)));
+            if(Environment.GetEnvironmentVariable("JMR_CANDIDATE_STATE_DIFF")=="1")CandidateStateAudit(outlet);
+            try
+            {
+                NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());
+                var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,95,0,0);p.position=new Vector2(700,646);p.ResetEffects();p.ResetFallDamage();p.releaseUseItem=true;p.inventory[54].SetDefaults(3104);Main.dayTime=false;Main.screenPosition=new Vector2(480,400);
+                for(int y=0;y<Main.maxTilesY;y++)NativeToolsChecks.Tile(48,y,1);
+                var moving=new NPC[6];var initial=new Vector2[moving.Length];
+                for(int i=0;i<moving.Length;i++)
+                {
+                    var n=Main.npc[i+2];n.SetDefaults(movingType);n.whoAmI=i+2;n.active=true;n.target=0;n.Center=new Vector2(810+i*7,626+i*2);n.velocity=new Vector2(-1,-.2f);n.life=n.lifeMax=100000;
+                    Array.Clear(n.immune,0,n.immune.Length);Array.Clear(n.buffType,0,n.buffType.Length);Array.Clear(n.buffTime,0,n.buffTime.Length);n.shimmerTransparency=0;moving[i]=n;initial[i]=n.position;
+                }
+                var available=NativeCombatControlPreviewChecks.Dummy(12,33,40);
+                if(use)
+                {
+                    solarReceiver=available;solarOtherReceivers=null;
+                    outlet.Patch(AccessTools.Method(typeof(NPC),"StrikeNPC",new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)}),postfix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks).GetMethod(nameof(SolarDamage),Flags)));
+                }
+                NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,use));
+                for(int i=0;i<3;i++)NativeCombatSelectionPreviewChecks.Step(context,new Vector2(650,430),use,true);
+                var source=Get(host,"Prediction");int initialContinuations=(int)Get(source,"CandidateContinuations");
+                calls.Clear();movingNpcSteps.Clear();solarDamage=0;int visible=0;var selectedSlots=new System.Collections.Generic.SortedSet<int>();var watch=System.Diagnostics.Stopwatch.StartNew();
+                for(int frame=0;frame<frames;frame++)
+                {
+                    NativeCombatSelectionPreviewChecks.Step(context,new Vector2(650,430),use,true);
+                    var selected=(NpcIdentity)Get(Get(host,"Selection"),"Target");selectedSlots.Add(selected.Slot);if(GetOptional(attack,"ExpectedPreview")!=null)visible++;
+                    Require(selected.Slot==available.whoAmI,"six genuinely moving blocked candidates do not hide the farther current feasible target");
+                }
+                watch.Stop();Require(moving.Select((n,i)=>n.active && n.position!=initial[i]).All(v=>v) && visible==frames,"measured candidate loop contains six real moving actors and a useful preview on every update");
+                if(use)Require(solarDamage>0,"moving candidate work during actual item use retains native positive strikes on the feasible dummy");
+                int continuations=(int)Get(source,"CandidateContinuations")-initialContinuations;
+                Report("moving-six-blocked");Console.WriteLine("MOVING CANDIDATES frames="+frames+" actualMoving=6 type="+movingType+" use="+use+" nativeDamage="+solarDamage+" visible="+visible+" selected="+string.Join(",",selectedSlots)+" npcSteps="+Total("NpcMotion.Step")+" continuations="+continuations+" attackSolves="+Total("AttackIntercept.Solve")+" elapsedMs="+watch.Elapsed.TotalMilliseconds.ToString("R",System.Globalization.CultureInfo.InvariantCulture));
+                Console.WriteLine("MOVING CANDIDATE stepsBySlot="+string.Join(";",movingNpcSteps.OrderBy(pairs=>pairs.Key)));
+                int movingSteps=moving.Sum(n=>movingNpcSteps[n.whoAmI]);
+                // Actual use invokes both BeforeNpc and CompletedWorld. The
+                // selected dummy has its own normal producer; measure these
+                // six blocked candidates directly rather than guessing how
+                // often another owner's full prediction is requested.
+                Require(continuations>=frames*6 && movingSteps<=frames*6*(use?4:2),"moving misses continue only endpoint actions per capture phase, retaining useful selection without full 120-action replay");
+                CheckCandidateSuffixes(source,moving);
+                p.position.X-=16;int priorContinuations=(int)Get(source,"CandidateContinuations");
+                NativeCombatSelectionPreviewChecks.Step(context,new Vector2(650,430),false,true);
+                Require((int)Get(source,"CandidateContinuations")==priorContinuations && ((NpcIdentity)Get(Get(host,"Selection"),"Target")).Slot==available.whoAmI && GetOptional(attack,"ExpectedPreview")!=null,"a changed real player position rejects old candidate suffixes while retaining the correct useful farther target");
+                // The old farther target remains usable. A real changed local
+                // tile lease must immediately let the nearer actor win again.
+                for(int y=36;y<=45;y++)Main.tile[48,y].active(false);
+                NativeCombatSelectionPreviewChecks.Step(context,new Vector2(650,430),false,true);
+                var openedTarget=(NpcIdentity)Get(Get(host,"Selection"),"Target");var openedContact=(AttackContact)GetOptional(attack,"ExpectedPreview");
+                Console.WriteLine("MOVING WALL OPEN type="+movingType+" selected="+openedTarget.Slot+" preview="+(openedContact==null?"none":openedContact.Timeline.Identity.Slot.ToString())+" player="+p.Center+" candidates="+string.Join(";",moving.Concat(new[]{available}).Select(n=>n.whoAmI+":"+n.Center+":receiveDistance2="+MovingDistance(n,p.Center).ToString("R",System.Globalization.CultureInfo.InvariantCulture))));
+                // Collision turns change the actors' distance order during
+                // these real updates. Slot order describes only their spawn.
+                int nearest=moving.OrderBy(n=>MovingDistance(n,p.Center)).ThenBy(n=>n.whoAmI).First().whoAmI;
+                Require(openedTarget.Slot==nearest && openedContact!=null && openedContact.Timeline.Identity.Equals(openedTarget) && available.active,"opening the wall immediately chooses the currently nearest feasible actor with a matching preview");
+            }
+            finally{solarReceiver=null;outlet.UnpatchAll(outlet.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());}
+        }
+        private static void CheckCandidateSuffixes(object source,NPC[] moving)
+        {
+            var candidate=Get(source,"candidateSource");var entries=(Array)Get(candidate,"candidateInputs");var terrain=(IPredictionTerrain)Get(candidate,"Terrain");int points=0;
+            foreach(var npc in moving)
+            {
+                var entry=entries.GetValue(npc.whoAmI*2);var proof=Get(entry,"Continuation");var path=(NpcTrajectory)Get(proof,"path");
+                var fresh=new RollingNpcPrediction().Prepare((NpcMotionState[])Get(entry,"States"),1,0,path.CaptureTick,120,path.RelationVersion,(PredictionEnvironment)Get(entry,"Environment"),(PredictionPlayerMotion)Get(entry,"Player"),terrain,(bool[])Get(entry,"Roles"),(bool)Get(entry,"PlayerAdvanced"));
+                Require(fresh!=null && fresh.Count==121 && path.Count==121 && fresh.CaptureTick==path.CaptureTick,"continued and fully recomputed candidates cover the same fresh complete horizon");
+                for(int i=0;i<121;i++){Require(path[i].Equals(fresh[i]),"continued candidate exactly matches fresh complete prediction slot="+npc.whoAmI+" point="+i);points++;}
+            }
+            Console.WriteLine("PASS moving candidate suffixes equal fresh full predictions points="+points+"; validation replay excluded from workload interval");
+        }
         private static NPC solarReceiver;private static int solarDamage;private static NPC[] solarOtherReceivers;
         private static void SolarDamage(NPC __instance,int __result){if(__result>0 && (ReferenceEquals(__instance,solarReceiver) || solarOtherReceivers!=null && solarOtherReceivers.Contains(__instance)))solarDamage++;}
         private static void SolarComparable(object context,object combat,object host,object attack,object input)

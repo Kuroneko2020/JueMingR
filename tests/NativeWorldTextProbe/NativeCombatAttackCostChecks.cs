@@ -49,8 +49,9 @@ namespace NativeWorldTextProbe
             try
             {
                 if(Environment.GetEnvironmentVariable("JMR_ATTACK_COSTS_ONLY")=="solar-natural"){SolarComparable(context,combat,host,attack,input);return;}
+                if(Environment.GetEnvironmentVariable("JMR_ATTACK_COSTS_ONLY")=="moving-candidates"){MovingCandidates(context,combat,host,attack,input);return;}
                 YoyoOpening(context,combat,host,attack,input);YoyoMagicOpening(context,combat,host,attack,input);Solar(context,combat,host,attack,input);
-                NaturalCosts(context,combat,host,attack,input);
+                NaturalCosts(context,combat,host,attack,input);MovingCandidates(context,combat,host,attack,input);
                 foreach(string scenario in new[]{"off","idle","no-target","stable","changing","dense","blocked","inapplicable","same-sample","switching"})
                 {
                     NativeCombatObservationChecks.Save(host,new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,scenario=="inapplicable"?3509:95,0,0);p.position=new Vector2(700,646);p.inventory[54].SetDefaults(97);p.inventory[54].stack=999;Main.screenPosition=new Vector2(600,400);

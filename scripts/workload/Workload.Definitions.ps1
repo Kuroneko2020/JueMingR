@@ -35,6 +35,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCombatNeighborChecks.cs'=@('native-CombatIntegrationCpu')
         'tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.cs'=@('native-CombatCosts','native-CombatAttackCosts','native-CombatImpactVisual','native-CombatVisual')
         'tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.Natural.cs'=@('native-CombatCosts','native-CombatAttackCosts')
+        'tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.CandidateState.cs'=@('native-CombatCosts','native-CombatAttackCosts')
         'tests/NativeWorldTextProbe/NativeCombatEffectChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatProjectileEnvironmentChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatObstacleChecks.cs'=@('native-CombatEffectsCpu')
@@ -51,6 +52,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCombatFiniteThrowChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatFiniteShotChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatMixedSwingChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatBeeGunChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatBeeChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatReflectionChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatColdBoltChecks.cs'=@('native-CombatEffectsCpu')
@@ -104,6 +106,8 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCombatWallBossChecks.cs'=@('native-NpcWallBoss')
         'tests/NativeWorldTextProbe/NativeCombatTreeBossChecks.cs'=@('native-NpcTreeBoss')
         'tests/NativeWorldTextProbe/NativeCombatCelestialTowerChecks.cs'=@('native-NpcCelestialTower')
+        'tests/NativeWorldTextProbe/NativeCombatPumpkingChecks.cs'=@('native-NpcPumpking')
+        'tests/NativeWorldTextProbe/NativeCombatIceQueenChecks.cs'=@('native-NpcIceQueen')
         'tests/NativeWorldTextProbe/NativeCombatBigMimicChecks.cs'=@('native-NpcBigMimic')
         'tests/NativeWorldTextProbe/NativeCombatAquaticActionChecks.cs'=@('native-NpcAquaticActions')
         'tests/NativeWorldTextProbe/NativeCombatTerrainFlightChecks.cs'=@('native-NpcTerrainFlight','native-NpcUmbrella')
@@ -152,6 +156,7 @@ function Get-WorkloadNativeScopes {
         'NpcQueenBee'=@('combat-host'); 'NpcBrainSwarm'=@('combat-host');
         'NpcWallBoss'=@('combat-host');
         'NpcTreeBoss'=@('combat-host'); 'NpcCelestialTower'=@('combat-host');
+        'NpcPumpking'=@('combat-host'); 'NpcIceQueen'=@('combat-host');
         'NpcFoundationRules'=@('combat-host'); 'NpcFoundationContinuous'=@('combat-host'); 'NpcPlayerPolicy'=@('combat-host'); 'NpcStrategy'=@('combat-host'); 'NpcStrategyContinuous'=@('combat-host'); 'NpcEventRetirementCpu'=@('combat-host');
         # Ordinary delivery retains the real shared selection/terrain and
         # marker consumer seams; detailed phase matrices stay bounded probes.

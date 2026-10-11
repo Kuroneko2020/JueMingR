@@ -23,6 +23,7 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Features.Combat.ObservationOptions", "JueMingR.Features.Combat.ObservationSettings", "JueMingR.Features.Combat.NpcMotion", "JueMingR.Features.Combat.NpcPredictionCache", "JueMingR.Features.Combat.NpcHealth",
                 "JueMingR.Features.Combat.FacingCandidate", "JueMingR.Features.Combat.FacingSelector",
                 "JueMingR.Features.Combat.RollingNpcPrediction",
+                "JueMingR.Features.Combat.RollingNpcPrediction+CandidateContinuation",
                 "JueMingR.Features.Combat.AttackConfidence", "JueMingR.Features.Combat.AttackSolveStatus", "JueMingR.Features.Combat.AttackMotion",
                 "JueMingR.Features.Combat.AttackPassage", "JueMingR.Features.Combat.AttackContact", "JueMingR.Features.Combat.AttackIntercept",
                 "JueMingR.Features.Combat.PlayerVerticalMotion",

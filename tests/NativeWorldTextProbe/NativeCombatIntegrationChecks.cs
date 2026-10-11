@@ -23,6 +23,7 @@ namespace NativeWorldTextProbe
                 string leaf=Environment.GetEnvironmentVariable("JMR_COMBAT_INTEGRATION_ONLY");
                 if(leaf=="usage"){NativeCombatUsageChecks.Run(context);return;}
                 if(leaf=="phases"){NativeCombatPhaseChecks.Run(context);return;}
+                if(leaf=="swing-special"){NativeCombatSwingSpecialChecks.Run(context);return;}
                 if(leaf=="celebration"){NativeCombatCelebrationChecks.Run(context);return;}
                 if(leaf=="selection"){NativeCombatSelectionPreviewChecks.Run(context);return;}
                 if(leaf=="control-preview"){NativeCombatControlPreviewChecks.Run(context);return;}

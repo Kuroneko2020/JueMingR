@@ -21,7 +21,7 @@ namespace NativeWorldTextProbe
             if(__1.Bottom>target.Hitbox.Top && __1.Top<target.Hitbox.Bottom){idleRight=Math.Max(idleRight,__1.Right);idleShapes++;}
         }
         internal static void Run(object context)
-        {Idle(context);Check(context,false);Check(context,true);NativeCombatSwingSpecialChecks.Run(context);}
+        {if(Environment.GetEnvironmentVariable("JMR_SWING_ORACLE_ONLY")=="special"){NativeCombatSwingSpecialChecks.Run(context);return;}Idle(context);Check(context,false);Check(context,true);NativeCombatSwingSpecialChecks.Run(context);}
         private static void Idle(object context)
         {
             var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var input=Get(context,"Input");var aim=Get(combat,"Attack");

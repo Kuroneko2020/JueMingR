@@ -100,6 +100,10 @@ namespace JueMingR.Features.Combat
             {if(!NpcSkeletonBossMotion.Step(ref n,env,terrain,elapsed,out stop,group,count,confused:confused))return false;}
             else if(NpcCelestialTowerMotion.Known(n))
             {if(!NpcCelestialTowerMotion.Step(ref n,env,terrain,elapsed,out stop,group,count,confused:confused))return false;}
+            else if(NpcPumpkingMotion.Known(n))
+            {if(!NpcPumpkingMotion.Step(ref n,env,terrain,elapsed,out stop,group,count,confused:confused))return false;}
+            else if(NpcIceQueenMotion.Known(n))
+            {if(!NpcIceQueenMotion.Step(ref n,env,terrain,elapsed,out stop,group,count,confused:confused))return false;}
             else if(NpcTreeBossMotion.Known(n))
             {if(!NpcTreeBossMotion.Step(ref n,env,terrain,elapsed,out stop,group,count,confused:confused))return false;}
             else if(NpcSantaTankMotion.Known(n))
@@ -306,6 +310,8 @@ namespace JueMingR.Features.Combat
             if(NpcDarkMageMotion.Known(n))return NpcDarkMageMotion.NeedsPlayer(n,e);
             if(NpcSkeletonBossMotion.Known(n))return NpcSkeletonBossMotion.NeedsPlayer(n,e);
             if(NpcCelestialTowerMotion.Known(n))return NpcCelestialTowerMotion.NeedsPlayer(n,e);
+            if(NpcPumpkingMotion.Known(n))return NpcPumpkingMotion.NeedsPlayer(n,e,group,count,remaining);
+            if(NpcIceQueenMotion.Known(n))return NpcIceQueenMotion.NeedsPlayer(n,e);
             if(NpcTreeBossMotion.Known(n))return NpcTreeBossMotion.NeedsPlayer(n);
             if(NpcSantaTankMotion.Known(n))return NpcSantaTankMotion.NeedsPlayer(n);
             if(NpcKingSlimeMotion.Known(n))return NpcKingSlimeMotion.NeedsPlayer(n,e);
@@ -410,6 +416,8 @@ namespace JueMingR.Features.Combat
             if(NpcDiveFlightMotion.Known(n))return NpcDiveFlightMotion.Retargets(n,e) && n.HasClosestPlayer?n.ClosestPlayerIndex:n.PlayerIndex;
             if(NpcSkeletonBossMotion.Known(n))return NpcSkeletonBossMotion.Retargets(n,e) && n.HasClosestPlayer?n.ClosestPlayerIndex:n.PlayerIndex;
             if(NpcCelestialTowerMotion.Known(n))return NpcCelestialTowerMotion.Retargets(n,e) && n.HasClosestPlayer?n.ClosestPlayerIndex:n.PlayerIndex;
+            if(NpcPumpkingMotion.Known(n))return NpcPumpkingMotion.PlayerPremise(n,e,group,count);
+            if(NpcIceQueenMotion.Known(n))return NpcIceQueenMotion.PlayerPremise(n,e);
             if(NpcTreeBossMotion.Known(n))return NpcTreeBossMotion.Retargets(n,e) && n.HasClosestPlayer?n.ClosestPlayerIndex:n.PlayerIndex;
             if(NpcSantaTankMotion.Known(n))return NpcSantaTankMotion.Retargets(n,e) && n.HasClosestPlayer?n.ClosestPlayerIndex:n.PlayerIndex;
             if(NpcKingSlimeMotion.Known(n))return NpcKingSlimeMotion.Retargets(n,e) && n.HasClosestPlayer?n.ClosestPlayerIndex:n.PlayerIndex;
@@ -449,7 +457,7 @@ namespace JueMingR.Features.Combat
         private static bool VultureType(int t){return t==61 || t==301;}
         private static bool BatType(int t){return NpcBatMotion.Known(t);}
         private static bool KnownMotion(NpcMotionState n)
-        {int t=n.EffectiveType;return NpcWallBossMotion.Known(n) || NpcQueenBeeMotion.Known(n) || NpcBrainSwarmMotion.Known(n) || NpcGolemMotion.Known(n) || NpcBloodNautilusMotion.Known(n) || NpcDarkMageMotion.Known(n) || NpcAttachedWeaponMotion.Known(n) || NpcTownCritterMotion.Known(n) || NpcDiveFlightMotion.Known(n) || NpcBetsyMotion.Known(n) || NpcSkeletonBossMotion.Known(n) || NpcCelestialTowerMotion.Known(n) || NpcTreeBossMotion.Known(n) || NpcSantaTankMotion.Known(n) || NpcKingSlimeMotion.Known(n) || NpcSnowmanMotion.Known(n) || NpcEyeBossMotion.Known(n) || NpcMechanicalBossMotion.Known(n) || NpcInvasionGroundMotion.Known(n) || NpcInvasionLightningMotion.Known(n) || NpcInvasionFlightMotion.Known(n) || NpcInvasionCrystalMotion.Known(n) || NpcBigMimicMotion.Known(n) || NpcPlanteraMotion.Known(n) || NpcTerrainFlightMotion.Known(n) || NpcRelatedMotion.Known(n) || NpcAmbientFlightMotion.Known(n) || NpcPhasedFlightMotion.Known(n) || NpcFiniteFlightMotion.Known(n) || t==488 || t>=370 && t<=373 || n.Style==1 || n.Style==3 || n.Style==6 || n.Style==8 || n.Style==37 || n.Style==23 && NpcChargeMotion.Known(t) || n.Style==25 && NpcMimicMotion.Known(t) || n.Style==18 && NpcJellyfishMotion.Known(t) || n.Style==26 && NpcRunningMotion.Known(t) || n.Style==19 && NpcSupportMotion.Known(t) || n.PositionRelation==7 || n.Style==9 && NpcStraightMotion.Known(t) || n.Style==39 && NpcRollingMotion.TortoiseType(t) || n.Style==41 && NpcRollingMotion.Hopper(t) || n.Style==17 && VultureType(t) || n.Style==2 && KnownEye(t) || n.Style==5 && FlyingType(t) || n.Style==14 && BatType(t);}
+        {int t=n.EffectiveType;return NpcIceQueenMotion.Known(n) || NpcPumpkingMotion.Known(n) || NpcWallBossMotion.Known(n) || NpcQueenBeeMotion.Known(n) || NpcBrainSwarmMotion.Known(n) || NpcGolemMotion.Known(n) || NpcBloodNautilusMotion.Known(n) || NpcDarkMageMotion.Known(n) || NpcAttachedWeaponMotion.Known(n) || NpcTownCritterMotion.Known(n) || NpcDiveFlightMotion.Known(n) || NpcBetsyMotion.Known(n) || NpcSkeletonBossMotion.Known(n) || NpcCelestialTowerMotion.Known(n) || NpcTreeBossMotion.Known(n) || NpcSantaTankMotion.Known(n) || NpcKingSlimeMotion.Known(n) || NpcSnowmanMotion.Known(n) || NpcEyeBossMotion.Known(n) || NpcMechanicalBossMotion.Known(n) || NpcInvasionGroundMotion.Known(n) || NpcInvasionLightningMotion.Known(n) || NpcInvasionFlightMotion.Known(n) || NpcInvasionCrystalMotion.Known(n) || NpcBigMimicMotion.Known(n) || NpcPlanteraMotion.Known(n) || NpcTerrainFlightMotion.Known(n) || NpcRelatedMotion.Known(n) || NpcAmbientFlightMotion.Known(n) || NpcPhasedFlightMotion.Known(n) || NpcFiniteFlightMotion.Known(n) || t==488 || t>=370 && t<=373 || n.Style==1 || n.Style==3 || n.Style==6 || n.Style==8 || n.Style==37 || n.Style==23 && NpcChargeMotion.Known(t) || n.Style==25 && NpcMimicMotion.Known(t) || n.Style==18 && NpcJellyfishMotion.Known(t) || n.Style==26 && NpcRunningMotion.Known(t) || n.Style==19 && NpcSupportMotion.Known(t) || n.PositionRelation==7 || n.Style==9 && NpcStraightMotion.Known(t) || n.Style==39 && NpcRollingMotion.TortoiseType(t) || n.Style==41 && NpcRollingMotion.Hopper(t) || n.Style==17 && VultureType(t) || n.Style==2 && KnownEye(t) || n.Style==5 && FlyingType(t) || n.Style==14 && BatType(t);}
         private static void Vulture(ref NpcMotionState n,PredictionEnvironment env,int direction,int vertical,bool confused)
         {
             n.NoGravity=true;

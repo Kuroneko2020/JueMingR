@@ -30,6 +30,7 @@ namespace NativeWorldTextProbe
             audit.Patch(typeof(Projectile).GetMethod("Kill",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBeeChecks).GetMethod("BeforeKill",Flags)));
             try
             {
+                if(Environment.GetEnvironmentVariable("JMR_BEE_ORACLE_ONLY")=="birth"){Births(context,a,model);return;}
                 ForeignOwnerGate(context);
                 if(Environment.GetEnvironmentVariable("JMR_BEE_ORACLE_ONLY")=="owner")return;
                 int cases=0,actions=0,bounces=0;

@@ -116,6 +116,10 @@ namespace NativeWorldTextProbe
                     {phase="tree-boss";NativeCombatTreeBossChecks.Boundaries();NativeCombatTreeBossChecks.Lifecycle(context);NativeCombatTreeBossChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_CELESTIAL_TOWER")=="1")
                     {phase="celestial-tower";NativeCombatCelestialTowerChecks.Boundaries();NativeCombatCelestialTowerChecks.Lifecycle(context);NativeCombatCelestialTowerChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_PUMPKING")=="1")
+                    {phase="pumpking";NativeCombatPumpkingChecks.Boundaries();NativeCombatPumpkingChecks.Lifecycle(context);NativeCombatPumpkingChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    if(Environment.GetEnvironmentVariable("JUEMINGR_ICE_QUEEN")=="1")
+                    {phase="ice-queen";NativeCombatIceQueenChecks.Boundaries();NativeCombatIceQueenChecks.Lifecycle(context);NativeCombatIceQueenChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_TERRAIN_FLIGHT")=="1")
                     {phase="terrain-flight";NativeCombatTerrainFlightChecks.Boundaries();NativeCombatTerrainFlightChecks.Lifecycle(context);NativeCombatTerrainFlightChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_UMBRELLA")=="1")

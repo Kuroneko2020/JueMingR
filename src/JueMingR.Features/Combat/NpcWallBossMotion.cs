@@ -7,6 +7,13 @@ namespace JueMingR.Features.Combat
     // cleanup, player-before-NPC feedback, then native slot-order writes.
     internal static class NpcWallBossMotion
     {
+        private struct StoredCenter {internal float X,Y;}
+        // Entity.Center returns a Vector2 with float fields. Preserve that
+        // write before subtracting the pull target; an inline center keeps
+        // excess x86 precision when the player crosses a power-of-two X.
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        private static StoredCenter Center(float x,float y,float width,float height)
+        {return new StoredCenter{X=x+width/2f,Y=y+height/2f};}
         internal static bool Known(NpcMotionState n)
         {return n.EffectiveType==113 && n.Style==27 || n.EffectiveType==114 && n.Style==28 || n.EffectiveType==115 && n.Style==29;}
         internal static bool SamePhase(NpcMotionState a,NpcMotionState b){return Known(a) && a.EffectiveType==b.EffectiveType && a.Style==b.Style;}
@@ -293,7 +300,9 @@ namespace JueMingR.Features.Combat
                 bool snap=!source.Valid;
                 if(source.Valid)
                 {
-                    float x=source.Area.CenterX+source.Direction*200-(p.X+p.Width*.5f),y=source.Area.CenterY-(p.Y+p.Height*.5f);
+                    var center=Center(p.X,p.Y,p.Width,p.Height);var wallCenter=Center(source.Area.X,source.Area.Y,source.Area.Width,source.Area.Height);
+                    float targetX=wallCenter.X+source.Direction*200;
+                    float x=targetX-center.X,y=wallCenter.Y-center.Y;
                     float length=(float)Math.Sqrt(x*x+y*y),speed=11;
                     if(e.Expert)
                     {

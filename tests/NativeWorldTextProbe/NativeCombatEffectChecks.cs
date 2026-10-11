@@ -39,6 +39,7 @@ namespace NativeWorldTextProbe
             if(finiteOracle=="poison-cloud"){NativeCombatPoisonCloudChecks.Run(context);return;}
             if(finiteOracle=="flame"){NativeCombatFlameChecks.Run(context);return;}
             if(finiteOracle=="bee"){NativeCombatBeeChecks.Run(context);return;}
+            if(finiteOracle=="bee-gun"){NativeCombatBeeGunChecks.Run(context);return;}
             if(finiteOracle=="reflection"){NativeCombatReflectionChecks.Run(context);return;}
             if(finiteOracle=="scourge"){NativeCombatScourgeChecks.Run(context);return;}
             if(finiteOracle=="phaseblade"){NativeCombatPhasebladeChecks.Run(context);return;}
@@ -80,6 +81,8 @@ namespace NativeWorldTextProbe
             NativeCombatPoisonCloudChecks.Run(context);
             NativeCombatFlameChecks.Run(context);
             NativeCombatBeeChecks.Run(context);
+            NativeCombatBeeGunChecks.Run(context);
+            NativeCombatMixedSwingChecks.Run(context);
             NativeCombatReflectionChecks.Run(context);
             NativeCombatScourgeChecks.Run(context);
             NativeCombatPhasebladeChecks.Run(context);

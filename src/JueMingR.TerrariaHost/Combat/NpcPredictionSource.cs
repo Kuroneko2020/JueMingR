@@ -120,6 +120,8 @@ namespace JueMingR.TerrariaHost.Combat
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcSnowmanMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcKingSlimeMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcCelestialTowerMotion",true),
+                typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcPumpkingMotion",true),
+                typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcIceQueenMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcTreeBossMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcSantaTankMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcSkeletonBossMotion",true),
@@ -679,7 +681,9 @@ namespace JueMingR.TerrariaHost.Combat
                 // newly published future. Keep conditional capture time intact.
                 Cache.Publish(null);return;
             }
-            var result=rolling.Prepare(states,count,selected,tick,Cache.Required,epoch,env,playerMotion,Terrain,motionRoles,playerAdvanced);
+            rolling.CaptureContinuation=candidateOnly;
+            var result=candidateOnly?ContinueCandidate(identity,tick,firstPlayerStepCompleted,playerAdvanced,count,selected,Cache.Required,env,playerMotion):null;
+            if(result==null)result=rolling.Prepare(states,count,selected,tick,Cache.Required,epoch,env,playerMotion,Terrain,motionRoles,playerAdvanced);
             if(candidateOnly && result!=null && result.Stop==PredictionStop.None && result.Count==Cache.Required+1 && rolling.FixedInputResult)
                 RememberCandidateInputs(identity,firstPlayerStepCompleted,playerAdvanced,count,selected,Cache.Required,env,playerMotion);
             Outcome(identity,tick,result,rolling.FailureLayer);Cache.Publish(result);
