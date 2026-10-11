@@ -37,6 +37,10 @@ namespace JueMingR.TerrariaHost.Combat
         private Player beeOwner;
         private int beeOwnerSlot=-1;
         private bool localCleared;
+        private Player cursorPlayer;
+        private int cursorSlot,cursorScreenHeight,cursorWorldWidth,cursorWorldHeight;
+        private float cursorGravity;
+        private Vector2 cursorScreen;
         private readonly List<HostProjectileTargets> targetLeases=new List<HostProjectileTargets>();
         private readonly List<HostProjectileFamilyLease> familyLeases=new List<HostProjectileFamilyLease>();
         private readonly List<HostAttackObstacles> receiveLeases=new List<HostAttackObstacles>();
@@ -123,6 +127,13 @@ namespace JueMingR.TerrariaHost.Combat
         // Unchanged scene/terrain lease remains a preparation/consume check.
         internal bool BeeOwnerCurrent
         {get{return !beeOwnerStrong.HasValue || beeOwner!=null && beeOwnerSlot>=0 && beeOwnerSlot<Main.player.Length && ReferenceEquals(Main.player[beeOwnerSlot],beeOwner) && beeOwnerStrong.Value==beeOwner.strongBees;}}
+        // Only tile-target births depend on the screen-to-world round trip.
+        // Keep that lease local to their prepare/consume path; no scene scan
+        // or unrelated camera dependency is added to other attack families.
+        internal void CaptureCursorMapping(Player value)
+        {cursorPlayer=value;cursorSlot=value.whoAmI;cursorGravity=value.gravDir;cursorScreen=Main.screenPosition;cursorScreenHeight=Main.screenHeight;cursorWorldWidth=Main.maxTilesX;cursorWorldHeight=Main.maxTilesY;}
+        private bool CursorMappingCurrent
+        {get{return cursorPlayer==null || cursorSlot>=0 && cursorSlot<Main.player.Length && ReferenceEquals(Main.player[cursorSlot],cursorPlayer) && cursorPlayer.gravDir==cursorGravity && Main.screenPosition==cursorScreen && Main.screenHeight==cursorScreenHeight && Main.maxTilesX==cursorWorldWidth && Main.maxTilesY==cursorWorldHeight;}}
         internal void CaptureProjectileFamily(Projectile[] members,int firstSceneType=0,int lastSceneType=0)
         {familyLeases.Add(new HostProjectileFamilyLease(members,firstSceneType,lastSceneType));CaptureBirthSlots();}
         // Chase permission is a separate native query from Damage permission.
@@ -167,7 +178,7 @@ namespace JueMingR.TerrariaHost.Combat
                 // Native chase permission is distinct from Damage permission.
                 // The selected body is excluded from the other receiver rows,
                 // so its autonomous-targeting dependency needs its own lease.
-                if(goodWorld!=Main.getGoodWorld || expert!=Main.expertMode || multiplayer!=(Main.netMode==1) || selectedReflects!=Main.npc[timeline.Identity.Slot].reflectsProjectiles || !BeeOwnerCurrent || birthSlots!=null && !birthSlots.Current)return false;
+                if(goodWorld!=Main.getGoodWorld || expert!=Main.expertMode || multiplayer!=(Main.netMode==1) || selectedReflects!=Main.npc[timeline.Identity.Slot].reflectsProjectiles || !BeeOwnerCurrent || !CursorMappingCurrent || birthSlots!=null && !birthSlots.Current)return false;
                 foreach(var targets in targetLeases)if(!targets.Current)return false;
                 foreach(var family in familyLeases)if(!family.Current)return false;
                 if(!ReceiveUnchanged())return false;

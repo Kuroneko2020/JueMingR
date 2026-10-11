@@ -106,7 +106,7 @@ namespace JueMingR.Features.Combat
             {var a=NpcTargeting.Area(n,e);n.Direction=(int)a.X+(int)a.Width/2<n.X+n.Width/2?-1:1;n.DirectionY=(int)a.Y+(int)a.Height/2<n.Y+n.Height/2?-1:1;}
             if(confused)n.Direction=-n.Direction;
         }
-        private static bool ClosestBottom(ref NpcMotionState n,PredictionEnvironment e,int elapsed,out PredictionStop stop)
+        internal static bool ClosestBottom(ref NpcMotionState n,PredictionEnvironment e,int elapsed,out PredictionStop stop)
         {
             stop=PredictionStop.None;if(e.Players==null || !e.Players.SearchCaptured || e.Players.Count==0){stop=PredictionStop.MissingDependency;return false;}
             int chosen=0;float nearest=-1;MotionRect selected=SearchArea(e,0);
@@ -125,7 +125,7 @@ namespace JueMingR.Features.Combat
             var area=e.Players.SearchAreaAt(index);
             return e.PlayerTimelineActive && e.Players.SlotAt(index)==e.PlayerIndex?new MotionRect(e.PlayerX-area.Width*.5f,e.PlayerY-area.Height*.5f,area.Width,area.Height):area;
         }
-        private static bool Cache(ref NpcMotionState n,PredictionEnvironment e,IPredictionTerrain terrain,int outer,int inner,out bool found,out PredictionStop stop)
+        internal static bool Cache(ref NpcMotionState n,PredictionEnvironment e,IPredictionTerrain terrain,int outer,int inner,out bool found,out PredictionStop stop)
         {
             found=false;stop=PredictionStop.None;int x=(int)(e.PlayerX/16),y=(int)(e.PlayerY/16),entries=0,firstX=0,firstY=0;
             for(int side=0;side<4;side++)

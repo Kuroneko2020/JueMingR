@@ -13,7 +13,7 @@ namespace JueMingR.TerrariaHost.Combat
     // to each replayed position, including sticky liquid flags and shimmer.
     internal static class HostFiniteShotAttack
     {
-        internal static bool Handles(int type){return type==45 || type==263 || type==274 || type==118 || type==119 || type==359 || type==114 || type==116 || type==173 || type==24 || type==261 || type==183;}
+        internal static bool Handles(int type){return type==45 || type==263 || type==274 || type==118 || type==119 || type==359 || type==114 || type==116 || type==173 || type==24 || type==261 || type==183 || type==507;}
         internal struct State
         {
             internal Vector2 Position,Velocity;internal float Counter,StoredSpeed,Bounces;internal int Left;
@@ -54,7 +54,8 @@ namespace JueMingR.TerrariaHost.Combat
                     state.Counter=start;state.Velocity.Y+=.2f;
                 }
             }
-            if((sample.type==114 || sample.type==116 || sample.type==173 || sample.type==24 || sample.type==261 || sample.type==183) && state.Velocity.Y>16)state.Velocity.Y=16;
+            if(sample.type==507){state.Counter++;if(state.Counter>60){state.Velocity.X*=.98f;state.Velocity.Y+=.3f;}}
+            if((sample.type==114 || sample.type==116 || sample.type==173 || sample.type==24 || sample.type==261 || sample.type==183 || sample.type==507) && state.Velocity.Y>16)state.Velocity.Y=16;
             Vector2 half=new Vector2(sample.width,sample.height)*.5f,center=state.Position+half;
             float wind;if(!HostProjectileEnvironment.Impulse(sample,terrain,center.X,center.Y,state.Velocity.X,out wind))return false;state.Velocity.X+=wind;
             if(!sample.ignoreWater)
@@ -67,11 +68,11 @@ namespace JueMingR.TerrariaHost.Combat
             if(state.Shimmer)
             {
                 if(sample.aiStyle==14){if(state.Left>3000)state.Left-=60;state.Velocity.Y-=.5f;}
-                else if(sample.aiStyle==28)
+                else if(sample.aiStyle==28 || sample.type==507)
                 {
                     bool full;if(!ShimmerColumn(terrain,center.X,state.Position.Y,out full))return false;
                     if(full){state.Alive=false;state.Left=0;}
-                    else if(state.Velocity.Y>0){state.Velocity.Y*=-1;state.Shimmer=state.Wet=false;}
+                    else if(state.Velocity.Y>0){state.Velocity.Y*=-1;if(sample.type==507){if(state.Left>600)state.Left=600;state.Left-=60;}state.Shimmer=state.Wet=false;}
                 }
             }
             Vector2 prior=state.Velocity;
@@ -86,6 +87,7 @@ namespace JueMingR.TerrariaHost.Combat
                 if(sample.type==114){state.Position+=state.Velocity*.99f;state.Velocity=prior.SafeNormalize(Vector2.Zero)*.0001f;}
                 else if(sample.type==116 && ++state.Bounces<4){if(state.Velocity.X!=prior.X)state.Velocity.X=-prior.X;if(state.Velocity.Y!=prior.Y)state.Velocity.Y=-prior.Y;}
                 else if(sample.type==24 || sample.type==261 || sample.type==183){if(state.Velocity.X!=prior.X)state.Velocity.X=prior.X*-.5f;if(state.Velocity.Y!=prior.Y && prior.Y>1)state.Velocity.Y=prior.Y*-.5f;}
+                else if(sample.type==507){state.Position+=state.Velocity;state.Alive=false;state.Left=0;}
                 else{state.Alive=false;state.Left=0;return true;}
             }
             // With tileCollide=false native retains the PRE-AI wetVelocity,
@@ -100,7 +102,7 @@ namespace JueMingR.TerrariaHost.Combat
         }
         internal static bool Damaging(Projectile sample,State state){return sample.type!=261 || state.Velocity.Length()>=1.5f;}
         internal static void Finish(ref State state)
-        {if(state.Alive && --state.Left<=0){state.Alive=false;state.Killed=true;}}
+        {if(state.Alive && --state.Left<=0){state.Left=0;state.Alive=false;state.Killed=true;}}
         internal static AttackContact Solve(Player player,AttackAmmoSnapshot ammo,NpcTrajectory timeline,Vector2 origin,int age,bool beforeNpc,PredictionTerrain terrain,HostAttackObstacles obstacles,int delay)
         {
             var sample=ContentSamples.ProjectilesByType[ammo.Projectile];

@@ -251,7 +251,8 @@ namespace JueMingR.TerrariaHost.Combat
             // cursor value. Native consumption retires it even if a later
             // refill happens to recreate the same ammo bytes in this step.
             current=next=null;
-            return CombatCursorScope.Begin(new Vector2(result.AimX,result.AimY),!HostSkyAttack.RawCursor(type) && !HostMeleeAttack.RawCursor(type));
+            var aimPoint=new Vector2(result.AimX,result.AimY);bool reverse=!HostSkyAttack.RawCursor(type) && !HostMeleeAttack.RawCursor(type);
+            return ammo!=null && ammo.Projectile==442?CombatCursorScope.BeginTileTarget(aimPoint,reverse):CombatCursorScope.Begin(aimPoint,reverse);
         }
     }
 }

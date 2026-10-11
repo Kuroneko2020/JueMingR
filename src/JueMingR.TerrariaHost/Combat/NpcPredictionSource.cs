@@ -126,6 +126,12 @@ namespace JueMingR.TerrariaHost.Combat
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcCultistRitualMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcMoonLordMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcMoonLeechMotion",true),
+                typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcEmpressMotion",true),
+                typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcDeerclopsMotion",true),
+                typeof(PredictionDeerclopsPlayer),typeof(PredictionDeerclopsPlayers),
+                typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcWindyBalloonMotion",true),
+                typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcWindySlimePrelude",true),
+                typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcQueenSlimeMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcTreeBossMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcSantaTankMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcSkeletonBossMotion",true),
@@ -279,6 +285,7 @@ namespace JueMingR.TerrariaHost.Combat
             bool cultistCaptured=false,cultistComplete=true,cultistDooms=false,cultistDoomsComplete=true;
             bool moonCaptured=false,moonComplete=true;
             bool ritualCaptured=false,ritualComplete=true;
+            bool windyCaptured=false,windyComplete=true,empressComplete=true;
             for(int next=0;next<queued;next++)
             {
                 int slot=pending[next];
@@ -475,6 +482,8 @@ namespace JueMingR.TerrariaHost.Combat
                 NpcPositionObservation.Capture(n,ref states[count-1],identity.Session);
                 if(motionSlots[slot] && MoonLordMotor(n))CaptureMoonLordDependencies(n,identity.Session,ref queued,ref moonCaptured,ref moonComplete);
                 if(motionSlots[slot] && CultistRitualMotor(n))CaptureCultistRitualDependencies(n,identity.Session,ref queued,ref ritualCaptured,ref ritualComplete);
+                if(motionSlots[slot] && EmpressMotor(n))CaptureEmpressDependencies(n,identity.Session,ref queued,ref empressComplete);
+                if(motionSlots[slot] && WindyBalloonMotor(n))CaptureWindyBalloonDependencies(n,identity.Session,ref queued,ref windyCaptured,ref windyComplete);
                 if(motionSlots[slot] && CultistMotor(n) && !cultistCaptured)
                     CaptureCultistDependencies(n,identity.Session,ref queued,ref cultistCaptured,ref cultistComplete,ref cultistDooms,ref cultistDoomsComplete);
                 if(motionSlots[slot] && SkeletonMotor(n) && !skeletonCaptured && !(n.type==36 && states[count-1].PositionOwnerCaptured && !states[count-1].PositionOwnerValid))
@@ -602,14 +611,16 @@ namespace JueMingR.TerrariaHost.Combat
             if(cultistCaptured)FinishCultistDependencies(count,cultistComplete,cultistDooms,cultistDoomsComplete);
             if(moonCaptured)FinishMoonLordDependencies(identity.Session,ref count,moonCaptured,moonComplete);
             if(ritualCaptured)FinishCultistRitualDependencies(identity.Session,ref count,ritualCaptured,ritualComplete);
+            if(windyCaptured)FinishWindyBalloonDependencies(identity.Session,ref count,windyCaptured,windyComplete);
+            for(int i=0;i<count;i++)if(states[i].EmpressFactsCaptured)states[i].EmpressRelationsComplete=empressComplete;
             // Sort only the required dependency chain by native slot order.
             for(int i=1;i<count;i++){var value=states[i];int j=i-1;while(j>=0 && states[j].Identity.Slot>value.Identity.Slot){states[j+1]=states[j];j--;}states[j+1]=value;}
             int selected=0;for(int i=0;i<count;i++)if(states[i].Identity.Equals(identity))selected=i;
-            for(int i=0;i<count;i++){motionRoles[i]=motionSlots[states[i].Identity.Slot];if(motionRoles[i])NpcTrackingObservation.Capture(Main.npc[states[i].Identity.Slot],ref states[i],Terrain);}
+            for(int i=0;i<count;i++){motionRoles[i]=motionSlots[states[i].Identity.Slot];if(motionRoles[i]){var actor=Main.npc[states[i].Identity.Slot];NpcTrackingObservation.Capture(actor,ref states[i],Terrain);if(DeerclopsMotor(actor))CaptureDeerclopsInputs(actor,ref states[i],firstPlayerStepCompleted);}}
             if(invasionCaptured)for(int i=0;i<count;i++)if(InvasionTarget(Main.npc[states[i].Identity.Slot])){states[i].DD2TargetFactsCaptured=true;states[i].DD2TargetFactsComplete=invasionComplete;}
             if(eyeCaptured)for(int i=0;i<count;i++)if(EyeMotor(Main.npc[states[i].Identity.Slot]))
             {states[i].EyeRelationsCaptured=true;states[i].EyeRelationsComplete=eyeComplete;states[i].MechDestroyerCaptured=true;states[i].MechDestroyerPresent=NPC.npcsFoundForCheckActive[135];}
-            bool searchNeeded=townCaptured;for(int i=0;i<count;i++)if(motionRoles[i] && (states[i].EffectiveType==398 && states[i].Style==77 || states[i].EffectiveType==399 && states[i].Style==80 || states[i].EffectiveType==50 && states[i].Style==15 || states[i].EffectiveType==222 && states[i].Style==43))searchNeeded=true;
+            bool searchNeeded=townCaptured;for(int i=0;i<count;i++)if(motionRoles[i] && (states[i].EffectiveType==657 && states[i].Style==121 || states[i].EffectiveType==371 && states[i].Style==70 || states[i].EffectiveType==398 && states[i].Style==77 || states[i].EffectiveType==399 && states[i].Style==80 || states[i].EffectiveType==50 && states[i].Style==15 || states[i].EffectiveType==222 && states[i].Style==43))searchNeeded=true;
             int playerCount=0;bool samePlayers=players!=null && players.SearchCaptured==searchNeeded && players.TownCaptured==townCaptured,anyCorrupt=false;
             for(int i=0;i<Main.maxPlayers;i++)
             {
@@ -968,8 +979,10 @@ namespace JueMingR.TerrariaHost.Combat
                     if(i==0)state.WeaponPart0=id;else if(i==1)state.WeaponPart1=id;else if(i==2)state.WeaponPart2=id;else state.WeaponPart3=id;
                 }
             }
+            if(EmpressMotor(n))CaptureEmpressSample(n,ref state,session);
             if(MoonLordMotor(n))CaptureMoonLordSample(n,ref state,session);
             if(CultistRitualMotor(n))CaptureCultistRitualSample(n,ref state,session);
+            if(n.type==594 && n.aiStyle==113 || n.type==1 && n.aiStyle==1)CaptureWindyBalloonSample(n,ref state,session);
             return state;
         }
         private static bool MotorRotationNeeded(NPC n){return n.type==618 && n.aiStyle==117 || n.type==126 && n.aiStyle==31 || n.type==395 && n.aiStyle==76 || n.type==491 && n.aiStyle==93 || n.aiStyle==75 && (n.type==392 || n.type==393 || n.type==394 || n.type==492);}

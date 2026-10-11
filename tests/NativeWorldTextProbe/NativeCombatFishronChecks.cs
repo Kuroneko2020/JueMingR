@@ -49,16 +49,17 @@ namespace NativeWorldTextProbe
         internal static void Continuous(object context,NpcPredictionCache cache,Action step,string output)
         {
             int selectedScene=-1;string selector=System.Environment.GetEnvironmentVariable("JMR_FISHRON_SCENE");
-            Require(string.IsNullOrEmpty(selector) || int.TryParse(selector,out selectedScene) && selectedScene>=0 && selectedScene<=2,"JMR_FISHRON_SCENE must be 0, 1 or 2.");
+            Require(string.IsNullOrEmpty(selector) || int.TryParse(selector,out selectedScene) && selectedScene>=0 && selectedScene<=3,"JMR_FISHRON_SCENE must be 0, 1, 2 or 3.");
             var io=new Inputs(context);var oracle=new Harmony("JueMingR.Tests.FishronOriginalSlot");
             oracle.Patch(typeof(NPC).GetMethod("UpdateNPC",Flags),prefix:new HarmonyMethod(typeof(NativeCombatFishronChecks),nameof(Before)),postfix:new HarmonyMethod(typeof(NativeCombatFishronChecks),nameof(After)));
             oracle.Patch(typeof(NetMessage).GetMethod("SendData",Flags),prefix:new HarmonyMethod(typeof(NativeCombatFishronChecks),nameof(IsolateNetwork)){priority=Priority.First+100});
             var rows=new List<string>{"scene,frame,phase,count,stop,matches,long,hits"};networkOutlets.Clear();
             try
             {
-                for(int scene=0;scene<=2;scene++)
+                for(int scene=0;scene<=3;scene++)
                 {
                     if(selectedScene>=0 && selectedScene!=scene)continue;
+                    if(scene==3){before=after=null;NativeCombatFishronChildChecks.Run(context,cache,step);continue;}
                     if(scene==2){EnrageCrossing(context,cache,step,io,rows);continue;}
                     World();Main.GameMode=scene;Main.rand=new Terraria.Utilities.UnifiedRandom(6900+scene);var p=Main.LocalPlayer;
                     p.isControlledByFilm=true;p.releaseJump=true;p.immune=true;p.immuneTime=1000000;p.statLife=p.statLifeMax=p.statLifeMax2=5000;for(int i=0;i<p.hurtCooldowns.Length;i++)p.hurtCooldowns[i]=1000000;
@@ -131,15 +132,15 @@ namespace NativeWorldTextProbe
             Require(below && above && crossings>=10 && longMatches>=30 && actions==240,"Actual jump crosses enrage in retained default-source windows.");
             Console.WriteLine("PASS Fishron enrage jump actions="+actions+" matched="+matches+" long="+longMatches+" retainedCrossings="+crossings+" maxError="+maxError.ToString("R"));
         }
-        private sealed class Inputs
+        internal sealed class Inputs
         {
             internal readonly object Host,Source;internal readonly IPredictionTerrain Terrain;private readonly long session;private readonly MethodInfo read,tracking;
             internal Inputs(object context){Host=Get(context,"CombatObservation");Source=Get(Host,"Prediction");Terrain=(IPredictionTerrain)Get(Source,"Terrain");session=(long)Get(Host,"Session");read=Source.GetType().GetMethod("Read",Flags);tracking=Source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcTrackingObservation",true).GetMethod("Capture",Flags);}
             internal NpcMotionState Capture(NPC n){var state=(NpcMotionState)read.Invoke(null,new object[]{n,session});object[] args={n,state,Terrain};tracking.Invoke(null,args);return (NpcMotionState)args[1];}
         }
         private static NPC Actor(int type,Vector2 position){var n=Main.npc[16]=new NPC{whoAmI=16};n.SetDefaults(type);n.active=true;n.target=Main.myPlayer;n.position=position;return n;}
-        private static void World(){NativeCombatLiveContextChecks.FlightWorld();NPC.ClearAll();Projectile.ClearAll();Main.netMode=0;Main.GameMode=0;Main.dayTime=false;Main.remixWorld=false;Main.worldSurface=200;Main.Map=new Terraria.Map.WorldMap(Main.maxTilesX,Main.maxTilesY);Main.player[Main.myPlayer]=new Player{whoAmI=Main.myPlayer,active=true};Main.LocalPlayer.position=new Vector2(2400,2400-Main.LocalPlayer.height);Main.LocalPlayer.ResetFallDamage();}
-        private static PredictionEnvironment Environment()
+        internal static void World(){NativeCombatLiveContextChecks.FlightWorld();NPC.ClearAll();Projectile.ClearAll();Main.netMode=0;Main.GameMode=0;Main.dayTime=false;Main.remixWorld=false;Main.worldSurface=200;Main.Map=new Terraria.Map.WorldMap(Main.maxTilesX,Main.maxTilesY);Main.player[Main.myPlayer]=new Player{whoAmI=Main.myPlayer,active=true};Main.LocalPlayer.position=new Vector2(2400,2400-Main.LocalPlayer.height);Main.LocalPlayer.ResetFallDamage();}
+        internal static PredictionEnvironment Environment()
         {
             var p=Main.LocalPlayer;return new PredictionEnvironment{Players=new PredictionPlayers(new[]{new MotionRect((int)p.position.X,(int)p.position.Y,p.width,p.height)},1,new[]{p.whoAmI}),PlayerIndex=p.whoAmI,PlayerX=p.Center.X,PlayerY=p.Center.Y,PlayerWidth=p.width,PlayerHeight=p.height,PlayerVx=p.velocity.X,PlayerVy=p.velocity.Y,PlayerVelocityCaptured=true,GravityWorldSurface=Main.worldSurface,WorldSurface=(float)Main.worldSurface,WorldWidth=Main.maxTilesX,WorldHeight=Main.maxTilesY,Day=Main.dayTime,Multiplayer=Main.netMode==1,Expert=Main.expertMode,Enraged=p.position.Y<800 || p.position.Y>Main.worldSurface*16 || p.position.X>6400 && p.position.X<Main.maxTilesX*16-6400};
         }

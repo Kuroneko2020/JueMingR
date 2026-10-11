@@ -55,6 +55,10 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCombatBeeGunChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatWaspBatChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatDartChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatLaserPaintChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatJavelinChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatElectrosphereChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatBarrelChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatLineChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatBeeChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatReflectionChecks.cs'=@('native-CombatEffectsCpu')
@@ -115,7 +119,12 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCombatCultistRitualChecks.cs'=@('native-NpcCultistRitual')
         'tests/NativeWorldTextProbe/NativeCombatMoonLordChecks.cs'=@('native-NpcMoonLord')
         'tests/NativeWorldTextProbe/NativeCombatMoonLeechChecks.cs'=@('native-NpcMoonLeech')
+        'tests/NativeWorldTextProbe/NativeCombatQueenSlimeChecks.cs'=@('native-NpcQueenSlime')
+        'tests/NativeWorldTextProbe/NativeCombatWindyBalloonChecks.cs'=@('native-NpcWindyBalloon')
+        'tests/NativeWorldTextProbe/NativeCombatEmpressChecks.cs'=@('native-NpcEmpress')
+        'tests/NativeWorldTextProbe/NativeCombatDeerclopsChecks.cs'=@('native-NpcDeerclops')
         'tests/NativeWorldTextProbe/NativeCombatFishronChecks.cs'=@('native-NpcFishron')
+        'tests/NativeWorldTextProbe/NativeCombatFishronChildChecks.cs'=@('native-NpcFishron')
         'tests/NativeWorldTextProbe/NativeCombatBigMimicChecks.cs'=@('native-NpcBigMimic')
         'tests/NativeWorldTextProbe/NativeCombatAquaticActionChecks.cs'=@('native-NpcAquaticActions')
         'tests/NativeWorldTextProbe/NativeCombatTerrainFlightChecks.cs'=@('native-NpcTerrainFlight','native-NpcUmbrella')
@@ -169,6 +178,10 @@ function Get-WorkloadNativeScopes {
         'NpcCultistRitual'=@('combat-host');
         'NpcMoonLord'=@('combat-host');
         'NpcMoonLeech'=@('combat-host');
+        'NpcQueenSlime'=@('combat-host');
+        'NpcWindyBalloon'=@('combat-host');
+        'NpcEmpress'=@('combat-host');
+        'NpcDeerclops'=@('combat-host');
         'NpcFishron'=@('combat-host');
         'NpcFoundationRules'=@('combat-host'); 'NpcFoundationContinuous'=@('combat-host'); 'NpcPlayerPolicy'=@('combat-host'); 'NpcStrategy'=@('combat-host'); 'NpcStrategyContinuous'=@('combat-host'); 'NpcEventRetirementCpu'=@('combat-host');
         # Ordinary delivery retains the real shared selection/terrain and

@@ -166,6 +166,23 @@ namespace NativeWorldTextProbe
             Call(outer,"End");Require(Main.mouseX==ownedX && Main.mouseY==ownedY,"late outer receipt cannot revoke same-coordinate successor");
             Call(inner,"End");Call(outer,"End");Require(Main.mouseX==21 && Main.mouseY==22,"innermost completion retires deferred outer cursor once");
             outer=begin.Invoke(null,new object[]{point,true});Main.mouseX=333;Call(outer,"End");Require(Main.mouseX==333 && Main.mouseY==22,"unrelated cursor coordinate ownership is preserved");
+            var beginTile=scope.GetMethod("BeginTileTarget",Flags);int priorTileX=Player.tileTargetX,priorTileY=Player.tileTargetY;float priorGravity=Main.LocalPlayer.gravDir;
+            try
+            {
+                foreach(float gravity in new[]{1f,-1f})
+                {
+                    Main.LocalPlayer.gravDir=gravity;Player.tileTargetX=31;Player.tileTargetY=32;
+                    point=new Vector2(813.75f,957.25f);outer=beginTile.Invoke(null,new object[]{point,true});
+                    float worldY=gravity==-1?Main.screenPosition.Y+Main.screenHeight-Main.mouseY:Main.screenPosition.Y+Main.mouseY;
+                    int expectedX=Math.Max(5,Math.Min(Main.maxTilesX-5,(int)((Main.mouseX+Main.screenPosition.X)/16f))),expectedY=Math.Max(5,Math.Min(Main.maxTilesY-5,(int)(worldY/16f)));
+                    Require(Player.tileTargetX==expectedX && Player.tileTargetY==expectedY,"tile birth consumes paired integer mouse mapping in either gravity");
+                    inner=beginTile.Invoke(null,new object[]{point,true});Call(outer,"End");Require(Player.tileTargetX==expectedX && Player.tileTargetY==expectedY,"late tile owner preserves nested successor");
+                    Call(inner,"End");Call(outer,"End");Require(Player.tileTargetX==31 && Player.tileTargetY==32,"nested tile pair restores once");
+                    outer=beginTile.Invoke(null,new object[]{new Vector2(-5000,-5000),true});Require(Player.tileTargetX==5 && Player.tileTargetY==5,"native low-world tile clamp");
+                    Player.tileTargetX=77;Call(outer,"End");Require(Player.tileTargetX==77 && Player.tileTargetY==32,"foreign tile coordinate ownership survives finalizer");
+                }
+            }
+            finally{Player.tileTargetX=priorTileX;Player.tileTargetY=priorTileY;Main.LocalPlayer.gravDir=priorGravity;}
             Console.WriteLine("PASS cursor receipts: successor identity, repeated finalizer, independent coordinate ownership.");
         }
         private static void CompletedWorldTiming(object context,object combat,object host,object input,object tools,object attack)

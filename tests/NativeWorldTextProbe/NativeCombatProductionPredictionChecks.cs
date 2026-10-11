@@ -126,6 +126,14 @@ namespace NativeWorldTextProbe
                     {phase="cultist-ritual";NativeCombatCultistRitualChecks.Boundaries();NativeCombatCultistRitualChecks.Lifecycle(context);NativeCombatCultistRitualChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_FISHRON")=="1")
                     {phase="fishron";NativeCombatFishronChecks.Lifecycle(context);NativeCombatFishronChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_EMPRESS")=="1")
+                    {phase="empress";NativeCombatEmpressChecks.Boundaries(context);NativeCombatEmpressChecks.Lifecycle(context);NativeCombatEmpressChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_DEERCLOPS")=="1")
+                    {phase="deerclops";NativeCombatDeerclopsChecks.Boundaries(context);NativeCombatDeerclopsChecks.Lifecycle(context);NativeCombatDeerclopsChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_WINDY_BALLOON")=="1")
+                    {phase="windy-balloon";NativeCombatWindyBalloonChecks.Boundaries();NativeCombatWindyBalloonChecks.Lifecycle(context);NativeCombatWindyBalloonChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_QUEEN_SLIME")=="1")
+                    {phase="queen-slime";NativeCombatQueenSlimeChecks.Boundaries(context);NativeCombatQueenSlimeChecks.Lifecycle(context);NativeCombatQueenSlimeChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_MOON_LEECH")=="1")
                     {phase="moon-leech";NativeCombatMoonLeechChecks.Boundaries(context);NativeCombatMoonLeechChecks.Lifecycle(context);NativeCombatMoonLeechChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_MOON_LORD")=="1")

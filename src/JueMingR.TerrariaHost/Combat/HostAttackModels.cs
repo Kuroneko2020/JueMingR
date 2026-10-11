@@ -16,7 +16,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(ammo.Projectile==304){if(ammo.DamageLifetime<=0)return false;motion=motion.WithLifetime(System.Math.Min(motion.Lifetime,ammo.DamageLifetime));}return true;
         }
         internal static Vector2 LaunchOrigin(Player player,Item item)
-        {var origin=player.RotatedRelativePoint(player.MountedCenter);if(item.type==5117)origin.Y=player.position.Y+player.height/3;if(item.type==281 || item.type==986){origin.X+=6*player.direction;origin.Y-=6*player.gravDir;}if(item.type==3007){origin.X-=4*player.direction;origin.Y-=2*player.gravDir;}return origin;}
+        {var origin=player.RotatedRelativePoint(player.MountedCenter);if(item.type==5117 || item.type==3094)origin.Y=player.position.Y+player.height/3;if(item.type==281 || item.type==986){origin.X+=6*player.direction;origin.Y-=6*player.gravDir;}if(item.type==3007){origin.X-=4*player.direction;origin.Y-=2*player.gravDir;}return origin;}
         internal static bool TryResolved(int projectile,float speed,int weaponType,out AttackMotion motion)
         {
             motion=default(AttackMotion);Projectile sample;
@@ -75,6 +75,7 @@ namespace JueMingR.TerrariaHost.Combat
                 case 116:case 173:break;
                 case 24:case 183:gravity=.2f;start=6;break;
                 case 261:gravity=.2f;start=16;break;
+                case 507:gravity=.3f;start=61;acceleration=.98f;break;
                 case 20:case 104:case 265:case 287:case 355:
                 case 14:case 5:case 89:case 100:case 110:case 242:case 257:case 279:case 283:case 284:case 285:case 286:
                 case 981:case 158:case 159:case 160:case 161:case 357:case 638:break;
@@ -83,7 +84,7 @@ namespace JueMingR.TerrariaHost.Combat
             bool spread=projectile==1114 || weaponType==534 || weaponType==964 || weaponType==4703 || weaponType==3788 || weaponType==2624 || weaponType==1229 || weaponType==1569 || weaponType==3019 || weaponType==1930 || weaponType==5117 || weaponType==518;
             motion=new AttackMotion(speed,gravity,start,sample.extraUpdates+1,sample.width,sample.height,lifetime,
                 spread?AttackConfidence.Representative:AttackConfidence.Conditional,acceleration,max,sample.aiStyle==1,componentAcceleration,drag,snap,maxFallSpeed:sample.aiStyle==1?16:sample.aiStyle==2?32:0,
-                gravityClockUsesLaunchX:weaponType==3019 && sample.aiStyle==1 && gravity!=0,maxRiseSpeed:projectile==1006?16:0,accelerationStart:sample.aiStyle==2 && acceleration!=1 || projectile==114?start:0,horizontalAccelerationOnly:sample.aiStyle==2 && acceleration!=1,
+                gravityClockUsesLaunchX:weaponType==3019 && sample.aiStyle==1 && gravity!=0,maxRiseSpeed:projectile==1006?16:0,accelerationStart:sample.aiStyle==2 && acceleration!=1 || projectile==114 || projectile==507?start:0,horizontalAccelerationOnly:sample.aiStyle==2 && acceleration!=1 || projectile==507,
                 preMotorWindX:sample.aiStyle==2 && Main.windPhysics?Main.windSpeedCurrent*Main.windPhysicsStrength:0);return true;
         }
     }
