@@ -46,6 +46,7 @@ namespace NativeWorldTextProbe
             if(finiteOracle=="bottle"){NativeCombatBottleChecks.Run(context);return;}
             if(finiteOracle=="note"){NativeCombatNoteChecks.Run(context);return;}
             if(finiteOracle=="nebula-blaze"){NativeCombatNebulaBlazeChecks.Run(context);return;}
+            if(finiteOracle=="sky-fracture"){NativeCombatSkyFractureChecks.Run(context);return;}
             if(finiteOracle=="arc-swing"){NativeCombatArcSwingChecks.Run(context);return;}
             if(finiteOracle=="attached-shot"){NativeCombatAttachedShotChecks.Run(context);return;}
             if(finiteOracle=="betsy-flame"){NativeCombatBetsyFlameChecks.Run(context);return;}
@@ -108,6 +109,7 @@ namespace NativeWorldTextProbe
             NativeCombatBottleChecks.Run(context);
             NativeCombatNoteChecks.Run(context);
             NativeCombatNebulaBlazeChecks.Run(context);
+            NativeCombatSkyFractureChecks.Run(context);
             NativeCombatArcSwingChecks.Run(context);
             NativeCombatAttachedShotChecks.Run(context);
             NativeCombatBetsyFlameChecks.Run(context);

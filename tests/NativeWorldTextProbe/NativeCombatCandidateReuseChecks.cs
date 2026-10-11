@@ -18,6 +18,14 @@ namespace NativeWorldTextProbe
             var candidate=type.GetMethod("TryCandidateReuse",Flags);var read=type.GetMethod("Read",Flags);var clear=type.GetMethod("Clear",Flags);
             Func<int> reuses=()=>(int)type.GetProperty("CandidateMissReuses",Flags).GetValue(source,null);
             Func<NPC,long,bool,int,bool,NpcTrajectory> sample=(n,tick,before,required,reuse)=>(NpcTrajectory)candidate.Invoke(source,new object[]{((NpcMotionState)read.Invoke(null,new object[]{n,session})).Identity,tick,before,required,reuse});
+            // These direct source oracles replace the local player without a
+            // runtime session transition. Restore that exact session owner and
+            // terrain afterwards; a later Host fixture must not inherit an
+            // unrelated actor and wait for a controls gate that cannot reopen.
+            var players=(Player[])Main.player.Clone();var tiles=Main.tile;
+            int width=Main.maxTilesX,height=Main.maxTilesY,mode=Main.netMode,gameMode=Main.GameMode,brain=NPC.brainOfGravity,wall=Main.wofNPCIndex;
+            float right=Main.rightWorld,bottom=Main.bottomWorld,wind=Main.windSpeedCurrent,windTarget=Main.windSpeedTarget;
+            double surface=Main.worldSurface,rock=Main.rockLayer;bool day=Main.dayTime,goodWorld=Main.getGoodWorld;
             int expected=0;
             try
             {
@@ -74,7 +82,14 @@ namespace NativeWorldTextProbe
                 Console.WriteLine("PASS candidate complete-input miss proofs sameObservedFacts="+expected+" sixCandidatesAndDenseClosure; movement/clock/player/environment/phase/horizon/sync/terrain invalidation");
                 NativePlayerClocks(source,session,candidate,read,clear,reuses);
             }
-            finally{clear.Invoke(source,null);Main.netMode=0;}
+            finally
+            {
+                clear.Invoke(source,null);Array.Copy(players,Main.player,players.Length);Main.tile=tiles;
+                Main.maxTilesX=width;Main.maxTilesY=height;Main.rightWorld=right;Main.bottomWorld=bottom;Main.worldSurface=surface;Main.rockLayer=rock;
+                Main.netMode=mode;Main.GameMode=gameMode;Main.dayTime=day;Main.getGoodWorld=goodWorld;Main.windSpeedCurrent=wind;Main.windSpeedTarget=windTarget;NPC.brainOfGravity=brain;Main.wofNPCIndex=wall;
+            }
+            Require(ReferenceEquals(Get(Get(context,"Tools"),"Player"),players[Main.myPlayer]),"direct candidate oracle restores the existing Host session player for the next consumer");
+            Console.WriteLine("PASS candidate oracle restores existing Host player and world inputs");
         }
         private static void AssertMissInvalidated(Action change,NPC n,long tick,Func<NPC,long,bool,int,bool,NpcTrajectory> sample,Func<int> reuses,string reason)
         {
