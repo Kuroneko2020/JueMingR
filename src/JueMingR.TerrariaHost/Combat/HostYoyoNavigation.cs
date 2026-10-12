@@ -67,6 +67,34 @@ namespace JueMingR.TerrariaHost.Combat
             if(player.yoyoString)range=range*1.25f+30;
             float multiplier=(1+player.meleeSpeed*3)/4;range/=multiplier;speed/=multiplier;
         }
+        internal static bool BasicPoint(Player player,Item item,Projectile shot,Vector2 target,PredictionTerrain terrain,out Vector2 point)
+        {
+            point=Vector2.Zero;
+            bool live=shot!=null;
+            if(live && (!Handles(shot) || !player.channel || shot.ai[0]<0 || OwnRemaining(player,shot,Secondary(shot))==0))return false;
+            float range,speed;Parameters(player,live?shot.type:item.shoot,false,out range,out speed);
+            if(range<=1 || speed<=0 || live && Vector2.Distance(shot.Center,player.Center)>range*1.3f)return false;
+            var offset=target-player.Center;
+            if(offset.Length()>range-1)target=player.Center+offset.SafeNormalize(Vector2.UnitX*player.direction)*(range-1);
+            // No search or future replay belongs in a cursor consumer. Native
+            // TileCollision examines the start's neighbours, not a long ray,
+            // and mutates shared collision flags. Use existing pure body
+            // passage in short adjacent segments, bounded by native line
+            // length (and 128 segments), stopping at its first blocked step.
+            // Existing valid navigation prefixes are chosen before fallback.
+            var center=live?shot.Center:player.RotatedRelativePoint(player.MountedCenter);
+            Projectile sample;if(!ContentSamples.ProjectilesByType.TryGetValue(live?shot.type:item.shoot,out sample))return false;
+            int width=live?shot.width:sample.width,height=live?shot.height:sample.height;
+            var displacement=target-center;float length=displacement.Length();var unit=displacement.SafeNormalize(Vector2.Zero);
+            terrain.Reset();point=center;
+            for(int step=0;step<128 && length>0;step++)
+            {
+                float distance=Math.Min(8,length);var next=point+unit*distance;
+                if(!terrain.ProjectilePassage(point.X,point.Y,next.X,next.Y,width,height))break;
+                point=next;length-=distance;
+            }
+            return true;
+        }
         internal static bool OpeningPoint(Player player,Item item,NpcTrajectory timeline,out Vector2 point,out HostYoyoNavigation navigation)
         {
             navigation=new HostYoyoNavigation();var target=timeline[0].ProjectileReceiveBounds;Vector2 goal;Projectile sample;point=Vector2.Zero;

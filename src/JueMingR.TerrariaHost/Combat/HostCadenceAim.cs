@@ -51,10 +51,23 @@ namespace JueMingR.TerrariaHost.Combat
         {weapon=item;ammo=captured;timeline=future;operation=combat.Use.Operation;step=Main.GameUpdateCount;}
         internal CombatAimPoint Read(CombatAimRequest request)
         {
-            if(!combat.Attack.CurrentReceiver){Clear();return null;}
-            if(!combat.Attack.Permission || !combat.Use.MatchesAimRequest(request))return null;
+            if(!combat.Attack.BasicPermission || !combat.Attack.CurrentReceiver || !combat.Use.MatchesAimRequest(request))return null;
+            // Control owns whether this actual flail consumer chose enhanced
+            // or basic. Do not relabel its returned basic point as enhanced.
             if(request.Stage==CombatAimStage.FlailRelease)
             {Vector2 flail;return combat.Attack.Control.TryPoint(request.Projectile,out flail)?new CombatAimPoint(request,flail):null;}
+            var enhanced=ReadEnhanced(request);if(enhanced!=null){combat.Attack.RecordControlInput(enhanced.World,request.Projectile,HostAttackInputKind.Enhanced);return enhanced;}
+            // The operation owner has already authenticated this charge or
+            // release stage. Its current target direction remains legal when
+            // an enhanced future is absent; this does not start/extend use.
+            HostAttackInput input;
+            if(!combat.Attack.TryBasicInput(request.Player,request.Weapon,request.Projectile,request.Projectile==null?HostAttackPhase.BeforeNpc:HostAttackPhase.Projectiles,out input))return null;
+            combat.Attack.RecordInput(input);return new CombatAimPoint(request,input.Point);
+        }
+        private CombatAimPoint ReadEnhanced(CombatAimRequest request)
+        {
+            if(!combat.Attack.CurrentReceiver){Clear();return null;}
+            if(!combat.Attack.Permission || !combat.Use.MatchesAimRequest(request))return null;
             if(weapon==null || request.Stage!=stage || step!=Main.GameUpdateCount || operation!=request.Operation || !ReferenceEquals(weapon,request.Weapon) ||
                 !ReferenceEquals(timeline,observation.Prediction.Cache.Read(1)) || !observation.Selection.HasTarget || !timeline.Identity.Equals(observation.Selection.Target) ||
                 !CombatSelection.Valid(timeline.Identity,observation.Session) || !ammo.IdentityMatches(request.Player,weapon) ||

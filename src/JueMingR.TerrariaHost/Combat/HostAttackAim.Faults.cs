@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.ExceptionServices;
+using JueMingR.Features.Combat;
 using JueMingR.Platform.Combat;
 using Terraria;
 
@@ -23,7 +24,7 @@ namespace JueMingR.TerrariaHost.Combat
             // Reflection may wrap a fatal native/model exception. It must not
             // become a recoverable feature fault merely because of that seam.
             for(var cause=error;cause!=null;cause=cause.InnerException)
-                if(cause is OutOfMemoryException || cause is AccessViolationException)ExceptionDispatchInfo.Capture(cause).Throw();
+                if(cause is OutOfMemoryException || cause is AccessViolationException || cause is CombatPredictionBudgetExceededException)ExceptionDispatchInfo.Capture(cause).Throw();
         }
         private struct FaultContext
         {

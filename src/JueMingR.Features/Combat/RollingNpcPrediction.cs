@@ -38,6 +38,7 @@ namespace JueMingR.Features.Combat
         public void Clear(){Continuation=null;FixedInputResult=false;previous=default(NpcMotionState);previousPlayer=default(PredictionPlayerMotion);previousPlayerAdvanced=resultPlayerAdvanced=false;priorTick=resultTick=-1;result=null;resultTerrain=null;Array.Clear(work,0,work.Length);}
         public NpcTrajectory Prepare(NpcMotionState[] source,int count,int selected,long tick,int required,long epoch,PredictionEnvironment environment,PredictionPlayerMotion player,IPredictionTerrain terrain,bool[] motionRoles=null,bool firstPlayerStepCompleted=false)
         {
+            CombatPredictionWork.Check();
             FailureLayer=PredictionFailureLayer.Source;
             if(source==null || count<1 || count>work.Length || selected<0 || selected>=count || required<1 || required>NpcPredictionCache.Horizon)return null;
             var current=source[selected];
@@ -108,6 +109,7 @@ namespace JueMingR.Features.Combat
             bool fixedInputs=!gravityNeeded && !wallNeeded;
             for(int future=1;future<=required;future++)
             {
+                CombatPredictionWork.Check();
                 // CheckBossIndexes precedes the player action. Keep its full
                 // identity; an inactive/replaced owner clears the global.
                 if(wallNeeded && !(firstPlayerStepCompleted && future==1))NpcWallBossMotion.BeginFrame(work,count);
@@ -194,6 +196,7 @@ namespace JueMingR.Features.Combat
                 for(int i=0;i<count;i++)
                 {
                     var state=work[i];
+                    CombatPredictionWork.Check();
                     // Released slaves no longer depend on an old balloon's AI.
                     // Keep retired values for raw consumers without replaying death.
                     if(i!=selected && (!state.Active && (work[selected].WormRelationsCaptured || work[selected].WindyRelationsCaptured || work[selected].EmpressFactsCaptured) || NpcWindyBalloonMotion.Known(state) && !NpcWindyBalloonMotion.NeededWriter(state,work,count)))continue;

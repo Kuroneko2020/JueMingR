@@ -20,6 +20,7 @@ namespace JueMingR.TerrariaHost.Combat
         internal readonly CombatGeometry Geometry=new CombatGeometry();
         internal readonly CombatGeometryHooks Hooks;
         internal readonly CombatObservationWorldLayer World;
+        internal readonly CombatPredictionWork PredictionWork=new CombatPredictionWork(6);
         internal HostAttackAim Attack;
         private readonly SingleFeatureRuntime runtime;
         private readonly HostInputState input;
@@ -46,6 +47,10 @@ namespace JueMingR.TerrariaHost.Combat
         }
         public ObservationOptions Options {get{return Settings.Value;}}
         public bool CanConfigure {get{return runtime.IsSessionActive && Settings.Ready;}}
+        internal bool SelectionAvailable {get{return !selectionFailed;}}
+        internal bool PredictionAvailable {get{return !pathFailed;}}
+        internal bool PredictionAvailableFor(NpcIdentity identity)
+        {return !pathFailed && !failedTargets[identity.Slot].Equals(identity);}
         internal long Session {get{return runtime.IsSessionActive?runtime.Generation:-1;}}
         internal bool Collision {get{return !World.Failed && Settings.CanRun && Options.Collision && Unavailable(0)==null;}}
         internal bool Path {get{return !World.Failed && Settings.CanRun && Options.Path && Unavailable(1)==null;}}
@@ -53,7 +58,7 @@ namespace JueMingR.TerrariaHost.Combat
         public string Unavailable(int field)
         {
             if(selectionFailed)return "战斗目标观察暂不可用，设置已保留；可点击开启重试。";
-            if(field==6)return pathFailed || Attack?.Failed==true?"辅助瞄准暂不可用，设置已保留；可点击开启重试。":World.Impact.Failed?"预计命中位置显示暂不可用，辅助瞄准仍可运行；可点击开启重试显示。":null;
+            if(field==6)return selectionFailed?"战斗目标观察暂不可用，设置已保留；可点击开启重试。":pathFailed || Attack?.Failed==true?"预测增强暂不可用，基础瞄准仍可运行；可点击开启重试增强。":World.Impact.Failed?"预计命中位置显示暂不可用，辅助瞄准仍可运行；可点击开启重试显示。":null;
             if(LayerStatus==Rendering.WorldLayerStatus.Unavailable)return "世界显示入口不可用，设置已保留；需要重新进入游戏。";
             if(World.Failed && (field==0 || field==1 || field==5))return "战斗显示暂不可用，设置已保留；可点击开启重试。";
             if(field==0 && (!Hooks.Ready || collisionFailed))return "碰撞箱显示暂不可用，设置已保留；可点击开启重试。";
@@ -63,7 +68,11 @@ namespace JueMingR.TerrariaHost.Combat
         }
         internal bool Capture {get{return Collision && runtime.IsSessionActive;}}
         internal bool CanDraw {get{return runtime.IsSessionActive && LayerStatus==Rendering.WorldLayerStatus.Ready && input.CanPrepareText;}}
-        public bool Enabled {get{return !selectionFailed && (Collision || Path || Marker || !pathFailed && Prediction.Cache.Required>0);}}
+        // Aim still needs a fresh ordinary selection when optional prediction
+        // fails or both displays are OFF. Only selection's own failure revokes
+        // that source; it never borrows a stale marker as an input target.
+        private bool BasicSelectionDemand {get{return Settings.CanRun && Options.Aim && runtime.IsSessionActive;}}
+        public bool Enabled {get{return !selectionFailed && (Collision || Path || Marker || BasicSelectionDemand || !pathFailed && Prediction.Cache.Required>0);}}
         public void Set(int field,bool value)
         {
             if(!CanConfigure)return;
@@ -93,7 +102,7 @@ namespace JueMingR.TerrariaHost.Combat
             // Other registered consumers can outlive the path toggle. Retire
             // the final target on actual demand removal, once, even when the
             // display was already OFF before that consumer released it.
-            if(!path && Prediction.Cache.Required==0){Prediction.Clear();if(!Marker && Selection.HasTarget)Selection.RetireTarget();}
+            if(!path && Prediction.Cache.Required==0){Prediction.Clear();if(!Marker && !BasicSelectionDemand && Selection.HasTarget)Selection.RetireTarget();}
             // Reliable preference intent is available in the safe Main.Update
             // callback even in menus. This does not activate any Gameplay
             // feature, sample a world, or grant input/operation ownership.
@@ -101,7 +110,7 @@ namespace JueMingR.TerrariaHost.Combat
             wasCollision=collision;wasPath=path;
             AimTrace.Host(this,pathFailed,"poll",false);
         }
-        internal void SampleMouse(){if(!selectionFailed && (Path || Marker || !pathFailed && Prediction.Cache.Required>0))Selection.SampleMouse(input);}
+        internal void SampleMouse(){if(!selectionFailed && (Path || Marker || BasicSelectionDemand || !pathFailed && Prediction.Cache.Required>0))Selection.SampleMouse(input);}
         internal void CollisionFailed(){collisionFailed=true;Geometry.Clear();}
         public void OnSessionStarted(){Clear();Geometry.Session=runtime.Generation;}
         public void OnSessionEnded(){Clear();}
@@ -112,7 +121,13 @@ namespace JueMingR.TerrariaHost.Combat
         private long actionFrame=-1;
         internal void PrepareAction()
         {
-            if(Attack==null || !Attack.Permission || actionFrame==input.Frame)return;
+            if(Attack==null || !Attack.BasicPermission || actionFrame==input.Frame)return;
+            // Sealed ordinary flights do not read another hand input during
+            // cooldown. Completed-world prediction/preview still runs every
+            // update; only a real upcoming hand emission needs this earlier
+            // phase. Controllers, charge/release and pure hand consumers keep
+            // NextAction's existing continuous contract.
+            if(!Attack.ActionPreparationNeeded)return;
             actionFrame=input.Frame;
             npcs.BeginActions(input.Frame);
             // ItemCheck runs after this player's movement/selection, before
@@ -123,18 +138,26 @@ namespace JueMingR.TerrariaHost.Combat
         }
         private void UpdateSample(long sampleTick,bool beforeNpc,ulong tick)
         {
+            using(PredictionWork.Enter(tick))
+            {
+                try{UpdateSampleCore(sampleTick,beforeNpc,tick);}
+                catch(CombatPredictionBudgetExceededException){Prediction.Clear();Attack?.Clear();}
+            }
+        }
+        private void UpdateSampleCore(long sampleTick,bool beforeNpc,ulong tick)
+        {
             try
             {
             Attack?.Demand();
             if(!Enabled)return;
-            if(!Hooks.Ready && !Marker){Selection.RetireTarget();Prediction.Clear();return;}
+            if(!Hooks.Ready && !Marker && !BasicSelectionDemand){Selection.RetireTarget();Prediction.Clear();return;}
             var player=Main.LocalPlayer;if(player==null || !player.active || player.dead || player.ghost){Selection.RetireTarget();Prediction.Clear();Geometry.BeginNpcs();return;}
             if(Collision)Geometry.BeginNpcs();
             // The display can show any genuinely computed future, including
             // a short known death/terrain endpoint. It still requests 120;
             // independent strict readers retain their own minimum.
             if(Path)Prediction.Cache.Demand(0,1,NpcPredictionCache.Horizon);else Prediction.Cache.Release(0);
-            try{Selection.Update(Options,Session,Marker || !pathFailed && Prediction.Cache.Required>0,Collision?Geometry:null);}catch(Exception error){AimTrace.Fault("host-selection",error,(long)tick);selectionFailed=true;CollisionFailed();pathFailed=true;Selection.RetireTarget();Prediction.Stop();World.Clear();return;}
+            try{Selection.Update(Options,Session,Marker || BasicSelectionDemand || !pathFailed && Prediction.Cache.Required>0,Collision?Geometry:null);}catch(Exception error){AimTrace.Fault("host-selection",error,(long)tick);selectionFailed=true;CollisionFailed();pathFailed=true;Selection.RetireTarget();Prediction.Stop();World.Clear();return;}
             if(!Selection.HasTarget){Prediction.Clear();return;}
             Attack?.ResolveSelection(sampleTick,beforeNpc);
             Attack?.Demand(); // The newly selected identity supplies this attack's preferred window.
@@ -143,6 +166,7 @@ namespace JueMingR.TerrariaHost.Combat
             // entry exception still latches the whole path closed.
             if(TargetPredictionFailed){Prediction.Clear();return;}
             if(!pathFailed && Prediction.Cache.Required>0)try{if(beforeNpc)Prediction.PrepareAction(Selection.Target,sampleTick);else Prediction.Prepare(Selection.Target,sampleTick);}
+            catch(CombatPredictionBudgetExceededException){Prediction.Clear();}
             catch(NpcObservationFailure error){AimTrace.Fault("host-npc-observation",error,(long)tick);failedTargets[Selection.Target.Slot]=Selection.Target;Prediction.Clear();}
             catch(Exception error){AimTrace.Fault("host-prepare",error,(long)tick);pathFailed=true;Prediction.Stop();}
             }
@@ -151,7 +175,7 @@ namespace JueMingR.TerrariaHost.Combat
         internal void Register(HotkeyRegistry registry,Hotkeys.HotkeyStateFeedback feedback)
         {
             Action aimCommand=()=>Set(6,!Options.Aim);
-            if(feedback!=null)aimCommand=feedback.Committed("combat.aim","辅助瞄准",aimCommand,()=>Settings.CanRun && Options.Aim?1:0,()=>CanConfigure && Unavailable(6)==null,
+            if(feedback!=null)aimCommand=feedback.Committed("combat.aim","辅助瞄准",aimCommand,()=>Settings.CanRun && Options.Aim?1:0,()=>CanConfigure && !selectionFailed,
                 ()=>Settings.AcceptedCommandId,()=>Settings.CompletedCommandId,()=>Settings.CompletionSucceeded);
             registry.Register(new HotkeyAction("combat.aim","辅助瞄准",HotkeyContext.Gameplay,()=>CanConfigure,aimCommand));
             for(int i=0;i<F5.CombatObservationControls.Actions.Length;i++)

@@ -92,7 +92,7 @@ namespace JueMingR.TerrariaHost.F5
             if(c==F5Command.ObservationMarker)return host.Unavailable(5)??"围绕当前共享选中的可攻击部位显示标记；没有预测路线也可显示。";
             if(c>=F5Command.ObservationCollisionOn){var reason=host.Unavailable(((int)c-(int)F5Command.ObservationCollisionOn)/2);if(reason!=null)return reason;}
             if(c==F5Command.ObservationRadius)return host.Options.MouseCenter?"鼠标范围：0—50 格。0 只选择受击区域触及光标的目标；不关闭显示。":"玩家中心使用屏幕范围；切换鼠标中心后可调半径。";
-            if(c==F5Command.ObservationPolicy)return host.Options.ClearLine?"点击切换最近优先。当前先选视线通畅的目标；遮挡只降低排序，不代表武器无法命中。":"点击切换清线优先。当前优先选择距离范围中心最近的可攻击目标。";
+            if(c==F5Command.ObservationPolicy)return host.Options.ClearLine?"点击切换最近优先。当前优先选择这把武器可命中的目标；同档按范围中心距离排序，未求得解时保留正常目标。":"点击切换清线优先。当前优先选择距离范围中心最近的可攻击目标。";
             if(c==F5Command.ObservationCenter)return "点击切换玩家中心或真实鼠标中心；玩家中心保留屏幕范围。";
             if(c==F5Command.ObservationDummy)return "允许把训练人偶选为路径目标。";
             return host.CanConfigure?null:"设置正在保存或当前暂不可用。";

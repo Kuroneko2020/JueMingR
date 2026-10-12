@@ -63,15 +63,15 @@ namespace JueMingR.TerrariaHost.Combat
         {
             this.combat=combat;this.observation=observation;Control=new HostAttackControl(combat,observation);
             cadence=new HostCadenceAim(combat,observation);combat.Aim.Provider=cadence.Read;
-            combat.Facing.TargetProvider=SharedFacing;combat.Facing.SharedTargetRequired=()=>Permission;
+            combat.Facing.TargetProvider=SharedFacing;combat.Facing.SharedTargetRequired=()=>BasicPermission;
         }
         private FacingTarget SharedFacing(Player player)
         {
-            if(!ReferenceEquals(player,combat.Player) || !Permission || !observation.Selection.HasTarget || !CombatSelection.Valid(observation.Selection.Target,observation.Session))return null;
+            if(!ReferenceEquals(player,combat.Player) || !BasicPermission || !observation.Selection.HasTarget || !CombatSelection.Valid(observation.Selection.Target,observation.Session))return null;
             var npc=Main.npc[observation.Selection.Target.Slot];return CombatSelection.Receives(npc,observation.Options.Dummy)?new FacingTarget(npc,observation.Session,true):null;
         }
-        internal bool Permission {get{return !Failed && observation.Settings.CanRun && observation.Options.Aim && combat.Player!=null && combat.Admitted(combat.Player) &&
-            (combat.Left || combat.Player.controlUseItem || combat.Player.channel || combat.Use.Active || Control.Pending || HostPhasebladeAttack.Handles(combat.Player.HeldItem.shoot) && combat.Player.itemAnimation>0);}}
+        internal bool Permission {get{return !Failed && BasicPermission;}}
+        internal bool ActionPreparationNeeded {get{return combat.Player!=null && HostAttackWindow.NextAction(combat,combat.Player,combat.Player.HeldItem);}}
         internal void Demand()
         {
             if((PreviewDemand || Permission && HostAttackWindow.NextAction(combat,combat.Player,combat.Player.HeldItem)) && Eligible(combat.Player.HeldItem) && !HostPlacementAttack.Handles(combat.Player.HeldItem))
@@ -100,11 +100,13 @@ namespace JueMingR.TerrariaHost.Combat
         }
         internal void ClearExecution(){presentation=null;weapon=null;ammo=null;current=next=null;environment=null;obstacles=null;harpyState=null;preparedOrdinary=false;cadence.Clear();Control.Clear();}
         internal void Clear(){ClearExecution();ClearPreview();}
-        internal void Reset(){Clear();ClearCandidatePlans();RetryFaults();swing.Clear();Control.Reset();}
+        internal void Reset(){Clear();ClearCandidatePlans();RetryFaults();swing.Clear();Control.Reset();hasConsumedInput=false;}
         internal void ObserveSwing(Player player,Item item,Rectangle frame,float offset)
         {
             if(!ReferenceEquals(player,combat.Player) || !HostSwingAttack.Handles(item) || !PreviewDemand)return;
-            try{swing.Observe(item,frame,offset);if(Permission && player.itemAnimation>0 && !HostSwingAttack.Mixed(item) && (!HostPhasebladeAttack.Handles(item.shoot) || combat.Left || player.controlUseItem))PrepareSwing(player,item,observation.Prediction.Cache.Read(1),HostAttackPhase.BeforeNpc,true);}catch(Exception error){FailLocal(error);}
+            try{using(observation.PredictionWork.Enter(Main.GameUpdateCount)){swing.Observe(item,frame,offset);if(Permission && player.itemAnimation>0 && !HostSwingAttack.Mixed(item) && (!HostPhasebladeAttack.Handles(item.shoot) || combat.Left || player.controlUseItem))PrepareSwing(player,item,observation.Prediction.Cache.Read(1),HostAttackPhase.BeforeNpc,true);}}
+            catch(CombatPredictionBudgetExceededException){ClearExecution();}
+            catch(Exception error){FailLocal(error);}
         }
         private void PrepareSwing(Player player,Item item,NpcTrajectory timeline,HostAttackPhase phase,bool naturalPose)
         {
@@ -122,9 +124,9 @@ namespace JueMingR.TerrariaHost.Combat
         {PreparePhase(HostAttackPhase.Projectiles);}
         private void PreparePhase(HostAttackPhase phase)
         {
-            try{PrepareCore(phase);}
+            try{using(observation.PredictionWork.Enter(Main.GameUpdateCount)){PrepareCore(phase);if(phase==HostAttackPhase.CompletedWorld)PreparePreview(phase);}}
+            catch(CombatPredictionBudgetExceededException){Clear();EndFlightPreparation();}
             catch(Exception error){FailLocal(error);}
-            if(phase==HostAttackPhase.CompletedWorld)PreparePreview(phase);
         }
         internal void FailLocal(Exception error){PropagateFatal(error);executionFaults.Record(FaultContextFor(observation.Selection.Target));Clear();}
         private void PrepareCore(HostAttackPhase phase)
@@ -232,7 +234,7 @@ namespace JueMingR.TerrariaHost.Combat
         }
         internal CombatCursorScope BeginShot(Player player,Item item,bool regular)
         {
-            if(!ReferenceEquals(player,combat.Player))return null;
+            if(player==null || !ReferenceEquals(player,combat.Player) || item==null || !ReferenceEquals(item,player.HeldItem) || !BasicPermission || !Eligible(item))return null;
             if(!CurrentReceiver){ClearExecution();return null;}
             if(item!=null && item.type==3852)
             {
@@ -252,21 +254,27 @@ namespace JueMingR.TerrariaHost.Combat
                 // direction and a different duration/role. They may borrow a
                 // representative input, never a primary's precise contact.
                 current=next=null;var timeline=observation.Prediction.Cache.Read(1);
-                if(!Permission || !ReferenceEquals(item,player.HeldItem) || timeline==null || !timeline.Identity.Equals(observation.Selection.Target))return null;
-                Vector2 point;terrain.Reset();return HostWhipAttack.TryExtraPoint(player,timeline,new HostAttackClock(timeline,HostAttackPhase.BeforeNpc),terrain,out point)?CombatCursorScope.Begin(point):null;
+                if(!Permission || timeline==null || !timeline.Identity.Equals(observation.Selection.Target))return BeginBasic(player,item,null,HostAttackPhase.BeforeNpc);
+                try
+                {
+                    using(observation.PredictionWork.Enter(Main.GameUpdateCount))
+                    {
+                        Vector2 point;terrain.Reset();return HostWhipAttack.TryExtraPoint(player,timeline,new HostAttackClock(timeline,HostAttackPhase.BeforeNpc),terrain,out point)?CombatCursorScope.Begin(point):BeginBasic(player,item,null,HostAttackPhase.BeforeNpc);
+                    }
+                }
+                catch(CombatPredictionBudgetExceededException){return BeginBasic(player,item,null,HostAttackPhase.BeforeNpc);}
             }
             if(HostHeldAttack.Weapon(item.type) || HostYoyoNavigation.Weapon(item) || HostWhipAttack.Weapon(item))return Control.BeginOpening(player,item);
             // These native births establish G11A's real charge controller.
             // Their Shoot does not consume its later AI direction packet.
             if(item.type==5462 || item.type==6153)return null;
-            if(!ReferenceEquals(item,weapon) || !Valid(true)){ClearExecution();return null;}
-            var result=Main.GameUpdateCount==prepared?current:next;
+            HostAttackInput input;
+            if(!TryOrdinaryInput(player,item,HostAttackPhase.BeforeNpc,out input))return null;
             // One prepared ordinary attack is a capability, not a reusable
             // cursor value. Native consumption retires it even if a later
             // refill happens to recreate the same ammo bytes in this step.
             current=next=null;
-            var aimPoint=new Vector2(result.AimX,result.AimY);bool reverse=!HostSkyAttack.RawCursor(type) && !HostMeleeAttack.RawCursor(type);
-            return ammo!=null && (ammo.Projectile==442 || ammo.Projectile==80)?CombatCursorScope.BeginTileTarget(aimPoint,reverse):CombatCursorScope.Begin(aimPoint,reverse);
+            return input.Begin();
         }
     }
 }

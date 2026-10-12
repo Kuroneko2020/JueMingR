@@ -81,10 +81,15 @@ namespace NativeWorldTextProbe
                 }
                 Require(body.life<10000,"actual native projectile damage reaches fixed/moving target: "+weaponType+"/"+targetSpeed+" immuneAtBirth="+immuneAtBirth+" immuneNow="+body.immune[0]+" position="+shot.position+" target="+body.Hitbox+" active="+shot.active+" tick="+contact.Tick);
                 Console.WriteLine("PASS actual ItemCheck_Shoot -> Projectile.Update/Damage: weapon="+weaponType+" targetVx="+targetSpeed+" aim="+contact.AimX+","+contact.AimY+" expected="+contact.ImpactX+","+contact.ImpactY+" tick="+contact.Tick);
-                // A changed ammo stack or slot identity rejects the old plan;
-                // no virtual input is left installed on a skipped consumer.
+                // The consumed enhanced capability stays retired across an
+                // ammo change; a legal consumer retains current basic input.
                 foreach(var p in Main.projectile)p.active=false;
-                player.inventory[54].stack++;Require(Call(attack,"BeginShot",player,player.HeldItem,true)==null,"ammo mutation rejects prepared ownership");
+                player.inventory[54].stack++;
+                Require(GetOptional(attack,"ExpectedImpact")==null,"ammo mutation cannot retain an old enhanced contact");
+                int manualX=Main.mouseX,manualY=Main.mouseY;
+                var basic=Call(attack,"BeginShot",player,player.HeldItem,true);
+                Require(basic!=null && Main.mouseX+Main.screenPosition.X>player.Center.X,"ammo mutation preserves legal current-target basic input");
+                Call(basic,"End");Require(Main.mouseX==manualX && Main.mouseY==manualY,"basic input returns the original physical coordinates");
             }
             FirstClick(context,combat,host,input,tools,attack);
             ActionPhase(context,combat,host,input,tools,attack);

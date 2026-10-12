@@ -130,6 +130,7 @@ namespace JueMingR.Features.Combat
             motion=motion.ForLaunch(vx);motion.Launch(ref vx,ref vy);int limit=Math.Min(motion.Lifetime,motion.SubupdatesForOuters(timeline.Count-age-1));
             for(int k=1;k<=limit;k++)
             {
+                CombatPredictionWork.Check();
                 int t=age+motion.OuterAtSubupdate(k);
                 if(beforeMotion!=null && !beforeMotion(k,t,x,y))return null;
                 float oldX=x,oldY=y;motion.Advance(ref x,ref y,ref vx,ref vy,k);
@@ -157,6 +158,7 @@ namespace JueMingR.Features.Combat
             AttackContact best=null;
             for(int start=first;start<=last;start++)
             {
+                CombatPredictionWork.Check();
                 var candidate=SolveCore(originX,originY,motion.ForLaunch(motion.GravityStart-start),timeline,age,delay,passage,firstTickOffset,receive,damagePassage,motion,beforeMotion);
                 if(candidate!=null && (best==null || candidate.Tick<best.Tick || candidate.Tick==best.Tick && candidate.Subupdate<best.Subupdate))best=candidate;
             }
@@ -170,6 +172,7 @@ namespace JueMingR.Features.Combat
             float gx=0,gy=0,gvx=0,gvy=0,ax=0,ay=0,avx=basis,avy=0;
             for(int step=1;step<=limit;step++)
             {
+                CombatPredictionWork.Check();
                 motion.Advance(ref gx,ref gy,ref gvx,ref gvy,step);motion.Advance(ref ax,ref ay,ref avx,ref avy,step);
                 int tick=age+delay+motion.OuterAtSubupdate(step)-1+firstTickOffset;
                 var target=timeline[tick];if(!target.CanReceive || receive!=null && !receive(delay+motion.OuterAtSubupdate(step)))continue;
@@ -193,6 +196,7 @@ namespace JueMingR.Features.Combat
                 // these are finite geometric candidates, not a finer NPC replay.
                 for(int seed=-1;seed<8;seed++)
                 {
+                    CombatPredictionWork.Check();
                     float sx=dx*(elliptical?1:response),sy=dy*(elliptical?1:responseY);
                     if(seed>=0)
                     {
@@ -217,6 +221,7 @@ namespace JueMingR.Features.Combat
                     motion.Launch(ref vx,ref vy);
                 for(int k=1;k<=step;k++)
                 {
+                    CombatPredictionWork.Check();
                     int t=age+delay+motion.OuterAtSubupdate(k)-1+firstTickOffset;
                     // The host can test a preceding native NPC-phase action
                     // against the old projectile body. Damage's endpoint

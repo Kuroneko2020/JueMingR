@@ -100,7 +100,12 @@ namespace JueMingR.TerrariaHost.Combat
             // Newly born controllers can get their first AI in the SAME native
             // projectile pass. Reuse the already captured shared future at the
             // real birth boundary; never recapture/select inside each AI call.
-            if(receipt.Source!=null && preparedTimeline!=null && birthOrdinal>receipt.BirthCutoff)try{PrepareBorn(receipt.Source,receipt.Phase,receipt.BirthCutoff);}catch(Exception error){combat.Attack.FailLocal(error);}
+            if(receipt.Source!=null && preparedTimeline!=null && birthOrdinal>receipt.BirthCutoff)
+            {
+                try{using(observation.PredictionWork.Enter(Main.GameUpdateCount)){PrepareBorn(receipt.Source,receipt.Phase,receipt.BirthCutoff);}}
+                catch(CombatPredictionBudgetExceededException){Clear();}
+                catch(Exception error){combat.Attack.FailLocal(error);}
+            }
         }
         internal void Created(Player player,Projectile shot)
         {
@@ -227,14 +232,33 @@ namespace JueMingR.TerrariaHost.Combat
         private bool Passage(float x,float y,float nx,float ny,float width,float height){return terrain.ProjectilePassage(x,y,nx,ny,(int)width,(int)height);}
         internal CombatCursorScope BeginOpening(Player player,Item item)
         {
+            var enhanced=BeginEnhancedOpening(player,item);
+            if(enhanced!=null)return enhanced;
+            HostAttackInput input;
+            return combat.Attack.TryBasicInput(player,item,null,HostAttackPhase.BeforeNpc,out input)?input.Begin():null;
+        }
+        private CombatCursorScope BeginEnhancedOpening(Player player,Item item)
+        {
             if(!openingUsable || opening==null)return null;
             if(!combat.Attack.CurrentReceiver){openingUsable=false;return null;}
             if(!environmentState.Current || !terrain.Unchanged || !openingUsable || opening==null || openingNavigation!=null && !openingNavigation.Current(player) || !combat.Attack.Permission || !ReferenceEquals(player,opening.Player) || !ReferenceEquals(item,opening.Weapon) || !Allowed(opening) || openingStep!=Main.GameUpdateCount || openingAmmo==null || !openingAmmo.IdentityMatches(player,item) || !ReferenceEquals(preparedTimeline,observation.Prediction.Cache.Read(1)) || !preparedTimeline.Identity.Equals(observation.Selection.Target))return null;
-            return CombatCursorScope.Begin(openingPoint);
+            var scope=CombatCursorScope.Begin(openingPoint);if(scope!=null)combat.Attack.RecordControlInput(openingPoint,null,HostAttackInputKind.Enhanced);return scope;
         }
         private static bool TryChildLaterSlot(Projectile parent,out bool later)
         {later=false;if(Terraria.Testing.DebugOptions.Shared_RandomizeProjectileSlots)return false;for(int i=0;i<Main.maxProjectiles;i++)if(!Main.projectile[i].active){later=i>parent.whoAmI;return true;}return false;}
         internal CombatCursorScope BeginKill(Projectile shot)
+        {
+            Controlled entry;
+            if(shot.type!=444 || !shots.TryGetValue((int)shot.key,out entry) || !ReferenceEquals(entry.Shot,shot) || !Valid(entry) || !combat.Attack.BasicPermission || !combat.Attack.CurrentReceiver)return null;
+            var enhanced=BeginEnhancedKill(shot);
+            if(enhanced!=null)return enhanced;
+            // Native bubble Kill still reads a fresh direction even when no
+            // child receive/slot schedule could be proved. Its real source
+            // and native death receipt authorize only this one consumer.
+            HostAttackInput input;
+            return combat.Attack.TryBasicInput(combat.Player,entry.Source.Weapon,shot,HostAttackPhase.Projectiles,out input)?input.Begin():null;
+        }
+        private CombatCursorScope BeginEnhancedKill(Projectile shot)
         {
             Controlled entry;if(shot.type!=444 || !shots.TryGetValue((int)shot.key,out entry) || !ReferenceEquals(entry.Shot,shot))return null;
             if(!combat.Attack.CurrentReceiver){Retire(entry);return null;}
@@ -249,7 +273,7 @@ namespace JueMingR.TerrariaHost.Combat
             var result=Vector2.DistanceSquared(shot.Center,entry.KillOrigin)<.01f?(alternate?entry.AlternateKillContact:entry.Contact):Vector2.DistanceSquared(shot.Center,entry.NextKillOrigin)<.01f?(alternate?entry.AlternateNextKillContact:entry.NextKillContact):null;
             Retire(entry);
             if(result==null || !ReferenceEquals(result.Timeline,observation.Prediction.Cache.Read(1)))return null;
-            return CombatCursorScope.Begin(new Vector2(result.AimX,result.AimY));
+            return combat.Attack.ContactInput(result,entry.Source.Weapon,shot,HostAttackPhase.Projectiles).Begin();
         }
         internal AttackContact ExpectedImpact
         {
@@ -289,6 +313,21 @@ namespace JueMingR.TerrariaHost.Combat
         // G11A can read this same prepared capability before entering its
         // outer cursor scope. Reading never advances cadence or solves again.
         internal bool TryPoint(Projectile shot,out Vector2 point)
+        {
+            point=default(Vector2);Controlled entry;
+            if(!shots.TryGetValue((int)shot.key,out entry) || !ReferenceEquals(entry.Shot,shot) || !Valid(entry) || !combat.Attack.BasicPermission || !combat.Attack.CurrentReceiver)return false;
+            // These predicates are vanilla's actual cursor-reading windows.
+            // A sealed child, released missile, returning ball/flail or bubble
+            // AI cannot obtain control by falling back from a missing contact.
+            bool consumes=entry.Type==1035?HostWhipAttack.Consumes(shot):entry.Navigation!=null?combat.Player.channel && shot.ai[0]>=0:
+                HostHeldAttack.Handles(entry.Type)?HostHeldAttack.Consumes(combat.Player,shot):HostGuidedAttack.Handles(entry.Type) && HostGuidedAttack.Consumes(combat.Player,shot);
+            if(!consumes)return false;
+            if(TryEnhancedPoint(shot,out point)){combat.Attack.RecordControlInput(point,shot,HostAttackInputKind.Enhanced);return true;}
+            HostAttackInput input;
+            if(!combat.Attack.TryBasicInput(combat.Player,entry.Source.Weapon,shot,HostAttackPhase.Projectiles,out input))return false;
+            point=input.Point;combat.Attack.RecordInput(input);return true;
+        }
+        private bool TryEnhancedPoint(Projectile shot,out Vector2 point)
         {
             point=default(Vector2);Controlled entry;if(!shots.TryGetValue((int)shot.key,out entry) || !ReferenceEquals(entry.Shot,shot))return false;
             // Bubble AI never reads the cursor. Its separate Kill receipt must

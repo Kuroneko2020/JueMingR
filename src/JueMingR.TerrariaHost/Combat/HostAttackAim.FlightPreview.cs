@@ -9,10 +9,33 @@ namespace JueMingR.TerrariaHost.Combat
     internal sealed partial class HostAttackAim
     {
         private readonly PredictionTerrain flightPreviewTerrain=new PredictionTerrain();
+        private bool flightPass,flightPassReady,flightPassLive;
+        private NpcTrajectory flightPassTimeline;
+        private HostAttackPhase flightPassPhase;
+        private FlightPreview flightPassResult;
+        private void BeginFlightPreparation(bool beforeNpc)
+        {EndFlightPreparation();flightPass=!beforeNpc;}
+        private void EndFlightPreparation()
+        {flightPass=flightPassReady=flightPassLive=false;flightPassTimeline=null;flightPassResult=null;}
+        private bool FlightPreparationMatches(NpcTrajectory timeline,HostAttackPhase phase,FlightPreview flight)
+        {return flightPass && flightPassReady && ReferenceEquals(flightPassTimeline,timeline) && flightPassPhase==phase && ReferenceEquals(flightPassResult,flight);}
+        // Selection and final presentation run synchronously without a native
+        // actor/input action between them. Share a replay only in that scope,
+        // for the exact same immutable path instance and native phase. The
+        // presentation finally closes the scope; no future tick, different
+        // candidate, or changed source can inherit a no-contact verdict.
+        private FlightPreview ReadFlight(Player player,NpcTrajectory timeline,HostAttackPhase phase,out bool live)
+        {
+            if(flightPass && flightPassReady && ReferenceEquals(flightPassTimeline,timeline) && flightPassPhase==phase)
+            {live=flightPassLive;return flightPassResult;}
+            var result=ReadFlightCore(player,timeline,phase,out live);
+            if(flightPass){flightPassReady=true;flightPassTimeline=timeline;flightPassPhase=phase;flightPassLive=live;flightPassResult=result;}
+            return result;
+        }
         // A sealed AI013/phaseblade flight can be observed after enabling the path or
         // returning to its weapon. This does not manufacture a birth receipt
         // or grant any cursor consumer authority over that existing attack.
-        private FlightPreview ReadFlight(Player player,NpcTrajectory timeline,HostAttackPhase phase,out bool live)
+        private FlightPreview ReadFlightCore(Player player,NpcTrajectory timeline,HostAttackPhase phase,out bool live)
         {
             live=false;bool phaseblade=HostPhasebladeAttack.Handles(player.HeldItem.shoot);
             bool gem=HostGemStaffAttack.Handles(player.HeldItem.shoot);

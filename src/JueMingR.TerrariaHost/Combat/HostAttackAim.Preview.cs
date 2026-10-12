@@ -15,17 +15,50 @@ namespace JueMingR.TerrariaHost.Combat
         private AttackContact previewPresentation;
         private uint previewStep;
         internal bool PreviewDemand {get{return observation.Settings.CanRun && combat.Player!=null && combat.Player.active && !combat.Player.dead && !combat.Player.ghost && (observation.Path || observation.Options.Aim) && Eligible(combat.Player.HeldItem);}}
-        internal AttackContact ExpectedPreview {get{return CurrentReceiver && PreviewDemand && previewStep==Main.GameUpdateCount && preview.Timeline!=null && preview.Timeline.Identity.Equals(observation.Selection.Target) && ReferenceEquals(preview.Timeline,observation.Prediction.Cache.Read(1)) && preview.WeaponCurrent(combat.Player)?preview.Contact:null;}}
+        internal AttackContact ExpectedPreview {get{return CurrentReceiver && PreviewDemand && previewStep==Main.GameUpdateCount && preview.Timeline!=null && preview.Timeline.Identity.Equals(observation.Selection.Target) && ReferenceEquals(preview.Timeline,observation.Prediction.Cache.Read(1)) && preview.WeaponCurrent(combat.Player) && PreviewInputCompatible()?preview.Contact:null;}}
         internal void BindPreview(AttackContact result){previewPresentation=result;}
         internal bool PreviewCurrent(AttackContact result)
         {
             var player=combat.Player;
             // Draw uses only the preparation's identity and member lease. It
             // neither searches terrain nor acquires a native input capability.
-            return result!=null && ReferenceEquals(result,previewPresentation) && ReferenceEquals(result,preview.Contact) && previewStep==Main.GameUpdateCount && PreviewDemand && CurrentReceiver && result.Timeline.Identity.Equals(observation.Selection.Target) && ReferenceEquals(result.Timeline,observation.Prediction.Cache.Read(1)) && preview.MembersCurrent(player) && (!preview.Controlled || Control.PreviewCurrent(result));
+            return result!=null && ReferenceEquals(result,previewPresentation) && ReferenceEquals(result,preview.Contact) && previewStep==Main.GameUpdateCount && PreviewDemand && CurrentReceiver && result.Timeline.Identity.Equals(observation.Selection.Target) && ReferenceEquals(result.Timeline,observation.Prediction.Cache.Read(1)) && preview.MembersCurrent(player) && PreviewInputCompatible() && (!preview.Controlled || Control.PreviewCurrent(result));
+        }
+        private bool PreviewInputCompatible()
+        {
+            // Idle/path-only preparation is an independent read-only hypothesis.
+            // A sealed live flight already has its real birth/velocity premise.
+            // Neither inherits the hand's currently borrowed cursor permission.
+            if(preview.Contact==null || preview.Flight!=null)return true;
+            var input=consumedInput;var origin=consumedOrigin;
+            bool actual=hasConsumedInput && consumedInputStep==Main.GameUpdateCount && input.Kind==HostAttackInputKind.Basic && ReferenceEquals(input.Weapon,combat.Player.HeldItem) && input.Target.Equals(observation.Selection.Target);
+            // A latched execution fault still selects Basic at the next hand
+            // consumer between births. An idle/path-only hypothesis has no
+            // actual permission and is intentionally independent of that gate.
+            if(!actual)
+            {
+                var item=combat.Player.HeldItem;
+                if(!Failed || !BasicPermission || !HostAttackWindow.Ordinary(item))return true;
+                var receiver=Main.npc[observation.Selection.Target.Slot];
+                input=new HostAttackInput(this,HostAttackInputKind.Basic,receiver.Center+receiver.netOffset,observation.Selection.Target,item,null,HostAttackPhase.CompletedWorld,true,ReferenceEquals(consumedInput.Weapon,item) && consumedInput.TileTarget);
+                origin=HostAttackModels.LaunchOrigin(combat.Player,input.Weapon);
+            }
+            var proposed=new Vector2(preview.Contact.AimX,preview.Contact.AimY);
+            if(input.Weapon.shoot<=0 && HostSwingAttack.Handles(input.Weapon))return Math.Sign(proposed.X-origin.X)==Math.Sign(input.Point.X-origin.X);
+            if(HostSkyAttack.Handles(input.Weapon.type) || HostMeleeAttack.RawCursor(input.Weapon.type) || input.TileTarget || HostYoyoNavigation.Weapon(input.Weapon))return Vector2.DistanceSquared(proposed,input.Point)<=1;
+            // Direction-only consumers may express the same ray at a different
+            // distance. Do not display a free intercept requiring another ray.
+            var direction=(input.Point-origin).SafeNormalize(Vector2.Zero);
+            var hypothetical=(proposed-origin).SafeNormalize(Vector2.Zero);
+            return direction!=Vector2.Zero && Vector2.DistanceSquared(direction,hypothetical)<=.000001f;
         }
         private void ClearPreview(){preview.Clear();previewPresentation=null;}
         private void PreparePreview(HostAttackPhase phase)
+        {
+            try{PreparePreviewCore(phase);}
+            finally{EndFlightPreparation();}
+        }
+        private void PreparePreviewCore(HostAttackPhase phase)
         {
             previewPresentation=null;previewStep=Main.GameUpdateCount;
             if(!PreviewDemand || !CurrentReceiver){preview.Clear();return;}
@@ -39,6 +72,7 @@ namespace JueMingR.TerrariaHost.Combat
             var context=FaultContextFor(timeline.Identity);
             if(preview.Faults.Blocks(context)){preview.Clear();return;}
             try{PreparePlan(preview,timeline,phase);}
+            catch(CombatPredictionBudgetExceededException){preview.Clear();throw;}
             catch(Exception error){PropagateFatal(error);preview.Faults.Record(context);preview.Clear();}
         }
         private AttackContact PreparePlan(PreviewPlan plan,NpcTrajectory timeline,HostAttackPhase phase)
@@ -88,12 +122,17 @@ namespace JueMingR.TerrariaHost.Combat
             Projectile sample=null;if(captured!=null && !ContentSamples.ProjectilesByType.TryGetValue(captured.Projectile,out sample))return OnlyFlight(plan,player,timeline,flight);
             var receive=sample==null?default(HostAttackReceive):HostAttackReceive.Capture(player,sample,timeline.Identity.Slot,phase==HostAttackPhase.BeforeNpc,phase!=HostAttackPhase.BeforeNpc);
             int immune=receiver.immune[player.whoAmI];
-            bool reuse=!hasFlight && PlanInputsCurrent(plan,player,item,timeline.Identity.Slot,phase,clock.Age,delay,captured,motion,receive,immune) && AttackIntercept.Equivalent(plan.Timeline,timeline);
+            // Candidate and final display may share the exact same memoized
+            // flight observation in one synchronous preparation. Reuse the
+            // independently solved HAND plan only in that pass; a sealed
+            // flight contact (plan.Flight) is never a hand capability.
+            bool sameFlightPass=plan.PreparedTick==Main.GameUpdateCount && plan.HadFlight==hasFlight && ReferenceEquals(plan.PreparedFlight,flight) && FlightPreparationMatches(timeline,phase,flight);
+            bool reuse=(!hasFlight || sameFlightPass) && PlanInputsCurrent(plan,player,item,timeline.Identity.Slot,phase,clock.Age,delay,captured,motion,receive,immune) && AttackIntercept.Equivalent(plan.Timeline,timeline);
             if(reuse)
             {
                 plan.Contact=AttackIntercept.Rebind(plan.Contact,timeline);plan.Timeline=timeline;return plan.Contact;
             }
-            plan.Clear();plan.SetMembers(player,item);plan.Prepared=true;plan.Phase=phase;plan.Age=clock.Age;plan.Delay=delay;plan.PlayerMotion=motion;plan.Immune=immune;plan.AttackCooldown=player.attackCD;plan.MeleeCooldown=player.meleeNPCHitCooldown[timeline.Identity.Slot];plan.Animation=player.itemAnimation;plan.AnimationMax=player.itemAnimationMax;plan.SwingRevision=swing.Revision;plan.MeleeSpeed=player.meleeSpeed;plan.Direction=player.direction;plan.Ammo=captured;plan.Timeline=timeline;
+            plan.Clear();plan.SetMembers(player,item);plan.Prepared=true;plan.PreparedTick=Main.GameUpdateCount;plan.PreparedFlight=flight;plan.HadFlight=hasFlight;plan.Phase=phase;plan.Age=clock.Age;plan.Delay=delay;plan.PlayerMotion=motion;plan.Immune=immune;plan.AttackCooldown=player.attackCD;plan.MeleeCooldown=player.meleeNPCHitCooldown[timeline.Identity.Slot];plan.Animation=player.itemAnimation;plan.AnimationMax=player.itemAnimationMax;plan.SwingRevision=swing.Revision;plan.MeleeSpeed=player.meleeSpeed;plan.Direction=player.direction;plan.Ammo=captured;plan.Timeline=timeline;
             plan.Receive=receive;plan.Terrain.Reset();
             plan.Using=combat.Left || player.controlUseItem;
             plan.CapsuleOnly=HostSwingAttack.CapsuleOnly(player,item);
@@ -180,6 +219,7 @@ namespace JueMingR.TerrariaHost.Combat
             internal HostProjectileEnvironment Environment;internal HostProjectileEnvironment.State EnvironmentState;internal HostAttackObstacles Obstacles;
             internal HostHarpyAttack.State HarpyState;
             internal FlightPreview Flight;
+            internal FlightPreview PreparedFlight;internal uint PreparedTick;internal bool HadFlight;
             internal HostMeleeAttack.SpearFlightState WhipOwner;
             internal HostAttackReceive Receive;
             internal PredictionPlayerMotion PlayerMotion;internal HostAttackPhase Phase;internal int Age,Delay,Immune,AttackCooldown,MeleeCooldown,Animation,AnimationMax;
@@ -189,7 +229,7 @@ namespace JueMingR.TerrariaHost.Combat
             internal void SetMembers(Player player,Item weapon){item=weapon;slot=player.selectedItem;type=weapon.type;prefix=weapon.prefix;scale=player.GetAdjustedItemScale(weapon);Direction=player.direction;EnvironmentState=new HostProjectileEnvironment.State(true);WhipOwner=HostMeleeAttack.KnownWhipParent(weapon.shoot)?new HostMeleeAttack.SpearFlightState(player,System.Array.Empty<Projectile>()):null;}
             internal bool WeaponCurrent(Player player){return player!=null && item!=null && player.selectedItem==slot && ReferenceEquals(player.HeldItem,item) && item.type==type && item.prefix==prefix && player.GetAdjustedItemScale(item)==scale;}
             internal bool MembersCurrent(Player player){return WeaponCurrent(player) && Direction==player.direction && EnvironmentState.Current && (WhipOwner==null || WhipOwner.Current) && (Ammo==null || Ammo.MembersMatch(player,item)) && (Obstacles==null || Obstacles.BirthInputsCurrent) && (HarpyState==null || HarpyState.MembersCurrent) && (Flight==null || Flight.Current);}
-            internal void Clear(){Contact=null;Timeline=null;Ammo=null;Environment=null;Obstacles=null;HarpyState=null;Flight=null;WhipOwner=null;item=null;Prepared=Controlled=false;}
+            internal void Clear(){Contact=null;Timeline=null;Ammo=null;Environment=null;Obstacles=null;HarpyState=null;Flight=PreparedFlight=null;WhipOwner=null;item=null;Prepared=Controlled=HadFlight=false;}
         }
     }
 }

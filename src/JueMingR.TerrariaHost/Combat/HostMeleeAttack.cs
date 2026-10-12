@@ -61,6 +61,7 @@ namespace JueMingR.TerrariaHost.Combat
             // ContentSamples and actual projectile state are never mutated.
             for(int seed=0;seed<9;seed++)
             {
+                CombatPredictionWork.Check();
                 var b=timeline[Math.Min(timeline.Count-1,age+1+seed*4)].ProjectileReceiveBounds;
                 Vector2 unit=(new Vector2(b.CenterX,b.CenterY)-origin).SafeNormalize(Vector2.UnitX*player.direction),aim=RawCursor(item.type)?new Vector2(b.CenterX,b.CenterY):origin+unit*10000;
                 // Identical direction seeds (the common stationary receiver)
@@ -91,6 +92,7 @@ namespace JueMingR.TerrariaHost.Combat
                 int updates=sample.extraUpdates+1,limit=Math.Min(120,timeline.Count-age-1);bool active=true;
                 for(int step=0;step<limit && active;step++)
                 {
+                    CombatPredictionWork.Check();
                     if(sample.aiStyle==19 && animation-step<=0 || sample.type==611 && step*updates+1>=30)break;
                     if(!beforeNpc || step>0){PredictionStop stop;if(!PlayerMotionContinuation.Advance(ref motion,environment,terrain,out stop))break;}
                     HostAttackPlayerFrame.ApplyPose(body,motion);body.itemAnimation=animation-step-(whip && player.itemAnimation==0?1:0);
@@ -220,6 +222,7 @@ namespace JueMingR.TerrariaHost.Combat
             // fresh shot or steer it from subsequent cursor input.
             for(int step=0;step<30 && clock.FirstTick+step<timeline.Count;step++)
             {
+                CombatPredictionWork.Check();
                 if(clock.MovePlayer(step)){PredictionStop stop;if(!PlayerMotionContinuation.Advance(ref motion,environment,terrain,out stop))return null;}
                 HostAttackPlayerFrame.ApplyPose(body,motion);
                 for(int sub=0;sub<shot.extraUpdates+1;sub++)
@@ -320,18 +323,24 @@ namespace JueMingR.TerrariaHost.Combat
             Vector2 aim=sources[0].Center+sources[0].velocity*1000;
             for(int action=0;action<Math.Min(120,path.Count-clock.FirstTick);action++)
             {
+                CombatPredictionWork.Check();
                 // A zero-damage ordinary whip has no later Damage action.
                 // It still occupies its native slot until retirement, but
                 // cannot justify more player/terrain receive continuation.
                 if(!rows.Exists(member=>member.Shot.active && (!whip || member.Shot.damage>0)))break;
-                if(clock.MovePlayer(action)){PredictionStop stop;if(!PlayerMotionContinuation.Advance(ref motion,frame.Environment,terrain,out stop)){
+                // A hand/whip still reads the owner's future arm geometry.
+                // Once it retires, its detached children use their sealed
+                // origins and velocities, plus the captured owner/receive
+                // lease; unrelated future player motion cannot veto them.
+                bool handAlive=rows.Exists(member=>member.Shot.active && member.Shot.type==parentType);
+                if(handAlive && clock.MovePlayer(action)){PredictionStop stop;if(!PlayerMotionContinuation.Advance(ref motion,frame.Environment,terrain,out stop)){
                     return null;}}
-                HostAttackPlayerFrame.ApplyPose(body,motion);body.itemAnimation=Math.Max(0,player.itemAnimation-action-(clock.NextWorld?1:0));
+                if(handAlive)HostAttackPlayerFrame.ApplyPose(body,motion);body.itemAnimation=Math.Max(0,player.itemAnimation-action-(clock.NextWorld?1:0));
                 // Player.Update frames the active useStyle=1 hand after
                 // ItemCheck and before projectile damage. Whip geometry
                 // reads that arm anchor, so the captured first frame cannot
                 // remain frozen through the middle/end of the native hand.
-                if(whip && clock.MovePlayer(action))WhipFrame(body);
+                if(whip && handAlive && clock.MovePlayer(action))WhipFrame(body);
                 int tick=clock.FirstTick+action,outer=action+1;
                 for(int memberIndex=0;memberIndex<rows.Count;memberIndex++)
                 {
@@ -456,8 +465,13 @@ namespace JueMingR.TerrariaHost.Combat
             var motion=frame.Motion;var environment=frame.Environment;bool emitted=false;
             for(int step=0;step<Math.Min(120,timeline.Count-age-1);step++)
             {
-                if(!beforeNpc || step>0){PredictionStop stop;if(!PlayerMotionContinuation.Advance(ref motion,environment,terrain,out stop))return null;}
-                HostAttackPlayerFrame.ApplyPose(body,motion);body.itemAnimation=animation-step;
+                CombatPredictionWork.Check();
+                // Only a possible future birth still depends on the owner's
+                // geometry. Detached children retain their own dry/terrain
+                // and immunity continuation after that final hand action.
+                bool birthPossible=animation-step>0 && (parent.type==130?step<=24:parent.type==730?step==0:!emitted);
+                if(birthPossible && (!beforeNpc || step>0)){PredictionStop stop;if(!PlayerMotionContinuation.Advance(ref motion,environment,terrain,out stop))return null;}
+                if(birthPossible)HostAttackPlayerFrame.ApplyPose(body,motion);body.itemAnimation=animation-step;
                 bool birth=parent.type==130?step<=24 && step%4==0:parent.type==730?step==0:!emitted && body.itemAnimation>0 && body.itemAnimation<animationMax/3;
                 if(birth && body.itemAnimation>0)
                 {
@@ -519,6 +533,7 @@ namespace JueMingR.TerrariaHost.Combat
             // The native normal movement then adds that velocity once.
             for(int step=0;step<24 && age+step+1<timeline.Count;step++)
             {
+                CombatPredictionWork.Check();
                 if(clock.MovePlayer(step)){PredictionStop stop;if(!PlayerMotionContinuation.Advance(ref motion,environment,terrain,out stop))return null;}
                 HostAttackPlayerFrame.ApplyPose(body,motion);Vector2 mounted=body.RotatedRelativePoint(body.MountedCenter);
                 shadow.velocity=(aim-mounted).SafeNormalize(Vector2.UnitX*body.direction)*(player.HeldItem.shoot==927?player.HeldItem.shootSpeed:1);shadow.scale=shot.ai[1];shadow.Center=mounted+shadow.velocity;

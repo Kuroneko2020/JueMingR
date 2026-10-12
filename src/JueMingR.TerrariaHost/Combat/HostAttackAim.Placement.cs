@@ -25,7 +25,7 @@ namespace JueMingR.TerrariaHost.Combat
         }
         internal PlacementUse EnterPlacementUse(Player player)
         {
-            if(!ReferenceEquals(player,combat.Player) || !Permission || !CurrentReceiver || !HostPlacementAttack.Handles(player.HeldItem) ||
+            if(!ReferenceEquals(player,combat.Player) || !BasicPermission || !CurrentReceiver || !HostPlacementAttack.Handles(player.HeldItem) ||
                 !HostAttackWindow.Opening(combat,player,player.HeldItem) || !HostPlacementAttack.ReadsCursor(player,player.HeldItem))return null;
             var receipt=new PlacementUse(this,player,player.HeldItem);placementUse=receipt;return receipt;
         }
@@ -37,7 +37,7 @@ namespace JueMingR.TerrariaHost.Combat
             var r=placementUse;
             if(r==null || r.Ended || r.Shot || !ReferenceEquals(player,r.Player) || !ReferenceEquals(item,r.Item) ||
                 r.Tick!=Main.GameUpdateCount || r.Session!=observation.Session || player.selectedItem!=r.Slot || item.type!=r.Type || item.prefix!=r.Prefix ||
-                !ReferenceEquals(player.HeldItem,item) || !Permission || !CurrentReceiver || !r.Target.Equals(observation.Selection.Target) || player.altFunctionUse==2)return null;
+                !ReferenceEquals(player.HeldItem,item) || !BasicPermission || !CurrentReceiver || !r.Target.Equals(observation.Selection.Target) || player.altFunctionUse==2)return null;
             if(shot)r.Shot=true;
             return CombatCursorScope.Begin(r.Point,HostPlacementAttack.ReverseGravity(item));
         }

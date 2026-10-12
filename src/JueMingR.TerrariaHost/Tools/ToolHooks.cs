@@ -91,7 +91,11 @@ namespace JueMingR.TerrariaHost.Tools
         }
         private static Exception InteractionsFinal(Player __instance,Exception __exception)
         {if(__exception!=null && ReferenceEquals(__instance,host?.Player)){deferredSync=null;host.Combat?.Handoff.Interrupted();host.Combat?.Use.Stop();}return __exception;}
-        private static void Started(Player __instance,Item __0){host?.Use.Started(__instance);host?.Fishing.ObserveCast(__instance,__0);host?.FishingStarted?.Invoke(__instance,__0);host?.Combat?.Use.Started(__instance,__0);}
+        private static void Started(Player __instance,Item __0)
+        {
+            host?.Use.Started(__instance);host?.Fishing.ObserveCast(__instance,__0);host?.FishingStarted?.Invoke(__instance,__0);host?.Combat?.Use.Started(__instance,__0);
+            try{host?.Combat?.Attack?.StartedHand(__instance,__0);}catch(Exception error){host?.Combat?.Attack?.FailLocal(error);}
+        }
         private static void AfterReuse(Player __instance){host?.Combat?.Use.AfterReuse(__instance);}
         private static void ProjectileCreated(Player __instance,Projectile __0){host?.Use.ObserveProjectile(__instance,__0);host?.FishingProjectile?.Invoke(__instance,__0);host?.Combat?.Use.Created(__instance,__0);host?.Combat?.Attack?.Control.Created(__instance,__0);}
         // This call's receipt chooses its owner, even if that action has since

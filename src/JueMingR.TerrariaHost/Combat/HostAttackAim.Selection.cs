@@ -10,8 +10,9 @@ namespace JueMingR.TerrariaHost.Combat
         private readonly PreviewPlan[] candidatePlans=new PreviewPlan[NpcPredictionCache.Capacity*2];
         internal void ResolveSelection(long sampleTick,bool beforeNpc)
         {
+            BeginFlightPreparation(beforeNpc);
             var selection=observation.Selection;var phase=beforeNpc?HostAttackPhase.BeforeNpc:HostAttackPhase.CompletedWorld;
-            if(!observation.Options.ClearLine || !PreviewDemand || selection.CandidateCount==0 || HostPlacementAttack.Handles(combat.Player.HeldItem))
+            if(!observation.Options.ClearLine || !observation.PredictionAvailable || !PreviewDemand || selection.CandidateCount==0 || HostPlacementAttack.Handles(combat.Player.HeldItem))
             {candidates.Clear();return;}
             // Selection already sorts by the chosen centre's receive-box
             // distance. Prove that prefix in order, stopping at its first
@@ -22,7 +23,9 @@ namespace JueMingR.TerrariaHost.Combat
             candidates.Clear();
             for(int index=0;index<selection.CandidateCount;index++)
             {
+                CombatPredictionWork.Check();
                 var npc=selection.Candidate(index);var identity=CombatSelection.Identity(npc,observation.Session);
+                if(!observation.PredictionAvailableFor(identity))continue;
                 // Distinct native phases keep distinct exact premises. This
                 // avoids invalidating a reusable completed-world answer merely
                 // because a before-NPC action was prepared between two frames.
@@ -37,6 +40,7 @@ namespace JueMingR.TerrariaHost.Combat
                     if(contact!=null)
                     {candidates.Reachable=identity;selection.Choose(npc,observation.Session,true);return;}
                 }
+                catch(CombatPredictionBudgetExceededException){plan.Clear();throw;}
                 catch(Exception error){PropagateFatal(error);plan.Faults.Record(context);plan.Clear();}
             }
             // No proof leaves the deterministic nearest receiver and normal

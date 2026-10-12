@@ -18,10 +18,9 @@ namespace JueMingR.TerrariaHost.Combat
         private bool candidateOnly;
         private static bool rollingCodePrepared;
 
-        // Candidate evaluation has its own finite sampling/terrain/history owner.
-        // Preparing and then restoring the selected actor would erase its real
-        // consecutive observation, especially the curvature fallback. This
-        // owner never publishes to the selected Cache or outcome diagnostics.
+        // New candidates keep a separate finite sampling/terrain/history owner.
+        // The incumbent uses its existing selected owner once per exact sample;
+        // evaluating other candidates never swaps or restores that history.
         internal NpcTrajectory TryCandidate(NpcIdentity identity,long tick,bool beforeNpc,int required)
         {return TryCandidateReuse(identity,tick,beforeNpc,required,false);}
         // reuseMiss is permission from the attack owner only after its own
@@ -30,6 +29,22 @@ namespace JueMingR.TerrariaHost.Combat
         internal NpcTrajectory TryCandidateReuse(NpcIdentity identity,long tick,bool beforeNpc,int required,bool reuseMiss)
         {
             if(required<=0 || !CombatSelection.Valid(identity,identity.Session))return null;
+            // Distance order still decides which candidate is visited first.
+            // Only the target already owned by this Source may use this route;
+            // feeding every nearest candidate here would erase a farther
+            // selected actor's observation/trend on every clear-line update.
+            // Final preparation rechecks the normal full sample/player/cell
+            // identity and returns the same rolling result only when exact.
+            if(!candidateOnly && Native==null && !usingSegmented && ownsState && outcomeIdentity.Equals(identity) && Cache.Required>=required)
+            {
+                try{if(beforeNpc)PrepareAction(identity,tick);else Prepare(identity,tick);}
+                catch(NpcObservationFailure){Clear();return null;}
+                // Path and Aim own separate demands. Sharing an already
+                // published sample must use its live consumer, not require
+                // the display demand when only Aim is enabled.
+                var selectedPath=Cache.Read(0)??Cache.Read(1);
+                return selectedPath!=null && selectedPath.Identity.Equals(identity) && selectedPath.CaptureTick==tick?selectedPath:null;
+            }
             if(candidateSource==null)candidateSource=new NpcPredictionSource{candidateOnly=true};
             candidateSource.Cache.Demand(0,1,Math.Min(required,NpcPredictionCache.Horizon));
             candidateSource.candidateReuseMiss=reuseMiss;
@@ -263,6 +278,7 @@ namespace JueMingR.TerrariaHost.Combat
         {PrepareWithIceLease(identity,tick,true);}
         private void PrepareSample(NpcIdentity identity,long tick,bool firstPlayerStepCompleted)
         {
+            CombatPredictionWork.Check();
             outcomeTick=-1;
             if(Cache.Required==0){Clear();return;}
             if(!CombatSelection.Valid(identity,identity.Session)){Clear();return;}

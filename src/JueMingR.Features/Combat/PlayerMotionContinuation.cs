@@ -22,6 +22,7 @@ namespace JueMingR.Features.Combat
         }
         public static bool Advance(ref PredictionPlayerMotion p,PredictionEnvironment e,IPredictionTerrain terrain,out PredictionStop stop)
         {
+            CombatPredictionWork.Check();
             stop=PredictionStop.None;
             if(!BeginWallFall(ref p,e,terrain,out stop))return false;
             if(!BeginGravity(ref p,e,out stop))return false;

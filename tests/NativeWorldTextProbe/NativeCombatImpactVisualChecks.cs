@@ -21,6 +21,7 @@ namespace NativeWorldTextProbe
         private static bool PathInk(Color p){return p.A>100 && p.R>180 && p.G>150 && p.B>150;}
         internal static void Run(object context,ProbeGraphics graphics,string output)
         {
+            if(Environment.GetEnvironmentVariable("JMR_IMPACT_VISUAL_ONLY")=="natural-slime"){NativeCombatNaturalImpactChecks.Run(context,graphics,Path.Combine(output,"natural-slime"));return;}
             if(Environment.GetEnvironmentVariable("JMR_IMPACT_VISUAL_ONLY")=="usage"){NativeCombatUsageChecks.Run(context,graphics,output);return;}
             Directory.CreateDirectory(output);var host=Get(context,"CombatObservation");var combat=Get(context,"Combat");var attack=Get(combat,"Attack");var world=Get(host,"World");var impact=Get(world,"Impact");var input=Get(context,"Input");
             var harmony=new Harmony("JueMingR.Tests.ImpactVisual");
@@ -75,6 +76,7 @@ namespace NativeWorldTextProbe
             // The default scope owns the natural source/presentation chain
             // too; selectors only shorten local runs, never define coverage.
             NativeCombatUsageChecks.Run(context,graphics,Path.Combine(output,"natural-usage"));
+            NativeCombatNaturalImpactChecks.Run(context,graphics,Path.Combine(output,"natural-slime"));
         }
     }
 }
