@@ -1,0 +1,52 @@
+[
+  {
+    "name": "g05-r10-candidate.log",
+    "length": 13733,
+    "sha256": "54DBFDB6F09838A56F330707BC81CC57D4BF2169585CC5021A19531F389E68CA"
+  },
+  {
+    "name": "g05-r9-reference.log",
+    "length": 3598,
+    "sha256": "9BA7B6C8E48A91AACBF94EB1101A14047BD98A6477B2A3A53D0D1309F6ABE506"
+  },
+  {
+    "name": "moving-attack.png",
+    "length": 24734,
+    "sha256": "6DA0537848D3E7CBBE9E235EC7A2902BBD43EF2763F4866E132C460247B84A17"
+  },
+  {
+    "name": "moving-idle.png",
+    "length": 25116,
+    "sha256": "6A1C070D21A61916FD97BE063F20ACE61A494E29C3DF4E113BD7CB57255B1EE2"
+  },
+  {
+    "name": "moving-restore.png",
+    "length": 24694,
+    "sha256": "0CA77DD758058890F525E6CFFA7F8B3AC204E784ECAAA68A2425668E0D17B092"
+  },
+  {
+    "name": "natural-slime-frames.csv",
+    "length": 73472,
+    "sha256": "D526F05CC71108BE1EAEC803F45A0E1838D1F15DF1C16F7E772093AEA593BB14"
+  },
+  {
+    "name": "standing-attack.png",
+    "length": 25258,
+    "sha256": "F267CD5F0397A0BC7BA976F53B6C701864BA1487046CD14DA9197F491AF3EB6F"
+  },
+  {
+    "name": "standing-first-failure.png",
+    "length": 25053,
+    "sha256": "D6C7ACB3E66FFDF3ACA96D733C3ED0E10C0D17E2799090FC3E778F8FFEDE3732"
+  },
+  {
+    "name": "standing-idle.png",
+    "length": 25114,
+    "sha256": "33D31E6ED1292B9F348C65878A6D4BE6C2E2A4C79C2C9D2830A12CB0ACB59EBD"
+  },
+  {
+    "name": "standing-restore.png",
+    "length": 25386,
+    "sha256": "DB018398F4AA292F575C8842D99D1E282363BC777C31EBBB024128CDD34B1241"
+  }
+]

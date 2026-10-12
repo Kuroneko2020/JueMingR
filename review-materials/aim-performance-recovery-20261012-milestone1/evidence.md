@@ -20,3 +20,7 @@
 g05最终本批私有Release/x86四程序集与Debug观察probe都构建0warning/0error，`g05-basic-r01.log` child exit0：铜短剑远目标、Starfury世界坐标/反重力、叶绿镋近父/远派生/连续移动/重按/松手/OFF，纯无shoot挥剑在原版真实StartActualUse消费方向，未来增强故障仍刷新新目标并自然出生，焦点/UI/死亡/换物/身份/真选择器故障拒绝；Bow实际Basic不显示另一自由弧线，idle仅路径保留；DD2原版CanUse/Shoot在增强故障仍借有效Use point，OFF/receipt身份拒绝；Yoyo整墙/8px洞停止、16px洞通过。g02旧私有载荷的Yoyo失败保留，与g03/g04/g05新短段body实现分开。g05 Host SHA `173863731C388FD5B88CED965CE4DE0DBED9EE0EB41A5AD1905BE60545A7DCDC`、MVID `c4954de5-9fb9-43e8-a819-b88247e3de2a`；probe SHA `08298DD79D6FF6511D083961B728F773467E5FE5CFBD850BA0D6471BD99A66DA`。
 
 本批仍未完成最终准入：持续性能配对OFF/b038、冷启动171ms尖峰配对分类、预算强制退出/Basic仍合法/次帧恢复、既有工作量检查纠偏、Source仅Aim consumer共享与ClearLine反例、自然史莱姆实际候选Draw、集中独审、完整包及正常安全换装都还待取得有效证据。此前Draw reference失败为隔离世界维度/资产/footprint身份前提，不能说候选已验证。现装仍75a，不创建Release，不合并或关闭任务。
+
+新增有效自然Draw失败原件在`natural-g05-r10/`：同g05、优化Release四模块/固定r10 probe，站定应画294、实画291，最长blank2；移动294/294，天然birth15/15、hit16/15、landing16/15、移动91.32px。站定idle2/3预算耗尽7.5022/7.5496ms；另attack180/tick261预算未耗尽、Used2.228ms却Contact/visible/red均空，是独立真实首发断点。首失败PNG及6正常帧图、完整600行CSV和有效原版reference原日志保留。图像入口当时每帧分配RenderTarget和2.4MB读回缓冲，后继会复用缓冲定向区分，不能把此GPU诊断窗称正式性能计时或直接归因GC。
+
+`RoomPhaseMeasure.cs`及`g05-roomphase-r02.log`为固定g05同room另跑低频9边界诊断，预算异常只计类型以免每次构造StackTrace：600窗UpdateSampleCore792次inclusive1945.5369ms，Source.PrepareSample630/1770.9738，Rolling629/1742.7768；PreparePlan591/122.9358，HostProjectileEnvironment.Solve680/84.8717，AttackIntercept.Solve679/82.1468。嵌套不能相加，探针不代签成本门；主要持续成本仍是NPC未来准备，Factor末尾异常检测点不等于热点。第一私有适配尝试把Harmony放exe邻接导致Default/LoadFrom上下文TypeLoad前提失败；保留移出这一新增DLL后r02进入实际场景，未补ABI。

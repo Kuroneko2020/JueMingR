@@ -1,0 +1,19 @@
+LOAD 0Harmony MVID=024a0e6e-c8c2-437e-ad04-7b6279389c23 SHA256=7B9E756306FA3D7620E02A857C8927A6AB04973F9BD8A77D3866700A6DEAC55C location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g05\bin\JueMingR.TerrariaHost\x86\Release\net472\0Harmony.dll
+LOAD JueMingR.Platform MVID=6adfdecb-33f6-4e37-900d-cf30b743d0d3 SHA256=009AB597CBA7F9AB6B3451F01C8CD797ADDFCB05663D93034A22E4C21C933FA1 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g05\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Platform.dll
+LOAD JueMingR.Features MVID=d8e30ea3-789e-4026-8c4b-ceee846a1c2b SHA256=08F7103ED085CD0B02C5D5F66C0ED4E4FC90270D8C9E9927C2F49CC6A3B977BA location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g05\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Features.dll
+LOAD JueMingR.Infrastructure MVID=5a340d51-11ac-4333-845c-247b57397fdd SHA256=543A562F9D17FCAEA4D4EADCCED6C785F64D5E24986D5DDDFB2494F745E02445 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g05\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Infrastructure.dll
+LOAD JueMingR.TerrariaHost MVID=c4954de5-9fb9-43e8-a819-b88247e3de2a SHA256=173863731C388FD5B88CED965CE4DE0DBED9EE0EB41A5AD1905BE60545A7DCDC location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g05\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.TerrariaHost.dll
+ISOLATED SavePath=C:\Users\kongd\Desktop\JueMingR\.local\ia-53e3e2b9 max-path-safe private root
+GAME MVID=2c29f6c3-4bd9-4add-9c58-da159804e083 SHA256=960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3
+PROBE SHA256=08298DD79D6FF6511D083961B728F773467E5FE5CFBD850BA0D6471BD99A66DA scope=CombatImpactVisual:natural-slime mode=reference; release runtime, debug-only measurement counters unused
+Explicit historical candidate: C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g05\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.TerrariaHost.dll MVID=c4954de5-9fb9-43e8-a819-b88247e3de2a
+COMPOSITION initialization-ms=5185.9277 code-prepare-ms=346.4351 exact-comparison=False
+NATURAL-MAP original Stone sidewalls x=41,63 y=55..79; Stone floor y=80/worldSurface=80, ordinary original height-derived gravity; same OFF/ON map; slime life=100000, player immunity for finite observation only
+NATURAL-WORLD id=8dadfedb-8309-4d2a-a2d9-d2177b1b1e85 footprintPair=5e25304d0ea7e3c8adc7fb582c847b62035443bfdd37b9f49859ae48a9ca2193 footprintDimensions=400x240
+NATURAL-SMOKE moving=False assist=False gravity=0.3 playerBottom=1280 npcBottom=1280 world=400x240
+NATURAL-IMPACT moving=False assist=False expected=0 visible=0 airborne=176 landings=16 normalGravitySteps=69 playerDelta=0 births=15 assistedBirths=0 nativeHits=16
+NATURAL-MAP original Stone sidewalls x=41,63 y=55..79; Stone floor y=80/worldSurface=80, ordinary original height-derived gravity; same OFF/ON map; slime life=100000, player immunity for finite observation only
+NATURAL-WORLD id=3efb1e7f-9318-40a6-840a-45bd1c557acd footprintPair=f795a7cc6e51027c7cd247c3100f13f20aa78a72935e76d227d8284df8d56db7 footprintDimensions=400x240
+NATURAL-SMOKE moving=True assist=False gravity=0.3 playerBottom=1280 npcBottom=1280 world=400x240
+NATURAL-IMPACT moving=True assist=False expected=0 visible=0 airborne=177 landings=15 normalGravitySteps=69 playerDelta=91.32001 births=15 assistedBirths=0 nativeHits=15
+PASS independent original standing/moving blue-slime gun reference, fixed near-range windows, natural jump/landing and native birth/damage
