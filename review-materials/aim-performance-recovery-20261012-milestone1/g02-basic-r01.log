@@ -1,0 +1,40 @@
+LOAD JueMingR.Platform source=0.0.0-dev+uncommitted-perf-input-g02 MVID=e9721ec7-dbae-40b0-80e0-28c600c29925 SHA256=B5D63E45599B46E0712663FA4EF97B317957C3A78E4497F0D3A847791B9DACCF location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g02\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Platform.dll
+LOAD JueMingR.Features source=0.0.0-dev+uncommitted-perf-input-g02 MVID=1eec51d7-fb53-4487-8a8a-89967119322f SHA256=6D099C3E571EC6D28031164F5B61DE96C9C1E402AA4DE662855F501C8A838788 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g02\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Features.dll
+LOAD JueMingR.Infrastructure source=0.0.0-dev+uncommitted-perf-input-g02 MVID=a5f34f90-9a0f-4d48-88ab-6c6d3688c8fa SHA256=42B1B2BA7EE6B8E98C109AEF4A5417B6C210B0FD5C99A701ED4295CDC7D26E6A location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g02\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Infrastructure.dll
+LOAD JueMingR.TerrariaHost source=0.0.0-dev+uncommitted-perf-input-g02 MVID=e1b7bdf1-b222-44a6-a28c-12f6fc627c5c SHA256=003507F605894830F96256B7BFB34A2E47027BD0563382729D8B1E768F01AEE6 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g02\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.TerrariaHost.dll
+GAME MVID=2c29f6c3-4bd9-4add-9c58-da159804e083 SHA256=960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3
+Explicit historical candidate: C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g02\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.TerrariaHost.dll MVID=e1b7bdf1-b222-44a6-a28c-12f6fc627c5c
+COMPOSITION initialization-ms=5085.7811 code-prepare-ms=322.1643 exact-comparison=False
+PASS BASIC item=3507 targetTileX=85 moving=False assist=False consumers=3 assisted=0 manual=3 parentHits=0 childHits=0
+PASS BASIC item=65 targetTileX=85 moving=False assist=False consumers=3 assisted=0 manual=3 parentHits=0 childHits=0
+PASS BASIC item=1228 targetTileX=49 moving=False assist=False consumers=3 assisted=0 manual=3 parentHits=0 childHits=0
+PASS BASIC item=1228 targetTileX=60 moving=False assist=False consumers=3 assisted=0 manual=3 parentHits=0 childHits=0
+PASS BASIC item=1228 targetTileX=85 moving=False assist=False consumers=3 assisted=0 manual=3 parentHits=0 childHits=0
+PASS BASIC item=1228 targetTileX=60 moving=True assist=False consumers=3 assisted=0 manual=3 parentHits=0 childHits=0
+PASS BASIC item=3507 targetTileX=85 moving=False assist=True consumers=3 assisted=2 manual=1 parentHits=0 childHits=0
+PASS BASIC item=65 targetTileX=85 moving=False assist=True consumers=3 assisted=2 manual=1 parentHits=0 childHits=0
+PASS BASIC item=1228 targetTileX=49 moving=False assist=True consumers=3 assisted=2 manual=1 parentHits=2 childHits=0
+PASS BASIC item=1228 targetTileX=60 moving=False assist=True consumers=3 assisted=2 manual=1 parentHits=0 childHits=11
+PASS BASIC item=1228 targetTileX=85 moving=False assist=True consumers=3 assisted=2 manual=1 parentHits=0 childHits=0
+PASS BASIC item=1228 targetTileX=60 moving=True assist=True consumers=3 assisted=2 manual=1 parentHits=0 childHits=6
+PASS BASIC item=1228 targetTileX=52 moving=False assist=True consumers=3 assisted=2 manual=1 parentHits=4 childHits=0
+PASS BASIC item=1228 targetTileX=56 moving=False assist=True consumers=3 assisted=2 manual=1 parentHits=2 childHits=2
+PASS BASIC item=1228 targetTileX=64 moving=False assist=True consumers=3 assisted=2 manual=1 parentHits=0 childHits=0
+PASS BASIC item=1228 targetTileX=70 moving=False assist=True consumers=3 assisted=2 manual=1 parentHits=0 childHits=0
+System.Reflection.TargetInvocationException: Exception has been thrown by the target of an invocation. ---> System.Reflection.TargetInvocationException: Exception has been thrown by the target of an invocation. ---> System.InvalidOperationException: solid wall and 8px gap stop the whole body; a 16px gap admits its direct intent: gap=0 point={X:839 Y:664}
+   at NativeWorldTextProbe.NativeInformationChecks.Require(Boolean value, String reason)
+   at NativeWorldTextProbe.NativeCombatBasicAimChecks.YoyoBodyFallback(Object context)
+   at NativeWorldTextProbe.NativeCombatBasicAimChecks.Run(Object context)
+   --- End of inner exception stack trace ---
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Object[] arguments, Signature sig, Boolean constructor)
+   at System.Reflection.RuntimeMethodInfo.UnsafeInvokeInternal(Object obj, Object[] parameters, Object[] arguments)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+   at ContinuousCombatMeasure.Invoke(String t, String n, Object[] a)
+   at ContinuousCombatMeasure.Exercise(Object context)
+   at NativeWorldTextProbe.NativeQuickItemChecks.Run(Action`1 visual, Boolean coins, Boolean about, Boolean recovery, Boolean processing, Boolean shortFeedback, String candidateAssembly, String predictionHostHash, String candidatePackageId, Boolean exactPredictionComparison)
+   --- End of inner exception stack trace ---
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Object[] arguments, Signature sig, Boolean constructor)
+   at System.Reflection.RuntimeMethodInfo.UnsafeInvokeInternal(Object obj, Object[] parameters, Object[] arguments)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+   at ContinuousCombatMeasure.Invoke(String t, String n, Object[] a)
+   at ContinuousCombatMeasure.Main(String[] a)

@@ -1,0 +1,30 @@
+LOAD JueMingR.Platform source=0.0.0-dev+uncommitted-perf-input-g03 MVID=4882c881-0853-4e3a-bba2-b3029277bb4f SHA256=3B3AA0A62657F0DA401CFF883DF2498357EE9F1BA0048A4A8019B05D4B54363E location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g03\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Platform.dll
+LOAD JueMingR.Features source=0.0.0-dev+uncommitted-perf-input-g03 MVID=748371c1-ac84-43b5-8697-4562ba795667 SHA256=059F97D245CA13DCC163B3C519467C24D0964CFA668A172A1D2B2C2CCD095E21 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g03\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Features.dll
+LOAD JueMingR.Infrastructure source=0.0.0-dev+uncommitted-perf-input-g03 MVID=1bfe0355-9e90-4d8f-baa0-71521fbe5d36 SHA256=3BE43A13531F55464128E080669E78ACE258714AE15D05ED12AF70DDA39BC841 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g03\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Infrastructure.dll
+LOAD JueMingR.TerrariaHost source=0.0.0-dev+uncommitted-perf-input-g03 MVID=b8e986e1-62e9-43da-b21e-49529bb957eb SHA256=613A5B0F80ACA4F0D9192CBDEC4958A4DC0DD251FA8BA49F872E5E747DE0AE9B location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g03\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.TerrariaHost.dll
+GAME MVID=2c29f6c3-4bd9-4add-9c58-da159804e083 SHA256=960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3
+Explicit historical candidate: C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g03\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.TerrariaHost.dll MVID=b8e986e1-62e9-43da-b21e-49529bb957eb
+COMPOSITION initialization-ms=4954.782 code-prepare-ms=331.2001 exact-comparison=False
+PASS BASIC item=3507 targetTileX=85 moving=False reverseGravity=False assist=False consumers=3 assisted=0 enhanced=0 manual=3 parentHits=0 childHits=0
+PASS BASIC item=65 targetTileX=85 moving=False reverseGravity=False assist=False consumers=3 assisted=0 enhanced=0 manual=3 parentHits=0 childHits=0
+PASS BASIC item=1228 targetTileX=49 moving=False reverseGravity=False assist=False consumers=3 assisted=0 enhanced=0 manual=3 parentHits=0 childHits=0
+PASS BASIC item=1228 targetTileX=60 moving=False reverseGravity=False assist=False consumers=3 assisted=0 enhanced=0 manual=3 parentHits=0 childHits=0
+PASS BASIC item=1228 targetTileX=85 moving=False reverseGravity=False assist=False consumers=3 assisted=0 enhanced=0 manual=3 parentHits=0 childHits=0
+PASS BASIC item=1228 targetTileX=60 moving=True reverseGravity=False assist=False consumers=3 assisted=0 enhanced=0 manual=3 parentHits=0 childHits=0
+PASS BASIC item=3507 targetTileX=85 moving=False reverseGravity=False assist=True consumers=3 assisted=2 enhanced=0 manual=1 parentHits=0 childHits=0
+PASS BASIC item=65 targetTileX=85 moving=False reverseGravity=False assist=True consumers=3 assisted=2 enhanced=0 manual=1 parentHits=0 childHits=0
+PASS BASIC item=1228 targetTileX=49 moving=False reverseGravity=False assist=True consumers=3 assisted=2 enhanced=2 manual=1 parentHits=2 childHits=0
+PASS BASIC item=1228 targetTileX=60 moving=False reverseGravity=False assist=True consumers=3 assisted=2 enhanced=2 manual=1 parentHits=0 childHits=11
+PASS BASIC item=1228 targetTileX=85 moving=False reverseGravity=False assist=True consumers=3 assisted=2 enhanced=0 manual=1 parentHits=0 childHits=0
+PASS BASIC item=1228 targetTileX=60 moving=True reverseGravity=False assist=True consumers=3 assisted=2 enhanced=2 manual=1 parentHits=0 childHits=6
+PASS BASIC item=1228 targetTileX=52 moving=False reverseGravity=False assist=True consumers=3 assisted=2 enhanced=2 manual=1 parentHits=4 childHits=0
+PASS BASIC item=1228 targetTileX=56 moving=False reverseGravity=False assist=True consumers=3 assisted=2 enhanced=2 manual=1 parentHits=2 childHits=2
+PASS BASIC item=1228 targetTileX=64 moving=False reverseGravity=False assist=True consumers=3 assisted=2 enhanced=0 manual=1 parentHits=0 childHits=0
+PASS BASIC item=1228 targetTileX=70 moving=False reverseGravity=False assist=True consumers=3 assisted=2 enhanced=0 manual=1 parentHits=0 childHits=0
+PASS BASIC item=65 targetTileX=85 moving=False reverseGravity=True assist=True consumers=3 assisted=2 enhanced=0 manual=1 parentHits=0 childHits=0
+PASS BASIC pure-swing item=24 assist=False naturalStarts=2 direction=-1
+PASS BASIC pure-swing item=24 assist=True naturalStarts=2 direction=1
+PASS BASIC future-fault selection/native consumer and death/identity/weapon/UI/focus/OFF/selector rejection
+PASS BASIC yoyo current-body geometry gap=0 point={X:790 Y:664} source={X:710 Y:664}
+PASS BASIC yoyo current-body geometry gap=8 point={X:790 Y:664} source={X:710 Y:664}
+PASS BASIC yoyo current-body geometry gap=16 point={X:839 Y:664} source={X:710 Y:664}
