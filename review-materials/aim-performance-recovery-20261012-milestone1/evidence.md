@@ -1,5 +1,7 @@
 # 性能事故恢复首里程碑证据
 
+后继 g07 配对计时 PASS、自然 Draw FAIL18、无全 Audit 的 PathOFF ClearLine FAIL 及预算时钟更正，见 [g07 原件与判定](g07-evidence/evidence.md)。下文保留早期记录；其中 g05 帧末预算 false 不能证明整帧未超限，首发“非预算”归因已撤回。
+
 源码固定提交 `380132ecfe93c5daa79a5fcd6f2a62463d4fe76a`，相对事故产品 `75a1072cba59fbb84f587ec5615b8f32a9cedcb5` 的完整当前增量供独审。`source-tree-380132e.txt` 是该提交 src/tests/scripts/eng 的 Git tree，SHA256 `7C48F59D4BF61ED0DFFEA26007A16CDD3BC6C42CE16A73BA1B110F386AB3EAA0`。它不是含外来dirty资产的正式构建指纹；后续完整包仍需正规身份生成。
 
 本目录只保留可审文本、逐帧CSV及私有测量源码，没有原版DLL、包、角色世界或用户配置。`manifest.json` 核原始复制件长度/SHA。文件保留实载MVID、SHA、原版身份和原失败；源码由单Git writer保存，原四项dirty资产未纳入提交。

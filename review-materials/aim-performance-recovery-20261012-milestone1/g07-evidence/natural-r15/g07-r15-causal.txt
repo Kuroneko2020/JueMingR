@@ -1,0 +1,19 @@
+r15 minimum read-only causal evidence; no new execution or diagnostic hooks.
+Independent Should denominator294each: same r9 real original scene/window and explicit conditions; never Contact-filtered. Positive remains FAIL18.
+Fixed g07Host0E12FC88C66F3A12689B0ACF545E3E2726962364EF07FCBB68D7B02E44446D5A; shared probeE01D1E72C01D7AB3485876D3446E7517FC6BBCE8506916B83DE09CE9A7E9CBC8; original adapter35A0273020B1CE6BB5C61894B7303EA490CB13E33DBBB867103A459E12562EEF.
+Runtime code: HostCombatObservation.PrepareAction passesGUC/sampleGUC-1; Update passesGUC/sampleGUC; HostAttackAim.PreparePhase usesGUC. CombatPredictionWork.Enter only resets whenkeychanges; Leave accumulates only charged scopes. This is static code evidence, not measured BeforeNpc subtotal.
+BeforeNpc spent subtotal and explicit enter/exit snapshot: NOT CAPTURED / unavailable. Do not derive or backfill it from completed total.
+Before/after visible observations at179/180/181 (CSV original headers retained):
+"run","phase","frame","tick","expected","contact","visible","redPixels","pathCount","npcX","npcY","npcVx","npcVy","playerX","playerY","playerVx","playerVy","receiveTick","stop","selected","budgetExceeded","budgetMs","previewPhase"
+"moving","idle","179","640","True","True","True","33","121","696.4222","1228.4","-3","3.6","744.44","1238","0.9199987","0","2","None","True","False","3.0546","CompletedWorld"
+"moving","attack","180","641","True","False","False","0","0","693.4222","1232.3","-3","3.9","745.44","1238","0.9999987","0","-1","empty","True","True","6.4015","CompletedWorld"
+"moving","attack","181","642","True","True","True","34","121","690.4222","1236.5","-2","-1.5","746.52","1238","1.079999","0","10","None","True","False","3.2868","CompletedWorld"
+Actual consumed inputs (recorded after native chain):
+moving/attack/180 tick=641 target=3/3/1/1/1 sameReceiver=True current=False next=False rawPreviewContact=False flight=False controlled=False previewCompatible=True hasConsumed=True consumedKind=Enhanced consumedPoint={X:-9885.469 Y:-1528.663} consumedStep=641 actualTick=641 physical={X:974.44 Y:1199}
+moving/attack/181 tick=642 target=3/3/1/1/1 sameReceiver=True current=False next=False rawPreviewContact=True flight=False controlled=False previewCompatible=True hasConsumed=True consumedKind=Enhanced consumedPoint={X:-9885.469 Y:-1528.663} consumedStep=641 actualTick=642 physical={X:975.44 Y:1199}
+Actual native birth641 (not injected):
+tick=641 projectile=14 key=spawner:0, index:0, gen:16 origin={X:755.44 Y:1259} velocity={X:-11.04104 Y:-2.447158} consumedCursor={X:-9885 Y:-1528} physical={X:974.44 Y:1199} selectedReceiver=3/1 center={X:708.4222 Y:1237.4}
+NativeHit count15 for full moving window; individual hit timestamps NOT CAPTURED, so do not assign a receive frame to shot641.
+Failure is after Enhanced real consumption: raw previewfalse + compatibletrue + budgetExceededtrue + path0; nextframe recovers. It is not an incompatible Basic-ray marker suppression.
+Existing bounded FirstChance tail has budget exception stacks without per-frame stamps; cannot identify the specific hottest method or exact641 exception stage from that tail.
+Graphics/fullbuffer observation not formalCPU/FPS evidence. All raw outputs retained; no scene/threshold/production changes after r15.
