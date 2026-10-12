@@ -55,6 +55,7 @@ namespace NativeWorldTextProbe
         }
         private static void BudgetAndPathOffSelection(object context,object combat,object host,object attack,object input,bool checkWorldClock=false)
         {
+            GeometryAllowanceIntervals(host);
             var audit=new Harmony("JueMingR.Tests.IncidentBudgetSelection");
             foreach(string name in new[]{"HandleSpecialEvent","HandleRunning","HandleMining"})audit.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
             audit.Patch(typeof(Projectile).GetMethods(Flags).Single(m=>m.Name=="NewProjectile" && m.GetParameters().Length==13),postfix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks),nameof(IncidentBirth)));
@@ -111,6 +112,31 @@ namespace NativeWorldTextProbe
                 foreach(bool clearLine in new[]{false,true})PathOffSelection(context,combat,host,attack,input,clearLine);
             }
             finally{forceBudget=false;budgetAttack=budgetHost=budgetContext=abortedPlan=abortedPhase=null;incidentPlayer=null;incidentReceiver=null;audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());}
+        }
+        private static void GeometryAllowanceIntervals(object host)
+        {
+            // Exercise the actual Release owner implementation at the real
+            // world key. No world counter or clock delay is fabricated.
+            var type=Get(host,"PredictionWork").GetType();var enter=type.GetMethod("Enter",Flags);
+            var geometry=(Action)Delegate.CreateDelegate(typeof(Action),type.GetMethod("CheckGeometry",Flags));
+            var spent=type.GetField("spent",Flags);var allowance=type.GetField("allowance",Flags);
+            Func<object> create=()=>Activator.CreateInstance(type,new object[]{6.0});
+            Func<object,IDisposable> scope=owner=>(IDisposable)enter.Invoke(owner,new object[]{(ulong)Main.GameUpdateCount});
+            Func<bool> exhausted=()=>{try{geometry();return false;}catch(Exception error){if(error.GetType().Name=="CombatPredictionBudgetExceededException")return true;throw;}};
+            var first=create();
+            using(scope(first)){spent.SetValue(first,allowance.GetValue(first));Require(exhausted(),"the first geometry access immediately checks an exhausted real owner allowance");}
+            var shared=create();
+            using(scope(shared)){geometry();spent.SetValue(shared,allowance.GetValue(shared));}
+            int calls=0;bool stopped=false;
+            while(!stopped && calls<32)
+            {
+                // Repeated short scopes and one nested scope use this SAME
+                // GUC/owner. Neither is allowed to restart the cell interval.
+                using(scope(shared))using(scope(shared)){calls++;stopped=exhausted();}
+            }
+            Require(stopped && calls<=32,"geometry checks cannot indefinitely defer exhaustion through same-GUC short or nested scopes");
+            using(scope(shared))Require(exhausted(),"an already-exhausted owner rejects the very next geometry call");
+            Console.WriteLine("PASS geometry allowance first access / shared short+nested scope interval calls="+calls+" (at most32), immediate exceeded signal; actual GUC="+Main.GameUpdateCount);
         }
         private static void PathOffSelection(object context,object combat,object host,object attack,object input,bool clearLine)
         {

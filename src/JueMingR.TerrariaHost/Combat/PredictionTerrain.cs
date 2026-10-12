@@ -89,7 +89,7 @@ namespace JueMingR.TerrariaHost.Combat
         }
         private bool CellAt(int x,int y,out Cell cell,out PredictionStop stop)
         {
-            CombatPredictionWork.Check();
+            CombatPredictionWork.CheckGeometry();
             stop=PredictionStop.None;cell=default(Cell);
             if(x<0 || y<0 || x>=Main.maxTilesX || y>=Main.maxTilesY){stop=PredictionStop.TerrainUnavailable;return false;}
             int key=y*Main.maxTilesX+x,hot=(key^(key>>7)^(key>>16))&255;

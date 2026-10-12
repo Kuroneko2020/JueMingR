@@ -1,0 +1,17 @@
+Diagnostic only, unchanged full RunCpu frames. Counts are observations, not cache equivalence or performance admission. Exact SameSample includes action clocks. Prefix/postfix callers may already be inlined; target identity logging does not prove complete observer coverage. Complete counts require all four boundaries; complex/hover/handled/existing settled without Horizontal are unobserved. Case increments only when the existing fixture replaces world UniqueId; frame is every actual CpuStep, including failures and zero-call/budget-truncated frames. Join original CPU rows by case+frame, never GUC alone. Phases remain idle0..179/attack180..269/switch270..273/restore274..299/release300+. No missing-frame removal or phase assertion. Row overflow=0 unobservedOtherThreadCalls=0
+case=3 frame=0 tick=1401 firstBC=X=700.08 -> 700.24 firstBD=X=700.08 -> 700.24 firstDE=<none>
+case=3 frame=0 tick=1401 firstBC=X=700.24 -> 700.48 firstBD=X=700.24 -> 700.48 firstDE=<none>
+case=3 frame=0 tick=1401 firstBC=X=700.48 -> 700.8 firstBD=X=700.48 -> 700.8 firstDE=<none>
+case=3 frame=0 tick=1401 firstBC=X=700.8 -> 701.2 firstBD=X=700.8 -> 701.2 firstDE=<none>
+case=3 frame=0 tick=1401 firstBC=X=701.2 -> 701.68 firstBD=X=701.2 -> 701.68 firstDE=<none>
+case=3 frame=0 tick=1401 firstBC=X=701.68 -> 702.24 firstBD=X=701.68 -> 702.24 firstDE=<none>
+case=3 frame=0 tick=1401 firstBC=X=702.24 -> 702.88 firstBD=X=702.24 -> 702.88 firstDE=<none>
+case=3 frame=0 tick=1401 firstBC=X=702.88 -> 703.6 firstBD=X=702.88 -> 703.6 firstDE=<none>
+case=3 frame=0 tick=1401 firstBC=X=703.6 -> 704.4 firstBD=X=703.6 -> 704.4 firstDE=<none>
+case=3 frame=0 tick=1401 firstBC=X=704.4 -> 705.28 firstBD=X=704.4 -> 705.28 firstDE=<none>
+case=3 frame=0 tick=1401 firstBC=X=705.28 -> 706.24 firstBD=X=705.28 -> 706.24 firstDE=<none>
+case=3 frame=0 tick=1401 firstBC=X=706.24 -> 707.28 firstBD=X=706.24 -> 707.28 firstDE=<none>
+case=3 frame=0 tick=1401 firstBC=X=707.28 -> 708.4 firstBD=X=707.28 -> 708.4 firstDE=<none>
+case=3 frame=0 tick=1401 firstBC=X=708.4 -> 709.6 firstBD=X=708.4 -> 709.6 firstDE=<none>
+case=3 frame=0 tick=1401 firstBC=X=709.6 -> 710.88 firstBD=X=709.6 -> 710.88 firstDE=<none>
+case=3 frame=0 tick=1401 firstBC=X=710.88 -> 712.24 firstBD=X=710.88 -> 712.24 firstDE=<none>

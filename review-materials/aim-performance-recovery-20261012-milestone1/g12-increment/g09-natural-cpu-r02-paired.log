@@ -1,0 +1,18 @@
+LOAD 0Harmony MVID=024a0e6e-c8c2-437e-ad04-7b6279389c23 SHA256=7B9E756306FA3D7620E02A857C8927A6AB04973F9BD8A77D3866700A6DEAC55C location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g09\bin\JueMingR.TerrariaHost\x86\Release\net472\0Harmony.dll
+LOAD JueMingR.Platform MVID=4f8f5800-b8ff-4a33-adff-a74c5b43f8af SHA256=7A8A19BB3F311FE7549DA72F0330F75A6F6376B66545BA7B809F0C662B8A46D2 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g09\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Platform.dll
+LOAD JueMingR.Features MVID=a4308117-251a-448b-b309-3fdcd038d3eb SHA256=51DB2340B13C42B7C6A4C7BF28B5CB68182303F2A913CC91F306E2820E64D28C location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g09\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Features.dll
+LOAD JueMingR.Infrastructure MVID=602c607d-8803-4064-870e-ef27005ef165 SHA256=5F5D0AC5C7C456A3890A4EBCF551972F8F3AD050518A0951CDC6C78899F6F2C7 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g09\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Infrastructure.dll
+LOAD JueMingR.TerrariaHost MVID=a220125c-f55e-4fb9-acdd-3343b96c1b30 SHA256=957A5463BD9399C597E24A4218BEEAB94268759528C0313F69765FCF879372C5 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g09\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.TerrariaHost.dll
+ISOLATED SavePath=C:\Users\kongd\Desktop\JueMingR\.local\ia-aa015bcb max-path-safe private root
+GAME MVID=2c29f6c3-4bd9-4add-9c58-da159804e083 SHA256=960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3
+PROBE SHA256=FA8F05FE09A38DDCDB96F0BB9C73AE5AF2D94EF21623E3216924EC25AFAA94DB scope=NaturalCpu:no-draw mode=cpu; release runtime, debug-only measurement counters unused
+Explicit historical candidate: C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g09\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.TerrariaHost.dll MVID=a220125c-f55e-4fb9-acdd-3343b96c1b30
+COMPOSITION initialization-ms=5735.5985 code-prepare-ms=380.2073 exact-comparison=False
+NATURAL-MAP original Stone sidewalls x=41,63 y=55..79; Stone floor y=80/worldSurface=80, ordinary original height-derived gravity; same OFF/ON map; slime life=100000, player immunity for finite observation only
+NATURAL-WORLD id=12123121-1ab4-4f78-ae8d-14d5475cf431 footprintPair=6b3b58ac23df296e7887691f7816e2595501c7f23690979104a6fb0e12fb5c00 footprintDimensions=400x240
+NATURAL-MAP original Stone sidewalls x=41,63 y=55..79; Stone floor y=80/worldSurface=80, ordinary original height-derived gravity; same OFF/ON map; slime life=100000, player immunity for finite observation only
+NATURAL-WORLD id=ae57b933-59bc-4065-b928-cfa0a7bd94a7 footprintPair=8055166437d76dcc7ee898b4d15b602c5f401d24e8417d7399bb54fbb4f0b2f8 footprintDimensions=400x240
+NATURAL-MAP original Stone sidewalls x=41,63 y=55..79; Stone floor y=80/worldSurface=80, ordinary original height-derived gravity; same OFF/ON map; slime life=100000, player immunity for finite observation only
+NATURAL-WORLD id=11ba21dd-b55b-4337-a821-7a7d52a9ba05 footprintPair=af7454cfb3245e64b872a51ec341388f5198190de070f8e238357079a159e680 footprintDimensions=400x240
+NATURAL-MAP original Stone sidewalls x=41,63 y=55..79; Stone floor y=80/worldSurface=80, ordinary original height-derived gravity; same OFF/ON map; slime life=100000, player immunity for finite observation only
+NATURAL-WORLD id=295535f3-6bc0-48e7-a236-345aa37c7cac footprintPair=33dab6f33c572a777bac522218c88d7dcdb1daa9139d26e2dc2e1c0c237fef33 footprintDimensions=400x240

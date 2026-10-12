@@ -152,21 +152,26 @@ namespace NativeWorldTextProbe
             Directory.CreateDirectory(output);
             var host=Get(context,"CombatObservation");var combat=Get(context,"Combat");var input=Get(context,"Input");var world=Get(host,"World");var attack=Get(combat,"Attack");
             var audit=new Harmony("JueMingR.Tests.NaturalSlimeImpact");
-            foreach(string name in new[]{"HandleSpecialEvent","HandleRunning","HandleMining"})audit.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
-            audit.Patch(typeof(Player).GetMethod("TryUpdateChannel",Flags),postfix:new HarmonyMethod(typeof(NativeCombatNaturalImpactChecks).GetMethod(nameof(Born),Flags)));
-            audit.Patch(AccessTools.Method(typeof(Player),"Update",new[]{typeof(int)}),prefix:new HarmonyMethod(typeof(NativeCombatNaturalImpactChecks).GetMethod(nameof(MoveBefore),Flags)));
-            audit.Patch(AccessTools.Method(typeof(NPC),"StrikeNPC",new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)}),postfix:new HarmonyMethod(typeof(NativeCombatNaturalImpactChecks).GetMethod(nameof(Hit),Flags)));
             bool originalFilm=Main.LocalPlayer.isControlledByFilm;
             var rows=new List<string>{"run,phase,frame,tick,expected,contact,visible,redPixels,pathCount,npcX,npcY,npcVx,npcVy,playerX,playerY,playerVx,playerVy,receiveTick,stop,selected,budgetExceeded,budgetMs,previewPhase"};
             var failures=new List<string>();
             var inputRows=new List<string>();birthRows.Clear();
             var pixelBuffer=timing?null:new Color[960*640];
-            var cpuRecords=timing?new CpuRecord[4*480]:null;int cpuCount=0,cpuCase=0;cpuMode=timing;
-            var bound=timing?new CpuBindings(context,combat,host,input,attack):null;
+            var cpuRecords=timing?new CpuRecord[4*480]:null;int cpuCount=0,cpuCase=0;
             var cpuAllocations=timing?new long[4]:null;long allocationStart=0,allocationEnd=0;
-            if(timing){AppDomain.MonitoringIsEnabled=true;allocationStart=AppDomain.CurrentDomain.MonitoringTotalAllocatedMemorySize;}
+            Exception runFailure=null;
+            var cleanupFailures=new List<Exception>();
             try
             {
+                // Even a partial hook installation or binding failure owns
+                // the same cleanup as a completed observation window.
+                foreach(string name in new[]{"HandleSpecialEvent","HandleRunning","HandleMining"})audit.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
+                audit.Patch(typeof(Player).GetMethod("TryUpdateChannel",Flags),postfix:new HarmonyMethod(typeof(NativeCombatNaturalImpactChecks).GetMethod(nameof(Born),Flags)));
+                audit.Patch(AccessTools.Method(typeof(Player),"Update",new[]{typeof(int)}),prefix:new HarmonyMethod(typeof(NativeCombatNaturalImpactChecks).GetMethod(nameof(MoveBefore),Flags)));
+                audit.Patch(AccessTools.Method(typeof(NPC),"StrikeNPC",new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)}),postfix:new HarmonyMethod(typeof(NativeCombatNaturalImpactChecks).GetMethod(nameof(Hit),Flags)));
+                cpuMode=timing;
+                var bound=timing?new CpuBindings(context,combat,host,input,attack):null;
+                if(timing){AppDomain.MonitoringIsEnabled=true;allocationStart=AppDomain.CurrentDomain.MonitoringTotalAllocatedMemorySize;}
                 Set(host,"LayerStatus",Enum.Parse(Get(host,"LayerStatus").GetType(),"Ready"));Main.screenWidth=960;Main.screenHeight=640;Main.UIScale=1;
                 foreach(bool moving in new[]{false,true})
                 {
@@ -337,11 +342,25 @@ namespace NativeWorldTextProbe
                 Require(failures.Count==0,"natural slime complete declared windows contain "+failures.Count+" invalid red frames; first="+(failures.Count==0?"none":failures[0]));
                 Console.WriteLine("PASS natural blue slime idle/attack/movement/switch/restore actual World.Draw; independent original gun damage and unreachable blade negative");
             }
+            catch(Exception failure){runFailure=failure;throw;}
             finally
             {
-                if(timing){allocationEnd=AppDomain.CurrentDomain.MonitoringTotalAllocatedMemorySize;WriteCpu(output,cpuRecords,cpuCount,allocationStart,allocationEnd,cpuAllocations);}else{File.WriteAllLines(Path.Combine(output,"natural-slime-frames.csv"),rows);File.WriteAllLines(Path.Combine(output,"natural-input-facts.txt"),inputRows);File.WriteAllLines(Path.Combine(output,"natural-births.txt"),birthRows);}
-                cpuMode=false;Main.LocalPlayer.isControlledByFilm=originalFilm;player=null;receiver=null;audit.UnpatchAll(audit.Id);
-                NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());
+                // Evidence I/O and each restoration are independent: one
+                // failure must not retain hooks, references or film ownership.
+                // Preserve all original exceptions rather than masking the run.
+                try{if(timing){allocationEnd=AppDomain.CurrentDomain.MonitoringTotalAllocatedMemorySize;WriteCpu(output,cpuRecords,cpuCount,allocationStart,allocationEnd,cpuAllocations);}else{File.WriteAllLines(Path.Combine(output,"natural-slime-frames.csv"),rows);File.WriteAllLines(Path.Combine(output,"natural-input-facts.txt"),inputRows);File.WriteAllLines(Path.Combine(output,"natural-births.txt"),birthRows);}}
+                catch(Exception failure){cleanupFailures.Add(failure);}
+                try{audit.UnpatchAll(audit.Id);}catch(Exception failure){cleanupFailures.Add(failure);}
+                try{Main.LocalPlayer.isControlledByFilm=originalFilm;}
+                catch(Exception failure){cleanupFailures.Add(failure);}
+                finally{cpuMode=false;player=null;receiver=null;}
+                try{NativeCombatObservationChecks.Save(host,new ObservationOptions());}catch(Exception failure){cleanupFailures.Add(failure);}
+                try{NativeCombatCadenceChecks.Save(combat,new CombatOptions());}catch(Exception failure){cleanupFailures.Add(failure);}
+                if(cleanupFailures.Count>0)
+                {
+                    if(runFailure!=null)cleanupFailures.Insert(0,runFailure);
+                    throw new AggregateException("Natural observation cleanup failed; original run and cleanup errors are retained.",cleanupFailures);
+                }
             }
         }
     }
