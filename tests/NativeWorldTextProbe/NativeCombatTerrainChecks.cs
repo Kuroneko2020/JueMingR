@@ -63,6 +63,7 @@ namespace NativeWorldTextProbe
         {
             NativeCombatDryRegionChecks.Run(context);
             NativeCombatWindDependencyChecks.Run(context);
+            SlopeFreeRegions(context);
             var source=Get(Get(context,"CombatObservation"),"Prediction");var terrain=(IPredictionTerrain)Get(source,"Terrain");
             var read=source.GetType().GetMethod("Read",BindingFlags.Static|BindingFlags.NonPublic);
             var nativeMove=typeof(NPC).GetMethod("UpdateCollision",BindingFlags.Instance|BindingFlags.NonPublic);
@@ -93,6 +94,70 @@ namespace NativeWorldTextProbe
                 Borders(terrain,read,nativeMove);
             }
             finally{Main.tile[60,60]=saved;nativeGravity.SetValue(null,savedGravity);}
+        }
+        private static int slopeRegionCells;
+        private static void SlopeRegionCell(){slopeRegionCells++;}
+        private static bool SlopeRegionQuery(object terrain,float x,int width,bool expect=true)
+        {
+            const BindingFlags flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static|BindingFlags.Instance;
+            var body=new NpcMotionState{X=x,Y=400.125f,Width=width,Height=20,Vx=.5f,Vy=.3f,StairFall=true,PlayerHeadCollision=true};
+            var args=new object[]{body,false,PredictionStop.None,true,1,false,false,false};
+            bool success=(bool)terrain.GetType().GetMethod("Slopes",flags).Invoke(terrain,args);
+            Require(success==expect,"slope region query keeps defined versus unavailable terrain");
+            if(!success){Require((PredictionStop)args[2]==PredictionStop.TerrainUnavailable,"unknown/guarded slope terrain retains its real stop");return false;}
+            var actual=(NpcMotionState)args[0];
+            var original=Collision.SlopeCollision(new Vector2(body.X,body.Y),new Vector2(body.Vx,body.Vy),body.Width,body.Height);
+            Require(Math.Abs(actual.X-original.X)<.0001f && Math.Abs(actual.Y-original.Y)<.0001f &&
+                Math.Abs(actual.Vx-original.Z)<.0001f && Math.Abs(actual.Vy-original.W)<.0001f &&
+                actual.PlayerHeadCollision==Collision.up && actual.StairFall==Collision.stairFall,
+                "warm/cold slope region preserves original position/velocity/head/stair tail at x="+x+" width="+width);
+            return true;
+        }
+        private static void SlopeFreeRegions(object context)
+        {
+            const BindingFlags flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static|BindingFlags.Instance;
+            var host=Get(context,"CombatObservation");
+            var terrain=Activator.CreateInstance(host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.PredictionTerrain",true),true);
+            var cells=new System.Collections.Generic.List<Tuple<int,int,Tile>>();
+            for(int x=24;x<=35;x++)for(int y=23;y<=30;y++)cells.Add(Tuple.Create(x,y,Main.tile[x,y]));
+            bool solid=Main.tileSolid[TileID.Stone],capturing=false,guarding=false;int height=Main.maxTilesY;
+            var observer=new Harmony("JueMingR.Tests.SlopeRegionCells");
+            try
+            {
+                var cellAt=terrain.GetType().GetMethod("CellAt",flags);Require(cellAt!=null,"slope proof uses the real terrain cell consumer");
+                observer.Patch(cellAt,prefix:new HarmonyMethod(typeof(NativeCombatTerrainChecks).GetMethod("SlopeRegionCell",flags)));
+                foreach(var cell in cells)Main.tile[cell.Item1,cell.Item2]=new Tile();Main.tileSolid[TileID.Stone]=true;
+                Call(terrain,"Reset");slopeRegionCells=0;SlopeRegionQuery(terrain,400.125f,20);
+                Require(slopeRegionCells>0,"cold flat rectangle actually acquires its cells");int before=slopeRegionCells;
+                SlopeRegionQuery(terrain,407.125f,20);Require(slopeRegionCells==before,"same fully proved rectangle saves its repeated first slope scan");
+                SlopeRegionQuery(terrain,407.125f,80);Require(slopeRegionCells>before,"larger body acquires new scan bounds instead of borrowing the prior proof");
+
+                Call(terrain,"Reset");SlopeRegionQuery(terrain,407.125f,20);before=slopeRegionCells;
+                Main.maxTilesY=height+1;SlopeRegionQuery(terrain,407.125f,20);Require(slopeRegionCells>before,"world dimensions deny an old slope proof even within an unchanged local rectangle");Main.maxTilesY=height;
+                NativeToolsChecks.Tile(26,25,TileID.Stone);Main.tile[26,25].slope(1);
+                Require(!(bool)Get(terrain,"Unchanged"),"actual new slope retires the old complete cell lease");Call(terrain,"Reset");before=slopeRegionCells;
+                SlopeRegionQuery(terrain,407.125f,20);Require(slopeRegionCells>before,"new sample evaluates the actual slope against original collision");before=slopeRegionCells;
+                SlopeRegionQuery(terrain,407.125f,20);Require(slopeRegionCells>before,"a nonzero slope never becomes an all-flat region");
+
+                Main.tile[26,25].active(false);Call(terrain,"Reset");SlopeRegionQuery(terrain,407.125f,20);before=slopeRegionCells;
+                SlopeRegionQuery(terrain,407.125f,20);Require(slopeRegionCells>before,"even inactive nonzero slope conservatively denies the proof");
+                Main.tile[26,25]=new Tile();Main.tile[25,25]=null;Call(terrain,"Reset");SlopeRegionQuery(terrain,407.125f,20,false);
+                Main.tile[25,25]=new Tile();before=slopeRegionCells;SlopeRegionQuery(terrain,407.125f,20);Require(slopeRegionCells>before,"a failed partial scan cannot publish a flat proof");
+
+                Call(terrain,"BeginIcePathReadCapture");capturing=true;before=slopeRegionCells;SlopeRegionQuery(terrain,407.125f,20);
+                var reads=Call(terrain,"EndIcePathReadCapture");capturing=false;
+                Require(slopeRegionCells>before && !(bool)Call(reads,"Unaffected",new[]{new Point(25,25)}),"warm slope proof still visits and records cells while Ice capture is active");
+                Require((bool)Call(terrain,"BeginIcePlayerReadGuard",new[]{new Point(25,25)}),"slope test admits its private Ice guard");guarding=true;
+                SlopeRegionQuery(terrain,407.125f,20,false);Call(terrain,"EndIcePlayerReadGuard");guarding=false;
+                terrain.GetType().GetField("epoch",flags).SetValue(terrain,long.MaxValue);Call(terrain,"Reset");before=slopeRegionCells;
+                SlopeRegionQuery(terrain,407.125f,20);Require(slopeRegionCells>before,"epoch rollover clears old region proof and reacquires cells");
+                Console.WriteLine("PASS slope-free region: actual hot hit / float pose / size / dimensions / new slope / inactive slope / unknown partial / Ice reads and guard / epoch rollover; original SlopeCollision oracle");
+            }
+            finally
+            {
+                try{try{if(capturing)Call(terrain,"EndIcePathReadCapture");}finally{if(guarding)Call(terrain,"EndIcePlayerReadGuard");}}
+                finally{try{observer.UnpatchAll(observer.Id);}finally{Main.maxTilesY=height;Main.tileSolid[TileID.Stone]=solid;foreach(var cell in cells)Main.tile[cell.Item1,cell.Item2]=cell.Item3;Call(terrain,"Reset");}}
+            }
         }
         private static void SolidBoundaries(IPredictionTerrain terrain)
         {

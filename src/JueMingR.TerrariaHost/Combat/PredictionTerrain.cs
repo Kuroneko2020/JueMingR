@@ -24,13 +24,16 @@ namespace JueMingR.TerrariaHost.Combat
         private struct DryRegion
         {internal int Left,Right,Top,Bottom;internal long Epoch;}
         private readonly DryRegion[] dryRegions=new DryRegion[32];
+        private struct SlopeFreeRegion
+        {internal int Left,Right,Top,Bottom;internal long Epoch;}
+        private readonly SlopeFreeRegion[] slopeFreeRegions=new SlopeFreeRegion[32];
         private long epoch=1;
         private int width,height;
         private bool continuing;
 #if DEBUG
         internal int Reads {get;private set;}
 #endif
-        public void Reset(){if(continuing)return;cells.Clear();width=Main.maxTilesX;height=Main.maxTilesY;if(epoch==long.MaxValue){Array.Clear(hotEpochs,0,hotEpochs.Length);Array.Clear(dryRegions,0,dryRegions.Length);epoch=0;}epoch++;}
+        public void Reset(){if(continuing)return;cells.Clear();width=Main.maxTilesX;height=Main.maxTilesY;if(epoch==long.MaxValue){Array.Clear(hotEpochs,0,hotEpochs.Length);Array.Clear(dryRegions,0,dryRegions.Length);Array.Clear(slopeFreeRegions,0,slopeFreeRegions.Length);epoch=0;}epoch++;}
         public bool Unchanged
         {
             get{if(width!=Main.maxTilesX || height!=Main.maxTilesY)return false;foreach(var pair in cells){Cell current;if(!Read(pair.Key%width,pair.Key/width,out current) || !current.Equals(pair.Value))return false;}return true;}
@@ -539,10 +542,23 @@ namespace JueMingR.TerrariaHost.Combat
         {
             stop=PredictionStop.None;float x=n.X,y=n.Y,w=n.Width,h=n.Height,correctX=x,correctY=y,upper=y,lower=y,vx=n.Vx,vy=n.Vy;int mask=0;bool stairFall=false;
             if(signedProjectile?!SignedProjectileArea(x,y,w,h,true,out stop,nativeClip):nativeClip?!FreeBody(x,y,w,h,out stop):!QueryArea(x,y,w,h,out stop))return false;
-            for(int i=Math.Max(0,(int)(x/16)-1);i<Math.Min(Main.maxTilesX-1,(int)((x+w)/16)+2);i++)
-            for(int j=Math.Max(0,(int)(y/16)-1);j<Math.Min(Main.maxTilesY-40,(int)((y+h)/16)+2);j++)
+            CombatPredictionWork.Check();
+            int left=Math.Max(0,(int)(x/16)-1),right=Math.Min(Main.maxTilesX-1,(int)((x+w)/16)+2);
+            int top=Math.Max(0,(int)(y/16)-1),bottom=Math.Min(Main.maxTilesY-40,(int)((y+h)/16)+2);
+            bool cacheable=w>0 && h>0 && width==Main.maxTilesX && height==Main.maxTilesY && icePlayerGuard==null && icePathReads==null;
+            int slot=(left^(right*397)^(top*17)^(bottom*31))&31;var flat=slopeFreeRegions[slot];
+            bool flatMatch=cacheable && flat.Epoch==epoch && flat.Left==left && flat.Right==right && flat.Top==top && flat.Bottom==bottom;
+            // A COMPLETE scan proving every leased cell has Slope==0 cannot
+            // write any correction/mask/stair state, regardless of float pose
+            // inside the same discrete bounds. Retain acquisition and the
+            // whole cell lease; unknowns and even inactive nonzero slopes deny
+            // this proof. Ice capture/guards must still visit each cell. A hit
+            // saves only this first scan, never entry/exit validation or tails.
+            bool allFlat=true;
+            for(int i=left;!flatMatch && i<right;i++)
+            for(int j=top;j<bottom;j++)
             {
-                Cell c;if(!CellAt(i,j,out c,out stop))return false;if(!c.Solid && !(c.Platform && c.PlatformFrame))continue;
+                Cell c;if(!CellAt(i,j,out c,out stop))return false;if(c.Slope!=0)allFlat=false;if(!c.Solid && !(c.Platform && c.PlatformFrame))continue;
                 float tx=i*16,ty=j*16+(c.Half?8:0),th=c.Half?8:16;
                 if(x+w<=tx || x>=tx+16 || y+h<=ty || y>=ty+th)continue;
                 if(c.StairPlatform && (n.Vy<0 || y+h<j*16 || y+h-(1+Math.Abs(n.Vx))>j*16+16 || ((c.Slope==1 && n.Vx>=0) || (c.Slope==2 && n.Vx<=0)) && (y+h)/16-1==j))continue;
@@ -572,6 +588,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(ry>shift){float delta=shift-ry;correctY=y+ry;if((mask&2)!=0)correctX=x-delta;if((mask&4)!=0)correctX=x+delta;vx=vy=0;up=false;}
             else if(ry<shift){float delta=ry-shift;correctY=y+ry;if((mask&8)!=0)correctX=x-delta;if((mask&16)!=0)correctX=x+delta;vx=vy=0;}
             if(signedProjectile?!SignedProjectileArea(correctX,correctY,w,h,false,out stop,nativeClip):nativeClip?!FreeBody(correctX,correctY,w,h,out stop):!Area(correctX,correctY,w,h,out stop))return false;
+            if(cacheable && !flatMatch && allFlat)slopeFreeRegions[slot]=new SlopeFreeRegion{Left=left,Right=right,Top=top,Bottom=bottom,Epoch=epoch};
             // Native SlopeCollision's final TileCollision replaces the shared
             // flags even for zero correction. Early Dry Jump remains separate.
             if(playerMode)n.PlayerHeadCollision=gravDir>0?up:down;

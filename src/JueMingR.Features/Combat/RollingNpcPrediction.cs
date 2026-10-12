@@ -35,7 +35,7 @@ namespace JueMingR.Features.Combat
         // excludes trend/history, observation fallback and timed source payloads;
         // it never permits retimestamping a conditional trajectory.
         public bool FixedInputResult {get;private set;}
-        public void Clear(){Continuation=null;FixedInputResult=false;previous=default(NpcMotionState);previousPlayer=default(PredictionPlayerMotion);previousPlayerAdvanced=resultPlayerAdvanced=false;priorTick=resultTick=-1;result=null;resultTerrain=null;Array.Clear(work,0,work.Length);}
+        public void Clear(){Continuation=null;FixedInputResult=false;previous=default(NpcMotionState);previousPlayer=default(PredictionPlayerMotion);previousPlayerAdvanced=resultPlayerAdvanced=false;priorTick=resultTick=-1;result=null;resultTerrain=null;ClearPlayerFixedPoint();Array.Clear(work,0,work.Length);}
         public NpcTrajectory Prepare(NpcMotionState[] source,int count,int selected,long tick,int required,long epoch,PredictionEnvironment environment,PredictionPlayerMotion player,IPredictionTerrain terrain,bool[] motionRoles=null,bool firstPlayerStepCompleted=false)
         {
             CombatPredictionWork.Check();
@@ -97,7 +97,7 @@ namespace JueMingR.Features.Combat
             Array.Copy(source,resultSample,count);for(int i=0;i<count;i++)resultRoles[i]=motionRoles==null || motionRoles[i];
             resultEnvironment=environment;resultPlayer=player;resultCount=count;resultSelected=selected;resultRequired=required;resultTick=tick;resultEpoch=epoch;resultTerrain=terrain;resultObserved=observed;
             Array.Copy(source,work,count);work[selected]=current;
-            terrain.Reset();playerSettled=false;points[0]=new NpcTrajectoryPoint(0,current);int length=1;PredictionStop stop=PredictionStop.None;
+            terrain.Reset();ClearPlayerFixedPoint();points[0]=new NpcTrajectoryPoint(0,current);int length=1;PredictionStop stop=PredictionStop.None;
             var towerConsumers=NpcCelestialTowerMotion.CreateConsumers(environment);
             var moonLeeches=NpcMoonLeechMotion.CreateLeeches(environment);
             var gravityEnvironment=environment;bool gravityNeeded=player.GravitySourceExpected || player.ForcedGravityTicks>0;
@@ -129,7 +129,7 @@ namespace JueMingR.Features.Combat
                     // its whole player timeline at point zero, once; never
                     // begin simulating that player halfway through the path.
                     if(restarted || !Valid(initialPlayer)){stop=PredictionStop.PhaseBoundary;FailureLayer=PredictionFailureLayer.PlayerPremise;break;}
-                    needsPlayer=true;observedPlayer=boundedPlayer;restarted=true;player=initialPlayer;terrain.Reset();playerSettled=false;
+                    needsPlayer=true;observedPlayer=boundedPlayer;restarted=true;player=initialPlayer;terrain.Reset();ClearPlayerFixedPoint();
                     Array.Copy(source,work,count);work[selected]=current;towerConsumers=NpcCelestialTowerMotion.CreateConsumers(environment);moonLeeches=NpcMoonLeechMotion.CreateLeeches(environment);gravityEnvironment=environment;gravityPoints[0]=GravityPoint(gravityEnvironment);wallPoints[0]=WallPoint(work,count);length=1;future=0;continue;
                 }
                 // Natural ItemCheck sees this player's completed move but the
@@ -150,7 +150,7 @@ namespace JueMingR.Features.Combat
                         // once with one consistent real-observation premise.
                         // Switching back to the real origin halfway through
                         // a retained path would create an artificial turn.
-                        observedPlayer=restarted=true;boundedPlayer=floatingFailure;stop=PredictionStop.None;terrain.Reset();playerSettled=false;
+                        observedPlayer=restarted=true;boundedPlayer=floatingFailure;stop=PredictionStop.None;terrain.Reset();ClearPlayerFixedPoint();
                         Array.Copy(source,work,count);work[selected]=current;towerConsumers=NpcCelestialTowerMotion.CreateConsumers(environment);moonLeeches=NpcMoonLeechMotion.CreateLeeches(environment);gravityEnvironment=environment;gravityPoints[0]=GravityPoint(gravityEnvironment);wallPoints[0]=WallPoint(work,count);length=1;future=0;continue;
                     }
                     else{FailureLayer=PredictionFailureLayer.PlayerPremise;break;}
@@ -219,7 +219,7 @@ namespace JueMingR.Features.Combat
                     if(playerNeededThisAction && !needsPlayer)
                     {
                         if(restarted || !Valid(initialPlayer)){stop=PredictionStop.PhaseBoundary;FailureLayer=PredictionFailureLayer.PlayerPremise;advanced=false;break;}
-                        needsPlayer=restarted=true;observedPlayer=boundedPlayer;player=initialPlayer;terrain.Reset();playerSettled=false;
+                        needsPlayer=restarted=true;observedPlayer=boundedPlayer;player=initialPlayer;terrain.Reset();ClearPlayerFixedPoint();
                         Array.Copy(source,work,count);work[selected]=current;towerConsumers=NpcCelestialTowerMotion.CreateConsumers(environment);moonLeeches=NpcMoonLeechMotion.CreateLeeches(environment);gravityEnvironment=environment;gravityPoints[0]=GravityPoint(gravityEnvironment);wallPoints[0]=WallPoint(work,count);length=1;future=0;actorRestart=true;break;
                     }
                     // A shared-life owner is a health dependency, not permission
@@ -303,19 +303,41 @@ namespace JueMingR.Features.Combat
         }
         private NpcMotionState playerBody;
         private bool playerSettled;
+        private PredictionPlayerMotion playerFixedInput;
+        private PredictionEnvironment playerFixedEnvironment;
+        private IPredictionTerrain playerFixedTerrain;
+        private void ClearPlayerFixedPoint()
+        {playerSettled=false;playerFixedInput=default(PredictionPlayerMotion);playerFixedEnvironment=default(PredictionEnvironment);playerFixedTerrain=null;}
+        private static bool SamePlayerPhysicalInput(PredictionPlayerMotion prior,PredictionPlayerMotion current)
+        {
+            // Only BeginGravity/BeginWall read these trajectory indices, and
+            // both have already consumed THIS action before this comparison.
+            // Horizontal/Vertical, terrain movement, AfterFluid and Borders
+            // do not read them. Align only the historical VALUE copy; retain
+            // every resulting gravity, Wall, health, fluid and control fact.
+            // Never weaken SameSample or alter the live forecast's clocks.
+            prior.GravityAction=current.GravityAction;prior.WallAction=current.WallAction;
+            return prior.SameSample(current);
+        }
         private bool AdvancePlayer(ref PredictionPlayerMotion p,PredictionEnvironment e,IPredictionTerrain terrain,out PredictionStop stop)
         {
-            stop=PredictionStop.None;float priorGravity=p.GravityDirection;
-            if(!PlayerMotionContinuation.BeginWallFall(ref p,e,terrain,out stop))return false;
-            if(!PlayerMotionContinuation.BeginGravity(ref p,e,out stop))return false;
-            if(priorGravity!=p.GravityDirection)playerSettled=false;
-            bool wallHandled;if(!PlayerMotionContinuation.BeginWall(ref p,e,terrain,out wallHandled,out stop))return false;
-            if(wallHandled){playerSettled=false;return true;}
-            // Within this one forecast the sampled local cells are immutable.
-            // A grounded idle fixed point needs one collision/liquid query,
-            // not the same rectangle 120 times. Reset on EVERY real sample.
-            if(playerSettled){if(!PlayerMotionContinuation.ClampBorders(ref p,out stop))return false;PlayerMotionContinuation.CompleteItemCheck(ref p);return true;}
-            float oldX=p.X,oldY=p.Y;
+            stop=PredictionStop.None;
+            if(!PlayerMotionContinuation.BeginWallFall(ref p,e,terrain,out stop)){ClearPlayerFixedPoint();return false;}
+            if(!PlayerMotionContinuation.BeginGravity(ref p,e,out stop)){ClearPlayerFixedPoint();return false;}
+            bool wallHandled;if(!PlayerMotionContinuation.BeginWall(ref p,e,terrain,out wallHandled,out stop)){ClearPlayerFixedPoint();return false;}
+            if(wallHandled){ClearPlayerFixedPoint();return true;}
+            var physicalInput=p;bool fixedEligible=!p.Complex && !p.Hover;
+            // Certificate covers the COMPLETE post-prefix -> post-fluid and
+            // border physical state, not XY/velocity or released controls.
+            // Queried cells belong to this synchronous forecast's immutable
+            // local terrain lease. Its first query records Ice reads normally;
+            // every new sample/terrain Reset/restart clears the certificate.
+            // Prefixes still run each action, and ItemCheck is never skipped.
+            if(playerSettled && fixedEligible && ReferenceEquals(playerFixedTerrain,terrain) &&
+                playerFixedEnvironment.Equals(e) && playerFixedEnvironment.PlayerTimelineActive==e.PlayerTimelineActive &&
+                SamePlayerPhysicalInput(playerFixedInput,p))
+            {if(!PlayerMotionContinuation.ClampBorders(ref p,out stop)){ClearPlayerFixedPoint();return false;}PlayerMotionContinuation.CompleteItemCheck(ref p);return true;}
+            ClearPlayerFixedPoint();
             if(!p.Complex || p.Hover)
             {
                 PlayerHorizontalMotion.Step(ref p);
@@ -349,8 +371,9 @@ namespace JueMingR.Features.Combat
             p.X=playerBody.X;p.Y=playerBody.Y;p.Vx=playerBody.Vx;p.Vy=playerBody.Vy;
             PlayerVerticalMotion.AfterFluid(ref p,playerBody.Wet,playerBody.Honey,playerBody.Lava,playerBody.Shimmer);
             if(!PlayerMotionContinuation.ClampBorders(ref p,out stop))return false;
+            if(fixedEligible && physicalInput.SameSample(p))
+            {playerSettled=true;playerFixedInput=physicalInput;playerFixedEnvironment=e;playerFixedTerrain=terrain;}
             PlayerMotionContinuation.CompleteItemCheck(ref p);
-            playerSettled=!p.Complex && !p.Hover && !p.Left && !p.Right && !p.Up && !p.Down && !p.HoldJump && p.Vx==0 && p.Vy==0 && p.X==oldX && p.Y==oldY;
             return true;
         }
         private static bool Valid(NpcMotionState n)

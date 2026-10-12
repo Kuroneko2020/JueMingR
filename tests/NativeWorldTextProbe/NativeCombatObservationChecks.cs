@@ -70,7 +70,18 @@ namespace NativeWorldTextProbe
             var bubble=Main.npc[0];bubble.SetDefaults(371);bubble.whoAmI=0;bubble.active=true;bubble.position=new Vector2(700,650);bubble.target=0;bubble.ai[3]=1;
             Save(host,new ObservationOptions(path:true,radius:0));Fresh(context,host);
             Require((bool)Get(selection,"HasTarget") && ((NpcIdentity)Get(selection,"Target")).Type==371,"path alone selects 1 HP bubble while holding a tool with no attack; player range ignores mouse radius zero");
-            var result=cache.Read(0);Require(result!=null && result.Count>1,"real path demand prepares a future without aim provider");
+            var result=cache.Read(0);
+            if(result==null || result.Count<=1)
+            {
+                // One post-failure snapshot only: inspect the actual producer
+                // outcome, never prepare another future to satisfy the test.
+                var source=Get(host,"Prediction");var work=Get(host,"PredictionWork");var raw=(NpcTrajectory)GetOptional(cache,"result");
+                Console.WriteLine("OBSERVATION PATH FIRST FAILURE GUC="+Main.GameUpdateCount+" budgetTick="+Get(work,"tick")+" budgetSpent="+Get(work,"spent")+" budgetExceeded="+Get(work,"Exceeded")+" budgetMs="+Get(work,"UsedMilliseconds")+
+                    " cacheRequired="+cache.Required+" minimum="+cache.MinimumRequired+" rawCount="+(raw==null?"none":raw.Count.ToString())+" rawStop="+(raw==null?"none":raw.Stop.ToString())+
+                    " sourceFailure="+Get(Get(source,"rolling"),"FailureLayer")+" sourceOutcome="+Get(source,"outcomeStop")+" outcomeTick="+Get(source,"outcomeTick")+" future="+Get(source,"outcomeFuture")+" owns="+Get(source,"ownsState")+" observed="+Get(source,"observedCount")+" native="+(GetOptional(source,"Native")!=null)+
+                    " pathFailed="+Get(host,"pathFailed")+" bubble="+bubble.type+"/style"+bubble.aiStyle+" active="+bubble.active+" life="+bubble.life+" ai="+string.Join(",",bubble.ai)+" player="+player.position+" size="+player.width+"x"+player.height+" dead="+player.dead+" gravity="+player.gravDir+" item="+player.HeldItem.type);
+            }
+            Require(result!=null && result.Count>1,"real path demand prepares a future without aim provider");
             int existing=NativeCombatUsageChecks.ObservedNpcSteps;for(int i=0;i<2000;i++)Require(ReferenceEquals(cache.Read(0),result),"cached reads preserve result identity");Require(NativeCombatUsageChecks.ObservedNpcSteps==existing,"reading never advances NPC simulation");
             // This bubble is already in its short terminal phase. Preserving
             // demand cannot turn its real tail into sixty future updates.

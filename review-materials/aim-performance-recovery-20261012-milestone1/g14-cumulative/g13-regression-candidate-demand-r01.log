@@ -1,0 +1,26 @@
+LOAD 0Harmony source=2.4.2.0+a264a1bf1ce689e4589e8dcc54b1e2818602a90a MVID=024a0e6e-c8c2-437e-ad04-7b6279389c23 SHA256=7B9E756306FA3D7620E02A857C8927A6AB04973F9BD8A77D3866700A6DEAC55C location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g13\bin\JueMingR.TerrariaHost\x86\Release\net472\0Harmony.dll
+LOAD JueMingR.Platform source=0.0.0-dev+uncommitted-g13-player-fixed-point MVID=0979ed61-52ae-400a-b94a-82870cd69758 SHA256=38A4D5F982E57A1D6FE6C8EABE3DBAB466B4B5EB3EE6314E8D77683ACFA7FE6B location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g13\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Platform.dll
+LOAD JueMingR.Features source=0.0.0-dev+uncommitted-g13-player-fixed-point MVID=fa1a7ba6-b3bb-4c9e-a9ec-77b50bff5b61 SHA256=99B10CB658251BE90863AB68AD4AF1EB7CE2C3BC9EAE250C80EADD82DF892E2D location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g13\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Features.dll
+LOAD JueMingR.Infrastructure source=0.0.0-dev+uncommitted-g13-player-fixed-point MVID=723d92dd-f8bb-4550-8c68-ff1dbd6d5a55 SHA256=AE1B191ED0C0AC7B27217A7F84FC9AA4383AB5A14CB62777A3A5B03FDB403603 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g13\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Infrastructure.dll
+LOAD JueMingR.TerrariaHost source=0.0.0-dev+uncommitted-g13-player-fixed-point MVID=64eed61e-f77b-4ce3-bfa1-6232764b4178 SHA256=F1072D318426809C9360CB45C7B85B7013BE865E8C13637C8B0B344A71AC6685 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g13\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.TerrariaHost.dll
+ISOLATED SavePath=C:\Users\kongd\Desktop\JueMingR\.local\ir-5ed53b56
+GAME MVID=2c29f6c3-4bd9-4add-9c58-da159804e083 SHA256=960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3 location=C:\Users\kongd\Desktop\JueMingR\external\TerrariaRefs\Terraria.exe
+PROBE MVID=f7d4fe9c-d4a9-4f8c-ab10-ad8a38d80802 SHA256=5770027B129FFDBC3F6AC4C179092E9CAD2AD106C3DC5C3E16D678C921E07656 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\probe-current-g13\bin\NativeWorldTextProbe\x86\Debug\net472\NativeWorldTextProbe.exe
+INCIDENT leaf=candidate-demand actualDraw=False Content=F:\Games\GamePlats\Steam\steamapps\common\Terraria\Content; functional regression, no FPS/timing claim
+Explicit historical candidate: C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g13\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.TerrariaHost.dll MVID=64eed61e-f77b-4ce3-bfa1-6232764b4178
+COMPOSITION initialization-ms=5455.4381 code-prepare-ms=380.6752 exact-comparison=False
+CONTEXT Host MVID=64eed61e-f77b-4ce3-bfa1-6232764b4178 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g13\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.TerrariaHost.dll
+CANDIDATE yoyo range=130 target=2 near={X:775 Y:667} far={X:930 Y:667}
+PASS strict nearest yoyo target and legal large receiver edge; attack reach does not change receiver qualification
+WALL CANDIDATE weapon=95 selected=2 solidColumn=48:y40..42 player={X:710 Y:667} A={X:825 Y:667} B={X:650 Y:667}
+WALL RESULT weapon=95 selected=2 openingContact=False firstDamage=-1 lifeA=100000 lifeB=100000
+WALL CANDIDATE weapon=39 selected=2 solidColumn=48:y40..42 player={X:710 Y:667} A={X:825 Y:667} B={X:650 Y:667}
+WALL RESULT weapon=39 selected=2 openingContact=False firstDamage=-1 lifeA=100000 lifeB=100000
+WALL CANDIDATE weapon=3570 selected=2 solidColumn=48:y40..42 player={X:710 Y:667} A={X:825 Y:667} B={X:650 Y:667}
+WALL RESULT weapon=3570 selected=2 openingContact=False firstDamage=19 lifeA=99906 lifeB=100000
+WALL CANDIDATE weapon=3278 selected=2 solidColumn=48:y40..42 player={X:710 Y:667} A={X:825 Y:667} B={X:650 Y:667}
+WALL RESULT weapon=3278 selected=2 openingContact=False firstDamage=17 lifeA=99995 lifeB=100000
+PASS same-obstacle shared identity matrix; current passage preference is conditional, finite no-Contact is not a physical-impossibility claim.
+DEMAND before path=False required=17 samples=18 shot={X:9.998343 Y:-0.1820063} consumed=Enhanced
+DEMAND before path=True required=17 samples=18 shot={X:9.998343 Y:-0.1820063} consumed=Enhanced
+PASS real Enhanced short input prefix with Path OFF/ON, completed Path120 display, marker-only OFF zero future steps

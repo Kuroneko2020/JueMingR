@@ -1,0 +1,337 @@
+[
+  {
+    "path": "g13-build.log",
+    "length": 1601,
+    "sha256": "B1079AC1F9181FD6BDB86724C77179BFB233AE46D46E169B642F7123C00957B0"
+  },
+  {
+    "path": "probe-g13-build.log",
+    "length": 428,
+    "sha256": "2501D059900B1AA67EA06DB22EF2C71C0926E05B8F634759491E1CE07896063B"
+  },
+  {
+    "path": "g14-build.log",
+    "length": 1601,
+    "sha256": "3F99D2E2A248C09A62BC0BD20DCCACFF344705EFA1D0F1FD59A3D6A56A7BFA52"
+  },
+  {
+    "path": "probe-g14-build.log",
+    "length": 428,
+    "sha256": "DA034B03A618DD9177FA6BE15C8E5CEC1693E4D4EE127595D87AA74E863D82B5"
+  },
+  {
+    "path": "probe-g13-diag-build.log",
+    "length": 433,
+    "sha256": "BD78A58203A4953C65AA7143856724F5B98D324B31E36B9370FA677D21847F36"
+  },
+  {
+    "path": "g12-fixedpoint-reject-r01.log",
+    "length": 5312,
+    "sha256": "3A5D7FD91A7F40BD37B5F76F6E6963A160084120F4BE5B7AD29FB47143A84761"
+  },
+  {
+    "path": "g13-fixedpoint-r01.log",
+    "length": 2120,
+    "sha256": "A2DEEBCA23979CBAB5DB7FB47AA61D2C3FEB16DC132ED14EADDEAC07DA2372BC"
+  },
+  {
+    "path": "g13-natural-cpu-r01.log",
+    "length": 3650,
+    "sha256": "3CECB29701E533275996799F6E042E25891061FBAAD2EA568489707AA3CE2AE9"
+  },
+  {
+    "path": "g14-natural-cpu-r01.log",
+    "length": 3660,
+    "sha256": "1D02AFF0D4570481ADE76B03C2DE472892D69C8D18080FCF60141FCCC54951DD"
+  },
+  {
+    "path": "g14-terrain-r01.log",
+    "length": 2643,
+    "sha256": "5CE2098DBCF8B89687358F4D0BE11337765695D83DD8232AFF206BC9E29EADB0"
+  },
+  {
+    "path": "g13-natural-draw-r01.log",
+    "length": 4422,
+    "sha256": "9BB8DB95EFB58641C299C5F012CDA09083FEEB69AC2942274D332CBE51D817D6"
+  },
+  {
+    "path": "g13-natural-count-r01.log",
+    "length": 4276,
+    "sha256": "22F5FF214A96157CE63113C1A490690B1654AD0B63321D9ACE6682CDB05E39E5"
+  },
+  {
+    "path": "g14-natural-count-r01.log",
+    "length": 4266,
+    "sha256": "30664E024F1ADC0DAF9893833DEF1DE6D00DC53ED4841D75C7A3808D376A8FC1"
+  },
+  {
+    "path": "g14-natural-phase-r01.log",
+    "length": 4355,
+    "sha256": "6065FB9A02C3909FEC5C8AB560CAE5B5F854CE2DB42B108D6D1DE5BA589C8E92"
+  },
+  {
+    "path": "g14-natural-rolling-r01.log",
+    "length": 4356,
+    "sha256": "E9385196756D42211880774D66FA57E28D228652F2CE61DF9A868AEA4FC0A1BE"
+  },
+  {
+    "path": "g13-regression-basic-aim-r01.log",
+    "length": 6274,
+    "sha256": "455A57EA05BA98AB61A466CDFA14D48072A5C285F87CA06A4B1112CD2A09179B"
+  },
+  {
+    "path": "g13-regression-candidate-demand-r01.log",
+    "length": 4446,
+    "sha256": "22F2D6414D99A086E7D4C3846A61CB6733C077C86D5E9CA013836575678C0C16"
+  },
+  {
+    "path": "g13-regression-observation-r01.log",
+    "length": 4900,
+    "sha256": "78D4ECC61A98E095C49CF4E70E4A497B4045D79D08931335C523CF461618B602"
+  },
+  {
+    "path": "g13-regression-observation-diag-r02.log",
+    "length": 5291,
+    "sha256": "91FA8C71BA8B38A7387A4B3B11B62C51B540EB1F4E65B7DAEA00D490106369BF"
+  },
+  {
+    "path": "g13-regression-geometry-r01.log",
+    "length": 16342,
+    "sha256": "58B1A1B0427992B22CC1047BBDB4B0C302AED9EB21251C78F69DB4C8611F9FB1"
+  },
+  {
+    "path": "g13-regression-spears-r01.log",
+    "length": 35008,
+    "sha256": "6A2A10315B82C6E9E1E580F6C3B0ACFD77050F3758FE257E7653507D8DA1D682"
+  },
+  {
+    "path": "g13-regression-shape-visual-r01.log",
+    "length": 3123,
+    "sha256": "80089EB2347C72002D59DF215ACB0E3C23DC221C140D5E095622BD0C769DD6CA"
+  },
+  {
+    "path": "g13-regression-sealed-child-draw-r01.log",
+    "length": 8562,
+    "sha256": "9BF7BB156B12F834D971BAA320BB1DA45FA488CD92376F0C72365B5BCC2D3591"
+  },
+  {
+    "path": "g13-regression-sealed-child-diag-r02.log",
+    "length": 8719,
+    "sha256": "712B9F973D0BC71307812078C6CBB8A7D6CE8B8746C4627F6E13E2AE40D1AB69"
+  },
+  {
+    "path": "RunIncidentRegression.cs",
+    "length": 10641,
+    "sha256": "ACEAAA61A8ADAE98B5411817B38E0F0BDB4CF831A8D6B004C38EB2CC5F56094C"
+  },
+  {
+    "path": "RunNaturalDrawPlain.cs",
+    "length": 4779,
+    "sha256": "8B8A89A01A64EB5F0748C35B06120FF7B217E1806389E778309877466E9B035B"
+  },
+  {
+    "path": "RunNaturalPhaseBreakdown.cs",
+    "length": 23027,
+    "sha256": "ADD26D6EFF3D54FD2F7A306328182C6711C2F0E05B150BE5DF645E950F807C2E"
+  },
+  {
+    "path": "RunNaturalRollingBreakdown.cs",
+    "length": 23393,
+    "sha256": "FC593E5F8FDA6F271C38F48EDE2BE5F664375962EE0AB16661EE0B169CB01B28"
+  },
+  {
+    "path": "ContinuousCombatMeasureG13.cs",
+    "length": 13844,
+    "sha256": "7657CA473360EA311214319808490E6B099C0B98E349DAB577AF1BDC0FC1FF3A"
+  },
+  {
+    "path": "review/player-fixed-point-g13-incremental-review.md",
+    "length": 8469,
+    "sha256": "CA6907C528CA1AE12F86A47D660F3E2132D2FD214D98BB9206E279E1C88B69FE"
+  },
+  {
+    "path": "review/slope-region-g14-incremental-review.md",
+    "length": 7438,
+    "sha256": "81DA96A78F8183C06751D74FBADB2BB31FFF562B1ADD6068A2234F2249E17817"
+  },
+  {
+    "path": "review/g13-regression-draw-and-g14-diagnostics-review.md",
+    "length": 10684,
+    "sha256": "9CC1961A03A63F1023393CA70D5A541D45D052BAC6A1D059612E4AA4E01D8EE7"
+  },
+  {
+    "path": "g13-natural-cpu-r01/natural-cpu-frames.csv",
+    "length": 185542,
+    "sha256": "B5F309B7E02A6F530C8027EDDB7E26A1916178EBAFD9D0AC54F73A4C8E085FC2"
+  },
+  {
+    "path": "g13-natural-cpu-r01/natural-cpu-summary.txt",
+    "length": 5792,
+    "sha256": "7D890EE12A0FF4D0C119C1BD8C53EE7C590F7AB59D13CEB89C4BC3CBB71DE9E7"
+  },
+  {
+    "path": "g14-natural-cpu-r01/natural-cpu-frames.csv",
+    "length": 185508,
+    "sha256": "608472348DD54E95365F77E98FB868C43623CEA77FDF2B2F94662FB12EB6970F"
+  },
+  {
+    "path": "g14-natural-cpu-r01/natural-cpu-summary.txt",
+    "length": 5832,
+    "sha256": "C3D7AE8A4342538D82E0682BEB2313B8F1E89836BBF554A330AE3F87112E7340"
+  },
+  {
+    "path": "g13-natural-count-r01/natural-cpu-frames.csv",
+    "length": 185510,
+    "sha256": "679D6271B114F0DABC1413A2DFABCD5CC6A8666203E61F9999D6339774433B67"
+  },
+  {
+    "path": "g13-natural-count-r01/natural-cpu-summary.txt",
+    "length": 5828,
+    "sha256": "B4D336347381D86B4523F32FC46FE7127E45FC96B17C4C00751BE9338E97E2D8"
+  },
+  {
+    "path": "g13-natural-count-r01/natural-cpu-counts.csv",
+    "length": 50392,
+    "sha256": "C920F63F9CD6DC44B4102F901E6641DC3214E349CFF00EAEE90670BED64A4ADE"
+  },
+  {
+    "path": "g14-natural-count-r01/natural-cpu-frames.csv",
+    "length": 185534,
+    "sha256": "5EBE29266C7EC938CCD6E4C83F8E341E7BC412C873A1C9F889622B223CC7DBF0"
+  },
+  {
+    "path": "g14-natural-count-r01/natural-cpu-summary.txt",
+    "length": 5856,
+    "sha256": "32C4BA1D14E03EB1B72FF96FB12E7A73B173C712834FB4C3F219744487BB7F9B"
+  },
+  {
+    "path": "g14-natural-count-r01/natural-cpu-counts.csv",
+    "length": 50284,
+    "sha256": "9876FC090F9F30E946689D223683DFC0900B475398B963041F031692A2CF13D0"
+  },
+  {
+    "path": "g14-natural-phase-r01/natural-cpu-frames.csv",
+    "length": 185584,
+    "sha256": "86FEB656EBF3D44A3B22CF85F1A8E177E5A2F08642FAA63346B07F67A042BDE9"
+  },
+  {
+    "path": "g14-natural-phase-r01/natural-cpu-summary.txt",
+    "length": 5819,
+    "sha256": "39A65A4C366CE81C58C1B922BA3A3AB649A8A8F4B04D766D2394472CBA3064C2"
+  },
+  {
+    "path": "g14-natural-phase-r01/natural-phase-frames.csv",
+    "length": 261871,
+    "sha256": "C8DC8920032FBF2ED29932591B746522E229A1CD1404E4910DFB0FE96BF27352"
+  },
+  {
+    "path": "g14-natural-phase-r01/natural-phase-methods.csv",
+    "length": 2091,
+    "sha256": "A0880BC93FD1BB14C876479493EF42C07FB707B92EB04A8AD827776BCA7069E9"
+  },
+  {
+    "path": "g14-natural-phase-r01/natural-phase-summary.txt",
+    "length": 41229,
+    "sha256": "CD694F5D49D211365F0761FF8CA6130E9E2EE6F747A52AAA750FF704E43BF103"
+  },
+  {
+    "path": "g14-natural-rolling-r01/natural-cpu-frames.csv",
+    "length": 185561,
+    "sha256": "ED84592C5175BEAB0732C7E13443C98A7AE4A5C0617FA2461C3E23201AA794F3"
+  },
+  {
+    "path": "g14-natural-rolling-r01/natural-cpu-summary.txt",
+    "length": 5847,
+    "sha256": "C98A92F9986C81E72AD26896A492E053D56E09515063A399788CABA5C20067C4"
+  },
+  {
+    "path": "g14-natural-rolling-r01/natural-phase-frames.csv",
+    "length": 315814,
+    "sha256": "099E2FDAE390FD98E61D84E270DC5FE09245ECBBFD3F702C1C8CC74F0F1E80C2"
+  },
+  {
+    "path": "g14-natural-rolling-r01/natural-phase-methods.csv",
+    "length": 2970,
+    "sha256": "12A76C2608B500519CE9EA3DA3B6C2DA655FE0BF158B784A1B7F6E245276C3C8"
+  },
+  {
+    "path": "g14-natural-rolling-r01/natural-phase-summary.txt",
+    "length": 54217,
+    "sha256": "62DAD8D079B3EAD8BC72F1C827DA031D1EFE17A86C606E6102827BCB9EF8AECC"
+  },
+  {
+    "path": "g13-natural-draw-r01/moving-attack.png",
+    "length": 24734,
+    "sha256": "6DA0537848D3E7CBBE9E235EC7A2902BBD43EF2763F4866E132C460247B84A17"
+  },
+  {
+    "path": "g13-natural-draw-r01/moving-first-failure.png",
+    "length": 3895,
+    "sha256": "4256F460F7C057EC03BB622FE4F46587784B8F5A03297230A6CFE2B3CED61887"
+  },
+  {
+    "path": "g13-natural-draw-r01/moving-idle.png",
+    "length": 25116,
+    "sha256": "6A1C070D21A61916FD97BE063F20ACE61A494E29C3DF4E113BD7CB57255B1EE2"
+  },
+  {
+    "path": "g13-natural-draw-r01/moving-restore.png",
+    "length": 24694,
+    "sha256": "0CA77DD758058890F525E6CFFA7F8B3AC204E784ECAAA68A2425668E0D17B092"
+  },
+  {
+    "path": "g13-natural-draw-r01/natural-births.txt",
+    "length": 6524,
+    "sha256": "FDC34CB1D0A64EF5DAEB3946598A8ACDF1F5206A87823D6D2F46385592A16250"
+  },
+  {
+    "path": "g13-natural-draw-r01/natural-input-facts.txt",
+    "length": 3549,
+    "sha256": "BFD89C6FDA79EC11BEA4CEF513CA248BEDEF7B027F42237AFB25A7CC4CF3A6DD"
+  },
+  {
+    "path": "g13-natural-draw-r01/natural-slime-frames.csv",
+    "length": 73482,
+    "sha256": "A5E5366570840E9E5BF2B15FBB15FBC6DC29F4E665D99FE184C30B0D3E1C1E8C"
+  },
+  {
+    "path": "g13-natural-draw-r01/standing-attack.png",
+    "length": 25258,
+    "sha256": "F267CD5F0397A0BC7BA976F53B6C701864BA1487046CD14DA9197F491AF3EB6F"
+  },
+  {
+    "path": "g13-natural-draw-r01/standing-first-failure.png",
+    "length": 25053,
+    "sha256": "D6C7ACB3E66FFDF3ACA96D733C3ED0E10C0D17E2799090FC3E778F8FFEDE3732"
+  },
+  {
+    "path": "g13-natural-draw-r01/standing-idle.png",
+    "length": 25114,
+    "sha256": "33D31E6ED1292B9F348C65878A6D4BE6C2E2A4C79C2C9D2830A12CB0ACB59EBD"
+  },
+  {
+    "path": "g13-natural-draw-r01/standing-restore.png",
+    "length": 25386,
+    "sha256": "DB018398F4AA292F575C8842D99D1E282363BC777C31EBBB024128CDD34B1241"
+  },
+  {
+    "path": "g13-regression-sealed-child-diag-r02/original-floating-phase-body.png",
+    "length": 3895,
+    "sha256": "4256F460F7C057EC03BB622FE4F46587784B8F5A03297230A6CFE2B3CED61887"
+  },
+  {
+    "path": "g13-regression-sealed-child-diag-r02/original-floating-phase-child.png",
+    "length": 17702,
+    "sha256": "5101D8C241CB7B59D3B62EBA1D9AAB6625A6BBAEBC5ACEAD43E1C279131D35F7"
+  },
+  {
+    "path": "g13-regression-shape-visual-r01/shape-conditional-circle.png",
+    "length": 31629,
+    "sha256": "04125193B257FB5FC07551F1BAA62D6436F6982A0EDD4772F466E6A5E8D33DA7"
+  },
+  {
+    "path": "review/g14-rolling-breakdown-review-appendix.md",
+    "length": 4243,
+    "sha256": "253B6BA5C1EA4E3E616EC4858089D0398EE6D6FD75CA906FB27982B99B21DD5A"
+  }
+]
