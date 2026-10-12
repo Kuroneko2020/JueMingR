@@ -1,0 +1,43 @@
+{"family":"NpcAmbientFlightMotion","styles":["86","42","122","125"],"source":"\n            int type=n.EffectiveType;\n            return n.Style==86 && (type==472 || type==521) || n.Style==42 && type==195 ||\n                n.Style==122 && type==662 || n.Style==125 && type==686;\n        "}
+{"family":"NpcAttachedWeaponMotion","styles":["75","76","93"],"source":"int t=n.EffectiveType;return n.Style==75 && (t==390 || t==392 || t==393 || t==394 || t==416 || t==492) || t==395 && n.Style==76 || t==491 && n.Style==93;"}
+{"family":"NpcBetsyMotion","styles":["110"],"source":"return n.Style==110 && n.EffectiveType==551;"}
+{"family":"NpcBigMimicMotion","styles":["87"],"source":"return n.Style==87 && n.EffectiveType>=473 && n.EffectiveType<=476;"}
+{"family":"NpcBirdMotion","styles":["24"],"source":"return n.Style==24 && Type(n.EffectiveType);"}
+{"family":"NpcBloodNautilusMotion","styles":["117"],"source":"return n.EffectiveType==618 && n.Style==117;"}
+{"family":"NpcBrainSwarmMotion","styles":["54","55"],"source":"return n.EffectiveType==266 && n.Style==54 || Creeper(n);"}
+{"family":"NpcCasterMotion","styles":["8"],"source":"\n            if(n.Style!=8)return false;\n            switch(n.EffectiveType)\n            {case 24:case 29:case 32:case 45:case 172:case 281:case 282:case 283:case 284:case 285:case 286:case 533:case 693:return true;default:return false;}\n        "}
+{"family":"NpcCelestialTowerMotion","styles":["94"],"source":"return n.Style==94 && (n.EffectiveType==422 || n.EffectiveType==493 || n.EffectiveType==507 || n.EffectiveType==517);"}
+{"family":"NpcCultistBossMotion","styles":["84"],"source":"return n.Style==84 && (n.EffectiveType==439 || n.EffectiveType==440);"}
+{"family":"NpcCultistRitualMotion","styles":["83","3"],"source":"return n.Style==83 && (n.EffectiveType==437 || n.EffectiveType==438) || n.Style==3 && (n.EffectiveType==379 || n.EffectiveType==380);"}
+{"family":"NpcDarkMageMotion","styles":["109"],"source":"return n.Style==109 && (n.EffectiveType==564 || n.EffectiveType==565);"}
+{"family":"NpcDeerclopsMotion","styles":["123"],"source":"return n.EffectiveType==668 && n.Style==123;"}
+{"family":"NpcDiveFlightMotion","styles":["74"],"source":"return n.Style==74 && (n.EffectiveType==388 || n.EffectiveType==418);"}
+{"family":"NpcEmpressMotion","styles":["120"],"source":"return n.EffectiveType==636 && n.Style==120;"}
+{"family":"NpcEyeBossMotion","styles":["4","30","31"],"source":"return n.EffectiveType==4 && n.Style==4 || n.EffectiveType==125 && n.Style==30 || n.EffectiveType==126 && n.Style==31;"}
+{"family":"NpcFiniteFlightMotion","styles":["50","49","10","22"],"source":"\r\n            int t=n.EffectiveType;\r\n            return n.Style==50 && (t==261 || t==265) || n.Style==49 && t==250 || n.Style==10 && (t==34 || t==289 || t==694) || n.Style==22 && (t==75 || t==82 || t==122 || t==169 || t==182 || t==268 || t==316 || t==330 || t==490 || t==253);\r\n        "}
+{"family":"NpcGolemMotion","styles":["45","46","47","48"],"source":"int type=n.EffectiveType;return type==245 && n.Style==45 || type==246 && n.Style==46 || (type==247 || type==248) && n.Style==47 || type==249 && n.Style==48;"}
+{"family":"NpcIceQueenMotion","styles":["60"],"source":"return n.EffectiveType==345 && n.Style==60;"}
+{"family":"NpcInvasionCrystalMotion","styles":["105"],"source":"return n.EffectiveType==548 && n.Style==105;"}
+{"family":"NpcInvasionFlightMotion","styles":["108"],"source":"int type=n.EffectiveType;return n.Style==108 && (type==558 || type==559 || type==560 || type==574 || type==575);"}
+{"family":"NpcInvasionGroundMotion","styles":["107"],"source":"int t=n.EffectiveType;return n.Style==107 && (t>=552 && t<=557 || t>=561 && t<=563 || t>=566 && t<=573 || t==576 || t==577 || t==620);"}
+{"family":"NpcInvasionLightningMotion","styles":["111"],"source":"return n.Style==111 && n.EffectiveType==578;"}
+{"family":"NpcKingSlimeMotion","styles":["15"],"source":"return n.EffectiveType==50 && n.Style==15;"}
+{"family":"NpcMartianTurretMotion","styles":["73"],"source":"return n.Style==73 && n.EffectiveType==387;"}
+{"family":"NpcMechanicalBossMotion","styles":["32"],"source":"return n.EffectiveType==127 && n.Style==32;"}
+{"family":"NpcMoonLeechMotion","styles":["82"],"source":"return n.EffectiveType==401 && n.Style==82;"}
+{"family":"NpcMoonLordMotion","styles":["77","78","79"],"source":"return n.EffectiveType==398 && n.Style==77 || n.EffectiveType==397 && n.Style==78 || n.EffectiveType==396 && n.Style==79;"}
+{"family":"NpcPhasedFlightMotion","styles":["44","85","88","89","90","56","62","63","95","96","97","99","100","104","91"],"source":"\n            int t=n.EffectiveType;\n            return n.Style==44 && (t==224 || t==509 || t==581 || t==587) ||\n                n.Style==85 && (t==405 || t==421 || t==467) ||\n                n.Style==88 && t==477 || n.Style==89 && t==478 || n.Style==90 && t==479 ||\n                n.Style==56 && t==288 || n.Style==62 && t==347 || n.Style==63 && t==352 || n.Style==95 && t==406 ||\n                n.Style==96 && t==407 || n.Style==97 && t==420 || n.Style==99 && t==519 || n.Style==100 && t==522 || n.Style==104 && t==547 || n.Style==91 && t==483;\n        "}
+{"family":"NpcPlanteraMotion","styles":["51","52","53"],"source":"return n.EffectiveType==262 && n.Style==51 || n.EffectiveType==263 && n.Style==52 || n.EffectiveType==264 && n.Style==53;"}
+{"family":"NpcPumpkingMotion","styles":["58","59"],"source":"return n.Style==58 && n.EffectiveType==327 || n.Style==59 && n.EffectiveType==328;"}
+{"family":"NpcQueenBeeMotion","styles":["43"],"source":"return n.Style==43 && n.EffectiveType==222;"}
+{"family":"NpcQueenSlimeMotion","styles":["121"],"source":"return n.EffectiveType==657 && n.Style==121;"}
+{"family":"NpcRelatedMotion","styles":["101","80","76","54","77"],"source":"\n            int type=n.EffectiveType;\n            return type==523 && n.Style==101 ||\n                type==399 && n.Style==80 ||\n                type==395 && n.Style==76 && (n.A0==1 || (n.A0==2 || n.A0==-2) && n.CanReceive) ||\n                type==266 && n.Style==54 && (n.A0<0 || n.A0==2 && n.L3>0 && n.CanReceive) && n.L0!=0 ||\n                type==398 && n.Style==77 && n.A0==1 && n.L3!=0;\n        "}
+{"family":"NpcSantaTankMotion","styles":["61"],"source":"return n.Style==61 && n.EffectiveType==346;"}
+{"family":"NpcSegmentedWormMotion","styles":["6"],"source":"int t=n.EffectiveType;return n.Style==6 && (t>=87 && t<=92 || t>=117 && t<=119 || t==375 || t==402 || t>=412 && t<=414 || t>=454 && t<=459 || t>=510 && t<=515 || t>=621 && t<=623);"}
+{"family":"NpcSkeletonBossMotion","styles":["11"],"source":"return n.Style==11 && (n.EffectiveType==35 || n.EffectiveType==68);"}
+{"family":"NpcSnowmanMotion","styles":["38"],"source":"return n.Style==38 && n.EffectiveType>=143 && n.EffectiveType<=145;"}
+{"family":"NpcTerrainFlightMotion","styles":["102","103","119"],"source":"return n.Style==102 && n.EffectiveType==541 || n.Style==103 && n.EffectiveType>=542 && n.EffectiveType<=545 || n.Style==119 && n.EffectiveType==628;"}
+{"family":"NpcTownCritterMotion","styles":["7"],"source":"int t=n.EffectiveType;return n.Style==7 && (t==230 || t==303 || t==337 || t==540 || t==625 || t==687);"}
+{"family":"NpcTreeBossMotion","styles":["57"],"source":"return n.Style==57 && (n.EffectiveType==325 || n.EffectiveType==344);"}
+{"family":"NpcWallBossMotion","styles":["27","28","29"],"source":"return n.EffectiveType==113 && n.Style==27 || n.EffectiveType==114 && n.Style==28 || n.EffectiveType==115 && n.Style==29;"}
+{"family":"NpcWindyBalloonMotion","styles":["113"],"source":"return n.EffectiveType==594 && n.Style==113;"}
