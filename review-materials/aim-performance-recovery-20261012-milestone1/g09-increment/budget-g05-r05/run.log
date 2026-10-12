@@ -1,0 +1,26 @@
+LOAD JueMingR.Platform source=0.0.0-dev+uncommitted-perf-input-g05 MVID=6adfdecb-33f6-4e37-900d-cf30b743d0d3 SHA256=009AB597CBA7F9AB6B3451F01C8CD797ADDFCB05663D93034A22E4C21C933FA1 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g05\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Platform.dll
+LOAD JueMingR.Features source=0.0.0-dev+uncommitted-perf-input-g05 MVID=d8e30ea3-789e-4026-8c4b-ceee846a1c2b SHA256=08F7103ED085CD0B02C5D5F66C0ED4E4FC90270D8C9E9927C2F49CC6A3B977BA location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g05\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Features.dll
+LOAD JueMingR.Infrastructure source=0.0.0-dev+uncommitted-perf-input-g05 MVID=5a340d51-11ac-4333-845c-247b57397fdd SHA256=543A562F9D17FCAEA4D4EADCCED6C785F64D5E24986D5DDDFB2494F745E02445 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g05\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Infrastructure.dll
+LOAD JueMingR.TerrariaHost source=0.0.0-dev+uncommitted-perf-input-g05 MVID=c4954de5-9fb9-43e8-a819-b88247e3de2a SHA256=173863731C388FD5B88CED965CE4DE0DBED9EE0EB41A5AD1905BE60545A7DCDC location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g05\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.TerrariaHost.dll
+GAME MVID=2c29f6c3-4bd9-4add-9c58-da159804e083 SHA256=960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3
+Explicit historical candidate: C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g05\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.TerrariaHost.dll MVID=c4954de5-9fb9-43e8-a819-b88247e3de2a
+COMPOSITION initialization-ms=6286.5973 code-prepare-ms=441.3653 exact-comparison=False
+BUDGET real-unsampled-outer callbacks=1 GUC=80 runtimeTick=81->82
+BUDGET fixed-natural-warmup updates=60 preview(P=present/M=missing)=MMMMMPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP completed-budget(E=exceeded/_=clear)=EEEEE_______________________________________________________ endGUC=140 runtimeTick=142
+System.Reflection.TargetInvocationException: Exception has been thrown by the target of an invocation. ---> System.Reflection.TargetInvocationException: Exception has been thrown by the target of an invocation. ---> System.InvalidOperationException: CompletedWorld preserves this real GUC's exhausted allowance and legal native Basic consumer despite the different runtime counter
+   at NativeWorldTextProbe.NativeInformationChecks.Require(Boolean value, String reason)
+   at NativeWorldTextProbe.NativeCombatAttackCostChecks.BudgetAndPathOffSelection(Object context, Object combat, Object host, Object attack, Object input, Boolean checkWorldClock)
+   at NativeWorldTextProbe.NativeCombatAttackCostChecks.Run(Object context)
+   --- End of inner exception stack trace ---
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Object[] arguments, Signature sig, Boolean constructor)
+   at System.Reflection.RuntimeMethodInfo.UnsafeInvokeInternal(Object obj, Object[] parameters, Object[] arguments)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+   at ContinuousCombatMeasure.Invoke(String t, String n, Object[] a)
+   at ContinuousCombatMeasure.Exercise(Object context)
+   at NativeWorldTextProbe.NativeQuickItemChecks.Run(Action`1 visual, Boolean coins, Boolean about, Boolean recovery, Boolean processing, Boolean shortFeedback, String candidateAssembly, String predictionHostHash, String candidatePackageId, Boolean exactPredictionComparison)
+   --- End of inner exception stack trace ---
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Object[] arguments, Signature sig, Boolean constructor)
+   at System.Reflection.RuntimeMethodInfo.UnsafeInvokeInternal(Object obj, Object[] parameters, Object[] arguments)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+   at ContinuousCombatMeasure.Invoke(String t, String n, Object[] a)
+   at ContinuousCombatMeasure.Main(String[] a)

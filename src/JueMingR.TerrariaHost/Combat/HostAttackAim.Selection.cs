@@ -34,18 +34,34 @@ namespace JueMingR.TerrariaHost.Combat
                 var context=FaultContextFor(identity);if(plan.Faults.Blocks(context))continue;
                 try
                 {
-                    var timeline=observation.Prediction.TryCandidateReuse(identity,sampleTick,beforeNpc,NpcPredictionCache.Horizon,CandidateMissCurrent(plan,identity,sampleTick,phase));
-                    if(timeline==null || timeline.Count<2)continue;
-                    var contact=PreparePlan(plan,timeline,phase);
+                    int required=beforeNpc?ActionPreferred(identity):NpcPredictionCache.Horizon;
+                    AttackContact contact=null;
+                    for(int attempt=0;attempt<2;attempt++)
+                    {
+                        // Only Attack owns consumer1. An incumbent may expand
+                        // its own same-phase request; candidate histories stay
+                        // independent and Source never changes another demand.
+                        if(beforeNpc && observation.Prediction.OwnsTarget(identity))SetActionDemand(required);
+                        var timeline=observation.Prediction.TryCandidateReuse(identity,sampleTick,beforeNpc,required,CandidateMissCurrent(plan,identity,sampleTick,phase));
+                        if(timeline!=null && timeline.Count>=2)contact=PreparePlan(plan,timeline,phase);
+                        bool shortAction=beforeNpc && required<NpcPredictionCache.Horizon;
+                        if(contact!=null && (!shortAction || !plan.Controlled && plan.Flight==null && plan.Delay==0))break;
+                        contact=null;
+                        if(!shortAction || timeline!=null && (timeline.Stop!=PredictionStop.None || timeline.Count>=NpcPredictionCache.Horizon+1))break;
+                        // A short miss cannot skip a nearer late receive.
+                        // Expand this candidate fully NOW before moving on.
+                        required=NpcPredictionCache.Horizon;
+                    }
                     if(contact!=null)
-                    {candidates.Reachable=identity;selection.Choose(npc,observation.Session,true);return;}
+                    {if(beforeNpc)SetActionDemand(required);candidates.Reachable=identity;selection.Choose(npc,observation.Session,true);return;}
                 }
                 catch(CombatPredictionBudgetExceededException){plan.Clear();throw;}
                 catch(Exception error){PropagateFatal(error);plan.Faults.Record(context);plan.Clear();}
             }
-            // No proof leaves the deterministic nearest receiver and normal
-            // manual attack intact. No retained success or round-robin cursor
-            // can silently replace the user's distance order.
+            // No enhanced proof leaves the deterministic normal receiver
+            // available to admitted Basic input; preview never invents a
+            // contact. No retained success or round-robin cursor can silently
+            // replace the user's distance order.
         }
         private void ClearCandidatePlans()
         {for(int i=0;i<candidatePlans.Length;i++)candidatePlans[i]?.Clear();candidates.Clear();}

@@ -34,6 +34,9 @@ namespace NativeWorldTextProbe
         {
             var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var input=Get(context,"Input");var tools=Get(context,"Tools");
             var attack=GetOptional(combat,"Attack");Require(attack!=null,"ordinary aim owner must be composed");Initialize();
+            // Basic consumers and their independent preview/safety contract
+            // belong to the normal Aim scope, not only a private runner.
+            NativeCombatBasicAimChecks.Run(context);
             NativeCombatAmmoChecks.Run(context);
             NativeCombatSkyChecks.Run(context);
             NativeCombatScatterChecks.Run(context);

@@ -117,7 +117,12 @@ namespace JueMingR.TerrariaHost.Combat
         private void Clear(){actionFrame=-1;Attack?.Reset();Geometry.Clear();Prediction.Cache.EndSession();Prediction.EndWorld();Selection.Clear();World.Recover();World.Marker.Reset();Array.Clear(failedTargets,0,failedTargets.Length);selectionFailed=collisionFailed=pathFailed=reportedCollision=reportedPath=reportedMarker=false;}
         public void FailClosed(){Clear();Prediction.Stop();selectionFailed=collisionFailed=pathFailed=true;}
         public void Update(ulong tick)
-        {UpdateSample(Main.GameUpdateCount,false,tick);}
+        {
+            // Runtime's callback counter is not the native world clock. All
+            // enhancement scopes in this world update share the same GUC,
+            // including earlier ItemCheck/AI consumers and final display.
+            UpdateSample(Main.GameUpdateCount,false,Main.GameUpdateCount);
+        }
         private long actionFrame=-1;
         internal void PrepareAction()
         {
@@ -129,6 +134,7 @@ namespace JueMingR.TerrariaHost.Combat
             // NextAction's existing continuous contract.
             if(!Attack.ActionPreparationNeeded)return;
             actionFrame=input.Frame;
+            Attack.BeginActionDemand();
             npcs.BeginActions(input.Frame);
             // ItemCheck runs after this player's movement/selection, before
             // NPCs and projectiles advance. Their live sample is still T-1.
@@ -148,7 +154,7 @@ namespace JueMingR.TerrariaHost.Combat
         {
             try
             {
-            Attack?.Demand();
+            Attack?.Demand(beforeNpc);
             if(!Enabled)return;
             if(!Hooks.Ready && !Marker && !BasicSelectionDemand){Selection.RetireTarget();Prediction.Clear();return;}
             var player=Main.LocalPlayer;if(player==null || !player.active || player.dead || player.ghost){Selection.RetireTarget();Prediction.Clear();Geometry.BeginNpcs();return;}
@@ -156,21 +162,36 @@ namespace JueMingR.TerrariaHost.Combat
             // The display can show any genuinely computed future, including
             // a short known death/terrain endpoint. It still requests 120;
             // independent strict readers retain their own minimum.
-            if(Path)Prediction.Cache.Demand(0,1,NpcPredictionCache.Horizon);else Prediction.Cache.Release(0);
+            // Only completed-world display owns Path's full 120-point demand.
+            // ItemCheck needs an actual input premise in its earlier phase;
+            // its Attack owner expands a short miss fully before any fallback.
+            if(Path && !beforeNpc)Prediction.Cache.Demand(0,1,NpcPredictionCache.Horizon);else Prediction.Cache.Release(0);
             try{Selection.Update(Options,Session,Marker || BasicSelectionDemand || !pathFailed && Prediction.Cache.Required>0,Collision?Geometry:null);}catch(Exception error){AimTrace.Fault("host-selection",error,(long)tick);selectionFailed=true;CollisionFailed();pathFailed=true;Selection.RetireTarget();Prediction.Stop();World.Clear();return;}
             if(!Selection.HasTarget){Prediction.Clear();return;}
             Attack?.ResolveSelection(sampleTick,beforeNpc);
-            Attack?.Demand(); // The newly selected identity supplies this attack's preferred window.
+            Attack?.Demand(beforeNpc); // Keep a candidate's explicitly proven action prefix.
             // Ordinary prediction is synchronous and owned by Source. Native
             // failure belongs only to the explicit comparison route; a shared
             // entry exception still latches the whole path closed.
             if(TargetPredictionFailed){Prediction.Clear();return;}
+            PrepareSelectedPrediction(sampleTick,beforeNpc,tick);
+            }
+            finally{if(beforeNpc)Attack?.PrepareAction();else Attack?.Prepare();AimTrace.Host(this,pathFailed,"update-exit",true);}
+        }
+        private void PrepareSelectedPrediction(long sampleTick,bool beforeNpc,ulong tick)
+        {
+            if(!Selection.HasTarget || TargetPredictionFailed)return;
             if(!pathFailed && Prediction.Cache.Required>0)try{if(beforeNpc)Prediction.PrepareAction(Selection.Target,sampleTick);else Prediction.Prepare(Selection.Target,sampleTick);}
             catch(CombatPredictionBudgetExceededException){Prediction.Clear();}
             catch(NpcObservationFailure error){AimTrace.Fault("host-npc-observation",error,(long)tick);failedTargets[Selection.Target.Slot]=Selection.Target;Prediction.Clear();}
             catch(Exception error){AimTrace.Fault("host-prepare",error,(long)tick);pathFailed=true;Prediction.Stop();}
-            }
-            finally{if(beforeNpc)Attack?.PrepareAction();else Attack?.Prepare();AimTrace.Host(this,pathFailed,"update-exit",true);}
+        }
+        internal bool ExpandActionPrediction()
+        {
+            if(pathFailed || TargetPredictionFailed || !Selection.HasTarget)return false;
+            Attack.SetActionDemand(NpcPredictionCache.Horizon);
+            PrepareSelectedPrediction((long)Main.GameUpdateCount-1,true,Main.GameUpdateCount);
+            return Prediction.Cache.Read(1)!=null;
         }
         internal void Register(HotkeyRegistry registry,Hotkeys.HotkeyStateFeedback feedback)
         {

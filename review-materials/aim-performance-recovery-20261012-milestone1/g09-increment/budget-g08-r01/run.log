@@ -1,0 +1,37 @@
+LOAD JueMingR.Platform source=0.0.0-dev+uncommitted-action-prefix-g08 MVID=d2db7152-8fb0-4879-81c0-189df2d59359 SHA256=3F921D8F692B3FA73E406DD2C64F98950A101387DBF66F5E7CF111AE9DD14547 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g08\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Platform.dll
+LOAD JueMingR.Features source=0.0.0-dev+uncommitted-action-prefix-g08 MVID=1b09965f-0822-4105-bd94-6a1bda2937eb SHA256=76DE297BA6E1AA580ABA994E87DA4928474E05D482A11195CB577CFA43AB91D9 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g08\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Features.dll
+LOAD JueMingR.Infrastructure source=0.0.0-dev+uncommitted-action-prefix-g08 MVID=6dff691c-05f4-4686-bc72-1536f66058cd SHA256=6AD5FABDD43CC18C645D39FBF71100EECF0460004498B9BA3743158E2864019A location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g08\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Infrastructure.dll
+LOAD JueMingR.TerrariaHost source=0.0.0-dev+uncommitted-action-prefix-g08 MVID=95d3790d-5cda-4392-ae25-6d5a29e986fd SHA256=F9E1AD9F9213AC82E057701D037349FF50BAA75AF0E72922D8F3A0F62E37C36E location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g08\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.TerrariaHost.dll
+GAME MVID=2c29f6c3-4bd9-4add-9c58-da159804e083 SHA256=960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3
+Explicit historical candidate: C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g08\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.TerrariaHost.dll MVID=95d3790d-5cda-4392-ae25-6d5a29e986fd
+COMPOSITION initialization-ms=6041.2222 code-prepare-ms=417.5523 exact-comparison=False
+BUDGET real-unsampled-outer callbacks=1 GUC=80 runtimeTick=81->82
+BUDGET fixed-natural-warmup updates=60 preview(P=present/M=missing)=MMMMPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP completed-budget(E=exceeded/_=clear)=EEEE________________________________________________________ endGUC=140 runtimeTick=142
+PASS forced budget partial-plan/no-miss/same-update native Basic/next-native-tick recovery
+PASS budget world-clock same-GUC CompletedWorld preserves exhaustion runtimeTick=142 realGUC=141; next real GUC alone restores enhancement
+PASS Path OFF Aim ON clearLine=False selected=2 nativeBirths=1 nativeHits=0
+PATHOFF FIRST FAILURE tick=341 frame=0 clearLine=True selected=2/generation=3/type=488 expected=3/generation=2 player={X:710 Y:667} direction=-1 animation=15 time=16 budgetExceeded=True budgetMs=7.0444 attackFailed=False pathFailed=False selectionFailed=False targetPredictionFailed=False read0=none read1=none
+PATHOFF NPC slot=2 generation=3 active=True life=1000 immune=0 position={X:839 Y:648} velocity={X:0 Y:0} friendly=False dontTakeDamage=False
+PATHOFF plan=4 prepared=True phase=CompletedWorld age=0 delay=15 timeline=2/341/121 contact=none candidateMissCurrent=True
+PATHOFF plan=5 prepared=True phase=BeforeNpc age=0 delay=0 timeline=2/340/121 contact=none candidateMissCurrent=False
+PATHOFF NPC slot=3 generation=2 active=True life=1000 immune=0 position={X:535 Y:648} velocity={X:0 Y:0} friendly=False dontTakeDamage=False
+PATHOFF plan=6 prepared=False phase=CompletedWorld age=0 delay=15 timeline=none contact=none candidateMissCurrent=False
+PATHOFF plan=7 prepared=True phase=BeforeNpc age=0 delay=0 timeline=3/340/18 contact=3/8/aim=-9289.818,727.2399 candidateMissCurrent=False
+System.Reflection.TargetInvocationException: Exception has been thrown by the target of an invocation. ---> System.Reflection.TargetInvocationException: Exception has been thrown by the target of an invocation. ---> System.InvalidOperationException: Path OFF still evaluates current final target through the Aim reader: clearLine=True
+   at NativeWorldTextProbe.NativeInformationChecks.Require(Boolean value, String reason)
+   at NativeWorldTextProbe.NativeCombatAttackCostChecks.PathOffSelection(Object context, Object combat, Object host, Object attack, Object input, Boolean clearLine)
+   at NativeWorldTextProbe.NativeCombatAttackCostChecks.BudgetAndPathOffSelection(Object context, Object combat, Object host, Object attack, Object input, Boolean checkWorldClock)
+   at NativeWorldTextProbe.NativeCombatAttackCostChecks.Run(Object context)
+   --- End of inner exception stack trace ---
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Object[] arguments, Signature sig, Boolean constructor)
+   at System.Reflection.RuntimeMethodInfo.UnsafeInvokeInternal(Object obj, Object[] parameters, Object[] arguments)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+   at ContinuousCombatMeasure.Invoke(String t, String n, Object[] a)
+   at ContinuousCombatMeasure.Exercise(Object context)
+   at NativeWorldTextProbe.NativeQuickItemChecks.Run(Action`1 visual, Boolean coins, Boolean about, Boolean recovery, Boolean processing, Boolean shortFeedback, String candidateAssembly, String predictionHostHash, String candidatePackageId, Boolean exactPredictionComparison)
+   --- End of inner exception stack trace ---
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Object[] arguments, Signature sig, Boolean constructor)
+   at System.Reflection.RuntimeMethodInfo.UnsafeInvokeInternal(Object obj, Object[] parameters, Object[] arguments)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+   at ContinuousCombatMeasure.Invoke(String t, String n, Object[] a)
+   at ContinuousCombatMeasure.Main(String[] a)

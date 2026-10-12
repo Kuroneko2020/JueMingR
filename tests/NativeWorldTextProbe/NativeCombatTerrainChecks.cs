@@ -61,6 +61,8 @@ namespace NativeWorldTextProbe
         }
         internal static void Run(object context)
         {
+            NativeCombatDryRegionChecks.Run(context);
+            NativeCombatWindDependencyChecks.Run(context);
             var source=Get(Get(context,"CombatObservation"),"Prediction");var terrain=(IPredictionTerrain)Get(source,"Terrain");
             var read=source.GetType().GetMethod("Read",BindingFlags.Static|BindingFlags.NonPublic);
             var nativeMove=typeof(NPC).GetMethod("UpdateCollision",BindingFlags.Instance|BindingFlags.NonPublic);

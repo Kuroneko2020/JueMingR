@@ -21,13 +21,16 @@ namespace JueMingR.TerrariaHost.Combat
         private readonly int[] hotKeys=new int[256];
         private readonly long[] hotEpochs=new long[256];
         private readonly Cell[] hotCells=new Cell[256];
+        private struct DryRegion
+        {internal int Left,Right,Top,Bottom;internal long Epoch;}
+        private readonly DryRegion[] dryRegions=new DryRegion[32];
         private long epoch=1;
         private int width,height;
         private bool continuing;
 #if DEBUG
         internal int Reads {get;private set;}
 #endif
-        public void Reset(){if(continuing)return;cells.Clear();width=Main.maxTilesX;height=Main.maxTilesY;if(epoch==long.MaxValue){Array.Clear(hotEpochs,0,hotEpochs.Length);epoch=0;}epoch++;}
+        public void Reset(){if(continuing)return;cells.Clear();width=Main.maxTilesX;height=Main.maxTilesY;if(epoch==long.MaxValue){Array.Clear(hotEpochs,0,hotEpochs.Length);Array.Clear(dryRegions,0,dryRegions.Length);epoch=0;}epoch++;}
         public bool Unchanged
         {
             get{if(width!=Main.maxTilesX || height!=Main.maxTilesY)return false;foreach(var pair in cells){Cell current;if(!Read(pair.Key%width,pair.Key/width,out current) || !current.Equals(pair.Value))return false;}return true;}
@@ -409,15 +412,29 @@ namespace JueMingR.TerrariaHost.Combat
         }
         private bool Wet(NpcMotionState n,bool lavaOnly,out bool wet,out byte kind,out PredictionStop stop,bool nativeClip=false)
         {
+            CombatPredictionWork.Check();
             wet=false;kind=0;stop=PredictionStop.None;
             if(nativeClip?!FreeBody(n.X,n.Y,n.Width,n.Height,out stop):!QueryArea(n.X,n.Y,n.Width,n.Height,out stop))return false;
             int sensorWidth=lavaOnly?n.Width:Math.Min(10,n.Width),sensorHeight=lavaOnly?n.Height:n.Height/2;
             float sensorX=lavaOnly?n.X:n.X+n.Width/2-sensorWidth/2,sensorY=lavaOnly?n.Y:n.Y+n.Height/2-sensorHeight/2;
             int left=Math.Max(0,(int)(n.X/16)-1),right=Math.Min(Main.maxTilesX-1,(int)((n.X+n.Width)/16)+2);
             int top=Math.Max(0,(int)(n.Y/16)-1),bottom=Math.Min(Main.maxTilesY-40,(int)((n.Y+n.Height)/16)+2);
+            // This proof covers the WHOLE native scan rectangle, not merely
+            // this body's sensor. Floating motion within that same rectangle
+            // cannot acquire liquid from an all-dry captured region. Keep the
+            // original area/clipping gate above and the complete cell lease;
+            // private ice guards/read tracking must still observe every cell.
+            bool cacheable=width==Main.maxTilesX && height==Main.maxTilesY && icePlayerGuard==null && icePathReads==null;
+            int slot=(left^(right*397)^(top*17)^(bottom*31))&31;
+            var dry=dryRegions[slot];
+            if(cacheable && dry.Epoch==epoch && dry.Left==left && dry.Right==right && dry.Top==top && dry.Bottom==bottom)return true;
+            bool allDry=true;
             for(int x=left;x<right;x++)for(int y=top;y<bottom;y++)
             {
                 Cell c;if(!CellAt(x,y,out c,out stop))return false;float surface=y*16;int liquidHeight=16;byte liquidKind=c.Kind;
+                // A sloped active cell can borrow liquid from the cell above.
+                // Conservatively leave every such region on the normal scan.
+                if(c.Liquid!=0 || c.RawActive && c.Slope!=0)allDry=false;
                 if(c.Liquid>0)
                 {if(lavaOnly && c.Kind!=1)continue;float gap=(256-c.Liquid)/16f;surface+=gap;liquidHeight-= (int)gap;}
                 else
@@ -428,6 +445,7 @@ namespace JueMingR.TerrariaHost.Combat
                 if(sensorX+sensorWidth>x*16 && sensorX<x*16+16 && sensorY+sensorHeight>surface && sensorY<surface+liquidHeight)
                 {wet=true;kind=liquidKind;return true;}
             }
+            if(cacheable && allDry)dryRegions[slot]=new DryRegion{Left=left,Right=right,Top=top,Bottom=bottom,Epoch=epoch};
             return true;
         }
         internal bool ProjectileWet(float x,float y,int width,int height,out bool wet,out byte kind,bool nativeClip=false)
@@ -543,7 +561,13 @@ namespace JueMingR.TerrariaHost.Combat
                     {if(c.StairPlatform && y+h-4-Math.Abs(n.Vx)>ty){if(pass)stairFall=true;continue;}float candidate=ty-h;if(correctY<=candidate)continue;if(pass){stairFall=true;continue;}correctY=candidate;vy=Math.Min(vy,0);}
                 }
             }
-            float rx,ry;bool up,down;if(!TileContact(x,y,correctX-x,correctY-y,n.Width,n.Height,false,out rx,out ry,out up,out down,out stop,true,1,false,false,nativeClip,signedProjectile))return false;
+            float rx=0,ry=0;bool up=false,down=false;
+            // With positive body dimensions and exactly zero slope correction,
+            // TileContact's strict overlap excludes every edge-response branch.
+            // The first scan already leased the identical cells (and checked
+            // ice guards); repeating it cannot change the zero result. Keep the
+            // final area validation and all flags/velocity/stair handling below.
+            if((correctX!=x || correctY!=y || w<=0 || h<=0) && !TileContact(x,y,correctX-x,correctY-y,n.Width,n.Height,false,out rx,out ry,out up,out down,out stop,true,1,false,false,nativeClip,signedProjectile))return false;
             float shift=correctY-y;
             if(ry>shift){float delta=shift-ry;correctY=y+ry;if((mask&2)!=0)correctX=x-delta;if((mask&4)!=0)correctX=x+delta;vx=vy=0;up=false;}
             else if(ry<shift){float delta=ry-shift;correctY=y+ry;if((mask&8)!=0)correctX=x-delta;if((mask&16)!=0)correctX=x+delta;vx=vy=0;}

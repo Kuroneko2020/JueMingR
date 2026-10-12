@@ -157,6 +157,14 @@ namespace NativeWorldTextProbe
             GraphicsDevice.SetRenderTarget(costCanvas);GraphicsDevice.Clear(Color.Transparent);
             batch.Begin(SpriteSortMode.Deferred,null,null,null,null,null,matrix);draw();batch.End();GraphicsDevice.SetRenderTarget(null);
         }
+        internal void ReadRenderedPixels(Color[] destination)
+        {
+            // Reuse the Render-owned canvas and caller-owned complete buffer.
+            // Continuous pixel checks must not create a 2.4 MB buffer and a
+            // GPU target every update, perturbing the next CPU budget scope.
+            if(costCanvas==null || destination==null || destination.Length!=costCanvas.Width*costCanvas.Height)throw new ArgumentException("rendered-pixel-buffer-size");
+            costCanvas.GetData(destination);
+        }
         internal void Image(string output, Action draw, Matrix matrix, int width = 960, int height = 640)
         {
             using (var canvas = new RenderTarget2D(GraphicsDevice, width, height))

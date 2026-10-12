@@ -25,14 +25,27 @@ namespace NativeWorldTextProbe
         private sealed class SporeStep {internal Vector2 Velocity,Center;internal int Alpha;}
         private static int sporeUpdates,sporeRetired;
         private static int flightReads,familyCalls,familyMaximum,drawTerrainReads;
+        private static readonly Dictionary<string,int> familyPasses=new Dictionary<string,int>();
+        private static uint familyPassTick;private static int duplicateFamilyPasses;
         private static bool presenting;
         private static bool tracingFloating,tracingFamily;private static string floatingFirstReject;private static int floatingReports,floatingMotionRefusals;
+        private static uint? floatingDetachedHit;
         private static void FlightRead(){flightReads++;}
-        private static void FamilyRead(Projectile[] sources){familyCalls++;familyMaximum=Math.Max(familyMaximum,sources.Length);tracingFamily=tracingFloating;floatingFirstReject=null;}
-        private static void FloatingMotionResult(bool __result,JueMingR.Platform.Combat.PredictionStop stop,object[] __args)
+        private static void FamilyRead(Projectile[] sources,JueMingR.Platform.Combat.NpcTrajectory path,object clock)
+        {
+            familyCalls++;familyMaximum=Math.Max(familyMaximum,sources.Length);tracingFamily=tracingFloating;floatingFirstReject=null;
+            if(familyPassTick!=Main.GameUpdateCount){familyPassTick=Main.GameUpdateCount;familyPasses.Clear();}
+            // Native actions may change a source within one world update. Only
+            // the same path, phase and unchanged observed members are repeats.
+            string key=System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(path)+"/"+Get(clock,"Phase")+"/"+Get(clock,"FirstTick")+"/"+string.Join(";",sources.Select(p=>p.key+":"+p.type+":"+p.Center+":"+p.velocity+":"+p.ai[0]+":"+p.ai[1]+":"+p.timeLeft));
+            int count;familyPasses.TryGetValue(key,out count);familyPasses[key]=count+1;if(count>0)duplicateFamilyPasses++;
+        }
+        private static void FloatingMotionResult(bool __result,JueMingR.Platform.Combat.PredictionStop stop,JueMingR.Platform.Combat.PredictionPlayerMotion p)
         {
             if(!tracingFamily || __result)return;
-            var motion=(JueMingR.Platform.Combat.PredictionPlayerMotion)__args[0];
+            // All bindings are value copies. Harmony's __args array may write
+            // boxed ref/out arguments back; an observer must never own that.
+            var motion=p;
             if(stop==JueMingR.Platform.Combat.PredictionStop.UnsupportedMechanism && motion.FloatInWater && motion.FloatingNow)floatingMotionRefusals++;
             if(floatingFirstReject==null)floatingFirstReject="motion/"+stop+" floating="+motion.FloatingNow+" floatEquipment="+motion.FloatInWater+" wet="+motion.Wet+" position="+motion.X+","+motion.Y;
         }
@@ -109,7 +122,7 @@ namespace NativeWorldTextProbe
             if(damageType==841 && sideTargets.Contains(__instance.whoAmI))sideStrikes++;
             if(!ReferenceEquals(__instance,receiver) || __result<=0)return;
             if(damageType==parentType){parentHits++;if(!firstParentHit.HasValue){firstParentHit=Main.GameUpdateCount;if(parentType==46){var p=Main.projectile[damageSlot];Rectangle ext;bridgeOnly=p.AI_019_Spears_GetExtensionHitbox(player,out ext) && !p.Hitbox.Intersects(receiver.Hitbox) && !ext.Intersects(receiver.Hitbox) && p.Colliding(p.Hitbox,receiver.Hitbox);Console.WriteLine("ORIGINAL native spear bridge first="+firstParentHit+" onlyBridge="+bridgeOnly+" body="+p.Hitbox+" extension="+ext+" target="+receiver.Hitbox);}}}
-            if(damageType==childType){childHits++;if(clockChildren.Contains(damageSlot) && !clockChildHit.HasValue)clockChildHit=Main.GameUpdateCount;}
+            if(damageType==childType){childHits++;if(clockChildren.Contains(damageSlot) && !clockChildHit.HasValue)clockChildHit=Main.GameUpdateCount;if(tracingFloating && !floatingDetachedHit.HasValue && !Main.projectile.Any(p=>p.active && p.owner==player.whoAmI && p.type==parentType))floatingDetachedHit=Main.GameUpdateCount;}
         }
         internal static void RunSpears(object context,ProbeGraphics graphics=null,string output=null)
         {Run(context,false,graphics,output);}
@@ -118,6 +131,8 @@ namespace NativeWorldTextProbe
         internal static void RunSeams(object context,ProbeGraphics graphics=null,string output=null)
         {Run(context,false,graphics,output,true);}
         private static void Run(object context,bool hand,ProbeGraphics graphics,string output,bool seams=false)
+        {using(var steps=graphics==null?null:NativeCombatUsageChecks.ObserveDrawSteps())RunCore(context,hand,graphics,output,seams);}
+        private static void RunCore(object context,bool hand,ProbeGraphics graphics,string output,bool seams)
         {
             var host=Get(context,"CombatObservation");var combat=Get(context,"Combat");var input=Get(context,"Input");var attack=Get(combat,"Attack");
             observedAttack=attack;
@@ -132,7 +147,9 @@ namespace NativeWorldTextProbe
             audit.Patch(attack.GetType().GetMethod("ReadFlight",Flags),prefix:new HarmonyMethod(typeof(NativeCombatOriginalFeedbackChecks).GetMethod(nameof(FlightRead),Flags)));
             audit.Patch(assembly.GetType("JueMingR.TerrariaHost.Combat.HostMeleeAttack",true).GetMethod("KnownSpearFamily",Flags),prefix:new HarmonyMethod(typeof(NativeCombatOriginalFeedbackChecks).GetMethod(nameof(FamilyRead),Flags)),postfix:new HarmonyMethod(typeof(NativeCombatOriginalFeedbackChecks).GetMethod(nameof(FamilyResult),Flags)),finalizer:new HarmonyMethod(typeof(NativeCombatOriginalFeedbackChecks).GetMethod(nameof(FamilyException),Flags)));
             audit.Patch(assembly.GetType("JueMingR.TerrariaHost.Combat.PredictionTerrain",true).GetMethod("Read",Flags),prefix:new HarmonyMethod(typeof(NativeCombatOriginalFeedbackChecks).GetMethod(nameof(TerrainRead),Flags)));
-            audit.Patch(typeof(JueMingR.Features.Combat.PlayerMotionContinuation).GetMethod("Advance",Flags),postfix:new HarmonyMethod(typeof(NativeCombatOriginalFeedbackChecks).GetMethod(nameof(FloatingMotionResult),Flags)));
+            var floatingObserver=typeof(NativeCombatOriginalFeedbackChecks).GetMethod(nameof(FloatingMotionResult),Flags);
+            Require(floatingObserver.ReturnType==typeof(void) && floatingObserver.GetParameters().All(p=>!p.ParameterType.IsByRef && p.ParameterType!=typeof(object[])),"floating observation has no result/ref/out or __args write-back capability before checking any child-only prediction");
+            audit.Patch(typeof(JueMingR.Features.Combat.PlayerMotionContinuation).GetMethod("Advance",Flags),postfix:new HarmonyMethod(floatingObserver));
             audit.Patch(assembly.GetType("JueMingR.TerrariaHost.Combat.HostProjectileEnvironment",true).GetMethod("Dry",Flags),postfix:new HarmonyMethod(typeof(NativeCombatOriginalFeedbackChecks).GetMethod(nameof(FloatingDryResult),Flags)));
             audit.Patch(assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackObstacles",true).GetMethod("BeforeNpc",Flags),postfix:new HarmonyMethod(typeof(NativeCombatOriginalFeedbackChecks).GetMethod(nameof(FloatingBeforeNpcResult),Flags)));
             var failures=new List<string>();
@@ -163,7 +180,7 @@ namespace NativeWorldTextProbe
                         Main.screenPosition=new Vector2(480,400);Main.GameViewMatrix.Zoom=Vector2.One;Main.rand=new Terraria.Utilities.UnifiedRandom(7193);
                         receiver=NativeCombatControlPreviewChecks.Dummy(2,row[3],40);physical=new Vector2(550,430);parentType=row[1];childType=row[2];parentBirths=childBirths=aimed=raw=parentHits=childHits=damageType=inputAimed=inputRaw=firstCopper=sporeUpdates=sporeRetired=0;born.Clear();
                         assistEnabled=assist;naturalPress=false;permittedBirths=releasedBirths=0;
-                        familyMaximum=0;int initialFamilies=familyCalls,initialFlights=flightReads;
+                        familyMaximum=duplicateFamilyPasses=0;familyPasses.Clear();int initialFamilies=familyCalls,initialFlights=flightReads;
                         var meleeType=assembly.GetType("JueMingR.TerrariaHost.Combat.HostMeleeAttack",true);var scansField=meleeType.GetField("SpearFlightPoolScans",Flags);var stepsField=meleeType.GetField("SpearFlightMemberSteps",Flags);
                         int initialScans=scansField==null?0:(int)scansField.GetValue(null),initialSteps=stepsField==null?0:(int)stepsField.GetValue(null);
                         clockChildren.Clear();clockChildHit=null;
@@ -177,14 +194,23 @@ namespace NativeWorldTextProbe
                         int previewFrames=0,stableFrames=0,stableShown=0,tailFrames=0,tailRecoveries=0;bool previousTail=false;var previewMisses=new List<string>();
                         for(int i=0;i<75;i++)
                         {
+                            int beforeMemberSteps=stepsField==null?0:(int)stepsField.GetValue(null);
+                            int beforeFamilyCalls=familyCalls;
                             naturalPress=i<35 || i>=42;NativeCombatSelectionPreviewChecks.Step(context,physical,naturalPress);
+                            if(!hand)Require(familyCalls-beforeFamilyCalls<=2,"one selected receiver has at most one real family replay in each native preparation phase, even in Release");
+                            if(!hand && stepsField!=null)
+                            {
+                                int updateSteps=(int)stepsField.GetValue(null)-beforeMemberSteps;
+                                int possibleChildren=parentType==130?7:childType>0?1:0;
+                                Require(updateSteps<=2*120*(familyMaximum+possibleChildren),"whole world update bounds family work independently of how often a caller repeats it");
+                            }
                             var contact=(JueMingR.Features.Combat.AttackContact)GetOptional(attack,"ExpectedPreview");
                             // Native animation=1 is separately observed while
                             // the next-use timing oracle is being checked.
                             // Every other supplied reachable window is stable;
                             // internal contact/pixel agreement alone is weak.
                             bool tail=row[0]==1228 && player.itemAnimation==1;
-                            if(tail)tailFrames++;else{stableFrames++;if(contact!=null)stableShown++;Require(contact!=null,"reachable natural original-use interval retains its preview outside the isolated native tail boundary");}
+                            if(tail)tailFrames++;else{stableFrames++;if(contact!=null)stableShown++;else TraceOriginalPreviewFailure(host,attack,row[0],row[3],assist,i);Require(contact!=null,"reachable natural original-use interval retains its preview outside the isolated native tail boundary");}
                             if(previousTail){Require(contact!=null,"natural update after the observed tail restores a fresh preview");tailRecoveries++;}previousTail=tail;
                             if(contact!=null)previewFrames++;else if(previewMisses.Count<3)previewMisses.Add("frame="+i+" animation="+player.itemAnimation+" time="+player.itemTime+" live="+string.Join(",",Main.projectile.Where(q=>q.active && q.owner==player.whoAmI).Select(q=>q.type.ToString())));
                             if(graphics!=null)Present(host,attack,Get(host,"World"),player,receiver,graphics,output,"original-use-"+row[0]+"-"+row[3]+"-"+assist+"-"+i,contact!=null,i==0 || i==21 || i==22 || i==74);
@@ -194,10 +220,12 @@ namespace NativeWorldTextProbe
                         if(!hand && scansField!=null && stepsField!=null)
                         {
                             int scans=(int)scansField.GetValue(null)-initialScans,steps=(int)stepsField.GetValue(null)-initialSteps,families=familyCalls-initialFamilies;
-                            Require(scans==flightReads-initialFlights && steps>0 && steps<=families*120*(familyMaximum+7),"DEBUG each ReadFlight performs one discovery scan and finite slot replay stays within captured sources plus actual known births");
+                            int possibleChildren=parentType==130?7:childType>0?1:0;
+                            Require(scans<=flightReads-initialFlights && steps>0 && steps<=75*2*120*(familyMaximum+possibleChildren),"DEBUG total update work stays within two real phases, captured members and this mechanism's bounded births; memo hits need no scan");
                             Console.WriteLine("PASS ORIGINAL spear work discoveryScans="+scans+" families="+families+" maxSources="+familyMaximum+" memberSteps="+steps+" hits="+(parentHits+childHits));
                         }
                         else if(!hand)Console.WriteLine("ORIGINAL spear DEBUG work counters UNAVAILABLE; native receive/input/presentation assertions remain active");
+                        if(!hand)Require(duplicateFamilyPasses==0,"Release observed identical path/phase/member facts are replayed once per synchronous pass");
                         Console.WriteLine("PASS ORIGINAL preview stable="+stableShown+"/"+stableFrames+" tail="+tailFrames+" restored="+tailRecoveries+" actualDraw="+(graphics!=null));
                         Console.WriteLine("ORIGINAL "+(hand?"hand":"spear")+" item="+row[0]+" dummyX="+row[3]+" assist="+assist+" preview="+preview+" previewFrames="+previewFrames+"/75 missing=["+string.Join(";",previewMisses)+"] parents="+parentBirths+" children="+childBirths+" aimed="+aimed+" raw="+raw+" inputAimed="+inputAimed+" inputRaw="+inputRaw+" firstCopper="+firstCopper+" parentDamage="+parentHits+" childDamage="+childHits+" births=["+string.Join(";",born)+"]");
                         Require(parentBirths>0 && (hand || childBirths>0),"natural entire native use reaches parent and actual derived birth: "+row[0]);
@@ -277,6 +305,24 @@ namespace NativeWorldTextProbe
                 Require(failures.Count==0,"original spear feedback failures: "+string.Join(" | ",failures));
             }
             finally{player=null;receiver=null;observedAttack=null;tracingFloating=tracingFamily=false;audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(host,new JueMingR.Features.Combat.ObservationOptions());NativeCombatCadenceChecks.Save(combat,new JueMingR.Features.Combat.CombatOptions());}
+        }
+        private static void TraceOriginalPreviewFailure(object host,object attack,int item,int dummy,bool assist,int frame)
+        {
+            // This is a snapshot AFTER the existing predicate has failed. It
+            // neither enters a preparation scope nor changes the denominator.
+            var selected=(JueMingR.Platform.Combat.NpcIdentity)Get(Get(host,"Selection"),"Target");var work=Get(host,"PredictionWork");
+            var cache=(JueMingR.Features.Combat.NpcPredictionCache)Get(Get(host,"Prediction"),"Cache");
+            Console.WriteLine("ORIGINAL PREVIEW FIRST FAILURE item="+item+" dummyTile="+dummy+" assist="+assist+" frame="+frame+" GUC="+Main.GameUpdateCount+" animation="+player.itemAnimation+" time="+player.itemTime+" target="+selected.Slot+"/"+selected.Generation+" expected="+receiver.whoAmI+"/"+receiver.generation+" budgetExceeded="+Get(work,"Exceeded")+" budgetMs="+Get(work,"UsedMilliseconds")+" attackFailed="+Get(attack,"Failed")+" pathFailed="+Get(host,"pathFailed")+" read0="+(cache.Read(0)==null?"none":cache.Read(0).Identity.Slot+"/"+cache.Read(0).SampleTick)+" read1="+(cache.Read(1)==null?"none":cache.Read(1).Identity.Slot+"/"+cache.Read(1).SampleTick)+" parents="+parentBirths+" children="+childBirths+" parentHits="+parentHits+" childHits="+childHits);
+            bool consumed=(bool)Get(attack,"hasConsumedInput");var input=Get(attack,"consumedInput");
+            Console.WriteLine("ORIGINAL PREVIEW input hasFact="+consumed+" factGUC="+Get(attack,"consumedInputStep")+" kind="+Get(input,"Kind")+" point="+Get(input,"Point")+" current="+(GetOptional(attack,"current")!=null)+" next="+(GetOptional(attack,"next")!=null)+" compatible="+Call(attack,"PreviewInputCompatible")+" activeSources="+string.Join(";",Main.projectile.Where(p=>p.active && p.owner==player.whoAmI).Select(p=>p.type+"/ai="+p.ai[0]+"/position="+p.Center+"/velocity="+p.velocity)));
+            var plans=(Array)Get(attack,"candidatePlans");
+            bool validSlot=selected.Slot>=0 && selected.Slot*2+1<plans.Length;
+            foreach(var plan in new[]{Get(attack,"preview"),validSlot?plans.GetValue(selected.Slot*2):null,validSlot?plans.GetValue(selected.Slot*2+1):null})
+            {
+                if(plan==null){Console.WriteLine("ORIGINAL PREVIEW plan none");continue;}
+                var timeline=(JueMingR.Platform.Combat.NpcTrajectory)GetOptional(plan,"Timeline");var contact=(JueMingR.Features.Combat.AttackContact)GetOptional(plan,"Contact");
+                Console.WriteLine("ORIGINAL PREVIEW plan prepared="+Get(plan,"Prepared")+" preparedGUC="+Get(plan,"PreparedTick")+" phase="+Get(plan,"Phase")+" delay="+Get(plan,"Delay")+" timeline="+(timeline==null?"none":timeline.Identity.Slot+"/"+timeline.SampleTick)+" contact="+(contact==null?"none":contact.Timeline.Identity.Slot+"/"+contact.Tick));
+            }
         }
         private static void RunPlainSpearCurrent(object context,object host,object combat,object input,object attack,int weapon,int shotType,ProbeGraphics graphics=null,string output=null)
         {
@@ -402,7 +448,8 @@ namespace NativeWorldTextProbe
             NativeCombatObservationChecks.Save(host,new JueMingR.Features.Combat.ObservationOptions(false,true,true,false,true,25,true,false));
             var terrain=attack.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.PredictionTerrain",true);var floating=terrain.GetMethod("FloatingObserved",Flags);int qualified=0;bool gatesLogged=false;
             var dry=attack.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostProjectileEnvironment",true).GetMethod("Dry",Flags);var observedTerrain=Activator.CreateInstance(terrain,true);
-            int initialFlights=flightReads,initialFamilies=familyCalls,published=0;bool bodyDraw=false,childDraw=false,memberChecked=false;tracingFloating=true;floatingReports=floatingMotionRefusals=0;
+            int initialFlights=flightReads,initialFamilies=familyCalls,published=0,detachedPreviews=0;bool bodyDraw=false,childDraw=false,memberChecked=false;tracingFloating=true;floatingReports=floatingMotionRefusals=0;floatingDetachedHit=null;
+            var detachedReceives=new HashSet<long>();
             for(int i=0;i<70;i++)
             {
                 naturalPress=i==4;NativeCombatSelectionPreviewChecks.Step(context,physical,naturalPress);if(i==4)physical=new Vector2(550,430);
@@ -412,8 +459,11 @@ namespace NativeWorldTextProbe
                 var plan=Get(attack,"preview");var flight=GetOptional(plan,"Flight");var contact=(JueMingR.Features.Combat.AttackContact)GetOptional(attack,"ExpectedPreview");
                 if(Call(Get(Get(host,"Prediction"),"Cache"),"Read",1)!=null)published++;
                 if(!floats)continue;
-                Require(contact==null && flight==null,"this naturally constrained floating continuation retains its existing Unsupported boundary instead of promising a receive");
                 var members=Main.projectile.Where(p=>p.active && p.owner==player.whoAmI && (p.type==222 || p.type==228)).ToArray();
+                bool hasBody=members.Any(p=>p.type==222),hasChild=members.Any(p=>p.type==228);
+                if(hasBody)Require(contact==null && flight==null,"a live hand still needs the unsupported future floating owner continuation");
+                else if(hasChild && contact!=null)
+                {Require(flight!=null,"a child-only contact belongs to an observed sealed family, not a new hypothetical hand");detachedPreviews++;detachedReceives.Add(contact.Timeline.SampleTick+contact.ReceiveTick);}
                 if(members.Length>0 && !memberChecked)
                 {
                     // This validates a pure member lease on real observed
@@ -431,17 +481,16 @@ namespace NativeWorldTextProbe
                     Require(drawTerrainReads==0 && flightReads==reads && familyCalls==families,"floating member Current performs no terrain, discovery or replay");memberChecked=true;
                     Console.WriteLine("PASS ORIGINAL constrained floating owner/member Current pure zeroTerrain; this is member validation, not wet prediction support");
                 }
-                bool hasBody=members.Any(p=>p.type==222),hasChild=members.Any(p=>p.type==228);
-                if(hasBody && !bodyDraw || hasChild && !hasBody && !childDraw)
+                if(hasBody && !bodyDraw || hasChild && !hasBody && !childDraw && contact!=null)
                 {
                     Require(player.wet && player.ShouldFloatInWater,"actual constrained floating owner remains native wet for withdrawal Draw");
-                    Present(host,attack,Get(host,"World"),player,receiver,graphics,output,"original-floating-withdrawal-"+(hasBody?"body":"child"),false,true);
+                    Present(host,attack,Get(host,"World"),player,receiver,graphics,output,"original-floating-phase-"+(hasBody?"body":"child"),!hasBody,true);
                     if(hasBody)bodyDraw=true;else childDraw=true;
                 }
             }
             Console.WriteLine("ORIGINAL floating route qualified="+qualified+" publishedSelected="+published+" previewTimeline="+(GetOptional(Get(attack,"preview"),"Timeline")!=null)+" flightReads="+(flightReads-initialFlights)+" familyCalls="+(familyCalls-initialFamilies)+" floatingMotionRefusals="+floatingMotionRefusals+" nativeParentDamage="+parentHits+" nativeChildDamage="+childHits);tracingFloating=false;
-            Require(qualified==70 && published==70 && floatingMotionRefusals>0 && familyCalls>initialFamilies && parentBirths==1 && childBirths==1 && childHits>0 && bodyDraw && childDraw && memberChecked,"natural constrained floating preserves published NPC paths and real derived damage while withdrawing the unsupported attack preview");
-            Console.WriteLine("PASS ORIGINAL constrained floating actual World.Draw withdrawal body/child; zero extra terrain/discovery/replay; no wet prediction support claimed");
+            Require(qualified==70 && published==70 && floatingMotionRefusals>0 && familyCalls>initialFamilies && parentBirths==1 && childBirths==1 && childHits>0 && bodyDraw && childDraw && memberChecked && detachedPreviews>0 && floatingDetachedHit.HasValue && detachedReceives.Contains(floatingDetachedHit.Value),"unsupported live hand withdraws while the sealed child's future contact independently matches a native receive after hand retirement");
+            Console.WriteLine("PASS ORIGINAL floating hand withdrawal/sealed-child receive="+floatingDetachedHit+" previews="+detachedPreviews+" actual World.Draw; zero extra terrain/discovery/replay; no future floating motion support claimed");
         }
         private static void RunClockCounterexamples(object context,object host,object combat,object input,object attack)
         {

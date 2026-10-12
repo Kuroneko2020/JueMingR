@@ -33,7 +33,7 @@ namespace JueMingR.TerrariaHost.Combat
         private readonly HostCadenceAim cadence;
         private readonly HostAttackCandidates candidates=new HostAttackCandidates();
         private AttackContact presentation;private uint presentationStep;private bool presentationOrdinary;
-        private int preferred=4,expansion;
+        private int preferred=4,expansion,actionRequired;
         private Item demandWeapon;private NpcIdentity demandTarget;
         // A fault belongs to a concrete attack context. Changing a target or
         // weapon restores healthy work without retrying the retained bad one.
@@ -72,10 +72,13 @@ namespace JueMingR.TerrariaHost.Combat
         }
         internal bool Permission {get{return !Failed && BasicPermission;}}
         internal bool ActionPreparationNeeded {get{return combat.Player!=null && HostAttackWindow.NextAction(combat,combat.Player,combat.Player.HeldItem);}}
-        internal void Demand()
+        internal void BeginActionDemand(){actionRequired=0;}
+        internal void SetActionDemand(int required)
+        {actionRequired=preferred=Math.Min(NpcPredictionCache.Horizon,Math.Max(1,required));observation.Prediction.Cache.Demand(1,1,preferred);}
+        internal void Demand(bool beforeNpc=false)
         {
             if((PreviewDemand || Permission && HostAttackWindow.NextAction(combat,combat.Player,combat.Player.HeldItem)) && Eligible(combat.Player.HeldItem) && !HostPlacementAttack.Handles(combat.Player.HeldItem))
-            {preferred=Preferred();observation.Prediction.Cache.Demand(1,1,preferred);}
+            {preferred=Preferred();if(beforeNpc)preferred=actionRequired>0?actionRequired:ActionPreferred(observation.Selection.Target);observation.Prediction.Cache.Demand(1,1,preferred);}
             else{observation.Prediction.Cache.Release(1);expansion=0;Clear();}
         }
         private int Preferred()
@@ -83,6 +86,21 @@ namespace JueMingR.TerrariaHost.Combat
             var player=combat.Player;var item=player.HeldItem;var target=observation.Selection.Target;
             if(!ReferenceEquals(item,demandWeapon) || !target.Equals(demandTarget)){expansion=0;demandWeapon=item;demandTarget=target;}
             if(!observation.Selection.HasTarget)return 4;
+            return PreferredFor(target,expansion);
+        }
+        // Candidate hints are pure and use that candidate's actual identity.
+        // They never update the selected owner's expansion/history fields.
+        internal int ActionPreferred(NpcIdentity target)
+        {
+            var player=combat.Player;var item=player.HeldItem;
+            var captured=AttackAmmoSnapshot.Capture(player,item);Projectile body;AttackMotion motion;
+            if(!HostAttackWindow.Ordinary(item) || captured==null || !ContentSamples.ProjectilesByType.TryGetValue(captured.Projectile,out body) || HostMeleeAttack.Handles(body) || HostSkyAttack.Handles(item.type) || HostEffectAttack.Handles(captured.Projectile) || HostHarpyAttack.Handles(player,captured) || !HostAttackModels.TryRead(captured,out motion) || motion.Gravity!=0 || motion.Acceleration!=1)return NpcPredictionCache.Horizon;
+            return PreferredFor(target,0);
+        }
+        private int PreferredFor(NpcIdentity target,int extra)
+        {
+            var player=combat.Player;var item=player.HeldItem;
+            if(!CombatSelection.Valid(target,observation.Session))return 4;
             if(HostPhasebladeAttack.Handles(item.shoot))return NpcPredictionCache.Horizon;
             if(HostSwingAttack.Handles(item) && item.shoot<=0)return Math.Min(120,Math.Max(4,player.itemAnimation>0?player.itemAnimation+1:item.useAnimation+1));
             if(item.type==3541)return 32;
@@ -93,7 +111,7 @@ namespace JueMingR.TerrariaHost.Combat
                 {
                     var npc=Main.npc[target.Slot];float distance=Vector2.Distance(player.MountedCenter,npc.Center+npc.netOffset);
                     float closing=Math.Max(1,motion.Speed*motion.Updates-npc.velocity.Length());
-                    return Math.Min(120,Math.Max(16,(int)Math.Ceiling(distance/closing)+8+expansion));
+                    return Math.Min(120,Math.Max(16,(int)Math.Ceiling(distance/closing)+8+extra));
                 }
             }
             return NpcPredictionCache.Horizon;
@@ -110,7 +128,7 @@ namespace JueMingR.TerrariaHost.Combat
         }
         private void PrepareSwing(Player player,Item item,NpcTrajectory timeline,HostAttackPhase phase,bool naturalPose)
         {
-            environmentState=new HostProjectileEnvironment.State(true);
+            environmentState=new HostProjectileEnvironment.State(true,HostProjectileEnvironment.HandWindRelevant(player,item));
             if(timeline==null || !timeline.Identity.Equals(observation.Selection.Target))return;
             current=swing.Solve(player,item,timeline,new HostAttackClock(timeline,phase),terrain,naturalPose);next=null;ammo=null;
             weapon=item;slot=player.selectedItem;type=item.type;prefix=item.prefix;session=observation.Session;prepared=Main.GameUpdateCount;origin=player.RotatedRelativePoint(player.MountedCenter);
@@ -141,7 +159,7 @@ namespace JueMingR.TerrariaHost.Combat
                 preparedMotion.SameSample(NpcPredictionSource.ReadPlayer(held)) && CurrentReceiver && preparedImmune==Main.npc[observation.Selection.Target.Slot].immune[held.whoAmI] &&
                 HostAttackWindow.NextAction(combat,held,held.HeldItem) && Valid(true))return;
             bool beforeNpc=phase==HostAttackPhase.BeforeNpc;ClearExecution();if(!Permission || !CurrentReceiver)return;
-            terrain.Reset();environmentState=new HostProjectileEnvironment.State(true);
+            terrain.Reset();environmentState=new HostProjectileEnvironment.State(true,HostProjectileEnvironment.HandWindRelevant(held,held.HeldItem));
             var player=combat.Player;var item=player.HeldItem;if(!Eligible(item) || !HostAttackWindow.NextAction(combat,player,item))return;
             if(HostPlacementAttack.Handles(item))return; // Placement has its own native use receipt, not a damage contact.
             var timeline=observation.Prediction.Cache.Read(1);if(timeline==null || !timeline.Identity.Equals(observation.Selection.Target))return;
@@ -169,9 +187,16 @@ namespace JueMingR.TerrariaHost.Combat
                 current=HostHarpyAttack.Solve(player,captured,timeline,origin,new HostAttackClock(timeline,phase),terrain,obstacles,out harpyState);
             }
             else current=Solve(player,item,captured,timeline,origin,age,beforeNpc);
-            // A finite preferred prefix can yield no contact. Expand only on
-            // later preparation, bounded by the accepted horizon; consumers
-            // never pad the future or start another prediction to force a hit.
+            // A short action hint is only a cheap positive search. Nearest
+            // mode has no candidate loop: it must also search the full original
+            // horizon in this SAME action before falling back to Basic. A
+            // terminal modeled boundary is never padded into an unknown future.
+            if(beforeNpc && current==null && preferred<NpcPredictionCache.Horizon && timeline.Stop==PredictionStop.None && timeline.Count<NpcPredictionCache.Horizon+1 && !observation.PredictionWork.Exceeded && observation.ExpandActionPrediction())
+            {PrepareCore(phase);return;}
+            // BeforeNpc has already expanded a nonterminal action miss once
+            // above. CompletedWorld keeps the existing later-preparation
+            // expansion; neither route pads beyond the accepted horizon or a
+            // terminal modeled boundary, and consumers still validate the plan.
             if(current==null && preferred<120 && timeline.Count<=preferred+1)expansion=Math.Min(120,expansion+preferred);else if(current!=null)expansion=0;
             cadence.Prepare(player,item,captured,timeline,phase,current);
             var playerFrame=HostAttackPlayerFrame.Capture(player,timeline);var movement=playerFrame.Motion;PredictionStop stop;

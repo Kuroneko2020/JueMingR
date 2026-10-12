@@ -13,7 +13,7 @@ namespace NativeWorldTextProbe
     {
         private static readonly System.Collections.Generic.Dictionary<int,int> movingNpcSteps=new System.Collections.Generic.Dictionary<int,int>();
         private static void MovingNpcStep(System.Reflection.MethodBase __originalMethod,NpcMotionState n)
-        {Count(__originalMethod);int value;movingNpcSteps.TryGetValue(n.Identity.Slot,out value);movingNpcSteps[n.Identity.Slot]=value+1;}
+        {int value;movingNpcSteps.TryGetValue(n.Identity.Slot,out value);movingNpcSteps[n.Identity.Slot]=value+1;}
         private static float MovingDistance(NPC n,Vector2 center)
         {var area=n.getRect();return Vector2.DistanceSquared(center,Vector2.Clamp(center,new Vector2(area.Left,area.Top),new Vector2(area.Right,area.Bottom)));}
         private static void MovingCandidates(object context,object combat,object host,object attack,object input)
@@ -54,7 +54,7 @@ namespace NativeWorldTextProbe
                 watch.Stop();Require(moving.Select((n,i)=>n.active && n.position!=initial[i]).All(v=>v) && visible==frames,"measured candidate loop contains six real moving actors and a useful preview on every update");
                 if(use)Require(solarDamage>0,"moving candidate work during actual item use retains native positive strikes on the feasible dummy");
                 int continuations=(int)Get(source,"CandidateContinuations")-initialContinuations;
-                Report("moving-six-blocked");Console.WriteLine("MOVING CANDIDATES frames="+frames+" actualMoving=6 type="+movingType+" use="+use+" nativeDamage="+solarDamage+" visible="+visible+" selected="+string.Join(",",selectedSlots)+" npcSteps="+Total("NpcMotion.Step")+" continuations="+continuations+" attackSolves="+Total("AttackIntercept.Solve")+" elapsedMs="+watch.Elapsed.TotalMilliseconds.ToString("R",System.Globalization.CultureInfo.InvariantCulture));
+                Report("moving-npcs-stationary-player-six-blocked");Console.WriteLine("MOVING NPCS / STATIONARY PLAYER frames="+frames+" actualMovingNpcs=6 playerMoving=false type="+movingType+" use="+use+" nativeDamage="+solarDamage+" visible="+visible+" selected="+string.Join(",",selectedSlots)+" npcSteps="+Total("NpcMotion.Step")+" continuations="+continuations+" attackSolves="+Total("AttackIntercept.Solve")+" elapsedMs="+watch.Elapsed.TotalMilliseconds.ToString("R",System.Globalization.CultureInfo.InvariantCulture));
                 Console.WriteLine("MOVING CANDIDATE stepsBySlot="+string.Join(";",movingNpcSteps.OrderBy(pairs=>pairs.Key)));
                 int movingSteps=moving.Sum(n=>movingNpcSteps[n.whoAmI]);
                 // Actual use invokes both BeforeNpc and CompletedWorld. The
@@ -92,30 +92,40 @@ namespace NativeWorldTextProbe
             Console.WriteLine("PASS moving candidate suffixes equal fresh full predictions points="+points+"; validation replay excluded from workload interval");
         }
         private static NPC solarReceiver;private static int solarDamage;private static NPC[] solarOtherReceivers;
+        private static int solarBirths;
+        private static void SolarBorn(Player __instance,Projectile __0){if(__instance.whoAmI==0 && __0.owner==0 && __0.type==611)solarBirths++;}
         private static void SolarDamage(NPC __instance,int __result){if(__result>0 && (ReferenceEquals(__instance,solarReceiver) || solarOtherReceivers!=null && solarOtherReceivers.Contains(__instance)))solarDamage++;}
         private static void SolarComparable(object context,object combat,object host,object attack,object input)
         {
             var outlet=new Harmony("JueMingR.Tests.SolarComparable");
             foreach(string name in new[]{"HandleSpecialEvent","HandleMining","HandleRunning"})outlet.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
             outlet.Patch(AccessTools.Method(typeof(NPC),"StrikeNPC",new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)}),postfix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks).GetMethod(nameof(SolarDamage),Flags)));
+            outlet.Patch(typeof(Player).GetMethod("TryUpdateChannel",Flags),postfix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks),nameof(SolarBorn)));
             try
             {
                 foreach(string scene in new[]{"idle","continuous","unreachable","multiple"})
                 {
                     NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());
                     var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,3473,0,0);p.position=new Vector2(700,646);p.ResetEffects();p.ResetFallDamage();p.releaseUseItem=true;Main.screenPosition=new Vector2(480,400);Main.rand=new Terraria.Utilities.UnifiedRandom(7193);
-                    bool use=scene=="continuous" || scene=="multiple";int duration=use?45:12;
+                    bool use=scene=="continuous" || scene=="multiple";int duration=360;
                     solarOtherReceivers=null;solarReceiver=NativeCombatControlPreviewChecks.Dummy(2,scene=="unreachable"?90:55,40);
                     if(scene=="multiple")
                     {
                         solarReceiver.active=false;solarReceiver=NativeCombatControlPreviewChecks.Dummy(2,52,40);solarOtherReceivers=new[]{NativeCombatControlPreviewChecks.Dummy(3,54,40),NativeCombatControlPreviewChecks.Dummy(4,57,40)};
                     }
                     NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,50,true,true));
-                    for(int i=0;i<4;i++)NativeCombatSelectionPreviewChecks.Step(context,new Vector2(560,580),false,true);
-                    calls.Clear();solarDamage=0;int preview=0,live=0;var selectedSlots=new System.Collections.Generic.SortedSet<int>();var watch=System.Diagnostics.Stopwatch.StartNew();
+                    for(int i=0;i<60;i++)NativeCombatSelectionPreviewChecks.Step(context,new Vector2(560,580),false,true);
+                    calls.Clear();solarDamage=solarBirths=0;int preview=0,live=0;var selectedSlots=new System.Collections.Generic.SortedSet<int>();var watch=System.Diagnostics.Stopwatch.StartNew();
                     for(int i=0;i<duration;i++)
                     {
-                        NativeCombatSelectionPreviewChecks.Step(context,new Vector2(560,580),use);
+                        int posesBefore=Total("HostMeleeAttack.SolarPose"),modelsBefore=Total("HostMeleeAttack.SolvePrepared")+Total("HostMeleeAttack.KnownSolar");
+                        bool held=use && i<270 && i%75<60;
+                        NativeCombatSelectionPreviewChecks.Step(context,new Vector2(560,580),held);
+                        int receivers=scene=="multiple"?3:1;
+                        // Two native phases, with candidate hand/flight and
+                        // execution current/next. This whole-update allowance
+                        // does not expand when a producer repeats those roles.
+                        Require(Total("HostMeleeAttack.SolvePrepared")+Total("HostMeleeAttack.KnownSolar")-modelsBefore<=6*receivers && Total("HostMeleeAttack.SolarPose")-posesBefore<=6*receivers*29,"Solar whole-update model/pose work cannot multiply with repeated full replays: "+scene+" update="+i);
                         // Historical selection keeps an old reachable member
                         // after another becomes nearer. Count actual useful
                         // damage across this same three-receiver scene and
@@ -125,9 +135,11 @@ namespace NativeWorldTextProbe
                         if(Main.projectile.Any(q=>q.active && q.type==611 && q.owner==0))live++;
                     }
                     watch.Stop();Report("solar-comparable-"+scene);
-                    if(use)Require(solarDamage>0 && live>0 && preview>0,"same-scene Solar workload retains the real useful attack: "+scene);
+                    if(use)Require(solarBirths>=4 && solarDamage>0 && live>0 && preview>0,"complete Solar cycles retain multiple actual native consumers, useful damage and preview: "+scene);
                     else Require(solarDamage==0 && live==0 && (scene=="idle"?preview==duration:preview==0),"finite Solar idle/miss work preserves actual outcome: "+scene);
-                    Console.WriteLine("SOLAR COMPARE scene="+scene+" frames="+duration+" nativeDamage="+solarDamage+" nativeLive="+live+" preview="+preview+" selectedSlots="+string.Join(",",selectedSlots)+" modelCalls="+(Total("HostMeleeAttack.SolvePrepared")+Total("HostMeleeAttack.KnownSolar"))+" poses="+Total("HostMeleeAttack.SolarPose")+" elapsedMs="+watch.Elapsed.TotalMilliseconds.ToString("R",System.Globalization.CultureInfo.InvariantCulture)+"; original Player/NPC/projectile/preparation component, not FPS");
+                    Require(!Main.projectile.Any(q=>q.active && q.type==611 && q.owner==0),"Solar's complete-cycle interval includes natural source exit");
+                    Require(Total("HostMeleeAttack.SolvePrepared")+Total("HostMeleeAttack.KnownSolar")<=duration*6*(scene=="multiple"?3:1) && Total("HostMeleeAttack.SolarPose")<=duration*6*(scene=="multiple"?3:1)*29,"Solar total interval cost is bounded by updates/receiver roles, not measured call count");
+                    Console.WriteLine("SOLAR COMPARE scene="+scene+" frames="+duration+" nativeBirths="+solarBirths+" nativeDamage="+solarDamage+" nativeLive="+live+" preview="+preview+" selectedSlots="+string.Join(",",selectedSlots)+" modelCalls="+(Total("HostMeleeAttack.SolvePrepared")+Total("HostMeleeAttack.KnownSolar"))+" poses="+Total("HostMeleeAttack.SolarPose")+" elapsedMs="+watch.Elapsed.TotalMilliseconds.ToString("R",System.Globalization.CultureInfo.InvariantCulture)+"; original Player/NPC/projectile/preparation component, not FPS");
                 }
             }
             finally{solarReceiver=null;solarOtherReceivers=null;outlet.UnpatchAll(outlet.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());}

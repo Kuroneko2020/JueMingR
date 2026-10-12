@@ -99,15 +99,17 @@ namespace NativeWorldTextProbe
         private static float CenterY(object element){var rect=Get(element,"Rect");return (float)Get(rect,"Y")+(float)Get(rect,"Height")/2;}
         private static void World(object context,ProbeGraphics graphics,string output)
         {
+            using(var futureSteps=NativeCombatUsageChecks.ObserveDrawSteps())
+            {
             var host=Get(context,"CombatObservation");var layer=Get(host,"World");Set(host,"LayerStatus",Enum.Parse(Get(host,"LayerStatus").GetType(),"Ready"));
             Main.screenWidth=960;Main.screenHeight=640;Main.UIScale=1;PlayerInput.CacheOriginalScreenDimensions();Main.screenPosition=new Vector2(300,300);Main.hideUI=false;Main.mapFullscreen=false;Main.dayTime=false;
             NativeCombatObservationChecks.Save(host,new ObservationOptions(collision:true,path:true));
             foreach(var n in Main.npc)n.active=false;var npc=Main.npc[0];npc.SetDefaults(2);npc.whoAmI=0;npc.active=true;npc.target=0;npc.position=new Vector2(480,440);npc.velocity=new Vector2(2,-1);npc.timeLeft=750;
             Main.LocalPlayer.position=new Vector2(650,640);UiFrame(context,Vector2.Zero,false);NativeCombatObservationChecks.Fresh(context,host);
             var shot=Main.projectile[10];shot.SetDefaults(632);shot.whoAmI=10;shot.active=true;shot.owner=0;shot.friendly=true;shot.damage=10;shot.position=new Vector2(-300,550);shot.velocity=Vector2.UnitX;shot.localAI[1]=1500;shot.scale=1;shot.Damage();
-            var cache=(JueMingR.Features.Combat.NpcPredictionCache)Get(Get(host,"Prediction"),"Cache");int steps=cache.Steps;Call(layer,"Prepare");NativeCombatPresentationChecks.Project(layer);Require((int)Get(layer,"StrokeCount")>10,"actual world preparation keeps offscreen-origin beam and selected future path; strokes="+Get(layer,"StrokeCount")+" canDraw="+Get(host,"CanDraw")+" enabled="+Get(host,"Enabled")+" path="+(cache.Read(0)?.Count.ToString()??"none")+" failed="+Call(host,"Unavailable",0));
+            var cache=(JueMingR.Features.Combat.NpcPredictionCache)Get(Get(host,"Prediction"),"Cache");int steps=NativeCombatUsageChecks.ObservedNpcSteps;Call(layer,"Prepare");NativeCombatPresentationChecks.Project(layer);Require((int)Get(layer,"StrokeCount")>10,"actual world preparation keeps offscreen-origin beam and selected future path; strokes="+Get(layer,"StrokeCount")+" canDraw="+Get(host,"CanDraw")+" enabled="+Get(host,"Enabled")+" path="+(cache.Read(0)?.Count.ToString()??"none")+" failed="+Call(host,"Unavailable",0));
             for(int i=0;i<100;i++)graphics.Pixels(()=>Call(layer,"Draw"),Main.GameViewMatrix.ZoomMatrix);
-            Require(cache.Steps==steps,"repeated actual draw cannot run NPC prediction");
+            Require(NativeCombatUsageChecks.ObservedNpcSteps==steps,"repeated actual draw cannot run NPC prediction");
             graphics.Image(Path.Combine(output,"observation-world.png"),()=>Call(layer,"Draw"),Main.GameViewMatrix.ZoomMatrix);
             Main.LocalPlayer.gravDir=-1;Main.screenPosition+=new Vector2(70,30);Call(layer,"Prepare");graphics.Image(Path.Combine(output,"observation-world-inverted.png"),()=>Call(layer,"Draw"),Main.GameViewMatrix.ZoomMatrix);Main.LocalPlayer.gravDir=1;
             npc.SetDefaults(371);npc.whoAmI=0;npc.active=true;npc.position=new Vector2(700,650);npc.target=0;npc.ai[3]=1;
@@ -117,6 +119,7 @@ namespace NativeWorldTextProbe
                 // substituting the old stationary phrase would mislabel it.
                 Require(path!=null && (path.Assumptions&PredictionAssumption.HeldPlayerControls)!=0 && shown.Contains("随机代表路线") && shown.Contains("依据本机网络观察") && shown.Contains("假设玩家延续当前输入"),"actual rendered path text retains random, network and published player-continuation assumptions");}finally{Main.netMode=priorMode;}
             NativeCombatObservationChecks.Save(host,new ObservationOptions());Call(layer,"Prepare");Require((int)Get(layer,"StrokeCount")==0,"display off retires prepared geometry");
+            }
         }
         private static void ScrollTo(object context,object state,object element)
         {

@@ -1,0 +1,21 @@
+g09 r17 one normal actual World.Draw run: FAIL10, exit1; no repeated attempt to obtain occasional green.
+Fixed HostSHA957A5463BD9399C597E24A4218BEEAB94268759528C0313F69765FCF879372C5 MVIDa220125c-f55e-4fb9-acdd-3343b96c1b30; shared probeSHA8DE8AE68F3DFA92080F5A90F21CBA66E5223440D87B8C03FD76C4FFD40D345F4.
+Original normal adapterSHA35A0273020B1CE6BB5C61894B7303EA490CB13E33DBBB867103A459E12562EEF; same untouched600+negative12/294 each scene.
+Standing284/294 longestBlank5; moving294/294 zero missing. Nativebirth15/15 assisted15/15 nativehits16/15 landings16/15 normalGravity69/69 playerDelta0/91.32001.
+Full nativebirth file sameg07/g08 SHAFDC34CB1D0A64EF5DAEB3946598A8ACDF1F5206A87823D6D2F46385592A16250; healthy actual AI/room/damage preconditions retained.
+Cold2..6 and later budget blanks retained. Adapter retains bounded FirstChance stack formatting; exception-time overhead is inside charged scope and these durations are NOT formal performance evidence. No retroactive conversion ofFAIL toPASS.
+Unreachable short-blade12 assertions completed before finalaggregate10failure; all old evidence preserved.
+Missing rows run phase frame tick pathCount exceeded budgetms:
+standing idle 2 83 121 True 18.4066
+standing idle 3 84 121 True 12.2503
+standing idle 4 85 121 True 8.1914
+standing idle 5 86 121 True 8.2075
+standing idle 6 87 121 True 6.1984
+standing idle 46 127 121 True 7.7699
+standing idle 71 152 0 True 9.5916
+standing idle 72 153 0 True 8.3929
+standing idle 73 154 0 True 7.2895
+standing attack 180 261 0 True 7.1949
+logSHA45DF15DC859407A35B066BAD56083CCC031374224712A184396BC964A66801AB
+CSV SHA1044C6B09B4B565930161A4844B7EE2196F411CE4FB1FBC436A14F8F976B8BED
+factsSHA9C31B328ACF93A84484AE66354887CF2562C82EBFFF1CDF83D19CA944E4AD808

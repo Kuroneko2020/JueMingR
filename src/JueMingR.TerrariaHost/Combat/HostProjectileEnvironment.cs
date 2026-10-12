@@ -3,6 +3,8 @@ using JueMingR.Features.Combat;
 using JueMingR.Platform.Combat;
 using Microsoft.Xna.Framework;
 using Terraria;
+using Terraria.GameContent;
+using Terraria.ID;
 
 namespace JueMingR.TerrariaHost.Combat
 {
@@ -13,21 +15,45 @@ namespace JueMingR.TerrariaHost.Combat
     {
         internal struct State
         {
-            private readonly bool wind,goodWorld,noTraps,tenthAnniversary;private readonly float speed,strength;private readonly double surface;
-            internal State(bool capture){wind=Main.windPhysics;goodWorld=Main.getGoodWorld;noTraps=Main.noTrapsWorld;tenthAnniversary=Main.tenthAnniversaryWorld;speed=Main.windSpeedCurrent;strength=Main.windPhysicsStrength;surface=Main.worldSurface;}
-            internal bool Current {get{return wind==Main.windPhysics && goodWorld==Main.getGoodWorld && noTraps==Main.noTrapsWorld && tenthAnniversary==Main.tenthAnniversaryWorld && speed==Main.windSpeedCurrent && strength==Main.windPhysicsStrength && surface==Main.worldSurface;}}
+            private readonly bool windRelevant,wind,goodWorld,noTraps,tenthAnniversary;private readonly float speed,strength;private readonly double surface;
+            internal State(bool capture,bool windRelevant=true){this.windRelevant=windRelevant;wind=Main.windPhysics;goodWorld=Main.getGoodWorld;noTraps=Main.noTrapsWorld;tenthAnniversary=Main.tenthAnniversaryWorld;speed=Main.windSpeedCurrent;strength=Main.windPhysicsStrength;surface=Main.worldSurface;}
+            internal bool Current {get{return (!windRelevant || wind==Main.windPhysics && speed==Main.windSpeedCurrent && strength==Main.windPhysicsStrength) && goodWorld==Main.getGoodWorld && noTraps==Main.noTrapsWorld && tenthAnniversary==Main.tenthAnniversaryWorld && surface==Main.worldSurface;}}
+        }
+        // The locked original ShouldUseWindPhysics first gates on Main.windPhysics.
+        // A dependency lease must also survive that gate toggling, so inspect
+        // its exact type override/style rule without mutating the live gate.
+        private static bool PotentialWind(Projectile body)
+        {
+            if(body==null)return true;
+            bool? immunity=ProjectileID.Sets.WindPhysicsImmunity[body.type];
+            if(immunity.HasValue)return !immunity.Value;
+            switch(body.aiStyle)
+            {case 1:case 2:case 8:case 10:case 14:case 16:case 17:case 21:case 24:case 28:case 29:case 32:case 33:case 34:case 35:case 49:case 72:case 93:case 96:case 106:return true;}
+            return false;
+        }
+        internal static bool HandWindRelevant(Player player,Item item)
+        {
+            if(item==null || player!=null && player.windPushed && player.CanBePushedByWind())return true;
+            if(item.shoot<=0 && HostSwingAttack.Handles(item))return false;
+            // Other mechanisms can choose ammo, transforms or autonomous
+            // births. Keep their broad lease until those dependencies are
+            // audited. Spear/ordinary-whip modeled members are explicit.
+            if(!HostMeleeAttack.KnownSpearParent(item.shoot) && !HostMeleeAttack.KnownWhipParent(item.shoot))return true;
+            Projectile body;if(!ContentSamples.ProjectilesByType.TryGetValue(item.shoot,out body) || PotentialWind(body))return true;
+            int child=HostMeleeAttack.DerivedSpearChild(item.shoot);
+            return child!=0 && (!ContentSamples.ProjectilesByType.TryGetValue(child,out body) || PotentialWind(body));
         }
         private readonly Projectile sample;
         private readonly PredictionTerrain terrain;
-        private readonly bool wind;
+        private readonly bool windRelevant,wind;
         private readonly float windSpeed,windStrength;
         private readonly double surface;
         internal readonly float Scale,WindX;
         private HostProjectileEnvironment(Projectile sample,PredictionTerrain terrain,float scale,float windX)
         {
-            this.sample=sample;this.terrain=terrain;Scale=scale;WindX=windX;wind=Main.windPhysics;windSpeed=Main.windSpeedCurrent;windStrength=Main.windPhysicsStrength;surface=Main.worldSurface;
+            this.sample=sample;this.terrain=terrain;Scale=scale;WindX=windX;windRelevant=PotentialWind(sample);wind=Main.windPhysics;windSpeed=Main.windSpeedCurrent;windStrength=Main.windPhysicsStrength;surface=Main.worldSurface;
         }
-        internal bool Unchanged {get{return wind==Main.windPhysics && windSpeed==Main.windSpeedCurrent && windStrength==Main.windPhysicsStrength && surface==Main.worldSurface;}}
+        internal bool Unchanged {get{return (!windRelevant || wind==Main.windPhysics && (!wind || windSpeed==Main.windSpeedCurrent && windStrength==Main.windPhysicsStrength)) && surface==Main.worldSurface;}}
         internal static AttackContact Solve(Projectile sample,PredictionTerrain terrain,Vector2 origin,AttackMotion motion,NpcTrajectory timeline,int age,int delay,int firstTick,Func<int,bool> receives,out HostProjectileEnvironment environment,Func<int,int,float,float,bool> damagePassage=null,Func<int,int,float,float,bool> beforeMotion=null)
         {
             environment=null;float scale;if(!Factor(sample,terrain,origin.X,origin.Y,out scale))return null;

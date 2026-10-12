@@ -24,6 +24,8 @@ namespace NativeWorldTextProbe
             if(Environment.GetEnvironmentVariable("JMR_IMPACT_VISUAL_ONLY")=="natural-slime"){NativeCombatNaturalImpactChecks.Run(context,graphics,Path.Combine(output,"natural-slime"));return;}
             if(Environment.GetEnvironmentVariable("JMR_IMPACT_VISUAL_ONLY")=="usage"){NativeCombatUsageChecks.Run(context,graphics,output);return;}
             Directory.CreateDirectory(output);var host=Get(context,"CombatObservation");var combat=Get(context,"Combat");var attack=Get(combat,"Attack");var world=Get(host,"World");var impact=Get(world,"Impact");var input=Get(context,"Input");
+            using(var futureSteps=NativeCombatUsageChecks.ObserveDrawSteps())
+            {
             var harmony=new Harmony("JueMingR.Tests.ImpactVisual");
             harmony.Patch(attack.GetType().GetProperty("ExpectedPreview",Flags).GetGetMethod(true),prefix:new HarmonyMethod(typeof(NativeCombatImpactVisualChecks).GetMethod("ReadFault",Flags)));
             harmony.Patch(attack.GetType().GetMethod("PreviewCurrent",Flags),prefix:new HarmonyMethod(typeof(NativeCombatImpactVisualChecks).GetMethod("ReadFault",Flags)));
@@ -43,11 +45,11 @@ namespace NativeWorldTextProbe
                     // Change camera AFTER preparation. The oracle uses the final
                     // camera independently of the production marker projection.
                     Main.screenPosition=new Vector2(640,420);Main.GameViewMatrix.Zoom=new Vector2(scale);var zoom=Main.GameViewMatrix.ZoomMatrix;var bounds=contact.Timeline[contact.ReceiveTick].Bounds;var local=new Vector2(bounds.CenterX,bounds.CenterY)-Main.screenPosition;if(gravity<0)local.Y=Main.screenHeight-local.Y;var center=Vector2.Transform(local,zoom);
-                    int steps=cache.Steps;var pixels=graphics.Pixels(()=>Call(world,"Draw"),zoom);var red=pixels.Select((c,i)=>new{c,i}).Where(v=>Red(v.c)).Select(v=>new Vector2(v.i%960,v.i/960)).ToArray();
+                    int steps=NativeCombatUsageChecks.ObservedNpcSteps;var pixels=graphics.Pixels(()=>Call(world,"Draw"),zoom);var red=pixels.Select((c,i)=>new{c,i}).Where(v=>Red(v.c)).Select(v=>new Vector2(v.i%960,v.i/960)).ToArray();
                     Require(red.Length>=16 && red.Length<=100 && red.All(v=>Math.Abs(v.X-center.X)<=6 && Math.Abs(v.Y-center.Y)<=6),"actual red pixels stay around final ExpectedImpact camera projection");
                     Require(red.Max(v=>v.X)-red.Min(v=>v.X)>=6 && red.Max(v=>v.X)-red.Min(v=>v.X)<=10 && red.Max(v=>v.Y)-red.Min(v=>v.Y)>=6 && red.Max(v=>v.Y)-red.Min(v=>v.Y)<=10,"red screen outline remains eight pixels at both zooms");
-                    Console.WriteLine("IMPACT oracle hollow="+!Red(pixels[(int)center.Y*960+(int)center.X])+" pathInk="+pixels.Count(PathInk)+" strokes="+Get(world,"StrokeCount")+" steps="+steps+"/"+cache.Steps+" center="+center);
-                    Require(!Red(pixels[(int)center.Y*960+(int)center.X]) && pixels.Any(PathInk) && cache.Steps==steps,"red is hollow, path survives and actual Draw does not advance prediction");
+                    Console.WriteLine("IMPACT oracle hollow="+!Red(pixels[(int)center.Y*960+(int)center.X])+" pathInk="+pixels.Count(PathInk)+" strokes="+Get(world,"StrokeCount")+" steps="+steps+"/"+NativeCombatUsageChecks.ObservedNpcSteps+" center="+center);
+                    Require(!Red(pixels[(int)center.Y*960+(int)center.X]) && pixels.Any(PathInk) && NativeCombatUsageChecks.ObservedNpcSteps==steps,"red is hollow, path survives and actual Draw does not advance prediction");
                     graphics.Image(Path.Combine(output,"impact-"+gravity+"-"+scale+".png"),()=>Call(world,"Draw"),zoom);
                     Console.WriteLine("PASS actual impact Draw gravity="+gravity+" zoom="+scale+" redPixels="+red.Length+" center="+center);
                 }
@@ -73,6 +75,7 @@ namespace NativeWorldTextProbe
                 NativeCombatAttackCostChecks.Draw(context,graphics);
             }
             finally{readFault=drawFault=false;harmony.UnpatchAll(harmony.Id);Main.LocalPlayer.gravDir=1;Main.GameViewMatrix.Zoom=Vector2.One;NativeCombatObservationChecks.Save(host,new ObservationOptions());Call(world,"Recover");}
+            }
             // The default scope owns the natural source/presentation chain
             // too; selectors only shorten local runs, never define coverage.
             NativeCombatUsageChecks.Run(context,graphics,Path.Combine(output,"natural-usage"));

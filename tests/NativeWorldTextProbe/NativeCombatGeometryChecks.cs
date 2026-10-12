@@ -1,5 +1,6 @@
 using System;
 using System.Reflection;
+using HarmonyLib;
 using JueMingR.Features.Combat;
 using Microsoft.Xna.Framework;
 using Terraria;
@@ -9,7 +10,63 @@ namespace NativeWorldTextProbe
 {
     internal static class NativeCombatGeometryChecks
     {
+        internal sealed class SampleObservation : IDisposable
+        {
+            private const BindingFlags Flags=BindingFlags.Instance|BindingFlags.Static|BindingFlags.Public|BindingFlags.NonPublic;
+            private static SampleObservation active;
+            [ThreadStatic] private static object currentProjectileGeometry;
+            private readonly object geometry;private readonly Array attacks;private readonly Harmony audit;
+            private int projectileSamples,meleeSamples;private bool disposed;
+            internal int ProjectileSamples {get{Require(!disposed && ReferenceEquals(active,this),"projectile sampling read requires its installed observer scope");return projectileSamples;}}
+            internal int MeleeSamples {get{Require(!disposed && ReferenceEquals(active,this),"melee sampling read requires its installed observer scope");return meleeSamples;}}
+            internal SampleObservation(object geometry)
+            {
+                Require(active==null,"native geometry sampling observers cannot overlap");
+                this.geometry=geometry;attacks=(Array)Get(geometry,"Attacks");
+                var type=geometry.GetType();var projectile=type.GetMethod("Projectile",Flags);var sample=type.GetMethod("Sample",Flags);
+                var captureType=type.Assembly.GetType("JueMingR.TerrariaHost.Combat.ProjectileCollisionGeometry",false);var capture=captureType?.GetMethod("TryCapture",Flags);
+                Require(projectile!=null && projectile.GetParameters().Length==3 && sample!=null && sample.GetParameters().Length==2 && capture!=null && capture.GetParameters().Length==4,"loaded production geometry has the actual Projectile/Sample/TryCapture sampling seams");
+                audit=new Harmony("JueMingR.Tests.NativeGeometrySamples");active=this;
+                try
+                {
+                    audit.Patch(projectile,prefix:new HarmonyMethod(typeof(SampleObservation),nameof(BeginProjectile)),finalizer:new HarmonyMethod(typeof(SampleObservation),nameof(EndProjectile)));
+                    audit.Patch(capture,prefix:new HarmonyMethod(typeof(SampleObservation),nameof(CapturedProjectile)));
+                    audit.Patch(sample,postfix:new HarmonyMethod(typeof(SampleObservation),nameof(SampledMelee)));
+                }
+                catch{audit.UnpatchAll(audit.Id);active=null;throw;}
+            }
+            private static void BeginProjectile(object __instance,out object __state)
+            {__state=currentProjectileGeometry;currentProjectileGeometry=__instance;}
+            private static Exception EndProjectile(object __state,Exception __exception)
+            {currentProjectileGeometry=__state;return __exception;}
+            private static void CapturedProjectile()
+            {
+                // The real geometry's successful admission reaches this once,
+                // exactly where its DEBUG counter used to increment. Other
+                // predictive models calling TryCapture are outside this scope.
+                // Preserve the caller stack on this thread: a nested other
+                // geometry or concurrent model capture must not borrow it.
+                if(active!=null && ReferenceEquals(currentProjectileGeometry,active.geometry))active.projectileSamples++;
+            }
+            private static void SampledMelee(object __instance,object __0,int __1,object __result)
+            {
+                // Only Melee samples the Attacks player-slot lane. Count the
+                // actual reset/published sample, not a possibly refused entry.
+                // Every binding is a value copy; no business ref/out writeback.
+                if(active!=null && ReferenceEquals(active.geometry,__instance) && ReferenceEquals(active.attacks,__0) && __1>=Main.maxProjectiles && __1<active.attacks.Length && __result!=null)active.meleeSamples++;
+            }
+            public void Dispose()
+            {
+                if(disposed)return;
+                try{audit.UnpatchAll(audit.Id);}
+                finally{disposed=true;active=null;}
+            }
+        }
         internal static void Run(object context)
+        {
+            using(var samples=new SampleObservation(Get(Get(context,"CombatObservation"),"Geometry")))RunCore(context,samples);
+        }
+        private static void RunCore(object context,SampleObservation samples)
         {
             var host=Get(context,"CombatObservation");NativeCombatObservationChecks.Save(host,new ObservationOptions(collision:true));
             var geometry=Get(host,"Geometry");var shots=(Array)Get(geometry,"Attacks");var npcShapes=(Array)Get(geometry,"Npcs");
@@ -23,7 +80,7 @@ namespace NativeWorldTextProbe
             var p=Main.projectile[4];p.SetDefaults(301);p.active=true;p.whoAmI=4;p.owner=0;p.position=new Vector2(300,300);p.friendly=true;p.damage=10;p.localAI[0]=80;
             // A direct query is not a natural Damage scope and must not enter
             // the observer; then the native Damage call consumes state once.
-            int before=(int)Get(geometry,"ProjectileSamples");var explosionBox=p.Damage_GetHitbox();Require((int)Get(geometry,"ProjectileSamples")==before,"unscoped GetHitbox is ignored");
+            int before=samples.ProjectileSamples;var explosionBox=p.Damage_GetHitbox();Require(samples.ProjectileSamples==before,"unscoped GetHitbox is ignored");
             p.localAI[0]=80;NativeQuickItemChecks.BeginWorldStep();p.Damage();Require(p.localAI[0]==-1,"observer does not consume hitbox side effect twice");
             var eventSamples=(Array)Get(geometry,"Events");
             var sample=eventSamples.GetValue((int)Get(geometry,"EventCount")-1);Require(sample!=null && (int)Get(sample,"Count")>0,"destructive expansion is retained as a transient native event");
@@ -31,7 +88,7 @@ namespace NativeWorldTextProbe
             p.Damage();Require((int)Get(sample,"Count")>0,"subsequent ordinary Damage cannot erase the consumed one-shot expansion");
             p.SetDefaults(85);p.active=true;p.whoAmI=4;p.owner=0;p.damage=10;p.friendly=true;p.localAI[0]=53;p.Damage();Require((int)Get(shots.GetValue(4),"Count")>0,"damage substep is sampled");p.localAI[0]=54;p.Damage();Require((int)Get(shots.GetValue(4),"Count")==0,"final harmless substep retires earlier sample in the same tick");
             var remote=new Player{active=true,whoAmI=1,position=new Vector2(400,400),direction=1,gravDir=1};Main.player[1]=remote;var sword=new Item();sword.SetDefaults(Terraria.ID.ItemID.CopperBroadsword);remote.inventory[0]=sword;remote.selectedItemState.Select(0);remote.selectedItemState.Update();remote.itemAnimationMax=remote.itemAnimation=20;
-            int melee=(int)Get(geometry,"MeleeSamples");remote.AnimatePlayerAndGetItemFrame(0,sword);Require((int)Get(geometry,"MeleeSamples")==melee,"unscoped decoration/dummy animation is not a melee damage sample");remote.ItemCheck();Require((int)Get(geometry,"MeleeSamples")==melee+1 && shots.GetValue(Main.maxProjectiles+1)!=null,"remote natural ItemCheck pose produces a melee sample without owner-only damage");
+            int melee=samples.MeleeSamples;remote.AnimatePlayerAndGetItemFrame(0,sword);Require(samples.MeleeSamples==melee,"unscoped decoration/dummy animation is not a melee damage sample");remote.ItemCheck();Require(samples.MeleeSamples==melee+1 && shots.GetValue(Main.maxProjectiles+1)!=null,"remote natural ItemCheck pose produces a melee sample without owner-only damage");
             remote.active=false;
             foreach(int type in new[]{1115,454,1124,965,452,756,961,1041,1125})
             {
@@ -59,10 +116,10 @@ namespace NativeWorldTextProbe
             p.WhipPointsForCollision.Clear();p.WhipPointsForCollision.Add(new Vector2(17,19));Call(geometry,"Projectile",p,p.Hitbox,false);Require(p.WhipPointsForCollision.Count==1 && p.WhipPointsForCollision[0]==new Vector2(17,19),"display extraction uses private whip point lists, never native collision scratch");p.Damage();Require((int)Get(shots.GetValue(20),"Count")>5,"natural whip damage retains separate current/previous point unions (vanilla may itself update CutTiles scratch)");
             CheckProjectileBoundary(p,shots.GetValue(20),p.Damage_GetHitbox(),3,"whip point unions and gaps");
             NativeCombatCoverageChecks.Run(geometry);
-            NativeQuickItemChecks.BeginWorldStep();before=(int)Get(geometry,"ProjectileSamples");
+            NativeQuickItemChecks.BeginWorldStep();before=samples.ProjectileSamples;
             for(int i=0;i<Main.maxProjectiles;i++)
             {var dense=Main.projectile[i];dense.SetDefaults(1);dense.active=true;dense.whoAmI=i;dense.owner=Main.myPlayer;dense.friendly=true;dense.damage=10;dense.position=new Vector2(300+i%40*4,300+i/40*4);dense.Damage();Require((int)Get(shots.GetValue(i),"Count")==1,"dense native callbacks retain exactly one current region per projectile");}
-            Require((int)Get(geometry,"ProjectileSamples")-before==Main.maxProjectiles && shots.Length==Main.maxProjectiles+Main.maxPlayers,"full projectile array is observed once per natural callback with fixed capacity");
+            Require(samples.ProjectileSamples-before==Main.maxProjectiles && shots.Length==Main.maxProjectiles+Main.maxPlayers,"full projectile array is observed once per natural callback with fixed capacity");
             Call(geometry,"Clear");Main.LocalPlayer.hostile=true;Main.LocalPlayer.team=0;remote.active=true;remote.hostile=false;
             for(int i=0;i<130;i++)
             {var sentry=Main.projectile[i];sentry.SetDefaults(644);sentry.active=true;sentry.whoAmI=i;sentry.owner=i%2;sentry.damage=10;sentry.localAI[0]=1;sentry.localAI[1]=29;sentry.friendly=false;sentry.AI();}
@@ -72,7 +129,7 @@ namespace NativeWorldTextProbe
             for(int i=0;i<131;i++)Require(!(bool)Get(eventSamples.GetValue(i),"Presented"),"no Draw means no presentation receipt");
             Call(host,"OnSessionEnded");Require((int)Get(geometry,"EventCount")==0,"session exit retires all bounded pending events");for(int i=0;i<shots.Length;i++)Require(shots.GetValue(i)==null,"session exit releases every dense shape sample");Call(host,"OnSessionStarted");
             Console.WriteLine("WORKLOAD dense native geometry: 1000 natural Damage callbacks; all 130 mixed local/remote bursts retained; no-Draw retention and session cleanup verified.");
-            NativeCombatObservationChecks.Save(host,new ObservationOptions());before=(int)Get(geometry,"ProjectileSamples");for(int i=0;i<600;i++)p.Damage();Require((int)Get(geometry,"ProjectileSamples")==before,"OFF native Damage scopes perform no geometry work");
+            NativeCombatObservationChecks.Save(host,new ObservationOptions());before=samples.ProjectileSamples;for(int i=0;i<600;i++)p.Damage();Require(samples.ProjectileSamples==before,"OFF native Damage scopes perform no geometry work");
             Console.WriteLine("PASS first batch geometry: natural hitbox scope, destructive getter once, six prism beams, NPC gameplay categories, extra harm and OFF native callbacks.");
         }
         private static bool Hit(object sample,Rectangle target)

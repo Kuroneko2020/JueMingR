@@ -61,6 +61,8 @@ namespace NativeWorldTextProbe
         }
         private static void ShortDemand(object context,object combat,object host,object input)
         {
+            using(var futureSteps=NativeCombatUsageChecks.ObserveDrawSteps())
+            {
             var cache=(NpcPredictionCache)Get(Get(host,"Prediction"),"Cache");var audit=new Harmony("JueMingR.Tests.AttackDemand");audit.Patch(typeof(Player).GetMethod("ItemCheck",Flags),prefix:new HarmonyMethod(typeof(NativeCombatCandidateDemandChecks).GetMethod("Before",Flags)){priority=Priority.Last});
             try
             {
@@ -70,13 +72,23 @@ namespace NativeWorldTextProbe
                     NativeCombatObservationChecks.Save(host,new ObservationOptions(false,path,false,false,false,25,false,true));NativeToolExecutionChecks.Sample(context,input,new Vector2(650,550),false);Call(combat,"Sample");Call(host,"SampleMouse");NativeQuickItemChecks.BeginWorldStep();p.Update(0);Call(context,"UpdateRuntime");
                     NativeToolExecutionChecks.Sample(context,input,new Vector2(650,550),true);Call(combat,"Sample");Call(host,"SampleMouse");watchCache=cache;NativeQuickItemChecks.BeginWorldStep();p.Update(0);watchCache=null;
                     Projectile shot=null;foreach(var q in Main.projectile)if(q.active && q.type==14)shot=q;
-                    Console.WriteLine("DEMAND path="+path+" required="+window+" samples="+count+" shot="+(shot==null?"none":shot.velocity.ToString()));Require(shot!=null && shot.velocity.X>0 && (path?window==120:window>=16 && window<40) && count>=window+1,"real first shot uses bounded short attack demand, independent path keeps its own long request");
+                    var attack=Get(combat,"Attack");var consumed=Get(attack,"consumedInput");var openingTarget=(JueMingR.Platform.Combat.NpcIdentity)Get(Get(host,"Selection"),"Target");
+                    Console.WriteLine("DEMAND before path="+path+" required="+window+" samples="+count+" shot="+(shot==null?"none":shot.velocity.ToString())+" consumed="+Get(consumed,"Kind"));
+                    Require(shot!=null && shot.velocity.X>0 && window>=16 && window<40 && count>=window+1 && (bool)Get(attack,"hasConsumedInput") && (uint)Get(attack,"consumedInputStep")==Main.GameUpdateCount && Get(consumed,"Kind").ToString()=="Enhanced","real first shot consumes Enhanced from the bounded input prefix with Path OFF or ON");
+                    // The same native world step now completes NPC movement
+                    // and projectile damage before the independent Path120
+                    // display producer. No extra Prepare call fills the gap.
+                    foreach(var npc in Main.npc)if(npc.active)npc.UpdateNPC(npc.whoAmI);
+                    for(int slot=0;slot<Main.maxProjectiles;slot++)if(Main.projectile[slot].active){Main.ProjectileUpdateLoopIndex=slot;Main.projectile[slot].Update(slot);}Main.ProjectileUpdateLoopIndex=-1;
+                    Call(context,"UpdateRuntime");var displayed=cache.Read(0);
+                    Require(path?cache.Required==120 && displayed!=null && displayed.Count==121 && displayed.SampleTick==(long)Main.GameUpdateCount && displayed.Identity.Equals(openingTarget):displayed==null,"completed same-GUC Path ON restores the full121 current target future; Path OFF has no reader0 result");
                 }
-                NativeCombatObservationChecks.Save(host,new ObservationOptions(marker:true));NativeToolExecutionChecks.Sample(context,input,new Vector2(870,667),false);Call(combat,"Sample");Call(host,"SampleMouse");Call(context,"UpdateRuntime");int steps=cache.Steps;
-                for(int i=0;i<20;i++){Call(context,"UpdateRuntime");Call(context,"UpdateShell");}Require(cache.Required==0 && cache.Steps==steps && (bool)Get(Get(host,"Selection"),"HasTarget"),"Aim OFF marker-only selection performs no future work or residual attack demand");
-                Console.WriteLine("PASS attack-only short preferred prefix, path+attack long prefix, marker-only OFF zero future steps");
+                NativeCombatObservationChecks.Save(host,new ObservationOptions(marker:true));NativeToolExecutionChecks.Sample(context,input,new Vector2(870,667),false);Call(combat,"Sample");Call(host,"SampleMouse");Call(context,"UpdateRuntime");int steps=NativeCombatUsageChecks.ObservedNpcSteps;
+                for(int i=0;i<20;i++){Call(context,"UpdateRuntime");Call(context,"UpdateShell");}Require(cache.Required==0 && NativeCombatUsageChecks.ObservedNpcSteps==steps && (bool)Get(Get(host,"Selection"),"HasTarget"),"Aim OFF marker-only selection performs no future work or residual attack demand");
+                Console.WriteLine("PASS real Enhanced short input prefix with Path OFF/ON, completed Path120 display, marker-only OFF zero future steps");
             }
             finally{watchCache=null;audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());}
+            }
         }
         private static NPC Scene(int slot,Vector2 center){var n=Main.npc[slot];n.SetDefaults(3);n.whoAmI=slot;n.active=true;n.Center=center;n.aiStyle=-1;n.noGravity=true;n.life=n.lifeMax=100000;Array.Clear(n.immune,0,n.immune.Length);return n;}
     }

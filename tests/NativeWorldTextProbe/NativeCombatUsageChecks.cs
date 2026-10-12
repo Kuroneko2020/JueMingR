@@ -16,6 +16,34 @@ namespace NativeWorldTextProbe
     internal static class NativeCombatUsageChecks
     {
         private const BindingFlags Flags=BindingFlags.Instance|BindingFlags.Static|BindingFlags.Public|BindingFlags.NonPublic;
+        private static Harmony drawStepAudit;private static int drawStepScopes,drawNpcSteps;
+        private static void CountDrawNpcStep(){drawNpcSteps++;}
+        internal static int ObservedNpcSteps
+        {
+            get{Require(drawStepScopes>0 && drawStepAudit!=null,"actual future Step read requires an installed observer scope");return drawNpcSteps;}
+        }
+        private sealed class DrawStepScope : IDisposable
+        {
+            private bool disposed;
+            public void Dispose()
+            {
+                if(disposed)return;disposed=true;
+                if(--drawStepScopes==0){drawStepAudit.UnpatchAll(drawStepAudit.Id);drawStepAudit=null;}
+            }
+        }
+        internal static IDisposable ObserveDrawSteps()
+        {
+            if(drawStepScopes==0)
+            {
+                var methods=typeof(NpcMotion).GetMethods(Flags).Where(m=>m.Name=="Step" && m.GetParameters().Length==8).ToArray();
+                Require(methods.Length>0,"actual future producer Step observer is present in the loaded candidate");
+                var audit=new Harmony("JueMingR.Tests.UsageDrawFutureSteps");
+                try{foreach(var method in methods)audit.Patch(method,prefix:new HarmonyMethod(typeof(NativeCombatUsageChecks),nameof(CountDrawNpcStep)));}
+                catch{audit.UnpatchAll(audit.Id);throw;}
+                drawStepAudit=audit;drawNpcSteps=0;
+            }
+            drawStepScopes++;return new DrawStepScope();
+        }
         private static Player player;private static NPC receiver;private static int births,hits,aimedBirths,ordinaryChildren,useFrame,bubbleOrderChanges,bubbleAssistedChanges;private static Vector2 physical;private static uint? solarDue;private static bool solarWaitVerified,observeUse;
         private sealed class KillWitness {internal bool Changed;internal string Details;}
         private static void Born(Player __instance,Projectile __0)
@@ -48,10 +76,17 @@ namespace NativeWorldTextProbe
         {if(__state==null)return;if(__state.Changed){bubbleOrderChanges++;if(__result!=null)bubbleAssistedChanges++;}if(__result==null)Console.WriteLine("USAGE bubble unassisted Kill "+__state.Details);}
         internal static void Run(object context,ProbeGraphics graphics=null,string output=null)
         {
+            // One observer lifetime for the real graphics group, including
+            // nested original-feedback leaves; no patching in each Draw.
+            using(var steps=graphics==null?null:ObserveDrawSteps())RunCore(context,graphics,output);
+        }
+        private static void RunCore(object context,ProbeGraphics graphics,string output)
+        {
             if(output!=null)Directory.CreateDirectory(output);
             var usageHost=Get(context,"CombatObservation");
             Console.WriteLine("USAGE fixture initialLayer="+Get(usageHost,"LayerStatus")+" actualDraw="+(graphics!=null));
             Set(usageHost,"LayerStatus",Enum.Parse(Get(usageHost,"LayerStatus").GetType(),"Ready"));Main.screenWidth=960;Main.screenHeight=640;Main.UIScale=1;
+            if(Environment.GetEnvironmentVariable("JMR_USAGE_ORIGINAL_FEEDBACK")=="basic-aim"){NativeCombatBasicAimChecks.Run(context);return;}
             if(Environment.GetEnvironmentVariable("JMR_USAGE_ORIGINAL_FEEDBACK")=="spears"){NativeCombatOriginalFeedbackChecks.RunSpears(context,graphics,output);return;}
             if(Environment.GetEnvironmentVariable("JMR_USAGE_ORIGINAL_FEEDBACK")=="hand"){NativeCombatOriginalFeedbackChecks.RunHand(context,graphics,output);return;}
             if(Environment.GetEnvironmentVariable("JMR_USAGE_ORIGINAL_FEEDBACK")=="ranged"){NativeCombatOriginalRangedChecks.Run(context,graphics,output);return;}
@@ -160,14 +195,16 @@ namespace NativeWorldTextProbe
             if(expected)Require(ReferenceEquals(contact.Timeline,cache.Read(0)) && contact.Timeline.Identity.Slot==observedReceiver.whoAmI,"preview and selected path share the actual published timeline: "+name);
             Call(world,"Prepare");var zoom=Main.GameViewMatrix.ZoomMatrix;var impact=Get(world,"Impact");
             if(graphics==null){Call(impact,"Project",zoom,Matrix.Invert(zoom));Require((bool)Get(impact,"Visible")==expected,"natural capture/project at "+name);return;}
-            int steps=cache.Steps;var pixels=graphics.Pixels(()=>Call(world,"Draw"),zoom);var red=pixels.Select((v,i)=>new{v,i}).Where(p=>Red(p.v)).Select(p=>new Vector2(p.i%960,p.i/960)).ToArray();
-            Require((red.Length>0)==expected && cache.Steps==steps,"natural actual World.Draw red presence without advancing prediction: "+name);
+            Require(drawStepScopes>0 && drawStepAudit!=null,"actual Draw future-work observer is installed for this group");
+            int steps=ObservedNpcSteps;var pixels=graphics.Pixels(()=>Call(world,"Draw"),zoom);var red=pixels.Select((v,i)=>new{v,i}).Where(p=>Red(p.v)).Select(p=>new Vector2(p.i%960,p.i/960)).ToArray();
+            Require((red.Length>0)==expected && ObservedNpcSteps==steps,"natural actual World.Draw red presence without real future Step work: "+name);
             if(expected)
             {
                 var b=contact.Timeline[contact.ReceiveTick].Bounds;var center=Vector2.Transform(new Vector2(b.CenterX,b.CenterY)-Main.screenPosition,zoom);
                 Require(red.Length>=16 && red.Length<=100 && red.All(p=>Math.Abs(p.X-center.X)<=6 && Math.Abs(p.Y-center.Y)<=6) && !Red(pixels[(int)center.Y*960+(int)center.X]),"actual hollow red pixels surround the same receive-time NPC path position: "+name);
             }
             if(save && output!=null)graphics.Image(Path.Combine(output,name+".png"),()=>Call(world,"Draw"),zoom);
+            Require(ObservedNpcSteps==steps,"exported actual World.Draw also performs no real future Step work: "+name);
         }
     }
 }

@@ -17,7 +17,15 @@ namespace NativeWorldTextProbe
     internal static partial class NativeCombatAttackCostChecks
     {
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance|BindingFlags.Static;
-        private static readonly Dictionary<string,int> calls=new Dictionary<string,int>();
+        private sealed class CounterSlot {internal int Value;}
+        private sealed class CounterSet : Dictionary<string,CounterSlot>
+        {
+            // Existing scene resets keep the bound slots. Clearing bindings
+            // would silently detach Harmony's actual producer counters.
+            public new void Clear(){foreach(var slot in Values)slot.Value=0;}
+        }
+        private static readonly CounterSet calls=new CounterSet();
+        private static readonly Dictionary<MethodBase,CounterSlot> methodCounters=new Dictionary<MethodBase,CounterSlot>();
         private static Player watchedYoyoPlayer;private static int primaryBirths,detachedBirths,overlappingBirths;private static bool forwardBirths;
         private static void YoyoBorn(Player __instance,Projectile __0)
         {
@@ -27,11 +35,14 @@ namespace NativeWorldTextProbe
             if(Main.projectile.Any(q=>q.active && q.owner==__instance.whoAmI && q.aiStyle==99 && q.ai[0]==-2))overlappingBirths++;
         }
         private static void Count(MethodBase __originalMethod)
-        {string key=__originalMethod.DeclaringType.Name+"."+__originalMethod.Name;int value;calls.TryGetValue(key,out value);calls[key]=value+1;}
-        private static int Total(string key){int value;return calls.TryGetValue(key,out value)?value:0;}
+        {methodCounters[__originalMethod].Value++;}
+        private static int Total(string key){CounterSlot slot;return calls.TryGetValue(key,out slot)?slot.Value:0;}
         private static Harmony Audit(object attack)
         {
             var audit=new Harmony("JueMingR.Tests.AttackCosts");var assembly=attack.GetType().Assembly;
+            // Rolling prediction is the production producer. Cache.Steps is
+            // an alternate cache counter and cannot prove no future work.
+            foreach(var method in typeof(NpcMotion).GetMethods(Flags).Where(m=>m.Name=="Step" && m.GetParameters().Length==8))audit.Patch(method,prefix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks).GetMethod("Count",Flags)));
             foreach(string entry in new[]{"HostAttackAim.Clear","HostAttackControl.Clear","HostAttackAim.PrepareCore","HostAttackAim.Valid","HostAttackAim.PresentationCurrent","HostAttackControl.PresentationCurrent","HostAttackAim.PreviewCurrent","HostAttackControl.PreviewCurrent","HostBeamAttack.Solve","HostBeamAttack.Length","PredictionTerrain.Read","PredictionTerrain.ProjectilePassage","PredictionTerrain.get_Unchanged","HostAttackObstacles.Eligible","HostAttackObstacles.get_Unchanged","AttackAmmoSnapshot.CaptureCore","AttackAmmoSnapshot.MembersMatch","HostAttackAim.ResolveSelection","HostMeleeAttack.Solve","HostMeleeAttack.SolvePrepared","HostMeleeAttack.SolarPose","HostMeleeAttack.SpearDerived","HostBoomerangAttack.Step","HostEffectAttack.CaptureCandidates","HostYoyoNavigation.Remaining","HostYoyoNavigation.Current","HostYoyoNavigation.PrepareWithPlayer","HostYoyoNavigation.OpeningPoint","HostYoyoNavigation.Find"})
             {var split=entry.Split('.');var type=assembly.GetType("JueMingR.TerrariaHost.Combat."+split[0],true);audit.Patch(type.GetMethod(split[1],Flags),prefix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks).GetMethod("Count",Flags)));}
             audit.Patch(typeof(AttackIntercept).GetMethod("Solve",Flags),prefix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks).GetMethod("Count",Flags)));
@@ -39,20 +50,39 @@ namespace NativeWorldTextProbe
             {var split=entry.Split('.');audit.Patch(assembly.GetType("JueMingR.TerrariaHost.Combat."+split[0],true).GetMethod(split[1],Flags),prefix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks).GetMethod("Count",Flags)));}
             var harpy=assembly.GetType("JueMingR.TerrariaHost.Combat.HostHarpyAttack",true);audit.Patch(harpy.GetMethod("Solve",Flags),prefix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks).GetMethod("Count",Flags)));
             foreach(string getter in new[]{"get_Current","get_MembersCurrent"})audit.Patch(harpy.GetNestedType("State",Flags).GetMethod(getter,Flags),prefix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks).GetMethod("Count",Flags)));
+            // Resolve names once while installing the observer. Hot Step/Read
+            // prefixes only increment an existing slot, with no reflection,
+            // string formatting or dictionary insertion charged to the 6ms.
+            methodCounters.Clear();calls.Clear();
+            foreach(var method in audit.GetPatchedMethods())
+            {
+                string key=method.DeclaringType.Name+"."+method.Name;CounterSlot slot;
+                if(!calls.TryGetValue(key,out slot)){slot=new CounterSlot();calls.Add(key,slot);}
+                methodCounters.Add(method,slot);
+            }
             return audit;
         }
         private static void Report(string scenario)
-        {Console.WriteLine("ATTACK COST "+scenario+" "+string.Join(";",calls));}
+        {Console.WriteLine("ATTACK COST "+scenario+" "+string.Join(";",calls.Where(p=>p.Value.Value!=0).Select(p=>"["+p.Key+", "+p.Value.Value+"]")));}
         internal static void Run(object context)
         {
-            var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var attack=Get(combat,"Attack");var input=Get(context,"Input");var audit=Audit(attack);
+            var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var attack=Get(combat,"Attack");var input=Get(context,"Input");
+            var only=Environment.GetEnvironmentVariable("JMR_ATTACK_COSTS_ONLY");
+            // Functional allowance behavior must not charge the high-frequency
+            // counting observer's dictionary/string work to production's 6ms.
+            // The ordinary whole scope runs this same leaf before Audit too.
+            if(only=="budget-selection"){BudgetAndPathOffSelection(context,combat,host,attack,input);return;}
+            if(only=="budget-clock"){BudgetAndPathOffSelection(context,combat,host,attack,input,true);return;}
+            if(string.IsNullOrEmpty(only))BudgetAndPathOffSelection(context,combat,host,attack,input,true);
+            var audit=Audit(attack);
             try
             {
                 if(Environment.GetEnvironmentVariable("JMR_ATTACK_COSTS_ONLY")=="solar-natural"){SolarComparable(context,combat,host,attack,input);return;}
                 if(Environment.GetEnvironmentVariable("JMR_ATTACK_COSTS_ONLY")=="moving-candidates"){MovingCandidates(context,combat,host,attack,input);return;}
+                if(Environment.GetEnvironmentVariable("JMR_ATTACK_COSTS_ONLY")=="moving-player-candidates"){MovingPlayerCandidates(context,combat,host,attack,input);return;}
                 if(Environment.GetEnvironmentVariable("JMR_ATTACK_COSTS_ONLY")=="controller-dependencies"){ControllerDependenciesCpu(context);return;}
                 YoyoOpening(context,combat,host,attack,input);YoyoMagicOpening(context,combat,host,attack,input);Solar(context,combat,host,attack,input);
-                NaturalCosts(context,combat,host,attack,input);MovingCandidates(context,combat,host,attack,input);
+                NaturalCosts(context,combat,host,attack,input);MovingCandidates(context,combat,host,attack,input);MovingPlayerCandidates(context,combat,host,attack,input);
                 foreach(string scenario in new[]{"off","idle","no-target","stable","changing","dense","blocked","inapplicable","same-sample","switching"})
                 {
                     NativeCombatObservationChecks.Save(host,new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,scenario=="inapplicable"?3509:95,0,0);p.position=new Vector2(700,646);p.inventory[54].SetDefaults(97);p.inventory[54].stack=999;Main.screenPosition=new Vector2(600,400);
@@ -60,16 +90,16 @@ namespace NativeWorldTextProbe
                     for(int i=0;i<count;i++){var n=Main.npc[i];n.SetDefaults(3);n.whoAmI=i;n.active=true;n.target=0;n.aiStyle=-1;n.noGravity=true;n.position=new Vector2(1020+i%20*4,646+i/20*4);n.velocity=n.netOffset=Vector2.Zero;n.life=n.lifeMax=100000;Array.Clear(n.immune,0,n.immune.Length);}
                     if(scenario=="blocked")for(int y=0;y<Main.maxTilesY;y++){Main.tile[60,y].active(true);Main.tile[60,y].type=1;}
                     NativeCombatObservationChecks.Save(host,scenario=="off"?new ObservationOptions():new ObservationOptions().Toggle(6));
-                    calls.Clear();var cache=(NpcPredictionCache)Get(Get(host,"Prediction"),"Cache");int steps=cache.Steps,afterFirst=steps;
+                    calls.Clear();int steps=Total("NpcMotion.Step"),afterFirst=steps;
                     for(int i=0;i<8;i++)
-                    {if(scenario=="switching"){p.inventory[0].SetDefaults(i%2==0?95:39);p.inventory[54].SetDefaults(i%2==0?97:40);p.inventory[54].stack=999;Main.npc[1].Center=new Vector2(1100,620);}NativeToolExecutionChecks.Sample(context,input,scenario=="switching"?Main.npc[i%2].Center:new Vector2(850,667),active);Call(combat,"Sample");Call(host,"SampleMouse");if(scenario!="same-sample" || i==0)NativeQuickItemChecks.BeginWorldStep();if(scenario=="changing")Main.npc[0].position.X+=1;Call(host,"Update",(ulong)Main.GameUpdateCount);var contact=GetOptional(attack,"ExpectedImpact");if(i==0)afterFirst=cache.Steps;if(scenario=="switching")Require(contact!=null,"rapid observed weapon/ammo/physical target replacement keeps a useful prepared contact");}
+                    {if(scenario=="switching"){p.inventory[0].SetDefaults(i%2==0?95:39);p.inventory[54].SetDefaults(i%2==0?97:40);p.inventory[54].stack=999;Main.npc[1].Center=new Vector2(1100,620);}NativeToolExecutionChecks.Sample(context,input,scenario=="switching"?Main.npc[i%2].Center:new Vector2(850,667),active);Call(combat,"Sample");Call(host,"SampleMouse");if(scenario!="same-sample" || i==0)NativeQuickItemChecks.BeginWorldStep();if(scenario=="changing")Main.npc[0].position.X+=1;Call(host,"Update",(ulong)Main.GameUpdateCount);var contact=GetOptional(attack,"ExpectedImpact");if(i==0)afterFirst=Total("NpcMotion.Step");if(scenario=="switching")Require(contact!=null,"rapid observed weapon/ammo/physical target replacement keeps a useful prepared contact");}
                     Report(scenario);
-                    if(scenario=="off" || count==0 || scenario=="inapplicable")Require(Total("AttackIntercept.Solve")==0 && cache.Steps==steps,"off/no-target/inapplicable produce no attack solver or future work");
+                    if(scenario=="off" || count==0 || scenario=="inapplicable")Require(Total("AttackIntercept.Solve")==0 && Total("NpcMotion.Step")==steps,"off/no-target/inapplicable produce no attack solver or future work");
                     if(scenario=="idle")Require(GetOptional(attack,"ExpectedPreview")!=null && GetOptional(attack,"ExpectedImpact")==null,"held-weapon idle preparation has a useful read-only preview without an execution capability");
                     Require(Total("HostAttackAim.ResolveSelection")<=24 && Total("AttackAmmoSnapshot.CaptureCore")<=96,"candidate resolution is bounded per phase, not a full solve per dense receiver");
                     if(scenario=="stable" || scenario=="changing")Require(GetOptional(attack,"ExpectedImpact")!=null,"measured ordinary solve keeps useful contact");
                     if(scenario=="blocked")Require(GetOptional(attack,"ExpectedImpact")==null,"measured stable wall does not invent contact");
-                    if(scenario=="same-sample")Require(cache.Steps==afterFirst && GetOptional(attack,"ExpectedImpact")!=null && Total("AttackIntercept.Solve")<=16,"same sample repeats reuse the one future while bounded preparation remains useful");
+                    if(scenario=="same-sample")Require(Total("NpcMotion.Step")==afterFirst && GetOptional(attack,"ExpectedImpact")!=null && Total("AttackIntercept.Solve")<=16,"same sample repeats reuse the one future while bounded preparation remains useful");
                     if(scenario=="switching"){var final=(AttackContact)GetOptional(attack,"ExpectedImpact");var victim=Main.npc[final.Timeline.Identity.Slot];int life=victim.life;typeof(Player).GetMethod("ItemCheck_Shoot",Flags).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),true});for(int tick=0;tick<60 && victim.life==life;tick++){NativeQuickItemChecks.BeginWorldStep();victim.UpdateNPC(victim.whoAmI);for(int slot=0;slot<Main.maxProjectiles;slot++)if(Main.projectile[slot].active)Main.projectile[slot].Update(slot);}Require(victim.life<life,"counted rapid observed selection replacements still yield natural Shoot/Update/Damage progress");Report("switching-native-progress");}
                 }
                 SameEpoch(context,combat,host,attack,input);Navigation(context,combat,host,attack,input);Beam(context,combat,host,attack,input);
@@ -206,9 +236,9 @@ namespace NativeWorldTextProbe
             {
                 NativeCombatObservationChecks.Save(host,new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,95,0,0);p.position=new Vector2(700,646);p.releaseUseItem=true;p.inventory[54].SetDefaults(97);p.inventory[54].stack=999;Main.screenPosition=new Vector2(600,400);
                 var n=Main.npc[2];n.SetDefaults(3);n.whoAmI=2;n.active=true;n.target=0;n.aiStyle=-1;n.noGravity=true;n.Center=new Vector2(1020,667);n.velocity=n.netOffset=Vector2.Zero;n.life=n.lifeMax=10000;Array.Clear(n.immune,0,n.immune.Length);
-                NativeCombatObservationChecks.Save(host,new ObservationOptions().Toggle(6));NativeToolExecutionChecks.Sample(context,input,n.Center,true);Call(combat,"Sample");Call(host,"SampleMouse");NativeQuickItemChecks.BeginWorldStep();calls.Clear();Call(attack,"PrepareNatural");Require(GetOptional(attack,"ExpectedImpact")!=null,"one real input epoch prepares useful natural first-shot contact");Report("natural-action-first");calls.Clear();int steps=((NpcPredictionCache)Get(Get(host,"Prediction"),"Cache")).Steps;
+                NativeCombatObservationChecks.Save(host,new ObservationOptions().Toggle(6));NativeToolExecutionChecks.Sample(context,input,n.Center,true);Call(combat,"Sample");Call(host,"SampleMouse");NativeQuickItemChecks.BeginWorldStep();calls.Clear();Call(attack,"PrepareNatural");Require(GetOptional(attack,"ExpectedImpact")!=null,"one real input epoch prepares useful natural first-shot contact");Report("natural-action-first");calls.Clear();int steps=Total("NpcMotion.Step");
                 for(int i=0;i<20;i++){Call(attack,"PrepareNatural");Require(GetOptional(attack,"ExpectedImpact")!=null,"same-epoch natural reads preserve current contact");}
-                Report("natural-action-same-epoch20");Require(Total("HostAttackAim.PrepareCore")==0 && Total("AttackIntercept.Solve")==0 && ((NpcPredictionCache)Get(Get(host,"Prediction"),"Cache")).Steps==steps,"natural repeated callbacks in one input.Frame do not prepare/solve/advance a future again");
+                Report("natural-action-same-epoch20");Require(Total("HostAttackAim.PrepareCore")==0 && Total("AttackIntercept.Solve")==0 && Total("NpcMotion.Step")==steps,"natural repeated callbacks in one input.Frame do not prepare/solve/advance a future again");
                 p.Update(0);var born=Main.projectile.Single(q=>q.active && q.type==14);int life=n.life;for(int tick=0;tick<40 && n.life==life;tick++){NativeQuickItemChecks.BeginWorldStep();n.UpdateNPC(2);born.Update(born.whoAmI);}Require(n.life<life,"same-epoch preparation still permits original natural Player.Update Shoot and Damage progress");
                 NativeCombatObservationChecks.Save(host,new ObservationOptions());p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,3278,0,0);p.position=new Vector2(700,646);p.ResetEffects();p.channel=p.controlUseItem=true;p.yoyoGlove=p.magicString=false;p.counterWeight=0;n=Main.npc[2];n.SetDefaults(3);n.whoAmI=2;n.active=true;n.target=0;n.aiStyle=-1;n.noGravity=true;n.Center=new Vector2(810,667);n.life=n.lifeMax=10000;Array.Clear(n.immune,0,n.immune.Length);
                 NativeCombatObservationChecks.Save(host,new ObservationOptions().Toggle(6));NativeToolExecutionChecks.Sample(context,input,n.Center,true);Call(combat,"Sample");NativeCombatAimChecks.Prepare(host,attack,n,0,true);typeof(Player).GetMethod("ItemCheck_Shoot",Flags).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),true});var yoyo=Main.projectile.Single(q=>q.active && q.type==541);NativeCombatAimChecks.Prepare(host,attack,n,0,true);var control=Get(attack,"Control");calls.Clear();int mx=Main.mouseX,my=Main.mouseY;

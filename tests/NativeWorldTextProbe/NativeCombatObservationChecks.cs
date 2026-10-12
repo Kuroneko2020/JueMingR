@@ -7,33 +7,71 @@ using Terraria.ID;
 using Terraria.GameInput;
 using Microsoft.Xna.Framework.Input;
 using System.Collections.Generic;
+using System.Reflection;
+using HarmonyLib;
 using static NativeWorldTextProbe.NativeInformationChecks;
 
 namespace NativeWorldTextProbe
 {
     internal static class NativeCombatObservationChecks
     {
+        private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance|BindingFlags.Static;
+        private static OffWorkScope offWork;
+        private static void CandidateBounds(){if(offWork!=null)offWork.candidates++;}
+        private static void ProjectileCapture(){if(offWork!=null)offWork.projectiles++;}
+        private sealed class OffWorkScope : IDisposable
+        {
+            private readonly Harmony audit=new Harmony("JueMingR.Tests.ObservationOffWork");
+            internal int candidates,projectiles;
+            private bool disposed;
+            internal OffWorkScope(object selection,object geometry)
+            {
+                Require(offWork==null,"OFF collection observer has one scoped owner");
+                // These leaves are reached immediately after the old Debug
+                // increments. They count real work in optimized Release too;
+                // a harmless Update entry is not itself a collected body.
+                var bounds=selection.GetType().GetMethod("ReceiveBounds",Flags);
+                var capture=geometry.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.ProjectileCollisionGeometry",true).GetMethod("TryCapture",Flags);
+                Require(bounds!=null && bounds.GetParameters().Length==1 && capture!=null && capture.GetParameters().Length==4,"actual receiver/projectile collection observers exist");
+                try
+                {
+                    audit.Patch(bounds,prefix:new HarmonyMethod(typeof(NativeCombatObservationChecks),nameof(CandidateBounds)));
+                    audit.Patch(capture,prefix:new HarmonyMethod(typeof(NativeCombatObservationChecks),nameof(ProjectileCapture)));
+                    offWork=this;
+                }
+                catch{audit.UnpatchAll(audit.Id);throw;}
+            }
+            internal void RequireUnchanged(int candidateCount,int projectileCount)
+            {Require(!disposed && ReferenceEquals(offWork,this),"OFF work reads require the installed collection observer scope");Require(candidates==candidateCount && projectiles==projectileCount,"OFF real entry has no candidate/shape collection work");}
+            public void Dispose(){if(disposed)return;disposed=true;offWork=null;audit.UnpatchAll(audit.Id);}
+        }
         // Host lifecycles own 0 (path) and 1 (aim), including OFF releases.
         // Independent forecast fixtures use the two existing unowned slots.
         internal const int IndependentReader=2,StrictReader=3;
         internal static void Save(object host,ObservationOptions value)
         {var settings=(ObservationSettings)Get(host,"Settings");NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return settings.Loaded;});Require(settings.Set(value),"observation preference accepted");NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return !settings.Busy;});Require(settings.CompletionSucceeded,"observation preference actually committed");}
         internal static void Run(object context)
+        {using(var futureSteps=NativeCombatUsageChecks.ObserveDrawSteps())RunCore(context);}
+        private static void RunCore(object context)
         {
             var host=GetOptional(context,"CombatObservation");Require(host!=null,"full candidate has an independent observation owner");
             Require((bool)Get(Get(host,"Hooks"),"Ready"),"native collision observation ABI installed: "+GetOptional(Get(host,"Hooks"),"Error"));
             Save(host,new ObservationOptions());
             var selection=Get(host,"Selection");var geometry=Get(host,"Geometry");var cache=(NpcPredictionCache)Get(Get(host,"Prediction"),"Cache");
-            int before=(int)Get(selection,"Candidates"),samples=(int)Get(geometry,"ProjectileSamples"),steps=cache.Steps;
-            for(int i=0;i<600;i++)Call(host,"Update",(ulong)i);
-            Require((int)Get(selection,"Candidates")==before && (int)Get(geometry,"ProjectileSamples")==samples && cache.Steps==steps,"OFF real entry has no candidate/shape/prediction work");
+            using(var collection=new OffWorkScope(selection,geometry))
+            {
+                int before=collection.candidates,samples=collection.projectiles,steps=NativeCombatUsageChecks.ObservedNpcSteps;
+                for(int i=0;i<600;i++)Call(host,"Update",(ulong)i);
+                collection.RequireUnchanged(before,samples);
+                Require(NativeCombatUsageChecks.ObservedNpcSteps==steps,"OFF real entry has no candidate/shape/prediction work");
+            }
             foreach(var n in Main.npc)n.active=false;
             var player=Main.LocalPlayer;player.position=new Vector2(640,640);player.itemAnimation=player.itemTime=0;player.inventory[0].SetDefaults(ItemID.CopperPickaxe);
             var bubble=Main.npc[0];bubble.SetDefaults(371);bubble.whoAmI=0;bubble.active=true;bubble.position=new Vector2(700,650);bubble.target=0;bubble.ai[3]=1;
             Save(host,new ObservationOptions(path:true,radius:0));Fresh(context,host);
             Require((bool)Get(selection,"HasTarget") && ((NpcIdentity)Get(selection,"Target")).Type==371,"path alone selects 1 HP bubble while holding a tool with no attack; player range ignores mouse radius zero");
             var result=cache.Read(0);Require(result!=null && result.Count>1,"real path demand prepares a future without aim provider");
-            int existing=cache.Steps;for(int i=0;i<2000;i++)Require(ReferenceEquals(cache.Read(0),result),"cached reads preserve result identity");Require(cache.Steps==existing,"reading never advances NPC simulation");
+            int existing=NativeCombatUsageChecks.ObservedNpcSteps;for(int i=0;i<2000;i++)Require(ReferenceEquals(cache.Read(0),result),"cached reads preserve result identity");Require(NativeCombatUsageChecks.ObservedNpcSteps==existing,"reading never advances NPC simulation");
             // This bubble is already in its short terminal phase. Preserving
             // demand cannot turn its real tail into sixty future updates.
             // Production owns slots 0 (path) and 1 (aim); independent readers
