@@ -1,0 +1,153 @@
+diff --git a/tests/NativeWorldTextProbe/NativeCombatNaturalImpactChecks.cs b/tests/NativeWorldTextProbe/NativeCombatNaturalImpactChecks.cs
+index fe2a377..904547e 100644
+--- a/tests/NativeWorldTextProbe/NativeCombatNaturalImpactChecks.cs
++++ b/tests/NativeWorldTextProbe/NativeCombatNaturalImpactChecks.cs
+@@ -5,6 +5,7 @@ using System.Linq;
+ using System.Reflection;
+ using HarmonyLib;
+ using JueMingR.Features.Combat;
++using JueMingR.Platform.Combat;
+ using Microsoft.Xna.Framework;
+ using Terraria;
+ using Terraria.GameInput;
+@@ -26,6 +27,7 @@ namespace NativeWorldTextProbe
+         private static bool candidate;
+         private static bool moveLeft,moveRight;
+         private static int births,assistedBirths,hits;
++        private static readonly List<string> birthRows=new List<string>();
+         private static void MoveBefore(Player __instance)
+         {
+             if(!ReferenceEquals(__instance,player))return;
+@@ -41,6 +43,7 @@ namespace NativeWorldTextProbe
+             var cursor=new Vector2(Main.mouseX,Main.mouseY)+Main.screenPosition;
+             bool changed=Vector2.DistanceSquared(cursor,physical)>4;
+             if(changed)assistedBirths++;
++            birthRows.Add("tick="+Main.GameUpdateCount+" projectile="+__0.type+" key="+__0.key+" origin="+__0.Center+" velocity="+__0.velocity+" consumedCursor="+cursor+" physical="+physical+" selectedReceiver="+receiver.whoAmI+"/"+receiver.generation+" center="+receiver.Center);
+             Require(candidate?changed:!changed,"natural slime native birth consumes the selected assisted/explicit original cursor");
+         }
+         private static void Hit(NPC __instance,int __result)
+@@ -69,7 +72,10 @@ namespace NativeWorldTextProbe
+             audit.Patch(AccessTools.Method(typeof(Player),"Update",new[]{typeof(int)}),prefix:new HarmonyMethod(typeof(NativeCombatNaturalImpactChecks).GetMethod(nameof(MoveBefore),Flags)));
+             audit.Patch(AccessTools.Method(typeof(NPC),"StrikeNPC",new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)}),postfix:new HarmonyMethod(typeof(NativeCombatNaturalImpactChecks).GetMethod(nameof(Hit),Flags)));
+             bool originalFilm=Main.LocalPlayer.isControlledByFilm;
+-            var rows=new List<string>{"run,phase,frame,tick,expected,contact,visible,redPixels,pathCount,npcX,npcY,npcVx,npcVy,playerX,playerY,playerVx,playerVy,receiveTick,stop"};
++            var rows=new List<string>{"run,phase,frame,tick,expected,contact,visible,redPixels,pathCount,npcX,npcY,npcVx,npcVy,playerX,playerY,playerVx,playerVy,receiveTick,stop,selected,budgetExceeded,budgetMs,previewPhase"};
++            var failures=new List<string>();
++            var inputRows=new List<string>();birthRows.Clear();
++            var pixelBuffer=new Color[960*640];
+             try
+             {
+                 Set(host,"LayerStatus",Enum.Parse(Get(host,"LayerStatus").GetType(),"Ready"));Main.screenWidth=960;Main.screenHeight=640;Main.UIScale=1;
+@@ -126,7 +132,7 @@ namespace NativeWorldTextProbe
+                         // preview is independent of permission to borrow input.
+                         NativeCombatObservationChecks.Save(host,new ObservationOptions(false,assist,false,false,false,25,assist,false));
+                         Require(((ObservationSettings)Get(host,"Settings")).Value.Path==assist && !((ObservationSettings)Get(host,"Settings")).Value.Aim,"completed saved settings match the declared idle runtime demand");
+-                        births=assistedBirths=hits=0;int airborne=0,landings=0,normalGravitySteps=0,drawn=0,expected=0;float minPlayer=player.position.X,maxPlayer=minPlayer,priorVy=0;bool wasAirborne=false;
++                        births=assistedBirths=hits=0;int airborne=0,landings=0,normalGravitySteps=0,drawn=0,expected=0,missing=0,blank=0,longestBlank=0;float minPlayer=player.position.X,maxPlayer=minPlayer,priorVy=0;bool wasAirborne=false;
+                         for(int frame=0;frame<300;frame++)
+                         {
+                             string phase=frame<180?"idle":frame<270?"attack":frame<274?"switch":"restore";
+@@ -148,7 +154,7 @@ namespace NativeWorldTextProbe
+                             wasAirborne=flying;priorVy=receiver.velocity.Y;
+                             Require(receiver.active && receiver.type==1 && receiver.aiStyle==1 && receiver.life>0 && !receiver.dontTakeDamage && !receiver.immortal && !receiver.friendly,"declared natural receiver remains legal throughout the fixed window");
+                             string state=" phase="+phase+" frame="+frame+" npc="+receiver.position+" velocity="+receiver.velocity+" player="+player.position+" playerVelocity="+player.velocity+" births="+births+" hits="+hits;
+-                            if(!assist)rows.Add(string.Join(",","original-"+(moving?"moving":"standing"),phase,frame,Main.GameUpdateCount,false,false,false,0,0,receiver.position.X,receiver.position.Y,receiver.velocity.X,receiver.velocity.Y,player.position.X,player.position.Y,player.velocity.X,player.velocity.Y,-1,"reference"));
++                            if(!assist)rows.Add(string.Join(",","original-"+(moving?"moving":"standing"),phase,frame,Main.GameUpdateCount,false,false,false,0,0,receiver.position.X,receiver.position.Y,receiver.velocity.X,receiver.velocity.Y,player.position.X,player.position.Y,player.velocity.X,player.velocity.Y,-1,"reference",false,"unavailable","unavailable","reference"));
+                             Require(Vector2.Distance(player.Center,receiver.Center)<380,"declared open close-range window remains inside its independent 25-tile range"+state);
+                             if(!assist)continue;
+                             // The only excluded acquisition is the first two
+@@ -156,22 +162,49 @@ namespace NativeWorldTextProbe
+                             // Contact controls this expected-show denominator.
+                             bool should=frame>=2 && phase!="switch";
+                             var contact=(AttackContact)GetOptional(attack,"ExpectedPreview");var cache=(NpcPredictionCache)Get(Get(host,"Prediction"),"Cache");
+-                            var pixels=graphics.Pixels(()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);
++                            graphics.Render(()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);graphics.ReadRenderedPixels(pixelBuffer);var pixels=pixelBuffer;
+                             var red=RedPixels(pixels);
+                             bool visible=(bool)Get(Get(world,"Impact"),"Visible");
+-                            rows.Add(string.Join(",",moving?"moving":"standing",phase,frame,Main.GameUpdateCount,should,contact!=null,visible,red.Count,cache.Read(0)?.Count??0,receiver.position.X,receiver.position.Y,receiver.velocity.X,receiver.velocity.Y,player.position.X,player.position.Y,player.velocity.X,player.velocity.Y,contact?.ReceiveTick??-1,cache.Read(0)?.Stop.ToString()??"empty"));
++                            var work=GetOptional(host,"PredictionWork");var plan=GetOptional(attack,"preview");
++                            bool selected=(bool)Get(Get(host,"Selection"),"HasTarget");
++                            string budget=work==null?"unavailable":Convert.ToDouble(Get(work,"UsedMilliseconds")).ToString("R",System.Globalization.CultureInfo.InvariantCulture);
++                            rows.Add(string.Join(",",moving?"moving":"standing",phase,frame,Main.GameUpdateCount,should,contact!=null,visible,red.Count,cache.Read(0)?.Count??0,receiver.position.X,receiver.position.Y,receiver.velocity.X,receiver.velocity.Y,player.position.X,player.position.Y,player.velocity.X,player.velocity.Y,contact?.ReceiveTick??-1,cache.Read(0)?.Stop.ToString()??"empty",selected,work==null?"unavailable":Get(work,"Exceeded").ToString(),budget,plan==null?"empty":GetOptional(plan,"Phase")?.ToString()??"empty"));
++                            if(frame>=178 && frame<=182 || should && contact==null && missing==0)
++                            {
++                                var consumed=GetOptional(attack,"consumedInput");var targetIdentity=(NpcIdentity)Get(Get(host,"Selection"),"Target");
++                                inputRows.Add((moving?"moving":"standing")+"/"+phase+"/"+frame+" tick="+Main.GameUpdateCount+" target="+targetIdentity.Session+"/"+targetIdentity.Slot+"/"+targetIdentity.Generation+"/"+targetIdentity.Type+"/"+targetIdentity.NetId+" sameReceiver="+ReferenceEquals(targetIdentity.Token,receiver)+" current="+(GetOptional(attack,"current")!=null)+" next="+(GetOptional(attack,"next")!=null)+" rawPreviewContact="+(GetOptional(plan,"Contact")!=null)+" flight="+(GetOptional(plan,"Flight")!=null)+" controlled="+GetOptional(plan,"Controlled")+" previewCompatible="+Call(attack,"PreviewInputCompatible")+" hasConsumed="+GetOptional(attack,"hasConsumedInput")+" consumedKind="+GetOptional(consumed,"Kind")+" consumedPoint="+GetOptional(consumed,"Point")+" consumedStep="+GetOptional(attack,"consumedInputStep")+" actualTick="+Main.GameUpdateCount+" physical="+physical);
++                            }
+                             if(should)
+                             {
+                                 expected++;
+-                                Require(contact!=null && visible && red.Count>=16 && red.Count<=100,"every independently expected natural slime frame has a real visible red outline: "+phase+"/"+frame);
+-                                Require(ReferenceEquals(contact.Timeline,cache.Read(0)) && ReferenceEquals(contact.Timeline.Identity.Token,receiver),"natural red frame and selected path share the same live receiver/timeline");
+-                                var b=contact.Timeline[contact.ReceiveTick].Bounds;var center=Vector2.Transform(new Vector2(b.CenterX,b.CenterY)-Main.screenPosition,Main.GameViewMatrix.ZoomMatrix);
+-                                Require(red.All(v=>Math.Abs(v.X-center.X)<=6 && Math.Abs(v.Y-center.Y)<=6),"actual red pixels track the receive-time point on the same natural path");drawn++;
++                                bool valid=contact!=null && visible && red.Count>=16 && red.Count<=100;
++                                if(valid)
++                                {
++                                    valid=ReferenceEquals(contact.Timeline,cache.Read(0)) && ReferenceEquals(contact.Timeline.Identity.Token,receiver);
++                                    var b=contact.Timeline[contact.ReceiveTick].Bounds;var center=Vector2.Transform(new Vector2(b.CenterX,b.CenterY)-Main.screenPosition,Main.GameViewMatrix.ZoomMatrix);
++                                    valid&=red.All(v=>Math.Abs(v.X-center.X)<=6 && Math.Abs(v.Y-center.Y)<=6);
++                                }
++                                // Keep the declared denominator and complete
++                                // window even on a missing frame. This records
++                                // continuous gaps, then fails the whole check;
++                                // it never converts a Contact miss to a pass.
++                                if(valid){drawn++;blank=0;}
++                                else
++                                {
++                                    missing++;longestBlank=Math.Max(longestBlank,++blank);
++                                    string failure=(moving?"moving":"standing")+"/"+phase+"/"+frame+" tick="+Main.GameUpdateCount+" selected="+selected+" path="+(cache.Read(0)?.Count??0)+" contact="+(contact!=null)+" visible="+visible+" red="+red.Count+" budgetExceeded="+(work==null?"unavailable":Get(work,"Exceeded").ToString())+" usedMs="+budget;
++                                    failures.Add(failure);
++                                    if(missing==1){Console.WriteLine("NATURAL-FIRST-FAIL "+failure);graphics.Image(Path.Combine(output,(moving?"moving":"standing")+"-first-failure.png"),()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);}
++                                }
++                            }
++                            else
++                            {
++                                blank=0;
++                                if(phase=="switch" && (contact!=null || visible || red.Count!=0))failures.Add((moving?"moving":"standing")+"/switch/"+frame+" old precise marker survived weapon switch");
+                             }
+-                            else if(phase=="switch")Require(contact==null && !visible && red.Count==0,"switching to a nonweapon removes the old precise marker");
+                             if(frame==90 || frame==210 || frame==299)graphics.Image(Path.Combine(output,(moving?"moving":"standing")+"-"+phase+".png"),()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);
+                         }
+-                        Console.WriteLine("NATURAL-IMPACT moving="+moving+" assist="+assist+" expected="+expected+" visible="+drawn+" airborne="+airborne+" landings="+landings+" normalGravitySteps="+normalGravitySteps+" playerDelta="+(maxPlayer-minPlayer)+" births="+births+" assistedBirths="+assistedBirths+" nativeHits="+hits);
++                        Console.WriteLine("NATURAL-IMPACT moving="+moving+" assist="+assist+" expected="+expected+" visible="+drawn+" missing="+missing+" longestBlank="+longestBlank+" airborne="+airborne+" landings="+landings+" normalGravitySteps="+normalGravitySteps+" playerDelta="+(maxPlayer-minPlayer)+" births="+births+" assistedBirths="+assistedBirths+" nativeHits="+hits);
+                         Require(airborne>10 && landings>0 && normalGravitySteps>10,"natural slime actually jumps and lands with ordinary original gravity during the fixed observation window");
+                         Require(!moving || maxPlayer-minPlayer>30,"moving scene contains real continuous original player movement");
+                         Require(births>=2 && hits>0 && (assist?assistedBirths==births:assistedBirths==0),"explicit original and assisted gun scenes both produce real sources and positive native damage");
+@@ -187,14 +220,16 @@ namespace NativeWorldTextProbe
+                     physical=player.Center-new Vector2(220,60);NativeCombatSelectionPreviewChecks.Step(context,physical,false,true);
+                     Require(Vector2.Distance(player.Center,receiver.Center)>220,"short-blade negative window remains independently beyond its native reach");
+                     Require((bool)Get(Get(host,"Selection"),"HasTarget"),"unreachable target remains selected");
+-                    var pixels=graphics.Pixels(()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);
++                    graphics.Render(()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);graphics.ReadRenderedPixels(pixelBuffer);var pixels=pixelBuffer;
+                     Require(GetOptional(attack,"ExpectedPreview")==null && !pixels.Any(Red),"unreachable natural receiver has no invented contact or red pixels");
+                 }
++                Require(failures.Count==0,"natural slime complete declared windows contain "+failures.Count+" invalid red frames; first="+(failures.Count==0?"none":failures[0]));
+                 Console.WriteLine("PASS natural blue slime idle/attack/movement/switch/restore actual World.Draw; independent original gun damage and unreachable blade negative");
+             }
+             finally
+             {
+                 File.WriteAllLines(Path.Combine(output,"natural-slime-frames.csv"),rows);Main.LocalPlayer.isControlledByFilm=originalFilm;player=null;receiver=null;audit.UnpatchAll(audit.Id);
++                File.WriteAllLines(Path.Combine(output,"natural-input-facts.txt"),inputRows);File.WriteAllLines(Path.Combine(output,"natural-births.txt"),birthRows);
+                 NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());
+             }
+         }
+diff --git a/tests/NativeWorldTextProbe/ProbeGraphics.cs b/tests/NativeWorldTextProbe/ProbeGraphics.cs
+index 88bd68f..f2b6dd7 100644
+--- a/tests/NativeWorldTextProbe/ProbeGraphics.cs
++++ b/tests/NativeWorldTextProbe/ProbeGraphics.cs
+@@ -157,6 +157,14 @@ namespace NativeWorldTextProbe
+             GraphicsDevice.SetRenderTarget(costCanvas);GraphicsDevice.Clear(Color.Transparent);
+             batch.Begin(SpriteSortMode.Deferred,null,null,null,null,null,matrix);draw();batch.End();GraphicsDevice.SetRenderTarget(null);
+         }
++        internal void ReadRenderedPixels(Color[] destination)
++        {
++            // Reuse the Render-owned canvas and caller-owned complete buffer.
++            // Continuous pixel checks must not create a 2.4 MB buffer and a
++            // GPU target every update, perturbing the next CPU budget scope.
++            if(costCanvas==null || destination==null || destination.Length!=costCanvas.Width*costCanvas.Height)throw new ArgumentException("rendered-pixel-buffer-size");
++            costCanvas.GetData(destination);
++        }
+         internal void Image(string output, Action draw, Matrix matrix, int width = 960, int height = 640)
+         {
+             using (var canvas = new RenderTarget2D(GraphicsDevice, width, height))

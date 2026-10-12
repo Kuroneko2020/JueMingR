@@ -1,0 +1,54 @@
+Natural ordinary slime impact evidence: scope and exclusions (2026-10-12)
+
+Product fixed input: g05 four Release modules + Harmony; NOT final candidate/package/install.
+Payload: C:/Users/kongd/Desktop/JueMingR/.local/aim-performance-recovery-20261012/g05/bin/JueMingR.TerrariaHost/x86/Release/net472
+Host SHA173863731C388FD5B88CED965CE4DE0DBED9EE0EB41A5AD1905BE60545A7DCDC
+Original Terraria SHA960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3
+Original Content: F:/Games/GamePlats/Steam/steamapps/common/Terraria/Content
+All run directories and logs below remain under this index's parent directory. No normal game/user save was touched.
+
+Valid reference: g05-r9-reference.log + g05-r9-reference/natural-slime-frames.csv.
+600 frames, standing/moving each300. Native births15/15, damage hits16/15; landings16/15; normal gravity69/69; player delta0/91.32001.
+Same original Stone floor80, walls41/63 rows55..79, FlightWorld400x240/worldSurface80; ordinary natural-spawn blue slime AI1 and knockback/gravity untouched. life100000/player immunity only extend the finite observation. New world token/GUID and matching real footprint pair/dimensions per map. No AI resets during each window.
+Reference log SHA9BA7B6C8E48A91AACBF94EB1101A14047BD98A6477B2A3A53D0D1309F6ABE506
+Reference CSV SHAD3BB149532FFA54063DD7825DA77270A92909AA97C5FCBB11B62A4487DFAA5C6
+
+Valid first product failure: g05-r9-candidate.log + g05-r9-candidate/natural-slime-frames.csv.
+Stopped at standing idle2/tick83: selected=true path121 StopNone Contactfalse Visiblefalse red0, no effective previous natural Draw candidate result. Keep the3 original rows.
+Log SHA530E4DFE4112DAC930BBF4F44DBA9D954EEF4711DF4486ABC5E577E8FC6C3EFF
+CSV SHA2F564A020F5220A4A54550B915E8EF827EE89C01BA14B5AFA54348F7BB7A57D8
+
+Valid continuous candidate observations: g05-r10-candidate and g05-r11-reused-pixels.
+Declared Should denominator remains294 each scene: frame>=2, exclude only4 explicitly switched-tool frames. It never depends on Contact/cache existence.
+Idle180 Path ON Aim OFF; attack90 real input/Aim ON with physical cursor opposite; switch4 copper pickaxe; restore26 supplied Minishark. True native Update/NPC/Projectile/World.Draw each frame; no manual Shoot/Prepare or injected Contact.
+r10 used per-frame Pixels allocation: standing294/291 visible, missing idle2/3 and attack180, longest2; moving294/294. NO GPU/FPS or performance evidence. Negative had not run before aggregate failure.
+r11 reused costCanvas + one960x640 Color buffer, same matrix/Clear/full GetData everyframe. Standing294/290, missing idle2/3/4 and attack180; longest3; moving294/294. Idle misses recorded completed-window exceeded true7.298/6.5211/6.3263ms. Attack180 completed-window exceededfalse2.3365ms DOES NOT prove BeforeNpc budget was healthy (mixed runtime/GUC keys).
+r11 native births15/15, hits16/15, landings16/15 and move91.32001; short-blade unreachable negative12frames executes before final aggregate4invalid-red-frames assertion and passed. No explicit separate PASS line; source control-flow + final assertion location prove all12 negative assertions completed.
+r11 raw preview Contact survives attack180; same-tick actual consumedBasic point708.4222,1237.4 causes PreviewInputCompatiblefalse, so no fabricated enhanced-ray marker. Tick262/263 compatible/marker recover. The scene turns Aim from OFF to ON atframe180; preserve this fact. No self-authorized reduction of294.
+r10 probe SHAFAD77B4DCA6E7E30F7FE764807AB7E6CD5F3D6A09CA8BC13BF19B3E84B29648E
+r10 CSV SHAD526F05CC71108BE1EAEC803F45A0E1838D1F15DF1C16F7E772093AEA593BB14
+r11 fixed probe SHAD747F4910BF8957BD157317913A1F11B1F9B15244628CE1A8A59E7C85065ED58
+r11 CSV SHAF0A8A8D064F19451E80B50A8EE60AC19C1A94A500D0B771B346A3F805587E9FE
+r11 log SHAF975CF50AA91AF05E02E049FD01DCADD0F8142C7734DD425A0FB660CAA1BB667
+r11 facts SHA0D6A6D52AD69727C362B2373D9F0EF3326AFF3A5C1E3641795CA8AD298F0B036
+r11 births SHA7AFB72F2EC1BA98B0EC3F521E5C4805965DDB70EA5A80D91A7A8FD9866C392E5
+r11 firstfail PNG SHAD6C7ACB3E66FFDF3ACA96D733C3ED0E10C0D17E2799090FC3E778F8FFEDE3732
+r11 normal moving-attack PNG SHA6DA0537848D3E7CBBE9E235EC7A2902BBD43EF2763F4866E132C460247B84A17
+
+Entirely excluded instrumentation: r12/r12b/r13. See r12-r13-excluded.txt SHA9425691D6376B5833BD0BC97760152F5E1456BCFACE94181EBE0966DFA793B15.
+Initial r12 adapter read GUC property as field, before scene failure. r12b/r13 Harmony __args carried out HostAttackInput and wrote back default. The consumer was changed; do not salvage any entrance/gate/functional/performance/causal claims. All failed sources/logs/outputs preserved.
+
+r14 LIMITED diagnostic: g05-r14-readonly-cause; no business out/ref argument (__3 absent), no __args, onlyTryOrdinaryInput/Valid existing-field snapshots and boolreturn. Formatting after complete run. Not performance or full-window equivalence evidence.
+Against r11 all600 NPC/player positions/velocities equal; native births30/hits16+15/landings16+15 equal. First shot261 full origin/velocity/cursor line identical. Later shot269 differs1direction/cursor (Basic687,1239 vs Enhanced-8171,-5231), and standing5missing vs4. Thus complete30birth equality is NOT PASS.
+Parent ruling permits local first-shot fact: this diagnostic's before-shot existing budget exceededtrue/spent79027ticks/workTick261/depth0, weapon/current/next null; retained original exception stack is PrepareCore/Solve/HostProjectileEnvironment.Factor/ProjectileWet/CellAt->Check BudgetExceeded. Exception occurred before firstTryOrdinary probe. Do not assign this budget number retrospectively to r11 or call entirewindow equivalent.
+Independent static P1: HostContext.UpdateRuntime passes private updateTick; CompletedWorld owner enters thisruntime key while BeforeNpc/PreparePhase enter GUC. Enter resets onchangedkey, washing preceding exceeded/spent. Parent+perf authorized owner GUC-key repair, no globalRuntime edit. Future original adapter/new fixed candidate actualDraw still REQUIRED; no final PASS/delivery claim.
+r14 cause SHA202ACFC5AAB85D92A067A37C09516BAB06A08AE4065FE227195CBA7EE074C57C
+r14 log SHA48417F38866B1AC5636774599426ED07787A6C397B63B8907A4C2F80E2CD37DC
+r14 CSV SHA15D2529F6931D93E2CBF94C1D5E470801965FD281EC15F0F750008D394175BA1
+r14 adapter SHA1805B51A170BED1A2AA5DFAE7DD7DDF05D8B3F8878B7AB5F5CD8030EBE0501EF
+
+All r1..r8 EXCLUDED as natural full-window verification: adapter ctor/film input prerequisite, original open-room range escape, original highspace lowgravity, tiny map collision boundary, unhandled old footprint-world identity, missing original Assets. Each raw run remains; no failed prefix is reclassified PASS. No fixture changes to gravity/AI/knockback or productFootprints to hide these errors.
+
+Source traceability: r11-fixed-input-provenance.txt (SHA0EE1FBBD5A7D47E24717D004B2D23BCE5FD0FE0EF0401B5CB07FAEB4EB289A32) and r11-owned-tests-vs380.patch (SHA6CC811BB0490B261654273E2308305947795C14D22BCDA918673FAF87D183968).
+Read-only git archive base380132ecfe93c5daa79a5fcd6f2a62463d4fe76a; hash-check all420.cs. OnlyNaturalImpact/ProbeGraphics changed; copiedImpactVisual byte-identical. Privatecsproj paths only. No production edits/.git/engineeringcheckout. Future fullprobe builds must return shared source entry; don't expand archive.
+Owned source paths: tests/NativeWorldTextProbe/NativeCombatNaturalImpactChecks.cs; NativeCombatImpactVisualChecks.cs; ProbeGraphics.cs. All stable; parent/perf can commit serially. No production changes by impact_validation.
