@@ -27,9 +27,10 @@ function Read-AimStageDevelopment {
     # the old qualification cannot be relabelled as a new candidate record.
     $successor=$null -ne $record -and $record.schema -ceq 'aim-root-fix-development-20261012-1'
     $priority=$null -ne $record -and $record.schema -ceq 'aim-priority-recovery-development-20261013-1'
-    $base=if($priority){'01b03386cc288fe8f8a773cecd3a0de564182472'}elseif($successor){'3504c963949d87d6a88ada5a3f5cd9c189f1f0c2'}else{'472dea0955b6c9274d8c55fc48dbc7fc44ba108e'}
-    $schema=if($priority){'aim-priority-recovery-development-20261013-1'}elseif($successor){'aim-root-fix-development-20261012-1'}else{'aim-stage-development-20261011-1'}
-    $authorization=if($priority){'owner-issue114-priority-recovery-20261013'}elseif($successor){'owner-issue114-root-fix-20261012'}else{'owner-issue114-stage-package-20261011'}
+    $continuation=$null -ne $record -and $record.schema -ceq 'aim-continuation-development-20261013-1'
+    $base=if($continuation){'569668aa9f4eb75d525709b20652eefd1d8e0e23'}elseif($priority){'01b03386cc288fe8f8a773cecd3a0de564182472'}elseif($successor){'3504c963949d87d6a88ada5a3f5cd9c189f1f0c2'}else{'472dea0955b6c9274d8c55fc48dbc7fc44ba108e'}
+    $schema=if($continuation){'aim-continuation-development-20261013-1'}elseif($priority){'aim-priority-recovery-development-20261013-1'}elseif($successor){'aim-root-fix-development-20261012-1'}else{'aim-stage-development-20261011-1'}
+    $authorization=if($continuation){'owner-issue114-continuation-20261013'}elseif($priority){'owner-issue114-priority-recovery-20261013'}elseif($successor){'owner-issue114-root-fix-20261012'}else{'owner-issue114-stage-package-20261011'}
     if($null -eq $record -or $record.schema -cne $schema -or
         $record.authorization -cne $authorization -or $record.productBase -cne $base -or
         $record.candidateCommit -cne $Identity.commit -or $record.sourceFingerprint -cne $Identity.fingerprint -or
@@ -111,6 +112,35 @@ function Read-AimStageDevelopment {
             'review-materials/aim-priority-recovery-20261013/natural-cpu-summary.csv',
             'review-materials/aim-priority-recovery-20261013/draw-cpu-summary.csv')
     }
+    if($continuation){
+        # This owner's continuation replaces only the selected A2 task
+        # boundaries. Every actual affected scope and failure still needs
+        # hashed execution or reviewed applicability, including full Main.
+        $allowed=@('docs/功能介绍/战斗辅助行为合同.md','docs/设计/战斗辅助实现设计.md','docs/计划/辅助瞄准阶段文档.md',
+            'scripts/workload/Workload.Definitions.ps1','scripts/workload/AimStage.Development.ps1','scripts/build-phase0s-validation-package.ps1',
+            'src/JueMingR.Features/Combat/AttackIntercept.cs','src/JueMingR.Features/Combat/CombatPredictionWork.cs',
+            'src/JueMingR.TerrariaHost/Combat/CombatImpactMarker.cs','src/JueMingR.TerrariaHost/Combat/CombatObservationWorldLayer.cs',
+            'src/JueMingR.TerrariaHost/Combat/HostAttackAim.cs','src/JueMingR.TerrariaHost/Combat/HostAttackAim.Preview.cs',
+            'src/JueMingR.TerrariaHost/Combat/HostAttackAim.Selection.cs','src/JueMingR.TerrariaHost/Combat/HostCombatObservation.cs',
+            'src/JueMingR.TerrariaHost/Combat/NpcPredictionSource.cs',
+            'src/JueMingR.TerrariaHost/Combat/HostAttackControl.cs','tests/JueMingR.ArchitectureTests/Phase0TArchitectureChecks.cs',
+            'src/JueMingR.TerrariaHost/Combat/HostAttackControl.Preview.cs','src/JueMingR.TerrariaHost/Combat/HostYoyoNavigation.cs',
+            'src/JueMingR.TerrariaHost/Combat/HostAttackAim.FlightPreview.cs','src/JueMingR.TerrariaHost/Combat/HostGemStaffAttack.cs',
+            'src/JueMingR.TerrariaHost/Combat/HostAttachedShotAttack.cs','tests/NativeWorldTextProbe/NativeCombatPreviewLeaseChecks.cs',
+            'tests/NativeWorldTextProbe/NativeCombatAimChecks.cs','tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.cs',
+            'tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.Optional.cs','tests/NativeWorldTextProbe/NativeCombatCandidateDemandChecks.cs',
+            'tests/NativeWorldTextProbe/NativeCombatCostChecks.cs','tests/NativeWorldTextProbe/NativeCombatFlameChecks.cs',
+            'tests/NativeWorldTextProbe/NativeCombatGemStaffChecks.cs','tests/NativeWorldTextProbe/NativeCombatSwingChecks.cs','tests/NativeWorldTextProbe/NativeCombatImpactVisualChecks.cs',
+            'tests/NativeWorldTextProbe/NativeCombatImpactVisualChecks.Geometry.cs','tests/NativeWorldTextProbe/NativeCombatLocalFailureChecks.cs',
+            'tests/NativeWorldTextProbe/NativeCombatMarkerCapacityChecks.cs','tests/NativeWorldTextProbe/NativeCombatMarkerDemandChecks.cs',
+            'tests/NativeWorldTextProbe/NativeCombatNaturalImpactChecks.cs','tests/NativeWorldTextProbe/NativeCombatSelectionPreviewChecks.cs',
+            'tests/NativeWorldTextProbe/NativeCombatTargetMarkerChecks.cs','tests/NativeWorldTextProbe/NativeCombatUsageChecks.cs',
+            'tests/NativeWorldTextProbe/NativeCombatYoyoChecks.cs','tests/NativeWorldTextProbe/NativeCombatBubbleChecks.cs',
+            'review-materials/aim-priority-recovery-20261013/continuation-evidence.md',
+            'review-materials/aim-priority-recovery-20261013/continuation-validation-map.json',
+            'review-materials/aim-priority-recovery-20261013/continuation-failure-dispositions.json',
+            'review-materials/aim-priority-recovery-20261013/continuation-main-summary.csv')
+    }
     $changed=@(Invoke-WorkloadGit $Root @('diff','--name-only','--no-renames',$base,$Identity.commit,'--') | Sort-Object)
     if(@($changed | Where-Object {$allowed -cnotcontains $_}).Count -ne 0 -or
         (@($record.revisions | ForEach-Object {$_.path} | Sort-Object) -join '|') -cne ($changed -join '|')) {throw 'Stage revision scope differs from the approved closing delta.'}
@@ -125,6 +155,9 @@ function Read-AimStageDevelopment {
     if($priority){$required=@('architecture-combat','candidate-demand','basic-aim','natural-draw',
         'natural-cpu','continuous-reference','draw-cpu','integration','attack-costs',
         'navigation','impact-draw','whip-terrain','original-feedback')}
+    if($continuation){$required=@('architecture-combat','optional-consumption','marker-demand','candidate-demand',
+        'local-failure','aim-input','control-input','effects-receive','selection-preview','attack-costs','impact-draw',
+        'main-performance','representative-opportunities','navigation','whip-terrain','original-feedback')}
     if((@($record.checks | ForEach-Object {$_.name} | Sort-Object) -join '|') -cne (@($required | Sort-Object) -join '|')) {throw 'Stage necessary checks are incomplete/duplicated.'}
     foreach($check in $record.checks){
         if($check.exit -ne 0 -or $check.disposition -cnotin @('CURRENT','REVIEWED_REUSE') -or
@@ -162,7 +195,7 @@ function Read-AimStageDevelopment {
             [string]$assembly.path -match '(^|/)\.\.(/|$)|[\\:]' -or
             (Get-WorkloadFileHash -LiteralPath (Join-Path $Root $assembly.path)).Hash -cne $assembly.sha256){throw 'Stage detection consumer changed.'}
     }
-    return [ordered]@{status='STAGE_DEVELOPMENT';mode=$(if($priority){'ExplicitAimPriorityRecovery20261013'}elseif($successor){'ExplicitAimRootFix20261012'}else{'ExplicitAimStage20261011'});fullQualification='INCOMPLETE';releaseEligible=$false;
+    return [ordered]@{status='STAGE_DEVELOPMENT';mode=$(if($continuation){'ExplicitAimContinuation20261013'}elseif($priority){'ExplicitAimPriorityRecovery20261013'}elseif($successor){'ExplicitAimRootFix20261012'}else{'ExplicitAimStage20261011'});fullQualification='INCOMPLETE';releaseEligible=$false;
         productBase=$base;recordPath=$relative;recordSha256=(Get-WorkloadFileHash -LiteralPath $Path).Hash;
         necessaryScopes=$required;limits=@($record.limits);checkCount=$required.Count}
 }

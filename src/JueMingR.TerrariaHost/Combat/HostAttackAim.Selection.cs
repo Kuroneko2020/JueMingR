@@ -11,9 +11,14 @@ namespace JueMingR.TerrariaHost.Combat
         private readonly PreviewPlan[] candidatePlans=new PreviewPlan[NpcPredictionCache.Capacity*2];
         private readonly NpcIdentity[] candidateIdentities=new NpcIdentity[NpcPredictionCache.Capacity*2];
         private readonly int[] candidateDepths=new int[NpcPredictionCache.Capacity*2];
+        private readonly int[] candidateRequests=new int[NpcPredictionCache.Capacity*2];
         private readonly bool[] candidateUnknown=new bool[NpcPredictionCache.Capacity*2];
         private readonly long[] candidateAttempt=new long[NpcPredictionCache.Capacity*2];
         private readonly long[] candidateMembership=new long[NpcPredictionCache.Capacity*2];
+        // Scratch for one synchronous World pass, indexed by current distance
+        // rank. It prevents fair exploration and nearer-positive validation
+        // from paying twice for the same candidate; it grants no cached permit.
+        private readonly bool[] candidateWorldVisited=new bool[NpcPredictionCache.Capacity];
         private readonly CandidateFact[] candidateFacts=new CandidateFact[NpcPredictionCache.Capacity];
         private readonly long[] candidateChanges=new long[NpcPredictionCache.Capacity];
         private readonly bool[] candidateSignificant=new bool[NpcPredictionCache.Capacity];
@@ -56,6 +61,7 @@ namespace JueMingR.TerrariaHost.Combat
             bool warm=!beforeNpc && !UrgentPreparation && !observation.OptionalPreparation && BasicPermission &&
                 (candidateWarmTick<0 || (long)Main.GameUpdateCount-candidateWarmTick>=3);
             if(!beforeNpc && !UrgentPreparation && !observation.OptionalPreparation && !warm)return;
+            if(!beforeNpc)Array.Clear(candidateWorldVisited,0,candidateWorldVisited.Length);
             var player=combat.Player;var item=player.HeldItem;
             if(!ReferenceEquals(candidateWeapon,item) || candidateSlot!=player.selectedItem || candidateType!=item.type || candidatePrefix!=item.prefix || !ReferenceEquals(candidateOptions,observation.Options))
             {
@@ -68,7 +74,7 @@ namespace JueMingR.TerrariaHost.Combat
             {
                 var npc=selection.Candidate(index);int key=npc.whoAmI*2+parity;var identity=CombatSelection.Identity(npc,observation.Session);
                 if(!candidateIdentities[key].Equals(identity))
-                {candidatePlans[key]?.Clear();candidateIdentities[key]=identity;candidateDepths[key]=0;candidateAttempt[key]=0;candidateUnknown[key]=true;if(!beforeNpc){candidateFacts[npc.whoAmI]=default(CandidateFact);candidateChanges[npc.whoAmI]=0;candidateSignificant[npc.whoAmI]=false;}}
+                {candidatePlans[key]?.Clear();candidateIdentities[key]=identity;candidateDepths[key]=candidateRequests[key]=0;candidateAttempt[key]=0;candidateUnknown[key]=true;if(!beforeNpc){candidateFacts[npc.whoAmI]=default(CandidateFact);candidateChanges[npc.whoAmI]=0;candidateSignificant[npc.whoAmI]=false;}}
                 candidateMembership[key]=pass;
                 if(!beforeNpc)
                 {
@@ -99,7 +105,7 @@ namespace JueMingR.TerrariaHost.Combat
             }
             for(int key=parity;key<candidateMembership.Length;key+=2)
                 if(candidateMembership[key]!=pass)
-                {candidatePlans[key]?.Clear();candidateIdentities[key]=default(NpcIdentity);candidateDepths[key]=0;candidateAttempt[key]=0;candidateUnknown[key]=false;if(!beforeNpc){candidateFacts[key/2]=default(CandidateFact);candidateChanges[key/2]=0;candidateSignificant[key/2]=false;}}
+                {candidatePlans[key]?.Clear();candidateIdentities[key]=default(NpcIdentity);candidateDepths[key]=candidateRequests[key]=0;candidateAttempt[key]=0;candidateUnknown[key]=false;if(!beforeNpc){candidateFacts[key/2]=default(CandidateFact);candidateChanges[key/2]=0;candidateSignificant[key/2]=false;}}
             // Alternate the first World admission between changed candidates
             // and ordinary unvisited/unknown progress. Repeated movement does
             // not renew pending tickets or reset the other queue's stamps.
@@ -157,18 +163,47 @@ namespace JueMingR.TerrariaHost.Combat
                 if(probe>=0 && probe!=best && (!beforeNpc || probe!=hint) && CombatPredictionWork.TryContinue())
                 {
                     var npc=selection.Candidate(probe);int key=npc.whoAmI*2+parity;var identity=candidateIdentities[key];
-                    int required=candidateDepths[key]==0 || !candidateUnknown[key]?CandidatePreferred(identity):
-                        Math.Min(NpcPredictionCache.Horizon,Math.Max(CandidatePreferred(identity),Math.Max(32,candidateDepths[key]*2)));
+                    int required=CandidateProgressRequired(identity,key,beforeNpc);
                     // Charge progress at actual admission, even if this attempt
                     // later pauses. A costly unknown cannot monopolize the next
                     // pass by preventing a remainder-only cursor from advancing.
                     candidateAttempt[key]=pass;
+                    if(!beforeNpc)candidateWorldVisited[probe]=true;
                     if(EvaluateCandidate(identity,sampleTick,beforeNpc,phase,key,required) && (best<0 || probe<best))best=probe;
+                }
+                if(!beforeNpc)
+                {
+                    // With no fresh positive, spending every remainder on the
+                    // same nearest short misses delays unvisited receivers even
+                    // though the reserved probe makes eventual progress. Use
+                    // the existing attempt order for additional real progress.
+                    // The changed/significant queue still owns the first probe.
+                    while(CombatPredictionWork.TryContinue())
+                    {
+                        int next=-1;long least=long.MaxValue;
+                        for(int index=0;index<(best<0?selection.CandidateCount:best);index++)
+                        {
+                            if(candidateWorldVisited[index])continue;
+                            if(best>=0){next=index;break;}
+                            int key=selection.Candidate(index).whoAmI*2+parity;
+                            if(candidateAttempt[key]<least){least=candidateAttempt[key];next=index;}
+                        }
+                        if(next<0)break;
+                        var npc=selection.Candidate(next);int nextKey=npc.whoAmI*2+parity;var identity=candidateIdentities[nextKey];
+                        bool progress=best<0;
+                        int required=progress?CandidateProgressRequired(identity,nextKey,false):CandidatePreferred(identity);
+                        // Fresh positive ranking keeps the original nearer
+                        // prefix first. Those cheap ranking revisits do not
+                        // renew old progress stamps or starve other unknowns.
+                        if(progress || candidateAttempt[nextKey]==0)candidateAttempt[nextKey]=pass;
+                        candidateWorldVisited[next]=true;
+                        if(EvaluateCandidate(identity,sampleTick,false,phase,nextKey,required))best=next;
+                    }
                 }
                 // Positives are only this pass's freshly validated contacts.
                 // Visit the nearer prefix in the original receive-box distance
                 // order, so the progress slot does not create a new target rank.
-                for(int index=distanceStart;index<selection.CandidateCount && (best<0 || index<best);index++)
+                for(int index=distanceStart;beforeNpc && index<selection.CandidateCount && (best<0 || index<best);index++)
                 {
                     if(index==probe || beforeNpc && index==hint)continue;
                     if(!CombatPredictionWork.TryContinue())break;
@@ -202,6 +237,28 @@ namespace JueMingR.TerrariaHost.Combat
                 presentationSelection=selection.Target;presentationNearest=nearest;presentationSelectionTick=sampleTick;selectionWeapon=item;presentationOptions=observation.Options;presentationReachable=best>=0;
             }
         }
+        private int CandidateProgressRequired(NpcIdentity identity,int key,bool beforeNpc)
+        {
+            int preferred=CandidatePreferred(identity),requested=candidateRequests[key];
+            var plan=candidatePlans[key];var path=plan?.Timeline;
+            // A previous positive supplies a work range, never a current proof.
+            // Keep enough of the fresh sample to retry that receive instead of
+            // replacing a late complex contact with the initial short prefix.
+            if(plan?.Contact!=null && path!=null && path.Identity.Equals(identity))
+            {
+                long sample=(long)Main.GameUpdateCount-(beforeNpc?1:0),remaining=plan.Contact.ReceiveTick-(sample-path.SampleTick);
+                if(remaining>=0)preferred=Math.Max(preferred,(int)Math.Min(NpcPredictionCache.Horizon,remaining+1));
+            }
+            // A real discontinuity can make the old work range irrelevant;
+            // normal movement retains both progress and its fair queue stamp.
+            if(requested==0 || !candidateUnknown[key] || !beforeNpc && candidateSignificant[identity.Slot])return preferred;
+            // Source completion is not solve completion. Repeating a budget-
+            // interrupted Plan at twice the range pays more Source work before
+            // retrying the missing solve and can starve an otherwise reachable
+            // receiver. Grow only a fully solved, nonpaused requested prefix.
+            bool complete=plan!=null && plan.Prepared && plan.Contact==null && path!=null && !path.BudgetPaused && path.Count>requested;
+            return Math.Min(NpcPredictionCache.Horizon,Math.Max(preferred,complete?Math.Max(32,requested*2):requested));
+        }
         private bool EvaluateCandidate(NpcIdentity identity,long tick,bool beforeNpc,HostAttackPhase phase,int key,int required)
         {
             candidateUnknown[key]=true;
@@ -225,13 +282,27 @@ namespace JueMingR.TerrariaHost.Combat
             if(beforeNpc && actionHint.Equals(identity)){actionHint=default(NpcIdentity);actionHintRequired=0;}
             try
             {
+                candidateRequests[key]=required;
                 if(beforeNpc && observation.Prediction.OwnsTarget(identity))SetActionDemand(required);
                 var timeline=observation.Prediction.TryCandidateReuse(identity,tick,beforeNpc,required,CandidateMissCurrent(plan,identity,tick,phase,required));
+                var publication=timeline;
+                // An incumbent may own a longer immutable display publication.
+                // Candidate work consumes only its admitted prefix; the view
+                // retains capture/input/calculation identity and does not copy,
+                // republish or reduce the independent selected cache's future.
+                if(timeline!=null && timeline.Count>required+1)
+                {NpcTrajectory prefix;if(timeline.TryWindow(timeline.SampleTick,required,timeline.Version,out prefix))timeline=prefix;}
                 // A request is not completed work. Only a published prefix grows
                 // this candidate's future search; pauses remain unresolved.
                 if(timeline!=null)candidateDepths[key]=Math.Max(candidateDepths[key],timeline.Count-1);
                 var contact=timeline!=null && timeline.Count>=2?PreparePlan(plan,timeline,phase):null;
                 candidateUnknown[key]=contact==null && (timeline==null || timeline.BudgetPaused || timeline.Stop==PredictionStop.None && timeline.Count<=NpcPredictionCache.Horizon);
+                plan.MotionTerrain=null;
+                // Freeze at the producing owner, before another candidate can
+                // replace its scratch cells. Only pure observation borrows this
+                // same-call result; actual held preparation keeps its core path.
+                if(contact!=null && !beforeNpc && observation.Path && !BasicPermission && CombatPredictionWork.TryContinue())
+                    plan.MotionTerrain=observation.Prediction.FreezeCandidateTerrain(publication);
                 return contact!=null;
             }
             catch(CombatPredictionBudgetExceededException){return false;}
@@ -247,7 +318,7 @@ namespace JueMingR.TerrariaHost.Combat
         }
         private void ClearCandidateProgress()
         {
-            Array.Clear(candidateIdentities,0,candidateIdentities.Length);Array.Clear(candidateDepths,0,candidateDepths.Length);Array.Clear(candidateUnknown,0,candidateUnknown.Length);Array.Clear(candidateAttempt,0,candidateAttempt.Length);Array.Clear(candidateMembership,0,candidateMembership.Length);
+            Array.Clear(candidateIdentities,0,candidateIdentities.Length);Array.Clear(candidateDepths,0,candidateDepths.Length);Array.Clear(candidateRequests,0,candidateRequests.Length);Array.Clear(candidateUnknown,0,candidateUnknown.Length);Array.Clear(candidateAttempt,0,candidateAttempt.Length);Array.Clear(candidateMembership,0,candidateMembership.Length);
             Array.Clear(candidateFacts,0,candidateFacts.Length);Array.Clear(candidateChanges,0,candidateChanges.Length);Array.Clear(candidateSignificant,0,candidateSignificant.Length);candidateChangeTicket=0;
             candidateActionPass=candidateWorldPass=0;candidateWarmTick=-1;candidateWeapon=null;candidateOptions=null;presentationReachable=false;presentationOptions=null;actionHint=default(NpcIdentity);actionHintRequired=0;
             candidatePresentationPlan=null;

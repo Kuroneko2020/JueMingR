@@ -62,10 +62,15 @@ namespace JueMingR.TerrariaHost.Combat
             internal bool MembersCurrent
             {get{if(player.HeldItem.shoot!=heldType)return false;foreach(var row in rows)if(!row.MembersCurrent)return false;return true;}}
             internal bool Current
+            {get{return MembersCurrent && terrain.Unchanged && DependenciesCurrent;}}
+            // The presentation owner freezes this solve's terrain separately.
+            // Keep all other original full-family/receive dependencies here;
+            // this preparation-only check must never run from Draw.
+            internal bool DependenciesCurrent
             {
                 get
                 {
-                    if(!MembersCurrent || !environment.Current || !terrain.Unchanged || !receivers.Unchanged)return false;foreach(var row in rows)if(!row.Current)return false;
+                    if(!MembersCurrent || !environment.Current || !receivers.Unchanged)return false;foreach(var row in rows)if(!row.Current)return false;
 #if DEBUG
                     FlightPoolScans++;
 #endif

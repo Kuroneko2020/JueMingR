@@ -20,6 +20,17 @@ namespace NativeWorldTextProbe
         private struct OptionalPrefixCall {internal ulong Tick;internal int Required;}
         private static readonly List<OptionalPrefixCall> optionalPrefixCalls=new List<OptionalPrefixCall>(64);
         private static bool optionalForceBudget;
+        private static CombatPredictionWork captureOwner;
+        private static int captureGets,captureReads;
+        private static bool captureObserved,captureCharged,captureThrow;
+        private static void CaptureGetter()
+        {
+            if(!captureObserved)return;captureGets++;CaptureCharge();
+            if(captureThrow){captureThrow=false;throw new CombatPredictionBudgetExceededException();}
+        }
+        private static void CaptureTerrainRead(){if(captureObserved){captureReads++;CaptureCharge();}}
+        private static void CaptureCharge()
+        {captureCharged&=ReferenceEquals(typeof(CombatPredictionWork).GetField("active",Flags).GetValue(null),captureOwner) && (int)Get(captureOwner,"optionalDepth")>0;}
         private static void CountOptionalPlan(){optionalPlans++;}
         private static void CountOptionalSourceClear(){optionalSourceClears++;}
         private static void CountOptionalCorePrefix(){optionalCorePrefixes++;}
@@ -117,6 +128,11 @@ namespace NativeWorldTextProbe
             for(int i=0;i<8;i++)CoreDisplayStep(context,combat,host,input,n);
             Console.WriteLine("CORE WARM target="+Get(Get(host,"Selection"),"HasTarget")+" path="+Get(host,"Path")+" failed="+Get(host,"TargetPredictionFailed")+" cache="+(((NpcPredictionCache)Get(Get(host,"Prediction"),"Cache")).Read(0)?.Count??0)+" rawDisplay="+(((NpcTrajectory)GetOptional(host,"displayPath"))?.Count??0)+" lease="+Get(host,"displayLeaseTick")+" tick="+Main.GameUpdateCount+" optionalTick="+Get(host,"optionalTick")+" corePermission="+Get(Get(combat,"Attack"),"Permission")+" workMs="+Get(Get(host,"PredictionWork"),"UsedMilliseconds"));
             Require(GetOptional(host,"DisplayPath")!=null,"core harvest starts with a genuinely prepared display publication");
+            // Retention is a component countercontrol, not a claim that a
+            // timed optional tail always reaches121. Publish the existing
+            // independent static-NPC121 fixture before the real new core pass.
+            NativeCombatAimChecks.Prepare(host,Get(combat,"Attack"),n,0,true);Call(host,"CaptureDisplay",(long)Main.GameUpdateCount);Call(host,"ValidateDisplay",(long)Main.GameUpdateCount);
+            Require(((NpcTrajectory)GetOptional(host,"DisplayPath"))?.Count==121,"long retention control owns the explicit valid121 component publication");
             var retained=(NpcTrajectory)GetOptional(host,"DisplayPath");n.position.X+=.5f;CoreDisplayStep(context,combat,host,input,n);
             var cache=(NpcPredictionCache)Get(Get(host,"Prediction"),"Cache");
             Require(ReferenceEquals(retained,GetOptional(host,"DisplayPath")) && cache.Read(0)!=null && retained.Count>cache.Read(0).Count,"a valid long display is preserved while a distinct current core pass publishes its shorter prefix");
@@ -181,6 +197,51 @@ namespace NativeWorldTextProbe
             var impact=Get(Get(host,"World"),"Impact");Call(impact,"Capture");
             Require(ReferenceEquals(actual,GetOptional(impact,"contact")),"the actual contact reused by optional preparation is the contact consumed by Capture");
             Console.WriteLine("OPTIONAL ACTUAL CONTACT previewEntries=8 actualPreparePlan="+optionalPlans+" captureSource=actual receiveTick="+actual.ReceiveTick);
+            NativeCombatPreviewLeaseChecks.Navigation(host,attack,p,actual);
+            OptionalCapture(context,combat,host,attack,input,n,actual);
+            NativeCombatPreviewLeaseChecks.Opening(context,host,combat,attack,input);
+            NativeCombatPreviewLeaseChecks.OrdinaryReceive(context,host,combat,attack,input);
+            NativeCombatPreviewLeaseChecks.HandReceive(context,host,combat,attack,input);
+        }
+        private static void OptionalCapture(object context,object combat,object host,object attack,object input,NPC npc,AttackContact actual)
+        {
+            var impact=Get(Get(host,"World"),"Impact");captureOwner=(CombatPredictionWork)Get(host,"PredictionWork");
+            var audit=new Harmony("JueMingR.Tests.OptionalCapture");
+            audit.Patch(attack.GetType().GetProperty("ExpectedImpact",Flags).GetGetMethod(true),prefix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks),nameof(CaptureGetter)));
+            audit.Patch(attack.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.PredictionTerrain",true).GetMethod("Read",Flags),prefix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks),nameof(CaptureTerrainRead)));
+            try
+            {
+                captureGets=captureReads=0;captureCharged=captureObserved=true;
+                Call(impact,"Capture");captureObserved=false;
+                Require(ReferenceEquals(actual,GetOptional(impact,"contact")) && captureGets==1 && captureReads>0 && captureCharged,"shell Capture consumes qualified actual terrain under the same host optional owner");
+                long lease=(long)Get(host,"displayLeaseTick");Set(host,"displayLeaseTick",-1L);captureGets=captureReads=0;captureObserved=true;Call(impact,"Capture");captureObserved=false;Set(host,"displayLeaseTick",lease);
+                Require(captureGets==0 && captureReads==0 && GetOptional(impact,"contact")==null,"no DisplayPath stops before actual/control terrain qualification");
+                captureThrow=captureObserved=true;Call(impact,"Capture");captureObserved=false;
+                Require(!captureThrow && !(bool)Get(impact,"Failed") && GetOptional(impact,"contact")==null && ReferenceEquals(actual,GetOptional(attack,"ExpectedImpact")),"a qualification budget exception clears only this presentation without latching or retiring actual input");
+                using(captureOwner.Enter(Main.GameUpdateCount))using(CombatPredictionWork.Optional(3))
+                {var watch=System.Diagnostics.Stopwatch.StartNew();while(watch.Elapsed.TotalMilliseconds<3.2)System.Threading.Thread.SpinWait(16);}
+                captureGets=0;captureObserved=true;Call(impact,"Capture");captureObserved=false;
+                Require(captureGets==0 && GetOptional(impact,"contact")==null && !(bool)Get(impact,"Failed") && ReferenceEquals(actual,GetOptional(attack,"ExpectedImpact")),"same-update exhausted optional allowance denies Capture without resetting or clearing actual input");
+                ComponentStep(context,combat,input,npc);NativeCombatAimChecks.Prepare(host,attack,npc,0,true);Call(attack,"Prepare");Call(host,"CaptureDisplay",(long)Main.GameUpdateCount);Call(host,"ValidateDisplay",(long)Main.GameUpdateCount);
+                var recovered=GetOptional(attack,"ExpectedImpact");Require(recovered!=null,"next-update Capture recovery has a fresh qualified actual controller Contact");
+                captureCharged=captureObserved=true;Call(impact,"Capture");captureObserved=false;Require(ReferenceEquals(recovered,GetOptional(impact,"contact")) && !(bool)Get(impact,"Failed") && captureCharged,"next update restores presentation through the normal owner allowance");
+                // Yoyo uses its own navigation terrain. This separate empty
+                // registry component acquires an existing real world tile in
+                // the control owner's shared reader; it does not claim that
+                // the preceding yoyo naturally populated this other lease.
+                var control=Get(attack,"Control");var sharedTerrain=(IPredictionTerrain)Get(control,"terrain");PredictionTile tile;PredictionStop tileStop;
+                Require(sharedTerrain.Tile(43,43,out tile,out tileStop),"empty-registry component acquires a real existing floor cell");
+                captureReads=0;captureObserved=true;using(captureOwner.Enter(Main.GameUpdateCount))using(CombatPredictionWork.Optional(3))Require((bool)Get(sharedTerrain,"Unchanged"),"the explicit old read set is currently valid");captureObserved=false;
+                Require(captureReads>0 && captureCharged,"positive read counter sees validation of the explicit old terrain lease");
+                int oldCells=((IDictionary)Get(Get(control,"terrain"),"cells")).Count;Require(oldCells>0,"zero-shot countercontrol owns an explicit nonempty old control terrain read set");Call(control,"Reset");
+                Require(((IDictionary)Get(control,"shots")).Count==0 && ((IDictionary)Get(Get(control,"terrain"),"cells")).Count==oldCells,"normal control Reset removes registry entries while retaining exactly the old terrain read set");
+                Require((bool)Get(attack,"CurrentReceiver"),"zero-registry getter still has a valid current receiver so its registry fastpath is the denying gate");
+                captureReads=0;captureObserved=true;var empty=GetOptional(control,"ExpectedImpact");captureObserved=false;
+                Require(empty==null && captureReads==0,"no observed control shots do not validate retained old terrain");
+                Console.WriteLine("OPTIONAL CAPTURE EMPTY controlShots=0 retainedTerrainCells="+oldCells+" actualTerrainReads="+captureReads);
+                Console.WriteLine("OPTIONAL CAPTURE qualifiedReadsCharged=true noDisplayReads=0 noControlReads=0 budgetPresentationOnly=true nextUpdateRecovery=true");
+            }
+            finally{captureObserved=captureThrow=false;captureOwner=null;audit.UnpatchAll(audit.Id);}
         }
         private static void OptionalContactState(object host,object attack,Player player,string phase)
         {

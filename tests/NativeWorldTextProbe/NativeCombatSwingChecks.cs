@@ -22,7 +22,8 @@ namespace NativeWorldTextProbe
         }
         internal static void Run(object context)
         {if(Environment.GetEnvironmentVariable("JMR_SWING_ORACLE_ONLY")=="special"){NativeCombatSwingSpecialChecks.Run(context);return;}Idle(context);Check(context,false);Check(context,true);NativeCombatSwingSpecialChecks.Run(context);}
-        private static void Idle(object context)
+        internal static void IdleReceiveQualification(object context){Idle(context,true);}
+        private static void Idle(object context,bool receiveQualification=false)
         {
             var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var input=Get(context,"Input");var aim=Get(combat,"Attack");
             NativeCombatObservationChecks.Save(host,new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,4,0,0);p.position=new Vector2(700,646);p.ResetEffects();Main.screenPosition=new Vector2(600,500);
@@ -45,17 +46,25 @@ namespace NativeWorldTextProbe
             bool edgePreview=GetOptional(aim,"ExpectedPreview")!=null;
             for(int i=0;i<25;i++)NativeCombatSelectionPreviewChecks.Step(context,new Vector2(760,650),true);Require(idleHits==0,"original complete use agrees that edge touching cannot damage: hits="+idleHits+" first="+idleFirst+" preview="+edgePreview+" player="+p.position+" target="+n.Hitbox);Require(!edgePreview,"ordinary swing actual edge miss has no hypothetical contact");
             NativeCombatSelectionPreviewChecks.Step(context,new Vector2(760,650),false);p.position.X+=1;
-            for(int i=0;i<3;i++)
+            // An idle presentation is optional. After the independent one-pixel
+            // change, cover one existing five-update production due; this is
+            // a bounded Host publication premise, not a private solver result.
+            bool idlePublished=false;
+            for(int i=0;i<5 && !idlePublished;i++)
             {
                 NativeQuickItemChecks.BeginWorldStep();NativeToolExecutionChecks.Sample(context,input,new Vector2(760,650),false);Call(combat,"Sample");Call(host,"SampleMouse");p.Update(0);n.UpdateNPC(2);Call(context,"UpdateRuntime");Call(context,"UpdateShell");
                 var contact=(AttackContact)GetOptional(aim,"ExpectedPreview");
-                if(contact==null)ExplainIdle(aim,host,p,n);
-                Require(contact!=null && contact.ReceiveTick<contact.Timeline.Count,"idle native held frame supports future ordinary swing without Aim permission");
+                if(contact==null){if(i==4)ExplainIdle(aim,host,p,n);continue;}
+                Require(contact.ReceiveTick<contact.Timeline.Count,"idle native held frame supports future ordinary swing without Aim permission");
                 Require(p.itemAnimation==0 && p.itemTime==0 && !p.controlUseItem && !p.channel && GetOptional(aim,"ExpectedImpact")==null,"hypothetical swing leaves actual animation and input idle");
+                if(receiveQualification)NativeCombatPreviewLeaseChecks.HandReceivePositive(p,n,aim,contact);
+                idlePublished=true;
             }
+            Require(idlePublished,"one existing optional full due publishes the native calibrated idle swing Contact");
             p.direction=-1;NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,650),false,true);
             Require(GetOptional(aim,"ExpectedPreview")==null,"turning in place retires a right-facing ordinary swing contact");
-            p.direction=1;NativeCombatSelectionPreviewChecks.Step(context,new Vector2(760,650),false,true);
+            p.direction=1;
+            for(int i=0;i<5 && GetOptional(aim,"ExpectedPreview")==null;i++)NativeCombatSelectionPreviewChecks.Step(context,new Vector2(760,650),false,true);
             Require(GetOptional(aim,"ExpectedPreview")!=null,"turning back recovers the ordinary idle swing without an attack edge");
             var planned=(AttackContact)GetOptional(aim,"ExpectedPreview");long expected=planned.Timeline.SampleTick+planned.Tick;idleFirst=-1;
             for(int i=0;i<25;i++)NativeCombatSelectionPreviewChecks.Step(context,new Vector2(760,650),true);

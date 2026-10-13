@@ -209,7 +209,13 @@ namespace JueMingR.TerrariaHost.Combat
             // separate cadence. Attempts advance this clock even for null or
             // paused results, and a duplicate outer callback cannot re-admit.
             OptionalPreparation=!beforeNpc && Path && optionalTick!=sampleTick && (optionalTick<0 || sampleTick-optionalTick>=DisplayRefreshUpdates || !optionalTarget.Equals(Selection.Target));
-            if(beforeNpc || Attack!=null && Attack.UrgentPreparation)Attack?.ResolveSelection(sampleTick,beforeNpc);
+            // Held clear-line intent prepares the next real hand during its
+            // native cooldown. ResolveSelection keeps its existing cumulative
+            // 3ms limit and warm cadence; charging it to display's shared 2ms
+            // producer slice can repeatedly pause a reachable candidate before
+            // Plan completes. Pure Path hypotheses retain the optional slice.
+            bool actionSelection=Attack!=null && Options.ClearLine && Attack.BasicPermission;
+            if(beforeNpc || Attack!=null && Attack.UrgentPreparation || actionSelection)Attack?.ResolveSelection(sampleTick,beforeNpc);
             else using(CombatPredictionWork.Optional(2))Attack?.ResolveSelection(sampleTick,false);
             Attack?.Demand(beforeNpc); // Keep a candidate's explicitly proven action prefix.
             // Ordinary prediction is synchronous and owned by Source. Native
@@ -242,9 +248,28 @@ namespace JueMingR.TerrariaHost.Combat
                 {
                     int full=Prediction.Cache.Required;
                     int prefix=Attack!=null && Attack.PreviewDemand?Math.Min(full,Attack.PreviewPreferred):full;
+                    bool tailFirst=Attack!=null && Attack.PreviewTailPending;
                     bool admitted=false;
+                    NpcTrajectory candidatePath;PredictionTerrain.CellLease candidateTerrain;
+                    if(Attack!=null && Attack.TryCandidateDisplay(sampleTick,out candidatePath,out candidateTerrain) && CombatPredictionWork.TryContinue())
+                    {
+                        // Optional selection already completed this fresh World
+                        // prefix and hand plan. Publish those immutable results
+                        // without resampling the same actor after its slice has
+                        // gone. Keep any longer display whose real lease passes.
+                        bool keep=displayPath!=null && displayPath.Count-DisplayAge>=candidatePath.Count && ValidateDisplay(sampleTick);
+                        displayValidated=keep;
+                        if(!keep)
+                        {
+                            CaptureDisplay(candidatePath,candidateTerrain);
+                            Attack.PublishCandidatePreview(candidatePath);
+                            displayValidated=ValidateDisplay(sampleTick);Attack.ValidatePreviewPresentation();previewValidated=true;
+                        }
+                        optionalTick=displayShortTick=sampleTick;optionalTarget=Selection.Target;
+                        prefix=Math.Max(prefix,candidatePath.Count-1);admitted=true;
+                    }
                     using(CombatPredictionWork.Optional(2))
-                    if(CombatPredictionWork.TryContinue())
+                    if(!admitted && CombatPredictionWork.TryContinue())
                     {
                         admitted=true;
                         optionalTick=displayShortTick=sampleTick;optionalTarget=Selection.Target;
@@ -253,8 +278,10 @@ namespace JueMingR.TerrariaHost.Combat
                         // solve its preview, then extend only with the remainder.
                         PrepareSelectedPrediction(sampleTick,false,tick,prefix);
                         CaptureDisplay(sampleTick);
-                        previewOptionalTick=sampleTick;
-                        Attack?.PreparePreviewOnly();
+                        // The last short window has already returned unresolved.
+                        // Give its missing tail real room before paying for the
+                        // same shallow preview again. A positive stays first.
+                        if(!tailFirst && Attack!=null && Attack.PreparePreviewOnly())previewOptionalTick=sampleTick;
                     }
                     if(admitted && CombatPredictionWork.TryContinue())
                     {
@@ -273,8 +300,11 @@ namespace JueMingR.TerrariaHost.Combat
                         {
                             if(CombatPredictionWork.TryContinue())
                             {
-                                CaptureDisplay(sampleTick);
-                                try{ValidateDisplay(sampleTick);}
+                                var replacement=Prediction.Cache.Read(0);
+                                bool replaces=replacement!=null && replacement.Identity.Equals(Selection.Target) && replacement.SampleTick==sampleTick &&
+                                    (prefixPath==null || replacement.Count>=prefixPath.Count-Math.Max(0,sampleTick-prefixPath.SampleTick));
+                                if(replaces)CaptureDisplay(sampleTick);
+                                try{if(replaces)ValidateDisplay(sampleTick);}
                                 catch(CombatPredictionBudgetExceededException)
                                 {
                                     // Extending private scratch performs no
@@ -283,8 +313,17 @@ namespace JueMingR.TerrariaHost.Combat
                                     displayPath=prefixPath;displayTerrain=prefixTerrain;displayLeaseTick=prefixLease;
                                 }
                                 using(CombatPredictionWork.Optional(2))
-                                    if(Attack!=null && Attack.PreviewNeedsMore && CombatPredictionWork.TryContinue()){Attack.PreparePreviewOnly();previewValidated=false;}
+                                    if(replaces && Attack!=null && (tailFirst || Attack.PreviewNeedsMore) && CombatPredictionWork.TryContinue() && Attack.PreparePreviewOnly()){previewOptionalTick=sampleTick;previewValidated=false;}
                             }
+                        }
+                        else if(tailFirst && prefix==full)
+                        {
+                            // The coverage hint can already request the whole
+                            // desired range. There is no tail extension branch
+                            // in that case, but its solver still needs a real
+                            // optional opportunity after this publication.
+                            using(CombatPredictionWork.Optional(2))
+                                if(Attack!=null && CombatPredictionWork.TryContinue() && Attack.PreparePreviewOnly()){previewOptionalTick=sampleTick;previewValidated=false;}
                         }
                     }
                 }
@@ -324,14 +363,14 @@ namespace JueMingR.TerrariaHost.Combat
                                     if(publication!=null && publication.SampleTick==sampleTick && !ReferenceEquals(publication,priorPublication))
                                     {
                                         CaptureDisplay(sampleTick);shortCaptured=true;
-                                        if(Attack!=null && CombatPredictionWork.TryContinue()){previewOptionalTick=sampleTick;Attack.PreparePreviewOnly();}
+                                        if(Attack!=null && CombatPredictionWork.TryContinue() && Attack.PreparePreviewOnly())previewOptionalTick=sampleTick;
                                     }
                                 }
                                 if(shortCaptured)ValidateDisplay(sampleTick);
                             }
                         }
                         if(!previewValidated)Attack?.ValidatePreviewPresentation();
-                        if(Attack!=null && Attack.PreviewRefreshPending && DisplayPath!=null && (previewOptionalTick<0 || sampleTick-previewOptionalTick>=2) && CombatPredictionWork.TryContinue())
+                        if(Attack!=null && Attack.PreviewRefreshPending && DisplayPath!=null && (previewOptionalTick<0 || sampleTick-previewOptionalTick>=Attack.PreviewRefreshUpdates) && CombatPredictionWork.TryContinue())
                         {
                             bool previewPrepared=false;
                             using(CombatPredictionWork.Optional(2))
@@ -370,8 +409,10 @@ namespace JueMingR.TerrariaHost.Combat
         {
             var path=Path?Prediction.Cache.Read(0):null;
             if(path==null || !path.Identity.Equals(Selection.Target) || path.SampleTick!=tick)return;
-            displayPath=path;displayLeaseTick=-1;displayTerrain=Prediction.Terrain.FreezeCells();displayPlayer=NpcPredictionSource.ReadPlayer(Main.LocalPlayer);displayLife=Main.npc[path.Identity.Slot].life;
+            CaptureDisplay(path,Prediction.Terrain.FreezeCells());
         }
+        private void CaptureDisplay(NpcTrajectory path,PredictionTerrain.CellLease terrain)
+        {displayPath=path;displayLeaseTick=-1;displayTerrain=terrain;displayPlayer=NpcPredictionSource.ReadPlayer(Main.LocalPlayer);displayLife=Main.npc[path.Identity.Slot].life;}
         private bool ValidateDisplay(long tick)
         {
             displayLeaseTick=-1;

@@ -49,19 +49,61 @@ namespace NativeWorldTextProbe
             NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());
             var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,95,0,0);p.position=new Vector2(700,646);p.releaseUseItem=true;p.inventory[54].SetDefaults(97);p.inventory[54].stack=999;Scene(2,new Vector2(870,667));
             NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,50,true,true));
-            NativeCombatSelectionPreviewChecks.Step(context,new Vector2(550,600),false,true);
-            var cache=(NpcPredictionCache)Get(Get(host,"Prediction"),"Cache");var published=cache.Read(0);Require(published!=null,"Budget retry uses a naturally published trajectory.");
-            var phase=Get(Get(attack,"preview"),"Phase");retryPlan=Activator.CreateInstance(Get(attack,"preview").GetType(),true);
+            var cache=(NpcPredictionCache)Get(Get(host,"Prediction"),"Cache");NpcTrajectory published=null;
+            int cadence=(int)host.GetType().GetField("DisplayRefreshUpdates",Flags).GetRawConstantValue();
+            // This component can run directly before its mother suite warms
+            // native preparation. Wait only through two normal display periods;
+            // never manufacture a Source publication or a native use.
+            for(int i=0;i<cadence*2+1 && (published==null || published.Count<=32);i++)
+            {NativeCombatSelectionPreviewChecks.Step(context,new Vector2(550,600),false,true);published=cache.Read(0);}
+            Require(published!=null,"Budget retry first acquires a naturally published trajectory within bounded optional preparation.");
+            // The recovery component needs a longer real fixture than display
+            // is obliged to produce in its shared slice. Its existing isolated
+            // component allowance prepares that exact live Source directly;
+            // this is neither an optional-latency nor native-use assertion.
+            using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))
+            {Call(Get(host,"Prediction"),"PreparePrefix",published.Identity,(long)Main.GameUpdateCount,NpcPredictionCache.Horizon,NpcPredictionCache.Horizon);published=cache.Read(0);}
+            Require(published!=null && published.Count>32,"The real component Source publishes its complete recovery-test range without a fabricated trajectory.");
+            var phase=Enum.Parse(Get(Get(attack,"preview"),"Phase").GetType(),"CompletedWorld");retryPlan=Activator.CreateInstance(Get(attack,"preview").GetType(),true);
+            var progressPlans=(Array)Get(attack,"candidatePlans");var progressRequests=(int[])Get(attack,"candidateRequests");var progressUnknown=(bool[])Get(attack,"candidateUnknown");var progressSignificant=(bool[])Get(attack,"candidateSignificant");var progressAttempts=(long[])Get(attack,"candidateAttempt");
+            int progressKey=published.Identity.Slot*2;object priorProgressPlan=progressPlans.GetValue(progressKey);int priorProgressRequest=progressRequests[progressKey];bool priorProgressUnknown=progressUnknown[progressKey],priorProgressSignificant=progressSignificant[published.Identity.Slot];long priorProgressAttempt=progressAttempts[progressKey];
             var audit=new Harmony("JueMingR.Tests.IncompletePlanRetry");
             try
             {
+                interruptRetry=false;retrySolves=0;
+                audit.Patch(attack.GetType().GetMethod("SolveOnTerrain",Flags),prefix:new HarmonyMethod(typeof(NativeCombatCandidateDemandChecks),nameof(BeforeRetrySolve)));
                 using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))
                 {
                     Require(Call(attack,"PreparePlan",retryPlan,published,phase) is AttackContact,"The same ordinary scene completes a normal contact before injecting interruption.");
+                    var realContact=(AttackContact)Get(retryPlan,"Contact");NpcTrajectory contactPrefix;
+                    Require(published.TryWindow(published.SampleTick,realContact.ReceiveTick+1,published.Version,out contactPrefix),"A real solved contact has a complete immutable prefix inside its native publication.");
+                    Call(retryPlan,"Clear");Require(Call(attack,"PreparePlan",retryPlan,contactPrefix,phase) is AttackContact,"The same ordinary contact completes on its actual shorter prefix.");
+                    var borrow=attack.GetType().GetMethod("TryCandidatePresentationPrefix",Flags);var borrowArgs=new object[]{retryPlan,published,null};
+                    Require((bool)borrow.Invoke(null,borrowArgs) && AttackIntercept.Rebind((AttackContact)Get(retryPlan,"Contact"),(NpcTrajectory)borrowArgs[2])!=null,"A completed fresh candidate borrows the entire equal shorter prefix from a longer selected publication without another solve.");
+                    NpcTrajectory insufficient;Require(published.TryWindow(published.SampleTick,0,published.Version,out insufficient),"The selected publication also supplies an independently too-short view.");
+                    borrowArgs=new object[]{retryPlan,insufficient,null};Require(!(bool)borrow.Invoke(null,borrowArgs),"A shorter selected publication cannot borrow a longer candidate plan or its contact.");
+                    NpcTrajectory otherSample;Require(published.TryWindow(published.SampleTick+1,realContact.ReceiveTick,published.Version,out otherSample),"The original immutable publication can expose the next sample without a new capture.");
+                    borrowArgs=new object[]{retryPlan,otherSample,null};Require(!(bool)borrow.Invoke(null,borrowArgs),"A different sample never borrows the old candidate presentation even when its geometry stays equal.");
+                    var source=Get(host,"Prediction");var motionLease=Call(source,"FreezeCandidateTerrain",published);
+                    Require(motionLease!=null && Call(source,"FreezeCandidateTerrain",contactPrefix)==null,"Only the exact currently owned Source publication can freeze its NPC-motion terrain; a derived view cannot claim scratch ownership.");
+                    var presentationField=attack.GetType().GetField("candidatePresentationPlan",Flags);var priorPresentation=presentationField.GetValue(attack);
+                    try
+                    {
+                        presentationField.SetValue(attack,retryPlan);retryPlan.GetType().GetField("MotionTerrain",Flags).SetValue(retryPlan,motionLease);
+                        var displayArgs=new object[]{(long)Main.GameUpdateCount,null,null};
+                        Require((bool)attack.GetType().GetMethod("TryCandidateDisplay",Flags).Invoke(attack,displayArgs),"The same completed World candidate can supply its pure-observation path and exact motion lease.");
+                        int borrowedSolves=retrySolves;Call(attack,"PublishCandidatePreview",displayArgs[1]);
+                        Require(retrySolves==borrowedSolves && ReferenceEquals(cache.Read(0),published) && GetOptional(attack,"ExpectedImpact")==null && !p.controlUseItem,"Publishing the completed presentation performs zero hand solves, preserves the selected Source publication and grants no native input.");
+                    }
+                    finally{presentationField.SetValue(attack,priorPresentation);Call(attack,"ClearPreview");}
                     Call(retryPlan,"Clear");interruptRetry=true;retrySolves=0;
-                    audit.Patch(attack.GetType().GetMethod("SolveOnTerrain",Flags),prefix:new HarmonyMethod(typeof(NativeCombatCandidateDemandChecks),nameof(BeforeRetrySolve)));
                     bool paused=false;try{Call(attack,"PreparePlan",retryPlan,published,phase);}catch(Exception error){if(error.GetBaseException() is CombatPredictionBudgetExceededException)paused=true;else throw;}
                     Require(paused && retrySolves==1 && !(bool)Get(retryPlan,"Prepared") && GetOptional(retryPlan,"Contact")==null && GetOptional(retryPlan,"Timeline")==null,"Interrupted null is unresolved and clears the plan rather than caching a completed miss.");
+                    // This isolated work-policy check borrows the same real
+                    // plan and published trajectory; it creates no Contact or
+                    // native input opportunity and restores candidate ownership.
+                    progressPlans.SetValue(retryPlan,progressKey);progressRequests[progressKey]=32;progressUnknown[progressKey]=true;progressSignificant[published.Identity.Slot]=false;
+                    Require((int)Call(attack,"CandidateProgressRequired",published.Identity,progressKey,false)==32,"A budget-interrupted Plan retries its admitted request instead of doubling Source work before its missing solve.");
                     Require(ReferenceEquals(cache.Read(0),published) && !(bool)Get(attack,"Failed"),"The isolated plan interruption preserves Source's published prefix and does not record an attack fault.");
                     Require(Call(attack,"PreparePlan",retryPlan,published,phase) is AttackContact && retrySolves>1,"The identical sample/phase/plan retries the real solve and recovers its contact.");
                     int before=retrySolves;Require(Call(attack,"PreparePlan",retryPlan,published,phase) is AttackContact && retrySolves==before,"A completed contact still reuses the same legal solve.");
@@ -73,6 +115,10 @@ namespace NativeWorldTextProbe
                     NpcTrajectory shortPrefix;Require(published.TryWindow(published.SampleTick,32,published.Version,out shortPrefix),"The naturally published trajectory supplies a real shorter prefix.");
                     Call(retryPlan,"Clear");Require(Call(attack,"PreparePlan",retryPlan,shortPrefix,phase)==null && (bool)Get(retryPlan,"Prepared"),"The shorter prefix also completes its real wall miss.");
                     Require((bool)Call(attack,"CandidateMissCurrent",retryPlan,shortPrefix.Identity,shortPrefix.SampleTick,phase,32) && !(bool)Call(attack,"CandidateMissCurrent",retryPlan,shortPrefix.Identity,shortPrefix.SampleTick,phase,fullFuture),"A completed short miss cannot authorize a longer requested future.");
+                    Require((int)Call(attack,"CandidateProgressRequired",published.Identity,progressKey,false)==64,"A complete nonpaused requested-prefix miss may fairly extend its actual future.");
+                    progressSignificant[published.Identity.Slot]=true;
+                    Require((int)Call(attack,"CandidateProgressRequired",published.Identity,progressKey,false)==(int)Call(attack,"CandidatePreferred",published.Identity) && progressAttempts[progressKey]==priorProgressAttempt,"A significant new receive premise restarts only its work range, never its fair attempt stamp.");
+                    progressSignificant[published.Identity.Slot]=false;
                     // Only this component clock advances; no native consumer
                     // or live Source demand is manufactured for the window.
                     NativeQuickItemChecks.BeginWorldStep();NpcTrajectory agedWindow;
@@ -82,7 +128,7 @@ namespace NativeWorldTextProbe
                 }
                 Console.WriteLine("PASS incomplete plan budget signal propagates, preserves Source, retries same sample/phase; complete null memoizes only its completed range, while short/aged display misses cannot authorize a fresh longer Source request.");
             }
-            finally{foreach(var method in audit.GetPatchedMethods().ToArray())audit.Unpatch(method,HarmonyPatchType.All,audit.Id);retryPlan=null;interruptRetry=false;NativeCombatObservationChecks.Save(host,new ObservationOptions());}
+            finally{progressPlans.SetValue(priorProgressPlan,progressKey);progressRequests[progressKey]=priorProgressRequest;progressUnknown[progressKey]=priorProgressUnknown;progressSignificant[published.Identity.Slot]=priorProgressSignificant;foreach(var method in audit.GetPatchedMethods().ToArray())audit.Unpatch(method,HarmonyPatchType.All,audit.Id);retryPlan=null;interruptRetry=false;NativeCombatObservationChecks.Save(host,new ObservationOptions());}
         }
         private static object stressAttack,stressPrediction;
         private static int stressFar,stressBirths,stressEnhanced,stressProjectile,stressLateContacts,stressFrame,stressBlockers,stressHandStarts,stressNearEnhanced;

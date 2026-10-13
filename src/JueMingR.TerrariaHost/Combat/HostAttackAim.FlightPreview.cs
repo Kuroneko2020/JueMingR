@@ -29,6 +29,10 @@ namespace JueMingR.TerrariaHost.Combat
             if(flightPass && flightPassReady && ReferenceEquals(flightPassTimeline,timeline) && flightPassPhase==phase)
             {live=flightPassLive;return flightPassResult;}
             var result=ReadFlightCore(player,timeline,phase,out live);
+            // Freeze the real replay reader once after all family candidates
+            // have been visited. Same-pass memoization and presentation copies
+            // keep this lease; OnlyFlight has never used plan.Terrain.
+            if(result!=null)result.Terrain=flightPreviewTerrain.FreezeCells();
             if(flightPass){flightPassReady=true;flightPassTimeline=timeline;flightPassPhase=phase;flightPassLive=live;flightPassResult=result;}
             return result;
         }
@@ -147,7 +151,7 @@ namespace JueMingR.TerrariaHost.Combat
                 else if(phaseblade)
                 {receivers=new HostAttackObstacles(player,shot,timeline,0,clock.BeforeNpc,clock.NextWorld);contact=HostPhasebladeAttack.Known(player,shot,timeline,clock,flightPreviewTerrain,receivers);}
                 else contact=HostHarpoonAttack.Known(player,shot,timeline,clock,flightPreviewTerrain,out receivers);
-                if(contact!=null && Earlier(contact,best?.Contact))best=new FlightPreview(player,shot,contact,arc:paper?receivers:null);
+                if(contact!=null && Earlier(contact,best?.Contact))best=new FlightPreview(player,shot,contact,arc:receivers);
                 if(best!=null && best.Contact.Tick==clock.FirstTick && best.Contact.Subupdate==0)break;
             }
             return best;
@@ -161,6 +165,8 @@ namespace JueMingR.TerrariaHost.Combat
         private sealed class FlightPreview
         {
             internal readonly AttackContact Contact;
+            internal PredictionTerrain.CellLease Terrain;
+            internal bool DependenciesCurrent {get{return Terrain!=null && Terrain.Current && (gem==null || gem.DependenciesCurrent) && (attached==null || attached.DependenciesCurrent) && (arc==null || arc.Unchanged);}}
             private readonly Player player;private readonly Projectile shot;private readonly int key,type,owner,time,extra,penetration;
             private readonly Vector2 position,velocity;private readonly float ai0,ai1,local0;
             private readonly bool use,wet,honey,lava,shimmer,tile;

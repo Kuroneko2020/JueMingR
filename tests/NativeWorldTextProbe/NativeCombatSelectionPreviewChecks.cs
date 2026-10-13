@@ -59,24 +59,53 @@ namespace NativeWorldTextProbe
                 var near=Scene(2,new Vector2(810,667));var middle=Scene(3,new Vector2(870,667));var far=Scene(4,new Vector2(460,667));var cursor=new Vector2(725,667);
                 for(int y=0;y<Main.maxTilesY;y++)NativeToolsChecks.Tile(47,y,1);
                 NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,mouse,false,50,true,false));
-                for(int i=0;i<3;i++)Step(context,cursor,false,true);
-                Require(Selected(host)==4,"three candidates: blocked near/middle do not deny the actual farther solution: mouse="+mouse);
+                var attack=Get(Get(context,"Combat"),"Attack");int cadence=(int)host.GetType().GetField("DisplayRefreshUpdates",Flags).GetRawConstantValue();
+                // A cold denied attempt is not a completed optional refresh.
+                // Three independent candidate solves settle within two bounded
+                // refresh periods here; subsequent changed facts get one. This
+                // read-only fixture never grants BeforeNpc input permission.
+                for(int i=0;i<cadence*2+1 && (Selected(host)!=4 || GetOptional(attack,"ExpectedPreview")==null);i++)Step(context,cursor,false,true);
+                Require(Selected(host)==4 && GetOptional(attack,"ExpectedPreview")!=null,"three candidates: cold bounded preparation reaches a visible actual farther solution despite blocked near/middle: mouse="+mouse);
                 for(int y=0;y<Main.maxTilesY;y++)Main.tile[47,y].ClearEverything();
-                Step(context,cursor,false,true);Require(Selected(host)==2,"near target wins immediately when its wall opens even while old far target stays reachable: mouse="+mouse);
+                RankedAdvance(context,host,cursor,2,true,"near target wins at the bounded optional refresh when its wall opens even while old far stays reachable: mouse="+mouse,false);
                 for(int y=0;y<Main.maxTilesY;y++)NativeToolsChecks.Tile(47,y,1);
-                Step(context,cursor,false,true);Require(Selected(host)==4,"closing the same wall revokes the nearer proof: mouse="+mouse);
-                var attack=Get(Get(context,"Combat"),"Attack");var ordinary=(AttackContact)Get(attack,"ExpectedPreview");
+                RankedAdvance(context,host,cursor,4,true,"closing the same wall retires near proof and restores the farther solution within optional cadence: mouse="+mouse);
+                var ordinary=(AttackContact)Get(attack,"ExpectedPreview");
                 p.inventory[54].SetDefaults(1302);p.inventory[54].stack=999;
-                Step(context,cursor,false,true);var fast=(AttackContact)Get(attack,"ExpectedPreview");
+                RankedAdvance(context,host,cursor,4,true,"high-velocity ammo refreshes the farther solution within optional cadence: mouse="+mouse);var fast=(AttackContact)Get(attack,"ExpectedPreview");
                 Require(Selected(host)==4 && fast!=null && ordinary!=null && fast.Tick<ordinary.Tick,"actual high-velocity ammunition preserves wall tiers but replaces the receive time: mouse="+mouse);
-                p.inventory[54].TurnToAir();Step(context,cursor,false,true);Require(Selected(host)==2 && GetOptional(attack,"ExpectedPreview")==null,"no usable ammunition leaves nearest fallback without retaining old proof: mouse="+mouse);
-                p.inventory[54].SetDefaults(3104);p.inventory[54].stack=1;Step(context,cursor,false,true);Require(Selected(host)==4,"ordinary Endless Pouch restores the actual far solution: mouse="+mouse);
-                middle.Center=new Vector2(600,667);Step(context,cursor,false,true);Require(Selected(host)==3,"a moved formerly blocked middle candidate outranks old reachable far: mouse="+mouse);
-                near.Center=new Vector2(660,667);Step(context,cursor,false,true);Require(Selected(host)==2,"nearer movement is re-ranked within the reachable tier: mouse="+mouse);
+                p.inventory[54].TurnToAir();RankedAdvance(context,host,cursor,2,false,"no usable ammunition leaves nearest fallback without retaining old proof: mouse="+mouse);
+                p.inventory[54].SetDefaults(3104);p.inventory[54].stack=1;RankedAdvance(context,host,cursor,4,true,"ordinary Endless Pouch restores the actual far solution: mouse="+mouse);
+                middle.Center=new Vector2(600,667);RankedAdvance(context,host,cursor,3,true,"a moved formerly blocked middle candidate outranks old reachable far: mouse="+mouse);
+                near.Center=new Vector2(660,667);RankedAdvance(context,host,cursor,2,true,"nearer movement is re-ranked within the reachable tier: mouse="+mouse);
                 near.Center=new Vector2(810,667);NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,mouse,false,50,true,false));
                 Step(context,cursor,false,true);Require(Selected(host)==2,"nearest mode ignores the existing wall and usable farther attack: mouse="+mouse);
                 Console.WriteLine("PASS three-candidate ranking/open-close wall/real ammo/movement/nearest: mouse="+mouse+" farStillActive="+far.active);
             }
+        }
+        private static void RankedAdvance(object context,object host,Vector2 cursor,int expected,bool contactExpected,string reason,bool retirePrior=true)
+        {
+            var attack=Get(Get(context,"Combat"),"Attack");var prior=GetOptional(attack,"ExpectedPreview");
+            Step(context,cursor,false,true);
+            // Opening the near wall changes distance competition, not the
+            // still-reachable far contact's own dependencies. Closing a wall,
+            // changing ammo or an intervening receiver invalidates old proof.
+            Require(!retirePrior || prior==null || !ReferenceEquals(prior,GetOptional(attack,"ExpectedPreview")),"invalidated hand/receiver facts immediately revoke the old presentation ticket before optional re-solving");
+            // One five-update due interval plus one bounded fair cycle of the
+            // actual candidate set. A denied final candidate remains unresolved
+            // and gets its reserved next-pass turn; an optional refresh is not
+            // a guarantee that every candidate solve fits that one slice.
+            // Never force a solver from a validation read.
+            int cadence=(int)host.GetType().GetField("DisplayRefreshUpdates",Flags).GetRawConstantValue();
+            int candidates=(int)Get(Get(host,"Selection"),"CandidateCount");
+            for(int remaining=cadence+Math.Max(0,candidates-1);remaining>0;remaining--)
+            {
+                var contact=(AttackContact)GetOptional(attack,"ExpectedPreview");
+                if(Selected(host)==expected && (contactExpected?contact!=null && contact.Timeline.Identity.Slot==expected:contact==null))return;
+                Step(context,cursor,false,true);
+            }
+            var result=(AttackContact)GetOptional(attack,"ExpectedPreview");
+            Require(Selected(host)==expected && (contactExpected?result!=null && result.Timeline.Identity.Slot==expected:result==null),reason);
         }
         private static void Idle(object context,object combat,object host,object input,object attack)
         {

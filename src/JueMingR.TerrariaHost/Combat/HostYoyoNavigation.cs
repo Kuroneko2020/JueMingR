@@ -25,6 +25,22 @@ namespace JueMingR.TerrariaHost.Combat
         // it must not turn Draw or an AI callback into another route search.
         internal bool Current(Player player)
         {return terrain.Unchanged && PresentationCurrent(player);}
+        internal sealed class PresentationDependencies
+        {
+            private readonly PredictionTerrain.CellLease terrain;
+            private readonly PredictionPlayerMotion player;
+            private readonly float meleeSpeed;private readonly bool yoyoString,usable;
+            internal PresentationDependencies(HostYoyoNavigation source,Player openingInput)
+            {terrain=source.terrain.FreezeCells();player=openingInput==null?source.preparedPlayer:NpcPredictionSource.ReadPlayer(openingInput);meleeSpeed=source.preparedMeleeSpeed;yoyoString=source.preparedString;usable=source.preparedUsable;}
+            // These scalars belong to this replay, not to a navigation owner
+            // which another preparation may overwrite later in the same tick.
+            internal bool Current(Player current)
+            {return usable && meleeSpeed==current.meleeSpeed && yoyoString==current.yoyoString && player.SameSample(NpcPredictionSource.ReadPlayer(current)) && terrain.Current;}
+        }
+        // A hypothetical opening replays a private future Player. Its token
+        // and future pose are not the live input premise; bind the original
+        // holder sample separately, while retaining the actual replay terrain.
+        internal PresentationDependencies FreezePresentation(Player openingInput=null){return new PresentationDependencies(this,openingInput);}
         internal bool PresentationCurrent(Player player)
         {return preparedUsable && preparedMeleeSpeed==player.meleeSpeed && preparedString==player.yoyoString && preparedPlayer.SameSample(NpcPredictionSource.ReadPlayer(player));}
 #if DEBUG

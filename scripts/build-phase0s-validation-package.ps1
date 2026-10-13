@@ -558,7 +558,8 @@ try {
         # Keep the strict package/runtime manifests and fixed member contract.
         # The ordinary owner card is the compatible in-ZIP disclosure surface.
         $card=Join-Path $packageRoot $ownerTestCardName
-        [IO.File]::AppendAllText($card,"`r`n本包为已授权的辅助瞄准阶段开发测试包。完整文件与 Release 载荷齐全；全量累计资格未完成，不是正式发布候选。未完成机制及实机／多人／FPS边界见 Issue #114。交包后停止，安装和体验由所有者另行决定。`r`n",(New-Object Text.UTF8Encoding($false)))
+        $installationBoundary=if($buildRecord.workload.mode -ceq 'ExplicitAimContinuation20261013'){'本轮已授权在当前载荷与实际ZIP检查通过后，核归属、备份并使用正式工具安全安装；安装回执另行核验，正常游戏体验仍由所有者操作。'}else{'交包后停止，安装和体验由所有者另行决定。'}
+        [IO.File]::AppendAllText($card,"`r`n本包为已授权的辅助瞄准阶段开发测试包。完整文件与 Release 载荷齐全；全量累计资格未完成，不是正式发布候选。未完成机制及实机／多人／FPS边界见 Issue #114。$installationBoundary`r`n",(New-Object Text.UTF8Encoding($false)))
     }
 
     $validatedPackage = Read-Phase0SPackage -PackageRoot $packageRoot

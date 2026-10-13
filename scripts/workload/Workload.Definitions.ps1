@@ -38,6 +38,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCombatNeighborChecks.cs'=@('native-CombatIntegrationCpu')
         'tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.cs'=@('native-CombatCosts','native-CombatAttackCosts','native-CombatImpactVisual','native-CombatVisual')
         'tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.Optional.cs'=@('native-CombatCosts','native-CombatAttackCosts')
+        'tests/NativeWorldTextProbe/NativeCombatPreviewLeaseChecks.cs'=@('native-CombatCosts','native-CombatAttackCosts','native-CombatControlCpu','native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.Natural.cs'=@('native-CombatCosts','native-CombatAttackCosts')
         'tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.CandidateState.cs'=@('native-CombatCosts','native-CombatAttackCosts')
         'tests/NativeWorldTextProbe/NativeCombatEffectChecks.cs'=@('native-CombatEffectsCpu')

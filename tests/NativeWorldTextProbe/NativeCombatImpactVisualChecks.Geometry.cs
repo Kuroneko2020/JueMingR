@@ -45,7 +45,7 @@ namespace NativeWorldTextProbe
             var player=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,95,0,0);player.position=new Vector2(700,646);player.gravDir=1;player.inventory[54].SetDefaults(97);player.inventory[54].stack=999;
             var npc=Main.npc[2];npc.SetDefaults(3);npc.whoAmI=2;npc.active=true;npc.position=new Vector2(810,646);npc.velocity=npc.netOffset=Vector2.Zero;npc.aiStyle=-1;npc.noGravity=true;npc.life=npc.lifeMax=10000;Array.Clear(npc.immune,0,npc.immune.Length);
             Main.screenPosition=new Vector2(600,400);Main.GameViewMatrix.Zoom=Vector2.One;
-            NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,false,true));PrepareDisplayFixture(context,host,attack,combat,input,npc);Call(world,"Prepare");
+            NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,false,true));PrepareDisplayFixture(context,host,attack,combat,input,npc);
             var contact=(AttackContact)Get(Get(world,"Impact"),"contact");Require(contact!=null,"A2 rectangle negative control has a genuine prepared contact before Draw");
             var bounds=contact.Timeline[contact.ReceiveTick].ProjectileReceiveBounds;var pixels=graphics.Pixels(()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);
             var ink=pixels.Select((color,index)=>new{color,index}).Where(v=>Red(v.color)).Select(v=>new Vector2(v.index%960,v.index/960)).ToArray();
@@ -75,7 +75,7 @@ namespace NativeWorldTextProbe
             {
                 npc.SetDefaults(type);npc.whoAmI=2;npc.active=true;npc.position=new Vector2(810,646);npc.velocity=Vector2.Zero;npc.netOffset=new Vector2(5.75f,-3.25f);npc.aiStyle=-1;npc.noGravity=true;npc.life=npc.lifeMax=10000;Array.Clear(npc.immune,0,npc.immune.Length);
                 if(type==3){npc.width=72;npc.height=48;}
-                PrepareDisplayFixture(context,host,attack,combat,input,npc);Call(world,"Prepare");var contact=(AttackContact)(GetOptional(attack,"ExpectedImpact")??GetOptional(attack,"ExpectedPreview"));Require(contact!=null,"representative rectangle obtains a prepared contact");
+                PrepareDisplayFixture(context,host,attack,combat,input,npc);var contact=(AttackContact)(GetOptional(attack,"ExpectedImpact")??GetOptional(attack,"ExpectedPreview"));Require(contact!=null,"representative rectangle obtains a prepared contact");
                 int steps=NativeCombatUsageChecks.ObservedNpcSteps;var pixels=graphics.Pixels(()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);AssertReceiveRectanglePixels(contact,pixels,Main.GameViewMatrix.ZoomMatrix,"representative NPC "+type);
                 Require(contact.ReceiveBounds.Width==npc.width+(type==414?16:0) && contact.ReceiveBounds.Height==npc.height+(type==414?16:0),"ordinary/slime/different-size/special contact uses native receiver dimensions");
                 graphics.Image(Path.Combine(output,"impact-rectangle-"+type+".png"),()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);

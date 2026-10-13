@@ -253,7 +253,8 @@ namespace JueMingR.TerrariaHost.Combat
             internal FlightState(Player player,Projectile[] observed,HostAttackObstacles obstacles,PredictionTerrain terrain)
             {this.player=player;heldType=player.HeldItem.shoot;this.obstacles=obstacles;this.terrain=terrain;environment=new HostProjectileEnvironment.State(true);rows=Array.ConvertAll(observed,q=>new Row(q));}
             internal bool MembersCurrent {get{if(player.HeldItem.shoot!=heldType)return false;foreach(var row in rows)if(!row.Current)return false;return true;}}
-            internal bool Current {get{return MembersCurrent && environment.Current && obstacles.Unchanged && terrain.Unchanged;}}
+            internal bool DependenciesCurrent {get{return environment.Current && obstacles.Unchanged;}}
+            internal bool Current {get{return MembersCurrent && DependenciesCurrent && terrain.Unchanged;}}
         }
         internal static AttackContact KnownFamily(Player player,Projectile[] observed,NpcTrajectory timeline,HostAttackClock clock,PredictionTerrain terrain,out FlightState state)
         {

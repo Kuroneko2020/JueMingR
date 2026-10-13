@@ -27,9 +27,15 @@ namespace JueMingR.TerrariaHost.Combat
         internal void PollResources(){if(Failed && resourceFailure && (!ReferenceEquals(failedPixel,TextureAssets.MagicPixel) || !ReferenceEquals(failedBatch,Main.spriteBatch)))Reset();}
         internal void Capture()
         {
-            Clear();if(Failed || !host.Path)return;
+            Clear();if(Failed || !host.Path || host.DisplayPath==null)return;
+            // The shell captures after Runtime.Update has left its scope.
+            // Re-enter this same owner's update ledger: consuming actual
+            // qualification/terrain is optional work, never a fresh allowance.
+            using(host.PredictionWork.Enter(Main.GameUpdateCount))
+            using(CombatPredictionWork.Optional(3))
             try
             {
+                if(!CombatPredictionWork.TryContinue())return;
                 var prepared=host.Attack?.ExpectedImpact;execution=prepared!=null;
                 if(prepared==null)prepared=host.Attack?.ExpectedPreview;
                 if(prepared!=null && prepared.ReceiveTick>=0 && prepared.ReceiveTick<prepared.Timeline.Count && host.DisplayPath!=null)
@@ -41,9 +47,11 @@ namespace JueMingR.TerrariaHost.Combat
                     worldA=new Vector2(bounds.X,bounds.Y);worldB=worldA+new Vector2(bounds.Width,0);
                     worldC=worldA+new Vector2(bounds.Width,bounds.Height);worldD=worldA+new Vector2(0,bounds.Height);
                     if(!Finite(worldA) || !Finite(worldB) || !Finite(worldC) || !Finite(worldD))return;
+                    CombatPredictionWork.Check();
                     if(execution)host.Attack.BindPresentation(prepared);else host.Attack.BindPreview(prepared);contact=prepared;
                 }
             }
+            catch(CombatPredictionBudgetExceededException){Clear();}
             catch(Exception error){Fail(error,false);}
         }
         internal void Project(Matrix zoom,Matrix inverse)

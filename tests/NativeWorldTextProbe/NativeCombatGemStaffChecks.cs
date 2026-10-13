@@ -22,6 +22,10 @@ namespace NativeWorldTextProbe
         private static NPC target;private static long firstHit;private static int damageDepth,receiveType;
         private static Projectile receiving;private static bool recordBirth;private static string actualBirth,actualReceive;
         private static Vector2 firstBirthCenter,firstBirthVelocity;
+        private static int releaseFlightCalls,releaseFullChecks,releaseMotorCalls;
+        private static void CountFlight(){releaseFlightCalls++;}
+        private static void CountFull(){releaseFullChecks++;}
+        private static void CountMotor(){releaseMotorCalls++;}
         private static bool Gem(int t){return t>=121 && t<=126 || t==597;}
         private static void Born(int __result)
         {if(recordBirth && __result>=0 && __result<Main.maxProjectiles){var q=Main.projectile[__result];if(Gem(q.type)){if(actualBirth==null){firstBirthCenter=q.Center;firstBirthVelocity=q.velocity;}actualBirth+=(actualBirth==null?"":";")+q.type+"/"+q.position+"/"+q.velocity+"/"+q.ai[0]+"/"+q.ai[1];}}}
@@ -38,11 +42,13 @@ namespace NativeWorldTextProbe
             try
             {
                 string leaf=Environment.GetEnvironmentVariable("JMR_GEM_ORACLE_ONLY");var assembly=combat.GetType().Assembly;
+                var flightModel=assembly.GetType("JueMingR.TerrariaHost.Combat.HostGemStaffAttack",true);
                 if(leaf==null || leaf=="birth")Births(context,assembly);
                 if(leaf==null || leaf=="motor")Motor(context,assembly);
                 if(leaf==null || leaf=="collision")Collisions(context,assembly);
                 if(leaf==null || leaf=="natural")Natural(context,host,combat);
                 if(leaf==null || leaf=="flight"){KnownFlights(context,assembly);ObservedFlight(context,host,combat);}
+                if(leaf==null || leaf=="flight-dependencies")ObservedDependencies(context,host,combat);
             }
             finally{target=null;recordBirth=false;receiving=null;damageDepth=receiveType=0;Main.windPhysics=wind;audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());}
         }
@@ -132,7 +138,21 @@ namespace NativeWorldTextProbe
             }
             Require(cases==(slice=="core"?42:784) && trailOnly>0 && bursts>0 && damageMargins>0,"native custom collision includes non-body trails, native enlarged burst boxes and counterexamples to omitting Damage_GetHitbox");Console.WriteLine("PASS original gem colliders="+cases+" slice="+(slice??"all")+" outsideBody="+trailOnly+" bursts="+bursts+" damageMarginControls="+damageMargins);
         }
-        private static int Counter(Type model,string name){return (int)model.GetField(name,Flags).GetValue(null);}
+        private static int Counter(Type model,string name)
+        {var field=model.GetField(name,Flags);return field!=null?(int)field.GetValue(null):name=="FlightCaptures"?releaseFlightCalls:name=="MotorSteps"?releaseMotorCalls:releaseFullChecks;}
+        private static void ResetCounters(Type model)
+        {var reset=model.GetMethod("ResetCounters",Flags);if(reset!=null)reset.Invoke(null,null);else releaseFlightCalls=releaseFullChecks=releaseMotorCalls=0;}
+        private static IDisposable ConsumptionAudit(Type model)
+        {
+            // Patch only the enclosing solver/full-validation outlets around
+            // consumption. Natural producers never pay probe or Step JIT cost.
+            var audit=new Harmony("JueMingR.Tests.GemConsumption");
+            audit.Patch(model.GetMethod("KnownFamily",Flags),prefix:new HarmonyMethod(typeof(NativeCombatGemStaffChecks),nameof(CountFlight)));
+            audit.Patch(model.GetNestedType("FlightState",BindingFlags.NonPublic).GetProperty("Current",Flags).GetGetMethod(true),prefix:new HarmonyMethod(typeof(NativeCombatGemStaffChecks),nameof(CountFull)));
+            return new ConsumptionScope(audit);
+        }
+        private sealed class ConsumptionScope:IDisposable
+        {private readonly Harmony audit;internal ConsumptionScope(Harmony audit){this.audit=audit;}public void Dispose(){audit.UnpatchAll(audit.Id);}}
         private static void KnownFlights(object context,Assembly a)
         {
             var model=a.GetType("JueMingR.TerrariaHost.Combat.HostGemStaffAttack",true);var terrainType=a.GetType("JueMingR.TerrariaHost.Combat.PredictionTerrain",true);var phaseType=a.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase",true);var clockType=a.GetType("JueMingR.TerrariaHost.Combat.HostAttackClock",true);int contacts=0,misses=0,ambientHits=0;
@@ -147,13 +167,16 @@ namespace NativeWorldTextProbe
                 }
                 var members=NativeBirth(context,p,p.Center+Vector2.UnitX*400);var source=members.Single(member=>member.type==p.HeldItem.shoot);source.Center=new Vector2(950.25f,350.5f);source.velocity=new Vector2(12,0);if(scene==1 || scene==2)source.timeLeft=1;
                 var path=Path(a,target);var terrain=Activator.CreateInstance(terrainType,true);Call(terrain,"Reset");var clock=Activator.CreateInstance(clockType,Flags,null,new object[]{path,Enum.Parse(phaseType,"CompletedWorld")},null);
-                var position=source.position;var local=(int[])source.localNPCImmunity.Clone();var old=(Vector2[])source.oldPos.Clone();model.GetMethod("ResetCounters",Flags).Invoke(null,null);
+                var position=source.position;var local=(int[])source.localNPCImmunity.Clone();var old=(Vector2[])source.oldPos.Clone();ResetCounters(model);
                 object[] args={p,members,path,clock,terrain,null};var contact=(AttackContact)model.GetMethod("KnownFamily",Flags).Invoke(null,args);var lease=args[5];
                 Require(lease!=null && source.position==position && local.SequenceEqual(source.localNPCImmunity) && old.SequenceEqual(source.oldPos),"known gem family preserves every real born member");
                 Require((bool)Get(lease,"Current"),"fresh full born-family lease matches its captured environment and members");
-                int scans=Counter(model,"FlightPoolScans"),steps=Counter(model,"MotorSteps");
-                for(int check=0;check<20;check++)Require((bool)Get(lease,"MembersCurrent"),"unchanged gem presentation member lease");
-                Require(Counter(model,"FlightPoolScans")==scans && Counter(model,"MotorSteps")==steps && Counter(model,"FlightCaptures")==1,"twenty gem presentation checks do not scan or replay the captured family");
+                using(ConsumptionAudit(model))
+                {
+                    int scans=Counter(model,"FlightPoolScans"),steps=Counter(model,"MotorSteps");releaseFlightCalls=releaseFullChecks=0;
+                    for(int check=0;check<20;check++)Require((bool)Get(lease,"MembersCurrent"),"unchanged gem presentation member lease");
+                    Require(releaseFlightCalls==0 && releaseFullChecks==0 && Counter(model,"FlightPoolScans")==scans && Counter(model,"MotorSteps")==steps,"twenty gem presentation checks enter no KnownFamily/full Current outlet or DEBUG motor replay");
+                }
                 source.localNPCImmunity[2]++;Require((bool)Get(lease,"MembersCurrent") && !(bool)Get(lease,"Current"),"full local-immunity revalidation stays out of presentation");source.localNPCImmunity[2]--;
                 source.oldPos[0]+=Vector2.UnitX;Require((bool)Get(lease,"MembersCurrent") && !(bool)Get(lease,"Current"),"full trail-array revalidation stays out of presentation");source.oldPos[0]-=Vector2.UnitX;
                 source.friendly=false;source.hostile=true;Require(!(bool)Get(lease,"MembersCurrent"),"a real reflected member immediately retires its presentation lease");source.friendly=true;source.hostile=false;
@@ -175,24 +198,96 @@ namespace NativeWorldTextProbe
         private static void ObservedFlight(object context,object host,object combat)
         {
             var p=Reset(context,740,0);var attack=Get(combat,"Attack");var model=combat.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostGemStaffAttack",true);target=NativeCombatControlPreviewChecks.Dummy(2,62,40);firstHit=-1;receiveType=p.HeldItem.shoot;
-            // Original use happens with all observation disabled. The later
-            // path toggle cannot manufacture a receipt or alter this birth.
+            // The real birth precedes Path/Aim permission. Observe the fixed
+            // original 120-update receive horizon, including cold starts and
+            // incomplete producers, rather than aborting after a guessed due.
             NativeCombatSelectionPreviewChecks.Step(context,target.Center,true);
             var born=Main.projectile.Single(member=>member.active && member.owner==p.whoAmI && member.type==p.HeldItem.shoot);int key=(int)born.key;
             var receipts=(System.Collections.IDictionary)Get(Get(attack,"Control"),"shots");Require(!receipts.Contains(key) && firstHit<0,"original OFF-state gem birth precedes the selected receive and has no control receipt");
             NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,true,true,25,true,false));
-            NativeCombatSelectionPreviewChecks.Step(context,target.Center,false,true);var contact=(AttackContact)GetOptional(attack,"ExpectedPreview");var plan=Get(attack,"preview");
-            Require(contact!=null && GetOptional(plan,"Flight")!=null,"enabling Path after birth selects the earlier real gem flight with Aim OFF");
-            var impact=Get(Get(host,"World"),"Impact");Call(impact,"Capture");var zoom=Main.GameViewMatrix.ZoomMatrix;Call(impact,"Project",zoom,Matrix.Invert(zoom));var receive=contact.ReceiveBounds;
-            Require((bool)Get(impact,"Visible") && Vector2.DistanceSquared((Vector2)Get(impact,"Position"),Vector2.Transform(new Vector2(receive.CenterX,receive.CenterY)-Main.screenPosition,zoom))<.001f,"born gem marker maps the same receive-time NPC path centre");
-            int scans=Counter(model,"FlightPoolScans"),steps=Counter(model,"MotorSteps"),captures=Counter(model,"FlightCaptures");
-            for(int check=0;check<20;check++){Call(impact,"Capture");Call(impact,"Project",zoom,Matrix.Invert(zoom));Require((bool)Call(attack,"PreviewCurrent",contact),"born gem same-update presentation remains valid");}
-            Require(Counter(model,"FlightPoolScans")==scans && Counter(model,"MotorSteps")==steps && Counter(model,"FlightCaptures")==captures,"born gem presentation performs no pool recapture or motor replay");
-            int weapon=p.HeldItem.type;p.HeldItem.SetDefaults(95);Require(!(bool)Call(attack,"PreviewCurrent",contact),"switching held weapon retires the old born-gem presentation");p.HeldItem.SetDefaults(weapon);
-            long predicted=contact.Timeline.SampleTick+contact.Tick;int keys=Main.projectile.Count(member=>member.active && member.owner==p.whoAmI && Gem(member.type));
-            for(int frame=0;frame<90 && firstHit<0;frame++)NativeCombatSelectionPreviewChecks.Step(context,target.Center,false,true);
-            Require(firstHit==predicted && !receipts.Contains(key) && !Main.projectile.Any(member=>member.active && member.owner==p.whoAmI && Gem(member.type) && (int)member.key!=key),"observed original gem flight keeps its actual first Strike without a new use, source receipt or input control: predicted="+predicted+" actual="+firstHit+" originalMembers="+keys);
-            receiveType=0;Console.WriteLine("PASS gem natural OFF birth -> released Path/AimOFF -> same-update presentation -> switch -> actual original Strike "+firstHit);
+            var plan=Get(attack,"preview");var impact=Get(Get(host,"World"),"Impact");var zoom=Main.GameViewMatrix.ZoomMatrix;
+            var worldDrawGate=combat.GetType().Assembly.GetType("JueMingR.TerrariaHost.Rendering.WorldPresentation",true).GetProperty("CanDraw",Flags);
+            var rows=new string[120];int count=0,eligible=0,visible=0,gap=0,longest=0,warmGap=0,warmLongest=0,postPositive=0;long predicted=-1,firstPositive=-1,firstVisible=-1;bool consumptionChecked=false;
+            for(int outer=0;outer<120 && firstHit<0;outer++)
+            {
+                NativeCombatSelectionPreviewChecks.Step(context,target.Center,false,true);
+                var contact=(AttackContact)GetOptional(attack,"ExpectedPreview");
+                // The nongraphical component can retain a Pending layer or
+                // lack the native capture service. In that case Shell did not
+                // enter Impact.Capture: explicitly exercise that real outlet
+                // once, under its normal owner ledger. Never duplicate it when
+                // the real world layer already admitted preparation.
+                bool shellPresentation=(bool)Get(host,"CanDraw") && (bool)worldDrawGate.GetValue(null,null);
+                if(!shellPresentation)Call(impact,"Capture");
+                Call(impact,"Project",zoom,Matrix.Invert(zoom));bool rectangleVisible=(bool)Get(impact,"Visible");
+                var captured=(AttackContact)GetOptional(impact,"contact");var raw=(AttackContact)GetOptional(plan,"Contact");var path=(NpcTrajectory)GetOptional(host,"DisplayPath");
+                if(contact!=null)
+                {
+                    Require(GetOptional(plan,"Flight")!=null,"Path observes the complete original flight with Aim OFF");eligible++;
+                    if(firstPositive<0){firstPositive=Main.GameUpdateCount;predicted=contact.Timeline.SampleTick+contact.Tick;}
+                }
+                if(rectangleVisible)
+                {
+                    Require(captured!=null,"visible gem rectangle has its actual captured receive result");var receive=captured.ReceiveBounds;
+                    Require(Vector2.DistanceSquared((Vector2)Get(impact,"Position"),Vector2.Transform(new Vector2(receive.CenterX,receive.CenterY)-Main.screenPosition,zoom))<.001f,"born gem marker maps its captured receive-time rectangle");
+                    visible++;gap=0;warmGap=0;if(firstVisible<0)firstVisible=Main.GameUpdateCount;
+                }
+                else{gap++;longest=Math.Max(longest,gap);if(firstPositive>=0){warmGap++;warmLongest=Math.Max(warmLongest,warmGap);}}
+                if(firstPositive>=0)postPositive++;
+                rows[count++]="GEM natural supply outer="+outer+" guc="+Main.GameUpdateCount+" qualifiedPreview="+(contact!=null)+" rectangleVisible="+rectangleVisible+" shellPresentation="+shellPresentation+" path="+(path?.Count??0)+" raw="+(raw!=null)+" rawReceive="+(raw?.ReceiveTick??-1)+" capture="+(raw?.Timeline.SampleTick??-1)+" flight="+(GetOptional(plan,"Flight")!=null)+" lease="+Get(attack,"previewLeaseTick")+" fullAttempt="+Get(host,"optionalTick")+" previewAttempt="+Get(host,"previewOptionalTick")+" firstStrike="+firstHit;
+                if(rectangleVisible && contact!=null && !consumptionChecked)
+                {
+                    // Only this pure same-update consumption segment has a
+                    // whole-outlet counter. No hook remains on later producers.
+                    using(ConsumptionAudit(model))
+                    {
+                        releaseFlightCalls=releaseFullChecks=0;int steps=Counter(model,"MotorSteps");
+                        for(int check=0;check<20;check++){Call(impact,"Capture");Call(impact,"Project",zoom,Matrix.Invert(zoom));Require((bool)Call(attack,"PreviewCurrent",contact),"born gem same-update presentation member gate remains valid");}
+                        Require(releaseFlightCalls==0 && releaseFullChecks==0 && Counter(model,"MotorSteps")==steps,"born gem consumption enters no KnownFamily/full Current outlet or DEBUG motor replay");
+                    }
+                    consumptionChecked=true;
+                    int weapon=p.HeldItem.type;p.HeldItem.SetDefaults(95);Require(!(bool)Call(attack,"PreviewCurrent",contact),"switching held weapon retires the old born-gem presentation");p.HeldItem.SetDefaults(weapon);
+                }
+            }
+            foreach(var row in rows)if(row!=null)Console.WriteLine(row);
+            Console.WriteLine("GEM native receive interval updates="+count+" eligibleContact="+eligible+" actualRectangleVisible="+visible+" firstPositive="+firstPositive+" firstVisible="+firstVisible+" longestMissing="+longest+" postPositiveUpdates="+postPositive+" postPositiveLongestMissing="+warmLongest+" firstStrike="+firstHit+" predicted="+predicted+" admissionHooks=0 stepHooks=0");
+            Require(firstPositive>=0 && firstVisible>=0 && consumptionChecked && visible>5,"released original gem produces qualified and actually visible receive rectangles before its first native Strike");
+            Require(firstHit==predicted && !receipts.Contains(key) && !Main.projectile.Any(member=>member.active && member.owner==p.whoAmI && Gem(member.type) && (int)member.key!=key),"observed original gem flight keeps its actual first Strike without a new use, source receipt or input control: predicted="+predicted+" actual="+firstHit);
+            receiveType=0;Console.WriteLine("PASS gem natural OFF birth -> released Path/AimOFF -> actual receive rectangles -> original Strike "+firstHit);
+        }
+        private static void ObservedDependencies(object context,object host,object combat)
+        {
+            // A separate component keeps deliberate dependency mutation and
+            // repeated qualification out of the natural supply denominator.
+            var p=Reset(context,740,0);var attack=Get(combat,"Attack");target=NativeCombatControlPreviewChecks.Dummy(2,62,40);firstHit=-1;receiveType=p.HeldItem.shoot;
+            NativeCombatSelectionPreviewChecks.Step(context,target.Center,true);
+            var born=Main.projectile.Single(member=>member.active && member.owner==p.whoAmI && member.type==p.HeldItem.shoot);
+            NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,true,true,25,true,false));
+            AttackContact contact=null;var work=(CombatPredictionWork)Get(host,"PredictionWork");var admissions=new string[120];int admissionCount=0;
+            // Several deliberate validations are a different workload from
+            // one presentation. Establish it on a real qualified update with
+            // reserve, preserving all producer/cold spending and the original
+            // finite flight horizon. Never reset the owner or reuse old Flight.
+            for(int outer=0;outer<120 && contact==null && firstHit<0;outer++)
+            {
+                NativeCombatSelectionPreviewChecks.Step(context,target.Center,false,true);var available=(AttackContact)GetOptional(attack,"ExpectedPreview");long spent=(long)Get(work,"optionalSpent");
+                admissions[admissionCount++]="GEM dependency premise guc="+Main.GameUpdateCount+" qualified="+(available!=null)+" optional="+(spent*1000.0/System.Diagnostics.Stopwatch.Frequency)+" total="+work.UsedMilliseconds;
+                if(available!=null && spent<System.Diagnostics.Stopwatch.Frequency/1000)contact=available;
+            }
+            foreach(var row in admissions)if(row!=null)Console.WriteLine(row);
+            Require(contact!=null,"separate dependency fixture has a qualified current born-flight result and reserve for deliberate countercontrols before native receive");
+            var flight=Get(Get(attack,"preview"),"Flight");
+            using(work.Enter(Main.GameUpdateCount))using(CombatPredictionWork.Optional(3))
+            {
+                Require((bool)Get(flight,"DependenciesCurrent"),"fresh sealed gem dependencies are valid");
+                born.localNPCImmunity[2]++;Require(!(bool)Get(flight,"DependenciesCurrent"),"same-update real gem immunity array change retires the old flight result");born.localNPCImmunity[2]--;
+                born.oldPos[0]+=Vector2.UnitX;Require(!(bool)Get(flight,"DependenciesCurrent"),"same-update real gem trail change retires the old flight result");born.oldPos[0]-=Vector2.UnitX;
+                target.immune[p.whoAmI]++;Require(!(bool)Get(flight,"DependenciesCurrent"),"same-update original receiver immunity change retires the sealed flight receive qualification");target.immune[p.whoAmI]--;
+                int extra=Projectile.NewProjectile(new Terraria.DataStructures.EntitySource_DebugCommand(),new Vector2(400,650),Vector2.Zero,126,10,0,p.whoAmI);
+                Require(!(bool)Get(flight,"DependenciesCurrent"),"a new original same-owner gem family member retires the captured flight receive context");Main.projectile[extra].active=false;
+            }
+            NativeCombatPreviewLeaseChecks.TerrainOwner(host,attack,contact,false);receiveType=0;
+            Console.WriteLine("PASS separate sealed-flight immutable terrain, family, trail, local immunity and receiver dependency countercontrols");
         }
         private static void Natural(object context,object host,object combat)
         {

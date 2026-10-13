@@ -57,6 +57,15 @@ namespace JueMingR.TerrariaHost.Combat
         }
         internal bool OwnsTarget(NpcIdentity identity)
         {return !candidateOnly && Native==null && !usingSegmented && ownsState && outcomeIdentity.Equals(identity);}
+        // Called synchronously while this exact candidate publication still
+        // owns its sampled terrain. This only freezes consumed cells; it cannot
+        // prepare, transfer rolling state or publish to the selected/input cache.
+        internal PredictionTerrain.CellLease FreezeCandidateTerrain(NpcTrajectory publication)
+        {
+            if(publication==null)return null;
+            if(ReferenceEquals(publication,Cache.Read(0)))return Terrain.FreezeCells();
+            return candidateSource!=null && ReferenceEquals(publication,candidateSource.Cache.Read(0))?candidateSource.Terrain.FreezeCells():null;
+        }
         // currentTick is Main.GameUpdateCount at the real player observation,
         // NOT timeline.SampleTick. PrepareAction stamps GUC-1 (NPC point zero
         // is the previous world, while this player already moved). Thus the

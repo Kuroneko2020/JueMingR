@@ -293,6 +293,7 @@ namespace JueMingR.TerrariaHost.Combat
             get
             {
                 if(!combat.Attack.CurrentReceiver){Clear();return null;}
+                if(shots.Count==0)return null;
                 if(!environmentState.Current || !terrain.Unchanged)return null;
                 foreach(var entry in shots.Values)
                 {

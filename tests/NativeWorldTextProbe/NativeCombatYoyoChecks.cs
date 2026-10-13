@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Reflection;
 using HarmonyLib;
@@ -12,6 +12,8 @@ namespace NativeWorldTextProbe
     internal static class NativeCombatYoyoChecks
     {
         private static NPC watchedTarget;private static string watchedChild;private static long childFirst=-1;
+        private static bool qualifying;
+        private static void QualifyingPlayer(bool __result,JueMingR.Platform.Combat.PredictionStop __3){if(qualifying && !__result)Console.WriteLine("YOYO qualification player continuation rejected="+__3);}
         private static void Strike(NPC __instance,int __result){int slot=Main.ProjectileUpdateLoopIndex;if(__result>0 && ReferenceEquals(__instance,watchedTarget) && slot>=0 && Main.projectile[slot].key.ToString()==watchedChild && childFirst<0)childFirst=Main.GameUpdateCount;}
         internal static void Run(object context)
         {
@@ -20,15 +22,36 @@ namespace NativeWorldTextProbe
             var audit=new Harmony("JueMingR.Tests.YoyoAimAchievement");var method=typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod("HandleSpecialEvent",BindingFlags.Static|BindingFlags.Public);
             audit.Patch(method,prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
             var strike=AccessTools.Method(typeof(NPC),"StrikeNPC",new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)});audit.Patch(strike,postfix:new HarmonyMethod(typeof(NativeCombatYoyoChecks),nameof(Strike)));
-            try{RunCore(context);}finally{watchedTarget=null;watchedChild=null;audit.Unpatch(strike,HarmonyPatchType.All,audit.Id);audit.Unpatch(method,HarmonyPatchType.All,audit.Id);}
+            audit.Patch(typeof(PlayerMotionContinuation).GetMethod("Advance"),postfix:new HarmonyMethod(typeof(NativeCombatYoyoChecks),nameof(QualifyingPlayer)));
+            try{RunCore(context);}finally{qualifying=false;watchedTarget=null;watchedChild=null;audit.UnpatchAll(audit.Id);}
         }
         private static void RunCore(object context)
         {
             var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var attack=Get(combat,"Attack");var tools=Get(context,"Tools");var input=Get(context,"Input");
-            NativeCombatObservationChecks.Save(host,new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,tools,input,3278,0,0);p.position=new Vector2(700,500);p.channel=p.controlUseItem=true;Main.screenPosition=new Vector2(600,400);p.itemAnimationMax=p.HeldItem.useAnimation;
-            var n=Main.npc[2];n.SetDefaults(3);n.whoAmI=2;n.active=true;n.position=new Vector2(800,502);n.life=n.lifeMax=10000;n.target=0;Array.Clear(n.immune,0,n.immune.Length);
-            NativeToolExecutionChecks.Sample(context,input,new Vector2(650,450),true);Call(combat,"Sample");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,false,true));NativeCombatAimChecks.Prepare(host,attack,n,0,true);
-            typeof(Player).GetMethod("ItemCheck_Shoot",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),false});var shot=Main.projectile.Single(q=>q.active && q.type==541);NativeCombatAimChecks.Prepare(host,attack,n,0,true);shot.AI();
+            // Original player border clamping starts at BorderTop+640. The
+            // former y=500 setup was outside that world and moved the replay
+            // anchor by140px; translate only this fixture's relative geometry
+            // into the existing legal floor room, retaining cursor separation.
+            NativeCombatObservationChecks.Save(host,new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,tools,input,3278,0,0);p.position=new Vector2(700,646);p.channel=p.controlUseItem=true;Main.screenPosition=new Vector2(600,400);p.itemAnimationMax=p.HeldItem.useAnimation;
+            var n=Main.npc[2];n.SetDefaults(3);n.whoAmI=2;n.active=true;n.position=new Vector2(800,648);n.life=n.lifeMax=10000;n.target=0;Array.Clear(n.immune,0,n.immune.Length);
+            Require(Main.topWorld+640<=p.position.Y,"finite yoyo component starts within the original player border");
+            NativeToolExecutionChecks.Sample(context,input,new Vector2(650,596),true);Call(combat,"Sample");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,false,true));NativeCombatAimChecks.Prepare(host,attack,n,0,true);
+            typeof(Player).GetMethod("ItemCheck_Shoot",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),false});var shot=Main.projectile.Single(q=>q.active && q.type==541);NativeCombatAimChecks.Prepare(host,attack,n,0,true);
+            // This finite replay component requires an actually qualified
+            // control contact. Retain cold budget omissions, then prepare on
+            // real new update/input epochs; never restart the same allowance.
+            int qualificationUpdates=0;qualifying=true;
+            while(GetOptional(attack,"ExpectedImpact")==null && qualificationUpdates<6)
+            {
+                Console.WriteLine("YOYO unqualified preparation tick="+Main.GameUpdateCount+" workMs="+Get(Get(host,"PredictionWork"),"UsedMilliseconds")+" hardExceeded="+Get(Get(host,"PredictionWork"),"Exceeded"));
+                var pendingEntries=(System.Collections.IDictionary)Get(Get(attack,"Control"),"shots");var pending=pendingEntries[(int)shot.key];
+                Console.WriteLine("YOYO unqualified source registry="+pendingEntries.Count+" channel="+p.channel+" active="+shot.active+" ai0="+shot.ai[0]+" permission="+Get(attack,"Permission")+" receiver="+Get(attack,"CurrentReceiver")+" rawContact="+(pending!=null && GetOptional(pending,"Contact")!=null)+" hasPoint="+(pending!=null && (bool)Get(pending,"HasPoint"))+" prepared="+(pending==null?0:Get(pending,"Prepared")));
+                if(pending!=null){var nav=Get(pending,"Navigation");Console.WriteLine("YOYO navigation start="+shot.Center+" velocity="+shot.velocity+" player="+p.Center+" target="+n.Center+" range="+Terraria.ID.ProjectileID.Sets.YoyosMaximumRange[shot.type]+" meleeSpeed="+p.meleeSpeed+" pathCount="+((System.Collections.ICollection)Get(nav,"path")).Count+" retryStep="+Get(nav,"retryStep")+" searches="+Get(nav,"Searches")+" debugReplayStop="+GetOptional(nav,"ReplayStop")+" debugReplayStep="+GetOptional(nav,"ReplayStep")+" debugReplayPlayer="+GetOptional(nav,"ReplayPlayer"));}
+                qualificationUpdates++;NativeQuickItemChecks.BeginWorldStep();NativeToolExecutionChecks.Sample(context,input,new Vector2(650,596),true);Call(combat,"Sample");NativeCombatAimChecks.Prepare(host,attack,n,0,true);
+            }
+            qualifying=false;Console.WriteLine("YOYO final qualification tick="+Main.GameUpdateCount+" workMs="+Get(Get(host,"PredictionWork"),"UsedMilliseconds"));Require(GetOptional(attack,"ExpectedImpact")!=null,"finite inertial replay component first establishes a qualified control Contact");shot.AI();
+            Console.WriteLine("YOYO qualified native AI realRecoveryUpdates="+qualificationUpdates+" ai0="+shot.ai[0]+" consumedKind="+Get(Get(attack,"consumedInput"),"Kind")+" workMs="+Get(Get(host,"PredictionWork"),"UsedMilliseconds"));
+            var qualifiedInput=Get(attack,"consumedInput");Require(Get(qualifiedInput,"Kind").ToString()=="Enhanced" && ReferenceEquals(GetOptional(qualifiedInput,"Source"),shot) && Get(qualifiedInput,"Phase").ToString()=="Projectiles" && (uint)Get(attack,"consumedInputStep")==Main.GameUpdateCount && Get(qualifiedInput,"Target").Equals(Get(Get(host,"Selection"),"Target")),"qualified finite replay is consumed by this real yoyo AI source/phase/update/target");
             Require(shot.ai[0]>790,"yoyo natural AI consumes its prepared control point, not physical cursor: "+shot.ai[0]);
             Require(GetOptional(attack,"ExpectedImpact")!=null,"yoyo contact requires finite inertial replay");
             var initialContact=(JueMingR.Features.Combat.AttackContact)GetOptional(attack,"ExpectedImpact");var entries=(System.Collections.IDictionary)Get(Get(attack,"Control"),"shots");var navigator=Get(entries[(int)shot.key],"Navigation");
@@ -110,8 +133,15 @@ namespace NativeWorldTextProbe
             };prepare();
             typeof(Player).GetMethod("ItemCheck_Shoot",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),false});var shot=Main.projectile.Single(q=>q.active && q.type==541);prepare();shot.AI();
             Vector2 manual=new Vector2(650,450)-p.Center;float radius=Terraria.ID.ProjectileID.Sets.YoyosMaximumRange[shot.type]/((1+p.meleeSpeed*3)/4);if(p.yoyoString)radius=(Terraria.ID.ProjectileID.Sets.YoyosMaximumRange[shot.type]*1.25f+30)/((1+p.meleeSpeed*3)/4);if(manual.Length()>radius-1)manual=manual.SafeNormalize(Vector2.Zero)*(radius-1);manual+=p.Center;
-            Require(Vector2.DistanceSquared(new Vector2(shot.ai[0],shot.ai[1]),manual)<.01f && GetOptional(attack,"ExpectedImpact")==null,"no path/outside target radius restores real manual cursor and native radial clip: "+shot.ai[0]+","+shot.ai[1]+" expected="+manual);
-            Console.WriteLine("PASS yoyo navigation rejection/manual: outside="+outside);
+            var basicPoint=new Vector2(shot.ai[0],shot.ai[1]);var inputFact=Get(attack,"consumedInput");
+            Require(Get(inputFact,"Kind").ToString()=="Basic" && ReferenceEquals(GetOptional(inputFact,"Source"),shot) && Get(inputFact,"Phase").ToString()=="Projectiles" && (uint)Get(attack,"consumedInputStep")==Main.GameUpdateCount && Get(inputFact,"Target").Equals(Get(Get(host,"Selection"),"Target")) && GetOptional(attack,"ExpectedImpact")==null && Vector2.DistanceSquared(basicPoint,manual)>100,"this actual AI consumes a current Basic projectile-phase receipt for its own source/target, separate from the physical cursor");
+            if(outside)
+            {
+                var expected=p.Center+(n.Center-p.Center).SafeNormalize(Vector2.UnitX)*(radius-1);
+                Require(Vector2.DistanceSquared(basicPoint,expected)<2.1f && Vector2.Distance(basicPoint,p.Center)<=radius,"out-of-range Basic uses the original native radial clip of the current receiver");
+            }
+            else Require(basicPoint.X>p.Center.X && basicPoint.X+shot.width/2f<48*16 && Math.Abs(basicPoint.Y-n.Center.Y)<1.1f && !Collision.SolidCollision(basicPoint-new Vector2(shot.width,shot.height)*.5f,shot.width,shot.height),"blocked Basic stops its real body before the wall, aimed toward the current receiver without a finite contact");
+            Console.WriteLine("PASS yoyo navigation unresolved/Basic: outside="+outside+" actual="+basicPoint+" physical="+manual+" radius="+radius);
         }
         private static void Route(object context,bool wall,bool glove=true)
         {
@@ -124,7 +154,7 @@ namespace NativeWorldTextProbe
             for(int tick=1;tick<=100 && shot.active;tick++)
             {
                 NativeQuickItemChecks.BeginWorldStep();NativeToolExecutionChecks.Sample(context,Get(context,"Input"),new Vector2(650,450),true);Call(combat,"Sample");NativeCombatAimChecks.Prepare(host,attack,n,0,true);
-                if(wall && tick<=3){var dictionary=(System.Collections.IDictionary)Get(Get(attack,"Control"),"shots");var entry=dictionary[(int)shot.key];var nav=Get(entry,"Navigation");Console.WriteLine("YOYO route difference tick="+tick+" center="+shot.Center+" v="+shot.velocity+" point="+Get(entry,"Point")+" has="+Get(entry,"HasPoint")+" path="+string.Join(";",((System.Collections.IEnumerable)Get(nav,"path")).Cast<object>())+" searches="+Get(nav,"Searches")+" stop="+Get(nav,"ReplayStop")+" step="+Get(nav,"ReplayStep")+" futurePlayer="+Get(nav,"ReplayPlayer"));if(tick==1)Require((bool)Get(entry,"HasPoint"),"supported wall route needs a first genuine navigation capability, not eventual manual Damage");}
+                if(wall && tick<=3){var dictionary=(System.Collections.IDictionary)Get(Get(attack,"Control"),"shots");var entry=dictionary[(int)shot.key];var nav=Get(entry,"Navigation");Console.WriteLine("YOYO route difference tick="+tick+" center="+shot.Center+" v="+shot.velocity+" point="+Get(entry,"Point")+" has="+Get(entry,"HasPoint")+" path="+string.Join(";",((System.Collections.IEnumerable)Get(nav,"path")).Cast<object>())+" searches="+Get(nav,"Searches")+" stop="+GetOptional(nav,"ReplayStop")+" step="+GetOptional(nav,"ReplayStep")+" futurePlayer="+GetOptional(nav,"ReplayPlayer"));if(tick==1)Require((bool)Get(entry,"HasPoint"),"supported wall route needs a first genuine navigation capability, not eventual manual Damage");}
                 foreach(var q in Main.projectile.Where(q=>q.active).ToArray())q.Update(q.whoAmI);
                 sawCorner|=shot.Center.Y<623;for(int i=0;i<n.immune.Length;i++)if(n.immune[i]>0)n.immune[i]--;
                 if(n.life<life){first=tick;break;}
@@ -137,7 +167,7 @@ namespace NativeWorldTextProbe
                 var natural=Main.projectile.Single(q=>q.active && q.type==556);var registry=(System.Collections.IDictionary)Get(Get(attack,"Control"),"shots");Require(!registry.Contains((int)natural.key),"natural parent Damage birth cannot register counterweight as controllable ball");
                 NativeCombatAimChecks.Prepare(host,attack,n,0,true);int mouseX=Main.mouseX,mouseY=Main.mouseY;natural.AI();Require(Main.mouseX==mouseX && Main.mouseY==mouseY,"natural counterweight AI preserves physical mouse delta input");Console.WriteLine("PASS natural Damage counterweight source exclusion");return;
             }
-            var second=Main.projectile.Single(q=>q.active && q.type==541 && !ReferenceEquals(q,shot));NativeCombatAimChecks.Prepare(host,attack,n,0,true);var entries=(System.Collections.IDictionary)Get(Get(attack,"Control"),"shots");var secondEntry=entries[(int)second.key];Require(secondEntry!=null && GetOptional(secondEntry,"Navigation")!=null,"glove second ball inherits actual Damage source and its own navigator");bool has=(bool)Get(secondEntry,"HasPoint");Vector2 point=(Vector2)Get(secondEntry,"Point");second.AI();Require(!has || Math.Abs(second.ai[0]-point.X)<1.1f,"second ball consumes its own feasible motor result");var secondNav=Get(secondEntry,"Navigation");Console.WriteLine("YOYO paired replay: wall="+wall+" usable="+has+" stop="+Get(secondNav,"ReplayStop")+" step="+Get(secondNav,"ReplayStep")+" futurePlayer="+Get(secondNav,"ReplayPlayer"));
+            var second=Main.projectile.Single(q=>q.active && q.type==541 && !ReferenceEquals(q,shot));NativeCombatAimChecks.Prepare(host,attack,n,0,true);var entries=(System.Collections.IDictionary)Get(Get(attack,"Control"),"shots");var secondEntry=entries[(int)second.key];Require(secondEntry!=null && GetOptional(secondEntry,"Navigation")!=null,"glove second ball inherits actual Damage source and its own navigator");bool has=(bool)Get(secondEntry,"HasPoint");Vector2 point=(Vector2)Get(secondEntry,"Point");second.AI();Require(!has || Math.Abs(second.ai[0]-point.X)<1.1f,"second ball consumes its own feasible motor result");var secondNav=Get(secondEntry,"Navigation");Console.WriteLine("YOYO paired replay: wall="+wall+" usable="+has+" stop="+GetOptional(secondNav,"ReplayStop")+" step="+GetOptional(secondNav,"ReplayStep")+" futurePlayer="+GetOptional(secondNav,"ReplayPlayer"));
             p.yoyoGlove=false;p.Counterweight(n.Center,shot.damage,shot.knockBack);var counter=Main.projectile.Single(q=>q.active && q.type==556);int x=Main.mouseX,yMouse=Main.mouseY;counter.AI();Require(Main.mouseX==x && Main.mouseY==yMouse,"counterweight does not borrow navigation cursor");
             Console.WriteLine("PASS yoyo real route/Damage/paired role: wall="+wall+" first="+first+" corner="+sawCorner);
         }

@@ -18,11 +18,48 @@ namespace JueMingR.TerrariaHost.Combat
         private NpcTrajectory previewDisplaySource;
         private long previewLeaseTick=-1;
         private bool previewWindowMiss;
+        // A positive receive is also a bounded work hint. A failed replacement
+        // may withdraw all presentation state, but must not restart its next
+        // full request at16. This grants neither validity nor an input lease.
+        private AttackContact previewCoverage;
+        private Item previewCoverageWeapon;private int previewCoverageType,previewCoveragePrefix,previewCoverageSlot;private float previewCoverageScale;
+        private bool previewSolvePending;
         internal bool PreviewDemand {get{return observation.Settings.CanRun && combat.Player!=null && combat.Player.active && !combat.Player.dead && !combat.Player.ghost && (observation.Path || observation.Options.Aim) && Eligible(combat.Player.HeldItem);}}
         internal AttackContact ExpectedPreview {get{return PreviewLeaseCurrent()?preview.Contact:null;}}
         internal bool PreviewNeedsMore {get{return preview.Contact==null && preview.Timeline!=null && preview.Timeline.Stop==PredictionStop.None && preview.Timeline.Count<=NpcPredictionCache.Horizon;}}
-        internal int PreviewPreferred {get{return observation.Selection.HasTarget?CandidatePreferred(observation.Selection.Target):1;}}
-        internal bool PreviewRefreshPending {get{return PreviewDemand && !previewWindowMiss && (preview.Contact!=null || PreviewNeedsMore) && !PreviewLeaseCurrent();}}
+        internal int PreviewPreferred {get{return observation.Selection.HasTarget?Math.Max(CandidatePreferred(observation.Selection.Target),PreviewCoverageRequired):1;}}
+        private int PreviewCoverageRequired
+        {
+            get
+            {
+                var p=combat.Player;var contact=previewCoverage;
+                if(contact==null || p==null || !contact.Timeline.Identity.Equals(observation.Selection.Target) || !ReferenceEquals(p.HeldItem,previewCoverageWeapon) || p.selectedItem!=previewCoverageSlot || p.HeldItem.type!=previewCoverageType || p.HeldItem.prefix!=previewCoveragePrefix || p.GetAdjustedItemScale(p.HeldItem)!=previewCoverageScale)return 0;
+                long remaining=contact.ReceiveTick-((long)Main.GameUpdateCount-contact.Timeline.SampleTick);
+                return remaining<=0?0:(int)Math.Min(NpcPredictionCache.Horizon,remaining);
+            }
+        }
+        private bool PreviewWorkWeaponCurrent()
+        {var p=combat.Player;return p!=null && ReferenceEquals(p.HeldItem,previewCoverageWeapon) && p.selectedItem==previewCoverageSlot && p.HeldItem.type==previewCoverageType && p.HeldItem.prefix==previewCoveragePrefix && p.GetAdjustedItemScale(p.HeldItem)==previewCoverageScale;}
+        private bool PreviewSolvePendingCurrent {get{return previewSolvePending && previewDisplaySource!=null && previewDisplaySource.Identity.Equals(observation.Selection.Target) && PreviewWorkWeaponCurrent();}}
+        internal bool PreviewTailPending {get{return PreviewDemand && preview.Contact==null && (PreviewCoverageRequired>0 || PreviewSolvePendingCurrent || !previewWindowMiss && PreviewNeedsMore && preview.Timeline.Identity.Equals(observation.Selection.Target) && preview.WeaponCurrent(combat.Player));}}
+        private void BeginPreviewSolve(NpcTrajectory path)
+        {
+            if(!PreviewWorkWeaponCurrent())previewCoverage=null;
+            var p=combat.Player;previewCoverageWeapon=p.HeldItem;previewCoverageType=p.HeldItem.type;previewCoveragePrefix=p.HeldItem.prefix;previewCoverageSlot=p.selectedItem;previewCoverageScale=p.GetAdjustedItemScale(p.HeldItem);
+            previewDisplaySource=path;previewSolvePending=true;
+        }
+        private void RecordPreviewCoverage(NpcTrajectory path)
+        {
+            previewSolvePending=false;
+            if(preview.Contact!=null)
+            {var p=combat.Player;previewCoverage=preview.Contact;previewCoverageWeapon=p.HeldItem;previewCoverageType=p.HeldItem.type;previewCoveragePrefix=p.HeldItem.prefix;previewCoverageSlot=p.selectedItem;previewCoverageScale=p.GetAdjustedItemScale(p.HeldItem);}
+            else if(preview.Prepared && path!=null && !path.BudgetPaused && (path.Count>NpcPredictionCache.Horizon || path.Stop!=PredictionStop.None))previewCoverage=null;
+        }
+        internal bool PreviewRefreshPending {get{return PreviewDemand && !previewWindowMiss && (preview.Contact!=null || PreviewNeedsMore || PreviewSolvePendingCurrent) && !PreviewLeaseCurrent();}}
+        // Live controlled results retain exact phase/holder/source members,
+        // hence cannot survive another native update. Only an existing positive
+        // gets the next-update window ticket; unknowns/misses keep their cadence.
+        internal int PreviewRefreshUpdates {get{return preview.Contact!=null && (preview.Controlled || preview.Flight!=null)?1:2;}}
         private bool PreviewLeaseCurrent()
         {
             var path=observation.DisplayPath;
@@ -39,6 +76,22 @@ namespace JueMingR.TerrariaHost.Combat
                 (ReferenceEquals(timeline,path) || ReferenceEquals(previewDisplaySource,path) || timeline.CalculationToken!=null && ReferenceEquals(timeline.CalculationToken,path.CalculationToken));
         }
         internal void BindPreview(AttackContact result){previewPresentation=result;}
+        internal bool TryCandidateDisplay(long tick,out NpcTrajectory path,out PredictionTerrain.CellLease terrain)
+        {
+            path=null;terrain=null;var plan=candidatePresentationPlan;
+            if(!observation.Path || BasicPermission || plan==null || !plan.Prepared || plan.Controlled || plan.Phase!=HostAttackPhase.CompletedWorld || plan.Contact==null || plan.MotionTerrain==null || plan.Timeline==null || plan.Timeline.SampleTick!=tick || plan.Timeline.CaptureTick!=tick || !plan.Timeline.Identity.Equals(observation.Selection.Target))return false;
+            path=plan.Timeline;terrain=plan.MotionTerrain;return true;
+        }
+        internal void PublishCandidatePreview(NpcTrajectory path)
+        {
+            // Publication borrows this pass's completed result, not another
+            // solver opportunity. Normal presentation/member/terrain validation
+            // still grants the lease; this never changes a native input owner.
+            var plan=candidatePresentationPlan;
+            previewStep=Main.GameUpdateCount;previewPresentation=null;previewWindowMiss=false;
+            preview.CopyPresentation(plan);preview.Timeline=path;previewDisplaySource=path;
+            FreezePreviewTerrain(plan);RecordPreviewCoverage(path);
+        }
         internal void InvalidatePreviewPresentation(){previewLeaseTick=-1;}
         internal bool PreviewCurrent(AttackContact result)
         {
@@ -75,7 +128,7 @@ namespace JueMingR.TerrariaHost.Combat
             var hypothetical=(proposed-origin).SafeNormalize(Vector2.Zero);
             return direction!=Vector2.Zero && Vector2.DistanceSquared(direction,hypothetical)<=.000001f;
         }
-        private void ClearPreview(){preview.Clear();previewPresentation=null;previewTerrain=null;previewDisplaySource=null;previewLeaseTick=-1;previewWindowMiss=false;}
+        private void ClearPreview(){preview.Clear();previewPresentation=null;previewTerrain=null;previewDisplaySource=null;previewLeaseTick=-1;previewWindowMiss=false;previewCoverage=null;previewCoverageWeapon=null;previewSolvePending=false;}
         internal void ValidatePreviewPresentation()
         {
             previewLeaseTick=-1;
@@ -84,7 +137,7 @@ namespace JueMingR.TerrariaHost.Combat
             try
             {
                 bool members=preview.Contact!=null && preview.PresentationMembersCurrent(combat.Player,(int)(Main.GameUpdateCount-previewStep));
-                bool dependencies=previewTerrain!=null && previewTerrain.Current && preview.EnvironmentState.Current && (preview.Environment==null || preview.Environment.Unchanged);
+                bool dependencies=PreviewDependenciesCurrent();
                 bool receive=preview.Contact!=null && preview.Timeline!=null && preview.Contact.ReceiveTick>(long)Main.GameUpdateCount-preview.Timeline.SampleTick;
                 // Invalid presentation withdraws only its lease. Production is
                 // admitted by Host's optional cadence; even a completed null or
@@ -94,9 +147,20 @@ namespace JueMingR.TerrariaHost.Combat
             catch(CombatPredictionBudgetExceededException){previewLeaseTick=-1;}
             catch(Exception error){PropagateFatal(error);preview.Faults.Record(FaultContextFor(path.Identity));ClearPreview();}
         }
-        private void PreparePreview(HostAttackPhase phase)
+        private bool PreviewDependenciesCurrent()
         {
-            try{PreparePreviewCore(phase);}
+            if(preview.Contact==null)return false;
+            if(preview.Controlled)return preview.ControlDependencies!=null && preview.ControlDependencies.Current(combat.Player);
+            if(preview.Flight!=null)return preview.Flight.DependenciesCurrent;
+            return previewTerrain!=null && previewTerrain.Current && preview.EnvironmentState.Current && (preview.Environment==null || preview.Environment.Unchanged) &&
+                (preview.HarpyState!=null?preview.HarpyState.Current:preview.Obstacles==null || preview.Obstacles.Unchanged);
+        }
+        private void FreezePreviewTerrain(PreviewPlan source)
+        {previewTerrain=source.Contact==null || source.Controlled || source.Flight!=null?null:source.Terrain.FreezeCells();}
+        private void PreparePreview(HostAttackPhase phase,out bool attempted)
+        {
+            attempted=false;
+            try{PreparePreviewCore(phase,out attempted);}
             finally{EndFlightPreparation();}
         }
         internal bool PreparePreviewWindow(NpcTrajectory path)
@@ -115,8 +179,10 @@ namespace JueMingR.TerrariaHost.Combat
                     // token and is never published to an actual input reader.
                     previewStep=Main.GameUpdateCount;previewPresentation=null;previewDisplaySource=path;
                     attempted=true;
+                    BeginPreviewSolve(path);
                     PreparePlan(preview,window,HostAttackPhase.CompletedWorld);
-                    previewTerrain=preview.Contact==null?null:preview.Terrain.FreezeCells();
+                    RecordPreviewCoverage(window);
+                    FreezePreviewTerrain(preview);
                     // A completed miss over this entire available suffix is
                     // not another refresh ticket. A new path/context cycle can
                     // reevaluate it; an interrupted solve does not set this fact.
@@ -128,8 +194,9 @@ namespace JueMingR.TerrariaHost.Combat
             finally{EndFlightPreparation();}
             return attempted;
         }
-        private void PreparePreviewCore(HostAttackPhase phase)
+        private void PreparePreviewCore(HostAttackPhase phase,out bool attempted)
         {
+            attempted=false;
             previewWindowMiss=false;previewPresentation=null;previewStep=Main.GameUpdateCount;
             if(!PreviewDemand || !CurrentReceiver){preview.Clear();return;}
             var timeline=observation.Prediction.Cache.Read(1);
@@ -138,16 +205,36 @@ namespace JueMingR.TerrariaHost.Combat
             // its small result/member snapshot; clearing display never clears
             // a candidate or an actual input plan.
             var selectedPlan=observation.Options.ClearLine?candidatePlans[timeline.Identity.Slot*2]:null;
-            if(selectedPlan!=null && ReferenceEquals(selectedPlan,candidatePresentationPlan) && selectedPlan.Prepared && !selectedPlan.Controlled && selectedPlan.Timeline!=null && selectedPlan.Timeline.Identity.Equals(timeline.Identity) && AttackIntercept.Equivalent(selectedPlan.Timeline,timeline))
+            NpcTrajectory sharedTimeline;
+            if(selectedPlan!=null && ReferenceEquals(selectedPlan,candidatePresentationPlan) && selectedPlan.Prepared && !selectedPlan.Controlled && selectedPlan.Phase==phase && TryCandidatePresentationPrefix(selectedPlan,timeline,out sharedTimeline))
             {
-                preview.CopyPresentation(selectedPlan);preview.Contact=AttackIntercept.Rebind(selectedPlan.Contact,timeline);preview.Timeline=timeline;previewDisplaySource=timeline;
-                previewTerrain=preview.Contact==null?null:selectedPlan.Terrain.FreezeCells();return;
+                preview.CopyPresentation(selectedPlan);preview.Contact=AttackIntercept.Rebind(selectedPlan.Contact,sharedTimeline);preview.Timeline=sharedTimeline;previewDisplaySource=timeline;
+                FreezePreviewTerrain(selectedPlan);RecordPreviewCoverage(timeline);attempted=true;return;
             }
             var context=FaultContextFor(timeline.Identity);
             if(preview.Faults.Blocks(context)){preview.Clear();return;}
-            try{PreparePlan(preview,timeline,phase);previewDisplaySource=timeline;previewTerrain=preview.Contact==null?null:preview.Terrain.FreezeCells();}
+            attempted=true;
+            BeginPreviewSolve(timeline);
+            try{PreparePlan(preview,timeline,phase);previewDisplaySource=timeline;FreezePreviewTerrain(preview);RecordPreviewCoverage(timeline);}
             catch(CombatPredictionBudgetExceededException){preview.Clear();throw;}
             catch(Exception error){PropagateFatal(error);preview.Faults.Record(context);preview.Clear();}
+        }
+        private static bool TryCandidatePresentationPrefix(PreviewPlan plan,NpcTrajectory timeline,out NpcTrajectory shared)
+        {
+            shared=null;var candidate=plan.Timeline;
+            if(candidate==null || timeline==null || !candidate.Identity.Equals(timeline.Identity) || candidate.SampleTick!=timeline.SampleTick || candidate.CaptureTick!=timeline.CaptureTick)return false;
+            if(timeline.Count<candidate.Count)return false;
+            int count=candidate.Count;
+            if(plan.Contact==null || plan.Contact.ReceiveTick>=count)return false;
+            NpcTrajectory candidatePrefix=candidate,presentationPrefix=timeline;
+            // Both owners have just sampled this same native phase, but the
+            // selected display may keep more tail than the admitted candidate.
+            // Compare the entire common real prefix, never just its endpoint.
+            // The immutable views preserve both capture clocks and inputs;
+            // this borrow is presentation only, not actual hand permission.
+            if(timeline.Count!=count && !timeline.TryWindow(timeline.SampleTick,count-1,timeline.Version,out presentationPrefix))return false;
+            if(!AttackIntercept.Equivalent(candidatePrefix,presentationPrefix))return false;
+            shared=presentationPrefix;return true;
         }
         private AttackContact PreparePlan(PreviewPlan plan,NpcTrajectory timeline,HostAttackPhase phase)
         {
@@ -168,6 +255,12 @@ namespace JueMingR.TerrariaHost.Combat
             int delay=HostAttackWindow.PreviewDelay(player,item);var clock=new HostAttackClock(timeline,phase);
             if(clock.Age<0 || clock.Age>1){plan.Clear();return null;}
             bool hasFlight;var flight=ReadFlight(player,timeline,phase,out hasFlight);
+            // Display consumes this already-born, fully solved native flight
+            // before searching an unused hypothetical new hand. This is only
+            // the independent presentation owner: candidates/actual inputs
+            // still compare both stages, and no unsearched hand earliest is
+            // claimed. The exact family/dependency lease must still validate.
+            if(ReferenceEquals(plan,preview) && flight!=null)return OnlyFlight(plan,player,timeline,flight);
             // All AI013 hand roles except GolemFist refresh native dummy use
             // timers until catch. Their current flight owns the preview even
             // when it was born before observation was enabled.
@@ -182,13 +275,13 @@ namespace JueMingR.TerrariaHost.Combat
             {if(!HostSwingAttack.Mixed(item))return OnlyFlight(plan,player,timeline,flight);delay=-1;}
             if(HostHeldAttack.Weapon(item.type) || HostYoyoNavigation.Weapon(item) || HostWhipAttack.Weapon(item))
             {
-                plan.SetMembers(player,item);plan.Controlled=true;plan.Timeline=timeline;
-                plan.Contact=Control.Preview(timeline,phase,delay);return plan.Contact;
+                plan.Clear();plan.SetMembers(player,item);plan.Controlled=true;plan.Timeline=timeline;
+                plan.Contact=Control.Preview(timeline,phase,delay);plan.ControlDependencies=Control.CapturePreviewDependencies(plan.Contact);return plan.Contact;
             }
             if(item.type==3473 && Control.HasObservedSolar)
             {
                 var live=Control.Preview(timeline,phase,delay,false);
-                if(live!=null){plan.Clear();plan.SetMembers(player,item);plan.Controlled=true;plan.Timeline=timeline;plan.Contact=live;return live;}
+                if(live!=null){plan.Clear();plan.SetMembers(player,item);plan.Controlled=true;plan.Timeline=timeline;plan.Contact=live;plan.ControlDependencies=Control.CapturePreviewDependencies(live);return live;}
                 // A late native arc may have no remaining receive opportunity.
                 // Its existence does not prevent the next legal Solar use:
                 // Include its remaining native dummy-timer ownership and the
@@ -200,7 +293,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(Control.HasObservedPulse)
             {
                 var live=Control.Preview(timeline,phase,0,false);
-                if(live!=null){plan.Clear();plan.SetMembers(player,item);plan.Controlled=true;plan.Timeline=timeline;plan.Contact=live;return live;}
+                if(live!=null){plan.Clear();plan.SetMembers(player,item);plan.Controlled=true;plan.Timeline=timeline;plan.Contact=live;plan.ControlDependencies=Control.CapturePreviewDependencies(live);return live;}
             }
             var captured=AttackAmmoSnapshot.Capture(player,item);
             if(captured==null && !HostSwingAttack.Handles(item))return OnlyFlight(plan,player,timeline,flight);
@@ -303,6 +396,8 @@ namespace JueMingR.TerrariaHost.Combat
         {return a==null?b==null:b!=null && ReferenceEquals(a.Ammo,b.Ammo) && a.Type==b.Type && a.Stack==b.Stack && a.Projectile==b.Projectile && a.Speed==b.Speed && a.Damage==b.Damage && a.GemFeatures==b.GemFeatures && a.Mode==b.Mode && a.Offset==b.Offset && a.CardFireType==b.CardFireType && a.NoteViewAxis==b.NoteViewAxis;}
         private sealed class PreviewPlan
         {
+            internal PredictionTerrain.CellLease MotionTerrain;
+            internal HostAttackControl.PreviewDependencies ControlDependencies;
             // Clear retires a fact, not its bounded fault history. Only a new
             // concrete context or explicit feature retry permits another try.
             internal readonly FaultGate Faults=new FaultGate();
@@ -320,20 +415,37 @@ namespace JueMingR.TerrariaHost.Combat
             // binds the environment used by its solve. Draw only validates it.
             internal void SetMembers(Player player,Item weapon){item=weapon;slot=player.selectedItem;type=weapon.type;prefix=weapon.prefix;scale=player.GetAdjustedItemScale(weapon);Direction=player.direction;EnvironmentState=new HostProjectileEnvironment.State(true,HostProjectileEnvironment.HandWindRelevant(player,weapon));WhipOwner=HostMeleeAttack.KnownWhipParent(weapon.shoot)?new HostMeleeAttack.SpearFlightState(player,System.Array.Empty<Projectile>()):null;}
             internal bool WeaponCurrent(Player player){return player!=null && item!=null && player.selectedItem==slot && ReferenceEquals(player.HeldItem,item) && item.type==type && item.prefix==prefix && player.GetAdjustedItemScale(item)==scale;}
+            private bool HandReceiveCurrent(Player player)
+            {
+                if(Contact==null || Controlled || Flight!=null || Contact.ReceiveGeometry!=AttackReceiveGeometry.Melee)return true;
+                var npc=Main.npc[Timeline.Identity.Slot];if(!player.CanNPCBeHitByPlayerOrPlayerProjectile(npc))return false;
+                // Window/ordinary display and borrowed World candidate plans
+                // all use CompletedWorld. Do not invent another phase's age
+                // contract or alter its separate actual input preparation.
+                if(Phase!=HostAttackPhase.CompletedWorld)return false;
+                // SolvePrepared's ordinary CompletedWorld hand has
+                // receive=clock.Age+step-1 and elapsed=launchDelay+step.
+                // Rebase this same receive clock, allowing normal cooldown
+                // decay rather than requiring the original scalar values.
+                long elapsed=Contact.ReceiveTick-((long)Main.GameUpdateCount-Timeline.SampleTick)+1;
+                int immune=npc.immune[player.whoAmI];
+                return elapsed>=0 && (immune==0 || immune>0 && immune<=elapsed-1) && player.attackCD<=elapsed && player.meleeNPCHitCooldown[npc.whoAmI]<=elapsed;
+            }
             internal bool MembersCurrent(Player player){return WeaponCurrent(player) && Direction==player.direction && EnvironmentState.Current && (WhipOwner==null || WhipOwner.Current) && (Ammo==null || Ammo.MembersMatch(player,item)) && (Obstacles==null || Obstacles.BirthInputsCurrent) && (HarpyState==null || HarpyState.MembersCurrent) && (Flight==null || Flight.Current);}
             // An aged NPC window does not relax the hand owner's range/arm,
             // duration or captured birth inputs. Validate their existing scalar
             // leases even for an idle hypothesis with no live Flight. Ordinary
             // owner advancement can revoke it; preparation then uses the
             // remaining window again, while Draw never solves or scans terrain.
-            internal bool PresentationMembersCurrent(Player player,int age){return age==0?MembersCurrent(player):WeaponCurrent(player) && Direction==player.direction && EnvironmentState.Current && !Controlled && (WhipOwner==null || WhipOwner.Current) && (Ammo==null || Ammo.MembersMatch(player,item)) && (Obstacles==null || Obstacles.BirthInputsCurrent) && (HarpyState==null || HarpyState.MembersCurrent) && (Flight==null || Flight.PresentationCurrent(age));}
+            internal bool PresentationMembersCurrent(Player player,int age){return age==0?MembersCurrent(player) && HandReceiveCurrent(player):WeaponCurrent(player) && Direction==player.direction && EnvironmentState.Current && !Controlled && HandReceiveCurrent(player) && (WhipOwner==null || WhipOwner.Current) && (Ammo==null || Ammo.MembersMatch(player,item)) && (Obstacles==null || Obstacles.BirthInputsCurrent) && (HarpyState==null || HarpyState.MembersCurrent) && (Flight==null || Flight.PresentationCurrent(age));}
             internal void CopyPresentation(PreviewPlan source)
             {
                 Clear();Contact=source.Contact;Timeline=source.Timeline;Ammo=source.Ammo;Environment=source.Environment;EnvironmentState=source.EnvironmentState;Obstacles=source.Obstacles;
-                HarpyState=source.HarpyState;Flight=source.Flight;WhipOwner=source.WhipOwner;Direction=source.Direction;Controlled=source.Controlled;
+                HarpyState=source.HarpyState;Flight=source.Flight;ControlDependencies=source.ControlDependencies;WhipOwner=source.WhipOwner;Direction=source.Direction;Controlled=source.Controlled;
                 item=source.item;slot=source.slot;type=source.type;prefix=source.prefix;scale=source.scale;
+                Phase=source.Phase;Immune=source.Immune;AttackCooldown=source.AttackCooldown;MeleeCooldown=source.MeleeCooldown;
             }
-            internal void Clear(){Contact=null;Timeline=null;Ammo=null;Environment=null;Obstacles=null;HarpyState=null;Flight=PreparedFlight=null;WhipOwner=null;item=null;Prepared=Controlled=HadFlight=false;}
+            internal void Clear(){Contact=null;Timeline=null;MotionTerrain=null;Ammo=null;Environment=null;Obstacles=null;HarpyState=null;Flight=PreparedFlight=null;ControlDependencies=null;WhipOwner=null;item=null;Prepared=Controlled=HadFlight=false;}
         }
     }
 }

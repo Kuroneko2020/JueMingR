@@ -160,14 +160,16 @@ namespace JueMingR.TerrariaHost.Combat
         {PreparePhase(HostAttackPhase.BeforeNpc);}
         internal void PrepareProjectiles()
         {PreparePhase(HostAttackPhase.Projectiles);}
-        internal void PreparePreviewOnly()
+        internal bool PreparePreviewOnly()
         {
             // Capture already prefers a qualified actual hand/control contact.
             // Use that same receiver/time/source lease instead of solving a
             // hypothetical contact which presentation would immediately ignore.
-            try{using(observation.PredictionWork.Enter(Main.GameUpdateCount)){if(Permission && ExpectedImpact!=null)return;if(CombatPredictionWork.TryContinue())PreparePreview(HostAttackPhase.CompletedWorld);}}
+            bool attempted=false;
+            try{using(observation.PredictionWork.Enter(Main.GameUpdateCount)){if(Permission && ExpectedImpact!=null)return false;if(CombatPredictionWork.TryContinue())PreparePreview(HostAttackPhase.CompletedWorld,out attempted);}}
             catch(CombatPredictionBudgetExceededException){EndFlightPreparation();}
             catch(Exception error){PropagateFatal(error);preview.Faults.Record(FaultContextFor(observation.Selection.Target));ClearPreview();}
+            return attempted;
         }
         internal void EndPreparation(){EndFlightPreparation();}
         private void PreparePhase(HostAttackPhase phase)

@@ -13,7 +13,7 @@ namespace NativeWorldTextProbe
     internal static class NativeCombatBubbleChecks
     {
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static|BindingFlags.Instance;
-        private static Projectile watched;private static int watchedKey;private static NPC receiver;private static bool inKill;private static Vector2 release;private static int damages,children;
+        private static Projectile watched;private static int watchedKey;private static NPC receiver;private static bool inKill;private static Vector2 release;private static int damages,children;private static object observedAttack;
         // NewProjectile may reuse the same pooled object for a later bullet.
         // Reference equality alone must not overwrite the parent's Kill fact.
         private static bool IsParent(Projectile shot){return ReferenceEquals(watched,shot) && shot.type==444 && (int)shot.key==watchedKey;}
@@ -33,8 +33,15 @@ namespace NativeWorldTextProbe
         private static void KillBefore(Projectile __instance){inKill=IsParent(__instance);if(inKill){Console.WriteLine("BUBBLE Kill entry active="+__instance.active+" type="+__instance.type+" left="+__instance.timeLeft+" center="+Exact(__instance.Center)+" movements="+nativeStep);release=__instance.Center;}}
         private static void KillAfter(){inKill=false;}
         private static Exception KillFinal(Exception __exception){inKill=false;return __exception;}
-        private static void Birth(Projectile __0){if(inKill && __0.type==14){children++;Require(__0.velocity.X>0,"bounced parent natural Kill aims its sealed child at the shared receiver");}}
+        private static void Birth(Projectile __0){if(inKill && __0.type==14){children++;Console.WriteLine("BUBBLE child birth guc="+Main.GameUpdateCount+" center="+Exact(__0.Center)+" velocity="+Exact(__0.velocity)+" receiver="+receiver.Hitbox+" life="+receiver.life+" inputKind="+Get(Get(observedAttack,"consumedInput"),"Kind")+" inputPhase="+Get(Get(observedAttack,"consumedInput"),"Phase")+" inputStep="+Get(observedAttack,"consumedInputStep"));Require(__0.velocity.X>0,"bounced parent natural Kill aims its sealed child at the shared receiver");}}
         private static void Damage(NPC __instance,int __result){if(ReferenceEquals(__instance,receiver) && __result>0)damages++;}
+        private static void ReleasedSnapshot(object host,object attack,int outer)
+        {
+            var cache=(NpcPredictionCache)Get(Get(host,"Prediction"),"Cache");var path=(JueMingR.Platform.Combat.NpcTrajectory)GetOptional(host,"DisplayPath");var timeline=cache.Read(1);var plan=Get(attack,"preview");var raw=(AttackContact)GetOptional(plan,"Contact");var control=Get(attack,"Control");var entries=(System.Collections.IDictionary)Get(control,"shots");var entry=entries[watchedKey];var work=Get(host,"PredictionWork");
+            var optionalSpent=GetOptional(work,"optionalSpent");
+            Console.WriteLine("BUBBLE lease ownership outer="+outer+" planTerrainWidth="+Get(Get(plan,"Terrain"),"width")+" planTerrainHeight="+Get(Get(plan,"Terrain"),"height")+" planCells="+((System.Collections.IDictionary)Get(Get(plan,"Terrain"),"cells")).Count+" controlPreviewWidth="+Get(Get(control,"previewTerrain"),"width")+" controlPreviewHeight="+Get(Get(control,"previewTerrain"),"height")+" controlPreviewCells="+((System.Collections.IDictionary)Get(Get(control,"previewTerrain"),"cells")).Count);
+            Console.WriteLine("BUBBLE release snapshot outer="+outer+" guc="+Main.GameUpdateCount+" left="+watched.timeLeft+" displayCount="+(path?.Count??0)+" cacheCount="+(timeline?.Count??0)+" cachePaused="+(timeline!=null && timeline.BudgetPaused)+" cacheStop="+(timeline==null?"none":timeline.Stop.ToString())+" fullAttempt="+Get(host,"optionalTick")+" shortAttempt="+GetOptional(host,"displayShortTick")+" previewAttempt="+GetOptional(host,"previewOptionalTick")+" previewRaw="+(raw!=null)+" previewReceive="+(raw?.ReceiveTick??-1)+" previewPrepared="+Get(plan,"Prepared")+" previewControlled="+Get(plan,"Controlled")+" previewMiss="+GetOptional(attack,"previewWindowMiss")+" previewLease="+GetOptional(attack,"previewLeaseTick")+" actualCurrent="+(entry!=null && GetOptional(entry,"Contact")!=null)+" actualNext="+(entry!=null && GetOptional(entry,"NextKillContact")!=null)+" actualPrepared="+(entry==null?0:Get(entry,"Prepared"))+" workMs="+Get(work,"UsedMilliseconds")+" optionalMs="+(optionalSpent==null?"unavailable":(Convert.ToInt64(optionalSpent)*1000.0/System.Diagnostics.Stopwatch.Frequency).ToString())+" hardExceeded="+Get(work,"Exceeded"));
+        }
         internal static void Run(object context)
         {
             var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var input=Get(context,"Input");var attack=Get(combat,"Attack");var terrain=Get(attack,"terrain");
@@ -97,7 +104,7 @@ namespace NativeWorldTextProbe
                 Console.WriteLine("BUBBLE original birth sample pos="+Exact(watched.position)+" velocity="+Exact(watched.velocity)+" angle="+angle.ToString("R")+" left="+watched.timeLeft+" extra="+watched.extraUpdates);
                 for(int k=0;k<watched.timeLeft;k++){float prior=angle;object[] args={watched,terrain,center,velocity,angle};Require((bool)advance.Invoke(null,args),"natural bubble finite release origin");center=(Vector2)args[2];velocity=(Vector2)args[3];angle=(float)args[4];expectedCenters[k]=center;expectedVelocities[k]=velocity;expectedAngles[k]=angle;if(Math.Abs(angle-prior)>.1f)predictedReflections++;}
                 NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,true,25,true,true));
-                int visible=0;bool bounced=false;float priorVx=watched.velocity.X;
+                int visible=0,actualVisible=0,previewVisible=0;bool bounced=false,leaseChecked=false;float priorVx=watched.velocity.X;observedAttack=attack;
                 for(int i=0;i<75;i++)
                 {
                     string before="center="+Exact(watched.Center)+" velocity="+Exact(watched.velocity)+" angle="+watched.ai[0].ToString("R")+" left="+watched.timeLeft;
@@ -105,14 +112,16 @@ namespace NativeWorldTextProbe
                     int end=(i+1)*(watched.extraUpdates+1)-1;
                     if(IsParent(watched) && watched.active && end<expectedCenters.Length && firstDifference==null && (Vector2.DistanceSquared(expectedCenters[end],watched.Center)>=.001f || Vector2.DistanceSquared(expectedVelocities[end],watched.velocity)>=.00001f || Math.Abs(expectedAngles[end]-watched.ai[0])>=.00001f))
                     {firstDifference="outer="+i+" before="+before+" expected="+Exact(expectedCenters[end])+"/"+Exact(expectedVelocities[end])+" angle="+expectedAngles[end].ToString("R")+" actual="+Exact(watched.Center)+"/"+Exact(watched.velocity)+" angle="+watched.ai[0].ToString("R")+" nativeMoves="+nativeStep;Console.WriteLine("BUBBLE OUTER FIRST DIFFERENCE "+firstDifference);}
-                    if(IsParent(watched) && watched.active){if(priorVx<0 && watched.velocity.X>0)bounced=true;priorVx=watched.velocity.X;if(GetOptional(attack,"ExpectedPreview")!=null)visible++;}
+                    if(IsParent(watched) && watched.active){if(priorVx<0 && watched.velocity.X>0)bounced=true;priorVx=watched.velocity.X;bool actual=GetOptional(attack,"ExpectedImpact")!=null,preview=GetOptional(attack,"ExpectedPreview")!=null;if(actual)actualVisible++;if(preview)previewVisible++;if(actual || preview)visible++;ReleasedSnapshot(host,attack,i);
+                        if(preview && !leaseChecked){NativeCombatPreviewLeaseChecks.TerrainOwner(host,attack,(AttackContact)Get(attack,"ExpectedPreview"),true);leaseChecked=true;}}
                 }
                 Require(predictedReflections>0 && bounced,"real parent reaches and reflects off the wall before lifetime exit");
                 Require(children==1 && Vector2.DistanceSquared(center,release)<.001f,"natural Kill child birth uses the predicted reflected origin: children="+children+" predicted="+center+" actual="+release+" parentActive="+watched.active+" left="+watched.timeLeft+" reflections="+predictedReflections+" visible="+visible+" damage="+damages);
-                Require(visible>5 && damages>0,"released reflected source keeps a useful preview and native child damage");
+                Console.WriteLine("BUBBLE released presentation actual="+actualVisible+" independentPreview="+previewVisible+" either="+visible+" childBirths="+children+" actualDamage="+damages+" receiverActive="+receiver.active+" receiverLife="+receiver.life);
+                Require(visible>5 && damages>0 && leaseChecked,"released reflected source keeps a useful execution-first presentation Contact and native child damage with the correct solver lease");
                 Console.WriteLine("PASS natural bubble wall bounce -> lifetime Kill -> sealed child -> actual Damage; visible="+visible+" damage="+damages+" origin="+release);
             }
-            finally{watched=null;receiver=null;inKill=inMovement=false;expectedCenters=expectedVelocities=null;expectedAngles=null;audit.UnpatchAll(audit.Id);}
+            finally{watched=null;receiver=null;observedAttack=null;inKill=inMovement=false;expectedCenters=expectedVelocities=null;expectedAngles=null;audit.UnpatchAll(audit.Id);}
         }
     }
 }

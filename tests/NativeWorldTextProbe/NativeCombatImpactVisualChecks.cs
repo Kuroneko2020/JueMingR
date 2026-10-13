@@ -28,7 +28,8 @@ namespace NativeWorldTextProbe
             {
                 NativeQuickItemChecks.BeginWorldStep();NativeToolExecutionChecks.Sample(context,input,npc.Center,pressed);Call(combat,"Sample");
                 NativeCombatAimChecks.Prepare(host,attack,npc,0);NativeCombatAimChecks.PrepareDisplay(host,attack);
-                if(!(bool)Get(host,"Path") || GetOptional(host,"DisplayPath")!=null && (GetOptional(attack,"ExpectedImpact")!=null || GetOptional(attack,"ExpectedPreview")!=null))return;
+                Call(Get(host,"World"),"Prepare");
+                if(!(bool)Get(host,"Path") || GetOptional(host,"DisplayPath")!=null && GetOptional(Get(Get(host,"World"),"Impact"),"contact")!=null)return;
                 var work=Get(host,"PredictionWork");Console.WriteLine("IMPACT component cold omission attempt="+attempt+" tick="+Main.GameUpdateCount+" used="+Get(work,"UsedMilliseconds")+" exceeded="+Get(work,"Exceeded")+" display="+(GetOptional(host,"DisplayPath")!=null));
             }
             Require(false,"finite component preparation must obtain a healthy display before pixel/revocation checks");
@@ -43,6 +44,7 @@ namespace NativeWorldTextProbe
             using(var futureSteps=NativeCombatUsageChecks.ObserveDrawSteps())
             {
             var harmony=new Harmony("JueMingR.Tests.ImpactVisual");
+            foreach(string name in new[]{"HandleSpecialEvent","HandleMining","HandleRunning"})harmony.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
             harmony.Patch(attack.GetType().GetProperty("ExpectedPreview",Flags).GetGetMethod(true),prefix:new HarmonyMethod(typeof(NativeCombatImpactVisualChecks).GetMethod("ReadFault",Flags)));
             harmony.Patch(attack.GetType().GetMethod("PreviewCurrent",Flags),prefix:new HarmonyMethod(typeof(NativeCombatImpactVisualChecks).GetMethod("ReadFault",Flags)));
             harmony.Patch(attack.GetType().GetProperty("ExpectedImpact",Flags).GetGetMethod(true),prefix:new HarmonyMethod(typeof(NativeCombatImpactVisualChecks).GetMethod("ReadFault",Flags)));
@@ -58,7 +60,7 @@ namespace NativeWorldTextProbe
                 foreach(float gravity in new[]{1f,-1f})foreach(float scale in new[]{.8f,1.4f})
                 {
                     p.gravDir=gravity;Main.screenPosition=new Vector2(600,400);Main.GameViewMatrix.Zoom=Vector2.One;
-                    NativeToolExecutionChecks.Sample(context,input,n.Center,true);Call(combat,"Sample");PrepareDisplayFixture(context,host,attack,combat,input,n);Call(world,"Prepare");
+                    NativeToolExecutionChecks.Sample(context,input,n.Center,true);Call(combat,"Sample");PrepareDisplayFixture(context,host,attack,combat,input,n);
                     var contact=(AttackContact)(GetOptional(attack,"ExpectedImpact")??GetOptional(attack,"ExpectedPreview"));var actual=(AttackContact)Get(impact,"contact");Require(contact!=null && ReferenceEquals(contact,actual) && contact.Timeline.Identity.Equals((JueMingR.Platform.Combat.NpcIdentity)Get(Get(host,"Selection"),"Target")) && contact.ReceiveTick>=0 && contact.ReceiveTick<contact.Timeline.Count,"render fixture captures the independently selected legal execution-first contact and its full receiver");
                     // Change camera AFTER preparation. The oracle uses the final
                     // camera independently of the production marker projection.
@@ -72,27 +74,27 @@ namespace NativeWorldTextProbe
                 p.gravDir=1;Main.screenPosition=new Vector2(600,400);Main.GameViewMatrix.Zoom=Vector2.One;
                 foreach(bool path in new[]{false,true})foreach(bool aim in new[]{false,true})
                 {
-                    NativeCombatObservationChecks.Save(host,new ObservationOptions(false,path,false,false,false,25,false,aim));NativeToolExecutionChecks.Sample(context,input,n.Center,true);Call(combat,"Sample");PrepareDisplayFixture(context,host,attack,combat,input,n);Call(world,"Prepare");var pixels=graphics.Pixels(()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);
+                    NativeCombatObservationChecks.Save(host,new ObservationOptions(false,path,false,false,false,25,false,aim));NativeToolExecutionChecks.Sample(context,input,n.Center,true);Call(combat,"Sample");PrepareDisplayFixture(context,host,attack,combat,input,n);var pixels=graphics.Pixels(()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);
                     Require(pixels.Any(Red)==path,"held-weapon preview follows its independent path demand with aim ON or OFF");if(path)Require(pixels.Any(PathInk),"path remains independently visible with aim OFF");
                 }
                 NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,false,true));NativeToolExecutionChecks.Sample(context,input,n.Center,true);Call(combat,"Sample");
                 foreach(string stage in new[]{"capture","project","draw"})
                 {
-                    Call(host,"Set",6,true);p.releaseUseItem=true;PrepareDisplayFixture(context,host,attack,combat,input,n);Call(world,"Prepare");var healthyContact=Get(attack,"ExpectedImpact");faults=0;
+                    Call(host,"Set",6,true);p.releaseUseItem=true;PrepareDisplayFixture(context,host,attack,combat,input,n);var healthyContact=Get(attack,"ExpectedImpact");faults=0;
                     readFault=stage!="draw";drawFault=stage=="draw";bool leaked=false;
                     try{if(stage=="capture")Call(world,"Prepare");else graphics.Pixels(()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);}catch(TargetInvocationException){leaked=true;}
                     Require(!leaked && (bool)Get(impact,"Failed") && !(bool)Get(world,"Failed") && !(bool)Get(attack,"Failed"),"impact "+stage+" failure is local to red presentation");
                     for(int i=0;i<3;i++){Call(world,"PollResources");Call(world,"Prepare");var pixels=graphics.Pixels(()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);Require(!pixels.Any(Red) && pixels.Any(PathInk),"healthy path survives latched impact failure");}
                     Require(faults==1,"impact failure does not retry on each prepare/draw with injection still armed");readFault=drawFault=false;Call(host,"Set",6,true);Require(ReferenceEquals(healthyContact,Get(attack,"ExpectedImpact")),"display-only retry preserves the healthy prepared attack capability");Call(world,"Prepare");Require(!(bool)Get(impact,"Failed") && graphics.Pixels(()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix).Any(Red),"explicit Aim retry restores only failed red display");
                 }
-                p.inventory[0].SetDefaults(39);p.inventory[54].SetDefaults(40);p.inventory[54].stack=999;p.releaseUseItem=true;n.position=new Vector2(1060,646);NativeToolExecutionChecks.Sample(context,input,n.Center,false);Call(combat,"Sample");PrepareDisplayFixture(context,host,attack,combat,input,n,false);var arc=(AttackContact)Get(attack,"ExpectedPreview");Require(arc!=null && Math.Abs(arc.AimY-arc.ImpactY)>12,"idle bow render fixture separates elevated AimInput from contact");Call(world,"Prepare");var arcPixels=graphics.Pixels(()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);AssertReceiveRectanglePixels(arc,arcPixels,Main.GameViewMatrix.ZoomMatrix,"idle bow receiver instead of elevated aim input/contact edge");graphics.Image(Path.Combine(output,"impact-bow.png"),()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);
-                NativeToolExecutionChecks.Sample(context,input,n.Center,true);Call(combat,"Sample");PrepareDisplayFixture(context,host,attack,combat,input,n);Call(world,"Prepare");typeof(Player).GetMethod("ItemCheck_Shoot",Flags).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),true});Require(GetOptional(attack,"ExpectedImpact")==null,"real Shot retires its consumed actual Contact");Call(host,"Update",(ulong)Main.GameUpdateCount);Call(world,"Prepare");var consumed=graphics.Pixels(()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);
+                p.inventory[0].SetDefaults(39);p.inventory[54].SetDefaults(40);p.inventory[54].stack=999;p.releaseUseItem=true;n.position=new Vector2(1060,646);NativeToolExecutionChecks.Sample(context,input,n.Center,false);Call(combat,"Sample");PrepareDisplayFixture(context,host,attack,combat,input,n,false);var arc=(AttackContact)Get(attack,"ExpectedPreview");Require(arc!=null && Math.Abs(arc.AimY-arc.ImpactY)>12,"idle bow render fixture separates elevated AimInput from contact");var arcPixels=graphics.Pixels(()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);AssertReceiveRectanglePixels(arc,arcPixels,Main.GameViewMatrix.ZoomMatrix,"idle bow receiver instead of elevated aim input/contact edge");graphics.Image(Path.Combine(output,"impact-bow.png"),()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);
+                NativeToolExecutionChecks.Sample(context,input,n.Center,true);Call(combat,"Sample");PrepareDisplayFixture(context,host,attack,combat,input,n);typeof(Player).GetMethod("ItemCheck_Shoot",Flags).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),true});Require(GetOptional(attack,"ExpectedImpact")==null,"real Shot retires its consumed actual Contact");Call(host,"Update",(ulong)Main.GameUpdateCount);Call(world,"Prepare");var consumed=graphics.Pixels(()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);
                 // Consumption does not admit a new optional solve in the same
                 // update. Observe the existing bounded scheduler over real
                 // native updates, rather than require an immediate red frame.
                 int recovery=0;
                 while((!consumed.Any(Red) || !consumed.Any(PathInk)) && recovery<12)
-                {recovery++;NativeCombatSelectionPreviewChecks.Step(context,n.Center,false,true);Call(world,"Prepare");consumed=graphics.Pixels(()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);}
+                {recovery++;NativeCombatSelectionPreviewChecks.Step(context,n.Center,false,true);consumed=graphics.Pixels(()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);Console.WriteLine("IMPACT recovery step="+recovery+" guc="+Main.GameUpdateCount+" target="+Get(Get(host,"Selection"),"HasTarget")+" path="+(GetOptional(host,"DisplayPath")!=null)+" red="+consumed.Any(Red)+" npcActive="+n.active+" life="+n.life+" itemTime="+p.itemTime+" animation="+p.itemAnimation+" preview="+(GetOptional(attack,"ExpectedPreview")!=null)+" workMs="+Get(Get(host,"PredictionWork"),"UsedMilliseconds"));}
                 Require(consumed.Any(Red) && consumed.Any(PathInk),"bounded scheduled observation recovers a useful preview after real Shot consumption while the path survives");
                 var recovered=(AttackContact)(GetOptional(attack,"ExpectedImpact")??GetOptional(attack,"ExpectedPreview"));AssertReceiveRectanglePixels(recovered,consumed,Main.GameViewMatrix.ZoomMatrix,"post-consumption scheduled receive rectangle");Console.WriteLine("IMPACT consumption recovery realUpdates="+recovery);
                 Console.WriteLine("PASS impact actual World.Draw pixels, final camera, toggles, consumption and Capture/Project/Draw local latch/recovery. Render fixture, not Main/game execution.");
