@@ -52,7 +52,9 @@ namespace JueMingR.TerrariaHost.Combat
         {
             if(allowOpening && TryReuseIdle(timeline,phase,delay))return previewContact;
             ClearPreview();var player=combat.Player;
-            if(timeline==null || player==null || !combat.Attack.PreviewDemand)return null;
+            // Clear-line candidate plans are independent readers of live controls.
+            // The retired display owner cannot disable their original qualification.
+            if(timeline==null || player==null || !combat.Attack.AttackObservationDemand)return null;
             previewTerrain.Reset();previewEnvironment=new HostProjectileEnvironment.State(true);
             previewWeapon=player.HeldItem;previewSlot=player.selectedItem;previewType=previewWeapon.type;previewPrefix=previewWeapon.prefix;
             previewTick=Main.GameUpdateCount;previewSession=observation.Session;previewSelection=combat.Tools.SelectionIntent;
@@ -143,7 +145,7 @@ namespace JueMingR.TerrariaHost.Combat
         private bool TryReuseIdle(NpcTrajectory timeline,HostAttackPhase phase,int delay)
         {
             var p=combat.Player;var prior=idlePreview;
-            if(prior==null || p==null || timeline==null || !combat.Attack.PreviewDemand || !CacheableOpening(p,prior.Projectile,delay) ||
+            if(prior==null || p==null || timeline==null || !combat.Attack.AttackObservationDemand || !CacheableOpening(p,prior.Projectile,delay) ||
                 previewSession!=observation.Session || previewSelection!=combat.Tools.SelectionIntent || p.selectedItem!=previewSlot || !ReferenceEquals(p.HeldItem,previewWeapon) || previewWeapon.type!=previewType || previewWeapon.prefix!=previewPrefix ||
                 prior.Phase!=phase || prior.Age!=new HostAttackClock(timeline,phase,delay).Age || !prior.Current(p,timeline) || !HostAttackResources.Initial(p,p.HeldItem))return false;
             foreach(var entry in shots.Values)if(Observed(entry))return false;

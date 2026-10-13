@@ -51,13 +51,13 @@ namespace NativeWorldTextProbe
                 NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,true,false));
                 for(int i=0;i<8;i++)NativeCombatSelectionPreviewChecks.Step(context,new Vector2(650,550),false,true);
                 Console.WriteLine("OPTIONAL PREMISE path="+(GetOptional(host,"DisplayPath")!=null)+" preview="+(GetOptional(attack,"ExpectedPreview")!=null)+" cache="+((NpcPredictionCache)Get(Get(host,"Prediction"),"Cache")).Required+" workMs="+Get(Get(host,"PredictionWork"),"UsedMilliseconds"));
-                Require(GetOptional(host,"DisplayPath")!=null && GetOptional(attack,"ExpectedPreview")==null,"counterexample owns a real valid path and completed blocked preview without Contact");
+                Require(GetOptional(host,"DisplayPath")!=null && GetOptional(attack,"ExpectedPreview")==null,"counterexample owns a real valid path while retired preview has no Contact");
                 audit.Patch(attack.GetType().GetMethod("PreparePlan",Flags),prefix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks).GetMethod(nameof(CountOptionalPlan),Flags)));
                 optionalPlans=0;
                 using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))
                     for(int i=0;i<8;i++)Call(attack,"ValidatePreviewPresentation");
-                Console.WriteLine("OPTIONAL CONSUMPTION sameGucValidationCalls=8 actualPreparePlan="+optionalPlans+" completedMiss=true");
-                Require(optionalPlans==0,"display validation consumes a completed miss without producing another plan");
+                Console.WriteLine("OPTIONAL RETIREMENT sameGucValidationCalls=8 actualPreparePlan="+optionalPlans+" previewRetired=true");
+                Require(optionalPlans==0,"retired preview validation cannot produce a plan");
                 int before=optionalPlans;
                 for(int i=0;i<4;i++)Call(context,"UpdateRuntime");
                 Require(optionalPlans==before,"empty outer callbacks at the same real update do not admit new optional preview work");
@@ -81,7 +81,7 @@ namespace NativeWorldTextProbe
                 OptionalCoreDisplay(context,combat,host,input);
                 OptionalShortCadence(context,combat,host,attack,input);
                 OptionalActualContact(context,combat,host,attack,input);
-                OptionalAccounting();NativeCombatPreviewLeaseChecks.WindGate(context);
+                OptionalAccounting();
                 Console.WriteLine("PASS optional consumption, repeated outer callback, same-update dependency and final-consumer marker shutdown");
             }
             finally{optionalForceBudget=false;audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());}
@@ -94,7 +94,7 @@ namespace NativeWorldTextProbe
             for(int y=0;y<Main.maxTilesY;y++)NativeToolsChecks.Tile(48,y,1);
             NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,true,false));
             for(int i=0;i<8;i++)NativeCombatSelectionPreviewChecks.Step(context,new Vector2(650,550),false,true);
-            Require(GetOptional(host,"DisplayPath")!=null && GetOptional(attack,"ExpectedPreview")==null,"short cadence starts with a real blocked completed preview miss and valid path");
+            Require(GetOptional(host,"DisplayPath")!=null && GetOptional(attack,"ExpectedPreview")==null,"short cadence starts with a valid NPC path and no retired preview demand");
             var audit=new Harmony("JueMingR.Tests.OptionalShortCadence");var method=Get(host,"Prediction").GetType().GetMethod("PreparePrefix",Flags);
             audit.Patch(method,prefix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks).GetMethod(nameof(CountOptionalShortPrefix),Flags)));optionalPrefixCalls.Clear();
             int fullAttempts=0,shortAttempts=0;
@@ -115,7 +115,7 @@ namespace NativeWorldTextProbe
                 Console.WriteLine("OPTIONAL SHORT CADENCE worldUpdates=16 fullActualAttempts="+fullAttempts+" shortActualAttempts="+shortAttempts+" sourceEntries="+optionalPrefixCalls.Count+" coreDemand=false repeatSourceEntries=0");
                 // Stop changing this context. Complete blocked misses are still
                 // pure consumption, even after fresh short publications exist.
-                optionalPlans=0;for(int i=0;i<8;i++)Call(attack,"ValidatePreviewPresentation");Require(optionalPlans==0,"stable blocked noContact validation retains the original A2 RED to zero-production GREEN boundary");
+                optionalPlans=0;for(int i=0;i<8;i++)Call(attack,"ValidatePreviewPresentation");Require(optionalPlans==0,"retired preview validation performs no plan production while bounded NPC path recovery remains active");
             }
             finally{audit.UnpatchAll(audit.Id);}
         }
@@ -134,6 +134,11 @@ namespace NativeWorldTextProbe
             for(int i=0;i<8;i++)CoreDisplayStep(context,combat,host,input,n);
             Console.WriteLine("CORE WARM target="+Get(Get(host,"Selection"),"HasTarget")+" path="+Get(host,"Path")+" failed="+Get(host,"TargetPredictionFailed")+" cache="+(((NpcPredictionCache)Get(Get(host,"Prediction"),"Cache")).Read(0)?.Count??0)+" rawDisplay="+(((NpcTrajectory)GetOptional(host,"displayPath"))?.Count??0)+" lease="+Get(host,"displayLeaseTick")+" tick="+Main.GameUpdateCount+" optionalTick="+Get(host,"optionalTick")+" corePermission="+Get(Get(combat,"Attack"),"Permission")+" workMs="+Get(Get(host,"PredictionWork"),"UsedMilliseconds"));
             Require(GetOptional(host,"DisplayPath")!=null,"core harvest starts with a genuinely prepared display publication");
+            // The retention countercontrol belongs before the next full-tail
+            // admission. Align with a real cadence admission; publishing the
+            // static fixture itself does not advance the producer's clock.
+            for(int i=0;i<5 && (long)Get(host,"optionalTick")!=(long)Main.GameUpdateCount;i++)CoreDisplayStep(context,combat,host,input,n);
+            Require((long)Get(host,"optionalTick")==(long)Main.GameUpdateCount,"retention control starts after a real full-tail admission, not immediately before the next due tick");
             // Retention is a component countercontrol, not a claim that a
             // timed optional tail always reaches121. Publish the existing
             // independent static-NPC121 fixture before the real new core pass.
@@ -201,14 +206,9 @@ namespace NativeWorldTextProbe
             optionalPlans=0;
             for(int i=0;i<8;i++)Call(attack,"PreparePreviewOnly");
             Require(optionalPlans==0 && ReferenceEquals(actual,GetOptional(attack,"ExpectedImpact")),"optional preview entries preserve the actual qualified contact and do not solve an unused hypothetical attack");
-            var impact=Get(Get(host,"World"),"Impact");Call(impact,"Capture");
-            Require(ReferenceEquals(actual,GetOptional(impact,"contact")),"the actual contact reused by optional preparation is the contact consumed by Capture");
-            Console.WriteLine("OPTIONAL ACTUAL CONTACT previewEntries=8 actualPreparePlan="+optionalPlans+" captureSource=actual receiveTick="+actual.ReceiveTick);
-            NativeCombatPreviewLeaseChecks.Navigation(host,attack,p,actual);
-            OptionalCapture(context,combat,host,attack,input,n,actual);
-            NativeCombatPreviewLeaseChecks.Opening(context,host,combat,attack,input);
-            NativeCombatPreviewLeaseChecks.OrdinaryReceive(context,host,combat,attack,input);
-            NativeCombatPreviewLeaseChecks.HandReceive(context,host,combat,attack,input);
+            Require(GetOptional(attack,"ExpectedPreview")==null && !(bool)Get(attack,"PreviewDemand"),"retired preview leaves the qualified actual controller Contact intact");
+            Console.WriteLine("OPTIONAL ACTUAL CONTACT retiredPreviewEntries=8 actualPreparePlan="+optionalPlans+" actualReceiveTick="+actual.ReceiveTick);
+
         }
         private static void OptionalCapture(object context,object combat,object host,object attack,object input,NPC npc,AttackContact actual)
         {

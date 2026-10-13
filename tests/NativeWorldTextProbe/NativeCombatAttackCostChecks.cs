@@ -82,6 +82,9 @@ namespace NativeWorldTextProbe
             if(only=="path-off-selection"){BudgetAndPathOffSelection(context,combat,host,attack,input,false,false);return;}
             if(only=="path-off-recovery"){BudgetAndPathOffSelection(context,combat,host,attack,input,false,false,true);return;}
             if(string.IsNullOrEmpty(only)){OptionalConsumption(context,combat,host,attack,input);BudgetAndPathOffSelection(context,combat,host,attack,input,true);}
+            // Retired display-only families have no current work contract. The
+            // default keeps accounting/selection and actual ordinary consumers.
+            if(string.IsNullOrEmpty(only) && !(bool)Get(attack,"PreviewDemand"))only="ordinary-work";
             var audit=Audit(attack);
             try
             {

@@ -118,7 +118,8 @@ namespace NativeWorldTextProbe
                 Require(predictedReflections>0 && bounced,"real parent reaches and reflects off the wall before lifetime exit");
                 Require(children==1 && Vector2.DistanceSquared(center,release)<.001f,"natural Kill child birth uses the predicted reflected origin: children="+children+" predicted="+center+" actual="+release+" parentActive="+watched.active+" left="+watched.timeLeft+" reflections="+predictedReflections+" visible="+visible+" damage="+damages);
                 Console.WriteLine("BUBBLE released presentation actual="+actualVisible+" independentPreview="+previewVisible+" either="+visible+" childBirths="+children+" actualDamage="+damages+" receiverActive="+receiver.active+" receiverLife="+receiver.life);
-                Require(visible>5 && damages>0 && leaseChecked,"released reflected source keeps a useful execution-first presentation Contact and native child damage with the correct solver lease");
+                Require(previewVisible==0 && GetOptional(attack,"ExpectedPreview")==null && !(bool)Get(attack,"PreviewDemand"),"withdrawn preview has no demand throughout the original parent lifetime");
+                Require(damages>0,"released reflected source retains original child damage after impact preview retirement");
                 Console.WriteLine("PASS natural bubble wall bounce -> lifetime Kill -> sealed child -> actual Damage; visible="+visible+" damage="+damages+" origin="+release);
             }
             finally{watched=null;receiver=null;observedAttack=null;inKill=inMovement=false;expectedCenters=expectedVelocities=null;expectedAngles=null;audit.UnpatchAll(audit.Id);}

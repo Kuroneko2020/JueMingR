@@ -53,7 +53,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(!CombatPredictionWork.TryContinue())return;
             BeginFlightPreparation(beforeNpc);
             var selection=observation.Selection;var phase=beforeNpc?HostAttackPhase.BeforeNpc:HostAttackPhase.CompletedWorld;
-            if(!observation.Options.ClearLine || !observation.PredictionAvailable || !PreviewDemand || selection.CandidateCount==0 || HostPlacementAttack.Handles(combat.Player.HeldItem))
+            if(!observation.Options.ClearLine || !observation.PredictionAvailable || !AttackObservationDemand || selection.CandidateCount==0 || HostPlacementAttack.Handles(combat.Player.HeldItem))
             {if(selection.CandidateCount==0)ClearCandidateProgress();candidates.Clear();return;}
             // A held clear-line intent can prepare a future opening during
             // ordinary cooldown even when Path is OFF. This is a small
@@ -69,7 +69,7 @@ namespace JueMingR.TerrariaHost.Combat
             }
             if(warm)candidateWarmTick=(long)Main.GameUpdateCount;
             long pass=beforeNpc?++candidateActionPass:++candidateWorldPass;
-            int parity=beforeNpc?1:0,probe=-1,changeProbe=-1;long oldest=long.MaxValue,oldestChange=long.MaxValue;bool changeSignificant=false;
+            int parity=beforeNpc?1:0,probe=-1,changeProbe=-1;long oldest=long.MaxValue,oldestChange=long.MaxValue;bool changeSignificant=false,unfinished=false;
             for(int index=0;index<selection.CandidateCount;index++)
             {
                 var npc=selection.Candidate(index);int key=npc.whoAmI*2+parity;var identity=CombatSelection.Identity(npc,observation.Session);
@@ -101,13 +101,14 @@ namespace JueMingR.TerrariaHost.Combat
                 // reserved attempt wins, including unknowns needing extension.
                 // Cheap distance revisits must not renew this stamp, or every
                 // fully scanned short prefix would starve its longer unknowns.
+                if(candidateAttempt[key]==0 || candidateUnknown[key])unfinished=true;
                 if(candidateAttempt[key]<oldest){oldest=candidateAttempt[key];probe=index;}
             }
             for(int key=parity;key<candidateMembership.Length;key+=2)
                 if(candidateMembership[key]!=pass)
                 {candidatePlans[key]?.Clear();candidateIdentities[key]=default(NpcIdentity);candidateDepths[key]=candidateRequests[key]=0;candidateAttempt[key]=0;candidateUnknown[key]=false;if(!beforeNpc){candidateFacts[key/2]=default(CandidateFact);candidateChanges[key/2]=0;candidateSignificant[key/2]=false;}}
-            // Alternate the first World admission between changed candidates
-            // and ordinary unvisited/unknown progress. Repeated movement does
+            // Alternate significant changes with reserved progress. Ordinary
+            // travel uses the changed queue after progress completes; it does
             // not renew pending tickets or reset the other queue's stamps.
             // Only an actual admission removes a ticket; unfinished work goes
             // to a new tail ticket, never back to this pass's chosen priority
@@ -115,7 +116,10 @@ namespace JueMingR.TerrariaHost.Combat
             // not its old queue position; admission alone is not completion.
             // Alternating ordinary first admissions still guarantees that
             // unfinished significant work cannot monopolize every pass.
-            if(!beforeNpc && (pass&1)==0 && changeProbe>=0)probe=changeProbe;
+            // Ordinary travel cannot displace an unfinished reserved turn.
+            // Significant receive/phase changes still alternate with it; once
+            // progress is complete, ordinary changed facts keep their queue.
+            if(!beforeNpc && (pass&1)==0 && changeProbe>=0 && (changeSignificant || !unfinished))probe=changeProbe;
             candidates.Clear();int best=-1,distanceStart=0;
             var nearest=CombatSelection.Identity(selection.Candidate(0),observation.Session);
             int hint=-1;
@@ -193,11 +197,16 @@ namespace JueMingR.TerrariaHost.Combat
                         bool progress=best<0;
                         int required=progress?CandidateProgressRequired(identity,nextKey,false):CandidatePreferred(identity);
                         // Fresh positive ranking keeps the original nearer
-                        // prefix first. Those cheap ranking revisits do not
-                        // renew old progress stamps or starve other unknowns.
-                        if(progress || candidateAttempt[nextKey]==0)candidateAttempt[nextKey]=pass;
+                        // prefix first. A tiny remainder may publish no prefix
+                        // or interrupt Plan. It cannot consume a reserved turn
+                        // merely by entering Source. Completed fresh work can,
+                        // so it need not take another first slice unnecessarily.
                         candidateWorldVisited[next]=true;
                         if(EvaluateCandidate(identity,sampleTick,false,phase,nextKey,required))best=next;
+                        var completed=candidatePlans[nextKey];var completedPath=completed?.Timeline;
+                        if(completed?.Prepared==true && completed.PreparedTick==Main.GameUpdateCount && completed.Phase==phase &&
+                            completedPath!=null && completedPath.SampleTick==sampleTick && !completedPath.BudgetPaused && completedPath.Count>required)
+                            candidateAttempt[nextKey]=pass;
                     }
                 }
                 // Positives are only this pass's freshly validated contacts.
@@ -298,10 +307,14 @@ namespace JueMingR.TerrariaHost.Combat
                 var contact=timeline!=null && timeline.Count>=2?PreparePlan(plan,timeline,phase):null;
                 candidateUnknown[key]=contact==null && (timeline==null || timeline.BudgetPaused || timeline.Stop==PredictionStop.None && timeline.Count<=NpcPredictionCache.Horizon);
                 plan.MotionTerrain=null;
-                // Freeze at the producing owner, before another candidate can
-                // replace its scratch cells. Only pure observation borrows this
-                // same-call result; actual held preparation keeps its core path.
-                if(contact!=null && !beforeNpc && observation.Path && !BasicPermission && CombatPredictionWork.TryContinue())
+                // Seal only a completed positive before another candidate can
+                // replace the producing owner's cells. This bounded copy ends
+                // the already admitted work; a second producer admission here
+                // would discard a complete result without saving any solve.
+                // Its cost still belongs to the same optional slice. Host must
+                // separately admit/validate display under the unchanged shared
+                // allowance; this snapshot grants no display or actual input.
+                if(contact!=null && !beforeNpc && observation.Path && !BasicPermission)
                     plan.MotionTerrain=observation.Prediction.FreezeCandidateTerrain(publication);
                 return contact!=null;
             }

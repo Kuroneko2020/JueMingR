@@ -49,7 +49,7 @@ namespace NativeWorldTextProbe
         // Independent forecast fixtures use the two existing unowned slots.
         internal const int IndependentReader=2,StrictReader=3;
         internal static void Save(object host,ObservationOptions value)
-        {var settings=(ObservationSettings)Get(host,"Settings");NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return settings.Loaded;});Require(settings.Set(value),"observation preference accepted");NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return !settings.Busy;});Require(settings.CompletionSucceeded,"observation preference actually committed");}
+        {var settings=(ObservationSettings)Get(host,"Settings");NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return settings.Loaded && !settings.Busy;});Require(settings.Set(value),"observation preference accepted; loaded="+settings.Loaded+" busy="+settings.Busy+" protected="+settings.Protected+" message="+settings.Message);NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return !settings.Busy;});Require(settings.CompletionSucceeded,"observation preference actually committed: "+settings.Message);}
         internal static void Run(object context)
         {using(var futureSteps=NativeCombatUsageChecks.ObserveDrawSteps())RunCore(context);}
         private static void RunCore(object context)

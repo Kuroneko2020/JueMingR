@@ -24,7 +24,7 @@ namespace JueMingR.TerrariaHost.F5
         {
             var aimRows=new F5RowLayout(elements,measure);
             aimRows.Row(ref y,0,522,"辅助瞄准",new[]{"开启","关闭","键"},label=>label=="开启"?F5Command.ObservationAimOn:label=="关闭"?F5Command.ObservationAimOff:F5Command.None,
-                new F5RowDescription("combat.aim","在原版攻击读方向时辅助瞄准共享目标；仍由你发起攻击。红框是预计接触位置，随机或未知阶段不保证命中。"));
+                new F5RowDescription("combat.aim","在原版攻击读方向时辅助瞄准共享目标；仍由你发起攻击。适用机制采用提前量，随机或未知阶段不保证命中。"));
             var aimKey=elements[elements.Count-1];elements[elements.Count-1]=new F5Element(aimKey.Kind,aimKey.Rect,aimKey.Text,aimKey.TextSize,aimKey.TextScale,aimKey.Command,"combat.aim");
             if(options.Aim)
             {

@@ -43,7 +43,7 @@ namespace JueMingR.TerrariaHost.Combat
         // not an input lease: every actual cursor consumer still requires
         // Allowed, independently of the read-only preview's lifetime.
         private bool Observed(Source source)
-        {return source!=null && combat.Attack.PreviewDemand && ReferenceEquals(source.Player,combat.Player) && source.Session==observation.Session && source.Selection==combat.Tools.SelectionIntent && source.Slot==combat.Player.selectedItem && ReferenceEquals(combat.Player.HeldItem,source.Weapon) && source.Weapon.type==source.Type && source.Weapon.prefix==source.Prefix;}
+        {return source!=null && combat.Attack.AttackObservationDemand && ReferenceEquals(source.Player,combat.Player) && source.Session==observation.Session && source.Selection==combat.Tools.SelectionIntent && source.Slot==combat.Player.selectedItem && ReferenceEquals(combat.Player.HeldItem,source.Weapon) && source.Weapon.type==source.Type && source.Weapon.prefix==source.Prefix;}
         private bool Allowed(Source source)
         {return Observed(source) && observation.Options.Aim && combat.Admitted(combat.Player);}
         internal bool Pending
@@ -88,7 +88,7 @@ namespace JueMingR.TerrariaHost.Combat
         internal ShotReceipt BeginShot(Player player,Item item,CombatCursorScope cursor)
         {
             var receipt=new ShotReceipt{Owner=this,Cursor=cursor,Previous=owner,Phase=preparedPhase,BirthCutoff=birthOrdinal};owner=receipt;
-            if(ReferenceEquals(player,combat.Player) && combat.Attack.PreviewDemand && item!=null && !item.IsAir)receipt.Source=new Source(combat,observation,item);
+            if(ReferenceEquals(player,combat.Player) && combat.Attack.AttackObservationDemand && item!=null && !item.IsAir)receipt.Source=new Source(combat,observation,item);
             return receipt;
         }
         internal ShotReceipt BeginDamage(Projectile shot)

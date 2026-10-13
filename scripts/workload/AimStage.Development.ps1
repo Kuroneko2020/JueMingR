@@ -97,6 +97,8 @@ function Read-AimStageDevelopment {
             'tests/NativeWorldTextProbe/NativeCombatAimChecks.cs',
             'tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.cs',
             'tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.Incident.cs',
+            'tests/NativeWorldTextProbe/NativeCombatReceiveChecks.cs',
+            'tests/NativeWorldTextProbe/NativeCombatObservationChecks.cs',
             'tests/NativeWorldTextProbe/NativeCombatImpactVisualChecks.cs',
             'tests/NativeWorldTextProbe/NativeCombatYoyoNavigationChecks.cs',
             'tests/NativeWorldTextProbe/NativeCombatBasicAimChecks.cs',
@@ -118,18 +120,21 @@ function Read-AimStageDevelopment {
         # hashed execution or reviewed applicability, including full Main.
         $allowed=@('docs/功能介绍/战斗辅助行为合同.md','docs/设计/战斗辅助实现设计.md','docs/计划/辅助瞄准阶段文档.md',
             'scripts/workload/Workload.Definitions.ps1','scripts/workload/AimStage.Development.ps1','scripts/build-phase0s-validation-package.ps1',
+            'scripts/phase0s/Continuous-Processing-Owner-Test-Card.zh-CN.md',
             'src/JueMingR.Features/Combat/AttackIntercept.cs','src/JueMingR.Features/Combat/CombatPredictionWork.cs',
             'src/JueMingR.TerrariaHost/Combat/CombatImpactMarker.cs','src/JueMingR.TerrariaHost/Combat/CombatObservationWorldLayer.cs',
             'src/JueMingR.TerrariaHost/Combat/HostAttackAim.cs','src/JueMingR.TerrariaHost/Combat/HostAttackAim.Preview.cs',
             'src/JueMingR.TerrariaHost/Combat/HostAttackAim.Selection.cs','src/JueMingR.TerrariaHost/Combat/HostCombatObservation.cs',
             'src/JueMingR.TerrariaHost/Combat/NpcPredictionSource.cs',
             'src/JueMingR.TerrariaHost/Combat/HostProjectileEnvironment.cs',
+            'src/JueMingR.TerrariaHost/F5/CombatObservationControls.cs','tests/NativeWorldTextProbe/NativeCombatImpactRetirementChecks.cs',
             'src/JueMingR.TerrariaHost/Combat/HostAttackControl.cs','tests/JueMingR.ArchitectureTests/Phase0TArchitectureChecks.cs',
             'src/JueMingR.TerrariaHost/Combat/HostAttackControl.Preview.cs','src/JueMingR.TerrariaHost/Combat/HostYoyoNavigation.cs',
             'src/JueMingR.TerrariaHost/Combat/HostAttackAim.FlightPreview.cs','src/JueMingR.TerrariaHost/Combat/HostGemStaffAttack.cs',
             'src/JueMingR.TerrariaHost/Combat/HostAttachedShotAttack.cs','tests/NativeWorldTextProbe/NativeCombatPreviewLeaseChecks.cs',
             'tests/NativeWorldTextProbe/NativeCombatAimChecks.cs','tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.cs',
-            'tests/NativeWorldTextProbe/NativeCombatBasicAimChecks.cs',
+            'tests/NativeWorldTextProbe/NativeCombatBasicAimChecks.cs','tests/NativeWorldTextProbe/NativeCombatAmmoChecks.cs',
+            'tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.Incident.cs',
             'tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.Optional.cs','tests/NativeWorldTextProbe/NativeCombatCandidateDemandChecks.cs',
             'tests/NativeWorldTextProbe/NativeCombatCostChecks.cs','tests/NativeWorldTextProbe/NativeCombatFlameChecks.cs',
             'tests/NativeWorldTextProbe/NativeCombatGemStaffChecks.cs','tests/NativeWorldTextProbe/NativeCombatSwingChecks.cs','tests/NativeWorldTextProbe/NativeCombatImpactVisualChecks.cs',
@@ -171,8 +176,12 @@ function Read-AimStageDevelopment {
         if(-not $component.scope -or -not $component.applicability -or @($component.artifacts).Count -eq 0){throw 'Incomplete component evidence applicability.'}
         foreach($artifact in $component.artifacts){$null=Read-AimStageArtifact $Root $artifact}
     }
+    $failureKinds=@('TEST_CORRECTED','PRODUCT_FIXED','ENVIRONMENT_LIMITATION')
+    if($continuation){$failureKinds+='OWNER_WITHDRAWN'}
     foreach($failure in $record.failureDispositions){
-        if($failure.disposition -cnotin @('TEST_CORRECTED','PRODUCT_FIXED','ENVIRONMENT_LIMITATION') -or
+        if($failure.disposition -ceq 'OWNER_WITHDRAWN' -and
+            ($failure.ownerDecision -cne '2026-10-14-impact-single-attempt-stop-loss' -or $failure.capability -cne 'impact-preview')) {throw 'Feature withdrawal requires this owner decision and exact retired capability.'}
+        if($failure.disposition -cnotin $failureKinds -or
             -not $failure.cause -or -not $failure.resolution -or @($failure.artifacts).Count -eq 0){throw 'Unresolved stage failure.'}
         foreach($artifact in $failure.artifacts){$null=Read-AimStageArtifact $Root $artifact}
     }

@@ -41,6 +41,7 @@ namespace JueMingR.TerrariaHost.Combat
         private PredictionTerrain.CellLease displayTerrain;
         private PredictionPlayerMotion displayPlayer;
         private int displayLife;
+        // previewOptionalTick is retained only for old read-only probe compatibility; no producer advances it.
         private long displayLeaseTick=-1,optionalTick=-1,previewOptionalTick=-1,displayShortTick=-1;
         private NpcIdentity optionalTarget;
         internal NpcTrajectory DisplayPath {get{return displayLeaseTick==(long)Main.GameUpdateCount && Path && Selection.HasTarget && displayPath!=null && displayPath.Identity.Equals(Selection.Target)?displayPath:null;}}
@@ -77,7 +78,7 @@ namespace JueMingR.TerrariaHost.Combat
         public string Unavailable(int field)
         {
             if(selectionFailed)return "战斗目标观察暂不可用，设置已保留；可点击开启重试。";
-            if(field==6)return selectionFailed?"战斗目标观察暂不可用，设置已保留；可点击开启重试。":pathFailed || Attack?.Failed==true?"预测增强暂不可用，基础瞄准仍可运行；可点击开启重试增强。":World.Impact.Failed?"预计命中位置显示暂不可用，辅助瞄准仍可运行；可点击开启重试显示。":null;
+            if(field==6)return selectionFailed?"战斗目标观察暂不可用，设置已保留；可点击开启重试。":pathFailed || Attack?.Failed==true?"预测增强暂不可用，基础瞄准仍可运行；可点击开启重试增强。":null;
             if(LayerStatus==Rendering.WorldLayerStatus.Unavailable)return "世界显示入口不可用，设置已保留；需要重新进入游戏。";
             if(World.Failed && (field==0 || field==1 || field==5))return "战斗显示暂不可用，设置已保留；可点击开启重试。";
             if(field==0 && (!Hooks.Ready || collisionFailed))return "碰撞箱显示暂不可用，设置已保留；可点击开启重试。";
@@ -97,11 +98,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(!CanConfigure)return;
             if(field==6 && value)
             {
-                bool displayOnly=Options.Aim && World.Impact.Failed && !selectionFailed && !pathFailed && Attack?.Failed!=true;
-                World.Impact.Reset();
-                // Retrying an optional red display must not revoke a healthy
-                // in-flight source capability (including a released bubble).
-                if(!displayOnly){selectionFailed=pathFailed=reportedPath=false;Array.Clear(failedTargets,0,failedTargets.Length);Attack?.Reset();}
+                selectionFailed=pathFailed=reportedPath=false;Array.Clear(failedTargets,0,failedTargets.Length);Attack?.Reset();
             }
             if(value && (field==0 || field==1 || field==5))selectionFailed=false;
             if(value && (field==0 || field==1 || field==5))World.Recover();
@@ -185,7 +182,7 @@ namespace JueMingR.TerrariaHost.Combat
             // A repeated real entry may follow native work in this same GUC.
             // Withdraw the old publication before any budgeted producer can
             // exit early; only the final consumer validation grants it again.
-            if(!beforeNpc){displayLeaseTick=-1;Attack?.InvalidatePreviewPresentation();}
+            if(!beforeNpc)displayLeaseTick=-1;
             try
             {
             Attack?.Demand(beforeNpc);
@@ -203,7 +200,7 @@ namespace JueMingR.TerrariaHost.Combat
             // their unavailable selected publication normally.
             if(!Selection.HasTarget){if(Prediction.Cache.Required>0)Prediction.Clear();return;}
             if(!beforeNpc)Attack?.RestorePresentationSelection(sampleTick);
-            bool displayValidated=false,previewValidated=false;
+            bool displayValidated=false;
             NpcTrajectory coreDisplayPrefix=null;
             // Invalidating a lease is immediate; granting production is a
             // separate cadence. Attempts advance this clock even for null or
@@ -247,8 +244,7 @@ namespace JueMingR.TerrariaHost.Combat
                 using(CombatPredictionWork.Optional(3))
                 {
                     int full=Prediction.Cache.Required;
-                    int prefix=Attack!=null && Attack.PreviewDemand?Math.Min(full,Attack.PreviewPreferred):full;
-                    bool tailFirst=Attack!=null && Attack.PreviewTailPending;
+                    int prefix=full;
                     bool admitted=false;
                     NpcTrajectory candidatePath;PredictionTerrain.CellLease candidateTerrain;
                     if(Attack!=null && Attack.TryCandidateDisplay(sampleTick,out candidatePath,out candidateTerrain) && CombatPredictionWork.TryContinue())
@@ -262,34 +258,29 @@ namespace JueMingR.TerrariaHost.Combat
                         if(!keep)
                         {
                             CaptureDisplay(candidatePath,candidateTerrain);
-                            Attack.PublishCandidatePreview(candidatePath);
-                            ValidateDisplay(sampleTick);displayValidated=true;Attack.ValidatePreviewPresentation();previewValidated=true;
+                            ValidateDisplay(sampleTick);displayValidated=true;
                         }
                         optionalTick=displayShortTick=sampleTick;optionalTarget=Selection.Target;
-                        prefix=Math.Max(prefix,candidatePath.Count-1);admitted=true;
+                        prefix=Math.Min(full,candidatePath.Count-1);admitted=true;
                     }
                     using(CombatPredictionWork.Optional(2))
                     if(!admitted && CombatPredictionWork.TryContinue())
                     {
                         admitted=true;
                         optionalTick=displayShortTick=sampleTick;optionalTarget=Selection.Target;
-                        // A display tail cannot consume the allowance before
-                        // its useful contact. Preserve the same-sample prefix,
-                        // solve its preview, then extend only with the remainder.
+                        // Red impact preview was withdrawn by the owner. Path
+                        // alone requests its normal tail; actual attack demand
+                        // was already prepared above under its separate owner.
                         PrepareSelectedPrediction(sampleTick,false,tick,prefix);
                         CaptureDisplay(sampleTick);
-                        // The last short window has already returned unresolved.
-                        // Give its missing tail real room before paying for the
-                        // same shallow preview again. A positive stays first.
-                        if(!tailFirst && Attack!=null && Attack.PreparePreviewOnly())previewOptionalTick=sampleTick;
+
                     }
                     if(admitted && CombatPredictionWork.TryContinue())
                     {
                         // No world or producer action follows candidate publication. Reuse
                         // only this call's completed checks; a later tail checks its new lease.
                         if(!displayValidated)ValidateDisplay(sampleTick);
-                        if(!previewValidated)Attack?.ValidatePreviewPresentation();
-                        displayValidated=previewValidated=true;
+                        displayValidated=true;
                         var prefixPath=displayPath;var prefixTerrain=displayTerrain;
                         long prefixLease=displayLeaseTick;
                         bool extended=false;
@@ -315,19 +306,10 @@ namespace JueMingR.TerrariaHost.Combat
                                     // cannot revoke the just-validated prefix.
                                     displayPath=prefixPath;displayTerrain=prefixTerrain;displayLeaseTick=prefixLease;
                                 }
-                                using(CombatPredictionWork.Optional(2))
-                                    if(replaces && Attack!=null && (tailFirst || Attack.PreviewNeedsMore) && CombatPredictionWork.TryContinue() && Attack.PreparePreviewOnly()){previewOptionalTick=sampleTick;previewValidated=false;}
+
                             }
                         }
-                        else if(tailFirst && prefix==full)
-                        {
-                            // The coverage hint can already request the whole
-                            // desired range. There is no tail extension branch
-                            // in that case, but its solver still needs a real
-                            // optional opportunity after this publication.
-                            using(CombatPredictionWork.Optional(2))
-                                if(Attack!=null && CombatPredictionWork.TryContinue() && Attack.PreparePreviewOnly()){previewOptionalTick=sampleTick;previewValidated=false;}
-                        }
+
                     }
                 }
             }
@@ -366,22 +348,12 @@ namespace JueMingR.TerrariaHost.Combat
                                     if(publication!=null && publication.SampleTick==sampleTick && !ReferenceEquals(publication,priorPublication))
                                     {
                                         CaptureDisplay(sampleTick);shortCaptured=true;
-                                        if(Attack!=null && CombatPredictionWork.TryContinue() && Attack.PreparePreviewOnly())previewOptionalTick=sampleTick;
                                     }
                                 }
                                 if(shortCaptured)ValidateDisplay(sampleTick);
                             }
                         }
-                        if(!previewValidated)Attack?.ValidatePreviewPresentation();
-                        if(Attack!=null && Attack.PreviewRefreshPending && DisplayPath!=null && (previewOptionalTick<0 || sampleTick-previewOptionalTick>=Attack.PreviewRefreshUpdates) && CombatPredictionWork.TryContinue())
-                        {
-                            bool previewPrepared=false;
-                            using(CombatPredictionWork.Optional(2))
-                                if(CombatPredictionWork.TryContinue()){previewPrepared=Attack.PreparePreviewWindow(DisplayPath);if(previewPrepared)previewOptionalTick=sampleTick;}
-                            // No new plan means this call's preceding validation
-                            // is still the complete result; do not scan it twice.
-                            if(previewPrepared)Attack.ValidatePreviewPresentation();
-                        }
+
                     }
                     catch(CombatPredictionBudgetExceededException){displayLeaseTick=-1;}
                 }

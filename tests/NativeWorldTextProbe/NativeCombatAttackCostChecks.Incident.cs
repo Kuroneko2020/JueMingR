@@ -101,15 +101,15 @@ namespace NativeWorldTextProbe
                 // Fixed natural preparation interval, never a search for a
                 // convenient successful Contact. These are functional-leaf
                 // warmups; cold product/presentation windows stay separate.
-                var warmPreview=new char[60];var warmBudget=new char[60];
+                bool retired=!(bool)Get(attack,"PreviewDemand");var warmPreview=new char[60];var warmBudget=new char[60];
                 for(int i=0;i<60;i++)
                 {
                     NativeCombatSelectionPreviewChecks.Step(context,incidentMouse,false);
-                    warmPreview[i]=GetOptional(attack,"ExpectedPreview")!=null?'P':'M';
+                    warmPreview[i]=(retired?GetOptional(host,"DisplayPath"):GetOptional(attack,"ExpectedPreview"))!=null?'P':'M';
                     warmBudget[i]=(bool)Get(Get(host,"PredictionWork"),"Exceeded")?'E':'_';
                 }
-                Console.WriteLine("BUDGET fixed-natural-warmup updates=60 preview(P=present/M=missing)="+new string(warmPreview)+" completed-budget(E=exceeded/_=clear)="+new string(warmBudget)+" endGUC="+Main.GameUpdateCount+" runtimeTick="+Get(context,"updateTick"));
-                Require(GetOptional(attack,"ExpectedPreview")!=null,"budget scene has an independently useful original arc before injection");
+                Console.WriteLine("BUDGET fixed-natural-warmup updates=60 consumer="+(retired?"NPC-path":"impact-preview")+" (P=present/M=missing)="+new string(warmPreview)+" completed-budget(E=exceeded/_=clear)="+new string(warmBudget)+" endGUC="+Main.GameUpdateCount+" runtimeTick="+Get(context,"updateTick"));
+                Require((retired?GetOptional(host,"DisplayPath"):GetOptional(attack,"ExpectedPreview"))!=null,"budget scene owns its declared current display consumer before actual-operation injection");
                 incidentPlayer.inventory[0]=incidentPlayer.HeldItem.Clone();budgetAttack=attack;budgetHost=host;budgetContext=context;abortedPlan=null;forceBudget=true;incidentBirths=incidentHits=0;
                 NativeCombatSelectionPreviewChecks.Step(context,incidentMouse,true);
                 Require(!forceBudget && abortedPlan!=null && forcedTick==Main.GameUpdateCount && incidentBirths==1,"forced allowance exhaustion happens after a real plan starts, and the same update still emits one native Basic attack");
@@ -125,9 +125,9 @@ namespace NativeWorldTextProbe
                     Require((bool)Get(Get(host,"PredictionWork"),"Exceeded") && (bool)Get(attack,"BasicPermission") && incidentBirths==1,"CompletedWorld preserves this real GUC's exhausted allowance and legal native Basic consumer despite the different runtime counter");
                 }
                 NativeCombatSelectionPreviewChecks.Step(context,incidentMouse,false);
-                Require(Main.GameUpdateCount==forcedTick+1 && !(bool)Get(Get(host,"PredictionWork"),"Exceeded") && GetOptional(attack,"ExpectedPreview")!=null && !(bool)Get(attack,"Failed"),"next real native update resets the allowance and recovers enhancement without a retry/reset command");
-                Console.WriteLine("PASS forced budget partial-plan/no-miss/same-update native Basic/next-native-tick recovery");
-                if(checkWorldClock)Console.WriteLine("PASS budget world-clock same-GUC CompletedWorld preserves exhaustion runtimeTick="+forcedRuntimeTick+" realGUC="+forcedTick+"; next real GUC alone restores enhancement");
+                Require(Main.GameUpdateCount==forcedTick+1 && !(bool)Get(Get(host,"PredictionWork"),"Exceeded") && (retired?GetOptional(attack,"ExpectedPreview")==null:GetOptional(attack,"ExpectedPreview")!=null) && !(bool)Get(attack,"Failed"),"next native update restores the real allowance without retry/reset or resurrecting a withdrawn preview");
+                Console.WriteLine("PASS forced budget partial-plan/no-miss/same-update native Basic/next-native-tick allowance recovery; impactRetired="+retired);
+                if(checkWorldClock)Console.WriteLine("PASS budget world-clock same-GUC CompletedWorld preserves exhaustion runtimeTick="+forcedRuntimeTick+" realGUC="+forcedTick+"; next real GUC alone restores the allowance");
                 budgetAttack=budgetHost=budgetContext=null;
                 foreach(bool clearLine in new[]{false,true})PathOffSelection(context,combat,host,attack,input,clearLine);
             }

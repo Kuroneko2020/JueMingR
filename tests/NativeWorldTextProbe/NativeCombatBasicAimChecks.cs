@@ -105,7 +105,7 @@ namespace NativeWorldTextProbe
             audit.Patch(AccessTools.Method(typeof(NPC),"StrikeNPC",new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)}),postfix:new HarmonyMethod(typeof(NativeCombatBasicAimChecks),nameof(Hit)));
             audit.Patch(typeof(Player).GetMethod("ItemCheck_StartActualUse",Flags),postfix:new HarmonyMethod(typeof(NativeCombatBasicAimChecks),nameof(HandStarted)){priority=Priority.Last});
             audit.Patch(typeof(Player).GetMethod("ItemCheck_CheckCanUse_Inner",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBasicAimChecks),nameof(PlacementChecked)){priority=Priority.Last});
-            var failures=new List<string>();
+            var failures=new List<string>();Exception primaryFailure=null;
             try
             {
                 foreach(bool assist in new[]{false,true})
@@ -121,17 +121,25 @@ namespace NativeWorldTextProbe
                 reverseGravity=true;Check(context,65,9,0,85,false,true,failures);reverseGravity=false;
                 PureSwing(context);
                 FutureFaultBasic(context);
-                PreviewBasicCompatibility(context);
+                // Pure impact preview was retired by the owner. Its old
+                // compatibility oracle remains historical, not an input obligation.
+                Require(!(bool)Get(attack,"PreviewDemand") && GetOptional(attack,"ExpectedPreview")==null,"retired preview does not acquire a Basic or Enhanced input demand");
                 PlacementBasicFault(context);
-                YoyoBodyFallback(context);
+                // Path-only hypothetical yoyo intent was part of retired preview.
+                // Native yoyo AI body/input safety remains in the Control scope.
                 Require(failures.Count==0,string.Join(" | ",failures));
             }
+            catch(Exception error){primaryFailure=error;Console.WriteLine("BASIC PRIMARY FAILURE "+error);throw;}
             finally
             {
                 player=null;target=null;reverseGravity=false;
-                NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());
-                NativeCombatCadenceChecks.Save(Get(context,"Combat"),new CombatOptions());
-                foreach(var method in audit.GetPatchedMethods().ToArray())audit.Unpatch(method,HarmonyPatchType.All,audit.Id);
+                try
+                {
+                    NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());
+                    NativeCombatCadenceChecks.Save(Get(context,"Combat"),new CombatOptions());
+                }
+                catch(Exception error){if(primaryFailure==null)throw;Console.WriteLine("BASIC CLEANUP FAILURE (primary retained) "+error);}
+                finally{foreach(var method in audit.GetPatchedMethods().ToArray())audit.Unpatch(method,HarmonyPatchType.All,audit.Id);}
             }
         }
         private static void Check(object context,int item,int parent,int child,int tileX,bool moving,bool assist,List<string> failures)

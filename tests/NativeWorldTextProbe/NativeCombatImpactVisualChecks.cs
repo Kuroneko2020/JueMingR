@@ -36,6 +36,9 @@ namespace NativeWorldTextProbe
         }
         internal static void Run(object context,ProbeGraphics graphics,string output)
         {
+            var retiredAttack=Get(Get(context,"Combat"),"Attack");
+            if(!(bool)Get(retiredAttack,"PreviewDemand")){NativeCombatImpactRetirementChecks.Run(context,graphics);return;}
+
             if(Environment.GetEnvironmentVariable("JMR_IMPACT_VISUAL_ONLY")=="a2-rectangle"){CheckA2Rectangle(context,graphics);return;}
             CheckReceiveGeometry();
             if(Environment.GetEnvironmentVariable("JMR_IMPACT_VISUAL_ONLY")=="natural-slime"){NativeCombatNaturalImpactChecks.Run(context,graphics,Path.Combine(output,"natural-slime"));return;}

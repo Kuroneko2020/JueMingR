@@ -19,12 +19,18 @@ namespace NativeWorldTextProbe
         private static void Strike(NPC __instance,int __result){if(damageDepth>0 && ReferenceEquals(__instance,target) && __result>0 && firstHit<0)firstHit=Main.GameUpdateCount;}
         internal static void Run(object context)
         {
-            var host=Get(context,"CombatObservation");var combat=Get(context,"Combat");var a=combat.GetType().Assembly;var audit=new Harmony("JueMingR.Tests.Flame");bool wind=Main.windPhysics;
+            var host=Get(context,"CombatObservation");var combat=Get(context,"Combat");var a=combat.GetType().Assembly;var audit=new Harmony("JueMingR.Tests.Flame");bool wind=Main.windPhysics;Exception primaryFailure=null;
             foreach(string name in new[]{"HandleSpecialEvent","HandleRunning","HandleMining"})audit.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
             audit.Patch(typeof(Projectile).GetMethod("Damage",Flags),prefix:new HarmonyMethod(typeof(NativeCombatFlameChecks),nameof(BeforeDamage)),postfix:new HarmonyMethod(typeof(NativeCombatFlameChecks),nameof(AfterDamage)));
             audit.Patch(AccessTools.Method(typeof(NPC),"StrikeNPC",new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)}),postfix:new HarmonyMethod(typeof(NativeCombatFlameChecks),nameof(Strike)));
             try{if(Environment.GetEnvironmentVariable("JMR_FLAME_ONLY")!="natural"){Births(context,a);Motor(context,a);Shapes(context,a);DamageWindow(context);}Natural(context,host,combat);}
-            finally{target=null;damageDepth=0;Main.windPhysics=wind;audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());}
+            catch(Exception error){primaryFailure=error;Console.WriteLine("FLAME PRIMARY FAILURE "+error);throw;}
+            finally
+            {
+                target=null;damageDepth=0;Main.windPhysics=wind;audit.UnpatchAll(audit.Id);
+                try{NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());}
+                catch(Exception error){if(primaryFailure==null)throw;Console.WriteLine("FLAME CLEANUP FAILURE (primary retained) "+error);}
+            }
         }
         private static Player Reset(object context,int weapon)
         {
@@ -87,15 +93,15 @@ namespace NativeWorldTextProbe
         }
         private static void Natural(object context,object host,object combat)
         {
-            int cases=0,hits=0,misses=0;var attack=Get(combat,"Attack");
+            int cases=0,hits=0,misses=0;var attack=Get(combat,"Attack");bool retired=!(bool)Get(attack,"PreviewDemand");
             foreach(int weapon in new[]{506,1910})foreach(int direction in new[]{-1,1})foreach(int distance in new[]{8,20})foreach(bool wall in new[]{false,true})
             {
                 var p=Reset(context,weapon);target=NativeCombatControlPreviewChecks.Dummy(2,47+direction*distance,40);firstHit=-1;damageDepth=0;
                 if(wall)for(int y=0;y<Main.maxTilesY;y++)NativeToolsChecks.Tile(47+direction*4,y,1);
                 NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,true,true,30,true,false));AttackContact preview=null;
                 for(int i=0;i<3;i++){NativeCombatSelectionPreviewChecks.Step(context,target.Center,false,true);preview=(AttackContact)GetOptional(attack,"ExpectedPreview");Require(!Main.projectile.Any(q=>q.active),"idle flame preview creates no native shot");}
-                Require(wall || preview!=null,"unpressed native flamethrower has a useful preview "+weapon+"/"+direction+"/"+distance);
-                if(weapon==506 && direction==1 && distance==20 && !wall)Workload(combat.GetType().Assembly,p,preview);
+                Require(retired?preview==null:wall || preview!=null,"unpressed flame has no withdrawn preview; historical enabled display retains its original requirement "+weapon+"/"+direction+"/"+distance);
+                if(!retired && weapon==506 && direction==1 && distance==20 && !wall)Workload(combat.GetType().Assembly,p,preview);
                 if(preview!=null)
                 {
                     var impact=Get(Get(host,"World"),"Impact");Call(impact,"Capture");var zoom=Main.GameViewMatrix.ZoomMatrix;Call(impact,"Project",zoom,Matrix.Invert(zoom));var b=preview.ReceiveBounds;
@@ -114,7 +120,7 @@ namespace NativeWorldTextProbe
                 }
                 NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,true,true,30,true,true));long start=Main.GameUpdateCount;bool born=false;
                 for(int frame=1;frame<=60 && firstHit<0;frame++){NativeCombatSelectionPreviewChecks.Step(context,target.Center,frame==1);born|=Main.projectile.Any(q=>q.active && q.type==85 && q.owner==p.whoAmI);}
-                Require(born && (preview==null?firstHit<0:firstHit==preview.Timeline.SampleTick+preview.Tick),"original first flame Damage agrees with idle preview "+weapon+"/"+direction+"/"+distance+"/"+wall+" actual="+(firstHit<0?-1:firstHit-start)+" preview="+preview?.Tick);
+                Require(born && (retired?(wall?firstHit<0:firstHit>=start):(preview==null?firstHit<0:firstHit==preview.Timeline.SampleTick+preview.Tick)),"retained original flame hand receives its open target and is stopped by the real wall; historical preview timing is separate "+weapon+"/"+direction+"/"+distance+"/"+wall+" actual="+(firstHit<0?-1:firstHit-start)+" preview="+preview?.Tick);
                 if(firstHit<0)misses++;else hits++;cases++;
             }
             Require(cases==16 && hits==8 && misses==8,"both actual gel weapons keep left/right near/far hand use and real walls");Console.WriteLine("PASS natural flame cases="+cases+" actualHits="+hits+" blocked="+misses);

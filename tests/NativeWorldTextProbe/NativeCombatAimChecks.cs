@@ -34,7 +34,7 @@ namespace NativeWorldTextProbe
         {
             var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var input=Get(context,"Input");var tools=Get(context,"Tools");
             var attack=GetOptional(combat,"Attack");Require(attack!=null,"ordinary aim owner must be composed");Initialize();
-            // Basic consumers and their independent preview/safety contract
+            // Basic consumers and their actual input/safety contract
             // belong to the normal Aim scope, not only a private runner.
             NativeCombatBasicAimChecks.Run(context);
             NativeCombatAmmoChecks.Run(context);
@@ -54,11 +54,7 @@ namespace NativeWorldTextProbe
                 NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,false,true));
                 Prepare(host,attack,body,targetSpeed);
                 var contact=(AttackContact)GetOptional(attack,"ExpectedImpact");Require(contact!=null,"prepared real weapon contact: "+weaponType+"/"+targetSpeed);
-                PrepareDisplay(host,attack);var impact=Get(Get(host,"World"),"Impact");Call(impact,"Capture");var zoom=Main.GameViewMatrix.ZoomMatrix;Call(impact,"Project",zoom,Matrix.Invert(zoom));
-                Require((bool)Get(impact,"Visible"),"only legal matching prepared contact displays red");
-                var projected=(Vector2)Get(impact,"Position");var previewBox=contact.ReceiveBounds;
-                var expected=Vector2.Transform(new Vector2(previewBox.CenterX,previewBox.CenterY)-Main.screenPosition,zoom);
-                Require(Vector2.DistanceSquared(projected,expected)<.001f,"red projects the receive-time NPC path centre rather than the collision edge or elevated AimInput");
+                Require(GetOptional(attack,"ExpectedPreview")==null,"retired impact preview contributes no ordinary input demand");
                 int oldX=Main.mouseX,oldY=Main.mouseY,stack=player.inventory[54].stack;var rng=Main.rand;
                 // Preparation must be genuinely read-only even for native
                 // ammo-cycling and conservation policies, not dontConsume.
@@ -71,7 +67,7 @@ namespace NativeWorldTextProbe
                 typeof(Player).GetMethod("ItemCheck_Shoot",Flags).Invoke(player,new object[]{0,player.HeldItem,50,false});
                 var born=Main.projectile.Where(p=>p.active && p.owner==0).ToArray();Require(born.Length==1,"aim creates exactly the vanilla single shot");
                 Require(Main.mouseX==oldX && Main.mouseY==oldY,"real Shoot postfix/finalizer restores physical cursor");
-                Call(impact,"Project",zoom,Matrix.Invert(zoom));Require(ReferenceEquals(preview,GetOptional(Get(attack,"preview"),"Contact")) && GetOptional(attack,"ExpectedImpact")==null,"native consumption retires execution without mutating the optional plan, which may be absent after actual Contact reuse; a nonempty independent preview is covered separately");
+                Require(GetOptional(attack,"ExpectedPreview")==null && GetOptional(attack,"ExpectedImpact")==null,"native consumption retires execution and cannot restore the withdrawn independent preview");
                 var shot=born[0];Require(shot.type==(weaponType==ItemID.WoodenBow?1:14),"native selected projectile type is preserved");
                 var model=weaponType==ItemID.WoodenBow?new AttackMotion(player.HeldItem.shootSpeed+player.inventory[54].shootSpeed,.1f,15,shot.extraUpdates+1,shot.width,shot.height,shot.timeLeft):new AttackMotion(player.HeldItem.shootSpeed+player.inventory[54].shootSpeed,0,0,shot.extraUpdates+1,shot.width,shot.height,shot.timeLeft);
                 var native=shot.Center;float x=native.X,y=native.Y,vx=shot.velocity.X,vy=shot.velocity.Y;
@@ -269,6 +265,18 @@ namespace NativeWorldTextProbe
         }
         private static bool Equal(object a,object b){if(a is Array && b is Array)return ((Array)a).Cast<object>().SequenceEqual(((Array)b).Cast<object>());return Equals(a,b);}
         internal static void Prepare(object host,object attack,NPC body,float vx,bool projectilePhase=false)
+        {PublishFixture(host,body,vx);Call(attack,projectilePhase?"PrepareProjectiles":"Prepare");}
+        // Complete-model/native-outcome components have their own finite work
+        // scope. They do not assert that this synthetic121 future can be built
+        // during a cold real input allowance. Native Shoot still uses the normal
+        // operation/permission outlet and retains its real owner protection.
+        internal static void PrepareMechanismFixture(object host,object attack,NPC body,float vx)
+        {
+            PublishFixture(host,body,vx);
+            var phase=attack.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase",true);
+            using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))Call(attack,"PrepareCore",Enum.Parse(phase,"CompletedWorld"));
+        }
+        private static void PublishFixture(object host,NPC body,float vx)
         {
             var selection=Get(host,"Selection");Call(selection,"Update",((ObservationSettings)Get(host,"Settings")).Value,(long)Get(host,"Session"),true,null);
             var id=(NpcIdentity)Get(selection,"Target");Require(id.Slot==body.whoAmI,"single shared final target is selected");
@@ -277,7 +285,7 @@ namespace NativeWorldTextProbe
             // terrain lease against real world dimensions before publication;
             // an uninitialized lease cannot authorize the display component.
             var prediction=Get(host,"Prediction");Call(Get(prediction,"Terrain"),"Reset");
-            var cache=(NpcPredictionCache)Get(prediction,"Cache");cache.Demand(0,1,120);cache.Demand(1,1,120);cache.Publish(new NpcTrajectory(id,Main.GameUpdateCount,1,PredictionAssumption.None,PredictionStop.None,points,points.Length));Call(attack,projectilePhase?"PrepareProjectiles":"Prepare");
+            var cache=(NpcPredictionCache)Get(prediction,"Cache");cache.Demand(0,1,120);cache.Demand(1,1,120);cache.Publish(new NpcTrajectory(id,Main.GameUpdateCount,1,PredictionAssumption.None,PredictionStop.None,points,points.Length));
         }
         internal static void PrepareDisplay(object host,object attack)
         {

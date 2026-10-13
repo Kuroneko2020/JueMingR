@@ -92,8 +92,10 @@ namespace NativeWorldTextProbe
                         presentationField.SetValue(attack,retryPlan);retryPlan.GetType().GetField("MotionTerrain",Flags).SetValue(retryPlan,motionLease);
                         var displayArgs=new object[]{(long)Main.GameUpdateCount,null,null};
                         Require((bool)attack.GetType().GetMethod("TryCandidateDisplay",Flags).Invoke(attack,displayArgs),"The same completed World candidate can supply its pure-observation path and exact motion lease.");
-                        int borrowedSolves=retrySolves;Call(attack,"PublishCandidatePreview",displayArgs[1]);
-                        Require(retrySolves==borrowedSolves && ReferenceEquals(cache.Read(0),published) && GetOptional(attack,"ExpectedImpact")==null && !p.controlUseItem,"Publishing the completed presentation performs zero hand solves, preserves the selected Source publication and grants no native input.");
+                        int borrowedSolves=retrySolves;
+                        host.GetType().GetMethod("CaptureDisplay",Flags,null,new[]{typeof(NpcTrajectory),motionLease.GetType()},null).Invoke(host,new[]{displayArgs[1],motionLease});
+                        Call(host,"ValidateDisplay",(long)Main.GameUpdateCount);
+                        Require(ReferenceEquals(GetOptional(host,"DisplayPath"),displayArgs[1]) && retrySolves==borrowedSolves && ReferenceEquals(cache.Read(0),published) && GetOptional(attack,"ExpectedImpact")==null && GetOptional(attack,"ExpectedPreview")==null && !p.controlUseItem,"Publishing the completed NPC path performs zero hand solves, preserves the selected Source publication and grants neither input nor retired preview.");
                     }
                     finally{presentationField.SetValue(attack,priorPresentation);Call(attack,"ClearPreview");}
                     Call(retryPlan,"Clear");interruptRetry=true;retrySolves=0;

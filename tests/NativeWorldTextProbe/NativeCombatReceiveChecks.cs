@@ -58,7 +58,13 @@ namespace NativeWorldTextProbe
         {
             var settings=((ObservationSettings)Get(host,"Settings")).Value;var selection=Get(host,"Selection");Call(selection,"Update",settings,(long)Get(host,"Session"),true,null);var identity=(NpcIdentity)Get(selection,"Target");Require(identity.Slot==n.whoAmI,"same shared receive target");
             var points=new NpcTrajectoryPoint[121];for(int i=0;i<points.Length;i++)points[i]=new NpcTrajectoryPoint(i,new NpcMotionState{Identity=identity,X=n.position.X,Y=n.position.Y,Width=n.width,Height=n.height,CanReceive=true,Active=true});
-            var cache=(NpcPredictionCache)Get(Get(host,"Prediction"),"Cache");cache.Demand(0,1,120);cache.Demand(1,1,120);cache.Publish(new NpcTrajectory(identity,(long)Main.GameUpdateCount-1,1,PredictionAssumption.None,PredictionStop.None,points,points.Length));Call(attack,"PrepareAction");
+            var cache=(NpcPredictionCache)Get(Get(host,"Prediction"),"Cache");cache.Demand(0,1,120);cache.Demand(1,1,120);cache.Publish(new NpcTrajectory(identity,(long)Main.GameUpdateCount-1,1,PredictionAssumption.None,PredictionStop.None,points,points.Length));
+            // Complete receive-clock mechanism component. The supplied121
+            // static NPC future is not a natural cold-use supply claim. Solve
+            // under a separate finite fixture owner; native AI/Damage still
+            // traverse their ordinary operation and input protections.
+            var phase=attack.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase",true);
+            using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))Call(attack,"PrepareCore",Enum.Parse(phase,"BeforeNpc"));
         }
     }
 }

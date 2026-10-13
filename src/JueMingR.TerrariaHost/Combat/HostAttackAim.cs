@@ -85,9 +85,17 @@ namespace JueMingR.TerrariaHost.Combat
         {actionRequired=preferred=Math.Min(NpcPredictionCache.Horizon,Math.Max(1,required));observation.Prediction.Cache.Demand(1,1,preferred);}
         internal void Demand(bool beforeNpc=false)
         {
-            if((observation.Path && PreviewDemand || UrgentPreparation) && Eligible(combat.Player.HeldItem) && !HostPlacementAttack.Handles(combat.Player.HeldItem))
+            if(UrgentPreparation && Eligible(combat.Player.HeldItem) && !HostPlacementAttack.Handles(combat.Player.HeldItem))
             {demandActive=true;preferred=Preferred();if(beforeNpc)preferred=actionRequired>0?actionRequired:ActionPreferred(observation.Selection.Target);observation.Prediction.Cache.Demand(1,1,preferred);}
-            else{observation.Prediction.Cache.Release(1);expansion=0;if(demandActive){demandActive=false;Clear();}}
+            else
+            {
+                observation.Prediction.Cache.Release(1);expansion=0;
+                // An empty outer input epoch does not end a live controller's
+                // observed source. No producer is requested, and consumption
+                // still uses Permission/phase/member gates. Retire on the real
+                // feature/weapon edge, not merely the absence of urgent work.
+                if(demandActive){demandActive=false;if(!AttackObservationDemand || !observation.Options.Aim)Clear();}
+            }
         }
         private int Preferred()
         {
@@ -141,7 +149,7 @@ namespace JueMingR.TerrariaHost.Combat
         internal void Reset(){demandActive=false;Clear();ClearCandidatePlans();RetryFaults();swing.Clear();Control.Reset();hasConsumedInput=false;}
         internal void ObserveSwing(Player player,Item item,Rectangle frame,float offset)
         {
-            if(!ReferenceEquals(player,combat.Player) || !HostSwingAttack.Handles(item) || !PreviewDemand)return;
+            if(!ReferenceEquals(player,combat.Player) || !HostSwingAttack.Handles(item) || !AttackObservationDemand)return;
             try{using(observation.PredictionWork.Enter(Main.GameUpdateCount)){swing.Observe(item,frame,offset);if(Permission && player.itemAnimation>0 && !HostSwingAttack.Mixed(item) && (!HostPhasebladeAttack.Handles(item.shoot) || combat.Left || player.controlUseItem))PrepareSwing(player,item,observation.Prediction.Cache.Read(1),HostAttackPhase.BeforeNpc,true);}}
             catch(CombatPredictionBudgetExceededException){ClearExecution();}
             catch(Exception error){FailLocal(error);}
@@ -162,9 +170,7 @@ namespace JueMingR.TerrariaHost.Combat
         {PreparePhase(HostAttackPhase.Projectiles);}
         internal bool PreparePreviewOnly()
         {
-            // Capture already prefers a qualified actual hand/control contact.
-            // Use that same receiver/time/source lease instead of solving a
-            // hypothetical contact which presentation would immediately ignore.
+            if(!PreviewDemand)return false;
             bool attempted=false;
             try{using(observation.PredictionWork.Enter(Main.GameUpdateCount)){if(Permission && ExpectedImpact!=null)return false;if(CombatPredictionWork.TryContinue())PreparePreview(HostAttackPhase.CompletedWorld,out attempted);}}
             catch(CombatPredictionBudgetExceededException){EndFlightPreparation();}

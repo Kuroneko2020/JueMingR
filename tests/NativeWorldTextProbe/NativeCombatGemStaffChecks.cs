@@ -43,12 +43,14 @@ namespace NativeWorldTextProbe
             {
                 string leaf=Environment.GetEnvironmentVariable("JMR_GEM_ORACLE_ONLY");var assembly=combat.GetType().Assembly;
                 var flightModel=assembly.GetType("JueMingR.TerrariaHost.Combat.HostGemStaffAttack",true);
+                bool retired=!(bool)Get(Get(combat,"Attack"),"PreviewDemand");
                 if(leaf==null || leaf=="birth")Births(context,assembly);
                 if(leaf==null || leaf=="motor")Motor(context,assembly);
                 if(leaf==null || leaf=="collision")Collisions(context,assembly);
-                if(leaf==null || leaf=="natural")Natural(context,host,combat);
-                if(leaf==null || leaf=="flight"){KnownFlights(context,assembly);ObservedFlight(context,host,combat);}
-                if(leaf==null || leaf=="flight-dependencies")ObservedDependencies(context,host,combat);
+                if((leaf==null || leaf=="natural") && !retired)Natural(context,host,combat);
+                if(leaf==null || leaf=="flight" || leaf=="known-flight"){KnownFlights(context,assembly);if(!retired && leaf!="known-flight")ObservedFlight(context,host,combat);}
+                if((leaf==null || leaf=="flight-dependencies") && !retired)ObservedDependencies(context,host,combat);
+                if(retired)Require(GetOptional(Get(combat,"Attack"),"ExpectedPreview")==null,"retired gem display does not run its historical independent-preview consumers");
             }
             finally{target=null;recordBirth=false;receiving=null;damageDepth=receiveType=0;Main.windPhysics=wind;audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());}
         }

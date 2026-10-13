@@ -30,8 +30,14 @@ namespace NativeWorldTextProbe
                 // independent stationary rows do not tick NPCs; start eligible
                 // instead of inheriting the preceding piercing shot's cooldown.
                 Array.Clear(n.immune,0,n.immune.Length);
-                NativeToolExecutionChecks.Sample(context,input,new Vector2(650,550),true);Call(combat,"Sample");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,false,true));NativeCombatAimChecks.Prepare(host,attack,n,0);
-                var contact=(AttackContact)GetOptional(attack,"ExpectedImpact");Require(contact!=null,"actual ammo family prepares contact: weapon="+row[0]+" ammo="+row[1]);
+                NativeToolExecutionChecks.Sample(context,input,new Vector2(650,550),true);Call(combat,"Sample");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,false,true));
+                // This is the complete-model/native-outcome matrix, not the
+                // natural cold-use supply check. Its immutable121 fixture and
+                // finite isolated mechanism scope cannot qualify runtime costs;
+                // actual Shoot retains the normal input/operation protection.
+                NativeCombatAimChecks.PrepareMechanismFixture(host,attack,n,0);
+                var contact=(AttackContact)GetOptional(attack,"ExpectedImpact");
+                Require(contact!=null,"complete mechanism component resolves ammo contact: weapon="+row[0]+" ammo="+row[1]);
                 var captured=Get(attack,"ammo");Require((int)Get(captured,"Projectile")==row[2],"deterministic post-ammo shoot conversion order");float raw=(float)Get(captured,"Speed");var delta=new Vector2(contact.AimX,contact.AimY)-(p.RotatedRelativePoint(p.MountedCenter)+(row[0]==281 || row[0]==986?new Vector2(6*p.direction,-6*p.gravDir):Vector2.Zero));delta.Normalize();var expected=delta*raw;
                 var models=combat.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackModels");var args=new object[]{captured,default(AttackMotion)};Require((bool)models.GetMethod("TryRead",Flags).Invoke(null,args),"resolved member has an explicit model");var motion=(AttackMotion)args[1];
                 Require((row[2]==117 || row[2]==120 || row[2]==495 || row[2]==2 || row[2]==133 || row[2]==278 || row[2]==51 || row[2]==267)?motion.Gravity>0:motion.Gravity==0,"straight members cannot fall through into a later arrow's gravity branch");
