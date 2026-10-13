@@ -1,4 +1,47 @@
-# #114 / Draft PR #115：核心瞄准优先恢复交付
+# #114 / Draft PR #115：本轮续修固定交付（2026-10-14）
+
+**源码/有限成本、实际ZIP和文件安装独审均已闭合。** 红框最后一次尝试失败，按所有者止损撤下入口、绘制和独立预览开销，`OWNER_WITHDRAWN`不代表修好。Aim/适用Enhanced/NPC Path/父需求Marker、持续控制和用户数据保留。#114/#7 OPEN、PR115 OPEN Draft；不合并、关闭、Tag或Release，所有者游戏/FPS/多人未验收。
+
+测量产品 `abc0789c4e9d0ff1f772b6010622947fb927fd61`；正常完整包/现装来源 `1ae9965081cddffd2af41cf50c807f6144e6adfb`，中间e706仅工具/合同卡，1ae仅两处固定60正常更新的消费反控前置修正。744生产编译行与四模块10751方法IL/签名/locals/EH无差，不能重署PE/MVID。1ae sourceFP `F9F1888541BD9EF79312840B25A00995D7273B97876A089D2659C209CA08A43A`、inputFP `6840ACC81A73DA401B57642E0A69224DD040A0408ABAB368A4C85811B661A7D1`、compileFP `A74C95422E1A473B0BDAF7D783186E1B5EEC7EDEDC2639DC41688E1BD1ECD521`；四foreign原字节保留，不能称整个工作区clean。
+
+完整优化Release/net472/x86 ZIP17成员/10payload位于 `outputs/aim-continuation-delivery-20261014-1ae9965/`，**2,166,047 bytes**，SHA256 **6AA68515A17A58BD8A891C82854CACD736AF1377B064AEBBEEBCCEF4EE77B83F**。actualHost `CB523B54D5D51F193F7AFF83B6B574F41FB07A99CA736CBA87FB83B414FC0FB6` / MVID `d5ae78a7-2779-4579-aee1-4fbb62c34220`，manifest `740F32BD3D531C05D243C41FB4BF4A8C17FB097534FEF51C1F65D06FFF754F01`。正常真实reader、builder及strict existing-package verifier均退出0；不是PrepareOnly载体，不带游戏资产/probe。
+
+## 本轮必要16scope及实际适用性
+
+| scope | 实际执行或受审复用；原PE/退出身份分别保留 |
+|---|---|
+| architecture-combat | Debug --combat原真0，同生产输入复用 |
+| optional-consumption | 实际1aeZIP新probe默认完整路由0，固定60两前置；依赖/同GUC/预算/关闭反控不改 |
+| marker-demand | 保存父需求矩阵原0；实际1aeGPU父门/标记资源与像素0 |
+| candidate-demand | 实际1ae原stock五场0，25Use/Birth20E5B；实际BudgetRetry0 |
+| local-failure | r07真正坏实例Source与健康目标隔离0，managed差异范围受审 |
+| aim-input | 当前abc和实际1aeZIP Basic/native阶段/目标/换物/移动0；原19完整机制1000scope另列 |
+| control-input | 实际1aeBubble0（Projectiles Enhanced→Kill→child→Damage4）；具Source/phase/GUC的Yoyo/导引原0窄复用 |
+| effects-receive | 原known-flight/natural与receive机制真0；effects-r01 cleanup未知及过程1不写整组通过 |
+| selection-preview | 本名称保留工具路由，实际测纯NPC显示；Ranked固定60实际FarPath51/60、55/60，变化8界通过 |
+| attack-costs | 实际1ae默认完整路由0，Source/Plan/同epoch/控制整数计数；独立机制预算不代供给 |
+| impact-draw | 实际1aeGPU正常World.Prepare/Draw正path33/stroke36/pixels，六退休入口0；这是撤项验证 |
+| main-performance | 原版Main20四模式站动+三机制ABBA12（每1290）全部0；原mixed和复测限制保留 |
+| representative-opportunities | 候选20E16B/A235E1B、各36父体；三actualMain原因窗解释准备中断/新样本重建，不移动暖窗 |
+| navigation | 原真实Yoyo导航/motor/release/nativeDamage0，同义资格及生产IL适用受审 |
+| whip-terrain | r07 ownerfuture/方向/墙开闭及真实消费者0；不替4672 Main机制性能 |
+| original-feedback | 原版输出/FirstDamage100等完整模型与免疫/阶段反控，静态121/1000范围显式保留 |
+
+原32成本mixed不改；单AB Aim/Path逆向与尾部保留。追加普通移动Path ABBA4的首AB1290记录物理子集匹配，暖attack Update差-0.0377ms/zero+0.0065ms/frame+0.0952ms、release -0.127/+0.0025/-0.0513ms；末BA只有522步匹配，不能池化署统一改善。粗入口仅归因：GUC0 Source0/显示依赖一次、全尾5更新与失效32短段有界；支持已测有限持续成本，不给global性能/FPS PASS。暖Path最长缺1更新且有长段恢复，计数是整条已授lease的Count，不把capture age当Sample age或剩余future。
+
+普通Both四候选各52E1B/53，复杂C20E16B/A235E1B标准暖496/571 Basic保留。三原因窗口有observer，不能逆填原32时间或证明独占JIT；后续新Sample17→33→65/33重建成功，不意味着所有首发全E。当前stock暖frame40/GUC124 Basic原因未知。cold11/r37、旧cold8正前提、cleanup未知和之前pressure FAIL全部保原件；新固定60没有早停/预算reset/强Capture，旧失败不重贴PASS。
+
+## 实际包与换装
+
+actual1ae ZIP Basic/stock/defaultCosts/Bubble、BudgetRetry、真GPU退休叶均0，actualOriginalMain冻结4695完整初始化/Bootstrap五事件/Runtime/Hook加载120步、556世界Draw、自主0；8出生7E1B/8hit，第31步Basic原因未采，只证明加载。它不重署原32性能或所有者体验。
+
+target `F:/Games/GamePlats/Steam/steamapps/common/Terraria`：oldA2 ownership→12文件备份→官方Restore0→actual1ae官方Install0→Verify→独审INSTALLED_VERIFIED。backup `.local/aim-continuation-20261013/install-final-20261013-224413/backup`，1775当前用户保护文件/4foreign/12backup字节hash未变，target10与manifest核合。未启动所有者游戏/强杀。安装receipt SHA **3E843A6FF7C0F9B63A32F82492E9C1F73C6AB6596D1BCA54981B33F7560C463F**。
+
+实际16准入record CFB805F6…34129、consumer closure3C8A4ADA…048787、Main-load809BA828…A411E1及三个独审原答在本机`.local`封存；保持 `INCOMPLETE / releaseEligible=false`。后续公开文档HEAD与包/现装1ae另列，不为纯事实文字重包。详见[当前阶段](../../docs/计划/辅助瞄准阶段文档.md#aim-priority-recovery-20261013)。
+
+---
+
+## 历史：A2原交付（下方保留当时事实，不代表当前包或安装）
 
 **阶段源码与实际 ZIP 均获独审批准，已备份换装并核验。** 完整187资格仍为 `INCOMPLETE`、`releaseEligible=false`；#114/#7保持OPEN，PR115保持Draft。未启动所有者游戏，体验、完整原版帧循环/FPS和多人未验收。
 
