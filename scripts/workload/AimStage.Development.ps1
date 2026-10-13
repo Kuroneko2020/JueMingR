@@ -1,4 +1,4 @@
-# Explicitly authorized #114 stage candidates. This does not write the
+﻿# Explicitly authorized #114 stage candidates. This does not write the
 # formal workload cache, grant release qualification, or authorize installation.
 function Read-AimStageArtifact {
     param([string] $Root,$Entry)
