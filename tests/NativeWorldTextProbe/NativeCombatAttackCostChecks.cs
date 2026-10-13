@@ -81,7 +81,7 @@ namespace NativeWorldTextProbe
             if(only=="budget-clock"){BudgetAndPathOffSelection(context,combat,host,attack,input,true);return;}
             if(only=="path-off-selection"){BudgetAndPathOffSelection(context,combat,host,attack,input,false,false);return;}
             if(only=="path-off-recovery"){BudgetAndPathOffSelection(context,combat,host,attack,input,false,false,true);return;}
-            if(string.IsNullOrEmpty(only))BudgetAndPathOffSelection(context,combat,host,attack,input,true);
+            if(string.IsNullOrEmpty(only)){OptionalConsumption(context,combat,host,attack,input);BudgetAndPathOffSelection(context,combat,host,attack,input,true);}
             var audit=Audit(attack);
             try
             {
