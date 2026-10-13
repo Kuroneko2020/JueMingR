@@ -2,7 +2,6 @@
   {
     "id": "aged-idle-owner",
     "disposition": "PRODUCT_FIXED",
-    "status": "VERIFIED_R11; FINAL_BIND_PENDING",
     "cause": "7576 aged显示分支漏idle WhipOwner.Current及Obstacles.BirthInputsCurrent，live Flight guard不能覆盖Flight=null的owner。",
     "resolution": "r11仅Preview恢复两完整标量/出生输入门，保age0/时基/输入/调度；实际graphics成员负控与完整integration复核。",
     "artifacts": [
@@ -26,7 +25,6 @@
   {
     "id": "draw-bool-adapter",
     "disposition": "TEST_CORRECTED",
-    "status": "VERIFIED_7576; R11_PERFORMANCE_PENDING",
     "cause": "bool Draw方法被错误Action delegate适配，原失败属于载体边界。",
     "resolution": "corrected adapter保bool边界/物理窗口/全部行，原rawfailure不改写PASS。",
     "artifacts": [
@@ -45,7 +43,6 @@
   {
     "id": "setdefaults-initial-velocity",
     "disposition": "TEST_CORRECTED",
-    "status": "INITIALIZATION_VERIFIED; FINAL_BIND_PENDING",
     "cause": "锁定原版SetDefaults保留前场景velocity，未声明初速污染静止夹具。",
     "resolution": "仅初始化zero，不逐帧擦native移动/击退；原失败保留，后继通过不称产品算法修复。",
     "artifacts": [
@@ -69,7 +66,6 @@
   {
     "id": "optional-display-vs-input",
     "disposition": "TEST_CORRECTED",
-    "status": "VERIFIED_R11; FINAL_BIND_PENDING",
     "cause": "旧idle0/每更新非空期待未分可选显示预算/旧capture年龄和实际发射，首断言遮蔽完整区间。",
     "resolution": "保75/45等完整窗口、出生方向伤害孩子/Solar；记录短缺/最长空白，拒长期无显示；完整当前输入身份不放宽。",
     "artifacts": [
@@ -88,7 +84,6 @@
   {
     "id": "family-and-absolute-clock",
     "disposition": "TEST_CORRECTED",
-    "status": "VERIFIED_R11; FINAL_BIND_PENDING",
     "cause": "每GUC固定family<=2及Delay==1忽略prefix/尾/window的不同sample/phase与旧Timeline绝对出生时基。",
     "resolution": "区分真实请求与成员，保同path/phase/未变成员重复拒门；按真实绝对出生/receive核，不抬预测范围或缩分母。",
     "artifacts": [
@@ -112,7 +107,6 @@
   {
     "id": "capture-vs-draw-terrain",
     "disposition": "TEST_CORRECTED",
-    "status": "VERIFIED_R11; FINAL_BIND_PENDING",
     "cause": "wrapper把ExpectedImpact/World.Prepare合法地形依赖复核计为Draw，5669暴露误归属。",
     "resolution": "Capture报告读取；Project/Draw strict0 terrain/discovery/replay。产品未删除地形校验。",
     "artifacts": [
@@ -131,7 +125,6 @@
   {
     "id": "cold-pathoff-and-no-demand",
     "disposition": "TEST_CORRECTED",
-    "status": "FINITE_TWO_RUN_EVIDENCE; FINAL_BIND_PENDING",
     "cause": "Aim-only无Path四idle未held不建未来；冷未解可Basic；曾将release无需求回nearest误作真实消费失败。",
     "resolution": "同进程两轮各保原4idle/首按0/160完整窗：冷0/17/34 Basic未知+硬退出、51首次far Enhanced新Before18点Contact8且hit1；第二轮0直接fresh far Enhanced、1机会1birth1hit、Used1.3705。有限单次对照，不称cold首发清线PASS。",
     "artifacts": [
@@ -165,7 +158,6 @@
   {
     "id": "navigation-basic-and-premises",
     "disposition": "TEST_CORRECTED",
-    "status": "VERIFIED_R11_EXIT0; FINAL_BIND_PENDING",
     "cause": "旧null输入scope期待混淆合法Basic与staleEnhanced；旧helper隐式Display及同GUC多个独立恢复前提批次会耗尽组件预算，HasPoint失败原件保留。",
     "resolution": "Basic核sameGUC完整当前identity并finally End；显示helper显式、独立恢复前提分原BeginWorldStep/Sample/Combat.Sample。无抬预算/清Work/放宽HasPoint；原15场几何/真实Damage、同tick4Prepare无重搜、age15/+5恢复全部EXIT0。",
     "artifacts": [
@@ -193,8 +185,7 @@
   },
   {
     "id": "attack-costs-whole",
-    "disposition": "TEST_CORRECTED_SCOPED_REPLACEMENT",
-    "status": "NECESSARY_SCOPES_PASS; NOT_WHOLE_PASS",
+    "disposition": "TEST_CORRECTED",
     "cause": "旧母scope含Aim-only idle不可见Preview、旧4arg反射、全候选固定121/endpoint和机械次数，整体FAIL不可被通过子叶覆盖。",
     "resolution": "默认旧whole失败保留；当前确定性预算、sameGUC/next tick、冷/已运行后真实receipt+hit、ordinary-work九场+SameEpoch与实际Draw0完成。旧每候选同步121/首短prefix复杂弓world立即Contact由13map精确当前范围承接，未执行旧branch不冒称PASS，性能另锁最终普通字节。",
     "artifacts": [
@@ -223,7 +214,6 @@
   {
     "id": "impact-empty-terrain-lease",
     "disposition": "TEST_CORRECTED",
-    "status": "VERIFIED_R11_EXIT0; FINAL_BIND_PENDING",
     "cause": "纯值合成Cache.Publish未初始化Source.Terrain尺寸，FreezeCells width/height=0被CellLease.Current拒绝；Used0.322/0.258不足以支持冷预算归因。",
     "resolution": "夹具发布合成路径前初始化空地形lease真实尺寸；不查NPC未来地形，不改product/natural Source。组件只验已准备路径像素；真实Source/地形另由自然与既有机制证据覆盖，完整Impact入口EXIT0。",
     "artifacts": [
@@ -247,7 +237,6 @@
   {
     "id": "impact-execution-versus-preview",
     "disposition": "TEST_CORRECTED",
-    "status": "VERIFIED_R11_EXIT0; FINAL_BIND_PENDING",
     "cause": "marker已Capture execution后Control.Clear清presentation，旧期待仍红将独立Preview误当已Capture的execution。",
     "resolution": "execution旧marker立即撤销/Draw0；独立ExpectedPreview可保留，显式World.Prepare重新Capture后才显示。tile/string BeginAI允许同GUC合法Basic或null但拒旧Enhanced且立即撤红；整叶适配已EXIT0。",
     "artifacts": [
@@ -264,28 +253,8 @@
     ]
   },
   {
-    "id": "remaining-stage-admission",
-    "disposition": "PENDING",
-    "status": "PENDING",
-    "cause": "r11为7576+dirty，最终产品A/当前性能/缺项/独审未齐，原187未全跑。",
-    "resolution": "delivery完成最终身份/13scope/失败锁/独审；APPROVED_FOR_STAGE尚PENDING，不生成最终包身份或关闭任务。",
-    "artifacts": [
-      {
-        "path": ".local/aim-priority-recovery-20261013/candidate-r11-identity.json",
-        "length": 4105,
-        "sha256": "9728F9CEBD48AAC90C81D8C9BB6C8E8A0671836C9ED1D67CB5DA044F01B546EB"
-      },
-      {
-        "path": ".local/aim-priority-recovery-20261013/final-7576-identity.json",
-        "length": 3237,
-        "sha256": "B03986476F30CA9E4BAFBBC54640D044106CB4135C59610FCD446946D3B1ABD3"
-      }
-    ]
-  },
-  {
     "id": "r01-r10-development-failures",
-    "disposition": "PRODUCT_FIXED_WITH_RETAINED_HISTORY",
-    "status": "CORE_R10_VERIFIED; FINAL_BIND_PENDING",
+    "disposition": "PRODUCT_FIXED",
     "cause": "旧预览第二3ms门/接收窗口周期缺框；candidate完整性、aged短miss、World公平/变化票、hint及paused significant资格接缝分别有原失败。r09 full moving fail未在moving-only复现，不宣称唯一动态归因。",
     "resolution": "各候选原字节与失败保留。r10完整五场严格sameGUC ContactInput→RecordInput→nativebirth验far/新near，原180/5机会未加长。最终复用需按不变生产IL和受影响age门独审。",
     "artifacts": [
@@ -313,8 +282,7 @@
   },
   {
     "id": "r02-bow-observer-and-progress",
-    "disposition": "CURRENT_REPLAY_VERIFIED_WITH_OBSERVATION_LIMIT",
-    "status": "VERIFIED_7576; FINAL_BIND_PENDING",
+    "disposition": "TEST_CORRECTED",
     "cause": "r02木弓520px原件无Contact/出生失败仍保留；旧临时源码未找回，不能精确把旧出生过滤认定唯一根因，也不能称projectile1未建模。",
     "resolution": "锁定item39+arrow40+真实projectile1过滤最终7576自然重放：远4三次Enhanced Contact57/57/62；移近2一次Contact46；均sameGUC完整receipt/contact/point，5机会包含首0 Basic。新调度和未完成计划恢复后的当前范围成立，不冒称预测Tick是native first-hit。",
     "artifacts": [
@@ -327,6 +295,111 @@
         "path": ".local/aim-priority-recovery-20261013/final-7576-bow-only.log",
         "length": 3424,
         "sha256": "937E32371EBA0B100E639372950C8C44FFC0205D384FF8376EF7F750515C15E5"
+      }
+    ]
+  },
+  {
+    "id": "private-whip-carrier-premises",
+    "disposition": "TEST_CORRECTED",
+    "cause": "G13-derived private wrapper invoked Initialize twice after startup lock; next observer name absent; first argument4654 was vanity leggings, not the native whip4672. No valid attack-cost claim from these failed/zero-birth runs.",
+    "resolution": "Private corrected wrapper initializes once, binds real TryUpdateChannel/ItemCheck_StartActualUse/StrikeNPC; asserts4672/841 and repeated native births/hits with unchanged firstpress360. Product A/probe unchanged, raw failed logs retained.",
+    "artifacts": [
+      {
+        "path": ".local/aim-priority-recovery-20261013/final-444e-whip-normal.log",
+        "length": 3726,
+        "sha256": "7BC0F71E8B70B10C9A1C0FBB404E9AD1FE46A1FB708E74E28123E60E602277FB"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/final-444e-whip-normal-corrected.log",
+        "length": 2998,
+        "sha256": "79F3DD2B395FF1DD85276D6C32103639CBCABFCAF5A2306B60211341BFC112E2"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/final-444e-whip-normal-native-hook.log",
+        "length": 2363,
+        "sha256": "5B7F928DB38907E153647B238FE4F51B9478DA0F169937347D19144593A1352C"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/final-444e-whip-4672.log",
+        "length": 2372,
+        "sha256": "DAC84FF15D10282F8405C6AAF9C1197B02A2C5FB56248F5086B6182842324DC4"
+      }
+    ]
+  },
+  {
+    "id": "derived-percentile-convention",
+    "disposition": "TEST_CORRECTED",
+    "cause": "Initial unsealed derived Stats used floor(n*q)-1 while the formal source uses nearest-rank ceil(n*q)-1.",
+    "resolution": "Recomputed only derivatives from unchanged raw using ceil; old floor derivation explicitly reconstructed from raw in labelled folder, not called original sealed bytes. No test/product rerun or source change.",
+    "artifacts": [
+      {
+        "path": ".local/aim-priority-recovery-20261013/derived-floor-preserved/disposition.json",
+        "length": 395,
+        "sha256": "4FAAFBED4C06A6A027B4A95C95082D9C80C1F50EB0EB800811ACB022C1879103"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/derived-floor-preserved/final-444e-natural-cpu-summary.csv",
+        "length": 3642,
+        "sha256": "1DA9CE0387EAA115E19EAD98AA85DEE87BB160A72A956661146422D0FF12D9FA"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/derived-floor-preserved/final-444e-draw-cpu-summary.csv",
+        "length": 1746,
+        "sha256": "F2ACA2799346F2E019FC74DEC4C9D44FBD0BCDDBA0D2143CF62E170CAD132FA5"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/derived-floor-preserved/final-444e-whip-summary.json",
+        "length": 6602,
+        "sha256": "CF3DB6E71DBF34CBEAA5577C42E8F4D2C08639D38A36335DD1BF2C72E0824E6C"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/Summarize-Final.ps1",
+        "length": 6519,
+        "sha256": "7EB0B45AED81906C644767F40C818C2E5FD67881BFB32EDB627EB2BE5EA7515B"
+      }
+    ]
+  },
+  {
+    "id": "stage-reader-ps5-utf8",
+    "disposition": "PRODUCT_FIXED",
+    "category": "BUILD_ENTRY_TOOL",
+    "cause": "OfficialPS5 dot-source decoded unmarkedUTF8 reader Chinese literals asANSI:4 allowed docs paths mojibake, actual40/record40 difference0. PS7 decoded text but calculated a different159449 source identity; neither bypass nor relabel accepted.",
+    "resolution": "OnlyEF BB BF added to tracked existing reader, remaining14991 original bytes equal. No schema/logic/allowlist or product/test rule change; normalA2 commit and currentPS5 Release source/input lock, independent3byte review and actual10713 IL/compileInputs equivalence. Exact reader positive/rejections still required.",
+    "artifacts": [
+      {
+        "path": ".local/aim-priority-recovery-20261013/reader-before-approval-artifact.log",
+        "length": 623,
+        "sha256": "0D10C244407CC5D4A0EC6ABC8F7D84AA653A12FCFFE158AF726A2DEC011403A7"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/reader-before-approval-utf8.log",
+        "length": 623,
+        "sha256": "0D10C244407CC5D4A0EC6ABC8F7D84AA653A12FCFFE158AF726A2DEC011403A7"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/reader-encoding-ps5-diff.json",
+        "length": 904,
+        "sha256": "EFDD0FCAAB2CD96F6D87C64AC4A0132ECAED920624710E9EE121F89CB349B106"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/reader-encoding-pwsh7-diff.json",
+        "length": 507,
+        "sha256": "ADC67084A42E62DD51A0F028327A55B0C533DE9C90A7DCC4099AC4B9574C0173"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/reader-bom-only-diff.json",
+        "length": 350,
+        "sha256": "79EA1F170FB04267C93E786ABEAA227E65B26AA7E5555EC3622AD8C8B13586EE"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/AimStage.Development.before-bom.ps1",
+        "length": 14991,
+        "sha256": "A1AB951885607C3A371F39C73FE922C7DEF31AE3A65E8BB0B344088DCF3F21AD"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/a-to-a2-compile-equivalence.json",
+        "length": 513,
+        "sha256": "01D371D6C9D442BB58EA6479078244B461BDA29005707C78194F6D84255A38FF"
       }
     ]
   }

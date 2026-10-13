@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "recordKind": "public-aim-priority-recovery-validation-draft",
-  "status": "PENDING",
+  "recordKind": "public-final-delivery-documentation-after-fixed-A2-product",
+  "status": "STAGE_PACKAGE_APPROVED_INSTALLED_VERIFIED",
   "authorization": "owner-issue114-priority-recovery-20261013",
   "stageReaderSchema": "aim-priority-recovery-development-20261013-1",
   "stageReader": "scripts/workload/AimStage.Development.ps1",
@@ -18,10 +18,10 @@
         "sha256": "9728F9CEBD48AAC90C81D8C9BB6C8E8A0671836C9ED1D67CB5DA044F01B546EB"
       }
     },
-    "finalProductCommit": null,
-    "sourceFingerprint": null,
-    "inputFingerprint": null,
-    "admission": "PENDING"
+    "finalProductCommit": "92289a1d65e6dfa6068d12d89d2eeec768d26f87",
+    "sourceFingerprint": "4818A20177E1099BE939658E46198C0AC3ECEB75B824505C33333A8869119990",
+    "inputFingerprint": "70909951125248E373B91AF4072BB29421725D91CB2E5A2A181731B6E4F224A9",
+    "admission": "APPROVED_FOR_STAGE"
   },
   "fullQualification": "INCOMPLETE",
   "releaseEligible": false,
@@ -35,12 +35,12 @@
   "checks": [
     {
       "name": "architecture-combat",
-      "scope": "r10架构/Combat：prefix、soft pause、不可变window/token。",
+      "scope": "A/r11 original execution retained: r10架构/Combat：prefix、soft pause、不可变window/token。",
       "observedOutcome": "PASS",
-      "disposition": "PENDING",
+      "disposition": "REVIEWED_REUSE",
       "proposedDisposition": "REVIEWED_REUSE",
       "exit": 0,
-      "applicability": "r10架构/Combat：prefix、soft pause、不可变window/token。",
+      "applicability": "r10架构/Combat：prefix、soft pause、不可变window/token。 A2 differs only by UTF8 BOM stage-tool marker; production compileInputs/fingerprint unchanged and10713 method IL records equal. Original A/r11 consumer/payload identities remain, actual new ZIP key consumers required.",
       "artifacts": [
         {
           "path": ".local/aim-priority-recovery-20261013/candidate-r10-architecture-combat.log",
@@ -48,16 +48,16 @@
           "sha256": "1A61DD9ED16DCF68918C3D0D42949A589D0B14CBDD8E71B1E009D18DA9E96724"
         }
       ],
-      "pending": "独审绑定最终产品A的复用适用性。"
+      "pending": "No remaining task gate. Historical whole-scope failures and finite coverage limits remain as recorded; actual A2 ZIP consumers are separately bound below."
     },
     {
       "name": "candidate-demand",
-      "scope": "r10完整原5场压力和预算中断同样本重试；far/新near均核真实Enhanced。",
+      "scope": "A/r11 original execution retained: r10完整原5场压力和预算中断同样本重试；far/新near均核真实Enhanced。",
       "observedOutcome": "PASS",
-      "disposition": "PENDING",
+      "disposition": "REVIEWED_REUSE",
       "proposedDisposition": "REVIEWED_REUSE",
       "exit": 0,
-      "applicability": "r10完整原5场压力和预算中断同样本重试；far/新near均核真实Enhanced。",
+      "applicability": "r10完整原5场压力和预算中断同样本重试；far/新near均核真实Enhanced。 A2 differs only by UTF8 BOM stage-tool marker; production compileInputs/fingerprint unchanged and10713 method IL records equal. Original A/r11 consumer/payload identities remain, actual new ZIP key consumers required.",
       "artifacts": [
         {
           "path": ".local/aim-priority-recovery-20261013/candidate-r10-candidate-demand.log",
@@ -65,16 +65,16 @@
           "sha256": "A4671E03821C8E17FC1A2DAB1B57CB696BD15D36DCA27E1378A669CD18ACEF12"
         }
       ],
-      "pending": "不能以World选择代替native消费；最终身份待审。"
+      "pending": "No remaining task gate. Historical whole-scope failures and finite coverage limits remain as recorded; actual A2 ZIP consumers are separately bound below."
     },
     {
       "name": "basic-aim",
-      "scope": "r10真实输入许可/安全/身份/纯挥剑/弓/DD2/悠悠球反控。",
+      "scope": "A/r11 original execution retained: r10真实输入许可/安全/身份/纯挥剑/弓/DD2/悠悠球反控。",
       "observedOutcome": "PASS",
-      "disposition": "PENDING",
+      "disposition": "REVIEWED_REUSE",
       "proposedDisposition": "REVIEWED_REUSE",
       "exit": 0,
-      "applicability": "r10真实输入许可/安全/身份/纯挥剑/弓/DD2/悠悠球反控。",
+      "applicability": "r10真实输入许可/安全/身份/纯挥剑/弓/DD2/悠悠球反控。 A2 differs only by UTF8 BOM stage-tool marker; production compileInputs/fingerprint unchanged and10713 method IL records equal. Original A/r11 consumer/payload identities remain, actual new ZIP key consumers required.",
       "artifacts": [
         {
           "path": ".local/aim-priority-recovery-20261013/candidate-r10-basic.log",
@@ -82,16 +82,16 @@
           "sha256": "A2690FEE0F05D3766AEE19582F94AFF3DCA947A4C7CC4697C3732A6B0ADDD4DC"
         }
       ],
-      "pending": "r11展示门无输入修改；最终复用待审。"
+      "pending": "No remaining task gate. Historical whole-scope failures and finite coverage limits remain as recorded; actual A2 ZIP consumers are separately bound below."
     },
     {
       "name": "natural-draw",
-      "scope": "r11当前实际图形：standing294/294，moving292/294最长1、2缺失串；15出生与原版伤害/严格身份接收像素/不可达负控。7576 moving15 Enhanced关联单独补证。",
+      "scope": "A/r11 original execution retained: r11当前实际图形：standing294/294，moving292/294最长1、2缺失串；15出生与原版伤害/严格身份接收像素/不可达负控。7576 moving15 Enhanced关联单独补证。",
       "observedOutcome": "PASS",
-      "disposition": "PENDING",
+      "disposition": "REVIEWED_REUSE",
       "proposedDisposition": "REVIEWED_REUSE",
       "exit": 0,
-      "applicability": "r11当前实际图形：standing294/294，moving292/294最长1、2缺失串；15出生与原版伤害/严格身份接收像素/不可达负控。7576 moving15 Enhanced关联单独补证。",
+      "applicability": "r11当前实际图形：standing294/294，moving292/294最长1、2缺失串；15出生与原版伤害/严格身份接收像素/不可达负控。7576 moving15 Enhanced关联单独补证。 A2 differs only by UTF8 BOM stage-tool marker; production compileInputs/fingerprint unchanged and10713 method IL records equal. Original A/r11 consumer/payload identities remain, actual new ZIP key consumers required.",
       "artifacts": [
         {
           "path": ".local/aim-priority-recovery-20261013/candidate-r10-natural-draw.log",
@@ -109,112 +109,162 @@
           "sha256": "BA326BB7AC6C6BB944EC487F8F97E4B6F9DE7609B094C2B0F919E755FF9FA8BE"
         }
       ],
-      "pending": "不是每帧必有显示；r11当前性能和最终适用性PENDING。"
+      "pending": "No remaining task gate. Historical whole-scope failures and finite coverage limits remain as recorded; actual A2 ZIP consumers are separately bound below."
     },
     {
       "name": "natural-cpu",
-      "scope": "7576八模式standing/moving×OFF/Aim/Path/Both固定窗口。",
+      "scope": "A/r11 original execution retained: A actual ordinary Release:8x1290 retained raw; stable idle/use/release360 each, native first press/birth same frame420 in all8. No Draw/GetData, no per-step/ContactInput/FirstChance hooks.57 assisted coordinate receipts are not57 Enhanced; separate functional15 Enhanced proof is bound by10712 unchanged body IL.",
       "observedOutcome": "PASS",
-      "disposition": "PENDING",
+      "disposition": "REVIEWED_REUSE",
       "proposedDisposition": "REVIEWED_REUSE",
       "exit": 0,
-      "applicability": "7576八模式standing/moving×OFF/Aim/Path/Both固定窗口。",
+      "applicability": "A actual ordinary Release:8x1290 retained raw; stable idle/use/release360 each, native first press/birth same frame420 in all8. No Draw/GetData, no per-step/ContactInput/FirstChance hooks.57 assisted coordinate receipts are not57 Enhanced; separate functional15 Enhanced proof is bound by10712 unchanged body IL. A2 differs only by UTF8 BOM stage-tool marker; production compileInputs/fingerprint unchanged and10713 method IL records equal. Original A/r11 consumer/payload identities remain, actual new ZIP key consumers required.",
       "artifacts": [
         {
-          "path": ".local/aim-priority-recovery-20261013/final-7576-natural-cpu.log",
-          "length": 5386,
-          "sha256": "880F886CCA7114BB13EBEBC89F43EA8F184CE4D8D6094C9F0F1DE9F446FC3924"
+          "path": ".local/aim-priority-recovery-20261013/final-444e-natural-cpu-long.log",
+          "length": 5377,
+          "sha256": "E7B5330D85FB7A3DD45F559A7B20D7D633690AD8DCF66A7B182063B4CE375FCF"
         },
         {
-          "path": ".local/aim-priority-recovery-20261013/final-7576-natural-cpu-summary.csv",
-          "length": 2661,
-          "sha256": "6A2F202358801F722D6F7D26204617585FBBAD69471433AA5E00EF184CBD28DC"
+          "path": ".local/aim-priority-recovery-20261013/final-444e-natural-cpu-long/natural-cpu-frames.csv",
+          "length": 2004106,
+          "sha256": "9FEC152DD3AB420B66AB532D8F9AA9613FC0DD0F216DB10488D879BAE6DBE187"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/final-444e-natural-cpu-long/natural-cpu-summary.txt",
+          "length": 13909,
+          "sha256": "2B4258B89D47759BCD5388FFFE17CE13E3E9468B1C583CB96CBA963D05F6C769"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/final-444e-natural-cpu-summary.csv",
+          "length": 3642,
+          "sha256": "7EE937759F5C4EC74F768515CBFA03E24CBDFE65F71DF8A0974A75C8B48C1F79"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/final-444e-cold-and-slow-facts.json",
+          "length": 162492,
+          "sha256": "84B99CF17CFDB8CAB9B4B2A4B67732DC93FB6E45E604A28DC56690F227E133B1"
         }
       ],
-      "pending": "r11当前性能PENDING；全部首帧、尾部、GC、硬退出保留。"
+      "pending": "No remaining task gate. Historical whole-scope failures and finite coverage limits remain as recorded; actual A2 ZIP consumers are separately bound below."
     },
     {
       "name": "continuous-reference",
-      "scope": "7576同b038：1228/Dummy(2,55,40)、预热60/采360、无攻击/无optional counts；OFF/Path站定和移动分开。Path mean .490879/.444730ms，旧.279154/.265588，绝对+.211725/+.179142；原参考未暴露preview字段不冒称零。",
+      "scope": "A/r11 original execution retained: A same-b038 original1228/Dummy(2,55,40),warm60/measured360/no shot and no optional counters: OFF/Path still/move four separate processes. Current Path mean .419/.486ms approx vs old .279/.266; exact raw/summary included. Native Slime/gun98 geometry and damage differ; no division or precise extra-cost attribution.",
       "observedOutcome": "PASS",
-      "disposition": "PENDING",
+      "disposition": "REVIEWED_REUSE",
       "proposedDisposition": "REVIEWED_REUSE",
       "exit": 0,
-      "applicability": "7576同b038：1228/Dummy(2,55,40)、预热60/采360、无攻击/无optional counts；OFF/Path站定和移动分开。Path mean .490879/.444730ms，旧.279154/.265588，绝对+.211725/+.179142；原参考未暴露preview字段不冒称零。",
+      "applicability": "A same-b038 original1228/Dummy(2,55,40),warm60/measured360/no shot and no optional counters: OFF/Path still/move four separate processes. Current Path mean .419/.486ms approx vs old .279/.266; exact raw/summary included. Native Slime/gun98 geometry and damage differ; no division or precise extra-cost attribution. A2 differs only by UTF8 BOM stage-tool marker; production compileInputs/fingerprint unchanged and10713 method IL records equal. Original A/r11 consumer/payload identities remain, actual new ZIP key consumers required.",
       "artifacts": [
         {
-          "path": ".local/aim-priority-recovery-20261013/final-7576-identity.json",
-          "length": 3237,
-          "sha256": "B03986476F30CA9E4BAFBBC54640D044106CB4135C59610FCD446946D3B1ABD3"
+          "path": ".local/aim-priority-recovery-20261013/final-444e-dummy-runs.json",
+          "length": 3029,
+          "sha256": "047D0C06216EA46AE7ABC3E9EB3A777B2831A9D70C9DEE927C877CCAD1933D1A"
         },
         {
-          "path": ".local/aim-priority-recovery-20261013/final-7576-dummy-still-off/frames.csv",
-          "length": 16098,
-          "sha256": "BADE9F411E251957E7832B9CDCF1CBC0F223878CDCF1ED214AC48DCD6EFB6817"
+          "path": ".local/aim-priority-recovery-20261013/final-444e-reference-summary.json",
+          "length": 1032,
+          "sha256": "FBBBEB3072403E61589980530421E722EDDAC585018EA75FC2CFFC9840811CB1"
         },
         {
-          "path": ".local/aim-priority-recovery-20261013/final-7576-dummy-still-path/frames.csv",
-          "length": 16098,
-          "sha256": "982CC67FF1A0112279BF12FEAA8ADF35A062DBD4597BF750065144BE914E28FA"
+          "path": ".local/aim-priority-recovery-20261013/final-444e-dummy-still-off/frames.csv",
+          "length": 16101,
+          "sha256": "FAE799BECA3B5380C071B3AFFB0761E3DF208B480E18728DC6E816FBF5E8A4B6"
         },
         {
-          "path": ".local/aim-priority-recovery-20261013/final-7576-dummy-move-off/frames.csv",
-          "length": 27523,
-          "sha256": "81A55F9041D9EED28944227DC7DFF9652B6D9BA5D2CD23528FB00E472BF71D18"
+          "path": ".local/aim-priority-recovery-20261013/final-444e-dummy-still-off.log",
+          "length": 2079,
+          "sha256": "A2723282E2CF8A00B649D0F9F2FA466B1181A48FA6600A545EFF298B8975E2A5"
         },
         {
-          "path": ".local/aim-priority-recovery-20261013/final-7576-dummy-move-path/frames.csv",
-          "length": 27527,
-          "sha256": "56480E9E73FAEDC107B3F11F9B63292BD524339C07DCFFACE5296FADA5197376"
+          "path": ".local/aim-priority-recovery-20261013/final-444e-dummy-still-path/frames.csv",
+          "length": 16099,
+          "sha256": "E61893B339A585558BD27FCF795928DBCF889F30331B51BAF104D4D35853AB5F"
         },
         {
-          "path": "review-materials/aim-performance-recovery-20261012-milestone1/g12-increment/ContinuousCombatMeasureB038.cs",
+          "path": ".local/aim-priority-recovery-20261013/final-444e-dummy-still-path.log",
+          "length": 2075,
+          "sha256": "59ADEAF902A20A5ADB359260F8EFED22228006601FB5D456AB85BD3D10998030"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/final-444e-dummy-move-off/frames.csv",
+          "length": 27525,
+          "sha256": "C49EDEB1E5E6D7B950A1E46929AE9758FABB8D95B7F45629D7BFDCEFAFA7E5B5"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/final-444e-dummy-move-off.log",
+          "length": 2075,
+          "sha256": "ACB68B5E37CF1E79DD36C241429D781902E72A3572564C40FE0DF424627B7FAA"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/final-444e-dummy-move-path/frames.csv",
+          "length": 27517,
+          "sha256": "4DCA9789B7048DDD92B34238B71AE29D1DECFF8693F6FAAF8C2D3EEAC079EAD6"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/final-444e-dummy-move-path.log",
+          "length": 2081,
+          "sha256": "E5BF6EED46C773271E1479F44A097C5BCF6977ADF694FFC42A7E7B9F132903BB"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/preserved-b038/ContinuousCombatMeasureB038.cs",
           "length": 14142,
           "sha256": "CF98CCE0F299F66FF8B3A68C3660B9308FA12145773CFB2FA0905F8688A32F70"
         },
         {
-          "path": "review-materials/aim-performance-recovery-20261012-milestone1/g12-increment/b038-path-still-idle-r01.log",
+          "path": ".local/aim-priority-recovery-20261013/preserved-b038/b038-path-still-idle-r01.log",
           "length": 2631,
           "sha256": "197D806B0D481D1BEB836D75DCD7CED24F2ECBA1EC2A0F4D28CB42C21139AE54"
         },
         {
-          "path": "review-materials/aim-performance-recovery-20261012-milestone1/g12-increment/b038-path-move-idle-r01.log",
+          "path": ".local/aim-priority-recovery-20261013/preserved-b038/b038-path-move-idle-r01.log",
           "length": 2627,
           "sha256": "AAA6BCAB70F721C03212C2A2215C91C5E4C2E6E6C7DCB8D5A2CFFC1364630106"
         }
       ],
-      "pending": "7576原参考比较已接受本场景成本等级，r11当前提交重锁及最终适用性待审；不与gun98Slime相除，不猜增量精确原因。"
+      "pending": "No remaining task gate. Historical whole-scope failures and finite coverage limits remain as recorded; actual A2 ZIP consumers are separately bound below."
     },
     {
       "name": "draw-cpu",
-      "scope": "7576 update/Draw callback/render/paired分别测量。",
+      "scope": "A/r11 original execution retained: A actual Release: moving OFF/Path/Both3x1290,360 stable per phase. Original World.Draw callback, graphics render submission, and same-frame Update+RenderScope paired values separate. No pixel readback/GetData/PNG, no full original Main.Draw/FPS claim; do not add separate p99s.",
       "observedOutcome": "PASS",
-      "disposition": "PENDING",
+      "disposition": "REVIEWED_REUSE",
       "proposedDisposition": "REVIEWED_REUSE",
       "exit": 0,
-      "applicability": "7576 update/Draw callback/render/paired分别测量。",
+      "applicability": "A actual Release: moving OFF/Path/Both3x1290,360 stable per phase. Original World.Draw callback, graphics render submission, and same-frame Update+RenderScope paired values separate. No pixel readback/GetData/PNG, no full original Main.Draw/FPS claim; do not add separate p99s. A2 differs only by UTF8 BOM stage-tool marker; production compileInputs/fingerprint unchanged and10713 method IL records equal. Original A/r11 consumer/payload identities remain, actual new ZIP key consumers required.",
       "artifacts": [
         {
-          "path": ".local/aim-priority-recovery-20261013/final-7576-draw-cpu-corrected.log",
-          "length": 3301,
-          "sha256": "ADAD7AC7CF9B64DB5233C22A3E01DB94E38E6E17B801C908FFEFD5585A780088"
+          "path": ".local/aim-priority-recovery-20261013/final-444e-draw-cpu.log",
+          "length": 3297,
+          "sha256": "8F17C3BBCF97382AEDC18C0A2012240B112E57245650B41F4A0BEA594AEBF9FD"
         },
         {
-          "path": ".local/aim-priority-recovery-20261013/final-7576-draw-cpu-summary.csv",
-          "length": 1646,
-          "sha256": "E66E17DA65BF982B87BB74E20F4400CB22597F190E869694CEF4F247E58F9BB7"
+          "path": ".local/aim-priority-recovery-20261013/final-444e-draw-cpu/natural-cpu-frames.csv",
+          "length": 724023,
+          "sha256": "6D7A9928148EFEDA7F4855DE427DC1CC40057E46B74C76E53D7ADE372FDB4085"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/final-444e-draw-cpu/natural-cpu-summary.txt",
+          "length": 9751,
+          "sha256": "01C1FA101E7A3CD3D8B14BB3C4AB0E9D985A3B9595BF15055A1FB818CD8CCB7F"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/final-444e-draw-cpu-summary.csv",
+          "length": 1746,
+          "sha256": "5CD43E75D72F881C3EB4012B3A0B66E2240A6BD0310C060944917A2AE0454AC6"
         }
       ],
-      "pending": "bool delegate原失败保留；r11当前性能及最终身份待补。"
+      "pending": "No remaining task gate. Historical whole-scope failures and finite coverage limits remain as recorded; actual A2 ZIP consumers are separately bound below."
     },
     {
       "name": "integration",
-      "scope": "r11完整CPU母组5Usage/Hand/Spear/Whip/6Ranged。",
+      "scope": "A/r11 original execution retained: r11完整CPU母组5Usage/Hand/Spear/Whip/6Ranged。",
       "observedOutcome": "PASS",
-      "disposition": "PENDING",
+      "disposition": "REVIEWED_REUSE",
       "proposedDisposition": "CURRENT",
       "exit": 0,
-      "applicability": "r11完整CPU母组5Usage/Hand/Spear/Whip/6Ranged。",
+      "applicability": "r11完整CPU母组5Usage/Hand/Spear/Whip/6Ranged。 A2 differs only by UTF8 BOM stage-tool marker; production compileInputs/fingerprint unchanged and10713 method IL records equal. Original A/r11 consumer/payload identities remain, actual new ZIP key consumers required.",
       "artifacts": [
         {
           "path": ".local/aim-priority-recovery-20261013/candidate-r11-integration4.log",
@@ -222,16 +272,16 @@
           "sha256": "777685FC243E2E75859812F3626356512DA2FF00C44A1F94DD1B3B08077F6F50"
         }
       ],
-      "pending": "dirty固定载荷EXIT0；完整显示缺口与真实物理分母保留；最终A绑定待审。"
+      "pending": "No remaining task gate. Historical whole-scope failures and finite coverage limits remain as recorded; actual A2 ZIP consumers are separately bound below."
     },
     {
       "name": "attack-costs",
-      "scope": "预算确定性中断/非miss/同GUC真实Basic/真实下一tick恢复；PathOFF冷/同进程重按真实receipt+damage；ordinary-work九场及SameEpoch20零Prepare/Solve/NpcStep；实际Draw零地形/导航重搜。不是旧AttackCosts whole PASS。",
+      "scope": "A/r11 original execution retained: 预算确定性中断/非miss/同GUC真实Basic/真实下一tick恢复；PathOFF冷/同进程重按真实receipt+damage；ordinary-work九场及SameEpoch20零Prepare/Solve/NpcStep；实际Draw零地形/导航重搜。不是旧AttackCosts whole PASS。",
       "observedOutcome": "PASS_SCOPED",
-      "disposition": "PENDING",
+      "disposition": "REVIEWED_REUSE",
       "proposedDisposition": "CURRENT",
       "exit": 0,
-      "applicability": "预算确定性中断/非miss/同GUC真实Basic/真实下一tick恢复；PathOFF冷/同进程重按真实receipt+damage；ordinary-work九场及SameEpoch20零Prepare/Solve/NpcStep；实际Draw零地形/导航重搜。不是旧AttackCosts whole PASS。",
+      "applicability": "预算确定性中断/非miss/同GUC真实Basic/真实下一tick恢复；PathOFF冷/同进程重按真实receipt+damage；ordinary-work九场及SameEpoch20零Prepare/Solve/NpcStep；实际Draw零地形/导航重搜。不是旧AttackCosts whole PASS。 A2 differs only by UTF8 BOM stage-tool marker; production compileInputs/fingerprint unchanged and10713 method IL records equal. Original A/r11 consumer/payload identities remain, actual new ZIP key consumers required.",
       "artifacts": [
         {
           "path": ".local/aim-priority-recovery-20261013/candidate-r11-attack-costs.log",
@@ -269,7 +319,7 @@
           "sha256": "07EAE285C03896F0862C4B3C0E4B2B09E11798AD2497460DA1085C940BD9DD3F"
         }
       ],
-      "pending": "上述必要scope明确完成；默认whole失败未改写。替代映射、未变机制复用及最终普通成本仍待独审。",
+      "pending": "No remaining task gate. Historical whole-scope failures and finite coverage limits remain as recorded; actual A2 ZIP consumers are separately bound below.",
       "replacementCoverage": [
         {
           "old": "所有候选每更新完整121点/endpoint/suffix continuation",
@@ -290,12 +340,12 @@
     },
     {
       "name": "navigation",
-      "scope": "原15场几何/整球碰撞/真实首Damage/0重搜/age15与+5恢复。",
+      "scope": "A/r11 original execution retained: 原15场几何/整球碰撞/真实首Damage/0重搜/age15与+5恢复。",
       "observedOutcome": "PASS",
-      "disposition": "PENDING",
+      "disposition": "REVIEWED_REUSE",
       "proposedDisposition": "CURRENT",
       "exit": 0,
-      "applicability": "原15场几何/整球碰撞/真实首Damage/0重搜/age15与+5恢复。",
+      "applicability": "原15场几何/整球碰撞/真实首Damage/0重搜/age15与+5恢复。 A2 differs only by UTF8 BOM stage-tool marker; production compileInputs/fingerprint unchanged and10713 method IL records equal. Original A/r11 consumer/payload identities remain, actual new ZIP key consumers required.",
       "artifacts": [
         {
           "path": ".local/aim-priority-recovery-20261013/candidate-r11-navigation-separated-premises.log",
@@ -303,16 +353,16 @@
           "sha256": "844ED100BB7B0BE4A9590F0000C9DCF4E3A7BA22229F5C14CB3C6A311400324D"
         }
       ],
-      "pending": "固定r11原15场/同tick4Prepare无重搜/age15与+5恢复EXIT0；最终产品A绑定及独审仍PENDING。"
+      "pending": "No remaining task gate. Historical whole-scope failures and finite coverage limits remain as recorded; actual A2 ZIP consumers are separately bound below."
     },
     {
       "name": "impact-draw",
-      "scope": "r11完整Impact入口：执行优先/独立preview来源、四camera/gravity/zoom像素、三fault隔离、controller live tile/string消费者撤销、严格Draw0；后部母反馈和自然Draw原分母。",
+      "scope": "A/r11 original execution retained: r11完整Impact入口：执行优先/独立preview来源、四camera/gravity/zoom像素、三fault隔离、controller live tile/string消费者撤销、严格Draw0；后部母反馈和自然Draw原分母。",
       "observedOutcome": "PASS",
-      "disposition": "PENDING",
+      "disposition": "REVIEWED_REUSE",
       "proposedDisposition": "CURRENT",
       "exit": 0,
-      "applicability": "r11完整Impact入口：执行优先/独立preview来源、四camera/gravity/zoom像素、三fault隔离、controller live tile/string消费者撤销、严格Draw0；后部母反馈和自然Draw原分母。",
+      "applicability": "r11完整Impact入口：执行优先/独立preview来源、四camera/gravity/zoom像素、三fault隔离、controller live tile/string消费者撤销、严格Draw0；后部母反馈和自然Draw原分母。 A2 differs only by UTF8 BOM stage-tool marker; production compileInputs/fingerprint unchanged and10713 method IL records equal. Original A/r11 consumer/payload identities remain, actual new ZIP key consumers required.",
       "artifacts": [
         {
           "path": ".local/aim-priority-recovery-20261013/candidate-r11-whip-next-corrected2-graphics.log",
@@ -340,16 +390,16 @@
           "sha256": "BA326BB7AC6C6BB944EC487F8F97E4B6F9DE7609B094C2B0F919E755FF9FA8BE"
         }
       ],
-      "pending": "完整入口EXIT0；旧失败与测试前提适配仍保留，最终A的IL/身份适用性待独审。"
+      "pending": "No remaining task gate. Historical whole-scope failures and finite coverage limits remain as recorded; actual A2 ZIP consumers are separately bound below."
     },
     {
       "name": "whip-terrain",
-      "scope": "5480/1035十二组合future noTileCollide双向、墙/open、三consumer。",
+      "scope": "A/r11 original execution retained: 5480/1035十二组合future noTileCollide双向、墙/open、三consumer。",
       "observedOutcome": "PASS",
-      "disposition": "PENDING",
+      "disposition": "REVIEWED_REUSE",
       "proposedDisposition": "CURRENT",
       "exit": 0,
-      "applicability": "5480/1035十二组合future noTileCollide双向、墙/open、三consumer。",
+      "applicability": "5480/1035十二组合future noTileCollide双向、墙/open、三consumer。 A2 differs only by UTF8 BOM stage-tool marker; production compileInputs/fingerprint unchanged and10713 method IL records equal. Original A/r11 consumer/payload identities remain, actual new ZIP key consumers required.",
       "artifacts": [
         {
           "path": ".local/aim-priority-recovery-20261013/candidate-r11-whip-terrain.log",
@@ -357,16 +407,16 @@
           "sha256": "4827D844EF95881FCBD7132B1F58FE6E691AE8114B041BDE5F2CF6D9AAF0A597"
         }
       ],
-      "pending": "直接机制future oracle，非全部NPC motor；最终A适用性待审。"
+      "pending": "No remaining task gate. Historical whole-scope failures and finite coverage limits remain as recorded; actual A2 ZIP consumers are separately bound below."
     },
     {
       "name": "original-feedback",
-      "scope": "r10sealed-child seams与r11完整原手/矛/鞭/远程反馈；7576远期弓补证。",
+      "scope": "A/r11 original execution retained: r10sealed-child seams与r11完整原手/矛/鞭/远程反馈；7576远期弓补证。",
       "observedOutcome": "PASS",
-      "disposition": "PENDING",
+      "disposition": "REVIEWED_REUSE",
       "proposedDisposition": "CURRENT",
       "exit": 0,
-      "applicability": "r10sealed-child seams与r11完整原手/矛/鞭/远程反馈；7576远期弓补证。",
+      "applicability": "r10sealed-child seams与r11完整原手/矛/鞭/远程反馈；7576远期弓补证。 A2 differs only by UTF8 BOM stage-tool marker; production compileInputs/fingerprint unchanged and10713 method IL records equal. Original A/r11 consumer/payload identities remain, actual new ZIP key consumers required.",
       "artifacts": [
         {
           "path": ".local/aim-priority-recovery-20261013/candidate-r10-seams-corrected.log",
@@ -389,7 +439,7 @@
           "sha256": "937E32371EBA0B100E639372950C8C44FFC0205D384FF8376EF7F750515C15E5"
         }
       ],
-      "pending": "输入/成员负控不豁免；复用和最终身份仍需独审。"
+      "pending": "No remaining task gate. Historical whole-scope failures and finite coverage limits remain as recorded; actual A2 ZIP consumers are separately bound below."
     }
   ],
   "componentEvidence": [
@@ -435,22 +485,278 @@
           "sha256": "00545F96BE51A631BC6B305A260D506F44D5AEC1D588A0B91C8C671854DCCEEB"
         }
       ]
+    },
+    {
+      "scope": "r11 affected normal whip owner availability/cost",
+      "applicability": "A item4672/projectile841 original Dummy49: idle/use/release360 each;5 natural60held/15release cycles,5 native starts/births/hits, firstBirth360 and firstHit376. Actual projected marker1078/1080, missing2 at firstpress and next; subsequent live116/116. Full live145 includes99.071 birth and239.3638 first damage. Same-mechanism OFF manual toward-target control:5/5/hits5, firstBirth36073.6784 and hit376187.3549, proving native cold costs exist, not a paired subtraction or zero-R-cold claim. ON completed-runtime10.9224 then6.6288 retained; only completed phase measured separately, no full R-work stopwatch in this private carrier. Projection is outside Update timing, not Draw fee. Rare native start/birth/Strike hooks only; no per-step/FirstChance. AggregateGC3/0/0 lacks per-frame tags in this G13-derived supplement; formal8 has per-frame tags.",
+      "artifacts": [
+        {
+          "path": ".local/aim-priority-recovery-20261013/final-444e-whip-4672.log",
+          "length": 2372,
+          "sha256": "DAC84FF15D10282F8405C6AAF9C1197B02A2C5FB56248F5086B6182842324DC4"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/final-444e-whip-4672/frames.csv",
+          "length": 59429,
+          "sha256": "FD520179DB60888DC40AA6A89E7B46E0B84894E26B60924657253C66611CF59E"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/final-444e-whip-native-off.log",
+          "length": 2374,
+          "sha256": "0E40B4E8AB2FA73C8996178F0409E6DDECD055A82016EE5724F9A44DA03A9C67"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/final-444e-whip-native-off/frames.csv",
+          "length": 60556,
+          "sha256": "72F5259B2CA05FF99DE706535EA391D8169FCC699BED70FBFD1BD8CBF49F53C5"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/final-444e-whip-summary.json",
+          "length": 6602,
+          "sha256": "F749FCAE594AED6435272D432DE52E2248FAF4A63E96850AC735BB176E9266C8"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/MeasureWhipNormal.cs",
+          "length": 16605,
+          "sha256": "E590A893E4484A13840AA6F6E9B18D5E41370E241119887167717E153228153E"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/MeasureWhipNormal.exe",
+          "length": 25088,
+          "sha256": "FFDD3D4AA0DB31A04C58A827DBD59E16D6E1DA26D3FDAA1E28E6879A8607306F"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/MeasureWhipNativeOff.cs",
+          "length": 16598,
+          "sha256": "D202139E4ADB2E56494257E1F009D45F8C50D8EBDE766968DE92522A0A649654"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/MeasureWhipNativeOff.exe",
+          "length": 25088,
+          "sha256": "32A330D5C155225218EADF5D2190B3ABFF94A2281EA84312AA4BB38E197EA1EB"
+        }
+      ]
+    },
+    {
+      "scope": "source/build and retained assets",
+      "applicability": "All owned source/tests/docs committed A. clean=false reflects exactly4 authorized foreign retained assets,158 preserved originals unchanged. Current fixed Release is A, Debug retains original7576 source/r11 compile identity and matching2B6 compile inputs; no new A Debug compile claim.",
+      "artifacts": [
+        {
+          "path": ".local/aim-priority-recovery-20261013/final-444e-identity.json",
+          "length": 3237,
+          "sha256": "3223037DE052E938B73CD6ADD8429FEA5B822E83713036E4A7A69D60C71E4B89"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/final-444e-release-build-record.json",
+          "length": 128515,
+          "sha256": "B70632F97535346E7A4FF150CA703936CFB352DBDFA38B62B388F6866586C9CB"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/final-444e-debug-build-record.json",
+          "length": 128292,
+          "sha256": "A62797B29A24939B625EC2E94993AB25A09D80666F55DF220E74E3A39300A132"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/final-444e-source-files.json",
+          "length": 7581,
+          "sha256": "06ADEE57C92EE11BD1626B87BD08351CB305EA99FE5A265782AA8690553671AF"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/preservation-before-closing-source.json",
+          "length": 44458,
+          "sha256": "BB24501721993BC853C7D4A92851AA63CD78A941AF833D1BDC36FB2BF1BB39E3"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/retained-assets.json",
+          "length": 970,
+          "sha256": "C9006ABA42947249926DCD6953C21B0DDAB9278A43E2AF56BCB930E5E7E7C52B"
+        }
+      ]
+    },
+    {
+      "scope": "fixed entry/observation carriers",
+      "applicability": "Existing final long CPU and Draw entries bind fixed A. Short default A2880-row run is retained but does not define the final stable360 schedule. Supplemental15 Enhanced is only moving Both and separate from ordinary time intervals.",
+      "artifacts": [
+        {
+          "path": ".local/aim-priority-recovery-20261013/RunNaturalCpuModesFinal.cs",
+          "length": 4757,
+          "sha256": "64D6CC6278110EB47405041A9DD8E45BF832ADFC2FADEE96B1D06B310E0FB65C"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/RunNaturalCpuModesFinal.exe",
+          "length": 10240,
+          "sha256": "F855CFF024D820C673946256DCDBE6497040E06DAE07FE162FEEFAE2096E42DF"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/RunNaturalDrawCpu.cs",
+          "length": 4719,
+          "sha256": "7AA8AD75B1AD715DD8261D421227B7B888E9E260E3D680363264EB5A4E33FDB6"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/RunNaturalDrawCpu.exe",
+          "length": 9728,
+          "sha256": "8F589189D8D93183AEBE08918F6DCA24B754A0ABB4685C61877201E319DBDD7F"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/final-444e-natural-cpu.log",
+          "length": 5386,
+          "sha256": "5828D17D4E26CDD9A251B1AC915EE676F0F4B4EB7AEE87AFB32E192A74529C4A"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/final-7576-input-observation-identity.json",
+          "length": 1508,
+          "sha256": "3C99DF539D1E6EC023FF6D438AACFD67E83B0A309747F76F2C5D30A2F5D495ED"
+        }
+      ]
+    },
+    {
+      "scope": "A2 actual compile/IL identity and entry-tool recovery",
+      "applicability": "A2 Release/Debug/private probe/source snapshot are fixed independently. Source/input use existingPS5 chain; oldA74F0/2398 retained. UTF8 BOM adds exactly3bytes, remaining14991 equal; PS5 actual4 Chinese allowed-path mismatch repaired without changing schema/guards/text. Production compileInputs are fully equal and10713 IL bodies match. Assembly/PE metadata differs by real source commit; not binary identity.",
+      "artifacts": [
+        {
+          "path": ".local/aim-priority-recovery-20261013/final-a2-identity.json",
+          "length": 3213,
+          "sha256": "DABFB5198EBA0D8EEF00C006ABB00ACAFBE6820E14E5F4BE9E6A6DCE9E652280"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/final-a2-release-build-record.json",
+          "length": 128515,
+          "sha256": "8EEAD5ED033421A893A8AFA474ED595101A7843CE85A215F789F27A0887557BD"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/final-a2-debug-build-record.json",
+          "length": 128292,
+          "sha256": "A62797B29A24939B625EC2E94993AB25A09D80666F55DF220E74E3A39300A132"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/final-a2-source-files.json",
+          "length": 7581,
+          "sha256": "5C2F9C35AC8F0AB001B5D9F482FC6381D6E1986C9842983A9C1404970FC58E56"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/reader-bom-only-diff.json",
+          "length": 350,
+          "sha256": "79EA1F170FB04267C93E786ABEAA227E65B26AA7E5555EC3622AD8C8B13586EE"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/reader-encoding-ps5-diff.json",
+          "length": 904,
+          "sha256": "EFDD0FCAAB2CD96F6D87C64AC4A0132ECAED920624710E9EE121F89CB349B106"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/reader-encoding-pwsh7-diff.json",
+          "length": 507,
+          "sha256": "ADC67084A42E62DD51A0F028327A55B0C533DE9C90A7DCC4099AC4B9574C0173"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/a-to-a2-compile-equivalence.json",
+          "length": 513,
+          "sha256": "01D371D6C9D442BB58EA6479078244B461BDA29005707C78194F6D84255A38FF"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/a-to-a2-il.log",
+          "length": 195,
+          "sha256": "7257CE9680E1DD66BB84B28ED5495DCDB48B461133BDA51B62B8DEED6461FED3"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/a-to-a2-il/old-method-il.txt",
+          "length": 2990809,
+          "sha256": "69DCFA72E88ACF0339C3AD797E300AE6B41956E7A5AC2A17F603F4E02DDDAE19"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/a-to-a2-il/new-method-il.txt",
+          "length": 2990809,
+          "sha256": "69DCFA72E88ACF0339C3AD797E300AE6B41956E7A5AC2A17F603F4E02DDDAE19"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/final-source-independent-review-original.md",
+          "length": 2048,
+          "sha256": "721997900044643AD59CB727BF68BD490AC55D04B3DA18866D0DA5B1ACA65554"
+        }
+      ]
     }
   ],
   "reviews": [
     {
-      "result": "PENDING",
-      "sourceFingerprint": null,
-      "coverage": "13scope、失败处置、最终产品A身份/载荷与当前性能",
-      "artifact": null
+      "result": "APPROVED_FOR_STAGE",
+      "sourceFingerprint": "4818A20177E1099BE939658E46198C0AC3ECEB75B824505C33333A8869119990",
+      "coverage": "A2 exact40 revisions/5detection,13 necessary reused scopes,16failure dispositions, compile/10713IL equivalence, costs/cold/limits; excludesZIP/install",
+      "artifact": {
+        "path": ".local/aim-priority-recovery-20261013/final-a2-source-independent-review-original.md",
+        "length": 2570,
+        "sha256": "5A5E94F8A2BC678E8E897BF0BA916657B26E02182FFCB6EEBB9B9352536AA4F8"
+      }
     }
   ],
   "limits": [
-    "原187完整资格未执行；本轮13必要scope仍未全部收口。",
-    "本公共草稿含PENDING，不能直接满足stage reader或签APPROVED_FOR_STAGE。",
-    "不代表正常游戏FPS、实机、多人、包/安装或所有者验收。",
-    "原件仅相对路径/hash定位；不上传个人路径、原版程序集、用户数据或会话。",
-    "最终产品A和文档B分离，不自指本文件hash/commit造成循环。"
+    "Full187 qualification INCOMPLETE; releaseEligible=false; no merge/Release/issue closure.",
+    "Native gameplay phases in isolation are real; full game Main.Update/Main.Draw/FPS, multiplayer and owner acceptance are not claimed.",
+    "All cold rows/GC/first-hit costs remain; no simple ON-OFF cold subtraction. Core actions occur same native update, cold pressure may use current legal Basic before far proof.",
+    "Private carrier initialization/observer-name/vanity-item failures produced no valid whip-use evidence and remain as failures.",
+    "A2 is new real product commit/metadata. A metrics are only REVIEWED_REUSE with original identities, not renamed or re-executed; final package and consumers must use actualA2 bytes."
   ],
-  "publishedSummaryIdentity": "两份summary.csv在本提交快照仅复制7576先前候选；最终产品A的普通结果暂存.local，安装后纯文档B再发布。"
+  "publishedSummaryIdentity": "A444e ordinary optimized Release metrics, explicitly REVIEWED_REUSE for A2 by equal production compile inputs and10713 method IL records; actual ZIP consumers use A2 bytes. Documentation commit is later than product commit.",
+  "percentileAlgorithm": "Nearest-rank: sorted[ceil(n*q)-1] for q=.95/.99. Original G13/b038 floor logs remain historical; raw data supports separately labelled nearest-rank summaries. Unsealed prior floor derivatives are explicitly reconstructed, not original sealed files.",
+  "executableEquivalence": {
+    "r11ToA": "10713 raw method IL bodies/tokens/signatures/locals/exception clauses:0 differences",
+    "previous7576ToA": "Only HostAttackAim+PreviewPlan.PresentationMembersCurrent differs; remaining10712 bodies unchanged",
+    "limits": "Assembly attributes, PE metadata/resources and complete native game/FPS are outside method-IL comparison. Actual package identity and key consumers remain required.",
+    "artifacts": [
+      {
+        "path": ".local/aim-priority-recovery-20261013/r11-to-444e-il.log",
+        "length": 195,
+        "sha256": "7257CE9680E1DD66BB84B28ED5495DCDB48B461133BDA51B62B8DEED6461FED3"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/r11-to-444e-il/old-method-il.txt",
+        "length": 2990809,
+        "sha256": "69DCFA72E88ACF0339C3AD797E300AE6B41956E7A5AC2A17F603F4E02DDDAE19"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/r11-to-444e-il/new-method-il.txt",
+        "length": 2990809,
+        "sha256": "69DCFA72E88ACF0339C3AD797E300AE6B41956E7A5AC2A17F603F4E02DDDAE19"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/7576-to-444e-il.log",
+        "length": 657,
+        "sha256": "B92C2073B86ED8F7F70CFBBBB75552AFFE6CA16C1B6929841155589AFC71750E"
+      }
+    ]
+  },
+  "delivery": {
+    "sourceCommit": "92289a1d65e6dfa6068d12d89d2eeec768d26f87",
+    "measurementCommit": "444e28b0265a81514f8ba2303feaab0381db9f77",
+    "zipPath": "outputs/aim-priority-recovery-20261013-92289a1/JueMingR-Continuous-Processing-92289a1d65e6dfa6068d12d89d2eeec768d26f87.zip",
+    "zipLength": 2123762,
+    "zipSha256": "DB59720908271C9C9A0DFA84C74111B6614C52C879913BD9F8F4AF8895E5D208",
+    "reader": "PS5 actual positive +14 rejected invalid records",
+    "packageApproval": {
+      "path": ".local/aim-priority-recovery-20261013/final-a2-package-independent-review-original.md",
+      "length": 2821,
+      "sha256": "CAB3D1B0E144D38516ACBFD54750305F6662B3DD2E7CBB4A3EEBBAC94B2B3B80"
+    },
+    "zipConsumers": {
+      "path": ".local/aim-priority-recovery-20261013/final-a2-zip-consumers-record.json",
+      "length": 12684,
+      "sha256": "E6741C5F279244741AA84F2619BD2D9E70758A532D3098FAAD31408033AF6E90"
+    },
+    "naturalDrawActual": {
+      "standing": "287/294; longest gap5;3 gap runs",
+      "moving": "294/294"
+    },
+    "installationReceipt": {
+      "path": ".local/aim-priority-recovery-20261013/install-a2-20261013-052559/installation-receipt.json",
+      "length": 1178835,
+      "sha256": "495A3A5E51D9121F5BAD776820B9E2665E4427A3B0194B9420D8B0CE1D01AE18"
+    },
+    "manifestSha256": "0E1984A27CA83E91D8240E7D352FF996E8DB19213BB431D2909694DCB2031750",
+    "status": "INSTALLED_VERIFIED",
+    "previousProduct": "75a1072cba59fbb84f587ec5615b8f32a9cedcb5",
+    "backupCount": 12,
+    "protectedCount": 1745,
+    "originalPreservedCount": 162,
+    "gameLaunched": false,
+    "ownerAcceptance": "NOT_EXECUTED"
+  }
 }
