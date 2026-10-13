@@ -99,20 +99,22 @@ namespace JueMingR.TerrariaHost.Combat
             try{PreparePreviewCore(phase);}
             finally{EndFlightPreparation();}
         }
-        internal void PreparePreviewWindow(NpcTrajectory path)
+        internal bool PreparePreviewWindow(NpcTrajectory path)
         {
+            bool attempted=false;
             try
             {
                 using(observation.PredictionWork.Enter(Main.GameUpdateCount))
                 {
-                    if(path==null || !PreviewDemand || !CurrentReceiver || Permission && ExpectedImpact!=null || !CombatPredictionWork.TryContinue())return;
+                    if(path==null || !PreviewDemand || !CurrentReceiver || Permission && ExpectedImpact!=null || !CombatPredictionWork.TryContinue())return false;
                     int age=(int)((long)Main.GameUpdateCount-path.SampleTick);NpcTrajectory window;
-                    if(age<0 || !path.TryWindow((long)Main.GameUpdateCount,path.Count-age-1,path.Version,out window))return;
-                    var context=FaultContextFor(path.Identity);if(preview.Faults.Blocks(context))return;
+                    if(age<0 || !path.TryWindow((long)Main.GameUpdateCount,path.Count-age-1,path.Version,out window))return false;
+                    var context=FaultContextFor(path.Identity);if(preview.Faults.Blocks(context))return false;
                     // Only Host's optional scheduler enters here. The aged
                     // immutable suffix retains its capture and calculation
                     // token and is never published to an actual input reader.
                     previewStep=Main.GameUpdateCount;previewPresentation=null;previewDisplaySource=path;
+                    attempted=true;
                     PreparePlan(preview,window,HostAttackPhase.CompletedWorld);
                     previewTerrain=preview.Contact==null?null:preview.Terrain.FreezeCells();
                     // A completed miss over this entire available suffix is
@@ -124,6 +126,7 @@ namespace JueMingR.TerrariaHost.Combat
             catch(CombatPredictionBudgetExceededException){previewLeaseTick=-1;}
             catch(Exception error){PropagateFatal(error);preview.Faults.Record(FaultContextFor(path.Identity));ClearPreview();}
             finally{EndFlightPreparation();}
+            return attempted;
         }
         private void PreparePreviewCore(HostAttackPhase phase)
         {

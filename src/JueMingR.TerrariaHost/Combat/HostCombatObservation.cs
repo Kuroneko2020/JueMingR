@@ -292,9 +292,12 @@ namespace JueMingR.TerrariaHost.Combat
                         if(!displayValidated)ValidateDisplay(sampleTick);if(!previewValidated)Attack?.ValidatePreviewPresentation();
                         if(Attack!=null && Attack.PreviewRefreshPending && DisplayPath!=null && (previewOptionalTick<0 || sampleTick-previewOptionalTick>=2) && CombatPredictionWork.TryContinue())
                         {
+                            bool previewPrepared=false;
                             using(CombatPredictionWork.Optional(2))
-                                if(CombatPredictionWork.TryContinue()){previewOptionalTick=sampleTick;Attack.PreparePreviewWindow(DisplayPath);}
-                            Attack.ValidatePreviewPresentation();
+                                if(CombatPredictionWork.TryContinue()){previewPrepared=Attack.PreparePreviewWindow(DisplayPath);if(previewPrepared)previewOptionalTick=sampleTick;}
+                            // No new plan means this call's preceding validation
+                            // is still the complete result; do not scan it twice.
+                            if(previewPrepared)Attack.ValidatePreviewPresentation();
                         }
                     }
                     catch(CombatPredictionBudgetExceededException){displayLeaseTick=-1;}
