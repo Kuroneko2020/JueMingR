@@ -49,7 +49,7 @@ namespace NativeWorldTextProbe
                 var n=Main.npc[2];n.SetDefaults(3);n.whoAmI=2;n.active=true;n.Center=new Vector2(910,667);n.velocity=n.netOffset=Vector2.Zero;n.aiStyle=-1;n.noGravity=true;n.life=n.lifeMax=100000;
                 for(int y=0;y<Main.maxTilesY;y++)NativeToolsChecks.Tile(48,y,1);
                 NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,true,false));
-                for(int i=0;i<8;i++)NativeCombatSelectionPreviewChecks.Step(context,new Vector2(650,550),false,true);
+                WarmOptionalPathFixture(context,host);
                 Console.WriteLine("OPTIONAL PREMISE path="+(GetOptional(host,"DisplayPath")!=null)+" preview="+(GetOptional(attack,"ExpectedPreview")!=null)+" cache="+((NpcPredictionCache)Get(Get(host,"Prediction"),"Cache")).Required+" workMs="+Get(Get(host,"PredictionWork"),"UsedMilliseconds"));
                 Require(GetOptional(host,"DisplayPath")!=null && GetOptional(attack,"ExpectedPreview")==null,"counterexample owns a real valid path while retired preview has no Contact");
                 audit.Patch(attack.GetType().GetMethod("PreparePlan",Flags),prefix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks).GetMethod(nameof(CountOptionalPlan),Flags)));
@@ -93,7 +93,7 @@ namespace NativeWorldTextProbe
             var n=Main.npc[2];n.SetDefaults(3);n.whoAmI=2;n.active=true;n.Center=new Vector2(910,667);n.velocity=n.netOffset=Vector2.Zero;n.aiStyle=-1;n.noGravity=true;n.life=n.lifeMax=100000;
             for(int y=0;y<Main.maxTilesY;y++)NativeToolsChecks.Tile(48,y,1);
             NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,true,false));
-            for(int i=0;i<8;i++)NativeCombatSelectionPreviewChecks.Step(context,new Vector2(650,550),false,true);
+            WarmOptionalPathFixture(context,host);
             Require(GetOptional(host,"DisplayPath")!=null && GetOptional(attack,"ExpectedPreview")==null,"short cadence starts with a valid NPC path and no retired preview demand");
             var audit=new Harmony("JueMingR.Tests.OptionalShortCadence");var method=Get(host,"Prediction").GetType().GetMethod("PreparePrefix",Flags);
             audit.Patch(method,prefix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks).GetMethod(nameof(CountOptionalShortPrefix),Flags)));optionalPrefixCalls.Clear();
@@ -118,6 +118,22 @@ namespace NativeWorldTextProbe
                 optionalPlans=0;for(int i=0;i<8;i++)Call(attack,"ValidatePreviewPresentation");Require(optionalPlans==0,"retired preview validation performs no plan production while bounded NPC path recovery remains active");
             }
             finally{audit.UnpatchAll(audit.Id);}
+        }
+        private static void WarmOptionalPathFixture(object context,object host)
+        {
+            // This fixture supplies a positive path for consumption and real
+            // invalidation countercontrols. Eight cold updates are not a
+            // product supply deadline. Use a fixed normal warm interval, never
+            // stop on success, reset the owner budget or manufacture a lease.
+            int available=0,gap=0,longest=0;bool atEight=false;
+            for(int i=0;i<60;i++)
+            {
+                NativeCombatSelectionPreviewChecks.Step(context,new Vector2(650,550),false,true);
+                bool current=GetOptional(host,"DisplayPath")!=null;
+                if(current){available++;gap=0;}else{gap++;longest=Math.Max(longest,gap);}
+                if(i==7)atEight=current;
+            }
+            Console.WriteLine("OPTIONAL FIXTURE fixedNormalUpdates=60 pathUpdates="+available+" longestGap="+longest+" coldEightPath="+atEight+" finalPath="+(GetOptional(host,"DisplayPath")!=null));
         }
         private static void CaptureDisplayFixture(object host)
         {
