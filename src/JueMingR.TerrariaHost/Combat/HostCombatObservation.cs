@@ -20,6 +20,8 @@ namespace JueMingR.TerrariaHost.Combat
         // real-phase timing; any dependency change still invalidates display.
         internal const int DisplayRefreshUpdates=5;
         internal const int DisplayMaximumAge=DisplayRefreshUpdates-1;
+        private const int DisplayShortPrefix=32;
+        private const int DisplayShortRefreshUpdates=2;
         internal readonly ObservationSettings Settings;
         internal readonly CombatSelection Selection;
         internal readonly NpcPredictionSource Prediction;
@@ -39,7 +41,7 @@ namespace JueMingR.TerrariaHost.Combat
         private PredictionTerrain.CellLease displayTerrain;
         private PredictionPlayerMotion displayPlayer;
         private int displayLife;
-        private long displayLeaseTick=-1,optionalTick=-1,previewOptionalTick=-1;
+        private long displayLeaseTick=-1,optionalTick=-1,previewOptionalTick=-1,displayShortTick=-1;
         private NpcIdentity optionalTarget;
         internal NpcTrajectory DisplayPath {get{return displayLeaseTick==(long)Main.GameUpdateCount && Path && Selection.HasTarget && displayPath!=null && displayPath.Identity.Equals(Selection.Target)?displayPath:null;}}
         internal int DisplayAge {get{return displayPath==null?0:(int)Math.Max(0,(long)Main.GameUpdateCount-displayPath.SampleTick);}}
@@ -126,7 +128,7 @@ namespace JueMingR.TerrariaHost.Combat
                 // Retire only our two consumers and state on the final edge;
                 // independently registered prediction consumers remain intact.
                 Attack?.Reset();Prediction.Cache.Release(0);Prediction.Cache.Release(1);
-                displayPath=null;displayTerrain=null;displayLeaseTick=optionalTick=-1;OptionalPreparation=false;
+                displayPath=null;displayTerrain=null;displayLeaseTick=optionalTick=previewOptionalTick=displayShortTick=-1;OptionalPreparation=false;
                 World.Marker.Clear();World.Impact.Clear();
                 if(Prediction.Cache.Required==0){Prediction.Clear();Selection.RetireTarget();}
             }
@@ -142,7 +144,7 @@ namespace JueMingR.TerrariaHost.Combat
         internal void CollisionFailed(){collisionFailed=true;Geometry.Clear();}
         public void OnSessionStarted(){Clear();Geometry.Session=runtime.Generation;}
         public void OnSessionEnded(){Clear();}
-        private void Clear(){actionFrame=optionalTick=displayLeaseTick=-1;displayPath=null;displayTerrain=null;OptionalPreparation=false;Attack?.Reset();Geometry.Clear();Prediction.Cache.EndSession();Prediction.EndWorld();Selection.Clear();World.Recover();World.Marker.Reset();Array.Clear(failedTargets,0,failedTargets.Length);selectionFailed=collisionFailed=pathFailed=reportedCollision=reportedPath=reportedMarker=false;}
+        private void Clear(){actionFrame=optionalTick=displayLeaseTick=previewOptionalTick=displayShortTick=-1;displayPath=null;displayTerrain=null;OptionalPreparation=false;Attack?.Reset();Geometry.Clear();Prediction.Cache.EndSession();Prediction.EndWorld();Selection.Clear();World.Recover();World.Marker.Reset();Array.Clear(failedTargets,0,failedTargets.Length);selectionFailed=collisionFailed=pathFailed=reportedCollision=reportedPath=reportedMarker=false;}
         public void FailClosed(){Clear();Prediction.Stop();selectionFailed=collisionFailed=pathFailed=true;}
         public void Update(ulong tick)
         {
@@ -245,7 +247,7 @@ namespace JueMingR.TerrariaHost.Combat
                     if(CombatPredictionWork.TryContinue())
                     {
                         admitted=true;
-                        optionalTick=sampleTick;optionalTarget=Selection.Target;
+                        optionalTick=displayShortTick=sampleTick;optionalTarget=Selection.Target;
                         // A display tail cannot consume the allowance before
                         // its useful contact. Preserve the same-sample prefix,
                         // solve its preview, then extend only with the remainder.
@@ -304,7 +306,29 @@ namespace JueMingR.TerrariaHost.Combat
                             // fresh core prefix without another Source sample
                             // or waiting for the optional tail's due cycle.
                             if(!displayCurrent && coreDisplayPrefix!=null && ReferenceEquals(coreDisplayPrefix,Prediction.Cache.Read(0)))
-                            {CaptureDisplay(sampleTick);ValidateDisplay(sampleTick);}
+                            {CaptureDisplay(sampleTick);displayCurrent=ValidateDisplay(sampleTick);if(displayCurrent)displayShortTick=sampleTick;}
+                            if(!displayCurrent && Path && !TargetPredictionFailed && !OptionalPreparation && displayPath!=null && displayPath.Count>1 &&
+                                (displayShortTick<0 || sampleTick-displayShortTick>=DisplayShortRefreshUpdates))
+                            {
+                                bool shortCaptured=false;
+                                using(CombatPredictionWork.Optional(2))
+                                if(CombatPredictionWork.TryContinue())
+                                {
+                                    // A real changed display premise earns only
+                                    // a bounded prefix, never ClearLine's full
+                                    // optional pass or another 120-step tail.
+                                    displayShortTick=sampleTick;
+                                    var priorPublication=Prediction.Cache.Read(0);
+                                    PrepareSelectedPrediction(sampleTick,false,tick,Math.Min(DisplayShortPrefix,Prediction.Cache.Required));
+                                    var publication=Prediction.Cache.Read(0);
+                                    if(publication!=null && publication.SampleTick==sampleTick && !ReferenceEquals(publication,priorPublication))
+                                    {
+                                        CaptureDisplay(sampleTick);shortCaptured=true;
+                                        if(Attack!=null && CombatPredictionWork.TryContinue()){previewOptionalTick=sampleTick;Attack.PreparePreviewOnly();}
+                                    }
+                                }
+                                if(shortCaptured)ValidateDisplay(sampleTick);
+                            }
                         }
                         if(!previewValidated)Attack?.ValidatePreviewPresentation();
                         if(Attack!=null && Attack.PreviewRefreshPending && DisplayPath!=null && (previewOptionalTick<0 || sampleTick-previewOptionalTick>=2) && CombatPredictionWork.TryContinue())

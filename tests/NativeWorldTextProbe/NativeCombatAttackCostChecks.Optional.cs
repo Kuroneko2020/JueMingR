@@ -2,6 +2,7 @@ using System;
 using System.Reflection;
 using System.Collections;
 using System.Linq;
+using System.Collections.Generic;
 using HarmonyLib;
 using JueMingR.Features.Combat;
 using JueMingR.Platform.Combat;
@@ -16,10 +17,13 @@ namespace NativeWorldTextProbe
         private static int optionalPlans;
         private static int optionalSourceClears;
         private static int optionalCorePrefixes;
+        private struct OptionalPrefixCall {internal ulong Tick;internal int Required;}
+        private static readonly List<OptionalPrefixCall> optionalPrefixCalls=new List<OptionalPrefixCall>(64);
         private static bool optionalForceBudget;
         private static void CountOptionalPlan(){optionalPlans++;}
         private static void CountOptionalSourceClear(){optionalSourceClears++;}
         private static void CountOptionalCorePrefix(){optionalCorePrefixes++;}
+        private static void CountOptionalShortPrefix(int __2){optionalPrefixCalls.Add(new OptionalPrefixCall{Tick=Main.GameUpdateCount,Required=__2});}
         private static void OptionalEarlyBudget(){if(optionalForceBudget){optionalForceBudget=false;throw new CombatPredictionBudgetExceededException();}}
         private static void OptionalConsumption(object context,object combat,object host,object attack,object input)
         {
@@ -64,11 +68,45 @@ namespace NativeWorldTextProbe
                 Require((bool)Get(host,"Collision") && !(bool)Get(Get(host,"Selection"),"HasTarget") && optionalSourceClears==0,"independent collision observation remains active without repeatedly clearing an inactive prediction producer");
                 Console.WriteLine("OPTIONAL SHUTDOWN collisionUpdates=12 actualSourceClear="+optionalSourceClears+" savedMarker=true");
                 OptionalCoreDisplay(context,combat,host,input);
+                OptionalShortCadence(context,combat,host,attack,input);
                 OptionalActualContact(context,combat,host,attack,input);
                 OptionalAccounting();
                 Console.WriteLine("PASS optional consumption, repeated outer callback, same-update dependency and final-consumer marker shutdown");
             }
             finally{optionalForceBudget=false;audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());}
+        }
+        private static void OptionalShortCadence(object context,object combat,object host,object attack,object input)
+        {
+            NativeCombatObservationChecks.Save(host,new ObservationOptions());
+            var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,95,0,0);p.position=new Vector2(700,646);p.releaseUseItem=true;p.inventory[54].SetDefaults(97);p.inventory[54].stack=999;
+            var n=Main.npc[2];n.SetDefaults(3);n.whoAmI=2;n.active=true;n.Center=new Vector2(910,667);n.velocity=n.netOffset=Vector2.Zero;n.aiStyle=-1;n.noGravity=true;n.life=n.lifeMax=100000;
+            for(int y=0;y<Main.maxTilesY;y++)NativeToolsChecks.Tile(48,y,1);
+            NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,true,false));
+            for(int i=0;i<8;i++)NativeCombatSelectionPreviewChecks.Step(context,new Vector2(650,550),false,true);
+            Require(GetOptional(host,"DisplayPath")!=null && GetOptional(attack,"ExpectedPreview")==null,"short cadence starts with a real blocked completed preview miss and valid path");
+            var audit=new Harmony("JueMingR.Tests.OptionalShortCadence");var method=Get(host,"Prediction").GetType().GetMethod("PreparePrefix",Flags);
+            audit.Patch(method,prefix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks).GetMethod(nameof(CountOptionalShortPrefix),Flags)));optionalPrefixCalls.Clear();
+            int fullAttempts=0,shortAttempts=0;
+            try
+            {
+                for(int i=0;i<16;i++)
+                {
+                    n.life--;NativeCombatSelectionPreviewChecks.Step(context,new Vector2(650,550),false,true);
+                    ulong tick=Main.GameUpdateCount;var entries=optionalPrefixCalls.Where(entry=>entry.Tick==tick).ToArray();
+                    bool full=(long)Get(host,"optionalTick")== (long)tick,shortOnly=!full && (long)Get(host,"displayShortTick")== (long)tick;
+                    Require(full?entries.Length>=1 && entries.Length<=2:shortOnly?entries.Length==1 && entries[0].Required<=32:entries.Length==0,"actual full/short admission exactly accounts for this update's Source entries; short never grows to a120 tail");
+                    if(full){fullAttempts++;Require((long)Get(host,"displayShortTick")== (long)tick,"a full actual attempt also owns this update's short clock");}
+                    if(shortOnly)shortAttempts++;
+                    int count=optionalPrefixCalls.Count;for(int repeat=0;repeat<4;repeat++)Call(context,"UpdateRuntime");
+                    Require(optionalPrefixCalls.Count==count,"same GUC outer repeats cannot issue another full or short Source preparation");
+                }
+                Require(shortAttempts>0 && fullAttempts>0,"life changes with no Aim/core exercise both finite fresh-prefix and independent full-tail opportunities");
+                Console.WriteLine("OPTIONAL SHORT CADENCE worldUpdates=16 fullActualAttempts="+fullAttempts+" shortActualAttempts="+shortAttempts+" sourceEntries="+optionalPrefixCalls.Count+" coreDemand=false repeatSourceEntries=0");
+                // Stop changing this context. Complete blocked misses are still
+                // pure consumption, even after fresh short publications exist.
+                optionalPlans=0;for(int i=0;i<8;i++)Call(attack,"ValidatePreviewPresentation");Require(optionalPlans==0,"stable blocked noContact validation retains the original A2 RED to zero-production GREEN boundary");
+            }
+            finally{audit.UnpatchAll(audit.Id);}
         }
         private static void OptionalCoreDisplay(object context,object combat,object host,object input)
         {
