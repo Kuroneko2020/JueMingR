@@ -251,6 +251,21 @@ namespace NativeWorldTextProbe
             Step(context,true,false);
             var inputFact=Get(attack,"consumedInput");
             Require(parentBirths==1 && assistedConsumers==1 && Get(inputFact,"Kind").ToString()=="Basic","actual natural bow birth uses Basic when only enhanced execution failed");
+            // The native Basic birth is already recorded above. Its new source
+            // publication can legitimately retire the prior idle hypothesis.
+            // Establish the compatibility countercontrol from the real current
+            // Source with an isolated component allowance, not another native
+            // use or a claim about scheduled first-shot preview availability.
+            using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))
+            {
+                var id=(NpcIdentity)Get(Get(host,"Selection"),"Target");var source=Get(host,"Prediction");
+                Call(source,"PreparePrefix",id,(long)Main.GameUpdateCount,NpcPredictionCache.Horizon,NpcPredictionCache.Horizon);
+                var fixture=((NpcPredictionCache)Get(source,"Cache")).Read(0);Require(fixture!=null && fixture.Count==121,"compatibility fixture has a complete real current NPC publication");
+                var plan=Get(attack,"preview");var phase=Enum.Parse(Get(plan,"Phase").GetType(),"CompletedWorld");
+                Call(attack,"PreparePlan",plan,fixture,phase);Call(attack,"FreezePreviewTerrain",plan);
+                Require(GetOptional(plan,"Contact")!=null && (bool)Call(plan,"PresentationMembersCurrent",player,0) && (bool)Call(attack,"PreviewDependenciesCurrent"),"compatibility countercontrol owns a genuinely qualified current free arc");
+                Require(!(bool)Call(attack,"PreviewInputCompatible"),"the qualified current free arc is rejected by the recorded actual Basic ray, not by absence");
+            }
             var free=(AttackContact)GetOptional(Get(attack,"preview"),"Contact");
             Require(free!=null,"independent enhanced preview still has a solved arc; absence is not this oracle");
             var origin=(Vector2)Get(attack,"consumedOrigin");var actual=((Vector2)Get(inputFact,"Point")-origin).SafeNormalize(Vector2.Zero);var proposed=(new Vector2(free.AimX,free.AimY)-origin).SafeNormalize(Vector2.Zero);

@@ -81,7 +81,7 @@ namespace NativeWorldTextProbe
                 OptionalCoreDisplay(context,combat,host,input);
                 OptionalShortCadence(context,combat,host,attack,input);
                 OptionalActualContact(context,combat,host,attack,input);
-                OptionalAccounting();
+                OptionalAccounting();NativeCombatPreviewLeaseChecks.WindGate(context);
                 Console.WriteLine("PASS optional consumption, repeated outer callback, same-update dependency and final-consumer marker shutdown");
             }
             finally{optionalForceBudget=false;audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());}
@@ -119,6 +119,12 @@ namespace NativeWorldTextProbe
             }
             finally{audit.UnpatchAll(audit.Id);}
         }
+        private static void CaptureDisplayFixture(object host)
+        {
+            // The producer overload accepts a result-owned lease. This existing
+            // fixture explicitly exercises the selected-publication overload.
+            host.GetType().GetMethod("CaptureDisplay",Flags,null,new[]{typeof(long)},null).Invoke(host,new object[]{(long)Main.GameUpdateCount});
+        }
         private static void OptionalCoreDisplay(object context,object combat,object host,object input)
         {
             NativeCombatObservationChecks.Save(host,new ObservationOptions());
@@ -131,7 +137,7 @@ namespace NativeWorldTextProbe
             // Retention is a component countercontrol, not a claim that a
             // timed optional tail always reaches121. Publish the existing
             // independent static-NPC121 fixture before the real new core pass.
-            NativeCombatAimChecks.Prepare(host,Get(combat,"Attack"),n,0,true);Call(host,"CaptureDisplay",(long)Main.GameUpdateCount);Call(host,"ValidateDisplay",(long)Main.GameUpdateCount);
+            NativeCombatAimChecks.Prepare(host,Get(combat,"Attack"),n,0,true);CaptureDisplayFixture(host);Call(host,"ValidateDisplay",(long)Main.GameUpdateCount);
             Require(((NpcTrajectory)GetOptional(host,"DisplayPath"))?.Count==121,"long retention control owns the explicit valid121 component publication");
             var retained=(NpcTrajectory)GetOptional(host,"DisplayPath");n.position.X+=.5f;CoreDisplayStep(context,combat,host,input,n);
             var cache=(NpcPredictionCache)Get(Get(host,"Prediction"),"Cache");
@@ -144,6 +150,7 @@ namespace NativeWorldTextProbe
                 Require((long)Main.GameUpdateCount+1-due<5,"life-change control enters before another optional tail is due");
                 n.life--;optionalCorePrefixes=0;CoreDisplayStep(context,combat,host,input,n);
                 var display=(NpcTrajectory)GetOptional(host,"DisplayPath");
+                Console.WriteLine("CORE HARVEST OBSERVED calls="+optionalCorePrefixes+" displayCount="+(display?.Count??0)+" displaySample="+(display?.SampleTick??-1)+" currentTick="+Main.GameUpdateCount+" tailBefore="+due+" tailAfter="+Get(host,"optionalTick")+" cacheCount="+(cache.Read(0)?.Count??0)+" cacheSample="+(cache.Read(0)?.SampleTick??-1)+" workMs="+Get(Get(host,"PredictionWork"),"UsedMilliseconds")+" exceeded="+Get(Get(host,"PredictionWork"),"Exceeded"));
                 Require(optionalCorePrefixes==1 && display!=null && display.SampleTick==(long)Main.GameUpdateCount && (long)Get(host,"optionalTick")==due,"invalid old life display consumes this pass's fresh CompletedWorld core prefix without a second Source preparation or tail admission");
                 Console.WriteLine("OPTIONAL CORE HARVEST sourcePreparePrefix="+optionalCorePrefixes+" oldTailTick="+due+" captureTick="+display.CaptureTick+" sampleTick="+display.SampleTick+" count="+display.Count);
                 optionalCorePrefixes=0;
@@ -188,7 +195,7 @@ namespace NativeWorldTextProbe
             typeof(Player).GetMethod("ItemCheck_Shoot",Flags).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),true});
             Require(Main.projectile.Any(q=>q.active && q.type==541),"reuse component owns a real native yoyo birth");
             ComponentStep(context,combat,input,n);NativeCombatAimChecks.Prepare(host,attack,n,0,true);Call(attack,"Prepare");
-            Call(host,"CaptureDisplay",(long)Main.GameUpdateCount);Call(host,"ValidateDisplay",(long)Main.GameUpdateCount);
+            CaptureDisplayFixture(host);Call(host,"ValidateDisplay",(long)Main.GameUpdateCount);
             var actual=(AttackContact)GetOptional(attack,"ExpectedImpact");
             Require(actual!=null,"same completed-world component owns a qualified actual controller Contact before optional preparation");
             optionalPlans=0;
@@ -222,7 +229,7 @@ namespace NativeWorldTextProbe
                 {var watch=System.Diagnostics.Stopwatch.StartNew();while(watch.Elapsed.TotalMilliseconds<3.2)System.Threading.Thread.SpinWait(16);}
                 captureGets=0;captureObserved=true;Call(impact,"Capture");captureObserved=false;
                 Require(captureGets==0 && GetOptional(impact,"contact")==null && !(bool)Get(impact,"Failed") && ReferenceEquals(actual,GetOptional(attack,"ExpectedImpact")),"same-update exhausted optional allowance denies Capture without resetting or clearing actual input");
-                ComponentStep(context,combat,input,npc);NativeCombatAimChecks.Prepare(host,attack,npc,0,true);Call(attack,"Prepare");Call(host,"CaptureDisplay",(long)Main.GameUpdateCount);Call(host,"ValidateDisplay",(long)Main.GameUpdateCount);
+                ComponentStep(context,combat,input,npc);NativeCombatAimChecks.Prepare(host,attack,npc,0,true);Call(attack,"Prepare");CaptureDisplayFixture(host);Call(host,"ValidateDisplay",(long)Main.GameUpdateCount);
                 var recovered=GetOptional(attack,"ExpectedImpact");Require(recovered!=null,"next-update Capture recovery has a fresh qualified actual controller Contact");
                 captureCharged=captureObserved=true;Call(impact,"Capture");captureObserved=false;Require(ReferenceEquals(recovered,GetOptional(impact,"contact")) && !(bool)Get(impact,"Failed") && captureCharged,"next update restores presentation through the normal owner allowance");
                 // Yoyo uses its own navigation terrain. This separate empty

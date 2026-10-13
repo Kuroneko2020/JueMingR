@@ -15,9 +15,14 @@ namespace JueMingR.TerrariaHost.Combat
     {
         internal struct State
         {
-            private readonly bool windRelevant,wind,goodWorld,noTraps,tenthAnniversary;private readonly float speed,strength;private readonly double surface;
-            internal State(bool capture,bool windRelevant=true){this.windRelevant=windRelevant;wind=Main.windPhysics;goodWorld=Main.getGoodWorld;noTraps=Main.noTrapsWorld;tenthAnniversary=Main.tenthAnniversaryWorld;speed=Main.windSpeedCurrent;strength=Main.windPhysicsStrength;surface=Main.worldSurface;}
-            internal bool Current {get{return (!windRelevant || wind==Main.windPhysics && speed==Main.windSpeedCurrent && strength==Main.windPhysicsStrength) && goodWorld==Main.getGoodWorld && noTraps==Main.noTrapsWorld && tenthAnniversary==Main.tenthAnniversaryWorld && surface==Main.worldSurface;}}
+            private readonly Player windPlayer;private readonly bool playerWind,windRelevant,wind,goodWorld,noTraps,tenthAnniversary;private readonly float speed,strength;private readonly double surface;
+            internal State(bool capture,bool windRelevant=true):this(capture,windRelevant,null){}
+            internal State(bool capture,bool windRelevant,Player player){windPlayer=player;playerWind=PlayerWind(player);this.windRelevant=windRelevant;wind=Main.windPhysics;goodWorld=Main.getGoodWorld;noTraps=Main.noTrapsWorld;tenthAnniversary=Main.tenthAnniversaryWorld;speed=Main.windSpeedCurrent;strength=Main.windPhysicsStrength;surface=Main.worldSurface;}
+            // Projectile wind reads speed/strength only behind its real gate.
+            // Hand owners also capture the independent player wind-push gate;
+            // an unqualified family owner retains its conservative dependency.
+            private static bool PlayerWind(Player player){return player!=null && player.windPushed && player.CanBePushedByWind();}
+            internal bool Current {get{return (windPlayer==null || playerWind==PlayerWind(windPlayer)) && (!windRelevant || wind==Main.windPhysics && (windPlayer!=null && !playerWind && !wind || speed==Main.windSpeedCurrent && strength==Main.windPhysicsStrength)) && goodWorld==Main.getGoodWorld && noTraps==Main.noTrapsWorld && tenthAnniversary==Main.tenthAnniversaryWorld && surface==Main.worldSurface;}}
         }
         // The locked original ShouldUseWindPhysics first gates on Main.windPhysics.
         // A dependency lease must also survive that gate toggling, so inspect

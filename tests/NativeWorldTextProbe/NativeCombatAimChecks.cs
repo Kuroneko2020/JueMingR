@@ -286,7 +286,7 @@ namespace NativeWorldTextProbe
             // and preview duties. Its pre-published input is not evidence of
             // natural first-click preparation or display scheduling.
             if(!(bool)Get(host,"Path"))return;
-            Call(host,"CaptureDisplay",(long)Main.GameUpdateCount);
+            host.GetType().GetMethod("CaptureDisplay",Flags,null,new[]{typeof(long)},null).Invoke(host,new object[]{(long)Main.GameUpdateCount});
             Call(host,"ValidateDisplay",(long)Main.GameUpdateCount);
             Call(attack,"PreparePreviewOnly");Call(attack,"ValidatePreviewPresentation");
         }

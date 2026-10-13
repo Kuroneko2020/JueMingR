@@ -148,7 +148,7 @@ namespace JueMingR.TerrariaHost.Combat
         }
         private void PrepareSwing(Player player,Item item,NpcTrajectory timeline,HostAttackPhase phase,bool naturalPose)
         {
-            environmentState=new HostProjectileEnvironment.State(true,HostProjectileEnvironment.HandWindRelevant(player,item));
+            environmentState=new HostProjectileEnvironment.State(true,HostProjectileEnvironment.HandWindRelevant(player,item),player);
             if(timeline==null || !timeline.Identity.Equals(observation.Selection.Target))return;
             current=swing.Solve(player,item,timeline,new HostAttackClock(timeline,phase),terrain,naturalPose);next=null;ammo=null;
             weapon=item;slot=player.selectedItem;type=item.type;prefix=item.prefix;session=observation.Session;prepared=Main.GameUpdateCount;origin=player.RotatedRelativePoint(player.MountedCenter);
@@ -191,7 +191,7 @@ namespace JueMingR.TerrariaHost.Combat
                 preparedMotion.SameSample(NpcPredictionSource.ReadPlayer(held)) && CurrentReceiver && preparedImmune==Main.npc[observation.Selection.Target.Slot].immune[held.whoAmI] &&
                 HostAttackWindow.NextAction(combat,held,held.HeldItem) && Valid(true))return;
             bool beforeNpc=phase==HostAttackPhase.BeforeNpc;ClearExecution();if(!Permission || !CurrentReceiver)return;
-            terrain.Reset();environmentState=new HostProjectileEnvironment.State(true,HostProjectileEnvironment.HandWindRelevant(held,held.HeldItem));
+            terrain.Reset();environmentState=new HostProjectileEnvironment.State(true,HostProjectileEnvironment.HandWindRelevant(held,held.HeldItem),held);
             var player=combat.Player;var item=player.HeldItem;if(!Eligible(item))return;
             if(HostPlacementAttack.Handles(item))return; // Placement has its own native use receipt, not a damage contact.
             var timeline=observation.Prediction.Cache.Read(1);if(timeline==null || !timeline.Identity.Equals(observation.Selection.Target))return;

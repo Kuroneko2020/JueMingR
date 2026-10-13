@@ -18,6 +18,34 @@ namespace NativeWorldTextProbe
         private static int solves,reads;
         private static void Solve(){solves++;}
         private static void Read(){reads++;}
+        internal static void WindGate(object context)
+        {
+            var state=Get(context,"CombatObservation").GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostProjectileEnvironment",true).GetNestedType("State",Flags);
+            var withPlayer=state.GetConstructor(Flags,null,new[]{typeof(bool),typeof(bool),typeof(Player)},null);
+            Func<Player,object> Capture=p=>withPlayer==null?Activator.CreateInstance(state,Flags,null,new object[]{true,true},null):withPlayer.Invoke(new object[]{true,true,p});
+            bool wind=Main.windPhysics;float speed=Main.windSpeedCurrent,strength=Main.windPhysicsStrength;var player=Main.LocalPlayer;bool pushed=player.windPushed;
+            try
+            {
+                Main.windPhysics=false;player.windPushed=false;
+                var shot=new Projectile();shot.SetDefaults(1);
+                Require(!shot.ShouldUseWindPhysics(),"locked original projectile rejects wind physics before consulting speed or strength");
+                var disabled=Capture(player);Main.windSpeedCurrent=speed+.137f;Main.windPhysicsStrength=strength+.023f;
+                Require((bool)Get(disabled,"Current"),"disabled projectile wind gate and unpushed player retain a hand environment despite unused wind parameter drift");
+                Main.windPhysics=true;Require(!(bool)Get(disabled,"Current"),"enabling the real wind gate revokes the disabled snapshot");
+                Main.windSpeedCurrent=speed;Main.windPhysicsStrength=strength;var enabled=Capture(player);
+                Main.windSpeedCurrent=speed+.137f;Require(!(bool)Get(enabled,"Current"),"enabled wind retains its speed dependency");
+                Main.windSpeedCurrent=speed;Main.windPhysicsStrength=strength+.023f;Require(!(bool)Get(enabled,"Current"),"enabled wind retains its strength dependency");
+                Main.windPhysics=false;Main.windSpeedCurrent=speed;Main.windPhysicsStrength=strength;player.windPushed=true;
+                Require(player.CanBePushedByWind(),"player countercontrol has the original independent wind-push gate");
+                var playerWind=Capture(player);Main.windSpeedCurrent=speed+.137f;
+                Require(!(bool)Get(playerWind,"Current"),"player wind push still reads speed when projectile wind physics is disabled");
+                Main.windSpeedCurrent=speed;player.windPushed=false;Require(!(bool)Get(playerWind,"Current"),"changing the actual player's wind-push gate revokes its prior environment");
+                var conservative=Activator.CreateInstance(state,Flags,null,withPlayer==null?new object[]{true,true}:new object[]{true,true,null},null);
+                Main.windSpeedCurrent=speed+.137f;Require(!(bool)Get(conservative,"Current"),"unqualified other-family state keeps its conservative wind dependency");
+                Console.WriteLine("PASS original wind gate / disabled unused parameters / enabled speed-strength / independent player wind push; no solver or input permission change");
+            }
+            finally{Main.windPhysics=wind;Main.windSpeedCurrent=speed;Main.windPhysicsStrength=strength;player.windPushed=pushed;}
+        }
         internal static void TerrainOwner(object host,object attack,AttackContact contact,bool controlled)
         {
             var plan=Get(attack,"preview");var dependency=controlled?Get(plan,"ControlDependencies"):Get(plan,"Flight");
@@ -141,6 +169,19 @@ namespace NativeWorldTextProbe
                     Require((bool)Call(attack,"PreviewDependenciesCurrent"),"original bullet14 ignores owner immunity rather than falsely retiring its receive");
                 }
                 Console.WriteLine("PASS ordinary bullet14 irrelevant owner-immunity change preserves its original receive qualification");
+                var plan=Get(attack,"preview");int age=(int)((long)Main.GameUpdateCount-Convert.ToInt64(Get(attack,"previewStep")));
+                Require(!Main.windPhysics && !p.windPushed,"qualified ordinary wind fixture has both original parameter-use gates closed");
+                float windSpeed=Main.windSpeedCurrent,windStrength=Main.windPhysicsStrength;
+                try
+                {
+                    Require((bool)Call(plan,"PresentationMembersCurrent",p,age),"real qualified ordinary preview starts with current captured hand members");
+                    Main.windSpeedCurrent=windSpeed+.137f;Main.windPhysicsStrength=windStrength+.023f;
+                    Require((bool)Call(plan,"PresentationMembersCurrent",p,age),"real qualified preview survives unused closed-gate wind drift without a new solve");
+                    Main.windPhysics=true;Require(!(bool)Call(plan,"PresentationMembersCurrent",p,age),"real wind gate activation withdraws the old qualified preview");
+                    Main.windPhysics=false;p.windPushed=true;Require(!(bool)Call(plan,"PresentationMembersCurrent",p,age),"independent real player wind-push activation withdraws the old hand snapshot");
+                }
+                finally{Main.windSpeedCurrent=windSpeed;Main.windPhysicsStrength=windStrength;Main.windPhysics=false;p.windPushed=false;}
+                Console.WriteLine("PASS qualified ordinary preview: unused wind drift retained; projectile/player real gate activation rejected");
             }
             finally{n.immune[p.whoAmI]=immune;}
         }
