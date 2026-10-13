@@ -59,7 +59,7 @@ namespace JueMingR.TerrariaHost.Combat
             Marker.Capture();
             Impact.Capture();
             if(host.Collision){host.Geometry.PrepareEvents();legend=true;limited=host.Geometry.EventOverflow;}
-            var path=host.Path?host.Prediction.Cache.Read(0):null;
+            var path=host.DisplayPath;
             Prediction.AimLightTrace.Presentation("cache-consume",path,0,eventEnd,false);
             if(path==null)
             {
@@ -73,7 +73,8 @@ namespace JueMingR.TerrariaHost.Combat
             bool approximate=(path.Assumptions&(PredictionAssumption.ApproximateMechanism|PredictionAssumption.RandomRepresentative))!=0;
             var color=approximate?new Color(255,210,110):new Color(235,235,255);
             pathText=path.Stop==PredictionStop.None?(approximate?"NPC 路径：近似":"NPC 路径：条件预测"):StopText(path.Stop);
-            pathText+=" · 未来约 "+((path.Count-1)/60f).ToString(path.Count<7?"0.00":"0.0",System.Globalization.CultureInfo.InvariantCulture)+" 秒";
+            int future=Math.Max(0,path.Count-1-host.DisplayAge);
+            pathText+=" · 未来约 "+(future/60f).ToString(future<6?"0.00":"0.0",System.Globalization.CultureInfo.InvariantCulture)+" 秒";
             if((path.Assumptions&PredictionAssumption.RandomRepresentative)!=0)pathText+=" · 随机代表路线";
             if((path.Assumptions&PredictionAssumption.NetworkObservation)!=0)pathText+=" · 依据本机网络观察";
             if((path.Assumptions&PredictionAssumption.UnmodeledDamageEffects)!=0)pathText+=" · 未估计部分持续伤害";
@@ -100,10 +101,10 @@ namespace JueMingR.TerrariaHost.Combat
             {Samples(host.Geometry.Attacks,0);Samples(host.Geometry.Npcs,1);Samples(host.Geometry.Bodies,3);eventStart=count;presentation++;Samples(host.Geometry.Events,2);eventEnd=count;}
             projectedEvent=null;strokeLimit=strokes.Length;var path=preparedPath;
             if(path==null)return;
-            if(!host.Path || !host.Selection.HasTarget || !host.Selection.Target.Equals(path.Identity) || !ReferenceEquals(host.Prediction.Cache.Read(0),path) || !CombatSelection.Valid(path.Identity,host.Session)){pathText=null;return;}
+            if(!host.Path || !host.Selection.HasTarget || !host.Selection.Target.Equals(path.Identity) || !ReferenceEquals(host.DisplayPath,path) || !CombatSelection.Valid(path.Identity,host.Session)){pathText=null;return;}
             bool approximate=(path.Assumptions&(PredictionAssumption.ApproximateMechanism|PredictionAssumption.RandomRepresentative))!=0;
             var color=approximate?new Color(255,210,110):new Color(235,235,255);
-            for(int i=1;i<path.Count;i++)
+            for(int i=host.DisplayAge+1;i<path.Count;i++)
             {
                 var point=path[i];var prior=path[i-1];var b=new Vector2(point.Bounds.CenterX,point.Bounds.CenterY);
                 if(!point.NewSegment)Line(new Vector2(prior.Bounds.CenterX,prior.Bounds.CenterY),b,color,approximate,1.5f);

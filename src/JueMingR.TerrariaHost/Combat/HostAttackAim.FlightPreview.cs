@@ -175,6 +175,13 @@ namespace JueMingR.TerrariaHost.Combat
             }
             // Draw checks the bound member, never scans the projectile pool.
             internal bool Current {get{return (gem==null || gem.MembersCurrent) && (attached==null || attached.MembersCurrent) && (arc==null || arc.FamilyMembersCurrent) && (spear==null || spear.Current) && shot.active && (int)shot.key==key && shot.type==type && shot.owner==owner && shot.timeLeft==time && shot.extraUpdates==extra && shot.penetrate==penetration && shot.position==position && shot.velocity==velocity && shot.ai[0]==ai0 && shot.ai[1]==ai1 && shot.localAI[0]==local0 && player.controlUseItem==use && shot.wet==wet && shot.honeyWet==honey && shot.lavaWet==lava && shot.shimmerWet==shimmer && shot.tileCollide==tile;}}
+            // A sealed-flight visual follows the display's bounded capture
+            // age. The existing family member leases still cancel on member
+            // retirement/phase or captured pose changes. Only the primary
+            // shot's ordinary travel/time is relaxed; none of this grants a
+            // hand input lease or scans the projectile pool during Draw.
+            internal bool PresentationCurrent(int age)
+            {return age>=0 && age<=HostCombatObservation.DisplayMaximumAge && (gem==null || gem.MembersCurrent) && (attached==null || attached.MembersCurrent) && (arc==null || arc.FamilyMembersCurrent) && (spear==null || spear.Current) && shot.active && (int)shot.key==key && shot.type==type && shot.owner==owner && shot.extraUpdates==extra && shot.penetrate==penetration && shot.ai[0]==ai0 && shot.ai[1]==ai1 && player.controlUseItem==use && shot.wet==wet && shot.honeyWet==honey && shot.lavaWet==lava && shot.shimmerWet==shimmer && shot.tileCollide==tile;}
         }
     }
 }

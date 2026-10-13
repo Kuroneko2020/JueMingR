@@ -48,6 +48,19 @@ namespace JueMingR.TerrariaHost.Combat
         {return Observed(source) && observation.Options.Aim && combat.Admitted(combat.Player);}
         internal bool Pending
         {get{foreach(var entry in shots.Values)if((entry.Type==444 || HostWhipAttack.Pending(entry.Shot) || HostFlailAttack.Handles(entry.Type)) && Valid(entry))return true;return false;}}
+        // Scheduling reads an already prepared input, never mints permission.
+        // Safe navigation/held points need no damage contact or red marker.
+        internal bool HasPreparedInput
+        {
+            get
+            {
+                if(!combat.Attack.Permission || !combat.Attack.CurrentReceiver || !combat.Attack.TimelineCurrent(preparedTimeline))return false;
+                if(openingUsable && openingStep==Main.GameUpdateCount && opening!=null && Allowed(opening))return true;
+                foreach(var entry in shots.Values)
+                    if(Valid(entry) && entry.Prepared==Main.GameUpdateCount && entry.Target.Equals(observation.Selection.Target) && (entry.HasPoint || entry.Contact!=null || entry.NextKillContact!=null))return true;
+                return false;
+            }
+        }
         internal bool HasObservedSolar
         {get{foreach(var entry in shots.Values)if(entry.Type==611 && Observed(entry))return true;return false;}}
         internal int SolarOpeningDelay
@@ -241,7 +254,7 @@ namespace JueMingR.TerrariaHost.Combat
         {
             if(!openingUsable || opening==null)return null;
             if(!combat.Attack.CurrentReceiver){openingUsable=false;return null;}
-            if(!environmentState.Current || !terrain.Unchanged || !openingUsable || opening==null || openingNavigation!=null && !openingNavigation.Current(player) || !combat.Attack.Permission || !ReferenceEquals(player,opening.Player) || !ReferenceEquals(item,opening.Weapon) || !Allowed(opening) || openingStep!=Main.GameUpdateCount || openingAmmo==null || !openingAmmo.IdentityMatches(player,item) || !ReferenceEquals(preparedTimeline,observation.Prediction.Cache.Read(1)) || !preparedTimeline.Identity.Equals(observation.Selection.Target))return null;
+            if(!environmentState.Current || !terrain.Unchanged || !openingUsable || opening==null || openingNavigation!=null && !openingNavigation.Current(player) || !combat.Attack.Permission || !ReferenceEquals(player,opening.Player) || !ReferenceEquals(item,opening.Weapon) || !Allowed(opening) || openingStep!=Main.GameUpdateCount || openingAmmo==null || !openingAmmo.IdentityMatches(player,item) || !combat.Attack.TimelineCurrent(preparedTimeline) || !preparedTimeline.Identity.Equals(observation.Selection.Target))return null;
             var scope=CombatCursorScope.Begin(openingPoint);if(scope!=null)combat.Attack.RecordControlInput(openingPoint,null,HostAttackInputKind.Enhanced);return scope;
         }
         private static bool TryChildLaterSlot(Projectile parent,out bool later)
@@ -272,7 +285,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(!lease.Unchanged){RejectDependencies(entry);return null;}
             var result=Vector2.DistanceSquared(shot.Center,entry.KillOrigin)<.01f?(alternate?entry.AlternateKillContact:entry.Contact):Vector2.DistanceSquared(shot.Center,entry.NextKillOrigin)<.01f?(alternate?entry.AlternateNextKillContact:entry.NextKillContact):null;
             Retire(entry);
-            if(result==null || !ReferenceEquals(result.Timeline,observation.Prediction.Cache.Read(1)))return null;
+            if(result==null || !combat.Attack.TimelineCurrent(result.Timeline))return null;
             return combat.Attack.ContactInput(result,entry.Source.Weapon,shot,HostAttackPhase.Projectiles).Begin();
         }
         internal AttackContact ExpectedImpact
@@ -284,7 +297,7 @@ namespace JueMingR.TerrariaHost.Combat
                 foreach(var entry in shots.Values)
                 {
                     var result=entry.Type==444?entry.NextKillContact:entry.Contact;
-                    if(!Valid(entry) || entry.Obstacles!=null && !entry.Obstacles.Unchanged || entry.Prepared!=Main.GameUpdateCount || result==null || !entry.Target.Equals(observation.Selection.Target) || !ReferenceEquals(result.Timeline,observation.Prediction.Cache.Read(1)))continue;
+                    if(!Valid(entry) || entry.Obstacles!=null && !entry.Obstacles.Unchanged || entry.Prepared!=Main.GameUpdateCount || result==null || !entry.Target.Equals(observation.Selection.Target) || !combat.Attack.TimelineCurrent(result.Timeline))continue;
                     if(HostGuidedAttack.Handles(entry.Type) && !HostGuidedAttack.Consumes(combat.Player,entry.Shot))continue;
                     if(HostHeldAttack.Handles(entry.Type) && !HostFlailAttack.Handles(entry.Type) && !combat.Player.channel)continue;
                     if(entry.Navigation!=null && (!combat.Player.channel || entry.Shot.ai[0]<0 || !entry.Navigation.Current(combat.Player))){entry.Contact=null;entry.HasPoint=false;continue;}
@@ -335,7 +348,7 @@ namespace JueMingR.TerrariaHost.Combat
             // whose current and expiry origins are exactly the same.
             if(entry.Type==444 || HostPulseAttack.Handles(entry.Type))return false;
             if(!combat.Attack.CurrentReceiver){Retire(entry);return false;}
-            if(!Valid(entry) || entry.Prepared!=Main.GameUpdateCount || entry.Contact==null && !entry.HasPoint || !observation.Selection.HasTarget || !entry.Target.Equals(observation.Selection.Target) || !ReferenceEquals(preparedTimeline,observation.Prediction.Cache.Read(1)))
+            if(!Valid(entry) || entry.Prepared!=Main.GameUpdateCount || entry.Contact==null && !entry.HasPoint || !observation.Selection.HasTarget || !entry.Target.Equals(observation.Selection.Target) || !combat.Attack.TimelineCurrent(preparedTimeline))
             {Retire(entry);return false;}
             if(!environmentState.Current || entry.Obstacles!=null && !entry.Obstacles.Unchanged || !terrain.Unchanged)
             {RejectDependencies(entry);return false;}

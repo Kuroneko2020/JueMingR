@@ -9,11 +9,17 @@ using JueMingR.Platform.Runtime;
 using JueMingR.TerrariaHost.Input;
 using JueMingR.TerrariaHost.Npcs;
 using Terraria;
+using Microsoft.Xna.Framework;
 
 namespace JueMingR.TerrariaHost.Combat
 {
     internal sealed class HostCombatObservation : IRuntimeFeature,F5.ICombatObservationControls
     {
+        // Presentation alone uses this measured cadence/age pair. Actual
+        // BeforeNpc/control preparation and candidate intent keep their own
+        // real-phase timing; any dependency change still invalidates display.
+        internal const int DisplayRefreshUpdates=5;
+        internal const int DisplayMaximumAge=DisplayRefreshUpdates-1;
         internal readonly ObservationSettings Settings;
         internal readonly CombatSelection Selection;
         internal readonly NpcPredictionSource Prediction;
@@ -27,6 +33,17 @@ namespace JueMingR.TerrariaHost.Combat
         private readonly NativeNpcObservation npcs;
         private bool collisionFailed,pathFailed,reportedCollision,reportedPath,reportedMarker,wasCollision,wasPath;
         private bool selectionFailed;
+        // Presentation may keep a short-lived conditional result. It never
+        // enters Cache's attack reader and retains the original capture clock.
+        private NpcTrajectory displayPath;
+        private PredictionTerrain.CellLease displayTerrain;
+        private PredictionPlayerMotion displayPlayer;
+        private int displayLife;
+        private long displayLeaseTick=-1,optionalTick=-1;
+        private NpcIdentity optionalTarget;
+        internal NpcTrajectory DisplayPath {get{return displayLeaseTick==(long)Main.GameUpdateCount && Path && Selection.HasTarget && displayPath!=null && displayPath.Identity.Equals(Selection.Target)?displayPath:null;}}
+        internal int DisplayAge {get{return displayPath==null?0:(int)Math.Max(0,(long)Main.GameUpdateCount-displayPath.SampleTick);}}
+        internal bool OptionalPreparation {get;private set;}
         // One full identity per native slot bounds local fault retention. A
         // different selected NPC remains usable; slot reuse never inherits it.
         private readonly NpcIdentity[] failedTargets=new NpcIdentity[NpcPredictionCache.Capacity];
@@ -114,7 +131,7 @@ namespace JueMingR.TerrariaHost.Combat
         internal void CollisionFailed(){collisionFailed=true;Geometry.Clear();}
         public void OnSessionStarted(){Clear();Geometry.Session=runtime.Generation;}
         public void OnSessionEnded(){Clear();}
-        private void Clear(){actionFrame=-1;Attack?.Reset();Geometry.Clear();Prediction.Cache.EndSession();Prediction.EndWorld();Selection.Clear();World.Recover();World.Marker.Reset();Array.Clear(failedTargets,0,failedTargets.Length);selectionFailed=collisionFailed=pathFailed=reportedCollision=reportedPath=reportedMarker=false;}
+        private void Clear(){actionFrame=optionalTick=displayLeaseTick=-1;displayPath=null;displayTerrain=null;OptionalPreparation=false;Attack?.Reset();Geometry.Clear();Prediction.Cache.EndSession();Prediction.EndWorld();Selection.Clear();World.Recover();World.Marker.Reset();Array.Clear(failedTargets,0,failedTargets.Length);selectionFailed=collisionFailed=pathFailed=reportedCollision=reportedPath=reportedMarker=false;}
         public void FailClosed(){Clear();Prediction.Stop();selectionFailed=collisionFailed=pathFailed=true;}
         public void Update(ulong tick)
         {
@@ -147,7 +164,7 @@ namespace JueMingR.TerrariaHost.Combat
             using(PredictionWork.Enter(tick))
             {
                 try{UpdateSampleCore(sampleTick,beforeNpc,tick);}
-                catch(CombatPredictionBudgetExceededException){Prediction.Clear();Attack?.Clear();}
+                catch(CombatPredictionBudgetExceededException){ /* Basic and completed prefixes survive optional exhaustion. */ }
             }
         }
         private void UpdateSampleCore(long sampleTick,bool beforeNpc,ulong tick)
@@ -159,39 +176,85 @@ namespace JueMingR.TerrariaHost.Combat
             if(!Hooks.Ready && !Marker && !BasicSelectionDemand){Selection.RetireTarget();Prediction.Clear();return;}
             var player=Main.LocalPlayer;if(player==null || !player.active || player.dead || player.ghost){Selection.RetireTarget();Prediction.Clear();Geometry.BeginNpcs();return;}
             if(Collision)Geometry.BeginNpcs();
-            // The display can show any genuinely computed future, including
-            // a short known death/terrain endpoint. It still requests 120;
-            // independent strict readers retain their own minimum.
-            // Only completed-world display owns Path's full 120-point demand.
-            // ItemCheck needs an actual input premise in its earlier phase;
-            // its Attack owner expands a short miss fully before any fallback.
+            // Preferred demand records desired coverage, not this synchronous
+            // call's work. Actual action prefixes run before optional tails.
             if(Path && !beforeNpc)Prediction.Cache.Demand(0,1,NpcPredictionCache.Horizon);else Prediction.Cache.Release(0);
             try{Selection.Update(Options,Session,Marker || BasicSelectionDemand || !pathFailed && Prediction.Cache.Required>0,Collision?Geometry:null);}catch(Exception error){AimTrace.Fault("host-selection",error,(long)tick);selectionFailed=true;CollisionFailed();pathFailed=true;Selection.RetireTarget();Prediction.Stop();World.Clear();return;}
             if(!Selection.HasTarget){Prediction.Clear();return;}
+            if(!beforeNpc)Attack?.RestorePresentationSelection(sampleTick);
+            OptionalPreparation=!beforeNpc && Path && (optionalTick<0 || sampleTick-optionalTick>=DisplayRefreshUpdates || !optionalTarget.Equals(Selection.Target) || !ValidateDisplay(sampleTick));
             Attack?.ResolveSelection(sampleTick,beforeNpc);
             Attack?.Demand(beforeNpc); // Keep a candidate's explicitly proven action prefix.
             // Ordinary prediction is synchronous and owned by Source. Native
             // failure belongs only to the explicit comparison route; a shared
             // entry exception still latches the whole path closed.
             if(TargetPredictionFailed){Prediction.Clear();return;}
-            PrepareSelectedPrediction(sampleTick,beforeNpc,tick);
+            int urgent=Attack!=null && Attack.UrgentPreparation?Attack.ActionPreferred(Selection.Target):0;
+            // A newly selected candidate's proven late receive is an actual
+            // action need. Keep it when moving from the candidate owner to
+            // the selected owner; Path's desired tail never enters this value.
+            if(beforeNpc && Attack!=null)urgent=Math.Max(urgent,Attack.ActionRequired);
+            if(beforeNpc || urgent>0)
+            {
+                PrepareSelectedPrediction(sampleTick,beforeNpc,tick,Math.Max(1,urgent));
+                if(beforeNpc)Attack?.PrepareAction();else Attack?.Prepare();
             }
-            finally{if(beforeNpc)Attack?.PrepareAction();else Attack?.Prepare();AimTrace.Host(this,pathFailed,"update-exit",true);}
+            if(!beforeNpc && OptionalPreparation && CombatPredictionWork.TryContinue(3))
+            {
+                optionalTick=sampleTick;optionalTarget=Selection.Target;
+                PrepareSelectedPrediction(sampleTick,false,tick,Prediction.Cache.Required);
+                CaptureDisplay(sampleTick);
+                Attack?.PreparePreviewOnly();
+            }
+            if(!beforeNpc)ValidateDisplay(sampleTick);
+            if(!beforeNpc)Attack?.ValidatePreviewPresentation();
+            }
+            finally{Attack?.EndPreparation();AimTrace.Host(this,pathFailed,"update-exit",true);}
         }
-        private void PrepareSelectedPrediction(long sampleTick,bool beforeNpc,ulong tick)
+        private void PrepareSelectedPrediction(long sampleTick,bool beforeNpc,ulong tick,int advanceTo)
         {
             if(!Selection.HasTarget || TargetPredictionFailed)return;
-            if(!pathFailed && Prediction.Cache.Required>0)try{if(beforeNpc)Prediction.PrepareAction(Selection.Target,sampleTick);else Prediction.Prepare(Selection.Target,sampleTick);}
-            catch(CombatPredictionBudgetExceededException){Prediction.Clear();}
+            if(!pathFailed && Prediction.Cache.Required>0 && advanceTo>0)try{if(beforeNpc)Prediction.PrepareActionPrefix(Selection.Target,sampleTick,advanceTo,NpcPredictionCache.Horizon);else Prediction.PreparePrefix(Selection.Target,sampleTick,advanceTo,NpcPredictionCache.Horizon);}
+            catch(CombatPredictionBudgetExceededException){ }
             catch(NpcObservationFailure error){AimTrace.Fault("host-npc-observation",error,(long)tick);failedTargets[Selection.Target.Slot]=Selection.Target;Prediction.Clear();}
             catch(Exception error){AimTrace.Fault("host-prepare",error,(long)tick);pathFailed=true;Prediction.Stop();}
         }
         internal bool ExpandActionPrediction()
+        {return ExpandControlPrediction(true);}
+        internal bool ExpandControlPrediction(bool beforeNpc)
         {
             if(pathFailed || TargetPredictionFailed || !Selection.HasTarget)return false;
-            Attack.SetActionDemand(NpcPredictionCache.Horizon);
-            PrepareSelectedPrediction((long)Main.GameUpdateCount-1,true,Main.GameUpdateCount);
-            return Prediction.Cache.Read(1)!=null;
+            var prior=Prediction.Cache.Read(1);if(prior==null || prior.BudgetPaused || prior.Stop!=PredictionStop.None || prior.Count>NpcPredictionCache.Horizon || !CombatPredictionWork.TryContinue())return false;
+            int required=Math.Min(NpcPredictionCache.Horizon,Math.Max(prior.Count+7,(prior.Count-1)*2));
+            Attack.SetActionDemand(required);
+            PrepareSelectedPrediction((long)Main.GameUpdateCount-(beforeNpc?1:0),beforeNpc,Main.GameUpdateCount,required);
+            var result=Prediction.Cache.Read(1);return result!=null && result.Count>prior.Count;
+        }
+        private void CaptureDisplay(long tick)
+        {
+            var path=Path?Prediction.Cache.Read(0):null;
+            if(path==null || !path.Identity.Equals(Selection.Target) || path.SampleTick!=tick)return;
+            displayPath=path;displayLeaseTick=-1;displayTerrain=Prediction.Terrain.FreezeCells();displayPlayer=NpcPredictionSource.ReadPlayer(Main.LocalPlayer);displayLife=Main.npc[path.Identity.Slot].life;
+        }
+        private bool ValidateDisplay(long tick)
+        {
+            if(displayLeaseTick==tick && Path && displayPath!=null && Selection.HasTarget && Selection.Target.Equals(displayPath.Identity))return true;
+            displayLeaseTick=-1;
+            if(!Path || displayPath==null || !Selection.HasTarget || !Selection.Target.Equals(displayPath.Identity) || !CombatSelection.Valid(displayPath.Identity,Session))return false;
+            long age=tick-displayPath.SampleTick;if(age<0 || age>DisplayMaximumAge || age>=displayPath.Count)return false;
+            var npc=Main.npc[displayPath.Identity.Slot];var point=displayPath[(int)age];
+            if(npc.life!=displayLife || npc.ai[0]!=point.Phase || npc.wet!=point.Wet || npc.noTileCollide!=point.NoTileCollide || Vector2.DistanceSquared(npc.position,new Vector2(point.Bounds.X,point.Bounds.Y))>4 || Vector2.DistanceSquared(npc.velocity,new Vector2(point.Vx,point.Vy))>.01f ||
+                !DisplayInputCurrent(displayPlayer,NpcPredictionSource.ReadPlayer(Main.LocalPlayer)) || displayTerrain==null || !displayTerrain.Current)return false;
+            displayLeaseTick=tick;return true;
+        }
+        private static bool DisplayInputCurrent(PredictionPlayerMotion a,PredictionPlayerMotion b)
+        {
+            // This is a bounded-age presentation condition, not a proof of
+            // current attack motion. Normal XY/V and countdown advancement
+            // do not invalidate it; controls, mechanism and physics changes do.
+            return ReferenceEquals(a.PlayerToken,b.PlayerToken) && a.PlayerIndex==b.PlayerIndex && a.ObservationMechanism==b.ObservationMechanism && a.Left==b.Left && a.Right==b.Right && a.Up==b.Up && a.Down==b.Down && a.HoldJump==b.HoldJump && a.HoverUp==b.HoverUp && a.HoverDown==b.HoverDown &&
+                a.GravityDirection==b.GravityDirection && a.GravityControl==b.GravityControl && a.GravityControl2==b.GravityControl2 && a.Complex==b.Complex && a.Mounted==b.Mounted && a.Rope==b.Rope && a.Grappled==b.Grappled && a.OnTrack==b.OnTrack && a.Wet==b.Wet && a.Honey==b.Honey && a.Lava==b.Lava && a.Shimmer==b.Shimmer &&
+                a.Width==b.Width && a.Height==b.Height && a.Acceleration==b.Acceleration && a.Slowdown==b.Slowdown && a.MaxSpeed==b.MaxSpeed && a.JumpSpeed==b.JumpSpeed && a.DefaultGravity==b.DefaultGravity && a.WaterWalk==b.WaterWalk && a.LavaWalk==b.LavaWalk && a.IgnorePlatforms==b.IgnorePlatforms && a.Vortex==b.Vortex && a.SlowFall==b.SlowFall && a.FloatInWater==b.FloatInWater;
         }
         internal void Register(HotkeyRegistry registry,Hotkeys.HotkeyStateFeedback feedback)
         {

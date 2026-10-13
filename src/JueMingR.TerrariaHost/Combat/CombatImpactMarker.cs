@@ -16,11 +16,12 @@ namespace JueMingR.TerrariaHost.Combat
         private Matrix inverse;
         private object failedPixel,failedBatch;
         private bool resourceFailure;
+        private bool execution;
         internal bool Failed {get;private set;}
         internal bool Visible {get;private set;}
         internal Vector2 Position {get{return center;}}
         internal CombatImpactMarker(HostCombatObservation host){this.host=host;}
-        internal void Clear(){contact=null;Visible=false;}
+        internal void Clear(){contact=null;Visible=false;execution=false;}
         internal void Reset(){Clear();Failed=resourceFailure=false;failedPixel=failedBatch=null;}
         internal void PollResources(){if(Failed && resourceFailure && (!ReferenceEquals(failedPixel,TextureAssets.MagicPixel) || !ReferenceEquals(failedBatch,Main.spriteBatch)))Reset();}
         internal void Capture()
@@ -28,8 +29,10 @@ namespace JueMingR.TerrariaHost.Combat
             Clear();if(Failed || !host.Path)return;
             try
             {
-                var prepared=host.Attack?.ExpectedPreview;
-                if(prepared!=null && prepared.ReceiveTick>=0 && prepared.ReceiveTick<prepared.Timeline.Count && ReferenceEquals(prepared.Timeline,host.Prediction.Cache.Read(0))){host.Attack.BindPreview(prepared);contact=prepared;}
+                var prepared=host.Attack?.ExpectedImpact;execution=prepared!=null;
+                if(prepared==null)prepared=host.Attack?.ExpectedPreview;
+                if(prepared!=null && prepared.ReceiveTick>=0 && prepared.ReceiveTick<prepared.Timeline.Count && host.DisplayPath!=null)
+                {if(execution)host.Attack.BindPresentation(prepared);else host.Attack.BindPreview(prepared);contact=prepared;}
             }
             catch(Exception error){Fail(error,false);}
         }
@@ -38,7 +41,7 @@ namespace JueMingR.TerrariaHost.Combat
             Visible=false;if(Failed || contact==null || !host.Path)return;
             try
             {
-                if(host.Attack==null || !host.Attack.PreviewCurrent(contact) || !ReferenceEquals(contact.Timeline,host.Prediction.Cache.Read(0)))return;
+                if(host.Attack==null || !(execution?host.Attack.PresentationCurrent(contact):host.Attack.PreviewCurrent(contact)) || host.DisplayPath==null)return;
                 // NPCs do not move between a projectile's subupdates. The
                 // contact's explicit receive sample is therefore the same
                 // physical centre drawn by the path, including melee's earlier

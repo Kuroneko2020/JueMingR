@@ -626,18 +626,25 @@ namespace JueMingR.Platform.Combat
         public const string SamplePhase="CompletedWorldUpdate";
         public PredictionAssumption Assumptions {get;}
         public PredictionStop Stop {get;}
+        // A complete prefix can remain useful while its optional tail awaits
+        // budget. This is scheduling state, not a physical/terrain terminal.
+        public bool BudgetPaused {get;}
+        // Opaque same-owner/premise identity for immutable prefix extension.
+        // It grants no freshness, phase, target or input permission; consumers
+        // still validate those facts and their current dependency lease.
+        public object CalculationToken {get;}
         public int Count {get{return count;}}
         public PredictionGravitySources GravitySources {get;}
         public PredictionWallSources WallSources {get;}
         public NpcTrajectoryPoint this[int index]
         {get{if((uint)index>=(uint)count)throw new IndexOutOfRangeException();return compact!=null?compact[first+index].AtOffset(index):points[first+index].AtOffset(index);}}
-        public NpcTrajectory(NpcIdentity identity,long sampleTick,long version,PredictionAssumption assumptions,PredictionStop stop,NpcTrajectoryPoint[] source,int count,PredictionStrategy strategy=PredictionStrategy.Model,long relationVersion=0,PredictionQuality quality=PredictionQuality.Conditional,PredictionGravitySources gravitySources=null,PredictionWallSources wallSources=null)
+        public NpcTrajectory(NpcIdentity identity,long sampleTick,long version,PredictionAssumption assumptions,PredictionStop stop,NpcTrajectoryPoint[] source,int count,PredictionStrategy strategy=PredictionStrategy.Model,long relationVersion=0,PredictionQuality quality=PredictionQuality.Conditional,PredictionGravitySources gravitySources=null,PredictionWallSources wallSources=null,bool budgetPaused=false,object calculationToken=null)
         {
             if(source==null)throw new ArgumentNullException(nameof(source));
             if(sampleTick<0 || count<1 || count>source.Length)throw new ArgumentOutOfRangeException();
             for(int i=0;i<count;i++)if(source[i].TickOffset!=i)throw new ArgumentException("Prediction points must cover consecutive updates.",nameof(source));
             Identity=identity;SampleTick=CaptureTick=sampleTick;Version=version;Assumptions=assumptions;Stop=sourceStop=stop;
-            Strategy=strategy;RelationVersion=relationVersion;Quality=quality;
+            Strategy=strategy;RelationVersion=relationVersion;Quality=quality;BudgetPaused=budgetPaused;CalculationToken=calculationToken;
             if(strategy==PredictionStrategy.RollingConditional)
             {compact=new PackedPoint[count];for(int i=0;i<count;i++)compact[i]=new PackedPoint(source[i]);}
             else{points=new NpcTrajectoryPoint[count];Array.Copy(source,points,count);}
@@ -649,6 +656,7 @@ namespace JueMingR.Platform.Combat
         {
             Identity=prior.Identity;SampleTick=sampleTick;CaptureTick=republish?sampleTick:prior.CaptureTick;Version=version;Assumptions=prior.Assumptions;
             Strategy=prior.Strategy;RelationVersion=prior.RelationVersion;Quality=prior.Quality;
+            BudgetPaused=prior.BudgetPaused;CalculationToken=prior.CalculationToken;
             sourceStop=prior.sourceStop;points=prior.points;compact=prior.compact;this.first=first;this.count=count;isWindow=!republish;
             Stop=first+count==StorageCount?sourceStop:PredictionStop.None;
             GravitySources=prior.GravitySources==null?null:prior.GravitySources.Window(first-prior.first,count);
@@ -658,6 +666,7 @@ namespace JueMingR.Platform.Combat
         {
             Identity=identity;SampleTick=prior.SampleTick;CaptureTick=prior.CaptureTick;Version=prior.Version;Assumptions=prior.Assumptions;
             Strategy=prior.Strategy;RelationVersion=prior.RelationVersion;Quality=prior.Quality;
+            BudgetPaused=prior.BudgetPaused;CalculationToken=prior.CalculationToken;
             GravitySources=prior.GravitySources;WallSources=prior.WallSources;Stop=prior.Stop;sourceStop=prior.sourceStop;points=prior.points;compact=prior.compact;first=prior.first;count=prior.count;isWindow=prior.isWindow;
         }
         // Background decoding owns only a value identity, never the game's

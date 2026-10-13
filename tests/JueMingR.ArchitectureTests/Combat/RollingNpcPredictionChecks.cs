@@ -13,6 +13,14 @@ namespace JueMingR.ArchitectureTests
             ImmutableGeometry();
             ArmoredDayPursuit();
             ContinuationPlayerPremise();
+            IncrementalPrefix();
+            BudgetPrefix();
+            SegmentedObservationHistory();
+            MultiSlotPrefix();
+            TowerFrameEndPrefix();
+            MoonLeechFrameEndPrefix();
+            SourceTimelinePrefix();
+            PresentGravityTimelinePrefix();
             var terrain=new EmptyTerrain();var model=new RollingNpcPrediction();
             var state=new NpcMotionState{Identity=new NpcIdentity(1,new object(),4,2,999,999),X=100,Y=100,Vx=1,Vy=-1,Width=20,Height=20,Life=100,LifeMax=100,TimeLeft=750,Active=true,CanReceive=true,NoGravity=true,NoTileCollide=true,Health=new NpcHealthState{RealLife=-1}};
             var player=new PredictionPlayerMotion{X=150,Y=150,Width=20,Height=40,GravityDirection=1,Gravity=.4f,MaxFall=10,MaxSpeed=3,Acceleration=.08f,Slowdown=.2f};
@@ -92,16 +100,208 @@ namespace JueMingR.ArchitectureTests
         }
         private sealed class EmptyTerrain : IPredictionTerrain
         {
-            internal int Resets,Moves,Limit=int.MaxValue;
+            internal int Resets,Moves,TotalMoves,Limit=int.MaxValue,BudgetThrowAt,BudgetTileAfterMove,TileCalls;
+            internal int BudgetNpcSlot=-1,BudgetNpcAction;private int npcActions;
+            internal bool Changed;
             internal bool BadPlayer,CliffSupport,UnknownCliff,PeriodicPlayer;private int playerMoves;
-            public bool Unchanged=>true;
-            public void Reset(){Resets++;Moves=0;playerMoves=0;}
+            public bool Unchanged=>!Changed;
+            public void Reset(){Resets++;Moves=0;playerMoves=0;npcActions=0;}
             public bool Move(ref NpcMotionState n,PredictionEnvironment e,out PredictionStop stop)
-            {stop=PredictionStop.None;if(++Moves>Limit){stop=PredictionStop.TerrainUnavailable;return false;}n.X+=n.Vx;n.Y+=n.Vy;if(BadPlayer && n.Friendly)n.Y=float.NaN;if(PeriodicPlayer && n.Friendly)n.X+=(++playerMoves%7==0?-6:1);return true;}
+            {stop=PredictionStop.None;TotalMoves++;if(++Moves>Limit){stop=PredictionStop.TerrainUnavailable;return false;}n.X+=n.Vx;n.Y+=n.Vy;if(BudgetThrowAt>0 && Moves==BudgetThrowAt || BudgetNpcAction>0 && !n.Friendly && n.Identity.Slot==BudgetNpcSlot && ++npcActions==BudgetNpcAction){n.X+=10000;throw new CombatPredictionBudgetExceededException();}if(BadPlayer && n.Friendly)n.Y=float.NaN;if(PeriodicPlayer && n.Friendly)n.X+=(++playerMoves%7==0?-6:1);return true;}
             public bool Solid(MotionRect area,out bool solid,out PredictionStop stop){solid=false;stop=PredictionStop.None;return true;}
             public bool CanHit(MotionRect a,MotionRect b,out bool clear,out PredictionStop stop){clear=true;stop=PredictionStop.None;return true;}
             public bool Tile(int x,int y,out PredictionTile tile,out PredictionStop stop)
-            {tile=default(PredictionTile);stop=PredictionStop.None;if(x==9 && y==10){if(UnknownCliff){stop=PredictionStop.TerrainUnavailable;return false;}tile.Active=tile.Solid=CliffSupport;}return true;}
+            {TileCalls++;if(BudgetTileAfterMove>0 && Moves>=BudgetTileAfterMove)throw new CombatPredictionBudgetExceededException();tile=default(PredictionTile);stop=PredictionStop.None;if(x==9 && y==10){if(UnknownCliff){stop=PredictionStop.TerrainUnavailable;return false;}tile.Active=tile.Solid=CliffSupport;}return true;}
+        }
+        private static void SamePrefix(NpcTrajectory actual,NpcTrajectory expected,int last,string reason)
+        {
+            Require(actual!=null && expected!=null && actual.Count>last && expected.Count>last,reason+" has a real complete prefix.");
+            Require((actual.GravitySources==null)==(expected.GravitySources==null) && (actual.WallSources==null)==(expected.WallSources==null),reason+" retains the same source families.");
+            if(actual.GravitySources!=null)Require(actual.GravitySources.Count==actual.Count && expected.GravitySources.Count==expected.Count && actual.GravitySources.PlayerIndex==expected.GravitySources.PlayerIndex && ReferenceEquals(actual.GravitySources.PlayerToken,expected.GravitySources.PlayerToken) && actual.GravitySources.FirstPlayerStepCompleted==expected.GravitySources.FirstPlayerStepCompleted,reason+" gravity source owner/phase.");
+            if(actual.WallSources!=null)Require(actual.WallSources.Count==actual.Count && expected.WallSources.Count==expected.Count && actual.WallSources.PlayerIndex==expected.WallSources.PlayerIndex && ReferenceEquals(actual.WallSources.PlayerToken,expected.WallSources.PlayerToken),reason+" wall source owner.");
+            for(int i=0;i<=last;i++)
+            {
+                Require(actual[i].Bounds.Equals(expected[i].Bounds) && actual[i].ReceiveBounds.Equals(expected[i].ReceiveBounds) && actual[i].ProjectileReceiveBounds.Equals(expected[i].ProjectileReceiveBounds) && actual[i].Vx==expected[i].Vx && actual[i].Vy==expected[i].Vy && actual[i].Phase==expected[i].Phase && actual[i].CanReceive==expected[i].CanReceive,reason+" point "+i);
+                if(actual.GravitySources!=null)Require(actual.GravitySources[i].Equals(expected.GravitySources[i]),reason+" gravity source "+i);
+                if(actual.WallSources!=null)Require(actual.WallSources[i].Equals(expected.WallSources[i]),reason+" wall source "+i);
+            }
+        }
+        private static NpcMotionState PrefixState()
+        {
+            var n=BasicNpcMotionChecks.State(999,0);n.X=n.Y=100;n.Vx=1;n.Vy=-1;n.NoGravity=n.NoTileCollide=true;return n;
+        }
+        private static void IncrementalPrefix()
+        {
+            var n=PrefixState();var e=new PredictionEnvironment{WorldWidth=4200,WorldHeight=1200,WorldSurface=400};
+            var p=new PredictionPlayerMotion{Width=20,Height=40,GravityDirection=1};var terrain=new EmptyTerrain();var model=new RollingNpcPrediction();
+            var twenty=model.Prepare(new[]{n},1,0,100,20,1,e,p,terrain,null,false,120);
+            Require(twenty.Count==21 && terrain.TotalMoves==20 && twenty.CalculationToken!=null,"A planned long forecast initially publishes only its twenty complete actions.");
+            var forty=model.Prepare(new[]{n},1,0,100,40,1,e,p,terrain,null,false,120);
+            Require(forty.Count==41 && terrain.TotalMoves==40 && terrain.Resets==1 && ReferenceEquals(twenty.CalculationToken,forty.CalculationToken),"Same-sample extension computes only twenty new actions and keeps the condition generation.");
+            var repeat=model.Prepare(new[]{n},1,0,100,40,1,e,p,terrain,null,false,120);
+            Require(ReferenceEquals(repeat,forty) && terrain.TotalMoves==40,"Repeating a complete same-sample prefix performs no simulation.");
+            var full=model.Prepare(new[]{n},1,0,100,120,1,e,p,terrain,null,false,120);
+            var oracle=new RollingNpcPrediction().Prepare(new[]{n},1,0,100,120,1,e,p,new EmptyTerrain());
+            Require(full.Count==121 && terrain.TotalMoves==120 && terrain.Resets==1,"Three segments total exactly120 actions without replaying prior work.");
+            SamePrefix(full,oracle,120,"Segmented work equals the existing complete calculation");SamePrefix(twenty,oracle,20,"Previously published twenty-step storage remains immutable");SamePrefix(forty,oracle,40,"Previously published forty-step storage remains immutable");
+            var changedPhase=model.Prepare(new[]{n},1,0,100,20,1,e,p,terrain,null,true,120);
+            Require(!ReferenceEquals(full.CalculationToken,changedPhase.CalculationToken) && terrain.Resets==2,"BeforeNpc and CompletedWorld cannot share one conditional calculation.");
+            var changedPlan=model.Prepare(new[]{n},1,0,100,20,1,e,p,terrain,null,true,40);
+            Require(!ReferenceEquals(changedPhase.CalculationToken,changedPlan.CalculationToken),"Changing the planned premise range starts a new generation.");
+            terrain.Changed=true;int resets=terrain.Resets;
+            var changedCells=model.Prepare(new[]{n},1,0,100,20,1,e,p,terrain,null,true,40);
+            Require(terrain.Resets==resets+1 && !ReferenceEquals(changedPlan.CalculationToken,changedCells.CalculationToken),"A relevant terrain change retires the mutable tail.");
+            terrain.Changed=false;n.Identity=new NpcIdentity(1,new object(),1,2,999,999);
+            var replaced=model.Prepare(new[]{n},1,0,100,20,1,e,p,terrain,null,true,40);
+            Require(!ReferenceEquals(changedCells.CalculationToken,replaced.CalculationToken) && replaced.Identity.Equals(n.Identity),"Slot reuse never extends the former target's calculation.");
+        }
+        private static void BudgetPrefix()
+        {
+            var n=PrefixState();var e=new PredictionEnvironment{WorldWidth=4200,WorldHeight=1200,WorldSurface=400};var p=new PredictionPlayerMotion{Width=20,Height=40,GravityDirection=1};
+            var terrain=new EmptyTerrain{BudgetThrowAt=6};var model=new RollingNpcPrediction();
+            var paused=model.Prepare(new[]{n},1,0,10,20,1,e,p,terrain,null,false,120);
+            var oracle=new RollingNpcPrediction().Prepare(new[]{n},1,0,10,120,1,e,p,new EmptyTerrain());
+            Require(paused!=null && paused.BudgetPaused && paused.Stop==PredictionStop.None && paused.Count==6,"A half-step budget exit publishes only the preceding five complete actions.");
+            SamePrefix(paused,oracle,5,"Dirty half-step state never enters the publication");
+            terrain.BudgetThrowAt=0;var recovered=model.Prepare(new[]{n},1,0,10,40,1,e,p,terrain,null,false,120);
+            Require(terrain.Resets==2,"Hard interruption discards scratch before any later extension.");SamePrefix(recovered,oracle,40,"Recovery cannot resume from the partially mutated actor");
+            var first=new RollingNpcPrediction().Prepare(new[]{n},1,0,10,20,1,e,p,new EmptyTerrain{BudgetThrowAt=1},null,false,120);
+            Require(first==null,"Without a complete future action a budget exit does not invent a trajectory.");
+            var work=new CombatPredictionWork(1000);
+            using(work.Enter(55))
+            {
+                Require(!CombatPredictionWork.TryContinue(double.Epsilon) && !work.Exceeded && CombatPredictionWork.TryContinue(),"Optional soft allowance can pause without exhausting the urgent total allowance.");
+                using(CombatPredictionWork.Limit(1000))
+                {
+                    using(CombatPredictionWork.Limit(double.Epsilon))
+                    {
+                        Require(!CombatPredictionWork.TryContinue() && !work.Exceeded,"A scoped candidate ceiling reaches the existing work owner without locking urgent work.");
+                        using(CombatPredictionWork.Limit(1000))Require(!CombatPredictionWork.TryContinue(),"Nested limits cannot widen the active candidate ceiling.");
+                        bool stopped=false;try{CombatPredictionWork.Check();}catch(CombatPredictionBudgetExceededException){stopped=true;}
+                        Require(stopped && !work.Exceeded,"Inner solvers can report unresolved at a soft ceiling without marking the total owner exceeded.");
+                        stopped=false;try{CombatPredictionWork.CheckGeometry();}catch(CombatPredictionBudgetExceededException){stopped=true;}
+                        Require(stopped && !work.Exceeded,"The existing geometry check interval also sees the scoped ceiling.");
+                    }
+                    Require(CombatPredictionWork.TryContinue() && !work.Exceeded,"Disposing the inner candidate scope restores the outer allowance.");
+                }
+                Require(CombatPredictionWork.TryContinue(),"Leaving candidate exploration returns the unused urgent allowance.");
+            }
+            double used=work.UsedMilliseconds;
+            using(work.Enter(55))Require(work.UsedMilliseconds>=used,"A second phase on one GUC keeps prior charged work.");
+            using(work.Enter(56))Require(!work.Exceeded,"A new real update opens a fresh total allowance.");
+        }
+        private static void MultiSlotPrefix()
+        {
+            var owner=PrefixState();owner.Identity=new NpcIdentity(1,new object(),4,1,999,999);owner.Y=800;
+            var child=PrefixState();child.Identity=new NpcIdentity(1,new object(),9,1,999,999);child.Y=400;child.Vx=child.Vy=0;child.PositionRelation=3;child.PositionOwner=owner.Identity;
+            var group=new[]{owner,child};var e=new PredictionEnvironment{WorldWidth=4200,WorldHeight=1200,WorldSurface=400};var p=new PredictionPlayerMotion{Width=20,Height=40,GravityDirection=1};
+            var terrain=new EmptyTerrain();var model=new RollingNpcPrediction();
+            var shortResult=model.Prepare(group,2,1,10,20,1,e,p,terrain,null,false,120);
+            NpcTrajectory grown;var work=new CombatPredictionWork(1000);
+            using(work.Enter(10))
+            {
+                NpcTrajectory paused;using(CombatPredictionWork.Limit(double.Epsilon))paused=model.Prepare(group,2,1,10,40,1,e,p,terrain,null,false,120);
+                Require(paused.BudgetPaused && paused.Count==21 && terrain.TotalMoves==40 && !work.Exceeded && ReferenceEquals(shortResult.CalculationToken,paused.CalculationToken),"A soft candidate ceiling pauses at the last complete multi-slot frame without discarding its scratch.");
+                grown=model.Prepare(group,2,1,10,40,1,e,p,terrain,null,false,120);
+            }
+            Require(terrain.TotalMoves==80 && terrain.Resets==1 && ReferenceEquals(shortResult.CalculationToken,grown.CalculationToken),"Two native slots extend twenty complete frames with forty additional actor actions.");
+            var complete=model.Prepare(group,2,1,10,120,1,e,p,terrain,null,false,120);
+            var oracle=new RollingNpcPrediction().Prepare(group,2,1,10,120,1,e,p,new EmptyTerrain());
+            SamePrefix(complete,oracle,120,"A parent-relative multi-slot extension keeps native actor ordering");SamePrefix(shortResult,oracle,20,"Published multi-slot storage stays immutable");
+            Require(complete[1].Bounds.X==owner.X+owner.Vx && complete[1].Bounds.Y==owner.Y+owner.Vy-400,"The later slot reads its owner's already completed movement, not its frame-start position.");
+            terrain=new EmptyTerrain{BudgetThrowAt=12};model=new RollingNpcPrediction();
+            var interrupted=model.Prepare(group,2,1,10,20,1,e,p,terrain,null,false,120);
+            Require(interrupted.BudgetPaused && interrupted.Stop==PredictionStop.None && interrupted.Count==6,"A second-slot hard exit cannot publish the earlier slot's half-completed sixth world frame.");
+            SamePrefix(interrupted,oracle,5,"Both actors are committed together at world-step boundaries");
+            terrain.BudgetThrowAt=0;var recovered=model.Prepare(group,2,1,10,40,1,e,p,terrain,null,false,120);
+            Require(terrain.Resets==2 && !ReferenceEquals(interrupted.CalculationToken,recovered.CalculationToken),"A half-updated dependency group cannot be the next extension's scratch.");SamePrefix(recovered,oracle,40,"Multi-slot recovery starts from the observed group");
+        }
+        private static void TowerFrameEndPrefix()
+        {
+            // Same shield/629 contact fixture as NativeCombatCelestialTowerChecks.
+            // Current receive state is a sampled value; AI recomputes it before
+            // the frame-end soul write becomes the next actor action's input.
+            var owner=BasicNpcMotionChecks.State(422,94);owner.Identity=new NpcIdentity(1,new object(),16,1,422,422);owner.X=2000;owner.Y=1800;owner.Width=80;owner.Height=300;owner.Life=owner.LifeMax=20000;owner.NoGravity=owner.NoTileCollide=true;owner.InactivityImmune=true;
+            owner.TowerRelationsCaptured=owner.TowerRelationsComplete=owner.TowerShieldCaptured=true;owner.TowerShieldStrength=1;owner.TowerShieldMaximum=100;owner.TowerNewConsumerAt=int.MaxValue;
+            var peer=owner;peer.Identity=new NpcIdentity(1,new object(),20,1,422,422);peer.X=2200;
+            var fact=new PredictionTowerShieldConsumer(new object(),0,1,255,true,owner.Identity,new MotionRect(owner.X+10,owner.Y+10,8,8),0,0,3600,2,-1,true,false,true);
+            var e=new PredictionEnvironment{WorldWidth=1000,WorldHeight=700,GravityWorldSurface=180,WorldSurface=180,RockLayer=230,TowerConsumers=new PredictionTowerShieldConsumers(new[]{fact},1,0,16000,0,11200)};
+            var p=new PredictionPlayerMotion{Width=20,Height=40,GravityDirection=1};var group=new[]{owner,peer};var model=new RollingNpcPrediction();var terrain=new EmptyTerrain();
+            var first=model.Prepare(group,2,1,10,1,1,e,p,terrain,null,false,8);
+            var complete=model.Prepare(group,2,1,10,8,1,e,p,terrain,null,false,8);
+            var oracle=new RollingNpcPrediction().Prepare(group,2,1,10,8,1,e,p,new EmptyTerrain());
+            SamePrefix(first,oracle,1,"The first published tower frame includes all NPC actions");SamePrefix(complete,oracle,8,"Tower consumer scratch survives prefix extension");
+            Require(!first[1].CanReceive && complete[2].CanReceive && ReferenceEquals(first.CalculationToken,complete.CalculationToken),"The shared shield write after all slots affects the other tower on its next action, without replaying the soul.");
+        }
+        private static void MoonLeechFrameEndPrefix()
+        {
+            // Reuse the observed AI82/456 head/anchor facts from the native
+            // MoonLeech fixture. Returning 456 reads the completed head; raw
+            // head health is a dependency, not a request to replay its whole AI.
+            var head=BasicNpcMotionChecks.State(396,79);head.Identity=new NpcIdentity(1,new object(),20,1,396,396);head.X=1900;head.Y=1500;head.Width=38;head.Height=56;head.NoGravity=head.NoTileCollide=true;
+            var clot=BasicNpcMotionChecks.State(401,82);clot.Identity=new NpcIdentity(1,new object(),25,1,401,401);clot.X=1900;clot.Y=2100;clot.Width=clot.Height=20;clot.NoGravity=clot.NoTileCollide=true;clot.MoonRelationsCaptured=clot.MoonRelationsComplete=true;clot.PositionOwnerCaptured=clot.PositionOwnerValid=true;clot.PositionOwner=head.Identity;clot.A0=21;clot.MoonLeechAnchorCaptured=clot.MoonLeechAnchorValid=true;clot.MoonLeechKey=1;clot.MoonLeechAnchorX=2004;clot.MoonLeechAnchorY=2104;clot.MoonGlobalRetireAt=int.MaxValue;
+            var p=new PredictionPlayerMotion{PlayerToken=new object(),PlayerIndex=0,X=2400,Y=2360,Width=20,Height=40,GravityDirection=1};
+            var fact=new PredictionMoonLeech(new object(),0,1,255,3600,0,-1,true,head.Identity,true,p.PlayerToken,0,new MotionRect(p.X,p.Y,p.Width,p.Height),true,false,false,true,new MotionRect(2000,2100,8,8),3.125f,-1.25f,-21,0,0,true,false,false);
+            var e=new PredictionEnvironment{WorldWidth=1000,WorldHeight=700,WorldSurface=180,GravityWorldSurface=180,MoonLeeches=new PredictionMoonLeeches(new[]{fact},1,0,16000,0,11200)};
+            var group=new[]{head,clot};var roles=new[]{false,true};var terrain=new EmptyTerrain();var model=new RollingNpcPrediction();
+            var first=model.Prepare(group,2,1,10,2,1,e,p,terrain,roles,false,8);
+            var complete=model.Prepare(group,2,1,10,8,1,e,p,terrain,roles,false,8);
+            var oracle=new RollingNpcPrediction().Prepare(group,2,1,10,8,1,e,p,new EmptyTerrain(),roles,false,8);
+            Require(terrain.TileCalls>0 && terrain.Resets==1 && ReferenceEquals(first.CalculationToken,complete.CalculationToken),"The returning leech's actual frame-end fluid consumer continues under one sample.");
+            SamePrefix(first,oracle,2,"A clot reads the previous completed projectile anchor");SamePrefix(complete,oracle,8,"The projectile tail writes the next clot anchor once per complete frame");
+            terrain=new EmptyTerrain{BudgetTileAfterMove=3};model=new RollingNpcPrediction();
+            var interrupted=model.Prepare(group,2,1,10,8,1,e,p,terrain,roles,false,8);
+            Require(interrupted!=null && interrupted.BudgetPaused && interrupted.Stop==PredictionStop.None && interrupted.Count==3,"A hard exit after the NPC slots but inside MoonLeech EndFrame cannot publish the third frame.");
+            SamePrefix(interrupted,oracle,2,"The last actor returning is not yet a complete world-step checkpoint");
+            terrain.BudgetTileAfterMove=0;var recovered=model.Prepare(group,2,1,10,8,1,e,p,terrain,roles,false,8);
+            Require(terrain.Resets==2 && !ReferenceEquals(interrupted.CalculationToken,recovered.CalculationToken),"Frame-end consumer interruption discards its mutated relation scratch.");SamePrefix(recovered,oracle,8,"A rebuilt projectile/NPC relationship does not resume a half-consumed tail");
+        }
+        private static void SourceTimelinePrefix()
+        {
+            // Explicit absent-source facts reuse the native gravity countdown
+            // and invalid Wall-global boundaries; they must remain attached to
+            // the real prefix and its player, even while the NPC needs no player.
+            var n=PrefixState();n.WallRelationsCaptured=n.WallRelationsComplete=n.WallBossCaptured=true;n.WallBossValid=false;
+            var p=new PredictionPlayerMotion{PlayerToken=new object(),PlayerIndex=0,Width=20,Height=40,GravityDirection=1,GravityControlCaptured=true,ForcedGravityTicks=2,WallFactsCaptured=true,WallSourceExpected=true};
+            var e=new PredictionEnvironment{WorldWidth=4200,WorldHeight=1200,WorldSurface=400,GravitySourceCaptured=true,GravitySourceValid=false};
+            var terrain=new EmptyTerrain();var model=new RollingNpcPrediction();var first=model.Prepare(new[]{n},1,0,10,2,1,e,p,terrain,null,false,8);
+            var complete=model.Prepare(new[]{n},1,0,10,8,1,e,p,terrain,null,false,8);var oracle=new RollingNpcPrediction().Prepare(new[]{n},1,0,10,8,1,e,p,new EmptyTerrain(),null,false,8);
+            Require(first.GravitySources!=null && first.WallSources!=null,"A short prefix carries both required source timelines.");
+            SamePrefix(first,oracle,2,"Earlier gravity/Wall source copies remain immutable");SamePrefix(complete,oracle,8,"Extended gravity/Wall source arrays cover the actual complete length");
+        }
+        private static void PresentGravityTimelinePrefix()
+        {
+            // NativeCombatBrainSwarmChecks' known negative client phase avoids
+            // the server's random destination consumer. Its GoodWorld source
+            // is written at the Brain slot and moves before the NEXT player.
+            var brain=BasicNpcMotionChecks.State(266,54);brain.Identity=new NpcIdentity(1,new object(),16,1,266,266);brain.X=1000;brain.Y=1000;brain.Width=160;brain.Height=110;brain.L0=1;brain.A0=-1;brain.BrainNetMode=1;brain.Vx=2;brain.Vy=-.25f;brain.NoGravity=brain.NoTileCollide=true;brain.InactivityImmune=true;
+            brain.BrainRelationsCaptured=brain.BrainRelationsComplete=brain.BrainBossCaptured=brain.BrainBossValid=true;brain.BrainBossIdentity=brain.Identity;
+            var later=PrefixState();later.Identity=new NpcIdentity(1,new object(),24,1,999,999);later.PositionRelation=3;later.PositionOwner=brain.Identity;later.Vx=later.Vy=0;
+            var p=new PredictionPlayerMotion{PlayerToken=new object(),PlayerIndex=0,X=2000,Y=1600,Width=20,Height=40,GravityDirection=1,MaxFall=10,GravityControlCaptured=true,GravitySourceExpected=true};
+            var e=new PredictionEnvironment{WorldWidth=1000,WorldHeight=700,WorldSurface=180,GravityWorldSurface=180,PlayerIndex=0,PlayerX=2010,PlayerY=1620,PlayerWidth=20,PlayerHeight=40,Crimson=true,GoodWorld=true,Multiplayer=true,GravitySourceCaptured=true,GravitySourceValid=true,GravitySourceIdentity=brain.Identity,GravitySourceX=brain.Bounds.CenterX,GravitySourceY=brain.Bounds.CenterY};
+            var group=new[]{brain,later};var terrain=new EmptyTerrain();var model=new RollingNpcPrediction();
+            var first=model.Prepare(group,2,0,10,2,1,e,p,terrain,null,false,8);
+            var complete=model.Prepare(group,2,0,10,8,1,e,p,terrain,null,false,8);var oracle=new RollingNpcPrediction().Prepare(group,2,0,10,8,1,e,p,new EmptyTerrain(),null,false,8);
+            Require(first!=null && first.Count==3 && first.GravitySources!=null && first.GravitySources[0].Valid && first.GravitySources[2].Valid && !first.GravitySources[0].Equals(first.GravitySources[2]),"A real present Brain source changes position across the short complete prefix.");
+            SamePrefix(first,oracle,2,"Published moving-source endpoint is immutable across extension");SamePrefix(complete,oracle,8,"Moving gravity-source arrays match one complete calculation");
+            Require(terrain.Resets==1 && ReferenceEquals(first.CalculationToken,complete.CalculationToken),"Changing predicted source positions does not recapture a same-sample extension.");
+            terrain=new EmptyTerrain{BudgetNpcSlot=24,BudgetNpcAction=3};model=new RollingNpcPrediction();
+            var interrupted=model.Prepare(group,2,0,10,8,1,e,p,terrain,null,false,8);
+            Require(interrupted!=null && interrupted.BudgetPaused && interrupted.Count==3 && interrupted.Stop==PredictionStop.None,"A later-slot hard exit after the gravity writer preserves only two complete world steps.");
+            SamePrefix(interrupted,oracle,2,"Half-step gravity writes cannot replace the completed source endpoint");
+            terrain.BudgetNpcAction=0;var recovered=model.Prepare(group,2,0,10,8,1,e,p,terrain,null,false,8);
+            Require(terrain.Resets==2 && !ReferenceEquals(interrupted.CalculationToken,recovered.CalculationToken),"Moving-source interruption rebuilds its private actor/player scratch.");SamePrefix(recovered,oracle,8,"Moving-source recovery does not resume the partially written world");
+        }
+        private static void SegmentedObservationHistory()
+        {
+            var n=PrefixState();n.Vx=4;n.Vy=0;var e=new PredictionEnvironment{WorldWidth=4200,WorldHeight=1200,WorldSurface=400};var p=new PredictionPlayerMotion{Width=20,Height=40,GravityDirection=1};
+            var segmented=new RollingNpcPrediction();var complete=new RollingNpcPrediction();var a=new EmptyTerrain();var b=new EmptyTerrain();
+            segmented.Prepare(new[]{n},1,0,100,20,1,e,p,a,null,false,120);segmented.Prepare(new[]{n},1,0,100,120,1,e,p,a,null,false,120);complete.Prepare(new[]{n},1,0,100,120,1,e,p,b);
+            n.X+=4;n.Vx=3.9992f;n.Vy=.079995f;
+            var shortResult=segmented.Prepare(new[]{n},1,0,101,20,1,e,p,a,null,false,120);var grown=segmented.Prepare(new[]{n},1,0,101,120,1,e,p,a,null,false,120);var expected=complete.Prepare(new[]{n},1,0,101,120,1,e,p,b);
+            SamePrefix(grown,expected,120,"Real observation history is absorbed once despite segment calls");SamePrefix(shortResult,expected,20,"Initial segment uses the same observed acceleration and turn");
+            n.X+=n.Vx;n.Y+=n.Vy;
+            SamePrefix(segmented.Prepare(new[]{n},1,0,102,120,1,e,p,a),complete.Prepare(new[]{n},1,0,102,120,1,e,p,b),120,"The following sample keeps identical observation history");
         }
         private static void ArmoredDayPursuit()
         {

@@ -24,11 +24,25 @@ namespace NativeWorldTextProbe
         private static Vector2 physical;
         private static int itemType,parentType,childType,parentBirths,childBirths,parentHits,childHits,damageType,assistedConsumers,manualConsumers,enhancedConsumers;
         private static object currentAttack;
+        private static AttackContact recordedContact,proposedContact;private static uint recordedTick;
+        private static void ContactProposed(object __instance,AttackContact __0)
+        {if(ReferenceEquals(currentAttack,__instance))proposedContact=__0;}
         private static bool assisted,pressed,reverseGravity;
         private static int handStarts;
         private static readonly List<string> consumers=new List<string>();
 
-        private static void Birth(int __result)
+        private static void BeforeBirth(out int __state)
+        {
+            var contact=recordedTick==Main.GameUpdateCount?recordedContact:null;
+            __state=contact?.Tick??-1;
+        }
+        private static void InputRecorded(object __instance)
+        {
+            if(currentAttack==null || !ReferenceEquals(currentAttack,__instance))return;
+            recordedContact=proposedContact;proposedContact=null;recordedTick=Main.GameUpdateCount;
+            var input=Get(currentAttack,"consumedInput");var point=(Vector2)Get(input,"Point");if(Get(input,"Kind").ToString()!="Enhanced" || recordedContact!=null && (!recordedContact.Timeline.Identity.Equals((NpcIdentity)Get(input,"Target")) || point.X!=recordedContact.AimX || point.Y!=recordedContact.AimY))recordedContact=null;
+        }
+        private static void Birth(int __result,int __state)
         {
             if(player==null || __result<0 || __result>=Main.maxProjectiles)return;
             var shot=Main.projectile[__result];
@@ -39,7 +53,7 @@ namespace NativeWorldTextProbe
             bool permitted=assisted && pressed;
             if(permitted)assistedConsumers++;else manualConsumers++;
             if(permitted && Get(Get(currentAttack,"consumedInput"),"Kind").ToString()=="Enhanced")enhancedConsumers++;
-            consumers.Add("tick="+Main.GameUpdateCount+" cursor="+cursor+" target="+target.Center+" birth="+shot.Center+" velocity="+shot.velocity+" permitted="+permitted);
+            consumers.Add("tick="+Main.GameUpdateCount+" cursor="+cursor+" target="+target.Center+" birth="+shot.Center+" velocity="+shot.velocity+" permitted="+permitted+" kind="+Get(Get(currentAttack,"consumedInput"),"Kind")+" openingContactTick="+__state);
             Require(permitted?cursor.X>player.Center.X && Vector2.DistanceSquared(cursor,physical)>4:Vector2.DistanceSquared(cursor,physical)<2,
                 "every natural birth consumes the legal selected-target or manual cursor: item="+itemType);
             if(itemType==3818){Require(Vector2.DistanceSquared(cursor,target.Center+target.netOffset)<4,"enhanced-failed DD2 birth consumes its admitted selected placement point");return;}
@@ -84,7 +98,9 @@ namespace NativeWorldTextProbe
             foreach(string name in new[]{"HandleSpecialEvent","HandleRunning","HandleMining"})
                 audit.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
             var birth=typeof(Projectile).GetMethods(Flags).Single(m=>m.Name=="NewProjectile" && m.GetParameters().Length==13);
-            audit.Patch(birth,postfix:new HarmonyMethod(typeof(NativeCombatBasicAimChecks),nameof(Birth)));
+            audit.Patch(birth,prefix:new HarmonyMethod(typeof(NativeCombatBasicAimChecks),nameof(BeforeBirth)),postfix:new HarmonyMethod(typeof(NativeCombatBasicAimChecks),nameof(Birth)));
+            var attack=Get(Get(context,"Combat"),"Attack");audit.Patch(attack.GetType().GetMethod("RecordInput",Flags),postfix:new HarmonyMethod(typeof(NativeCombatBasicAimChecks),nameof(InputRecorded)));
+            audit.Patch(attack.GetType().GetMethod("ContactInput",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBasicAimChecks),nameof(ContactProposed)));
             audit.Patch(typeof(Projectile).GetMethod("Damage",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBasicAimChecks),nameof(BeforeDamage)),postfix:new HarmonyMethod(typeof(NativeCombatBasicAimChecks),nameof(AfterDamage)));
             audit.Patch(AccessTools.Method(typeof(NPC),"StrikeNPC",new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)}),postfix:new HarmonyMethod(typeof(NativeCombatBasicAimChecks),nameof(Hit)));
             audit.Patch(typeof(Player).GetMethod("ItemCheck_StartActualUse",Flags),postfix:new HarmonyMethod(typeof(NativeCombatBasicAimChecks),nameof(HandStarted)){priority=Priority.Last});
@@ -132,7 +148,7 @@ namespace NativeWorldTextProbe
             Main.screenPosition=new Vector2(480,400);Main.GameViewMatrix.Zoom=Vector2.One;Main.rand=new Terraria.Utilities.UnifiedRandom(7193);
             target=NativeCombatControlPreviewChecks.Dummy(2,tileX,40);physical=new Vector2(550,430);
             itemType=item;parentType=parent;childType=child;assisted=assist;pressed=false;
-            parentBirths=childBirths=parentHits=childHits=damageType=assistedConsumers=manualConsumers=enhancedConsumers=0;consumers.Clear();
+            parentBirths=childBirths=parentHits=childHits=damageType=assistedConsumers=manualConsumers=enhancedConsumers=0;consumers.Clear();recordedContact=proposedContact=null;recordedTick=0;
             // This is a real receive wait, not target revocation. It forces
             // Starfury's contact to remain unknown across this finite window.
             if(item==65)target.immune[player.whoAmI]=500;
@@ -150,6 +166,7 @@ namespace NativeWorldTextProbe
             if(item==1228 && assist && !moving && tileX==49)Require(parentHits>0,"body-reachable Chlorophyte retains natural damage");
             if(item==1228 && assist && !moving && tileX==60)Require(childHits>0,"spore-reachable Chlorophyte retains natural derived damage");
             if(item==1228 && assist && !moving && tileX==49)Require(enhancedConsumers>0,"a healthy in-range Chlorophyte still consumes its enhanced solution");
+            if(item==1228 && assist)foreach(string fact in consumers)Console.WriteLine("BASIC-CONTACT item="+item+" targetTileX="+tileX+" moving="+moving+" "+fact);
             // Disable assistance while keeping the same native source and
             // receiver. A new physical press must really consume manual input.
             NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,true,50,true,false));assisted=false;

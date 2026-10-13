@@ -35,6 +35,11 @@ namespace JueMingR.TerrariaHost.Combat
         private AttackContact presentation;private uint presentationStep;private bool presentationOrdinary;
         private int preferred=4,expansion,actionRequired;
         private Item demandWeapon;private NpcIdentity demandTarget;
+        internal bool TimelineCurrent(NpcTrajectory timeline)
+        {
+            var published=observation.Prediction.Cache.Read(1);
+            return ReferenceEquals(timeline,published) || timeline!=null && published!=null && timeline.CalculationToken!=null && ReferenceEquals(timeline.CalculationToken,published.CalculationToken) && timeline.Identity.Equals(published.Identity) && timeline.SampleTick==published.SampleTick && timeline.CaptureTick==published.CaptureTick;
+        }
         // A fault belongs to a concrete attack context. Changing a target or
         // weapon restores healthy work without retrying the retained bad one.
         internal bool Failed {get{return executionFaults.Blocks(FaultContextFor(observation.Selection.Target));}}
@@ -53,7 +58,7 @@ namespace JueMingR.TerrariaHost.Combat
         {
             if(!CurrentReceiver)return false;
             var player=combat.Player;
-            if(result==null || !ReferenceEquals(presentation,result) || presentationStep!=Main.GameUpdateCount || Failed || !observation.Options.Aim || !observation.Settings.CanRun || player==null || !combat.Admitted(player) || !observation.Selection.HasTarget || !result.Timeline.Identity.Equals(observation.Selection.Target) || !CombatSelection.Valid(observation.Selection.Target,observation.Session) || !ReferenceEquals(result.Timeline,observation.Prediction.Cache.Read(1)))return false;
+            if(result==null || !ReferenceEquals(presentation,result) || presentationStep!=Main.GameUpdateCount || Failed || !observation.Options.Aim || !observation.Settings.CanRun || player==null || !combat.Admitted(player) || !observation.Selection.HasTarget || !result.Timeline.Identity.Equals(observation.Selection.Target) || !CombatSelection.Valid(observation.Selection.Target,observation.Session) || !TimelineCurrent(result.Timeline))return false;
             if(!presentationOrdinary)return Control.PresentationCurrent(result);
             return (combat.Left || player.controlUseItem || player.channel || combat.Use.Active) && session==observation.Session && player.selectedItem==slot && ReferenceEquals(player.HeldItem,weapon) && weapon.type==type && weapon.prefix==prefix &&
                 ReferenceEquals(result,Main.GameUpdateCount==prepared?current:next) && HostAttackWindow.NextAction(combat,player,weapon) && (ammo==null?HostSwingAttack.Handles(weapon):ammo.MembersMatch(player,weapon)) &&
@@ -72,12 +77,14 @@ namespace JueMingR.TerrariaHost.Combat
         }
         internal bool Permission {get{return !Failed && BasicPermission;}}
         internal bool ActionPreparationNeeded {get{return combat.Player!=null && HostAttackWindow.NextAction(combat,combat.Player,combat.Player.HeldItem);}}
+        internal bool UrgentPreparation {get{return Permission && (ActionPreparationNeeded || Control.Pending);}}
+        internal int ActionRequired {get{return actionRequired;}}
         internal void BeginActionDemand(){actionRequired=0;}
         internal void SetActionDemand(int required)
         {actionRequired=preferred=Math.Min(NpcPredictionCache.Horizon,Math.Max(1,required));observation.Prediction.Cache.Demand(1,1,preferred);}
         internal void Demand(bool beforeNpc=false)
         {
-            if((PreviewDemand || Permission && HostAttackWindow.NextAction(combat,combat.Player,combat.Player.HeldItem)) && Eligible(combat.Player.HeldItem) && !HostPlacementAttack.Handles(combat.Player.HeldItem))
+            if((observation.Path && PreviewDemand || UrgentPreparation) && Eligible(combat.Player.HeldItem) && !HostPlacementAttack.Handles(combat.Player.HeldItem))
             {preferred=Preferred();if(beforeNpc)preferred=actionRequired>0?actionRequired:ActionPreferred(observation.Selection.Target);observation.Prediction.Cache.Demand(1,1,preferred);}
             else{observation.Prediction.Cache.Release(1);expansion=0;Clear();}
         }
@@ -91,11 +98,23 @@ namespace JueMingR.TerrariaHost.Combat
         // Candidate hints are pure and use that candidate's actual identity.
         // They never update the selected owner's expansion/history fields.
         internal int ActionPreferred(NpcIdentity target)
+        {return ActionPreferred(target,false);}
+        private int CandidatePreferred(NpcIdentity target)
+        {return ActionPreferred(target,true);}
+        private int ActionPreferred(NpcIdentity target,bool futureLaunch)
         {
             var player=combat.Player;var item=player.HeldItem;
             var captured=AttackAmmoSnapshot.Capture(player,item);Projectile body;AttackMotion motion;
-            if(!HostAttackWindow.Ordinary(item) || captured==null || !ContentSamples.ProjectilesByType.TryGetValue(captured.Projectile,out body) || HostMeleeAttack.Handles(body) || HostSkyAttack.Handles(item.type) || HostEffectAttack.Handles(captured.Projectile) || HostHarpyAttack.Handles(player,captured) || !HostAttackModels.TryRead(captured,out motion) || motion.Gravity!=0 || motion.Acceleration!=1)return NpcPredictionCache.Horizon;
-            return PreferredFor(target,0);
+            // Complex models have no general panel-speed arrival estimate.
+            // Start a positive search, then extend the same sample only if its
+            // real consumer remains unresolved; this is not a range cap.
+            if(!HostAttackWindow.Ordinary(item) || captured==null || !ContentSamples.ProjectilesByType.TryGetValue(captured.Projectile,out body) || HostMeleeAttack.Handles(body) || HostSkyAttack.Handles(item.type) || HostEffectAttack.Handles(captured.Projectile) || HostHarpyAttack.Handles(player,captured) || !HostAttackModels.TryRead(captured,out motion) || motion.Gravity!=0 || motion.Acceleration!=1)return 16;
+            // A candidate plan can describe the next hand after the current
+            // cooldown. Its NPC prefix must cover that existing launch delay
+            // as well as linear travel; a generic short cap loses valid nearer
+            // receivers. Complex mechanisms retain their progressive search.
+            int delay=futureLaunch?Math.Max(0,HostAttackWindow.PreviewDelay(player,item)):0;
+            return Math.Min(NpcPredictionCache.Horizon,PreferredFor(target,0)+delay);
         }
         private int PreferredFor(NpcIdentity target,int extra)
         {
@@ -140,10 +159,21 @@ namespace JueMingR.TerrariaHost.Combat
         {PreparePhase(HostAttackPhase.BeforeNpc);}
         internal void PrepareProjectiles()
         {PreparePhase(HostAttackPhase.Projectiles);}
+        internal void PreparePreviewOnly()
+        {
+            // The lower threshold admitted this optional trajectory already.
+            // Consume its completed prefix while the real shared allowance
+            // remains; applying the admission threshold again would replace
+            // the path's generation but strand its preview until another cycle.
+            try{using(observation.PredictionWork.Enter(Main.GameUpdateCount)){if(CombatPredictionWork.TryContinue())PreparePreview(HostAttackPhase.CompletedWorld);}}
+            catch(CombatPredictionBudgetExceededException){EndFlightPreparation();}
+            catch(Exception error){PropagateFatal(error);preview.Faults.Record(FaultContextFor(observation.Selection.Target));ClearPreview();}
+        }
+        internal void EndPreparation(){EndFlightPreparation();}
         private void PreparePhase(HostAttackPhase phase)
         {
-            try{using(observation.PredictionWork.Enter(Main.GameUpdateCount)){PrepareCore(phase);if(phase==HostAttackPhase.CompletedWorld)PreparePreview(phase);}}
-            catch(CombatPredictionBudgetExceededException){Clear();EndFlightPreparation();}
+            try{using(observation.PredictionWork.Enter(Main.GameUpdateCount)){if(CombatPredictionWork.TryContinue())PrepareCore(phase);}}
+            catch(CombatPredictionBudgetExceededException){EndFlightPreparation();}
             catch(Exception error){FailLocal(error);}
         }
         internal void FailLocal(Exception error){PropagateFatal(error);executionFaults.Record(FaultContextFor(observation.Selection.Target));Clear();}
@@ -160,20 +190,30 @@ namespace JueMingR.TerrariaHost.Combat
                 HostAttackWindow.NextAction(combat,held,held.HeldItem) && Valid(true))return;
             bool beforeNpc=phase==HostAttackPhase.BeforeNpc;ClearExecution();if(!Permission || !CurrentReceiver)return;
             terrain.Reset();environmentState=new HostProjectileEnvironment.State(true,HostProjectileEnvironment.HandWindRelevant(held,held.HeldItem));
-            var player=combat.Player;var item=player.HeldItem;if(!Eligible(item) || !HostAttackWindow.NextAction(combat,player,item))return;
+            var player=combat.Player;var item=player.HeldItem;if(!Eligible(item))return;
             if(HostPlacementAttack.Handles(item))return; // Placement has its own native use receipt, not a damage contact.
             var timeline=observation.Prediction.Cache.Read(1);if(timeline==null || !timeline.Identity.Equals(observation.Selection.Target))return;
+            // A released bubble or a pending controlled role can still read
+            // direction after the hand's ordinary cooldown has closed. Its
+            // true phase is prepared independently of another hand emission.
+            Control.Prepare(timeline,phase);
+            if(!HostAttackWindow.NextAction(combat,player,item))
+            {if(Control.Pending && !Control.HasPreparedInput && observation.ExpandControlPrediction(beforeNpc))PrepareCore(phase);return;}
             if(HostPhasebladeAttack.Handles(item.shoot))
             {
                 if(combat.Left || player.controlUseItem)PrepareSwing(player,item,timeline,phase,false);
                 else PreparePhasebladeRelease(player,item,timeline,phase);
+                if(beforeNpc && current==null && observation.ExpandActionPrediction())PrepareCore(phase);
                 return;
             }
-            if(HostSwingAttack.Handles(item) && item.shoot<=0){PrepareSwing(player,item,timeline,phase,false);return;}
-            Control.Prepare(timeline,phase);
+            if(HostSwingAttack.Handles(item) && item.shoot<=0){PrepareSwing(player,item,timeline,phase,false);if(beforeNpc && current==null && observation.ExpandActionPrediction())PrepareCore(phase);return;}
             var captured=AttackAmmoSnapshot.Capture(player,item);if(captured==null)return;
             cadence.Prepare(player,item,captured,timeline,phase,null);
-            if(HostHeldAttack.Weapon(item.type) || HostYoyoNavigation.Weapon(item) || HostWhipAttack.Weapon(item))return; // Controller birth is not its later ordinary/beam damage phase.
+            if(HostHeldAttack.Weapon(item.type) || HostYoyoNavigation.Weapon(item) || HostWhipAttack.Weapon(item))
+            {
+                if(beforeNpc && !Control.HasPreparedInput && observation.ExpandActionPrediction())PrepareCore(phase);
+                return; // Controller birth is not its later ordinary/beam damage phase.
+            }
             Projectile sample;bool melee=ContentSamples.ProjectilesByType.TryGetValue(captured.Projectile,out sample) && HostMeleeAttack.Handles(sample);
             AttackMotion motion;bool sky=HostSkyAttack.Handles(item.type);if(!sky && !melee && !HostEffectAttack.Handles(captured.Projectile) && !HostAttackModels.TryRead(captured,out motion))return;
             origin=HostAttackModels.LaunchOrigin(player,item);int age=(int)((long)Main.GameUpdateCount-timeline.SampleTick)-(beforeNpc?1:0);if(age<0 || age>1)return;
@@ -187,11 +227,10 @@ namespace JueMingR.TerrariaHost.Combat
                 current=HostHarpyAttack.Solve(player,captured,timeline,origin,new HostAttackClock(timeline,phase),terrain,obstacles,out harpyState);
             }
             else current=Solve(player,item,captured,timeline,origin,age,beforeNpc);
-            // A short action hint is only a cheap positive search. Nearest
-            // mode has no candidate loop: it must also search the full original
-            // horizon in this SAME action before falling back to Basic. A
-            // terminal modeled boundary is never padded into an unknown future.
-            if(beforeNpc && current==null && preferred<NpcPredictionCache.Horizon && timeline.Stop==PredictionStop.None && timeline.Count<NpcPredictionCache.Horizon+1 && !observation.PredictionWork.Exceeded && observation.ExpandActionPrediction())
+            // Actual use may need a late receive: grow the SAME sample in
+            // stages. A paused prefix remains unknown and Basic remains legal;
+            // the optional display never turns its desired 120 into this gate.
+            if(beforeNpc && current==null && timeline.Stop==PredictionStop.None && timeline.Count<NpcPredictionCache.Horizon+1 && !observation.PredictionWork.Exceeded && observation.ExpandActionPrediction())
             {PrepareCore(phase);return;}
             // BeforeNpc has already expanded a nonterminal action miss once
             // above. CompletedWorld keeps the existing later-preparation
@@ -253,7 +292,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(ammo==null?!HostSwingAttack.Handles(weapon):!ammo.IdentityMatches(player,weapon))return false;
             var result=Main.GameUpdateCount==prepared?current:next;
             if(!checkAmmo && !HostAttackWindow.NextAction(combat,player,weapon))return false;
-            if(result==null || !result.Timeline.Identity.Equals(observation.Selection.Target) || !ReferenceEquals(result.Timeline,observation.Prediction.Cache.Read(1)) ||
+            if(result==null || !result.Timeline.Identity.Equals(observation.Selection.Target) || !TimelineCurrent(result.Timeline) ||
                 Vector2.DistanceSquared(HostAttackModels.LaunchOrigin(player,weapon),Main.GameUpdateCount==prepared?origin:nextOrigin)>4)return false;
             return environmentState.Current && terrain.Unchanged && (environment==null || environment.Unchanged) && (obstacles==null || (checkAmmo?obstacles.UnchangedForHandStart:obstacles.Unchanged)) && (harpyState==null || harpyState.Current) && (!checkAmmo || ammo!=null && ammo.Matches(player,weapon));
         }

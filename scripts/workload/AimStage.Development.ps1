@@ -26,9 +26,10 @@ function Read-AimStageDevelopment {
     # Each owner-authorized successor has its own base and evidence contract;
     # the old qualification cannot be relabelled as a new candidate record.
     $successor=$null -ne $record -and $record.schema -ceq 'aim-root-fix-development-20261012-1'
-    $base=if($successor){'3504c963949d87d6a88ada5a3f5cd9c189f1f0c2'}else{'472dea0955b6c9274d8c55fc48dbc7fc44ba108e'}
-    $schema=if($successor){'aim-root-fix-development-20261012-1'}else{'aim-stage-development-20261011-1'}
-    $authorization=if($successor){'owner-issue114-root-fix-20261012'}else{'owner-issue114-stage-package-20261011'}
+    $priority=$null -ne $record -and $record.schema -ceq 'aim-priority-recovery-development-20261013-1'
+    $base=if($priority){'01b03386cc288fe8f8a773cecd3a0de564182472'}elseif($successor){'3504c963949d87d6a88ada5a3f5cd9c189f1f0c2'}else{'472dea0955b6c9274d8c55fc48dbc7fc44ba108e'}
+    $schema=if($priority){'aim-priority-recovery-development-20261013-1'}elseif($successor){'aim-root-fix-development-20261012-1'}else{'aim-stage-development-20261011-1'}
+    $authorization=if($priority){'owner-issue114-priority-recovery-20261013'}elseif($successor){'owner-issue114-root-fix-20261012'}else{'owner-issue114-stage-package-20261011'}
     if($null -eq $record -or $record.schema -cne $schema -or
         $record.authorization -cne $authorization -or $record.productBase -cne $base -or
         $record.candidateCommit -cne $Identity.commit -or $record.sourceFingerprint -cne $Identity.fingerprint -or
@@ -68,6 +69,42 @@ function Read-AimStageDevelopment {
             'scripts/workload/Workload.Definitions.ps1',
             'scripts/workload/AimStage.Development.ps1')
     }
+    if($priority){
+        # The 2026-10-13 owner contract permits this exact incident recovery,
+        # not a reusable exemption for arbitrary combat or evidence changes.
+        $allowed=@('docs/功能介绍/战斗辅助行为合同.md','docs/计划/辅助瞄准阶段文档.md',
+            'docs/设计/战斗辅助实现设计.md','docs/设计/可重复构建与项目骨架.md',
+            'src/JueMingR.Features/Combat/CombatPredictionWork.cs',
+            'src/JueMingR.Features/Combat/RollingNpcPrediction.cs',
+            'src/JueMingR.Features/Combat/RollingNpcPrediction.Progress.cs',
+            'src/JueMingR.Platform/Combat/NpcTrajectory.cs',
+            'src/JueMingR.TerrariaHost/Combat/CombatImpactMarker.cs',
+            'src/JueMingR.TerrariaHost/Combat/CombatObservationWorldLayer.cs',
+            'src/JueMingR.TerrariaHost/Combat/HostAttackAim.FlightPreview.cs',
+            'src/JueMingR.TerrariaHost/Combat/HostAttackAim.Preview.cs',
+            'src/JueMingR.TerrariaHost/Combat/HostAttackAim.Selection.cs',
+            'src/JueMingR.TerrariaHost/Combat/HostAttackAim.cs',
+            'src/JueMingR.TerrariaHost/Combat/HostAttackControl.cs',
+            'src/JueMingR.TerrariaHost/Combat/HostCombatObservation.cs',
+            'src/JueMingR.TerrariaHost/Combat/NpcPredictionSource.Cultist.cs',
+            'src/JueMingR.TerrariaHost/Combat/NpcPredictionSource.Ice.cs',
+            'src/JueMingR.TerrariaHost/Combat/NpcPredictionSource.MoonLord.cs',
+            'src/JueMingR.TerrariaHost/Combat/NpcPredictionSource.cs',
+            'tests/JueMingR.ArchitectureTests/Combat/BasicNpcMotionChecks.cs',
+            'tests/JueMingR.ArchitectureTests/Combat/RollingNpcPredictionChecks.cs',
+            'tests/JueMingR.ArchitectureTests/Phase0TArchitectureChecks.cs',
+            'tests/NativeWorldTextProbe/NativeCombatBasicAimChecks.cs',
+            'tests/NativeWorldTextProbe/NativeCombatCandidateDemandChecks.cs',
+            'tests/NativeWorldTextProbe/NativeCombatNaturalImpactChecks.cs',
+            'tests/NativeWorldTextProbe/NativeCombatOriginalFeedbackChecks.cs',
+            'tests/NativeWorldTextProbe/NativeCombatUsageChecks.cs',
+            'scripts/workload/AimStage.Development.ps1',
+            'review-materials/aim-priority-recovery-20261013/evidence.md',
+            'review-materials/aim-priority-recovery-20261013/failure-dispositions.json',
+            'review-materials/aim-priority-recovery-20261013/validation-map.json',
+            'review-materials/aim-priority-recovery-20261013/natural-cpu-summary.csv',
+            'review-materials/aim-priority-recovery-20261013/draw-cpu-summary.csv')
+    }
     $changed=@(Invoke-WorkloadGit $Root @('diff','--name-only','--no-renames',$base,$Identity.commit,'--') | Sort-Object)
     if(@($changed | Where-Object {$allowed -cnotcontains $_}).Count -ne 0 -or
         (@($record.revisions | ForEach-Object {$_.path} | Sort-Object) -join '|') -cne ($changed -join '|')) {throw 'Stage revision scope differs from the approved closing delta.'}
@@ -79,6 +116,9 @@ function Read-AimStageDevelopment {
     # of them plus the real failure dispositions to this precise source tree.
     $required=@('integration','attack-costs','navigation','impact-draw','whip-terrain')
     if($successor){$required+='original-feedback'}
+    if($priority){$required=@('architecture-combat','candidate-demand','basic-aim','natural-draw',
+        'natural-cpu','continuous-reference','draw-cpu','integration','attack-costs',
+        'navigation','impact-draw','whip-terrain','original-feedback')}
     if((@($record.checks | ForEach-Object {$_.name} | Sort-Object) -join '|') -cne (@($required | Sort-Object) -join '|')) {throw 'Stage necessary checks are incomplete/duplicated.'}
     foreach($check in $record.checks){
         if($check.exit -ne 0 -or $check.disposition -cnotin @('CURRENT','REVIEWED_REUSE') -or
@@ -116,7 +156,7 @@ function Read-AimStageDevelopment {
             [string]$assembly.path -match '(^|/)\.\.(/|$)|[\\:]' -or
             (Get-WorkloadFileHash -LiteralPath (Join-Path $Root $assembly.path)).Hash -cne $assembly.sha256){throw 'Stage detection consumer changed.'}
     }
-    return [ordered]@{status='STAGE_DEVELOPMENT';mode=$(if($successor){'ExplicitAimRootFix20261012'}else{'ExplicitAimStage20261011'});fullQualification='INCOMPLETE';releaseEligible=$false;
+    return [ordered]@{status='STAGE_DEVELOPMENT';mode=$(if($priority){'ExplicitAimPriorityRecovery20261013'}elseif($successor){'ExplicitAimRootFix20261012'}else{'ExplicitAimStage20261011'});fullQualification='INCOMPLETE';releaseEligible=$false;
         productBase=$base;recordPath=$relative;recordSha256=(Get-WorkloadFileHash -LiteralPath $Path).Hash;
         necessaryScopes=$required;limits=@($record.limits);checkCount=$required.Count}
 }

@@ -172,6 +172,11 @@ namespace JueMingR.ArchitectureTests
             var b=new RollingNpcPrediction().Prepare(new[]{plant},1,0,10,120,1,e,player,laterTerrain);
             Require(a.Count==121 && b.Count==121 && b.Quality==PredictionQuality.StructuredApproximation && (b.Assumptions&PredictionAssumption.CurrentPlayerObservation)!=0 && (b.Assumptions&PredictionAssumption.HeldPlayerControls)==0,"Unavailable player geometry can use one bounded structural current-observation premise and reports a structural model, not trend.");
             for(int i=0;i<a.Count;i++)Require(a[i].Bounds.Equals(b[i].Bounds),"A mid-forecast failure restarts consistently instead of splicing an artificial target reversal.");
+            var segmented=new RollingNpcPrediction();var delayed=new LocalTerrain{FailPlayerAt=20};
+            var shortResult=segmented.Prepare(new[]{plant},1,0,10,2,1,e,player,delayed,null,false,120);
+            var extended=segmented.Prepare(new[]{plant},1,0,10,120,1,e,player,delayed,null,false,120);
+            Require(shortResult.Count==3 && extended.Count==121 && !ReferenceEquals(shortResult.CalculationToken,extended.CalculationToken),"A later fallback restarts the condition generation instead of appending to the earlier premise.");
+            for(int i=0;i<a.Count;i++)Require(a[i].Bounds.Equals(extended[i].Bounds),"An extension-triggered player fallback keeps the same complete observation premise at "+i);
             var unknown=new LocalTerrain{FailPlayerAt=1,Unknown=true};
             var c=new RollingNpcPrediction().Prepare(new[]{plant},1,0,10,120,1,e,player,unknown);
             Require(c.Count==1 && c.Stop==PredictionStop.TerrainUnavailable,"Fallback never substitutes air for an unknown root.");

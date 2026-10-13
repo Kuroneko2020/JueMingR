@@ -3,7 +3,7 @@ using JueMingR.Platform.Combat;
 
 namespace JueMingR.Features.Combat
 {
-    // One bounded synchronous calculation from a completed world observation.
+    // One bounded calculation, advanced in complete world steps on demand.
     // Cache owns demand/publication. A result may be consumed repeatedly only
     // for its exact sample, dependencies, revisions and verified local cells.
     // Its capture time is never advanced to imitate a fresh world observation.
@@ -23,7 +23,7 @@ namespace JueMingR.Features.Combat
         private NpcTrajectory result;
         private PredictionEnvironment resultEnvironment;
         private PredictionPlayerMotion resultPlayer;
-        private int resultCount,resultSelected,resultRequired;
+        private int resultCount,resultSelected,resultPlanHorizon;
         private long resultTick=-1,resultEpoch;
         private IPredictionTerrain resultTerrain;
         private bool resultObserved;
@@ -35,33 +35,39 @@ namespace JueMingR.Features.Combat
         // excludes trend/history, observation fallback and timed source payloads;
         // it never permits retimestamping a conditional trajectory.
         public bool FixedInputResult {get;private set;}
-        public void Clear(){Continuation=null;FixedInputResult=false;previous=default(NpcMotionState);previousPlayer=default(PredictionPlayerMotion);previousPlayerAdvanced=resultPlayerAdvanced=false;priorTick=resultTick=-1;result=null;resultTerrain=null;ClearPlayerFixedPoint();Array.Clear(work,0,work.Length);}
-        public NpcTrajectory Prepare(NpcMotionState[] source,int count,int selected,long tick,int required,long epoch,PredictionEnvironment environment,PredictionPlayerMotion player,IPredictionTerrain terrain,bool[] motionRoles=null,bool firstPlayerStepCompleted=false)
+        public void Clear(){resumable=false;progress=default(Progress);calculationToken=null;Continuation=null;FixedInputResult=false;previous=default(NpcMotionState);previousPlayer=default(PredictionPlayerMotion);previousPlayerAdvanced=resultPlayerAdvanced=false;priorTick=resultTick=-1;result=null;resultTerrain=null;ClearPlayerFixedPoint();Array.Clear(work,0,work.Length);}
+        public NpcTrajectory Prepare(NpcMotionState[] source,int count,int selected,long tick,int required,long epoch,PredictionEnvironment environment,PredictionPlayerMotion player,IPredictionTerrain terrain,bool[] motionRoles=null,bool firstPlayerStepCompleted=false,int plannedHorizon=0)
         {
-            CombatPredictionWork.Check();
             FailureLayer=PredictionFailureLayer.Source;
-            if(source==null || count<1 || count>work.Length || selected<0 || selected>=count || required<1 || required>NpcPredictionCache.Horizon)return null;
+            if(plannedHorizon==0)plannedHorizon=required;
+            if(source==null || count<1 || count>work.Length || selected<0 || selected>=count || required<1 || required>plannedHorizon || plannedHorizon>NpcPredictionCache.Horizon || terrain==null || motionRoles!=null && motionRoles.Length<count)return null;
+            // Plan identity is independent of this call's work endpoint. The
+            // future player/relationship premise is selected for the whole
+            // plan before its first point, and cannot change on extension.
+            bool sameResult=resultPlayerAdvanced==firstPlayerStepCompleted && resultTick==tick && resultEpoch==epoch && resultCount==count && resultSelected==selected && resultPlanHorizon==plannedHorizon && resultEnvironment.Equals(environment) && resultPlayer.SameSample(player) && ReferenceEquals(resultTerrain,terrain);
+            if(sameResult)for(int i=0;i<count;i++)if(!resultSample[i].SameSample(source[i]) || resultRoles[i]!=(motionRoles==null || motionRoles[i])){sameResult=false;break;}
+            sameResult=sameResult && terrain.Unchanged;
+            if(sameResult && result!=null && (result.Count>required || result.Stop!=PredictionStop.None)){FailureLayer=resultFailure;return result;}
+            bool resume=sameResult && resumable;
             var current=source[selected];
             // Parent-relative consumers must be decided at their actual actor
             // slot, after earlier owners moved. A frame-start predicate can
             // both miss an entering boundary and invent a departing one.
-            bool needsPlayer=false,canObservePlayer=true;for(int i=0;i<count;i++)if((i==selected || !NpcWindyBalloonMotion.Known(source[i]) || source[i].Active && NpcWindyBalloonMotion.NeededWriter(source[i],source,count)) && source[i].PositionRelation!=6 && (motionRoles==null || i<motionRoles.Length && motionRoles[i]) && NpcMotion.NeedsPlayerMotion(source[i],environment,required,source,count,terrain)){needsPlayer=true;canObservePlayer&=NpcMotion.CurrentPlayerPremise(source[i]);}
+            bool needsPlayer=resume && progress.NeedsPlayer,canObservePlayer=!resume || progress.CanObservePlayer;
+            if(!resume)for(int i=0;i<count;i++)if((i==selected || !NpcWindyBalloonMotion.Known(source[i]) || source[i].Active && NpcWindyBalloonMotion.NeededWriter(source[i],source,count)) && source[i].PositionRelation!=6 && (motionRoles==null || i<motionRoles.Length && motionRoles[i]) && NpcMotion.NeedsPlayerMotion(source[i],environment,plannedHorizon,source,count,terrain)){needsPlayer=true;canObservePlayer&=NpcMotion.CurrentPlayerPremise(source[i]);}
             // Wet patrol does not read a target vector while currently blocked,
             // but later visibility still reads the player. Use a trustworthy
             // timeline whenever available, including held movement around a
             // wall. Missing future facts allow only a declared fixed-target
             // observation prefix, never a claim of player independence.
-            bool conditionalVisibility=false;
-            for(int i=0;i<count;i++)if((motionRoles==null || i<motionRoles.Length && motionRoles[i]) && source[i].Style==3 && (source[i].EffectiveType==461 || source[i].EffectiveType==586) && source[i].Wet)
+            bool conditionalVisibility=resume && progress.ConditionalVisibility;
+            if(!resume)for(int i=0;i<count;i++)if((motionRoles==null || i<motionRoles.Length && motionRoles[i]) && source[i].Style==3 && (source[i].EffectiveType==461 || source[i].EffectiveType==586) && source[i].Wet)
             {if(!environment.PlayerDead && Valid(player)){needsPlayer=true;canObservePlayer=false;}else conditionalVisibility=true;}
             if(!current.Active || !current.CanReceive || current.Life<=0 || !Valid(current) || needsPlayer && !Valid(player) || double.IsNaN(environment.GravityWorldSurface) || double.IsInfinity(environment.GravityWorldSurface) || !Finite(environment.Wind) || !Finite(environment.WindTarget) || !Finite(environment.WorldSurface) || !Finite(environment.RockLayer) || motionRoles!=null && motionRoles.Length<count){Clear();return null;}
             bool sameObservation=priorTick==tick && previous.SameSample(current);
-            bool sameResult=result!=null && resultPlayerAdvanced==firstPlayerStepCompleted && resultTick==tick && resultEpoch==epoch && resultCount==count && resultSelected==selected && resultRequired>=required && resultEnvironment.Equals(environment) && resultPlayer.SameSample(player) && ReferenceEquals(resultTerrain,terrain);
-            if(sameResult)for(int i=0;i<count;i++)if(!resultSample[i].SameSample(source[i]) || resultRoles[i]!=(motionRoles==null || motionRoles[i])){sameResult=false;break;}
-            if(sameResult && terrain.Unchanged){FailureLayer=resultFailure;return result;}
             Continuation=null;
-            bool retain=CaptureContinuation && count==1 && IndependentContinuation(source[0],environment,player);
-            var firstState=default(NpcMotionState);var firstPlayer=default(PredictionPlayerMotion);
+            bool retain=resume?progress.Retain:CaptureContinuation && count==1 && IndependentContinuation(source[0],environment,player);
+            var firstState=resume?progress.FirstState:default(NpcMotionState);var firstPlayer=resume?progress.FirstPlayer:default(PredictionPlayerMotion);
             FixedInputResult=false;
             bool observed=priorTick+1==tick && previous.Identity.Equals(current.Identity) && SamePhase(previous,current) && !current.JustHit &&
                 Math.Abs(current.X-previous.X)<512 && Math.Abs(current.Y-previous.Y)<512;
@@ -92,24 +98,35 @@ namespace JueMingR.Features.Combat
             if(!previousPlayerAdvanced && priorTick+1==tick && player.PlayerToken!=null && ReferenceEquals(previousPlayer.PlayerToken,player.PlayerToken) && previousPlayer.PlayerIndex==player.PlayerIndex && previousPlayer.ObservationMechanism==player.ObservationMechanism && Math.Abs(player.X-previousPlayer.X)<=32 && Math.Abs(player.Y-previousPlayer.Y)<=32)
             {observedVx=player.X-previousPlayer.X;observedVy=player.Y-previousPlayer.Y;}
             if(priorTick==tick && previousPlayer.SameSample(player)){observedVx=samplePlayerVx;observedVy=samplePlayerVy;}
-            previousPlayer=player;previous=source[selected];trend=current;priorTick=tick;samplePlayerVx=observedVx;samplePlayerVy=observedVy;
-            previousPlayerAdvanced=resultPlayerAdvanced=firstPlayerStepCompleted;
-            Array.Copy(source,resultSample,count);for(int i=0;i<count;i++)resultRoles[i]=motionRoles==null || motionRoles[i];
-            resultEnvironment=environment;resultPlayer=player;resultCount=count;resultSelected=selected;resultRequired=required;resultTick=tick;resultEpoch=epoch;resultTerrain=terrain;resultObserved=observed;
-            Array.Copy(source,work,count);work[selected]=current;
-            terrain.Reset();ClearPlayerFixedPoint();points[0]=new NpcTrajectoryPoint(0,current);int length=1;PredictionStop stop=PredictionStop.None;
-            var towerConsumers=NpcCelestialTowerMotion.CreateConsumers(environment);
-            var moonLeeches=NpcMoonLeechMotion.CreateLeeches(environment);
-            var gravityEnvironment=environment;bool gravityNeeded=player.GravitySourceExpected || player.ForcedGravityTicks>0;
-            for(int i=0;i<count;i++)if(work[i].EffectiveType==266 && environment.GoodWorld)gravityNeeded=true;
-            bool wallNeeded=player.WallSourceExpected || environment.WallPlayers!=null || player.WallGross || player.WallTongued || player.WallHorrifiedTicks>0 || player.WallTonguedTicks>0;
-            wallPoints[0]=WallPoint(work,count);
-            gravityPoints[0]=GravityPoint(gravityEnvironment);
-            FailureLayer=PredictionFailureLayer.None;bool observedPlayer=needsPlayer && boundedPlayer,restarted=false;var initialPlayer=player;
-            bool fixedInputs=!gravityNeeded && !wallNeeded;
-            for(int future=1;future<=required;future++)
+            if(!resume)
             {
-                CombatPredictionWork.Check();
+                calculationToken=new object();
+                previousPlayer=player;previous=source[selected];trend=current;priorTick=tick;samplePlayerVx=observedVx;samplePlayerVy=observedVy;
+                previousPlayerAdvanced=resultPlayerAdvanced=firstPlayerStepCompleted;
+                Array.Copy(source,resultSample,count);for(int i=0;i<count;i++)resultRoles[i]=motionRoles==null || motionRoles[i];
+                resultEnvironment=environment;resultPlayer=player;resultCount=count;resultSelected=selected;resultPlanHorizon=plannedHorizon;resultTick=tick;resultEpoch=epoch;resultTerrain=terrain;resultObserved=observed;
+                Array.Copy(source,work,count);work[selected]=current;
+                terrain.Reset();ClearPlayerFixedPoint();points[0]=new NpcTrajectoryPoint(0,current);
+            }
+            int length=resume?progress.Length:1;PredictionStop stop=PredictionStop.None;
+            var towerConsumers=resume?progress.TowerConsumers:NpcCelestialTowerMotion.CreateConsumers(environment);
+            var moonLeeches=resume?progress.MoonLeeches:NpcMoonLeechMotion.CreateLeeches(environment);
+            var gravityEnvironment=resume?progress.GravityEnvironment:environment;bool gravityNeeded=resume?progress.GravityNeeded:player.GravitySourceExpected || player.ForcedGravityTicks>0;
+            if(!resume)for(int i=0;i<count;i++)if(work[i].EffectiveType==266 && environment.GoodWorld)gravityNeeded=true;
+            bool wallNeeded=resume?progress.WallNeeded:player.WallSourceExpected || environment.WallPlayers!=null || player.WallGross || player.WallTongued || player.WallHorrifiedTicks>0 || player.WallTonguedTicks>0;
+            if(!resume){wallPoints[0]=WallPoint(work,count);gravityPoints[0]=GravityPoint(gravityEnvironment);}
+            FailureLayer=PredictionFailureLayer.None;bool observedPlayer=resume?progress.ObservedPlayer:needsPlayer && boundedPlayer,restarted=resume && progress.Restarted;var initialPlayer=resume?progress.InitialPlayer:player;
+            bool fixedInputs=resume?progress.FixedInputs:!gravityNeeded && !wallNeeded;
+            if(resume){player=progress.Player;boundedPlayer=progress.BoundedPlayer;}
+            bool budgetPaused=false,hardPause=false;
+            var boundaryWall=wallPoints[length-1];var boundaryGravity=gravityPoints[length-1];
+            resumable=false;
+            try
+            {
+            for(int future=length;future<=required;future++)
+            {
+                if(!CombatPredictionWork.TryContinue()){budgetPaused=true;break;}
+                boundaryWall=wallPoints[length-1];boundaryGravity=gravityPoints[length-1];
                 // CheckBossIndexes precedes the player action. Keep its full
                 // identity; an inactive/replaced owner clears the global.
                 if(wallNeeded && !(firstPlayerStepCompleted && future==1))NpcWallBossMotion.BeginFrame(work,count);
@@ -122,7 +139,7 @@ namespace JueMingR.Features.Combat
                 bool futureNeeds=false;canObservePlayer=true;
                 // Rechecking a future phase must not move the horizon forward:
                 // a home clock beyond the requested endpoint is irrelevant.
-                for(int i=0;i<count;i++)if((i==selected || !NpcWindyBalloonMotion.Known(work[i]) || work[i].Active && NpcWindyBalloonMotion.NeededWriter(work[i],work,count)) && work[i].PositionRelation!=6 && (motionRoles==null || motionRoles[i]) && NpcMotion.NeedsPlayerMotion(work[i],environment,required-future+1,work,count,terrain)){futureNeeds=true;canObservePlayer&=NpcMotion.CurrentPlayerPremise(work[i]);}
+                for(int i=0;i<count;i++)if((i==selected || !NpcWindyBalloonMotion.Known(work[i]) || work[i].Active && NpcWindyBalloonMotion.NeededWriter(work[i],work,count)) && work[i].PositionRelation!=6 && (motionRoles==null || motionRoles[i]) && NpcMotion.NeedsPlayerMotion(work[i],environment,plannedHorizon-future+1,work,count,terrain)){futureNeeds=true;canObservePlayer&=NpcMotion.CurrentPlayerPremise(work[i]);}
                 if(futureNeeds && !needsPlayer)
                 {
                     // A modeled phase acquired a new necessary premise. Start
@@ -130,6 +147,7 @@ namespace JueMingR.Features.Combat
                     // begin simulating that player halfway through the path.
                     if(restarted || !Valid(initialPlayer)){stop=PredictionStop.PhaseBoundary;FailureLayer=PredictionFailureLayer.PlayerPremise;break;}
                     needsPlayer=true;observedPlayer=boundedPlayer;restarted=true;player=initialPlayer;terrain.Reset();ClearPlayerFixedPoint();
+                    calculationToken=new object();
                     Array.Copy(source,work,count);work[selected]=current;towerConsumers=NpcCelestialTowerMotion.CreateConsumers(environment);moonLeeches=NpcMoonLeechMotion.CreateLeeches(environment);gravityEnvironment=environment;gravityPoints[0]=GravityPoint(gravityEnvironment);wallPoints[0]=WallPoint(work,count);length=1;future=0;continue;
                 }
                 // Natural ItemCheck sees this player's completed move but the
@@ -151,6 +169,7 @@ namespace JueMingR.Features.Combat
                         // Switching back to the real origin halfway through
                         // a retained path would create an artificial turn.
                         observedPlayer=restarted=true;boundedPlayer=floatingFailure;stop=PredictionStop.None;terrain.Reset();ClearPlayerFixedPoint();
+                        calculationToken=new object();
                         Array.Copy(source,work,count);work[selected]=current;towerConsumers=NpcCelestialTowerMotion.CreateConsumers(environment);moonLeeches=NpcMoonLeechMotion.CreateLeeches(environment);gravityEnvironment=environment;gravityPoints[0]=GravityPoint(gravityEnvironment);wallPoints[0]=WallPoint(work,count);length=1;future=0;continue;
                     }
                     else{FailureLayer=PredictionFailureLayer.PlayerPremise;break;}
@@ -220,6 +239,7 @@ namespace JueMingR.Features.Combat
                     {
                         if(restarted || !Valid(initialPlayer)){stop=PredictionStop.PhaseBoundary;FailureLayer=PredictionFailureLayer.PlayerPremise;advanced=false;break;}
                         needsPlayer=restarted=true;observedPlayer=boundedPlayer;player=initialPlayer;terrain.Reset();ClearPlayerFixedPoint();
+                        calculationToken=new object();
                         Array.Copy(source,work,count);work[selected]=current;towerConsumers=NpcCelestialTowerMotion.CreateConsumers(environment);moonLeeches=NpcMoonLeechMotion.CreateLeeches(environment);gravityEnvironment=environment;gravityPoints[0]=GravityPoint(gravityEnvironment);wallPoints[0]=WallPoint(work,count);length=1;future=0;actorRestart=true;break;
                     }
                     // A shared-life owner is a health dependency, not permission
@@ -263,6 +283,24 @@ namespace JueMingR.Features.Combat
                 wallPoints[length]=WallPoint(work,count);gravityPoints[length]=GravityPoint(gravityEnvironment);points[length++]=new NpcTrajectoryPoint(future,work[selected]);
                 if(retain && future==1){firstState=work[0];firstPlayer=player;}
             }
+            }
+            catch(CombatPredictionBudgetExceededException)
+            {
+                // Geometry or an actor may exhaust the hard allowance inside
+                // a step. Scratch/read sets/relations can then be half-written.
+                // Keep only the last complete publication; never resume this
+                // scratch and never checkpoint all 200 actors on every step.
+                budgetPaused=hardPause=true;stop=PredictionStop.None;FailureLayer=PredictionFailureLayer.None;
+            }
+            if(hardPause || stop!=PredictionStop.None)
+            {wallPoints[length-1]=boundaryWall;gravityPoints[length-1]=boundaryGravity;ClearPlayerFixedPoint();progress=default(Progress);}
+            if(!hardPause && stop==PredictionStop.None)
+            {
+                resumable=true;
+                progress=new Progress{Length=length,NeedsPlayer=needsPlayer,CanObservePlayer=canObservePlayer,BoundedPlayer=boundedPlayer,ObservedPlayer=observedPlayer,Restarted=restarted,
+                    FixedInputs=fixedInputs,GravityNeeded=gravityNeeded,WallNeeded=wallNeeded,Retain=retain,ConditionalVisibility=conditionalVisibility,
+                    Player=player,InitialPlayer=initialPlayer,FirstPlayer=firstPlayer,GravityEnvironment=gravityEnvironment,FirstState=firstState,TowerConsumers=towerConsumers,MoonLeeches=moonLeeches};
+            }
             var assumptions=(NpcMotion.Assumptions(current)&~PredictionAssumption.TargetPlayerStationary)|PredictionAssumption.HeldPlayerControls|PredictionAssumption.ApproximateMechanism;
             if(environment.Multiplayer)assumptions|=PredictionAssumption.NetworkObservation;
             if(current.UnmodeledDamageTicks>0)assumptions|=PredictionAssumption.UnmodeledDamageEffects;
@@ -271,9 +309,9 @@ namespace JueMingR.Features.Combat
             if(conditionalVisibility && !needsPlayer)assumptions=(assumptions&~PredictionAssumption.NoPlayerMotionNeeded)|PredictionAssumption.TargetPlayerStationary|PredictionAssumption.CurrentPlayerObservation;
             var quality=NpcMotion.StructuredModel(current)?PredictionQuality.StructuredApproximation:observed?PredictionQuality.ObservedTrend:PredictionQuality.LimitedObservation;
             if(conditionalVisibility && !needsPlayer)quality=PredictionQuality.LimitedObservation;
-            FixedInputResult=fixedInputs && !observedPlayer && quality==PredictionQuality.StructuredApproximation && stop==PredictionStop.None && length==required+1 &&
+            FixedInputResult=!budgetPaused && fixedInputs && !observedPlayer && quality==PredictionQuality.StructuredApproximation && stop==PredictionStop.None && length==required+1 &&
                 (assumptions&(PredictionAssumption.RandomRepresentative|PredictionAssumption.CurrentPlayerObservation|PredictionAssumption.UnmodeledDamageEffects|PredictionAssumption.UnmodeledStatusEffects))==0;
-            result=new NpcTrajectory(current.Identity,tick,++version,assumptions,stop,points,length,PredictionStrategy.RollingConditional,epoch,quality,gravityNeeded && initialPlayer.PlayerToken!=null?new PredictionGravitySources(gravityPoints,length,initialPlayer.PlayerToken,initialPlayer.PlayerIndex,firstPlayerStepCompleted,current.Identity,tick):null,wallNeeded && initialPlayer.PlayerToken!=null?new PredictionWallSources(wallPoints,length,initialPlayer.PlayerToken,initialPlayer.PlayerIndex,current.Identity,tick):null);resultFailure=FailureLayer;
+            result=budgetPaused && length==1?null:new NpcTrajectory(current.Identity,tick,++version,assumptions,stop,points,length,PredictionStrategy.RollingConditional,epoch,quality,gravityNeeded && initialPlayer.PlayerToken!=null?new PredictionGravitySources(gravityPoints,length,initialPlayer.PlayerToken,initialPlayer.PlayerIndex,firstPlayerStepCompleted,current.Identity,tick):null,wallNeeded && initialPlayer.PlayerToken!=null?new PredictionWallSources(wallPoints,length,initialPlayer.PlayerToken,initialPlayer.PlayerIndex,current.Identity,tick):null,budgetPaused,calculationToken);resultFailure=FailureLayer;
             if(retain && FixedInputResult && SameContinuationPlayer(initialPlayer,firstPlayer) && SameContinuationPlayer(initialPlayer,player))
                 Continuation=new CandidateContinuation(firstState,work[0],environment,initialPlayer,firstPlayerStepCompleted,result);
             return result;

@@ -192,15 +192,26 @@ namespace NativeWorldTextProbe
             var contact=(AttackContact)GetOptional(attack,"ExpectedPreview");
             Require((contact!=null)==expected,"finite stable preview/revocation at "+name+" timers="+observedPlayer.itemAnimation+"/"+observedPlayer.itemTime+" direction="+observedPlayer.direction+" sources="+Main.projectile.Count(q=>q.active)+" receiver="+observedReceiver.active+"/"+observedReceiver.dontTakeDamage);
             var cache=(NpcPredictionCache)Get(Get(host,"Prediction"),"Cache");
-            if(expected)Require(ReferenceEquals(contact.Timeline,cache.Read(0)) && contact.Timeline.Identity.Slot==observedReceiver.whoAmI,"preview and selected path share the actual published timeline: "+name);
+            if(expected)
+            {
+                var displayed=GetOptional(host,"DisplayPath") as NpcTrajectory;
+                long now=Main.GameUpdateCount;int maximumAge=(int)host.GetType().GetField("DisplayMaximumAge",Flags).GetValue(null);
+                Require(displayed!=null && contact.Timeline.Identity.Equals(displayed.Identity) && ReferenceEquals(contact.Timeline.Identity.Token,observedReceiver) && contact.Timeline.Identity.Slot==observedReceiver.whoAmI && contact.Timeline.CaptureTick==displayed.CaptureTick && ReferenceEquals(contact.Timeline.CalculationToken,displayed.CalculationToken),"preview has the complete selected identity/capture/calculation of the validated display source: "+name);
+                long offset=contact.Timeline.SampleTick-contact.Timeline.CaptureTick,receive=contact.Timeline.SampleTick+contact.ReceiveTick;
+                Require(now-contact.Timeline.CaptureTick>=0 && now-contact.Timeline.CaptureTick<=maximumAge && offset>=0 && contact.Timeline.SampleTick<=now && contact.ReceiveTick>=0 && contact.ReceiveTick<contact.Timeline.Count && receive>=displayed.SampleTick && receive<displayed.SampleTick+displayed.Count && receive>=now,"preview's absolute receive and window offset stay within the captured display future: "+name);
+                Require(contact.Timeline[contact.ReceiveTick].Bounds.Equals(displayed[(int)(receive-displayed.SampleTick)].Bounds),"preview receive geometry equals the independent display source point at its absolute window offset: "+name);
+            }
+            var execution=GetOptional(attack,"ExpectedImpact") as AttackContact;
             Call(world,"Prepare");var zoom=Main.GameViewMatrix.ZoomMatrix;var impact=Get(world,"Impact");
+            var actual=GetOptional(impact,"contact") as AttackContact;
+            if(expected)Require(actual!=null && ReferenceEquals(actual,execution??contact) && ReferenceEquals(actual.Timeline.Identity.Token,observedReceiver) && actual.Timeline.Identity.Slot==observedReceiver.whoAmI && actual.ReceiveTick>=0 && actual.ReceiveTick<actual.Timeline.Count,"actual marker captures the independently admitted execution/preview receiver and receive: "+name);
             if(graphics==null){Call(impact,"Project",zoom,Matrix.Invert(zoom));Require((bool)Get(impact,"Visible")==expected,"natural capture/project at "+name);return;}
             Require(drawStepScopes>0 && drawStepAudit!=null,"actual Draw future-work observer is installed for this group");
             int steps=ObservedNpcSteps;var pixels=graphics.Pixels(()=>Call(world,"Draw"),zoom);var red=pixels.Select((v,i)=>new{v,i}).Where(p=>Red(p.v)).Select(p=>new Vector2(p.i%960,p.i/960)).ToArray();
             Require((red.Length>0)==expected && ObservedNpcSteps==steps,"natural actual World.Draw red presence without real future Step work: "+name);
             if(expected)
             {
-                var b=contact.Timeline[contact.ReceiveTick].Bounds;var center=Vector2.Transform(new Vector2(b.CenterX,b.CenterY)-Main.screenPosition,zoom);
+                var b=actual.Timeline[actual.ReceiveTick].Bounds;var center=Vector2.Transform(new Vector2(b.CenterX,b.CenterY)-Main.screenPosition,zoom);
                 Require(red.Length>=16 && red.Length<=100 && red.All(p=>Math.Abs(p.X-center.X)<=6 && Math.Abs(p.Y-center.Y)<=6) && !Red(pixels[(int)center.Y*960+(int)center.X]),"actual hollow red pixels surround the same receive-time NPC path position: "+name);
             }
             if(save && output!=null)graphics.Image(Path.Combine(output,name+".png"),()=>Call(world,"Draw"),zoom);

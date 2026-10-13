@@ -148,9 +148,9 @@ namespace JueMingR.TerrariaHost.Combat
                 row.MoonRelationsCaptured=true;row.MoonRelationsComplete=complete;row.MoonEffectsCaptured=effects;
                 // Fully captured existing AI82 actors are now advanced in the
                 // same slot loop. Only unacquired actual clots retain a deadline.
-                row.MoonExternalEffectAt=FirstUnmodeledMoonLeechConsumer(native,Cache.Required);
-                row.MoonExternalEffectAt=Math.Min(row.MoonExternalEffectAt,FirstMoonAttachedConsumer(row,native,Cache.Required));
-                row.MoonGlobalRetireAt=FirstMoonForeignRetire(native,Cache.Required);
+                row.MoonExternalEffectAt=FirstUnmodeledMoonLeechConsumer(native,sampleHorizon);
+                row.MoonExternalEffectAt=Math.Min(row.MoonExternalEffectAt,FirstMoonAttachedConsumer(row,native,sampleHorizon));
+                row.MoonGlobalRetireAt=FirstMoonForeignRetire(native,sampleHorizon);
                 states[i]=row;
             }
         }
@@ -158,7 +158,7 @@ namespace JueMingR.TerrariaHost.Combat
         private PredictionMoonLeeches CaptureMoonLeechInputs(long session,int count)
         {
             int used=0;
-            int clearWriter;int clearAt=FirstMoonAnchorClear(Cache.Required,out clearWriter);
+            int clearWriter;int clearAt=FirstMoonAnchorClear(sampleHorizon,out clearWriter);
             for(int row=0;row<count;row++)
             {
                 if(!motionSlots[states[row].Identity.Slot] || !MoonLeechMotor(MoonRaw(states[row].Identity.Slot)))continue;

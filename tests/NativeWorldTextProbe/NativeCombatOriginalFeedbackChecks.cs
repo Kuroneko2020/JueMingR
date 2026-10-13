@@ -163,7 +163,7 @@ namespace NativeWorldTextProbe
                 }
                 if(seams)
                 {
-                    if(graphics!=null)RunFloatingDraw(context,host,combat,input,attack,graphics,output);
+                    if(graphics!=null){RunPlainSpearCurrent(context,host,combat,input,attack,4672,841,graphics,output);RunFloatingDraw(context,host,combat,input,attack,graphics,output);}
                     else {RunPlainSpearCurrent(context,host,combat,input,attack,274,46);RunWhipOtherHits(context,host,combat,input,attack,1);RunWhipOtherHits(context,host,combat,input,attack,4);}
                     return;
                 }
@@ -335,12 +335,35 @@ namespace NativeWorldTextProbe
             for(int i=0;i<4;i++)NativeCombatSelectionPreviewChecks.Step(context,physical,false,true);
             naturalPress=true;NativeCombatSelectionPreviewChecks.Step(context,physical,true);
             Require(parentBirths==1 && parentHits==0,"manual original body creates a sealed source before its first body receive: "+weapon);
+            var originalSource=weapon==4672?Main.projectile.Single(q=>q.active && q.owner==player.whoAmI && q.type==shotType):null;
             physical=new Vector2(550,430);naturalPress=false;NativeCombatSelectionPreviewChecks.Step(context,physical,false);
+            if(weapon==4672)
+            {
+                // This member-revocation seam needs one healthy captured
+                // native family, not a mandatory red box on its cold frame.
+                // Wait only normal updates of this same source, and never
+                // pass its actual first receive to manufacture a later oracle.
+                var work=Get(host,"PredictionWork");int waits=0;
+                for(;;)
+                {
+                    bool healthy=GetOptional(attack,"ExpectedPreview")!=null && GetOptional(Get(attack,"preview"),"Flight")!=null;
+                    Console.WriteLine("ORIGINAL whip-member preparation wait="+waits+" tick="+Main.GameUpdateCount+" missing="+(!healthy)+" budgetMs="+Get(work,"UsedMilliseconds")+" exceeded="+Get(work,"Exceeded")+" firstNativeReceive="+firstParentHit);
+                    if(healthy || waits==6 || firstParentHit.HasValue)break;
+                    NativeCombatSelectionPreviewChecks.Step(context,physical,false);waits++;
+                    Require(parentBirths==1 && originalSource.active && originalSource.type==shotType && originalSource.owner==player.whoAmI,"finite member preparation observes the same single native birth without another press");
+                }
+                Require(!firstParentHit.HasValue && GetOptional(attack,"ExpectedPreview")!=null && GetOptional(Get(attack,"preview"),"Flight")!=null,"the same native family supplies a healthy preview before its first real receive within six normal updates");
+            }
             var saved=(JueMingR.Features.Combat.AttackContact)GetOptional(attack,"ExpectedPreview");uint observed=Main.GameUpdateCount;
             if(weapon==4672)
             {
                 var world=Get(host,"World");Present(host,attack,world,player,receiver,graphics,output,"original-whip-current",true,graphics!=null);
-                bool canFloat=player.canFloatInWater,shouldFloat=player.ShouldFloatInWater;player.canFloatInWater=!canFloat;Require(player.ShouldFloatInWater!=shouldFloat,"the native floating capability changes without another world action");RejectPresentation(world,graphics,"ordinary whip floating capability changed");player.canFloatInWater=canFloat;
+                // Check the aged branch on this SAME naturally captured family.
+                // Actual Draw below retains its original same-update boundary;
+                // no clock manipulation or replacement flight creates age1.
+                var savedFlight=Get(Get(attack,"preview"),"Flight");Require(savedFlight!=null && (bool)Call(savedFlight,"PresentationCurrent",1),"the captured ordinary whip family starts with a healthy age1 presentation member gate");
+                bool canFloat=player.canFloatInWater,shouldFloat=player.ShouldFloatInWater;player.canFloatInWater=!canFloat;Require(player.ShouldFloatInWater!=shouldFloat,"the native floating capability changes without another world action");Require(!(bool)Call(savedFlight,"PresentationCurrent",1),"age1 presentation does not skip the captured spear/whip family owner gate");RejectPresentation(world,graphics,"ordinary whip floating capability changed");player.canFloatInWater=canFloat;
+                Require((bool)Call(savedFlight,"PresentationCurrent",1),"exact native owner restoration restores the same age1 member gate");
                 Present(host,attack,world,player,receiver,graphics,output,"original-whip-float-restored",true,false);
                 float range=player.whipRangeMultiplier;player.whipRangeMultiplier+=.25f;RejectPresentation(world,graphics,"ordinary whip range changed");player.whipRangeMultiplier=range;
                 Present(host,attack,world,player,receiver,graphics,output,"original-whip-range-restored",true,false);

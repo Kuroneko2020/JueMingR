@@ -16,6 +16,7 @@ namespace JueMingR.TerrariaHost.Combat
         private readonly RollingNpcPrediction rolling=new RollingNpcPrediction();
         private NpcPredictionSource candidateSource;
         private bool candidateOnly;
+        private int sampleHorizon;
         private static bool rollingCodePrepared;
 
         // New candidates keep a separate finite sampling/terrain/history owner.
@@ -37,7 +38,7 @@ namespace JueMingR.TerrariaHost.Combat
             // identity and returns the same rolling result only when exact.
             if(OwnsTarget(identity) && Cache.Required>=required)
             {
-                try{if(beforeNpc)PrepareAction(identity,tick);else Prepare(identity,tick);}
+                try{if(beforeNpc)PrepareActionPrefix(identity,tick,required,NpcPredictionCache.Horizon);else PreparePrefix(identity,tick,required,NpcPredictionCache.Horizon);}
                 catch(NpcObservationFailure){Clear();return null;}
                 // Path and Aim own separate demands. Sharing an already
                 // published sample must use its live consumer, not require
@@ -48,7 +49,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(candidateSource==null)candidateSource=new NpcPredictionSource{candidateOnly=true};
             candidateSource.Cache.Demand(0,1,Math.Min(required,NpcPredictionCache.Horizon));
             candidateSource.candidateReuseMiss=reuseMiss;
-            try{if(beforeNpc)candidateSource.PrepareAction(identity,tick);else candidateSource.Prepare(identity,tick);}
+            try{if(beforeNpc)candidateSource.PrepareActionPrefix(identity,tick,required,NpcPredictionCache.Horizon);else candidateSource.PreparePrefix(identity,tick,required,NpcPredictionCache.Horizon);}
             catch(NpcObservationFailure){candidateSource.Clear();return null;}
             finally{candidateSource.candidateReuseMiss=false;}
             var path=candidateSource.Cache.Read(0);
@@ -117,7 +118,11 @@ namespace JueMingR.TerrariaHost.Combat
             // Compile the bounded local kernels; do NOT sample Main, construct
             // forecasts or run a hidden warmup world. Startup is measured
             // separately; OFF world updates still do no prediction work.
+            // Cold-use sampling also identified these local attack consumers.
+            // Prepare their code in the same once-per-assembly pass; never
+            // invoke their methods or create a hidden world to warm an attack.
             var types=new[]{typeof(NpcPredictionSource),typeof(NpcTrackingObservation),typeof(NpcPositionObservation),typeof(NpcCollisionRules),typeof(RollingNpcPrediction),typeof(NpcMotion),typeof(NpcHealth),typeof(PredictionTerrain),typeof(NpcTrajectory),
+                typeof(HostAttackAim),typeof(HostProjectileEnvironment),typeof(AttackIntercept),
                 typeof(MotionRect),typeof(NpcMotionState),typeof(NpcTrajectoryPoint),typeof(NpcBuffLayout),typeof(PredictionPlayers),typeof(PredictionMageCorpses),typeof(PredictionTowerShieldConsumer),typeof(PredictionTowerShieldConsumers),typeof(PredictionGravitySource),typeof(PredictionGravitySources),typeof(PredictionWallPlayer),typeof(PredictionWallPlayers),typeof(PredictionWallSource),typeof(PredictionWallSources),typeof(NpcTrajectory).GetNestedType("PackedPoint",System.Reflection.BindingFlags.NonPublic),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcRollingMotion",true),
                 typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcFiniteFlightMotion",true),
@@ -227,6 +232,7 @@ namespace JueMingR.TerrariaHost.Combat
         private static readonly System.Reflection.FieldInfo mageCorpseField=typeof(Terraria.GameContent.Events.DD2Event).GetField("_deadGoblinSpots",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Static);
         internal void Clear()
         {
+            icePrefix=null;iceCaptureWasActive=false;
             ClearCandidateProofs();
             candidateSource?.Clear();
             outcomeTick=-1;OutcomeStyle=0;OutcomePhase=0;OutcomeStrategy=PredictionStrategy.Model;
@@ -274,22 +280,31 @@ namespace JueMingR.TerrariaHost.Combat
         }
         internal void Stop(){Native?.Stop();Clear();}
         internal void EndWorld(){Native?.DetachWorld();Clear();}
+        // Keep the existing unique two-argument reflection seam for native
+        // comparison tools. Staged production consumers use explicit names.
         internal void Prepare(NpcIdentity identity,long tick)
-        {PrepareWithIceLease(identity,tick,false);}
+        {PreparePrefix(identity,tick,0,0);}
         internal void PrepareAction(NpcIdentity identity,long tick)
-        {PrepareWithIceLease(identity,tick,true);}
-        private void PrepareSample(NpcIdentity identity,long tick,bool firstPlayerStepCompleted)
+        {PrepareActionPrefix(identity,tick,0,0);}
+        internal void PreparePrefix(NpcIdentity identity,long tick,int advanceTo,int plannedHorizon)
+        {PrepareWithIceLease(identity,tick,false,advanceTo,plannedHorizon);}
+        internal void PrepareActionPrefix(NpcIdentity identity,long tick,int advanceTo,int plannedHorizon)
+        {PrepareWithIceLease(identity,tick,true,advanceTo,plannedHorizon);}
+        private void PrepareSample(NpcIdentity identity,long tick,bool firstPlayerStepCompleted,int advanceTo,int plannedHorizon)
         {
             CombatPredictionWork.Check();
             outcomeTick=-1;
             if(Cache.Required==0){Clear();return;}
+            if(advanceTo==0)advanceTo=Cache.Required;
+            sampleHorizon=plannedHorizon==0?Math.Max(Cache.Required,advanceTo):plannedHorizon;
+            if(advanceTo<1 || advanceTo>sampleHorizon || sampleHorizon>NpcPredictionCache.Horizon)throw new ArgumentOutOfRangeException(nameof(advanceTo));
             if(!CombatSelection.Valid(identity,identity.Session)){Clear();return;}
             ownsState=true;
             if(!SegmentedWormMotor(Main.npc[identity.Slot]) && Prediction.SegmentedNpcPrediction.Family(identity.Type)!=0)
             {
                 if(!usingSegmented){Native?.ClearTarget();rolling.Clear();observedCount=0;targetPlayer=-1;usingSegmented=true;}
                 Native?.DiscardRetiredResult();
-                var path=segmented.Prepare(identity,tick,Cache.Required);Outcome(identity,tick,path,PredictionFailureLayer.NpcMotion);Cache.Publish(path);if(!candidateOnly)Prediction.AimLightTrace.Cache(path,null,"segmented");return;
+                var path=segmented.Prepare(identity,tick,advanceTo);Outcome(identity,tick,path,PredictionFailureLayer.NpcMotion);Cache.Publish(path);if(!candidateOnly)Prediction.AimLightTrace.Cache(path,null,"segmented");return;
             }
             if(usingSegmented){Cache.Clear();rolling.Clear();segmented.ReleaseTarget();usingSegmented=false;}
             if(Native!=null){Native.Prepare(identity,tick);return;}
@@ -365,7 +380,7 @@ namespace JueMingR.TerrariaHost.Combat
                     {
                         if(peer>=Main.npc.Length){complete=false;break;}
                         var member=Main.npc[peer];if(member==null || !member.active || !Mage(member))continue;
-                        ready|=NpcMotion.MageReadyAction(Read(member,identity.Session),Cache.Required)>0;
+                        ready|=NpcMotion.MageReadyAction(Read(member,identity.Session),sampleHorizon)>0;
                         if(!QueuePlantMotor(peer,ref queued))complete=false;
                     }
                     if(ready)for(int peer=0;peer<Main.maxNPCs;peer++)
@@ -582,7 +597,7 @@ namespace JueMingR.TerrariaHost.Combat
                 {
                     states[i].TowerRelationsCaptured=true;states[i].TowerRelationsComplete=towerComplete;states[i].TowerShieldCaptured=true;states[i].TowerShieldStrength=TowerStrength(states[i].EffectiveType);states[i].TowerShieldMaximum=NPC.ShieldStrengthTowerMax;
                     for(int producer=0;producer<count;producer++)if(states[producer].Active && TowerProducer(states[producer].EffectiveType)==states[i].EffectiveType)
-                        states[i].TowerNewConsumerAt=Math.Min(states[i].TowerNewConsumerAt,NpcMotion.TowerNewConsumerAction(states[producer],healthEnvironment,Cache.Required,states,count));
+                        states[i].TowerNewConsumerAt=Math.Min(states[i].TowerNewConsumerAt,NpcMotion.TowerNewConsumerAction(states[producer],healthEnvironment,sampleHorizon,states,count));
                 }
             }
             if(plantCaptured)
@@ -630,7 +645,7 @@ namespace JueMingR.TerrariaHost.Combat
             {states[i].WeaponRelationsCaptured=true;states[i].WeaponRelationsComplete=weaponComplete;}
             if(mageCaptured)
             {
-                int healing=FirstMageHealingConsumer(Cache.Required);
+                int healing=FirstMageHealingConsumer(sampleHorizon);
                 for(int i=0;i<count;i++)if(Mage(Main.npc[states[i].Identity.Slot]))
                 {states[i].MageRelationsCaptured=true;states[i].MageRelationsComplete=mageComplete;states[i].MageHealingAt=healing;}
             }
@@ -714,7 +729,7 @@ namespace JueMingR.TerrariaHost.Combat
             // earlier owners move. Frame-start geometry can invent Aim as
             // well as miss it; merely observing its potential player must not
             // reject an otherwise independent raising/home action here.
-            for(int i=0;i<count;i++)if(motionRoles[i] && states[i].PositionRelation!=6 && NpcMotion.NeedsPlayerMotion(states[i],premiseEnv,Cache.Required,states,count,Terrain))
+            for(int i=0;i<count;i++)if(motionRoles[i] && states[i].PositionRelation!=6 && NpcMotion.NeedsPlayerMotion(states[i],premiseEnv,sampleHorizon,states,count,Terrain))
             {
                 // AI111 consumes the first player's next position to decide
                 // whether this potential owner is needed at all. Prepare that
@@ -745,17 +760,17 @@ namespace JueMingR.TerrariaHost.Combat
             // later numbered players have not naturally moved yet.
             var playerMotion=!playerAlive?default(PredictionPlayerMotion):ReadPlayer(player);
             bool playerAdvanced=firstPlayerStepCompleted && target<=Main.myPlayer;
-            if(candidateOnly && candidateReuseMiss && ReuseCandidateInputs(identity,firstPlayerStepCompleted,playerAdvanced,count,selected,Cache.Required,env,playerMotion))
+            if(candidateOnly && candidateReuseMiss && ReuseCandidateInputs(identity,firstPlayerStepCompleted,playerAdvanced,count,selected,advanceTo,env,playerMotion))
             {
                 // This is the caller's still-valid no-contact verdict, not a
                 // newly published future. Keep conditional capture time intact.
                 Cache.Publish(null);return;
             }
             rolling.CaptureContinuation=candidateOnly;
-            var result=candidateOnly?ContinueCandidate(identity,tick,firstPlayerStepCompleted,playerAdvanced,count,selected,Cache.Required,env,playerMotion):null;
-            if(result==null)result=rolling.Prepare(states,count,selected,tick,Cache.Required,epoch,env,playerMotion,Terrain,motionRoles,playerAdvanced);
-            if(candidateOnly && result!=null && result.Stop==PredictionStop.None && result.Count==Cache.Required+1 && rolling.FixedInputResult)
-                RememberCandidateInputs(identity,firstPlayerStepCompleted,playerAdvanced,count,selected,Cache.Required,env,playerMotion);
+            var result=candidateOnly?ContinueCandidate(identity,tick,firstPlayerStepCompleted,playerAdvanced,count,selected,advanceTo,env,playerMotion):null;
+            if(result==null)result=rolling.Prepare(states,count,selected,tick,advanceTo,epoch,env,playerMotion,Terrain,motionRoles,playerAdvanced,sampleHorizon);
+            if(candidateOnly && result!=null && result.Stop==PredictionStop.None && !result.BudgetPaused && result.Count==advanceTo+1 && rolling.FixedInputResult)
+                RememberCandidateInputs(identity,firstPlayerStepCompleted,playerAdvanced,count,selected,advanceTo,env,playerMotion);
             Outcome(identity,tick,result,rolling.FailureLayer);Cache.Publish(result);
         }
         private static bool WeaponMotor(NPC n){return n.aiStyle==75 && (n.type==390 || n.type==392 || n.type==393 || n.type==394 || n.type==416 || n.type==492) || n.type==395 && n.aiStyle==76 || n.type==491 && n.aiStyle==93 || (n.type==391 || n.type==415) && n.aiStyle==3;}

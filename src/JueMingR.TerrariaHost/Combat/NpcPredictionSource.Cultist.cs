@@ -38,7 +38,7 @@ namespace JueMingR.TerrariaHost.Combat
             // A global count has no effect during an ordinary cast. Its actual
             // earliest scheduled consumer, including observed health loss,
             // decides whether any global Doom dependencies are needed at all.
-            dooms=NpcMotion.CultistDoomCountAction(observed,environment,Cache.Required,health.ToArray(),health.Count)<=Cache.Required;
+            dooms=NpcMotion.CultistDoomCountAction(observed,environment,sampleHorizon,health.ToArray(),health.Count)<=sampleHorizon;
             for(int slot=0;slot<Main.maxNPCs;slot++)
             {
                 if(slot>=Main.npc.Length){complete=doomsComplete=false;break;}
@@ -89,7 +89,7 @@ namespace JueMingR.TerrariaHost.Combat
                     if(row.PositionOwner.Token!=null && (owner<0 || owner>=motionSlots.Length || !motionSlots[owner]))doomsComplete=false;
                 }
                 if(row.EffectiveType!=439 || motionSlots[row.Identity.Slot])continue;
-                int action=NpcMotion.CultistDoomBirthAction(row,environment,Cache.Required,states,count);
+                int action=NpcMotion.CultistDoomBirthAction(row,environment,sampleHorizon,states,count);
                 if(action!=int.MaxValue && row.Identity.Slot>ownerSlot)action++;
                 foreignBirth=Math.Min(foreignBirth,action);
             }
