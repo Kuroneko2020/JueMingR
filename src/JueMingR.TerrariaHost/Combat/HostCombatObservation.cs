@@ -263,7 +263,7 @@ namespace JueMingR.TerrariaHost.Combat
                         {
                             CaptureDisplay(candidatePath,candidateTerrain);
                             Attack.PublishCandidatePreview(candidatePath);
-                            displayValidated=ValidateDisplay(sampleTick);Attack.ValidatePreviewPresentation();previewValidated=true;
+                            ValidateDisplay(sampleTick);displayValidated=true;Attack.ValidatePreviewPresentation();previewValidated=true;
                         }
                         optionalTick=displayShortTick=sampleTick;optionalTarget=Selection.Target;
                         prefix=Math.Max(prefix,candidatePath.Count-1);admitted=true;
@@ -285,7 +285,10 @@ namespace JueMingR.TerrariaHost.Combat
                     }
                     if(admitted && CombatPredictionWork.TryContinue())
                     {
-                        ValidateDisplay(sampleTick);Attack?.ValidatePreviewPresentation();
+                        // No world or producer action follows candidate publication. Reuse
+                        // only this call's completed checks; a later tail checks its new lease.
+                        if(!displayValidated)ValidateDisplay(sampleTick);
+                        if(!previewValidated)Attack?.ValidatePreviewPresentation();
                         displayValidated=previewValidated=true;
                         var prefixPath=displayPath;var prefixTerrain=displayTerrain;
                         long prefixLease=displayLeaseTick;
