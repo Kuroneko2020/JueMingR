@@ -144,6 +144,12 @@ namespace NativeWorldTextProbe
                 using(CombatPredictionWork.Optional(1))Require(!CombatPredictionWork.TryContinue(),"a tighter nested optional ceiling includes the current outer interval already spent");
                 Require(CombatPredictionWork.TryContinue(),"leaving the tighter nested ceiling restores only the existing outer remainder");
             }
+            using(work.Enter(4))
+            {
+                using(CombatPredictionWork.Optional(20)){while(work.UsedMilliseconds<21){ }Require(!CombatPredictionWork.TryContinue(),"optional production cannot consume its reserved validation remainder");}
+                using(CombatPredictionWork.Optional(30))Require(CombatPredictionWork.TryContinue(),"a real later consumer validation borrows the same owner's reserved remainder");
+                using(CombatPredictionWork.Optional(20))Require(!CombatPredictionWork.TryContinue(),"another producer cannot borrow the validation reserve as a fresh production allowance");
+            }
             Console.WriteLine("PASS shared actual optional accounting across nesting, core interleave, repeated entries and next-update recovery");
         }
     }

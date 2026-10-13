@@ -207,7 +207,7 @@ namespace JueMingR.TerrariaHost.Combat
             // paused results, and a duplicate outer callback cannot re-admit.
             OptionalPreparation=!beforeNpc && Path && optionalTick!=sampleTick && (optionalTick<0 || sampleTick-optionalTick>=DisplayRefreshUpdates || !optionalTarget.Equals(Selection.Target));
             if(beforeNpc || Attack!=null && Attack.UrgentPreparation)Attack?.ResolveSelection(sampleTick,beforeNpc);
-            else using(CombatPredictionWork.Optional(3))Attack?.ResolveSelection(sampleTick,false);
+            else using(CombatPredictionWork.Optional(2))Attack?.ResolveSelection(sampleTick,false);
             Attack?.Demand(beforeNpc); // Keep a candidate's explicitly proven action prefix.
             // Ordinary prediction is synchronous and owned by Source. Native
             // failure belongs only to the explicit comparison route; a shared
@@ -225,13 +225,20 @@ namespace JueMingR.TerrariaHost.Combat
             }
             if(!beforeNpc && OptionalPreparation)
             {
+                // Producers share the lower cumulative ceiling. The same
+                // owner's remaining optional slice is reserved for validating
+                // real repeated outer entries, rather than spent on a tail
+                // whose next callback would immediately hide its publication.
                 using(CombatPredictionWork.Optional(3))
                 {
+                    int full=Prediction.Cache.Required;
+                    int prefix=Attack!=null && Attack.PreviewDemand?Math.Min(full,Attack.PreviewPreferred):full;
+                    bool admitted=false;
+                    using(CombatPredictionWork.Optional(2))
                     if(CombatPredictionWork.TryContinue())
                     {
+                        admitted=true;
                         optionalTick=sampleTick;optionalTarget=Selection.Target;
-                        int full=Prediction.Cache.Required;
-                        int prefix=Attack!=null && Attack.PreviewDemand?Math.Min(full,Attack.PreviewPreferred):full;
                         // A display tail cannot consume the allowance before
                         // its useful contact. Preserve the same-sample prefix,
                         // solve its preview, then extend only with the remainder.
@@ -239,13 +246,22 @@ namespace JueMingR.TerrariaHost.Combat
                         CaptureDisplay(sampleTick);
                         previewOptionalTick=sampleTick;
                         Attack?.PreparePreviewOnly();
+                    }
+                    if(admitted && CombatPredictionWork.TryContinue())
+                    {
                         ValidateDisplay(sampleTick);Attack?.ValidatePreviewPresentation();
                         displayValidated=previewValidated=true;
                         var prefixPath=displayPath;var prefixTerrain=displayTerrain;
                         long prefixLease=displayLeaseTick;
+                        bool extended=false;
+                        using(CombatPredictionWork.Optional(2))
                         if(full>prefix && CombatPredictionWork.TryContinue())
                         {
                             PrepareSelectedPrediction(sampleTick,false,tick,full);
+                            extended=true;
+                        }
+                        if(extended)
+                        {
                             if(CombatPredictionWork.TryContinue())
                             {
                                 CaptureDisplay(sampleTick);
@@ -257,7 +273,8 @@ namespace JueMingR.TerrariaHost.Combat
                                     // cannot revoke the just-validated prefix.
                                     displayPath=prefixPath;displayTerrain=prefixTerrain;displayLeaseTick=prefixLease;
                                 }
-                                if(Attack!=null && Attack.PreviewNeedsMore && CombatPredictionWork.TryContinue()){Attack.PreparePreviewOnly();previewValidated=false;}
+                                using(CombatPredictionWork.Optional(2))
+                                    if(Attack!=null && Attack.PreviewNeedsMore && CombatPredictionWork.TryContinue()){Attack.PreparePreviewOnly();previewValidated=false;}
                             }
                         }
                     }
@@ -275,8 +292,8 @@ namespace JueMingR.TerrariaHost.Combat
                         if(!displayValidated)ValidateDisplay(sampleTick);if(!previewValidated)Attack?.ValidatePreviewPresentation();
                         if(Attack!=null && Attack.PreviewRefreshPending && DisplayPath!=null && (previewOptionalTick<0 || sampleTick-previewOptionalTick>=2) && CombatPredictionWork.TryContinue())
                         {
-                            previewOptionalTick=sampleTick;
-                            Attack.PreparePreviewWindow(DisplayPath);
+                            using(CombatPredictionWork.Optional(2))
+                                if(CombatPredictionWork.TryContinue()){previewOptionalTick=sampleTick;Attack.PreparePreviewWindow(DisplayPath);}
                             Attack.ValidatePreviewPresentation();
                         }
                     }
