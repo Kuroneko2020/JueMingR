@@ -297,7 +297,12 @@ namespace JueMingR.TerrariaHost.Combat
             internal void SetMembers(Player player,Item weapon){item=weapon;slot=player.selectedItem;type=weapon.type;prefix=weapon.prefix;scale=player.GetAdjustedItemScale(weapon);Direction=player.direction;EnvironmentState=new HostProjectileEnvironment.State(true,HostProjectileEnvironment.HandWindRelevant(player,weapon));WhipOwner=HostMeleeAttack.KnownWhipParent(weapon.shoot)?new HostMeleeAttack.SpearFlightState(player,System.Array.Empty<Projectile>()):null;}
             internal bool WeaponCurrent(Player player){return player!=null && item!=null && player.selectedItem==slot && ReferenceEquals(player.HeldItem,item) && item.type==type && item.prefix==prefix && player.GetAdjustedItemScale(item)==scale;}
             internal bool MembersCurrent(Player player){return WeaponCurrent(player) && Direction==player.direction && EnvironmentState.Current && (WhipOwner==null || WhipOwner.Current) && (Ammo==null || Ammo.MembersMatch(player,item)) && (Obstacles==null || Obstacles.BirthInputsCurrent) && (HarpyState==null || HarpyState.MembersCurrent) && (Flight==null || Flight.Current);}
-            internal bool PresentationMembersCurrent(Player player,int age){return age==0?MembersCurrent(player):WeaponCurrent(player) && Direction==player.direction && EnvironmentState.Current && !Controlled && (Ammo==null || Ammo.MembersMatch(player,item)) && (HarpyState==null || HarpyState.MembersCurrent) && (Flight==null || Flight.PresentationCurrent(age));}
+            // An aged NPC window does not relax the hand owner's range/arm,
+            // duration or captured birth inputs. Validate their existing scalar
+            // leases even for an idle hypothesis with no live Flight. Ordinary
+            // owner advancement can revoke it; preparation then uses the
+            // remaining window again, while Draw never solves or scans terrain.
+            internal bool PresentationMembersCurrent(Player player,int age){return age==0?MembersCurrent(player):WeaponCurrent(player) && Direction==player.direction && EnvironmentState.Current && !Controlled && (WhipOwner==null || WhipOwner.Current) && (Ammo==null || Ammo.MembersMatch(player,item)) && (Obstacles==null || Obstacles.BirthInputsCurrent) && (HarpyState==null || HarpyState.MembersCurrent) && (Flight==null || Flight.PresentationCurrent(age));}
             internal void Clear(){Contact=null;Timeline=null;Ammo=null;Environment=null;Obstacles=null;HarpyState=null;Flight=PreparedFlight=null;WhipOwner=null;item=null;Prepared=Controlled=HadFlight=false;}
         }
     }

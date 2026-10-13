@@ -16,22 +16,38 @@ namespace NativeWorldTextProbe
     internal static partial class NativeCombatAttackCostChecks
     {
         private static object budgetAttack,budgetHost,budgetContext,abortedPlan;
-        private static object abortedPhase;private static long abortedSample;
+        private static object abortedPhase;private static long abortedSample;private static int abortedRequired;
         private static bool forceBudget;
         private static uint forcedTick;private static ulong forcedRuntimeTick;
         private static Player incidentPlayer;
         private static NPC incidentReceiver;
         private static Vector2 incidentMouse;
         private static int incidentBirths,incidentHits;
+        private static bool incidentClearLine;private static int incidentFrame,incidentFarBirths,incidentFirstFar;
         private static void IncidentBirth(int __result)
         {
             if(incidentPlayer==null || __result<0 || __result>=Main.maxProjectiles)return;
             var shot=Main.projectile[__result];
             if(shot.owner!=incidentPlayer.whoAmI || shot.type!=1 && shot.type!=14)return;
             incidentBirths++;
-            var cursor=Main.screenPosition+new Vector2(Main.mouseX,Main.mouseY);
-            Require(Vector2.DistanceSquared(cursor,incidentMouse)>4 && Vector2.Dot(shot.velocity.SafeNormalize(Vector2.Zero),(incidentReceiver.Center-shot.Center).SafeNormalize(Vector2.Zero))>.9f,"real native birth consumes the legal shared target even without enhancement");
+            var attack=Get(Get(incidentContext,"Combat"),"Attack");var input=Get(attack,"consumedInput");
+            var expected=(NpcIdentity)Get(Get(Get(incidentContext,"CombatObservation"),"Selection"),"Target");
+            var recorded=(NpcIdentity)Get(input,"Target");var cursor=Main.screenPosition+new Vector2(Main.mouseX,Main.mouseY);
+            var plans=(Array)Get(attack,"candidatePlans");var farPlan=plans.GetValue(incidentReceiver.whoAmI*2+1);var farPath=farPlan==null?null:GetOptional(farPlan,"Timeline") as NpcTrajectory;var farContact=farPlan==null?null:GetOptional(farPlan,"Contact") as AttackContact;
+            bool farPositive=farContact!=null && (uint)Get(farPlan,"PreparedTick")==Main.GameUpdateCount && Convert.ToString(Get(farPlan,"Phase"))=="BeforeNpc" && farPath!=null && farPath.SampleTick==(long)Main.GameUpdateCount-1;
+            bool farUnknown=((bool[])Get(attack,"candidateUnknown"))[incidentReceiver.whoAmI*2+1];
+            var work=Get(Get(incidentContext,"CombatObservation"),"PredictionWork");
+            Console.WriteLine("INCIDENT far before-birth frame="+incidentFrame+" prepared="+(farPlan!=null && (bool)Get(farPlan,"Prepared"))+" preparedTick="+(farPlan==null?-1:Convert.ToInt64(Get(farPlan,"PreparedTick")))+" phase="+(farPlan==null?"none":Convert.ToString(Get(farPlan,"Phase")))+" timeline="+(farPath==null?"none":farPath.SampleTick+"/"+farPath.CaptureTick+"/"+farPath.Count+"/paused"+farPath.BudgetPaused+"/"+farPath.Stop)+" contact="+(farContact==null?-1:farContact.Tick)+" unknown="+farUnknown+" positive="+farPositive+" used="+Get(work,"UsedMilliseconds")+" exceeded="+Get(work,"Exceeded")+" fault="+Get(attack,"Failed"));
+            Console.WriteLine("INCIDENT birth boundary tick="+Main.GameUpdateCount+" has="+Get(attack,"hasConsumedInput")+" receiptTick="+Get(attack,"consumedInputStep")+" kind="+Get(input,"Kind")+" recorded="+IdentityFact(recorded)+" selected="+IdentityFact(expected)+" receiver="+incidentReceiver.whoAmI+"/"+incidentReceiver.generation+"/"+incidentReceiver.type+"/object"+System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(incidentReceiver)+" cursor="+cursor+" physical="+incidentMouse+" velocity="+shot.velocity+" dot="+Vector2.Dot(shot.velocity.SafeNormalize(Vector2.Zero),(incidentReceiver.Center-shot.Center).SafeNormalize(Vector2.Zero)));
+            Require((bool)Get(attack,"hasConsumedInput") && (uint)Get(attack,"consumedInputStep")==Main.GameUpdateCount && recorded.Equals(expected) && expected.Slot>=0 && ReferenceEquals(expected.Token,Main.npc[expected.Slot]),"real incident birth has a same-GUC full current receiver receipt");
+            bool far=ReferenceEquals(expected.Token,incidentReceiver);
+            if(!far)Require(incidentClearLine && Convert.ToString(Get(input,"Kind"))=="Basic" && farUnknown && !farPositive && !(bool)Get(attack,"Failed"),"an unresolved cold opportunity may consume only its current legal Basic target, never ignore an already proven far contact");
+            else if(incidentClearLine){Require(farPositive,"a chosen reachable clear-line receiver has a fresh actual-phase positive proof");if(Convert.ToString(Get(input,"Kind"))=="Enhanced"){incidentFarBirths++;if(incidentFirstFar<0)incidentFirstFar=incidentFrame;}}
+            Console.WriteLine("INCIDENT actual birth tick="+Main.GameUpdateCount+" projectile="+shot.type+" kind="+Get(input,"Kind")+" target="+expected.Slot+"/"+expected.Generation+"/"+expected.Type+" point="+Get(input,"Point"));
+            Require(Vector2.DistanceSquared(cursor,incidentMouse)>4 && Vector2.Dot(shot.velocity.SafeNormalize(Vector2.Zero),(Main.npc[expected.Slot].Center-shot.Center).SafeNormalize(Vector2.Zero))>.9f,"real native birth consumes its full current legal shared target with the declared Basic/Enhanced receipt");
         }
+        private static string IdentityFact(NpcIdentity id)
+        {return id.Session+"/"+id.Slot+"/"+id.Generation+"/"+id.Type+"/"+id.NetId+"/object"+(id.Token==null?0:System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(id.Token));}
         private static void IncidentHit(NPC __instance,int __result)
         {if(ReferenceEquals(__instance,incidentReceiver) && __result>0)incidentHits++;}
         private static void AbortPreparedPlan()
@@ -42,7 +58,7 @@ namespace NativeWorldTextProbe
             abortedPlan=plans.Cast<object>().Concat(new[]{preview}).FirstOrDefault(p=>p!=null && (bool)Get(p,"Prepared") && (uint)Get(p,"PreparedTick")==Main.GameUpdateCount && GetOptional(p,"Contact")==null);
             if(abortedPlan==null)return;
             forceBudget=false;forcedTick=Main.GameUpdateCount;forcedRuntimeTick=(ulong)Get(budgetContext,"updateTick");
-            abortedPhase=Get(abortedPlan,"Phase");abortedSample=((NpcTrajectory)Get(abortedPlan,"Timeline")).SampleTick;
+            abortedPhase=Get(abortedPlan,"Phase");var abortedTimeline=(NpcTrajectory)Get(abortedPlan,"Timeline");abortedSample=abortedTimeline.SampleTick;abortedRequired=Math.Max(1,abortedTimeline.Count-1);
             var work=Get(budgetHost,"PredictionWork");
             // Deterministically exhaust the REAL owner's current allowance
             // after preparation has published partial scratch. No sleeps,
@@ -53,9 +69,10 @@ namespace NativeWorldTextProbe
             {System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error.InnerException??error).Throw();throw;}
             throw new InvalidOperationException("forced budget must be inside the production owner scope");
         }
-        private static void BudgetAndPathOffSelection(object context,object combat,object host,object attack,object input,bool checkWorldClock=false)
+        private static object incidentContext;
+        private static void BudgetAndPathOffSelection(object context,object combat,object host,object attack,object input,bool checkWorldClock=false,bool budgetComponent=true,bool recoverCold=false)
         {
-            GeometryAllowanceIntervals(host);
+            incidentContext=context;incidentClearLine=false;if(budgetComponent)GeometryAllowanceIntervals(host);
             var audit=new Harmony("JueMingR.Tests.IncidentBudgetSelection");
             foreach(string name in new[]{"HandleSpecialEvent","HandleRunning","HandleMining"})audit.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
             audit.Patch(typeof(Projectile).GetMethods(Flags).Single(m=>m.Name=="NewProjectile" && m.GetParameters().Length==13),postfix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks),nameof(IncidentBirth)));
@@ -64,10 +81,13 @@ namespace NativeWorldTextProbe
             audit.Patch(solve,prefix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks),nameof(AbortPreparedPlan)));
             try
             {
+                if(!budgetComponent){if(recoverCold)PathOffSelection(context,combat,host,attack,input,true,true);else foreach(bool clearLine in new[]{false,true})PathOffSelection(context,combat,host,attack,input,clearLine);return;}
                 NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());
                 incidentPlayer=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,39,0,0);incidentPlayer.position=new Vector2(700,646);incidentPlayer.inventory[54].SetDefaults(40);incidentPlayer.inventory[54].stack=999;incidentPlayer.releaseUseItem=true;
                 Main.screenPosition=new Vector2(480,400);incidentReceiver=NativeCombatControlPreviewChecks.Dummy(2,60,40);incidentMouse=new Vector2(550,430);
-                NativeCombatObservationChecks.Save(host,new ObservationOptions(false,false,true,false,true,25,false,true));
+                // This display-budget component needs Path's declared demand.
+                // Separate ordinary Aim-only idle/cost cases keep Path OFF.
+                NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,false,true));
                 if(checkWorldClock)
                 {
                     // A real unsampled outer update is a supported native
@@ -95,7 +115,7 @@ namespace NativeWorldTextProbe
                 Require(!forceBudget && abortedPlan!=null && forcedTick==Main.GameUpdateCount && incidentBirths==1,"forced allowance exhaustion happens after a real plan starts, and the same update still emits one native Basic attack");
                 Require(!(bool)Get(abortedPlan,"Prepared") && GetOptional(abortedPlan,"Contact")==null && !(bool)Get(attack,"Failed") && !(bool)Get(host,"pathFailed"),"aborted scratch is retired without recording a persistent attack/path fault");
                 var selection=(NpcIdentity)Get(Get(host,"Selection"),"Target");
-                Require(!(bool)Call(attack,"CandidateMissCurrent",abortedPlan,selection,abortedSample,abortedPhase),"an incomplete budget-aborted plan is not an independently proved candidate miss at its exact captured phase/sample");
+                Require(!(bool)Call(attack,"CandidateMissCurrent",abortedPlan,selection,abortedSample,abortedPhase,abortedRequired),"an incomplete budget-aborted plan is not an independently proved candidate miss at its exact captured phase/sample/consumer range");
                 if(checkWorldClock)
                 {
                     // Step has already called the real CompletedWorld runtime
@@ -111,7 +131,7 @@ namespace NativeWorldTextProbe
                 budgetAttack=budgetHost=budgetContext=null;
                 foreach(bool clearLine in new[]{false,true})PathOffSelection(context,combat,host,attack,input,clearLine);
             }
-            finally{forceBudget=false;budgetAttack=budgetHost=budgetContext=abortedPlan=abortedPhase=null;incidentPlayer=null;incidentReceiver=null;audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());}
+            finally{forceBudget=incidentClearLine=false;budgetAttack=budgetHost=budgetContext=abortedPlan=abortedPhase=incidentContext=null;incidentPlayer=null;incidentReceiver=null;audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());}
         }
         private static void GeometryAllowanceIntervals(object host)
         {
@@ -138,25 +158,27 @@ namespace NativeWorldTextProbe
             using(scope(shared))Require(exhausted(),"an already-exhausted owner rejects the very next geometry call");
             Console.WriteLine("PASS geometry allowance first access / shared short+nested scope interval calls="+calls+" (at most32), immediate exceeded signal; actual GUC="+Main.GameUpdateCount);
         }
-        private static void PathOffSelection(object context,object combat,object host,object attack,object input,bool clearLine)
+        private static void PathOffSelection(object context,object combat,object host,object attack,object input,bool clearLine,bool recoverCold=false)
         {
             NativeCombatObservationChecks.Save(host,new ObservationOptions());
             incidentPlayer=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,95,0,0);incidentPlayer.position=new Vector2(700,646);incidentPlayer.inventory[54].SetDefaults(3104);incidentPlayer.inventory[54].stack=1;incidentPlayer.releaseUseItem=true;
             Main.screenPosition=new Vector2(480,400);for(int y=0;y<Main.maxTilesY;y++)NativeToolsChecks.Tile(48,y,1);
             var blocked=NativeCombatControlPreviewChecks.Dummy(2,52,40);var feasible=NativeCombatControlPreviewChecks.Dummy(3,33,40);
             Require(MovingDistance(blocked,incidentPlayer.Center)<MovingDistance(feasible,incidentPlayer.Center),"nearest and clear-line modes have independently different distance/reachability winners");
-            incidentReceiver=clearLine?feasible:blocked;incidentMouse=clearLine?new Vector2(900,430):new Vector2(550,430);incidentBirths=incidentHits=0;
+            incidentReceiver=clearLine?feasible:blocked;incidentMouse=clearLine?new Vector2(900,430):new Vector2(550,430);incidentBirths=incidentHits=incidentFarBirths=0;incidentFirstFar=-1;incidentClearLine=clearLine;
             NativeCombatObservationChecks.Save(host,new ObservationOptions(false,false,clearLine,false,true,25,false,true));
             for(int i=0;i<4;i++)NativeCombatSelectionPreviewChecks.Step(context,incidentMouse,false);
-            for(int i=0;i<30;i++)
+            int duration=recoverCold?160:30,opportunities=0;var observed=new List<int>();for(int i=0;i<duration;i++)
             {
-                NativeCombatSelectionPreviewChecks.Step(context,incidentMouse,i==0);
-                if(((NpcIdentity)Get(Get(host,"Selection"),"Target")).Slot!=incidentReceiver.whoAmI)TracePathOffFailure(host,attack,blocked,feasible,clearLine,i);
-                Require(((NpcIdentity)Get(Get(host,"Selection"),"Target")).Slot==incidentReceiver.whoAmI,"Path OFF still evaluates current final target through the Aim reader: clearLine="+clearLine);
+                incidentFrame=i;bool pressed=i==0 || recoverCold && incidentFarBirths==0 && incidentPlayer.itemAnimation==0 && incidentPlayer.itemTime==0 && incidentPlayer.reuseDelay<=0;if(pressed)opportunities++;
+                NativeCombatSelectionPreviewChecks.Step(context,incidentMouse,pressed);
+                int selected=((NpcIdentity)Get(Get(host,"Selection"),"Target")).Slot;observed.Add(selected);
+                Console.WriteLine("PATHOFF observation frame="+i+" tick="+Main.GameUpdateCount+" pressed="+pressed+" urgent="+Get(attack,"UrgentPreparation")+" selected="+selected);
+                if(i==0 && !clearLine)Require(selected==incidentReceiver.whoAmI,"Path OFF nearest input opportunity selects the current blocked receiver");
                 Require(((NpcPredictionCache)Get(Get(host,"Prediction"),"Cache")).Read(0)==null,"Path OFF does not acquire a hidden path-display consumer");
             }
-            Require(incidentBirths==1 && (clearLine?incidentHits>0:incidentHits==0),"Path OFF original consumer retains clear-line damage or nearest blocked Basic direction, without invented hits");
-            Console.WriteLine("PASS Path OFF Aim ON clearLine="+clearLine+" selected="+incidentReceiver.whoAmI+" nativeBirths="+incidentBirths+" nativeHits="+incidentHits);
+            Require(incidentBirths==opportunities && (!clearLine?incidentHits==0:!recoverCold || incidentFarBirths>0 && incidentHits>0),"the unchanged first click and each legal natural repress are real consumers; a recovery window must serve and damage the reachable far receiver");
+            Console.WriteLine((clearLine && incidentFarBirths==0?"OBSERVED cold single input":"PASS Path OFF")+" Aim ON clearLine="+clearLine+" recovery="+recoverCold+" actualOpportunities="+opportunities+" firstFar="+incidentFirstFar+" farEnhanced="+incidentFarBirths+" observations="+observed.Count+"/"+duration+" slots="+string.Join(",",observed)+" nativeBirths="+incidentBirths+" nativeHits="+incidentHits);
         }
         private static void TracePathOffFailure(object host,object attack,NPC blocked,NPC feasible,bool clearLine,int frame)
         {
@@ -170,7 +192,7 @@ namespace NativeWorldTextProbe
                 {
                     var plan=plans.GetValue(key);if(plan==null){Console.WriteLine("PATHOFF plan="+key+" none");continue;}
                     var timeline=(NpcTrajectory)GetOptional(plan,"Timeline");var contact=(AttackContact)GetOptional(plan,"Contact");
-                    bool miss=timeline!=null && (bool)Call(attack,"CandidateMissCurrent",plan,timeline.Identity,timeline.SampleTick,Get(plan,"Phase"));
+                    bool miss=timeline!=null && (bool)Call(attack,"CandidateMissCurrent",plan,timeline.Identity,timeline.SampleTick,Get(plan,"Phase"),Math.Max(1,timeline.Count-1));
                     Console.WriteLine("PATHOFF plan="+key+" prepared="+Get(plan,"Prepared")+" phase="+Get(plan,"Phase")+" age="+Get(plan,"Age")+" delay="+Get(plan,"Delay")+" timeline="+(timeline==null?"none":timeline.Identity.Slot+"/"+timeline.SampleTick+"/"+timeline.Count)+" contact="+(contact==null?"none":contact.Timeline.Identity.Slot+"/"+contact.Tick+"/aim="+contact.AimX+","+contact.AimY)+" candidateMissCurrent="+miss);
                 }
             }
@@ -227,7 +249,7 @@ namespace NativeWorldTextProbe
                 {
                     var plan=plans.GetValue(key);if(plan==null){Console.WriteLine("MOVING PLAYER plan="+key+" none");continue;}
                     var path=(NpcTrajectory)GetOptional(plan,"Timeline");var contact=(AttackContact)GetOptional(plan,"Contact");
-                    Console.WriteLine("MOVING PLAYER plan="+key+" prepared="+Get(plan,"Prepared")+" phase="+Get(plan,"Phase")+" timeline="+(path==null?"none":path.Identity.Slot+"/"+path.SampleTick)+" contact="+(contact==null?"none":contact.Timeline.Identity.Slot+"/"+contact.Tick)+" candidateMissCurrent="+(path!=null && (bool)Call(attack,"CandidateMissCurrent",plan,path.Identity,path.SampleTick,Get(plan,"Phase"))));
+                    Console.WriteLine("MOVING PLAYER plan="+key+" prepared="+Get(plan,"Prepared")+" phase="+Get(plan,"Phase")+" timeline="+(path==null?"none":path.Identity.Slot+"/"+path.SampleTick)+" contact="+(contact==null?"none":contact.Timeline.Identity.Slot+"/"+contact.Tick)+" candidateMissCurrent="+(path!=null && (bool)Call(attack,"CandidateMissCurrent",plan,path.Identity,path.SampleTick,Get(plan,"Phase"),Math.Max(1,path.Count-1))));
                 }
             }
         }

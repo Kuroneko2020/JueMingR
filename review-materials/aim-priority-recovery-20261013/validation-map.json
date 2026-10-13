@@ -1,0 +1,456 @@
+{
+  "schemaVersion": 1,
+  "recordKind": "public-aim-priority-recovery-validation-draft",
+  "status": "PENDING",
+  "authorization": "owner-issue114-priority-recovery-20261013",
+  "stageReaderSchema": "aim-priority-recovery-development-20261013-1",
+  "stageReader": "scripts/workload/AimStage.Development.ps1",
+  "identity": {
+    "productBase": "01b03386cc288fe8f8a773cecd3a0de564182472",
+    "snapshotBase": "7576da5c7b7b6e455bbe8466b7623571ee2d103a",
+    "r11": {
+      "dirty": true,
+      "hostSha256": "AC8F1AA5570C1C11676F0AD90B31ECD547B4A39097155BFD3BD5DBA2228C6402",
+      "hostMvid": "8ff98d66-d40d-436b-b65c-36071e186b69",
+      "identityArtifact": {
+        "path": ".local/aim-priority-recovery-20261013/candidate-r11-identity.json",
+        "length": 4105,
+        "sha256": "9728F9CEBD48AAC90C81D8C9BB6C8E8A0671836C9ED1D67CB5DA044F01B546EB"
+      }
+    },
+    "finalProductCommit": null,
+    "sourceFingerprint": null,
+    "inputFingerprint": null,
+    "admission": "PENDING"
+  },
+  "fullQualification": "INCOMPLETE",
+  "releaseEligible": false,
+  "issues": {
+    "task": 114,
+    "tracking": 7,
+    "open": true,
+    "pullRequest": 115,
+    "draft": true
+  },
+  "checks": [
+    {
+      "name": "architecture-combat",
+      "scope": "r10架构/Combat：prefix、soft pause、不可变window/token。",
+      "observedOutcome": "PASS",
+      "disposition": "PENDING",
+      "proposedDisposition": "REVIEWED_REUSE",
+      "exit": 0,
+      "applicability": "r10架构/Combat：prefix、soft pause、不可变window/token。",
+      "artifacts": [
+        {
+          "path": ".local/aim-priority-recovery-20261013/candidate-r10-architecture-combat.log",
+          "length": 126,
+          "sha256": "1A61DD9ED16DCF68918C3D0D42949A589D0B14CBDD8E71B1E009D18DA9E96724"
+        }
+      ],
+      "pending": "独审绑定最终产品A的复用适用性。"
+    },
+    {
+      "name": "candidate-demand",
+      "scope": "r10完整原5场压力和预算中断同样本重试；far/新near均核真实Enhanced。",
+      "observedOutcome": "PASS",
+      "disposition": "PENDING",
+      "proposedDisposition": "REVIEWED_REUSE",
+      "exit": 0,
+      "applicability": "r10完整原5场压力和预算中断同样本重试；far/新near均核真实Enhanced。",
+      "artifacts": [
+        {
+          "path": ".local/aim-priority-recovery-20261013/candidate-r10-candidate-demand.log",
+          "length": 8075,
+          "sha256": "A4671E03821C8E17FC1A2DAB1B57CB696BD15D36DCA27E1378A669CD18ACEF12"
+        }
+      ],
+      "pending": "不能以World选择代替native消费；最终身份待审。"
+    },
+    {
+      "name": "basic-aim",
+      "scope": "r10真实输入许可/安全/身份/纯挥剑/弓/DD2/悠悠球反控。",
+      "observedOutcome": "PASS",
+      "disposition": "PENDING",
+      "proposedDisposition": "REVIEWED_REUSE",
+      "exit": 0,
+      "applicability": "r10真实输入许可/安全/身份/纯挥剑/弓/DD2/悠悠球反控。",
+      "artifacts": [
+        {
+          "path": ".local/aim-priority-recovery-20261013/candidate-r10-basic.log",
+          "length": 9476,
+          "sha256": "A2690FEE0F05D3766AEE19582F94AFF3DCA947A4C7CC4697C3732A6B0ADDD4DC"
+        }
+      ],
+      "pending": "r11展示门无输入修改；最终复用待审。"
+    },
+    {
+      "name": "natural-draw",
+      "scope": "r11当前实际图形：standing294/294，moving292/294最长1、2缺失串；15出生与原版伤害/严格身份接收像素/不可达负控。7576 moving15 Enhanced关联单独补证。",
+      "observedOutcome": "PASS",
+      "disposition": "PENDING",
+      "proposedDisposition": "REVIEWED_REUSE",
+      "exit": 0,
+      "applicability": "r11当前实际图形：standing294/294，moving292/294最长1、2缺失串；15出生与原版伤害/严格身份接收像素/不可达负控。7576 moving15 Enhanced关联单独补证。",
+      "artifacts": [
+        {
+          "path": ".local/aim-priority-recovery-20261013/candidate-r10-natural-draw.log",
+          "length": 3805,
+          "sha256": "D60E3ED4E73646314009ED3DE273851B5B29F2BBE2A3DA412A662B46CAC31EE8"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/final-7576-input-observation.log",
+          "length": 2585,
+          "sha256": "18E30C37A39043568A1D5B039603503DFD7A501E018CF5DC6C06FDD90D69D64F"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/candidate-r11-impact-independent-sources.log",
+          "length": 29391,
+          "sha256": "BA326BB7AC6C6BB944EC487F8F97E4B6F9DE7609B094C2B0F919E755FF9FA8BE"
+        }
+      ],
+      "pending": "不是每帧必有显示；r11当前性能和最终适用性PENDING。"
+    },
+    {
+      "name": "natural-cpu",
+      "scope": "7576八模式standing/moving×OFF/Aim/Path/Both固定窗口。",
+      "observedOutcome": "PASS",
+      "disposition": "PENDING",
+      "proposedDisposition": "REVIEWED_REUSE",
+      "exit": 0,
+      "applicability": "7576八模式standing/moving×OFF/Aim/Path/Both固定窗口。",
+      "artifacts": [
+        {
+          "path": ".local/aim-priority-recovery-20261013/final-7576-natural-cpu.log",
+          "length": 5386,
+          "sha256": "880F886CCA7114BB13EBEBC89F43EA8F184CE4D8D6094C9F0F1DE9F446FC3924"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/final-7576-natural-cpu-summary.csv",
+          "length": 2661,
+          "sha256": "6A2F202358801F722D6F7D26204617585FBBAD69471433AA5E00EF184CBD28DC"
+        }
+      ],
+      "pending": "r11当前性能PENDING；全部首帧、尾部、GC、硬退出保留。"
+    },
+    {
+      "name": "continuous-reference",
+      "scope": "7576同b038：1228/Dummy(2,55,40)、预热60/采360、无攻击/无optional counts；OFF/Path站定和移动分开。Path mean .490879/.444730ms，旧.279154/.265588，绝对+.211725/+.179142；原参考未暴露preview字段不冒称零。",
+      "observedOutcome": "PASS",
+      "disposition": "PENDING",
+      "proposedDisposition": "REVIEWED_REUSE",
+      "exit": 0,
+      "applicability": "7576同b038：1228/Dummy(2,55,40)、预热60/采360、无攻击/无optional counts；OFF/Path站定和移动分开。Path mean .490879/.444730ms，旧.279154/.265588，绝对+.211725/+.179142；原参考未暴露preview字段不冒称零。",
+      "artifacts": [
+        {
+          "path": ".local/aim-priority-recovery-20261013/final-7576-identity.json",
+          "length": 3237,
+          "sha256": "B03986476F30CA9E4BAFBBC54640D044106CB4135C59610FCD446946D3B1ABD3"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/final-7576-dummy-still-off/frames.csv",
+          "length": 16098,
+          "sha256": "BADE9F411E251957E7832B9CDCF1CBC0F223878CDCF1ED214AC48DCD6EFB6817"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/final-7576-dummy-still-path/frames.csv",
+          "length": 16098,
+          "sha256": "982CC67FF1A0112279BF12FEAA8ADF35A062DBD4597BF750065144BE914E28FA"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/final-7576-dummy-move-off/frames.csv",
+          "length": 27523,
+          "sha256": "81A55F9041D9EED28944227DC7DFF9652B6D9BA5D2CD23528FB00E472BF71D18"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/final-7576-dummy-move-path/frames.csv",
+          "length": 27527,
+          "sha256": "56480E9E73FAEDC107B3F11F9B63292BD524339C07DCFFACE5296FADA5197376"
+        },
+        {
+          "path": "review-materials/aim-performance-recovery-20261012-milestone1/g12-increment/ContinuousCombatMeasureB038.cs",
+          "length": 14142,
+          "sha256": "CF98CCE0F299F66FF8B3A68C3660B9308FA12145773CFB2FA0905F8688A32F70"
+        },
+        {
+          "path": "review-materials/aim-performance-recovery-20261012-milestone1/g12-increment/b038-path-still-idle-r01.log",
+          "length": 2631,
+          "sha256": "197D806B0D481D1BEB836D75DCD7CED24F2ECBA1EC2A0F4D28CB42C21139AE54"
+        },
+        {
+          "path": "review-materials/aim-performance-recovery-20261012-milestone1/g12-increment/b038-path-move-idle-r01.log",
+          "length": 2627,
+          "sha256": "AAA6BCAB70F721C03212C2A2215C91C5E4C2E6E6C7DCB8D5A2CFFC1364630106"
+        }
+      ],
+      "pending": "7576原参考比较已接受本场景成本等级，r11当前提交重锁及最终适用性待审；不与gun98Slime相除，不猜增量精确原因。"
+    },
+    {
+      "name": "draw-cpu",
+      "scope": "7576 update/Draw callback/render/paired分别测量。",
+      "observedOutcome": "PASS",
+      "disposition": "PENDING",
+      "proposedDisposition": "REVIEWED_REUSE",
+      "exit": 0,
+      "applicability": "7576 update/Draw callback/render/paired分别测量。",
+      "artifacts": [
+        {
+          "path": ".local/aim-priority-recovery-20261013/final-7576-draw-cpu-corrected.log",
+          "length": 3301,
+          "sha256": "ADAD7AC7CF9B64DB5233C22A3E01DB94E38E6E17B801C908FFEFD5585A780088"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/final-7576-draw-cpu-summary.csv",
+          "length": 1646,
+          "sha256": "E66E17DA65BF982B87BB74E20F4400CB22597F190E869694CEF4F247E58F9BB7"
+        }
+      ],
+      "pending": "bool delegate原失败保留；r11当前性能及最终身份待补。"
+    },
+    {
+      "name": "integration",
+      "scope": "r11完整CPU母组5Usage/Hand/Spear/Whip/6Ranged。",
+      "observedOutcome": "PASS",
+      "disposition": "PENDING",
+      "proposedDisposition": "CURRENT",
+      "exit": 0,
+      "applicability": "r11完整CPU母组5Usage/Hand/Spear/Whip/6Ranged。",
+      "artifacts": [
+        {
+          "path": ".local/aim-priority-recovery-20261013/candidate-r11-integration4.log",
+          "length": 78612,
+          "sha256": "777685FC243E2E75859812F3626356512DA2FF00C44A1F94DD1B3B08077F6F50"
+        }
+      ],
+      "pending": "dirty固定载荷EXIT0；完整显示缺口与真实物理分母保留；最终A绑定待审。"
+    },
+    {
+      "name": "attack-costs",
+      "scope": "预算确定性中断/非miss/同GUC真实Basic/真实下一tick恢复；PathOFF冷/同进程重按真实receipt+damage；ordinary-work九场及SameEpoch20零Prepare/Solve/NpcStep；实际Draw零地形/导航重搜。不是旧AttackCosts whole PASS。",
+      "observedOutcome": "PASS_SCOPED",
+      "disposition": "PENDING",
+      "proposedDisposition": "CURRENT",
+      "exit": 0,
+      "applicability": "预算确定性中断/非miss/同GUC真实Basic/真实下一tick恢复；PathOFF冷/同进程重按真实receipt+damage；ordinary-work九场及SameEpoch20零Prepare/Solve/NpcStep；实际Draw零地形/导航重搜。不是旧AttackCosts whole PASS。",
+      "artifacts": [
+        {
+          "path": ".local/aim-priority-recovery-20261013/candidate-r11-attack-costs.log",
+          "length": 4199,
+          "sha256": "BA8549B3F0EAF32087D23C90DF5A829893254B105A3E9510E0AE84CFECCCFA9D"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/candidate-r11-budget-clock3.log",
+          "length": 5811,
+          "sha256": "DB3F64391D0FCC28BF206B1A3BA8BC062F7C4410674CA0C94AF93B071595A4C7"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/candidate-r11-path-off-recovery.log",
+          "length": 16679,
+          "sha256": "A8EE6C37B1DB0410CD5FFAA4D5B33E9E708470104F3C05A808C35AC5AA8EF044"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/candidate-r11-path-off-same-process.log",
+          "length": 31342,
+          "sha256": "00545F96BE51A631BC6B305A260D506F44D5AEC1D588A0B91C8C671854DCCEEB"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/candidate-r11-ordinary-work.log",
+          "length": 5864,
+          "sha256": "EDE115E9EC678D1EEDCA4E186213AD862B0C3504289B1D509A4E376A4E905EE0"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/candidate-r11-ordinary-work-mapped.log",
+          "length": 4918,
+          "sha256": "A6F39DA9C7DBB8064F259E2DD15A7093D5A46E724B61D314B2AA95B8738E46A7"
+        },
+        {
+          "path": ".local/aim-root-fix-20261012/delivery/final-75a1072-costs.log",
+          "length": 26240,
+          "sha256": "07EAE285C03896F0862C4B3C0E4B2B09E11798AD2497460DA1085C940BD9DD3F"
+        }
+      ],
+      "pending": "上述必要scope明确完成；默认whole失败未改写。替代映射、未变机制复用及最终普通成本仍待独审。",
+      "replacementCoverage": [
+        {
+          "old": "所有候选每更新完整121点/endpoint/suffix continuation",
+          "current": "CandidateDemand完整5场180更新/实际far和near Enhanced、kernel同样本20→40→120逐点及多槽/Wall/Gravity来源反例",
+          "limit": "Host跨真实样本全槽后缀复用不再是逐帧完成契约；已完成同样本prefix不重算、实际未评候选有限进展分别验证。"
+        },
+        {
+          "old": "switching每个CompletedWorld立即Contact，包括复杂bow第一短prefix",
+          "current": "当前完整OriginalRanged first/held/repress/switch/off-on方向/伤害、自然CPU原switch/restore窗口",
+          "limit": "旧同步Contact断言保留在default scope；ordinary-work selector明确不执行它。"
+        },
+        {
+          "old": "独立navigation/beam分支",
+          "current": "CURRENT Navigation全部原15场/真实Damage/0重搜/15+5；CURRENT母3541原版出生/收束反馈；有限beam wall/open/partial机制原件 .local/aim-root-fix-20261012/delivery/final-75a1072-costs.log：Length1/1/355，whole EXIT0；HostBeamAttack/HostAttackClock/PredictionTerrain原值几何未改，r11只aged手owner门，不进入direct Solve。REVIEWED_REUSE待独审",
+          "limit": "ordinary-work不称navigation/beam执行；性能由最终普通窗口另判。"
+        }
+      ]
+    },
+    {
+      "name": "navigation",
+      "scope": "原15场几何/整球碰撞/真实首Damage/0重搜/age15与+5恢复。",
+      "observedOutcome": "PASS",
+      "disposition": "PENDING",
+      "proposedDisposition": "CURRENT",
+      "exit": 0,
+      "applicability": "原15场几何/整球碰撞/真实首Damage/0重搜/age15与+5恢复。",
+      "artifacts": [
+        {
+          "path": ".local/aim-priority-recovery-20261013/candidate-r11-navigation-separated-premises.log",
+          "length": 20145,
+          "sha256": "844ED100BB7B0BE4A9590F0000C9DCF4E3A7BA22229F5C14CB3C6A311400324D"
+        }
+      ],
+      "pending": "固定r11原15场/同tick4Prepare无重搜/age15与+5恢复EXIT0；最终产品A绑定及独审仍PENDING。"
+    },
+    {
+      "name": "impact-draw",
+      "scope": "r11完整Impact入口：执行优先/独立preview来源、四camera/gravity/zoom像素、三fault隔离、controller live tile/string消费者撤销、严格Draw0；后部母反馈和自然Draw原分母。",
+      "observedOutcome": "PASS",
+      "disposition": "PENDING",
+      "proposedDisposition": "CURRENT",
+      "exit": 0,
+      "applicability": "r11完整Impact入口：执行优先/独立preview来源、四camera/gravity/zoom像素、三fault隔离、controller live tile/string消费者撤销、严格Draw0；后部母反馈和自然Draw原分母。",
+      "artifacts": [
+        {
+          "path": ".local/aim-priority-recovery-20261013/candidate-r11-whip-next-corrected2-graphics.log",
+          "length": 7289,
+          "sha256": "81AED3CF61F2C14272B25045C69B279AFB9029F4C99600D03DF03669CF260591"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/candidate-r11-impact-prepared-components.log",
+          "length": 4676,
+          "sha256": "F0E58F828F97FB379DE32BC9DBAB30EE395A0B365F7EEEA167E62AA5C49C04E3"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/candidate-r11-impact-initialized-lease.log",
+          "length": 5273,
+          "sha256": "EB43D9993D1189C0E47D91A2D9789C4F67B70EAFEB28BCCCE9DC5CDAC9434BD4"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/candidate-r11-impact-controller-separated.log",
+          "length": 5544,
+          "sha256": "70CDFFDF20D4E8F71659F3D22DD58A0D6A3DA2F4F53E106746CD5A91BF912263"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/candidate-r11-impact-independent-sources.log",
+          "length": 29391,
+          "sha256": "BA326BB7AC6C6BB944EC487F8F97E4B6F9DE7609B094C2B0F919E755FF9FA8BE"
+        }
+      ],
+      "pending": "完整入口EXIT0；旧失败与测试前提适配仍保留，最终A的IL/身份适用性待独审。"
+    },
+    {
+      "name": "whip-terrain",
+      "scope": "5480/1035十二组合future noTileCollide双向、墙/open、三consumer。",
+      "observedOutcome": "PASS",
+      "disposition": "PENDING",
+      "proposedDisposition": "CURRENT",
+      "exit": 0,
+      "applicability": "5480/1035十二组合future noTileCollide双向、墙/open、三consumer。",
+      "artifacts": [
+        {
+          "path": ".local/aim-priority-recovery-20261013/candidate-r11-whip-terrain.log",
+          "length": 4126,
+          "sha256": "4827D844EF95881FCBD7132B1F58FE6E691AE8114B041BDE5F2CF6D9AAF0A597"
+        }
+      ],
+      "pending": "直接机制future oracle，非全部NPC motor；最终A适用性待审。"
+    },
+    {
+      "name": "original-feedback",
+      "scope": "r10sealed-child seams与r11完整原手/矛/鞭/远程反馈；7576远期弓补证。",
+      "observedOutcome": "PASS",
+      "disposition": "PENDING",
+      "proposedDisposition": "CURRENT",
+      "exit": 0,
+      "applicability": "r10sealed-child seams与r11完整原手/矛/鞭/远程反馈；7576远期弓补证。",
+      "artifacts": [
+        {
+          "path": ".local/aim-priority-recovery-20261013/candidate-r10-seams-corrected.log",
+          "length": 6011,
+          "sha256": "0A51E7A8C66FEBFE0D38C47BDFEB560A18A79EB0CCF339AE0811B1D80C6878C8"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/candidate-r11-integration4.log",
+          "length": 78612,
+          "sha256": "777685FC243E2E75859812F3626356512DA2FF00C44A1F94DD1B3B08077F6F50"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/candidate-r11-whip-next-corrected2-graphics.log",
+          "length": 7289,
+          "sha256": "81AED3CF61F2C14272B25045C69B279AFB9029F4C99600D03DF03669CF260591"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/final-7576-bow-only.log",
+          "length": 3424,
+          "sha256": "937E32371EBA0B100E639372950C8C44FFC0205D384FF8376EF7F750515C15E5"
+        }
+      ],
+      "pending": "输入/成员负控不豁免；复用和最终身份仍需独审。"
+    }
+  ],
+  "componentEvidence": [
+    {
+      "scope": "7576自然输入身份",
+      "applicability": "7576单一moving Both自然窗口15机会/15出生均Enhanced；sameGUC/full identity/point与ContactInput关联。其它Draw assistedBirth不能冒称Enhanced。",
+      "artifacts": [
+        {
+          "path": ".local/aim-priority-recovery-20261013/final-7576-input-observation.log",
+          "length": 2585,
+          "sha256": "18E30C37A39043568A1D5B039603503DFD7A501E018CF5DC6C06FDD90D69D64F"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/final-7576-input-observation-identity.json",
+          "length": 1508,
+          "sha256": "3C99DF539D1E6EC023FF6D438AACFD67E83B0A309747F76F2C5D30A2F5D495ED"
+        }
+      ]
+    },
+    {
+      "scope": "远期弓",
+      "applicability": "7576 item39/arrow40/projectile1：40/80/120帧远target4 Enhanced Contact57/57/62；160帧新近target2 Enhanced Contact46。Tick是预测接触偏移，不冒称原版首击时刻。",
+      "artifacts": [
+        {
+          "path": ".local/aim-priority-recovery-20261013/final-7576-bow-only.log",
+          "length": 3424,
+          "sha256": "937E32371EBA0B100E639372950C8C44FFC0205D384FF8376EF7F750515C15E5"
+        }
+      ]
+    },
+    {
+      "scope": "cold PathOFF重按",
+      "applicability": "同进程两轮各160/160：冷0/17/34 Basic、51 far Enhanced；第二轮原4idle首按0即far Enhanced/fresh18点Contact8/1机会1birth1hit。有限单次对照，不声称cold首发far。",
+      "artifacts": [
+        {
+          "path": ".local/aim-priority-recovery-20261013/candidate-r11-path-off-recovery.log",
+          "length": 16679,
+          "sha256": "A8EE6C37B1DB0410CD5FFAA4D5B33E9E708470104F3C05A808C35AC5AA8EF044"
+        },
+        {
+          "path": ".local/aim-priority-recovery-20261013/candidate-r11-path-off-same-process.log",
+          "length": 31342,
+          "sha256": "00545F96BE51A631BC6B305A260D506F44D5AEC1D588A0B91C8C671854DCCEEB"
+        }
+      ]
+    }
+  ],
+  "reviews": [
+    {
+      "result": "PENDING",
+      "sourceFingerprint": null,
+      "coverage": "13scope、失败处置、最终产品A身份/载荷与当前性能",
+      "artifact": null
+    }
+  ],
+  "limits": [
+    "原187完整资格未执行；本轮13必要scope仍未全部收口。",
+    "本公共草稿含PENDING，不能直接满足stage reader或签APPROVED_FOR_STAGE。",
+    "不代表正常游戏FPS、实机、多人、包/安装或所有者验收。",
+    "原件仅相对路径/hash定位；不上传个人路径、原版程序集、用户数据或会话。",
+    "最终产品A和文档B分离，不自指本文件hash/commit造成循环。"
+  ],
+  "publishedSummaryIdentity": "两份summary.csv在本提交快照仅复制7576先前候选；最终产品A的普通结果暂存.local，安装后纯文档B再发布。"
+}

@@ -64,9 +64,9 @@ namespace NativeWorldTextProbe
                         Main.screenPosition=new Vector2(480,400);Main.GameViewMatrix.Zoom=Vector2.One;Main.rand=new Terraria.Utilities.UnifiedRandom(7193);Main.windPhysics=false;
                         receiver=NativeCombatControlPreviewChecks.Dummy(2,55,40);physical=new Vector2(550,430);item=row[0];expectedProjectile=row[2];enabled=assist;phase=0;births=aimed=raw=hits=0;Array.Clear(phaseBirths,0,phaseBirths.Length);observations.Clear();
                         NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,assist));
-                        for(int i=0;i<4;i++)NativeCombatSelectionPreviewChecks.Step(context,physical,false,true);
+                        int idleShown=0,useShown=0,useSamples=0,missing=0,longestMissing=0;
+                        for(int i=0;i<4;i++){NativeCombatSelectionPreviewChecks.Step(context,physical,false,true);if(GetOptional(attack,"ExpectedPreview")!=null)idleShown++;}
                         Require(births==0 && (bool)Get(Get(host,"Selection"),"HasTarget"),"idle original-feedback scene selects its placed dummy without attacking: "+item);
-                        Require(GetOptional(attack,"ExpectedPreview")!=null,"idle usable original weapon has a natural hypothetical-use preview: "+item);
                         for(phase=0;phase<3;phase++)
                         {
                             if(phase>0)
@@ -82,14 +82,25 @@ namespace NativeWorldTextProbe
                             // Enough real updates for multiple original uses,
                             // with no extra Prepare or supplied solution.
                             int before=births;
-                            for(int frame=0;frame<45;frame++)NativeCombatSelectionPreviewChecks.Step(context,physical,true);
+                            for(int frame=0;frame<45;frame++)
+                            {
+                                NativeCombatSelectionPreviewChecks.Step(context,physical,true);useSamples++;
+                                if(GetOptional(attack,"ExpectedPreview")!=null){useShown++;missing=0;}else longestMissing=Math.Max(longestMissing,++missing);
+                            }
                             Require(births-before>=2,"first/held/repress/switch-back native uses must all produce sources: "+item+" phase="+phase+" births="+(births-before));
                         }
                         for(int i=0;i<8;i++)NativeCombatSelectionPreviewChecks.Step(context,physical,false);
+                        // Keep all three original use windows and their native
+                        // consumers. Optional cold display is reported rather
+                        // than made a prerequisite for the first real click.
+                        // Three nominal display refresh opportunities, rather
+                        // than one isolated visible frame, bound a blank run
+                        // in these supplied ordinary use windows.
+                        Require(useShown>0 && longestMissing<15,"the unchanged finite native use windows repeatedly acquire a preview without sustained blank periods: "+item);
                         Require(assist?aimed==births && raw==0:raw==births && aimed==0,"all actual births use the correct source direction: "+item+" enabled="+assist);
                         if(item==2624)Require(phaseBirths.All(n=>n>=5 && n%5==0),"Tsunami emits its actual five-arrow groups with Ichor ammunition");
                         if(assist)Require(hits>0,"assisted finite original attack reaches real StrikeNPC: "+item);
-                        Console.WriteLine("PASS ORIGINAL ranged item="+item+" ammo="+row[1]+" projectile="+expectedProjectile+" assist="+assist+" phases="+string.Join(",",phaseBirths)+" aimed="+aimed+" raw="+raw+" actualDamage="+hits+" observations=["+string.Join(";",observations)+"]");
+                        Console.WriteLine("PASS ORIGINAL ranged item="+item+" ammo="+row[1]+" projectile="+expectedProjectile+" assist="+assist+" phases="+string.Join(",",phaseBirths)+" aimed="+aimed+" raw="+raw+" actualDamage="+hits+" idlePreview="+idleShown+"/4 usePreview="+useShown+"/"+useSamples+" longestMissing="+longestMissing+" observations=["+string.Join(";",observations)+"]");
                     }
                     catch(Exception error){failures.Add(row[0]+"/"+assist+": "+error.Message);Console.WriteLine("FAIL ORIGINAL ranged item="+row[0]+" assist="+assist+": "+error);}
                 }

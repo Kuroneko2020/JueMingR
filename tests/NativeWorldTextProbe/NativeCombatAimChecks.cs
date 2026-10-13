@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -272,8 +272,23 @@ namespace NativeWorldTextProbe
         {
             var selection=Get(host,"Selection");Call(selection,"Update",((ObservationSettings)Get(host,"Settings")).Value,(long)Get(host,"Session"),true,null);
             var id=(NpcIdentity)Get(selection,"Target");Require(id.Slot==body.whoAmI,"single shared final target is selected");
-            var points=new NpcTrajectoryPoint[121];for(int i=0;i<points.Length;i++)points[i]=new NpcTrajectoryPoint(i,new NpcMotionState{Identity=id,X=body.position.X+vx*i,Y=body.position.Y,Width=body.width,Height=body.height,Vx=vx,CanReceive=true,Active=true});
-            var cache=(NpcPredictionCache)Get(Get(host,"Prediction"),"Cache");cache.Demand(0,1,120);cache.Demand(1,1,120);cache.Publish(new NpcTrajectory(id,Main.GameUpdateCount,1,PredictionAssumption.None,PredictionStop.None,points,points.Length));Call(attack,projectilePhase?"PrepareProjectiles":"Prepare");
+            var points=new NpcTrajectoryPoint[121];for(int i=0;i<points.Length;i++)points[i]=new NpcTrajectoryPoint(i,new NpcMotionState{Identity=id,X=body.position.X+vx*i,Y=body.position.Y,Width=body.width,Height=body.height,Vx=vx,A0=body.ai[0],Wet=body.wet,NoTileCollide=body.noTileCollide,CanReceive=true,Active=true});
+            // The synthetic component path reads no NPC terrain. Initialize its empty
+            // terrain lease against real world dimensions before publication;
+            // an uninitialized lease cannot authorize the display component.
+            var prediction=Get(host,"Prediction");Call(Get(prediction,"Terrain"),"Reset");
+            var cache=(NpcPredictionCache)Get(prediction,"Cache");cache.Demand(0,1,120);cache.Demand(1,1,120);cache.Publish(new NpcTrajectory(id,Main.GameUpdateCount,1,PredictionAssumption.None,PredictionStop.None,points,points.Length));Call(attack,projectilePhase?"PrepareProjectiles":"Prepare");
+        }
+        internal static void PrepareDisplay(object host,object attack)
+        {
+            // This synthetic trajectory helper belongs only to components.
+            // Explicitly perform Host's distinct display capture/validation
+            // and preview duties. Its pre-published input is not evidence of
+            // natural first-click preparation or display scheduling.
+            if(!(bool)Get(host,"Path"))return;
+            Call(host,"CaptureDisplay",(long)Main.GameUpdateCount);
+            Call(host,"ValidateDisplay",(long)Main.GameUpdateCount);
+            Call(attack,"PreparePreviewOnly");Call(attack,"ValidatePreviewPresentation");
         }
         internal static object PhaseClock(object attack,NpcTrajectory timeline,string phase)
         {var assembly=attack.GetType().Assembly;var stage=assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase",true);var type=assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackClock",true);return Activator.CreateInstance(type,Flags,null,new object[]{timeline,Enum.Parse(stage,phase)},null);}

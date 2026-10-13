@@ -203,7 +203,7 @@ namespace NativeWorldTextProbe
                 audit.Patch(AccessTools.Method(typeof(NPC),"StrikeNPC",new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)}),postfix:new HarmonyMethod(typeof(NativeCombatNaturalImpactChecks).GetMethod(nameof(Hit),Flags)));
                 cpuMode=timing;
                 var bound=timing?new CpuBindings(context,combat,host,input,attack):null;
-                long timedDrawTicks=0;Action productDraw=drawTiming?(Action)Delegate.CreateDelegate(typeof(Action),world,world.GetType().GetMethod("Draw",Flags)):null;
+                long timedDrawTicks=0;Func<bool> productDraw=drawTiming?(Func<bool>)Delegate.CreateDelegate(typeof(Func<bool>),world,world.GetType().GetMethod("Draw",Flags)):null;
                 Action timedDraw=drawTiming?(Action)(()=>{long start=Stopwatch.GetTimestamp();productDraw();timedDrawTicks=Stopwatch.GetTimestamp()-start;}):null;
                 if(timing){AppDomain.MonitoringIsEnabled=true;allocationStart=AppDomain.CurrentDomain.MonitoringTotalAllocatedMemorySize;}
                 Set(host,"LayerStatus",Enum.Parse(Get(host,"LayerStatus").GetType(),"Ready"));Main.screenWidth=960;Main.screenHeight=640;Main.UIScale=1;

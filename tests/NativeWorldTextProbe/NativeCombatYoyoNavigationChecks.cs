@@ -1,7 +1,8 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Reflection;
 using JueMingR.Features.Combat;
+using JueMingR.Platform.Combat;
 using Microsoft.Xna.Framework;
 using Terraria;
 using static NativeWorldTextProbe.NativeInformationChecks;
@@ -11,6 +12,40 @@ namespace NativeWorldTextProbe
     internal static class NativeCombatYoyoNavigationChecks
     {
         private static object watchedNavigation;private static int goalChecks,edgeChecks;private static bool failedEntry,legalEntry;
+        private static void RejectEnhanced(object attack,object scope,string reason)
+        {
+            if(scope==null)return;
+            try
+            {
+                var host=Get(attack,"observation");var selection=Get(host,"Selection");
+                var input=Get(attack,"consumedInput");var target=(NpcIdentity)Get(input,"Target");var current=(NpcIdentity)Get(selection,"Target");
+                var npc=target.Slot>=0 && target.Slot<Main.npc.Length?Main.npc[target.Slot]:null;
+                var live=npc==null?default(NpcIdentity):new NpcIdentity((long)Get(host,"Session"),npc,npc.whoAmI,npc.generation,npc.type,npc.netID);
+                Console.WriteLine("YOYO rejected enhancement fallback="+reason+" tick="+Main.GameUpdateCount+" kind="+Get(input,"Kind")+" target="+target.Session+"/"+target.Slot+"/"+target.Generation+"/"+target.Type+"/"+target.NetId+" point="+Get(input,"Point"));
+                Require((bool)Get(attack,"hasConsumedInput") && (uint)Get(attack,"consumedInputStep")==Main.GameUpdateCount && Convert.ToString(Get(input,"Kind"))=="Basic" && (bool)Get(selection,"HasTarget") && npc!=null && npc.active && target.Equals(current) && target.Equals(live),reason+" cannot consume a stale Enhanced capability; any borrowed fallback has a current Basic receipt");
+            }
+            finally{Call(scope,"End");}
+        }
+        // Separate restored component premises by the native update boundary. This
+        // does not warm a player first shot or reset the shared work allowance.
+        private static void NextPremise(object context,object input,object combat,NPC npc)
+        {
+            NativeQuickItemChecks.BeginWorldStep();NativeToolExecutionChecks.Sample(context,input,npc.Center,true);Call(combat,"Sample");
+        }
+        private static void RequirePreparedPoint(object host,object control,object entry,Projectile shot)
+        {
+            bool point=(bool)Get(entry,"HasPoint");
+            if(!point)
+            {
+                // Diagnose only a failed component preparation. Read captured
+                // scalar state; do not retry, advance the native clock, inspect
+                // terrain or add the separate display solver to this workload.
+                var work=Get(host,"PredictionWork");var path=GetOptional(control,"preparedTimeline") as NpcTrajectory;
+                var navigation=Get(entry,"Navigation");var player=Main.LocalPlayer;
+                Console.WriteLine("YOYO open preparation missing tick="+Main.GameUpdateCount+" budgetTick="+Get(work,"tick")+" used="+Get(work,"UsedMilliseconds")+" exceeded="+Get(work,"Exceeded")+" controlPhase="+Get(control,"preparedPhase")+" timelineSample="+(path==null?-1:path.SampleTick)+" timelineCount="+(path==null?0:path.Count)+" paused="+(path!=null && path.BudgetPaused)+" entryPrepared="+Get(entry,"Prepared")+" searches="+Get(navigation,"Searches")+" retry="+Get(navigation,"retryStep")+" shot="+shot.active+"/"+shot.ai[0]+"/"+shot.Center+" channel="+player.channel+" use="+player.controlUseItem);
+            }
+            Require(point,"open scene starts with a real replayed navigation capability");
+        }
         private static void Edge(object __instance,Vector2 a,Vector2 b,bool __result)
         {
             if(!ReferenceEquals(__instance,watchedNavigation))return;edgeChecks++;
@@ -62,19 +97,19 @@ namespace NativeWorldTextProbe
             NativeCombatObservationChecks.Save(host,new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,3278,0,0);p.position=new Vector2(700,646);p.ResetEffects();p.channel=p.controlUseItem=true;p.yoyoGlove=p.magicString=false;p.counterWeight=0;Main.screenPosition=new Vector2(600,400);
             var n=Main.npc[2];n.SetDefaults(3);n.whoAmI=2;n.active=true;n.position=new Vector2(800,646);n.velocity=n.netOffset=Vector2.Zero;n.aiStyle=-1;n.noGravity=true;n.life=n.lifeMax=10000;n.target=0;n.knockBackResist=0;n.shimmerTransparency=0;Array.Clear(n.immune,0,n.immune.Length);Array.Clear(n.buffType,0,n.buffType.Length);Array.Clear(n.buffTime,0,n.buffTime.Length);
             NativeToolExecutionChecks.Sample(context,input,n.Center,true);Call(combat,"Sample");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,false,true));NativeCombatAimChecks.Prepare(host,attack,n,0,true);
-            var control=Get(attack,"Control");Main.tile[48,41].active(true);Main.tile[48,41].type=1;var staleOpening=Call(control,"BeginOpening",p,p.HeldItem);if(staleOpening!=null)Call(staleOpening,"End");Console.WriteLine("YOYO stale opening: borrowed="+(staleOpening!=null));Require(staleOpening==null,"birth navigation owns its terrain dependency until consumption");Main.tile[48,41].active(false);NativeCombatAimChecks.Prepare(host,attack,n,0,true);
-            p.velocity.X=2;var movedOpening=Call(control,"BeginOpening",p,p.HeldItem);if(movedOpening!=null)Call(movedOpening,"End");Require(movedOpening==null,"birth path also retires after player movement premise changes without preparing again");p.velocity=Vector2.Zero;NativeCombatAimChecks.Prepare(host,attack,n,0,true);
-            typeof(Player).GetMethod("ItemCheck_Shoot",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),true});var shot=Main.projectile.Single(q=>q.active && q.type==541);NativeCombatAimChecks.Prepare(host,attack,n,0,true);var entries=(System.Collections.IDictionary)Get(Get(attack,"Control"),"shots");var entry=entries[(int)shot.key];var nav=Get(entry,"Navigation");int searches=(int)Get(nav,"Searches");Require((bool)Get(entry,"HasPoint"),"open scene starts with a real replayed navigation capability");
+            var control=Get(attack,"Control");Main.tile[48,41].active(true);Main.tile[48,41].type=1;RejectEnhanced(attack,Call(control,"BeginOpening",p,p.HeldItem),"changed birth terrain");Main.tile[48,41].active(false);NextPremise(context,input,combat,n);NativeCombatAimChecks.Prepare(host,attack,n,0,true);
+            p.velocity.X=2;RejectEnhanced(attack,Call(control,"BeginOpening",p,p.HeldItem),"changed birth player motion");p.velocity=Vector2.Zero;NextPremise(context,input,combat,n);NativeCombatAimChecks.Prepare(host,attack,n,0,true);
+            typeof(Player).GetMethod("ItemCheck_Shoot",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),true});var shot=Main.projectile.Single(q=>q.active && q.type==541);NextPremise(context,input,combat,n);NativeCombatAimChecks.Prepare(host,attack,n,0,true);var entries=(System.Collections.IDictionary)Get(Get(attack,"Control"),"shots");var entry=entries[(int)shot.key];var nav=Get(entry,"Navigation");int searches=(int)Get(nav,"Searches");RequirePreparedPoint(host,control,entry,shot);
             for(int i=0;i<4;i++)NativeCombatAimChecks.Prepare(host,attack,n,0,true);Require((int)Get(nav,"Searches")==searches,"same sample/terrain/player does not search again");
             Main.tile[48,41].active(true);Main.tile[48,41].type=1;
             Console.WriteLine("YOYO stale terrain: impact="+(GetOptional(attack,"ExpectedImpact")!=null)+" searches="+Get(nav,"Searches"));
-            Require(GetOptional(attack,"ExpectedImpact")==null && Call(Get(attack,"Control"),"BeginAI",shot)==null && (int)Get(nav,"Searches")==searches,"navigation's own changed terrain retires Draw/AI without a new search");
-            Main.tile[48,41].active(false);NativeCombatAimChecks.Prepare(host,attack,n,0,true);int freshSearches=(int)Get(nav,"Searches");p.velocity.X=2;
-            Require(GetOptional(attack,"ExpectedImpact")==null && Call(Get(attack,"Control"),"BeginAI",shot)==null && (int)Get(nav,"Searches")==freshSearches,"changed player movement retires navigation before Draw/AI without solving");p.velocity=Vector2.Zero;NativeCombatAimChecks.Prepare(host,attack,n,0,true);searches=(int)Get(nav,"Searches");
+            RejectEnhanced(attack,Call(control,"BeginAI",shot),"changed live terrain");Require(GetOptional(attack,"ExpectedImpact")==null && (int)Get(nav,"Searches")==searches,"changed terrain retires precise navigation/red without a new search");
+            Main.tile[48,41].active(false);NextPremise(context,input,combat,n);NativeCombatAimChecks.Prepare(host,attack,n,0,true);int freshSearches=(int)Get(nav,"Searches");p.velocity.X=2;
+            RejectEnhanced(attack,Call(control,"BeginAI",shot),"changed live player motion");Require(GetOptional(attack,"ExpectedImpact")==null && (int)Get(nav,"Searches")==freshSearches,"changed player movement retires precise navigation/red without solving");p.velocity=Vector2.Zero;NextPremise(context,input,combat,n);NativeCombatAimChecks.Prepare(host,attack,n,0,true);searches=(int)Get(nav,"Searches");
             // An observed authoritative player correction is a new premise;
             // never pretend the old player's control-radius route is current.
-            p.position.X+=12;NativeCombatAimChecks.Prepare(host,attack,n,0,true);Require((int)Get(nav,"Searches")==searches+1 && (bool)Get(entry,"HasPoint"),"player position change revises the route while preserving useful control");
-            for(int y=5;y<=42;y++){Main.tile[48,y].active(true);Main.tile[48,y].type=1;}NativeCombatAimChecks.Prepare(host,attack,n,0,true);Require(!(bool)Get(entry,"HasPoint") && GetOptional(attack,"ExpectedImpact")==null,"related closed terrain immediately removes navigation/red capability");int blockedSearches=(int)Get(nav,"Searches");
+            p.position.X+=12;NextPremise(context,input,combat,n);NativeCombatAimChecks.Prepare(host,attack,n,0,true);Require((int)Get(nav,"Searches")==searches+1 && (bool)Get(entry,"HasPoint"),"player position change revises the route while preserving useful control");
+            for(int y=5;y<=42;y++){Main.tile[48,y].active(true);Main.tile[48,y].type=1;}NextPremise(context,input,combat,n);NativeCombatAimChecks.Prepare(host,attack,n,0,true);Require(!(bool)Get(entry,"HasPoint") && GetOptional(attack,"ExpectedImpact")==null,"related closed terrain immediately removes navigation/red capability");int blockedSearches=(int)Get(nav,"Searches");
             for(int tick=1;tick<=12;tick++)
             {NativeQuickItemChecks.BeginWorldStep();NativeToolExecutionChecks.Sample(context,input,n.Center,true);Call(combat,"Sample");n.UpdateNPC(2);NativeCombatAimChecks.Prepare(host,attack,n,0,true);Require(!(bool)Get(entry,"HasPoint"),"stable sealed route cannot become a geometric-only input lease");shot.Update(shot.whoAmI);}
             int retries=(int)Get(nav,"Searches")-blockedSearches;Require(retries<=3 && shot.active && n.life==10000,"stable no-progress route retries finitely and retains native manual ball without phantom Damage");
@@ -111,7 +146,7 @@ namespace NativeWorldTextProbe
                 int count=((System.Collections.IList)Get(nav,"path")).Count;uint age=Main.GameUpdateCount-(uint)Get(nav,"progressStep");bool point=(bool)Get(entry,"HasPoint");int work=(int)Get(nav,"Searches");
                 if(i%10==0 || age>=13 || expired)Console.WriteLine("YOYO progress tick="+Main.GameUpdateCount+" age="+age+" path="+count+" point="+point+" searches="+work+" immune="+n.immune[0]+" center="+shot.Center+" velocity="+shot.velocity);
                 if(!expired && count==0 && (uint)Get(nav,"retryStep")==Main.GameUpdateCount+5 && age==15)
-                {expired=true;retired=Main.GameUpdateCount;searches=work;Require(!point && GetOptional(attack,"ExpectedImpact")==null && Call(control,"BeginAI",shot)==null,"natural fifteen-frame low movement retires only the navigation capability and red marker");}
+                {expired=true;retired=Main.GameUpdateCount;searches=work;RejectEnhanced(attack,Call(control,"BeginAI",shot),"natural low-progress retirement");Require(!point && GetOptional(attack,"ExpectedImpact")==null,"natural fifteen-frame low movement retires only the precise navigation capability and red marker");}
                 else if(expired && Main.GameUpdateCount<retired+5)Require(!point && work==searches,"retired route waits its bounded five-frame retry without searching");
                 else if(expired && Main.GameUpdateCount==retired+5)
                 {Require(point && work==searches+1 && shot.active && (int)shot.key==key,"same real live ball recovers the valid route once at the retry boundary");Console.WriteLine("PASS natural valid-route progress>14 retirement and +5 recovery; native low-movement braking, not an obstacle deadlock claim");return;}
