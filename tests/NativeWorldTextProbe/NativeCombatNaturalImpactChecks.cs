@@ -30,6 +30,8 @@ namespace NativeWorldTextProbe
         private static bool candidate,cpuMode;
         private static bool moveLeft,moveRight;
         private static int births,assistedBirths,hits;
+        private static Func<int> consumedKind;
+        private static int basicBirths,enhancedBirths,sealedBirths;
         private static readonly List<string> birthRows=new List<string>();
         private static void MoveBefore(Player __instance)
         {
@@ -46,12 +48,20 @@ namespace NativeWorldTextProbe
             var cursor=new Vector2(Main.mouseX,Main.mouseY)+Main.screenPosition;
             bool changed=Vector2.DistanceSquared(cursor,physical)>4;
             if(changed)assistedBirths++;
+            if(changed && consumedKind!=null){int kind=consumedKind();if(kind==0)basicBirths++;else if(kind==1)enhancedBirths++;else if(kind==2)sealedBirths++;}
             if(!cpuMode)birthRows.Add("tick="+Main.GameUpdateCount+" projectile="+__0.type+" key="+__0.key+" origin="+__0.Center+" velocity="+__0.velocity+" consumedCursor="+cursor+" physical="+physical+" selectedReceiver="+receiver.whoAmI+"/"+receiver.generation+" center="+receiver.Center);
             Require(candidate?changed:!changed,"natural slime native birth consumes the selected assisted/explicit original cursor");
         }
         private static void Hit(NPC __instance,int __result)
         {if(ReferenceEquals(__instance,receiver) && __result>0)hits++;}
         private static bool Red(Color p){return p.A>100 && p.R>190 && p.G<110 && p.B<110;}
+        private static Func<int> BindConsumedKind(object attack)
+        {
+            var owner=attack.GetType();var field=owner.GetField("consumedInput",Flags);var kind=field.FieldType.GetField("Kind",Flags);
+            var read=new DynamicMethod("NaturalActualConsumedKind",typeof(int),new[]{owner},typeof(NativeCombatNaturalImpactChecks),true);var il=read.GetILGenerator();
+            il.Emit(OpCodes.Ldarg_0);il.Emit(OpCodes.Ldflda,field);il.Emit(OpCodes.Ldfld,kind);il.Emit(OpCodes.Conv_I4);il.Emit(OpCodes.Ret);
+            return (Func<int>)read.CreateDelegate(typeof(Func<int>),attack);
+        }
         private static List<Vector2> RedPixels(Color[] pixels)
         {
             var result=new List<Vector2>(100);
@@ -181,6 +191,7 @@ namespace NativeWorldTextProbe
             Directory.CreateDirectory(output);
             var host=Get(context,"CombatObservation");var combat=Get(context,"Combat");var input=Get(context,"Input");var world=Get(host,"World");var attack=Get(combat,"Attack");
             var audit=new Harmony("JueMingR.Tests.NaturalSlimeImpact");
+            Harmony workAudit=null;
             bool originalFilm=Main.LocalPlayer.isControlledByFilm;
             var rows=new List<string>{"run,phase,frame,tick,expected,contact,visible,redPixels,pathCount,npcX,npcY,npcVx,npcVy,playerX,playerY,playerVx,playerVy,receiveTick,stop,selected,budgetExceeded,budgetMs,previewPhase,displayCaptureTick,displayAge,displayCount,rawPreviewContact,contactSource,displaySampleTick,windowOffset"};
             var failures=new List<string>();
@@ -202,6 +213,8 @@ namespace NativeWorldTextProbe
                 audit.Patch(AccessTools.Method(typeof(Player),"Update",new[]{typeof(int)}),prefix:new HarmonyMethod(typeof(NativeCombatNaturalImpactChecks).GetMethod(nameof(MoveBefore),Flags)));
                 audit.Patch(AccessTools.Method(typeof(NPC),"StrikeNPC",new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)}),postfix:new HarmonyMethod(typeof(NativeCombatNaturalImpactChecks).GetMethod(nameof(Hit),Flags)));
                 cpuMode=timing;
+                consumedKind=BindConsumedKind(attack);
+                if(Environment.GetEnvironmentVariable("JMR_NATURAL_WORK_AUDIT")=="1")workAudit=NativeCombatAttackCostChecks.Audit(attack);
                 var bound=timing?new CpuBindings(context,combat,host,input,attack):null;
                 long timedDrawTicks=0;Func<bool> productDraw=drawTiming?(Func<bool>)Delegate.CreateDelegate(typeof(Func<bool>),world,world.GetType().GetMethod("Draw",Flags)):null;
                 Action timedDraw=drawTiming?(Action)(()=>{long start=Stopwatch.GetTimestamp();productDraw();timedDrawTicks=Stopwatch.GetTimestamp()-start;}):null;
@@ -262,10 +275,10 @@ namespace NativeWorldTextProbe
                         Console.WriteLine("NATURAL-WORLD id="+Main.ActiveWorldFileData.UniqueId+" footprintPair="+identity+" footprintDimensions="+Get(footprints,"width")+"x"+Get(footprints,"height"));
                         // The idle candidate has Path ON and Aim OFF. A red
                         // preview is independent of permission to borrow input.
-                        NativeCombatObservationChecks.Save(host,new ObservationOptions(false,modePath,false,false,false,25,assist,modeAim));
+                        NativeCombatObservationChecks.Save(host,new ObservationOptions(false,modePath,false,false,false,25,compareModes || assist,modeAim));
                         Require(((ObservationSettings)Get(host,"Settings")).Value.Path==modePath && ((ObservationSettings)Get(host,"Settings")).Value.Aim==modeAim,"completed saved settings match the declared idle runtime demand");
                         if(compareModes)Console.WriteLine("NATURAL-MODE case="+cpuCase+" moving="+moving+" aim="+modeAim+" path="+modePath);
-                        births=assistedBirths=hits=0;int airborne=0,landings=0,normalGravitySteps=0,drawn=0,expected=0,missing=0,blank=0,longestBlank=0,gapRuns=0;float minPlayer=player.position.X,maxPlayer=minPlayer,priorVy=0;bool wasAirborne=false;
+                        births=assistedBirths=hits=basicBirths=enhancedBirths=sealedBirths=0;if(workAudit!=null)NativeCombatAttackCostChecks.ResetCounts();int airborne=0,landings=0,normalGravitySteps=0,drawn=0,expected=0,missing=0,blank=0,longestBlank=0,gapRuns=0;float minPlayer=player.position.X,maxPlayer=minPlayer,priorVy=0;bool wasAirborne=false;
                         var phaseExpected=new int[3];var phaseDrawn=new int[3];
                         for(int frame=0;frame<(timing?totalEnd:300);frame++)
                         {
@@ -340,7 +353,7 @@ namespace NativeWorldTextProbe
                             {
                                 expected++;
                                 int displayPhase=phase=="idle"?0:phase=="attack"?1:2;phaseExpected[displayPhase]++;
-                                bool valid=contact!=null && visible && red.Count>=16 && red.Count<=100;
+                                bool valid=contact!=null && visible && red.Count>0;
                                 if(valid)
                                 {
                                     // Display can hold an older conditional prefix; its own
@@ -348,8 +361,7 @@ namespace NativeWorldTextProbe
                                     // belong to the current real receiver, never the cache's
                                     // newer attack publication or an unrelated stale target.
                                     valid=ReferenceEquals(contact.Timeline.Identity.Token,receiver) && contact.ReceiveTick>=0 && contact.ReceiveTick<contact.Timeline.Count;
-                                    var b=contact.Timeline[contact.ReceiveTick].Bounds;var center=Vector2.Transform(new Vector2(b.CenterX,b.CenterY)-Main.screenPosition,Main.GameViewMatrix.ZoomMatrix);
-                                    valid&=red.All(v=>Math.Abs(v.X-center.X)<=6 && Math.Abs(v.Y-center.Y)<=6);
+                                    valid&=NativeCombatImpactVisualChecks.ReceiveRectanglePixelsCurrent(contact,pixels,Main.GameViewMatrix.ZoomMatrix);
                                 }
                                 // Keep every declared opportunity in the denominator.
                                 // Occasional absence is allowed by the owner; incorrect
@@ -377,6 +389,8 @@ namespace NativeWorldTextProbe
                         Require(airborne>10 && landings>0 && normalGravitySteps>10,"natural slime actually jumps and lands with ordinary original gravity during the fixed observation window");
                         Require(!moving || maxPlayer-minPlayer>30,"moving scene contains real continuous original player movement");
                         bool expectedAssistance=compareModes?modeAim:assist;
+                        Console.WriteLine("NATURAL REAL CONSUMERS case="+cpuCase+" moving="+moving+" Aim="+modeAim+" Path="+modePath+" savedMarker="+(compareModes || assist)+" nativeBirths="+births+" assisted="+assistedBirths+" Basic="+basicBirths+" Enhanced="+enhancedBirths+" Sealed="+sealedBirths+" nativeHits="+hits);
+                        if(workAudit!=null)NativeCombatAttackCostChecks.Report("natural-real-work-case"+cpuCase+"-moving"+moving+"-Aim"+modeAim+"-Path"+modePath);
                         Require(births>=2 && (timing && !nativeDamage && !expectedAssistance || hits>0) && (expectedAssistance?assistedBirths==births:assistedBirths==0),timing?"CPU paired input produces native births; enabled aim or explicit native damage reference receives damage, OFF retains its raw aim":"explicit original and assisted gun scenes both produce real sources and positive native damage");
                         if(timing){cpuAllocations[cpuCase]=AppDomain.CurrentDomain.MonitoringTotalAllocatedMemorySize-caseAllocationStart;cpuCase++;}
                     }
@@ -407,9 +421,10 @@ namespace NativeWorldTextProbe
                 try{if(timing){allocationEnd=AppDomain.CurrentDomain.MonitoringTotalAllocatedMemorySize;WriteCpu(output,cpuRecords,cpuCount,allocationStart,allocationEnd,cpuAllocations,longWindow,drawTiming);}else{File.WriteAllLines(Path.Combine(output,"natural-slime-frames.csv"),rows);File.WriteAllLines(Path.Combine(output,"natural-input-facts.txt"),inputRows);File.WriteAllLines(Path.Combine(output,"natural-births.txt"),birthRows);}}
                 catch(Exception failure){cleanupFailures.Add(failure);}
                 try{audit.UnpatchAll(audit.Id);}catch(Exception failure){cleanupFailures.Add(failure);}
+                try{if(workAudit!=null)workAudit.UnpatchAll(workAudit.Id);}catch(Exception failure){cleanupFailures.Add(failure);}
                 try{Main.LocalPlayer.isControlledByFilm=originalFilm;}
                 catch(Exception failure){cleanupFailures.Add(failure);}
-                finally{cpuMode=false;player=null;receiver=null;}
+                finally{cpuMode=false;player=null;receiver=null;consumedKind=null;}
                 try{NativeCombatObservationChecks.Save(host,new ObservationOptions());}catch(Exception failure){cleanupFailures.Add(failure);}
                 try{NativeCombatCadenceChecks.Save(combat,new CombatOptions());}catch(Exception failure){cleanupFailures.Add(failure);}
                 if(cleanupFailures.Count>0)

@@ -34,6 +34,7 @@ namespace JueMingR.TerrariaHost.Combat
         private readonly HostAttackCandidates candidates=new HostAttackCandidates();
         private AttackContact presentation;private uint presentationStep;private bool presentationOrdinary;
         private int preferred=4,expansion,actionRequired;
+        private bool demandActive;
         private Item demandWeapon;private NpcIdentity demandTarget;
         internal bool TimelineCurrent(NpcTrajectory timeline)
         {
@@ -85,8 +86,8 @@ namespace JueMingR.TerrariaHost.Combat
         internal void Demand(bool beforeNpc=false)
         {
             if((observation.Path && PreviewDemand || UrgentPreparation) && Eligible(combat.Player.HeldItem) && !HostPlacementAttack.Handles(combat.Player.HeldItem))
-            {preferred=Preferred();if(beforeNpc)preferred=actionRequired>0?actionRequired:ActionPreferred(observation.Selection.Target);observation.Prediction.Cache.Demand(1,1,preferred);}
-            else{observation.Prediction.Cache.Release(1);expansion=0;Clear();}
+            {demandActive=true;preferred=Preferred();if(beforeNpc)preferred=actionRequired>0?actionRequired:ActionPreferred(observation.Selection.Target);observation.Prediction.Cache.Demand(1,1,preferred);}
+            else{observation.Prediction.Cache.Release(1);expansion=0;if(demandActive){demandActive=false;Clear();}}
         }
         private int Preferred()
         {
@@ -137,7 +138,7 @@ namespace JueMingR.TerrariaHost.Combat
         }
         internal void ClearExecution(){presentation=null;weapon=null;ammo=null;current=next=null;environment=null;obstacles=null;harpyState=null;preparedOrdinary=false;cadence.Clear();Control.Clear();}
         internal void Clear(){ClearExecution();ClearPreview();}
-        internal void Reset(){Clear();ClearCandidatePlans();RetryFaults();swing.Clear();Control.Reset();hasConsumedInput=false;}
+        internal void Reset(){demandActive=false;Clear();ClearCandidatePlans();RetryFaults();swing.Clear();Control.Reset();hasConsumedInput=false;}
         internal void ObserveSwing(Player player,Item item,Rectangle frame,float offset)
         {
             if(!ReferenceEquals(player,combat.Player) || !HostSwingAttack.Handles(item) || !PreviewDemand)return;
@@ -161,11 +162,10 @@ namespace JueMingR.TerrariaHost.Combat
         {PreparePhase(HostAttackPhase.Projectiles);}
         internal void PreparePreviewOnly()
         {
-            // The lower threshold admitted this optional trajectory already.
-            // Consume its completed prefix while the real shared allowance
-            // remains; applying the admission threshold again would replace
-            // the path's generation but strand its preview until another cycle.
-            try{using(observation.PredictionWork.Enter(Main.GameUpdateCount)){if(CombatPredictionWork.TryContinue())PreparePreview(HostAttackPhase.CompletedWorld);}}
+            // Capture already prefers a qualified actual hand/control contact.
+            // Use that same receiver/time/source lease instead of solving a
+            // hypothetical contact which presentation would immediately ignore.
+            try{using(observation.PredictionWork.Enter(Main.GameUpdateCount)){if(Permission && ExpectedImpact!=null)return;if(CombatPredictionWork.TryContinue())PreparePreview(HostAttackPhase.CompletedWorld);}}
             catch(CombatPredictionBudgetExceededException){EndFlightPreparation();}
             catch(Exception error){PropagateFatal(error);preview.Faults.Record(FaultContextFor(observation.Selection.Target));ClearPreview();}
         }

@@ -4,25 +4,31 @@ using JueMingR.Platform.Combat;
 namespace JueMingR.Features.Combat
 {
     public delegate bool AttackPassage(float x,float y,float nextX,float nextY,float width,float height);
+    public enum AttackReceiveGeometry { Projectile, Melee }
     public sealed class AttackContact
     {
         public readonly NpcTrajectory Timeline;
         public readonly float AimX,AimY,ImpactX,ImpactY;
         public readonly int Tick,ReceiveTick,Subupdate,Delay;
         public readonly AttackConfidence Confidence;
-        internal AttackContact(NpcTrajectory timeline,float aimX,float aimY,float impactX,float impactY,int tick,int subupdate,int delay,AttackConfidence confidence,int receiveTick=-1)
-        {Timeline=timeline;AimX=aimX;AimY=aimY;ImpactX=impactX;ImpactY=impactY;Tick=tick;ReceiveTick=receiveTick<0?tick:receiveTick;Subupdate=subupdate;Delay=delay;Confidence=confidence;}
+        public readonly AttackReceiveGeometry ReceiveGeometry;
+        public readonly MotionRect ReceiveBounds;
+        // Freeze the SAME receiver rectangle used by the contact outlet. It
+        // already includes native integer/netOffset and projectile-extension
+        // semantics; presentation must not infer them again from the weapon.
+        internal AttackContact(NpcTrajectory timeline,float aimX,float aimY,float impactX,float impactY,int tick,int subupdate,int delay,AttackConfidence confidence,int receiveTick=-1,AttackReceiveGeometry receiveGeometry=AttackReceiveGeometry.Projectile)
+        {Timeline=timeline;AimX=aimX;AimY=aimY;ImpactX=impactX;ImpactY=impactY;Tick=tick;ReceiveTick=receiveTick<0?tick:receiveTick;Subupdate=subupdate;Delay=delay;Confidence=confidence;ReceiveGeometry=receiveGeometry;var sample=timeline[ReceiveTick];ReceiveBounds=receiveGeometry==AttackReceiveGeometry.Melee?sample.ReceiveBounds:sample.ProjectileReceiveBounds;}
     }
     public static class AttackIntercept
     {
         // A derived body's contact belongs to the parent's aimed use. Keep
         // its receive time/position while carrying the actual parent input.
         public static AttackContact WithAimInput(AttackContact contact,float x,float y)
-        {return contact==null?null:new AttackContact(contact.Timeline,x,y,contact.ImpactX,contact.ImpactY,contact.Tick,contact.Subupdate,contact.Delay,contact.Confidence,contact.ReceiveTick);}
+        {return contact==null?null:new AttackContact(contact.Timeline,x,y,contact.ImpactX,contact.ImpactY,contact.Tick,contact.Subupdate,contact.Delay,contact.Confidence,contact.ReceiveTick,contact.ReceiveGeometry);}
         public static AttackContact WithLaunchDelay(AttackContact contact,int delay)
         {
             if(contact==null || delay<0)return null;
-            return new AttackContact(contact.Timeline,contact.AimX,contact.AimY,contact.ImpactX,contact.ImpactY,contact.Tick,contact.Subupdate,contact.Delay+delay,contact.Confidence,contact.ReceiveTick);
+            return new AttackContact(contact.Timeline,contact.AimX,contact.AimY,contact.ImpactX,contact.ImpactY,contact.Tick,contact.Subupdate,contact.Delay+delay,contact.Confidence,contact.ReceiveTick,contact.ReceiveGeometry);
         }
         // A new observation may publish the identical relative future with a
         // new sampling identity. Rebind only exact geometry/phase equality;
@@ -30,7 +36,7 @@ namespace JueMingR.Features.Combat
         public static AttackContact Rebind(AttackContact contact,NpcTrajectory timeline)
         {
             if(contact==null || !Equivalent(contact.Timeline,timeline))return null;
-            return new AttackContact(timeline,contact.AimX,contact.AimY,contact.ImpactX,contact.ImpactY,contact.Tick,contact.Subupdate,contact.Delay,contact.Confidence,contact.ReceiveTick);
+            return new AttackContact(timeline,contact.AimX,contact.AimY,contact.ImpactX,contact.ImpactY,contact.Tick,contact.Subupdate,contact.Delay,contact.Confidence,contact.ReceiveTick,contact.ReceiveGeometry);
         }
         public static bool Equivalent(NpcTrajectory a,NpcTrajectory b)
         {
@@ -38,7 +44,7 @@ namespace JueMingR.Features.Combat
             for(int i=0;i<a.Count;i++)
             {
                 var x=a[i];var y=b[i];
-                if(!PredictionPlayers.Same(x.Bounds,y.Bounds) || !PredictionPlayers.Same(x.OwnerBounds,y.OwnerBounds) || !PredictionPlayers.Same(x.ProjectileReceiveBounds,y.ProjectileReceiveBounds) || x.CanReceive!=y.CanReceive || x.CanHarm!=y.CanHarm || x.NoTileCollide!=y.NoTileCollide || x.Wet!=y.Wet || x.ReflectsProjectiles!=y.ReflectsProjectiles || x.ProjectileReflectionUnknown!=y.ProjectileReflectionUnknown || x.NewSegment!=y.NewSegment || x.Phase!=y.Phase || x.Vx!=y.Vx || x.Vy!=y.Vy)return false;
+                if(!PredictionPlayers.Same(x.Bounds,y.Bounds) || !PredictionPlayers.Same(x.OwnerBounds,y.OwnerBounds) || !PredictionPlayers.Same(x.ReceiveBounds,y.ReceiveBounds) || !PredictionPlayers.Same(x.ProjectileReceiveBounds,y.ProjectileReceiveBounds) || x.CanReceive!=y.CanReceive || x.CanHarm!=y.CanHarm || x.NoTileCollide!=y.NoTileCollide || x.Wet!=y.Wet || x.ReflectsProjectiles!=y.ReflectsProjectiles || x.ProjectileReflectionUnknown!=y.ProjectileReflectionUnknown || x.NewSegment!=y.NewSegment || x.Phase!=y.Phase || x.Vx!=y.Vx || x.Vy!=y.Vy)return false;
             }
             return true;
         }
@@ -94,7 +100,7 @@ namespace JueMingR.Features.Combat
             if(timeline==null || receiveTick<0 || receiveTick>=timeline.Count || width<=0 || height<=0 || !Finite(x) || !Finite(y) || !Finite(width) || !Finite(height) || !Finite(aimX) || !Finite(aimY))return null;
             var sample=timeline[receiveTick];var b=sample.ReceiveBounds;
             if(!sample.CanReceive || x>=b.X+b.Width || x+width<=b.X || y>=b.Y+b.Height || y+height<=b.Y)return null;
-            return new AttackContact(timeline,aimX,aimY,Math.Max(b.X,Math.Min(b.X+b.Width,x+width/2)),Math.Max(b.Y,Math.Min(b.Y+b.Height,y+height/2)),receiveTick+1,0,0,AttackConfidence.Conditional,receiveTick);
+            return new AttackContact(timeline,aimX,aimY,Math.Max(b.X,Math.Min(b.X+b.Width,x+width/2)),Math.Max(b.Y,Math.Min(b.Y+b.Height,y+height/2)),receiveTick+1,0,0,AttackConfidence.Conditional,receiveTick,AttackReceiveGeometry.Melee);
         }
         // The host has already checked the native melee shape against this
         // receive sample. Preserve its phase without replacing that shape
@@ -103,7 +109,7 @@ namespace JueMingR.Features.Combat
         {
             if(!overlaps || timeline==null || receiveTick<0 || receiveTick>=timeline.Count || !Finite(aimX) || !Finite(aimY) || !Finite(impactX) || !Finite(impactY))return null;
             var sample=timeline[receiveTick];if(!sample.CanReceive)return null;var b=sample.ReceiveBounds;
-            return new AttackContact(timeline,aimX,aimY,Math.Max(b.X,Math.Min(b.X+b.Width,impactX)),Math.Max(b.Y,Math.Min(b.Y+b.Height,impactY)),receiveTick+1,0,0,AttackConfidence.Conditional,receiveTick);
+            return new AttackContact(timeline,aimX,aimY,Math.Max(b.X,Math.Min(b.X+b.Width,impactX)),Math.Max(b.Y,Math.Min(b.Y+b.Height,impactY)),receiveTick+1,0,0,AttackConfidence.Conditional,receiveTick,AttackReceiveGeometry.Melee);
         }
         // A specialized projectile collider has already qualified its shape.
         // Unlike hand melee, its receive sample and damage tick are the same.

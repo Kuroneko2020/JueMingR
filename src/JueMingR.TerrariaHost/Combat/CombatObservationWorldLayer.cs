@@ -238,7 +238,7 @@ namespace JueMingR.TerrariaHost.Combat
         private void Add(Vector2 a,Vector2 b,Color color,float width)
         {if(!Finite(a) || !Finite(b))return;if(count==strokeLimit){limited=true;return;}if(projectedEvent!=null)projectedEvent.Presentation=presentation;strokes[count++]=new Stroke{A=Vector2.Transform(a,inverse),B=Vector2.Transform(b,inverse),Color=color,Width=width*inverse.M11};}
         private static bool Finite(Vector2 p){return !float.IsNaN(p.X) && !float.IsNaN(p.Y) && !float.IsInfinity(p.X) && !float.IsInfinity(p.Y);}
-        private static bool Clip(ref Vector2 a,ref Vector2 b)
+        internal static bool Clip(ref Vector2 a,ref Vector2 b)
         {
             if(float.IsNaN(a.X) || float.IsNaN(a.Y) || float.IsNaN(b.X) || float.IsNaN(b.Y))return false;
             var delta=b-a;float lo=0,hi=1;

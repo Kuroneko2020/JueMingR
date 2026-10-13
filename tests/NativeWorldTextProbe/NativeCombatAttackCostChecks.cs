@@ -37,12 +37,16 @@ namespace NativeWorldTextProbe
         private static void Count(MethodBase __originalMethod)
         {methodCounters[__originalMethod].Value++;}
         private static int Total(string key){CounterSlot slot;return calls.TryGetValue(key,out slot)?slot.Value:0;}
-        private static Harmony Audit(object attack)
+        internal static Harmony Audit(object attack)
         {
             var audit=new Harmony("JueMingR.Tests.AttackCosts");var assembly=attack.GetType().Assembly;
             // Rolling prediction is the production producer. Cache.Steps is
             // an alternate cache counter and cannot prove no future work.
             foreach(var method in typeof(NpcMotion).GetMethods(Flags).Where(m=>m.Name=="Step" && m.GetParameters().Length==8))audit.Patch(method,prefix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks).GetMethod("Count",Flags)));
+            foreach(string entry in new[]{"HostAttackAim.PreparePlan","HostAttackAim.PreparePreviewCore","HostCombatObservation.PrepareSelectedPrediction","NpcPredictionSource.PreparePrefix"})
+            {var split=entry.Split('.');audit.Patch(assembly.GetType("JueMingR.TerrariaHost.Combat."+split[0],true).GetMethod(split[1],Flags),prefix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks).GetMethod("Count",Flags)));}
+            audit.Patch(assembly.GetType("JueMingR.TerrariaHost.Combat.PredictionTerrain",true).GetNestedType("CellLease",Flags).GetProperty("Current",Flags).GetGetMethod(true),prefix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks).GetMethod("Count",Flags)));
+            audit.Patch(typeof(RollingNpcPrediction).GetMethod("Prepare",Flags),prefix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks).GetMethod("Count",Flags)));
             foreach(string entry in new[]{"HostAttackAim.Clear","HostAttackControl.Clear","HostAttackAim.PrepareCore","HostAttackAim.Valid","HostAttackAim.PresentationCurrent","HostAttackControl.PresentationCurrent","HostAttackAim.PreviewCurrent","HostAttackControl.PreviewCurrent","HostBeamAttack.Solve","HostBeamAttack.Length","PredictionTerrain.Read","PredictionTerrain.ProjectilePassage","PredictionTerrain.get_Unchanged","HostAttackObstacles.Eligible","HostAttackObstacles.get_Unchanged","AttackAmmoSnapshot.CaptureCore","AttackAmmoSnapshot.MembersMatch","HostAttackAim.ResolveSelection","HostMeleeAttack.Solve","HostMeleeAttack.SolvePrepared","HostMeleeAttack.SolarPose","HostMeleeAttack.SpearDerived","HostBoomerangAttack.Step","HostEffectAttack.CaptureCandidates","HostYoyoNavigation.Remaining","HostYoyoNavigation.Current","HostYoyoNavigation.PrepareWithPlayer","HostYoyoNavigation.OpeningPoint","HostYoyoNavigation.Find"})
             {var split=entry.Split('.');var type=assembly.GetType("JueMingR.TerrariaHost.Combat."+split[0],true);audit.Patch(type.GetMethod(split[1],Flags),prefix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks).GetMethod("Count",Flags)));}
             audit.Patch(typeof(AttackIntercept).GetMethod("Solve",Flags),prefix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks).GetMethod("Count",Flags)));
@@ -62,12 +66,14 @@ namespace NativeWorldTextProbe
             }
             return audit;
         }
-        private static void Report(string scenario)
+        internal static void ResetCounts(){calls.Clear();}
+        internal static void Report(string scenario)
         {Console.WriteLine("ATTACK COST "+scenario+" "+string.Join(";",calls.Where(p=>p.Value.Value!=0).Select(p=>"["+p.Key+", "+p.Value.Value+"]")));}
         internal static void Run(object context)
         {
             var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var attack=Get(combat,"Attack");var input=Get(context,"Input");
             var only=Environment.GetEnvironmentVariable("JMR_ATTACK_COSTS_ONLY");
+            if(only=="optional-consumption"){OptionalConsumption(context,combat,host,attack,input);return;}
             // Functional allowance behavior must not charge the high-frequency
             // counting observer's dictionary/string work to production's 6ms.
             // The ordinary whole scope runs this same leaf before Audit too.

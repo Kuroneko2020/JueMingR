@@ -25,13 +25,13 @@ namespace NativeWorldTextProbe
             var options=(ObservationOptions)Activator.CreateInstance(typeof(ObservationOptions),new object[]{false,false,false,false,false,25,true});
             NativeCombatObservationChecks.Save(host,options);NativeCombatObservationChecks.Fresh(context,host);
             Console.WriteLine("MARKER GATE enabled="+Get(host,"Enabled")+" marker="+Get(host,"Marker")+" session="+Get(host,"Session")+" active="+Main.LocalPlayer.active+" dead="+Main.LocalPlayer.dead+" targetLife="+target.life+" count="+Get(Get(context,"nativeNpcs"),"Count")+" selected="+Get(selection,"HasTarget"));
-            Require((bool)Get(selection,"HasTarget") && ((NpcIdentity)Get(selection,"Target")).Slot==2,"Marker-only uses actual shared selection.");
+            Require(!(bool)Get(selection,"HasTarget") && !(bool)Get(host,"Marker"),"Saved Marker without Aim/Path does not independently select a target.");
             Require(cache.Required==0 && GetOptional(cache,"result")==null,"Marker-only has zero future demand or fabricated cache result.");
             Require(GetOptional(source,"Native")==null,"Marker-only does not start the exact comparison helper.");
-            Call(host,"Poll");Require((bool)Get(selection,"HasTarget"),"Poll keeps marker-only target alive.");
+            Call(host,"Poll");Require(!(bool)Get(selection,"HasTarget"),"Poll keeps the saved-only marker inactive.");
             var shell=Get(context,"Shell");var state=Get(shell,"State");var renderer=Get(shell,"renderer");
             Call(renderer,"RefreshResources");Call(state,"Navigate",8);Call(renderer,"Prepare",state,960f,640f,1f);
-            Require(!Elements(state).Any(e=>Get(e,"Command").ToString()=="ObservationMarker"),"Aim OFF hides settings controls while marker-only continues independently.");
+            Require(!Elements(state).Any(e=>Get(e,"Command").ToString()=="ObservationMarker"),"Aim OFF hides settings controls and preserves the inactive marker preference.");
             SetAim(host,renderer,state,true);
             object Button()=>Elements(state).Single(e=>Get(e,"Command").ToString()=="ObservationMarker");
             Require((string)Get(Button(),"Text")=="目标标记：开","Same-page initial marker text is committed ON.");
@@ -49,7 +49,8 @@ namespace NativeWorldTextProbe
             foreach(object element in row)
             {var rect=Get(element,"Rect");Require((float)Get(rect,"X")>=0 && (float)Get(rect,"Right")<=522,"Measured marker controls stay inside their actual panel.");}
             SetAim(host,renderer,state,false);NativeCombatObservationChecks.Fresh(context,host);
-            Require(((ObservationSettings)Get(host,"Settings")).Value.Marker && cache.Required==0 && GetOptional(source,"Native")==null,"Closing the settings card preserves marker-only preference and zero future work.");
+            Require(((ObservationSettings)Get(host,"Settings")).Value.Marker && cache.Required==0 && GetOptional(source,"Native")==null && !(bool)Get(selection,"HasTarget"),"Closing the final parent preserves marker preference and retires its target with zero future work.");
+            SetAim(host,renderer,state,true);NativeCombatObservationChecks.Fresh(context,host);
             var world=Get(host,"World");var display=Get(world,"Marker");Set(host,"LayerStatus",Enum.Parse(Get(host,"LayerStatus").GetType(),"Ready"));
             Main.screenWidth=960;Main.screenHeight=640;Main.screenPosition=new Vector2(300,300);Main.GameViewMatrix.Zoom=Vector2.One;
             target.position=new Vector2(720,450);target.netOffset=new Vector2(8,6);NativeCombatObservationChecks.Fresh(context,host);Call(world,"Prepare");NativeCombatPresentationChecks.Project(world);
@@ -86,7 +87,7 @@ namespace NativeWorldTextProbe
             Call(ui,"Close");Main.screenWidth=960;Main.screenHeight=640;Main.UIScale=1;Terraria.GameInput.PlayerInput.CacheOriginalScreenDimensions();
             var host=Get(context,"CombatObservation");var world=Get(host,"World");var marker=Get(world,"Marker");
             foreach(var n in Main.npc)n.active=false;var target=Main.npc[2];target.SetDefaults(2);target.whoAmI=2;target.active=true;target.position=new Vector2(720,450);target.target=0;Main.LocalPlayer.position=new Vector2(640,500);Main.dayTime=false;
-            NativeCombatObservationChecks.Save(host,new ObservationOptions(marker:true));NativeCombatObservationChecks.Fresh(context,host);Call(world,"Prepare");var markerOnlyPixels=graphics.Pixels(()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);
+            NativeCombatObservationChecks.Save(host,new ObservationOptions(marker:true).Toggle(6));NativeCombatObservationChecks.Fresh(context,host);Call(world,"Prepare");var markerOnlyPixels=graphics.Pixels(()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);
             Require((bool)Get(marker,"Visible") && (int)Get(world,"StrokeCount")==0 && ((NpcPredictionCache)Get(Get(host,"Prediction"),"Cache")).Required==0 && markerOnlyPixels.Any(pixel=>pixel.A>0),"Actual marker-only Draw has pixels without future path work");
             NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true));NativeCombatObservationChecks.Fresh(context,host);Call(world,"Prepare");var pathOnlyPixels=graphics.Pixels(()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);
             Require(!(bool)Get(marker,"Visible") && (int)Get(world,"StrokeCount")>5 && pathOnlyPixels.Count(pixel=>pixel.A>0 && pixel.R>pixel.G+10 && pixel.G>pixel.B+20)>20,"Actual path-only Draw has gold route pixels without marker commands");

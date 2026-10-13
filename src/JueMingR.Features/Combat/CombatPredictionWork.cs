@@ -13,8 +13,10 @@ namespace JueMingR.Features.Combat
         private ulong tick;
         private bool started,exceeded;
         private long spent,entered;
+        private long optionalSpent,optionalEntered;
         private long softAllowance=long.MaxValue;
         private int depth;
+        private int optionalDepth;
         private int geometryRemaining;
         public CombatPredictionWork(double milliseconds)
         {if(milliseconds<=0 || double.IsNaN(milliseconds) || double.IsInfinity(milliseconds))throw new ArgumentOutOfRangeException(nameof(milliseconds));allowance=Math.Max(1,(long)(milliseconds*Stopwatch.Frequency/1000));}
@@ -22,7 +24,7 @@ namespace JueMingR.Features.Combat
         public double UsedMilliseconds {get{return (spent+(depth==0?0:Stopwatch.GetTimestamp()-entered))*1000.0/Stopwatch.Frequency;}}
         public Scope Enter(ulong update)
         {
-            if(depth==0){if(!started || tick!=update){started=true;tick=update;spent=0;exceeded=false;geometryRemaining=0;softAllowance=long.MaxValue;}entered=Stopwatch.GetTimestamp();}
+            if(depth==0){if(!started || tick!=update){started=true;tick=update;spent=optionalSpent=0;exceeded=false;geometryRemaining=0;softAllowance=long.MaxValue;}entered=Stopwatch.GetTimestamp();}
             var previous=active;active=this;depth++;return new Scope(this,previous);
         }
         public static void Check()
@@ -51,6 +53,22 @@ namespace JueMingR.Features.Combat
             long limit=ticks>=long.MaxValue?long.MaxValue:Math.Max(1,(long)ticks);
             owner.softAllowance=Math.Min(previous,limit);
             return new LimitScope(owner,previous);
+        }
+        // Optional entries borrow the same remainder throughout a real update.
+        // Core time does not consume this slice, but every entry still inherits
+        // the overall allowance and any tighter enclosing scope.
+        public static OptionalScope Optional(double milliseconds)
+        {
+            if(milliseconds<=0 || double.IsNaN(milliseconds) || double.IsInfinity(milliseconds))throw new ArgumentOutOfRangeException(nameof(milliseconds));
+            var owner=active;if(owner==null)return default(OptionalScope);
+            long used=owner.spent+Stopwatch.GetTimestamp()-owner.entered;
+            if(owner.optionalDepth==0)owner.optionalEntered=used;
+            long charged=owner.optionalSpent+Math.Max(0,used-owner.optionalEntered);
+            long available=Math.Max(0,(long)(milliseconds*Stopwatch.Frequency/1000)-charged);
+            long previous=owner.softAllowance;
+            owner.softAllowance=Math.Min(previous,used+available);
+            owner.optionalDepth++;
+            return new OptionalScope(owner,previous,used);
         }
         // A lower optional-work threshold leaves the total allowance intact
         // for urgent consumers. Only the actual shared hard limit sets Exceeded.
@@ -88,6 +106,20 @@ namespace JueMingR.Features.Combat
             private readonly long previous;
             internal LimitScope(CombatPredictionWork owner,long previous){this.owner=owner;this.previous=previous;}
             public void Dispose(){if(owner!=null)owner.softAllowance=previous;}
+        }
+        public readonly struct OptionalScope:IDisposable
+        {
+            private readonly CombatPredictionWork owner;
+            private readonly long previous,begin;
+            internal OptionalScope(CombatPredictionWork owner,long previous,long begin){this.owner=owner;this.previous=previous;this.begin=begin;}
+            public void Dispose()
+            {
+                if(owner==null)return;
+                // Nested optional consumers tighten the same allowance. Only
+                // their outer owner charges the interval, avoiding double cost.
+                if(--owner.optionalDepth==0)owner.optionalSpent+=Math.Max(0,owner.spent+Stopwatch.GetTimestamp()-owner.entered-begin);
+                owner.softAllowance=previous;
+            }
         }
     }
     // A temporary unresolved enhancement is not a physical miss or a fault

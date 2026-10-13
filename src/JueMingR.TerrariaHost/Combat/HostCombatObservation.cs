@@ -31,7 +31,7 @@ namespace JueMingR.TerrariaHost.Combat
         private readonly SingleFeatureRuntime runtime;
         private readonly HostInputState input;
         private readonly NativeNpcObservation npcs;
-        private bool collisionFailed,pathFailed,reportedCollision,reportedPath,reportedMarker,wasCollision,wasPath;
+        private bool collisionFailed,pathFailed,reportedCollision,reportedPath,reportedMarker,wasCollision,wasPath,hadTargetDemand;
         private bool selectionFailed;
         // Presentation may keep a short-lived conditional result. It never
         // enters Cache's attack reader and retains the original capture clock.
@@ -39,7 +39,7 @@ namespace JueMingR.TerrariaHost.Combat
         private PredictionTerrain.CellLease displayTerrain;
         private PredictionPlayerMotion displayPlayer;
         private int displayLife;
-        private long displayLeaseTick=-1,optionalTick=-1;
+        private long displayLeaseTick=-1,optionalTick=-1,previewOptionalTick=-1;
         private NpcIdentity optionalTarget;
         internal NpcTrajectory DisplayPath {get{return displayLeaseTick==(long)Main.GameUpdateCount && Path && Selection.HasTarget && displayPath!=null && displayPath.Identity.Equals(Selection.Target)?displayPath:null;}}
         internal int DisplayAge {get{return displayPath==null?0:(int)Math.Max(0,(long)Main.GameUpdateCount-displayPath.SampleTick);}}
@@ -71,7 +71,7 @@ namespace JueMingR.TerrariaHost.Combat
         internal long Session {get{return runtime.IsSessionActive?runtime.Generation:-1;}}
         internal bool Collision {get{return !World.Failed && Settings.CanRun && Options.Collision && Unavailable(0)==null;}}
         internal bool Path {get{return !World.Failed && Settings.CanRun && Options.Path && Unavailable(1)==null;}}
-        internal bool Marker {get{return !World.Failed && !World.Marker.Failed && !selectionFailed && Settings.CanRun && Options.Marker && LayerStatus!=Rendering.WorldLayerStatus.Unavailable;}}
+        internal bool Marker {get{return !World.Failed && !World.Marker.Failed && !selectionFailed && Settings.CanRun && Options.Marker && (Path || BasicSelectionDemand) && LayerStatus!=Rendering.WorldLayerStatus.Unavailable;}}
         public string Unavailable(int field)
         {
             if(selectionFailed)return "战斗目标观察暂不可用，设置已保留；可点击开启重试。";
@@ -119,7 +119,18 @@ namespace JueMingR.TerrariaHost.Combat
             // Other registered consumers can outlive the path toggle. Retire
             // the final target on actual demand removal, once, even when the
             // display was already OFF before that consumer released it.
-            if(!path && Prediction.Cache.Required==0){Prediction.Clear();if(!Marker && !BasicSelectionDemand && Selection.HasTarget)Selection.RetireTarget();}
+            bool targetDemand=path || BasicSelectionDemand;
+            if(hadTargetDemand && !targetDemand)
+            {
+                // Saved Marker is a child preference, never a producer demand.
+                // Retire only our two consumers and state on the final edge;
+                // independently registered prediction consumers remain intact.
+                Attack?.Reset();Prediction.Cache.Release(0);Prediction.Cache.Release(1);
+                displayPath=null;displayTerrain=null;displayLeaseTick=optionalTick=-1;OptionalPreparation=false;
+                World.Marker.Clear();World.Impact.Clear();
+                if(Prediction.Cache.Required==0){Prediction.Clear();Selection.RetireTarget();}
+            }
+            hadTargetDemand=targetDemand;
             // Reliable preference intent is available in the safe Main.Update
             // callback even in menus. This does not activate any Gameplay
             // feature, sample a world, or grant input/operation ownership.
@@ -169,6 +180,10 @@ namespace JueMingR.TerrariaHost.Combat
         }
         private void UpdateSampleCore(long sampleTick,bool beforeNpc,ulong tick)
         {
+            // A repeated real entry may follow native work in this same GUC.
+            // Withdraw the old publication before any budgeted producer can
+            // exit early; only the final consumer validation grants it again.
+            if(!beforeNpc){displayLeaseTick=-1;Attack?.InvalidatePreviewPresentation();}
             try
             {
             Attack?.Demand(beforeNpc);
@@ -180,10 +195,19 @@ namespace JueMingR.TerrariaHost.Combat
             // call's work. Actual action prefixes run before optional tails.
             if(Path && !beforeNpc)Prediction.Cache.Demand(0,1,NpcPredictionCache.Horizon);else Prediction.Cache.Release(0);
             try{Selection.Update(Options,Session,Marker || BasicSelectionDemand || !pathFailed && Prediction.Cache.Required>0,Collision?Geometry:null);}catch(Exception error){AimTrace.Fault("host-selection",error,(long)tick);selectionFailed=true;CollisionFailed();pathFailed=true;Selection.RetireTarget();Prediction.Stop();World.Clear();return;}
-            if(!Selection.HasTarget){Prediction.Clear();return;}
+            // The final-consumer edge already retired our producer. Collision
+            // observation can remain active without clearing inactive Source
+            // arrays on every empty update. Independent readers still retire
+            // their unavailable selected publication normally.
+            if(!Selection.HasTarget){if(Prediction.Cache.Required>0)Prediction.Clear();return;}
             if(!beforeNpc)Attack?.RestorePresentationSelection(sampleTick);
-            OptionalPreparation=!beforeNpc && Path && (optionalTick<0 || sampleTick-optionalTick>=DisplayRefreshUpdates || !optionalTarget.Equals(Selection.Target) || !ValidateDisplay(sampleTick));
-            Attack?.ResolveSelection(sampleTick,beforeNpc);
+            bool displayValidated=false,previewValidated=false;
+            // Invalidating a lease is immediate; granting production is a
+            // separate cadence. Attempts advance this clock even for null or
+            // paused results, and a duplicate outer callback cannot re-admit.
+            OptionalPreparation=!beforeNpc && Path && optionalTick!=sampleTick && (optionalTick<0 || sampleTick-optionalTick>=DisplayRefreshUpdates || !optionalTarget.Equals(Selection.Target));
+            if(beforeNpc || Attack!=null && Attack.UrgentPreparation)Attack?.ResolveSelection(sampleTick,beforeNpc);
+            else using(CombatPredictionWork.Optional(3))Attack?.ResolveSelection(sampleTick,false);
             Attack?.Demand(beforeNpc); // Keep a candidate's explicitly proven action prefix.
             // Ordinary prediction is synchronous and owned by Source. Native
             // failure belongs only to the explicit comparison route; a shared
@@ -199,15 +223,66 @@ namespace JueMingR.TerrariaHost.Combat
                 PrepareSelectedPrediction(sampleTick,beforeNpc,tick,Math.Max(1,urgent));
                 if(beforeNpc)Attack?.PrepareAction();else Attack?.Prepare();
             }
-            if(!beforeNpc && OptionalPreparation && CombatPredictionWork.TryContinue(3))
+            if(!beforeNpc && OptionalPreparation)
             {
-                optionalTick=sampleTick;optionalTarget=Selection.Target;
-                PrepareSelectedPrediction(sampleTick,false,tick,Prediction.Cache.Required);
-                CaptureDisplay(sampleTick);
-                Attack?.PreparePreviewOnly();
+                using(CombatPredictionWork.Optional(3))
+                {
+                    if(CombatPredictionWork.TryContinue())
+                    {
+                        optionalTick=sampleTick;optionalTarget=Selection.Target;
+                        int full=Prediction.Cache.Required;
+                        int prefix=Attack!=null && Attack.PreviewDemand?Math.Min(full,Attack.PreviewPreferred):full;
+                        // A display tail cannot consume the allowance before
+                        // its useful contact. Preserve the same-sample prefix,
+                        // solve its preview, then extend only with the remainder.
+                        PrepareSelectedPrediction(sampleTick,false,tick,prefix);
+                        CaptureDisplay(sampleTick);
+                        previewOptionalTick=sampleTick;
+                        Attack?.PreparePreviewOnly();
+                        ValidateDisplay(sampleTick);Attack?.ValidatePreviewPresentation();
+                        displayValidated=previewValidated=true;
+                        var prefixPath=displayPath;var prefixTerrain=displayTerrain;
+                        long prefixLease=displayLeaseTick;
+                        if(full>prefix && CombatPredictionWork.TryContinue())
+                        {
+                            PrepareSelectedPrediction(sampleTick,false,tick,full);
+                            if(CombatPredictionWork.TryContinue())
+                            {
+                                CaptureDisplay(sampleTick);
+                                try{ValidateDisplay(sampleTick);}
+                                catch(CombatPredictionBudgetExceededException)
+                                {
+                                    // Extending private scratch performs no
+                                    // world action. Its exhausted new lease
+                                    // cannot revoke the just-validated prefix.
+                                    displayPath=prefixPath;displayTerrain=prefixTerrain;displayLeaseTick=prefixLease;
+                                }
+                                if(Attack!=null && Attack.PreviewNeedsMore && CombatPredictionWork.TryContinue()){Attack.PreparePreviewOnly();previewValidated=false;}
+                            }
+                        }
+                    }
+                }
             }
-            if(!beforeNpc)ValidateDisplay(sampleTick);
-            if(!beforeNpc)Attack?.ValidatePreviewPresentation();
+            if(!beforeNpc)
+            {
+                // Validation is optional work too, after actual attack owners.
+                // Each real entry checks one current lease once; exhaustion
+                // withdraws display and cannot skip a legal core preparation.
+                using(CombatPredictionWork.Optional(3))
+                {
+                    try
+                    {
+                        if(!displayValidated)ValidateDisplay(sampleTick);if(!previewValidated)Attack?.ValidatePreviewPresentation();
+                        if(Attack!=null && Attack.PreviewRefreshPending && DisplayPath!=null && (previewOptionalTick<0 || sampleTick-previewOptionalTick>=2) && CombatPredictionWork.TryContinue())
+                        {
+                            previewOptionalTick=sampleTick;
+                            Attack.PreparePreviewWindow(DisplayPath);
+                            Attack.ValidatePreviewPresentation();
+                        }
+                    }
+                    catch(CombatPredictionBudgetExceededException){displayLeaseTick=-1;}
+                }
+            }
             }
             finally{Attack?.EndPreparation();AimTrace.Host(this,pathFailed,"update-exit",true);}
         }
@@ -238,7 +313,6 @@ namespace JueMingR.TerrariaHost.Combat
         }
         private bool ValidateDisplay(long tick)
         {
-            if(displayLeaseTick==tick && Path && displayPath!=null && Selection.HasTarget && Selection.Target.Equals(displayPath.Identity))return true;
             displayLeaseTick=-1;
             if(!Path || displayPath==null || !Selection.HasTarget || !Selection.Target.Equals(displayPath.Identity) || !CombatSelection.Valid(displayPath.Identity,Session))return false;
             long age=tick-displayPath.SampleTick;if(age<0 || age>DisplayMaximumAge || age>=displayPath.Count)return false;

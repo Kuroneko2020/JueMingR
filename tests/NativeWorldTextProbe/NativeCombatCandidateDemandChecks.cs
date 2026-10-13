@@ -267,8 +267,8 @@ namespace NativeWorldTextProbe
                     Require(!path || longest==121,"The ordinary unloaded path still reaches its full two-second range without delaying the first actual input.");
                 }
                 NativeCombatObservationChecks.Save(host,new ObservationOptions(marker:true));NativeToolExecutionChecks.Sample(context,input,new Vector2(870,667),false);Call(combat,"Sample");Call(host,"SampleMouse");Call(context,"UpdateRuntime");int steps=NativeCombatUsageChecks.ObservedNpcSteps;
-                for(int i=0;i<20;i++){Call(context,"UpdateRuntime");Call(context,"UpdateShell");}Require(cache.Required==0 && NativeCombatUsageChecks.ObservedNpcSteps==steps && (bool)Get(Get(host,"Selection"),"HasTarget"),"Aim OFF marker-only selection performs no future work or residual attack demand");
-                Console.WriteLine("PASS real Enhanced short input prefix with Path OFF/ON, optional full-range display progress, marker-only OFF zero future steps");
+                for(int i=0;i<20;i++){Call(context,"UpdateRuntime");Call(context,"UpdateShell");}Require(cache.Required==0 && NativeCombatUsageChecks.ObservedNpcSteps==steps && !(bool)Get(Get(host,"Selection"),"HasTarget") && !(bool)Get(host,"Marker") && ((ObservationOptions)Get(host,"Options")).Marker,"saved Marker with Aim/Path OFF retires selection and keeps zero future work or residual attack demand");
+                Console.WriteLine("PASS real Enhanced short input prefix with Path OFF/ON, optional full-range display progress, saved Marker OFF zero future steps");
             }
             finally{watchCache=null;audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());}
             }

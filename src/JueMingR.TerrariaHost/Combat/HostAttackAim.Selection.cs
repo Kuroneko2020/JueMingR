@@ -29,6 +29,9 @@ namespace JueMingR.TerrariaHost.Combat
         private Item selectionWeapon,candidateWeapon;
         private int candidateSlot,candidateType,candidatePrefix;
         private ObservationOptions candidateOptions;
+        // Borrowed only between this synchronous selection pass and preview
+        // publication. A repeated real entry clears it before checking facts.
+        private PreviewPlan candidatePresentationPlan;
         // This lease prevents optional display from flipping back to nearest
         // unknown between refreshes. BeforeNpc always evaluates real candidates;
         // no contact or input capability is inherited by this lease.
@@ -41,6 +44,8 @@ namespace JueMingR.TerrariaHost.Combat
         }
         internal void ResolveSelection(long sampleTick,bool beforeNpc)
         {
+            candidatePresentationPlan=null;
+            if(!CombatPredictionWork.TryContinue())return;
             BeginFlightPreparation(beforeNpc);
             var selection=observation.Selection;var phase=beforeNpc?HostAttackPhase.BeforeNpc:HostAttackPhase.CompletedWorld;
             if(!observation.Options.ClearLine || !observation.PredictionAvailable || !PreviewDemand || selection.CandidateCount==0 || HostPlacementAttack.Handles(combat.Player.HeldItem))
@@ -193,6 +198,7 @@ namespace JueMingR.TerrariaHost.Combat
             }
             if(!beforeNpc && best>=0)
             {
+                candidatePresentationPlan=candidatePlans[selection.Target.Slot*2];
                 presentationSelection=selection.Target;presentationNearest=nearest;presentationSelectionTick=sampleTick;selectionWeapon=item;presentationOptions=observation.Options;presentationReachable=best>=0;
             }
         }
@@ -244,6 +250,7 @@ namespace JueMingR.TerrariaHost.Combat
             Array.Clear(candidateIdentities,0,candidateIdentities.Length);Array.Clear(candidateDepths,0,candidateDepths.Length);Array.Clear(candidateUnknown,0,candidateUnknown.Length);Array.Clear(candidateAttempt,0,candidateAttempt.Length);Array.Clear(candidateMembership,0,candidateMembership.Length);
             Array.Clear(candidateFacts,0,candidateFacts.Length);Array.Clear(candidateChanges,0,candidateChanges.Length);Array.Clear(candidateSignificant,0,candidateSignificant.Length);candidateChangeTicket=0;
             candidateActionPass=candidateWorldPass=0;candidateWarmTick=-1;candidateWeapon=null;candidateOptions=null;presentationReachable=false;presentationOptions=null;actionHint=default(NpcIdentity);actionHintRequired=0;
+            candidatePresentationPlan=null;
             for(int i=0;i<candidatePlans.Length;i++)candidatePlans[i]?.Clear();
         }
         private void ClearCandidatePlans()

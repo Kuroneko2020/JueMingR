@@ -239,8 +239,7 @@ namespace NativeWorldTextProbe
             Require((red.Length>0)==visible && ObservedNpcSteps==steps,"natural actual World.Draw red presence without real future Step work: "+name);
             if(visible)
             {
-                var b=actual.Timeline[actual.ReceiveTick].Bounds;var center=Vector2.Transform(new Vector2(b.CenterX,b.CenterY)-Main.screenPosition,zoom);
-                Require(red.Length>=16 && red.Length<=100 && red.All(p=>Math.Abs(p.X-center.X)<=6 && Math.Abs(p.Y-center.Y)<=6) && !Red(pixels[(int)center.Y*960+(int)center.X]),"actual hollow red pixels surround the same receive-time NPC path position: "+name);
+                NativeCombatImpactVisualChecks.AssertReceiveRectanglePixels(actual,pixels,zoom,name);
             }
             if(save && output!=null)graphics.Image(Path.Combine(output,name+".png"),()=>Call(world,"Draw"),zoom);
             Require(ObservedNpcSteps==steps,"exported actual World.Draw also performs no real future Step work: "+name);

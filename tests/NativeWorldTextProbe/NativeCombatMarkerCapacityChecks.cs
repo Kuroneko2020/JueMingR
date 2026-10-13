@@ -17,7 +17,7 @@ namespace NativeWorldTextProbe
             var host=Get(context,"CombatObservation");var world=Get(host,"World");var marker=Get(world,"Marker");var geometry=Get(host,"Geometry");
             foreach(bool path in new[]{false,true})
             {
-                NativeCombatObservationChecks.Save(host,new ObservationOptions(collision:true,path:path,marker:true));NativeCombatObservationChecks.Fresh(context,host);
+                NativeCombatObservationChecks.Save(host,new ObservationOptions(true,path,false,false,false,25,true,true));NativeCombatObservationChecks.Fresh(context,host);
                 Call(geometry,"Clear");var attacks=(Array)Get(geometry,"Attacks");var sampleType=attacks.GetType().GetElementType();
                 for(int slot=0;slot<40;slot++)
                 {
@@ -29,7 +29,7 @@ namespace NativeWorldTextProbe
                 Call(world,"Prepare");NativeCombatPresentationChecks.Project(world);int collision=(int)Get(world,"eventEnd"),total=(int)Get(world,"StrokeCount");
                 Require((bool)Get(marker,"Visible") && collision==(path?8192:16384) && total<=16384 && (!path || total>collision),"Full collision presentation cannot consume selected path reservation or constant marker.");
                 var visible=graphics.Pixels(()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);
-                NativeCombatObservationChecks.Save(host,new ObservationOptions(collision:true,path:path,marker:false));var withoutMarker=graphics.Pixels(()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);NativeCombatObservationChecks.Save(host,new ObservationOptions(collision:true,path:path,marker:true));Call(world,"Prepare");NativeCombatPresentationChecks.Project(world);
+                NativeCombatObservationChecks.Save(host,new ObservationOptions(true,path,false,false,false,25,false,true));var withoutMarker=graphics.Pixels(()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);NativeCombatObservationChecks.Save(host,new ObservationOptions(true,path,false,false,false,25,true,true));Call(world,"Prepare");NativeCombatPresentationChecks.Project(world);
                 var pieces=(Array)Get(marker,"Pieces");var center=Vector2.Zero;foreach(var piece in pieces)center+=(Vector2)Get(piece,"Position");center/=pieces.Length;
                 int changed=0;for(int y=Math.Max(0,(int)center.Y-60);y<Math.Min(640,(int)center.Y+60);y++)for(int x=Math.Max(0,(int)center.X-60);x<Math.Min(960,(int)center.X+60);x++)if(visible[y*960+x]!=withoutMarker[y*960+x])changed++;
                 Require(changed>20,"Actual marker pixels remain visible when the collision stroke pool is saturated.");

@@ -22,15 +22,19 @@ namespace NativeWorldTextProbe
             const BindingFlags flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance|BindingFlags.Static;
             var host=Get(context,"CombatObservation");var selection=Get(host,"Selection");var source=Get(host,"Prediction");var cache=(NpcPredictionCache)Get(source,"Cache");var world=Get(host,"World");var marker=Get(world,"Marker");
             foreach(var n in Main.npc)n.active=false;var body=Main.npc[2];body.SetDefaults(2);body.whoAmI=2;body.active=true;body.target=Main.myPlayer;body.position=new Vector2(720,450);Main.LocalPlayer.position=new Vector2(640,500);Main.dayTime=false;
-            var select=selection.GetType().GetMethod("Update",flags);var prepare=source.GetType().GetMethod("Prepare",flags);var harmony=new Harmony("JueMingR.Probe.MarkerDemand");
+            var select=selection.GetType().GetMethod("Update",flags);var prepare=source.GetType().GetMethod("PrepareSample",flags);var harmony=new Harmony("JueMingR.Probe.MarkerDemand");
             harmony.Patch(select,new HarmonyMethod(typeof(NativeCombatMarkerDemandChecks).GetMethod(nameof(Selection),flags)));harmony.Patch(prepare,new HarmonyMethod(typeof(NativeCombatMarkerDemandChecks).GetMethod(nameof(Forecast),flags)));
             try
             {
-                foreach(bool path in new[]{false,true})foreach(bool mark in new[]{false,true})
+                foreach(bool aim in new[]{false,true})foreach(bool path in new[]{false,true})foreach(bool mark in new[]{false,true})
                 {
-                    NativeCombatObservationChecks.Save(host,new ObservationOptions(path:path,marker:mark));selections=forecasts=0;NativeCombatObservationChecks.Fresh(context,host);Call(world,"Prepare");NativeCombatPresentationChecks.Project(world);
-                    Require(selections==(path || mark?1:0) && forecasts==(path?1:0),"Four demand combinations share one selection and only path predicts: "+path+"/"+mark);
-                    Require(cache.Required==(path?120:0) && (bool)Get(marker,"Visible")==mark && GetOptional(source,"Native")==null,"Demand and actual marker command visibility match switches.");
+                    NativeCombatObservationChecks.Save(host,new ObservationOptions(false,path,false,false,false,25,mark,aim));selections=forecasts=0;NativeCombatObservationChecks.Fresh(context,host);Call(world,"Prepare");NativeCombatPresentationChecks.Project(world);
+                    Console.WriteLine("MARKER DEMAND aim="+aim+" path="+path+" savedMarker="+mark+" selections="+selections+" sourcePreparations="+forecasts+" pathCount="+(cache.Read(0)?.Count??0));
+                    // A due Path cycle can prepare a prefix and extend its
+                    // same-sample tail; a retained valid cycle can consume zero.
+                    // Saved Marker changes cannot independently admit a cycle.
+                    Require(selections==(path || aim?1:0) && (path?forecasts<=2:forecasts==0),"Eight parent/child combinations share one selection; only Path owns bounded idle prefix/tail preparation: "+aim+"/"+path+"/"+mark);
+                    Require(cache.Required==(path?120:0) && (bool)Get(marker,"Visible")== (mark && (path || aim)) && ((ObservationOptions)Get(host,"Options")).Marker==mark && GetOptional(source,"Native")==null,"Saved preference and effective marker demand match parent switches.");
                 }
                 body.SetDefaults(401);body.whoAmI=2;body.active=true;body.dontTakeDamage=body.immortal=false;body.position=new Vector2(720,450);body.ai[0]=0;
                 NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true,marker:true));NativeCombatObservationChecks.Fresh(context,host);Call(world,"Prepare");NativeCombatPresentationChecks.Project(world);Require(((NpcIdentity)Get(selection,"Target")).Type==401 && cache.Read(0)==null && (bool)Get(marker,"Visible"),"Legal selected unsupported relation still has current visible marker without a path.");
@@ -47,7 +51,7 @@ namespace NativeWorldTextProbe
                 NativeCombatObservationChecks.Save(host,new ObservationOptions());Call(world,"Prepare");NativeCombatPresentationChecks.Project(world);Require(!(bool)Get(marker,"Visible") && cache.Required==0,"Final consumer removal clears part display and forecast demand.");
             }
             finally{harmony.Unpatch(select,HarmonyPatchType.Prefix,harmony.Id);harmony.Unpatch(prepare,HarmonyPatchType.Prefix,harmony.Id);}
-            Console.WriteLine("PASS MARKER DEMAND four switches, one real selection, unsupported selected target, actual segment, death/native slot replacement and final OFF.");
+            Console.WriteLine("PASS MARKER DEMAND eight parent/saved-child combinations, one real selection, unsupported selected target, actual segment, death/native slot replacement and final OFF.");
         }
     }
 }
