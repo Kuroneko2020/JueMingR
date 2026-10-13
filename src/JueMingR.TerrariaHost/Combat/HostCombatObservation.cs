@@ -202,6 +202,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(!Selection.HasTarget){if(Prediction.Cache.Required>0)Prediction.Clear();return;}
             if(!beforeNpc)Attack?.RestorePresentationSelection(sampleTick);
             bool displayValidated=false,previewValidated=false;
+            NpcTrajectory coreDisplayPrefix=null;
             // Invalidating a lease is immediate; granting production is a
             // separate cadence. Attempts advance this clock even for null or
             // paused results, and a duplicate outer callback cannot re-admit.
@@ -220,8 +221,14 @@ namespace JueMingR.TerrariaHost.Combat
             if(beforeNpc && Attack!=null)urgent=Math.Max(urgent,Attack.ActionRequired);
             if(beforeNpc || urgent>0)
             {
+                var priorPublication=beforeNpc?null:Prediction.Cache.Read(0);
                 PrepareSelectedPrediction(sampleTick,beforeNpc,tick,Math.Max(1,urgent));
                 if(beforeNpc)Attack?.PrepareAction();else Attack?.Prepare();
+                var publication=beforeNpc?null:Prediction.Cache.Read(0);
+                // Harvest only a new immutable CompletedWorld publication
+                // produced by this core pass. An earlier phase or a budget-
+                // retained object cannot be relabelled with current life/input.
+                if(publication!=null && !ReferenceEquals(publication,priorPublication) && publication.SampleTick==sampleTick)coreDisplayPrefix=publication;
             }
             if(!beforeNpc && OptionalPreparation)
             {
@@ -289,7 +296,17 @@ namespace JueMingR.TerrariaHost.Combat
                 {
                     try
                     {
-                        if(!displayValidated)ValidateDisplay(sampleTick);if(!previewValidated)Attack?.ValidatePreviewPresentation();
+                        if(!displayValidated)
+                        {
+                            bool displayCurrent=ValidateDisplay(sampleTick);
+                            // Preserve an already valid long display. When a
+                            // real hit/control change retired it, consume the
+                            // fresh core prefix without another Source sample
+                            // or waiting for the optional tail's due cycle.
+                            if(!displayCurrent && coreDisplayPrefix!=null && ReferenceEquals(coreDisplayPrefix,Prediction.Cache.Read(0)))
+                            {CaptureDisplay(sampleTick);ValidateDisplay(sampleTick);}
+                        }
+                        if(!previewValidated)Attack?.ValidatePreviewPresentation();
                         if(Attack!=null && Attack.PreviewRefreshPending && DisplayPath!=null && (previewOptionalTick<0 || sampleTick-previewOptionalTick>=2) && CombatPredictionWork.TryContinue())
                         {
                             bool previewPrepared=false;

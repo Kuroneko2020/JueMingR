@@ -88,7 +88,7 @@ namespace NativeWorldTextProbe
                 Step(context,new Vector2(650,550),false,true);var result=(AttackContact)GetOptional(attack,"ExpectedPreview");
                 Require(result!=null && result.ReceiveTick>=0 && result.ReceiveTick<result.Timeline.Count,"idle held weapon creates a real read-only preview with Aim OFF");
                 var impact=Get(Get(host,"World"),"Impact");Call(impact,"Capture");var zoom=Main.GameViewMatrix.ZoomMatrix;Call(impact,"Project",zoom,Matrix.Invert(zoom));
-                var point=result.Timeline[result.ReceiveTick].Bounds;var expected=Vector2.Transform(new Vector2(point.CenterX,point.CenterY)-Main.screenPosition,zoom);
+                var point=result.ReceiveBounds;var expected=Vector2.Transform(new Vector2(point.CenterX,point.CenterY)-Main.screenPosition,zoom);
                 Require((bool)Get(impact,"Visible") && Vector2.DistanceSquared((Vector2)Get(impact,"Position"),expected)<.001f,"red marks the receive-time NPC path centre");
                 Require(GetOptional(attack,"ExpectedImpact")==null && !p.controlUseItem && !p.channel && !Main.projectile.Any(q=>q.active),"preview has no native input capability or projectile birth");
             }

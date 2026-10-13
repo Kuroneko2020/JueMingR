@@ -54,9 +54,9 @@ namespace NativeWorldTextProbe
                 NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,false,true));
                 Prepare(host,attack,body,targetSpeed);
                 var contact=(AttackContact)GetOptional(attack,"ExpectedImpact");Require(contact!=null,"prepared real weapon contact: "+weaponType+"/"+targetSpeed);
-                var impact=Get(Get(host,"World"),"Impact");Call(impact,"Capture");var zoom=Main.GameViewMatrix.ZoomMatrix;Call(impact,"Project",zoom,Matrix.Invert(zoom));
+                PrepareDisplay(host,attack);var impact=Get(Get(host,"World"),"Impact");Call(impact,"Capture");var zoom=Main.GameViewMatrix.ZoomMatrix;Call(impact,"Project",zoom,Matrix.Invert(zoom));
                 Require((bool)Get(impact,"Visible"),"only legal matching prepared contact displays red");
-                var projected=(Vector2)Get(impact,"Position");var preview=(AttackContact)Get(attack,"ExpectedPreview");var previewBox=preview.Timeline[preview.ReceiveTick].Bounds;
+                var projected=(Vector2)Get(impact,"Position");var previewBox=contact.ReceiveBounds;
                 var expected=Vector2.Transform(new Vector2(previewBox.CenterX,previewBox.CenterY)-Main.screenPosition,zoom);
                 Require(Vector2.DistanceSquared(projected,expected)<.001f,"red projects the receive-time NPC path centre rather than the collision edge or elevated AimInput");
                 int oldX=Main.mouseX,oldY=Main.mouseY,stack=player.inventory[54].stack;var rng=Main.rand;
@@ -65,13 +65,13 @@ namespace NativeWorldTextProbe
                 var rngFields=typeof(Terraria.Utilities.UnifiedRandom).GetFields(Flags).Where(f=>!f.IsStatic).ToArray();
                 var before=rngFields.Select(f=>Clone(f.GetValue(rng))).ToArray();int cycling=player.ammoCyclingOffset;
                 Call(attack,"Prepare");
-                preview=(AttackContact)Get(Get(attack,"preview"),"Contact");
+                var preview=(AttackContact)Get(Get(attack,"preview"),"Contact");
                 int immuneAtBirth=body.immune[0];
                 Require(stack==player.inventory[54].stack && cycling==player.ammoCyclingOffset && ReferenceEquals(rng,Main.rand) && rngFields.Select((f,i)=>Equal(before[i],f.GetValue(rng))).All(b=>b),"prepare does not consume inventory/RNG/cycling");
                 typeof(Player).GetMethod("ItemCheck_Shoot",Flags).Invoke(player,new object[]{0,player.HeldItem,50,false});
                 var born=Main.projectile.Where(p=>p.active && p.owner==0).ToArray();Require(born.Length==1,"aim creates exactly the vanilla single shot");
                 Require(Main.mouseX==oldX && Main.mouseY==oldY,"real Shoot postfix/finalizer restores physical cursor");
-                Call(impact,"Project",zoom,Matrix.Invert(zoom));Require(ReferenceEquals(preview,GetOptional(Get(attack,"preview"),"Contact")) && GetOptional(attack,"ExpectedImpact")==null,"native consumption retires execution without clearing its independent observation; the new before-NPC timeline requires normal completed-world publication before display");
+                Call(impact,"Project",zoom,Matrix.Invert(zoom));Require(ReferenceEquals(preview,GetOptional(Get(attack,"preview"),"Contact")) && GetOptional(attack,"ExpectedImpact")==null,"native consumption retires execution without mutating the optional plan, which may be absent after actual Contact reuse; a nonempty independent preview is covered separately");
                 var shot=born[0];Require(shot.type==(weaponType==ItemID.WoodenBow?1:14),"native selected projectile type is preserved");
                 var model=weaponType==ItemID.WoodenBow?new AttackMotion(player.HeldItem.shootSpeed+player.inventory[54].shootSpeed,.1f,15,shot.extraUpdates+1,shot.width,shot.height,shot.timeLeft):new AttackMotion(player.HeldItem.shootSpeed+player.inventory[54].shootSpeed,0,0,shot.extraUpdates+1,shot.width,shot.height,shot.timeLeft);
                 var native=shot.Center;float x=native.X,y=native.Y,vx=shot.velocity.X,vy=shot.velocity.Y;

@@ -4,6 +4,7 @@ using System.Collections;
 using System.Linq;
 using HarmonyLib;
 using JueMingR.Features.Combat;
+using JueMingR.Platform.Combat;
 using Microsoft.Xna.Framework;
 using Terraria;
 using static NativeWorldTextProbe.NativeInformationChecks;
@@ -14,9 +15,11 @@ namespace NativeWorldTextProbe
     {
         private static int optionalPlans;
         private static int optionalSourceClears;
+        private static int optionalCorePrefixes;
         private static bool optionalForceBudget;
         private static void CountOptionalPlan(){optionalPlans++;}
         private static void CountOptionalSourceClear(){optionalSourceClears++;}
+        private static void CountOptionalCorePrefix(){optionalCorePrefixes++;}
         private static void OptionalEarlyBudget(){if(optionalForceBudget){optionalForceBudget=false;throw new CombatPredictionBudgetExceededException();}}
         private static void OptionalConsumption(object context,object combat,object host,object attack,object input)
         {
@@ -60,11 +63,48 @@ namespace NativeWorldTextProbe
                 for(int i=0;i<12;i++)NativeCombatSelectionPreviewChecks.Step(context,new Vector2(650,550),false,true);
                 Require((bool)Get(host,"Collision") && !(bool)Get(Get(host,"Selection"),"HasTarget") && optionalSourceClears==0,"independent collision observation remains active without repeatedly clearing an inactive prediction producer");
                 Console.WriteLine("OPTIONAL SHUTDOWN collisionUpdates=12 actualSourceClear="+optionalSourceClears+" savedMarker=true");
+                OptionalCoreDisplay(context,combat,host,input);
                 OptionalActualContact(context,combat,host,attack,input);
                 OptionalAccounting();
                 Console.WriteLine("PASS optional consumption, repeated outer callback, same-update dependency and final-consumer marker shutdown");
             }
             finally{optionalForceBudget=false;audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());}
+        }
+        private static void OptionalCoreDisplay(object context,object combat,object host,object input)
+        {
+            NativeCombatObservationChecks.Save(host,new ObservationOptions());
+            var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,95,0,0);p.position=new Vector2(700,646);p.releaseUseItem=true;p.inventory[54].SetDefaults(97);p.inventory[54].stack=999;
+            var n=Main.npc[2];n.SetDefaults(3);n.whoAmI=2;n.active=true;n.Center=new Vector2(910,667);n.velocity=n.netOffset=Vector2.Zero;n.aiStyle=-1;n.noGravity=true;n.life=n.lifeMax=100000;
+            NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,true,true));
+            for(int i=0;i<8;i++)CoreDisplayStep(context,combat,host,input,n);
+            Console.WriteLine("CORE WARM target="+Get(Get(host,"Selection"),"HasTarget")+" path="+Get(host,"Path")+" failed="+Get(host,"TargetPredictionFailed")+" cache="+(((NpcPredictionCache)Get(Get(host,"Prediction"),"Cache")).Read(0)?.Count??0)+" rawDisplay="+(((NpcTrajectory)GetOptional(host,"displayPath"))?.Count??0)+" lease="+Get(host,"displayLeaseTick")+" tick="+Main.GameUpdateCount+" optionalTick="+Get(host,"optionalTick")+" corePermission="+Get(Get(combat,"Attack"),"Permission")+" workMs="+Get(Get(host,"PredictionWork"),"UsedMilliseconds"));
+            Require(GetOptional(host,"DisplayPath")!=null,"core harvest starts with a genuinely prepared display publication");
+            var retained=(NpcTrajectory)GetOptional(host,"DisplayPath");n.position.X+=.5f;CoreDisplayStep(context,combat,host,input,n);
+            var cache=(NpcPredictionCache)Get(Get(host,"Prediction"),"Cache");
+            Require(ReferenceEquals(retained,GetOptional(host,"DisplayPath")) && cache.Read(0)!=null && retained.Count>cache.Read(0).Count,"a valid long display is preserved while a distinct current core pass publishes its shorter prefix");
+            var audit=new Harmony("JueMingR.Tests.CoreDisplayHarvest");var source=Get(host,"Prediction");var method=source.GetType().GetMethod("PreparePrefix",Flags);
+            audit.Patch(method,prefix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks).GetMethod(nameof(CountOptionalCorePrefix),Flags)));
+            try
+            {
+                long due=(long)Get(host,"optionalTick");
+                Require((long)Main.GameUpdateCount+1-due<5,"life-change control enters before another optional tail is due");
+                n.life--;optionalCorePrefixes=0;CoreDisplayStep(context,combat,host,input,n);
+                var display=(NpcTrajectory)GetOptional(host,"DisplayPath");
+                Require(optionalCorePrefixes==1 && display!=null && display.SampleTick==(long)Main.GameUpdateCount && (long)Get(host,"optionalTick")==due,"invalid old life display consumes this pass's fresh CompletedWorld core prefix without a second Source preparation or tail admission");
+                Console.WriteLine("OPTIONAL CORE HARVEST sourcePreparePrefix="+optionalCorePrefixes+" oldTailTick="+due+" captureTick="+display.CaptureTick+" sampleTick="+display.SampleTick+" count="+display.Count);
+                optionalCorePrefixes=0;
+                for(int i=0;i<4;i++){Call(input,"BeginUpdate");Call(context,"UpdateRuntime");}
+                Require(optionalCorePrefixes==0,"empty outer epochs do not re-sample Source to refresh a harvested display");
+                int capturedLife=(int)Get(host,"displayLife");n.life--;optionalForceBudget=true;Call(context,"UpdateRuntime");
+                Require(!optionalForceBudget && GetOptional(host,"DisplayPath")==null && (int)Get(host,"displayLife")==capturedLife,"same-GUC life change plus early budget cannot retag the retained publication with current life");
+                NativeToolExecutionChecks.Sample(context,input,n.Center,true);Call(combat,"Sample");Call(host,"SampleMouse");NativeQuickItemChecks.BeginWorldStep();var beforeDisplay=GetOptional(host,"displayPath");Call(Get(combat,"Attack"),"PrepareNatural");
+                Require(cache.Read(1)!=null && cache.Read(1).SampleTick==(long)Main.GameUpdateCount-1 && ReferenceEquals(beforeDisplay,GetOptional(host,"displayPath")) && (int)Get(host,"displayLife")==capturedLife,"a real BeforeNpc prefix cannot replace or relabel the CompletedWorld display");
+            }
+            finally{audit.UnpatchAll(audit.Id);}
+        }
+        private static void CoreDisplayStep(object context,object combat,object host,object input,NPC npc)
+        {
+            NativeToolExecutionChecks.Sample(context,input,npc.Center,true);Call(combat,"Sample");Call(host,"SampleMouse");NativeQuickItemChecks.BeginWorldStep();Call(Get(context,"nativeNpcs"),"BeginTick");Call(context,"UpdateRuntime");
         }
         private static void OptionalActualContact(object context,object combat,object host,object attack,object input)
         {

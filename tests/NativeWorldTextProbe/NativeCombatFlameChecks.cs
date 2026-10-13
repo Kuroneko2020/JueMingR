@@ -98,10 +98,11 @@ namespace NativeWorldTextProbe
                 if(weapon==506 && direction==1 && distance==20 && !wall)Workload(combat.GetType().Assembly,p,preview);
                 if(preview!=null)
                 {
-                    var impact=Get(Get(host,"World"),"Impact");Call(impact,"Capture");var zoom=Main.GameViewMatrix.ZoomMatrix;Call(impact,"Project",zoom,Matrix.Invert(zoom));var b=preview.Timeline[preview.ReceiveTick].Bounds;
+                    var impact=Get(Get(host,"World"),"Impact");Call(impact,"Capture");var zoom=Main.GameViewMatrix.ZoomMatrix;Call(impact,"Project",zoom,Matrix.Invert(zoom));var b=preview.ReceiveBounds;
                     var center=new Vector2(b.CenterX,b.CenterY);var projected=Vector2.Transform(center-Main.screenPosition,zoom);
-                    bool inView=projected.X>=-4 && projected.Y>=-4 && projected.X<=Main.screenWidth+4 && projected.Y<=Main.screenHeight+4;
-                    Require((bool)Get(impact,"Visible")==inView && Vector2.DistanceSquared((Vector2)Get(impact,"Position"),projected)<.001f,"flame receive-time path centre is projected exactly and hidden when outside the viewport");
+                    var cornerA=Vector2.Transform(new Vector2(b.X,b.Y)-Main.screenPosition,zoom);var cornerB=Vector2.Transform(new Vector2(b.X+b.Width,b.Y+b.Height)-Main.screenPosition,zoom);
+                    bool inView=Math.Max(cornerA.X,cornerB.X)>=-4 && Math.Max(cornerA.Y,cornerB.Y)>=-4 && Math.Min(cornerA.X,cornerB.X)<=Main.screenWidth+4 && Math.Min(cornerA.Y,cornerB.Y)<=Main.screenHeight+4;
+                    Require((bool)Get(impact,"Visible")==inView && Vector2.DistanceSquared((Vector2)Get(impact,"Position"),projected)<.001f,"flame receive-time rectangle centre is projected exactly and intersecting edges remain visible");
                     // The original left/far case projected to (-185,255). Its
                     // invisible marker was correct. Pan only the camera, then
                     // project the very same captured contact; do not re-solve.

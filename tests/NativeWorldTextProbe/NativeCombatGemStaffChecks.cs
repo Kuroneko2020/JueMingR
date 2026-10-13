@@ -183,7 +183,7 @@ namespace NativeWorldTextProbe
             NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,true,true,25,true,false));
             NativeCombatSelectionPreviewChecks.Step(context,target.Center,false,true);var contact=(AttackContact)GetOptional(attack,"ExpectedPreview");var plan=Get(attack,"preview");
             Require(contact!=null && GetOptional(plan,"Flight")!=null,"enabling Path after birth selects the earlier real gem flight with Aim OFF");
-            var impact=Get(Get(host,"World"),"Impact");Call(impact,"Capture");var zoom=Main.GameViewMatrix.ZoomMatrix;Call(impact,"Project",zoom,Matrix.Invert(zoom));var receive=contact.Timeline[contact.ReceiveTick].Bounds;
+            var impact=Get(Get(host,"World"),"Impact");Call(impact,"Capture");var zoom=Main.GameViewMatrix.ZoomMatrix;Call(impact,"Project",zoom,Matrix.Invert(zoom));var receive=contact.ReceiveBounds;
             Require((bool)Get(impact,"Visible") && Vector2.DistanceSquared((Vector2)Get(impact,"Position"),Vector2.Transform(new Vector2(receive.CenterX,receive.CenterY)-Main.screenPosition,zoom))<.001f,"born gem marker maps the same receive-time NPC path centre");
             int scans=Counter(model,"FlightPoolScans"),steps=Counter(model,"MotorSteps"),captures=Counter(model,"FlightCaptures");
             for(int check=0;check<20;check++){Call(impact,"Capture");Call(impact,"Project",zoom,Matrix.Invert(zoom));Require((bool)Call(attack,"PreviewCurrent",contact),"born gem same-update presentation remains valid");}
@@ -207,7 +207,7 @@ namespace NativeWorldTextProbe
                     NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,true,true,25,true,false));AttackContact preview=null;
                     for(int frame=0;frame<3;frame++){NativeCombatSelectionPreviewChecks.Step(context,target.Center,false,true);preview=(AttackContact)GetOptional(attack,"ExpectedPreview");Require(!Main.projectile.Any(q=>q.active),"idle gem observation creates no projectile");}
                     Require(blocked || preview!=null,"full gem idle preview with Aim OFF "+weapon+"/"+robe+"/"+blocked);
-                    if(preview!=null){var impact=Get(Get(host,"World"),"Impact");Call(impact,"Capture");var zoom=Main.GameViewMatrix.ZoomMatrix;Call(impact,"Project",zoom,Matrix.Invert(zoom));var b=preview.Timeline[preview.ReceiveTick].Bounds;Require((bool)Get(impact,"Visible") && Vector2.DistanceSquared((Vector2)Get(impact,"Position"),Vector2.Transform(new Vector2(b.CenterX,b.CenterY)-Main.screenPosition,zoom))<.001f,"gem preview stays on the same receive-time NPC path");}
+                    if(preview!=null){var impact=Get(Get(host,"World"),"Impact");Call(impact,"Capture");var zoom=Main.GameViewMatrix.ZoomMatrix;Call(impact,"Project",zoom,Matrix.Invert(zoom));var b=preview.ReceiveBounds;Require((bool)Get(impact,"Visible") && Vector2.DistanceSquared((Vector2)Get(impact,"Position"),Vector2.Transform(new Vector2(b.CenterX,b.CenterY)-Main.screenPosition,zoom))<.001f,"gem preview stays on the same receive-time receiver rectangle");}
                     // Keep the same mouse-centered selection premise as the
                     // idle case while making the physical ray point away.
                     // The one target remains within the existing 25-tile
