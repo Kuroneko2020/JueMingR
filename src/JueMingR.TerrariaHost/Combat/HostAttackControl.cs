@@ -138,7 +138,11 @@ namespace JueMingR.TerrariaHost.Combat
             if(shot.type==1035 && !HostWhipAttack.Primary(shot))return;
             if(!HostGuidedAttack.Handles(shot.type) && shot.type!=444 && shot.type!=1035 && shot.type!=611 && !HostPulseAttack.Handles(shot.type) && !HostHarpoonAttack.Handles(shot.type) && !HostHeldAttack.Handles(shot.type) && !HostYoyoNavigation.Handles(shot))return;
             if(HostYoyoNavigation.Handles(shot) && shot.ai[0]<0)return;
-            shots[(int)shot.key]=new Controlled{Shot=shot,Key=(int)shot.key,Type=shot.type,Source=owner.Source,BirthOrdinal=++birthOrdinal,Born=Main.GameUpdateCount,BornNext=Main.ProjectileUpdateLoopIndex>=0 && shot.whoAmI<=Main.ProjectileUpdateLoopIndex,ManagedYoyo=HostYoyoNavigation.Handles(shot) && combat.Use.ManagedYoyoHeld(shot),YoyoPoint=openingPoint,YoyoEnhanced=openingUsable,Ammo=openingAmmo,Navigation=HostYoyoNavigation.Handles(shot)?new HostYoyoNavigation():null};
+            bool managedYoyo=HostYoyoNavigation.Handles(shot) && combat.Use.ManagedYoyoHeld(shot);
+            // Only the managed birth borrows the opening's ammo receipt. Other
+            // controllers keep their existing independently prepared members;
+            // a previous opening must not supply a later unrelated source.
+            shots[(int)shot.key]=new Controlled{Shot=shot,Key=(int)shot.key,Type=shot.type,Source=owner.Source,BirthOrdinal=++birthOrdinal,Born=Main.GameUpdateCount,BornNext=Main.ProjectileUpdateLoopIndex>=0 && shot.whoAmI<=Main.ProjectileUpdateLoopIndex,ManagedYoyo=managedYoyo,YoyoPoint=openingPoint,YoyoEnhanced=openingUsable,Ammo=managedYoyo?openingAmmo:null,Navigation=HostYoyoNavigation.Handles(shot)?new HostYoyoNavigation():null};
         }
         internal void Clear(){presentation=null;preparedTimeline=null;opening=null;openingNavigation=null;openingUsable=false;foreach(var entry in shots.Values)Retire(entry);}
         // An individual natural consumer can revoke only its own prepared
