@@ -127,6 +127,12 @@ namespace JueMingR.TerrariaHost.Combat
             // this hint there repeatedly enlarged NPC work with no supply gain.
             if(!futureLaunch && captured!=null && CombatSelection.Valid(target,observation.Session) && ContentSamples.ProjectilesByType.TryGetValue(captured.Projectile,out body) && body.aiStyle==19 && HostMeleeAttack.DerivedSpearChild(body.type)!=0)
                 return HostMeleeAttack.PreferredSpearRange(player,item,captured,Main.npc[target.Slot],futureLaunch?Math.Max(0,HostAttackWindow.PreviewDelay(player,item)):0);
+            if(!futureLaunch && captured!=null && CombatSelection.Valid(target,observation.Session))
+            {
+                if(HostBetsyFlameAttack.Handles(captured.Projectile))return HostBetsyFlameAttack.PreferredRange(player,captured,Main.npc[target.Slot]);
+                if(HostBottleAttack.Handles(captured.Projectile))return HostBottleAttack.PreferredRange(player,captured,Main.npc[target.Slot]);
+                if(HostYoyoNavigation.Weapon(item) && combat.Use.ManagedAttackIntent(player))return Math.Min(120,Math.Max(16,(int)Math.Ceiling(Vector2.Distance(player.MountedCenter,Main.npc[target.Slot].Center)/Math.Max(1,captured.Speed))+16));
+            }
             // Complex models have no general panel-speed arrival estimate.
             // Start a positive search, then extend the same sample only if its
             // real consumer remains unresolved; this is not a range cap.
@@ -280,7 +286,7 @@ namespace JueMingR.TerrariaHost.Combat
             preparedOrdinary=true;preparedOrdinaryPhase=phase;preparedMotion=NpcPredictionSource.ReadPlayer(player);preparedDirection=player.direction;preparedAnimation=player.itemAnimation;preparedAnimationMax=player.itemAnimationMax;preparedTime=player.itemTime;preparedReuse=player.reuseDelay;preparedImmune=Main.npc[timeline.Identity.Slot].immune[player.whoAmI];
             preparedAttackCooldown=player.attackCD;preparedMeleeCooldown=player.meleeNPCHitCooldown[timeline.Identity.Slot];preparedMeleeSpeed=player.meleeSpeed;preparedScale=player.GetAdjustedItemScale(item);
         }
-        private static bool Eligible(Item item){return HostPlacementAttack.Handles(item) || HostSwingAttack.Handles(item) || item!=null && !item.IsAir && item.useStyle>0 && item.useTime>0 && item.shoot>0 && (item.damage>0 || item.type==905) && item.pick==0 && (item.axe==0 || item.type==5519 && item.shoot==1052) && item.hammer==0 && (!item.summon || ProjectileID.Sets.IsAWhip[item.shoot]) && !item.sentry;}
+        private static bool Eligible(Item item){return item!=null && !item.sentry && (HostPlacementAttack.Handles(item) || HostSwingAttack.Handles(item) || !item.IsAir && item.useStyle>0 && item.useTime>0 && item.shoot>0 && (item.damage>0 || item.type==905) && item.pick==0 && (item.axe==0 || item.type==5519 && item.shoot==1052) && item.hammer==0 && (!item.summon || ProjectileID.Sets.IsAWhip[item.shoot]));}
         private AttackContact Solve(Player player,Item item,AttackAmmoSnapshot captured,NpcTrajectory timeline,Vector2 start,int age,bool beforeNpc)
         {return SolveOnTerrain(player,item,captured,timeline,start,age,beforeNpc,terrain,0,out environment,out obstacles);}
         private static AttackContact SolveOnTerrain(Player player,Item item,AttackAmmoSnapshot captured,NpcTrajectory timeline,Vector2 start,int age,bool beforeNpc,PredictionTerrain terrain,int delay,out HostProjectileEnvironment environment,out HostAttackObstacles obstacles,HostAttackPlayerFrame? preparedPlayer=null)

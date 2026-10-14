@@ -186,11 +186,17 @@ namespace JueMingR.TerrariaHost.Combat
         {
             if(ammo.Projectile!=711 || ammo.WeaponType!=3870 || ammo.Damage<=0 || delay<0 || age-delay<0 || age+1>=timeline.Count)return null;
             obstacles.CaptureShotFacing(player);
-            var scene=Capture(obstacles);var pool=obstacles.CaptureBirthSlots();var directions=new Vector2[41];int count=0;
-            for(int seed=0;seed<41;seed++)
+            var scene=Capture(obstacles);var pool=obstacles.CaptureBirthSlots();var body=Terraria.ID.ContentSamples.ProjectilesByType[711];
+            var ballistic=AttackBallisticCandidates.Generate(timeline,age,origin.X,origin.Y,ammo.Speed,body.extraUpdates+1,true,40*player.HeldItem.scale,Math.Max(body.width,body.height)*.5f);
+            var directions=new Vector2[ballistic.Length+33];int count=0;
+            for(int seed=0;seed<directions.Length;seed++)
             {
-                var b=timeline[Math.Min(timeline.Count-1,age+1+Math.Min(seed,8)*4)].ProjectileReceiveBounds;
-                Vector2 direction=seed<9?(new Vector2(b.CenterX,b.CenterY)-origin).SafeNormalize(Vector2.UnitX*player.direction):((seed-9)*MathHelper.TwoPi/32).ToRotationVector2();bool duplicate=false;for(int i=0;i<count;i++)if(directions[i]==direction){duplicate=true;break;}if(duplicate)continue;directions[count++]=direction;
+                var b=timeline[age+1].ProjectileReceiveBounds;
+                // Discrete inverse candidates precede the sparse emergency
+                // directions. A dry proposal never substitutes for the full
+                // three-member receive/trail/Kill replay below.
+                int fallback=seed-ballistic.Length;
+                Vector2 direction=seed<ballistic.Length?new Vector2(ballistic[seed].X,ballistic[seed].Y):fallback==0?(new Vector2(b.CenterX,b.CenterY)-origin).SafeNormalize(Vector2.UnitX*player.direction):((fallback-1)*MathHelper.TwoPi/32).ToRotationVector2();bool duplicate=false;for(int i=0;i<count;i++)if(Vector2.Dot(directions[i],direction)>.99999f){duplicate=true;break;}if(duplicate)continue;directions[count++]=direction;
                 var aim=origin+direction*10000;obstacles.BeginCandidate();var rows=Prepare(scene,null,obstacles,timeline.Identity.Slot);var slots=pool.Copy();bool valid=true;
                 for(int wait=1;wait<=delay;wait++){AttackContact ignored;if(!Outer(rows,slots,timeline,terrain,age-delay+wait,wait,true,aim,out ignored)){valid=false;break;}}if(!valid)continue;
                 var screen=aim-Main.screenPosition;if(player.gravDir==-1)screen.Y=Main.screenHeight-screen.Y;
@@ -207,6 +213,14 @@ namespace JueMingR.TerrariaHost.Combat
                 for(int step=1;step<=Math.Min(120,timeline.Count-age-1);step++){AttackContact contact;if(!Outer(rows,slots,timeline,terrain,age+step,delay+step,true,aim,out contact))break;if(contact!=null)return contact;}
             }
             return null;
+        }
+        internal static int PreferredRange(Player player,AttackAmmoSnapshot ammo,NPC target)
+        {
+            // Estimate the current low arc from the same dry discrete clock.
+            // Unknown terrain/target motion still uses progressive expansion;
+            // this is a scheduling hint, not a contact or reachability claim.
+            var delta=target.Center-player.RotatedRelativePoint(player.MountedCenter);int updates=Terraria.ID.ContentSamples.ProjectilesByType[711].extraUpdates+1;
+            return AttackBallisticCandidates.PreferredWindow(delta.X,delta.Y,ammo.Speed,updates,true,40*player.HeldItem.scale,(float)Math.Sqrt(target.width*target.width+target.height*target.height)*.5f+10);
         }
         // Actual-born finite oracle; no control rights for autonomous flames.
         internal static AttackContact KnownFamily(Player player,Projectile[] source,NpcTrajectory timeline,HostAttackClock clock,PredictionTerrain terrain,HostAttackObstacles obstacles)

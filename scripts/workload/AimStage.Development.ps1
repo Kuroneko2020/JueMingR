@@ -1,4 +1,4 @@
-﻿# Explicitly authorized #114 stage candidates. This does not write the
+# Explicitly authorized #114 stage candidates. This does not write the
 # formal workload cache, grant release qualification, or authorize installation.
 function Read-AimStageArtifact {
     param([string] $Root,$Entry)
@@ -29,10 +29,11 @@ function Read-AimStageDevelopment {
     $priority=$null -ne $record -and $record.schema -ceq 'aim-priority-recovery-development-20261013-1'
     $continuation=$null -ne $record -and $record.schema -ceq 'aim-continuation-development-20261013-1'
     $dedup=$null -ne $record -and $record.schema -ceq 'aim-dedup-repair-development-20261014-1'
+    $weaponCompat=$null -ne $record -and $record.schema -ceq 'aim-weapon-compat-development-20261015-1'
     $targetPerf=$null -ne $record -and $record.schema -ceq 'aim-target-perf-development-20261014-1'
-    $base=if($targetPerf){'72970569c11dd09e3e210894c25cc06e4cfc1a7f'}elseif($dedup){'c38b1f941d64b73971a3380aff5d7c75fff24cb7'}elseif($continuation){'569668aa9f4eb75d525709b20652eefd1d8e0e23'}elseif($priority){'01b03386cc288fe8f8a773cecd3a0de564182472'}elseif($successor){'3504c963949d87d6a88ada5a3f5cd9c189f1f0c2'}else{'472dea0955b6c9274d8c55fc48dbc7fc44ba108e'}
-    $schema=if($targetPerf){'aim-target-perf-development-20261014-1'}elseif($dedup){'aim-dedup-repair-development-20261014-1'}elseif($continuation){'aim-continuation-development-20261013-1'}elseif($priority){'aim-priority-recovery-development-20261013-1'}elseif($successor){'aim-root-fix-development-20261012-1'}else{'aim-stage-development-20261011-1'}
-    $authorization=if($targetPerf){'owner-issue114-target-perf-20261014'}elseif($dedup){'owner-issue114-dedup-repair-20261014'}elseif($continuation){'owner-issue114-continuation-20261013'}elseif($priority){'owner-issue114-priority-recovery-20261013'}elseif($successor){'owner-issue114-root-fix-20261012'}else{'owner-issue114-stage-package-20261011'}
+    $base=if($weaponCompat){'0f93019526aa334877b4cfb4b5d38c3d1c0c55c4'}elseif($targetPerf){'72970569c11dd09e3e210894c25cc06e4cfc1a7f'}elseif($dedup){'c38b1f941d64b73971a3380aff5d7c75fff24cb7'}elseif($continuation){'569668aa9f4eb75d525709b20652eefd1d8e0e23'}elseif($priority){'01b03386cc288fe8f8a773cecd3a0de564182472'}elseif($successor){'3504c963949d87d6a88ada5a3f5cd9c189f1f0c2'}else{'472dea0955b6c9274d8c55fc48dbc7fc44ba108e'}
+    $schema=if($weaponCompat){'aim-weapon-compat-development-20261015-1'}elseif($targetPerf){'aim-target-perf-development-20261014-1'}elseif($dedup){'aim-dedup-repair-development-20261014-1'}elseif($continuation){'aim-continuation-development-20261013-1'}elseif($priority){'aim-priority-recovery-development-20261013-1'}elseif($successor){'aim-root-fix-development-20261012-1'}else{'aim-stage-development-20261011-1'}
+    $authorization=if($weaponCompat){'owner-issue114-weapon-compat-20261015'}elseif($targetPerf){'owner-issue114-target-perf-20261014'}elseif($dedup){'owner-issue114-dedup-repair-20261014'}elseif($continuation){'owner-issue114-continuation-20261013'}elseif($priority){'owner-issue114-priority-recovery-20261013'}elseif($successor){'owner-issue114-root-fix-20261012'}else{'owner-issue114-stage-package-20261011'}
     if($null -eq $record -or $record.schema -cne $schema -or
         $record.authorization -cne $authorization -or $record.productBase -cne $base -or
         $record.candidateCommit -cne $Identity.commit -or $record.sourceFingerprint -cne $Identity.fingerprint -or
@@ -198,6 +199,23 @@ function Read-AimStageDevelopment {
             'review-materials/aim-target-perf-repair-20261014/C-pressure-native-events.csv',
             'review-materials/aim-target-perf-repair-20261014/C-excluded-run-status.csv')
     }
+    if($weaponCompat){
+        # Fixed owner-authorized weapon compatibility delta; this record does
+        # not grant future installs or widen the ordinary qualification route.
+        $allowed=@('src/JueMingR.Features/Combat/AttackBallisticCandidates.cs',
+            'src/JueMingR.TerrariaHost/Combat/HostPlacementAttack.cs','src/JueMingR.TerrariaHost/Combat/HostAttackAim.cs',
+            'src/JueMingR.TerrariaHost/Combat/CombatUse.cs','src/JueMingR.TerrariaHost/Combat/HostAttackControl.cs',
+            'src/JueMingR.TerrariaHost/Combat/HostYoyoReleaseAttack.cs','src/JueMingR.TerrariaHost/Combat/HostBetsyFlameAttack.cs',
+            'src/JueMingR.TerrariaHost/Combat/HostBottleAttack.cs',
+            'tests/JueMingR.ArchitectureTests/Phase0TArchitectureChecks.cs',
+            'tests/NativeWorldTextProbe/NativeChecks.cs','tests/NativeWorldTextProbe/NativeCombatIntegrationChecks.cs',
+            'tests/NativeWorldTextProbe/NativeCombatEffectChecks.cs','tests/NativeWorldTextProbe/NativeCombatPlacementChecks.cs',
+            'tests/NativeWorldTextProbe/NativeCombatMagicStringAimChecks.cs','tests/NativeWorldTextProbe/NativeCombatBallisticCandidateChecks.cs',
+            'scripts/workload/AimStage.Development.ps1','scripts/workload/Workload.Definitions.ps1',
+            'docs/网页Chat协作约定.md','docs/规范/工程治理规则.md','docs/设计/可重复构建与项目骨架.md',
+            'docs/功能介绍/战斗辅助行为合同.md','docs/设计/战斗辅助实现设计.md','docs/计划/辅助瞄准阶段文档.md',
+            'review-materials/aim-weapon-compat-20261015/evidence.md','review-materials/aim-weapon-compat-20261015/validation-map.json')
+    }
     $changed=@(Invoke-WorkloadGit $Root @('diff','--name-only','--no-renames',$base,$Identity.commit,'--') | Sort-Object)
     if(@($changed | Where-Object {$allowed -cnotcontains $_}).Count -ne 0 -or
         (@($record.revisions | ForEach-Object {$_.path} | Sort-Object) -join '|') -cne ($changed -join '|')) {throw 'Stage revision scope differs from the approved closing delta.'}
@@ -222,6 +240,9 @@ function Read-AimStageDevelopment {
     if($targetPerf){$required=@('architecture-combat','candidate-demand','candidate-first-failure',
         'attack-costs','basic-aim','selection-preview','navigation','whip-terrain',
         'main-performance','representative-opportunities','workload-routing')}
+    if($weaponCompat){$required=@('architecture-combat','sentry-placement','magic-string-aim','ballistic-candidates',
+        'candidate-demand','attack-costs','basic-aim','selection-preview','navigation','whip-terrain',
+        'main-performance','representative-opportunities','workload-routing')}
     if((@($record.checks | ForEach-Object {$_.name} | Sort-Object) -join '|') -cne (@($required | Sort-Object) -join '|')) {throw 'Stage necessary checks are incomplete/duplicated.'}
     foreach($check in $record.checks){
         if($check.exit -ne 0 -or $check.disposition -cnotin @('CURRENT','REVIEWED_REUSE') -or
@@ -234,7 +255,7 @@ function Read-AimStageDevelopment {
         foreach($artifact in $component.artifacts){$null=Read-AimStageArtifact $Root $artifact}
     }
     $failureKinds=@('TEST_CORRECTED','PRODUCT_FIXED','ENVIRONMENT_LIMITATION')
-    if($continuation -or $dedup -or $targetPerf){$failureKinds+='OWNER_WITHDRAWN'}
+    if($continuation -or $dedup -or $targetPerf -or $weaponCompat){$failureKinds+='OWNER_WITHDRAWN'}
     foreach($failure in $record.failureDispositions){
         if($failure.disposition -ceq 'OWNER_WITHDRAWN' -and
             ($failure.ownerDecision -cne '2026-10-14-impact-single-attempt-stop-loss' -or $failure.capability -cne 'impact-preview')) {throw 'Feature withdrawal requires this owner decision and exact retired capability.'}
@@ -263,7 +284,7 @@ function Read-AimStageDevelopment {
             [string]$assembly.path -match '(^|/)\.\.(/|$)|[\\:]' -or
             (Get-WorkloadFileHash -LiteralPath (Join-Path $Root $assembly.path)).Hash -cne $assembly.sha256){throw 'Stage detection consumer changed.'}
     }
-    return [ordered]@{status='STAGE_DEVELOPMENT';mode=$(if($targetPerf){'ExplicitAimTargetPerf20261014'}elseif($dedup){'ExplicitAimDedupRepair20261014'}elseif($continuation){'ExplicitAimContinuation20261013'}elseif($priority){'ExplicitAimPriorityRecovery20261013'}elseif($successor){'ExplicitAimRootFix20261012'}else{'ExplicitAimStage20261011'});fullQualification='INCOMPLETE';releaseEligible=$false;
+    return [ordered]@{status='STAGE_DEVELOPMENT';mode=$(if($weaponCompat){'ExplicitAimWeaponCompat20261015'}elseif($targetPerf){'ExplicitAimTargetPerf20261014'}elseif($dedup){'ExplicitAimDedupRepair20261014'}elseif($continuation){'ExplicitAimContinuation20261013'}elseif($priority){'ExplicitAimPriorityRecovery20261013'}elseif($successor){'ExplicitAimRootFix20261012'}else{'ExplicitAimStage20261011'});fullQualification='INCOMPLETE';releaseEligible=$false;
         productBase=$base;recordPath=$relative;recordSha256=(Get-WorkloadFileHash -LiteralPath $Path).Hash;
         necessaryScopes=$required;limits=@($record.limits);checkCount=$required.Count}
 }

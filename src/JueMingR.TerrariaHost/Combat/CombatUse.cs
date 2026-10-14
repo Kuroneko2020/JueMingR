@@ -36,6 +36,10 @@ namespace JueMingR.TerrariaHost.Combat
         internal bool OrdinaryPress {get{return kind==0 && Identity() && FeatureEnabled && host.Left && host.Admitted(player);}}
         internal bool FeatureEnabled {get{return kind>=0 && host.IsEnabled(kind);}}
         internal bool ManagedAttackIntent(Player p){return kind==4 && ReferenceEquals(p,player) && Identity() && FeatureEnabled && host.Left && host.Admitted(p);}
+        // Only the lease's real birth-action parent still reads the cursor.
+        // Next action copies velocity; detached roles gain no input authority.
+        internal bool ManagedYoyoHeld(Projectile shot)
+        {return ManagedAttackIntent(player) && player.magicString && used && press && cycleTick==Main.GameUpdateCount && shot.ai[0]>=0 && ReferenceEquals(shot,primary) && Valid(primary,primaryKey);}
         internal bool DeferSync
         {
             get

@@ -10,7 +10,10 @@ namespace JueMingR.TerrariaHost.Combat
     {
         internal static bool Handles(Item item)
         {
-            if(item==null || item.IsAir || item.shoot<=0 || item.damage<=0)return false;
+            // Item.sentry is the locked native hand classification, including
+            // every DD2 tower. Both CanUse and Shoot retain physical placement;
+            // this exclusion also governs the ordinary/Basic input gate.
+            if(item==null || item.IsAir || item.sentry || item.shoot<=0 || item.damage<=0)return false;
             switch(item.type)
             {
                 case 1157:case 1309:case 1802:case 2364:case 2365:case 2535:case 2551:case 2584:

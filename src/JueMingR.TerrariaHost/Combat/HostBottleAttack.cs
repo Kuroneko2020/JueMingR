@@ -204,10 +204,16 @@ namespace JueMingR.TerrariaHost.Combat
         internal static AttackContact Solve(Player player,AttackAmmoSnapshot ammo,NpcTrajectory timeline,Vector2 origin,int age,bool beforeNpc,PredictionTerrain terrain,HostAttackObstacles obstacles,int delay)
         {
             if(!Handles(ammo.Projectile) || ammo.Damage<=0 || delay<0 || age-delay<0 || age+1>=timeline.Count)return null;
-            obstacles.CaptureCursorMapping(player);var scene=Capture(obstacles);var facts=new ReceiverFacts();var pool=obstacles.CaptureBirthSlots();var directions=new Vector2[41];int count=0;
-            for(int seed=0;seed<41;seed++)
+            obstacles.CaptureCursorMapping(player);var scene=Capture(obstacles);var facts=new ReceiverFacts();var pool=obstacles.CaptureBirthSlots();var body=Terraria.ID.ContentSamples.ProjectilesByType[ammo.Projectile];
+            var ballistic=AttackBallisticCandidates.Generate(timeline,age,origin.X,origin.Y,ammo.Speed,body.extraUpdates+1,false,0,Math.Max(body.width,body.height)*.5f);
+            var directions=new Vector2[ballistic.Length+33];int count=0;
+            for(int seed=0;seed<directions.Length;seed++)
             {
-                var b=timeline[Math.Min(timeline.Count-1,age+1+Math.Min(seed,8)*4)].ProjectileReceiveBounds;Vector2 aim=seed<9?new Vector2(b.CenterX,b.CenterY):origin+((seed-9)*MathHelper.TwoPi/32).ToRotationVector2()*10000;
+                var b=timeline[age+1].ProjectileReceiveBounds;int fallback=seed-ballistic.Length;
+                // This shares only the dry candidate arithmetic with 711;
+                // bottle fuse, random children and ordinary owner immunity
+                // remain in this family's exact replay.
+                Vector2 aim=seed<ballistic.Length?origin+new Vector2(ballistic[seed].X,ballistic[seed].Y)*10000:fallback==0?new Vector2(b.CenterX,b.CenterY):origin+((fallback-1)*MathHelper.TwoPi/32).ToRotationVector2()*10000;
                 var screen=aim-Main.screenPosition;if(player.gravDir==-1)screen.Y=Main.screenHeight-screen.Y;Vector2 cursor=new Vector2((int)screen.X+Main.screenPosition.X,player.gravDir==-1?Main.screenPosition.Y+Main.screenHeight-(int)screen.Y:(int)screen.Y+Main.screenPosition.Y);
                 // NewProjectile10897 clips only AI001 components. These
                 // AI068 openers retain the selected hand speed unchanged.
@@ -221,6 +227,11 @@ namespace JueMingR.TerrariaHost.Combat
                 for(int step=1;step<=Math.Min(120,timeline.Count-age-1);step++){AttackContact contact;if(!Outer(rows,slots,timeline,terrain,age+step,delay+step,aim,out contact))break;if(contact!=null)return contact;}
             }
             return null;
+        }
+        internal static int PreferredRange(Player player,AttackAmmoSnapshot ammo,NPC target)
+        {
+            var delta=target.Center-player.RotatedRelativePoint(player.MountedCenter);int updates=Terraria.ID.ContentSamples.ProjectilesByType[ammo.Projectile].extraUpdates+1;
+            return AttackBallisticCandidates.PreferredWindow(delta.X,delta.Y,ammo.Speed,updates,false,0,(float)Math.Sqrt(target.width*target.width+target.height*target.height)*.5f+10);
         }
         // Explicit observed-parent/child oracle only; autonomous flight never
         // acquires input authority. Unknown future Molotov births stay random.

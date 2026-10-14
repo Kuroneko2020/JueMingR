@@ -31,6 +31,8 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCombatOriginalFeedbackChecks.cs'=@('native-CombatIntegrationCpu','native-CombatImpactVisual')
         'tests/NativeWorldTextProbe/NativeCombatOriginalRangedChecks.cs'=@('native-CombatIntegrationCpu')
         'tests/NativeWorldTextProbe/NativeCombatCelebrationChecks.cs'=@('native-CombatIntegrationCpu')
+        'tests/NativeWorldTextProbe/NativeCombatMagicStringAimChecks.cs'=@('native-CombatIntegrationCpu')
+        'tests/NativeWorldTextProbe/NativeCombatBallisticCandidateChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatPlacementChecks.cs'=@('native-CombatIntegrationCpu')
         'tests/NativeWorldTextProbe/NativeCombatCadenceAimChecks.cs'=@('native-CombatIntegrationCpu')
         'tests/NativeWorldTextProbe/NativeCombatResourceChecks.cs'=@('native-CombatIntegrationCpu')

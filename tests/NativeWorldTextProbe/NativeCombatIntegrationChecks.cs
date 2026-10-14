@@ -21,6 +21,8 @@ namespace NativeWorldTextProbe
             try
             {
                 string leaf=Environment.GetEnvironmentVariable("JMR_COMBAT_INTEGRATION_ONLY");
+                if(leaf=="magic-string-aim"){NativeCombatMagicStringAimChecks.Run(context);return;}
+                if(leaf=="placement"){NativeCombatPlacementChecks.Run(context);return;}
                 if(leaf=="cadence"){NativeCombatCadenceAimChecks.Run(context);return;}
                 if(leaf=="usage"){NativeCombatUsageChecks.Run(context);return;}
                 if(leaf=="phases"){NativeCombatPhaseChecks.Run(context);return;}
@@ -50,6 +52,7 @@ namespace NativeWorldTextProbe
                 p.autoReuseAllWeapons=false;Console.WriteLine("PASS native ordinary entry time1 animation1/2; attachment release and item auto-reuse remain distinct");
                 FacingSelection(context,combat,host,attack,input);
                 NativeCombatCadenceAimChecks.Run(context);
+                NativeCombatMagicStringAimChecks.Run(context);
                 NativeCombatResourceChecks.Run(context);
                 NativeCombatCandidateDemandChecks.Run(context);
                 NativeCombatCandidateReuseChecks.Run(context);

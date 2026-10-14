@@ -60,6 +60,7 @@ namespace NativeWorldTextProbe
             if(finiteOracle=="paper-airplane"){NativeCombatPaperAirplaneChecks.Run(context);return;}
             if(finiteOracle=="arc-swing"){NativeCombatArcSwingChecks.Run(context);return;}
             if(finiteOracle=="attached-shot"){NativeCombatAttachedShotChecks.Run(context);return;}
+            if(finiteOracle=="ballistic-candidates"){NativeCombatBallisticCandidateChecks.Run(context);return;}
             if(finiteOracle=="betsy-flame"){NativeCombatBetsyFlameChecks.Run(context);return;}
             if(finiteOracle=="electrosphere"){NativeCombatElectrosphereChecks.Run(context);return;}
             if(finiteOracle=="barrel"){NativeCombatBarrelChecks.Run(context);return;}
@@ -150,6 +151,7 @@ namespace NativeWorldTextProbe
             HomingCases(context,combat,host,attack,input);
             ChaseQualification(context,combat,host,input);
             NativeCombatObstacleChecks.Run(context);
+            NativeCombatBallisticCandidateChecks.Run(context);
             NativeCombatObservationChecks.Save(host,new ObservationOptions());
         }
         private static void ChaseQualification(object context,object combat,object host,object input)

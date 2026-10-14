@@ -26,7 +26,7 @@ namespace JueMingR.TerrariaHost.Combat
             internal HostAttackControl Owner;internal Source Source;internal ShotReceipt Previous;internal CombatCursorScope Cursor;internal bool Ended;internal HostAttackPhase Phase;internal ulong BirthCutoff;
         }
         private sealed class Controlled
-        {internal Projectile Shot;internal int Key,Type;internal Source Source;internal AttackContact Contact,NextKillContact,AlternateKillContact,AlternateNextKillContact;internal Vector2 KillOrigin,NextKillOrigin,Point;internal bool ChildLaterSlot,HasPoint,BornNext;internal AttackAmmoSnapshot Ammo;internal HostAttackObstacles Obstacles,AlternateKillObstacles;internal uint Prepared,Born;internal ulong BirthOrdinal;internal NpcIdentity Target;internal HostYoyoNavigation Navigation,PreviewNavigation;internal HostBeamAttack.Child ContactChild;internal List<HostBeamAttack.Child> Children=new List<HostBeamAttack.Child>(6);}
+        {internal Projectile Shot;internal int Key,Type;internal Source Source;internal AttackContact Contact,NextKillContact,AlternateKillContact,AlternateNextKillContact;internal Vector2 KillOrigin,NextKillOrigin,Point;internal bool ChildLaterSlot,HasPoint,BornNext,ManagedYoyo,YoyoEnhanced;internal Vector2 YoyoPoint;internal AttackAmmoSnapshot Ammo;internal HostAttackObstacles Obstacles,AlternateKillObstacles;internal uint Prepared,Born;internal ulong BirthOrdinal;internal NpcIdentity Target;internal HostYoyoNavigation Navigation,PreviewNavigation;internal HostBeamAttack.Child ContactChild;internal List<HostBeamAttack.Child> Children=new List<HostBeamAttack.Child>(6);}
         private readonly HostCombat combat;private readonly HostCombatObservation observation;
         private readonly Dictionary<int,Controlled> shots=new Dictionary<int,Controlled>();
         private readonly List<int> retired=new List<int>(64);
@@ -135,7 +135,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(shot.type==1035 && !HostWhipAttack.Primary(shot))return;
             if(!HostGuidedAttack.Handles(shot.type) && shot.type!=444 && shot.type!=1035 && shot.type!=611 && !HostPulseAttack.Handles(shot.type) && !HostHarpoonAttack.Handles(shot.type) && !HostHeldAttack.Handles(shot.type) && !HostYoyoNavigation.Handles(shot))return;
             if(HostYoyoNavigation.Handles(shot) && shot.ai[0]<0)return;
-            shots[(int)shot.key]=new Controlled{Shot=shot,Key=(int)shot.key,Type=shot.type,Source=owner.Source,BirthOrdinal=++birthOrdinal,Born=Main.GameUpdateCount,BornNext=Main.ProjectileUpdateLoopIndex>=0 && shot.whoAmI<=Main.ProjectileUpdateLoopIndex,Navigation=HostYoyoNavigation.Handles(shot)?new HostYoyoNavigation():null};
+            shots[(int)shot.key]=new Controlled{Shot=shot,Key=(int)shot.key,Type=shot.type,Source=owner.Source,BirthOrdinal=++birthOrdinal,Born=Main.GameUpdateCount,BornNext=Main.ProjectileUpdateLoopIndex>=0 && shot.whoAmI<=Main.ProjectileUpdateLoopIndex,ManagedYoyo=HostYoyoNavigation.Handles(shot) && combat.Use.ManagedYoyoHeld(shot),YoyoPoint=openingPoint,YoyoEnhanced=openingUsable,Ammo=openingAmmo,Navigation=HostYoyoNavigation.Handles(shot)?new HostYoyoNavigation():null};
         }
         internal void Clear(){presentation=null;preparedTimeline=null;opening=null;openingNavigation=null;openingUsable=false;foreach(var entry in shots.Values)Retire(entry);}
         // An individual natural consumer can revoke only its own prepared
@@ -161,7 +161,7 @@ namespace JueMingR.TerrariaHost.Combat
             {
                 opening=new Source(combat,observation,combat.Player.HeldItem);openingAmmo=AttackAmmoSnapshot.Capture(combat.Player,opening.Weapon);openingStep=Main.GameUpdateCount;
                 if(openingAmmo!=null)
-                {if(HostYoyoNavigation.Weapon(opening.Weapon))openingUsable=HostYoyoNavigation.OpeningPoint(combat.Player,opening.Weapon,timeline,out openingPoint,out openingNavigation);else if(HostWhipAttack.Weapon(opening.Weapon))openingUsable=HostWhipAttack.TryPoint(combat.Player,null,timeline,new HostAttackClock(timeline,phase),terrain,out openingPoint);else{openingPoint=HostHeldAttack.OpeningPoint(combat.Player,opening.Weapon,openingAmmo,timeline);openingUsable=true;}}
+                {if(HostYoyoNavigation.Weapon(opening.Weapon)){if(combat.Use.ManagedAttackIntent(combat.Player) && combat.Player.magicString)openingUsable=HostYoyoReleaseAttack.TryPoint(combat.Player,opening.Weapon,openingAmmo.Speed,timeline,new HostAttackClock(timeline,phase),terrain,out openingPoint);else openingUsable=HostYoyoNavigation.OpeningPoint(combat.Player,opening.Weapon,timeline,out openingPoint,out openingNavigation);}else if(HostWhipAttack.Weapon(opening.Weapon))openingUsable=HostWhipAttack.TryPoint(combat.Player,null,timeline,new HostAttackClock(timeline,phase),terrain,out openingPoint);else{openingPoint=HostHeldAttack.OpeningPoint(combat.Player,opening.Weapon,openingAmmo,timeline);openingUsable=true;}}
             }
             foreach(var pair in shots)
             {
@@ -177,7 +177,7 @@ namespace JueMingR.TerrariaHost.Combat
         private void PrepareBorn(Source source,HostAttackPhase phase,ulong cutoff)
         {foreach(var entry in shots.Values)if(entry.BirthOrdinal>cutoff && ReferenceEquals(entry.Source,source) && Valid(entry) && !HostPulseAttack.Handles(entry.Type) && !HostHarpoonAttack.Handles(entry.Type))PrepareEntry(entry,preparedTimeline,phase);}
         private void PrepareEntry(Controlled entry,NpcTrajectory timeline,HostAttackPhase phase)
-        {SolveEntry(entry,timeline,phase,terrain,combat.Player);}
+        {if(entry.ManagedYoyo && !combat.Use.ManagedAttackIntent(combat.Player))entry.ManagedYoyo=false;if(entry.ManagedYoyo){entry.Prepared=Main.GameUpdateCount;entry.Target=timeline.Identity;return;}SolveEntry(entry,timeline,phase,terrain,combat.Player);}
         private static void SolveEntry(Controlled entry,NpcTrajectory timeline,HostAttackPhase phase,PredictionTerrain terrain,Player player,int delay=0,HostAttackPlayerFrame? preparedPlayer=null)
         {
             if(entry.BornNext && entry.Born==Main.GameUpdateCount && phase==HostAttackPhase.Projectiles)phase=HostAttackPhase.CompletedWorld;
@@ -330,6 +330,17 @@ namespace JueMingR.TerrariaHost.Combat
         {
             point=default(Vector2);Controlled entry;
             if(!shots.TryGetValue((int)shot.key,out entry) || !ReferenceEquals(entry.Shot,shot) || !Valid(entry) || !combat.Attack.BasicPermission || !combat.Attack.CurrentReceiver)return false;
+            // The native next-action split copies this birth-action direction.
+            // Do not replace it with held navigation, or lend a cursor once the
+            // cadence has released. The autonomous child is never registered.
+            if(entry.ManagedYoyo)
+            {
+                if(!combat.Use.ManagedYoyoHeld(shot))return false;
+                if(entry.YoyoEnhanced && entry.Ammo!=null && entry.Ammo.IdentityMatches(combat.Player,entry.Source.Weapon) && entry.Born==Main.GameUpdateCount && environmentState.Current && terrain.Unchanged && combat.Attack.TimelineCurrent(preparedTimeline) && entry.Target.Equals(observation.Selection.Target))
+                {point=entry.YoyoPoint;combat.Attack.RecordControlInput(point,shot,HostAttackInputKind.Enhanced);return true;}
+                HostAttackInput basic;if(!combat.Attack.TryBasicInput(combat.Player,entry.Source.Weapon,shot,HostAttackPhase.Projectiles,out basic))return false;
+                point=basic.Point;combat.Attack.RecordInput(basic);return true;
+            }
             // These predicates are vanilla's actual cursor-reading windows.
             // A sealed child, released missile, returning ball/flail or bubble
             // AI cannot obtain control by falling back from a missing contact.

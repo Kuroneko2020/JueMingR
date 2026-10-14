@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -30,7 +30,7 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Features.Combat.CombatPredictionWork+OptionalScope",
                 "JueMingR.Features.Combat.CombatPredictionBudgetExceededException",
                 "JueMingR.Features.Combat.AttackConfidence", "JueMingR.Features.Combat.AttackSolveStatus", "JueMingR.Features.Combat.AttackMotion",
-                "JueMingR.Features.Combat.AttackPassage", "JueMingR.Features.Combat.AttackContact", "JueMingR.Features.Combat.AttackReceiveGeometry", "JueMingR.Features.Combat.AttackIntercept",
+                "JueMingR.Features.Combat.AttackPassage", "JueMingR.Features.Combat.AttackContact", "JueMingR.Features.Combat.AttackReceiveGeometry", "JueMingR.Features.Combat.AttackIntercept", "JueMingR.Features.Combat.AttackBallisticCandidates", "JueMingR.Features.Combat.AttackBallisticCandidates+Direction",
                 "JueMingR.Features.Combat.PlayerVerticalMotion",
                 "JueMingR.Features.Combat.PlayerMotionContinuation",
                 "JueMingR.Features.Fishing.FishingCodec", "JueMingR.Features.Fishing.FishingSettings", "JueMingR.Features.Fishing.PlayerNameRules",
