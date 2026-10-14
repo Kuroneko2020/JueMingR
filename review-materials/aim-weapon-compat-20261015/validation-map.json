@@ -46,7 +46,7 @@
       "status": "OBSERVED_EXIT_0",
       "disposition": "CURRENT",
       "scope": "48651f8 Debug combat architecture/public contract checks",
-      "applicability": "Whole candidate TASK_BASE delta pending independent approval; original source/MVID remains in every raw artifact.",
+      "applicability": "Independent Sol/High approved the d177b0a1 whole28-file delta and this listed scope reuse; original source/MVID remains in every raw artifact. Final delivery documentation changes no production bytes.",
       "artifacts": [
         {
           "path": ".local/aim-weapon-compat-20261015/architecture-combat-48651f8-r01.log",
@@ -58,9 +58,9 @@
     {
       "name": "sentry-placement",
       "status": "OBSERVED_EXIT_0",
-      "disposition": "PROPOSED_REUSE",
+      "disposition": "REVIEWED_REUSE",
       "scope": "f720242 ordinary Release CanUse/Shoot/native birth, 46 families/50 births and mirrored sentry negatives;48651f8 only limits openingAmmo to managed births, leaves these measured sentry/managed-yoyo/autonomous-C branches unchanged, ordinary initialization restored.",
-      "applicability": "Whole candidate TASK_BASE delta pending independent approval; original source/MVID remains in every raw artifact.",
+      "applicability": "Independent Sol/High approved the d177b0a1 whole28-file delta and this listed scope reuse; original source/MVID remains in every raw artifact. Final delivery documentation changes no production bytes.",
       "artifacts": [
         {
           "path": ".local/aim-weapon-compat-20261015/release-f720242-placement-r01.log",
@@ -72,9 +72,9 @@
     {
       "name": "magic-string-aim",
       "status": "OBSERVED_EXIT_0",
-      "disposition": "PROPOSED_REUSE",
+      "disposition": "REVIEWED_REUSE",
       "scope": "f720242 ordinary Release natural Player-NPC-Projectile mirrored split/receive/rope-range; optional original glove/counterweight and six cancellation boundaries retain their narrower layer;48651f8 only limits openingAmmo to managed births, leaves these measured sentry/managed-yoyo/autonomous-C branches unchanged, ordinary initialization restored.",
-      "applicability": "Whole candidate TASK_BASE delta pending independent approval; original source/MVID remains in every raw artifact.",
+      "applicability": "Independent Sol/High approved the d177b0a1 whole28-file delta and this listed scope reuse; original source/MVID remains in every raw artifact. Final delivery documentation changes no production bytes.",
       "artifacts": [
         {
           "path": ".local/aim-weapon-compat-20261015/release-f720242-magic-string-aim-r01.log",
@@ -86,9 +86,9 @@
     {
       "name": "ballistic-candidates",
       "status": "OBSERVED_EXIT_0",
-      "disposition": "PROPOSED_REUSE",
+      "disposition": "REVIEWED_REUSE",
       "scope": "f720242 ordinary Release same native three-member/Bottle families; r12 old-angle rejection/motor costs and full unchanged motor checks remain supplemental;48651f8 only limits openingAmmo to managed births, leaves these measured sentry/managed-yoyo/autonomous-C branches unchanged, ordinary initialization restored.",
-      "applicability": "Whole candidate TASK_BASE delta pending independent approval; original source/MVID remains in every raw artifact.",
+      "applicability": "Independent Sol/High approved the d177b0a1 whole28-file delta and this listed scope reuse; original source/MVID remains in every raw artifact. Final delivery documentation changes no production bytes.",
       "artifacts": [
         {
           "path": ".local/aim-weapon-compat-20261015/release-f720242-ballistic-candidates-r01.log",
@@ -105,9 +105,9 @@
     {
       "name": "candidate-demand",
       "status": "OBSERVED_EXIT_0",
-      "disposition": "PROPOSED_REUSE",
+      "disposition": "REVIEWED_REUSE",
       "scope": "7227 ordinary Release full shared prefix/candidate demand; changes after7227 are only actual managed-yoyo branches and preview owner checks, covered by current B",
-      "applicability": "Whole candidate TASK_BASE delta pending independent approval; original source/MVID remains in every raw artifact.",
+      "applicability": "Independent Sol/High approved the d177b0a1 whole28-file delta and this listed scope reuse; original source/MVID remains in every raw artifact. Final delivery documentation changes no production bytes.",
       "artifacts": [
         {
           "path": ".local/aim-weapon-compat-20261015/release-candidate-demand-full-r01.log",
@@ -119,9 +119,9 @@
     {
       "name": "attack-costs",
       "status": "OBSERVED_EXIT_0",
-      "disposition": "CURRENT_AND_PROPOSED_REUSE",
+      "disposition": "CURRENT_AND_REVIEWED_REUSE",
       "scope": "2fcc counted Source new steps in actual native 80-update modes, scoped reuse after f720 owner check;7227 generic cached/shared allowance assertions remain unaffected",
-      "applicability": "Whole candidate TASK_BASE delta pending independent approval; original source/MVID remains in every raw artifact.",
+      "applicability": "Independent Sol/High approved the d177b0a1 whole28-file delta and this listed scope reuse; original source/MVID remains in every raw artifact. Final delivery documentation changes no production bytes.",
       "artifacts": [
         {
           "path": ".local/aim-weapon-compat-20261015/weapon-work-final-r01.log",
@@ -148,9 +148,9 @@
     {
       "name": "basic-aim",
       "status": "OBSERVED_EXIT_0",
-      "disposition": "PROPOSED_REUSE",
+      "disposition": "REVIEWED_REUSE",
       "scope": "f720 ordinary Release Basic native consumers including sentry fault/physical placement and same identity cancellation;48651f8 only limits openingAmmo to managed births, leaves these measured sentry/managed-yoyo/autonomous-C branches unchanged, ordinary initialization restored.",
-      "applicability": "Whole candidate TASK_BASE delta pending independent approval; original source/MVID remains in every raw artifact.",
+      "applicability": "Independent Sol/High approved the d177b0a1 whole28-file delta and this listed scope reuse; original source/MVID remains in every raw artifact. Final delivery documentation changes no production bytes.",
       "artifacts": [
         {
           "path": ".local/aim-weapon-compat-20261015/release-f720242-basic-aim-r01.log",
@@ -162,9 +162,9 @@
     {
       "name": "selection-preview",
       "status": "OBSERVED_EXIT_0",
-      "disposition": "PROPOSED_REUSE",
+      "disposition": "REVIEWED_REUSE",
       "scope": "f720 ordinary Release player/mouse centre and nearest/clear-line actual ranking; free opening private proof and actual out-of-rope receive in B;48651f8 only limits openingAmmo to managed births, leaves these measured sentry/managed-yoyo/autonomous-C branches unchanged, ordinary initialization restored.",
-      "applicability": "Whole candidate TASK_BASE delta pending independent approval; original source/MVID remains in every raw artifact.",
+      "applicability": "Independent Sol/High approved the d177b0a1 whole28-file delta and this listed scope reuse; original source/MVID remains in every raw artifact. Final delivery documentation changes no production bytes.",
       "artifacts": [
         {
           "path": ".local/aim-weapon-compat-20261015/release-f720242-selection-preview-r01.log",
@@ -181,9 +181,9 @@
     {
       "name": "navigation",
       "status": "OBSERVED_EXIT_0",
-      "disposition": "PROPOSED_REUSE",
+      "disposition": "REVIEWED_REUSE",
       "scope": "f720 ordinary Release unmodified ordinary yoyo gap/progress/retirement/recovery with normal finite navigation;48651f8 only limits openingAmmo to managed births, leaves these measured sentry/managed-yoyo/autonomous-C branches unchanged, ordinary initialization restored.",
-      "applicability": "Whole candidate TASK_BASE delta pending independent approval; original source/MVID remains in every raw artifact.",
+      "applicability": "Independent Sol/High approved the d177b0a1 whole28-file delta and this listed scope reuse; original source/MVID remains in every raw artifact. Final delivery documentation changes no production bytes.",
       "artifacts": [
         {
           "path": ".local/aim-weapon-compat-20261015/release-f720242-navigation-r01.log",
@@ -195,9 +195,9 @@
     {
       "name": "whip-terrain",
       "status": "OBSERVED_EXIT_0",
-      "disposition": "PROPOSED_REUSE",
+      "disposition": "REVIEWED_REUSE",
       "scope": "7227 ordinary Release original whip5480/1035 terrain and owner gates; f720 changes are sentry/classic yoyo or two C solvers, not whip motor/player continuation",
-      "applicability": "Whole candidate TASK_BASE delta pending independent approval; original source/MVID remains in every raw artifact.",
+      "applicability": "Independent Sol/High approved the d177b0a1 whole28-file delta and this listed scope reuse; original source/MVID remains in every raw artifact. Final delivery documentation changes no production bytes.",
       "artifacts": [
         {
           "path": ".local/aim-weapon-compat-20261015/release-whip-terrain-r01.log",
@@ -209,9 +209,9 @@
     {
       "name": "main-performance",
       "status": "OBSERVED_EXIT_0",
-      "disposition": "PROPOSED_REUSE",
+      "disposition": "REVIEWED_REUSE",
       "scope": "fixed normal Release7227 C,541 B pre-fix,2fcc B repaired; exact inclusive Main/Draw/EndDraw raw 13 windows. f720 only adds actual player/null ownership validation to clear-line preview; formal clearLine=false path unchanged",
-      "applicability": "Whole candidate TASK_BASE delta pending independent approval; original source/MVID remains in every raw artifact.",
+      "applicability": "Independent Sol/High approved the d177b0a1 whole28-file delta and this listed scope reuse; original source/MVID remains in every raw artifact. Final delivery documentation changes no production bytes.",
       "artifacts": [
         {
           "path": ".local/aim-weapon-compat-20261015/measurement/formal-summary.json",
@@ -233,9 +233,9 @@
     {
       "name": "representative-opportunities",
       "status": "OBSERVED_EXIT_0",
-      "disposition": "CURRENT_AND_PROPOSED_REUSE",
+      "disposition": "CURRENT_AND_REVIEWED_REUSE",
       "scope": "f720 actual A/B/C consumers and 13 original Main raw native schedules/receivers; mixed producer identities retained, no 100percent Enhanced or human rate claim",
-      "applicability": "Whole candidate TASK_BASE delta pending independent approval; original source/MVID remains in every raw artifact.",
+      "applicability": "Independent Sol/High approved the d177b0a1 whole28-file delta and this listed scope reuse; original source/MVID remains in every raw artifact. Final delivery documentation changes no production bytes.",
       "artifacts": [
         {
           "path": ".local/aim-weapon-compat-20261015/release-f720242-placement-r01.log",
@@ -264,7 +264,7 @@
       "status": "OBSERVED_EXIT_0",
       "disposition": "CURRENT",
       "scope": "actual current leaf classifications and isolated real Git diff/index/shared/rename boundary regression",
-      "applicability": "Whole candidate TASK_BASE delta pending independent approval; original source/MVID remains in every raw artifact.",
+      "applicability": "Independent Sol/High approved the d177b0a1 whole28-file delta and this listed scope reuse; original source/MVID remains in every raw artifact. Final delivery documentation changes no production bytes.",
       "artifacts": [
         {
           "path": ".local/aim-weapon-compat-20261015/workload-routing-final-r01.log",
@@ -711,7 +711,7 @@
       "sha256": "2CA53A6A368C9A68EBE6D85F1E7BABBBB1BCBA0459273F5852D2C7ACCB300362"
     }
   ],
-  "selfReview": "Read full TASK_BASE delta, actual input/source lifetime/critical comments/public contract and scope; no unrelated asset staged; no production tracing, native timer/AI/velocity writes, new dependency, merge/install or ownership widening.",
+  "selfReview": "Pre-delivery self-review read full TASK_BASE delta/input/source lifetime/comments/public contract and protected scope. Subsequent authorized Stage/package/install facts are separately recorded in deliveryReceipt.",
   "limits": [
     "Independent review, official Stage/package identity and one installation/readback completed; no owner new-package/FPS/multiplayer acceptance.",
     "C Main final five Basic hands not diagnosed individually; natural motion/actual receive and sparse-direction counterexample are separate evidence layers.",
