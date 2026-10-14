@@ -57,7 +57,10 @@ namespace JueMingR.TerrariaHost.Combat
                 if(!combat.Attack.Permission || !combat.Attack.CurrentReceiver || !combat.Attack.TimelineCurrent(preparedTimeline))return false;
                 if(openingUsable && openingStep==Main.GameUpdateCount && opening!=null && Allowed(opening))return true;
                 foreach(var entry in shots.Values)
+                {
+                    if(entry.ManagedYoyo && entry.YoyoEnhanced && entry.Born==Main.GameUpdateCount && Valid(entry) && entry.Ammo!=null && entry.Ammo.IdentityMatches(combat.Player,entry.Source.Weapon) && entry.Target.Equals(observation.Selection.Target) && combat.Use.ManagedYoyoHeld(entry.Shot))return true;
                     if(Valid(entry) && entry.Prepared==Main.GameUpdateCount && entry.Target.Equals(observation.Selection.Target) && (entry.HasPoint || entry.Contact!=null || entry.NextKillContact!=null))return true;
+                }
                 return false;
             }
         }

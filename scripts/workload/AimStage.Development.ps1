@@ -206,6 +206,7 @@ function Read-AimStageDevelopment {
             'src/JueMingR.TerrariaHost/Combat/HostPlacementAttack.cs','src/JueMingR.TerrariaHost/Combat/HostAttackAim.cs',
             'src/JueMingR.TerrariaHost/Combat/CombatUse.cs','src/JueMingR.TerrariaHost/Combat/HostAttackControl.cs',
             'src/JueMingR.TerrariaHost/Combat/HostAttackControl.Preview.cs',
+            'src/JueMingR.TerrariaHost/Combat/HostAttackWindow.cs',
             'src/JueMingR.TerrariaHost/Combat/HostYoyoReleaseAttack.cs','src/JueMingR.TerrariaHost/Combat/HostBetsyFlameAttack.cs',
             'src/JueMingR.TerrariaHost/Combat/HostBottleAttack.cs',
             'tests/JueMingR.ArchitectureTests/Phase0TArchitectureChecks.cs',

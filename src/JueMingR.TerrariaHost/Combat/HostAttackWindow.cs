@@ -10,6 +10,11 @@ namespace JueMingR.TerrariaHost.Combat
         {return item!=null && (!HostSwingAttack.Handles(item) || HostSwingAttack.Mixed(item)) && !HostHeldAttack.Weapon(item.type) && !HostYoyoNavigation.Weapon(item) && !HostWhipAttack.Weapon(item) && (!item.channel || item.type==3473) && !ItemID.Sets.ShootsOnUseRelease[item.type];}
         internal static bool NextAction(HostCombat combat,Player player,Item item)
         {
+            // Managed AI99 reads direction only in its birth action. Its
+            // next native release copies velocity; neither that action nor
+            // detached flight asks Source for another held-navigation future.
+            if(HostYoyoNavigation.Weapon(item) && player.magicString && combat.Use.ManagedAttackIntent(player))
+                return Opening(combat,player,item) || combat.Use.AimPrimary!=null && combat.Use.ManagedYoyoHeld(combat.Use.AimPrimary);
             if(!Ordinary(item))return true;
             return Opening(combat,player,item);
         }
