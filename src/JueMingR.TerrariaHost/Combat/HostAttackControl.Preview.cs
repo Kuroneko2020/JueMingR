@@ -36,9 +36,10 @@ namespace JueMingR.TerrariaHost.Combat
             private readonly HostYoyoNavigation.PresentationDependencies navigation;
             private readonly HostAttackObstacles obstacles;
             private readonly HostProjectileEnvironment.State environment;
-            internal PreviewDependencies(PredictionTerrain terrain,HostYoyoNavigation navigation,HostAttackObstacles obstacles,HostProjectileEnvironment.State environment,Player openingInput=null)
-            {this.terrain=terrain.FreezeCells();this.navigation=navigation?.FreezePresentation(openingInput);this.obstacles=obstacles;this.environment=environment;}
-            internal bool Current(Player player){return terrain.Current && (navigation==null || navigation.Current(player)) && environment.Current && (obstacles==null || obstacles.Unchanged);}
+            private readonly Func<bool> controlInputCurrent;
+            internal PreviewDependencies(PredictionTerrain terrain,HostYoyoNavigation navigation,HostAttackObstacles obstacles,HostProjectileEnvironment.State environment,Player openingInput=null,Func<bool> controlInputCurrent=null)
+            {this.terrain=terrain.FreezeCells();this.navigation=navigation?.FreezePresentation(openingInput);this.obstacles=obstacles;this.environment=environment;this.controlInputCurrent=controlInputCurrent;}
+            internal bool Current(Player player){return terrain.Current && (navigation==null || navigation.Current(player)) && environment.Current && (obstacles==null || obstacles.Unchanged) && (controlInputCurrent==null || controlInputCurrent());}
         }
         internal PreviewDependencies CapturePreviewDependencies(AttackContact contact)
         {return contact!=null && ReferenceEquals(contact,previewContact)?previewDependencies:null;}
@@ -62,6 +63,9 @@ namespace JueMingR.TerrariaHost.Combat
             foreach(var pair in shots)
             {
                 var entry=pair.Value;if(!Observed(entry)){retired.Add(pair.Key);continue;}if(!HostPulseAttack.Handles(entry.Type))live=true;
+                // A managed parent will release on its next native action;
+                // a held-navigation contact is not proof of that free flight.
+                if(entry.ManagedYoyo)continue;
                 // This same phase has already solved the real action. Keep
                 // its immutable contact as an observation, not its consumable
                 // capability; a later Clear cannot erase this preview fact.
@@ -105,13 +109,21 @@ namespace JueMingR.TerrariaHost.Combat
             Vector2 mounted=body.RotatedRelativePoint(body.MountedCenter),unit=(aim-mounted).SafeNormalize(Vector2.UnitX*body.direction);
             shot.Center=mounted;shot.velocity=unit*previewAmmo.Speed;
             var openingView=new Controlled{Shot=shot,Key=(int)shot.key,Type=type};
+            bool managedYoyo=HostYoyoNavigation.Handles(shot) && player.magicString && combat.Use.ManagedAttackIntent(player);
+            Func<bool> controlInputCurrent=null;
             if(HostYoyoNavigation.Handles(shot))
             {
-                Vector2 waypoint;HostYoyoNavigation navigation;
-                if(!HostYoyoNavigation.OpeningPoint(body,previewWeapon,timeline,out waypoint,out navigation))return null;
-                shot.velocity=(waypoint-mounted).SafeNormalize(unit)*16;openingView.Navigation=navigation;
+                var inputMotion=NpcPredictionSource.ReadPlayer(player);float inputSpeed=player.meleeSpeed;bool inputString=player.yoyoString;
+                controlInputCurrent=()=>managedYoyo==(combat.Player.magicString && combat.Use.ManagedAttackIntent(combat.Player)) && inputSpeed==combat.Player.meleeSpeed && inputString==combat.Player.yoyoString && inputMotion.SameSample(NpcPredictionSource.ReadPlayer(combat.Player));
+                if(!managedYoyo)
+                {
+                    Vector2 waypoint;HostYoyoNavigation navigation;
+                    if(!HostYoyoNavigation.OpeningPoint(body,previewWeapon,timeline,out waypoint,out navigation))return null;
+                    shot.velocity=(waypoint-mounted).SafeNormalize(unit)*16;openingView.Navigation=navigation;
+                }
             }
-            if(type==444)
+            if(managedYoyo)previewContact=HostYoyoReleaseAttack.Preview(body,previewWeapon,previewAmmo.Speed,shot,timeline,launchClock,previewTerrain,out previewObstacles);
+            else if(type==444)
             {
                 // Native bubble births have random spread and 5..25% speed.
                 // The middle member is a representative, not a random draw.
@@ -133,7 +145,7 @@ namespace JueMingR.TerrariaHost.Combat
                 SolveEntry(openingView,timeline,phase,previewTerrain,body,delay,playerFrame);previewContact=openingView.Contact;previewObstacles=openingView.Obstacles;
             }
             previewContact=AttackIntercept.WithLaunchDelay(previewContact,delay);
-            if(previewContact!=null)previewDependencies=new PreviewDependencies(previewTerrain,openingView.Navigation,previewObstacles,previewEnvironment,player);
+            if(previewContact!=null)previewDependencies=new PreviewDependencies(previewTerrain,openingView.Navigation,previewObstacles,previewEnvironment,player,controlInputCurrent);
             if(CacheableOpening(player,type,delay))idlePreview=new IdlePreview(player,type,timeline,phase,launchClock.Age,previewAmmo);
             return previewContact;
         }

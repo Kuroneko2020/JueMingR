@@ -4,6 +4,7 @@ using System.Linq;
 using System.Reflection;
 using HarmonyLib;
 using JueMingR.Features.Combat;
+using JueMingR.Platform.Combat;
 using Microsoft.Xna.Framework;
 using Terraria;
 using Terraria.ID;
@@ -34,6 +35,7 @@ namespace NativeWorldTextProbe
             audit.Patch(AccessTools.Method(typeof(NPC),"StrikeNPC",new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)}),postfix:new HarmonyMethod(typeof(NativeCombatMagicStringAimChecks),nameof(Strike)));
             try
             {
+                FreePreview(context,combat,host,input);
                 foreach(bool moving in new[]{false,true})foreach(int mirror in new[]{1,-1})
                 {
                     int[] manual=null;
@@ -91,6 +93,46 @@ namespace NativeWorldTextProbe
                 Console.WriteLine("PASS MagicString+Aim actual mirrored split direction, detached damage, identical emission cadence and cursor/source retirement");
             }
             finally{audit.UnpatchAll(audit.Id);NativeCombatCadenceChecks.Save(combat,new CombatOptions());NativeCombatObservationChecks.Save(host,new ObservationOptions());}
+        }
+        private static void FreePreview(object context,object combat,object host,object input)
+        {
+            foreach(int mirror in new[]{1,-1})
+            {
+                NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());
+                var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,3262,0,0);p.position=new Vector2(1000,646);p.releaseUseItem=true;
+                foreach(var armor in p.armor)armor.TurnToAir();p.armor[3].SetDefaults(ItemID.MagicString);
+                var n=Main.npc[2];n.SetDefaults(3);n.whoAmI=2;n.active=true;n.position=p.Center+new Vector2(mirror*500,-100);n.velocity=Vector2.Zero;n.aiStyle=-1;n.noGravity=true;n.life=n.lifeMax=100000;n.knockBackResist=0;
+                Main.screenPosition=p.Center-new Vector2(400,300);Array.Clear(n.immune,0,n.immune.Length);
+                NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,false,50,true,true));NativeCombatCadenceChecks.Save(combat,new CombatOptions(16));
+                var control=Get(Get(combat,"Attack"),"Control");NpcTrajectory timeline=null;
+                for(int t=0;t<24;t++)
+                {NativeCombatSelectionPreviewChecks.Step(context,p.Center+new Vector2(-mirror*300,-100),true);timeline=GetOptional(control,"preparedTimeline") as NpcTrajectory;if(timeline!=null && timeline.Count>=80)break;}
+                Require(timeline!=null && timeline.Count>=40,"normal observation supplies a finite free-flight receiver window");
+                // Observe a private next legal opening after retiring the
+                // current native pool; no fabricated trajectory or Contact.
+                foreach(var s in Main.projectile)s.active=false;
+                var phase=Enum.Parse(control.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase"),"CompletedWorld");
+                var contact=Call(control,"Preview",timeline,phase,0,true) as AttackContact;
+                Console.WriteLine("MAGIC STRING FREE PREVIEW mirror="+mirror+" range="+ProjectileID.Sets.YoyosMaximumRange[p.HeldItem.shoot]+" receiverDistance="+Vector2.Distance(p.Center,n.Center)+" count="+timeline.Count+" contact="+(contact==null?"none":contact.Tick+"/"+contact.Confidence));
+                Require(contact!=null && contact.Confidence==AttackConfidence.Representative,"clear-line opening proves dry detached reach outside held rope range");
+                var lease=Call(control,"CapturePreviewDependencies",contact);Require((bool)Call(lease,"Current",p),"free opening owns current input dependencies");
+                p.magicString=false;Require(!(bool)Call(lease,"Current",p),"removing magic string revokes free-flight preview lease");p.magicString=true;
+                int wall=(int)((p.Center.X+n.Center.X)/32);for(int y=0;y<Main.maxTilesY;y++)NativeToolsChecks.Tile(wall,y,1);
+                Require(!(bool)Call(lease,"Current",p),"new terrain retires previously proved free flight");
+                Require(Call(control,"Preview",timeline,phase,0,true)==null,"free-flight wall cannot borrow ordinary held-navigation contact");
+                for(int y=0;y<Main.maxTilesY;y++)Main.tile[wall,y].ClearEverything();
+                foreach(bool aim in new[]{false,true})
+                {
+                    NativeCombatCadenceChecks.Save(combat,new CombatOptions());foreach(var s in Main.projectile)s.active=false;
+                    p.channel=false;p.releaseUseItem=true;p.itemTime=p.itemAnimation=p.reuseDelay=0;Array.Clear(n.immune,0,n.immune.Length);
+                    NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,false,50,true,aim));NativeCombatCadenceChecks.Save(combat,new CombatOptions(16));
+                    parents.Clear();children.Clear();emissions.Clear();detachedHits=0;origin=Main.GameUpdateCount;
+                    var cursor=aim?p.Center+new Vector2(-mirror*300,-100):new Vector2(contact.AimX,contact.AimY);
+                    for(int t=0;t<120;t++)NativeCombatSelectionPreviewChecks.Step(context,cursor,true);
+                    Console.WriteLine("MAGIC STRING FREE ACTUAL mirror="+mirror+" aim="+aim+" parents="+parents.Count+" split="+children.Count+" detachedReceivers="+detachedHits+" distance="+Vector2.Distance(p.Center,n.Center));
+                    Require(parents.Count==30 && children.Count==30 && detachedHits>0,"native manual prepared angle and enhanced clear-line opening both hit beyond held rope without cadence loss");
+                }
+            }
         }
     }
 }

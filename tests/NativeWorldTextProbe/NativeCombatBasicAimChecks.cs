@@ -50,13 +50,13 @@ namespace NativeWorldTextProbe
             if(shot.type==childType){childBirths++;return;}
             parentBirths++;
             var cursor=new Vector2(Main.mouseX+Main.screenPosition.X,player.gravDir==-1?Main.screenPosition.Y+Main.screenHeight-Main.mouseY:Main.mouseY+Main.screenPosition.Y);
-            bool permitted=assisted && pressed;
+            bool permitted=assisted && pressed && !player.HeldItem.sentry;
             if(permitted)assistedConsumers++;else manualConsumers++;
             if(permitted && Get(Get(currentAttack,"consumedInput"),"Kind").ToString()=="Enhanced")enhancedConsumers++;
             consumers.Add("tick="+Main.GameUpdateCount+" cursor="+cursor+" target="+target.Center+" birth="+shot.Center+" velocity="+shot.velocity+" permitted="+permitted+" kind="+Get(Get(currentAttack,"consumedInput"),"Kind")+" openingContactTick="+__state);
             Require(permitted?cursor.X>player.Center.X && Vector2.DistanceSquared(cursor,physical)>4:Vector2.DistanceSquared(cursor,physical)<2,
                 "every natural birth consumes the legal selected-target or manual cursor: item="+itemType);
-            if(itemType==3818){Require(Vector2.DistanceSquared(cursor,target.Center+target.netOffset)<4,"enhanced-failed DD2 birth consumes its admitted selected placement point");return;}
+            if(itemType==3818){Require(Vector2.DistanceSquared(cursor,physical)<4,"enhanced-failed DD2 birth retains physical placement without Basic redirection");return;}
             if(itemType==65 && permitted)
             {
                 // Starfury's sky birth and tile gate use the actual cursor
@@ -90,7 +90,7 @@ namespace NativeWorldTextProbe
         {
             if(!ReferenceEquals(__instance,player) || itemType!=3818 || __0.type!=itemType || !__instance.controlUseItem)return;
             placementChecks++;
-            Require(Vector2.DistanceSquared(Main.screenPosition+new Vector2(Main.mouseX,Main.mouseY),target.Center+target.netOffset)<4,"original DD2 CanUse terrain gate reads the same placement point despite an enhanced fault");
+            Require(Vector2.DistanceSquared(Main.screenPosition+new Vector2(Main.mouseX,Main.mouseY),physical)<4,"original DD2 CanUse retains physical placement despite an enhanced fault");
         }
         internal static void Run(object context)
         {
@@ -295,18 +295,20 @@ namespace NativeWorldTextProbe
             for(int i=0;i<3;i++)Step(context,false,false);
             Call(attack,"FailLocal",new InvalidOperationException("isolated placement enhancement fault"));
             Step(context,true,false);
-            Require(parentBirths==1 && assistedConsumers==1 && placementChecks>0 && GetOptional(attack,"placementUse")==null,"one real DD2 CanUse/Shoot shares a completed receipt despite Failed");
+            Require(parentBirths==1 && assistedConsumers==0 && manualConsumers==1 && placementChecks>0 && GetOptional(attack,"placementUse")==null,"one real DD2 CanUse/Shoot remains physical despite Failed, with no Basic placement lease");
             // The following two component negatives reuse a naturally expired
             // cooldown; they do not create extra native uses or birth counts.
             for(int i=0;i<70;i++)Step(context,false,false);
             NativeToolExecutionChecks.Sample(context,input,physical,true);Call(combat,"Sample");
-            var receipt=Call(attack,"EnterPlacementUse",player);Require(receipt!=null,"known placement point has its own admitted-use receipt");
+            Require(Call(attack,"EnterPlacementUse",player)==null,"sentry cannot acquire an NPC placement receipt");
+            player.inventory[0].SetDefaults(1309);
+            var receipt=Call(attack,"EnterPlacementUse",player);Require(receipt!=null,"non-sentry minion retains its admitted selected-point receipt");
             NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,true,25,false,false));
             Require(Call(attack,"BeginPlacement",player,player.HeldItem,true)==null,"Aim OFF revokes placement receipt input");Call(receipt,"End");
             NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,true,25,false,true));
             receipt=Call(attack,"EnterPlacementUse",player);Require(receipt!=null,"second isolated placement receipt admitted");var item=player.HeldItem;player.inventory[0]=item.Clone();
             Require(Call(attack,"BeginPlacement",player,player.HeldItem,true)==null,"replaced weapon identity cannot consume an old placement receipt");Call(receipt,"End");
-            Console.WriteLine("PASS BASIC enhanced-failed DD2 native CanUse/Shoot and Aim OFF/receipt identity rejection");
+            Console.WriteLine("PASS BASIC enhanced-failed DD2 physical CanUse/Shoot; non-sentry Aim OFF/receipt identity rejection");
         }
         private static void YoyoBodyFallback(object context)
         {
