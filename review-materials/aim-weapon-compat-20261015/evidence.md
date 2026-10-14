@@ -1,6 +1,6 @@
 # 2026-10-15 武器兼容完整候选
 
-TASK_BASE 为 `0f93019526aa334877b4cfb4b5d38c3d1c0c55c4`，分支 `codex/aim-attack-modeling-and-integration`；生产末提交 `48651f8`，本证据的纯资料后继不改生产字节。当前 #114 / Draft PR #115 未合并；现装仍为 `9f0e756`。完整工作包已完成实现、自测、局部返修和自查，交集中独审。独审前未打完整新包、未换装。主调度 Astra/Max 只读；Sol-1 与 Sol-2 的实际 Sol/High 已核一次。
+TASK_BASE 为 `0f93019526aa334877b4cfb4b5d38c3d1c0c55c4`，分支 `codex/aim-attack-modeling-and-integration`；生产末提交 `48651f8`，完整审查/包来源为 `d177b0a1de35228057c5afc690459dfc70615e7f`，本证据的纯资料后继不改生产字节。未参与实现/期待起草的Sol/High集中独审PASS，主调度同意既有授权内交付；Stage、完整包和官方换装现已完成。当前 #114 / Draft PR #115 未合并，现装为d177包。主调度 Astra/Max 只读；Sol-1 与 Sol-2 的实际 Sol/High 已核一次。
 
 原件 `references/JMR_AIM_WEAPON_COMPAT_20261015/` 未修改。Sol-1拥有A/B、共享入口、注册/协定/证据及唯一Git/公共构建输出；Sol-2仅写Betsy、Bottle、纯算术帮助和C专属新测试，C四文件已冻结。TASK_BASE→最终资料候选的28文件清单由本目录 validation-map.json 及Git差异给出。外来 `docs/设计/本地参考资料使用说明.md`、`.workbuddy/`、`issue112.txt`、`pr113.json` 保留并排除提交，未reset/clean、未操作所有者游戏/真实角色世界。
 
@@ -53,4 +53,8 @@ C新→旧、B旧→新再因真实热点作受影响新→旧配对，全部保
 
 三个长期协定已写入`docs/网页Chat协作约定.md`、`docs/规范/工程治理规则.md`、`docs/设计/可重复构建与项目骨架.md`：今后已获安装授权的普通交付默认一次固定完整包、相关受控文件轻量备份、官方替换、一次载荷读回；纯资料不重包，仅真实失败重做受影响步骤。它不自动授予未来安装权，不取消路径/所有权/备份/原子性/用户数据底线，分支候选也未冒称main已生效。
 
-下一步由未参与实现/期待起草的Sol/High独审TASK_BASE→最终候选、原件与拟复用关系；通过后唯一整合者生成一次正常优化Release/net472/x86 ContinuousProcessing全包、真实阶段记录与既有包身份核验，按04备份确认Steam目标受控文件、官方Restore/Install、一次载荷读回。最终ZIP/hash、完整包/安装与工程测试分别记录；不merge/close/Tag/Release，不启动所有者游戏、不触碰真实角色世界。
+独审原文保存在`.local/aim-weapon-compat-20261015/independent-review-original.md`；实际Sol/High会话`01a13bc6-33a7-7f01-8e7a-7660c45c586a`审查28文件及必要传播，没有确定缺陷，并准许上列7227 C、2fcc B/Main、f720→486范围复用。正常Stage reader接受r02的13责任；首次r01原件保留，r02只修正已经独审/复用获准的状态措辞，未改安全门。
+
+官方正常Release/net472/x86 ContinuousProcessing完整包一次成功，包来源d177，17成员/10payload身份核验PASS。ZIP为`outputs/aim-weapon-compat-delivery-20261015-d177b0a/JueMingR-Continuous-Processing-d177b0a1de35228057c5afc690459dfc70615e7f.zip`，2171336字节，SHA256 `2C8F97ADCE467ED22BF17CDE47A76EF08D808F3ADFE58C7BF0B6190A46CBA81C`。与486组件compileInputs/compileFingerprint完全一致，但最终提交元数据/MVID造成不同程序集哈希，故只补一次现有B原版消费者绑定实际包字节，exit0；没有重复完整Main或A/B/C矩阵。
+
+既有Steam目标`F:/Games/GamePlats/Steam/steamapps/common/Terraria`的旧9f归属与无游戏占用成立。触碰的12个旧受控文件（含配置、安装回执和原启动证据）备份至`.local/aim-weapon-compat-20261015/install-d177b0a-20261015-031616/backup/controlled`；官方旧Restore、新Install各一次分别RESTORE_COMPLETE/INSTALL_COMPLETE。一回读确认10payload/manifest与新包一致，原版exe SHA仍`960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3`，备份和正常恢复材料可用，未回装演练、未扫描全用户目录、未启动所有者游戏或触碰真实存档。[短交付回执](delivery-receipt.json)记录路径/哈希与范围。C末5 Basic逐手未知及control/laser整叶exit1限制继续保留；新包所有者体验/FPS/多人未验证。纯资料后继不重包/重测/重装，不merge/close/Tag/Release。

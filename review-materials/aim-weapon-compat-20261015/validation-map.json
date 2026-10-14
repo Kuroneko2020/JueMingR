@@ -3,13 +3,13 @@
   "taskId": "JMR-AIM-WEAPON-COMPAT-20261015-v1",
   "taskBase": "0f93019526aa334877b4cfb4b5d38c3d1c0c55c4",
   "productionCommit": "48651f824e8805fece5c1bf76779208916558e39",
-  "finalCandidate": "production commit plus this evidence/docs-only successor; exact final SHA recorded in Git/PR and local stage draft after commit, not a circular self-hash",
+  "finalCandidate": "Reviewed/packaged candidate d177b0a1de35228057c5afc690459dfc70615e7f; later delivery documentation commit changes no production/package bytes.",
   "fullQualification": "INCOMPLETE",
   "releaseEligible": false,
-  "independentReview": "PENDING",
-  "package": "NOT_EXECUTED",
-  "installation": "NOT_EXECUTED",
-  "installedSource": "9f0e7569fac23be89378c537a0baac90be9b9322",
+  "independentReview": "APPROVED_FOR_STAGE",
+  "package": "IDENTITY_VERIFIED",
+  "installation": "INSTALLED_VERIFIED",
+  "installedSource": "d177b0a1de35228057c5afc690459dfc70615e7f",
   "changedFiles": [
     "docs/功能介绍/战斗辅助行为合同.md",
     "docs/规范/工程治理规则.md",
@@ -713,11 +713,12 @@
   ],
   "selfReview": "Read full TASK_BASE delta, actual input/source lifetime/critical comments/public contract and scope; no unrelated asset staged; no production tracing, native timer/AI/velocity writes, new dependency, merge/install or ownership widening.",
   "limits": [
-    "Current candidate not independently reviewed or packaged/installed; no owner new-package/FPS/multiplayer acceptance.",
+    "Independent review, official Stage/package identity and one installation/readback completed; no owner new-package/FPS/multiplayer acceptance.",
     "C Main final five Basic hands not diagnosed individually; natural motion/actual receive and sparse-direction counterexample are separate evidence layers.",
     "Cold Basic and unknown/budget-bound supply remain honest; no100percent Enhanced or all moderate-range sustained solution promise.",
     "B explicit-vx moving fixture advances original NPC.UpdateNPC but is not complete original family AI; early Player/Projectile-only records cannot establish NPC motion.",
     "Dry free preview remains representative and conditional; liquid/bounce/near-vertical owner-side/family uncertainty has no invented Contact.",
-    "Old byte scope reuse is proposed for independent review; original metadata never relabelled. Main spikes and all early failures retained."
-  ]
+    "Independent review approved listed old-byte scope reuse; original metadata never relabelled. Main spikes and all early failures retained."
+  ],
+  "deliveryReceipt": "review-materials/aim-weapon-compat-20261015/delivery-receipt.json"
 }
