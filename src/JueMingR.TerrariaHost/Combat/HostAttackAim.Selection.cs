@@ -223,7 +223,12 @@ namespace JueMingR.TerrariaHost.Combat
                         {best=distanceStart;break;}
                     }
                 }
-                if(probe>=0 && probe!=best && (!beforeNpc || probe!=hint) && CombatPredictionWork.TryContinue())
+                // Once the actual-phase hint and every nearer prefix have been
+                // checked, reserve the remaining update for its real consumer.
+                // A second, longer fair probe of an already missed nearer NPC
+                // cannot change this completed rank without repeating work;
+                // World owns fair progress and later fresh facts still rerank.
+                if((!beforeNpc || best<0) && probe>=0 && probe!=best && (!beforeNpc || probe!=hint) && CombatPredictionWork.TryContinue())
                 {
                     var npc=selection.Candidate(probe);int key=npc.whoAmI*2+parity;var identity=candidateIdentities[key];
                     int required=CandidateProgressRequired(identity,key,beforeNpc);
@@ -288,9 +293,14 @@ namespace JueMingR.TerrariaHost.Combat
             if(best>=0)
             {
                 var npc=selection.Candidate(best);var identity=CombatSelection.Identity(npc,observation.Session);
-                if(beforeNpc)SetActionDemand(candidateDepths[npc.whoAmI*2+1]);
                 candidates.Reachable=identity;selection.Choose(npc,observation.Session,true);
                 var plan=candidatePlans[npc.whoAmI*2+parity];
+                // Exploration depth is historical progress, not current work.
+                // Donate the complete freshly solved prefix: truncating to its
+                // receive tick would invalidate the hand's direction/dependency
+                // proof and replay the weapon solve in the selected owner.
+                if(beforeNpc && plan?.Timeline!=null)
+                    SetActionDemand(Math.Max(ActionPreferred(identity),plan.Timeline.Count-1));
                 if(beforeNpc && CandidateHandPrepared(plan) && plan.MotionTerrain!=null)
                     candidateHandPlan=plan;
                 // A farther optional positive does not erase the opportunity

@@ -29,7 +29,7 @@ namespace NativeWorldTextProbe
             near.active=false;far.width=80;far.height=40;far.Center=p.Center+new Vector2(range+10,0);NativeToolExecutionChecks.Sample(context,input,far.Center,true);Call(combat,"Sample");Call(host,"SampleMouse");NativeQuickItemChecks.BeginWorldStep();p.Update(0);selected=(JueMingR.Platform.Combat.NpcIdentity)Get(Get(host,"Selection"),"Target");Require(selected.Slot==2,"large receiver edge remains in range even when its centre is outside");
             Console.WriteLine("PASS strict nearest yoyo target and legal large receiver edge; attack reach does not change receiver qualification");
             NativeCombatObservationChecks.Save(host,new ObservationOptions());
-            SameObstacle(context,combat,host,input);ShortDemand(context,combat,host,input);BudgetPlanRetry(context);RunStress(context);
+            SameObstacle(context,combat,host,input);ShortDemand(context,combat,host,input);BudgetPlanRetry(context);NativeCombatCurrentDemandChecks.Run(context);RunStress(context);
         }
         private static object retryPlan;private static bool interruptRetry;private static int retrySolves;
         private static void BeforeRetrySolve()

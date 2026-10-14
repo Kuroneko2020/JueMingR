@@ -38,7 +38,20 @@ namespace NativeWorldTextProbe
                     // validated immutable window independently of that reader.
                     var visible=GetOptional(host,"DisplayPath") as NpcTrajectory;
                     Console.WriteLine("SELECTION actual path mouse="+mouse+" clear="+clear+" selected="+selected+" display="+(visible==null?"none":visible.Identity.Slot+"/"+visible.SampleTick+"/"+visible.CaptureTick));
-                    Require(visible!=null && visible.Identity.Slot==selected,"actual visible path uses the final shared selection");
+                    // Optional exhaustion may withdraw a display lease on the
+                    // firing update. Observe one fixed two-period window and
+                    // check every published owner, rather than treating that
+                    // nullable cold frame as a guaranteed display deadline.
+                    int visibleFrames=visible==null?0:1;
+                    Require(visible==null || visible.Identity.Slot==selected,"The firing update cannot display another receiver's path.");
+                    int period=(int)host.GetType().GetField("DisplayRefreshUpdates",Flags).GetRawConstantValue();
+                    for(int i=0;i<period*2;i++)
+                    {
+                        Step(context,a.Center,false);Require(Selected(host)==selected,"Native cooldown retains the same ranked receiver.");
+                        visible=GetOptional(host,"DisplayPath") as NpcTrajectory;
+                        if(visible!=null){Require(visible.Identity.Slot==selected,"Every actual visible path uses the final shared selection.");visibleFrames++;}
+                    }
+                    Require(visibleFrames>0,"The fixed two-period window contains an actual path for the final shared selection.");
                     Console.WriteLine("PASS finite actual candidate selection mouse="+mouse+" clear="+clear+" selected="+selected);
                 }
                 foreach(int weapon in new[]{3278,5669})

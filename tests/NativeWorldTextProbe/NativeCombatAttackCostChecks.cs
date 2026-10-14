@@ -76,6 +76,8 @@ namespace NativeWorldTextProbe
             if(only=="dedup-model"){NativeCombatDedupModelChecks.Run(context);return;}
             if(only=="dedup-sources"){NativeCombatDedupSourceChecks.Run(context);return;}
             if(only=="dedup"){NativeCombatDedupChecks.Run(context);return;}
+            if(only=="current-demand"){NativeCombatCurrentDemandChecks.Run(context);return;}
+            if(only=="candidate-failure"){NativeCombatCandidateFailureChecks.Run(context);return;}
             if(only=="optional-consumption"){OptionalConsumption(context,combat,host,attack,input);return;}
             // Functional allowance behavior must not charge the high-frequency
             // counting observer's dictionary/string work to production's 6ms.

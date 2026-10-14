@@ -1,0 +1,109 @@
+{
+  "task": "JMR-AIM-TARGET-PERF-20261014-v1",
+  "taskBase": "72970569c11dd09e3e210894c25cc06e4cfc1a7f",
+  "state": "AUTHOR_COMPLETE_REVIEW_PENDING",
+  "checks": [
+    {
+      "name": "architecture-combat",
+      "proposedDisposition": "REVIEWED_REUSE",
+      "artifacts": [
+        ".local/aim-dedup-repair-20261014/B-architecture-combat-r01.log"
+      ],
+      "applicability": "Platform/Features/Infrastructure and pure combat algorithms unchanged by this Host selection patch; retain original execution identity."
+    },
+    {
+      "name": "candidate-demand",
+      "proposedDisposition": "CURRENT",
+      "artifacts": [
+        ".local/aim-target-perf-repair-20261014/check-candidate-demand-full-r01.log",
+        ".local/aim-target-perf-repair-20261014/A240-red-r01.log",
+        ".local/aim-target-perf-repair-20261014/A240-green-r02.log",
+        ".local/aim-target-perf-repair-20261014/measurement/C-pressure-receipt.json"
+      ],
+      "applicability": "Complete normal candidate leaf plus final same-identity A240 old historical-demand RED/new GREEN, real step reduction, complete donor prefix preserved; normal pressure ABBA includes all3600 samples/100 native opportunities with warm wrong-target0. Component production666 bytes match; original probe identities retained."
+    },
+    {
+      "name": "candidate-first-failure",
+      "proposedDisposition": "CURRENT",
+      "artifacts": [
+        ".local/aim-target-perf-repair-20261014/B-reason-baseline-r02.log",
+        ".local/aim-target-perf-repair-20261014/B-final-r01.log"
+      ],
+      "applicability": "Old e262 new reason window repeatedNearerAfterPositive5 RED; fixed successor0 GREEN, actual Source/Plan/input/budget boundaries. Diagnostic time is not formal performance; old historical B2 exact cause remains unknown."
+    },
+    {
+      "name": "attack-costs",
+      "proposedDisposition": "CURRENT",
+      "artifacts": [
+        ".local/aim-target-perf-repair-20261014/check-attack-costs-r01.log"
+      ],
+      "applicability": "Full default ordinary optimized Release cost checks including complete donor/Source owner, retired same-owner, future mismatch and input source controls."
+    },
+    {
+      "name": "basic-aim",
+      "proposedDisposition": "CURRENT",
+      "artifacts": [
+        ".local/aim-target-perf-repair-20261014/check-basic-direct-r01.log"
+      ],
+      "applicability": "Real native CanUse/ItemCheck/Shoot Basic/permission/identity, UI/focus/OFF and failed-enhancement boundaries."
+    },
+    {
+      "name": "navigation",
+      "proposedDisposition": "CURRENT",
+      "artifacts": [
+        ".local/aim-target-perf-repair-20261014/check-navigation-r01.log"
+      ],
+      "applicability": "Actual navigation path legality remains unchanged; native specialists executed on fixed successor."
+    },
+    {
+      "name": "whip-terrain",
+      "proposedDisposition": "CURRENT",
+      "artifacts": [
+        ".local/aim-target-perf-repair-20261014/check-whip-terrain-r01.log"
+      ],
+      "applicability": "Full whip terrain specialist; current mechanism hint/complete prefix not truncated."
+    },
+    {
+      "name": "selection-preview",
+      "proposedDisposition": "CURRENT",
+      "artifacts": [
+        ".local/aim-target-perf-repair-20261014/check-selection-preview-r01.log",
+        ".local/aim-target-perf-repair-20261014/check-selection-baseline-r01.log",
+        ".local/aim-target-perf-repair-20261014/selection-final-r01.log",
+        ".local/aim-target-perf-repair-20261014/selection-final-baseline-r01.log"
+      ],
+      "applicability": "Original immediate nullable cold-display assertion failed for baseline and candidate and remains preserved; source optional5-update cadence/lease contract supports fixed two-period observation. Every actual published owner and at-least-one-visible result remain asserted; corrected baseline/candidate both exit0, no production display change."
+    },
+    {
+      "name": "main-performance",
+      "proposedDisposition": "CURRENT",
+      "artifacts": [
+        ".local/aim-target-perf-repair-20261014/measurement/C-formal-complete.json",
+        ".local/aim-target-perf-repair-20261014/measurement/C-main-time-summary.csv",
+        ".local/aim-target-perf-repair-20261014/measurement/C-main-slow-events.csv"
+      ],
+      "applicability": "34 complete initialized original Main windows: candidate3scenes x5modes x2, e2622keyBoth x2; fixed900 GUC each, full Update/Draw/EndDraw and scope elapsed, all/initial/attack/release/first30 retained. Samepresent is elapsed, not thread CPU/FPS. DynamicBoth extra advancing Update0.82-0.87ms vs ownOff, no sustained late hotspot, overall baseline comparison mixed."
+    },
+    {
+      "name": "representative-opportunities",
+      "proposedDisposition": "CURRENT",
+      "artifacts": [
+        ".local/aim-target-perf-repair-20261014/measurement/C-main-quality-summary.csv",
+        ".local/aim-target-perf-repair-20261014/measurement/C-key-native-events.csv",
+        ".local/aim-target-perf-repair-20261014/measurement/C-pressure-native-events.csv"
+      ],
+      "applicability": "452 native candidate Aim parents=433E19B, no wrong target or delayed/missing emission; Basics precede firstE only and exact causes unknown. Dynamic each42=41E1B, SourceAge1/Receive median45,36 native receives; derived each29parents/29children/73child damage. Path-idle0 births/consumption, Path-manual Unassisted. All normal and pressure denominators retained; neither E proportion nor damage events called hit rate."
+    },
+    {
+      "name": "workload-routing",
+      "proposedDisposition": "CURRENT",
+      "artifacts": [
+        ".local/aim-target-perf-repair-20261014/workload-routing-r01.log"
+      ],
+      "applicability": "Existing actual Git routing positive/negative, cumulative/index/worktree/delete/rename/untracked/shared input and execution plans exit0. New test leaves explicitly mapped. Actual current stage reader positive/negatives run after genuine independent approval, before the one complete package; not pre-signed here."
+    }
+  ],
+  "fullQualification": "INCOMPLETE",
+  "releaseEligible": false,
+  "note": "Fixed author candidate; concentrated independent review pending. Original component/probe/measurement and prior reusable checks keep their identities. Stage admission/package/install still NOT_RUN; this mapping is not an approval."
+}
