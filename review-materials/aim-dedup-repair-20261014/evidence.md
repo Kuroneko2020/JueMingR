@@ -6,7 +6,7 @@ f9691a2 的完整增量独审结论是 NEEDS_FIX；原件 `.local/aim-dedup-repa
 
 ## F：两个缺陷的因果与有限替代方案
 
-**F1 的引入点为 a7f5705。** 唯一候选从旧的共同分支移出后，保留了 `CandidateProgressRequired`，却漏掉原 `CandidateFact` 的显著变化处理。自然 Slime 的 AI/受击阶段或显著位移使旧未知范围不再相关时，唯一目标仍沿旧 requested 范围继续扩张。恢复这项原有边界后，普通运动仍保持探索进度；没有削去单目标冷却预备或改变实际 Source 的有效性验证。原观察对照 `F-work-f969-r01.log → F-work-range-r01.log` 的自然矛 NPC 步12658→9127、selected world120请求125→72，只证明该观察窗实际工作减少；其时间不充作正常性能。正常成本另由下方固定 Release ABBA 证明。
+**F1 的引入点为 a7f5705。** 唯一候选从旧的共同分支移出后，保留了 `CandidateProgressRequired`，却漏掉原 `CandidateFact` 的显著变化处理。自然 Slime 的 AI/受击阶段或显著位移使旧未知范围不再相关时，唯一目标仍沿旧 requested 范围继续扩张。恢复这项原有边界后，普通运动仍保持探索进度；没有削去单目标冷却预备或改变实际 Source 的有效性验证。原观察对照 `F-work-f969-r01.log → F-work-range-r01.log` 的自然矛 NPC 步12658→9127、selected world120请求98→72（两份日志各行40）；125来自另一原因窗 `F-f969-reason-r01.log:63`，不能混成同窗。该配对只证明观察窗实际工作减少，其时间不充作正常性能；正常成本另由下方固定 Release ABBA 证明。
 
 **F2 同样源于 a7f5705 的新唯一候选分支，但不是把 F1 自动归成同因。** BeforeNpc 原来反复用旧 `actionHintRequired` 抬高 urgent demand，且稳定单目标绕过多候选在真实 admission 的提示退休。修订只在真实 urgent admission 移交一次；冷却回调不提前消费第一次有效提示，新 admitted warm 的 miss/暂停也替换旧提示。`F-hint-final-r03.log` 与 `F-xhigh-costs-r01.log` 的三个实际 native birth 都 Enhanced：首次旧 warm25移交为 ActionRequired25/Source26，后两次 miss/暂停后的机会为 ActionRequired0/Source17。旧 f969 负控 `F-hint-red-f969-r02.log` 保留按期待失败。
 
