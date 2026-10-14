@@ -62,11 +62,18 @@ namespace JueMingR.TerrariaHost.Combat
         // prepare, transfer rolling state or publish to the selected/input cache.
         internal PredictionTerrain.CellLease FreezeCandidateTerrain(NpcTrajectory publication)
         {
+            var owner=CandidateTerrainOwner(publication);return owner?.Terrain.FreezeCells();
+        }
+        // RelationVersion is this producer's local retirement epoch. Preserve
+        // its owner with the exact publication; independent Sources need not
+        // have the same numeric epoch for the same synchronous sampled future.
+        internal NpcPredictionSource CandidateTerrainOwner(NpcTrajectory publication)
+        {
             if(publication==null)return null;
             // Aim-only has no display reader; its actual input publication
             // still owns this exact same Source terrain, not a derived view.
-            if(ReferenceEquals(publication,Cache.Read(0)) || ReferenceEquals(publication,Cache.Read(1)))return Terrain.FreezeCells();
-            return candidateSource!=null && ReferenceEquals(publication,candidateSource.Cache.Read(0))?candidateSource.Terrain.FreezeCells():null;
+            if(ReferenceEquals(publication,Cache.Read(0)) || ReferenceEquals(publication,Cache.Read(1)))return this;
+            return candidateSource!=null && ReferenceEquals(publication,candidateSource.Cache.Read(0))?candidateSource:null;
         }
         // currentTick is Main.GameUpdateCount at the real player observation,
         // NOT timeline.SampleTick. PrepareAction stamps GUC-1 (NPC point zero

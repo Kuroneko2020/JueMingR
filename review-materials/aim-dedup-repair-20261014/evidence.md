@@ -2,7 +2,31 @@
 
 原件 `references/JMR_AIM_REPAIR_20261014/`，ID `JMR-AIM-REPAIR-20261014-v1`，14 原件 SHA 已核，保持本地只读；网页未直接取得这些原件。TASK_BASE `c38b1f941d64b73971a3380aff5d7c75fff24cb7`；对照原包来源 `1ae9965081cddffd2af41cf50c807f6144e6adfb`，1ae→TASK_BASE 的 src 差异为空。
 
-f9691a2 的完整增量独审结论是 NEEDS_FIX；原件 `.local/aim-dedup-repair-20261014/independent-review-f9691a2.md` 保留。下述 F 为其成组返修与作者自查，等待独立窄复核；后面的 A/B 段保留原执行身份与当时未决状态，不能用旧 NEEDS_FIX 冒充新结果，也不能用新结果抹掉旧失败。当前尚无本轮普通完整包或安装，最近现装来源仅为1ae线索。长期资格 INCOMPLETE/releaseEligible=false，红框 OWNER_WITHDRAWN，owner/FPS/multi NOT_RUN；#114/#7 OPEN、#115 OPEN Draft。
+f9691a2 的完整增量独审结论是 NEEDS_FIX，原件保留。下述 F 的d77返修及b9事实后继已由独立Sol/Max窄PASS/APPROVED_FOR_STAGE，最终原报告 `.local/aim-dedup-repair-20261014/independent-review-d77ea25.md` SHA256 `7F795FE6D44395B31DAAED5E6B8AAE6F893FDD3488A22D687F1F9DB32EFDF035`；旧完整审查与新窄审查按实际范围组合，不能替下述实际ZIP后继新修订背书。A/B/F旧段保留各自执行身份。当前已有b9普通完整包但真实消费者发现新反例，安装暂停，现装仍为1ae线索。长期资格 INCOMPLETE/releaseEligible=false，红框 OWNER_WITHDRAWN，owner/FPS/multi NOT_RUN；#114/#7 OPEN、#115 OPEN Draft。
+
+## 实际 ZIP 新反例与 Source owner 返修（待同一独审）
+
+实际b9完整优化Release/net472/x86 ZIP为2,167,514字节，SHA256 `1623D5F980BC6878A93FDE753C9115271B15ADC336D89C9C0CBC66DDCF38BBA6`；实际解压17成员/10payload和manifest/构建身份通过。`F-actual-zip-consumers-r01.log` 的Basic叶通过，完整candidate-demand第五场24moving/Path OFF失败：frame160近目标唯一原生机会为Basic，实际charged work6.1542ms。未执行的后续ZIP叶仍NOT_RUN；该包没有安装，不用旧组件PASS抵消此原失败。
+
+引入点经blame为 **a7f5705** 的 `HostAttackAim.HandReuse` 新门。此前c38沿正常selected武器重算，没有这个门；a7希望借完成candidate手部，但把两个独立Source的局部 `RelationVersion/epoch` 当共同版本。`RollingNpcPrediction`发布的epoch来自各自Source退休历史，彼此4/8可代表同一真实样本/完整未来。`F-package-candidate-work-r04.log` 在原实际ZIP上确认完整前缀、Gravity/Wall、当前输入与租约均通过，却因该比较拒借并重演167武器步。它证明具体重复链，不证明原6.1542ms全部由它造成。
+
+最小修订在精确publication冻结时保留真实Source owner：同owner仍比较epoch，不同owner仍需同Sample/Capture/phase的完整前缀、未来Gravity/Wall和独立当前地形lease；不改epoch、真实节奏、6ms总额/3ms候选累计、范围或Basic政策。旧 `SameSolvePremises` 换绑前检查保持。此前组件夹具已把selected owner暖在目标2，candidate复用同owner，未触发真实独立Source退休分叉；新夹具通过真实另目标capture与Clear产生分叉，没有改轨迹点或stamp。最终同一probe的 `F-epoch-final-fixture-receipt-r01.json`：固定旧实际ZIP `F-epoch-actual-zip-red-r02.log` 以真实epoch1/0、完整未来相同却rank1→total2/share0按期待失败；新普通Release全默认 `F-epoch-release-default-costs-r02.log` 为3/13、rank1→total1/share1、95→95武器步。同一donor先证仍可借，再真实NPC+3使完整未来不同并拒借，排除其他旧负控掩盖；同owner实际Clear/recapture14→15、完整未来相同仍拒借。原phase/sample/地形/输入/未来gravity和三次native birth反控保持。
+
+新固定普通组件Host SHA256 `59F5940CA9A3DDCA1CDAA4426FD813AE3E0C85DF6A54B4E3592737FA70A9F76A`，MVID `6d932d7f-58ed-4946-a4ed-0c84dd222100`；`F-epoch-release-build-record-r01.json`保持b9 dirty/PrepareOnly身份。正常窗与最小观察probe SHA256为 `915FD911FD31B06EA2A204EE70A1E530A13023D6A3D78C2E2573032795DA59AE`；只新增上述紧邻可借正控的最终fixture probe为 `7BE05FD899321EA4545BC48666E07A86DF98D64FBE9A895621487AF867D5C490`，candidate-demand叶及生产字节未改，没有重跑正常窗。这不是后继最终ZIP，也没有补署未来commit。`F-epoch-minimal-control-receipt-r01.json` 的旧/修最小整数计数观察均exit0：同一moving24 frame160，旧完成candidate167→Hand拒4/8→selected再167；修后完成candidate167→Hand通过4/8→selected0。两个独立Source的30步仍分别进行。较重逐门观察 `F-epoch-opportunity-work-r01.log` 使candidate在136/167步暂停、无donor而后6ms退出，exit1原件保留；不能用它签普通性能或覆盖原失败。
+
+正常对照 `F-epoch-candidate-ABBA-receipt-r02.json` 全部四进程exit0，各五场×180=900更新，预先固定cold30/warm150，原6/3ms，无高频observer；3600个charged-work样本、100个实际原生机会全保留。A1完成后收集器重复mkdir出错，保留r01，r02只恢复原A1数据后续B1/B2/A2，没有重跑挑绿；间隔和原脚本hash见receipt。这里的毫秒是 `PredictionWork.UsedMilliseconds`，不是完整主循环或FPS。
+
+| blockers / Path / moving | A1暖均值ms | B1 | B2 | A2 | B/A均值变化 |
+|---|---:|---:|---:|---:|---:|
+| 2 / OFF / false | 0.664357 | 0.675941 | 0.699558 | 0.637272 | +5.68% |
+| 2 / ON / false | 1.471249 | 1.455095 | 1.464637 | 1.414660 | +1.17% |
+| 24 / OFF / false | 0.809650 | 0.807289 | 0.800351 | 0.813792 | -0.97% |
+| 24 / OFF / true | 0.802459 | 0.787941 | 0.845857 | 0.808532 | +1.42% |
+| 24 / ON / false | 1.986579 | 1.993345 | 1.884716 | 1.914316 | -0.59% |
+
+近目标20个frame160机会均Enhanced；各场原生机会固定0/40/80/120/160。B2 moving24的frame80/120额外两Basic，far实际Enhanced由同窗其他三次的3降为1，不能签供给全等。frame80 charged6.1082ms、frame1205.1811ms；farActionAttempt保持旧pass2而当前actionPass为3/4，说明该远目标动作准备未获新保留admission。未观测旧事件具体暂停位置，仍unknown；后测最小观察的可完成条件不回贴给B2。暖mean/p95/p99/max与冷峰全部在 `F-epoch-candidate-statistics-r02.csv`，移动场暖max A1/A2为4.3042/4.6171、B1/B2为3.4897/6.1082。当前只证明完成donor冗余退出，整体成本/新增供给差异待独审按04判断，不用更多Basic解释“提速”。
+
+`F-epoch-propagation-receipt-r02.json` 的普通Release Basic/selection-preview/whip-terrain三叶均exit0；完整默认成本、56模型逐行与基线相同、四个正普通鞭finite/full及真实delayed/controlled/flight拒借通过。旧六场主要成本ABBA保留原666输入身份，其单候选/机制求解路径可按实际影响复用；新4生产文件已经改变，不能再宣称当前全部666输入等旧测量。后继候选还需新独审/阶段准入和实际ZIP消费者；原包失败、正常混合结果及安装未运行分别保留。
 
 ## F：两个缺陷的因果与有限替代方案
 

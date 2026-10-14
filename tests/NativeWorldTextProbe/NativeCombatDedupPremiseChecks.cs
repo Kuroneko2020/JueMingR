@@ -11,6 +11,30 @@ namespace NativeWorldTextProbe
     internal static class NativeCombatDedupPremiseChecks
     {
         private const BindingFlags Flags=BindingFlags.Instance|BindingFlags.Static|BindingFlags.Public|BindingFlags.NonPublic;
+        internal static void SameOwnerRetirement(object aim,object source,Player player)
+        {
+            var cache=(NpcPredictionCache)Get(source,"Cache");var old=cache.Read(1);
+            Console.WriteLine("DEDUP same owner fixture required="+cache.Required+" minimum="+cache.MinimumRequired+" sourceStop="+Get(source,"outcomeStop")+" sourceFuture="+Get(source,"outcomeFuture"));
+            Require(old!=null,"dedicated fully modeled same-owner fixture has an actual Source publication");
+            var phase=Enum.Parse(aim.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase"),"BeforeNpc");
+            var plan=Activator.CreateInstance(aim.GetType().GetNestedType("PreviewPlan",Flags),true);
+            Require(Call(aim,"PreparePlan",plan,old,phase) is AttackContact,"same-owner retirement starts with a real complete hand solve");
+            plan.GetType().GetField("MotionTerrain",Flags).SetValue(plan,Call(source,"FreezeCandidateTerrain",old));
+            plan.GetType().GetField("MotionSource",Flags).SetValue(plan,source);
+            var borrow=aim.GetType().GetField("candidateHandPlan",Flags);borrow.SetValue(aim,plan);
+            Require((bool)Call(aim,"TryCandidateHand",player,player.HeldItem,Get(plan,"Ammo"),old,phase,0),"the completed same-owner hand donates before its actual Source retirement");
+            // Retire and recapture this producer at the same real native sample.
+            // No live input/geometry changes and no epoch field is rewritten.
+            Call(source,"Clear");cache.Demand(1,1,old.Count-1);
+            Call(source,"PrepareActionPrefix",old.Identity,old.SampleTick,old.Count-1,NpcPredictionCache.Horizon);
+            var rebuilt=cache.Read(1);
+            Console.WriteLine("DEDUP same owner recapture old="+old.Count+"/"+old.RelationVersion+"/"+old.Stop+"/"+old.Quality+" new="+(rebuilt==null?"none":rebuilt.Count+"/"+rebuilt.RelationVersion+"/"+rebuilt.Stop+"/"+rebuilt.Quality));
+            Require(rebuilt!=null && rebuilt.RelationVersion!=old.RelationVersion && AttackIntercept.Equivalent(old,rebuilt),"actual same-owner Clear/recapture changes its epoch while this fixed future stays geometrically equal");
+            borrow.SetValue(aim,plan);
+            Require(!(bool)Call(aim,"TryCandidateHand",player,player.HeldItem,Get(plan,"Ammo"),rebuilt,phase,0) && borrow.GetValue(aim)==null,"the same Source's changed epoch still rejects and retires its old hand donor");
+            Console.WriteLine("DEDUP same owner retired epoch="+old.RelationVersion+"/"+rebuilt.RelationVersion+" geometryEquivalent=True donation=False");
+            Call(plan,"Clear");Call(aim,"ClearExecution");
+        }
         internal static void Run(object aim,object donor,Player player,object phase,Func<int> solves)
         {
             var old=(NpcTrajectory)Get(donor,"Timeline");var points=Enumerable.Range(0,old.Count).Select(i=>old[i]).ToArray();

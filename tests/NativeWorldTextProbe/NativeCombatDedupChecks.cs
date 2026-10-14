@@ -215,10 +215,28 @@ namespace NativeWorldTextProbe
             foreach(var candidate in (Array)Get(attack,"candidatePlans"))if(candidate!=null)Call(candidate,"Clear");
             using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))
             {
+                // Independent Source owners can retire different histories.
+                // Produce that state through real captures and Clear, never by
+                // editing a trajectory epoch or inventing a Contact. Keep the
+                // selected owner on the other actual NPC before ranking this
+                // new hand, so the candidate uses its separate producer.
+                var prediction=Get(host,"Prediction");var scratch=Get(prediction,"candidateSource");
+                var history=(NpcIdentity)attack.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.CombatSelection").GetMethod("Identity",Flags).Invoke(null,new object[]{Main.npc[3],Get(host,"Session")});
+                Call(prediction,"PrepareActionPrefix",history,(long)Main.GameUpdateCount-1,16,NpcPredictionCache.Horizon);
+                for(int retirement=0;retirement<2;retirement++)
+                {
+                    ((NpcPredictionCache)Get(scratch,"Cache")).Demand(0,1,16);
+                    Call(scratch,"PrepareActionPrefix",history,(long)Main.GameUpdateCount-1,16,NpcPredictionCache.Horizon);Call(scratch,"Clear");
+                    if((long)Get(scratch,"epoch")!=(long)Get(prediction,"epoch"))break;
+                }
+                Require((long)Get(scratch,"epoch")!=(long)Get(prediction,"epoch"),"actual independent Source preparation/retirement histories have unequal local epochs");
                 solves=shares=motionSteps=spearSteps=solveDepth=0;Call(attack,"BeginActionDemand");Call(attack,"ResolveSelection",(long)Main.GameUpdateCount-1,true);
                 var selected=(NpcIdentity)Get(Get(host,"Selection"),"Target");
                 Console.WriteLine("DEDUP component candidates="+Get(Get(host,"Selection"),"CandidateCount")+" rank="+solves+" depth="+((int[])Get(attack,"candidateDepths"))[selected.Slot*2+1]+" request="+((int[])Get(attack,"candidateRequests"))[selected.Slot*2+1]);
                 Call(attack,"Demand",true);Call(Get(host,"Prediction"),"PrepareActionPrefix",selected,(long)Main.GameUpdateCount-1,(int)Get(attack,"ActionRequired"),NpcPredictionCache.Horizon);
+                var candidatePath=(NpcTrajectory)Get(((Array)Get(attack,"candidatePlans")).GetValue(selected.Slot*2+1),"Timeline");var selectedPath=((NpcPredictionCache)Get(prediction,"Cache")).Read(1);
+                Require(candidatePath!=null && selectedPath!=null && candidatePath.RelationVersion!=selectedPath.RelationVersion && AttackIntercept.Equivalent(candidatePath,selectedPath),"same real sample and complete future can come from unequal owner-local relation epochs");
+                Console.WriteLine("DEDUP independent Source epochs candidate="+candidatePath.RelationVersion+" selected="+selectedPath.RelationVersion+" sample="+candidatePath.SampleTick+" geometryEquivalent=True");
                 int ranked=solves,rankedSteps=motionSteps;Call(attack,"PrepareAction");
                 Console.WriteLine("DEDUP two candidate ranking="+ranked+" total="+solves+" shares="+shares+" contact="+(GetOptional(attack,"ExpectedImpact")!=null));
                 Require(ranked>0 && shares==1 && solves==ranked && GetOptional(attack,"ExpectedImpact")!=null,"completed same BeforeNpc zero-delay candidate hand is not solved twice");
@@ -242,6 +260,24 @@ namespace NativeWorldTextProbe
                 reject(()=>Main.npc[selected.Slot]=replacement,()=>Main.npc[selected.Slot]=receiver,"target slot instance");
                 bool wet=Main.tile[53,41].active();ushort tileType=Main.tile[53,41].type;
                 reject(()=>{Main.tile[53,41].active(true);Main.tile[53,41].type=1;},()=>{Main.tile[53,41].active(wet);Main.tile[53,41].type=tileType;},"physical weapon passage cell");
+                var receiverPosition=receiver.position;
+                reject(()=>
+                {
+                    // Establish that this exact donor is still eligible after
+                    // the earlier independent negative controls. Otherwise a
+                    // stale unrelated premise could mask the changed future.
+                    Call(prediction,"PrepareActionPrefix",selected,(long)Main.GameUpdateCount-1,(int)Get(attack,"ActionRequired"),NpcPredictionCache.Horizon);
+                    var unchanged=((NpcPredictionCache)Get(prediction,"Cache")).Read(1);
+                    var beforeNpc=Enum.Parse(attack.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase"),"BeforeNpc");
+                    Require(unchanged!=null && AttackIntercept.Equivalent(candidatePath,unchanged) && (bool)Call(attack,"TryCandidateHand",p,p.HeldItem,Get(donor,"Ammo"),unchanged,beforeNpc,0),"the exact cross-owner donor still shares before actual NPC movement");
+                    Call(attack,"ClearExecution");attack.GetType().GetField("candidateHandPlan",Flags).SetValue(attack,donor);shares=0;
+                    receiver.position.X+=3;
+                    Call(prediction,"PrepareActionPrefix",selected,(long)Main.GameUpdateCount-1,(int)Get(attack,"ActionRequired"),NpcPredictionCache.Horizon);
+                    var changed=((NpcPredictionCache)Get(prediction,"Cache")).Read(1);
+                    Require(changed!=null && !AttackIntercept.Equivalent(candidatePath,changed),"actual NPC movement makes the independently recaptured full prefix differ; no trajectory point or stamp is edited");
+                    Console.WriteLine("DEDUP independent Source real NPC deltaX=3 candidateEpoch="+candidatePath.RelationVersion+" selectedEpoch="+changed.RelationVersion+" geometryEquivalent=False beforeMoveDonation=True");
+                },()=>receiver.position=receiverPosition,"different real NPC future across independent Source owners");
+                Console.WriteLine("DEDUP independent Source changed full future donation=False oldBorrowRetired=True");
                 // Negative controls can legitimately replace Source's
                 // publication/relation generation. Restoring live fields does
                 // not restore that old proof. Acquire a fresh normal sample
@@ -269,6 +305,15 @@ namespace NativeWorldTextProbe
                 args=new object[]{p,p.HeldItem,Enum.Parse(Get(attack,"preparedOrdinaryPhase").GetType(),"BeforeNpc"),null};
                 Require((bool)attack.GetType().GetMethod("TryOrdinaryInput",Flags).Invoke(attack,args) && Get(args[3],"Kind").ToString()=="Basic","same consumed Contact cannot grant a second Enhanced input; this component does not claim a native birth");
             }
+            // A fully modeled native Slime needs no observation-trend history
+            // after Source.Clear; this isolates same-owner epoch retirement
+            // from the separate unknown-motion/history fallback contract.
+            p=Reset(context,combat,host,input,95);NativeCombatObservationChecks.Save(host,new ObservationOptions(false,false,true,false,false,50,true,true));
+            var epochNpc=Main.npc[2];epochNpc.SetDefaults(1);epochNpc.whoAmI=2;epochNpc.active=true;epochNpc.Center=new Vector2(850,667);epochNpc.velocity=Vector2.Zero;epochNpc.target=0;epochNpc.life=epochNpc.lifeMax=100000;Main.npc[3].active=false;
+            for(int observed=0;observed<2;observed++)NativeCombatSelectionPreviewChecks.Step(context,new Vector2(550,600),false,true);
+            NativeQuickItemChecks.BeginWorldStep();Sample(context,combat,host,input,new Vector2(550,600));
+            using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))
+            {Call(attack,"BeginActionDemand");Call(attack,"Demand",true);var id=(NpcIdentity)Get(Get(host,"Selection"),"Target");Require(id.Slot==2 && id.Type==1,"dedicated same-owner fixture selected the actual native Slime");var source=Get(host,"Prediction");((NpcPredictionCache)Get(source,"Cache")).Demand(1,1,40);Call(source,"PrepareActionPrefix",id,(long)Main.GameUpdateCount-1,40,NpcPredictionCache.Horizon);NativeCombatDedupPremiseChecks.SameOwnerRetirement(attack,source,p);}
             Call(attack,"EndPreparation");
         }
     }

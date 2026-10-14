@@ -367,7 +367,7 @@ namespace JueMingR.TerrariaHost.Combat
                 if(timeline!=null)candidateDepths[key]=Math.Max(candidateDepths[key],timeline.Count-1);
                 var contact=timeline!=null && timeline.Count>=2?PreparePlan(plan,timeline,phase):null;
                 candidateUnknown[key]=contact==null && (timeline==null || timeline.BudgetPaused || timeline.Stop==PredictionStop.None && timeline.Count<=NpcPredictionCache.Horizon);
-                plan.MotionTerrain=null;
+                plan.MotionTerrain=null;plan.MotionSource=null;
                 // Seal only a completed positive before another candidate can
                 // replace the producing owner's cells. This bounded copy ends
                 // the already admitted work; a second producer admission here
@@ -376,7 +376,10 @@ namespace JueMingR.TerrariaHost.Combat
                 // separately admit/validate display under the unchanged shared
                 // allowance; this snapshot grants no display or actual input.
                 if(contact!=null && (beforeNpc && CandidateHandPrepared(plan) || !beforeNpc && observation.Path && !BasicPermission))
-                    plan.MotionTerrain=observation.Prediction.FreezeCandidateTerrain(publication);
+                {
+                    plan.MotionSource=observation.Prediction.CandidateTerrainOwner(publication);
+                    plan.MotionTerrain=plan.MotionSource?.Terrain.FreezeCells();
+                }
                 return contact!=null;
             }
             catch(CombatPredictionBudgetExceededException){return false;}

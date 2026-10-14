@@ -407,6 +407,7 @@ namespace JueMingR.TerrariaHost.Combat
         private sealed class PreviewPlan
         {
             internal PredictionTerrain.CellLease MotionTerrain;
+            internal NpcPredictionSource MotionSource;
             internal HostAttackControl.PreviewDependencies ControlDependencies;
             // Clear retires a fact, not its bounded fault history. Only a new
             // concrete context or explicit feature retry permits another try.
@@ -456,7 +457,7 @@ namespace JueMingR.TerrariaHost.Combat
                 item=source.item;slot=source.slot;type=source.type;prefix=source.prefix;scale=source.scale;
                 Phase=source.Phase;Immune=source.Immune;AttackCooldown=source.AttackCooldown;MeleeCooldown=source.MeleeCooldown;
             }
-            internal void Clear(){Contact=null;Timeline=null;MotionTerrain=null;Ammo=null;Environment=null;Obstacles=null;HarpyState=null;Flight=PreparedFlight=null;ControlDependencies=null;WhipOwner=null;item=null;HandOwner=null;Prepared=Controlled=HadFlight=false;}
+            internal void Clear(){Contact=null;Timeline=null;MotionTerrain=null;MotionSource=null;Ammo=null;Environment=null;Obstacles=null;HarpyState=null;Flight=PreparedFlight=null;ControlDependencies=null;WhipOwner=null;item=null;HandOwner=null;Prepared=Controlled=HadFlight=false;}
         }
     }
 }
