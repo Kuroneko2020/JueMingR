@@ -1,6 +1,6 @@
 # 当前需求、清线稳定性与持续成本返修
 
-任务 `JMR-AIM-TARGET-PERF-20261014-v1`，#114 / Draft PR #115。TASK_BASE 为 `72970569c11dd09e3e210894c25cc06e4cfc1a7f`；旧直接对照为实际 e262 完整包。主调度实际 Astra/Max；实施与测量实际 Sol/High，未改变全局配置。A/B修订、必要工程与完整C已形成作者候选；集中独审、普通包与安装尚未执行。
+任务 `JMR-AIM-TARGET-PERF-20261014-v1`，#114 / Draft PR #115。TASK_BASE 为 `72970569c11dd09e3e210894c25cc06e4cfc1a7f`；旧直接对照为实际 e262 完整包。主调度实际 Astra/Max；实施、测量与独审实际 Sol/High，未改变全局配置。固定候选 `9f0e7569fac23be89378c537a0baac90be9b9322` 已完成集中独审、真实准入正反控及04一次包／安装窗口；后继纯文档提交不改变此包来源。
 
 ## A：历史探索与当前攻击需求
 
@@ -58,6 +58,16 @@ Path无攻击／手动的全部数字同在CSV。动态Both相对自身Off额外
 
 额外selection-preview的固定3idle后单一冷帧display非空断言，旧e262与新候选同处失败；仅增加末尾诊断、保持原3idle的后续r07四组合都通过。原失败保留。现行显示是5更新optional生产/有效lease，预算可能在射击更新撤lease；测试改为固定两周期核所有可见path的owner并要求真实可见结果，避免把null冷帧当单帧显示合同。最终新旧载荷均四组合exit0（`selection-final-r01.log` / `selection-final-baseline-r01.log`）；生产显示没有改动。
 
-实际Git差异路由、共享消费者／排除／索引工作树／删除改名／缺失基线／执行计划检查exit0，见 `workload-routing-r01.log`；本轮仅在原阶段reader登记真实新基底／修订白名单／11项责任，保留未知可执行内容拒绝。真实获审阶段记录的正例／负控在独审后与一次机械交付窗口执行，未预填PASS。不运行全187、全NPC×武器或旧worker全矩阵。完整长期资格INCOMPLETE / releaseEligible=false。源码、工程测量、完整包、文件安装、所有者真实加载/体验/FPS/多人、合并分别报告。
+实际Git差异路由、共享消费者／排除／索引工作树／删除改名／缺失基线／执行计划检查exit0，见 `workload-routing-r01.log`；本轮仅在原阶段reader登记真实新基底／修订白名单／11项责任，保留未知可执行内容拒绝。独立审查后以真实报告生成准入记录，实际reader正例与16项指定反控全部通过，原记录未变。不运行全187、全NPC×武器或旧worker全矩阵。完整长期资格INCOMPLETE / releaseEligible=false。源码、工程测量、完整包、文件安装、所有者真实加载/体验/FPS/多人、合并分别报告。
 
-独审NOT_RUN；完整包NOT_RUN；本轮安装NOT_RUN，现装仍旧e262记录。红框OWNER_WITHDRAWN；不启动用户游戏、不写真实角色/世界、不合并/关闭/Tag/Release。外来四项保持原字节并排除Git提交。
+## 固定候选审查与一次文件交付
+
+独立Sol/High已审TASK_BASE→9f0e756完整24文件增量、必要相邻调用与A/B/C原始证据，结论APPROVED_FOR_STAGE；另独立重算34个Main窗与压力分母。同一独审对真实reader执行、准入记录和16反控作一次机械窄复核PASS。原文分别保留于本地 `independent-review-9f0e756-r01.md`、`independent-review-stage-guards-r01.md`；主Astra集中判断认可限定范围内的成本／质量。stage记录SHA256 `824C51C6703FC2B7AC99C7450AC06B891891A3A5F7F0B80E96EB8455C2836D9B`，来源9f、sourceFP `5D9625E3C7E133EDAF17C0CF6D683D5B034A9E139D8B381574CEF009AC8E12A0`、inputFP `49DB19F83B7C2F62B86F4654E685AA6A5D8454910AB79975FE125E938099AD22`。未签全资格／发布／所有者体验。
+
+普通优化Release/net472/x86 ContinuousProcessing完整包只构建一次：`outputs/aim-target-perf-delivery-20261014-9f0e756/JueMingR-Continuous-Processing-9f0e7569fac23be89378c537a0baac90be9b9322.zip`，**2,167,651 bytes**，SHA256 **8B7A6C47160241E97F9BE357F692B7E739819AFDDA2B0874588E775835CA8EF7**。一次现有verify入口核17成员／10payload及manifest／source／Release平台；构建回执SHA256 `E199FB4360C4936AE06250981E184CBF6AA8F96482843EC155D422BA14344DE3`。最终包Host SHA256 `6D66EBE10D55A625467FEA705A0D4AFFA1DA8A74C9A963D4CDB3EEF7A098469E`、MVID `38938423-08ce-409f-8dee-9ce0e3aca07d`，与C原组件PE身份分列，不将C改签为最终包。全部666生产输入仍与C核合。
+
+一次代表A240消费者使用构建器同字节包目录，通过Path OFF/ON各6真实机会、2次短Plan，hand借用4／6；exit0，原件 `package-representative-r01.log` 与 `.local/ir-692758ce/current-demand/`。它是同字节代表消费，未冒称另一次实际ZIP解包全套业务／完整Main／FPS验证。
+
+既有授权目标 `F:\Games\GamePlats\Steam\steamapps\common\Terraria` 新核所有权、无游戏／worker占用后，实际11旧R受控文件备份（本次无旧evidence，不套历史12数量）。官方旧Restore→新Install各一次退出0，分别RESTORE_COMPLETE／INSTALL_COMPLETE。一次读回新10payload与安装manifest一致、原版exe未变、11备份仍匹配。完整本地回执 `.local/aim-target-perf-repair-20261014/install-9f0e756-20261014-225631/installation-receipt.json`，备份同目录 `backup/controlled/`，旧完整包与官方恢复材料路径在preflight及回执的recovery字段；未实际回装旧版验证。不扫描用户／Steam／云目录，不加第二安装审计。
+
+[简短机器交付回执](delivery-receipt.json)记录包、目标和边界。红框OWNER_WITHDRAWN；所有者游戏加载／进入／F5／正常退出、现场FPS与多人NOT_RUN，不启动用户游戏、不写真实角色/世界、不合并/关闭/Tag/Release。外来四项保持原字节并排除Git提交。#7/#114保持OPEN、PR115保持Draft；本轮安装成功不能代替所有者体验。
