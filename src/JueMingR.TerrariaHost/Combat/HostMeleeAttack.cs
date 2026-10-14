@@ -37,6 +37,17 @@ namespace JueMingR.TerrariaHost.Combat
             int extra=item.autoReuse && item.reuseDelay==0 && item.useTime<=item.useAnimation && item.shoot>0 && item.useStyle==5?1:0;
             return Math.Max(1,item.useAnimation+extra);
         }
+        // SolvePrepared encodes this same complete native animation duration
+        // in the private primary whip's ai[2]; extraUpdates divide back into
+        // these owner/world actions. The extra boundary keeps the final phase
+        // available without requesting a tail after the body has retired.
+        internal static int WhipHandActions(Player player,Item item)
+        {return (player.itemAnimation>0 && player.itemAnimationMax>0?player.itemAnimationMax:AnimationDuration(player,item))+1;}
+        // Seed8 reads NPC action 1+8*4 even when the primary body is shorter.
+        // Include all nine original full-range directions; a short body is not
+        // permission to clamp that last direction to an earlier NPC point.
+        internal static int WhipSearchRequired(Player player,Item item)
+        {return Math.Max(33,WhipHandActions(player,item));}
         internal static int PreferredSpearRange(Player player,Item item,AttackAmmoSnapshot ammo,NPC target,int delay)
         {
             Projectile parent;if(ammo==null || !ContentSamples.ProjectilesByType.TryGetValue(ammo.Projectile,out parent) || parent.aiStyle!=19 || DerivedSpearChild(parent.type)==0)return 16;

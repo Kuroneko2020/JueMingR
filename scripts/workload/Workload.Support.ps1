@@ -74,6 +74,9 @@ function Get-WorkloadRoute {
             # Frozen review originals are read-only evidence, never compile
             # inputs. Keep this exact archive boundary, not a generic exemption.
             '^review-materials/aim-midpoint-20261011-035938-HKT/' { continue }
+            # This task's published data is not executable input. Keep the
+            # exact filenames: scripts/new unknown files still block delivery.
+            '^review-materials/aim-dedup-repair-20261014/(evidence\.md|(validation-map|failure-dispositions)\.json|(A-birth-directions|A-time-summary|B-model-equivalence|B-natural-births|B-natural-time-summary|B-supplement-summary|F-natural-births|F-natural-consumer-summary|F-natural-time-summary)\.csv)$' { continue }
             # Shared graphics/asset fixture is consumed by the native host
             # scopes; its changes do not confer graphical execution evidence.
             '^tests/NativeWorldTextProbe/ProbeGraphics\.cs$' { [void]$groups.Add('shared-host'); continue }

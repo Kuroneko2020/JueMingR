@@ -88,7 +88,10 @@ try {
         'src/JueMingR.TerrariaHost/World/WorldTileObservation.cs' = 'world-host';
         'src/JueMingR.Platform/WorldTargets/WorldTargetObservation.cs' = 'world-host';
         'src/JueMingR.TerrariaHost/Map/FullscreenMapDrawing.cs' = 'map-host';
-        'docs/guide.md' = 'core'
+        'docs/guide.md' = 'core';
+        'review-materials/aim-dedup-repair-20261014/evidence.md' = 'core';
+        'review-materials/aim-dedup-repair-20261014/F-natural-time-summary.csv' = 'core';
+        'review-materials/aim-dedup-repair-20261014/validation-map.json' = 'core'
     }
     $exactGroups = @{
         'src/JueMingR.TerrariaHost/Tools/AutoCapture.cs' = @('core','tools-host','quick-items-host','coin-deposit-host','recovery-host','processing-host');
@@ -251,6 +254,9 @@ try {
     $identity = Get-WorkloadIdentity $fixtureRoot; Write-Fixture 'unclassified/new.cs' "new`n"
     $changes = Get-WorkloadChanges $fixtureRoot $baseline; $route = Get-WorkloadRoute $changes.paths
     Assert-Route ($route.groups -contains 'core' -and $route.unknown -contains 'unclassified/new.cs') 'unknown untracked input keeps core and blocks unclassified delivery'
+    Write-Fixture 'review-materials/aim-dedup-repair-20261014/unexpected.ps1' "exit 0`n"
+    $changes=Get-WorkloadChanges $fixtureRoot $baseline;$route=Get-WorkloadRoute $changes.paths
+    Assert-Route ($route.unknown -contains 'review-materials/aim-dedup-repair-20261014/unexpected.ps1') 'published evidence boundary never exempts an unregistered executable'
     Assert-Route ($identity.fingerprint -cne (Get-WorkloadIdentity $fixtureRoot).fingerprint) 'untracked bytes belong to build identity'
     Assert-Route ($null -ne (Get-WorkloadChanges $fixtureRoot 'missing-baseline').reason) 'missing baseline is an explicit unresolved risk'
     # Exercise the actual executable plan, not script text or a duplicate dispatcher.

@@ -28,9 +28,10 @@ function Read-AimStageDevelopment {
     $successor=$null -ne $record -and $record.schema -ceq 'aim-root-fix-development-20261012-1'
     $priority=$null -ne $record -and $record.schema -ceq 'aim-priority-recovery-development-20261013-1'
     $continuation=$null -ne $record -and $record.schema -ceq 'aim-continuation-development-20261013-1'
-    $base=if($continuation){'569668aa9f4eb75d525709b20652eefd1d8e0e23'}elseif($priority){'01b03386cc288fe8f8a773cecd3a0de564182472'}elseif($successor){'3504c963949d87d6a88ada5a3f5cd9c189f1f0c2'}else{'472dea0955b6c9274d8c55fc48dbc7fc44ba108e'}
-    $schema=if($continuation){'aim-continuation-development-20261013-1'}elseif($priority){'aim-priority-recovery-development-20261013-1'}elseif($successor){'aim-root-fix-development-20261012-1'}else{'aim-stage-development-20261011-1'}
-    $authorization=if($continuation){'owner-issue114-continuation-20261013'}elseif($priority){'owner-issue114-priority-recovery-20261013'}elseif($successor){'owner-issue114-root-fix-20261012'}else{'owner-issue114-stage-package-20261011'}
+    $dedup=$null -ne $record -and $record.schema -ceq 'aim-dedup-repair-development-20261014-1'
+    $base=if($dedup){'c38b1f941d64b73971a3380aff5d7c75fff24cb7'}elseif($continuation){'569668aa9f4eb75d525709b20652eefd1d8e0e23'}elseif($priority){'01b03386cc288fe8f8a773cecd3a0de564182472'}elseif($successor){'3504c963949d87d6a88ada5a3f5cd9c189f1f0c2'}else{'472dea0955b6c9274d8c55fc48dbc7fc44ba108e'}
+    $schema=if($dedup){'aim-dedup-repair-development-20261014-1'}elseif($continuation){'aim-continuation-development-20261013-1'}elseif($priority){'aim-priority-recovery-development-20261013-1'}elseif($successor){'aim-root-fix-development-20261012-1'}else{'aim-stage-development-20261011-1'}
+    $authorization=if($dedup){'owner-issue114-dedup-repair-20261014'}elseif($continuation){'owner-issue114-continuation-20261013'}elseif($priority){'owner-issue114-priority-recovery-20261013'}elseif($successor){'owner-issue114-root-fix-20261012'}else{'owner-issue114-stage-package-20261011'}
     if($null -eq $record -or $record.schema -cne $schema -or
         $record.authorization -cne $authorization -or $record.productBase -cne $base -or
         $record.candidateCommit -cne $Identity.commit -or $record.sourceFingerprint -cne $Identity.fingerprint -or
@@ -147,6 +148,32 @@ function Read-AimStageDevelopment {
             'review-materials/aim-priority-recovery-20261013/continuation-failure-dispositions.json',
             'review-materials/aim-priority-recovery-20261013/continuation-main-summary.csv')
     }
+    if($dedup){
+        # The owner's 2026-10-14 repair package retains the complete product
+        # profile. Only this fixed task delta and its reviewed evidence qualify;
+        # it is not an extension of the old continuation's successful record.
+        $allowed=@('AGENTS.md','docs/规范/工程治理规则.md','docs/网页Chat协作约定.md',
+            'docs/决策/ADR-0019-受控并行协作与模型分工.md','docs/功能介绍/战斗辅助行为合同.md',
+            'docs/计划/辅助瞄准阶段文档.md','docs/设计/战斗辅助实现设计.md','docs/设计/可重复构建与项目骨架.md',
+            'scripts/workload/AimStage.Development.ps1','scripts/workload/Workload.Definitions.ps1','scripts/workload/Workload.Support.ps1',
+            'src/JueMingR.TerrariaHost/Combat/CombatSelection.cs','src/JueMingR.TerrariaHost/Combat/HostAttackAim.HandReuse.cs',
+            'src/JueMingR.TerrariaHost/Combat/HostAttackAim.Preview.cs','src/JueMingR.TerrariaHost/Combat/HostAttackAim.Selection.cs',
+            'src/JueMingR.TerrariaHost/Combat/HostAttackAim.cs','src/JueMingR.TerrariaHost/Combat/HostAttackPlayerPrefix.cs',
+            'src/JueMingR.TerrariaHost/Combat/HostMeleeAttack.cs','src/JueMingR.TerrariaHost/Combat/NpcPredictionSource.cs',
+            'tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.cs','tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.Incident.cs',
+            'tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.Optional.cs','tests/NativeWorldTextProbe/NativeCombatSelectionPreviewChecks.cs',
+            'tests/NativeWorldTextProbe/NativeCombatDedupChecks.cs','tests/NativeWorldTextProbe/NativeCombatDedupModelChecks.cs',
+            'tests/NativeWorldTextProbe/NativeCombatDedupPrefixChecks.cs','tests/NativeWorldTextProbe/NativeCombatDedupPremiseChecks.cs',
+            'tests/NativeWorldTextProbe/NativeCombatDedupReasons.cs','tests/NativeWorldTextProbe/NativeCombatDedupSourceChecks.cs',
+            'tests/Workload/Invoke-WorkloadRoutingChecks.ps1',
+            'review-materials/aim-dedup-repair-20261014/evidence.md','review-materials/aim-dedup-repair-20261014/validation-map.json',
+            'review-materials/aim-dedup-repair-20261014/failure-dispositions.json',
+            'review-materials/aim-dedup-repair-20261014/A-birth-directions.csv','review-materials/aim-dedup-repair-20261014/A-time-summary.csv',
+            'review-materials/aim-dedup-repair-20261014/B-model-equivalence.csv','review-materials/aim-dedup-repair-20261014/B-natural-births.csv',
+            'review-materials/aim-dedup-repair-20261014/B-natural-time-summary.csv','review-materials/aim-dedup-repair-20261014/B-supplement-summary.csv',
+            'review-materials/aim-dedup-repair-20261014/F-natural-births.csv','review-materials/aim-dedup-repair-20261014/F-natural-consumer-summary.csv',
+            'review-materials/aim-dedup-repair-20261014/F-natural-time-summary.csv')
+    }
     $changed=@(Invoke-WorkloadGit $Root @('diff','--name-only','--no-renames',$base,$Identity.commit,'--') | Sort-Object)
     if(@($changed | Where-Object {$allowed -cnotcontains $_}).Count -ne 0 -or
         (@($record.revisions | ForEach-Object {$_.path} | Sort-Object) -join '|') -cne ($changed -join '|')) {throw 'Stage revision scope differs from the approved closing delta.'}
@@ -164,6 +191,10 @@ function Read-AimStageDevelopment {
     if($continuation){$required=@('architecture-combat','optional-consumption','marker-demand','candidate-demand',
         'local-failure','aim-input','control-input','effects-receive','selection-preview','attack-costs','impact-draw',
         'main-performance','representative-opportunities','navigation','whip-terrain','original-feedback')}
+    if($dedup){$required=@('architecture-combat','optional-consumption','marker-demand','candidate-demand',
+        'local-failure','aim-input','control-input','effects-receive','selection-preview','attack-costs','impact-draw',
+        'main-performance','representative-opportunities','navigation','whip-terrain','original-feedback',
+        'dedup-correctness','dedup-model','dedup-work','dedup-performance','workload-routing')}
     if((@($record.checks | ForEach-Object {$_.name} | Sort-Object) -join '|') -cne (@($required | Sort-Object) -join '|')) {throw 'Stage necessary checks are incomplete/duplicated.'}
     foreach($check in $record.checks){
         if($check.exit -ne 0 -or $check.disposition -cnotin @('CURRENT','REVIEWED_REUSE') -or
@@ -176,7 +207,7 @@ function Read-AimStageDevelopment {
         foreach($artifact in $component.artifacts){$null=Read-AimStageArtifact $Root $artifact}
     }
     $failureKinds=@('TEST_CORRECTED','PRODUCT_FIXED','ENVIRONMENT_LIMITATION')
-    if($continuation){$failureKinds+='OWNER_WITHDRAWN'}
+    if($continuation -or $dedup){$failureKinds+='OWNER_WITHDRAWN'}
     foreach($failure in $record.failureDispositions){
         if($failure.disposition -ceq 'OWNER_WITHDRAWN' -and
             ($failure.ownerDecision -cne '2026-10-14-impact-single-attempt-stop-loss' -or $failure.capability -cne 'impact-preview')) {throw 'Feature withdrawal requires this owner decision and exact retired capability.'}
@@ -205,7 +236,7 @@ function Read-AimStageDevelopment {
             [string]$assembly.path -match '(^|/)\.\.(/|$)|[\\:]' -or
             (Get-WorkloadFileHash -LiteralPath (Join-Path $Root $assembly.path)).Hash -cne $assembly.sha256){throw 'Stage detection consumer changed.'}
     }
-    return [ordered]@{status='STAGE_DEVELOPMENT';mode=$(if($continuation){'ExplicitAimContinuation20261013'}elseif($priority){'ExplicitAimPriorityRecovery20261013'}elseif($successor){'ExplicitAimRootFix20261012'}else{'ExplicitAimStage20261011'});fullQualification='INCOMPLETE';releaseEligible=$false;
+    return [ordered]@{status='STAGE_DEVELOPMENT';mode=$(if($dedup){'ExplicitAimDedupRepair20261014'}elseif($continuation){'ExplicitAimContinuation20261013'}elseif($priority){'ExplicitAimPriorityRecovery20261013'}elseif($successor){'ExplicitAimRootFix20261012'}else{'ExplicitAimStage20261011'});fullQualification='INCOMPLETE';releaseEligible=$false;
         productBase=$base;recordPath=$relative;recordSha256=(Get-WorkloadFileHash -LiteralPath $Path).Hash;
         necessaryScopes=$required;limits=@($record.limits);checkCount=$required.Count}
 }

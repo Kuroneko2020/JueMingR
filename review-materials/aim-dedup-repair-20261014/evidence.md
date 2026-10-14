@@ -1,8 +1,49 @@
-# #114 / PR #115：A 修订 / B 候选 / C 的集中审查入口
+# #114 / PR #115：去冗余与增强供给返修的集中审查入口
 
 原件 `references/JMR_AIM_REPAIR_20261014/`，ID `JMR-AIM-REPAIR-20261014-v1`，14 原件 SHA 已核，保持本地只读；网页未直接取得这些原件。TASK_BASE `c38b1f941d64b73971a3380aff5d7c75fff24cb7`；对照原包来源 `1ae9965081cddffd2af41cf50c807f6144e6adfb`，1ae→TASK_BASE 的 src 差异为空。
 
-本入口对应本轮 A 修订、B 候选和 C；M1 已由主调度集中核对。A/B/C 实现与作者专项包交集中独审；移动 Slime 矛场景的持续成本仍逆向，最终性能退出条件未签通过。此候选不是完整资格、普通包、安装或所有者接受。#114/#7 OPEN、#115 OPEN Draft，红框 OWNER_WITHDRAWN；owner/FPS/multi NOT_RUN，本轮未操作现装，最近来源线索仍为 1ae。
+f9691a2 的完整增量独审结论是 NEEDS_FIX；原件 `.local/aim-dedup-repair-20261014/independent-review-f9691a2.md` 保留。下述 F 为其成组返修与作者自查，等待独立窄复核；后面的 A/B 段保留原执行身份与当时未决状态，不能用旧 NEEDS_FIX 冒充新结果，也不能用新结果抹掉旧失败。当前尚无本轮普通完整包或安装，最近现装来源仅为1ae线索。长期资格 INCOMPLETE/releaseEligible=false，红框 OWNER_WITHDRAWN，owner/FPS/multi NOT_RUN；#114/#7 OPEN、#115 OPEN Draft。
+
+## F：两个缺陷的因果与有限替代方案
+
+**F1 的引入点为 a7f5705。** 唯一候选从旧的共同分支移出后，保留了 `CandidateProgressRequired`，却漏掉原 `CandidateFact` 的显著变化处理。自然 Slime 的 AI/受击阶段或显著位移使旧未知范围不再相关时，唯一目标仍沿旧 requested 范围继续扩张。恢复这项原有边界后，普通运动仍保持探索进度；没有削去单目标冷却预备或改变实际 Source 的有效性验证。原观察对照 `F-work-f969-r01.log → F-work-range-r01.log` 的自然矛 NPC 步12658→9127、selected world120请求125→72，只证明该观察窗实际工作减少；其时间不充作正常性能。正常成本另由下方固定 Release ABBA 证明。
+
+**F2 同样源于 a7f5705 的新唯一候选分支，但不是把 F1 自动归成同因。** BeforeNpc 原来反复用旧 `actionHintRequired` 抬高 urgent demand，且稳定单目标绕过多候选在真实 admission 的提示退休。修订只在真实 urgent admission 移交一次；冷却回调不提前消费第一次有效提示，新 admitted warm 的 miss/暂停也替换旧提示。`F-hint-final-r03.log` 与 `F-xhigh-costs-r01.log` 的三个实际 native birth 都 Enhanced：首次旧 warm25移交为 ActionRequired25/Source26，后两次 miss/暂停后的机会为 ActionRequired0/Source17。旧 f969 负控 `F-hint-red-f969-r02.log` 保留按期待失败。
+
+**R2 采用机制范围和求解内共享的有限等效方案。** AI019 按既有出生/飞行提示直接取得当前需要范围；普通 primary whip 一次请求完整原版动画并至少33步，包含原全部九个方向种子，避免同样本16→32→64重进。1035特殊派生鞭由原控制职责处理。最终普通 Release 的 `F-max-final-single-start-r01.log` 中，矛/普通鞭四场共14个实际获准的同样本手部求解入口全部为1；两次首帧 Source 空没有被记为一次求解。旧 `F-work-all-r01.log` 的普通鞭同样本入口2保留。
+
+这没有建立通用跨调用武器 checkpoint，也不宣称任意武器/任意候选软暂停都可保存完整父子历史。方向相关姿态、Projectile/AI/localAI/oldPos、命中/免疫/派生独立；已有 owner-prefix 只共享同一 Solve 的方向无关完整动作值，部分动作异常不提交。使用更简单方案退出的依据是已证重复链、供给与整体成本，而非将“LIMITED”改名。后继真实新样本仍按当前前提重建，6ms总额/3ms候选累计/optional比例不变。
+
+## F：固定普通 Release 的真实供给与正常成本
+
+原测量 Host SHA-256 `BE12C7363FA0412986650FA73AD0F718289360BED253A459DF04ED86D9EF2343`，MVID `f7e2aad0-4792-4df3-ad51-8cd8418290a8`；原编译记录 `F-xhigh-release-build-record.json` 是 **f969 dirty / Release / PrepareOnly**，不改署未来提交。666项生产编译输入已与返修源码逐项核同。Probe SHA `61BE579AD1AC6BF55B70E0DB64C4FF94EF45AAFAB0FD0DE41963BF73A6E5FD07`；四轮起止/日志/脚本/载荷hash由 `F-xhigh-natural-ABBA-receipt-r01.json` 固定，原窗口为UTC06:31:19—06:32:13。无步骤级/原因 observer，原6ms，正式窗口无本任务重型并发。
+
+每轮六场各360次真实 CPU 更新，预定前30冷段完整保留，暖330用于下表。A为原1ae（与TASK_BASE的src相同），B为该固定修订；下面是**两运行均值的平均**，不是配对差的分位数。实际范围为 Player.Update/ItemCheck/Shoot、NPC.UpdateNPC、Projectile.Update/Damage及Runtime/Shell；未运行 Main.Run/完整Draw，不报告实机FPS。
+
+| 场景 | A暖均值ms | B暖均值ms | 变化 |
+| --- | ---: | ---: | ---: |
+| 枪95，静止控制 | 0.538739 | 0.517158 | -4.01% |
+| 枪95，自然Slime | 0.715432 | 0.661840 | -7.49% |
+| 矛1228，静止控制 | 0.504001 | 0.467912 | -7.16% |
+| 矛1228，自然Slime | 0.851781 | 0.704960 | -17.24% |
+| 普通鞭4672，静止控制 | 0.603075 | 0.562154 | -6.79% |
+| 普通鞭4672，自然Slime | 1.673995 | 1.029940 | -38.47% |
+
+F1的自然矛：A1/A2均值0.848234/0.855328，B1/B2为0.714068/0.695853；p95为A3.0935/3.0343→B2.4100/2.4325，p99为A3.7338/3.7014→B3.2529/3.2177，最大为A6.8097/6.5113→B5.9173/5.6870ms。每窗真实父体4、1E3B、伤害事件3保持，持续逆向在此有限正常窗已消失。其余场景并非所有尾部都改善：自然鞭p95/p99混合，静止枪最大值也混合；全部数值和冷段见[完整摘要](F-natural-time-summary.csv)，原始8640样本仍在本地日志，不挑最快一轮或删除尖峰。
+
+[24场实际消费者](F-natural-consumer-summary.csv)和[96次真实父体输入/方向](F-natural-births.csv)给出完整分母。枪静止/Slime均3E1B、矛静止3E1B/Slime1E3B保持；鞭静止4E0B保持、自然Slime0E4B→1E3B，伤害事件1→2。E/B是父体输入类别，不能当命中率。静止控制与自然闭环分开；命中改变后续状态时，不把同GUC硬配为同输入。两A因旧自然鞭0Enhanced断言exit1，六场数据完整；两B exit0，不能说四进程全PASS。首次Source空与旧未知原因不回填。
+
+## F：相邻、测试修订与包准入边界
+
+- `F-seeds-model-r01.log`：普通优化Release的56行模型结果与原基线全等；另有普通鞭静止/运动、正常/加速四个正 Contact，将有限完整手部+全九种子前缀与121点参考逐项比较，Aim/Impact/Tick/Receive/Subupdate/Confidence全同。旧56行中无Contact的鞭/130行仍不当正命中证据。
+- `F-seeds-default-costs-r01.log`：原默认预算/optional/普通工作责任、新去冗余/模式/hint、owner-prefix、模型与真实来源拒绝通过；相关探针修改仅改变其他独立选择叶的前置，旧运行身份不重签。`F-max-basic-r01.log` 当前Basic/原版动作、`F-max-whip-terrain-r01.log` 当前5480/1035未来owner/墙门通过。
+- `F-max-candidate-full-r02.log`：固定普通Release的既有完整CandidateDemand.Run及五个180更新场景通过，含原BudgetPlanRetry、中断/完整miss/同样本恢复和实际多候选公平机会。原r01仅因未附带固定Harmony而在加载前失败，修正为已锁定五文件组件载体，不称完整包加载。
+- `F-max-selection-r01.log` 原失败保留：固定60步内有49次实际远路径、最大gap3，却在任意最后一点要求farready。该断言来自abc0789，四更新显示租约与五更新optional cadence不保证这一任意相位；本次三候选路径未进入新的单候选修订。修订保留全部60观察，按已有有界 `RankedAdvance` 取得当前正证明后才做变化测试，不扩大产品预算、重置账本或移动性能窗口。`F-max-selection-r02.log` 两中心实际排序/路径、开闭墙、换弹药、移动与最近模式通过；原失败不改签。
+- `F-max-feedback-plan-r01.log` 真实拒绝未分类公开材料；精确登记本任务既有Markdown/CSV/JSON名称后，`F-max-routing-r01.log` 的真实Git正反例与未登记可执行文件拒绝通过，r02 PlanOnly成功，仍是NOT_EVALUATED。阶段reader沿既有接口新增本任务schema/固定c38基底/精确增量和21项责任；旧阶段记录不能改署新候选。独立复核、当前阶段准入正反例、普通完整包/实际解ZIP消费者及安装尚待执行，未签绿。
+
+最小[责任与证据映射](validation-map.json)及[失败处置](failure-dispositions.json)供独审逐项核适用性；尚无完整长期187资格。支持原版的完整包正常加载仍由所有者本人执行，自动组件和文件安装不能代证；第一张卡仅“能进入、F5能打开、正常退出”。
+
+## 以下为A及f969阶段的原执行证据
 
 ## A 的源码职责与安全边界
 

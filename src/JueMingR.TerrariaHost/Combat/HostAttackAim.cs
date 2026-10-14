@@ -116,6 +116,12 @@ namespace JueMingR.TerrariaHost.Combat
         {
             var player=combat.Player;var item=player.HeldItem;
             var captured=AttackAmmoSnapshot.Capture(player,item);Projectile body;AttackMotion motion;
+            // The sealed primary whip ends at its native animation clock.
+            // Request that finite hand once instead of replaying 16 -> 32.
+            // This schedules NPC work only; actual rope/receive/input checks
+            // and any independently born damage roles keep their own owners.
+            if(!futureLaunch && captured!=null && HostMeleeAttack.KnownWhipParent(captured.Projectile))
+                return Math.Min(NpcPredictionCache.Horizon,HostMeleeAttack.WhipSearchRequired(player,item));
             // A current hand may avoid blind short-prefix restarts. Optional
             // cooldown candidates keep their cheaper progressive range: using
             // this hint there repeatedly enlarged NPC work with no supply gain.
@@ -248,7 +254,11 @@ namespace JueMingR.TerrariaHost.Combat
             // Actual use may need a late receive: grow the SAME sample in
             // stages. A paused prefix remains unknown and Basic remains legal;
             // the optional display never turns its desired 120 into this gate.
-            if(beforeNpc && current==null && timeline.Stop==PredictionStop.None && timeline.Count<NpcPredictionCache.Horizon+1 && !observation.PredictionWork.Exceeded && observation.ExpandActionPrediction())
+            bool fullWhipHand=HostMeleeAttack.KnownWhipParent(captured.Projectile) && timeline.Count>age+HostMeleeAttack.WhipSearchRequired(player,item);
+            // A longer NPC tail cannot extend this finite primary whip's life.
+            // Unknown owner motion still remains unknown/Basic; this does not
+            // cache a miss or a permit, or suppress another native damage role.
+            if(beforeNpc && current==null && !fullWhipHand && timeline.Stop==PredictionStop.None && timeline.Count<NpcPredictionCache.Horizon+1 && !observation.PredictionWork.Exceeded && observation.ExpandActionPrediction())
             {PrepareCore(phase);return;}
             // BeforeNpc has already expanded a nonterminal action miss once
             // above. CompletedWorld keeps the existing later-preparation

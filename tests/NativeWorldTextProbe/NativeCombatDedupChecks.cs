@@ -23,6 +23,9 @@ namespace NativeWorldTextProbe
         private static bool scenarioAim=true,scenarioPath=true;
         private static AttackContact proposed,recorded;
         private static int nativeFrame,scenarioItem;private static bool scenarioMoving;
+        private static int bornRequired,bornSource;private static bool pauseWarm,pausedWarm;
+        private static void PauseWarm(object __2)
+        {if(pauseWarm && __2.ToString()=="CompletedWorld"){pauseWarm=false;pausedWarm=true;throw new CombatPredictionBudgetExceededException();}}
         private static void Solve(){solves++;solveDepth++;}
         private static Exception Solved(Exception __exception){solveDepth--;return __exception;}
         private static void MotionStep(){motionSteps++;}
@@ -34,6 +37,7 @@ namespace NativeWorldTextProbe
         private static void Born(Player __instance,Projectile __0)
         {
             if(__instance.whoAmI!=0 || __0.owner!=0 || __0.type!=14 && __0.type!=222 && __0.type!=__instance.HeldItem.shoot)return;births++;
+            bornRequired=(int)Get(attack,"ActionRequired");var owner=Get(attack,"observation");bornSource=((NpcTrajectory)Call(Get(Get(owner,"Prediction"),"Cache"),"Read",1))?.Count??0;
             var packet=GetOptional(attack,"consumedInput");bool current=packet!=null && (uint)Get(attack,"consumedInputStep")==Main.GameUpdateCount;
             Console.WriteLine("DEDUP birth item="+scenarioItem+" moving="+scenarioMoving+" frame="+nativeFrame+" tick="+Main.GameUpdateCount+" current="+current+" kind="+(current?Get(packet,"Kind"):"Unassisted")+" target="+(current?((NpcIdentity)Get(packet,"Target")).Slot:-1)+" point="+(current?Get(packet,"Point"):null)+" velocity="+__0.velocity+" sample="+(current?recorded?.Timeline.SampleTick??-1:-1)+" capture="+(current?recorded?.Timeline.CaptureTick??-1:-1)+" receive="+(current?recorded?.ReceiveTick??-1:-1));
         }
@@ -65,9 +69,12 @@ namespace NativeWorldTextProbe
             foreach(string name in new[]{"HandleSpecialEvent","HandleMining","HandleRunning"})audit.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
             try
             {
-                if(!timing && Environment.GetEnvironmentVariable("JMR_DEDUP_BASELINE")!="1"){Component(context,combat,host,input);Modes(context,combat,host,input);}
+                if(Environment.GetEnvironmentVariable("JMR_DEDUP_HINT_ONLY")=="1"){Component(context,combat,host,input);Modes(context,combat,host,input);SingleHint(context,combat,host,input);return;}
+                if(!timing && Environment.GetEnvironmentVariable("JMR_DEDUP_BASELINE")!="1"){Component(context,combat,host,input);Modes(context,combat,host,input);SingleHint(context,combat,host,input);}
                 foreach(int item in lateSpear?new[]{1228}:natural?new[]{95,1228,ItemID.BlandWhip}:new[]{95,1228})foreach(bool moving in new[]{false,true})
                 {
+                    string selectedItem=Environment.GetEnvironmentVariable("JMR_DEDUP_ITEM");
+                    if(!string.IsNullOrEmpty(selectedItem) && selectedItem!=item.ToString())continue;
                     var p=Reset(context,combat,host,input,item);var n=Scene(2,new Vector2(item==95?965:870,667));
                     Main.rand=new Terraria.Utilities.UnifiedRandom(7100+item+(moving?1:0));
                     scenarioItem=item;scenarioMoving=moving;recorded=proposed=null;
@@ -108,6 +115,57 @@ namespace NativeWorldTextProbe
         {var n=Main.npc[slot];n.SetDefaults(3);n.whoAmI=slot;n.active=true;n.aiStyle=-1;n.noGravity=n.noTileCollide=true;n.width=n.height=40;n.Center=center;n.velocity=Vector2.Zero;n.life=n.lifeMax=100000;n.knockBackResist=0;Array.Clear(n.immune,0,n.immune.Length);return n;}
         private static void Sample(object context,object combat,object host,object input,Vector2 mouse)
         {NativeToolExecutionChecks.Sample(context,input,mouse,true);Call(combat,"Sample");Call(host,"SampleMouse");Call(Get(host,"npcs"),"BeginActions",Get(input,"Frame"));Call(Get(host,"Selection"),"Update",Get(host,"Options"),Get(host,"Session"),true,null);}
+        private static void SingleHint(object context,object combat,object host,object input)
+        {
+            var p=Reset(context,combat,host,input,95);var n=Scene(2,new Vector2(1100,667));
+            NativeCombatObservationChecks.Save(host,new ObservationOptions(false,false,true,false,false,50,true,true));
+            scenarioItem=95;scenarioMoving=false;births=enhanced=basic=0;
+            Func<int> warm=()=>
+            {
+                n.Center=new Vector2(1100,667);Array.Clear(n.immune,0,n.immune.Length);
+                for(int i=0;i<12;i++)
+                {
+                    NativeQuickItemChecks.BeginWorldStep();p.itemTime=6;p.itemAnimation=0;p.reuseDelay=0;
+                    Sample(context,combat,host,input,new Vector2(550,600));
+                    using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))Call(attack,"ResolveSelection",(long)Main.GameUpdateCount,false);
+                    int value=(int)Get(attack,"actionHintRequired");if(value>16)return value;
+                }
+                throw new InvalidOperationException("finite real warm pass did not produce the late Contact");
+            };
+            Action<int,bool> shot=(old,transfer)=>
+            {
+                n.Center=new Vector2(800,667);Array.Clear(n.immune,0,n.immune.Length);p.itemTime=p.itemAnimation=p.reuseDelay=0;p.releaseUseItem=true;
+                int preferred=(int)attack.GetType().GetMethod("ActionPreferred",Flags,null,new[]{typeof(NpcIdentity)},null).Invoke(attack,new[]{Get(Get(host,"Selection"),"Target")});
+                int before=births;NativeCombatSelectionPreviewChecks.Step(context,new Vector2(550,600),true,true);
+                Require(births==before+1 && enhanced==births && basic==0,"stable single receiver's next real native hand consumes current Enhanced input once");
+                Console.WriteLine("DEDUP hint nativeBirth="+births+" transfer="+transfer+" oldWarm="+old+" currentPreferred="+preferred+" ActionRequired="+bornRequired+" SourceCount="+bornSource);
+                Require(transfer?bornRequired>=old:bornRequired==0 || bornRequired==preferred,"real selected action consumes the first warm range once, then uses current range after miss/pause");
+                Require(bornSource>0 && bornSource>=Math.Max(bornRequired,preferred)+1 && (transfer || bornSource<old+1),"actual selected Source supplies the admitted current range without stale long urgent work");
+            };
+            int pending=warm(),cooldownRequired;
+            NativeQuickItemChecks.BeginWorldStep();Sample(context,combat,host,input,new Vector2(550,600));
+            using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))
+            {Call(attack,"BeginActionDemand");Call(attack,"ResolveSelection",(long)Main.GameUpdateCount-1,true);cooldownRequired=(int)Get(attack,"ActionRequired");Require((int)Get(attack,"actionHintRequired")==pending,"cooldown retains first useful warm hint for its first real hand");}
+            shot(pending,true);
+            pending=warm();bool wasActive=Main.tile[57,41].active();ushort wasType=Main.tile[57,41].type;
+            Main.tile[57,41].active(true);Main.tile[57,41].type=1;
+            try
+            {
+                for(int i=0;i<3;i++)NativeQuickItemChecks.BeginWorldStep();Sample(context,combat,host,input,new Vector2(550,600));
+                using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))Call(attack,"ResolveSelection",(long)Main.GameUpdateCount,false);
+                Require(((NpcIdentity)Get(Get(host,"Selection"),"Target")).Token==n && GetOptional(((Array)Get(attack,"candidatePlans")).GetValue(4),"Contact")==null,"actual wall warm miss keeps the same in-range target instance, not a manufactured old Contact");
+            }
+            finally{Main.tile[57,41].active(wasActive);Main.tile[57,41].type=wasType;}
+            shot(pending,false);
+            pending=warm();for(int i=0;i<3;i++)NativeQuickItemChecks.BeginWorldStep();Sample(context,combat,host,input,new Vector2(550,600));
+            var audit=new Harmony("JueMingR.Tests.SingleHintPause");pauseWarm=true;pausedWarm=false;
+            audit.Patch(attack.GetType().GetMethod("PreparePlan",Flags),prefix:new HarmonyMethod(typeof(NativeCombatDedupChecks),nameof(PauseWarm)));
+            try{using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))Call(attack,"ResolveSelection",(long)Main.GameUpdateCount,false);}
+            finally{audit.UnpatchAll(audit.Id);pauseWarm=false;}
+            Require(pausedWarm,"finite pause reached the actual warm weapon admission");shot(pending,false);
+            Require(cooldownRequired==0,"cooldown does not admit selected urgent work from the pending warm hint");
+            Console.WriteLine("DEDUP single hint late/near/miss/pause actual Source and three native births PASS");
+        }
         private static void Modes(object context,object combat,object host,object input)
         {
             foreach(bool path in new[]{false,true})foreach(bool aim in new[]{false,true})

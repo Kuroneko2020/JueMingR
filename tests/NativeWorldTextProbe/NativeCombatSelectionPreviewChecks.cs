@@ -91,7 +91,17 @@ namespace NativeWorldTextProbe
                 }
                 var warmDisplay=GetOptional(host,"DisplayPath") as NpcTrajectory;
                 Console.WriteLine("RANKED FIXED WARM SETUP updates=60 mouse="+mouse+" freshProofs="+warmProofs+" recentFiveUpdateProofs="+recentWarmProofs+" firstProofIndex="+firstWarmProof+" hardExits="+hardWarmExits+" maximumChargedMs="+maximumWarmWork+" selected="+Selected(host)+" reachable="+Get(Get(host,"Selection"),"ClearLine")+" displayIdentity="+(warmDisplay==null?"none":warmDisplay.Identity.ToString())+" displayCount="+(warmDisplay?.Count??0)+" actualFarPathSteps="+warmDisplaySteps+" longestPathGap="+maxWarmDisplayGap+" pathCountRange="+(warmDisplaySteps==0?0:minimumDisplayCount)+".."+maximumDisplayCount);
-                Require(Selected(host)==4 && (bool)Get(Get(host,"Selection"),"ClearLine") && warmDisplay!=null && warmDisplay.Identity.Slot==4 && warmProofs>0,"fixed warm fixture ends with the selected reachable farther NPC and its actually validated path; solve frequency is not display continuity: mouse="+mouse);
+                Require(warmProofs>0 && warmDisplaySteps>0,"fixed sixty-update window contains actual farther selection proof AND validated path, separately from later changed-fact setup");
+                // A four-update display lease and a five-update optional
+                // cadence can leave the fixed window's last update between
+                // proofs. Keep all sixty observations (including that gap),
+                // then establish the mutation test's CURRENT positive premise
+                // under the same bounded cadence/fair-cycle contract below.
+                // This does not move the measured window or grant extra work.
+                RankedAdvance(context,host,cursor,4,true,"changed-fact setup obtains a current far proof within existing optional cadence: mouse="+mouse,false);
+                warmDisplay=GetOptional(host,"DisplayPath") as NpcTrajectory;
+                Require(Selected(host)==4 && (bool)Get(Get(host,"Selection"),"ClearLine") && warmDisplay!=null && warmDisplay.Identity.Slot==4,"changed-fact setup owns the selected reachable farther NPC and its actually validated path: mouse="+mouse);
+                Console.WriteLine("RANKED mutation setup current far proof obtained; fixed sixty-update observations above remain unchanged");
                 for(int y=0;y<Main.maxTilesY;y++)Main.tile[47,y].ClearEverything();
                 RankedAdvance(context,host,cursor,2,true,"near target wins at the bounded optional refresh when its wall opens even while old far stays reachable: mouse="+mouse,false);
                 for(int y=0;y<Main.maxTilesY;y++)NativeToolsChecks.Tile(47,y,1);

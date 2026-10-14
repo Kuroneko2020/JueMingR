@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Reflection;
+using System.Linq;
 using HarmonyLib;
 using JueMingR.Features.Combat;
 using JueMingR.Platform.Combat;
@@ -20,6 +21,19 @@ namespace NativeWorldTextProbe
         private static readonly Stack<Span> stack=new Stack<Span>();
         private static readonly Dictionary<string,double[]> times=new Dictionary<string,double[]>();
         private static object host,attack;
+        private static readonly Dictionary<string,int> ranges=new Dictionary<string,int>();
+        private static readonly Dictionary<string,int> actionSolves=new Dictionary<string,int>();
+        private static int npcSteps,ownerArrays,ownerValues;
+        private static void NpcStep(){npcSteps++;}
+        private static void OwnerArray(object[] __args){ownerArrays++;ownerValues+=Math.Min(120,(int)__args[2])+1;}
+        private static void ActionSolve(object[] __args)
+        {if(!(bool)__args[5])return;string key=Main.GameUpdateCount+"/"+((NpcTrajectory)__args[3]).SampleTick;int n;actionSolves.TryGetValue(key,out n);actionSolves[key]=n+1;}
+        private static void Range(object __instance,object[] __args)
+        {
+            bool action=(bool)__args[2];int required=(int)__args[3];
+            string key=(ReferenceEquals(__instance,Get(host,"Prediction"))?"selected":"candidate")+"/"+(action?"action":"world")+"/"+required;
+            int count;ranges.TryGetValue(key,out count);ranges[key]=count+1;
+        }
         private static void Enter(MethodBase __originalMethod,out object __state)
         {var s=new Span{Start=Stopwatch.GetTimestamp(),Name=__originalMethod.DeclaringType.Name+"."+__originalMethod.Name};stack.Push(s);__state=s;}
         private static Exception Exit(Exception __exception,object __state)
@@ -49,12 +63,17 @@ namespace NativeWorldTextProbe
         }
         internal static void Attach(Harmony audit,object value,object aim)
         {
-            host=value;attack=aim;times.Clear();stack.Clear();
+            host=value;attack=aim;times.Clear();stack.Clear();ranges.Clear();actionSolves.Clear();npcSteps=ownerArrays=ownerValues=0;
             foreach(var method in new[]{aim.GetType().GetMethod("PrepareCore",Flags),aim.GetType().GetMethod("PreparePlanCore",Flags),aim.GetType().GetMethod("SolveOnTerrain",Flags),Get(value,"Prediction").GetType().GetMethod("PrepareSample",Flags),aim.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostMeleeAttack").GetMethod("SolvePrepared",Flags),typeof(PlayerMotionContinuation).GetMethod("Advance",Flags)})
                 audit.Patch(method,prefix:new HarmonyMethod(typeof(NativeCombatDedupReasons),nameof(Enter)),finalizer:new HarmonyMethod(typeof(NativeCombatDedupReasons),nameof(Exit)));
+            audit.Patch(Get(value,"Prediction").GetType().GetMethod("PrepareSample",Flags),prefix:new HarmonyMethod(typeof(NativeCombatDedupReasons),nameof(Range)));
+            audit.Patch(typeof(NpcMotion).GetMethods(Flags).Single(m=>m.Name=="Step" && m.GetParameters().Length==8),prefix:new HarmonyMethod(typeof(NativeCombatDedupReasons),nameof(NpcStep)));
+            audit.Patch(aim.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostMeleeAttack").GetMethod("SolvePrepared",Flags),prefix:new HarmonyMethod(typeof(NativeCombatDedupReasons),nameof(ActionSolve)));
+            var prefix=aim.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPlayerPrefix");
+            if(prefix!=null)audit.Patch(prefix.GetConstructors(Flags)[0],prefix:new HarmonyMethod(typeof(NativeCombatDedupReasons),nameof(OwnerArray)));
             audit.Patch(aim.GetType().GetMethod("TryOrdinaryInput",Flags),postfix:new HarmonyMethod(typeof(NativeCombatDedupReasons),nameof(Supply)));
         }
         internal static void Report()
-        {foreach(var pair in times)Console.WriteLine("REASON scope="+pair.Key+" inclusiveMs="+pair.Value[0]+" selfMs="+pair.Value[1]+" calls="+pair.Value[2]);times.Clear();}
+        {foreach(var pair in times)Console.WriteLine("REASON scope="+pair.Key+" inclusiveMs="+pair.Value[0]+" selfMs="+pair.Value[1]+" calls="+pair.Value[2]);foreach(var pair in ranges)Console.WriteLine("REASON range="+pair.Key+" calls="+pair.Value);foreach(var pair in actionSolves){Console.WriteLine("REASON actualHandSample="+pair.Key+" weaponStarts="+pair.Value);if(Environment.GetEnvironmentVariable("JMR_DEDUP_SINGLE_START")=="1")Require(pair.Value==1,"actual same-sample melee hand starts once with mechanism range, without 16/32/64 prefix replay");}Console.WriteLine("REASON work npcSteps="+npcSteps+" ownerArrays="+ownerArrays+" valueCapacity="+ownerValues);times.Clear();ranges.Clear();actionSolves.Clear();npcSteps=ownerArrays=ownerValues=0;}
     }
 }

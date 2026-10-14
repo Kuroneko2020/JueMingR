@@ -82,7 +82,17 @@ namespace JueMingR.TerrariaHost.Combat
                 candidates.Clear();presentationReachable=false;candidatePresentationPlan=null;
                 if(beforeNpc)
                 {
-                    if(actionHint.Equals(identity) && actionHintRequired>0)SetActionDemand(Math.Max(ActionPreferred(identity),actionHintRequired));
+                    // Transfer the last warm range once, at a real hand/control
+                    // admission. Cooldown callbacks must neither consume that
+                    // first useful hint nor turn it into selected urgent work.
+                    // The selected owner solves current premises; this range
+                    // is scheduling information, never the old warm Contact.
+                    if(UrgentPreparation && actionHint.Equals(identity) && actionHintRequired>0)
+                    {
+                        int required=Math.Max(ActionPreferred(identity),actionHintRequired);
+                        actionHint=default(NpcIdentity);actionHintRequired=0;
+                        SetActionDemand(required);
+                    }
                     return;
                 }
                 // The old cooldown pass was useful work for the next actual
@@ -92,6 +102,22 @@ namespace JueMingR.TerrariaHost.Combat
                 {
                     if(warm)candidateWarmTick=(long)Main.GameUpdateCount;int key=identity.Slot*2;
                     candidateIdentities[key]=identity;
+                    // Removing rank work does not remove the old range's
+                    // discontinuity boundary. A new AI/receive phase or a
+                    // body-sized departure replaces the old unknown range;
+                    // ordinary motion keeps progressive search unchanged.
+                    var fact=new CandidateFact(selection.Candidate(0),observation.Options.Dummy,sampleTick);
+                    var prior=candidateFacts[identity.Slot];
+                    if(prior.Present && !prior.Same(fact))
+                    {
+                        candidateChanges[identity.Slot]=++candidateChangeTicket;
+                        if(prior.Significant(fact))candidateSignificant[identity.Slot]=true;
+                    }
+                    candidateFacts[identity.Slot]=fact;
+                    // A fresh admitted warm attempt replaces the prior hint,
+                    // including miss/pause. Retaining its old positive range
+                    // after this attempt would repeatedly prioritize stale work.
+                    actionHint=default(NpcIdentity);actionHintRequired=0;
                     using(CombatPredictionWork.Limit(3))
                     if(EvaluateCandidate(identity,sampleTick,false,phase,key,CandidateProgressRequired(identity,key,false)))
                     {actionHint=identity;actionHintRequired=Math.Min(NpcPredictionCache.Horizon,Math.Max(1,candidatePlans[key].Contact.ReceiveTick+1));}
