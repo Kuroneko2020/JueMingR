@@ -4,7 +4,9 @@
 
 f9691a2 的完整增量独审结论是 NEEDS_FIX，原件保留。下述 F 的d77返修及b9事实后继已由独立Sol/Max窄PASS/APPROVED_FOR_STAGE，最终原报告 `.local/aim-dedup-repair-20261014/independent-review-d77ea25.md` SHA256 `7F795FE6D44395B31DAAED5E6B8AAE6F893FDD3488A22D687F1F9DB32EFDF035`；旧完整审查与新窄审查按实际范围组合，不能替下述实际ZIP后继新修订背书。A/B/F旧段保留各自执行身份。当前已有b9普通完整包但真实消费者发现新反例，安装暂停，现装仍为1ae线索。长期资格 INCOMPLETE/releaseEligible=false，红框 OWNER_WITHDRAWN，owner/FPS/multi NOT_RUN；#114/#7 OPEN、#115 OPEN Draft。
 
-## 实际 ZIP 新反例与 Source owner 返修（待同一独审）
+## 实际 ZIP 新反例与 Source owner 返修（8ec已审限定阶段PASS）
+
+同一独立Sol/Max的 `independent-review-8ec2bda.md` 已核b9→8ec并作PASS/APPROVED_FOR_STAGE，主调度接受完成donor重算链的限定退出；机械文字后继还须真实身份绑定。以下采用该报告纠正的口径，原r01/r02测量、receipt、CSV及作者报告不改；后继解释见 `F-epoch-factual-correction-r01.md`。本文时间为Stopwatch的scope内累计流逝毫秒，scope内暂停/调度也计入，native scope外不计；不是线程CPU时间，亦不代完整Main/Draw/FPS。
 
 实际b9完整优化Release/net472/x86 ZIP为2,167,514字节，SHA256 `1623D5F980BC6878A93FDE753C9115271B15ADC336D89C9C0CBC66DDCF38BBA6`；实际解压17成员/10payload和manifest/构建身份通过。`F-actual-zip-consumers-r01.log` 的Basic叶通过，完整candidate-demand第五场24moving/Path OFF失败：frame160近目标唯一原生机会为Basic，实际charged work6.1542ms。未执行的后续ZIP叶仍NOT_RUN；该包没有安装，不用旧组件PASS抵消此原失败。
 
@@ -14,7 +16,7 @@ f9691a2 的完整增量独审结论是 NEEDS_FIX，原件保留。下述 F 的d7
 
 新固定普通组件Host SHA256 `59F5940CA9A3DDCA1CDAA4426FD813AE3E0C85DF6A54B4E3592737FA70A9F76A`，MVID `6d932d7f-58ed-4946-a4ed-0c84dd222100`；`F-epoch-release-build-record-r01.json`保持b9 dirty/PrepareOnly身份。正常窗与最小观察probe SHA256为 `915FD911FD31B06EA2A204EE70A1E530A13023D6A3D78C2E2573032795DA59AE`；只新增上述紧邻可借正控的最终fixture probe为 `7BE05FD899321EA4545BC48666E07A86DF98D64FBE9A895621487AF867D5C490`，candidate-demand叶及生产字节未改，没有重跑正常窗。这不是后继最终ZIP，也没有补署未来commit。`F-epoch-minimal-control-receipt-r01.json` 的旧/修最小整数计数观察均exit0：同一moving24 frame160，旧完成candidate167→Hand拒4/8→selected再167；修后完成candidate167→Hand通过4/8→selected0。两个独立Source的30步仍分别进行。较重逐门观察 `F-epoch-opportunity-work-r01.log` 使candidate在136/167步暂停、无donor而后6ms退出，exit1原件保留；不能用它签普通性能或覆盖原失败。
 
-正常对照 `F-epoch-candidate-ABBA-receipt-r02.json` 全部四进程exit0，各五场×180=900更新，预先固定cold30/warm150，原6/3ms，无高频observer；3600个charged-work样本、100个实际原生机会全保留。A1完成后收集器重复mkdir出错，保留r01，r02只恢复原A1数据后续B1/B2/A2，没有重跑挑绿；间隔和原脚本hash见receipt。这里的毫秒是 `PredictionWork.UsedMilliseconds`，不是完整主循环或FPS。
+正常对照 `F-epoch-candidate-ABBA-receipt-r02.json` 全部四进程exit0，各五场×180=900更新，预先固定cold30/warm150，原6/3ms，无高频observer；3600个scope累计流逝样本、100个实际原生机会全保留。A1完成后收集器重复mkdir出错，保留r01，r02只恢复原A1数据后续B1/B2/A2，没有重跑挑绿；间隔和原脚本hash见receipt。这里的毫秒是 `PredictionWork.UsedMilliseconds`，不是线程CPU、完整主循环或FPS。
 
 | blockers / Path / moving | A1暖均值ms | B1 | B2 | A2 | B/A均值变化 |
 |---|---:|---:|---:|---:|---:|
@@ -24,9 +26,9 @@ f9691a2 的完整增量独审结论是 NEEDS_FIX，原件保留。下述 F 的d7
 | 24 / OFF / true | 0.802459 | 0.787941 | 0.845857 | 0.808532 | +1.42% |
 | 24 / ON / false | 1.986579 | 1.993345 | 1.884716 | 1.914316 | -0.59% |
 
-近目标20个frame160机会均Enhanced；各场原生机会固定0/40/80/120/160。B2 moving24的frame80/120额外两Basic，far实际Enhanced由同窗其他三次的3降为1，不能签供给全等。frame80 charged6.1082ms、frame1205.1811ms；farActionAttempt保持旧pass2而当前actionPass为3/4，说明该远目标动作准备未获新保留admission。未观测旧事件具体暂停位置，仍unknown；后测最小观察的可完成条件不回贴给B2。暖mean/p95/p99/max与冷峰全部在 `F-epoch-candidate-statistics-r02.csv`，移动场暖max A1/A2为4.3042/4.6171、B1/B2为3.4897/6.1082。当前只证明完成donor冗余退出，整体成本/新增供给差异待独审按04判断，不用更多Basic解释“提速”。
+近目标20个frame160机会均Enhanced；各场原生机会固定0/40/80/120/160。B2 moving24的frame80/120为实际target2/Basic，其他三窗同机会为target26/Enhanced、Contact前缀37/39点；这是目标选择与增强供给同时改变，不能说已选远目标26仅降级。四轮总计分别21E4B/21E4B/19E6B/21E4B，不签供给全等。两次scope流逝为6.1082/5.1811ms。actionHint路径只在farActionAttempt为0时写pass，值仍2不能推出未admission；其他三窗同样为2却远目标Enhanced，B2 frame80 farActionDepth也由34增至36。精确旧事件暂停位置/唯一原因仍unknown，后测绿不回贴。frames.csv的selected是更新结束后状态，Basic行sourceCount=0/sample=-1来自清空的openingContact，均不能冒充实际BeforeNpc输入目标或Source Cache为空。暖mean/p95/p99/max与冷峰全部在 `F-epoch-candidate-statistics-r02.csv`，移动场暖max A1/A2为4.3042/4.6171、B1/B2为3.4897/6.1082。同一独审按04接受完成donor冗余退出的限定阶段结论，承认这两次真实供给退步与混合耗时；现有有限结果不足以证明新修订引入系统性退化，也不足以证明全供给无差异，不以更多Basic解释“提速”。
 
-`F-epoch-propagation-receipt-r02.json` 的普通Release Basic/selection-preview/whip-terrain三叶均exit0；完整默认成本、56模型逐行与基线相同、四个正普通鞭finite/full及真实delayed/controlled/flight拒借通过。旧六场主要成本ABBA保留原666输入身份，其单候选/机制求解路径可按实际影响复用；新4生产文件已经改变，不能再宣称当前全部666输入等旧测量。后继候选还需新独审/阶段准入和实际ZIP消费者；原包失败、正常混合结果及安装未运行分别保留。
+`F-epoch-propagation-receipt-r02.json` 的普通Release Basic/selection-preview/whip-terrain三叶均exit0；完整默认成本、56模型逐行与基线相同、四个正普通鞭finite/full及真实delayed/controlled/flight拒借通过。旧六场主要成本ABBA保留原666输入身份，其单候选/机制求解路径可按实际影响复用；新4生产文件已经改变，不能再宣称当前全部666输入等旧测量。后继候选还需同一独审的机械身份绑定、真实阶段准入和实际ZIP消费者；原包失败、正常混合结果及安装未运行分别保留。
 
 ## F：两个缺陷的因果与有限替代方案
 
