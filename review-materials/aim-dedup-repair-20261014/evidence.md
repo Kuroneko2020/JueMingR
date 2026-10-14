@@ -2,11 +2,35 @@
 
 原件 `references/JMR_AIM_REPAIR_20261014/`，ID `JMR-AIM-REPAIR-20261014-v1`，14 原件 SHA 已核，保持本地只读；网页未直接取得这些原件。TASK_BASE `c38b1f941d64b73971a3380aff5d7c75fff24cb7`；对照原包来源 `1ae9965081cddffd2af41cf50c807f6144e6adfb`，1ae→TASK_BASE 的 src 差异为空。
 
-f9691a2 的完整增量独审结论是 NEEDS_FIX，原件保留。下述 F 的d77返修及b9事实后继已由独立Sol/Max窄PASS/APPROVED_FOR_STAGE，最终原报告 `.local/aim-dedup-repair-20261014/independent-review-d77ea25.md` SHA256 `7F795FE6D44395B31DAAED5E6B8AAE6F893FDD3488A22D687F1F9DB32EFDF035`；旧完整审查与新窄审查按实际范围组合，不能替下述实际ZIP后继新修订背书。A/B/F旧段保留各自执行身份。当前已有b9普通完整包但真实消费者发现新反例，安装暂停，现装仍为1ae线索。长期资格 INCOMPLETE/releaseEligible=false，红框 OWNER_WITHDRAWN，owner/FPS/multi NOT_RUN；#114/#7 OPEN、#115 OPEN Draft。
+f9691a2 的完整增量独审结论是 NEEDS_FIX，原件保留。下述 F 的d77返修及b9事实后继已由独立Sol/Max窄PASS/APPROVED_FOR_STAGE，最终原报告 `.local/aim-dedup-repair-20261014/independent-review-d77ea25.md` SHA256 `7F795FE6D44395B31DAAED5E6B8AAE6F893FDD3488A22D687F1F9DB32EFDF035`；旧完整审查与新窄审查按实际范围组合，不替后继新修订背书。b9实际ZIP反例触发8ec最小修订，机械后继e262已独审绑定并完成下述实际包/安装；A/B/F旧段保留各自执行身份。长期资格 INCOMPLETE/releaseEligible=false，红框 OWNER_WITHDRAWN，owner/FPS/multi NOT_RUN；#114/#7 OPEN、#115 OPEN Draft。
+
+## e262 实际普通完整包、消费者与文件安装
+
+包与现装源码均为 **`e26234b48ae24be88d95fda19c74a8cd29ca245c`**；收尾文档提交与这个来源分开。sourceFP `6C662590E304A14C05C9F6A1BC9055C0D21558BFC0CCD661787A5F2EE3D734F6`、inputFP `14DBEE5CE125F13C7EC837C3B4BB7B590641926A616E95BED15035A1CD4D8FEB`。同一独立Sol/Max最终源码报告 `independent-review-8ec2bda.md` 为23,282 bytes，SHA256 **`6E83F2CFD4002C40D84423B4478DED9A0111F62F42E9B8AC7D4678015305F03E`**，已真实绑定e262；已绑定报告和原测量不再改签。实际 `F-stage-e26234b-reviewed-r01.json` SHA256 `8F407BB4C2F2A127265570E8AD8F9904792DE66F02512429454442C12932BF49`，42修订/21责任的准入正例及16反控均exit0，没有写正式长期资格缓存。
+
+普通优化Release/net472/x86 ContinuousProcessing完整ZIP在 `outputs/aim-dedup-delivery-20261014-e26234b/JueMingR-Continuous-Processing-e26234b48ae24be88d95fda19c74a8cd29ca245c.zip`，**2,167,651 bytes**，SHA256 **`56C01EDE4E6F0D0834DC9A0CFF32DC55CD549D9A3F71D84DEF983831114DD8BE`**。构建原件 `phase-0-s-build-record.json` SHA256 `6CDB389C27FCE9BDCBDE6355C69E4DF4FAE6D077A43F61C762511613647B1671`；clean=false保留四外来资产，committedProductSourceClean=true，STAGE_DEVELOPMENT。实际17成员/10payload与所有权身份通过，实际Host SHA256 `ED5F5FAB71A2D8BDA4ACFAC65DCC72323430F63498E28B45CFA5D59CEA3E1E03`，MVID `5203cbc6-15b2-4339-bba7-04154e9c9350`，不冒签旧组件PE。
+
+真实解ZIP的 `F-final-e26234b-zip-r01/actual-zip-consumer-receipt.json` SHA256 `8D8C990B3E91B408C32F04B10E82116FF2D5F136927E3241F196A64EFDED2D7B`，分别独立运行且原日志/exit保留：
+
+| 实际消费者 | exit |
+|---|---:|
+| basic-direct | 0 |
+| candidate-demand-full（全部五场，含原moving24 frame160近目标机会） | 0 |
+| attack-costs（完整默认、模型与真实Source owner正反控） | 0 |
+| selection-preview | 0 |
+| bubble | 0 |
+
+所有者追加“关于换装和打包这部分轻量审计即可，不用一遍遍确认”后，复用已有效证据，只做一次新鲜安全门/12旧自有文件备份与官方旧Restore→新Install，两个官方操作分别RESTORE_COMPLETE/INSTALL_COMPLETE、exit0。目标沿用 `F:/Games/GamePlats/Steam/steamapps/common/Terraria`；现装10payload/ownership manifest与e262实际ZIP一致，Terraria.exe原hash保持。备份/原官方日志/恢复材料在 `.local/aim-dedup-repair-20261014/install-e26234b-20261014-105401/`。
+
+第一次严格保护读回 **exit1** 保持，不能把1777项全签不变：原有序检查在该次执行已核前1776项相同，最后1份Steam localconfig前后hash不同，实际LastWrite为UTC10:56:18.849，早于官方操作开始11:00:30.731；10:55的只读记录仍是原hash。其确切改动键/进程unknown，无旧原始字节便不杜撰文本diff，未回滚该外部配置。后继读回exit0仅补尚未执行项并透明复用原1776实际核验，没有全量重复哈希或换前基线；保护成员集合、4外来资产、23非自有根文件/3目录及12备份在该次核合。UTC11:06:03形成的 `installation-receipt.json` 637,125 bytes，SHA256 **`EE45413FBE4378790B7D311EA0D43D0D2807F1A1F9552D2C918E5EC8A71E79BB`**，状态 **`INSTALLED_VERIFIED_WITH_PREEXISTING_EXTERNAL_CONFIG_CHANGE`**、protectedUnchanged=false，原失败日志和原回执不回写。
+
+同一独审的一次轻量包/受控安装回执核对为 **PASS**，新报告 `independent-install-e26234b-r01.md` 8,730 bytes，SHA256 **`91F90DC47A59D3BEB7FD76407141F24A606F6BA70D9FD7DD435D2FE45A04E0CF`**，未追加已绑定源码报告。其UTC11:15:28.710单项只读另见该Steam配置后续变化：仍746,516 bytes，SHA256 `10239F6765B66C4E5621D7375A7B976D68C9222EF39625CD137D68A31B5772E1`，LastWrite11:11:20.061Z，晚于操作及11:06回执；这次变化原因同样unknown，与10:56安装前变化分记，不能把历史回执当当前配置快照。受控10payload、manifest、原版exe及12备份均核合；未重扫704引用/1777保护哈希、重跑业务/普通窗、重装或回滚外部设置。
+
+这一组没有重跑正常时间窗、重装或启动游戏。完整正常原版加载/本人进入、F5、正常退出、现场FPS和真实多人仍NOT_RUN，fullQualification=INCOMPLETE/releaseEligible=false；原b9 ZIP失败、B2两次target2/Basic和混合耗时/unknown保持，不宣称总体加速或供给全等。当前事实与本机原件汇集在 `F-e26234b-package-install-result-r01.md`；第一张所有者体验卡仅“能进入、F5能打开、正常退出”。
 
 ## 实际 ZIP 新反例与 Source owner 返修（8ec已审限定阶段PASS）
 
-同一独立Sol/Max的 `independent-review-8ec2bda.md` 已核b9→8ec并作PASS/APPROVED_FOR_STAGE，主调度接受完成donor重算链的限定退出；机械文字后继还须真实身份绑定。以下采用该报告纠正的口径，原r01/r02测量、receipt、CSV及作者报告不改；后继解释见 `F-epoch-factual-correction-r01.md`。本文时间为Stopwatch的scope内累计流逝毫秒，scope内暂停/调度也计入，native scope外不计；不是线程CPU时间，亦不代完整Main/Draw/FPS。
+同一独立Sol/Max的 `independent-review-8ec2bda.md` 已核b9→8ec并作PASS/APPROVED_FOR_STAGE，主调度接受完成donor重算链的限定退出；机械文字后继e262的真实身份绑定已完成，实际后续包/安装见上。以下采用该报告纠正的口径，原r01/r02测量、receipt、CSV及作者报告不改；后继解释见 `F-epoch-factual-correction-r01.md`。本文时间为Stopwatch的scope内累计流逝毫秒，scope内暂停/调度也计入，native scope外不计；不是线程CPU时间，亦不代完整Main/Draw/FPS。
 
 实际b9完整优化Release/net472/x86 ZIP为2,167,514字节，SHA256 `1623D5F980BC6878A93FDE753C9115271B15ADC336D89C9C0CBC66DDCF38BBA6`；实际解压17成员/10payload和manifest/构建身份通过。`F-actual-zip-consumers-r01.log` 的Basic叶通过，完整candidate-demand第五场24moving/Path OFF失败：frame160近目标唯一原生机会为Basic，实际charged work6.1542ms。未执行的后续ZIP叶仍NOT_RUN；该包没有安装，不用旧组件PASS抵消此原失败。
 
@@ -28,7 +52,7 @@ f9691a2 的完整增量独审结论是 NEEDS_FIX，原件保留。下述 F 的d7
 
 近目标20个frame160机会均Enhanced；各场原生机会固定0/40/80/120/160。B2 moving24的frame80/120为实际target2/Basic，其他三窗同机会为target26/Enhanced、Contact前缀37/39点；这是目标选择与增强供给同时改变，不能说已选远目标26仅降级。四轮总计分别21E4B/21E4B/19E6B/21E4B，不签供给全等。两次scope流逝为6.1082/5.1811ms。actionHint路径只在farActionAttempt为0时写pass，值仍2不能推出未admission；其他三窗同样为2却远目标Enhanced，B2 frame80 farActionDepth也由34增至36。精确旧事件暂停位置/唯一原因仍unknown，后测绿不回贴。frames.csv的selected是更新结束后状态，Basic行sourceCount=0/sample=-1来自清空的openingContact，均不能冒充实际BeforeNpc输入目标或Source Cache为空。暖mean/p95/p99/max与冷峰全部在 `F-epoch-candidate-statistics-r02.csv`，移动场暖max A1/A2为4.3042/4.6171、B1/B2为3.4897/6.1082。同一独审按04接受完成donor冗余退出的限定阶段结论，承认这两次真实供给退步与混合耗时；现有有限结果不足以证明新修订引入系统性退化，也不足以证明全供给无差异，不以更多Basic解释“提速”。
 
-`F-epoch-propagation-receipt-r02.json` 的普通Release Basic/selection-preview/whip-terrain三叶均exit0；完整默认成本、56模型逐行与基线相同、四个正普通鞭finite/full及真实delayed/controlled/flight拒借通过。旧六场主要成本ABBA保留原666输入身份，其单候选/机制求解路径可按实际影响复用；新4生产文件已经改变，不能再宣称当前全部666输入等旧测量。后继候选还需同一独审的机械身份绑定、真实阶段准入和实际ZIP消费者；原包失败、正常混合结果及安装未运行分别保留。
+`F-epoch-propagation-receipt-r02.json` 的普通Release Basic/selection-preview/whip-terrain三叶均exit0；完整默认成本、56模型逐行与基线相同、四个正普通鞭finite/full及真实delayed/controlled/flight拒借通过。旧六场主要成本ABBA保留原666输入身份，其单候选/机制求解路径可按实际影响复用；新4生产文件已经改变，不能再宣称当前全部666输入等旧测量。后继e262已完成同一独审机械身份绑定、实际阶段准入和真实ZIP消费者，见顶部；原b9包失败、正常混合结果及各历史执行身份保持。
 
 ## F：两个缺陷的因果与有限替代方案
 
@@ -65,7 +89,7 @@ F1的自然矛：A1/A2均值0.848234/0.855328，B1/B2为0.714068/0.695853；p95�
 - `F-seeds-default-costs-r01.log`：原默认预算/optional/普通工作责任、新去冗余/模式/hint、owner-prefix、模型与真实来源拒绝通过；相关探针修改仅改变其他独立选择叶的前置，旧运行身份不重签。`F-max-basic-r01.log` 当前Basic/原版动作、`F-max-whip-terrain-r01.log` 当前5480/1035未来owner/墙门通过。
 - `F-max-candidate-full-r02.log`：固定普通Release的既有完整CandidateDemand.Run及五个180更新场景通过，含原BudgetPlanRetry、中断/完整miss/同样本恢复和实际多候选公平机会。原r01仅因未附带固定Harmony而在加载前失败，修正为已锁定五文件组件载体，不称完整包加载。
 - `F-max-selection-r01.log` 原失败保留：固定60步内有49次实际远路径、最大gap3，却在任意最后一点要求farready。该断言来自abc0789，四更新显示租约与五更新optional cadence不保证这一任意相位；本次三候选路径未进入新的单候选修订。修订保留全部60观察，按已有有界 `RankedAdvance` 取得当前正证明后才做变化测试，不扩大产品预算、重置账本或移动性能窗口。`F-max-selection-r02.log` 两中心实际排序/路径、开闭墙、换弹药、移动与最近模式通过；原失败不改签。
-- `F-max-feedback-plan-r01.log` 真实拒绝未分类公开材料；精确登记本任务既有Markdown/CSV/JSON名称后，`F-max-routing-r01.log` 的真实Git正反例与未登记可执行文件拒绝通过，r02 PlanOnly成功，仍是NOT_EVALUATED。阶段reader沿既有接口新增本任务schema/固定c38基底/精确增量和21项责任；旧阶段记录不能改署新候选。独立复核、当前阶段准入正反例、普通完整包/实际解ZIP消费者及安装尚待执行，未签绿。
+- `F-max-feedback-plan-r01.log` 真实拒绝未分类公开材料；精确登记本任务既有Markdown/CSV/JSON名称后，`F-max-routing-r01.log` 的真实Git正反例与未登记可执行文件拒绝通过，r02 PlanOnly成功，仍是NOT_EVALUATED。阶段reader沿既有接口新增本任务schema/固定c38基底/精确增量和21项责任；旧阶段记录不能改署新候选。该原执行点尚未进行的独审、stage、完整包/ZIP与安装，已由顶部e262真实后继分别完成，不改签本段原件。
 
 最小[责任与证据映射](validation-map.json)及[失败处置](failure-dispositions.json)供独审逐项核适用性；尚无完整长期187资格。支持原版的完整包正常加载仍由所有者本人执行，自动组件和文件安装不能代证；第一张卡仅“能进入、F5能打开、正常退出”。
 
