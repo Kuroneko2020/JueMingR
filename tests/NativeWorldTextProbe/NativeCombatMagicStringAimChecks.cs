@@ -149,6 +149,7 @@ namespace NativeWorldTextProbe
                 Console.WriteLine("MAGIC STRING FREE PREVIEW mirror="+mirror+" range="+ProjectileID.Sets.YoyosMaximumRange[p.HeldItem.shoot]+" receiverDistance="+Vector2.Distance(p.Center,n.Center)+" count="+timeline.Count+" contact="+(contact==null?"none":contact.Tick+"/"+contact.Confidence));
                 Require(contact!=null && contact.Confidence==AttackConfidence.Representative,"clear-line opening proves dry detached reach outside held rope range");
                 var lease=Call(control,"CapturePreviewDependencies",contact);Require((bool)Call(lease,"Current",p),"free opening owns current input dependencies");
+                Require(!(bool)Call(lease,"Current",new object[]{null}) && !(bool)Call(lease,"Current",new Player()),"free opening lease cannot survive missing or replaced owner");
                 p.magicString=false;Require(!(bool)Call(lease,"Current",p),"removing magic string revokes free-flight preview lease");p.magicString=true;
                 int wall=(int)((p.Center.X+n.Center.X)/32);for(int y=0;y<Main.maxTilesY;y++)NativeToolsChecks.Tile(wall,y,1);
                 Require(!(bool)Call(lease,"Current",p),"new terrain retires previously proved free flight");

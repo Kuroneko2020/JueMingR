@@ -36,10 +36,10 @@ namespace JueMingR.TerrariaHost.Combat
             private readonly HostYoyoNavigation.PresentationDependencies navigation;
             private readonly HostAttackObstacles obstacles;
             private readonly HostProjectileEnvironment.State environment;
-            private readonly Func<bool> controlInputCurrent;
-            internal PreviewDependencies(PredictionTerrain terrain,HostYoyoNavigation navigation,HostAttackObstacles obstacles,HostProjectileEnvironment.State environment,Player openingInput=null,Func<bool> controlInputCurrent=null)
+            private readonly Func<Player,bool> controlInputCurrent;
+            internal PreviewDependencies(PredictionTerrain terrain,HostYoyoNavigation navigation,HostAttackObstacles obstacles,HostProjectileEnvironment.State environment,Player openingInput=null,Func<Player,bool> controlInputCurrent=null)
             {this.terrain=terrain.FreezeCells();this.navigation=navigation?.FreezePresentation(openingInput);this.obstacles=obstacles;this.environment=environment;this.controlInputCurrent=controlInputCurrent;}
-            internal bool Current(Player player){return terrain.Current && (navigation==null || navigation.Current(player)) && environment.Current && (obstacles==null || obstacles.Unchanged) && (controlInputCurrent==null || controlInputCurrent());}
+            internal bool Current(Player player){return player!=null && terrain.Current && (navigation==null || navigation.Current(player)) && environment.Current && (obstacles==null || obstacles.Unchanged) && (controlInputCurrent==null || controlInputCurrent(player));}
         }
         internal PreviewDependencies CapturePreviewDependencies(AttackContact contact)
         {return contact!=null && ReferenceEquals(contact,previewContact)?previewDependencies:null;}
@@ -110,11 +110,11 @@ namespace JueMingR.TerrariaHost.Combat
             shot.Center=mounted;shot.velocity=unit*previewAmmo.Speed;
             var openingView=new Controlled{Shot=shot,Key=(int)shot.key,Type=type};
             bool managedYoyo=HostYoyoNavigation.Handles(shot) && player.magicString && combat.Use.ManagedAttackIntent(player);
-            Func<bool> controlInputCurrent=null;
+            Func<Player,bool> controlInputCurrent=null;
             if(HostYoyoNavigation.Handles(shot))
             {
                 var inputMotion=NpcPredictionSource.ReadPlayer(player);float inputSpeed=player.meleeSpeed;bool inputString=player.yoyoString;
-                controlInputCurrent=()=>managedYoyo==(combat.Player.magicString && combat.Use.ManagedAttackIntent(combat.Player)) && inputSpeed==combat.Player.meleeSpeed && inputString==combat.Player.yoyoString && inputMotion.SameSample(NpcPredictionSource.ReadPlayer(combat.Player));
+                controlInputCurrent=current=>ReferenceEquals(player,current) && ReferenceEquals(current,combat.Player) && managedYoyo==(current.magicString && combat.Use.ManagedAttackIntent(current)) && inputSpeed==current.meleeSpeed && inputString==current.yoyoString && inputMotion.SameSample(NpcPredictionSource.ReadPlayer(current));
                 if(!managedYoyo)
                 {
                     Vector2 waypoint;HostYoyoNavigation navigation;
