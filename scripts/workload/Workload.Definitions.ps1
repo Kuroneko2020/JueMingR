@@ -42,6 +42,11 @@ function Get-WorkloadLeafChecks {
         # CombatAttackCosts is a specialist selector; its normal workload
         # dispatcher is CombatCosts, which actually calls the new leaf once.
         'tests/NativeWorldTextProbe/NativeCombatDedupChecks.cs'=@('native-CombatCosts')
+        'tests/NativeWorldTextProbe/NativeCombatDedupPremiseChecks.cs'=@('native-CombatCosts')
+        'tests/NativeWorldTextProbe/NativeCombatDedupReasons.cs'=@('native-CombatCosts')
+        'tests/NativeWorldTextProbe/NativeCombatDedupPrefixChecks.cs'=@('native-CombatCosts')
+        'tests/NativeWorldTextProbe/NativeCombatDedupModelChecks.cs'=@('native-CombatCosts')
+        'tests/NativeWorldTextProbe/NativeCombatDedupSourceChecks.cs'=@('native-CombatCosts')
         'tests/NativeWorldTextProbe/NativeCombatPreviewLeaseChecks.cs'=@('native-CombatCosts','native-CombatAttackCosts','native-CombatControlCpu','native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.Natural.cs'=@('native-CombatCosts','native-CombatAttackCosts')
         'tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.CandidateState.cs'=@('native-CombatCosts','native-CombatAttackCosts')

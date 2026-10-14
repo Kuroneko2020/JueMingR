@@ -116,6 +116,11 @@ namespace JueMingR.TerrariaHost.Combat
         {
             var player=combat.Player;var item=player.HeldItem;
             var captured=AttackAmmoSnapshot.Capture(player,item);Projectile body;AttackMotion motion;
+            // A current hand may avoid blind short-prefix restarts. Optional
+            // cooldown candidates keep their cheaper progressive range: using
+            // this hint there repeatedly enlarged NPC work with no supply gain.
+            if(!futureLaunch && captured!=null && CombatSelection.Valid(target,observation.Session) && ContentSamples.ProjectilesByType.TryGetValue(captured.Projectile,out body) && body.aiStyle==19 && HostMeleeAttack.DerivedSpearChild(body.type)!=0)
+                return HostMeleeAttack.PreferredSpearRange(player,item,captured,Main.npc[target.Slot],futureLaunch?Math.Max(0,HostAttackWindow.PreviewDelay(player,item)):0);
             // Complex models have no general panel-speed arrival estimate.
             // Start a positive search, then extend the same sample only if its
             // real consumer remains unresolved; this is not a range cap.

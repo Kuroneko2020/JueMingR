@@ -217,9 +217,9 @@ namespace NativeWorldTextProbe
             finally{injectPreviewFault=false;foreach(var method in audit.GetPatchedMethods().ToArray())audit.Unpatch(method,HarmonyPatchType.All,audit.Id);}
         }
         private static void PreviewFault(){if(injectPreviewFault){previewFaults++;throw new InvalidOperationException("isolated preview preparation fault");}}
-        internal static void Step(object context,Vector2 mouse,bool left,bool pureObservation=false)
+        internal static void Step(object context,Vector2 mouse,bool left,bool pureObservation=false,bool right=false)
         {
-            var host=Get(context,"CombatObservation");var combat=Get(context,"Combat");var input=Get(context,"Input");NativeToolExecutionChecks.Sample(context,input,mouse,left);Call(combat,"Sample");Call(host,"SampleMouse");int x=Main.mouseX,y=Main.mouseY;
+            var host=Get(context,"CombatObservation");var combat=Get(context,"Combat");var input=Get(context,"Input");NativeToolExecutionChecks.Sample(context,input,mouse,left);if(right)Terraria.GameInput.PlayerInput.Triggers.Current.Right=true;Call(combat,"Sample");Call(host,"SampleMouse");int x=Main.mouseX,y=Main.mouseY;
             NativeQuickItemChecks.BeginWorldStep();Main.LocalPlayer.Update(0);
             foreach(var n in Main.npc)if(n.active)n.UpdateNPC(n.whoAmI);
             for(int i=0;i<Main.maxProjectiles;i++)if(Main.projectile[i].active){Main.ProjectileUpdateLoopIndex=i;Main.projectile[i].Update(i);}Main.ProjectileUpdateLoopIndex=-1;

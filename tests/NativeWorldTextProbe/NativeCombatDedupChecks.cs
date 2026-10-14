@@ -8,6 +8,7 @@ using JueMingR.Features.Combat;
 using JueMingR.Platform.Combat;
 using Microsoft.Xna.Framework;
 using Terraria;
+using Terraria.ID;
 using static NativeWorldTextProbe.NativeInformationChecks;
 
 namespace NativeWorldTextProbe
@@ -17,21 +18,24 @@ namespace NativeWorldTextProbe
     internal static class NativeCombatDedupChecks
     {
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static|BindingFlags.Instance;
-        private static int solves,births,enhanced,basic,shares,hits,motionSteps,spearSteps,solveDepth;
+        private static int solves,births,enhanced,basic,shares,hits,motionSteps,spearSteps,solveDepth,hintDepth,hintOffsets;
         private static object attack;
+        private static bool scenarioAim=true,scenarioPath=true;
         private static AttackContact proposed,recorded;
         private static int nativeFrame,scenarioItem;private static bool scenarioMoving;
         private static void Solve(){solves++;solveDepth++;}
         private static Exception Solved(Exception __exception){solveDepth--;return __exception;}
         private static void MotionStep(){motionSteps++;}
-        private static void SpearStep(){if(solveDepth>0)spearSteps++;}
+        private static void SpearStep(){if(solveDepth>0)spearSteps++;else if(hintDepth>0)hintOffsets++;}
+        private static void Hint(){hintDepth++;}
+        private static Exception Hinted(Exception __exception){hintDepth--;return __exception;}
         private static void Share(bool __result){if(__result)shares++;}
         private static void Proposed(AttackContact __0){proposed=__0;}
         private static void Born(Player __instance,Projectile __0)
         {
-            if(__instance.whoAmI!=0 || __0.owner!=0 || __0.type!=14 && __0.type!=222)return;births++;
-            var packet=Get(attack,"consumedInput");bool current=(uint)Get(attack,"consumedInputStep")==Main.GameUpdateCount;
-            Console.WriteLine("DEDUP birth item="+scenarioItem+" moving="+scenarioMoving+" frame="+nativeFrame+" tick="+Main.GameUpdateCount+" current="+current+" kind="+Get(packet,"Kind")+" target="+((NpcIdentity)Get(packet,"Target")).Slot+" point="+Get(packet,"Point")+" velocity="+__0.velocity+" sample="+(recorded?.Timeline.SampleTick??-1)+" capture="+(recorded?.Timeline.CaptureTick??-1)+" receive="+(recorded?.ReceiveTick??-1));
+            if(__instance.whoAmI!=0 || __0.owner!=0 || __0.type!=14 && __0.type!=222 && __0.type!=__instance.HeldItem.shoot)return;births++;
+            var packet=GetOptional(attack,"consumedInput");bool current=packet!=null && (uint)Get(attack,"consumedInputStep")==Main.GameUpdateCount;
+            Console.WriteLine("DEDUP birth item="+scenarioItem+" moving="+scenarioMoving+" frame="+nativeFrame+" tick="+Main.GameUpdateCount+" current="+current+" kind="+(current?Get(packet,"Kind"):"Unassisted")+" target="+(current?((NpcIdentity)Get(packet,"Target")).Slot:-1)+" point="+(current?Get(packet,"Point"):null)+" velocity="+__0.velocity+" sample="+(current?recorded?.Timeline.SampleTick??-1:-1)+" capture="+(current?recorded?.Timeline.CaptureTick??-1:-1)+" receive="+(current?recorded?.ReceiveTick??-1:-1));
         }
         private static void Hit(NPC __instance,int __result){if(__instance.whoAmI==2 && __result>0)hits++;}
         private static void Input(object __instance)
@@ -40,12 +44,18 @@ namespace NativeWorldTextProbe
         {
             var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");attack=Get(combat,"Attack");var input=Get(context,"Input");
             bool timing=Environment.GetEnvironmentVariable("JMR_DEDUP_TIMING")=="1";
+            bool natural=Environment.GetEnvironmentVariable("JMR_DEDUP_NATURAL")=="1";
+            bool lateSpear=Environment.GetEnvironmentVariable("JMR_DEDUP_LATE_SPEAR")=="1";
+            string mode=Environment.GetEnvironmentVariable("JMR_DEDUP_MODE");scenarioAim=mode!="Off" && mode!="PathOnly";scenarioPath=mode!="Off" && mode!="AimOnly";
             var audit=new Harmony("JueMingR.Tests.AimDedup");
+            bool reasons=Environment.GetEnvironmentVariable("JMR_DEDUP_REASON")=="1";
+            if(reasons)NativeCombatDedupReasons.Attach(audit,host,attack);
             if(!timing)
             {
                 audit.Patch(attack.GetType().GetMethod("SolveOnTerrain",Flags),prefix:new HarmonyMethod(typeof(NativeCombatDedupChecks),nameof(Solve)),finalizer:new HarmonyMethod(typeof(NativeCombatDedupChecks),nameof(Solved)));
                 audit.Patch(typeof(AttackMotion).GetMethod("Advance",Flags),prefix:new HarmonyMethod(typeof(NativeCombatDedupChecks),nameof(MotionStep)));
                 audit.Patch(typeof(Projectile).GetMethod("AI_019_Spears_GetSpearOffsetRelativeToPlayer",Flags),prefix:new HarmonyMethod(typeof(NativeCombatDedupChecks),nameof(SpearStep)));
+                var hint=attack.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostMeleeAttack").GetMethod("PreferredSpearRange",Flags);if(hint!=null)audit.Patch(hint,prefix:new HarmonyMethod(typeof(NativeCombatDedupChecks),nameof(Hint)),finalizer:new HarmonyMethod(typeof(NativeCombatDedupChecks),nameof(Hinted)));
                 var share=attack.GetType().GetMethod("TryCandidateHand",Flags);if(share!=null)audit.Patch(share,postfix:new HarmonyMethod(typeof(NativeCombatDedupChecks),nameof(Share)));
             }
             audit.Patch(attack.GetType().GetMethod("RecordInput",Flags),postfix:new HarmonyMethod(typeof(NativeCombatDedupChecks),nameof(Input)));
@@ -56,25 +66,35 @@ namespace NativeWorldTextProbe
             try
             {
                 if(!timing && Environment.GetEnvironmentVariable("JMR_DEDUP_BASELINE")!="1"){Component(context,combat,host,input);Modes(context,combat,host,input);}
-                foreach(int item in new[]{95,1228})foreach(bool moving in new[]{false,true})
+                foreach(int item in lateSpear?new[]{1228}:natural?new[]{95,1228,ItemID.BlandWhip}:new[]{95,1228})foreach(bool moving in new[]{false,true})
                 {
                     var p=Reset(context,combat,host,input,item);var n=Scene(2,new Vector2(item==95?965:870,667));
+                    Main.rand=new Terraria.Utilities.UnifiedRandom(7100+item+(moving?1:0));
                     scenarioItem=item;scenarioMoving=moving;recorded=proposed=null;
                     if(moving)n.velocity=new Vector2(0,.7f);
-                    NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,false,50,true,true));
-                    solves=births=enhanced=basic=shares=hits=motionSteps=spearSteps=solveDepth=0;var times=new List<double>(360);
+                    if(lateSpear){n.Center=new Vector2(970,620);n.velocity=moving?new Vector2(.3f,.15f):Vector2.Zero;}
+                    if(natural && moving)
+                    {
+                        n.SetDefaults(1);n.whoAmI=2;n.active=true;n.Center=new Vector2(item==95?965:870,667);n.life=n.lifeMax=100000;n.knockBackResist=0;
+                        n.target=0;n.direction=-1;n.velocity=new Vector2(-.7f,0);
+                    }
+                    NativeCombatObservationChecks.Save(host,new ObservationOptions(false,scenarioPath,true,false,natural,50,true,scenarioAim));
+                    solves=births=enhanced=basic=shares=hits=motionSteps=spearSteps=solveDepth=hintDepth=hintOffsets=0;var times=new List<double>(360);
                     for(int frame=0;frame<360;frame++)
                     {
                         // Fixed external transverse track: unlike natural closed
                         // combat dynamics this keeps paired solve inputs known.
-                        nativeFrame=frame;var watch=Stopwatch.StartNew();NativeCombatSelectionPreviewChecks.Step(context,new Vector2(550,600),frame%90<45,true);watch.Stop();times.Add(watch.Elapsed.TotalMilliseconds);
+                        nativeFrame=frame;bool movePlayer=natural && Environment.GetEnvironmentVariable("JMR_DEDUP_MOVING_PLAYER")=="1";
+                        var watch=Stopwatch.StartNew();NativeCombatSelectionPreviewChecks.Step(context,new Vector2(550,600),frame%90<45,true,movePlayer && frame%180<30);watch.Stop();times.Add(watch.Elapsed.TotalMilliseconds);
                         if(timing)Console.WriteLine("DEDUP time item="+item+" moving="+moving+" frame="+frame+" ms="+watch.Elapsed.TotalMilliseconds.ToString("R",System.Globalization.CultureInfo.InvariantCulture));
-                        Require(((NpcIdentity)Get(Get(host,"Selection"),"Target")).Slot==2,"single legal target remains the actual shared identity");
+                        Require(!(scenarioAim || scenarioPath) || ((NpcIdentity)Get(Get(host,"Selection"),"Target")).Slot==2,"single legal target remains the actual shared identity");
                     }
-                    Console.WriteLine("DEDUP native item="+item+" fixedVelocityTrajectory="+moving+" frames=360 solves="+solves+" motionSteps="+motionSteps+" spearSteps="+spearSteps+" birth="+births+" Enhanced="+enhanced+" Basic="+basic+" hits="+hits+" share="+shares);
+                    Console.WriteLine("DEDUP native item="+item+" Aim="+scenarioAim+" Path="+scenarioPath+" naturalAI="+(natural && moving)+" fixedVelocityTrajectory="+(!natural && moving)+" movingScene="+moving+" playerEnd="+p.position+" frames=360 solves="+solves+" motionSteps="+motionSteps+" spearSteps="+spearSteps+" hintOffsets="+hintOffsets+" birth="+births+" Enhanced="+enhanced+" Basic="+basic+" hits="+hits+" share="+shares);
+                    if(reasons)NativeCombatDedupReasons.Report();
                     if(timing){var warm=times.Skip(30).OrderBy(v=>v).ToArray();Console.WriteLine("DEDUP time-summary item="+item+" moving="+moving+" n=330 mean="+warm.Average()+" p95="+warm[(int)(warm.Length*.95)]+" p99="+warm[(int)(warm.Length*.99)]+" max="+warm.Last());}
-                    Require(births>0 && enhanced+basic==births,"actual ordinary native births and input consumers have matching denominators");
-                    Require(enhanced>0,"single target still supplies an applicable enhanced input under normal budget");
+                    Require(births>0 && (scenarioAim?enhanced+basic==births:enhanced+basic==0),"actual ordinary native births and authorized input consumers have matching denominators");
+                    Require(!scenarioAim || enhanced>0,"single target still supplies an applicable enhanced input under normal budget");
+                    if(natural && Environment.GetEnvironmentVariable("JMR_DEDUP_MOVING_PLAYER")=="1")Require(p.position.X!=700,"actual native keyboard trigger has moved the player, not merely a setter before input sampling");
                 }
             }
             finally{audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());attack=null;}
@@ -177,6 +197,7 @@ namespace NativeWorldTextProbe
                     donor=((Array)Get(attack,"candidatePlans")).GetValue(selected.Slot*2+1);
                 }
                 var phase=Enum.Parse(Get(attack,"preparedOrdinaryPhase").GetType(),"BeforeNpc");var changedReceive=new object[]{p,p.HeldItem,phase,null};
+                NativeCombatDedupPremiseChecks.Run(attack,donor,p,phase,()=>solves);
                 receiver.immune[0]=120;Require((bool)attack.GetType().GetMethod("TryOrdinaryInput",Flags).Invoke(attack,changedReceive) && Get(changedReceive[3],"Kind").ToString()=="Basic","changed receiver immunity after donation cannot consume the old Enhanced result");receiver.immune[0]=immune;
                 p.position.X+=1;changedReceive=new object[]{p,p.HeldItem,phase,null};Require((bool)attack.GetType().GetMethod("TryOrdinaryInput",Flags).Invoke(attack,changedReceive) && Get(changedReceive[3],"Kind").ToString()=="Basic","even a one-pixel player translation after donation revokes the old hand start");p.position=position;
                 // Source/reset/another candidate cannot erase the execution's

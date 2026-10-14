@@ -37,6 +37,30 @@ namespace JueMingR.TerrariaHost.Combat
             int extra=item.autoReuse && item.reuseDelay==0 && item.useTime<=item.useAnimation && item.shoot>0 && item.useStyle==5?1:0;
             return Math.Max(1,item.useAnimation+extra);
         }
+        internal static int PreferredSpearRange(Player player,Item item,AttackAmmoSnapshot ammo,NPC target,int delay)
+        {
+            Projectile parent;if(ammo==null || !ContentSamples.ProjectilesByType.TryGetValue(ammo.Projectile,out parent) || parent.aiStyle!=19 || DerivedSpearChild(parent.type)==0)return 16;
+            int maximum=player.itemAnimation>0 && player.itemAnimationMax>0?player.itemAnimationMax:AnimationDuration(player,item);
+            int animation=player.itemAnimation>0?player.itemAnimation:maximum;
+            // Exact native offset is only a scheduling hint. It writes this
+            // private projectile, never the live owner/ContentSamples/RNG.
+            var shadow=(Projectile)copy.Invoke(parent,null);
+            float peak=(float)spearOffset.Invoke(shadow,new object[]{player,maximum/3,maximum});
+            float distance=Vector2.Distance(player.MountedCenter,target.Center+target.netOffset);
+            float parentReach=(peak+1)*ammo.Speed+(parent.width+target.width)*.5f;
+            if(distance<=parentReach)return 16;
+            int birth=parent.type==130 || parent.type==730?0:Math.Max(0,animation-maximum/3+1);
+            float offset=(float)spearOffset.Invoke(shadow,new object[]{player,Math.Max(1,animation-birth),maximum});
+            float remaining=Math.Max(0,distance-offset*ammo.Speed),travel=0,velocity=ammo.Speed*(parent.type==730?4:parent.type==342?2.4f:1);
+            int child=DerivedSpearChild(parent.type),steps=0;float targetSpeed=target.velocity.Length();
+            // Match the existing child's discrete damping-before-movement.
+            // Unknown/nonlinear motion keeps progressive search. This never
+            // proves a miss or removes any exact direction/range/Basic input.
+            if(child!=228 && child!=131 && child!=732)return 16;
+            while(steps<120 && travel<remaining+targetSpeed*(delay+birth+steps))
+            {velocity*=child==228?.96f:child==131?.8f:1;travel+=velocity;steps++;}
+            return Math.Min(120,Math.Max(16,delay+birth+steps+4));
+        }
         internal static AttackContact Solve(Player player,Item item,AttackAmmoSnapshot ammo,NpcTrajectory timeline,int age,bool beforeNpc,PredictionTerrain terrain,int delay=0,HostAttackObstacles obstacles=null)
         {return SolvePrepared(player,item,ammo,timeline,age,beforeNpc,terrain,delay,obstacles,HostAttackPlayerFrame.Capture(player,timeline));}
         internal static AttackContact SolvePrepared(Player player,Item item,AttackAmmoSnapshot ammo,NpcTrajectory timeline,int age,bool beforeNpc,PredictionTerrain terrain,int delay,HostAttackObstacles obstacles,HostAttackPlayerFrame frame)
@@ -53,7 +77,12 @@ namespace JueMingR.TerrariaHost.Combat
             if(whip && obstacles!=null && sample.usesOwnerMeleeHitCD){obstacles.CaptureArcOwner(player,item);if(player.itemAnimation==0)obstacles.ResetArcMeleeHistory();}
             var chase=(sample.type==182 || sample.type==866) && obstacles!=null?obstacles.CaptureChaseTargets(sample):null;
             Vector2 origin=player.RotatedRelativePoint(player.MountedCenter);
-            var initialMotion=frame.Motion;var environment=frame.Environment;
+            var initialMotion=frame.Motion;
+            // AI019 stops parent pose when the animation ends; detached
+            // children never read owner motion after their final birth. Bound
+            // storage by those actual owner actions, not the whole NPC tail.
+            int ownerActions=Math.Min(120,timeline.Count-age-1);if(sample.aiStyle==19)ownerActions=Math.Min(ownerActions,animation);
+            var ownerPrefix=new HostAttackPlayerPrefix(frame,terrain,ownerActions);
             var directions=new Vector2[9];int directionCount=0;
             // Nine future direction seeds share the one published NPC timeline.
             // Native pose helpers may write a projectile, so they receive only
@@ -94,7 +123,7 @@ namespace JueMingR.TerrariaHost.Combat
                 {
                     CombatPredictionWork.Check();
                     if(sample.aiStyle==19 && animation-step<=0 || sample.type==611 && step*updates+1>=30)break;
-                    if(!beforeNpc || step>0){PredictionStop stop;if(!PlayerMotionContinuation.Advance(ref motion,environment,terrain,out stop))break;}
+                    if(!ownerPrefix.TryRead(step+(beforeNpc?0:1),out motion))break;
                     HostAttackPlayerFrame.ApplyPose(body,motion);body.itemAnimation=animation-step-(whip && player.itemAnimation==0?1:0);
                     if(whip)WhipFrame(body);
                     for(int sub=0;sub<updates && active;sub++)
@@ -192,7 +221,7 @@ namespace JueMingR.TerrariaHost.Combat
                 }
                 if(sample.aiStyle==19)
                 {
-                    var derived=SpearDerived(player,sample,unit,aim,ammo.Speed,timeline,age,beforeNpc,terrain,animation,animationMax,delay,frame);
+                    var derived=SpearDerived(player,sample,unit,aim,ammo.Speed,timeline,age,beforeNpc,terrain,animation,animationMax,delay,frame,ownerPrefix);
                     if(derived!=null)return derived;
                 }
             }
@@ -456,13 +485,13 @@ namespace JueMingR.TerrariaHost.Combat
         {
             internal Projectile Shot;internal HostAttackReceive Receive;internal int Steps;
         }
-        private static AttackContact SpearDerived(Player player,Projectile parent,Vector2 unit,Vector2 aim,float speed,NpcTrajectory timeline,int age,bool beforeNpc,PredictionTerrain terrain,int animation,int animationMax,int delay,HostAttackPlayerFrame frame)
+        private static AttackContact SpearDerived(Player player,Projectile parent,Vector2 unit,Vector2 aim,float speed,NpcTrajectory timeline,int age,bool beforeNpc,PredictionTerrain terrain,int animation,int animationMax,int delay,HostAttackPlayerFrame frame,HostAttackPlayerPrefix ownerPrefix)
         {
             int childType=DerivedSpearChild(parent.type);
             if(childType==0)return null;
             var sample=ContentSamples.ProjectilesByType[childType];var children=new List<SpearChild>(parent.type==130?7:1);
             var body=(Player)copy.Invoke(player,null);var spear=(Projectile)copy.Invoke(parent,null);spear.velocity=unit*speed;
-            var motion=frame.Motion;var environment=frame.Environment;bool emitted=false;
+            var motion=frame.Motion;bool emitted=false;
             for(int step=0;step<Math.Min(120,timeline.Count-age-1);step++)
             {
                 CombatPredictionWork.Check();
@@ -470,7 +499,7 @@ namespace JueMingR.TerrariaHost.Combat
                 // geometry. Detached children retain their own dry/terrain
                 // and immunity continuation after that final hand action.
                 bool birthPossible=animation-step>0 && (parent.type==130?step<=24:parent.type==730?step==0:!emitted);
-                if(birthPossible && (!beforeNpc || step>0)){PredictionStop stop;if(!PlayerMotionContinuation.Advance(ref motion,environment,terrain,out stop))return null;}
+                if(birthPossible && !ownerPrefix.TryRead(step+(beforeNpc?0:1),out motion))return null;
                 if(birthPossible)HostAttackPlayerFrame.ApplyPose(body,motion);body.itemAnimation=animation-step;
                 bool birth=parent.type==130?step<=24 && step%4==0:parent.type==730?step==0:!emitted && body.itemAnimation>0 && body.itemAnimation<animationMax/3;
                 if(birth && body.itemAnimation>0)

@@ -234,7 +234,9 @@ namespace JueMingR.TerrariaHost.Combat
             // selected display may keep more tail than the admitted candidate.
             // Compare the entire common real prefix, never just its endpoint.
             // The immutable views preserve both capture clocks and inputs;
-            // this borrow is presentation only, not actual hand permission.
+            // this proves pure computation equivalence only. Presentation
+            // and hand callers separately validate their own permission,
+            // current inputs and independent dependency leases.
             if(timeline.Count!=count && !timeline.TryWindow(timeline.SampleTick,count-1,timeline.Version,out presentationPrefix))return false;
             if(!AttackIntercept.Equivalent(candidatePrefix,presentationPrefix))return false;
             shared=presentationPrefix;return true;
@@ -309,7 +311,10 @@ namespace JueMingR.TerrariaHost.Combat
             // independently solved HAND plan only in that pass; a sealed
             // flight contact (plan.Flight) is never a hand capability.
             bool sameFlightPass=plan.PreparedTick==Main.GameUpdateCount && plan.HadFlight==hasFlight && ReferenceEquals(plan.PreparedFlight,flight) && FlightPreparationMatches(timeline,phase,flight);
-            bool reuse=(!hasFlight || sameFlightPass) && PlanInputsCurrent(plan,player,item,timeline.Identity.Slot,phase,clock.Age,delay,captured,motion,receive,immune) && AttackIntercept.Equivalent(plan.Timeline,timeline);
+            // Validate the OLD solve's future player/relationship premises
+            // before Rebind replaces its source. Identical NPC geometry does
+            // not imply identical gravity/wall inputs for a weapon's owner.
+            bool reuse=(!hasFlight || sameFlightPass) && PlanInputsCurrent(plan,player,item,timeline.Identity.Slot,phase,clock.Age,delay,captured,motion,receive,immune) && SameSolvePremises(plan.Timeline,timeline) && AttackIntercept.Equivalent(plan.Timeline,timeline);
             if(reuse)
             {
                 plan.Contact=AttackIntercept.Rebind(plan.Contact,timeline);plan.Timeline=timeline;plan.PreparedTick=Main.GameUpdateCount;return plan.Contact;
@@ -375,6 +380,8 @@ namespace JueMingR.TerrariaHost.Combat
         {
             return plan.Flight==null && plan.Prepared && !plan.Controlled && plan.Phase==phase && plan.Age==age && plan.Delay==delay && plan.MembersCurrent(player) && PlayerMotionContinuation.SameFixedInput(plan.PlayerMotion,motion,plan.Timeline.WallSources!=null) && plan.Immune==immune && plan.AttackCooldown==player.attackCD && plan.MeleeCooldown==player.meleeNPCHitCooldown[target] && plan.Animation==player.itemAnimation && plan.AnimationMax==player.itemAnimationMax && plan.SwingRevision==swing.Revision && plan.CapsuleOnly==HostSwingAttack.CapsuleOnly(player,item) && plan.MeleeSpeed==player.meleeSpeed && plan.Direction==player.direction && plan.Terrain.Unchanged && (plan.Environment==null || plan.Environment.Unchanged) && (plan.Obstacles==null || plan.Obstacles.Unchanged) && SameAmmo(plan.Ammo,captured) && plan.Receive.Same(receive) && plan.Using==(combat.Left || player.controlUseItem) && (plan.HarpyState==null || plan.HarpyState.Current);
         }
+        private static bool SameSolvePremises(NpcTrajectory a,NpcTrajectory b)
+        {return a!=null && b!=null && a.RelationVersion==b.RelationVersion && Equals(a.GravitySources,b.GravitySources) && Equals(a.WallSources,b.WallSources);}
         private bool CandidateMissCurrent(PreviewPlan plan,NpcIdentity target,long sampleTick,HostAttackPhase phase,int required)
         {
             if(plan==null || !plan.Prepared || plan.Controlled || plan.Contact!=null || plan.Timeline==null || !plan.Timeline.Identity.Equals(target))return false;
