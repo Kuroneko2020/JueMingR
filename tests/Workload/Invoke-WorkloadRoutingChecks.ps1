@@ -175,6 +175,7 @@ try {
         $exactGroups[$path] = @($expected | Sort-Object -Unique)
     }
     $cases['tests/NativeWorldTextProbe/NativePageCompositionChecks.cs'] = 'pages-host'
+    $cases['tests/NativeWorldTextProbe/NativeCombatDedupChecks.cs'] = 'combat-host'
     $exactGroups['tests/NativeWorldTextProbe/NativePageCompositionChecks.cs'] = @('core','hotkeys','pages-host')
     $cases['src/JueMingR.TerrariaHost/Npcs/NativeNpcObservation.cs'] = 'tools-host'
     $exactGroups['src/JueMingR.TerrariaHost/Npcs/NativeNpcObservation.cs'] = @($exactGroups['src/JueMingR.TerrariaHost/F5/F5Layout.cs'] + 'storage-host' | Sort-Object -Unique)

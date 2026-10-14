@@ -312,10 +312,10 @@ namespace JueMingR.TerrariaHost.Combat
             bool reuse=(!hasFlight || sameFlightPass) && PlanInputsCurrent(plan,player,item,timeline.Identity.Slot,phase,clock.Age,delay,captured,motion,receive,immune) && AttackIntercept.Equivalent(plan.Timeline,timeline);
             if(reuse)
             {
-                plan.Contact=AttackIntercept.Rebind(plan.Contact,timeline);plan.Timeline=timeline;return plan.Contact;
+                plan.Contact=AttackIntercept.Rebind(plan.Contact,timeline);plan.Timeline=timeline;plan.PreparedTick=Main.GameUpdateCount;return plan.Contact;
             }
             plan.Clear();plan.SetMembers(player,item);plan.Prepared=true;plan.PreparedTick=Main.GameUpdateCount;plan.PreparedFlight=flight;plan.HadFlight=hasFlight;plan.Phase=phase;plan.Age=clock.Age;plan.Delay=delay;plan.PlayerMotion=motion;plan.Immune=immune;plan.AttackCooldown=player.attackCD;plan.MeleeCooldown=player.meleeNPCHitCooldown[timeline.Identity.Slot];plan.Animation=player.itemAnimation;plan.AnimationMax=player.itemAnimationMax;plan.SwingRevision=swing.Revision;plan.MeleeSpeed=player.meleeSpeed;plan.Direction=player.direction;plan.Ammo=captured;plan.Timeline=timeline;
-            plan.Receive=receive;plan.Terrain.Reset();
+            plan.Receive=receive;plan.Time=player.itemTime;plan.Reuse=player.reuseDelay;plan.Terrain.Reset();
             plan.Using=combat.Left || player.controlUseItem;
             plan.CapsuleOnly=HostSwingAttack.CapsuleOnly(player,item);
             if(HostPhasebladeAttack.Handles(item.shoot))return PreparePhasebladePreview(plan,player,item,timeline,phase,delay);
@@ -412,11 +412,12 @@ namespace JueMingR.TerrariaHost.Combat
             internal FlightPreview PreparedFlight;internal uint PreparedTick;internal bool HadFlight;
             internal HostMeleeAttack.SpearFlightState WhipOwner;
             internal HostAttackReceive Receive;
-            internal PredictionPlayerMotion PlayerMotion;internal HostAttackPhase Phase;internal int Age,Delay,Immune,AttackCooldown,MeleeCooldown,Animation,AnimationMax;
+            internal PredictionPlayerMotion PlayerMotion;internal HostAttackPhase Phase;internal int Age,Delay,Immune,AttackCooldown,MeleeCooldown,Animation,AnimationMax,Time,Reuse;
             internal int Direction;internal long SwingRevision;internal float MeleeSpeed;internal bool Prepared,Controlled,CapsuleOnly,Using;private Item item;private int slot,type,prefix;private float scale;
             // Every plan kind, including controlled and existing-flight previews,
             // binds the environment used by its solve. Draw only validates it.
-            internal void SetMembers(Player player,Item weapon){item=weapon;slot=player.selectedItem;type=weapon.type;prefix=weapon.prefix;scale=player.GetAdjustedItemScale(weapon);Direction=player.direction;EnvironmentState=new HostProjectileEnvironment.State(true,HostProjectileEnvironment.HandWindRelevant(player,weapon),player);WhipOwner=HostMeleeAttack.KnownWhipParent(weapon.shoot)?new HostMeleeAttack.SpearFlightState(player,System.Array.Empty<Projectile>()):null;}
+            internal Player HandOwner;
+            internal void SetMembers(Player player,Item weapon){HandOwner=player;item=weapon;slot=player.selectedItem;type=weapon.type;prefix=weapon.prefix;scale=player.GetAdjustedItemScale(weapon);Direction=player.direction;EnvironmentState=new HostProjectileEnvironment.State(true,HostProjectileEnvironment.HandWindRelevant(player,weapon),player);WhipOwner=HostMeleeAttack.KnownWhipParent(weapon.shoot)?new HostMeleeAttack.SpearFlightState(player,System.Array.Empty<Projectile>()):null;}
             internal bool WeaponCurrent(Player player){return player!=null && item!=null && player.selectedItem==slot && ReferenceEquals(player.HeldItem,item) && item.type==type && item.prefix==prefix && player.GetAdjustedItemScale(item)==scale;}
             private bool HandReceiveCurrent(Player player)
             {
@@ -448,7 +449,7 @@ namespace JueMingR.TerrariaHost.Combat
                 item=source.item;slot=source.slot;type=source.type;prefix=source.prefix;scale=source.scale;
                 Phase=source.Phase;Immune=source.Immune;AttackCooldown=source.AttackCooldown;MeleeCooldown=source.MeleeCooldown;
             }
-            internal void Clear(){Contact=null;Timeline=null;MotionTerrain=null;Ammo=null;Environment=null;Obstacles=null;HarpyState=null;Flight=PreparedFlight=null;ControlDependencies=null;WhipOwner=null;item=null;Prepared=Controlled=HadFlight=false;}
+            internal void Clear(){Contact=null;Timeline=null;MotionTerrain=null;Ammo=null;Environment=null;Obstacles=null;HarpyState=null;Flight=PreparedFlight=null;ControlDependencies=null;WhipOwner=null;item=null;HandOwner=null;Prepared=Controlled=HadFlight=false;}
         }
     }
 }

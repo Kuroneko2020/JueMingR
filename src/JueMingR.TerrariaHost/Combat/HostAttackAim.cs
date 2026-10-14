@@ -29,6 +29,8 @@ namespace JueMingR.TerrariaHost.Combat
         private HostAttackObstacles obstacles;
         private HostHarpyAttack.State harpyState;
         private readonly PredictionTerrain terrain=new PredictionTerrain();
+        private PredictionTerrain.CellLease handTerrain,handMotionTerrain;
+        private Player sharedHandOwner;
         private readonly HostSwingAttack swing=new HostSwingAttack();
         private readonly HostCadenceAim cadence;
         private readonly HostAttackCandidates candidates=new HostAttackCandidates();
@@ -144,7 +146,7 @@ namespace JueMingR.TerrariaHost.Combat
             }
             return NpcPredictionCache.Horizon;
         }
-        internal void ClearExecution(){presentation=null;weapon=null;ammo=null;current=next=null;environment=null;obstacles=null;harpyState=null;preparedOrdinary=false;cadence.Clear();Control.Clear();}
+        internal void ClearExecution(){presentation=null;weapon=null;ammo=null;current=next=null;environment=null;obstacles=null;harpyState=null;handTerrain=handMotionTerrain=null;sharedHandOwner=null;preparedOrdinary=false;cadence.Clear();Control.Clear();}
         internal void Clear(){ClearExecution();ClearPreview();}
         internal void Reset(){demandActive=false;Clear();ClearCandidatePlans();RetryFaults();swing.Clear();Control.Reset();hasConsumedInput=false;}
         internal void ObserveSwing(Player player,Item item,Rectangle frame,float offset)
@@ -177,7 +179,7 @@ namespace JueMingR.TerrariaHost.Combat
             catch(Exception error){PropagateFatal(error);preview.Faults.Record(FaultContextFor(observation.Selection.Target));ClearPreview();}
             return attempted;
         }
-        internal void EndPreparation(){EndFlightPreparation();}
+        internal void EndPreparation(){candidateHandPlan=null;EndFlightPreparation();}
         private void PreparePhase(HostAttackPhase phase)
         {
             try{using(observation.PredictionWork.Enter(Main.GameUpdateCount)){if(CombatPredictionWork.TryContinue())PrepareCore(phase);}}
@@ -226,15 +228,18 @@ namespace JueMingR.TerrariaHost.Combat
             AttackMotion motion;bool sky=HostSkyAttack.Handles(item.type);if(!sky && !melee && !HostEffectAttack.Handles(captured.Projectile) && !HostAttackModels.TryRead(captured,out motion))return;
             origin=HostAttackModels.LaunchOrigin(player,item);int age=(int)((long)Main.GameUpdateCount-timeline.SampleTick)-(beforeNpc?1:0);if(age<0 || age>1)return;
             bool harpy=HostHarpyAttack.Handles(player,captured);
-            if(harpy)
+            if(!TryCandidateHand(player,item,captured,timeline,phase,age))
             {
-                // Charm runs in Player before ItemCheck, then each arrow runs
-                // after NPC movement. Its solver owns that whole phase prefix,
-                // including other live arrows competing for the charm.
-                obstacles=new HostAttackObstacles(player,sample,timeline,0,beforeNpc,!beforeNpc);
-                current=HostHarpyAttack.Solve(player,captured,timeline,origin,new HostAttackClock(timeline,phase),terrain,obstacles,out harpyState);
+                if(harpy)
+                {
+                    // Charm runs in Player before ItemCheck, then each arrow runs
+                    // after NPC movement. Its solver owns that whole phase prefix,
+                    // including other live arrows competing for the charm.
+                    obstacles=new HostAttackObstacles(player,sample,timeline,0,beforeNpc,!beforeNpc);
+                    current=HostHarpyAttack.Solve(player,captured,timeline,origin,new HostAttackClock(timeline,phase),terrain,obstacles,out harpyState);
+                }
+                else current=Solve(player,item,captured,timeline,origin,age,beforeNpc);
             }
-            else current=Solve(player,item,captured,timeline,origin,age,beforeNpc);
             // Actual use may need a late receive: grow the SAME sample in
             // stages. A paused prefix remains unknown and Basic remains legal;
             // the optional display never turns its desired 120 into this gate.
@@ -302,7 +307,8 @@ namespace JueMingR.TerrariaHost.Combat
             if(!checkAmmo && !HostAttackWindow.NextAction(combat,player,weapon))return false;
             if(result==null || !result.Timeline.Identity.Equals(observation.Selection.Target) || !TimelineCurrent(result.Timeline) ||
                 Vector2.DistanceSquared(HostAttackModels.LaunchOrigin(player,weapon),Main.GameUpdateCount==prepared?origin:nextOrigin)>4)return false;
-            return environmentState.Current && terrain.Unchanged && (environment==null || environment.Unchanged) && (obstacles==null || (checkAmmo?obstacles.UnchangedForHandStart:obstacles.Unchanged)) && (harpyState==null || harpyState.Current) && (!checkAmmo || ammo!=null && ammo.Matches(player,weapon));
+            if(handTerrain!=null && (!ReferenceEquals(sharedHandOwner,player) || player.position.X!=preparedMotion.X || player.position.Y!=preparedMotion.Y || player.GetAdjustedItemScale(weapon)!=preparedScale || Main.npc[observation.Selection.Target.Slot].immune[player.whoAmI]!=preparedImmune))return false;
+            return environmentState.Current && (handTerrain==null?terrain.Unchanged:handTerrain.Current && handMotionTerrain!=null && handMotionTerrain.Current) && (environment==null || environment.Unchanged) && (obstacles==null || (checkAmmo?obstacles.UnchangedForHandStart:obstacles.Unchanged)) && (harpyState==null || harpyState.Current) && (!checkAmmo || ammo!=null && ammo.Matches(player,weapon));
         }
         internal CombatCursorScope BeginShot(Player player,Item item,bool regular)
         {
@@ -346,6 +352,7 @@ namespace JueMingR.TerrariaHost.Combat
             // cursor value. Native consumption retires it even if a later
             // refill happens to recreate the same ammo bytes in this step.
             current=next=null;
+            candidateHandPlan=null;
             return input.Begin();
         }
     }

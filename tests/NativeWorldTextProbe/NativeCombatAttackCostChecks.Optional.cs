@@ -41,6 +41,9 @@ namespace NativeWorldTextProbe
             var audit=new Harmony("JueMingR.Tests.OptionalConsumption");
             try
             {
+                // Player.UpdateBiomes is real; only the unrelated achievement
+                // sink is absent from this isolated component initialization.
+                foreach(string name in new[]{"HandleSpecialEvent","HandleRunning","HandleMining"})audit.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
                 NativeCombatCadenceChecks.Save(combat,new CombatOptions());
                 NativeCombatObservationChecks.Save(host,new ObservationOptions());
                 var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,95,0,0);

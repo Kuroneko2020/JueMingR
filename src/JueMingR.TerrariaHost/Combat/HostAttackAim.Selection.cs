@@ -37,6 +37,11 @@ namespace JueMingR.TerrariaHost.Combat
         // Borrowed only between this synchronous selection pass and preview
         // publication. A repeated real entry clears it before checking facts.
         private PreviewPlan candidatePresentationPlan;
+        // Borrowed only within ResolveSelection -> PrepareCore. It is never
+        // an input capability and EndPreparation retires it. Execution copies
+        // immutable contact/dependency leases before the plan can change.
+        private PreviewPlan candidateHandPlan;
+        private NpcIdentity singleCandidate;
         // This lease prevents optional display from flipping back to nearest
         // unknown between refreshes. BeforeNpc always evaluates real candidates;
         // no contact or input capability is inherited by this lease.
@@ -50,6 +55,7 @@ namespace JueMingR.TerrariaHost.Combat
         internal void ResolveSelection(long sampleTick,bool beforeNpc)
         {
             candidatePresentationPlan=null;
+            candidateHandPlan=null;
             if(!CombatPredictionWork.TryContinue())return;
             BeginFlightPreparation(beforeNpc);
             var selection=observation.Selection;var phase=beforeNpc?HostAttackPhase.BeforeNpc:HostAttackPhase.CompletedWorld;
@@ -60,14 +66,41 @@ namespace JueMingR.TerrariaHost.Combat
             // candidate-only cadence, not selected demand, preview or input.
             bool warm=!beforeNpc && !UrgentPreparation && !observation.OptionalPreparation && BasicPermission &&
                 (candidateWarmTick<0 || (long)Main.GameUpdateCount-candidateWarmTick>=3);
-            if(!beforeNpc && !UrgentPreparation && !observation.OptionalPreparation && !warm)return;
-            if(!beforeNpc)Array.Clear(candidateWorldVisited,0,candidateWorldVisited.Length);
             var player=combat.Player;var item=player.HeldItem;
             if(!ReferenceEquals(candidateWeapon,item) || candidateSlot!=player.selectedItem || candidateType!=item.type || candidatePrefix!=item.prefix || !ReferenceEquals(candidateOptions,observation.Options))
             {
                 ClearCandidateProgress();candidateWeapon=item;candidateSlot=player.selectedItem;candidateType=item.type;candidatePrefix=item.prefix;candidateOptions=observation.Options;
             }
             if(warm)candidateWarmTick=(long)Main.GameUpdateCount;
+            if(selection.CandidateCount==1)
+            {
+                var identity=CombatSelection.Identity(selection.Candidate(0),observation.Session);
+                if(!singleCandidate.Equals(identity))
+                {ClearCandidateProgress();singleCandidate=identity;candidateWeapon=item;candidateSlot=player.selectedItem;candidateType=item.type;candidatePrefix=item.prefix;candidateOptions=observation.Options;}
+                // There is no rank to solve. Keep reachability unproved and
+                // retire old multi-candidate hints/display on the edge only.
+                candidates.Clear();presentationReachable=false;candidatePresentationPlan=null;
+                if(beforeNpc)
+                {
+                    if(actionHint.Equals(identity) && actionHintRequired>0)SetActionDemand(Math.Max(ActionPreferred(identity),actionHintRequired));
+                    return;
+                }
+                // The old cooldown pass was useful work for the next actual
+                // hand. Retain that one owner's range progress without making
+                // an idle Path-only hand hypothesis or a ranking calculation.
+                if(!UrgentPreparation && BasicPermission && (warm || observation.OptionalPreparation))
+                {
+                    if(warm)candidateWarmTick=(long)Main.GameUpdateCount;int key=identity.Slot*2;
+                    candidateIdentities[key]=identity;
+                    using(CombatPredictionWork.Limit(3))
+                    if(EvaluateCandidate(identity,sampleTick,false,phase,key,CandidateProgressRequired(identity,key,false)))
+                    {actionHint=identity;actionHintRequired=Math.Min(NpcPredictionCache.Horizon,Math.Max(1,candidatePlans[key].Contact.ReceiveTick+1));}
+                }
+                return;
+            }
+            if(singleCandidate.Token!=null){ClearCandidateProgress();candidateWeapon=item;candidateSlot=player.selectedItem;candidateType=item.type;candidatePrefix=item.prefix;candidateOptions=observation.Options;}
+            if(!beforeNpc && !UrgentPreparation && !observation.OptionalPreparation && !warm)return;
+            if(!beforeNpc)Array.Clear(candidateWorldVisited,0,candidateWorldVisited.Length);
             long pass=beforeNpc?++candidateActionPass:++candidateWorldPass;
             int parity=beforeNpc?1:0,probe=-1,changeProbe=-1;long oldest=long.MaxValue,oldestChange=long.MaxValue;bool changeSignificant=false,unfinished=false;
             for(int index=0;index<selection.CandidateCount;index++)
@@ -232,6 +265,8 @@ namespace JueMingR.TerrariaHost.Combat
                 if(beforeNpc)SetActionDemand(candidateDepths[npc.whoAmI*2+1]);
                 candidates.Reachable=identity;selection.Choose(npc,observation.Session,true);
                 var plan=candidatePlans[npc.whoAmI*2+parity];
+                if(beforeNpc && CandidateHandPrepared(plan) && plan.MotionTerrain!=null)
+                    candidateHandPlan=plan;
                 // A farther optional positive does not erase the opportunity
                 // to revalidate a nearer hint in the next real input phase.
                 // It still determines this pass's selection normally. Before
@@ -314,7 +349,7 @@ namespace JueMingR.TerrariaHost.Combat
                 // Its cost still belongs to the same optional slice. Host must
                 // separately admit/validate display under the unchanged shared
                 // allowance; this snapshot grants no display or actual input.
-                if(contact!=null && !beforeNpc && observation.Path && !BasicPermission)
+                if(contact!=null && (beforeNpc && CandidateHandPrepared(plan) || !beforeNpc && observation.Path && !BasicPermission))
                     plan.MotionTerrain=observation.Prediction.FreezeCandidateTerrain(publication);
                 return contact!=null;
             }
@@ -335,6 +370,7 @@ namespace JueMingR.TerrariaHost.Combat
             Array.Clear(candidateFacts,0,candidateFacts.Length);Array.Clear(candidateChanges,0,candidateChanges.Length);Array.Clear(candidateSignificant,0,candidateSignificant.Length);candidateChangeTicket=0;
             candidateActionPass=candidateWorldPass=0;candidateWarmTick=-1;candidateWeapon=null;candidateOptions=null;presentationReachable=false;presentationOptions=null;actionHint=default(NpcIdentity);actionHintRequired=0;
             candidatePresentationPlan=null;
+            candidateHandPlan=null;singleCandidate=default(NpcIdentity);
             for(int i=0;i<candidatePlans.Length;i++)candidatePlans[i]?.Clear();
         }
         private void ClearCandidatePlans()

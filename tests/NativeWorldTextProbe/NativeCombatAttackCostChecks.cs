@@ -73,6 +73,7 @@ namespace NativeWorldTextProbe
         {
             var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var attack=Get(combat,"Attack");var input=Get(context,"Input");
             var only=Environment.GetEnvironmentVariable("JMR_ATTACK_COSTS_ONLY");
+            if(only=="dedup"){NativeCombatDedupChecks.Run(context);return;}
             if(only=="optional-consumption"){OptionalConsumption(context,combat,host,attack,input);return;}
             // Functional allowance behavior must not charge the high-frequency
             // counting observer's dictionary/string work to production's 6ms.
@@ -124,6 +125,9 @@ namespace NativeWorldTextProbe
                 Console.WriteLine(only=="ordinary-work"?"PASS ordinary attack work: nine bounded scenarios and same input epoch; old immediate world switching and independent navigation/beam branches not executed by this selector.":"PASS attack costs: real finite preparation/qualification/retirement/navigation and beam scans; component calls, not game FPS.");
             }
             finally{audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());}
+            // This natural loop changes native biome/event history. Keep it
+            // terminal so earlier component fixtures retain their own starts.
+            if(string.IsNullOrEmpty(Environment.GetEnvironmentVariable("JMR_ATTACK_COSTS_ONLY")))NativeCombatDedupChecks.Run(context);
         }
         // Actual birth, phase preparation, consumer and marker projection;
         // this CPU contract does not claim pixels or a World.Draw execution.

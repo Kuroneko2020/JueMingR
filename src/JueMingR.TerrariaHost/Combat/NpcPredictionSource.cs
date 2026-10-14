@@ -63,7 +63,9 @@ namespace JueMingR.TerrariaHost.Combat
         internal PredictionTerrain.CellLease FreezeCandidateTerrain(NpcTrajectory publication)
         {
             if(publication==null)return null;
-            if(ReferenceEquals(publication,Cache.Read(0)))return Terrain.FreezeCells();
+            // Aim-only has no display reader; its actual input publication
+            // still owns this exact same Source terrain, not a derived view.
+            if(ReferenceEquals(publication,Cache.Read(0)) || ReferenceEquals(publication,Cache.Read(1)))return Terrain.FreezeCells();
             return candidateSource!=null && ReferenceEquals(publication,candidateSource.Cache.Read(0))?candidateSource.Terrain.FreezeCells():null;
         }
         // currentTick is Main.GameUpdateCount at the real player observation,

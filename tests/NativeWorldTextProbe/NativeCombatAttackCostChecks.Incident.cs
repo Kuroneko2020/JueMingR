@@ -85,6 +85,10 @@ namespace NativeWorldTextProbe
                 NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());
                 incidentPlayer=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,39,0,0);incidentPlayer.position=new Vector2(700,646);incidentPlayer.inventory[54].SetDefaults(40);incidentPlayer.inventory[54].stack=999;incidentPlayer.releaseUseItem=true;
                 Main.screenPosition=new Vector2(480,400);incidentReceiver=NativeCombatControlPreviewChecks.Dummy(2,60,40);incidentMouse=new Vector2(550,430);
+                // Ranking is now deliberately absent for a sole receiver.
+                // This interruption oracle needs a real ranking consumer, so
+                // retain the same nearer receiver and add one farther choice.
+                NativeCombatControlPreviewChecks.Dummy(3,85,40);
                 // This display-budget component needs Path's declared demand.
                 // Separate ordinary Aim-only idle/cost cases keep Path OFF.
                 NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,false,true));

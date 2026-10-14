@@ -34,7 +34,11 @@ namespace NativeWorldTextProbe
                     for(int i=0;i<3;i++)Step(context,a.Center,false);
                     Require(Selected(host)==(clear?3:2),"near blocked A/far actual reachable B respects centre and mode before attacking: mouse="+mouse+" clear="+clear);
                     int selected=Selected(host);Step(context,a.Center,true);Require(Selected(host)==selected,"attack input does not change the selection contract");
-                    Require(((NpcPredictionCache)Get(Get(host,"Prediction"),"Cache")).Read(0).Identity.Slot==selected,"visible path uses the final shared selection");
+                    // BeforeNpc releases reader0; the real display owns its
+                    // validated immutable window independently of that reader.
+                    var visible=GetOptional(host,"DisplayPath") as NpcTrajectory;
+                    Console.WriteLine("SELECTION actual path mouse="+mouse+" clear="+clear+" selected="+selected+" display="+(visible==null?"none":visible.Identity.Slot+"/"+visible.SampleTick+"/"+visible.CaptureTick));
+                    Require(visible!=null && visible.Identity.Slot==selected,"actual visible path uses the final shared selection");
                     Console.WriteLine("PASS finite actual candidate selection mouse="+mouse+" clear="+clear+" selected="+selected);
                 }
                 foreach(int weapon in new[]{3278,5669})

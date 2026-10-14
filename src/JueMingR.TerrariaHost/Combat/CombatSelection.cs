@@ -58,10 +58,10 @@ namespace JueMingR.TerrariaHost.Combat
         internal static NpcIdentity Identity(NPC n,long session){return new NpcIdentity(session,n,n.whoAmI,n.generation,n.type,n.netID);}
         internal static bool Valid(NpcIdentity key,long session)
         {return key.Session==session && Main.npc!=null && key.Slot>=0 && key.Slot<Main.npc.Length && Main.npc[key.Slot]!=null && Main.npc[key.Slot].active && Identity(Main.npc[key.Slot],session).Equals(key);}
-        internal void Clear(){HasTarget=HasMouse=false;Target=default(NpcIdentity);CandidateCount=0;Array.Clear(ordered,0,ordered.Length);}
+        internal void Clear(){HasTarget=HasMouse=ClearLine=false;Target=default(NpcIdentity);CandidateCount=0;Array.Clear(ordered,0,ordered.Length);}
         internal void Choose(NPC npc,long session,bool reachable)
         {if(npc==null){RetireTarget();return;}HasTarget=true;Target=Identity(npc,session);ClearLine=reachable;}
-        internal void RetireTarget(){HasTarget=false;Target=default(NpcIdentity);}
+        internal void RetireTarget(){HasTarget=ClearLine=false;Target=default(NpcIdentity);}
         internal void Update(ObservationOptions options,long session,bool select,CombatGeometry geometry)
         {
             var player=Main.LocalPlayer;RetireTarget();CandidateCount=0;
