@@ -1,6 +1,6 @@
 # #114 / Draft PR #115：接触导航与准备成本（集中独审前）
 
-TASK_BASE `69ffc7bfd5223069081c848f1646b49e958b2eea`。现装d177b0a的生产src与base相同；本轮仅看base→当前候选，原件 `references/JMR_AIM_COST_NAV_20261015/`只读。主Astra/Max只读调度，三名Sol/High实施，导航整合者独占Git、公共构建、正式证据和安装。固定候选1ababaf集中独审为NEEDS_FIX（唯一C低弧阻断）；C修订936f865已获独立窄复核PASS，主Astra接受生产候选并批准进入04一次轻量交付；正式完整包、换装尚未执行；**INCOMPLETE / releaseEligible=false**。不merge/close/tag/release，不启动所有者游戏。
+TASK_BASE `69ffc7bfd5223069081c848f1646b49e958b2eea`。现装d177b0a的生产src与base相同；本轮仅看base→当前候选，原件 `references/JMR_AIM_COST_NAV_20261015/`只读。主Astra/Max只读调度，三名Sol/High实施，导航整合者独占Git、公共构建、正式证据和安装。固定候选1ababaf集中独审为NEEDS_FIX（唯一C低弧阻断）；C修订936f865已获独立窄复核PASS，主Astra接受生产候选并批准进入04一次轻量交付；正式完整包及一次受控备份换装已完成，所有者游戏未启动；**INCOMPLETE / releaseEligible=false**。不merge/close/tag/release，不启动所有者游戏。
 
 ## 七项结果
 
@@ -60,3 +60,13 @@ B baseline首次误用完整Player.Update触未初始化成就，改既有Sample
 外来dirty参考说明、.workbuddy/、issue112.txt、pr113.json按接管hash保护，不纳入提交。大日志／PNG／CSV只留 `.local/aim-cost-nav-20261015/`，小材料提供路径/hash与用途。未核所有者实际加载、FPS、多人或游戏内体验。
 
 04交付窗口：原NEEDS_FIX经C修订窄复核PASS闭合，主调度已作接受判断。沿已有授权，仅一次普通完整包、目标/拥有权核对、旧受控文件备份、官方Restore→Install各一次、一次长度/hash读回及真实回执；不全用户目录hash、不第二安装审查、不反复包消费者。停止本任务进程，不替所有者启动游戏。
+
+## 已执行的一次轻量交付
+
+源提交357df9bd4790aa85f0658e97bc30897b01b2d652（只记录审结论，生产/测试与936f865相同）。完整普通Release/net472/x86 ContinuousProcessing ZIP：2180613字节，SHA256 `336BFFEC081B3E686E730CA2D43F5875BAC6D24148CC596D93E6243134E7FEC6`。绝对路径及17成员／10payload身份见[短回执](delivery-receipt.json)。真实Stage reader接受12责任有效复用，完整资格仍INCOMPLETE/releaseEligible=false；未自动全跑187或重跑Main矩阵。
+
+实际最终包仅执行一次既有magic-string-aim消费者，含精确／相邻／原版AI99接收及真实父子／时序／取消，exit0。实际包Host MVIDf5553df0-eb8f-40a7-8927-68f71bfea6f8，完整源码／测量E536FC4D身份仍保原署；没有将新PE元数据签成r11亲跑。
+
+目标F:/Games/GamePlats/Steam/steamapps/common/Terraria。旧d177受控12文件备份并验证后，旧官方Restore→新官方Install各一次成功；新10payload、安装manifest一次长度/hash读回匹配，原版exe长度/hash不变。备份`.local/aim-cost-nav-20261015/install-357df9b-20261015-151133/backup/controlled`，恢复入口/旧包安装入口见短回执。未枚举全用户目录，不改JueMingRData、角色、世界、绑定，不启动游戏。一次前置字段名误用在目标写入前停止、一次caller误读LASTEXITCODE均已记录；没有重做官方换装或重复包消费者。
+
+安装后仅收口文档和Git同步，不为最后文档SHA重包、重测、重装。所有者新包加载/体验、FPS、多人及完整发布资格未验证；七项结果及所有不利性能／旧失败继续保持上述限定。

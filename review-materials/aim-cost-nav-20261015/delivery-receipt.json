@@ -1,0 +1,149 @@
+{
+  "schema": "aim-cost-nav-delivery-20261015-1",
+  "status": "INSTALLED_VERIFIED",
+  "taskBase": "69ffc7bfd5223069081c848f1646b49e958b2eea",
+  "productionCandidate": "936f865e10d6d4307804b15c6466505c71241c8b",
+  "sourceCommit": "357df9bd4790aa85f0658e97bc30897b01b2d652",
+  "sourceScope": "357df9b records approved review only; production/test bytes equal936f865. Later delivery docs do not trigger rebuild/reinstall.",
+  "fullQualification": "INCOMPLETE",
+  "releaseEligible": false,
+  "independentReview": {
+    "initial": "NEEDS_FIX",
+    "repair": "PASS",
+    "original": ".local/aim-cost-nav-20261015/independent-review-1ababaf-original.md",
+    "repairOriginal": ".local/aim-cost-nav-20261015/independent-review-936f865-PASS-original.md",
+    "rootDecision": ".local/aim-cost-nav-20261015/delivery-decision-936f865.md"
+  },
+  "stageRecord": ".local/aim-cost-nav-20261015/stage-reviewed-357df9b-r02.json",
+  "stageRecordSha256": "4919CCF1DC3600EC65C210661A1033C8CA8534BF99976641273DE5CBAADD7581",
+  "archive": {
+    "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\outputs\\aim-cost-nav-delivery-20261015-357df9b\\JueMingR-Continuous-Processing-357df9bd4790aa85f0658e97bc30897b01b2d652.zip",
+    "length": 2180613,
+    "sha256": "336BFFEC081B3E686E730CA2D43F5875BAC6D24148CC596D93E6243134E7FEC6",
+    "identityReceipt": ".local/aim-cost-nav-20261015/package-identity-357df9b.log"
+  },
+  "packageRoot": "C:\\Users\\kongd\\Desktop\\JueMingR\\outputs\\aim-cost-nav-delivery-20261015-357df9b\\JueMingR-Continuous-Processing-357df9bd4790aa85f0658e97bc30897b01b2d652",
+  "packageFileCount": 17,
+  "payloadCount": 10,
+  "representativeConsumer": {
+    "exitCode": 0,
+    "log": ".local/aim-cost-nav-20261015/package-C-consumer.log",
+    "scope": "One existing narrow magic-string-aim leaf: raw precision/neighbor/actualAI99 receive plus real parent/split/cadence/free-flight/cancel consumers on final actual Release package four modules. No full Main rerun.",
+    "hostMvid": "f5553df0-eb8f-40a7-8927-68f71bfea6f8",
+    "hostSha256": "64F2D965FF0E8D164AE971C40569325509F8E6F9D83A0773BC966D1F48CFD9F2"
+  },
+  "target": "F:\\Games\\GamePlats\\Steam\\steamapps\\common\\Terraria",
+  "previousSource": "d177b0a1de35228057c5afc690459dfc70615e7f",
+  "backupRoot": "C:\\Users\\kongd\\Desktop\\JueMingR\\.local\\aim-cost-nav-20261015\\install-357df9b-20261015-151133\\backup\\controlled",
+  "backupFileCount": 12,
+  "backupVerified": true,
+  "recoveryInstructions": "C:\\Users\\kongd\\Desktop\\JueMingR\\.local\\aim-cost-nav-20261015\\install-357df9b-20261015-151133\\recovery.txt",
+  "newRestoreEntry": "C:\\Users\\kongd\\Desktop\\JueMingR\\outputs\\aim-cost-nav-delivery-20261015-357df9b\\JueMingR-Continuous-Processing-357df9bd4790aa85f0658e97bc30897b01b2d652\\Restore-Phase0S.ps1",
+  "previousInstallEntry": "C:\\Users\\kongd\\Desktop\\JueMingR\\outputs\\aim-weapon-compat-delivery-20261015-d177b0a\\JueMingR-Continuous-Processing-d177b0a1de35228057c5afc690459dfc70615e7f\\Install-Phase0S.ps1",
+  "restore": {
+    "schemaVersion": 1,
+    "operation": "restore",
+    "status": "success",
+    "code": "RESTORE_COMPLETE",
+    "exitCode": 0,
+    "packageId": "continuous-processing-d177b0a1de35228057c5afc690459dfc70615e7f",
+    "object": "owned-files",
+    "sha256": null
+  },
+  "install": {
+    "schemaVersion": 1,
+    "operation": "install",
+    "status": "success",
+    "code": "INSTALL_COMPLETE",
+    "exitCode": 0,
+    "packageId": "continuous-processing-357df9bd4790aa85f0658e97bc30897b01b2d652",
+    "object": "installation",
+    "sha256": null
+  },
+  "readbackEvidence": "C:\\Users\\kongd\\Desktop\\JueMingR\\.local\\aim-cost-nav-20261015\\install-357df9b-20261015-151133\\readback.json",
+  "payload": [
+    {
+      "relative": "JueMingR.Bootstrap.dll",
+      "length": 26624,
+      "sha256": "6C3944F486D81392A62C63CE3644F7A81D5803FC79FCC4B0BB0772638152618D"
+    },
+    {
+      "relative": "JueMingR.Validation/0Harmony.dll",
+      "length": 2461696,
+      "sha256": "7B9E756306FA3D7620E02A857C8927A6AB04973F9BD8A77D3866700A6DEAC55C"
+    },
+    {
+      "relative": "JueMingR.Validation/JueMingR.Features.dll",
+      "length": 671232,
+      "sha256": "391A4200EC3304CC8E58A009787E0A26C97E0C206A6AD465BC94D2EE01C77765"
+    },
+    {
+      "relative": "JueMingR.Validation/JueMingR.Infrastructure.dll",
+      "length": 19456,
+      "sha256": "874038A11EFD05B2861B11B9C8C70896B9B16C3D4A74483B6D957E389500E881"
+    },
+    {
+      "relative": "JueMingR.Validation/JueMingR.Platform.dll",
+      "length": 117760,
+      "sha256": "8B3121AC1D52B8DD9FDA2D9D3416C7D1723E51C59FC794A996F7EBA31B95BA81"
+    },
+    {
+      "relative": "JueMingR.Validation/JueMingR.PredictionWorker.exe",
+      "length": 22016,
+      "sha256": "6C8B8DB5775EFE92BF63813A38064E90D50D75584FFE87EEB9C72BE84AE1C05E"
+    },
+    {
+      "relative": "JueMingR.Validation/JueMingR.PredictionWorker.exe.config",
+      "length": 176,
+      "sha256": "AD8267122C40D37DCD9D99E1412D763187A1825732F378DB8867F3ECF675CF70"
+    },
+    {
+      "relative": "JueMingR.Validation/JueMingR.TerrariaHost.dll",
+      "length": 2233856,
+      "sha256": "64F2D965FF0E8D164AE971C40569325509F8E6F9D83A0773BC966D1F48CFD9F2"
+    },
+    {
+      "relative": "JueMingR.Validation/phase-0-s-runtime.manifest",
+      "length": 1422,
+      "sha256": "A72DE01D918BC14B9082BA4D3DD8D72115DE7D1CFE185CA6BF1E650B043B2438"
+    },
+    {
+      "relative": "Terraria.exe.config",
+      "length": 440,
+      "sha256": "C8995B0D9C4BEF954FAAAFF79685628AFC71A5801DF4F60E9E5904182FEF03B6"
+    }
+  ],
+  "installedManifestSha256": "7B31784070381A82DCFD783F7978097EFA96C190FA107749D038EE617154D4A8",
+  "originalExe": {
+    "length": 26597888,
+    "sha256": "960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3",
+    "unchanged": true
+  },
+  "userData": "Not enumerated or changed; JueMingRData/characters/worlds/keybindings outside controlled payload untouched by operations",
+  "ownerGameStarted": false,
+  "executed": [
+    "Ordinary Release Stage admission12scopes",
+    "One formal full ContinuousProcessing ZIP",
+    "Official archive17/payload10 identity verification",
+    "One actual package narrow C consumer",
+    "Owned12controlled-file backup",
+    "Official oldRestore once andnewInstall once",
+    "One payload/installmanifest length/hash readback andoriginalexe protection"
+  ],
+  "reused": [
+    "Reviewed A/B/D/E/group native andGPU behavior inputs unchanged",
+    "All24 Main windows retained with actual original identities; finalC r11 no packageMain rerun",
+    "Independent full review plus exact C narrowPASS"
+  ],
+  "notVerified": [
+    "Owner ordinary Terraria loading andexperience",
+    "FPS/threadCPU/overall smoothness improvement",
+    "Multiplayer",
+    "Literal owner arrow shape vs actualNPC path crosses",
+    "Full release qualification"
+  ],
+  "orchestrationCorrections": [
+    "Official identity verifier returned PASS; caller initially compared undefined/stale LASTEXITCODE and stopped before consumer. Read actual PASS JSON; no repeated identity verification.",
+    "Backup preflight initially read wrong property relativePath; stopped before backup files or anyRestore/Install/target mutation. Corrected to official installRelativePath and reused empty local directory; officialRestore/Install each exactly once."
+  ]
+}

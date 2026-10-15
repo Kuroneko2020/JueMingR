@@ -3,8 +3,8 @@
   "taskBase": "69ffc7bfd5223069081c848f1646b49e958b2eea",
   "branch": "codex/aim-attack-modeling-and-integration",
   "reviewStatus": "APPROVED_FOR_STAGE",
-  "packageStatus": "NOT_EXECUTED",
-  "installStatus": "NOT_EXECUTED",
+  "packageStatus": "EXECUTED_VERIFIED",
+  "installStatus": "INSTALLED_VERIFIED",
   "qualification": "INCOMPLETE",
   "releaseEligible": false,
   "finalMeasurementHost": {
@@ -14,8 +14,8 @@
   "sourceFiles": [
     {
       "path": "docs/计划/辅助瞄准阶段文档.md",
-      "length": 539480,
-      "sha256": "B0F213810B5988D7E1FE342C7941A21F4227EA414387CD4DDE690E185C36A879"
+      "length": 540273,
+      "sha256": "465CC3E10ED5C86755F8BB3ED0B6017A72ED50ADA23795CA2C6DE1427F006CB5"
     },
     {
       "path": "docs/设计/战斗辅助实现设计.md",
@@ -479,5 +479,16 @@
       "sha256": "B82CB78AA9D62EB117A2F06B86A86F96270E65DAB493E923445489B4394A3BD8"
     },
     "scope": "Initial six unaffected items combined with exact C repair eight-file narrow review; documentation records outcomes only; no claim reviewer ran builds/tests."
+  },
+  "delivery": {
+    "sourceCommit": "357df9bd4790aa85f0658e97bc30897b01b2d652",
+    "productionCandidate": "936f865e10d6d4307804b15c6466505c71241c8b",
+    "receipt": "review-materials/aim-cost-nav-20261015/delivery-receipt.json",
+    "zipSha256": "336BFFEC081B3E686E730CA2D43F5875BAC6D24148CC596D93E6243134E7FEC6",
+    "packageHostMvid": "f5553df0-eb8f-40a7-8927-68f71bfea6f8",
+    "packageHostSha256": "64F2D965FF0E8D164AE971C40569325509F8E6F9D83A0773BC966D1F48CFD9F2",
+    "scope": "One final full package andone narrow actual consumer; backup/officialRestore/Install/readback once; noMain orsource changes afterinstallation",
+    "qualification": "INCOMPLETE",
+    "releaseEligible": false
   }
 }
