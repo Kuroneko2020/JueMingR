@@ -1,6 +1,6 @@
 # #114 / Draft PR #115：接触导航与准备成本（集中独审前）
 
-TASK_BASE `69ffc7bfd5223069081c848f1646b49e958b2eea`。现装d177b0a的生产src与base相同；本轮仅看base→当前候选，原件 `references/JMR_AIM_COST_NAV_20261015/`只读。主Astra/Max只读调度，三名Sol/High实施，导航整合者独占Git、公共构建、正式证据和安装。固定候选1ababaf集中独审为NEEDS_FIX（唯一C低弧阻断）；当前C修订已冻结，待该修订窄复核，正式完整包、换装尚未执行；**INCOMPLETE / releaseEligible=false**。不merge/close/tag/release，不启动所有者游戏。
+TASK_BASE `69ffc7bfd5223069081c848f1646b49e958b2eea`。现装d177b0a的生产src与base相同；本轮仅看base→当前候选，原件 `references/JMR_AIM_COST_NAV_20261015/`只读。主Astra/Max只读调度，三名Sol/High实施，导航整合者独占Git、公共构建、正式证据和安装。固定候选1ababaf集中独审为NEEDS_FIX（唯一C低弧阻断）；C修订936f865已获独立窄复核PASS，主Astra接受生产候选并批准进入04一次轻量交付；正式完整包、换装尚未执行；**INCOMPLETE / releaseEligible=false**。不merge/close/tag/release，不启动所有者游戏。
 
 ## 七项结果
 
@@ -26,7 +26,7 @@ TASK_BASE `69ffc7bfd5223069081c848f1646b49e958b2eea`。现装d177b0a的生产src
 
 ## 集中独审唯一P2及C返修
 
-独立Sol/High对69ffc7b→1ababaf的集中独审结论是 **NEEDS_FIX**，原消息本地完整保存在 `independent-review-1ababaf-original.md`，不改成PASS。其它A/B/D/E及球组无新阻断，66文件身份全吻合，旧性能不利项披露充分。该结论仅要求C及实际传播窄复核，当前没有正式包/安装资格。
+独立Sol/High对69ffc7b→1ababaf的集中独审结论是 **NEEDS_FIX**，原消息本地完整保存在 `independent-review-1ababaf-original.md`，不改成PASS。其它A/B/D/E及球组无新阻断，66文件身份全吻合，旧性能不利项披露充分。该结论只要求C及实际传播窄复核；随后936f865的窄复核已PASS，无新增阻断，原NEEDS_FIX仍保原署。主Astra结合六项原集中审查与本次复核接受生产候选，沿已有授权进入04；完整资格仍INCOMPLETE。PASS原文和主调度判断分别保本地independent-review-936f865-PASS-original.md、delivery-decision-936f865.md，验证映射绑定hash。
 
 唯一P2为H120、target(500,-100)、vx0，真实18×40接收体与16×16球下旧有效低弧模型nearest t37/error²16.00157，被候选换成t96/29.23829；不能因为略高于16而忽略。trace确认低弧窗 seed33→nearest35→canonical35→nearest36→canonical36→nearest37，旧实现随后重复36并检查38，漏了37自身canonical方向，晚96的29.238先进入Best，38的31.147落败。不是需要改变16阈值或单坐标特判。
 
@@ -59,4 +59,4 @@ B baseline首次误用完整Player.Update触未初始化成就，改既有Sample
 
 外来dirty参考说明、.workbuddy/、issue112.txt、pr113.json按接管hash保护，不纳入提交。大日志／PNG／CSV只留 `.local/aim-cost-nav-20261015/`，小材料提供路径/hash与用途。未核所有者实际加载、FPS、多人或游戏内体验。
 
-待执行04：原独审已NEEDS_FIX；未参与实施的Sol/High仅复核此次C修订及必要传播，主调度据此作整体交付判断。通过后沿已有授权，仅一次普通完整包、目标/拥有权核对、旧受控文件备份、官方Restore→Install各一次、一次长度/hash读回及真实回执；不全用户目录hash、不第二安装审查、不反复包消费者。停止本任务进程，不替所有者启动游戏。
+04交付窗口：原NEEDS_FIX经C修订窄复核PASS闭合，主调度已作接受判断。沿已有授权，仅一次普通完整包、目标/拥有权核对、旧受控文件备份、官方Restore→Install各一次、一次长度/hash读回及真实回执；不全用户目录hash、不第二安装审查、不反复包消费者。停止本任务进程，不替所有者启动游戏。

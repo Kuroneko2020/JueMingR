@@ -2,7 +2,7 @@
   "schema": "aim-cost-nav-review-map-20261015-1",
   "taskBase": "69ffc7bfd5223069081c848f1646b49e958b2eea",
   "branch": "codex/aim-attack-modeling-and-integration",
-  "reviewStatus": "PENDING_C_REPAIR_REVIEW",
+  "reviewStatus": "APPROVED_FOR_STAGE",
   "packageStatus": "NOT_EXECUTED",
   "installStatus": "NOT_EXECUTED",
   "qualification": "INCOMPLETE",
@@ -14,8 +14,8 @@
   "sourceFiles": [
     {
       "path": "docs/计划/辅助瞄准阶段文档.md",
-      "length": 539401,
-      "sha256": "28620417CB55E0C60E77ADBC2328DCCF15EBFE36106F93039D0065019E4C8E18"
+      "length": 539480,
+      "sha256": "B0F213810B5988D7E1FE342C7941A21F4227EA414387CD4DDE690E185C36A879"
     },
     {
       "path": "docs/设计/战斗辅助实现设计.md",
@@ -458,5 +458,26 @@
     "allOtherSixItems": "frozen; source bytes unchanged; same prior executions and reviewed reuse, not rerun",
     "qualification": "INCOMPLETE",
     "releaseEligible": false
+  },
+  "completedReviews": {
+    "productionCandidate": "936f865e10d6d4307804b15c6466505c71241c8b",
+    "initialVerdict": "NEEDS_FIX",
+    "repairVerdict": "PASS",
+    "fullReview": {
+      "path": ".local/aim-cost-nav-20261015/independent-review-1ababaf-original.md",
+      "length": 4281,
+      "sha256": "E29691D3262D0C3947DD0D0CCE10C411CF7570491017A5A82C84887A1EABD568"
+    },
+    "repairReview": {
+      "path": ".local/aim-cost-nav-20261015/independent-review-936f865-PASS-original.md",
+      "length": 2756,
+      "sha256": "5F6DA3D717D0E66D2D926BF5AC222A19F2A23624F41FDC849AF2E47DAF31E966"
+    },
+    "deliveryDecision": {
+      "path": ".local/aim-cost-nav-20261015/delivery-decision-936f865.md",
+      "length": 969,
+      "sha256": "B82CB78AA9D62EB117A2F06B86A86F96270E65DAB493E923445489B4394A3BD8"
+    },
+    "scope": "Initial six unaffected items combined with exact C repair eight-file narrow review; documentation records outcomes only; no claim reviewer ran builds/tests."
   }
 }
