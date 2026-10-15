@@ -253,7 +253,7 @@ namespace JueMingR.TerrariaHost.Combat
                         // prefix and hand plan. Publish those immutable results
                         // without resampling the same actor after its slice has
                         // gone. Keep any longer display whose real lease passes.
-                        bool keep=displayPath!=null && displayPath.Count-DisplayAge>=candidatePath.Count && ValidateDisplay(sampleTick);
+                        bool keep=KeepLongerDisplay(candidatePath,sampleTick);
                         displayValidated=keep;
                         if(!keep)
                         {
@@ -384,7 +384,26 @@ namespace JueMingR.TerrariaHost.Combat
         {
             var path=Path?Prediction.Cache.Read(0):null;
             if(path==null || !path.Identity.Equals(Selection.Target) || path.SampleTick!=tick)return;
+            if(KeepLongerDisplay(path,tick))return;
             CaptureDisplay(path,Prediction.Terrain.FreezeCells());
+        }
+        private bool KeepLongerDisplay(NpcTrajectory replacement,long tick)
+        {
+            // A budget-limited refresh must not shrink a still-valid tail.
+            // Compare the overlap at absolute future times before retaining
+            // it: a real new terminal, segment or changed prediction wins.
+            var prior=displayPath;
+            if(prior==null || replacement.Stop!=PredictionStop.None || !prior.Identity.Equals(replacement.Identity) ||
+                prior.Strategy!=replacement.Strategy || prior.Quality!=replacement.Quality || prior.Assumptions!=replacement.Assumptions || prior.RelationVersion!=replacement.RelationVersion)return false;
+            long offset=replacement.SampleTick-prior.SampleTick;
+            if(offset<0 || offset>=prior.Count || prior.Count-offset<=replacement.Count)return false;
+            for(int i=0;i<replacement.Count;i++)
+            {
+                var a=prior[(int)offset+i];var b=replacement[i];
+                if(a.Bounds.X!=b.Bounds.X || a.Bounds.Y!=b.Bounds.Y || a.Bounds.Width!=b.Bounds.Width || a.Bounds.Height!=b.Bounds.Height ||
+                    a.Vx!=b.Vx || a.Vy!=b.Vy || a.Phase!=b.Phase || a.Wet!=b.Wet || a.NoTileCollide!=b.NoTileCollide || a.NewSegment!=b.NewSegment)return false;
+            }
+            return ValidateDisplay(tick);
         }
         private void CaptureDisplay(NpcTrajectory path,PredictionTerrain.CellLease terrain)
         {displayPath=path;displayLeaseTick=-1;displayTerrain=terrain;displayPlayer=NpcPredictionSource.ReadPlayer(Main.LocalPlayer);displayLife=Main.npc[path.Identity.Slot].life;}

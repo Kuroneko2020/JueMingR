@@ -25,6 +25,17 @@ namespace NativeWorldTextProbe
         private static int enhancedHands,basicHands;private static bool aiming;
         private static int firstHitWidth,firstHitMember;private static long firstBirth,firstHit;
         private static readonly List<Projectile> sources=new List<Projectile>();
+        private static long generationStamp,prepareStamp,forkStamp,copyStamp;
+        private static long profileGeneration,profilePrepare,profileFork,profileCopy;
+        private static int profileGenerations,profilePrepares,profileForks,profileCopies;
+        private static void GenerationStart(){generationStamp=System.Diagnostics.Stopwatch.GetTimestamp();}
+        private static void GenerationFinish(){profileGeneration+=System.Diagnostics.Stopwatch.GetTimestamp()-generationStamp;profileGenerations++;}
+        private static void PrepareStart(){prepareStamp=System.Diagnostics.Stopwatch.GetTimestamp();}
+        private static void PrepareFinish(){profilePrepare+=System.Diagnostics.Stopwatch.GetTimestamp()-prepareStamp;profilePrepares++;}
+        private static void ForkStart(){forkStamp=System.Diagnostics.Stopwatch.GetTimestamp();}
+        private static void ForkFinish(){profileFork+=System.Diagnostics.Stopwatch.GetTimestamp()-forkStamp;profileForks++;}
+        private static void CopyStart(){copyStamp=System.Diagnostics.Stopwatch.GetTimestamp();}
+        private static void CopyFinish(){profileCopy+=System.Diagnostics.Stopwatch.GetTimestamp()-copyStamp;profileCopies++;}
         private static object Static(Type type,string name,params object[] args){return type.GetMethod(name,Flags).Invoke(null,args);}
         private static void Replay(){replays++;}private static void Motor(){motors++;}
         private static bool LegacyCandidates(NpcTrajectory path,int age,float originX,float originY,ref AttackBallisticCandidates.Direction[] __result)
@@ -46,7 +57,7 @@ namespace NativeWorldTextProbe
             sources.Add(q);births++;if(aiming && (births-1)%(q.type==711?3:1)==0){if(Vector2.DistanceSquared(Main.MouseWorld,target.Center)>100){enhancedHands++;cursor=Main.MouseWorld;}else basicHands++;}
             if(births==1){firstBirth=Main.GameUpdateCount;birthVelocity=q.velocity;cursor=Main.MouseWorld;var attack=Get(Get(currentContext,"Combat"),"Attack");var host=Get(currentContext,"CombatObservation");var selection=Get(host,"Selection");var key=(NpcIdentity)Get(selection,"Target");int hint=(int)attack.GetType().GetMethods(Flags).Single(m=>m.Name=="ActionPreferred" && m.GetParameters().Length==1).Invoke(attack,new object[]{key});var p=Main.LocalPlayer;var a=Ammo(p);var model=assembly.GetType("JueMingR.TerrariaHost.Combat."+(q.type==711?"HostBetsyFlameAttack":"HostBottleAttack"));int direct=(int)Static(model,"PreferredRange",p,a,target);Console.WriteLine("BALLISTIC first-consumer path="+pathCount+" age="+pathAge+" seeds="+generated+" generation-ms="+generationMs+" replays="+replays+" motors="+motors+" currentHint="+hint+" directHint="+direct+" actionRequired="+Get(attack,"ActionRequired")+" key="+key.Slot+"/"+key.Type+"/"+key.Session+" session="+Get(host,"Session")+" origin="+p.RotatedRelativePoint(p.MountedCenter)+" target="+target.Center+" speed="+Get(a,"Speed"));}
         }
-        private static Player Scene(object context,int item,int tileX,bool mirror=false,bool moving=false,bool wall=false,bool liquid=false,int tileY=40)
+        internal static Player Scene(object context,int item,int tileX,bool mirror=false,bool moving=false,bool wall=false,bool liquid=false,int tileY=40)
         {
             NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());NativeCombatCadenceChecks.Save(Get(context,"Combat"),new CombatOptions());
             var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),Get(context,"Input"),item,0,0);p.position=new Vector2(mirror?1250:650,646);p.releaseUseItem=true;p.statMana=p.statManaMax2=200;Main.screenPosition=new Vector2(500,400);Main.windPhysics=false;
@@ -62,13 +73,13 @@ namespace NativeWorldTextProbe
             if(liquid)for(int x=48;x<51;x++)for(int y=38;y<43;y++){Main.tile[x,y].liquid=255;Main.tile[x,y].liquidType(0);}
             hits=births=replays=motors=enhancedHands=basicHands=firstHitWidth=0;firstHitMember=-1;firstHit=firstBirth=-1;aiming=false;sources.Clear();receiving=null;birthVelocity=cursor=Vector2.Zero;raw=target.Center-new Vector2(mirror?-500:500,0);return p;
         }
-        private static NpcTrajectory Timeline(NPC n)
+        internal static NpcTrajectory Timeline(NPC n)
         {
             var key=(NpcIdentity)Static(assembly.GetType("JueMingR.TerrariaHost.Combat.CombatSelection",true),"Identity",n,1L);
             var state=new NpcMotionState{Identity=key,X=n.position.X,Y=n.position.Y,Width=n.width,Height=n.height,CanReceive=true,NoTileCollide=n.noTileCollide};
             var points=Enumerable.Range(0,121).Select(t=>new NpcTrajectoryPoint(t,state)).ToArray();return new NpcTrajectory(key,(long)Main.GameUpdateCount-1,1,PredictionAssumption.NoNewHits,PredictionStop.None,points,points.Length,PredictionStrategy.RollingConditional);
         }
-        private static object Ammo(Player p){return Static(assembly.GetType("JueMingR.TerrariaHost.Combat.AttackAmmoSnapshot",true),"Capture",p,p.HeldItem);}
+        internal static object Ammo(Player p){return Static(assembly.GetType("JueMingR.TerrariaHost.Combat.AttackAmmoSnapshot",true),"Capture",p,p.HeldItem);}
         private static AttackContact Solve(Player p,NpcTrajectory path)
         {
             var a=Ammo(p);int type=(int)Get(a,"Projectile");var shot=new Projectile();shot.SetDefaults(type);
@@ -90,10 +101,41 @@ namespace NativeWorldTextProbe
             if(aim)NativeCombatSelectionPreviewChecks.Step(context,point,false);
             Console.WriteLine("BALLISTIC consumer-summary aim="+aim+" hands="+(enhancedHands+basicHands)+" enhanced="+enhancedHands+" basic="+basicHands+" sourceBirths="+births+" strikes="+hits+" firstReceive="+(firstHit<0?0:firstHit-firstBirth+1)+" firstWidth="+firstHitWidth+" firstMember="+firstHitMember);
         }
+        private static void Cost(object context)
+        {
+            bool profile=Environment.GetEnvironmentVariable("JMR_BALLISTIC_COST_PROFILE")=="1";var audit=new Harmony("JueMingR.Tests.BallisticCostProfile");
+            if(profile)
+            {
+                audit.Patch(typeof(AttackBallisticCandidates).GetMethod("GeneratePrepared")??typeof(AttackBallisticCandidates).GetMethod("Generate"),prefix:new HarmonyMethod(typeof(NativeCombatBallisticCandidateChecks),nameof(GenerationStart)),postfix:new HarmonyMethod(typeof(NativeCombatBallisticCandidateChecks),nameof(GenerationFinish)));
+                var obstacle=assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackObstacles",true);audit.Patch(obstacle.GetMethod("ForkForSpawn",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBallisticCandidateChecks),nameof(ForkStart)),postfix:new HarmonyMethod(typeof(NativeCombatBallisticCandidateChecks),nameof(ForkFinish)));
+                foreach(string model in new[]{"HostBetsyFlameAttack","HostBottleAttack"})
+                {var type=assembly.GetType("JueMingR.TerrariaHost.Combat."+model,true);audit.Patch(type.GetMethod("Prepare",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBallisticCandidateChecks),nameof(PrepareStart)),postfix:new HarmonyMethod(typeof(NativeCombatBallisticCandidateChecks),nameof(PrepareFinish)));audit.Patch(type.GetMethod("Copy",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBallisticCandidateChecks),nameof(CopyStart)),postfix:new HarmonyMethod(typeof(NativeCombatBallisticCandidateChecks),nameof(CopyFinish)));}
+            }
+            try
+            {
+            foreach(var row in new[]{new[]{3870,80,25,0},new[]{3870,76,40,8},new[]{3870,111,40,8},new[]{3821,76,40,8}})
+            {
+                var p=Scene(context,row[0],row[1],tileY:row[2]);var ammo=Ammo(p);int type=(int)Get(ammo,"Projectile");
+                for(int i=0;i<row[3];i++)Projectile.NewProjectile(new EntitySource_DebugCommand(),p.Center.X-i*20,p.Center.Y-60,9,-3,type,40,0,p.whoAmI);
+                var path=Timeline(target);var clock=System.Diagnostics.Stopwatch.StartNew();var contact=Solve(p,path);clock.Stop();double cold=clock.Elapsed.TotalMilliseconds;
+                for(int warm=0;warm<3;warm++)Solve(p,path);
+                profileGeneration=profilePrepare=profileFork=profileCopy=0;profileGenerations=profilePrepares=profileForks=profileCopies=0;
+                var times=new double[24];var ticks=new int[times.Length];int gc0=GC.CollectionCount(0),gc1=GC.CollectionCount(1),gc2=GC.CollectionCount(2);
+                for(int i=0;i<times.Length;i++){clock.Restart();contact=Solve(p,path);clock.Stop();times[i]=clock.Elapsed.TotalMilliseconds;ticks[i]=contact?.Tick??0;}
+                Require(ticks.All(x=>x==ticks[0]),"fixed same-sample measured solve remains deterministic");
+                Array.Sort(times);Console.WriteLine("BALLISTIC-COST item="+row[0]+" x="+row[1]+" y="+row[2]+" ambient="+row[3]+" cold="+cold.ToString("R")+" mean="+times.Average().ToString("R")+" p95="+times[22].ToString("R")+" p99="+times[23].ToString("R")+" max="+times[23].ToString("R")+" gc="+(GC.CollectionCount(0)-gc0)+"/"+(GC.CollectionCount(1)-gc1)+"/"+(GC.CollectionCount(2)-gc2)+" receive="+ticks[0]+" aim="+contact?.AimX+","+contact?.AimY);
+                if(profile){double scale=1000d/System.Diagnostics.Stopwatch.Frequency/times.Length;Console.WriteLine("BALLISTIC-PROFILE instrumented=true generation="+(profileGeneration*scale).ToString("R")+" prepare="+(profilePrepare*scale).ToString("R")+" spawn-fork="+(profileFork*scale).ToString("R")+" copy="+(profileCopy*scale).ToString("R")+" counts="+profileGenerations+"/"+profilePrepares+"/"+profileForks+"/"+profileCopies+" samples="+times.Length+" nested-times-not-additive=true");}
+            }
+            }
+            finally{audit.UnpatchAll(audit.Id);}
+        }
         internal static void Run(object context)
         {
-            currentContext=context;assembly=Get(context,"Combat").GetType().Assembly;var audit=new Harmony("JueMingR.Tests.BallisticCandidates");bool wind=Main.windPhysics;
-            audit.Patch(typeof(AttackBallisticCandidates).GetMethod("Generate"),prefix:new HarmonyMethod(typeof(NativeCombatBallisticCandidateChecks),nameof(LegacyCandidates)),postfix:new HarmonyMethod(typeof(NativeCombatBallisticCandidateChecks),nameof(Generated)));
+            currentContext=context;assembly=Get(context,"Combat").GetType().Assembly;
+            if(Environment.GetEnvironmentVariable("JMR_BALLISTIC_COST_ONLY")=="1"){Cost(context);return;}
+            if(Environment.GetEnvironmentVariable("JMR_BALLISTIC_PREPARATION_ONLY")=="1"){NativeCombatBallisticPreparationChecks.Run(context);return;}
+            var audit=new Harmony("JueMingR.Tests.BallisticCandidates");bool wind=Main.windPhysics;
+            audit.Patch(typeof(AttackBallisticCandidates).GetMethod("GeneratePrepared")??typeof(AttackBallisticCandidates).GetMethod("Generate"),prefix:new HarmonyMethod(typeof(NativeCombatBallisticCandidateChecks),nameof(LegacyCandidates)),postfix:new HarmonyMethod(typeof(NativeCombatBallisticCandidateChecks),nameof(Generated)));
             foreach(string model in new[]{"HostBetsyFlameAttack","HostBottleAttack"}){var type=assembly.GetType("JueMingR.TerrariaHost.Combat."+model,true);audit.Patch(type.GetMethod("Prepare",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBallisticCandidateChecks),nameof(Replay)));audit.Patch(type.GetMethod("Motor",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBallisticCandidateChecks),nameof(Motor)));}
             foreach(string name in new[]{"HandleSpecialEvent","HandleRunning","HandleMining"})audit.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
             audit.Patch(typeof(Projectile).GetMethods(Flags).Single(m=>m.Name=="NewProjectile" && m.GetParameters().Length==13 && m.GetParameters()[1].ParameterType==typeof(float)),postfix:new HarmonyMethod(typeof(NativeCombatBallisticCandidateChecks),nameof(Born)));
@@ -134,6 +176,7 @@ namespace NativeWorldTextProbe
                     if(kind=="moving")Require(Vector2.DistanceSquared(start,target.Center)>1,"natural NPC AI actually moves; no stationary future answer injected");
                 }
                 {var p=Scene(context,3870,111);var path=Timeline(target);Require(Solve(p,path)==null,"full dry family window supplies no fake contact beyond horizontal reach");Fire(context,raw,true);Require(births>=3 && enhancedHands==0 && basicHands>0 && hits==0,"unresolved far hand remains immediate original Basic and invents no damage");Console.WriteLine("BALLISTIC unreachable births="+births+" strikes="+hits+" cursor="+cursor);}
+                if(typeof(AttackBallisticCandidates).GetMethod("GeneratePrepared")!=null)NativeCombatBallisticPreparationChecks.Run(context);
             }
             finally{legacy=false;audit.UnpatchAll(audit.Id);Main.windPhysics=wind;NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());NativeCombatCadenceChecks.Save(Get(context,"Combat"),new CombatOptions());}
         }

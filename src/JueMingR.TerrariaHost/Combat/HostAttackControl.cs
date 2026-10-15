@@ -170,11 +170,13 @@ namespace JueMingR.TerrariaHost.Combat
                 if(openingAmmo!=null)
                 {if(HostYoyoNavigation.Weapon(opening.Weapon)){if(combat.Use.ManagedAttackIntent(combat.Player) && combat.Player.magicString)openingUsable=HostYoyoReleaseAttack.TryPoint(combat.Player,opening.Weapon,openingAmmo.Speed,timeline,new HostAttackClock(timeline,phase),terrain,out openingPoint);else openingUsable=HostYoyoNavigation.OpeningPoint(combat.Player,opening.Weapon,timeline,out openingPoint,out openingNavigation);}else if(HostWhipAttack.Weapon(opening.Weapon))openingUsable=HostWhipAttack.TryPoint(combat.Player,null,timeline,new HostAttackClock(timeline,phase),terrain,out openingPoint);else{openingPoint=HostHeldAttack.OpeningPoint(combat.Player,opening.Weapon,openingAmmo,timeline);openingUsable=true;}}
             }
+            HostYoyoNavigation.GroupFacts yoyoGroup=null;
             foreach(var pair in shots)
             {
                 var entry=pair.Value;if(!Observed(entry)){retired.Add(pair.Key);continue;}if(!Valid(entry) || HostPulseAttack.Handles(entry.Type) || HostHarpoonAttack.Handles(entry.Type))continue;
                 if(timeline==null || !timeline.Identity.Equals(observation.Selection.Target))continue;
-                PrepareEntry(entry,timeline,phase);
+                if(entry.Navigation!=null && !entry.ManagedYoyo && yoyoGroup==null)yoyoGroup=new HostYoyoNavigation.GroupFacts(combat.Player);
+                PrepareEntry(entry,timeline,phase,yoyoGroup);
             }
             foreach(int key in retired)shots.Remove(key);
         }
@@ -182,10 +184,14 @@ namespace JueMingR.TerrariaHost.Combat
         // that parent between its AI and Movement/Damage. Only births inside
         // this receipt receive same-pass preparation; siblings keep their phase.
         private void PrepareBorn(Source source,HostAttackPhase phase,ulong cutoff)
-        {foreach(var entry in shots.Values)if(entry.BirthOrdinal>cutoff && ReferenceEquals(entry.Source,source) && Valid(entry) && !HostPulseAttack.Handles(entry.Type) && !HostHarpoonAttack.Handles(entry.Type))PrepareEntry(entry,preparedTimeline,phase);}
-        private void PrepareEntry(Controlled entry,NpcTrajectory timeline,HostAttackPhase phase)
-        {if(entry.ManagedYoyo && !combat.Use.ManagedAttackIntent(combat.Player))entry.ManagedYoyo=false;if(entry.ManagedYoyo){entry.Prepared=Main.GameUpdateCount;entry.Target=timeline.Identity;return;}SolveEntry(entry,timeline,phase,terrain,combat.Player);}
-        private static void SolveEntry(Controlled entry,NpcTrajectory timeline,HostAttackPhase phase,PredictionTerrain terrain,Player player,int delay=0,HostAttackPlayerFrame? preparedPlayer=null)
+        {
+            HostYoyoNavigation.GroupFacts yoyoGroup=null;
+            foreach(var entry in shots.Values)if(entry.BirthOrdinal>cutoff && ReferenceEquals(entry.Source,source) && Valid(entry) && !HostPulseAttack.Handles(entry.Type) && !HostHarpoonAttack.Handles(entry.Type))
+            {if(entry.Navigation!=null && !entry.ManagedYoyo && yoyoGroup==null)yoyoGroup=new HostYoyoNavigation.GroupFacts(combat.Player);PrepareEntry(entry,preparedTimeline,phase,yoyoGroup);}
+        }
+        private void PrepareEntry(Controlled entry,NpcTrajectory timeline,HostAttackPhase phase,HostYoyoNavigation.GroupFacts yoyoGroup)
+        {if(entry.ManagedYoyo && !combat.Use.ManagedAttackIntent(combat.Player))entry.ManagedYoyo=false;if(entry.ManagedYoyo){entry.Prepared=Main.GameUpdateCount;entry.Target=timeline.Identity;return;}SolveEntry(entry,timeline,phase,terrain,combat.Player,yoyoGroup:yoyoGroup);}
+        private static void SolveEntry(Controlled entry,NpcTrajectory timeline,HostAttackPhase phase,PredictionTerrain terrain,Player player,int delay=0,HostAttackPlayerFrame? preparedPlayer=null,HostYoyoNavigation.GroupFacts yoyoGroup=null)
         {
             if(entry.BornNext && entry.Born==Main.GameUpdateCount && phase==HostAttackPhase.Projectiles)phase=HostAttackPhase.CompletedWorld;
             var clock=new HostAttackClock(timeline,phase,delay);int age=clock.Age;if(age<0 || age>1+delay || clock.FirstTick>=timeline.Count)return;
@@ -193,7 +199,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(HostPulseAttack.Handles(entry.Type))entry.Contact=HostPulseAttack.Known(player,entry.Shot,timeline,clock,terrain,out entry.Obstacles);
             if(HostHarpoonAttack.Handles(entry.Type))entry.Contact=HostHarpoonAttack.Known(player,entry.Shot,timeline,clock,terrain,out entry.Obstacles);
             if(entry.Type==1035){entry.HasPoint=HostWhipAttack.Pending(entry.Shot) && HostWhipAttack.TryPoint(player,entry.Shot,timeline,clock,terrain,out entry.Point);entry.Contact=null;}
-            if(entry.Navigation!=null)entry.Contact=entry.Navigation.PrepareWithPlayer(player,entry.Shot,timeline,clock,out entry.Point,out entry.HasPoint,playerFrame);
+            if(entry.Navigation!=null)entry.Contact=entry.Navigation.PrepareWithPlayer(player,entry.Shot,timeline,clock,out entry.Point,out entry.HasPoint,playerFrame,yoyoGroup);
             if(HostGuidedAttack.Handles(entry.Type) && (entry.Type==491 || HostGuidedAttack.Consumes(player,entry.Shot)))
                 entry.Contact=HostGuidedAttack.SolvePrepared(player,entry.Shot,timeline,clock,terrain,playerFrame);
             if(HostHeldAttack.Handles(entry.Type) && (player.channel || HostFlailAttack.Handles(entry.Type)))

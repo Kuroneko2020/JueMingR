@@ -108,7 +108,10 @@ namespace JueMingR.TerrariaHost.Combat
             {
                 var point=path[i];var prior=path[i-1];var b=new Vector2(point.Bounds.CenterX,point.Bounds.CenterY);
                 if(!point.NewSegment)Line(new Vector2(prior.Bounds.CenterX,prior.Bounds.CenterY),b,color,approximate,1.5f);
-                if(point.NewSegment || i%30==0 || i==path.Count-1)
+                // Milestones refer to absolute simulation time, not a new
+                // publication's array origin. Equivalent rolling samples must
+                // not move the same future marker every refresh.
+                if(point.NewSegment || (path.SampleTick+point.TickOffset)%30==0 || i==path.Count-1)
                 {Line(b-new Vector2(3,0),b+new Vector2(3,0),color,false,2);Line(b-new Vector2(0,3),b+new Vector2(0,3),color,false,2);}
             }
         }

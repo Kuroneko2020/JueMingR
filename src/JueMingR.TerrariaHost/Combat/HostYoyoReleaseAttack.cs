@@ -12,6 +12,16 @@ namespace JueMingR.TerrariaHost.Combat
     // detached child is never lent input. Frequency does not change gravity.
     internal static class HostYoyoReleaseAttack
     {
+        private static readonly object preparationKey=new object();
+        private sealed class DirectionPreparation
+        {
+            internal Player Player;internal Item Item;internal int Type,Prefix,Direction;
+            internal PredictionPlayerMotion Motion;internal Vector2 Start,Point;
+            internal float LaunchSpeed,MeleeSpeed,Range,Speed;internal bool String;
+            internal HostAttackClock Clock;internal NpcTrajectory Future;
+            internal bool Matches(Player player,Item item,float launchSpeed,Vector2 start,float range,float speed,NpcTrajectory future,HostAttackClock clock)
+            {return ReferenceEquals(Player,player) && ReferenceEquals(Item,item) && Type==item.type && Prefix==item.prefix && Direction==player.direction && Motion.SameSample(NpcPredictionSource.ReadPlayer(player)) && Start==start && LaunchSpeed==launchSpeed && MeleeSpeed==player.meleeSpeed && String==player.yoyoString && Range==range && Speed==speed && Clock.Phase==clock.Phase && Clock.Age==clock.Age && Clock.LaunchDelay==clock.LaunchDelay && HostAttackAim.SolvePreparation.Extends(Future,future);}
+        }
         internal static bool TryPoint(Player player,Item item,float launchSpeed,NpcTrajectory future,HostAttackClock clock,PredictionTerrain terrain,out Vector2 point)
         {
             point=Vector2.Zero;int first=clock.FirstTick;
@@ -25,51 +35,182 @@ namespace JueMingR.TerrariaHost.Combat
             float inertia=Math.Max(1,14-speed/2),heldSpeed=launchSpeed>speed?launchSpeed*.98f:launchSpeed;
             float inherited=(heldSpeed*(inertia-1)+Math.Min((range-1)/2,speed))/inertia;
             Projectile sample=ContentSamples.ProjectilesByType[item.shoot];
-            float best=float.MaxValue,bestBound=float.MaxValue;Vector2 bestUnit=Vector2.Zero;
-            for(int time=2;first+time<future.Count;time++)
+            // This is a pure direction proposal retained only on the current
+            // synchronous preparation stack. Recheck complete input/phase and
+            // old receive prefix; terrain and Preview permission remain fresh.
+            var scope=HostAttackAim.SolvePreparation.Current;
+            var previous=scope?.Read(preparationKey) as DirectionPreparation;
+            if(previous!=null && previous.Matches(player,item,launchSpeed,start,range,speed,future,clock))
             {
-                var target=future[first+time].ProjectileReceiveBounds;
-                var goal=new Vector2(target.CenterX,target.CenterY);
-                Vector2 unit=(goal-start-new Vector2(0,.15f*time*(time+1))).SafeNormalize(Vector2.UnitX*player.direction);
-                // Invert capped/accelerating discrete response at receive times,
-                // rather than adding a dense all-angle replay search.
-                for(int refine=0;refine<4;refine++)
-                {
-                    var end=End(start,unit,inherited,speed,time);
-                    unit=(unit+(goal-end)/Math.Max(1,inherited*(time+1))).SafeNormalize(unit);
-                }
-                var actual=End(start,unit,inherited,speed,time);
-                float dx=Math.Max(0,Math.Abs(actual.X-goal.X)-(target.Width+sample.width)/2);
-                float dy=Math.Max(0,Math.Abs(actual.Y-goal.Y)-(target.Height+sample.height)/2);
-                // Prefer the centre over the first grazing edge. Integer
-                // cursor rounding and the real hand's subpixel origin must
-                // not turn a representative seed into a repeated near miss.
-                float error=Vector2.DistanceSquared(actual,goal);
-                if(error>=best)continue;
-                best=error;bestBound=dx*dx+dy*dy;bestUnit=unit;
-                if(error<16)break;
+#if DEBUG
+                ResponseReuses++;
+#endif
+                point=previous.Point;var unit=(point-start).SafeNormalize(Vector2.UnitX*player.direction);
+                return terrain.ProjectilePassage(start.X,start.Y,start.X+unit.X*inherited,start.Y+unit.Y*inherited,sample.width,sample.height);
             }
-            if(bestBound>4)return false;
-            point=start+bestUnit*(range-1);
-            return terrain.ProjectilePassage(start.X,start.Y,start.X+bestUnit.X*inherited,start.Y+bestUnit.Y*inherited,sample.width,sample.height);
+            int horizon=future.Count-first-1;
+            // Coarse windows keep both early/late arcs. Cheap gravity response
+            // chooses a time in each window; only those directions receive a
+            // full discrete scan. Each scan compares ALL absolute receive times,
+            // so increasing H costs O(K*H), not five restarts at every time.
+            var times=new int[8];var windows=new int[8];var ranks=new float[8];int count=0;
+            for(int window=0;window<8;window++)
+            {
+                if(!CombatPredictionWork.TryContinue())break;
+                int low=2+(horizon-1)*window/8,high=2+(horizon-1)*(window+1)/8;
+                float rank=float.MaxValue;int chosen=-1;
+                for(int time=low;time<high && time<=horizon;time++)
+                {
+                    var target=future[first+time].ProjectileReceiveBounds;
+                    var delta=new Vector2(target.CenterX,target.CenterY)-start;
+                    float vy=(delta.Y-.15f*time*(time+1))/(time+1);
+                    int accelerating=Math.Min(time,Math.Max(0,(int)Math.Floor((3-vy)/.3f)));
+                    float horizontal=.1f*(accelerating*(time+1)-accelerating*(accelerating+1)*.5f);
+                    // Include the below-cap horizontal response in the cheap
+                    // rank. Both speed caps and branch changes still require
+                    // the discrete candidate replay.
+                    var required=new Vector2((delta.X-Math.Sign(delta.X)*horizontal)/(time+1),vy);
+                    float error=Math.Abs(required.LengthSquared()-inherited*inherited);
+                    if(error<rank){rank=error;chosen=time;}
+                }
+                if(chosen>=0){int at=count++;while(at>0 && ranks[at-1]>rank){times[at]=times[at-1];windows[at]=windows[at-1];ranks[at]=ranks[at-1];at--;}times[at]=chosen;windows[at]=window;ranks[at]=rank;}
+            }
+            var response=new ResponseSearch{Start=start,Inherited=inherited,Speed=speed,Range=range,Future=future,First=first,Horizon=horizon,Direction=player.direction,Width=sample.width,Height=sample.height,Best=ResponseCandidate.Empty,Canonical=new CanonicalDirection[horizon+1]};
+            bool more=true;
+            // Each band gets its own actual nearest receive refinement. A
+            // precise late arc cannot consume the short arc's opportunity.
+            // The nearest time can still be just outside the receive body;
+            // both adjacent canonical times keep that cap-sensitive branch.
+            // Fix their anchor before either scan changes the winner.
+            for(int i=0;i<count && more;i++)
+            {
+                if(response.Best.Error<16 && response.Best.Time==2)break;
+                int low=2+(horizon-1)*windows[i]/8,high=2+(horizon-1)*(windows[i]+1)/8;
+                ResponseCandidate nearest;
+                more=response.Probe(times[i],true,low,high,out nearest);
+                if(!more || nearest.Error<16 || nearest.Time<2)continue;
+                int refined=nearest.Time;
+                if(refined!=times[i])more=response.Probe(refined,true,low,high,out nearest);
+                if(more && nearest.Error>=16 && nearest.Time>=2)
+                {
+                    // Canonical refinement may move the nearest receive
+                    // again (e.g. gravity seed33 -> nearest35 -> nearest36).
+                    // Anchor both neighbours at that refined actual time,
+                    // not at the first rough nearest time.
+                    int anchor=nearest.Time;
+                    // The shifted anchor itself is also a new canonical
+                    // direction (41 -> nearest42 -> nearest43). Its closest
+                    // time is not proof that seed43 was already evaluated.
+                    if(anchor!=refined && anchor!=times[i])more=response.Probe(anchor,true,low,high,out nearest);
+                    // Use the last discrete receive, not the anchor from
+                    // before that canonical replay. A cap-sensitive response
+                    // can move by another update; both sides still share one
+                    // fixed anchor and the same finite probe allowance.
+                    anchor=nearest.Time;
+                    if(more && nearest.Error>=16 && anchor-1!=refined && anchor-1!=times[i])more=response.Probe(anchor-1,true,low,high,out nearest);
+                    if(more && nearest.Error>=16 && anchor+1!=refined && anchor+1!=times[i])more=response.Probe(anchor+1,true,low,high,out nearest);
+                }
+            }
+            // A band's direction can win at a receive OUTSIDE that band's
+            // window. Refine that global boundary on both sides as well.
+            // When no legal proposal exists yet, retain the original two
+            // same-time cap corrections instead of probing an unproved hit.
+            bool contact=response.Best.Bound<=4;int finalAnchor=response.Best.Time;
+            for(int correction=0;correction<2 && more && response.Best.Error>=16 && response.Best.Time>=2;correction++)
+            {ResponseCandidate nearest;more=response.Probe(contact?finalAnchor+(correction==0?-1:1):response.Best.Time,contact,2,horizon+1,out nearest);}
+            var best=response.Best;
+            if(best.Bound>4)return false;
+            point=best.Point;
+            scope?.Store(preparationKey,new DirectionPreparation{Player=player,Item=item,Type=item.type,Prefix=item.prefix,Direction=player.direction,Motion=NpcPredictionSource.ReadPlayer(player),Start=start,Point=point,LaunchSpeed=launchSpeed,MeleeSpeed=player.meleeSpeed,String=player.yoyoString,Range=range,Speed=speed,Clock=clock,Future=future});
+            return terrain.ProjectilePassage(start.X,start.Y,start.X+best.Unit.X*inherited,start.Y+best.Unit.Y*inherited,sample.width,sample.height);
         }
-        private static Vector2 End(Vector2 start,Vector2 unit,float inherited,float speed,int time)
+        private struct ResponseCandidate
         {
-            var velocity=unit*inherited;var position=start+velocity;
+            internal float Error,Bound;internal int Time;internal Vector2 Unit,Point;
+            internal static ResponseCandidate Empty {get{return new ResponseCandidate{Error=float.MaxValue,Bound=float.MaxValue};}}
+        }
+        private struct CanonicalDirection {internal bool Ready;internal Vector2 Unit;}
+        // Stack-owned scratch for at most 8*(coarse + two nearest + two grazing
+        // neighbours) + two global corrections. Every probe is linear in H;
+        // no receive-time loop restarts another whole prefix solve.
+        private struct ResponseSearch
+        {
+            internal Vector2 Start;internal float Inherited,Speed,Range;
+            internal NpcTrajectory Future;internal int First,Horizon,Direction,Width,Height;
+            internal ResponseCandidate Best;
+            // Different coarse bands/neighbours can nominate the same time.
+            // Its canonical direction is pure in this one fixed input; retain
+            // only the completed four-refinement result, never a permission.
+            internal CanonicalDirection[] Canonical;
+            internal bool Probe(int time,bool canonical,int low,int high,out ResponseCandidate nearest)
+            {
+                nearest=ResponseCandidate.Empty;
+                if(time<2 || time>Horizon)return true;
+                if(!CombatPredictionWork.TryContinue())return false;
+                var target=Future[First+time].ProjectileReceiveBounds;
+                var goal=new Vector2(target.CenterX,target.CenterY);
+                var cached=canonical?Canonical[time]:default(CanonicalDirection);
+                var unit=cached.Ready?cached.Unit:canonical?(goal-Start-new Vector2(0,.15f*time*(time+1))).SafeNormalize(Vector2.UnitX*Direction):Best.Unit;
+                for(int refine=0;!cached.Ready && refine<4;refine++)
+                {
+                    Vector2 end;if(!End(Start,unit,Inherited,Speed,time,out end))return false;
+                    unit=(unit+(goal-end)/Math.Max(1,Inherited*(time+1))).SafeNormalize(unit);
+                }
+                if(canonical && !cached.Ready)Canonical[time]=new CanonicalDirection{Ready=true,Unit=unit};
+                // The native hand consumes this world-space cursor, whose
+                // float quantization matters at large world coordinates.
+                // Score its actual direction, and return that exact point;
+                // an unrepresentable improvement is not a better launch.
+                var proposal=Start+unit*(Range-1);
+                unit=(proposal-Start).SafeNormalize(unit);
+                var velocity=unit*Inherited;var actual=Start+velocity;
+                for(int step=1;step<=Horizon;step++)
+                {
+                    // Once a precise direction exists, later precise receives
+                    // cannot win the native earliest-receive preference.
+                    if(Best.Error<16 && step>Best.Time)break;
+                    if((step&15)==1 && !CombatPredictionWork.TryContinue())return false;
+                    Advance(ref velocity,unit,Speed);actual+=velocity;
+                    if(step<2)continue;
+                    var receiver=Future[First+step].ProjectileReceiveBounds;var center=new Vector2(receiver.CenterX,receiver.CenterY);
+                    float error=Vector2.DistanceSquared(actual,center);
+                    float dx=Math.Max(0,Math.Abs(actual.X-center.X)-(receiver.Width+Width)/2),dy=Math.Max(0,Math.Abs(actual.Y-center.Y)-(receiver.Height+Height)/2);
+                    var current=new ResponseCandidate{Error=error,Bound=dx*dx+dy*dy,Time=step,Unit=unit,Point=proposal};
+                    if(step>=low && step<high && error<nearest.Error)nearest=current;
+                    if(Best.Error<16 ? error>=16 || step>Best.Time || step==Best.Time && error>=Best.Error : error>=Best.Error)continue;
+                    Best=current;
+                    if(error<16)break;
+                }
+                return true;
+            }
+        }
+#if DEBUG
+        internal static int ResponseSteps,ResponseReuses;
+#endif
+        private static void Advance(ref Vector2 velocity,Vector2 unit,float speed)
+        {
+#if DEBUG
+            ResponseSteps++;
+#endif
+            velocity.Y+=.3f;
+            if(velocity.LengthSquared()>256)velocity=velocity.SafeNormalize(Vector2.Zero)*16;
+            else if(velocity.Y<=3)
+            {
+                float top=Math.Min(16,speed);
+                if(Math.Abs(velocity.X)<.1f)velocity.X+=unit.X<0?-.1f:.1f;
+                else if(velocity.X>0 && velocity.X<top)velocity.X+=.1f;
+                else if(velocity.X<0 && velocity.X>-top)velocity.X-=.1f;
+            }
+        }
+        private static bool End(Vector2 start,Vector2 unit,float inherited,float speed,int time,out Vector2 position)
+        {
+            var velocity=unit*inherited;position=start+velocity;
             for(int i=0;i<time;i++)
             {
-                velocity.Y+=.3f;
-                if(velocity.LengthSquared()>256)velocity=velocity.SafeNormalize(Vector2.Zero)*16;
-                else if(velocity.Y<=3)
-                {
-                    float top=Math.Min(16,speed);
-                    if(Math.Abs(velocity.X)<.1f)velocity.X+=unit.X<0?-.1f:.1f;
-                    else if(velocity.X>0 && velocity.X<top)velocity.X+=.1f;
-                    else if(velocity.X<0 && velocity.X>-top)velocity.X-=.1f;
-                }
-                position+=velocity;
+                if((i&15)==0 && !CombatPredictionWork.TryContinue())return false;
+                Advance(ref velocity,unit,speed);position+=velocity;
             }
-            return position;
+            return true;
         }
         // Clear-line opening uses the same release seed, never the held rope
         // boundary. Only a dry, unobstructed representative child is proved;

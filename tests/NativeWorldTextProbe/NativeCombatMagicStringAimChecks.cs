@@ -36,6 +36,7 @@ namespace NativeWorldTextProbe
             try
             {
                 if(Environment.GetEnvironmentVariable("JMR_WEAPON_WORK_COUNTS")=="1"){WorkCounts(context,combat,host,input);return;}
+                NativeCombatCostNavigationChecks.RunRelease(context);
                 FreePreview(context,combat,host,input);
                 foreach(bool moving in new[]{false,true})foreach(int mirror in new[]{1,-1})
                 {
@@ -108,18 +109,19 @@ namespace NativeWorldTextProbe
             var attack=Get(combat,"Attack");var counters=NativeCombatAttackCostChecks.Audit(attack);
             try
             {
-                foreach(int item in new[]{3262,3870})foreach(string mode in new[]{"off","aim","path","both"})
+                bool navigation=Environment.GetEnvironmentVariable("JMR_NAV_WORK_COUNTS")=="1";
+                foreach(int item in navigation?new[]{3389}:new[]{3262,3870})foreach(string mode in navigation?new[]{"aim","both"}:new[]{"off","aim","path","both"})
                 {
                     NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());
                     var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,item,0,0);p.position=new Vector2(1000,646);p.releaseUseItem=true;p.statMana=p.statManaMax=p.statManaMax2=200;
                     foreach(var armor in p.armor)armor.TurnToAir();if(item==3262)p.armor[3].SetDefaults(ItemID.MagicString);
-                    var n=Main.npc[2];n.SetDefaults(3);n.whoAmI=2;n.active=true;n.position=p.Center+new Vector2(400,-50);n.velocity=Vector2.UnitX;n.aiStyle=-1;n.noGravity=true;n.life=n.lifeMax=100000;n.knockBackResist=0;Array.Clear(n.immune,0,n.immune.Length);
+                    var n=Main.npc[2];n.SetDefaults(3);n.whoAmI=2;n.active=true;n.position=p.Center+new Vector2(navigation?250:400,-50);n.velocity=Vector2.UnitX;n.aiStyle=-1;n.noGravity=true;n.life=n.lifeMax=100000;n.knockBackResist=0;Array.Clear(n.immune,0,n.immune.Length);
                     Main.screenPosition=p.Center-new Vector2(400,300);
                     NativeCombatObservationChecks.Save(host,new ObservationOptions(false,mode=="path" || mode=="both",false,false,false,50,false,mode=="aim" || mode=="both"));
                     NativeCombatCadenceChecks.Save(combat,new CombatOptions(item==3262?16:0));NativeCombatAttackCostChecks.ResetCounts();
                     float initialX=n.position.X;for(int t=0;t<80;t++)NativeCombatSelectionPreviewChecks.Step(context,n.Center,true);
                     Require(Math.Abs(n.position.X-initialX-80)<.01f,"counted source fixture advances its receiver through real NPC.UpdateNPC");
-                    NativeCombatAttackCostChecks.Report("weapon-compat-counted item="+item+" mode="+mode+" actualPlayerNpcProjectileUpdates=80 receiverDx=80");
+                    NativeCombatAttackCostChecks.Report((navigation?"cost-nav-counted":"weapon-compat-counted")+" item="+item+" mode="+mode+" actualPlayerNpcProjectileUpdates=80 receiverDx=80");
                     int steps=(int)typeof(NativeCombatAttackCostChecks).GetMethod("Total",BindingFlags.NonPublic|BindingFlags.Static).Invoke(null,new object[]{"NpcMotion.Step"});
                     Require(mode!="off" || steps==0,"disabled demand adds no future Source NPC steps");
                     Require(steps<=80*2*120,"one receiver Source steps remain within actual two-phase 120-step windows");

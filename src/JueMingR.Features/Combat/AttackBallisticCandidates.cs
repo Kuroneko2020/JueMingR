@@ -35,19 +35,83 @@ namespace JueMingR.Features.Combat
             internal readonly double Error;
             internal Direction(double x,double y,int tick,double error){X=(float)x;Y=(float)y;Tick=tick;Error=error;}
         }
-        public static Direction[] Generate(NpcTrajectory path,int age,float originX,float originY,float speed,int updates,bool flame,float birthOffset,float bodyHalf)
+        // A preparation owns this dry response. Extension only appends whole
+        // subupdates; it carries no trajectory, scene or execution permission.
+        public sealed class Response
         {
-            if(path==null || speed<=0 || float.IsNaN(speed) || float.IsInfinity(speed) || updates<=0 || age<0 || age+1>=path.Count)return new Direction[0];
-            int steps=Math.Min(120,path.Count-age-1),count=steps*updates;
-            var horizontal=new double[count+1];var gravity=new double[count+1];var drop=new double[count+1];double factor=1;
-            for(int n=1;n<=count;n++)
+            internal readonly int Updates;internal readonly bool Flame;
+            internal readonly double[] Horizontal,Gravity,Drop;
+            internal readonly Angles Proposals=new Angles();
+            private int completed;private double factor=1;
+            public Response(int updates,bool flame)
             {
-                if(flame || n>=15)factor*=.99;
-                horizontal[n]=horizontal[n-1]+factor;
-                gravity[n]=gravity[n-1]+(flame?(n>=10?.1:0)+(n>=20?.1:0):n>=15?.2:0);
-                drop[n]=drop[n-1]+gravity[n];
+                if(updates<=0 || updates>16)throw new ArgumentOutOfRangeException(nameof(updates));
+                Updates=updates;Flame=flame;Horizontal=new double[120*updates+1];Gravity=new double[Horizontal.Length];Drop=new double[Horizontal.Length];
             }
-            var proposals=new List<Direction>();
+            internal void Ensure(int count)
+            {
+                for(int n=completed+1;n<=count;n++)
+                {
+                    if((n&31)==1)CombatPredictionWork.Check();
+                    if(Flame || n>=15)factor*=.99;
+                    Horizontal[n]=Horizontal[n-1]+factor;
+                    Gravity[n]=Gravity[n-1]+(Flame?(n>=10?.1:0)+(n>=20?.1:0):n>=15?.2:0);Drop[n]=Drop[n-1]+Gravity[n];completed=n;
+                }
+            }
+        }
+        private struct Proposal
+        {
+            internal float X,Y;internal int Tick;internal double Error;
+        }
+        // Each bucket is narrower than the old .99999 dot tolerance. Adjacent
+        // buckets (including the -PI/PI seam) are checked before insertion.
+        // Storage and selection stay bounded independently of path/receiver size.
+        internal sealed class Angles
+        {
+            private const int Count=2048;
+            private readonly Dictionary<int,Proposal> rows=new Dictionary<int,Proposal>();
+            internal void Clear(){rows.Clear();}
+            internal void Add(double x,double y,int tick,double error)
+            {
+                int at=(int)((Math.Atan2(y,x)+Math.PI)*Count/(2*Math.PI));if(at==Count)at=0;
+                for(int d=-2;d<=2;d++)
+                {
+                    int index=(at+d+Count)%Count;Proposal prior;
+                    if(!rows.TryGetValue(index,out prior) || prior.X*x+prior.Y*y<=.99999)continue;
+                    if(tick<prior.Tick || tick==prior.Tick && error<prior.Error)
+                    {
+                        rows.Remove(index);Proposal destination;
+                        if(!rows.TryGetValue(at,out destination) || tick<destination.Tick || tick==destination.Tick && error<destination.Error)rows[at]=new Proposal{X=(float)x,Y=(float)y,Tick=tick,Error=error};
+                    }
+                    return;
+                }
+                Proposal current;if(!rows.TryGetValue(at,out current) || tick<current.Tick || tick==current.Tick && error<current.Error)rows[at]=new Proposal{X=(float)x,Y=(float)y,Tick=tick,Error=error};
+            }
+            internal Direction[] Select()
+            {
+                var result=new List<Direction>(8);
+                for(int pick=0;pick<8;pick++)
+                {
+                    Proposal best=default(Proposal);
+                    foreach(var p in rows.Values)
+                    {
+                        if(p.Tick==0 || best.Tick!=0 && (p.Tick>best.Tick || p.Tick==best.Tick && p.Error>=best.Error))continue;
+                        bool same=false;foreach(var q in result)if(p.X*q.X+p.Y*q.Y>.9998f){same=true;break;}if(!same)best=p;
+                    }
+                    if(best.Tick==0)break;result.Add(new Direction(best.X,best.Y,best.Tick,best.Error));
+                }
+                return result.ToArray();
+            }
+        }
+        public static Direction[] Generate(NpcTrajectory path,int age,float originX,float originY,float speed,int updates,bool flame,float birthOffset,float bodyHalf)
+        {return GeneratePrepared(path,age,originX,originY,speed,updates,flame,birthOffset,bodyHalf,null);}
+        public static Direction[] GeneratePrepared(NpcTrajectory path,int age,float originX,float originY,float speed,int updates,bool flame,float birthOffset,float bodyHalf,Response response)
+        {
+            if(path==null || speed<=0 || float.IsNaN(speed) || float.IsInfinity(speed) || updates<=0 || updates>16 || age<0 || age+1>=path.Count)return new Direction[0];
+            int steps=Math.Min(120,path.Count-age-1),count=steps*updates;
+            if(response==null || response.Updates!=updates || response.Flame!=flame)response=new Response(updates,flame);
+            response.Ensure(count);var horizontal=response.Horizontal;var gravity=response.Gravity;var drop=response.Drop;
+            var proposals=response.Proposals;proposals.Clear();
             // The fan can face either way under rotation/reverse gravity;
             // exact Facing decides the real three births later. A blocked
             // 40px muzzle uses the second zero-offset response, never a fake
@@ -61,6 +125,7 @@ namespace JueMingR.Features.Combat
                     double muzzle=offset==0?birthOffset:0;
                     for(int n=1;n<=count;n++)
                     {
+                        if((n&15)==1)CombatPredictionWork.Check();
                         int tick=age+(n-1)/updates+1;var box=path[tick].ProjectileReceiveBounds;if(!path[tick].CanReceive)continue;
                         double a=muzzle+horizontal[n]*memberSpeed*cos,b=-horizontal[n]*memberSpeed*sin,c=n*memberSpeed*sin,d=muzzle+n*memberSpeed*cos,det=a*d-b*c;if(Math.Abs(det)<.0001)continue;
                         for(int edge=0;edge<5;edge++)
@@ -78,20 +143,12 @@ namespace JueMingR.Features.Combat
                             double ex=Math.Max(0,Math.Abs(x-box.CenterX)-box.Width*.5-bodyHalf+1),ey=Math.Max(0,Math.Abs(y-box.CenterY)-box.Height*.5-bodyHalf+1);
                             if(ex!=0 || ey!=0)continue;
                             double error=Math.Abs(x-box.CenterX)+Math.Abs(y-box.CenterY);
-                            Add(proposals,ux,uy,tick,error);
+                            proposals.Add(ux,uy,tick,error);
                         }
                     }
                 }
             }
-            proposals.Sort((a,b)=>{int order=a.Tick.CompareTo(b.Tick);return order!=0?order:a.Error.CompareTo(b.Error);});
-            // Separate low/high arcs and fan alternatives without spending
-            // the exact receiver budget on near-identical rectangle seeds.
-            var result=new List<Direction>();foreach(var p in proposals){bool same=false;foreach(var q in result)if(p.X*q.X+p.Y*q.Y>.9998f){same=true;break;}if(!same)result.Add(p);if(result.Count==8)break;}return result.ToArray();
-        }
-        private static void Add(List<Direction> rows,double x,double y,int tick,double error)
-        {
-            for(int i=0;i<rows.Count;i++)if(rows[i].X*x+rows[i].Y*y>.99999){if(tick<rows[i].Tick || tick==rows[i].Tick && error<rows[i].Error)rows[i]=new Direction(x,y,tick,error);return;}
-            rows.Add(new Direction(x,y,tick,error));
+            return proposals.Select();
         }
     }
 }

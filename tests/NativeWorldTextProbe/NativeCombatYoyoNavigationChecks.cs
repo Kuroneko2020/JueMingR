@@ -112,12 +112,12 @@ namespace NativeWorldTextProbe
             for(int y=5;y<=42;y++){Main.tile[48,y].active(true);Main.tile[48,y].type=1;}NextPremise(context,input,combat,n);NativeCombatAimChecks.Prepare(host,attack,n,0,true);Require(!(bool)Get(entry,"HasPoint") && GetOptional(attack,"ExpectedImpact")==null,"related closed terrain immediately removes navigation/red capability");int blockedSearches=(int)Get(nav,"Searches");
             for(int tick=1;tick<=12;tick++)
             {NativeQuickItemChecks.BeginWorldStep();NativeToolExecutionChecks.Sample(context,input,n.Center,true);Call(combat,"Sample");n.UpdateNPC(2);NativeCombatAimChecks.Prepare(host,attack,n,0,true);Require(!(bool)Get(entry,"HasPoint"),"stable sealed route cannot become a geometric-only input lease");shot.Update(shot.whoAmI);}
-            int retries=(int)Get(nav,"Searches")-blockedSearches;Require(retries<=3 && shot.active && n.life==10000,"stable no-progress route retries finitely and retains native manual ball without phantom Damage");
+            int retries=(int)Get(nav,"Searches")-blockedSearches;Console.WriteLine("YOYO CLOSED retries="+retries+" active="+shot.active+" life="+n.life+" ai="+shot.ai[0]+" center="+shot.Center+" retry="+Get(nav,"retryStep"));Require(retries<=3 && shot.active && n.life==10000,"stable no-progress route retries finitely and retains native manual ball without phantom Damage");
             for(int y=5;y<=42;y++)Main.tile[48,y].active(false);long first=-1,expected=-1;
             for(int tick=1;tick<=40 && first<0;tick++)
             {NativeQuickItemChecks.BeginWorldStep();NativeToolExecutionChecks.Sample(context,input,n.Center,true);Call(combat,"Sample");n.UpdateNPC(2);NativeCombatAimChecks.Prepare(host,attack,n,0,true);var plan=(AttackContact)GetOptional(entry,"Contact");if(plan!=null)expected=plan.Timeline.SampleTick+plan.Tick;int life=n.life;shot.Update(shot.whoAmI);if(n.life<life)first=Main.GameUpdateCount;}
             Console.WriteLine("YOYO navigation changes: stableSearches="+searches+" closedRetries="+retries+" first="+first+" expected="+expected+" center="+shot.Center);Require(first>0 && first==expected,"reopened local route resumes useful input and the real native first Damage clock");
-            Gap(context,false);Gap(context,true);NativeCombatYoyoGapChecks.Run(context);Progress(context);
+            Gap(context,false);Gap(context,true);NativeCombatYoyoGapChecks.Run(context);Progress(context);NativeCombatCostNavigationChecks.RunNavigation(context);
         }
         internal static void RunIsolated(object context)
         {

@@ -34,11 +34,13 @@ namespace JueMingR.TerrariaHost.Combat
         }
         private readonly List<Receiver> receivers=new List<Receiver>();
         private readonly List<AiReflector> aiReflectors=new List<AiReflector>();
-        private readonly Player player;private readonly Projectile shot;private readonly NpcTrajectory timeline;private readonly HostAttackReceive selected;
+        private readonly Player player;private readonly Projectile shot;private NpcTrajectory capturedTimeline;private readonly HostAttackObstacles timelineOwner;
+        private NpcTrajectory timeline {get{return timelineOwner==null?capturedTimeline:timelineOwner.timeline;}}
+        private readonly HostAttackReceive selected;
         private readonly HostAttackReceive arcSelected;
         private readonly int delay;private readonly bool beforeNpc,nextWorld,selectedChaseable,selectedReflects,goodWorld,expert,multiplayer;private int remaining;
         private readonly HitHistory history;private readonly bool ownsHistory;
-        private readonly int[] initialLocal,localNext;private readonly List<int> otherHitSlots=new List<int>();
+        private readonly int[] initialLocal,localNext,policyLocal;private readonly List<int> otherHitSlots=new List<int>();
         private HostProjectileBirthSlots birthSlots;
         private bool? beeOwnerStrong;
         private Player beeOwner;
@@ -56,6 +58,16 @@ namespace JueMingR.TerrariaHost.Combat
         private readonly List<HostProjectileTargets> targetLeases=new List<HostProjectileTargets>();
         private readonly List<HostProjectileFamilyLease> familyLeases=new List<HostProjectileFamilyLease>();
         private readonly List<HostAttackObstacles> receiveLeases=new List<HostAttackObstacles>();
+        private readonly List<HostAttackObstacles> receivePolicies=new List<HostAttackObstacles>();
+        private readonly List<HostAttackObstacles> preparationLeases=new List<HostAttackObstacles>();
+        private readonly PolicyInputs policyInputs;
+        private readonly struct PolicyInputs
+        {
+            private readonly int type,owner,penetration,identity;
+            private readonly bool local,shared,melee,trap,npc,friendly,hostile,minion,sentry;
+            internal PolicyInputs(Projectile p){type=p.type;owner=p.owner;penetration=p.maxPenetrate;identity=p.immunityIdentity;local=p.usesLocalNPCImmunity;shared=p.usesIDStaticNPCImmunity;melee=p.usesOwnerMeleeHitCD;trap=p.trap;npc=p.npcProj;friendly=p.friendly;hostile=p.hostile;minion=p.minion;sentry=p.sentry;}
+            internal bool Matches(Projectile p){return type==p.type && owner==p.owner && penetration==p.maxPenetrate && identity==p.immunityIdentity && local==p.usesLocalNPCImmunity && shared==p.usesIDStaticNPCImmunity && melee==p.usesOwnerMeleeHitCD && trap==p.trap && npc==p.npcProj && friendly==p.friendly && hostile==p.hostile && minion==p.minion && sentry==p.sentry;}
+        }
         internal int Remaining {get{return remaining;}}
         internal int OtherHits {get;private set;}
         internal int SelectedHits {get;private set;}
@@ -75,8 +87,8 @@ namespace JueMingR.TerrariaHost.Combat
             history=new HitHistory();ownsHistory=true;
             // Ordinary owner-only attacks keep no 200-entry private arrays
             // until a real preceding receive actually writes shared immunity.
-            if(shot.usesLocalNPCImmunity){initialLocal=new int[Main.maxNPCs];localNext=new int[Main.maxNPCs];for(int slot=0;slot<initialLocal.Length;slot++){int value=shot.localNPCImmunity[slot];initialLocal[slot]=value<0?int.MaxValue:value;localNext[slot]=initialLocal[slot];}}
-            this.player=player;this.shot=shot;this.timeline=timeline;this.delay=delay;this.beforeNpc=beforeNpc;this.nextWorld=nextWorld;selected=HostAttackReceive.Capture(player,shot,timeline.Identity.Slot,beforeNpc,nextWorld);selectedChaseable=Main.npc[timeline.Identity.Slot].CanBeChasedBy(shot);arcSelected=shot.usesOwnerMeleeHitCD?HostAttackReceive.CaptureIgnoringMelee(player,shot,timeline.Identity.Slot,beforeNpc,nextWorld):selected;
+            if(shot.usesLocalNPCImmunity){initialLocal=new int[Main.maxNPCs];localNext=new int[Main.maxNPCs];policyLocal=(int[])shot.localNPCImmunity.Clone();for(int slot=0;slot<initialLocal.Length;slot++){int value=shot.localNPCImmunity[slot];initialLocal[slot]=value<0?int.MaxValue:value;localNext[slot]=initialLocal[slot];}}
+            this.player=player;this.shot=shot;capturedTimeline=timeline;policyInputs=new PolicyInputs(shot);this.delay=delay;this.beforeNpc=beforeNpc;this.nextWorld=nextWorld;selected=HostAttackReceive.Capture(player,shot,timeline.Identity.Slot,beforeNpc,nextWorld);selectedChaseable=Main.npc[timeline.Identity.Slot].CanBeChasedBy(shot);arcSelected=shot.usesOwnerMeleeHitCD?HostAttackReceive.CaptureIgnoringMelee(player,shot,timeline.Identity.Slot,beforeNpc,nextWorld):selected;
             for(int slot=0;slot<Main.maxNPCs;slot++)
             {
                 var npc=Main.npc[slot];if(slot==timeline.Identity.Slot)continue;
@@ -86,16 +98,32 @@ namespace JueMingR.TerrariaHost.Combat
                 if(!Eligible(player,shot,npc))continue;
                 var receive=HostAttackReceive.Capture(player,shot,slot,beforeNpc,nextWorld);receivers.Add(new Receiver{Npc=npc,Identity=CombatSelection.Identity(npc,timeline.Identity.Session),Box=CombatSelection.ReceiveBounds(npc),RawBox=ReflectionBounds(npc),Reflects=npc.reflectsProjectiles,RandomReflection=goodWorld && npc.aiStyle==53,Position=npc.position,Offset=npc.netOffset,OwnerImmune=npc.immune[player.whoAmI],LocalImmune=shot.localNPCImmunity[slot],StaticExpiry=shot.usesIDStaticNPCImmunity?Projectile.perIDStaticNPCImmunity[shot.immunityIdentity,slot]:0,Receive=receive,ArcReceive=shot.usesOwnerMeleeHitCD?HostAttackReceive.CaptureIgnoringMelee(player,shot,slot,beforeNpc,nextWorld):receive,NoTileCollide=npc.noTileCollide,Unknown=NPCID.Sets.ZappingJellyfish[npc.type],Chaseable=npc.CanBeChasedBy(shot)});
             }
+            receivePolicies.Add(this);
         }
-        private HostAttackObstacles(HostAttackObstacles parent,Projectile spawned,bool copyLocal)
+        private HostAttackObstacles(HostAttackObstacles parent,Projectile spawned,bool copyLocal,bool candidate=false)
         {
             selectedReflects=parent.selectedReflects;goodWorld=parent.goodWorld;expert=parent.expert;multiplayer=parent.multiplayer;aiReflectors=parent.aiReflectors;
             targetLeases=parent.targetLeases;
             familyLeases=parent.familyLeases;
             receiveLeases=parent.receiveLeases;
-            player=parent.player;shot=spawned;timeline=parent.timeline;delay=parent.delay;beforeNpc=parent.beforeNpc;nextWorld=parent.nextWorld;history=parent.history;ownsHistory=false;
+            receivePolicies=parent.receivePolicies;preparationLeases=parent.preparationLeases;
+            player=parent.player;shot=spawned;capturedTimeline=parent.timeline;timelineOwner=candidate?null:parent;policyInputs=new PolicyInputs(spawned);delay=parent.delay;beforeNpc=parent.beforeNpc;nextWorld=parent.nextWorld;history=candidate?new HitHistory():parent.history;ownsHistory=candidate;
+            // Capture immutable eligibility BEFORE allocating/capturing another
+            // receiver set. Local immunity is part of the key, never collapsed
+            // between observed members; mutable owner/static history is not.
+            HostAttackObstacles policy=null;foreach(var prior in receivePolicies)if(prior.CanShareReceive(spawned)){policy=prior;break;}
+            if(spawned.usesLocalNPCImmunity)
+            {
+                // The policy owns this immutable initial array. Sharing it
+                // after exact matching avoids another 200-counter capture per
+                // sibling/direction; only mutable deadlines belong to the fork.
+                policyLocal=policy!=null?policy.policyLocal:(int[])spawned.localNPCImmunity.Clone();
+                localNext=copyLocal && parent.localNext!=null?(int[])parent.localNext.Clone():new int[Main.maxNPCs];
+                if(!copyLocal)for(int slot=0;slot<localNext.Length;slot++){int value=policyLocal[slot];localNext[slot]=value<0?int.MaxValue:value;}
+                initialLocal=candidate?(int[])localNext.Clone():localNext;
+            }
+            if(policy!=null){selected=policy.selected;arcSelected=policy.arcSelected;selectedChaseable=policy.selectedChaseable;receivers=policy.receivers;remaining=spawned.penetrate;return;}
             selected=HostAttackReceive.Capture(player,spawned,timeline.Identity.Slot,beforeNpc,nextWorld);selectedChaseable=Main.npc[timeline.Identity.Slot].CanBeChasedBy(spawned);arcSelected=spawned.usesOwnerMeleeHitCD?HostAttackReceive.CaptureIgnoringMelee(player,spawned,timeline.Identity.Slot,beforeNpc,nextWorld):selected;
-            if(spawned.usesLocalNPCImmunity){localNext=copyLocal && parent.localNext!=null?(int[])parent.localNext.Clone():new int[Main.maxNPCs];if(!copyLocal)for(int slot=0;slot<localNext.Length;slot++){int value=spawned.localNPCImmunity[slot];localNext[slot]=value<0?int.MaxValue:value;}initialLocal=localNext;}
             foreach(var prior in parent.receivers)
             {
                 if(!Eligible(player,spawned,prior.Npc))continue;
@@ -108,7 +136,22 @@ namespace JueMingR.TerrariaHost.Combat
             // lease. Repeated search directions must not retain duplicates.
             if(!SameReceivePolicy(parent))
             {bool found=false;foreach(var lease in receiveLeases)if(SameReceivePolicy(lease)){found=true;break;}if(!found)receiveLeases.Add(this);}
+            receivePolicies.Add(this);
         }
+        private bool CanShareReceive(Projectile value)
+        {
+            if(!policyInputs.Matches(value))return false;
+            if(!value.usesLocalNPCImmunity)return true;
+            // Compare original counters, not a candidate's written
+            // deadlines. The live/initial shot arrays are never replay scratch.
+            for(int slot=0;slot<Main.maxNPCs;slot++)if(policyLocal[slot]!=value.localNPCImmunity[slot])return false;return true;
+        }
+        // Independent directions own distinct histories/checkpoints. Siblings
+        // spawned inside one direction still share that direction's history.
+        internal HostAttackObstacles ForkCandidate(){return new HostAttackObstacles(this,shot,false,true);}
+        internal void ExtendPreparation(NpcTrajectory value)
+        {if(!HostAttackAim.SolvePreparation.Extends(timeline,value))throw new InvalidOperationException("Attack prefix changed during continuation.");capturedTimeline=value;}
+        internal void IncludePreparation(HostAttackObstacles value){if(!ReferenceEquals(this,value) && !preparationLeases.Contains(value))preparationLeases.Add(value);}
         private bool SameReceivePolicy(HostAttackObstacles other)
         {
             if(shot.type!=other.shot.type || shot.maxPenetrate!=other.shot.maxPenetrate || shot.usesLocalNPCImmunity!=other.shot.usesLocalNPCImmunity || shot.usesIDStaticNPCImmunity!=other.shot.usesIDStaticNPCImmunity || shot.immunityIdentity!=other.shot.immunityIdentity || shot.usesOwnerMeleeHitCD!=other.shot.usesOwnerMeleeHitCD || shot.trap!=other.shot.trap || shot.npcProj!=other.shot.npcProj || selectedChaseable!=other.selectedChaseable || !selected.Same(other.selected) || receivers.Count!=other.receivers.Count)return false;
@@ -244,6 +287,7 @@ namespace JueMingR.TerrariaHost.Combat
                 foreach(var family in familyLeases)if(!family.Current)return false;
                 if(!ReceiveUnchanged())return false;
                 foreach(var lease in receiveLeases)if(!ReferenceEquals(lease,this) && !lease.ReceiveUnchanged())return false;
+                foreach(var lease in preparationLeases)if(!lease.Unchanged)return false;
                 return true;
         }
         private bool SameCapturedReceive(HostAttackReceive normal,HostAttackReceive arc,int slot)

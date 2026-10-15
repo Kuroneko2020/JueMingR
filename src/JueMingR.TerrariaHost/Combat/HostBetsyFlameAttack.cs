@@ -182,35 +182,94 @@ namespace JueMingR.TerrariaHost.Combat
             }
             return true;
         }
+        private static readonly object PreparationKey=new object();
+        private sealed class Preparation
+        {
+            internal Player Player;internal Item Item;internal AttackAmmoSnapshot Ammo;internal Vector2 Origin;internal int Age,Delay,Direction;internal byte Prefix;internal bool BeforeNpc;internal float Scale,KnockBack;
+            internal NpcTrajectory Timeline;internal PredictionTerrain Terrain;internal HostAttackObstacles Root;internal Projectile[] Scene;internal HostProjectileBirthSlots Pool;
+            internal AttackBallisticCandidates.Response Response;internal readonly List<Branch> Branches=new List<Branch>();
+            internal bool Matches(Player p,AttackAmmoSnapshot a,NpcTrajectory path,Vector2 start,int age,bool before,PredictionTerrain terrain,int delay)
+            {return ReferenceEquals(Player,p) && ReferenceEquals(Item,p.HeldItem) && Ammo.WeaponType==a.WeaponType && Prefix==p.HeldItem.prefix && Direction==p.direction && Scale==p.HeldItem.scale && KnockBack==p.HeldItem.knockBack && HostAttackAim.SameAmmo(Ammo,a) && Origin==start && Age==age && Delay==delay && BeforeNpc==before && ReferenceEquals(Terrain,terrain) && terrain.Unchanged && Root.Unchanged && HostAttackAim.SolvePreparation.Extends(Timeline,path);}
+        }
+        private readonly struct Launch
+        {
+            private readonly Vector2 birth,v0,v1,v2;
+            internal Launch(Vector2 birth,Vector2 v0,Vector2 v1,Vector2 v2){this.birth=birth;this.v0=v0;this.v1=v1;this.v2=v2;}
+            internal bool Same(Launch other){return birth==other.birth && v0==other.v0 && v1==other.v1 && v2==other.v2;}
+        }
+        private sealed class Branch
+        {
+            internal Launch Launch;internal Vector2 Aim;internal HostAttackObstacles Root;internal List<Member> Rows;internal HostProjectileBirthSlots Slots;internal int Completed;internal bool Terminal;
+        }
         internal static AttackContact Solve(Player player,AttackAmmoSnapshot ammo,NpcTrajectory timeline,Vector2 origin,int age,bool beforeNpc,PredictionTerrain terrain,HostAttackObstacles obstacles,int delay)
         {
             if(ammo.Projectile!=711 || ammo.WeaponType!=3870 || ammo.Damage<=0 || delay<0 || age-delay<0 || age+1>=timeline.Count)return null;
-            obstacles.CaptureShotFacing(player);
-            var scene=Capture(obstacles);var pool=obstacles.CaptureBirthSlots();var body=Terraria.ID.ContentSamples.ProjectilesByType[711];
-            var ballistic=AttackBallisticCandidates.Generate(timeline,age,origin.X,origin.Y,ammo.Speed,body.extraUpdates+1,true,40*player.HeldItem.scale,Math.Max(body.width,body.height)*.5f);
-            var directions=new Vector2[ballistic.Length+33];int count=0;
+            var scope=HostAttackAim.SolvePreparation.Current;var prepared=scope?.Read(PreparationKey) as Preparation;var body=Terraria.ID.ContentSamples.ProjectilesByType[711];
+            if(prepared==null || !prepared.Matches(player,ammo,timeline,origin,age,beforeNpc,terrain,delay))
+            {
+                obstacles.CaptureShotFacing(player);
+                prepared=new Preparation{Player=player,Item=player.HeldItem,Ammo=ammo,Origin=origin,Age=age,Delay=delay,BeforeNpc=beforeNpc,Prefix=player.HeldItem.prefix,Direction=player.direction,Scale=player.HeldItem.scale,KnockBack=player.HeldItem.knockBack,Timeline=timeline,Terrain=terrain,Root=obstacles,Scene=Capture(obstacles),Pool=obstacles.CaptureBirthSlots(),Response=new AttackBallisticCandidates.Response(body.extraUpdates+1,true)};
+                scope?.Store(PreparationKey,prepared);
+            }
+            else{obstacles.IncludePreparation(prepared.Root);prepared.Root.ExtendPreparation(timeline);prepared.Timeline=timeline;}
+            var ballistic=AttackBallisticCandidates.GeneratePrepared(timeline,age,origin.X,origin.Y,ammo.Speed,body.extraUpdates+1,true,40*player.HeldItem.scale,Math.Max(body.width,body.height)*.5f,prepared.Response);
+            // Deduplication retains launch values only. Keeping Branch here
+            // would unnecessarily keep every retired scene/history alive until
+            // the whole search ends, including directions not checkpointed.
+            var directions=new Launch[ballistic.Length+33];int count=0;
             for(int seed=0;seed<directions.Length;seed++)
             {
+                CombatPredictionWork.Check();
                 var b=timeline[age+1].ProjectileReceiveBounds;
                 // Discrete inverse candidates precede the sparse emergency
                 // directions. A dry proposal never substitutes for the full
                 // three-member receive/trail/Kill replay below.
                 int fallback=seed-ballistic.Length;
-                Vector2 direction=seed<ballistic.Length?new Vector2(ballistic[seed].X,ballistic[seed].Y):fallback==0?(new Vector2(b.CenterX,b.CenterY)-origin).SafeNormalize(Vector2.UnitX*player.direction):((fallback-1)*MathHelper.TwoPi/32).ToRotationVector2();bool duplicate=false;for(int i=0;i<count;i++)if(Vector2.Dot(directions[i],direction)>.99999f){duplicate=true;break;}if(duplicate)continue;directions[count++]=direction;
-                var aim=origin+direction*10000;obstacles.BeginCandidate();var rows=Prepare(scene,null,obstacles,timeline.Identity.Slot);var slots=pool.Copy();bool valid=true;
-                for(int wait=1;wait<=delay;wait++){AttackContact ignored;if(!Outer(rows,slots,timeline,terrain,age-delay+wait,wait,true,aim,out ignored)){valid=false;break;}}if(!valid)continue;
+                Vector2 direction=seed<ballistic.Length?new Vector2(ballistic[seed].X,ballistic[seed].Y):fallback==0?(new Vector2(b.CenterX,b.CenterY)-origin).SafeNormalize(Vector2.UnitX*player.direction):((fallback-1)*MathHelper.TwoPi/32).ToRotationVector2();
+                var aim=origin+direction*10000;
                 var screen=aim-Main.screenPosition;if(player.gravDir==-1)screen.Y=Main.screenHeight-screen.Y;
                 var point=new Vector2((int)screen.X+Main.screenPosition.X,player.gravDir==-1?Main.screenPosition.Y+Main.screenHeight-(int)screen.Y:(int)screen.Y+Main.screenPosition.Y);
                 var velocity=point-origin;float length=(float)Math.Sqrt(velocity.X*velocity.X+velocity.Y*velocity.Y);
                 if(length==0)velocity=Vector2.UnitX*player.direction*ammo.Speed;else velocity*=ammo.Speed/length;
                 Vector2 birth;if(!BirthOrigin(terrain,origin,velocity,player.HeldItem.scale,out birth))return null;int ownerDirection=Facing(player,origin,aim);
-                for(int i=0;i<3;i++)
+                Vector2 v0=BirthVelocity(velocity,ownerDirection,0),v1=BirthVelocity(velocity,ownerDirection,1),v2=BirthVelocity(velocity,ownerDirection,2);
+                // Deduplicate the actual cursor-quantized three native births,
+                // including muzzle obstruction and facing, not nearby seeds.
+                var launch=new Launch(birth,v0,v1,v2);
+                bool duplicate=false;for(int i=0;i<count;i++)if(directions[i].Same(launch)){duplicate=true;break;}if(duplicate)continue;
+                Branch branch=null;foreach(var prior in prepared.Branches)if(prior.Launch.Same(launch)){branch=prior;break;}
+                if(branch==null)
                 {
-                    int slot;if(!slots.TryAllocate(out slot))return null;var q=new Projectile();q.SetDefaults(711);q.active=true;q.whoAmI=slot;q.owner=player.whoAmI;q.Center=birth;q.velocity=BirthVelocity(velocity,ownerDirection,i);q.damage=ammo.Damage;q.knockBack=player.HeldItem.knockBack;
-                    bool wet;byte kind;if(!terrain.ProjectileWet(birth.X,birth.Y,q.width,q.height,out wet,out kind,true))return null;q.wet=wet;rows.Add(new Member{Shot=q,Source=true,Selected=timeline.Identity.Slot,Receive=obstacles.ForkForSpawn(q)});
+                    // Only a live extension scope with a shorter prefix needs
+                    // a distinct retained history. Unretained directions are
+                    // serial scratch: reset the root without touching the
+                    // independent histories of saved checkpoints.
+                    bool retain=scope!=null && timeline.Stop==PredictionStop.None && timeline.Count-age-1<120 && prepared.Branches.Count<4;
+                    var root=retain?prepared.Root.ForkCandidate():prepared.Root;if(!retain)root.BeginCandidate();
+                    var rows=Prepare(prepared.Scene,null,root,timeline.Identity.Slot);var slots=prepared.Pool.Copy();bool valid=true;
+                    for(int wait=1;wait<=delay;wait++){CombatPredictionWork.Check();AttackContact ignored;if(!Outer(rows,slots,timeline,terrain,age-delay+wait,wait,true,aim,out ignored)){valid=false;break;}}if(!valid)continue;
+                    for(int i=0;i<3;i++)
+                    {
+                        int slot;if(!slots.TryAllocate(out slot))return null;var q=new Projectile();q.SetDefaults(711);q.active=true;q.whoAmI=slot;q.owner=player.whoAmI;q.Center=birth;q.velocity=i==0?v0:i==1?v1:v2;q.damage=ammo.Damage;q.knockBack=player.HeldItem.knockBack;
+                        bool wet;byte kind;if(!terrain.ProjectileWet(birth.X,birth.Y,q.width,q.height,out wet,out kind,true))return null;q.wet=wet;rows.Add(new Member{Shot=q,Source=true,Selected=timeline.Identity.Slot,Receive=root.ForkForSpawn(q)});
+                    }
+                    rows.Sort((left,right)=>left.Shot.whoAmI.CompareTo(right.Shot.whoAmI));
+                    branch=new Branch{Launch=launch,Aim=aim,Root=root,Rows=rows,Slots=slots};
+                    // Only a few complete direction workspaces survive an
+                    // extension; a dense live scene must not be multiplied by
+                    // every fallback direction. Other directions still replay.
+                    if(retain)prepared.Branches.Add(branch);
                 }
-                rows.Sort((left,right)=>left.Shot.whoAmI.CompareTo(right.Shot.whoAmI));
-                for(int step=1;step<=Math.Min(120,timeline.Count-age-1);step++){AttackContact contact;if(!Outer(rows,slots,timeline,terrain,age+step,delay+step,true,aim,out contact))break;if(contact!=null)return contact;}
+                else branch.Root.ExtendPreparation(timeline);
+                directions[count++]=launch;if(branch.Terminal)continue;
+                for(int step=branch.Completed+1;step<=Math.Min(120,timeline.Count-age-1);step++)
+                {
+                    CombatPredictionWork.Check();AttackContact contact;
+                    if(!Outer(branch.Rows,branch.Slots,timeline,terrain,age+step,delay+step,true,branch.Aim,out contact)){prepared.Branches.Remove(branch);break;}
+                    if(contact!=null)return contact;branch.Completed=step;
+                    bool alive=false;foreach(var m in branch.Rows)if(m.Source && m.Shot.active){alive=true;break;}
+                    if(!alive){branch.Terminal=true;branch.Rows=null;branch.Slots=null;break;}
+                }
             }
             return null;
         }

@@ -148,8 +148,11 @@ namespace JueMingR.TerrariaHost.Combat
         }
         private static List<Member> Prepare(Projectile[] scene,Projectile[] source,HostAttackObstacles root,Player player,NpcTrajectory path,ReceiverFacts facts)
         {
-            var rows=new List<Member>();foreach(var p in scene){bool own=false;if(source!=null)foreach(var q in source)if(ReferenceEquals(p,q)){own=true;break;}var copy=Copy(p);rows.Add(new Member{Shot=copy,Receive=copy.owner==Main.myPlayer?root.ForkForSpawn(copy):null,Source=own,OwnerCenter=player.Center,Selected=path.Identity.Slot,SelectedType=path.Identity.Type,Facts=facts});}return rows;
+            var rows=new List<Member>();foreach(var p in scene){bool own=false;if(source!=null)foreach(var q in source)if(ReferenceEquals(p,q)){own=true;break;}var copy=Copy(p);rows.Add(new Member{Shot=copy,Receive=copy.owner==Main.myPlayer?root.ForkForSpawn(copy):null,Source=own,OwnerCenter=player.Center,Selected=path.Identity.Slot,SelectedType=path.Identity.Type,Facts=facts});}rows.Sort((a,b)=>a.Shot.whoAmI.CompareTo(b.Shot.whoAmI));return rows;
         }
+        private static int After(List<Member> rows,int slot)
+        {int lo=0,hi=rows.Count;while(lo<hi){int mid=(lo+hi)/2;if(rows[mid].Shot.whoAmI<=slot)lo=mid+1;else hi=mid;}return lo;}
+        private static void Insert(List<Member> rows,Member value){rows.Insert(After(rows,value.Shot.whoAmI),value);}
         private static AttackContact Receive(Member m,NpcTrajectory path,int tick,int outer,int sub,Vector2 aim)
         {
             var p=m.Shot;if(m.Receive==null || !p.friendly || p.hostile || p.damage<=0)return null;m.SelectedDamage=false;m.SelectedCenterX=path[tick].OwnerBounds.CenterX;
@@ -176,7 +179,7 @@ namespace JueMingR.TerrariaHost.Combat
             {
                 int slot;if(!slots.TryAllocate(out slot))return false;Vector2 v=FlameVelocity(death.Velocity,35,(i-3)*4,40,-8+i*2);var q=new Projectile();q.SetDefaults(400+i%3);q.active=true;q.owner=p.owner;q.whoAmI=slot;q.Center=death.Center+v;q.velocity=v;q.damage=(int)((double)death.Damage*.5);q.knockBack=0;
                 bool wet;byte kind;if(!terrain.ProjectileWet(q.Center.X,q.Center.Y,q.width,q.height,out wet,out kind,true))return false;q.wet=wet;
-                rows.Add(new Member{Shot=q,Receive=m.Receive.ForkForSpawn(q),Source=m.Source,Random=true,OwnerCenter=m.OwnerCenter,Selected=m.Selected,SelectedType=m.SelectedType,Facts=m.Facts});
+                Insert(rows,new Member{Shot=q,Receive=m.Receive.ForkForSpawn(q),Source=m.Source,Random=true,OwnerCenter=m.OwnerCenter,Selected=m.Selected,SelectedType=m.SelectedType,Facts=m.Facts});
             }
             return true;
         }
@@ -185,7 +188,10 @@ namespace JueMingR.TerrariaHost.Combat
             contact=null;int after=-1;
             for(int visit=0;visit<1000;visit++)
             {
-                Member m=null;foreach(var q in rows)if(q.Shot.active && q.Shot.whoAmI>after && (m==null || q.Shot.whoAmI<m.Shot.whoAmI))m=q;if(m==null)return true;var p=m.Shot;after=p.whoAmI;
+                // Re-find the next native slot after synchronous Kill births.
+                // A higher-slot child executes now; a reused lower slot waits
+                // until next outer. Reflection never frees its occupied slot.
+                int index=After(rows,after);while(index<rows.Count && !rows[index].Shot.active)index++;if(index==rows.Count)return true;var m=rows[index];var p=m.Shot;after=p.whoAmI;
                 for(int sub=0;sub<=p.extraUpdates;sub++)
                 {
                     m.Rows=rows;m.Slots=slots;m.Path=path;m.Terrain=terrain;m.Tick=tick;m.Outer=outer;m.Sub=sub;m.Aim=aim;m.DeathAvailable=true;m.DeathContact=null;
@@ -201,14 +207,35 @@ namespace JueMingR.TerrariaHost.Combat
             }
             return false;
         }
+        private static readonly object PreparationKey=new object();
+        private sealed class Preparation
+        {
+            internal Player Player;internal Item Item;internal AttackAmmoSnapshot Ammo;internal Vector2 Origin,OwnerCenter;internal int Age,Delay,Direction;internal byte Prefix;internal bool BeforeNpc;internal float KnockBack;
+            internal NpcTrajectory Timeline;internal PredictionTerrain Terrain;internal HostAttackObstacles Root;internal Projectile[] Scene;internal ReceiverFacts Facts;internal HostProjectileBirthSlots Pool;
+            internal AttackBallisticCandidates.Response Response;internal readonly List<Branch> Branches=new List<Branch>();
+            internal bool Matches(Player p,AttackAmmoSnapshot a,NpcTrajectory path,Vector2 start,int age,bool before,PredictionTerrain terrain,int delay)
+            {return ReferenceEquals(Player,p) && ReferenceEquals(Item,p.HeldItem) && Ammo.WeaponType==a.WeaponType && Prefix==p.HeldItem.prefix && Direction==p.direction && OwnerCenter==p.Center && KnockBack==p.HeldItem.knockBack && HostAttackAim.SameAmmo(Ammo,a) && Origin==start && Age==age && Delay==delay && BeforeNpc==before && ReferenceEquals(Terrain,terrain) && terrain.Unchanged && Root.Unchanged && HostAttackAim.SolvePreparation.Extends(Timeline,path);}
+        }
+        private sealed class Branch
+        {
+            internal Vector2 Velocity,Aim;internal HostAttackObstacles Root;internal List<Member> Rows;internal HostProjectileBirthSlots Slots;internal int Completed;internal bool Terminal;
+        }
         internal static AttackContact Solve(Player player,AttackAmmoSnapshot ammo,NpcTrajectory timeline,Vector2 origin,int age,bool beforeNpc,PredictionTerrain terrain,HostAttackObstacles obstacles,int delay)
         {
             if(!Handles(ammo.Projectile) || ammo.Damage<=0 || delay<0 || age-delay<0 || age+1>=timeline.Count)return null;
-            obstacles.CaptureCursorMapping(player);var scene=Capture(obstacles);var facts=new ReceiverFacts();var pool=obstacles.CaptureBirthSlots();var body=Terraria.ID.ContentSamples.ProjectilesByType[ammo.Projectile];
-            var ballistic=AttackBallisticCandidates.Generate(timeline,age,origin.X,origin.Y,ammo.Speed,body.extraUpdates+1,false,0,Math.Max(body.width,body.height)*.5f);
+            var scope=HostAttackAim.SolvePreparation.Current;var prepared=scope?.Read(PreparationKey) as Preparation;var body=Terraria.ID.ContentSamples.ProjectilesByType[ammo.Projectile];
+            if(prepared==null || !prepared.Matches(player,ammo,timeline,origin,age,beforeNpc,terrain,delay))
+            {
+                obstacles.CaptureCursorMapping(player);
+                prepared=new Preparation{Player=player,Item=player.HeldItem,Ammo=ammo,Origin=origin,OwnerCenter=player.Center,Age=age,Delay=delay,BeforeNpc=beforeNpc,Prefix=player.HeldItem.prefix,Direction=player.direction,KnockBack=player.HeldItem.knockBack,Timeline=timeline,Terrain=terrain,Root=obstacles,Scene=Capture(obstacles),Facts=new ReceiverFacts(),Pool=obstacles.CaptureBirthSlots(),Response=new AttackBallisticCandidates.Response(body.extraUpdates+1,false)};
+                scope?.Store(PreparationKey,prepared);
+            }
+            else{obstacles.IncludePreparation(prepared.Root);prepared.Root.ExtendPreparation(timeline);prepared.Timeline=timeline;}
+            var ballistic=AttackBallisticCandidates.GeneratePrepared(timeline,age,origin.X,origin.Y,ammo.Speed,body.extraUpdates+1,false,0,Math.Max(body.width,body.height)*.5f,prepared.Response);
             var directions=new Vector2[ballistic.Length+33];int count=0;
             for(int seed=0;seed<directions.Length;seed++)
             {
+                CombatPredictionWork.Check();
                 var b=timeline[age+1].ProjectileReceiveBounds;int fallback=seed-ballistic.Length;
                 // This shares only the dry candidate arithmetic with 711;
                 // bottle fuse, random children and ordinary owner immunity
@@ -219,12 +246,31 @@ namespace JueMingR.TerrariaHost.Combat
                 // AI068 openers retain the selected hand speed unchanged.
                 var v=cursor-origin;float length=(float)Math.Sqrt(v.X*v.X+v.Y*v.Y);if(length==0)v=Vector2.UnitX*player.direction*ammo.Speed;else v*=ammo.Speed/length;
                 bool duplicate=false;for(int i=0;i<count;i++)if(directions[i]==v){duplicate=true;break;}if(duplicate)continue;directions[count++]=v;
-                obstacles.BeginCandidate();var rows=Prepare(scene,null,obstacles,player,timeline,facts);var slots=pool.Copy();bool valid=true;
-                for(int wait=1;wait<=delay;wait++){AttackContact ignored;if(!Outer(rows,slots,timeline,terrain,age-delay+wait,wait,aim,out ignored)){valid=false;break;}}if(!valid)continue;
-                int slot;if(!slots.TryAllocate(out slot))return null;var q=new Projectile();q.SetDefaults(ammo.Projectile);q.active=true;q.whoAmI=slot;q.owner=player.whoAmI;q.Center=origin;q.velocity=v;q.damage=ammo.Damage;q.knockBack=player.HeldItem.knockBack;
-                bool randomHistory=false;foreach(var member in rows)if(member.Random){randomHistory=true;break;}
-                bool wet;byte kind;if(!terrain.ProjectileWet(origin.X,origin.Y,q.width,q.height,out wet,out kind,true))return null;q.wet=wet;rows.Add(new Member{Shot=q,Receive=obstacles.ForkForSpawn(q),Source=true,Random=randomHistory,OwnerCenter=player.Center,Selected=timeline.Identity.Slot,SelectedType=timeline.Identity.Type,Facts=facts});
-                for(int step=1;step<=Math.Min(120,timeline.Count-age-1);step++){AttackContact contact;if(!Outer(rows,slots,timeline,terrain,age+step,delay+step,aim,out contact))break;if(contact!=null)return contact;}
+                Branch branch=null;foreach(var prior in prepared.Branches)if(prior.Velocity==v){branch=prior;break;}
+                if(branch==null)
+                {
+                    // A full window or a one-shot solve cannot consume a
+                    // checkpoint. Reuse serial scratch history there; only the
+                    // bounded retained directions require independent roots.
+                    bool retain=scope!=null && timeline.Stop==PredictionStop.None && timeline.Count-age-1<120 && prepared.Branches.Count<4;
+                    var root=retain?prepared.Root.ForkCandidate():prepared.Root;if(!retain)root.BeginCandidate();
+                    var rows=Prepare(prepared.Scene,null,root,player,timeline,prepared.Facts);var slots=prepared.Pool.Copy();bool valid=true;
+                    for(int wait=1;wait<=delay;wait++){CombatPredictionWork.Check();AttackContact ignored;if(!Outer(rows,slots,timeline,terrain,age-delay+wait,wait,aim,out ignored)){valid=false;break;}}if(!valid)continue;
+                    int slot;if(!slots.TryAllocate(out slot))return null;var q=new Projectile();q.SetDefaults(ammo.Projectile);q.active=true;q.whoAmI=slot;q.owner=player.whoAmI;q.Center=origin;q.velocity=v;q.damage=ammo.Damage;q.knockBack=player.HeldItem.knockBack;
+                    bool randomHistory=false;foreach(var member in rows)if(member.Random){randomHistory=true;break;}
+                    bool wet;byte kind;if(!terrain.ProjectileWet(origin.X,origin.Y,q.width,q.height,out wet,out kind,true))return null;q.wet=wet;Insert(rows,new Member{Shot=q,Receive=root.ForkForSpawn(q),Source=true,Random=randomHistory,OwnerCenter=player.Center,Selected=timeline.Identity.Slot,SelectedType=timeline.Identity.Type,Facts=prepared.Facts});
+                    branch=new Branch{Velocity=v,Aim=aim,Root=root,Rows=rows,Slots=slots};if(retain)prepared.Branches.Add(branch);
+                }
+                else branch.Root.ExtendPreparation(timeline);
+                if(branch.Terminal)continue;
+                for(int step=branch.Completed+1;step<=Math.Min(120,timeline.Count-age-1);step++)
+                {
+                    CombatPredictionWork.Check();AttackContact contact;
+                    if(!Outer(branch.Rows,branch.Slots,timeline,terrain,age+step,delay+step,branch.Aim,out contact)){prepared.Branches.Remove(branch);break;}
+                    if(contact!=null)return contact;branch.Completed=step;
+                    bool alive=false;foreach(var m in branch.Rows)if(m.Source && m.Shot.active){alive=true;break;}
+                    if(!alive){branch.Terminal=true;branch.Rows=null;branch.Slots=null;break;}
+                }
             }
             return null;
         }

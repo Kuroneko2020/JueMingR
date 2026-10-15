@@ -17,6 +17,9 @@ namespace JueMingR.TerrariaHost.Combat
         private readonly List<Vector2> path=new List<Vector2>();
         private Vector2 playerAnchor,targetAnchor,progressAnchor;
         private PredictionPlayerMotion preparedPlayer;
+        private MotionRect? contactGoal;
+        private readonly List<Vector2> contactPoints=new List<Vector2>(6);
+        private bool motorRoute;
         private float preparedMeleeSpeed;private bool preparedString,preparedUsable;
         private uint progressStep,retryStep;
         internal int Searches {get;private set;}
@@ -44,6 +47,7 @@ namespace JueMingR.TerrariaHost.Combat
         internal bool PresentationCurrent(Player player)
         {return preparedUsable && preparedMeleeSpeed==player.meleeSpeed && preparedString==player.yoyoString && preparedPlayer.SameSample(NpcPredictionSource.ReadPlayer(player));}
 #if DEBUG
+        internal static int GroupScans;
         internal string ReplayStop {get;private set;}
         internal int ReplayStep {get;private set;}
         internal Vector2 ReplayPlayer {get;private set;}
@@ -61,6 +65,32 @@ namespace JueMingR.TerrariaHost.Combat
             for(int slot=0;slot<Main.maxProjectiles && safe>0;slot++)
             {var other=Main.projectile[slot];if(other!=null && other.active && !ReferenceEquals(other,shot) && other.owner==shot.owner && Handles(other) && other.ai[0]>=-1)safe=Math.Min(safe,OwnRemaining(player,other,Secondary(other)));}
             return safe;
+        }
+        // One definite controller preparation owns these facts. No GUC cache:
+        // a native birth/recall in the same update must capture a new group.
+        internal sealed class GroupFacts
+        {
+            private readonly Dictionary<Projectile,bool> secondaries=new Dictionary<Projectile,bool>();
+            private readonly Dictionary<Projectile,int> remaining=new Dictionary<Projectile,int>();
+            internal GroupFacts(Player player)
+            {
+#if DEBUG
+                GroupScans++;
+#endif
+                var prior=new HashSet<int>();var members=new List<Projectile>();int safe=120;
+                for(int i=0;i<Main.maxProjectiles;i++)
+                {
+                    var shot=Main.projectile[i];if(shot==null || !shot.active || shot.owner!=player.whoAmI)continue;
+                    bool secondary=prior.Contains(shot.type);
+                    if(Handles(shot)){secondaries[shot]=secondary;remaining[shot]=OwnRemaining(player,shot,secondary);if(shot.ai[0]>=-1){members.Add(shot);safe=Math.Min(safe,remaining[shot]);}}
+                    // Secondary includes same-type earlier AI>=-1 even when
+                    // that projectile is not an observed navigation member.
+                    if(shot.ai[0]>=-1)prior.Add(shot.type);
+                }
+                foreach(var shot in members)remaining[shot]=Math.Min(remaining[shot],safe);
+            }
+            internal bool Secondary(Projectile shot){bool value;return secondaries.TryGetValue(shot,out value)?value:HostYoyoNavigation.Secondary(shot);}
+            internal int Remaining(Player player,Projectile shot,bool secondary){int value;return remaining.TryGetValue(shot,out value)?value:HostYoyoNavigation.Remaining(player,shot,secondary);}
         }
         private static int OwnRemaining(Player player,Projectile shot,bool secondary)
         {
@@ -119,26 +149,34 @@ namespace JueMingR.TerrariaHost.Combat
             // The real launch must face the first gap, otherwise its native
             // initial 16px velocity can hit the wall before steering can turn.
             // This opening point carries no Contact or damage guarantee.
-            if(Goal(target,player.Center,range,out goal) && navigation.Find(player.RotatedRelativePoint(player.MountedCenter),goal,player.Center,range,sample.width,sample.height)){point=navigation.path[0];navigation.preparedPlayer=NpcPredictionSource.ReadPlayer(player);navigation.preparedMeleeSpeed=player.meleeSpeed;navigation.preparedString=player.yoyoString;navigation.preparedUsable=true;return true;}
+            if(Goal(target,player.Center,range,out goal) && navigation.FindContact(player.RotatedRelativePoint(player.MountedCenter),target,player.Center,range,sample.width,sample.height))
+            {
+                var start=player.RotatedRelativePoint(player.MountedCenter);float launch=item.shootSpeed;
+                if(item.melee && !ProjectileID.Sets.NoMeleeSpeedVelocityScaling[item.shoot])launch/=player.meleeSpeed;
+                navigation.MotorShortcut(start,(navigation.path[0]-start).SafeNormalize(Vector2.UnitX*player.direction)*launch,player.Center,range,speed,false,sample.width,sample.height,120,true,launch);
+                point=navigation.path[0];navigation.preparedPlayer=NpcPredictionSource.ReadPlayer(player);navigation.preparedMeleeSpeed=player.meleeSpeed;navigation.preparedString=player.yoyoString;navigation.preparedUsable=true;return true;
+            }
             return false;
         }
         private static bool Goal(MotionRect box,Vector2 player,float range,out Vector2 point)
         {
-            point=new Vector2(box.CenterX,box.CenterY);if(Vector2.Distance(point,player)<=range-1)return true;
+            point=new Vector2(box.CenterX,box.CenterY);if(Vector2.Distance(point,player)<=range)return true;
             // A large receive shape can have a reachable edge while its centre
             // is outside. Choose a point strictly inside that existing shape;
             // do not enlarge the input radius or the native damage rectangle.
             float insetX=Math.Min(1,box.Width/4),insetY=Math.Min(1,box.Height/4);
             point=new Vector2(MathHelper.Clamp(player.X,box.X+insetX,box.X+box.Width-insetX),MathHelper.Clamp(player.Y,box.Y+insetY,box.Y+box.Height-insetY));
-            return Vector2.Distance(point,player)<=range-1;
+            // This is only a stable reuse anchor. Body-contact reachability is
+            // decided by FindContact with the actual ball dimensions below.
+            return true;
         }
         internal AttackContact Prepare(Player player,Projectile shot,NpcTrajectory timeline,HostAttackClock clock,out Vector2 point,out bool usable)
         {return PrepareWithPlayer(player,shot,timeline,clock,out point,out usable,HostAttackPlayerFrame.Capture(player,timeline));}
-        internal AttackContact PrepareWithPlayer(Player player,Projectile shot,NpcTrajectory timeline,HostAttackClock clock,out Vector2 point,out bool usable,HostAttackPlayerFrame playerFrame)
+        internal AttackContact PrepareWithPlayer(Player player,Projectile shot,NpcTrajectory timeline,HostAttackClock clock,out Vector2 point,out bool usable,HostAttackPlayerFrame playerFrame,GroupFacts group=null)
         {
             preparedUsable=false;int age=clock.Age;point=Vector2.Zero;usable=false;if(!player.channel || player.CCed || shot.ai[0]<0)return null;
-            bool secondary=Secondary(shot);float range,speed;Parameters(player,shot,secondary,out range,out speed);
-            int remaining=Remaining(player,shot,secondary);if(remaining==0){path.Clear();return null;}
+            bool secondary=group==null?Secondary(shot):group.Secondary(shot);float range,speed;Parameters(player,shot,secondary,out range,out speed);
+            int remaining=group==null?Remaining(player,shot,secondary):group.Remaining(player,shot,secondary);if(remaining==0){path.Clear();return null;}
             if(range<=1 || speed<=0 || Vector2.Distance(shot.Center,player.Center)>range*1.3f)return null;
             var bounds=timeline[Math.Min(timeline.Count-1,age+Math.Max(1,(int)(Vector2.Distance(shot.Center,new Vector2(timeline[age].Bounds.CenterX,timeline[age].Bounds.CenterY))/speed)))].ProjectileReceiveBounds;
             Vector2 goal;if(!Goal(bounds,player.Center,range,out goal))return null;
@@ -148,13 +186,14 @@ namespace JueMingR.TerrariaHost.Combat
             if(!reuse)
             {
                 path.Clear();if(Main.GameUpdateCount<retryStep)return null;
-                terrain.Reset();Searches++;if(!Find(shot.Center,goal,player.Center,range,shot.width,shot.height)){retryStep=Main.GameUpdateCount+5;return null;}
+                terrain.Reset();Searches++;if(!FindContact(shot.Center,bounds,player.Center,range,shot.width,shot.height)){retryStep=Main.GameUpdateCount+5;return null;}
+                MotorShortcut(shot.Center,shot.velocity,player.Center,range,speed,secondary,shot.width,shot.height,remaining);
                 playerAnchor=player.Center;targetAnchor=goal;progressAnchor=shot.Center;progressStep=Main.GameUpdateCount;
             }
             // Replayed steering may fail a geometric route because a fast ball
             // cannot make its corner. Rejection restores the physical cursor.
             float dead=5+speed/2+(secondary?20:0);
-            while(path.Count>1 && Vector2.Distance(shot.Center,path[0])<=dead)path.RemoveAt(0);
+            while(path.Count>1 && Vector2.Distance(shot.Center,path[0])<=dead && (!motorRoute || Clear(shot.Center,path[1],shot.width,shot.height)))path.RemoveAt(0);
             var contact=Replay(player,shot,timeline,clock,secondary,range,speed,remaining,out point,out usable,playerFrame);
             if(usable){preparedPlayer=NpcPredictionSource.ReadPlayer(player);preparedMeleeSpeed=player.meleeSpeed;preparedString=player.yoyoString;preparedUsable=true;}
             if(!usable){path.Clear();retryStep=Main.GameUpdateCount+5;}
@@ -165,21 +204,118 @@ namespace JueMingR.TerrariaHost.Combat
             int steps=Math.Max(1,(int)Math.Ceiling(Vector2.Distance(a,b)/8));Vector2 old=a;
             for(int i=1;i<=steps;i++){var next=Vector2.Lerp(a,b,(float)i/steps);if(!terrain.ProjectilePassage(old.X,old.Y,next.X,next.Y,width,height))return false;old=next;}return true;
         }
+        private bool RouteEdge(Vector2 a,Vector2 b,int width,int height)
+        {
+            bool bodyClear=Clear(a,b,width,height);
+            if(!contactGoal.HasValue)return bodyClear;
+            if(!bodyClear && Math.Abs(a.X-b.X)>.001f && Math.Abs(a.Y-b.Y)>.001f)return false;
+            // A corridor is a steering proposal, never a smaller projectile or
+            // a body-clear proof. Native AI99 can clip X into a corner while
+            // retaining Y, then leave that temporary edge overlap next action.
+            // The centre must still stay in air: a solid sealed wall does not
+            // become a corridor because an embedded contact returned zero.
+            int steps=Math.Max(1,(int)Math.Ceiling(Vector2.Distance(a,b)/8));
+            for(int i=0;i<=steps;i++)
+            {
+                var p=Vector2.Lerp(a,b,(float)i/steps);PredictionTile tile;PredictionStop stop;
+                if(!terrain.Tile((int)Math.Floor(p.X/16),(int)Math.Floor(p.Y/16),out tile,out stop))return false;
+                if(!tile.Active || !tile.Solid || tile.SolidTop)continue;
+                float x=p.X%16,y=p.Y%16;
+                if(tile.Half && y<8 || tile.Slope==1 && y<x || tile.Slope==2 && y<16-x || tile.Slope==3 && y>16-x || tile.Slope==4 && y>x)continue;
+                return false;
+            }
+            return true;
+        }
+        private void MotorShortcut(Vector2 start,Vector2 velocity,Vector2 player,float range,float speed,bool secondary,int width,int height,int remaining,bool opening=false,float launch=0)
+        {
+            if(!motorRoute || path.Count<2)return;
+            int last=path.Count-1;
+            for(int trial=0;trial<4;trial++)
+            {
+                int candidate=trial==0?last:Math.Min(last-1,3-trial);
+                if(candidate<=0)continue;
+                var center=start;var v=opening?(path[candidate]-start).SafeNormalize(Vector2.UnitX)*launch:velocity;
+                for(int step=0;step<remaining;step++)
+                {
+                    if((step&15)==0)CombatPredictionWork.Check();
+                    v=Step(center,v,path[candidate],player,range,speed,secondary);
+                    float x,y;if(!terrain.ProjectileCollision(center.X,center.Y,v.X,v.Y,width,height,out x,out y))break;
+                    v=new Vector2(x,y);center+=v;
+                    if(Vector2.DistanceSquared(center,player)>range*range*1.69f)break;
+                    if(Vector2.Distance(center,path[candidate])<=5+speed/2+(secondary?20:0) && (candidate==last || Clear(center,path[candidate+1],width,height)))
+                    {path.RemoveRange(0,candidate);return;}
+                }
+            }
+        }
+        private bool FindContact(Vector2 start,MotionRect box,Vector2 player,float range,int width,int height)
+        {
+            // Preserve an already legal native centre-directed input. Region
+            // alternatives are needed only when that old endpoint/ray fails;
+            // choosing a nearer grazing point on every ordinary open route
+            // changes the native motor and needlessly captures six endpoints.
+            var direct=new Vector2(box.CenterX,box.CenterY);bool occupied;PredictionStop directStop;
+            if(Vector2.DistanceSquared(direct,player)<=range*range && terrain.Solid(new MotionRect(direct.X-width*.5f,direct.Y-height*.5f,width,height),out occupied,out directStop) && !occupied && Clear(start,direct,width,height))
+            {path.Add(direct);motorRoute=false;return true;}
+            float left=box.X-width*.5f+1,right=box.X+box.Width+width*.5f-1;
+            float top=box.Y-height*.5f+1,bottom=box.Y+box.Height+height*.5f-1;
+            var nearest=new Vector2(MathHelper.Clamp(player.X,left,right),MathHelper.Clamp(player.Y,top,bottom));
+            if(Vector2.DistanceSquared(nearest,player)>range*range)return false;
+            // Candidate occupancy is independent of the BFS vertex. Capture
+            // it once, then try only the closest valid endpoint per expansion.
+            // Nodes which already contact the receiver remain goals themselves;
+            // a blocked endpoint never launches a second whole search.
+            contactPoints.Clear();
+            for(int i=0;i<6;i++)
+            {
+                var near=i==0?new Vector2(box.CenterX,box.CenterY):i==5?player:new Vector2((float)Math.Floor((box.CenterX-8)/16)*16+8+((i-1)&1)*16,(float)Math.Floor((box.CenterY-8)/16)*16+8+((i-1)>>1)*16);
+                var candidate=new Vector2(MathHelper.Clamp(near.X,left,right),MathHelper.Clamp(near.Y,top,bottom));
+                if(Vector2.DistanceSquared(candidate,player)>range*range || contactPoints.Contains(candidate))continue;
+                bool solid;PredictionStop stop;
+                // Zero-velocity TileCollision does not prove occupancy. The
+                // existing pure Solid query leases the complete actual body.
+                if(terrain.Solid(new MotionRect(candidate.X-width*.5f,candidate.Y-height*.5f,width,height),out solid,out stop) && !solid)contactPoints.Add(candidate);
+            }
+            contactGoal=box;
+            try
+            {
+                bool found=Find(start,new Vector2(box.CenterX,box.CenterY),player,range,width,height);motorRoute=false;
+                var previous=start;foreach(var next in path){if(!Clear(previous,next,width,height))motorRoute=true;previous=next;}
+                return found;
+            }
+            finally{contactGoal=null;contactPoints.Clear();}
+        }
+        private bool ContactGoal(Vector2 from,MotionRect box,Vector2 player,float range,int width,int height,out Vector2 goal)
+        {
+            // Expanded centres select geometric proposals only. Native Damage
+            // still uses the untouched integer receiver/projectile rectangles.
+            if(from.X>=box.X-width*.5f+1 && from.X<=box.X+box.Width+width*.5f-1 && from.Y>=box.Y-height*.5f+1 && from.Y<=box.Y+box.Height+height*.5f-1 && Vector2.DistanceSquared(from,player)<=range*range)
+            {
+                bool solid;PredictionStop stop;
+                if(terrain.Solid(new MotionRect(from.X-width*.5f,from.Y-height*.5f,width,height),out solid,out stop) && !solid){goal=from;return true;}
+            }
+            int nearest=-1;float distance=float.MaxValue;
+            for(int i=0;i<contactPoints.Count;i++){float candidate=Vector2.DistanceSquared(from,contactPoints[i]);if(candidate<distance){distance=candidate;nearest=i;}}
+            goal=nearest<0?Vector2.Zero:contactPoints[nearest];
+            return nearest>=0 && Clear(from,goal,width,height) && RouteEdge(from,goal,width,height);
+        }
         private bool Find(Vector2 start,Vector2 goal,Vector2 player,float range,int width,int height)
         {
-            if(Clear(start,goal,width,height)){path.Add(goal);return true;}
-            // Tile-centre vertices retain the centre line of a one-tile gap
-            // regardless of the ball's sub-tile launch position. The actual
+            var contact=contactGoal;
+            Vector2 reached=Vector2.Zero;
+            if(contact.HasValue?ContactGoal(start,contact.Value,player,range,width,height,out reached):Clear(start,goal,width,height)){path.Add(contact.HasValue?reached:goal);return true;}
+            // Tile centres represent steering corridors, independent of body
+            // scale. The actual
             // start remains its own node: every connection into this lattice
             // still checks the full native ball, including its first edge.
             // Keep the original 1024 acquired nodes / 512 expansion bounds.
+            const float offsetX=8,offsetY=8;
             int startX=(int)Math.Floor(start.X/16),startY=(int)Math.Floor(start.Y/16);
             var nodes=new List<Vector2>{start};var previous=new List<int>{-1};var xs=new List<int>{startX};var ys=new List<int>{startY};var seen=new HashSet<long>();
-            if(start==new Vector2(startX*16+8,startY*16+8))seen.Add(((long)startX<<32)|(uint)startY);
+            if(start==new Vector2(startX*16+offsetX,startY*16+offsetY))seen.Add(((long)startX<<32)|(uint)startY);
             for(int at=0;at<nodes.Count && at<512;at++)
             {
-                if(Clear(nodes[at],goal,width,height))
-                {path.Add(goal);for(int i=at;i>0;i=previous[i])path.Add(nodes[i]);path.Reverse();Compress(start,width,height);return true;}
+                if(contact.HasValue?ContactGoal(nodes[at],contact.Value,player,range,width,height,out reached):Clear(nodes[at],goal,width,height))
+                {path.Add(contact.HasValue?reached:goal);for(int i=at;i>0;i=previous[i])path.Add(nodes[i]);path.Reverse();Compress(start,width,height);return true;}
                 // Equal-depth routes prefer progress toward the goal. The old
                 // fixed -1-first order chose a backwards launch for a forward
                 // opening before an equally short forward entrance was tried.
@@ -190,9 +326,9 @@ namespace JueMingR.TerrariaHost.Combat
                     // Only the unsnapped start may connect to the centre of
                     // its own tile; ordinary lattice nodes have eight edges.
                     if(dx==0 && dy==0 && at!=0)continue;int x=xs[at]+dx,y=ys[at]+dy;long key=((long)x<<32)|(uint)y;
-                    if(seen.Contains(key) || nodes.Count>=1024)continue;var next=new Vector2(x*16+8,y*16+8);
+                    if(seen.Contains(key) || nodes.Count>=1024)continue;var next=new Vector2(x*16+offsetX,y*16+offsetY);
                     if(next==nodes[at])continue;
-                    if(Vector2.Distance(next,player)>range-1 || !Clear(nodes[at],next,width,height))continue;
+                    if(Vector2.Distance(next,player)>(contact.HasValue?range:range-1) || !RouteEdge(nodes[at],next,width,height))continue;
                     // A blocked incoming edge says nothing about another
                     // approach to this vertex. Visit only acquired nodes;
                     // accepted vertices still join the same finite BFS once.
@@ -232,12 +368,12 @@ namespace JueMingR.TerrariaHost.Combat
 #if DEBUG
                 ReplayPlayer=playerCenter;
 #endif
-                if(Vector2.Distance(center,playerCenter)>range*1.3f || Vector2.Distance(path[at],playerCenter)>range-1){
+                if(Vector2.Distance(center,playerCenter)>range*1.3f || Vector2.Distance(path[at],playerCenter)>range){
 #if DEBUG
                     ReplayStop="Radius";
 #endif
                     return null;}
-                while(at<path.Count-1 && Vector2.Distance(center,path[at])<=dead)at++;
+                while(at<path.Count-1 && Vector2.Distance(center,path[at])<=dead && (!motorRoute || Clear(center,path[at+1],shot.width,shot.height)))at++;
                 if(step==0)input=path[at];velocity=Step(center,velocity,path[at],playerCenter,range,speed,secondary);
                 if(!HostProjectileEnvironment.Dry(shot,terrain,center.X,center.Y,velocity.X))return null;
                 // AI99 primary/paired balls keep TileCollision's clipped

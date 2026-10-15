@@ -199,11 +199,41 @@ namespace JueMingR.TerrariaHost.Combat
         internal void EndPreparation(){candidateHandPlan=null;EndFlightPreparation();}
         private void PreparePhase(HostAttackPhase phase)
         {
-            try{using(observation.PredictionWork.Enter(Main.GameUpdateCount)){if(CombatPredictionWork.TryContinue())PrepareCore(phase);}}
+            try{using(observation.PredictionWork.Enter(Main.GameUpdateCount))using(new SolvePreparation()){if(CombatPredictionWork.TryContinue())PrepareCore(phase);}}
             catch(CombatPredictionBudgetExceededException){EndFlightPreparation();}
             catch(Exception error){FailLocal(error);}
         }
         internal void FailLocal(Exception error){PropagateFatal(error);executionFaults.Record(FaultContextFor(observation.Selection.Target));Clear();}
+        // This synchronous scope survives only recursive extension of one
+        // preparation. ClearExecution still revokes every input/contact. A
+        // caller storing scratch must additionally key its own phase, origin,
+        // player/ammo and clock; neither this cache nor a matching index is a
+        // permit. In particular current and next hands have distinct origins.
+        internal sealed class SolvePreparation:IDisposable
+        {
+            [ThreadStatic]private static SolvePreparation active;
+            private readonly SolvePreparation prior;
+            private readonly System.Collections.Generic.Dictionary<object,object> values=new System.Collections.Generic.Dictionary<object,object>();
+            private NpcTrajectory timeline;
+            internal static SolvePreparation Current {get{return active;}}
+            internal SolvePreparation(){prior=active;active=this;}
+            internal object Read(object key){object value;return values.TryGetValue(key,out value)?value:null;}
+            internal void Store(object key,object value){values[key]=value;}
+            internal static bool Extends(NpcTrajectory prior,NpcTrajectory next)
+            {
+                if(prior==null || next==null || prior.Stop!=PredictionStop.None || prior.Count>next.Count || prior.SampleTick!=next.SampleTick || prior.CaptureTick!=next.CaptureTick)return false;
+                NpcTrajectory prefix=next;
+                if(next.Count!=prior.Count && !next.TryWindow(next.SampleTick,prior.Count-1,next.Version,out prefix))return false;
+                // Complete immutable point comparison includes identity and
+                // generation, owner/raw/projectile bodies, motion/phase,
+                // reflection, segment and receive eligibility. Versions from
+                // different producers do not substitute for content equality.
+                return AttackIntercept.Equivalent(prior,prefix);
+            }
+            internal bool Bind(NpcTrajectory value)
+            {bool same=Extends(timeline,value);if(!same)values.Clear();timeline=value;return same;}
+            public void Dispose(){active=prior;}
+        }
         private void PrepareCore(HostAttackPhase phase)
         {
             // Re-entering the same native phase is not a new firing window.
@@ -216,10 +246,14 @@ namespace JueMingR.TerrariaHost.Combat
                 preparedMotion.SameSample(NpcPredictionSource.ReadPlayer(held)) && CurrentReceiver && preparedImmune==Main.npc[observation.Selection.Target.Slot].immune[held.whoAmI] &&
                 HostAttackWindow.NextAction(combat,held,held.HeldItem) && Valid(true))return;
             bool beforeNpc=phase==HostAttackPhase.BeforeNpc;ClearExecution();if(!Permission || !CurrentReceiver)return;
-            terrain.Reset();environmentState=new HostProjectileEnvironment.State(true,HostProjectileEnvironment.HandWindRelevant(held,held.HeldItem),held);
+            environmentState=new HostProjectileEnvironment.State(true,HostProjectileEnvironment.HandWindRelevant(held,held.HeldItem),held);
             var player=combat.Player;var item=player.HeldItem;if(!Eligible(item))return;
             if(HostPlacementAttack.Handles(item))return; // Placement has its own native use receipt, not a damage contact.
             var timeline=observation.Prediction.Cache.Read(1);if(timeline==null || !timeline.Identity.Equals(observation.Selection.Target))return;
+            // Replayed prefixes and their tail share the geometry read union.
+            // Reset only when the complete sample prefix cannot be retained;
+            // clearing it on every extension would discard earlier dependencies.
+            if(SolvePreparation.Current==null || !SolvePreparation.Current.Bind(timeline))terrain.Reset();
             // A released bubble or a pending controlled role can still read
             // direction after the hand's ordinary cooldown has closed. Its
             // true phase is prepared independently of another hand emission.
