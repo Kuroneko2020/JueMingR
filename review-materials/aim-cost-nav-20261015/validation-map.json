@@ -2,30 +2,30 @@
   "schema": "aim-cost-nav-review-map-20261015-1",
   "taskBase": "69ffc7bfd5223069081c848f1646b49e958b2eea",
   "branch": "codex/aim-attack-modeling-and-integration",
-  "reviewStatus": "PENDING_INDEPENDENT_REVIEW",
+  "reviewStatus": "PENDING_C_REPAIR_REVIEW",
   "packageStatus": "NOT_EXECUTED",
   "installStatus": "NOT_EXECUTED",
   "qualification": "INCOMPLETE",
   "releaseEligible": false,
   "finalMeasurementHost": {
-    "mvid": "895a6086-787c-408e-b8d7-4a512b1dee24",
-    "sha256": "97651AC11CCF948AAF3BD79D82FD6501D07BFBA5AE40A8850675DCA5058825C9"
+    "mvid": "37b7ffd8-855b-4f57-a21f-e5c9cd24bc7b",
+    "sha256": "E536FC4D99882305A0C53EC6C2BF6443725370CB386B0EF94025F0C5EE27A743"
   },
   "sourceFiles": [
     {
       "path": "docs/计划/辅助瞄准阶段文档.md",
-      "length": 538531,
-      "sha256": "AF58E46A424A3BF997EFD271CD8FC3430DD2C771B65F1B16EFC91DD1C4925598"
+      "length": 539401,
+      "sha256": "28620417CB55E0C60E77ADBC2328DCCF15EBFE36106F93039D0065019E4C8E18"
     },
     {
       "path": "docs/设计/战斗辅助实现设计.md",
-      "length": 186420,
-      "sha256": "631547CBA954C9A3D72732F5D23C454C23F8F1CA970E7FEE4DE61AC0B6F07566"
+      "length": 186998,
+      "sha256": "85E09016964C5E15C18D5DE3C3BEB38777D507F2838C74ECB80EBC4C6721F897"
     },
     {
       "path": "docs/AI经验笔记/战斗移动与钓鱼机制.md",
-      "length": 42715,
-      "sha256": "8DB6E9E3A6CA4FBE7DE10E19840D9AD3C598660E251122AF128EAA0B90556F54"
+      "length": 43464,
+      "sha256": "A45C5D4E4269928A3EA0E58197D7FBBD21CB274676E291F700FFA32E23CBBB57"
     },
     {
       "path": "scripts/workload/AimStage.Development.ps1",
@@ -84,8 +84,8 @@
     },
     {
       "path": "src/JueMingR.TerrariaHost/Combat/HostYoyoReleaseAttack.cs",
-      "length": 18199,
-      "sha256": "62E1201D619379D5188A0FC4ED9C8A53D57CEF013BC4A266AA50C8A160DB4894"
+      "length": 17672,
+      "sha256": "18E685B5634AB632FD3A96296B50A56CB804C8F4D0433B2574E3A129135CAC02"
     },
     {
       "path": "tests/JueMingR.ArchitectureTests/Phase0TArchitectureChecks.cs",
@@ -124,8 +124,8 @@
     },
     {
       "path": "tests/NativeWorldTextProbe/NativeCombatCostNavigationChecks.cs",
-      "length": 36255,
-      "sha256": "52F6B5CFF89B7B3470B8CAC5442CC09E3B097629A0A3F2DEF63DBAEB51729F6D"
+      "length": 41580,
+      "sha256": "6BEC0FE9AB00664C34F0F19B24A755B30300E51B49A5A874216C4FA5EEF857C9"
     },
     {
       "path": "tests/NativeWorldTextProbe/NativeCombatMagicStringAimChecks.cs",
@@ -189,35 +189,30 @@
     },
     {
       "id": "magic-release",
-      "status": "EXECUTED_PASS",
+      "status": "EXECUTED_PASS_REPAIR_PENDING_REVIEW",
       "artifacts": [
         {
-          "path": ".local/aim-cost-nav-20261015/C-canonical-once.log",
-          "length": 29440,
-          "sha256": "EA84470248358F00C81A702D2F71DFAF2061F188ECE9B3EDDA8CB82E8858A71B"
+          "path": ".local/aim-cost-nav-20261015/C-review-final-model.log",
+          "length": 31624,
+          "sha256": "ADF3C9BA4F5F69E3F664C3DED8E1A0C0DFF0E06291B45AA4ADD4FB740000044C"
         },
         {
-          "path": ".local/aim-cost-nav-20261015/C-closed-native.log",
-          "length": 35018,
-          "sha256": "03BB9C971DDFC81270AB37D8BEF4D0B5CEACFD28778050D91B358444C65C1750"
+          "path": ".local/aim-cost-nav-20261015/C-review-final-native.log",
+          "length": 37203,
+          "sha256": "F3F807FA162C25FB7789884D0E901AA510AD9340C7C8FC5DBB9D5311A946D5F7"
         },
         {
-          "path": ".local/aim-cost-nav-20261015/C-exact-real-RED.log",
-          "length": 27865,
-          "sha256": "C84FFBA4E9B2D23C93439AE7C3EA94CF30F67AB01E2800B14F86F776B5812E41"
+          "path": ".local/aim-cost-nav-20261015/C-review-receive-RED.log",
+          "length": 28987,
+          "sha256": "10A0FA755CF0D009454410365E27FED80851F1448D47478A09D9C7F48F72BC9E"
         },
         {
-          "path": ".local/aim-cost-nav-20261015/C-exact-real-neighbor.log",
-          "length": 27991,
-          "sha256": "56E6C7B1E36F7A1DD4AE803E93AA68ABDA1EB417CA1E31BF86D4A3E597F50AA3"
-        },
-        {
-          "path": ".local/aim-cost-nav-20261015/C-exact-nearest-anchor.log",
-          "length": 28993,
-          "sha256": "5B831E3508ED622C083FF4DE3D2AFAC762A936891D2107A180486B3D3D3DD6DF"
+          "path": ".local/aim-cost-nav-20261015/C-review-follow.log",
+          "length": 32361,
+          "sha256": "6B579C17334245F34652C66C87A484114D1925C99300B50C6C0F0C6B43FD9C23"
         }
       ],
-      "applicability": "Final production; final fixture removes only disabled local trace hooks and adds comments. Same input/expectations, separately compiled current fixture. Raw IEEE fixture and prefix equality recorded; no 32x18 surrogate claims."
+      "applicability": "Current exact production/source inputs. Fixed 1ababaf same current regression RED (actual initialized detached AI99 first Damage37 vs95), repair original native firstDamage37/37 and mirror36/36; 20 neighboring geometry/window cases and 12 raw IEEE phase/window cases PASS. 256177/177 steps1603510 to771559. No old51.91% resignment."
     },
     {
       "id": "ballistic-candidates",
@@ -329,23 +324,23 @@
       "artifacts": [
         {
           "path": ".local/aim-cost-nav-20261015/measurement/formal-summary.json",
-          "length": 140918,
-          "sha256": "099A4D49C2477D93F76498073401D0F04719AC172857D8565359163569F41DAF"
+          "length": 147113,
+          "sha256": "48DB85E51EA2169C67012173FCA0AD93D2C1710F1ADF92A2FDEA98B26C512E39"
         },
         {
-          "path": ".local/aim-cost-nav-20261015/measurement/closed-build-record.json",
+          "path": ".local/aim-cost-nav-20261015/measurement/review-repair-build-record.json",
           "length": 106139,
-          "sha256": "07BBF24C4681DA9252C7665400CC0957520E30ABEAD741486CA3F844C645FC99"
+          "sha256": "61DCC3EC38B015AD86C497B4619DA361E7D1282150780047DD3A0755323F16EE"
         },
         {
-          "path": ".local/aim-cost-nav-20261015/measurement/closed-payload-receipt.json",
-          "length": 358,
-          "sha256": "429CDA64069187FB2A10A37CC508140F57F171C0AF4E0C375E48F811DBE3CCDE"
+          "path": ".local/aim-cost-nav-20261015/measurement/review-repair-payload-receipt.json",
+          "length": 446,
+          "sha256": "9857BB2DD30F6FDE85B2052C8A7862C54B0C1DFCCB97FA34293112F6986D97AC"
         },
         {
-          "path": ".local/aim-cost-nav-20261015/measurement/new-C-both-r10/receipt.json",
-          "length": 848,
-          "sha256": "0975B92B25A2C186C24A3E9594F524AC20EB7219E7C40A5CC59BF23F701CA6F9"
+          "path": ".local/aim-cost-nav-20261015/measurement/new-C-both-r11/receipt.json",
+          "length": 855,
+          "sha256": "D3FE98C02A669AB8E5639BCECDCF7DD24E8A3C8857E4756C204E096193FDB61F"
         },
         {
           "path": ".local/aim-cost-nav-20261015/ballistics-repair2-cost.log",
@@ -353,16 +348,16 @@
           "sha256": "9A1B1B8D28365EEFBD266400E28A031AA4FE8F3298D8E4321401D75DF9995F80"
         }
       ],
-      "applicability": "Initial14 and necessary A/C repairs retained; final A Aim/Both r02 and C r10 exact scope. D Main pre-repair2 reused only unchanged candidate/consumer semantics, final repair2 component measured. No overall thread CPU/FPS claim."
+      "applicability": "Initial14 and all A/C repair windows retained; final A Aim/Both r02 reused, C r11 new ordinary Release window. D Main pre-repair2 unchanged and repair2 component evidence retained. Final C steady/p99/first shot/Draw disadvantages disclosed, no overall threadCPU/FPS claim."
     },
     {
       "id": "representative-opportunities",
       "status": "EXECUTED_PASS_WITH_EXTRA_BASIC_LIMIT",
       "artifacts": [
         {
-          "path": ".local/aim-cost-nav-20261015/measurement/new-C-both-r10/out/world-smoke-summary.txt",
-          "length": 789,
-          "sha256": "14B065ECBD5795883DA8AD768A9A1ED1452194ACE182BC307BA7780B2D05312F"
+          "path": ".local/aim-cost-nav-20261015/measurement/new-C-both-r11/out/world-smoke-summary.txt",
+          "length": 790,
+          "sha256": "F3EA5C696E3AABCAB296073B9B6B302252563FAC8F0898C6D1E34BAB7A16ACD6"
         },
         {
           "path": ".local/aim-cost-nav-20261015/measurement/new-Nav-aim-r02/out/world-smoke-summary.txt",
@@ -431,5 +426,37 @@
     "ballisticsRepair2Mismatches": 0,
     "presentationMismatches": 0
   },
-  "reviewBoundary": "Only TASK_BASE to fixed candidate commit. Commit supplied by Git/STATE after these self-referential materials are saved. Raw local files not committed. No approval inferred from this map."
+  "reviewBoundary": "Only TASK_BASE to fixed candidate commit. Commit supplied by Git/STATE after these self-referential materials are saved. Raw local files not committed. No approval inferred from this map.",
+  "repair": {
+    "reviewedCandidate": "1ababafef603c19576e12ad4d3914c3669070651",
+    "priorVerdict": "NEEDS_FIX",
+    "blockingFinding": "P2 C finite candidate generation omitted effective low arc at H120 target500,-100 vx0, oldnearest37/error16.00157 versus96/29.23829; <16 eligibility cannot excuse it.",
+    "originalReview": {
+      "path": ".local/aim-cost-nav-20261015/independent-review-1ababaf-original.md",
+      "length": 4281,
+      "sha256": "E29691D3262D0C3947DD0D0CCE10C411CF7570491017A5A82C84887A1EABD568"
+    },
+    "repairScope": [
+      "src/JueMingR.TerrariaHost/Combat/HostYoyoReleaseAttack.cs",
+      "tests/NativeWorldTextProbe/NativeCombatCostNavigationChecks.cs",
+      "three existing responsibility documents",
+      "three existing review material files"
+    ],
+    "mechanism": "Five unique nominations per band; follow unevaluated nearest canonical before symmetric neighbors. Fixed point/cycle and original five-slot allowance bound work to42; no threshold or coordinate special case.",
+    "nativeReceiveBoundary": "Clearly initialized model detached birth state then original AI99/collision/NPC immunity/Damage. It is not the full parent-born chain; that chain separately passed native MagicStringAimChecks. Old reviewed direction actually95 vsoldreference37; repaired37/37, mirror36/36. Modelnearest37/96 not called nativeDamage59 frames.",
+    "model": {
+      "oldValid": 177,
+      "newValid": 177,
+      "oldSteps": 1603510,
+      "newSteps": 771559,
+      "qualityEqual": 174,
+      "qualityWorse": 3,
+      "worstSquaredLoss": 8.769718,
+      "bothPreciseLater": 0
+    },
+    "mainWindow": "new-C-both-r11",
+    "allOtherSixItems": "frozen; source bytes unchanged; same prior executions and reviewed reuse, not rerun",
+    "qualification": "INCOMPLETE",
+    "releaseEligible": false
+  }
 }

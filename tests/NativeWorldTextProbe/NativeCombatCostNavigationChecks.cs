@@ -36,7 +36,7 @@ namespace NativeWorldTextProbe
             var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,3262,0,0);p.position=new Vector2(1000,646);p.ResetEffects();p.magicString=true;
             var assembly=combat.GetType().Assembly;var type=assembly.GetType("JueMingR.TerrariaHost.Combat.HostYoyoReleaseAttack",true);var terrainType=assembly.GetType("JueMingR.TerrariaHost.Combat.PredictionTerrain",true);var clockType=assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackClock",true);var phase=Enum.Parse(assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase",true),"CompletedWorld");
             var n=Main.npc[2];n.SetDefaults(3);n.whoAmI=2;n.active=true;n.life=10000;
-            int oldFound=0,newFound=0,oldSteps=0,newSteps=0,better=0,worse=0,equal=0,preciseTimeDiff=0;float worstQualityLoss=0;
+            int oldFound=0,newFound=0,oldSteps=0,newSteps=0,better=0,worse=0,equal=0,preciseTimeDiff=0,dominated=0;float worstQualityLoss=0;
             foreach(int horizon in new[]{16,32,64,120})foreach(float x in new[]{0f,4f,40f,100f,300f,500f,-300f,-500f})foreach(float y in new[]{-200f,-100f,0f,200f})foreach(float vx in new[]{0f,1f})
             {
                 n.position=p.RotatedRelativePoint(p.MountedCenter)+new Vector2(x,y);n.width=18;n.height=40;
@@ -53,10 +53,14 @@ namespace NativeWorldTextProbe
                 {
                     var start=p.RotatedRelativePoint(p.MountedCenter);float speed=ProjectileID.Sets.YoyosTopSpeed[p.HeldItem.shoot],inertia=Math.Max(1,14-speed/2),held=p.HeldItem.shootSpeed>speed?p.HeldItem.shootSpeed*.98f:p.HeldItem.shootSpeed,inherited=(held*(inertia-1)+speed)/inertia;
                     int oldTime,newTime;float oldError=Quality(path,first,start,original,inherited,speed,out oldTime),newError=Quality(path,first,start,(Vector2)args[6],inherited,speed,out newTime);
+                    int oldReceive=FirstReceive(path,first,start,original,inherited,speed,16,16),newReceive=FirstReceive(path,first,start,(Vector2)args[6],inherited,speed,16,16);
+                    if(oldReceive>0 && (newReceive<0 || newReceive>oldReceive) && newError>oldError+1){dominated++;Console.WriteLine("RELEASE LOW ARC LOST H="+horizon+" target="+x+","+y+" vx="+vx+" overlap="+oldReceive+"/"+newReceive+" centreError="+oldError+"/"+newError);}
                     if(newError>oldError+1){worse++;worstQualityLoss=Math.Max(worstQualityLoss,newError-oldError);Console.WriteLine("RELEASE QUALITY LOSS H="+horizon+" target="+x+","+y+" vx="+vx+" oldError="+oldError+" newError="+newError+" time="+oldTime+"/"+newTime);}else if(oldError>newError+1)better++;else equal++;
                     if(oldError<16 && newError<16 && oldTime!=newTime){preciseTimeDiff++;Console.WriteLine("RELEASE PRECISE TIME H="+horizon+" target="+x+","+y+" vx="+vx+" time="+oldTime+"/"+newTime);Require(newTime<=oldTime,"ranked seeds do not replace an early precise receive with a late arc");}
                 }
             }
+            LowArcNeighborhood(p,n,host,type,terrainType,clockType,phase);
+            Require(dominated==0,"a later, less accurate direction cannot replace an already valid lower arc");
             // A successful proposal may be reused across the same complete
             // receive prefix, but its phase/player inputs and new terrain
             // passage still belong to the current caller.
@@ -173,6 +177,47 @@ namespace NativeWorldTextProbe
                 else if(field.FieldType==typeof(int))Require(data[name]=="Int32:"+item,"exact native tick: "+name);
                 else ExactFields(data,name+".",item);
             }
+        }
+        private static int FirstReceive(NpcTrajectory path,int first,Vector2 start,Vector2 point,float inherited,float speed,int width,int height)
+        {
+            var unit=(point-start).SafeNormalize(Vector2.UnitX);int ignored=0;
+            for(int t=2;first+t<path.Count;t++){var actual=End(start,unit,inherited,speed,t,ref ignored);var box=path[first+t].ProjectileReceiveBounds;if(new Rectangle((int)(actual.X-width*.5f),(int)(actual.Y-height*.5f),width,height).Intersects(new Rectangle((int)box.X,(int)box.Y,(int)box.Width,(int)box.Height)))return t;}
+            return -1;
+        }
+        private static void LowArcNeighborhood(Player p,NPC n,object host,Type type,Type terrainType,Type clockType,object phase)
+        {
+            var start=p.RotatedRelativePoint(p.MountedCenter);float speed=ProjectileID.Sets.YoyosTopSpeed[p.HeldItem.shoot],inertia=Math.Max(1,14-speed/2),held=p.HeldItem.shootSpeed>speed?p.HeldItem.shootSpeed*.98f:p.HeldItem.shootSpeed,inherited=(held*(inertia-1)+speed)/inertia;
+            foreach(int horizon in new[]{64,120})foreach(int mirror in new[]{1,-1})foreach(var offset in new[]{new Vector2(500,-100),new Vector2(484,-100),new Vector2(516,-100),new Vector2(500,-84),new Vector2(500,-116)})
+            {
+                n.position=start+new Vector2(mirror*(offset.X+9)-9,offset.Y);n.width=18;n.height=40;
+                var path=Future(host,n,horizon);var clock=Activator.CreateInstance(clockType,Flags,null,new object[]{path,phase,0},null);int first=(int)Get(clock,"FirstTick");
+                var terrain=Activator.CreateInstance(terrainType,true);Call(terrain,"Reset");Vector2 oldPoint;int work;bool before=Legacy(p,p.HeldItem,p.HeldItem.shootSpeed,path,first,terrain,out oldPoint,out work);
+                Call(terrain,"Reset");object[] args={p,p.HeldItem,p.HeldItem.shootSpeed,path,clock,terrain,Vector2.Zero};bool after=(bool)type.GetMethod("TryPoint",Flags).Invoke(null,args);
+                Require(!before || after,"nearby low-arc geometry retains an old valid proposal");if(!before)continue;
+                int ot,nt;float oe=Quality(path,first,start,oldPoint,inherited,speed,out ot),ne=Quality(path,first,start,(Vector2)args[6],inherited,speed,out nt);
+                int oldReceive=FirstReceive(path,first,start,oldPoint,inherited,speed,16,16),newReceive=FirstReceive(path,first,start,(Vector2)args[6],inherited,speed,16,16);
+                Console.WriteLine("RELEASE LOW ARC H="+horizon+" mirror="+mirror+" offset="+offset+" receive="+oldReceive+"/"+newReceive+" nearest="+ot+"/"+nt+" error="+oe+"/"+ne);
+                if(horizon==120 && offset==new Vector2(500,-100))
+                {
+                    int oldHit=NativeReleaseReceive(p,n,start,oldPoint,inherited),newHit=NativeReleaseReceive(p,n,start,(Vector2)args[6],inherited);
+                    Console.WriteLine("RELEASE LOW ARC NATIVE mirror="+mirror+" firstDamage="+oldHit+"/"+newHit+" nearest="+ot+"/"+nt);
+                    Require(oldHit>0 && newHit>0 && newHit<=oldHit,"original detached AI99 and Damage retain the effective low-arc receive");
+                }
+                Require(oldReceive<0 || newReceive>0 && (newReceive<=oldReceive || ne<=oe+1),"nearby valid low arc is not replaced by a later and less accurate branch");
+            }
+        }
+        // Initialize only the model's detached birth state, then let original
+        // AI99, collision, NPC immunity and Damage own every subsequent step.
+        // This validates receive timing for these directions; the separate
+        // natural-use checks own actual parent -> split birth and cadence.
+        private static int NativeReleaseReceive(Player p,NPC n,Vector2 start,Vector2 point,float inherited)
+        {
+            foreach(var q in Main.projectile)q.active=false;
+            n.active=true;n.life=n.lifeMax=100000;n.aiStyle=-1;n.noGravity=true;n.velocity=Vector2.Zero;n.netOffset=Vector2.Zero;n.knockBackResist=0;n.shimmerTransparency=0;Array.Clear(n.immune,0,n.immune.Length);
+            var unit=(point-start).SafeNormalize(Vector2.UnitX);int slot=Projectile.NewProjectile(new Terraria.DataStructures.EntitySource_DebugCommand(),start+unit*inherited,unit*inherited,p.HeldItem.shoot,100,0,p.whoAmI,-2);var shot=Main.projectile[slot];
+            Require(shot.width==16 && shot.height==16 && shot.aiStyle==99 && shot.ai[0]==-2,"actual detached body matches the response model's initial state");
+            for(int step=1;step<=120 && shot.active;step++){NativeQuickItemChecks.BeginWorldStep();n.UpdateNPC(n.whoAmI);int life=n.life;shot.Update(slot);if(n.life<life){shot.active=false;return step;}}
+            shot.active=false;return -1;
         }
         private static float Quality(NpcTrajectory path,int first,Vector2 start,Vector2 point,float inherited,float speed,out int time)
         {

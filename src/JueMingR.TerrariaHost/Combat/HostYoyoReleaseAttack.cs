@@ -77,38 +77,32 @@ namespace JueMingR.TerrariaHost.Combat
             }
             var response=new ResponseSearch{Start=start,Inherited=inherited,Speed=speed,Range=range,Future=future,First=first,Horizon=horizon,Direction=player.direction,Width=sample.width,Height=sample.height,Best=ResponseCandidate.Empty,Canonical=new CanonicalDirection[horizon+1]};
             bool more=true;
-            // Each band gets its own actual nearest receive refinement. A
-            // precise late arc cannot consume the short arc's opportunity.
-            // The nearest time can still be just outside the receive body;
-            // both adjacent canonical times keep that cap-sensitive branch.
-            // Fix their anchor before either scan changes the winner.
+            // A direction passing near receive time T is not the canonical
+            // direction aimed at T. Follow that nomination before neighbours;
+            // otherwise a migrating nearest time is skipped while an already
+            // evaluated neighbour consumes its slot. Each band keeps the same
+            // five-probe allowance, with cycles/repeated times removed.
+            var tried=new int[5];
             for(int i=0;i<count && more;i++)
             {
                 if(response.Best.Error<16 && response.Best.Time==2)break;
                 int low=2+(horizon-1)*windows[i]/8,high=2+(horizon-1)*(windows[i]+1)/8;
-                ResponseCandidate nearest;
-                more=response.Probe(times[i],true,low,high,out nearest);
-                if(!more || nearest.Error<16 || nearest.Time<2)continue;
-                int refined=nearest.Time;
-                if(refined!=times[i])more=response.Probe(refined,true,low,high,out nearest);
+                int used=0,time=times[i];ResponseCandidate nearest=ResponseCandidate.Empty;
+                while(more && used<tried.Length && time>=2 && time<=horizon && Array.IndexOf(tried,time,0,used)<0)
+                {
+                    tried[used++]=time;more=response.Probe(time,true,low,high,out nearest);
+                    if(nearest.Error<16)break;
+                    time=nearest.Time;
+                }
                 if(more && nearest.Error>=16 && nearest.Time>=2)
                 {
-                    // Canonical refinement may move the nearest receive
-                    // again (e.g. gravity seed33 -> nearest35 -> nearest36).
-                    // Anchor both neighbours at that refined actual time,
-                    // not at the first rough nearest time.
+                    // Once the nomination settles or cycles, inspect both
+                    // sides of that fixed anchor using remaining unique slots.
+                    // A difficult band may exhaust its allowance; it cannot
+                    // turn an unbounded local search into a budget workaround.
                     int anchor=nearest.Time;
-                    // The shifted anchor itself is also a new canonical
-                    // direction (41 -> nearest42 -> nearest43). Its closest
-                    // time is not proof that seed43 was already evaluated.
-                    if(anchor!=refined && anchor!=times[i])more=response.Probe(anchor,true,low,high,out nearest);
-                    // Use the last discrete receive, not the anchor from
-                    // before that canonical replay. A cap-sensitive response
-                    // can move by another update; both sides still share one
-                    // fixed anchor and the same finite probe allowance.
-                    anchor=nearest.Time;
-                    if(more && nearest.Error>=16 && anchor-1!=refined && anchor-1!=times[i])more=response.Probe(anchor-1,true,low,high,out nearest);
-                    if(more && nearest.Error>=16 && anchor+1!=refined && anchor+1!=times[i])more=response.Probe(anchor+1,true,low,high,out nearest);
+                    for(int side=-1;side<=1 && more && used<tried.Length && nearest.Error>=16;side+=2)
+                    {time=anchor+side;if(time<2 || time>horizon || Array.IndexOf(tried,time,0,used)>=0)continue;tried[used++]=time;more=response.Probe(time,true,low,high,out nearest);}
                 }
             }
             // A band's direction can win at a receive OUTSIDE that band's
