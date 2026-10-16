@@ -90,13 +90,12 @@ namespace NativeWorldTextProbe
                             Require(births-before>=2,"first/held/repress/switch-back native uses must all produce sources: "+item+" phase="+phase+" births="+(births-before));
                         }
                         for(int i=0;i<8;i++)NativeCombatSelectionPreviewChecks.Step(context,physical,false);
-                        // Keep all three original use windows and their native
-                        // consumers. Optional cold display is reported rather
-                        // than made a prerequisite for the first real click.
-                        // Three nominal display refresh opportunities, rather
-                        // than one isolated visible frame, bound a blank run
-                        // in these supplied ordinary use windows.
-                        Require(useShown>0 && longestMissing<15,"the unchanged finite native use windows repeatedly acquire a preview without sustained blank periods: "+item);
+                        // The independent impact preview was withdrawn. Keep
+                        // every one of the original 3x45 native-use actions,
+                        // fresh/repeated/switch-back source births and actual
+                        // input/Strike oracles below. Their validity does not
+                        // depend on reviving a source-free red-box producer.
+                        Require(idleShown==0 && useShown==0 && useSamples==135,"retired preview stays absent throughout all original idle and native-use samples: "+item);
                         Require(assist?aimed==births && raw==0:raw==births && aimed==0,"all actual births use the correct source direction: "+item+" enabled="+assist);
                         if(item==2624)Require(phaseBirths.All(n=>n>=5 && n%5==0),"Tsunami emits its actual five-arrow groups with Ichor ammunition");
                         if(assist)Require(hits>0,"assisted finite original attack reaches real StrikeNPC: "+item);

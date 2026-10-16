@@ -11,8 +11,9 @@ using static NativeWorldTextProbe.NativeInformationChecks;
 
 namespace NativeWorldTextProbe
 {
-    // One native outer schedule supplies both the CPU and actual World.Draw
-    // checks. The probe never patches in a contact after a shot is consumed.
+    // Native outer updates own all inputs/births/receives. Explicit private
+    // stage components retain mechanism coverage separately from World.Draw;
+    // the retired preview/red rectangle never becomes an input capability.
     internal static class NativeCombatUsageChecks
     {
         private const BindingFlags Flags=BindingFlags.Instance|BindingFlags.Static|BindingFlags.Public|BindingFlags.NonPublic;
@@ -125,14 +126,23 @@ namespace NativeWorldTextProbe
                         receiver.dontTakeDamage=true;NativeCombatSelectionPreviewChecks.Step(context,physical,false,true);Present(host,attack,world,graphics,output,"receiver-unavailable-"+type,false,false);
                         receiver.dontTakeDamage=false;NativeCombatSelectionPreviewChecks.Step(context,physical,false,true);Present(host,attack,world,graphics,output,"receiver-restored-"+type,true,false);
                         NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));
-                        int duration=type==2797 || type==3475?75:45;int shown=0,delayed=0,live=0;
+                        int duration=type==2797 || type==3475?75:45;int shown=0,delayed=0,live=0,solarClockSamples=0;
                         for(int frame=0;frame<duration;frame++)
                         {
                             useFrame=frame;
                             NativeCombatSelectionPreviewChecks.Step(context,physical,true);
-                            var contact=(AttackContact)GetOptional(attack,"ExpectedPreview");
+                            object boundPlan;var contact=ReadMechanism(host,attack,receiver,out boundPlan);
                             if(contact!=null){shown++;if(contact.Delay>0)delayed++;}
-                            if(type==3473 && contact!=null && contact.Delay>0 && !solarWaitVerified && !solarDue.HasValue)solarDue=Main.GameUpdateCount+(uint)contact.Delay+1;
+                            if(type==3473 && !solarWaitVerified && !solarDue.HasValue && (bool)Get(Get(attack,"Control"),"HasObservedSolar"))
+                            {
+                                // Complete 611/612 replay can now find an old
+                                // child's receive before the next hand. Its
+                                // Delay0 must not erase the independent native
+                                // dummy-timer/next-source clock obligation.
+                                int arcDelay=(int)Get(Get(attack,"Control"),"SolarOpeningDelay");
+                                var window=attack.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackWindow",true);int handDelay=(int)window.GetMethod("PreviewDelay",Flags).Invoke(null,new object[]{player,player.HeldItem});
+                                if(arcDelay>0){solarDue=Main.GameUpdateCount+(uint)Math.Max(arcDelay,handDelay)+1;solarClockSamples++;Console.WriteLine("USAGE Solar next-source clock tick="+Main.GameUpdateCount+" arcDelay="+arcDelay+" handDelay="+handDelay+" due="+solarDue+" earliestStageDelay="+contact?.Delay);}
+                            }
                             if(Main.projectile.Any(q=>q.active && q.owner==0 && (q.type==611 || q.type==615 || q.type==444)))live++;
                             // The original finite interval is the denominator.
                             // Optional display may miss a budgeted update; actual
@@ -140,16 +150,12 @@ namespace NativeWorldTextProbe
                             useDisplay.Record(Present(host,attack,world,graphics,output,"use-"+type+"-"+frame,true,frame==0 || frame==duration-1));
                             if(frame==0)Require(births>0 && aimedBirths>0,"first real click reaches its original directed source: "+type);
                         }
-                        // Fifteen ordinary updates span three display refresh
-                        // opportunities (about a quarter second at 60 Hz).
-                        // This supplied scene must not remain blank that long;
-                        // the independent four cold idle updates stay reported.
-                        Require(useDisplay.Present>0 && shown>0 && useDisplay.LongestMissing<15,"the unchanged finite use interval repeatedly acquires presentation without sustained blank periods: "+type);
+                        Require(useDisplay.Present==0 && idleDisplay.Present==0 && shown>0,"complete original use interval retains real stage contacts while retired preview/marker remain absent: "+type);
                         Require(hits>0 && aimedBirths>0,"finite complete use reaches real StrikeNPC on the placed training dummy: "+type);
                         if(type==2797 || type==3475)Require(ordinaryChildren>0 && live>0,"native ongoing parent reaches its real ammunition/second stage: "+type);
                         if(type==2797)Require(bubbleOrderChanges>0 && bubbleAssistedChanges==bubbleOrderChanges,"earlier sibling release changes real child update order and every changed Kill consumes its prepared alternative");
-                        if(type==95 || type==1201)Require(delayed>0,"normal cooldown retains a future launch preview: "+type);
-                        if(type==3473)Require(solarWaitVerified && delayed>0,"late sealed Solar arc previews its actual delayed next use and verifies the next native birth");
+                        if(type==95 || type==1201)Require(delayed>0,"private cooldown component retains its legal future launch, separately from actual input permission: "+type);
+                        if(type==3473)Require(solarWaitVerified && solarClockSamples>0,"sealed Solar arc's next-hand clock reaches the exact native source birth even when an existing child receives earlier");
                         for(int i=0;i<4;i++)NativeCombatSelectionPreviewChecks.Step(context,physical,false);
                         if(type==2797 || type==3475)
                         {observeUse=false;player.inventory[1].SetDefaults(3509);player.selectedItemState.Select(1);}
@@ -176,7 +182,7 @@ namespace NativeWorldTextProbe
                             Present(host,attack,world,graphics,output,"restored-use-"+type,true,true);
                             Console.WriteLine("PASS actual controller recovery item="+type+" switchBackDirected="+(aimedBirths-returned)+" repressedDirected="+(aimedBirths-repeated)+" actualAmmo="+(ordinaryChildren-returnedAmmo));
                         }
-                        Console.WriteLine("PASS actual use item="+type+" idleDisplay="+idleDisplay+" useDisplay="+useDisplay+" preview="+shown+"/"+duration+" delayed="+delayed+" live="+live+" directedBirths="+aimedBirths+" childAmmo="+ordinaryChildren+" actualDamage="+hits+" bubbleOrderChanges="+bubbleAssistedChanges+"/"+bubbleOrderChanges+" draw="+(graphics!=null));
+                        Console.WriteLine("PASS actual use item="+type+" idleDisplay="+idleDisplay+" useDisplay="+useDisplay+" mechanismComponents="+shown+"/"+duration+" delayed="+delayed+" live="+live+" directedBirths="+aimedBirths+" childAmmo="+ordinaryChildren+" actualDamage="+hits+" bubbleOrderChanges="+bubbleAssistedChanges+"/"+bubbleOrderChanges+" draw="+(graphics!=null));
                     }
                     catch(Exception error){failures.Add(type+": "+error.Message);Console.WriteLine("FAIL actual use item="+type+": "+error);}
                 }
@@ -186,6 +192,7 @@ namespace NativeWorldTextProbe
             // Default CPU integration consumes every original-feedback leaf.
             // Explicit item/subset entries remain the narrow diagnosis path;
             // actual GPU leaves are dispatched separately to limit repetition.
+            if(Environment.GetEnvironmentVariable("JMR_USAGE_NATIVE_ONLY")=="1")return;
             if(graphics==null && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("JMR_USAGE_ITEM")))
             {NativeCombatOriginalFeedbackChecks.RunHand(context);NativeCombatOriginalFeedbackChecks.RunSpears(context);NativeCombatOriginalRangedChecks.Run(context);}
             else if(graphics!=null && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("JMR_USAGE_ITEM")))NativeCombatOriginalFeedbackChecks.RunSpears(context,graphics,output);
@@ -200,20 +207,35 @@ namespace NativeWorldTextProbe
         }
         private static bool Present(object host,object attack,object world,ProbeGraphics graphics,string output,string name,bool expected,bool save)
         {return PresentNative(host,attack,world,player,receiver,graphics,output,name,expected,save,true);}
+        // Explicit mechanism component over an already published actual path,
+        // never an ordinary-budget claim. Do not Publish/Demand/PrepareCore:
+        // this private plan must not feed future input or display scheduling.
+        internal static AttackContact ReadMechanism(object host,object attack,NPC target,out object boundPlan)
+        {return ReadMechanism(host,attack,target,out boundPlan,null);}
+        internal static AttackContact ReadMechanism(object host,object attack,NPC target,out object boundPlan,NpcTrajectory explicitComponentPath)
+        {
+            var p=Main.LocalPlayer;var keys=Main.projectile.Where(q=>q.active).Select(q=>q.key).ToArray();int x=Main.mouseX,y=Main.mouseY,animation=p.itemAnimation,time=p.itemTime,mana=p.statMana,stack=p.inventory[54].stack;bool use=p.controlUseItem,channel=p.channel;
+            var cache=(NpcPredictionCache)Get(Get(host,"Prediction"),"Cache");var priorAction=cache.Read(1);var priorPath=cache.Read(0);int required=cache.Required;var selected=(NpcIdentity)Get(Get(host,"Selection"),"Target");
+            // A caller may supply a separately declared scalar component
+            // premise for an exact native clock boundary. It stays local to
+            // this plan and never becomes a Source/input/presentation path.
+            var path=explicitComponentPath??priorAction??priorPath;boundPlan=null;
+            if(path==null || !ReferenceEquals(path.Identity.Token,target))return null;
+            AttackContact result;
+            using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))
+            {
+                var planType=attack.GetType().GetNestedType("PreviewPlan",Flags);boundPlan=Activator.CreateInstance(planType,true);Call(Get(boundPlan,"Terrain"),"Reset");
+                var phase=Enum.Parse(attack.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase",true),"CompletedWorld");result=(AttackContact)Call(attack,"PreparePlan",boundPlan,path,phase);
+            }
+            Require(x==Main.mouseX && y==Main.mouseY && animation==p.itemAnimation && time==p.itemTime && mana==p.statMana && stack==p.inventory[54].stack && use==p.controlUseItem && channel==p.channel && keys.SequenceEqual(Main.projectile.Where(q=>q.active).Select(q=>q.key)),"private stage reader never changes native input, resources, clocks or source pool");
+            Require(ReferenceEquals(priorAction,cache.Read(1)) && ReferenceEquals(priorPath,cache.Read(0)) && cache.Required==required && selected.Equals(Get(Get(host,"Selection"),"Target")),"private stage reader never publishes a path, changes demand, or selects a receiver");
+            return result;
+        }
         internal static bool PresentNative(object host,object attack,object world,Player observedPlayer,NPC observedReceiver,ProbeGraphics graphics,string output,string name,bool expected,bool save,bool optionalDisplay=false,Action captureCompleted=null)
         {
             var contact=(AttackContact)GetOptional(attack,"ExpectedPreview");
-            Require(expected?(optionalDisplay || contact!=null):contact==null,"finite stable preview/revocation at "+name+" timers="+observedPlayer.itemAnimation+"/"+observedPlayer.itemTime+" direction="+observedPlayer.direction+" sources="+Main.projectile.Count(q=>q.active)+" receiver="+observedReceiver.active+"/"+observedReceiver.dontTakeDamage);
+            Require(contact==null,"retired public preview remains absent at "+name);
             var cache=(NpcPredictionCache)Get(Get(host,"Prediction"),"Cache");
-            if(contact!=null)
-            {
-                var displayed=GetOptional(host,"DisplayPath") as NpcTrajectory;
-                long now=Main.GameUpdateCount;int maximumAge=(int)host.GetType().GetField("DisplayMaximumAge",Flags).GetValue(null);
-                Require(displayed!=null && contact.Timeline.Identity.Equals(displayed.Identity) && ReferenceEquals(contact.Timeline.Identity.Token,observedReceiver) && contact.Timeline.Identity.Slot==observedReceiver.whoAmI && contact.Timeline.CaptureTick==displayed.CaptureTick && ReferenceEquals(contact.Timeline.CalculationToken,displayed.CalculationToken),"preview has the complete selected identity/capture/calculation of the validated display source: "+name);
-                long offset=contact.Timeline.SampleTick-contact.Timeline.CaptureTick,receive=contact.Timeline.SampleTick+contact.ReceiveTick;
-                Require(now-contact.Timeline.CaptureTick>=0 && now-contact.Timeline.CaptureTick<=maximumAge && offset>=0 && contact.Timeline.SampleTick<=now && contact.ReceiveTick>=0 && contact.ReceiveTick<contact.Timeline.Count && receive>=displayed.SampleTick && receive<displayed.SampleTick+displayed.Count && receive>=now,"preview's absolute receive and window offset stay within the captured display future: "+name);
-                Require(contact.Timeline[contact.ReceiveTick].Bounds.Equals(displayed[(int)(receive-displayed.SampleTick)].Bounds),"preview receive geometry equals the independent display source point at its absolute window offset: "+name);
-            }
             var execution=GetOptional(attack,"ExpectedImpact") as AttackContact;
             if(execution!=null)
             {
@@ -222,15 +244,10 @@ namespace NativeWorldTextProbe
             }
             Call(world,"Prepare");var zoom=Main.GameViewMatrix.ZoomMatrix;var impact=Get(world,"Impact");
             var actual=GetOptional(impact,"contact") as AttackContact;
-            // Capture additionally needs the validated path's visual lease.
-            // A legitimate execution contact alone does not force optional
-            // display on a frame whose path has expired or was deferred.
-            var admittedDisplay=GetOptional(host,"DisplayPath") as NpcTrajectory;
-            if(name=="use-3475-0")Console.WriteLine("USAGE capture boundary tick="+Main.GameUpdateCount+" display="+(admittedDisplay==null?"null":admittedDisplay.Identity.Slot+"/"+admittedDisplay.SampleTick+"/"+admittedDisplay.CaptureTick)+" preview="+ContactFact(contact)+" execution="+ContactFact(execution)+" actual="+ContactFact(actual));
-            Require(ReferenceEquals(actual,admittedDisplay==null?null:execution??contact),"actual marker captures the independently admitted execution before preview under a valid display lease: "+name);
-            if(!expected)Require(actual==null,"negative presentation revokes both execution and preview: "+name);
-            else if(!optionalDisplay)Require(actual!=null,"required component presentation remains present: "+name);
-            if(actual!=null)Require(ReferenceEquals(actual.Timeline.Identity.Token,observedReceiver) && actual.Timeline.Identity.Slot==observedReceiver.whoAmI && actual.Timeline.Identity.Equals(Get(Get(host,"Selection"),"Target")) && actual.ReceiveTick>=0 && actual.ReceiveTick<actual.Timeline.Count,"actual marker retains the complete selected receiver and legal receive: "+name);
+            // The world layer no longer captures Impact, including when a
+            // real executable Contact exists. Keep this shared GPU ABI's bool
+            // as actual visibility, never substitute a mechanism/E receipt.
+            Require(actual==null,"retired impact capture cannot be restored by an execution contact: "+name);
             captureCompleted?.Invoke();
             bool visible=actual!=null;
             if(graphics==null){Call(impact,"Project",zoom,Matrix.Invert(zoom));Require((bool)Get(impact,"Visible")==visible,"natural capture/project at "+name);return visible;}
@@ -245,7 +262,5 @@ namespace NativeWorldTextProbe
             Require(ObservedNpcSteps==steps,"exported actual World.Draw also performs no real future Step work: "+name);
             return visible;
         }
-        private static string ContactFact(AttackContact contact)
-        {return contact==null?"null":contact.Timeline.Identity.Slot+"/sample"+contact.Timeline.SampleTick+"/capture"+contact.Timeline.CaptureTick+"/receive"+contact.ReceiveTick+"/absolute"+(contact.Timeline.SampleTick+contact.ReceiveTick)+"/object"+System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(contact);}
     }
 }

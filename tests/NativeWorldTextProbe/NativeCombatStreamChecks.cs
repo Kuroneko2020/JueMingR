@@ -16,16 +16,19 @@ namespace NativeWorldTextProbe
     {
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static|BindingFlags.Instance;
         private static Assembly assembly;private static Type model;private static NPC target;private static Projectile receiving;
-        private static bool natural;private static long first,birthTick;private static int births,solves,steps;private static AttackContact known;private static Vector2 raw;
-        private static readonly List<int> hits=new List<int>();
+        private static bool natural;private static object naturalAttack;private static long first,birthTick;private static int births,solves,steps;private static AttackContact known;private static Vector2 raw;
+        private static readonly List<int> hits=new List<int>();private static AttackContact actualSourcePlan;private static long actualSourceTick;private static int readyBirths,basicBirths;private static object naturalContext;
+        private static AttackContact independentSourcePlan;private static bool independentSourceChecked;
+        private sealed class HandBody {internal Projectile Shot;internal string Key;internal bool NoContact;internal long First=-1;}
+        private static readonly List<HandBody> actualHands=new List<HandBody>();
         private static object Static(Type type,string method,params object[] args){return type.GetMethod(method,Flags).Invoke(null,args);}
         private static void SolveWork(){solves++;}private static void StepWork(){steps++;}
         private static void BeforeDamage(Projectile __instance){receiving=__instance;}private static void AfterDamage(){receiving=null;}
         private static void Strike(NPC __instance,int __result)
-        {if(receiving==null || (receiving.type!=22 && receiving.type!=280) || __result<=0)return;hits.Add(__instance.whoAmI);if(ReferenceEquals(__instance,target) && first<0)first=Main.GameUpdateCount;}
+        {if(receiving==null || (receiving.type!=22 && receiving.type!=280) || __result<=0)return;hits.Add(__instance.whoAmI);if(ReferenceEquals(__instance,target)){if(first<0)first=Main.GameUpdateCount;foreach(var body in actualHands)if(ReferenceEquals(receiving,body.Shot) && body.Key==receiving.key.ToString() && body.First<0)body.First=Main.GameUpdateCount;}}
         private static Player Reset(object context,int item=157)
         {
-            natural=false;target=null;receiving=null;first=-1;births=0;known=null;hits.Clear();
+            natural=false;target=null;receiving=null;first=-1;births=readyBirths=basicBirths=0;known=actualSourcePlan=independentSourcePlan=null;independentSourceChecked=false;actualSourceTick=-1;hits.Clear();actualHands.Clear();
             NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());NativeCombatCadenceChecks.Save(Get(context,"Combat"),new CombatOptions());
             var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),Get(context,"Input"),item,0,0);Main.windPhysics=false;
             for(int x=5;x<115;x++)Main.tile[x,43].ClearEverything();if(Main.GameUpdateCount==0)NativeQuickItemChecks.BeginWorldStep();return p;
@@ -46,11 +49,24 @@ namespace NativeWorldTextProbe
         private static void Born(IEntitySource __0,int __result)
         {
             if(!natural || __result<0 || __result>=Main.maxProjectiles)return;var q=Main.projectile[__result];if(q.type!=22 && q.type!=280)return;
-            births++;if(births!=1)return;birthTick=Main.GameUpdateCount;var p=Main.LocalPlayer;var origin=p.RotatedRelativePoint(p.MountedCenter);var cursor=new Vector2(Main.mouseX,Main.mouseY)+Main.screenPosition;
+            bool enhanced=(bool)Get(naturalAttack,"hasConsumedInput") && Convert.ToString(Get(Get(naturalAttack,"consumedInput"),"Kind"))=="Enhanced";
+            Console.WriteLine("STREAM native hand index="+(births+1)+" guc="+Main.GameUpdateCount+" elapsed="+(births==0?0:(long)Main.GameUpdateCount-birthTick)+" item="+Main.LocalPlayer.HeldItem.type+" timer="+Main.LocalPlayer.itemAnimation+"/"+Main.LocalPlayer.itemTime+" baseUse="+Main.LocalPlayer.HeldItem.useAnimation+"/"+Main.LocalPlayer.HeldItem.useTime+" immune="+target.immune[Main.myPlayer]+" slow="+Main.LocalPlayer.slowMagicUse+" mana="+Main.LocalPlayer.statMana+" ready="+actualSourcePlan?.Tick+" enhanced="+enhanced);
+            if(!enhanced)Console.WriteLine("STREAM unresolved input guc="+Main.GameUpdateCount+" born="+q.type+" source="+__0?.GetType().Name+" actualSourcePlan="+actualSourcePlan?.Tick+" current="+((AttackContact)GetOptional(naturalAttack,"current"))?.Tick+" receipt="+Get(Get(naturalAttack,"consumedInput"),"Kind")+" basicPermission="+Get(naturalAttack,"BasicPermission")+" ownerTimer="+Main.LocalPlayer.itemAnimation+"/"+Main.LocalPlayer.itemTime+" ownerDir="+Main.LocalPlayer.direction+" targetImmune="+target.immune[Main.myPlayer]);
+            // A public null alone is not a miss proof. Independently solve the
+            // actual source, then prove the real born body's complete native
+            // lifetime below. A useful slow second hand still must enhance.
+            Require(actualSourceTick==(long)Main.GameUpdateCount,"every actual stream hand has its own source-phase component");
+            bool noContact=actualSourcePlan==null;
+            if(noContact){Require(independentSourceChecked && independentSourcePlan==null && !enhanced && Convert.ToString(Get(Get(naturalAttack,"consumedInput"),"Kind"))=="Basic","public unresolved stream preserves Basic only when its independent complete source also has no Contact");basicBirths++;}
+            else{Require(enhanced,"every useful original stream hand consumes its ready prepared cursor");readyBirths++;}
+            births++;var p=Main.LocalPlayer;var origin=p.RotatedRelativePoint(p.MountedCenter);var cursor=new Vector2(Main.mouseX,Main.mouseY)+Main.screenPosition;
             var expected=(Vector2)Static(assembly.GetType("JueMingR.TerrariaHost.Combat.HostThornAttack",true),"BirthVelocity",p,origin,cursor,p.HeldItem.shootSpeed);
             Require(Vector2.DistanceSquared(q.Center,origin)<.0001f && Vector2.DistanceSquared(q.velocity,expected)<.0001f && Vector2.Dot(q.velocity,raw-origin)<0,"actual stream hand birth reads the borrowed cursor rather than the opposite physical mouse");
             if(q.type==22)Require(q.ai[2]>=0 && q.ai[2]<20000,"original water stream carries its real randomly selected lava seed");
-            var path=Timeline(target);known=(AttackContact)Static(model,"Known",p,q,path,Clock(path),Terrain(),Obstacles(p,q,path));
+            var path=Timeline(target);var bornKnown=(AttackContact)Static(model,"Known",p,q,path,Clock(path),Terrain(),Obstacles(p,q,path));
+            actualHands.Add(new HandBody{Shot=q,Key=q.key.ToString(),NoContact=noContact});
+            if(noContact)Require(bornKnown==null,"the actual unresolved native stream birth also has no sealed full-lifetime Contact");
+            if(births!=1)return;birthTick=Main.GameUpdateCount;known=bornKnown;
             Console.WriteLine("STREAM birth type="+q.type+" center="+q.Center+" velocity="+q.velocity+" seed="+q.ai[2]+" cursor="+cursor+" raw="+raw+" known="+known?.Tick);
         }
         internal static void Run(object context)
@@ -61,8 +77,21 @@ namespace NativeWorldTextProbe
             audit.Patch(typeof(Projectile).GetMethods(Flags).Single(m=>m.Name=="NewProjectile" && m.GetParameters().Length==13 && m.GetParameters()[1].ParameterType==typeof(float)),postfix:new HarmonyMethod(typeof(NativeCombatStreamChecks),nameof(Born)));
             audit.Patch(typeof(Projectile).GetMethod("Damage",Flags),prefix:new HarmonyMethod(typeof(NativeCombatStreamChecks),nameof(BeforeDamage)),postfix:new HarmonyMethod(typeof(NativeCombatStreamChecks),nameof(AfterDamage)));
             audit.Patch(typeof(NPC).GetMethod("StrikeNPC",new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)}),postfix:new HarmonyMethod(typeof(NativeCombatStreamChecks),nameof(Strike)));
-            try{string leaf=Environment.GetEnvironmentVariable("JMR_STREAM_ORACLE_ONLY");Require(string.IsNullOrEmpty(leaf) || leaf=="motor" || leaf=="receive" || leaf=="natural","known stream leaf");if(string.IsNullOrEmpty(leaf) || leaf=="motor")Motors(context);if(string.IsNullOrEmpty(leaf) || leaf=="receive")Receives(context);if(string.IsNullOrEmpty(leaf) || leaf=="natural"){Natural(context,157);Natural(context,1336);}}
-            finally{natural=false;audit.UnpatchAll(audit.Id);Main.windPhysics=wind;Main.remixWorld=remix;}
+            naturalContext=context;
+            var componentHand=new NativeCombatHandFixture(context,()=>natural,()=>target,ObserveSourcePlan);
+            try{string leaf=Environment.GetEnvironmentVariable("JMR_STREAM_ORACLE_ONLY");Require(string.IsNullOrEmpty(leaf) || leaf=="motor" || leaf=="receive" || leaf=="natural","known stream leaf");if(string.IsNullOrEmpty(leaf) || leaf=="motor")Motors(context);if(string.IsNullOrEmpty(leaf) || leaf=="receive")Receives(context);if(string.IsNullOrEmpty(leaf) || leaf=="natural"){foreach(bool funded in new[]{false,true}){Natural(context,157,funded);Natural(context,1336,funded);}}}
+            finally{componentHand.Dispose();natural=false;audit.UnpatchAll(audit.Id);Main.windPhysics=wind;Main.remixWorld=remix;}
+        }
+        private static void ObserveSourcePlan(AttackContact plan)
+        {
+            actualSourcePlan=plan;actualSourceTick=Main.GameUpdateCount;independentSourcePlan=null;independentSourceChecked=false;
+            if(plan!=null)return;
+            var p=Main.LocalPlayer;var host=Get(naturalContext,"CombatObservation");var path=(NpcTrajectory)Call(Get(Get(host,"Prediction"),"Cache"),"Read",1);
+            var ammo=Static(assembly.GetType("JueMingR.TerrariaHost.Combat.AttackAmmoSnapshot",true),"Capture",p,p.HeldItem);var sample=Terraria.ID.ContentSamples.ProjectilesByType[(int)Get(ammo,"Projectile")];
+            int age=(int)((long)Main.GameUpdateCount-path.SampleTick)-1;var root=Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackObstacles",true),Flags,null,new object[]{p,sample,path,0,true,false},null);AttackContact direct;
+            using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))direct=(AttackContact)Static(model,"Solve",p,ammo,path,p.RotatedRelativePoint(p.MountedCenter),age,true,Terrain(),root,0);
+            independentSourceChecked=true;independentSourcePlan=direct;
+            Console.WriteLine("STREAM independent actual-source model="+direct?.Tick+" public="+plan?.Tick+" immune="+target.immune[p.whoAmI]+" oldBodies="+Main.projectile.Count(q=>q.active && q.owner==p.whoAmI && (q.type==22 || q.type==280))+" age="+age+" nextWorld=False");
         }
         private static void Motors(object context)
         {
@@ -102,19 +131,31 @@ namespace NativeWorldTextProbe
             }
             Main.remixWorld=false;Console.WriteLine("PASS STREAM receive=10");
         }
-        private static void Natural(object context,int item)
+        private static void Natural(object context,int item,bool funded)
         {
-            var p=Reset(context,item);Main.remixWorld=false;p.position=new Vector2(650,646);p.releaseUseItem=true;Main.screenPosition=new Vector2(500,400);for(int x=5;x<115;x++)NativeToolsChecks.Tile(x,43,1);target=NativeCombatControlPreviewChecks.Dummy(2,48,40);raw=target.Center-new Vector2(490,0);var host=Get(context,"CombatObservation");var attack=Get(Get(context,"Combat"),"Attack");solves=steps=0;
-            NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,false));for(int i=0;i<3;i++){NativeCombatSelectionPreviewChecks.Step(context,raw,false,true);Require(GetOptional(attack,"ExpectedPreview")!=null && !Main.projectile.Any(q=>q.active),"idle stream preview works independently of attack permission");}
-            natural=true;NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));int visible=0;
+            var p=Reset(context,item);Main.remixWorld=false;p.position=new Vector2(650,646);p.releaseUseItem=true;p.statManaMax=p.statManaMax2=200;p.statMana=funded?200:0;Main.screenPosition=new Vector2(500,400);for(int x=5;x<115;x++)NativeToolsChecks.Tile(x,43,1);target=NativeCombatControlPreviewChecks.Dummy(2,48,40);raw=target.Center-new Vector2(490,0);var host=Get(context,"CombatObservation");var attack=Get(Get(context,"Combat"),"Attack");solves=steps=0;
+            NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,false));for(int i=0;i<3;i++){NativeCombatSelectionPreviewChecks.Step(context,raw,false,true);Require(GetOptional(attack,"ExpectedPreview")==null && !Main.projectile.Any(q=>q.active) && solves==0,"withdrawn idle stream preview has no solve or attack authority");}
+            natural=true;naturalAttack=attack;NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));int visible=0;
             for(int i=0;i<24;i++)
             {
-                NativeCombatSelectionPreviewChecks.Step(context,raw,true);var plan=(AttackContact)GetOptional(attack,"ExpectedPreview");Require(plan!=null,"feasible continuous stream use retains the next native attack preview");visible++;
-                int a=solves,b=steps;var marker=Get(Get(host,"World"),"Impact");var zoom=Main.GameViewMatrix.ZoomMatrix;for(int j=0;j<20;j++){Call(marker,"Capture");Call(marker,"Project",zoom,Matrix.Invert(zoom));Require((bool)Call(attack,"PreviewCurrent",plan),"same-update CPU stream presentation stays current");}Require(a==solves && b==steps,"CPU presentation does not solve or replay streams");
+                NativeToolExecutionChecks.Sample(context,Get(context,"Input"),raw,true);Call(Get(context,"Combat"),"Sample");NativeCombatAimChecks.PrepareMechanismFixture(host,attack,target,0);var plan=(AttackContact)GetOptional(attack,"ExpectedImpact");
+                if(plan!=null)
+                {
+                    visible++;Call(attack,"BindPresentation",plan);int a=solves,b=steps;var marker=Get(Get(host,"World"),"Impact");var zoom=Main.GameViewMatrix.ZoomMatrix;
+                    for(int j=0;j<20;j++){Call(marker,"Capture");Call(marker,"Project",zoom,Matrix.Invert(zoom));Require((bool)Call(attack,"PresentationCurrent",plan),"same-update CPU stream presentation retains a real ready hand");}Require(a==solves && b==steps,"CPU presentation never solves or replays streams");
+                }
+                NativeCombatSelectionPreviewChecks.Step(context,raw,true);Require(GetOptional(attack,"ExpectedPreview")==null,"native stream use/cooldown never revives a hypothetical preview");
             }
-            Console.WriteLine("STREAM natural item="+item+" births="+births+" first="+(first<0?0:first-birthTick+1)+" known="+known?.Tick+" preview="+visible+"/24 solves="+solves+" steps="+steps);
-            Require(births>1 && known!=null && first>=birthTick && first-birthTick+1==known.Tick,"actual stream first positive Strike matches its born flight and continuous real cadence");
-            NativeCombatSelectionPreviewChecks.Step(context,raw,false);natural=false;
+            Console.WriteLine("STREAM natural item="+item+" funded="+funded+" births="+births+" enhanced="+readyBirths+" basic="+basicBirths+" first="+(first<0?0:first-birthTick+1)+" known="+known?.Tick+" readyHands="+visible+" realUpdates=24 solves="+solves+" steps="+steps);
+            Require(visible>1 && births==(funded?(item==157?3:4):2) && readyBirths>0 && readyBirths+basicBirths==births && known!=null && first>=birthTick && first-birthTick+1==known.Tick,"actual stream first positive Strike matches its born flight and complete funded/slow native cadence");
+            natural=false;int tail=0;
+            do{NativeCombatSelectionPreviewChecks.Step(context,raw,false);tail++;}while(tail<80 && actualHands.Any(b=>b.Shot.active && b.Key==b.Shot.key.ToString()));
+            foreach(var body in actualHands)
+            {
+                if(body.NoContact)Require((!body.Shot.active || body.Key!=body.Shot.key.ToString()) && body.First<0,"independently unresolved actual stream completes its native lifetime without selected Strike");
+                Console.WriteLine("STREAM actual body key="+body.Key+" noContact="+body.NoContact+" nativeFirst="+body.First+" retired="+(!body.Shot.active || body.Key!=body.Shot.key.ToString())+" nativeTail="+tail);
+            }
+            if(!funded)Require(readyBirths==2 && basicBirths==0 && actualHands[1].First>=0,"empty-mana slow cadence retains both useful Enhanced hands and the second hand's actual Strike");
         }
     }
 }

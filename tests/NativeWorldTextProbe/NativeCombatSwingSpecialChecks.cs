@@ -53,7 +53,8 @@ namespace NativeWorldTextProbe
                     watched=NativeCombatControlPreviewChecks.Dummy(2,direction==1?46:42,40);firstDamage=-1;nativeShapes.Clear();nativeRight=int.MinValue;
                     NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,true,25,true,true));
                     for(int i=0;i<3;i++)NativeCombatSelectionPreviewChecks.Step(context,new Vector2(710+direction*100,650),false,true);
-                    var predicted=(AttackContact)GetOptional(attack,"ExpectedPreview");
+                    Require(GetOptional(attack,"ExpectedPreview")==null,"retired idle swing preview remains absent");
+                    var predicted=NativeCombatSwingChecks.IdlePlan(host,attack,p,watched);
                     long expected=predicted==null?-1:predicted.Timeline.SampleTick+predicted.Tick;
                     var idlePosition=p.position;int idleDirection=p.direction;var nativeFrame=Item.GetDrawHitbox(type,p);var targetBox=watched.Hitbox;
                     for(int i=0;i<p.HeldItem.useAnimation+2;i++)NativeCombatSelectionPreviewChecks.Step(context,new Vector2(710+direction*100,650),true);
@@ -73,19 +74,19 @@ namespace NativeWorldTextProbe
                         int gap=targetBox.Left-nativeRight;Require(gap==13,"locked original right umbrella swept extent establishes the fixture's thirteen-pixel gap");
                         NativeCombatSelectionPreviewChecks.Step(context,new Vector2(810,650),false,true);p.position.X+=gap;
                         for(int i=0;i<3;i++)NativeCombatSelectionPreviewChecks.Step(context,new Vector2(810,650),false,true);
-                        Require(GetOptional(attack,"ExpectedPreview")==null,"umbrella exact native edge touching has no predicted receive");
+                        Require(NativeCombatSwingChecks.IdlePlan(host,attack,p,watched)==null,"umbrella exact native edge touching has no finite receive");
                         nativeRight=int.MinValue;nativeShapes.Clear();
                         for(int i=0;i<p.HeldItem.useAnimation+2;i++)NativeCombatSelectionPreviewChecks.Step(context,new Vector2(810,650),true);
                         Require(firstDamage<0 && nativeRight==targetBox.Left,"full original umbrella edge action cannot damage at rectangle touching");
                         NativeCombatSelectionPreviewChecks.Step(context,new Vector2(810,650),false,true);p.position.X+=1;
                         for(int i=0;i<3;i++)NativeCombatSelectionPreviewChecks.Step(context,new Vector2(810,650),false,true);
-                        predicted=(AttackContact)GetOptional(attack,"ExpectedPreview");expected=predicted==null?-1:predicted.Timeline.SampleTick+predicted.Tick;
+                        predicted=NativeCombatSwingChecks.IdlePlan(host,attack,p,watched);expected=predicted==null?-1:predicted.Timeline.SampleTick+predicted.Tick;
                         nativeRight=int.MinValue;nativeShapes.Clear();
                         for(int i=0;i<p.HeldItem.useAnimation+2;i++)NativeCombatSelectionPreviewChecks.Step(context,new Vector2(810,650),true);
                         Console.WriteLine("SWING SPECIAL calibrated item="+type+" originalGap="+gap+" player="+p.position+" target="+watched.Hitbox+" nativeRight="+nativeRight+" expected="+expected+" native="+firstDamage);
                         Require(nativeRight==targetBox.Left+1,"right umbrella positive has precisely one pixel of native swept overlap");
                     }
-                    Require(predicted!=null,"special no-projectile melee has an idle read-only first-contact preview: "+type+"/"+direction+" nativeFirst="+firstDamage);
+                    Require(predicted!=null,"special no-projectile melee has a finite read-only hand-component Contact: "+type+"/"+direction+" nativeFirst="+firstDamage);
                     Require(firstDamage==expected,"native first melee Damage matches idle future pose/capsule: "+type+"/"+direction+" expected="+expected+" actual="+firstDamage);
                     scenes++;
                     Console.WriteLine("PASS native special melee first damage item="+type+" direction="+direction+" expected="+expected+" first="+firstDamage);

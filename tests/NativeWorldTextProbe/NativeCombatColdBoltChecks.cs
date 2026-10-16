@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -41,8 +41,13 @@ namespace NativeWorldTextProbe
                         if(scene==5 && row[1]==119)Projectile.perIDStaticNPCImmunity[Terraria.ID.ContentSamples.ProjectilesByType[119].immunityIdentity,2]=Main.GameUpdateCount+100;
                         var mouse=target.Center;
                         NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,true,true,25,true,false));AttackContact preview=null;
-                        for(int i=0;i<3;i++){NativeCombatSelectionPreviewChecks.Step(context,mouse,false,true);preview=(AttackContact)GetOptional(attack,"ExpectedPreview");Require(!Main.projectile.Any(q=>q.active),"cold bolt idle observation does not launch");}
+                        for(int i=0;i<3;i++){NativeCombatSelectionPreviewChecks.Step(context,mouse,false,true);preview=(AttackContact)GetOptional(attack,"ExpectedPreview");Require(preview==null && !Main.projectile.Any(q=>q.active),"withdrawn cold bolt idle preview does not solve or launch");}
                         bool blocked=scene==3 || scene==4 && row[1]==118 || scene==5 && row[1]==119;
+                        // This full native damage component deliberately owns a
+                        // synthetic121-point path, not a cold Main deadline.
+                        NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,true,true,25,true,true));
+                        NativeToolExecutionChecks.Sample(context,input,mouse,true);Call(combat,"Sample");
+                        NativeCombatAimChecks.PrepareMechanismFixture(host,attack,target,0);preview=(AttackContact)GetOptional(attack,"ExpectedImpact");
                         Require(blocked?preview==null:preview!=null,"cold bolt actual held-stage feasibility: item="+row[0]+" scene="+scene+" preview="+preview?.Tick);
                         NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,true,true,25,true,true));long start=Main.GameUpdateCount;bool born=false;
                         // Honey can move a valid contact beyond tick 90. Run
@@ -52,8 +57,9 @@ namespace NativeWorldTextProbe
                             NativeCombatSelectionPreviewChecks.Step(context,mouse,frame==1);
                             born|=Main.projectile.Any(q=>q.active && q.owner==p.whoAmI && q.type==row[1]);
                         }
+                        if(!blocked)Require((bool)Get(attack,"hasConsumedInput") && Convert.ToString(Get(Get(attack,"consumedInput"),"Kind"))=="Enhanced","actual native hand consumes the prepared enhanced input");
                         Require(born,"cold bolt keeps the original hand birth even when the selected target is blocked");
-                        Require(blocked?firstHit<0:firstHit-start==preview.Tick,"cold bolt actual first Damage matches idle contact: item="+row[0]+" scene="+scene+" native="+(firstHit<0?-1:firstHit-start)+" predicted="+preview?.Tick);
+                        Require(blocked?firstHit<0:firstHit-start==preview.Tick,"cold bolt actual first Damage matches consumed component contact: item="+row[0]+" scene="+scene+" native="+(firstHit<0?-1:firstHit-start)+" predicted="+preview?.Tick);
                         if(blocked)negative++;else hits++;cases++;
                         Console.WriteLine("COLD BOLT item="+row[0]+" scene="+scene+" native="+(firstHit<0?-1:firstHit-start)+" preview="+preview?.Tick);
                     }

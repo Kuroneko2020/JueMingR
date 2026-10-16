@@ -34,12 +34,11 @@ namespace NativeWorldTextProbe
         {
             var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var input=Get(context,"Input");var tools=Get(context,"Tools");
             var attack=GetOptional(combat,"Attack");Require(attack!=null,"ordinary aim owner must be composed");Initialize();
+            bool ordinaryOnly=Environment.GetEnvironmentVariable("JMR_AIM_ORACLE_ONLY")=="ordinary";
             // Basic consumers and their actual input/safety contract
             // belong to the normal Aim scope, not only a private runner.
-            NativeCombatBasicAimChecks.Run(context);
-            NativeCombatAmmoChecks.Run(context);
-            NativeCombatSkyChecks.Run(context);
-            NativeCombatScatterChecks.Run(context);
+            if(!ordinaryOnly)
+            {NativeCombatBasicAimChecks.Run(context);NativeCombatAmmoChecks.Run(context);NativeCombatSkyChecks.Run(context);NativeCombatScatterChecks.Run(context);}
             // Cumulative routing owns Effects, Mechanics, Control and
             // Integration independently. Aim covers its ordinary/ammo/sky/
             // scatter chain once; a specialist Aim PASS is not those scopes.
@@ -52,7 +51,7 @@ namespace NativeWorldTextProbe
                 var body=Main.npc[2];body.SetDefaults(3);body.whoAmI=2;body.active=true;body.life=body.lifeMax=10000;body.defense=0;body.position=new Vector2(780,410);body.velocity=new Vector2(targetSpeed,0);
                 NativeToolExecutionChecks.Sample(context,input,new Vector2(350,150),true);Call(combat,"Sample");
                 NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,false,true));
-                Prepare(host,attack,body,targetSpeed);
+                PrepareMechanismFixture(host,attack,body,targetSpeed);
                 var contact=(AttackContact)GetOptional(attack,"ExpectedImpact");Require(contact!=null,"prepared real weapon contact: "+weaponType+"/"+targetSpeed);
                 Require(GetOptional(attack,"ExpectedPreview")==null,"retired impact preview contributes no ordinary input demand");
                 int oldX=Main.mouseX,oldY=Main.mouseY,stack=player.inventory[54].stack;var rng=Main.rand;
@@ -60,8 +59,9 @@ namespace NativeWorldTextProbe
                 // ammo-cycling and conservation policies, not dontConsume.
                 var rngFields=typeof(Terraria.Utilities.UnifiedRandom).GetFields(Flags).Where(f=>!f.IsStatic).ToArray();
                 var before=rngFields.Select(f=>Clone(f.GetValue(rng))).ToArray();int cycling=player.ammoCyclingOffset;
-                Call(attack,"Prepare");
-                var preview=(AttackContact)Get(Get(attack,"preview"),"Contact");
+                var componentPhase=Enum.Parse(attack.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase",true),"CompletedWorld");
+                using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))Call(attack,"PrepareCore",componentPhase);
+                Require(GetOptional(attack,"ExpectedImpact")!=null && GetOptional(attack,"ExpectedPreview")==null,"repeated read-only component preparation retains its actual hand Contact without withdrawn preview");
                 int immuneAtBirth=body.immune[0];
                 Require(stack==player.inventory[54].stack && cycling==player.ammoCyclingOffset && ReferenceEquals(rng,Main.rand) && rngFields.Select((f,i)=>Equal(before[i],f.GetValue(rng))).All(b=>b),"prepare does not consume inventory/RNG/cycling");
                 typeof(Player).GetMethod("ItemCheck_Shoot",Flags).Invoke(player,new object[]{0,player.HeldItem,50,false});
@@ -270,13 +270,15 @@ namespace NativeWorldTextProbe
         // scope. They do not assert that this synthetic121 future can be built
         // during a cold real input allowance. Native Shoot still uses the normal
         // operation/permission outlet and retains its real owner protection.
-        internal static void PrepareMechanismFixture(object host,object attack,NPC body,float vx)
+        internal static void PrepareMechanismFixture(object host,object attack,NPC body,float vx,bool projectilePhase=false,string phaseName=null)
         {
-            PublishFixture(host,body,vx);
+            // A fixture inside the actual pre-NPC Shoot entry still observes
+            // T-1 NPCs. Match that real phase instead of moving native clocks.
+            PublishFixture(host,body,vx,phaseName=="BeforeNpc"?(long)Main.GameUpdateCount-1:(long)Main.GameUpdateCount);
             var phase=attack.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase",true);
-            using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))Call(attack,"PrepareCore",Enum.Parse(phase,"CompletedWorld"));
+            using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))Call(attack,"PrepareCore",Enum.Parse(phase,phaseName??(projectilePhase?"Projectiles":"CompletedWorld")));
         }
-        private static void PublishFixture(object host,NPC body,float vx)
+        private static void PublishFixture(object host,NPC body,float vx,long? sampleTick=null)
         {
             var selection=Get(host,"Selection");Call(selection,"Update",((ObservationSettings)Get(host,"Settings")).Value,(long)Get(host,"Session"),true,null);
             var id=(NpcIdentity)Get(selection,"Target");Require(id.Slot==body.whoAmI,"single shared final target is selected");
@@ -285,7 +287,7 @@ namespace NativeWorldTextProbe
             // terrain lease against real world dimensions before publication;
             // an uninitialized lease cannot authorize the display component.
             var prediction=Get(host,"Prediction");Call(Get(prediction,"Terrain"),"Reset");
-            var cache=(NpcPredictionCache)Get(prediction,"Cache");cache.Demand(0,1,120);cache.Demand(1,1,120);cache.Publish(new NpcTrajectory(id,Main.GameUpdateCount,1,PredictionAssumption.None,PredictionStop.None,points,points.Length));
+            var cache=(NpcPredictionCache)Get(prediction,"Cache");cache.Demand(0,1,120);cache.Demand(1,1,120);cache.Publish(new NpcTrajectory(id,sampleTick??Main.GameUpdateCount,1,PredictionAssumption.None,PredictionStop.None,points,points.Length));
         }
         internal static void PrepareDisplay(object host,object attack)
         {

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using JueMingR.Features.Combat;
 using JueMingR.Platform.Combat;
@@ -23,11 +23,13 @@ namespace JueMingR.TerrariaHost.Combat
         private float preparedMeleeSpeed;private bool preparedString,preparedUsable;
         private uint progressStep,retryStep;
         internal int Searches {get;private set;}
+        internal HostAttackObstacles Obstacles {get;private set;}
+        private HostAttackObstacles inputObstacles;
         // This navigation owns terrain/player dependencies separate from the
         // controller's launch/beam terrain. Consumption only validates them;
         // it must not turn Draw or an AI callback into another route search.
         internal bool Current(Player player)
-        {return terrain.Unchanged && PresentationCurrent(player);}
+        {return terrain.Unchanged && PresentationCurrent(player) && (inputObstacles==null || inputObstacles.Unchanged);}
         internal sealed class PresentationDependencies
         {
             private readonly PredictionTerrain.CellLease terrain;
@@ -106,7 +108,7 @@ namespace JueMingR.TerrariaHost.Combat
         }
         private static void Parameters(Player player,Projectile shot,bool secondary,out float range,out float speed)
         {Parameters(player,shot.type,secondary,out range,out speed);}
-        private static void Parameters(Player player,int type,bool secondary,out float range,out float speed)
+        internal static void Parameters(Player player,int type,bool secondary,out float range,out float speed)
         {
             range=ProjectileID.Sets.YoyosMaximumRange[type];speed=ProjectileID.Sets.YoyosTopSpeed[type];
             if(type==554 && secondary)speed*=.75f;
@@ -174,19 +176,19 @@ namespace JueMingR.TerrariaHost.Combat
         {return PrepareWithPlayer(player,shot,timeline,clock,out point,out usable,HostAttackPlayerFrame.Capture(player,timeline));}
         internal AttackContact PrepareWithPlayer(Player player,Projectile shot,NpcTrajectory timeline,HostAttackClock clock,out Vector2 point,out bool usable,HostAttackPlayerFrame playerFrame,GroupFacts group=null)
         {
-            preparedUsable=false;int age=clock.Age;point=Vector2.Zero;usable=false;if(!player.channel || player.CCed || shot.ai[0]<0)return null;
+            Obstacles=inputObstacles=null;preparedUsable=false;int age=clock.Age;point=Vector2.Zero;usable=false;if(!player.channel || player.CCed || shot.ai[0]<0)return null;
             bool secondary=group==null?Secondary(shot):group.Secondary(shot);float range,speed;Parameters(player,shot,secondary,out range,out speed);
             int remaining=group==null?Remaining(player,shot,secondary):group.Remaining(player,shot,secondary);if(remaining==0){path.Clear();return null;}
             if(range<=1 || speed<=0 || Vector2.Distance(shot.Center,player.Center)>range*1.3f)return null;
             var bounds=timeline[Math.Min(timeline.Count-1,age+Math.Max(1,(int)(Vector2.Distance(shot.Center,new Vector2(timeline[age].Bounds.CenterX,timeline[age].Bounds.CenterY))/speed)))].ProjectileReceiveBounds;
-            Vector2 goal;if(!Goal(bounds,player.Center,range,out goal))return null;
+            Vector2 goal;if(!Goal(bounds,player.Center,range,out goal))return DerivedRoute(player,shot,timeline,clock,secondary,range,speed,remaining,playerFrame,out point,out usable);
             bool reuse=path.Count>0 && terrain.Unchanged && Vector2.DistanceSquared(playerAnchor,player.Center)<64 && Vector2.DistanceSquared(targetAnchor,goal)<144;
             if(reuse && Vector2.DistanceSquared(progressAnchor,shot.Center)>4){progressAnchor=shot.Center;progressStep=Main.GameUpdateCount;}
             if(reuse && Main.GameUpdateCount-progressStep>14){reuse=false;path.Clear();retryStep=Main.GameUpdateCount+5;}
             if(!reuse)
             {
                 path.Clear();if(Main.GameUpdateCount<retryStep)return null;
-                terrain.Reset();Searches++;if(!FindContact(shot.Center,bounds,player.Center,range,shot.width,shot.height)){retryStep=Main.GameUpdateCount+5;return null;}
+                terrain.Reset();Searches++;if(!FindContact(shot.Center,bounds,player.Center,range,shot.width,shot.height)){retryStep=Main.GameUpdateCount+5;return DerivedRoute(player,shot,timeline,clock,secondary,range,speed,remaining,playerFrame,out point,out usable);}
                 MotorShortcut(shot.Center,shot.velocity,player.Center,range,speed,secondary,shot.width,shot.height,remaining);
                 playerAnchor=player.Center;targetAnchor=goal;progressAnchor=shot.Center;progressStep=Main.GameUpdateCount;
             }
@@ -195,9 +197,32 @@ namespace JueMingR.TerrariaHost.Combat
             float dead=5+speed/2+(secondary?20:0);
             while(path.Count>1 && Vector2.Distance(shot.Center,path[0])<=dead && (!motorRoute || Clear(shot.Center,path[1],shot.width,shot.height)))path.RemoveAt(0);
             var contact=Replay(player,shot,timeline,clock,secondary,range,speed,remaining,out point,out usable,playerFrame);
+            if(contact==null && HostYoyoFamilyAttack.Parent(shot.type))
+            {Vector2 alternative;bool accepts;var derived=DerivedRoute(player,shot,timeline,clock,secondary,range,speed,remaining,playerFrame,out alternative,out accepts);if(derived!=null){contact=derived;point=alternative;usable=accepts;}}
             if(usable){preparedPlayer=NpcPredictionSource.ReadPlayer(player);preparedMeleeSpeed=player.meleeSpeed;preparedString=player.yoyoString;preparedUsable=true;}
             if(!usable){path.Clear();retryStep=Main.GameUpdateCount+5;}
             return contact;
+        }
+        // A child's route can begin with an actual hit on another receiver.
+        // Keep the original selected-body route first; only its missing
+        // Contact allows a finite alternative through a currently observed
+        // receiver. Every nomination still runs the same full slot/OnHit replay.
+        private AttackContact DerivedRoute(Player player,Projectile shot,NpcTrajectory timeline,HostAttackClock clock,bool secondary,float range,float speed,int remaining,HostAttackPlayerFrame frame,out Vector2 point,out bool usable)
+        {
+            point=Vector2.Zero;usable=false;if(!HostYoyoFamilyAttack.Parent(shot.type))return null;
+            var prior=path.ToArray();bool priorMotor=motorRoute;var priorObstacles=Obstacles;
+            foreach(var npc in Main.npc)
+            {
+                if(npc==null || npc.whoAmI==timeline.Identity.Slot || !npc.active || npc.dontTakeDamage || npc.friendly || !player.CanNPCBeHitByPlayerOrPlayerProjectile(npc,shot))continue;
+                CombatPredictionWork.Check();var b=CombatSelection.ReceiveBounds(npc);var bounds=new MotionRect(b.X,b.Y,b.Width,b.Height);Vector2 goal;
+                if(!Goal(bounds,player.Center,range,out goal))continue;path.Clear();Searches++;
+                if(!FindContact(shot.Center,bounds,player.Center,range,shot.width,shot.height))continue;
+                MotorShortcut(shot.Center,shot.velocity,player.Center,range,speed,secondary,shot.width,shot.height,remaining);
+                var contact=Replay(player,shot,timeline,clock,secondary,range,speed,remaining,out point,out usable,frame);
+                if(contact!=null)
+                {inputObstacles=Obstacles;retryStep=0;playerAnchor=player.Center;targetAnchor=goal;progressAnchor=shot.Center;progressStep=Main.GameUpdateCount;preparedPlayer=NpcPredictionSource.ReadPlayer(player);preparedMeleeSpeed=player.meleeSpeed;preparedString=player.yoyoString;preparedUsable=usable;return contact;}
+            }
+            path.Clear();path.AddRange(prior);motorRoute=priorMotor;Obstacles=priorObstacles;point=Vector2.Zero;usable=false;return null;
         }
         private bool Clear(Vector2 a,Vector2 b,int width,int height)
         {
@@ -354,6 +379,7 @@ namespace JueMingR.TerrariaHost.Combat
 #endif
             usable=false;int age=clock.Age,at=0;float dead=5+speed/2+(secondary?20:0);Vector2 center=shot.Center,velocity=shot.velocity;input=path[0];var receive=HostAttackReceive.Capture(player,shot,timeline.Identity.Slot,clock.BeforeNpc,clock.NextWorld);
             var playerMotion=playerFrame.Motion;var environment=playerFrame.Environment;
+            var family=HostYoyoFamilyAttack.Parent(shot.type)?new HostYoyoFamilyAttack(player,shot,timeline,clock,terrain):null;Obstacles=family?.Obstacles;
             for(int step=0;step<Math.Min(remaining,timeline.Count-age-1);step++)
             {
 #if DEBUG
@@ -392,7 +418,8 @@ namespace JueMingR.TerrariaHost.Combat
                 // removes Contact, not that bounded input capability; actual
                 // progress/terrain changes still revise or retire the route.
                 if(step>=2)usable=true;
-                var contact=receive.Allows(clock.LaunchDelay+step+1)?AttackIntercept.BodyContact(timeline,clock.FirstTick+step,0,input.X,input.Y,center.X,center.Y,shot.width,shot.height,AttackConfidence.Conditional):null;
+                var contact=family==null?(receive.Allows(clock.LaunchDelay+step+1)?AttackIntercept.BodyContact(timeline,clock.FirstTick+step,0,input.X,input.Y,center.X,center.Y,shot.width,shot.height,AttackConfidence.Conditional):null):family.Advance(clock.FirstTick+step,clock.LaunchDelay+step+1,input,playerCenter,center,velocity);
+                if(family!=null && family.Failed)return null;
                 if(contact!=null){
 #if DEBUG
                     ReplayStop="Contact";

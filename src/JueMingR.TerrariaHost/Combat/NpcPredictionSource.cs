@@ -250,6 +250,7 @@ namespace JueMingR.TerrariaHost.Combat
         private static readonly System.Reflection.FieldInfo mageCorpseField=typeof(Terraria.GameContent.Events.DD2Event).GetField("_deadGoblinSpots",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Static);
         internal void Clear()
         {
+            ClearSelectedContinuations();
             icePrefix=null;iceCaptureWasActive=false;
             ClearCandidateProofs();
             candidateSource?.Clear();
@@ -262,6 +263,7 @@ namespace JueMingR.TerrariaHost.Combat
         }
         internal void ObservePlayerRelocation(Player player)
         {
+            ClearSelectedContinuations();
             ClearCandidateProofs();
             candidateSource?.ObservePlayerRelocation(player);
             Native?.ObservePlayerRelocation();
@@ -269,6 +271,7 @@ namespace JueMingR.TerrariaHost.Combat
         }
         internal void ObserveNpcReset(NPC npc)
         {
+            ClearSelectedContinuations();
             ClearCandidateProofs();
             candidateSource?.ObserveNpcReset(npc);
             Native?.ObserveNpcReset(npc);
@@ -276,6 +279,7 @@ namespace JueMingR.TerrariaHost.Combat
         }
         internal void ObserveNpcQueryUpdate(int slot,bool discontinuity)
         {
+            ClearSelectedContinuations();
             ClearCandidateProofs();
             candidateSource?.ObserveNpcQueryUpdate(slot,discontinuity);
             Native?.ObserveNpcQueryUpdate(slot);
@@ -784,9 +788,10 @@ namespace JueMingR.TerrariaHost.Combat
                 // newly published future. Keep conditional capture time intact.
                 Cache.Publish(null);return;
             }
-            rolling.CaptureContinuation=candidateOnly;
-            var result=candidateOnly?ContinueCandidate(identity,tick,firstPlayerStepCompleted,playerAdvanced,count,selected,advanceTo,env,playerMotion):null;
+            rolling.CaptureContinuation=true;
+            var result=candidateOnly?ContinueCandidate(identity,tick,firstPlayerStepCompleted,playerAdvanced,count,selected,advanceTo,env,playerMotion):ContinueSelected(tick,firstPlayerStepCompleted,playerAdvanced,count,selected,advanceTo,env,playerMotion);
             if(result==null)result=rolling.Prepare(states,count,selected,tick,advanceTo,epoch,env,playerMotion,Terrain,motionRoles,playerAdvanced,sampleHorizon);
+            RememberSelected(firstPlayerStepCompleted,playerAdvanced,count,selected,env,playerMotion,result);
             if(candidateOnly && result!=null && result.Stop==PredictionStop.None && !result.BudgetPaused && result.Count==advanceTo+1 && rolling.FixedInputResult)
                 RememberCandidateInputs(identity,firstPlayerStepCompleted,playerAdvanced,count,selected,advanceTo,env,playerMotion);
             Outcome(identity,tick,result,rolling.FailureLayer);Cache.Publish(result);

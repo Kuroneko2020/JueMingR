@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Reflection;
 using HarmonyLib;
@@ -40,6 +40,7 @@ namespace NativeWorldTextProbe
             audit.Patch(typeof(Projectile).GetMethods(Flags).Single(m=>m.Name=="NewProjectile" && m.GetParameters().Length==13 && m.GetParameters()[1].ParameterType==typeof(float)),postfix:new HarmonyMethod(typeof(NativeCombatBeeGunChecks),nameof(Born)));
             audit.Patch(typeof(Projectile).GetMethod("Damage",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBeeGunChecks),nameof(BeforeDamage)),postfix:new HarmonyMethod(typeof(NativeCombatBeeGunChecks),nameof(AfterDamage)));
             audit.Patch(AccessTools.Method(typeof(NPC),"StrikeNPC",new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)}),postfix:new HarmonyMethod(typeof(NativeCombatBeeGunChecks),nameof(Strike)));
+            var componentHand=new NativeCombatHandFixture(context,()=>watching,()=>target);
             try
             {
                 Require((bool)model.GetMethod("Handles",Flags).Invoke(null,new object[]{181}) && (bool)model.GetMethod("Handles",Flags).Invoke(null,new object[]{566}) && !(bool)model.GetMethod("Handles",Flags).Invoke(null,new object[]{189}) && !(bool)model.GetMethod("Handles",Flags).Invoke(null,new object[]{316}),"Wasp and Bat are distinct native AI036 roles");
@@ -53,13 +54,18 @@ namespace NativeWorldTextProbe
                     NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,false));
                     for(int i=0;i<3;i++)NativeCombatSelectionPreviewChecks.Step(context,raw,false,true);
                     Require(p.strongBees==strong,"actual accessory update establishes the captured Hive Pack premise");
-                    var preview=(AttackContact)GetOptional(attack,"ExpectedPreview");Require(preview!=null && preview.Confidence==AttackConfidence.Representative && !Main.projectile.Any(q=>q.active),"idle Bee Gun has a read-only representative of a legal random newborn use");
+                    Require(GetOptional(attack,"ExpectedPreview")==null && !Main.projectile.Any(q=>q.active) && solves==0,"withdrawn idle Bee Gun preview neither solves nor fires");
+                    NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));
+                    NativeToolExecutionChecks.Sample(context,Get(context,"Input"),raw,true);Call(Get(context,"Combat"),"Sample");
+                    NativeCombatAimChecks.PrepareMechanismFixture(host,attack,target,0);var preview=(AttackContact)GetOptional(attack,"ExpectedImpact");
+                    Require(preview!=null && preview.Confidence==AttackConfidence.Representative,"real pressed Bee Gun prepares a legal random newborn representative");Call(attack,"BindPresentation",preview);
                     int s=solves,c=captures,m=motors;var marker=Get(Get(host,"World"),"Impact");var zoom=Main.GameViewMatrix.ZoomMatrix;
-                    for(int draw=0;draw<20;draw++){Call(marker,"Capture");Call(marker,"Project",zoom,Matrix.Invert(zoom));Require((bool)Call(attack,"PreviewCurrent",preview),"same-update Bee Gun presentation keeps the prepared lease");}
+                    for(int draw=0;draw<20;draw++){Call(marker,"Capture");Call(marker,"Project",zoom,Matrix.Invert(zoom));Require((bool)Call(attack,"PresentationCurrent",preview),"same-update Bee Gun presentation keeps the prepared lease");}
                     Require(solves==s && captures==c && motors==m,"twenty presentations perform no Bee Gun Solve, target capture or motor replay");
                     Require(captures==solves && captures>0,"each held solve captures one chase snapshot shared by its finite candidates");
                     baseDamage=p.GetWeaponDamage(p.HeldItem);long start=Main.GameUpdateCount;watching=true;NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));
                     NativeCombatSelectionPreviewChecks.Step(context,raw,true);
+                    Require((bool)Get(attack,"hasConsumedInput") && Convert.ToString(Get(Get(attack,"consumedInput"),"Kind"))=="Enhanced","actual Bee Gun hand consumes its prepared cursor");
                     Require(births>=1 && births<=(strong?6:5) && (strong || giant==0),"one actual Bee Gun action preserves the native legal random count/type");
                     Require(Main.projectile.Where(q=>q.active && q.owner==p.whoAmI && (q.type==181 || q.type==566)).All(q=>q.magic),"native Shoot gives born bees their magic damage role");
                     var actual=birthVelocity.SafeNormalize(Vector2.Zero);var aim=(new Vector2(preview.AimX,preview.AimY)-birthCenter).SafeNormalize(Vector2.Zero);var physical=(raw-birthCenter).SafeNormalize(Vector2.Zero);
@@ -73,7 +79,7 @@ namespace NativeWorldTextProbe
                 }
                 Console.WriteLine("PASS Bee Gun natural handheld direction/birth/damage, actual Hive Pack and readonly presentation; Wasp/Bat remain separate");
             }
-            finally{watching=false;target=null;receiving=null;audit.UnpatchAll(audit.Id);Main.windPhysics=wind;Main.rand=random;NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(Get(context,"Combat"),new CombatOptions());}
+            finally{componentHand.Dispose();watching=false;target=null;receiving=null;audit.UnpatchAll(audit.Id);Main.windPhysics=wind;Main.rand=random;NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(Get(context,"Combat"),new CombatOptions());}
         }
     }
 }

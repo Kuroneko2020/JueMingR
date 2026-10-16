@@ -36,13 +36,16 @@ namespace NativeWorldTextProbe
         }
         internal static void Run(object context,ProbeGraphics graphics,string output)
         {
+            // The real-use/Draw observer still has obligations after removal
+            // of the independent marker. An explicit use scope must execute
+            // those native consumers, rather than passing only retirement.
+            if(Environment.GetEnvironmentVariable("JMR_IMPACT_VISUAL_ONLY")=="usage"){NativeCombatUsageChecks.Run(context,graphics,output);return;}
             var retiredAttack=Get(Get(context,"Combat"),"Attack");
             if(!(bool)Get(retiredAttack,"PreviewDemand")){NativeCombatImpactRetirementChecks.Run(context,graphics);return;}
 
             if(Environment.GetEnvironmentVariable("JMR_IMPACT_VISUAL_ONLY")=="a2-rectangle"){CheckA2Rectangle(context,graphics);return;}
             CheckReceiveGeometry();
             if(Environment.GetEnvironmentVariable("JMR_IMPACT_VISUAL_ONLY")=="natural-slime"){NativeCombatNaturalImpactChecks.Run(context,graphics,Path.Combine(output,"natural-slime"));return;}
-            if(Environment.GetEnvironmentVariable("JMR_IMPACT_VISUAL_ONLY")=="usage"){NativeCombatUsageChecks.Run(context,graphics,output);return;}
             Directory.CreateDirectory(output);var host=Get(context,"CombatObservation");var combat=Get(context,"Combat");var attack=Get(combat,"Attack");var world=Get(host,"World");var impact=Get(world,"Impact");var input=Get(context,"Input");
             using(var futureSteps=NativeCombatUsageChecks.ObserveDrawSteps())
             {

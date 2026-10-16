@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Reflection;
 using HarmonyLib;
@@ -20,7 +20,7 @@ namespace NativeWorldTextProbe
         internal static void Run(object context)
         {
             var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var attack=Get(combat,"Attack");var input=Get(context,"Input");var control=Get(attack,"Control");var harmony=new Harmony("JueMingR.Tests.AttackBirthFailure");
-            var shoot=typeof(Player).GetMethod("ItemCheck_Shoot",Flags);var prepare=attack.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostYoyoNavigation",true).GetMethod("Prepare",Flags);
+            var shoot=typeof(Player).GetMethod("ItemCheck_Shoot",Flags);var prepare=attack.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostYoyoNavigation",true).GetMethod("PrepareWithPlayer",Flags);
             harmony.Patch(prepare,prefix:new HarmonyMethod(typeof(NativeCombatAttackFailureChecks).GetMethod("BornFault",Flags)));
             AppDomain.CurrentDomain.FirstChanceException+=FaultTrace;
             try
@@ -36,12 +36,16 @@ namespace NativeWorldTextProbe
                     harmony.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod("HandleSpecialEvent",Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks).GetMethod("SkipAchievement",Flags)));
                     Console.WriteLine("BIRTH CPU isolation: original HandleSpecialEvent only; no Main/gameplay achievements host, natural Shoot/birth retained; removed in finally with this probe Harmony ID.");
                 }
-                foreach(var q in Main.projectile)q.active=false;Call(attack,"Reset");NativeCombatAimChecks.Prepare(host,attack,n,0,true);healthy=Call(timeline,"Read",0);optionalFault=true;
+                foreach(var q in Main.projectile)q.active=false;Call(attack,"Reset");NativeQuickItemChecks.BeginWorldStep();NativeToolExecutionChecks.Sample(context,input,new Vector2(650,450),true);Call(combat,"Sample");NativeCombatAimChecks.Prepare(host,attack,n,0,true);healthy=Call(timeline,"Read",0);optionalFault=true;
                 shoot.Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),true});var ball=Main.projectile.Single(q=>q.active && q.type==541);optionalFault=false;
+                Console.WriteLine("BIRTH injected attempts="+attempts+" failed="+Get(attack,"Failed")+" ballActive="+ball.active+" cursor="+Main.mouseX+","+Main.mouseY+" expected="+x+","+y+" owner="+(GetOptional(control,"owner")!=null)+" work="+Get(Get(host,"PredictionWork"),"UsedMilliseconds"));
                 Require(attempts==1 && (bool)Get(attack,"Failed") && ball.active && Main.mouseX==x && Main.mouseY==y && GetOptional(control,"owner")==null,"real Shoot survives optional born preparation failure and returns all cursor/source ownership");
                 Require(ReferenceEquals(healthy,Call(timeline,"Read",0)) && (bool)Get(host,"Path") && !(bool)Get(Get(host,"World"),"Failed"),"local born failure preserves shared prediction/path/world health");
                 for(int i=0;i<3;i++)Call(attack,"PrepareProjectiles");Require(attempts==1 && GetOptional(attack,"ExpectedImpact")==null,"failed optional born preparation is latched rather than retried every callback");
-                Call(host,"Set",6,true);NativeCombatAimChecks.Prepare(host,attack,n,0,true);shoot.Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),true});Require(!(bool)Get(attack,"Failed") && ball.active && GetOptional(attack,"ExpectedImpact")!=null,"explicit feature retry recovers a new real source attack, preserving the former native ball");
+                NativeQuickItemChecks.BeginWorldStep();NativeToolExecutionChecks.Sample(context,input,new Vector2(650,450),true);Call(combat,"Sample");Call(host,"Set",6,true);NativeCombatAimChecks.Prepare(host,attack,n,0,true);shoot.Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),true});Console.WriteLine("BIRTH recovery normalContact="+(GetOptional(attack,"ExpectedImpact")!=null)+" failed="+Get(attack,"Failed")+" canConfigure="+Get(host,"CanConfigure")+" work="+Get(Get(host,"PredictionWork"),"UsedMilliseconds"));Require(!(bool)Get(attack,"Failed") && ball.active,"explicit retry clears only the local fault and preserves the former native ball");
+                // Fault recovery is independent of a cold shared-budget Contact.
+                // The new real registered source must still admit complete replay.
+                NativeCombatAimChecks.PrepareMechanismFixture(host,attack,n,0);Require(GetOptional(attack,"ExpectedImpact")!=null,"explicit feature retry recovers complete preparation of the new native source");
                 // An exception from the actual native caller remains visible;
                 // optional recovery does not turn Shoot into a success stub.
                 harmony.Patch(shoot,prefix:new HarmonyMethod(typeof(NativeCombatAttackFailureChecks).GetMethod("NativeFault",Flags)){priority=Priority.Last});nativeFault=true;bool propagated=false;

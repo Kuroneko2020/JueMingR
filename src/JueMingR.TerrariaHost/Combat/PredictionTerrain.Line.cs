@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using JueMingR.Platform.Combat;
 using Terraria;
 
@@ -21,12 +21,18 @@ namespace JueMingR.TerrariaHost.Combat
             int y=Math.Max(1,Math.Min(Main.maxTilesY-40,(int)((source.Y+(int)source.Height/2)/16f)));
             int tx=Math.Max(1,Math.Min(Main.maxTilesX-1,(int)((target.X+(int)target.Width/2)/16f)));
             int ty=Math.Max(1,Math.Min(Main.maxTilesY-40,(int)((target.Y+(int)target.Height/2)/16f)));
-            float dx=Math.Abs(x-tx),dy=Math.Abs(y-ty);
+            // The locked net472/x86 native trace retains its ratio/carry precision
+            // across integer-run decisions. Float spills in this cell-reader
+            // port change a run at near-integral carries (including the last
+            // strip), reversing both blocked and clear results. Explicit
+            // double arithmetic matches those original decisions; positions
+            // and tile conversion above keep their native float semantics.
+            double dx=Math.Abs(x-tx),dy=Math.Abs(y-ty);
             if(dx==0 && dy==0){clear=true;return true;}
-            float strideX=1,strideY=1;
+            double strideX=1,strideY=1;
             if(dx==0 || dy==0){if(dx==0)strideX=0;if(dy==0)strideY=0;}
             else if(dx>dy)strideX=dx/dy;else strideY=dy/dx;
-            float carryX=0,carryY=0;int axis=y<ty?2:1,remainingX=(int)dx,remainingY=(int)dy,sx=Math.Sign(tx-x),sy=Math.Sign(ty-y);
+            double carryX=0,carryY=0;int axis=y<ty?2:1,remainingX=(int)dx,remainingY=(int)dy,sx=Math.Sign(tx-x),sy=Math.Sign(ty-y);
             bool reached=false,lastSingle=false;
             do
             {

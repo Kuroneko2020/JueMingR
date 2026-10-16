@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -19,9 +19,12 @@ namespace NativeWorldTextProbe
     {
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static|BindingFlags.Instance;
         private static Assembly assembly;private static Type model,stateType;private static NPC target;private static Projectile receiving;
-        private static bool hand;private static int born,positive,explosions;private static object ammo;private static Vector2 raw;
+        private static bool hand;private static int born,positive,explosions,solves;private static object ammo;private static Vector2 raw;
+        private static void SolveWork(){solves++;}
         private static readonly HashSet<int> modes=new HashSet<int>();
-        private static readonly List<Tuple<Projectile,AttackContact,long>> known=new List<Tuple<Projectile,AttackContact,long>>();
+        // Native pools can reuse the object itself. Keep each birth key with its
+        // Known clock so a later generation never matches an earlier sample.
+        private static readonly List<Tuple<Projectile,AttackContact,long,int>> known=new List<Tuple<Projectile,AttackContact,long,int>>();
         private static readonly List<Projectile> pending=new List<Projectile>();
         private static object Static(Type type,string name,params object[] args){return type.GetMethod(name,Flags).Invoke(null,args);}
         private static object Terrain(){var t=Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Combat.PredictionTerrain",true),true);Call(t,"Reset");return t;}
@@ -51,7 +54,7 @@ namespace NativeWorldTextProbe
             if(receiving==null || receiving.damage<=0 || __result<=0 || receiving.owner!=Main.myPlayer)return;
             if(receiving.type==598 || receiving.type==636 || receiving.type==1024 || receiving.type==953)
             {positive++;Console.WriteLine("ATTACHED realStrike type="+receiving.type+" slot="+receiving.whoAmI+" target="+__instance.whoAmI+" result="+__result+" phase="+receiving.ai[0]+" tick="+Main.GameUpdateCount);
-                var k=known.FirstOrDefault(v=>ReferenceEquals(v.Item1,receiving));if(k!=null && k.Item2!=null && receiving.ai[0]!=2)Require(k.Item2.Tick==(long)Main.GameUpdateCount-k.Item3,"actual known card/javelin positive first Strike consumes the observed ai2 path");}
+                var k=known.FirstOrDefault(v=>ReferenceEquals(v.Item1,receiving) && v.Item4==(int)receiving.key);if(k!=null && k.Item2!=null && receiving.ai[0]!=2)Require(k.Item2.Tick==(long)Main.GameUpdateCount-k.Item3,"actual known card/javelin positive first Strike consumes the observed ai2 path");}
         }
         private static void Born(IEntitySource __0,int __result)
         {
@@ -71,12 +74,13 @@ namespace NativeWorldTextProbe
             if(!hand || !pending.Remove(__instance))return;var q=__instance;var p=Main.LocalPlayer;var path=Timeline(target);
             var clock=Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackClock",true),Flags,null,new object[]{path,Enum.Parse(assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase",true),"Projectiles"),0},null);
             var obstacle=Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackObstacles",true),Flags,null,new object[]{p,q,path,0,false,false},null);
-            var contact=(AttackContact)Static(model,"Known",p,q,path,clock,Terrain(),obstacle);known.Add(Tuple.Create(q,contact,(long)Main.GameUpdateCount-1));Console.WriteLine("ATTACHED known key="+q.key+" observedAi2="+q.ai[2]+" contact="+contact?.Tick);
+            var contact=(AttackContact)Static(model,"Known",p,q,path,clock,Terrain(),obstacle);known.Add(Tuple.Create(q,contact,(long)Main.GameUpdateCount-1,(int)q.key));Console.WriteLine("ATTACHED known key="+q.key+" observedAi2="+q.ai[2]+" contact="+contact?.Tick);
         }
         internal static void Run(object context)
         {
             assembly=Get(context,"Combat").GetType().Assembly;model=assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttachedShotAttack",true);stateType=model.GetNestedType("State",BindingFlags.NonPublic);bool wind=Main.windPhysics;
             var audit=new Harmony("JueMingR.Tests.AttachedShots");foreach(string name in new[]{"HandleSpecialEvent","HandleRunning","HandleMining"})audit.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
+            audit.Patch(model.GetMethod("Solve",Flags),prefix:new HarmonyMethod(typeof(NativeCombatAttachedShotChecks),nameof(SolveWork)));
             audit.Patch(typeof(Projectile).GetMethods(Flags).Single(m=>m.Name=="NewProjectile" && m.GetParameters().Length==13 && m.GetParameters()[1].ParameterType==typeof(float)),postfix:new HarmonyMethod(typeof(NativeCombatAttachedShotChecks),nameof(Born)));
             audit.Patch(typeof(Projectile).GetMethod("Damage",Flags),prefix:new HarmonyMethod(typeof(NativeCombatAttachedShotChecks),nameof(BeforeDamage)),postfix:new HarmonyMethod(typeof(NativeCombatAttachedShotChecks),nameof(AfterDamage)));
             audit.Patch(typeof(Projectile).GetMethod("Update",Flags),prefix:new HarmonyMethod(typeof(NativeCombatAttachedShotChecks),nameof(BeforeUpdate)));
@@ -249,21 +253,29 @@ namespace NativeWorldTextProbe
             {
                 var p=Reset(context,item);p.position=new Vector2(650,646);p.ResetFallDamage();p.releaseUseItem=true;Main.screenPosition=new Vector2(500,400);for(int x=5;x<115;x++)NativeToolsChecks.Tile(x,43,1);target=NativeCombatControlPreviewChecks.Dummy(2,43,40);raw=target.Center-new Vector2(390,0);
                 var host=Get(context,"CombatObservation");var attack=Get(Get(context,"Combat"),"Attack");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,false));
-                for(int i=0;i<3;i++)NativeCombatSelectionPreviewChecks.Step(context,raw,false,true);
-                var preview=(AttackContact)GetOptional(attack,"ExpectedPreview");Require(preview!=null && !Main.projectile.Any(q=>q.active) && p.HeldItem.noMelee,"AI113 idle hand preview exists without use, projectile birth or invented melee");
+                solves=0;for(int i=0;i<3;i++)NativeCombatSelectionPreviewChecks.Step(context,raw,false,true);
+                Require(GetOptional(attack,"ExpectedPreview")==null && !Main.projectile.Any(q=>q.active) && p.HeldItem.noMelee && solves==0,"withdrawn AI113 idle preview neither solves nor births an attack or invented melee");
                 ammo=Static(assembly.GetType("JueMingR.TerrariaHost.Combat.AttackAmmoSnapshot",true),"Capture",p,p.HeldItem);hand=true;NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));
-                bool ongoing=false;int recallDamage=0;
+                bool ongoing=false,enhanced=false;int recallDamage=0;
                 for(int frame=0;frame<(item==5461?100:40);frame++)
                 {
-                    int previousMode=(int)Get(p,"killingCardFireType"),previousPositive=positive;
+                    int previousMode=(int)Get(p,"killingCardFireType"),previousPositive=positive,previousBorn=born;
                     // Keep actual input cadence. Consumable3378 receives a
                     // second lightpress; auto-reuse weapons hold naturally.
                     bool use=item==3378?frame==0 || frame==27:true;
+                    AttackContact prepared=null;
+                    if(use)
+                    {
+                        NativeToolExecutionChecks.Sample(context,Get(context,"Input"),raw,true);Call(Get(context,"Combat"),"Sample");
+                        NativeCombatAimChecks.PrepareMechanismFixture(host,attack,target,0);prepared=(AttackContact)GetOptional(attack,"ExpectedImpact");
+                        if(frame==0)Require(prepared!=null,"actual AI113 first pressed hand prepares under1000ms mechanism allowance");
+                    }
                     NativeCombatSelectionPreviewChecks.Step(context,raw,use);
-                    if(Main.projectile.Any(q=>q.active) && GetOptional(attack,"ExpectedPreview")!=null)ongoing=true;
+                    if(born>previousBorn && (bool)Get(attack,"hasConsumedInput") && Convert.ToString(Get(Get(attack,"consumedInput"),"Kind"))=="Enhanced")enhanced=true;
+                    if(Main.projectile.Any(q=>q.active) && prepared!=null)ongoing=true;
                     if(item==5461 && previousMode==3 && (int)Get(p,"killingCardFireType")==0)recallDamage+=positive-previousPositive;
                 }
-                Require(born>0 && positive>0 && known.Any(v=>v.Item2!=null) && ongoing,"actual hand birth/observed Known replay/positive Strike and sustained preview are exercised for item"+item);
+                Require(born>0 && positive>0 && known.Any(v=>v.Item2!=null) && ongoing && enhanced,"actual Enhanced hand birth/observed Known replay/positive Strike and sustained pressed preparation are exercised for item"+item);
                 if(item==5461)Require(modes.Contains(0) && modes.Contains(1) && modes.Contains(2) && recallDamage>0,"real single/reverse/fan/recall cycle includes immediate positive recall Damage without invented birth");
                 Console.WriteLine("PASS attached natural item="+item+" births="+born+" positive="+positive+" known="+known.Count(v=>v.Item2!=null)+" ongoing="+ongoing+" recall="+recallDamage+" modes="+string.Join(",",modes));hand=false;
             }

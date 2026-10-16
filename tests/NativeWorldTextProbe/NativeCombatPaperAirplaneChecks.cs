@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -24,6 +24,11 @@ namespace NativeWorldTextProbe
         private sealed class Input {internal Projectile Before;internal object Terrain;internal float Wind;internal double Visual;internal readonly List<Draw> Draws=new List<Draw>();}
         private static Input current;
         private static object Static(Type t,string name,params object[] args){return t.GetMethod(name,Flags).Invoke(null,args);}
+        private static long BirthUlps(float a,float b)
+        {
+            if(a==b)return 0;if(float.IsNaN(a) || float.IsNaN(b) || float.IsInfinity(a) || float.IsInfinity(b) || Math.Sign(a)!=Math.Sign(b))return long.MaxValue;
+            return Math.Abs((long)BitConverter.ToInt32(BitConverter.GetBytes(a),0)-BitConverter.ToInt32(BitConverter.GetBytes(b),0));
+        }
         private static object Terrain(){var t=Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Combat.PredictionTerrain",true),true);Call(t,"Reset");return t;}
         private static Projectile Copy(Projectile p){return (Projectile)Static(model,"Copy",p);}
         private static bool Paper(Projectile p){return p!=null && (p.type==761 || p.type==762);}
@@ -112,6 +117,16 @@ namespace NativeWorldTextProbe
         // to manufacture the native input or claim original World.Draw.
         private static void AdvanceVisual(){Main.timeForVisualEffects+=1;if(Main.timeForVisualEffects>=216000)Main.timeForVisualEffects=0;}
         private static void NaturalStep(object context,Vector2 mouse,bool left,bool pure=false){AdvanceVisual();NativeCombatSelectionPreviewChecks.Step(context,mouse,left,pure);}
+        private static object naturalContext;private static int preparedHands;
+        private static void BeforeNaturalShoot(Player __instance)
+        {
+            if(!natural || !physicalLeft || naturalContext==null || !ReferenceEquals(__instance,Main.LocalPlayer))return;
+            // AdvanceVisual and this real Player prefix have already run. Keep
+            // their original GUC/visual relation and the still-T-1 NPC sample.
+            var host=Get(naturalContext,"CombatObservation");var attack=Get(Get(naturalContext,"Combat"),"Attack");
+            NativeCombatAimChecks.PrepareMechanismFixture(host,attack,target,0,phaseName:"BeforeNpc");
+            Require(GetOptional(attack,"ExpectedImpact")!=null,"actual paper Shoot prepares under1000ms mechanism allowance at its native visual clock");preparedHands++;
+        }
         private static void Born(IEntitySource __0,int __result)
         {
             if(!natural || __result<0 || __result>=Main.maxProjectiles)return;var q=Main.projectile[__result];if(!Paper(q))return;births++;
@@ -130,6 +145,7 @@ namespace NativeWorldTextProbe
             bool oldWind=Main.windPhysics;float speed=Main.windSpeedCurrent;double visual=Main.timeForVisualEffects;var priorSpelunker=Main.instance.SpelunkerProjectileHelper;Main.instance.SpelunkerProjectileHelper=new Terraria.GameContent.SpelunkerProjectileHelper();
             foreach(string name in new[]{"HandleSpecialEvent","HandleRunning","HandleMining"})audit.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
             audit.Patch(model.GetMethod("Solve",Flags),prefix:new HarmonyMethod(typeof(NativeCombatPaperAirplaneChecks),nameof(SolveWork)));audit.Patch(model.GetMethod("Step",Flags),prefix:new HarmonyMethod(typeof(NativeCombatPaperAirplaneChecks),nameof(StepWork)));
+            audit.Patch(typeof(Player).GetMethod("ItemCheck_Shoot",Flags),prefix:new HarmonyMethod(typeof(NativeCombatPaperAirplaneChecks),nameof(BeforeNaturalShoot)){priority=Priority.First+1000});
             audit.Patch(typeof(Projectile).GetMethod("AI_159_PaperAirplanes",Flags),prefix:new HarmonyMethod(typeof(NativeCombatPaperAirplaneChecks),nameof(BeforeAi)),postfix:new HarmonyMethod(typeof(NativeCombatPaperAirplaneChecks),nameof(AfterAi)));
             audit.Patch(typeof(Terraria.Utilities.UnifiedRandom).GetMethod("Next",new[]{typeof(int),typeof(int)}),postfix:new HarmonyMethod(typeof(NativeCombatPaperAirplaneChecks),nameof(RandomDraw)));
             audit.Patch(typeof(Projectile).GetMethod("Kill",Flags),prefix:new HarmonyMethod(typeof(NativeCombatPaperAirplaneChecks),nameof(BeforeKill)),postfix:new HarmonyMethod(typeof(NativeCombatPaperAirplaneChecks),nameof(AfterKill)));
@@ -149,10 +165,15 @@ namespace NativeWorldTextProbe
                     foreach(int kind in new[]{4343,4344})if(selected==0 || selected==kind)Natural(context,kind);
                 }
             }
-            finally{natural=auditCurrent=false;current=null;aiBody=killBody=receiving=null;audit.UnpatchAll(audit.Id);Main.windPhysics=oldWind;Main.windSpeedCurrent=speed;Main.timeForVisualEffects=visual;Main.instance.SpelunkerProjectileHelper=priorSpelunker;NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());NativeCombatCadenceChecks.Save(Get(context,"Combat"),new CombatOptions());}
+            finally{naturalContext=null;natural=auditCurrent=false;current=null;aiBody=killBody=receiving=null;audit.UnpatchAll(audit.Id);Main.windPhysics=oldWind;Main.windSpeedCurrent=speed;Main.timeForVisualEffects=visual;Main.instance.SpelunkerProjectileHelper=priorSpelunker;NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());NativeCombatCadenceChecks.Save(Get(context,"Combat"),new CombatOptions());}
         }
         private static void Births(object context)
         {
+            // Birth probes borrow screen dimensions only for native reverse-gravity mapping.
+            // Restore them before later physical-input samples use the real viewport.
+            int screenWidth=Main.screenWidth,screenHeight=Main.screenHeight;
+            try
+            {
             int count=0;
             foreach(int item in new[]{4343,4344})foreach(float gravity in new[]{1f,-1f})
             {
@@ -160,9 +181,16 @@ namespace NativeWorldTextProbe
                 Require(p.HeldItem.consumable && p.HeldItem.ranged && p.HeldItem.noMelee && !p.HeldItem.autoReuse && p.HeldItem.useAnimation==17,"native paper items are seventeen-action consumable throws, not a controlled/channel weapon");
                 var aim=new Vector2(910.25f,660.75f);var scope=Static(assembly.GetType("JueMingR.TerrariaHost.Combat.CombatCursorScope",true),"Begin",aim,true);var ammo=Static(assembly.GetType("JueMingR.TerrariaHost.Combat.AttackAmmoSnapshot",true),"Capture",p,p.HeldItem);var origin=p.RotatedRelativePoint(p.MountedCenter);var expected=(Projectile)Static(model,"Birth",p,ammo,origin,aim,Terrain());
                 try{typeof(Player).GetMethod("ItemCheck_Shoot",Flags).Invoke(p,new object[]{p.whoAmI,p.HeldItem,p.GetWeaponDamage(p.HeldItem),false});}finally{Call(scope,"End");}
-                var q=Main.projectile.Single(s=>s.active && s.type==p.HeldItem.shoot);Require(expected!=null && q.Center==expected.Center && q.velocity==expected.velocity && q.ai.SequenceEqual(expected.ai) && q.manualDirectionChange,"actual normal/reverse paper Shoot agrees before first original random clock draw");Require(Main.mouseX==300 && Main.mouseY==200 && Player.tileTargetX==37 && Player.tileTargetY==38,"ordinary paper borrowed cursor restores mouse and never borrows tile targets");count++;
+                var q=Main.projectile.Single(s=>s.active && s.type==p.HeldItem.shoot);long xUlps=expected==null?long.MaxValue:BirthUlps(q.velocity.X,expected.velocity.X),yUlps=expected==null?long.MaxValue:BirthUlps(q.velocity.Y,expected.velocity.Y);Console.WriteLine("PAPER birth item/gravity="+item+"/"+gravity+" actual="+q.Center+"/"+q.velocity+" ai="+string.Join(",",q.ai)+" manual="+q.manualDirectionChange+" expected="+expected?.Center+"/"+expected?.velocity+" ai="+(expected==null?"null":string.Join(",",expected.ai))+" manual="+expected?.manualDirectionChange+" velocityULP="+xUlps+","+yUlps);
+                // Native x86 keeps Shoot's scalar intermediates in x87; the
+                // independent Vector2 birth stores fields as Single. Only this
+                // four-case birth comparison admits one ULP per component.
+                // Origins/AI/flags and all existing motor/receive gates stay exact.
+                Require(expected!=null && q.Center==expected.Center && xUlps<=1 && yUlps<=1 && q.ai.SequenceEqual(expected.ai) && q.manualDirectionChange,"actual normal/reverse paper Shoot agrees within one stored float ULP before first original random clock draw");Require(Main.mouseX==300 && Main.mouseY==200 && Player.tileTargetX==37 && Player.tileTargetY==38,"ordinary paper borrowed cursor restores mouse and never borrows tile targets");count++;
             }
             Console.WriteLine("PASS PAPER actual births="+count+" pairedCursor=True noTileTarget=True");
+            }
+            finally{Main.screenWidth=screenWidth;Main.screenHeight=screenHeight;Terraria.GameInput.PlayerInput.CacheOriginalScreenDimensions();}
         }
         private static void Motors(object context)
         {
@@ -225,14 +253,14 @@ namespace NativeWorldTextProbe
         {
             var p=Reset(context,item);p.position=new Vector2(700,646);p.releaseUseItem=true;Main.screenPosition=new Vector2(550,400);for(int x=5;x<115;x++)NativeToolsChecks.Tile(x,43,1);target=NativeCombatControlPreviewChecks.Dummy(2,51,40);raw=target.Center-new Vector2(430,0);var host=Get(context,"CombatObservation");var attack=Get(Get(context,"Combat"),"Attack");solves=steps=0;int currentStart=currentActions;
             NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,false));int stack=p.HeldItem.stack;
-            for(int action=0;action<3;action++){NaturalStep(context,raw,false,true);Require(GetOptional(attack,"ExpectedPreview")!=null && !Main.projectile.Any(q=>q.active) && !p.controlUseItem && p.HeldItem.stack==stack,"idle paper preview is read-only and does not consume a real throw");}
-            natural=auditCurrent=true;NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));int visible=0;
+            for(int action=0;action<3;action++){NaturalStep(context,raw,false,true);Require(GetOptional(attack,"ExpectedPreview")==null && !Main.projectile.Any(q=>q.active) && !p.controlUseItem && p.HeldItem.stack==stack && solves==0,"withdrawn idle paper preview neither solves nor consumes a real throw");}
+            natural=auditCurrent=true;naturalContext=context;preparedHands=0;NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));int visible=0;
             for(int action=0;action<52;action++)
             {
-                bool left=action<20 || action>=22 && action<44;naturalAction=action;physicalLeft=left;NaturalStep(context,raw,left);var shown=(AttackContact)GetOptional(attack,"ExpectedPreview");Console.WriteLine("PAPER use action="+action+" physicalLeft="+left+" nativeUse="+p.controlUseItem+" anim/time="+p.itemAnimation+"/"+p.itemTime+" born="+births+" shown="+shown?.Tick+" confidence="+shown?.Confidence);
-                Require(shown!=null,"actual feasible paper idle/held-use/cooldown/release interval preserves each current preview");visible++;
+                bool left=action<20 || action>=22 && action<44;naturalAction=action;physicalLeft=left;NaturalStep(context,raw,left);var flight=Observe(attack,p);var shown=flight==null?null:(AttackContact)Get(flight,"Contact");Console.WriteLine("PAPER use action="+action+" physicalLeft="+left+" nativeUse="+p.controlUseItem+" anim/time="+p.itemAnimation+"/"+p.itemTime+" born="+births+" actualFlight="+shown?.Tick+" confidence="+shown?.Confidence);
+                Require(GetOptional(attack,"ExpectedPreview")==null,"all52 actual paper actions keep the retired hypothetical preview absent");if(shown!=null)visible++;
                 int a=solves,b=steps;var impact=Get(Get(host,"World"),"Impact");var zoom=Main.GameViewMatrix.ZoomMatrix;
-                for(int draw=0;draw<12;draw++){Call(impact,"Capture");Call(impact,"Project",zoom,Matrix.Invert(zoom));Require((bool)Call(attack,"PreviewCurrent",shown),"same-update paper CPU presentation is current");}Require(a==solves && b==steps,"paper CPU Capture/Project performs zero solves/motor/RNG replay");
+                for(int draw=0;draw<12;draw++){Call(impact,"Capture");Call(impact,"Project",zoom,Matrix.Invert(zoom));if(flight!=null)Require((bool)Call(flight,"PresentationCurrent",0),"same-update actual paper family CPU presentation is current");}Require(a==solves && b==steps,"paper CPU Capture/Project performs zero solves/motor/RNG replay");
             }
             // Native initial ai0=-Next(30,80), followed by this same action's
             // ++, reaches the first loop motor branch (ai0=20) no earlier
@@ -240,9 +268,14 @@ namespace NativeWorldTextProbe
             // imposing an unrelated 25-action distance on this real dummy.
             long firstOrdinal=first-birthTick+1;
             Console.WriteLine("PAPER first receiving births="+births+" positive="+positive+" firstTick="+first+" birthTick="+birthTick+" ordinal="+firstOrdinal+" knownTick="+known?.Tick+" target="+target.position+"/"+target.Size+" earliestLoop=50");
-            Require(births>=2 && positive>0 && known!=null && firstOrdinal==known.Tick && firstOrdinal>0 && firstOrdinal<50,"actual first Strike precedes every possible initial loop-clock bifurcation and matches born path");
-            Require(p.HeldItem.stack<stack && !p.controlUseItem,"real consumable use decreases its stack and physical release returns use permission");natural=auditCurrent=false;
+            Require(births>=2 && preparedHands>=2 && visible>0 && positive>0 && known!=null && firstOrdinal==known.Tick && firstOrdinal>0 && firstOrdinal<50,"actual prepared first Strike precedes every possible initial loop-clock bifurcation and matches born path; public Flight observes the real source");
+            Require(p.HeldItem.stack<stack && !p.controlUseItem,"real consumable use decreases its stack and physical release returns use permission");naturalContext=null;natural=auditCurrent=false;
             Console.WriteLine("PASS PAPER natural item="+item+" actions=52 previews="+visible+" births="+births+" assisted="+assistedBirths+" legalManual="+manualBirths+" positive="+positive+" first="+(first-birthTick+1)+" bornKnown="+known.Tick+" actualMotor="+(currentActions-currentStart)+" CPUCaptureProject=12x0 DrawUnverified=True");
+        }
+        private static object Observe(object attack,Player player)
+        {
+            var path=Timeline(target,false);var args=new object[]{player,path,Enum.Parse(assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase",true),"CompletedWorld"),false};
+            using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))return Call(attack,"ReadFlight",args);
         }
     }
 }

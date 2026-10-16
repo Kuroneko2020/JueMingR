@@ -1,0 +1,58 @@
+{
+  "product": "m2x-candidate",
+  "hostMvid": "baf9dc9a-9678-468a-9102-39d336085498",
+  "hostSha256": "2314766762F49B9D3C7488CB0169E2AF04262F2A5CE8FC487402A23BDAA222D4",
+  "productionChangedAfterFixedX": false,
+  "fixtureBuildLog": "B-feedback-final-freeze-build.log",
+  "fixtureWarnings": 0,
+  "fixtureErrors": 0,
+  "files": [
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatUsageChecks.cs",
+      "sha256": "4ACF998E09AD21F6255C3D5EF40AC22B3955E9F7C308E3338E4618A76049F1DE"
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatOriginalFeedbackChecks.cs",
+      "sha256": "B8251BF81FE7F4C04566EB4B61931B92DA2BDE04158EE9226FF6BC715B33108B"
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatMeleeHitFamilyChecks.cs",
+      "sha256": "EFC79C15AEE81DEF7BBBD29D11B4FDA8F87BFF10A8926580D962C8D1A0EB6114"
+    }
+  ],
+  "checks": [
+    {
+      "name": "usage-and-feedback-complete-CPU",
+      "configuration": "Release",
+      "log": "B-m2x-feedback-full-r04-complete.log",
+      "exitCode": 0,
+      "sha256": "D3E10F5B8FF3B52A605D7E69302BFDFC1FE9BDE9BC4029D6CC19CBB82B7DC547"
+    },
+    {
+      "name": "usage-and-feedback-complete-GPU",
+      "configuration": "Release",
+      "log": "B-m2x-candidate-feedback-full-r06-gpu.log",
+      "exitCode": 0,
+      "sha256": "1F5A9260A3B189101D62F05190240E7E49CAD4AFD9315CBF28172D51A5CCE767"
+    },
+    {
+      "name": "spears-native-work-complete",
+      "configuration": "same-source Debug",
+      "log": "B-m2x-detection-candidate-feedback-spears-r08-work.log",
+      "exitCode": 0,
+      "sha256": "E50C1D3031D2B3EFD2D5452ADB50D9194B6A83A7568F28AFBE3DC1258ADE4173"
+    },
+    {
+      "name": "nano-private-child-damage",
+      "configuration": "Release",
+      "log": "B-m2x-candidate-r11-private-nano-damage-melee-hit-family.log",
+      "exitCode": 0,
+      "sha256": "E71878625B2B1A757DB24437C434CA355A6558A78BCB915966DE4DC499D98333"
+    }
+  ],
+  "reuse": "m2v10 nativeStart and 2x280GUC ordinary under audited unaffected inputs; Release/GPU before final observer-only Debug sampling amendment; original failure logs retained",
+  "owner": "B",
+  "remaining": "A overall fullIntegration/formal matrices/cost/independent review/package-install decision; C defaultEffects separate; no B product fix pending",
+  "debugHostMvid": "03178554-66cf-4eac-b412-8f22a9583384",
+  "debugHostSha256": "E19E66643266D124DF85A3725D4CDE8ED35DD2423863159E212906BD6D840211"
+}

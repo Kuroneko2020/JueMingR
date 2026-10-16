@@ -19,14 +19,20 @@ namespace JueMingR.TerrariaHost.Combat
             internal readonly Projectile Shot;
             internal readonly bool Apprentice;
             internal bool Burst,Retired;
+            internal bool ReceiveComplete;
             internal Vector2 BurstCenter;
             internal int BurstSide;
-            internal State(Projectile shot,bool apprentice){Shot=Copy(shot);Apprentice=apprentice;}
+            internal State(Projectile shot,bool apprentice):this(shot,apprentice,true){}
+            internal State(Projectile shot,bool apprentice,bool copy){Shot=copy?Copy(shot):shot;Apprentice=apprentice;}
             // Damage_PVE checks positive damage once before the NPC loop.
             // Reaching zero in OnHit blocks the next Damage call, while later
             // receivers in this already-admitted pass can still take damage.
             internal bool Hit(int slot,int remaining){Shot.damage=(int)(Shot.damage*.95f);return true;}
         }
+        // The shared batch already owns a detached projectile. Its motor,
+        // receive policy and terminal lease must observe this SAME object;
+        // another copy here would split movement from the damage history.
+        internal static State Bind(Projectile privateShot,bool apprentice){return new State(privateShot,apprentice,false);}
         internal static Projectile Copy(Projectile p)
         {
             var q=(Projectile)clone.Invoke(p,null);q.ai=(float[])p.ai.Clone();q.localAI=(float[])p.localAI.Clone();q.localNPCImmunity=(int[])p.localNPCImmunity.Clone();return q;
@@ -73,12 +79,16 @@ namespace JueMingR.TerrariaHost.Combat
         }
         internal static void Finish(State s)
         {var q=s.Shot;if(q.active && (--q.timeLeft<=0 || q.penetrate==0))Kill(s);}
-        private static AttackContact Receive(State s,NpcTrajectory path,int tick,int outer,int sub,Vector2 aim,HostAttackObstacles obstacles,Func<int,int,bool> onHit)
+        internal static AttackContact Receive(State s,NpcTrajectory path,int tick,int outer,int sub,Vector2 aim,HostAttackObstacles obstacles,Func<int,int,bool> onHit)
         {
-            var q=s.Shot;if(q.damage<=0)return null;
+            s.ReceiveComplete=true;var q=s.Shot;if(q.damage<=0)return null;
             Vector2 center=s.Burst?s.BurstCenter:q.Center;int width=s.Burst?s.BurstSide:q.width,height=s.Burst?s.BurstSide:q.height;
             int hits=obstacles.SelectedHits;
             bool passed=obstacles.PassCustomOuter(2,tick,outer,center.X,center.Y,width,height,null,consumeSelected:true,onHit:onHit);
+            // A selected Strike may precede an unresolved later receiver. Its
+            // primary Contact is still valid, but an ambient member cannot
+            // turn that failed continuation into a known death/free slot.
+            s.ReceiveComplete=passed;
             if(obstacles.SelectedHits>hits)return AttackIntercept.BodyContact(path,tick,sub,aim.X,aim.Y,center.X,center.Y,width,height,AttackConfidence.Conditional);
             if(!passed){q.active=false;s.Retired=true;s.Burst=false;}return null;
         }
@@ -123,27 +133,35 @@ namespace JueMingR.TerrariaHost.Combat
             // locally owned 706 before the first AI action.
             shot.timeLeft=120;
             obstacles=new HostAttackObstacles(player,shot,path,clock.LaunchDelay+delay,clock.BeforeNpc,clock.NextWorld);
-            bool apprentice=obstacles.CapturePhoenixOwner(player);obstacles.CaptureCursorMapping(player);
-            var pool=obstacles.CaptureBirthSlots().Copy();int parentSlot=parent.whoAmI,childSlot;
-            bool liveParent=parentSlot>=0 && parentSlot<Main.projectile.Length && ReferenceEquals(Main.projectile[parentSlot],parent) && parent.active;
-            if(!liveParent && !pool.TryAllocate(out parentSlot))return null;
-            if(!pool.TryAllocate(out childSlot))return null;int later=childSlot>parentSlot?0:1;
-            int first=clock.FirstTick+delay+later,firstOuter=clock.LaunchDelay+delay+later+1;if(first>=path.Count)return null;
-            shot.whoAmI=childSlot;var directions=new Vector2[41];int count=0;
-            for(int seed=0;seed<41;seed++)
+            obstacles.CapturePhoenixOwner(player);obstacles.CaptureCursorMapping(player);
+            var captured=HostHeldAmmoFamilyAttack.CaptureForSolve(player,obstacles,new[]{706});
+            var owners=new HostAttackPlayerPrefix(HostAttackPlayerFrame.Capture(Main.player[player.whoAmI],path),terrain,clock.LaunchDelay+121);
+            int first=clock.FirstTick+delay;if(first>=path.Count)return null;
+            // Target samples are proposals, never a pool/phase prediction.
+            // Keep the old centre/fan directions and both possible newborn
+            // schedules. Only the shared world advances lower slots, resolves
+            // their deaths/hits and allocates 706 with the parent occupied.
+            var directions=new Vector2[50];int count=0;
+            for(int seed=0;seed<50;seed++)
             {
-                var box=path[Math.Min(path.Count-1,first+Math.Min(seed,8)*4)].ProjectileReceiveBounds;
-                Vector2 direction=seed<9?(new Vector2(box.CenterX,box.CenterY)-origin).SafeNormalize(Vector2.UnitX*player.direction):((seed-9)*MathHelper.TwoPi/32).ToRotationVector2();
+                int schedule=seed<18?seed/9:0,offset=seed<18?seed%9:0;
+                var box=path[Math.Min(path.Count-1,first+schedule+offset*4)].ProjectileReceiveBounds;
+                Vector2 direction=seed<18?(new Vector2(box.CenterX,box.CenterY)-origin).SafeNormalize(Vector2.UnitX*player.direction):((seed-18)*MathHelper.TwoPi/32).ToRotationVector2();
                 bool duplicate=false;for(int i=0;i<count;i++)if(directions[i]==direction){duplicate=true;break;}if(duplicate)continue;directions[count++]=direction;
-                var aim=origin+direction*10000;shot.Center=origin;shot.velocity=BirthVelocity(pose,parent,origin,aim);bool wet;byte kind;
-                if(!terrain.ProjectileWet(origin.X,origin.Y,shot.width,shot.height,out wet,out kind,true))return null;shot.wet=wet;
-                var contact=Replay(shot,apprentice,path,first,firstOuter,clock.Phase!=HostAttackPhase.Projectiles || delay>0 || later>0,terrain,obstacles,aim);
+                var aim=origin+direction*10000;shot.Center=origin;shot.velocity=BirthVelocity(pose,parent,origin,aim);
+                // The complete batch owns ambient 706/ammo, shared immunity,
+                // terrain and birth slots. In particular BeforeProjectilePass
+                // must reach it unchanged: an actual parent-AI caller has
+                // already visited its lower slots and must not visit them twice.
+                var contact=HostHeldAmmoFamilyAttack.ExplicitPreparedBirthBatch(player,new[]{shot},path,clock,terrain,obstacles,aim,delay,parent,captured,false,owners);
                 if(contact!=null){point=aim;return contact;}
             }
             return null;
         }
-        // Actual-born oracle only. A phoenix is never registered as a cursor
-        // consumer merely because its autonomous flight can be replayed.
+        // Actual-born single-source oracle only; it never runs a controller's
+        // pre-birth prefix. Runtime family observation uses the shared batch's
+        // KnownFamily, including its ambient members. A phoenix is never a
+        // cursor consumer merely because its autonomous flight can be replayed.
         internal static AttackContact Known(Player player,Projectile shot,NpcTrajectory path,HostAttackClock clock,PredictionTerrain terrain,HostAttackObstacles obstacles)
         {
             if(shot==null || !shot.active || shot.type!=706 || shot.owner!=player.whoAmI || !shot.friendly || shot.hostile || shot.damage<=0 || clock.LaunchDelay!=0)return null;

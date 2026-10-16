@@ -1,0 +1,19 @@
+﻿{
+  "events": 206,
+  "unclassified": 0,
+  "classes": {
+    "GENERIC_OUTLET": 2,
+    "EXTERNAL_EQUIPMENT": 7,
+    "NO_NEW_NPC_CONTACT": 4,
+    "NO_ACTIVE_CALLER": 2,
+    "TOOL_NATIVE": 1,
+    "FINITE_FAMILY": 125,
+    "AUTONOMOUS_SUMMON": 18,
+    "EXTERNAL_TAG_PROC": 2,
+    "WORLD_OR_NPC": 18,
+    "INACTIVE_OLD_BODY": 5,
+    "EXTERNAL_ACTOR": 22
+  },
+  "nativeSourceSha": "19BB602993B750DDA1C8F0C449419D3C392BBDDD025A0301DA8C9BBA032072EA",
+  "boundary": "Source classification is not per-event or per-combination runtime PASS; raw206 AST includes hostile/autonomous/tool/helper outlets. Each finite family proof and final propagation remains explicit."
+}

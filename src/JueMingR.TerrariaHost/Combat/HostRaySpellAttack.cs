@@ -38,7 +38,7 @@ namespace JueMingR.TerrariaHost.Combat
                 if(!WorldGen.InWorld(p.Center.ToTileCoordinates(),5))Kill(p);
                 else
                 {
-                    int start=p.type==260?3:9;
+                    int start=p.type==260?3:p.type==255?4:9;
                     if(p.localAI[0]==start){p.localAI[1]=p.Center.X;p.localAI[2]=p.Center.Y;}
                     p.localAI[0]++;p.alpha=255;
                 }

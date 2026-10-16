@@ -18,6 +18,9 @@ namespace NativeWorldTextProbe
             var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var attack=Get(combat,"Attack");var input=Get(context,"Input");
             if(Environment.GetEnvironmentVariable("JMR_MELEE_ORACLE_ONLY")=="boomerang-variants"){NativeCombatBoomerangVariantChecks.Run(context);return;}
             if(Environment.GetEnvironmentVariable("JMR_MELEE_ORACLE_ONLY")=="common-boomerang"){NativeCombatBoomerangCommonChecks.Run(context);return;}
+            if(Environment.GetEnvironmentVariable("JMR_MELEE_ORACLE_ONLY")=="phase"){NativeCombatPhaseChecks.Run(context);return;}
+            if(Environment.GetEnvironmentVariable("JMR_MELEE_ORACLE_ONLY")!="shape-table")
+            {
             LineOracle();
             AnimationOracle(context,combat,input);
             SolarMotorOracle(context,combat,input);
@@ -32,26 +35,43 @@ namespace NativeWorldTextProbe
             Starlight(context,combat,host,attack,input);
             Flail(context,combat,host,attack,input);
             NativeCombatReturnChecks.Run(context);
-            foreach(var row in new[]{new[]{3507,780,0},new[]{3501,780,0},new[]{6,780,0},new[]{3495,780,0},new[]{3513,780,0},new[]{3489,780,0},new[]{3519,780,0},new[]{3483,780,0},new[]{3507,1000,0},new[]{277,780,0},new[]{4911,800,0},new[]{284,1100,0},new[]{284,870,0},new[]{3473,900,0},new[]{55,1000,0},new[]{1825,870,0},new[]{1228,1040,0},new[]{1228,960,0},new[]{4061,1040,0},new[]{4061,1020,0},new[]{5669,1040,0},new[]{277,780,1},new[]{277,780,2}})
+            }
+            // Native AI161 at speed2.1 cannot reach the old x780 positive.
+            // Retain that exact coordinate as an additional negative and use
+            // x750 for the same eight actual shortsword positive families.
+            foreach(var row in new[]{new[]{3507,750,0},new[]{3501,750,0},new[]{6,750,0},new[]{3495,750,0},new[]{3513,750,0},new[]{3489,750,0},new[]{3519,750,0},new[]{3483,750,0},new[]{3507,780,0},new[]{3507,1000,0},new[]{277,780,0},new[]{4911,800,0},new[]{284,1100,0},new[]{284,870,0},new[]{3473,900,0},new[]{55,1000,0},new[]{1825,870,0},new[]{1228,1040,0},new[]{1228,960,0},new[]{4061,1040,0},new[]{4061,1020,0},new[]{5669,1040,0},new[]{277,780,1},new[]{277,780,2}})
             {
             NativeCombatObservationChecks.Save(host,new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,row[0],0,0);p.position=new Vector2(700,646);p.itemAnimationMax=p.itemAnimation=p.HeldItem.useAnimation;p.direction=1;
             // Run the real normal base-effects phase. Without it this fixture
             // has whipRange=0/maxTags=0 and native first tag indexes -1.
-            p.ResetEffects();Main.screenPosition=new Vector2(600,500);Console.WriteLine("MELEE row start ownerCD="+p.meleeNPCHitCooldown[2]);
-            if(row[0]==5669)p.itemTime=p.HeldItem.useTime;
+            p.ResetEffects();
+            // This independent row starts a fresh native animation. The bare
+            // direct-Shoot oracle does not run StartActualUse, whose preceding
+            // reset clears a prior row's owner-melee immunity and attackCD.
+            p.ResetMeleeHitCooldowns();p.attackCD=0;
+            Main.screenPosition=new Vector2(600,500);Console.WriteLine("MELEE row start ownerCD="+p.meleeNPCHitCooldown[2]);
+            // The direct fractal Shoot divides by itemTime. Keep its nonzero
+            // ready-window boundary (1), rather than a full cooling-down timer
+            // that correctly has no new hand input capability.
+            if(row[0]==5669)p.itemTime=1;
             var n=Main.npc[2];n.SetDefaults(3);n.whoAmI=2;n.active=true;n.position=new Vector2(row[1],646);n.life=n.lifeMax=10000;n.target=0;Array.Clear(n.immune,0,n.immune.Length);
             if(row[2]>0){for(int ty=20;ty<=42;ty++){Main.tile[46,ty].active(true);Main.tile[46,ty].type=Terraria.ID.TileID.Stone;}n.noTileCollide=row[2]==2;}
-            NativeToolExecutionChecks.Sample(context,input,new Vector2(650,550),true);Call(combat,"Sample");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,false,true));NativeCombatAimChecks.Prepare(host,attack,n,0,true);
-            bool distant=row[0]==3507 && row[1]==1000 || row[0]==284 && row[1]==1100 || row[0]==1228 && row[1]==1040 || row[0]==4061 && row[1]==1040 || row[2]==1;var contact=(AttackContact)GetOptional(attack,"ExpectedImpact");Console.WriteLine("MELEE premise: weapon="+row[0]+" shoot="+p.HeldItem.shoot+" speed="+p.HeldItem.shootSpeed+" animation="+p.itemAnimation+" whipRange="+p.whipRangeMultiplier+" failed="+Get(attack,"Failed"));Require(distant?contact==null:contact!=null,"native shape/animation respects outbound reach and owner wall: weapon="+row[0]+" wall="+row[2]);
-            if(row[0]==3473)Require(contact.Confidence==AttackConfidence.Representative,"random solar arc remains a representative result");
+            // This table supplies a complete synthetic motion prefix and exact
+            // native animation; it checks shape/receive semantics, not the cold
+            // ordinary-Main admission budget measured in its separate windows.
+            NativeToolExecutionChecks.Sample(context,input,new Vector2(650,550),true);Call(combat,"Sample");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,false,true));NativeCombatAimChecks.PrepareMechanismFixture(host,attack,n,0,true);
+            bool distant=row[0]==3507 && row[1]>=780 || row[0]==284 && row[1]==1100 || row[0]==1228 && row[1]==1040 || row[0]==4061 && row[1]==1040 || row[2]==1;var contact=(AttackContact)GetOptional(attack,"ExpectedImpact");Console.WriteLine("MELEE premise: weapon="+row[0]+" shoot="+p.HeldItem.shoot+" speed="+p.HeldItem.shootSpeed+" animation="+p.itemAnimation+" whipRange="+p.whipRangeMultiplier+" failed="+Get(attack,"Failed"));
+            if(row[0]==3473 && contact!=null)Require(contact.Confidence==AttackConfidence.Representative,"random solar arc remains a representative result");
             // Whip's false flag is a real repeated-shot branch: it rotates
             // velocity randomly and changes damage/duration, not merely audio.
             // The ordinary deterministic collision model uses the normal shot.
             typeof(Player).GetMethod("ItemCheck_Shoot",Flags).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),row[0]==4911});var q=Main.projectile.Single(s=>s.active && s.owner==p.whoAmI);int first=0;
             var audit=new Harmony("JueMingR.Tests.MeleeDamageFault");var methods=typeof(Projectile).GetMethods(Flags).Where(m=>m.Name.StartsWith("Damage_",StringComparison.Ordinal)).ToArray();
             foreach(var method in methods)audit.Patch(method,finalizer:new HarmonyMethod(typeof(NativeCombatMeleeChecks).GetMethod(nameof(Fault),BindingFlags.Static|BindingFlags.NonPublic)));
-            try{for(int tick=1;tick<=(distant?60:row[0]==3473?29:contact.Tick+3) && Main.projectile.Any(s=>s.active && s.owner==p.whoAmI);tick++){if(tick>1)p.itemAnimation--;for(int ps=0;ps<Main.maxProjectiles;ps++){if(!Main.projectile[ps].active)continue;Main.ProjectileUpdateLoopIndex=ps;try{Main.projectile[ps].Update(ps);}finally{Main.ProjectileUpdateLoopIndex=-1;}}if(row[0]==4911 && tick>=contact.Tick-1)Console.WriteLine("WHIP difference: tick="+tick+" origin="+q.Center+" velocity="+q.velocity+" ai="+q.ai[0]+" owner="+n.immune[0]+" local="+q.localNPCImmunity[2]+" bounds="+n.Hitbox+" net="+n.netOffset+" life="+n.life+" animation="+p.itemAnimation+" max="+p.itemAnimationMax+" arm="+p.GetArmPosition());if(n.life<10000){first=tick;break;}}}
+            try{for(int tick=1;tick<=(distant || contact==null?60:row[0]==3473?29:contact.Tick+3) && Main.projectile.Any(s=>s.active && s.owner==p.whoAmI);tick++){if(tick>1)p.itemAnimation--;for(int ps=0;ps<Main.maxProjectiles;ps++){if(!Main.projectile[ps].active)continue;Main.ProjectileUpdateLoopIndex=ps;try{Main.projectile[ps].Update(ps);}finally{Main.ProjectileUpdateLoopIndex=-1;}}if(row[0]==4911 && contact!=null && tick>=contact.Tick-1)Console.WriteLine("WHIP difference: tick="+tick+" origin="+q.Center+" velocity="+q.velocity+" ai="+q.ai[0]+" owner="+n.immune[0]+" local="+q.localNPCImmunity[2]+" bounds="+n.Hitbox+" net="+n.netOffset+" life="+n.life+" animation="+p.itemAnimation+" max="+p.itemAnimationMax+" arm="+p.GetArmPosition());if(n.life<10000){first=tick;break;}}}
             finally{foreach(var method in methods)audit.Unpatch(method,HarmonyPatchType.All,audit.Id);}
+            Console.WriteLine("MELEE native outcome: weapon="+row[0]+" first="+first+" model="+contact?.Tick+" final="+q.Center+" velocity="+q.velocity+" npc="+n.Hitbox);
+            Require(distant?contact==null:contact!=null,"native shape/animation respects outbound reach and owner wall: weapon="+row[0]+" wall="+row[2]);
             Require(distant?first==0:contact.Confidence==AttackConfidence.Representative?first>0:first==contact.Tick,"first natural Damage agrees with declared pose/representative model: first="+first+" expected="+contact?.Tick+" weapon="+row[0]);
             Console.WriteLine("PASS native melee prepared shape/first Damage: weapon="+row[0]+" type="+q.type+" first="+first+" expected="+contact?.Tick);
             }
@@ -167,7 +187,7 @@ namespace NativeWorldTextProbe
                 // Select the rear receiver by the physical mouse. Player-
                 // center nearest correctly selects the intervening body and
                 // cannot serve as this explicit other-receiver experiment.
-                NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,true,false,25,false,true));NativeToolExecutionChecks.Sample(context,input,target.Center,true);Call(combat,"Sample");Call(host,"SampleMouse");NativeCombatAimChecks.Prepare(host,attack,target,0,true);var contact=(AttackContact)GetOptional(attack,"ExpectedImpact");Require(immune?contact!=null:contact==null,"902 return comes from actual qualified earlier receiver, not an immune geometric overlap: "+immune);
+                NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,true,false,25,false,true));NativeToolExecutionChecks.Sample(context,input,target.Center,true);Call(combat,"Sample");Call(host,"SampleMouse");NativeCombatAimChecks.PrepareMechanismFixture(host,attack,target,0,true);var contact=(AttackContact)GetOptional(attack,"ExpectedImpact");Require(immune?contact!=null:contact==null,"902 return comes from actual qualified earlier receiver, not an immune geometric overlap: "+immune);
                 typeof(Player).GetMethod("ItemCheck_Shoot",Flags).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),true});var shot=Main.projectile.Single(q=>q.active && q.owner==p.whoAmI);Require(shot.type==902,"actualTrimarang hand stage preserves native902");int first=0,frontAt=0,cooldown=0;bool returnAtFront=false;
                 for(int outer=1;outer<=80 && shot.active;outer++){NativeQuickItemChecks.BeginWorldStep();front.UpdateNPC(1);target.UpdateNPC(2);shot.Update(shot.whoAmI);if(frontAt==0 && front.life<10000){frontAt=outer;cooldown=front.immune[p.whoAmI];returnAtFront=shot.ai[0]==1;}if(target.life<10000){first=outer;break;}}
                 Require(immune?first>0 && frontAt==0 && first==contact.Tick:first==0 && frontAt>0 && cooldown==7 && returnAtFront,"native902 causal OnHit has seven owner immunity and return before selected receive: immune="+immune+" frontAt="+frontAt+" cooldown="+cooldown+" nativeFirst="+first+" contact="+contact?.Tick);Console.WriteLine("PASS native902 front receiver immune="+immune+" frontAt="+frontAt+" selectedFirst="+first+" predicted="+contact?.Tick);

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -7,6 +7,7 @@ using Microsoft.Xna.Framework;
 using Terraria;
 using Terraria.DataStructures;
 using JueMingR.Features.Combat;
+using JueMingR.Platform.Combat;
 using static NativeWorldTextProbe.NativeInformationChecks;
 
 namespace NativeWorldTextProbe
@@ -113,26 +114,64 @@ namespace NativeWorldTextProbe
                 Require(!receipts.Contains(key),"original off-state hand birth has no observed source receipt: "+row[1]);
                 NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,true,25,true,false));
                 NativeCombatSelectionPreviewChecks.Step(context,receiver.Center,true,true);
-                var preview=(AttackContact)GetOptional(attack,"ExpectedPreview");
-                Require(!receipts.Contains(key),"old harpoon preview must not fabricate this member's input-source receipt: "+row[1]);
+                Require(GetOptional(attack,"ExpectedPreview")==null,"withdrawn idle preview cannot be revived by an observed harpoon");
+                Require(!receipts.Contains(key),"old harpoon observation must not fabricate this member's input-source receipt: "+row[1]);
                 bool opening=wrongDirection && row[1]==481;
+                var observed=Observe(attack,p,receiver);var contact=observed==null?null:Get(observed,"Contact") as AttackContact;
                 if(wrongDirection && !opening)
                 {
-                    Require(preview==null,"a wrong-way live harpoon owns native dummy timers; no fictitious new launch preview: "+row[1]);blocked++;cases++;continue;
+                    Require(contact==null,"a wrong-way live harpoon owns native dummy timers; no fictitious observed receive: "+row[1]);blocked++;cases++;continue;
                 }
-                Require(preview!=null,"enabling path during an existing natural flight supplies its useful read-only contact: "+row[1]+" opening="+opening);
-                long predicted=preview.Timeline.SampleTick+preview.Tick;bool second=false;
+                long predicted;
+                if(opening)
+                {
+                    Require(contact==null,"the wrong-way old Golem fist is not the new hand's useful contact");
+                    // Golem permits another real launch while its old fist is
+                    // alive. That is a pressed hand, never an observation-only
+                    // input authority or an idle-preview replacement.
+                    NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,true,25,true,true));
+                    NativeToolExecutionChecks.Sample(context,input,receiver.Center,true);Call(combat,"Sample");
+                    NativeCombatAimChecks.PrepareMechanismFixture(host,attack,receiver,0);
+                    contact=(AttackContact)GetOptional(attack,"ExpectedImpact");
+                    predicted=-1;
+                }
+                else
+                {
+                    Require(contact!=null && (bool)Get(observed,"Current") && (bool)Get(observed,"DependenciesCurrent"),"enabling path observes the sealed natural flight with its full lease: "+row[1]);
+                    predicted=contact.Timeline.SampleTick+contact.Tick;
+                }
+                bool second=false,enhanced=false;
                 for(int frame=0;frame<90 && hits==0;frame++)
                 {
+                    if(opening && !second)
+                    {
+                        NativeToolExecutionChecks.Sample(context,input,receiver.Center,true);Call(combat,"Sample");
+                        NativeCombatAimChecks.PrepareMechanismFixture(host,attack,receiver,0);contact=(AttackContact)GetOptional(attack,"ExpectedImpact");
+                        if(contact!=null)predicted=contact.Timeline.SampleTick+contact.Tick;
+                    }
                     NativeCombatSelectionPreviewChecks.Step(context,receiver.Center,true,true);
-                    second|=Main.projectile.Any(q=>q.active && q.owner==p.whoAmI && q.type==row[1] && (int)q.key!=key);
+                    bool newBorn=Main.projectile.Any(q=>q.active && q.owner==p.whoAmI && q.type==row[1] && (int)q.key!=key);
+                    if(newBorn && !second)enhanced=(bool)Get(attack,"hasConsumedInput") && Convert.ToString(Get(Get(attack,"consumedInput"),"Kind"))=="Enhanced";
+                    second|=newBorn;
                 }
                 Require(hits>0 && firstHit==predicted,"observed flight / legal Golem relaunch agrees with actual Damage: "+row[1]+" opening="+opening+" predicted="+predicted+" native="+firstHit);
-                if(opening){Require(second,"GolemFist actually launches another original fist while the older one flies");relaunches++;}
+                if(opening){Require(second && enhanced,"GolemFist actually consumes Enhanced input to launch another original fist while the older one flies");relaunches++;}
                 contacts++;cases++;
             }
             Require(cases==10 && contacts==6 && blocked==4 && relaunches==1,"existing-flight matrix retains all five hand roles and the distinct Golem relaunch");
             Console.WriteLine("PASS harpoon enabled after natural birth cases="+cases+" useful="+contacts+" blocked opening="+blocked+" original relaunch="+relaunches);
+        }
+        private static object Observe(object attack,Player player,NPC target)
+        {
+            // This immutable component path is sampled at the completed native
+            // world boundary. The actual public Flight reader owns actor,
+            // terrain and receive leases; it never creates a hand receipt.
+            var identity=new NpcIdentity(1,target,target.whoAmI,target.generation,target.type,target.netID);
+            var state=new NpcMotionState{Identity=identity,X=target.position.X,Y=target.position.Y,Width=target.width,Height=target.height,Active=true,CanReceive=!target.dontTakeDamage,NoTileCollide=target.noTileCollide};
+            var points=Enumerable.Range(0,121).Select(i=>new NpcTrajectoryPoint(i,state)).ToArray();var path=new NpcTrajectory(identity,Main.GameUpdateCount,1,PredictionAssumption.NoNewHits,PredictionStop.None,points,points.Length);
+            var phase=Enum.Parse(attack.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase",true),"CompletedWorld");var args=new object[]{player,path,phase,false};
+            object result;using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))result=Call(attack,"ReadFlight",args);
+            Require((bool)args[3],"public Flight recognizes the already-born harpoon");return result;
         }
         private static void Natural(object context)
         {
@@ -143,21 +182,25 @@ namespace NativeWorldTextProbe
                 {
                     NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,row[0],0,0);p.position=new Vector2(700,646);p.fallStart=p.fallStart2=(int)(p.position.Y/16);p.ResetEffects();p.releaseUseItem=true;Main.screenPosition=new Vector2(600,400);Main.rand=new Terraria.Utilities.UnifiedRandom(90261);
                     receiver=NativeCombatControlPreviewChecks.Dummy(2,52,40);hits=0;firstHit=-1;
-                    NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,true,25,true,false));AttackContact preview=null;
-                    for(int i=0;i<3;i++){NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,650),false,true);preview=(AttackContact)GetOptional(attack,"ExpectedPreview");Require(preview!=null && !Main.projectile.Any(q=>q.active),"harpoon idle current weapon before any attack type="+row[1]);}
-                    NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,true,25,true,true));long start=Main.GameUpdateCount;int previews=0;var keys=new HashSet<int>();
+                    NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,true,25,true,false));
+                    for(int i=0;i<3;i++){NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,650),false,true);Require(GetOptional(attack,"ExpectedPreview")==null && !Main.projectile.Any(q=>q.active),"withdrawn idle harpoon preview performs no attack type="+row[1]);}
+                    NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,true,25,true,true));
+                    NativeToolExecutionChecks.Sample(context,input,new Vector2(600,650),true);Call(combat,"Sample");
+                    NativeCombatAimChecks.PrepareMechanismFixture(host,attack,receiver,0);var contact=(AttackContact)GetOptional(attack,"ExpectedImpact");
+                    Require(contact!=null,"real pressed harpoon hand has a prepared receive type="+row[1]);
+                    long start=Main.GameUpdateCount;bool enhanced=false;var keys=new HashSet<int>();
                     for(int frame=0;frame<100 && hits==0;frame++)
                     {
                         NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,650),true);
                         foreach(var q in Main.projectile.Where(q=>q.active && q.type==row[1] && q.owner==0))keys.Add((int)q.key);
-                        if(GetOptional(attack,"ExpectedPreview")!=null)previews++;
+                        if(keys.Count>0 && (bool)Get(attack,"hasConsumedInput") && Convert.ToString(Get(Get(attack,"consumedInput"),"Kind"))=="Enhanced")enhanced=true;
                     }
-                    Require(keys.Count>0 && hits>0 && previews>0,"harpoon real source birth and selected dummy receive type="+row[1]+" idle="+(preview==null?-1:preview.Tick)+" hit="+(firstHit-start));
-                    Require(firstHit-start==preview.Tick,"harpoon hypothetical initial time equals actual first Damage type="+row[1]+" preview="+preview.Tick+" hit="+(firstHit-start));
+                    Require(keys.Count>0 && hits>0 && enhanced,"harpoon real source birth consumes Enhanced and selected dummy receives type="+row[1]);
+                    Require(firstHit-start==contact.Tick,"harpoon consumed component preparation equals actual first Damage type="+row[1]+" plan="+contact.Tick+" hit="+(firstHit-start));
                     NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,650),false);
                     int returning=0;for(int frame=0;frame<100 && Main.projectile.Any(q=>q.active && keys.Contains((int)q.key));frame++){NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,650),false);returning++;}
                     Require(!Main.projectile.Any(q=>q.active && keys.Contains((int)q.key)),"real release eventually catches original harpoon/fist");
-                    Console.WriteLine("HARPOON natural item="+row[0]+" type="+row[1]+" idleTick="+preview.Tick+" firstDamage="+(firstHit-start)+" visible="+previews+" return="+returning);completed++;
+                    Console.WriteLine("HARPOON natural item="+row[0]+" type="+row[1]+" preparedTick="+contact.Tick+" firstDamage="+(firstHit-start)+" enhanced="+enhanced+" return="+returning);completed++;
                 }
                 catch(Exception error){failures.Add(row[0]+": "+error.Message);Console.WriteLine("HARPOON NATURAL FAIL "+row[0]+": "+error);}
             }

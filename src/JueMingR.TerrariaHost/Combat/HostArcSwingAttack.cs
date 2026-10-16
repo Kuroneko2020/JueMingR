@@ -16,9 +16,9 @@ namespace JueMingR.TerrariaHost.Combat
         private const int MaximumMembers=128;
         private static readonly MethodInfo clone=typeof(object).GetMethod("MemberwiseClone",BindingFlags.Instance|BindingFlags.NonPublic);
         private sealed class Member {internal Projectile Shot;internal HostAttackObstacles Receive;internal Player ForeignOwner;internal bool Source,Representative;}
-        internal static bool Handles(int type){return type==972 || type==973 || type==983 || type==985 || type==1126;}
-        internal static bool Weapon(int type){return type==273 || type==674 || type==675 || type==757 || type==1226;}
-        internal static bool MemberType(int type){return type==972 || type==973 || type>=982 && type<=985 || type==1126 || type==1128 || type==1129;}
+        internal static bool Handles(int type){return type==982 || type==997 || type==972 || type==973 || type==983 || type==985 || type==1126;}
+        internal static bool Weapon(int type){return type==368 || type==1826 || type==273 || type==674 || type==675 || type==757 || type==1226;}
+        internal static bool MemberType(int type){return type==321 || type==997 || type==972 || type==973 || type>=982 && type<=985 || type==1126 || type==1128 || type==1129;}
         internal static Projectile Copy(Projectile p)
         {var q=HostThornAttack.Copy(p);q.ownerHitCheckDistance=p.ownerHitCheckDistance;q.stopsDealingDamageAfterPenetrateHits=p.stopsDealingDamageAfterPenetrateHits;return q;}
         private static void Kill(Projectile p){if(p.active){p.active=false;p.timeLeft=0;}}
@@ -52,7 +52,7 @@ namespace JueMingR.TerrariaHost.Combat
                 if(p.ai[1]<=0 || p.ai[2]<=0)return false;
                 if(p.localAI[0]==0 && p.type==1126){p.localAI[2]=p.velocity.Y==0?1:0;p.velocity.Y=0;}
                 p.localAI[0]++;float phase=p.localAI[0]/p.ai[1],sign=p.ai[0];p.rotation=(float)Math.PI*sign*phase+p.velocity.ToRotation()+sign*(float)Math.PI+body.fullRotation;
-                float rate=p.type==983?1:p.type==982 || p.type==984 || p.type==1126?.6f:.2f,scale=p.type==983?1.2f:p.type==1126?.85f:1;
+                float rate=p.type==983?1:p.type==982 || p.type==997 || p.type==984 || p.type==1126?.6f:.2f,scale=p.type==983?1.2f:p.type==1126?.85f:1;
                 p.Center=body.RotatedRelativePoint(body.MountedCenter)-p.velocity;p.scale=scale+phase*rate;
                 if(p.type==972 && Math.Abs(sign)<.2f){p.rotation+=(float)Math.PI*4*sign*10*phase;float flight=Utils.Remap(p.localAI[0],10,p.ai[1]-5,0,1);p.position+=p.velocity.SafeNormalize(Vector2.Zero)*(45*flight);p.scale+=flight*.4f;}
                 if(p.type==1126 && !Chlorophyte(p,body,terrain,representative,children))return false;
@@ -163,12 +163,12 @@ namespace JueMingR.TerrariaHost.Combat
             // paired births use the unrotated MountedCenter. Keep both stores.
             var aimOrigin=body.RotatedRelativePoint(body.MountedCenter);int direction=HostBetsyFlameAttack.Facing(body,aimOrigin,aim);body.direction=direction;float scale=body.GetAdjustedItemScale(item);int duration=HostMeleeAttack.AnimationDuration(body,item);float sign=direction*body.gravDir;var origin=body.MountedCenter;var velocity=HostThornAttack.BirthVelocity(body,aimOrigin,aim,ammo.Speed);
             int primary=item.type==675?972:item.type==757?984:ammo.Projectile;var p=Child(new Projectile{owner=body.whoAmI},primary,origin,new Vector2(direction,item.type==1226 && counter>0?1:0),item.type==1226 && counter<=0?(int)(ammo.Damage*1.5f):ammo.Damage,duration,scale);p.ai[0]=sign;p.knockBack=body.GetWeaponKnockback(item,item.knockBack)*(item.type==1226 && counter<=0?1.25f:1);p.armorPenetration+=item.armorPenetration;p.bonusTagDamage+=item.bonusTagDamage;
-            if(item.type==1226)return new[]{p};int secondary=item.type==273?972:item.type==674?982:item.type==675?973:985;var q=Child(p,secondary,origin,item.type==674?new Vector2(direction,0):velocity*(item.type==757?5:1),item.type==674?0:item.type==675?ammo.Damage/2:ammo.Damage,item.type==273?30:item.type==674?duration:item.type==675?32:18,scale);q.ai[0]=item.type==273?sign*.1f:sign;q.knockBack=body.GetWeaponKnockback(item,item.knockBack);return new[]{p,q};
+            if(item.type==1226 || item.type==368 || item.type==1826)return new[]{p};int secondary=item.type==273?972:item.type==674?982:item.type==675?973:985;var q=Child(p,secondary,origin,item.type==674?new Vector2(direction,0):velocity*(item.type==757?5:1),item.type==674?0:item.type==675?ammo.Damage/2:ammo.Damage,item.type==273?30:item.type==674?duration:item.type==675?32:18,scale);q.ai[0]=item.type==273?sign*.1f:sign;q.knockBack=body.GetWeaponKnockback(item,item.knockBack);return new[]{p,q};
         }
         private static Projectile[] Capture(HostAttackObstacles root)
         {
-            var scene=new List<Projectile>();var a=new List<Projectile>();var b=new List<Projectile>();var c=new List<Projectile>();var d=new List<Projectile>();foreach(var p in Main.projectile)if(p.active && MemberType(p.type)){if(p.type<=973)a.Add(p);else if(p.type<=985)b.Add(p);else if(p.type==1126)c.Add(p);else d.Add(p);if(p.owner==Main.myPlayer || p.type==1128)scene.Add(p);}
-            root.CaptureProjectileFamily(a.ToArray(),972,973);root.CaptureProjectileFamily(b.ToArray(),982,985);root.CaptureProjectileFamily(c.ToArray(),1126,1126);root.CaptureProjectileFamily(d.ToArray(),1128,1129);return scene.ToArray();
+            var scene=new List<Projectile>();var a=new List<Projectile>();var b=new List<Projectile>();var c=new List<Projectile>();var d=new List<Projectile>();var e=new List<Projectile>();var f=new List<Projectile>();foreach(var p in Main.projectile)if(p.active && MemberType(p.type)){if(p.type==321){if(p.owner==Main.myPlayer)f.Add(p);}else if(p.type<=973)a.Add(p);else if(p.type<=985)b.Add(p);else if(p.type==1126)c.Add(p);else if(p.type==997)e.Add(p);else d.Add(p);if(p.owner==Main.myPlayer || p.type==1128)scene.Add(p);}
+            root.CaptureProjectileFamily(a.ToArray(),972,973);root.CaptureProjectileFamily(b.ToArray(),982,985);root.CaptureProjectileFamily(c.ToArray(),1126,1126);root.CaptureProjectileFamily(d.ToArray(),1128,1129);root.CaptureProjectileFamily(e.ToArray(),997,997);root.CaptureOwnedProjectileFamily(f.ToArray(),Main.myPlayer,new[]{321});return scene.ToArray();
         }
         private static List<Member> Prepare(Projectile[] scene,Projectile[] sources,HostAttackObstacles root)
         {var rows=new List<Member>();foreach(var p in scene){bool source=false;if(sources!=null)foreach(var s in sources)if(ReferenceEquals(p,s)){source=true;break;}var q=Copy(p);rows.Add(new Member{Shot=q,Source=source,ForeignOwner=q.owner<255 && q.owner!=Main.myPlayer?(Player)clone.Invoke(Main.player[q.owner],null):null,Receive=q.owner==Main.myPlayer?root.ForkForSpawn(q):null});}return rows;}
@@ -178,8 +178,9 @@ namespace JueMingR.TerrariaHost.Combat
             // later contact then shares that representative suffix; the hand
             // arc motor itself has no crowd feedback and keeps its proof.
             if(child.type==1128)foreach(var row in rows)if(row.Shot.type==1128)row.Representative=true;
-            rows.Add(new Member{Shot=child,Source=parent.Source,Representative=parent.Representative || child.type==1128 || child.type==1129,Receive=parent.Receive?.ForkForSpawn(child)});return true;}
-        private static bool Outer(List<Member> rows,HostProjectileBirthSlots pool,Player body,NpcTrajectory timeline,PredictionTerrain terrain,int tick,int outer,Vector2 aim,int representative,out AttackContact contact)
+            if(child.type==321)foreach(var row in rows)row.Representative=true;
+            rows.Add(new Member{Shot=child,Source=parent.Source,Representative=parent.Representative || child.type==321 || child.type==1128 || child.type==1129,Receive=parent.Receive?.ForkForSpawn(child)});return true;}
+        private static bool Outer(List<Member> rows,HostProjectileBirthSlots pool,Player body,NpcTrajectory timeline,PredictionTerrain terrain,int tick,int outer,Vector2 aim,int representative,out AttackContact contact,HostProjectileTargets pumpkinTargets=null,HostPumpkinEffectAttack.Inputs pumpkinInputs=null)
         {
             contact=null;foreach(var r in rows)if(r.Shot.active && r.Receive!=null && !r.Receive.BeforeNpc(tick,outer,r.Shot.Center.X,r.Shot.Center.Y,r.Shot.width,r.Shot.height))return false;
             int after=-1;Projectile[] scene=null;for(int visit=0;visit<1000;visit++)
@@ -187,12 +188,14 @@ namespace JueMingR.TerrariaHost.Combat
                 Member m=null;foreach(var r in rows)if(r.Shot.active && r.Shot.whoAmI>after && (m==null || r.Shot.whoAmI<m.Shot.whoAmI))m=r;if(m==null)return true;after=m.Shot.whoAmI;
                 for(int sub=0;sub<=m.Shot.extraUpdates;sub++)
                 {
-                    var p=m.Shot;if(scene==null || scene.Length!=rows.Count){scene=new Projectile[rows.Count];for(int i=0;i<scene.Length;i++)scene[i]=rows[i].Shot;Array.Sort(scene,(a,b)=>a.whoAmI.CompareTo(b.whoAmI));}List<Projectile> children;var owner=m.ForeignOwner??body;if(!Step(p,owner,terrain,scene,representative,out children))return false;if(children!=null)foreach(var q in children)if(!Birth(m,q,rows,pool,terrain))return false;
-                    if(p.active && p.damage>0 && p.friendly && !p.hostile && !(p.type==1128 && p.ai[1]>=1) && m.Receive!=null)
+                    var p=m.Shot;if(scene==null || scene.Length!=rows.Count){scene=new Projectile[rows.Count];for(int i=0;i<scene.Length;i++)scene[i]=rows[i].Shot;Array.Sort(scene,(a,b)=>a.whoAmI.CompareTo(b.whoAmI));}List<Projectile> children=null;var owner=m.ForeignOwner??body;if(p.type==321){if(pumpkinTargets==null || !HostPumpkinEffectAttack.Step(p,pumpkinTargets,timeline,tick,terrain))return false;}else if(!Step(p,owner,terrain,scene,representative,out children))return false;if(children!=null)foreach(var q in children)if(!Birth(m,q,rows,pool,terrain))return false;
+                    if(p.active && p.damage>0 && p.friendly && !p.hostile && !float.IsNaN(p.position.X) && !float.IsNaN(p.position.Y) && !(p.type==1128 && p.ai[1]>=1) && m.Receive!=null)
                     {
-                        int hits=m.Receive.SelectedHits;bool passed=m.Receive.PassArcOuter(2,tick,outer,p.Center.X,p.Center.Y,p.width,p.height,b=>Collides(p,b,terrain),(b,noTile)=>HostMeleeAttack.OwnerAllows(body,p,b,noTile,terrain),Math.Max(0,body.itemAnimation),true,(slot,remaining)=>{if(p.type==985)p.damage=(int)((double)p.damage*.75);return true;});
-                        p.penetrate=m.Receive.Remaining;if(!passed && p.penetrate==0){if(p.stopsDealingDamageAfterPenetrateHits){p.penetrate=-1;p.damage=0;}else Kill(p);}else if(!passed)return false;
+                        int hits=m.Receive.SelectedHits;bool failed=false;Func<int,int,bool> hit=(slot,remaining)=>{if(p.type==985)p.damage=(int)((double)p.damage*.75);if(p.type==997 && pumpkinInputs!=null && pumpkinInputs.Proc(slot)){var child=HostPumpkinEffectAttack.Birth(p,owner,pumpkinInputs.Center(slot,timeline,tick),slot,representative,pumpkinInputs);if(!Birth(m,child,rows,pool,terrain)){failed=true;return false;}}return true;};
+                        bool passed=p.type==321?m.Receive.PassCustomOuter(2,tick,outer,p.Center.X,p.Center.Y,p.width,p.height,null,consumeSelected:true):m.Receive.PassArcOuter(2,tick,outer,p.Center.X,p.Center.Y,p.width,p.height,b=>Collides(p,b,terrain),(b,noTile)=>HostMeleeAttack.OwnerAllows(body,p,b,noTile,terrain),Math.Max(0,body.itemAnimation),true,hit);
+                        p.penetrate=m.Receive.Remaining;
                         if(m.Source && m.Receive.SelectedHits>hits){var target=timeline[tick].ProjectileReceiveBounds;contact=AttackIntercept.ProjectileShapeContact(timeline,tick,sub,true,aim.X,aim.Y,target.CenterX,target.CenterY,m.Representative?AttackConfidence.Representative:AttackConfidence.Conditional);if(contact!=null)return true;}
+                        if(failed)return false;if(!passed && p.penetrate==0){if(p.stopsDealingDamageAfterPenetrateHits){p.penetrate=-1;p.damage=0;}else Kill(p);}else if(!passed)return false;
                     }
                     Finish(p);if(!p.active){pool.Release(p.whoAmI);break;}
                 }
@@ -204,19 +207,19 @@ namespace JueMingR.TerrariaHost.Combat
             if(!Weapon(item.type) || !Handles(ammo.Projectile) || ammo.Damage<=0 || delay<0 || age-delay<0 || age+1>=timeline.Count || obstacles==null)return null;
             // The prepared pose can be a private delayed clone. Capture the
             // real Host owner by slot; opaque PlayerToken is never dereferenced.
-            var owner=Main.player[player.whoAmI];if(owner==null || !ReferenceEquals(frame.Motion.PlayerToken,owner))return null;obstacles.CaptureShotFacing(owner);obstacles.CaptureArcOwner(owner,item);var captured=Capture(obstacles);if(captured.Length>=MaximumMembers)return null;var pool=obstacles.CaptureBirthSlots();var directions=new Vector2[9];int count=0;
+            var owner=Main.player[player.whoAmI];if(owner==null || !ReferenceEquals(frame.Motion.PlayerToken,owner))return null;obstacles.CaptureShotFacing(owner);obstacles.CaptureHomingInputs(owner,false,true);obstacles.CaptureArcOwner(owner,item);var captured=Capture(obstacles);if(captured.Length>=MaximumMembers)return null;var pumpkinInputs=item.type==1826 || Array.Exists(captured,p=>p.type==997 || p.type==321)?obstacles.CapturePumpkinInputs():null;var pumpkinTargets=pumpkinInputs==null?null:obstacles.CaptureChaseTargets(Terraria.ID.ContentSamples.ProjectilesByType[321]);var pool=obstacles.CaptureBirthSlots();var directions=new Vector2[9];int count=0;
             for(int seed=0;seed<9;seed++)
             {
                 var target=timeline[Math.Min(timeline.Count-1,age+1+seed*4)].ProjectileReceiveBounds;var origin=player.MountedCenter;var direction=(new Vector2(target.CenterX,target.CenterY)-origin).SafeNormalize(Vector2.UnitX*player.direction);bool duplicate=false;for(int i=0;i<count;i++)if(directions[i]==direction){duplicate=true;break;}if(duplicate)continue;directions[count++]=direction;var aim=origin+direction*10000;
-                for(int variant=0;variant<(item.type==1226?2:1);variant++)
+                for(int variant=0;variant<(item.type==1826?4:item.type==1226?2:1);variant++)
                 {
                     obstacles.BeginCandidate();var rows=Prepare(captured,null,obstacles);var slots=pool.Copy();bool valid=true;var body=(Player)clone.Invoke(owner,null);var waitFrame=delay==0?frame:HostAttackPlayerFrame.Capture(owner,timeline);var waitMotion=waitFrame.Motion;
-                    for(int wait=0;wait<delay;wait++){if(!beforeNpc || wait>0){PredictionStop stop;if(!PlayerMotionContinuation.Advance(ref waitMotion,waitFrame.Environment,terrain,out stop)){valid=false;break;}}HostAttackPlayerFrame.ApplyPose(body,waitMotion);body.itemAnimation=Math.Max(0,owner.itemAnimation-wait);AttackContact ignored;if(!Outer(rows,slots,body,timeline,terrain,age-delay+wait+1,wait+1,aim,variant,out ignored)){valid=false;break;}}if(!valid)continue;
+                    for(int wait=0;wait<delay;wait++){if(!beforeNpc || wait>0){PredictionStop stop;if(!PlayerMotionContinuation.Advance(ref waitMotion,waitFrame.Environment,terrain,out stop)){valid=false;break;}}HostAttackPlayerFrame.ApplyPose(body,waitMotion);body.itemAnimation=Math.Max(0,owner.itemAnimation-wait);AttackContact ignored;if(!Outer(rows,slots,body,timeline,terrain,age-delay+wait+1,wait+1,aim,variant,out ignored,pumpkinTargets,pumpkinInputs)){valid=false;break;}}if(!valid)continue;
                     body=(Player)clone.Invoke(player,null);var motion=frame.Motion;HostAttackPlayerFrame.ApplyPose(body,motion);body.itemAnimationMax=body.itemAnimation=HostMeleeAttack.AnimationDuration(body,item);
                     // ItemCheck decrements a positive counter before Shoot,
                     // including this birth action after the delayed prefix.
                     obstacles.ResetArcMeleeHistory();var newborn=BirthHand(body,item,ammo,aim,Math.Max(0,owner.chlorophyteBladeCounter-delay-1));foreach(var q in newborn){var source=new Member{Source=true,Receive=obstacles};if(!Birth(source,q,rows,slots,terrain)){valid=false;break;}}if(!valid)continue;
-                    for(int step=0;step<Math.Min(120,timeline.Count-age-1);step++){if(!beforeNpc || step>0){PredictionStop stop;if(!PlayerMotionContinuation.Advance(ref motion,frame.Environment,terrain,out stop))break;}HostAttackPlayerFrame.ApplyPose(body,motion);body.itemAnimation=Math.Max(0,body.itemAnimationMax-step);AttackContact contact;if(!Outer(rows,slots,body,timeline,terrain,age+step+1,delay+step+1,aim,variant,out contact))break;if(contact!=null)return contact;}
+                    for(int step=0;step<Math.Min(120,timeline.Count-age-1);step++){if(!beforeNpc || step>0){PredictionStop stop;if(!PlayerMotionContinuation.Advance(ref motion,frame.Environment,terrain,out stop))break;}HostAttackPlayerFrame.ApplyPose(body,motion);body.itemAnimation=Math.Max(0,body.itemAnimationMax-step);AttackContact contact;if(!Outer(rows,slots,body,timeline,terrain,age+step+1,delay+step+1,aim,variant,out contact,pumpkinTargets,pumpkinInputs))break;if(contact!=null)return contact;}
                 }
             }
             return null;
@@ -228,8 +231,8 @@ namespace JueMingR.TerrariaHost.Combat
             // consumer; do not freeze its array as though an arc still held it.
             if(!player.HeldItem.noMelee && player.itemAnimation>0)return null;
             if(sources==null || sources.Length==0 || clock.LaunchDelay!=0 || clock.Phase==HostAttackPhase.Projectiles)return null;foreach(var q in sources)if(q==null || !q.active || !MemberType(q.type) || q.owner!=player.whoAmI)return null;
-            obstacles.CaptureArcOwner(player,player.HeldItem);var scene=Capture(obstacles);if(scene.Length>=MaximumMembers)return null;var pool=obstacles.CaptureBirthSlots();var aim=sources[0].Center+sources[0].velocity*10000;
-            for(int variant=0;variant<2;variant++){obstacles.BeginCandidate();var rows=Prepare(scene,sources,obstacles);var slots=pool.Copy();var body=(Player)clone.Invoke(player,null);var motion=frame.Motion;for(int step=0;step<Math.Min(120,timeline.Count-clock.FirstTick);step++){if(clock.MovePlayer(step)){PredictionStop stop;if(!PlayerMotionContinuation.Advance(ref motion,frame.Environment,terrain,out stop))break;}HostAttackPlayerFrame.ApplyPose(body,motion);body.itemAnimation=Math.Max(0,player.itemAnimation-step);AttackContact contact;if(!Outer(rows,slots,body,timeline,terrain,clock.FirstTick+step,step+1,aim,variant,out contact))break;if(contact!=null)return contact;}}return null;
+            obstacles.CaptureHomingInputs(player,false,true);obstacles.CaptureArcOwner(player,player.HeldItem);var scene=Capture(obstacles);if(scene.Length>=MaximumMembers)return null;var pumpkinInputs=Array.Exists(scene,p=>p.type==997 || p.type==321)?obstacles.CapturePumpkinInputs():null;var pumpkinTargets=pumpkinInputs==null?null:obstacles.CaptureChaseTargets(Terraria.ID.ContentSamples.ProjectilesByType[321]);var pool=obstacles.CaptureBirthSlots();var aim=sources[0].Center+sources[0].velocity*10000;
+            for(int variant=0;variant<(pumpkinInputs==null?2:4);variant++){obstacles.BeginCandidate();var rows=Prepare(scene,sources,obstacles);var slots=pool.Copy();var body=(Player)clone.Invoke(player,null);var motion=frame.Motion;for(int step=0;step<Math.Min(120,timeline.Count-clock.FirstTick);step++){if(clock.MovePlayer(step)){PredictionStop stop;if(!PlayerMotionContinuation.Advance(ref motion,frame.Environment,terrain,out stop))break;}HostAttackPlayerFrame.ApplyPose(body,motion);body.itemAnimation=Math.Max(0,player.itemAnimation-step);AttackContact contact;if(!Outer(rows,slots,body,timeline,terrain,clock.FirstTick+step,step+1,aim,variant,out contact,pumpkinTargets,pumpkinInputs))break;if(contact!=null)return contact;}}return null;
         }
     }
 }

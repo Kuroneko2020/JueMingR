@@ -13,7 +13,7 @@ namespace JueMingR.TerrariaHost.Combat
     internal static class HostAi29SpellAttack
     {
         internal static bool Handles(int type){return type==521 || type==731;}
-        private static bool Family(int type){return Handles(type) || type==522;}
+        private static bool Family(int type){return Handles(type) || type==522 || type==620;}
         internal static Projectile Copy(Projectile p){return HostNoteAttack.Copy(p);}
         internal static Vector2 ChildVelocity(int x,int y,int speedTenths)
         {
@@ -26,7 +26,7 @@ namespace JueMingR.TerrariaHost.Combat
         private static void Ai(Projectile p,bool skipClock,Action onKill)
         {
             if(p.type==521)p.alpha=Math.Max(0,p.alpha-50);
-            else if(p.type==522)
+            else if(p.type==522 || p.type==620)
             {
                 p.ai[1]++;if(p.ai[1]>40)Kill(p,onKill);
                 // Native AI continues these velocity writes even after Kill.
@@ -70,7 +70,7 @@ namespace JueMingR.TerrariaHost.Combat
             p.position=position;p.velocity=velocity;
             if(hit)
             {
-                if(p.type==522){if(p.velocity.X!=previous.X)p.velocity.X=-previous.X;if(p.velocity.Y!=previous.Y)p.velocity.Y=-previous.Y;}
+                if(p.type==522 || p.type==620){if(p.velocity.X!=previous.X)p.velocity.X=-previous.X;if(p.velocity.Y!=previous.Y)p.velocity.Y=-previous.Y;}
                 else{p.position+=p.velocity;Kill(p,onKill);}
             }
             p.position+=p.wet?wetVelocity:p.velocity;p.direction=p.velocity.X<0?-1:1;return true;

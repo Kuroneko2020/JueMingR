@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -16,13 +16,18 @@ namespace NativeWorldTextProbe
     {
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static|BindingFlags.Instance;
         private static Assembly assembly;private static Type model;private static NPC target;private static Projectile receiving,watched;
-        private static bool recordBirth;private static object ammo;private static Vector2 raw;private static long first;
+        private static bool recordBirth;private static object ammo,naturalAttack;private static Vector2 raw;private static long first;
         private static int solves,knownCalls,depth,steps,scans,rngCalls,kills;
         private sealed class Birth
         {internal Projectile Shot;internal int Key,Slot,Damage,Animation,Time,Reuse;internal long Tick,First=-1;internal Vector2 Center,Velocity,Origin,Cursor;internal AttackContact Known;}
         private static readonly List<Birth> born=new List<Birth>();private static readonly List<int> hitSlots=new List<int>();
         private static object Static(Type t,string name,params object[] args){return t.GetMethod(name,Flags).Invoke(null,args);}
-        private static void SolveWork(){solves++;depth++;}private static void KnownWork(){knownCalls++;depth++;}private static void Done(){depth--;}
+        private static int cancelledBeforeCapture;
+        private static void SolveWork(out int __state){__state=scans;solves++;depth++;}private static void KnownWork(out int __state){__state=scans;knownCalls++;depth++;}
+        // A normal product budget cancellation bypasses postfixes. Preserve
+        // its exception, close only this observer depth, and count an attempt
+        // cancelled before capture separately from a completed shared scene.
+        private static Exception Done(int __state,Exception __exception){depth--;if(__exception is CombatPredictionBudgetExceededException && scans==__state)cancelledBeforeCapture++;return __exception;}
         private static void StepWork(){steps++;}private static void ScanWork(){scans++;}private static void RngWork(){if(depth>0)rngCalls++;}
         private static void BeforeKill(Projectile __instance){if(__instance.type==660)kills++;}
         private static void BeforeDamage(Projectile __instance){receiving=__instance;}private static void AfterDamage(){receiving=null;}
@@ -34,7 +39,7 @@ namespace NativeWorldTextProbe
         }
         private static Player Reset(object context)
         {
-            recordBirth=false;receiving=watched=null;target=null;first=-1;kills=0;born.Clear();hitSlots.Clear();
+            recordBirth=false;naturalAttack=null;receiving=watched=null;target=null;first=-1;kills=0;born.Clear();hitSlots.Clear();
             NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());NativeCombatCadenceChecks.Save(Get(context,"Combat"),new CombatOptions());
             var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),Get(context,"Input"),3787,0,0);p.statMana=p.statManaMax=p.statManaMax2=300;p.releaseUseItem=true;Main.windPhysics=false;
             for(int x=5;x<115;x++)Main.tile[x,43].ClearEverything();if(Main.GameUpdateCount==0)NativeQuickItemChecks.BeginWorldStep();return p;
@@ -58,7 +63,7 @@ namespace NativeWorldTextProbe
         {object[] args={origin,cursor,speed,offset,Vector2.Zero,Vector2.Zero};Static(model,"Birth",args);center=(Vector2)args[4];velocity=(Vector2)args[5];}
         private static void Born(IEntitySource __0,int __result)
         {
-            if(!recordBirth || __result<0)return;var q=Main.projectile[__result];if(q.type!=660)return;var p=Main.LocalPlayer;var origin=p.RotatedRelativePoint(p.MountedCenter);var cursor=Main.MouseWorld;var offset=q.Center-origin;Vector2 center,velocity;BirthArgs(origin,cursor,(float)Get(ammo,"Speed"),offset,out center,out velocity);var path=Path(target);
+            if(!recordBirth || __result<0)return;var q=Main.projectile[__result];if(q.type!=660)return;if(naturalAttack!=null)Require((bool)Get(naturalAttack,"hasConsumedInput") && Convert.ToString(Get(Get(naturalAttack,"consumedInput"),"Kind"))=="Enhanced","every actual SkyFracture hand consumes a ready enhanced cursor");var p=Main.LocalPlayer;var origin=p.RotatedRelativePoint(p.MountedCenter);var cursor=Main.MouseWorld;var offset=q.Center-origin;Vector2 center,velocity;BirthArgs(origin,cursor,(float)Get(ammo,"Speed"),offset,out center,out velocity);var path=Path(target);
             var row=new Birth{Shot=q,Key=(int)q.key,Slot=q.whoAmI,Tick=Main.GameUpdateCount,Damage=q.damage,Animation=p.itemAnimation,Time=p.itemTime,Reuse=p.reuseDelay,Center=q.Center,Velocity=q.velocity,Origin=origin,Cursor=cursor,Known=Known(p,q,path)};born.Add(row);
             Console.WriteLine("SKY FRACTURE born tick="+row.Tick+" slot/key="+row.Slot+"/"+row.Key+" center="+row.Center+" origin="+origin+" radius="+offset.Length()+" V="+row.Velocity+" damage="+q.damage+" anim/time/reuse="+row.Animation+","+row.Time+","+row.Reuse+" cursor="+cursor+" raw="+raw+" known="+row.Known?.Tick);
             // NewProjectile stores the requested float center as top-left.
@@ -70,15 +75,16 @@ namespace NativeWorldTextProbe
         {
             assembly=Get(context,"Combat").GetType().Assembly;model=assembly.GetType("JueMingR.TerrariaHost.Combat.HostSkyFractureAttack",true);var audit=new Harmony("JueMingR.Tests.SkyFracture");bool wind=Main.windPhysics;
             foreach(string name in new[]{"HandleSpecialEvent","HandleRunning","HandleMining"})audit.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
-            audit.Patch(model.GetMethod("Solve",Flags),prefix:new HarmonyMethod(typeof(NativeCombatSkyFractureChecks),nameof(SolveWork)),postfix:new HarmonyMethod(typeof(NativeCombatSkyFractureChecks),nameof(Done)));audit.Patch(model.GetMethod("KnownFamily",Flags),prefix:new HarmonyMethod(typeof(NativeCombatSkyFractureChecks),nameof(KnownWork)),postfix:new HarmonyMethod(typeof(NativeCombatSkyFractureChecks),nameof(Done)));audit.Patch(model.GetMethod("Motor",Flags),prefix:new HarmonyMethod(typeof(NativeCombatSkyFractureChecks),nameof(StepWork)));audit.Patch(model.GetMethod("Capture",Flags),prefix:new HarmonyMethod(typeof(NativeCombatSkyFractureChecks),nameof(ScanWork)));
+            audit.Patch(model.GetMethod("Solve",Flags),prefix:new HarmonyMethod(typeof(NativeCombatSkyFractureChecks),nameof(SolveWork)),finalizer:new HarmonyMethod(typeof(NativeCombatSkyFractureChecks),nameof(Done)));audit.Patch(model.GetMethod("KnownFamily",Flags),prefix:new HarmonyMethod(typeof(NativeCombatSkyFractureChecks),nameof(KnownWork)),finalizer:new HarmonyMethod(typeof(NativeCombatSkyFractureChecks),nameof(Done)));audit.Patch(model.GetMethod("Motor",Flags),prefix:new HarmonyMethod(typeof(NativeCombatSkyFractureChecks),nameof(StepWork)));audit.Patch(model.GetMethod("Capture",Flags),prefix:new HarmonyMethod(typeof(NativeCombatSkyFractureChecks),nameof(ScanWork)));
             foreach(var method in Main.rand.GetType().GetMethods(Flags).Where(m=>m.Name=="Next" || m.Name=="NextDouble").Distinct())audit.Patch(method,prefix:new HarmonyMethod(typeof(NativeCombatSkyFractureChecks),nameof(RngWork)));
             audit.Patch(typeof(Projectile).GetMethods(Flags).Single(m=>m.Name=="NewProjectile" && m.GetParameters().Length==13 && m.GetParameters()[1].ParameterType==typeof(float)),postfix:new HarmonyMethod(typeof(NativeCombatSkyFractureChecks),nameof(Born)));audit.Patch(typeof(Projectile).GetMethod("Kill",Flags),prefix:new HarmonyMethod(typeof(NativeCombatSkyFractureChecks),nameof(BeforeKill)));audit.Patch(typeof(Projectile).GetMethod("Damage",Flags),prefix:new HarmonyMethod(typeof(NativeCombatSkyFractureChecks),nameof(BeforeDamage)),postfix:new HarmonyMethod(typeof(NativeCombatSkyFractureChecks),nameof(AfterDamage)));audit.Patch(AccessTools.Method(typeof(NPC),"StrikeNPC",new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)}),postfix:new HarmonyMethod(typeof(NativeCombatSkyFractureChecks),nameof(Strike)));
+            var componentHand=new NativeCombatHandFixture(context,()=>recordBirth && naturalAttack!=null,()=>target);
             try
             {
                 string leaf=Environment.GetEnvironmentVariable("JMR_SKY_FRACTURE_ORACLE_ONLY");Require(string.IsNullOrEmpty(leaf) || leaf=="motor" || leaf=="birth" || leaf=="receive" || leaf=="natural","SkyFracture leaf selector");
                 if(string.IsNullOrEmpty(leaf) || leaf=="motor")Motors(context);if(string.IsNullOrEmpty(leaf) || leaf=="birth")Births(context);if(string.IsNullOrEmpty(leaf) || leaf=="receive")Receives(context);if(string.IsNullOrEmpty(leaf) || leaf=="natural")Natural(context);
             }
-            finally{recordBirth=false;receiving=watched=null;target=null;Main.windPhysics=wind;audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());NativeCombatCadenceChecks.Save(Get(context,"Combat"),new CombatOptions());}
+            finally{componentHand.Dispose();recordBirth=false;naturalAttack=null;receiving=watched=null;target=null;Main.windPhysics=wind;audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());NativeCombatCadenceChecks.Save(Get(context,"Combat"),new CombatOptions());}
         }
         private static void Motors(object context)
         {
@@ -129,22 +135,28 @@ namespace NativeWorldTextProbe
         private static void Draws(object host,object attack,AttackContact plan)
         {
             int a=solves,b=steps,c=scans;var marker=Get(Get(host,"World"),"Impact");var zoom=Main.GameViewMatrix.ZoomMatrix;
-            for(int check=0;check<20;check++){Call(marker,"Capture");Call(marker,"Project",zoom,Matrix.Invert(zoom));Require((bool)Call(attack,"PreviewCurrent",plan),"stable SkyFracture preview lease remains current");}
+            for(int check=0;check<20;check++){Call(marker,"Capture");Call(marker,"Project",zoom,Matrix.Invert(zoom));Require((bool)Call(attack,"PresentationCurrent",plan),"stable SkyFracture preview lease remains current");}
             Require(a==solves && b==steps && c==scans,"twenty presentations perform zero SkyFracture Solve/motor/pool scans");
         }
         private static void Natural(object context)
         {
-            var p=Reset(context);p.position=new Vector2(650,646);Main.screenPosition=new Vector2(500,400);for(int x=5;x<115;x++)NativeToolsChecks.Tile(x,43,1);target=NativeCombatControlPreviewChecks.Dummy(2,52,40);target.position.X=p.Center.X+180;raw=target.Center-new Vector2(380,0);solves=knownCalls=depth=steps=scans=rngCalls=0;var host=Get(context,"CombatObservation");var attack=Get(Get(context,"Combat"),"Attack");
-            NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,false));for(int frame=0;frame<3;frame++)NativeCombatSelectionPreviewChecks.Step(context,raw,false,true);var plan=(AttackContact)GetOptional(attack,"ExpectedPreview");Require(plan!=null && plan.Confidence==AttackConfidence.Representative && !Main.projectile.Any(q=>q.active),"idle random-ring next hand preview is read-only and does not fire");Draws(host,attack,plan);
-            ammo=Static(assembly.GetType("JueMingR.TerrariaHost.Combat.AttackAmmoSnapshot",true),"Capture",p,p.HeldItem);recordBirth=true;NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));int previews=0;
-            for(int frame=0;frame<45;frame++){NativeCombatSelectionPreviewChecks.Step(context,raw,true);var next=(AttackContact)GetOptional(attack,"ExpectedPreview");if(frame>=2){Require(next!=null,"continuous three-hand action and reuse18 retain a legal next-hand preview");previews++;}if(frame==6 && next!=null)Draws(host,attack,next);}
+            var p=Reset(context);p.position=new Vector2(650,646);Main.screenPosition=new Vector2(500,400);for(int x=5;x<115;x++)NativeToolsChecks.Tile(x,43,1);target=NativeCombatControlPreviewChecks.Dummy(2,52,40);target.position.X=p.Center.X+180;raw=target.Center-new Vector2(380,0);solves=knownCalls=depth=steps=scans=rngCalls=cancelledBeforeCapture=0;var host=Get(context,"CombatObservation");var attack=Get(Get(context,"Combat"),"Attack");
+            NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,false));for(int frame=0;frame<3;frame++)NativeCombatSelectionPreviewChecks.Step(context,raw,false,true);
+            Require(GetOptional(attack,"ExpectedPreview")==null && !Main.projectile.Any(q=>q.active) && solves==0 && scans==0,"withdrawn idle random-ring preview never solves, captures or fires");
+            ammo=Static(assembly.GetType("JueMingR.TerrariaHost.Combat.AttackAmmoSnapshot",true),"Capture",p,p.HeldItem);recordBirth=true;naturalAttack=attack;NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));int previews=0;
+            for(int frame=0;frame<45;frame++)
+            {
+                NativeToolExecutionChecks.Sample(context,Get(context,"Input"),raw,true);Call(Get(context,"Combat"),"Sample");NativeCombatAimChecks.PrepareMechanismFixture(host,attack,target,0);var next=(AttackContact)GetOptional(attack,"ExpectedImpact");
+                if(next!=null){Require(next.Confidence==AttackConfidence.Representative,"actual ready SkyFracture hand retains random birth confidence");previews++;Call(attack,"BindPresentation",next);Draws(host,attack,next);}
+                NativeCombatSelectionPreviewChecks.Step(context,raw,true);Require(GetOptional(attack,"ExpectedPreview")==null,"native three-hand/reuse cadence cannot revive a hypothetical cooldown preview");
+            }
             NativeCombatSelectionPreviewChecks.Step(context,raw,false);recordBirth=false;for(int frame=0;frame<120 && born.Any(b=>b.First<0 && b.Key==(int)b.Shot.key && b.Shot.active);frame++)NativeCombatSelectionPreviewChecks.Step(context,raw,false);
             int useful=0,missed=0;foreach(var b in born)
             {
                 int actual=b.First<0?0:(int)(b.First-b.Tick+1);Console.WriteLine("SKY FRACTURE natural slot/key="+b.Slot+"/"+b.Key+" born="+b.Center+" V="+b.Velocity+" cursor="+b.Cursor+" first="+actual+" known="+b.Known?.Tick);
                 Require((b.Known==null)==(actual==0) && (b.Known==null || b.Known.Confidence==AttackConfidence.Conditional && b.Known.Tick==actual) && Vector2.Dot(b.Velocity,raw-b.Origin)<0,"every captured random birth keeps its own native useful/missed outcome and known first damage, using assisted cursor opposite raw");if(actual>0)useful++;else missed++;
             }
-            Require(useful>0 && born.Count>=6 && previews>0 && rngCalls==0 && scans==solves+knownCalls,"actual player use has positive immortal488 Strike, finite capture work and no model RNG; random misses are recorded rather than universally rejected");Console.WriteLine("PASS SKY FRACTURE natural births="+born.Count+" useful="+useful+" randomMiss="+missed+" previewFrames="+previews+" solves="+solves+" known="+knownCalls+" poolScans="+scans+" motor="+steps+" modelRNG="+rngCalls);
+            Require(useful>0 && born.Count>=6 && previews>0 && rngCalls==0 && depth==0 && scans+cancelledBeforeCapture==solves+knownCalls,"actual player use has positive immortal488 Strike, finite capture work and no model RNG; random misses are recorded rather than universally rejected");Console.WriteLine("PASS SKY FRACTURE natural births="+born.Count+" useful="+useful+" randomMiss="+missed+" readyHandPreparations="+previews+" solves="+solves+" known="+knownCalls+" poolScans="+scans+" motor="+steps+" modelRNG="+rngCalls+" depth="+depth+" cancelledBeforeCapture="+cancelledBeforeCapture);
         }
     }
 }

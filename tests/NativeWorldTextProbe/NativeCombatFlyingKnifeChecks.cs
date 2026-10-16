@@ -70,10 +70,10 @@ namespace NativeWorldTextProbe
             try
             {
                 NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,true,25,true,false));
-                for(int i=0;i<3;i++){NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,500),false,true);Require(GetOptional(attack,"ExpectedPreview")!=null && !Main.projectile.Any(q=>q.active),"knife idle preview precedes native source and cannot create it");}
+                for(int i=0;i<3;i++){NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,500),false,true);Require(GetOptional(attack,"ExpectedPreview")==null && !Main.projectile.Any(q=>q.active),"retired idle knife preview neither solves nor creates a native source");}
                 NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,true,25,true,true));NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,500),true);var shot=Main.projectile.Single(q=>q.active && q.owner==0 && q.type==491);Require(shot.velocity.X>0,"first original knife source uses shared target despite left physical cursor");
-                int visible=0;for(int i=0;i<35;i++){NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,500),true);if(GetOptional(attack,"ExpectedPreview")!=null)visible++;}
-                Require(damage>0 && visible>3,"native continuing knife creates real dummy damage and lasting preview");
+                int visible=0;for(int i=0;i<35;i++){NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,500),true);if(GetOptional(attack,"ExpectedImpact")!=null)visible++;Require(GetOptional(attack,"ExpectedPreview")==null,"continuous knife does not resurrect the retired preview owner");}
+                Require(damage>0 && visible>3,"native continuing knife creates real dummy damage and repeated actual control Contacts");
                 NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,500),false);Require(!shot.active || shot.ai[0]>0,"physical release begins original autonomous return");
                 int returning=0;for(;returning<120 && shot.active;returning++){NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,500),false);Require(GetOptional(attack,"ExpectedImpact")==null,"return preview cannot authorize a released knife cursor consumer");}
                 Require(!shot.active,"original knife reaches owner and retires after release");

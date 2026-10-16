@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -18,7 +18,7 @@ namespace NativeWorldTextProbe
         private static Assembly assembly;private static Type model;private static NPC target;private static Projectile receiving;
         private sealed class BirthFact {internal Vector2 Cursor,Center;internal AttackContact Known;internal long Sample;internal bool Updated,Hit;}
         private static readonly Dictionary<ProjectileKey,BirthFact> born=new Dictionary<ProjectileKey,BirthFact>();
-        private static readonly List<int> hitSlots=new List<int>();private static bool natural;private static long first;private static int solves,steps,positive;private static Vector2 raw;
+        private static readonly List<int> hitSlots=new List<int>();private static bool natural;private static object naturalAttack;private static long first;private static int solves,steps,positive;private static Vector2 raw;
         private static object Static(Type type,string name,params object[] args){return type.GetMethod(name,Flags).Invoke(null,args);}
         private static void SolveWork(){solves++;}private static void StepWork(){steps++;}
         private static void BeforeDamage(Projectile __instance){receiving=__instance;}private static void AfterDamage(){receiving=null;}
@@ -46,7 +46,7 @@ namespace NativeWorldTextProbe
         private static object Clock(NpcTrajectory path,bool current=false){return Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackClock",true),Flags,null,new object[]{path,Enum.Parse(assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase",true),current?"Projectiles":"BeforeNpc"),0},null);}
         private static object Obstacles(Player p,Projectile q,NpcTrajectory path,bool current=false){return Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackObstacles",true),Flags,null,new object[]{p,q,path,0,!current,false},null);}
         private static void Born(int __result)
-        {if(!natural || __result<0 || __result>=Main.maxProjectiles)return;var q=Main.projectile[__result];if(q.type>=76 && q.type<=78)born[q.key]=new BirthFact{Cursor=Main.MouseWorld,Center=Main.LocalPlayer.Center};}
+        {if(!natural || __result<0 || __result>=Main.maxProjectiles)return;var q=Main.projectile[__result];if(q.type>=76 && q.type<=78){Require((bool)Get(naturalAttack,"hasConsumedInput") && Convert.ToString(Get(Get(naturalAttack,"consumedInput"),"Kind"))=="Enhanced","every actual note hand consumes its current prepared cursor");born[q.key]=new BirthFact{Cursor=Main.MouseWorld,Center=Main.LocalPlayer.Center};}}
         private static void BeforeUpdate(Projectile __instance)
         {
             BirthFact fact;if(!natural || !born.TryGetValue(__instance.key,out fact) || fact.Updated)return;fact.Updated=true;var p=Main.LocalPlayer;var q=__instance;
@@ -61,8 +61,9 @@ namespace NativeWorldTextProbe
             audit.Patch(model.GetMethod("Solve",Flags),prefix:new HarmonyMethod(typeof(NativeCombatNoteChecks),nameof(SolveWork)));audit.Patch(model.GetMethod("Step",Flags),prefix:new HarmonyMethod(typeof(NativeCombatNoteChecks),nameof(StepWork)));
             audit.Patch(typeof(Projectile).GetMethods(Flags).Single(m=>m.Name=="NewProjectile" && m.GetParameters().Length==13 && m.GetParameters()[1].ParameterType==typeof(float)),postfix:new HarmonyMethod(typeof(NativeCombatNoteChecks),nameof(Born)));
             audit.Patch(typeof(Projectile).GetMethod("Update",Flags),prefix:new HarmonyMethod(typeof(NativeCombatNoteChecks),nameof(BeforeUpdate)));audit.Patch(typeof(Projectile).GetMethod("Damage",Flags),prefix:new HarmonyMethod(typeof(NativeCombatNoteChecks),nameof(BeforeDamage)),postfix:new HarmonyMethod(typeof(NativeCombatNoteChecks),nameof(AfterDamage)));audit.Patch(typeof(NPC).GetMethod("StrikeNPC",new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)}),postfix:new HarmonyMethod(typeof(NativeCombatNoteChecks),nameof(Strike)));
+            var componentHand=new NativeCombatHandFixture(context,()=>natural,()=>target);
             try{string leaf=Environment.GetEnvironmentVariable("JMR_NOTE_LEAF");Require(string.IsNullOrEmpty(leaf) || leaf=="motor" || leaf=="receive" || leaf=="natural","known note leaf");if(string.IsNullOrEmpty(leaf) || leaf=="motor")Motors(context);if(string.IsNullOrEmpty(leaf) || leaf=="receive")Receives(context);if(string.IsNullOrEmpty(leaf) || leaf=="natural")Natural(context);}
-            finally{natural=false;audit.UnpatchAll(audit.Id);Main.windPhysics=wind;}
+            finally{componentHand.Dispose();natural=false;audit.UnpatchAll(audit.Id);Main.windPhysics=wind;}
         }
         private static void Motors(object context)
         {
@@ -92,14 +93,21 @@ namespace NativeWorldTextProbe
         private static void Natural(object context)
         {
             var p=Reset(context);p.position=new Vector2(650,646);p.releaseUseItem=true;Main.screenPosition=new Vector2(500,400);for(int x=5;x<115;x++)NativeToolsChecks.Tile(x,43,1);target=NativeCombatControlPreviewChecks.Dummy(2,48,40);raw=target.Center-new Vector2(490,0);var host=Get(context,"CombatObservation");var attack=Get(Get(context,"Combat"),"Attack");solves=steps=0;
-            NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,false));for(int i=0;i<3;i++){NativeCombatSelectionPreviewChecks.Step(context,raw,false,true);Require(GetOptional(attack,"ExpectedPreview")!=null && !Main.projectile.Any(q=>q.active),"idle harp preview is independent of attack authority");}
-            natural=true;NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));for(int i=0;i<36;i++)
+            NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,false));for(int i=0;i<3;i++){NativeCombatSelectionPreviewChecks.Step(context,raw,false,true);Require(GetOptional(attack,"ExpectedPreview")==null && !Main.projectile.Any(q=>q.active) && solves==0,"withdrawn idle harp preview has no solve or attack authority");}
+            natural=true;naturalAttack=attack;int prepared=0;NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));for(int i=0;i<36;i++)
             {
-                NativeCombatSelectionPreviewChecks.Step(context,raw,true);var plan=(AttackContact)GetOptional(attack,"ExpectedPreview");Require(plan!=null,"feasible sustained harp cadence retains a useful next-use preview");int a=solves,b=steps;var marker=Get(Get(host,"World"),"Impact");var zoom=Main.GameViewMatrix.ZoomMatrix;for(int j=0;j<20;j++){Call(marker,"Capture");Call(marker,"Project",zoom,Matrix.Invert(zoom));Require((bool)Call(attack,"PreviewCurrent",plan),"CPU harp presentation remains tied to current preparation");}Require(a==solves && b==steps,"same-update CPU presentation performs no note Solve or Step");
+                NativeToolExecutionChecks.Sample(context,Get(context,"Input"),raw,true);Call(Get(context,"Combat"),"Sample");NativeCombatAimChecks.PrepareMechanismFixture(host,attack,target,0);var plan=(AttackContact)GetOptional(attack,"ExpectedImpact");
+                if(plan!=null)
+                {
+                    prepared++;Call(attack,"BindPresentation",plan);int a=solves,b=steps;var marker=Get(Get(host,"World"),"Impact");var zoom=Main.GameViewMatrix.ZoomMatrix;
+                    for(int j=0;j<20;j++){Call(marker,"Capture");Call(marker,"Project",zoom,Matrix.Invert(zoom));Require((bool)Call(attack,"PresentationCurrent",plan),"CPU harp presentation remains tied to its actual ready-hand preparation");}
+                    Require(a==solves && b==steps,"same-update CPU presentation performs no note Solve or Step");
+                }
+                NativeCombatSelectionPreviewChecks.Step(context,raw,true);Require(GetOptional(attack,"ExpectedPreview")==null,"continuous harp use never revives an idle or cooldown redbox");
             }
-            Require(born.Count>=3 && positive>0 && born.Values.Any(b=>b.Hit),"real native harp uses emit original random note types and deal positive damage at their captured known times");
+            Require(prepared>=3 && born.Count>=3 && positive>0 && born.Values.Any(b=>b.Hit),"real native harp uses emit original random note types and deal positive damage at their captured known times");
             foreach(var fact in born.Values)if(fact.Known!=null && Main.GameUpdateCount-fact.Sample>=fact.Known.Tick)Require(fact.Hit,"every captured note whose predicted first-contact time elapsed produced its real positive Strike");
-            Console.WriteLine("PASS NOTE natural births="+born.Count+" positive="+positive+" knownHits="+born.Values.Count(b=>b.Hit)+" preview=36/36 mana="+p.statMana+"/"+p.statManaMax2+" solves="+solves+" steps="+steps);natural=false;NativeCombatSelectionPreviewChecks.Step(context,raw,false);
+            Console.WriteLine("PASS NOTE natural births="+born.Count+" positive="+positive+" knownHits="+born.Values.Count(b=>b.Hit)+" realUpdates=36 prepared="+prepared+" mana="+p.statMana+"/"+p.statManaMax2+" solves="+solves+" steps="+steps);natural=false;NativeCombatSelectionPreviewChecks.Step(context,raw,false);
         }
     }
 }

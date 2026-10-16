@@ -16,11 +16,32 @@ namespace NativeWorldTextProbe
     {
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static|BindingFlags.Instance;
         private static Assembly assembly;private static Type model;private static NPC target;private static Projectile receiving,motor,controller,phoenix;
-        private static bool natural,lowerCase;private static int births,arrows,solves,steps,kills;private static long first,birthTick;private static AttackContact known;private static Vector2 raw,killCenter;
+        private static bool natural,lowerCase,thirdEnhanced;private static int births,arrows,solves,steps,kills,thirdPrepared;private static long first,birthTick;private static AttackContact known;private static Vector2 raw,killCenter;private static object activeContext;
         private static readonly List<int> hits=new List<int>();
         private static object Static(Type type,string method,params object[] args){return type.GetMethod(method,Flags).Invoke(null,args);}
         private static void SolveWork(){solves++;}private static void StepWork(){steps++;}
-        private static void BeforeAI(Projectile __instance){if(natural && __instance.type==705)controller=__instance;}
+        private static Exception SolveOutcome(Exception __exception)
+        {
+            if(natural && activeContext!=null)
+            {var work=(CombatPredictionWork)Get(Get(activeContext,"CombatObservation"),"PredictionWork");Console.WriteLine("PHOENIX READY SOLVE exception="+__exception?.GetType().Name+" used6ms="+work.UsedMilliseconds+" exceeded="+work.Exceeded+" nativePhase="+Main.LocalPlayer.phantomPhoneixCounter+" clock="+Main.GameUpdateCount);}
+            return __exception;
+        }
+        private static void BeforeAI(Projectile __instance)
+        {
+            if(!natural || __instance.type!=705)return;controller=__instance;
+            // Main's actual post-NPC prefix has prepared this registered controller.
+            // AI only observes and consumes that entry; it never solves.
+            var host=Get(activeContext,"CombatObservation");var attack=Get(Get(activeContext,"Combat"),"Attack");
+            var plan=(AttackContact)GetOptional(Get(attack,"Control"),"ExpectedImpact");
+            if(Main.LocalPlayer.phantomPhoneixCounter==2 && __instance.ai[1]<=1)
+            {var control=Get(attack,"Control");var entries=(System.Collections.IDictionary)Get(control,"shots");var entry=entries.Contains((int)__instance.key)?entries[(int)__instance.key]:null;var stored=entry==null?null:GetOptional(entry,"Contact") as AttackContact;var root=entry==null?null:GetOptional(entry,"Obstacles");var work=(CombatPredictionWork)Get(host,"PredictionWork");Console.WriteLine("PHOENIX READY AI clock="+Main.GameUpdateCount+" ai1="+__instance.ai[1]+" contact="+stored?.Tick+" expected="+plan?.Tick+" root="+(root==null?"none":Convert.ToString(Get(root,"HeldControllerUnchanged")))+" sourceCount="+((NpcPredictionCache)Get(Get(host,"Prediction"),"Cache")).Read(1)?.Count+" used6ms="+work.UsedMilliseconds+" exceeded="+work.Exceeded+" ambient="+string.Join(",",Main.projectile.Where(q=>q.active && !ReferenceEquals(q,__instance)).Select(q=>q.whoAmI+":"+q.type)));}
+            if(Main.LocalPlayer.phantomPhoneixCounter!=2 || plan==null)return;thirdPrepared++;
+            Call(attack,"BindPresentation",plan);int a=solves,b=steps;var marker=Get(Get(host,"World"),"Impact");var zoom=Main.GameViewMatrix.ZoomMatrix;
+            for(int d=0;d<20;d++){Call(marker,"Capture");Call(marker,"Project",zoom,Matrix.Invert(zoom));Require((bool)Call(attack,"PresentationCurrent",plan),"actual ready third-shot presentation retains its registered controller lease");}
+            Require(a==solves && b==steps,"twenty actual third-shot presentation reads perform zero Phoenix solve or motor work");
+        }
+        private static void InputReceipt(object __0)
+        {if(natural && controller!=null && Main.LocalPlayer.phantomPhoneixCounter==2 && ReferenceEquals(GetOptional(__0,"Source"),controller))thirdEnhanced=Convert.ToString(Get(__0,"Kind"))=="Enhanced";}
         private static void AfterAI(Projectile __instance){if(ReferenceEquals(controller,__instance))controller=null;}
         private static void BeforeKill(Projectile __instance){if(ReferenceEquals(__instance,motor) && __instance.active){kills++;killCenter=__instance.Center;}}
         private static void BeforeDamage(Projectile __instance){receiving=__instance;}
@@ -52,7 +73,7 @@ namespace NativeWorldTextProbe
             if(!natural || controller==null || __result<0 || __result>=Main.maxProjectiles)return;var q=Main.projectile[__result];if(q.type!=706){arrows++;return;}
             phoenix=q;births++;birthTick=Main.GameUpdateCount;var p=Main.LocalPlayer;var origin=p.RotatedRelativePoint(p.MountedCenter);var cursor=new Vector2(Main.mouseX,Main.mouseY)+Main.screenPosition;
             var expected=(Vector2)Static(model,"BirthVelocity",p,controller,origin,cursor);var ammo=Static(assembly.GetType("JueMingR.TerrariaHost.Combat.AttackAmmoSnapshot",true),"CaptureController",p,p.HeldItem,12f);
-            Require(arrows==4 && p.phantomPhoneixCounter==0 && q.damage==2*(int)Get(ammo,"Damage") && q.timeLeft==120 && q.owner==p.whoAmI && Vector2.DistanceSquared(q.Center,origin)<.0001f && Vector2.DistanceSquared(q.velocity,expected)<.0001f && Vector2.Dot(q.velocity,raw-origin)<0,"actual third controller use emits doubled phoenix from the borrowed cursor after four original ammo arrows");
+            Require(thirdEnhanced && arrows==4 && p.phantomPhoneixCounter==0 && q.damage==2*(int)Get(ammo,"Damage") && q.timeLeft==120 && q.owner==p.whoAmI && Vector2.DistanceSquared(q.Center,origin)<.0001f && Vector2.DistanceSquared(q.velocity,expected)<.0001f && Vector2.Dot(q.velocity,raw-origin)<0,"actual third controller use emits doubled phoenix from the borrowed cursor after four original ammo arrows");
             var path=Timeline(target);bool later=q.whoAmI>controller.whoAmI;Require(later!=lowerCase,"native pool yields the intended child slot before/after its live controller");known=(AttackContact)Static(model,"Known",p,q,path,Clock(path,later?"Projectiles":"CompletedWorld"),Terrain(),Obstacles(p,q,path,false,!later));
             Console.WriteLine("PHOENIX birth parent="+controller.whoAmI+" slot="+q.whoAmI+" later="+later+" center="+q.Center+" V="+q.velocity+" damage="+q.damage+" actualAmmo="+arrows+" cursor="+cursor+" raw="+raw+" known="+known?.Tick);
         }
@@ -60,12 +81,13 @@ namespace NativeWorldTextProbe
         {
             assembly=Get(context,"Combat").GetType().Assembly;model=assembly.GetType("JueMingR.TerrariaHost.Combat.HostPhoenixAttack",true);var audit=new Harmony("JueMingR.Tests.Phoenix");bool wind=Main.windPhysics;
             foreach(string name in new[]{"HandleSpecialEvent","HandleRunning","HandleMining"})audit.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
-            audit.Patch(model.GetMethod("SolvePrepared",Flags),prefix:new HarmonyMethod(typeof(NativeCombatPhoenixChecks),nameof(SolveWork)));audit.Patch(model.GetMethod("Step",Flags),prefix:new HarmonyMethod(typeof(NativeCombatPhoenixChecks),nameof(StepWork)));
-            audit.Patch(typeof(Projectile).GetMethod("AI",Flags),prefix:new HarmonyMethod(typeof(NativeCombatPhoenixChecks),nameof(BeforeAI)),postfix:new HarmonyMethod(typeof(NativeCombatPhoenixChecks),nameof(AfterAI)));
+            audit.Patch(model.GetMethod("SolvePrepared",Flags),prefix:new HarmonyMethod(typeof(NativeCombatPhoenixChecks),nameof(SolveWork)),finalizer:new HarmonyMethod(typeof(NativeCombatPhoenixChecks),nameof(SolveOutcome)));audit.Patch(model.GetMethod("Step",Flags),prefix:new HarmonyMethod(typeof(NativeCombatPhoenixChecks),nameof(StepWork)));
+            audit.Patch(typeof(Projectile).GetMethod("AI",Flags),prefix:new HarmonyMethod(typeof(NativeCombatPhoenixChecks),nameof(BeforeAI)){priority=Priority.First+1000},postfix:new HarmonyMethod(typeof(NativeCombatPhoenixChecks),nameof(AfterAI)));
             audit.Patch(typeof(Projectile).GetMethods(Flags).Single(m=>m.Name=="NewProjectile" && m.GetParameters().Length==13 && m.GetParameters()[1].ParameterType==typeof(float)),postfix:new HarmonyMethod(typeof(NativeCombatPhoenixChecks),nameof(Born)));
             audit.Patch(typeof(Projectile).GetMethod("Kill",Flags),prefix:new HarmonyMethod(typeof(NativeCombatPhoenixChecks),nameof(BeforeKill)));audit.Patch(typeof(Projectile).GetMethod("Damage",Flags),prefix:new HarmonyMethod(typeof(NativeCombatPhoenixChecks),nameof(BeforeDamage)),postfix:new HarmonyMethod(typeof(NativeCombatPhoenixChecks),nameof(AfterDamage)));audit.Patch(AccessTools.Method(typeof(NPC),"StrikeNPC",new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)}),postfix:new HarmonyMethod(typeof(NativeCombatPhoenixChecks),nameof(Strike)));
+            audit.Patch(Get(Get(context,"Combat"),"Attack").GetType().GetMethod("RecordInput",Flags),postfix:new HarmonyMethod(typeof(NativeCombatPhoenixChecks),nameof(InputReceipt)));
             try{string only=Environment.GetEnvironmentVariable("JMR_PHOENIX_ORACLE_ONLY");if(string.IsNullOrEmpty(only) || only=="motor")Motors(context);if(string.IsNullOrEmpty(only) || only=="receive")Receives(context);if(string.IsNullOrEmpty(only) || only=="natural")Natural(context);if(string.IsNullOrEmpty(only) || only=="lower")Natural(context,true);Require(string.IsNullOrEmpty(only) || only=="motor" || only=="receive" || only=="natural" || only=="lower","native phoenix narrow leaf");}
-            finally{natural=false;controller=null;audit.UnpatchAll(audit.Id);Main.windPhysics=wind;Main.LocalPlayer.setApprenticeT3=false;NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());NativeCombatCadenceChecks.Save(Get(context,"Combat"),new CombatOptions());}
+            finally{activeContext=null;natural=false;controller=null;audit.UnpatchAll(audit.Id);Main.windPhysics=wind;Main.LocalPlayer.setApprenticeT3=false;NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());NativeCombatCadenceChecks.Save(Get(context,"Combat"),new CombatOptions());}
         }
         private static void Motors(object context)
         {
@@ -105,27 +127,44 @@ namespace NativeWorldTextProbe
             }
             Console.WriteLine("PASS PHOENIX receive=10");
         }
+        private static void NaturalStep(object context)
+        {
+            var host=Get(context,"CombatObservation");var combat=Get(context,"Combat");var attack=Get(combat,"Attack");
+            NativeToolExecutionChecks.Sample(context,Get(context,"Input"),raw,true);Call(combat,"Sample");Call(host,"SampleMouse");int x=Main.mouseX,y=Main.mouseY;
+            NativeQuickItemChecks.BeginWorldStep();Main.LocalPlayer.Update(0);
+            // Preserve the finite stationary Source component, but let the
+            // genuine Main whole-pass hook own registered held preparation.
+            // Its six-ms inner owner is not enlarged by this Source fixture.
+            NativeCombatAimChecks.PrepareMechanismFixture(host,attack,target,0,phaseName:"BeforeNpc");
+            foreach(var n in Main.npc)if(n.active)n.UpdateNPC(n.whoAmI);
+            if(Main.instance.SpelunkerProjectileHelper==null)Main.instance.SpelunkerProjectileHelper=new Terraria.GameContent.SpelunkerProjectileHelper();
+            if(Main.instance.ChumBucketProjectileHelper==null)Main.instance.ChumBucketProjectileHelper=new Terraria.GameContent.ChumBucketProjectileHelper();
+            typeof(Main).GetMethod("UpdateWorld_Projectiles",Flags).Invoke(Main.instance,null);
+            Call(context,"UpdateRuntime");Call(context,"UpdateShell");Require(Main.mouseX==x && Main.mouseY==y,"Phoenix actual Main pass restores the physical cursor");
+        }
         private static void Natural(object context,bool lower=false)
         {
             var p=Reset(context);p.position=new Vector2(650,646);p.releaseUseItem=true;Main.screenPosition=new Vector2(500,400);for(int x=5;x<115;x++)NativeToolsChecks.Tile(x,43,1);target=NativeCombatControlPreviewChecks.Dummy(2,48,40);raw=target.Center-new Vector2(490,0);var host=Get(context,"CombatObservation");var attack=Get(Get(context,"Combat"),"Attack");solves=steps=0;
-            NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,false));for(int i=0;i<3;i++){NativeCombatSelectionPreviewChecks.Step(context,raw,false,true);Require(GetOptional(attack,"ExpectedPreview")!=null && !Main.projectile.Any(q=>q.active),"idle Phoenix bow previews its original first ammo stage without firing");}
+            NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,false));for(int i=0;i<3;i++){NativeCombatSelectionPreviewChecks.Step(context,raw,false,true);Require(GetOptional(attack,"ExpectedPreview")==null && !Main.projectile.Any(q=>q.active) && solves==0,"withdrawn idle Phoenix bow preview neither solves nor fires its first ammo stage");}
             // Real one-tick projectiles occupy the low slots while the held
             // controller is born. Their normal expiry frees those slots before
             // the third shot; no parent phase or child slot is injected.
             if(lower)for(int i=0;i<8;i++){int slot=Projectile.NewProjectile(p.GetProjectileSource_Item(p.HeldItem),new Vector2(500,350),Vector2.Zero,14,0,0,p.whoAmI);Main.projectile[slot].timeLeft=1;}
-            lowerCase=lower;natural=true;NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));int thirdWindows=0,thirdVisible=0;
+            lowerCase=lower;activeContext=context;natural=true;thirdEnhanced=false;thirdPrepared=0;NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));int thirdWindows=0;
+            // The first native Shoot only births the held controller. Its
+            // registered AI, not this birth, owns subsequent cursor reads.
+            NativeToolExecutionChecks.Sample(context,Get(context,"Input"),raw,true);Call(Get(context,"Combat"),"Sample");NativeCombatAimChecks.PrepareMechanismFixture(host,attack,target,0);
             for(int i=0;i<100 && first<0;i++)
             {
-                NativeCombatSelectionPreviewChecks.Step(context,raw,true);
+                NaturalStep(context);
                 if(p.phantomPhoneixCounter==2)
                 {
-                    thirdWindows++;var plan=(AttackContact)GetOptional(attack,"ExpectedPreview");if(plan!=null)thirdVisible++;Require(plan!=null,"third-shot cooldown retains a feasible current phoenix contact on the same target path");
-                    int priorSolves=solves,priorSteps=steps;var marker=Get(Get(host,"World"),"Impact");var zoom=Main.GameViewMatrix.ZoomMatrix;for(int d=0;d<20;d++){Call(marker,"Capture");Call(marker,"Project",zoom,Matrix.Invert(zoom));Require((bool)Call(attack,"PreviewCurrent",plan),"same-update third-shot presentation stays valid");}Require(priorSolves==solves && priorSteps==steps,"twenty presentation calls perform zero Phoenix solve or motor work");
+                    thirdWindows++;Require(GetOptional(attack,"ExpectedPreview")==null,"every real counter2 cooldown observation keeps the retired hypothetical preview absent");
                 }
             }
-            Console.WriteLine("PHOENIX natural births="+births+" arrows="+arrows+" first="+(first<0?0:first-birthTick+1)+" known="+known?.Tick+" thirdPreview="+thirdVisible+"/"+thirdWindows+" solves="+solves+" steps="+steps);
-            Require(births==1 && phoenix!=null && known!=null && first>=birthTick && first-birthTick+1==known.Tick && thirdWindows>0 && thirdVisible==thirdWindows,"actual third use has positive native Strike on the genuine488 and matches its actual-born contact with continuous cooldown preview");
-            NativeCombatSelectionPreviewChecks.Step(context,raw,false);natural=false;
+            Console.WriteLine("PHOENIX natural births="+births+" arrows="+arrows+" first="+(first<0?0:first-birthTick+1)+" known="+known?.Tick+" actualThirdEnhanced="+thirdEnhanced+" actualThirdPrepared="+thirdPrepared+" counter2Observations="+thirdWindows+" solves="+solves+" steps="+steps);
+            Require(births==1 && phoenix!=null && known!=null && first>=birthTick && first-birthTick+1==known.Tick && thirdWindows>0 && thirdPrepared>0,"actual third registered use has positive native Strike on the genuine488 matching its actual-born contact; cooldown observations never invent input");
+            NativeCombatSelectionPreviewChecks.Step(context,raw,false);activeContext=null;natural=false;
         }
     }
 }

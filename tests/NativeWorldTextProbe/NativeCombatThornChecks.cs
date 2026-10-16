@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -91,12 +91,13 @@ namespace NativeWorldTextProbe
             audit.Patch(typeof(Projectile).GetMethods(Flags).Single(m=>m.Name=="NewProjectile" && m.GetParameters().Length==13 && m.GetParameters()[1].ParameterType==typeof(float)),postfix:new HarmonyMethod(typeof(NativeCombatThornChecks),nameof(Born)));
             audit.Patch(typeof(Projectile).GetMethod("Kill",Flags),prefix:new HarmonyMethod(typeof(NativeCombatThornChecks),nameof(BeforeKill)));audit.Patch(typeof(Projectile).GetMethod("Damage",Flags),prefix:new HarmonyMethod(typeof(NativeCombatThornChecks),nameof(BeforeDamage)),postfix:new HarmonyMethod(typeof(NativeCombatThornChecks),nameof(AfterDamage)));audit.Patch(AccessTools.Method(typeof(NPC),"StrikeNPC",new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)}),postfix:new HarmonyMethod(typeof(NativeCombatThornChecks),nameof(Strike)));
             audit.Patch(typeof(Projectile).GetMethod("Update",Flags),prefix:new HarmonyMethod(typeof(NativeCombatThornChecks),nameof(BeforeUpdate)),postfix:new HarmonyMethod(typeof(NativeCombatThornChecks),nameof(AfterUpdate)));
+            var componentHand=new NativeCombatHandFixture(context,()=>natural,()=>target);
             try
             {
                 string only=Environment.GetEnvironmentVariable("JMR_THORN_LEAF");Require(string.IsNullOrEmpty(only) || only=="motor" || only=="receive" || only=="natural","valid narrow Thorn leaf");
                 if(string.IsNullOrEmpty(only) || only=="motor"){Births(context);Motors(context);}if(string.IsNullOrEmpty(only) || only=="receive")Receives(context);if(string.IsNullOrEmpty(only) || only=="natural")Natural(context);
             }
-            finally{observe=natural=false;target=null;receiving=null;audit.UnpatchAll(audit.Id);Main.windPhysics=wind;NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());NativeCombatCadenceChecks.Save(Get(context,"Combat"),new CombatOptions());}
+            finally{componentHand.Dispose();observe=natural=false;target=null;receiving=null;audit.UnpatchAll(audit.Id);Main.windPhysics=wind;NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());NativeCombatCadenceChecks.Save(Get(context,"Combat"),new CombatOptions());}
         }
         private static bool Same(Projectile actual,Projectile expected)
         {
@@ -104,6 +105,11 @@ namespace NativeWorldTextProbe
         }
         private static void Births(object context)
         {
+            // Birth probes borrow screen dimensions only for native reverse-gravity mapping.
+            // Restore them before later physical-input samples use the real viewport.
+            int screenWidth=Main.screenWidth,screenHeight=Main.screenHeight;
+            try
+            {
             int cases=0;var shoot=typeof(Player).GetMethod("ItemCheck_Shoot",Flags);
             foreach(int item in new[]{64,788,3051})foreach(float gravity in new[]{1f,-1f})
             {
@@ -117,6 +123,8 @@ namespace NativeWorldTextProbe
                 Require(new Vector2(Main.mouseX,Main.mouseY)==origin,"coincident native cursor has exact integer source");var v=(Vector2)Static(model,"BirthVelocity",p,origin,origin,p.HeldItem.shootSpeed);shoot.Invoke(p,new object[]{p.whoAmI,p.HeldItem,p.GetWeaponDamage(p.HeldItem),false});Require(Main.projectile.Single(q=>q.active).velocity==v && v==new Vector2(-32,0),"zero ray uses the direction selected before native speed multiplication");cases++;
             }
             Console.WriteLine("PASS THORN original hand birth cases="+cases);
+            }
+            finally{Main.screenWidth=screenWidth;Main.screenHeight=screenHeight;Terraria.GameInput.PlayerInput.CacheOriginalScreenDimensions();}
         }
         private static void Motors(object context)
         {
@@ -185,9 +193,9 @@ namespace NativeWorldTextProbe
             foreach(int item in items)
             {
                 var p=Reset(context,item);p.position=new Vector2(650,646);p.ResetFallDamage();p.releaseUseItem=true;p.statMana=p.statManaMax2=200;Main.screenPosition=new Vector2(500,400);for(int x=5;x<115;x++)NativeToolsChecks.Tile(x,43,1);target=NativeCombatControlPreviewChecks.Dummy(2,52,40);raw=target.Center-new Vector2(430,0);solves=steps=0;
-                var host=Get(context,"CombatObservation");var attack=Get(Get(context,"Combat"),"Attack");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,false));for(int i=0;i<3;i++)NativeCombatSelectionPreviewChecks.Step(context,raw,false,true);var plan=(AttackContact)GetOptional(attack,"ExpectedPreview");Require(plan!=null && !Main.projectile.Any(q=>q.active),"idle real Thorn hand has a useful preview without firing");ammo=Static(assembly.GetType("JueMingR.TerrariaHost.Combat.AttackAmmoSnapshot",true),"Capture",p,p.HeldItem);
-                int captureSteps=steps,captureSolves=solves;var marker=Get(Get(host,"World"),"Impact");var zoom=Main.GameViewMatrix.ZoomMatrix;for(int d=0;d<20;d++){Call(marker,"Capture");Call(marker,"Project",zoom,Matrix.Invert(zoom));Require((bool)Call(attack,"PreviewCurrent",plan),"same-update Thorn preview is current");}Require(captureSteps==steps && captureSolves==solves && solves>0,"twenty CPU Capture/Project/PreviewCurrent passes do not solve/replay Thorn segments; actual World.Draw/pixels remain unverified");
-                natural=observe=true;long start=Main.GameUpdateCount;NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));NativeCombatSelectionPreviewChecks.Step(context,raw,true);for(int i=0;i<155;i++)NativeCombatSelectionPreviewChecks.Step(context,raw,false);
+                var host=Get(context,"CombatObservation");var attack=Get(Get(context,"Combat"),"Attack");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,false));for(int i=0;i<3;i++)NativeCombatSelectionPreviewChecks.Step(context,raw,false,true);Require(GetOptional(attack,"ExpectedPreview")==null && !Main.projectile.Any(q=>q.active) && solves==0 && steps==0,"withdrawn idle Thorn preview never solves or fires");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));NativeToolExecutionChecks.Sample(context,Get(context,"Input"),raw,true);Call(Get(context,"Combat"),"Sample");NativeCombatAimChecks.PrepareMechanismFixture(host,attack,target,0);var plan=(AttackContact)GetOptional(attack,"ExpectedImpact");Require(plan!=null,"actual pressed Thorn hand has its complete finite-chain preparation");Call(attack,"BindPresentation",plan);ammo=Static(assembly.GetType("JueMingR.TerrariaHost.Combat.AttackAmmoSnapshot",true),"Capture",p,p.HeldItem);
+                int captureSteps=steps,captureSolves=solves;var marker=Get(Get(host,"World"),"Impact");var zoom=Main.GameViewMatrix.ZoomMatrix;for(int d=0;d<20;d++){Call(marker,"Capture");Call(marker,"Project",zoom,Matrix.Invert(zoom));Require((bool)Call(attack,"PresentationCurrent",plan),"same-update Thorn preview is current");}Require(captureSteps==steps && captureSolves==solves && solves>0,"twenty CPU Capture/Project/PreviewCurrent passes do not solve/replay Thorn segments; actual World.Draw/pixels remain unverified");
+                natural=observe=true;long start=Main.GameUpdateCount;NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));NativeCombatSelectionPreviewChecks.Step(context,raw,true);Require((bool)Get(attack,"hasConsumedInput") && Convert.ToString(Get(Get(attack,"consumedInput"),"Kind"))=="Enhanced","actual Thorn hand consumes its prepared cursor");for(int i=0;i<155;i++)NativeCombatSelectionPreviewChecks.Step(context,raw,false);
                 Console.WriteLine("THORN natural item="+item+" hand="+handBirths+" child="+childBirths+" first="+(first<0?0:first-start)+" known="+known?.Tick+" idleRepresentative="+plan.Tick+" actualTypes="+string.Join(",",newborns.Select(q=>q.type))+" rawBirthDepths="+string.Join(",",birthAi1)+" completedBirthDepths="+string.Join(",",newborns.Select(q=>q.ai[1]))+" kills="+kills+" pureCurrentActions="+naturalMotorActions+" solves="+solves+" steps="+steps);
                 Require(handBirths==1 && childBirths>=6 && first>=birthTick && known!=null && first-birthTick+1==known.Tick,"one original click gives a genuine derived-chain positive Strike against the native training dummy, before random-only length divergence");
                 Require(newborns.Any(q=>q.type==(item==64?8:item==788?152:493)) && !Main.projectile.Any(q=>q.active && Type(q.type)) && kills==handBirths+childBirths,"the real terminal role is born and every original segment naturally retires");

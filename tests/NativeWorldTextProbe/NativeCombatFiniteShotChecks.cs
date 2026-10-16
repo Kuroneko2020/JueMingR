@@ -71,24 +71,34 @@ namespace NativeWorldTextProbe
                     // BeamSword/SpikyBall/Boulder multi-hit roles do not.
                     // Honey's far slow throws must retain their actual
                     // 120-update negative, plus a closer reachable control.
-                    // Original Damage below, not preview absence, decides it.
+                    // Original Damage below decides the finite component.
+                    // Idle impact preview was withdrawn; keep its no-work/
+                    // no-birth duty, then explicitly prepare one real hand.
                     bool blocked=scene==1 || scene==4 && row[1]!=114 && row[1]!=173 && row[1]!=183 || scene==3 && (row[1]==24 || row[1]==183);
                     if(scene==1)for(int y=0;y<Main.maxTilesY;y++)NativeToolsChecks.Tile(46,y,1);
                     if(scene==2 || scene==3 || scene==5)for(int x=35;x<75;x++)for(int y=20;y<43;y++){Main.tile[x,y].liquid=255;Main.tile[x,y].liquidType(scene==2?0:2);}
                     if(scene==4)target.immune[player.whoAmI]=200;
-                    NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,true,true,25,true,false));AttackContact preview=null;
-                    for(int frame=0;frame<3;frame++){NativeCombatSelectionPreviewChecks.Step(context,target.Center,false,true);preview=(AttackContact)GetOptional(attack,"ExpectedPreview");Require(!Main.projectile.Any(q=>q.active),"finite held observation never launches an attack");}
-                    Require(blocked?preview==null:preview!=null,"finite hand preview respects movement/wall/receiver: "+row[0]+"/"+scene);
-                    NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,true,true,25,true,true));long start=Main.GameUpdateCount;bool born=false;
-                    for(int frame=1;frame<=120 && firstHit<0;frame++){NativeCombatSelectionPreviewChecks.Step(context,target.Center,frame==1);born|=Main.projectile.Any(q=>q.active && q.type==row[1] && q.owner==player.whoAmI);}
+                    NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,true,true,25,true,false));
+                    for(int frame=0;frame<3;frame++){NativeCombatSelectionPreviewChecks.Step(context,target.Center,false,true);Require(GetOptional(attack,"ExpectedPreview")==null && !Main.projectile.Any(q=>q.active),"retired finite held preview performs no attack and publishes no hypothetical contact");}
+                    NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,true,25,true,true));
+                    NativeToolExecutionChecks.Sample(context,Get(context,"Input"),target.Center-new Vector2(500,0),true);Call(combat,"Sample");
+                    NativeCombatAimChecks.PrepareMechanismFixture(host,attack,target,0);var contact=(AttackContact)GetOptional(attack,"ExpectedImpact");
+                    Require(blocked?contact==null:contact!=null,"finite actual hand preparation respects movement/wall/receiver: "+row[0]+"/"+scene);
+                    long start=Main.GameUpdateCount;int mouseX=Main.mouseX,mouseY=Main.mouseY;
+                    typeof(Player).GetMethod("ItemCheck_Shoot",Flags).Invoke(player,new object[]{player.whoAmI,player.HeldItem,player.GetWeaponDamage(player.HeldItem),true});
+                    bool born=Main.projectile.Any(q=>q.active && q.type==row[1] && q.owner==player.whoAmI);
+                    Require(Main.mouseX==mouseX && Main.mouseY==mouseY,"native finite hand restores the borrowed physical cursor");
+                    if(!blocked)Require((bool)Get(attack,"hasConsumedInput") && Convert.ToString(Get(Get(attack,"consumedInput"),"Kind"))=="Enhanced","actual finite native Shoot consumes its prepared direction");
+                    for(int frame=1;frame<=120 && firstHit<0;frame++)
+                    {NativeQuickItemChecks.BeginWorldStep();foreach(var npc in Main.npc)if(npc.active)npc.UpdateNPC(npc.whoAmI);for(int slot=0;slot<Main.maxProjectiles;slot++)if(Main.projectile[slot].active){Main.ProjectileUpdateLoopIndex=slot;Main.projectile[slot].Update(slot);}Main.ProjectileUpdateLoopIndex=-1;}
                     Require(born,"finite hand real normal birth is retained even without a solution");
-                    Require(blocked?firstHit<0:firstHit-start==preview.Tick,"original finite hand first Damage agrees with idle preview: "+row[0]+"/"+scene+" native="+(firstHit<0?-1:firstHit-start)+" model="+preview?.Tick);
-                    if(blocked)negative++;else hits++;cases++;Console.WriteLine("FINITE HAND item="+row[0]+" scene="+scene+" native="+(firstHit<0?-1:firstHit-start)+" model="+preview?.Tick);
+                    Require(blocked?firstHit<0:firstHit-start==contact.Tick,"original finite hand first Damage agrees with its consumed preparation: "+row[0]+"/"+scene+" native="+(firstHit<0?-1:firstHit-start)+" model="+contact?.Tick);
+                    if(blocked)negative++;else hits++;cases++;Console.WriteLine("FINITE HAND component item="+row[0]+" scene="+scene+" native="+(firstHit<0?-1:firstHit-start)+" model="+contact?.Tick);
                 }
                 catch(Exception error){failures.Add(row[0]+"/"+scene+": "+error.Message);Console.WriteLine("FINITE HAND FAIL "+error);}
             }
-            Require(failures.Count==0,"natural finite hand failures="+string.Join(" | ",failures));Require(cases==32 && hits==21 && negative==11,"all finite beam/rolling hand members retain actual first-use, honey window and blocked controls");
-            Console.WriteLine("PASS finite hand natural cases="+cases+" hits="+hits+" negative="+negative);
+            Require(failures.Count==0,"native finite hand component failures="+string.Join(" | ",failures));Require(cases==32 && hits==21 && negative==11,"all finite beam/rolling hand members retain actual prepared consumption, honey window and blocked controls");
+            Console.WriteLine("PASS finite hand native consumer component cases="+cases+" hits="+hits+" negative="+negative);
         }
     }
 }

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Reflection;
 using JueMingR.Features.Combat;
 using JueMingR.Platform.Combat;
@@ -123,8 +123,8 @@ namespace JueMingR.TerrariaHost.Combat
                 origin=HostAttackModels.LaunchOrigin(combat.Player,input.Weapon);
             }
             var proposed=new Vector2(preview.Contact.AimX,preview.Contact.AimY);
-            if(input.Weapon.shoot<=0 && HostSwingAttack.Handles(input.Weapon))return Math.Sign(proposed.X-origin.X)==Math.Sign(input.Point.X-origin.X);
-            if(HostSkyAttack.Handles(input.Weapon.type) || HostMeleeAttack.RawCursor(input.Weapon.type) || input.TileTarget || HostYoyoNavigation.Weapon(input.Weapon))return Vector2.DistanceSquared(proposed,input.Point)<=1;
+            if((input.Weapon.shoot<=0 || HostGrassCurveAttack.Family(input.Weapon.shoot) || HostLightsBaneAttack.Family(input.Weapon.shoot)) && HostSwingAttack.Handles(input.Weapon))return Math.Sign(proposed.X-origin.X)==Math.Sign(input.Point.X-origin.X);
+            if(HostSkyAttack.Handles(input.Weapon.type) || HostMeleeAttack.RawCursor(input.Weapon.type) || HostCloudAttack.RawCursor(input.Weapon.type) || HostPlacedPulseAttack.Placement(input.Weapon.type) || HostClingerWallAttack.Placement(input.Weapon.type) || input.TileTarget || HostYoyoNavigation.Weapon(input.Weapon))return Vector2.DistanceSquared(proposed,input.Point)<=1;
             // Direction-only consumers may express the same ray at a different
             // distance. Do not display a free intercept requiring another ray.
             var direction=(input.Point-origin).SafeNormalize(Vector2.Zero);
@@ -268,8 +268,10 @@ namespace JueMingR.TerrariaHost.Combat
             if(ReferenceEquals(plan,preview) && flight!=null)return OnlyFlight(plan,player,timeline,flight);
             // All AI013 hand roles except GolemFist refresh native dummy use
             // timers until catch. Their current flight owns the preview even
-            // when it was born before observation was enabled.
-            if(hasFlight && item.shoot!=481 && !HostMeleeAttack.KnownSpearParent(item.shoot) && !HostMeleeAttack.KnownWhipParent(item.shoot) && !HostGemStaffAttack.Handles(item.shoot) && !HostAttachedShotAttack.Handles(item.shoot) && !HostArcSwingAttack.Weapon(item.type) && !HostIceRodAttack.Handles(item.shoot) && !HostPaperAirplaneAttack.Handles(item.shoot) && !HostOrnamentAttack.Handles(item.shoot) && !HostInfernoAttack.Handles(item.shoot) && !HostSonicBoomAttack.Handles(item.shoot) && !HostBookStaffAttack.Handles(item.shoot) && !HostSkullAttack.Handles(item.shoot))return OnlyFlight(plan,player,timeline,flight);
+            // when it was born before observation was enabled. Newly observed
+            // finite families do not inherit those dummy timers: an existing
+            // ordinary bullet cannot suppress the next legal hand comparison.
+            if(hasFlight && FiniteFlightFamilyFor(item)==FiniteFlightFamily.None && item.useAmmo!=AmmoID.Arrow && item.useAmmo!=AmmoID.Bullet && !HostHomingEffectAttack.Handles(item.shoot) && item.type!=4953 && item.shoot!=481 && !HostMeleeAttack.KnownSpearParent(item.shoot) && !HostMeleeAttack.KnownWhipParent(item.shoot) && !HostGemStaffAttack.Handles(item.shoot) && !HostAttachedShotAttack.Handles(item.shoot) && !HostArcSwingAttack.Weapon(item.type) && !HostIceRodAttack.Handles(item.shoot) && !HostPaperAirplaneAttack.Handles(item.shoot) && !HostOrnamentAttack.Handles(item.shoot) && !HostInfernoAttack.Handles(item.shoot) && !HostSonicBoomAttack.Handles(item.shoot) && !HostBookStaffAttack.Handles(item.shoot) && !HostSkullAttack.Handles(item.shoot))return OnlyFlight(plan,player,timeline,flight);
             // Inferno's first possible new-body receive is age+delay+1.
             // An earlier live-family contact already wins this read-only
             // comparison; searching every new hand direction cannot improve
@@ -360,9 +362,16 @@ namespace JueMingR.TerrariaHost.Combat
                 if(ReferenceEquals(body,player))body=(Player)previewCopy.Invoke(player,null);
                 body.itemAnimation=delay<player.itemAnimation-1?player.itemAnimation-1:0;
             }
+            if(item.type==4953 && delay>0 && player.itemAnimation>delay+(phase==HostAttackPhase.CompletedWorld?1:0))
+            {
+                // Eventide reads another ordinal inside this same animation.
+                // Preserve its original timer for the birth adapter to advance
+                // exactly once; generic delayed ordinary hands start at zero.
+                body.itemAnimation=player.itemAnimation;body.itemAnimationMax=player.itemAnimationMax;
+            }
             int age=clock.Age+delay;Vector2 start=HostAttackModels.LaunchOrigin(body,item);
             if(HostSwingAttack.Handles(item))
-            {plan.Contact=AttackIntercept.WithLaunchDelay(swing.PreviewPrepared(body,item,timeline,new HostAttackClock(timeline,phase,delay),plan.Terrain,new HostAttackPlayerFrame(motion,playerWorld)),delay);return plan.Contact;}
+            {plan.Contact=AttackIntercept.WithLaunchDelay(swing.PreviewPrepared(body,item,timeline,new HostAttackClock(timeline,phase,delay),plan.Terrain,new HostAttackPlayerFrame(motion,playerWorld)),delay);plan.Obstacles=swing.FamilyRoot;return plan.Contact;}
             if(phase==HostAttackPhase.CompletedWorld && !HostMeleeAttack.Handles(sample))
             {
                 PredictionStop stop;
@@ -395,7 +404,7 @@ namespace JueMingR.TerrariaHost.Combat
             // New independent flights are a changed premise even without a
             // new use or inventory change. Their own observation path checks
             // the pool; do not turn an old opening miss into a flight miss.
-            if(HostMeleeAttack.KnownSpearParent(item.shoot) || HostMeleeAttack.KnownWhipParent(item.shoot) || HostArcSwingAttack.Weapon(item.type) || HostHarpoonAttack.Handles(item.shoot) || HostGemStaffAttack.Handles(item.shoot) || HostAttachedShotAttack.Handles(item.shoot) || HostPhasebladeAttack.Handles(item.shoot) || Control.HasObservedPulse || item.type==3473 && Control.HasObservedSolar)return false;
+            if(FiniteFlightFamilyFor(item)!=FiniteFlightFamily.None || HostMeleeAttack.KnownSpearParent(item.shoot) || HostMeleeAttack.KnownWhipParent(item.shoot) || HostArcSwingAttack.Weapon(item.type) || HostHarpoonAttack.Handles(item.shoot) || HostGemStaffAttack.Handles(item.shoot) || HostAttachedShotAttack.Handles(item.shoot) || HostPhasebladeAttack.Handles(item.shoot) || Control.HasObservedPulse || item.type==3473 && Control.HasObservedSolar)return false;
             var captured=AttackAmmoSnapshot.Capture(player,item);Projectile sample=null;
             if(captured!=null && !ContentSamples.ProjectilesByType.TryGetValue(captured.Projectile,out sample))return false;
             int age=(int)((long)Main.GameUpdateCount-sampleTick)-(phase==HostAttackPhase.BeforeNpc?1:0);

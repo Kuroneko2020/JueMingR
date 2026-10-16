@@ -13,21 +13,25 @@ namespace JueMingR.TerrariaHost.Combat
     {
         private static readonly MethodInfo copy=typeof(object).GetMethod("MemberwiseClone",BindingFlags.Instance|BindingFlags.NonPublic);
         private static readonly MethodInfo spearOffset=typeof(Projectile).GetMethod("AI_019_Spears_GetSpearOffsetRelativeToPlayer",BindingFlags.Instance|BindingFlags.NonPublic);
+        internal static Player PlayerCopy(Player player){return (Player)copy.Invoke(player,null);}
+        internal static float SpearOffset(Projectile shot,Player player){return (float)spearOffset.Invoke(shot,new object[]{player,player.itemAnimation,player.itemAnimationMax});}
         internal static int DerivedSpearChild(int parent){return parent==222?228:parent==730?732:parent==130?131:parent==342?343:0;}
         internal static bool KnownSpearParent(int type)
         {
-            // AI019's other ordinary parents share the sealed pose. 367
-            // emits unknown random children; 877-879 own channel/dummy clocks
-            // and additional damage stages. Those are not this finite family.
-            Projectile sample;return type!=367 && (type<877 || type>879) && ContentSamples.ProjectilesByType.TryGetValue(type,out sample) && sample.aiStyle==19;
+            // AI019's ordinary parents share this sealed pose. 367 has its
+            // dedicated first-AI shard family; 877-879 have a dedicated
+            // channel/dummy clock. North Pole342/343/344 owns a dedicated
+            // finite snowflake world. These cannot borrow this parent-only route.
+            Projectile sample;return type!=342 && type!=367 && (type<877 || type>879) && ContentSamples.ProjectilesByType.TryGetValue(type,out sample) && sample.aiStyle==19;
         }
         internal static bool KnownWhipParent(int type)
         {return type!=1035 && type>=0 && type<ProjectileID.Sets.IsAWhip.Length && ProjectileID.Sets.IsAWhip[type];}
 #if DEBUG
         internal static int SpearFlightPoolScans,SpearFlightMemberSteps;
 #endif
+        internal static bool Rapier(int type){return type==802 || type==842 || type>=938 && type<=945 || type==1127;}
         internal static bool RawCursor(int weaponType){return weaponType==4956 || weaponType==5669;}
-        internal static bool Handles(Projectile sample){return HostArcSwingAttack.Handles(sample.type) || sample.type>=938 && sample.type<=945 || sample.aiStyle==19 || ProjectileID.Sets.IsAWhip[sample.type] && sample.type!=1035 || HostBoomerangAttack.Handles(sample.type) || sample.type==611 || sample.type==933 || sample.type==1100;}
+        internal static bool Handles(Projectile sample){return HostMonkStaffAttack.Handles(sample.type) || HostArcSwingAttack.Handles(sample.type) || Rapier(sample.type) || sample.aiStyle==19 || ProjectileID.Sets.IsAWhip[sample.type] && sample.type!=1035 || HostBoomerangAttack.Handles(sample.type) || sample.type==611 || sample.type==933 || sample.type==1100;}
         internal static int AnimationDuration(Player player,Item item)
         {
             // ApplyItemAnimation multiplies by native speed factors. Faster
@@ -77,6 +81,12 @@ namespace JueMingR.TerrariaHost.Combat
         internal static AttackContact SolvePrepared(Player player,Item item,AttackAmmoSnapshot ammo,NpcTrajectory timeline,int age,bool beforeNpc,PredictionTerrain terrain,int delay,HostAttackObstacles obstacles,HostAttackPlayerFrame frame)
         {
             Projectile sample;if(!ContentSamples.ProjectilesByType.TryGetValue(ammo.Projectile,out sample) || !Handles(sample))return null;
+            if(HostNorthPoleAttack.Handles(ammo.Projectile))return HostNorthPoleAttack.SolvePrepared(player,item,ammo,timeline,age,beforeNpc,terrain,delay,obstacles,frame);
+            if(HostMonkStaffAttack.Handles(ammo.Projectile))return HostMonkStaffAttack.SolvePrepared(player,item,ammo,timeline,age,beforeNpc,terrain,delay,obstacles,frame);
+            if(HostSolarEruptionAttack.Handles(ammo.Projectile))return HostSolarEruptionAttack.SolvePrepared(player,item,ammo,timeline,age,beforeNpc,terrain,delay,obstacles,frame);
+            if(HostSpearShardAttack.Handles(ammo.Projectile))return HostSpearShardAttack.SolvePrepared(player,item,ammo,timeline,age,beforeNpc,terrain,delay,obstacles,frame);
+            if(HostJoustingLanceAttack.Handles(ammo.Projectile))return HostJoustingLanceAttack.SolvePrepared(player,item,ammo,timeline,age,beforeNpc,terrain,delay,obstacles,frame);
+            if(HostWhipStarAttack.Handles(ammo.Projectile))return HostWhipStarAttack.SolvePrepared(player,item,ammo,timeline,age,beforeNpc,terrain,delay,obstacles,frame);
             if(HostArcSwingAttack.Weapon(item.type))return HostArcSwingAttack.SolvePrepared(player,item,ammo,timeline,age,beforeNpc,terrain,delay,obstacles,frame);
             int retargetDamage=sample.type==866?player.GetWeaponDamage(item):0;
             if(sample.type==866 && retargetDamage<=0)return null;
@@ -112,6 +122,7 @@ namespace JueMingR.TerrariaHost.Combat
                 if(duplicate)continue;directions[directionCount++]=key;
                 if(obstacles!=null)obstacles.BeginCandidate();
                 var shadow=(Projectile)copy.Invoke(sample,null);shadow.ai=(float[])sample.ai.Clone();shadow.localAI=(float[])sample.localAI.Clone();shadow.owner=player.whoAmI;shadow.velocity=unit*ammo.Speed;shadow.Center=origin;shadow.ai[0]=shadow.ai[1]=0;
+                if(sample.type==1127)shadow.ai[1]=item.shootSpeed/ammo.Speed;
                 shadow.oldPos=(Vector2[])sample.oldPos.Clone();shadow.oldRot=(float[])sample.oldRot.Clone();
                 if(sample.type==866)shadow.damage=retargetDamage;
                 if(whip)shadow.damage=ammo.Damage;
@@ -148,13 +159,8 @@ namespace JueMingR.TerrariaHost.Combat
                             // normal native movement then adds velocity once.
                             float offset=(float)spearOffset.Invoke(shadow,new object[]{body,body.itemAnimation,animationMax});shadow.Center=body.RotatedRelativePoint(body.MountedCenter)+shadow.velocity*(offset+1);
                         }
-                        else if(sample.type>=938 && sample.type<=945)
-                        {
-                            // AI_161 ordinary shortswords die before damage
-                            // at substep16; native movement adds velocity once.
-                            if(k>=16){active=false;break;}
-                            shadow.rotation=shadow.velocity.ToRotation()+MathHelper.PiOver2;shadow.Center=body.RotatedRelativePoint(body.MountedCenter)+shadow.velocity*k;
-                        }
+                        else if(Rapier(sample.type))
+                        {if(!RapierPose(shadow,body,k)){active=false;break;}}
                         else if(ProjectileID.Sets.IsAWhip[sample.type])
                         {
                             shadow.ai[0]=k;shadow.rotation=shadow.velocity.ToRotation()+MathHelper.PiOver2;shadow.spriteDirection=shadow.velocity.X<0?-1:1;
@@ -224,7 +230,7 @@ namespace JueMingR.TerrariaHost.Combat
                             var s=shape.Shapes[i];if(s.Condition!=0 || s.Kind!=0)continue;
                             var receiver=timeline[tick].ProjectileReceiveBounds;
                             if(s.HasBounds && !s.Bounds.Intersects(new Rectangle((int)receiver.X,(int)receiver.Y,(int)receiver.Width,(int)receiver.Height)))continue;
-                            var confidence=sample.type==611 || RawCursor(item.type)?AttackConfidence.Representative:AttackConfidence.Conditional;
+                            var confidence=sample.type==611 || sample.type==802 || sample.type==842 || sample.type==1127 || RawCursor(item.type)?AttackConfidence.Representative:AttackConfidence.Conditional;
                             var contact=s.Line?AttackIntercept.LineContact(timeline,tick,aim.X,aim.Y,s.A.X,s.A.Y,s.B.X,s.B.Y,s.Width,confidence):AttackIntercept.BodyContact(timeline,tick,sub,aim.X,aim.Y,(s.A.X+s.B.X)/2,(s.A.Y+s.B.Y)/2,s.B.X-s.A.X,s.B.Y-s.A.Y,confidence);
                             if(contact!=null)return contact;
                         }
@@ -238,7 +244,21 @@ namespace JueMingR.TerrariaHost.Combat
             }
             return null;
         }
-        private static void SolarPose(Projectile shot,Player body,Vector2 unit,int subupdate)
+        internal static bool RapierPose(Projectile shot,Player player,int subupdate)
+        {
+            // AI161 uses the same mounted pose for every member. The saber's
+            // actual born ai1 changes BOTH lifetime and extension. Native
+            // movement adds one velocity after AI resets to (extension-1).
+            int lifetime=shot.type==1127?(int)(16*shot.ai[1])+5:16;
+            if(subupdate>=lifetime)return false;
+            float extension=shot.type==1127?Math.Min(subupdate,(int)(lifetime*shot.ai[1])):subupdate;
+            shot.ai[0]=subupdate;shot.rotation=shot.velocity.ToRotation()+MathHelper.PiOver2;
+            if(shot.type==1127 && shot.velocity.X!=0)player.direction=shot.velocity.X>0?1:-1;
+            shot.Center=player.RotatedRelativePoint(player.MountedCenter)+shot.velocity*extension;
+            if(shot.type==1127)shot.Center+=shot.velocity.SafeNormalize(Vector2.UnitX)*10;
+            return true;
+        }
+        internal static void SolarPose(Projectile shot,Player body,Vector2 unit,int subupdate)
         {
             if(shot.localAI[0]==0)shot.localAI[0]=shot.velocity.ToRotation();
             float sign=shot.localAI[0].ToRotationVector2().X>=0?1:-1;if(shot.ai[1]<=0)sign*=-1;
@@ -315,7 +335,7 @@ namespace JueMingR.TerrariaHost.Combat
             now.Clear();prior.Clear();boxes.Clear();Projectile.FillWhipControlPoints(shot,now,body,true,0);Projectile.FillWhipControlPoints(shot,prior,body,true,-1);
             for(int i=0;i<Math.Min(now.Count,prior.Count);i++){var a=shot.Hitbox;var b=a;a.X=(int)now[i].X-a.Width/2;a.Y=(int)now[i].Y-a.Height/2;b.X=(int)prior[i].X-b.Width/2;b.Y=(int)prior[i].Y-b.Height/2;boxes.Add(Rectangle.Union(a,b));}
         }
-        private static void SpearBoxes(Projectile shot,Player body,List<Rectangle> boxes)
+        internal static void SpearBoxes(Projectile shot,Player body,List<Rectangle> boxes)
         {
             boxes.Clear();boxes.Add(shot.Hitbox);Rectangle extension;
             if(!shot.AI_019_Spears_GetExtensionHitbox(body,out extension))return;

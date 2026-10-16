@@ -39,7 +39,7 @@ namespace JueMingR.TerrariaHost.Combat
         // consumer. This gate retains the actual focus/UI/source/use contract;
         // it has no terrain, future path, ammo prediction or damage premise.
         internal bool BasicPermission {get{return observation.SelectionAvailable && observation.Settings.CanRun && observation.Options.Aim && combat.Player!=null && combat.Admitted(combat.Player) &&
-            (combat.Left || combat.Player.controlUseItem || combat.Player.channel || combat.Use.Active || Control.Pending || HostPhasebladeAttack.Handles(combat.Player.HeldItem.shoot) && combat.Player.itemAnimation>0);}}
+            (combat.Left || combat.Player.controlUseItem || combat.Player.channel || combat.Use.Active || Control.Pending || ReleaseHandCurrent || HostPhasebladeAttack.Handles(combat.Player.HeldItem.shoot) && combat.Player.itemAnimation>0);}}
         internal bool TryBasicInput(Player player,Item item,Projectile source,HostAttackPhase phase,out HostAttackInput input)
         {return TryBasicInputCore(player,item,source,phase,true,out input);}
         internal bool TryBasicPreviewInput(Player player,Item item,Projectile source,HostAttackPhase phase,out HostAttackInput input)
@@ -53,7 +53,7 @@ namespace JueMingR.TerrariaHost.Combat
             // These native controllers clamp world intent themselves. Keeping
             // that same value space also covers their real AI/Kill consumers.
             if(source!=null && HostGuidedAttack.Handles(source.type))player.LimitPointToPlayerReachableArea(ref point);
-            bool reverse=source!=null || !HostSkyAttack.RawCursor(item.type) && !HostMeleeAttack.RawCursor(item.type);
+            bool reverse=source!=null || !HostSkyAttack.RawCursor(item.type) && !HostMeleeAttack.RawCursor(item.type) && !HostCloudAttack.RawCursor(item.type);
             var captured=source==null?AttackAmmoSnapshot.Capture(player,item):null;
             int projectile=captured?.Projectile??item.shoot;
             input=new HostAttackInput(this,HostAttackInputKind.Basic,point,observation.Selection.Target,item,source,phase,reverse,source==null && (projectile==442 || projectile==80));
@@ -69,7 +69,7 @@ namespace JueMingR.TerrariaHost.Combat
         }
         internal HostAttackInput ContactInput(AttackContact contact,Item item,Projectile source,HostAttackPhase phase)
         {
-            bool reverse=source!=null || !HostSkyAttack.RawCursor(item.type) && !HostMeleeAttack.RawCursor(item.type);
+            bool reverse=source!=null || !HostSkyAttack.RawCursor(item.type) && !HostMeleeAttack.RawCursor(item.type) && !HostCloudAttack.RawCursor(item.type);
             int projectile=ammo?.Projectile??item.shoot;
             return new HostAttackInput(this,HostAttackInputKind.Enhanced,new Vector2(contact.AimX,contact.AimY),contact.Timeline.Identity,item,source,phase,reverse,source==null && (projectile==442 || projectile==80));
         }
@@ -77,13 +77,26 @@ namespace JueMingR.TerrariaHost.Combat
         {HostAttackInput input;return TryBasicInput(player,item,source,phase,out input)?input.Begin():null;}
         internal void StartedHand(Player player,Item item)
         {
+            StartedReleaseHand(player,item);
             // Called only after vanilla StartActualUse has admitted and started
             // the animation. Pure swung weapons consume direction, not cursor;
             // changing a borrowed cursor here would have no native consumer.
             if(item==null || item.shoot>0 || !HostSwingAttack.Handles(item) || player?.itemAnimation<=0)return;
-            HostAttackInput input;if(!TryBasicInput(player,item,null,HostAttackPhase.BeforeNpc,out input))return;
+            Vector2 familyPoint;HostAttackInput input;
+            if(TryPreparedMeleeFacing(player,out familyPoint))input=ContactInput(current,item,null,HostAttackPhase.BeforeNpc);
+            else if(!TryBasicInput(player,item,null,HostAttackPhase.BeforeNpc,out input))return;
             float x=input.Point.X-player.MountedCenter.X;
             if(x!=0){player.ChangeDir(x>0?1:-1);RecordInput(input);}
+        }
+        private bool TryPreparedMeleeFacing(Player player,out Vector2 point)
+        {
+            point=Vector2.Zero;
+            if(player==null || !ReferenceEquals(player,combat.Player) || !HasOwnMeleeHitFamily(player.HeldItem) || Main.GameUpdateCount!=prepared || current==null || obstacles==null || !ValidCore(true,true))return false;
+            point=new Vector2(current.AimX,current.AimY);
+            // An already progressing native swing has a sealed facing. Only
+            // the legal new-hand proof may choose the other facing; ordinary
+            // Basic/current-source semantics remain the fallback on rejection.
+            return player.itemAnimation<=0 || player.ItemAnimationJustStarted || obstacles.MeleeFamilyStartsNow || (point.X-player.MountedCenter.X)*player.direction>=0;
         }
     }
 }

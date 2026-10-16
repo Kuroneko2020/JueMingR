@@ -111,7 +111,7 @@ namespace JueMingR.TerrariaHost.Combat
                     if(prior.Present && !prior.Same(fact))
                     {
                         candidateChanges[identity.Slot]=++candidateChangeTicket;
-                        if(prior.Significant(fact))candidateSignificant[identity.Slot]=true;
+                        if(prior.Significant(fact)){candidateSignificant[identity.Slot]=true;candidateRequests[key]=0;}
                     }
                     candidateFacts[identity.Slot]=fact;
                     // A fresh admitted warm attempt replaces the prior hint,
@@ -149,7 +149,7 @@ namespace JueMingR.TerrariaHost.Combat
                         // A body-sized discontinuity or key receive/phase fact
                         // wakes a higher work priority without renewing its
                         // ticket. This still proves nothing about the solve.
-                        if(prior.Significant(fact))candidateSignificant[npc.whoAmI]=true;
+                        if(prior.Significant(fact)){candidateSignificant[npc.whoAmI]=true;candidateRequests[key]=0;}
                     }
                     candidateFacts[npc.whoAmI]=fact;
                     long ticket=candidateChanges[npc.whoAmI];bool significant=candidateSignificant[npc.whoAmI];
@@ -329,9 +329,11 @@ namespace JueMingR.TerrariaHost.Combat
                 long sample=(long)Main.GameUpdateCount-(beforeNpc?1:0),remaining=plan.Contact.ReceiveTick-(sample-path.SampleTick);
                 if(remaining>=0)preferred=Math.Max(preferred,(int)Math.Min(NpcPredictionCache.Horizon,remaining+1));
             }
-            // A real discontinuity can make the old work range irrelevant;
-            // normal movement retains both progress and its fair queue stamp.
-            if(requested==0 || !candidateUnknown[key] || !beforeNpc && candidateSignificant[identity.Slot])return preferred;
+            // A newly observed discontinuity clears requested once above.
+            // The significant queue ticket may survive a complete short miss;
+            // it is priority, not permission to restart at the same short range
+            // forever. Normal movement retains progress and its fair stamp.
+            if(requested==0 || !candidateUnknown[key])return preferred;
             // Source completion is not solve completion. Repeating a budget-
             // interrupted Plan at twice the range pays more Source work before
             // retrying the missing solve and can starve an otherwise reachable
@@ -362,7 +364,12 @@ namespace JueMingR.TerrariaHost.Combat
             if(beforeNpc && actionHint.Equals(identity)){actionHint=default(NpcIdentity);actionHintRequired=0;}
             try
             {
-                candidateRequests[key]=required;
+                // Cheap nearer-rank revisits may request a shorter prefix than
+                // this candidate's unfinished reserved turn. They must not
+                // erase that work range; otherwise each cooldown pass restarts
+                // a late receiver before its longer solve can complete. A real
+                // significant fact above explicitly resets this range once.
+                candidateRequests[key]=Math.Max(candidateRequests[key],required);
                 if(beforeNpc && observation.Prediction.OwnsTarget(identity))SetActionDemand(required);
                 var timeline=observation.Prediction.TryCandidateReuse(identity,tick,beforeNpc,required,CandidateMissCurrent(plan,identity,tick,phase,required));
                 var publication=timeline;
@@ -376,7 +383,12 @@ namespace JueMingR.TerrariaHost.Combat
                 // this candidate's future search; pauses remain unresolved.
                 if(timeline!=null)candidateDepths[key]=Math.Max(candidateDepths[key],timeline.Count-1);
                 var contact=timeline!=null && timeline.Count>=2?PreparePlan(plan,timeline,phase):null;
-                candidateUnknown[key]=contact==null && (timeline==null || timeline.BudgetPaused || timeline.Stop==PredictionStop.None && timeline.Count<=NpcPredictionCache.Horizon);
+                // A complete primary-hand miss does not disprove its own
+                // not-yet-born OnHit family. In particular Volcano's finite
+                // explosion can reach this receiver after another body is hit.
+                // Keep that causal stage unresolved until its family solver
+                // provides a contact; a genuine despawn still closes the tail.
+                candidateUnknown[key]=contact==null && (timeline==null || timeline.BudgetPaused || timeline.Stop==PredictionStop.None && (timeline.Count<=NpcPredictionCache.Horizon || HasOwnMeleeHitFamily(combat.Player.HeldItem)));
                 plan.MotionTerrain=null;plan.MotionSource=null;
                 // Seal only a completed positive before another candidate can
                 // replace the producing owner's cells. This bounded copy ends

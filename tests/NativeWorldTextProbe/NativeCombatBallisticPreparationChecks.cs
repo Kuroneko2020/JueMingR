@@ -128,7 +128,16 @@ namespace NativeWorldTextProbe
             audit.Patch(host.GetType("JueMingR.TerrariaHost.Combat.HostAttackReceive",true).GetMethod("Capture",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBallisticPreparationChecks),nameof(Captured)));
             audit.Patch(host.GetType("JueMingR.TerrariaHost.Combat.HostAttackObstacles",true).GetMethod("ForkCandidate",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBallisticPreparationChecks),nameof(Checkpoint)));
             foreach(string model in new[]{"HostBetsyFlameAttack","HostBottleAttack"}){var type=host.GetType("JueMingR.TerrariaHost.Combat."+model,true);audit.Patch(type.GetMethod("Motor",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBallisticPreparationChecks),nameof(Motor)));audit.Patch(type.GetMethod("Capture",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBallisticPreparationChecks),nameof(Scene)));}
-            try{ReceiveFacts(context);Response(NativeCombatBallisticCandidateChecks.Timeline(Main.npc[2]));Prefix(context,3870);Prefix(context,3821);}
+            try
+            {
+                ReceiveFacts(context);Response(NativeCombatBallisticCandidateChecks.Timeline(Main.npc[2]));Prefix(context,3870);Prefix(context,3821);
+                NativeCombatBallisticSceneChecks.Run(context);NativeCombatBallisticMotionChecks.Run(context);
+                // M1's fixed candidate predates the AI010 family. The explicit
+                // final leaf requests this new proof against its own fixed
+                // candidate; do not accidentally test M2 against M1's DLLs.
+                if(Environment.GetEnvironmentVariable("JMR_ALGORITHM_REWORK_SEEDS")=="1")NativeCombatBallisticSeedChecks.Run(context);
+                if(Environment.GetEnvironmentVariable("JMR_ALGORITHM_REWORK_FREE_FLIGHT")=="1")NativeCombatBallisticFreeFlightChecks.Run(context);
+            }
             finally{audit.UnpatchAll(audit.Id);}
         }
     }

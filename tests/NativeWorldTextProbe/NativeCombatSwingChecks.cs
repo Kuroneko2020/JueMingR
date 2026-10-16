@@ -46,32 +46,33 @@ namespace NativeWorldTextProbe
             bool edgePreview=GetOptional(aim,"ExpectedPreview")!=null;
             for(int i=0;i<25;i++)NativeCombatSelectionPreviewChecks.Step(context,new Vector2(760,650),true);Require(idleHits==0,"original complete use agrees that edge touching cannot damage: hits="+idleHits+" first="+idleFirst+" preview="+edgePreview+" player="+p.position+" target="+n.Hitbox);Require(!edgePreview,"ordinary swing actual edge miss has no hypothetical contact");
             NativeCombatSelectionPreviewChecks.Step(context,new Vector2(760,650),false);p.position.X+=1;
-            // An idle presentation is optional. After the independent one-pixel
-            // change, cover one existing five-update production due; this is
-            // a bounded Host publication premise, not a private solver result.
-            bool idlePublished=false;
-            for(int i=0;i<5 && !idlePublished;i++)
+            // Idle red-box publication is retired. Keep the five actual idle
+            // observations/input-negative checks, then evaluate the same finite
+            // hand component explicitly; no presentation/input lease is issued.
+            for(int i=0;i<5;i++)
             {
                 NativeQuickItemChecks.BeginWorldStep();NativeToolExecutionChecks.Sample(context,input,new Vector2(760,650),false);Call(combat,"Sample");Call(host,"SampleMouse");p.Update(0);n.UpdateNPC(2);Call(context,"UpdateRuntime");Call(context,"UpdateShell");
-                var contact=(AttackContact)GetOptional(aim,"ExpectedPreview");
-                if(contact==null){if(i==4)ExplainIdle(aim,host,p,n);continue;}
-                Require(contact.ReceiveTick<contact.Timeline.Count,"idle native held frame supports future ordinary swing without Aim permission");
-                Require(p.itemAnimation==0 && p.itemTime==0 && !p.controlUseItem && !p.channel && GetOptional(aim,"ExpectedImpact")==null,"hypothetical swing leaves actual animation and input idle");
-                if(receiveQualification)NativeCombatPreviewLeaseChecks.HandReceivePositive(p,n,aim,contact);
-                idlePublished=true;
+                Require(GetOptional(aim,"ExpectedPreview")==null && GetOptional(aim,"ExpectedImpact")==null && p.itemAnimation==0 && p.itemTime==0 && !p.controlUseItem && !p.channel,"idle full due remains read-only without retired hypothetical publication or attack permission");
             }
-            Require(idlePublished,"one existing optional full due publishes the native calibrated idle swing Contact");
+            var planned=IdlePlan(host,aim,p,n);Require(planned!=null && planned.ReceiveTick<planned.Timeline.Count,"finite calibrated ordinary hand component has the one-pixel overlap Contact");
+            if(receiveQualification)NativeCombatPreviewLeaseChecks.HandReceivePositive(p,n,aim,planned);
             p.direction=-1;NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,650),false,true);
-            Require(GetOptional(aim,"ExpectedPreview")==null,"turning in place retires a right-facing ordinary swing contact");
+            Require(IdlePlan(host,aim,p,n)==null,"turning in place retires the finite right-facing hand Contact");
             p.direction=1;
-            for(int i=0;i<5 && GetOptional(aim,"ExpectedPreview")==null;i++)NativeCombatSelectionPreviewChecks.Step(context,new Vector2(760,650),false,true);
-            Require(GetOptional(aim,"ExpectedPreview")!=null,"turning back recovers the ordinary idle swing without an attack edge");
-            var planned=(AttackContact)GetOptional(aim,"ExpectedPreview");long expected=planned.Timeline.SampleTick+planned.Tick;idleFirst=-1;
+            planned=IdlePlan(host,aim,p,n);Require(planned!=null,"turning back recovers the finite hand without acquiring attack input");
+            long expected=planned.Timeline.SampleTick+planned.Tick;idleFirst=-1;
             for(int i=0;i<25;i++)NativeCombatSelectionPreviewChecks.Step(context,new Vector2(760,650),true);
             Require(idleHits>0 && idleFirst==expected,"idle hypothetical swing's first real original Damage agrees with contact time: expected="+expected+" actual="+idleFirst);
-            Console.WriteLine("PASS idle ordinary swing: exact edge miss / one pixel overlap, original first Damage="+idleFirst+", native held frame and no attack permission");
+            Console.WriteLine("PASS read-only finite ordinary swing component: exact edge miss / one pixel overlap, original first Damage="+idleFirst+", native held frame and no attack permission");
             }
             finally{calibrating=false;target=null;damageAudit.UnpatchAll(damageAudit.Id);}
+        }
+        internal static AttackContact IdlePlan(object host,object aim,Player player,NPC npc)
+        {
+            NativeCombatAimChecks.PrepareMechanismFixture(host,aim,npc,0);
+            var path=((NpcPredictionCache)Get(Get(host,"Prediction"),"Cache")).Read(1);var plan=Get(aim,"preview");
+            var phase=Enum.Parse(aim.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase",true),"CompletedWorld");
+            using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))return (AttackContact)Call(aim,"PreparePlan",plan,path,phase);
         }
         private static void ExplainIdle(object aim,object host,Player player,NPC npc)
         {

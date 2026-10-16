@@ -11,7 +11,7 @@ namespace JueMingR.TerrariaHost.Combat
     // A finite uniform-liquid continuation. Unsupported transitions, shimmer,
     // native water transformations and changing wind gates retire Contact;
     // absence of a solution never changes the actual projectile/environment.
-    internal sealed class HostProjectileEnvironment
+    internal sealed partial class HostProjectileEnvironment
     {
         internal struct State
         {

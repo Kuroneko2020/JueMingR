@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using JueMingR.Features.Combat;
 using JueMingR.Platform.Combat;
@@ -27,15 +27,24 @@ namespace JueMingR.TerrariaHost.Combat
             {Position=p.position;Velocity=p.velocity;Counter=p.ai[0];Left=p.timeLeft;Alpha=p.alpha;Extra=p.extraUpdates;Penetration=p.penetrate;TargetSlot=-1;Alive=p.active;Wet=p.wet;Honey=p.honeyWet;Lava=p.lavaWet;Shimmer=p.shimmerWet;Stopped=false;}
         }
         private static void Kill(ref State s){if(!s.Alive)return;s.Alive=false;s.Left=0;}
-        private static float Approach(float value,float desired,float acceleration)
-        {if(value<desired){value+=acceleration;if(value<0 && desired>0)value+=acceleration*2;}else if(value>desired){value-=acceleration;if(value>0 && desired<0)value-=acceleration*2;}return value;}
+        // Native writes velocity's float32 field after EACH increment before
+        // testing sign for the extra reversal acceleration. A returned local
+        // float can retain x87 intermediate precision across both increments:
+        // near zero that changes the sign branch and adds a spurious 2*a.
+        private static void Approach(ref float value,float desired,float acceleration)
+        {if(value<desired){value+=acceleration;if(value<0 && desired>0)value+=acceleration*2;}else if(value>desired){value-=acceleration;if(value>0 && desired<0)value-=acceleration*2;}}
         internal static bool Step(Projectile sample,HostProjectileTargets targets,NpcTrajectory timeline,int tick,PredictionTerrain terrain,ref State s)
         {return Handles(sample.type) && StepCore(sample,targets,timeline,tick,terrain,ref s);}
+        // A preceding private hand hit can retire a receiver before these
+        // bees' AI. Ordinary observed families retain their captured targets;
+        // only the finite hand world supplies this causal retirement mask.
+        internal static bool StepForMeleeFamily(Projectile sample,HostProjectileTargets targets,NpcTrajectory timeline,int tick,PredictionTerrain terrain,ref State s,Func<int,bool> alive)
+        {return Handles(sample.type) && StepCore(sample,targets,timeline,tick,terrain,ref s,alive);}
         // These two hand-born AI036 roles share the native motor, not Bee's
         // birth factory or immunity identity. Keep their dispatch explicit.
         internal static bool StepWaspBat(Projectile sample,HostProjectileTargets targets,NpcTrajectory timeline,int tick,PredictionTerrain terrain,ref State s)
         {return (sample.type==189 || sample.type==316) && StepCore(sample,targets,timeline,tick,terrain,ref s);}
-        private static bool StepCore(Projectile sample,HostProjectileTargets targets,NpcTrajectory timeline,int tick,PredictionTerrain terrain,ref State s)
+        private static bool StepCore(Projectile sample,HostProjectileTargets targets,NpcTrajectory timeline,int tick,PredictionTerrain terrain,ref State s,Func<int,bool> alive=null)
         {
 #if DEBUG
             MotorSteps++;
@@ -60,6 +69,7 @@ namespace JueMingR.TerrariaHost.Combat
                 s.Counter=30;float best=100000;
                 for(int i=0;i<targets.Count;i++)
                 {
+                    if(alive!=null && !alive(targets.Slot(i)))continue;
 #if DEBUG
                     TargetQueries++;
 #endif
@@ -77,7 +87,7 @@ namespace JueMingR.TerrariaHost.Combat
             float factor=speed/length;desired.X*=factor;desired.Y*=factor;
             // Native zero-vector comparisons leave the velocity unchanged;
             // SafeNormalize(UnitX) would invent motion and an eventual hit.
-            s.Velocity.X=Approach(s.Velocity.X,desired.X,acceleration);s.Velocity.Y=Approach(s.Velocity.Y,desired.Y,acceleration);
+            Approach(ref s.Velocity.X,desired.X,acceleration);Approach(ref s.Velocity.Y,desired.Y,acceleration);
             }
             float impulse;if(!HostProjectileEnvironment.Impulse(sample,terrain,center.X,center.Y,s.Velocity.X,out impulse))return false;s.Velocity.X+=impulse;
             if(sample.owner<255 && !Main.player[sample.owner].active)Kill(ref s);

@@ -129,9 +129,9 @@ namespace NativeWorldTextProbe
             try
             {
                 NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,true,25,true,true));int visible=0;
-                for(int tick=0;tick<80;tick++){NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,500),true);if(GetOptional(attack,"ExpectedPreview")!=null)visible++;}
-                Require(bornStages.SetEquals(Enumerable.Range(0,7)) && hits>0 && visible>0,"actual held ItemCheck/controller cycle creates every native stage, hits the real dummy and keeps useful preview");
-                Console.WriteLine("PASS Celebration natural complete cycle: stages="+string.Join(",",bornStages.OrderBy(v=>v))+" actualDamage="+hits+" visible="+visible+"/80; native random spread remains Representative");
+                for(int tick=0;tick<80;tick++){NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,500),true);bool opening;if(NativeCombatControlPreviewChecks.ReadStage(context,watched,out opening)!=null)visible++;Require(GetOptional(attack,"ExpectedPreview")==null,"Celebration component cannot restore retired preview presentation");}
+                Require(bornStages.SetEquals(Enumerable.Range(0,7)) && hits>0 && visible>0,"actual held ItemCheck/controller cycle creates every native stage, hits the real dummy and retains a feasible read-only stage");
+                Console.WriteLine("PASS Celebration natural complete cycle: stages="+string.Join(",",bornStages.OrderBy(v=>v))+" actualDamage="+hits+" readonlyStages="+visible+"/80; native random spread remains Representative");
             }
             finally{watched=null;audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());}
         }

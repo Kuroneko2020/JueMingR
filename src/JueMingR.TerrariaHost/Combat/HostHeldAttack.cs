@@ -42,6 +42,7 @@ namespace JueMingR.TerrariaHost.Combat
             int age=clock.Age;ammo=null;obstacles=null;point=DirectionPoint(player,timeline,clock.FirstTick);
             if(shot.type==714)return HostCelebrationAttack.SolvePrepared(player,shot,timeline,clock,terrain,out point,out ammo,out obstacles,frame);
             if(shot.type==439)return HostLaserAttack.SolvePrepared(player,shot,timeline,clock,terrain,out point,out obstacles,frame);
+            if(shot.type==1058)return HostBubbleFlailFamilyAttack.Held(player,shot,timeline,clock,terrain,frame,out point,out obstacles);
             if(HostFlailAttack.Handles(shot.type))return HostFlailAttack.SolvePrepared(player,shot,timeline,clock,terrain,out point,frame);
             if(shot.type==633){point=DirectionPoint(player,timeline,age+12);return null;}
             if(shot.type==927)return HostMeleeAttack.StarlightPrepared(player,shot,timeline,clock,terrain,out point,frame);
@@ -49,6 +50,7 @@ namespace JueMingR.TerrariaHost.Combat
             float baseSpeed=shot.type==705?12:shot.type==714?8:14;
             ammo=AttackAmmoSnapshot.CaptureController(player,player.HeldItem,baseSpeed);if(ammo==null)return null;
             if(shot.type==705 && player.phantomPhoneixCounter+1>=3)return HostPhoenixAttack.SolvePrepared(player,shot,ammo,timeline,clock,terrain,frame,out point,out obstacles);
+            if(shot.type==615 || shot.type==630 || shot.type==705)return HostHeldAmmoFamilyAttack.SolvePrepared(player,shot,ammo,timeline,clock,terrain,frame,out point,out obstacles);
             int projectile=ammo.Projectile;float speed=ammo.Speed;
             if(shot.type==705 && projectile==1)projectile=2;
             AttackMotion motion;if(!HostAttackModels.TryResolved(projectile,speed,player.HeldItem.type,out motion))return null;

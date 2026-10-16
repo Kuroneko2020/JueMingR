@@ -22,7 +22,10 @@ namespace NativeWorldTextProbe
                 // positive scene is open sky: an arrow cannot reach the target
                 // below that ceiling. Terrain negatives retain their own wall.
                 for(int tx=5;tx<115;tx++)Main.tile[tx,43].ClearEverything();
-                NativeToolExecutionChecks.Sample(context,input,new Vector2(650,850),true);Call(combat,"Sample");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,false,true));NativeCombatAimChecks.Prepare(host,attack,n,1);
+                // This direct native Shoot oracle supplies a synthetic moving
+                // receiver. Its finite mechanism allowance is separate from
+                // cold Main opportunity; sample the actual pre-NPC phase.
+                NativeToolExecutionChecks.Sample(context,input,new Vector2(650,850),true);Call(combat,"Sample");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,false,true));NativeCombatAimChecks.PrepareMechanismFixture(host,attack,n,1,phaseName:"BeforeNpc");
                 var contact=(AttackContact)GetOptional(attack,"ExpectedImpact");Require(contact!=null && contact.Confidence==AttackConfidence.Representative,"sky consumer prepares its representative birth/flight: "+type);
                 Require(contact.AimX>=1100 && contact.AimX<1300 && Math.Abs(contact.AimY-1020)<25,"sky AimInput is future cursor point, not a long muzzle direction");
                 Main.rand=new Terraria.Utilities.UnifiedRandom(7123);int x=Main.mouseX,y=Main.mouseY;typeof(Player).GetMethod("ItemCheck_Shoot",Flags).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),false});var shots=Main.projectile.Where(q=>q.active && q.owner==0).ToArray();Require(shots.Length>=1 && shots.Length<=4,"native sky quantity preserved");
@@ -44,7 +47,7 @@ namespace NativeWorldTextProbe
                 {
                     foreach(var q in Main.projectile)q.active=false;n.position=new Vector2(1100,1000);n.life=10000;
                     for(int tx=5;tx<115;tx++)NativeToolsChecks.Tile(tx,43,1);
-                    NativeToolExecutionChecks.Sample(context,input,new Vector2(1100,1020),true);Call(combat,"Sample");NativeCombatAimChecks.Prepare(host,attack,n,1);
+                    NativeToolExecutionChecks.Sample(context,input,new Vector2(1100,1020),true);Call(combat,"Sample");NativeCombatAimChecks.PrepareMechanismFixture(host,attack,n,1,phaseName:"BeforeNpc");
                     var roofPlan=(AttackContact)GetOptional(attack,"ExpectedImpact");Require(type==4381?roofPlan==null:roofPlan!=null,"same roof blocks blood arrow but lunar native pre-threshold phase passes");
                     Main.rand=new Terraria.Utilities.UnifiedRandom(7123);typeof(Player).GetMethod("ItemCheck_Shoot",Flags).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),false});int damage=0;
                     for(int tick=1;tick<=120;tick++){NativeQuickItemChecks.BeginWorldStep();n.position.X=1100+tick;if(n.immune[0]>0)n.immune[0]--;foreach(var q in Main.projectile.Where(q=>q.active && q.owner==0).ToArray())q.Update(q.whoAmI);if(n.life<10000){damage=tick;break;}}

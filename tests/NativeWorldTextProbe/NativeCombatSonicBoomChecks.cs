@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -16,11 +16,16 @@ namespace NativeWorldTextProbe
     {
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static|BindingFlags.Instance;
         private static Assembly assembly;private static Type model;private static NPC target;private static Projectile receiving,watched;private static object ammo;
-        private static bool recordBirth;private static Vector2 raw;private static long first;private static int firstSub,solves,knownCalls,depth,steps,scans,rngCalls,kills;
+        private static bool recordBirth;private static object naturalAttack;private static Vector2 raw;private static long first;private static int firstSub,solves,knownCalls,depth,steps,scans,rngCalls,kills;
         private sealed class Birth{internal Projectile Shot;internal int Key,Slot,FirstSub=-1;internal long Tick,First=-1;internal Vector2 Origin,Center,Velocity,Cursor;internal AttackContact Known;}
         private static readonly List<Birth> born=new List<Birth>();private static readonly List<int> hitSlots=new List<int>();
         private static object Static(Type t,string name,params object[] args){return t.GetMethod(name,Flags).Invoke(null,args);}
-        private static void SolveWork(){solves++;depth++;}private static void KnownWork(){knownCalls++;depth++;}private static void Done(){depth--;}
+        private static int cancelledBeforeCapture;
+        private static void SolveWork(out int __state){__state=scans;solves++;depth++;}private static void KnownWork(out int __state){__state=scans;knownCalls++;depth++;}
+        // A normal product budget cancellation bypasses postfixes. Preserve
+        // its exception, close only this observer depth, and count an attempt
+        // cancelled before capture separately from a completed shared scene.
+        private static Exception Done(int __state,Exception __exception){depth--;if(__exception is CombatPredictionBudgetExceededException && scans==__state)cancelledBeforeCapture++;return __exception;}
         private static void StepWork(){steps++;}private static void ScanWork(){scans++;}private static void RngWork(){if(depth>0)rngCalls++;}
         private static void BeforeKill(Projectile __instance){if(__instance.active && __instance.type==684)kills++;}
         private static void BeforeDamage(Projectile __instance){receiving=__instance;}private static void AfterDamage(){receiving=null;}
@@ -35,7 +40,7 @@ namespace NativeWorldTextProbe
         }
         private static Player Reset(object context)
         {
-            recordBirth=false;receiving=watched=null;target=null;first=-1;firstSub=-1;kills=0;born.Clear();hitSlots.Clear();
+            recordBirth=false;naturalAttack=null;receiving=watched=null;target=null;first=-1;firstSub=-1;kills=0;born.Clear();hitSlots.Clear();
             NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());NativeCombatCadenceChecks.Save(Get(context,"Combat"),new CombatOptions());
             var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),Get(context,"Input"),3827,0,0);p.releaseUseItem=true;Main.windPhysics=false;
             for(int x=5;x<115;x++)Main.tile[x,43].ClearEverything();if(Main.GameUpdateCount==0)NativeQuickItemChecks.BeginWorldStep();return p;
@@ -57,7 +62,7 @@ namespace NativeWorldTextProbe
         private static AttackContact Known(Player p,Projectile q,NpcTrajectory path){return (AttackContact)Static(model,"Known",p,q,path,Clock(path),Terrain(),Receivers(p,q,path));}
         private static void Born(IEntitySource __0,int __result)
         {
-            if(!recordBirth || __result<0)return;var q=Main.projectile[__result];if(q.type!=684)return;var p=Main.LocalPlayer;var origin=p.RotatedRelativePoint(p.MountedCenter);var cursor=Main.MouseWorld;
+            if(!recordBirth || __result<0)return;var q=Main.projectile[__result];if(q.type!=684)return;if(naturalAttack!=null)Require((bool)Get(naturalAttack,"hasConsumedInput") && Convert.ToString(Get(Get(naturalAttack,"consumedInput"),"Kind"))=="Enhanced","every actual Sonic hand consumes its ready enhanced cursor");var p=Main.LocalPlayer;var origin=p.RotatedRelativePoint(p.MountedCenter);var cursor=Main.MouseWorld;
             var center=(Vector2)Static(model,"BirthOrigin",origin,cursor-origin,p.direction);var beforeClamp=(Vector2)Static(model,"BirthVelocity",center,cursor,(float)Get(ammo,"Speed"),p.direction);var velocity=(Vector2)Static(model,"LimitLaunch",beforeClamp);
             var row=new Birth{Shot=q,Key=(int)q.key,Slot=q.whoAmI,Tick=Main.GameUpdateCount,Origin=origin,Center=q.Center,Velocity=q.velocity,Cursor=cursor,Known=Known(p,q,Path(target))};born.Add(row);
             Console.WriteLine("SONIC born tick="+row.Tick+" slot/key="+row.Slot+"/"+row.Key+" facing="+p.direction+" origin/center="+origin+"/"+q.Center+" rawV/actualV="+beforeClamp+"/"+q.velocity+" damage="+q.damage+" cursor/raw="+cursor+"/"+raw+" known="+row.Known?.Tick+"/"+row.Known?.Subupdate);
@@ -67,11 +72,12 @@ namespace NativeWorldTextProbe
         {
             assembly=Get(context,"Combat").GetType().Assembly;model=assembly.GetType("JueMingR.TerrariaHost.Combat.HostSonicBoomAttack",true);var audit=new Harmony("JueMingR.Tests.SonicBoom");bool wind=Main.windPhysics;
             foreach(string name in new[]{"HandleSpecialEvent","HandleRunning","HandleMining"})audit.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
-            audit.Patch(model.GetMethod("Solve",Flags),prefix:new HarmonyMethod(typeof(NativeCombatSonicBoomChecks),nameof(SolveWork)),postfix:new HarmonyMethod(typeof(NativeCombatSonicBoomChecks),nameof(Done)));audit.Patch(model.GetMethod("KnownFamily",Flags),prefix:new HarmonyMethod(typeof(NativeCombatSonicBoomChecks),nameof(KnownWork)),postfix:new HarmonyMethod(typeof(NativeCombatSonicBoomChecks),nameof(Done)));audit.Patch(model.GetMethod("Step",Flags),prefix:new HarmonyMethod(typeof(NativeCombatSonicBoomChecks),nameof(StepWork)));audit.Patch(model.GetMethod("Capture",Flags),prefix:new HarmonyMethod(typeof(NativeCombatSonicBoomChecks),nameof(ScanWork)));
+            audit.Patch(model.GetMethod("Solve",Flags),prefix:new HarmonyMethod(typeof(NativeCombatSonicBoomChecks),nameof(SolveWork)),finalizer:new HarmonyMethod(typeof(NativeCombatSonicBoomChecks),nameof(Done)));audit.Patch(model.GetMethod("KnownFamily",Flags),prefix:new HarmonyMethod(typeof(NativeCombatSonicBoomChecks),nameof(KnownWork)),finalizer:new HarmonyMethod(typeof(NativeCombatSonicBoomChecks),nameof(Done)));audit.Patch(model.GetMethod("Step",Flags),prefix:new HarmonyMethod(typeof(NativeCombatSonicBoomChecks),nameof(StepWork)));audit.Patch(model.GetMethod("Capture",Flags),prefix:new HarmonyMethod(typeof(NativeCombatSonicBoomChecks),nameof(ScanWork)));
             foreach(var method in Main.rand.GetType().GetMethods(Flags).Where(m=>m.Name=="Next" || m.Name=="NextDouble").Distinct())audit.Patch(method,prefix:new HarmonyMethod(typeof(NativeCombatSonicBoomChecks),nameof(RngWork)));
             audit.Patch(typeof(Projectile).GetMethods(Flags).Single(m=>m.Name=="NewProjectile" && m.GetParameters().Length==13 && m.GetParameters()[1].ParameterType==typeof(float)),postfix:new HarmonyMethod(typeof(NativeCombatSonicBoomChecks),nameof(Born)));audit.Patch(typeof(Projectile).GetMethod("Kill",Flags),prefix:new HarmonyMethod(typeof(NativeCombatSonicBoomChecks),nameof(BeforeKill)));audit.Patch(typeof(Projectile).GetMethod("Damage",Flags),prefix:new HarmonyMethod(typeof(NativeCombatSonicBoomChecks),nameof(BeforeDamage)),postfix:new HarmonyMethod(typeof(NativeCombatSonicBoomChecks),nameof(AfterDamage)));audit.Patch(AccessTools.Method(typeof(NPC),"StrikeNPC",new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)}),postfix:new HarmonyMethod(typeof(NativeCombatSonicBoomChecks),nameof(Strike)));
+            var componentHand=new NativeCombatHandFixture(context,()=>recordBirth && naturalAttack!=null,()=>target);
             try{string leaf=Environment.GetEnvironmentVariable("JMR_SONIC_BOOM_ORACLE_ONLY");Require(string.IsNullOrEmpty(leaf) || leaf=="motor" || leaf=="birth" || leaf=="receive" || leaf=="natural","Sonic leaf selector");if(string.IsNullOrEmpty(leaf) || leaf=="motor")Motors(context);if(string.IsNullOrEmpty(leaf) || leaf=="birth")Births(context);if(string.IsNullOrEmpty(leaf) || leaf=="receive")Receives(context);if(string.IsNullOrEmpty(leaf) || leaf=="natural")Natural(context);}
-            finally{recordBirth=false;receiving=watched=null;target=null;Main.windPhysics=wind;audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());NativeCombatCadenceChecks.Save(Get(context,"Combat"),new CombatOptions());}
+            finally{componentHand.Dispose();recordBirth=false;naturalAttack=null;receiving=watched=null;target=null;Main.windPhysics=wind;audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());NativeCombatCadenceChecks.Save(Get(context,"Combat"),new CombatOptions());}
         }
         private static void Motors(object context)
         {
@@ -130,32 +136,42 @@ namespace NativeWorldTextProbe
         }
         private static void Draws(object host,object attack,AttackContact plan)
         {
-            int a=solves,b=steps,c=scans;var marker=Get(Get(host,"World"),"Impact");var zoom=Main.GameViewMatrix.ZoomMatrix;for(int check=0;check<20;check++){Call(marker,"Capture");Call(marker,"Project",zoom,Matrix.Invert(zoom));Require((bool)Call(attack,"PreviewCurrent",plan),"stable Sonic preparation remains current");}Require(a==solves && b==steps && c==scans,"twenty CPU presentations have zero Sonic solve/motor/family scans");
+            int a=solves,b=steps,c=scans;var marker=Get(Get(host,"World"),"Impact");var zoom=Main.GameViewMatrix.ZoomMatrix;for(int check=0;check<20;check++){Call(marker,"Capture");Call(marker,"Project",zoom,Matrix.Invert(zoom));Require((bool)Call(attack,"PresentationCurrent",plan),"stable Sonic preparation remains current");}Require(a==solves && b==steps && c==scans,"twenty CPU presentations have zero Sonic solve/motor/family scans");
         }
-        private static void ExistingFlight(Player player,AttackContact preview)
+        private static void ExistingFlight(Player player,object attack)
         {
             // The actual first-born shot is already independently checked
             // against native Strike. Compare its remaining clock in this
             // completed-world phase with the production displayed plan.
             var shot=born[0].Shot;Require(shot.active && (int)shot.key==born[0].Key,"first real Sonic birth still owns its observed flight");
-            var path=preview.Timeline;
+            var path=Path(target);
             var receivers=Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackObstacles",true),Flags,null,new object[]{player,shot,path,0,false,true},null);
             var live=(AttackContact)Static(model,"Known",player,shot,path,Clock(path,"CompletedWorld"),Terrain(),receivers);
-            Console.WriteLine("SONIC live preview tick="+Main.GameUpdateCount+" sample="+path.SampleTick+" actualBorn="+born[0].Tick+" slot/key="+born[0].Slot+"/"+born[0].Key+" preview="+preview.Tick+"/"+preview.Subupdate+" live="+live?.Tick+"/"+live?.Subupdate);
-            Require(live!=null && (preview.Tick<live.Tick || preview.Tick==live.Tick && preview.Subupdate<=live.Subupdate),"production preview includes the earlier actual Sonic flight before its next legal hand");
+            var phase=Enum.Parse(assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase",true),"CompletedWorld");var args=new object[]{player,path,phase,false};object flight;
+            using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))flight=Call(attack,"ReadFlight",args);
+            var observed=flight==null?null:Get(flight,"Contact") as AttackContact;
+            Require((bool)args[3] && live!=null && observed!=null && observed.Tick==live.Tick && observed.Subupdate==live.Subupdate && (bool)Get(flight,"Current") && (bool)Get(flight,"DependenciesCurrent"),"public Flight retains the actual Sonic family's earliest sealed receive independently of any later hand");
+            Console.WriteLine("SONIC actual live sample="+path.SampleTick+" observed="+observed.Tick+"/"+observed.Subupdate+" sealed="+live.Tick+"/"+live.Subupdate);
+
         }
         private static void Natural(object context)
         {
             foreach(int direction in new[]{1,-1})
             {
                 var p=Reset(context);p.position=new Vector2(650,646);p.direction=direction;Main.screenPosition=new Vector2(500,400);for(int x=5;x<115;x++)NativeToolsChecks.Tile(x,43,1);target=NativeCombatControlPreviewChecks.Dummy(2,52,40);target.position.X=p.Center.X+direction*180;raw=target.Center-new Vector2(direction*380,0);
-                solves=knownCalls=depth=steps=scans=rngCalls=0;var host=Get(context,"CombatObservation");var attack=Get(Get(context,"Combat"),"Attack");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,false));for(int frame=0;frame<3;frame++)NativeCombatSelectionPreviewChecks.Step(context,raw,false,true);
-                var plan=(AttackContact)GetOptional(attack,"ExpectedPreview");Require(plan!=null && !Main.projectile.Any(q=>q.active),"idle mixed Sonic hand/shot preview is read-only with AimOFF");Draws(host,attack,plan);
-                ammo=Static(assembly.GetType("JueMingR.TerrariaHost.Combat.AttackAmmoSnapshot",true),"Capture",p,p.HeldItem);recordBirth=true;NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));int previews=0;
-                for(int frame=0;frame<45;frame++){NativeCombatSelectionPreviewChecks.Step(context,raw,true);var next=(AttackContact)GetOptional(attack,"ExpectedPreview");if(frame>=2){Require(next!=null,"ongoing real Sonic actions retain legal mixed next-use previews");previews++;}if(frame==6 && next!=null){ExistingFlight(p,next);Draws(host,attack,next);}}
+                solves=knownCalls=depth=steps=scans=rngCalls=cancelledBeforeCapture=0;var host=Get(context,"CombatObservation");var attack=Get(Get(context,"Combat"),"Attack");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,false));for(int frame=0;frame<3;frame++)NativeCombatSelectionPreviewChecks.Step(context,raw,false,true);
+                Require(GetOptional(attack,"ExpectedPreview")==null && !Main.projectile.Any(q=>q.active) && solves==0 && scans==0,"withdrawn idle Sonic preview never solves, captures or fires");
+                ammo=Static(assembly.GetType("JueMingR.TerrariaHost.Combat.AttackAmmoSnapshot",true),"Capture",p,p.HeldItem);recordBirth=true;naturalAttack=attack;NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));int previews=0;
+                for(int frame=0;frame<45;frame++)
+                {
+                    NativeToolExecutionChecks.Sample(context,Get(context,"Input"),raw,true);Call(Get(context,"Combat"),"Sample");NativeCombatAimChecks.PrepareMechanismFixture(host,attack,target,0);var next=(AttackContact)GetOptional(attack,"ExpectedImpact");
+                    if(next!=null){previews++;Call(attack,"BindPresentation",next);Draws(host,attack,next);}
+                    NativeCombatSelectionPreviewChecks.Step(context,raw,true);Require(GetOptional(attack,"ExpectedPreview")==null,"ongoing Sonic native cadence never restores an idle or cooldown preview");
+                    if(frame==6)ExistingFlight(p,attack);
+                }
                 NativeCombatSelectionPreviewChecks.Step(context,raw,false);recordBirth=false;for(int frame=0;frame<60 && born.Any(b=>b.First<0 && b.Key==(int)b.Shot.key && b.Shot.active);frame++)NativeCombatSelectionPreviewChecks.Step(context,raw,false);
                 foreach(var b in born){int actual=b.First<0?0:(int)(b.First-b.Tick+1);Console.WriteLine("SONIC natural direction="+direction+" slot/key="+b.Slot+"/"+b.Key+" born="+b.Tick+" center/V="+b.Center+"/"+b.Velocity+" cursor/raw="+b.Cursor+"/"+raw+" actual="+actual+" known="+b.Known?.Tick+"/"+b.Known?.Subupdate);Require(actual>0 && b.Known!=null && b.Known.Tick==actual && b.Known.Subupdate==b.FirstSub && Vector2.Dot(b.Velocity,raw-b.Origin)<0,"actual assisted Sonic projectile has positive immortal488 Strike matching its Known first clock, independent of hand melee");}
-                Require(born.Count>=3 && previews==43 && rngCalls==0 && scans==solves+knownCalls,"first/continuous real Sonic uses and finite source preparations without model RNG");Console.WriteLine("PASS SONIC natural direction="+direction+" births="+born.Count+" previews="+previews+" solve/known/capture/motor="+solves+","+knownCalls+","+scans+","+steps+" RNG="+rngCalls);
+                Require(born.Count>=3 && previews>=3 && rngCalls==0 && depth==0 && scans+cancelledBeforeCapture==solves+knownCalls,"first/continuous real Sonic uses and finite source preparations without model RNG");Console.WriteLine("PASS SONIC natural direction="+direction+" births="+born.Count+" realUpdates=45 readyPreparations="+previews+" solve/known/capture/motor="+solves+","+knownCalls+","+scans+","+steps+" RNG="+rngCalls+" depth="+depth+" cancelledBeforeCapture="+cancelledBeforeCapture);
             }
         }
     }

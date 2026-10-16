@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Reflection;
 using HarmonyLib;
@@ -36,6 +36,16 @@ namespace NativeWorldTextProbe
             var n=Main.npc[2];n.SetDefaults(3);n.whoAmI=2;n.active=true;n.position=new Vector2(810,646);n.life=n.lifeMax=10000;n.target=0;Array.Clear(n.immune,0,n.immune.Length);n.UpdateNPC(2);
             NativeToolExecutionChecks.Sample(context,input,new Vector2(650,550),true);Call(combat,"Sample");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,false,true));Call(context,"UpdateRuntime");
             typeof(Player).GetMethod("ItemCheck_Shoot",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),false});Call(context,"UpdateRuntime");
+            // This component compares absolute native phase clocks. Complete
+            // the real Source/controlled model under its explicit mechanism
+            // allowance; it does not assert a cold ordinary-budget opportunity.
+            var prediction=Get(host,"Prediction");var cache=(NpcPredictionCache)Get(prediction,"Cache");cache.Demand(1,1,120);
+            using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))
+            {
+                Call(prediction,"Prepare",Get(Get(host,"Selection"),"Target"),(long)Main.GameUpdateCount);
+                var phase=attack.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase",true);
+                Call(attack,"PrepareCore",Enum.Parse(phase,"CompletedWorld"));
+            }
             var q=Main.projectile.Single(s=>s.active && s.type==16);var contact=(AttackContact)GetOptional(attack,"ExpectedImpact");Require(contact!=null,"world-completed guided preparation has a genuine finite contact");long expected=contact.Timeline.SampleTick+contact.Tick,first=-1;int life=n.life;
             for(int k=0;k<20 && first<0;k++)
             {
@@ -46,6 +56,18 @@ namespace NativeWorldTextProbe
             Console.WriteLine("PHASE completed guided: sample="+contact.Timeline.SampleTick+" contact="+contact.Tick+" expected="+expected+" actual="+first+" target="+n.position);
             Require(first==expected,"world-completed future and actual first Damage share the absolute NPC/Projectile tick");
             Console.WriteLine("PASS natural component Player/NPC/Projectile order and completed-world contact");
+        }
+        private static void CompleteNativePhase(object host,object attack)
+        {
+            // Shared phase/slot components complete the real Source model, not
+            // a synthetic straight path or a cold ordinary allowance assertion.
+            var prediction=Get(host,"Prediction");((NpcPredictionCache)Get(prediction,"Cache")).Demand(1,1,120);
+            using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))
+            {
+                Call(prediction,"Prepare",Get(Get(host,"Selection"),"Target"),(long)Main.GameUpdateCount);
+                var phase=attack.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase",true);
+                Call(attack,"PrepareCore",Enum.Parse(phase,"CompletedWorld"));
+            }
         }
         private static void Birth(Projectile __0){if(captureBirth && __0.type==14)born=__0;}
         private static void Bubble(object context,int slot,bool stationary=false,bool shortFuture=false,bool releaseDuringPass=false)
@@ -65,7 +87,7 @@ namespace NativeWorldTextProbe
             typeof(Player).GetMethod("ItemCheck_Shoot",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),false});var bubble=Main.projectile[slot];Require(bubble.type==444 && bubble.active,"native Xeno parent in requested slot");for(int i=0;i<slot;i++){if(releaseDuringPass)Main.projectile[i].timeLeft=1;else Main.projectile[i].Kill();}bubble.timeLeft=2;
             Vector2 initial=bubble.Center,velocity=bubble.velocity;double difference=bubble.ai[0].ToRotationVector2().ToRotation()-velocity.ToRotation();if(difference>Math.PI)difference-=Math.PI*2;if(difference<-Math.PI)difference+=Math.PI*2;Require(Math.Abs(difference)>.001 && velocity!=Vector2.Zero,"actual Shot retains nonzero random bubble angle for steering counterexample");
             if(stationary)bubble.velocity=Vector2.Zero;
-            NativeToolExecutionChecks.Sample(context,input,new Vector2(650,550),false);Call(combat,"Sample");p.channel=p.controlUseItem=false;Call(context,"UpdateRuntime");var contact=(AttackContact)GetOptional(attack,"ExpectedImpact");
+            NativeToolExecutionChecks.Sample(context,input,new Vector2(650,550),false);Call(combat,"Sample");p.channel=p.controlUseItem=false;Call(context,"UpdateRuntime");CompleteNativePhase(host,attack);var contact=(AttackContact)GetOptional(attack,"ExpectedImpact");
             if(releaseDuringPass)
             {
                 var entries=(System.Collections.IDictionary)Get(Get(attack,"Control"),"shots");var entry=entries[(int)bubble.key];

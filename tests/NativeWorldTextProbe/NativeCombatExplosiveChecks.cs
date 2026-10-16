@@ -111,24 +111,28 @@ namespace NativeWorldTextProbe
                 try
                 {
                 NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,row[0],0,0);p.position=new Vector2(700,646);p.ResetEffects();p.inventory[54].SetDefaults(row[1]);p.inventory[54].stack=999;p.releaseUseItem=true;Main.screenPosition=new Vector2(600,400);Main.rand=new Terraria.Utilities.UnifiedRandom(88143);
-                targetReceiver=NativeCombatControlPreviewChecks.Dummy(2,52,40);targetHits=0;AttackContact preview=null;
+                targetReceiver=NativeCombatControlPreviewChecks.Dummy(2,52,40);targetHits=0;
                 NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,true,25,true,false));
-                for(int i=0;i<3;i++){NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,650),false,true);preview=(AttackContact)GetOptional(attack,"ExpectedPreview");Require(preview!=null && !Main.projectile.Any(q=>q.active),"explosive held idle preview before birth type="+row[2]);}
+                for(int i=0;i<3;i++){NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,650),false,true);Require(GetOptional(attack,"ExpectedPreview")==null && !Main.projectile.Any(q=>q.active),"withdrawn explosive idle preview has no hypothetical contact or birth type="+row[2]);}
                 NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,true,25,true,true));
+                NativeToolExecutionChecks.Sample(context,input,new Vector2(600,650),true);Call(combat,"Sample");NativeCombatAimChecks.PrepareMechanismFixture(host,attack,targetReceiver,0);
+                var contact=(AttackContact)GetOptional(attack,"ExpectedImpact");Require(contact!=null,"explosive actual hand has a finite preparation type="+row[2]);
+                typeof(Player).GetMethod("ItemCheck_Shoot",Flags).Invoke(p,new object[]{p.whoAmI,p.HeldItem,p.GetWeaponDamage(p.HeldItem),true});
+                Require((bool)Get(attack,"hasConsumedInput") && Convert.ToString(Get(Get(attack,"consumedInput"),"Kind"))=="Enhanced","real explosive native Shoot consumes the prepared input");
                 var births=new HashSet<int>();int first=0;
                 for(int frame=1;frame<=120;frame++)
                 {
-                    NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,650),frame==1);
+                    NativeQuickItemChecks.BeginWorldStep();foreach(var npc in Main.npc)if(npc.active)npc.UpdateNPC(npc.whoAmI);for(int slot=0;slot<Main.maxProjectiles;slot++)if(Main.projectile[slot].active){Main.ProjectileUpdateLoopIndex=slot;Main.projectile[slot].Update(slot);}Main.ProjectileUpdateLoopIndex=-1;
                     foreach(var q in Main.projectile.Where(q=>q.active && q.owner==0))births.Add(q.type);
                     if(targetHits>0){first=frame;break;}
                 }
-                Require(first>0,"explosive real first click reaches actual target Damage type="+row[2]+" visibleTick="+(preview==null?-1:preview.Tick)+" births="+string.Join(",",births));
-                Console.WriteLine("EXPLOSIVE natural item="+row[0]+" ammo="+row[1]+" projectile="+row[2]+" idleTick="+preview.Tick+" firstDamage="+first);completed++;
+                Require(first>0,"explosive real native Shoot reaches actual target Damage type="+row[2]+" preparedTick="+contact.Tick+" births="+string.Join(",",births));
+                Console.WriteLine("EXPLOSIVE native consumer item="+row[0]+" ammo="+row[1]+" projectile="+row[2]+" preparedTick="+contact.Tick+" firstDamage="+first);completed++;
                 }
                 catch(Exception error){failures.Add(row[0]+"/"+row[1]+": "+error.Message);Console.WriteLine("EXPLOSIVE NATURAL FAIL "+row[0]+"/"+row[1]+": "+error);}
             }
             Require(failures.Count==0,"explosive natural failures="+failures.Count+": "+string.Join(" | ",failures));
-            Console.WriteLine("PASS explosive natural idle/first click/native Damage members="+completed);
+            Console.WriteLine("PASS explosive withdrawn idle/actual prepared native Shoot/Damage members="+completed);
         }
     }
 }

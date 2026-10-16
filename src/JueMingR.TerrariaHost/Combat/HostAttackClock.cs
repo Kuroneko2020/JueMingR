@@ -10,9 +10,15 @@ namespace JueMingR.TerrariaHost.Combat
     {
         internal readonly HostAttackPhase Phase;
         internal readonly int Age,LaunchDelay;
+        // Projectiles normally means the caller is already at its parent AI.
+        // Only the real world-pass preparation runs before every slot. Keep
+        // that origin explicit so existing partial/readonly callers never
+        // advance their lower slots for a second time.
+        internal readonly bool BeforeProjectilePass;
         internal HostAttackClock(NpcTrajectory timeline,HostAttackPhase phase):this(timeline,phase,0){}
-        internal HostAttackClock(NpcTrajectory timeline,HostAttackPhase phase,int launchDelay)
-        {Phase=phase;LaunchDelay=launchDelay;Age=(int)((long)Main.GameUpdateCount-timeline.SampleTick)-(phase==HostAttackPhase.BeforeNpc?1:0)+launchDelay;}
+        internal HostAttackClock(NpcTrajectory timeline,HostAttackPhase phase,int launchDelay):this(timeline,phase,launchDelay,false){}
+        internal HostAttackClock(NpcTrajectory timeline,HostAttackPhase phase,int launchDelay,bool beforeProjectilePass)
+        {Phase=phase;LaunchDelay=launchDelay;BeforeProjectilePass=beforeProjectilePass && phase==HostAttackPhase.Projectiles;Age=(int)((long)Main.GameUpdateCount-timeline.SampleTick)-(phase==HostAttackPhase.BeforeNpc?1:0)+launchDelay;}
         internal bool BeforeNpc {get{return Phase==HostAttackPhase.BeforeNpc;}}
         internal bool NextWorld {get{return Phase==HostAttackPhase.CompletedWorld;}}
         internal int FirstTick {get{return Age+(Phase==HostAttackPhase.Projectiles?0:1);}}

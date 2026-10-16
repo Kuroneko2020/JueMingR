@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -195,7 +195,8 @@ namespace NativeWorldTextProbe
                 var obstacles=Activator.CreateInstance(obstaclesType,Flags,null,new object[]{p,policy,timeline,0,true,false},null);
                 var phase=Enum.Parse(phaseType,"BeforeNpc");var clock=Activator.CreateInstance(clockType,Flags,null,new object[]{timeline,phase},null);
                 var contact=(AttackContact)model.GetMethod("KnownFamily",Flags).Invoke(null,new object[]{p,children,timeline,clock,terrain,obstacles});
-                if(contact==null)Console.WriteLine("SCOURGE FAMILY STOP lower="+lowerSlots+" seed="+seed+" slot="+model.GetField("FailedSlot",Flags).GetValue(null)+" tick="+model.GetField("FailedTick",Flags).GetValue(null)+" outer="+model.GetField("FailedOuter",Flags).GetValue(null)+" position="+model.GetField("FailedPosition",Flags).GetValue(null)+" stage="+model.GetField("FailedStage",Flags).GetValue(null)+" children="+string.Join(";",children.Select(q=>q.whoAmI+":"+q.position+"/"+q.velocity+"/"+q.ai[0]+"/"+q.friendly)));
+                if(contact==null && model.GetField("FailedSlot",Flags)==null)Console.WriteLine("SCOURGE FAMILY STOP lower="+lowerSlots+" seed="+seed+" diagnosticFields=NOT_AVAILABLE_RELEASE");
+                else if(contact==null)Console.WriteLine("SCOURGE FAMILY STOP lower="+lowerSlots+" seed="+seed+" slot="+model.GetField("FailedSlot",Flags).GetValue(null)+" tick="+model.GetField("FailedTick",Flags).GetValue(null)+" outer="+model.GetField("FailedOuter",Flags).GetValue(null)+" position="+model.GetField("FailedPosition",Flags).GetValue(null)+" stage="+model.GetField("FailedStage",Flags).GetValue(null)+" children="+string.Join(";",children.Select(q=>q.whoAmI+":"+q.position+"/"+q.velocity+"/"+q.ai[0]+"/"+q.friendly)));
                 int first=0;
                 for(int outer=1;outer<=120 && children.Any(q=>q.active);outer++)
                 {

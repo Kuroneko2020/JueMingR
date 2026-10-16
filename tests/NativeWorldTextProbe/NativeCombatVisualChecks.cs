@@ -90,8 +90,8 @@ namespace NativeWorldTextProbe
                 void EnsureVisible(object element){ScrollTo(context,state,element);}
                 void Image(string name){graphics.Image(Path.Combine(output,"combat-"+name+"-"+size[0]+"-"+size[1]+"-"+size[2]+".png"),()=>Call(shell,"DrawLayer"),Main.UIScaleMatrix,size[0],size[1]);}
             }
-            World(context,graphics,output);
-            NativeCombatAimChecks.Initialize();NativeCombatImpactVisualChecks.Run(context,graphics,output);
+            NativeCombatAimChecks.Initialize();World(context,graphics,output);
+            NativeCombatImpactVisualChecks.Run(context,graphics,output);
             NativeCombatShapeVisualChecks.Run(context,graphics,output);
             NativeCombatAimUiChecks.Run(context,graphics,output);
             Console.WriteLine("PASS G11A actual F5 rows/buttons, interval release/cancel/geometry, binding capture/save, original fonts and scroll at 100/150 percent.");
@@ -106,6 +106,7 @@ namespace NativeWorldTextProbe
             NativeCombatObservationChecks.Save(host,new ObservationOptions(collision:true,path:true));
             foreach(var n in Main.npc)n.active=false;var npc=Main.npc[0];npc.SetDefaults(2);npc.whoAmI=0;npc.active=true;npc.target=0;npc.position=new Vector2(480,440);npc.velocity=new Vector2(2,-1);npc.timeLeft=750;
             Main.LocalPlayer.position=new Vector2(650,640);UiFrame(context,Vector2.Zero,false);NativeCombatObservationChecks.Fresh(context,host);
+            AwaitPath();
             var shot=Main.projectile[10];shot.SetDefaults(632);shot.whoAmI=10;shot.active=true;shot.owner=0;shot.friendly=true;shot.damage=10;shot.position=new Vector2(-300,550);shot.velocity=Vector2.UnitX;shot.localAI[1]=1500;shot.scale=1;shot.Damage();
             var cache=(JueMingR.Features.Combat.NpcPredictionCache)Get(Get(host,"Prediction"),"Cache");int steps=NativeCombatUsageChecks.ObservedNpcSteps;Call(layer,"Prepare");NativeCombatPresentationChecks.Project(layer);Require((int)Get(layer,"StrokeCount")>10,"actual world preparation keeps offscreen-origin beam and selected future path; strokes="+Get(layer,"StrokeCount")+" canDraw="+Get(host,"CanDraw")+" enabled="+Get(host,"Enabled")+" path="+(cache.Read(0)?.Count.ToString()??"none")+" failed="+Call(host,"Unavailable",0));
             for(int i=0;i<100;i++)graphics.Pixels(()=>Call(layer,"Draw"),Main.GameViewMatrix.ZoomMatrix);
@@ -113,12 +114,21 @@ namespace NativeWorldTextProbe
             graphics.Image(Path.Combine(output,"observation-world.png"),()=>Call(layer,"Draw"),Main.GameViewMatrix.ZoomMatrix);
             Main.LocalPlayer.gravDir=-1;Main.screenPosition+=new Vector2(70,30);Call(layer,"Prepare");graphics.Image(Path.Combine(output,"observation-world-inverted.png"),()=>Call(layer,"Draw"),Main.GameViewMatrix.ZoomMatrix);Main.LocalPlayer.gravDir=1;
             npc.SetDefaults(371);npc.whoAmI=0;npc.active=true;npc.position=new Vector2(700,650);npc.target=0;npc.ai[3]=1;
-            int priorMode=Main.netMode;try{Main.netMode=1;NativeCombatObservationChecks.Fresh(context,host);Call(layer,"Prepare");string shown=(string)Get(layer,"pathText");var path=cache.Read(0);Console.WriteLine("VISUAL world text="+shown+" target="+Get(Get(host,"Selection"),"HasTarget")+" path="+Get(host,"Path")+" sample="+path?.SampleTick+" assumptions="+path?.Assumptions+" strategy="+path?.Strategy+" count="+path?.Count+" npc="+npc.type+" camera="+Main.screenPosition+" mouse="+Main.MouseWorld+" player="+Main.LocalPlayer.position);
+            int priorMode=Main.netMode;try{Main.netMode=1;NativeCombatObservationChecks.Fresh(context,host);AwaitPath();Call(layer,"Prepare");string shown=(string)Get(layer,"pathText");var path=cache.Read(0);Console.WriteLine("VISUAL world text="+shown+" target="+Get(Get(host,"Selection"),"HasTarget")+" path="+Get(host,"Path")+" sample="+path?.SampleTick+" assumptions="+path?.Assumptions+" strategy="+path?.Strategy+" count="+path?.Count+" npc="+npc.type+" camera="+Main.screenPosition+" mouse="+Main.MouseWorld+" player="+Main.LocalPlayer.position);
                 // Fresh uses the production continuation model, not a fixed
                 // player fixture. Assert the published assumption's real text;
                 // substituting the old stationary phrase would mislabel it.
                 Require(path!=null && (path.Assumptions&PredictionAssumption.HeldPlayerControls)!=0 && shown.Contains("随机代表路线") && shown.Contains("依据本机网络观察") && shown.Contains("假设玩家延续当前输入"),"actual rendered path text retains random, network and published player-continuation assumptions");}finally{Main.netMode=priorMode;}
             NativeCombatObservationChecks.Save(host,new ObservationOptions());Call(layer,"Prepare");Require((int)Get(layer,"StrokeCount")==0,"display off retires prepared geometry");
+            void AwaitPath()
+            {
+                var actualCache=(JueMingR.Features.Combat.NpcPredictionCache)Get(Get(host,"Prediction"),"Cache");
+                // A cold optional2ms admission may publish no path. Rendering
+                // starts only after an actual later normal five-GUC admission;
+                // this bounds recovery, without a larger budget or fake path.
+                for(int updates=0;GetOptional(host,"DisplayPath")==null && updates<15;updates++)
+                {npc.UpdateNPC(npc.whoAmI);NativeCombatObservationChecks.Fresh(context,host);}
+            }
             }
         }
         private static void ScrollTo(object context,object state,object element)

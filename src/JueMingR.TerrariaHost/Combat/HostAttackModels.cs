@@ -48,6 +48,12 @@ namespace JueMingR.TerrariaHost.Combat
                 // world conversion on Kill is never replayed by prediction.
                 case 69:case 70:case 621:gravity=.25f;start=10;acceleration=.99f;break;
                 case 166:gravity=.3f;start=20;acceleration=.98f;break;
+                // AI010's released seeds count ai1, not AI001's ai0.
+                // Mud's first AI stores ai0=1 before incrementing it, so its
+                // twentieth counter value occurs at subupdate nineteen.
+                case 42:case 65:case 68:case 354:gravity=.2f;start=60;break;
+                case 1081:gravity=.3f;start=19;acceleration=.98f;break;
+                case 1082:case 1083:gravity=.4f;start=17;acceleration=.95f;break;
                 case 497:gravity=.5f;start=30;acceleration=.99f;break;
                 // These are seed motors for the finite throw dispatcher.
                 // 93's six random gravity starts are validated there; 306's
@@ -83,8 +89,8 @@ namespace JueMingR.TerrariaHost.Combat
             }
             bool spread=projectile==1114 || weaponType==534 || weaponType==964 || weaponType==4703 || weaponType==3788 || weaponType==2624 || weaponType==1229 || weaponType==1569 || weaponType==3019 || weaponType==1930 || weaponType==5117 || weaponType==518;
             motion=new AttackMotion(speed,gravity,start,sample.extraUpdates+1,sample.width,sample.height,lifetime,
-                spread?AttackConfidence.Representative:AttackConfidence.Conditional,acceleration,max,sample.aiStyle==1,componentAcceleration,drag,snap,maxFallSpeed:sample.aiStyle==1?16:sample.aiStyle==2?32:0,
-                gravityClockUsesLaunchX:weaponType==3019 && sample.aiStyle==1 && gravity!=0,maxRiseSpeed:projectile==1006?16:0,accelerationStart:sample.aiStyle==2 && acceleration!=1 || projectile==114 || projectile==507?start:0,horizontalAccelerationOnly:sample.aiStyle==2 && acceleration!=1 || projectile==507,
+                spread?AttackConfidence.Representative:AttackConfidence.Conditional,acceleration,max,sample.aiStyle==1,componentAcceleration,drag,snap,maxFallSpeed:sample.aiStyle==10?10:sample.aiStyle==1?16:sample.aiStyle==2?32:0,
+                gravityClockUsesLaunchX:weaponType==3019 && sample.aiStyle==1 && gravity!=0,maxRiseSpeed:projectile==1006?16:0,accelerationStart:sample.aiStyle==2 && acceleration!=1 || projectile==114 || projectile==507 || projectile==1081 || projectile==1082 || projectile==1083?start:0,horizontalAccelerationOnly:sample.aiStyle==2 && acceleration!=1 || projectile==507 || projectile==1081 || projectile==1082 || projectile==1083,
                 preMotorWindX:sample.aiStyle==2 && Main.windPhysics?Main.windSpeedCurrent*Main.windPhysicsStrength:0);return true;
         }
     }

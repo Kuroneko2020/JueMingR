@@ -74,7 +74,11 @@ namespace JueMingR.TerrariaHost.Combat
                 var view=new Controlled{Shot=entry.Shot,Key=entry.Key,Type=entry.Type,Source=entry.Source,Born=entry.Born,BornNext=entry.BornNext,Children=entry.Children};
                 if(entry.Navigation!=null)view.Navigation=entry.PreviewNavigation??(entry.PreviewNavigation=new HostYoyoNavigation());
                 var clock=new HostAttackClock(timeline,phase);
-                if(entry.Type==611)view.Contact=HostMeleeAttack.KnownSolar(player,entry.Shot,timeline,clock,previewTerrain);
+                if(entry.Type==611)
+                {
+                    view.Obstacles=new HostAttackObstacles(player,entry.Shot,timeline,clock.LaunchDelay,clock.BeforeNpc,clock.NextWorld);
+                    view.Contact=HostSolarEruptionAttack.KnownFamily(player,new[]{entry.Shot},timeline,clock,previewTerrain,view.Obstacles);
+                }
                 else if(entry.Type==444)view.Contact=BubblePreview(player,entry.Shot,timeline,clock,false);
                 else if(entry.Type==1035)view.Contact=HostWhipAttack.Contact(player,entry.Shot,timeline,clock,previewTerrain,out view.Point);
                 else SolveEntry(view,timeline,phase,previewTerrain,player);

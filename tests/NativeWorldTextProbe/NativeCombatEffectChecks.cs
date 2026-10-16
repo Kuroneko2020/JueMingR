@@ -46,6 +46,7 @@ namespace NativeWorldTextProbe
             if(finiteOracle=="bottle"){NativeCombatBottleChecks.Run(context);return;}
             if(finiteOracle=="note"){NativeCombatNoteChecks.Run(context);return;}
             if(finiteOracle=="nebula-blaze"){NativeCombatNebulaBlazeChecks.Run(context);return;}
+            if(finiteOracle=="native-arrow-birth"){NativeCombatNativeArrowBirthChecks.Run(context);return;}
             if(finiteOracle=="sky-fracture"){NativeCombatSkyFractureChecks.Run(context);return;}
             if(finiteOracle=="ice-rod"){NativeCombatIceRodChecks.Run(context);return;}
             if(finiteOracle=="ai29-spells"){NativeCombatAi29SpellChecks.Run(context);return;}
@@ -61,6 +62,54 @@ namespace NativeWorldTextProbe
             if(finiteOracle=="arc-swing"){NativeCombatArcSwingChecks.Run(context);return;}
             if(finiteOracle=="attached-shot"){NativeCombatAttachedShotChecks.Run(context);return;}
             if(finiteOracle=="ballistic-candidates"){NativeCombatBallisticCandidateChecks.Run(context);return;}
+            if(Environment.GetEnvironmentVariable("JMR_WEAPON_EFFECT_ORACLE_ONLY")=="rapier"){NativeCombatBallisticRapierChecks.Run(context);return;}
+            if(finiteOracle=="homing-effect"){NativeCombatHomingEffectChecks.Run(context);return;}
+            if(finiteOracle=="placed-pulse"){NativeCombatPlacedPulseChecks.Run(context);return;}
+            if(finiteOracle=="terrain-line"){NativeCombatTerrainLineChecks.Run(context);return;}
+            if(finiteOracle=="fixed-sky"){NativeCombatFixedSkyChecks.Run(context);return;}
+            if(finiteOracle=="sky-input"){NativeCombatSkyChecks.Run(context);return;}
+            if(finiteOracle=="seedler"){NativeCombatSeedlerChecks.Run(context);return;}
+            if(finiteOracle=="rainbow"){NativeCombatRainbowChecks.Run(context);return;}
+            if(finiteOracle=="arrow-family"){NativeCombatArrowFamilyChecks.Run(context);return;}
+            if(finiteOracle=="impact-burst"){NativeCombatImpactBurstChecks.Run(context);return;}
+            if(finiteOracle=="clinger-wall"){NativeCombatClingerWallChecks.Run(context);return;}
+            if(finiteOracle=="jousting-lance"){NativeCombatJoustingLanceChecks.Run(context);return;}
+            if(finiteOracle=="whip-star"){NativeCombatWhipStarChecks.Run(context);return;}
+            if(finiteOracle=="harpy-arrow-family"){NativeCombatHarpyArrowFamilyChecks.Run(context);return;}
+            if(finiteOracle=="bubble-flail"){NativeCombatBubbleFlailFamilyChecks.Run(context);return;}
+            if(finiteOracle=="finite-tail"){FiniteTail(context);return;}
+            if(finiteOracle=="held-then-steering"){NativeCombatHeldAmmoFamilyChecks.Run(context);NativeCombatAmmoSteeringChecks.Run(context);return;}
+            if(finiteOracle=="piranha"){NativeCombatPiranhaChecks.Run(context);return;}
+            if(finiteOracle=="lights-bane"){NativeCombatLightsBaneChecks.Run(context);return;}
+            if(finiteOracle=="sharp-tears"){NativeCombatSharpTearsChecks.Run(context);return;}
+            if(finiteOracle=="north-pole"){NativeCombatNorthPoleChecks.Run(context);return;}
+            if(finiteOracle=="onyx-blast"){NativeCombatOnyxBlastChecks.Run(context);return;}
+            if(finiteOracle=="held-ammo-family"){NativeCombatHeldAmmoFamilyChecks.Run(context);return;}
+            if(finiteOracle=="ammo-steering"){NativeCombatAmmoSteeringChecks.Run(context);return;}
+            if(finiteOracle=="bee-hand"){NativeCombatBeeHandChecks.Run(context);return;}
+            if(finiteOracle=="melee-hit-child"){NativeCombatMeleeHitChildChecks.Run(context);return;}
+            if(finiteOracle=="melee-hit-family"){NativeCombatMeleeHitFamilyChecks.Run(context);return;}
+            if(finiteOracle=="ammo-impact"){NativeCombatAmmoImpactChecks.Run(context);return;}
+            if(finiteOracle=="arc-owner-pose"){NativeCombatArcOwnerPoseChecks.Run(context);return;}
+            if(finiteOracle=="grass-curve"){NativeCombatGrassCurveChecks.Run(context);return;}
+            if(finiteOracle=="monk-staff"){NativeCombatMonkStaffChecks.Run(context);return;}
+            if(finiteOracle=="super-star"){NativeCombatSuperStarChecks.Run(context);return;}
+            if(finiteOracle=="nebula-arcanum"){NativeCombatNebulaArcanumChecks.Run(context);return;}
+            if(finiteOracle=="medusa-scan"){NativeCombatMedusaScanChecks.Run(context);return;}
+            if(finiteOracle=="solar-eruption"){NativeCombatSolarEruptionChecks.Run(context);return;}
+            if(finiteOracle=="influx"){NativeCombatInfluxChecks.Run(context);return;}
+            if(finiteOracle=="nail"){NativeCombatNailChecks.Run(context);return;}
+            if(finiteOracle=="spear-shards"){NativeCombatSpearShardChecks.Run(context);return;}
+            if(finiteOracle=="guitar-curve"){NativeCombatGuitarCurveChecks.Run(context);return;}
+            if(finiteOracle=="yoyo-family"){NativeCombatYoyoFamilyChecks.Run(context);return;}
+            if(finiteOracle=="weather-pain"){NativeCombatWeatherPainChecks.Run(context);return;}
+            if(finiteOracle=="phantasm-echo"){NativeCombatPhantasmEchoChecks.Run(context);return;}
+            if(finiteOracle=="magnet-sphere"){NativeCombatMagnetSphereChecks.Run(context);return;}
+            if(finiteOracle=="spirit-flame"){NativeCombatBallisticSpiritChecks.Run(context);return;}
+            if(finiteOracle=="typhoon"){NativeCombatBallisticTyphoonChecks.Run(context);return;}
+            if(finiteOracle=="cloud"){NativeCombatBallisticCloudChecks.Run(context);return;}
+            if(finiteOracle=="ballistic-seeds"){NativeCombatBallisticSeedChecks.Run(context);return;}
+            if(finiteOracle=="free-flight"){NativeCombatBallisticFreeFlightChecks.Run(context);return;}
             if(finiteOracle=="betsy-flame"){NativeCombatBetsyFlameChecks.Run(context);return;}
             if(finiteOracle=="electrosphere"){NativeCombatElectrosphereChecks.Run(context);return;}
             if(finiteOracle=="barrel"){NativeCombatBarrelChecks.Run(context);return;}
@@ -77,7 +126,11 @@ namespace NativeWorldTextProbe
             {
                 NativeCombatObservationChecks.Save(host,new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,row[0],0,0);p.position=new Vector2(700,646);p.ResetEffects();Main.screenPosition=new Vector2(600,500);p.inventory[54].SetDefaults(row[1]);p.inventory[54].stack=999;Main.rand=new Terraria.Utilities.UnifiedRandom(7123);
                 var n=Main.npc[2];n.SetDefaults(3);n.whoAmI=2;n.active=true;n.position=new Vector2(1100,646);n.life=n.lifeMax=10000;n.target=0;n.defense=0;n.netOffset=Vector2.Zero;n.velocity=Vector2.Zero;n.aiStyle=-1;n.noGravity=true;n.knockBackResist=0;Array.Clear(n.immune,0,n.immune.Length);
-                NativeToolExecutionChecks.Sample(context,input,n.Center,true);Call(combat,"Sample");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,false,true));NativeCombatAimChecks.Prepare(host,attack,n,0);
+                // This thirteen-row oracle publishes a synthetic121 future
+                // to compare native birth/derived roles and first Damage.
+                // Its explicit mechanism scope is not a cold Main opportunity;
+                // Shoot still consumes the real permission/input outlet.
+                NativeToolExecutionChecks.Sample(context,input,n.Center,true);Call(combat,"Sample");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,false,true));NativeCombatAimChecks.PrepareMechanismFixture(host,attack,n,0);
                 var plan=(AttackContact)GetOptional(attack,"ExpectedImpact");Require(plan!=null,"explicit primary/representative effect family prepares a useful input: "+row[2]);
                 if(row[0]==518)Require(plan.Confidence==AttackConfidence.Representative,"CrystalStorm native random component offsets cannot promise an exact unborn birth");
                 typeof(Player).GetMethod("ItemCheck_Shoot",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),true});var parent=Main.projectile.Single(q=>q.active && q.owner==0);Require(parent.type==row[2],"native effect ammo identity");
@@ -152,7 +205,57 @@ namespace NativeWorldTextProbe
             ChaseQualification(context,combat,host,input);
             NativeCombatObstacleChecks.Run(context);
             NativeCombatBallisticCandidateChecks.Run(context);
+            NativeCombatBallisticSeedChecks.Run(context);
+            NativeCombatBallisticFreeFlightChecks.Run(context);
+            NativeCombatBallisticRapierChecks.Run(context);
+            NativeCombatBallisticCloudChecks.Run(context);
+            NativeCombatBallisticTyphoonChecks.Run(context);
+            NativeCombatBallisticSpiritChecks.Run(context);
+            NativeCombatHomingEffectChecks.Run(context);
+            NativeCombatNativeArrowBirthChecks.Run(context);
+            NativeCombatMagnetSphereChecks.Run(context);
+            NativeCombatPlacedPulseChecks.Run(context);
+            NativeCombatTerrainLineChecks.Run(context);
+            NativeCombatFixedSkyChecks.Run(context);
+            NativeCombatSeedlerChecks.Run(context);
+            NativeCombatRainbowChecks.Run(context);
+            NativeCombatArrowFamilyChecks.Run(context);
+            NativeCombatImpactBurstChecks.Run(context);
+            NativeCombatClingerWallChecks.Run(context);
+            NativeCombatJoustingLanceChecks.Run(context);
+            NativeCombatWhipStarChecks.Run(context);
+            NativeCombatHarpyArrowFamilyChecks.Run(context);
+            NativeCombatBubbleFlailFamilyChecks.Run(context);
+            NativeCombatPiranhaChecks.Run(context);
+            NativeCombatLightsBaneChecks.Run(context);
+            NativeCombatSharpTearsChecks.Run(context);
+            NativeCombatNorthPoleChecks.Run(context);
+            NativeCombatOnyxBlastChecks.Run(context);
+            NativeCombatHeldAmmoFamilyChecks.Run(context);
+            NativeCombatAmmoSteeringChecks.Run(context);
+            NativeCombatBeeHandChecks.Run(context);
+            NativeCombatMeleeHitChildChecks.Run(context);
+            NativeCombatMeleeHitFamilyChecks.Run(context);
+            NativeCombatAmmoImpactChecks.Run(context);
+            NativeCombatArcOwnerPoseChecks.Run(context);
+            NativeCombatGrassCurveChecks.Run(context);
+            NativeCombatMonkStaffChecks.Run(context);
+            FiniteTail(context);
             NativeCombatObservationChecks.Save(host,new ObservationOptions());
+        }
+        private static void FiniteTail(object context)
+        {
+            NativeCombatSuperStarChecks.Run(context);
+            NativeCombatNebulaArcanumChecks.Run(context);
+            NativeCombatMedusaScanChecks.Run(context);
+            NativeCombatSolarEruptionChecks.Run(context);
+            NativeCombatInfluxChecks.Run(context);
+            NativeCombatNailChecks.Run(context);
+            NativeCombatSpearShardChecks.Run(context);
+            NativeCombatGuitarCurveChecks.Run(context);
+            NativeCombatYoyoFamilyChecks.Run(context);
+            NativeCombatWeatherPainChecks.Run(context);
+            NativeCombatPhantasmEchoChecks.Run(context);
         }
         private static void ChaseQualification(object context,object combat,object host,object input)
         {
@@ -257,7 +360,7 @@ namespace NativeWorldTextProbe
             {
                 NativeCombatObservationChecks.Save(host,new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,518,0,0);p.position=new Vector2(700,646);p.ResetEffects();Main.screenPosition=new Vector2(600,500);Main.windPhysics=false;Main.rand=new Terraria.Utilities.UnifiedRandom(7123+seed);
                 var n=Main.npc[2];n.SetDefaults(3);n.whoAmI=2;n.active=true;n.position=new Vector2(1100,646);n.life=n.lifeMax=10000;n.target=0;n.defense=0;n.netOffset=Vector2.Zero;n.velocity=Vector2.Zero;n.aiStyle=-1;n.noGravity=true;n.knockBackResist=0;Array.Clear(n.immune,0,n.immune.Length);
-                NativeToolExecutionChecks.Sample(context,input,n.Center,true);Call(combat,"Sample");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,false,true));NativeCombatAimChecks.Prepare(host,attack,n,0);var representative=(AttackContact)GetOptional(attack,"ExpectedImpact");Require(representative!=null && representative.Confidence==AttackConfidence.Representative,"unborn CrystalStorm random velocity remains a representative");
+                NativeToolExecutionChecks.Sample(context,input,n.Center,true);Call(combat,"Sample");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,false,true));NativeCombatAimChecks.PrepareMechanismFixture(host,attack,n,0);var representative=(AttackContact)GetOptional(attack,"ExpectedImpact");Require(representative!=null && representative.Confidence==AttackConfidence.Representative,"unborn CrystalStorm random velocity remains a representative");
                 typeof(Player).GetMethod("ItemCheck_Shoot",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),true});var shot=Main.projectile.Single(q=>q.active && q.owner==0);Require(shot.type==94,"CrystalStorm creates its actual AI024 member");
                 var key=new NpcIdentity(1,new object(),2,1,n.type,n.netID);var state=new NpcMotionState{Identity=key,X=n.position.X,Y=n.position.Y,Width=n.width,Height=n.height,CanReceive=true};var points=Enumerable.Range(0,181).Select(t=>new NpcTrajectoryPoint(t,state)).ToArray();var timeline=new NpcTrajectory(key,0,1,PredictionAssumption.None,PredictionStop.None,points,points.Length,PredictionStrategy.RollingConditional);
                 var birth=shot.Center;var velocity=shot.velocity;var terrain=Activator.CreateInstance(terrainType,true);Call(terrain,"Reset");var exact=(AttackContact)replay.Invoke(null,new object[]{shot,terrain,timeline,new Vector2(representative.AimX,representative.AimY),birth,velocity,0});var shadow=Activator.CreateInstance(stateType,BindingFlags.Instance|BindingFlags.NonPublic,null,new object[]{shot,birth,velocity},null);int first=0;
@@ -274,13 +377,16 @@ namespace NativeWorldTextProbe
         }
         private static void HomingCases(object context,object combat,object host,object attack,object input)
         {
+            // These direct Shoot/finite native Update oracles provide their
+            // receiver path explicitly. Use the component allowance, keeping
+            // all original outcomes separate from ordinary Main opportunity.
             foreach(int scene in new[]{0,1,2})
             {
                 NativeCombatObservationChecks.Save(host,new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,95,0,0);p.position=new Vector2(700,646);p.ResetEffects();Main.screenPosition=new Vector2(600,500);p.inventory[54].SetDefaults(1179);p.inventory[54].stack=999;
                 var n=Main.npc[2];n.SetDefaults(scene==2?488:3);n.whoAmI=2;n.active=true;n.position=new Vector2(1100,646);n.target=0;n.netOffset=Vector2.Zero;n.knockBackResist=0;Array.Clear(n.immune,0,n.immune.Length);if(scene!=2)n.life=n.lifeMax=10000;
                 if(scene==0)for(int y=20;y<=43;y++){Main.tile[56,y].active(true);Main.tile[56,y].type=1;}
                 if(scene==1){var other=Main.npc[3];other.SetDefaults(3);other.whoAmI=3;other.active=true;other.position=new Vector2(1000,646);other.life=other.lifeMax=10000;other.target=0;other.netOffset=Vector2.Zero;Array.Clear(other.immune,0,other.immune.Length);}
-                NativeToolExecutionChecks.Sample(context,input,n.Center,true);Call(combat,"Sample");Call(Get(host,"Selection"),"SampleMouse",input);NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,true,scene==2,25,false,true));NativeCombatAimChecks.Prepare(host,attack,n,0);var plan=(AttackContact)GetOptional(attack,"ExpectedImpact");dummyHits=0;
+                NativeToolExecutionChecks.Sample(context,input,n.Center,true);Call(combat,"Sample");Call(Get(host,"Selection"),"SampleMouse",input);NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,true,scene==2,25,false,true));NativeCombatAimChecks.PrepareMechanismFixture(host,attack,n,0);var plan=(AttackContact)GetOptional(attack,"ExpectedImpact");dummyHits=0;
                 typeof(Player).GetMethod("ItemCheck_Shoot",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),true});var q=Main.projectile.Single(s=>s.active && s.type==207);int first=0;bool untracked=n.CanBeChasedBy(null);
                 for(int tick=1;tick<=45 && q.active;tick++){q.Update(q.whoAmI);if(scene==2?dummyHits>0:n.life<10000){first=tick;break;}}
                 Console.WriteLine("EFFECT homing boundary: scene="+scene+" contact="+plan?.Tick+" first="+first+" nativeTarget="+q.ai[1]+" chaseable="+untracked+" dummyHits="+dummyHits+" blockerLife="+Main.npc[3].life);
@@ -292,7 +398,7 @@ namespace NativeWorldTextProbe
             NativeCombatObservationChecks.Save(host,new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,95,0,0);p.position=new Vector2(700,646);p.ResetEffects();Main.screenPosition=new Vector2(600,500);p.inventory[54].SetDefaults(234);p.inventory[54].stack=999;
             var n=Main.npc[2];n.SetDefaults(3);n.whoAmI=2;n.active=true;n.position=new Vector2(850,620);n.life=n.lifeMax=10000;n.target=0;n.netOffset=Vector2.Zero;n.knockBackResist=0;Array.Clear(n.immune,0,n.immune.Length);Main.tile[49,40].active(true);Main.tile[49,40].type=1;
             if(closed)for(int y=39;y<=43;y++){Main.tile[51,y].active(true);Main.tile[51,y].type=1;}
-            NativeToolExecutionChecks.Sample(context,input,new Vector2(810,708),true);Call(combat,"Sample");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,false,true));NativeCombatAimChecks.Prepare(host,attack,n,0);var plan=(AttackContact)GetOptional(attack,"ExpectedImpact");
+            NativeToolExecutionChecks.Sample(context,input,new Vector2(810,708),true);Call(combat,"Sample");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,false,true));NativeCombatAimChecks.PrepareMechanismFixture(host,attack,n,0);var plan=(AttackContact)GetOptional(attack,"ExpectedImpact");
             typeof(Player).GetMethod("ItemCheck_Shoot",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),true});var q=Main.projectile.Single(s=>s.active && s.type==36);int first=0;bool bounced=false;
             for(int tick=1;tick<=60 && q.active;tick++){var old=q.velocity;q.Update(q.whoAmI);if(old.Y>0 && q.velocity.Y<0)bounced=true;if(n.life<10000){first=tick;break;}}
             Console.WriteLine("EFFECT bounce: closed="+closed+" expected="+plan?.Tick+" first="+first+" bounce="+bounced+" remaining="+q.penetrate+" center="+q.Center);Require(closed?first==0:first>0 && bounced,"native MeteorShot reflection respects the open/closed passage");Require(closed?plan==null:plan!=null && plan.Tick==first,"finite reflection contact matches first natural Damage without changing native bounce");
@@ -302,7 +408,7 @@ namespace NativeWorldTextProbe
             NativeCombatObservationChecks.Save(host,new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,759,0,0);p.position=new Vector2(700,646);p.ResetEffects();Main.screenPosition=new Vector2(600,500);p.inventory[54].SetDefaults(771);p.inventory[54].stack=999;
             var n=Main.npc[2];n.SetDefaults(3);n.whoAmI=2;n.active=true;n.position=new Vector2(far?990:920,610);n.life=n.lifeMax=10000;n.target=0;n.netOffset=Vector2.Zero;n.knockBackResist=0;Array.Clear(n.immune,0,n.immune.Length);
             for(int y=20;y<=43;y++){Main.tile[56,y].active(true);Main.tile[56,y].type=1;}
-            NativeToolExecutionChecks.Sample(context,input,n.Center,true);Call(combat,"Sample");NativeCombatObservationChecks.Save(host,new ObservationOptions(true,true,false,false,false,25,false,true));NativeCombatAimChecks.Prepare(host,attack,n,0);var plan=(AttackContact)GetOptional(attack,"ExpectedImpact");
+            NativeToolExecutionChecks.Sample(context,input,n.Center,true);Call(combat,"Sample");NativeCombatObservationChecks.Save(host,new ObservationOptions(true,true,false,false,false,25,false,true));NativeCombatAimChecks.PrepareMechanismFixture(host,attack,n,0);var plan=(AttackContact)GetOptional(attack,"ExpectedImpact");
             typeof(Player).GetMethod("ItemCheck_Shoot",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),true});var q=Main.projectile.Single(s=>s.active && s.type==134);int first=0;
             Console.WriteLine("EFFECT rocket birth: position="+q.position+" size="+q.width+"x"+q.height+" velocity="+q.velocity+" speed="+p.HeldItem.shootSpeed+" plan="+plan?.ImpactX+","+plan?.ImpactY);
             for(int tick=1;tick<=60 && q.active;tick++){q.Update(q.whoAmI);if(tick>=16)Console.WriteLine("EFFECT rocket phase: tick="+tick+" center="+q.Center+" velocity="+q.velocity+" active="+q.active);if(n.life<10000){first=tick;break;}}

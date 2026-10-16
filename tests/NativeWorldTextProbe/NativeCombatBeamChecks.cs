@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
@@ -48,6 +48,10 @@ namespace NativeWorldTextProbe
                 typeof(Player).GetMethod("ItemCheck_Shoot",Flags).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),false});var parent=Main.projectile.Single(q=>q.active && q.owner==0);int first=-1;float length=0;
                 for(int stage=1;stage<=185;stage++)
                 {
+                    // Each repeated native projectile phase is a distinct
+                    // world action. Replaying185 phases at one GUC charged all
+                    // preparation to one shared allowance and misdated leases.
+                    NativeQuickItemChecks.BeginWorldStep();NativeToolExecutionChecks.Sample(context,input,new Vector2(650,550),true);Call(combat,"Sample");
                     // This fixture freezes the NPC body while its ordinary
                     // owner immunity clock advances with the native AI phase.
                     if(n.immune[0]>0)n.immune[0]--;

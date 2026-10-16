@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -17,7 +17,7 @@ namespace NativeWorldTextProbe
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static|BindingFlags.Instance;
         private static readonly int[] Types={163,310,1008,1009,1010,1011},Ammos={931,1614,5377,5378,5379,5380};
         private static Assembly assembly;private static Type model;private static NPC target;private static Projectile receiving;
-        private static bool natural;private static long first,birthTick;private static int births,solves,steps;private static AttackContact known;private static Vector2 raw;
+        private static bool natural;private static object naturalAttack;private static long first,birthTick;private static int births,solves,steps;private static AttackContact known;private static Vector2 raw;
         private static readonly List<int> hits=new List<int>();
         private static object Static(Type type,string method,params object[] args){return type.GetMethod(method,Flags).Invoke(null,args);}
         private static void SolveWork(){solves++;}private static void StepWork(){steps++;}
@@ -47,7 +47,7 @@ namespace NativeWorldTextProbe
         private static void Born(IEntitySource __0,int __result)
         {
             if(!natural || __result<0 || __result>=Main.maxProjectiles)return;var q=Main.projectile[__result];if(!Types.Contains(q.type))return;
-            births++;if(births!=1)return;birthTick=Main.GameUpdateCount;var p=Main.LocalPlayer;var origin=p.RotatedRelativePoint(p.MountedCenter);var cursor=new Vector2(Main.mouseX,Main.mouseY)+Main.screenPosition;
+            Require((bool)Get(naturalAttack,"hasConsumedInput") && Convert.ToString(Get(Get(naturalAttack,"consumedInput"),"Kind"))=="Enhanced","every original flare hand consumes its ready prepared cursor");births++;if(births!=1)return;birthTick=Main.GameUpdateCount;var p=Main.LocalPlayer;var origin=p.RotatedRelativePoint(p.MountedCenter);var cursor=new Vector2(Main.mouseX,Main.mouseY)+Main.screenPosition;
             var ammo=p.inventory.First(a=>a!=null && a.stack>0 && a.ammo==931);var expected=(Vector2)Static(assembly.GetType("JueMingR.TerrariaHost.Combat.HostThornAttack",true),"BirthVelocity",p,origin,cursor,p.HeldItem.shootSpeed+ammo.shootSpeed);
             Require(q.type==ammo.shoot && q.damage==p.GetWeaponDamage(p.HeldItem)+(int)(ammo.damage*p.GetWeaponDamageMultiplier(ammo)) && Vector2.DistanceSquared(q.Center,origin)<.0001f && Vector2.DistanceSquared(q.velocity,expected)<.0001f && Vector2.Dot(q.velocity,raw-origin)<0,"actual flare birth uses selected round, native ammo damage/speed and borrowed cursor opposite physical mouse");
             var path=Timeline(target);known=(AttackContact)Static(model,"Known",p,q,path,Clock(path),Terrain(),Obstacles(p,q,path));
@@ -64,8 +64,9 @@ namespace NativeWorldTextProbe
             audit.Patch(typeof(Projectile).GetMethods(Flags).Single(m=>m.Name=="NewProjectile" && m.GetParameters().Length==13 && m.GetParameters()[1].ParameterType==typeof(float)),postfix:new HarmonyMethod(typeof(NativeCombatFlareChecks),nameof(Born)));
             audit.Patch(typeof(Projectile).GetMethod("Damage",Flags),prefix:new HarmonyMethod(typeof(NativeCombatFlareChecks),nameof(BeforeDamage)),postfix:new HarmonyMethod(typeof(NativeCombatFlareChecks),nameof(AfterDamage)));
             audit.Patch(typeof(NPC).GetMethod("StrikeNPC",new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)}),postfix:new HarmonyMethod(typeof(NativeCombatFlareChecks),nameof(Strike)));
+            var componentHand=new NativeCombatHandFixture(context,()=>natural,()=>target);
             try{string leaf=Environment.GetEnvironmentVariable("JMR_FLARE_ORACLE_ONLY");Require(string.IsNullOrEmpty(leaf) || leaf=="motor" || leaf=="receive" || leaf=="natural","known flare leaf");if(string.IsNullOrEmpty(leaf) || leaf=="motor")Motors(context);if(string.IsNullOrEmpty(leaf) || leaf=="receive")Receives(context);if(string.IsNullOrEmpty(leaf) || leaf=="natural")foreach(int ammo in Ammos)Natural(context,ammo);}
-            finally{natural=false;audit.UnpatchAll(audit.Id);Main.windPhysics=wind;Main.instance.SpelunkerProjectileHelper=priorSpelunker;}
+            finally{componentHand.Dispose();natural=false;audit.UnpatchAll(audit.Id);Main.windPhysics=wind;Main.instance.SpelunkerProjectileHelper=priorSpelunker;}
         }
         private static void Motors(object context)
         {
@@ -117,15 +118,20 @@ namespace NativeWorldTextProbe
         private static void Natural(object context,int ammo)
         {
             var p=Reset(context,ammo);p.position=new Vector2(650,646);p.releaseUseItem=true;Main.screenPosition=new Vector2(500,400);for(int x=5;x<115;x++)NativeToolsChecks.Tile(x,43,1);target=NativeCombatControlPreviewChecks.Dummy(2,48,40);raw=target.Center-new Vector2(490,0);var host=Get(context,"CombatObservation");var attack=Get(Get(context,"Combat"),"Attack");solves=steps=0;
-            NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,false));for(int i=0;i<3;i++){NativeCombatSelectionPreviewChecks.Step(context,raw,false,true);Require(GetOptional(attack,"ExpectedPreview")!=null && !Main.projectile.Any(q=>q.active),"idle flare preview is independent of attack permission");}
-            natural=true;NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));int visible=0;
+            NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,false));for(int i=0;i<3;i++){NativeCombatSelectionPreviewChecks.Step(context,raw,false,true);Require(GetOptional(attack,"ExpectedPreview")==null && !Main.projectile.Any(q=>q.active) && solves==0,"withdrawn idle flare preview has no solve or attack authority");}
+            natural=true;naturalAttack=attack;NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));int visible=0;
             for(int i=0;i<42;i++)
             {
-                NativeCombatSelectionPreviewChecks.Step(context,raw,i!=22);var plan=(AttackContact)GetOptional(attack,"ExpectedPreview");Require(plan!=null,"feasible flare idle/use/cooldown interval retains a valid preview");visible++;
-                int a=solves,b=steps;var marker=Get(Get(host,"World"),"Impact");var zoom=Main.GameViewMatrix.ZoomMatrix;for(int j=0;j<12;j++){Call(marker,"Capture");Call(marker,"Project",zoom,Matrix.Invert(zoom));Require((bool)Call(attack,"PreviewCurrent",plan),"same-update CPU flare presentation remains current");}Require(a==solves && b==steps,"CPU presentation does not solve or replay flares");
+                NativeToolExecutionChecks.Sample(context,Get(context,"Input"),raw,i!=22);Call(Get(context,"Combat"),"Sample");NativeCombatAimChecks.PrepareMechanismFixture(host,attack,target,0);var plan=(AttackContact)GetOptional(attack,"ExpectedImpact");
+                if(plan!=null)
+                {
+                    visible++;Call(attack,"BindPresentation",plan);int a=solves,b=steps;var marker=Get(Get(host,"World"),"Impact");var zoom=Main.GameViewMatrix.ZoomMatrix;
+                    for(int j=0;j<12;j++){Call(marker,"Capture");Call(marker,"Project",zoom,Matrix.Invert(zoom));Require((bool)Call(attack,"PresentationCurrent",plan),"same-update CPU flare presentation retains an actual ready hand");}Require(a==solves && b==steps,"CPU presentation never solves or replays flares");
+                }
+                NativeCombatSelectionPreviewChecks.Step(context,raw,i!=22);Require(GetOptional(attack,"ExpectedPreview")==null,"real flare idle/use/cooldown stages never restore a hypothetical preview");
             }
-            Require(births>=2 && known!=null && first>=birthTick && first-birthTick+1==known.Tick,"actual flare positive Strike matches born flight and a legal release/second click");
-            Console.WriteLine("PASS FLARE natural ammo="+ammo+" births="+births+" first="+(first-birthTick+1)+" known="+known.Tick+" preview="+visible+"/42 solves="+solves+" steps="+steps+" CPU=12x0");
+            Require(visible>=2 && births>=2 && known!=null && first>=birthTick && first-birthTick+1==known.Tick,"actual flare positive Strike matches born flight and a legal release/second click");
+            Console.WriteLine("PASS FLARE natural ammo="+ammo+" births="+births+" first="+(first-birthTick+1)+" known="+known.Tick+" readyHands="+visible+" realUpdates=42 solves="+solves+" steps="+steps+" CPU=12x0");
             NativeCombatSelectionPreviewChecks.Step(context,raw,false);natural=false;
         }
     }

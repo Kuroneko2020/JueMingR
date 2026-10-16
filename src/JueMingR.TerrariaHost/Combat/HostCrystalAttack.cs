@@ -55,10 +55,11 @@ namespace JueMingR.TerrariaHost.Combat
         {
             var sample=ContentSamples.ProjectilesByType[ammo.Projectile];bool bornWet;byte kind;if(!terrain.ProjectileWet(origin.X,origin.Y,sample.width,sample.height,out bornWet,out kind) || bornWet && kind==3)return null;
             var receive=HostAttackReceive.Capture(player,sample,timeline.Identity.Slot,beforeNpc,!beforeNpc);int limit=Math.Min(120,timeline.Count-age-1);if(limit<=0)return null;
-            AttackMotion motion;if(!HostAttackModels.TryRead(ammo,out motion))return null;var direct=AttackIntercept.Solve(origin.X,origin.Y,motion,timeline,age,0);var directions=new Vector2[42];int count=0;
-            for(int seed=-1;seed<41;seed++)
+            AttackMotion motion;if(!HostAttackModels.TryRead(ammo,out motion))return null;var proposals=HostMotionAttackInputs.Generate(origin,motion,timeline,age);var directions=new Vector2[proposals.Length+41];int count=0;
+            for(int input=0;input<directions.Length;input++)
             {
-                Vector2 direction;if(seed<0){if(direct==null)continue;direction=new Vector2(direct.AimX-origin.X,direct.AimY-origin.Y).SafeNormalize(Vector2.UnitX*player.direction);}
+                int seed=input-proposals.Length;
+                Vector2 direction;if(seed<0)direction=proposals[input];
                 else if(seed<9){var b=timeline[Math.Min(timeline.Count-1,age+1+seed*4)].ProjectileReceiveBounds;direction=(new Vector2(b.CenterX,b.CenterY)-origin).SafeNormalize(Vector2.UnitX*player.direction);}
                 else direction=((seed-9)*MathHelper.TwoPi/32).ToRotationVector2();bool duplicate=false;for(int i=0;i<count;i++)if(directions[i]==direction){duplicate=true;break;}if(duplicate)continue;directions[count++]=direction;
                 var s=new State(sample,origin,direction*ammo.Speed);s.Wet=!sample.ignoreWater && bornWet;s.Honey=bornWet && kind==2;var aim=origin+direction*10000;obstacles.BeginCandidate();int k=0;

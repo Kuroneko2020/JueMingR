@@ -13,7 +13,7 @@ namespace JueMingR.TerrariaHost.Combat
     // this projectile. All state here is private; no NPC damage/buff or RNG.
     internal static class HostFiniteThrowAttack
     {
-        internal static bool Handles(int type){return type==93 || type==166 || type==306 || type==954 || type==979;}
+        internal static bool Handles(int type){return type==93 || type==166 || type==306 || type==954 || type==979 || HostSeedThrowAttack.Handles(type);}
         internal struct State
         {
             internal Vector2 Center,Velocity;internal float Counter;internal int Left;
@@ -30,6 +30,7 @@ namespace JueMingR.TerrariaHost.Combat
         {if(state.Alive && state.Left<=0){state.Alive=false;state.Left=0;}}
         internal static bool Step(Projectile sample,PredictionTerrain terrain,ref State state)
         {
+            if(HostSeedThrowAttack.Handles(sample.type))return HostSeedThrowAttack.Step(sample,terrain,ref state);
             if(!state.Alive || state.Left<=0){state.Alive=false;return true;}
             Vector2 wetVelocity=state.Velocity;
             if(state.Shimmer && sample.type!=166)return false;
@@ -87,12 +88,14 @@ namespace JueMingR.TerrariaHost.Combat
             var sample=ContentSamples.ProjectilesByType[ammo.Projectile];bool wet;byte kind;if(!terrain.ProjectileWet(origin.X,origin.Y,sample.width,sample.height,out wet,out kind) || wet && kind==3 && sample.type!=166)return null;
             var towns=sample.type==166 && ammo.WeaponType==949?obstacles.CaptureTownBodies(sample):null;
             var receive=HostAttackReceive.Capture(player,sample,timeline.Identity.Slot,beforeNpc,!beforeNpc);AttackMotion motion;if(!HostAttackModels.TryRead(ammo,out motion))return null;
-            int limit=Math.Min(120,timeline.Count-age-1);if(limit<=0)return null;var direct=AttackIntercept.Solve(origin.X,origin.Y,motion,timeline,age,0);var directions=new Vector2[42];int count=0;
+            int limit=Math.Min(120,timeline.Count-age-1);if(limit<=0)return null;
             for(int threshold=28;threshold<=(sample.type==93?33:28);threshold++)
             {
-            count=0;for(int seed=-1;seed<41;seed++)
+            var proposals=HostMotionAttackInputs.Generate(origin,sample.type==93?motion.WithGravityStart(threshold):motion,timeline,age);var directions=new Vector2[proposals.Length+41];int count=0;
+            for(int input=0;input<directions.Length;input++)
             {
-                Vector2 direction;if(seed<0){if(direct==null)continue;direction=new Vector2(direct.AimX-origin.X,direct.AimY-origin.Y).SafeNormalize(Vector2.UnitX*player.direction);}else if(seed<9){var b=timeline[Math.Min(timeline.Count-1,age+1+seed*4)].ProjectileReceiveBounds;direction=(new Vector2(b.CenterX,b.CenterY)-origin).SafeNormalize(Vector2.UnitX*player.direction);}else direction=((seed-9)*MathHelper.TwoPi/32).ToRotationVector2();bool duplicate=false;for(int i=0;i<count;i++)if(directions[i]==direction){duplicate=true;break;}if(duplicate)continue;directions[count++]=direction;
+                int seed=input-proposals.Length;
+                Vector2 direction;if(seed<0)direction=proposals[input];else if(seed<9){var b=timeline[Math.Min(timeline.Count-1,age+1+seed*4)].ProjectileReceiveBounds;direction=(new Vector2(b.CenterX,b.CenterY)-origin).SafeNormalize(Vector2.UnitX*player.direction);}else direction=((seed-9)*MathHelper.TwoPi/32).ToRotationVector2();bool duplicate=false;for(int i=0;i<count;i++)if(directions[i]==direction){duplicate=true;break;}if(duplicate)continue;directions[count++]=direction;
                 var state=new State(sample,origin,direction*ammo.Speed){Wet=!sample.ignoreWater && wet,Honey=wet && kind==2,Shimmer=wet && kind==3,GravityThreshold=threshold};var aim=origin+direction*10000;obstacles.BeginCandidate();int k=0;
                 for(int outer=1;outer<=limit && state.Alive && state.Left>0;outer++)for(int sub=0;sub<sample.extraUpdates+1 && state.Alive && state.Left>0;sub++)
                 {

@@ -23,6 +23,8 @@ namespace NativeWorldTextProbe
             var make=stateType.GetConstructor(Flags,null,new[]{typeof(bool),typeof(bool)},null);
             bool savedGate=Main.windPhysics;float savedSpeed=Main.windSpeedCurrent,savedTarget=Main.windSpeedTarget,savedStrength=Main.windPhysicsStrength;int savedCounter=Main.windCounter;
             bool pushed=Main.LocalPlayer.windPushed;
+            var savedTiles=Main.tile;int savedWidth=Main.maxTilesX,savedHeight=Main.maxTilesY;
+            var savedRight=Main.rightWorld;var savedBottom=Main.bottomWorld;var savedSurface=Main.worldSurface;var savedRock=Main.rockLayer;
             try
             {
                 int cases=0,sensitive=0,immune=0;
@@ -78,7 +80,14 @@ namespace NativeWorldTextProbe
                 }
                 Console.WriteLine("PASS wind dependencies original projectile cases="+cases+" sensitive="+sensitive+" immune="+immune+" actual UpdateWeather changes="+changes+"; gate toggle / player positive and negative / pure hand");
             }
-            finally{Main.windPhysics=savedGate;Main.windSpeedCurrent=savedSpeed;Main.windSpeedTarget=savedTarget;Main.windPhysicsStrength=savedStrength;Main.windCounter=savedCounter;Main.LocalPlayer.windPushed=pushed;}
+            finally
+            {
+                Main.windPhysics=savedGate;Main.windSpeedCurrent=savedSpeed;Main.windSpeedTarget=savedTarget;Main.windPhysicsStrength=savedStrength;Main.windCounter=savedCounter;Main.LocalPlayer.windPushed=pushed;
+                // FlightWorld replaces these values for its native wind cases.
+                // Later cumulative oracles retain their own exact world and
+                // bottom-scan boundary; no temporary tiles escape this scope.
+                Main.tile=savedTiles;Main.maxTilesX=savedWidth;Main.maxTilesY=savedHeight;Main.rightWorld=savedRight;Main.bottomWorld=savedBottom;Main.worldSurface=savedSurface;Main.rockLayer=savedRock;
+            }
         }
         private static PredictionEnvironment CaptureEnvironment(object source,object host,NPC npc)
         {

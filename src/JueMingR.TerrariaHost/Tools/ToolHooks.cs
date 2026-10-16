@@ -39,6 +39,7 @@ namespace JueMingR.TerrariaHost.Tools
             Patch(typeof(Projectile),"AI",Type.EmptyTypes,nameof(ProjectileBefore),nameof(ProjectileAfter),nameof(ProjectileFinal));
             Patch(typeof(Projectile),"Kill",Type.EmptyTypes,nameof(KillBefore),nameof(KillAfter),nameof(KillFinal));
             Patch(typeof(Projectile),"Damage",Type.EmptyTypes,nameof(DamageBefore),nameof(ShotAfter),nameof(ShotFinal));
+            Patch(typeof(Main),"UpdateWorld_Projectiles",Type.EmptyTypes,nameof(BeforeProjectileWorld));
             var selection=typeof(Player).GetNestedType("SelectedItemState",BindingFlags.Public|BindingFlags.NonPublic);
             if(selection==null)throw new MissingMemberException("SelectedItemState");
             Patch(selection,"Select",new[]{typeof(int)},nameof(Select));
@@ -98,6 +99,10 @@ namespace JueMingR.TerrariaHost.Tools
         }
         private static void AfterReuse(Player __instance){host?.Combat?.Use.AfterReuse(__instance);}
         private static void ProjectileCreated(Player __instance,Projectile __0){host?.Use.ObserveProjectile(__instance,__0);host?.FishingProjectile?.Invoke(__instance,__0);host?.Combat?.Use.Created(__instance,__0);host?.Combat?.Attack?.Control.Created(__instance,__0);}
+        // Vanilla has finished ALL NPC slots here, but has not advanced any
+        // projectile. Finite held volleys must capture their full receiver and
+        // chase scene at this boundary, once; individual AI only consumes it.
+        private static void BeforeProjectileWorld(){host?.Combat?.Attack?.PrepareControlledProjectileWorld();}
         // This call's receipt chooses its owner, even if that action has since
         // stopped or another one began. A value receipt adds no idle allocation;
         // the out scope is published before Combat borrows any input.

@@ -20,6 +20,16 @@ namespace NativeWorldTextProbe
         private sealed class Birth
         {internal Projectile Shot;internal long Tick,First=-1;internal AttackContact Known;internal int Type,Damage;internal Vector2 Center,Velocity,Cursor;}
         private static readonly List<Birth> born=new List<Birth>();private static readonly List<int> strikeSlots=new List<int>();
+        private static object componentContext;private static int preparedHands;
+        // Preserve native continuous-use cadence. Only at an actual Shoot
+        // entry do we supply this component's explicit1000ms preparation;
+        // ordinary preparation budgets are measured separately by the main
+        // workload, and retired idle/next-hand previews stay absent.
+        private static void PrepareNativeHand(Player __instance)
+        {
+            if(componentContext==null || !recordBirth || __instance.whoAmI!=Main.myPlayer || __instance.HeldItem.type!=3542)return;
+            var host=Get(componentContext,"CombatObservation");var combat=Get(componentContext,"Combat");var attack=Get(combat,"Attack");NativeToolExecutionChecks.Sample(componentContext,Get(componentContext,"Input"),raw,true);Call(combat,"Sample");NativeCombatAimChecks.PrepareMechanismFixture(host,attack,target,0);var plan=(AttackContact)GetOptional(attack,"ExpectedImpact");Require(plan!=null && plan.Confidence==AttackConfidence.Representative,"actual native Nebula hand has its legal random representative preparation");preparedHands++;Draws(host,attack,plan);
+        }
         private static object Static(Type t,string name,params object[] args){return t.GetMethod(name,Flags).Invoke(null,args);}
         private static void SolveWork(){solves++;modelDepth++;}private static void KnownWork(){knownCalls++;modelDepth++;}private static void ModelDone(){modelDepth--;}
         private static void RngWork(){if(modelDepth>0)rngCalls++;}private static void TargetWork(){if(modelDepth>0)targetCaptures++;}
@@ -72,18 +82,22 @@ namespace NativeWorldTextProbe
         {
             assembly=Get(context,"Combat").GetType().Assembly;model=assembly.GetType("JueMingR.TerrariaHost.Combat.HostNebulaBlazeAttack",true);var audit=new Harmony("JueMingR.Tests.NebulaBlaze");bool wind=Main.windPhysics;
             foreach(string name in new[]{"HandleSpecialEvent","HandleRunning","HandleMining"})audit.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
-            audit.Patch(model.GetMethod("Solve",Flags),prefix:new HarmonyMethod(typeof(NativeCombatNebulaBlazeChecks),nameof(SolveWork)),postfix:new HarmonyMethod(typeof(NativeCombatNebulaBlazeChecks),nameof(ModelDone)));audit.Patch(model.GetMethod("KnownFamily",Flags),prefix:new HarmonyMethod(typeof(NativeCombatNebulaBlazeChecks),nameof(KnownWork)),postfix:new HarmonyMethod(typeof(NativeCombatNebulaBlazeChecks),nameof(ModelDone)));
+            // Ordinary budgets may unwind a Solve before its normal return.
+            // A finalizer balances the observer even then, so later native
+            // visual/birth RNG is not falsely charged to prediction.
+            audit.Patch(model.GetMethod("Solve",Flags),prefix:new HarmonyMethod(typeof(NativeCombatNebulaBlazeChecks),nameof(SolveWork)),finalizer:new HarmonyMethod(typeof(NativeCombatNebulaBlazeChecks),nameof(ModelDone)));audit.Patch(model.GetMethod("KnownFamily",Flags),prefix:new HarmonyMethod(typeof(NativeCombatNebulaBlazeChecks),nameof(KnownWork)),finalizer:new HarmonyMethod(typeof(NativeCombatNebulaBlazeChecks),nameof(ModelDone)));
             audit.Patch(model.GetMethod("Motor",Flags),prefix:new HarmonyMethod(typeof(NativeCombatNebulaBlazeChecks),nameof(MotorWork)));audit.Patch(model.GetMethod("Capture",Flags),prefix:new HarmonyMethod(typeof(NativeCombatNebulaBlazeChecks),nameof(PoolWork)));
             audit.Patch(assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackObstacles",true).GetMethod("CaptureChaseTargets",Flags),prefix:new HarmonyMethod(typeof(NativeCombatNebulaBlazeChecks),nameof(TargetWork)));
             foreach(var method in Main.rand.GetType().GetMethods(Flags).Where(m=>m.Name=="Next" || m.Name=="NextDouble").Distinct())audit.Patch(method,prefix:new HarmonyMethod(typeof(NativeCombatNebulaBlazeChecks),nameof(RngWork)));
             audit.Patch(typeof(Projectile).GetMethods(Flags).Single(m=>m.Name=="NewProjectile" && m.GetParameters().Length==13 && m.GetParameters()[1].ParameterType==typeof(float)),postfix:new HarmonyMethod(typeof(NativeCombatNebulaBlazeChecks),nameof(Born)));
+            audit.Patch(typeof(Player).GetMethod("ItemCheck_Shoot",Flags),prefix:new HarmonyMethod(typeof(NativeCombatNebulaBlazeChecks),nameof(PrepareNativeHand)){priority=Priority.First});
             audit.Patch(typeof(Projectile).GetMethod("Kill",Flags),prefix:new HarmonyMethod(typeof(NativeCombatNebulaBlazeChecks),nameof(BeforeKill)));audit.Patch(typeof(Projectile).GetMethod("Damage",Flags),prefix:new HarmonyMethod(typeof(NativeCombatNebulaBlazeChecks),nameof(BeforeDamage)),postfix:new HarmonyMethod(typeof(NativeCombatNebulaBlazeChecks),nameof(AfterDamage)));audit.Patch(AccessTools.Method(typeof(NPC),"StrikeNPC",new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)}),postfix:new HarmonyMethod(typeof(NativeCombatNebulaBlazeChecks),nameof(Strike)));
             try
             {
                 string only=Environment.GetEnvironmentVariable("JMR_NEBULA_BLAZE_ORACLE_ONLY");if(string.IsNullOrEmpty(only) || only=="motor")Motors(context);if(string.IsNullOrEmpty(only) || only=="birth")Births(context);if(string.IsNullOrEmpty(only) || only=="receive")Receives(context);if(only=="owner")OwnerRewrite(context);if(string.IsNullOrEmpty(only) || only=="natural")Natural(context);
                 Require(string.IsNullOrEmpty(only) || only=="motor" || only=="birth" || only=="receive" || only=="owner" || only=="natural","nebula narrow selector");
             }
-            finally{recordBirth=false;receiving=null;target=null;audit.UnpatchAll(audit.Id);Main.windPhysics=wind;NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());NativeCombatCadenceChecks.Save(Get(context,"Combat"),new CombatOptions());}
+            finally{componentContext=null;recordBirth=false;receiving=null;target=null;audit.UnpatchAll(audit.Id);Main.windPhysics=wind;NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());NativeCombatCadenceChecks.Save(Get(context,"Combat"),new CombatOptions());}
         }
         private static void Compare(Projectile q,Projectile copy,int scene,int outer)
         {
@@ -156,21 +170,21 @@ namespace NativeWorldTextProbe
         private static void Draws(object host,object attack,AttackContact plan)
         {
             int a=solves,b=steps,c=poolScans;var marker=Get(Get(host,"World"),"Impact");var zoom=Main.GameViewMatrix.ZoomMatrix;
-            for(int i=0;i<20;i++){Call(marker,"Capture");Call(marker,"Project",zoom,Matrix.Invert(zoom));Require((bool)Call(attack,"PreviewCurrent",plan),"nebula same-update observed preview remains leased");}
+            Call(attack,"BindPresentation",plan);for(int i=0;i<20;i++){Call(marker,"Capture");Call(marker,"Project",zoom,Matrix.Invert(zoom));Require((bool)Call(attack,"PresentationCurrent",plan),"nebula same-update actual prepared contact remains leased");}
             Require(a==solves && b==steps && c==poolScans,"twenty presentations add zero Nebula Solve/motor/pool scans");
         }
         private static void Natural(object context)
         {
             var p=Reset(context);p.position=new Vector2(650,646);p.releaseUseItem=true;Main.screenPosition=new Vector2(500,400);for(int x=5;x<115;x++)NativeToolsChecks.Tile(x,43,1);target=NativeCombatControlPreviewChecks.Dummy(2,45,40);target.position.X=p.Center.X+60;raw=target.Center-new Vector2(390,0);solves=steps=poolScans=knownCalls=rngCalls=targetCaptures=modelDepth=0;var host=Get(context,"CombatObservation");var attack=Get(Get(context,"Combat"),"Attack");
-            NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,false));for(int i=0;i<3;i++)NativeCombatSelectionPreviewChecks.Step(context,raw,false,true);var plan=(AttackContact)GetOptional(attack,"ExpectedPreview");Require(plan!=null && plan.Confidence==AttackConfidence.Representative && !Main.projectile.Any(q=>q.active),"idle Nebula random hand is represented without firing");Draws(host,attack,plan);Require(poolScans==solves && targetCaptures==solves && rngCalls==0,"each idle solve captures one pool and chase scene without native RNG");
-            ammo=Static(assembly.GetType("JueMingR.TerrariaHost.Combat.AttackAmmoSnapshot",true),"Capture",p,p.HeldItem);recordBirth=true;NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));int previewFrames=0;
+            NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,false));for(int i=0;i<3;i++)NativeCombatSelectionPreviewChecks.Step(context,raw,false,true);Require(GetOptional(attack,"ExpectedPreview")==null && !Main.projectile.Any(q=>q.active) && solves==0 && poolScans==0 && steps==0 && rngCalls==0,"withdrawn idle Nebula preview has zero solver/pool/motor/RNG work");
+            ammo=Static(assembly.GetType("JueMingR.TerrariaHost.Combat.AttackAmmoSnapshot",true),"Capture",p,p.HeldItem);recordBirth=true;componentContext=context;preparedHands=0;NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,true,25,true,true));int previewFrames=0;
             for(int frame=0;frame<37;frame++)
             {
-                NativeCombatSelectionPreviewChecks.Step(context,raw,true);var next=(AttackContact)GetOptional(attack,"ExpectedPreview");if(frame>=2){Require(next!=null,"continuous12-update weapon preserves a true next-hand preview during cooldown");previewFrames++;}if(frame==8 && next!=null)Draws(host,attack,next);
+                NativeCombatSelectionPreviewChecks.Step(context,raw,true);Require(GetOptional(attack,"ExpectedPreview")==null,"continuous use does not restore retired next-hand previews");previewFrames++;
             }
-            NativeCombatSelectionPreviewChecks.Step(context,raw,false);for(int frame=0;frame<12 && born.Any(b=>b.First<0);frame++)NativeCombatSelectionPreviewChecks.Step(context,raw,false);
+            componentContext=null;NativeCombatSelectionPreviewChecks.Step(context,raw,false);for(int frame=0;frame<12 && born.Any(b=>b.First<0);frame++)NativeCombatSelectionPreviewChecks.Step(context,raw,false);
             foreach(var b in born){Console.WriteLine("NEBULA natural actual type="+b.Type+" first="+(b.First<0?0:b.First-b.Tick+1)+" known="+b.Known?.Tick+" V="+b.Velocity+" cursor="+b.Cursor);Require(b.First>=b.Tick && b.Known!=null && b.Known.Confidence==AttackConfidence.Conditional && b.First-b.Tick+1==b.Known.Tick && Vector2.Dot(b.Velocity,raw-b.Center)<0,"each captured near natural random birth has real positive Strike on immortal488 equal to its actual-born replay, using borrowed cursor opposite raw input");}
-            Require(rngCalls==0 && poolScans==solves+knownCalls && targetCaptures==poolScans && born.Count>=3 && previewFrames>0 && solves>0 && poolScans>0 && steps>0,"every Solve/Known captures one scene, consumes no RNG, and has useful natural source evidence");Console.WriteLine("PASS NEBULA natural actual="+born.Count+" previewFrames="+previewFrames+" solves="+solves+" knownCalls="+knownCalls+" poolScans="+poolScans+" motor="+steps+" RNG="+rngCalls);recordBirth=false;
+            Console.WriteLine("NEBULA workload actual="+born.Count+" preparedHands="+preparedHands+" withdrawnPreviewFrames="+previewFrames+" solves="+solves+" knownCalls="+knownCalls+" poolScans="+poolScans+" targetCaptures="+targetCaptures+" motor="+steps+" RNG="+rngCalls);Require(rngCalls==0 && poolScans==solves+knownCalls && targetCaptures==poolScans && preparedHands==born.Count && born.Count>=3 && previewFrames==37 && solves>0 && poolScans>0 && steps>0,"every actual hand/Solve/Known captures one scene, consumes no prediction RNG, and retains the37-update native continuous cadence");Console.WriteLine("PASS NEBULA natural actual="+born.Count+" preparedHands="+preparedHands+" withdrawnPreviewFrames="+previewFrames+" solves="+solves+" knownCalls="+knownCalls+" poolScans="+poolScans+" motor="+steps+" RNG="+rngCalls+" (1000ms mechanism component allowance)");recordBirth=false;
         }
     }
 }

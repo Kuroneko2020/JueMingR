@@ -55,16 +55,19 @@ namespace JueMingR.TerrariaHost.Combat
         }
         internal void Release(int slot){if(slot>=0 && slot<occupied.Length)occupied[slot]=false;}
         internal bool Current
+        {get{return CurrentAfterHeldPrefix(null);}}
+        // A world-pass model may have deterministically retired a captured
+        // lower slot before the controller reads its prepared input. Only
+        // those exact activity transitions change here; all other slots/keys,
+        // pooling premises and unknown native births stay strictly captured.
+        internal bool CurrentAfterHeldPrefix(Dictionary<int,bool> activity)
         {
-            get
-            {
                 if(randomSlots!=DebugOptions.Shared_RandomizeProjectileSlots)return false;
                 if(origin.poolingCaptured && origin.noPooling!=Main.NoPooling)return false;
                 if(origin.retainedOrigins!=null)foreach(var pair in origin.retainedOrigins)
                 {var p=Main.projectile[pair.Key];if(!ReferenceEquals(p,pair.Value.Body) || p.oldPosition!=pair.Value.Position)return false;}
-                for(int i=0;i<captured.Length;i++){var p=Main.projectile[i];bool active=p!=null && p.active;if(captured[i]!=active || active && !keys[i].Equals(p.key))return false;}
+                for(int i=0;i<captured.Length;i++){var p=Main.projectile[i];bool active=p!=null && p.active,expected=captured[i],projected;if(activity!=null && activity.TryGetValue(i,out projected))expected=projected;if(expected!=active || active && !keys[i].Equals(p.key))return false;}
                 return true;
-            }
         }
     }
 }

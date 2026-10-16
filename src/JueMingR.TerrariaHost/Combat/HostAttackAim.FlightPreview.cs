@@ -52,10 +52,71 @@ namespace JueMingR.TerrariaHost.Combat
             bool sonic=player.HeldItem.type==3827 && player.HeldItem.shoot==684;
             bool book=player.HeldItem.type==3852 && player.HeldItem.shoot==712;
             bool skull=player.HeldItem.type==1313 && player.HeldItem.shoot==837;
+            var finiteFamily=FiniteFlightFamilyFor(player.HeldItem);
+            bool arrows=player.HeldItem.useAmmo==Terraria.ID.AmmoID.Arrow;
+            bool bullets=player.HeldItem.useAmmo==Terraria.ID.AmmoID.Bullet;
+            bool homing=HostHomingEffectAttack.Handles(player.HeldItem.shoot) || player.HeldItem.type==4953;
             int spearChild=HostMeleeAttack.DerivedSpearChild(player.HeldItem.shoot);
             bool spear=HostMeleeAttack.KnownSpearParent(player.HeldItem.shoot) || HostMeleeAttack.KnownWhipParent(player.HeldItem.shoot);
-            if(!phaseblade && !gem && !attached && !arc && !ice && !paper && !ornament && !inferno && !sonic && !book && !skull && !spear && !HostHarpoonAttack.Handles(player.HeldItem.shoot))return null;
+            if(!phaseblade && !gem && !attached && !arc && !ice && !paper && !ornament && !inferno && !sonic && !book && !skull && finiteFamily==FiniteFlightFamily.None && !arrows && !bullets && !homing && !spear && !HostHarpoonAttack.Handles(player.HeldItem.shoot))return null;
             FlightPreview best=null;flightPreviewTerrain.Reset();var clock=new HostAttackClock(timeline,phase);
+            if(finiteFamily!=FiniteFlightFamily.None)return ReadFiniteFlightFamily(finiteFamily,player,timeline,clock,out live);
+            if(arrows || bullets || homing)
+            {
+                // Eventide can leave both ordinary arrows and the special
+                // streak alive. Each solver receives its real motor family;
+                // the earliest observed receive wins, never a new hand permit.
+                FlightPreview observed=null;
+                var sources=new List<Projectile>();
+                if(arrows || bullets)
+                {
+                    // One sealed volley keeps ordinary ammo, its finite damage
+                    // children and weapon auxiliaries in native slot order.
+                    // Observation grants no held or hand cursor permission.
+                    bool mixedStreak=false;foreach(var shot in Main.projectile)
+                    {if(shot!=null && shot.active && shot.owner==player.whoAmI){mixedStreak|=shot.type==932;if(HostHeldAmmoFamilyAttack.Family(shot.type) && shot.damage>0 && !shot.hostile)sources.Add(shot);}}
+                    bool charm=player.accHarpyCharm;
+                    foreach(var source in sources)if(source.arrow && new Projectile.AI_001_Features(source.ai[2]).HarpyCharmed)charm=true;
+                    if(charm && !mixedStreak)
+                    {
+                        var charmed=new List<Projectile>();bool completeHarpy=true;foreach(var shot in Main.projectile)if(HostHarpyAttack.FamilyForObservation(shot,player)){charmed.Add(shot);completeHarpy&=HostHeldAmmoFamilyAttack.Family(shot.type);}
+                        // When the shared world owns every observable Harpy
+                        // member, it also owns non-arrow retirement/slot reuse.
+                        // The old arrow-only world cannot supply an Earlier:
+                        // a retiring low bullet otherwise stays occupied and
+                        // sends a Kill child to a high slot one world early.
+                        // Keep the old reader for its actual out-of-batch
+                        // families rather than silently hiding those members.
+                        if(charmed.Count>0 && !completeHarpy)
+                        {
+                            live=true;var primary=charmed[0];var receivers=new HostAttackObstacles(player,primary,timeline,0,clock.BeforeNpc,clock.NextWorld);HostHarpyAttack.State state;
+                            var contact=HostHarpyAttack.KnownPrepared(player,charmed.ToArray(),timeline,clock,flightPreviewTerrain,receivers,out state);
+                            if(contact!=null)observed=new FlightPreview(player,primary,contact,arc:receivers,harpy:state);
+                        }
+                    }
+                    if(sources.Count>0)
+                    {
+                        live=true;var primary=sources[0];var receivers=new HostAttackObstacles(player,primary,timeline,0,clock.BeforeNpc,clock.NextWorld);
+                        var contact=HostHeldAmmoFamilyAttack.KnownFamily(player,sources.ToArray(),timeline,clock,flightPreviewTerrain,receivers);
+                        if(Earlier(contact,observed?.Contact))observed=new FlightPreview(player,primary,contact,arc:receivers);
+                    }
+                }
+                if(homing)
+                {
+                    foreach(int type in new[]{931,932,1116,1122})
+                    {
+                        // 932 was already replayed with the complete arrow
+                        // scene. An isolated earlier hit must not override it.
+                        if(type==932 && (arrows || bullets))continue;
+                        sources.Clear();foreach(var shot in Main.projectile)
+                            if(shot!=null && shot.active && shot.owner==player.whoAmI && shot.type==type && shot.damage>0 && !shot.hostile)sources.Add(shot);
+                        if(sources.Count==0)continue;live=true;var primary=sources[0];var receivers=new HostAttackObstacles(player,primary,timeline,0,clock.BeforeNpc,clock.NextWorld);
+                        var contact=HostHomingEffectAttack.KnownFamily(player,sources.ToArray(),timeline,clock,flightPreviewTerrain,receivers);
+                        if(Earlier(contact,observed?.Contact))observed=new FlightPreview(player,primary,contact,arc:receivers);
+                    }
+                }
+                return observed;
+            }
             if(spear)
             {
                 // One captured finite family follows the actual pool order.
@@ -159,14 +220,14 @@ namespace JueMingR.TerrariaHost.Combat
         private static bool Earlier(AttackContact a,AttackContact b)
         {return a!=null && (b==null || a.Tick<b.Tick || a.Tick==b.Tick && a.Subupdate<b.Subupdate);}
         private static bool ArcFlightRole(int item,int type)
-        {return item==273?type==972:item==674?type==983:item==675?type==972 || type==973:item==757?type==984 || type==985:item==1226 && (type==1126 || type==1128 || type==1129);}
+        {return item==368?type==982:item==1826?type==997 || type==321:item==273?type==972:item==674?type==983:item==675?type==972 || type==973:item==757?type==984 || type==985:item==1226 && (type==1126 || type==1128 || type==1129);}
         private static AttackContact OnlyFlight(PreviewPlan plan,Player player,NpcTrajectory timeline,FlightPreview flight)
         {plan.Clear();plan.SetMembers(player,player.HeldItem);plan.Timeline=timeline;plan.Flight=flight;plan.Contact=flight?.Contact;return plan.Contact;}
         private sealed class FlightPreview
         {
             internal readonly AttackContact Contact;
             internal PredictionTerrain.CellLease Terrain;
-            internal bool DependenciesCurrent {get{return Terrain!=null && Terrain.Current && (gem==null || gem.DependenciesCurrent) && (attached==null || attached.DependenciesCurrent) && (arc==null || arc.Unchanged);}}
+            internal bool DependenciesCurrent {get{return Terrain!=null && Terrain.Current && (gem==null || gem.DependenciesCurrent) && (attached==null || attached.DependenciesCurrent) && (arc==null || arc.Unchanged) && (harpy==null || harpy.Current);}}
             private readonly Player player;private readonly Projectile shot;private readonly int key,type,owner,time,extra,penetration;
             private readonly Vector2 position,velocity;private readonly float ai0,ai1,local0;
             private readonly bool use,wet,honey,lava,shimmer,tile;
@@ -174,20 +235,21 @@ namespace JueMingR.TerrariaHost.Combat
             private readonly HostAttachedShotAttack.FlightState attached;
             private readonly HostAttackObstacles arc;
             private readonly HostMeleeAttack.SpearFlightState spear;
-            internal FlightPreview(Player player,Projectile shot,AttackContact contact,HostGemStaffAttack.FlightState gem=null,HostAttachedShotAttack.FlightState attached=null,HostAttackObstacles arc=null,HostMeleeAttack.SpearFlightState spear=null)
+            private readonly HostHarpyAttack.State harpy;
+            internal FlightPreview(Player player,Projectile shot,AttackContact contact,HostGemStaffAttack.FlightState gem=null,HostAttachedShotAttack.FlightState attached=null,HostAttackObstacles arc=null,HostMeleeAttack.SpearFlightState spear=null,HostHarpyAttack.State harpy=null)
             {
-                this.player=player;this.shot=shot;this.gem=gem;this.attached=attached;this.arc=arc;this.spear=spear;Contact=contact;key=(int)shot.key;type=shot.type;owner=shot.owner;time=shot.timeLeft;extra=shot.extraUpdates;penetration=shot.penetrate;
+                this.player=player;this.shot=shot;this.gem=gem;this.attached=attached;this.arc=arc;this.spear=spear;this.harpy=harpy;Contact=contact;key=(int)shot.key;type=shot.type;owner=shot.owner;time=shot.timeLeft;extra=shot.extraUpdates;penetration=shot.penetrate;
                 position=shot.position;velocity=shot.velocity;ai0=shot.ai[0];ai1=shot.ai[1];local0=shot.localAI[0];use=player.controlUseItem;wet=shot.wet;honey=shot.honeyWet;lava=shot.lavaWet;shimmer=shot.shimmerWet;tile=shot.tileCollide;
             }
             // Draw checks the bound member, never scans the projectile pool.
-            internal bool Current {get{return (gem==null || gem.MembersCurrent) && (attached==null || attached.MembersCurrent) && (arc==null || arc.FamilyMembersCurrent) && (spear==null || spear.Current) && shot.active && (int)shot.key==key && shot.type==type && shot.owner==owner && shot.timeLeft==time && shot.extraUpdates==extra && shot.penetrate==penetration && shot.position==position && shot.velocity==velocity && shot.ai[0]==ai0 && shot.ai[1]==ai1 && shot.localAI[0]==local0 && player.controlUseItem==use && shot.wet==wet && shot.honeyWet==honey && shot.lavaWet==lava && shot.shimmerWet==shimmer && shot.tileCollide==tile;}}
+            internal bool Current {get{return (gem==null || gem.MembersCurrent) && (attached==null || attached.MembersCurrent) && (arc==null || arc.FamilyMembersCurrent) && (harpy==null || harpy.MembersCurrent) && (spear==null || spear.Current) && shot.active && (int)shot.key==key && shot.type==type && shot.owner==owner && shot.timeLeft==time && shot.extraUpdates==extra && shot.penetrate==penetration && shot.position==position && shot.velocity==velocity && shot.ai[0]==ai0 && shot.ai[1]==ai1 && shot.localAI[0]==local0 && player.controlUseItem==use && shot.wet==wet && shot.honeyWet==honey && shot.lavaWet==lava && shot.shimmerWet==shimmer && shot.tileCollide==tile;}}
             // A sealed-flight visual follows the display's bounded capture
             // age. The existing family member leases still cancel on member
             // retirement/phase or captured pose changes. Only the primary
             // shot's ordinary travel/time is relaxed; none of this grants a
             // hand input lease or scans the projectile pool during Draw.
             internal bool PresentationCurrent(int age)
-            {return age>=0 && age<=HostCombatObservation.DisplayMaximumAge && (gem==null || gem.MembersCurrent) && (attached==null || attached.MembersCurrent) && (arc==null || arc.FamilyMembersCurrent) && (spear==null || spear.Current) && shot.active && (int)shot.key==key && shot.type==type && shot.owner==owner && shot.extraUpdates==extra && shot.penetrate==penetration && shot.ai[0]==ai0 && shot.ai[1]==ai1 && player.controlUseItem==use && shot.wet==wet && shot.honeyWet==honey && shot.lavaWet==lava && shot.shimmerWet==shimmer && shot.tileCollide==tile;}
+            {return age>=0 && age<=HostCombatObservation.DisplayMaximumAge && (gem==null || gem.MembersCurrent) && (attached==null || attached.MembersCurrent) && (arc==null || arc.FamilyMembersCurrent) && (harpy==null || harpy.MembersCurrent) && (spear==null || spear.Current) && shot.active && (int)shot.key==key && shot.type==type && shot.owner==owner && shot.extraUpdates==extra && shot.penetrate==penetration && shot.ai[0]==ai0 && shot.ai[1]==ai1 && player.controlUseItem==use && shot.wet==wet && shot.honeyWet==honey && shot.lavaWet==lava && shot.shimmerWet==shimmer && shot.tileCollide==tile;}
         }
     }
 }

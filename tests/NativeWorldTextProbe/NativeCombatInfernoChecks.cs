@@ -49,10 +49,10 @@ namespace NativeWorldTextProbe
             typeof(NPC).GetMethod("NewNPCInstanceInSlot",Flags).Invoke(null,new object[]{slot,(byte)0});var n=Main.npc[slot];n.SetDefaults(3);n.whoAmI=slot;n.active=true;n.width=width;n.height=height;n.Center=center;n.life=n.lifeMax=10000;n.defense=0;n.aiStyle=-1;n.noGravity=n.noTileCollide=true;n.velocity=n.netOffset=Vector2.Zero;n.knockBackResist=0;n.realLife=-1;
             Array.Clear(n.immune,0,n.immune.Length);Array.Clear(n.buffType,0,n.buffType.Length);Array.Clear(n.buffTime,0,n.buffTime.Length);n.lifeRegen=n.lifeRegenCount=0;return n;
         }
-        private static NpcTrajectory Path(NPC n)
+        private static NpcTrajectory Path(NPC n,bool completed=false)
         {
             var key=(NpcIdentity)Static(assembly.GetType("JueMingR.TerrariaHost.Combat.CombatSelection",true),"Identity",n,1L);var state=new NpcMotionState{Identity=key,X=n.position.X,Y=n.position.Y,Width=n.width,Height=n.height,CanReceive=!n.dontTakeDamage,NoTileCollide=n.noTileCollide,ReflectsProjectiles=n.reflectsProjectiles};var points=Enumerable.Range(0,121).Select(t=>new NpcTrajectoryPoint(t,state)).ToArray();
-            return new NpcTrajectory(key,(long)Main.GameUpdateCount-1,1,PredictionAssumption.NoNewHits,PredictionStop.None,points,points.Length,PredictionStrategy.RollingConditional);
+            return new NpcTrajectory(key,(long)Main.GameUpdateCount-(completed?0:1),1,PredictionAssumption.NoNewHits,PredictionStop.None,points,points.Length,PredictionStrategy.RollingConditional);
         }
         private static object Terrain(){var t=Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Combat.PredictionTerrain",true),true);Call(t,"Reset");return t;}
         private static object Receivers(Player p,Projectile q,NpcTrajectory path){return Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackObstacles",true),Flags,null,new object[]{p,q,path,0,true,false},null);}
@@ -80,7 +80,7 @@ namespace NativeWorldTextProbe
         {
             assembly=Get(context,"Combat").GetType().Assembly;model=assembly.GetType("JueMingR.TerrariaHost.Combat.HostInfernoAttack",true);var audit=new Harmony("JueMingR.Tests.Inferno");bool wind=Main.windPhysics;
             foreach(string name in new[]{"HandleSpecialEvent","HandleRunning","HandleMining"})audit.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
-            audit.Patch(model.GetMethod("Solve",Flags),prefix:new HarmonyMethod(typeof(NativeCombatInfernoChecks),nameof(SolveWork)),postfix:new HarmonyMethod(typeof(NativeCombatInfernoChecks),nameof(Done)));audit.Patch(model.GetMethod("KnownFamily",Flags),prefix:new HarmonyMethod(typeof(NativeCombatInfernoChecks),nameof(KnownWork)),postfix:new HarmonyMethod(typeof(NativeCombatInfernoChecks),nameof(Done)));audit.Patch(model.GetMethod("Motor",Flags),prefix:new HarmonyMethod(typeof(NativeCombatInfernoChecks),nameof(StepWork)));audit.Patch(model.GetMethod("Capture",Flags),prefix:new HarmonyMethod(typeof(NativeCombatInfernoChecks),nameof(ScanWork)));
+            audit.Patch(model.GetMethod("Solve",Flags),prefix:new HarmonyMethod(typeof(NativeCombatInfernoChecks),nameof(SolveWork)),finalizer:new HarmonyMethod(typeof(NativeCombatInfernoChecks),nameof(Done)));audit.Patch(model.GetMethod("KnownFamily",Flags),prefix:new HarmonyMethod(typeof(NativeCombatInfernoChecks),nameof(KnownWork)),finalizer:new HarmonyMethod(typeof(NativeCombatInfernoChecks),nameof(Done)));audit.Patch(model.GetMethod("Motor",Flags),prefix:new HarmonyMethod(typeof(NativeCombatInfernoChecks),nameof(StepWork)));audit.Patch(model.GetMethod("Capture",Flags),prefix:new HarmonyMethod(typeof(NativeCombatInfernoChecks),nameof(ScanWork)));
             foreach(var method in Main.rand.GetType().GetMethods(Flags).Where(m=>m.Name=="Next" || m.Name=="NextDouble").Distinct())audit.Patch(method,prefix:new HarmonyMethod(typeof(NativeCombatInfernoChecks),nameof(RngWork)));
             audit.Patch(typeof(Projectile).GetMethods(Flags).Single(m=>m.Name=="NewProjectile" && m.GetParameters().Length==13 && m.GetParameters()[1].ParameterType==typeof(float)),postfix:new HarmonyMethod(typeof(NativeCombatInfernoChecks),nameof(Born)));audit.Patch(typeof(Projectile).GetMethod("Kill",Flags),prefix:new HarmonyMethod(typeof(NativeCombatInfernoChecks),nameof(BeforeKill)));audit.Patch(typeof(Projectile).GetMethod("Damage",Flags),prefix:new HarmonyMethod(typeof(NativeCombatInfernoChecks),nameof(BeforeDamage)),postfix:new HarmonyMethod(typeof(NativeCombatInfernoChecks),nameof(AfterDamage)));audit.Patch(AccessTools.Method(typeof(NPC),"StrikeNPC",new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)}),postfix:new HarmonyMethod(typeof(NativeCombatInfernoChecks),nameof(Strike)));
             try
@@ -155,11 +155,23 @@ namespace NativeWorldTextProbe
             Require(first>=0 && watched.ai[0]==544 && !watched.active && watched.timeLeft==0,"actual child remains damaging through135, with owner once per world; firstexpiry540 crossing kills before136 Damage");
             Console.WriteLine("INFERNO child late actual="+first+" (outside120-point oracle), retiredAI="+watched.ai[0]);
         }
-        private static void Draws(object host,object attack,AttackContact plan)
+        private static void Draws(object host,object attack,AttackContact plan,object flight=null)
         {
+            if(flight==null)Call(attack,"BindPresentation",plan);
             int a=solves,b=steps,c=scans;var marker=Get(Get(host,"World"),"Impact");var zoom=Main.GameViewMatrix.ZoomMatrix;
-            for(int check=0;check<20;check++){Call(marker,"Capture");Call(marker,"Project",zoom,Matrix.Invert(zoom));Require((bool)Call(attack,"PreviewCurrent",plan),"stable Inferno preparation remains current");}
+            for(int check=0;check<20;check++){Call(marker,"Capture");Call(marker,"Project",zoom,Matrix.Invert(zoom));Require(flight==null?(bool)Call(attack,"PresentationCurrent",plan):(bool)Call(flight,"PresentationCurrent",0),"stable actual Inferno hand/family preparation remains current");}
             Require(a==solves && b==steps && c==scans,"twenty CPU presentations have zero Inferno Solve/motor/family scans");
+        }
+        private static AttackContact PrepareNatural(object context,object host,object attack)
+        {
+            NativeToolExecutionChecks.Sample(context,Get(context,"Input"),raw,true);Call(Get(context,"Combat"),"Sample");
+            NativeCombatAimChecks.PrepareMechanismFixture(host,attack,target,0);
+            return (AttackContact)GetOptional(attack,"ExpectedImpact");
+        }
+        private static object Observe(object attack,Player player)
+        {
+            var args=new object[]{player,Path(target,true),Enum.Parse(assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase",true),"CompletedWorld"),false};
+            using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))return Call(attack,"ReadFlight",args);
         }
         private static void Natural(object context)
         {
@@ -177,19 +189,23 @@ namespace NativeWorldTextProbe
                     Target(1,new Vector2(p.Center.X+120,target.Center.Y),18,60).immortal=true;
                 }
                 solves=knownCalls=depth=steps=scans=rngCalls=0;var host=Get(context,"CombatObservation");var attack=Get(Get(context,"Combat"),"Attack");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,false));
-                for(int frame=0;frame<3;frame++)NativeCombatSelectionPreviewChecks.Step(context,raw,false,true);var plan=(AttackContact)GetOptional(attack,"ExpectedPreview");Require(plan!=null && !Main.projectile.Any(q=>q.active) && (int)Static(typeof(NativeCombatSelectionPreviewChecks),"Selected",host)==target.whoAmI,"idle deterministic parent/child preview with AimOFF selects the actual dummy and does not shoot");Draws(host,attack,plan);
-                ammo=Static(assembly.GetType("JueMingR.TerrariaHost.Combat.AttackAmmoSnapshot",true),"Capture",p,p.HeldItem);recordBirth=recordChildren=true;NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));int previews=0;
-                int frames=causal?30:93;int missingPreview=-1;
+                for(int frame=0;frame<3;frame++)NativeCombatSelectionPreviewChecks.Step(context,raw,false,true);Require(GetOptional(attack,"ExpectedPreview")==null && !Main.projectile.Any(q=>q.active) && solves==0 && (int)Static(typeof(NativeCombatSelectionPreviewChecks),"Selected",host)==target.whoAmI,"withdrawn idle Inferno preview selects the actual dummy without solving or shooting");
+                NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));var plan=PrepareNatural(context,host,attack);Require(plan!=null,"actual pressed Inferno parent/child hand prepares under1000ms mechanism allowance");Draws(host,attack,plan);
+                ammo=Static(assembly.GetType("JueMingR.TerrariaHost.Combat.AttackAmmoSnapshot",true),"Capture",p,p.HeldItem);recordBirth=recordChildren=true;int previews=0;
+                int frames=causal?30:93,observations=0;
                 for(int frame=0;frame<frames;frame++)
                 {
                     //1445 has no native autoReuse. Use real release edges,
                     // not a invented held-controller/automatic input right.
-                    NativeCombatSelectionPreviewChecks.Step(context,raw,frame%31!=30);var next=(AttackContact)GetOptional(attack,"ExpectedPreview");if(frame>=2){if(next==null && missingPreview<0){missingPreview=frame;MissingPreview(p,host,attack,causal,frame,next);}if(next!=null)previews++;}if(frame==6 && next!=null)Draws(host,attack,next);
+                    bool pressed=frame%31!=30;var next=pressed?(frame==0?plan:PrepareNatural(context,host,attack)):null;
+                    var flight=next==null?Observe(attack,p):null;var observed=next??(flight==null?null:(AttackContact)Get(flight,"Contact"));
+                    if(frame>=2){observations++;if(observed!=null)previews++;}if(frame==6 && observed!=null)Draws(host,attack,observed,flight);
+                    NativeCombatSelectionPreviewChecks.Step(context,raw,pressed);
+                    if(!pressed)Require(GetOptional(attack,"ExpectedPreview")==null,"real Inferno release edge cannot retain a hypothetical next-use preview");
                 }
                 NativeCombatSelectionPreviewChecks.Step(context,raw,false);recordBirth=false;
                 for(int frame=0;frame<40 && born.Any(b=>b.First<0);frame++)NativeCombatSelectionPreviewChecks.Step(context,raw,false);recordChildren=false;
-                if(missingPreview>=0){foreach(var b in born)Console.WriteLine("INFERNO missing-preview aftermath parentSlot/key="+b.Slot+"/"+b.Key+" born/first/known="+b.Tick+","+b.First+","+b.Known?.Tick);foreach(var c in children)Console.WriteLine("INFERNO missing-preview aftermath childSlot/key="+c.Slot+"/"+c.Key+" parentSlot/key="+c.ParentSlot+"/"+c.ParentKey+" born/first/damage="+c.Tick+","+c.First+","+c.Damage);}
-                Require(missingPreview<0,"ongoing real hand actions retain a legal next-use preview; first missing frame="+missingPreview);
+                Require(observations==frames-2 && previews>0,"all original Inferno stable observations retain real pressed-hand/owned-family evidence without inventing cooldown or released hands");
                 foreach(var b in born)
                 {
                     int actual=b.First<0?0:(int)(b.First-b.Tick+1);Console.WriteLine("INFERNO natural causal="+causal+" born="+b.Tick+" key="+b.Key+" cursor/raw="+b.Cursor+"/"+raw+" native="+actual+" known="+b.Known?.Tick);

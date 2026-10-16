@@ -31,6 +31,7 @@ namespace NativeWorldTextProbe
                 if(leaf=="selection"){NativeCombatSelectionPreviewChecks.Run(context);return;}
                 if(leaf=="control-preview"){NativeCombatControlPreviewChecks.Run(context);return;}
                 if(leaf=="candidate-reuse"){NativeCombatCandidateReuseChecks.Run(context);return;}
+                if(leaf=="candidate-stress"){NativeCombatCandidateDemandChecks.RunStress(context);return;}
                 if(!string.IsNullOrEmpty(leaf))throw new ArgumentException("Unknown combat integration leaf: "+leaf);
                 NativeCombatAimQualificationChecks.Run(context);
                 NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,95,0,0);p.position=new Vector2(700,646);p.inventory[54].SetDefaults(97);p.inventory[54].stack=999;p.releaseUseItem=true;Main.screenPosition=new Vector2(600,400);
@@ -72,8 +73,14 @@ namespace NativeWorldTextProbe
             NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,true,false,25,false,true));
             foreach(var target in new[]{right,left})
             {
+                // This assertion belongs to a new native use, not the sealed
+                // gun's intervening cooldown (which has no new cursor reader).
+                // Let vanilla finish and release; do not edit either timer.
+                for(int wait=0;wait<60 && (p.itemAnimation>0 || p.itemTime>0);wait++)NativeCombatSelectionPreviewChecks.Step(context,target.Center,false);
+                NativeCombatSelectionPreviewChecks.Step(context,target.Center,false);
+                int beforeBirths=births;
                 NativeToolExecutionChecks.Sample(context,input,target.Center,true);Call(combat,"Sample");Call(host,"SampleMouse");NativeQuickItemChecks.BeginWorldStep();p.Update(0);
-                var selected=(JueMingR.Platform.Combat.NpcIdentity)Get(Get(host,"Selection"),"Target");Console.WriteLine("FACING wanted="+target.whoAmI+" selected="+selected.Slot+" direction="+p.direction);Require(selected.Slot==target.whoAmI && p.direction==(ReferenceEquals(target,right)?1:-1),"same action fresh physical selection drives the shared Facing target before native pose");
+                var selected=(JueMingR.Platform.Combat.NpcIdentity)Get(Get(host,"Selection"),"Target");Console.WriteLine("FACING wanted="+target.whoAmI+" selected="+selected.Slot+" direction="+p.direction);Require(births==beforeBirths+1 && selected.Slot==target.whoAmI && p.direction==(ReferenceEquals(target,right)?1:-1),"same real native use fresh physical selection drives the shared Facing target before pose");
                 target.UpdateNPC(target.whoAmI);Call(context,"UpdateRuntime");
             }
             Console.WriteLine("PASS fresh physical mouse right/left target change feeds shared Facing in the same natural player action");

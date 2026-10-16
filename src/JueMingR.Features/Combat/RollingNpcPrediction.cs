@@ -35,7 +35,7 @@ namespace JueMingR.Features.Combat
         // excludes trend/history, observation fallback and timed source payloads;
         // it never permits retimestamping a conditional trajectory.
         public bool FixedInputResult {get;private set;}
-        public void Clear(){resumable=false;progress=default(Progress);calculationToken=null;Continuation=null;FixedInputResult=false;previous=default(NpcMotionState);previousPlayer=default(PredictionPlayerMotion);previousPlayerAdvanced=resultPlayerAdvanced=false;priorTick=resultTick=-1;result=null;resultTerrain=null;ClearPlayerFixedPoint();Array.Clear(work,0,work.Length);}
+        public void Clear(){resumable=false;progress=default(Progress);calculationToken=null;Continuation=null;Array.Clear(continuationSample,0,continuationSample.Length);FixedInputResult=false;previous=default(NpcMotionState);previousPlayer=default(PredictionPlayerMotion);previousPlayerAdvanced=resultPlayerAdvanced=false;priorTick=resultTick=-1;result=null;resultTerrain=null;ClearPlayerFixedPoint();Array.Clear(work,0,work.Length);}
         public NpcTrajectory Prepare(NpcMotionState[] source,int count,int selected,long tick,int required,long epoch,PredictionEnvironment environment,PredictionPlayerMotion player,IPredictionTerrain terrain,bool[] motionRoles=null,bool firstPlayerStepCompleted=false,int plannedHorizon=0)
         {
             FailureLayer=PredictionFailureLayer.Source;

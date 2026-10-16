@@ -71,7 +71,7 @@ namespace NativeWorldTextProbe
         {
             assembly=Get(context,"Combat").GetType().Assembly;model=assembly.GetType("JueMingR.TerrariaHost.Combat.HostRaySpellAttack",true);var audit=new Harmony("JueMingR.Tests.RaySpells");bool wind=Main.windPhysics;
             foreach(string name in new[]{"HandleSpecialEvent","HandleRunning","HandleMining"})audit.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
-            audit.Patch(model.GetMethod("Solve",Flags),prefix:new HarmonyMethod(typeof(NativeCombatRaySpellChecks),nameof(SolveWork)),postfix:new HarmonyMethod(typeof(NativeCombatRaySpellChecks),nameof(Done)));audit.Patch(model.GetMethod("KnownFamily",Flags),prefix:new HarmonyMethod(typeof(NativeCombatRaySpellChecks),nameof(KnownWork)),postfix:new HarmonyMethod(typeof(NativeCombatRaySpellChecks),nameof(Done)));audit.Patch(model.GetMethod("Motor",Flags),prefix:new HarmonyMethod(typeof(NativeCombatRaySpellChecks),nameof(StepWork)));audit.Patch(model.GetMethod("Capture",Flags),prefix:new HarmonyMethod(typeof(NativeCombatRaySpellChecks),nameof(ScanWork)));
+            audit.Patch(model.GetMethod("Solve",Flags),prefix:new HarmonyMethod(typeof(NativeCombatRaySpellChecks),nameof(SolveWork)),finalizer:new HarmonyMethod(typeof(NativeCombatRaySpellChecks),nameof(Done)));audit.Patch(model.GetMethod("KnownFamily",Flags),prefix:new HarmonyMethod(typeof(NativeCombatRaySpellChecks),nameof(KnownWork)),finalizer:new HarmonyMethod(typeof(NativeCombatRaySpellChecks),nameof(Done)));audit.Patch(model.GetMethod("Motor",Flags),prefix:new HarmonyMethod(typeof(NativeCombatRaySpellChecks),nameof(StepWork)));audit.Patch(model.GetMethod("Capture",Flags),prefix:new HarmonyMethod(typeof(NativeCombatRaySpellChecks),nameof(ScanWork)));
             foreach(var method in Main.rand.GetType().GetMethods(Flags).Where(m=>m.Name=="Next" || m.Name=="NextDouble").Distinct())audit.Patch(method,prefix:new HarmonyMethod(typeof(NativeCombatRaySpellChecks),nameof(RngWork)));
             audit.Patch(typeof(Projectile).GetMethods(Flags).Single(m=>m.Name=="NewProjectile" && m.GetParameters().Length==13 && m.GetParameters()[1].ParameterType==typeof(float)),postfix:new HarmonyMethod(typeof(NativeCombatRaySpellChecks),nameof(Born)));audit.Patch(typeof(Projectile).GetMethod("Kill",Flags),prefix:new HarmonyMethod(typeof(NativeCombatRaySpellChecks),nameof(BeforeKill)));audit.Patch(typeof(Projectile).GetMethod("Damage",Flags),prefix:new HarmonyMethod(typeof(NativeCombatRaySpellChecks),nameof(BeforeDamage)),postfix:new HarmonyMethod(typeof(NativeCombatRaySpellChecks),nameof(AfterDamage)));audit.Patch(AccessTools.Method(typeof(NPC),"StrikeNPC",new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)}),postfix:new HarmonyMethod(typeof(NativeCombatRaySpellChecks),nameof(Strike)));
             try
@@ -146,7 +146,21 @@ namespace NativeWorldTextProbe
                 if(mode==2 && weapon==1444)Require(hitSlots.Contains(1) && hitSlots.Contains(2) && watched.damage==(int)((double)(int)(38*.9)*.9),"two real ordered NPC hits reduce Shadowbeam damage once each");
                 cases++;
             }
-            ZeroDamageTail(context);Console.WriteLine("PASS RAY SPELL receivers="+cases+" plus same-call damage0 tail");
+            ZeroDamageTail(context);Console.WriteLine("PASS RAY SPELL receivers="+cases+" plus same-call damage0 tail");PublicFlights(context);
+        }
+        private static void PublicFlights(object context)
+        {
+            foreach(int weapon in new[]{1295,1444})
+            {
+                var p=Reset(context,weapon);target=Target(2,new Vector2(995,350));watched=Shot(p,new Vector2(950,350),new Vector2(weapon==1295?15:6,0));
+                var attack=Get(Get(context,"Combat"),"Attack");var rawPath=Path(target);var state=new NpcMotionState{Identity=rawPath.Identity,X=target.position.X,Y=target.position.Y,Width=target.width,Height=target.height,CanReceive=true,Active=true,NoTileCollide=true};var points=Enumerable.Range(0,121).Select(t=>new NpcTrajectoryPoint(t,state)).ToArray();var path=new NpcTrajectory(rawPath.Identity,Main.GameUpdateCount,1,PredictionAssumption.NoNewHits,PredictionStop.None,points,points.Length);
+                var args=new object[]{p,path,Enum.Parse(assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase",true),"CompletedWorld"),false};object flight;using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))flight=Call(attack,"ReadFlight",args);var contact=flight==null?null:(AttackContact)Get(flight,"Contact");
+                Require((bool)args[3] && contact!=null && (bool)Get(flight,"Current") && (bool)Get(flight,"DependenciesCurrent") && !p.controlUseItem && GetOptional(attack,"ExpectedImpact")==null,"public ray observes its real101-subaction source with complete leases and no hand authority weapon="+weapon);
+                int damage=watched.damage;watched.damage++;Require(!(bool)Get(flight,"Current"),"same-GUC actual ray family damage change revokes public Flight");watched.damage=damage;Require((bool)Get(flight,"Current"),"exact ray family restoration restores the same public lease");
+                NativeQuickItemChecks.BeginWorldStep();target.UpdateNPC(2);watched.Update(watched.whoAmI);
+                Require(first>=0 && first-path.SampleTick==contact.Tick && firstSub==contact.Subupdate,"public ray first contact/subaction equals actual native positive Strike weapon="+weapon);
+            }
+            Console.WriteLine("PASS RAY SPELL public Flight original2 firstStrike/substep/complete-lease/sameGUC-damage/no-input");
         }
         private static void ZeroDamageTail(object context)
         {
@@ -157,9 +171,16 @@ namespace NativeWorldTextProbe
         }
         private static void Draws(object host,object attack,AttackContact plan)
         {
+            Call(attack,"BindPresentation",plan);
             int a=solves,b=steps,c=scans;var marker=Get(Get(host,"World"),"Impact");var zoom=Main.GameViewMatrix.ZoomMatrix;
-            for(int check=0;check<20;check++){Call(marker,"Capture");Call(marker,"Project",zoom,Matrix.Invert(zoom));Require((bool)Call(attack,"PreviewCurrent",plan),"stable ray preparation lease remains current");}
+            for(int check=0;check<20;check++){Call(marker,"Capture");Call(marker,"Project",zoom,Matrix.Invert(zoom));Require((bool)Call(attack,"PresentationCurrent",plan),"stable actual ray preparation lease remains current");}
             Require(a==solves && b==steps && c==scans,"twenty CPU presentations do zero ray Solve/motor/family scans");
+        }
+        private static AttackContact PrepareNatural(object context,object host,object attack)
+        {
+            NativeToolExecutionChecks.Sample(context,Get(context,"Input"),raw,true);Call(Get(context,"Combat"),"Sample");
+            NativeCombatAimChecks.PrepareMechanismFixture(host,attack,target,0);
+            return (AttackContact)GetOptional(attack,"ExpectedImpact");
         }
         private static void Natural(object context)
         {
@@ -168,16 +189,25 @@ namespace NativeWorldTextProbe
                 var p=Reset(context,weapon);p.position=new Vector2(650,646);Main.screenPosition=new Vector2(500,400);for(int x=5;x<115;x++)NativeToolsChecks.Tile(x,43,1);target=NativeCombatControlPreviewChecks.Dummy(2,52,40);target.position.X=p.Center.X+180;raw=target.Center-new Vector2(380,0);solves=knownCalls=depth=steps=scans=rngCalls=0;
                 var host=Get(context,"CombatObservation");var attack=Get(Get(context,"Combat"),"Attack");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,false));
                 for(int frame=0;frame<3;frame++)NativeCombatSelectionPreviewChecks.Step(context,raw,false,true);
-                var plan=(AttackContact)GetOptional(attack,"ExpectedPreview");Require(plan!=null && plan.Confidence==AttackConfidence.Conditional && !Main.projectile.Any(q=>q.active),"idle deterministic ray next-use preview with AimOFF does not fire");Draws(host,attack,plan);
-                ammo=Static(assembly.GetType("JueMingR.TerrariaHost.Combat.AttackAmmoSnapshot",true),"Capture",p,p.HeldItem);recordBirth=true;NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));int previews=0;
-                for(int frame=0;frame<45;frame++){NativeCombatSelectionPreviewChecks.Step(context,raw,true);var next=(AttackContact)GetOptional(attack,"ExpectedPreview");if(frame>=2){Require(next!=null,"held ray auto reuse has a legal next-shot preview");previews++;}if(frame==6 && next!=null)Draws(host,attack,next);}
+                Require(GetOptional(attack,"ExpectedPreview")==null && !Main.projectile.Any(q=>q.active) && solves==0,"withdrawn idle ray preview neither solves nor fires");
+                NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));var plan=PrepareNatural(context,host,attack);Require(plan!=null && plan.Confidence==AttackConfidence.Conditional,"actual pressed ray hand prepares under1000ms mechanism allowance");Draws(host,attack,plan);
+                ammo=Static(assembly.GetType("JueMingR.TerrariaHost.Combat.AttackAmmoSnapshot",true),"Capture",p,p.HeldItem);recordBirth=true;int previews=0,prepared=0;bool repeatedDraw=false;
+                for(int frame=0;frame<45;frame++)
+                {
+                    var next=frame==0?plan:PrepareNatural(context,host,attack);
+                    if(frame>=2){Require(GetOptional(attack,"ExpectedPreview")==null,"all43 stable native ray frames keep the retired hypothetical preview absent");previews++;if(next!=null)prepared++;}
+                    // AI048 may finish its101 subactions in the first world
+                    // update. A later real opening, not an empty cooldown,
+                    // supplies the second twenty-read presentation component.
+                    if(frame>=6 && next!=null && !repeatedDraw){Draws(host,attack,next);repeatedDraw=true;}NativeCombatSelectionPreviewChecks.Step(context,raw,true);
+                }
                 NativeCombatSelectionPreviewChecks.Step(context,raw,false);recordBirth=false;for(int frame=0;frame<4 && born.Any(b=>b.First<0 && b.Key==(int)b.Shot.key && b.Shot.active);frame++)NativeCombatSelectionPreviewChecks.Step(context,raw,false);
                 int useful=0;foreach(var b in born)
                 {
                     int actual=b.First<0?0:(int)(b.First-b.Tick+1);Console.WriteLine("RAY SPELL natural weapon="+weapon+" slot/key="+b.Slot+"/"+b.Key+" tick="+b.Tick+" center="+b.Center+" V="+b.Velocity+" cursor/raw="+b.Cursor+"/"+raw+" actual="+actual+" known="+b.Known?.Tick+"/"+b.Known?.Subupdate);
                     Require(actual>0 && b.Known!=null && b.Known.Tick==actual && b.Known.Subupdate==b.FirstSub && Vector2.Dot(b.Velocity,raw-b.Origin)<0,"every deterministic actual assisted ray has a positive immortal488 Strike at its known first receive/substep, opposite physical cursor");useful++;
                 }
-                Require(useful>=3 && previews==43 && rngCalls==0 && scans==solves+knownCalls,"genuine ray first/continuous actions and finite CPU preparation, no model RNG");
+                Require(useful>=3 && previews==43 && prepared>0 && repeatedDraw && rngCalls==0 && scans==solves+knownCalls,"all43 native ray observations retain genuine repeated prepared hands, two twenty-read presentations and finite work without model RNG");
                 Console.WriteLine("PASS RAY SPELL natural "+weapon+" births/useful="+born.Count+"/"+useful+" preview="+previews+" solve/known/capture/motor="+solves+","+knownCalls+","+scans+","+steps+" RNG="+rngCalls);
             }
         }

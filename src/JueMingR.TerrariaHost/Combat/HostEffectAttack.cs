@@ -8,9 +8,33 @@ namespace JueMingR.TerrariaHost.Combat
 {
     internal static class HostEffectAttack
     {
-        internal static bool Handles(int type){return HostSkullAttack.Handles(type) || HostBookStaffAttack.Handles(type) || HostSonicBoomAttack.Handles(type) || HostOrnamentAttack.Handles(type) || HostInfernoAttack.Handles(type) || HostPaperAirplaneAttack.Handles(type) || HostRaySpellAttack.Handles(type) || HostBlizzardAttack.Handles(type) || HostFlareAttack.Handles(type) || HostIceRodAttack.Handles(type) || HostAi29SpellAttack.Handles(type) || HostSkyFractureAttack.Handles(type) || HostNoteAttack.Handles(type) || HostNebulaBlazeAttack.Handles(type) || HostAttachedShotAttack.Handles(type) || HostBottleAttack.Handles(type) || HostStreamAttack.Handles(type) || HostThornAttack.Handles(type) || HostBetsyFlameAttack.Handles(type) || HostElectrosphereAttack.Handles(type) || HostBarrelAttack.Handles(type) || HostLaserPaintAttack.Handles(type) || HostDartAttack.Handles(type) || HostWaspBatAttack.Handles(type) || HostBeeGunAttack.Handles(type) || HostFlameAttack.Handles(type) || HostPoisonCloudAttack.Handles(type) || HostGemStaffAttack.Handles(type) || HostFiniteShotAttack.Handles(type) || HostHarpoonAttack.Handles(type) || HostExplosiveAttack.Handles(type) || HostSpecialArrowAttack.Handles(type) || HostPulseAttack.Handles(type) || HostFiniteThrowAttack.Handles(type) || HostCrystalAttack.Handles(type) || HostMagicBounceAttack.Handles(type) || type==207 || type==297 || type==36;}
+        internal static bool Handles(int type){return HostAmmoSteeringAttack.Handles(type) || HostAmmoImpactAttack.Handles(type) || HostSharpTearsAttack.Handles(type) || HostPiranhaAttack.Handles(type) || type==404 || HostSuperStarAttack.Handles(type) || HostNebulaArcanumAttack.Handles(type) || HostInfluxAttack.Handles(type) || HostNailAttack.Handles(type) || HostGuitarCurveAttack.Handles(type) || HostWeatherPainAttack.Handles(type) || HostClingerWallAttack.Handles(type) || HostArrowFamilyAttack.Handles(type) || HostImpactBurstAttack.Handles(type) || HostRainbowAttack.Handles(type) || HostSeedlerAttack.Handles(type) || HostPlacedPulseAttack.Handles(type) || HostHomingEffectAttack.Handles(type) || HostSpiritFlameAttack.Handles(type) || HostMagnetSphereAttack.Handles(type) || HostCloudAttack.Handles(type) || HostFreeFlightAttack.Handles(type) || HostSkullAttack.Handles(type) || HostBookStaffAttack.Handles(type) || HostSonicBoomAttack.Handles(type) || HostOrnamentAttack.Handles(type) || HostInfernoAttack.Handles(type) || HostPaperAirplaneAttack.Handles(type) || HostRaySpellAttack.Handles(type) || HostBlizzardAttack.Handles(type) || HostFlareAttack.Handles(type) || HostIceRodAttack.Handles(type) || HostAi29SpellAttack.Handles(type) || HostSkyFractureAttack.Handles(type) || HostNoteAttack.Handles(type) || HostNebulaBlazeAttack.Handles(type) || HostAttachedShotAttack.Handles(type) || HostBottleAttack.Handles(type) || HostStreamAttack.Handles(type) || HostThornAttack.Handles(type) || HostBetsyFlameAttack.Handles(type) || HostElectrosphereAttack.Handles(type) || HostBarrelAttack.Handles(type) || HostLaserPaintAttack.Handles(type) || HostDartAttack.Handles(type) || HostWaspBatAttack.Handles(type) || HostBeeGunAttack.Handles(type) || HostFlameAttack.Handles(type) || HostPoisonCloudAttack.Handles(type) || HostGemStaffAttack.Handles(type) || HostFiniteShotAttack.Handles(type) || HostHarpoonAttack.Handles(type) || HostExplosiveAttack.Handles(type) || HostSpecialArrowAttack.Handles(type) || HostPulseAttack.Handles(type) || HostFiniteThrowAttack.Handles(type) || HostCrystalAttack.Handles(type) || HostMagicBounceAttack.Handles(type) || type==207 || type==297 || type==36;}
         internal static AttackContact Solve(Player player,AttackAmmoSnapshot ammo,NpcTrajectory timeline,Vector2 origin,int age,bool beforeNpc,PredictionTerrain terrain,HostAttackObstacles obstacles,int delay=0,HostAttackPlayerFrame? preparedPlayer=null)
         {
+            if(HostOnyxBlastAttack.Weapon(ammo.WeaponType))return HostOnyxBlastAttack.Solve(player,ammo,timeline,origin,age,beforeNpc,terrain,obstacles,delay);
+            if(HostSharpTearsAttack.Handles(ammo.Projectile))return HostSharpTearsAttack.Solve(player,ammo,timeline,origin,age,beforeNpc,terrain,obstacles,delay);
+            if(HostPiranhaAttack.Handles(ammo.Projectile))return HostPiranhaAttack.Solve(player,ammo,timeline,origin,age,beforeNpc,terrain,obstacles,delay,preparedPlayer,preparedPlayer.HasValue && !beforeNpc);
+            if(ammo.Projectile==404)return HostBubbleFlailFamilyAttack.Solve(player,ammo,timeline,origin,age,beforeNpc,terrain,obstacles,delay,preparedPlayer,preparedPlayer.HasValue && !beforeNpc);
+            if(HostSuperStarAttack.Handles(ammo.Projectile))return HostSuperStarAttack.Solve(player,ammo,timeline,origin,age,beforeNpc,terrain,obstacles,delay);
+            if(HostNebulaArcanumAttack.Handles(ammo.Projectile))return HostNebulaArcanumAttack.Solve(player,ammo,timeline,origin,age,beforeNpc,terrain,obstacles,delay);
+            if(HostInfluxAttack.Handles(ammo.Projectile))return HostInfluxAttack.Solve(player,ammo,timeline,origin,age,beforeNpc,terrain,obstacles,delay);
+            if(HostNailAttack.Handles(ammo.Projectile))return HostNailAttack.Solve(player,ammo,timeline,origin,age,beforeNpc,terrain,obstacles,delay);
+            if(HostGuitarCurveAttack.Handles(ammo.Projectile))return HostGuitarCurveAttack.Solve(player,ammo,timeline,origin,age,beforeNpc,terrain,obstacles,delay,preparedPlayer,preparedPlayer.HasValue && !beforeNpc);
+            if(HostWeatherPainAttack.Handles(ammo.Projectile))return HostWeatherPainAttack.Solve(player,ammo,timeline,origin,age,beforeNpc,terrain,obstacles,delay);
+            if(HostClingerWallAttack.Handles(ammo.Projectile))return HostClingerWallAttack.Solve(player,ammo,timeline,origin,age,beforeNpc,terrain,obstacles,delay);
+            if(ammo.WeaponType==4953)return HostHomingEffectAttack.Solve(player,ammo,timeline,origin,age,beforeNpc,terrain,obstacles,delay);
+            if(HostAmmoSteeringAttack.Handles(ammo.Projectile))return HostAmmoSteeringAttack.Solve(player,ammo,timeline,origin,age,beforeNpc,terrain,obstacles,delay);
+            if(HostAmmoImpactAttack.Handles(ammo.Projectile))return HostAmmoImpactAttack.Solve(player,ammo,timeline,origin,age,beforeNpc,terrain,obstacles,delay);
+            if(HostArrowFamilyAttack.Handles(ammo.Projectile))return HostArrowFamilyAttack.Solve(player,ammo,timeline,origin,age,beforeNpc,terrain,obstacles,delay);
+            if(HostImpactBurstAttack.Handles(ammo.Projectile))return HostImpactBurstAttack.Solve(player,ammo,timeline,origin,age,beforeNpc,terrain,obstacles,delay);
+            if(HostRainbowAttack.Handles(ammo.Projectile))return HostRainbowAttack.Solve(player,ammo,timeline,origin,age,beforeNpc,terrain,obstacles,delay);
+            if(HostSeedlerAttack.Handles(ammo.Projectile))return HostSeedlerAttack.Solve(player,ammo,timeline,origin,age,beforeNpc,terrain,obstacles,delay);
+            if(HostPlacedPulseAttack.Handles(ammo.Projectile))return HostPlacedPulseAttack.Solve(player,ammo,timeline,origin,age,beforeNpc,terrain,obstacles,delay);
+            if(HostHomingEffectAttack.Handles(ammo.Projectile))return HostHomingEffectAttack.Solve(player,ammo,timeline,origin,age,beforeNpc,terrain,obstacles,delay);
+            if(HostSpiritFlameAttack.Handles(ammo.Projectile))return HostSpiritFlameAttack.Solve(player,ammo,timeline,origin,age,beforeNpc,terrain,obstacles,delay);
+            if(HostMagnetSphereAttack.Handles(ammo.Projectile))return HostMagnetSphereAttack.Solve(player,ammo,timeline,origin,age,beforeNpc,terrain,obstacles,delay);
+            if(HostCloudAttack.Handles(ammo.Projectile))return HostCloudAttack.Solve(player,ammo,timeline,origin,age,beforeNpc,terrain,obstacles,delay);
+            if(HostFreeFlightAttack.Handles(ammo.Projectile))return HostFreeFlightAttack.Solve(player,ammo,timeline,origin,age,beforeNpc,terrain,obstacles,delay);
             if(HostSkullAttack.Handles(ammo.Projectile))return HostSkullAttack.Solve(player,ammo,timeline,origin,age,beforeNpc,terrain,obstacles,delay);
             if(HostBookStaffAttack.Handles(ammo.Projectile))return HostBookStaffAttack.Solve(player,ammo,timeline,origin,age,beforeNpc,terrain,obstacles,delay);
             if(HostSonicBoomAttack.Handles(ammo.Projectile))return HostSonicBoomAttack.Solve(player,ammo,timeline,origin,age,beforeNpc,terrain,obstacles,delay);
@@ -48,7 +72,6 @@ namespace JueMingR.TerrariaHost.Combat
             if(HostFiniteThrowAttack.Handles(ammo.Projectile))return HostFiniteThrowAttack.Solve(player,ammo,timeline,origin,age,beforeNpc,terrain,obstacles,delay);
             if(HostCrystalAttack.Handles(ammo.Projectile))return HostCrystalAttack.Solve(player,ammo,timeline,origin,age,beforeNpc,terrain,obstacles,delay);
             if(HostMagicBounceAttack.Handles(ammo.Projectile))return HostMagicBounceAttack.Solve(player,ammo,timeline,origin,age,beforeNpc,terrain,obstacles,delay);
-            if(ammo.Projectile==36)return Bounce(player,ammo,timeline,origin,age,beforeNpc,terrain,obstacles,delay);
             var sample=Terraria.ID.ContentSamples.ProjectilesByType[ammo.Projectile];var receive=HostAttackReceive.Capture(player,sample,timeline.Identity.Slot,beforeNpc,!beforeNpc);
             // A player bullet may directly hit an admitted target that native
             // homing does not chase (notably an immortal training dummy).
@@ -113,30 +136,6 @@ namespace JueMingR.TerrariaHost.Combat
             var entries=new System.Collections.Generic.List<HomingCandidate>();
             for(int slot=0;slot<Main.maxNPCs;slot++)if(Main.npc[slot].active)entries.Add(new HomingCandidate(Main.npc[slot],slot));
             return entries.ToArray();
-        }
-        private static AttackContact Bounce(Player player,AttackAmmoSnapshot ammo,NpcTrajectory timeline,Vector2 origin,int age,bool beforeNpc,PredictionTerrain terrain,HostAttackObstacles obstacles,int delay)
-        {
-            var sample=Terraria.ID.ContentSamples.ProjectilesByType[36];var receive=HostAttackReceive.Capture(player,sample,timeline.Identity.Slot,beforeNpc,!beforeNpc);int updates=sample.extraUpdates+1,limit=Math.Min(sample.timeLeft,(timeline.Count-age-1)*updates);
-            // One ordinary MeteorShot reflection consumes one penetration.
-            // Finite angular representatives can find a first reflected route;
-            // its body still damages only at discrete native movement endpoints.
-            for(int seed=-1;seed<32;seed++)
-            {
-                var b=timeline[Math.Min(timeline.Count-1,age+1)].ProjectileReceiveBounds;Vector2 unit=seed<0?(new Vector2(b.CenterX,b.CenterY)-origin).SafeNormalize(Vector2.UnitX*player.direction):(seed*MathHelper.TwoPi/32).ToRotationVector2();Vector2 aim=origin+unit*10000,velocity=unit*ammo.Speed,center=origin;
-                while(velocity.X>=16 || velocity.X<=-16 || velocity.Y>=16 || velocity.Y< -16)velocity*=.97f;int remaining=sample.penetrate;
-                for(int k=1;k<=limit;k++)
-                {
-                    if((k-1)%updates==0 && !obstacles.BeforeNpc(age+(k-1)/updates+1,delay+(k-1)/updates+1,center.X,center.Y))break;
-                    Vector2 half=new Vector2(sample.width,sample.height)*.5f,position=center-half,lastVelocity=velocity,wetVelocity;bool hit;
-                    if(!HostProjectileEnvironment.Dry(sample,terrain,center.X,center.Y,velocity.X) || !terrain.ProjectileTileMotion(sample,ref position,ref velocity,false,false,out wetVelocity,out hit))break;
-                    if(hit){if(remaining<=1)break;remaining--;if(velocity.X!=lastVelocity.X)velocity.X=-lastVelocity.X;if(velocity.Y!=lastVelocity.Y)velocity.Y=-lastVelocity.Y;}
-                    center=position+half+velocity;int step=(k-1)/updates,tick=age+step+1;
-                    if(!obstacles.PassOuter(k,tick,delay+step+1,center.X,center.Y,remaining))break;remaining=obstacles.Remaining;
-                    if(!receive.Allows(step+delay+1))continue;
-                    var contact=AttackIntercept.BodyContact(timeline,tick,(k-1)%updates,aim.X,aim.Y,center.X,center.Y,sample.width,sample.height,AttackConfidence.Conditional);if(contact!=null)return contact;
-                }
-            }
-            return null;
         }
     }
 }

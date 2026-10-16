@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Reflection;
 using HarmonyLib;
@@ -87,7 +87,14 @@ namespace NativeWorldTextProbe
                 int life=n.life;NativeCombatPhaseChecks.ProjectilePhase();Require(n.life<life,"original parent Damage naturally triggers glove birth");var child=Main.projectile.Single(q=>q.active && q.type==541 && !ReferenceEquals(q,parent));var control=Get(attack,"Control");var entries=(System.Collections.IDictionary)Get(control,"shots");var entry=entries[(int)child.key];bool later=child.whoAmI>parentSlot;
                 Require(entry!=null && (bool)Get(entry,"BornNext")==!later,"causal newborn phase preserves passed versus later slot");Require((child.localAI[0]>0)==later,"only later-slot second ball runs AI in its birth phase");
                 var nav=Get(entry,"Navigation");var secondary=nav.GetType().GetMethod("Secondary",BindingFlags.Static|BindingFlags.NonPublic);Require((bool)secondary.Invoke(null,new object[]{child})==later && (bool)secondary.Invoke(null,new object[]{parent})==!later,"native low-slot order decides both current roles, not ai0 birth tag");
-                Vector2 parentEnd=parent.Center;var plan=(AttackContact)GetOptional(entry,"Contact");Console.WriteLine("YOYO natural glove phase: parent="+parentSlot+" child="+child.whoAmI+" bornNext="+Get(entry,"BornNext")+" clock="+child.localAI[0]+" contact="+plan?.Tick+" sample="+plan?.Timeline.SampleTick+" nativeStep="+Main.GameUpdateCount);
+                // Keep the actual born-phase registration/slot facts above. Its
+                // normal shared allowance may legitimately omit enhancement;
+                // the following exact first-Damage replay is a finite component
+                // of the already born state, not a cold opportunity assertion.
+                Console.WriteLine("YOYO newborn normal allowance contact="+(GetOptional(entry,"Contact")!=null)+" exceeded="+Get(Get(host,"PredictionWork"),"Exceeded"));
+                Vector2 parentEnd=parent.Center;
+                NativeCombatAimChecks.PrepareMechanismFixture(host,attack,n,0);
+                var plan=(AttackContact)GetOptional(entry,"Contact");Console.WriteLine("YOYO natural glove phase: parent="+parentSlot+" child="+child.whoAmI+" bornNext="+Get(entry,"BornNext")+" clock="+child.localAI[0]+" contact="+plan?.Tick+" sample="+plan?.Timeline.SampleTick+" nativeStep="+Main.GameUpdateCount);
                 Require(parentEnd.X>799,"newborn preparation did not rewind/re-advance the parent's natural AI/movement");Require(plan!=null,"natural newborn has a legal finite body contact in this open fixture");long expected=plan.Timeline.SampleTick+plan.Tick;watchedTarget=n;watchedChild=child.key.ToString();childFirst=-1;
                 for(int tick=1;tick<=35 && childFirst<0;tick++)
                 {NativeQuickItemChecks.BeginWorldStep();NativeToolExecutionChecks.Sample(context,input,new Vector2(650,450),true);Call(combat,"Sample");n.UpdateNPC(2);NativeCombatAimChecks.Prepare(host,attack,n,0,true);NativeCombatPhaseChecks.ProjectilePhase();if(tick==1 && !later)Require(child.localAI[0]>0,"passed child begins at next original projectile phase");}
@@ -108,7 +115,12 @@ namespace NativeWorldTextProbe
             var n=Main.npc[2];n.SetDefaults(3);n.whoAmI=2;n.active=true;n.position=new Vector2(800,646);n.life=n.lifeMax=10000;n.target=0;Array.Clear(n.immune,0,n.immune.Length);
             NativeToolExecutionChecks.Sample(context,Get(context,"Input"),new Vector2(650,450),true);Call(combat,"Sample");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,false,true));NativeCombatAimChecks.Prepare(host,attack,n,0,true);
             typeof(Player).GetMethod("ItemCheck_Shoot",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),false});var shot=Main.projectile.Single(q=>q.active && q.type==p.HeldItem.shoot);float native=Terraria.ID.ProjectileID.Sets.YoyosLifeTimeMultiplier[shot.type];
-            shot.localAI[0]=native<0?100000:native*60*((1+p.meleeSpeed)/2)-.5f;NativeCombatAimChecks.Prepare(host,attack,n,0,true);
+            shot.localAI[0]=native<0?100000:native*60*((1+p.meleeSpeed)/2)-.5f;
+            // This deliberately edited lifetime is a complete motor/retire
+            // component, not a natural cold input opportunity. Keep the real
+            // finite/infinite Contact and following native AI assertions;
+            // ordinary preparation omissions remain in the Main budget runs.
+            NativeCombatAimChecks.PrepareMechanismFixture(host,attack,n,0);
             Require((GetOptional(attack,"ExpectedImpact")!=null)==(native<0),"yoyo contact cannot outlive known native control window: "+weapon);shot.AI();Require((shot.ai[0]>=0)==(native<0),"native finite/infinite lifetime agrees with control retirement");
             var registry=(System.Collections.IDictionary)Get(Get(attack,"Control"),"shots");if(native>0){shot.localAI[0]=native*60*((1+p.meleeSpeed)/2)-4;var nav=Get(registry[(int)shot.key],"Navigation");var remaining=nav.GetType().GetMethod("Remaining",BindingFlags.Static|BindingFlags.NonPublic);Require((int)remaining.Invoke(null,new object[]{p,shot,false})==4 && (int)remaining.Invoke(null,new object[]{p,shot,true})==1,"second-ball random clock uses conservative four increments without RNG");}
             Console.WriteLine("PASS native yoyo lifetime: weapon="+weapon+" infinite="+(native<0));

@@ -17,6 +17,10 @@ namespace NativeWorldTextProbe
         private static readonly List<Vector2> parents=new List<Vector2>(),children=new List<Vector2>();
         private static readonly List<int> emissions=new List<int>();private static uint origin;
         private static Projectile receiver;private static int detachedHits;
+        private static int Weapon
+        {
+            get{string value=Environment.GetEnvironmentVariable("JMR_MAGIC_STRING_WEAPON");if(value==null)return 3262;int type=int.Parse(value);Require(new[]{3262,3282,3283,3291,3292,5294,3389}.Contains(type),"explicit existing magic-string family fixture");return type;}
+        }
         private static void DamageBefore(Projectile __instance){receiver=__instance;}
         private static void DamageAfter(){receiver=null;}
         private static void Strike(NPC __instance,int __result){if(__instance.whoAmI==2 && __result>0 && receiver!=null && receiver.aiStyle==99 && receiver.ai[0]==-2)detachedHits++;}
@@ -44,7 +48,7 @@ namespace NativeWorldTextProbe
                     foreach(bool aim in new[]{false,true})
                     {
                         NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());
-                        var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,3262,0,0);p.position=new Vector2(1000,646);p.releaseUseItem=true;
+                        var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,Weapon,0,0);p.position=new Vector2(1000,646);p.releaseUseItem=true;
                         foreach(var armor in p.armor)armor.TurnToAir();p.armor[3].SetDefaults(ItemID.MagicString);
                         var n=Main.npc[2];n.SetDefaults(3);n.whoAmI=2;n.active=true;n.position=p.Center+new Vector2(mirror*(moving?240:300),-100);n.velocity=new Vector2(moving?mirror:0,0);n.aiStyle=-1;n.noGravity=true;n.life=n.lifeMax=100000;
                         n.knockBackResist=0;Array.Clear(n.immune,0,n.immune.Length);Main.screenPosition=p.Center-new Vector2(400,300);
@@ -79,7 +83,7 @@ namespace NativeWorldTextProbe
                 foreach(int mirror in new[]{1,-1})
                 {
                     NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());
-                    var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,3262,0,0);p.position=new Vector2(1000,646);p.releaseUseItem=true;
+                    var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,Weapon,0,0);p.position=new Vector2(1000,646);p.releaseUseItem=true;
                     foreach(var armor in p.armor)armor.TurnToAir();p.armor[3].SetDefaults(ItemID.MagicString);
                     foreach(var n in Main.npc)n.active=false;
                     NativeCombatObservationChecks.Save(host,new ObservationOptions(false,false,false,false,false,25,false,true));NativeCombatCadenceChecks.Save(combat,new CombatOptions(16));
@@ -134,7 +138,7 @@ namespace NativeWorldTextProbe
             foreach(int mirror in new[]{1,-1})
             {
                 NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());
-                var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,3262,0,0);p.position=new Vector2(1000,646);p.releaseUseItem=true;
+                var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,Weapon,0,0);p.position=new Vector2(1000,646);p.releaseUseItem=true;
                 foreach(var armor in p.armor)armor.TurnToAir();p.armor[3].SetDefaults(ItemID.MagicString);
                 var n=Main.npc[2];n.SetDefaults(3);n.whoAmI=2;n.active=true;n.position=p.Center+new Vector2(mirror*500,-100);n.velocity=Vector2.Zero;n.aiStyle=-1;n.noGravity=true;n.life=n.lifeMax=100000;n.knockBackResist=0;
                 Main.screenPosition=p.Center-new Vector2(400,300);Array.Clear(n.immune,0,n.immune.Length);

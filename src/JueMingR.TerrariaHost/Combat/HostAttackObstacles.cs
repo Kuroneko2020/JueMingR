@@ -104,10 +104,13 @@ namespace JueMingR.TerrariaHost.Combat
         {
             selectedReflects=parent.selectedReflects;goodWorld=parent.goodWorld;expert=parent.expert;multiplayer=parent.multiplayer;aiReflectors=parent.aiReflectors;
             targetLeases=parent.targetLeases;
+            homingInputs=parent.homingInputs;heldAmmoInputs=parent.heldAmmoInputs;harpyBatchState=parent.harpyBatchState;
+            joustingOwner=parent.joustingOwner;whipStarOwner=parent.whipStarOwner;yoyoOwner=parent.yoyoOwner;yoyoCounter=parent.yoyoCounter;yoyoNoTile=parent.yoyoNoTile;guitarBirth=parent.guitarBirth;solarOwner=parent.solarOwner;medusaOwner=parent.medusaOwner;monkOwner=parent.monkOwner;bubbleFlailInputs=parent.bubbleFlailInputs;piranhaOwner=parent.piranhaOwner;sharpTearsView=parent.sharpTearsView;pumpkinInputs=parent.pumpkinInputs;ammoStaticResets=parent.ammoStaticResets;
             familyLeases=parent.familyLeases;
             receiveLeases=parent.receiveLeases;
             receivePolicies=parent.receivePolicies;preparationLeases=parent.preparationLeases;
             player=parent.player;shot=spawned;capturedTimeline=parent.timeline;timelineOwner=candidate?null:parent;policyInputs=new PolicyInputs(spawned);delay=parent.delay;beforeNpc=parent.beforeNpc;nextWorld=parent.nextWorld;history=candidate?new HitHistory():parent.history;ownsHistory=candidate;
+            ForkMeleeFamilyFrom(parent,candidate);
             // Capture immutable eligibility BEFORE allocating/capturing another
             // receiver set. Local immunity is part of the key, never collapsed
             // between observed members; mutable owner/static history is not.
@@ -210,8 +213,8 @@ namespace JueMingR.TerrariaHost.Combat
         // All candidate forks share this one preparation's observed wind and
         // visual clock. Resetting private hit history must not recapture time.
         internal void CapturePaperClock(HostPaperAirplaneAttack.State value){history.PaperClock=value;}
-        private bool BirthInputsMatch(bool afterHandStart)
-        {return BookHandCurrent && BeeOwnerCurrent && CursorMappingCurrent && PhoenixOwnerCurrent && (!history.PaperClock.HasValue || history.PaperClock.Value.Current) && (history.ArcOwner==null || (afterHandStart?history.ArcOwner.MembersAfterHandStart:history.ArcOwner.MembersCurrent)) && (!shotFacingCaptured || cursorPlayer.fullRotation==shotRotation);}
+        private bool BirthInputsMatch(bool afterHandStart,bool afterHeldPrefix=false)
+        {return MeleeFamilyInputsMatch(afterHandStart) && (afterHeldPrefix?HeldPrefixHarpyMembersCurrent:HarpyBatchMembersCurrent) && HeldAmmoInputsCurrent && PumpkinInputsCurrent && SharpTearsInputsCurrent && PiranhaOwnerCurrent && BubbleFlailOwnerCurrent && MonkOwnerCurrent && MedusaOwnerCurrent && SolarOwnerCurrent && YoyoOwnerCurrent && WhipStarOwnerCurrent && JoustingOwnerCurrent && HomingInputsCurrent && BookHandCurrent && BeeOwnerCurrent && CursorMappingCurrent && PhoenixOwnerCurrent && (!history.PaperClock.HasValue || history.PaperClock.Value.Current) && (history.ArcOwner==null || (afterHandStart?history.ArcOwner.MembersAfterHandStart || MeleeFamilyStartsNow && history.ArcOwner.MembersAtNativeHandStart:history.ArcOwner.MembersCurrent)) && (!shotFacingCaptured || cursorPlayer.fullRotation==shotRotation);}
         internal void CaptureProjectileFamily(Projectile[] members,int firstSceneType=0,int lastSceneType=0)
         {familyLeases.Add(new HostProjectileFamilyLease(members,firstSceneType,lastSceneType));CaptureBirthSlots();}
         internal void CaptureOwnedProjectileFamily(Projectile[] members,int owner,int[] sceneTypes)
@@ -240,6 +243,7 @@ namespace JueMingR.TerrariaHost.Combat
         }
         private bool CapturedAllows(HostAttackReceive receive,int slot,int outer)
         {
+            receive=AmmoImpactCapturedReceive(receive,slot);
             if(localCleared)receive=receive.WithoutLocal();
             if(history.OwnerWritten!=null && history.OwnerWritten[slot])receive=receive.WithoutOwner();
             return receive.Allows(outer);
@@ -276,15 +280,15 @@ namespace JueMingR.TerrariaHost.Combat
         // flight or ordinary preview never borrows this transition allowance.
         internal bool UnchangedForHandStart
         {get{return ReadUnchanged(false) || history.ArcHandReset && ReadUnchanged(true);}}
-        private bool ReadUnchanged(bool afterHandStart)
+        private bool ReadUnchanged(bool afterHandStart,bool afterHeldPrefix=false)
         {
                 // Native chase permission is distinct from Damage permission.
                 // The selected body is excluded from the other receiver rows,
                 // so its autonomous-targeting dependency needs its own lease.
-                if(goodWorld!=Main.getGoodWorld || expert!=Main.expertMode || multiplayer!=(Main.netMode==1) || selectedReflects!=Main.npc[timeline.Identity.Slot].reflectsProjectiles || !BirthInputsMatch(afterHandStart) || history.ArcOwner!=null && !(afterHandStart?history.ArcOwner.CurrentAfterHandStart:history.ArcOwner.Current) || birthSlots!=null && !birthSlots.Current)return false;
+                if(!MeleeFamilyDependenciesCurrent || !(afterHeldPrefix?HeldPrefixHarpyDependenciesCurrent:HarpyBatchDependenciesCurrent) || !PumpkinDependenciesCurrent || !BubbleFlailDependenciesCurrent || !HomingDependenciesCurrent || !MedusaDependenciesCurrent || !GuitarDependenciesCurrent || !YoyoDependenciesCurrent || !WhipStarDependenciesCurrent || goodWorld!=Main.getGoodWorld || expert!=Main.expertMode || multiplayer!=(Main.netMode==1) || selectedReflects!=Main.npc[timeline.Identity.Slot].reflectsProjectiles || !BirthInputsMatch(afterHandStart,afterHeldPrefix) || history.ArcOwner!=null && !(afterHandStart?history.ArcOwner.CurrentAfterHandStart || MeleeFamilyStartsNow && history.ArcOwner.CurrentAtNativeHandStart:history.ArcOwner.Current) || birthSlots!=null && !(afterHeldPrefix?birthSlots.CurrentAfterHeldPrefix(heldPrefixActivity):birthSlots.Current))return false;
                 foreach(var targets in targetLeases)if(!targets.Current)return false;
                 if(history.IcePlacement!=null && !history.IcePlacement.Current)return false;
-                foreach(var family in familyLeases)if(!family.Current)return false;
+                foreach(var family in familyLeases)if(!(afterHeldPrefix?HeldPrefixFamilyCurrent(family):family.Current))return false;
                 if(!ReceiveUnchanged())return false;
                 foreach(var lease in receiveLeases)if(!ReferenceEquals(lease,this) && !lease.ReceiveUnchanged())return false;
                 foreach(var lease in preparationLeases)if(!lease.Unchanged)return false;
@@ -364,7 +368,7 @@ namespace JueMingR.TerrariaHost.Combat
             // body penetration reached zero). A positive tile-death 710
             // still consumes its budget. Candidate history never resets here.
             var body=new Rectangle((int)(x-width*.5f),(int)(y-height*.5f),width,height);
-            var target=timeline[tick];var b=target.ProjectileReceiveBounds;bool hitsTarget=target.CanReceive && (arc?ArcAllows(arcSelected,timeline.Identity.Slot,outer):SelectedAllows(outer)) && (ownerQualification==null || ownerQualification(target.OwnerBounds,target.NoTileCollide)) && (collision==null?body.Intersects(new Rectangle((int)b.X,(int)b.Y,(int)b.Width,(int)b.Height)):collision(b));
+            var target=timeline[tick];var b=target.ProjectileReceiveBounds;bool hitsTarget=MeleeFamilyReceiverAlive(timeline.Identity.Slot) && target.CanReceive && (arc?ArcAllows(arcSelected,timeline.Identity.Slot,outer):SelectedAllows(outer)) && (ownerQualification==null || ownerQualification(target.OwnerBounds,target.NoTileCollide)) && (collision==null?body.Intersects(new Rectangle((int)b.X,(int)b.Y,(int)b.Width,(int)b.Height)):collision(b));
             // Reflection happens after receive permission and before Strike,
             // at the native body after Damage_StartIteratingNPC adds netOffset.
             // Unknown reflection affects this attack's proof, not the path
@@ -393,7 +397,7 @@ namespace JueMingR.TerrariaHost.Combat
                     if(!unlimited && remaining>0 && --remaining==0)return false;
                 }
                 if(at==receivers.Count)break;var r=receivers[at];
-                if(!(arc?ArcAllows(r.ArcReceive,r.Identity.Slot,outer):DynamicAllows(r.Identity.Slot,outer) && CapturedAllows(r.Receive,r.Identity.Slot,outer)) || ownerQualification!=null && !ownerQualification(new MotionRect(r.Position.X+r.Offset.X,r.Position.Y+r.Offset.Y,r.RawBox.Width,r.RawBox.Height),r.NoTileCollide) || !(collision==null?body.Intersects(r.Box):collision(new MotionRect(r.Box.X,r.Box.Y,r.Box.Width,r.Box.Height))))continue;
+                if(!MeleeFamilyReceiverAlive(r.Identity.Slot) || !(arc?ArcAllows(r.ArcReceive,r.Identity.Slot,outer):DynamicAllows(r.Identity.Slot,outer) && CapturedAllows(r.Receive,r.Identity.Slot,outer)) || ownerQualification!=null && !ownerQualification(new MotionRect(r.Position.X+r.Offset.X,r.Position.Y+r.Offset.Y,r.RawBox.Width,r.RawBox.Height),r.NoTileCollide) || !(collision==null?body.Intersects(r.Box):collision(new MotionRect(r.Box.X,r.Box.Y,r.Box.Width,r.Box.Height))))continue;
                 // A stationary foreign body's geometry does not freeze its
                 // AI53 random reflection flag. Only a post-NPC birth's first
                 // outer may use the observed flag before another NPC action.
@@ -435,10 +439,16 @@ namespace JueMingR.TerrariaHost.Combat
                 {WriteOwner(slot,0);int[] values;if(history.StaticNext==null)history.StaticNext=new Dictionary<int,int[]>();if(!history.StaticNext.TryGetValue(shot.immunityIdentity,out values)){values=new int[Main.maxNPCs];history.StaticNext.Add(shot.immunityIdentity,values);}values[slot]=shot.idStaticNPCHitCooldown<0?int.MaxValue:outer+shot.idStaticNPCHitCooldown;}
                 return;
             }
-            // These attached hand shots take native KillOldestJavelin's
-            // branch instead of the ordinary immunity-write chain. Their
-            // family model owns that cap; this hit preserves owner history.
-            if(shot.type==598 || shot.type==636)return;
+            // Attached hand shots take KillOldestJavelin's early branch;
+            // Influx451 likewise returns after its phase transition. These
+            // paths preserve owner/local history instead of using the generic
+            // immunity-write tail. Their family owns attachment/phase limits.
+            if(shot.type==598 || shot.type==636 || shot.type==451)return;
+            // Solar Eruption writes both counters in its explicit native
+            // branch. A generic local-only hit would incorrectly clear the
+            // shared owner gate before its own612 burst reaches this victim.
+            if(shot.type==611 || shot.type==612)
+            {WriteOwner(slot,outer+4);if(localNext!=null)localNext[slot]=outer+shot.localNPCHitCooldown;return;}
             int ownerCooldown=OwnerCooldown(shot.type);
             if(ownerCooldown!=0){WriteOwner(slot,outer+ownerCooldown);return;}
             if(shot.usesLocalNPCImmunity && shot.localNPCHitCooldown!=-2)

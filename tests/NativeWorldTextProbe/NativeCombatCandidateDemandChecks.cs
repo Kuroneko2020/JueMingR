@@ -119,6 +119,10 @@ namespace NativeWorldTextProbe
                     Require((bool)Call(attack,"CandidateMissCurrent",retryPlan,shortPrefix.Identity,shortPrefix.SampleTick,phase,32) && !(bool)Call(attack,"CandidateMissCurrent",retryPlan,shortPrefix.Identity,shortPrefix.SampleTick,phase,fullFuture),"A completed short miss cannot authorize a longer requested future.");
                     Require((int)Call(attack,"CandidateProgressRequired",published.Identity,progressKey,false)==64,"A complete nonpaused requested-prefix miss may fairly extend its actual future.");
                     progressSignificant[published.Identity.Slot]=true;
+                    Require((int)Call(attack,"CandidateProgressRequired",published.Identity,progressKey,false)==64,"An unresolved significant queue ticket retains priority without resetting a completed short miss to its initial range forever.");
+                    // The live fact-change detector clears the range once;
+                    // its queue's significant priority is a separate lifetime.
+                    progressRequests[progressKey]=0;progressSignificant[published.Identity.Slot]=true;
                     Require((int)Call(attack,"CandidateProgressRequired",published.Identity,progressKey,false)==(int)Call(attack,"CandidatePreferred",published.Identity) && progressAttempts[progressKey]==priorProgressAttempt,"A significant new receive premise restarts only its work range, never its fair attempt stamp.");
                     progressSignificant[published.Identity.Slot]=false;
                     // Only this component clock advances; no native consumer
@@ -139,6 +143,12 @@ namespace NativeWorldTextProbe
         private static void StressContactProposed(object __instance,AttackContact __0)
         {if(ReferenceEquals(stressAttack,__instance)){stressProposedContact=__0;stressProposedTick=Main.GameUpdateCount;}}
         private static readonly List<string> stressConsumers=new List<string>();
+        private static void StressEvaluated(object __instance,bool __2,int __4,int __5,bool __result)
+        {
+            if(!ReferenceEquals(__instance,stressAttack) || stressFrame<140 || __4/2!=2)return;
+            var plans=(Array)Get(stressAttack,"candidatePlans");var plan=plans.GetValue(__4);var path=plan==null?null:GetOptional(plan,"Timeline") as NpcTrajectory;
+            Console.WriteLine("CANDIDATE-ADMISSION frame="+stressFrame+" beforeNpc="+__2+" required="+__5+" result="+__result+" prepared="+(plan==null?false:Get(plan,"Prepared"))+" count="+(path?.Count??0)+" paused="+(path?.BudgetPaused??false)+" stop="+path?.Stop+" request="+((int[])Get(stressAttack,"candidateRequests"))[__4]);
+        }
         private static void StressHandStarted(Player __instance)
         {if(stressAttack!=null && ReferenceEquals(__instance,stressPlayer))stressHandStarts++;}
         private static void StressRecorded(object __instance)
@@ -180,6 +190,7 @@ namespace NativeWorldTextProbe
                 audit.Patch(attack.GetType().GetMethod("RecordInput",Flags),postfix:new HarmonyMethod(typeof(NativeCombatCandidateDemandChecks),nameof(StressRecorded)));
                 audit.Patch(attack.GetType().GetMethod("ContactInput",Flags),prefix:new HarmonyMethod(typeof(NativeCombatCandidateDemandChecks),nameof(StressContactProposed)));
                 audit.Patch(typeof(Player).GetMethod("ItemCheck_StartActualUse",Flags),postfix:new HarmonyMethod(typeof(NativeCombatCandidateDemandChecks),nameof(StressHandStarted)));
+                if(Environment.GetEnvironmentVariable("JMR_CANDIDATE_PROGRESS_DIAGNOSTIC")=="1")audit.Patch(attack.GetType().GetMethod("EvaluateCandidate",Flags),postfix:new HarmonyMethod(typeof(NativeCombatCandidateDemandChecks),nameof(StressEvaluated)));
                 foreach(bool movingCandidates in new[]{false,true})
                 foreach(int blockers in new[]{2,24})
                 foreach(bool path in new[]{true,false})
@@ -221,6 +232,7 @@ namespace NativeWorldTextProbe
                         if(movingCandidates && (frame==0 || frame==140 || frame==179))Console.WriteLine("CANDIDATE-MOVING frame="+frame+" near2="+Main.npc[2].Center+"/v="+Main.npc[2].velocity+" last25="+Main.npc[25].Center+"/v="+Main.npc[25].velocity+" far26="+Main.npc[26].Center+"/v="+Main.npc[26].velocity);
                     }
                     Require(selectedFar>=0 && stressBirths>0 && stressEnhanced>0,"A non-incumbent late-hit far target is eventually chosen and actually consumes Enhanced: blockers="+blockers);
+                    if(nearRecovered<0)Console.WriteLine("CANDIDATE-LATE-FAIL near="+Main.npc[2].Center+"/v="+Main.npc[2].velocity+" active="+Main.npc[2].active+" life="+Main.npc[2].life+" player="+p.Center+" timers="+p.itemTime+"/"+p.itemAnimation+" actionAttempt="+((long[])Get(attack,"candidateAttempt"))[5]+" worldAttempt="+((long[])Get(attack,"candidateAttempt"))[4]+" request="+((int[])Get(attack,"candidateRequests"))[5]+"/"+((int[])Get(attack,"candidateRequests"))[4]+" depth="+((int[])Get(attack,"candidateDepths"))[5]+"/"+((int[])Get(attack,"candidateDepths"))[4]);
                     Require(nearRecovered>=0,"A new nearer reachable late-hit target is reevaluated instead of permanently keeping the far positive.");
                     Require(stressNearEnhanced>0,"After the nearer target becomes reachable, a real native action opportunity consumes its Enhanced input within the original 180-update window.");
                     if(movingCandidates)Require(Main.npc[25].Center.X>initialLastX+2 && Main.npc[25].position.X>48*16,"The moving counterexample executes original NPC movement and stays on the blocked side of the wall.");

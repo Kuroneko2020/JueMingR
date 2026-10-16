@@ -15,6 +15,10 @@ namespace JueMingR.TerrariaHost.Combat
             // detached flight asks Source for another held-navigation future.
             if(HostYoyoNavigation.Weapon(item) && player.magicString && combat.Use.ManagedAttackIntent(player))
                 return Opening(combat,player,item) || combat.Use.AimPrimary!=null && combat.Use.ManagedYoyoHeld(combat.Use.AimPrimary);
+            // These bodies read the cursor after Shoot while their ordinary
+            // hand timers are still cooling down. Demand follows only a live
+            // registered consumer; alternate free projectiles stay ordinary.
+            if(HostDirectionalControl.Weapon(player,item) && combat.Attack.Control.Pending)return true;
             if(!Ordinary(item))return true;
             return Opening(combat,player,item);
         }

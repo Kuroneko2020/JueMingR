@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -94,8 +94,8 @@ namespace NativeWorldTextProbe
         }
         private static NPC Target(int slot,Vector2 center,bool friendly=false)
         {typeof(NPC).GetMethod("NewNPCInstanceInSlot",Flags).Invoke(null,new object[]{slot,(byte)0});var n=Main.npc[slot];n.SetDefaults(3);n.whoAmI=slot;n.active=true;n.Center=center;n.life=n.lifeMax=10000;n.defense=0;n.knockBackResist=0;n.aiStyle=-1;n.noGravity=n.noTileCollide=true;n.velocity=n.netOffset=Vector2.Zero;n.friendly=friendly;Array.Clear(n.immune,0,n.immune.Length);return n;}
-        private static NpcTrajectory Timeline(NPC n)
-        {var id=(NpcIdentity)Static(assembly.GetType("JueMingR.TerrariaHost.Combat.CombatSelection",true),"Identity",n,1L);var s=new NpcMotionState{Identity=id,X=n.position.X,Y=n.position.Y,Width=n.width,Height=n.height,CanReceive=!n.dontTakeDamage,NoTileCollide=n.noTileCollide,Wet=n.wet,ReflectsProjectiles=n.reflectsProjectiles};var points=Enumerable.Range(0,121).Select(t=>new NpcTrajectoryPoint(t,s)).ToArray();return new NpcTrajectory(id,(long)Main.GameUpdateCount-1,1,PredictionAssumption.NoNewHits,PredictionStop.None,points,points.Length,PredictionStrategy.RollingConditional);}
+        private static NpcTrajectory Timeline(NPC n,bool beforeNpc=true)
+        {var id=(NpcIdentity)Static(assembly.GetType("JueMingR.TerrariaHost.Combat.CombatSelection",true),"Identity",n,1L);var s=new NpcMotionState{Identity=id,X=n.position.X,Y=n.position.Y,Width=n.width,Height=n.height,CanReceive=!n.dontTakeDamage,NoTileCollide=n.noTileCollide,Wet=n.wet,ReflectsProjectiles=n.reflectsProjectiles};var points=Enumerable.Range(0,121).Select(t=>new NpcTrajectoryPoint(t,s)).ToArray();return new NpcTrajectory(id,(long)Main.GameUpdateCount-(beforeNpc?1:0),1,PredictionAssumption.NoNewHits,PredictionStop.None,points,points.Length,PredictionStrategy.RollingConditional);}
         private static object Clock(NpcTrajectory path)
         {return Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackClock",true),Flags,null,new object[]{path,Enum.Parse(assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase",true),"BeforeNpc"),0},null);}
         private static object Obstacles(Player p,Projectile q,NpcTrajectory path)
@@ -106,7 +106,7 @@ namespace NativeWorldTextProbe
         {return (AttackContact)Static(model,"Known",p,new[]{q},path,Clock(path),Terrain(),Obstacles(p,q,path),Frame(p,path));}
         private static int oldMouseX,oldMouseY,oldTileX,oldTileY;private static long shootTick;
         private static void BeforeShoot(Player __instance)
-        {if(!natural || !ReferenceEquals(__instance,Main.LocalPlayer))return;oldMouseX=Main.mouseX;oldMouseY=Main.mouseY;oldTileX=Player.tileTargetX;oldTileY=Player.tileTargetY;shootTick=Main.GameUpdateCount;shootExpected=(AttackContact)GetOptional(Get(Get(activeContext,"Combat"),"Attack"),"ExpectedPreview");Console.WriteLine("ICE shoot-entry "+NaturalFacts(__instance)+" physicalMouse="+oldMouseX+","+oldMouseY+" physicalTile="+oldTileX+","+oldTileY+" expected="+shootExpected?.Tick);}
+        {if(!natural || !ReferenceEquals(__instance,Main.LocalPlayer))return;oldMouseX=Main.mouseX;oldMouseY=Main.mouseY;oldTileX=Player.tileTargetX;oldTileY=Player.tileTargetY;shootTick=Main.GameUpdateCount;shootExpected=(AttackContact)GetOptional(Get(Get(activeContext,"Combat"),"Attack"),"ExpectedImpact");Console.WriteLine("ICE shoot-entry "+NaturalFacts(__instance)+" physicalMouse="+oldMouseX+","+oldMouseY+" physicalTile="+oldTileX+","+oldTileY+" expected="+shootExpected?.Tick);}
         private static void AfterShoot(Player __instance)
         {if(!natural || !ReferenceEquals(__instance,Main.LocalPlayer))return;Require(Main.mouseX==oldMouseX && Main.mouseY==oldMouseY && Player.tileTargetX==oldTileX && Player.tileTargetY==oldTileY,"real consumer returns both physical cursor and paired tileTarget coordinates");restored++;}
         private static string NaturalFacts(Player p)
@@ -172,6 +172,11 @@ namespace NativeWorldTextProbe
         }
         private static void Births(object context)
         {
+            // Birth probes borrow screen dimensions only for native reverse-gravity mapping.
+            // Restore them before later physical-input samples use the real viewport.
+            int screenWidth=Main.screenWidth,screenHeight=Main.screenHeight;
+            try
+            {
             int cases=0;foreach(float gravity in new[]{1f,-1f})
             {
                 var p=Reset(context);p.position=new Vector2(650.25f,600.5f);p.gravDir=gravity;p.itemAnimationMax=9;p.itemAnimation=p.itemTime=8;Main.screenPosition=new Vector2(500.25f,400.5f);Main.screenHeight=600;Main.mouseX=300;Main.mouseY=200;Player.tileTargetX=37;Player.tileTargetY=38;
@@ -180,6 +185,8 @@ namespace NativeWorldTextProbe
                 var q=Main.projectile.Single(s=>s.active && s.type==80);Require(q.ai.SequenceEqual(expected.ai) && q.Center==expected.Center && Vector2.DistanceSquared(q.velocity,expected.velocity)<.0001f && q.damage==expected.damage,"actual scoped normal/reverse Ice Rod birth has matching cursor, tile pair, origin and velocity");Require(Main.mouseX==300 && Main.mouseY==200 && Player.tileTargetX==37 && Player.tileTargetY==38,"paired tile/cursor receipt restores exact original integers");cases++;
             }
             Console.WriteLine("PASS ICE original births="+cases+" pairedTileRestore=True");
+            }
+            finally{Main.screenWidth=screenWidth;Main.screenHeight=screenHeight;Terraria.GameInput.PlayerInput.CacheOriginalScreenDimensions();}
         }
         private static void LaunchPlacementMoment(object context)
         {
@@ -369,29 +376,42 @@ namespace NativeWorldTextProbe
         private static void Natural(object context)
         {
             var p=Reset(context);target=NativeCombatControlPreviewChecks.Dummy(2,49,40);raw=target.Center-new Vector2(430,0);var host=Get(context,"CombatObservation");var attack=Get(Get(context,"Combat"),"Attack");solves=steps=0;
-            NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,false));for(int i=0;i<3;i++)NativeCombatSelectionPreviewChecks.Step(context,raw,false,true);var plan=(AttackContact)GetOptional(attack,"ExpectedPreview");Require(plan!=null && !Main.projectile.Any(q=>q.active) && !p.controlUseItem,"idle Ice Rod has a useful actual source preview without live spawn");
-            int oldSteps=steps,oldSolves=solves;var impact=Get(Get(host,"World"),"Impact");var zoom=Main.GameViewMatrix.ZoomMatrix;for(int i=0;i<12;i++){Call(impact,"Capture");Call(impact,"Project",zoom,Matrix.Invert(zoom));Require((bool)Call(attack,"PreviewCurrent",plan),"current ice preview lease");}Require(steps==oldSteps && solves==oldSolves && solves>0,"CPU Capture/Project does not replay Ice Rod; World.Draw/pixels remain unverified");
-            natural=observe=auditMotor=true;NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));long start=Main.GameUpdateCount;int visible=0,withdrawn=0;
+            NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,false));for(int i=0;i<3;i++)NativeCombatSelectionPreviewChecks.Step(context,raw,false,true);Require(GetOptional(attack,"ExpectedPreview")==null && !Main.projectile.Any(q=>q.active) && !p.controlUseItem && solves==0,"withdrawn idle Ice Rod preview neither solves nor births an attack");
+            NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));var plan=PrepareNatural(context,host,attack);Require(plan!=null,"pressed Ice Rod has an actual preparation under1000ms mechanism allowance");Call(attack,"BindPresentation",plan);
+            int oldSteps=steps,oldSolves=solves;var impact=Get(Get(host,"World"),"Impact");var zoom=Main.GameViewMatrix.ZoomMatrix;for(int i=0;i<12;i++){Call(impact,"Capture");Call(impact,"Project",zoom,Matrix.Invert(zoom));Require((bool)Call(attack,"PresentationCurrent",plan),"current actual Ice Rod preparation lease");}Require(steps==oldSteps && solves==oldSolves && solves>0,"CPU Capture/Project does not replay Ice Rod; World.Draw/pixels remain unverified");
+            natural=observe=auditMotor=true;long start=Main.GameUpdateCount;int visible=0,heldContacts=0,withdrawn=0;
             for(int action=0;action<130;action++)
             {
-                naturalAction=action;physicalLeft=action<27;NativeCombatSelectionPreviewChecks.Step(context,raw,physicalLeft);var shown=(AttackContact)GetOptional(attack,"ExpectedPreview");
+                naturalAction=action;physicalLeft=action<27;var shown=physicalLeft?(action==0?plan:PrepareNatural(context,host,attack)):null;NativeCombatSelectionPreviewChecks.Step(context,raw,physicalLeft);
+                if(shown==null){var flight=Observe(attack,p);if(flight!=null)shown=(AttackContact)Get(flight,"Contact");}
                 Console.WriteLine("ICE preview-frame "+NaturalFacts(p)+" shown="+(shown!=null)+" receiverLife="+target.life+" sourceDamageFlights="+Main.projectile.Count(q=>q.active && q.type==80 && q.owner==p.whoAmI && q.damage>0));
                 if(physicalLeft)
                 {
-                    // The demonstrated viable interval is this stationary,
-                    // living Dummy with mana for every next original use.
-                    // Cooldown is not a reason to erase its next-use preview.
+                    // Preserve all27 actual held observations and their live
+                    // receiver/resource premises. The finite preparation above
+                    // belongs to real input, not the retired idle preview.
                     Require(target.active && target.life>0 && !target.dontTakeDamage && p.active && !p.dead && !p.ghost && p.statMana>=p.HeldItem.mana,"declared held feasible interval retains native receiver/player/resource facts");
-                    Require(shown!=null,"every frame of the actual held feasible interval retains a useful preview; full withdrawal facts were printed first");visible++;
+                    Require(GetOptional(attack,"ExpectedPreview")==null,"all27 held Ice Rod observations keep the retired hypothetical preview absent");visible++;if(shown!=null)heldContacts++;
                 }
                 else if(shown==null){withdrawn++;Console.WriteLine("ICE post-release withdrawal actual handPending="+(p.itemAnimation>0)+" originalSourceAlive="+Main.projectile.Any(q=>q.active && q.type==80 && q.owner==p.whoAmI)+"; not counted in held feasible denominator");}
             }
             Console.WriteLine("ICE natural actions=130 held=27 hand="+births+" positive="+positive+" first="+(first-start)+" known="+bornPrediction?.Tick+" preview="+plan.Tick+" restored="+restored+" currentMotor="+motors+" retire="+kills+" sustainedPreview="+visible+"/27 releasedWithdrawals="+withdrawn+" assisted/manualBirths="+assistedBirths+"/"+manualBirths);
-            Require(births>=3 && positive>0 && first>=start && bornPrediction!=null && first-start==plan.Tick && first-firstBirth+1==bornPrediction.Tick,"real first Ice Rod use against native Dummy488 has positive first Strike at its actual idle and first-birth marks");Require(restored==births && assistedBirths>=3 && visible==27 && !p.controlUseItem && !Main.projectile.Any(q=>q.active && q.type==80 && q.damage>0),"held/released original uses preserve paired input restoration, useful preview, and retire every damaging source");natural=observe=auditMotor=false;
+            Require(births>=3 && positive>0 && first>=start && bornPrediction!=null && first-start==plan.Tick && first-firstBirth+1==bornPrediction.Tick,"real first Ice Rod use against native Dummy488 has positive first Strike at its actual pressed preparation and first-birth marks");Require(restored==births && assistedBirths>=3 && visible==27 && heldContacts>0 && !p.controlUseItem && !Main.projectile.Any(q=>q.active && q.type==80 && q.damage>0),"all27 held and103 released observations preserve paired input restoration, real hand/family contacts, and retire every damaging source");natural=observe=auditMotor=false;
             // Occupied stone obstructs all admitted target aim seeds. A legal
             // physical use remains original input and may place harmless ice.
             p=Reset(context);target=NativeCombatControlPreviewChecks.Dummy(2,49,40);for(int y=15;y<=43;y++)NativeToolsChecks.Tile(46,y,1);raw=target.Center-new Vector2(430,0);NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,false));for(int i=0;i<3;i++)NativeCombatSelectionPreviewChecks.Step(context,raw,false,true);Require(GetOptional(attack,"ExpectedPreview")==null,"native solid core makes Ice Rod straight aim genuinely infeasible, not a placed endpoint Contact");
-            observe=true;NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));for(int i=0;i<80;i++)NativeCombatSelectionPreviewChecks.Step(context,raw,i==0);Require(births==1 && positive==0 && !p.controlUseItem && Main.projectile.Where(q=>q.active && q.type==80).All(q=>q.damage==0),"infeasible original use is not steered to a fake hit and release leaves no damaging flight");Console.WriteLine("PASS ICE natural positive130 negative80 originalBirths="+births+" CPUCaptureProject=12 DrawUnverified=True");
+            observe=true;NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));Require(PrepareNatural(context,host,attack)==null,"real pressed Ice Rod preparation also rejects the obstructed native geometry");for(int i=0;i<80;i++)NativeCombatSelectionPreviewChecks.Step(context,raw,i==0);Require(births==1 && positive==0 && !p.controlUseItem && Main.projectile.Where(q=>q.active && q.type==80).All(q=>q.damage==0),"infeasible original use is not steered to a fake hit and release leaves no damaging flight");Console.WriteLine("PASS ICE natural positive130 negative80 originalBirths="+births+" CPUCaptureProject=12 DrawUnverified=True");
+        }
+        private static AttackContact PrepareNatural(object context,object host,object attack)
+        {
+            NativeToolExecutionChecks.Sample(context,Get(context,"Input"),raw,true);Call(Get(context,"Combat"),"Sample");
+            NativeCombatAimChecks.PrepareMechanismFixture(host,attack,target,0);
+            return (AttackContact)GetOptional(attack,"ExpectedImpact");
+        }
+        private static object Observe(object attack,Player player)
+        {
+            var args=new object[]{player,Timeline(target,false),Enum.Parse(assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase",true),"CompletedWorld"),false};
+            using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))return Call(attack,"ReadFlight",args);
         }
     }
 }

@@ -45,10 +45,10 @@ namespace NativeWorldTextProbe
             typeof(NPC).GetMethod("NewNPCInstanceInSlot",Flags).Invoke(null,new object[]{slot,(byte)0});var n=Main.npc[slot];n.SetDefaults(3);n.whoAmI=slot;n.active=true;n.width=width;n.height=height;n.Center=center;n.life=n.lifeMax=10000;n.defense=0;n.aiStyle=-1;n.noGravity=n.noTileCollide=true;n.velocity=n.netOffset=Vector2.Zero;n.knockBackResist=0;n.realLife=-1;
             Array.Clear(n.immune,0,n.immune.Length);Array.Clear(n.buffType,0,n.buffType.Length);Array.Clear(n.buffTime,0,n.buffTime.Length);n.lifeRegen=n.lifeRegenCount=0;return n;
         }
-        private static NpcTrajectory Path(NPC n)
+        private static NpcTrajectory Path(NPC n,bool completed=false)
         {
             var key=(NpcIdentity)Static(assembly.GetType("JueMingR.TerrariaHost.Combat.CombatSelection",true),"Identity",n,1L);var state=new NpcMotionState{Identity=key,X=n.position.X,Y=n.position.Y,Width=n.width,Height=n.height,CanReceive=!n.dontTakeDamage,NoTileCollide=n.noTileCollide,ReflectsProjectiles=n.reflectsProjectiles};var points=Enumerable.Range(0,121).Select(t=>new NpcTrajectoryPoint(t,state)).ToArray();
-            return new NpcTrajectory(key,(long)Main.GameUpdateCount-1,1,PredictionAssumption.NoNewHits,PredictionStop.None,points,points.Length,PredictionStrategy.RollingConditional);
+            return new NpcTrajectory(key,(long)Main.GameUpdateCount-(completed?0:1),1,PredictionAssumption.NoNewHits,PredictionStop.None,points,points.Length,PredictionStrategy.RollingConditional);
         }
         private static object Terrain(){var t=Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Combat.PredictionTerrain",true),true);Call(t,"Reset");return t;}
         private static object Receivers(Player p,Projectile q,NpcTrajectory path){return Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackObstacles",true),Flags,null,new object[]{p,q,path,0,true,false},null);}
@@ -72,7 +72,7 @@ namespace NativeWorldTextProbe
         {
             combat=Get(context,"Combat");assembly=combat.GetType().Assembly;model=assembly.GetType("JueMingR.TerrariaHost.Combat.HostBlizzardAttack",true);var audit=new Harmony("JueMingR.Tests.Blizzard");bool wind=Main.windPhysics;
             foreach(string name in new[]{"HandleSpecialEvent","HandleRunning","HandleMining"})audit.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
-            audit.Patch(model.GetMethod("Solve",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBlizzardChecks),nameof(SolveWork)),postfix:new HarmonyMethod(typeof(NativeCombatBlizzardChecks),nameof(Done)));audit.Patch(model.GetMethod("KnownFamily",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBlizzardChecks),nameof(KnownWork)),postfix:new HarmonyMethod(typeof(NativeCombatBlizzardChecks),nameof(Done)));audit.Patch(model.GetMethod("Motor",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBlizzardChecks),nameof(StepWork)));audit.Patch(model.GetMethod("Capture",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBlizzardChecks),nameof(ScanWork)));
+            audit.Patch(model.GetMethod("Solve",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBlizzardChecks),nameof(SolveWork)),finalizer:new HarmonyMethod(typeof(NativeCombatBlizzardChecks),nameof(Done)));audit.Patch(model.GetMethod("KnownFamily",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBlizzardChecks),nameof(KnownWork)),finalizer:new HarmonyMethod(typeof(NativeCombatBlizzardChecks),nameof(Done)));audit.Patch(model.GetMethod("Motor",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBlizzardChecks),nameof(StepWork)));audit.Patch(model.GetMethod("Capture",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBlizzardChecks),nameof(ScanWork)));
             audit.Patch(typeof(PlayerMotionContinuation).GetMethod("Advance",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBlizzardChecks),nameof(AdvanceWork)));
             foreach(var method in Main.rand.GetType().GetMethods(Flags).Where(m=>m.Name=="Next" || m.Name=="NextDouble").Distinct())audit.Patch(method,prefix:new HarmonyMethod(typeof(NativeCombatBlizzardChecks),nameof(RngWork)));
             audit.Patch(typeof(Projectile).GetMethods(Flags).Single(m=>m.Name=="NewProjectile" && m.GetParameters().Length==13 && m.GetParameters()[1].ParameterType==typeof(float)),postfix:new HarmonyMethod(typeof(NativeCombatBlizzardChecks),nameof(Born)));audit.Patch(typeof(Projectile).GetMethod("Kill",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBlizzardChecks),nameof(BeforeKill)));audit.Patch(typeof(Projectile).GetMethod("Damage",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBlizzardChecks),nameof(BeforeDamage)),postfix:new HarmonyMethod(typeof(NativeCombatBlizzardChecks),nameof(AfterDamage)));audit.Patch(AccessTools.Method(typeof(NPC),"StrikeNPC",new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)}),postfix:new HarmonyMethod(typeof(NativeCombatBlizzardChecks),nameof(Strike)));
@@ -139,7 +139,17 @@ namespace NativeWorldTextProbe
                 int actual=first<0?0:(int)(first-sample);Console.WriteLine("BLIZZARD receive mode="+mode+" native="+actual+" known="+contact?.Tick+" slotHits="+string.Join(",",hitSlots)+" owner="+target.immune[p.whoAmI]);bool negative=mode==2 || mode==3 || mode==4;
                 Require((contact==null)==negative && (actual==0)==negative && (contact==null || contact.Tick==actual),"native single-penetration body/other receiver/owner bypass/zero damage/reflection agrees with known source");if(mode==2)Require(hitSlots.Contains(1) && !hitSlots.Contains(2),"actual lower receiver consumes penetration before selected body");cases++;
             }
-            LegalRandomControls(context);Console.WriteLine("PASS BLIZZARD receives="+cases+" plus2 legal spread branches");
+            LegalRandomControls(context);Console.WriteLine("PASS BLIZZARD receives="+cases+" plus2 legal spread branches");PublicFlight(context);
+        }
+        private static void PublicFlight(object context)
+        {
+            var p=Reset(context);target=Target(2,new Vector2(995,350));watched=Shot(p,new Vector2(950,350),new Vector2(8,0));
+            var attack=Get(Get(context,"Combat"),"Attack");long sample=Main.GameUpdateCount;var flight=Observe(attack,p);var contact=flight==null?null:(AttackContact)Get(flight,"Contact");
+            Require(contact!=null && (bool)Get(flight,"Current") && (bool)Get(flight,"DependenciesCurrent") && !p.controlUseItem && GetOptional(attack,"ExpectedImpact")==null,"public Blizzard observes the actual owner-relative source with complete leases and no hand authority");
+            int damage=watched.damage;watched.damage++;Require(!(bool)Get(flight,"Current"),"same-GUC actual Blizzard family damage change revokes public Flight");watched.damage=damage;Require((bool)Get(flight,"Current"),"exact Blizzard family restoration restores the public lease");
+            for(int outer=0;outer<20 && first<0 && watched.active;outer++){NativeQuickItemChecks.BeginWorldStep();p.Update(0);target.UpdateNPC(2);watched.Update(watched.whoAmI);}
+            Require(first>=0 && first-sample==contact.Tick,"public Blizzard owner timeline and native first positive Strike agree");
+            Console.WriteLine("PASS BLIZZARD public Flight original firstStrike="+(first-sample)+" complete-lease/sameGUC-damage/no-input");
         }
         private static void LegalRandomControls(object context)
         {
@@ -151,18 +161,35 @@ namespace NativeWorldTextProbe
                 Require((actual==0)==misses && (contact==null)==misses && (contact==null || contact.Tick==actual),"same lawful cursor yields useful or missed spread branch, with each actual-born replay equal to native; Representative cannot promise every random birth hits");
             }
         }
-        private static void Draws(object host,object attack,AttackContact plan)
+        private static void Draws(object host,object attack,AttackContact plan,object flight=null)
         {
+            if(flight==null)Call(attack,"BindPresentation",plan);
             int a=solves,b=steps,c=scans;var marker=Get(Get(host,"World"),"Impact");var zoom=Main.GameViewMatrix.ZoomMatrix;
-            for(int check=0;check<20;check++){Call(marker,"Capture");Call(marker,"Project",zoom,Matrix.Invert(zoom));Require((bool)Call(attack,"PreviewCurrent",plan),"stable Blizzard preview lease remains current");}
+            for(int check=0;check<20;check++){Call(marker,"Capture");Call(marker,"Project",zoom,Matrix.Invert(zoom));Require(flight==null?(bool)Call(attack,"PresentationCurrent",plan):(bool)Call(flight,"PresentationCurrent",0),"stable actual Blizzard hand/family preparation lease remains current");}
             Require(a==solves && b==steps && c==scans,"twenty presentations perform zero Blizzard Solve/motor/pool scans");
+        }
+        private static AttackContact PrepareNatural(object context,object host,object attack)
+        {
+            NativeToolExecutionChecks.Sample(context,Get(context,"Input"),raw,true);Call(Get(context,"Combat"),"Sample");
+            NativeCombatAimChecks.PrepareMechanismFixture(host,attack,target,0);
+            return (AttackContact)GetOptional(attack,"ExpectedImpact");
+        }
+        private static object Observe(object attack,Player player)
+        {
+            var args=new object[]{player,Path(target,true),Enum.Parse(assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase",true),"CompletedWorld"),false};
+            using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))return Call(attack,"ReadFlight",args);
         }
         private static void Natural(object context)
         {
             var p=Reset(context);p.position=new Vector2(650,646);Main.screenPosition=new Vector2(500,400);for(int x=5;x<115;x++)NativeToolsChecks.Tile(x,43,1);target=NativeCombatControlPreviewChecks.Dummy(2,52,40);target.position.X=p.Center.X+180;raw=target.Center-new Vector2(380,0);solves=knownCalls=depth=steps=scans=rngCalls=0;var host=Get(context,"CombatObservation");var attack=Get(Get(context,"Combat"),"Attack");
-            NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,false));for(int frame=0;frame<3;frame++)NativeCombatSelectionPreviewChecks.Step(context,raw,false,true);var plan=(AttackContact)GetOptional(attack,"ExpectedPreview");Require(plan!=null && plan.Confidence==AttackConfidence.Representative && !Main.projectile.Any(q=>q.active),"idle next native two-member hand preview is read-only and does not fire");Draws(host,attack,plan);
-            ammo=Static(assembly.GetType("JueMingR.TerrariaHost.Combat.AttackAmmoSnapshot",true),"Capture",p,p.HeldItem);recordBirth=true;NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));int previews=0;
-            for(int frame=0;frame<45;frame++){NativeCombatSelectionPreviewChecks.Step(context,raw,true);var next=(AttackContact)GetOptional(attack,"ExpectedPreview");if(frame>=2){Require(next!=null,"continuous five-update hand actions retain a legal next-hand preview");previews++;}if(frame==6 && next!=null)Draws(host,attack,next);}
+            NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,false));for(int frame=0;frame<3;frame++)NativeCombatSelectionPreviewChecks.Step(context,raw,false,true);Require(GetOptional(attack,"ExpectedPreview")==null && !Main.projectile.Any(q=>q.active) && solves==0,"withdrawn idle Blizzard preview neither solves nor fires");
+            NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));var plan=PrepareNatural(context,host,attack);Require(plan!=null && plan.Confidence==AttackConfidence.Representative,"pressed two-member Blizzard hand has an actual representative preparation under1000ms component allowance");Draws(host,attack,plan);
+            ammo=Static(assembly.GetType("JueMingR.TerrariaHost.Combat.AttackAmmoSnapshot",true),"Capture",p,p.HeldItem);recordBirth=true;int previews=0,contacts=0;
+            for(int frame=0;frame<45;frame++)
+            {
+                var next=frame==0?plan:PrepareNatural(context,host,attack);var flight=next==null?Observe(attack,p):null;var observed=next??(flight==null?null:(AttackContact)Get(flight,"Contact"));
+                if(frame>=2){Require(GetOptional(attack,"ExpectedPreview")==null,"all43 stable native Blizzard frames keep the retired hypothetical preview absent");previews++;if(observed!=null)contacts++;}if(frame==6 && observed!=null)Draws(host,attack,observed,flight);NativeCombatSelectionPreviewChecks.Step(context,raw,true);
+            }
             NativeCombatSelectionPreviewChecks.Step(context,raw,false);recordBirth=false;for(int frame=0;frame<120 && born.Any(b=>b.First<0 && b.Key==(int)b.Shot.key && b.Shot.active);frame++)NativeCombatSelectionPreviewChecks.Step(context,raw,false);
             int useful=0,missed=0,held=0,released=0;foreach(var b in born)
             {
@@ -172,7 +199,7 @@ namespace NativeWorldTextProbe
                 else{Require(!b.Permission && Vector2.DistanceSquared(b.Cursor,raw)<=2,"released native animation suffix preserves physical cursor and cannot borrow an auxiliary input capability");released++;}
                 if(actual>0)useful++;else missed++;
             }
-            Require(useful>0 && held>=6 && released==2 && previews>0 && rngCalls==0 && scans==solves+knownCalls,"actual player use has positive immortal488 Strike, finite capture work and no model RNG; exactly two released suffix births retain physical input and legal random misses");Console.WriteLine("PASS BLIZZARD natural births="+born.Count+" held/released="+held+","+released+" useful="+useful+" randomMiss="+missed+" previewFrames="+previews+" solves="+solves+" known="+knownCalls+" poolScans="+scans+" motor="+steps+" modelRNG="+rngCalls);
+            Require(useful>0 && held>=6 && released==2 && previews==43 && contacts>0 && rngCalls==0 && scans==solves+knownCalls,"all43 native observations retain actual hand/family contacts and positive immortal488 Strike, finite work/no model RNG; exactly two released suffix births retain physical input and legal random misses");Console.WriteLine("PASS BLIZZARD natural births="+born.Count+" held/released="+held+","+released+" useful="+useful+" randomMiss="+missed+" observationFrames="+previews+" contactFrames="+contacts+" solves="+solves+" known="+knownCalls+" poolScans="+scans+" motor="+steps+" modelRNG="+rngCalls);
         }
     }
 }

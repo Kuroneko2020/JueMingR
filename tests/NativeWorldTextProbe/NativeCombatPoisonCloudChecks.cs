@@ -120,12 +120,15 @@ namespace NativeWorldTextProbe
         }
         private static void Workload(object context,Assembly a,Type model)
         {
-            var p=Reset(context);var target=Target(2,new Vector2(1040,330));target.dontTakeDamage=true;int slot=Projectile.NewProjectile(p.GetProjectileSource_Item(p.HeldItem),950,350,2,0,511,50,0,p.whoAmI);var q=Main.projectile[slot];var timeline=Timeline(a,target);var receivers=Obstacles(a,p,q,timeline);model.GetMethod("ResetCounters",Flags).Invoke(null,null);var plan=(AttackContact)model.GetMethod("KnownFamily",Flags).Invoke(null,new object[]{p,new[]{q},timeline,Clock(a,timeline),Terrain(a),receivers});
-            Require(plan==null && (int)model.GetField("Captures",Flags).GetValue(null)==1 && (int)model.GetField("MotorSteps",Flags).GetValue(null)<=120 && (bool)Get(receivers,"Unchanged"),"one actual scene capture serves the full finite hard-miss family");
+            var p=Reset(context);var target=Target(2,new Vector2(1040,330));target.dontTakeDamage=true;int slot=Projectile.NewProjectile(p.GetProjectileSource_Item(p.HeldItem),950,350,2,0,511,50,0,p.whoAmI);var q=Main.projectile[slot];var timeline=Timeline(a,target);var receivers=Obstacles(a,p,q,timeline);var reset=model.GetMethod("ResetCounters",Flags);reset?.Invoke(null,null);var plan=(AttackContact)model.GetMethod("KnownFamily",Flags).Invoke(null,new object[]{p,new[]{q},timeline,Clock(a,timeline),Terrain(a),receivers});
+            Require(plan==null && (bool)Get(receivers,"Unchanged"),"actual finite hard-miss family retains its scene lease");
+            if(reset!=null)
+            {Require((int)model.GetField("Captures",Flags).GetValue(null)==1 && (int)model.GetField("MotorSteps",Flags).GetValue(null)<=120,"one actual scene capture serves the full finite hard-miss family");Console.WriteLine("PASS POISON workload captures=1 bounded120");}
+            else Console.WriteLine("NOT_EXECUTED_REQUIRES_SAME_SOURCE_DEBUG poison workload counters; actual hard-miss and lease negatives still execute");
             // Active-pool identity alone does not detect TransformType into an
             // additional competitor. Preserve the same live slot/key boundary.
             int added=Projectile.NewProjectile(p.GetProjectileSource_Item(p.HeldItem),900,300,0,0,14,0,0,p.whoAmI);var live=Main.projectile[added];var leaseType=a.GetType("JueMingR.TerrariaHost.Combat.HostProjectileFamilyLease",true);var lease=Activator.CreateInstance(leaseType,Flags,null,new object[]{new[]{q},511,513},null);Require((bool)Get(lease,"Current"),"new non-cloud role does not change cloud qualification");live.type=512;Require(!(bool)Get(lease,"Current"),"in-place competitor qualification invalidates the scene lease");live.type=14;Main.player[p.whoAmI].active=false;Require(!(bool)Get(lease,"Current"),"owner-active retirement premise invalidates scene lease");Main.player[p.whoAmI].active=true;
-            Console.WriteLine("PASS POISON workload captures=1 bounded120; transform and owner retirement lease negatives");
+            Console.WriteLine("PASS POISON actual hard-miss; transform and owner retirement lease negatives");
         }
     }
 }

@@ -133,17 +133,22 @@ namespace NativeWorldTextProbe
             var p=Reset(context);var target=Target(2,new Vector2(1040,330));target.dontTakeDamage=true;var timeline=Timeline(a,target);var terrain=Terrain(a);
             int slot=Projectile.NewProjectile(p.GetProjectileSource_Item(p.HeldItem),950,350,12,0,469,90,0,p.whoAmI);var parent=Main.projectile[slot];
             var obstacle=Activator.CreateInstance(a.GetType("JueMingR.TerrariaHost.Combat.HostAttackObstacles",true),Flags,null,new object[]{p,parent,timeline,0,true,false},null);
-            model.GetMethod("ResetCounters",Flags).Invoke(null,null);var targets=model.GetMethod("CaptureTargets",Flags).Invoke(null,new object[]{parent,obstacle});var births=Call(obstacle,"CaptureBirthSlots");
+            var reset=model.GetMethod("ResetCounters",Flags);reset?.Invoke(null,null);var targets=model.GetMethod("CaptureTargets",Flags).Invoke(null,new object[]{parent,obstacle});var births=Call(obstacle,"CaptureBirthSlots");
             for(int candidate=0;candidate<3;candidate++)
             {
                 Call(obstacle,"BeginCandidate");var slots=Call(births,"Copy");
                 var plan=(AttackContact)model.GetMethod("BirthRepresentative",Flags).Invoke(null,new object[]{parent,parent.position,new Vector2(12,0),false,slots,timeline,1,1,terrain,obstacle,targets});
                 Require(plan==null,"a real unreceivable selected target cannot become a bee contact");
             }
-            int captures=(int)model.GetField("TargetCaptures",Flags).GetValue(null),families=(int)model.GetField("Families",Flags).GetValue(null),steps=(int)model.GetField("MotorSteps",Flags).GetValue(null),queries=(int)model.GetField("TargetQueries",Flags).GetValue(null);
-            Require(captures==1 && families==3 && steps>0 && steps<=3*3*120*4 && queries==0,"hard-miss family candidates reuse one actual chase capture, with no per-angle scene scan or fake target query");
+            if(reset!=null)
+            {
+                int captures=(int)model.GetField("TargetCaptures",Flags).GetValue(null),families=(int)model.GetField("Families",Flags).GetValue(null),steps=(int)model.GetField("MotorSteps",Flags).GetValue(null),queries=(int)model.GetField("TargetQueries",Flags).GetValue(null);
+                Require(captures==1 && families==3 && steps>0 && steps<=3*3*120*4 && queries==0,"hard-miss family candidates reuse one actual chase capture, with no per-angle scene scan or fake target query");
+                Console.WriteLine("BEE WORKLOAD captures="+captures+" families="+families+" motor="+steps+" targetQueries="+queries);
+            }
+            else Console.WriteLine("NOT_EXECUTED_REQUIRES_SAME_SOURCE_DEBUG bee workload counters; three actual hard-miss families and lease negatives still execute");
             Require((bool)Get(obstacle,"Unchanged"),"shared target/owner/pool premises remain attached to the actual consume lease");bool strong=p.strongBees;p.strongBees=!strong;try{Require(!(bool)Get(obstacle,"Unchanged"),"strong-bee equipment changes invalidate representative preparation");}finally{p.strongBees=strong;}
-            Console.WriteLine("BEE WORKLOAD captures="+captures+" families="+families+" motor="+steps+" targetQueries="+queries);
+            Console.WriteLine("PASS BEE actual hard-miss families=3 and strong-bee lease negative");
         }
     }
 }

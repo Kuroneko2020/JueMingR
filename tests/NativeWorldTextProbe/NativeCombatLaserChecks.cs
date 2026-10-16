@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -57,7 +57,7 @@ namespace NativeWorldTextProbe
             NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,2795,0,0);p.position=new Vector2(700,646);p.ResetEffects();p.statMana=p.statManaMax=p.statManaMax2=200;p.releaseUseItem=true;Main.screenPosition=new Vector2(600,400);Main.rand=new Terraria.Utilities.UnifiedRandom(27423);
             target=NativeCombatControlPreviewChecks.Dummy(2,52,40);hits=births=0;born.Clear();observe=true;assist=false;
             NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,true,25,true,false));
-            for(int i=0;i<3;i++){NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,650),false,true);Require(GetOptional(attack,"ExpectedPreview")!=null && !Main.projectile.Any(q=>q.active),"idle laser charge preview precedes any first shot and grants no use");}
+            for(int i=0;i<3;i++){NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,650),false,true);Require(GetOptional(attack,"ExpectedPreview")==null && !Main.projectile.Any(q=>q.active),"retired idle laser preview remains absent and cannot grant use");}
             NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,true,25,true,true));assist=true;
             NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,650),true);var parent=Main.projectile.Single(q=>q.active && q.type==439);Require(parent.velocity.X>0 && births==0,"first real controller points at target while native charge has not fired");
             int visible=0,nonWindows=0,observedLive=0;var consumes=attack.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostLaserAttack",true).GetMethod("Consumes",Flags);var registry=(System.Collections.IDictionary)Get(Get(attack,"Control"),"shots");
@@ -66,10 +66,11 @@ namespace NativeWorldTextProbe
                 Vector2 previous=parent.velocity;bool fire=(bool)consumes.Invoke(null,new object[]{p,parent});
                 NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,650),true);
                 if(!fire && parent.active){Require(parent.velocity==previous,"non-window laser AI retains its sealed current direction");nonWindows++;}
-                if(GetOptional(attack,"ExpectedPreview")!=null)visible++;
+                Require(GetOptional(attack,"ExpectedPreview")==null,"idle preview stays retired while the real laser source operates");
+                if(GetOptional(attack,"ExpectedImpact")!=null)visible++;
                 foreach(var child in Main.projectile.Where(q=>q.active && q.owner==0 && q.type==440)){Require(registry.Contains((int)child.key),"real derived pulse keeps its observed source while it is alive: frame="+i+" key="+child.key+" registry="+registry.Count);observedLive++;}
             }
-            Require(parent.active && parent.ai[0]>=120 && births>=8 && hits>0 && visible>20 && nonWindows>20,"natural laser reaches all charge tiers, real child damage and sustained preview: births="+births+" hits="+hits+" visible="+visible);
+            Require(parent.active && parent.ai[0]>=120 && births>=8 && hits>0 && visible>20 && nonWindows>20,"natural laser reaches all charge tiers, real child damage and sustained actual-source contacts: births="+births+" hits="+hits+" visible="+visible);
             Require(observedLive>0,"real derived pulses retain causal observations after their parent AI");
             int releaseBirths=births;NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,650),false);int released=0;
             for(;released<70 && parent.active;released++)NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,650),false);
@@ -85,7 +86,7 @@ namespace NativeWorldTextProbe
             NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,650),false,true);
             for(int i=0;i<35;i++)NativeCombatSelectionPreviewChecks.Step(context,new Vector2(600,650),true,true);
             Require(births>before && born.Skip(before).All(v=>v.X<0),"Aim OFF preserves real leftward laser source and child directions: previous="+before+" current="+births+" directions="+string.Join(";",born.Skip(before))+" player="+p.position+" dead="+p.dead+" mana="+p.statMana+" animation="+p.itemAnimation+" time="+p.itemTime+" release="+p.releaseUseItem+" channel="+p.channel+" slow="+p.slowMagicUse+" live="+string.Join(";",Main.projectile.Where(q=>q.active).Select(q=>q.type+"/"+q.ai[0]+"/"+q.ai[1]+"/"+q.velocity)));
-            Console.WriteLine("PASS natural LaserMachinegun idle/charge tiers/causal children/continuous Damage/release/OFF: births="+births+" hits="+hits+" preview="+visible+" nonWindows="+nonWindows+" release="+released);
+            Console.WriteLine("PASS natural LaserMachinegun idle/charge tiers/causal children/continuous Damage/release/OFF: births="+births+" hits="+hits+" actualContacts="+visible+" nonWindows="+nonWindows+" release="+released);
         }
     }
 }

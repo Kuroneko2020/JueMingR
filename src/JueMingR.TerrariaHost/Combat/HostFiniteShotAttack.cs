@@ -108,18 +108,18 @@ namespace JueMingR.TerrariaHost.Combat
             var sample=ContentSamples.ProjectilesByType[ammo.Projectile];
             var receive=HostAttackReceive.Capture(player,sample,timeline.Identity.Slot,beforeNpc,!beforeNpc);
             int limit=Math.Min(120,timeline.Count-age-1);if(limit<=0)return null;
-            AttackMotion motion;var direct=HostAttackModels.TryRead(ammo,out motion)?AttackIntercept.Solve(origin.X,origin.Y,motion,timeline,age,0):null;
+            AttackMotion motion;var proposals=HostAttackModels.TryRead(ammo,out motion)?HostMotionAttackInputs.Generate(origin,motion,timeline,age):new Vector2[0];
             bool beeBomb=sample.type==183,angular=sample.type==116 || sample.type==24 || sample.type==261 || beeBomb;
             var births=beeBomb?obstacles.CaptureBirthSlots():null;
             Projectile parent=null;HostProjectileTargets beeTargets=null;
             if(beeBomb)
             {parent=new Projectile();parent.SetDefaults(183);parent.active=true;parent.owner=player.whoAmI;parent.damage=ammo.Damage;beeTargets=HostBeeAttack.CaptureTargets(parent,obstacles);}
-            var directions=new Vector2[angular?42:10];int count=0;
-            for(int seed=-1;seed<(angular?41:9);seed++)
+            var directions=new Vector2[proposals.Length+(angular?41:9)];int count=0;
+            for(int input=0;input<directions.Length;input++)
             {
-                if(seed<0 && direct==null)continue;
+                int seed=input-proposals.Length;
                 var body=timeline[Math.Min(timeline.Count-1,age+1+Math.Max(0,seed)*8)].ProjectileReceiveBounds;
-                Vector2 direction=seed>=9?((seed-9)*MathHelper.TwoPi/32).ToRotationVector2():(seed<0?new Vector2(direct.AimX,direct.AimY)-origin:new Vector2(body.CenterX,body.CenterY)-origin).SafeNormalize(Vector2.UnitX*player.direction);
+                Vector2 direction=seed<0?proposals[input]:seed>=9?((seed-9)*MathHelper.TwoPi/32).ToRotationVector2():(new Vector2(body.CenterX,body.CenterY)-origin).SafeNormalize(Vector2.UnitX*player.direction);
                 bool duplicate=false;for(int i=0;i<count;i++)if(directions[i]==direction){duplicate=true;break;}if(duplicate)continue;directions[count++]=direction;
                 var aim=origin+direction*10000;var state=new State(sample,origin,direction*ammo.Speed);obstacles.BeginCandidate();int action=0;
                 HostProjectileBirthSlots slots=null;

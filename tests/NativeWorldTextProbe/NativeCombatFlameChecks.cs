@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Reflection;
 using HarmonyLib;
@@ -13,7 +13,7 @@ namespace NativeWorldTextProbe
     internal static class NativeCombatFlameChecks
     {
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static|BindingFlags.Instance;
-        private static NPC target;private static long firstHit;private static int damageDepth;
+        private static bool actualHand;private static NPC target;private static long firstHit;private static int damageDepth;
         private static void BeforeDamage(Projectile __instance){if(__instance.type==85)damageDepth++;}
         private static void AfterDamage(Projectile __instance){if(__instance.type==85)damageDepth--;}
         private static void Strike(NPC __instance,int __result){if(damageDepth>0 && ReferenceEquals(__instance,target) && __result>0 && firstHit<0)firstHit=Main.GameUpdateCount;}
@@ -23,11 +23,12 @@ namespace NativeWorldTextProbe
             foreach(string name in new[]{"HandleSpecialEvent","HandleRunning","HandleMining"})audit.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
             audit.Patch(typeof(Projectile).GetMethod("Damage",Flags),prefix:new HarmonyMethod(typeof(NativeCombatFlameChecks),nameof(BeforeDamage)),postfix:new HarmonyMethod(typeof(NativeCombatFlameChecks),nameof(AfterDamage)));
             audit.Patch(AccessTools.Method(typeof(NPC),"StrikeNPC",new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)}),postfix:new HarmonyMethod(typeof(NativeCombatFlameChecks),nameof(Strike)));
+            var componentHand=new NativeCombatHandFixture(context,()=>actualHand,()=>target);
             try{if(Environment.GetEnvironmentVariable("JMR_FLAME_ONLY")!="natural"){Births(context,a);Motor(context,a);Shapes(context,a);DamageWindow(context);}Natural(context,host,combat);}
             catch(Exception error){primaryFailure=error;Console.WriteLine("FLAME PRIMARY FAILURE "+error);throw;}
             finally
             {
-                target=null;damageDepth=0;Main.windPhysics=wind;audit.UnpatchAll(audit.Id);
+                componentHand.Dispose();actualHand=false;target=null;damageDepth=0;Main.windPhysics=wind;audit.UnpatchAll(audit.Id);
                 try{NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());}
                 catch(Exception error){if(primaryFailure==null)throw;Console.WriteLine("FLAME CLEANUP FAILURE (primary retained) "+error);}
             }
@@ -93,15 +94,19 @@ namespace NativeWorldTextProbe
         }
         private static void Natural(object context,object host,object combat)
         {
-            int cases=0,hits=0,misses=0;var attack=Get(combat,"Attack");bool retired=!(bool)Get(attack,"PreviewDemand");
+            int cases=0,hits=0,misses=0;var attack=Get(combat,"Attack");
             foreach(int weapon in new[]{506,1910})foreach(int direction in new[]{-1,1})foreach(int distance in new[]{8,20})foreach(bool wall in new[]{false,true})
             {
                 var p=Reset(context,weapon);target=NativeCombatControlPreviewChecks.Dummy(2,47+direction*distance,40);firstHit=-1;damageDepth=0;
                 if(wall)for(int y=0;y<Main.maxTilesY;y++)NativeToolsChecks.Tile(47+direction*4,y,1);
                 NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,true,true,30,true,false));AttackContact preview=null;
-                for(int i=0;i<3;i++){NativeCombatSelectionPreviewChecks.Step(context,target.Center,false,true);preview=(AttackContact)GetOptional(attack,"ExpectedPreview");Require(!Main.projectile.Any(q=>q.active),"idle flame preview creates no native shot");}
-                Require(retired?preview==null:wall || preview!=null,"unpressed flame has no withdrawn preview; historical enabled display retains its original requirement "+weapon+"/"+direction+"/"+distance);
-                if(!retired && weapon==506 && direction==1 && distance==20 && !wall)Workload(combat.GetType().Assembly,p,preview);
+                for(int i=0;i<3;i++){NativeCombatSelectionPreviewChecks.Step(context,target.Center,false,true);preview=(AttackContact)GetOptional(attack,"ExpectedPreview");Require(preview==null && !Main.projectile.Any(q=>q.active),"withdrawn idle flame preview creates no native shot or contact");}
+                NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,true,true,30,true,true));
+                NativeToolExecutionChecks.Sample(context,Get(context,"Input"),target.Center,true);Call(combat,"Sample");
+                NativeCombatAimChecks.PrepareMechanismFixture(host,attack,target,0);preview=(AttackContact)GetOptional(attack,"ExpectedImpact");
+                Require(wall?preview==null:preview!=null,"pressed flame component retains its exact open/wall preparation "+weapon+"/"+direction+"/"+distance);
+                if(weapon==506 && direction==1 && distance==20 && !wall)Workload(combat.GetType().Assembly,p,preview);
+                if(preview!=null)Call(attack,"BindPresentation",preview);
                 if(preview!=null)
                 {
                     var impact=Get(Get(host,"World"),"Impact");Call(impact,"Capture");var zoom=Main.GameViewMatrix.ZoomMatrix;Call(impact,"Project",zoom,Matrix.Invert(zoom));var b=preview.ReceiveBounds;
@@ -118,9 +123,10 @@ namespace NativeWorldTextProbe
                         Require((bool)Get(impact,"Visible") && Vector2.DistanceSquared((Vector2)Get(impact,"Position"),Vector2.Transform(center-Main.screenPosition,zoom))<.001f,"same flame contact returns on screen without a new preparation");
                     }
                 }
-                NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,true,true,30,true,true));long start=Main.GameUpdateCount;bool born=false;
+                NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,true,true,30,true,true));long start=Main.GameUpdateCount;bool born=false;actualHand=true;
                 for(int frame=1;frame<=60 && firstHit<0;frame++){NativeCombatSelectionPreviewChecks.Step(context,target.Center,frame==1);born|=Main.projectile.Any(q=>q.active && q.type==85 && q.owner==p.whoAmI);}
-                Require(born && (retired?(wall?firstHit<0:firstHit>=start):(preview==null?firstHit<0:firstHit==preview.Timeline.SampleTick+preview.Tick)),"retained original flame hand receives its open target and is stopped by the real wall; historical preview timing is separate "+weapon+"/"+direction+"/"+distance+"/"+wall+" actual="+(firstHit<0?-1:firstHit-start)+" preview="+preview?.Tick);
+                Require(born && (wall?firstHit<0:firstHit==preview.Timeline.SampleTick+preview.Tick),"actual original flame hand agrees with its prepared exact contact and real wall "+weapon+"/"+direction+"/"+distance+"/"+wall+" actual="+(firstHit<0?-1:firstHit-start)+" preview="+preview?.Tick);
+                actualHand=false;if(!wall)Require((bool)Get(attack,"hasConsumedInput") && Convert.ToString(Get(Get(attack,"consumedInput"),"Kind"))=="Enhanced","actual native flame consumes its prepared direction");
                 if(firstHit<0)misses++;else hits++;cases++;
             }
             Require(cases==16 && hits==8 && misses==8,"both actual gel weapons keep left/right near/far hand use and real walls");Console.WriteLine("PASS natural flame cases="+cases+" actualHits="+hits+" blocked="+misses);
@@ -137,7 +143,9 @@ namespace NativeWorldTextProbe
         }
         private static void Workload(Assembly a,Player p,AttackContact preview)
         {
-            var model=a.GetType("JueMingR.TerrariaHost.Combat.HostFlameAttack",true);CallStatic(model,"ResetCounters");var terrain=Terrain(a);
+            var model=a.GetType("JueMingR.TerrariaHost.Combat.HostFlameAttack",true);
+            if(model.GetMethod("ResetCounters",Flags)==null){Console.WriteLine("NOT_EXECUTED_REQUIRES_SAME_SOURCE_DEBUG flame workload counters; Release functional groups are separate");return;}
+            CallStatic(model,"ResetCounters");var terrain=Terrain(a);
             var ammo=a.GetType("JueMingR.TerrariaHost.Combat.AttackAmmoSnapshot",true).GetMethod("Capture",Flags).Invoke(null,new object[]{p,p.HeldItem});var sample=Terraria.ID.ContentSamples.ProjectilesByType[85];
             var obstacles=Activator.CreateInstance(a.GetType("JueMingR.TerrariaHost.Combat.HostAttackObstacles",true),Flags,null,new object[]{p,sample,preview.Timeline,0,false,true},null);
             var result=(AttackContact)model.GetMethod("Solve",Flags).Invoke(null,new object[]{p,ammo,preview.Timeline,p.RotatedRelativePoint(p.MountedCenter),(int)((long)Main.GameUpdateCount-preview.Timeline.SampleTick),false,terrain,obstacles,0});

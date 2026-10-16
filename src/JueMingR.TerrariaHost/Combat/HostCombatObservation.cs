@@ -127,9 +127,12 @@ namespace JueMingR.TerrariaHost.Combat
                 Attack?.Reset();Prediction.Cache.Release(0);Prediction.Cache.Release(1);
                 displayPath=null;displayTerrain=null;displayLeaseTick=optionalTick=previewOptionalTick=displayShortTick=-1;OptionalPreparation=false;
                 World.Marker.Clear();World.Impact.Clear();
-                if(Prediction.Cache.Required==0){Prediction.Clear();Selection.RetireTarget();}
             }
             hadTargetDemand=targetDemand;
+            // An independent reader may release after the Path/Aim falling
+            // edge already passed. Retire that final target exactly once;
+            // an idle OFF Poll must not repeatedly clear Source's arrays.
+            if(!targetDemand && Prediction.Cache.Required==0 && Selection.HasTarget){Prediction.Clear();Selection.RetireTarget();}
             // Reliable preference intent is available in the safe Main.Update
             // callback even in menus. This does not activate any Gameplay
             // feature, sample a world, or grant input/operation ownership.
@@ -157,8 +160,9 @@ namespace JueMingR.TerrariaHost.Combat
             // Sealed ordinary flights do not read another hand input during
             // cooldown. Completed-world prediction/preview still runs every
             // update; only a real upcoming hand emission needs this earlier
-            // phase. Controllers, charge/release and pure hand consumers keep
-            // NextAction's existing continuous contract.
+            // phase. Registered finite AI075 controllers request this Source
+            // only for their native mouse-read window or a real new opening;
+            // other charge/release and hand consumers remain continuous.
             if(!Attack.ActionPreparationNeeded)return;
             actionFrame=input.Frame;
             Attack.BeginActionDemand();

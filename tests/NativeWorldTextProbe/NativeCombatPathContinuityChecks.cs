@@ -14,12 +14,12 @@ namespace NativeWorldTextProbe
     internal static class NativeCombatPathContinuityChecks
     {
         private const BindingFlags Flags=BindingFlags.Instance|BindingFlags.NonPublic|BindingFlags.Public;
-        internal static void Run(object context,ProbeGraphics graphics,string output)
+        internal static void Run(object context,ProbeGraphics graphics,string output,bool initialized=false)
         {
             Directory.CreateDirectory(output);
             var host=Get(context,"CombatObservation");var world=Get(host,"World");var source=Get(host,"Prediction");
             var cache=(NpcPredictionCache)Get(source,"Cache");var input=Get(context,"Input");
-            NativeCombatAimChecks.Initialize();
+            if(!initialized)NativeCombatAimChecks.Initialize();
             var player=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,95,0,0);
             player.position=new Vector2(140,300);player.gravDir=1;player.itemAnimation=player.itemTime=0;
             foreach(var row in Main.npc)row.active=false;
@@ -75,6 +75,20 @@ namespace NativeWorldTextProbe
                 Advance(4);var refreshed=PathAt(Main.GameUpdateCount,121);Capture(refreshed);pixels=Draw();
                 absoluteMarker&=Count(pixels,markerX-1,markerY-4,3,2)>0;
                 Image("path-fixed-refreshed");
+                // Camera projection and a paused render sequence can repeat
+                // without another simulation update. Static milestones retain
+                // their original use and do not grow an invented animation.
+                var camera=Main.screenPosition;bool paused=Main.gamePaused;
+                try
+                {
+                    Main.screenPosition+=new Vector2(32,0);
+                    pixels=Draw();Require(Count(pixels,markerX-33,markerY-4,3,2)>0,"same-GUC camera motion projects the same absolute future milestone");
+                    Main.screenPosition=camera;Main.gamePaused=true;
+                    for(int draw=0;draw<3;draw++)Require(Count(Draw(),markerX-1,markerY-4,3,2)>0,"paused repeated Draw keeps the static marker at its actual absolute phase");
+                }
+                finally{Main.screenPosition=camera;Main.gamePaused=paused;}
+                Advance(2);refreshed=PathAt(Main.GameUpdateCount,121);Capture(refreshed);pixels=Draw();
+                absoluteMarker&=Count(pixels,markerX-1,markerY-4,3,2)>0;
                 Console.WriteLine("PATH WINDOW firstGuc="+firstTick+" refreshedGuc="+Main.GameUpdateCount+" drawCount=8 absoluteMarkerTick="+(firstTick+27)+" marker="+markerX+","+markerY+" count="+refreshed.Count);
 
                 var shortPath=PathAt(Main.GameUpdateCount,33);Capture(shortPath);

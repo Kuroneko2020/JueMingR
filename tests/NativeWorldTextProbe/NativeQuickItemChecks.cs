@@ -146,6 +146,8 @@ namespace NativeWorldTextProbe
         }
         private static void Initialize()
         {
+            NativeTestAudio.Install(typeof(Main).Assembly);
+            NativeTestAudio.Report("native-fixture-initialization");
             LanguageManager.Instance.SetLanguage("en-US");Lang.InitializeLegacyLocalization();Main.rand=new UnifiedRandom(123);
             Main.gameMenu=Main.dedServ=Main.hideUI=Main.mapFullscreen=Main.inFancyUI=Main.onlyDrawFancyUI=Main.ingameOptionsWindow=false;
             Main.netMode=Main.myPlayer=0;Main.screenWidth=960;Main.screenHeight=640;

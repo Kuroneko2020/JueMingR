@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -109,9 +109,9 @@ namespace NativeWorldTextProbe
         {
             typeof(NPC).GetMethod("NewNPCInstanceInSlot",Flags).Invoke(null,new object[]{slot,(byte)0});var n=Main.npc[slot];n.SetDefaults(3);n.whoAmI=slot;n.active=true;n.width=width;n.height=height;n.Center=center;n.life=n.lifeMax=10000;n.defense=0;n.aiStyle=-1;n.noGravity=n.noTileCollide=true;n.velocity=n.netOffset=Vector2.Zero;n.knockBackResist=0;Array.Clear(n.immune,0,n.immune.Length);Array.Clear(n.buffType,0,n.buffType.Length);Array.Clear(n.buffTime,0,n.buffTime.Length);n.lifeRegen=n.lifeRegenCount=0;return n;
         }
-        private static NpcTrajectory Timeline(NPC n)
+        private static NpcTrajectory Timeline(NPC n,bool beforeNpc=true)
         {
-            var key=(NpcIdentity)Static(assembly.GetType("JueMingR.TerrariaHost.Combat.CombatSelection",true),"Identity",n,1L);var state=new NpcMotionState{Identity=key,X=n.position.X,Y=n.position.Y,Width=n.width,Height=n.height,CanReceive=!n.dontTakeDamage,NoTileCollide=n.noTileCollide,ReflectsProjectiles=n.reflectsProjectiles};var points=Enumerable.Range(0,121).Select(t=>new NpcTrajectoryPoint(t,state)).ToArray();return new NpcTrajectory(key,(long)Main.GameUpdateCount-1,1,PredictionAssumption.NoNewHits,PredictionStop.None,points,points.Length,PredictionStrategy.RollingConditional);
+            var key=(NpcIdentity)Static(assembly.GetType("JueMingR.TerrariaHost.Combat.CombatSelection",true),"Identity",n,1L);var state=new NpcMotionState{Identity=key,X=n.position.X,Y=n.position.Y,Width=n.width,Height=n.height,CanReceive=!n.dontTakeDamage,NoTileCollide=n.noTileCollide,ReflectsProjectiles=n.reflectsProjectiles};var points=Enumerable.Range(0,121).Select(t=>new NpcTrajectoryPoint(t,state)).ToArray();return new NpcTrajectory(key,(long)Main.GameUpdateCount-(beforeNpc?1:0),1,PredictionAssumption.NoNewHits,PredictionStop.None,points,points.Length,PredictionStrategy.RollingConditional);
         }
         private static object Clock(NpcTrajectory path,string phase="BeforeNpc"){return Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackClock",true),Flags,null,new object[]{path,Enum.Parse(assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase",true),phase),0},null);}
         private static object Obstacles(Player p,Projectile q,NpcTrajectory path){return Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackObstacles",true),Flags,null,new object[]{p,q,path,0,true,false},null);}
@@ -137,6 +137,11 @@ namespace NativeWorldTextProbe
         }
         private static void Births(object context)
         {
+            // Birth probes borrow screen dimensions only for native reverse-gravity mapping.
+            // Restore them before later physical-input samples use the real viewport.
+            int screenWidth=Main.screenWidth,screenHeight=Main.screenHeight;
+            try
+            {
             foreach(float gravity in new[]{1f,-1f})
             {
                 var p=Reset(context);p.position=new Vector2(650.25f,600.5f);p.gravDir=gravity;p.fullRotation=.2f;Main.screenPosition=new Vector2(500.25f,400.5f);Main.screenHeight=600;Main.mouseX=430;Main.mouseY=250;Player.tileTargetX=37;Player.tileTargetY=38;
@@ -146,6 +151,8 @@ namespace NativeWorldTextProbe
                 Require(Player.tileTargetX==37 && Player.tileTargetY==38,"ornament uses ordinary integer mouse mapping, without borrowing tile targets");
             }
             Console.WriteLine("PASS ORNAMENT actual hand births=2 normal/reverse; handMelee=True star907/child335");
+            }
+            finally{Main.screenWidth=screenWidth;Main.screenHeight=screenHeight;Terraria.GameInput.PlayerInput.CacheOriginalScreenDimensions();}
         }
         private static void Motors(object context)
         {
@@ -223,16 +230,27 @@ namespace NativeWorldTextProbe
         private static void Natural(object context)
         {
             var p=Reset(context);p.position=new Vector2(700,646);p.ResetFallDamage();p.releaseUseItem=true;Main.screenPosition=new Vector2(550,400);for(int x=5;x<115;x++)NativeToolsChecks.Tile(x,43,1);target=NativeCombatControlPreviewChecks.Dummy(2,51,40);raw=target.Center-new Vector2(430,0);var host=Get(context,"CombatObservation");var attack=Get(Get(context,"Combat"),"Attack");solves=steps=0;int start=currentActions;
-            NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,false));for(int i=0;i<3;i++){NativeCombatSelectionPreviewChecks.Step(context,raw,false,true);Require(GetOptional(attack,"ExpectedPreview")!=null && p.itemAnimation==0 && !Main.projectile.Any(q=>q.active),"idle mixed sword preview is useful without swinging or emitting a star");}
+            NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,false));for(int i=0;i<3;i++){NativeCombatSelectionPreviewChecks.Step(context,raw,false,true);Require(GetOptional(attack,"ExpectedPreview")==null && p.itemAnimation==0 && !Main.projectile.Any(q=>q.active) && solves==0,"withdrawn idle mixed sword preview neither solves nor swings nor emits a star");}
             observe=auditCurrent=natural=true;NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));int shownCount=0;
             for(int action=0;action<130;action++)
             {
-                naturalAction=action;physicalLeft=action<29 || action>=32 && action<59;NativeCombatSelectionPreviewChecks.Step(context,raw,physicalLeft);var shown=(AttackContact)GetOptional(attack,"ExpectedPreview");Console.WriteLine("ORNAMENT use action="+action+" left="+physicalLeft+" nativeUse="+p.controlUseItem+" anim/time="+p.itemAnimation+"/"+p.itemTime+" shown="+shown?.Tick+" confidence="+shown?.Confidence+" hand/child="+handBirths+"/"+childBirths);
-                Require(shown!=null,"each genuinely feasible stationary sword/star use/cooldown/release interval keeps a current preview");shownCount++;int a=solves,b=steps;var impact=Get(Get(host,"World"),"Impact");var zoom=Main.GameViewMatrix.ZoomMatrix;for(int draw=0;draw<12;draw++){Call(impact,"Capture");Call(impact,"Project",zoom,Matrix.Invert(zoom));Require((bool)Call(attack,"PreviewCurrent",shown),"same-update finite sword/star preview remains current");}Require(a==solves && b==steps,"CPU Capture/Project never repeats ornament motor/candidate search");
+                naturalAction=action;physicalLeft=action<29 || action>=32 && action<59;
+                if(physicalLeft)
+                {
+                    NativeToolExecutionChecks.Sample(context,Get(context,"Input"),raw,true);Call(Get(context,"Combat"),"Sample");NativeCombatAimChecks.PrepareMechanismFixture(host,attack,target,0);
+                    if(action==0)Require(GetOptional(attack,"ExpectedImpact")!=null,"actual pressed mixed sword/star hand prepares under1000ms mechanism allowance");
+                }
+                NativeCombatSelectionPreviewChecks.Step(context,raw,physicalLeft);var flight=Observe(attack,p);var shown=flight==null?null:(AttackContact)Get(flight,"Contact");Console.WriteLine("ORNAMENT use action="+action+" left="+physicalLeft+" nativeUse="+p.controlUseItem+" anim/time="+p.itemAnimation+"/"+p.itemTime+" actualFlight="+shown?.Tick+" confidence="+shown?.Confidence+" hand/child="+handBirths+"/"+childBirths);
+                Require(GetOptional(attack,"ExpectedPreview")==null,"all130 original sword/star actions keep the retired hypothetical preview absent");if(shown!=null)shownCount++;int a=solves,b=steps;var impact=Get(Get(host,"World"),"Impact");var zoom=Main.GameViewMatrix.ZoomMatrix;for(int draw=0;draw<12;draw++){Call(impact,"Capture");Call(impact,"Project",zoom,Matrix.Invert(zoom));if(flight!=null)Require((bool)Call(flight,"PresentationCurrent",0),"same-update actual sword/star family presentation lease remains current");}Require(a==solves && b==steps,"CPU Capture/Project never repeats ornament motor/candidate search");
             }
             Console.WriteLine("ORNAMENT natural receiving first="+(first-birthTick+1)+" known="+known?.Tick+" role="+firstType+" firstBornMatched="+firstBornMatched+" positive="+positive+" hand/child="+handBirths+"/"+childBirths);
-            Require(handBirths>=2 && childBirths>=4 && positive>0 && firstType==907 && firstBornMatched && known!=null && first-birthTick+1==known.Tick,"distant real first Damage is the deterministic first born star, matched by token/key before random child can precede it");Require(!p.controlUseItem && killDamage==0,"release ends use permission and real family retirement has no Kill explosion");
+            Require(handBirths>=2 && childBirths>=4 && positive>0 && shownCount>0 && firstType==907 && firstBornMatched && known!=null && first-birthTick+1==known.Tick,"distant real first Damage is the deterministic first born star, matched by token/key before random child can precede it; public Flight observes the real family");Require(!p.controlUseItem && killDamage==0,"release ends use permission and real family retirement has no Kill explosion");
             Console.WriteLine("PASS ORNAMENT natural item1928 actions=130 previews="+shownCount+" handBirths="+handBirths+" children="+childBirths+" pureCurrentActions="+(currentActions-start)+" positive="+positive+" first="+(first-birthTick+1)+" known="+known.Tick+" CPUCaptureProject=12x0 DrawUnverified=True");
+        }
+        private static object Observe(object attack,Player player)
+        {
+            var path=Timeline(target,false);var args=new object[]{player,path,Enum.Parse(assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase",true),"CompletedWorld"),false};
+            using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))return Call(attack,"ReadFlight",args);
         }
     }
 }

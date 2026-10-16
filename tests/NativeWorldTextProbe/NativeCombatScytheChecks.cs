@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -58,9 +58,14 @@ namespace NativeWorldTextProbe
         private static void FiniteEdges(object context,Assembly assembly)
         {
             var model=assembly.GetType("JueMingR.TerrariaHost.Combat.HostFiniteShotAttack",true);var stateType=model.GetNestedType("State",BindingFlags.NonPublic);var terrainType=assembly.GetType("JueMingR.TerrariaHost.Combat.PredictionTerrain",true);
-            float left=Main.leftWorld,top=Main.topWorld,right=Main.rightWorld,bottom=Main.bottomWorld;int cases=0,retired=0,actions=0;
+            float left=Main.leftWorld,top=Main.topWorld,right=Main.rightWorld,bottom=Main.bottomWorld;var tiles=Main.tile;int cases=0,retired=0,actions=0;
             try
             {
+                // Border liquids cover cells outside Reset's interior 5..114.
+                // Own this complete native world so a later sky birth at Y67
+                // cannot inherit the last edge scene's lava in tile row3.
+                Main.tile=new Tile[Main.maxTilesX,Main.maxTilesY];
+                for(int x=0;x<Main.maxTilesX;x++)for(int y=0;y<Main.maxTilesY;y++)Main.tile[x,y]=new Tile();
                 foreach(int type in new[]{45,263,274,118,119,359})foreach(int side in Enumerable.Range(0,4))foreach(int liquid in new[]{-1,0,2})
                 {
                     var player=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),Get(context,"Input"),272,0,0);Main.windPhysics=false;foreach(var npc in Main.npc)npc.active=false;
@@ -84,7 +89,7 @@ namespace NativeWorldTextProbe
                 Require(cases==72 && retired>0,"all six finite hand shots exercise clipped scans and actual world retirement");
                 Console.WriteLine("PASS six-role original border cases="+cases+" actions="+actions+" retired="+retired);
             }
-            finally{Main.leftWorld=left;Main.topWorld=top;Main.rightWorld=right;Main.bottomWorld=bottom;}
+            finally{Main.tile=tiles;Main.leftWorld=left;Main.topWorld=top;Main.rightWorld=right;Main.bottomWorld=bottom;}
         }
         private static void Natural(object context,object host,object combat)
         {
@@ -100,12 +105,16 @@ namespace NativeWorldTextProbe
                     if(scene==2){if(row[1]==45)target.immune[p.whoAmI]=200;else Projectile.perIDStaticNPCImmunity[Terraria.ID.ContentSamples.ProjectilesByType[row[1]].immunityIdentity,2]=Main.GameUpdateCount+200;}
                     bool blocked=scene==2 || scene==1 && row[1]!=274;
                     NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,true,true,25,true,false));AttackContact preview=null;
-                    for(int i=0;i<3;i++){NativeCombatSelectionPreviewChecks.Step(context,target.Center,false,true);preview=(AttackContact)GetOptional(attack,"ExpectedPreview");Require(!Main.projectile.Any(q=>q.active),"scythe idle path observation never launches");}
-                    Require(blocked?preview==null:preview!=null,"scythe held preview respects actual wall/receiver rules: "+row[0]+"/"+scene);
+                    for(int i=0;i<3;i++){NativeCombatSelectionPreviewChecks.Step(context,target.Center,false,true);preview=(AttackContact)GetOptional(attack,"ExpectedPreview");Require(preview==null && !Main.projectile.Any(q=>q.active),"withdrawn scythe idle path preview never solves or launches");}
+                    NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,true,true,25,true,true));
+                    NativeToolExecutionChecks.Sample(context,input,target.Center,true);Call(combat,"Sample");
+                    NativeCombatAimChecks.PrepareMechanismFixture(host,attack,target,0);preview=(AttackContact)GetOptional(attack,"ExpectedImpact");
+                    Require(blocked?preview==null:preview!=null,"scythe actual pressed preparation respects actual wall/receiver rules: "+row[0]+"/"+scene);
                     NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,true,true,25,true,true));long start=Main.GameUpdateCount;bool born=false;
                     for(int frame=1;frame<=120 && firstHit<0;frame++){NativeCombatSelectionPreviewChecks.Step(context,target.Center,frame==1);born|=Main.projectile.Any(q=>q.active && q.type==row[1] && q.owner==p.whoAmI);}
+                    if(!blocked)Require((bool)Get(attack,"hasConsumedInput") && Convert.ToString(Get(Get(attack,"consumedInput"),"Kind"))=="Enhanced","actual native hand consumes the prepared enhanced input");
                     Require(born,"scythe normal manual birth is preserved even without an aim solution");
-                    Require(blocked?firstHit<0:firstHit-start==preview.Tick,"scythe original first projectile Damage agrees with idle preview: "+row[0]+"/"+scene+" native="+(firstHit<0?-1:firstHit-start)+" model="+preview?.Tick);
+                    Require(blocked?firstHit<0:firstHit-start==preview.Tick,"scythe original first projectile Damage agrees with consumed component preparation: "+row[0]+"/"+scene+" native="+(firstHit<0?-1:firstHit-start)+" model="+preview?.Tick);
                     if(blocked)negative++;else hits++;cases++;Console.WriteLine("SCYTHE NATURAL item="+row[0]+" scene="+scene+" native="+(firstHit<0?-1:firstHit-start)+" model="+preview?.Tick);
                 }
                 catch(Exception error){failures.Add(row[0]+"/"+scene+": "+error.Message);Console.WriteLine("SCYTHE NATURAL FAIL "+error);}

@@ -1,0 +1,45 @@
+{
+  "schema": "aim-algorithm-rework-M1-evidence-20261015-1",
+  "taskBase": "97ceecf7c8706779bc2cf9acfff795830eb449da",
+  "status": "M1_FOR_CONCENTRATED_REVIEW",
+  "readyForOwnerTest": false,
+  "releaseEligible": false,
+  "artifacts": [
+    {
+      "path": ".local/aim-algorithm-rework-20261015/m1-candidate/build-record.json",
+      "length": 107822,
+      "sha256": "B5AB2FD48594BC571CBF08A39725BD57B27B64009E0B7546C6A850779C2F327A"
+    },
+    {
+      "path": ".local/aim-algorithm-rework-20261015/m1-candidate/identity.json",
+      "length": 666,
+      "sha256": "9C42CBF70DFE7CA98512C64C67A9F5F5F86FFAB3D4BCEA66BAA58F83785F01BB"
+    },
+    {
+      "path": ".local/aim-algorithm-rework-20261015/m1-ballistic-candidates-r03.log",
+      "length": 9278,
+      "sha256": "BA683EB6C78EE5B490E300D00F9E36E1BA2F95848441FFA480284A386BF79316"
+    },
+    {
+      "path": ".local/aim-algorithm-rework-20261015/m1-cost-base-r01.log",
+      "length": 908,
+      "sha256": "45A98D055E61E03817229DFA71AE1B077DE69506118E5092A80F8B19813C83EC"
+    },
+    {
+      "path": ".local/aim-algorithm-rework-20261015/m1-cost-candidate-r01.log",
+      "length": 942,
+      "sha256": "A70C9B58100A6B2EB44924DE7108482648A0EFEE5A850D95442DCF101C09D978"
+    },
+    {
+      "path": ".local/aim-algorithm-rework-20261015/m1c-combat.log",
+      "length": 126,
+      "sha256": "1A61DD9ED16DCF68918C3D0D42949A589D0B14CBDD8E71B1E009D18DA9E96724"
+    },
+    {
+      "path": ".local/aim-algorithm-rework-20261015/m1c-selected.log",
+      "length": 1549,
+      "sha256": "A9A55C2CE6E10EEFFE23D02008F23639E444562F4E8E277FACA4410E378E3FE4"
+    }
+  ],
+  "mutableExecutionIndex": ".local/aim-algorithm-rework-20261015/work-state.md"
+}

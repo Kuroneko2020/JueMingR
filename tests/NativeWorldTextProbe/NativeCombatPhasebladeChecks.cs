@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Reflection;
 using HarmonyLib;
@@ -46,8 +46,9 @@ namespace NativeWorldTextProbe
             audit.Patch(typeof(Projectile).GetMethod("Damage",Flags),prefix:new HarmonyMethod(typeof(NativeCombatPhasebladeChecks).GetMethod("BeforeReleaseDamage",Flags)),postfix:new HarmonyMethod(typeof(NativeCombatPhasebladeChecks).GetMethod("AfterReleaseDamage",Flags)));
             audit.Patch(typeof(NPC).GetMethod("StrikeNPC",Flags,null,new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)},null),postfix:new HarmonyMethod(typeof(NativeCombatPhasebladeChecks).GetMethod("ReleaseStrike",Flags)));
             foreach(string name in new[]{"HandleSpecialEvent","HandleMining","HandleRunning"})audit.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks).GetMethod("SkipAchievement",Flags)));
-            try{Main.windPhysics=false;if(Environment.GetEnvironmentVariable("JMR_PHASEBLADE_ORACLE_ONLY")=="integration"){Integration(context);return;}Natural(context,assembly,model);TapEdges(context,assembly);Motors(context,assembly,model);Shapes(context,model);Integration(context);Workload(context,assembly,model);}
-            finally{watchPress=measureReads=watchRelease=false;releaseTarget=null;releaseShot=null;releaseDamageDepth=0;Main.windPhysics=wind;audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());}
+            var componentHand=new NativeCombatHandFixture(context,()=>watchRelease,()=>releaseTarget,contact=>releasePlanTick=contact?.Tick??0);
+            try{Main.windPhysics=false;if(Environment.GetEnvironmentVariable("JMR_PHASEBLADE_ORACLE_ONLY")=="workload"){Workload(context,assembly,model);return;}if(Environment.GetEnvironmentVariable("JMR_PHASEBLADE_ORACLE_ONLY")=="integration"){Integration(context);return;}Natural(context,assembly,model);TapEdges(context,assembly);Motors(context,assembly,model);Shapes(context,model);Integration(context);Workload(context,assembly,model);}
+            finally{componentHand.Dispose();watchPress=measureReads=watchRelease=false;releaseTarget=null;releaseShot=null;releaseDamageDepth=0;Main.windPhysics=wind;audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());}
         }
         private static Player Reset(object context,int weapon)
         {NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),Get(context,"Input"),weapon,0,0);p.ResetEffects();p.ResetMeleeHitCooldowns();p.attackCD=0;p.releaseUseItem=true;p.controlUseItem=false;p.itemAnimation=p.itemTime=0;return p;}
@@ -183,7 +184,7 @@ namespace NativeWorldTextProbe
                 for(int i=0;i<3;i++)
                 {
                     NativeCombatSelectionPreviewChecks.Step(context,aim,false,true);
-                    Require(GetOptional(attack,"ExpectedPreview")!=null,"phaseblade idle AimOFF displays the explicit tap-release observation: "+weapon);
+                    Require(GetOptional(attack,"ExpectedPreview")==null,"withdrawn phaseblade idle AimOFF preview cannot display a hypothetical tap-release: "+weapon);
                     Require(!Main.projectile.Any(q=>q.active && q.owner==p.whoAmI) && p.itemAnimation==0 && !p.controlUseItem,"phaseblade idle preview cannot manufacture a press or release");
                 }
                 NativeCombatObservationChecks.Save(observation,new ObservationOptions(false,true,false,false,true,25,true,true));
@@ -207,6 +208,11 @@ namespace NativeWorldTextProbe
         }
         private static void Workload(object context,Assembly assembly,Type model)
         {
+            // Functional original-AI/source/receive groups run on Release.
+            // These existing counters are intentionally DEBUG-only; the same
+            // source fixed Debug workload leaf must supply the actual bound.
+            if(model.GetMethod("ResetCounters",Flags)==null)
+            {Console.WriteLine("NOT_EXECUTED_REQUIRES_SAME_SOURCE_DEBUG phaseblade workload counters; Release functional groups are separate");return;}
             var p=Reset(context,198);var origin=p.RotatedRelativePoint(p.MountedCenter);var n=Target(2,new Vector2(origin.X+180,origin.Y-20),40,40);n.dontTakeDamage=true;
             var timeline=Timeline(assembly,n);var terrain=Terrain(assembly);var policy=new Projectile();policy.SetDefaults(p.HeldItem.shoot);policy.owner=p.whoAmI;
             var ammo=assembly.GetType("JueMingR.TerrariaHost.Combat.AttackAmmoSnapshot",true).GetMethod("Capture",Flags).Invoke(null,new object[]{p,p.HeldItem});

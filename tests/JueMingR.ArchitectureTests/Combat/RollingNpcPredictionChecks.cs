@@ -13,6 +13,7 @@ namespace JueMingR.ArchitectureTests
             ImmutableGeometry();
             ArmoredDayPursuit();
             ContinuationPlayerPremise();
+            SlimeContinuation();
             IncrementalPrefix();
             BudgetPrefix();
             SegmentedObservationHistory();
@@ -324,6 +325,56 @@ namespace JueMingR.ArchitectureTests
             // contain exactly seventeen seven-action cycles: both endpoints
             // equal the initial position while every cycle moves in between.
             Require(periodic.Count==121 && model.Continuation==null,"Equal BeforeNpc player endpoints do not prove a stationary premise across the complete window.");
+        }
+        private static void SlimeContinuation()
+        {
+            foreach(bool advanced in new[]{false,true})foreach(int timer in new[]{-2,-1002,-2002})
+            {
+                var n=new NpcMotionState{Identity=new NpcIdentity(1,new object(),1,1,1,1),X=100,Y=100,Style=1,A0=timer,A1=-1,A2=1,Direction=1,Width=32,Height=24,Life=100,LifeMax=100,TimeLeft=750,Active=true,CanReceive=true,Scale=1,WaterSpeed=1,HoneySpeed=1,LavaSpeed=1,ShimmerSpeed=1,WindyPreludeCaptured=true,WindySlimeContainsItems=true,WindySlimePositiveValue=true,WindyBaseLifeMax=100,Health=new NpcHealthState{RealLife=-1}};
+                var p=new PredictionPlayerMotion{X=500,Y=100,Width=20,Height=40,GravityDirection=1,MaxFall=10,ReleaseJump=true};
+                var e=new PredictionEnvironment{PlayerX=510,PlayerY=120,PlayerWidth=20,PlayerHeight=40,WorldWidth=4200,WorldHeight=1200,WorldSurface=400};
+                var owner=new RollingNpcPrediction{CaptureContinuation=true};var terrain=new EmptyTerrain();
+                var original=owner.Prepare(new[]{n},1,0,10,120,1,e,p,terrain,null,advanced,120);var proof=owner.Continuation;
+                Require(original.Count==121 && proof!=null,"Complete slime jump phases can retain a fixed-input continuation.");
+                var next=(NpcMotionState)typeof(RollingNpcPrediction.CandidateContinuation).GetField("next",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).GetValue(proof);
+                Require(proof.Matches(next,11,120,e,p,advanced),"The complete next state matches in its original player phase.");
+                var changed=next;changed.A0++;
+                Require(!proof.Matches(changed,11,120,e,p,advanced),"Position equality cannot hide a changed jump clock.");
+                changed=next;changed.JustHit=true;changed.Vx=-4;changed.Life--;
+                Require(!proof.Matches(changed,11,120,e,p,advanced),"Actual recoil and health changes reject the prior future.");
+                changed=next;changed.Identity=new NpcIdentity(1,new object(),1,2,1,1);
+                Require(!proof.Matches(changed,11,120,e,p,advanced),"Same-slot replacement never inherits a continuation.");
+                var moving=p;moving.X++;
+                Require(!proof.Matches(next,11,120,e,moving,advanced) && !proof.Matches(next,11,120,e,p,!advanced),"Player motion and before/after-NPC phase are independent premises.");
+                var shifted=e;shifted.Day=!e.Day;
+                Require(!proof.Matches(next,11,120,shifted,p,advanced),"Environment changes require a new jump decision.");
+                var oldLast=original[120];int before=terrain.TotalMoves;
+                var actual=proof.Advance(owner,next,11,120,1,e,p,terrain,advanced);
+                var expected=new RollingNpcPrediction().Prepare(new[]{next},1,0,11,120,1,e,p,new EmptyTerrain(),null,advanced,120);
+                SamePrefix(actual,expected,120,"Verified slime suffix equals a fresh complete model");
+                Require(terrain.TotalMoves-before<=4 && original.CaptureTick==10 && original[120].Bounds.Equals(oldLast.Bounds),"Only head/tail actions advance and the prior immutable publication survives.");
+                var origin=actual.CalculationToken as RollingNpcPrediction.ContinuationOrigin;
+                Require(actual.CaptureTick==11 && origin!=null && origin.OriginalCaptureTick==10 && origin.VerifiedFromTick==10 && ReferenceEquals(origin.OriginalCalculationToken,original.CalculationToken),"A new real observation records its original computation separately.");
+                foreach(int clock in new[]{1,30})
+                {
+                    var immune=p;immune.WallImmunityCaptured=true;immune.WallImmune=true;immune.WallImmuneTime=clock;
+                    var timed=new RollingNpcPrediction{CaptureContinuation=true};timed.Prepare(new[]{n},1,0,10,120,1,e,immune,new EmptyTerrain(),null,advanced,120);
+                    var timedProof=timed.Continuation;Require(timedProof!=null,"A non-Wall native immunity clock is not a moving target-player premise.");
+                    var timedNext=(NpcMotionState)typeof(RollingNpcPrediction.CandidateContinuation).GetField("next",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).GetValue(timedProof);
+                    var nativeNext=immune;nativeNext.WallImmuneTime--;if(nativeNext.WallImmuneTime<=0)nativeNext.WallImmune=false;
+                    Require(timedProof.Matches(timedNext,11,120,e,nativeNext,advanced) && !timedProof.Matches(timedNext,11,120,e,immune,advanced),"The full new player must contain exactly one native immunity action, including its expiry transition.");
+                    var refreshed=nativeNext;refreshed.WallImmune=true;refreshed.WallImmuneTime+=10;
+                    Require(!timedProof.Matches(timedNext,11,120,e,refreshed,advanced),"A newly refreshed hit timer cannot use the expected one-action clock.");
+                    var hurt=nativeNext;hurt.WallLife--;
+                    Require(!timedProof.Matches(timedNext,11,120,e,hurt,advanced),"Advancing the known timer cannot waive an unrelated actual health change.");
+                }
+                owner.Clear();n.A0=-999;
+                owner.Prepare(new[]{n},1,0,12,120,1,e,p,new EmptyTerrain(),null,advanced,120);
+                Require(owner.Continuation==null,"Windy possession is not an ordinary standalone slime proof.");
+                owner.Clear();n.A0=timer;n.WindyPreludeCaptured=false;n.Identity=new NpcIdentity(1,new object(),1,1,685,685);
+                owner.Prepare(new[]{n},1,0,13,120,1,e,p,new EmptyTerrain(),null,advanced,120);
+                Require(owner.Continuation==null,"Random slime branches keep the honest representative recomputation.");
+            }
         }
         private static void Require(bool value,string text){if(!value)throw new InvalidOperationException(text);}
         private static void ImmutableGeometry()

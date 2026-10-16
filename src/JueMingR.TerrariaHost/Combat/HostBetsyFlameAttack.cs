@@ -142,6 +142,21 @@ namespace JueMingR.TerrariaHost.Combat
         }
         private static Projectile[] Capture(HostAttackObstacles root)
         {var rows=new List<Projectile>();foreach(var p in Main.projectile)if(p.active && p.type==711)rows.Add(p);var scene=rows.ToArray();root.CaptureProjectileFamily(scene,711,711);return scene;}
+        private static Projectile[] RelevantScene(Projectile[] scene,Projectile[] sources,HostAttackObstacles root,int delay)
+        {
+            // 711 has no children or projectile/projectile collision. Its
+            // body, trail and Kill all write only its own local history and
+            // owner immunity zero. With already-zero owner timers, ambient
+            // members cannot influence another member's receive result.
+            // Still capture the FULL family and occupied-slot lease first:
+            // real mutations/new births must retire the prepared result.
+            // A delayed hand must replay ambient retirement before allocating
+            // its three slots, even when the retiring shot is very far away.
+            if(delay!=0 || !root.OwnerImmunityAlreadyClear)return scene;
+            foreach(var shot in scene)
+                if(shot.owner==Main.myPlayer && (!shot.usesLocalNPCImmunity || shot.usesIDStaticNPCImmunity || shot.localNPCHitCooldown==-2))return scene;
+            return sources??new Projectile[0];
+        }
         private static List<Member> Prepare(Projectile[] scene,Projectile[] source,HostAttackObstacles root,int selected)
         {
             var rows=new List<Member>();foreach(var p in scene){bool contributes=false;if(source!=null)foreach(var s in source)if(ReferenceEquals(p,s)){contributes=true;break;}var q=Copy(p);rows.Add(new Member{Shot=q,Source=contributes,Selected=selected,Receive=q.owner==Main.myPlayer?root.ForkForSpawn(q):null});}rows.Sort((left,right)=>left.Shot.whoAmI.CompareTo(right.Shot.whoAmI));return rows;
@@ -209,6 +224,7 @@ namespace JueMingR.TerrariaHost.Combat
             {
                 obstacles.CaptureShotFacing(player);
                 prepared=new Preparation{Player=player,Item=player.HeldItem,Ammo=ammo,Origin=origin,Age=age,Delay=delay,BeforeNpc=beforeNpc,Prefix=player.HeldItem.prefix,Direction=player.direction,Scale=player.HeldItem.scale,KnockBack=player.HeldItem.knockBack,Timeline=timeline,Terrain=terrain,Root=obstacles,Scene=Capture(obstacles),Pool=obstacles.CaptureBirthSlots(),Response=new AttackBallisticCandidates.Response(body.extraUpdates+1,true)};
+                prepared.Scene=RelevantScene(prepared.Scene,null,obstacles,delay);
                 scope?.Store(PreparationKey,prepared);
             }
             else{obstacles.IncludePreparation(prepared.Root);prepared.Root.ExtendPreparation(timeline);prepared.Timeline=timeline;}
@@ -285,7 +301,7 @@ namespace JueMingR.TerrariaHost.Combat
         internal static AttackContact KnownFamily(Player player,Projectile[] source,NpcTrajectory timeline,HostAttackClock clock,PredictionTerrain terrain,HostAttackObstacles obstacles)
         {
             if(source==null || source.Length==0 || clock.LaunchDelay!=0)return null;foreach(var p in source)if(p==null || !p.active || p.type!=711 || p.owner!=player.whoAmI)return null;
-            var scene=Capture(obstacles);obstacles.BeginCandidate();var rows=Prepare(scene,source,obstacles,timeline.Identity.Slot);var slots=obstacles.CaptureBirthSlots().Copy();var aim=source[0].Center+source[0].velocity*1000;
+            var scene=RelevantScene(Capture(obstacles),source,obstacles,0);obstacles.BeginCandidate();var rows=Prepare(scene,source,obstacles,timeline.Identity.Slot);var slots=obstacles.CaptureBirthSlots().Copy();var aim=source[0].Center+source[0].velocity*1000;
             for(int step=0;step<Math.Min(120,timeline.Count-clock.FirstTick);step++){AttackContact contact;if(!Outer(rows,slots,timeline,terrain,clock.FirstTick+step,step+1,clock.Phase!=HostAttackPhase.Projectiles || step>0,aim,out contact))return null;if(contact!=null)return contact;}return null;
         }
     }

@@ -101,8 +101,10 @@ namespace NativeWorldTextProbe
         {
             assembly=Get(context,"Combat").GetType().Assembly;model=assembly.GetType("JueMingR.TerrariaHost.Combat.HostAi29SpellAttack",true);var audit=new Harmony("JueMingR.Tests.Ai29Spells");bool wind=Main.windPhysics;
             foreach(string name in new[]{"HandleSpecialEvent","HandleRunning","HandleMining"})audit.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
-            audit.Patch(model.GetMethod("Solve",Flags),prefix:new HarmonyMethod(typeof(NativeCombatAi29SpellChecks),nameof(SolveWork)),postfix:new HarmonyMethod(typeof(NativeCombatAi29SpellChecks),nameof(Done)));
-            foreach(string name in new[]{"KnownFamily","KnownClock"})audit.Patch(model.GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatAi29SpellChecks),nameof(KnownWork)),postfix:new HarmonyMethod(typeof(NativeCombatAi29SpellChecks),nameof(Done)));
+            // Budget cancellation must close the observation scope too; a
+            // skipped postfix would mislabel later native RNG as model work.
+            audit.Patch(model.GetMethod("Solve",Flags),prefix:new HarmonyMethod(typeof(NativeCombatAi29SpellChecks),nameof(SolveWork)),finalizer:new HarmonyMethod(typeof(NativeCombatAi29SpellChecks),nameof(Done)));
+            foreach(string name in new[]{"KnownFamily","KnownClock"})audit.Patch(model.GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatAi29SpellChecks),nameof(KnownWork)),finalizer:new HarmonyMethod(typeof(NativeCombatAi29SpellChecks),nameof(Done)));
             audit.Patch(model.GetMethod("Motor",Flags),prefix:new HarmonyMethod(typeof(NativeCombatAi29SpellChecks),nameof(StepWork)));audit.Patch(model.GetMethod("Capture",Flags),prefix:new HarmonyMethod(typeof(NativeCombatAi29SpellChecks),nameof(ScanWork)));
             foreach(var method in Main.rand.GetType().GetMethods(Flags).Where(m=>m.Name=="Next" || m.Name=="NextDouble").Distinct())audit.Patch(method,prefix:new HarmonyMethod(typeof(NativeCombatAi29SpellChecks),nameof(RngWork)));
             audit.Patch(typeof(Projectile).GetMethod("AI_029_GemStaffs",Flags),prefix:new HarmonyMethod(typeof(NativeCombatAi29SpellChecks),nameof(BeforeAi)),postfix:new HarmonyMethod(typeof(NativeCombatAi29SpellChecks),nameof(AfterAi)));
@@ -218,24 +220,60 @@ namespace NativeWorldTextProbe
             var leaseOwner=Reset(context);target=Target(2,new Vector2(980,350));var leased=Shot(leaseOwner,521,new Vector2(950,350),new Vector2(8.5f,0));NativeQuickItemChecks.BeginWorldStep();var leasePath=Path(target);var lease=Receivers(leaseOwner,leased,leasePath);Static(model,"KnownFamily",leaseOwner,new[]{leased},leasePath,Clock(leasePath),Terrain(),lease);var old=leased.oldPosition;
             Require((bool)Get(lease,"Unchanged"),"Serpent's original death-origin lease is current");leased.oldPosition+=Vector2.UnitX;Require(!(bool)Get(lease,"Unchanged"),"only oldPosition changes actual Kill children birth and must invalidate the prepared family");leased.oldPosition=old;Require((bool)Get(lease,"Unchanged"),"restoring exact native oldPosition restores the unchanged death-origin lease");
             Console.WriteLine("PASS AI29 receives="+cases+" plus native inflated-body edge");
+            PublicFlights(context);
         }
-        private static void Draws(object host,object attack,AttackContact plan)
+        private static void PublicFlights(object context)
         {
+            foreach(int type in new[]{521,522,731})
+            {
+                var p=Reset(context,type==731?4062:3209);target=Target(2,new Vector2(950,350));watched=Shot(p,type,target.Center,new Vector2(8,0));
+                var attack=Get(Get(context,"Combat"),"Attack");long sample=Main.GameUpdateCount;var flight=Observe(attack,p);
+                var contact=flight==null?null:(AttackContact)Get(flight,"Contact");
+                Require(contact!=null && (bool)Get(flight,"Current") && (bool)Get(flight,"DependenciesCurrent") && !p.controlUseItem && GetOptional(attack,"ExpectedImpact")==null,"public AI29 observes the real parent/splinter/Thunder source with a complete lease and no hand authority type="+type);
+                int damage=watched.damage;watched.damage++;Require(!(bool)Get(flight,"Current"),"same-GUC actual AI29 family damage change revokes public Flight");watched.damage=damage;Require((bool)Get(flight,"Current"),"exact AI29 family restoration restores the same public lease");
+                NativeQuickItemChecks.BeginWorldStep();target.UpdateNPC(2);watched.Update(watched.whoAmI);
+                Require(first>=0 && first-sample==contact.Tick && contact.Tick==1,"public AI29 first contact equals an actual native positive Strike before any unknown later random clock type="+type);
+            }
+            Console.WriteLine("PASS AI29 public Flight original3 firstStrike/complete-lease/sameGUC-damage/no-input");
+        }
+        private static void Draws(object host,object attack,AttackContact plan,object flight=null)
+        {
+            if(flight==null)Call(attack,"BindPresentation",plan);
             int a=solves,b=steps,c=scans;var marker=Get(Get(host,"World"),"Impact");var zoom=Main.GameViewMatrix.ZoomMatrix;
-            for(int check=0;check<20;check++){Call(marker,"Capture");Call(marker,"Project",zoom,Matrix.Invert(zoom));Require((bool)Call(attack,"PreviewCurrent",plan),"stable spell presentation lease remains current");}
+            for(int check=0;check<20;check++){Call(marker,"Capture");Call(marker,"Project",zoom,Matrix.Invert(zoom));Require(flight==null?(bool)Call(attack,"PresentationCurrent",plan):(bool)Call(flight,"PresentationCurrent",0),"stable actual spell hand/family preparation lease remains current");}
             Require(a==solves && b==steps && c==scans,"twenty CPU presentations perform zero spell Solve/motor/family capture");
+        }
+        private static AttackContact PrepareNatural(object context,object host,object attack)
+        {
+            // This is a pressed hand at the completed-world boundary. The next
+            // native Player update consumes it; idle and released hands do not
+            // borrow this finite1000ms mechanism component allowance.
+            NativeToolExecutionChecks.Sample(context,Get(context,"Input"),raw,true);Call(Get(context,"Combat"),"Sample");
+            NativeCombatAimChecks.PrepareMechanismFixture(host,attack,target,0);
+            return (AttackContact)GetOptional(attack,"ExpectedImpact");
+        }
+        private static object Observe(object attack,Player player)
+        {
+            var args=new object[]{player,Path(target,-1),Enum.Parse(assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase",true),"CompletedWorld"),false};
+            using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))return Call(attack,"ReadFlight",args);
         }
         private static void Natural(object context)
         {
             foreach(int weapon in new[]{3209,4062})
             {
                 var p=Reset(context,weapon);p.position=new Vector2(650,646);Main.screenPosition=new Vector2(500,400);for(int x=5;x<115;x++)NativeToolsChecks.Tile(x,43,1);target=NativeCombatControlPreviewChecks.Dummy(2,52,40);target.position.X=p.Center.X+35;raw=target.Center-new Vector2(300,0);solves=knownCalls=depth=steps=scans=rngCalls=0;
-                var host=Get(context,"CombatObservation");var attack=Get(Get(context,"Combat"),"Attack");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,false));for(int frame=0;frame<3;frame++)NativeCombatSelectionPreviewChecks.Step(context,raw,false,true);var plan=(AttackContact)GetOptional(attack,"ExpectedPreview");Require(plan!=null && !Main.projectile.Any(q=>q.active),"idle real handheld spell has a read-only legal next-use preview");Draws(host,attack,plan);
-                ammo=Static(assembly.GetType("JueMingR.TerrariaHost.Combat.AttackAmmoSnapshot",true),"Capture",p,p.HeldItem);births=true;NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));int previews=0;
-                for(int frame=0;frame<65;frame++){NativeCombatSelectionPreviewChecks.Step(context,raw,true);var next=(AttackContact)GetOptional(attack,"ExpectedPreview");if(frame>=2){Require(next!=null,"continuous spell and ordinary item cooldown retain a legal next-use preview");previews++;}if(frame==6 && next!=null)Draws(host,attack,next);}
+                var host=Get(context,"CombatObservation");var attack=Get(Get(context,"Combat"),"Attack");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,false));for(int frame=0;frame<3;frame++)NativeCombatSelectionPreviewChecks.Step(context,raw,false,true);Require(GetOptional(attack,"ExpectedPreview")==null && !Main.projectile.Any(q=>q.active) && solves==0,"withdrawn idle spell preview neither solves nor fires");
+                NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));var plan=PrepareNatural(context,host,attack);Require(plan!=null,"pressed spell hand has an actual preparation under1000ms component allowance");Draws(host,attack,plan);
+                ammo=Static(assembly.GetType("JueMingR.TerrariaHost.Combat.AttackAmmoSnapshot",true),"Capture",p,p.HeldItem);births=true;int previews=0,contacts=0;
+                for(int frame=0;frame<65;frame++)
+                {
+                    var next=frame==0?plan:PrepareNatural(context,host,attack);var flight=next==null?Observe(attack,p):null;var observed=next??(flight==null?null:(AttackContact)Get(flight,"Contact"));
+                    if(frame>=2){Require(GetOptional(attack,"ExpectedPreview")==null,"all63 stable native spell frames keep the retired hypothetical preview absent");previews++;if(observed!=null)contacts++;}
+                    if(frame==6 && observed!=null)Draws(host,attack,observed,flight);NativeCombatSelectionPreviewChecks.Step(context,raw,true);
+                }
                 NativeCombatSelectionPreviewChecks.Step(context,raw,false);for(int frame=0;frame<100 && Main.projectile.Any(q=>q.active && (q.type==521 || q.type==522 || q.type==731));frame++)NativeCombatSelectionPreviewChecks.Step(context,raw,false);births=false;
                 int hands=born.Count(b=>b.ParentSlot<0),useful=born.Count(b=>b.First>=0);Console.WriteLine("AI29 natural before expectations weapon="+weapon+" hands="+hands+" bodies="+born.Count+" useful="+useful+" previews="+previews+" solves="+solves+" known="+knownCalls+" captures="+scans+" motor="+steps+" modelRNG="+rngCalls);
-                Require(hands>=3 && useful>0 && born.Where(b=>b.ParentSlot<0).All(b=>Vector2.Dot(b.Velocity,raw-b.Origin)<0) && previews>0 && rngCalls==0,"actual original PlayerCenter/ClearLine consumption reverses physical cursor and makes positive immortal488 Strike, without model RNG");
+                Require(hands>=3 && useful>0 && born.Where(b=>b.ParentSlot<0).All(b=>Vector2.Dot(b.Velocity,raw-b.Origin)<0) && previews==63 && contacts>0 && rngCalls==0,"all63 original observations preserve real hand/family contacts, opposite assisted cursor and positive immortal488 Strike without model RNG");
                 CompareBorn(p);Require(rngCalls==0 && scans==solves+knownCalls,"each natural preparation/recorded replay captures its finite family once and does not draw native RNG");Console.WriteLine("PASS AI29 natural weapon="+weapon+" random misses="+born.Count(b=>b.First<0)+" (actual clock oracle; no live flight control registered)");
             }
         }

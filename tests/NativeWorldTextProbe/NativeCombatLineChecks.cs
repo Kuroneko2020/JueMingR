@@ -46,9 +46,11 @@ namespace NativeWorldTextProbe
                 // old melee rectangle rejects it at64 tiles, and scanning its
                 // bounding square would exceed the retained4096-cell limit.
                 var longFrom=new MotionRect(80.25f,80.75f,14,14);var longTo=new MotionRect(2336.25f,2336.75f,21,41);terrain.Reset();
-                var readCounter=terrain.GetType().GetProperty("Reads",Flags);int beforeReads=(int)readCounter.GetValue(terrain);
+                var readCounter=terrain.GetType().GetProperty("Reads",Flags);int? beforeReads=readCounter==null?(int?)null:(int)readCounter.GetValue(terrain);
                 object[] longer={longFrom,longTo,false,PredictionStop.None};Require((bool)query.Invoke(terrain,longer) && (bool)longer[2],"long native line remains usable with bounded corridor capture");
-                int reads=(int)readCounter.GetValue(terrain)-beforeReads;Require(reads>140 && reads<1000,"long line captures touched corridor, not a rectangle: "+reads);
+                int? reads=beforeReads.HasValue?(int)readCounter.GetValue(terrain)-beforeReads.Value:(int?)null;
+                if(reads.HasValue)Require(reads.Value>140 && reads.Value<1000,"long line captures touched corridor, not a rectangle: "+reads);
+                else Console.WriteLine("NOT_EXECUTED_REQUIRES_SAME_SOURCE_DEBUG line corridor read counter; actual long line/lease/missing-cell assertions execute");
                 Require(terrain.Unchanged,"fresh line lease is current");Main.tile[180,20].active(true);Main.tile[180,20].type=TileID.Stone;Require(terrain.Unchanged,"unread distant terrain does not retire a line lease");
                 Main.tile[5,5].active(true);Main.tile[5,5].type=TileID.Stone;Require(!terrain.Unchanged,"native starting strip participates in terrain invalidation");Main.tile[5,5].ClearEverything();
                 terrain.Reset();var saved=Main.tile[5,5];Main.tile[5,5]=null;

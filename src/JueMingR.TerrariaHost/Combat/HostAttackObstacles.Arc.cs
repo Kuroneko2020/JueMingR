@@ -23,10 +23,16 @@ namespace JueMingR.TerrariaHost.Combat
             {return slot>=0 && slot<Main.player.Length && ReferenceEquals(Main.player[slot],owner) && owner!=null && ReferenceEquals(owner.HeldItem,item) && item.noMelee==noMelee && owner.GetAdjustedItemScale(item)==scale && owner.chlorophyteBladeCounter==(afterHandStart && counter>0?counter-1:counter) && owner.fullRotation==rotation && owner.fullRotationOrigin==rotationOrigin && owner.BaseHeight==baseHeight && owner.HeightOffsetHitboxCenter==mountCenter;}
             internal bool MembersCurrent {get{return MembersMatch(false);}}
             internal bool MembersAfterHandStart {get{return owner!=null && owner.ItemAnimationJustStarted && MembersMatch(true);}}
+            // StartActualUse's postfix precedes ItemCheck's animation decrement
+            // and chlorophyte counter transition. Only the finite hand-family
+            // proof may admit this earlier, fully reset native start boundary.
+            internal bool MembersAtNativeHandStart {get{return owner!=null && owner.itemAnimation>0 && owner.itemAnimation==owner.itemAnimationMax && MembersMatch(false);}}
             internal bool Current
             {get{if(!MembersCurrent || owner.meleeNPCHitCooldown.Length!=Melee.Length)return false;for(int i=0;i<Melee.Length;i++)if(owner.meleeNPCHitCooldown[i]!=Melee[i])return false;return true;}}
             internal bool CurrentAfterHandStart
             {get{if(!MembersAfterHandStart || owner.meleeNPCHitCooldown.Length!=Melee.Length)return false;for(int i=0;i<Melee.Length;i++)if(owner.meleeNPCHitCooldown[i]!=0)return false;return true;}}
+            internal bool CurrentAtNativeHandStart
+            {get{if(!MembersAtNativeHandStart || owner.meleeNPCHitCooldown.Length!=Melee.Length)return false;for(int i=0;i<Melee.Length;i++)if(owner.meleeNPCHitCooldown[i]!=0)return false;return true;}}
         }
         internal void CaptureArcOwner(Player value,Item item)
         {if(history.ArcOwner==null){history.ArcOwner=new ArcOwnerLease(value,item);history.ArcMelee=(int[])history.ArcOwner.Melee.Clone();}}

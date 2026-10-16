@@ -65,6 +65,8 @@ namespace JueMingR.Features.Combat
         {return new AttackMotion(Speed,Gravity,GravityStart,Updates,Width,Height,Lifetime,confidence,Acceleration,MaxSpeed,ComponentBirthLimit,ComponentAccelerationLimit,DragAfterGravity,StopSmallVelocity,MoveScale,WindX,MaxFallSpeed,GravityClockUsesLaunchX,MaxRiseSpeed,AccelerationStart,HorizontalAccelerationOnly,PreMotorWindX,FirstUpdates);}
         public AttackMotion WithLifetime(int lifetime)
         {return new AttackMotion(Speed,Gravity,GravityStart,Updates,Width,Height,lifetime,Confidence,Acceleration,MaxSpeed,ComponentBirthLimit,ComponentAccelerationLimit,DragAfterGravity,StopSmallVelocity,MoveScale,WindX,MaxFallSpeed,GravityClockUsesLaunchX,MaxRiseSpeed,AccelerationStart,HorizontalAccelerationOnly,PreMotorWindX,FirstUpdates);}
+        public AttackMotion WithGravityStart(int start)
+        {return new AttackMotion(Speed,Gravity,start,Updates,Width,Height,Lifetime,Confidence,Acceleration,MaxSpeed,ComponentBirthLimit,ComponentAccelerationLimit,DragAfterGravity,StopSmallVelocity,MoveScale,WindX,MaxFallSpeed,GravityClockUsesLaunchX,MaxRiseSpeed,AccelerationStart,HorizontalAccelerationOnly,PreMotorWindX,FirstUpdates);}
         public AttackMotion ForLaunch(float vx)
         {
             // Hellwing stores the unbounded launch X in ai0, which AI_001

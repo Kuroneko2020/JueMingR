@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using JueMingR.Features.Combat;
 using JueMingR.Platform.Combat;
 using Microsoft.Xna.Framework;
@@ -219,7 +219,9 @@ namespace JueMingR.TerrariaHost.Combat
             float inherited=(heldSpeed*(inertia-1)+Math.Min((range-1)/2,speed))/inertia;
             var start=player.RotatedRelativePoint(player.MountedCenter);var unit=(point-start).SafeNormalize(Vector2.UnitX*player.direction);
             if(!HostProjectileEnvironment.Dry(child,terrain,start.X,start.Y,unit.X*inherited))return null;
-            var position=start+unit*inherited;var velocity=unit*inherited;child.ai[0]=-2;
+            var position=start+unit*inherited;var velocity=unit*inherited;
+            if(HostYoyoFamilyAttack.Parent(child.type))return HostYoyoFamilyAttack.ReleasePreview(player,child,future,clock,terrain,position,velocity,point,out obstacles);
+            child.ai[0]=-2;
             if(child.penetrate<0)child.penetrate=3; // Native 3..6 RNG: prove only its minimum.
             var receive=HostAttackReceive.Capture(player,child,future.Identity.Slot,clock.BeforeNpc,clock.NextWorld);
             obstacles=new HostAttackObstacles(player,child,future,clock.LaunchDelay,clock.BeforeNpc,clock.NextWorld);

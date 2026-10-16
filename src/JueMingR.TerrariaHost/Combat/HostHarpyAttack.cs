@@ -24,24 +24,27 @@ namespace JueMingR.TerrariaHost.Combat
         {
             internal Projectile Shot;
             internal int Slot,Type,Owner,Left,Penetrate,ExtraUpdates,Damage,BirthOuter;internal ProjectileKey Key;
-            private readonly int width,height,updates,maxPenetrate,localCooldown;
-            private readonly bool tileCollide,ignoreWater,friendly,localImmunity,staticImmunity;
+            private readonly int width,height,updates,maxPenetrate,localCooldown,aiStyle;
+            private readonly bool tileCollide,ignoreWater,friendly,localImmunity,staticImmunity,arrow;
             internal Vector2 Center,Velocity;internal float Counter,Second,Bits;
             internal bool Wet,Honey,Lava,Shimmer,Known,Primary,Burst,Alive=true,Bee,Killed,Representative,Reflected;
             internal Vector2 OldVelocity,DeathPosition;
+            internal int DeathLeft;internal bool Skipped;
+            internal Projectile FamilyBody;
             internal HostBeeAttack.State BeeState;
             internal HostAttackObstacles Receivers;internal Projectile ReceiverShot;
             internal AttackMotion Motion;internal int[] Local;
             internal Arrow(Projectile p,int slot)
             {
                 Shot=p;Slot=slot;Type=p.type;Owner=p.owner;Key=p.key;Left=p.timeLeft;Penetrate=p.penetrate;ExtraUpdates=p.extraUpdates;Damage=p.damage;Center=p.Center;Velocity=p.velocity;Counter=p.ai[0];Second=p.ai[1];Bits=p.ai[2];Wet=p.wet;Honey=p.honeyWet;Lava=p.lavaWet;Shimmer=p.shimmerWet;
-                width=p.width;height=p.height;updates=p.extraUpdates;maxPenetrate=p.maxPenetrate;localCooldown=p.localNPCHitCooldown;tileCollide=p.tileCollide;ignoreWater=p.ignoreWater;friendly=p.friendly;localImmunity=p.usesLocalNPCImmunity;staticImmunity=p.usesIDStaticNPCImmunity;
+                width=p.width;height=p.height;updates=p.extraUpdates;maxPenetrate=p.maxPenetrate;localCooldown=p.localNPCHitCooldown;tileCollide=p.tileCollide;ignoreWater=p.ignoreWater;friendly=p.friendly;localImmunity=p.usesLocalNPCImmunity;staticImmunity=p.usesIDStaticNPCImmunity;aiStyle=p.aiStyle;arrow=p.arrow;
                 Bee=HostBeeAttack.Handles(Type);BeeState=new HostBeeAttack.State(p);OldVelocity=p.oldVelocity;
                 Known=Bee || HostAttackModels.TryResolved(Type,Math.Max(.0001f,Velocity.Length()),0,out Motion) || HostSpecialArrowAttack.TrySeedMotion(Type,Math.Max(.0001f,Velocity.Length()),0,out Motion);Local=(int[])p.localNPCImmunity.Clone();
+                if(HostArrowFamilyAttack.Family(Type) || Type==41 || Type==225){FamilyBody=FamilyCopy(p);Known=true;}
             }
-            internal Arrow Copy(){var a=(Arrow)MemberwiseClone();a.Local=(int[])Local.Clone();a.Receivers=null;a.ReceiverShot=null;return a;}
+            internal Arrow Copy(){var a=(Arrow)MemberwiseClone();a.Local=(int[])Local.Clone();if(FamilyBody!=null)a.FamilyBody=FamilyCopy(FamilyBody);a.Receivers=null;a.ReceiverShot=null;return a;}
             internal bool MemberSame(Projectile p)
-            {return ReferenceEquals(Shot,p) && p.active && Key.Equals(p.key) && Type==p.type && Owner==p.owner && (Bee?HostBeeAttack.Handles(p.type) && p.aiStyle==36:p.arrow && p.aiStyle==1);}
+            {return ReferenceEquals(Shot,p) && p.active && Key.Equals(p.key) && Type==p.type && Owner==p.owner && p.arrow==arrow && p.aiStyle==aiStyle && (Bee?HostBeeAttack.Handles(p.type) && p.aiStyle==36:FamilyBody!=null?(HostArrowFamilyAttack.Family(p.type) || p.type==41 || p.type==225):p.arrow && p.aiStyle==1);}
             internal bool Same(Projectile p)
             {return MemberSame(p) && (!Bee || BeeState.Alpha==p.alpha) && width==p.width && height==p.height && updates==p.extraUpdates && maxPenetrate==p.maxPenetrate && localCooldown==p.localNPCHitCooldown && tileCollide==p.tileCollide && ignoreWater==p.ignoreWater && friendly==p.friendly && localImmunity==p.usesLocalNPCImmunity && staticImmunity==p.usesIDStaticNPCImmunity && Left==p.timeLeft && Penetrate==p.penetrate && Damage==p.damage && Center==p.Center && Velocity==p.velocity && Counter==p.ai[0] && Second==p.ai[1] && Bits==p.ai[2] && Wet==p.wet && Honey==p.honeyWet && Lava==p.lavaWet && Shimmer==p.shimmerWet && SameLocal(p.localNPCImmunity);}
             private bool SameLocal(int[] values){if(values.Length!=Local.Length)return false;for(int i=0;i<values.Length;i++)if(values[i]!=Local[i])return false;return true;}
@@ -60,12 +63,17 @@ namespace JueMingR.TerrariaHost.Combat
             private readonly Player owner;private readonly AttackAmmoSnapshot ammo;internal readonly PredictionPlayerMotion motion;
             private readonly bool harpy,strong,wallSourcePresent;internal readonly bool seraph,phoenix,randomSlots,quiver;internal readonly int cooldown;private readonly long session;
             internal readonly Arrow[] arrows;internal readonly Target[] targets;internal readonly bool[] occupied;
-            internal readonly HostAttackObstacles obstacles;internal readonly HostProjectileTargets beeTargets;private readonly HostProjectileEnvironment.State environment;
+            internal readonly HostAttackObstacles obstacles;internal readonly HostProjectileTargets beeTargets,steeringTargets;private readonly HostProjectileEnvironment.State environment;
+            internal bool CharmEnabled {get{return harpy;}}
+            internal int OwnerSlot {get{return owner.whoAmI;}}
             internal int CandidateCount,MotorSteps,CharmChecks,CapturedArrowSlots,CapturedNpcSlots,BeeBirths,BeeSteps,ReceivePasses;internal PredictionStop Stop;
             internal State(Player owner,AttackAmmoSnapshot ammo,NpcTrajectory timeline,HostAttackObstacles obstacles)
             {
                 this.owner=owner;this.ammo=ammo;this.obstacles=obstacles;session=timeline.Identity.Session;wallSourcePresent=timeline.WallSources!=null;motion=NpcPredictionSource.ReadPlayer(owner);harpy=owner.accHarpyCharm;strong=owner.strongBees;seraph=owner.accSeraphNecklace;phoenix=owner.hasPhoenixQuiver;quiver=owner.magicQuiver;randomSlots=DebugOptions.Shared_RandomizeProjectileSlots;cooldown=owner.accHarpyCharmCooldown;environment=new HostProjectileEnvironment.State(true);
-                var list=new List<Arrow>();bool bees=ammo!=null && ammo.Projectile==469;occupied=new bool[Main.maxProjectiles];for(int i=0;i<occupied.Length;i++){CapturedArrowSlots++;var p=Main.projectile[i];occupied[i]=p!=null && p.active;if(Owned(owner,p) || OwnedBee(owner,p)){list.Add(new Arrow(p,i));bees|=p.type==469 || HostBeeAttack.Handles(p.type);}}arrows=list.ToArray();
+                var list=new List<Arrow>();bool bees=ammo!=null && ammo.Projectile==469;occupied=new bool[Main.maxProjectiles];for(int i=0;i<occupied.Length;i++){CapturedArrowSlots++;var p=Main.projectile[i];occupied[i]=p!=null && p.active;if(Owned(owner,p) || OwnedBee(owner,p) || OwnedFamilyChild(owner,p)){list.Add(new Arrow(p,i));bees|=p.type==469 || HostBeeAttack.Handles(p.type);}}arrows=list.ToArray();
+                var family=new List<Projectile>();foreach(var arrow in arrows)if(arrow.FamilyBody!=null)family.Add(arrow.Shot);if(family.Count>0 || ammo!=null && (HostArrowFamilyAttack.Handles(ammo.Projectile) || ammo.Projectile==41 || ammo.Projectile==225))obstacles.CaptureOwnedProjectileFamily(family.ToArray(),owner.whoAmI,new[]{41,91,92,117,225,1124,639,640});
+                bool steering=ammo!=null && ammo.Projectile==225;foreach(var arrow in arrows)steering|=arrow.Type==225;
+                if(steering)steeringTargets=obstacles.CaptureChaseTargets(ContentSamples.ProjectilesByType[225]);
                 // Native Damage_PVE is gated by owner==Main.myPlayer. Foreign
                 // bees still occupy captured birth slots, but their local AI
                 // cannot write shared static181 or local owner immunity.
@@ -76,11 +84,23 @@ namespace JueMingR.TerrariaHost.Combat
             // identities. Full new-arrow/new-target set checks belong to actual
             // preparation/consumption, never Draw's same-update lease.
             internal bool MembersCurrent
-            {get{if(owner.accHarpyCharm!=harpy || beeTargets!=null && owner.strongBees!=strong || owner.accSeraphNecklace!=seraph || owner.hasPhoenixQuiver!=phoenix || randomSlots!=DebugOptions.Shared_RandomizeProjectileSlots || owner.accHarpyCharmCooldown!=cooldown || owner.position.X!=motion.X || owner.position.Y!=motion.Y || owner.velocity.X!=motion.Vx || owner.velocity.Y!=motion.Vy || !ammo.MembersMatch(owner,owner.HeldItem) || !environment.Current)return false;foreach(var a in arrows)if(!a.MemberSame(Main.projectile[a.Slot]))return false;return true;}}
+            {get{return MembersAtHeldPrefix(arrows);}}
+            internal bool MembersAtHeldPrefix(Arrow[] expected)
+            {if(owner.accHarpyCharm!=harpy || beeTargets!=null && owner.strongBees!=strong || owner.accSeraphNecklace!=seraph || owner.hasPhoenixQuiver!=phoenix || randomSlots!=DebugOptions.Shared_RandomizeProjectileSlots || owner.accHarpyCharmCooldown!=cooldown || owner.position.X!=motion.X || owner.position.Y!=motion.Y || owner.velocity.X!=motion.Vx || owner.velocity.Y!=motion.Vy || (ammo!=null && !ammo.MembersMatch(owner,owner.HeldItem)) || !environment.Current)return false;foreach(var a in expected)if(!a.MemberSame(Main.projectile[a.Slot]))return false;return true;}
             internal bool Current
+            {get{return DependenciesCurrent && obstacles.Unchanged;}}
+            // A batch root owns this state itself. Its heavy dependency check
+            // must not recurse through that root's Unchanged property.
+            internal bool DependenciesCurrent
             // Match the enclosing fixed-input plan: only the unused no-Wall
             // regen clocks may advance. Wall, health and immunity stay exact.
-            {get{if(!MembersCurrent || !PlayerMotionContinuation.SameFixedInput(motion,NpcPredictionSource.ReadPlayer(owner),wallSourcePresent) || !obstacles.Unchanged)return false;int a=0,n=0;for(int i=0;i<occupied.Length;i++){var p=Main.projectile[i];if(occupied[i]!=(p!=null && p.active))return false;if(Owned(owner,p) || OwnedBee(owner,p)){if(a>=arrows.Length || arrows[a].Slot!=i || !arrows[a++].Same(p))return false;}}for(int i=0;i<Main.maxNPCs;i++)if(Main.npc[i]!=null && Main.npc[i].active){if(n>=targets.Length || targets[n].Identity.Slot!=i || !targets[n++].Same(owner,session))return false;}return a==arrows.Length && n==targets.Length;}}
+            {get{return DependenciesAtHeldPrefix(arrows,occupied);}}
+            // Only the enclosing finite-held root supplies a frozen private
+            // lower-slot projection. Owner/cooldown/NPC populations and all
+            // unknown pool activity remain exact. The normal Current path
+            // passes its original snapshots and keeps its previous semantics.
+            internal bool DependenciesAtHeldPrefix(Arrow[] expected,bool[] occupancy)
+            {if(!MembersAtHeldPrefix(expected) || !PlayerMotionContinuation.SameFixedInput(motion,NpcPredictionSource.ReadPlayer(owner),wallSourcePresent))return false;int a=0,n=0;for(int i=0;i<occupancy.Length;i++){var p=Main.projectile[i];if(occupancy[i]!=(p!=null && p.active))return false;if(Owned(owner,p) || OwnedBee(owner,p) || OwnedFamilyChild(owner,p)){if(a>=expected.Length || expected[a].Slot!=i || !expected[a++].Same(p))return false;}}for(int i=0;i<Main.maxNPCs;i++)if(Main.npc[i]!=null && Main.npc[i].active){if(n>=targets.Length || targets[n].Identity.Slot!=i || !targets[n++].Same(owner,session))return false;}return a==expected.Length && n==targets.Length;}
         }
         private static bool HasPrimary(List<Arrow> arrows)
         {foreach(var arrow in arrows)if(arrow.Primary && arrow.Alive)return true;return false;}
@@ -92,43 +112,84 @@ namespace JueMingR.TerrariaHost.Combat
             q.usesLocalNPCImmunity=p.usesLocalNPCImmunity;q.usesIDStaticNPCImmunity=p.usesIDStaticNPCImmunity;q.immunityIdentity=p.immunityIdentity;q.localNPCHitCooldown=p.localNPCHitCooldown;q.idStaticNPCHitCooldown=p.idStaticNPCHitCooldown;q.appliesImmunityTimeOnSingleHits=p.appliesImmunityTimeOnSingleHits;
             Array.Copy(a.Local,q.localNPCImmunity,a.Local.Length);a.ReceiverShot=q;a.Receivers=(parent??lease.obstacles).ForkForSpawn(q,copyLocal);
         }
+        internal static bool FamilyForObservation(Projectile p,Player owner)
+        {return Owned(owner,p) || OwnedBee(owner,p) || OwnedFamilyChild(owner,p);}
         private static bool Owned(Player owner,Projectile p){return p!=null && p.active && p.owner==owner.whoAmI && p.arrow && p.aiStyle==1;}
         private static bool OwnedBee(Player owner,Projectile p){return p!=null && p.active && p.owner==owner.whoAmI && HostBeeAttack.Handles(p.type) && p.aiStyle==36;}
+        private static bool OwnedFamilyChild(Player owner,Projectile p){return p!=null && p.active && p.owner==owner.whoAmI && HostArrowFamilyAttack.Family(p.type) && !HostArrowFamilyAttack.Handles(p.type);}
+        private static Projectile FamilyCopy(Projectile p){var q=HostBetsyFlameAttack.Copy(p);if(p.oldPos!=null)q.oldPos=(Vector2[])p.oldPos.Clone();return q;}
 
         private static MotionRect Bounds(Target target,NpcTrajectory timeline,int tick,bool damage)
         {if(target.Identity.Slot==timeline.Identity.Slot)return damage?timeline[tick].ProjectileReceiveBounds:timeline[tick].Bounds;var b=target.Bounds;if(damage){var r=target.Damage;return target.Identity.Type==414?new MotionRect(r.X-8,r.Y-8,r.Width+16,r.Height+16):new MotionRect(r.X,r.Y,r.Width,r.Height);}return b;}
         private static bool Find(Arrow a,Target[] targets,NpcTrajectory timeline,int tick,PredictionTerrain terrain,out Vector2 point,out bool found)
+        {return FindBody(a.Center,a.Shot.width,a.Shot.height,a.Local,targets,timeline,tick,terrain,out point,out found);}
+        private static bool FindBody(Vector2 position,int width,int height,int[] local,Target[] targets,NpcTrajectory timeline,int tick,PredictionTerrain terrain,out Vector2 point,out bool found)
         {
             point=Vector2.Zero;found=false;float best=1600;
             foreach(var target in targets)
             {
-                int slot=target.Identity.Slot;if(!target.Chase || a.Local[slot]!=0 || slot==timeline.Identity.Slot && !timeline[tick].CanReceive)continue;
-                var b=Bounds(target,timeline,tick,false);var center=new Vector2(b.CenterX,b.CenterY);float distance=Vector2.Distance(a.Center,center);if(distance>=best)continue;
-                bool clear;PredictionStop stop;if(!terrain.CanHit(new MotionRect(a.Center.X-a.Shot.width*.5f,a.Center.Y-a.Shot.height*.5f,a.Shot.width,a.Shot.height),b,out clear,out stop))return false;
+                int slot=target.Identity.Slot;if(!target.Chase || local[slot]!=0 || slot==timeline.Identity.Slot && !timeline[tick].CanReceive)continue;
+                var b=Bounds(target,timeline,tick,false);var center=new Vector2(b.CenterX,b.CenterY);float distance=Vector2.Distance(position,center);if(distance>=best)continue;
+                bool clear;PredictionStop stop;if(!terrain.CanHit(new MotionRect(position.X-width*.5f,position.Y-height*.5f,width,height),b,out clear,out stop))return false;
                 if(clear){best=distance;point=center;found=true;}
             }
             return true;
         }
         private static void Turn(Arrow a,Vector2 target)
         {a.Velocity=Utils.rotateTowards(a.Center,a.Velocity,target,MathHelper.Pi);}
-        private static void Kill(Arrow a)
-        {if(!a.Alive)return;a.DeathPosition=a.Center-new Vector2(a.Shot.width,a.Shot.height)*.5f;a.Alive=false;a.Left=0;a.Killed=true;}
+        private static bool CharmRange(Vector2 center,float bits,Vector2 ownerCenter,float nearest,out float distance)
+        {distance=Vector2.Distance(ownerCenter,center);return !new Projectile.AI_001_Features(bits).HarpyCharmed && distance>=400 && distance<=1200 && distance<nearest;}
+        private static float CharmBits(float bits,bool seraph,bool phoenix)
+        {var f=new Projectile.AI_001_Features(bits);f.HarpyCharmed=true;f.PhoenixQuivered|=phoenix;f.SeraphNecklaced|=!phoenix && seraph;return f.Bits;}
+        private static void Kill(Arrow a,int? left=null)
+        {if(!a.Alive)return;a.DeathPosition=a.Center-new Vector2(a.Shot.width,a.Shot.height)*.5f;a.DeathLeft=left??a.Left;a.Alive=false;a.Left=0;a.Killed=true;}
         private static bool Charm(List<Arrow> arrows,Target[] targets,NpcTrajectory timeline,int tick,PredictionTerrain terrain,Vector2 ownerCenter,bool seraph,bool phoenix,ref int cooldown,State lease)
         {
             if(cooldown>0){cooldown--;return true;}Arrow best=null;Vector2 destination=Vector2.Zero;float nearest=float.MaxValue;
             foreach(var a in arrows)
             {
-                if(!a.Alive || a.Bee || new Projectile.AI_001_Features(a.Bits).HarpyCharmed)continue;
-                float distance=Vector2.Distance(ownerCenter,a.Center);if(distance<400 || distance>1200 || distance>=nearest)continue;
+                if(!a.Alive || a.Bee || !a.Shot.arrow || a.Shot.aiStyle!=1)continue;
+                float distance;if(!CharmRange(a.Center,a.Bits,ownerCenter,nearest,out distance))continue;
                 lease.CharmChecks++;bool found;Vector2 point;if(!Find(a,targets,timeline,tick,terrain,out point,out found))return false;
                 if(found){nearest=distance;best=a;destination=point;}
             }
-            if(best!=null){Turn(best,destination);var f=new Projectile.AI_001_Features(best.Bits);f.HarpyCharmed=true;f.PhoenixQuivered|=phoenix;f.SeraphNecklaced|=!phoenix && seraph;best.Bits=f.Bits;best.Left=Math.Min(best.Left,300);cooldown=seraph?72:90;}return true;
+            if(best!=null){Turn(best,destination);best.Bits=CharmBits(best.Bits,seraph,phoenix);best.Left=Math.Min(best.Left,300);cooldown=seraph?72:90;}return true;
         }
-        private static bool Step(Arrow a,Target[] targets,NpcTrajectory timeline,int tick,PredictionTerrain terrain)
+        internal static State CaptureBatchState(Player player,NpcTrajectory path,HostAttackObstacles root)
+        {return new State(player,null,path,root);}
+        // The caller owns one ordered projectile world and its slot/history
+        // writes. Call this ONCE at each actual Player prefix, before births;
+        // splitting a projectile pass around its controller is not a new prefix.
+        // These adapters reuse the same qualification and turn math without
+        // allocating Arrow snapshots or copying immunity arrays per substep.
+        internal static bool BeforePlayerCharm(IEnumerable<Projectile> bodies,State state,NpcTrajectory path,int tick,PredictionTerrain terrain,Vector2 ownerCenter,ref int cooldown)
+        {
+            if(state.OwnerSlot!=Main.myPlayer)return true;if(tick<0 || tick>=path.Count)return false;
+            if(cooldown>0){cooldown--;return true;}if(!state.CharmEnabled)return true;Projectile best=null;Vector2 destination=Vector2.Zero;float nearest=float.MaxValue;
+            foreach(var p in bodies)
+            {
+                if(!p.active || p.owner!=state.OwnerSlot || !p.arrow || p.aiStyle!=1)continue;float distance;
+                // Batch births are appended after capture, so list order need
+                // not equal Main's slot order. Native nearest ties keep the
+                // lower projectile slot, including a recycled lower birth.
+                if(!CharmRange(p.Center,p.ai[2],ownerCenter,float.MaxValue,out distance) || distance>nearest || distance==nearest && best!=null && p.whoAmI>=best.whoAmI)continue;
+                state.CharmChecks++;bool found;Vector2 point;if(!FindBody(p.Center,p.width,p.height,p.localNPCImmunity,state.targets,path,tick,terrain,out point,out found))return false;
+                if(found){nearest=distance;best=p;destination=point;}
+            }
+            if(best!=null){best.velocity=Utils.rotateTowards(best.Center,best.velocity,destination,MathHelper.Pi);best.ai[2]=CharmBits(best.ai[2],state.seraph,state.phoenix);best.timeLeft=Math.Min(best.timeLeft,300);cooldown=state.seraph?72:90;}return true;
+        }
+        internal static bool AfterAi(Projectile p,State state,NpcTrajectory path,int tick,PredictionTerrain terrain)
+        {
+            if(!p.arrow || p.aiStyle!=1)return true;var f=new Projectile.AI_001_Features(p.ai[2]);if(!f.HarpyCharmed || f.HarpyCharmConsumed)return true;
+            if(tick<0 || tick>=path.Count)return false;Vector2 target;bool found;if(!FindBody(p.Center,p.width,p.height,p.localNPCImmunity,state.targets,path,tick,terrain,out target,out found))return false;
+            if(found){p.velocity=Utils.rotateTowards(p.Center,p.velocity,target,MathHelper.Pi);if(p.velocity.Length()<1)p.velocity=p.velocity.SafeNormalize(Vector2.UnitY);if(p.velocity.Length()<12)p.velocity*=1.05f;}
+            else{f.HarpyCharmConsumed=true;p.ai[2]=f.Bits;}return true;
+        }
+        private static bool Step(Arrow a,Target[] targets,NpcTrajectory timeline,int tick,PredictionTerrain terrain,HostProjectileTargets steeringTargets=null)
         {
             if(a.Left<=0){a.Alive=false;return true;}
             if(!a.Known)return false;
+            a.Skipped=false;if(a.FamilyBody!=null)return StepFamily(a,targets,timeline,tick,terrain,steeringTargets);
             Vector2 half=new Vector2(a.Shot.width,a.Shot.height)*.5f,position=a.Center-half;
             if(position.X<=Main.leftWorld || position.X+a.Shot.width>=Main.rightWorld || position.Y<=Main.topWorld || position.Y+a.Shot.height>=Main.bottomWorld || float.IsNaN(position.X) || float.IsNaN(position.Y))
             {a.Alive=false;return true;} // Native free-flight retire does not call Kill.
@@ -173,6 +234,42 @@ namespace JueMingR.TerrariaHost.Combat
             // timeLeft1 BeeArrow can hit, then Kill at this moved body.
             if(a.Alive)a.Left--;return true;
         }
+        private static Projectile FamilyCurrent(Arrow a,bool death=false)
+        {
+            var p=a.FamilyBody;p.type=a.Type;p.owner=a.Owner;p.whoAmI=a.Slot;p.active=true;p.Center=death?a.DeathPosition+p.Size*.5f:a.Center;p.velocity=a.Velocity;p.oldVelocity=a.OldVelocity;p.timeLeft=death?a.DeathLeft:a.Left;p.damage=a.Damage;p.penetrate=a.Penetrate;p.extraUpdates=a.ExtraUpdates;
+            p.ai[0]=a.Counter;p.ai[1]=a.Second;p.ai[2]=a.Bits;p.wet=a.Wet;p.honeyWet=a.Honey;p.lavaWet=a.Lava;p.shimmerWet=a.Shimmer;Array.Copy(a.Local,p.localNPCImmunity,a.Local.Length);return p;
+        }
+        private static bool StepFamily(Arrow a,Target[] targets,NpcTrajectory timeline,int tick,PredictionTerrain terrain,HostProjectileTargets steeringTargets)
+        {
+            var p=FamilyCurrent(a);a.OldVelocity=a.Velocity;bool killed,skipped;
+            // One motor/environment implementation owns ordinary arrows and
+            // their derived bodies. Harpy contributes its real autonomous
+            // turn BETWEEN AI and movement, at the original native boundary.
+            Func<Projectile,bool> afterAi=current=>
+            {
+                a.Velocity=current.velocity;a.Bits=current.ai[2];var f=new Projectile.AI_001_Features(a.Bits);
+                if(f.HarpyCharmed && !f.HarpyCharmConsumed)
+                {
+                    Vector2 point;bool found;if(!Find(a,targets,timeline,tick,terrain,out point,out found))return false;
+                    if(found){Turn(a,point);if(a.Velocity.Length()<1)a.Velocity=a.Velocity.SafeNormalize(Vector2.UnitY);if(a.Velocity.Length()<12)a.Velocity*=1.05f;}
+                    else{f.HarpyCharmConsumed=true;a.Bits=f.Bits;}
+                }
+                current.velocity=a.Velocity;current.ai[2]=a.Bits;return true;
+            };
+            bool advanced=a.Type==225?HostAmmoSteeringAttack.Step(p,steeringTargets,timeline,tick,terrain,out killed,out skipped,afterAi):HostArrowFamilyAttack.Step(p,terrain,out killed,out skipped,afterAi);
+            if(!advanced)return false;
+            a.Damage=p.damage;a.Center=p.Center;a.Velocity=p.velocity;a.Counter=p.ai[0];a.Second=p.ai[1];a.Bits=p.ai[2];a.Left=p.timeLeft;a.ExtraUpdates=p.extraUpdates;a.Wet=p.wet;a.Honey=p.honeyWet;a.Lava=p.lavaWet;a.Shimmer=p.shimmerWet;a.Skipped=skipped;
+            if(killed){Kill(a,p.timeLeft);return true;}a.Alive=p.active;if(skipped || !a.Alive)return true;
+            a.Left--;return true;
+        }
+        // Single-body adapter only: the caller retains its one world/pool and
+        // receive history. This reuses the tested AI->Charm->environment motor;
+        // no nested Outer, BeginCandidate, spawn pool or Damage is performed.
+        internal static bool AdvanceSpecialBody(Projectile p,State lease,NpcTrajectory path,int tick,PredictionTerrain terrain,out Arrow advanced)
+        {
+            advanced=new Arrow(p,p.whoAmI);if(!Step(advanced,lease.targets,path,tick,terrain,lease.steeringTargets))return false;
+            QuiverAfterMovement(advanced,lease.quiver);p.Center=advanced.Center;p.velocity=advanced.Velocity;p.ai[0]=advanced.Counter;p.ai[1]=advanced.Second;p.ai[2]=advanced.Bits;p.timeLeft=advanced.Left;p.penetrate=advanced.Penetrate;p.extraUpdates=advanced.ExtraUpdates;p.damage=advanced.Damage;p.active=advanced.Alive;p.wet=advanced.Wet;p.honeyWet=advanced.Honey;p.lavaWet=advanced.Lava;p.shimmerWet=advanced.Shimmer;return true;
+        }
         private static void QuiverAfterMovement(Arrow arrow,bool quiver)
         {if(quiver && arrow.Shot.arrow && !arrow.Shot.npcProj && arrow.Shot.friendly && arrow.ExtraUpdates<1)arrow.ExtraUpdates=1;}
         private static int Allocate(bool[] occupied)
@@ -214,9 +311,24 @@ namespace JueMingR.TerrariaHost.Combat
             }
             return true;
         }
+        private static bool ArrowChildren(Arrow parent,List<Arrow> arrows,bool[] occupied,State lease,PredictionTerrain terrain,int birthOuter)
+        {
+            int next=-1;for(int i=0;i<occupied.Length;i++)if(!occupied[i]){next=i;break;}
+            if(lease.randomSlots){lease.Stop=PredictionStop.UnsupportedMechanism;return false;}
+            var p=FamilyCurrent(parent,true);
+            var children=HostArrowFamilyAttack.KillChildren(p,next,parent.Slot);foreach(var child in children)
+            {
+                int slot=Allocate(occupied);if(slot<0){lease.Stop=PredictionStop.UnsupportedMechanism;return false;}child.active=true;child.whoAmI=slot;
+                bool wet;byte kind;if(!terrain.ProjectileWet(child.Center.X,child.Center.Y,child.width,child.height,out wet,out kind,true)){lease.Stop=PredictionStop.TerrainUnavailable;return false;}child.wet=wet && !child.ignoreWater;child.honeyWet=wet && kind==2;child.shimmerWet=wet && kind==3;
+                var row=new Arrow(child,slot){Primary=parent.Primary,Representative=true,BirthOuter=birthOuter};Receivers(row,lease);arrows.Add(row);
+            }
+            // Their random births can precede another source's ordered hit.
+            // Preserve that condition on every resulting family contact.
+            if(children.Length>0)foreach(var row in arrows)row.Representative=true;return true;
+        }
         private static bool Damage(Arrow a,List<Arrow> arrows,bool[] occupied,Player player,State lease,NpcTrajectory timeline,HostAttackClock clock,PredictionTerrain terrain,int step,int tick,int sub,Vector2 aim,AttackConfidence confidence,bool burst,out AttackContact contact)
         {
-            contact=null;if(a.Damage<=0 || !a.Shot.friendly)return true;
+            contact=null;if(a.Damage<=0 || !a.Shot.friendly || a.Type==1124 && a.Counter<15)return true;
             int width=burst?40:a.Shot.width,height=burst?40:a.Shot.height;
             AttackContact received=null;bool dependency=true;
             Func<int,int,bool> onHit=(slot,penetration)=>
@@ -225,6 +337,8 @@ namespace JueMingR.TerrariaHost.Combat
                     received=AttackIntercept.BodyContact(timeline,tick,sub,aim.X,aim.Y,a.Center.X,a.Center.Y,width,height,a.Representative || lease.randomSlots?AttackConfidence.Representative:confidence);
                 if(!a.Bee)
                 {
+                    if(a.Type==41 && a.Left>0)a.Left=0; // Native OnHit sets timeLeft1 before this substep tail.
+                    if(a.Type==639 || a.Type==640)a.Damage=(int)(a.Damage*.96);
                     var features=new Projectile.AI_001_Features(a.Bits);features.HarpyCharmed=features.HarpyCharmConsumed=true;a.Bits=features.Bits;
                     if(a.Shot.usesLocalNPCImmunity && a.Shot.localNPCHitCooldown!=-2)a.Local[slot]=a.Shot.localNPCHitCooldown;
                     // RecordHit already wrote the actual local/owner state.
@@ -244,9 +358,20 @@ namespace JueMingR.TerrariaHost.Combat
             if(!pass)
             {
                 if(a.Receivers.Remaining>0){lease.Stop=PredictionStop.UnsupportedMechanism;return false;}
-                if(!a.Bee){if(a.Type==710)a.Burst=!burst;Kill(a);}
+                if(!a.Bee){if(a.Type==710)a.Burst=!burst;Kill(a,a.Left+1);}
             }
             return true;
+        }
+        private static bool HellfireBurst(Arrow a,State lease,NpcTrajectory timeline,int tick,int outer,int sub,Vector2 aim,AttackConfidence confidence,out AttackContact contact)
+        {
+            contact=null;var burst=FamilyCurrent(a,true);if(!HostAmmoImpactAttack.PrepareKillBurst(burst) || burst.damage<=0)return true;
+            // Kill executes before its occupied slot is freed. Only policy and
+            // body expand here; the original owner/local receiving history is
+            // shared with the direct strike and the rest of the charm world.
+            var receive=a.Receivers.ForkForSpawn(burst,true);int hits=receive.SelectedHits;
+            bool pass=receive.PassCustomOuter(2,tick,outer,burst.Center.X,burst.Center.Y,burst.width,burst.height,null,unlimited:true,consumeSelected:true);
+            if(a.Primary && receive.SelectedHits>hits){contact=AttackIntercept.BodyContact(timeline,tick,sub,aim.X,aim.Y,burst.Center.X,burst.Center.Y,burst.width,burst.height,a.Representative || lease.randomSlots?AttackConfidence.Representative:confidence);return true;}
+            return pass || receive.Remaining==0;
         }
         private static void BeeValues(Arrow a)
         {
@@ -295,17 +420,23 @@ namespace JueMingR.TerrariaHost.Combat
                         continue;
                     }
                     if(!a.Alive)break;
-                    if(!Step(a,state.targets,timeline,tick,terrain)){state.Stop=a.Known?PredictionStop.TerrainUnavailable:PredictionStop.UnsupportedMechanism;return false;}
+                    if(!Step(a,state.targets,timeline,tick,terrain,state.steeringTargets)){state.Stop=a.Known?PredictionStop.TerrainUnavailable:PredictionStop.UnsupportedMechanism;return false;}
+                    if(a.Skipped)continue;
                     if(a.Alive)
                     {
                         QuiverAfterMovement(a,state.quiver);
                         if(!Damage(a,arrows,occupied,player,state,timeline,clock,terrain,step,tick,sub,aim,confidence,false,out contact))return false;if(contact!=null)return true;
+                        if(a.FamilyBody!=null && a.FamilyBody.oldPos!=null && a.FamilyBody.oldPos.Length>0){var trail=a.FamilyBody.oldPos;for(int i=trail.Length-1;i>0;i--)trail[i]=trail[i-1];trail[0]=a.Center-a.FamilyBody.Size*.5f;}
                         if(a.Alive && a.Left<=0)Kill(a);
                     }
                     if(a.Burst)
                     {a.Second=-1;if(!Damage(a,arrows,occupied,player,state,timeline,clock,terrain,step,tick,sub,aim,confidence,true,out contact))return false;if(contact!=null)return true;a.Burst=false;}
+                    if(a.Killed && a.Type==41)
+                    {if(!HellfireBurst(a,state,timeline,tick,step+1,sub,aim,confidence,out contact))return false;if(contact!=null)return true;a.Killed=false;}
                     if(a.Killed && a.Type==469)
                     {if(!BeeChildren(a,arrows,occupied,state,terrain,step+1))return false;a.Killed=false;}
+                    if(a.Killed && a.FamilyBody!=null)
+                    {if(!ArrowChildren(a,arrows,occupied,state,terrain,step+1))return false;a.Killed=false;}
                     if(!a.Alive)break;
                 }
                 if(!a.Alive && !a.Reflected)occupied[a.Slot]=false;
@@ -316,18 +447,23 @@ namespace JueMingR.TerrariaHost.Combat
         // the same ordered motor/receive loop and captures real features/local
         // immunity rather than inventing a fresh launch or running native AI.
         internal static AttackContact KnownFamily(Player player,Projectile[] primary,NpcTrajectory timeline,HostAttackClock clock,PredictionTerrain terrain)
-        {return KnownCore(player,primary,timeline,clock,terrain,-1);}
+        {State ignored;return KnownCore(player,primary,timeline,clock,terrain,-1,null,out ignored);}
         // Called only at an observed native parent Kill boundary in the
         // projectile loop. Lower born slots have already missed this outer;
         // upper births and preexisting later arrows still get their Update.
         // This entry observes a causal set and grants no new hand input.
         internal static AttackContact KnownAfterSlot(Player player,Projectile[] primary,NpcTrajectory timeline,HostAttackClock clock,PredictionTerrain terrain,int afterSlot)
-        {return clock.Phase==HostAttackPhase.Projectiles && afterSlot>=0 && afterSlot<Main.maxProjectiles?KnownCore(player,primary,timeline,clock,terrain,afterSlot):null;}
-        private static AttackContact KnownCore(Player player,Projectile[] primary,NpcTrajectory timeline,HostAttackClock clock,PredictionTerrain terrain,int firstAfterSlot)
+        {State ignored;return clock.Phase==HostAttackPhase.Projectiles && afterSlot>=0 && afterSlot<Main.maxProjectiles?KnownCore(player,primary,timeline,clock,terrain,afterSlot,null,out ignored):null;}
+        // The observing caller owns both dependencies. This sealed-world entry
+        // grants no input, and does not require ammunition for a future hand.
+        // The old component API remains a unique reflection signature.
+        internal static AttackContact KnownPrepared(Player player,Projectile[] primary,NpcTrajectory timeline,HostAttackClock clock,PredictionTerrain terrain,HostAttackObstacles root,out State state)
+        {return KnownCore(player,primary,timeline,clock,terrain,-1,root,out state);}
+        private static AttackContact KnownCore(Player player,Projectile[] primary,NpcTrajectory timeline,HostAttackClock clock,PredictionTerrain terrain,int firstAfterSlot,HostAttackObstacles preparedRoot,out State preparedState)
         {
-            if(primary==null || primary.Length==0 || clock.LaunchDelay!=0)return null;foreach(var shot in primary)if(!Owned(player,shot) && !OwnedBee(player,shot))return null;
-            var ammo=AttackAmmoSnapshot.Capture(player,player.HeldItem);if(ammo==null)return null;
-            var obstacles=new HostAttackObstacles(player,primary[0],timeline,0,clock.BeforeNpc,clock.NextWorld);var state=new State(player,ammo,timeline,obstacles);obstacles.BeginCandidate();var arrows=new List<Arrow>();
+            preparedState=null;if(primary==null || primary.Length==0 || clock.LaunchDelay!=0)return null;foreach(var shot in primary)if(!Owned(player,shot) && !OwnedBee(player,shot) && !OwnedFamilyChild(player,shot))return null;
+            var ammo=preparedRoot==null?AttackAmmoSnapshot.Capture(player,player.HeldItem):null;if(preparedRoot==null && ammo==null)return null;
+            var obstacles=preparedRoot??new HostAttackObstacles(player,primary[0],timeline,0,clock.BeforeNpc,clock.NextWorld);var state=new State(player,ammo,timeline,obstacles);preparedState=state;obstacles.BeginCandidate();var arrows=new List<Arrow>();
             foreach(var a in state.arrows){var row=a.Copy();foreach(var shot in primary)if(ReferenceEquals(row.Shot,shot)){row.Primary=true;break;}Receivers(row,state);arrows.Add(row);}
             var occupied=(bool[])state.occupied.Clone();var owner=state.motion;int cooldown=state.cooldown;var environment=new PredictionEnvironment{WorldWidth=Main.maxTilesX,WorldHeight=Main.maxTilesY,GravityWorldSurface=Main.worldSurface,Remix=Main.remixWorld,Expert=Main.expertMode,WallViewWidth=Main.MaxWorldViewSize.X};int limit=Math.Min(120,timeline.Count-clock.Age-1);
             NpcPredictionSource.TryBindPlayerGravity(timeline,(long)Main.GameUpdateCount,ref owner,ref environment);
@@ -335,17 +471,21 @@ namespace JueMingR.TerrariaHost.Combat
             for(int step=0;step<limit && HasPrimary(arrows);step++)
             {
                 int tick=clock.Age+step+(clock.Phase==HostAttackPhase.Projectiles?0:1);if(tick<0 || tick>=timeline.Count)return null;
-                if(clock.MovePlayer(step)){PredictionStop stop;if(!PlayerMotionContinuation.Advance(ref owner,environment,terrain,out stop) || !Charm(arrows,state.targets,timeline,Math.Max(0,tick-1),terrain,new Vector2(owner.X+owner.Width*.5f,owner.Y+owner.Height*.5f),state.seraph,state.phoenix,ref cooldown,state))return null;}
+                if(clock.MovePlayer(step)){PredictionStop stop;if(!PlayerMotionContinuation.Advance(ref owner,environment,terrain,out stop) || state.CharmEnabled && !Charm(arrows,state.targets,timeline,Math.Max(0,tick-1),terrain,new Vector2(owner.X+owner.Width*.5f,owner.Y+owner.Height*.5f),state.seraph,state.phoenix,ref cooldown,state))return null;}
                 AttackContact contact;if(!Outer(arrows,occupied,player,state,timeline,clock,terrain,step,tick,primary[0].Center,AttackConfidence.Conditional,out contact,step==0?firstAfterSlot:-1))return null;if(contact!=null)return contact;
             }
             return null;
         }
         internal static AttackContact Solve(Player player,AttackAmmoSnapshot ammo,NpcTrajectory timeline,Vector2 origin,HostAttackClock clock,PredictionTerrain terrain,HostAttackObstacles obstacles,out State state)
         {
+            // The caller owns native birth adaptation; the shared ammo world
+            // below owns Charm/AI/children for the complete same-use batch.
+            if(HostNativeArrowBirthAttack.Weapon(ammo.WeaponType))
+            {state=null;return HostNativeArrowBirthAttack.Solve(player,ammo,timeline,origin,clock,terrain,obstacles);}
             state=new State(player,ammo,timeline,obstacles);AttackMotion primaryMotion;if(!Handles(player,ammo) || !(HostAttackModels.TryRead(ammo,out primaryMotion) || HostSpecialArrowAttack.TrySeedMotion(ammo,out primaryMotion)))return null;
             int baseAge=clock.Age-clock.LaunchDelay,limit=Math.Min(120,timeline.Count-baseAge-1);if(baseAge<0 || clock.LaunchDelay>=limit)return null;
             
-            var sample=ContentSamples.ProjectilesByType[ammo.Projectile];int damage=ammo.Projectile==469?ammo.Damage:player.GetWeaponDamage(player.HeldItem);var directions=new Vector2[161];int count=0;var environment=new PredictionEnvironment{WorldWidth=Main.maxTilesX,WorldHeight=Main.maxTilesY,GravityWorldSurface=Main.worldSurface,Remix=Main.remixWorld,Expert=Main.expertMode,WallViewWidth=Main.MaxWorldViewSize.X};
+            var sample=ContentSamples.ProjectilesByType[ammo.Projectile];int damage=ammo.Projectile==469 || ammo.Projectile==41 || ammo.Projectile==225 || HostArrowFamilyAttack.Handles(ammo.Projectile)?ammo.Damage:player.GetWeaponDamage(player.HeldItem);var directions=new Vector2[161];int count=0;var environment=new PredictionEnvironment{WorldWidth=Main.maxTilesX,WorldHeight=Main.maxTilesY,GravityWorldSurface=Main.worldSurface,Remix=Main.remixWorld,Expert=Main.expertMode,WallViewWidth=Main.MaxWorldViewSize.X};
             var initialOwner=state.motion;NpcPredictionSource.TryBindPlayerGravity(timeline,(long)Main.GameUpdateCount,ref initialOwner,ref environment);
             NpcPredictionSource.TryBindPlayerWall(timeline,(long)Main.GameUpdateCount,ref initialOwner,ref environment);
             for(int seed=ammo.Projectile==710?-(limit-clock.LaunchDelay):0;seed<41;seed++)

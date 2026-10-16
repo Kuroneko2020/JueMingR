@@ -19,27 +19,38 @@ namespace NativeWorldTextProbe
     {
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static|BindingFlags.Instance;
         private static Assembly assembly;private static Type model;private static NPC target;private static Projectile receiving,watched;private static bool record,slow;
-        private static Vector2 raw;private static long first;private static int firstSub,solves,knownCalls,depth,steps,scans,rng,kills,capturedSolves,capturedKnown,lightRejects,captureFailures;private static Player shootEntry;
+        private static Vector2 raw;private static long first;private static int firstSub,solves,knownCalls,depth,steps,scans,rng,kills,capturedSolves,capturedKnown,lightRejects,captureFailures,abortedSolves,abortedKnown;private static Player shootEntry;
         private sealed class Birth
         {internal Projectile Shot;internal int Key,Slot,Type,Damage,Animation,Maximum,Time,Direction,Sub=-1;internal long Tick,First=-1;internal bool CursorInput;internal Vector2 Center,Velocity,Cursor,Origin;internal AttackContact Known;}
         private static readonly List<Birth> born=new List<Birth>();private static readonly List<int> hitSlots=new List<int>();
         private static object Static(Type type,string name,params object[] args){return type.GetMethod(name,Flags).Invoke(null,args);}
         private static bool Role(Projectile q){return q!=null && (q.type==712 || q.type==704);}
         private static void SolveWork(out int __state){__state=scans;solves++;depth++;}
-        private static void SolveDone(int __state,AttackContact __result)
+        private static void SolveDone(int __state,AttackContact __result,Exception __exception)
         {
             // Observe each actual call, without reproducing its birth guard.
             // A legal light rejection may exit before any scene capture.
-            int delta=scans-__state;if(delta==1)capturedSolves++;else if(delta==0 && __result==null)lightRejects++;else captureFailures++;depth--;
+            int delta=scans-__state;if(delta==1)capturedSolves++;else if(delta==0 && __exception!=null)abortedSolves++;else if(delta==0 && __result==null)lightRejects++;else captureFailures++;depth--;
         }
         private static void KnownWork(out int __state){__state=scans;knownCalls++;depth++;}
-        private static void KnownDone(int __state)
-        {if(scans-__state==1)capturedKnown++;else captureFailures++;depth--;}
+        private static void KnownDone(int __state,Exception __exception)
+        {if(scans-__state==1)capturedKnown++;else if(scans==__state && __exception!=null)abortedKnown++;else captureFailures++;depth--;}
         private static void StepWork(){steps++;}private static void ScanWork(){scans++;}private static void RngWork(){if(depth>0)rng++;}
         private static void BeforeKill(Projectile __instance){if(Role(__instance) && __instance.active)kills++;}
         private static void BeforeDamage(Projectile __instance){receiving=__instance;}private static void AfterDamage(){receiving=null;}
         private static void BeforeShoot(Player __instance,Item __1)
-        {if(record && __instance.whoAmI==Main.myPlayer && __1.type==3852)shootEntry=(Player)typeof(object).GetMethod("MemberwiseClone",Flags).Invoke(__instance,null);}
+        {
+            if(!record || __instance.whoAmI!=Main.myPlayer || __1.type!=3852)return;
+            shootEntry=(Player)typeof(object).GetMethod("MemberwiseClone",Flags).Invoke(__instance,null);
+            if(naturalContext==null || !Main.mouseLeft && !Main.mouseRight)return;
+            // Native ItemCheck has already selected primary/alt and its exact
+            // locked pose. NPCs are still at T-1; preserve that real phase.
+            var host=Get(naturalContext,"CombatObservation");var attack=Get(Get(naturalContext,"Combat"),"Attack");
+            NativeCombatAimChecks.PrepareMechanismFixture(host,attack,target,0,phaseName:"BeforeNpc");
+            var plan=(AttackContact)GetOptional(attack,"ExpectedImpact");Require(plan!=null,"each real Book Shoot entry has an actual preparation under1000ms mechanism allowance");
+            preparedHands++;if(preparedHands<=2)Draws(host,attack,plan);
+        }
+        private static object naturalContext;private static int preparedHands;
         private static void Strike(NPC __instance,int __result)
         {
             if(!Role(receiving) || receiving.owner!=Main.myPlayer || __result<=0)return;hitSlots.Add(__instance.whoAmI);
@@ -58,10 +69,10 @@ namespace NativeWorldTextProbe
             typeof(NPC).GetMethod("NewNPCInstanceInSlot",Flags).Invoke(null,new object[]{slot,(byte)0});var n=Main.npc[slot];n.SetDefaults(3);n.whoAmI=slot;n.active=true;n.width=width;n.height=height;n.Center=center;n.life=n.lifeMax=10000;n.defense=0;n.aiStyle=-1;n.noGravity=n.noTileCollide=true;n.velocity=n.netOffset=Vector2.Zero;n.knockBackResist=0;n.realLife=-1;
             Array.Clear(n.immune,0,n.immune.Length);Array.Clear(n.buffType,0,n.buffType.Length);Array.Clear(n.buffTime,0,n.buffTime.Length);n.lifeRegen=n.lifeRegenCount=0;return n;
         }
-        private static NpcTrajectory Path(NPC n)
+        private static NpcTrajectory Path(NPC n,bool completed=false)
         {
             var key=(NpcIdentity)Static(assembly.GetType("JueMingR.TerrariaHost.Combat.CombatSelection",true),"Identity",n,1L);var state=new NpcMotionState{Identity=key,X=n.position.X,Y=n.position.Y,Width=n.width,Height=n.height,CanReceive=!n.dontTakeDamage,NoTileCollide=n.noTileCollide,ReflectsProjectiles=n.reflectsProjectiles};var points=Enumerable.Range(0,121).Select(t=>new NpcTrajectoryPoint(t,state)).ToArray();
-            return new NpcTrajectory(key,(long)Main.GameUpdateCount-1,1,PredictionAssumption.NoNewHits,PredictionStop.None,points,points.Length,PredictionStrategy.RollingConditional);
+            return new NpcTrajectory(key,(long)Main.GameUpdateCount-(completed?0:1),1,PredictionAssumption.NoNewHits,PredictionStop.None,points,points.Length,PredictionStrategy.RollingConditional);
         }
         private static object Terrain(){var value=Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Combat.PredictionTerrain",true),true);Call(value,"Reset");return value;}
         private static object Receivers(Player p,Projectile q,NpcTrajectory path){return Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackObstacles",true),Flags,null,new object[]{p,q,path,0,true,false},null);}
@@ -75,6 +86,11 @@ namespace NativeWorldTextProbe
             Vector2 center,velocity;var args=new object[]{locked?shootEntry:p,origin,cursor,p.HeldItem.shootSpeed,locked,null,null};model.GetMethod("Birth",Flags).Invoke(null,args);center=(Vector2)args[5];velocity=(Vector2)args[6];
             if(q.type==712)velocity=(Vector2)Static(assembly.GetType("JueMingR.TerrariaHost.Combat.HostSonicBoomAttack",true),"LimitLaunch",velocity);
             var b=new Birth{Shot=q,Slot=q.whoAmI,Key=(int)q.key,Type=q.type,Damage=q.damage,Tick=Main.GameUpdateCount,Animation=p.itemAnimation,Maximum=p.itemAnimationMax,Time=p.itemTime,Direction=p.direction,CursorInput=input,Origin=origin,Center=q.Center,Velocity=q.velocity,Cursor=cursor,Known=Known(p,q,Path(target))};born.Add(b);
+            if(naturalContext!=null && input)
+            {
+                var attack=Get(Get(naturalContext,"Combat"),"Attack");
+                Require((bool)Get(attack,"hasConsumedInput") && Convert.ToString(Get(Get(attack,"consumedInput"),"Kind"))=="Enhanced","actual cursor-reading Book birth consumes its prepared Enhanced receipt");
+            }
             int damage=p.GetWeaponDamage(p.HeldItem);if(q.type==704)damage=(int)((float)damage*1.75f);
             Console.WriteLine("BOOK born type="+q.type+" tick="+b.Tick+" slot/key="+b.Slot+"/"+b.Key+" anim/max/time="+b.Animation+"/"+b.Maximum+"/"+b.Time+" input="+input+" alt/slow="+p.altFunctionUse+"/"+p.slowMagicUse+" center/V="+b.Center+"/"+b.Velocity+" cursor="+cursor+" raw="+raw+" damage="+q.damage+" known="+b.Known?.Tick+"/"+b.Known?.Subupdate);
             Require(!(__0 is EntitySource_Parent parent && parent.Entity is Projectile) && (int)Static(model,"BirthType",p)==q.type && q.damage==damage && q.magic && Vector2.DistanceSquared(center,q.Center)<.000001f && Vector2.DistanceSquared(velocity,q.velocity)<.000001f,"real Book hand origin, stored-angle/inverted-gravity consumer, legal type and damage match without model RNG");
@@ -84,12 +100,14 @@ namespace NativeWorldTextProbe
         {
             assembly=Get(context,"Combat").GetType().Assembly;model=assembly.GetType("JueMingR.TerrariaHost.Combat.HostBookStaffAttack",true);var audit=new Harmony("JueMingR.Tests.BookStaff");bool wind=Main.windPhysics,manaV2=DebugOptions.ManaV2;
             foreach(string name in new[]{"HandleSpecialEvent","HandleRunning","HandleMining"})audit.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
-            audit.Patch(typeof(Player).GetMethod("ItemCheck_Shoot",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBookStaffChecks),nameof(BeforeShoot)));
-            audit.Patch(model.GetMethod("Solve",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBookStaffChecks),nameof(SolveWork)),postfix:new HarmonyMethod(typeof(NativeCombatBookStaffChecks),nameof(SolveDone)));audit.Patch(model.GetMethod("KnownFamily",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBookStaffChecks),nameof(KnownWork)),postfix:new HarmonyMethod(typeof(NativeCombatBookStaffChecks),nameof(KnownDone)));audit.Patch(model.GetMethod("Step",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBookStaffChecks),nameof(StepWork)));audit.Patch(model.GetMethod("Capture",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBookStaffChecks),nameof(ScanWork)));
+            audit.Patch(typeof(Player).GetMethod("ItemCheck_Shoot",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBookStaffChecks),nameof(BeforeShoot)){priority=Priority.First+1000});
+            // Finalizers only close the work observer on every exit. They do
+            // not replace or suppress a normal production budget cancellation.
+            audit.Patch(model.GetMethod("Solve",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBookStaffChecks),nameof(SolveWork)),finalizer:new HarmonyMethod(typeof(NativeCombatBookStaffChecks),nameof(SolveDone)));audit.Patch(model.GetMethod("KnownFamily",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBookStaffChecks),nameof(KnownWork)),finalizer:new HarmonyMethod(typeof(NativeCombatBookStaffChecks),nameof(KnownDone)));audit.Patch(model.GetMethod("Step",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBookStaffChecks),nameof(StepWork)));audit.Patch(model.GetMethod("Capture",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBookStaffChecks),nameof(ScanWork)));
             foreach(var method in Main.rand.GetType().GetMethods(Flags).Where(m=>m.Name=="Next" || m.Name=="NextDouble").Distinct())audit.Patch(method,prefix:new HarmonyMethod(typeof(NativeCombatBookStaffChecks),nameof(RngWork)));
             audit.Patch(typeof(Projectile).GetMethods(Flags).Single(m=>m.Name=="NewProjectile" && m.GetParameters().Length==13 && m.GetParameters()[1].ParameterType==typeof(float)),postfix:new HarmonyMethod(typeof(NativeCombatBookStaffChecks),nameof(Born)));audit.Patch(typeof(Projectile).GetMethod("Kill",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBookStaffChecks),nameof(BeforeKill)));audit.Patch(typeof(Projectile).GetMethod("Damage",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBookStaffChecks),nameof(BeforeDamage)),postfix:new HarmonyMethod(typeof(NativeCombatBookStaffChecks),nameof(AfterDamage)));audit.Patch(AccessTools.Method(typeof(NPC),"StrikeNPC",new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)}),postfix:new HarmonyMethod(typeof(NativeCombatBookStaffChecks),nameof(Strike)));
             try{string leaf=Environment.GetEnvironmentVariable("JMR_BOOK_STAFF_ORACLE_ONLY");Require(string.IsNullOrEmpty(leaf) || leaf=="motor" || leaf=="birth" || leaf=="receive" || leaf=="natural","Book leaf selector");if(string.IsNullOrEmpty(leaf) || leaf=="motor")Motors(context);if(string.IsNullOrEmpty(leaf) || leaf=="birth")Births(context);if(string.IsNullOrEmpty(leaf) || leaf=="receive")Receives(context);if(string.IsNullOrEmpty(leaf) || leaf=="natural")Natural(context);}
-            finally{record=slow=false;receiving=watched=null;target=null;DebugOptions.ManaV2=manaV2;Main.windPhysics=wind;audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());NativeCombatCadenceChecks.Save(Get(context,"Combat"),new CombatOptions());}
+            finally{naturalContext=null;record=slow=false;receiving=watched=null;target=null;DebugOptions.ManaV2=manaV2;Main.windPhysics=wind;audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());NativeCombatCadenceChecks.Save(Get(context,"Combat"),new CombatOptions());}
         }
         private static void Motors(object context)
         {
@@ -170,58 +188,56 @@ namespace NativeWorldTextProbe
             int direction=p.direction;p.direction=-direction;Require(!(bool)Get(receivers,"BirthInputsCurrent"),"locked direction flip retires that same hand scalar lease");p.direction=direction;
             p.altFunctionUse=2;Require(!(bool)Get(receivers,"BirthInputsCurrent"),"alt-use switch cannot reuse a712 hand as704");p.altFunctionUse=0;
             bool flag=DebugOptions.ManaV2;DebugOptions.ManaV2=!flag;Require(!(bool)Get(receivers,"BirthInputsCurrent"),"native slow-magic feature changes retire prepared birth timing");DebugOptions.ManaV2=flag;
-            p.slowMagicUse=true;Require(!(bool)Get(receivers,"BirthInputsCurrent"),"live slowMagicUse change cannot be hidden by an unchanged private pose");p.slowMagicUse=false;Require((bool)Get(receivers,"BirthInputsCurrent"),"restored actual live hand is current without scanning the scene");
+            bool originalSlow=p.slowMagicUse;p.slowMagicUse=!originalSlow;Require(!(bool)Get(receivers,"BirthInputsCurrent"),"live slowMagicUse change cannot be hidden by an unchanged private pose");p.slowMagicUse=originalSlow;Require((bool)Get(receivers,"BirthInputsCurrent"),"restored actual live hand is current without scanning the scene");
         }
         private static void Draws(object host,object attack,AttackContact plan)
         {
-            int a=solves,b=steps,c=scans;var marker=Get(Get(host,"World"),"Impact");var zoom=Main.GameViewMatrix.ZoomMatrix;for(int check=0;check<20;check++){Call(marker,"Capture");Call(marker,"Project",zoom,Matrix.Invert(zoom));Require((bool)Call(attack,"PreviewCurrent",plan),"Book stable preparation remains current");}Require(a==solves && b==steps && c==scans,"twenty CPU Book presentations perform zero solve/motor/scene scans");
+            Call(attack,"BindPresentation",plan);int a=solves,b=steps,c=scans;var marker=Get(Get(host,"World"),"Impact");var zoom=Main.GameViewMatrix.ZoomMatrix;for(int check=0;check<20;check++){Call(marker,"Capture");Call(marker,"Project",zoom,Matrix.Invert(zoom));Require((bool)Call(attack,"PresentationCurrent",plan),"Book actual hand preparation remains current");}Require(a==solves && b==steps && c==scans,"twenty CPU Book presentations perform zero solve/motor/scene scans");
         }
-        private static long ExistingFlight(Player player,AttackContact preview)
+        private static long ExistingFlight(object attack,Player player)
         {
             // Same completed-world timeline as the displayed plan. Only real
             // still-owned births contribute; the kernel captures their shared
             // history once rather than independently solving each source.
             var sources=born.Where(b=>b.Shot.active && b.Shot.friendly && !b.Shot.hostile && b.Key==(int)b.Shot.key).Select(b=>b.Shot).ToArray();
-            Require(sources.Length>0,"Book frame6 contains actual still-owned flights");var path=preview.Timeline;
+            Require(sources.Length>0,"Book frame6 contains actual still-owned flights");var path=Path(target,true);
             var receivers=Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackObstacles",true),Flags,null,new object[]{player,sources[0],path,0,false,true},null);
             var live=(AttackContact)Static(model,"KnownFamily",player,sources,path,Clock(path,"CompletedWorld"),Terrain(),receivers);
-            Console.WriteLine("BOOK live tick/sample="+Main.GameUpdateCount+"/"+path.SampleTick+" slots/keys="+string.Join(",",sources.Select(q=>q.whoAmI+"/"+(int)q.key))+" preview="+preview.Tick+"/"+preview.Subupdate+" known="+live?.Tick+"/"+live?.Subupdate);
-            Require(live!=null && (preview.Tick<live.Tick || preview.Tick==live.Tick && preview.Subupdate<=live.Subupdate),"Book displayed preview cannot be later than its actual useful existing family");
+            var args=new object[]{player,path,Enum.Parse(assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase",true),"CompletedWorld"),false};object flight;
+            using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))flight=Call(attack,"ReadFlight",args);
+            var observed=flight==null?null:(AttackContact)Get(flight,"Contact");
+            Console.WriteLine("BOOK live tick/sample="+Main.GameUpdateCount+"/"+path.SampleTick+" slots/keys="+string.Join(",",sources.Select(q=>q.whoAmI+"/"+(int)q.key))+" public="+observed?.Tick+"/"+observed?.Subupdate+" known="+live?.Tick+"/"+live?.Subupdate);
+            Require((bool)args[3] && live!=null && observed!=null && observed.Tick==live.Tick && observed.Subupdate==live.Subupdate,"public Book Flight consumes its complete actual family at the independently known first receive");
             return path.SampleTick+live.Tick;
         }
         private static void Natural(object context)
         {
             foreach(bool alt in new[]{false,true})
             {
-                var p=Scene(context,alt);var host=Get(context,"CombatObservation");var attack=Get(Get(context,"Combat"),"Attack");solves=knownCalls=depth=steps=scans=rng=capturedSolves=capturedKnown=lightRejects=captureFailures=0;
-                NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,false));for(int i=0;i<3;i++)Step(context,raw,false,false);var idle=(AttackContact)GetOptional(attack,"ExpectedPreview");Require(idle!=null && !Main.projectile.Any(q=>q.active),"idle main Book preview is read-only with AimOFF");Draws(host,attack,idle);
-                raw=alt?target.Center:target.Center-new Vector2(380,0);NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));record=true;int previews=0;long observedAt=-1,flightAt=-1;
+                var p=Scene(context,alt);var host=Get(context,"CombatObservation");var attack=Get(Get(context,"Combat"),"Attack");solves=knownCalls=depth=steps=scans=rng=capturedSolves=capturedKnown=lightRejects=captureFailures=abortedSolves=abortedKnown=0;
+                NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,false));for(int i=0;i<3;i++)Step(context,raw,false,false);Require(GetOptional(attack,"ExpectedPreview")==null && !Main.projectile.Any(q=>q.active) && solves==0,"withdrawn idle Book preview neither solves nor fires");
+                raw=alt?target.Center:target.Center-new Vector2(380,0);NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));record=true;naturalContext=context;preparedHands=0;int previews=0;long observedAt=-1,flightAt=-1;
                 for(int frame=0;frame<55;frame++)
                 {
-                    Step(context,raw,!alt,alt);var preview=(AttackContact)GetOptional(attack,"ExpectedPreview");
+                    Step(context,raw,!alt,alt);
                     if(frame>=2)
                     {
                         int time=(int)Static(model,"UseTime",p);bool gate=(bool)Static(model,"CanBirth",p.itemAnimation,p.itemAnimationMax,time,alt);
                         int flights=born.Count(b=>b.Shot.active && b.Shot.friendly && b.Key==(int)b.Shot.key);
-                        Console.WriteLine("BOOK continuous alt/frame="+alt+"/"+frame+" tick="+Main.GameUpdateCount+" animation/max/time="+p.itemAnimation+"/"+p.itemAnimationMax+"/"+p.itemTime+" burstGate="+gate+" actualFlights="+flights+" preview="+preview?.Tick+"/"+preview?.Subupdate);
-                        // The straight main burst and horizontal storm in this
-                        // fixed floor scene have useful existing flights or a
-                        // legal following use throughout this actual interval.
-                        // A burst-tail gate cannot invent another current hand;
-                        // it must retain the flight or wait for the next use.
-                        Require(preview!=null,"every Book stable frame2..54 retains its genuinely legal next-hand or existing-flight preview");previews++;
+                        Console.WriteLine("BOOK continuous alt/frame="+alt+"/"+frame+" tick="+Main.GameUpdateCount+" animation/max/time="+p.itemAnimation+"/"+p.itemAnimationMax+"/"+p.itemTime+" burstGate="+gate+" actualFlights="+flights);
+                        Require(GetOptional(attack,"ExpectedPreview")==null,"all53 stable Book frames keep the retired hypothetical preview absent");previews++;
                     }
-                    if(frame==6){observedAt=Main.GameUpdateCount;flightAt=ExistingFlight(p,preview);Draws(host,attack,preview);}
+                    if(frame==6){observedAt=Main.GameUpdateCount;flightAt=ExistingFlight(attack,p);}
                 }
-                Step(context,raw,false,false);record=false;for(int frame=0;frame<40 && born.Any(b=>b.First<0 && b.Shot.active && b.Key==(int)b.Shot.key);frame++)Step(context,raw,false,false);
+                Step(context,raw,false,false);record=false;naturalContext=null;for(int frame=0;frame<40 && born.Any(b=>b.First<0 && b.Shot.active && b.Key==(int)b.Shot.key);frame++)Step(context,raw,false,false);
                 foreach(var b in born){int actual=b.First<0?0:(int)(b.First-b.Tick+1);Console.WriteLine("BOOK natural alt="+alt+" type="+b.Type+" tick="+b.Tick+" slot/key="+b.Slot+"/"+b.Key+" input="+b.CursorInput+" center/V="+b.Center+"/"+b.Velocity+" first/known="+actual+"/"+b.Known?.Tick+" sub="+b.Sub+"/"+b.Known?.Subupdate);Require(actual>0 && b.Known!=null && actual==b.Known.Tick && b.Sub==b.Known.Subupdate,"actual Book source has positive immortal488 Strike at its own known first clock");if(!alt)Require(Vector2.Dot(b.Velocity,raw-b.Origin)<0,"real primary first-use assistance and stored burst point opposite physical cursor");}
                 var next=born.FirstOrDefault(b=>b.Tick>observedAt);Require(next!=null && next.Known!=null,"a real subsequent native Book hand supplies the independent next-use comparator");long nextAt=next.Tick+next.Known.Tick-1;
                 Console.WriteLine("BOOK existing-before-hand alt="+alt+" observed="+observedAt+" existingFirst="+flightAt+" nextBorn="+next.Tick+" nextKnownFirst="+nextAt+" nextNativeFirst="+next.First);
                 Require(flightAt<nextAt && next.First==nextAt,"the observed Book family really precedes the next actual legal hand's independently witnessed damage");
-                Console.WriteLine("BOOK natural counters alt="+alt+" births="+born.Count+" previews="+previews+" solve/known/capture/motor="+solves+"/"+knownCalls+"/"+scans+"/"+steps+" rng="+rng+" capturedSolve/known/lightReject/failure="+capturedSolves+"/"+capturedKnown+"/"+lightRejects+"/"+captureFailures);
-                Require(born.Count>=(alt?2:8) && previews==53,"first and continuous genuine Book uses retain all53 stable previews");
+                Console.WriteLine("BOOK natural counters alt="+alt+" births="+born.Count+" observations="+previews+" solve/known/capture/motor="+solves+"/"+knownCalls+"/"+scans+"/"+steps+" rng="+rng+" capturedSolve/known/lightReject/failure="+capturedSolves+"/"+capturedKnown+"/"+lightRejects+"/"+captureFailures+" abortedBeforeCapture="+abortedSolves+"/"+abortedKnown);
+                Require(born.Count>=(alt?2:8) && preparedHands>=2 && previews==53,"first and continuous genuine Book uses retain both actual prepared hands and all53 stable native observations");
                 Require(rng==0,"Book model preparation consumes no native RNG");
-                Require(captureFailures==0 && capturedSolves>0 && capturedKnown==knownCalls && solves==capturedSolves+lightRejects && scans==capturedSolves+capturedKnown,"each Book Solve captures once or returns null without capture, and each valid natural KnownFamily captures exactly once");
+                Require(captureFailures==0 && depth==0 && capturedSolves>0 && capturedKnown+abortedKnown==knownCalls && solves==capturedSolves+lightRejects+abortedSolves && scans==capturedSolves+capturedKnown,"every Book call captures once or exits before capture, including separately observed normal budget cancellations; no observer scope escapes into native RNG");
                 Console.WriteLine("PASS BOOK natural alt="+alt+" births="+born.Count+" previews="+previews+" solve/known/capture/motor="+solves+"/"+knownCalls+"/"+scans+"/"+steps);
             }
         }

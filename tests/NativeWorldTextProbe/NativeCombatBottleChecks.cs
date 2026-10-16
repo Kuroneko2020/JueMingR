@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -85,8 +85,9 @@ namespace NativeWorldTextProbe
             audit.Patch(typeof(Projectile).GetMethods(Flags).Single(m=>m.Name=="NewProjectile" && m.GetParameters().Length==13 && m.GetParameters()[1].ParameterType==typeof(float)),postfix:new HarmonyMethod(typeof(NativeCombatBottleChecks),nameof(Born)));
             audit.Patch(typeof(Projectile).GetMethod("Damage_PVE_Inner",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBottleChecks),nameof(BeforeInner)));
             audit.Patch(typeof(Projectile).GetMethod("Kill",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBottleChecks),nameof(BeforeKill)));audit.Patch(typeof(Projectile).GetMethod("Damage",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBottleChecks),nameof(BeforeDamage)),postfix:new HarmonyMethod(typeof(NativeCombatBottleChecks),nameof(AfterDamage)));audit.Patch(AccessTools.Method(typeof(NPC),"StrikeNPC",new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)}),postfix:new HarmonyMethod(typeof(NativeCombatBottleChecks),nameof(Strike)));
+            var componentHand=new NativeCombatHandFixture(context,()=>natural,()=>target);
             try{string only=Environment.GetEnvironmentVariable("JMR_BOTTLE_ORACLE_ONLY");if(string.IsNullOrEmpty(only) || only=="motor")Motors(context);if(string.IsNullOrEmpty(only) || only=="birth")Births(context);if(string.IsNullOrEmpty(only) || only=="receive")Receives(context);if(string.IsNullOrEmpty(only) || only=="natural")Natural(context);Require(string.IsNullOrEmpty(only) || only=="motor" || only=="birth" || only=="receive" || only=="natural","bottle leaf selector");}
-            finally{natural=false;target=null;receiving=parent=motor=null;audit.UnpatchAll(audit.Id);Main.windPhysics=wind;NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());NativeCombatCadenceChecks.Save(Get(context,"Combat"),new CombatOptions());}
+            finally{componentHand.Dispose();natural=false;target=null;receiving=parent=motor=null;audit.UnpatchAll(audit.Id);Main.windPhysics=wind;NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());NativeCombatCadenceChecks.Save(Get(context,"Combat"),new CombatOptions());}
         }
         private static void Compare(Projectile q,Projectile copy,int type,int scene,int outer)
         {
@@ -152,12 +153,12 @@ namespace NativeWorldTextProbe
             foreach(int item in new[]{2590,3821})
             {
                 var p=Reset(context,item);p.position=new Vector2(650,646);p.releaseUseItem=true;Main.screenPosition=new Vector2(500,400);for(int x=5;x<115;x++)NativeToolsChecks.Tile(x,43,1);target=NativeCombatControlPreviewChecks.Dummy(2,45,40);raw=target.Center-new Vector2(390,0);solves=steps=0;var host=Get(context,"CombatObservation");var attack=Get(Get(context,"Combat"),"Attack");
-                NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,false));for(int i=0;i<3;i++)NativeCombatSelectionPreviewChecks.Step(context,raw,false,true);var plan=(AttackContact)GetOptional(attack,"ExpectedPreview");bool preview=(bool)Get(attack,"PreviewDemand");
-                // Match the retired hypothetical red-contact contract while
-                // retaining the actual native one-press Damage oracle below.
-                Require((preview?plan!=null:plan==null && solves==0 && steps==0) && !Main.projectile.Any(q=>q.active),"idle bottle obeys current hypothetical-display demand without firing");ammo=Static(assembly.GetType("JueMingR.TerrariaHost.Combat.AttackAmmoSnapshot",true),"Capture",p,p.HeldItem);
-                int oldSolves=solves,oldSteps=steps;var marker=Get(Get(host,"World"),"Impact");var zoom=Main.GameViewMatrix.ZoomMatrix;for(int i=0;i<20;i++){Call(marker,"Capture");Call(marker,"Project",zoom,Matrix.Invert(zoom));Require((bool)Call(attack,"PreviewCurrent",plan)==preview,"bottle current scalar presentation lease");}Require(oldSolves==solves && oldSteps==steps,"twenty Draws perform zero bottle Solve/Step");
-                natural=true;NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));NativeCombatSelectionPreviewChecks.Step(context,raw,true);for(int i=0;i<50 && first<0;i++)NativeCombatSelectionPreviewChecks.Step(context,raw,false);Console.WriteLine("BOTTLE natural item="+item+" births="+births+" first="+(first<0?0:first-birthTick+1)+" known="+known?.Tick+" representative="+plan?.Tick+" rawDamage="+string.Join(",",rawDamage));
+                NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,false));for(int i=0;i<3;i++)NativeCombatSelectionPreviewChecks.Step(context,raw,false,true);
+                Require(GetOptional(attack,"ExpectedPreview")==null && solves==0 && steps==0 && !Main.projectile.Any(q=>q.active),"withdrawn idle bottle preview never solves or fires");
+                NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));NativeToolExecutionChecks.Sample(context,Get(context,"Input"),raw,true);Call(Get(context,"Combat"),"Sample");NativeCombatAimChecks.PrepareMechanismFixture(host,attack,target,0);var plan=(AttackContact)GetOptional(attack,"ExpectedImpact");Require(plan!=null,"actual pressed bottle has a prepared finite damage contact");Call(attack,"BindPresentation",plan);
+                ammo=Static(assembly.GetType("JueMingR.TerrariaHost.Combat.AttackAmmoSnapshot",true),"Capture",p,p.HeldItem);
+                int oldSolves=solves,oldSteps=steps;var marker=Get(Get(host,"World"),"Impact");var zoom=Main.GameViewMatrix.ZoomMatrix;for(int i=0;i<20;i++){Call(marker,"Capture");Call(marker,"Project",zoom,Matrix.Invert(zoom));Require((bool)Call(attack,"PresentationCurrent",plan),"bottle current scalar presentation lease");}Require(oldSolves==solves && oldSteps==steps,"twenty Draws perform zero bottle Solve/Step");
+                natural=true;NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,true));NativeCombatSelectionPreviewChecks.Step(context,raw,true);Require((bool)Get(attack,"hasConsumedInput") && Convert.ToString(Get(Get(attack,"consumedInput"),"Kind"))=="Enhanced","actual bottle hand consumes its prepared cursor");for(int i=0;i<50 && first<0;i++)NativeCombatSelectionPreviewChecks.Step(context,raw,false);Console.WriteLine("BOTTLE natural item="+item+" births="+births+" first="+(first<0?0:first-birthTick+1)+" known="+known?.Tick+" representative="+plan?.Tick+" rawDamage="+string.Join(",",rawDamage));
                 Require(births==1 && first>=birthTick && known!=null && known.Confidence!=AttackConfidence.Representative && first-birthTick+1==known.Tick,"both deterministic bottle primaries give useful actual Strike on genuine immortal488 after real one-press/release, equal to known source");natural=false;
             }
         }

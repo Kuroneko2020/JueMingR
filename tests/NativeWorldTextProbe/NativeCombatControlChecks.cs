@@ -18,7 +18,11 @@ namespace NativeWorldTextProbe
             if(Environment.GetEnvironmentVariable("JMR_CONTROL_ORACLE_ONLY")=="receive"){NativeCombatReceiveChecks.Run(context);return;}
             if(Environment.GetEnvironmentVariable("JMR_CONTROL_ORACLE_ONLY")=="bubble"){NativeCombatBubbleChecks.Run(context);return;}
             if(Environment.GetEnvironmentVariable("JMR_CONTROL_ORACLE_ONLY")=="laser"){NativeCombatLaserChecks.Run(context);return;}
+            if(Environment.GetEnvironmentVariable("JMR_CONTROL_ORACLE_ONLY")=="held"){var c=Get(context,"Combat");Held(context,c,Get(context,"CombatObservation"),Get(c,"Attack"),Get(context,"Tools"),Get(context,"Input"));NativeCombatHeldSequenceChecks.Run(context);NativeCombatBeamChecks.Run(context);NativeCombatAttackFailureChecks.Run(context);return;}
+            if(Environment.GetEnvironmentVariable("JMR_CONTROL_ORACLE_ONLY")=="beam"){NativeCombatBeamChecks.Run(context);NativeCombatAttackFailureChecks.Run(context);return;}
+            if(Environment.GetEnvironmentVariable("JMR_CONTROL_ORACLE_ONLY")=="failure"){NativeCombatAttackFailureChecks.Run(context);return;}
             NativeCombatYoyoChecks.Run(context);
+            NativeCombatYoyoFamilyChecks.Run(context);
             NativeCombatReceiveChecks.Run(context);
             var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var attack=Get(combat,"Attack");var tools=Get(context,"Tools");var input=Get(context,"Input");
             foreach(int type in new[]{113,218,495})
