@@ -2011,6 +2011,46 @@
       "sha256": "64A2E7676923E84B70AF7473BDD53C6787DDDAD7066F59B629BB0A8CE26B6700",
       "limit": "The broad nativeBirths-unboundBirths guard is not independently sufficient to prove no weapon birth. Existing facts rely on complete raw-row audit, not that guard."
     },
-    "next": "Original independent reviewer must review R1/new impact/source identity; no author approval or07 admission claimed"
+    "next": "Completed: original full review plus R1 recheck PASS05, root07 admitted; one full ordinaryRelease/package and controlled backup/Restore/Install/readback completed. d5 NEEDS_FIX preserved."
+  },
+  "delivery": {
+    "status": "INSTALLED_VERIFIED_READY_FOR_OWNER_TEST",
+    "sourceCommit": "a283747627ad9159225481b0705d9aec7336b7b4",
+    "review": {
+      "path": ".local/aim-balanced-20261017/independent-final-review.md",
+      "length": 4742,
+      "sha256": "E905F1825F9FE1A7A45C1A76E5CB00F3AD62C9CA81551AA6C7852F456CEFAD8E"
+    },
+    "stage": {
+      "path": ".local/aim-balanced-20261017/stage-reviewed-a283747.json",
+      "length": 33744,
+      "sha256": "2A2B8BB80492C3BB4377D03CAE0BE5D01908466F33152C3DD5A4BFDD476F9B7F"
+    },
+    "stageReaderPositive": {
+      "path": ".local/aim-balanced-20261017/stage-reader-positive.json",
+      "length": 1442,
+      "sha256": "6A0A7CCA9A5718E157BEA4AA0743FF07D2589553FED7B04BA491A5C0095CE6C6"
+    },
+    "receipt": "review-materials/aim-balanced-20261017/delivery-receipt.json",
+    "archive": {
+      "path": "outputs/aim-balanced-delivery-20261017-a283747/JueMingR-Continuous-Processing-a283747627ad9159225481b0705d9aec7336b7b4.zip",
+      "length": 2310828,
+      "verification": "Official builder member/archive/source validation reused, no second archive consumer/audit",
+      "sha256": "B73405E4E0F6FBFA44616E383FC136A86414EB99A0F088C9555C8E66AAAD3BD6"
+    },
+    "restoreExit": 0,
+    "installExit": 0,
+    "readback": true,
+    "metadataOnlySuccessor": "Subsequent docs/receipt commit does not change package/installed a283747 or rerun/reinstall it",
+    "limits": {
+      "notRepeated": "No full matrix/Main rerun, extra package consumer/audit/install independent review or rollback drill",
+      "before07": "Complete05 author scopes, original Main and separate diagnostics plus independent full/R1 reviews; original failures retained",
+      "multiplayer": "NOT_MEASURED",
+      "ownerGame": "NOT_STARTED",
+      "after07": "Stage reader positive; one official full ordinary Release/package validation; one controlled backup/Restore/Install/readback",
+      "ownerSavesAndUserSettings": "NOT_READ_OR_MODIFIED; tool-owned Terraria.exe.config handled only by authorized installer",
+      "fps": "NOT_MEASURED",
+      "ownerAcceptance": "PENDING"
+    }
   }
 }

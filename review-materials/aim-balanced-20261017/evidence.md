@@ -1,6 +1,6 @@
 # 提前量与平衡瞄准候选
 
-首候选 `d5cfe16` 整包独审为 **NEEDS_FIX**，唯一阻塞 R1 已窄修并通过定向回归；后继等待原独审复核及主调度准入，尚未安装。本轮继续 #114 / Draft PR #115，固定基底 `112e9d6`、原普通 Release/Main 受测生产 `7a8f18a`，默认代表主弹与必要少量补查；完整 Contact 不再是一般预瞄前置。
+原完整独审与 R1 增量独审合并为 **PASS（05范围）**，root 已准入07；源码 `a283747` 的一次完整普通 Release 包、受控备份、正常换装与读回已完成，现可由所有者实测。首候选 `d5cfe16` 的 **NEEDS_FIX** 与全部失败保留。本轮继续 #114 / Draft PR #115，固定基底 `112e9d6`、原普通 Release/Main 受测生产 `7a8f18a`，默认代表主弹与必要少量补查；完整 Contact 不再是一般预瞄前置。
 
 独审抓到 `EvaluateCandidate` 在本次 Source 返回 null／不足两点、没有执行 PreparePlan 时仍读旧计划的 Reachable/Contact，可能把未知近者当成当前正解并关闭重试。此前模式保护只有有效未来，没有覆盖“旧正→本次无未来”的交接。原生产 `candidate-recovery-r16-before` 已真实复现：Source 自身读取故障返回 null，以及 AI18 必要格缺失产生一点真实 publication 后被 Cache 拒读，均错误返回正解；平衡路径还把 Unknown ticket 退休。旧独审与失败身份保留。
 
@@ -37,4 +37,7 @@ Path-only 和 Off 各600GUC：无武器出生/输入，仅一个原版背景720�
 
 新增载体失败也保留：首次新Main包标识前缀选成最小Runtime（加载五步完成、测量窗未开始）；修回生产 `continuous-processing-` 前缀后原DLL/同驱动通过。Path首窗误把新增全出生观察的背景720算作武器，守卫修正后新身份通过；细计数首窗重复Bind异常也只修隔离驱动。统计曾把 `endDraw` 大小写写错，按原CSV重算，没有重跑挑数。
 
-R1作者修复与定向回归完成，仍需原独审复核，不能用作者PASS覆盖旧NEEDS_FIX。剑鱼450外沿低命中、有意不精算的随机附加/次要效果保留；真实多人、所有者物理键鼠/体验、FPS及全项目资格未测。root准入与一次07交付回执尚待执行；现装仍旧4c7ac5c。
+原独审已按R1/新增影响/精确身份完成复核并PASS，root随后准入；没有用作者PASS覆盖旧NEEDS_FIX。剑鱼450外沿低命中、有意不精算的随机附加/次要效果保留；真实多人、所有者物理键鼠/体验、FPS及全项目资格未测。一次07交付已完成，详见[实际交付回执](delivery-receipt.json)；现装为a283747。
+交付事实：源码/已装包为 `a283747627ad9159225481b0705d9aec7336b7b4`，ZIP 2,310,828 字节、SHA `B73405E4E0F6FBFA44616E383FC136A86414EB99A0F088C9555C8E66AAAD3BD6`。正式入口一次完整 ContinuousProcessing Release/net472/x86，stage reader正例与七范围锁定通过；826条完整编译输入等实际r19，746条生产源码逐项对应。实际SourceRevisionId产生新的正式程序集身份，未称新旧DLL字节相同或重跑原版。
+
+实际目标 `F:\Games\GamePlats\Steam\steamapps\common\Terraria`。只备份11个旧受控文件（含installed receipt）及必要旧交付回执；旧Restore、新Install均exit0，一次10载荷/manifest/ownership读回通过，原版EXE未变。备份在 `.local/aim-balanced-20261017/install-a283747-20261017-143801/`；没有失败、额外包消费者/整包审计/安装独审或回装演练，没有启动所有者游戏或读取真实角色/世界/用户设置。后续文字/回执提交只记录事实，包和现装代码仍为a283747，不为元数据HEAD重打包重装。交付后停止写入，等待[短实测卡](owner-test-card.md)反馈；Issue/PR仍OPEN/Draft，不合并/关闭/Tag/Release。
