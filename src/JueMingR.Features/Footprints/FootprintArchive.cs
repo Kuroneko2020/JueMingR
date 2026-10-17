@@ -20,14 +20,20 @@ namespace JueMingR.Features.Footprints
         private string catalogIdentity, rootIdentity, operation = "";
         private bool loaded, persisted, protectedWrite;
         private bool loadStarted, namesChecked, replacementCommitted;
-        private long validatedBlocks;
-        private FootprintSample validatedLast;
         private string replacementGeneration;
         public FootprintArchive(IFootprintArchiveFiles files, string pair, int width, int height)
         { this.files = files ?? throw new ArgumentNullException(nameof(files)); this.pair = pair; this.width = width; this.height = height; if (width <= 0 || height <= 0) throw new ArgumentException("footprint-world-size"); }
         public string Generation { get; private set; }
         public bool Clearing { get { return operation != ""; } }
         public long Count { get { return blocks * 256 + tail.Length; } }
+        public long BlockCount { get { return blocks; } }
+        public FootprintSample[] ReadOverviewBlock(long number)
+        { if (!loaded || Clearing || number < 0 || number >= blocks) throw new InvalidOperationException("footprint-block-unavailable"); return (FootprintSample[])ReadBlock(number).Clone(); }
+        public FootprintSample[] SnapshotTail() { return (FootprintSample[])tail.Clone(); }
+        public byte[] ReadOverviewCache(long number)
+        { var derived = files as IFootprintOverviewFiles; return derived == null ? null : derived.ReadOverviewCache(number); }
+        public void WriteOverviewCache(long number, byte[] bytes)
+        { var derived = files as IFootprintOverviewFiles; if (derived != null) derived.WriteOverviewCache(number, bytes); }
         public long End { get { return tail.Length == 0 ? 0 : tail[tail.Length - 1].End; } }
         public long Segment { get { return tail.Length == 0 ? 0 : tail[tail.Length - 1].Segment; } }
         public bool Protected { get { return protectedWrite; } }
@@ -42,15 +48,11 @@ namespace JueMingR.Features.Footprints
             if (loaded) return true;
             if (!loadStarted) { BeginLoad(); loadStarted = true; if (Clearing) { loaded = true; return true; } }
             if (!namesChecked) { namesChecked = files.ValidateBlockNamesStep(blocks, 32); return false; }
-            // First recovery is O(S), but each call reads at most eight bounded
-            // blocks. The worker can stop between calls; no full-history array
-            // is ever published to the game thread on completion.
-            for (int i = 0; i < 8 && validatedBlocks < blocks; i++, validatedBlocks++)
-            {
-                var block = ReadBlock(validatedBlocks); if (validatedBlocks > 0) FootprintCodec.Adjacent(validatedLast, block[0]); validatedLast = block[255];
-            }
-            if (validatedBlocks != blocks) return false;
-            if (blocks > 0) FootprintCodec.Adjacent(validatedLast, tail[0]); loaded = true; return true;
+            // The root checksum/identity and the final immutable block establish
+            // the committed tail. Older immutable bodies are verified on demand;
+            // Loaded does not mean that all historical bodies were decoded.
+            if (blocks > 0) { var last = ReadBlock(blocks - 1); FootprintCodec.Adjacent(last[255], tail[0]); }
+            loaded = true; return true;
         }
         private void BeginLoad()
         {
