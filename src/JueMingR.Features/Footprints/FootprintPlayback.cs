@@ -26,17 +26,18 @@ namespace JueMingR.Features.Footprints
             if (Latest || Cursor >= end) Cursor = 0;
             DisplayEnd = end; Latest = false; Playing = true;
         }
-        // Caller passes a monotonic *visible* UI delta. Fractional steps stay in
+        // Caller passes a monotonic *visible* UI delta. Fractional ticks stay in
         // Cursor; the world may be paused while this independent clock advances.
         public void Advance(double seconds, long end, bool active)
         {
             if (!Visible) return;
             if (Latest) { Cursor = DisplayEnd = end; return; }
-            if (!Playing || !active || seconds <= 0 || Double.IsNaN(seconds) || Double.IsInfinity(seconds)) return;
-            DisplayEnd = end; Cursor = Math.Min(end, Cursor + seconds * 60 * Speed);
+            if (!active) { Playing = false; return; }
+            if (!Playing || seconds <= 0 || Double.IsNaN(seconds) || Double.IsInfinity(seconds)) return;
+            DisplayEnd = end; Cursor = Math.Min(end, Cursor + seconds * TimeSpan.TicksPerSecond * Speed);
             if (Cursor >= end) Playing = false;
         }
-        public static string FormatTime(long steps)
-        { long seconds = Math.Max(0, steps) / 60; return (seconds / 3600).ToString(CultureInfo.InvariantCulture) + ":" + (seconds / 60 % 60).ToString("00", CultureInfo.InvariantCulture) + ":" + (seconds % 60).ToString("00", CultureInfo.InvariantCulture); }
+        public static string FormatTime(long ticks)
+        { long seconds = Math.Max(0, ticks) / TimeSpan.TicksPerSecond; return (seconds / 3600).ToString(CultureInfo.InvariantCulture) + ":" + (seconds / 60 % 60).ToString("00", CultureInfo.InvariantCulture) + ":" + (seconds % 60).ToString("00", CultureInfo.InvariantCulture); }
     }
 }

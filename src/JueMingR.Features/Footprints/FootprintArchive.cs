@@ -143,6 +143,16 @@ namespace JueMingR.Features.Footprints
             FootprintSample[] value; if (cache.TryGetValue(number, out value)) return value;
             long ordinal; value = FootprintCodec.Decode(files.ReadBlock(number), pair, Generation, width, height, false, out ordinal);
             if (ordinal != number) throw FootprintCodec.Invalid();
+            if (number > 0)
+            {
+                FootprintSample[] previous;
+                if (!cache.TryGetValue(number - 1, out previous))
+                {
+                    long previousOrdinal; previous = FootprintCodec.Decode(files.ReadBlock(number - 1), pair, Generation, width, height, false, out previousOrdinal);
+                    if (previousOrdinal != number - 1) throw FootprintCodec.Invalid();
+                }
+                FootprintCodec.Adjacent(previous[255], value[0]);
+            }
             if (cache.Count == 64) cache.Remove(cacheOrder.Dequeue()); cache.Add(number, value); cacheOrder.Enqueue(number); return value;
         }
         private void EnsureCatalog()

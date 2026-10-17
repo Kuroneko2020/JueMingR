@@ -75,7 +75,10 @@ namespace JueMingR.Features.Footprints
             catch (FormatException) { throw Invalid(); }
         }
         internal static void Adjacent(FootprintSample previous, FootprintSample next)
-        { if (next.Sequence != previous.Sequence + 1 || next.Start != previous.End || next.Segment < previous.Segment || next.Position != previous.Position && next.Segment == previous.Segment) throw Invalid(); }
+        {
+            if (next.Sequence != previous.Sequence + 1 || next.Start != previous.End || next.Segment < previous.Segment || next.Position != previous.Position && next.Segment == previous.Segment ||
+                next.HasPosition && previous.HasPosition && next.Segment == previous.Segment && (next.FromX != previous.X || next.FromY != previous.Y)) throw Invalid();
+        }
         internal static InvalidDataException Invalid() { return new InvalidDataException("footprint-format-or-identity-invalid"); }
     }
 }

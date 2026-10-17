@@ -51,9 +51,10 @@ namespace JueMingR.ArchitectureTests
                     foreach (string failure in checks) Console.Error.WriteLine(failure);
                     return checks.Count == 0 ? 0 : 1;
                 }
+                if (args.Length == 2 && args[0] == "--footprints-200h") return FootprintLongHistoryChecks.Run(args[1]);
                 if (args.Length == 1 && args[0] == "--footprints")
                 {
-                    var checks = new List<string>(); FootprintCoreChecks.Check(checks); FootprintFileChecks.Check(checks); FootprintWorkerChecks.Check(checks);
+                    var checks = new List<string>(); FootprintCoreChecks.Check(checks); FootprintFileChecks.Check(checks); FootprintWorkerChecks.Check(checks); FootprintOverviewChecks.Check(checks);
                     foreach (string failure in checks) Console.Error.WriteLine(failure);
                     Console.WriteLine("Footprint checks: failures=" + checks.Count); return checks.Count == 0 ? 0 : 1;
                 }

@@ -98,11 +98,11 @@ namespace JueMingR.TerrariaHost.F5
             AddButton("关闭", 0, pw - 70, 7, 58, true, measure);
             AddText("录制路线", 24, RecordingPanel.Y + 10, measure);
             AddButton(recording ? "已开启" : "已关闭", 1, pw - 104, RecordingPanel.Y + 5, 80, host.ControlsEnabled && !clearing, measure);
-            string detail = host.CanRetrySave ? "记录尚未保存" : host.HasIssue || !canClear && !clearing ? status : recording ? "记录走过的路线" : "停止新增，已有路线保留";
+            string detail = host.CanRetrySave ? "记录尚未保存" : host.HasIssue || !canClear && !clearing ? status : recording ? "从新记录开始，旧格式保留" : "停止新增，已有路线保留";
             AddText(detail ?? "", 24, RecordingPanel.Bottom - textHeight - 9, measure, Microsoft.Xna.Framework.Color.LightGray);
             if (host.CanRetrySave) AddButton("重试保存", 5, pw - 120, RecordingPanel.Bottom - 32, 96, true, measure);
             AddText(clearing ? canRetry ? "清除未完成" : "正在清除…" : "清除历史", 24, ClearPanel.Y + 9, measure, new Microsoft.Xna.Framework.Color(255, 190, 160));
-            AddText("当前角色在此世界的足迹", 24, ClearPanel.Y + textHeight + 14, measure, Microsoft.Xna.Framework.Color.LightGray);
+            AddText("当前角色在此世界的新版足迹", 24, ClearPanel.Y + textHeight + 14, measure, Microsoft.Xna.Framework.Color.LightGray);
             bool confirm = confirmation.Stage > 0 && !clearing;
             float buttonY = ClearPanel.Bottom - Math.Max(28, textHeight + 8) - 8;
             AddButton(clearing ? canRetry ? "重试清除" : "清除处理中…" : confirmation.Label, canRetry ? 4 : 2, 24, buttonY, confirm ? pw - 134 : pw - 48, canRetry || canClear, measure);

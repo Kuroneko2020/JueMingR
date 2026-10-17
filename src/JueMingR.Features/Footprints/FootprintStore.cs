@@ -29,12 +29,17 @@ namespace JueMingR.Features.Footprints
         public const int QueueCapacity = 8;
         private readonly object gate = new object();
         private readonly Queue<FootprintSample[]> queue = new Queue<FootprintSample[]>();
+        private readonly Queue<FootprintSample[]> recent = new Queue<FootprintSample[]>();
         private readonly AutoResetEvent wake = new AutoResetEvent(false);
         private readonly Func<IFootprintArchiveFiles> open;
         private readonly string pair;
         private readonly int width, height;
         private FootprintStoreState state = new FootprintStoreState(false, null, 0, 0, 0, false, false, null, false);
         private FootprintQuery query;
+        private FootprintSample[] pendingSamples = new FootprintSample[0];
+        private FootprintOverviewRequest overviewRequest;
+        private FootprintOverviewSnapshot overviewResult;
+        private long overviewSerial, overviewDelivered;
         private bool stopping, finished, clearRequested, clearPending, retry, retrySave;
         private FootprintSample[] pending;
         private string clearGeneration, clearOperation;
@@ -46,6 +51,11 @@ namespace JueMingR.Features.Footprints
         }
         public FootprintStoreState Snapshot { get { lock (gate) return state; } }
         public FootprintQuery QueryResult { get { lock (gate) return query; } }
+        public FootprintOverviewSnapshot OverviewResult { get { lock (gate) return overviewResult; } }
+        public FootprintSample[] PendingSamples { get { lock (gate) return pendingSamples; } }
+        public void RequestOverview(FootprintOverviewRequest value)
+        { if (value == null) throw new ArgumentNullException(nameof(value)); lock (gate) { if (finished || stopping || clearPending || state.Clearing || value.Generation != state.Generation) return; overviewRequest = value; overviewSerial++; wake.Set(); } }
+        public void CancelOverview() { lock (gate) { overviewRequest = null; overviewResult = null; overviewDelivered = ++overviewSerial; if (!finished) wake.Set(); } }
         public int PendingBatches { get { lock (gate) return queue.Count; } }
         public bool Finished { get { lock (gate) return finished; } }
         public bool HasUnsavedFacts { get { lock (gate) return pending != null || queue.Count != 0; } }
@@ -57,7 +67,7 @@ namespace JueMingR.Features.Footprints
             lock (gate)
             {
                 if (!state.Loaded || state.Error != null || state.Clearing || clearPending || stopping || finished || queue.Count >= QueueCapacity) return false;
-                var frozen = new FootprintSample[count]; Array.Copy(values, frozen, count); queue.Enqueue(frozen); wake.Set(); return true;
+                var frozen = new FootprintSample[count]; Array.Copy(values, frozen, count); queue.Enqueue(frozen); RefreshPending(); wake.Set(); return true;
             }
         }
         public void RequestQuery(long value)
@@ -72,12 +82,12 @@ namespace JueMingR.Features.Footprints
                 clearGeneration = generation; clearOperation = operation; clearRequested = clearPending = true; query = null; deliveredSerial = ++querySerial;
                 // The third confirmation explicitly authorizes discarding the old
                 // accepted tail. An in-flight save finishes before the intent write.
-                queue.Clear(); wake.Set(); return true;
+                queue.Clear(); recent.Clear(); pendingSamples = new FootprintSample[0]; overviewRequest = null; overviewResult = null; overviewDelivered = ++overviewSerial; wake.Set(); return true;
             }
         }
         public void RetryClear()
         { lock (gate) { if (!finished && !stopping && state.Clearing && !state.Protected) { retry = clearRequested = true; wake.Set(); } } }
-        public void Dispose() { lock (gate) { if (finished || stopping) return; stopping = true; deliveredSerial = ++querySerial; query = null; wake.Set(); } }
+        public void Dispose() { lock (gate) { if (finished || stopping) return; stopping = true; deliveredSerial = ++querySerial; query = null; overviewRequest = null; overviewResult = null; overviewDelivered = ++overviewSerial; wake.Set(); } }
         private void Run()
         {
             FootprintArchive archive = null;
@@ -88,6 +98,8 @@ namespace JueMingR.Features.Footprints
                     archive = new FootprintArchive(files, pair, width, height);
                     while (!archive.LoadStep()) { lock (gate) if (stopping) return; }
                     Publish(archive, null);
+                    var overview = new FootprintOverviewIndex(archive);
+                    long overviewActive = -1, overviewCount = -1;
                     string failure = null; int attempts = 0; bool clearFailed = false;
                     while (true)
                     {
@@ -102,7 +114,7 @@ namespace JueMingR.Features.Footprints
                         }
                         if (clear)
                         {
-                            pending = null; failure = null; attempts = 0;
+                            lock (gate) { pending = null; recent.Clear(); RefreshPending(); } failure = null; attempts = 0;
                             try { archive.BeginClear(generation, operation); clearFailed = false; }
                             catch (Exception e) when (Expected(e)) { failure = e.Message; clearFailed = true; }
                             Publish(archive, failure);
@@ -112,7 +124,7 @@ namespace JueMingR.Features.Footprints
                             try
                             {
                                 bool done = archive.ClearStep(32); failure = null; clearFailed = false;
-                                if (done) { lock (gate) { clearPending = false; query = null; deliveredSerial = ++querySerial; } }
+                                if (done) { lock (gate) { clearPending = false; query = null; deliveredSerial = ++querySerial; RefreshPending(); } overview = new FootprintOverviewIndex(archive); overviewActive = -1; }
                                 Publish(archive, null);
                                 if (!done) continue;
                             }
@@ -120,13 +132,42 @@ namespace JueMingR.Features.Footprints
                         }
                         if (!archive.Clearing && pending != null && failure == null)
                         {
-                            try { archive.Append(pending, pending.Length); pending = null; attempts = 0; Publish(archive, null); }
+                            try { archive.Append(pending, pending.Length); lock (gate) { recent.Enqueue(pending); while (recent.Count > QueueCapacity) recent.Dequeue(); pending = null; RefreshPending(); } attempts = 0; Publish(archive, null); }
                             catch (Exception e) when (Expected(e))
                             {
                                 // Ambiguous/protected commits never enter the retry loop.
                                 if (!archive.Protected && !(e is InvalidDataException) && ++attempts < 3) { wake.WaitOne(1000); continue; }
                                 failure = e.Message; Publish(archive, failure, !archive.Protected && !(e is InvalidDataException), e is InvalidDataException);
                             }
+                        }
+                        bool overviewWork = false;
+                        FootprintOverviewRequest request; long requestVersion;
+                        lock (gate) { request = stopping || clearPending ? null : overviewRequest; requestVersion = overviewSerial; }
+                        if (request == null && overviewActive != -1) { overview.CancelQuery(); overviewActive = -1; overviewCount = -1; }
+                        if (request != null && !archive.Clearing && failure == null && request.Generation == archive.Generation)
+                        {
+                            try
+                            {
+                                overview.BuildStep(8);
+                                if (overviewActive != requestVersion || overviewCount != archive.Count)
+                                { overview.BeginQuery(request, archive.SnapshotTail()); overviewActive = requestVersion; overviewCount = archive.Count; }
+                                var prepared = overview.QueryStep(8);
+                                lock (gate) if (requestVersion == overviewSerial && !stopping && !clearPending)
+                                {
+                                    overviewResult = prepared;
+                                    if (prepared != null && prepared.Complete)
+                                    {
+                                        overviewDelivered = requestVersion;
+                                        bool removed = false; while (recent.Count != 0 && recent.Peek()[recent.Peek().Length - 1].Sequence <= prepared.SourceSequence) { recent.Dequeue(); removed = true; }
+                                        if (removed) RefreshPending();
+                                    }
+                                }
+                                overviewWork = overview.QueryPending || prepared == null || !prepared.Complete;
+                                // Re-query a formerly partial snapshot after the
+                                // next bounded index build, preserving its request.
+                                if (!overview.QueryPending && prepared != null && !prepared.Complete) overviewActive = -1;
+                            }
+                            catch (Exception e) when (Expected(e)) { failure = e.Message; Publish(archive, failure, false, true); }
                         }
                         bool wantQuery; lock (gate) wantQuery = serial != deliveredSerial && !stopping && !clearRequested;
                         if (wantQuery && !archive.Clearing && failure == null)
@@ -147,7 +188,7 @@ namespace JueMingR.Features.Footprints
                             // accepted from the recorder. Failed pending/FIFO data
                             // stays owned here until same-worker recovery or exit.
                             if (stopping && pending == null && queue.Count == 0 && (!archive.Clearing || failure != null)) break;
-                            if (failure == null && (queue.Count > 0 || clearRequested || querySerial != deliveredSerial)) continue;
+                            if (failure == null && (queue.Count > 0 || clearRequested || querySerial != deliveredSerial || overviewWork)) continue;
                         }
                         // Clear failure holds the old intent and waits for explicit
                         // retry; it never starts a new archive or spins every frame.
@@ -162,12 +203,23 @@ namespace JueMingR.Features.Footprints
                 lock (gate) { finished = true; state = new FootprintStoreState(state.Loaded, state.Generation, state.Count, state.End, state.Segment, state.Clearing, true, state.Error, state.Protected); wake.Dispose(); }
             }
         }
+        // Called only while holding gate. These are bounded accepted facts,
+        // published once per handoff, not copied or inspected by every Draw.
+        private void RefreshPending()
+        {
+            int length = pending == null ? 0 : pending.Length; foreach (var batch in recent) length += batch.Length; foreach (var batch in queue) length += batch.Length;
+            var result = new FootprintSample[length]; int offset = 0;
+            foreach (var batch in recent) { Array.Copy(batch, 0, result, offset, batch.Length); offset += batch.Length; }
+            if (pending != null) { Array.Copy(pending, 0, result, offset, pending.Length); offset += pending.Length; }
+            foreach (var batch in queue) { Array.Copy(batch, 0, result, offset, batch.Length); offset += batch.Length; }
+            pendingSamples = result;
+        }
         private void Publish(FootprintArchive archive, string error, bool retryableSave = false, bool protect = false)
         {
             lock (gate) state = archive == null ? new FootprintStoreState(false, null, 0, 0, 0, false, false, error, true) :
                 new FootprintStoreState(archive.Loaded, archive.Generation, archive.Count, archive.End, archive.Segment, archive.Clearing || clearPending, false, error, archive.Protected || !archive.Loaded || protect, retryableSave);
         }
         private static bool Expected(Exception e)
-        { return e is IOException || e is UnauthorizedAccessException || e is System.Security.SecurityException || e is InvalidOperationException || e is ArgumentException || e is OverflowException; }
+        { return e is IOException || e is InvalidDataException || e is UnauthorizedAccessException || e is System.Security.SecurityException || e is InvalidOperationException || e is ArgumentException || e is OverflowException; }
     }
 }

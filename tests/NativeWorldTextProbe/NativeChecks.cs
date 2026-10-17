@@ -403,7 +403,7 @@ namespace NativeWorldTextProbe
             Require(parsed.Count == 1 && parsed[0].Text == "literal" && parsed[0].Color == Color.Red, "actual native color parser");
             Console.WriteLine("PASS: real ChatManager assembly, MVID, hash and parser; no fixture Terraria assembly.");
             if (scope == "ExplorationCpu") { NativeExplorationChecks.Run(); NativeMapMarkerChecks.Run(output); return 0; }
-            if (scope == "FootprintsCpu") { NativeFootprintChecks.Run(output); return 0; }
+            if (scope == "FootprintsCpu") { NativeFootprintTimingChecks.Run(); NativeFootprintChecks.Run(output); return 0; }
             if (scope == "DeathCpu")
             {
                 Terraria.Main.dedServ = true;
@@ -442,7 +442,7 @@ namespace NativeWorldTextProbe
             }
             using (var graphics = new ProbeGraphics(content, scope == "GuidanceVisual"))
             {
-                if (scope == "FootprintsVisual") { NativeFootprintVisualChecks.Run(graphics, output); return 0; }
+                if (scope == "FootprintsVisual") { NativeFootprintVisualChecks.Run(graphics, output); NativeQuickItemChecks.Run(context => NativeFootprintPathCoexistenceChecks.Run(context, graphics, output), processing: true, shortFeedback: true); return 0; }
                 if (scope == "MapVisual") { NativeMapVisualChecks.Run(graphics, output); return 0; }
                 if (scope == "MapAlignment") { NativeMapVisualChecks.Run(graphics, output, true); return 0; }
                 if (scope == "DeathVisual") { NativeDeathVisualChecks.Run(graphics, output); return 0; }

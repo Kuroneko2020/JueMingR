@@ -43,14 +43,16 @@ namespace NativeWorldTextProbe
                 Require((bool)Get(Get(host, "hooks"), "Ready"), "fixed native step/teleport/spawn hooks install");
                 foreach (string name in new[] { "MapFeatures", "DeathRecords", "Guidance", "Information", "WorldObjects", "WorldTargets", "Labels", "items", "notes" }) Require(GetOptional(context, name) != null, "complete footprint profile retains " + name);
                 Require((bool)Get(host, "Recording") && !(bool)Get(host, "Display"), "recording and display defaults are independent");
-                var recorder = (FootprintRecorder)Get(host, "Recorder");
+                string legacyPair = Path.Combine(root, "JueMingRData", "footprints", (string)Get(host, "pair")); Directory.CreateDirectory(legacyPair);
+                string legacySentinel = Path.Combine(legacyPair, "catalog.json"), legacyBytes = "old-format-owner-record-must-stay-opaque"; File.WriteAllText(legacySentinel, legacyBytes);
+                var recorder = (FootprintRecorder)Get(host, "Recorder"); NativeFootprintTimingChecks.RunHost(host);
                 // This neutral executable never starts/constructs Main or runs
                 // a world. Only the native method boundary is exercised with a
                 // controlled safe body; production Harmony observers remain real.
                 isolation.Patch(target, transpiler: new HarmonyMethod(typeof(NativeFootprintChecks).GetMethod(nameof(SafeBody), Flags)));
                 object receiver = FormatterServices.GetUninitializedObject(typeof(Main)); movement = new Vector2(.001f, 0);
                 for (int i = 0; i < 60; i++) target.Invoke(receiver, null);
-                Require(recorder.End == 60 && recorder.Count == 60, "sixty completed native boundaries produce one simulation second and retain sub-tile movement");
+                Require(recorder.End > 0 && recorder.Count > 0 && recorder.Count <= 60, "native boundaries admit real elapsed time with bounded compact movement; frequency equivalence is checked by the controlled clock");
                 long end = recorder.End; for (int i = 0; i < 100; i++) Call(context, "UpdateRuntime"); Require(recorder.End == end, "outer/runtime updates without simulation never create time");
                 throwStep = true; try { target.Invoke(receiver, null); throw new Exception("native failure expected"); } catch (TargetInvocationException e) { Require(e.InnerException is InvalidOperationException, "original simulated failure is preserved"); } finally { throwStep = false; }
                 Require(recorder.End == end, "failed native step contributes no duration");
@@ -76,11 +78,12 @@ namespace NativeWorldTextProbe
                 long saved = recorder.End; string pair = (string)Get(host, "pair"); Main.gameMenu = true; Call(context, "UpdateRuntime"); Main.gameMenu = false;
                 Until(() => { Call(context, "UpdateRuntime"); return GetOptional(host, "Recorder") != null; });
                 Require(((FootprintRecorder)Get(host, "Recorder")).End == saved, "ordinary same-pair re-entry loads committed history with a fresh continuity segment");
-                Require(Directory.Exists(Path.Combine(root, "JueMingRData", "footprints", pair)), "real isolated history belongs to admitted character/world pair");
+                Require(Directory.Exists(Path.Combine(root, "JueMingRData", "footprints-v2", pair)), "real isolated history belongs to admitted character/world pair");
                 string oldGeneration = (string)Get(host, "Generation");
                 Require((bool)Call(host, "Clear", oldGeneration), "actual Host accepts isolated current archive clear");
                 Until(() => { Call(context, "UpdateRuntime"); return GetOptional(host, "Recorder") != null && (string)Get(host, "Generation") != oldGeneration; });
-                Require(((FootprintRecorder)Get(host, "Recorder")).Count == 0 && (bool)Get(host, "Recording") && !Directory.Exists(Path.Combine(root, "JueMingRData", "footprints", pair, oldGeneration)), "actual Host removes old body, publishes fresh empty generation and retains recording preference");
+                Require(((FootprintRecorder)Get(host, "Recorder")).Count == 0 && (bool)Get(host, "Recording") && !Directory.Exists(Path.Combine(root, "JueMingRData", "footprints-v2", pair, oldGeneration)), "actual Host removes old body, publishes fresh empty generation and retains recording preference");
+                Require(File.ReadAllText(legacySentinel) == legacyBytes, "new recording, same-pair re-entry and current clear leave the old-format root opaque and unchanged");
                 Console.WriteLine("PASS: actual complete Host, fixed native step hook boundary, failed/skipped time, continuity, off cost, physical mouse staging and isolated save/re-entry.");
             }
             finally { isolation.Unpatch(target, HarmonyPatchType.All, isolation.Id); Main.gameMenu = true; Call(context, "UpdateRuntime"); StopContext(context); Main.gameMenu = false; }

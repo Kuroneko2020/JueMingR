@@ -40,7 +40,10 @@ namespace JueMingR.Features.Footprints
             bool continuous = count > 0 && !breakNext && last.Position == position;
             long next = checked(End + elapsedTicks);
             bool stationary = continuous && (!last.HasPosition || last.X == x && last.Y == y);
-            bool extend = mutable && continuous && (stationary && !last.Moving || !stationary && last.Moving && Fits(last, next, x, y));
+            // A single unchanged float position can be quantization during very
+            // slow movement. Let the time corridor decide whether that endpoint
+            // is still valid; a real sustained stop fails it and creates Stay.
+            bool extend = mutable && continuous && (stationary && !last.Moving || last.Moving && Fits(last, next, x, y));
             if (extend)
             {
                 active[count - 1] = new FootprintSample(last.Sequence, last.Start, next, last.Segment, last.FromX, last.FromY, x, y, position);

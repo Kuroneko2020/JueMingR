@@ -18,6 +18,8 @@
     <Compile Include="..\ChestLocator\ChestKnowledgeChecks.cs" Link="ChestLocator\ChestKnowledgeChecks.cs" />
     <Compile Include="..\Announcements\AnnouncementChecks.cs" Link="Announcements\AnnouncementChecks.cs" />
     <Compile Include="..\Footprints\FootprintCoreChecks.cs" Link="Footprints\FootprintCoreChecks.cs" />
+    <Compile Include="..\Footprints\FootprintOverviewChecks.cs" Link="Footprints\FootprintOverviewChecks.cs" />
+    <Compile Include="..\Footprints\FootprintLongHistoryChecks.cs" Link="Footprints\FootprintLongHistoryChecks.cs" />
     <Compile Include="..\Footprints\FootprintFileChecks.cs" Link="Footprints\FootprintFileChecks.cs" />
     <Compile Include="..\Footprints\FootprintWorkerChecks.cs" Link="Footprints\FootprintWorkerChecks.cs" />
     <Compile Include="..\DeathHistory\DeathArchiveChecks.cs" Link="DeathHistory\DeathArchiveChecks.cs" />
