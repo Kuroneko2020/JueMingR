@@ -1,4 +1,4 @@
-﻿# Explicit owner-authorized finite #114 / #118 stage candidates. This does not write the
+﻿# Explicit owner-authorized finite #114 / #118 / #120 stage candidates. This does not write the
 # formal workload cache, grant release qualification, or authorize installation.
 function Read-AimStageArtifact {
     param([string] $Root,$Entry)
@@ -23,6 +23,7 @@ function Read-AimStageDevelopment {
     $relative=$full.Substring($repository.Length).Replace('\','/')
     $null=Read-AimStageArtifact $Root ([pscustomobject]@{path=$relative;length=(Get-Item -LiteralPath $full).Length;sha256=(Get-WorkloadFileHash -LiteralPath $full).Hash})
     $record=Read-WorkloadJson $Path
+    if($null -ne $record -and $record.schema -ceq 'hidden-entry-development-20261018-1'){return Read-HiddenEntryDevelopment $Root $Path $Identity $InputIdentity $record $relative}
     if($null -ne $record -and $record.schema -ceq 'footprints-200h-development-20261017-1'){return Read-Footprints200HourDevelopment $Root $Path $Identity $InputIdentity $record $relative}
     # Each owner-authorized successor has its own base and evidence contract;
     # the old qualification cannot be relabelled as a new candidate record.
@@ -752,4 +753,65 @@ function Read-Footprints200HourDevelopment {
     if((@($Record.detectionFiles.path | Sort-Object) -join '|') -cne (@($consumers | Sort-Object) -join '|')){throw 'Footprint detection consumer set mismatch.'}
     foreach($entry in $Record.detectionFiles){if((Get-WorkloadFileHash -LiteralPath (Join-Path $Root $entry.path)).Hash -cne $entry.sha256){throw 'Footprint detection bytes changed.'}}
     return [ordered]@{status='STAGE_DEVELOPMENT';mode='ExplicitFootprints200Hour20261017';fullQualification='INCOMPLETE';releaseEligible=$false;productBase=$base;recordPath=$Relative;recordSha256=(Get-WorkloadFileHash -LiteralPath $Path).Hash;necessaryScopes=$required;limits=@($Record.limits);checkCount=$required.Count}
+}
+
+# Exact owner-authorized HIDE #120 candidate; default full qualification stays
+# unchanged. Evidence fixes inputs and consumers, never relabels old results.
+function Read-HiddenEntryDevelopment {
+    param([string] $Root,[string] $Path,$Identity,$InputIdentity,$Record,[string] $Relative)
+    $base='66870f3cdb25d5f653fbe67b6235d65a5d8df51e'
+    if($Record.authorization -cne 'owner-issue120-hidden-entry-20261018' -or $Record.productBase -cne $base -or
+        $Record.candidateCommit -cne $Identity.commit -or $Record.sourceFingerprint -cne $Identity.fingerprint -or
+        $Record.inputFingerprint -cne $InputIdentity.fingerprint -or $Record.fullQualification -cne 'INCOMPLETE' -or
+        $Record.releaseEligible -ne $false -or $null -eq $Record.PSObject.Properties['openFailures'] -or @($Record.openFailures).Count){throw 'Hidden entry candidate/evidence lock mismatch or unresolved failure.'}
+    $retained=if($null -ne $script:WorkloadRetainedAssets){@($script:WorkloadRetainedAssets.files.path)}else{@()}
+    if(@((Get-WorkloadChanges $Root 'HEAD').paths | Where-Object {$_ -cnotin $retained}).Count){throw 'Hidden entry candidate has uncommitted inputs.'}
+    & git -C $Root merge-base --is-ancestor $base $Identity.commit
+    if($LASTEXITCODE -ne 0){throw 'Hidden entry candidate lost its accepted base.'}
+    $allowed=@(
+        'src/JueMingR.Features/HiddenFeatures/HiddenFeatureAccess.cs',
+        'src/JueMingR.TerrariaHost/About/AboutPage.cs',
+        'src/JueMingR.TerrariaHost/F5/F5Layout.cs','src/JueMingR.TerrariaHost/F5/F5Interaction.cs',
+        'src/JueMingR.TerrariaHost/F5/F5Shell.cs','src/JueMingR.TerrariaHost/F5/GuidanceControls.cs',
+        'src/JueMingR.TerrariaHost/Guidance/HostGuidance.cs','src/JueMingR.TerrariaHost/Guidance/MerchantTestOperations.cs',
+        'src/JueMingR.TerrariaHost/Phase0SLoadChainHost.cs',
+        'tests/JueMingR.ArchitectureTests/HiddenFeatureAccessChecks.cs','tests/JueMingR.ArchitectureTests/GuidanceTests.cs',
+        'tests/JueMingR.ArchitectureTests/Phase0TArchitectureChecks.cs',
+        'tests/NativeWorldTextProbe/NativeGuidanceChecks.cs','tests/NativeWorldTextProbe/NativeGuidanceInputChecks.cs',
+        'tests/NativeWorldTextProbe/NativeAboutChecks.cs','tests/NativeWorldTextProbe/NativeAboutVisualChecks.cs',
+        'tests/NativeWorldTextProbe/NativeHiddenEntryChecks.cs','tests/NativeWorldTextProbe/NativeChecks.cs',
+        'tests/NativeWorldTextProbe/NativePageCompositionChecks.cs',
+        'scripts/test-world-object-text.ps1','scripts/workload/AimStage.Development.ps1',
+        'docs/功能介绍/关于帮助与反馈行为合同.md','docs/功能介绍/稀有生物旅商方向与装备提示行为合同.md',
+        'docs/功能介绍/功能索引.md','docs/功能介绍/玩家使用指南.md',
+        'docs/设计/关于帮助与反馈实现设计.md','docs/设计/方向指引装备提示与游商测试实现设计.md',
+        'docs/设计/可重复构建与项目骨架.md','review-materials/hidden-features-entry-20261018/evidence.md')
+    $changed=@(Invoke-WorkloadGit $Root @('diff','--name-only','--no-renames',$base,$Identity.commit,'--') | Sort-Object)
+    if(@($changed | Where-Object {$_ -cnotin $allowed}).Count -or
+        (@($Record.revisions.path | Sort-Object) -join '|') -cne ($changed -join '|')){throw 'Hidden entry revision scope mismatch.'}
+    foreach($entry in $Record.revisions){if((Get-WorkloadFileHash -LiteralPath (Join-Path $Root $entry.path)).Hash -cne $entry.sha256){throw 'Hidden entry revision bytes changed.'}}
+    $required=@('build-structure','hidden-state-guidance','native-hidden-entry','native-about-xna','native-page-composition','package-entry-contract')
+    if((@($Record.checks.name | Sort-Object) -join '|') -cne (@($required | Sort-Object) -join '|')){throw 'Hidden entry necessary scopes missing/duplicated.'}
+    foreach($check in $Record.checks){
+        if($check.exit -ne 0 -or $check.disposition -cnotin @('CURRENT','REVIEWED_REUSE') -or -not $check.scope -or -not $check.applicability -or @($check.artifacts).Count -eq 0){throw 'Invalid hidden entry scoped evidence.'}
+        foreach($artifact in $check.artifacts){$null=Read-AimStageArtifact $Root $artifact}
+    }
+    if(@($Record.reviews).Count -eq 0 -or @($Record.limits).Count -eq 0 -or $null -eq $Record.PSObject.Properties['failureDispositions']){throw 'Hidden entry independent review, failure dispositions or limits missing.'}
+    foreach($failure in $Record.failureDispositions){
+        if($failure.disposition -cnotin @('PRODUCT_FIXED','TEST_CORRECTED','ENVIRONMENT_LIMITATION') -or -not $failure.cause -or -not $failure.resolution -or @($failure.artifacts).Count -eq 0){throw 'Unresolved hidden entry failure.'}
+        foreach($artifact in $failure.artifacts){$null=Read-AimStageArtifact $Root $artifact}
+    }
+    foreach($review in $Record.reviews){
+        if($review.result -cne 'APPROVED_FOR_STAGE' -or $review.sourceFingerprint -cne $Identity.fingerprint -or -not $review.coverage){throw 'Hidden entry independent review identity mismatch.'}
+        $null=Read-AimStageArtifact $Root $review.artifact
+    }
+    if($Record.admission.result -cne 'READY_FOR_PACKAGE' -or $Record.admission.sourceFingerprint -cne $Identity.fingerprint){throw 'Hidden entry coordinator admission missing.'}
+    $null=Read-AimStageArtifact $Root $Record.admission.artifact
+    $debug=Read-WorkloadJson (Join-Path $Root 'artifacts/build/Debug/build-record.json')
+    if(-not (Test-WorkloadBuildMatch $Root $debug $Identity $InputIdentity)){throw 'Hidden entry Debug detection build changed.'}
+    $consumers=@('artifacts/build/Debug/checks/bin/NativeWorldTextProbe/x86/Debug/net472/NativeWorldTextProbe.exe')
+    foreach($project in @('Platform','Features','Infrastructure','TerrariaHost','ArchitectureTests')){$consumers+=('artifacts/build/Debug/work/bin/JueMingR.'+$project+'/x86/Debug/net472/JueMingR.'+$project+'.'+$(if($project -ceq 'ArchitectureTests'){'exe'}else{'dll'}))}
+    if((@($Record.detectionFiles.path | Sort-Object) -join '|') -cne (@($consumers | Sort-Object) -join '|')){throw 'Hidden entry detection consumer set mismatch.'}
+    foreach($entry in $Record.detectionFiles){if((Get-WorkloadFileHash -LiteralPath (Join-Path $Root $entry.path)).Hash -cne $entry.sha256){throw 'Hidden entry detection bytes changed.'}}
+    return [ordered]@{status='STAGE_DEVELOPMENT';mode='ExplicitHiddenEntry20261018';fullQualification='INCOMPLETE';releaseEligible=$false;productBase=$base;recordPath=$Relative;recordSha256=(Get-WorkloadFileHash -LiteralPath $Path).Hash;necessaryScopes=$required;limits=@($Record.limits);checkCount=$required.Count}
 }

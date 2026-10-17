@@ -10,7 +10,7 @@ namespace JueMingR.ArchitectureTests
     {
         internal static void Check(IList<string> failures)
         {
-            try { Selection(); Projection(); Equipment(); Locations(); Operations(); Preferences(); }
+            try { HiddenFeatureAccessChecks.Run(); Selection(); Projection(); Equipment(); Locations(); Operations(); Preferences(); }
             catch (Exception e) { failures.Add("Guidance: " + e.Message); }
         }
         private static void Require(bool value, string reason) { if (!value) throw new InvalidOperationException(reason); }

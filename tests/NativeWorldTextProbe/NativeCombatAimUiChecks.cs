@@ -38,6 +38,75 @@ namespace NativeWorldTextProbe
             Console.WriteLine("AIM NEUTRAL binding="+bindings.Get("combat.aim")?.Text+" bindingCompletionId="+bindings.CompletionId+" modifiers="+keys.Modifiers+" down="+keys.IsDown((int)Keys.F11)+" reliable="+keys.Reliable+" accepted="+settings.AcceptedCommandId+" completed="+settings.CompletedCommandId+" aim="+settings.Value.Aim+" path="+settings.Value.Path+" marker="+settings.Value.Marker);
             Require(!keys.IsDown((int)Keys.F11) && !keys.IsDown((int)Keys.LeftControl),"fresh chord follows actual trusted neutral input, not merely a storage completion");
         }
+        // A leaf for the owner's exact copy decision. It exercises the actual
+        // Shell -> ResolveHint -> PrepareHints path without the unrelated Aim
+        // binding, attack, NPC or world-render checks in Run below.
+        internal static void RunHints(object context,ProbeGraphics graphics,string output)
+        {
+            var shell=Get(context,"Shell");var state=Get(shell,"State");var host=Get(context,"CombatObservation");
+            var renderer=Get(shell,"renderer");var controls=Get(renderer,"CombatObservationControls");var hint=Get(renderer,"HintLayout");
+            Terraria.Localization.LanguageManager.Instance.SetLanguage("zh-Hans");
+            Main.screenWidth=960;Main.screenHeight=640;Main.UIScale=1;PlayerInput.CacheOriginalScreenDimensions();
+            try
+            {
+                foreach(bool mode in new[]{false,true})
+                {
+                    NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,mode,mode,mode,25,mode,true));
+                    UiFrame(context,Vector2.Zero,false);
+                    if(!(bool)Get(state,"Visible")){UiFrame(context,Vector2.Zero,false,Keys.F5);UiFrame(context,Vector2.Zero,false);}
+                    Nav(context,8);
+                    Require(Elements().Any(e=>(string)GetOptional(e,"Text")=="寻路预测") && !Elements().Any(e=>(string)GetOptional(e,"Text")=="NPC寻路预测"),"actual path row uses the accepted short name");
+                    foreach(string id in new[]{"combat.aim","combat.collision-display","combat.npc-path"})
+                        Require(Elements().Count(e=>(string)GetOptional(e,"HotkeyTarget")==id)==1,"display copy keeps the stable action ID: "+id);
+                    foreach(string command in new[]{"ObservationPolicy","ObservationCenter","ObservationDummy","ObservationMarker","ObservationRadius"})
+                        Require(Elements().Count(e=>Get(e,"Command").ToString()==command)==1,"conditional card command remains unique: "+command);
+                    Require((string)Get(Find("ObservationCenter"),"Text")== (mode?"鼠标中心":"玩家中心"),"center button name remains unchanged");
+                    string policy=mode?"考虑攻击可达性，适合复杂地形":"忽略遮挡，瞄准最新的";
+                    string center=mode?"瞄准距离光标最近的敌怪，下面滑条改半径":"瞄准距离玩家最近的敌怪";
+                    Show(Find("ObservationPolicy"),policy);
+                    Show(Find("ObservationCenter"),center);
+                    Show(Name("寻路预测"),"显示NPC可能的未来路径");
+                    Show(Name("碰撞箱显示"),"↓");Require(Text().Length==1 && Text()[0]=='\u2193',"collision hint is only U+2193");
+                    if(mode)graphics.Image(Path.Combine(output,"collision-arrow-hint.png"),()=>Call(shell,"DrawLayer"),Main.UIScaleMatrix,960,640);
+                    foreach(var empty in new[]{Name("辅助瞄准"),Name("辅助瞄准设置"),Find("ObservationDummy"),Find("ObservationMarker")})
+                    {Show(Find("ObservationPolicy"),policy);Show(empty,null);}
+                    var field=Find("ObservationRadius");var fieldPoint=Position(field);var rect=Get(field,"Rect");
+                    var drag=Get(shell,"CombatRadius");UiFrame(context,fieldPoint,false);var track=Get(drag,"Track");
+                    float trackX=(float)Get(track,"X"),trackY=(float)Get(track,"Y"),trackWidth=(float)Get(track,"Width");
+                    var view=Get(Get(state,"Layout"),"Viewport");
+                    var labelPoint=new Vector2((float)Get(state,"X")+(float)Get(view,"X")+(float)Get(rect,"X")+8,fieldPoint.Y);
+                    foreach(var point in new[]{labelPoint,new Vector2(trackX+trackWidth*.2f,trackY+7),new Vector2(trackX+trackWidth*.5f,trackY+7)})
+                    {Show(Find("ObservationPolicy"),policy);At(point,null);}
+                    Require((int)Get(drag,"Value")==25 && (bool)Get(drag,"Available")==mode,"radius visible value and player/mouse edit gate remain unchanged");
+                    foreach(string command in new[]{"ObservationDummy","ObservationMarker","ObservationRadius"})
+                        Require(Call(controls,"Hint",Get(Find(command),"Command"))==null,"removed hints are null in both option states: "+command);
+                    if(mode){Show(Find("ObservationCenter"),center);graphics.Image(Path.Combine(output,"mouse-center-hint.png"),()=>Call(shell,"DrawLayer"),Main.UIScaleMatrix,960,640);}
+                }
+                var on=Find("ObservationAimOn");var off=Find("ObservationAimOff");Show(on,null);Show(off,null);
+                var attack=Get(host,"Attack");Call(attack,"FailLocal",new InvalidOperationException("Aim hint fault oracle"));
+                try{string reason=(string)Call(host,"Unavailable",6);Require(reason!=null,"real Aim fault produces a reason");Show(on,reason);Show(off,reason);}
+                finally{Call(attack,"Reset");}
+                Console.WriteLine("PASS CombatHints: exact names/four mode hints/single arrow; actual null regions hide prior boxes, both toggle states and full radius field; stable actions/card/value/edit gate; real Aim fault feedback retained.");
+            }
+            finally{Call(shell,"CloseAndSubmitPosition");NativeCombatObservationChecks.Save(host,new ObservationOptions());}
+            object[] Elements(){return ((IEnumerable)Get(Get(state,"Layout"),"Elements")).Cast<object>().ToArray();}
+            object Find(string command){return Elements().Single(e=>Get(e,"Command").ToString()==command);}
+            object Name(string text){return Elements().Single(e=>(string)GetOptional(e,"Text")==text);}
+            string Text(){return string.Concat(((IEnumerable)Get(hint,"Lines")).Cast<object>().Select(e=>(string)Get(e,"Text")));}
+            void Show(object element,string expected){At(Position(element),expected);}
+            void At(Vector2 point,string expected)
+            {
+                UiFrame(context,point,false);graphics.Pixels(()=>Call(shell,"DrawLayer"),Main.UIScaleMatrix);
+                Require((bool)Get(hint,"Visible")== (expected!=null),"actual hint visibility at "+point+" expected="+(expected??"null"));
+                if(expected!=null)Require(Text()==expected,"actual rendered hint matches exact owner text: "+expected);
+            }
+            Vector2 Position(object element)
+            {
+                var rect=Get(element,"Rect");float y=(float)Get(rect,"Y"),h=(float)Get(rect,"Height");
+                for(int i=0;i<80;i++){var view=Get(Get(state,"Layout"),"Viewport");float scroll=(float)Get(state,"Scroll");if(y>=scroll && y+h<=scroll+(float)Get(view,"Height"))return (Point(rect)+new Vector2((float)Get(state,"X")+(float)Get(view,"X"),(float)Get(state,"Y")+(float)Get(view,"Y")-scroll))*Main.UIScale;UiFrame(context,(Point(view)+new Vector2((float)Get(state,"X"),(float)Get(state,"Y")))*Main.UIScale,false,new Keys[0],y<scroll?120:-120);}
+                throw new InvalidOperationException("real wheel must reveal hint region");
+            }
+        }
         internal static void Reload(object context)
         {
             var shell=Get(context,"Shell");var host=Get(context,"CombatObservation");var bindings=(HotkeyBindings)Get(Get(shell,"hotkeys"),"Bindings");var settings=(ObservationSettings)Get(host,"Settings");
@@ -58,7 +127,7 @@ namespace NativeWorldTextProbe
                 var renderer=Get(shell,"renderer");var controls=Get(renderer,"CombatObservationControls");var aimOn=Find("ObservationAimOn");var aimOff=Find("ObservationAimOff");
                 Require(Call(controls,"Hint",Get(aimOn,"Command"))==null && Call(controls,"Hint",Get(aimOff,"Command"))==null,"healthy Aim buttons do not repeat the name-row purpose");
                 UiFrame(context,Position(aimOn),false);graphics.Pixels(()=>Call(shell,"DrawLayer"),Main.UIScaleMatrix);Require(!(bool)Get(Get(renderer,"HintLayout"),"Visible"),"actual healthy ON hover is empty");
-                var name=Elements().Single(e=>(string)GetOptional(e,"Text")=="辅助瞄准");UiFrame(context,Position(name),false);graphics.Pixels(()=>Call(shell,"DrawLayer"),Main.UIScaleMatrix);var hint=Get(renderer,"HintLayout");string purpose=string.Concat(((IEnumerable)Get(hint,"Lines")).Cast<object>().Select(e=>(string)Get(e,"Text")));Require((bool)Get(hint,"Visible") && purpose.Contains("仍由你发起攻击") && purpose.Contains("适用机制采用提前量") && purpose.Contains("随机或未知阶段不保证命中"),"actual Aim name hover retains purpose and impact contract");
+                var name=Elements().Single(e=>(string)GetOptional(e,"Text")=="辅助瞄准");UiFrame(context,Position(name),false);graphics.Pixels(()=>Call(shell,"DrawLayer"),Main.UIScaleMatrix);var hint=Get(renderer,"HintLayout");Require(!(bool)Get(hint,"Visible"),"actual Aim name hover has no purpose hint");
                 var attack=Get(host,"Attack");Call(attack,"FailLocal",new InvalidOperationException("Aim UI fault oracle"));try{string reason=(string)Call(host,"Unavailable",6);Require(reason!=null && (string)Call(controls,"Hint",Get(aimOn,"Command"))==reason && (string)Call(controls,"Hint",Get(aimOff,"Command"))==reason,"both Aim buttons retain the real unavailable reason");UiFrame(context,Position(aimOff),false);graphics.Pixels(()=>Call(shell,"DrawLayer"),Main.UIScaleMatrix);hint=Get(renderer,"HintLayout");Require((bool)Get(hint,"Visible") && string.Concat(((IEnumerable)Get(hint,"Lines")).Cast<object>().Select(e=>(string)Get(e,"Text")))==reason,"actual faulty OFF hover retains unavailable feedback");}finally{Call(attack,"Reset");}
                 Apply("ObservationAimOn");Require(settings.Value.Aim && Elements().Any(e=>Get(e,"Command").ToString()=="ObservationRadius"),"natural ON button commits before showing the conditional card");
                 var bindings=(HotkeyBindings)Get(Get(shell,"hotkeys"),"Bindings");var key=Elements().Single(e=>(string)GetOptional(e,"HotkeyTarget")=="combat.aim");var keyPoint=Position(key);Click(context,keyPoint);Click(context,keyPoint);var popup=Get(shell,"HotkeyPopup");Require((bool)Get(popup,"Visible") && (string)Get(popup,"Target")=="combat.aim","real Aim binding button opens its own public action");

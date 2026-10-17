@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using JueMingR.Features.HiddenFeatures;
 using JueMingR.TerrariaHost.F5;
 
 namespace JueMingR.TerrariaHost.About
@@ -14,6 +15,11 @@ namespace JueMingR.TerrariaHost.About
         private F5Element[] results;
         private int outcome;
         private double expires;
+        private HiddenFeatureAccess hiddenAccess;
+        internal void AttachHidden(HiddenFeatureAccess access) { hiddenAccess = access; }
+        internal void CancelGesture() { hiddenAccess?.CancelGesture(); }
+        internal bool CompleteTitleClick(long now, long identity)
+        { return hiddenAccess != null && hiddenAccess.TryCompleteTitleClick(now, identity); }
         internal int Revision { get; private set; }
         private bool imageFailed;
         internal void SetImageFailure(bool failed) { if (imageFailed != failed) { imageFailed = failed; Revision++; } }
@@ -21,10 +27,12 @@ namespace JueMingR.TerrariaHost.About
         { copy = clipboard; milliseconds = clock ?? Milliseconds; outcome = 0; }
         private static double Milliseconds() { return Stopwatch.GetTimestamp() * (1000.0 / Stopwatch.Frequency); }
         internal static bool Owns(F5Command command)
-        { return command == F5Command.AboutCopyGroup; }
+        { return command == F5Command.AboutCopyGroup || command == F5Command.AboutRevealHidden; }
         internal void Execute(F5Command command)
         {
-            if (!Owns(command)) return;
+            // Title completion comes only from F5's proven press/release path;
+            // it must never enter this clipboard-only command outlet.
+            if (command != F5Command.AboutCopyGroup) return;
             bool success = false;
             try { success = copy != null && copy(Group); }
             catch { /* The mechanical outlet gives no reliable cause; never claim success. */ }
@@ -32,12 +40,12 @@ namespace JueMingR.TerrariaHost.About
             expires = (milliseconds ?? Milliseconds)() + 3000;
         }
         internal void Leave()
-        { outcome = 0; }
+        { outcome = 0; CancelGesture(); }
         internal string Hint(F5Command command)
-        { return Owns(command) ? "点击复制" : null; }
+        { return command == F5Command.AboutCopyGroup ? "点击复制" : null; }
         internal F5Element Display(F5Element element)
         {
-            if (!Owns(element.Command) || outcome == 0 || results == null) return element;
+            if (element.Command != F5Command.AboutCopyGroup || outcome == 0 || results == null) return element;
             // Only pending feedback reads the monotonic clock. Expiry changes
             // the premeasured label, never geometry, input generation or clipboard.
             if ((milliseconds ?? Milliseconds)() >= expires) { outcome = 0; return element; }
@@ -50,7 +58,7 @@ namespace JueMingR.TerrariaHost.About
             float columns = Math.Max(420, viewportHeight - 148), leftWidth = 254, rightX = 268, rightWidth = 254;
             Card(elements, 0, y, 522, columns + 148, "backdrop");
             Card(elements, 0, y, 522, 78, "header");
-            FixedCenter(elements, measure, "决明R", 154, y + 18, 214, 42, 1.42f, F5ElementKind.AboutHeading);
+            FixedCenter(elements, measure, "决明R", 154, y + 18, 214, 42, 1.42f, F5ElementKind.AboutHeading, F5Command.AboutRevealHidden);
             y += 86; float top = y;
             Card(elements, 0, top, leftWidth, columns, "portrait");
             FixedCenter(elements, measure, "广 告 位 招 租", 24, top + columns / 2 - 26, leftWidth - 48, 22, .80f, F5ElementKind.AboutMuted);
@@ -81,11 +89,11 @@ namespace JueMingR.TerrariaHost.About
         }
         private static void Card(List<F5Element> elements, float x, float y, float width, float height, string style)
         { elements.Add(new F5Element(F5ElementKind.AboutCard, new F5Rect(x, y, width, height), style, default(F5Size), 0, F5Command.None)); }
-        private static void FixedCenter(List<F5Element> elements, Func<string, float, F5Size> measure, string text, float x, float y, float width, float height, float preferred, F5ElementKind kind)
+        private static void FixedCenter(List<F5Element> elements, Func<string, float, F5Size> measure, string text, float x, float y, float width, float height, float preferred, F5ElementKind kind, F5Command command = F5Command.None)
         {
             F5Size size = measure(text, preferred); float scale = FittedScale(size, width, height, preferred);
             size = measure(text, scale);
-            elements.Add(new F5Element(kind, new F5Rect(x + (width - size.Width) / 2, y + (height - size.Height) / 2, size.Width, size.Height), text, size, scale, F5Command.None));
+            elements.Add(new F5Element(kind, new F5Rect(x + (width - size.Width) / 2, y + (height - size.Height) / 2, size.Width, size.Height), text, size, scale, command));
         }
         private void ActionButton(List<F5Element> elements, Func<string, float, F5Size> measure, F5Rect rect, string label, F5Command command, float preferred)
         {

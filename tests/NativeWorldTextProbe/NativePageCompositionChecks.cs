@@ -20,6 +20,8 @@ namespace NativeWorldTextProbe
             var misc=Get(shell,"MiscUi");int builds=(int)Get(misc,"LayoutBuildCount");
             for(int i=0;i<30;i++)prepare();Require(builds==(int)Get(misc,"LayoutBuildCount"),"stable complete Misc composition does not rebuild migrated blocks");
             Input(context, prepare);
+            NativeHiddenEntryChecks.RevealForComposition(context);
+            Call(state,"Navigate",1);Call(renderer,"Prepare",state,1200f,1200f,1f);prepare();MiscOrder(shell);
             Call(shell,"CloseAndSubmitPosition");Console.WriteLine("PASS complete Items/Misc composition order, unchanged identities, final footer and stable layout work.");
         }
         private static void Input(object context, Action prepare)
@@ -57,8 +59,12 @@ namespace NativeWorldTextProbe
             Require(labels.SequenceEqual(new[]{"自动重铸","自动挖矿","自动捕捉","自动收获","自动存钱","自动收税"}),
                 "actual Misc feature order: "+string.Join(" > ",labels));
             var state=Get(shell,"State");var layout=Get(state,"Layout");
-            var merchant=((IEnumerable)Get(layout,"Elements")).Cast<object>().Single(e=>(string)GetOptional(e,"Text")=="游商测试");
-            Require((float)Get(Get(merchant,"Rect"),"Y")>=(float)Get(Get(shell,"RecoveryUi"),"ContentBottom"),"merchant follows the complete tax block");
+            var merchants=((IEnumerable)Get(layout,"Elements")).Cast<object>().Where(e=>(string)GetOptional(e,"Text")=="游商测试").ToArray();
+            bool unlocked=(bool)Get(Get(shell,"hiddenAccess"),"IsUnlocked");
+            Require(merchants.Length==(unlocked?1:0),"complete Misc includes merchant only after process unlock");
+            float bottom=(float)Get(Get(shell,"RecoveryUi"),"ContentBottom");
+            if(unlocked)Require((float)Get(Get(merchants[0],"Rect"),"Y")>=bottom,"merchant follows the complete tax block");
+            else Require((float)Get(layout,"ContentHeight")==Math.Max(0,bottom-6),"Locked complete Misc leaves no hidden footer spacing");
         }
         internal static void ItemsOrder(object page)
         {

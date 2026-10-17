@@ -10,6 +10,7 @@ using Terraria.GameInput;
 using JueMingR.Platform.Hotkeys;
 using JueMingR.TerrariaHost.Hotkeys;
 using JueMingR.TerrariaHost.EntityLabels;
+using JueMingR.Features.HiddenFeatures;
 
 namespace JueMingR.TerrariaHost.F5
 {
@@ -29,6 +30,7 @@ namespace JueMingR.TerrariaHost.F5
         private readonly Input.HostInputState inputState;
         internal Feedback.LocalShortFeedback ShortFeedback;
         private readonly HostHotkeys hotkeys;
+        private readonly HiddenFeatureAccess hiddenAccess;
         internal QuickItems.HostQuickItems QuickItems { get; set; }
         private CoinDeposit.HostCoinDeposit coinDeposit;
         private Processing.HostProcessing processing;
@@ -132,9 +134,13 @@ namespace JueMingR.TerrariaHost.F5
 
         internal F5Shell(Phase0TBiomeRuntime biome, HostPreferences preferences, HostNotes hostNotes)
             : this(biome, preferences, hostNotes, null) { }
-        internal F5Shell(Phase0TBiomeRuntime biome, HostPreferences preferences, HostNotes hostNotes, HostItems hostItems, Input.HostInputState inputState = null, HostHotkeys hotkeys = null, HostEntityLabels labels = null, WorldTargets.HostWorldTargets worldTargets = null, WorldObjectText.HostWorldObjectText worldObjects = null, Information.HostInformation information = null, Guidance.HostGuidance guidance = null, IDeathControls deaths = null, IMapControls maps = null, IFootprintControls footprints = null, IAnnouncementControls announcements = null)
+        internal F5Shell(Phase0TBiomeRuntime biome, HostPreferences preferences, HostNotes hostNotes, HostItems hostItems, Input.HostInputState inputState = null, HostHotkeys hotkeys = null, HostEntityLabels labels = null, WorldTargets.HostWorldTargets worldTargets = null, WorldObjectText.HostWorldObjectText worldObjects = null, Information.HostInformation information = null, Guidance.HostGuidance guidance = null, IDeathControls deaths = null, IMapControls maps = null, IFootprintControls footprints = null, IAnnouncementControls announcements = null, HiddenFeatureAccess hiddenAccess = null, Func<long> hiddenMilliseconds = null)
         { this.biome = biome; this.preferences = preferences; this.hostItems = hostItems; notes = new NotesPresentation(hostNotes.Workspace); notes.Attach(State);
             this.inputState = inputState ?? new Input.HostInputState();
+            this.hiddenAccess = hiddenAccess;
+            State.Layout.About.AttachHidden(hiddenAccess);
+            State.TitleGestureCancelled = State.Layout.About.CancelGesture;
+            if (hiddenMilliseconds != null) State.TitleMilliseconds = hiddenMilliseconds;
             onboardingOverlap = OverlapsOnboarding;
             State.Layout.About.Attach(new NotesClipboard(() => Main.instance.Window.Handle).TryCopy);
             this.hotkeys = hotkeys;
@@ -282,6 +288,7 @@ namespace JueMingR.TerrariaHost.F5
             {
                 RestoreLeases();
                 RestorePositionWhenLoaded();
+                State.Layout.SetHiddenFeaturesVisible(hiddenAccess != null && hiddenAccess.IsUnlocked);
                 if (worldObjects != null) State.Layout.SetWorldObjectSettings(worldObjects.Preferences.Value);
                 if (deaths != null) State.Layout.SetDeathInformation(deaths.CountText, deaths.DaysText);
                 matrix = Main.UIScaleMatrix;
@@ -430,7 +437,18 @@ namespace JueMingR.TerrariaHost.F5
                     renderer.GuidanceControls?.Execute(State.Command);
                     renderer.CombatControls?.Execute(State.Command);
                     renderer.CombatObservationControls?.Execute(State.Command);
-                    State.Layout.About.Execute(State.Command);
+                    if (State.Command == F5Command.AboutRevealHidden)
+                    {
+                        // ConsumeSample above owns the whole fifth release before
+                        // publishing visibility. Unlocking never submits an operation.
+                        if (State.Layout.About.CompleteTitleClick(State.TitleClickMilliseconds, State.TitleClickIdentity))
+                        {
+                            State.Layout.SetHiddenFeaturesVisible(true);
+                            try { ShortFeedback?.Show("hidden-entry.revealed", "隐藏功能已显示", true, () => hiddenAccess.IsUnlocked, ShortFeedback.Capture()); }
+                            catch { /* A presentation failure cannot revoke access or repeat the gesture. */ }
+                        }
+                    }
+                    else State.Layout.About.Execute(State.Command);
                     renderer.DeathControls?.Execute(State.Command); renderer.MapControls?.Execute(State.Command); renderer.FootprintControls?.Execute(State.Command); renderer.AnnouncementControls?.Execute(State.Command);
                     if (State.Command != F5Command.EnableBiome && State.Command != F5Command.DisableBiome) renderer.InformationControls?.Execute(State.Command); }
                 bool gameplay = !(TargetGestureBusy?.Invoke() ?? false) && inputActive && !(information != null && information.Adjustment.Active) && !adjustmentPending && !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest &&

@@ -837,6 +837,7 @@ namespace JueMingR.TerrariaHost
             internal WorldObjectText.HostWorldObjectText WorldObjects { get; private set; }
             internal Information.HostInformation Information { get; private set; }
             internal Guidance.HostGuidance Guidance { get; private set; }
+            private readonly Features.HiddenFeatures.HiddenFeatureAccess hiddenAccess = new Features.HiddenFeatures.HiddenFeatureAccess();
             internal DeathHistory.HostDeathRecords DeathRecords { get; private set; }
             internal Map.HostMapFeatures MapFeatures { get; private set; }
             internal Footprints.HostFootprints Footprints { get; private set; }
@@ -944,7 +945,7 @@ namespace JueMingR.TerrariaHost
                 Information = new Information.HostInformation(gameDirectory, runtime, preferences, InformationReadiness, error => RecordBiomeFailure("BIOME_DRAW", error), nativeNpcs);
                 runtime.SharedRuntime.AddFeature(Information);
                 Fishing?.AttachInformation(Information);
-                if (guidancePackage) { Guidance = new Guidance.HostGuidance(gameDirectory, runtime.SharedRuntime, nativeNpcs, () => Input.CanStartActions, () => Shell != null && Shell.CanExecuteMerchantInput, () => Input.CanPrepareText) { LayerStatus = entityLayerStatus }; runtime.SharedRuntime.AddFeature(Guidance); }
+                if (guidancePackage) { Guidance = new Guidance.HostGuidance(gameDirectory, runtime.SharedRuntime, nativeNpcs, () => Input.CanStartActions, () => Shell != null && Shell.CanExecuteMerchantInput, () => Input.CanPrepareText, hiddenAccess) { LayerStatus = entityLayerStatus }; runtime.SharedRuntime.AddFeature(Guidance); }
                 if (deathPackage) { DeathRecords = new DeathHistory.HostDeathRecords(gameDirectory, runtime.SharedRuntime, itemProbe); runtime.SharedRuntime.AddFeature(DeathRecords); }
                 if (mapPackage) { MapFeatures = new Map.HostMapFeatures(gameDirectory, runtime.SharedRuntime, itemProbe, Input); runtime.SharedRuntime.AddFeature(MapFeatures); }
                 if (footprintPackage) { Footprints = new Footprints.HostFootprints(gameDirectory, runtime.SharedRuntime, itemProbe, Input); runtime.SharedRuntime.AddFeature(Footprints); }
@@ -954,7 +955,7 @@ namespace JueMingR.TerrariaHost
                 var hotkeys = hotkeyPackage ? new Hotkeys.HostHotkeys(gameDirectory, runtime, preferences, items, Labels, WorldTargets, WorldObjects,
                     informationPackage ? Information : null, () => Shell != null && Shell.CanAdjustInformation, () => Shell?.RequestInformationAdjustment(), Guidance, DeathRecords, MapFeatures, Footprints, Browser == null ? (Func<bool>)null : Browser.CanAnnounce, Browser == null ? (Action)null : Browser.Announce, Browser == null ? (Func<bool>)null : Browser.CanQuery, Browser == null ? (Action)null : Browser.Query, Browser?.Announcements, QuickItems, CoinDeposit, Recovery, Processing, ShortFeedback, Tools, Fishing, Combat, CombatObservation) : null;
                 hotkeyFeedback = hotkeys?.Feedback;
-                Shell = new F5Shell(runtime, preferences, notes, items, Input, hotkeys, Labels, WorldTargets, WorldObjects, Information, Guidance, DeathRecords, MapFeatures, Footprints, Browser?.Announcements) { LayersReady = f5LayersReady };
+                Shell = new F5Shell(runtime, preferences, notes, items, Input, hotkeys, Labels, WorldTargets, WorldObjects, Information, Guidance, DeathRecords, MapFeatures, Footprints, Browser?.Announcements, hiddenAccess) { LayersReady = f5LayersReady };
                 Browser?.Attach(Shell, hotkeys);
                 if(Tools!=null){Shell.AttachTools(Tools);Tools.CanInterface=()=>Shell.CanAutomaticProcessingInput;Tools.CanMouseInterface=()=>Shell.CanAutomaticMouseInterface;Tools.Feedback=ShortFeedback;}
                 if(Combat!=null){Shell.AttachCombat(Combat);Combat.CanInterface=()=>Shell.CanTargetInput && !Shell.OwnsPointer && Shell.CanAutomaticMouseInterface;}

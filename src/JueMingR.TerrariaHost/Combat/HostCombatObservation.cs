@@ -83,7 +83,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(LayerStatus==Rendering.WorldLayerStatus.Unavailable)return "世界显示入口不可用，设置已保留；需要重新进入游戏。";
             if(World.Failed && (field==0 || field==1 || field==5))return "战斗显示暂不可用，设置已保留；可点击开启重试。";
             if(field==0 && (!Hooks.Ready || collisionFailed))return "碰撞箱显示暂不可用，设置已保留；可点击开启重试。";
-            if(field==1 && (!Hooks.Ready || pathFailed))return "NPC寻路预测暂不可用，设置已保留；可点击开启重试。";
+            if(field==1 && (!Hooks.Ready || pathFailed))return "寻路预测暂不可用，设置已保留；可点击开启重试。";
             if(field==5 && World.Marker.Failed)return "目标标记暂不可用，设置已保留；可点击开启重试。";
             return null;
         }

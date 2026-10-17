@@ -29,8 +29,10 @@ namespace JueMingR.TerrariaHost.F5
         private readonly IGuidanceControls host;
         internal GuidanceControls(IGuidanceControls host) { this.host = host; }
         internal static string Name(GuidanceKind kind) { return kind == GuidanceKind.Rare ? "稀有生物方向" : kind == GuidanceKind.Merchant ? "旅商方向" : "装备提示"; }
-        internal static void AddRows(List<F5Element> elements, Func<string, float, F5Size> measure, ref float y, int page)
+        internal static void AddRows(List<F5Element> elements, Func<string, float, F5Size> measure, ref float y, int page, bool hiddenVisible = false)
         {
+            // The row and its spacing share the same gate in both layout paths.
+            if (page == 1 && !hiddenVisible) return;
             var rows = new F5RowLayout(elements, measure);
             if (page == 1)
             {
