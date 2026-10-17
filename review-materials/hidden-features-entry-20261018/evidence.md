@@ -10,7 +10,7 @@
 
 ## 执行与可复核原件
 
-原始材料均在仓库隔离 `.local/hidden-entry/`，未提交大日志/PNG/二进制。当前候选的实际Debug检测产物与原版引用/脚本身份在 `fixed-consumers.json`、`fixed-probe-preparation.json`、`fixed-probe.exe`；before/after消费者哈希及完整源码输入无变化由 `fixed-run.log`记录。Debug在提交前编译，原构建metadata仍记基线SHA及dirty；实际编译输入与提交产品代码相同，不改署旧metadata。
+原始材料均在仓库隔离 `.local/hidden-entry/`，未提交大日志/PNG/二进制。首轮候选的实际Debug检测产物与原版引用/脚本身份在 `fixed-consumers.json`、`fixed-probe-preparation.json`、`fixed-probe.exe`；before/after消费者哈希及完整源码输入无变化由 `fixed-run.log`记录。该Debug在提交前编译，原构建metadata仍记基线SHA及dirty；实际编译输入与当轮提交产品代码相同，不改署旧metadata。
 
 | 责任 | 实际入口与结果 | 原件 |
 |---|---|---|
@@ -40,4 +40,22 @@ R1实际运行 `GuidanceCpu` exit0，原件 `.local/hidden-entry/r1-guidance.log
 
 按任务04选择有限叶；没有跑全战斗/NPC/200小时足迹矩阵，没有把历史PASS签为本次完整累计结果。无Timer/worker/文件持久化或新增实体扫描；工作量证据仅支持实际稳定generation/measurements与普通Guidance有限关闭/稳定场景，不宣称零开销或FPS改进。
 
-截至本证据：首轮完整独审发现的唯一R1已修并通过上述必要定向检查，原独审R1窄复核、实际Release完整包正向准入及05安装尚未执行。保持 `INCOMPLETE / releaseEligible=false`；候选不是所有者接受。无merge/关闭#120/Tag/Release/版本推进/旅行菜单/操作所有者游戏授权。后续只在独审和主调度准入后按05一次轻量窗口交付完整候选，包/安装另按实际身份报告。
+## 集中独审与05完整包交付
+
+原独审R1窄复核 **PASS**，与原全审组合覆盖 TASK_BASE→`b4a48f7140450f6423cf0116aa04ad73dae153d3` 完整28文件，无未决产品阻塞；主调度对同一HEAD决定 **READY_FOR_PACKAGE**，不是所有者验收。原文及来源分别为 `.local/hidden-entry/review-b4a48f7-PASS.md`、`coordinator-b4a48f7-admission.md`，有限阶段记录绑定实际原件及源码/输入/消费者，不改署首轮NEEDS_FIX。
+
+包入口01在构建前因PS5与既有PS7身份的中文路径排序不同而拒绝；1937个path/hash集合完全相同。02切同一已审PS7后正确拒绝PS5专用Debug准备身份（832项仅 `os:powershell`项不同）。保留 `package-01.log`、`package-02.log`、`package-runtime-disposition.json`；不改源、reader、全局语言或旧metadata。沿原入口在PS7完成必要Debug准备，并仅重跑GuidanceCpu绑定实际新消费者，`package-runtime-guidance.log` exit0；旧纯状态、XNB及页面组合按原已审源码/实际Framework环境关系复用，未重签为新执行。最终同源 `package-03.log` 为普通完整包正向入口成功。
+
+| 交付事实 | 固定结果 |
+|---|---|
+| 产品、完整包、现装源码 | `b4a48f7140450f6423cf0116aa04ad73dae153d3`，完整ContinuousProcessing / Release / net472 / x86；包含已接受main全部功能及HIDE，不是演示或DLL补丁 |
+| 唯一ZIP | `outputs/hidden-entry-20261018-b4a48f7-final/JueMingR-Continuous-Processing-b4a48f7140450f6423cf0116aa04ad73dae153d3.zip` |
+| ZIP大小 / SHA-256 | 2323267 bytes / `873F30C8AD342130F0A0AAE94CCCAB705EC0993C62D44B6010B14AD2E41B1740` |
+| 构建与资格 | 原构建器完整成员/载荷/ZIP核验成功；已提交产品源干净，外来资产按声明保留导致工作区仍dirty；`STAGE_DEVELOPMENT / INCOMPLETE / releaseEligible=false` |
+| 安装 | 现场回执确认旧`81057c6`与保留原包匹配、无游戏/Server/worker运行。只备份受控12文件；匹配旧包正规Restore与新包正规Install均exit0；复用工具成员/哈希/拥有权校验，仅一次新回执与10载荷长度读回成功，现装为新包 |
+| 备份与恢复 | `.local/hidden-entry/installed-backup-81057c6-before-b4a48f7`、`installed-backup-manifest.json`保留；旧完整包`outputs/footprints-200h-20261017-81057c6/`保留。匹配新包`Restore-Phase0S.ps1`及旧包Install是正常恢复入口，不手拼DLL |
+| 原始回执 | `package-result.json`、`installation-preflight.json`、`restore-old-01.log`、`install-new-01.log`、`installation-result.json`；实际目标只在本地回执记录 |
+
+本次05只完成一个成功完整包与一次正常备份换装，没有二次安装审计、全用户目录哈希或安装后业务矩阵。未启动/操作所有者游戏，未读写其角色/世界/足迹或配置正文。前序#119左下角战斗文字撤除已随完整候选进入现装；这不是新增本人HUD实测或完整包正常启动证据。
+
+后续由所有者自己体验：F5关于页顶部大标题两秒五击→杂项游商测试→另点召唤；新进程恢复隐藏，单人限制保留，解锁不召唤。本人体验、新完整包正常加载、真实物理输入、真人多人、全部设备/字体及FPS仍未证明。Issue保持OPEN、PR保持Draft；无merge/关闭任务/Tag/Release/版本推进/旅行菜单。最终纯文档提交不改变固定包/现装来源，也不触发重包重装；交付后停止等待所有者体验及网页复审。
