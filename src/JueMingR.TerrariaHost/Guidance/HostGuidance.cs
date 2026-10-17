@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using JueMingR.Features.Guidance;
+using JueMingR.Features.HiddenFeatures;
 using JueMingR.Infrastructure.Storage;
 using JueMingR.Platform.Runtime;
 using JueMingR.Platform.Settings;
@@ -17,6 +18,7 @@ namespace JueMingR.TerrariaHost.Guidance
         private readonly GuidanceObservationReader source;
         private readonly Func<bool> inputAllowed;
         private readonly Func<bool> presentationAllowed;
+        private readonly HiddenFeatureAccess hiddenAccess;
         private readonly PreferenceDocument<GuidancePreferences> preferences;
         private readonly Stopwatch clock = Stopwatch.StartNew();
         private bool stopping;
@@ -31,11 +33,12 @@ namespace JueMingR.TerrariaHost.Guidance
         internal readonly MerchantTestFeature MerchantTest;
         internal readonly GuidanceWorldLayer World;
         internal Rendering.WorldLayerStatus LayerStatus { get; set; }
-        internal HostGuidance(string gameDirectory, SingleFeatureRuntime runtime, NativeNpcObservation npcs, Func<bool> inputAllowed, Func<bool> merchantInputAllowed, Func<bool> presentationAllowed)
+        internal HostGuidance(string gameDirectory, SingleFeatureRuntime runtime, NativeNpcObservation npcs, Func<bool> inputAllowed, Func<bool> merchantInputAllowed, Func<bool> presentationAllowed, HiddenFeatureAccess hiddenAccess = null)
         {
             this.runtime = runtime; this.npcs = npcs; this.inputAllowed = inputAllowed; this.presentationAllowed = presentationAllowed;
+            this.hiddenAccess = hiddenAccess;
             source = new GuidanceObservationReader(npcs); Rare = new RareCreatureDirection(npcs); Merchant = new TravellingMerchantDirection(npcs);
-            MerchantTest = new MerchantTestFeature(new MerchantTestOperations(() => Session, merchantInputAllowed));
+            MerchantTest = new MerchantTestFeature(new MerchantTestOperations(() => Session, merchantInputAllowed, () => HiddenUnlocked));
             var file = new AtomicFileDocument(Path.Combine(gameDirectory, "JueMingRData", "config", "features", "guidance.json"), 65536, true, ".schema1-original");
             preferences = new PreferenceDocument<GuidancePreferences>(file, new RetainingCodec(file), GuidancePreferences.Default);
             World = new GuidanceWorldLayer(this); AppDomain.CurrentDomain.ProcessExit += OnExit;
@@ -83,7 +86,8 @@ namespace JueMingR.TerrariaHost.Guidance
             return changed;
         }
         internal void Toggle(GuidanceKind kind) { SetEnabled(kind, !IsEnabled(kind)); }
-        internal string SummonReason { get { return !ControlsEnabled ? "当前暂不可用。" : MerchantTest.Pending ? "正在尝试召唤。" : MerchantTestOperations.UnavailableReason; } }
+        private bool HiddenUnlocked { get { return hiddenAccess != null && hiddenAccess.IsUnlocked; } }
+        internal string SummonReason { get { return !HiddenUnlocked || !ControlsEnabled ? "当前暂不可用。" : MerchantTest.Pending ? "正在尝试召唤。" : MerchantTestOperations.UnavailableReason; } }
         internal void RequestMerchant() { if (SummonReason == null && inputAllowed()) MerchantTest.Request(Session); }
         // Kept enabled to retire pending intents and disabled feature content;
         // each closed display exits before any NPC/equipment/pylon observation.
@@ -97,7 +101,9 @@ namespace JueMingR.TerrariaHost.Guidance
         {
             bool valid = GuidanceObservationReader.ValidPlayer;
             bool pending = MerchantTest.Pending;
-            MerchantTest.Update(Session, valid && inputAllowed());
+            // Retire pending intent even while Locked; never postpone it until
+            // a future unlock. Ordinary directions/warnings continue below.
+            MerchantTest.Update(Session, HiddenUnlocked && valid && inputAllowed());
             if (pending) { npcs.BeginTick(); Merchant.InvalidateDiscovery(); }
             if (!valid) { Rare.Clear(); Merchant.Clear(); Location.Clear(); Equipment.Clear(); return; }
             var player = Main.LocalPlayer;

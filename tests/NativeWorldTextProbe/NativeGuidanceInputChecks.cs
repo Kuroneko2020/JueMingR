@@ -36,6 +36,7 @@ namespace NativeWorldTextProbe
                 Require(!(bool)Get(shell,"Failed"), "real F5 Guidance input remains healthy");
             };
             var none = new Keys[0]; frame(940,620,false,none); frame(940,620,false,none);
+            NativeHiddenEntryChecks.Run(context, host);
             Action<int,string> click = (page, command) =>
             {
                 Call(state,"Navigate",page); Call(state,"RestoreVisible"); Call(renderer,"Prepare",state,960f,640f,1f);
@@ -109,7 +110,7 @@ namespace NativeWorldTextProbe
             var reloaded=new PreferenceDocument<GuidancePreferences>(new AtomicFileDocument(Path.Combine(root,"JueMingRData","config","features","guidance.json"),65536,true),new GuidancePreferenceCodec(),GuidancePreferences.Default);
             Set(host,"preferences",reloaded); NativeGuidanceChecks.Until(()=>reloaded.Snapshot.IsLoaded);
             Require(reloaded.Snapshot.Value.Equals(expected),"actual async save and new owner reload preserves independent choices");
-            Console.WriteLine("PASS: three real F5 pages, name help, visible summon risk, physical release/hotkey dispatch, unknown binding retention and restart save.");
+            Console.WriteLine("PASS: three real F5 pages, name help, revealed summon row, physical release/hotkey dispatch, unknown binding retention and restart save.");
         }
     }
 }

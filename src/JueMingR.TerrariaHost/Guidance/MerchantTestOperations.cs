@@ -10,13 +10,14 @@ namespace JueMingR.TerrariaHost.Guidance
     {
         private readonly Func<long> session;
         private readonly Func<bool> inputAllowed;
+        private readonly Func<bool> hiddenAllowed;
         private readonly Action spawn;
         private readonly int thread = Thread.CurrentThread.ManagedThreadId;
-        internal MerchantTestOperations(Func<long> session, Func<bool> inputAllowed) : this(session, inputAllowed, WorldGen.SpawnTravelNPC) { }
+        internal MerchantTestOperations(Func<long> session, Func<bool> inputAllowed, Func<bool> hiddenAllowed = null) : this(session, inputAllowed, WorldGen.SpawnTravelNPC, hiddenAllowed) { }
         // The isolated Host probe supplies an operation seam. Production binds
         // exactly .8's zero-argument entry, never NewNPC or a copied house scan.
-        internal MerchantTestOperations(Func<long> session, Func<bool> inputAllowed, Action spawn)
-        { this.session = session; this.inputAllowed = inputAllowed; this.spawn = spawn; }
+        internal MerchantTestOperations(Func<long> session, Func<bool> inputAllowed, Action spawn, Func<bool> hiddenAllowed = null)
+        { this.session = session; this.inputAllowed = inputAllowed; this.spawn = spawn; this.hiddenAllowed = hiddenAllowed; }
 #if DEBUG
         internal int NativeCalls { get; private set; }
 #endif
@@ -36,6 +37,10 @@ namespace JueMingR.TerrariaHost.Guidance
         {
             if (request == null || thread != Thread.CurrentThread.ManagedThreadId || request.Session != session() || !inputAllowed())
                 return Result(GameOperationOutcome.Cancelled, "召唤已取消。");
+            // Visibility is not the side-effect boundary. Recheck the same
+            // process eligibility before NPC scanning or vanilla invocation;
+            // omitted dependencies fail closed, including old thin profiles.
+            if (hiddenAllowed == null || !hiddenAllowed()) return Result(GameOperationOutcome.Rejected, "当前暂不可用。");
             string unavailable = UnavailableReason;
             if (unavailable != null) return Result(GameOperationOutcome.Rejected, unavailable);
             bool found;

@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using JueMingR.Platform.Settings;
 
 namespace JueMingR.TerrariaHost.F5
@@ -26,6 +27,14 @@ namespace JueMingR.TerrariaHost.F5
         private int armedGeneration;
         private int scrollGeneration;
         private float scrollContentHeight;
+        private bool titleSequence;
+        private long physicalClick, titlePressedAt;
+        private float titlePressX, titlePressY, titleX, titleY, titleScroll;
+        private int titleGeneration;
+        internal Func<long> TitleMilliseconds { get; set; } = () => (long)(Stopwatch.GetTimestamp() * (1000.0 / Stopwatch.Frequency));
+        internal Action TitleGestureCancelled { get; set; }
+        internal long TitleClickMilliseconds { get; private set; }
+        internal long TitleClickIdentity { get; private set; }
         internal readonly F5Layout Layout = new F5Layout();
         internal bool Visible { get; private set; }
         internal bool Ready { get; set; }
@@ -91,7 +100,8 @@ namespace JueMingR.TerrariaHost.F5
             }
             bool pressed = input.Left && !previousLeft;
             bool released = !input.Left && previousLeft;
-            if (input.BlockPointer) { pressed = released = false; armed = null; capture = 0; }
+            if (input.BlockPointer) { CancelTitleGesture(); pressed = released = false; armed = null; capture = 0; }
+            if (pressed) physicalClick++;
             if (input.F5 && !previousF5)
             {
                 if (Visible)
@@ -116,6 +126,16 @@ namespace JueMingR.TerrariaHost.F5
             // here so the outer painted rectangle and pointer gate agree.
             X = (float)Math.Floor(Clamp(X, 12, input.Width / input.Scale - size.Width - 12));
             Y = (float)Math.Floor(Clamp(Y, 12, input.Height / input.Scale - size.Height - 12));
+            // A partial title sequence belongs to one visible hit geometry.
+            // Pointer departure is sticky: returning while held cannot revive it.
+            if (titleSequence || IsHiddenTitle(armed))
+            {
+                bool sameContext = Visible && Page == 5 && layoutReady && capture == 0 && !input.BlockPointer &&
+                    !input.Right && input.Wheel == 0 && titleGeneration == Layout.Generation && titleX == X && titleY == Y && titleScroll == Scroll;
+                if (!sameContext || !IsHiddenTitle(HitButton(input.X - X, input.Y - Y))) CancelTitleGesture();
+                else if (IsHiddenTitle(armed) && (TitleMilliseconds() - titlePressedAt > 500 ||
+                    Math.Abs(input.X - titlePressX) > 4 || Math.Abs(input.Y - titlePressY) > 4)) CancelTitleGesture();
+            }
             if (OwnsPointer)
             {
                 if (input.Left) leftTail = true;
@@ -129,12 +149,14 @@ namespace JueMingR.TerrariaHost.F5
                         armed = null;
                         if (Layout.Title.Contains(localX, localY))
                         {
+                            CancelTitleGesture();
                             capture = 1; grabX = localX; grabY = localY;
                             dragStartX = (int)X; dragStartY = (int)Y;
                             dragWidth = input.Width; dragHeight = input.Height; dragScale = input.Scale;
                         }
                         else if (Layout.ScrollTrack.Contains(localX, localY) && Layout.MaxScroll > 0)
                         {
+                            CancelTitleGesture();
                             capture = 2;
                             scrollGeneration = Layout.Generation; scrollContentHeight = Layout.ContentHeight;
                             F5Rect thumb = Layout.ScrollThumb(Scroll);
@@ -148,7 +170,16 @@ namespace JueMingR.TerrariaHost.F5
                                     if (i != Page && (BeforeLeave == null || BeforeLeave(i))) Navigate(i);
                                     layoutReady = false; break;
                                 }
-                            if (layoutReady) { armed = HitButton(localX, localY); armedGeneration = Layout.Generation; }
+                            if (layoutReady)
+                            {
+                                armed = HitButton(localX, localY); armedGeneration = Layout.Generation;
+                                if (IsHiddenTitle(armed))
+                                {
+                                    if (input.Right) CancelTitleGesture();
+                                    else { titlePressedAt = TitleMilliseconds(); titlePressX = input.X; titlePressY = input.Y; RememberTitleContext(); }
+                                }
+                                else CancelTitleGesture();
+                            }
                         }
                     }
                     if (capture == 2 && input.Left)
@@ -162,7 +193,11 @@ namespace JueMingR.TerrariaHost.F5
                     // A click must release on the same element in the same layout generation.
                     if (released && capture == 0 && layoutReady && armed != null &&
                         armedGeneration == Layout.Generation && ReferenceEquals(armed, HitButton(localX, localY)))
-                    { Command = armed.Command; ClickedControl = armed; if (armed.HotkeyTarget != null) ClickedHotkey = armed; }
+                    {
+                        Command = armed.Command; ClickedControl = armed; if (armed.HotkeyTarget != null) ClickedHotkey = armed;
+                        if (IsHiddenTitle(armed))
+                        { TitleClickMilliseconds = TitleMilliseconds(); TitleClickIdentity = physicalClick; titleSequence = true; RememberTitleContext(); }
+                    }
                 }
             }
             // Consume the release sample before retiring its tail, including after window closure.
@@ -170,6 +205,18 @@ namespace JueMingR.TerrariaHost.F5
             if (!input.Left) { FinishTitleDrag(); leftTail = false; capture = 0; armed = null; }
             if (!input.Right) rightTail = false;
             previousLeft = input.Left;
+        }
+
+        private static bool IsHiddenTitle(F5Element element)
+        { return element != null && element.Kind == F5ElementKind.AboutHeading && element.Command == F5Command.AboutRevealHidden; }
+        private void RememberTitleContext()
+        { titleGeneration = Layout.Generation; titleX = X; titleY = Y; titleScroll = Scroll; }
+        private void CancelTitleGesture()
+        {
+            if (!titleSequence && !IsHiddenTitle(armed)) return;
+            titleSequence = false;
+            if (IsHiddenTitle(armed)) armed = null;
+            TitleGestureCancelled?.Invoke();
         }
 
         private void CancelInvalidScrollCapture()
@@ -180,8 +227,8 @@ namespace JueMingR.TerrariaHost.F5
             { capture = 0; armed = null; }
         }
         internal void ClampScroll() { CancelInvalidScrollCapture(); Scroll = Clamp(Scroll, 0, Layout.MaxScroll); }
-        internal void ScrollTo(float value) { Scroll = Clamp(value, 0, Layout.MaxScroll); }
-        internal void Navigate(int page) { if (page >= 0 && page < F5Layout.Pages.Length) { Page = page; Scroll = 0; } }
+        internal void ScrollTo(float value) { float next = Clamp(value, 0, Layout.MaxScroll); if (next != Scroll) CancelTitleGesture(); Scroll = next; }
+        internal void Navigate(int page) { if (page >= 0 && page < F5Layout.Pages.Length) { if (page != Page) CancelTitleGesture(); Page = page; Scroll = 0; } }
 
         internal F5Element HitButton(float localX, float localY)
         {
@@ -191,7 +238,8 @@ namespace JueMingR.TerrariaHost.F5
             for (int i = 0; i < Layout.Elements.Count; i++)
             {
                 F5Element element = Layout.Elements[i];
-                if ((element.Kind == F5ElementKind.Button || element.HotkeyTarget != null) && element.Rect.Contains(x, y)) return element;
+                // Only the dedicated About heading joins existing buttons/keys.
+                if ((element.Kind == F5ElementKind.Button || element.HotkeyTarget != null || IsHiddenTitle(element)) && element.Rect.Contains(x, y)) return element;
             }
             return null;
         }
@@ -212,6 +260,7 @@ namespace JueMingR.TerrariaHost.F5
             // Close/session exit may carry synthesized input. Submit
             // the last accepted position before cancelling, never that sample.
             FinishTitleDrag();
+            CancelTitleGesture();
             Visible = false; capture = 0; armed = null; Command = F5Command.None;
         }
         internal void CancelForFocusLoss()
@@ -219,6 +268,7 @@ namespace JueMingR.TerrariaHost.F5
             // An interrupted gesture has no release command. Keep the last
             // accepted preference, not the uncommitted drag projection.
             if (capture == 1) { X = dragStartX; Y = dragStartY; }
+            CancelTitleGesture();
             Visible = false; capture = 0; armed = null; Command = F5Command.None;
             previousLeft = previousF5 = true;
         }

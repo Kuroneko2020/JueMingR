@@ -40,6 +40,7 @@ namespace NativeWorldTextProbe
                 Require((int)Get(resources, "LoadAttempts") == attempts, "Stable display reuses exactly two owned textures");
                 Require((int)Get(Get(renderer, "aboutPainter"), "PaletteReads") == paletteReads, "Stable page never resamples the borrowed skin");
                 Call(page, "Leave");
+                NativeHiddenEntryChecks.Geometry(context, 1280, height, scale);
             }
             DrawOnboarding(context, graphics, output);
             CheckQrFrames(renderer, graphics);
@@ -50,8 +51,10 @@ namespace NativeWorldTextProbe
             object imageRect = Get(((System.Collections.IEnumerable)Get(layout, "Elements")).Cast<object>().First(e => Get(e, "Kind").ToString() == "Image"), "Rect");
             for (int i = 0; i < 2; i++) graphics.Pixels(() => Call(failedImages, "Draw", Main.spriteBatch, Terraria.GameContent.TextureAssets.MagicPixel.Value, imageRect, "missing.jpg", 1f), Matrix.Identity);
             Require((bool)Get(failedImages, "Failed") && (int)Get(failedImages, "LoadAttempts") == 1, "Missing embedded resource latches one decode attempt on the same device");
+            var releaseOldFontGesture = NativeHiddenEntryChecks.ArmForFontChange(context);
             using (var replacement = new ProbeGraphics((string)Get(graphics, "contentDirectory")))
             {
+                releaseOldFontGesture();
                 replacement.Pixels(() => Call(failedImages, "Draw", Main.spriteBatch, Terraria.GameContent.TextureAssets.MagicPixel.Value, imageRect, "alipay.jpg", 1f), Matrix.Identity);
                 Require(!(bool)Get(failedImages, "Failed") && (int)Get(failedImages, "LoadAttempts") == 2, "A real device generation permits one recovery load and clears failure");
                 Call(failedImages, "Dispose");

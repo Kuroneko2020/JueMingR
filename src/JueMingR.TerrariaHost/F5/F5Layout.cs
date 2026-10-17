@@ -33,7 +33,7 @@ namespace JueMingR.TerrariaHost.F5
         ConfigureRare, ConfigureMerchant, DeathDetails, DeathConfigure, DeathEnable, DeathDisable,
         MarkerManage, MarkerEnable, MarkerDisable, ExplorationDetails, ExplorationValue,
         FootprintConfigure, FootprintEnable, FootprintDisable, AnnouncementEnable, AnnouncementDisable,
-        AboutCopyGroup,
+        AboutCopyGroup, AboutRevealHidden,
         CombatAutoClickOn, CombatAutoClickOff, CombatFlailOn, CombatFlailOff, CombatSwitchOn, CombatSwitchOff,
         CombatRevolverOn, CombatRevolverOff, CombatStringOn, CombatStringOff, CombatFacingOn, CombatFacingOff,
         CombatReportOn, CombatReportOff, CombatGoblinOn, CombatGoblinOff, CombatInterval,
@@ -74,6 +74,8 @@ namespace JueMingR.TerrariaHost.F5
         private int page = -1;
         internal readonly About.AboutPage About = new About.AboutPage();
         private int builtAboutRevision;
+        private bool hiddenVisible, builtHiddenVisible, footerHiddenVisible;
+        internal void SetHiddenFeaturesVisible(bool value) { hiddenVisible = value; }
         private Features.Combat.ObservationOptions observation=new Features.Combat.ObservationOptions();
         private int observationRevision,builtObservationRevision;
         internal void SetObservationOptions(Features.Combat.ObservationOptions value)
@@ -116,11 +118,11 @@ namespace JueMingR.TerrariaHost.F5
         internal void SetMiscFooterStart(float start)
         {
             if(page!=1)return;
-            if(miscFooterStart!=start)
+            if(miscFooterStart!=start || footerHiddenVisible!=hiddenVisible)
             {
                 elements.Clear();float y=start;
-                GuidanceControls.AddRows(elements,TextSize,ref y,1);
-                ContentHeight=Math.Max(0,y-6);miscFooterStart=start;Generation++;
+                GuidanceControls.AddRows(elements,TextSize,ref y,1,hiddenVisible);
+                ContentHeight=Math.Max(0,y-6);miscFooterStart=start;footerHiddenVisible=hiddenVisible;builtHiddenVisible=hiddenVisible;Generation++;
             }
         }
         internal void SetRecoveryContentHeight(float height) { if (page==10 || page==1) ContentHeight=Math.Max(0,height); }
@@ -136,7 +138,7 @@ namespace JueMingR.TerrariaHost.F5
         }
 
         internal bool Matches(float width, float height, float scale, int currentPage)
-        { return Generation > 0 && width == screenWidth && height == screenHeight && scale == uiScale && page == currentPage && (currentPage != 8 || builtObservationRevision == observationRevision) && (currentPage != 9 || builtInformationRevision == informationRevision) && (currentPage != 2 || builtDeathRevision == deathRevision) && (currentPage != 5 || builtAboutRevision == About.Revision); }
+        { return Generation > 0 && width == screenWidth && height == screenHeight && scale == uiScale && page == currentPage && (currentPage != 1 || builtHiddenVisible == hiddenVisible) && (currentPage != 8 || builtObservationRevision == observationRevision) && (currentPage != 9 || builtInformationRevision == informationRevision) && (currentPage != 2 || builtDeathRevision == deathRevision) && (currentPage != 5 || builtAboutRevision == About.Revision); }
 
         internal void Ensure(float width, float height, float scale, int currentPage,
             object font, Func<string, F5Size> measureText)
@@ -187,7 +189,7 @@ namespace JueMingR.TerrariaHost.F5
             else if (currentPage == 7 && !FishingAttached) BuildFishing(ref y);
             else if (currentPage == 8)
             {CombatObservationControls.AddRows(elements,TextSize,observation,ref y);CombatControls.AddRows(elements,TextSize,ref y,0,6);GuidanceControls.AddRows(elements,TextSize,ref y,8);CombatControls.AddRows(elements,TextSize,ref y,6,2);}
-            else if (currentPage == 1 || currentPage == 2) GuidanceControls.AddRows(elements, TextSize, ref y, currentPage);
+            else if (currentPage == 1 || currentPage == 2) GuidanceControls.AddRows(elements, TextSize, ref y, currentPage, hiddenVisible);
             if (currentPage == 2) DeathControls.AddRows(elements, DynamicTextSize, ref y, deathCount, worldDays);
             if (currentPage == 2) MapControls.AddRows(elements, TextSize, ref y);
             if (currentPage == 2) FootprintControls.AddRows(elements, TextSize, ref y);
@@ -197,6 +199,7 @@ namespace JueMingR.TerrariaHost.F5
             builtInformationRevision = informationRevision;
             builtDeathRevision = deathRevision;
             builtAboutRevision = About.Revision;
+            builtHiddenVisible = hiddenVisible;
             builtObservationRevision=observationRevision;
             Generation++;
         }

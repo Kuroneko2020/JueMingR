@@ -62,6 +62,25 @@ namespace NativeWorldTextProbe
         { var timer = System.Diagnostics.Stopwatch.StartNew(); while (!ready()) { if (timer.ElapsedMilliseconds > 5000) throw new TimeoutException("guidance readiness/save"); Thread.Sleep(5); } }
         internal static NPC Npc(int slot, int type, int rarity, float x)
         { return new NPC { active = true, whoAmI = slot, type = type, netID = type, rarity = rarity, life = 100, width = 20, height = 40, position = new Vector2(x, 450) }; }
+        internal static void CheckLocked(object context, object host)
+        {
+            object access = Get(context, "hiddenAccess");
+            Require(!(bool)Get(access, "IsUnlocked"), "complete fresh root begins Locked");
+            var feature = (MerchantTestFeature)Get(host, "MerchantTest"); object port = Get(feature, "port");
+            int calls = 0; Set(port, "spawn", (Action)(() => calls++));
+            Call(host, "RequestMerchant"); Require(!feature.Pending, "Locked direct Host request cannot queue");
+            Require((string)Get(host, "SummonReason") == "当前暂不可用。", "Locked rejection does not reveal hidden gesture");
+            long session = (long)Get(host, "Session");
+            var result = (MerchantTestReceipt)Call(port, "Execute", new MerchantTestRequest(session));
+            Require(result.Outcome == GameOperationOutcome.Rejected && calls == 0, "Locked final port refuses before native spawn");
+            feature.Request(session); Call(host, "Update", (ulong)0);
+            Require(!feature.Pending && feature.Result.Outcome == GameOperationOutcome.Cancelled && calls == 0, "Locked stale pending consumed rather than retained for unlock");
+            var missing = Activator.CreateInstance(port.GetType(), Flags, null,
+                new object[] { (Func<long>)(() => session), (Func<bool>)(() => true), (Action)(() => calls++), null }, null);
+            result = (MerchantTestReceipt)Call(missing, "Execute", new MerchantTestRequest(session));
+            Require(result.Outcome == GameOperationOutcome.Rejected && calls == 0, "omitted eligibility dependency fails closed");
+            Console.WriteLine("PASS: Locked direct Host, stale pending, final native port and omitted dependency cannot spawn.");
+        }
         private static void CheckDisplays(object context, object host, object npcs)
         {
             var rare = (RareCreatureDirection)Get(host, "Rare"); var merchant = (TravellingMerchantDirection)Get(host, "Merchant"); var warning = (EquipmentWarning)Get(host, "Equipment");
@@ -99,6 +118,7 @@ namespace NativeWorldTextProbe
             Main.invasionType = 3; Call(context, "UpdateRuntime"); Require(warning.Notifications == notifications + 1, "different invasion identity is meaningful danger change"); Main.invasionType = 0;
             Main.npc[1].life = 0; Call(context, "UpdateRuntime"); Require(!rare.Visible, "dead rare clears before next full discovery");
             Main.gameMenu = true; Call(context, "UpdateRuntime"); Require(!rare.Visible && !merchant.Visible && warning.Alpha == 0, "session end clears all views"); Main.gameMenu = false;
+            Require((bool)Get(Get(context, "hiddenAccess"), "IsUnlocked"), "successful unlock survives session end in the same process");
             Call(context, "UpdateRuntime"); Main.dedServ = true; Call(context, "UpdateRuntime"); Require(!merchant.Visible, "server cannot display client guidance"); Main.dedServ = false; Call(context, "UpdateRuntime");
             Console.WriteLine("Guidance Host stable 60 updates/mode at N=200: basic reads=12000 shared; repeated Show/layout/save=0; modes=0,1 are isolated adapters, not live multiplayer.");
         }
