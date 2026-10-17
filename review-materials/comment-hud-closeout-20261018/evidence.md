@@ -16,7 +16,7 @@
 
 - 首轮原件 `hud-visual-01.log`：8项目 Debug 编译0警告0错误、结构 failures=0；17:07:59—17:08:17 UTC 准备期间，B在17:08:05最后修订像素配色期待，末尾正确拒绝 `Preparation inputs/outputs changed`，未执行HUD。该拒绝不计PASS。
 - 冻结后第二轮35.38秒、exit0。正式 PrepareOnly 核对并复用匹配的 Debug 编译/结构；NativeWorldTextProbe重新编译0警告0错误。全程仅隔离进程与合成数据，从启动/原版初始化前音乐、音效、环境声均为0。
-- 实际原版 Host/XNB/XNA：正常Path+Collision仍有路径和碰撞像素，角落 `DrawBorderString` 提交为0；空路线/两点截断不产生替代文字，OFF退出正常；100次Draw不增加NPC Step或Host/AttackIntercept求解。真实事件Draw、重复Draw不重领、同帧屏外、short6、墙钟年龄、无效batch及预算未访问反例均PASS。normal/inverted两张PNG已查看，保留实际几何与目标标记，没有角落文字。
+- 实际原版 Host/XNB/XNA：正常Path+Collision仍有路径和碰撞像素，角落 `DrawBorderString` 提交为0；空路线/两点截断不产生替代文字，OFF退出正常；100次Draw不增加NPC Step或Host/AttackIntercept求解。真实事件Draw、重复Draw不重领、同帧屏外、short6、墙钟年龄、无效batch及预算未访问反例均PASS。normal/inverted两张PNG已查看，保留实际路径/碰撞几何，没有角落文字；本场景未开启目标标记，其 Capture/Project/Draw/PollResources 调用与资源恢复链由静态 diff 确认未变。
 - 测试在 `342bf32` 加本轮未提交输入、`clean=false` 的受限工作区执行，未冒称最终提交重新跑过。源码/测试快照 `hud-visual-02/source-inputs.json` SHA256 `BA70AB878C2DA80F55282DD4EEA3787A22E9311FBB3950CC81454EE2433DA166`；后续提交只固定同一受测字节和本页记录。
 - Debug compileFingerprint：`C2A54232D541272DF834286696E4D0E76D3A702CB33A3E7BE6BBE27711C87464`。实际Probe SHA256 `3EE4105D60E0E2CB2C8A0C73928CD219CA282982496C20E3F86F37C4AD38D4EA`；实际Host SHA256 `FA52317E1EBDA4226642CDA6C49170F3251687614EA236E9F29F0EC1E7D55430`。完整准备记录、全部src/tests哈希、日志与PNG留本轮 `.local`。
 - 有限diff、删除引用、编码/BOM、外来资产原字节、链接目标及 `git diff --check` 已核。纯注释业务不重跑矩阵；此前足迹完整独审与200小时工程证据沿[原短证据](../footprints-200h-20261017/evidence.md)复用，不重开算法或重跑规模数据。
