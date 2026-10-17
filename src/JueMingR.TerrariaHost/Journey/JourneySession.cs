@@ -38,6 +38,7 @@ namespace JueMingR.TerrariaHost.Journey
                 // Cloud providers are left untouched. This candidate admits
                 // local files only until a real provider's output is verified.
                 if (Main.ActivePlayerFileData.IsCloudSave || Main.ActiveWorldFileData.IsCloudSave) return "旅行菜单暂不支持云存档。";
+                if (!IsActive && JourneyHooks.UnprotectedSaveInFlight) return "正在保存，请稍后开启旅行菜单。";
                 if (player.dead || Main.blockInput || Main.CreativeMenu.Blocked) return "请先结束当前交互。";
                 return null;
             }
@@ -60,12 +61,18 @@ namespace JueMingR.TerrariaHost.Journey
             if (unavailable != null) { LastFailure = unavailable; return false; }
             try
             {
-                if (research == null) research = new JourneyResearch();
-                var captured = new JourneyPowers(Main.LocalPlayer, Main.ActivePlayerFileData, Main.ActiveWorldFileData);
-                generation = runtime.Generation;
-                Volatile.Write(ref baseline, captured);
-                state.Activate();
-                captured.InitializeNeutral();
+                var availableResearch = research ?? new JourneyResearch();
+                // The preliminary UI reason may race a background save. This
+                // atomic admission also covers player and nested serializers;
+                // an OFF save never needs a power snapshot or an I/O wait.
+                if (!JourneyHooks.TryActivateWhileNotSaving(() =>
+                {
+                    var captured = new JourneyPowers(Main.LocalPlayer, Main.ActivePlayerFileData, Main.ActiveWorldFileData);
+                    research = availableResearch; generation = runtime.Generation;
+                    Volatile.Write(ref baseline, captured);
+                    state.Activate(); captured.InitializeNeutral();
+                }))
+                { LastFailure = "正在保存，请稍后开启旅行菜单。"; return false; }
                 JourneyResearch.InvalidateMenu();
                 if (!Open())
                 {
@@ -153,7 +160,14 @@ namespace JueMingR.TerrariaHost.Journey
             // retiring their baseline, while the old object still owns them.
             // Full world Reset replaces all powers itself; writing an old world
             // baseline across that load boundary would be the wrong lifetime.
-            Stop(playerOnly); research = null;
+            Stop(playerOnly);
+            // Full Reset now owns replacement of all native powers. Even if
+            // returning the research slot failed, this old world's baseline
+            // must never survive and be restored by a later session-end call.
+            // Already entered saves retain their own immutable SaveView bytes.
+            // Player-only reset still needs a failed restoration's protection.
+            if (!playerOnly) Volatile.Write(ref baseline, null);
+            research = null;
         }
         public void OnSessionStarted() { }
         public void OnSessionEnded() { Stop(true); research = null; }

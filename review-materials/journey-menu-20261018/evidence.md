@@ -1,57 +1,85 @@
 # 旅行菜单候选证据
 
-授权与当前状态只查 [#122](https://github.com/Kuroneko2020/JueMingR/issues/122)；固定基底 `0ef3c62dcf0c365aee5d5cfcfbb5492b70b841f3`，原始委托 `JMR-JOURNEY-MENU-20261018-v1` 保存在本地 references 原包00—08。此文件仅提炼本批证据，不替代任务授权。
+授权以 [#122](https://github.com/Kuroneko2020/JueMingR/issues/122) 为准，完整差异见 [Draft PR #123](https://github.com/Kuroneko2020/JueMingR/pull/123)。固定基底 `0ef3c62dcf0c365aee5d5cfcfbb5492b70b841f3`；原始委托 `JMR-JOURNEY-MENU-20261018-v1` 的00—08保留在本地 references。候选完整SHA由Issue/PR交付记录承载，避免本文件自包含提交身份。
 
-## 当前结论
+## 结论与准入
 
-这是实现和验证中的工作检查点，**不是已完成的完整候选**。Debug 编译、结构、F5/绑定 CPU、真实原版 Locked/OFF 与非 Active 保存/无 R 回读、有效难度预测接缝通过；完整 Journey 在创建图形设备前因 XNA 无可用适配器停止，尚未运行 Active/UI/保存强杀义务。未进行完整独审、包或安装，不能据此进入07。
+实现者完整专项及自查通过，等待未参与实现/期待编写者的集中独审。未打包、未安装，不能仅凭本文件进入07。发布资格仍为 `INCOMPLETE / releaseEligible=false`，外来保留资产使真实 `clean=false`；不清除它们来取得表面clean。
 
-实现采用原身份不改的准确读侧资格；借用持续力量在真实原版保存链中写出激活前由原版生成的小型持久子流。设计保护新增物品和正常进度，不依赖退出清理或下次启动修复。其完整运行结论仍待下表闭合。产品边界见正式[行为合同](../../docs/功能介绍/旅行菜单行为合同.md)和[设计](../../docs/设计/旅行菜单实现设计.md)。
+实现保持人物difficulty和世界基础GameMode原值，只在准确原版消费者提供本次资格。持续力量保存采用激活前由原版生成的31/16字节世界/人物子流；真实研究、复制物品和其它进度仍由原版保存，不恢复整份旧文件。详见[行为合同](../../docs/功能介绍/旅行菜单行为合同.md)和[设计](../../docs/设计/旅行菜单实现设计.md)。
 
-## 实际执行与原件
+## 完整原版专项
 
-以下路径相对仓库；长日志、原版源码、文件、纹理及二进制仅留本机，不进入 Git。
+最终实际入口为 `NativeWorldTextProbe <repo> <Content> <output> Journey`；输出目录 `.local/journey-menu-20261018/native-validation/full-resume-26/`。进程exit0，6319条检查包含逐目录cap断言，不是6319项功能。所有角色/世界/成就文件均自造、位于本轮独立根；音乐、音效、环境声全程0。未操作所有者游戏/真实存档/Steam成就或云账户。
 
-| 范围 | 实际结果 | 原件 |
-| --- | --- | --- |
-| Debug 完整生产编译、结构 | PASS，0 警告/错误；不是业务验收 | `.local/journey-menu-20261018/build-reset-20261018.log` |
-| F5/动态绑定 CPU | PASS；真实布局/注册/分派，窄 fake 只代表业务 port | `.local/journey-menu-20261018/ui-cpu-build/{build.log,f5-cpu.log,execution.json}`，142 个实际 Compile 输入和运行依赖身份 |
-| 原版 JourneyCpu | PASS；准确安装、Locked 拒门、OFF 100 次不构造研究/基线、不改原力量/研究；实际 Player.SavePlayer/WorldFile.SaveWorld 和独立原版读回 | `.local/journey-menu-20261018/native-validation/cpu-final-20261018-0630/` |
-| 无 R 独立读回旧 writer | PASS；实际原版 Player.LoadPlayer、世界 GetAllMetadata、原版 LoadFromWorld；人物/世界0、Torch19、原研究和 creative 子流 | `.local/journey-menu-20261018/native-validation/reader-tenth-20261018-0622/`；原 writer 为 `cpu-fifth-20261018-0535`，两端身份分别保留 |
-| 有效难度预测接缝 | PASS；真实世界子流与其 GameMode 前置字段捕获→新进程真实 decoder；null/x0.5/x1/x2/x3，原版 Main.Difficulty 和新 Zombie life45/22/45/90/135；稳定前提保留、倍率变化旧未来失效 | `.local/journey-menu-20261018/prediction-second-20261018-0605/{input-hashes.json,probe.log,receiver.log}` |
-| 路由与有限 reader 早期反例 | PASS；旅行源路径/两项 CPU/显式图形边界、未知可执行路径保留 unknown；8 个错误身份/未解决失败/发布越级拒绝 | `.local/journey-menu-20261018/route-checks-20261018.log`、`entry-contract-01.log`；完整正向准入仍待独审/主调度与正常打包入口 |
-| 完整 Journey 原版/GPU | **NEEDS_GPU**；静音初始化后 ProbeGraphics ctor93 报 `No XNA graphics adapters are available before device creation`，未进 UI helper | `.local/journey-menu-20261018/native-validation/full-first-20261018-0631/{input-hashes.json,probe.log}` |
-| 图形环境定向只读 | 当前 pwsh/explorer 都属会话3，`query session` 为 Disc；RTX3070/Intel UHD 仍报正常。未更改会话、显示或驱动 | `.local/journey-menu-20261018/graphics-environment-20261018.json` |
-
-CPU final 与完整图形首跑使用同一固定身份：probe `43650152509213749230A9D1E5DB094685412245CB8A487694902399BE522D10`；Host `8CF79A96EE89BF81AEC3F17C62505FE1E7A675BCF453E481C30445807DDB5A91`；NativeJourneyChecks `C6AB47A666B60BC1603814BD249784FB91D495DC933673ADE429F3349132F5C1`；NativeJourneyUiChecks `33F20DF82B9FA132945A69D3206F38EE1049C2359C05BEE2D789AE9C60079360`。原件另有时间戳及 source 早于 exe 的核对。
-
-检查点最后只校正 NativeJourneyChecks 的四条通用断言说明和三行 reader 注释，当前源 SHA-256 `705A5FFB7F848731CECC6068575D07CCB820F1C9E35669106F04BD623E3C9073`；布尔条件、调用顺序与逻辑不变，不回填旧执行身份。恢复后先由既有 fixture 准备入口窄重编，再继续 Journey。UI CPU 的142个实际编译输入已逐项核当前字节相同；预测生产四文件及实际执行的预测测试同样未变，精确复用依据另存 `.local/journey-menu-20261018/prediction-reuse-20261018.json`。
-
-独立文件 reader 采用原版 `dedServ=true` 的无图形 PlayerFrame 分支；它仍真实执行 LoadPlayer/Deserialize，并在开始和结束断言没有加载任何 `JueMingR.*` 程序集。它证明文件读取，不证明客户端图形启动。力量段观察使用测试 Harmony owner 只记录原版 reader 的原字节和位置，不替换反序列化结果。
-
-## 尚未执行的完整义务
-
-01/06 的真实 Shell 开启、原版搜索、左右键复制、背包交接和实际使用，各类力量消费者、收窗后持续效果、原生3/3、四身份 Active 保存、真实改名、异常保存、A/B在途保存、人物 Reset 归还世界力量、自有 writer 强杀后无 R 读回，以及代表工具/加工/物品/HUD 共存均已编写针对性检查，**尚未因断言存在而算通过**。F5/原版菜单图和首次/稳定打开/收窗/关闭各100帧计时同样尚未产生。恢复可用交互图形前提后，应从当前固定产物继续显式 Journey，不重演有效研究或旧 writer。
-
-自动/退出保存的共同链已从锁定原版源码追到实际串行化入口；当前仅正常非 Active 保存实跑。预测证据限定真实子流 decoder 和一个原版 NPC 属性消费者，不冒称整 worker 管道或全 NPC 家族复测。
-
-## 原始失败与自查处置
-
-| 原件 | 具体原因与处置 |
+| 范围 | 实际结果 |
 | --- | --- |
-| `cpu-first-20261018-0502` | 安装失败又被 cleanup 异常遮盖；生产保留原目标/原异常，各本 owner 已安装目标独立清理，不影响其它 owner |
-| `cpu-second-20261018-0511` | .NET/Harmony 不支持该闭泛型 DrawSelf 包裹；改非泛型 UICreativeItemGrid.DrawSlot 的原生44×44、真实grid hover短接缝，准确 Hook 后续 CPU 已安装通过，实际输入待 GPU |
-| `cpu-third-20261018-0518` / `cpu-fourth-20261018-0526` | 最小原版 world 保存缺 Manifest/Bestiary 初始化；按真实 section 异常补原版实例，未跳保存/换假 ABI，后续12段及实体文件成功 |
-| `cpu-fifth-20261018-0535` | writer 成功，reader beforefieldinit 先触 Main；拆开路径初始化和 NoInlining 原版读取 |
-| `reader-sixth-20261018-0546` | 原版 Item 样本读真实 Player0 衣物色；补真实 Player0 前提 |
-| `reader-seventh-20261018-0558` / `reader-eighth-20261018-0606` / `reader-ninth-20261018-0616` | LoadPlayer catch 隐藏 PlayerFrame→Item.GetDrawHitbox 的无客户端实例异常；前置原版 Deserialize/PlayerFrame 获取完整异常，reader 使用原版 headless 分支，原 LoadPlayer 成功期待保留，tenth通过 |
-| `prediction-20261018-0602` | 测试漏了 PredictionWire 在世界子流前单写的 GameMode；准确补同一前置字段，未改生产或正常期待，second通过 |
-| 生命周期源码自查 | Full Reset 与 Player-only Reset 原先共用弃基线，后者会遗留借用的世界力量。拆精确职责，Player-only 在旧实际归属有效时先归还，再让原版重置人物；真实反例检查已加，仍待 Active 执行 |
+| 入口/输入 | 原Shell隐藏资格、开启失败回滚/真实失败提示、成功后F5让出、统一打开/关闭及绑定录制；原版分类/搜索队列、左右键复制和原ItemSlot入包；首帧失焦旧映射不变命令，中性回焦重臂；绑定按住只切一次、实际正反短反馈 |
+| 复制与来源 | 同一真实复制对象经原ItemCheck放置消耗，随后保存/读回且关闭不回滚；鼠标持物不被抢，入包后普通丢弃；Shift/context29/GetItem只登记真实Dirt来源，原QuickStack库存9999→0/箱1→10000，已有Wood7/1不变 |
+| 研究/缓存 | 全部原版正cap规范化集合逐项核；无效ID拒绝；100次查询及虚拟已满提交不改tracker/editid、不耗研究物；同一脱树窗口停R后原生3/3只见真实研究，再启恢复虚拟目录 |
+| 时间/天气 | 原时刻命令；实际Main.time按+1/+24推进、冻结不推进；原rain倒计时600/599正反，实际风雨强度及UpdateWeather风冻结/恢复 |
+| 其它力量 | 原生成判定默认/高/零；Main有效难度/专家大师规则及原NPC生命伤害；原ResetEffects范围和GetItemGrabRange；真实Player.Update→Hurt无敌/普通伤害正反；原WorldGen感染许可正反；收窗后效果仍生效，关闭还原 |
+| 共存 | Active收窗原钓鱼借还/一次重抛及无关丢弃；原提炼产物、回执和归还；开窗hover只拒新动作，收窗恢复；独立HUD保持实际输出；真暂停继续阻新业务 |
+| 保存/读回 | 人物/世界0、1、2、原生3/3的Active保存/还原；原版Active改名；原serializer异常不泄漏SaveView；A旧线程已冻结→关闭→同对象新基线B启用→旧保存仍写A、新会话保留B；player-only reset归还world；FullReset真实菜单关闭异常命中后旧基线退休、后续End不回写 |
+| 强制终止 | 最后只强杀父进程实际持有的自有writer PID15404，保存时Active，无退出清理；fresh无R原版reader九份manifest全部通过，原身份/真实研究/持续力量基线及新增物品保留 |
 
-实现自查已集中核本批 owner、必要原版读点/保存目标、直接调用者和关键说明：身份/资格分离、不可变31/16字节子流、ThreadStatic只沿实际同步串行化、旧在途持有原基线、UI占用只限制新操作、原版 Reset 生命周期和失败责任。元数据只在初始化解析，稳定注册/布局/研究复用；OFF 100 次探针耗时0.2657ms，包含测试反射，不外推 FPS。完整图形成本和功能结果待补，不以静态自查替代。
+完整专项的九份manifest：vertical、mode0/1/2/3、active-rename、interleave、player-reset、killed。三份独立reader日志分别记录纵向、正常完整矩阵和强杀后九份读取；`killed-writer.log`、`kill-ready.txt`保留原检查点。实际 `Player.LoadPlayer` 必须StatusID.Ok；世界原GetAllMetadata及原LoadFromWorld核基础模式与力量段。
 
-文件写权：整合者拥有 Feature/Host Journey、Runtime组装、保存/来源/预测窄接缝、脚本和正式文档；UI同伴拥有 F5四文件、Hotkeys两文件和其三项专用测试；原版研究同伴拥有 NativeJourneyChecks 测试。完整差异仅这批38个授权文件，既有本地参考说明等外来dirty明确排除。未参与者完整独审尚未开展。
+最终执行身份（SHA-256）：
 
-## 保留边界
+- Terraria.exe：`960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3`，固定1.4.5.8。
+- Host：`7D9971BF890667611A59DB49920749B36F1343B514107742DE8D2C0F4154F928`。
+- probe：`AFE0B0CD293F79A394C2AF680F6F2E308C4F508FF1632E1525400255F19BC6B6`。
+- NativeJourneyChecks.cs：`9ADDDF0E321280BB317D74F0C75CA563C93371BAD58D30FB3044B1519D5FD2BB`。
+- NativeJourneyUiChecks.cs：`F17C40D344953EACF4A9E8886A615DCCC981DA97D61E9F7C35864B52123D1BA4`。
 
-不操作所有者游戏/真实存档；隔离探针只使用自造可丢弃角色世界且全程静音。真实物理掉电、真人多人、所有显示/输入法/设备和量化FPS未获通过结论；工程探针不代替所有者体验或普通完整包正常启动。候选仍 INCOMPLETE/releaseEligible=false，外来原件保留导致真实clean=false，不属于本任务提交。
+该目录 `input-hashes.json`另列Platform/Features/Infrastructure和Harmony实际依赖身份。真实Content为 `F:/games/gameplats/steam/steamapps/common/Terraria/Content`，只读实际XNB；没有声明全Content目录逐文件哈希。三图 `journey-f5-row.png`、`journey-native-menu.png`、`journey-coexist-information.png`已实看。用户报告的行距问题仅移除两处重复6px，最终旅行行与相邻标准行一致，控件和内容底边完整。
+
+## 其它必要检查与复用
+
+| 检查 | 原件与适用性 |
+| --- | --- |
+| Debug生产/结构 | `build-save-admission-20261018.log`，0警告/错误、结构0fail；正式候选固定后由同入口刷新身份。编译通过不单独代业务验收 |
+| UI/绑定CPU | `ui-cpu-gap-build/{build.log,f5-cpu.log,execution.json}`，现有检查全PASS，142个实际Compile输入及4个运行依赖身份；EXE `209E46475D86441B1A4C21ADF035F2EB58A7AE8F091AB6E83A24F548845C6EC7`。此后这些CPU输入未改；未因轻量行距修改新增专门测试 |
+| OFF保存准入CPU | `native-validation/cpu-admission-first/`：Locked/OFF100、真实Player/World在途首次启用副作用前拒门；内层原serializer退出后外层仍拒门；两个原异常完整保留，Finalizer后恢复准入；正常原版保存及fresh无R读回通过。Host与最终专项相同；之后测试只改Active/图形部分，CPU相关实现/断言未变 |
+| 预测接缝 | `prediction-second-20261018-0605/`：真实世界子流及GameMode前置字段→fresh decoder，null/x0.5/x1/x2/x3、原Main.Difficulty与新Zombie生命45/22/45/90/135；稳定前提保留、倍率变化旧未来失效。四生产文件及实际预测测试未变，`prediction-reuse-20261018.json`保留准确字节映射 |
+| 工具路由/reader | `route-checks-20261018.log`，准确旅行路径/CPU选组/显式GPU、未知可执行路径仍unknown；`entry-contract-01.log`及最终刷新记录核8项错误身份/未解决失败/发布越级拒绝。完整正向准入仅在真实独审/主调度接受后的正常包入口执行，未伪造成已获批准 |
+
+以上简写路径均在 `.local/journey-menu-20261018/`。早期 `killcheck-first` 独立强杀、原非Active保存/reader等原件保留，最终完整专项已实际重走关键链，不以旧PASS代替新增保存机制。
+
+## 有限成本
+
+最终full26无临时FirstChance/PowerTrace/StorageTrace。首次成功开启4.2226ms，前面真实失败注入已预热共享路，不宣称全冷启动。三段各100帧的registry revision均63、未重注册：
+
+| 状态 | 平均ms | 最慢ms |
+| --- | ---: | ---: |
+| Active开窗 | 0.224835 | 0.735 |
+| Active收窗 | 0.110553 | 0.3644 |
+| OFF关闭后 | 0.119058 | 0.2525 |
+
+范围含探针反射、Host输入/runtime/layout和原CreativeUI.Draw，F5关闭；不是完整游戏FPS或纯R增量。CPU OFF100为0.5177ms，含测试反射，核research/baseline仍null及原字段/研究不变。稳定查询不刷tracker，目录/绑定/布局复用；保存只有固定小子流/有界视图，OFF不做力量快照、恢复文件或每Tick I/O。
+
+## 原始失败与处置
+
+所有RED保留原日志和原输入身份，不把已修测试前提回填到旧记录。
+
+| 原件范围 | 原因、最终处置 |
+| --- | --- |
+| cpu-first/second | 安装失败又被cleanup遮盖；保留准确原目标/异常、分别清本owner；闭泛型DrawSelf的Harmony限制改准确非泛型原DrawSlot接点，最终真实输入通过 |
+| cpu-third—reader-tenth | 原world Manifest/Bestiary、reader beforefieldinit/Player0、原LoadPlayer吞PlayerFrame无GPU异常；按原版初始化/真实headless分支补前提，原LoadPlayer成功期待保留 |
+| prediction首轮 | fixture漏wire单写GameMode前置字段；按实际包络补，未改正常消费者期待，second通过 |
+| full-first、resume03/18 | 会话/实际Reach支持发生变化；32位原生枚举留证，仅外部前提恢复后续跑，未更改系统/驱动/profile |
+| resume01—08 | 原导航/recipe与排序/完整item资产handle、slot背景和Coin域启动缺项；使用真实原统一阶段及XNB，未逐ID伪造字典/资源；raw ID转规范type/Deprecated转air的域断言纠正 |
+| resume09—15 | 旧UI映射造成首帧未悬停、nullable诊断误读、原QuickStack缺ItemSorting统一初始化；真实中性移动手势/准确观察/原SetupWhiteLists后正常取物与守恒通过 |
+| resume16—19 | 原NetManager缺完整模块导致原命令静默丢弃；原NetworkInitializer.Load后原loopback生效；移除场景重复TileObjectData.Initialize，复用已锁定原启动数据 |
+| resume20—24 | 天气调用后半无关完整事件/Pylon缺项；非改流收据确证后按有限消费者边界停止；真实surface>50前提补齐，保留原雨/时间全部条件与正反期待，未补stub或跳消费者 |
+| resume24/25 | 原Player.Update成就定义未注册、测试new Player缺原Deserialize先建的SavedData；完整原AchievementInitializer（SocialAPI空、owned本地路径先断言）和准确原输入对象补齐，最终全链通过 |
+| 生产自查修复 | 脱树目录失效漏项、player-only reset恢复world、FullReset关闭异常仍留旧baseline、OFF已进入保存后首次激活的竞态均有精确修复与最终原版反例。OFF门仅拒未持不可变基线的在途serializer，不封安全A/B或关闭 |
+
+唯一整合者拥有Feature/Host Journey、Runtime组装、保存/来源/预测接缝、脚本和正式文档；UI作者拥有F5五文件/Hotkeys两文件和三项专用测试；原版研究者拥有NativeJourneyChecks。完整差异39个授权文件，既有本地参考说明、.workbuddy、issue112.txt、pr113.json明确排除。关键方法头/直接调用者及相邻旧注释已集中自查，临时定位观察已退出，不另建注释台账。
+
+## 保留的证据边界
+
+独立reader用原版dedServ绘图分支，真实LoadPlayer/Deserialize及世界原元数据/力量段读取均执行，并在前后断言未加载JueMingR程序集；不宣称普通客户端完整LoadWorld启动。雨/时间在原Main.UpdateTime首个后继事件入口受控停止，感染在原Wiring入口停止，均保留所验原消费者，finally撤回；不声称整世界事件/地图感染长期模拟。
+
+自动/退出保存共同链以锁定原源码追到本轮实跑的实际serializer，未宣称真人点击退出或等待完整自动保存周期。工程物理样本/foreground delegate驱动真实组件不等于真实OS键鼠、AltTab、中文IME；不冒称真人多人、真实物理掉电、全部硬件或量化FPS。所有者体验、完整包正常加载/独审和一次安装分别核验，本文件不提前授予它们。

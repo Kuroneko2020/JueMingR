@@ -12,6 +12,7 @@ using JueMingR.Platform.Items;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
+using ReLogic.Content;
 using Terraria;
 using Terraria.GameContent.Creative;
 using Terraria.GameContent.UI.Elements;
@@ -39,15 +40,64 @@ namespace NativeWorldTextProbe
             NativeHiddenEntryChecks.RevealForComposition(context);
             Call(Get(shell, "hotkeys"), "PollJourneyRegistration");
             Require(registry.Find("journey.toggle") != null && !((bool)Get(journey, "IsActive")), "real reveal publishes binding without enabling Journey");
-            Call(graphics, "EnsureNativeAssets");
-            // The native item-slot renderer requires its own original assets;
-            // assets are read from this probe's fixed Content, never redistributed.
-            graphics.LoadTexture("InventoryBack18", "Images/Inventory_Back18");
-            Main.CreativeMenu.Initialize();
+            PrepareNativeMenu(graphics);
             NativeToolsUiChecks.Prepare(context, 1, 960, 640, 1);
             h.Ui();
             h.HoverShell("EnableJourney");
             graphics.Image(Path.Combine(output, "journey-f5-row.png"), () => Call(shell, "DrawLayer"), Main.UIScaleMatrix);
+            RunInputChecks(context, graphics, output, h, shell, state, journey, display, registry, bindings);
+        }
+
+        internal static void PrepareNativeMenu(ProbeGraphics graphics)
+        {
+            Call(graphics, "EnsureNativeAssets");
+            PrepareNativeItemAssets(graphics);
+            // Even singleplayer creative buttons send a real module packet
+            // through NetManager.SendToSelf. Main.Initialize6844 normally loads
+            // the whole protocol registry; an empty registry silently drops it.
+            int modules = (ushort)Get(Terraria.Net.NetManager.Instance, "_moduleCount");
+            Console.WriteLine("JOURNEY UI native-network-before modules=" + modules + " creative-module=" +
+                (Terraria.Net.NetManager.Instance.GetModule<Terraria.GameContent.NetModules.NetCreativePowersModule>() != null));
+            if (modules == 0) Terraria.Initializers.NetworkInitializer.Load();
+            Require(Terraria.Net.NetManager.Instance.GetModule<Terraria.GameContent.NetModules.NetCreativePowersModule>() != null,
+                "original complete network registry supplies actual singleplayer creative packet loopback");
+            // Main.Initialize builds recipes, fixes content-sample material
+            // flags, then rebuilds the complete creative sorting domain. The
+            // shared narrow fixture only initialized samples; the real menu
+            // sorter requires this original startup stage for every item ID.
+            if (Recipe.numRecipes == 0)
+            {
+                Recipe.SetupRecipeGroups();
+                for (int i = 0; i < Main.recipe.Length; i++) Main.recipe[i] = new Recipe();
+                Recipe.SetupRecipes(); ContentSamples.FixItemsAfterRecipesAreAdded();
+            }
+            // The same native startup stage also initializes inventory sorting.
+            // QuickStacking classifies destination items through its private
+            // layer-index array; creative sort IDs alone do not supply it.
+            Console.WriteLine("JOURNEY UI inventory-sort-before layers=" + ItemSorting.LayerCount + " index-array-null=" +
+                (typeof(ItemSorting).GetField("_layerIndexForItemType", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic).GetValue(null) == null));
+            ItemSorting.SetupWhiteLists();
+            ContentSamples.RebuildItemCreativeSortingIDsAfterRecipesAreSetUp();
+            // The native builder keys by Item.SetDefaults(i).type, not by i:
+            // e.g. 226 becomes 227, 1803..1807 become 1533..1537 and deprecated
+            // IDs become air. Verify that complete normalized native domain;
+            // demanding every raw net ID would reject the original initializer.
+            int[] sortDomain = ContentSamples.ItemsByType.Where(pair => pair.Key > 0 && !pair.Value.IsAir).Select(pair => pair.Value.type).Distinct().ToArray();
+            int[] missingSortTypes = sortDomain.Where(id => !ContentSamples.ItemCreativeSortingId.ContainsKey(id)).ToArray();
+            Console.WriteLine("JOURNEY UI sort-domain native-types=" + sortDomain.Length + " missing=" + string.Join(",", missingSortTypes) +
+                " raw-id-normalization=" + string.Join(",", ContentSamples.ItemsByType.Where(pair => pair.Key > 0 && !ContentSamples.ItemCreativeSortingId.ContainsKey(pair.Key)).Select(pair => pair.Key + "->" + pair.Value.type)));
+            Require(sortDomain.Length > 0 && missingSortTypes.Length == 0, "native recipe/content startup builds the complete non-air normalized creative sort domain");
+            // Main.Initialize normally loads the complete native navigation map.
+            // CreativeUI.DrawToggleButton uses point 311 even with keyboard UI;
+            // use that initializer rather than inventing an isolated dictionary key.
+            if (Terraria.UI.Gamepad.UILinkPointNavigator.Points.Count == 0) Terraria.Initializers.UILinksInitializer.Load();
+            Require(Terraria.UI.Gamepad.UILinkPointNavigator.Points.ContainsKey(311), "original UI navigation initializer supplies the native creative toggle point");
+            Main.CreativeMenu.Initialize();
+        }
+
+        private static void RunInputChecks(object context, ProbeGraphics graphics, string output, Frames h, object shell, object state,
+            object journey, object display, HotkeyRegistry registry, HotkeyBindings bindings)
+        {
             var failure = new Harmony("JueMingR.Tests.JourneyUi.OpenFailure");
             var toggle = typeof(Player).GetMethod("ToggleCreativeMenu");
             try
@@ -92,7 +142,10 @@ namespace NativeWorldTextProbe
             Require(offset >= 0 && index < (int)parameters[3] && columns > 0, "searched native item is in the actual visible grid");
             var point = new Vector2((int)parameters[0] + offset % columns * 44 + 20, (int)parameters[1] + offset / columns * 44 + 20);
             Main.mouseItem.TurnToAir(); Main.stackSplit = 0;
-            h.Native(point, right: true); h.Native(point);
+            // Match real move/hover -> press -> release: native UI.Update runs
+            // before the fresh mapping, so moving from the search bar and
+            // pressing in a single sampled frame still has the old UI hover.
+            h.Native(point); h.Native(point, right: true); h.Native(point);
             Require(Main.mouseItem.type == ItemID.DirtBlock && Main.mouseItem.stack > 0, "native grid right click produces a real mouse item");
             int rightAmount = Main.mouseItem.stack;
             Main.mouseItem.TurnToAir(); h.Native(point, left: true); h.Native(point);
@@ -108,6 +161,7 @@ namespace NativeWorldTextProbe
             CopySourceChecks(context, h, point);
 
             h.ClickNative((UIElement)categories[3]);
+            DetachedCatalogBoundary(h, journey, nativeState, infinite, categories);
             var strip = (UIElement)Get(nativeState, "_timePowersStrip");
             UIElement freezeButton = ((IEnumerable)Get(strip, "_buttonsBySorting")).Cast<UIElement>().First();
             var freeze = CreativePowerManager.Instance.GetPower<CreativePowers.FreezeTime>();
@@ -143,6 +197,70 @@ namespace NativeWorldTextProbe
             h.Key(); h.Key(Keys.LeftControl, Keys.F13); h.Key();
             Require(!(bool)Get(journey, "IsActive") && NativeShortFeedbackChecks.Has(display, "旅行菜单 已关闭"), "same binding closes active native owner and reports the confirmed reverse result");
             Console.WriteLine("PASS Journey actual Shell reveal/standard commands/binding recorder, native search/right-left copy/backpack, native power button, retained power, menu reopen and real hotkey feedback.");
+        }
+
+
+
+        private static void PrepareNativeItemAssets(ProbeGraphics graphics)
+        {
+            // UIDynamicItemCollection.DrawSelf reads each Asset.State before its
+            // normal lazy LoadItem. Supply AssetInitializer.LoadTextures' whole
+            // item-array declaration stage, including native texture aliases;
+            // actual pixels still come from the original repository/XNB loader.
+            var textures = Terraria.GameContent.TextureAssets.Item;
+            int[] absent = Enumerable.Range(0, textures.Length).Where(id => textures[id] == null).ToArray();
+            Console.WriteLine("JOURNEY UI native item assets before initialization null-count=" + absent.Length + " first-ids=" + string.Join(",", absent.Take(16)));
+            for (int i = 0; i < textures.Length; i++)
+            {
+                int copy = ItemID.Sets.TextureCopyLoad[i];
+                textures[i] = copy != -1 ? textures[copy] : Main.Assets.Request<Texture2D>("Images/Item_" + i, AssetRequestMode.DoNotLoad);
+            }
+            Require(textures.All(asset => asset != null), "original item texture declaration supplies every native lazy-load handle");
+            // ItemSlot.Draw compares several original slot-background assets,
+            // including ones outside context29's selected background. Keep the
+            // complete native InventoryBack domain from LoadTextures535-559.
+            graphics.LoadTexture("InventoryBack", "Images/Inventory_Back");
+            for (int i = 2; i <= 25; i++) graphics.LoadTexture("InventoryBack" + i, "Images/Inventory_Back" + i);
+            // CoinSlot.DrawItemCoin uses this separate four-texture domain,
+            // rather than the ordinary Item handles (LoadTextures371).
+            for (int i = 0; i < Terraria.GameContent.TextureAssets.Coin.Length; i++) graphics.LoadTexture("Coin", "Images/Coin_" + i, i);
+        }
+
+        private static void DetachedCatalogBoundary(Frames h, object journey, object nativeState, UIElement infinite, IDictionary categories)
+        {
+            Require(infinite.Parent == null, "time category actually detaches the already-searched native item window");
+            Require((bool)Call(journey, "SetEnabled", false), "R close invalidates virtual research while its native item window is detached");
+            var actualProgress = new HashSet<int>();
+            Main.LocalPlayerCreativeTracker.ItemSacrifices.ForEachItemWithResearchProgress(id => actualProgress.Add(id));
+            Require(!actualProgress.Contains(ItemID.DirtBlock), "isolated character has no real Dirt Block research to disguise a leaked virtual entry");
+            var player = Main.LocalPlayer; var world = Main.ActiveWorldFileData;
+            byte originalPlayerMode = player.difficulty; int originalWorldMode = world.GameMode;
+            try
+            {
+                // This disposable context alone temporarily becomes native 3/3.
+                // No save occurs here and neither tracker identity nor edit ID
+                // changes, so a stale cached virtual list cannot hide behind a
+                // replacement tracker or another forged research notification.
+                player.difficulty = 3; world.GameMode = 3;
+                player.ToggleCreativeMenu(); h.Native(Vector2.Zero);
+                h.ClickNative((UIElement)categories[1]); h.Native(Vector2.Zero);
+                var originalList = ((IEnumerable)Get(infinite, "_itemList")).Cast<Item>().ToArray();
+                Require(!(bool)Get(journey, "IsActive") && originalList.All(item => actualProgress.Contains(item.type)) && originalList.All(item => item.type != ItemID.DirtBlock),
+                    "same native 3/3 item window after R close contains only real research, never stale searched virtual Dirt Block");
+                h.ClickNative((UIElement)categories[3]);
+                Require(infinite.Parent == null, "native time category detaches the same real-only item window before the enable edge");
+            }
+            finally
+            {
+                try { if (Main.CreativeMenu.Enabled) player.ToggleCreativeMenu(); }
+                finally { player.difficulty = originalPlayerMode; world.GameMode = originalWorldMode; }
+            }
+            Require((bool)Call(journey, "SetEnabled", true), "R can reactivate after restoring this isolated character/world identity");
+            Require(ReferenceEquals(Get(nativeState, "_infiniteItemsWindow"), infinite), "enable edge reuses the same native item window instead of replacing its cache");
+            h.ClickNative((UIElement)categories[1]); h.Native(Vector2.Zero);
+            Require(((IEnumerable)Get(infinite, "_itemList")).Cast<Item>().Any(item => item.type == ItemID.DirtBlock), "same searched item window returns to virtual research on the new R enable edge");
+            h.ClickNative((UIElement)categories[3]);
+            Console.WriteLine("PASS Journey detached native catalog: searched virtual list -> native 3/3 real research while OFF -> same window virtual list after re-enable; no tracker edits or temporary-mode save.");
         }
 
         private static void MeasureFrames(Frames h, HotkeyRegistry registry, string scenario)
@@ -240,6 +358,7 @@ namespace NativeWorldTextProbe
             finally { p.inventory[10] = savedCopy; Main.chest[0] = previousChest; }
         }
 
+
         private static void Coexist(object context, Frames h, ProbeGraphics graphics, object journey, IDictionary categories, string output)
         {
             object shell = Get(context, "Shell"), input = Get(context, "Input"), processing = Get(context, "Processing"), information = Get(context, "Information");
@@ -251,8 +370,9 @@ namespace NativeWorldTextProbe
             try
             {
                 Call(journey, "CloseMenu"); Main.playerInventory = false; p.mouseInterface = p.lastMouseInterface = false;
-                Terraria.ObjectData.TileObjectData.Initialize();
-                typeof(Main).GetMethod("Initialize_TileAndNPCData1", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic).Invoke(null, null);
+                // Prepare's original startup already built and permanently
+                // locked TileObjectData. Reuse it for the real pot/rod scene;
+                // Initialize is not a per-scenario reset API.
                 NativeFishingBorrowChecks.Run(context);
                 Require((bool)Get(journey, "IsActive"), "actual rod return/recast and unrelated item discard continue through an active closed-window Journey session");
                 foreach (var item in p.inventory) item.TurnToAir();

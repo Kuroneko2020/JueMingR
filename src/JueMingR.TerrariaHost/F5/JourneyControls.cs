@@ -35,7 +35,6 @@ namespace JueMingR.TerrariaHost.F5
                 text => text == "开启" ? F5Command.EnableJourney : text == "关闭" ? F5Command.DisableJourney : text == "打开" ? F5Command.OpenJourney : F5Command.None, description);
             var key = elements[elements.Count - 1];
             elements[elements.Count - 1] = new F5Element(key.Kind, key.Rect, key.Text, key.TextSize, key.TextScale, F5Command.None, ActionId);
-            y += 6;
         }
         internal bool Available(F5Command command)
         { return Owns(command) && (command == F5Command.DisableJourney ? owner.IsActive : command == F5Command.OpenJourney ? owner.IsActive && owner.CanEnable : owner.CanEnable); }

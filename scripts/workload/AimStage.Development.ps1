@@ -837,7 +837,7 @@ function Read-JourneyMenuDevelopment {
         'src/JueMingR.Features/Journey/JourneyActivation.cs',
         'src/JueMingR.TerrariaHost/Journey/JourneySession.cs','src/JueMingR.TerrariaHost/Journey/JourneyHooks.cs',
         'src/JueMingR.TerrariaHost/Journey/JourneyPowers.cs','src/JueMingR.TerrariaHost/Journey/JourneyResearch.cs',
-        'src/JueMingR.TerrariaHost/F5/JourneyControls.cs','src/JueMingR.TerrariaHost/F5/F5Layout.cs',
+        'src/JueMingR.TerrariaHost/F5/JourneyControls.cs','src/JueMingR.TerrariaHost/F5/GuidanceControls.cs','src/JueMingR.TerrariaHost/F5/F5Layout.cs',
         'src/JueMingR.TerrariaHost/F5/F5Renderer.cs','src/JueMingR.TerrariaHost/F5/F5Shell.cs',
         'src/JueMingR.TerrariaHost/Hotkeys/HostHotkeys.cs','src/JueMingR.TerrariaHost/Hotkeys/JourneyHotkeys.cs',
         'src/JueMingR.TerrariaHost/Phase0SLoadChainHost.cs',

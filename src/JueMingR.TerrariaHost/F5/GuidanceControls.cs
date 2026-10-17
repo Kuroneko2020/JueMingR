@@ -37,7 +37,7 @@ namespace JueMingR.TerrariaHost.F5
             if (page == 1)
             {
                 rows.Row(ref y, 0, 522, "游商测试", new[] { "召唤" }, text => F5Command.SummonMerchant, descriptions[3]);
-                y += 6; return;
+                return;
             }
             int first = page == 2 ? 0 : 2, last = page == 2 ? 1 : 2;
             for (int i = first; i <= last; i++)

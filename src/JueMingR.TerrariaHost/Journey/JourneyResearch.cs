@@ -5,8 +5,8 @@ using HarmonyLib;
 using Terraria;
 using Terraria.GameContent.Creative;
 using Terraria.GameContent.UI.Elements;
+using Terraria.GameContent.UI.States;
 using Terraria.ID;
-using Terraria.UI;
 
 namespace JueMingR.TerrariaHost.Journey
 {
@@ -15,6 +15,7 @@ namespace JueMingR.TerrariaHost.Journey
         private readonly Dictionary<int, int> caps = new Dictionary<int, int>();
         private readonly int[] items;
         private static readonly FieldInfo MenuState = AccessTools.Field(typeof(CreativeUI), "_uiState");
+        private static readonly FieldInfo InfiniteWindow = AccessTools.Field(typeof(UICreativePowersMenu), "_infiniteItemsWindow");
         private static readonly FieldInfo CheckedVersion = AccessTools.Field(typeof(UICreativeInfiniteItemsDisplay), "_lastCheckedVersionForEdits");
         private static readonly FieldInfo Initialized = AccessTools.Field(typeof(CreativeUI), "_initialized");
 
@@ -40,16 +41,15 @@ namespace JueMingR.TerrariaHost.Journey
 
         internal static void InvalidateMenu()
         {
-            // One edge invalidation, not a forged tracker edit or per-Draw scan.
-            var root = MenuState.GetValue(Main.CreativeMenu) as UIElement;
-            if (root != null) Invalidate(root);
+            // The native menu detaches the infinite window while another
+            // category is selected. Invalidate the owned window itself, even
+            // off-tree; traversing only visible children leaves virtual results
+            // cached after R stops, notably in a native Journey session.
+            var root = MenuState.GetValue(Main.CreativeMenu);
+            var window = root == null ? null : InfiniteWindow.GetValue(root);
+            if (window != null) CheckedVersion.SetValue(window, -1);
         }
         internal static void EnsureMenuReady()
         { if (!(bool)Initialized.GetValue(Main.CreativeMenu)) Main.CreativeMenu.Initialize(); }
-        private static void Invalidate(UIElement element)
-        {
-            if (element is UICreativeInfiniteItemsDisplay) CheckedVersion.SetValue(element, -1);
-            foreach (UIElement child in element.Children) Invalidate(child);
-        }
     }
 }

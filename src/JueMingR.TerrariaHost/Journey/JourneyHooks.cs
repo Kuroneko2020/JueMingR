@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Threading;
 using HarmonyLib;
 using Terraria;
 using Terraria.GameContent.Creative;
@@ -20,6 +21,24 @@ namespace JueMingR.TerrariaHost.Journey
         private static readonly List<MethodBase> targets = new List<MethodBase>();
         [ThreadStatic] private static SaveView save;
         [ThreadStatic] private static int creativeInputDepth;
+        private static readonly object saveAdmissionGate = new object();
+        private static int unprotectedSaves;
+
+        internal static bool UnprotectedSaveInFlight { get { return Volatile.Read(ref unprotectedSaves) != 0; } }
+        internal static bool TryActivateWhileNotSaving(Action activate)
+        {
+            // A save entered while OFF has no borrowed baseline. Do not allow
+            // first activation to change powers before that serializer reaches
+            // its creative section. Only capture/publication shares this gate;
+            // no native I/O or serialization body is awaited under it.
+            // Views already holding an immutable baseline remain safe across
+            // close/re-enable and do not block that new lifetime's admission.
+            lock (saveAdmissionGate)
+            {
+                if (unprotectedSaves != 0) return false;
+                activate(); return true;
+            }
+        }
 
         internal static void Install(JourneySession value)
         {
@@ -214,23 +233,45 @@ namespace JueMingR.TerrariaHost.Journey
             internal readonly JourneyPowers Powers;
             internal readonly Player Player;
             internal readonly bool World;
+            internal bool Ended;
             internal SaveView(JourneyPowers powers, Player player, bool world)
             { Parent = save; Powers = powers; Player = player; World = world; }
         }
         private static void BeginPlayerSave(PlayerFileData playerFile, out SaveView __state)
         {
-            JourneyPowers captured = owner?.Persistence;
-            if (captured != null && (!ReferenceEquals(playerFile, captured.PlayerFile) || !ReferenceEquals(playerFile.Player, captured.Player))) captured = null;
-            __state = new SaveView(captured, playerFile.Player, false); save = __state;
+            lock (saveAdmissionGate)
+            {
+                JourneyPowers captured = owner?.Persistence;
+                if (captured != null && (!ReferenceEquals(playerFile, captured.PlayerFile) || !ReferenceEquals(playerFile.Player, captured.Player))) captured = null;
+                __state = new SaveView(captured, playerFile.Player, false); save = __state;
+                if (captured == null) Volatile.Write(ref unprotectedSaves, unprotectedSaves + 1);
+            }
         }
         private static void BeginWorldSave(out SaveView __state)
         {
-            JourneyPowers captured = owner?.Persistence;
-            if (captured != null && !ReferenceEquals(Main.ActiveWorldFileData, captured.WorldFile)) captured = null;
-            __state = new SaveView(captured, null, true); save = __state;
+            lock (saveAdmissionGate)
+            {
+                JourneyPowers captured = owner?.Persistence;
+                if (captured != null && !ReferenceEquals(Main.ActiveWorldFileData, captured.WorldFile)) captured = null;
+                __state = new SaveView(captured, null, true); save = __state;
+                if (captured == null) Volatile.Write(ref unprotectedSaves, unprotectedSaves + 1);
+            }
         }
         private static Exception EndSave(Exception __exception, SaveView __state)
-        { if (__state != null) save = __state.Parent; return __exception; }
+        {
+            if (__state != null)
+            {
+                lock (saveAdmissionGate)
+                {
+                    if (!__state.Ended)
+                    {
+                        __state.Ended = true; save = __state.Parent;
+                        if (__state.Powers == null) Volatile.Write(ref unprotectedSaves, unprotectedSaves - 1);
+                    }
+                }
+            }
+            return __exception;
+        }
         private static bool SavePlayerPowers(Player player, BinaryWriter writer)
         {
             var context = save;

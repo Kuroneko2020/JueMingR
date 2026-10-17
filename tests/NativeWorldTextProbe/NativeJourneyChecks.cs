@@ -29,6 +29,10 @@ namespace NativeWorldTextProbe
         private static ManualResetEvent saveEntered, saveContinue;
         private static bool pauseWorldSave;
         private static bool failWorldSave;
+        private static Action savePauseAction;
+        private static int admissionSaveThreadId;
+        [ThreadStatic] private static bool insideAdmissionNestedSave;
+        private static int nativeMenuCloseFailures;
         private static int checks;
         private static bool saveTraceInstalled;
 
@@ -45,6 +49,7 @@ namespace NativeWorldTextProbe
                     object journey = Get(context, "Journey");
                     Check((bool)Call(journey, "SetEnabled", false), "UI completion returns the borrowed state");
                     UseDuplicatedItem(context);
+                    VerticalSave(context, content, output);
                     ConsumerChecks(context);
                     SaveMatrix(context, output);
                     RenameWhileActive(context, output);
@@ -72,12 +77,112 @@ namespace NativeWorldTextProbe
                 double ms = (Stopwatch.GetTimestamp() - start) * 1000d / Stopwatch.Frequency;
                 Check(GetOptional(journey, "research") == null && GetOptional(journey, "baseline") == null && !Main.CreativeMenu.Enabled &&
                     CaptureWorld().SequenceEqual(world) && CapturePlayer(Main.LocalPlayer).SequenceEqual(player) && CaptureTracker(Main.LocalPlayer).SequenceEqual(tracker), "Locked/OFF never constructs research/baseline or changes native persistent values");
+                NativeHiddenEntryChecks.RevealForComposition(context);
                 ConfigureFiles(0, 0, "cpu-native"); Main.LocalPlayer.inventory[12].SetDefaults(ItemID.Torch); Main.LocalPlayer.inventory[12].stack = 19;
-                SaveCurrent(output, "cpu-native", 0, 0, CaptureWorld(), CapturePlayer(Main.LocalPlayer));
+                OffSaveAdmission(context, output);
                 Console.WriteLine("JOURNEY OFF-100-reflective-probe-ms=" + ms.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + "; includes test reflection; no FPS inference.");
             }, processing: true, shortFeedback: true);
             ReadInNewProcess(content, output);
-            Console.WriteLine("PASS JOURNEY CPU exact patch installation, Locked refusal/OFF bounds and original non-Active serialization; Active ability/save/graphics/kill obligations remain Journey.");
+            Console.WriteLine("PASS JOURNEY CPU exact patch installation, Locked refusal/OFF bounds, OFF-save first-enable admission and original non-Active serialization; Active ability/save/graphics/kill obligations remain Journey.");
+            return 0;
+        }
+
+        private static void OffSaveAdmission(object context, string output)
+        {
+            object journey = Get(context, "Journey");
+            Check((bool)Get(journey, "CanEnable"), "unlocked local OFF session can admit an enable before serialization begins");
+            OffSavePaused(journey, output, false);
+            OffSavePaused(journey, output, true);
+            OffSaveFailure(journey, false);
+            OffSaveFailure(journey, true);
+            // The player fault deliberately exercises the real file writer.
+            // Re-save normally before the independent reader; no assertion
+            // treats an interrupted native player file as an atomic replace.
+            SaveCurrent(output, "cpu-native", 0, 0, CaptureWorld(), CapturePlayer(Main.LocalPlayer));
+        }
+
+        private static void OffSavePaused(object journey, string output, bool playerBoundary)
+        {
+            byte[] world = CaptureWorld(), player = CapturePlayer(Main.LocalPlayer), tracker = CaptureTracker(Main.LocalPlayer);
+            var h = new Harmony("NativeJourneyChecks.OffSaveAdmission." + playerBoundary);
+            var target = playerBoundary ? typeof(CreativePowerManager).GetMethod("SaveToPlayer", Flags) : typeof(WorldFile).GetMethod("SaveCreativePowers", Flags);
+            saveEntered = new ManualResetEvent(false); saveContinue = new ManualResetEvent(false); pauseWorldSave = true;
+            Exception failure = null;
+            var thread = new Thread(() =>
+            {
+                admissionSaveThreadId = Thread.CurrentThread.ManagedThreadId;
+                try { SaveCurrent(output, "cpu-native", 0, 0, world, player); } catch (Exception error) { failure = error; }
+            }) { IsBackground = true };
+            if (!playerBoundary) savePauseAction = () =>
+            {
+                // This inner original serializer uses only its own memory
+                // stream. Its exit must not retire the still-active outer
+                // real file serializer's admission protection.
+                insideAdmissionNestedSave = true;
+                try { using (var stream = new MemoryStream()) using (var writer = new BinaryWriter(stream)) WorldFile.SaveWorld_Version2(writer); }
+                finally { insideAdmissionNestedSave = false; }
+                Check(!(bool)Get(journey, "CanEnable") && !(bool)Call(journey, "SetEnabled", true),
+                    "a nested original world serializer exits while its real outer save still refuses first activation");
+            };
+            h.Patch(target, prefix: new HarmonyMethod(typeof(NativeJourneyChecks), nameof(PauseSave)));
+            try
+            {
+                thread.Start();
+                Check(saveEntered.WaitOne(10000), "actual non-Active " + (playerBoundary ? "player" : "world") + " file serializer reaches its creative-power section");
+                Check(!(bool)Get(journey, "CanEnable") && !(bool)Call(journey, "SetEnabled", true) && !(bool)Get(journey, "IsActive"),
+                    "a real in-flight OFF serializer refuses first activation before any native menu initialization");
+                Check(GetOptional(journey, "research") == null && GetOptional(journey, "Persistence") == null &&
+                    CaptureWorld().SequenceEqual(world) && CapturePlayer(Main.LocalPlayer).SequenceEqual(player) && CaptureTracker(Main.LocalPlayer).SequenceEqual(tracker),
+                    "save admission refusal constructs no research/baseline and changes no original powers or research progress");
+                Check(((string)Get(journey, "LastFailure")).Contains("保存"), "in-flight save refusal reports the actual save boundary");
+                saveContinue.Set();
+                Check(thread.Join(20000), "original non-Active player/world save finishes after the real serialization pause is released");
+                if (failure != null) throw new Exception("Original OFF save failed", failure);
+                Check((bool)Get(journey, "CanEnable"), "first-enable admission returns after the original serializer exits");
+                Console.WriteLine("PASS JOURNEY OFF " + (playerBoundary ? "player" : "world/nested-world") + " original serialization refuses first activation without side effects and releases admission on completion.");
+            }
+            finally
+            {
+                pauseWorldSave = false; saveContinue.Set(); thread.Join(20000);
+                h.Unpatch(target, HarmonyPatchType.All, h.Id); savePauseAction = null; admissionSaveThreadId = 0;
+                saveEntered.Dispose(); saveContinue.Dispose();
+            }
+        }
+
+        private static void OffSaveFailure(object journey, bool playerBoundary)
+        {
+            var h = new Harmony("NativeJourneyChecks.OffSaveFailure." + playerBoundary);
+            var target = playerBoundary ? typeof(CreativePowerManager).GetMethod("SaveToPlayer", Flags) : typeof(WorldFile).GetMethod("SaveCreativePowers", Flags);
+            admissionSaveThreadId = Thread.CurrentThread.ManagedThreadId;
+            savePauseAction = () => Check(!(bool)Get(journey, "CanEnable") && !(bool)Call(journey, "SetEnabled", true),
+                "actual OFF serializer refuses first activation immediately before its controlled original failure");
+            failWorldSave = true;
+            h.Patch(target, prefix: new HarmonyMethod(typeof(NativeJourneyChecks), nameof(PauseSave)));
+            try
+            {
+                bool thrown = false;
+                try
+                {
+                    if (playerBoundary) typeof(Player).GetMethod("InternalSavePlayerFile", Flags).Invoke(null, new object[] { Main.ActivePlayerFileData });
+                    else using (var stream = new MemoryStream()) using (var writer = new BinaryWriter(stream)) WorldFile.SaveWorld_Version2(writer);
+                }
+                catch (SaveBoundaryFailure error) { thrown = true; Console.WriteLine("JOURNEY OFF controlled original serializer exception: " + error); }
+                catch (TargetInvocationException error) when (error.InnerException is SaveBoundaryFailure) { thrown = true; Console.WriteLine("JOURNEY OFF controlled original serializer reflection exception: " + error); }
+                Check(thrown && (bool)Get(journey, "CanEnable") && GetOptional(journey, "research") == null && GetOptional(journey, "Persistence") == null,
+                    "original " + (playerBoundary ? "player" : "world") + " serializer exception is preserved and its Finalizer releases first-enable admission without side effects");
+                Console.WriteLine("PASS JOURNEY OFF " + (playerBoundary ? "player" : "world") + " original serializer failure preserves its exception and releases first-enable admission.");
+            }
+            finally { h.Unpatch(target, HarmonyPatchType.All, h.Id); failWorldSave = false; savePauseAction = null; admissionSaveThreadId = 0; }
+        }
+
+        // This separate entry preserves the full Journey obligation while
+        // allowing its real Active-save/abrupt-exit boundary to be checked
+        // independently of the original interactive UI fixtures.
+        internal static int RunKillCheck(string content, string output)
+        {
+            output = Path.GetFullPath(output); Directory.CreateDirectory(output);
+            KillOwnWriter(content, output);
+            Console.WriteLine("PASS JOURNEY independent Active native save, owned writer killed without exit cleanup, and fresh original reader without R; interactive copy, consumers and full mode matrix remain Journey obligations.");
             return 0;
         }
 
@@ -88,7 +193,7 @@ namespace NativeWorldTextProbe
             {
                 using (var graphics = new ProbeGraphics(content))
                 {
-                    Prepare(context); Call(graphics, "EnsureNativeAssets");
+                    Prepare(context); NativeJourneyUiChecks.PrepareNativeMenu(graphics);
                     NativeHiddenEntryChecks.RevealForComposition(context);
                     ConfigureFiles(0, 2, "killed"); Call(context, "UpdateRuntime");
                     object journey = Get(context, "Journey");
@@ -224,8 +329,7 @@ namespace NativeWorldTextProbe
             Shared(CreativePowerManager.Instance.GetPower<CreativePowers.ModifyRainPower>(), .7f);
             Check(Main.raining && Math.Abs(Main.maxRaining - .7f) < .0001f, "native rain strength command starts real rain");
             CreativePowerManager.Instance.GetPower<CreativePowers.FreezeRainPower>().SetPowerInfo(true); Main.dayRate = 1; Main.time = 1000; Main.dayTime = true; Main.rainTime = 600;
-            CallStatic(typeof(Main), "UpdateTime"); Check(Main.rainTime == 600, "original weather simulation consumes rain freeze");
-            CreativePowerManager.Instance.GetPower<CreativePowers.FreezeRainPower>().SetPowerInfo(false); CallStatic(typeof(Main), "UpdateTime"); Check(Main.rainTime == 599, "original rain countdown resumes");
+            RainConsumerAtEventBoundary();
             CreativePowerManager.Instance.GetPower<CreativePowers.FreezeWindDirectionAndStrength>().SetPowerInfo(true); Main.windCounter = 0;
             Main.instance.UpdateWeather(new GameTime(), 1); Check(Main.windCounter == 0, "original UpdateWeather consumes wind freeze");
             CreativePowerManager.Instance.GetPower<CreativePowers.FreezeWindDirectionAndStrength>().SetPowerInfo(false); Main.instance.UpdateWeather(new GameTime(), 1); Check(Main.windCounter > 0, "original wind randomization resumes");
@@ -241,6 +345,10 @@ namespace NativeWorldTextProbe
             Check(Main.GameMode == 0 && Main.Difficulty == 3 && Main.expertMode && Main.masterMode && masterNpc.lifeMax > normalNpc.lifeMax && masterNpc.damage > normalNpc.damage, "native effective difficulty/actual NPC life and damage change without base mode mutation");
             var range = CreativePowerManager.Instance.GetPower<CreativePowers.FarPlacementRangePower>(); range.SetEnabledState(0, false); p.ResetEffects(); int x = Player.tileRangeX, y = Player.tileRangeY, grab = p.GetItemGrabRange(new Item(ItemID.Torch));
             range.SetEnabledState(0, true); p.ResetEffects(); Check(Player.tileRangeX == x * 2 + 8 && Player.tileRangeY == y * 2 + 8 && p.GetItemGrabRange(new Item(ItemID.Torch)) == grab + 240, "native placement and pickup consumers use range ability");
+            Check(Terraria.Social.SocialAPI.Achievements == null && !(bool)Get(Main.Achievements, "_isCloudSave") && IsWithin((string)Get(Main.Achievements, "_savePath"), Terraria.Program.SavePath),
+                "original achievement startup reads and writes only this isolated local save root");
+            Console.WriteLine("JOURNEY native achievement definitions before startup=" + Main.Achievements.CreateAchievementsList().Count);
+            Terraria.Initializers.AchievementInitializer.Load();
             var god = CreativePowerManager.Instance.GetPower<CreativePowers.GodmodePower>(); god.SetEnabledState(0, true);
             p.statLife = p.statLifeMax = p.statLifeMax2 = 500; p.position = new Vector2(640, 640); p.fallStart = p.fallStart2 = 40; p.velocity = Vector2.Zero;
             NativeQuickItemChecks.BeginWorldStep(); p.Update(0);
@@ -250,6 +358,29 @@ namespace NativeWorldTextProbe
             InfectionConsumer();
             Check((bool)Call(journey, "SetEnabled", false) && Main.GameMode == 0 && p.difficulty == 0 && Main.Difficulty == 1, "complete close restores original identity/effective difficulty");
             Console.WriteLine("PASS JOURNEY original consumer categories include native UI closed during effects.");
+        }
+
+        private static void VerticalSave(object context, string content, string output)
+        {
+            object journey = Get(context, "Journey");
+            Item copy = Main.LocalPlayer.inventory[10]; int remaining = copy.stack;
+            Check(copy.type == ItemID.DirtBlock && remaining > 0, "vertical save retains the actual native UI copy after its original placement consumer");
+            ConfigureFiles(0, 0, "vertical"); Call(context, "UpdateRuntime");
+            byte[] world = CaptureWorld(), player = CapturePlayer(Main.LocalPlayer);
+            Check((bool)Call(journey, "SetEnabled", true), "vertical original-save scenario enters real Active state");
+            try
+            {
+                CreativePowerManager.Instance.GetPower<CreativePowers.FreezeTime>().SetPowerInfo(true);
+                Main.UpdateTimeRate();
+                Check(Main.dayRate == 0 && WorldGen.GetWorldUpdateRate() == 0, "vertical Active freeze reaches original time and world-update consumers before saving");
+                Main.LocalPlayer.inventory[12].SetDefaults(ItemID.Torch); Main.LocalPlayer.inventory[12].stack = 17;
+                SaveCurrent(output, "vertical", 0, 0, world, player);
+                ReadInNewProcess(content, output);
+                Check((bool)Call(journey, "SetEnabled", false) && ReferenceEquals(Main.LocalPlayer.inventory[10], copy) && copy.stack == remaining,
+                    "closing after independent native read returns borrowed powers without rolling back the actual copied-and-used inventory item");
+                Console.WriteLine("PASS JOURNEY vertical native UI copy -> actual placement -> real Active freeze consumers -> original player/world save -> fresh no-R native read; copy progress survives close.");
+            }
+            finally { Call(journey, "SetEnabled", false); }
         }
 
         private static void ResearchChecks(Player player)
@@ -274,6 +405,51 @@ namespace NativeWorldTextProbe
             var item = new Item(ItemID.DirtBlock); item.stack = 10; int sacrificed;
             Check(Main.CreativeMenu.SacrificeItem(ref item, out sacrificed) == CreativeUI.ItemSacrificeResult.CannotSacrifice && item.stack == 10 && sacrificed == 0, "native research submit cannot consume or persist virtual progress");
             Check(tracker.LastEditId == edit && CaptureTracker(player).SequenceEqual(before), "100 stable virtual queries and refused research leave real tracker/version untouched");
+        }
+
+        private sealed class TimeConsumerBoundary : Exception { }
+        private static void RainConsumerAtEventBoundary()
+        {
+            // In locked .8 Main.UpdateTime, all original rain conditions,
+            // countdown and UpdateTimeRate precede this first unrelated event.
+            // Stop only at that event entry; no rain instruction is replaced.
+            // This proves the rain consumer, not an entire world/event tick.
+            // The tiny general-purpose world uses surface 45. Native .8
+            // explicitly requires >50 for a surface, so give this weather
+            // sample a real surface within its existing rock layer (70).
+            double previousSurface = Main.worldSurface; Main.worldSurface = 55;
+            var h = new Harmony("NativeJourneyChecks.RainConsumerBoundary");
+            var target = typeof(Terraria.GameContent.Events.CultistRitual).GetMethod("UpdateTime", Flags);
+            h.Patch(target, prefix: new HarmonyMethod(typeof(NativeJourneyChecks), nameof(StopAtTimeConsumerBoundary)));
+            try
+            {
+                Check(Main.raining && Main.netMode == 0 && !Main.gameMenu && (Main.isThereAWorldSurface || Main.remixWorld),
+                    "original rain consumer has an actual raining local surface-world input");
+                double before = Main.time;
+                UpdateTimeThroughRain(); Check(Main.rainTime == 600 && Main.time == before + 1d, "original weather simulation consumes rain freeze and advances actual time before the first unrelated world event");
+                CreativePowerManager.Instance.GetPower<CreativePowers.FreezeRainPower>().SetPowerInfo(false);
+                UpdateTimeThroughRain(); Check(Main.rainTime == 599, "original rain countdown resumes before the first unrelated world event");
+                Shared(CreativePowerManager.Instance.GetPower<CreativePowers.ModifyTimeRate>(), 1f); Main.UpdateTimeRate(); before = Main.time;
+                UpdateTimeThroughRain(); Check(Main.time == before + 24d, "original time advancement consumes the selected speed before the first unrelated world event");
+                CreativePowerManager.Instance.GetPower<CreativePowers.FreezeTime>().SetPowerInfo(true); Main.UpdateTimeRate(); before = Main.time;
+                UpdateTimeThroughRain(); Check(Main.time == before, "original time advancement actually stops under FreezeTime before the first unrelated world event");
+            }
+            finally
+            {
+                h.Unpatch(target, HarmonyPatchType.Prefix, h.Id);
+                Main.worldSurface = previousSurface;
+                CreativePowerManager.Instance.GetPower<CreativePowers.FreezeTime>().SetPowerInfo(false);
+                Shared(CreativePowerManager.Instance.GetPower<CreativePowers.ModifyTimeRate>(), 0f); Main.UpdateTimeRate();
+            }
+            Console.WriteLine("PASS JOURNEY original rain freeze/resume and actual time speed/freeze through the first event boundary; complete Main/event tick not claimed.");
+        }
+        private static void StopAtTimeConsumerBoundary() { throw new TimeConsumerBoundary(); }
+        private static void UpdateTimeThroughRain()
+        {
+            bool reached = false;
+            try { CallStatic(typeof(Main), "UpdateTime"); }
+            catch (TargetInvocationException error) when (error.InnerException is TimeConsumerBoundary) { reached = true; }
+            Check(reached, "unmodified original rain logic reaches the scoped first-event boundary");
         }
 
         private static void UseDuplicatedItem(object context)
@@ -401,6 +577,8 @@ namespace NativeWorldTextProbe
         }
         private static void PauseSave()
         {
+            if (insideAdmissionNestedSave || (admissionSaveThreadId != 0 && admissionSaveThreadId != Thread.CurrentThread.ManagedThreadId)) return;
+            savePauseAction?.Invoke();
             if (failWorldSave) throw new SaveBoundaryFailure();
             if (pauseWorldSave) { saveEntered.Set(); if (!saveContinue.WaitOne(15000)) throw new TimeoutException("Journey save interleave timeout"); }
         }
@@ -418,11 +596,38 @@ namespace NativeWorldTextProbe
             Check((bool)Call(journey, "SetEnabled", true), "per-player reset scenario starts Active");
             CreativePowerManager.Instance.GetPower<CreativePowers.FreezeTime>().SetPowerInfo(true);
             Shared(CreativePowerManager.Instance.GetPower<CreativePowers.ModifyTimeRate>(), .8f);
-            CreativePowerManager.Instance.ResetDataForNewPlayer(new Player());
+            // Original Deserialize (56364) creates this native saved-field
+            // carrier immediately before ResetDataForNewPlayer. A bare Player
+            // constructor does not provide the reset method's actual input.
+            var newPlayer = new Player { savedPerPlayerFieldsThatArentInThePlayerClass = new Player.SavedPlayerDataWithAnnoyingRules() };
+            CreativePowerManager.Instance.ResetDataForNewPlayer(newPlayer);
             Check(!(bool)Get(journey, "IsActive") && CaptureWorld().SequenceEqual(world), "actual per-player native reset returns borrowed world powers before retiring the old owner");
             Main.LocalPlayer.inventory[12].SetDefaults(ItemID.Torch); Main.LocalPlayer.inventory[12].stack = 37;
             SaveCurrent(output, "player-reset", 0, 1, world, player);
+
+            // Give the old lifetime a distinguishable true baseline. Full
+            // native Reset owns the new false default even if closing the old
+            // menu fails; a later session-end callback must not restore true.
+            CreativePowerManager.Instance.GetPower<CreativePowers.FreezeTime>().SetPowerInfo(true);
+            Check((bool)Call(journey, "SetEnabled", true), "full-reset close-failure scenario starts Active with a distinct old world baseline");
+            CreativePowerManager.Instance.GetPower<CreativePowers.FreezeTime>().SetPowerInfo(false);
+            nativeMenuCloseFailures = 0;
+            var failure = new Harmony("NativeJourneyChecks.FullResetCloseFailure");
+            var toggle = typeof(CreativeUI).GetMethod("ToggleMenu", Flags);
+            failure.Patch(toggle, prefix: new HarmonyMethod(typeof(NativeJourneyChecks), nameof(ThrowNativeMenuClose)));
+            try { CreativePowerManager.Instance.Reset(); }
+            finally { failure.Unpatch(toggle, HarmonyPatchType.Prefix, failure.Id); }
+            Check(nativeMenuCloseFailures > 0, "full reset actually encounters the controlled original menu-close exception");
+            Check(!(bool)Get(journey, "IsActive") && GetOptional(journey, "Persistence") == null &&
+                !CreativePowerManager.Instance.GetPower<CreativePowers.FreezeTime>().Enabled,
+                "full native reset retires persistent ownership despite an actual native menu-close exception");
+            Call(journey, "OnSessionEnded");
+            Check(!CreativePowerManager.Instance.GetPower<CreativePowers.FreezeTime>().Enabled && GetOptional(journey, "Persistence") == null,
+                "later real session-end callback cannot restore the retired pre-reset world baseline");
+            if (Main.CreativeMenu.Enabled) Main.CreativeMenu.ToggleMenu();
         }
+
+        private static void ThrowNativeMenuClose() { nativeMenuCloseFailures++; throw new IOException("owned full-reset native menu-close failure"); }
 
         private static void ConfigureFiles(int playerMode, int worldMode, string name)
         {
