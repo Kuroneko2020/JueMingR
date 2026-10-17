@@ -71,8 +71,17 @@ namespace NativeWorldTextProbe
                 h.Reset(); int generation = (int)Get(h.Layout, "Generation"), measurements = (int)Get(h.Layout, "MeasurementCount");
                 for (int i = 0; i < 4; i++) h.ClickTitle();
                 Require(!access.IsUnlocked && generation == (int)Get(h.Layout, "Generation") && measurements == (int)Get(h.Layout, "MeasurementCount"), "first four clicks preserve static About geometry and font cache");
+                float titleX = h.X, titleY = h.Y;
+                Require(PlayerInput.MouseInfo.LeftButton == ButtonState.Released && PlayerInput.MouseInfo.RightButton == ButtonState.Released, "hover round-trip starts with both physical buttons released");
+                h.Frame(1, 1); h.Frame(titleX, titleY);
+                Require(!access.IsUnlocked && Get(h.State, "Command").ToString() == "None" && copies == 0 &&
+                    !((MerchantTestFeature)Get(host, "MerchantTest")).Pending &&
+                    !((IEnumerable)Get(Get(h.Shell, "ShortFeedback"), "entries")).Cast<object>().Any(e => (string)Get(e, "Id") == "hidden-entry.revealed"),
+                    "released hover outside and back emits no command, feedback, copy or summon");
+                Require(generation == (int)Get(h.Layout, "Generation") && measurements == (int)Get(h.Layout, "MeasurementCount"), "released hover round-trip preserves title geometry");
+                // The injected samples complete all five clicks in 440 ms.
                 h.ClickTitle();
-                Require(access.IsUnlocked && copies == 0 && !((MerchantTestFeature)Get(host, "MerchantTest")).Pending, "fifth real Shell release only reveals, never copies or queues summon");
+                Require(access.IsUnlocked && copies == 0 && !((MerchantTestFeature)Get(host, "MerchantTest")).Pending, "fifth real Shell release after released hover round-trip only reveals, never copies or queues summon");
                 Require((bool)Get(h.State, "ConsumeLeft") && !Main.mouseLeft && !PlayerInput.Triggers.Current.MouseLeft && !PlayerInput.Triggers.JustReleased.MouseLeft, "fifth release remains consumed through native mapped input");
                 PlayerInput.Triggers.Current.CopyInto(Main.LocalPlayer);
                 Require(!Main.LocalPlayer.controlUseItem, "native player input consumer receives no attack from reveal");
@@ -109,7 +118,7 @@ namespace NativeWorldTextProbe
                 h.Open(5); h.Click(h.Find("AboutCopyGroup")); Require(copies == 1, "QQ still invokes the clipboard once after reveal");
                 Call(h.State, "Close"); h.Open(2); Require(access.IsUnlocked && h.Has("EnableRare") && h.Has("EnableMerchant"), "completed access survives UI exits and keeps directions");
                 h.Open(8); Require(h.Has("EnableEquipment"), "Unlocked equipment entry remains ordinary");
-                Console.WriteLine("PASS: HIDE real Shell five-click chain, thirteen cancellation classes, one local result, no clipboard/attack/spawn on reveal, explicit one-spawn consumer, Locked/Unlocked ordinary controls and stable layout.");
+                Console.WriteLine("PASS: HIDE real Shell five-click chain with released hover departure/return, thirteen cancellation classes, one local result, no clipboard/attack/spawn on reveal, explicit one-spawn consumer, Locked/Unlocked ordinary controls and stable layout.");
             }
             finally { h.Restore(); }
         }

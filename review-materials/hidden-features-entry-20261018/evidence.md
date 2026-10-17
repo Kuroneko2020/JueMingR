@@ -32,8 +32,12 @@
 
 ## 注释、自查与证据边界
 
+首轮独审为 **NEEDS_FIX / R1-P2**，原文及来源保存在 `.local/hidden-entry/review-e7956ca-NEEDS_FIX.md`：`adf0a20` 新增标题上下文检查把 `titleSequence` 与仍按住的 `armed` 共用无条件移出判定，导致四次合法完成后松键悬停移出也清历史；旧 `leave-return` 只覆盖左键持续按住，遗漏松键正例。本轮只把离开标题判定限定于 `IsHiddenTitle(armed)`；页面、几何、模态、滚动等真实上下文失效仍清序列。源码就地注释及设计同步限定“按住期间移出/拖动”，reader头注释补#120，无规则或范围扩张。
+
+R1实际运行 `GuidanceCpu` exit0，原件 `.local/hidden-entry/r1-guidance.log`、目录内准确源码/构建输入、`r1-probe-preparation.json` / `r1-probe.exe` / `r1-consumers.json`。新增真实Shell四击→双键Released移出→返回→第五击共440ms，一次解锁；移出/返回不发命令/提示/复制/召唤、不改变generation或度量。原13类按住移出、拖动、长按、释放出界及上下文负例全部保留并实际通过。原完整审查及旧结果不改署为R1：状态/原版XNB绘制/完整页面布局/包拒门沿完整增量与此窄diff复用，R1不改资格算法、绘制/几何/页组合或reader可执行规则；新改动的输入路径由该次GuidanceCpu覆盖，待原独审仅复核R1及新增影响。
+
 打包前本轮集中自查已完成：About Owns/Execute/Hint/Display分支、指定Heading命中和几何取消、进程/会话状态、显隐/执行两职责、Locked时不早退普通Guidance、缺省依赖拒绝、无热键、单次请求不重试及实际调用者。正式设计以About工程HIDE小节为单一权威，Guidance合同/设计/索引引用；公开指南仅改默认可见事实，不增加解锁教程。
 
 按任务04选择有限叶；没有跑全战斗/NPC/200小时足迹矩阵，没有把历史PASS签为本次完整累计结果。无Timer/worker/文件持久化或新增实体扫描；工作量证据仅支持实际稳定generation/measurements与普通Guidance有限关闭/稳定场景，不宣称零开销或FPS改进。
 
-截至本证据：实现与上述有限工程检查完成，集中独审、实际Release完整包正向准入及05安装尚未执行。保持 `INCOMPLETE / releaseEligible=false`；候选不是所有者接受。无merge/关闭#120/Tag/Release/版本推进/旅行菜单/操作所有者游戏授权。后续只在独审和主调度准入后按05一次轻量窗口交付完整候选，包/安装另按实际身份报告。
+截至本证据：首轮完整独审发现的唯一R1已修并通过上述必要定向检查，原独审R1窄复核、实际Release完整包正向准入及05安装尚未执行。保持 `INCOMPLETE / releaseEligible=false`；候选不是所有者接受。无merge/关闭#120/Tag/Release/版本推进/旅行菜单/操作所有者游戏授权。后续只在独审和主调度准入后按05一次轻量窗口交付完整候选，包/安装另按实际身份报告。

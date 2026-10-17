@@ -127,12 +127,13 @@ namespace JueMingR.TerrariaHost.F5
             X = (float)Math.Floor(Clamp(X, 12, input.Width / input.Scale - size.Width - 12));
             Y = (float)Math.Floor(Clamp(Y, 12, input.Height / input.Scale - size.Height - 12));
             // A partial title sequence belongs to one visible hit geometry.
-            // Pointer departure is sticky: returning while held cannot revive it.
+            // Departure during an armed press is sticky; released hover may
+            // leave and return without changing the completed-click window.
             if (titleSequence || IsHiddenTitle(armed))
             {
                 bool sameContext = Visible && Page == 5 && layoutReady && capture == 0 && !input.BlockPointer &&
                     !input.Right && input.Wheel == 0 && titleGeneration == Layout.Generation && titleX == X && titleY == Y && titleScroll == Scroll;
-                if (!sameContext || !IsHiddenTitle(HitButton(input.X - X, input.Y - Y))) CancelTitleGesture();
+                if (!sameContext || IsHiddenTitle(armed) && !IsHiddenTitle(HitButton(input.X - X, input.Y - Y))) CancelTitleGesture();
                 else if (IsHiddenTitle(armed) && (TitleMilliseconds() - titlePressedAt > 500 ||
                     Math.Abs(input.X - titlePressX) > 4 || Math.Abs(input.Y - titlePressY) > 4)) CancelTitleGesture();
             }
